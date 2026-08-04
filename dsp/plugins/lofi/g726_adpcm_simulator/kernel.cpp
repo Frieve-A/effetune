@@ -257,7 +257,8 @@ private:
     if (!(exponent > kBitErrorOffExponent)) {
       return 0.0;
     }
-    const double limited = exponent > kBitErrorMaximumExponent ? kBitErrorMaximumExponent : exponent;
+    const double limited =
+        exponent > kBitErrorMaximumExponent ? kBitErrorMaximumExponent : exponent;
     return std::pow(10.0, limited);
   }
 

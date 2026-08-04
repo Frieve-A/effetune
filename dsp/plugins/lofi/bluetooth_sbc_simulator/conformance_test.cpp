@@ -229,8 +229,7 @@ constexpr int kMaximumAbsoluteDifference = 1024;
   BluetoothSbcPcm input{};
   BluetoothSbcEncodedFrame encoded{};
   BluetoothSbcFrame reparsed{};
-  const std::uint32_t bitpool =
-      expected_mode == BluetoothSbcChannelMode::kJointStereo ? 33u : 35u;
+  const std::uint32_t bitpool = expected_mode == BluetoothSbcChannelMode::kJointStereo ? 33u : 35u;
   if (!readWavePcm(wave, 128u, input) ||
       !encodeBluetoothSbcTestFrame(input, expected_mode, 16u, bitpool, encoded) ||
       !validateLogicalFrame(encoded.logical, expected_mode) ||

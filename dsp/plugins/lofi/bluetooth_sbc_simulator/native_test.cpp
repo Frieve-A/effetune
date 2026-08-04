@@ -90,9 +90,7 @@ public:
 
   void reset() noexcept { kernel_->reset(); }
 
-  void seed(std::uint32_t low, std::uint32_t high) noexcept {
-    kernel_->setRandomSeed(low, high);
-  }
+  void seed(std::uint32_t low, std::uint32_t high) noexcept { kernel_->setRandomSeed(low, high); }
 
 private:
   alignas(std::max_align_t) std::array<std::byte, kKernelStorageBytes> storage_{};
@@ -373,8 +371,7 @@ void testDualChannelAllocatesPerChannel() {
         "channel modes above the enum clamp to Dual Channel");
 
   // A mono stream has no second channel to allocate independently, so the mode cannot matter.
-  check(codecErrorEnergy(48000.0F, 1u, 2.0F, 38.0F) ==
-            codecErrorEnergy(48000.0F, 1u, 0.0F, 38.0F),
+  check(codecErrorEnergy(48000.0F, 1u, 2.0F, 38.0F) == codecErrorEnergy(48000.0F, 1u, 0.0F, 38.0F),
         "mono ignores the channel mode");
 
   Params dual_params = defaultParams();
@@ -567,8 +564,7 @@ LossStatistics measureFrameLoss(const std::vector<float> &clean, const std::vect
       continue;
     }
     statistics.aligned = true;
-    statistics.loss_ratio =
-        static_cast<double>(lost_frames) / static_cast<double>(frames_measured);
+    statistics.loss_ratio = static_cast<double>(lost_frames) / static_cast<double>(frames_measured);
     statistics.mean_burst = static_cast<double>(lost_frames) / static_cast<double>(bursts);
     break;
   }
@@ -663,8 +659,7 @@ void testPacketLossOnsetConcealsWithLiveAudio() {
     if (reference <= 1.0e-6) {
       continue;
     }
-    const std::uint32_t measured =
-        kTotalFrames - kLossSettleFrames - 2u;
+    const std::uint32_t measured = kTotalFrames - kLossSettleFrames - 2u;
     bool ambiguous = false;
     bool found = false;
     double ratio_at_loss = 0.0;
@@ -770,8 +765,7 @@ void testBurstDurationIsBlockIndependent() {
   }
   const double difference =
       std::abs(narrow.mean_burst_samples - wide.mean_burst_samples) / wide.mean_burst_samples;
-  if (narrow.mean_burst_samples < 520.0 || narrow.mean_burst_samples > 980.0 ||
-      difference > 0.3) {
+  if (narrow.mean_burst_samples < 520.0 || narrow.mean_burst_samples > 980.0 || difference > 0.3) {
     std::fprintf(stderr,
                  "mean burst %.1f samples over %u outages at sixteen blocks, %.1f samples over %u "
                  "outages at four blocks\n",
@@ -780,8 +774,7 @@ void testBurstDurationIsBlockIndependent() {
   // 640 codec samples of outage plus the eighty-sample synthesis smear, whatever the frame length.
   check(narrow.mean_burst_samples > 520.0 && narrow.mean_burst_samples < 980.0,
         "four-block outages last the same retransmission window in samples");
-  check(difference < 0.3,
-        "the outage duration does not change when the SBC frame length changes");
+  check(difference < 0.3, "the outage duration does not change when the SBC frame length changes");
 }
 
 std::vector<float> renderLossTransition(float phase_three_loss, bool phase_three_tone) {

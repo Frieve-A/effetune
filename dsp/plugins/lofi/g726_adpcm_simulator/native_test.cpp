@@ -914,8 +914,7 @@ std::vector<float> renderRadioLink(KernelHarness &harness, float exponent, std::
   std::vector<float> result(frames);
   std::uint32_t offset = 0u;
   while (offset < frames) {
-    const std::uint32_t block =
-        frames - offset < kMaximumFrames ? frames - offset : kMaximumFrames;
+    const std::uint32_t block = frames - offset < kMaximumFrames ? frames - offset : kMaximumFrames;
     std::array<float, kMaximumFrames> audio{};
     for (std::uint32_t frame = 0u; frame < block; ++frame) {
       const double phase = static_cast<double>(offset + frame);
@@ -953,8 +952,7 @@ std::vector<float> renderScheduledRadioLink(KernelHarness &harness, const RadioS
   std::vector<float> result(frames);
   std::uint32_t offset = 0u;
   while (offset < frames) {
-    const std::uint32_t block =
-        frames - offset < kMaximumFrames ? frames - offset : kMaximumFrames;
+    const std::uint32_t block = frames - offset < kMaximumFrames ? frames - offset : kMaximumFrames;
     std::array<float, kMaximumFrames> audio{};
     for (std::uint32_t frame = 0u; frame < block; ++frame) {
       const double phase = static_cast<double>(offset + frame);
@@ -1097,8 +1095,8 @@ bool checkRadioBitErrorContract() {
   const std::size_t toggled_divergence = firstDifference(clean_first, toggled);
   std::cout << "radio toggle divergence: sample " << toggled_divergence << " (onset "
             << kSchedule.onset << ", release " << kSchedule.release << ")\n";
-  ok &= expect(toggled == toggled_replay,
-               "the toggled radio link is not reproducible from its seed");
+  ok &=
+      expect(toggled == toggled_replay, "the toggled radio link is not reproducible from its seed");
   ok &= expect(toggled != toggled_other_seed, "the toggled radio link ignores the instance seed");
   ok &= expect(toggled_divergence >= kSchedule.onset,
                "the disabled radio link disturbed samples before it was switched on");

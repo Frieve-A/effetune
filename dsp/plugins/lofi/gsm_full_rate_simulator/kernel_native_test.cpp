@@ -73,9 +73,7 @@ public:
 
   void reset() noexcept { kernel_->reset(); }
 
-  void seed(std::uint32_t low, std::uint32_t high) noexcept {
-    kernel_->setRandomSeed(low, high);
-  }
+  void seed(std::uint32_t low, std::uint32_t high) noexcept { kernel_->setRandomSeed(low, high); }
 
 private:
   alignas(std::max_align_t) std::array<std::byte, kKernelStorageBytes> storage_{};
@@ -418,11 +416,10 @@ bool checkChannelsResetAndAllocation() {
   return ok;
 }
 
-
 // Radio stimulus. Both tones sit inside the 300-3400 Hz telephony band the codec is specified for,
 // and both complete a whole number of periods in the 20 ms window used by the amplitude gates, so
 // a window mean measured on the render reports the codec's own offset rather than the tone phase.
-constexpr std::size_t kAmplitudeWindowFrames = 1920u; // 20 ms at 96 kHz.
+constexpr std::size_t kAmplitudeWindowFrames = 1920u;                // 20 ms at 96 kHz.
 constexpr double kRadioToneLow = 6.283185307179586 * 30.0 / 1920.0;  // 1500 Hz.
 constexpr double kRadioToneHigh = 6.283185307179586 * 44.0 / 1920.0; // 2200 Hz.
 
@@ -464,9 +461,8 @@ std::vector<float> renderCiSchedule(std::uint32_t seed_low, std::uint32_t seed_h
   harness.seed(seed_low, seed_high);
   constexpr std::array<float, 4u> kSchedule{30.0F, 8.0F, 30.0F, 8.0F};
   Params params = defaultParams();
-  std::vector<float> output(static_cast<std::size_t>(kSchedule.size()) * segment_blocks *
-                                kMaximumFrames,
-                            0.0F);
+  std::vector<float> output(
+      static_cast<std::size_t>(kSchedule.size()) * segment_blocks * kMaximumFrames, 0.0F);
   std::uint32_t block_index = 0u;
   for (float carrier : kSchedule) {
     params.carrierToInterference = carrier;
@@ -519,10 +515,10 @@ bool checkAmplitudeGates(const std::vector<float> &render, const char *label) {
             << " worst 20 ms block mean=" << worst_mean << '\n';
   bool ok = true;
   ok &= expect(peak <= 1.5, (std::string(label) + " exceeded the 1.5 FS peak gate").c_str());
-  ok &= expect(worst_mean <= 0.03,
-               (std::string(label) +
-                " exceeded the 0.03 FS 20 ms block mean gate (a concealment DC offset)")
-                   .c_str());
+  ok &= expect(
+      worst_mean <= 0.03,
+      (std::string(label) + " exceeded the 0.03 FS 20 ms block mean gate (a concealment DC offset)")
+          .c_str());
   return ok;
 }
 

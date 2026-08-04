@@ -176,7 +176,6 @@ ConformanceSummary testSequence(const std::filesystem::path &directory, int sequ
   return summary;
 }
 
-
 // GSM 06.11 style bad frame handling: a good frame must behave exactly as before, a substituted
 // frame must reuse the previous parameters, and a long erasure run must fade to silence.
 void testConcealment() {
@@ -186,8 +185,8 @@ void testConcealment() {
   const auto fill = [&stimulus](std::size_t index_base) {
     for (std::size_t index = 0u; index < kFrameSamples; ++index) {
       const double phase = static_cast<double>(index_base + index);
-      stimulus[index] = static_cast<Word>(7000.0 * std::sin(phase * 0.11) +
-                                          2500.0 * std::sin(phase * 0.031));
+      stimulus[index] =
+          static_cast<Word>(7000.0 * std::sin(phase * 0.11) + 2500.0 * std::sin(phase * 0.031));
     }
   };
 

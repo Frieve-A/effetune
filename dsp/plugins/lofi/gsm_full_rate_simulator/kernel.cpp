@@ -340,10 +340,10 @@ private:
     const float quality =
         sanitizeControl(params_.carrierToInterference, kCarrierToInterferenceWorst,
                         kCarrierToInterferenceClean, kCarrierToInterferenceClean);
-    const double severity = (static_cast<double>(kCarrierToInterferenceClean) -
-                             static_cast<double>(quality)) /
-                            (static_cast<double>(kCarrierToInterferenceClean) -
-                             static_cast<double>(kCarrierToInterferenceWorst));
+    const double severity =
+        (static_cast<double>(kCarrierToInterferenceClean) - static_cast<double>(quality)) /
+        (static_cast<double>(kCarrierToInterferenceClean) -
+         static_cast<double>(kCarrierToInterferenceWorst));
     if (severity <= 0.0) {
       return 0.0;
     }

@@ -1,11 +1,11 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:7c193b3adde88b8b00705e94d1d404d28d16dd0daac3f27d41fe6a331e449a37",
+  "sourceDigest": "sha256:a22f50b2c80b774672e875583902173e7859fe4db7704481fff275db91f9bc25",
   "emsdkVersion": "6.0.2",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:450918c610e3e34c3b0da9841204d72d5ed8d1a3134bc7de1f31d0e13ff044d5",
+    "digest": "sha256:fb0111e878066e67fc682824288c32fd9d9d5558ce953f2d7dd9842d75134e6a",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
@@ -105,7 +105,7 @@
       {
         "id": "dsp/plugins/lofi/g726_adpcm_simulator/kernel.cpp",
         "kind": "file",
-        "sha256": "sha256:43d83bcb1d7a0a62bcc72b34ba22c143c3f44ead05d5478abfe64f0cc399d766"
+        "sha256": "sha256:2dc4bcdded1afb5a9127d4225e833182038cda30be2af9c9280c28f4949fdabd"
       },
       {
         "id": "dsp/plugins/lofi/g726_adpcm_simulator/kernel.h",

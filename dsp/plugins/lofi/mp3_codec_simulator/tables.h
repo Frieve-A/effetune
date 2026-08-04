@@ -163,8 +163,7 @@ inline constexpr std::array<std::uint16_t, 12> kMpeg1CutoffLines = {
     287u, 352u, 417u, 470u, 522u, 522u, 522u, 522u, 522u, 522u, 522u, 522u};
 inline constexpr std::array<std::uint16_t, 9> kMpeg2CutoffLines = {391u, 470u, 522u, 548u, 548u,
                                                                    548u, 548u, 548u, 548u};
-inline constexpr std::array<float, 12> kInitialNmrDb = {6.0F,  3.0F,  0.0F,  -1.5F,
-                                                        -3.0F, -4.0F, -5.0F, -6.0F,
-                                                        -7.0F, -8.0F, -9.0F, -10.0F};
+inline constexpr std::array<float, 12> kInitialNmrDb = {6.0F,  3.0F,  0.0F,  -1.5F, -3.0F, -4.0F,
+                                                        -5.0F, -6.0F, -7.0F, -8.0F, -9.0F, -10.0F};
 
 } // namespace effetune::plugins::lofi::mp3

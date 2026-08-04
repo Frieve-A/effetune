@@ -37,8 +37,8 @@ inline constexpr BlockType nextBlockType(BlockType previous, bool current_attack
   return next_attack ? BlockType::Start : BlockType::Long;
 }
 
-inline constexpr std::array<std::uint32_t, 12> kBitratesKbps = {
-    32u, 48u, 64u, 80u, 96u, 112u, 128u, 160u, 192u, 224u, 256u, 320u};
+inline constexpr std::array<std::uint32_t, 12> kBitratesKbps = {32u,  48u,  64u,  80u,  96u,  112u,
+                                                                128u, 160u, 192u, 224u, 256u, 320u};
 
 struct ProfilePolicy final {
   std::uint32_t sampleRate = 44100u;
