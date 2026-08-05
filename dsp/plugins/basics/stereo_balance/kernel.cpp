@@ -23,13 +23,13 @@ public:
     const double left_gain = balance <= 0.0 ? 1.0 : 1.0 - balance;
     const double right_gain = balance >= 0.0 ? 1.0 : 1.0 + balance;
 
-    for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
-      audio[frame] = static_cast<float>(static_cast<double>(audio[frame]) * left_gain);
-    }
-
-    const std::uint32_t sample_count = channel_count * frame_count;
-    for (std::uint32_t index = frame_count; index < sample_count; ++index) {
-      audio[index] = static_cast<float>(static_cast<double>(audio[index]) * right_gain);
+    // Channels are stereo pairs: even index = left, odd index = right.
+    for (std::uint32_t channel = 0; channel < channel_count; ++channel) {
+      const double gain = (channel & 1u) == 0u ? left_gain : right_gain;
+      float *samples = audio + static_cast<std::size_t>(channel) * frame_count;
+      for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
+        samples[frame] = static_cast<float>(static_cast<double>(samples[frame]) * gain);
+      }
     }
   }
 };

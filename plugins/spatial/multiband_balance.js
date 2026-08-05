@@ -428,7 +428,7 @@ class MultibandBalancePlugin extends PluginBase {
                         // Apply balance
                         const leftGain = Math.max(0, 1 - balance);
                         const rightGain = Math.max(0, 1 + balance);
-                        const gain = ch === 0 ? leftGain : rightGain;
+                        const gain = (ch & 1) === 0 ? leftGain : rightGain;
                         
                         // Process in blocks with loop unrolling
                         const blockSizeMod4 = parameters.blockSize & ~3;

@@ -96,7 +96,7 @@ test('MultibandBalance goldens preserve deterministic crossover reset behavior',
   assert.equal(goldens.every(item => item.metadata.type === 'MultibandBalancePlugin'), true);
   assert.equal(
     goldens.every(item => item.metadata.jsEngineHash ===
-      '0f07b2facbd243ed56a6f6b813c260d9a6a08be3387a5d95d92e50de6aa0d218'),
+      'abb0f1d4ce9f260e9536fb119aca607802047e8d21ff941be6f7971675ca5c2c'),
     true
   );
   assert.ok(goldens.some(item => item.metadata.sampleRate === 192000));
