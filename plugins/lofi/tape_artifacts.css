@@ -1,0 +1,13 @@
+.tape-artifacts-status {
+    margin-top: 6px;
+    color: #aaa;
+    font: 11px Arial, sans-serif;
+    line-height: 1.35;
+}
+
+body.layout-mobile .tape-artifacts-status {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}

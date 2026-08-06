@@ -28,6 +28,11 @@ _site/
 !/tests/esm/dsp-gsm-full-rate-audioworklet-gate.test.mjs
 !/tests/esm/dsp-gsm-full-rate-simulator-port-v1.test.mjs
 !/tests/esm/dsp-mp3-codec-simulator-port-v1.test.mjs
+!/tests/esm/dsp-tube-simulator-listening-presets-v1.test.mjs
+!/tests/esm/dsp-tube-simulator-output-safety-v1.test.mjs
+!/tests/esm/dsp-tube-simulator-port-v1.test.mjs
+!/tests/esm/dsp-tube-simulator-standard-v1-fixture.test.mjs
+!/tests/esm/dsp-tube-simulator-wasm-telemetry-v1.test.mjs
 !/tests/esm/media-session-anchor.test.mjs
 !/tests/esm/plugin-execution-capabilities.test.mjs
 !/tests/esm/tracked-sources-are-self-contained.test.mjs
@@ -49,6 +54,25 @@ _site/
 !/tests/helpers/cue-directory-stage-repository.mjs
 !/tests/helpers/fake-dom.mjs
 !/tests/helpers/global-test-utils.mjs
+!/tests/fixtures/
+/tests/fixtures/*
+!/tests/fixtures/tube-simulator/
+/tests/fixtures/tube-simulator/*
+!/tests/fixtures/tube-simulator/p3-baseline-v1/
+!/tests/fixtures/tube-simulator/lineamp-v1/
+/tests/fixtures/tube-simulator/lineamp-v1/*
+!/tests/fixtures/tube-simulator/lineamp-v1/fir-coefficients-v1.json
+
+!/tests/tools/
+/tests/tools/*
+!/tests/tools/tube-simulator-lineamp/
+/tests/tools/tube-simulator-lineamp/*
+!/tests/tools/tube-simulator-lineamp/calibrate-listening-presets.mjs
+!/tests/tools/tube-simulator-lineamp/derive-phase-b-anchors.mjs
+!/tests/tools/tube-simulator-lineamp/fir-coefficient-contract.mjs
+!/tests/tools/tube-simulator-lineamp/generate-stability-manifests.mjs
+!/tests/tools/tube-simulator-lineamp/phase-b-design.mjs
+!/tests/tools/tube-simulator-lineamp/phase-b-transition-contract.mjs
 
 # Logs
 logs
@@ -88,23 +112,9 @@ CLAUDE.md
 # Electron specific
 .electron-builder.env
 
-# Temporary files
-tmp/*
-!tmp/dev/
-tmp/dev/*
-!tmp/dev/compressed-audio-codec-sim-20260729/
-tmp/dev/compressed-audio-codec-sim-20260729/*
-!tmp/dev/compressed-audio-codec-sim-20260729/g726-adpcm-simulator/
-tmp/dev/compressed-audio-codec-sim-20260729/g726-adpcm-simulator/*
-!tmp/dev/compressed-audio-codec-sim-20260729/g726-adpcm-simulator/oracle.md
-!tmp/dev/compressed-audio-codec-sim-20260729/g726-adpcm-simulator/performance-cpu-formal.json
-!tmp/dev/compressed-audio-codec-sim-20260729/bluetooth-sbc-simulator/
-tmp/dev/compressed-audio-codec-sim-20260729/bluetooth-sbc-simulator/*
-!tmp/dev/compressed-audio-codec-sim-20260729/bluetooth-sbc-simulator/conformance.md
-!tmp/dev/compressed-audio-codec-sim-20260729/bluetooth-sbc-simulator/performance.md
-!tmp/dev/compressed-audio-codec-sim-20260729/bluetooth-sbc-simulator/performance-thread-cpu-formal.json
-!tmp/dev/compressed-audio-codec-sim-20260729/bluetooth-sbc-simulator/performance-thread-cpu-formal-pre-wasm-init-fix.json
-!tmp/dev/compressed-audio-codec-sim-20260729/bluetooth-sbc-simulator/production-equivalence.json
+# Temporary files. tmp/ is permanently local-only: never track or whitelist
+# anything under it
+/tmp/
 .tmp/
 .temp/
 .qodo

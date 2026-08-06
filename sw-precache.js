@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.3.0-170d4cfb69822f20";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.3.0-0f69fc840525a181";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./effetune-library.css",
   "./effetune-mobile.css",
@@ -309,6 +309,8 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./plugins/lofi/simple_jitter.js",
   "./plugins/lofi/sw_radio_simulator.css",
   "./plugins/lofi/sw_radio_simulator.js",
+  "./plugins/lofi/tape_artifacts.css",
+  "./plugins/lofi/tape_artifacts.js",
   "./plugins/lofi/vinyl_artifacts.js",
   "./plugins/lofi/vinyl_simulator.css",
   "./plugins/lofi/vinyl_simulator.js",
@@ -342,6 +344,8 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./plugins/saturation/saturation.js",
   "./plugins/saturation/sub_synth.css",
   "./plugins/saturation/sub_synth.js",
+  "./plugins/saturation/tube_simulator.css",
+  "./plugins/saturation/tube_simulator.js",
   "./plugins/spatial/crossfeed_filter.js",
   "./plugins/spatial/ms_matrix.js",
   "./plugins/spatial/multiband_balance.css",

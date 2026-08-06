@@ -1200,6 +1200,32 @@ export function packTremoloPluginParams(params = {}) {
   return packed;
 }
 
+export const TubeSimulatorPlugin_PARAMS_HASH = 0xe7aae286;
+export function packTubeSimulatorPluginParams(params = {}) {
+  const packed = new Float32Array(20);
+  packed[0] = (() => { const value = params["dr"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -96) return -96; if (value > 0) return 0; return value; })();
+  packed[1] = (() => { const index = ["12AX7","12AT7","12AU7"].indexOf(params["tp"]); return index < 0 ? 2 : index; })();
+  packed[2] = (() => { const value = params["bi"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -50) return -50; if (value > 50) return 50; return value; })();
+  packed[3] = (() => { const value = params["pv"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 250; if (value < 150) return 150; if (value > 300) return 300; return value; })();
+  packed[4] = (() => { const value = params["sz"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 10; if (value < 0.6) return 0.6; if (value > 100) return 100; return value; })();
+  packed[5] = (() => { const value = params["su"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 10; if (value < 0.1) return 0.1; if (value > 47) return 47; return value; })();
+  packed[6] = (() => { const value = params["og"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 9; if (value < -48) return -48; if (value > 48) return 48; return value; })();
+  packed[7] = (() => { const value = params["mx"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 100; if (value < 0) return 0; if (value > 100) return 100; return value; })();
+  packed[8] = (() => { const value = params["iv"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 2.828; if (value < 0.1) return 0.1; if (value > 20) return 20; return value; })();
+  packed[9] = (() => { const value = params["nf"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 30; if (value < 0) return 0; if (value > 30) return 30; return value; })();
+  packed[10] = (() => { const value = params["os"]; if (value === undefined) return 0; const index = ["Line","Power"].indexOf(value); if (index < 0) throw new TypeError("Invalid enum value for os"); return index; })();
+  packed[11] = (() => { const value = params["pt"]; if (value === undefined) return 0; const index = ["EL84","EL34"].indexOf(value); if (index < 0) throw new TypeError("Invalid enum value for pt"); return index; })();
+  packed[12] = (() => { const value = params["pb"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 320; if (value < 300) return 300; if (value > 470) return 470; return value; })();
+  packed[13] = (() => { const value = params["kr"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 270; if (value < 270) return 270; if (value > 500) return 500; return value; })();
+  packed[14] = (() => { const value = params["st"]; if (value === undefined) return 0; const index = ["0","20","43"].indexOf(value); if (index < 0) throw new TypeError("Invalid enum value for st"); return index; })();
+  packed[15] = (() => { const value = params["zp"]; if (value === undefined) return 2; const index = ["6.0","6.6","8.0"].indexOf(value); if (index < 0) throw new TypeError("Invalid enum value for zp"); return index; })();
+  packed[16] = (() => { const value = params["sl"]; if (value === undefined) return 1; const index = ["4","8","15","16"].indexOf(value); if (index < 0) throw new TypeError("Invalid enum value for sl"); return index; })();
+  packed[17] = (() => { const value = params["rl"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 8; if (value < 2) return 2; if (value > 32) return 32; return value; })();
+  packed[18] = (() => { const value = params["sg"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -96) return -96; if (value > 0) return 0; return value; })();
+  packed[19] = (params["ag"] === true || params["ag"] === 1 ? 1 : params["ag"] === false || params["ag"] === 0 ? 0 : 1);
+  return packed;
+}
+
 export const VinylArtifactsPlugin_PARAMS_HASH = 0x44439ea9;
 export function packVinylArtifactsPluginParams(params = {}) {
   const packed = new Float32Array(12);
@@ -1341,6 +1367,7 @@ export const DSP_PARAM_LAYOUTS = Object.freeze({
   ToneControlPlugin: Object.freeze({ hash: ToneControlPlugin_PARAMS_HASH, floatCount: 3 }),
   TransientShaperPlugin: Object.freeze({ hash: TransientShaperPlugin_PARAMS_HASH, floatCount: 7 }),
   TremoloPlugin: Object.freeze({ hash: TremoloPlugin_PARAMS_HASH, floatCount: 7 }),
+  TubeSimulatorPlugin: Object.freeze({ hash: TubeSimulatorPlugin_PARAMS_HASH, floatCount: 20 }),
   VinylArtifactsPlugin: Object.freeze({ hash: VinylArtifactsPlugin_PARAMS_HASH, floatCount: 12 }),
   VinylSimulatorPlugin: Object.freeze({ hash: VinylSimulatorPlugin_PARAMS_HASH, floatCount: 20 }),
   VolumePlugin: Object.freeze({ hash: VolumePlugin_PARAMS_HASH, floatCount: 1 }),
@@ -1424,6 +1451,7 @@ export const DSP_PARAM_PACKERS = new Map([
   ["ToneControlPlugin", Object.freeze({ pack: packToneControlPluginParams, hash: ToneControlPlugin_PARAMS_HASH, floatCount: 3 })],
   ["TransientShaperPlugin", Object.freeze({ pack: packTransientShaperPluginParams, hash: TransientShaperPlugin_PARAMS_HASH, floatCount: 7 })],
   ["TremoloPlugin", Object.freeze({ pack: packTremoloPluginParams, hash: TremoloPlugin_PARAMS_HASH, floatCount: 7 })],
+  ["TubeSimulatorPlugin", Object.freeze({ pack: packTubeSimulatorPluginParams, hash: TubeSimulatorPlugin_PARAMS_HASH, floatCount: 20 })],
   ["VinylArtifactsPlugin", Object.freeze({ pack: packVinylArtifactsPluginParams, hash: VinylArtifactsPlugin_PARAMS_HASH, floatCount: 12 })],
   ["VinylSimulatorPlugin", Object.freeze({ pack: packVinylSimulatorPluginParams, hash: VinylSimulatorPlugin_PARAMS_HASH, floatCount: 20 })],
   ["VolumePlugin", Object.freeze({ pack: packVolumePluginParams, hash: VolumePlugin_PARAMS_HASH, floatCount: 1 })],

@@ -1,0 +1,49 @@
+{
+  "formatVersion": 1,
+  "type": "TubeSimulatorPlugin",
+  "id": "tube-reset-event",
+  "stimulus": "sin1k",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 1152,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 12,
+  "seed": "0xeffe7a52",
+  "params": {
+    "dr": 0,
+    "tp": "12AX7",
+    "bi": 0,
+    "pv": 250,
+    "sz": 10,
+    "su": 10,
+    "og": 0,
+    "mx": 100,
+    "fr": true
+  },
+  "events": [
+    {
+      "frame": 384,
+      "params": {
+        "dr": 9,
+        "tp": "12AT7",
+        "bi": -17,
+        "pv": 238,
+        "sz": 18,
+        "su": 4.7,
+        "og": 2,
+        "mx": 62
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "amended-p3-path2-wasm",
+  "referenceHash": "8D63B37C0D7181A01EB48B074A7AD2E7194588A1D57BF9C5890F67CE756AE76D",
+  "outputFloats": 2304,
+  "byteLength": 9216,
+  "binary": "case-013.f32"
+}

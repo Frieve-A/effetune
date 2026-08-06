@@ -352,6 +352,7 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | Lo-Fi     | SBC Codec Simulator | Reproduce una conversión de codificación y decodificación Bluetooth A2DP SBC con pérdida de paquetes del enlace y ocultación opcionales | [Detalles](plugins/lofi.md#sbc-codec-simulator) |
 | Lo-Fi     | Simple Jitter | Simulación de jitter digital | [Detalles](plugins/lofi.md#simple-jitter) |
 | Lo-Fi     | SW Radio Simulator | Pasa la música por una cadena modelada de emisión en onda corta, propagación ionosférica y recepción | [Detalles](plugins/lofi.md#sw-radio-simulator) |
+| Lo-Fi     | Tape Artifacts | Graba la música en una cinta de bobina abierta modelada y la reproduce | [Detalles](plugins/lofi.md#tape-artifacts) |
 | Lo-Fi     | Vinyl Artifacts | Añade pops, crackle, hiss, rumble y fuga de ruido estéreo al estilo vinilo | [Detalles](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi     | Vinyl Simulator | Graba la entrada en un surco modelado y la reproduce con una aguja física simulada | [Detalles](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | Simula cambios dinámicos y naturales en el sonido causados por movimientos sutiles del cono del altavoz | [Detalles](plugins/modulation.md#doppler-distortion) |
@@ -372,6 +373,7 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | Saturation| Multiband Saturation | Añade calidez o filo por separado a graves, medios y agudos | [Detalles](plugins/saturation.md#multiband-saturation) |
 | Saturation| Saturation | Añade riqueza y carácter cálidos de estilo analógico | [Detalles](plugins/saturation.md#saturation) |
 | Saturation| Sub Synth | Mezcla una señal de baja frecuencia filtrada para reforzar los graves | [Detalles](plugins/saturation.md#sub-synth) |
+| Saturation| Tube Simulator | Modela dinámicamente etapas de línea a válvulas y un amplificador de potencia push-pull | [Detalles](plugins/saturation.md#tube-simulator) |
 | Spatial   | Crossfeed Filter | Filtro de alimentación cruzada para auriculares para imagen estéreo natural | [Detalles](plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | Convierte entre estéreo y Mid/Side para ajustar centro y ambiente | [Detalles](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | Control de balance estéreo dependiente de frecuencia de 5 bandas | [Detalles](plugins/spatial.md#multiband-balance) |

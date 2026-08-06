@@ -359,6 +359,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Lo-Fi     | SBC Codec Simulator | Simulates a Bluetooth A2DP SBC encode/decode round trip with optional link packet loss and concealment | [Details](docs/plugins/lofi.md#sbc-codec-simulator) |
 | Lo-Fi     | Simple Jitter | Digital jitter simulation | [Details](docs/plugins/lofi.md#simple-jitter) |
 | Lo-Fi     | SW Radio Simulator | Passes music through a modeled shortwave broadcast, ionospheric path, and receiver chain | [Details](docs/plugins/lofi.md#sw-radio-simulator) |
+| Lo-Fi     | Tape Artifacts | Records music onto a modeled reel-to-reel tape and plays it back | [Details](docs/plugins/lofi.md#tape-artifacts) |
 | Lo-Fi     | Vinyl Artifacts | Adds vinyl-style pops, crackle, hiss, rumble, and stereo noise bleed | [Details](docs/plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi     | Vinyl Simulator | Cuts the input into a modeled groove and plays it back with a physical stylus model | [Details](docs/plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | Simulates natural, dynamic changes in sound caused by subtle speaker cone movements | [Details](docs/plugins/modulation.md#doppler-distortion) |
@@ -379,6 +380,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Saturation| Multiband Saturation | Adds warmth or edge separately to low, mid, and high ranges | [Details](docs/plugins/saturation.md#multiband-saturation) |
 | Saturation| Saturation | Adds warm analog-style richness and character | [Details](docs/plugins/saturation.md#saturation) |
 | Saturation| Sub Synth | Mixes in a filtered low-frequency signal for bass enhancement | [Details](docs/plugins/saturation.md#sub-synth) |
+| Saturation| Tube Simulator | Models tube line stages or a push-pull power amplifier with dynamic operating points | [Details](docs/plugins/saturation.md#tube-simulator) |
 | Spatial   | Crossfeed Filter | Headphone crossfeed filter for natural stereo imaging | [Details](docs/plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | Converts between stereo and Mid/Side for center/ambience adjustments | [Details](docs/plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5-band frequency-dependent stereo balance control | [Details](docs/plugins/spatial.md#multiband-balance) |

@@ -14,7 +14,7 @@ Use this checklist when reviewing changes in this repository. Lead with concrete
 - Keep hot signal-processing loops readable but avoid unnecessary allocation and slow Math helpers where a ternary or `if` is clear.
 - Avoid blocking work in the renderer or audio worklet.
 - Treat file system, shell, and external URL handling as security-sensitive.
-- Do not start local servers or desktop app sessions during review unless the user explicitly asked for that verification.
+- Do not start local servers or desktop app sessions during review unless that verification was explicitly requested.
 
 ## Tests and Documentation
 
@@ -60,7 +60,7 @@ Use this checklist when reviewing changes in this repository. Lead with concrete
   cmake --build dsp/build/codeql --parallel
   ```
 
-  If the environment is unavailable, record the residual CI risk and wait for the GitHub Actions result before reporting the publish workflow as successful.
+  If the environment is unavailable, note the residual CI risk and confirm the GitHub Actions result before treating the publish workflow as successful.
 - Run `npm run build:dsp` after C++ formatting or any other DSP digest-input change, include all generated changes, rerun it, and confirm the second run produces no further managed-file changes.
 - Run `npm run assets:web` when web runtime or precache inputs changed, then run `npm run verify` after all generated files are current.
-- Use a restartable commit-readiness loop: update required generated files → run required verification → stage intended changes → review the cached diff and run `git diff --cached --check` → confirm no intended change remains unstaged → commit. Any edit caused by these checks invalidates earlier generation and verification results, so return to generated-file updates and repeat the loop before committing. Immediately before pushing, confirm the branch and exact commit. After pushing, monitor every GitHub Actions workflow triggered by that commit through completion and investigate any failure before reporting success.
+- Use a restartable commit-readiness loop: update required generated files → run required verification → stage intended changes → review the cached diff and run `git diff --cached --check` → confirm no intended change remains unstaged → commit. Any edit caused by these checks invalidates earlier generation and verification results, so return to generated-file updates and repeat the loop before committing. Immediately before pushing, confirm the branch and exact commit. After pushing, monitor every GitHub Actions workflow triggered by that commit through completion and investigate any failure before treating the change as landed.

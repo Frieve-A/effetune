@@ -404,6 +404,50 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
     INCLUDE_DIRS core generated/cpp
     WRAP_MALLOC)
   et_add_dsp_test(
+    effetune_dsp_tube_simulator_tests
+    SOURCES plugins/saturation/tube_simulator/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  file(
+    SHA256
+    "${CMAKE_CURRENT_SOURCE_DIR}/plugins/saturation/tube_simulator/kernel.cpp"
+    ET_TUBE_NATIVE_TEST_KERNEL_SHA256)
+  file(
+    SHA256
+    "${CMAKE_CURRENT_SOURCE_DIR}/plugins/saturation/tube_simulator/native_test.cpp"
+    ET_TUBE_NATIVE_TEST_HARNESS_SHA256)
+  file(
+    SHA256
+    "${CMAKE_CURRENT_SOURCE_DIR}/generated/cpp/TubeSimulatorPluginParams.h"
+    ET_TUBE_NATIVE_TEST_PARAMS_SHA256)
+  file(
+    SHA256
+    "${CMAKE_CURRENT_SOURCE_DIR}/plugins/saturation/tube_simulator/fir_coefficients.generated.h"
+    ET_TUBE_NATIVE_TEST_FIR_SHA256)
+  file(
+    SHA256
+    "${CMAKE_CURRENT_SOURCE_DIR}/plugins/saturation/tube_simulator/tube_feedback_table.generated.h"
+    ET_TUBE_NATIVE_TEST_FEEDBACK_TABLE_SHA256)
+  file(
+    SHA256
+    "${CMAKE_CURRENT_SOURCE_DIR}/plugins/saturation/tube_simulator/phase_c_tables.generated.h"
+    ET_TUBE_NATIVE_TEST_PHASE_C_TABLE_SHA256)
+  string(
+    SHA256
+    ET_TUBE_NATIVE_TEST_BUILD_SHA256
+    "${ET_TUBE_NATIVE_TEST_KERNEL_SHA256}:${ET_TUBE_NATIVE_TEST_HARNESS_SHA256}:${ET_TUBE_NATIVE_TEST_PARAMS_SHA256}:${ET_TUBE_NATIVE_TEST_FIR_SHA256}:${ET_TUBE_NATIVE_TEST_FEEDBACK_TABLE_SHA256}:${ET_TUBE_NATIVE_TEST_PHASE_C_TABLE_SHA256}")
+  target_compile_definitions(
+    effetune_dsp_tube_simulator_tests
+    PRIVATE
+      ET_TUBE_NATIVE_TEST_KERNEL_SHA256="${ET_TUBE_NATIVE_TEST_KERNEL_SHA256}"
+      ET_TUBE_NATIVE_TEST_HARNESS_SHA256="${ET_TUBE_NATIVE_TEST_HARNESS_SHA256}"
+      ET_TUBE_NATIVE_TEST_PARAMS_SHA256="${ET_TUBE_NATIVE_TEST_PARAMS_SHA256}"
+      ET_TUBE_NATIVE_TEST_FIR_SHA256="${ET_TUBE_NATIVE_TEST_FIR_SHA256}"
+      ET_TUBE_NATIVE_TEST_FEEDBACK_TABLE_SHA256="${ET_TUBE_NATIVE_TEST_FEEDBACK_TABLE_SHA256}"
+      ET_TUBE_NATIVE_TEST_PHASE_C_TABLE_SHA256="${ET_TUBE_NATIVE_TEST_PHASE_C_TABLE_SHA256}"
+      ET_TUBE_NATIVE_TEST_BUILD_SHA256="${ET_TUBE_NATIVE_TEST_BUILD_SHA256}"
+      ET_TUBE_STANDARD_V1_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../tests/fixtures/tube-simulator/p3-baseline-v1/golden")
+  et_add_dsp_test(
     effetune_dsp_multiband_balance_tests
     SOURCES plugins/spatial/multiband_balance/native_test.cpp
     INCLUDE_DIRS core
@@ -435,6 +479,13 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
       add_test(
         NAME effetune_dsp_codegen_tests
         COMMAND ${ET_NODE_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/codegen_test.mjs)
+      add_test(
+        NAME effetune_dsp_tube_simulator_standard_v1_projection
+        COMMAND
+          ${CMAKE_COMMAND} -E env
+          "ET_TUBE_NATIVE_RUNNER=$<TARGET_FILE:effetune-dsp-parity-runner>"
+          ${ET_NODE_EXECUTABLE} --test
+          ${CMAKE_CURRENT_SOURCE_DIR}/../tests/esm/dsp-tube-simulator-standard-v1-fixture.test.mjs)
     endif()
   endif()
 endif()

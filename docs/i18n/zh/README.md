@@ -351,6 +351,7 @@ EffeTune 2.1.0引入了采用目录架构v3的音乐库，可按曲目浏览CUE�
 | Lo-Fi     | SBC Codec Simulator | 再现 Bluetooth A2DP SBC 编码/解码往返处理，并可选叠加链路丢包与隐藏处理 | [详情](plugins/lofi.md#sbc-codec-simulator) |
 | Lo-Fi     | Simple Jitter | 数字抖动模拟 | [详情](plugins/lofi.md#simple-jitter) |
 | Lo-Fi     | SW Radio Simulator | 让音乐经过建模的短波广播、电离层传播与接收链路 | [详情](plugins/lofi.md#sw-radio-simulator) |
+| Lo-Fi     | Tape Artifacts | 将音乐录到建模的开盘磁带上再放出来 | [详情](plugins/lofi.md#tape-artifacts) |
 | Lo-Fi     | Vinyl Artifacts | 加入黑胶风格的爆点、噼啪声、嘶声、隆隆声和立体声噪声串扰 | [详情](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi     | Vinyl Simulator | 将输入刻入模拟唱槽，再用物理唱针模型播放 | [详情](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | 模拟因扬声器振膜微动引起的自然动态音色变化 | [详情](plugins/modulation.md#doppler-distortion) |
@@ -371,6 +372,7 @@ EffeTune 2.1.0引入了采用目录架构v3的音乐库，可按曲目浏览CUE�
 | Saturation| Multiband Saturation | 分别为低频、中频和高频添加暖度或边缘感 | [详情](plugins/saturation.md#multiband-saturation) |
 | Saturation| Saturation | 添加模拟风格的温暖、丰润和个性 | [详情](plugins/saturation.md#saturation) |
 | Saturation| Sub Synth | 混入经过滤波的低频信号以增强低音 | [详情](plugins/saturation.md#sub-synth) |
+| Saturation| Tube Simulator | 动态模拟电子管线路级和推挽功率放大器 | [详情](plugins/saturation.md#tube-simulator) |
 | Spatial   | Crossfeed Filter | 用于自然立体声成像的耳机交叉馈送滤波器 | [详情](plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | 在立体声和 Mid/Side 之间转换，用于调整中央与氛围成分 | [详情](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5 频段频率相关立体声平衡控制 | [详情](plugins/spatial.md#multiband-balance) |

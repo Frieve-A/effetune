@@ -1,0 +1,184 @@
+{
+  "defaults": {
+    "sampleRate": 96000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo",
+    "params": {
+      "fr": true
+    }
+  },
+  "cases": [
+    {
+      "id": "default-silence",
+      "stimulus": "silence",
+      "frames": 1024
+    },
+    {
+      "id": "default-impulse",
+      "stimulus": "imp",
+      "frames": 1152
+    },
+    {
+      "id": "default-sine",
+      "stimulus": "sin1k",
+      "frames": 1536
+    },
+    {
+      "id": "default-noise",
+      "stimulus": "noise",
+      "frames": 1536
+    },
+    {
+      "id": "minimum-drive-12ax7",
+      "stimulus": "sin1k",
+      "frames": 1024,
+      "events": [
+        {
+          "frame": 128,
+          "params": {
+            "dr": -24
+          }
+        }
+      ]
+    },
+    {
+      "id": "maximum-drive-12ax7",
+      "stimulus": "sin1k",
+      "frames": 1024,
+      "events": [
+        {
+          "frame": 128,
+          "params": {
+            "dr": 48
+          }
+        }
+      ]
+    },
+    {
+      "id": "upper-range-corners",
+      "stimulus": "noise",
+      "frames": 1024,
+      "events": [
+        {
+          "frame": 128,
+          "params": {
+            "dr": 48,
+            "bi": 50,
+            "pv": 300,
+            "sz": 100,
+            "su": 47,
+            "og": 24,
+            "mx": 100
+          }
+        }
+      ]
+    },
+    {
+      "id": "tube-12au7-reset-event",
+      "stimulus": "sin1k",
+      "frames": 1024,
+      "events": [
+        {
+          "frame": 384,
+          "params": {
+            "dr": 9,
+            "tp": "12AU7",
+            "bi": -17,
+            "pv": 238,
+            "sz": 18,
+            "su": 4.7,
+            "og": 2,
+            "mx": 62
+          }
+        }
+      ]
+    },
+    {
+      "id": "lower-range-corners",
+      "stimulus": "noise",
+      "frames": 1024,
+      "events": [
+        {
+          "frame": 128,
+          "params": {
+            "dr": -24,
+            "bi": -50,
+            "pv": 150,
+            "sz": 0.6,
+            "su": 0.1,
+            "og": -24,
+            "mx": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "dry-output-gain-isolation",
+      "stimulus": "imp",
+      "frames": 1152,
+      "events": [
+        {
+          "frame": 128,
+          "params": {
+            "og": 24,
+            "mx": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "half-mix-wet-output",
+      "stimulus": "noise",
+      "frames": 1280,
+      "events": [
+        {
+          "frame": 128,
+          "params": {
+            "og": 6,
+            "mx": 50
+          }
+        }
+      ]
+    },
+    {
+      "id": "non-reset-parameter-event",
+      "stimulus": "noise",
+      "frames": 1152,
+      "events": [
+        {
+          "frame": 384,
+          "params": {
+            "dr": 21,
+            "bi": 29,
+            "pv": 281,
+            "sz": 3.2,
+            "su": 27,
+            "og": -3,
+            "mx": 73
+          }
+        }
+      ]
+    },
+    {
+      "id": "tube-reset-event",
+      "stimulus": "sin1k",
+      "frames": 1152,
+      "events": [
+        {
+          "frame": 384,
+          "params": {
+            "dr": 9,
+            "tp": "12AT7",
+            "bi": -17,
+            "pv": 238,
+            "sz": 18,
+            "su": 4.7,
+            "og": 2,
+            "mx": 62
+          }
+        }
+      ]
+    }
+  ]
+}

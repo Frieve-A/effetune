@@ -2920,6 +2920,19 @@ h1 {
     color-scheme: dark;
 }
 
+/* Group headings need their own rule: an unstyled optgroup label keeps the
+   browser default light background and blows out against the dark list. */
+.preset-select optgroup,
+.plugin-parameter-ui select optgroup,
+.routing-dialog-row select optgroup,
+.audio-config-dialog select optgroup,
+.config-dialog select optgroup,
+.config-select optgroup {
+    background-color: #373737 !important;
+    color: var(--et-text-secondary) !important;
+    color-scheme: dark;
+}
+
 .preset-select option:hover,
 .plugin-parameter-ui select option:hover,
 .routing-dialog-row select option:hover,

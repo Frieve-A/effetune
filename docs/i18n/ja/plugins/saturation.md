@@ -17,6 +17,7 @@ lang: ja
 - [Multiband Saturation](#multiband-saturation) - 低域・中域・高域を独立して整える
 - [Saturation](#saturation) - ビンテージ機器のような温かみと豊かさを追加
 - [Sub Synth](#sub-synth) - 低域強調のため、フィルター処理した低周波信号を追加
+- [Tube Simulator](#tube-simulator) - 真空管のライン段とプッシュプル・パワーアンプをモデル化
 
 ## Dynamic Saturation
 
@@ -464,3 +465,148 @@ Harmonic Distortionプラグインは、2次から5次の非線形項を調整�
 4. Dry Levelでバランスを調整
 5. 必要に応じてフィルターを微調整
 6. 聴感を頼りに徐々に調整してください
+
+## Tube Simulator
+
+Tube Simulatorは、真空管回路の部品定数に基づく電気的な信号経路全体をモデル化します。**Line**は2段の小信号増幅回路のみを使用します。**Push-Pull Power**では、同じドライバーが固定ボリュームを介して、実管の差動対として解かれる12AX7の位相反転段へ送られ、そこからEL84またはEL34の2本の出力管、出力トランス、周波数依存のスピーカー負荷へと続きます。バイアス、B+、トランス、スピーカー負荷の状態を音楽に合わせて逐次解くため、倍音、圧縮、電源サグ、電気的なダンピングが信号に応じて変化します。スピーカー負荷はアンプから見た電気負荷をモデル化するもので、キャビネットやマイクのシミュレーションではありません。
+
+### 音質調整ガイド
+
+- 2 VrmsのD/Aコンバーターでは、まず**Line Default**を選びます。実際の製品既定値は、Input Reference 2.828 Vpk、Input Volume 0dB、12AU7、Negative Feedback 30dB、Output Trim +9dBです。
+- Line Defaultの飽和が強すぎる場合は、Input Volumeを下げて回路へ入る電圧を減らし、その後にOutput Trimで再生音量だけを戻します。Output Trimを上げても内部ヘッドルームは増えません。
+- 真空管や回路の音色だけを比較したい場合は、**Listening (THD-matched)**のプリセットを使います。互いに音量がそろえてあるため、切り替えの際にトリムを調整する必要はありません。
+- 穏やかなパワーアンプの応答から始めるには、**EL84 Distributed 10 W**が適しています。**EL84 Pentode 10 W**と切り替えると、出力管を同じに保ったまま、スクリーン接続とトランス負荷の違いを比較できます。
+- より高電圧のEL34回路を試す場合は、**EL34 Distributed 20–37 W**を選びます。EL84と比べる前に、Output Trimで音量をそろえてください。
+- Negative Feedbackを下げると回路のオープンループ時の倍音やレベル変化が現れやすくなり、上げるとクローズドループの応答がより安定します。極端な組み合わせで安全バイパスが作動したら、プリセットに戻してください。
+- 真空管回路の応答を控えめに加えたい場合は、Wet/Dry Mixを下げます。
+
+### パネルの構成
+
+20個のパラメータは、**Preset**ドロップダウンの下にある5つのタブに配置されています。
+
+- **Input** - Input Volume、Input Reference、Source Z
+- **Driver** - Tube、Bias、Plate、Supply、Negative Feedback
+- **Power** - Output Circuit、Power Tubes、Output B+、Cathode Resistor
+- **Transformer** - Screen Tap、Transformer Primary、Assumed Speaker Load、Actual Speaker Load
+- **Output** - Output Trim、Output Safety Trim、Auto Gain Reduction、Wet/Dry Mix
+
+Presetドロップダウンは先頭に**Custom**があり、続いて**Listening (THD-matched)**と**Circuit**の2グループが並びます。どのプリセットとも一致しない設定のときはCustomが表示されます。出力保護系の設定(Output Safety TrimとAuto Gain Reduction)はこの照合の対象外です。Output CircuitがLineの間は、PowerタブとTransformerタブにあるパワー回路の7項目が淡色表示になります。操作は可能で、値もそのまま保持されます。
+
+### 回路プリセットと既定値
+
+プラグインは**Line Default**で起動します。プリセットを選ぶと以下の回路全体が設定され、その後にいずれかの値を変えるとカスタム設定になります。
+
+| Circuit Preset | Output Circuit | ドライバー / 出力管 | Negative Feedback | パワー段の設定 | 入出力 |
+| --- | --- | --- | ---: | --- | --- |
+| Line Default | Line | 12AU7 / — | 30dB | パワー段の値は保持されるが、淡色表示になる | Input Volume 0dB、Input Reference 2.828 Vpk、Output Trim +9dB |
+| EL84 Pentode 10 W | Push-Pull Power | 12AX7 / EL84 ×2 | 3dB | Output B+ 329.696 V、Cathode Resistor 270 Ω / valve、Screen Tap 0%、Transformer Primary 8.0 kΩ、Assumed Speaker Load 15 Ω | Input Volume 0dB、Input Reference 2.828 Vpk、Output Trim 0dB |
+| EL84 Distributed 10 W | Push-Pull Power | 12AX7 / EL84 ×2 | 3dB | Output B+ 330.107 V、Cathode Resistor 270 Ω / valve、Screen Tap 20%、Transformer Primary 6.6 kΩ、Assumed Speaker Load 15 Ω | Input Volume 0dB、Input Reference 2.828 Vpk、Output Trim 0dB |
+| EL34 Distributed 20–37 W | Push-Pull Power | 12AX7 / EL34 ×2 | 4dB | Output B+ 443.775 V、Cathode Resistor 470 Ω / valve、Screen Tap 43%、Transformer Primary 6.6 kΩ、Assumed Speaker Load 8 Ω | Input Volume 0dB、Input Reference 2.828 Vpk、Output Trim 0dB |
+
+4つのプリセットはいずれも、Bias 0%、Plate 250 V、Source Z 10 kΩ、Supply 10 kΩ、Wet/Dry Mix 100%を使います。また、いずれのプリセットもActual Speaker LoadをそのAssumed Speaker Loadに合わせるため、回路の設計点から始まります。
+
+### リスニングプリセット
+
+**Listening (THD-matched)**のグループには、較正済みの7つの設定があります。いずれも回路の値は基準となるCircuitプリセットからそのまま引き継ぎ、較正されるのはInput Volume、Input Reference、Output Trimの3つだけなので、回路そのものは変わりません。7つとも1 kHzのレベルが±0.0005dB以内でそろっているため、切り替えても音量は変わらず、音色の違いだけが分かります。
+
+| Listening Preset | 基準 | 回路の変更 | Input Volume | Input Reference | Output Trim |
+| --- | --- | --- | ---: | ---: | ---: |
+| Line 12AU7 @1% | Line Default | — | 0dB | 20 Vpk | -7.749dB |
+| Line 12AT7 @1% | Line Default | Tube 12AT7 | -3.6973dB | 2.828 Vpk | -9.42dB |
+| Line 12AX7 @1% | Line Default | Tube 12AX7 | -4.4805dB | 2.828 Vpk | -11.276dB |
+| Line 12AU7 Open-Loop @3% | Line Default | Negative Feedback 0dB | -16.793dB | 2.828 Vpk | +26.427dB |
+| EL84 Pentode @2% | EL84 Pentode 10 W | — | -55.9648dB | 2.828 Vpk | +4.626dB |
+| EL84 Distributed @2% | EL84 Distributed 10 W | — | -52.9414dB | 2.828 Vpk | +4.908dB |
+| EL34 Distributed @2% | EL34 Distributed 20–37 W | — | -43.6504dB | 2.828 Vpk | +5.212dB |
+
+12AU7のライン回路はInput Referenceの上限でも歪率1%にわずかに届かないため、Line 12AU7 @1%はこの回路が到達できる最大値になっています。
+
+### パラメータ
+
+- **Preset** - Circuitプリセット(Line Defaultまたは3種類のパワーアンプ回路)、あるいはListening (THD-matched)の設定を読み込む
+- **Input Volume** (-96〜0dB) - 校正された入力端子とStage 1の間にある受動アッテネーター
+  - 0dBが全開。値を下げるほど内部の駆動電圧が減り、ヘッドルームが広がる
+- **Tube** (12AX7、12AT7、12AU7) - 2段ドライバーの真空管を選択
+  - 電圧利得は12AX7が最も高く、12AT7が中間、12AU7が最も低くてヘッドルームが広い
+  - Powerモードでもこの2段回路がドライバーとして働き、固定ボリュームを介して固定12AX7の位相反転段を駆動する
+- **Bias** (-50〜+50%) - 2段のドライバーのカソードバイアス動作点を移動
+  - 上げるとモデル上のカソード抵抗が小さくなり、電流の多い側へ移動。下げると逆に動く
+- **Plate** (150〜300 V) - ドライバー段のプレート電源を設定
+  - 上げると一般に電圧ヘッドルームが広がり、下げると圧縮や非線形性が早く現れる
+- **Source Z** (0.6〜100 kΩ) - Stage 1を駆動する信号源インピーダンス
+  - 上げると入力容量との相互作用が強まり、高域やトランジェントの駆動が穏やかになることがある
+- **Supply** (0.1〜47 kΩ) - ドライバー段のB+電源抵抗
+  - 上げると電流の増加に伴う電源サグが大きくなり、下げると電源がより安定する
+- **Negative Feedback** (0〜30dB) - 校正されたグローバル負帰還量を設定
+  - Lineでは2段目のプレート応答、Push-Pull Powerでは出力トランスの固定フィードバック巻線から戻す
+  - 上げると一般にオープンループ利得と歪みが減り、応答が締まる。0dBで負帰還ループが開く
+  - スピーカー負荷に対する電気的なダンピングはこのループそのものから生じるため、上げるほど負荷を制動する力も強くなる
+- **Output Trim** (-48〜+48dB) - 回路の後で処理音のデジタルレベルを調整。内部の駆動電圧は変わらない
+- **Output Safety Trim** (-96〜0dB) - 回路の後に働く、Output Trimとは別系統のリニアトリム。出力レベル保護が専用に使う
+  - Auto Gain Reductionが下げるのはこのトリムだけで、Output Trimには書き込まない
+  - スライダーと数値表示は、設定した値から現在適用されている自動低減量を引いた実効トリムを示す。保存されるのは、ユーザーが最後に自分で設定した値
+  - スライダーをつかむと表示中の実効値がそのまま設定値になるためレベルは飛ばず、その時点で蓄積された低減が解除される
+- **Auto Gain Reduction** (既定でオン) - 出力レベル保護がOutput Safety Trimを自動で下げることを許可する
+  - オフにすると新たな低減は蓄積されず、すでに適用された低減はそのまま残る
+- **Wet/Dry Mix** (0〜100%) - 処理音とレイテンシをそろえた原音をブレンド
+  - 0%でも、時間整合に必要な固定64 samplesの遅延は原音経路に残る
+- **Input Reference** (0.100〜20.000 Vpk) - デジタルの0dBFS peakに対応する入力端子のピーク電圧
+  - 2.828 Vpkはフルスケール正弦波の2 Vrms、5.657 Vpkは4 Vrmsに相当
+  - Stage 1に入るのはInput ReferenceにInput Volumeを掛けた電圧。出力利得ではなく、物理的な入力校正
+- **Output Circuit** (Line、Push-Pull Power) - モデル化する回路構成を選択
+  - Lineは2段ドライバーの後で終了し、出力管、トランス、スピーカー負荷は処理しない
+  - Push-Pull Powerは位相反転段とパワー出力回路全体を加える
+- **Power Tubes** (EL84 ×2、EL34 ×2) - 出力管の電流モデルと対応する回路部品を選択。Powerモードでのみ有効
+  - いずれのモデルもプレート、スクリーン、グリッド電圧にわたって実際の出力管データに従い、グリッドを十分に負へ振ったときの完全な遮断まで再現する
+- **Output B+** (300〜470 V) - パワー段の電源電圧。上げると取り出せる電圧振幅と出力管の損失が増える
+- **Cathode Resistor** (270〜500 Ω / valve) - 各出力管の独立したカソードバイアス抵抗
+  - 抵抗を上げると無信号電流が減り、下げると増える
+- **Screen Tap** (0%、20%、43%) - 出力管のスクリーン接続を選択
+  - 0%は固定スクリーン電源、20%と43%は対応する出力トランス一次側タップに接続し、分布負荷(ウルトラリニア)動作にする
+  - タップは巻数比なので、スクリーンは一次巻線の磁束結合のうちその割合ぶんに追従する
+- **Transformer Primary** (6.0、6.6、8.0 kΩ) - 出力トランスのプレート間一次インピーダンスを選択。Assumed Speaker Loadとの組み合わせで巻数比も決まる
+- **Assumed Speaker Load** (4、8、15、16 Ω) - トランス二次側のタップと、回路が想定するスピーカーの公称インピーダンスを選択
+  - 単純な抵抗ではなく、それぞれの周波数依存RLC負荷がトランス負荷と帰還に影響する
+- **Actual Speaker Load** (2〜32 Ω) - そのタップに実際につないだスピーカーのインピーダンスを設定
+  - 負荷回路網はAssumed Speaker Loadとの比でスケールされるため、共振周波数とQは保たれ、インピーダンスの水準だけが動く
+  - 巻数比はAssumed Speaker Loadのままなので、不一致のときは出力管へ反射されるインピーダンスが変わり、ダンピング、取り出せる出力、駆動状態が変化する。両者をそろえると回路は設計点で動作する
+
+### 出力レベル保護
+
+Circuitプリセットは互いに音量がそろえられていません。Tubeを12AU7から12AX7へ変えると約25dB、Output CircuitをLineからPush-Pull Powerへ変えると約33dB出力が上がります。2つの回路はフルスケールの基準が異なるためです。Output Safety TrimとAuto Gain Reductionは、この急な上昇から出力につながった機器を保護します。
+
+- 出力サンプルの振幅が0 dBFS peakを超えるたびに、その超過分ちょうどだけOutput Safety Trimが即座に下げられます。全サンプルを検査するため、検出窓も平均化もありません。このしきい値は固定のポリシー値です。
+- 低減は20 msの一方向ランプで適用されるため、レベルは段差なく移動します。
+- 下げるだけで、戻すことはありません。リリースも復帰もないため、リミッターでもオートレベラーでもありません。
+- スライダーと数値表示は、設定した値から現在の低減量を引いた実効トリムを示します。保存される設定値は、ユーザーが最後に自分で設定した値のままです。
+- 蓄積された低減は、ユーザーが自分でOutput Safety Trimをつかんだ時点で解除されます。そのとき表示中の実効値がそのまま設定値になるため、レベルは飛びません。
+- プリセットを読み込むとOutput Safety Trimは0dBに戻ります。蓄積された低減が解除されるのは、トリム値そのものが変わったとき、または1回のコミットで2つ以上の値が同時に変わったときで、通常のプリセット読み込みは後者に該当します。1つのコントロールだけ動かした後に、回路がすでに載っているプリセットを選び直した場合は変化がその1値だけなので、低減は保持されます。
+- Auto Gain Reductionをオフにすると、新たな低減は蓄積されず、すでに適用された低減はそのまま残ります。
+- 現在の低減量は、0.0 dBのときも含めてグラフ下のステータスに表示されます。
+- この機構はアンプモデルの外側にあります。回路の求解、倍音、圧縮、電源サグは変わらず、変わるのは出力レベルだけで、過大入力時の質感は変わりません。抑えているのは出力のデジタルフルスケール超過であって、モデルが生み出す歪みではありません。
+
+### 安全バイパスと復帰
+
+- 帰還発振を検出すると、回路の処理音からレイテンシをそろえた原音へフェードし、安全バイパスをラッチします。Negative Feedbackを下げる、標準プリセットを選ぶ、または他の回路設定を変えてください。出力を原音に保ったまま新しい設定を試験し、安定していれば滑らかに処理音へ戻ります。不安定なままならバイパスを継続します。
+- その他の処理上の安全異常が起きた場合も、安全な原音出力に切り替えます。回路設定を既定値に戻し、エフェクトを読み込み直してください。
+- 非対応のサンプルレートやチャンネルモード、WebAssembly処理が利用できない場合、処理エンジンが停止した場合もバイパスします。HUD下のステータスに対処方法が表示されます。
+
+### HUDの読み方
+
+- **Input Reference (0 dBFS)**は入力端子の校正値をVpk、正弦波Vrms、**dBuFS**で表示します。**Stage 1 External Input (0 dBFS)**はInput Volume通過後のピーク電圧です。
+- **Stage 1 Bias**、**Stage 2 Bias**、**B+**、**Plate − B+ Sag**は、どちらのOutput Circuitでも2段ドライバーの現在の動作点を示します。サグの値がより負であるほど、プレート電圧が電源電圧から大きく下がっています。
+- Lineでは、2つのグラフがStage 1とStage 2を表します。細い灰色の曲線は静的なプレート特性、破線はロードラインで、直近の動作点は線でつながずに個々の点として描かれます。
+- Push-Pull Powerでは、グラフが**Push**と**Pull**のロードラインに切り替わり、2本の出力管の直近のプレート電流動作点を点で示します。
+- グラフの横軸はプレート・カソード間電圧 **Vak (V)**、縦軸はプレート電流 **Ia (mA)**です。水色が左音声チャンネル、オレンジが右チャンネルで、点の広がりが大きいほどその段が広い動作範囲で駆動されています。
+- **Power LTP Balance**は位相反転段の差動電圧、**Power B+**は電源サグ後のパワー段電源を示します。
+- **Speaker Output (100 ms)**と**Speaker Real Power (100 ms)**は、選択したスピーカー負荷における重複のない100 msごとの電気測定値です。Real Powerは瞬時負荷電圧と電流から計算されるため、Vrmsの2乗を公称インピーダンスで割った値とは限りません。
+- **Transformer Flux**は、モデル上の出力トランスの磁束をウェーバで示します。Power専用の値はPush-Pull Powerを選んでいるときに意味を持ちます。
+- グラフ下のステータスには、処理の読み込み中、動作中、安全バイパス中の状態に加えて、現在の出力保護による低減量が0.0 dBのときも含めて常に表示されます。
+
+### 動作条件とレイテンシ
+
+- Tube Simulatorは44.1、48、88.2、96、176.4、192 kHzに対応し、WebAssemblyで処理される
+- 44.1 kHz系は内部352.8 kHz、48 kHz系は内部384 kHzで処理される
+- 44.1または48 kHzでは、高いサンプルレートに含まれる高域情報を入力音源から得られないため、アプリ共通の低サンプルレート警告が引き続き表示される
+- Stereoとチャンネルペアモードに対応。非対応のサンプルレートやチャンネルモードではバイパス経路を使う
+- 対応するすべてのサンプルレートで、オーバーサンプリング用フィルターによって固定64 samplesのレイテンシが生じる(44.1 kHzで約1.45ms、192 kHzで約0.33ms)

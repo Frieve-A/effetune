@@ -352,6 +352,7 @@
 | Lo-Fi | SBC Codec Simulator | يعيد إنشاء دورة ترميز وفك ترميز لـ Bluetooth A2DP SBC مع فقد رزم اختياري في الوصلة وإخفائه | [تفاصيل](plugins/lofi.md#sbc-codec-simulator) |
 | Lo-Fi | Simple Jitter | يحاكي jitter رقميًا | [تفاصيل](plugins/lofi.md#simple-jitter) |
 | Lo-Fi | SW Radio Simulator | يمرر الموسيقى عبر سلسلة مُنمذجة من بث الموجات القصيرة والمسار الأيونوسفيري والمستقبِل | [تفاصيل](plugins/lofi.md#sw-radio-simulator) |
+| Lo-Fi | Tape Artifacts | يسجل الموسيقى على شريط مغناطيسي مُنمذج ذي بكرتين ثم يعيد تشغيلها | [تفاصيل](plugins/lofi.md#tape-artifacts) |
 | Lo-Fi | Vinyl Artifacts | يضيف طقطقات وفرقعة وهسيسًا ورمبلًا وتسرب ضوضاء ستيريو بطابع الفينيل | [تفاصيل](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi | Vinyl Simulator | يقطع الإدخال في أخدود مُنمذج ثم يشغله بنموذج فيزيائي للإبرة | [تفاصيل](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | يحاكي تغيرات طبيعية ديناميكية في الصوت ناتجة عن حركات طفيفة في مخروط السماعة | [تفاصيل](plugins/modulation.md#doppler-distortion) |
@@ -372,6 +373,7 @@
 | Saturation | Multiband Saturation | يضيف دفئًا أو حدة بشكل منفصل للنطاقات المنخفضة والمتوسطة والعالية | [تفاصيل](plugins/saturation.md#multiband-saturation) |
 | Saturation | Saturation | يضيف غنى وطابعًا دافئًا بأسلوب تناظري | [تفاصيل](plugins/saturation.md#saturation) |
 | Saturation | Sub Synth | يمزج إشارة منخفضة التردد ومرشحة لتعزيز الجهير | [تفاصيل](plugins/saturation.md#sub-synth) |
+| Saturation | Tube Simulator | يحاكي ديناميكياً مراحل صمامية خطية ومضخم قدرة بدفع وسحب | [تفاصيل](plugins/saturation.md#tube-simulator) |
 | Spatial | Crossfeed Filter | مرشح crossfeed لسماعات الرأس للحصول على صورة ستيريو طبيعية | [تفاصيل](plugins/spatial.md#crossfeed-filter) |
 | Spatial | MS Matrix | يحول بين الستيريو وMid/Side لضبط المركز والأجواء | [تفاصيل](plugins/spatial.md#ms-matrix) |
 | Spatial | Multiband Balance | تحكم خماسي النطاق في توازن الستيريو حسب التردد | [تفاصيل](plugins/spatial.md#multiband-balance) |

@@ -75,6 +75,7 @@ export const SHIPPED_ENABLED_TYPES = Object.freeze([
     'MultibandSaturationPlugin',
     'SaturationPlugin',
     'SubSynthPlugin',
+    'TubeSimulatorPlugin',
     'CrossfeedFilterPlugin',
     'MSMatrixPlugin',
     'MultibandBalancePlugin',

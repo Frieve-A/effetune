@@ -1,0 +1,43 @@
+{
+  "formatVersion": 1,
+  "type": "TubeSimulatorPlugin",
+  "id": "half-mix-wet-output",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 1280,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 10,
+  "seed": "0xeffe7a54",
+  "params": {
+    "dr": 0,
+    "tp": "12AX7",
+    "bi": 0,
+    "pv": 250,
+    "sz": 10,
+    "su": 10,
+    "og": 0,
+    "mx": 100,
+    "fr": true
+  },
+  "events": [
+    {
+      "frame": 128,
+      "params": {
+        "og": 6,
+        "mx": 50
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "amended-p3-path2-wasm",
+  "referenceHash": "8D63B37C0D7181A01EB48B074A7AD2E7194588A1D57BF9C5890F67CE756AE76D",
+  "outputFloats": 2560,
+  "byteLength": 10240,
+  "binary": "case-011.f32"
+}

@@ -361,6 +361,7 @@ EffeTune 2.1.0では、カタログスキーマv3を採用し、CUE形式のア�
 | Lo-Fi     | SBC Codec Simulator | Bluetooth A2DP SBCのエンコード/デコード往復を、任意のパケット消失と隠蔽付きで再現 | [詳細](plugins/lofi.md#sbc-codec-simulator) |
 | Lo-Fi     | Simple Jitter | デジタルジッターシミュレーション | [詳細](plugins/lofi.md#simple-jitter) |
 | Lo-Fi     | SW Radio Simulator | 音楽をモデル化した短波放送・電離層伝搬・受信機チェーンで変換 | [詳細](plugins/lofi.md#sw-radio-simulator) |
+| Lo-Fi     | Tape Artifacts | 音楽をモデル化したオープンリールテープに録音して再生 | [詳細](plugins/lofi.md#tape-artifacts) |
 | Lo-Fi     | Vinyl Artifacts | レコード風のポップノイズ、クラックル、ヒス、ランブル、ステレオノイズ漏れを追加 | [詳細](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi     | Vinyl Simulator | 入力をモデル化した溝にカッティングし、物理的な針モデルで再生 | [詳細](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | スピーカーコーンの微細な動きによる自然でダイナミックな音変化をシミュレート | [詳細](plugins/modulation.md#doppler-distortion) |
@@ -381,6 +382,7 @@ EffeTune 2.1.0では、カタログスキーマv3を採用し、CUE形式のア�
 | Saturation| Multiband Saturation | 低域・中域・高域に温かみやエッジを別々に追加 | [詳細](plugins/saturation.md#multiband-saturation) |
 | Saturation| Saturation | アナログ風の温かい豊かさとキャラクターを追加 | [詳細](plugins/saturation.md#saturation) |
 | Saturation| Sub Synth | ベース強化のため、フィルター処理した低周波信号をミックス | [詳細](plugins/saturation.md#sub-synth) |
+| Saturation| Tube Simulator | 真空管のライン段とプッシュプル・パワーアンプを動的にモデル化 | [詳細](plugins/saturation.md#tube-simulator) |
 | Spatial   | Crossfeed Filter | 自然なステレオイメージのためのヘッドホン用クロスフィードフィルター | [詳細](plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | 中央と左右の響きを調整するため、ステレオとMid/Sideを相互変換 | [詳細](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5バンド周波数依存のステレオバランス制御 | [詳細](plugins/spatial.md#multiband-balance) |

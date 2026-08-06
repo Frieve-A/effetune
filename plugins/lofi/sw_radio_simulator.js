@@ -1,10 +1,9 @@
 // SW (Shortwave) Radio Simulator.
-// Runtime processing is WASM-only (D-009/D-024). The JavaScript implementation below is the
+// Runtime processing is WASM-only. The JavaScript implementation below is the
 // frozen reference used to generate the golden vectors, gated behind the hidden `fr`
 // parameter; with `fr` off the processor is a pass-through that reports a bypass marker.
 //
-// The signal chain is a faithful port of the Phase 0 reference model
-// (tmp/dev/sw-radio-simulator/sw-radio-phase0/sw-radio-model.mjs), which is itself a fork of the shipped AM
+// The signal chain is a fork of the shipped AM
 // Radio Simulator complex-envelope engine with the C-QUAM stereo machinery removed and the
 // HF differences applied: ionospheric delay spread (ds), Doppler spread up to 10 Hz,
 // heterodyne offsets down to 0.1 kHz, skywave-dominant defaults, and an optional

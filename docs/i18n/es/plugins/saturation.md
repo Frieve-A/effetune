@@ -17,6 +17,7 @@ Una colección de plugins que agregan calidez y carácter a tu música. Estos ef
 - [Multiband Saturation](#multiband-saturation) - Moldea los rangos de frecuencia bajos, medios y altos de forma independiente
 - [Saturation](#saturation) - Agrega calidez y riqueza como equipo vintage
 - [Sub Synth](#sub-synth) - Añade una señal filtrada de baja frecuencia para reforzar los graves
+- [Tube Simulator](#tube-simulator) - Modela etapas de línea a válvulas y un amplificador de potencia push-pull
 
 ## Dynamic Saturation
 
@@ -464,3 +465,155 @@ Un efecto especializado que refuerza el extremo grave mezclando una señal filtr
 4. Ajusta Dry Level para equilibrio
 5. Afina filtros a gusto
 6. ¡Confía en tus oídos y ajusta gradualmente!
+
+## Tube Simulator
+
+Tube Simulator modela una cadena eléctrica completa a partir de valores de componentes de circuitos a válvulas. **Line** utiliza por sí solo el amplificador de pequeña señal de dos etapas. **Push-Pull Power** envía ese mismo driver, a través de un control de volumen fijo, a un inversor de fase 12AX7 que se resuelve como un par diferencial de válvulas reales y, desde ahí, a dos válvulas de salida EL84 o EL34, un transformador de salida y una carga de altavoz dependiente de la frecuencia. El bias, B+, el transformador y la carga se resuelven a medida que cambia la señal, por lo que los armónicos, la compresión, la caída de alimentación y el amortiguamiento eléctrico reaccionan a la música. La carga de altavoz representa la carga eléctrica vista por el amplificador; no simula una pantalla ni un micrófono.
+
+### Guía de Ajuste del Sonido
+
+- Para un convertidor D/A de 2 Vrms, empieza con **Line Default**. Los valores predeterminados reales del producto son Input Reference 2.828 Vpk, Input Volume 0dB, 12AU7, Negative Feedback 30dB y Output Trim +9dB.
+- Si Line Default satura demasiado, baja Input Volume para reducir la tensión interna y recupera solo el volumen de escucha con Output Trim. Output Trim no recupera margen dentro del circuito.
+- Usa los presets **Listening (THD-matched)** cuando quieras comparar válvulas y circuitos solo por su carácter. Ya están igualados entre sí en volumen, así que no hace falta retocar nada al cambiar de uno a otro.
+- Para una respuesta de potencia contenida, empieza con **EL84 Distributed 10 W**. Compáralo con **EL84 Pentode 10 W** para oír el efecto de la conexión de pantalla y de la carga del transformador con la misma familia de válvulas.
+- Usa **EL34 Distributed 20–37 W** para explorar el circuito EL34 de mayor tensión. Iguala el volumen con Output Trim antes de compararlo con EL84.
+- Al bajar Negative Feedback se perciben más los armónicos y cambios de nivel de lazo abierto; al subirlo, la respuesta de lazo cerrado queda más controlada. Si una combinación extrema activa el bypass de seguridad, vuelve a un preset.
+- Baja Wet/Dry Mix si solo quieres una aportación sutil del circuito.
+
+### Disposición del Panel
+
+Los 20 parámetros se reparten en cinco pestañas situadas bajo el desplegable **Preset**.
+
+- **Input** - Input Volume, Input Reference, Source Z
+- **Driver** - Tube, Bias, Plate, Supply, Negative Feedback
+- **Power** - Output Circuit, Power Tubes, Output B+, Cathode Resistor
+- **Transformer** - Screen Tap, Transformer Primary, Assumed Speaker Load, Actual Speaker Load
+- **Output** - Output Trim, Output Safety Trim, Auto Gain Reduction, Wet/Dry Mix
+
+El desplegable Preset empieza por **Custom** y continúa con los grupos **Listening (THD-matched)** y **Circuit**; Custom aparece cuando los ajustes actuales no coinciden con ningún preset; los ajustes de protección de salida (Output Safety Trim y Auto Gain Reduction) no forman parte de esa comparación. Mientras Output Circuit sea Line, los siete controles del circuito de potencia de las pestañas Power y Transformer se muestran atenuados. Siguen siendo ajustables y conservan sus valores.
+
+### Presets de Circuito y Valores Predeterminados
+
+El plugin se inicia con **Line Default**. Un preset escribe el circuito completo de la tabla; cualquier cambio posterior crea un ajuste personalizado.
+
+| Circuit Preset | Output Circuit | Driver / válvulas de salida | Negative Feedback | Ajustes de potencia | Entrada / salida |
+| --- | --- | --- | ---: | --- | --- |
+| Line Default | Line | 12AU7 / — | 30dB | Conserva los controles de potencia, pero se muestran atenuados | Input Volume 0dB, Input Reference 2.828 Vpk, Output Trim +9dB |
+| EL84 Pentode 10 W | Push-Pull Power | 12AX7 / EL84 ×2 | 3dB | Output B+ 329.696 V, Cathode Resistor 270 Ω / valve, Screen Tap 0%, Transformer Primary 8.0 kΩ, Assumed Speaker Load 15 Ω | Input Volume 0dB, Input Reference 2.828 Vpk, Output Trim 0dB |
+| EL84 Distributed 10 W | Push-Pull Power | 12AX7 / EL84 ×2 | 3dB | Output B+ 330.107 V, Cathode Resistor 270 Ω / valve, Screen Tap 20%, Transformer Primary 6.6 kΩ, Assumed Speaker Load 15 Ω | Input Volume 0dB, Input Reference 2.828 Vpk, Output Trim 0dB |
+| EL34 Distributed 20–37 W | Push-Pull Power | 12AX7 / EL34 ×2 | 4dB | Output B+ 443.775 V, Cathode Resistor 470 Ω / valve, Screen Tap 43%, Transformer Primary 6.6 kΩ, Assumed Speaker Load 8 Ω | Input Volume 0dB, Input Reference 2.828 Vpk, Output Trim 0dB |
+
+Los cuatro presets usan Bias 0%, Plate 250 V, Source Z 10 kΩ, Supply 10 kΩ y Wet/Dry Mix 100%. Cada preset ajusta además Actual Speaker Load al valor de su Assumed Speaker Load, de modo que parte del punto de diseño del circuito.
+
+### Presets de Escucha
+
+El grupo **Listening (THD-matched)** contiene siete ajustes calibrados. Cada uno hereda todos los valores de circuito del preset de Circuit en el que se basa y solo se calibran Input Volume, Input Reference y Output Trim, de modo que el circuito en sí no cambia. Los siete quedan dentro de ±0.0005dB del mismo nivel a 1 kHz, así que al cambiar de uno a otro varía el carácter y no el volumen.
+
+| Listening Preset | Basado en | Cambio de circuito | Input Volume | Input Reference | Output Trim |
+| --- | --- | --- | ---: | ---: | ---: |
+| Line 12AU7 @1% | Line Default | — | 0dB | 20 Vpk | -7.749dB |
+| Line 12AT7 @1% | Line Default | Tube 12AT7 | -3.6973dB | 2.828 Vpk | -9.42dB |
+| Line 12AX7 @1% | Line Default | Tube 12AX7 | -4.4805dB | 2.828 Vpk | -11.276dB |
+| Line 12AU7 Open-Loop @3% | Line Default | Negative Feedback 0dB | -16.793dB | 2.828 Vpk | +26.427dB |
+| EL84 Pentode @2% | EL84 Pentode 10 W | — | -55.9648dB | 2.828 Vpk | +4.626dB |
+| EL84 Distributed @2% | EL84 Distributed 10 W | — | -52.9414dB | 2.828 Vpk | +4.908dB |
+| EL34 Distributed @2% | EL34 Distributed 20–37 W | — | -43.6504dB | 2.828 Vpk | +5.212dB |
+
+El circuito de línea con 12AU7 se queda algo por debajo del 1% de distorsión incluso en el tope de Input Reference, así que Line 12AU7 @1% se sitúa en el valor máximo que alcanza ese circuito.
+
+### Parámetros
+- **Preset** - Carga un preset de Circuit (Line Default o uno de los tres circuitos de potencia completos) o uno de los ajustes de Listening (THD-matched)
+- **Input Volume** (-96 a 0dB) - Atenuador pasivo situado después del terminal de entrada
+  - 0dB corresponde a la apertura total y nunca amplifica la tensión del terminal
+  - Los valores más bajos reducen la tensión que entra en Stage 1 y aumentan el margen interno
+- **Tube** (12AX7, 12AT7 o 12AU7) - Selecciona las válvulas del driver de dos etapas
+  - 12AX7 ofrece la mayor ganancia de tensión y es la que se fuerza con más facilidad
+  - 12AT7 ofrece una ganancia intermedia
+  - 12AU7 ofrece menos ganancia y más margen
+  - En Power, este circuito sigue siendo el driver y alimenta el inversor de fase 12AX7 fijo a través de un control de volumen fijo; cambiar Tube reinicia el estado para la válvula seleccionada
+- **Bias** (-50 a +50%) - Desplaza el punto de operación de polarización de cátodo
+  - Al subirlo, disminuye la resistencia de cátodo modelada y las etapas se desplazan hacia una corriente mayor
+  - Al bajarlo, aumenta la resistencia de cátodo y las etapas se desplazan hacia una corriente menor
+- **Plate** (150 a 300V) - Ajusta la tensión de alimentación de placa modelada
+  - Al subirlo suele aumentar el margen de tensión y la respuesta se vuelve más firme
+  - Al bajarlo, la compresión y el comportamiento no lineal aparecen antes
+- **Source Z** (0.6 a 100kΩ) - Ajusta la impedancia de la fuente que alimenta la primera etapa
+  - Al subirla aumenta la interacción con las capacitancias de entrada modeladas, lo que suaviza los agudos y los transitorios
+  - Al bajarla, la entrada se excita con más firmeza y conserva más energía de alta frecuencia
+- **Supply** (0.1 a 47kΩ) - Ajusta la resistencia de la alimentación B+ modelada
+  - Al subirla se produce una mayor caída de B+ cuando las etapas consumen corriente, lo que acentúa la caída de alimentación
+  - Al bajarla, la alimentación se vuelve más rígida y varía menos
+- **Negative Feedback** (0 a 30dB) - Ajusta la realimentación negativa global calibrada
+  - Line devuelve la respuesta de placa de la segunda etapa; Push-Pull Power usa un devanado fijo de realimentación del secundario
+  - Al aumentarla suelen reducirse la ganancia y la distorsión de lazo abierto y la respuesta se vuelve más firme; 0dB abre el lazo
+  - El amortiguamiento eléctrico de la carga del altavoz nace de este mismo lazo, así que subirla también refuerza el control del amplificador sobre la carga
+- **Output Trim** (-48 a +48dB) - Aplica una calibración digital de nivel después del circuito modelado
+  - Solo cambia el nivel de la señal procesada y no aumenta el margen interno de las etapas de válvulas
+- **Output Safety Trim** (-96 a 0dB) - Aplica un recorte lineal después del circuito modelado, independiente de Output Trim, para que la protección de nivel de salida disponga de su propio control
+  - Auto Gain Reduction solo baja este recorte; nunca escribe en Output Trim
+  - El deslizador y su casilla de valor muestran el recorte efectivo, es decir, el valor que usted fija menos la reducción automática aplicada en ese momento; el ajuste almacenado es el último valor que usted fijó, y es el que se guarda
+  - Al tomar el deslizador, el valor efectivo mostrado pasa a ser su ajuste, de modo que el nivel no salta, y en ese momento se borra la reducción acumulada
+- **Auto Gain Reduction** (activado de forma predeterminada) - Permite que la protección de nivel de salida reduzca Output Safety Trim por sí sola
+  - Con la opción desactivada no se acumula ninguna reducción nueva y la reducción ya aplicada se mantiene
+- **Wet/Dry Mix** (0 a 100%) - Mezcla la señal original y la procesada, alineadas en el tiempo
+  - Los valores bajos conservan más señal original; los altos realzan la respuesta del modelo de válvulas
+  - Incluso al 0%, la ruta original conserva un retardo de 64 samples para mantener la alineación
+- **Input Reference** (0.100 a 20.000 Vpk) - Ajusta la tensión de pico del terminal de entrada que representa un pico digital de 0dBFS
+  - 2.828 Vpk corresponde a una onda sinusoidal de 2 Vrms a escala completa; 5.657 Vpk corresponde a 4 Vrms
+  - Stage 1 recibe Input Reference multiplicado por Input Volume antes del sobremuestreo
+  - Es una calibración física de entrada, no un control adicional de excitación
+- **Output Circuit** (Line o Push-Pull Power) - Selecciona la topología. Line termina después del driver de dos etapas; Power añade el inversor de fase, las válvulas de salida, el transformador y la carga
+- **Power Tubes** (EL84 ×2 o EL34 ×2) - Selecciona el modelo de corriente de las válvulas de salida y sus componentes; solo actúa en Power
+  - Ambos modelos siguen datos reales de válvulas de salida en placa, pantalla y rejilla, incluido el corte total que se alcanza al llevar la rejilla lo bastante negativa
+- **Output B+** (300 a 470 V) - Ajusta la alimentación de potencia; al subirla aumentan la excursión disponible y la disipación de las válvulas
+- **Cathode Resistor** (270 a 500 Ω / valve) - Ajusta la resistencia de bias de cada válvula; al subirla baja la corriente de reposo y al bajarla aumenta
+- **Screen Tap** (0%, 20% o 43%) - 0% usa la alimentación de pantalla fija; 20% y 43% conectan las pantallas a las tomas primarias correspondientes para carga distribuida (ultralineal)
+  - La toma es una relación de espiras, así que las pantallas siguen esa proporción del acoplamiento magnético del devanado primario
+- **Transformer Primary** (6.0, 6.6 u 8.0 kΩ) - Selecciona la impedancia primaria placa a placa y, junto con Assumed Speaker Load, la relación de espiras
+- **Assumed Speaker Load** (4, 8, 15 o 16 Ω) - Selecciona la toma del secundario y la impedancia nominal sobre la que está diseñado el circuito. Cada opción usa una carga eléctrica RLC dependiente de la frecuencia, no una simple resistencia, y afecta a la carga del transformador y a la realimentación
+- **Actual Speaker Load** (2 a 32 Ω) - Ajusta la impedancia del altavoz realmente conectado a esa toma
+  - La red de carga se escala según su relación con Assumed Speaker Load, de modo que se conservan la frecuencia de resonancia y el Q y solo cambia el nivel de impedancia
+  - La relación de espiras sigue basándose en Assumed Speaker Load, así que una discrepancia refleja otra impedancia hacia las válvulas de salida y modifica el amortiguamiento, la potencia disponible y la excitación; con ambos valores iguales el circuito trabaja en su punto de diseño
+
+### Protección del Nivel de Salida
+
+Los presets de Circuit no están igualados en volumen entre sí. Cambiar Tube de 12AU7 a 12AX7 sube el nivel unos 25dB, y cambiar Output Circuit de Line a Push-Pull Power lo sube unos 33dB, porque ambos circuitos se normalizan con referencias de fondo de escala distintas. Output Safety Trim y Auto Gain Reduction protegen de ese salto al equipo conectado a la salida.
+
+- Cada vez que la magnitud de una muestra de salida supera 0 dBFS de pico, Output Safety Trim se reduce de inmediato exactamente en lo que esa muestra se excede. Se examinan todas las muestras, así que no hay ventana de detección ni promediado. El umbral es un valor de política fijo.
+- La reducción se aplica mediante una rampa unidireccional de 20 ms, de modo que el nivel se mueve sin escalón.
+- Solo reduce y nunca restaura. No hay release ni recuperación, así que no es un limitador ni un nivelador automático.
+- El deslizador y su casilla de valor muestran el recorte efectivo, su ajuste menos la reducción aplicada en ese momento. El ajuste almacenado sigue siendo el último valor que usted fijó, y es el que se guarda.
+- La reducción acumulada se borra cuando usted mismo toma Output Safety Trim. En ese momento el valor efectivo mostrado pasa a ser su ajuste, de modo que el nivel no salta.
+- Cargar un preset devuelve Output Safety Trim a 0dB. La reducción acumulada se borra cuando cambia el propio valor del recorte o cuando una sola escritura cambia dos o más valores a la vez, como suele hacer la carga de un preset; volver a seleccionar el preset en el que ya está el circuito tras mover un solo control cambia únicamente ese valor y conserva la reducción.
+- Con Auto Gain Reduction desactivado no se acumula ninguna reducción nueva y la reducción ya aplicada se mantiene.
+- La reducción actual se indica en la línea de estado bajo el gráfico, incluso cuando es de 0.0 dB.
+- El mecanismo queda fuera del modelo del amplificador. La resolución del circuito, los armónicos, la compresión y la caída de la alimentación no cambian; solo cambia el nivel de salida, nunca el carácter de la sobrecarga. Lo que suprime es el rebasamiento digital de fondo de escala en la salida, no la distorsión que produce el modelo.
+
+### Bypass de Seguridad y Recuperación
+
+- Si se detecta oscilación de realimentación, la señal procesada se desvanece hacia la ruta original alineada en latencia y se enclava el bypass seguro. Baja Negative Feedback, elige un preset o cambia otro ajuste del circuito. El nuevo ajuste se prueba manteniendo la salida original; si es estable, la señal procesada vuelve suavemente, y si no, continúa el bypass.
+- Ante otro fallo de seguridad de procesamiento, el plugin cambia a la salida original segura. Restaura el circuito predeterminado y vuelve a cargar el efecto.
+- Las frecuencias o modos de canal no compatibles, WebAssembly no disponible y la detención del motor también activan el bypass. El estado bajo el HUD indica qué hacer.
+
+### Cómo Leer el HUD
+- **Input Reference (0 dBFS)** muestra la tensión del terminal como Vpk, el valor Vrms de una onda sinusoidal y el valor de escala completa correspondiente en dBu (**dBuFS**)
+- **Stage 1 External Input (0 dBFS)** muestra la tensión de pico después de Input Volume y antes de la red de entrada modelada
+- **Stage 1 bias** y **Stage 2 bias** muestran la tensión actual de bias de cátodo de los canales izquierdo y derecho
+- **B+** muestra la tensión de alimentación instantánea después de la caída modelada
+- **Plate − B+ sag** muestra la tensión de placa de cada etapa respecto a B+; un valor más negativo indica una caída mayor
+- En Line, los dos paneles muestran las características de placa y los puntos de operación recientes de Stage 1 y Stage 2, dibujados como puntos sueltos y no como una línea continua
+  - El eje horizontal es la tensión ánodo-cátodo, **Vak (V)**, y el vertical es la corriente de placa, **Ia (mA)**
+  - Las curvas grises finas son las características de placa estáticas de la válvula para varios valores de **Vgk**; la línea discontinua más clara es la recta de carga del circuito
+  - El cian corresponde al canal izquierdo y el naranja al derecho; una nube de puntos más amplia indica que la etapa cubre un intervalo de operación mayor
+- En Push-Pull Power, los paneles pasan a las rectas de carga **Push** y **Pull** y dibujan como puntos las corrientes recientes de las dos válvulas de salida
+- **Power LTP Balance** muestra la tensión diferencial del inversor de fase y **Power B+** la alimentación de potencia después de la caída
+- **Speaker Output (100 ms)** y **Speaker Real Power (100 ms)** son mediciones eléctricas en ventanas no solapadas de 100 ms. Real Power usa la tensión y corriente instantáneas, no una simple operación Vrms²/impedancia nominal
+- **Transformer Flux** muestra el flujo magnético modelado en webers. Las lecturas de potencia solo son significativas con Push-Pull Power
+- El estado bajo el gráfico indica si el procesamiento se está cargando, está activo o está en bypass seguro, y muestra siempre la reducción actual de la protección de salida en dB, incluso cuando es de 0.0 dB
+
+### Requisitos de Procesamiento y Latencia
+- Tube Simulator procesa audio a 44.1, 48, 88.2, 96, 176.4 y 192 kHz mediante WebAssembly
+- La familia de 44.1 kHz se procesa internamente a 352.8 kHz, y la familia de 48 kHz, a 384 kHz
+- A 44.1 o 48 kHz, la advertencia general de frecuencia de muestreo baja de la aplicación permanece visible porque la fuente no contiene la información de alta frecuencia disponible a frecuencias superiores
+- Admite Stereo y pares de canales; con otras frecuencias o modos de canal utiliza la ruta de bypass
+- Los filtros de sobremuestreo añaden una latencia fija de 64 samples en todas las frecuencias compatibles (aproximadamente 1.45ms a 44.1 kHz y 0.33ms a 192 kHz)

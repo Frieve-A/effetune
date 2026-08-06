@@ -1,6 +1,6 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:a22f50b2c80b774672e875583902173e7859fe4db7704481fff275db91f9bc25",
+  "sourceDigest": "sha256:7bb699b611b89f7fccc95e3d891e1845f847957bed6601766cb7fc15ac0b5cc6",
   "emsdkVersion": "6.0.2",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
@@ -883,6 +883,12 @@
       "assets": []
     },
     {
+      "name": "TubeSimulatorPlugin",
+      "hash": 3886736006,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
       "name": "CrossfeedFilterPlugin",
       "hash": 715048833,
       "byteCapacity": 0,
@@ -908,7 +914,7 @@
     }
   ],
   "sizes": {
-    "baseline": 617394,
-    "simd": 708878
+    "baseline": 759194,
+    "simd": 852816
   }
 }

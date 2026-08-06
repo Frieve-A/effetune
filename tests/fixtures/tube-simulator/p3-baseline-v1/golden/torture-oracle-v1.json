@@ -1,0 +1,53 @@
+{
+  "formatVersion": 1,
+  "type": "TubeSimulatorPlugin",
+  "outputBoundary": "Float32LE",
+  "generation": {
+    "command": "node tools/dsp-parity/tube-simulator-oracle.mjs --write-torture-fixture",
+    "conditions": {
+      "params": {
+        "dr": 0,
+        "tp": "12AT7",
+        "bi": -50,
+        "pv": 300,
+        "sz": 0.6,
+        "su": 0.1,
+        "og": 0,
+        "mx": 100
+      },
+      "sampleRate": 96000,
+      "channels": 2,
+      "blockSize": 128,
+      "factor": 4,
+      "firLength": 257,
+      "slowWindowEndpoints": 24,
+      "preRoll": {
+        "frames": 422400,
+        "input": "stereo silence"
+      },
+      "active": {
+        "frames": 3072,
+        "input": "identical-channel bipolar square wave",
+        "amplitude": 0.753565929453,
+        "frequencyHz": 20,
+        "phaseOriginFrame": 0,
+        "polarity": "sin(phase) >= 0 ? +amplitude : -amplitude"
+      }
+    }
+  },
+  "oracle": {
+    "manifest": "tests/fixtures/tube-simulator/p3-baseline-v1/oracle/build-manifest.json",
+    "source": "tests/fixtures/tube-simulator/p3-baseline-v1/oracle/path2-shape.cpp",
+    "sourceSha256": "6FAF406E293B06AC2B0B140A9E3DFD7CBAD2035E2EC54D9B48626BBF4EF2A887",
+    "wasm": "tests/fixtures/tube-simulator/p3-baseline-v1/oracle/path2-shape.wasm",
+    "wasmSha256": "8D63B37C0D7181A01EB48B074A7AD2E7194588A1D57BF9C5890F67CE756AE76D",
+    "generator": "tools/dsp-parity/tube-simulator-oracle.mjs",
+    "generatorSha256": "506FFDAFC2B8DFCE3049D9C40943F74ABA048C1BCB0C698ED04F50F1675EE1B6"
+  },
+  "fixture": {
+    "file": "torture-oracle-active-output.f32",
+    "floats": 6144,
+    "bytes": 24576,
+    "sha256": "D5C5FB02F0F3E52E346B24AA6AD3B079E1B929553A7B83DD0F7CCCD4A40A44D1"
+  }
+}

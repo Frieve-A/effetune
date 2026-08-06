@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "candidate": "tube-simulator-p2-path2",
+  "derivation": {
+    "basePath": "tests/fixtures/tube-simulator/p3-baseline-v1/oracle/path2-shape.cpp",
+    "baseSourceSha256": "6FAF406E293B06AC2B0B140A9E3DFD7CBAD2035E2EC54D9B48626BBF4EF2A887",
+    "rule": "mechanical parameter/observation extension of immutable P1 with at most three fast grid Newton corrections, bounded grid fallback, and the amended one-Newton fast plate solve with safeguarded nonlinear fallback, with the slow bias/supply nodes published to the fast grid through a quadratic B-spline instead of a zero-order hold"
+  },
+  "artifacts": {
+    "source": {
+      "path": "tests/fixtures/tube-simulator/p3-baseline-v1/oracle/path2-shape.cpp",
+      "sha256": "6FAF406E293B06AC2B0B140A9E3DFD7CBAD2035E2EC54D9B48626BBF4EF2A887"
+    },
+    "wasm": {
+      "path": "tests/fixtures/tube-simulator/p3-baseline-v1/oracle/path2-shape.wasm",
+      "sha256": "8D63B37C0D7181A01EB48B074A7AD2E7194588A1D57BF9C5890F67CE756AE76D"
+    }
+  },
+  "shape": {
+    "factor": 4,
+    "firTaps": 257,
+    "arithmetic": "f64x2",
+    "slowHz": 16000,
+    "slowWindowEndpoints": 24,
+    "parameters": [
+      "Drive",
+      "Tube",
+      "Bias",
+      "Plate",
+      "Source Z",
+      "Supply",
+      "Output",
+      "Mix"
+    ]
+  },
+  "flags": [
+    "-O3",
+    "-std=c++20",
+    "--no-entry",
+    "-sSTANDALONE_WASM=1",
+    "-sENVIRONMENT=web,worker",
+    "-sFILESYSTEM=0",
+    "-sALLOW_MEMORY_GROWTH=0",
+    "-sINITIAL_MEMORY=4194304",
+    "-sSTACK_SIZE=1048576",
+    "-sWASM_BIGINT=1",
+    "-msimd128",
+    "-DP1_USE_SIMD=1",
+    "-sEXPORTED_FUNCTIONS=[\"_path2_prepare\",\"_path2_reset\",\"_path2_set_parameters\",\"_path2_parameter_count\",\"_path2_tube_reset_pending\",\"_path2_begin_observation\",\"_path2_process\",\"_path2_input_ptr\",\"_path2_output_ptr\",\"_path2_telemetry_ptr\",\"_path2_host_observation_ptr\",\"_path2_static_lut_value\",\"_path2_maximum_kcl\",\"_path2_maximum_dc_residual\",\"_path2_finite_faults\",\"_path2_safety_limits\",\"_path2_slow_updates\",\"_path2_observation_finite_faults\",\"_path2_observation_safety_limits\",\"_path2_observation_slow_updates\",\"_path2_observation_maximum_kcl\",\"_path2_observation_start_slow_phase\",\"_path2_observation_end_slow_phase\",\"_path2_observation_accepted_slow_updates\",\"_path2_observation_accepted_slow_start_phase_sum\",\"_path2_observation_accepted_slow_end_phase_sum\",\"_path2_persistent_domain_finite\",\"_path2_factor\",\"_path2_fir_length\",\"_path2_slow_window\",\"_path2_slow_owner_count\"]"
+  ]
+}

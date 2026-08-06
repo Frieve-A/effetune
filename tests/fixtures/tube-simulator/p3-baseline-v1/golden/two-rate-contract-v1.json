@@ -1,0 +1,327 @@
+{
+  "formatVersion": 1,
+  "type": "TubeSimulatorPlugin",
+  "sampleRate": 96000,
+  "channels": 2,
+  "oracleBlockSize": 128,
+  "factor": 4,
+  "slowWindowEndpoints": 24,
+  "outputBoundary": "Float32",
+  "oracle": {
+    "manifest": "tests/fixtures/tube-simulator/p3-baseline-v1/oracle/build-manifest.json",
+    "source": "tests/fixtures/tube-simulator/p3-baseline-v1/oracle/path2-shape.cpp",
+    "sourceSha256": "6FAF406E293B06AC2B0B140A9E3DFD7CBAD2035E2EC54D9B48626BBF4EF2A887",
+    "wasm": "tests/fixtures/tube-simulator/p3-baseline-v1/oracle/path2-shape.wasm",
+    "wasmSha256": "8D63B37C0D7181A01EB48B074A7AD2E7194588A1D57BF9C5890F67CE756AE76D",
+    "generator": "tools/dsp-parity/tube-simulator-oracle.mjs",
+    "generatorSha256": "506FFDAFC2B8DFCE3049D9C40943F74ABA048C1BCB0C698ED04F50F1675EE1B6"
+  },
+  "telemetryFields": [
+    "absoluteOutputSum",
+    "vk1",
+    "vk2",
+    "bPlus",
+    "ia1",
+    "ia2",
+    "ig1",
+    "ig2",
+    "iRa1",
+    "iRa2"
+  ],
+  "observationLayout": {
+    "order": "field-major, then channel-major, then frame",
+    "fields": [
+      "vk1",
+      "vk2",
+      "bPlus",
+      "ia1",
+      "ia2"
+    ],
+    "frames": 128
+  },
+  "vectors": {
+    "canonicalInput": {
+      "file": "two-rate-canonical-input.f32",
+      "floats": 2304,
+      "bytes": 9216,
+      "sha256": "33084EEF20E6022F6E867A1BD403FFAFDF02354FBCFFC325E6E7A8EB95C29F6F"
+    },
+    "canonicalOutput": {
+      "file": "two-rate-canonical-output.f32",
+      "floats": 2304,
+      "bytes": 9216,
+      "sha256": "0A8951623FF52870244C24B348B919B533519823977A1E68F8BB7D29D8A183F4"
+    },
+    "resetPrefixInput": {
+      "file": "two-rate-reset-prefix-input.f32",
+      "floats": 256,
+      "bytes": 1024,
+      "sha256": "B2EC7631FBDA00F02D2CBFDA40478B80A61ED166FEBF3622439507258AC75181"
+    },
+    "resetPrefixOutput": {
+      "file": "two-rate-reset-prefix-output.f32",
+      "floats": 256,
+      "bytes": 1024,
+      "sha256": "6F6DA58542721AF57219EE28CDAD8A46C7D6E3EC6C603891C6044AAA50C51FCF"
+    },
+    "resetSuffixInput": {
+      "file": "two-rate-reset-suffix-input.f32",
+      "floats": 768,
+      "bytes": 3072,
+      "sha256": "8043EA7F1AFE42056C0D2A086DF4A62966347F5EDBCC266862731E8A32FFDE9E"
+    },
+    "resetSuffixOutput": {
+      "file": "two-rate-reset-suffix-output.f32",
+      "floats": 768,
+      "bytes": 3072,
+      "sha256": "414C05E85985403E681D908526C21861B418BB90829312CBE9F705697168D914"
+    },
+    "eventPrefixInput": {
+      "file": "two-rate-event-prefix-input.f32",
+      "floats": 256,
+      "bytes": 1024,
+      "sha256": "13BD3E17501CC035EA40B66D75502A60C20799F62E2680E7A36C19F88625CE80"
+    },
+    "eventPrefixOutput": {
+      "file": "two-rate-event-prefix-output.f32",
+      "floats": 256,
+      "bytes": 1024,
+      "sha256": "BA04EBE120B46586111C5F13FB7B43AC216CEE7A468940609FD0933E80B4396D"
+    },
+    "eventSuffixInput": {
+      "file": "two-rate-event-suffix-input.f32",
+      "floats": 256,
+      "bytes": 1024,
+      "sha256": "C88BCE12898EDB3B04AD47A59B51D59F363A9E16CF76CBEC7602023709F026AB"
+    },
+    "eventSuffixOutput": {
+      "file": "two-rate-event-suffix-output.f32",
+      "floats": 256,
+      "bytes": 1024,
+      "sha256": "C95072B1CF961B45B50C160CEF7A0242A82F4CBC562EBAAAE7B10B046426BEB0"
+    },
+    "eventObservations": {
+      "file": "two-rate-event-observations.f32",
+      "floats": 1280,
+      "bytes": 5120,
+      "sha256": "0DEEB478936A92EE40504E360B6F26472FEA680EF716304CD581404755A9BAC6"
+    }
+  },
+  "canonicalExact128": {
+    "params": {
+      "dr": 7,
+      "tp": "12AX7",
+      "bi": 8,
+      "pv": 255,
+      "sz": 9,
+      "su": 12,
+      "og": 1,
+      "mx": 91
+    },
+    "frames": 128,
+    "input": "resetPrefixInput",
+    "output": "resetPrefixOutput"
+  },
+  "cases": [
+    {
+      "id": "six-frame-nonaligned-partition",
+      "params": {
+        "dr": 18,
+        "tp": "12AU7",
+        "bi": -13,
+        "pv": 267,
+        "sz": 6.8,
+        "su": 14,
+        "og": -1.5,
+        "mx": 84
+      },
+      "frames": 1152,
+      "canonicalBlockSize": 128,
+      "comparisonPartitions": [
+        5,
+        7,
+        4,
+        11,
+        1
+      ],
+      "input": "canonicalInput",
+      "output": "canonicalOutput",
+      "checkpoint": {
+        "accumulatorCount": [
+          0,
+          0
+        ],
+        "slowPublishCount": 384,
+        "telemetry": [
+          481540.4641349097,
+          2.286057647692642,
+          1.7608647652313545,
+          170.20724414751243,
+          0.0012403938100138887,
+          0.004301567352820881,
+          0,
+          1.3791128252513795e-30,
+          0.001239465380208529,
+          0.004040092364370234
+        ],
+        "finiteFaults": 0,
+        "safetyLimits": 0,
+        "persistentFinite": true
+      }
+    },
+    {
+      "id": "reset-discards-partial-window",
+      "params": {
+        "dr": 7,
+        "tp": "12AX7",
+        "bi": 8,
+        "pv": 255,
+        "sz": 9,
+        "su": 12,
+        "og": 1,
+        "mx": 91
+      },
+      "prefixFrames": 128,
+      "suffixFrames": 384,
+      "beforeResetCheckpoint": {
+        "accumulatorCount": [
+          8,
+          8
+        ],
+        "slowPublishCount": 42,
+        "telemetry": [
+          54482.12045689514,
+          1.1702536349615598,
+          1.1929018165844052,
+          234.05323495508384,
+          0.0013124784724631213,
+          0,
+          2.253679168259999e-12,
+          0,
+          0.0012063705788161252,
+          0.00042384855190093153
+        ],
+        "finiteFaults": 0,
+        "safetyLimits": 0,
+        "persistentFinite": true
+      },
+      "afterResetCheckpoint": {
+        "accumulatorCount": [
+          0,
+          0
+        ],
+        "slowPublishCount": 0,
+        "telemetry": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "finiteFaults": 0,
+        "safetyLimits": 0,
+        "persistentFinite": true
+      },
+      "endCheckpoint": {
+        "accumulatorCount": [
+          0,
+          0
+        ],
+        "slowPublishCount": 128,
+        "telemetry": [
+          176176.6971100598,
+          1.1686676539275542,
+          1.2369945476151984,
+          234.01966663657186,
+          0.0004439550032982562,
+          0.002466295508805525,
+          1.0369358223392181e-36,
+          0.00028339269433852546,
+          0.0007307795191474226,
+          0.001680074541643759
+        ],
+        "finiteFaults": 0,
+        "safetyLimits": 0,
+        "persistentFinite": true
+      },
+      "prefixInput": "resetPrefixInput",
+      "prefixOutput": "resetPrefixOutput",
+      "suffixInput": "resetSuffixInput",
+      "suffixOutput": "resetSuffixOutput"
+    },
+    {
+      "id": "mid-window-parameter-event",
+      "initialParams": {
+        "dr": 13,
+        "tp": "12AX7",
+        "bi": 0,
+        "pv": 250,
+        "sz": 10,
+        "su": 10,
+        "og": 0,
+        "mx": 100
+      },
+      "eventParams": {
+        "bi": 29,
+        "su": 27
+      },
+      "prefixFrames": 128,
+      "suffixFrames": 128,
+      "publishAfterEventHostFrames": 4,
+      "beforeEventCheckpoint": {
+        "accumulatorCount": [
+          8,
+          8
+        ],
+        "slowPublishCount": 42,
+        "telemetry": [
+          62976.1507267207,
+          1.2342555544935256,
+          1.2984779168225782,
+          233.43004943880143,
+          4.822965069025891e-8,
+          0.0028337957319931367,
+          0,
+          0.0006246447853729254,
+          0.0006298114134319624,
+          0.0018414354216709076
+        ],
+        "finiteFaults": 0,
+        "safetyLimits": 0,
+        "persistentFinite": true
+      },
+      "endCheckpoint": {
+        "accumulatorCount": [
+          16,
+          16
+        ],
+        "slowPublishCount": 84,
+        "telemetry": [
+          142506.04414030653,
+          1.1908599237876698,
+          1.3506099043593018,
+          233.2298361765801,
+          0.0015602196066314049,
+          0,
+          0.000007254559799403386,
+          0,
+          0.001346615541303304,
+          0.00018631129410500932
+        ],
+        "finiteFaults": 0,
+        "safetyLimits": 0,
+        "persistentFinite": true
+      },
+      "prefixInput": "eventPrefixInput",
+      "prefixOutput": "eventPrefixOutput",
+      "suffixInput": "eventSuffixInput",
+      "suffixOutput": "eventSuffixOutput",
+      "observations": "eventObservations"
+    }
+  ]
+}

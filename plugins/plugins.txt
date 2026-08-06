@@ -74,6 +74,7 @@ lofi/noise_blender: Noise Blender | Lo-Fi | NoiseBlenderPlugin
 lofi/bluetooth_sbc_simulator: SBC Codec Simulator | Lo-Fi | BluetoothSBCSimulatorPlugin
 lofi/simple_jitter: Simple Jitter | Lo-Fi | SimpleJitterPlugin
 lofi/sw_radio_simulator: SW Radio Simulator | Lo-Fi | SWRadioSimulatorPlugin | css
+lofi/tape_artifacts: Tape Artifacts | Lo-Fi | TapeArtifactsPlugin | css
 lofi/vinyl_artifacts: Vinyl Artifacts | Lo-Fi | VinylArtifactsPlugin
 lofi/vinyl_simulator: Vinyl Simulator | Lo-Fi | VinylSimulatorPlugin | css
 modulation/doppler_distortion: Doppler Distortion | Modulation | DopplerDistortionPlugin
@@ -95,6 +96,7 @@ saturation/harmonic_distortion: Harmonic Distortion | Saturation | HarmonicDisto
 saturation/multiband_saturation: Multiband Saturation | Saturation | MultibandSaturationPlugin | css
 saturation/saturation: Saturation | Saturation | SaturationPlugin | css
 saturation/sub_synth: Sub Synth | Saturation | SubSynthPlugin | css
+saturation/tube_simulator: Tube Simulator | Saturation | TubeSimulatorPlugin | css
 spatial/crossfeed_filter: Crossfeed Filter | Spatial | CrossfeedFilterPlugin
 spatial/ms_matrix: MS Matrix | Spatial | MSMatrixPlugin
 spatial/multiband_balance: Multiband Balance | Spatial | MultibandBalancePlugin | css

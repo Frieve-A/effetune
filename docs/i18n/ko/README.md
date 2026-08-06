@@ -356,6 +356,7 @@ EffeTune 2.1.0에서는 카탈로그 스키마 v3를 사용하는 음악 라이�
 | Lo-Fi | SBC Codec Simulator | Bluetooth A2DP SBC 인코딩/디코딩 왕복 처리를 선택적 패킷 소실 및 은닉과 함께 재현 | [세부 정보](plugins/lofi.md#sbc-codec-simulator) |
 | Lo-Fi | Simple Jitter | 디지털 지터 시뮬레이션 | [세부 정보](plugins/lofi.md#simple-jitter) |
 | Lo-Fi | SW Radio Simulator | 음악을 모델링한 단파 송출·전리층 전파·수신 체인으로 변환 | [세부 정보](plugins/lofi.md#sw-radio-simulator) |
+| Lo-Fi | Tape Artifacts | 음악을 모델링한 릴 테이프에 녹음하고 재생 | [세부 정보](plugins/lofi.md#tape-artifacts) |
 | Lo-Fi | Vinyl Artifacts | 레코드풍 팝, 크래클, 히스, 럼블, 스테레오 노이즈 블리드를 추가 | [세부 정보](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi | Vinyl Simulator | 입력을 모델링한 홈에 커팅한 뒤 물리적 스타일러스 모델로 재생 | [세부 정보](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | 미세한 스피커 콘 움직임으로 인한 자연스럽고 동적인 사운드 변화를 시뮬레이션 | [세부 정보](plugins/modulation.md#doppler-distortion) |
@@ -376,6 +377,7 @@ EffeTune 2.1.0에서는 카탈로그 스키마 v3를 사용하는 음악 라이�
 | Saturation | Multiband Saturation | 저역, 중역, 고역에 따뜻함이나 엣지를 따로 추가 | [세부 정보](plugins/saturation.md#multiband-saturation) |
 | Saturation | Saturation | 아날로그풍의 따뜻한 풍성함과 캐릭터를 추가 | [세부 정보](plugins/saturation.md#saturation) |
 | Saturation | Sub Synth | 저역 보강을 위해 필터 처리한 저주파 신호를 믹스 | [세부 정보](plugins/saturation.md#sub-synth) |
+| Saturation | Tube Simulator | 진공관 라인단과 푸시풀 파워 앰프를 동적으로 모델링 | [세부 정보](plugins/saturation.md#tube-simulator) |
 | Spatial | Crossfeed Filter | 자연스러운 스테레오 이미지를 위한 헤드폰 크로스피드 필터 | [세부 정보](plugins/spatial.md#crossfeed-filter) |
 | Spatial | MS Matrix | 중앙과 주변감을 조정하기 위해 스테레오와 Mid/Side를 상호 변환 | [세부 정보](plugins/spatial.md#ms-matrix) |
 | Spatial | Multiband Balance | 5밴드 주파수 의존 스테레오 밸런스 제어 | [세부 정보](plugins/spatial.md#multiband-balance) |

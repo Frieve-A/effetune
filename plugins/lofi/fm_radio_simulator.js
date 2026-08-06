@@ -1,10 +1,10 @@
 // FM Radio Simulator: physical FM broadcast transmission -> propagation -> reception chain.
-// Runtime processing is WASM-only (D-024). This JS reference implementation is used offline
-// for parity/golden generation via the hidden `fr` parameter and is a faithful port of the
-// scratch kernel (tmp/dev/fm-radio-simulator/fm-radio-simulator-scratch/src/kernel.cpp, run r0-f1f2-20260723-01):
+// Runtime processing is WASM-only. This JS reference implementation is used offline
+// for parity/golden generation via the hidden `fr` parameter and mirrors the C++ kernel
+// (dsp/plugins/lofi/fm_radio_simulator/kernel.cpp):
 // three-tier split-rate layout (host / MPX / RF core), Kaiser polyphase rational resamplers
 // with the polyphase-shifted window, shared polynomial sincos/atan2, xorshift64 + Marsaglia
-// polar noise, PLL pilot recovery, and the F-2 CNR stereo blend. Every f32 operation of the
+// polar noise, PLL pilot recovery, and the CNR stereo blend. Every f32 operation of the
 // C++ kernel is mirrored with Math.fround so outputs match within the f32 parity tolerance.
 
 const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
@@ -36,7 +36,6 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
     const C009 = F(0.09);
     const C098 = F(0.98);
     const C002 = F(0.02);
-    const C0003 = F(0.003);
     const C001 = F(0.01);
     const C06 = F(0.6);
     const LOCK_KEEP = F(0.9995);
@@ -54,7 +53,7 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
     const A3 = F(-1 / 3), A5 = F(1 / 5), A7 = F(-1 / 7), A9 = F(1 / 9);
     const A11 = F(-1 / 11), A13 = F(1 / 13), A15 = F(-1 / 15);
 
-    // { host: [mpx, core, hostMpxTaps, mpxCoreTaps] } (plan section 15.2 rate table).
+    // { host: [mpx, core, hostMpxTaps, mpxCoreTaps] } rate table.
     const RATE_PLANS = {
         44100: [176400, 441000, 80, 80],
         48000: [192000, 480000, 80, 72],
@@ -540,7 +539,7 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
             signalAmplitude: 1, tuningKhz: 0, ifBandKhz: F(230),
             multipathTarget: 0, pathDelayTargetUs: F(5), fadingHz: 0, stereoMode: 0,
             outputGainTarget: 1, mixTarget: 1, cnrBlend: 1, demodScale: 1,
-            // Section 6 control ramps (20 ms), mirroring kernel.cpp bit for bit:
+            // Control ramps (20 ms), mirroring kernel.cpp bit for bit:
             // f64 current values with f32-rounded one-pole coefficients, plus the
             // tuning NCO step-phasor ramp state.
             controlAlphaHost: F(1 - Math.exp(-1 / (0.020 * host))),
@@ -585,13 +584,13 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         state.limiterRelease = F(Math.exp(-1 / (0.050 * state.mpxRate)));
         state.signalAmplitude = F(Math.pow(10, F(F(p.st - 60) / 20)));
         state.ifBandKhz = p.bw;
-        state.multipathTarget = F(p.mp * C0003);
+        state.multipathTarget = F(p.mp * C001);
         state.pathDelayTargetUs = p.dl;
         state.fadingHz = p.fd;
         state.stereoMode = p.sm;
         state.outputGainTarget = F(Math.pow(10, F(p.og / 20)));
         state.mixTarget = F(p.mx * C001);
-        // Section 6 contract: the first configuration after state creation snaps
+        // Control-ramp contract: the first configuration after state creation snaps
         // the ramped controls; later changes only move the targets (kernel.cpp).
         if (!state.controlsConfigured) {
             state.processingAmountCurrent = state.processingAmountTarget;
@@ -638,7 +637,7 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         const natural = TWO_PI * 35 / state.mpxRate;
         state.pllKp = 1.4 * natural;
         state.pllKi = natural * natural;
-        // Auto stereo blend CNR term (F-2, plan sections 3 / 6.1): fixed physical noise floor
+        // Auto stereo blend CNR term: fixed physical noise floor
         // gives CNR ~= st + 5.6 dB at IF 230 kHz; smoothstep 18 dB (mono) .. 36 dB (stereo).
         const cnrDb = p.st + 5.6 + 10 * Math.log10(230 / state.ifBandKhz);
         let position = (cnrDb - 18) / (36 - 18);
@@ -662,7 +661,7 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
     }
 
     function processCore(state, mpx) {
-        // Section 6 smooth tracking (kernel.cpp): mp/dl 20 ms one-pole at the
+        // Smooth control tracking (kernel.cpp): mp/dl 20 ms one-pole at the
         // core rate, and the pending tuning NCO step-phasor ramp.
         state.multipathCurrent += state.controlAlphaCore *
             (state.multipathTarget - state.multipathCurrent);
@@ -788,7 +787,7 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         [state.hostLeft, state.hostRight], frameCount,
         [state.txLeft, state.txRight], state.txLeft.length);
     for (let index = 0; index < mpxCount; index++) {
-        // Section 6 smooth tracking (kernel.cpp A2-1): pr drive/amount 20 ms
+        // Smooth control tracking (kernel.cpp): pr drive/amount 20 ms
         // one-pole at the MPX rate (f32-rounded coefficient, f64 ramp state).
         state.processingDriveCurrent += state.controlAlphaMpx *
             (state.processingDriveTarget - state.processingDriveCurrent);
@@ -851,7 +850,7 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         [state.wetLeft, state.wetRight], state.wetLeft.length);
 
     for (let frame = 0; frame < frameCount; frame++) {
-        // Section 6 smooth tracking (kernel.cpp): og/mx 20 ms one-pole at the
+        // Smooth control tracking (kernel.cpp): og/mx 20 ms one-pole at the
         // host rate.
         state.outputGainCurrent += state.controlAlphaHost *
             (state.outputGainTarget - state.outputGainCurrent);
@@ -1268,7 +1267,7 @@ class FMRadioSimulatorPlugin extends PluginBase {
 
     _updateHudStatus(mode) {
         if (!this.hudStatusElement || mode === this.lastHudStatusMode) return;
-        // No standing text while the simulation runs normally; the D-024
+        // No standing text while the simulation runs normally; the
         // plain-text notice for the bypassed (WASM unavailable) state remains.
         const messages = {
             disabled: '',

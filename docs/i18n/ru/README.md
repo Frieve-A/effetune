@@ -348,6 +348,7 @@ EffeTune создан для аудиоэнтузиастов, которые х
 | Lo-Fi     | SBC Codec Simulator | Воспроизводит цикл кодирования и декодирования Bluetooth A2DP SBC с необязательными потерями пакетов и маскированием | [Подробнее](plugins/lofi.md#sbc-codec-simulator) |
 | Lo-Fi     | Simple Jitter | Имитация цифрового джиттера | [Подробнее](plugins/lofi.md#simple-jitter) |
 | Lo-Fi     | SW Radio Simulator | Проводит музыку через модель тракта коротковолнового вещания, ионосферного распространения и приёма | [Подробнее](plugins/lofi.md#sw-radio-simulator) |
+| Lo-Fi     | Tape Artifacts | Записывает музыку на моделируемую катушечную ленту и воспроизводит её | [Подробнее](plugins/lofi.md#tape-artifacts) |
 | Lo-Fi     | Vinyl Artifacts | Добавляет виниловые pops, crackle, hiss, rumble и утечку стереошума | [Подробнее](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi     | Vinyl Simulator | Записывает вход в моделируемую канавку и воспроизводит ее физической моделью иглы | [Подробнее](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | Имитирует естественные динамические изменения звука от небольших движений диффузора динамика | [Подробнее](plugins/modulation.md#doppler-distortion) |
@@ -368,6 +369,7 @@ EffeTune создан для аудиоэнтузиастов, которые х
 | Saturation| Multiband Saturation | Отдельно добавляет теплоту или остроту в низах, середине и верхах | [Подробнее](plugins/saturation.md#multiband-saturation) |
 | Saturation| Saturation | Добавляет теплую аналоговую насыщенность и характер | [Подробнее](plugins/saturation.md#saturation) |
 | Saturation| Sub Synth | Подмешивает фильтрованный низкочастотный сигнал для усиления баса | [Подробнее](plugins/saturation.md#sub-synth) |
+| Saturation| Tube Simulator | Динамически моделирует ламповые линейные каскады и двухтактный усилитель мощности | [Подробнее](plugins/saturation.md#tube-simulator) |
 | Spatial   | Crossfeed Filter | Наушниковый crossfeed-фильтр для естественной стереокартины | [Подробнее](plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | Преобразует stereo и Mid/Side для настройки центра и пространства | [Подробнее](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5-полосное управление стереобалансом по частотам | [Подробнее](plugins/spatial.md#multiband-balance) |

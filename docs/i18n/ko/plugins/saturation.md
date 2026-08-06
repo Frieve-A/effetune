@@ -17,6 +17,7 @@ lang: ko
 - [Multiband Saturation](#multiband-saturation) - 서로 다른 주파수 대역을 독립적으로 형성하고 강화
 - [Saturation](#saturation) - 빈티지 장비와 같은 따뜻함과 풍성함을 추가
 - [Sub Synth](#sub-synth) - 저역 향상을 위한 추가 저주파 신호 생성 및 블렌드
+- [Tube Simulator](#tube-simulator) - 진공관 라인단과 푸시풀 파워 앰프를 모델링
 
 ## Dynamic Saturation
 
@@ -465,3 +466,156 @@ Harmonic Distortion 플러그인은 조절 가능한 2차에서 5차 비선형 �
 4. Dry Level로 밸런스 조정
 5. 필요에 따라 필터 미세 조정
 6. 귀를 믿고 점진적으로 조정하세요!
+
+## Tube Simulator
+
+Tube Simulator는 진공관 회로의 실제 부품값을 기반으로 전체 전기 신호 경로를 모델링합니다. **Line**은 2단 소신호 진공관 증폭기만 사용합니다. **Push-Pull Power**은 같은 드라이버를 고정 볼륨을 거쳐 실제 진공관의 차동쌍으로 풀리는 12AX7 위상 반전단으로 보내고, 이어서 EL84 또는 EL34 출력관 2개, 출력 트랜스와 주파수 의존 스피커 부하로 이어집니다. 바이어스, B+, 트랜스, 스피커 부하 상태를 신호에 따라 계속 해석하므로 하모닉, 컴프레션, 전원 새그와 전기적 댐핑이 음악에 반응합니다. 스피커 부하는 앰프에서 보이는 전기 부하이며, 캐비닛이나 마이크 시뮬레이션은 아닙니다.
+
+### 음질 조정 가이드
+
+- 2 Vrms D/A 컨버터에서는 **Line Default**로 시작하십시오. 실제 제품 기본값은 Input Reference 2.828 Vpk, Input Volume 0dB, 12AU7, Negative Feedback 30dB, Output Trim +9dB입니다.
+- Line Default의 새추레이션이 너무 강하면 Input Volume을 낮춰 회로에 들어가는 전압을 줄인 뒤, Output Trim으로 청취 음량만 복원하십시오. Output Trim은 내부 헤드룸을 복원하지 않습니다.
+- 진공관과 회로의 음색만 비교하려면 **Listening (THD-matched)** 프리셋을 사용하십시오. 서로 음량이 이미 맞춰져 있어 전환할 때 따로 조정할 필요가 없습니다.
+- 절제된 파워 앰프 응답은 **EL84 Distributed 10 W**로 시작하십시오. **EL84 Pentode 10 W**와 비교하면 출력관을 같게 유지하면서 스크린 연결과 트랜스 부하의 영향을 비교할 수 있습니다.
+- 더 높은 전압의 EL34 회로를 시도하려면 **EL34 Distributed 20–37 W**를 선택하십시오. EL84와 비교하기 전에 Output Trim으로 음량을 맞추십시오.
+- Negative Feedback을 낮추면 오픈 루프 하모닉과 레벨 변화가 더 드러나고, 높이면 폐루프 응답이 더 정돈됩니다. 극단적인 조합에서 안전 바이패스가 작동하면 프리셋으로 돌아가십시오.
+- 진공관 회로의 응답을 은은하게 더하려면 Wet/Dry Mix를 낮추십시오.
+
+### 패널 구성
+
+20개의 파라미터는 **Preset** 드롭다운 아래의 탭 5개에 나뉘어 있습니다.
+
+- **Input** - Input Volume, Input Reference, Source Z
+- **Driver** - Tube, Bias, Plate, Supply, Negative Feedback
+- **Power** - Output Circuit, Power Tubes, Output B+, Cathode Resistor
+- **Transformer** - Screen Tap, Transformer Primary, Assumed Speaker Load, Actual Speaker Load
+- **Output** - Output Trim, Output Safety Trim, Auto Gain Reduction, Wet/Dry Mix
+
+Preset 드롭다운은 맨 앞에 **Custom**이 있고, 이어서 **Listening (THD-matched)**과 **Circuit** 두 그룹이 나옵니다. 현재 설정이 어떤 프리셋과도 일치하지 않으면 Custom이 표시됩니다. 출력 보호 설정(Output Safety Trim과 Auto Gain Reduction)은 이 비교에 포함되지 않습니다. Output Circuit이 Line인 동안에는 Power 탭과 Transformer 탭의 파워 회로 컨트롤 7개가 흐리게 표시되지만, 계속 조작할 수 있고 값도 그대로 유지됩니다.
+
+### 회로 프리셋과 기본값
+
+플러그인은 **Line Default**로 시작합니다. 프리셋을 선택하면 아래의 전체 회로가 설정되며, 이후 값을 하나라도 바꾸면 사용자 정의 설정이 됩니다.
+
+| Circuit Preset | Output Circuit | 드라이버 / 출력관 | Negative Feedback | 파워단 설정 | 입력 / 출력 |
+| --- | --- | --- | ---: | --- | --- |
+| Line Default | Line | 12AU7 / — | 30dB | 파워 컨트롤 값은 유지되지만 흐리게 표시됨 | Input Volume 0dB, Input Reference 2.828 Vpk, Output Trim +9dB |
+| EL84 Pentode 10 W | Push-Pull Power | 12AX7 / EL84 ×2 | 3dB | Output B+ 329.696 V, Cathode Resistor 270 Ω / valve, Screen Tap 0%, Transformer Primary 8.0 kΩ, Assumed Speaker Load 15 Ω | Input Volume 0dB, Input Reference 2.828 Vpk, Output Trim 0dB |
+| EL84 Distributed 10 W | Push-Pull Power | 12AX7 / EL84 ×2 | 3dB | Output B+ 330.107 V, Cathode Resistor 270 Ω / valve, Screen Tap 20%, Transformer Primary 6.6 kΩ, Assumed Speaker Load 15 Ω | Input Volume 0dB, Input Reference 2.828 Vpk, Output Trim 0dB |
+| EL34 Distributed 20–37 W | Push-Pull Power | 12AX7 / EL34 ×2 | 4dB | Output B+ 443.775 V, Cathode Resistor 470 Ω / valve, Screen Tap 43%, Transformer Primary 6.6 kΩ, Assumed Speaker Load 8 Ω | Input Volume 0dB, Input Reference 2.828 Vpk, Output Trim 0dB |
+
+네 프리셋은 모두 Bias 0%, Plate 250 V, Source Z 10 kΩ, Supply 10 kΩ, Wet/Dry Mix 100%를 사용합니다. 또한 모든 프리셋은 Actual Speaker Load를 해당 Assumed Speaker Load에 맞추므로 회로의 설계점에서 시작합니다.
+
+### 리스닝 프리셋
+
+**Listening (THD-matched)** 그룹에는 보정된 설정 7가지가 있습니다. 각 설정은 기준이 되는 Circuit 프리셋의 회로 값을 그대로 물려받고, Input Volume, Input Reference, Output Trim만 보정되므로 회로 자체는 달라지지 않습니다. 7가지 모두 1 kHz 레벨이 ±0.0005dB 이내로 맞춰져 있어, 전환해도 음량이 아니라 음색만 달라집니다.
+
+| Listening Preset | 기준 | 회로 변경 | Input Volume | Input Reference | Output Trim |
+| --- | --- | --- | ---: | ---: | ---: |
+| Line 12AU7 @1% | Line Default | — | 0dB | 20 Vpk | -7.749dB |
+| Line 12AT7 @1% | Line Default | Tube 12AT7 | -3.6973dB | 2.828 Vpk | -9.42dB |
+| Line 12AX7 @1% | Line Default | Tube 12AX7 | -4.4805dB | 2.828 Vpk | -11.276dB |
+| Line 12AU7 Open-Loop @3% | Line Default | Negative Feedback 0dB | -16.793dB | 2.828 Vpk | +26.427dB |
+| EL84 Pentode @2% | EL84 Pentode 10 W | — | -55.9648dB | 2.828 Vpk | +4.626dB |
+| EL84 Distributed @2% | EL84 Distributed 10 W | — | -52.9414dB | 2.828 Vpk | +4.908dB |
+| EL34 Distributed @2% | EL34 Distributed 20–37 W | — | -43.6504dB | 2.828 Vpk | +5.212dB |
+
+12AU7 라인 회로는 Input Reference 상한에서도 왜곡 1%에 조금 못 미치므로, Line 12AU7 @1%는 이 회로가 도달할 수 있는 최대값에 놓여 있습니다.
+
+### 파라미터
+- **Preset** - Circuit 프리셋(Line Default 또는 완성된 파워 앰프 회로 3가지 중 하나)이나 Listening (THD-matched) 설정을 불러옴
+- **Input Volume** (-96~0dB) - 입력 단자 뒤에 놓인 수동 감쇠기
+  - 0dB는 완전히 열린 상태이며 입력 단자 전압을 증폭하지 않음
+  - 값을 낮추면 Stage 1에 들어가는 전압이 줄어 내부 헤드룸이 넓어짐
+- **Tube** (12AX7, 12AT7, 12AU7) - 2단 드라이버에 사용할 진공관 선택
+  - 12AX7은 전압 이득이 가장 높고 가장 쉽게 강하게 구동됨
+  - 12AT7은 중간 정도의 이득을 제공
+  - 12AU7은 이득이 낮고 헤드룸이 넓음
+  - Power 모드에서도 이 2단 회로가 드라이버로 남아 고정 볼륨을 거쳐 고정 12AX7 위상 반전단을 구동하며, Tube를 바꾸면 새 관종에 맞춰 상태가 초기화됨
+- **Bias** (-50~+50%) - 캐소드 바이어스 동작점을 이동
+  - 올리면 모델의 캐소드 저항이 낮아지고 각 단이 더 큰 전류 쪽으로 이동
+  - 내리면 캐소드 저항이 높아지고 각 단이 더 작은 전류 쪽으로 이동
+- **Plate** (150~300V) - 모델의 플레이트 전원 전압 설정
+  - 올리면 일반적으로 전압 헤드룸이 넓어지고 응답이 더 안정적임
+  - 내리면 컴프레션과 비선형 동작이 더 일찍 나타남
+- **Source Z** (0.6~100kΩ) - 첫 진공관 단을 구동하는 소스 임피던스 설정
+  - 올리면 모델의 입력 커패시턴스와 상호 작용이 커져 고역과 트랜지언트 구동이 부드러워짐
+  - 내리면 입력을 더 단단하게 구동하여 고역 에너지를 더 많이 유지함
+- **Supply** (0.1~47kΩ) - 모델의 B+ 전원 저항 설정
+  - 올리면 각 단이 전류를 소비할 때 B+ 강하가 커져 전원 새그가 더 뚜렷해짐
+  - 내리면 전원이 더 단단해지고 변동이 줄어듦
+- **Negative Feedback** (0~30dB) - 보정된 전역 부귀환량 설정
+  - Line은 2단 플레이트 응답을, Push-Pull Power은 트랜스의 고정 2차 피드백 권선을 되돌림
+  - 높이면 일반적으로 오픈 루프 이득과 왜곡이 줄고 응답이 더 단단해지며, 0dB에서 피드백 루프가 열림
+  - 스피커 부하에 대한 전기적 댐핑은 이 루프 자체에서 생기므로, 높일수록 앰프가 부하를 붙잡는 힘도 강해짐
+- **Output Trim** (-48~+48dB) - 모델 회로 뒤에서 디지털 레벨을 보정
+  - 처리음 레벨만 바꾸며 진공관 단의 내부 헤드룸은 늘리지 않음
+- **Output Safety Trim** (-96~0dB) - 모델 회로 뒤에서 동작하며 Output Trim과 분리된 선형 트림. 출력 레벨 보호가 전용으로 사용
+  - Auto Gain Reduction은 이 트림만 낮추며 Output Trim에는 절대 쓰지 않음
+  - 슬라이더와 값 입력란은 실효 트림, 즉 설정한 값에서 현재 적용된 자동 감쇠를 뺀 값을 표시함. 저장되는 것은 사용자가 마지막으로 직접 설정한 값
+  - 슬라이더를 잡으면 표시 중인 실효값이 그대로 설정값이 되어 레벨이 튀지 않으며, 그 시점에 누적된 감쇠가 해제됨
+- **Auto Gain Reduction** (기본 켜짐) - 출력 레벨 보호가 Output Safety Trim을 스스로 낮추도록 허용
+  - 끄면 새로운 감쇠가 누적되지 않고, 이미 적용된 감쇠는 그대로 유지됨
+- **Wet/Dry Mix** (0~100%) - 시간 정렬된 원음과 처리음을 혼합
+  - 낮은 값은 원음을 더 유지하고 높은 값은 진공관 모델의 응답을 강조
+  - 0%에서도 시간 정렬을 유지하기 위해 원음 경로는 64 samples 지연됨
+- **Input Reference** (0.100~20.000 Vpk) - 디지털 0dBFS 피크에 해당하는 입력 단자의 피크 전압 설정
+  - 2.828 Vpk는 풀스케일 사인파의 2 Vrms에 해당하며, 5.657 Vpk는 4 Vrms에 해당
+  - Stage 1에는 오버샘플링 전에 Input Reference와 Input Volume을 곱한 전압이 입력됨
+  - 추가 구동 컨트롤이 아니라 물리적인 입력 보정값임
+- **Output Circuit** (Line, Push-Pull Power) - 모델링할 회로 구성 선택
+  - Line은 2단 드라이버에서 끝나 출력관, 트랜스, 스피커 부하를 처리하지 않음. Push-Pull Power은 위상 반전단과 전체 파워 출력 회로를 추가
+- **Power Tubes** (EL84 ×2, EL34 ×2) - 출력관 전류 모델과 관련 부품을 선택하며 Power 모드에서만 적용
+  - 두 모델 모두 플레이트, 스크린, 그리드 전압에 걸쳐 실제 출력관 데이터를 따르며, 그리드를 충분히 음으로 몰았을 때의 완전한 차단까지 재현함
+- **Output B+** (300~470 V) - 파워단 전원 전압. 높이면 사용 가능한 전압 스윙과 진공관 손실이 커짐
+- **Cathode Resistor** (270~500 Ω / valve) - 각 출력관의 독립 캐소드 바이어스 저항. 높이면 정지 전류가 줄고, 낮추면 늘어남
+- **Screen Tap** (0%, 20%, 43%) - 출력관 스크린 연결 선택. 0%는 고정 스크린 전원을 사용하고 20%와 43%는 해당 트랜스 1차 탭에 연결해 분포 부하(울트라리니어)로 동작
+  - 탭은 권선비이므로 스크린은 1차 권선 자속 결합 중 그 비율만큼을 따라감
+- **Transformer Primary** (6.0, 6.6, 8.0 kΩ) - 트랜스의 플레이트 간 1차 임피던스 선택. Assumed Speaker Load와 함께 권선비를 결정
+- **Assumed Speaker Load** (4, 8, 15, 16 Ω) - 트랜스 2차 탭과 회로가 전제하는 스피커의 공칭 임피던스 선택. 각 선택지는 단순 저항이 아닌 주파수 의존 RLC 전기 부하로, 트랜스 부하와 피드백에 영향을 줌
+- **Actual Speaker Load** (2~32 Ω) - 그 탭에 실제로 연결한 스피커의 임피던스 설정
+  - 부하 회로망은 Assumed Speaker Load와의 비율로 스케일되므로 공진 주파수와 Q는 유지되고 임피던스 수준만 움직임
+  - 권선비는 Assumed Speaker Load를 그대로 따르므로, 두 값이 어긋나면 출력관에 반사되는 임피던스가 달라져 댐핑, 얻을 수 있는 출력, 구동 상태가 바뀜. 두 값을 같게 두면 회로는 설계점에서 동작함
+
+### 출력 레벨 보호
+
+Circuit 프리셋은 서로 음량이 맞춰져 있지 않습니다. Tube를 12AU7에서 12AX7로 바꾸면 레벨이 약 25dB, Output Circuit을 Line에서 Push-Pull Power로 바꾸면 약 33dB 올라갑니다. 두 회로가 서로 다른 풀스케일 기준으로 정규화되기 때문입니다. Output Safety Trim과 Auto Gain Reduction은 이 급격한 상승으로부터 출력에 연결된 기기를 보호합니다.
+
+- 출력 샘플의 크기가 0 dBFS peak를 넘을 때마다, 그 샘플이 초과한 만큼 정확히 Output Safety Trim이 즉시 낮아집니다. 모든 샘플을 검사하므로 검출 구간도 평균화도 없습니다. 이 임계값은 고정된 정책 값입니다.
+- 감쇠는 20 ms의 단방향 램프로 적용되므로 레벨이 계단 없이 움직입니다.
+- 낮추기만 하고 되돌리지 않습니다. 릴리스도 복구도 없으므로 리미터도 오토 레벨러도 아닙니다.
+- 슬라이더와 값 입력란은 실효 트림, 즉 설정값에서 현재 적용된 감쇠를 뺀 값을 표시합니다. 저장되는 설정값은 사용자가 마지막으로 직접 설정한 값 그대로입니다.
+- 누적된 감쇠는 사용자가 직접 Output Safety Trim을 잡는 시점에 해제됩니다. 그때 표시 중인 실효값이 그대로 설정값이 되므로 레벨이 튀지 않습니다.
+- 프리셋을 불러오면 Output Safety Trim이 0dB로 돌아갑니다. 누적된 감쇠는 트림 값 자체가 바뀌거나 한 번의 커밋에서 두 개 이상의 값이 동시에 바뀔 때 해제되며, 일반적인 프리셋 불러오기는 후자에 해당합니다. 컨트롤 하나만 움직인 뒤 회로가 이미 놓여 있는 프리셋을 다시 선택하면 그 한 값만 바뀌므로 감쇠는 유지됩니다.
+- Auto Gain Reduction을 끄면 새로운 감쇠가 누적되지 않고, 이미 적용된 감쇠는 그대로 유지됩니다.
+- 현재 감쇠량은 0.0 dB일 때를 포함해 그래프 아래 상태 줄에 표시됩니다.
+- 이 기능은 앰프 모델 바깥에 있습니다. 회로 해석, 배음, 압축, 전원 새그는 변하지 않으며, 바뀌는 것은 출력 레벨뿐이고 과부하의 음색은 달라지지 않습니다. 억제하는 대상은 출력의 디지털 풀스케일 초과이지, 모델이 만들어 내는 왜곡이 아닙니다.
+
+### 안전 바이패스와 복구
+
+- 피드백 발진을 감지하면 처리음을 레이턴시가 맞춰진 원음 경로로 페이드하고 안전 바이패스를 랫치합니다. Negative Feedback을 낮추거나 표준 프리셋을 선택하거나 다른 회로 설정을 바꾸면, 원음 출력을 유지한 채 새 설정을 시험합니다. 안정적이면 부드럽게 처리음으로 복귀하고, 계속 불안정하면 바이패스를 유지합니다.
+- 다른 처리 안전 문제가 발생하면 안전한 원음 출력으로 전환합니다. 회로 설정을 기본값으로 되돌린 뒤 이펙트를 다시 불러오십시오.
+- 지원하지 않는 샘플 레이트나 채널 모드, WebAssembly 처리 불가, 처리 엔진 중지 시에도 바이패스합니다. HUD 아래 상태에 조치 방법이 표시됩니다.
+
+### HUD 읽는 방법
+- **Input Reference (0 dBFS)**는 입력 단자 전압을 Vpk, 사인파 Vrms, 이에 해당하는 풀스케일 dBu 값(**dBuFS**)으로 표시
+- **Stage 1 External Input (0 dBFS)**은 Input Volume을 지난 뒤 모델 입력 회로에 들어가기 전의 피크 전압을 표시
+- **Stage 1 bias**와 **Stage 2 bias**는 좌우 채널의 현재 캐소드 바이어스 전압을 각각 표시
+- **B+**는 모델의 전원 새그가 반영된 실시간 전원 전압을 표시
+- **Plate − B+ sag**는 각 단의 플레이트 전압과 B+의 차이이며, 더 음수일수록 전원보다 더 크게 떨어진 상태
+- Line에서 두 그래프는 Stage 1과 Stage 2의 플레이트 특성과 최근 동작점을 표시하며, 동작점은 선으로 잇지 않고 개별 점으로 찍힘
+  - 가로축은 애노드-캐소드 전압 **Vak (V)**, 세로축은 플레이트 전류 **Ia (mA)**
+  - 가는 회색 곡선은 여러 **Vgk** 값에서의 진공관 정적 플레이트 특성이며, 더 밝은 회색 점선은 회로의 부하선
+  - 청록색은 왼쪽 채널, 주황색은 오른쪽 채널이며, 점이 넓게 퍼질수록 해당 단이 더 넓은 동작 범위로 구동됨
+- Push-Pull Power에서 그래프는 **Push**와 **Pull** 부하선으로 바뀌고, 두 출력관의 최근 플레이트 전류 동작점을 점으로 표시
+- **Power LTP Balance**는 위상 반전단의 차동 전압, **Power B+**는 새그 후의 파워단 전원을 표시
+- **Speaker Output (100 ms)**와 **Speaker Real Power (100 ms)**는 선택한 부하에서 겹치지 않는 100 ms 전기 측정값을 표시. Real Power는 순간 부하 전압과 전류로 계산하며, 단순한 Vrms²/공칭 임피던스가 아님
+- **Transformer Flux**는 모델 출력 트랜스의 자속을 웨버로 표시. Power 전용 값은 Push-Pull Power에서만 의미가 있음
+- 그래프 아래 상태에는 처리 로딩 중, 활성 또는 안전 바이패스 여부와 함께, 현재 출력 보호 감쇠량이 0.0 dB일 때를 포함해 항상 dB로 표시됨
+
+### 처리 조건과 레이턴시
+- Tube Simulator는 44.1, 48, 88.2, 96, 176.4, 192 kHz 오디오를 WebAssembly로 처리함
+- 44.1 kHz 계열은 내부 352.8 kHz로, 48 kHz 계열은 내부 384 kHz로 처리함
+- 44.1 또는 48 kHz에서는 더 높은 샘플 레이트에 포함되는 고역 정보가 입력 소스에 없으므로 앱 공통의 낮은 샘플 레이트 경고가 계속 표시됨
+- Stereo와 채널 페어 모드를 지원하며, 지원하지 않는 샘플 레이트나 채널 모드에서는 바이패스 경로를 사용함
+- 지원하는 모든 샘플 레이트에서 오버샘플링 필터로 인해 고정 64 samples의 레이턴시가 발생함(44.1 kHz에서 약 1.45ms, 192 kHz에서 약 0.33ms)

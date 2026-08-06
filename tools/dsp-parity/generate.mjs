@@ -44,8 +44,8 @@ const MP3_SIMULATOR_TYPE = 'MP3CodecSimulatorPlugin';
 const BLUETOOTH_SBC_SIMULATOR_TYPE = 'BluetoothSBCSimulatorPlugin';
 
 // The Bluetooth SIG SBC conformance packages are not redistributable, so the promotion gate pins the
-// isolated official inputs by digest instead of storing them. These are the exact fixtures recorded in
-// tmp/dev/compressed-audio-codec-sim-20260729/bluetooth-sbc-simulator/conformance.md; a mismatch means
+// isolated official inputs by digest instead of storing them. These digests identify the exact
+// fixtures the recorded gate was accepted against; a mismatch means
 // the operator re-derived different material and the recorded gate no longer applies.
 const SBC_CONFORMANCE_FIXTURES = Object.freeze([
   Object.freeze({

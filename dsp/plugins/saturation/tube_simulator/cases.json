@@ -1,0 +1,107 @@
+{
+  "defaults": {
+    "sampleRate": 96000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo",
+    "params": {
+      "dr": -30,
+      "tp": "12AU7",
+      "bi": 0,
+      "pv": 250,
+      "sz": 10,
+      "su": 10,
+      "og": 39,
+      "mx": 100,
+      "iv": 2.828,
+      "nf": 0,
+      "fr": true
+    }
+  },
+  "cases": [
+    {
+      "id": "default-silence",
+      "stimulus": "silence",
+      "frames": 1024
+    },
+    {
+      "id": "default-impulse",
+      "stimulus": "imp",
+      "frames": 1152
+    },
+    {
+      "id": "default-sine",
+      "stimulus": "sin1k",
+      "frames": 1536
+    },
+    {
+      "id": "default-noise",
+      "stimulus": "noise",
+      "frames": 1536
+    },
+    {
+      "id": "minimum-drive-12ax7",
+      "stimulus": "sin1k",
+      "frames": 1024,
+      "events": [
+        {
+          "frame": 128,
+          "params": {
+            "dr": -48,
+            "tp": "12AX7",
+            "og": 0,
+            "iv": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "lower-range-corners",
+      "stimulus": "noise",
+      "frames": 1024,
+      "events": [
+        {
+          "frame": 128,
+          "params": {
+            "dr": -24,
+            "bi": -50,
+            "pv": 150,
+            "sz": 0.6,
+            "su": 0.1,
+            "og": -48,
+            "mx": 0,
+            "iv": 0.1
+          }
+        }
+      ]
+    },
+    {
+      "id": "dry-output-gain-isolation",
+      "stimulus": "imp",
+      "frames": 1152,
+      "events": [
+        {
+          "frame": 128,
+          "params": {
+            "og": 48,
+            "mx": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "half-mix-wet-output",
+      "stimulus": "noise",
+      "frames": 1280,
+      "events": [
+        {
+          "frame": 128,
+          "params": {
+            "og": 6,
+            "mx": 50
+          }
+        }
+      ]
+    }
+  ]
+}

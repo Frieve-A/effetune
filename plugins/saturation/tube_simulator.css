@@ -1,0 +1,156 @@
+.tube-simulator-plugin-ui {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.tube-simulator-values {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.tube-simulator-value {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+    padding: 7px 9px;
+    border: 1px solid #454545;
+    border-radius: 4px;
+    background: #222;
+}
+
+.tube-simulator-value-label {
+    color: #9db7c7;
+    font: 600 9px Arial, sans-serif;
+}
+
+.tube-simulator-value-reading {
+    color: #f0f0f0;
+    /* The font shorthand resets font-variant-*, so it has to come first. */
+    font: 11px Arial, sans-serif;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    /* The signed readouts pad their integer part with spaces so the decimal point and the unit
+       stay in one column; collapsing runs of spaces would undo that. pre-wrap rather than pre so
+       a reading that outgrows its cell still wraps instead of overflowing the panel. */
+    white-space: pre-wrap;
+}
+
+.tube-simulator-hud {
+    width: 100%;
+    min-height: 160px;
+    max-width: none !important;
+    margin-top: 8px;
+    border: 1px solid #454545;
+    border-radius: 4px;
+    overflow: hidden;
+    background: #1a1a1a;
+}
+
+.tube-simulator-hud canvas {
+    display: block;
+}
+
+.tube-simulator-status {
+    margin-top: 6px;
+    color: #aaa;
+    font: 11px Arial, sans-serif;
+    line-height: 1.35;
+}
+
+.tube-simulator-preset-row {
+    margin-top: 8px;
+}
+
+.tube-simulator-panel {
+    margin-top: 6px;
+    padding: 10px;
+    border-radius: 4px;
+    background: #2d2d2d;
+}
+
+.tube-simulator-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-bottom: 12px;
+}
+
+.tube-simulator-tab {
+    flex: 1 1 100px;
+    min-height: 36px;
+    padding: 8px 14px;
+    border: 1px solid #484848;
+    border-radius: 4px 4px 0 0;
+    color: #ddd;
+    background: #333;
+    cursor: pointer;
+}
+
+.tube-simulator-tab:hover {
+    background: #3c3c3c;
+}
+
+.tube-simulator-tab.active {
+    border-color: #666;
+    color: #fff;
+    background: #484848;
+}
+
+.tube-simulator-tab:focus-visible {
+    outline: 2px solid #7ec8ff;
+    outline-offset: 2px;
+}
+
+.tube-simulator-tab-content {
+    min-height: 196px;
+}
+
+.tube-simulator-tab-content[hidden] {
+    display: none;
+}
+
+/* Inactive Power-stage rows stay fully interactive; only the emphasis drops. */
+.tube-simulator-dimmed {
+    opacity: 0.45;
+}
+
+body.layout-mobile .tube-simulator-plugin-ui,
+body.layout-mobile .tube-simulator-values,
+body.layout-mobile .tube-simulator-hud,
+body.layout-mobile .tube-simulator-status,
+body.layout-mobile .tube-simulator-panel,
+body.layout-mobile .tube-simulator-tab-content {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+body.layout-mobile .tube-simulator-values {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+body.layout-mobile .tube-simulator-panel {
+    padding: 8px;
+    overflow-x: clip;
+}
+
+body.layout-mobile .tube-simulator-tabs {
+    gap: 4px;
+}
+
+body.layout-mobile .tube-simulator-tab {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+    min-height: 42px;
+    padding: 8px 6px;
+}
+
+body.layout-mobile .tube-simulator-tab-content {
+    min-height: 0;
+}

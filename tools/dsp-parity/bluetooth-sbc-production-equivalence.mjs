@@ -18,14 +18,10 @@ const PARAM_MEMBERS = Object.freeze([
   'mix',
   'packetLoss'
 ]);
-const EVIDENCE_RELATIVE_PATH = path.join(
-  'tmp', 'dev', 'compressed-audio-codec-sim-20260729',
-  'bluetooth-sbc-simulator', 'performance-thread-cpu-formal.json'
-);
-
 function usage() {
   return [
-    'Usage: node tools/dsp-parity/bluetooth-sbc-production-equivalence.mjs --snapshot-root <path> --json <file> [options]',
+    'Usage: node tools/dsp-parity/bluetooth-sbc-production-equivalence.mjs --snapshot-root <path> --evidence <file> --json <file> [options]',
+    '  --evidence <file>            accepted formal performance evidence JSON',
     '  --artifacts-dir <path>       production artifact directory (default plugins/dsp)',
     '  --baseline-build-dir <path>  baseline build directory (default dsp/build/wasm)',
     '  --simd-build-dir <path>      SIMD build directory (default dsp/build/wasm-simd)',
@@ -193,11 +189,12 @@ async function inspectVariant({
 export async function evaluateBluetoothSbcProductionEquivalence({
   repoRoot = REPO_ROOT,
   snapshotRoot,
+  evidencePath,
   artifactsDir = path.join(repoRoot, 'plugins', 'dsp'),
   baselineBuildDir = path.join(repoRoot, 'dsp', 'build', 'wasm'),
   simdBuildDir = path.join(repoRoot, 'dsp', 'build', 'wasm-simd')
 }) {
-  const evidencePath = path.join(snapshotRoot, EVIDENCE_RELATIVE_PATH);
+  if (!evidencePath) throw new Error('evidencePath is required');
   const [
     evidence,
     snapshotSchema,
@@ -313,10 +310,11 @@ async function main(argv = process.argv.slice(2)) {
     process.stdout.write(`${usage()}\n`);
     return;
   }
-  if (!args['snapshot-root'] || !args.json) throw new Error(usage());
+  if (!args['snapshot-root'] || !args.evidence || !args.json) throw new Error(usage());
   const result = await evaluateBluetoothSbcProductionEquivalence({
     repoRoot: REPO_ROOT,
     snapshotRoot: path.resolve(String(args['snapshot-root'])),
+    evidencePath: path.resolve(String(args.evidence)),
     artifactsDir: path.resolve(REPO_ROOT, String(args['artifacts-dir'] ?? 'plugins/dsp')),
     baselineBuildDir: path.resolve(REPO_ROOT, String(args['baseline-build-dir'] ?? 'dsp/build/wasm')),
     simdBuildDir: path.resolve(REPO_ROOT, String(args['simd-build-dir'] ?? 'dsp/build/wasm-simd'))

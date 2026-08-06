@@ -312,9 +312,9 @@ void testExplicitReseedReproducibility() {
   check(first != different, "a different seed produces a different noise stream");
 }
 
-// Section 11 golden: stereo separation >= 45 dB at 1 kHz with representative
+// Stereo-separation golden: >= 45 dB at 1 kHz with representative
 // modulation (-10 dBFS drive, Processing 0 dB) in clean strong-field
-// conditions (plan sections 10 / 15.10.2).
+// conditions.
 void testStereoSeparationGolden() {
   constexpr double sample_rate = 48000.0;
   constexpr std::uint32_t total_frames = 72000u;
@@ -678,7 +678,7 @@ void testPeakControllerUnit() {
         "MPX bound 0.9 * ceiling + 0.09 stays <= 0.99 (section 5 max|m|)");
 }
 
-// Section 6 smooth-tracking regression: parameter events (og/mx/bw/mp/dl and
+// Smooth-tracking regression: parameter events (og/mx/bw/mp/dl and
 // a continuous tn drag) must not create sample-to-sample discontinuities
 // beyond a small multiple of the steady-tone slope. Guards against the former
 // per-change IF state reset and instant target jumps.
@@ -752,7 +752,7 @@ void testParameterEventContinuity() {
     check(measured.first <= gate, "parameter event stays free of discontinuities");
     return measured;
   };
-  // A2-1: pr was the last continuous control applied instantly; the drive and
+  // pr was the last continuous control applied instantly; the drive and
   // soft-clip amount now ramp with the 20 ms MPX-rate one-pole. A 9 dB step
   // nearly triples the transmitter drive while the limiter stays transparent
   // (0.331 * 2.82 = 0.93 < 0.98), so without the ramp the output jumps by the
@@ -899,15 +899,14 @@ void testClickCounterTelemetry() {
   check(negative_detune == 0u, "strong carrier at -100 kHz detune produces no false clicks");
 }
 
-// A2-2 regression pinning: the demodulated FM noise must keep its triangular
-// spectral shape. Historical real defect F-1 (the Kaiser-window polyphase
-// shift bug) flattened this shape on rational resamplers with L >= 2; the
-// 96 kHz host plan uses the 5/2 core->mpx decimator where F-1 occurred.
+// Regression pinning: the demodulated FM noise must keep its triangular
+// spectral shape. A historical Kaiser-window polyphase shift bug flattened
+// this shape on rational resamplers with L >= 2; the 96 kHz host plan uses
+// the 5/2 core->mpx decimator where that bug occurred.
 // Fixed seed, silence input, forced Mono, st = 50 dBuV: the 1/3-octave band
 // levels 200 Hz .. 10 kHz are compared against the values measured on the
-// current implementation, which passed the audited R0 gates (the R0-F1F2
-// acceptance was +/- 3 dB vs the analytic reference; see
-// tmp/dev/fm-radio-simulator/fm-radio-simulator-scratch/results/R0-F1F2-RESULT.md). This pins
+// current implementation, which was accepted at +/- 3 dB against the
+// analytic triangular-noise reference. This pins
 // the existing shape against regressions; it is not a new quality gate.
 void testDemodNoiseTriangularShape() {
   constexpr std::uint32_t settle = 48000u;
@@ -918,7 +917,7 @@ void testDemodNoiseTriangularShape() {
                                                3150.0, 4000.0, 5000.0, 6300.0, 8000.0, 10000.0};
   // Reference band levels in dBFS, measured on the pinned implementation with
   // this exact seed / window / settle (provenance above). Regenerate by
-  // reading the printed "measured demod-noise band" lines after an audited
+  // reading the printed "measured demod-noise band" lines after an
   // intentional change.
   constexpr std::array<double, 18u> reference = {
       -142.45, -141.39, -135.23, -133.58, -130.28, -127.38, -123.60, -121.78, -119.25,
@@ -992,13 +991,13 @@ void testDemodNoiseTriangularShape() {
   check(shape_ok, "demodulated noise keeps the pinned triangular 1/3-octave shape");
 }
 
-// A2-3 regression pinning: numeric anchors of the Auto stereo blend CNR
-// transition (historical real defect F-2, the CNR smoothstep blend). The
+// Regression pinning: numeric anchors of the Auto stereo blend CNR
+// transition (a historical defect in the CNR smoothstep blend). The
 // extremes (st = 60 stereo, st = 0) are covered elsewhere; this pins the
-// section 6.1 transition positions: st = 30 still essentially full stereo,
+// transition positions: st = 30 still essentially full stereo,
 // st = 15 well into the mono transition, and the FM threshold click surge
 // across st = 15 / 10 / 6. Bounds are the current implementation's measured
-// values with tolerance (regression pinning, R0-audited behavior).
+// values with tolerance (regression pinning of accepted behavior).
 void testAutoBlendCnrTransition() {
   auto separationAt = [](float st) -> double {
     KernelHarness harness(48000.0F, 2u);
@@ -1013,8 +1012,7 @@ void testAutoBlendCnrTransition() {
   const double separation15 = separationAt(15.0F);
   // Pinned from the current implementation: st=30 measured 47.72 dB (CNR
   // ~35.6 dB, smoothstep ~0.999 -> essentially full stereo), st=15 measured
-  // 0.98 dB (CNR ~20.6 dB, smoothstep ~0.057 -> deep mono transition; matches
-  // the R0 audit record "st15 sep 0.98 dB" in the plan section 15.10.4).
+  // 0.98 dB (CNR ~20.6 dB, smoothstep ~0.057 -> deep mono transition).
   std::printf("measured Auto-blend separation: st=30 %.2f dB (pin 44.0..51.5), "
               "st=15 %.2f dB (pin 0.0..2.5)\n",
               separation30, separation15);
@@ -1213,7 +1211,7 @@ void testPllRecoverySmoke() {
   check(separation_db >= 40.0, "PLL recovers full stereo separation after the storm");
 }
 
-// U-4 regression: with all-default parameters (Processing 0 dB, Output 0 dB,
+// Loudness-neutrality regression: with all-default parameters (Processing 0 dB, Output 0 dB,
 // Mix 100 %) the wet path must be loudness-neutral against the dry input
 // within 0.5 dB for band-limited pink noise and a music-like multitone.
 struct TestBiquad {

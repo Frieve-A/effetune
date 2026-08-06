@@ -352,6 +352,7 @@ EffeTune 2.1.0 में कैटलॉग स्कीमा v3 पर आध�
 | Lo-Fi     | SBC Codec Simulator | Bluetooth A2DP SBC का encode/decode round trip वैकल्पिक link packet loss और concealment के साथ पुनः बनाता है | [विवरण](plugins/lofi.md#sbc-codec-simulator) |
 | Lo-Fi     | Simple Jitter | digital jitter simulation | [विवरण](plugins/lofi.md#simple-jitter) |
 | Lo-Fi     | SW Radio Simulator | संगीत को मॉडल की गई शॉर्टवेव प्रसारण, आयनमंडलीय पथ और रिसीवर शृंखला से गुजारता है | [विवरण](plugins/lofi.md#sw-radio-simulator) |
+| Lo-Fi     | Tape Artifacts | संगीत को मॉडल किए गए reel-to-reel टेप पर रिकॉर्ड करके वापस चलाता है | [विवरण](plugins/lofi.md#tape-artifacts) |
 | Lo-Fi     | Vinyl Artifacts | vinyl-style pops, crackle, hiss, rumble और stereo noise bleed जोड़ता है | [विवरण](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi     | Vinyl Simulator | input को modeled groove में काटकर physical stylus model से चलाता है | [विवरण](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | subtle speaker cone movements से होने वाले natural, dynamic sound changes simulate करता है | [विवरण](plugins/modulation.md#doppler-distortion) |
@@ -372,6 +373,7 @@ EffeTune 2.1.0 में कैटलॉग स्कीमा v3 पर आध�
 | Saturation| Multiband Saturation | low, mid और high ranges में warmth या edge अलग-अलग जोड़ता है | [विवरण](plugins/saturation.md#multiband-saturation) |
 | Saturation| Saturation | warm analog-style richness और character जोड़ता है | [विवरण](plugins/saturation.md#saturation) |
 | Saturation| Sub Synth | bass enhancement के लिए filtered low-frequency signal मिलाता है | [विवरण](plugins/saturation.md#sub-synth) |
+| Saturation| Tube Simulator | ट्यूब लाइन चरणों और पुश-पुल पावर एम्प्लिफ़ायर को गतिशील रूप से मॉडल करता है | [विवरण](plugins/saturation.md#tube-simulator) |
 | Spatial   | Crossfeed Filter | natural stereo imaging के लिए headphone crossfeed filter | [विवरण](plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | center/ambience adjustments के लिए stereo और Mid/Side के बीच convert करता है | [विवरण](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5-band frequency-dependent stereo balance control | [विवरण](plugins/spatial.md#multiband-balance) |

@@ -324,7 +324,7 @@ test('FM Radio Simulator drives the HUD from subscribed telemetry', async () => 
     assert.match(statusLine, /ST 75%/);
     assert.match(statusLine, /MPath -10\.\d dB/);
     assert.match(statusLine, /Clicks/);
-    // U-3: no standing WASM status while running normally.
+    // No standing WASM status while running normally.
     assert.doesNotMatch(statusLine, /WASM ACTIVE/);
 
     plugin.cleanup();

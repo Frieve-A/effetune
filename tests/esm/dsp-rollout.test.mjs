@@ -134,6 +134,7 @@ test('rollout enables only shipped kernels with matching generated layouts', () 
     'MultibandSaturationPlugin',
     'SaturationPlugin',
     'SubSynthPlugin',
+    'TubeSimulatorPlugin',
     'CrossfeedFilterPlugin',
     'MSMatrixPlugin',
     'MultibandBalancePlugin',

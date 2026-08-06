@@ -1,0 +1,985 @@
+{
+  "formatVersion": 1,
+  "type": "TubeSimulatorPlugin",
+  "outputBoundary": "Float32LE",
+  "oracleBlockSize": 128,
+  "comparison": {
+    "policy": "per-sample",
+    "maximumAbsoluteError": 0.00001
+  },
+  "generation": {
+    "command": "node tools/dsp-parity/tube-simulator-oracle.mjs --generate-standard-goldens",
+    "order": [
+      "amended-oracle-preflight",
+      "standard-golden-generation",
+      "amended-oracle-postflight"
+    ]
+  },
+  "oracle": {
+    "manifest": "tests/fixtures/tube-simulator/p3-baseline-v1/oracle/build-manifest.json",
+    "source": "tests/fixtures/tube-simulator/p3-baseline-v1/oracle/path2-shape.cpp",
+    "sourceSha256": "6FAF406E293B06AC2B0B140A9E3DFD7CBAD2035E2EC54D9B48626BBF4EF2A887",
+    "wasm": "tests/fixtures/tube-simulator/p3-baseline-v1/oracle/path2-shape.wasm",
+    "wasmSha256": "8D63B37C0D7181A01EB48B074A7AD2E7194588A1D57BF9C5890F67CE756AE76D",
+    "generator": "tools/dsp-parity/tube-simulator-oracle.mjs",
+    "generatorSha256": "506FFDAFC2B8DFCE3049D9C40943F74ABA048C1BCB0C698ED04F50F1675EE1B6"
+  },
+  "caseMatrix": {
+    "path": "tests/fixtures/tube-simulator/p3-baseline-v1/cases.json",
+    "sha256": "5B6279B6DF00AAA095B5082CE359660E02016121DE09592C7B020B62404747DA",
+    "count": 13
+  },
+  "telemetryFields": [
+    "absoluteOutputSum",
+    "vk1",
+    "vk2",
+    "bPlus",
+    "ia1",
+    "ia2",
+    "ig1",
+    "ig2",
+    "iRa1",
+    "iRa2"
+  ],
+  "slowState": {
+    "phaseField": "endCheckpoint.accumulatorCount",
+    "counterField": "endCheckpoint.slowPublishCount",
+    "windowEndpoints": 24
+  },
+  "measured": {
+    "worstAbsoluteError": 0,
+    "worstCase": "default-silence",
+    "exactCaseCount": 13
+  },
+  "cases": [
+    {
+      "id": "default-silence",
+      "stimulus": "silence",
+      "caseIndex": 0,
+      "seed": "0xeffe7a5e",
+      "sampleRate": 96000,
+      "channels": 2,
+      "frames": 1024,
+      "blockSize": 128,
+      "params": {
+        "dr": 0,
+        "tp": "12AX7",
+        "bi": 0,
+        "pv": 250,
+        "sz": 10,
+        "su": 10,
+        "og": 0,
+        "mx": 100,
+        "fr": true
+      },
+      "events": [],
+      "input": {
+        "format": "Float32LE",
+        "floats": 2048,
+        "sha256": "9F1DCBC35C350D6027F98BE0F5C8B43B42CA52B7604459C0C42BE3AA88913D47"
+      },
+      "oracleOutput": {
+        "format": "Float32LE",
+        "floats": 2048,
+        "sha256": "E3642247E1E2B16E97ADDDF4900BC457CD80FFBF9F9C58754F45862B4630F0B6"
+      },
+      "committedGolden": {
+        "binary": "case-001.f32",
+        "floats": 2048,
+        "sha256": "E3642247E1E2B16E97ADDDF4900BC457CD80FFBF9F9C58754F45862B4630F0B6",
+        "tolerance": {
+          "abs": 0.00001,
+          "policy": "per-sample"
+        },
+        "maximumAbsoluteError": 0
+      },
+      "endCheckpoint": {
+        "accumulatorCount": [
+          16,
+          16
+        ],
+        "slowPublishCount": 340,
+        "telemetry": [
+          5.9183023312023345e-8,
+          1.2403769103377844,
+          1.2403769103377775,
+          233.45928179514067,
+          0.0008269191806020945,
+          0.0008269191806019486,
+          1.6108005081819948e-25,
+          1.6108005081712803e-25,
+          0.0008269191806020945,
+          0.0008269191806019486
+        ],
+        "finiteFaults": 0,
+        "safetyLimits": 0,
+        "persistentFinite": true
+      }
+    },
+    {
+      "id": "default-impulse",
+      "stimulus": "imp",
+      "caseIndex": 1,
+      "seed": "0xeffe7a5f",
+      "sampleRate": 96000,
+      "channels": 2,
+      "frames": 1152,
+      "blockSize": 128,
+      "params": {
+        "dr": 0,
+        "tp": "12AX7",
+        "bi": 0,
+        "pv": 250,
+        "sz": 10,
+        "su": 10,
+        "og": 0,
+        "mx": 100,
+        "fr": true
+      },
+      "events": [],
+      "input": {
+        "format": "Float32LE",
+        "floats": 2304,
+        "sha256": "6FA2DA79011C08347587CB5846ECDE9C5235EDB201BBB7DB701C55816C59BB35"
+      },
+      "oracleOutput": {
+        "format": "Float32LE",
+        "floats": 2304,
+        "sha256": "DEAF738FCE3718FD76F366E70CF17A28B19CBCED54FA6ABBB7F1CF1B9AC955CA"
+      },
+      "committedGolden": {
+        "binary": "case-002.f32",
+        "floats": 2304,
+        "sha256": "DEAF738FCE3718FD76F366E70CF17A28B19CBCED54FA6ABBB7F1CF1B9AC955CA",
+        "tolerance": {
+          "abs": 0.00001,
+          "policy": "per-sample"
+        },
+        "maximumAbsoluteError": 0
+      },
+      "endCheckpoint": {
+        "accumulatorCount": [
+          0,
+          0
+        ],
+        "slowPublishCount": 384,
+        "telemetry": [
+          18739.750084430816,
+          1.2406217583748038,
+          1.2464903904210518,
+          233.45468962213448,
+          0.0008260804090650471,
+          0.0008513788194296241,
+          1.529182554810069e-25,
+          5.176062638270212e-25,
+          0.0008261582282121023,
+          0.0008407135590127468
+        ],
+        "finiteFaults": 0,
+        "safetyLimits": 0,
+        "persistentFinite": true
+      }
+    },
+    {
+      "id": "default-sine",
+      "stimulus": "sin1k",
+      "caseIndex": 2,
+      "seed": "0xeffe7a5c",
+      "sampleRate": 96000,
+      "channels": 2,
+      "frames": 1536,
+      "blockSize": 128,
+      "params": {
+        "dr": 0,
+        "tp": "12AX7",
+        "bi": 0,
+        "pv": 250,
+        "sz": 10,
+        "su": 10,
+        "og": 0,
+        "mx": 100,
+        "fr": true
+      },
+      "events": [],
+      "input": {
+        "format": "Float32LE",
+        "floats": 3072,
+        "sha256": "D8051511BF55F67DCC69D8F7C54140BB60F49680E93ACCBCC5EAA4A2221453FD"
+      },
+      "oracleOutput": {
+        "format": "Float32LE",
+        "floats": 3072,
+        "sha256": "E0F581D62081C07F213A538B2DC5EC4F47FDC1D4ACA27CEA49E39DFFA96E9CC7"
+      },
+      "committedGolden": {
+        "binary": "case-003.f32",
+        "floats": 3072,
+        "sha256": "E0F581D62081C07F213A538B2DC5EC4F47FDC1D4ACA27CEA49E39DFFA96E9CC7",
+        "tolerance": {
+          "abs": 0.00001,
+          "policy": "per-sample"
+        },
+        "maximumAbsoluteError": 0
+      },
+      "endCheckpoint": {
+        "accumulatorCount": [
+          0,
+          0
+        ],
+        "slowPublishCount": 512,
+        "telemetry": [
+          610823.5002220714,
+          1.242848369495756,
+          1.213675548662299,
+          233.4720053938711,
+          0.0005832304347872878,
+          0.0022797605801524097,
+          1.8605278132584375e-32,
+          0.0001368987038323692,
+          0.0007240753477785629,
+          0.0015368516206538886
+        ],
+        "finiteFaults": 0,
+        "safetyLimits": 0,
+        "persistentFinite": true
+      }
+    },
+    {
+      "id": "default-noise",
+      "stimulus": "noise",
+      "caseIndex": 3,
+      "seed": "0xeffe7a5d",
+      "sampleRate": 96000,
+      "channels": 2,
+      "frames": 1536,
+      "blockSize": 128,
+      "params": {
+        "dr": 0,
+        "tp": "12AX7",
+        "bi": 0,
+        "pv": 250,
+        "sz": 10,
+        "su": 10,
+        "og": 0,
+        "mx": 100,
+        "fr": true
+      },
+      "events": [],
+      "input": {
+        "format": "Float32LE",
+        "floats": 3072,
+        "sha256": "ED53AAA085D23F75DD93C2D97AD1616C88F2B7B54B39F120A73D889124855789"
+      },
+      "oracleOutput": {
+        "format": "Float32LE",
+        "floats": 3072,
+        "sha256": "65887C3CAB0920BB292CC39FC69CD8EBA6934734C3E1A3BA2B64CAD3B988C038"
+      },
+      "committedGolden": {
+        "binary": "case-004.f32",
+        "floats": 3072,
+        "sha256": "65887C3CAB0920BB292CC39FC69CD8EBA6934734C3E1A3BA2B64CAD3B988C038",
+        "tolerance": {
+          "abs": 0.00001,
+          "policy": "per-sample"
+        },
+        "maximumAbsoluteError": 0
+      },
+      "endCheckpoint": {
+        "accumulatorCount": [
+          0,
+          0
+        ],
+        "slowPublishCount": 512,
+        "telemetry": [
+          794478.6015210126,
+          1.242989424465037,
+          1.205131464964578,
+          233.47513217173008,
+          0.0006464447317169674,
+          2.1811708820682824e-12,
+          1.2622615082930539e-30,
+          0,
+          0.0006453905606054155,
+          -0.00024236237955533793
+        ],
+        "finiteFaults": 0,
+        "safetyLimits": 0,
+        "persistentFinite": true
+      }
+    },
+    {
+      "id": "minimum-drive-12ax7",
+      "stimulus": "sin1k",
+      "caseIndex": 4,
+      "seed": "0xeffe7a5a",
+      "sampleRate": 96000,
+      "channels": 2,
+      "frames": 1024,
+      "blockSize": 128,
+      "params": {
+        "dr": 0,
+        "tp": "12AX7",
+        "bi": 0,
+        "pv": 250,
+        "sz": 10,
+        "su": 10,
+        "og": 0,
+        "mx": 100,
+        "fr": true
+      },
+      "events": [
+        {
+          "frame": 128,
+          "params": {
+            "dr": -24
+          }
+        }
+      ],
+      "input": {
+        "format": "Float32LE",
+        "floats": 2048,
+        "sha256": "55598DAAA77FB976416061A02D19B8BF2DCE81A6E0D05521E1F82BDCFC432C1D"
+      },
+      "oracleOutput": {
+        "format": "Float32LE",
+        "floats": 2048,
+        "sha256": "8929AACEE3ACE0BAD95C0A65C2154A49B28D345845745F01841B72EFC04472CA"
+      },
+      "committedGolden": {
+        "binary": "case-005.f32",
+        "floats": 2048,
+        "sha256": "8929AACEE3ACE0BAD95C0A65C2154A49B28D345845745F01841B72EFC04472CA",
+        "tolerance": {
+          "abs": 0.00001,
+          "policy": "per-sample"
+        },
+        "maximumAbsoluteError": 0
+      },
+      "endCheckpoint": {
+        "accumulatorCount": [
+          16,
+          16
+        ],
+        "slowPublishCount": 340,
+        "telemetry": [
+          353394.0169446471,
+          1.2410190906615362,
+          1.126989447120667,
+          233.52116983184797,
+          0.0008796024966632118,
+          0,
+          4.567669752074741e-24,
+          0,
+          0.0008563343987209921,
+          0.00038126813973424407
+        ],
+        "finiteFaults": 0,
+        "safetyLimits": 0,
+        "persistentFinite": true
+      }
+    },
+    {
+      "id": "maximum-drive-12ax7",
+      "stimulus": "sin1k",
+      "caseIndex": 5,
+      "seed": "0xeffe7a5b",
+      "sampleRate": 96000,
+      "channels": 2,
+      "frames": 1024,
+      "blockSize": 128,
+      "params": {
+        "dr": 0,
+        "tp": "12AX7",
+        "bi": 0,
+        "pv": 250,
+        "sz": 10,
+        "su": 10,
+        "og": 0,
+        "mx": 100,
+        "fr": true
+      },
+      "events": [
+        {
+          "frame": 128,
+          "params": {
+            "dr": 48
+          }
+        }
+      ],
+      "input": {
+        "format": "Float32LE",
+        "floats": 2048,
+        "sha256": "55598DAAA77FB976416061A02D19B8BF2DCE81A6E0D05521E1F82BDCFC432C1D"
+      },
+      "oracleOutput": {
+        "format": "Float32LE",
+        "floats": 2048,
+        "sha256": "5D7685A4EEAD103D4E37D26391D5CEA7A3A8B67CC1C720AEDDFBD47E8E040246"
+      },
+      "committedGolden": {
+        "binary": "case-006.f32",
+        "floats": 2048,
+        "sha256": "5D7685A4EEAD103D4E37D26391D5CEA7A3A8B67CC1C720AEDDFBD47E8E040246",
+        "tolerance": {
+          "abs": 0.00001,
+          "policy": "per-sample"
+        },
+        "maximumAbsoluteError": 0
+      },
+      "endCheckpoint": {
+        "accumulatorCount": [
+          16,
+          16
+        ],
+        "slowPublishCount": 340,
+        "telemetry": [
+          628077.172665777,
+          1.274042818488592,
+          1.6510948126225122,
+          233.27724002859014,
+          0.002029454334647267,
+          0,
+          0.0006403112057329573,
+          0,
+          0.0016557848168215232,
+          -0.000014388359709900065
+        ],
+        "finiteFaults": 0,
+        "safetyLimits": 0,
+        "persistentFinite": true
+      }
+    },
+    {
+      "id": "upper-range-corners",
+      "stimulus": "noise",
+      "caseIndex": 6,
+      "seed": "0xeffe7a58",
+      "sampleRate": 96000,
+      "channels": 2,
+      "frames": 1024,
+      "blockSize": 128,
+      "params": {
+        "dr": 0,
+        "tp": "12AX7",
+        "bi": 0,
+        "pv": 250,
+        "sz": 10,
+        "su": 10,
+        "og": 0,
+        "mx": 100,
+        "fr": true
+      },
+      "events": [
+        {
+          "frame": 128,
+          "params": {
+            "dr": 48,
+            "bi": 50,
+            "pv": 300,
+            "sz": 100,
+            "su": 47,
+            "og": 24,
+            "mx": 100
+          }
+        }
+      ],
+      "input": {
+        "format": "Float32LE",
+        "floats": 2048,
+        "sha256": "A51E432D7BCC4ACE6DCBBBF18DF0DEA517359BFF32F100957A978E7BCA40D99E"
+      },
+      "oracleOutput": {
+        "format": "Float32LE",
+        "floats": 2048,
+        "sha256": "8B49080C4662869BA21792F8E70E36EECCA01EA2F065361A2A8F393905CE5AB0"
+      },
+      "committedGolden": {
+        "binary": "case-007.f32",
+        "floats": 2048,
+        "sha256": "8B49080C4662869BA21792F8E70E36EECCA01EA2F065361A2A8F393905CE5AB0",
+        "tolerance": {
+          "abs": 0.00001,
+          "policy": "per-sample"
+        },
+        "maximumAbsoluteError": 0
+      },
+      "endCheckpoint": {
+        "accumulatorCount": [
+          16,
+          16
+        ],
+        "slowPublishCount": 340,
+        "telemetry": [
+          827155.738696899,
+          1.0098980576698082,
+          1.2770087224851923,
+          232.16164142061692,
+          0,
+          0.002511023463597761,
+          0,
+          0.0003656742413384249,
+          0.0003774576326768246,
+          0.0017273849787561484
+        ],
+        "finiteFaults": 0,
+        "safetyLimits": 0,
+        "persistentFinite": true
+      }
+    },
+    {
+      "id": "tube-12au7-reset-event",
+      "stimulus": "sin1k",
+      "caseIndex": 7,
+      "seed": "0xeffe7a59",
+      "sampleRate": 96000,
+      "channels": 2,
+      "frames": 1024,
+      "blockSize": 128,
+      "params": {
+        "dr": 0,
+        "tp": "12AX7",
+        "bi": 0,
+        "pv": 250,
+        "sz": 10,
+        "su": 10,
+        "og": 0,
+        "mx": 100,
+        "fr": true
+      },
+      "events": [
+        {
+          "frame": 384,
+          "params": {
+            "dr": 9,
+            "tp": "12AU7",
+            "bi": -17,
+            "pv": 238,
+            "sz": 18,
+            "su": 4.7,
+            "og": 2,
+            "mx": 62
+          }
+        }
+      ],
+      "input": {
+        "format": "Float32LE",
+        "floats": 2048,
+        "sha256": "55598DAAA77FB976416061A02D19B8BF2DCE81A6E0D05521E1F82BDCFC432C1D"
+      },
+      "oracleOutput": {
+        "format": "Float32LE",
+        "floats": 2048,
+        "sha256": "932F9755BFBDAA0078B007D0A1ABCB975637FEE66377607569D1B46BAF7217BD"
+      },
+      "committedGolden": {
+        "binary": "case-008.f32",
+        "floats": 2048,
+        "sha256": "932F9755BFBDAA0078B007D0A1ABCB975637FEE66377607569D1B46BAF7217BD",
+        "tolerance": {
+          "abs": 0.00001,
+          "policy": "per-sample"
+        },
+        "maximumAbsoluteError": 0
+      },
+      "endCheckpoint": {
+        "accumulatorCount": [
+          16,
+          16
+        ],
+        "slowPublishCount": 212,
+        "telemetry": [
+          268010.301887243,
+          3.1435492373221297,
+          2.6742769201874914,
+          199.34233469606673,
+          0.004767663867845161,
+          0,
+          1.8429242018495054e-37,
+          0,
+          0.004715765455256361,
+          0.000670067534142024
+        ],
+        "finiteFaults": 0,
+        "safetyLimits": 0,
+        "persistentFinite": true
+      }
+    },
+    {
+      "id": "lower-range-corners",
+      "stimulus": "noise",
+      "caseIndex": 8,
+      "seed": "0xeffe7a56",
+      "sampleRate": 96000,
+      "channels": 2,
+      "frames": 1024,
+      "blockSize": 128,
+      "params": {
+        "dr": 0,
+        "tp": "12AX7",
+        "bi": 0,
+        "pv": 250,
+        "sz": 10,
+        "su": 10,
+        "og": 0,
+        "mx": 100,
+        "fr": true
+      },
+      "events": [
+        {
+          "frame": 128,
+          "params": {
+            "dr": -24,
+            "bi": -50,
+            "pv": 150,
+            "sz": 0.6,
+            "su": 0.1,
+            "og": -24,
+            "mx": 0
+          }
+        }
+      ],
+      "input": {
+        "format": "Float32LE",
+        "floats": 2048,
+        "sha256": "FC1ABBEA61C023E676A99121D0087015C017CC31A88BE4126382532C270581F8"
+      },
+      "oracleOutput": {
+        "format": "Float32LE",
+        "floats": 2048,
+        "sha256": "AD72AFCF80D5FA9733FF9857FBE02235B52288AC9413A5737B39788DBAAE555B"
+      },
+      "committedGolden": {
+        "binary": "case-009.f32",
+        "floats": 2048,
+        "sha256": "AD72AFCF80D5FA9733FF9857FBE02235B52288AC9413A5737B39788DBAAE555B",
+        "tolerance": {
+          "abs": 0.00001,
+          "policy": "per-sample"
+        },
+        "maximumAbsoluteError": 0
+      },
+      "endCheckpoint": {
+        "accumulatorCount": [
+          16,
+          16
+        ],
+        "slowPublishCount": 340,
+        "telemetry": [
+          424417.22726378095,
+          1.383055535892982,
+          1.33512540062671,
+          229.97545172485286,
+          0.0007463847549656534,
+          0.0007655333137160559,
+          3.462695528101094e-27,
+          7.582170623358764e-35,
+          0.0006701328081236622,
+          0.0013415435025144252
+        ],
+        "finiteFaults": 0,
+        "safetyLimits": 0,
+        "persistentFinite": true
+      }
+    },
+    {
+      "id": "dry-output-gain-isolation",
+      "stimulus": "imp",
+      "caseIndex": 9,
+      "seed": "0xeffe7a57",
+      "sampleRate": 96000,
+      "channels": 2,
+      "frames": 1152,
+      "blockSize": 128,
+      "params": {
+        "dr": 0,
+        "tp": "12AX7",
+        "bi": 0,
+        "pv": 250,
+        "sz": 10,
+        "su": 10,
+        "og": 0,
+        "mx": 100,
+        "fr": true
+      },
+      "events": [
+        {
+          "frame": 128,
+          "params": {
+            "og": 24,
+            "mx": 0
+          }
+        }
+      ],
+      "input": {
+        "format": "Float32LE",
+        "floats": 2304,
+        "sha256": "6FA2DA79011C08347587CB5846ECDE9C5235EDB201BBB7DB701C55816C59BB35"
+      },
+      "oracleOutput": {
+        "format": "Float32LE",
+        "floats": 2304,
+        "sha256": "A31CFF1103BAF69DBEDA3290F331670146ED6EB312A73044CE5023A1D38CA8DE"
+      },
+      "committedGolden": {
+        "binary": "case-010.f32",
+        "floats": 2304,
+        "sha256": "A31CFF1103BAF69DBEDA3290F331670146ED6EB312A73044CE5023A1D38CA8DE",
+        "tolerance": {
+          "abs": 0.00001,
+          "policy": "per-sample"
+        },
+        "maximumAbsoluteError": 0
+      },
+      "endCheckpoint": {
+        "accumulatorCount": [
+          0,
+          0
+        ],
+        "slowPublishCount": 384,
+        "telemetry": [
+          18739.750084430816,
+          1.2406217583748038,
+          1.2464903904210518,
+          233.45468962213448,
+          0.0008260804090650471,
+          0.0008513788194296241,
+          1.529182554810069e-25,
+          5.176062638270212e-25,
+          0.0008261582282121023,
+          0.0008407135590127468
+        ],
+        "finiteFaults": 0,
+        "safetyLimits": 0,
+        "persistentFinite": true
+      }
+    },
+    {
+      "id": "half-mix-wet-output",
+      "stimulus": "noise",
+      "caseIndex": 10,
+      "seed": "0xeffe7a54",
+      "sampleRate": 96000,
+      "channels": 2,
+      "frames": 1280,
+      "blockSize": 128,
+      "params": {
+        "dr": 0,
+        "tp": "12AX7",
+        "bi": 0,
+        "pv": 250,
+        "sz": 10,
+        "su": 10,
+        "og": 0,
+        "mx": 100,
+        "fr": true
+      },
+      "events": [
+        {
+          "frame": 128,
+          "params": {
+            "og": 6,
+            "mx": 50
+          }
+        }
+      ],
+      "input": {
+        "format": "Float32LE",
+        "floats": 2560,
+        "sha256": "036AE4AC4B75D4035B5EC1FA66070399D688DE68F6D97AE99A87ACF3B2FEA44B"
+      },
+      "oracleOutput": {
+        "format": "Float32LE",
+        "floats": 2560,
+        "sha256": "066C93031C37604BCBB04E00FD8DC18838D872F2E5234280EE8F138F499CA00B"
+      },
+      "committedGolden": {
+        "binary": "case-011.f32",
+        "floats": 2560,
+        "sha256": "066C93031C37604BCBB04E00FD8DC18838D872F2E5234280EE8F138F499CA00B",
+        "tolerance": {
+          "abs": 0.00001,
+          "policy": "per-sample"
+        },
+        "maximumAbsoluteError": 0
+      },
+      "endCheckpoint": {
+        "accumulatorCount": [
+          8,
+          8
+        ],
+        "slowPublishCount": 426,
+        "telemetry": [
+          655329.6939977718,
+          1.24790198791029,
+          1.2122386653016302,
+          233.46453830354395,
+          0.0009067069619469568,
+          0,
+          2.6230535595897478e-23,
+          0,
+          0.0008546693800959631,
+          0.00036746454862692884
+        ],
+        "finiteFaults": 0,
+        "safetyLimits": 0,
+        "persistentFinite": true
+      }
+    },
+    {
+      "id": "non-reset-parameter-event",
+      "stimulus": "noise",
+      "caseIndex": 11,
+      "seed": "0xeffe7a55",
+      "sampleRate": 96000,
+      "channels": 2,
+      "frames": 1152,
+      "blockSize": 128,
+      "params": {
+        "dr": 0,
+        "tp": "12AX7",
+        "bi": 0,
+        "pv": 250,
+        "sz": 10,
+        "su": 10,
+        "og": 0,
+        "mx": 100,
+        "fr": true
+      },
+      "events": [
+        {
+          "frame": 384,
+          "params": {
+            "dr": 21,
+            "bi": 29,
+            "pv": 281,
+            "sz": 3.2,
+            "su": 27,
+            "og": -3,
+            "mx": 73
+          }
+        }
+      ],
+      "input": {
+        "format": "Float32LE",
+        "floats": 2304,
+        "sha256": "C5A03465783ACF464F52B515187C570B64EE57545AD7702032C7530FDAA7EC38"
+      },
+      "oracleOutput": {
+        "format": "Float32LE",
+        "floats": 2304,
+        "sha256": "849BA332CD8417A00D37A76F9619B52047AC94F400904CF70A8E1B1AFCBD87AD"
+      },
+      "committedGolden": {
+        "binary": "case-012.f32",
+        "floats": 2304,
+        "sha256": "849BA332CD8417A00D37A76F9619B52047AC94F400904CF70A8E1B1AFCBD87AD",
+        "tolerance": {
+          "abs": 0.00001,
+          "policy": "per-sample"
+        },
+        "maximumAbsoluteError": 0
+      },
+      "endCheckpoint": {
+        "accumulatorCount": [
+          0,
+          0
+        ],
+        "slowPublishCount": 384,
+        "telemetry": [
+          744704.8222717833,
+          1.027936522781931,
+          1.405171775533584,
+          233.34074885905596,
+          0.00024377273434064389,
+          0,
+          0,
+          0,
+          0.00021376993457424231,
+          0.0014236334291568937
+        ],
+        "finiteFaults": 0,
+        "safetyLimits": 0,
+        "persistentFinite": true
+      }
+    },
+    {
+      "id": "tube-reset-event",
+      "stimulus": "sin1k",
+      "caseIndex": 12,
+      "seed": "0xeffe7a52",
+      "sampleRate": 96000,
+      "channels": 2,
+      "frames": 1152,
+      "blockSize": 128,
+      "params": {
+        "dr": 0,
+        "tp": "12AX7",
+        "bi": 0,
+        "pv": 250,
+        "sz": 10,
+        "su": 10,
+        "og": 0,
+        "mx": 100,
+        "fr": true
+      },
+      "events": [
+        {
+          "frame": 384,
+          "params": {
+            "dr": 9,
+            "tp": "12AT7",
+            "bi": -17,
+            "pv": 238,
+            "sz": 18,
+            "su": 4.7,
+            "og": 2,
+            "mx": 62
+          }
+        }
+      ],
+      "input": {
+        "format": "Float32LE",
+        "floats": 2304,
+        "sha256": "FA774568FBE03D0993C47FF13C800CF244FBD2105319A88635088BDFDD60AB8F"
+      },
+      "oracleOutput": {
+        "format": "Float32LE",
+        "floats": 2304,
+        "sha256": "8B671C21603A5CA7F7DADA4F71FEC7DE056043A296B0DA235183FD4CAF4C0512"
+      },
+      "committedGolden": {
+        "binary": "case-013.f32",
+        "floats": 2304,
+        "sha256": "8B671C21603A5CA7F7DADA4F71FEC7DE056043A296B0DA235183FD4CAF4C0512",
+        "tolerance": {
+          "abs": 0.00001,
+          "policy": "per-sample"
+        },
+        "maximumAbsoluteError": 0
+      },
+      "endCheckpoint": {
+        "accumulatorCount": [
+          0,
+          0
+        ],
+        "slowPublishCount": 256,
+        "telemetry": [
+          413487.446082727,
+          1.7912885343712446,
+          1.6849006941197022,
+          220.39199910945018,
+          0.0008110510913521504,
+          0.004851847769892969,
+          0,
+          0.00036656611299365705,
+          0.0011838452865071808,
+          0.003863240262324449
+        ],
+        "finiteFaults": 0,
+        "safetyLimits": 0,
+        "persistentFinite": true
+      }
+    }
+  ]
+}

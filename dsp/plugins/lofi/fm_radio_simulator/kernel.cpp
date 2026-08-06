@@ -1,8 +1,6 @@
 // FM Radio Simulator: physical FM broadcast transmission -> propagation -> reception
-// chain on the three-tier split-rate layout (host / MPX / RF core). Production port of
-// the verified scratch kernel
-// (tmp/dev/fm-radio-simulator/fm-radio-simulator-scratch/src/kernel.cpp, run r0-f1f2-20260723-01)
-// with the diagnostic-only levers removed; every arithmetic step matches the JS reference processor
+// chain on the three-tier split-rate layout (host / MPX / RF core). Every arithmetic
+// step matches the JS reference processor
 // in plugins/lofi/fm_radio_simulator.js bit for bit so that fixed-seed goldens hold across native,
 // WASM, and WASM+SIMD.
 #include "effetune/kernel.h"
@@ -781,8 +779,8 @@ public:
         {hostLeft_.data(), hostRight_.data()}, frame_count, {txLeft_.data(), txRight_.data()},
         static_cast<std::uint32_t>(txLeft_.size()));
     for (std::uint32_t index = 0u; index < mpx_count; ++index) {
-      // Section 6 smooth tracking: pr's drive and soft-clip amount ramp toward
-      // their targets with a 20 ms one-pole at the MPX rate (A2-1), matching
+      // Smooth control tracking: pr's drive and soft-clip amount ramp toward
+      // their targets with a 20 ms one-pole at the MPX rate, matching
       // the og/mx convention: f32-rounded coefficient, f64 ramp state.
       processingDriveCurrent_ +=
           static_cast<double>(controlAlphaMpx_) *
@@ -959,13 +957,13 @@ private:
     signalAmplitude_ = static_cast<float>(std::pow(10.0, (params_.signal - 60.0F) / 20.0F));
     noiseSigma_ = 0.0005F;
     ifBandKhz_ = params_.ifBand;
-    multipathTarget_ = params_.multipath * 0.003F;
+    multipathTarget_ = params_.multipath * 0.01F;
     pathDelayTargetUs_ = params_.pathDelay;
     fadingHz_ = params_.fading;
     stereoMode_ = static_cast<int>(params_.stereo + 0.5F);
     outputGainTarget_ = static_cast<float>(std::pow(10.0, params_.outputGain / 20.0F));
     mixTarget_ = params_.mix * 0.01F;
-    // Section 6 contract: no reset-class parameters. The first configuration
+    // Control-ramp contract: no reset-class parameters. The first configuration
     // after prepare/reset snaps the ramped controls to their targets; later
     // parameter changes only move the targets and the audio loops ramp the
     // current values over ~20 ms.
@@ -1011,7 +1009,7 @@ private:
     const double natural = kTwoPi * 35.0 / static_cast<double>(ratePlan_->mpx);
     pllKp_ = 1.4 * natural;
     pllKi_ = natural * natural;
-    // Auto stereo blend, CNR term (plan sections 3 / 6.1, F-2). The fixed
+    // Auto stereo blend, CNR term. The fixed
     // physical noise floor gives CNR ~= st + 5.6 dB at IF 230 kHz; noise
     // power scales with the IF bandwidth. Real receivers narrow the L-R gain
     // continuously as CNR falls: full stereo above ~36 dB CNR and essentially
@@ -1100,7 +1098,7 @@ private:
   }
 
   float processCore(float mpx) noexcept {
-    // Section 6 smooth tracking: mp and dl ramp toward their targets with a
+    // Smooth control tracking: mp and dl ramp toward their targets with a
     // 20 ms one-pole at the core rate (the delay-line read position slides
     // with dl), and a pending tn ramp rotates the tuning NCO step phasor by a
     // constant per-sample delta, then snaps to the exact target step.
@@ -1206,7 +1204,7 @@ private:
     float *output_left = audio;
     float *output_right = channel_count > 1u ? audio + frame_count : audio;
     for (std::uint32_t index = 0u; index < frame_count; ++index) {
-      // Section 6 smooth tracking: og and mx ramp toward their targets with a
+      // Smooth control tracking: og and mx ramp toward their targets with a
       // 20 ms one-pole at the host rate.
       outputGainCurrent_ += static_cast<double>(controlAlphaHost_) *
                             (static_cast<double>(outputGainTarget_) - outputGainCurrent_);
@@ -1305,7 +1303,7 @@ private:
   float mixTarget_ = 1.0F;
   float pllLock_ = 0.0F;
   float cnrBlend_ = 1.0F;
-  // Section 6 control ramps (20 ms): current values tracked in f64 with
+  // Control ramps (20 ms): current values tracked in f64 with
   // f32-rounded one-pole coefficients shared bit for bit with the JS
   // reference; the tuning NCO ramp rotates the step phasor per core sample.
   float controlAlphaHost_ = 1.0F;

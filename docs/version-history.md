@@ -6,17 +6,17 @@ lang: en
 
 # Version History
 
+### Version 2.4.0 (TBD, 2026)
+- Added Tube Simulator and Tape Artifacts effects
+- Added SBC Codec Simulator, G.726 Simulator, GSM-FR Simulator and MP3 Codec Simulator effects
+- Recalibrated FM Radio Simulator multipath depth so reflections up to the direct-wave level produce clearly audible distortion
+- Various minor improvements
+
 ### Version 2.3.0 (Aug 2, 2026)
 - Added AM/FM/SW Radio Simulator effects
-- Added SBC Codec Simulator with exact current-bitrate display, shared-bitpool Stereo/Joint Stereo coding, per-channel Dual Channel coding for SBC XQ configurations, and selectable frame blocks
-- Added G.726 Simulator with 16, 24, 32, and 40 kbit/s speech-codec modes
-- Added GSM-FR Simulator with 1–3 tandem 13 kbit/s GSM-FR speech-codec passes
-- Added MP3 Codec Simulator with MPEG-1 bitrates up to 320 kbit/s and MPEG-2 bitrates up to 160 kbit/s
 - Added 5Band FIR PEQ, FIR Crossover and Group Delay EQ effects
 - Updated Loudness Equalizer so Relative Volume adjusts the output level and EQ compensation together
 - Added EffeTune DSP Library : Deterministic DSP for Python, JavaScript, browsers, humans, and agents
-- Fixed a false buffer underrun warning and red sample-rate indicator right after playback started, even though no dropout was audible
-- Fixed the music library offering to reset its database when a large catalog simply took longer than usual to open
 - Various minor improvements
 
 ### Version 2.2.0 (Jul 25, 2026)
