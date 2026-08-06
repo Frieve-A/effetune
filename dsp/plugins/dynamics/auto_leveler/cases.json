@@ -55,6 +55,14 @@
       "params": { "tg": -24, "tw": 1000, "mg": 3, "ng": -30, "at": 8, "rt": 8000, "gt": -84 }
     },
     {
+      "id": "surround51-48000",
+      "stimulus": "noise",
+      "channels": 6,
+      "blockSize": 96,
+      "frames": 1093,
+      "params": { "tg": -20, "tw": 1000, "mg": 12, "ng": -36, "at": 1, "rt": 10, "gt": -96 }
+    },
+    {
       "id": "parameter-transitions",
       "stimulus": "noise",
       "frames": 1237,

@@ -55,6 +55,52 @@ class AutoLevelerPlugin extends PluginBase {
             const windowSamplesRaw = Math.floor((parameters.tw / 1000) * SAMPLE_RATE);
             const windowSamples = windowSamplesRaw > 0 ? windowSamplesRaw : 1;
 
+            // Offset between the K-weighted power sum and the LUFS scale, ITU-R BS.1770-4 eq. (2).
+            const LUFS_OFFSET = 0.691;
+            // K-weighting stage designs. Tables 1 and 2 of BS.1770-4 are the 48 kHz case of
+            // these, so deriving them from SAMPLE_RATE keeps the weighting curve in place at
+            // 44.1, 96 and 192 kHz instead of only at 48 kHz.
+            const SHELF_FREQUENCY = 1681.974450955533;
+            const SHELF_GAIN_DB = 3.999843853973347;
+            const SHELF_Q = 0.7071752369554196;
+            const SHELF_GAIN_EXPONENT = 0.4996667741545416;
+            const HIGHPASS_FREQUENCY = 38.13547087602444;
+            const HIGHPASS_Q = 0.5003270373238773;
+
+            function designKWeighting(sampleRate) {
+                const shelfK = Math.tan(Math.PI * SHELF_FREQUENCY / sampleRate);
+                const shelfVh = Math.pow(10, SHELF_GAIN_DB / 20);
+                const shelfVb = Math.pow(shelfVh, SHELF_GAIN_EXPONENT);
+                const shelfA0 = 1 + shelfK / SHELF_Q + shelfK * shelfK;
+                const highpassK = Math.tan(Math.PI * HIGHPASS_FREQUENCY / sampleRate);
+                const highpassA0 = 1 + highpassK / HIGHPASS_Q + highpassK * highpassK;
+                return {
+                    pre: {
+                        b0: 1.0,
+                        b1: -2.0,
+                        b2: 1.0,
+                        a1: 2 * (highpassK * highpassK - 1) / highpassA0,
+                        a2: (1 - highpassK / HIGHPASS_Q + highpassK * highpassK) / highpassA0
+                    },
+                    shelf: {
+                        b0: (shelfVh + shelfVb * shelfK / SHELF_Q + shelfK * shelfK) / shelfA0,
+                        b1: 2 * (shelfK * shelfK - shelfVh) / shelfA0,
+                        b2: (shelfVh - shelfVb * shelfK / SHELF_Q + shelfK * shelfK) / shelfA0,
+                        a1: 2 * (shelfK * shelfK - 1) / shelfA0,
+                        a2: (1 - shelfK / SHELF_Q + shelfK * shelfK) / shelfA0
+                    }
+                };
+            }
+
+            // BS.1770-4 table 3 weights. The Recommendation tabulates the 5.1 layout only, and
+            // Web Audio orders six channels L, R, C, LFE, Ls, Rs. Every other channel count is
+            // summed unweighted, which is the table's value for non-surround channels.
+            function channelWeight(channelIndex, channelCount) {
+                if (channelCount !== 6) return 1.0;
+                if (channelIndex === 3) return 0.0;
+                return channelIndex >= 4 ? 1.41 : 1.0;
+            }
+
             // Initialize or reset context state if needed
             if (!context.initialized ||
                 context.sampleRate !== SAMPLE_RATE ||
@@ -68,24 +114,31 @@ class AutoLevelerPlugin extends PluginBase {
                 context.windowSamples = windowSamples;
                 context.sum = 0;
                 context.currentGain = 1.0;
-                // K-weighting filter state
-                context.kfilter = {
-                    pre: { x1: 0, x2: 0, y1: 0, y2: 0 },
-                    shelf: { x1: 0, x2: 0, y1: 0, y2: 0 }
-                };
-                context.monoBuffer = new Float32Array(BLOCK_SIZE);
+                // Per-channel K-weighting state: BS.1770-4 weights every channel separately.
+                context.kcoefficients = designKWeighting(SAMPLE_RATE);
+                context.kfilters = [];
+                context.channelWeights = new Float64Array(CHANNEL_COUNT);
+                for (let ch = 0; ch < CHANNEL_COUNT; ch++) {
+                    context.kfilters.push({
+                        pre: { x1: 0, x2: 0, y1: 0, y2: 0 },
+                        shelf: { x1: 0, x2: 0, y1: 0, y2: 0 }
+                    });
+                    context.channelWeights[ch] = channelWeight(ch, CHANNEL_COUNT);
+                }
                 context.weightedBuffer = new Float32Array(BLOCK_SIZE);
+                context.powerBuffer = new Float64Array(BLOCK_SIZE);
                 context.initialized = true;
                 context.lastLufs = -144;
                 context.lastOutputLufs = -144;
-            } else if (context.monoBuffer.length !== BLOCK_SIZE) {
-                context.monoBuffer = new Float32Array(BLOCK_SIZE);
+            } else if (context.weightedBuffer.length !== BLOCK_SIZE) {
                 context.weightedBuffer = new Float32Array(BLOCK_SIZE);
+                context.powerBuffer = new Float64Array(BLOCK_SIZE);
             }
 
-            // Per-block processing
-            const noiseGateLinear = Math.pow(10, parameters.gt / 10);
-            const targetLufsLinear = Math.pow(10, parameters.tg / 10);
+            // Per-block processing. The target and the gate are LUFS values, so they convert to
+            // the K-weighted power the meter accumulates with the same BS.1770-4 offset.
+            const noiseGateLinear = Math.pow(10, (parameters.gt + LUFS_OFFSET) / 10);
+            const targetLufsLinear = Math.pow(10, (parameters.tg + LUFS_OFFSET) / 10);
             const attackSamplesRaw = (parameters.at * SAMPLE_RATE) / 1000;
             const attackSamples = attackSamplesRaw < 1 ? 1 : attackSamplesRaw;
             const releaseSamplesRaw = (parameters.rt * SAMPLE_RATE) / 1000;
@@ -98,41 +151,14 @@ class AutoLevelerPlugin extends PluginBase {
             const maxGainLinear = Math.pow(10, parameters.mg / 20);
             const minGainLinear = Math.pow(10, parameters.ng / 20);
 
-            // Define K-weighting filter coefficients
-            // Pre-filter (high-pass filter)
-            const preB0 = 1.0, preB1 = -2.0, preB2 = 1.0;
-            const preA1 = -1.99004745483398, preA2 = 0.99007225036621;
-            // Shelf filter (high-frequency boost)
-            const shelfB0 = 1.53512485958697, shelfB1 = -2.69169618940638, shelfB2 = 1.19839281085285;
-            const shelfA1 = -1.69065929318241, shelfA2 = 0.73248077421585;
-
             // Get references to context arrays/state
-            const monoBuffer = context.monoBuffer;
+            const preCoefficients = context.kcoefficients.pre;
+            const shelfCoefficients = context.kcoefficients.shelf;
+            const kFilters = context.kfilters;
+            const channelWeights = context.channelWeights;
             const weightedBuffer = context.weightedBuffer;
-            const kFilterPreState = context.kfilter.pre;
-            const kFilterShelfState = context.kfilter.shelf;
+            const powerBuffer = context.powerBuffer;
             const lufsBuffer = context.buffer;
-
-            // Step 1: Create mono mix
-            monoBuffer.fill(0); // Clear buffer first
-            if (CHANNEL_COUNT > 0) {
-                const scale = 1.0 / CHANNEL_COUNT;
-                for (let ch = 0; ch < CHANNEL_COUNT; ch++) {
-                    const offset = ch * BLOCK_SIZE;
-                    if (scale === 1.0) { // Single channel case
-                        for (let i = 0; i < BLOCK_SIZE; i++) {
-                            monoBuffer[i] += data[offset + i];
-                        }
-                    } else {
-                        for (let i = 0; i < BLOCK_SIZE; i++) {
-                            monoBuffer[i] += data[offset + i] * scale;
-                        }
-                    }
-                }
-            }
-            // If CHANNEL_COUNT === 0, monoBuffer remains 0.
-
-            // Step 2: Apply K-weighting filters
 
             function processBlockBiquad(input, output, state, b0, b1, b2, a1, a2) {
                 const len = input.length; // BLOCK_SIZE
@@ -180,9 +206,26 @@ class AutoLevelerPlugin extends PluginBase {
                 state.x1 = x1; state.x2 = x2; state.y1 = y1; state.y2 = y2;
             }
 
-            // Apply K-weighting filters in sequence using the function
-            processBlockBiquad(monoBuffer, weightedBuffer, kFilterPreState, preB0, preB1, preB2, preA1, preA2);
-            processBlockBiquad(weightedBuffer, weightedBuffer, kFilterShelfState, shelfB0, shelfB1, shelfB2, shelfA1, shelfA2);
+            // K-weight every channel on its own and accumulate the BS.1770-4 eq. (2) power sum
+            // sum_ch G_ch * z_ch for this block. Mixing to mono first would under-read
+            // correlated content by 3.01 LU and cancel anti-correlated content outright.
+            powerBuffer.fill(0);
+            for (let ch = 0; ch < CHANNEL_COUNT; ch++) {
+                const weight = channelWeights[ch];
+                if (weight === 0) continue; // LFE is excluded from the loudness sum
+                const offset = ch * BLOCK_SIZE;
+                const channelState = kFilters[ch];
+                processBlockBiquad(data.subarray(offset, offset + BLOCK_SIZE), weightedBuffer,
+                    channelState.pre, preCoefficients.b0, preCoefficients.b1, preCoefficients.b2,
+                    preCoefficients.a1, preCoefficients.a2);
+                processBlockBiquad(weightedBuffer, weightedBuffer,
+                    channelState.shelf, shelfCoefficients.b0, shelfCoefficients.b1, shelfCoefficients.b2,
+                    shelfCoefficients.a1, shelfCoefficients.a2);
+                for (let i = 0; i < BLOCK_SIZE; i++) {
+                    const weighted = weightedBuffer[i];
+                    powerBuffer[i] += weight * weighted * weighted;
+                }
+            }
 
             const result = new Float32Array(data.length); // Allocate output buffer
             let currentSum = context.sum;
@@ -194,8 +237,7 @@ class AutoLevelerPlugin extends PluginBase {
             // Update the loudness window and gain in sample order so block boundaries do not
             // affect the control signal.
             for (let i = 0; i < BLOCK_SIZE; i++) {
-                const weightedSample = weightedBuffer[i];
-                const weightedSquare = weightedSample * weightedSample;
+                const weightedSquare = powerBuffer[i];
                 currentSum -= lufsBuffer[bufferIndex];
                 currentSum += weightedSquare;
                 lufsBuffer[bufferIndex] = weightedSquare;
@@ -227,7 +269,7 @@ class AutoLevelerPlugin extends PluginBase {
 
             let currentLUFS = -144;
             if (currentLufsLinear > 0) {
-                 currentLUFS = 10 * Math.log10(currentLufsLinear) - 0.691;
+                 currentLUFS = 10 * Math.log10(currentLufsLinear) - LUFS_OFFSET;
                  if (currentLUFS < -144) currentLUFS = -144;
             }
             context.lastLufs = currentLUFS;

@@ -20,13 +20,15 @@ const ports = [
     folder: 'auto_leveler',
     hash: 0xe0b1f34d,
     floatCount: 7,
-    jsEngineHash: 'c7879957c76a762369258fa683ac8baa5dbc3f6e3f4a61810d9164a180a29311'
+    caseCount: 9,
+    jsEngineHash: '1b8f006713bee901dddc345abee55d7fa82f5501a03fc787d5f3de57fa0795e6'
   },
   {
     type: 'BrickwallLimiterPlugin',
     folder: 'brickwall_limiter',
     hash: 0xb531a24a,
     floatCount: 6,
+    caseCount: 8,
     jsEngineHash: 'e4f6586e5e32f1f7c94bbc8e615b53212cd047e1dda7073434b1cca80845cf9f'
   },
   {
@@ -34,6 +36,7 @@ const ports = [
     folder: 'transient_shaper',
     hash: 0xe2344ceb,
     floatCount: 7,
+    caseCount: 8,
     jsEngineHash: 'd0a7ae2f7b836df4cc42b6b2c27b5376830e6759691629f0e944c816821d652f'
   }
 ];
@@ -169,26 +172,29 @@ test('Wave 3c dynamics group B schemas, cases, and final JS goldens stay frozen'
     assert.equal(loaded.schema.type, port.type);
     assert.equal(loaded.schema.hash, port.hash);
     assert.equal(loaded.schema.floatCount, port.floatCount);
-    assert.equal(loaded.cases.cases.length, 8);
+    assert.equal(loaded.cases.cases.length, port.caseCount);
     assert.ok(loaded.cases.cases.every(item => Number.isInteger(item.frames) && item.frames > 0));
     assert.ok(loaded.cases.cases.some(item => item.sampleRate === 44100));
     assert.ok(loaded.cases.cases.some(item => item.sampleRate === 96000));
     assert.ok(loaded.cases.cases.some(item => item.sampleRate === 192000));
     assert.ok(loaded.cases.cases.some(item => item.channels === 1));
     assert.ok(loaded.cases.cases.some(item => item.channels === 4));
+    if (port.type === 'AutoLevelerPlugin') {
+      assert.ok(loaded.cases.cases.some(item => item.channels === 6));
+    }
     assert.ok(loaded.cases.cases.some(item => item.events?.length === 4));
 
     const goldenRoot = path.join(loaded.root, 'golden');
     assert.ok(await directoryBytes(goldenRoot) <= DEFAULT_GOLDEN_BUDGET_BYTES);
     const goldens = await readGoldenSet(goldenRoot);
-    assert.equal(goldens.length, 8);
+    assert.equal(goldens.length, port.caseCount);
     assert.ok(goldens.every(item => item.metadata.jsEngineHash === port.jsEngineHash));
     const result = await runParityCli([
       '--root', repoRoot,
       '--type', port.type,
       '--self-check'
     ], { log() {} });
-    assert.equal(result.results.length, 8);
+    assert.equal(result.results.length, port.caseCount);
     assert.ok(result.results.every(item => item.comparison.pass));
   }
 

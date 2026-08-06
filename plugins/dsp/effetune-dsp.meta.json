@@ -1,6 +1,6 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:7bb699b611b89f7fccc95e3d891e1845f847957bed6601766cb7fc15ac0b5cc6",
+  "sourceDigest": "sha256:0008f4af6a4226cc14937b68d633299af74291e5561374d1123cfcbdd1f7d551",
   "emsdkVersion": "6.0.2",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
@@ -914,7 +914,7 @@
     }
   ],
   "sizes": {
-    "baseline": 759194,
-    "simd": 852816
+    "baseline": 760924,
+    "simd": 853430
   }
 }
