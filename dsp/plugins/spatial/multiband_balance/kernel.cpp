@@ -98,7 +98,7 @@ public:
         const double magnitude = balance >= 0.0 ? balance : -balance;
         double gain = 1.0;
         if (magnitude >= 1.0e-6) {
-          const double candidate = channel == 0u ? 1.0 - balance : 1.0 + balance;
+          const double candidate = (channel & 1u) == 0u ? 1.0 - balance : 1.0 + balance;
           gain = candidate > 0.0 ? candidate : 0.0;
         }
         const float *band_signal = bandBuffer(channel, band);

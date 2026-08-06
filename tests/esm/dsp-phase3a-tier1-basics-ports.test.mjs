@@ -173,7 +173,9 @@ test('Phase 3a Tier-1 basics goldens capture exact sample and channel behavior',
   const allChannels = namedCase(balanceGoldens, 'right-bias-all-channels');
   const allChannelsInput = stimulusFor(allChannels.metadata);
   for (let index = 0; index < allChannels.expected.length; ++index) {
-    const expected = index < allChannels.metadata.frameCount
+    const channel = Math.floor(index / allChannels.metadata.frameCount);
+    // Even channels are the left of each stereo pair and get the 0.5 left gain.
+    const expected = (channel & 1) === 0
       ? Math.fround(allChannelsInput[index] * 0.5)
       : allChannelsInput[index];
     assert.equal(allChannels.expected[index], expected);

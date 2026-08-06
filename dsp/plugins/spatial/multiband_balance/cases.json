@@ -37,7 +37,7 @@
       ] }
     },
     {
-      "id": "all4-right-rule",
+      "id": "all4-pair-rule",
       "stimulus": "noise",
       "channels": 4,
       "channelMode": "all4",

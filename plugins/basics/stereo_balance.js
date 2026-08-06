@@ -17,18 +17,16 @@ class StereoBalancePlugin extends PluginBase {
             // Process left and right channels
             const leftGain = balance <= 0 ? 1 : 1 - balance;
             const rightGain = balance >= 0 ? 1 : 1 + balance;
-            
-            // Left channel (first block)
-            for (let i = 0; i < parameters.blockSize; i++) {
-                data[i] *= leftGain;
+
+            // Channels are stereo pairs: even index = left, odd index = right
+            for (let ch = 0; ch < channelCount; ch++) {
+                const gain = (ch & 1) === 0 ? leftGain : rightGain;
+                const offset = ch * blockSize;
+                for (let i = 0; i < blockSize; i++) {
+                    data[offset + i] *= gain;
+                }
             }
-            
-            // Right channel (next block)
-            const len = data.length;
-            for (let i = parameters.blockSize; i < len; i++) {
-                data[i] *= rightGain;
-            }
-            
+
             return data;
         `);
     }
