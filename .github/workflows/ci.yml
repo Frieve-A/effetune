@@ -278,7 +278,14 @@ jobs:
   codeql-javascript:
     name: CodeQL JavaScript
     needs: [codeql-actions, codeql-python]
-    if: needs.codeql-actions.result == 'success' && needs.codeql-python.result == 'success'
+    # The implicit success() an if without a status function carries covers the whole
+    # upstream graph, so a skipped dsp-library-preflight would skip this job even when
+    # both CodeQL preflights succeeded. The required gate demands it whenever CodeQL is
+    # in scope, so state the dependency explicitly like every other stage here does.
+    if: >-
+      always() && !cancelled() &&
+      needs.codeql-actions.result == 'success' &&
+      needs.codeql-python.result == 'success'
     uses: ./.github/workflows/codeql.yml
     with:
       language: javascript-typescript
@@ -289,7 +296,10 @@ jobs:
   codeql-cpp:
     name: CodeQL C and C++
     needs: [codeql-actions, codeql-python]
-    if: needs.codeql-actions.result == 'success' && needs.codeql-python.result == 'success'
+    if: >-
+      always() && !cancelled() &&
+      needs.codeql-actions.result == 'success' &&
+      needs.codeql-python.result == 'success'
     uses: ./.github/workflows/codeql.yml
     with:
       language: c-cpp
