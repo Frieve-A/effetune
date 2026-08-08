@@ -181,6 +181,25 @@ class ValidationAndEffectsTests(unittest.TestCase):
                 [effetune.Volume(id="same"), effetune.Compressor(id="same")]
             )
 
+    @staticmethod
+    def _parameter_index(effect_type: str, parameter: str) -> int:
+        """Locate a parameter in the packed layout by name.
+
+        The packed order follows the catalog, so a parameter added ahead of an
+        existing one shifts every index behind it. Resolving the position here
+        keeps these assertions about the encoding rather than about the layout.
+        """
+        effect = next(
+            entry
+            for entry in EFFECT_METADATA["effects"]
+            if entry["type"] == effect_type
+        )
+        return next(
+            index
+            for index, item in enumerate(effect["parameters"])
+            if item["name"] == parameter
+        )
+
     def test_string_encoded_map_values_pack_as_enum_indexes(self) -> None:
         fm_50, _, _ = pack_parameters(
             effetune.FMRadioSimulator(emphasis="50us")
@@ -195,10 +214,13 @@ class ValidationAndEffectsTests(unittest.TestCase):
                 latency=128,
             )
         )
-        self.assertEqual(float(fm_50[0]), 0.0)
-        self.assertEqual(float(fm_75[0]), 1.0)
-        self.assertEqual(float(ir[0]), 1.0)
-        self.assertEqual(float(ir[1]), 1.0)
+        emphasis = self._parameter_index("FMRadioSimulator", "emphasis")
+        channel_mode = self._parameter_index("IRReverb", "channelMode")
+        latency = self._parameter_index("IRReverb", "latency")
+        self.assertEqual(float(fm_50[emphasis]), 0.0)
+        self.assertEqual(float(fm_75[emphasis]), 1.0)
+        self.assertEqual(float(ir[channel_mode]), 1.0)
+        self.assertEqual(float(ir[latency]), 1.0)
 
     def test_matrix_routes_pack_into_the_structured_parameter_contract(self) -> None:
         packed = pack_parameter_bytes(effetune.Matrix(matrix_routes="00p1223"))
