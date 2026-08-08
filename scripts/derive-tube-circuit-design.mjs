@@ -2432,6 +2432,9 @@ function cloneReferenceValue(value) {
 // the copies off it. The reference processor reads those objects millions of times per capture and
 // a fresh object graph per restore costs far more in the inner loop than the copy itself saves.
 function restoreReferenceValue(target, key, source) {
+  if (!Object.hasOwn(target, key)) {
+    throw new Error(`reference state property ${key} changed shape after the settle snapshot`);
+  }
   const current = target[key];
   if (ArrayBuffer.isView(current) && ArrayBuffer.isView(source) &&
       current.length === source.length) {
