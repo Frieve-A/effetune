@@ -732,7 +732,7 @@ test('SW Radio Simulator integration registers tap 18 across the shipped wiring'
     /effetune_dsp_sw_radio_simulator_tests[\s\S]*sw_radio_simulator\/native_test\.cpp/);
   assert.match(rollout, /'SWRadioSimulatorPlugin'/);
   assert.match(telemetry, /TAP_SW_RADIO_SIMULATOR:\s*18/);
-  assert.match(readme, /Type 18\s*\(`TAP_SW_RADIO_SIMULATOR`\)[\s\S]*exactly 24 bytes/);
+  assert.match(readme, /Type 18[^\r\n]*`TAP_SW_RADIO_SIMULATOR`[^\r\n]*exactly 24 bytes/i);
   assert.match(executionCapabilities,
     /\['SWRadioSimulatorPlugin', STANDARD_WASM_EXECUTION_CAPABILITIES\]/);
   assert.doesNotMatch(worklet, /SWRadioSimulatorPlugin/);

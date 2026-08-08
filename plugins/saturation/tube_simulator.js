@@ -5665,31 +5665,17 @@ class TubeSimulatorPlugin extends PluginBase {
             return messages[this.executionState.reason] || 'Tube Simulator is bypassed.';
         }
         if (this.circuitFault.latched) {
-            // The app never sets the document lang attribute; its resolved UI language lives on
-            // uiManager. Hosts without the app shell (tests, node) have none and read as English.
-            const japanese = globalThis.window?.uiManager?.userLanguage === 'ja';
             if (this.circuitFault.cause === 'feedbackOscillation') {
-                return japanese
-                    ? '現在の回路設定で、真空管回路モデルにNegative Feedbackによる帰還発振が検出されました。回路出力をミュートし、エフェクトをバイパスしました。Negative Feedbackを下げるか、回路設定を初期値に戻してください。'
-                    : 'With the current circuit settings, feedback oscillation was detected in the simulated tube circuit. The circuit output was muted and the effect was bypassed. Reduce Negative Feedback or restore the default circuit settings.';
+                return 'With the current circuit settings, feedback oscillation was detected in the simulated tube circuit. The circuit output was muted and the effect was bypassed. Reduce Negative Feedback or restore the default circuit settings.';
             }
-            return japanese
-                ? '真空管回路モデルを安全に処理できなかったため、エフェクトをバイパスしました。回路設定を初期値に戻してから、エフェクトを読み込み直してください。'
-                : 'The simulated tube circuit could not be processed safely, so the effect was bypassed. Restore the default circuit settings, then reload the effect.';
+            return 'The simulated tube circuit could not be processed safely, so the effect was bypassed. Restore the default circuit settings, then reload the effect.';
         }
         // The safety reduction is applied automatically, so it is always stated - including when
-        // it is zero, so that the mechanism is visible before it has ever acted. The language
-        // follows the app's resolved UI language on uiManager; hosts without the app shell
-        // (tests, node) have none and read as English.
-        const japanese = globalThis.window?.uiManager?.userLanguage === 'ja';
+        // it is zero, so that the mechanism is visible before it has ever acted.
         const reduction = this._safetyReductionDb();
         const safety = reduction < 0
-            ? (japanese
-                ? `出力保護のため出力を ${(-reduction).toFixed(1)} dB 自動的に下げています。この低減は自動では戻りません。Output Safety Trim を操作すると解除されます。`
-                : `Output safety reduction: ${(-reduction).toFixed(1)} dB applied automatically. It is never restored on its own; move Output Safety Trim to clear it.`)
-            : (japanese
-                ? '出力保護による自動低減: 0.0 dB。'
-                : 'Output safety reduction: 0.0 dB.');
+            ? `Output safety reduction: ${(-reduction).toFixed(1)} dB applied automatically. It is never restored on its own; move Output Safety Trim to clear it.`
+            : 'Output safety reduction: 0.0 dB.';
         return this.latestTelemetry
             ? `Tube Simulator is active. ${safety}`
             : `Tube Simulator is active. Waiting for measurements… ${safety}`;

@@ -489,7 +489,7 @@ test('AM Radio Simulator integration keeps fixed anti-alias stages and accessibl
   assert.match(cmake, /effetune_dsp_am_radio_simulator_tests[\s\S]*am_radio_simulator\/native_test\.cpp/);
   assert.match(rollout, /'AMRadioSimulatorPlugin'/);
   assert.match(telemetry, /TAP_AM_RADIO_SIMULATOR:\s*17/);
-  assert.match(readme, /Type 17\s*\(`TAP_AM_RADIO_SIMULATOR`\)/);
+  assert.match(readme, /Type 17[^\r\n]*`TAP_AM_RADIO_SIMULATOR`/);
   assert.match(executionCapabilities,
     /\['AMRadioSimulatorPlugin', UNBOUNDED_WASM_EXECUTION_CAPABILITIES\]/);
   assert.doesNotMatch(worklet, /AMRadioSimulatorPlugin/);

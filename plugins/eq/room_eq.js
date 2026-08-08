@@ -848,9 +848,7 @@ class RoomEqPlugin extends PluginBase {
         this.registerProcessor('return data;');
     }
 
-    _t(key, fallback, params = {}) {
-        const translated = globalThis.window?.uiManager?.t?.(key, params);
-        if (translated && translated !== key) return translated;
+    _t(_key, fallback, params = {}) {
         return Object.entries(params).reduce(
             (text, [name, value]) => text.replaceAll(`{${name}}`, String(value)),
             fallback

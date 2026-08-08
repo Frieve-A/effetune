@@ -221,8 +221,8 @@ test('Pitch Shifter kernel preallocates the full documented capacity', async () 
   assert.match(registry, /EFFETUNE_PLUGIN\(PitchShifterPlugin, modulation\/pitch_shifter\)/);
 
   const decision = await fs.readFile(path.join(repoRoot, 'dsp', 'README.md'), 'utf8');
-  assert.match(decision, /Pitch Shifter Capacity Decision/);
+  assert.match(decision, /^#### Pitch Shifter$/m);
   assert.match(decision, /15,360,000 bytes/);
-  assert.match(decision, /256 MiB maximum memory/);
-  assert.match(decision, /capacity is intentionally not reduced/);
+  assert.match(decision, /256 MiB limit/);
+  assert.match(decision, /Why this capacity is retained/);
 });

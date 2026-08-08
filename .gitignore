@@ -37,6 +37,7 @@ _site/
 !/tests/esm/dsp-tube-simulator-wasm-telemetry-v1.test.mjs
 !/tests/esm/media-session-anchor.test.mjs
 !/tests/esm/plugin-execution-capabilities.test.mjs
+!/tests/esm/plugin-ui-language.test.mjs
 !/tests/esm/tape-artifacts.test.mjs
 !/tests/esm/tracked-sources-are-self-contained.test.mjs
 !/tests/browser/

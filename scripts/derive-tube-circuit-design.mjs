@@ -25,9 +25,11 @@
 //      expanded into the 61-knot runtime feedback ladder.
 //
 // Stages 1, 2 and 4's ladder expansion run on every invocation from the primary data in this
-// file; they are cheap and deterministic. Stage 3 and the anchor search consume about a day of
-// compute across the 432 keys, so their result - the measured break-loop table below - is carried
-// as primary data and re-derived only when the amplifier model changes:
+// file; they are cheap and deterministic. Stage 3 and the anchor search cost about eight and a
+// half seconds per key, so a full unsharded re-derivation of the 432 keys is roughly an hour and
+// the sharded form divides that by the number of processes. Their result - the measured
+// break-loop table below - is therefore carried as primary data and re-derived only when the
+// amplifier model changes:
 //
 //   node scripts/derive-tube-circuit-design.mjs                   derive + verify invariants
 //   node scripts/derive-tube-circuit-design.mjs --sweep           re-measure + re-fit all keys
@@ -1170,9 +1172,11 @@ export const LTP_STANDING_CURRENT_A = Object.freeze({
 //
 // This table is the calibration of record: the shipped C++ tables, the injected JavaScript
 // reference tables and the DSP parity goldens were all generated from exactly these rows. The
-// reference model has moved slightly since they were measured (the post-calibration break-loop
-// detector fixes shift gdet0 by under one per cent, orders below anything audible in a feedback
-// calibration), so a --sweep against the current reference reports that drift; that is the sweep
+// reference model has moved slightly since they were measured: over a 48-key sample spanning both
+// output tubes, all three driver tubes and both internal-rate families, the post-calibration
+// break-loop detector fixes shift gdet0 by 1.03e-2 at the least, 1.36e-2 at the median and 2.40e-2
+// at the most - a fifth of a decibel at the worst key, far below anything audible in a feedback
+// calibration. So a --sweep against the current reference reports that drift; that is the sweep
 // describing the model change, not a defect in either. Rewriting the rows is therefore never done
 // in isolation: a re-sweep, the table regeneration and the golden re-promotion land together.
 // ================================================================================================

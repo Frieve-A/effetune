@@ -143,7 +143,7 @@ test('Vinyl Simulator integration registers WASM-only rollout and telemetry v1',
   assert.match(registry, /EFFETUNE_PLUGIN\(VinylSimulatorPlugin, lofi\/vinyl_simulator\)/);
   assert.match(cmake, /effetune_dsp_vinyl_simulator_tests[\s\S]*vinyl_simulator\/native_test\.cpp/);
   assert.match(rollout, /'VinylArtifactsPlugin',\s*'VinylSimulatorPlugin'/);
-  assert.match(readme, /Type 15\s*\(`TAP_VINYL_SIMULATOR`\)[\s\S]*exactly 48 bytes/);
+  assert.match(readme, /Type 15[^\r\n]*`TAP_VINYL_SIMULATOR`[^\r\n]*exactly 48 bytes/i);
   assert.match(telemetry, /TAP_VINYL_SIMULATOR:\s*15/);
 
   assert.match(plugin, /if \(!parameters\.fr \|\| typeof context\.__seededRandom !== 'function'\) \{[\s\S]*measurements = \{ bypass: true \}/);

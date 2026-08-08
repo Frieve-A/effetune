@@ -170,6 +170,6 @@ test('ModalResonatorPlugin kernel preserves JS state and numeric storage boundar
     assert.match(source, /context\.delayBuffers\[ch\]\[r\] = new Float32Array/);
     assert.match(source, /context\.accum = new Float32Array/);
     assert.match(source, /if \(!cfg\.enabled\) continue/);
-    assert.match(readme, /### Modal Resonator Capacity Decision/);
-    assert.match(readme, /1,529,600 delay bytes/);
+    assert.match(readme, /^#### Modal Resonator$/m);
+    assert.match(readme, /Five-resonator storage: 1,529,600 bytes/);
   });

@@ -549,5 +549,5 @@ test('FM Radio Simulator telemetry integration wiring is registered end to end',
     assert.match(cmake, /effetune_dsp_fm_radio_simulator_tests/);
     assert.match(rollout, /'FMRadioSimulatorPlugin'/);
     assert.match(telemetry, /TAP_FM_RADIO_SIMULATOR:\s*16/);
-    assert.match(readme, /Type 16\s*\(`TAP_FM_RADIO_SIMULATOR`\)/);
+    assert.match(readme, /Type 16[^\r\n]*`TAP_FM_RADIO_SIMULATOR`/);
 });

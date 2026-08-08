@@ -994,16 +994,19 @@ test('Room EQ power bound is runtime gain when dry and runtime gain plus residen
     plugin.cleanup();
 });
 
-test('Room EQ translates channel-independent quality warning codes', () => {
+test('Room EQ keeps channel-independent quality warnings in English', () => {
     const { Plugin, context } = loadPlugin();
+    let translationCalls = 0;
     context.window.uiManager = {
-        t: key => key === 'roomEq.warning.filterAccuracy'
-            ? 'Translated filter accuracy warning.'
-            : key
+        t() {
+            translationCalls += 1;
+            return 'Translated filter accuracy warning.';
+        }
     };
     const plugin = new Plugin();
     const warning = plugin._qualityWarningMessage('filterAccuracy');
-    assert.equal(warning, 'Translated filter accuracy warning.');
+    assert.equal(warning, 'The Room EQ filter may be inaccurate. Increase Taps or Smoothing.');
+    assert.equal(translationCalls, 0);
     assert.doesNotMatch(warning, /Channel \d+/);
     plugin.cleanup();
 });
@@ -1370,12 +1373,10 @@ test('cleanup invalidates a deferred design before it can stage or render', asyn
     assert.equal(rendered, 0);
 });
 
-test('restored full phase without IR reports the Correction requirement before design', async () => {
+test('restored full phase without IR reports the English Correction requirement before design', async () => {
     const { Plugin, context } = loadPlugin();
     context.window.uiManager = {
-        t: key => key === 'roomEq.error.directPhaseRequiresIr'
-            ? 'Correction requires IR data.'
-            : 'The Room EQ filters could not be designed.'
+        t: () => 'Translated requirement.'
     };
     const plugin = new Plugin();
     plugin.setSerializedParameters({ pm: 'full', ms: 'legacy' });
@@ -1401,7 +1402,8 @@ test('restored full phase without IR reports the Correction requirement before d
     assert.equal(plugin._designStaged, false);
     assert.equal(plugin._lastDesign, null);
     assert.equal(plugin.asset, null);
-    assert.equal(plugin._statusMessage, 'Correction requires IR data.');
+    assert.equal(plugin._statusMessage,
+        'Correction needs impulse-response data for the selected measurement. Choose Minimum or Linear, or select a measurement with IR data.');
     plugin.cleanup();
 });
 

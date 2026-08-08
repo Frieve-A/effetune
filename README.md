@@ -7,6 +7,7 @@
   <install class="button button-secondary"><a href="https://effetune.frieve.com/effetune.html">Install PWA version</a></install>
   <a class="button button-secondary" href="https://github.com/Frieve-A/effetune/releases/">Download Desktop App</a>
   <a class="button button-secondary" href="https://github.com/Frieve-A/effetune-mixwright/releases">Download VST Version</a>
+  <a class="button button-secondary" href="dsp/">DSP Library</a>
 </div>
 
 A real-time audio effect processor designed for audio enthusiasts to enhance their music listening experience. EffeTune allows you to process any audio source through various high-quality effects, enabling you to customize and perfect your listening experience in real-time.
