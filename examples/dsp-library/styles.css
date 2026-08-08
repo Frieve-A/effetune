@@ -1,5 +1,7 @@
 :root {
-  color-scheme: light dark;
+  /* The page paints a fixed dark palette, so the browser-drawn UI (dropdown
+     lists, scrollbars) has to be told to match instead of following the OS. */
+  color-scheme: dark;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   background: #10151c;
   color: #edf3fa;
@@ -81,6 +83,16 @@ select {
   background: #19232e;
   color: inherit;
   font: inherit;
+}
+
+select option {
+  background-color: #19232e;
+  color: #edf3fa;
+}
+
+select option:checked {
+  background-color: #1c4b62;
+  color: #ffffff;
 }
 
 .actions {

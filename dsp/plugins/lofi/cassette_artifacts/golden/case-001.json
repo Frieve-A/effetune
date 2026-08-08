@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "type": "CassetteArtifactsPlugin",
+  "id": "default-seeded-noise",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 12000,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "dg": "Consumer",
+    "tp": "Type I",
+    "nr": "Dolby B",
+    "bs": 0,
+    "rl": 9,
+    "wf": 0.25,
+    "hs": -60.5,
+    "dp": 2,
+    "az": 2,
+    "dl": 0,
+    "og": 0,
+    "mx": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "7af31fcea840cbc340745edcb3a748900b2fbeab0a15363543fb43d2b05820ee",
+  "outputFloats": 24000,
+  "byteLength": 96000,
+  "binary": "case-001.f32"
+}

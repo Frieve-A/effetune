@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "type": "TapeArtifactsPlugin",
+  "id": "default-seeded-noise",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 12000,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "sp": "15",
+    "tp": "Standard",
+    "bs": 0,
+    "rl": 6,
+    "wf": 0.15625,
+    "hs": -62.5,
+    "og": 0,
+    "mx": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "900afefbd95b02b5d8505cd3731798e4e61c11c3e7341f09bea9cc411c1721de",
+  "outputFloats": 24000,
+  "byteLength": 96000,
+  "binary": "case-001.f32"
+}

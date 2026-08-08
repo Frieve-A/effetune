@@ -1,25 +1,16 @@
 ---
 layout: dsp
 title: "EffeTune DSP ライブラリ"
-description: "このページは短い案内です。v0.1.0 の完全な文書は英語版を正として保守しています。"
+description: "このページは短い案内です。v0.4.0 の完全な文書は英語版を正として保守しています。"
 lang: ja
 permalink: /dsp/ja/
 ---
 
 # EffeTune DSP ライブラリ
 
-このページは短い案内です。v0.1.0 の完全な文書は英語版を正として保守しています。
+このページは短い案内です。v0.4.0 の完全な文書は英語版を正として保守しています。
 
-Documentation version: **0.1.0**
-Release cohort: **published**
-
-<!-- DSP-RELEASE-NOTICE -->
-
-## 公開状況
-
-- python: **公開・検証済み** (0.1.0)
-- npm: **公開・検証済み** (0.1.0)
-- githubRelease: **公開・検証済み** (0.1.0)
+Documentation version: **0.4.0**
 
 - [完全な英語ドキュメント](/dsp/)
 - [ライブデモ](/dsp/demo/)

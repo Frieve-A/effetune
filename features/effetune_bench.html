@@ -128,6 +128,23 @@
             background: linear-gradient(180deg, #404040, #373737) !important;
             border-color: #565656 !important;
             box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.035);
+            color-scheme: dark;
+        }
+        /* The dropdown list is painted by the browser, so the select's gradient
+           never reaches it: without these rules the options fall back to a light
+           popup while inheriting the white select text. */
+        .benchmark-select option {
+            background-color: #373737 !important;
+            color: #f6f8fb !important;
+            color-scheme: dark;
+        }
+        .benchmark-select option:hover {
+            background-color: #454545 !important;
+            color: #ffffff !important;
+        }
+        .benchmark-select option:checked {
+            background-color: #8f269f !important;
+            color: #ffffff !important;
         }
         .benchmark-select:focus {
             outline: none;

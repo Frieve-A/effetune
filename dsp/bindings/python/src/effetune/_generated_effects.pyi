@@ -620,6 +620,7 @@ class AMRadioSimulator(Effect):
     def __init__(
         self,
         *,
+        radio: bool = ...,
         tx_bandwidth: float = ...,
         pre_emphasis: float = ...,
         mod_depth: float = ...,
@@ -655,6 +656,44 @@ class BitCrusher(Effect):
         zoh_frequency: float = ...,
         bit_error: float = ...,
         seed: int = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
+class BluetoothSBCSimulator(Effect):
+    effect_type: Literal["BluetoothSBCSimulator"]
+    def __init__(
+        self,
+        *,
+        bitpool: int = ...,
+        channel_mode: Literal["Joint Stereo", "Stereo", "Dual Channel"] = ...,
+        blocks: Literal["4", "8", "12", "16"] = ...,
+        output_gain: float = ...,
+        mix: float = ...,
+        packet_loss: float = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
+class CassetteArtifacts(Effect):
+    effect_type: Literal["CassetteArtifacts"]
+    def __init__(
+        self,
+        *,
+        deck_grade: Literal["Reference", "Hi-Fi", "Consumer", "Portable"] = ...,
+        tape_type: Literal["Type I", "Type II", "Type IV"] = ...,
+        noise_reduction: Literal["Off", "Dolby B", "Dolby C"] = ...,
+        bias: float = ...,
+        record_level: float = ...,
+        wow_flutter: float = ...,
+        hiss: float = ...,
+        dropouts: float = ...,
+        azimuth: float = ...,
+        dolby_level_error: float = ...,
+        output: float = ...,
+        mix: float = ...,
         id: str | None = ...,
         enabled: bool = ...,
         channel: EffectChannel = ...,
@@ -701,6 +740,7 @@ class FMRadioSimulator(Effect):
     def __init__(
         self,
         *,
+        radio: bool = ...,
         emphasis: Literal["50us", "75us"] = ...,
         processing: float = ...,
         signal: float = ...,
@@ -717,6 +757,34 @@ class FMRadioSimulator(Effect):
         channel: EffectChannel = ...,
     ) -> None: ...
 
+class G726ADPCMSimulator(Effect):
+    effect_type: Literal["G726ADPCMSimulator"]
+    def __init__(
+        self,
+        *,
+        bitrate: Literal["16", "24", "32", "40"] = ...,
+        output_gain: float = ...,
+        mix: int = ...,
+        radio_bit_error_rate: float = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
+class GSMFullRateSimulator(Effect):
+    effect_type: Literal["GSMFullRateSimulator"]
+    def __init__(
+        self,
+        *,
+        transcodes: int = ...,
+        output_gain: float = ...,
+        mix: int = ...,
+        carrier_to_interference: float = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
 class HumGenerator(Effect):
     effect_type: Literal["HumGenerator"]
     def __init__(
@@ -728,6 +796,22 @@ class HumGenerator(Effect):
         tone: float = ...,
         instability: float = ...,
         level: float = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
+class MP3CodecSimulator(Effect):
+    effect_type: Literal["MP3CodecSimulator"]
+    def __init__(
+        self,
+        *,
+        codec_rate: Literal["22.05 kHz (MPEG-2)", "44.1 kHz (MPEG-1)"] = ...,
+        bitrate: Literal["32", "48", "64", "80", "96", "112", "128", "160", "192", "224", "256", "320"] = ...,
+        stereo_mode: Literal["Joint Stereo", "Stereo"] = ...,
+        bit_reservoir: bool = ...,
+        output_gain: float = ...,
+        mix: float = ...,
         id: str | None = ...,
         enabled: bool = ...,
         channel: EffectChannel = ...,
@@ -762,6 +846,7 @@ class SWRadioSimulator(Effect):
     def __init__(
         self,
         *,
+        radio: bool = ...,
         tx_bandwidth: float = ...,
         pre_emphasis: float = ...,
         mod_depth: float = ...,
@@ -782,6 +867,26 @@ class SWRadioSimulator(Effect):
         hum_frequency: Literal["50", "60"] = ...,
         speaker: Literal["Off", "Small", "Table"] = ...,
         output_gain: float = ...,
+        mix: float = ...,
+        mode: Literal["AM", "USB", "LSB"] = ...,
+        bfo_offset: float = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
+class TapeArtifacts(Effect):
+    effect_type: Literal["TapeArtifacts"]
+    def __init__(
+        self,
+        *,
+        speed: Literal["7.5", "15", "30"] = ...,
+        tape: Literal["Standard", "Master"] = ...,
+        bias: float = ...,
+        record_level: float = ...,
+        wow_flutter: float = ...,
+        hiss: float = ...,
+        output: float = ...,
         mix: float = ...,
         id: str | None = ...,
         enabled: bool = ...,
@@ -1156,6 +1261,36 @@ class SubSynth(Effect):
         sub_high_pass_slope: int = ...,
         dry_high_pass_frequency: float = ...,
         dry_high_pass_slope: int = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
+class TubeSimulator(Effect):
+    effect_type: Literal["TubeSimulator"]
+    def __init__(
+        self,
+        *,
+        input_volume: float = ...,
+        tube: Literal["12AX7", "12AT7", "12AU7"] = ...,
+        bias: float = ...,
+        plate_voltage: float = ...,
+        source_impedance: float = ...,
+        supply_impedance: float = ...,
+        output_trim: float = ...,
+        mix: float = ...,
+        input_reference: float = ...,
+        negative_feedback: float = ...,
+        output_stage: Literal["Line", "Power"] = ...,
+        power_tube: Literal["EL84", "EL34"] = ...,
+        power_bplus: float = ...,
+        cathode_resistor: float = ...,
+        screen_tap: Literal["0", "20", "43"] = ...,
+        primary_impedance: Literal["6.0", "6.6", "8.0"] = ...,
+        speaker_load: Literal["4", "8", "15", "16"] = ...,
+        actual_speaker_load: float = ...,
+        safety_trim: float = ...,
+        auto_gain_reduction: bool = ...,
         id: str | None = ...,
         enabled: bool = ...,
         channel: EffectChannel = ...,

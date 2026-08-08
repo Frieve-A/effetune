@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "en": {
+    "title": "EffeTune DSP Library",
+    "coverage": "This localized page is a short entry point. The complete v{version} documentation is maintained in English.",
+    "fullDocs": "Complete English documentation",
+    "demo": "Live demo",
+    "chainSchema": "Chain v1 schema",
+    "bundleSchema": "Bundle v1 schema"
+  },
+  "ja": {
+    "title": "EffeTune DSP ライブラリ",
+    "coverage": "このページは短い案内です。v{version} の完全な文書は英語版を正として保守しています。",
+    "fullDocs": "完全な英語ドキュメント",
+    "demo": "ライブデモ",
+    "chainSchema": "Chain v1 スキーマ",
+    "bundleSchema": "Bundle v1 スキーマ"
+  },
+  "ar": {
+    "title": "مكتبة EffeTune DSP",
+    "coverage": "هذه صفحة دخول مختصرة. الوثائق الكاملة للإصدار v{version} متاحة باللغة الإنجليزية.",
+    "fullDocs": "الوثائق الإنجليزية الكاملة",
+    "demo": "العرض المباشر",
+    "chainSchema": "مخطط Chain v1",
+    "bundleSchema": "مخطط Bundle v1"
+  },
+  "es": {
+    "title": "Biblioteca DSP de EffeTune",
+    "coverage": "Esta es una página de entrada breve. La documentación completa de v{version} se mantiene en inglés.",
+    "fullDocs": "Documentación completa en inglés",
+    "demo": "Demo en vivo",
+    "chainSchema": "Esquema Chain v1",
+    "bundleSchema": "Esquema Bundle v1"
+  },
+  "fr": {
+    "title": "Bibliothèque DSP EffeTune",
+    "coverage": "Cette page est un point d’entrée concis. La documentation complète de v{version} est tenue à jour en anglais.",
+    "fullDocs": "Documentation anglaise complète",
+    "demo": "Démo en direct",
+    "chainSchema": "Schéma Chain v1",
+    "bundleSchema": "Schéma Bundle v1"
+  },
+  "hi": {
+    "title": "EffeTune DSP लाइब्रेरी",
+    "coverage": "यह एक संक्षिप्त प्रवेश पृष्ठ है। v{version} का पूरा दस्तावेज़ अंग्रेज़ी में रखा जाता है।",
+    "fullDocs": "पूरा अंग्रेज़ी दस्तावेज़",
+    "demo": "लाइव डेमो",
+    "chainSchema": "Chain v1 स्कीमा",
+    "bundleSchema": "Bundle v1 स्कीमा"
+  },
+  "ko": {
+    "title": "EffeTune DSP 라이브러리",
+    "coverage": "이 페이지는 간단한 진입점입니다. v{version} 전체 문서는 영어로 관리됩니다.",
+    "fullDocs": "전체 영어 문서",
+    "demo": "라이브 데모",
+    "chainSchema": "Chain v1 스키마",
+    "bundleSchema": "Bundle v1 스키마"
+  },
+  "pt": {
+    "title": "Biblioteca DSP EffeTune",
+    "coverage": "Esta é uma página de entrada breve. A documentação completa da v{version} é mantida em inglês.",
+    "fullDocs": "Documentação completa em inglês",
+    "demo": "Demo ao vivo",
+    "chainSchema": "Esquema Chain v1",
+    "bundleSchema": "Esquema Bundle v1"
+  },
+  "ru": {
+    "title": "Библиотека EffeTune DSP",
+    "coverage": "Это краткая стартовая страница. Полная документация v{version} поддерживается на английском языке.",
+    "fullDocs": "Полная документация на английском",
+    "demo": "Демонстрация",
+    "chainSchema": "Схема Chain v1",
+    "bundleSchema": "Схема Bundle v1"
+  },
+  "zh": {
+    "title": "EffeTune DSP 库",
+    "coverage": "这是简短的入口页面。v{version} 的完整文档以英文维护。",
+    "fullDocs": "完整英文文档",
+    "demo": "在线演示",
+    "chainSchema": "Chain v1 架构",
+    "bundleSchema": "Bundle v1 架构"
+  }
+}

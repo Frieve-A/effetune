@@ -108,15 +108,18 @@ test('Room EQ keeps its inset plot size over the generic mobile SVG rule', () =>
   );
   assert.match(
     roomEqCss,
-    /body\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-additional-eq-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-additional-eq-response,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-phase-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-phase-response,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-impulse-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-impulse-response \{/
+    /body\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-additional-eq-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-additional-eq-response,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-phase-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-phase-response,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-group-delay-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-group-delay-response,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-impulse-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-impulse-response,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-hover-overlay \{/
   );
   for (const selector of [
     '.room-eq-additional-eq-grid',
     '.room-eq-additional-eq-response',
     '.room-eq-phase-grid',
     '.room-eq-phase-response',
+    '.room-eq-group-delay-grid',
+    '.room-eq-group-delay-response',
     '.room-eq-impulse-grid',
-    '.room-eq-impulse-response'
+    '.room-eq-impulse-response',
+    '.room-eq-hover-overlay'
   ]) {
     assert.match(
       getRule(

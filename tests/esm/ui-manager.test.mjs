@@ -1346,6 +1346,53 @@ test('keeps a custom plugin parameter slider fill synced from number input', asy
   });
 });
 
+test('keeps a vertical slider fill synced when a double-click resets the band', async () => {
+  await withUIHarness({}, async ({ document, manager }) => {
+    const pluginUi = appendElement(document, document.body, 'div', '', 'plugin-parameter-ui');
+    const sliderContainer = appendElement(document, pluginUi, 'div', '', 'slider-container');
+    const slider = appendElement(document, sliderContainer, 'input', 'band-slider', 'vertical-slider');
+    slider.type = 'range';
+    slider.min = '-12';
+    slider.max = '12';
+    slider.value = '6';
+    slider.addEventListener('dblclick', () => {
+      slider.value = '0';
+    });
+
+    manager.initRangeFillStyling();
+    assert.equal(slider.style['--et-range-fill'], '75%');
+
+    await slider.dispatch('dblclick');
+    document.dispatch('dblclick', { target: slider });
+
+    assert.equal(slider.style['--et-range-fill'], '50%');
+  });
+});
+
+test('keeps sliders synced when a reset button rewrites values', async () => {
+  await withUIHarness({}, async ({ document, manager }) => {
+    const pluginUi = appendElement(document, document.body, 'div', '', 'plugin-parameter-ui');
+    const sliderContainer = appendElement(document, pluginUi, 'div', '', 'slider-container');
+    const slider = appendElement(document, sliderContainer, 'input', 'geq-slider', 'vertical-slider');
+    slider.type = 'range';
+    slider.min = '-12';
+    slider.max = '12';
+    slider.value = '12';
+    const resetButton = appendElement(document, pluginUi, 'button', 'geq-reset', 'eq-reset-button');
+    resetButton.addEventListener('click', () => {
+      slider.value = '0';
+    });
+
+    manager.initRangeFillStyling();
+    assert.equal(slider.style['--et-range-fill'], '100%');
+
+    await resetButton.dispatch('click');
+    document.dispatch('click', { target: resetButton });
+
+    assert.equal(slider.style['--et-range-fill'], '50%');
+  });
+});
+
 test('handles constructor localization rejection, menu refresh, and share failure', async () => {
   const originalInitLocalization = UIManager.prototype.initLocalization;
   UIManager.prototype.initLocalization = async () => { throw new Error('init failed'); };

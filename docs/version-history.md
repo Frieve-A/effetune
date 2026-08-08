@@ -6,10 +6,13 @@ lang: en
 
 # Version History
 
-### Version 2.4.0 (TBD, 2026)
-- Added Tube Simulator and Tape Artifacts effects
+### Version 2.4.0 (Aug 8, 2026)
+- Added Tube Simulator, Cassette Artifacts and Tape Artifacts effects
 - Added SBC Codec Simulator, G.726 Simulator, GSM-FR Simulator and MP3 Codec Simulator effects
 - Recalibrated FM Radio Simulator multipath depth so reflections up to the direct-wave level produce clearly audible distortion
+- Added SSB reception to the SW Radio Simulator effect
+- Added a Radio switch to the AM, FM and SW Radio Simulator effects that simulates a station starting and stopping transmission
+- Added a group delay view and a pointer readout to the Room EQ response graph
 - Various minor improvements
 
 ### Version 2.3.0 (Aug 2, 2026)

@@ -162,6 +162,22 @@
       "blockSize": 96,
       "frames": 2049,
       "params": { "fr": true, "pr": 18, "st": 40 }
+    },
+    {
+      "id": "radio-off-noise",
+      "stimulus": "noise",
+      "frames": 4097,
+      "params": { "fr": true, "rd": false }
+    },
+    {
+      "id": "radio-shutdown-events",
+      "stimulus": "noise",
+      "frames": 4097,
+      "params": { "fr": true },
+      "events": [
+        { "frame": 1201, "params": { "rd": false } },
+        { "frame": 2801, "params": { "rd": true } }
+      ]
     }
   ]
 }

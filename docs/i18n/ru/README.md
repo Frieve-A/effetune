@@ -337,6 +337,7 @@ EffeTune создан для аудиоэнтузиастов, которые х
 | EQ        | Tone Control | Трехполосное управление тоном | [Подробнее](plugins/eq.md#tone-control) |
 | Lo-Fi     | AM Radio Simulator | Проводит музыку через модель тракта AM-передачи и приёма | [Подробнее](plugins/lofi.md#am-radio-simulator) |
 | Lo-Fi     | Bit Crusher | Снижение битовой глубины и эффект zero-order hold | [Подробнее](plugins/lofi.md#bit-crusher) |
+| Lo-Fi     | Cassette Artifacts | Записывает музыку на моделируемую компакт-кассету и воспроизводит её на деке Type I/II/IV с Dolby B/C | [Подробнее](plugins/lofi.md#cassette-artifacts) |
 | Lo-Fi     | Digital Error Emulator | Имитирует разные ошибки передачи цифрового аудио и характер винтажной цифровой аппаратуры | [Подробнее](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi     | DSD64 IMD Simulator | Имитирует слышимые интермодуляционные искажения от ультразвукового шума DSD64 | [Подробнее](plugins/lofi.md#dsd64-imd-simulator) |
 | Lo-Fi     | FM Radio Simulator | Пропускает музыку через физически смоделированный тракт FM-вещания и приёма | [Подробнее](plugins/lofi.md#fm-radio-simulator) |

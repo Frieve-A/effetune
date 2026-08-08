@@ -1054,6 +1054,38 @@ baseline WASM are within measurement noise of each other because the kernel is a
 chain, so no SIMD specialisation was added. As with AM, the benchmark tool's JavaScript mode
 measures the transparent fallback rather than the deterministic JavaScript reference DSP.
 
+#### SSB reception (USB / LSB), 2.4.0
+
+Measured on 2026-08-06 with Node v24.13.0 on the same 13th Gen Intel Core i9-13900KF,
+Windows NT 10.0.26200.0, after adding the USB / LSB reception modes. The methodology matches
+the 2.3.0 table (96 kHz, two channels, 128-frame blocks, 10 seconds of audio, five warmups,
+20 repetitions, one invocation per backend pinned to logical processor 2 at Windows High
+priority), with two differences: the AM rows were re-measured in the same session so all four
+receiver modes share one run environment, and every command adds `--quantum-stats` because
+the current bench tool crashes without it in external modes (its per-quantum timing callback
+makes these figures slightly conservative).
+
+Bench arguments (each command was launched with the affinity and priority above):
+
+```text
+node tools/dsp-parity/bench.mjs --type SWRadioSimulatorPlugin --modes <wasm|simd> --sample-rates 96000 --channels 2 --block-size 128 --duration 10 --warmup 5 --repetitions 20 --quantum-stats --params '<mode>'
+  with <mode> one of {"de":"Envelope"}, {"de":"Synchronous"}, {"mo":"USB"}, {"mo":"LSB"}
+```
+
+| Receiver mode | WASM | WASM SIMD | WASM CPU | SIMD CPU |
+| --- | ---: | ---: | ---: | ---: |
+| AM Envelope | 47.92x | 47.24x | 2.09% | 2.12% |
+| AM Synchronous | 41.32x | 41.79x | 2.42% | 2.39% |
+| USB | 62.67x | 64.01x | 1.60% | 1.56% |
+| LSB | 62.44x | 64.51x | 1.60% | 1.55% |
+
+Every mode stays far below the fixed 5% one-core budget, and the worst case remains AM
+Synchronous at 2.42%. USB and LSB measure about 25% lighter than AM Envelope: the allpass
+Hilbert pair, quadrature delay ring, and BFO product detector cost less than the 5x
+oversampled envelope detector they replace, exactly as the Phase 0 calibration predicted
+(~1.7%). SIMD and baseline WASM remain within measurement noise of each other, so no SIMD
+specialisation was added for SSB either.
+
 ### Room EQ Maximum-Asset Admission Gate
 
 Measured on 2026-07-21 with Node v24.13.0 on a 13th Gen Intel Core i9-13900KF,

@@ -463,6 +463,32 @@
       "seeded": true
     },
     {
+      "type": "BluetoothSBCSimulator",
+      "internalType": "BluetoothSBCSimulatorPlugin",
+      "sampleRates": [
+        44100,
+        48000,
+        88200,
+        96000,
+        176400,
+        192000,
+        352800,
+        384000
+      ],
+      "seeded": true,
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      }
+    },
+    {
+      "type": "CassetteArtifacts",
+      "internalType": "CassetteArtifactsPlugin",
+      "seeded": true
+    },
+    {
       "type": "DigitalErrorEmulator",
       "internalType": "DigitalErrorEmulatorPlugin",
       "parameters": {
@@ -527,8 +553,78 @@
       }
     },
     {
+      "type": "G726ADPCMSimulator",
+      "internalType": "G726ADPCMSimulatorPlugin",
+      "parameters": {
+        "radioBitErrorExponent": {
+          "name": "radioBitErrorRate",
+          "transform": {
+            "kind": "log10"
+          }
+        }
+      },
+      "sampleRates": [
+        44100,
+        48000,
+        88200,
+        96000,
+        176400,
+        192000,
+        352800,
+        384000
+      ],
+      "seeded": true,
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      }
+    },
+    {
+      "type": "GSMFullRateSimulator",
+      "internalType": "GSMFullRateSimulatorPlugin",
+      "sampleRates": [
+        44100,
+        48000,
+        88200,
+        96000,
+        176400,
+        192000,
+        352800,
+        384000
+      ],
+      "seeded": true,
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      }
+    },
+    {
       "type": "HumGenerator",
       "internalType": "HumGeneratorPlugin"
+    },
+    {
+      "type": "MP3CodecSimulator",
+      "internalType": "MP3CodecSimulatorPlugin",
+      "sampleRates": [
+        44100,
+        48000,
+        88200,
+        96000,
+        176400,
+        192000,
+        352800,
+        384000
+      ],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      }
     },
     {
       "type": "NoiseBlender",
@@ -557,6 +653,11 @@
       "telemetry": [
         "swRadioStatus"
       ]
+    },
+    {
+      "type": "TapeArtifacts",
+      "internalType": "TapeArtifactsPlugin",
+      "seeded": true
     },
     {
       "type": "VinylArtifacts",
@@ -753,6 +854,30 @@
       "internalType": "SubSynthPlugin"
     },
     {
+      "type": "TubeSimulator",
+      "internalType": "TubeSimulatorPlugin",
+      "parameters": {
+        "plate": {
+          "name": "plateVoltage"
+        },
+        "sourceZ": {
+          "name": "sourceImpedance"
+        },
+        "supply": {
+          "name": "supplyImpedance"
+        }
+      },
+      "sampleRates": [
+        44100,
+        48000,
+        88200,
+        96000,
+        176400,
+        192000
+      ],
+      "effectiveDelaySamples": 64
+    },
+    {
       "type": "CrossfeedFilter",
       "internalType": "CrossfeedFilterPlugin"
     },
@@ -770,7 +895,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "cbc1e92be9587b6fa2ac2717093aa623dd1094735fd01d45c740150b13e375e8",
-    "privateLayoutSha256": "23f4859aa8ec49bcbb2814a9b1fb7f5f3d318b95e39e0706a1a546babe2ba309"
+    "publicCatalogSha256": "827d402d2571e31e79f94b91a5618c183aaa8ac6f39d8570e84751b08ac0c3d8",
+    "privateLayoutSha256": "2cc628230da003412da1fa01648a056d60d69de773bf7c016d9fdd1ac7618707"
   }
 }

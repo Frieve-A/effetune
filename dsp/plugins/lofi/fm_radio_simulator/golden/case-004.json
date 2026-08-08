@@ -12,6 +12,7 @@
   "caseIndex": 3,
   "seed": "0xeffe7a5d",
   "params": {
+    "rd": true,
     "em": "75",
     "pr": 18,
     "st": 35,
@@ -30,7 +31,7 @@
     "abs": 0.0001,
     "policy": "per-sample"
   },
-  "jsEngineHash": "80dd6792448643e443b5c59515b45f7481253bc1d39a9f5a6a0d8dde34dffb7a",
+  "jsEngineHash": "abfadad6abba7f3933595e28dbf372dece480ceb2bcbe1a473eff223bc88044c",
   "outputFloats": 6002,
   "byteLength": 24008,
   "binary": "case-004.f32"

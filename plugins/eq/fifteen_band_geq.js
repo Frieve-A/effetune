@@ -284,6 +284,12 @@ return data; // Return the modified buffer
                 valueDisplay.textContent = this['b' + index].toFixed(1) + ' dB';
                 this.drawGraph(canvas);
             });
+            slider.addEventListener('dblclick', () => {
+                this.setBand(index, 0);
+                slider.value = this['b' + index];
+                valueDisplay.textContent = this['b' + index].toFixed(1) + ' dB';
+                this.drawGraph(canvas);
+            });
 
             sliderContainer.appendChild(freqLabel);
             sliderContainer.appendChild(slider);

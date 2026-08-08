@@ -1,0 +1,18 @@
+{
+  "type": "CassetteArtifactsPlugin",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "deckGrade", "key": "dg", "kind": "enum", "values": ["Reference", "Hi-Fi", "Consumer", "Portable"], "default": "Consumer" },
+    { "name": "tapeType", "key": "tp", "kind": "enum", "values": ["Type I", "Type II", "Type IV"], "default": "Type I" },
+    { "name": "noiseReduction", "key": "nr", "kind": "enum", "values": ["Off", "Dolby B", "Dolby C"], "default": "Dolby B" },
+    { "name": "bias", "key": "bs", "kind": "float", "min": -6, "max": 6, "default": 0, "unit": "dB" },
+    { "name": "recordLevel", "key": "rl", "kind": "float", "min": -12, "max": 18, "default": 9, "unit": "dB" },
+    { "name": "wowFlutter", "key": "wf", "kind": "float", "min": 0, "max": 1, "default": 0.2, "unit": "%" },
+    { "name": "hiss", "key": "hs", "kind": "float", "min": -92, "max": -42, "default": -60.5, "unit": "dB re 250 nWb/m" },
+    { "name": "dropouts", "key": "dp", "kind": "float", "min": 0, "max": 20, "default": 2, "unit": "events/min" },
+    { "name": "azimuth", "key": "az", "kind": "float", "min": -6, "max": 6, "default": 2, "unit": "arcmin" },
+    { "name": "dolbyLevelError", "key": "dl", "kind": "float", "min": -3, "max": 3, "default": 0, "unit": "dB" },
+    { "name": "output", "key": "og", "kind": "float", "min": -24, "max": 24, "default": 0, "unit": "dB" },
+    { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "default": 100, "unit": "%" }
+  ]
+}

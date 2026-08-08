@@ -1,0 +1,106 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 127,
+    "params": { "sp": "15", "tp": "Standard", "bs": 0, "rl": 6, "wf": 0.15625, "hs": -62.5, "og": 0, "mx": 100 }
+  },
+  "cases": [
+    {
+      "id": "default-seeded-noise",
+      "stimulus": "noise",
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 12000
+    },
+    {
+      "id": "hot-record-level-sin1k",
+      "stimulus": "sin1k",
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 12000,
+      "blockSize": 63,
+      "params": { "bs": 6, "rl": 18, "wf": 0.5, "hs": -39, "og": -6 }
+    },
+    {
+      "id": "slow-master-tape-mono",
+      "stimulus": "sweep",
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 12000,
+      "blockSize": 65,
+      "params": { "sp": "7.5", "tp": "Master", "bs": -6, "rl": -12, "wf": 0.25, "hs": -45 }
+    },
+    {
+      "id": "transport-long-wow-mono",
+      "stimulus": "sq50",
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 90000,
+      "blockSize": 128,
+      "params": { "wf": 1, "hs": -50, "rl": 0 }
+    },
+    {
+      "id": "hard-off-branches-one-frame-blocks",
+      "stimulus": "step",
+      "sampleRate": 44100,
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 11025,
+      "blockSize": 1,
+      "params": { "sp": "30", "bs": 1.5, "rl": 0, "wf": 0, "hs": -89 }
+    },
+    {
+      "id": "configuration-transitions",
+      "stimulus": "noise",
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 24000,
+      "blockSize": 96,
+      "params": { "sp": "7.5", "tp": "Standard", "bs": -4.5, "rl": 12, "wf": 0.375, "hs": -55 },
+      "events": [
+        { "frame": 2049, "params": { "sp": "15" } },
+        { "frame": 5121, "params": { "tp": "Master", "bs": 2.25 } },
+        { "frame": 8193, "params": { "hs": -89 } },
+        { "frame": 11265, "params": { "hs": -41, "wf": 0 } },
+        { "frame": 14337, "params": { "sp": "30", "rl": -12 } },
+        { "frame": 17409, "params": { "og": 12, "wf": 0.875 } },
+        { "frame": 20481, "params": { "bs": 0, "tp": "Standard" } }
+      ]
+    },
+    {
+      "id": "mix-zero-defers-and-freezes-state",
+      "stimulus": "noise",
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 12000,
+      "blockSize": 64,
+      "params": { "wf": 0.5, "hs": -48, "mx": 0 },
+      "events": [
+        { "frame": 2048, "params": { "mx": 100 } },
+        { "frame": 5121, "params": { "mx": 0 } },
+        { "frame": 7169, "params": { "mx": 50 } },
+        { "frame": 9217, "params": { "mx": 100 } }
+      ]
+    },
+    {
+      "id": "coefficients-96k",
+      "stimulus": "sweep",
+      "sampleRate": 96000,
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 12000,
+      "blockSize": 129,
+      "params": { "sp": "30", "tp": "Master", "bs": 3, "rl": 12, "wf": 0.5, "hs": -42 }
+    },
+    {
+      "id": "all4-192k-full-scale",
+      "stimulus": "fs",
+      "sampleRate": 192000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 6000,
+      "blockSize": 31,
+      "params": { "sp": "7.5", "bs": -3, "rl": -6, "wf": 0.75, "hs": -40 }
+    }
+  ]
+}

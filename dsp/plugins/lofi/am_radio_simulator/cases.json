@@ -169,6 +169,20 @@
         { "frame": 512, "params": { "st": 100 } },
         { "frame": 1536, "params": { "st": 0.125 } }
       ]
+    },
+    {
+      "id": "radio-startup-and-shutdown",
+      "stimulus": "noise",
+      "sampleRate": 44100,
+      "channels": 1,
+      "channelMode": "mono",
+      "blockSize": 97,
+      "frames": 513,
+      "params": { "fr": true, "st": 100, "rd": false },
+      "events": [
+        { "frame": 129, "params": { "rd": true } },
+        { "frame": 321, "params": { "rd": false } }
+      ]
     }
   ]
 }

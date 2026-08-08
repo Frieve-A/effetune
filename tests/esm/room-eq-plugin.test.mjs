@@ -113,6 +113,72 @@ class PluginBase {
     cleanup() {}
 }
 
+function createSvgElementStub() {
+    return () => {
+        const classes = new Set();
+        return {
+            attributes: {},
+            classes,
+            parentNode: null,
+            textContent: '',
+            classList: {
+                add(className) { classes.add(className); },
+                remove(className) { classes.delete(className); }
+            },
+            setAttribute(name, value) {
+                this.attributes[name] = value;
+                if (name === 'class') {
+                    classes.clear();
+                    for (const className of String(value).split(/\s+/)) {
+                        if (className) classes.add(className);
+                    }
+                }
+            },
+            getAttribute(name) {
+                return name in this.attributes ? this.attributes[name] : null;
+            },
+            get nextSibling() {
+                if (!this.parentNode) return null;
+                const index = this.parentNode.children.indexOf(this);
+                return this.parentNode.children[index + 1] || null;
+            }
+        };
+    };
+}
+
+function svgStub(width = 0, height = 0) {
+    return {
+        clientWidth: width,
+        clientHeight: height,
+        attributes: {},
+        children: [],
+        replaceChildren() {
+            for (const child of this.children) child.parentNode = null;
+            this.children = [];
+        },
+        setAttribute(name, value) { this.attributes[name] = value; },
+        appendChild(child) {
+            if (child.parentNode) {
+                child.parentNode.children.splice(
+                    child.parentNode.children.indexOf(child),
+                    1
+                );
+            }
+            this.children.push(child);
+            child.parentNode = this;
+        },
+        insertBefore(child, sibling) {
+            this.children.splice(this.children.indexOf(child), 1);
+            this.children.splice(this.children.indexOf(sibling), 0, child);
+            child.parentNode = this;
+        },
+        querySelector(selector) {
+            const className = selector.startsWith('.') ? selector.slice(1) : '';
+            return this.children.find(child => child.classes?.has(className)) || null;
+        }
+    };
+}
+
 function loadPlugin() {
     const document = {
         visibilityState: 'visible',
@@ -482,22 +548,31 @@ test('Room EQ graph draws measured, correction, and corrected response curves', 
     editor.dispose();
 });
 
-test('Room EQ offers short Frequency, Phase, and Impulse graph view captions', () => {
+test('Room EQ offers short Frequency, Phase, Group Delay, and Impulse graph view captions', () => {
     assert.match(pluginSource,
         /value: 'frequency',\s+label: this\._t\(\s*'roomEq\.graph\.frequency', 'Frequency'/);
     assert.match(pluginSource,
         /value: 'phase',\s+label: this\._t\('roomEq\.graph\.phase', 'Phase'/);
     assert.match(pluginSource,
+        /value: 'groupDelay',\s+label: this\._t\('roomEq\.graph\.groupDelay', 'Group Delay'/);
+    assert.match(pluginSource,
         /value: 'impulse',\s+label: this\._t\('roomEq\.graph\.impulse', 'Impulse'/);
+    assert.match(pluginSource,
+        /\['frequency', 'phase', 'groupDelay', 'impulse'\]\.includes\(view\)/);
     assert.match(pluginCss, /\.room-eq-phase-view \.room-eq-additional-eq-grid/);
+    assert.match(pluginCss, /\.room-eq-group-delay-view \.room-eq-additional-eq-grid/);
     assert.match(pluginCss, /\.room-eq-impulse-view \.room-eq-additional-eq-grid/);
     assert.match(pluginCss, /\.room-eq-phase-response \.room-eq-phase-before/);
     assert.match(pluginCss, /\.room-eq-phase-response \.room-eq-phase-after/);
+    assert.match(pluginCss,
+        /\.room-eq-group-delay-response \.room-eq-group-delay-before/);
+    assert.match(pluginCss,
+        /\.room-eq-group-delay-response \.room-eq-group-delay-after/);
     assert.match(pluginCss, /\.room-eq-impulse-response \.room-eq-impulse-before/);
     assert.match(pluginCss, /\.room-eq-impulse-response \.room-eq-impulse-after/);
     assert.match(
         pluginSource,
-        /'room-eq-response-legend-before',[\s\S]*?'\.room-eq-phase-before',\s*'\.room-eq-impulse-before',\s*'\.room-eq-phase-after',\s*'\.room-eq-impulse-after'/
+        /'room-eq-response-legend-before',[\s\S]*?selector: '\.room-eq-group-delay-before',\s*hidden: '\.room-eq-group-delay-after'/
     );
 });
 
@@ -578,7 +653,7 @@ test('Room EQ legend emphasis fronts its response, hides an optional competitor,
     assert.match(pluginCss,
         /\.room-eq-additional-eq-response \.room-eq-response-highlighted,[\s\S]*stroke-width: 3\.5;[\s\S]*opacity: 1;/);
     assert.match(pluginCss,
-        /\.room-eq-phase-response \.room-eq-response-hidden,\s*\.room-eq-impulse-response \.room-eq-response-hidden \{\s*display: none;/);
+        /\.room-eq-phase-response \.room-eq-response-hidden,\s*\.room-eq-group-delay-response \.room-eq-response-hidden,\s*\.room-eq-impulse-response \.room-eq-response-hidden \{\s*display: none;/);
     plugin.cleanup();
 });
 
@@ -603,21 +678,127 @@ test('Room EQ phase graph uses frequency and phase axes without connecting wrap 
     assert.equal(pathData.match(/\bM\b/g)?.length, 2);
     assert.equal(pathData.match(/\bL\b/g)?.length, 2);
     assert.match(pathData, /^M \d+\.\d{2},5\.56 M \d+\.\d{2},197\.22 L /);
-    assert.match(pluginSource, /for \(const phase of \[180, 90, 0, -90, -180\]\)/);
     assert.match(pluginSource,
-        /const frequencyTicks = \[20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000\]/);
-    assert.match(pluginCss,
-        /\.room-eq-phase-before \{\s*stroke: #b0b0b0;\s*stroke-width: 1;/s);
-    assert.match(pluginCss,
-        /\.room-eq-phase-after \{\s*stroke: #00ff00;\s*stroke-width: 1;/s);
+        /\[180, 90, 0, -90, -180\], value => `\$\{value\}°`\)/);
     assert.match(pluginSource,
-        /const hiddenSelector = view === 'phase'\s*\? hiddenPhaseSelector/);
+        /const ROOM_EQ_GRAPH_FREQUENCY_TICKS =\s*\[20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000\]/);
+    assert.match(pluginCss,
+        /\.room-eq-phase-before,\s*\.room-eq-group-delay-response \.room-eq-group-delay-before \{\s*stroke: #b0b0b0;\s*stroke-width: 1;/s);
+    assert.match(pluginCss,
+        /\.room-eq-phase-after,\s*\.room-eq-group-delay-response \.room-eq-group-delay-after \{\s*stroke: #00ff00;\s*stroke-width: 1;/s);
+    assert.match(pluginSource,
+        /const hiddenSelector = views\[view\]\?\.hidden \|\| null;/);
     assert.equal(
         pluginSource.match(
-            /this\._applyBeforeLegendHover\('phase', phaseResponse\)/g
+            /this\._applyBeforeLegendHover\('phase', response\)/g
         )?.length,
-        2
+        1
     );
+    assert.match(pluginSource,
+        /this\._applyBeforeLegendHover\(view, response\);/);
+    plugin.cleanup();
+});
+
+test('Room EQ group delay graph plots both curves on a rounded millisecond axis', () => {
+    const { Plugin, context } = loadPlugin();
+    context.document.createElementNS = createSvgElementStub();
+    const plugin = new Plugin();
+    plugin._additionalEqEditor = {
+        freqToX(frequency) {
+            return (Math.log10(frequency) - Math.log10(10)) /
+                (Math.log10(40000) - Math.log10(10)) * 100;
+        },
+        dispose() {}
+    };
+    const grid = svgStub();
+    const response = svgStub(400, 200);
+    const unavailable = { hidden: false };
+    plugin._responseView = 'groupDelay';
+    plugin._responseViewElements = {
+        overlays: { groupDelay: { grid, response, unavailable } }
+    };
+    plugin._lastDesign = {
+        previews: [{
+            frequencies: new Float32Array([20, 100, 1000, 10000]),
+            groupDelayResponse: {
+                before: new Float32Array([7, 3, 0, -1]),
+                after: new Float32Array([2, 1, 0, -0.5])
+            }
+        }]
+    };
+
+    plugin._drawGroupDelayResponse();
+
+    assert.equal(unavailable.hidden, true);
+    assert.equal(response.children.length, 2);
+    assert.equal(response.children[0].attributes.class, 'room-eq-group-delay-before');
+    assert.equal(response.children[1].attributes.class, 'room-eq-group-delay-after');
+    const labels = grid.children
+        .filter(child => child.attributes.x === '2')
+        .map(child => child.textContent);
+    assert.deepEqual(labels, ['10 ms', '5 ms', '0 ms', '-5 ms', '-10 ms']);
+    // 0 ms sits on the middle grid line, so the 1 kHz reference is centered.
+    assert.match(response.children[0].attributes.d, / \d+\.\d{2},100\.00 L/);
+    assert.equal(plugin._groupDelayLimit([new Float32Array([0.4, -0.2])]), 1);
+    assert.equal(plugin._groupDelayLimit([new Float32Array([900, -900])]), 500);
+    plugin.cleanup();
+});
+
+test('Room EQ graph hover dots each curve and reads it out beside the legend', () => {
+    const { Plugin, context } = loadPlugin();
+    context.document.createElementNS = createSvgElementStub();
+    const plugin = new Plugin();
+    plugin._additionalEqEditor = {
+        xToFreq(xPercent) {
+            return Math.pow(
+                10,
+                Math.log10(10) + xPercent / 100 * (Math.log10(40000) - Math.log10(10))
+            );
+        },
+        dispose() {}
+    };
+    const response = svgStub(400, 200);
+    response.getBoundingClientRect = () => ({ left: 0, top: 0 });
+    const curve = context.document.createElementNS();
+    curve.setAttribute('class', 'room-eq-phase-before');
+    curve.setAttribute('d', 'M 0.00,100.00 L 400.00,50.00');
+    response.appendChild(curve);
+    const hoverOverlay = svgStub(400, 200);
+    const cursorReadout = { textContent: '' };
+    const value = { textContent: '' };
+    plugin._responseView = 'phase';
+    plugin._responseViewElements = {
+        overlays: { phase: { grid: svgStub(), response, unavailable: {} } },
+        hoverOverlay,
+        cursorReadout,
+        legendItems: [
+            { views: { phase: { selector: '.room-eq-phase-before' } }, value },
+            { views: { frequency: { selector: '.room-eq-base-response-path' } }, value: { textContent: 'stale' } }
+        ]
+    };
+
+    plugin._updateResponseHover({ clientX: 200 });
+
+    assert.equal(hoverOverlay.children.length, 1);
+    assert.equal(hoverOverlay.children[0].attributes.class, 'room-eq-hover-dot');
+    assert.equal(hoverOverlay.children[0].attributes.cx, '200.00');
+    assert.equal(hoverOverlay.children[0].attributes.cy, '75.00');
+    assert.equal(value.textContent, '45°');
+    assert.equal(plugin._responseViewElements.legendItems[1].value.textContent, '');
+    assert.equal(cursorReadout.textContent, '632 Hz');
+
+    plugin._clearResponseHover();
+
+    assert.equal(hoverOverlay.children.length, 0);
+    assert.equal(value.textContent, '');
+    assert.equal(cursorReadout.textContent, '');
+
+    plugin._responseView = 'groupDelay';
+    plugin._groupDelayAxisLimit = 20;
+    assert.equal(plugin._formatHoverValue('groupDelay', 50, 200), '10.00 ms');
+    plugin._impulseTimeAxis = { startMs: -2, durationMs: 6 };
+    assert.equal(plugin._formatHoverCursor('impulse', 100, 400), '0.00 ms');
+    assert.equal(plugin._formatHoverValue('impulse', 50, 200), '0.50');
     plugin.cleanup();
 });
 
@@ -654,69 +835,17 @@ test('Room EQ impulse graph uses one even time interval for the displayed range'
 
 test('Room EQ impulse graph draws gray before and green after waveforms', () => {
     const { Plugin, context } = loadPlugin();
-    context.document.createElementNS = () => {
-        const classes = new Set();
-        return {
-            attributes: {},
-            classes,
-            parentNode: null,
-            textContent: '',
-            classList: {
-                add(className) { classes.add(className); },
-                remove(className) { classes.delete(className); }
-            },
-            setAttribute(name, value) {
-                this.attributes[name] = value;
-                if (name === 'class') {
-                    classes.clear();
-                    for (const className of String(value).split(/\s+/)) {
-                        if (className) classes.add(className);
-                    }
-                }
-            },
-            get nextSibling() {
-                if (!this.parentNode) return null;
-                const index = this.parentNode.children.indexOf(this);
-                return this.parentNode.children[index + 1] || null;
-            }
-        };
-    };
-    const svg = (width = 0, height = 0) => ({
-        clientWidth: width,
-        clientHeight: height,
-        attributes: {},
-        children: [],
-        replaceChildren() {
-            for (const child of this.children) child.parentNode = null;
-            this.children = [];
-        },
-        setAttribute(name, value) { this.attributes[name] = value; },
-        appendChild(child) {
-            if (child.parentNode) {
-                child.parentNode.children.splice(
-                    child.parentNode.children.indexOf(child),
-                    1
-                );
-            }
-            this.children.push(child);
-            child.parentNode = this;
-        },
-        insertBefore(child, sibling) {
-            this.children.splice(this.children.indexOf(child), 1);
-            this.children.splice(this.children.indexOf(sibling), 0, child);
-            child.parentNode = this;
-        },
-        querySelector(selector) {
-            const className = selector.startsWith('.') ? selector.slice(1) : '';
-            return this.children.find(child => child.classes?.has(className)) || null;
-        }
-    });
+    context.document.createElementNS = createSvgElementStub();
     const plugin = new Plugin();
-    const impulseGrid = svg();
-    const impulseResponse = svg(400, 200);
+    const impulseGrid = svgStub();
+    const impulseResponse = svgStub(400, 200);
     const unavailable = { hidden: false };
     plugin._responseView = 'impulse';
-    plugin._responseViewElements = { impulseGrid, impulseResponse, unavailable };
+    plugin._responseViewElements = {
+        overlays: {
+            impulse: { grid: impulseGrid, response: impulseResponse, unavailable }
+        }
+    };
     plugin._lastDesign = {
         previews: [{
             impulseResponse: {

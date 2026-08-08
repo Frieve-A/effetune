@@ -2,6 +2,7 @@
   "type": "FMRadioSimulatorPlugin",
   "tolerance": { "abs": 0.0001, "policy": "per-sample" },
   "fields": [
+    { "name": "radio", "key": "rd", "kind": "bool", "default": true },
     { "name": "emphasis", "key": "em", "kind": "enum", "default": "50", "values": ["50", "75"] },
     { "name": "processing", "key": "pr", "kind": "float", "min": 0, "max": 18, "default": 0, "unit": "dB" },
     { "name": "signal", "key": "st", "kind": "float", "min": 0, "max": 70, "default": 35, "unit": "dBuV" },

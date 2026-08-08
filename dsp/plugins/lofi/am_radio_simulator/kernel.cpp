@@ -359,6 +359,13 @@ public:
       startSpeakerTransition(speaker);
     }
 
+    // Radio off takes the transmitter off the air, so the transmitter telemetry
+    // has nothing to report: the modulation meter must not keep showing a
+    // station that stopped transmitting, and the over-modulation counter must
+    // not keep ticking on a carrier that no longer exists. The meter itself
+    // keeps its ballistics and falls back the way a real modulation monitor
+    // does when the RF disappears.
+    const bool radio_on = params_.radio >= 0.5F;
     double block_mod_peak = 0.0;
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
       if (control_remaining_ == 0u) {
@@ -477,7 +484,7 @@ public:
       }
       const double absolute_tx = tx < 0.0 ? -tx : tx;
       const double modulation_deviation = absolute_tx * modulation_ * 100.0;
-      if (modulation_deviation > block_mod_peak) {
+      if (radio_on && modulation_deviation > block_mod_peak) {
         block_mod_peak = modulation_deviation;
       }
       auto propagate = [&](int mode, std::vector<double> &path_delay,
@@ -508,12 +515,14 @@ public:
           const double sky1_q = fade1_.i * delayed1_q + fade1_.q * delayed1;
           const double sky2_i = fade2_.i * delayed2 - fade2_.q * delayed2_q;
           const double sky2_q = fade2_.i * delayed2_q + fade2_.q * delayed2;
-          station_i = signal_gain_ * (ground_gain_ * transmitted_i + sky_gain_ * (sky1_i + sky2_i));
-          station_q = signal_gain_ * (ground_gain_ * transmitted_q + sky_gain_ * (sky1_q + sky2_q));
+          station_i =
+              station_gain_ * (ground_gain_ * transmitted_i + sky_gain_ * (sky1_i + sky2_i));
+          station_q =
+              station_gain_ * (ground_gain_ * transmitted_q + sky_gain_ * (sky1_q + sky2_q));
         } else {
-          station_i = signal_gain_ * (ground_gain_ * transmitted_i +
-                                      sky_gain_ * (fade1_.i * delayed1 + fade2_.i * delayed2));
-          station_q = signal_gain_ * sky_gain_ * (fade1_.q * delayed1 + fade2_.q * delayed2);
+          station_i = station_gain_ * (ground_gain_ * transmitted_i +
+                                       sky_gain_ * (fade1_.i * delayed1 + fade2_.i * delayed2));
+          station_q = station_gain_ * sky_gain_ * (fade1_.q * delayed1 + fade2_.q * delayed2);
         }
       };
 
@@ -760,8 +769,8 @@ public:
         fade_db = 6.0;
       }
       fade_db_ = fade_db;
-      const bool clip_now =
-          transmitted_mono_i < 0.0 || (stereo_mode_ == kMonoMode && detector_clipping_);
+      const bool clip_now = radio_on && (transmitted_mono_i < 0.0 ||
+                                         (stereo_mode_ == kMonoMode && detector_clipping_));
       if (clip_now && !clip_active_) {
         ++clip_count_;
       }
@@ -1089,6 +1098,10 @@ private:
     ground_gain_ = std::sqrt(1.0 - sky);
     sky_gain_ = std::sqrt(sky * 0.5);
     signal_gain_ = std::pow(10.0, controls_.signal / 20.0);
+    // Radio off takes the transmitter off the air: only the station path is
+    // silenced. signal_gain_ itself keeps its value because it also scales the
+    // atmospheric static bursts, which keep crashing after the carrier dies.
+    station_gain_ = params_.radio >= 0.5F ? signal_gain_ : 0.0;
     interferer_gain_ = std::pow(10.0, controls_.interference / 20.0);
     static_probability_ = 1.0 - std::exp(-controls_.staticRate / sample_rate_);
     hum_amount_ = std::pow(10.0, controls_.hum / 20.0);
@@ -1153,8 +1166,10 @@ private:
     const double initial_if_response = butterworth6Magnitude(
         station_tuning_offset_hz_ < 0.0 ? -station_tuning_offset_hz_ : station_tuning_offset_hz_,
         controls_.ifBandwidth * 500.0);
-    const double initial_station = std::pow(10.0, controls_.signal / 20.0) * initial_path *
-                                   station_tuning_gain_ * initial_if_response;
+    const double initial_signal =
+        params_.radio >= 0.5F ? std::pow(10.0, controls_.signal / 20.0) : 0.0;
+    const double initial_station =
+        initial_signal * initial_path * station_tuning_gain_ * initial_if_response;
     const double initial_noise = 0.001 * std::sqrt(controls_.ifBandwidth / 12.0);
     double initial_carrier =
         std::sqrt(initial_station * initial_station + initial_noise * initial_noise);
@@ -1934,6 +1949,7 @@ private:
   double ground_gain_ = 1.0;
   double sky_gain_ = 0.0;
   double signal_gain_ = 1.0;
+  double station_gain_ = 1.0;
   std::array<Biquad, 2u> interferer_filters_{};
   double interferer_program_ = 0.0;
   double interferer_program_normalizer_ = 1.0;

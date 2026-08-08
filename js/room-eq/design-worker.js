@@ -39,6 +39,12 @@ globalThis.onmessage = async event => {
                     preview.phaseResponse.after.buffer
                 );
             }
+            if (preview.groupDelayResponse) {
+                transferables.push(
+                    preview.groupDelayResponse.before.buffer,
+                    preview.groupDelayResponse.after.buffer
+                );
+            }
             if (preview.impulseResponse) {
                 transferables.push(
                     preview.impulseResponse.before.buffer,

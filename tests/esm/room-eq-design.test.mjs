@@ -398,6 +398,75 @@ test('phase preview removes measurement onset and known FIR delay', () => {
     }
 });
 
+test('group delay preview follows the measured slope and reads zero at 1 kHz', () => {
+    // A single 1 ms echo makes group delay swing between its 1 kHz value and a
+    // deep negative excursion halfway between the comb peaks.
+    const impulse = new Float32Array(10000);
+    const onset = 512;
+    impulse[onset] = 1;
+    impulse[onset + 48] = 0.5;
+    const measurement = {
+        id: 'group-delay-preview-fixture',
+        timestamp: 'fixed',
+        points: [{ pointId: 1, timestamp: 'fixed' }],
+        averageFrequencyResponse: []
+    };
+    const sources = [{
+        measurement,
+        impulses: [{
+            measurementId: measurement.id,
+            pointId: 1,
+            sampleRate: 48000,
+            onsetIndex: onset,
+            refScale: 1,
+            data: impulse
+        }]
+    }];
+
+    const design = smoothing => designRoomEq({
+        config: {
+            sampleRate: 48000,
+            taps: 8192,
+            phase: 'lin',
+            correctionAmount: 0,
+            smoothing
+        },
+        sources
+    }).previews[0];
+    const preview = design(0.02);
+
+    const { before, after } = preview.groupDelayResponse;
+    assert.equal(before.length, preview.frequencies.length);
+    assert.equal(after.length, preview.frequencies.length);
+    const nearest = frequency => {
+        let best = 0;
+        for (let index = 0; index < preview.frequencies.length; index += 1) {
+            if (Math.abs(preview.frequencies[index] - frequency) <
+                Math.abs(preview.frequencies[best] - frequency)) best = index;
+        }
+        return best;
+    };
+    assert.ok(Math.abs(before[nearest(1000)]) < 1e-3,
+        `1 kHz reference was ${before[nearest(1000)]} ms`);
+    assert.ok(Math.abs(before[nearest(2000)]) < 0.01,
+        `2 kHz comb peak was ${before[nearest(2000)]} ms`);
+    // The comb null sits one third of the echo period below its peaks (-1.33 ms);
+    // any smoothing beyond the configured pass would blunt it.
+    assert.ok(before[nearest(500)] < -1.25,
+        `500 Hz comb null was ${before[nearest(500)]} ms`);
+    let maximumDifference = 0;
+    for (let index = 0; index < before.length; index += 1) {
+        const difference = Math.abs(before[index] - after[index]);
+        if (difference > maximumDifference) maximumDifference = difference;
+    }
+    assert.ok(maximumDifference < 1e-3,
+        `linear correction changed group delay by ${maximumDifference} ms`);
+
+    const smoothed = design(0.5).groupDelayResponse.before;
+    assert.ok(smoothed[nearest(500)] > -0.5,
+        `Smoothing 0.5 oct left the null at ${smoothed[nearest(500)]} ms`);
+});
+
 test('IR preview removes frequencies above 20 kHz from before and after waveforms', () => {
     const sampleRate = 48000;
     const lowFrequency = 9000;

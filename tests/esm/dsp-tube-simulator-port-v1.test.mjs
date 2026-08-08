@@ -625,29 +625,29 @@ test('Tube Simulator freezes the Phase C 20-field schema and enum packing', asyn
       ...(values !== undefined && { values })
     })),
     [
-      { key: 'dr', kind: 'float', min: -96, max: 0, default: 0 },
+      { key: 'dr', kind: 'float', min: -96, max: 0, default: -55.9648 },
       {
         key: 'tp',
         kind: 'enum',
-        default: '12AU7',
+        default: '12AX7',
         values: ['12AX7', '12AT7', '12AU7']
       },
       { key: 'bi', kind: 'float', min: -50, max: 50, default: 0 },
       { key: 'pv', kind: 'float', min: 150, max: 300, default: 250 },
       { key: 'sz', kind: 'float', min: 0.6, max: 100, default: 10 },
       { key: 'su', kind: 'float', min: 0.1, max: 47, default: 10 },
-      { key: 'og', kind: 'float', min: -48, max: 48, default: 9 },
+      { key: 'og', kind: 'float', min: -48, max: 48, default: 4.626 },
       { key: 'mx', kind: 'float', min: 0, max: 100, default: 100 },
       { key: 'iv', kind: 'float', min: 0.1, max: 20, default: 2.828 },
-      { key: 'nf', kind: 'float', min: 0, max: 30, default: 30 },
-      { key: 'os', kind: 'enum', default: 'Line', values: ['Line', 'Power'] },
+      { key: 'nf', kind: 'float', min: 0, max: 30, default: 3 },
+      { key: 'os', kind: 'enum', default: 'Power', values: ['Line', 'Power'] },
       { key: 'pt', kind: 'enum', default: 'EL84', values: ['EL84', 'EL34'] },
-      { key: 'pb', kind: 'float', min: 300, max: 470, default: 320 },
+      { key: 'pb', kind: 'float', min: 300, max: 470, default: 329.696 },
       { key: 'kr', kind: 'float', min: 270, max: 500, default: 270 },
       { key: 'st', kind: 'enum', default: '0', values: ['0', '20', '43'] },
       { key: 'zp', kind: 'enum', default: '8.0', values: ['6.0', '6.6', '8.0'] },
-      { key: 'sl', kind: 'enum', default: '8', values: ['4', '8', '15', '16'] },
-      { key: 'rl', kind: 'float', min: 2, max: 32, default: 8 },
+      { key: 'sl', kind: 'enum', default: '15', values: ['4', '8', '15', '16'] },
+      { key: 'rl', kind: 'float', min: 2, max: 32, default: 15 },
       { key: 'sg', kind: 'float', min: -96, max: 0, default: 0 },
       { key: 'ag', kind: 'bool', default: true }
     ]
@@ -663,8 +663,8 @@ test('Tube Simulator freezes the Phase C 20-field schema and enum packing', asyn
 
   assert.deepEqual(
     [...packer.pack({ tp: '12AX7' })],
-    [0, 0, 0, 250, 10, 10, 9, 100, Math.fround(2.828), 30,
-      0, 0, 320, 270, 0, 2, 1, 8, 0, 1]
+    [Math.fround(-55.9648), 0, 0, 250, 10, 10, Math.fround(4.626), 100,
+      Math.fround(2.828), 3, 1, 0, Math.fround(329.696), 270, 0, 2, 2, 15, 0, 1]
   );
   assert.deepEqual(
     [...packer.pack({
@@ -680,10 +680,10 @@ test('Tube Simulator freezes the Phase C 20-field schema and enum packing', asyn
       nf: 99
     })],
     [0, 1, -50, 300, Math.fround(0.6), 47, -48, 100, 20, 30,
-      0, 0, 320, 270, 0, 2, 1, 8, 0, 1]
+      1, 0, Math.fround(329.696), 270, 0, 2, 2, 15, 0, 1]
   );
   assert.equal(packer.pack({ tp: '12AU7' })[1], 2);
-  assert.equal(packer.pack({ tp: 'unsupported' })[1], 2);
+  assert.equal(packer.pack({ tp: 'unsupported' })[1], 0);
 });
 
 test('Tube Simulator Phase A projection is explicit and independent of Phase B defaults',
@@ -702,7 +702,7 @@ test('Tube Simulator Phase A projection is explicit and independent of Phase B d
     assert.deepEqual(
       [...packer.pack(PHASE_A_PROJECTION_PARAMS)],
       [-30, 2, 0, 250, 10, 10, 39, 100, Math.fround(2.828), 0,
-        0, 0, 320, 270, 0, 2, 1, 8, 0, 1]
+        1, 0, Math.fround(329.696), 270, 0, 2, 2, 15, 0, 1]
     );
 
     const plugin = await createPlugin();
@@ -726,16 +726,16 @@ test('Tube Simulator defaults, validation, serialization, and reference shell ma
         .map(key => [key, plugin.getParameters()[key]])
     ),
     {
-      dr: 0,
-      tp: '12AU7',
+      dr: -55.9648,
+      tp: '12AX7',
       bi: 0,
       pv: 250,
       sz: 10,
       su: 10,
-      og: 9,
+      og: 4.626,
       mx: 100,
       iv: 2.828,
-      nf: 30
+      nf: 3
     }
   );
 
@@ -1155,10 +1155,12 @@ test('Tube Simulator Preset dropdown lists Custom first, then the listening and 
       ]
     );
 
-    assert.equal(select.value, 'line-default');
-    plugin.setParameters({ tp: '12AX7' });
+    // The shipped defaults are the EL84 Pentode @2% listening preset, so the
+    // dropdown opens on it rather than on Custom.
+    assert.equal(select.value, 'listening-power-el84-pentode-thd2');
+    plugin.setParameters({ tp: '12AU7' });
     assert.equal(select.value, '');
-    assert.equal(plugin.tp, '12AX7');
+    assert.equal(plugin.tp, '12AU7');
 
     // Custom is inert: re-selecting it must not touch any parameter.
     const before = plugin.getSerializableParameters();
@@ -1320,7 +1322,13 @@ test('Tube Simulator dims inactive Power rows without disabling them', async () 
   // Three valve rows on the Power tab plus four transformer and speaker rows on the
   // Transformer tab: the dimming spans both halves of the split.
   assert.equal(dimmable.length, 7);
-  assert.equal(plugin.os, 'Line');
+  assert.equal(plugin.os, 'Power');
+  assert.deepEqual(
+    dimmable.map(row => row.classList.contains('tube-simulator-dimmed')),
+    [false, false, false, false, false, false, false]
+  );
+
+  plugin.setParameters({ os: 'Line' });
   assert.deepEqual(
     dimmable.map(row => row.classList.contains('tube-simulator-dimmed')),
     [true, true, true, true, true, true, true]
@@ -1330,16 +1338,10 @@ test('Tube Simulator dims inactive Power rows without disabling them', async () 
       row.querySelectorAll('input').every(input => !input.disabled)),
     true
   );
-
   plugin.setParameters({ os: 'Power' });
   assert.deepEqual(
     dimmable.map(row => row.classList.contains('tube-simulator-dimmed')),
     [false, false, false, false, false, false, false]
-  );
-  plugin.setParameters({ os: 'Line' });
-  assert.deepEqual(
-    dimmable.map(row => row.classList.contains('tube-simulator-dimmed')),
-    [true, true, true, true, true, true, true]
   );
   // Dimmed values remain part of the serialized 17-field record.
   assert.equal(plugin.getSerializableParameters().pt, 'EL84');
@@ -1393,6 +1395,8 @@ test('Tube Simulator telemetry parser rejects mismatched and non-finite frames',
 
 test('Tube Simulator HUD plots recent Ia-Vak trajectories over plate curves and load lines', async () => {
   const plugin = await createPlugin();
+  // The plate-curve HUD belongs to the 12AU7 line circuit, so this case names it.
+  plugin.setParameters({ os: 'Line', tp: '12AU7' });
   const telemetry = plugin.parseDspTubeTelemetryFrame(tubeTelemetryFrame());
 
   plugin._appendTrajectory(telemetry);
@@ -1506,6 +1510,8 @@ test('Tube Simulator HUD plots recent Ia-Vak trajectories over plate curves and 
 
 test('Tube Simulator HUD gates animation, keeps a 96-frame main-thread ring, and cleans up', async () => {
   const plugin = await createPlugin();
+  // Driver-tube axes react to Bias, so this case runs on the line circuit.
+  plugin.setParameters({ os: 'Line' });
   const subscriptions = [];
   let unsubscribeCount = 0;
   plugin.__testHarness.window.dspTelemetryHub = {

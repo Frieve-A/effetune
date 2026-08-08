@@ -30,9 +30,11 @@ const SUPPORTED_SAMPLE_RATES = [44100, 48000, 88200, 96000, 176400, 192000];
 // is simply a wet path whose samples run past digital full scale - the sort of level a tube or
 // output-stage switch produces, not the sort a converter can reproduce.
 const LOUD_AMPLITUDE = 1;
+// The overdriven line circuit, named explicitly so the case does not inherit the
+// product default output stage.
 const LOUD_PARAMS = Object.freeze({
   dr: -30, tp: '12AU7', bi: 0, pv: 250, sz: 10, su: 10,
-  og: 48, mx: 100, iv: 2.828, nf: 0, sg: 0, ag: true
+  og: 48, mx: 100, iv: 2.828, nf: 0, os: 'Line', sg: 0, ag: true
 });
 
 class PluginBase {

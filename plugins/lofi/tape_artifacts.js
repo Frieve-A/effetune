@@ -13,7 +13,7 @@
 // inverses of each other, the head alignment trim is the bounded exact inverse
 // of the playback loss — so their product is simply one pole per loss term —
 // and the makeup is the exact inverse of the input trim, so the gain of the
-// linear chain does not depend on the Input Peak setting. That invariance is
+// linear chain does not depend on the Record Level setting. That invariance is
 // the designed property, not unity itself — the chain is not flat at 0.000 dB.
 // On Standard tape at 96 kHz and at the reference bias, 1 kHz measures
 // -0.030 / +0.001 / +0.019 dB at 7.5 / 15 / 30 ips; on Master, whose thicker
@@ -29,19 +29,31 @@
 // one term of the four not worth stating beside the speed, the formulation and
 // the bias.
 //
-// Measuring the Input Peak invariance means measuring through the saturator, so
-// what a measurement returns is a property of the test amplitude rather than of
-// the chain: a 1 kHz tone at 1e-4 peak (-80 dBFS, small enough that the
-// saturator is linear) moves by less than 2e-6 dB from ip = 0 to ip = -36
-// anywhere on the rate x speed x tape grid, while the same sweep at -20 dBFS
-// moves 1.7 dB and at full scale 21 dB. The saturator is outside the claim. It
-// is the one stage allowed to change the level, and the loudness a low Input
-// Peak setting costs is its compression, not a leftover trim. Everything else a
-// stage changes is either character (what the saturator is fed) or a deliberate
-// residual — the bounded part of the loss, which is what those few hundredths
-// of a dB are. The trim is folded into the reproduce side deliberately: driving
-// the nonlinearity with the full record trim put audible folded products in
-// band.
+// Measuring the Record Level invariance means measuring through the saturator,
+// so what a measurement returns is a property of the test amplitude rather than
+// of the chain: a 1 kHz tone at 1e-4 peak (-80 dBFS, small enough that the
+// saturator is linear) moves by less than 1e-7 dB across the whole Record Level
+// range anywhere on the rate x speed x tape grid, while the same sweep at
+// -20 dBFS moves 0.03 dB and at full scale 2.49 dB. The saturator is outside
+// the claim. It is the one stage allowed to change the level, and the loudness
+// a high Record Level setting costs is its compression, not a leftover trim.
+// Everything else a stage changes is either character (what the saturator is
+// fed) or a deliberate residual — the bounded part of the loss, which is what
+// those few hundredths of a dB are. The trim is folded into the reproduce side
+// deliberately: driving the nonlinearity with the full record trim put audible
+// folded products in band.
+//
+// What Record Level does move, one dB for one dB, is the signal-to-noise ratio.
+// The noise is a property of the tape and of the machine, so it is fixed in the
+// flux domain the datasheet columns are written in, not at some absolute
+// digital level: the hiss amplitude carries the makeup with it, and recording
+// hotter therefore buries it exactly as it does on the machine. Base Hiss is
+// consequently a flux level (dB re 320 nWb/m, which is what the BNIEC column
+// already is) rather than a dBFS floor, and the dBFS the floor actually lands
+// on is the status line's business. The modulation noise takes no such
+// correction: it is injected as (1 + n), and (makeup·s)(1 + n) is
+// makeup·(s(1 + n)) exactly, so a multiplicative index is already invariant
+// under any linear gain.
 
 // Published tape speeds. `v` is metres/second, `bumpDb` the head contour ripple
 // height (v1 §3.4: 1.5 dB at 19.05 cm/s, 0.8 dB at 38.1 cm/s; 76.2 cm/s follows
@@ -95,9 +107,23 @@ const TAPE_ARTIFACTS_TAPES = {
 const TAPE_ARTIFACTS_WOW_FLUTTER_PERCENT = { '7.5': 0.06, '15': 0.04, '30': 0.03 };
 
 // The bottom of the Hiss control, and the value at or below which the noise
-// generator is switched off outright. -110 dBFS is below the dither floor of a
-// 16 bit master, so the last step before off is already inaudible.
-const TAPE_ARTIFACTS_HISS_OFF_DBFS = -110;
+// generator is switched off outright. The control is a flux level now, so what
+// the last step before off measures at the output depends on the Record Level:
+// 26.5 dB under the datasheet floor of the reference configuration either way,
+// which lands between about -76 and -107 dBFS across the Record Level range
+// (the loud end measured at -76.2 dBFS A-weighted: Master, 15 ips, hs -88.9,
+// rl -12).
+//
+// The loud end is NOT below a 16 bit dither floor — that comparison was true
+// of the old -110 dBFS constant and did not survive the change of unit, since
+// 16 bit TPDF dither sits near -93 dBFS RMS. The threshold is justified on
+// audibility instead: -76 dBFS A-weighted is about 24 dB SPL(A) on a
+// 0 dBFS = 100 dB SPL calibration, so the last step into the hard off is
+// inaudible, which is all the threshold has to buy.
+const TAPE_ARTIFACTS_HISS_OFF_DB = -89;
+// The IEC reference flux the datasheet noise columns - and therefore the Hiss
+// control and the Record Level readout - are quoted against.
+const TAPE_ARTIFACTS_REFERENCE_FLUX = '320 nWb/m';
 
 const TAPE_ARTIFACTS_REFERENCE_PROCESSOR = `
     if (!parameters.enabled) return data;
@@ -154,8 +180,8 @@ const TAPE_ARTIFACTS_REFERENCE_PROCESSOR = `
     const SPACING_THREE_DB = 0.3454;
     // Saturation reference. The operating level is a 1 kHz sine whose peak
     // reaches SATURATION_REFERENCE_DBFS at the saturator input, which is what
-    // the Input Peak control establishes: declare the peak of the material and
-    // it lands on this point. SATURATION_REFERENCE_T is where that peak sits on
+    // the Record Level control is referred to: a 0 dBFS peak lands Record Level
+    // decibels above it. SATURATION_REFERENCE_T is where that peak sits on
     // the normalised transfer, and it is solved for so that the third harmonic
     // at the operating level measures 0.12 % - the third harmonic distortion
     // factor at RLIEC of the Standard tape at 38.1 cm/s.
@@ -183,24 +209,25 @@ const TAPE_ARTIFACTS_REFERENCE_PROCESSOR = `
     // the operating level has to be handed to them as the RMS of that sine
     // rather than as its peak.
     const OPERATING_LEVEL_RMS_DBFS = SATURATION_REFERENCE_DBFS - 20 * Math.log10(Math.SQRT2);
-    // The A-weighted hiss floor of the reference configuration - Standard tape
-    // at 38.1 cm/s - as a level in dBFS. The datasheet figure, the operating
-    // level and the weighting between them leave nothing free here, so this is
-    // the one absolute number the noise model owns, and it is what Base Hiss is
-    // measured in: set the control to this value and the floor measures it.
-    // Derived rather than written out, because both terms already exist above
-    // and a literal would be a third place for them to disagree.
-    const HISS_REFERENCE_DBFS = TAPES.Standard.bniecDb['15'] + OPERATING_LEVEL_RMS_DBFS;
-    const HISS_OFF_DBFS = ${TAPE_ARTIFACTS_HISS_OFF_DBFS};
+    // The hiss level of the reference configuration - Standard tape at
+    // 38.1 cm/s - as a flux, which is to say the datasheet's own BNIEC entry
+    // for it and nothing else. Base Hiss is measured in the same unit, so
+    // setting the control to this value is what states the reference tape, and
+    // the offset between the two is what reaches every other configuration.
+    // Read from the serialised table rather than written out, so there is no
+    // second place for the column to disagree with itself.
+    const HISS_REFERENCE_DB = TAPES.Standard.bniecDb['15'];
+    const HISS_OFF_DB = ${TAPE_ARTIFACTS_HISS_OFF_DB};
     // Asymmetry as a ratio, not as a fixed additive offset: the negative
     // excursion sees a ceiling this much higher than the positive one, so the
     // even-order content rises with level instead of vanishing as the tape is
     // driven harder, which is what a fixed pre-offset did. It does not hold a
-    // constant ratio to the odd-order content - H2 - H3 still widens by 20 dB
-    // across the Input Peak range, because any bounded nonlinearity squares
-    // up towards a symmetric limiter and pushes its asymmetry into DC. Third
-    // order dominant and widening is the tape behaviour; H2 falling with level
-    // was not.
+    // constant ratio to the odd-order content - on a full-scale 1 kHz tone
+    // H2 - H3 runs from -11.5 dB at the bottom of the Record Level range to
+    // -14.5 dB at the top, and keeps widening past it, because any bounded
+    // nonlinearity squares up towards a symmetric limiter and pushes its
+    // asymmetry into DC. Third order dominant and widening is the tape
+    // behaviour; H2 falling with level was not.
     const SATURATION_ASYMMETRY = 0.12;
     const MEMORY_DEPTH = 0.25;
     const MEMORY_ATTACK_SECONDS = 0.002;
@@ -730,14 +757,21 @@ const TAPE_ARTIFACTS_REFERENCE_PROCESSOR = `
         // speed, referred to the operating level, and it is normalised as an
         // A-weighted RMS because that is how BNIEC is measured.
         //
-        // Base Hiss then names the floor of the reference configuration
-        // outright, in dBFS, and reaches the others through the same ratio the
-        // datasheet columns already carry: the control is a level, not a trim,
-        // but it is applied as the offset of that level from the reference, so
-        // every speed and formulation difference stays exactly where the
-        // columns put it. The user gain lands on the modulation noise too - one
-        // control moves the whole noise family together, which is what a
-        // different machine or a different generation of the same tape does.
+        // Base Hiss then names the flux of the reference configuration
+        // outright, in dB re the IEC reference flux - the unit the BNIEC column
+        // is already in - and reaches the others through the same ratio the
+        // columns already carry: the control is a level, not a trim, but it is
+        // applied as the offset of that level from the reference, so every
+        // speed and formulation difference stays exactly where the columns put
+        // it. The user gain lands on the modulation noise too - one control
+        // moves the whole noise family together, which is what a different
+        // machine or a different generation of the same tape does.
+        //
+        // The amplitude below is the flux referred to the operating level, so
+        // it is what the tape carries and not yet what the reproduce chain
+        // hands out. The makeup is applied to it at the injection point, which
+        // is what keeps the floor a property of the tape rather than of the
+        // level the material happened to be mastered at.
         //
         // The modulation noise is deliberately not treated the same way. It is
         // injected multiplicatively as (1 + n), so its sidebands land within a
@@ -748,9 +782,9 @@ const TAPE_ARTIFACTS_REFERENCE_PROCESSOR = `
         // exist, so the index is normalised unweighted. DCN is likewise already
         // a ratio against the recorded signal, so it takes no referral to the
         // operating level either: it is the depth as published.
-        const hissEnabled = parameters.hs > HISS_OFF_DBFS;
+        const hissEnabled = parameters.hs > HISS_OFF_DB;
         const noiseUserGain = hissEnabled
-            ? Math.pow(10, (parameters.hs - HISS_REFERENCE_DBFS) / 20)
+            ? Math.pow(10, (parameters.hs - HISS_REFERENCE_DB) / 20)
             : 0;
         const hissRms = Math.pow(10, (tapeEntry.bniecDb[speedKey] + OPERATING_LEVEL_RMS_DBFS) / 20)
             * noiseUserGain;
@@ -795,11 +829,12 @@ const TAPE_ARTIFACTS_REFERENCE_PROCESSOR = `
     const oversampleEven = state.oversampleEven;
     const oversampleOdd = state.oversampleOdd;
 
-    // Input Peak is a declaration, not a gain: state where the material's peak
-    // sits and the trim moves that peak onto the saturator's operating point.
-    // The makeup below takes it straight back out again, so the control changes
-    // how hard the tape is hit and nothing else.
-    const inputTrimGain = Math.pow(10, (SATURATION_REFERENCE_DBFS - parameters.ip) / 20);
+    // Record Level is where the machine is set, not a gain: it states how far
+    // above the operating level a full-scale peak is recorded, and the trim is
+    // what puts it there. The makeup below takes it straight back out again, so
+    // the control changes how hard the tape is hit and how far the noise sits
+    // under the programme, and nothing else.
+    const inputTrimGain = Math.pow(10, (SATURATION_REFERENCE_DBFS + parameters.rl) / 20);
     const makeupGain = 1 / inputTrimGain;
     const outputGain = Math.pow(10, parameters.og / 20);
     const flutterScale = parameters.wf / WOW_FLUTTER_REFERENCE_PERCENT;
@@ -813,7 +848,13 @@ const TAPE_ARTIFACTS_REFERENCE_PROCESSOR = `
     // origin stays exactly 1 on both sides and the transfer is still smooth
     // through zero.
     const negativeCeilingScale = 1 + SATURATION_ASYMMETRY;
-    const hissGain = state.hissGain;
+    // The hiss is calibrated as a flux and injected as a digital level, so the
+    // makeup is what converts it: the injection point stays where it is - after
+    // the reproduce chain, because the datasheet figure is an output-terminal
+    // measurement - and the amplitude rides with the trim instead. The
+    // modulation index does not, and must not: it is multiplicative and already
+    // dimensionless.
+    const hissGain = state.hissGain * makeupGain;
     const modulationGain = state.modulationGain;
     const noiseActive = hissGain > 0 || modulationGain > 0;
     const wowIncrement = state.wowIncrement;
@@ -952,12 +993,10 @@ const TAPE_ARTIFACTS_REFERENCE_PROCESSOR = `
 
             // Makeup, here and not at the output: everything between this point
             // and the hiss injection is linear, so the placement cannot change
-            // the signal level, but putting it after the hiss would lift the
-            // noise floor with the trim and destroy the hiss calibration - at
-            // ip = 0 the floor would rise by the full 18 dB of trim. A real
-            // machine records at 0 VU and the reproduce chain returns line
-            // level; its noise floor is fixed against line level, not against
-            // whatever was fed in.
+            // the signal level, and it puts the whole reproduce chain at the
+            // level the machine's own output stage works at. The hiss is not
+            // covered by that - it is injected downstream - so it carries the
+            // same factor explicitly, at hissGain above.
             x *= makeupGain;
 
             index = SECTION_BIAS * channelCount + ch;
@@ -1083,9 +1122,9 @@ class TapeArtifactsPlugin extends PluginBase {
         this.sp = '15';   // sp: Speed - 7.5 / 15 / 30 ips
         this.tp = 'Standard'; // tp: Tape formulation - Standard | Master
         this.bs = 0;      // bs: Bias - Range: -6 to +6 dB
-        this.ip = -6;     // ip: Input Peak - Range: -36 to 0 dBFS
+        this.rl = 6;      // rl: Record Level - tape flux at a 0 dBFS peak - Range: -12 to +18 dB
         this.wf = 0.16;   // wf: Base Wow/Flutter - DIN 45507 weighted deviation at 15 ips - Range: 0 to 1 %
-        this.hs = -83.5;  // hs: Base Hiss - A-weighted floor at 15 ips / Standard - Range: -110 to -60 dBFS (off at -110)
+        this.hs = -62.5;  // hs: Base Hiss - A-weighted flux at 15 ips / Standard - Range: -89 to -39 dB re 320 nWb/m (off at -89)
         this.og = 0;      // og: Output - Range: -24 to +24 dB
         this.mx = 100;    // mx: Mix - Range: 0 to 100 %
 
@@ -1104,7 +1143,7 @@ class TapeArtifactsPlugin extends PluginBase {
             sp: this.sp,
             tp: this.tp,
             bs: this.bs,
-            ip: this.ip,
+            rl: this.rl,
             wf: this.wf,
             hs: this.hs,
             og: this.og,
@@ -1123,14 +1162,14 @@ class TapeArtifactsPlugin extends PluginBase {
         if (params.bs !== undefined) {
             this.bs = this.parseFiniteNumber(params.bs, -6, 6, this.bs);
         }
-        if (params.ip !== undefined) {
-            this.ip = this.parseFiniteNumber(params.ip, -36, 0, this.ip);
+        if (params.rl !== undefined) {
+            this.rl = this.parseFiniteNumber(params.rl, -12, 18, this.rl);
         }
         if (params.wf !== undefined) {
             this.wf = this.parseFiniteNumber(params.wf, 0, 1, this.wf);
         }
         if (params.hs !== undefined) {
-            this.hs = this.parseFiniteNumber(params.hs, TAPE_ARTIFACTS_HISS_OFF_DBFS, -60, this.hs);
+            this.hs = this.parseFiniteNumber(params.hs, TAPE_ARTIFACTS_HISS_OFF_DB, -39, this.hs);
         }
         if (params.og !== undefined) {
             this.og = this.parseFiniteNumber(params.og, -24, 24, this.og);
@@ -1150,8 +1189,8 @@ class TapeArtifactsPlugin extends PluginBase {
         this.updateParameters();
     }
 
-    // Speed and Tape are the only things standing between a Base value and the
-    // number the machine actually holds, and both of them arrive through
+    // Speed, Tape and Record Level are what stand between a Base value and the
+    // number the machine actually holds, and all three arrive through
     // setParameters, so the two readouts are refreshed from there.
     //
     // The class cannot see inside the processor string, so both figures are
@@ -1165,6 +1204,11 @@ class TapeArtifactsPlugin extends PluginBase {
     // expression below is algebraically the expression the processor evaluates,
     // on the one copy of those numbers. What is displayed is what the noise
     // generator is calibrated to, and the readout cannot drift from the DSP.
+    // The Record Level term is the makeup and nothing else: the injected flux
+    // is the datasheet column referred to the operating level, the operating
+    // level is SATURATION_REFERENCE_DBFS below full scale as an RMS sine, and
+    // the makeup is 18 - rl decibels, so the two constants cancel and what is
+    // left of the whole chain of definitions is a single -rl.
     //
     // The wow/flutter figure is not that. Only the 38.1 cm/s entry of
     // TAPE_ARTIFACTS_WOW_FLUTTER_PERCENT is interpolated into the processor
@@ -1197,20 +1241,25 @@ class TapeArtifactsPlugin extends PluginBase {
         const speedKey = TAPE_ARTIFACTS_SPEEDS[this.sp] ? this.sp : '15';
         const reference = TAPE_ARTIFACTS_TAPES.Standard.bniecDb['15'];
         const tape = TAPE_ARTIFACTS_TAPES[this.tp] || TAPE_ARTIFACTS_TAPES.Standard;
-        return this.hs + (tape.bniecDb[speedKey] - reference);
+        return this.hs + (tape.bniecDb[speedKey] - reference) - this.rl;
     }
 
-    // Both readouts share one line, so each names the Base value it came from:
-    // the line stands on its own away from the two sliders it belongs to.
+    // The three readouts share one line, so each names the value it came from:
+    // the line stands on its own away from the sliders it belongs to. Record
+    // Level is a statement of the convention rather than a measurement - there
+    // is no meter, and none is wanted - so its segment is static.
     _statusText() {
         const speed = `${this.sp} ips`;
+        const signed = value => `${value >= 0 ? '+' : ''}${value.toFixed(1)}`;
+        const recordLevel = `Record Level ${signed(this.rl)} dB → tape peak`
+            + ` ${signed(this.rl)} dB re ${TAPE_ARTIFACTS_REFERENCE_FLUX} at 0 dBFS in`;
         const wowFlutter = `Wow/Flutter Base ${this.wf.toFixed(3)}% →`
             + ` ${this._effectiveWowFlutterPercent().toFixed(3)}% at ${speed}`;
-        const hiss = this.hs <= TAPE_ARTIFACTS_HISS_OFF_DBFS
-            ? `Hiss Base ${this.hs.toFixed(1)} dBFS → off`
-            : `Hiss Base ${this.hs.toFixed(1)} dBFS →`
-                + ` ${this._effectiveHissDbFs().toFixed(1)} dBFS at ${speed}, ${this.tp}`;
-        return `${wowFlutter} · ${hiss}`;
+        const base = `Hiss Base ${this.hs.toFixed(1)} dB re ${TAPE_ARTIFACTS_REFERENCE_FLUX}`;
+        const hiss = this.hs <= TAPE_ARTIFACTS_HISS_OFF_DB
+            ? `${base} → off`
+            : `${base} → ${this._effectiveHissDbFs().toFixed(1)} dBFS at ${speed}, ${this.tp}`;
+        return `${recordLevel} · ${wowFlutter} · ${hiss}`;
     }
 
     _refreshEffectiveValues() {
@@ -1220,7 +1269,7 @@ class TapeArtifactsPlugin extends PluginBase {
     setSp(value) { this.setParameters({ sp: value }); }
     setTp(value) { this.setParameters({ tp: value }); }
     setBs(value) { this.setParameters({ bs: value }); }
-    setIp(value) { this.setParameters({ ip: value }); }
+    setRl(value) { this.setParameters({ rl: value }); }
     setWf(value) { this.setParameters({ wf: value }); }
     setHs(value) { this.setParameters({ hs: value }); }
     setOg(value) { this.setParameters({ og: value }); }
@@ -1242,18 +1291,19 @@ class TapeArtifactsPlugin extends PluginBase {
         ], this.tp, this.setTp.bind(this)));
 
         container.appendChild(this.createParameterControl('Bias', -6, 6, 0.1, this.bs, this.setBs.bind(this), 'dB'));
-        container.appendChild(this.createParameterControl('Input Peak', -36, 0, 0.1, this.ip, this.setIp.bind(this), 'dBFS'));
+        container.appendChild(this.createParameterControl('Record Level', -12, 18, 0.1, this.rl, this.setRl.bind(this), 'dB'));
         container.appendChild(this.createParameterControl('Wow/Flutter', 0, 1, 0.001,
             this.wf, this.setWf.bind(this), '%'));
-        container.appendChild(this.createParameterControl('Hiss', TAPE_ARTIFACTS_HISS_OFF_DBFS, -60, 0.1,
-            this.hs, this.setHs.bind(this), 'dBFS'));
+        container.appendChild(this.createParameterControl('Hiss', TAPE_ARTIFACTS_HISS_OFF_DB, -39, 0.1,
+            this.hs, this.setHs.bind(this), `dB re ${TAPE_ARTIFACTS_REFERENCE_FLUX}`));
         container.appendChild(this.createParameterControl('Output', -24, 24, 0.1, this.og, this.setOg.bind(this), 'dB'));
         container.appendChild(this.createParameterControl('Mix', 0, 100, 1, this.mx, this.setMx.bind(this), '%'));
 
         // Base Wow/Flutter and Base Hiss are stated at the reference
         // configuration, so the last line reports what the pair comes to once
-        // the Speed and Tape selections are applied. Speed, Tape and both Base
-        // values all arrive through setParameters, which refreshes it.
+        // the Speed, Tape and Record Level settings are applied, and states the
+        // Record Level convention alongside them. All of them arrive through
+        // setParameters, which refreshes it.
         const status = document.createElement('div');
         status.className = 'tape-artifacts-status';
         status.setAttribute('role', 'status');

@@ -79,15 +79,22 @@ test('SW Radio Simulator freezes the parameter layout and representative parity 
   const cases = JSON.parse(casesText).cases;
 
   assert.equal(schema.type, 'SWRadioSimulatorPlugin');
-  assert.equal(schema.floatCount, 21);
+  assert.equal(schema.floatCount, 24);
   assert.deepEqual(raw.fields.map(({ key }) => key),
-    ['tb', 'pe', 'md', 'cp', 'sg', 'sk', 'fd', 'ds', 'st', 'in', 'io',
-      'tn', 'bw', 'de', 'ag', 'dt', 'hm', 'hz', 'sp', 'og', 'mx']);
+    ['rd', 'tb', 'pe', 'md', 'cp', 'sg', 'sk', 'fd', 'ds', 'st', 'in', 'io',
+      'tn', 'bw', 'de', 'ag', 'dt', 'hm', 'hz', 'sp', 'og', 'mx', 'mo', 'bf']);
   assert.deepEqual(raw.fields.find(field => field.key === 'de').values,
     ['Envelope', 'Synchronous']);
   assert.deepEqual(raw.fields.find(field => field.key === 'ag').values, ['Slow', 'Mid', 'Fast']);
   assert.deepEqual(raw.fields.find(field => field.key === 'hz').values, ['50', '60']);
   assert.deepEqual(raw.fields.find(field => field.key === 'sp').values, ['Off', 'Small', 'Table']);
+  // The mode enum order is the wire enum index, so it is frozen alongside the BFO range.
+  assert.deepEqual(raw.fields.find(field => field.key === 'mo').values, ['AM', 'USB', 'LSB']);
+  assert.equal(raw.fields.find(field => field.key === 'mo').default, 'AM');
+  assert.deepEqual(
+    (({ min, max, default: fallback }) => ({ min, max, default: fallback }))(
+      raw.fields.find(field => field.key === 'bf')),
+    { min: -1000, max: 1000, default: 0 });
   // Shortwave-specific ranges: delay spread is new, Doppler reaches 10 Hz, the heterodyne
   // offset drops to 0.1 kHz, and the narrow IF caps tuning at +/-5 kHz.
   assert.deepEqual(
@@ -104,8 +111,14 @@ test('SW Radio Simulator freezes the parameter layout and representative parity 
     });
   assert.equal(raw.fields.find(field => field.key === 'sk').default, 55);
 
-  assert.equal(cases.length, 18);
+  assert.equal(cases.length, 28);
   assert.ok(cases.every(item => item.params?.fr === true));
+  // The transmitter shutdown path must stay frozen: a steady off-air case and
+  // a case that switches the carrier off mid-render and brings it back.
+  assert.ok(cases.some(item => item.params.rd === false));
+  assert.ok(cases.some(item =>
+    item.events?.some(event => event.params.rd === false) &&
+    item.events?.some(event => event.params.rd === true)));
   assert.ok(cases.some(item => item.sampleRate === 44100 && item.channels === 1));
   assert.ok(cases.some(item => item.sampleRate === 48000));
   assert.ok(cases.some(item => item.sampleRate === 192000));
@@ -124,14 +137,21 @@ test('SW Radio Simulator freezes the parameter layout and representative parity 
   // A mid-case Static Rate step covers the pending-deadline rescale path.
   assert.ok(cases.some(item =>
     item.params.st === 0.125 && item.events?.some(event => event.params.st === 100)));
+  // Both sidebands, a mid-stream mode switch, and the two inert corners are covered.
+  assert.ok(cases.some(item => item.params.mo === 'USB'));
+  assert.ok(cases.some(item => item.params.mo === 'LSB'));
+  assert.ok(cases.some(item => item.events?.some(event => 'mo' in event.params)));
+  assert.ok(cases.some(item =>
+    (item.params.mo ?? 'AM') === 'AM' && item.params.bf !== undefined && item.params.bf !== 0));
+  assert.ok(cases.some(item => item.params.mo === 'USB' && item.params.de === 'Synchronous'));
 
   // The goldens must be regenerated whenever the JS reference engine changes, so pin the
   // recorded engine hash: a stale golden set fails here instead of silently passing parity.
   const goldens = await readGoldenSet(path.join(pluginRoot, 'golden'));
-  assert.equal(goldens.length, 18);
+  assert.equal(goldens.length, 28);
   assert.ok(goldens.every(item =>
     item.metadata.jsEngineHash ===
-      '66ba8b13218401762988d69888fbb2310530f655ac7405c6ea5f5c5f16e3fc0d'
+      '726aeee3d29c772fe533f16191a67e1ae666be98126fe2fbfa631ce4d0632b56'
   ));
 });
 

@@ -341,6 +341,7 @@ EffeTune 2.1.0 में कैटलॉग स्कीमा v3 पर आध�
 | EQ        | Tone Control | three-band tone control | [विवरण](plugins/eq.md#tone-control) |
 | Lo-Fi     | AM Radio Simulator | संगीत को मॉडल की गई AM प्रसारण और रिसीवर शृंखला से गुजारता है | [विवरण](plugins/lofi.md#am-radio-simulator) |
 | Lo-Fi     | Bit Crusher | bit depth reduction और zero-order hold effect | [विवरण](plugins/lofi.md#bit-crusher) |
+| Lo-Fi     | Cassette Artifacts | संगीत को मॉडल की गई compact cassette पर रिकॉर्ड करके Type I/II/IV deck और Dolby B/C के साथ वापस चलाता है | [विवरण](plugins/lofi.md#cassette-artifacts) |
 | Lo-Fi     | Digital Error Emulator | अलग-अलग digital audio transmission errors और vintage digital equipment characteristics simulate करता है | [विवरण](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi     | DSD64 IMD Simulator | DSD64 ultrasonic noise से audible intermodulation distortion simulate करता है | [विवरण](plugins/lofi.md#dsd64-imd-simulator) |
 | Lo-Fi     | FM Radio Simulator | संगीत को भौतिक रूप से सिम्युलेट की गई FM प्रसारण और रिसीवर श्रृंखला से गुज़ारता है | [विवरण](plugins/lofi.md#fm-radio-simulator) |

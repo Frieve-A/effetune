@@ -5,7 +5,7 @@ import effetune as et
 
 
 types = [effect["type"] for effect in et.EFFECT_METADATA["effects"]]
-assert len(types) == 76
+assert len(types) == 83
 assert list(et.EFFECT_CLASSES) == types
 assert all(getattr(et, effect_type) is et.EFFECT_CLASSES[effect_type] for effect_type in types)
 assert all("implementation" not in effect for effect in et.EFFECT_METADATA["effects"])

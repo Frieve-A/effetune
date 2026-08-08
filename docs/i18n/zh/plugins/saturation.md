@@ -472,8 +472,9 @@ Tube Simulator 使用真实的电子管电路元件参数模拟完整电气信�
 
 ### 聆听调整指南
 
-- 对于 2 Vrms D/A 转换器，请从 **Line Default** 开始。实际产品默认值为 Input Reference 2.828 Vpk、Input Volume 0dB、12AU7、Negative Feedback 30dB 和 Output Trim +9dB。
-- 如果 Line Default 饱和过强，请降低 Input Volume 以减少进入电路的电压，再用 Output Trim 恢复听感音量。Output Trim 不会恢复电路内部余量。
+- 插件以 **EL84 Pentode @2%** 启动，因此 2 Vrms D/A 转换器可直接使用。实际产品默认值为 Input Reference 2.828 Vpk、Input Volume -55.9648dB、12AX7、Negative Feedback 3dB 和 Output Trim +4.626dB，使 EL84 推挽电路工作在总谐波失真 2%、增益为 1 的工作点。
+- 如果饱和过强，请降低 Input Volume 以减少进入电路的电压，再用 Output Trim 恢复听感音量。Output Trim 不会恢复电路内部余量。
+- 若只想使用小信号线路电路而非功率放大电路，请选择 **Line Default**。
 - 若只想比较不同电子管和电路的音色，请使用 **Listening (THD-matched)** 预设。它们彼此之间已经过响度匹配，切换时无需再做调整。
 - 请从 **EL84 Distributed 10 W** 开始体验较克制的功放响应。与 **EL84 Pentode 10 W** 切换比较，可在保持管型不变时听出帘栅连接和变压器负载的影响。
 - 要体验更高电压的 EL34 电路，请选 **EL34 Distributed 20–37 W**，并在与 EL84 比较前用 Output Trim 匹配响度。
@@ -494,7 +495,7 @@ Preset 下拉菜单以 **Custom** 开头，其后是 **Listening (THD-matched)**
 
 ### 电路预设与默认值
 
-插件启动时使用 **Line Default**。选择预设会写入下表的整套电路参数；之后改动任何值即成为自定义设置。
+插件启动时使用聆听预设 **EL84 Pentode @2%**。选择预设会写入下表的整套电路参数；之后改动任何值即成为自定义设置。
 
 | Circuit Preset | Output Circuit | 驱动管 / 输出管 | Negative Feedback | 功率级设置 | 输入 / 输出 |
 | --- | --- | --- | ---: | --- | --- |

@@ -186,6 +186,12 @@
           "$ref": "#/$defs/BitCrusher"
         },
         {
+          "$ref": "#/$defs/BluetoothSBCSimulator"
+        },
+        {
+          "$ref": "#/$defs/CassetteArtifacts"
+        },
+        {
           "$ref": "#/$defs/DigitalErrorEmulator"
         },
         {
@@ -195,7 +201,16 @@
           "$ref": "#/$defs/FMRadioSimulator"
         },
         {
+          "$ref": "#/$defs/G726ADPCMSimulator"
+        },
+        {
+          "$ref": "#/$defs/GSMFullRateSimulator"
+        },
+        {
           "$ref": "#/$defs/HumGenerator"
+        },
+        {
+          "$ref": "#/$defs/MP3CodecSimulator"
         },
         {
           "$ref": "#/$defs/NoiseBlender"
@@ -205,6 +220,9 @@
         },
         {
           "$ref": "#/$defs/SWRadioSimulator"
+        },
+        {
+          "$ref": "#/$defs/TapeArtifacts"
         },
         {
           "$ref": "#/$defs/VinylArtifacts"
@@ -268,6 +286,9 @@
         },
         {
           "$ref": "#/$defs/SubSynth"
+        },
+        {
+          "$ref": "#/$defs/TubeSimulator"
         },
         {
           "$ref": "#/$defs/CrossfeedFilter"
@@ -3546,6 +3567,10 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "radio": {
+              "type": "boolean",
+              "default": true
+            },
             "txBandwidth": {
               "type": "number",
               "minimum": 2,
@@ -3752,6 +3777,205 @@
               "minimum": 0,
               "maximum": 1000,
               "default": 11
+            }
+          }
+        }
+      }
+    },
+    "BluetoothSBCSimulator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "BluetoothSBCSimulator"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "bitpool": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 53,
+              "default": 35
+            },
+            "channelMode": {
+              "type": "string",
+              "enum": [
+                "Joint Stereo",
+                "Stereo",
+                "Dual Channel"
+              ],
+              "default": "Joint Stereo"
+            },
+            "blocks": {
+              "type": "string",
+              "enum": [
+                "4",
+                "8",
+                "12",
+                "16"
+              ],
+              "default": "16"
+            },
+            "outputGain": {
+              "type": "number",
+              "minimum": -24,
+              "maximum": 12,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "mix": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
+            },
+            "packetLoss": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 20,
+              "x-effetune-unit": "%",
+              "default": 0
+            }
+          }
+        }
+      }
+    },
+    "CassetteArtifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "CassetteArtifacts"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "deckGrade": {
+              "type": "string",
+              "enum": [
+                "Reference",
+                "Hi-Fi",
+                "Consumer",
+                "Portable"
+              ],
+              "default": "Consumer"
+            },
+            "tapeType": {
+              "type": "string",
+              "enum": [
+                "Type I",
+                "Type II",
+                "Type IV"
+              ],
+              "default": "Type I"
+            },
+            "noiseReduction": {
+              "type": "string",
+              "enum": [
+                "Off",
+                "Dolby B",
+                "Dolby C"
+              ],
+              "default": "Dolby B"
+            },
+            "bias": {
+              "type": "number",
+              "minimum": -6,
+              "maximum": 6,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "recordLevel": {
+              "type": "number",
+              "minimum": -12,
+              "maximum": 18,
+              "x-effetune-unit": "dB",
+              "default": 9
+            },
+            "wowFlutter": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "x-effetune-unit": "%",
+              "default": 0.2
+            },
+            "hiss": {
+              "type": "number",
+              "minimum": -92,
+              "maximum": -42,
+              "x-effetune-unit": "dB re 250 nWb/m",
+              "default": -60.5
+            },
+            "dropouts": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 20,
+              "x-effetune-unit": "events/min",
+              "default": 2
+            },
+            "azimuth": {
+              "type": "number",
+              "minimum": -6,
+              "maximum": 6,
+              "x-effetune-unit": "arcmin",
+              "default": 2
+            },
+            "dolbyLevelError": {
+              "type": "number",
+              "minimum": -3,
+              "maximum": 3,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "output": {
+              "type": "number",
+              "minimum": -24,
+              "maximum": 24,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "mix": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
             }
           }
         }
@@ -3971,6 +4195,10 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "radio": {
+              "type": "boolean",
+              "default": true
+            },
             "emphasis": {
               "type": "string",
               "enum": [
@@ -4055,6 +4283,126 @@
         }
       }
     },
+    "G726ADPCMSimulator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "G726ADPCMSimulator"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "bitrate": {
+              "type": "string",
+              "enum": [
+                "16",
+                "24",
+                "32",
+                "40"
+              ],
+              "x-effetune-unit": "kbit/s",
+              "default": "32"
+            },
+            "outputGain": {
+              "type": "number",
+              "minimum": -24,
+              "maximum": 12,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "mix": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
+            },
+            "radioBitErrorRate": {
+              "type": "number",
+              "minimum": 0.000001,
+              "maximum": 0.01,
+              "default": 0.000001
+            }
+          }
+        }
+      }
+    },
+    "GSMFullRateSimulator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "GSMFullRateSimulator"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "transcodes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3,
+              "default": 1
+            },
+            "outputGain": {
+              "type": "number",
+              "minimum": -24,
+              "maximum": 12,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "mix": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
+            },
+            "carrierToInterference": {
+              "type": "number",
+              "minimum": 4,
+              "maximum": 30,
+              "x-effetune-unit": "dB",
+              "default": 30
+            }
+          }
+        }
+      }
+    },
     "HumGenerator": {
       "type": "object",
       "additionalProperties": false,
@@ -4125,6 +4473,89 @@
               "maximum": 0,
               "x-effetune-unit": "dB",
               "default": -40
+            }
+          }
+        }
+      }
+    },
+    "MP3CodecSimulator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "MP3CodecSimulator"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "codecRate": {
+              "type": "string",
+              "enum": [
+                "22.05 kHz (MPEG-2)",
+                "44.1 kHz (MPEG-1)"
+              ],
+              "default": "44.1 kHz (MPEG-1)"
+            },
+            "bitrate": {
+              "type": "string",
+              "enum": [
+                "32",
+                "48",
+                "64",
+                "80",
+                "96",
+                "112",
+                "128",
+                "160",
+                "192",
+                "224",
+                "256",
+                "320"
+              ],
+              "default": "64"
+            },
+            "stereoMode": {
+              "type": "string",
+              "enum": [
+                "Joint Stereo",
+                "Stereo"
+              ],
+              "default": "Joint Stereo"
+            },
+            "bitReservoir": {
+              "type": "boolean",
+              "default": true
+            },
+            "outputGain": {
+              "type": "number",
+              "minimum": -24,
+              "maximum": 12,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "mix": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
             }
           }
         }
@@ -4246,6 +4677,10 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "radio": {
+              "type": "boolean",
+              "default": true
+            },
             "txBandwidth": {
               "type": "number",
               "minimum": 2,
@@ -4386,6 +4821,112 @@
               "default": "Small"
             },
             "outputGain": {
+              "type": "number",
+              "minimum": -24,
+              "maximum": 24,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "mix": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "AM",
+                "USB",
+                "LSB"
+              ],
+              "default": "AM"
+            },
+            "bfoOffset": {
+              "type": "number",
+              "minimum": -1000,
+              "maximum": 1000,
+              "x-effetune-unit": "Hz",
+              "default": 0
+            }
+          }
+        }
+      }
+    },
+    "TapeArtifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "TapeArtifacts"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "speed": {
+              "type": "string",
+              "enum": [
+                "7.5",
+                "15",
+                "30"
+              ],
+              "default": "15"
+            },
+            "tape": {
+              "type": "string",
+              "enum": [
+                "Standard",
+                "Master"
+              ],
+              "default": "Standard"
+            },
+            "bias": {
+              "type": "number",
+              "minimum": -6,
+              "maximum": 6,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "recordLevel": {
+              "type": "number",
+              "minimum": -12,
+              "maximum": 18,
+              "x-effetune-unit": "dB",
+              "default": 6
+            },
+            "wowFlutter": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "x-effetune-unit": "%",
+              "default": 0.16
+            },
+            "hiss": {
+              "type": "number",
+              "minimum": -89,
+              "maximum": -39,
+              "x-effetune-unit": "dB re 320 nWb/m",
+              "default": -62.5
+            },
+            "output": {
               "type": "number",
               "minimum": -24,
               "maximum": 24,
@@ -6297,6 +6838,185 @@
               "maximum": 0,
               "x-effetune-unit": "dB/oct",
               "default": 0
+            }
+          }
+        }
+      }
+    },
+    "TubeSimulator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "TubeSimulator"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "inputVolume": {
+              "type": "number",
+              "minimum": -96,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -55.9648
+            },
+            "tube": {
+              "type": "string",
+              "enum": [
+                "12AX7",
+                "12AT7",
+                "12AU7"
+              ],
+              "default": "12AX7"
+            },
+            "bias": {
+              "type": "number",
+              "minimum": -50,
+              "maximum": 50,
+              "x-effetune-unit": "%",
+              "default": 0
+            },
+            "plateVoltage": {
+              "type": "number",
+              "minimum": 150,
+              "maximum": 300,
+              "x-effetune-unit": "V",
+              "default": 250
+            },
+            "sourceImpedance": {
+              "type": "number",
+              "minimum": 0.6,
+              "maximum": 100,
+              "x-effetune-unit": "kOhm",
+              "default": 10
+            },
+            "supplyImpedance": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 47,
+              "x-effetune-unit": "kOhm",
+              "default": 10
+            },
+            "outputTrim": {
+              "type": "number",
+              "minimum": -48,
+              "maximum": 48,
+              "x-effetune-unit": "dB",
+              "default": 4.626
+            },
+            "mix": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
+            },
+            "inputReference": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 20,
+              "x-effetune-unit": "Vpk",
+              "default": 2.828
+            },
+            "negativeFeedback": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 30,
+              "x-effetune-unit": "dB",
+              "default": 3
+            },
+            "outputStage": {
+              "type": "string",
+              "enum": [
+                "Line",
+                "Power"
+              ],
+              "default": "Power"
+            },
+            "powerTube": {
+              "type": "string",
+              "enum": [
+                "EL84",
+                "EL34"
+              ],
+              "default": "EL84"
+            },
+            "powerBPlus": {
+              "type": "number",
+              "minimum": 300,
+              "maximum": 470,
+              "x-effetune-unit": "V",
+              "default": 329.696
+            },
+            "cathodeResistor": {
+              "type": "number",
+              "minimum": 270,
+              "maximum": 500,
+              "x-effetune-unit": "Ohm",
+              "default": 270
+            },
+            "screenTap": {
+              "type": "string",
+              "enum": [
+                "0",
+                "20",
+                "43"
+              ],
+              "default": "0"
+            },
+            "primaryImpedance": {
+              "type": "string",
+              "enum": [
+                "6.0",
+                "6.6",
+                "8.0"
+              ],
+              "default": "8.0"
+            },
+            "speakerLoad": {
+              "type": "string",
+              "enum": [
+                "4",
+                "8",
+                "15",
+                "16"
+              ],
+              "default": "15"
+            },
+            "actualSpeakerLoad": {
+              "type": "number",
+              "minimum": 2,
+              "maximum": 32,
+              "x-effetune-unit": "Ohm",
+              "default": 15
+            },
+            "safetyTrim": {
+              "type": "number",
+              "minimum": -96,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "autoGainReduction": {
+              "type": "boolean",
+              "default": true
             }
           }
         }

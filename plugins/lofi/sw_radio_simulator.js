@@ -8,6 +8,9 @@
 // HF differences applied: ionospheric delay spread (ds), Doppler spread up to 10 Hz,
 // heterodyne offsets down to 0.1 kHz, skywave-dominant defaults, and an optional
 // synchronous detector built on the carrier-recovery PLL proven by the C-QUAM work.
+// USB / LSB reception adds a transmit-side analytic-signal branch (100 Hz low cut, IIR
+// allpass Hilbert pair), complex propagation for the suppressed-carrier sideband, and a
+// BFO product detector; the AM branch is kept byte-for-byte identical.
 
 const SW_RADIO_SIMULATOR_MINIMUM_AGC_GAIN_DB = -12;
 const SW_RADIO_SIMULATOR_MAXIMUM_AGC_GAIN_DB = 42;
@@ -36,6 +39,34 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
     const FLOAT53_SCALE = 9007199254740992;
     const CONTROL_INTERVAL = 32;
     const AGC_TARGET_DB = -6;
+    // An AM receiver's AGC rides the carrier, whose level is what the detector holds at the
+    // target while the programme rides on top of it as modulation. SSB has no carrier: the
+    // same detector now follows the programme envelope itself, so the loop parks the smoothed
+    // envelope at the target while the instantaneous waveform keeps its full crest factor,
+    // and the product detector adds the same sqrt(2) the envelope detector gets. The SSB
+    // target is therefore backed off, sized by a sweep over music, voiced and percussive
+    // programme at 48 and 96 kHz, both sidebands and all three AGC speeds.
+    //
+    // That sweep sorts every block of every render into windows, and the two the figures
+    // below are quoted over are NOT the same window:
+    //   onset    a block starting within 50 ms of power-up or of the end of a silent
+    //            stretch. The AGC is fully open there and has not begun to close.
+    //   settled  every block that is not an onset block. It therefore still contains the
+    //            blocks immediately after a 50 ms onset window closes, where the loop is
+    //            part way through its recovery - which is where all the residual
+    //            over-full-scale blocks are.
+    //   steady   the second half of the render. A subset of settled, not a synonym for it:
+    //            no onset recovery reaches into it at all.
+    // -18 dB is the highest of the sanctioned steps that leaves programme clear of full
+    // scale on the STEADY window: zero over-full-scale blocks and a worst peak of
+    // -1.87 dBFS there, where -16 dB already reaches +0.13 dBFS. It is not a ceiling on
+    // the output, and the wider SETTLED window is what shows that: a programme onset
+    // arriving at a fully open AGC peaks around +13 dBFS, and the worst settled block -
+    // one just outside an onset window, still recovering - measures +2.34 dBFS. No attack
+    // time a real set uses catches the first samples of an instantaneous onset, so that
+    // thump is left in as receiver physics. Real sets land 6-12 dB below their AM audio
+    // for the same reason.
+    const SSB_AGC_TARGET_DB = -18;
     const AGC_MINIMUM_GAIN_DB = ${SW_RADIO_SIMULATOR_MINIMUM_AGC_GAIN_DB};
     const AGC_MAXIMUM_GAIN_DB = ${SW_RADIO_SIMULATOR_MAXIMUM_AGC_GAIN_DB};
     const DETECTOR_DIODE_TO_LOAD_RESISTANCE_RATIO = 0.02;
@@ -78,11 +109,25 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
     const SYNC_PLL_INSIDE_RATIO = 0.96;
     const SYNC_PLL_OUTSIDE_RATIO = 1.04;
     const SYNC_EPSILON_ABSOLUTE = 1e-6;
+    // SSB transmit branch: communication transmitters roll off the lowest audio octaves, and
+    // the low cut also anchors the Hilbert pair above its usable band edge (Phase 0: the
+    // 100 Hz / 50 dB allpass design is usable down to <= 86 Hz at every supported rate).
+    const SSB_LOW_CUT_HZ = 100;
+    const HILBERT_TRANSITION_HZ = 100;
+    const HILBERT_ATTENUATION_DB = 50;
+    const HILBERT_SERIES_EPSILON = 1e-100;
     const BUTTERWORTH_4_Q = [0.541196100146197, 1.306562964876377];
     const BUTTERWORTH_6_Q = [0.517638090205042, 0.707106781186548, 1.931851652578137];
     const BUTTERWORTH_8_Q = [0.509795579104159, 0.601344886935045, 0.899976223136416, 2.562915447741506];
     const AGC_ATTACK_TIMES = [0.150, 0.050, 0.015];
     const AGC_RELEASE_TIMES = [3.0, 1.5, 0.750];
+    // Communications receivers fix the SSB AGC attack in the 1-10 ms range and wire the
+    // operator's Slow/Mid/Fast knob to the release alone: without a carrier the loop has to
+    // catch the first syllable of a transmission instead of gliding onto a steady level, so
+    // an attack the operator could slow down would simply let every onset through. The AM
+    // branch keeps the carrier-derived attack the knob has always selected.
+    const SSB_AGC_DETECTOR_ATTACK_SECONDS = 0.0015;
+    const SSB_AGC_GAIN_ATTACK_SECONDS = 0.002;
 
     function makeBiquad() {
         return { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0, z1: 0, z2: 0 };
@@ -365,6 +410,81 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         return value === 'Synchronous' ? 1 : 0;
     }
 
+    function modeIndex(value) {
+        return value === 'USB' ? 1 : (value === 'LSB' ? 2 : 0);
+    }
+
+    // The kernel receives this bool packed as a float and tests it against 0.5,
+    // so mirror that threshold here instead of a plain truthiness check. Number()
+    // maps true/false to 1/0, keeping the two engines on the same branch.
+    function radioEnabled(value) {
+        return value === undefined ? true : Number(value) >= 0.5;
+    }
+
+    // Closed-form elliptic design of the polyphase half-band derived allpass Hilbert pair.
+    // The transition parameter t = 100 Hz / fs and the 50 dB target reproduce the Phase 0
+    // calibration: 7 sections at 44.1/48 kHz, 8 at 96 kHz, 9 at 192 kHz. Both power series
+    // are truncated once a term drops below 1e-100 (3-4 terms in practice); the C++ port
+    // must use the identical formulae and truncation.
+    function designHilbertCoefficients(sampleRate) {
+        const transition = HILBERT_TRANSITION_HZ / sampleRate;
+        const tangent = Math.tan((1 - 4 * transition) * PI / 4);
+        const k = tangent * tangent;
+        const complementary = Math.pow(1 - k * k, 0.25);
+        const e = 0.5 * (1 - complementary) / (1 + complementary);
+        const e4 = e * e * e * e;
+        const nome = e * (1 + e4 * (2 + e4 * (15 + 150 * e4)));
+        const attenuationPower = Math.pow(10, -HILBERT_ATTENUATION_DB / 10);
+        const a = attenuationPower / (1 - attenuationPower);
+        let order = Math.ceil(Math.log(a * a / 16) / Math.log(nome));
+        if (order % 2 === 0) order += 1;
+        if (order < 3) order = 3;
+        const count = (order - 1) / 2;
+        const coefficients = new Array(count);
+        for (let index = 0; index < count; index++) {
+            const c = index + 1;
+            let numerator = 0;
+            for (let i = 0; ; i++) {
+                const term = (i % 2 === 0 ? 1 : -1) * Math.pow(nome, i * (i + 1)) *
+                    Math.sin((2 * i + 1) * c * PI / order);
+                numerator += term;
+                if ((term < 0 ? -term : term) < HILBERT_SERIES_EPSILON) break;
+            }
+            numerator *= Math.pow(nome, 0.25);
+            let denominator = 0.5;
+            for (let i = 1; ; i++) {
+                const term = (i % 2 === 0 ? 1 : -1) * Math.pow(nome, i * i) *
+                    Math.cos(2 * i * c * PI / order);
+                denominator += term;
+                if ((term < 0 ? -term : term) < HILBERT_SERIES_EPSILON) break;
+            }
+            const w = numerator / denominator;
+            const wSquared = w * w;
+            const x = Math.sqrt((1 - wSquared * k) * (1 - wSquared / k)) / (1 + wSquared);
+            coefficients[index] = (1 - x) / (1 + x);
+        }
+        coefficients.sort((left, right) => left - right);
+        return coefficients;
+    }
+
+    // Second-order allpass section (a - z^-2) / (1 - a z^-2), cascaded per branch. The
+    // ascending-sorted coefficients alternate: even indices form the in-phase branch and odd
+    // indices the quadrature branch, which runs behind one extra unit delay. Swapping the
+    // assignment flips the 90 degree sign and therefore the sidebands (Phase 0 trap).
+    function processHilbertBranch(sections, input) {
+        let value = input;
+        for (let index = 0; index < sections.length; index++) {
+            const section = sections[index];
+            const output = section.a * (value + section.y2) - section.x2;
+            section.x2 = section.x1;
+            section.x1 = value;
+            section.y2 = section.y1;
+            section.y1 = output;
+            value = output;
+        }
+        return value;
+    }
+
     function configureSpeakerPath(speaker, highPass, peak, lowPass, sampleRate) {
         resetBiquad(highPass);
         resetBiquad(peak);
@@ -471,6 +591,12 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         state.groundGain = Math.sqrt(1 - sky);
         state.skyGain = Math.sqrt(sky * 0.5);
         state.signalGain = Math.pow(10, state.controls.sg / 20);
+        // Going off the air removes the transmitter's own carrier and sidebands from the
+        // propagation path and nothing else. signalGain still scales the atmospheric static
+        // bursts, so a dead channel keeps its crashes, its co-channel QRM and its thermal
+        // noise while the AGC winds up to the limit - exactly what a real receiver does when
+        // a station closes down.
+        state.stationGain = state.radio ? state.signalGain : 0;
         state.interfererGain = Math.pow(10, state.controls.in / 20);
         state.humAmount = Math.pow(10, state.controls.hm / 20);
         state.humPhaseIncrement = TWO_PI * state.controls.hz / state.sampleRate;
@@ -479,10 +605,13 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         state.outputGain = Math.pow(10, state.controls.og / 20);
         state.mix = state.controls.mx * 0.01;
         state.dryMix = 1 - state.mix;
+        const agcAttackTime = state.mode === 0 ?
+            AGC_ATTACK_TIMES[agcSpeed] : SSB_AGC_DETECTOR_ATTACK_SECONDS;
         state.agcDetectorAttackCoefficient =
-            1 - Math.exp(-1 / (state.sampleRate * AGC_ATTACK_TIMES[agcSpeed]));
+            1 - Math.exp(-1 / (state.sampleRate * agcAttackTime));
         state.agcDetectorReleaseCoefficient =
             1 - Math.exp(-1 / (state.sampleRate * AGC_RELEASE_TIMES[agcSpeed]));
+        state.bfoPhaseIncrement = TWO_PI * state.controls.bf / state.sampleRate;
     }
 
     function fadeFilterPole(state) {
@@ -527,10 +656,20 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         tap.stepQ = 0;
     }
 
-    function makeState(sampleRate, pairChannels, speaker, detector, baseSeed) {
+    function makeState(sampleRate, pairChannels, speaker, detector, mode, baseSeed) {
         // Worst-case ionospheric geometry: tau2 = (1 + SKY_FIRST_DELAY_RATIO) * ds_max.
         const delayLength = Math.ceil(sampleRate * (1 + SKY_FIRST_DELAY_RATIO) *
             MAXIMUM_DELAY_SPREAD_SECONDS) + 4;
+        // The SSB capacity (Hilbert sections, quadrature ring) is allocated here for every
+        // mode so a later mode switch never allocates. No RNG draw is consumed by any of it.
+        const hilbertCoefficients = designHilbertCoefficients(sampleRate);
+        const hilbertI = [];
+        const hilbertQ = [];
+        for (let index = 0; index < hilbertCoefficients.length; index++) {
+            const section = { a: hilbertCoefficients[index], x1: 0, x2: 0, y1: 0, y2: 0 };
+            if (index % 2 === 0) hilbertI.push(section);
+            else hilbertQ.push(section);
+        }
         const normalizedBase = (baseSeed >>> 0) === 0 ? STATIC_ZERO_FALLBACK : baseSeed >>> 0;
         let staticRandomState = (normalizedBase ^ STATIC_RANDOM_SALT) >>> 0;
         if (staticRandomState === 0) staticRandomState = STATIC_ZERO_FALLBACK;
@@ -540,6 +679,7 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
             pairChannels,
             speaker,
             detector,
+            mode,
             randomState: normalizedBase,
             staticRandomState,
             staticNextEventDeadlineSeconds: -1,
@@ -548,19 +688,31 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
             gaussianHasSpare: false,
             gaussianSpare: 0,
             delay: new Float64Array(delayLength >= 4 ? delayLength : 4),
+            delayQ: new Float64Array(delayLength >= 4 ? delayLength : 4),
             delayPosition: 0,
             delay1Samples: 0,
             delay2Samples: 0,
             sampleCounter: 0,
             controlRemaining: 0,
             controlSmoothing: 1 - Math.exp(-CONTROL_INTERVAL / (sampleRate * 0.020)),
+            // Transmitter on/off is a switch, not a smoothed control: the WASM kernel reads it
+            // as params_.radio >= 0.5F, so the reference mirrors that threshold exactly
+            // (radioEnabled above) rather than testing truthiness.
+            radio: radioEnabled(parameters.rd),
             controls: {
                 tb: parameters.tb, pe: parameters.pe, md: parameters.md, cp: parameters.cp,
                 sg: parameters.sg, sk: parameters.sk, fd: parameters.fd, ds: parameters.ds,
                 in: parameters.in, io: parameters.io, tn: parameters.tn, bw: parameters.bw,
                 dt: parameters.dt, hm: parameters.hm, og: parameters.og, mx: parameters.mx,
-                hz: Number(parameters.hz)
+                hz: Number(parameters.hz),
+                bf: Number.isFinite(parameters.bf) ? parameters.bf : 0
             },
+            ssbLowCut: makeBiquad(),
+            hilbertI,
+            hilbertQ,
+            hilbertQDelay: 0,
+            bfoPhase: 0,
+            bfoPhaseIncrement: 0,
             txHighPass: makeBiquad(),
             preEmphasisPole: Math.exp(-TWO_PI * 2100 / sampleRate),
             preEmphasisShelfGain: 0,
@@ -579,6 +731,7 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
             groundGain: 1,
             skyGain: 0,
             signalGain: 1,
+            stationGain: 1,
             interfererFilters: makeBank(2),
             interfererNormalizer: 1,
             interfererProgram: 0,
@@ -656,6 +809,7 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         };
         for (let index = 0; index < STATIC_RANDOM_WARMUP_DRAWS; index++) nextStaticRandom(state);
         configureHighPass(state.txHighPass, 50, SQRT_HALF, sampleRate);
+        configureHighPass(state.ssbLowCut, SSB_LOW_CUT_HZ, SQRT_HALF, sampleRate);
         configureBank(state.txInterp, 14000, BUTTERWORTH_4_Q, sampleRate * 3);
         configureBank(state.txFilters, parameters.tb * 1000, BUTTERWORTH_8_Q, sampleRate * 3);
         configureBank(state.ifI, parameters.bw * 500, BUTTERWORTH_6_Q, sampleRate);
@@ -677,8 +831,11 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
             -state.stationTuningOffsetHz : state.stationTuningOffsetHz;
         const initialInterfererOffsetHz = state.interfererTuningOffsetHz < 0 ?
             -state.interfererTuningOffsetHz : state.interfererTuningOffsetHz;
-        const initialStation = Math.pow(10, state.controls.sg / 20) * state.stationTuningGain *
-            butterworth6Magnitude(initialStationOffsetHz, initialIfCutoffHz);
+        // A transmitter that is off the air contributes nothing to the cold-start estimate, so
+        // the AGC starts where the interferer and the noise floor alone put it.
+        const initialStation = state.radio ?
+            Math.pow(10, state.controls.sg / 20) * state.stationTuningGain *
+                butterworth6Magnitude(initialStationOffsetHz, initialIfCutoffHz) : 0;
         const initialInterfererLevel = Math.pow(10, state.controls.in / 20) *
             state.interfererTuningGain;
         const initialInterfererCarrier = initialInterfererLevel *
@@ -714,11 +871,17 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         // sees is sqrt(2) above the per-quadrature RMS the IF cascade passes.
         const initialNoise = state.thermalNoiseStd *
             Math.sqrt(4 * IF_CASCADE_ENBW_RATIO * initialIfCutoffHz / sampleRate);
-        let initialCarrier = Math.sqrt(initialStation * initialStation +
-            initialInterferer * initialInterferer + initialNoise * initialNoise);
+        // SSB suppresses the desired-station carrier, so its cold start omits the station
+        // term and seeds the AGC from the co-channel interferer and the in-band noise alone
+        // (Phase 0 4.1: the AM seed is far too low for SSB and mutes the first syllables).
+        let initialCarrier = mode === 0 ?
+            Math.sqrt(initialStation * initialStation +
+                initialInterferer * initialInterferer + initialNoise * initialNoise) :
+            Math.sqrt(initialInterferer * initialInterferer + initialNoise * initialNoise);
         if (initialCarrier < 1e-6) initialCarrier = 1e-6;
         const initialCarrierDb = 20 * Math.log10(initialCarrier);
-        let initialAgcGainDb = AGC_TARGET_DB - initialCarrierDb;
+        let initialAgcGainDb = (mode === 0 ? AGC_TARGET_DB : SSB_AGC_TARGET_DB) -
+            initialCarrierDb;
         if (initialAgcGainDb < AGC_MINIMUM_GAIN_DB) initialAgcGainDb = AGC_MINIMUM_GAIN_DB;
         if (initialAgcGainDb > AGC_MAXIMUM_GAIN_DB) initialAgcGainDb = AGC_MAXIMUM_GAIN_DB;
         state.agcDetectorStage1 = initialCarrier;
@@ -759,6 +922,10 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
             state.controls[key] += state.controlSmoothing * (parameters[key] - state.controls[key]);
         }
         state.controls.hz += state.controlSmoothing * (Number(parameters.hz) - state.controls.hz);
+        // The BFO offset is smoothed like every numeric control so retuning the clarifier
+        // glides in frequency while the product-detector phase stays continuous.
+        const bfTarget = Number.isFinite(parameters.bf) ? parameters.bf : 0;
+        state.controls.bf += state.controlSmoothing * (bfTarget - state.controls.bf);
         configureBank(state.txFilters, state.controls.tb * 1000, BUTTERWORTH_8_Q,
             state.sampleRate * 3);
         configureBank(state.ifI, state.controls.bw * 500, BUTTERWORTH_6_Q, state.sampleRate);
@@ -774,18 +941,20 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
 
         const detected = state.agcDetectorStage2 > 1e-12 ? state.agcDetectorStage2 : 1e-12;
         const detectedDb = 20 * Math.log10(detected);
-        let targetGain = AGC_TARGET_DB - detectedDb;
+        let targetGain = (state.mode === 0 ? AGC_TARGET_DB : SSB_AGC_TARGET_DB) - detectedDb;
         if (targetGain < AGC_MINIMUM_GAIN_DB) targetGain = AGC_MINIMUM_GAIN_DB;
         if (targetGain > AGC_MAXIMUM_GAIN_DB) targetGain = AGC_MAXIMUM_GAIN_DB;
         const speed = agcSpeedIndex(parameters.ag);
         const time = targetGain < state.agcGainDb ?
-            AGC_ATTACK_TIMES[speed] : AGC_RELEASE_TIMES[speed];
+            (state.mode === 0 ? AGC_ATTACK_TIMES[speed] : SSB_AGC_GAIN_ATTACK_SECONDS) :
+            AGC_RELEASE_TIMES[speed];
         const coefficient = 1 - Math.exp(-CONTROL_INTERVAL / (state.sampleRate * time));
         state.agcGainDb += coefficient * (targetGain - state.agcGainDb);
         let preAgc = detectedDb;
         if (preAgc < -80) preAgc = -80;
         if (preAgc > 6) preAgc = 6;
         state.carrierPreAgcDb = preAgc;
+        state.radio = radioEnabled(parameters.rd);
         updateControlCoefficients(state, speed);
         state.controlRemaining = CONTROL_INTERVAL;
     }
@@ -918,6 +1087,7 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
     const pairChannels = parameters.channelCount >= 2 ? 2 : 1;
     const selectedSpeaker = speakerIndex(parameters.sp);
     const selectedDetector = detectorIndex(parameters.de);
+    const selectedMode = modeIndex(parameters.mo);
     if (!Number.isInteger(context.__swRadioBaseSeed)) {
         const seeded = typeof context.__seededRandom === 'function' ?
             context.__seededRandom() : 0.937232635;
@@ -926,17 +1096,31 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
     let state = context.__swRadioSimulator;
     if (!state || state.sampleRate !== sampleRate || state.pairChannels !== pairChannels) {
         state = makeState(sampleRate, pairChannels, selectedSpeaker, selectedDetector,
-            context.__swRadioBaseSeed);
+            selectedMode, context.__swRadioBaseSeed);
         context.__swRadioSimulator = state;
     } else {
+        // The mode is an enum: it switches at the block boundary with no crossfade and no
+        // state reset - the AGC, fading and RNG streams carry straight across, exactly as a
+        // real receiver's mode switch does. While in SSB the detector selection is frozen:
+        // no transition starts and the sync PLL never steps, so de / dt are inert. The
+        // first AM block afterwards compares the frozen detector with the current selection
+        // and starts the ordinary 20 ms transition.
+        state.mode = selectedMode;
         if (state.speakerTransitionRemaining === 0 && state.speaker !== selectedSpeaker) {
             startSpeakerTransition(state, selectedSpeaker);
         }
-        if (state.detectorTransitionRemaining === 0 && state.detector !== selectedDetector) {
+        if (state.mode === 0 && state.detectorTransitionRemaining === 0 &&
+            state.detector !== selectedDetector) {
             startDetectorTransition(state, selectedDetector);
         }
     }
 
+    // Radio off takes the transmitter off the air, so the transmitter telemetry has nothing
+    // to report: the modulation meter must not keep showing a station that stopped
+    // transmitting, and the over-modulation counter must not keep ticking on a carrier that
+    // no longer exists. The meter itself keeps its ballistics and falls back the way a real
+    // modulation monitor does when the RF disappears. state.radio is the same control-rate
+    // switch the station gain reads.
     let blockModPeak = 0;
     for (let frame = 0; frame < blockSize; frame++) {
         if (state.controlRemaining === 0) updateControl(state);
@@ -977,11 +1161,36 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
             const interpolated = processBank(state.txInterp, phase === 0 ? compressed * 3 : 0);
             tx = processBank(state.txFilters, asymmetricLimit(interpolated));
         }
-        const transmitted = 1 + state.modulation * tx;
-        const modulationDeviation = (tx < 0 ? -tx : tx) * state.modulation * 100;
-        if (modulationDeviation > blockModPeak) blockModPeak = modulationDeviation;
-
-        state.delay[state.delayPosition] = transmitted;
+        let transmitted = 0;
+        let modulatedI = 0;
+        let modulatedQ = 0;
+        if (state.mode === 0) {
+            transmitted = 1 + state.modulation * tx;
+            const modulationDeviation = (tx < 0 ? -tx : tx) * state.modulation * 100;
+            if (state.radio && modulationDeviation > blockModPeak) {
+                blockModPeak = modulationDeviation;
+            }
+            state.delay[state.delayPosition] = transmitted;
+            state.delayQ[state.delayPosition] = 0;
+        } else {
+            // Balanced modulator equivalent: low-cut the programme like a communication
+            // transmitter, form the analytic signal with the allpass Hilbert pair, and pick
+            // the sideband with the quadrature sign. No carrier is added, so the modulation
+            // telemetry reports the transmit sideband drive instead of an AM depth.
+            const lowCut = processBiquad(state.ssbLowCut, tx);
+            const analyticI = processHilbertBranch(state.hilbertI, lowCut);
+            const quadratureInput = state.hilbertQDelay;
+            state.hilbertQDelay = lowCut;
+            const analyticQ = processHilbertBranch(state.hilbertQ, quadratureInput);
+            modulatedI = state.modulation * analyticI;
+            modulatedQ = state.mode === 1 ?
+                state.modulation * analyticQ : -state.modulation * analyticQ;
+            const sidebandDrive =
+                Math.sqrt(modulatedI * modulatedI + modulatedQ * modulatedQ) * 100;
+            if (state.radio && sidebandDrive > blockModPeak) blockModPeak = sidebandDrive;
+            state.delay[state.delayPosition] = modulatedI;
+            state.delayQ[state.delayPosition] = modulatedQ;
+        }
         const size = state.delay.length;
         const position1 = state.delayPosition >= state.delay1Samples ?
             state.delayPosition - state.delay1Samples :
@@ -991,12 +1200,29 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
             size + state.delayPosition - state.delay2Samples;
         const delayed1 = state.delay[position1];
         const delayed2 = state.delay[position2];
+        const delayed1Q = state.delayQ[position1];
+        const delayed2Q = state.delayQ[position2];
         state.delayPosition++;
         if (state.delayPosition === size) state.delayPosition = 0;
-        const stationI = state.signalGain * (state.groundGain * transmitted +
-            state.skyGain * (state.fade1.i * delayed1 + state.fade2.i * delayed2));
-        const stationQ = state.signalGain * state.skyGain *
-            (state.fade1.q * delayed1 + state.fade2.q * delayed2);
+        let stationI;
+        let stationQ;
+        if (state.mode === 0) {
+            stationI = state.stationGain * (state.groundGain * transmitted +
+                state.skyGain * (state.fade1.i * delayed1 + state.fade2.i * delayed2));
+            stationQ = state.stationGain * state.skyGain *
+                (state.fade1.q * delayed1 + state.fade2.q * delayed2);
+        } else {
+            // The SSB baseband is complex, so the sky modes apply the full complex fading
+            // taps and - unlike AM, whose real carrier keeps the ground wave in-phase - the
+            // ground path feeds both quadratures. Confining it to I would re-create both
+            // sidebands from the dominant ground component and erase the USB/LSB distinction.
+            stationI = state.stationGain * (state.groundGain * modulatedI +
+                state.skyGain * (state.fade1.i * delayed1 - state.fade1.q * delayed1Q +
+                    state.fade2.i * delayed2 - state.fade2.q * delayed2Q));
+            stationQ = state.stationGain * (state.groundGain * modulatedQ +
+                state.skyGain * (state.fade1.i * delayed1Q + state.fade1.q * delayed1 +
+                    state.fade2.i * delayed2Q + state.fade2.q * delayed2));
+        }
 
         const tuningCosine = Math.cos(state.tuningPhase);
         const tuningSine = Math.sin(state.tuningPhase);
@@ -1079,28 +1305,40 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
             (state.agcDetectorStage1 - state.agcDetectorStage2);
         state.lastIfEnvelope = ifEnvelope;
 
-        const detectorTransitioning = state.detectorTransitionRemaining > 0;
-        if (state.detector === 1 || (detectorTransitioning && state.detectorTarget === 1)) {
-            stepSyncPll(state, ifOutputI, ifOutputQ);
-        }
-        let detected = runDetector(state, state.detector, state.detectorPrimary,
-            ifOutputI, ifOutputQ);
-        let detectorClipping = state.detectorPrimary.clipping;
-        if (detectorTransitioning) {
-            const nextDetected = runDetector(state, state.detectorTarget, state.detectorSecondary,
-                ifOutputI, ifOutputQ);
-            const progress = (state.detectorTransitionTotal -
-                state.detectorTransitionRemaining) / state.detectorTransitionTotal;
-            const blend = 0.5 - 0.5 * Math.cos(PI * progress);
-            detected += blend * (nextDetected - detected);
-            detectorClipping = detectorClipping || state.detectorSecondary.clipping;
-            state.detectorTransitionRemaining--;
-            if (state.detectorTransitionRemaining === 0) {
-                const previousChain = state.detectorPrimary;
-                state.detectorPrimary = state.detectorSecondary;
-                state.detectorSecondary = previousChain;
-                state.detector = state.detectorTarget;
+        let detected;
+        let detectorClipping = false;
+        if (state.mode === 0) {
+            const detectorTransitioning = state.detectorTransitionRemaining > 0;
+            if (state.detector === 1 ||
+                (detectorTransitioning && state.detectorTarget === 1)) {
+                stepSyncPll(state, ifOutputI, ifOutputQ);
             }
+            detected = runDetector(state, state.detector, state.detectorPrimary,
+                ifOutputI, ifOutputQ);
+            detectorClipping = state.detectorPrimary.clipping;
+            if (detectorTransitioning) {
+                const nextDetected = runDetector(state, state.detectorTarget,
+                    state.detectorSecondary, ifOutputI, ifOutputQ);
+                const progress = (state.detectorTransitionTotal -
+                    state.detectorTransitionRemaining) / state.detectorTransitionTotal;
+                const blend = 0.5 - 0.5 * Math.cos(PI * progress);
+                detected += blend * (nextDetected - detected);
+                detectorClipping = detectorClipping || state.detectorSecondary.clipping;
+                state.detectorTransitionRemaining--;
+                if (state.detectorTransitionRemaining === 0) {
+                    const previousChain = state.detectorPrimary;
+                    state.detectorPrimary = state.detectorSecondary;
+                    state.detectorSecondary = previousChain;
+                    state.detector = state.detectorTarget;
+                }
+            }
+        } else {
+            // BFO product detector: rotate the composite IF by the phase-continuous local
+            // oscillator and take the real part (Re[(I + jQ) e^{-j phi}]). The sign
+            // convention delta = tn*1000 - bf with USB = f + delta was frozen in Phase 0.
+            detected = ifOutputI * Math.cos(state.bfoPhase) +
+                ifOutputQ * Math.sin(state.bfoPhase);
+            advancePhase(state, 'bfoPhase', state.bfoPhaseIncrement);
         }
 
         const receiverAudio = detected - state.dcPreviousInput +
@@ -1149,8 +1387,12 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         if (fadeDb > 6) fadeDb = 6;
         state.fadeDb = fadeDb;
         // Negative-peak (over-modulation) clipping is detector independent; the diagonal
-        // clipping term only exists in the envelope detector.
-        const clipNow = transmitted < 0 || detectorClipping;
+        // clipping term only exists in the envelope detector. A suppressed-carrier SSB
+        // waveform is bipolar by nature, so its negative values are not over-modulation.
+        // Radio off takes the transmitter off the air, so there is no carrier left to
+        // over-modulate either.
+        const clipNow = state.radio && state.mode === 0 &&
+            (transmitted < 0 || detectorClipping);
         if (clipNow && !state.clipActive) state.clipCount = (state.clipCount + 1) >>> 0;
         state.clipActive = clipNow;
         state.sampleCounter++;
@@ -1175,6 +1417,7 @@ class SWRadioSimulatorPlugin extends PluginBase {
     constructor() {
         super('SW Radio Simulator',
             'Physical shortwave transmission, ionospheric propagation, receiver, and speaker simulation');
+        this.rd = true;
         this.tb = 4.5;
         this.pe = 50;
         this.md = 90;
@@ -1186,7 +1429,9 @@ class SWRadioSimulatorPlugin extends PluginBase {
         this.st = 2;
         this.in = -47;
         this.io = 1;
+        this.mo = 'AM';
         this.tn = 0;
+        this.bf = 0;
         this.bw = 6;
         this.de = 'Envelope';
         this.ag = 'Fast';
@@ -1217,6 +1462,9 @@ class SWRadioSimulatorPlugin extends PluginBase {
         this.hudCreatedAt = 0;
         this.eventFlashUntil = 0;
         this.animationFrameId = null;
+        this.bfoRow = null;
+        this.detectorRow = null;
+        this.detectorRcRow = null;
         this.hudCanvas = null;
         this.hudVisible = true;
         this.hudGraphDispose = null;
@@ -1236,10 +1484,12 @@ class SWRadioSimulatorPlugin extends PluginBase {
         this.ensureDspTelemetrySubscription();
         return {
             type: this.constructor.name,
+            rd: this.rd,
             tb: this.tb, pe: this.pe, md: this.md, cp: this.cp,
             sg: this.sg, sk: this.sk, fd: this.fd, ds: this.ds, st: this.st,
             in: this.in, io: this.io,
-            tn: this.tn, bw: this.bw, de: this.de, ag: this.ag, dt: this.dt,
+            mo: this.mo, tn: this.tn, bf: this.bf,
+            bw: this.bw, de: this.de, ag: this.ag, dt: this.dt,
             hm: this.hm, hz: this.hz,
             sp: this.sp, og: this.og, mx: this.mx,
             fr: this.fr,
@@ -1277,11 +1527,15 @@ class SWRadioSimulatorPlugin extends PluginBase {
         setNumber('in', -80, 0);
         setNumber('io', 0.1, 10);
         setNumber('tn', -5, 5);
+        setNumber('bf', -1000, 1000);
         setNumber('bw', 2, 10);
         setNumber('dt', 20, 500);
         setNumber('hm', -80, -20);
         setNumber('og', -24, 24);
         setNumber('mx', 0, 100);
+        if (params.mo !== undefined) {
+            this.mo = this.isAllowedEnum(params.mo, ['AM', 'USB', 'LSB'], this.mo);
+        }
         if (params.de !== undefined) {
             this.de = this.isAllowedEnum(params.de, ['Envelope', 'Synchronous'], this.de);
         }
@@ -1291,6 +1545,9 @@ class SWRadioSimulatorPlugin extends PluginBase {
         if (params.hz !== undefined) this.hz = String(params.hz) === '60' ? '60' : '50';
         if (params.sp !== undefined) {
             this.sp = this.isAllowedEnum(params.sp, ['Off', 'Small', 'Table'], this.sp);
+        }
+        if (params.rd !== undefined) {
+            this.rd = params.rd === true || params.rd === 1 || params.rd === 'true';
         }
         if (params.fr !== undefined) {
             this.fr = params.fr === true || params.fr === 1 || params.fr === 'true';
@@ -1466,6 +1723,22 @@ class SWRadioSimulatorPlugin extends PluginBase {
         return row;
     }
 
+    _setRowDisabled(row, disabled) {
+        if (!row) return;
+        row.classList.toggle('parameter-disabled', disabled);
+        row.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+        row.querySelectorAll('input').forEach(input => { input.disabled = disabled; });
+    }
+
+    // The BFO only exists in SSB and the envelope/synchronous choice only exists in AM, so
+    // the inactive side is disabled while its value is preserved.
+    _syncModeDependentControls() {
+        const ssb = this.mo !== 'AM';
+        this._setRowDisabled(this.bfoRow, !ssb);
+        this._setRowDisabled(this.detectorRow, ssb);
+        this._setRowDisabled(this.detectorRcRow, ssb);
+    }
+
     createUI() {
         this.ensureDspTelemetrySubscription();
         this.stopAnimation();
@@ -1487,6 +1760,8 @@ class SWRadioSimulatorPlugin extends PluginBase {
         contents.className = 'sw-radio-simulator-tab-contents';
         const definitions = [
             { id: 'station', label: 'Station', create: content => {
+                content.appendChild(this.createCheckboxControl('Radio', this.rd,
+                    value => this.setParameters({ rd: value })));
                 content.appendChild(this.createParameterControl('TX Bandwidth', 2, 10, 0.1,
                     this.tb, value => this.setParameters({ tb: value }), 'kHz'));
                 content.appendChild(this.createParameterControl('Pre-emphasis', 0, 100, 1,
@@ -1512,22 +1787,39 @@ class SWRadioSimulatorPlugin extends PluginBase {
                 content.appendChild(this.createLogarithmicParameterControl('Interf. Offset',
                     0.1, 10, 0.01, this.io, value => this.setParameters({ io: value }), 'kHz'));
             } },
-            { id: 'receiver', label: 'Receiver', create: content => {
+            // Everything that decides which signal the receiver lands on lives on Tuning;
+            // Receiver keeps what happens to that signal once it is in the IF.
+            { id: 'tuning', label: 'Tuning', create: content => {
+                content.appendChild(this.createRadioGroup('Mode', ['AM', 'USB', 'LSB'],
+                    this.mo, value => {
+                        this.setParameters({ mo: value });
+                        this._syncModeDependentControls();
+                    }));
                 content.appendChild(this.createParameterControl('Tuning', -5, 5, 0.01,
                     this.tn, value => this.setParameters({ tn: value }), 'kHz'));
+                this.bfoRow = this.createParameterControl('BFO Offset', -1000, 1000, 1,
+                    this.bf, value => this.setParameters({ bf: value }), 'Hz');
+                content.appendChild(this.bfoRow);
                 content.appendChild(this.createParameterControl('IF Bandwidth', 2, 10, 0.1,
                     this.bw, value => this.setParameters({ bw: value }), 'kHz'));
-                content.appendChild(this.createRadioGroup('Detector',
+            } },
+            { id: 'receiver', label: 'Receiver', create: content => {
+                this.detectorRow = this.createRadioGroup('Detector',
                     ['Envelope', 'Synchronous'], this.de,
-                    value => this.setParameters({ de: value })));
+                    value => this.setParameters({ de: value }));
+                content.appendChild(this.detectorRow);
                 content.appendChild(this.createRadioGroup('AGC Speed', ['Slow', 'Mid', 'Fast'],
                     this.ag, value => this.setParameters({ ag: value })));
-                content.appendChild(this.createLogarithmicParameterControl('Detector RC',
-                    20, 500, 1, this.dt, value => this.setParameters({ dt: value }), 'µs'));
+                this.detectorRcRow = this.createLogarithmicParameterControl('Detector RC',
+                    20, 500, 1, this.dt, value => this.setParameters({ dt: value }), 'µs');
+                content.appendChild(this.detectorRcRow);
                 content.appendChild(this.createParameterControl('Hum', -80, -20, 1,
                     this.hm, value => this.setParameters({ hm: value }), 'dB'));
                 content.appendChild(this.createRadioGroup('Hum Freq', ['50', '60'], this.hz,
                     value => this.setParameters({ hz: value }), 'Hz'));
+                // Both gated rows exist by now: the BFO was built with the Tuning tab, which
+                // is created first, and the two detector rows just above.
+                this._syncModeDependentControls();
             } },
             { id: 'output', label: 'Output', create: content => {
                 content.appendChild(this.createRadioGroup('Speaker', ['Small', 'Table', 'Off'],
@@ -1692,7 +1984,7 @@ class SWRadioSimulatorPlugin extends PluginBase {
                 level: (values.agcGainDb - SW_RADIO_SIMULATOR_MINIMUM_AGC_GAIN_DB) /
                     (SW_RADIO_SIMULATOR_MAXIMUM_AGC_GAIN_DB -
                         SW_RADIO_SIMULATOR_MINIMUM_AGC_GAIN_DB) },
-            { title: 'MOD / EVENTS',
+            { title: this.mo === 'AM' ? 'MOD / EVENTS' : 'TX / EVENTS',
                 value: `${values.modPercent.toFixed(0)}%  ⚡${values.staticRate.toFixed(1)}  ▲${values.clipRate.toFixed(1)}`,
                 level: values.modPercent / 160 }
         ];
@@ -1732,6 +2024,9 @@ class SWRadioSimulatorPlugin extends PluginBase {
         this.hudGraphDispose?.();
         this.hudGraphDispose = null;
         this.hudCanvas = null;
+        this.bfoRow = null;
+        this.detectorRow = null;
+        this.detectorRcRow = null;
         super.cleanup();
     }
 }

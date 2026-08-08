@@ -12,6 +12,7 @@
   "caseIndex": 4,
   "seed": "0xeffe7a5a",
   "params": {
+    "rd": true,
     "tb": 4.5,
     "pe": 0,
     "md": 90,
@@ -33,6 +34,8 @@
     "sp": "Off",
     "og": 0,
     "mx": 100,
+    "mo": "AM",
+    "bf": 0,
     "fr": true
   },
   "events": [],
@@ -40,7 +43,7 @@
     "abs": 0.0001,
     "policy": "per-sample"
   },
-  "jsEngineHash": "66ba8b13218401762988d69888fbb2310530f655ac7405c6ea5f5c5f16e3fc0d",
+  "jsEngineHash": "726aeee3d29c772fe533f16191a67e1ae666be98126fe2fbfa631ce4d0632b56",
   "outputFloats": 6146,
   "byteLength": 24584,
   "binary": "case-005.f32"

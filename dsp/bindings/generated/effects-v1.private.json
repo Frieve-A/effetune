@@ -2867,16 +2867,28 @@
     },
     "AMRadioSimulator": {
       "internalType": "AMRadioSimulatorPlugin",
-      "layoutHash": 3482469380,
-      "floatCount": 20,
+      "layoutHash": 1895450983,
+      "floatCount": 21,
       "packedParameters": [
+        {
+          "publicName": "radio",
+          "field": "radio",
+          "keys": [
+            "rd"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
         {
           "publicName": "txBandwidth",
           "field": "txBandwidth",
           "keys": [
             "tb"
           ],
-          "offset": 0,
+          "offset": 1,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -2888,7 +2900,7 @@
           "keys": [
             "pe"
           ],
-          "offset": 1,
+          "offset": 2,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -2900,7 +2912,7 @@
           "keys": [
             "md"
           ],
-          "offset": 2,
+          "offset": 3,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -2912,7 +2924,7 @@
           "keys": [
             "cp"
           ],
-          "offset": 3,
+          "offset": 4,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -2924,7 +2936,7 @@
           "keys": [
             "sm"
           ],
-          "offset": 4,
+          "offset": 5,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -2936,7 +2948,7 @@
           "keys": [
             "sg"
           ],
-          "offset": 5,
+          "offset": 6,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -2948,7 +2960,7 @@
           "keys": [
             "sk"
           ],
-          "offset": 6,
+          "offset": 7,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -2960,7 +2972,7 @@
           "keys": [
             "fd"
           ],
-          "offset": 7,
+          "offset": 8,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -2972,7 +2984,7 @@
           "keys": [
             "st"
           ],
-          "offset": 8,
+          "offset": 9,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -2984,7 +2996,7 @@
           "keys": [
             "in"
           ],
-          "offset": 9,
+          "offset": 10,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -2996,7 +3008,7 @@
           "keys": [
             "io"
           ],
-          "offset": 10,
+          "offset": 11,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3008,7 +3020,7 @@
           "keys": [
             "tn"
           ],
-          "offset": 11,
+          "offset": 12,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3020,7 +3032,7 @@
           "keys": [
             "bw"
           ],
-          "offset": 12,
+          "offset": 13,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3032,7 +3044,7 @@
           "keys": [
             "ag"
           ],
-          "offset": 13,
+          "offset": 14,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3044,7 +3056,7 @@
           "keys": [
             "dt"
           ],
-          "offset": 14,
+          "offset": 15,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3056,7 +3068,7 @@
           "keys": [
             "hm"
           ],
-          "offset": 15,
+          "offset": 16,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3068,7 +3080,7 @@
           "keys": [
             "hz"
           ],
-          "offset": 16,
+          "offset": 17,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3080,7 +3092,7 @@
           "keys": [
             "sp"
           ],
-          "offset": 17,
+          "offset": 18,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3092,7 +3104,7 @@
           "keys": [
             "og"
           ],
-          "offset": 18,
+          "offset": 19,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3104,7 +3116,7 @@
           "keys": [
             "mx"
           ],
-          "offset": 19,
+          "offset": 20,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3173,6 +3185,238 @@
             "sd"
           ],
           "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "BluetoothSBCSimulator": {
+      "internalType": "BluetoothSBCSimulatorPlugin",
+      "layoutHash": 2698474763,
+      "floatCount": 6,
+      "packedParameters": [
+        {
+          "publicName": "bitpool",
+          "field": "bitpool",
+          "keys": [
+            "bp"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "channelMode",
+          "field": "channelMode",
+          "keys": [
+            "cm"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "blocks",
+          "field": "blocks",
+          "keys": [
+            "bl"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outputGain",
+          "field": "outputGain",
+          "keys": [
+            "og"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "packetLoss",
+          "field": "packetLoss",
+          "keys": [
+            "pl"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "CassetteArtifacts": {
+      "internalType": "CassetteArtifactsPlugin",
+      "layoutHash": 4133384581,
+      "floatCount": 12,
+      "packedParameters": [
+        {
+          "publicName": "deckGrade",
+          "field": "deckGrade",
+          "keys": [
+            "dg"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "tapeType",
+          "field": "tapeType",
+          "keys": [
+            "tp"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "noiseReduction",
+          "field": "noiseReduction",
+          "keys": [
+            "nr"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "bias",
+          "field": "bias",
+          "keys": [
+            "bs"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "recordLevel",
+          "field": "recordLevel",
+          "keys": [
+            "rl"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "wowFlutter",
+          "field": "wowFlutter",
+          "keys": [
+            "wf"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "hiss",
+          "field": "hiss",
+          "keys": [
+            "hs"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "dropouts",
+          "field": "dropouts",
+          "keys": [
+            "dp"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "azimuth",
+          "field": "azimuth",
+          "keys": [
+            "az"
+          ],
+          "offset": 8,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "dolbyLevelError",
+          "field": "dolbyLevelError",
+          "keys": [
+            "dl"
+          ],
+          "offset": 9,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "output",
+          "field": "output",
+          "keys": [
+            "og"
+          ],
+          "offset": 10,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 11,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3391,16 +3635,28 @@
     },
     "FMRadioSimulator": {
       "internalType": "FMRadioSimulatorPlugin",
-      "layoutHash": 1965882227,
-      "floatCount": 11,
+      "layoutHash": 538242584,
+      "floatCount": 12,
       "packedParameters": [
+        {
+          "publicName": "radio",
+          "field": "radio",
+          "keys": [
+            "rd"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
         {
           "publicName": "emphasis",
           "field": "emphasis",
           "keys": [
             "em"
           ],
-          "offset": 0,
+          "offset": 1,
           "count": 1,
           "transform": {
             "kind": "map",
@@ -3422,7 +3678,7 @@
           "keys": [
             "pr"
           ],
-          "offset": 1,
+          "offset": 2,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3434,7 +3690,7 @@
           "keys": [
             "st"
           ],
-          "offset": 2,
+          "offset": 3,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3446,7 +3702,7 @@
           "keys": [
             "tn"
           ],
-          "offset": 3,
+          "offset": 4,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3458,7 +3714,7 @@
           "keys": [
             "bw"
           ],
-          "offset": 4,
+          "offset": 5,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3470,7 +3726,7 @@
           "keys": [
             "mp"
           ],
-          "offset": 5,
+          "offset": 6,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3482,7 +3738,7 @@
           "keys": [
             "dl"
           ],
-          "offset": 6,
+          "offset": 7,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3494,7 +3750,7 @@
           "keys": [
             "fd"
           ],
-          "offset": 7,
+          "offset": 8,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3506,7 +3762,7 @@
           "keys": [
             "sm"
           ],
-          "offset": 8,
+          "offset": 9,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3518,7 +3774,7 @@
           "keys": [
             "og"
           ],
-          "offset": 9,
+          "offset": 10,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3530,7 +3786,119 @@
           "keys": [
             "mx"
           ],
-          "offset": 10,
+          "offset": 11,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "G726ADPCMSimulator": {
+      "internalType": "G726ADPCMSimulatorPlugin",
+      "layoutHash": 3034355853,
+      "floatCount": 4,
+      "packedParameters": [
+        {
+          "publicName": "bitrate",
+          "field": "bitrate",
+          "keys": [
+            "br"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outputGain",
+          "field": "outputGain",
+          "keys": [
+            "og"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "radioBitErrorRate",
+          "field": "radioBitErrorExponent",
+          "keys": [
+            "re"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "log10"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "GSMFullRateSimulator": {
+      "internalType": "GSMFullRateSimulatorPlugin",
+      "layoutHash": 3114431516,
+      "floatCount": 4,
+      "packedParameters": [
+        {
+          "publicName": "transcodes",
+          "field": "transcodes",
+          "keys": [
+            "tc"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outputGain",
+          "field": "outputGain",
+          "keys": [
+            "og"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "carrierToInterference",
+          "field": "carrierToInterference",
+          "keys": [
+            "ci"
+          ],
+          "offset": 3,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3619,6 +3987,86 @@
       ],
       "assets": []
     },
+    "MP3CodecSimulator": {
+      "internalType": "MP3CodecSimulatorPlugin",
+      "layoutHash": 3523139611,
+      "floatCount": 6,
+      "packedParameters": [
+        {
+          "publicName": "codecRate",
+          "field": "codecRate",
+          "keys": [
+            "cr"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "bitrate",
+          "field": "bitrate",
+          "keys": [
+            "br"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "stereoMode",
+          "field": "stereoMode",
+          "keys": [
+            "sm"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "bitReservoir",
+          "field": "bitReservoir",
+          "keys": [
+            "rv"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outputGain",
+          "field": "outputGain",
+          "keys": [
+            "og"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
     "NoiseBlender": {
       "internalType": "NoiseBlenderPlugin",
       "layoutHash": 394198189,
@@ -3686,16 +4134,28 @@
     },
     "SWRadioSimulator": {
       "internalType": "SWRadioSimulatorPlugin",
-      "layoutHash": 2343942365,
-      "floatCount": 21,
+      "layoutHash": 4166365127,
+      "floatCount": 24,
       "packedParameters": [
+        {
+          "publicName": "radio",
+          "field": "radio",
+          "keys": [
+            "rd"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
         {
           "publicName": "txBandwidth",
           "field": "txBandwidth",
           "keys": [
             "tb"
           ],
-          "offset": 0,
+          "offset": 1,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3707,7 +4167,7 @@
           "keys": [
             "pe"
           ],
-          "offset": 1,
+          "offset": 2,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3719,7 +4179,7 @@
           "keys": [
             "md"
           ],
-          "offset": 2,
+          "offset": 3,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3731,7 +4191,7 @@
           "keys": [
             "cp"
           ],
-          "offset": 3,
+          "offset": 4,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3743,7 +4203,7 @@
           "keys": [
             "sg"
           ],
-          "offset": 4,
+          "offset": 5,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3755,7 +4215,7 @@
           "keys": [
             "sk"
           ],
-          "offset": 5,
+          "offset": 6,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3767,7 +4227,7 @@
           "keys": [
             "fd"
           ],
-          "offset": 6,
+          "offset": 7,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3779,7 +4239,7 @@
           "keys": [
             "ds"
           ],
-          "offset": 7,
+          "offset": 8,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3791,7 +4251,7 @@
           "keys": [
             "st"
           ],
-          "offset": 8,
+          "offset": 9,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3803,7 +4263,7 @@
           "keys": [
             "in"
           ],
-          "offset": 9,
+          "offset": 10,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3815,7 +4275,7 @@
           "keys": [
             "io"
           ],
-          "offset": 10,
+          "offset": 11,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3827,7 +4287,7 @@
           "keys": [
             "tn"
           ],
-          "offset": 11,
+          "offset": 12,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3839,7 +4299,7 @@
           "keys": [
             "bw"
           ],
-          "offset": 12,
+          "offset": 13,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3851,7 +4311,7 @@
           "keys": [
             "de"
           ],
-          "offset": 13,
+          "offset": 14,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3863,7 +4323,7 @@
           "keys": [
             "ag"
           ],
-          "offset": 14,
+          "offset": 15,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3875,7 +4335,7 @@
           "keys": [
             "dt"
           ],
-          "offset": 15,
+          "offset": 16,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3887,7 +4347,7 @@
           "keys": [
             "hm"
           ],
-          "offset": 16,
+          "offset": 17,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3899,7 +4359,7 @@
           "keys": [
             "hz"
           ],
-          "offset": 17,
+          "offset": 18,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3911,7 +4371,7 @@
           "keys": [
             "sp"
           ],
-          "offset": 18,
+          "offset": 19,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3923,7 +4383,7 @@
           "keys": [
             "og"
           ],
-          "offset": 19,
+          "offset": 20,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -3935,7 +4395,135 @@
           "keys": [
             "mx"
           ],
-          "offset": 20,
+          "offset": 21,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mode",
+          "field": "mode",
+          "keys": [
+            "mo"
+          ],
+          "offset": 22,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "bfoOffset",
+          "field": "bfoOffset",
+          "keys": [
+            "bf"
+          ],
+          "offset": 23,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "TapeArtifacts": {
+      "internalType": "TapeArtifactsPlugin",
+      "layoutHash": 3186469333,
+      "floatCount": 8,
+      "packedParameters": [
+        {
+          "publicName": "speed",
+          "field": "speed",
+          "keys": [
+            "sp"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "tape",
+          "field": "tape",
+          "keys": [
+            "tp"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "bias",
+          "field": "bias",
+          "keys": [
+            "bs"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "recordLevel",
+          "field": "recordLevel",
+          "keys": [
+            "rl"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "wowFlutter",
+          "field": "wowFlutter",
+          "keys": [
+            "wf"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "hiss",
+          "field": "hiss",
+          "keys": [
+            "hs"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "output",
+          "field": "output",
+          "keys": [
+            "og"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 7,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -6153,6 +6741,254 @@
       ],
       "assets": []
     },
+    "TubeSimulator": {
+      "internalType": "TubeSimulatorPlugin",
+      "layoutHash": 3886736006,
+      "floatCount": 20,
+      "packedParameters": [
+        {
+          "publicName": "inputVolume",
+          "field": "inputVolume",
+          "keys": [
+            "dr"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "tube",
+          "field": "tube",
+          "keys": [
+            "tp"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "bias",
+          "field": "bias",
+          "keys": [
+            "bi"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "plateVoltage",
+          "field": "plate",
+          "keys": [
+            "pv"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "sourceImpedance",
+          "field": "sourceZ",
+          "keys": [
+            "sz"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "supplyImpedance",
+          "field": "supply",
+          "keys": [
+            "su"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outputTrim",
+          "field": "outputTrim",
+          "keys": [
+            "og"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "inputReference",
+          "field": "inputReference",
+          "keys": [
+            "iv"
+          ],
+          "offset": 8,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "negativeFeedback",
+          "field": "negativeFeedback",
+          "keys": [
+            "nf"
+          ],
+          "offset": 9,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outputStage",
+          "field": "outputStage",
+          "keys": [
+            "os"
+          ],
+          "offset": 10,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "powerTube",
+          "field": "powerTube",
+          "keys": [
+            "pt"
+          ],
+          "offset": 11,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "powerBPlus",
+          "field": "powerBPlus",
+          "keys": [
+            "pb"
+          ],
+          "offset": 12,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "cathodeResistor",
+          "field": "cathodeResistor",
+          "keys": [
+            "kr"
+          ],
+          "offset": 13,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "screenTap",
+          "field": "screenTap",
+          "keys": [
+            "st"
+          ],
+          "offset": 14,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "primaryImpedance",
+          "field": "primaryImpedance",
+          "keys": [
+            "zp"
+          ],
+          "offset": 15,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "speakerLoad",
+          "field": "speakerLoad",
+          "keys": [
+            "sl"
+          ],
+          "offset": 16,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "actualSpeakerLoad",
+          "field": "actualSpeakerLoad",
+          "keys": [
+            "rl"
+          ],
+          "offset": 17,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "safetyTrim",
+          "field": "safetyTrim",
+          "keys": [
+            "sg"
+          ],
+          "offset": 18,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "autoGainReduction",
+          "field": "autoGainReduction",
+          "keys": [
+            "ag"
+          ],
+          "offset": 19,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
     "CrossfeedFilter": {
       "internalType": "CrossfeedFilterPlugin",
       "layoutHash": 715048833,
@@ -6391,13 +7227,19 @@
     "dsp/plugins/eq/tone_control/params.json": "dsp/plugins/eq/tone_control/golden/index.json",
     "dsp/plugins/lofi/am_radio_simulator/params.json": "dsp/plugins/lofi/am_radio_simulator/golden/index.json",
     "dsp/plugins/lofi/bit_crusher/params.json": "dsp/plugins/lofi/bit_crusher/golden/index.json",
+    "dsp/plugins/lofi/bluetooth_sbc_simulator/params.json": "dsp/plugins/lofi/bluetooth_sbc_simulator/golden/index.json",
+    "dsp/plugins/lofi/cassette_artifacts/params.json": "dsp/plugins/lofi/cassette_artifacts/golden/index.json",
     "dsp/plugins/lofi/digital_error_emulator/params.json": "dsp/plugins/lofi/digital_error_emulator/golden/index.json",
     "dsp/plugins/lofi/dsd64_imd_simulator/params.json": "dsp/plugins/lofi/dsd64_imd_simulator/golden/index.json",
     "dsp/plugins/lofi/fm_radio_simulator/params.json": "dsp/plugins/lofi/fm_radio_simulator/golden/index.json",
+    "dsp/plugins/lofi/g726_adpcm_simulator/params.json": "dsp/plugins/lofi/g726_adpcm_simulator/golden/index.json",
+    "dsp/plugins/lofi/gsm_full_rate_simulator/params.json": "dsp/plugins/lofi/gsm_full_rate_simulator/golden/index.json",
     "dsp/plugins/lofi/hum_generator/params.json": "dsp/plugins/lofi/hum_generator/golden/index.json",
+    "dsp/plugins/lofi/mp3_codec_simulator/params.json": "dsp/plugins/lofi/mp3_codec_simulator/golden/index.json",
     "dsp/plugins/lofi/noise_blender/params.json": "dsp/plugins/lofi/noise_blender/golden/index.json",
     "dsp/plugins/lofi/simple_jitter/params.json": "dsp/plugins/lofi/simple_jitter/golden/index.json",
     "dsp/plugins/lofi/sw_radio_simulator/params.json": "dsp/plugins/lofi/sw_radio_simulator/golden/index.json",
+    "dsp/plugins/lofi/tape_artifacts/params.json": "dsp/plugins/lofi/tape_artifacts/golden/index.json",
     "dsp/plugins/lofi/vinyl_artifacts/params.json": "dsp/plugins/lofi/vinyl_artifacts/golden/index.json",
     "dsp/plugins/lofi/vinyl_simulator/params.json": "dsp/plugins/lofi/vinyl_simulator/golden/index.json",
     "dsp/plugins/modulation/doppler_distortion/params.json": "dsp/plugins/modulation/doppler_distortion/golden/index.json",
@@ -6419,10 +7261,11 @@
     "dsp/plugins/saturation/multiband_saturation/params.json": "dsp/plugins/saturation/multiband_saturation/golden/index.json",
     "dsp/plugins/saturation/saturation/params.json": "dsp/plugins/saturation/saturation/golden/index.json",
     "dsp/plugins/saturation/sub_synth/params.json": "dsp/plugins/saturation/sub_synth/golden/index.json",
+    "dsp/plugins/saturation/tube_simulator/params.json": "dsp/plugins/saturation/tube_simulator/golden/index.json",
     "dsp/plugins/spatial/crossfeed_filter/params.json": "dsp/plugins/spatial/crossfeed_filter/golden/index.json",
     "dsp/plugins/spatial/ms_matrix/params.json": "dsp/plugins/spatial/ms_matrix/golden/index.json",
     "dsp/plugins/spatial/multiband_balance/params.json": "dsp/plugins/spatial/multiband_balance/golden/index.json",
     "dsp/plugins/spatial/stereo_blend/params.json": "dsp/plugins/spatial/stereo_blend/golden/index.json"
   },
-  "contractDigest": "23f4859aa8ec49bcbb2814a9b1fb7f5f3d318b95e39e0706a1a546babe2ba309"
+  "contractDigest": "2cc628230da003412da1fa01648a056d60d69de773bf7c016d9fdd1ac7618707"
 }

@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "type": "CassetteArtifactsPlugin",
+  "id": "reference-grade-all-families-off-mono",
+  "stimulus": "sweep",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 12000,
+  "blockSize": 65,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "dg": "Reference",
+    "tp": "Type IV",
+    "nr": "Off",
+    "bs": -6,
+    "rl": -12,
+    "wf": 0,
+    "hs": -92,
+    "dp": 0,
+    "az": 0,
+    "dl": 0,
+    "og": 0,
+    "mx": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "7af31fcea840cbc340745edcb3a748900b2fbeab0a15363543fb43d2b05820ee",
+  "outputFloats": 12000,
+  "byteLength": 48000,
+  "binary": "case-002.f32"
+}

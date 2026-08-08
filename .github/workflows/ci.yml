@@ -15,12 +15,10 @@ concurrency:
   group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
 
+# Every job below declares the token scopes it needs, so the workflow default
+# stays read-only.
 permissions:
   contents: read
-  id-token: write
-  pages: write
-  pull-requests: read
-  security-events: write
 
 jobs:
   scope:
@@ -38,13 +36,13 @@ jobs:
       power_browser: ${{ github.event_name == 'pull_request' }}
       any: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || (github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/heads/feature/') || steps.changes.outputs.dsp_core == 'true' || steps.changes.outputs.dsp_library == 'true')) }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 2
       - name: Match path-scoped workflows
         id: changes
         if: github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/'))
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3
         with:
           filters: |
             dsp_core:
@@ -126,20 +124,41 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Verify workflow YAML syntax
         shell: bash
         run: ruby -e 'require "yaml"; Dir[".github/workflows/*.{yml,yaml}"].sort.each { |path| YAML.parse_file(path) }'
+      - name: Verify workflow actions are pinned to a commit SHA
+        shell: bash
+        run: |
+          ruby -e '
+            unpinned = []
+            Dir[".github/workflows/*.{yml,yaml}"].sort.each do |path|
+              File.readlines(path).each_with_index do |line, index|
+                next unless line =~ /uses:\s+(\S+)/
+                reference = $1
+                next if reference.start_with?("./")
+                next if reference =~ /@\h{40}\z/
+                unpinned << "#{path}:#{index + 1} #{reference}"
+              end
+            end
+            unless unpinned.empty?
+              abort("Workflow actions must be pinned to a commit SHA:\n#{unpinned.join("\n")}")
+            end
+            puts "All external workflow actions are pinned to a commit SHA."
+          '
       - name: Check C++ formatting
         if: needs.scope.outputs.dsp_core == 'true' || needs.scope.outputs.dsp_library == 'true'
         shell: bash
         run: find dsp -path dsp/vendor -prune -o \( -name '*.cpp' -o -name '*.h' \) -print0 | xargs -0 clang-format --dry-run --Werror
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
           cache: npm
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
+      - name: Verify dependency registry signatures
+        run: npm audit signatures
       - name: Verify source and tests
         run: npm run verify
 

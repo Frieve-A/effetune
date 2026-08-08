@@ -1,0 +1,76 @@
+{
+  "formatVersion": 1,
+  "type": "CassetteArtifactsPlugin",
+  "id": "dolby-b-transitions",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 20000,
+  "blockSize": 96,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "dg": "Consumer",
+    "tp": "Type II",
+    "nr": "Off",
+    "bs": 0,
+    "rl": 0,
+    "wf": 0.5,
+    "hs": -48,
+    "dp": 0,
+    "az": 2,
+    "dl": 0,
+    "og": 0,
+    "mx": 100
+  },
+  "events": [
+    {
+      "frame": 2049,
+      "params": {
+        "nr": "Dolby B"
+      }
+    },
+    {
+      "frame": 5121,
+      "params": {
+        "dl": 3
+      }
+    },
+    {
+      "frame": 8193,
+      "params": {
+        "dl": -3
+      }
+    },
+    {
+      "frame": 11265,
+      "params": {
+        "nr": "Off"
+      }
+    },
+    {
+      "frame": 14337,
+      "params": {
+        "nr": "Dolby B",
+        "rl": 18
+      }
+    },
+    {
+      "frame": 17409,
+      "params": {
+        "dl": 0.75,
+        "og": 12
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "7af31fcea840cbc340745edcb3a748900b2fbeab0a15363543fb43d2b05820ee",
+  "outputFloats": 40000,
+  "byteLength": 160000,
+  "binary": "case-003.f32"
+}

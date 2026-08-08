@@ -2552,6 +2552,12 @@
       "type": "AMRadioSimulator",
       "parameters": [
         {
+          "name": "radio",
+          "type": "boolean",
+          "count": 1,
+          "default": true
+        },
+        {
           "name": "txBandwidth",
           "type": "number",
           "count": 1,
@@ -2799,6 +2805,214 @@
       "assets": []
     },
     {
+      "type": "BluetoothSBCSimulator",
+      "parameters": [
+        {
+          "name": "bitpool",
+          "type": "integer",
+          "count": 1,
+          "default": 35,
+          "minimum": 2,
+          "maximum": 53
+        },
+        {
+          "name": "channelMode",
+          "type": "string",
+          "count": 1,
+          "default": "Joint Stereo",
+          "values": [
+            "Joint Stereo",
+            "Stereo",
+            "Dual Channel"
+          ]
+        },
+        {
+          "name": "blocks",
+          "type": "string",
+          "count": 1,
+          "default": "16",
+          "values": [
+            "4",
+            "8",
+            "12",
+            "16"
+          ]
+        },
+        {
+          "name": "outputGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 12
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "packetLoss",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 20
+        }
+      ],
+      "seeded": true,
+      "sampleRates": [
+        44100,
+        48000,
+        88200,
+        96000,
+        176400,
+        192000,
+        352800,
+        384000
+      ],
+      "telemetry": [],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      },
+      "assets": []
+    },
+    {
+      "type": "CassetteArtifacts",
+      "parameters": [
+        {
+          "name": "deckGrade",
+          "type": "string",
+          "count": 1,
+          "default": "Consumer",
+          "values": [
+            "Reference",
+            "Hi-Fi",
+            "Consumer",
+            "Portable"
+          ]
+        },
+        {
+          "name": "tapeType",
+          "type": "string",
+          "count": 1,
+          "default": "Type I",
+          "values": [
+            "Type I",
+            "Type II",
+            "Type IV"
+          ]
+        },
+        {
+          "name": "noiseReduction",
+          "type": "string",
+          "count": 1,
+          "default": "Dolby B",
+          "values": [
+            "Off",
+            "Dolby B",
+            "Dolby C"
+          ]
+        },
+        {
+          "name": "bias",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -6,
+          "maximum": 6
+        },
+        {
+          "name": "recordLevel",
+          "type": "number",
+          "count": 1,
+          "default": 9,
+          "unit": "dB",
+          "minimum": -12,
+          "maximum": 18
+        },
+        {
+          "name": "wowFlutter",
+          "type": "number",
+          "count": 1,
+          "default": 0.2,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "name": "hiss",
+          "type": "number",
+          "count": 1,
+          "default": -60.5,
+          "unit": "dB re 250 nWb/m",
+          "minimum": -92,
+          "maximum": -42
+        },
+        {
+          "name": "dropouts",
+          "type": "number",
+          "count": 1,
+          "default": 2,
+          "unit": "events/min",
+          "minimum": 0,
+          "maximum": 20
+        },
+        {
+          "name": "azimuth",
+          "type": "number",
+          "count": 1,
+          "default": 2,
+          "unit": "arcmin",
+          "minimum": -6,
+          "maximum": 6
+        },
+        {
+          "name": "dolbyLevelError",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -3,
+          "maximum": 3
+        },
+        {
+          "name": "output",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 24
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
       "type": "DigitalErrorEmulator",
       "parameters": [
         {
@@ -2983,6 +3197,12 @@
       "type": "FMRadioSimulator",
       "parameters": [
         {
+          "name": "radio",
+          "type": "boolean",
+          "count": 1,
+          "default": true
+        },
+        {
           "name": "emphasis",
           "type": "string",
           "count": 1,
@@ -3109,6 +3329,128 @@
       "assets": []
     },
     {
+      "type": "G726ADPCMSimulator",
+      "parameters": [
+        {
+          "name": "bitrate",
+          "type": "string",
+          "count": 1,
+          "default": "32",
+          "unit": "kbit/s",
+          "values": [
+            "16",
+            "24",
+            "32",
+            "40"
+          ]
+        },
+        {
+          "name": "outputGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 12
+        },
+        {
+          "name": "mix",
+          "type": "integer",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "radioBitErrorRate",
+          "type": "number",
+          "count": 1,
+          "default": 0.000001,
+          "minimum": 0.000001,
+          "maximum": 0.01
+        }
+      ],
+      "seeded": true,
+      "sampleRates": [
+        44100,
+        48000,
+        88200,
+        96000,
+        176400,
+        192000,
+        352800,
+        384000
+      ],
+      "telemetry": [],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      },
+      "assets": []
+    },
+    {
+      "type": "GSMFullRateSimulator",
+      "parameters": [
+        {
+          "name": "transcodes",
+          "type": "integer",
+          "count": 1,
+          "default": 1,
+          "minimum": 1,
+          "maximum": 3
+        },
+        {
+          "name": "outputGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 12
+        },
+        {
+          "name": "mix",
+          "type": "integer",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "carrierToInterference",
+          "type": "number",
+          "count": 1,
+          "default": 30,
+          "unit": "dB",
+          "minimum": 4,
+          "maximum": 30
+        }
+      ],
+      "seeded": true,
+      "sampleRates": [
+        44100,
+        48000,
+        88200,
+        96000,
+        176400,
+        192000,
+        352800,
+        384000
+      ],
+      "telemetry": [],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      },
+      "assets": []
+    },
+    {
       "type": "HumGenerator",
       "parameters": [
         {
@@ -3176,6 +3518,94 @@
       "assets": []
     },
     {
+      "type": "MP3CodecSimulator",
+      "parameters": [
+        {
+          "name": "codecRate",
+          "type": "string",
+          "count": 1,
+          "default": "44.1 kHz (MPEG-1)",
+          "values": [
+            "22.05 kHz (MPEG-2)",
+            "44.1 kHz (MPEG-1)"
+          ]
+        },
+        {
+          "name": "bitrate",
+          "type": "string",
+          "count": 1,
+          "default": "64",
+          "values": [
+            "32",
+            "48",
+            "64",
+            "80",
+            "96",
+            "112",
+            "128",
+            "160",
+            "192",
+            "224",
+            "256",
+            "320"
+          ]
+        },
+        {
+          "name": "stereoMode",
+          "type": "string",
+          "count": 1,
+          "default": "Joint Stereo",
+          "values": [
+            "Joint Stereo",
+            "Stereo"
+          ]
+        },
+        {
+          "name": "bitReservoir",
+          "type": "boolean",
+          "count": 1,
+          "default": true
+        },
+        {
+          "name": "outputGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 12
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": false,
+      "sampleRates": [
+        44100,
+        48000,
+        88200,
+        96000,
+        176400,
+        192000,
+        352800,
+        384000
+      ],
+      "telemetry": [],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      },
+      "assets": []
+    },
+    {
       "type": "NoiseBlender",
       "parameters": [
         {
@@ -3235,6 +3665,12 @@
     {
       "type": "SWRadioSimulator",
       "parameters": [
+        {
+          "name": "radio",
+          "type": "boolean",
+          "count": 1,
+          "default": true
+        },
         {
           "name": "txBandwidth",
           "type": "number",
@@ -3429,12 +3865,118 @@
           "unit": "%",
           "minimum": 0,
           "maximum": 100
+        },
+        {
+          "name": "mode",
+          "type": "string",
+          "count": 1,
+          "default": "AM",
+          "values": [
+            "AM",
+            "USB",
+            "LSB"
+          ]
+        },
+        {
+          "name": "bfoOffset",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "Hz",
+          "minimum": -1000,
+          "maximum": 1000
         }
       ],
       "seeded": true,
       "telemetry": [
         "swRadioStatus"
       ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "TapeArtifacts",
+      "parameters": [
+        {
+          "name": "speed",
+          "type": "string",
+          "count": 1,
+          "default": "15",
+          "values": [
+            "7.5",
+            "15",
+            "30"
+          ]
+        },
+        {
+          "name": "tape",
+          "type": "string",
+          "count": 1,
+          "default": "Standard",
+          "values": [
+            "Standard",
+            "Master"
+          ]
+        },
+        {
+          "name": "bias",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -6,
+          "maximum": 6
+        },
+        {
+          "name": "recordLevel",
+          "type": "number",
+          "count": 1,
+          "default": 6,
+          "unit": "dB",
+          "minimum": -12,
+          "maximum": 18
+        },
+        {
+          "name": "wowFlutter",
+          "type": "number",
+          "count": 1,
+          "default": 0.16,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "name": "hiss",
+          "type": "number",
+          "count": 1,
+          "default": -62.5,
+          "unit": "dB re 320 nWb/m",
+          "minimum": -89,
+          "maximum": -39
+        },
+        {
+          "name": "output",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 24
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
       "latency": {
         "kind": "zero"
       },
@@ -5197,6 +5739,214 @@
       "assets": []
     },
     {
+      "type": "TubeSimulator",
+      "parameters": [
+        {
+          "name": "inputVolume",
+          "type": "number",
+          "count": 1,
+          "default": -55.9648,
+          "unit": "dB",
+          "minimum": -96,
+          "maximum": 0
+        },
+        {
+          "name": "tube",
+          "type": "string",
+          "count": 1,
+          "default": "12AX7",
+          "values": [
+            "12AX7",
+            "12AT7",
+            "12AU7"
+          ]
+        },
+        {
+          "name": "bias",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "%",
+          "minimum": -50,
+          "maximum": 50
+        },
+        {
+          "name": "plateVoltage",
+          "type": "number",
+          "count": 1,
+          "default": 250,
+          "unit": "V",
+          "minimum": 150,
+          "maximum": 300
+        },
+        {
+          "name": "sourceImpedance",
+          "type": "number",
+          "count": 1,
+          "default": 10,
+          "unit": "kOhm",
+          "minimum": 0.6,
+          "maximum": 100
+        },
+        {
+          "name": "supplyImpedance",
+          "type": "number",
+          "count": 1,
+          "default": 10,
+          "unit": "kOhm",
+          "minimum": 0.1,
+          "maximum": 47
+        },
+        {
+          "name": "outputTrim",
+          "type": "number",
+          "count": 1,
+          "default": 4.626,
+          "unit": "dB",
+          "minimum": -48,
+          "maximum": 48
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "inputReference",
+          "type": "number",
+          "count": 1,
+          "default": 2.828,
+          "unit": "Vpk",
+          "minimum": 0.1,
+          "maximum": 20
+        },
+        {
+          "name": "negativeFeedback",
+          "type": "number",
+          "count": 1,
+          "default": 3,
+          "unit": "dB",
+          "minimum": 0,
+          "maximum": 30
+        },
+        {
+          "name": "outputStage",
+          "type": "string",
+          "count": 1,
+          "default": "Power",
+          "values": [
+            "Line",
+            "Power"
+          ]
+        },
+        {
+          "name": "powerTube",
+          "type": "string",
+          "count": 1,
+          "default": "EL84",
+          "values": [
+            "EL84",
+            "EL34"
+          ]
+        },
+        {
+          "name": "powerBPlus",
+          "type": "number",
+          "count": 1,
+          "default": 329.696,
+          "unit": "V",
+          "minimum": 300,
+          "maximum": 470
+        },
+        {
+          "name": "cathodeResistor",
+          "type": "number",
+          "count": 1,
+          "default": 270,
+          "unit": "Ohm",
+          "minimum": 270,
+          "maximum": 500
+        },
+        {
+          "name": "screenTap",
+          "type": "string",
+          "count": 1,
+          "default": "0",
+          "values": [
+            "0",
+            "20",
+            "43"
+          ]
+        },
+        {
+          "name": "primaryImpedance",
+          "type": "string",
+          "count": 1,
+          "default": "8.0",
+          "values": [
+            "6.0",
+            "6.6",
+            "8.0"
+          ]
+        },
+        {
+          "name": "speakerLoad",
+          "type": "string",
+          "count": 1,
+          "default": "15",
+          "values": [
+            "4",
+            "8",
+            "15",
+            "16"
+          ]
+        },
+        {
+          "name": "actualSpeakerLoad",
+          "type": "number",
+          "count": 1,
+          "default": 15,
+          "unit": "Ohm",
+          "minimum": 2,
+          "maximum": 32
+        },
+        {
+          "name": "safetyTrim",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -96,
+          "maximum": 0
+        },
+        {
+          "name": "autoGainReduction",
+          "type": "boolean",
+          "count": 1,
+          "default": true
+        }
+      ],
+      "seeded": false,
+      "sampleRates": [
+        44100,
+        48000,
+        88200,
+        96000,
+        176400,
+        192000
+      ],
+      "effectiveDelaySamples": 64,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
       "type": "CrossfeedFilter",
       "parameters": [
         {
@@ -5363,7 +6113,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "cbc1e92be9587b6fa2ac2717093aa623dd1094735fd01d45c740150b13e375e8",
-    "privateLayoutSha256": "23f4859aa8ec49bcbb2814a9b1fb7f5f3d318b95e39e0706a1a546babe2ba309"
+    "publicCatalogSha256": "827d402d2571e31e79f94b91a5618c183aaa8ac6f39d8570e84751b08ac0c3d8",
+    "privateLayoutSha256": "2cc628230da003412da1fa01648a056d60d69de773bf7c016d9fdd1ac7618707"
   }
 }

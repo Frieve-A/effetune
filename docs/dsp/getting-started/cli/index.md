@@ -9,11 +9,8 @@ permalink: /dsp/getting-started/cli/
 
 Use this path to validate a Chain and render files with the Python package.
 
-<!-- DSP-RELEASE-NOTICE -->
-> **Release state:** python is **published** for 0.1.0. The verified package matches these 0.1.0 docs.
-
 ```console
-pip install effetune==0.1.0
+pip install effetune
 ```
 
 Save the following as `start.py` and run `python start.py`. It creates both

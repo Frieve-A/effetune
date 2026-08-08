@@ -41,7 +41,7 @@ void check(bool condition, const char *message) noexcept {
 // Schema defaults (params.json): Processing defaults to 0 dB so enabling the
 // effect with defaults stays loudness-neutral.
 Params defaultParams() noexcept {
-  return {0.0F, 0.0F, 60.0F, 0.0F, 230.0F, 0.0F, 5.0F, 0.0F, 0.0F, 0.0F, 100.0F};
+  return {1.0F, 0.0F, 0.0F, 60.0F, 0.0F, 230.0F, 0.0F, 5.0F, 0.0F, 0.0F, 0.0F, 100.0F};
 }
 
 class KernelHarness final {
@@ -79,7 +79,7 @@ public:
 
   void stage(const Params &params) noexcept {
     const et_status status =
-        kernel_->stageParameters(&params.emphasis, Params::kFloatCount, Params::kHash);
+        kernel_->stageParameters(&params.radio, Params::kFloatCount, Params::kHash);
     check(status == ET_OK, "parameters stage");
   }
 

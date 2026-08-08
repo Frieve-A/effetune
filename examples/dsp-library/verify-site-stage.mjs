@@ -17,8 +17,8 @@ const catalogPath = path.join(
 const docsOverlayPath = path.join(
   sourceRoot, 'docs', 'effects-v1.docs.json'
 );
-const releaseStatePath = path.join(
-  sourceRoot, 'docs', 'release-state.json'
+const npmPackagePath = path.join(
+  repoRoot, 'dsp', 'bindings', 'js', 'package.json'
 );
 const canonicalOrigin = 'https://effetune.frieve.com';
 const docsFields = ['displayName', 'category', 'summary', 'sourceGenerating', 'slug'];
@@ -134,30 +134,12 @@ function expectedPublicCatalog(catalog, overlay) {
   };
 }
 
-function cohortState(release) {
-  const states = Object.values(release.surfaces);
-  if (states.every(state => state.status === 'unreleased')) return 'unreleased';
-  if (states.every(state =>
-    state.status === 'published' &&
-    state.verifiedVersion === release.docsVersion)) {
-    return 'published';
-  }
-  return 'partial/incomplete';
-}
-
-function releaseSummary(release) {
-  return `cohort: ${cohortState(release)}; ` +
-    Object.entries(release.surfaces).map(([surface, state]) =>
-      `${surface}: ${state.status}${state.verifiedVersion ? ` (${state.verifiedVersion})` : ''}`
-    ).join('; ');
-}
-
 export function verifyStage(stageRoot) {
   const resolvedStage = path.resolve(stageRoot);
   const routes = readJson(routeManifestPath);
   const catalog = readJson(catalogPath);
   const overlay = readJson(docsOverlayPath);
-  const release = readJson(releaseStatePath);
+  const version = readJson(npmPackagePath).version;
   const routesById = routeMap(routes);
   const expectedRoutes = routes.routes.filter(route => route.status === 'launch');
   const dynamic = expectedRoutes.find(route => route.dynamic === 'catalog-effects');
@@ -210,17 +192,10 @@ export function verifyStage(stageRoot) {
     for (const anchor of route.anchors ?? []) {
       verifyAnchor(filePath, anchor, route.path);
     }
-    if ((route.installSurfaces?.length || route.id.startsWith('locale-')) &&
-        !html.includes('DSP-RELEASE-NOTICE')) {
-      throw new Error(`Release notice is missing from ${route.path}.`);
-    }
     for (const surface of route.installSurfaces ?? []) {
-      const state = release.surfaces[surface];
-      const mayInstall = state.status === 'published' &&
-        state.verifiedVersion === release.docsVersion;
       const command = surface === 'python' ? 'pip install effetune' : 'npm install @effetune/dsp';
-      if (html.includes(command) !== mayInstall) {
-        throw new Error(`Install visibility does not match release state on ${route.path}.`);
+      if (!html.includes(command)) {
+        throw new Error(`The ${surface} install command is missing from ${route.path}.`);
       }
     }
   }
@@ -265,10 +240,9 @@ export function verifyStage(stageRoot) {
     routes.publicRoot
   ), 'utf8');
   for (const exact of [
-    `Version: ${release.docsVersion}`,
+    `Version: ${version}`,
     'Python package: effetune',
     'npm package: @effetune/dsp',
-    `Release state: ${releaseSummary(release)}`,
     `${canonicalOrigin}${routesById.get('landing').path}`,
     `${canonicalOrigin}${routesById.get('catalog').path}`,
     `${canonicalOrigin}${chainRoute.path}`,
@@ -320,7 +294,7 @@ export function verifyStage(stageRoot) {
   return {
     routes: expanded.length,
     effects: catalog.effects.length,
-    release: release.docsVersion
+    version
   };
 }
 
@@ -332,7 +306,7 @@ function main() {
   const result = verifyStage(process.argv[index + 1]);
   console.log(
     `Verified ${result.routes} staged DSP routes, ${result.effects} effect pages, ` +
-    `and release state ${result.release}.`
+    `and documentation version ${result.version}.`
   );
 }
 

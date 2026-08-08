@@ -7,7 +7,7 @@ permalink: /dsp/effects/
 ---
 # Effects
 
-Browse all 76 semantic types registered in the v1 binding catalog. The list remains readable without JavaScript.
+Browse all 83 semantic types registered in the v1 binding catalog. The list remains readable without JavaScript.
 
 <label for="effect-filter">Filter effects</label>
 <input id="effect-filter" type="search" placeholder="Name, type, category, seeded, or asset" data-dsp-effect-filter>
@@ -74,13 +74,19 @@ Browse all 76 semantic types registered in the v1 binding catalog. The list rema
 
 - [AM Radio Simulator](/dsp/effects/am-radio-simulator/) (`AMRadioSimulator`) — Models bandwidth, distortion, interference, and noise associated with AM radio. <span data-effect-tags="lo-fi seeded "></span>
 - [Bit Crusher](/dsp/effects/bit-crusher/) (`BitCrusher`) — Reduces amplitude resolution and sample-rate fidelity for digital quantization effects. <span data-effect-tags="lo-fi seeded "></span>
+- [SBC Codec Simulator](/dsp/effects/bluetooth-sbc-simulator/) (`BluetoothSBCSimulator`) — Models Bluetooth SBC audio coding with bitpool, channel-mode, and seeded packet-loss behavior. <span data-effect-tags="lo-fi seeded "></span>
+- [Cassette Artifacts](/dsp/effects/cassette-artifacts/) (`CassetteArtifacts`) — Models the record and reproduce chain of a compact-cassette deck, including Dolby B/C, saturation, wow and flutter, hiss, dropouts, and azimuth error. <span data-effect-tags="lo-fi seeded "></span>
 - [Digital Error Emulator](/dsp/effects/digital-error-emulator/) (`DigitalErrorEmulator`) — Introduces deterministic seeded digital transmission errors at a controlled rate. <span data-effect-tags="lo-fi seeded "></span>
 - [DSD64 IMD Simulator](/dsp/effects/dsd64-imd-simulator/) (`DSD64IMDSimulator`) — Models ultrasonic-noise intermodulation artifacts associated with DSD64 playback. <span data-effect-tags="lo-fi  "></span>
 - [FM Radio Simulator](/dsp/effects/fm-radio-simulator/) (`FMRadioSimulator`) — Models bandwidth, stereo behavior, distortion, and noise associated with FM radio. <span data-effect-tags="lo-fi seeded "></span>
+- [G.726 Simulator](/dsp/effects/g726-adpcm-simulator/) (`G726ADPCMSimulator`) — Models G.726 ADPCM speech coding from 16 to 40 kbit/s with seeded radio bit errors. <span data-effect-tags="lo-fi seeded "></span>
+- [GSM-FR Simulator](/dsp/effects/gsm-full-rate-simulator/) (`GSMFullRateSimulator`) — Models GSM full-rate speech coding with repeated transcoding and seeded carrier interference. <span data-effect-tags="lo-fi seeded "></span>
 - [Hum Generator](/dsp/effects/hum-generator/) (`HumGenerator`) — Adds power-line hum and harmonics at controlled levels. <span data-effect-tags="lo-fi  "></span>
+- [MP3 Codec Simulator](/dsp/effects/mp3-codec-simulator/) (`MP3CodecSimulator`) — Models MP3 perceptual audio coding artifacts across bitrates, stereo modes, and reservoir use. <span data-effect-tags="lo-fi  "></span>
 - [Noise Blender](/dsp/effects/noise-blender/) (`NoiseBlender`) — Adds a configurable blend of generated noise colors. <span data-effect-tags="lo-fi seeded "></span>
 - [Simple Jitter](/dsp/effects/simple-jitter/) (`SimpleJitter`) — Applies deterministic seeded sampling-time jitter. <span data-effect-tags="lo-fi seeded "></span>
 - [SW Radio Simulator](/dsp/effects/sw-radio-simulator/) (`SWRadioSimulator`) — Models fading, interference, limited bandwidth, and noise associated with shortwave radio. <span data-effect-tags="lo-fi seeded "></span>
+- [Tape Artifacts](/dsp/effects/tape-artifacts/) (`TapeArtifacts`) — Models the record and reproduce chain of a reel-to-reel tape machine, including saturation, wow and flutter, hiss, and head response. <span data-effect-tags="lo-fi seeded "></span>
 - [Vinyl Artifacts](/dsp/effects/vinyl-artifacts/) (`VinylArtifacts`) — Adds deterministic seeded clicks, crackle, and surface artifacts. <span data-effect-tags="lo-fi seeded "></span>
 - [Vinyl Simulator](/dsp/effects/vinyl-simulator/) (`VinylSimulator`) — Combines tonal, mechanical, and surface-noise behavior associated with vinyl playback. <span data-effect-tags="lo-fi seeded "></span>
 
@@ -113,6 +119,7 @@ Browse all 76 semantic types registered in the v1 binding catalog. The list rema
 - [Multiband Saturation](/dsp/effects/multiband-saturation/) (`MultibandSaturation`) — Applies independent saturation to multiple frequency bands. <span data-effect-tags="saturation  "></span>
 - [Saturation](/dsp/effects/saturation/) (`Saturation`) — Applies smooth nonlinear distortion with controllable drive and mix. <span data-effect-tags="saturation  "></span>
 - [Sub Synth](/dsp/effects/sub-synth/) (`SubSynth`) — Derives low-frequency harmonic content from the input signal. <span data-effect-tags="saturation  "></span>
+- [Tube Simulator](/dsp/effects/tube-simulator/) (`TubeSimulator`) — Models vacuum-tube preamplifier and power-stage saturation with supply and speaker-load interaction. <span data-effect-tags="saturation  "></span>
 
 ## Spatial
 

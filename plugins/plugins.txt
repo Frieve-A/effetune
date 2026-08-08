@@ -63,6 +63,7 @@ eq/tilt_eq: Tilt EQ | EQ | TiltEQPlugin | css
 eq/tone_control: Tone Control | EQ | ToneControlPlugin | css
 lofi/am_radio_simulator: AM Radio Simulator | Lo-Fi | AMRadioSimulatorPlugin | css
 lofi/bit_crusher: Bit Crusher | Lo-Fi | BitCrusherPlugin
+lofi/cassette_artifacts: Cassette Artifacts | Lo-Fi | CassetteArtifactsPlugin | css
 lofi/digital_error_emulator: Digital Error Emulator | Lo-Fi | DigitalErrorEmulatorPlugin
 lofi/dsd64_imd_simulator: DSD64 IMD Simulator | Lo-Fi | DSD64IMDSimulatorPlugin | css
 lofi/fm_radio_simulator: FM Radio Simulator | Lo-Fi | FMRadioSimulatorPlugin | css

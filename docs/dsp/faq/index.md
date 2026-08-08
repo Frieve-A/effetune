@@ -7,28 +7,23 @@ permalink: /dsp/faq/
 ---
 # FAQ
 
-**How do I install the registry release?** Registry availability is tracked
-independently for each package.
+**How do I install the registry release?** Each command installs the latest published
+version of its package.
 
 **Python package**
 
-<!-- DSP-RELEASE-NOTICE -->
-> **Release state:** python is **published** for 0.1.0. The verified package matches these 0.1.0 docs.
-
 ```console
-pip install effetune==0.1.0
+pip install effetune
 ```
 
 **JavaScript package**
 
-<!-- DSP-RELEASE-NOTICE -->
-> **Release state:** npm is **published** for 0.1.0. The verified package matches these 0.1.0 docs.
-
 ```console
-npm install @effetune/dsp@0.1.0
+npm install @effetune/dsp
 ```
 
-Use the version shown by the documentation when reproducibility matters.
+These docs describe v0.4.0. Pin that exact version when reproducibility matters,
+for example `pip install effetune==0.4.0` or `npm install @effetune/dsp@0.4.0`.
 
 **Why does my Python array fail?** Use finite C-contiguous planar `float32` shaped
 `(channels, frames)`.

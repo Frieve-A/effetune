@@ -3069,6 +3069,87 @@ input[type="range"]:not(.vertical-slider)::-moz-range-thumb {
     box-shadow: 0 2px 7px rgba(0, 0, 0, 0.32), 0 0 10px rgba(74, 158, 255, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
 
+/* Vertical sliders (15Band GEQ, Group Delay EQ, ...): same visual language as the
+   horizontal sliders above, rotated onto the block axis. */
+input[type="range"].vertical-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    writing-mode: vertical-lr;
+    direction: rtl;
+    width: 16px;
+    background: transparent;
+    cursor: pointer;
+}
+
+input[type="range"].vertical-slider:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+}
+
+input[type="range"].vertical-slider::-webkit-slider-runnable-track {
+    width: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 999px;
+    background: linear-gradient(0deg, rgba(74, 158, 255, 0.82) 0 var(--et-range-fill, 0%), transparent var(--et-range-fill, 0%) 100%), linear-gradient(90deg, #30343a, #22262c);
+    box-shadow: inset 1px 0 3px rgba(0, 0, 0, 0.54), inset 1px 0 0 rgba(255, 255, 255, 0.055);
+}
+
+input[type="range"].vertical-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    margin-left: -6px;
+    border: 1px solid #8cc9ff;
+    border-radius: 4px;
+    background: linear-gradient(180deg, #62b8ff, #3687d8);
+    box-shadow: 0 2px 7px rgba(0, 0, 0, 0.32), 0 0 10px rgba(74, 158, 255, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+    transition: border-color var(--et-transition-fast), box-shadow var(--et-transition-fast), filter var(--et-transition-fast);
+}
+
+input[type="range"].vertical-slider:hover::-webkit-slider-thumb {
+    border-color: #b7deff;
+    box-shadow: 0 3px 9px rgba(0, 0, 0, 0.36), 0 0 14px rgba(74, 158, 255, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.20);
+}
+
+input[type="range"].vertical-slider:focus-visible {
+    outline: none;
+}
+
+input[type="range"].vertical-slider:focus-visible::-webkit-slider-runnable-track {
+    border-color: rgba(74, 158, 255, 0.64);
+    box-shadow: inset 1px 0 3px rgba(0, 0, 0, 0.54), var(--et-focus-ring);
+}
+
+input[type="range"].vertical-slider::-moz-range-track {
+    width: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 999px;
+    background: linear-gradient(90deg, #30343a, #22262c);
+    box-shadow: inset 1px 0 3px rgba(0, 0, 0, 0.54), inset 1px 0 0 rgba(255, 255, 255, 0.055);
+}
+
+input[type="range"].vertical-slider:focus-visible::-moz-range-track {
+    border-color: rgba(74, 158, 255, 0.64);
+    box-shadow: inset 1px 0 3px rgba(0, 0, 0, 0.54), var(--et-focus-ring);
+}
+
+input[type="range"].vertical-slider::-moz-range-progress {
+    width: 6px;
+    border-radius: 999px;
+    background: linear-gradient(0deg, var(--et-accent-pressed), var(--et-accent-hover));
+    box-shadow: 0 0 12px rgba(74, 158, 255, 0.24);
+}
+
+input[type="range"].vertical-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #8cc9ff;
+    border-radius: 4px;
+    background: linear-gradient(180deg, #62b8ff, #3687d8);
+    box-shadow: 0 2px 7px rgba(0, 0, 0, 0.32), 0 0 10px rgba(74, 158, 255, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
 input[type="checkbox"]:focus-visible,
 input[type="radio"]:focus-visible {
     outline: none;

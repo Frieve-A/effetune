@@ -2396,9 +2396,70 @@ function createReferenceProcessor(pluginSource) {
   return new Function('context', 'data', 'parameters', plugin.processorString);
 }
 
+// The processor string is a constant of the shipped plugin and every session's state lives on its
+// own context object, so the half-megabyte source is read, run and compiled once for the whole
+// sweep instead of once per measured plant.
+let cachedReferenceProcessor = null;
+
+function referenceProcessor() {
+  if (!cachedReferenceProcessor) {
+    cachedReferenceProcessor = createReferenceProcessor(
+      fs.readFileSync(pluginSourcePath, 'utf8'));
+  }
+  return cachedReferenceProcessor;
+}
+
+// Properties of the reference state that are the shipped tables or the parameter-derived circuit
+// profile. Nothing writes through them, and within one measured key the parameters never change,
+// so a settle snapshot carries them by reference instead of copying them four times.
+const SHARED_REFERENCE_STATE_KEYS = new Set([
+  'tables', 'coefficients', 'powerProfile', 'powerSpeaker'
+]);
+
+function cloneReferenceValue(value) {
+  if (value === null || typeof value !== 'object') return value;
+  if (ArrayBuffer.isView(value)) return value.slice();
+  if (Array.isArray(value)) return value.map(cloneReferenceValue);
+  const copy = {};
+  for (const key of Object.keys(value)) {
+    const entry = value[key];
+    copy[key] = typeof entry === 'function' ? entry : cloneReferenceValue(entry);
+  }
+  return copy;
+}
+
+// Restoring writes the snapshot back into the objects the state already holds instead of hanging
+// the copies off it. The reference processor reads those objects millions of times per capture and
+// a fresh object graph per restore costs far more in the inner loop than the copy itself saves.
+function restoreReferenceValue(target, key, source) {
+  const current = target[key];
+  if (ArrayBuffer.isView(current) && ArrayBuffer.isView(source) &&
+      current.length === source.length) {
+    current.set(source);
+    return;
+  }
+  if (Array.isArray(current) && Array.isArray(source) && current.length === source.length) {
+    for (let index = 0; index < source.length; ++index) {
+      restoreReferenceValue(current, index, source[index]);
+    }
+    return;
+  }
+  if (current !== null && typeof current === 'object' && !Array.isArray(current) &&
+      !ArrayBuffer.isView(current) && source !== null && typeof source === 'object' &&
+      !Array.isArray(source) && !ArrayBuffer.isView(source)) {
+    const live = Object.keys(current).filter(inner => typeof current[inner] !== 'function');
+    const stored = Object.keys(source);
+    if (live.length !== stored.length) {
+      throw new Error(`reference state property ${key} changed shape after the settle snapshot`);
+    }
+    for (const inner of stored) restoreReferenceValue(current, inner, source[inner]);
+    return;
+  }
+  target[key] = source;
+}
+
 function createReferenceSession({ sampleRate, params }) {
-  const pluginSource = fs.readFileSync(pluginSourcePath, 'utf8');
-  const processor = createReferenceProcessor(pluginSource);
+  const processor = referenceProcessor();
   const context = {};
   const channels = 2;
   const currentParams = { ...params, fr: true };
@@ -2428,6 +2489,34 @@ function createReferenceSession({ sampleRate, params }) {
     },
     reset() {
       context.__tubeSimulatorReferenceV1.reset();
+    },
+    // The settled circuit is the same for every polarity and every stimulus amplitude of one key,
+    // so it is reached once and replayed. The snapshot is taken and reapplied property by property
+    // on the live state object because the diagnostic hooks the session drives are closures bound
+    // to that object; replacing it wholesale would leave them pointing at the discarded state.
+    snapshot() {
+      const extras = Object.keys(context).filter(key => key !== '__tubeSimulatorReferenceV1');
+      if (extras.length > 0) {
+        throw new Error(`reference context carries unsnapshotted state: ${extras.join(', ')}`);
+      }
+      const state = context.__tubeSimulatorReferenceV1;
+      const captured = new Map();
+      for (const key of Object.keys(state)) {
+        if (typeof state[key] === 'function' || SHARED_REFERENCE_STATE_KEYS.has(key)) continue;
+        captured.set(key, cloneReferenceValue(state[key]));
+      }
+      return captured;
+    },
+    restore(captured) {
+      const state = context.__tubeSimulatorReferenceV1;
+      for (const key of Object.keys(state)) {
+        if (captured.has(key) || typeof state[key] === 'function' ||
+            SHARED_REFERENCE_STATE_KEYS.has(key)) {
+          continue;
+        }
+        throw new Error(`reference state gained property ${key} after the settle snapshot`);
+      }
+      for (const [key, value] of captured) restoreReferenceValue(state, key, value);
     },
     checkpoint() {
       return context.__tubeSimulatorReferenceV1.checkpoint();
@@ -2519,11 +2608,27 @@ function centralDifferenceSpectrum(positive, negative, amplitude) {
   return { real, imaginary };
 }
 
-function capturePolarity(session, amplitude, captureSamples, factor, settleFrames) {
+// The Power branch reaches its quiescent point through the reservoir, cathode-bias and coupling
+// capacitors, so the impulse has to land on the settled circuit rather than on the reset seed. The
+// settle is a pure function of the parameters, which do not change across the polarities or the
+// small-signal repeat of one key, so it is walked once here and replayed from the snapshot.
+function createSettledSession({ params, family, settleSeconds }) {
+  const settleFrames = Math.ceil(settleSeconds * family.hostRate / 128) * 128;
+  // Measures the amplifier model, so the post-model output-safety reduction is switched off: left
+  // on it would attenuate whatever runs past full scale and report that as the model's own
+  // behaviour.
+  const session = createReferenceSession({
+    sampleRate: family.hostRate,
+    params: { ...params, ag: false }
+  });
   session.reset();
-  // The Power branch reaches its quiescent point through the reservoir, cathode-bias and coupling
-  // capacitors, so the impulse has to land on the settled circuit rather than on the reset seed.
   session.processSilence(settleFrames);
+  return { session, settleFrames, settled: session.snapshot() };
+}
+
+function capturePolarity(settledSession, amplitude, captureSamples, factor) {
+  const { session, settled } = settledSession;
+  session.restore(settled);
   session.beginBreakLoopImpulse({ amplitude, captureSamples });
   session.processSilence(captureSamples / factor);
   const result = session.breakLoopImpulse();
@@ -2535,19 +2640,12 @@ function capturePolarity(session, amplitude, captureSamples, factor, settleFrame
   return result;
 }
 
-function measurePowerPlant({ params, family, amplitude, captureSamples, settleSeconds }) {
-  const settleFrames = Math.ceil(settleSeconds * family.hostRate / 128) * 128;
-  // Measures the amplifier model, so the post-model output-safety reduction is switched off: left
-  // on it would attenuate whatever runs past full scale and report that as the model's own
-  // behaviour.
-  const session = createReferenceSession({
-    sampleRate: family.hostRate,
-    params: { ...params, ag: false }
-  });
+function measurePowerPlant(settledSession, { family, amplitude, captureSamples }) {
+  const { session, settleFrames } = settledSession;
   const positive = capturePolarity(
-    session, amplitude, captureSamples, family.factor, settleFrames);
+    settledSession, amplitude, captureSamples, family.factor);
   const negative = capturePolarity(
-    session, -amplitude, captureSamples, family.factor, settleFrames);
+    settledSession, -amplitude, captureSamples, family.factor);
   const checkpoint = session.checkpoint();
   if (checkpoint.finiteFaults > 0 || checkpoint.safetyLimits > 0) {
     throw new Error('Power break-loop capture tripped the fault detector');
@@ -2616,17 +2714,18 @@ function enumerateSweepKeys() {
 function sweepKey(supplyTable, { tp, pt, st, zp, sl, family }, method) {
   const params = measurementParams(supplyTable, { tp, pt, st, zp, sl });
   const key = [tp, pt, st, zp, sl, family.internalRate].join('|');
-  const plant = measurePowerPlant({
-    params, family,
-    amplitude: method.stimulusPeakV,
-    captureSamples: method.captureSamples,
-    settleSeconds: method.settleSeconds
+  const settledSession = createSettledSession({
+    params, family, settleSeconds: method.settleSeconds
   });
-  const small = measurePowerPlant({
-    params, family,
+  const plant = measurePowerPlant(settledSession, {
+    family,
+    amplitude: method.stimulusPeakV,
+    captureSamples: method.captureSamples
+  });
+  const small = measurePowerPlant(settledSession, {
+    family,
     amplitude: method.stimulusPeakV * method.smallSignalScale,
-    captureSamples: method.smallSignalCaptureSamples,
-    settleSeconds: method.settleSeconds
+    captureSamples: method.smallSignalCaptureSamples
   });
   const full1k = responseAt(plant.detectorResponse, 1000);
   const small1k = responseAt(small.detectorResponse, 1000);

@@ -165,7 +165,15 @@ Type 18 (`TAP_SW_RADIO_SIMULATOR`) format version 1 is exactly 24 bytes: four fl
 values at byte offsets 0, 4, 8, and 12 for carrier level before AGC in dB, AGC gain in
 dB, modulation depth in percent, and fading level in dB, followed by cumulative
 little-endian `u32` counters at byte offsets 16 and 20 for static events and clipping
-events. Shortwave reception is mono, so no stereo blend field exists.
+events. Shortwave reception is mono, so no stereo blend field exists. The layout is
+identical in all reception modes, but several fields need a mode-aware reading. The first
+value is the smoothed total in-band pre-AGC IF level, which in AM includes the carrier
+and in the suppressed-carrier USB and LSB modes is programme dependent. The fading level
+is the path gain at the carrier frequency, so in USB and LSB it reports the virtual gain
+at the suppressed carrier rather than the attenuation of the sideband as a whole or the
+programme level. Modulation depth is the transmitter sideband drive in USB and LSB. The
+clipping counter records AM over-modulation and envelope-detector clipping only, so it
+never advances in USB and LSB.
 Type 19 (`TAP_TUBE_SIMULATOR`) format version 1 is exactly 72 bytes: eighteen
 little-endian float32 values, first for the left channel and then for the right channel.
 Each channel contains stage 1 cathode voltage, stage 2 cathode voltage, B+ voltage,

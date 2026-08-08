@@ -7,6 +7,7 @@
 namespace effetune::generated {
 
 struct AMRadioSimulatorPluginParams {
+  float radio;
   float txBandwidth;
   float preEmphasis;
   float modDepth;
@@ -27,10 +28,10 @@ struct AMRadioSimulatorPluginParams {
   float speaker;
   float outputGain;
   float mix;
-  static constexpr std::uint32_t kHash = 0xcf924404u;
-  static constexpr std::uint32_t kFloatCount = 20u;
+  static constexpr std::uint32_t kHash = 0x70fa4967u;
+  static constexpr std::uint32_t kFloatCount = 21u;
 };
-static_assert(20u == 0u || sizeof(AMRadioSimulatorPluginParams) == sizeof(float) * 20u);
+static_assert(21u == 0u || sizeof(AMRadioSimulatorPluginParams) == sizeof(float) * 21u);
 
 } // namespace effetune::generated
 

@@ -341,6 +341,7 @@
 | EQ | Tone Control | تحكم نغمي بثلاثة نطاقات | [تفاصيل](plugins/eq.md#tone-control) |
 | Lo-Fi | AM Radio Simulator | يمرر الموسيقى عبر سلسلة بث واستقبال AM مُنمذجة | [تفاصيل](plugins/lofi.md#am-radio-simulator) |
 | Lo-Fi | Bit Crusher | تقليل عمق البت وتأثير zero-order hold | [تفاصيل](plugins/lofi.md#bit-crusher) |
+| Lo-Fi | Cassette Artifacts | يسجل الموسيقى على كاسيت مُدمج مُنمذج ويعيد تشغيلها عبر جهاز Type I/II/IV مع Dolby B/C | [تفاصيل](plugins/lofi.md#cassette-artifacts) |
 | Lo-Fi | Digital Error Emulator | يحاكي أخطاء نقل الصوت الرقمي وخصائص الأجهزة الرقمية القديمة | [تفاصيل](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi | DSD64 IMD Simulator | يحاكي تشوه التداخل المسموع الناتج عن ضوضاء DSD64 فوق الصوتية | [تفاصيل](plugins/lofi.md#dsd64-imd-simulator) |
 | Lo-Fi | FM Radio Simulator | يمرر الموسيقى عبر سلسلة بث واستقبال FM محاكاة فيزيائيًا | [تفاصيل](plugins/lofi.md#fm-radio-simulator) |

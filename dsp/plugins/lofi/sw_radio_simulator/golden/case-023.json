@@ -1,0 +1,78 @@
+{
+  "formatVersion": 1,
+  "type": "SWRadioSimulatorPlugin",
+  "id": "receiver-mode-switch",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 12289,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 22,
+  "seed": "0xeffe7a48",
+  "params": {
+    "rd": true,
+    "tb": 4.5,
+    "pe": 50,
+    "md": 90,
+    "cp": 6,
+    "sg": -15,
+    "sk": 30,
+    "fd": 0.5,
+    "ds": 1.4,
+    "st": 4,
+    "in": -47,
+    "io": 1,
+    "tn": 0,
+    "bw": 6,
+    "de": "Envelope",
+    "ag": "Fast",
+    "dt": 50,
+    "hm": -80,
+    "hz": "50",
+    "sp": "Small",
+    "og": 0,
+    "mx": 100,
+    "mo": "AM",
+    "bf": 0,
+    "fr": true
+  },
+  "events": [
+    {
+      "frame": 2049,
+      "params": {
+        "mo": "USB",
+        "bf": 250
+      }
+    },
+    {
+      "frame": 4097,
+      "params": {
+        "de": "Synchronous",
+        "dt": 500
+      }
+    },
+    {
+      "frame": 6145,
+      "params": {
+        "mo": "LSB",
+        "bf": -400
+      }
+    },
+    {
+      "frame": 9217,
+      "params": {
+        "mo": "AM"
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "726aeee3d29c772fe533f16191a67e1ae666be98126fe2fbfa631ce4d0632b56",
+  "outputFloats": 24578,
+  "byteLength": 98312,
+  "binary": "case-023.f32"
+}

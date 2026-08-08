@@ -1,0 +1,76 @@
+{
+  "formatVersion": 1,
+  "type": "CassetteArtifactsPlugin",
+  "id": "dolby-c-transitions",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 20000,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "dg": "Hi-Fi",
+    "tp": "Type IV",
+    "nr": "Dolby C",
+    "bs": 0,
+    "rl": 12,
+    "wf": 0.375,
+    "hs": -55,
+    "dp": 0,
+    "az": 2,
+    "dl": 0,
+    "og": 0,
+    "mx": 100
+  },
+  "events": [
+    {
+      "frame": 2048,
+      "params": {
+        "nr": "Dolby B"
+      }
+    },
+    {
+      "frame": 5121,
+      "params": {
+        "nr": "Dolby C"
+      }
+    },
+    {
+      "frame": 8193,
+      "params": {
+        "nr": "Off"
+      }
+    },
+    {
+      "frame": 11265,
+      "params": {
+        "nr": "Dolby C",
+        "dl": -1.5
+      }
+    },
+    {
+      "frame": 14337,
+      "params": {
+        "rl": -6
+      }
+    },
+    {
+      "frame": 17409,
+      "params": {
+        "dl": 1.5,
+        "bs": 3
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "7af31fcea840cbc340745edcb3a748900b2fbeab0a15363543fb43d2b05820ee",
+  "outputFloats": 40000,
+  "byteLength": 160000,
+  "binary": "case-004.f32"
+}

@@ -1,0 +1,60 @@
+{
+  "formatVersion": 1,
+  "type": "AMRadioSimulatorPlugin",
+  "id": "radio-startup-and-shutdown",
+  "stimulus": "noise",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 513,
+  "blockSize": 97,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 20,
+  "seed": "0xeffe7a4a",
+  "params": {
+    "rd": false,
+    "tb": 6,
+    "pe": 50,
+    "md": 90,
+    "cp": 6,
+    "sm": "Mono",
+    "sg": -12,
+    "sk": 1,
+    "fd": 0.15,
+    "st": 100,
+    "in": -65,
+    "io": 9,
+    "tn": 0,
+    "bw": 12,
+    "ag": "Fast",
+    "dt": 50,
+    "hm": -70,
+    "hz": "50",
+    "sp": "Table",
+    "og": 0,
+    "mx": 100,
+    "fr": true
+  },
+  "events": [
+    {
+      "frame": 129,
+      "params": {
+        "rd": true
+      }
+    },
+    {
+      "frame": 321,
+      "params": {
+        "rd": false
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "bd11b599a0a95ec78f19832e1dcd426e2848d3bd9122ad7d1918138efa9c78a5",
+  "outputFloats": 513,
+  "byteLength": 2052,
+  "binary": "case-021.f32"
+}

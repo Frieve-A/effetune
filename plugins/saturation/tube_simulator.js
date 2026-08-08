@@ -4886,26 +4886,27 @@ class TubeSimulatorPlugin extends PluginBase {
     constructor() {
         super('Tube Simulator', 'Physical tube line and push-pull power amplifier simulation');
 
-        this.dr = 0;
-        this.tp = '12AU7';
+        // Opening circuit: the EL84 Pentode @2% listening preset.
+        this.dr = -55.9648;
+        this.tp = '12AX7';
         this.bi = 0;
         this.pv = 250;
         this.sz = 10;
         this.su = 10;
-        this.og = 9;
+        this.og = 4.626;
         this.mx = 100;
         this.iv = 2.828;
-        this.nf = 30;
-        this.os = 'Line';
+        this.nf = 3;
+        this.os = 'Power';
         this.pt = 'EL84';
-        this.pb = 320;
+        this.pb = 329.696;
         this.kr = 270;
         this.st = '0';
         this.zp = '8.0';
-        this.sl = '8';
+        this.sl = '15';
         // Assumed load above is the tap the amplifier is designed around; this is the load
         // actually connected to it.
-        this.rl = 8;
+        this.rl = 15;
         // Output-stage equipment protection. Attenuation only, applied behind the amplifier
         // model, so it changes the level of the result and nothing about its character.
         this.sg = 0;

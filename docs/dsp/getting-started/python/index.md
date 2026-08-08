@@ -9,11 +9,8 @@ permalink: /dsp/getting-started/python/
 
 Use this path to process a planar NumPy array.
 
-<!-- DSP-RELEASE-NOTICE -->
-> **Release state:** python is **published** for 0.1.0. The verified package matches these 0.1.0 docs.
-
 ```console
-pip install effetune==0.1.0
+pip install effetune
 ```
 
 Wheels target CPython 3.10+ on manylinux x86-64, Windows AMD64, macOS Intel, and

@@ -23,6 +23,7 @@ This type has catalog telemetry metadata but no public observation API in v0.1. 
 
 | Semantic name | Python constructor keyword | Type / count | Default | Unit | Range or values |
 |---|---|---:|---|---|---|
+| `radio` | `radio` | boolean / 1 | `true` | Not declared in catalog | Not declared in catalog |
 | `txBandwidth` | `tx_bandwidth` | number / 1 | `6` | kHz | 2 … 10 |
 | `preEmphasis` | `pre_emphasis` | number / 1 | `50` | % | 0 … 100 |
 | `modDepth` | `mod_depth` | number / 1 | `90` | % | 10 … 125 |
@@ -87,6 +88,7 @@ Static events use a carrier-relative vector-area calibration: each event is scal
 
 #### Station
 
+- **Radio** (on or off) - Switches the station's transmission on and off. With it off the carrier disappears entirely, leaving the receiver with only atmospheric static, the adjacent station, and its own noise, and AGC opens up until that background becomes loud. Use it to hear the moment a station signs on or off the air. This is not the same as turning the effect off, which leaves the music untouched.
 - **Stereo Mode** (Mono or C-QUAM) - Mono uses a traditional envelope-detector receiver. C-QUAM provides stereo reception, with lower stereo S/N than mono, and automatically blends toward mono when the signal is weak or mistuned. Because the receiver uses a physically different detector, switching modes can also change the timbre; Detector RC and its diagonal clipping apply only to Mono and have no effect in C-QUAM. C-QUAM stereo operates at sample rates up to 192 kHz; at higher rates, reception is mono. The simulation models only the FCC C-QUAM c(5) modulation-phase limit and does not represent a complete compliance test.
 - **TX Bandwidth** (2.0 to 10.0 kHz) - Sets the transmitter's audio bandwidth. Lower values sound darker and more restricted; higher values preserve more detail.
 - **Pre-emphasis** (0 to 100%) - Boosts upper audio frequencies before transmission. Higher settings add presence but also drive bright peaks harder through the broadcast chain.

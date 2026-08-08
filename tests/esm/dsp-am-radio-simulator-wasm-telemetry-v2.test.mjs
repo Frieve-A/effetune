@@ -32,8 +32,8 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
       assert.notEqual(instanceId, 0);
       assert.equal(binding.instanceSetTap(instanceId, 1717), 0);
       const packer = DSP_PARAM_PACKERS.get('AMRadioSimulatorPlugin');
-      assert.equal(packer.hash, 0xcf924404);
-      assert.equal(packer.floatCount, 20);
+      assert.equal(packer.hash, 0x70fa4967);
+      assert.equal(packer.floatCount, 21);
       const cleanCquam = {
         sm: 'C-QUAM', sg: 0, sk: 0, st: 0, in: -80, tn: 0,
         tb: 10, bw: 20, hm: -80, sp: 'Off'

@@ -23,6 +23,7 @@ This type has catalog telemetry metadata but no public observation API in v0.1. 
 
 | Semantic name | Python constructor keyword | Type / count | Default | Unit | Range or values |
 |---|---|---:|---|---|---|
+| `radio` | `radio` | boolean / 1 | `true` | Not declared in catalog | Not declared in catalog |
 | `emphasis` | `emphasis` | string / 1 | `"50us"` | Not declared in catalog | `50us`, `75us` |
 | `processing` | `processing` | number / 1 | `0` | dB | 0 … 18 |
 | `signal` | `signal` | number / 1 | `35` | dBuV | 0 … 70 |
@@ -63,6 +64,7 @@ This effect requires an environment that supports its real-time processing. When
 
 ### Parameters
 
+- **Radio** (on or off) - Switches the station's transmission on and off. With it off the carrier disappears entirely, so the receiver has nothing left to limit but its own noise floor and produces the full-scale hiss of an empty channel. Use it to hear the moment a station signs on or off the air. This is not the same as turning the effect off, which leaves the music untouched.
 - **Emphasis** (50 or 75 µs) - Selects the pre-emphasis/de-emphasis time-constant pair (50 µs: Japan/Europe, 75 µs: the Americas). On a clean signal the pair nearly cancels; the choice subtly changes how hiss and distortion are voiced.
 - **Processing** (0 to +18 dB) - Drive of the broadcast limiter — the station's "loudness". 0 dB is nearly transparent; higher values sound denser and louder in the way heavily processed stations do.
 - **Signal** (0 to 70 dBµV) - Carrier level at the antenna input. The noise floor is fixed by physics (75 Ω thermal noise plus receiver noise figure), so this control sets the carrier-to-noise ratio and is the main degradation axis. Around 50 dBµV and above reception is essentially clean; near 30 stereo hiss is clearly audible; near 15 the Auto blend has moved to mono; at 6 and below clicks multiply and the program sinks into noise.

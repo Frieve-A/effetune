@@ -20,6 +20,32 @@ constexpr double kSqrtHalf = 0.70710678118654752440;
 constexpr double kFloat32Scale = 4294967296.0;
 constexpr std::uint32_t kControlInterval = 32u;
 constexpr double kAgcTargetDb = -6.0;
+// An AM receiver's AGC rides the carrier, whose level is what the detector holds at the target
+// while the programme rides on top of it as modulation. SSB has no carrier: the same detector
+// now follows the programme envelope itself, so the loop parks the smoothed envelope at the
+// target while the instantaneous waveform keeps its full crest factor, and the product detector
+// adds the same sqrt(2) the envelope detector gets. The SSB target is therefore backed off,
+// sized by a sweep over music, voiced and percussive programme at 48 and 96 kHz, both sidebands
+// and all three AGC speeds.
+//
+// That sweep sorts every block of every render into windows, and the two the figures below are
+// quoted over are NOT the same window:
+//   onset    a block starting within 50 ms of power-up or of the end of a silent stretch. The
+//            AGC is fully open there and has not begun to close.
+//   settled  every block that is not an onset block. It therefore still contains the blocks
+//            immediately after a 50 ms onset window closes, where the loop is part way through
+//            its recovery - which is where all the residual over-full-scale blocks are.
+//   steady   the second half of the render. A subset of settled, not a synonym for it: no onset
+//            recovery reaches into it at all.
+// -18 dB is the highest of the sanctioned steps that leaves programme clear of full scale on the
+// STEADY window: zero over-full-scale blocks and a worst peak of -1.87 dBFS there, where -16 dB
+// already reaches +0.13 dBFS. It is not a ceiling on the output, and the wider SETTLED window is
+// what shows that: a programme onset arriving at a fully open AGC peaks around +13 dBFS, and the
+// worst settled block - one just outside an onset window, still recovering - measures
+// +2.34 dBFS. No attack time a real set uses catches the first samples of an instantaneous
+// onset, so that thump is left in as receiver physics. Real sets land 6-12 dB below their AM
+// audio for the same reason.
+constexpr double kSsbAgcTargetDb = -18.0;
 constexpr double kMinimumAgcGainDb = -12.0;
 constexpr double kMaximumAgcGainDb = 42.0;
 constexpr double kDetectorDiodeToLoadResistanceRatio = 0.02;
@@ -62,6 +88,17 @@ constexpr double kSyncPllQualifyResidualHz = 5.0;
 constexpr double kSyncPllInsideRatio = 0.96;
 constexpr double kSyncPllOutsideRatio = 1.04;
 constexpr double kSyncEpsilonAbsolute = 1.0e-6;
+// SSB transmit branch: communication transmitters roll off the lowest audio octaves, and the
+// low cut also anchors the Hilbert pair above its usable band edge (Phase 0: the 100 Hz / 50 dB
+// allpass design is usable down to <= 86 Hz at every supported rate).
+constexpr double kSsbLowCutHz = 100.0;
+constexpr double kHilbertTransitionHz = 100.0;
+constexpr double kHilbertAttenuationDb = 50.0;
+constexpr double kHilbertSeriesEpsilon = 1.0e-100;
+// The closed-form elliptic order is 7 coefficients at 44.1/48 kHz, 8 at 96 kHz and 9 at
+// 192 kHz, so this capacity is never reached at any supported rate.
+constexpr std::size_t kMaximumHilbertCoefficients = 16u;
+constexpr std::size_t kMaximumHilbertBranchSections = (kMaximumHilbertCoefficients + 1u) / 2u;
 constexpr std::uint16_t kTelemetryFrameType = 18u;
 constexpr std::uint16_t kTelemetryVersion = 1u;
 constexpr std::size_t kTelemetryPayloadBytes = 24u;
@@ -72,6 +109,13 @@ constexpr std::array<double, 4u> kButterworth8Q = {0.509795579104159, 0.60134488
                                                    0.899976223136416, 2.562915447741506};
 constexpr std::array<double, 3u> kAgcAttackTimes = {0.150, 0.050, 0.015};
 constexpr std::array<double, 3u> kAgcReleaseTimes = {3.0, 1.5, 0.750};
+// Communications receivers fix the SSB AGC attack in the 1-10 ms range and wire the operator's
+// Slow/Mid/Fast knob to the release alone: without a carrier the loop has to catch the first
+// syllable of a transmission instead of gliding onto a steady level, so an attack the operator
+// could slow down would simply let every onset through. The AM branch keeps the carrier-derived
+// attack the knob has always selected.
+constexpr double kSsbAgcDetectorAttackSeconds = 0.0015;
+constexpr double kSsbAgcGainAttackSeconds = 0.002;
 
 void writeU32(std::uint8_t *output, std::uint32_t value) noexcept {
   output[0] = static_cast<std::uint8_t>(value & 0xffu);
@@ -246,6 +290,40 @@ struct FadeTap final {
   double stepQ = 0.0;
 };
 
+// Second-order allpass section (a - z^-2) / (1 - a z^-2) of the Hilbert pair.
+struct HilbertSection final {
+  double a = 0.0;
+  double x1 = 0.0;
+  double x2 = 0.0;
+  double y1 = 0.0;
+  double y2 = 0.0;
+
+  void resetState() noexcept {
+    x1 = 0.0;
+    x2 = 0.0;
+    y1 = 0.0;
+    y2 = 0.0;
+  }
+};
+
+// The ascending-sorted allpass coefficients alternate: even indices form the in-phase branch
+// and odd indices the quadrature branch, which runs behind one extra unit delay. Swapping the
+// assignment flips the 90 degree sign and therefore the sidebands (Phase 0 trap).
+double processHilbertBranch(std::array<HilbertSection, kMaximumHilbertBranchSections> &sections,
+                            std::size_t count, double input) noexcept {
+  double value = input;
+  for (std::size_t index = 0u; index < count; ++index) {
+    HilbertSection &section = sections[index];
+    const double output = section.a * (value + section.y2) - section.x2;
+    section.x2 = section.x1;
+    section.x1 = value;
+    section.y2 = section.y1;
+    section.y1 = output;
+    value = output;
+  }
+  return value;
+}
+
 // The five sub-sample detector phases share one interpolation/decimation chain. Two instances
 // exist so the 20 ms detector crossfade can run both detectors from the same IF stream.
 struct DetectorChain final {
@@ -274,6 +352,7 @@ struct Controls final {
   double outputGain = 0.0;
   double mix = 100.0;
   double humFrequency = 50.0;
+  double bfoOffset = 0.0;
 };
 
 } // namespace
@@ -291,6 +370,10 @@ public:
     const double required =
         std::ceil(sample_rate_ * (1.0 + kSkyFirstDelayRatio) * kMaximumDelaySpreadSeconds) + 4.0;
     delay_.resize(required > 4.0 ? static_cast<std::size_t>(required) : 4u);
+    // The SSB capacity (Hilbert coefficients, quadrature ring) is prepared for every mode so a
+    // later mode switch never allocates.
+    delay_q_.resize(delay_.size());
+    designHilbertCoefficients();
     sync_pll_frequency_warmup_samples_ = syncWarmupSamples();
     const double qualify_samples = std::round(sample_rate_ * kSyncPllQualifySeconds);
     sync_pll_frequency_history_.resize(
@@ -332,17 +415,35 @@ public:
     } else if (detector > 1) {
       detector = 1;
     }
+    int mode = static_cast<int>(params_.mode + 0.5F);
+    if (mode < 0) {
+      mode = 0;
+    } else if (mode > 2) {
+      mode = 2;
+    }
     if (!initialized_ || pair_channels != pair_channels_) {
-      resetSimulation(pair_channels, speaker, detector);
+      resetSimulation(pair_channels, speaker, detector, mode);
     } else {
+      // The mode is an enum: it switches at the block boundary with no crossfade and no state
+      // reset - the AGC, fading and RNG streams carry straight across, exactly as a real
+      // receiver's mode switch does. While in SSB the detector selection is frozen: no
+      // transition starts and the sync PLL never steps, so de / dt are inert. The first AM
+      // block afterwards compares the frozen detector with the current selection and starts
+      // the ordinary 20 ms transition.
+      mode_ = mode;
       if (speaker_transition_remaining_ == 0u && speaker != speaker_) {
         startSpeakerTransition(speaker);
       }
-      if (detector_transition_remaining_ == 0u && detector != detector_) {
+      if (mode_ == kAmMode && detector_transition_remaining_ == 0u && detector != detector_) {
         startDetectorTransition(detector);
       }
     }
 
+    // Radio off takes the transmitter off the air, so the transmitter telemetry has nothing to
+    // report: the modulation meter must not keep showing a station that stopped transmitting, and
+    // the over-modulation counter must not keep ticking on a carrier that no longer exists. The
+    // meter itself keeps its ballistics and falls back the way a real modulation monitor does when
+    // the RF disappears. radio_ is the same control-rate switch the station gain reads.
     double block_mod_peak = 0.0;
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
       if (control_remaining_ == 0u) {
@@ -386,14 +487,39 @@ public:
         const double interpolated = processBank(tx_interp_, phase == 0u ? compressed * 3.0 : 0.0);
         tx = processBank(tx_filters_, asymmetricLimit(interpolated));
       }
-      const double transmitted = 1.0 + modulation_ * tx;
-      const double absolute_tx = tx < 0.0 ? -tx : tx;
-      const double modulation_deviation = absolute_tx * modulation_ * 100.0;
-      if (modulation_deviation > block_mod_peak) {
-        block_mod_peak = modulation_deviation;
+      double transmitted = 0.0;
+      double modulated_i = 0.0;
+      double modulated_q = 0.0;
+      if (mode_ == kAmMode) {
+        transmitted = 1.0 + modulation_ * tx;
+        const double absolute_tx = tx < 0.0 ? -tx : tx;
+        const double modulation_deviation = absolute_tx * modulation_ * 100.0;
+        if (radio_ && modulation_deviation > block_mod_peak) {
+          block_mod_peak = modulation_deviation;
+        }
+        delay_[delay_position_] = transmitted;
+        delay_q_[delay_position_] = 0.0;
+      } else {
+        // Balanced modulator equivalent: low-cut the programme like a communication
+        // transmitter, form the analytic signal with the allpass Hilbert pair, and pick the
+        // sideband with the quadrature sign. No carrier is added, so the modulation telemetry
+        // reports the transmit sideband drive instead of an AM depth.
+        const double low_cut = ssb_low_cut_.process(tx);
+        const double analytic_i = processHilbertBranch(hilbert_i_, hilbert_i_count_, low_cut);
+        const double quadrature_input = hilbert_q_delay_;
+        hilbert_q_delay_ = low_cut;
+        const double analytic_q =
+            processHilbertBranch(hilbert_q_, hilbert_q_count_, quadrature_input);
+        modulated_i = modulation_ * analytic_i;
+        modulated_q = mode_ == kUsbMode ? modulation_ * analytic_q : -modulation_ * analytic_q;
+        const double sideband_drive =
+            std::sqrt(modulated_i * modulated_i + modulated_q * modulated_q) * 100.0;
+        if (radio_ && sideband_drive > block_mod_peak) {
+          block_mod_peak = sideband_drive;
+        }
+        delay_[delay_position_] = modulated_i;
+        delay_q_[delay_position_] = modulated_q;
       }
-
-      delay_[delay_position_] = transmitted;
       const std::size_t size = delay_.size();
       const std::size_t position1 = delay_position_ >= delay1_samples_
                                         ? delay_position_ - delay1_samples_
@@ -403,15 +529,30 @@ public:
                                         : size + delay_position_ - delay2_samples_;
       const double delayed1 = delay_[position1];
       const double delayed2 = delay_[position2];
+      const double delayed1_q = delay_q_[position1];
+      const double delayed2_q = delay_q_[position2];
       ++delay_position_;
       if (delay_position_ == size) {
         delay_position_ = 0u;
       }
-      const double station_i =
-          signal_gain_ *
-          (ground_gain_ * transmitted + sky_gain_ * (fade1_.i * delayed1 + fade2_.i * delayed2));
-      const double station_q =
-          signal_gain_ * sky_gain_ * (fade1_.q * delayed1 + fade2_.q * delayed2);
+      double station_i;
+      double station_q;
+      if (mode_ == kAmMode) {
+        station_i = station_gain_ * (ground_gain_ * transmitted +
+                                     sky_gain_ * (fade1_.i * delayed1 + fade2_.i * delayed2));
+        station_q = station_gain_ * sky_gain_ * (fade1_.q * delayed1 + fade2_.q * delayed2);
+      } else {
+        // The SSB baseband is complex, so the sky modes apply the full complex fading taps
+        // and - unlike AM, whose real carrier keeps the ground wave in-phase - the ground
+        // path feeds both quadratures. Confining it to I would re-create both sidebands from
+        // the dominant ground component and erase the USB/LSB distinction.
+        station_i = station_gain_ * (ground_gain_ * modulated_i +
+                                     sky_gain_ * (fade1_.i * delayed1 - fade1_.q * delayed1_q +
+                                                  fade2_.i * delayed2 - fade2_.q * delayed2_q));
+        station_q = station_gain_ * (ground_gain_ * modulated_q +
+                                     sky_gain_ * (fade1_.i * delayed1_q + fade1_.q * delayed1 +
+                                                  fade2_.i * delayed2_q + fade2_.q * delayed2));
+      }
 
       const double tuning_cosine = std::cos(tuning_phase_);
       const double tuning_sine = std::sin(tuning_phase_);
@@ -499,27 +640,37 @@ public:
       agc_detector_stage2_ += stage2_coefficient * (agc_detector_stage1_ - agc_detector_stage2_);
       last_if_envelope_ = if_envelope;
 
-      const bool detector_transitioning = detector_transition_remaining_ > 0u;
-      if (detector_ == kSynchronousDetector ||
-          (detector_transitioning && detector_target_ == kSynchronousDetector)) {
-        stepSyncPll(if_output_i, if_output_q);
-      }
-      double detected = runDetector(detector_, detector_primary_, if_output_i, if_output_q);
-      bool detector_clipping = detector_primary_.clipping;
-      if (detector_transitioning) {
-        const double next_detected =
-            runDetector(detector_target_, detector_secondary_, if_output_i, if_output_q);
-        const double progress =
-            static_cast<double>(detector_transition_total_ - detector_transition_remaining_) /
-            static_cast<double>(detector_transition_total_);
-        const double blend = 0.5 - 0.5 * std::cos(kPi * progress);
-        detected += blend * (next_detected - detected);
-        detector_clipping = detector_clipping || detector_secondary_.clipping;
-        --detector_transition_remaining_;
-        if (detector_transition_remaining_ == 0u) {
-          std::swap(detector_primary_, detector_secondary_);
-          detector_ = detector_target_;
+      double detected;
+      bool detector_clipping = false;
+      if (mode_ == kAmMode) {
+        const bool detector_transitioning = detector_transition_remaining_ > 0u;
+        if (detector_ == kSynchronousDetector ||
+            (detector_transitioning && detector_target_ == kSynchronousDetector)) {
+          stepSyncPll(if_output_i, if_output_q);
         }
+        detected = runDetector(detector_, detector_primary_, if_output_i, if_output_q);
+        detector_clipping = detector_primary_.clipping;
+        if (detector_transitioning) {
+          const double next_detected =
+              runDetector(detector_target_, detector_secondary_, if_output_i, if_output_q);
+          const double progress =
+              static_cast<double>(detector_transition_total_ - detector_transition_remaining_) /
+              static_cast<double>(detector_transition_total_);
+          const double blend = 0.5 - 0.5 * std::cos(kPi * progress);
+          detected += blend * (next_detected - detected);
+          detector_clipping = detector_clipping || detector_secondary_.clipping;
+          --detector_transition_remaining_;
+          if (detector_transition_remaining_ == 0u) {
+            std::swap(detector_primary_, detector_secondary_);
+            detector_ = detector_target_;
+          }
+        }
+      } else {
+        // BFO product detector: rotate the composite IF by the phase-continuous local
+        // oscillator and take the real part (Re[(I + jQ) e^{-j phi}]). The sign convention
+        // delta = tn*1000 - bf with USB = f + delta was frozen in Phase 0.
+        detected = if_output_i * std::cos(bfo_phase_) + if_output_q * std::sin(bfo_phase_);
+        advancePhase(bfo_phase_, bfo_phase_increment_);
       }
 
       const double receiver_audio =
@@ -566,8 +717,10 @@ public:
       }
       fade_db_ = fade_db;
       // Negative-peak (over-modulation) clipping is detector independent; the diagonal clipping
-      // term only exists in the envelope detector.
-      const bool clip_now = transmitted < 0.0 || detector_clipping;
+      // term only exists in the envelope detector. A suppressed-carrier SSB waveform is bipolar
+      // by nature, so its negative values are not over-modulation. Radio off takes the
+      // transmitter off the air, so there is no carrier left to over-modulate either.
+      const bool clip_now = radio_ && mode_ == kAmMode && (transmitted < 0.0 || detector_clipping);
       if (clip_now && !clip_active_) {
         ++clip_count_;
       }
@@ -625,6 +778,8 @@ private:
   static constexpr int kSynchronousDetector = 1;
   static constexpr int kPllCapture = 0;
   static constexpr int kPllTrack = 1;
+  static constexpr int kAmMode = 0;
+  static constexpr int kUsbMode = 1;
 
   [[nodiscard]] static float finiteFloat(double value, double fallback) noexcept {
     return static_cast<float>(std::isfinite(value) ? value : fallback);
@@ -811,6 +966,12 @@ private:
     ground_gain_ = std::sqrt(1.0 - sky);
     sky_gain_ = std::sqrt(sky * 0.5);
     signal_gain_ = std::pow(10.0, controls_.signal / 20.0);
+    // Going off the air removes the transmitter's own carrier and sidebands from the
+    // propagation path and nothing else. signal_gain_ still scales the atmospheric static
+    // bursts, so a dead channel keeps its crashes, its co-channel QRM and its thermal noise
+    // while the AGC winds up to the limit - exactly what a real receiver does when a station
+    // closes down.
+    station_gain_ = radio_ ? signal_gain_ : 0.0;
     interferer_gain_ = std::pow(10.0, controls_.interference / 20.0);
     hum_amount_ = std::pow(10.0, controls_.hum / 20.0);
     hum_phase_increment_ = kTwoPi * controls_.humFrequency / sample_rate_;
@@ -819,14 +980,93 @@ private:
     output_gain_ = std::pow(10.0, controls_.outputGain / 20.0);
     mix_ = controls_.mix * 0.01;
     dry_mix_ = 1.0 - mix_;
-    agc_detector_attack_coefficient_ =
-        1.0 - std::exp(-1.0 / (sample_rate_ * kAgcAttackTimes[agc_speed]));
+    const double agc_attack_time =
+        mode_ == kAmMode ? kAgcAttackTimes[agc_speed] : kSsbAgcDetectorAttackSeconds;
+    agc_detector_attack_coefficient_ = 1.0 - std::exp(-1.0 / (sample_rate_ * agc_attack_time));
     agc_detector_release_coefficient_ =
         1.0 - std::exp(-1.0 / (sample_rate_ * kAgcReleaseTimes[agc_speed]));
+    bfo_phase_increment_ = kTwoPi * controls_.bfoOffset / sample_rate_;
   }
 
-  void resetSimulation(std::uint32_t pair_channels, int speaker, int detector) noexcept {
+  // Closed-form elliptic design of the polyphase half-band derived allpass Hilbert pair. The
+  // transition parameter t = 100 Hz / fs and the 50 dB target reproduce the Phase 0
+  // calibration: 7 sections at 44.1/48 kHz, 8 at 96 kHz, 9 at 192 kHz. Both power series are
+  // truncated once a term drops below 1e-100 (3-4 terms in practice); the JavaScript reference
+  // uses the identical formulae and truncation - parity depends on it.
+  void designHilbertCoefficients() noexcept {
+    const double transition = kHilbertTransitionHz / sample_rate_;
+    const double tangent = std::tan((1.0 - 4.0 * transition) * kPi / 4.0);
+    const double k = tangent * tangent;
+    const double complementary = std::pow(1.0 - k * k, 0.25);
+    const double e = 0.5 * (1.0 - complementary) / (1.0 + complementary);
+    const double e4 = e * e * e * e;
+    const double nome = e * (1.0 + e4 * (2.0 + e4 * (15.0 + 150.0 * e4)));
+    const double attenuation_power = std::pow(10.0, -kHilbertAttenuationDb / 10.0);
+    const double a = attenuation_power / (1.0 - attenuation_power);
+    int order = static_cast<int>(std::ceil(std::log(a * a / 16.0) / std::log(nome)));
+    if (order % 2 == 0) {
+      order += 1;
+    }
+    if (order < 3) {
+      order = 3;
+    }
+    const int count = (order - 1) / 2;
+    const int bounded = count <= static_cast<int>(kMaximumHilbertCoefficients)
+                            ? count
+                            : static_cast<int>(kMaximumHilbertCoefficients);
+    const double order_value = static_cast<double>(order);
+    std::array<double, kMaximumHilbertCoefficients> coefficients{};
+    for (int index = 0; index < bounded; ++index) {
+      const double c = static_cast<double>(index + 1);
+      double numerator = 0.0;
+      for (int i = 0;; ++i) {
+        const double term = (i % 2 == 0 ? 1.0 : -1.0) *
+                            std::pow(nome, static_cast<double>(i) * (i + 1.0)) *
+                            std::sin((2.0 * i + 1.0) * c * kPi / order_value);
+        numerator += term;
+        if ((term < 0.0 ? -term : term) < kHilbertSeriesEpsilon) {
+          break;
+        }
+      }
+      numerator *= std::pow(nome, 0.25);
+      double denominator = 0.5;
+      for (int i = 1;; ++i) {
+        const double term = (i % 2 == 0 ? 1.0 : -1.0) * std::pow(nome, static_cast<double>(i) * i) *
+                            std::cos(2.0 * i * c * kPi / order_value);
+        denominator += term;
+        if ((term < 0.0 ? -term : term) < kHilbertSeriesEpsilon) {
+          break;
+        }
+      }
+      const double w = numerator / denominator;
+      const double w_squared = w * w;
+      const double x = std::sqrt((1.0 - w_squared * k) * (1.0 - w_squared / k)) / (1.0 + w_squared);
+      coefficients[static_cast<std::size_t>(index)] = (1.0 - x) / (1.0 + x);
+    }
+    std::sort(coefficients.begin(), coefficients.begin() + bounded);
+    hilbert_i_count_ = 0u;
+    hilbert_q_count_ = 0u;
+    for (int index = 0; index < bounded; ++index) {
+      if (index % 2 == 0) {
+        hilbert_i_[hilbert_i_count_].a = coefficients[static_cast<std::size_t>(index)];
+        ++hilbert_i_count_;
+      } else {
+        hilbert_q_[hilbert_q_count_].a = coefficients[static_cast<std::size_t>(index)];
+        ++hilbert_q_count_;
+      }
+    }
+  }
+
+  void resetSimulation(std::uint32_t pair_channels, int speaker, int detector, int mode) noexcept {
+    // The reception mode is adopted first: the AGC cold start and the detector attack
+    // coefficient both branch on it, exactly as the JavaScript reference does by carrying the
+    // mode into the state literal before it seeds the loop.
+    mode_ = mode;
+    // Transmitter on/off is a switch, not a smoothed control; the JavaScript reference reads
+    // the same field as "anything that is not off is on".
+    radio_ = params_.radio >= 0.5F;
     std::fill(delay_.begin(), delay_.end(), 0.0);
+    std::fill(delay_q_.begin(), delay_q_.end(), 0.0);
     delay_position_ = 0u;
     sample_counter_ = 0u;
     control_remaining_ = 0u;
@@ -839,7 +1079,7 @@ private:
         static_cast<double>(params_.tuning),       static_cast<double>(params_.ifBandwidth),
         static_cast<double>(params_.detectorRc),   static_cast<double>(params_.hum),
         static_cast<double>(params_.outputGain),   static_cast<double>(params_.mix),
-        params_.humFrequency < 0.5F ? 50.0 : 60.0};
+        params_.humFrequency < 0.5F ? 50.0 : 60.0, static_cast<double>(params_.bfoOffset)};
     updateTuningModel();
     updateDelayGeometry();
     random_state_ = base_random_state_;
@@ -869,9 +1109,12 @@ private:
     const double initial_interferer_offset_hz = interferer_tuning_offset_hz_ < 0.0
                                                     ? -interferer_tuning_offset_hz_
                                                     : interferer_tuning_offset_hz_;
+    // A transmitter that is off the air contributes nothing to the cold-start estimate, so the
+    // AGC starts where the interferer and the noise floor alone put it.
     const double initial_station =
-        std::pow(10.0, controls_.signal / 20.0) * station_tuning_gain_ *
-        butterworth6Magnitude(initial_station_offset_hz, initial_if_cutoff_hz);
+        radio_ ? std::pow(10.0, controls_.signal / 20.0) * station_tuning_gain_ *
+                     butterworth6Magnitude(initial_station_offset_hz, initial_if_cutoff_hz)
+               : 0.0;
     const double initial_interferer_level =
         std::pow(10.0, controls_.interference / 20.0) * interferer_tuning_gain_;
     const double initial_interferer_carrier =
@@ -911,16 +1154,21 @@ private:
     const double initial_noise =
         thermal_noise_std_ *
         std::sqrt(4.0 * kIfCascadeEnbwRatio * initial_if_cutoff_hz / sample_rate_);
+    // SSB suppresses the desired-station carrier, so its cold start omits the station term and
+    // seeds the AGC from the co-channel interferer and the in-band noise alone (Phase 0 4.1:
+    // the AM seed is far too low for SSB and mutes the first syllables).
     double initial_carrier =
-        std::sqrt(initial_station * initial_station + initial_interferer * initial_interferer +
-                  initial_noise * initial_noise);
+        mode == kAmMode
+            ? std::sqrt(initial_station * initial_station +
+                        initial_interferer * initial_interferer + initial_noise * initial_noise)
+            : std::sqrt(initial_interferer * initial_interferer + initial_noise * initial_noise);
     if (initial_carrier < 1.0e-6) {
       initial_carrier = 1.0e-6;
     }
     agc_detector_stage1_ = initial_carrier;
     agc_detector_stage2_ = initial_carrier;
     carrier_pre_agc_db_ = 20.0 * std::log10(initial_carrier);
-    agc_gain_db_ = kAgcTargetDb - carrier_pre_agc_db_;
+    agc_gain_db_ = (mode == kAmMode ? kAgcTargetDb : kSsbAgcTargetDb) - carrier_pre_agc_db_;
     if (agc_gain_db_ < kMinimumAgcGainDb) {
       agc_gain_db_ = kMinimumAgcGainDb;
     } else if (agc_gain_db_ > kMaximumAgcGainDb) {
@@ -944,6 +1192,16 @@ private:
 
     tx_high_pass_.reset();
     tx_high_pass_.configureHighPass(50.0, kSqrtHalf, sample_rate_);
+    ssb_low_cut_.reset();
+    ssb_low_cut_.configureHighPass(kSsbLowCutHz, kSqrtHalf, sample_rate_);
+    for (HilbertSection &section : hilbert_i_) {
+      section.resetState();
+    }
+    for (HilbertSection &section : hilbert_q_) {
+      section.resetState();
+    }
+    hilbert_q_delay_ = 0.0;
+    bfo_phase_ = 0.0;
     resetBank(tx_interp_);
     resetBank(tx_filters_);
     configureBank(tx_interp_, 14000.0, kButterworth4Q, sample_rate_ * 3.0);
@@ -1269,6 +1527,9 @@ private:
     smooth(controls_.mix, params_.mix);
     const double hum_frequency = params_.humFrequency < 0.5F ? 50.0 : 60.0;
     controls_.humFrequency += control_smoothing_ * (hum_frequency - controls_.humFrequency);
+    // The BFO offset is smoothed like every numeric control so retuning the clarifier glides
+    // in frequency while the product-detector phase stays continuous.
+    smooth(controls_.bfoOffset, params_.bfoOffset);
     configureBank(tx_filters_, controls_.txBandwidth * 1000.0, kButterworth8Q, sample_rate_ * 3.0);
     configureBank(if_i_, controls_.ifBandwidth * 500.0, kButterworth6Q, sample_rate_);
     configureBank(if_q_, controls_.ifBandwidth * 500.0, kButterworth6Q, sample_rate_);
@@ -1283,7 +1544,7 @@ private:
 
     const double detected = agc_detector_stage2_ > 1.0e-12 ? agc_detector_stage2_ : 1.0e-12;
     const double detected_db = 20.0 * std::log10(detected);
-    double target_gain = kAgcTargetDb - detected_db;
+    double target_gain = (mode_ == kAmMode ? kAgcTargetDb : kSsbAgcTargetDb) - detected_db;
     if (target_gain < kMinimumAgcGainDb) {
       target_gain = kMinimumAgcGainDb;
     } else if (target_gain > kMaximumAgcGainDb) {
@@ -1296,8 +1557,9 @@ private:
       speed = 2;
     }
     const std::size_t agc_speed = static_cast<std::size_t>(speed);
-    const double time =
-        target_gain < agc_gain_db_ ? kAgcAttackTimes[agc_speed] : kAgcReleaseTimes[agc_speed];
+    const double time = target_gain < agc_gain_db_ ? (mode_ == kAmMode ? kAgcAttackTimes[agc_speed]
+                                                                       : kSsbAgcGainAttackSeconds)
+                                                   : kAgcReleaseTimes[agc_speed];
     const double coefficient =
         1.0 - std::exp(-static_cast<double>(kControlInterval) / (sample_rate_ * time));
     agc_gain_db_ += coefficient * (target_gain - agc_gain_db_);
@@ -1308,6 +1570,7 @@ private:
       pre_agc = 6.0;
     }
     carrier_pre_agc_db_ = pre_agc;
+    radio_ = params_.radio >= 0.5F;
     updateControlCoefficients(agc_speed);
     control_remaining_ = kControlInterval;
   }
@@ -1351,6 +1614,7 @@ private:
   std::uint32_t max_channels_ = 0u;
   std::uint32_t max_frames_ = 0u;
   std::vector<double> delay_{};
+  std::vector<double> delay_q_{};
   std::size_t delay_position_ = 0u;
   std::size_t delay1_samples_ = 0u;
   std::size_t delay2_samples_ = 0u;
@@ -1369,6 +1633,14 @@ private:
   double limiter_envelope_ = 0.0;
   double limiter_gain_ = 1.0;
   double modulation_ = 0.0;
+  Biquad ssb_low_cut_{};
+  std::array<HilbertSection, kMaximumHilbertBranchSections> hilbert_i_{};
+  std::array<HilbertSection, kMaximumHilbertBranchSections> hilbert_q_{};
+  std::size_t hilbert_i_count_ = 0u;
+  std::size_t hilbert_q_count_ = 0u;
+  double hilbert_q_delay_ = 0.0;
+  double bfo_phase_ = 0.0;
+  double bfo_phase_increment_ = 0.0;
   std::array<Biquad, 2u> tx_interp_{};
   std::array<Biquad, 4u> tx_filters_{};
   FadeTap fade1_{};
@@ -1376,6 +1648,8 @@ private:
   double ground_gain_ = 1.0;
   double sky_gain_ = 0.0;
   double signal_gain_ = 1.0;
+  double station_gain_ = 1.0;
+  bool radio_ = true;
   std::array<Biquad, 2u> interferer_filters_{};
   double interferer_program_ = 0.0;
   double interferer_program_normalizer_ = 1.0;
@@ -1459,6 +1733,7 @@ private:
   int detector_target_ = kEnvelopeDetector;
   std::uint32_t detector_transition_total_ = 0u;
   std::uint32_t detector_transition_remaining_ = 0u;
+  int mode_ = kAmMode;
   std::uint32_t selected_seed_low_ = static_cast<std::uint32_t>(dsp::XorShiftRng::kFallbackSeed);
   std::uint32_t selected_seed_high_ = 0u;
   std::uint32_t base_random_state_ = static_cast<std::uint32_t>(dsp::XorShiftRng::kFallbackSeed);

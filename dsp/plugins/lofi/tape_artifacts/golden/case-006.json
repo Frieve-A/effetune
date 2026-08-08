@@ -1,0 +1,81 @@
+{
+  "formatVersion": 1,
+  "type": "TapeArtifactsPlugin",
+  "id": "configuration-transitions",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 24000,
+  "blockSize": 96,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "sp": "7.5",
+    "tp": "Standard",
+    "bs": -4.5,
+    "rl": 12,
+    "wf": 0.375,
+    "hs": -55,
+    "og": 0,
+    "mx": 100
+  },
+  "events": [
+    {
+      "frame": 2049,
+      "params": {
+        "sp": "15"
+      }
+    },
+    {
+      "frame": 5121,
+      "params": {
+        "tp": "Master",
+        "bs": 2.25
+      }
+    },
+    {
+      "frame": 8193,
+      "params": {
+        "hs": -89
+      }
+    },
+    {
+      "frame": 11265,
+      "params": {
+        "hs": -41,
+        "wf": 0
+      }
+    },
+    {
+      "frame": 14337,
+      "params": {
+        "sp": "30",
+        "rl": -12
+      }
+    },
+    {
+      "frame": 17409,
+      "params": {
+        "og": 12,
+        "wf": 0.875
+      }
+    },
+    {
+      "frame": 20481,
+      "params": {
+        "bs": 0,
+        "tp": "Standard"
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "900afefbd95b02b5d8505cd3731798e4e61c11c3e7341f09bea9cc411c1721de",
+  "outputFloats": 48000,
+  "byteLength": 192000,
+  "binary": "case-006.f32"
+}

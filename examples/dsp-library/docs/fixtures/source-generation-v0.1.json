@@ -9,10 +9,14 @@
     { "type": "BitCrusher", "parameters": {} },
     { "type": "DSD64IMDSimulator", "sampleRate": 96000, "parameters": {} },
     { "type": "FMRadioSimulator", "parameters": {} },
+    { "type": "CassetteArtifacts", "parameters": { "hiss": -45 } },
+    { "type": "GSMFullRateSimulator", "parameters": {} },
     { "type": "HumGenerator", "parameters": { "level": -20 } },
     { "type": "NoiseBlender", "parameters": { "level": -20 } },
     { "type": "Oscillator", "parameters": { "volume": -12 } },
     { "type": "SWRadioSimulator", "parameters": {} },
+    { "type": "TapeArtifacts", "parameters": { "hiss": -45 } },
+    { "type": "TubeSimulator", "parameters": { "outputStage": "Line" } },
     {
       "type": "VinylArtifacts",
       "parameters": {

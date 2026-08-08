@@ -472,8 +472,9 @@ Tube Simulator modela una cadena eléctrica completa a partir de valores de comp
 
 ### Guía de Ajuste del Sonido
 
-- Para un convertidor D/A de 2 Vrms, empieza con **Line Default**. Los valores predeterminados reales del producto son Input Reference 2.828 Vpk, Input Volume 0dB, 12AU7, Negative Feedback 30dB y Output Trim +9dB.
-- Si Line Default satura demasiado, baja Input Volume para reducir la tensión interna y recupera solo el volumen de escucha con Output Trim. Output Trim no recupera margen dentro del circuito.
+- El plugin arranca en **EL84 Pentode @2%**, así que un convertidor D/A de 2 Vrms no necesita ajustes. Los valores predeterminados reales del producto son Input Reference 2.828 Vpk, Input Volume -55.9648dB, 12AX7, Negative Feedback 3dB y Output Trim +4.626dB, que sitúan el circuito push-pull EL84 en un 2% de distorsión armónica total con ganancia unitaria.
+- Si satura demasiado, baja Input Volume para reducir la tensión interna y recupera solo el volumen de escucha con Output Trim. Output Trim no recupera margen dentro del circuito.
+- Elige **Line Default** cuando quieras el circuito de línea de pequeña señal por sí solo en lugar de un amplificador de potencia.
 - Usa los presets **Listening (THD-matched)** cuando quieras comparar válvulas y circuitos solo por su carácter. Ya están igualados entre sí en volumen, así que no hace falta retocar nada al cambiar de uno a otro.
 - Para una respuesta de potencia contenida, empieza con **EL84 Distributed 10 W**. Compáralo con **EL84 Pentode 10 W** para oír el efecto de la conexión de pantalla y de la carga del transformador con la misma familia de válvulas.
 - Usa **EL34 Distributed 20–37 W** para explorar el circuito EL34 de mayor tensión. Iguala el volumen con Output Trim antes de compararlo con EL84.
@@ -494,7 +495,7 @@ El desplegable Preset empieza por **Custom** y continúa con los grupos **Listen
 
 ### Presets de Circuito y Valores Predeterminados
 
-El plugin se inicia con **Line Default**. Un preset escribe el circuito completo de la tabla; cualquier cambio posterior crea un ajuste personalizado.
+El plugin se inicia con el preset de escucha **EL84 Pentode @2%**. Un preset escribe el circuito completo de la tabla; cualquier cambio posterior crea un ajuste personalizado.
 
 | Circuit Preset | Output Circuit | Driver / válvulas de salida | Negative Feedback | Ajustes de potencia | Entrada / salida |
 | --- | --- | --- | ---: | --- | --- |

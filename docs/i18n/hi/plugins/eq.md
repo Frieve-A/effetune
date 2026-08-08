@@ -75,6 +75,7 @@ lang: hi
 - आपके ध्वनि समायोजन को दर्शाता वास्तविक समय का ग्राफ
 - सटीक नियंत्रण के साथ उपयोग में आसान स्लाइडर्स
 - डिफ़ॉल्ट सेटिंग्स पर एक-क्लिक रीसेट
+- किसी slider पर double-click करने से वह band 0dB पर लौट आती है
 
 ## 15Band PEQ
 
@@ -630,10 +631,12 @@ Measurement एक device-local reference है। URL या preset में 
 
 ### दृश्य प्रदर्शन
 
-- Graph के ऊपर दिए **Frequency**, **Phase**, और **Impulse** radio buttons से views के बीच बदल सकते हैं।
+- Graph के ऊपर दिए **Frequency**, **Phase**, **Group Delay** और **Impulse** radio buttons से views के बीच बदल सकते हैं।
 - **Phase** view में horizontal axis logarithmic frequency और vertical axis -180° से 180° तक phase दिखाता है। धूसर line correction से पहले की phase और हरी line वास्तविक FIR लगाने के बाद की calculated phase दिखाती है। दोनों से measured onset हटाया जाता है और corrected result से FIR का ज्ञात fixed delay भी हटाया जाता है, इसलिए graph इन fixed timing offsets के बिना filter से आया phase change दिखाता है। Impulse response न होने पर unavailable message दिखाई देता है।
+- **Group Delay** view में horizontal axis logarithmic frequency और vertical axis milliseconds दिखाता है, यानी हर frequency 1kHz से कितनी देर बाद पहुँचती है। हर line अपने 1kHz वाले value के सापेक्ष दिखाई जाती है, इसलिए दोनों वहाँ 0 ms पर होती हैं और positive value का अर्थ है कि वह frequency 1kHz से पीछे है। धूसर line correction से पहले की और हरी line वास्तविक FIR लगाने के बाद की calculated स्थिति दिखाती है। Slope पास-पास वाले display points के बीच लिया जाता है और उसके बाद केवल Smoothing वाला एक ही smoothing लगता है — वही जो measured frequency response पर लगता है; इसके अलावा कोई smoothing नहीं होती, इसलिए Smoothing जितना कम होगा उतना बारीक बदलाव दिखेगा। Vertical range दिखाई जा रही curves के अनुसार अपने आप बदलती है। Impulse response न होने पर unavailable message दिखाई देता है।
 - **Impulse** चुना हुआ point दिखाता है; Reference Point को सहमति पर रखने पर यह समय में align की गई औसत waveform दिखाता है। Range मापे गए onset से 2 ms पहले से 5 ms और Direct Window में जो अधिक हो, वहाँ तक रहती है। धूसर line correction से पहले की response और हरी line वास्तविक FIR लगाने के बाद का calculated result दिखाती है। मापा गया onset दोनों के लिए साझा 0 ms reference है और corrected waveform से केवल FIR का ज्ञात fixed delay हटाया जाता है, इसलिए peak की relative timing और pre-ringing दिखाई देते रहते हैं। दोनों एक ही normalized amplitude scale का उपयोग करती हैं। केवल display के लिए, 20 kHz और उससे ऊपर के components हटा दिए जाते हैं; इससे correction filter या audio processing प्रभावित नहीं होती। Impulse-response data न होने पर unavailable message दिखाई देता है।
 - **Frequency** view में horizontal axis logarithmic frequency और vertical axis dB level दिखाता है।
+- Graph पर pointer घुमाने पर pointer की horizontal position पर हर curve पर एक dot दिखता है और उसका reading legend में उसके नाम के दाईं ओर आता है; pointer की अपनी frequency (Impulse view में समय) उनके ऊपर दिखती है। Pointer के graph से बाहर जाते ही यह display मिट जाता है।
 - दो सफेद खड़ी dotted lines, Correction Low और Correction High से सेट की गई frequencies दिखाती हैं।
 - Markers से हर band की frequency और gain बदली जा सकती है।
 - हल्की धूसर curve graph का common display offset लागू की गई smoothed measured frequency response दिखाती है।

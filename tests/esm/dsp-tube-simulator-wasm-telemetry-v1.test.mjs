@@ -12,6 +12,8 @@ const TELEMETRY_BYTES = 32768;
 const TELEMETRY_BLOCKS = 13;
 const TUBE_PARAMS_HASH = 0xe7aae286;
 const SUPPORTED_SAMPLE_RATES = [44100, 48000, 88200, 96000, 176400, 192000];
+// These cases exercise the small-signal line circuit, so they name the output stage
+// instead of inheriting the product default.
 const PHASE_A_PROJECTION_PARAMS = Object.freeze({
   dr: -30,
   tp: '12AU7',
@@ -22,7 +24,8 @@ const PHASE_A_PROJECTION_PARAMS = Object.freeze({
   og: 39,
   mx: 100,
   iv: 2.828,
-  nf: 0
+  nf: 0,
+  os: 'Line'
 });
 
 function readFrames(binding) {
@@ -121,7 +124,7 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
         const packer = DSP_PARAM_PACKERS.get('TubeSimulatorPlugin');
         const packed = packer.pack({
           dr: -6, tp: '12AU7', bi: 25, pv: 285, sz: 3.3, su: 22,
-          og: -4, mx: 37, iv: 4, nf: 0
+          og: -4, mx: 37, iv: 4, nf: 0, os: 'Line'
         });
         assert.equal(binding.instanceSetParams(recovered, packed, packer.hash), 0);
         assert.equal(binding.instanceSetParams(replayed, packed, packer.hash), 0);
@@ -209,7 +212,7 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
         leftTapInstance,
         packer.pack({
           dr: 0, tp: '12AX7', bi: -12, pv: 260, sz: 8, su: 12,
-          og: 39, mx: 100, iv: 2.828, nf: 0
+          og: 39, mx: 100, iv: 2.828, nf: 0, os: 'Line'
         }),
         packer.hash
       ), 0);
@@ -217,7 +220,7 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
         rightTapInstance,
         packer.pack({
           dr: -6, tp: '12AU7', bi: 15, pv: 225, sz: 18, su: 6,
-          og: 39, mx: 100, iv: 2.828, nf: 0
+          og: 39, mx: 100, iv: 2.828, nf: 0, os: 'Line'
         }),
         packer.hash
       ), 0);

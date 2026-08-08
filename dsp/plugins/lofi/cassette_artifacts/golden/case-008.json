@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "type": "CassetteArtifactsPlugin",
+  "id": "coefficients-96k",
+  "stimulus": "sweep",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 12000,
+  "blockSize": 129,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "dg": "Reference",
+    "tp": "Type II",
+    "nr": "Dolby C",
+    "bs": 6,
+    "rl": 12,
+    "wf": 0.5,
+    "hs": -48,
+    "dp": 5,
+    "az": -3,
+    "dl": 0,
+    "og": 0,
+    "mx": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "7af31fcea840cbc340745edcb3a748900b2fbeab0a15363543fb43d2b05820ee",
+  "outputFloats": 24000,
+  "byteLength": 96000,
+  "binary": "case-008.f32"
+}

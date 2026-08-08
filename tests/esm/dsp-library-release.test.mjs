@@ -63,7 +63,8 @@ test('npm candidate jobs verify committed DSP artifacts with the pinned SDK befo
     [workflow, 'linux']
   ]) {
     const job = workflowJob(source, name);
-    const setup = job.indexOf('uses: emscripten-core/setup-emsdk@v16');
+    // Matched without the ref so the assertion survives SHA pinning of actions.
+    const setup = job.indexOf('uses: emscripten-core/setup-emsdk@');
     const version = job.indexOf('version: 6.0.2');
     const verify = job.indexOf('npm run build:dsp -- --check');
     const packageBuild = job.indexOf('working-directory: dsp/bindings/js');

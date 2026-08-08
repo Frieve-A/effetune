@@ -9,11 +9,8 @@ permalink: /dsp/getting-started/javascript/
 
 Use this path for offline processing in Node.js or a browser module.
 
-<!-- DSP-RELEASE-NOTICE -->
-> **Release state:** npm is **published** for 0.1.0. The verified package matches these 0.1.0 docs.
-
 ```console
-npm install @effetune/dsp@0.1.0
+npm install @effetune/dsp
 ```
 
 The package is ESM-only. Save the example as `start.mjs` and run

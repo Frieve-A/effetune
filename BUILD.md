@@ -39,6 +39,32 @@ This will install:
 - Electron Builder
 - Other dependencies required by the application
 
+The committed `.npmrc` sets `ignore-scripts=true`, so no dependency runs a
+`preinstall`, `install`, or `postinstall` script during any install in this
+repository. Nothing in the tree needs one: Electron downloads its binary lazily
+on first use rather than from an install script, esbuild resolves its executable
+from the `@esbuild/*` platform package, and the remaining two packages that ship
+install scripts (`electron-winstaller`, `fsevents`) are never on a path this
+project builds. `npm run check:install-scripts` fails when that stops holding or
+when the setting is removed, and it runs as part of `npm run verify`.
+
+To run a blocked script deliberately, name its package; a plain `npm rebuild`
+silently does nothing while the setting is active:
+
+```bash
+npm rebuild --ignore-scripts=false --foreground-scripts <package>
+```
+
+Because `ignore-scripts` also suppresses implicit `pre`/`post` hooks for
+`npm run`, every script in `package.json` chains its prerequisites explicitly
+with `&&`. Keep new scripts self-contained the same way instead of relying on a
+`pre<name>` entry, which would be skipped without warning.
+
+CI installs with `npm ci --ignore-scripts` and additionally runs
+`npm audit signatures`, which rejects the run if any installed package fails to
+match its registry signature. It also verifies that every workflow action is
+pinned to a full commit SHA; see CONTRIBUTING.md for that convention.
+
 ### 3. Run Quality Checks
 
 Run the default validation before handing code changes back:
@@ -49,13 +75,13 @@ npm run verify
 
 This runs:
 
+- `npm run assets:web:check`: rebuilds the browser vendor assets and checks the committed PWA precache for freshness without writing it
+- `npm run check:install-scripts`: dependency install-script audit that fails when a package ships a `preinstall`, `install`, or `postinstall` script or when `ignore-scripts` is removed
 - `npm run lint`: ESLint checks for JavaScript syntax and high-confidence correctness hazards across Electron, renderer, plugin, feature, tool, and test code
 - `npm test`: Node.js tests with the repository's coverage thresholds and test hygiene checks
 
-Before lint and tests, `npm run verify` rebuilds the browser vendor assets and performs a
-non-writing freshness check of the committed PWA precache. It does not regenerate a stale
-`sw-precache.js`; if that check fails, run `npm run assets:web` and then rerun
-`npm run verify`.
+The precache check never regenerates a stale `sw-precache.js`; if it fails, run
+`npm run assets:web` and then rerun `npm run verify`.
 
 For narrower verification, use:
 
@@ -362,7 +388,6 @@ Root web assets such as `effetune-mobile.css`, `sw.js`, `sw-precache.js`, `manif
    - Or provide valid code signing certificates
 3. **Electron download fails**:
    - Check your internet connection
-   - The build configuration includes `strictSSL: false` to help with some network issues
 
 4. **Antivirus blocking the build**:
    - Temporarily disable antivirus software

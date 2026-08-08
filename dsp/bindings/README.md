@@ -1,7 +1,7 @@
 # EffeTune DSP language binding contracts
 
 This directory contains the source contract shared by the Python and JavaScript
-bindings. The public v1 catalog contains the 76 effects listed in
+bindings. The public v1 catalog contains the 83 effects listed in
 `common/effects-v1.overlay.json`.
 
 ## Sources of truth
@@ -103,7 +103,7 @@ Effect(
 )
 ```
 
-The 76 generated classes expose keyword-only, discoverable parameter
+The 83 generated classes expose keyword-only, discoverable parameter
 signatures. Scalar defaults are literal values and array defaults are immutable
 tuples. The five convolution-backed effects require an `assets` keyword;
 effects without assets do not expose it. The generated

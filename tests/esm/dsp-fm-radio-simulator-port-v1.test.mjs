@@ -44,9 +44,9 @@ test('FM Radio Simulator freezes the parameter layout and representative parity 
     const cases = JSON.parse(casesText).cases;
 
     assert.equal(schema.type, 'FMRadioSimulatorPlugin');
-    assert.equal(schema.floatCount, 11);
+    assert.equal(schema.floatCount, 12);
     assert.deepEqual(raw.fields.map(({ key }) => key),
-        ['em', 'pr', 'st', 'tn', 'bw', 'mp', 'dl', 'fd', 'sm', 'og', 'mx']);
+        ['rd', 'em', 'pr', 'st', 'tn', 'bw', 'mp', 'dl', 'fd', 'sm', 'og', 'mx']);
     assert.deepEqual(raw.fields.find(field => field.key === 'em').values, ['50', '75']);
     assert.deepEqual(raw.fields.find(field => field.key === 'sm').values,
         ['Auto', 'Stereo', 'Mono']);
@@ -81,6 +81,12 @@ test('FM Radio Simulator freezes the parameter layout and representative parity 
         (item.events?.filter(event => event.params.tn !== undefined).length ?? 0) >= 4),
         'missing a continuous tuning-drag event case');
     assert.ok(cases.some(item => item.params.mx === 0 && item.stimulus === 'imp'));
+    // The transmitter shutdown path must stay frozen: a steady off-air case and
+    // a case that switches the carrier off mid-render and brings it back.
+    assert.ok(cases.some(item => item.params.rd === false));
+    assert.ok(cases.some(item =>
+        item.events?.some(event => event.params.rd === false) &&
+        item.events?.some(event => event.params.rd === true)));
 });
 
 test('FM Radio Simulator reference is deterministic tooling while normal fallback is transparent', async () => {
@@ -418,7 +424,7 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
             assert.notEqual(instanceId, 0);
             assert.equal(binding.instanceSetTap(instanceId, 1616), 0);
             const packer = DSP_PARAM_PACKERS.get('FMRadioSimulatorPlugin');
-            assert.equal(packer.floatCount, 11);
+            assert.equal(packer.floatCount, 12);
             const strongAuto = { st: 60, sm: 'Auto', mp: 0, tn: 0, bw: 230 };
             assert.equal(binding.instanceSetParams(
                 instanceId, packer.pack(strongAuto), packer.hash), 0);

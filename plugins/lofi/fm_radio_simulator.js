@@ -582,7 +582,10 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         state.processingAmountTarget = F(p.pr / 18);
         state.processingDriveTarget = F(Math.pow(10, F(p.pr / 20)));
         state.limiterRelease = F(Math.exp(-1 / (0.050 * state.mpxRate)));
-        state.signalAmplitude = F(Math.pow(10, F(F(p.st - 60) / 20)));
+        // Radio off models the transmitter going dark: the RF carrier amplitude is
+        // zeroed, so the receiver only picks up its own thermal noise and the
+        // limiter/discriminator chain turns it into full-scale FM hiss.
+        state.signalAmplitude = p.rd ? F(Math.pow(10, F(F(p.st - 60) / 20))) : 0;
         state.ifBandKhz = p.bw;
         state.multipathTarget = F(p.mp * C001);
         state.pathDelayTargetUs = p.dl;
@@ -639,8 +642,10 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         state.pllKi = natural * natural;
         // Auto stereo blend CNR term: fixed physical noise floor
         // gives CNR ~= st + 5.6 dB at IF 230 kHz; smoothstep 18 dB (mono) .. 36 dB (stereo).
+        // Off the air there is no carrier and no pilot, so the CNR term collapses
+        // and Auto lands on mono the way a receiver does on a dead channel.
         const cnrDb = p.st + 5.6 + 10 * Math.log10(230 / state.ifBandKhz);
-        let position = (cnrDb - 18) / (36 - 18);
+        let position = p.rd ? (cnrDb - 18) / (36 - 18) : 0;
         if (position < 0) position = 0; else if (position > 1) position = 1;
         state.cnrBlend = F(position * position * (3 - 2 * position));
         state.demodScale = F(state.coreRate * INV_TWO_PI / 75000);
@@ -755,7 +760,12 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         return data;
     }
     const pairChannels = parameters.channelCount >= 2 ? 2 : 1;
+    // The kernel receives this bool packed as a float and tests it against 0.5,
+    // so mirror that threshold here instead of a plain truthiness check. Number()
+    // maps true/false to 1/0, keeping the two engines on the same branch.
+    const radioEnabled = parameters.rd === undefined ? 1 : (Number(parameters.rd) >= 0.5 ? 1 : 0);
     const p = {
+        rd: radioEnabled,
         em: parameters.em === '75' ? 1 : 0,
         pr: F(parameters.pr), st: F(parameters.st), tn: F(parameters.tn),
         bw: F(parameters.bw), mp: F(parameters.mp), dl: F(parameters.dl),
@@ -764,7 +774,7 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         og: F(parameters.og), mx: F(parameters.mx)
     };
     const last = state.lastParams;
-    if (!state.controlsConfigured || !last ||
+    if (!state.controlsConfigured || !last || last.rd !== p.rd ||
         last.em !== p.em || last.pr !== p.pr || last.st !== p.st || last.tn !== p.tn ||
         last.bw !== p.bw || last.mp !== p.mp || last.dl !== p.dl || last.fd !== p.fd ||
         last.sm !== p.sm || last.og !== p.og || last.mx !== p.mx) {
@@ -895,6 +905,8 @@ class FMRadioSimulatorPlugin extends PluginBase {
     constructor() {
         super('FM Radio Simulator', 'Physical FM broadcast transmission and reception simulation');
 
+        // Radio on/off models the station transmitting or going off the air.
+        this.rd = true;
         this.em = '50';
         // Processing defaults to 0 dB so that enabling the effect with default
         // parameters is loudness-neutral (only the reception character changes).
@@ -1102,6 +1114,7 @@ class FMRadioSimulatorPlugin extends PluginBase {
         this.ensureDspTelemetrySubscription();
         return {
             type: this.constructor.name,
+            rd: this.rd,
             em: this.em, pr: this.pr, st: this.st, tn: this.tn, bw: this.bw,
             mp: this.mp, dl: this.dl, fd: this.fd, sm: this.sm,
             og: this.og, mx: this.mx, fr: this.fr,
@@ -1144,6 +1157,7 @@ class FMRadioSimulatorPlugin extends PluginBase {
         if (p.sm !== undefined) {
             this.sm = ['Stereo', 'Mono'].includes(p.sm) ? p.sm : 'Auto';
         }
+        if (p.rd !== undefined) this.rd = p.rd === true || p.rd === 1 || p.rd === 'true';
         if (p.fr !== undefined) this.fr = p.fr === true || p.fr === 1 || p.fr === 'true';
         // The enabled flag only ever updates from an actual boolean.
         if (typeof p.enabled === 'boolean') this.enabled = p.enabled;
@@ -1180,6 +1194,8 @@ class FMRadioSimulatorPlugin extends PluginBase {
 
         const controls = document.createElement('div');
         controls.className = 'plugin-parameter-ui';
+        controls.appendChild(this.createCheckboxControl('Radio', this.rd,
+            v => this.setParameters({ rd: v })));
         controls.appendChild(this.createRadioGroup('Emphasis',
             [{ value: '50', label: '50 µs' }, { value: '75', label: '75 µs' }],
             this.em, v => this.setParameters({ em: v })));

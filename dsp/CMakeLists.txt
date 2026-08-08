@@ -91,6 +91,8 @@ if(NOT EMSCRIPTEN)
   # JS golden parity requires separate multiply-add rounding in these kernels.
   set_property(
     SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/dynamics/auto_leveler/kernel.cpp"
+           "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/cassette_artifacts/kernel.cpp"
+           "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/tape_artifacts/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/vinyl_artifacts/kernel.cpp"
     APPEND
     PROPERTY COMPILE_OPTIONS
@@ -349,6 +351,16 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
   et_add_dsp_test(
     effetune_dsp_sw_radio_simulator_tests
     SOURCES plugins/lofi/sw_radio_simulator/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_cassette_artifacts_tests
+    SOURCES plugins/lofi/cassette_artifacts/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_tape_artifacts_tests
+    SOURCES plugins/lofi/tape_artifacts/native_test.cpp
     INCLUDE_DIRS core generated/cpp
     WRAP_MALLOC)
   et_add_dsp_test(

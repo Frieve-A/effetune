@@ -7,6 +7,7 @@
 namespace effetune::generated {
 
 struct FMRadioSimulatorPluginParams {
+  float radio;
   float emphasis;
   float processing;
   float signal;
@@ -18,10 +19,10 @@ struct FMRadioSimulatorPluginParams {
   float stereo;
   float outputGain;
   float mix;
-  static constexpr std::uint32_t kHash = 0x752cfb73u;
-  static constexpr std::uint32_t kFloatCount = 11u;
+  static constexpr std::uint32_t kHash = 0x2014ee18u;
+  static constexpr std::uint32_t kFloatCount = 12u;
 };
-static_assert(11u == 0u || sizeof(FMRadioSimulatorPluginParams) == sizeof(float) * 11u);
+static_assert(12u == 0u || sizeof(FMRadioSimulatorPluginParams) == sizeof(float) * 12u);
 
 } // namespace effetune::generated
 

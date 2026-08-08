@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.3.0-e03e569bc1a5a55b";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.4.0-6b83ed6cccb5279a";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./effetune-library.css",
   "./effetune-mobile.css",
@@ -296,6 +296,8 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./plugins/lofi/am_radio_simulator.js",
   "./plugins/lofi/bit_crusher.js",
   "./plugins/lofi/bluetooth_sbc_simulator.js",
+  "./plugins/lofi/cassette_artifacts.css",
+  "./plugins/lofi/cassette_artifacts.js",
   "./plugins/lofi/digital_error_emulator.js",
   "./plugins/lofi/dsd64_imd_simulator.css",
   "./plugins/lofi/dsd64_imd_simulator.js",

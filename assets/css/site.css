@@ -597,18 +597,8 @@ install.button > a {
   max-width: 34rem;
 }
 
-.dsp-release-state {
-  border-inline-start: 3px solid var(--cyan);
-  background: rgba(103, 216, 212, 0.08);
-  padding: 0.8rem 1rem;
-}
-
 .dsp-cta {
   margin: 0.2rem;
-}
-
-.dsp-cta.is-disabled {
-  opacity: 0.7;
 }
 
 .dsp-demo-frame {

@@ -341,6 +341,7 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | EQ        | Tone Control | Control de tono de tres bandas | [Detalles](plugins/eq.md#tone-control) |
 | Lo-Fi     | AM Radio Simulator | Pasa la música por una cadena modelada de transmisión y recepción AM | [Detalles](plugins/lofi.md#am-radio-simulator) |
 | Lo-Fi     | Bit Crusher | Reducción de profundidad de bits y efecto de retención de orden cero | [Detalles](plugins/lofi.md#bit-crusher) |
+| Lo-Fi     | Cassette Artifacts | Graba la música en un casete compacto modelado y la reproduce en una pletina Type I/II/IV con Dolby B/C | [Detalles](plugins/lofi.md#cassette-artifacts) |
 | Lo-Fi     | Digital Error Emulator | Simula varios errores de transmisión de audio digital y características de equipos digitales vintage | [Detalles](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi     | DSD64 IMD Simulator | Simula la distorsión por intermodulación audible que genera el ruido ultrasónico del DSD64 | [Detalles](plugins/lofi.md#dsd64-imd-simulator) |
 | Lo-Fi     | FM Radio Simulator | Hace pasar la música por una cadena de emisión y recepción FM simulada físicamente | [Detalles](plugins/lofi.md#fm-radio-simulator) |

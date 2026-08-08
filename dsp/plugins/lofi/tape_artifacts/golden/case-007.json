@@ -1,0 +1,58 @@
+{
+  "formatVersion": 1,
+  "type": "TapeArtifactsPlugin",
+  "id": "mix-zero-defers-and-freezes-state",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 12000,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "sp": "15",
+    "tp": "Standard",
+    "bs": 0,
+    "rl": 6,
+    "wf": 0.5,
+    "hs": -48,
+    "og": 0,
+    "mx": 0
+  },
+  "events": [
+    {
+      "frame": 2048,
+      "params": {
+        "mx": 100
+      }
+    },
+    {
+      "frame": 5121,
+      "params": {
+        "mx": 0
+      }
+    },
+    {
+      "frame": 7169,
+      "params": {
+        "mx": 50
+      }
+    },
+    {
+      "frame": 9217,
+      "params": {
+        "mx": 100
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "900afefbd95b02b5d8505cd3731798e4e61c11c3e7341f09bea9cc411c1721de",
+  "outputFloats": 24000,
+  "byteLength": 96000,
+  "binary": "case-007.f32"
+}

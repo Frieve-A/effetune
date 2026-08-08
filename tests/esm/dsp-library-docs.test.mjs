@@ -6,16 +6,13 @@ import { fileURLToPath } from 'node:url';
 
 import {
   expandPublicPath,
-  generatedOutputs,
   packageSummary,
-  releaseCohort,
   routeMap,
   runDocsGenerator,
   validateEffectSlug,
   validateManifestRelativePath,
   validatePublicPath,
-  validatePublicRoot,
-  validateReleaseState
+  validatePublicRoot
 } from '../../examples/dsp-library/generate-docs.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -36,9 +33,6 @@ const routes = JSON.parse(fs.readFileSync(path.join(
 ), 'utf8'));
 const npmPackage = JSON.parse(fs.readFileSync(path.join(
   repoRoot, 'dsp', 'bindings', 'js', 'package.json'
-), 'utf8'));
-const releaseState = JSON.parse(fs.readFileSync(path.join(
-  repoRoot, 'examples', 'dsp-library', 'docs', 'release-state.json'
 ), 'utf8'));
 
 function generatedRoute(outputs, routeId) {
@@ -152,7 +146,6 @@ test('DSP pages inherit the shared documentation layout and visual system', () =
 
   assert.match(siteCss, /\.button,\r?\n\.dsp-cta \{/);
   assert.match(siteCss, /\.sidebar-search input,\r?\n\[data-dsp-effect-filter\] \{/);
-  assert.match(siteCss, /\.dsp-release-state \{/);
   assert.match(siteCss, /\.dsp-demo-frame \{[^}]*min-height: 42rem;/s);
   assert.match(siteCss, /@media \(max-width: 520px\) \{[\s\S]*\.dsp-demo-frame \{[^}]*min-height: 58rem;/);
 });
@@ -180,41 +173,42 @@ test('localized DSP pages remain short versioned entry points', () => {
       repoRoot, 'docs', 'i18n', locale, 'dsp-library.md'
     ), 'utf8');
     assert.ok(source.split('\n').length < 40, locale);
-    assert.match(source, /Documentation version: \*\*0\.1\.0\*\*/);
+    const escapedVersion = npmPackage.version.replaceAll('.', '\\.');
+    assert.match(
+      source,
+      new RegExp(`Documentation version: \\*\\*${escapedVersion}\\*\\*`)
+    );
+    assert.match(source, new RegExp(`v${escapedVersion}`));
     assert.match(source, /\]\(\/dsp\/\)/);
     assert.match(source, /\]\(\/dsp\/demo\/\)/);
-    assert.match(source, /DSP-RELEASE-NOTICE/);
   }
 });
 
-test('published DSP release exposes version-matched public install commands', () => {
-  assert.equal(releaseCohort(releaseState), 'published');
-  for (const surface of ['python', 'npm', 'githubRelease']) {
-    assert.deepEqual(
-      [releaseState.surfaces[surface].status, releaseState.surfaces[surface].verifiedVersion],
-      ['published', releaseState.docsVersion]
-    );
-  }
-
+test('every install surface always documents an unpinned install command', () => {
   const { outputs } = runDocsGenerator({ check: true });
   const commands = {
-    python: `pip install effetune==${releaseState.docsVersion}`,
-    npm: `npm install @effetune/dsp@${releaseState.docsVersion}`
+    python: 'pip install effetune',
+    npm: 'npm install @effetune/dsp'
   };
+  const pinned = new RegExp(
+    `(?:pip install effetune|npm install @effetune/dsp)[=@]${
+      npmPackage.version.replaceAll('.', '\\.')
+    }\\n`
+  );
   for (const route of routes.routes.filter(entry => entry.installSurfaces?.length)) {
     const source = generatedRoute(outputs, route.id);
     assert.ok(source, route.id);
     for (const surface of route.installSurfaces) {
       const command = commands[surface];
       assert.ok(command, `Unknown install surface: ${surface}`);
-      assert.ok(source.includes(command), `${route.id}:${surface}`);
+      assert.match(source, new RegExp(`\`\`\`console\\n${command}\\n`), `${route.id}:${surface}`);
+      assert.doesNotMatch(source, pinned, `${route.id}:${surface}`);
     }
   }
 
   const landing = generatedRoute(outputs, 'landing');
-  const faq = generatedRoute(outputs, 'faq');
-  assert.doesNotMatch(landing, /\.dsp-cta \.is-disabled/);
-  assert.doesNotMatch(faq, /registry return 404|package is not yet published/i);
+  assert.doesNotMatch(landing, /is-disabled/);
+  assert.doesNotMatch(landing, /dsp-release-state/);
 });
 
 test('route and non-route manifests declare every generated output', () => {
@@ -324,139 +318,20 @@ test('analyzer telemetry documentation matches the public Phase 1 facade', () =>
   assert.match(javascript, /droppedTelemetryFrames/);
 });
 
-test('release states fail closed and derive a separate cohort state', () => {
-  const docsVersion = releaseState.docsVersion;
-  const unreleased = {
-    docsVersion,
-    surfaces: {
-      python: { status: 'unreleased' },
-      npm: { status: 'unreleased' },
-      githubRelease: { status: 'unreleased' }
-    }
-  };
-  assert.equal(validateReleaseState(unreleased), 'unreleased');
-  const partial = structuredClone(unreleased);
-  partial.surfaces.python = {
-    status: 'published-unverified',
-    verifiedVersion: docsVersion
-  };
-  assert.equal(validateReleaseState(partial), 'partial/incomplete');
-  assert.equal(releaseCohort(partial), 'partial/incomplete');
-  const published = structuredClone(unreleased);
-  published.surfaces.python = { status: 'published', verifiedVersion: docsVersion };
-  published.surfaces.npm = { status: 'published', verifiedVersion: docsVersion };
-  published.surfaces.githubRelease = {
-    status: 'published',
-    verifiedVersion: docsVersion,
-    assetUrl:
-      `https://github.com/Frieve-A/effetune/releases/download/dsp-v${docsVersion}/file`
-  };
-  assert.equal(validateReleaseState(published), 'published');
-  const previous = structuredClone(published);
-  previous.surfaces.python.verifiedVersion = '0.0.9';
-  previous.surfaces.npm.verifiedVersion = '0.0.9';
-  previous.surfaces.githubRelease = {
-    status: 'published',
-    verifiedVersion: '0.0.9',
-    assetUrl:
-      'https://github.com/Frieve-A/effetune/releases/download/dsp-v0.0.9/effetune-0.0.9.zip'
-  };
-  assert.equal(validateReleaseState(previous), 'partial/incomplete');
-  assert.equal(releaseCohort(previous), 'partial/incomplete');
-  assert.throws(
-    () => validateReleaseState({
-      ...published,
-      surfaces: {
-        ...published.surfaces,
-        githubRelease: { status: 'published', verifiedVersion: docsVersion }
-      }
-    }),
-    /assetUrl/
-  );
-  assert.throws(
-    () => validateReleaseState({
-      ...unreleased,
-      surfaces: {
-        ...unreleased.surfaces,
-        npm: { status: 'published-unverified' }
-      }
-    }),
-    /verifiedVersion/
-  );
-  assert.throws(
-    () => validateReleaseState({
-      ...partial,
-      surfaces: {
-        ...partial.surfaces,
-        githubRelease: {
-          status: 'published-unverified',
-          verifiedVersion: docsVersion,
-          assetUrl: 'https://example.test/release.zip'
-        }
-      }
-    }),
-    /official Frieve-A\/effetune/
-  );
-  assert.throws(
-    () => validateReleaseState({
-      ...partial,
-      surfaces: {
-        ...partial.surfaces,
-        githubRelease: {
-          status: 'published-unverified',
-          verifiedVersion: docsVersion,
-          assetUrl:
-            'https://github.com/Frieve-A/effetune/releases/download/v0.1.1/release.zip'
-        }
-      }
-    }),
-    /exact verified version/
-  );
-});
+test('FAQ and release integrity point at the latest published packages', () => {
+  const { outputs } = runDocsGenerator({ check: true });
+  const version = npmPackage.version;
+  const faq = generatedRoute(outputs, 'faq');
+  assert.match(faq, /```console\npip install effetune\n```/);
+  assert.match(faq, /```console\nnpm install @effetune\/dsp\n```/);
+  assert.ok(faq.includes(`pip install effetune==${version}`), 'pinning example');
+  assert.ok(faq.includes(`npm install @effetune/dsp@${version}`), 'pinning example');
 
-test('FAQ registry guidance follows each generated release surface state', () => {
-  const { sources } = runDocsGenerator({ check: true });
-  const docsVersion = releaseState.docsVersion;
-  const commands = {
-    python: `pip install effetune==${docsVersion}`,
-    npm: `npm install @effetune/dsp@${docsVersion}`
-  };
-  const verification = `The verified package matches these ${docsVersion} docs.`;
-  const faqFor = release => generatedRoute(
-    generatedOutputs({ ...sources, release }),
-    'faq'
-  );
-
-  const publishedFaq = faqFor(releaseState);
-  assert.ok(publishedFaq.includes(commands.python));
-  assert.ok(publishedFaq.includes(commands.npm));
-  assert.equal(publishedFaq.split(verification).length - 1, 2);
-
-  const unreleased = {
-    ...releaseState,
-    surfaces: {
-      python: { status: 'unreleased' },
-      npm: { status: 'unreleased' },
-      githubRelease: { status: 'unreleased' }
-    }
-  };
-  assert.equal(validateReleaseState(unreleased), 'unreleased');
-  const unreleasedFaq = faqFor(unreleased);
-  assert.ok(!unreleasedFaq.includes(commands.python));
-  assert.ok(!unreleasedFaq.includes(commands.npm));
-  assert.ok(!unreleasedFaq.includes(verification));
-
-  const partial = structuredClone(unreleased);
-  partial.surfaces.python = { status: 'published', verifiedVersion: docsVersion };
-  partial.surfaces.npm = {
-    status: 'published',
-    verifiedVersion: `${docsVersion}-mismatch`
-  };
-  assert.equal(validateReleaseState(partial), 'partial/incomplete');
-  const partialFaq = faqFor(partial);
-  assert.ok(partialFaq.includes(commands.python));
-  assert.ok(!partialFaq.includes(commands.npm));
-  assert.equal(partialFaq.split(verification).length - 1, 1);
+  const integrity = generatedRoute(outputs, 'release-integrity');
+  assert.ok(integrity.includes(`v${version}`), 'documented version');
+  for (const page of [faq, integrity]) {
+    assert.doesNotMatch(page, /intentionally disabled|verification pending|release cohort/i);
+  }
 });
 
 test('navigation authority rejects missing, duplicate, and non-launch route IDs', () => {
@@ -623,7 +498,7 @@ test('Phase 1 docs publish symmetric catalogs, latency, and bundle writers', () 
   assert.match(javascript, /class Chain \{/);
   assert.match(javascript, /interface ChainStream \{/);
   assert.match(javascript, /EffeTuneNode\.create\(/);
-  assert.match(javascript, /all 76 root class\/factory pairs/);
+  assert.match(javascript, /all 83 root class\/factory pairs/);
   assert.match(javascript, /numerically symmetric with Python/);
   assert.match(assets, /`effetune bundle pack CHAIN DESTINATION --asset ID=FILE`/);
   assert.match(assets, /public `encodeEta1\(\)` helper/);

@@ -473,8 +473,9 @@ Tube Simulator는 진공관 회로의 실제 부품값을 기반으로 전체 �
 
 ### 음질 조정 가이드
 
-- 2 Vrms D/A 컨버터에서는 **Line Default**로 시작하십시오. 실제 제품 기본값은 Input Reference 2.828 Vpk, Input Volume 0dB, 12AU7, Negative Feedback 30dB, Output Trim +9dB입니다.
-- Line Default의 새추레이션이 너무 강하면 Input Volume을 낮춰 회로에 들어가는 전압을 줄인 뒤, Output Trim으로 청취 음량만 복원하십시오. Output Trim은 내부 헤드룸을 복원하지 않습니다.
+- 플러그인은 **EL84 Pentode @2%**로 시작하므로 2 Vrms D/A 컨버터라면 그대로 사용할 수 있습니다. 실제 제품 기본값은 Input Reference 2.828 Vpk, Input Volume -55.9648dB, 12AX7, Negative Feedback 3dB, Output Trim +4.626dB이며, EL84 푸시풀 회로를 총고조파왜율 2%·이득 1배의 동작점에 놓습니다.
+- 새추레이션이 너무 강하면 Input Volume을 낮춰 회로에 들어가는 전압을 줄인 뒤, Output Trim으로 청취 음량만 복원하십시오. Output Trim은 내부 헤드룸을 복원하지 않습니다.
+- 파워 앰프가 아니라 소신호 라인 회로만 사용하고 싶을 때는 **Line Default**를 선택하십시오.
 - 진공관과 회로의 음색만 비교하려면 **Listening (THD-matched)** 프리셋을 사용하십시오. 서로 음량이 이미 맞춰져 있어 전환할 때 따로 조정할 필요가 없습니다.
 - 절제된 파워 앰프 응답은 **EL84 Distributed 10 W**로 시작하십시오. **EL84 Pentode 10 W**와 비교하면 출력관을 같게 유지하면서 스크린 연결과 트랜스 부하의 영향을 비교할 수 있습니다.
 - 더 높은 전압의 EL34 회로를 시도하려면 **EL34 Distributed 20–37 W**를 선택하십시오. EL84와 비교하기 전에 Output Trim으로 음량을 맞추십시오.
@@ -495,7 +496,7 @@ Preset 드롭다운은 맨 앞에 **Custom**이 있고, 이어서 **Listening (T
 
 ### 회로 프리셋과 기본값
 
-플러그인은 **Line Default**로 시작합니다. 프리셋을 선택하면 아래의 전체 회로가 설정되며, 이후 값을 하나라도 바꾸면 사용자 정의 설정이 됩니다.
+플러그인은 리스닝 프리셋 **EL84 Pentode @2%**로 시작합니다. 프리셋을 선택하면 아래의 전체 회로가 설정되며, 이후 값을 하나라도 바꾸면 사용자 정의 설정이 됩니다.
 
 | Circuit Preset | Output Circuit | 드라이버 / 출력관 | Negative Feedback | 파워단 설정 | 입력 / 출력 |
 | --- | --- | --- | ---: | --- | --- |

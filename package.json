@@ -1,6 +1,7 @@
 {
   "name": "effetune",
-  "version": "2.3.0",
+  "version": "2.4.0",
+  "private": true,
   "description": "Desktop Audio Effect Processor",
   "main": "electron/main.js",
   "scripts": {
@@ -18,16 +19,8 @@
     "docs:dsp": "node examples/dsp-library/generate-docs.mjs",
     "docs:dsp:check": "node examples/dsp-library/verify-site-inputs.mjs && node examples/dsp-library/generate-docs.mjs --check",
     "assets:web": "npm run build:vendor && node scripts/generate-sw-precache.js",
-    "preverify": "npm run build:vendor && node scripts/generate-sw-precache.js --check",
-    "prebuild": "npm run assets:web",
-    "prebuild:portable": "npm run assets:web",
-    "prebuild:installer": "npm run assets:web",
-    "prebuild:mac": "npm run assets:web",
-    "prebuild:mac:arm64": "npm run assets:web",
-    "prebuild:mac:x64": "npm run assets:web",
-    "prebuild:linux": "npm run assets:web",
-    "prepack": "npm run assets:web",
-    "predist": "npm run assets:web",
+    "assets:web:check": "npm run build:vendor && node scripts/generate-sw-precache.js --check",
+    "check:install-scripts": "node scripts/check-install-scripts.mjs",
     "lint": "eslint electron js plugins features scripts tools tests --max-warnings=0",
     "test": "npm --prefix dsp/bindings/js run build && node tools/run-tests.mjs",
     "test:library-scale:quick": "node tests/scale/library-scale-generation.mjs --size 10000",
@@ -38,17 +31,17 @@
     "test:library-scale:sqlite": "node tools/library-scale/benchmark-electron-sqlite.cjs --size 10000",
     "test:library-sqlite:web": "node tools/library-scale/run-web-sqlite.mjs --contract",
     "test:library-scale:web-sqlite": "node tools/library-scale/run-web-sqlite.mjs --size 1000000",
-    "verify": "npm run lint && npm test",
+    "verify": "npm run assets:web:check && npm run check:install-scripts && npm run lint && npm test",
     "clean": "rimraf dist node_modules/.cache",
-    "build": "npm run clean && electron-builder --win --publish never",
-    "build:portable": "npm run clean && electron-builder --win portable --publish never",
-    "build:installer": "npm run clean && electron-builder --win nsis --publish never",
-    "build:mac": "npm run clean && electron-builder --mac --x64 --arm64 --publish never",
-    "build:mac:arm64": "npm run clean && electron-builder --mac --arm64 --publish never",
-    "build:mac:x64": "npm run clean && electron-builder --mac --x64 --publish never",
-    "build:linux": "npm run clean && electron-builder --linux --publish never",
-    "pack": "npm run clean && electron-builder --dir",
-    "dist": "electron-builder"
+    "build": "npm run assets:web && npm run clean && electron-builder --win --publish never",
+    "build:portable": "npm run assets:web && npm run clean && electron-builder --win portable --publish never",
+    "build:installer": "npm run assets:web && npm run clean && electron-builder --win nsis --publish never",
+    "build:mac": "npm run assets:web && npm run clean && electron-builder --mac --x64 --arm64 --publish never",
+    "build:mac:arm64": "npm run assets:web && npm run clean && electron-builder --mac --arm64 --publish never",
+    "build:mac:x64": "npm run assets:web && npm run clean && electron-builder --mac --x64 --publish never",
+    "build:linux": "npm run assets:web && npm run clean && electron-builder --linux --publish never",
+    "pack": "npm run assets:web && npm run clean && electron-builder --dir",
+    "dist": "npm run assets:web && electron-builder"
   },
   "author": "Frieve",
   "license": "MIT",
@@ -231,10 +224,7 @@
     "asar": true,
     "asarUnpack": [],
     "npmRebuild": false,
-    "forceCodeSigning": false,
-    "electronDownload": {
-      "strictSSL": false
-    }
+    "forceCodeSigning": false
   },
   "dependencies": {
     "music-metadata": "^11.14.0"

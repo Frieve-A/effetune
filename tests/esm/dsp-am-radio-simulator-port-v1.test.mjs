@@ -23,9 +23,9 @@ test('AM Radio Simulator freezes the parameter layout and representative parity 
   const cases = JSON.parse(casesText).cases;
 
   assert.equal(schema.type, 'AMRadioSimulatorPlugin');
-  assert.equal(schema.floatCount, 20);
+  assert.equal(schema.floatCount, 21);
   assert.deepEqual(raw.fields.map(({ key }) => key),
-    ['tb', 'pe', 'md', 'cp', 'sm', 'sg', 'sk', 'fd', 'st', 'in', 'io',
+    ['rd', 'tb', 'pe', 'md', 'cp', 'sm', 'sg', 'sk', 'fd', 'st', 'in', 'io',
       'tn', 'bw', 'ag', 'dt', 'hm', 'hz', 'sp', 'og', 'mx']);
   assert.deepEqual(raw.fields.find(field => field.key === 'sm').values, ['Mono', 'C-QUAM']);
   assert.deepEqual(raw.fields.find(field => field.key === 'ag').values, ['Slow', 'Mid', 'Fast']);
@@ -36,8 +36,16 @@ test('AM Radio Simulator freezes the parameter layout and representative parity 
       [key, raw.fields.find(field => field.key === 'tn')[key]])),
     { min: -30, max: 30 });
 
-  assert.equal(cases.length, 20);
+  assert.equal(cases.length, 21);
   assert.ok(cases.every(item => item.params?.fr === true));
+  // The transmitter switch must stay frozen in both directions, and the case
+  // has to start with the carrier off: the cold-start branch that seeds the AGC
+  // from a dead carrier only runs on the first block, so a case that starts on
+  // never reaches it and the branch would go unrendered.
+  const radioCase = cases.find(item => item.id === 'radio-startup-and-shutdown');
+  assert.equal(radioCase.params.rd, false);
+  assert.deepEqual(radioCase.events.map(event => [event.frame, event.params.rd]),
+    [[129, true], [321, false]]);
   assert.ok(cases.some(item => item.sampleRate === 44100 && item.channels === 1));
   assert.ok(cases.some(item => item.sampleRate === 48000));
   assert.ok(cases.some(item => item.sampleRate === 192000));
@@ -59,10 +67,10 @@ test('AM Radio Simulator freezes the parameter layout and representative parity 
   // The goldens must be regenerated whenever the JS reference engine changes, so pin the
   // recorded engine hash: a stale golden set fails here instead of silently passing parity.
   const goldens = await readGoldenSet(path.join(pluginRoot, 'golden'));
-  assert.equal(goldens.length, 20);
+  assert.equal(goldens.length, 21);
   assert.ok(goldens.every(item =>
     item.metadata.jsEngineHash ===
-      'efb5244d922fcf2cf4bb7288f3dbb05ec138c6132174ef3723f7fce89fcb7881'
+      'bd11b599a0a95ec78f19832e1dcd426e2848d3bd9122ad7d1918138efa9c78a5'
   ));
 });
 

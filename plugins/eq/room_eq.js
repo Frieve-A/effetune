@@ -6,6 +6,10 @@ const ROOM_EQ_ADDITIONAL_EQ_FILTER_TYPES = [
 ];
 const ROOM_EQ_PHASE_LOW_MIN = 20;
 const ROOM_EQ_PHASE_LOW_MAX = 20000;
+const ROOM_EQ_GROUP_DELAY_LIMITS_MS = [1, 2, 5, 10, 20, 50, 100, 200, 500];
+const ROOM_EQ_GRAPH_FREQUENCY_TICKS =
+    [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+const ROOM_EQ_RESPONSE_HIDDEN_CLASS = 'room-eq-response-hidden';
 
 class RoomEqAdditionalEqEditor {
     constructor({
@@ -831,6 +835,10 @@ class RoomEqPlugin extends PluginBase {
         this._responseView = 'frequency';
         this._responseViewElements = null;
         this._beforeLegendHover = null;
+        this._responseHoverCleanup = null;
+        this._pathPointCache = new WeakMap();
+        this._groupDelayAxisLimit = ROOM_EQ_GROUP_DELAY_LIMITS_MS[0];
+        this._impulseTimeAxis = null;
         this._visibilityHandler = () => {
             if (!this._disposed && document.visibilityState === 'visible') {
                 this._refreshMeasurements(true);
@@ -1778,6 +1786,10 @@ class RoomEqPlugin extends PluginBase {
                 label: this._t('roomEq.graph.phase', 'Phase')
             },
             {
+                value: 'groupDelay',
+                label: this._t('roomEq.graph.groupDelay', 'Group Delay')
+            },
+            {
                 value: 'impulse',
                 label: this._t('roomEq.graph.impulse', 'Impulse')
             }
@@ -1797,113 +1809,108 @@ class RoomEqPlugin extends PluginBase {
             inputs[option.value] = input;
         }
 
-        const phaseGrid = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        phaseGrid.setAttribute('class', 'room-eq-phase-grid');
-        phaseGrid.setAttribute('width', '100%');
-        phaseGrid.setAttribute('height', '100%');
-        const phaseResponse = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        phaseResponse.setAttribute('class', 'room-eq-phase-response');
-        phaseResponse.setAttribute('width', '100%');
-        phaseResponse.setAttribute('height', '100%');
-        phaseResponse.setAttribute('preserveAspectRatio', 'none');
-        phaseResponse.setAttribute(
-            'aria-label',
-            this._t('roomEq.graph.phaseResponse', 'Phase Response')
-        );
-        const phaseUnavailable = document.createElement('div');
-        phaseUnavailable.className = 'room-eq-phase-unavailable';
-        phaseUnavailable.textContent = this._t(
-            'roomEq.graph.phaseUnavailable',
-            'Phase data is unavailable because this measurement has no impulse response.'
-        );
+        const overlays = {
+            phase: this._createResponseOverlay(
+                'room-eq-phase',
+                this._t('roomEq.graph.phaseResponse', 'Phase Response'),
+                this._t(
+                    'roomEq.graph.phaseUnavailable',
+                    'Phase data is unavailable because this measurement has no impulse response.'
+                )
+            ),
+            groupDelay: this._createResponseOverlay(
+                'room-eq-group-delay',
+                this._t('roomEq.graph.groupDelayResponse', 'Group Delay Response'),
+                this._t(
+                    'roomEq.graph.groupDelayUnavailable',
+                    'Group delay is unavailable because this measurement has no impulse response.'
+                )
+            ),
+            impulse: this._createResponseOverlay(
+                'room-eq-impulse',
+                this._t('roomEq.graph.impulseResponse', 'Impulse Response'),
+                this._t(
+                    'roomEq.graph.impulseUnavailable',
+                    'Impulse-response data is unavailable for this measurement.'
+                )
+            )
+        };
 
-        const impulseGrid = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        impulseGrid.setAttribute('class', 'room-eq-impulse-grid');
-        impulseGrid.setAttribute('width', '100%');
-        impulseGrid.setAttribute('height', '100%');
-        const impulseResponse = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        impulseResponse.setAttribute('class', 'room-eq-impulse-response');
-        impulseResponse.setAttribute('width', '100%');
-        impulseResponse.setAttribute('height', '100%');
-        impulseResponse.setAttribute('preserveAspectRatio', 'none');
-        impulseResponse.setAttribute(
-            'aria-label',
-            this._t('roomEq.graph.impulseResponse', 'Impulse Response')
-        );
-        const unavailable = document.createElement('div');
-        unavailable.className = 'room-eq-impulse-unavailable';
-        unavailable.textContent = this._t(
-            'roomEq.graph.impulseUnavailable',
-            'Impulse-response data is unavailable for this measurement.'
-        );
+        const hoverOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        hoverOverlay.setAttribute('class', 'room-eq-hover-overlay');
+        hoverOverlay.setAttribute('width', '100%');
+        hoverOverlay.setAttribute('height', '100%');
+        hoverOverlay.setAttribute('preserveAspectRatio', 'none');
 
         const legend = document.createElement('div');
         legend.className = 'room-eq-response-legend';
-        for (const [
-            className,
-            labelText,
-            frequencySelector,
-            phaseSelector,
-            impulseSelector,
-            hiddenPhaseSelector,
-            hiddenImpulseSelector
-        ] of [
-            [
-                'room-eq-response-legend-room',
-                'Room EQ',
-                '.room-eq-base-response-path',
-                null,
-                null
-            ],
-            [
-                'room-eq-response-legend-total',
-                'Total EQ',
-                '.room-eq-combined-response-path',
-                null,
-                null
-            ],
-            [
-                'room-eq-response-legend-before',
-                'Before',
-                '.room-eq-measured-response-path',
-                '.room-eq-phase-before',
-                '.room-eq-impulse-before',
-                '.room-eq-phase-after',
-                '.room-eq-impulse-after'
-            ],
-            [
-                'room-eq-response-legend-after',
-                'After',
-                '.room-eq-corrected-response-path',
-                '.room-eq-phase-after',
-                '.room-eq-impulse-after'
-            ]
+        const cursorReadout = document.createElement('span');
+        cursorReadout.className = 'room-eq-response-legend-cursor';
+        legend.appendChild(cursorReadout);
+        const legendItems = [];
+        for (const { className, labelText, views } of [
+            {
+                className: 'room-eq-response-legend-room',
+                labelText: 'Room EQ',
+                views: { frequency: { selector: '.room-eq-base-response-path' } }
+            },
+            {
+                className: 'room-eq-response-legend-total',
+                labelText: 'Total EQ',
+                views: { frequency: { selector: '.room-eq-combined-response-path' } }
+            },
+            {
+                className: 'room-eq-response-legend-before',
+                labelText: 'Before',
+                views: {
+                    frequency: { selector: '.room-eq-measured-response-path' },
+                    phase: {
+                        selector: '.room-eq-phase-before',
+                        hidden: '.room-eq-phase-after'
+                    },
+                    groupDelay: {
+                        selector: '.room-eq-group-delay-before',
+                        hidden: '.room-eq-group-delay-after'
+                    },
+                    impulse: {
+                        selector: '.room-eq-impulse-before',
+                        hidden: '.room-eq-impulse-after'
+                    }
+                }
+            },
+            {
+                className: 'room-eq-response-legend-after',
+                labelText: 'After',
+                views: {
+                    frequency: { selector: '.room-eq-corrected-response-path' },
+                    phase: { selector: '.room-eq-phase-after' },
+                    groupDelay: { selector: '.room-eq-group-delay-after' },
+                    impulse: { selector: '.room-eq-impulse-after' }
+                }
+            }
         ]) {
             const item = document.createElement('span');
             item.className = `room-eq-response-legend-item ${className}`;
             const swatch = document.createElement('span');
             swatch.className = 'room-eq-response-legend-swatch';
             swatch.setAttribute('aria-hidden', 'true');
-            item.append(swatch, document.createTextNode(labelText));
+            const value = document.createElement('span');
+            value.className = 'room-eq-response-legend-value';
+            item.append(swatch, document.createTextNode(labelText), value);
+            legendItems.push({ views, value });
             const emphasis = { restore: null };
             item.addEventListener('mouseenter', () => {
                 emphasis.restore?.();
                 const view = this._responseView;
-                const container = view === 'phase'
-                    ? phaseResponse
-                    : view === 'impulse' ? impulseResponse : editor.responseSvg;
-                const selector = view === 'phase'
-                    ? phaseSelector
-                    : view === 'impulse' ? impulseSelector : frequencySelector;
-                const hiddenSelector = view === 'phase'
-                    ? hiddenPhaseSelector
-                    : view === 'impulse' ? hiddenImpulseSelector : null;
+                const container = overlays[view]?.response || editor.responseSvg;
+                const selector = views[view]?.selector || null;
+                const hiddenSelector = views[view]?.hidden || null;
                 emphasis.restore = this._emphasizeResponsePath(
                     container,
                     selector,
                     hiddenSelector
                 );
-                if ((view === 'phase' || view === 'impulse') && hiddenSelector) {
+                if (hiddenSelector) {
                     this._beforeLegendHover = {
                         owner: item,
                         view,
@@ -1924,33 +1931,166 @@ class RoomEqPlugin extends PluginBase {
             legend.appendChild(item);
         }
 
-        graph.append(
-            phaseGrid,
-            phaseResponse,
-            phaseUnavailable,
-            impulseGrid,
-            impulseResponse,
-            unavailable,
-            legend,
-            controls
-        );
+        for (const overlay of Object.values(overlays)) {
+            graph.append(overlay.grid, overlay.response, overlay.unavailable);
+        }
+        graph.append(hoverOverlay, legend, controls);
         this._responseViewElements = {
             graph,
             controls,
             legend,
             inputs,
-            phaseGrid,
-            phaseResponse,
-            phaseUnavailable,
-            impulseGrid,
-            impulseResponse,
-            unavailable
+            overlays,
+            hoverOverlay,
+            cursorReadout,
+            legendItems
         };
+        this._bindResponseHover(graph);
         this._setResponseView(this._responseView);
     }
 
+    _bindResponseHover(graph) {
+        this._responseHoverCleanup?.();
+        const move = event => this._updateResponseHover(event);
+        const leave = () => this._clearResponseHover();
+        graph.addEventListener('mousemove', move);
+        graph.addEventListener('mouseleave', leave);
+        this._responseHoverCleanup = () => {
+            graph.removeEventListener('mousemove', move);
+            graph.removeEventListener('mouseleave', leave);
+        };
+    }
+
+    _responseHoverContainer(view) {
+        return view === 'frequency'
+            ? this._additionalEqEditor?.responseSvg
+            : this._responseViewElements?.overlays?.[view]?.response;
+    }
+
+    // Reads the drawn polyline so every view shares one readout path, whatever the
+    // curve was built from.
+    _pathValueAtX(path, x) {
+        let points = this._pathPointCache.get(path);
+        if (!points) {
+            points = [];
+            for (const [, pointX, pointY] of
+                (path.getAttribute('d') || '').matchAll(
+                    /[ML] (-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/g
+                )) {
+                points.push([Number(pointX), Number(pointY)]);
+            }
+            this._pathPointCache.set(path, points);
+        }
+        if (points.length < 2 || x < points[0][0] ||
+            x > points[points.length - 1][0]) {
+            return null;
+        }
+        let low = 0;
+        let high = points.length - 1;
+        while (high - low > 1) {
+            const middle = (low + high) >> 1;
+            if (points[middle][0] <= x) low = middle;
+            else high = middle;
+        }
+        const span = points[high][0] - points[low][0];
+        return span > 0
+            ? points[low][1] +
+                (x - points[low][0]) / span * (points[high][1] - points[low][1])
+            : points[low][1];
+    }
+
+    _formatHoverFrequency(x, width) {
+        const frequency = this._additionalEqEditor.xToFreq(x / width * 100);
+        return frequency >= 1000
+            ? `${(frequency / 1000).toFixed(2)} kHz`
+            : `${frequency.toFixed(0)} Hz`;
+    }
+
+    _formatHoverCursor(view, x, width) {
+        if (view !== 'impulse') return this._formatHoverFrequency(x, width);
+        const axis = this._impulseTimeAxis;
+        if (!axis) return '';
+        const time = axis.startMs + x / width * (axis.durationMs - axis.startMs);
+        return `${time.toFixed(2)} ms`;
+    }
+
+    _formatHoverValue(view, y, height) {
+        const position = y / height;
+        if (view === 'frequency') {
+            return `${this._additionalEqEditor.yToGain(position * 100).toFixed(1)} dB`;
+        }
+        if (view === 'phase') return `${(180 - position * 360).toFixed(0)}°`;
+        if (view === 'groupDelay') {
+            const limit = this._groupDelayAxisLimit;
+            return `${(limit - position * 2 * limit).toFixed(2)} ms`;
+        }
+        return ((0.5 - position) * 2).toFixed(2);
+    }
+
+    _updateResponseHover(event) {
+        const elements = this._responseViewElements;
+        if (!elements) return;
+        const view = this._responseView;
+        const container = this._responseHoverContainer(view);
+        const width = container?.clientWidth;
+        const height = container?.clientHeight;
+        const rect = container?.getBoundingClientRect?.();
+        if (!width || !height || !rect) return this._clearResponseHover();
+        const x = event.clientX - rect.left;
+        if (!(x >= 0 && x <= width)) return this._clearResponseHover();
+        const { hoverOverlay } = elements;
+        hoverOverlay.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        hoverOverlay.replaceChildren();
+        elements.cursorReadout.textContent = this._formatHoverCursor(view, x, width);
+        for (const { views, value } of elements.legendItems) {
+            const selector = views[view]?.selector;
+            const matched = selector ? container.querySelector(selector) : null;
+            // A legend hover hides the competing curve; a hidden curve reads as absent.
+            const path = matched?.classList?.contains?.(ROOM_EQ_RESPONSE_HIDDEN_CLASS)
+                ? null
+                : matched;
+            const y = path ? this._pathValueAtX(path, x) : null;
+            value.textContent = y === null ? '' : this._formatHoverValue(view, y, height);
+            if (y === null) continue;
+            const dot = this._appendResponseSvgElement(hoverOverlay, 'circle', {
+                class: 'room-eq-hover-dot',
+                cx: x.toFixed(2),
+                cy: y.toFixed(2),
+                r: 3.5
+            });
+            const stroke = path.getAttribute('stroke') ||
+                globalThis.getComputedStyle?.(path)?.stroke;
+            if (stroke) dot.setAttribute('fill', stroke);
+        }
+    }
+
+    _clearResponseHover() {
+        const elements = this._responseViewElements;
+        if (!elements) return;
+        elements.hoverOverlay.replaceChildren();
+        elements.cursorReadout.textContent = '';
+        for (const { value } of elements.legendItems) value.textContent = '';
+    }
+
+    _createResponseOverlay(className, ariaLabel, unavailableText) {
+        const grid = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        grid.setAttribute('class', `${className}-grid`);
+        grid.setAttribute('width', '100%');
+        grid.setAttribute('height', '100%');
+        const response = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        response.setAttribute('class', `${className}-response`);
+        response.setAttribute('width', '100%');
+        response.setAttribute('height', '100%');
+        response.setAttribute('preserveAspectRatio', 'none');
+        response.setAttribute('aria-label', ariaLabel);
+        const unavailable = document.createElement('div');
+        unavailable.className = `${className}-unavailable`;
+        unavailable.textContent = unavailableText;
+        return { grid, response, unavailable };
+    }
+
     _setResponseView(view) {
-        this._responseView = ['frequency', 'phase', 'impulse'].includes(view)
+        this._responseView = ['frequency', 'phase', 'groupDelay', 'impulse'].includes(view)
             ? view
             : 'frequency';
         const elements = this._responseViewElements;
@@ -1960,13 +2100,19 @@ class RoomEqPlugin extends PluginBase {
             this._responseView === 'phase'
         );
         elements.graph.classList.toggle(
+            'room-eq-group-delay-view',
+            this._responseView === 'groupDelay'
+        );
+        elements.graph.classList.toggle(
             'room-eq-impulse-view',
             this._responseView === 'impulse'
         );
         for (const [value, input] of Object.entries(elements.inputs)) {
             input.checked = value === this._responseView;
         }
+        this._clearResponseHover();
         if (this._responseView === 'phase') this._drawPhaseResponse();
+        else if (this._responseView === 'groupDelay') this._drawGroupDelayResponse();
         else if (this._responseView === 'impulse') this._drawImpulseResponse();
         else {
             this._additionalEqEditor?.updateMarkers();
@@ -1992,11 +2138,11 @@ class RoomEqPlugin extends PluginBase {
             : null;
         const originalNextSibling = path.nextSibling;
         path.classList.add('room-eq-response-highlighted');
-        hiddenPath?.classList.add('room-eq-response-hidden');
+        hiddenPath?.classList.add(ROOM_EQ_RESPONSE_HIDDEN_CLASS);
         container.appendChild(path);
         return () => {
             path.classList.remove('room-eq-response-highlighted');
-            hiddenPath?.classList.remove('room-eq-response-hidden');
+            hiddenPath?.classList.remove(ROOM_EQ_RESPONSE_HIDDEN_CLASS);
             if (path.parentNode !== container) return;
             if (originalNextSibling?.parentNode === container) {
                 container.insertBefore(path, originalNextSibling);
@@ -2020,81 +2166,98 @@ class RoomEqPlugin extends PluginBase {
         );
     }
 
-    _phasePath(frequencies, phases, width, height) {
-        if (!frequencies?.length || frequencies.length !== phases?.length ||
+    _frequencyCurvePath(frequencies, values, width, height, limit, breakStep = 0) {
+        if (!frequencies?.length || frequencies.length !== values?.length ||
             width <= 0 || height <= 0) {
             return '';
         }
         const path = [];
-        let previousPhase = null;
-        for (let index = 0; index < phases.length; index += 1) {
+        let previousValue = null;
+        for (let index = 0; index < values.length; index += 1) {
             const frequency = frequencies[index];
-            const phase = phases[index];
-            if (!Number.isFinite(frequency) || !Number.isFinite(phase)) {
-                previousPhase = null;
+            const value = values[index];
+            if (!Number.isFinite(frequency) || !Number.isFinite(value)) {
+                previousValue = null;
                 continue;
             }
-            const boundedPhase = phase < -180 ? -180 : phase > 180 ? 180 : phase;
+            const boundedValue = value < -limit ? -limit : value > limit ? limit : value;
             const x = this._additionalEqEditor.freqToX(frequency) * width / 100;
-            const y = (180 - boundedPhase) / 360 * height;
-            const command = previousPhase === null ||
-                Math.abs(boundedPhase - previousPhase) > 180 ? 'M' : 'L';
+            const y = (limit - boundedValue) / (2 * limit) * height;
+            const command = previousValue === null || (breakStep > 0 &&
+                Math.abs(boundedValue - previousValue) > breakStep) ? 'M' : 'L';
             path.push(`${command} ${x.toFixed(2)},${y.toFixed(2)}`);
-            previousPhase = boundedPhase;
+            previousValue = boundedValue;
         }
         return path.join(' ');
     }
 
-    _drawPhaseResponse() {
-        const elements = this._responseViewElements;
-        if (!elements || this._responseView !== 'phase') return;
-        const { phaseGrid, phaseResponse, phaseUnavailable } = elements;
-        const width = phaseResponse.clientWidth;
-        const height = phaseResponse.clientHeight;
-        if (!width || !height) return;
-        phaseGrid.replaceChildren();
-        phaseResponse.replaceChildren();
-        this._applyBeforeLegendHover('phase', phaseResponse);
-        phaseGrid.setAttribute('viewBox', `0 0 ${width} ${height}`);
-        phaseGrid.setAttribute('preserveAspectRatio', 'none');
-        phaseResponse.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    _phasePath(frequencies, phases, width, height) {
+        return this._frequencyCurvePath(frequencies, phases, width, height, 180, 180);
+    }
 
-        const frequencyTicks = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
-        for (const frequency of frequencyTicks) {
+    // Prepares a frequency-axis overlay and returns its pixel size, or null when the
+    // graph is not laid out yet.
+    _prepareFrequencyGraph(view) {
+        const overlay = this._responseViewElements?.overlays?.[view];
+        if (!overlay) return null;
+        const { grid, response } = overlay;
+        const width = response.clientWidth;
+        const height = response.clientHeight;
+        if (!width || !height) return null;
+        grid.replaceChildren();
+        response.replaceChildren();
+        this._applyBeforeLegendHover(view, response);
+        grid.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        grid.setAttribute('preserveAspectRatio', 'none');
+        response.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        for (const frequency of ROOM_EQ_GRAPH_FREQUENCY_TICKS) {
             const x = this._additionalEqEditor.freqToX(frequency) * width / 100;
-            this._appendResponseSvgElement(phaseGrid, 'line', {
+            this._appendResponseSvgElement(grid, 'line', {
                 x1: x,
                 x2: x,
                 y1: 0,
                 y2: height
             });
-            this._appendResponseSvgElement(phaseGrid, 'text', {
+            this._appendResponseSvgElement(grid, 'text', {
                 x,
                 y: height - 4,
                 'text-anchor': 'middle'
             }, frequency >= 1000 ? `${frequency / 1000}k` : String(frequency));
         }
-        for (const phase of [180, 90, 0, -90, -180]) {
-            const y = (180 - phase) / 360 * height;
-            this._appendResponseSvgElement(phaseGrid, 'line', {
+        return { ...overlay, width, height };
+    }
+
+    _appendVerticalAxis(grid, width, height, limit, values, format) {
+        for (const value of values) {
+            const y = (limit - value) / (2 * limit) * height;
+            this._appendResponseSvgElement(grid, 'line', {
                 x1: 0,
                 x2: width,
                 y1: y,
                 y2: y
             });
-            this._appendResponseSvgElement(phaseGrid, 'text', {
+            this._appendResponseSvgElement(grid, 'text', {
                 x: 2,
-                y: phase === 180 ? 5 : phase === -180 ? height - 5 : y,
+                y: value === limit ? 5 : value === -limit ? height - 5 : y,
                 'dominant-baseline': 'middle'
-            }, `${phase}°`);
+            }, format(value));
         }
+    }
+
+    _drawPhaseResponse() {
+        if (this._responseView !== 'phase') return;
+        const graph = this._prepareFrequencyGraph('phase');
+        if (!graph) return;
+        const { grid, response, unavailable, width, height } = graph;
+        this._appendVerticalAxis(grid, width, height, 180,
+            [180, 90, 0, -90, -180], value => `${value}°`);
 
         const preview = this._lastDesign?.previews?.find(Boolean);
         const phasePreview = preview?.phaseResponse;
         const hasPreview = preview?.frequencies?.length > 1 &&
             preview.frequencies.length === phasePreview?.before?.length &&
             phasePreview.before.length === phasePreview.after?.length;
-        phaseUnavailable.hidden = hasPreview;
+        unavailable.hidden = hasPreview;
         if (!hasPreview) return;
         for (const [phases, className] of [
             [phasePreview.before, 'room-eq-phase-before'],
@@ -2107,12 +2270,70 @@ class RoomEqPlugin extends PluginBase {
                 height
             );
             if (!pathData) continue;
-            this._appendResponseSvgElement(phaseResponse, 'path', {
+            this._appendResponseSvgElement(response, 'path', {
                 d: pathData,
                 class: className
             });
         }
-        this._applyBeforeLegendHover('phase', phaseResponse);
+        this._applyBeforeLegendHover('phase', response);
+    }
+
+    // Group delay spans differ by orders of magnitude between measurements, so the
+    // axis is scaled to a round limit that covers all but the sharpest excursions.
+    _groupDelayLimit(curves) {
+        const magnitudes = [];
+        for (const values of curves) {
+            for (const value of values) {
+                if (Number.isFinite(value)) magnitudes.push(value < 0 ? -value : value);
+            }
+        }
+        if (!magnitudes.length) return ROOM_EQ_GROUP_DELAY_LIMITS_MS[0];
+        magnitudes.sort((first, second) => first - second);
+        const bound = magnitudes[Math.min(
+            magnitudes.length - 1,
+            Math.floor(magnitudes.length * 0.95)
+        )];
+        return ROOM_EQ_GROUP_DELAY_LIMITS_MS.find(limit => limit >= bound) ||
+            ROOM_EQ_GROUP_DELAY_LIMITS_MS[ROOM_EQ_GROUP_DELAY_LIMITS_MS.length - 1];
+    }
+
+    _drawGroupDelayResponse() {
+        if (this._responseView !== 'groupDelay') return;
+        const graph = this._prepareFrequencyGraph('groupDelay');
+        if (!graph) return;
+        const { grid, response, unavailable, width, height } = graph;
+        const preview = this._lastDesign?.previews?.find(Boolean);
+        const groupDelayPreview = preview?.groupDelayResponse;
+        const hasPreview = preview?.frequencies?.length > 1 &&
+            preview.frequencies.length === groupDelayPreview?.before?.length &&
+            groupDelayPreview.before.length === groupDelayPreview.after?.length;
+        const limit = hasPreview
+            ? this._groupDelayLimit([groupDelayPreview.before, groupDelayPreview.after])
+            : ROOM_EQ_GROUP_DELAY_LIMITS_MS[0];
+        this._groupDelayAxisLimit = limit;
+        this._appendVerticalAxis(grid, width, height, limit,
+            [limit, limit / 2, 0, -limit / 2, -limit],
+            value => `${Number(value.toFixed(1))} ms`);
+        unavailable.hidden = hasPreview;
+        if (!hasPreview) return;
+        for (const [delays, className] of [
+            [groupDelayPreview.before, 'room-eq-group-delay-before'],
+            [groupDelayPreview.after, 'room-eq-group-delay-after']
+        ]) {
+            const pathData = this._frequencyCurvePath(
+                preview.frequencies,
+                delays,
+                width,
+                height,
+                limit
+            );
+            if (!pathData) continue;
+            this._appendResponseSvgElement(response, 'path', {
+                d: pathData,
+                class: className
+            });
+        }
+        this._applyBeforeLegendHover('groupDelay', response);
     }
 
     _waveformPath(samples, width, height, peak, left = 0) {
@@ -2175,9 +2396,9 @@ class RoomEqPlugin extends PluginBase {
     }
 
     _drawImpulseResponse() {
-        const elements = this._responseViewElements;
-        if (!elements || this._responseView !== 'impulse') return;
-        const { impulseGrid, impulseResponse, unavailable } = elements;
+        const overlay = this._responseViewElements?.overlays?.impulse;
+        if (!overlay || this._responseView !== 'impulse') return;
+        const { grid: impulseGrid, response: impulseResponse, unavailable } = overlay;
         const width = impulseResponse.clientWidth;
         const height = impulseResponse.clientHeight;
         if (!width || !height) return;
@@ -2191,6 +2412,7 @@ class RoomEqPlugin extends PluginBase {
         const preview = this._lastDesign?.previews?.find(Boolean)?.impulseResponse;
         const startMs = preview?.startMs ?? -2;
         const durationMs = preview?.durationMs || Math.max(5, this.dw);
+        this._impulseTimeAxis = { startMs, durationMs };
         const timePlotLeft = 0;
         const timePlotWidth = width - timePlotLeft;
         const timeToX = time =>
@@ -2362,6 +2584,7 @@ class RoomEqPlugin extends PluginBase {
         this._additionalEqEditor.updateResponse = () => {
             updateResponse();
             this._drawPhaseResponse();
+            this._drawGroupDelayResponse();
             this._drawImpulseResponse();
         };
         this._syncCorrectionPreview();
@@ -2402,6 +2625,8 @@ class RoomEqPlugin extends PluginBase {
         this._measurementRow = null;
         this._beforeLegendHover?.emphasis.restore?.();
         this._beforeLegendHover = null;
+        this._responseHoverCleanup?.();
+        this._responseHoverCleanup = null;
         this._additionalEqEditor?.dispose();
         this._additionalEqEditor = null;
         this._responseViewElements = null;

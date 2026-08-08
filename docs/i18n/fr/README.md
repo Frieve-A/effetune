@@ -341,6 +341,7 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 | EQ        | Tone Control | Contrôle tonal en trois bandes | [Détails](plugins/eq.md#tone-control) |
 | Lo-Fi     | AM Radio Simulator | Fait passer la musique dans une chaîne de diffusion et de réception AM modélisée | [Détails](plugins/lofi.md#am-radio-simulator) |
 | Lo-Fi     | Bit Crusher | Réduction de la profondeur de bits et effet de maintien d'ordre zéro | [Détails](plugins/lofi.md#bit-crusher) |
+| Lo-Fi     | Cassette Artifacts | Enregistre la musique sur une cassette compacte modélisée et la relit sur une platine Type I/II/IV avec Dolby B/C | [Détails](plugins/lofi.md#cassette-artifacts) |
 | Lo-Fi     | Digital Error Emulator | Simule diverses erreurs de transmission audio numérique et caractéristiques d'équipements numériques vintage | [Détails](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi     | DSD64 IMD Simulator | Simule la distorsion d'intermodulation audible issue du bruit ultrasonique du DSD64 | [Détails](plugins/lofi.md#dsd64-imd-simulator) |
 | Lo-Fi     | FM Radio Simulator | Fait passer la musique par une chaîne d'émission et de réception FM simulée physiquement | [Détails](plugins/lofi.md#fm-radio-simulator) |

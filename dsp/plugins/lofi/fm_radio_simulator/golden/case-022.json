@@ -1,0 +1,51 @@
+{
+  "formatVersion": 1,
+  "type": "FMRadioSimulatorPlugin",
+  "id": "radio-shutdown-events",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 4097,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 21,
+  "seed": "0xeffe7a4b",
+  "params": {
+    "rd": true,
+    "em": "50",
+    "pr": 0,
+    "st": 35,
+    "tn": 0,
+    "bw": 230,
+    "mp": 0,
+    "dl": 5,
+    "fd": 0,
+    "sm": "Auto",
+    "og": 0,
+    "mx": 100,
+    "fr": true
+  },
+  "events": [
+    {
+      "frame": 1201,
+      "params": {
+        "rd": false
+      }
+    },
+    {
+      "frame": 2801,
+      "params": {
+        "rd": true
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "abfadad6abba7f3933595e28dbf372dece480ceb2bcbe1a473eff223bc88044c",
+  "outputFloats": 8194,
+  "byteLength": 32776,
+  "binary": "case-022.f32"
+}

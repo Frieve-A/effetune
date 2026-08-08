@@ -75,6 +75,7 @@ Una herramienta de ajuste detallado del sonido con 15 controles individuales, ca
 - Gráfico en tiempo real que muestra tus ajustes de sonido
 - Controles deslizantes fáciles de usar con control preciso
 - Restablecimiento a los valores predeterminados con un solo clic
+- Haz doble clic en un deslizador para devolver esa banda a 0dB
 
 ## 15Band PEQ
 
@@ -630,10 +631,12 @@ La medición es una referencia local del dispositivo. Una URL o un preset guarda
 
 ### Visualización
 
-- Usa los botones de opción **Frecuencia**, **Fase** e **Impulso** de la parte superior del gráfico para cambiar de vista.
+- Usa los botones de opción **Frecuencia**, **Fase**, **Retardo de grupo** e **Impulso** de la parte superior del gráfico para cambiar de vista.
 - **Fase** usa una escala logarítmica de frecuencia en el eje horizontal y una escala de fase de -180° a 180° en el vertical. La línea gris muestra la fase antes de la corrección y la verde, la fase calculada después de aplicar el FIR real. De ambas se elimina el inicio medido y del resultado corregido también se elimina el retardo fijo conocido del FIR, de modo que el gráfico muestra el cambio de fase introducido por el filtro sin esos desplazamientos temporales fijos. Si la medición no contiene una respuesta al impulso, se muestra un mensaje de datos no disponibles.
+- **Retardo de grupo** usa una escala logarítmica de frecuencia en el eje horizontal y milisegundos en el vertical, y muestra cuánto más tarde llega cada frecuencia que 1 kHz. Cada línea se referencia a su propio valor en 1 kHz, así que ambas marcan 0 ms en ese punto y un valor positivo indica que esa frecuencia llega retrasada respecto a 1 kHz. La línea gris corresponde a antes de la corrección y la verde, al resultado calculado después de aplicar el FIR real. La pendiente se toma entre puntos de representación contiguos y después se suaviza únicamente con Smoothing, el mismo paso que se aplica a la curva de respuesta en frecuencia medida; no se añade ningún otro suavizado, por lo que un valor de Smoothing más bajo muestra más detalle. El rango vertical se ajusta automáticamente a las curvas mostradas. Si la medición no contiene una respuesta al impulso, se muestra un mensaje de datos no disponibles.
 - **Impulso** muestra el punto seleccionado o, cuando Reference Point está en Consenso, la forma de onda media alineada en el tiempo. El intervalo va desde 2 ms antes del inicio medido hasta el valor mayor entre 5 ms y Direct Window. La línea gris corresponde al estado anterior a la corrección y la verde al resultado calculado después de aplicar el FIR real. El inicio medido es la referencia común de 0 ms y de la forma de onda corregida solo se elimina el retardo fijo conocido del FIR, por lo que siguen siendo visibles la posición relativa del pico y el pre-ringing. Ambas líneas usan la misma escala de amplitud normalizada. Solo para esta visualización, se eliminan los componentes de 20 kHz en adelante; esto no afecta al filtro de corrección ni al procesamiento de audio. Si la medición no contiene datos de respuesta al impulso, se muestra un mensaje que indica que no están disponibles.
 - **Frecuencia** muestra la frecuencia en escala logarítmica en el eje horizontal y el nivel en dB en el vertical.
+- Al mover el puntero sobre el gráfico, cada curva se marca con un punto en la posición horizontal del puntero y su lectura aparece a la derecha del nombre correspondiente en la leyenda, con la frecuencia del propio puntero —o el tiempo, en la vista Impulso— encima de ellas. La lectura desaparece cuando el puntero sale del gráfico.
 - Las dos líneas verticales blancas de puntos marcan las frecuencias ajustadas con Correction Low y Correction High.
 - Los marcadores permiten cambiar la frecuencia y la ganancia de cada banda.
 - La curva gris clara muestra la respuesta en frecuencia medida y suavizada con el desplazamiento de visualización común del gráfico.

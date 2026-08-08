@@ -207,9 +207,11 @@ test('Tube Simulator Phase A reference preserves the eight permitted P3 projecti
     const selected = selectTubeStandardProductionCases(standardManifest.cases);
 
     for (const testCase of selected) {
+      // The P3 baseline is the legacy line amplifier, so the projection names the
+      // output stage rather than inheriting the current product default.
       const adaptedCase = {
         ...testCase,
-        params: { ...testCase.params, iv: 1, nf: 0 }
+        params: { ...testCase.params, iv: 1, nf: 0, os: 'Line' }
       };
       const seed = BigInt(testCase.seed);
       const input = generateStimulus({
@@ -261,9 +263,11 @@ test('Tube Simulator production kernels preserve the eight P3 projections',
     }
 
     for (const testCase of selected) {
+      // The P3 baseline is the legacy line amplifier, so the projection names the
+      // output stage rather than inheriting the current product default.
       const adaptedCase = {
         ...testCase,
-        params: { ...testCase.params, iv: 1, nf: 0 }
+        params: { ...testCase.params, iv: 1, nf: 0, os: 'Line' }
       };
       const seed = BigInt(testCase.seed);
       const input = generateStimulus({

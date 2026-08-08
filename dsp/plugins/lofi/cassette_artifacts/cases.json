@@ -1,0 +1,188 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 127,
+    "params": {
+      "dg": "Consumer",
+      "tp": "Type I",
+      "nr": "Dolby B",
+      "bs": 0,
+      "rl": 9,
+      "wf": 0.25,
+      "hs": -60.5,
+      "dp": 2,
+      "az": 2,
+      "dl": 0,
+      "og": 0,
+      "mx": 100
+    }
+  },
+  "cases": [
+    {
+      "id": "default-seeded-noise",
+      "stimulus": "noise",
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 12000
+    },
+    {
+      "id": "reference-grade-all-families-off-mono",
+      "stimulus": "sweep",
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 12000,
+      "blockSize": 65,
+      "params": {
+        "dg": "Reference",
+        "tp": "Type IV",
+        "nr": "Off",
+        "bs": -6,
+        "rl": -12,
+        "wf": 0,
+        "hs": -92,
+        "dp": 0,
+        "az": 0,
+        "dl": 0
+      }
+    },
+    {
+      "id": "dolby-b-transitions",
+      "stimulus": "noise",
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 20000,
+      "blockSize": 96,
+      "params": { "nr": "Off", "tp": "Type II", "rl": 0, "wf": 0.5, "hs": -48, "dp": 0 },
+      "events": [
+        { "frame": 2049, "params": { "nr": "Dolby B" } },
+        { "frame": 5121, "params": { "dl": 3 } },
+        { "frame": 8193, "params": { "dl": -3 } },
+        { "frame": 11265, "params": { "nr": "Off" } },
+        { "frame": 14337, "params": { "nr": "Dolby B", "rl": 18 } },
+        { "frame": 17409, "params": { "dl": 0.75, "og": 12 } }
+      ]
+    },
+    {
+      "id": "dolby-c-transitions",
+      "stimulus": "noise",
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 20000,
+      "blockSize": 64,
+      "params": { "nr": "Dolby C", "tp": "Type IV", "dg": "Hi-Fi", "rl": 12, "wf": 0.375, "hs": -55, "dp": 0 },
+      "events": [
+        { "frame": 2048, "params": { "nr": "Dolby B" } },
+        { "frame": 5121, "params": { "nr": "Dolby C" } },
+        { "frame": 8193, "params": { "nr": "Off" } },
+        { "frame": 11265, "params": { "nr": "Dolby C", "dl": -1.5 } },
+        { "frame": 14337, "params": { "rl": -6 } },
+        { "frame": 17409, "params": { "dl": 1.5, "bs": 3 } }
+      ]
+    },
+    {
+      "id": "dropout-events",
+      "stimulus": "sq50",
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 20000,
+      "blockSize": 128,
+      "params": { "dp": 20, "nr": "Off", "wf": 0, "hs": -92, "dg": "Reference", "az": 0 },
+      "events": [
+        { "frame": 4097, "params": { "dp": 0 } },
+        { "frame": 8193, "params": { "dp": 10 } },
+        { "frame": 12289, "params": { "dp": 0.5 } },
+        { "frame": 16385, "params": { "dp": 20, "hs": -42 } }
+      ]
+    },
+    {
+      "id": "transport-long-hub-wow-mono",
+      "stimulus": "sq50",
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 114000,
+      "blockSize": 128,
+      "params": { "wf": 1, "nr": "Off", "hs": -75, "dp": 20, "rl": 0 }
+    },
+    {
+      "id": "azimuth-wobble-portable",
+      "stimulus": "sweep",
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 12000,
+      "blockSize": 63,
+      "params": { "dg": "Portable", "az": 6, "nr": "Off", "wf": 0.75, "hs": -84.5, "dp": 0 }
+    },
+    {
+      "id": "coefficients-96k",
+      "stimulus": "sweep",
+      "sampleRate": 96000,
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 12000,
+      "blockSize": 129,
+      "params": { "dg": "Reference", "tp": "Type II", "nr": "Dolby C", "bs": 6, "rl": 12, "wf": 0.5, "hs": -48, "dp": 5, "az": -3 }
+    },
+    {
+      "id": "all4-192k-full-scale",
+      "stimulus": "fs",
+      "sampleRate": 192000,
+      "channels": 4,
+      "channelMode": "all4",
+      "frames": 6000,
+      "blockSize": 31,
+      "params": { "dg": "Hi-Fi", "tp": "Type IV", "nr": "Dolby C", "bs": -3, "rl": 18, "wf": 0.75, "hs": -42, "dp": 20, "az": -6, "dl": 3 }
+    },
+    {
+      "id": "mix-zero-defers-and-freezes-state",
+      "stimulus": "noise",
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 12000,
+      "blockSize": 64,
+      "params": { "wf": 0.5, "hs": -48, "mx": 0 },
+      "events": [
+        { "frame": 2048, "params": { "mx": 100 } },
+        { "frame": 5121, "params": { "mx": 0 } },
+        { "frame": 7169, "params": { "mx": 50 } },
+        { "frame": 9217, "params": { "mx": 100 } }
+      ]
+    },
+    {
+      "id": "hard-off-branches-one-frame-blocks",
+      "stimulus": "step",
+      "sampleRate": 44100,
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 11025,
+      "blockSize": 1,
+      "params": { "dg": "Reference", "tp": "Type II", "nr": "Off", "bs": 1.5, "rl": 0, "wf": 0, "hs": -92, "dp": 0, "az": 4.5, "og": -6 }
+    },
+    {
+      "id": "configuration-transitions",
+      "stimulus": "noise",
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 12000,
+      "blockSize": 96,
+      "params": { "dg": "Portable", "tp": "Type II", "nr": "Dolby B", "bs": -4.5, "rl": 6, "wf": 0.875, "hs": -55, "dp": 5, "az": -1.5 },
+      "events": [
+        { "frame": 1025, "params": { "dg": "Reference" } },
+        { "frame": 3073, "params": { "tp": "Type I", "bs": 2.25 } },
+        { "frame": 5121, "params": { "dg": "Consumer", "hs": -92 } },
+        { "frame": 7169, "params": { "hs": -42, "wf": 0 } },
+        { "frame": 9217, "params": { "dg": "Hi-Fi", "tp": "Type IV", "az": 6 } },
+        { "frame": 11265, "params": { "og": 12, "wf": 0.15625, "dp": 0 } }
+      ]
+    },
+    {
+      "id": "transport-384k-max-wow",
+      "stimulus": "sweep",
+      "sampleRate": 384000,
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 20000,
+      "blockSize": 127,
+      "params": { "dg": "Portable", "tp": "Type I", "nr": "Dolby B", "bs": 0, "rl": 0, "wf": 1, "hs": -60.5, "dp": 20, "az": 6, "dl": 0 }
+    }
+  ]
+}

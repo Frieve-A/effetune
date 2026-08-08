@@ -1,10 +1,9 @@
 # EffeTune DSP Library
 
-Version: 0.1.0
+Version: 0.4.0
 Python package: effetune
 npm package: @effetune/dsp
-Catalog entries: 76
-Release state: cohort: published; python: published (0.1.0); npm: published (0.1.0); githubRelease: published (0.1.0)
+Catalog entries: 83
 
 Canonical resources:
 - https://effetune.frieve.com/dsp/

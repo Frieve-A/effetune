@@ -56,8 +56,8 @@ float readF32(const std::uint8_t *input) noexcept {
 }
 
 Params defaultParams() noexcept {
-  return {6.0F, 50.0F, 90.0F, 6.0F, 0.0F,  -12.0F, 1.0F, 0.15F, 0.3F, -65.0F,
-          9.0F, 0.0F,  12.0F, 2.0F, 50.0F, -70.0F, 0.0F, 2.0F,  0.0F, 100.0F};
+  return {1.0F, 6.0F, 50.0F, 90.0F, 6.0F,  0.0F,   -12.0F, 1.0F, 0.15F, 0.3F,  -65.0F,
+          9.0F, 0.0F, 12.0F, 2.0F,  50.0F, -70.0F, 0.0F,   2.0F, 0.0F,  100.0F};
 }
 
 class KernelHarness final {
@@ -90,7 +90,7 @@ public:
 
   void stage(const Params &params) noexcept {
     const et_status status =
-        kernel_->stageParameters(&params.txBandwidth, Params::kFloatCount, Params::kHash);
+        kernel_->stageParameters(&params.radio, Params::kFloatCount, Params::kHash);
     check(status == ET_OK, "parameters stage");
   }
 

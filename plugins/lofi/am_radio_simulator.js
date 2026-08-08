@@ -446,6 +446,13 @@ const AM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         return value === 'Slow' ? 0 : (value === 'Fast' ? 2 : 1);
     }
 
+    // The kernel receives this bool packed as a float and tests it against 0.5,
+    // so mirror that threshold here instead of a plain truthiness check. Number()
+    // maps true/false to 1/0, keeping the two engines on the same branch.
+    function radioEnabled(value) {
+        return value === undefined ? true : Number(value) >= 0.5;
+    }
+
     function updateDetectorCoefficients(state) {
         const releaseSeconds = state.controls.dt * 1e-6;
         // Detector RC represents RL*C; the fixed Rd/RL ratio supplies (Rd || RL)*C while charging.
@@ -464,6 +471,10 @@ const AM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         state.groundGain = Math.sqrt(1 - sky);
         state.skyGain = Math.sqrt(sky * 0.5);
         state.signalGain = Math.pow(10, state.controls.sg / 20);
+        // Radio off takes the transmitter off the air: only the station path is
+        // silenced. signalGain itself keeps its value because it also scales the
+        // atmospheric static bursts, which keep crashing after the carrier dies.
+        state.stationGain = radioEnabled(parameters.rd) ? state.signalGain : 0;
         state.interfererGain = Math.pow(10, state.controls.in / 20);
         state.staticProbability = 1 - Math.exp(-state.controls.st / state.sampleRate);
         state.humAmount = Math.pow(10, state.controls.hm / 20);
@@ -555,6 +566,7 @@ const AM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
             groundGain: 1,
             skyGain: 0,
             signalGain: 1,
+            stationGain: 1,
             interfererFilters: makeBank(2),
             interfererNormalizer: 1,
             interfererProgram: 0,
@@ -706,7 +718,9 @@ const AM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
             state.stationTuningOffsetHz < 0 ? -state.stationTuningOffsetHz :
                 state.stationTuningOffsetHz,
             parameters.bw * 500);
-        const initialStation = Math.pow(10, parameters.sg / 20) * initialPath *
+        const initialSignal = radioEnabled(parameters.rd) ?
+            Math.pow(10, parameters.sg / 20) : 0;
+        const initialStation = initialSignal * initialPath *
             state.stationTuningGain * initialIfResponse;
         const initialNoise = 0.001 * Math.sqrt(parameters.bw / 12);
         let initialCarrier = Math.sqrt(initialStation * initialStation + initialNoise * initialNoise);
@@ -1314,6 +1328,13 @@ const AM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         startSpeakerTransition(state, selectedSpeaker);
     }
 
+    // Radio off takes the transmitter off the air, so the transmitter telemetry
+    // has nothing to report: the modulation meter must not keep showing a
+    // station that stopped transmitting, and the over-modulation counter must
+    // not keep ticking on a carrier that no longer exists. The meter itself
+    // keeps its ballistics and falls back the way a real modulation monitor
+    // does when the RF disappears.
+    const radioOn = radioEnabled(parameters.rd);
     let blockModPeak = 0;
     for (let frame = 0; frame < blockSize; frame++) {
         if (state.controlRemaining === 0) updateControl(state);
@@ -1420,7 +1441,7 @@ const AM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
             }
         }
         const modulationDeviation = (tx < 0 ? -tx : tx) * state.modulation * 100;
-        if (modulationDeviation > blockModPeak) blockModPeak = modulationDeviation;
+        if (radioOn && modulationDeviation > blockModPeak) blockModPeak = modulationDeviation;
 
         const propagate = (mode, delay, delayQ, position) => {
             const transmittedI = mode === 'C-QUAM' ? transmittedCquamI : transmittedMono;
@@ -1444,14 +1465,14 @@ const AM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
                 const sky1Q = state.fade1.i * delayed1Q + state.fade1.q * delayed1;
                 const sky2I = state.fade2.i * delayed2 - state.fade2.q * delayed2Q;
                 const sky2Q = state.fade2.i * delayed2Q + state.fade2.q * delayed2;
-                i = state.signalGain * (state.groundGain * transmittedI +
+                i = state.stationGain * (state.groundGain * transmittedI +
                     state.skyGain * (sky1I + sky2I));
-                q = state.signalGain * (state.groundGain * transmittedQ +
+                q = state.stationGain * (state.groundGain * transmittedQ +
                     state.skyGain * (sky1Q + sky2Q));
             } else {
-                i = state.signalGain * (state.groundGain * transmittedI + state.skyGain *
+                i = state.stationGain * (state.groundGain * transmittedI + state.skyGain *
                     (state.fade1.i * delayed1 + state.fade2.i * delayed2));
-                q = state.signalGain * state.skyGain *
+                q = state.stationGain * state.skyGain *
                     (state.fade1.q * delayed1 + state.fade2.q * delayed2);
             }
             return { i, q, position };
@@ -1688,8 +1709,8 @@ const AM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         if (fadeDb < -80) fadeDb = -80;
         if (fadeDb > 6) fadeDb = 6;
         state.fadeDb = fadeDb;
-        const clipNow = transmittedMonoI < 0 ||
-            (state.stereoMode === 'Mono' && state.detectorClipping);
+        const clipNow = radioOn && (transmittedMonoI < 0 ||
+            (state.stereoMode === 'Mono' && state.detectorClipping));
         if (clipNow && !state.clipActive) state.clipCount = (state.clipCount + 1) >>> 0;
         state.clipActive = clipNow;
         state.sampleCounter++;
@@ -1714,6 +1735,7 @@ let amRadioSimulatorInstanceSerial = 0;
 class AMRadioSimulatorPlugin extends PluginBase {
     constructor() {
         super('AM Radio Simulator', 'Physical AM transmission, propagation, receiver, and speaker simulation');
+        this.rd = true;
         this.tb = 6;
         this.pe = 50;
         this.md = 90;
@@ -1772,6 +1794,7 @@ class AMRadioSimulatorPlugin extends PluginBase {
         this.ensureDspTelemetrySubscription();
         return {
             type: this.constructor.name,
+            rd: this.rd,
             tb: this.tb, pe: this.pe, md: this.md, cp: this.cp, sm: this.sm,
             sg: this.sg, sk: this.sk, fd: this.fd, st: this.st, in: this.in, io: this.io,
             tn: this.tn, bw: this.bw, ag: this.ag, dt: this.dt, hm: this.hm, hz: this.hz,
@@ -1815,6 +1838,7 @@ class AMRadioSimulatorPlugin extends PluginBase {
         setNumber('hm', -80, -20);
         setNumber('og', -24, 24);
         setNumber('mx', 0, 100);
+        if (params.rd !== undefined) this.rd = params.rd === true || params.rd === 1 || params.rd === 'true';
         if (params.sm !== undefined) {
             this.sm = ['Mono', 'C-QUAM'].includes(params.sm) ? params.sm : this.sm;
         }
@@ -2005,6 +2029,7 @@ class AMRadioSimulatorPlugin extends PluginBase {
         contents.className = 'am-radio-simulator-tab-contents';
         const definitions = [
             { id: 'station', label: 'Station', create: content => {
+                content.appendChild(this.createCheckboxControl('Radio', this.rd, value => this.setParameters({ rd: value })));
                 content.appendChild(this.createRadioGroup('Stereo Mode', ['Mono', 'C-QUAM'],
                     this.sm, value => this.setParameters({ sm: value })));
                 content.appendChild(this.createParameterControl('TX Bandwidth', 2, 10, 0.1, this.tb, value => this.setParameters({ tb: value }), 'kHz'));

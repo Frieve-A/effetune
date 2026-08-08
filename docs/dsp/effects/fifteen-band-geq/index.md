@@ -76,5 +76,6 @@ A detailed sound adjustment tool with 15 separate controls, each affecting a spe
 - Real-time graph showing your sound adjustments
 - Easy-to-use sliders with precise control
 - One-click reset to default settings
+- Double-click a slider to return that band to 0dB
 
 [Back to all effects](/dsp/effects/)

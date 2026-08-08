@@ -345,6 +345,7 @@ EffeTune 2.1.0에서는 카탈로그 스키마 v3를 사용하는 음악 라이�
 | EQ | Tone Control | 3밴드 톤 컨트롤 | [세부 정보](plugins/eq.md#tone-control) |
 | Lo-Fi | AM Radio Simulator | 음악을 모델링한 AM 송출·수신 체인으로 변환 | [세부 정보](plugins/lofi.md#am-radio-simulator) |
 | Lo-Fi | Bit Crusher | 비트 깊이 감소와 제로 오더 홀드 효과 | [세부 정보](plugins/lofi.md#bit-crusher) |
+| Lo-Fi | Cassette Artifacts | 음악을 모델링한 컴팩트 카세트에 녹음해 Type I/II/IV 데크와 Dolby B/C로 재생 | [세부 정보](plugins/lofi.md#cassette-artifacts) |
 | Lo-Fi | Digital Error Emulator | 다양한 디지털 오디오 전송 오류와 빈티지 디지털 장비 특성을 시뮬레이션 | [세부 정보](plugins/lofi.md#digital-error-emulator) |
 | Lo-Fi | DSD64 IMD Simulator | DSD64 초음파 노이즈에서 생기는 가청 상호변조 왜곡을 시뮬레이션 | [세부 정보](plugins/lofi.md#dsd64-imd-simulator) |
 | Lo-Fi | FM Radio Simulator | 물리 시뮬레이션된 FM 방송·수신 체인에 음악을 통과 | [세부 정보](plugins/lofi.md#fm-radio-simulator) |

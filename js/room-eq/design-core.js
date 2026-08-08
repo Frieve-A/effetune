@@ -8,6 +8,7 @@ import { resampleWindowedSinc } from '../utils/measurement-dsp/resample.js';
 
 const MIN_MAGNITUDE = 1e-8;
 const IMPULSE_PREVIEW_MAX_FREQUENCY = 20000;
+const GROUP_DELAY_REFERENCE_FREQUENCY = 1000;
 const QUALITY_WARNING_FILTER_ACCURACY = 'filterAccuracy';
 const QUALITY_WARNING_IMPULSE_RESPONSE_REQUIRED = 'impulseResponseRequired';
 const analysisCache = new Map();
@@ -836,7 +837,46 @@ function wrapPhaseDegrees(radians) {
     return wrapped * 180 / Math.PI;
 }
 
-function createPhaseResponsePreview(analysis, taps, config, frequencies) {
+function interpolateOnGrid(values, frequencies, frequency) {
+    if (!frequencies.length) return 0;
+    let upper = 1;
+    while (upper < frequencies.length && frequencies[upper] < frequency) upper += 1;
+    if (upper >= frequencies.length) return values[values.length - 1];
+    const lowFrequency = frequencies[upper - 1];
+    const highFrequency = frequencies[upper];
+    const fraction = highFrequency > lowFrequency
+        ? (frequency - lowFrequency) / (highFrequency - lowFrequency)
+        : 0;
+    return values[upper - 1] + fraction * (values[upper] - values[upper - 1]);
+}
+
+// Group delay is the negative slope of the unwrapped phase, taken between adjacent
+// grid points so the curve carries no smoothing of its own. Smoothing is the single
+// configured pass, matching the measured magnitude display.
+function referencedGroupDelayMs(phaseRadians, frequencies, smoothing) {
+    const delays = frequencies.map((frequency, index) => {
+        const low = index > 0 ? index - 1 : index;
+        const high = index < frequencies.length - 1 ? index + 1 : index;
+        const span = frequencies[high] - frequencies[low];
+        return [
+            frequency,
+            span > 0
+                ? (phaseRadians[low] - phaseRadians[high]) * 1000 /
+                    (2 * Math.PI * span)
+                : 0
+        ];
+    });
+    const smoothed = smoothFrequencyResponse(delays, smoothing)
+        .map(point => point[1]);
+    const reference = interpolateOnGrid(
+        smoothed,
+        frequencies,
+        GROUP_DELAY_REFERENCE_FREQUENCY
+    );
+    return Float32Array.from(smoothed, value => value - reference);
+}
+
+function createPhasePreviews(analysis, taps, config, frequencies) {
     const beforeRadians = alignedPhaseOnGrid(
         analysis.samples,
         analysis.onsetIndex,
@@ -851,12 +891,19 @@ function createPhaseResponsePreview(analysis, taps, config, frequencies) {
         frequencies,
         taps.length * 2
     );
+    const afterRadians = Float64Array.from(
+        beforeRadians,
+        (phase, index) => phase + filterRadians[index]
+    );
     return {
-        before: Float32Array.from(beforeRadians, wrapPhaseDegrees),
-        after: Float32Array.from(
-            beforeRadians,
-            (phase, index) => wrapPhaseDegrees(phase + filterRadians[index])
-        )
+        phase: {
+            before: Float32Array.from(beforeRadians, wrapPhaseDegrees),
+            after: Float32Array.from(afterRadians, wrapPhaseDegrees)
+        },
+        groupDelay: {
+            before: referencedGroupDelayMs(beforeRadians, frequencies, config.smoothing),
+            after: referencedGroupDelayMs(afterRadians, frequencies, config.smoothing)
+        }
     };
 }
 
@@ -1019,6 +1066,10 @@ function cloneDesignResult(result) {
                 before: Float32Array.from(preview.phaseResponse.before),
                 after: Float32Array.from(preview.phaseResponse.after)
             } : null,
+            groupDelayResponse: preview.groupDelayResponse ? {
+                before: Float32Array.from(preview.groupDelayResponse.before),
+                after: Float32Array.from(preview.groupDelayResponse.after)
+            } : null,
             impulseResponse: preview.impulseResponse ? {
                 sampleRate: preview.impulseResponse.sampleRate,
                 startMs: preview.impulseResponse.startMs,
@@ -1164,6 +1215,9 @@ export function designRoomEq(request) {
             qualityWarnings.push(QUALITY_WARNING_FILTER_ACCURACY);
         }
         channels.push(synthesis.taps);
+        const phasePreviews = referenceAnalysis
+            ? createPhasePreviews(referenceAnalysis, synthesis.taps, config, frequencies)
+            : null;
         previews.push({
             channel: channelIndex,
             referenceLevelDb: levelDb,
@@ -1172,14 +1226,8 @@ export function designRoomEq(request) {
             targetDb: Float32Array.from(targetDb),
             predictedDb: Float32Array.from(predictedDb),
             baseCorrectionDb: Float32Array.from(baseCorrectionDb),
-            phaseResponse: referenceAnalysis
-                ? createPhaseResponsePreview(
-                    referenceAnalysis,
-                    synthesis.taps,
-                    config,
-                    frequencies
-                )
-                : null,
+            phaseResponse: phasePreviews?.phase || null,
+            groupDelayResponse: phasePreviews?.groupDelay || null,
             impulseResponse: referenceAnalysis
                 ? createImpulseResponsePreview(referenceAnalysis, synthesis.taps, config)
                 : null

@@ -756,7 +756,7 @@ body.layout-mobile select {
     box-sizing: border-box;
 }
 
-body.layout-mobile input:not([type="radio"]):not([type="checkbox"]) {
+body.layout-mobile input:not([type="radio"]):not([type="checkbox"]):not(.vertical-slider) {
     height: var(--et-mobile-control-height);
     min-height: var(--et-mobile-control-height);
     min-width: var(--et-mobile-field-min-width);
@@ -917,7 +917,7 @@ body.layout-mobile .plugin-parameter-ui .parameter-row {
     box-sizing: border-box;
 }
 
-body.layout-mobile .plugin-parameter-ui input[type="range"] {
+body.layout-mobile .plugin-parameter-ui input[type="range"]:not(.vertical-slider) {
     min-width: var(--et-mobile-effect-slider-min-width);
 }
 
@@ -1465,6 +1465,33 @@ body.layout-mobile input[type="range"]:not(.vertical-slider)::-moz-range-track {
 }
 
 body.layout-mobile input[type="range"]:not(.vertical-slider)::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+}
+
+body.layout-mobile input[type="range"].vertical-slider {
+    width: 24px;
+}
+
+body.layout-mobile input[type="range"].vertical-slider::-webkit-slider-runnable-track {
+    width: 7px;
+}
+
+body.layout-mobile input[type="range"].vertical-slider::-webkit-slider-thumb {
+    width: 20px;
+    height: 20px;
+    margin-left: -7px;
+}
+
+body.layout-mobile input[type="range"].vertical-slider::-moz-range-track {
+    width: 7px;
+}
+
+body.layout-mobile input[type="range"].vertical-slider::-moz-range-progress {
+    width: 7px;
+}
+
+body.layout-mobile input[type="range"].vertical-slider::-moz-range-thumb {
     width: 20px;
     height: 20px;
 }

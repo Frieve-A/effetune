@@ -472,8 +472,9 @@ Tube Simulatorは、真空管回路の部品定数に基づく電気的な信号
 
 ### 音質調整ガイド
 
-- 2 VrmsのD/Aコンバーターでは、まず**Line Default**を選びます。実際の製品既定値は、Input Reference 2.828 Vpk、Input Volume 0dB、12AU7、Negative Feedback 30dB、Output Trim +9dBです。
-- Line Defaultの飽和が強すぎる場合は、Input Volumeを下げて回路へ入る電圧を減らし、その後にOutput Trimで再生音量だけを戻します。Output Trimを上げても内部ヘッドルームは増えません。
+- プラグインは**EL84 Pentode @2%**で起動するので、2 VrmsのD/Aコンバーターならそのまま使えます。実際の製品既定値は、Input Reference 2.828 Vpk、Input Volume -55.9648dB、12AX7、Negative Feedback 3dB、Output Trim +4.626dBで、EL84プッシュプル回路を全高調波歪率2%・利得等倍の動作点に置いています。
+- 飽和が強すぎると感じる場合は、Input Volumeを下げて回路へ入る電圧を減らし、その後にOutput Trimで再生音量だけを戻します。Output Trimを上げても内部ヘッドルームは増えません。
+- パワーアンプではなく小信号のライン回路だけを使いたいときは**Line Default**を選びます。
 - 真空管や回路の音色だけを比較したい場合は、**Listening (THD-matched)**のプリセットを使います。互いに音量がそろえてあるため、切り替えの際にトリムを調整する必要はありません。
 - 穏やかなパワーアンプの応答から始めるには、**EL84 Distributed 10 W**が適しています。**EL84 Pentode 10 W**と切り替えると、出力管を同じに保ったまま、スクリーン接続とトランス負荷の違いを比較できます。
 - より高電圧のEL34回路を試す場合は、**EL34 Distributed 20–37 W**を選びます。EL84と比べる前に、Output Trimで音量をそろえてください。
@@ -494,7 +495,7 @@ Presetドロップダウンは先頭に**Custom**があり、続いて**Listenin
 
 ### 回路プリセットと既定値
 
-プラグインは**Line Default**で起動します。プリセットを選ぶと以下の回路全体が設定され、その後にいずれかの値を変えるとカスタム設定になります。
+プラグインはリスニングプリセット**EL84 Pentode @2%**で起動します。プリセットを選ぶと以下の回路全体が設定され、その後にいずれかの値を変えるとカスタム設定になります。
 
 | Circuit Preset | Output Circuit | ドライバー / 出力管 | Negative Feedback | パワー段の設定 | 入出力 |
 | --- | --- | --- | ---: | --- | --- |

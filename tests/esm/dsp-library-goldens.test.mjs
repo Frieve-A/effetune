@@ -15,10 +15,10 @@ import {
 } from '../../tools/verify-dsp-library-goldens.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const GOLDEN_CASE_COUNT = 691;
-const EFFECT_COUNT = 76;
-const WORKLET_GOLDEN_CASE_COUNT = 77;
-const NON_IDENTITY_EFFECT_COUNT = 71;
+const GOLDEN_CASE_COUNT = 775;
+const EFFECT_COUNT = 83;
+const WORKLET_GOLDEN_CASE_COUNT = 84;
+const NON_IDENTITY_EFFECT_COUNT = 78;
 
 function successfulPythonBackend(total = GOLDEN_CASE_COUNT) {
   return {
@@ -386,8 +386,8 @@ test('frozen DSP library acceptance inventory stays complete', async () => {
   assert.equal(inventory.effects, EFFECT_COUNT);
   assert.equal(inventory.total, GOLDEN_CASE_COUNT);
   assert.equal(inventory.assetCases, 20);
-  assert.equal(inventory.eventCases, 106);
-  assert.equal(inventory.eventCount, 373);
+  assert.equal(inventory.eventCases, 127);
+  assert.equal(inventory.eventCount, 442);
   assert.deepEqual(inventory.sampleRates, [
     32000,
     44100,
@@ -422,8 +422,10 @@ test('frozen DSP library acceptance inventory stays complete', async () => {
     128,
     129,
     255,
+    257,
     511,
-    512
+    512,
+    575
   ]);
 });
 

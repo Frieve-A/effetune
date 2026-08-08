@@ -2,6 +2,7 @@
   "type": "AMRadioSimulatorPlugin",
   "tolerance": { "abs": 0.0001, "policy": "per-sample" },
   "fields": [
+    { "name": "radio", "key": "rd", "kind": "bool", "default": true },
     { "name": "txBandwidth", "key": "tb", "kind": "float", "min": 2, "max": 10, "default": 6, "unit": "kHz" },
     { "name": "preEmphasis", "key": "pe", "kind": "float", "min": 0, "max": 100, "default": 50, "unit": "%" },
     { "name": "modDepth", "key": "md", "kind": "float", "min": 10, "max": 125, "default": 90, "unit": "%" },

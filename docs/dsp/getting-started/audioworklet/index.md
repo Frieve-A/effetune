@@ -9,11 +9,8 @@ permalink: /dsp/getting-started/audioworklet/
 
 Use this path to run the package-owned WASM processor in a browser audio graph.
 
-<!-- DSP-RELEASE-NOTICE -->
-> **Release state:** npm is **published** for 0.1.0. The verified package matches these 0.1.0 docs.
-
 ```console
-npm install @effetune/dsp@0.1.0
+npm install @effetune/dsp
 ```
 
 Serve the app over HTTPS or localhost. Direct `file:` loading is unsupported because

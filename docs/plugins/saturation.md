@@ -472,8 +472,9 @@ Tube Simulator models a complete electrical signal path built from tube-circuit 
 
 ### Listening Enhancement Guide
 
-- For a 2 Vrms D/A converter, begin with **Line Default**. Its actual product defaults are Input Reference 2.828 Vpk, Input Volume 0dB, 12AU7, Negative Feedback 30dB, and Output Trim +9dB.
-- If Line Default sounds too saturated, lower Input Volume to reduce the voltage entering the circuit, then use Output Trim only to restore the listening level. Output Trim does not recover internal headroom.
+- The plug-in opens on **EL84 Pentode @2%**, so a 2 Vrms D/A converter needs no setup. Its actual product defaults are Input Reference 2.828 Vpk, Input Volume -55.9648dB, 12AX7, Negative Feedback 3dB, and Output Trim +4.626dB, which places the EL84 push-pull circuit at 2% total harmonic distortion at unity gain.
+- If it sounds too saturated, lower Input Volume to reduce the voltage entering the circuit, then use Output Trim only to restore the listening level. Output Trim does not recover internal headroom.
+- Select **Line Default** when you want the small-signal line circuit on its own instead of a power amplifier.
 - Use the **Listening (THD-matched)** presets when you want to compare tubes and circuits by character alone. They are already matched to one another in loudness, so nothing needs to be trimmed between them.
 - For a restrained power-amplifier response, start with **EL84 Distributed 10 W**. Compare it with **EL84 Pentode 10 W** to hear the effect of the screen connection and transformer loading while keeping the output-tube family the same.
 - Use **EL34 Distributed 20–37 W** when you want to explore the higher-voltage EL34 circuit. Match loudness with Output Trim before comparing it with either EL84 preset.
@@ -494,7 +495,7 @@ The Preset dropdown lists **Custom** first, followed by the **Listening (THD-mat
 
 ### Circuit Presets and Defaults
 
-The plug-in opens with **Line Default**. Selecting a preset writes the complete circuit shown below; changing any value afterward creates a custom setting.
+The plug-in opens with the **EL84 Pentode @2%** listening preset. Selecting a preset writes the complete circuit shown below; changing any value afterward creates a custom setting.
 
 | Circuit Preset | Output Circuit | Driver / Power Tubes | Negative Feedback | Power settings | Input / output |
 | --- | --- | --- | ---: | --- | --- |

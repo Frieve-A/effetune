@@ -154,6 +154,94 @@
         { "frame": 512, "params": { "st": 100 } },
         { "frame": 1536, "params": { "st": 0.125 } }
       ]
+    },
+    {
+      "id": "ssb-usb-zero",
+      "stimulus": "noise",
+      "frames": 4097,
+      "params": { "fr": true, "mo": "USB" }
+    },
+    {
+      "id": "ssb-lsb-zero",
+      "stimulus": "sin1k",
+      "frames": 4097,
+      "params": { "fr": true, "mo": "LSB", "sp": "Off" }
+    },
+    {
+      "id": "ssb-bfo-tuning-shift",
+      "stimulus": "sin1k",
+      "frames": 4097,
+      "params": { "fr": true, "mo": "USB", "tn": 0.5, "bf": 200, "sk": 0, "st": 0, "in": -80, "sp": "Off" },
+      "events": [
+        { "frame": 997, "params": { "bf": -300 } },
+        { "frame": 1999, "params": { "tn": -1.2 } },
+        { "frame": 3001, "params": { "tn": 5, "bf": 1000 } }
+      ]
+    },
+    {
+      "id": "ssb-deep-fade-agc",
+      "stimulus": "noise",
+      "sampleRate": 48000,
+      "channels": 1,
+      "channelMode": "mono",
+      "blockSize": 63,
+      "frames": 12289,
+      "params": { "fr": true, "mo": "USB", "bf": -120, "sk": 100, "fd": 6, "ds": 6, "st": 20, "in": -25, "io": 0.4, "sp": "Small" }
+    },
+    {
+      "id": "receiver-mode-switch",
+      "stimulus": "noise",
+      "sampleRate": 48000,
+      "blockSize": 127,
+      "frames": 12289,
+      "params": { "fr": true, "de": "Envelope", "sk": 30, "st": 4, "sp": "Small" },
+      "events": [
+        { "frame": 2049, "params": { "mo": "USB", "bf": 250 } },
+        { "frame": 4097, "params": { "de": "Synchronous", "dt": 500 } },
+        { "frame": 6145, "params": { "mo": "LSB", "bf": -400 } },
+        { "frame": 9217, "params": { "mo": "AM" } }
+      ]
+    },
+    {
+      "id": "ssb-maximum-shape-192000",
+      "stimulus": "noise",
+      "sampleRate": 192000,
+      "blockSize": 64,
+      "channels": 4,
+      "channelMode": "all4",
+      "channel": "A",
+      "frames": 1025,
+      "params": { "fr": true, "mo": "USB", "bf": -1000, "tn": 5, "sk": 100, "fd": 10, "ds": 8, "st": 100, "in": 0, "bw": 10, "hz": "60", "sp": "Table" }
+    },
+    {
+      "id": "am-bfo-inert",
+      "stimulus": "noise",
+      "frames": 2049,
+      "params": { "fr": true, "bf": 750 }
+    },
+    {
+      "id": "ssb-detector-inert",
+      "stimulus": "noise",
+      "frames": 2049,
+      "params": { "fr": true, "mo": "USB", "de": "Synchronous", "dt": 500 }
+    },
+    {
+      "id": "radio-off-noise",
+      "stimulus": "noise",
+      "frames": 4097,
+      "params": { "fr": true, "rd": false }
+    },
+    {
+      "id": "radio-shutdown-events",
+      "stimulus": "noise",
+      "sampleRate": 48000,
+      "blockSize": 127,
+      "frames": 12289,
+      "params": { "fr": true, "mo": "USB", "bf": 200 },
+      "events": [
+        { "frame": 4097, "params": { "rd": false } },
+        { "frame": 8193, "params": { "rd": true } }
+      ]
     }
   ]
 }

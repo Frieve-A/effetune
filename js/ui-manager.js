@@ -302,6 +302,20 @@ export class UIManager {
         document.addEventListener?.('input', handleRangeInput);
         document.addEventListener?.('change', handleRangeInput);
 
+        // Plugins reset sliders programmatically (double-click on a band slider,
+        // Reset buttons) by assigning input.value, which fires no input/change
+        // event. These document listeners bubble after the plugin handler, so the
+        // already-applied values are picked up here.
+        const handleRangeReset = (event) => {
+            const rangeFillRoot = event.target?.closest?.('.parameter-row') ??
+                event.target?.closest?.('.plugin-parameter-ui');
+            if (rangeFillRoot) {
+                this.refreshRangeFillStyling(rangeFillRoot);
+            }
+        };
+        document.addEventListener?.('click', handleRangeReset);
+        document.addEventListener?.('dblclick', handleRangeReset);
+
         if (typeof MutationObserver !== 'undefined' && document.body) {
             this._rangeFillObserver = new MutationObserver((mutations) => {
                 for (const mutation of mutations) {

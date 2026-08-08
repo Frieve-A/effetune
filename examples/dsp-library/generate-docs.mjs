@@ -10,12 +10,9 @@ const bindingCatalogPath = path.join(
   repoRoot, 'dsp', 'bindings', 'generated', 'effects-v1.json'
 );
 const outputRoot = path.join(repoRoot, 'docs', 'dsp');
-const validStatuses = new Set(['unreleased', 'published-unverified', 'published']);
 const safeSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const manifestSegmentPattern = /^[A-Za-z0-9._-]+$/;
 const publicSegmentPattern = /^[a-z0-9]+(?:[.-][a-z0-9]+)*$/;
-const officialReleasePrefix =
-  'https://github.com/Frieve-A/effetune/releases/download/';
 const docsOverlayFields = Object.freeze([
   'displayName',
   'category',
@@ -229,54 +226,6 @@ function validateSchemaValue(schema, value, location = '$') {
   }
 }
 
-export function releaseCohort(release) {
-  const states = Object.values(release.surfaces);
-  if (states.every(state => state.status === 'unreleased')) return 'unreleased';
-  if (states.every(state =>
-    state.status === 'published' &&
-    state.verifiedVersion === release.docsVersion)) {
-    return 'published';
-  }
-  return 'partial/incomplete';
-}
-
-export function validateReleaseState(release) {
-  for (const surface of ['python', 'npm', 'githubRelease']) {
-    const state = release.surfaces?.[surface];
-    if (!state || !validStatuses.has(state.status)) {
-      fail(`release-state.json has an invalid ${surface} status.`);
-    }
-    if (state.status === 'unreleased' &&
-        (state.verifiedVersion !== undefined || state.assetUrl !== undefined)) {
-      fail(`${surface} must not declare a version or asset URL while unreleased.`);
-    }
-    if (state.status !== 'unreleased' && !state.verifiedVersion) {
-      fail(`${surface} must declare verifiedVersion after publication.`);
-    }
-    if (surface !== 'githubRelease' && state.assetUrl !== undefined) {
-      fail(`${surface} must not declare a GitHub Release asset URL.`);
-    }
-    if (surface === 'githubRelease' && state.assetUrl !== undefined) {
-      const expectedPrefix =
-        `${officialReleasePrefix}dsp-v${state.verifiedVersion}/`;
-      const assetName = state.assetUrl.startsWith(expectedPrefix)
-        ? state.assetUrl.slice(expectedPrefix.length)
-        : '';
-      if (!assetName || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(assetName)) {
-        fail(
-          'A GitHub Release assetUrl must use the official Frieve-A/effetune ' +
-          'download path for its exact verified version.'
-        );
-      }
-    }
-    if (surface === 'githubRelease' && state.status === 'published' &&
-        state.assetUrl === undefined) {
-      fail('A published GitHub Release requires an HTTPS assetUrl.');
-    }
-  }
-  return releaseCohort(release);
-}
-
 function slugForType(type) {
   return validateEffectSlug(type
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
@@ -317,8 +266,7 @@ function loadSources() {
   ));
   const mapping = readJson(path.join(docsDataRoot, 'effect-prose-map-v0.1.json'));
   const routes = readJson(path.join(docsDataRoot, 'routes-v0.1.json'));
-  const release = readJson(path.join(docsDataRoot, 'release-state.json'));
-  const locales = readJson(path.join(docsDataRoot, 'release-state.locales.json'));
+  const locales = readJson(path.join(docsDataRoot, 'docs-locales.json'));
   const npmPackage = readJson(path.join(repoRoot, 'dsp', 'bindings', 'js', 'package.json'));
   const convenienceExports = readJson(path.join(
     repoRoot,
@@ -372,9 +320,7 @@ function loadSources() {
       fail(`The docs overlay entry for ${type} is incomplete.`);
     }
   }
-  validateReleaseState(release);
   if (npmPackage.version !== pythonVersion ||
-      npmPackage.version !== release.docsVersion ||
       npmPackage.name !== '@effetune/dsp' ||
       pythonName !== 'effetune') {
     fail('Package identities and docs version must match.');
@@ -408,7 +354,6 @@ function loadSources() {
     overlay,
     mapping,
     routes,
-    release,
     locales,
     npmPackage,
     convenienceExports
@@ -598,46 +543,6 @@ function routeOutput(routes, id, replacements = {}) {
   }
   if (relative.includes('{')) fail(`Route ${id} has unresolved output variables.`);
   return resolveUnderRoot(repoRoot, relative, `Route ${id} output`);
-}
-
-function releaseSummary(release) {
-  const surfaces = Object.entries(release.surfaces)
-    .map(([surface, state]) =>
-      `${surface}: ${state.status}${state.verifiedVersion ? ` (${state.verifiedVersion})` : ''}`
-    )
-    .join('; ');
-  return `cohort: ${releaseCohort(release)}; ${surfaces}`;
-}
-
-function installNotice(release, surface) {
-  const state = release.surfaces[surface];
-  const ready = state.status === 'published' &&
-    state.verifiedVersion === release.docsVersion;
-  return [
-    '<!-- DSP-RELEASE-NOTICE -->',
-    `> **Release state:** ${surface} is **${state.status}**` +
-      `${state.verifiedVersion ? ` for ${state.verifiedVersion}` : ''}. ` +
-      (ready
-        ? `The verified package matches these ${release.docsVersion} docs.`
-        : 'The public install command is intentionally disabled until a version-matched smoke test passes.'),
-    ...(state.assetUrl
-      ? [
-          `> [` +
-          (state.status === 'published'
-            ? 'Verified public Release asset'
-            : 'Public Release asset (verification pending)') +
-          `](${state.assetUrl})`
-        ]
-      : []),
-    ''
-  ].join('\n');
-}
-
-function packageInstall(release, surface, command) {
-  const state = release.surfaces[surface];
-  return state.status === 'published' && state.verifiedVersion === release.docsVersion
-    ? codeBlock('console', command)
-    : '> Use the CI candidate artifact for pre-release testing. Do not substitute an older registry version.';
 }
 
 function extractAppSections(catalog, overlay, mapping) {
@@ -894,11 +799,7 @@ function effectsIndex(catalog, overlay) {
   ].join('\n');
 }
 
-function landingPage(catalog, release, convenienceExports) {
-  const pythonReady = release.surfaces.python.status === 'published' &&
-    release.surfaces.python.verifiedVersion === release.docsVersion;
-  const npmReady = release.surfaces.npm.status === 'published' &&
-    release.surfaces.npm.verifiedVersion === release.docsVersion;
+function landingPage(catalog, version, convenienceExports) {
   return frontMatter(
     'EffeTune DSP Library',
     '/dsp/',
@@ -908,7 +809,7 @@ function landingPage(catalog, release, convenienceExports) {
     '',
     '**Deterministic DSP for Python, JavaScript, browsers, humans, and agents.**',
     '',
-    `EffeTune DSP v${release.docsVersion} is an MIT-licensed audio processing library with ` +
+    `EffeTune DSP v${version} is an MIT-licensed audio processing library with ` +
       `${catalog.effects.length} catalog-registered effects, analyzers, and utilities. ` +
       'Python and WebAssembly run the same host-neutral C++20 core and use the same semantic ' +
       'Chain JSON, so a preset does not need to be reauthored for each surface.',
@@ -917,12 +818,10 @@ function landingPage(catalog, release, convenienceExports) {
       'package-owned AudioWorklet in a browser. The EffeTune app is an optional visual preset ' +
       'editor; the Python and JavaScript packages work independently.',
     '',
-    `<p class="dsp-release-state"><strong>Release state:</strong> ${releaseSummary(release)}.</p>`,
-    '',
-    `[Python Start](/dsp/getting-started/python/){: .dsp-cta${pythonReady ? '' : ' .is-disabled'} } · ` +
-      `[JavaScript Start](/dsp/getting-started/javascript/){: .dsp-cta${npmReady ? '' : ' .is-disabled'} } · ` +
-      `[AudioWorklet Start](/dsp/getting-started/audioworklet/){: .dsp-cta${npmReady ? '' : ' .is-disabled'} } · ` +
-      `[CLI Start](/dsp/getting-started/cli/){: .dsp-cta${pythonReady ? '' : ' .is-disabled'} }`,
+    '[Python Start](/dsp/getting-started/python/){: .dsp-cta } · ' +
+      '[JavaScript Start](/dsp/getting-started/javascript/){: .dsp-cta } · ' +
+      '[AudioWorklet Start](/dsp/getting-started/audioworklet/){: .dsp-cta } · ' +
+      '[CLI Start](/dsp/getting-started/cli/){: .dsp-cta }',
     '',
     'Try the [live demo](/dsp/demo/) or follow the ' +
       '[schema-driven agent recipe](/dsp/cookbook/schema-driven-agent/).',
@@ -1022,7 +921,8 @@ function landingPage(catalog, release, convenienceExports) {
 }
 
 function staticPages(sources) {
-  const { convenienceExports, npmPackage, release, routes } = sources;
+  const { catalog, convenienceExports, npmPackage, routes } = sources;
+  const version = npmPackage.version;
   const pythonSnippet = read(path.join(docsDataRoot, 'snippets', 'python-start.py'));
   const javascriptSnippet = read(path.join(
     docsDataRoot, 'snippets', 'javascript-start.mjs'
@@ -1079,8 +979,7 @@ function staticPages(sources) {
   add('python-start', `
 Use this path to process a planar NumPy array.
 
-${installNotice(release, 'python')}
-${packageInstall(release, 'python', `pip install effetune==${release.docsVersion}`)}
+${codeBlock('console', 'pip install effetune')}
 
 Wheels target CPython 3.10+ on manylinux x86-64, Windows AMD64, macOS Intel, and
 macOS Apple Silicon. musllinux is not provided. Input must be C-contiguous
@@ -1118,8 +1017,7 @@ sf.write("output.wav", output.T, sample_rate, subtype="FLOAT")`)}
   add('javascript-start', `
 Use this path for offline processing in Node.js or a browser module.
 
-${installNotice(release, 'npm')}
-${packageInstall(release, 'npm', `npm install @effetune/dsp@${release.docsVersion}`)}
+${codeBlock('console', 'npm install @effetune/dsp')}
 
 The package is ESM-only. Save the example as \`start.mjs\` and run
 \`node start.mjs\`, or set \`"type": "module"\` in the consumer's
@@ -1146,8 +1044,7 @@ a rejected stream block does not change filter state.
   add('audioworklet-start', `
 Use this path to run the package-owned WASM processor in a browser audio graph.
 
-${installNotice(release, 'npm')}
-${packageInstall(release, 'npm', `npm install @effetune/dsp@${release.docsVersion}`)}
+${codeBlock('console', 'npm install @effetune/dsp')}
 
 Serve the app over HTTPS or localhost. Direct \`file:\` loading is unsupported because
 ordinary browser module, AudioWorklet, and WASM security rules generally reject it.
@@ -1188,8 +1085,7 @@ Scheduled frame events belong to Python/JavaScript streams, not this Worklet API
   add('cli-start', `
 Use this path to validate a Chain and render files with the Python package.
 
-${installNotice(release, 'python')}
-${packageInstall(release, 'python', `pip install effetune==${release.docsVersion}`)}
+${codeBlock('console', 'pip install effetune')}
 
 Save the following as \`start.py\` and run \`python start.py\`. It creates both
 \`input.wav\` and \`volume.json\` without ffmpeg:
@@ -1251,7 +1147,7 @@ The AudioWorklet wrapper does not expose a latency getter.
 
 The docs overlay explicitly marks types that can intentionally produce non-zero output
 from zero input at an active setting and sample rate. The candidate-package gate runs
-all 76 catalog types exactly once, using the same canonical assets as the public asset
+all ${catalog.effects.length} catalog types exactly once, using the same canonical assets as the public asset
 examples where required. It requires the overlay, public catalog, and frozen
 \`source-generation-v0.1.json\` member sets to match exactly, and treats a peak above
 \`1e-7\` as generated output. Those effect pages carry a warning; the absence of that
@@ -1288,7 +1184,7 @@ record and requires identical input and output digests in the same environment.
 
 ${codeBlock('python', researchSnippet)}
 
-${codeBlock('console', 'python research-experiment.py --wheel /path/to/effetune-0.1.0.whl')}
+${codeBlock('console', `python research-experiment.py --wheel /path/to/effetune-${version}.whl`)}
 `);
 
   add('chain-and-presets', `
@@ -1449,12 +1345,11 @@ measurement, resampling, ffmpeg, LUFS, and true-peak tools are not v0.1 capabili
 `);
 
   add('python-api', `
-${installNotice(release, 'python')}
-${packageInstall(release, 'python', `pip install effetune==${release.docsVersion}`)}
+${codeBlock('console', 'pip install effetune')}
 
 These signatures summarize the typed public surface. The installed \`py.typed\`
 package and generated effect stubs remain authoritative for individual effect options;
-the 76 effect signatures are not repeated here.
+the ${catalog.effects.length} effect signatures are not repeated here.
 
 ## Effect names and constructor keywords
 
@@ -1576,7 +1471,7 @@ on_telemetry=callback)\`, and Stream subscriptions deliver decoded
 \`TelemetryFrame\` subclasses. See [Compatibility](/dsp/reference/compatibility/#analyzers-and-telemetry)
 for exact frame fields.
 
-\`EFFECT_METADATA\` is the machine-readable catalog, \`EFFECT_CLASSES\` maps all 76
+\`EFFECT_METADATA\` is the machine-readable catalog, \`EFFECT_CLASSES\` maps all ${catalog.effects.length}
 semantic names to their classes, and
 \`create_effect(effect_type: str, **options: object) -> Effect\` is the generic
 constructor. \`Stream.latency_samples\` is the live aggregate, distinct from catalog
@@ -1591,8 +1486,7 @@ lifecycle operations. All derive from \`EffeTuneError\`.
 `);
 
   add('javascript-api', `
-${installNotice(release, 'npm')}
-${packageInstall(release, 'npm', `npm install @effetune/dsp@${release.docsVersion}`)}
+${codeBlock('console', 'npm install @effetune/dsp')}
 
 The package is ESM-only. These signatures follow the shipped \`index.d.ts\` and
 \`worklet.d.ts\`. The generated declarations remain authoritative for individual
@@ -1687,7 +1581,7 @@ createEffect<T extends EffectType>(
 ): EffectClassByType[T]`)}
 
 \`encodeEta1()\` validates finite, equal-length planar channels and matrix paths.
-\`EFFECT_CATALOG\`, \`EFFECT_CLASSES\`, and all 76 root class/factory pairs cover the
+\`EFFECT_CATALOG\`, \`EFFECT_CLASSES\`, and all ${catalog.effects.length} root class/factory pairs cover the
 same semantic catalog as Python without private implementation data.
 
 ## AudioWorklet
@@ -1832,30 +1726,27 @@ EffeTune is MIT licensed. Python wheels include PFFFT and nanobind notices; the 
 tarball includes the PFFFT notice. Release automation builds and clean-installs
 candidates, checks goldens, emits checksums, an SPDX SBOM, and provenance attestations.
 
-${installNotice(release, 'python')}
-${installNotice(release, 'npm')}
-${installNotice(release, 'githubRelease')}
-
-Only an existing, version-verified public asset receives a link. A surface can be
-\`published-unverified\` independently; mismatched verified versions form a
-partial/incomplete release cohort rather than changing that surface status.
+The registries hold the authoritative published versions. \`pip install effetune\` and
+\`npm install @effetune/dsp\` always resolve the latest release; these docs describe
+v${version}. Signed tarballs, wheels, checksums, and the SBOM for every tagged release
+are attached to the matching
+[\`dsp-v\` GitHub Release](https://github.com/Frieve-A/effetune/releases?q=dsp-v).
 `);
 
   add('faq', `
-**How do I install the registry release?** Registry availability is tracked
-independently for each package.
+**How do I install the registry release?** Each command installs the latest published
+version of its package.
 
 **Python package**
 
-${installNotice(release, 'python')}
-${packageInstall(release, 'python', `pip install effetune==${release.docsVersion}`)}
+${codeBlock('console', 'pip install effetune')}
 
 **JavaScript package**
 
-${installNotice(release, 'npm')}
-${packageInstall(release, 'npm', `npm install @effetune/dsp@${release.docsVersion}`)}
+${codeBlock('console', 'npm install @effetune/dsp')}
 
-Use the version shown by the documentation when reproducibility matters.
+These docs describe v${version}. Pin that exact version when reproducibility matters,
+for example \`pip install effetune==${version}\` or \`npm install @effetune/dsp@${version}\`.
 
 **Why does my Python array fail?** Use finite C-contiguous planar \`float32\` shaped
 \`(channels, frames)\`.
@@ -1887,32 +1778,22 @@ technical diagnostics to the developer console.
   return pages;
 }
 
-function localizedOverview(locale, resource, release, permalink) {
-  const statuses = Object.entries(release.surfaces).map(([surface, state]) =>
-    `- ${surface}: **${resource[state.status] ?? resource.unreleased}**` +
-    `${state.verifiedVersion ? ` (${state.verifiedVersion})` : ''}`
-  );
+function localizedOverview(locale, resource, version, permalink) {
+  const coverage = resource.coverage.replaceAll('{version}', version);
   return [
     '---',
     'layout: dsp',
     `title: ${JSON.stringify(resource.title)}`,
-    `description: ${JSON.stringify(resource.coverage)}`,
+    `description: ${JSON.stringify(coverage)}`,
     `lang: ${locale}`,
     `permalink: ${permalink}`,
     '---',
     '',
     `# ${resource.title}`,
     '',
-    resource.coverage,
+    coverage,
     '',
-    `Documentation version: **${release.docsVersion}**`,
-    `Release cohort: **${releaseCohort(release)}**`,
-    '',
-    '<!-- DSP-RELEASE-NOTICE -->',
-    '',
-    `## ${resource.release}`,
-    '',
-    ...statuses,
+    `Documentation version: **${version}**`,
     '',
     `- [${resource.fullDocs}](/dsp/)`,
     `- [${resource.demo}](/dsp/demo/)`,
@@ -2003,15 +1884,14 @@ function publicCatalog(catalog, overlay) {
 }
 
 function llmsText(sources) {
-  const { catalog, release, npmPackage } = sources;
+  const { catalog, npmPackage } = sources;
   return [
     '# EffeTune DSP Library',
     '',
-    `Version: ${release.docsVersion}`,
+    `Version: ${npmPackage.version}`,
     'Python package: effetune',
     `npm package: ${npmPackage.name}`,
     `Catalog entries: ${catalog.effects.length}`,
-    `Release state: ${releaseSummary(release)}`,
     '',
     'Canonical resources:',
     '- https://effetune.frieve.com/dsp/',
@@ -2045,13 +1925,14 @@ function navYaml(routes) {
 }
 
 export function generatedOutputs(sources) {
-  const { catalog, overlay, mapping, routes, release, locales } = sources;
+  const { catalog, overlay, mapping, routes, locales, npmPackage } = sources;
+  const version = npmPackage.version;
   routeMap(routes);
   const appSections = extractAppSections(catalog, overlay, mapping);
   const outputs = staticPages(sources);
   outputs.set(
     routeOutput(routes, 'landing'),
-    landingPage(catalog, release, sources.convenienceExports)
+    landingPage(catalog, version, sources.convenienceExports)
   );
   outputs.set(
     routeOutput(routes, 'effects'),
@@ -2086,7 +1967,7 @@ export function generatedOutputs(sources) {
       localizedOverview(
         locale,
         locales[locale] ?? locales.en,
-        release,
+        version,
         permalink
       )
     );
@@ -2178,7 +2059,7 @@ function main() {
   }
   console.log(
     `${check ? 'Checked' : 'Generated'} ${sources.catalog.effects.length} effect pages ` +
-    `and the v${sources.release.docsVersion} DSP documentation tree.`
+    `and the v${sources.npmPackage.version} DSP documentation tree.`
   );
 }
 

@@ -2,6 +2,7 @@
   "type": "SWRadioSimulatorPlugin",
   "tolerance": { "abs": 0.0001, "policy": "per-sample" },
   "fields": [
+    { "name": "radio", "key": "rd", "kind": "bool", "default": true },
     { "name": "txBandwidth", "key": "tb", "kind": "float", "min": 2, "max": 10, "default": 4.5, "unit": "kHz" },
     { "name": "preEmphasis", "key": "pe", "kind": "float", "min": 0, "max": 100, "default": 50, "unit": "%" },
     { "name": "modDepth", "key": "md", "kind": "float", "min": 10, "max": 125, "default": 90, "unit": "%" },
@@ -22,6 +23,8 @@
     { "name": "humFrequency", "key": "hz", "kind": "enum", "default": "50", "values": ["50", "60"] },
     { "name": "speaker", "key": "sp", "kind": "enum", "default": "Small", "values": ["Off", "Small", "Table"] },
     { "name": "outputGain", "key": "og", "kind": "float", "min": -24, "max": 24, "default": 0, "unit": "dB" },
-    { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "default": 100, "unit": "%" }
+    { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "default": 100, "unit": "%" },
+    { "name": "mode", "key": "mo", "kind": "enum", "default": "AM", "values": ["AM", "USB", "LSB"] },
+    { "name": "bfoOffset", "key": "bf", "kind": "float", "min": -1000, "max": 1000, "default": 0, "unit": "Hz" }
   ]
 }

@@ -1,11 +1,11 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:0e90b23d9ae32c5b267feb1d5dc6a3613b2993ac60eaa2b64352a1a46078f13b",
+  "sourceDigest": "sha256:50cfdae562bc20d7f379e8c931bae4d9f4c4cdd7f7e191935ac338f692c83d06",
   "emsdkVersion": "6.0.2",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:fb0111e878066e67fc682824288c32fd9d9d5558ce953f2d7dd9842d75134e6a",
+    "digest": "sha256:2a3c283e9f45f68d561b2d651a8c73d78cab2a8f8cbc74f6f99ebcc64e408598",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
@@ -115,7 +115,7 @@
       {
         "id": "dsp/plugins/lofi/g726_adpcm_simulator/params.json",
         "kind": "file",
-        "sha256": "sha256:30719f175ac3cf9625721fe2f4fe2de50924d1c1934eeaf40a6860c2e64be7bd"
+        "sha256": "sha256:a096e3cb9174c7650a7d024f3dc2c28506f8e1b98b879329cd8a9f5dc3d685ee"
       },
       {
         "id": "dsp/registry.inc#G726ADPCMSimulatorPlugin-entry",
@@ -673,7 +673,7 @@
     },
     {
       "name": "AMRadioSimulatorPlugin",
-      "hash": 3482469380,
+      "hash": 1895450983,
       "byteCapacity": 0,
       "assets": []
     },
@@ -686,6 +686,12 @@
     {
       "name": "BluetoothSBCSimulatorPlugin",
       "hash": 2698474763,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
+      "name": "CassetteArtifactsPlugin",
+      "hash": 4133384581,
       "byteCapacity": 0,
       "assets": []
     },
@@ -703,7 +709,7 @@
     },
     {
       "name": "FMRadioSimulatorPlugin",
-      "hash": 1965882227,
+      "hash": 538242584,
       "byteCapacity": 0,
       "assets": []
     },
@@ -745,7 +751,13 @@
     },
     {
       "name": "SWRadioSimulatorPlugin",
-      "hash": 2343942365,
+      "hash": 4166365127,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
+      "name": "TapeArtifactsPlugin",
+      "hash": 3186469333,
       "byteCapacity": 0,
       "assets": []
     },
@@ -914,7 +926,7 @@
     }
   ],
   "sizes": {
-    "baseline": 760814,
-    "simd": 853277
+    "baseline": 801049,
+    "simd": 892774
   }
 }

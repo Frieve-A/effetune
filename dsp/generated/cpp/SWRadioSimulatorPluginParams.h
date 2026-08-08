@@ -7,6 +7,7 @@
 namespace effetune::generated {
 
 struct SWRadioSimulatorPluginParams {
+  float radio;
   float txBandwidth;
   float preEmphasis;
   float modDepth;
@@ -28,10 +29,12 @@ struct SWRadioSimulatorPluginParams {
   float speaker;
   float outputGain;
   float mix;
-  static constexpr std::uint32_t kHash = 0x8bb5b8ddu;
-  static constexpr std::uint32_t kFloatCount = 21u;
+  float mode;
+  float bfoOffset;
+  static constexpr std::uint32_t kHash = 0xf855afc7u;
+  static constexpr std::uint32_t kFloatCount = 24u;
 };
-static_assert(21u == 0u || sizeof(SWRadioSimulatorPluginParams) == sizeof(float) * 21u);
+static_assert(24u == 0u || sizeof(SWRadioSimulatorPluginParams) == sizeof(float) * 24u);
 
 } // namespace effetune::generated
 

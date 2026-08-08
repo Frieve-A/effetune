@@ -954,7 +954,12 @@ private:
     processingAmountTarget_ = params_.processing / 18.0F;
     processingDriveTarget_ = static_cast<float>(std::pow(10.0, params_.processing / 20.0F));
     limiterRelease_ = static_cast<float>(std::exp(-1.0 / (0.050 * ratePlan_->mpx)));
-    signalAmplitude_ = static_cast<float>(std::pow(10.0, (params_.signal - 60.0F) / 20.0F));
+    // Radio off models the transmitter going dark: the RF carrier amplitude is
+    // zeroed, so the receiver only picks up its own thermal noise and the
+    // limiter/discriminator chain turns it into full-scale FM hiss.
+    signalAmplitude_ = params_.radio >= 0.5F
+                           ? static_cast<float>(std::pow(10.0, (params_.signal - 60.0F) / 20.0F))
+                           : 0.0F;
     noiseSigma_ = 0.0005F;
     ifBandKhz_ = params_.ifBand;
     multipathTarget_ = params_.multipath * 0.01F;
@@ -1015,9 +1020,11 @@ private:
     // continuously as CNR falls: full stereo above ~36 dB CNR and essentially
     // mono by ~18 dB CNR, smoothstep between. The value is parameter-static;
     // the dynamic PLL lock gate stays per-sample.
+    // Off the air there is no carrier and no pilot, so the CNR term collapses
+    // and Auto lands on mono the way a receiver does on a dead channel.
     const double cnr_db = static_cast<double>(params_.signal) + 5.6 +
                           10.0 * std::log10(230.0 / static_cast<double>(ifBandKhz_));
-    double position = (cnr_db - 18.0) / (36.0 - 18.0);
+    double position = params_.radio >= 0.5F ? (cnr_db - 18.0) / (36.0 - 18.0) : 0.0;
     if (position < 0.0) {
       position = 0.0;
     } else if (position > 1.0) {
