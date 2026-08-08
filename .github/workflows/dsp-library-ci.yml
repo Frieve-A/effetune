@@ -27,11 +27,11 @@ jobs:
     if: ${{ inputs.stage == 'preflight' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
       - name: Verify manifests, identity, paths, and workflow syntax
@@ -108,8 +108,8 @@ jobs:
     if: ${{ inputs.stage == 'linux' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
@@ -173,7 +173,7 @@ jobs:
           assert.notDeepEqual([...output[0]], [...input[0]]);
           chain.close();
           NODE
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: npm-package
           path: ${{ runner.temp }}/npm-package/*.tgz
@@ -199,7 +199,7 @@ jobs:
           node examples/dsp-library/build-site.mjs --guide ./_site/dsp/index.html --output ./_site/dsp
           node examples/dsp-library/verify-site-stage.mjs --stage ./_site/dsp
       - name: Build CPython 3.12 stable-ABI wheel
-        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
+        uses: pypa/cibuildwheel@4726cd35bb13f7bde50cf2761f2499ac7b3aa32c # v4.1.1
         env:
           CIBW_BUILD: cp312-*
           CIBW_ARCHS: auto64
@@ -234,18 +234,18 @@ jobs:
               [wheel.name for wheel in wheels],
           )
           PY
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
       - name: Verify abi3 wheel on newer CPython
         run: python dsp/bindings/python/tools/verify_abi3_wheel.py wheelhouse/cp312
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-ubuntu-latest-cp312
           path: wheelhouse/cp312/*.whl
           if-no-files-found: error
       - name: Build CPython 3.10 wheel
-        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
+        uses: pypa/cibuildwheel@4726cd35bb13f7bde50cf2761f2499ac7b3aa32c # v4.1.1
         env:
           CIBW_BUILD: cp310-*
           CIBW_ARCHS: auto64
@@ -277,13 +277,13 @@ jobs:
               [wheel.name for wheel in wheels],
           )
           PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-ubuntu-latest-cp310
           path: wheelhouse/cp310/*.whl
           if-no-files-found: error
       - name: Build CPython 3.11 wheel
-        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
+        uses: pypa/cibuildwheel@4726cd35bb13f7bde50cf2761f2499ac7b3aa32c # v4.1.1
         env:
           CIBW_BUILD: cp311-*
           CIBW_ARCHS: auto64
@@ -315,7 +315,7 @@ jobs:
               [wheel.name for wheel in wheels],
           )
           PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-ubuntu-latest-cp311
           path: wheelhouse/cp311/*.whl
@@ -326,9 +326,9 @@ jobs:
     if: ${{ inputs.stage == 'windows' }}
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build CPython 3.12 stable-ABI wheel
-        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
+        uses: pypa/cibuildwheel@4726cd35bb13f7bde50cf2761f2499ac7b3aa32c # v4.1.1
         env:
           CIBW_BUILD: cp312-*
           CIBW_ARCHS: auto64
@@ -364,18 +364,18 @@ jobs:
               [wheel.name for wheel in wheels],
           )
           PY
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
       - name: Verify abi3 wheel on newer CPython
         run: python dsp/bindings/python/tools/verify_abi3_wheel.py wheelhouse/cp312
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-windows-latest-cp312
           path: wheelhouse/cp312/*.whl
           if-no-files-found: error
       - name: Build CPython 3.10 wheel
-        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
+        uses: pypa/cibuildwheel@4726cd35bb13f7bde50cf2761f2499ac7b3aa32c # v4.1.1
         env:
           CIBW_BUILD: cp310-*
           CIBW_ARCHS: auto64
@@ -408,13 +408,13 @@ jobs:
               [wheel.name for wheel in wheels],
           )
           PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-windows-latest-cp310
           path: wheelhouse/cp310/*.whl
           if-no-files-found: error
       - name: Build CPython 3.11 wheel
-        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
+        uses: pypa/cibuildwheel@4726cd35bb13f7bde50cf2761f2499ac7b3aa32c # v4.1.1
         env:
           CIBW_BUILD: cp311-*
           CIBW_ARCHS: auto64
@@ -447,7 +447,7 @@ jobs:
               [wheel.name for wheel in wheels],
           )
           PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-windows-latest-cp311
           path: wheelhouse/cp311/*.whl
@@ -458,9 +458,9 @@ jobs:
     if: ${{ inputs.stage == 'macos-arm' }}
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build CPython 3.12 stable-ABI wheel
-        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
+        uses: pypa/cibuildwheel@4726cd35bb13f7bde50cf2761f2499ac7b3aa32c # v4.1.1
         env:
           CIBW_BUILD: cp312-*
           CIBW_ARCHS: auto64
@@ -495,18 +495,18 @@ jobs:
               [wheel.name for wheel in wheels],
           )
           PY
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
       - name: Verify abi3 wheel on newer CPython
         run: python dsp/bindings/python/tools/verify_abi3_wheel.py wheelhouse/cp312
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-macos-15-cp312
           path: wheelhouse/cp312/*.whl
           if-no-files-found: error
       - name: Build CPython 3.10 wheel
-        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
+        uses: pypa/cibuildwheel@4726cd35bb13f7bde50cf2761f2499ac7b3aa32c # v4.1.1
         env:
           CIBW_BUILD: cp310-*
           CIBW_ARCHS: auto64
@@ -538,13 +538,13 @@ jobs:
               [wheel.name for wheel in wheels],
           )
           PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-macos-15-cp310
           path: wheelhouse/cp310/*.whl
           if-no-files-found: error
       - name: Build CPython 3.11 wheel
-        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
+        uses: pypa/cibuildwheel@4726cd35bb13f7bde50cf2761f2499ac7b3aa32c # v4.1.1
         env:
           CIBW_BUILD: cp311-*
           CIBW_ARCHS: auto64
@@ -576,7 +576,7 @@ jobs:
               [wheel.name for wheel in wheels],
           )
           PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-macos-15-cp311
           path: wheelhouse/cp311/*.whl
@@ -587,9 +587,9 @@ jobs:
     if: ${{ inputs.stage == 'macos-intel' }}
     runs-on: macos-15-intel
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build CPython 3.12 stable-ABI wheel
-        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
+        uses: pypa/cibuildwheel@4726cd35bb13f7bde50cf2761f2499ac7b3aa32c # v4.1.1
         env:
           CIBW_BUILD: cp312-*
           CIBW_ARCHS: auto64
@@ -624,18 +624,18 @@ jobs:
               [wheel.name for wheel in wheels],
           )
           PY
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
       - name: Verify abi3 wheel on newer CPython
         run: python dsp/bindings/python/tools/verify_abi3_wheel.py wheelhouse/cp312
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-macos-15-intel-cp312
           path: wheelhouse/cp312/*.whl
           if-no-files-found: error
       - name: Build CPython 3.10 wheel
-        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
+        uses: pypa/cibuildwheel@4726cd35bb13f7bde50cf2761f2499ac7b3aa32c # v4.1.1
         env:
           CIBW_BUILD: cp310-*
           CIBW_ARCHS: auto64
@@ -667,13 +667,13 @@ jobs:
               [wheel.name for wheel in wheels],
           )
           PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-macos-15-intel-cp310
           path: wheelhouse/cp310/*.whl
           if-no-files-found: error
       - name: Build CPython 3.11 wheel
-        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c # v3.2.1
+        uses: pypa/cibuildwheel@4726cd35bb13f7bde50cf2761f2499ac7b3aa32c # v4.1.1
         env:
           CIBW_BUILD: cp311-*
           CIBW_ARCHS: auto64
@@ -705,7 +705,7 @@ jobs:
               [wheel.name for wheel in wheels],
           )
           PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-macos-15-intel-cp311
           path: wheelhouse/cp311/*.whl
@@ -716,19 +716,19 @@ jobs:
     if: ${{ inputs.stage == 'acceptance' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: python-ubuntu-latest-cp312
           path: candidate/python
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: npm-package
           path: candidate/npm
@@ -776,7 +776,7 @@ jobs:
           node tools/verify-dsp-library-goldens.mjs
           --python python
           --summary .tmp/dsp-library-goldens-ci.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: dsp-library-acceptance-summary
