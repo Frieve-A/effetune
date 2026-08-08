@@ -137,6 +137,33 @@ function assertPermittedProductionProjection(actual, expected, testCase, label) 
   );
 }
 
+// The WASM and native kernels reproduce the frozen projections bit for bit, but the
+// JavaScript reference cannot: ECMAScript leaves `Math.exp`, `Math.log` and `Math.pow`
+// implementation-defined, so the amplifier solver lands a few ULP apart between engines.
+// Measured across the eight projections on Linux/Node 22 against goldens promoted on
+// Windows/Node 24, the worst per-sample deviation is 3.6e-17 - in the silence case, whose
+// own peak is 7.7e-15 - and 1.7e-18 in the loudest signal case. The fixture's declared
+// per-sample tolerance is therefore what this comparison enforces; any real regression in
+// the reference model moves the output by orders of magnitude more.
+function assertReferenceProjection(actual, expected, tolerance, testCase) {
+  assert.equal(actual.length, expected.length, `${testCase.id} sample count`);
+  let worst = 0;
+  let worstIndex = -1;
+  for (let index = 0; index < actual.length; ++index) {
+    const deviation = Math.abs(actual[index] - expected[index]);
+    if (deviation > worst) {
+      worst = deviation;
+      worstIndex = index;
+    }
+  }
+  assert.ok(
+    worst <= tolerance,
+    `${testCase.id}: the reference deviates from the frozen projection by ${worst} at ` +
+    `channel ${Math.floor(worstIndex / testCase.frames)} frame ` +
+    `${worstIndex % testCase.frames}, above the permitted ${tolerance}.`
+  );
+}
+
 test('Tube Simulator p3-baseline-v1 fixture stays byte-frozen and self-contained', async () => {
   const tree = await fixtureTreeSha256(fixtureRoot);
   assert.equal(tree.hash, EXPECTED_FIXTURE_TREE_SHA256);
@@ -205,6 +232,9 @@ test('Tube Simulator Phase A reference preserves the eight permitted P3 projecti
       await fs.readFile(path.join(goldenRoot, 'standard-oracle-v1.json'), 'utf8')
     );
     const selected = selectTubeStandardProductionCases(standardManifest.cases);
+    const { tolerance } = await readParamsSchema(
+      path.join(fixtureRoot, 'params.json')
+    );
 
     for (const testCase of selected) {
       // The P3 baseline is the legacy line amplifier, so the projection names the
@@ -233,11 +263,7 @@ test('Tube Simulator Phase A reference preserves the eight permitted P3 projecti
         { repoRoot }
       )).output;
 
-      assert.deepEqual(
-        Buffer.from(actual.buffer, actual.byteOffset, actual.byteLength),
-        Buffer.from(expected.buffer, expected.byteOffset, expected.byteLength),
-        testCase.id
-      );
+      assertReferenceProjection(actual, expected, tolerance.abs, testCase);
     }
   });
 
