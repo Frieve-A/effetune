@@ -80,6 +80,7 @@ lofi/vinyl_artifacts: Vinyl Artifacts | Lo-Fi | VinylArtifactsPlugin
 lofi/vinyl_simulator: Vinyl Simulator | Lo-Fi | VinylSimulatorPlugin | css
 modulation/doppler_distortion: Doppler Distortion | Modulation | DopplerDistortionPlugin
 modulation/pitch_shifter: Pitch Shifter | Modulation | PitchShifterPlugin
+modulation/pitch_shifter_hq: Pitch Shifter HQ | Modulation | PitchShifterHQPlugin
 modulation/tremolo: Tremolo | Modulation | TremoloPlugin
 modulation/wow_flutter: Wow Flutter | Modulation | WowFlutterPlugin
 others/oscillator: Oscillator | Others | OscillatorPlugin
@@ -90,6 +91,7 @@ reverb/dattorro_plate_reverb: Dattorro Plate Reverb | Reverb | DattorroPlateReve
 reverb/fdn_reverb: FDN Reverb | Reverb | FDNReverbPlugin
 reverb/ir_reverb: IR Reverb | Reverb | IRReverbPlugin | css
 reverb/rs_reverb: RS Reverb | Reverb | RSReverbPlugin
+saturation/bandwidth_extender: Bandwidth Extender | Saturation | BandwidthExtenderPlugin
 saturation/dynamic_saturation: Dynamic Saturation | Saturation | DynamicSaturationPlugin | css
 saturation/exciter: Exciter | Saturation | ExciterPlugin | css
 saturation/hard_clipping: Hard Clipping | Saturation | HardClippingPlugin | css

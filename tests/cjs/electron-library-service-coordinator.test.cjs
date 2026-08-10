@@ -386,13 +386,75 @@ test('play returns a stable provisional entry and cancellation stops the session
   assert.equal((await coordinator.cancel(first.operationId)).kind, 'tooLate');
 });
 
+test('play resolves a deep source ordinal before materializing the preceding queue', async t => {
+  let releaseRead;
+  let signalReadStarted;
+  const readGate = new Promise(resolve => { releaseRead = resolve; });
+  const readStarted = new Promise(resolve => { signalReadStarted = resolve; });
+  let ordinalReads = 0;
+  const { coordinator, host } = await openFixture(t, {
+    repositoryFactory: catalogHost => new Proxy(catalogHost, {
+      get(target, property) {
+        if (property === 'readContextPageAtOrdinal') {
+          return async options => {
+            ordinalReads += 1;
+            return target.readContextPageAtOrdinal(options);
+          };
+        }
+        if (property === 'readContextPage') {
+          return async options => {
+            signalReadStarted();
+            await readGate;
+            return target.readContextPage(options);
+          };
+        }
+        const value = target[property];
+        return typeof value === 'function' ? value.bind(target) : value;
+      }
+    })
+  });
+  const { contextToken } = await createTrackContext(host);
+  const receipt = await coordinator.start(createRequest(contextToken, {
+    operationKind: 'play',
+    selectionDescriptor: { mode: 'all', contextToken, exclusions: [] },
+    options: { currentOrdinal: 5, sourceOrdinal: 5 }
+  }));
+
+  await readStarted;
+  let timeoutId;
+  try {
+    const provisionalEntry = await Promise.race([
+      coordinator.getProvisionalEntry(receipt.operationId),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Provisional entry was not resolved early')), 1_000);
+      })
+    ]);
+    assert.equal(provisionalEntry.trackUid, 'track-6');
+    assert.equal(provisionalEntry.ordinal, 5);
+    assert.equal(ordinalReads, 1);
+  } finally {
+    clearTimeout(timeoutId);
+    releaseRead();
+  }
+
+  const terminal = await waitForTerminal(coordinator, receipt.operationId);
+  assert.equal(terminal.state, 'succeeded');
+  assert.deepEqual(terminal.result.firstEntry, await coordinator.getProvisionalEntry(receipt.operationId));
+  const page = await host.queryPlaybackSequence({
+    sequenceId: terminal.result.sequenceId,
+    ordinal: 5,
+    limit: 1
+  });
+  assert.equal(page.items[0].entryInstanceId, terminal.result.firstEntry.entryInstanceId);
+});
+
 test('play publishes a session sequence with the exact provisional entry contract', async t => {
   const { coordinator, host } = await openFixture(t);
   const { contextToken } = await createTrackContext(host);
   const request = createRequest(contextToken, {
     operationKind: 'play',
     selectionDescriptor: { mode: 'explicit', contextToken, trackUids: ['track-2', 'track-3'] },
-    options: { currentOrdinal: 1 }
+    options: { currentOrdinal: 1, sourceOrdinal: 0 }
   });
   const receipt = await coordinator.start(request);
   const provisionalEntry = await coordinator.getProvisionalEntry(receipt.operationId);

@@ -27,10 +27,14 @@ struct TubeSimulatorPluginParams {
   float actualSpeakerLoad;
   float safetyTrim;
   float autoGainReduction;
-  static constexpr std::uint32_t kHash = 0xe7aae286u;
-  static constexpr std::uint32_t kFloatCount = 20u;
+  float seTube;
+  float seBPlus;
+  float seCathodeResistor;
+  float sePrimaryImpedance;
+  static constexpr std::uint32_t kHash = 0x07986b4bu;
+  static constexpr std::uint32_t kFloatCount = 24u;
 };
-static_assert(20u == 0u || sizeof(TubeSimulatorPluginParams) == sizeof(float) * 20u);
+static_assert(24u == 0u || sizeof(TubeSimulatorPluginParams) == sizeof(float) * 24u);
 
 } // namespace effetune::generated
 

@@ -1,6 +1,6 @@
 ---
 title: "调制插件 - EffeTune"
-description: "包含 Doppler Distortion、Pitch Shifter、Tremolo 和 Wow Flutter 的调制效果插件。"
+description: "包含 Doppler Distortion、Pitch Shifter、Pitch Shifter HQ、Tremolo 和 Wow Flutter 的调制效果插件。"
 lang: zh
 ---
 
@@ -12,6 +12,7 @@ lang: zh
 
 - [Doppler Distortion](#doppler-distortion) - 模拟扬声器振膜细微运动造成的自然动态变化
 - [Pitch Shifter](#pitch-shifter) - 在不改变速度的情况下调整音高
+- [Pitch Shifter HQ](#pitch-shifter-hq) - 在音质比延迟和CPU占用更重要时，以更少的相位伪影调整音高
 - [Tremolo](#tremolo) - 基于音量的调制效果
 - [Wow Flutter](#wow-flutter) - 加入磁带或唱片式音高摇摆
 
@@ -65,6 +66,28 @@ lang: zh
   - 影响移调片段之间的衔接平滑度
   - 较低值可能更直接，但平滑度可能降低
   - 较高值过渡更平滑，但可能增加摇晃感或重叠感
+
+## Pitch Shifter HQ
+
+这是一款更注重音质的移调器，适合希望减少相位模糊，且不以低延迟或低CPU占用为首要目标的聆听场景。它在不改变播放速度的情况下调整音高，并比标准Pitch Shifter更好地保持频谱成分之间的联系。相应地，它会占用更多CPU，并带来约106.7–116.1ms的固定处理延迟：在48、96和192kHz下约为106.7ms，在44.1、88.2和176.4kHz下约为116.1ms。它需要EffeTune的WASM DSP引擎；如果该引擎不可用，音频将不经处理直接通过。
+
+Pitch Shifter HQ不保留共振峰。因此，移调幅度较大时，除了音高之外，人声和乐器的音色也会发生变化。
+
+### 聆听体验指南
+
+- 想要轻微改变时，可先将**Pitch Shift**设为-1或+1，并将**Fine Tune**保留在0。
+- 音源只略微偏高或偏低、无需移动完整半音时，可用**Fine Tune**进行匹配。
+- 如果愿意以更高的CPU占用和延迟换取更少的相位伪影，请选择Pitch Shifter HQ；若对延迟敏感或设备性能有限，请使用标准Pitch Shifter。
+- 大幅移调时音高仍会稳定变化，但由于不保留共振峰，音色变化也会更加明显，请边比较边调整。
+
+### 参数
+
+- **Pitch Shift** - 以半音为单位调整整体音高（-6 到 +6）
+  - 负值降低音高，正值升高音高
+  - 0表示不改变音高
+- **Fine Tune** - 以音分为单位调整音高（-50 到 +50）
+  - 用于在半音之间进行精确调整
+  - 100音分等于1个半音
 
 ## Tremolo
 

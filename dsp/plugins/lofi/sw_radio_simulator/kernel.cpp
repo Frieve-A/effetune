@@ -667,8 +667,8 @@ public:
         }
       } else {
         // BFO product detector: rotate the composite IF by the phase-continuous local
-        // oscillator and take the real part (Re[(I + jQ) e^{-j phi}]). The sign convention
-        // delta = tn*1000 - bf with USB = f + delta was frozen in Phase 0.
+        // oscillator and take the real part (Re[(I + jQ) e^{-j phi}]). Positive Tuning places
+        // the receiver above the station, so USB shifts down and LSB shifts up.
         detected = if_output_i * std::cos(bfo_phase_) + if_output_q * std::sin(bfo_phase_);
         advancePhase(bfo_phase_, bfo_phase_increment_);
       }
@@ -1586,14 +1586,15 @@ private:
   }
 
   void updateTuningModel() noexcept {
-    const double tuning_hz = controls_.tuning * 1000.0;
-    const double interferer_hz = tuning_hz + controls_.interferenceOffset * 1000.0;
+    const double receiver_tuning_hz = controls_.tuning * 1000.0;
+    const double station_hz = -receiver_tuning_hz;
+    const double interferer_hz = controls_.interferenceOffset * 1000.0 - receiver_tuning_hz;
     const double if_cutoff_hz = controls_.ifBandwidth * 500.0;
-    station_tuning_offset_hz_ = clampTuningOffset(tuning_hz);
+    station_tuning_offset_hz_ = clampTuningOffset(station_hz);
     interferer_tuning_offset_hz_ = clampTuningOffset(interferer_hz);
     station_tuning_phase_increment_ = kTwoPi * station_tuning_offset_hz_ / sample_rate_;
     interferer_tuning_phase_increment_ = kTwoPi * interferer_tuning_offset_hz_ / sample_rate_;
-    station_tuning_gain_ = tuningReceptionGain(tuning_hz, station_tuning_offset_hz_,
+    station_tuning_gain_ = tuningReceptionGain(station_hz, station_tuning_offset_hz_,
                                                controls_.txBandwidth * 1000.0, if_cutoff_hz);
     interferer_tuning_gain_ =
         tuningReceptionGain(interferer_hz, interferer_tuning_offset_hz_, 4500.0, if_cutoff_hz);

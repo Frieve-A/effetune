@@ -19,7 +19,7 @@ const schemaPath = path.join(pluginRoot, 'params.json');
 const goldenDir = path.join(pluginRoot, 'golden');
 const kernelPath = path.join(pluginRoot, 'kernel.cpp');
 const rendererPath = path.join(repoRoot, 'plugins', 'analyzer', 'spectrogram.js');
-const jsEngineHash = '56122fc1746dddb32e07df3ed7dded6bef9dad66479162e0c24d81700037b21b';
+const jsEngineHash = '972212d6167e1034e11c50ce25a174a484a1d533e46b2b8030b0c3371e0b651b';
 
 async function directoryBytes(directory) {
   const entries = await fs.readdir(directory, { withFileTypes: true });

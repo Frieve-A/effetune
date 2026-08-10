@@ -470,6 +470,37 @@ export class WebLibraryServiceCoordinator {
       let itemCount = 0;
       let entries = [];
       let firstEntry = null;
+      let hintedFirstIdentity = null;
+
+      const sourceOrdinal = request.options.sourceOrdinal;
+      const explicitHintIdentity = explicitSelectionIds?.[currentOrdinal] ?? null;
+      const canResolveSourceOrdinal = request.operationKind === 'play' &&
+        Number.isSafeInteger(sourceOrdinal) && sourceOrdinal >= 0 &&
+        typeof this.repository.readContextPageAtOrdinal === 'function' && (
+          typeof explicitHintIdentity === 'string' ||
+          (request.selectionDescriptor.mode === 'all' &&
+            request.selectionDescriptor.exclusions.length === 0 &&
+            sourceOrdinal === currentOrdinal)
+        );
+      if (canResolveSourceOrdinal) {
+        try {
+          const page = await this.repository.readContextPageAtOrdinal({
+            contextToken,
+            ordinal: sourceOrdinal,
+            limit: 1
+          });
+          const row = page?.rows?.[0] ?? null;
+          const identity = row ? selectionIdentity(row) : null;
+          if (row?.trackUid && (explicitHintIdentity === null || identity === explicitHintIdentity)) {
+            const entry = createPlaybackEntry(row, this.idFactory(), currentOrdinal);
+            firstEntry = createPlaybackHandoffEntry(entry, row);
+            hintedFirstIdentity = identity;
+            this.#resolveProvisional(operationId, firstEntry);
+          }
+        } catch (_) {
+          // The hint is optional; ordinary materialization remains authoritative.
+        }
+      }
 
       const flushEntries = async () => {
         if (entries.length === 0) return;
@@ -482,8 +513,17 @@ export class WebLibraryServiceCoordinator {
         }
       };
       const appendTrack = track => {
-        const entry = createPlaybackEntry(track, this.idFactory(), itemCount);
-        if (itemCount === currentOrdinal) firstEntry = createPlaybackHandoffEntry(entry, track);
+        const identity = selectionIdentity(track);
+        const usesHint = itemCount === currentOrdinal && hintedFirstIdentity === identity &&
+          firstEntry?.trackUid === track.trackUid;
+        const entry = createPlaybackEntry(
+          track,
+          usesHint ? firstEntry.entryInstanceId : this.idFactory(),
+          itemCount
+        );
+        if (itemCount === currentOrdinal) {
+          firstEntry = createPlaybackHandoffEntry(entry, track);
+        }
         entries.push(entry);
         itemCount += 1;
       };

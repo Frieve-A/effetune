@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import test from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -292,7 +293,8 @@ function appendElement(document, parent, tagName, id, className = '') {
 
 function seedDocument(document) {
   const ids = [
-    'errorDisplay', 'resetButton', 'shareButton', 'pluginList', 'pipelineList',
+    'errorDisplay', 'resetButton', 'shareButton', 'pluginList', 'pipelineList', 'pipelineLatency',
+    'pipelineCpuUsage', 'pipelineCpuMeterFill', 'pipelineCpuValue',
     'pipelineEmpty', 'sampleRate', 'effectSearchButton', 'effectSearchInput',
     'effectSearchClearButton', 'availableEffectsTitle', 'tabSwitcher',
     'effectsTab', 'systemPresetsTab', 'userPresetsTab', 'pipeline',
@@ -355,6 +357,7 @@ function createManagers(calls) {
     pipelineB: null,
     currentPipeline: 'A',
     audioContext: { sampleRate: 48000, destination: { channelCount: 2 } },
+    dspPipelineLatencySamples: 0,
     listeners: new Map(),
     getCurrentPipeline() {
       return this.currentPipeline === 'A' ? this.pipelineA : (this.pipelineB || []);
@@ -475,6 +478,8 @@ async function withUIHarness(options = {}, callback) {
         'error.invalidUrl': 'Invalid URL: {message}',
         'ui.whatsThisApp': 'What is this?',
         'ui.shareButton': 'Share',
+        'ui.pipelineLatency': 'Total Delay: {samples} samples',
+        'ui.pipelineCpuUsage': 'CPU: Avg {average}%',
         'ui.dragPluginsHere': 'Drop here',
         'ui.searchEffectsPlaceholder': 'Search',
         'ui.configAudioButton': 'Config Audio',
@@ -556,6 +561,108 @@ function patchManager(manager, calls) {
     handlePaste: text => calls.push(['clipboard.paste', text])
   };
 }
+
+test('renders and updates pipeline delay and CPU usage meters', async () => {
+  const html = fs.readFileSync(new URL('../../effetune.html', import.meta.url), 'utf8');
+  const css = fs.readFileSync(new URL('../../effetune.css', import.meta.url), 'utf8');
+  assert.match(html, /id="pipelineLatency">Total Delay: 0 samples</);
+  assert.match(html, /id="pipelineCpuUsage"[^>]*data-level="normal"/);
+  assert.doesNotMatch(html, /pipelineCpuMeterPeak|Peak 0\.0%/);
+  assert.match(css, /#pipelineStats \{[^}]*position: absolute;[^}]*bottom:/s);
+  assert.match(css, /\.pipeline-cpu-meter-fill/);
+  assert.doesNotMatch(css, /pipeline-cpu-meter-peak/);
+  assert.match(css, /body\.layout-mobile #pipelineStats/);
+
+  await withUIHarness({}, async ({ audioManager, document, manager }) => {
+    const label = document.getElementById('pipelineLatency');
+    const cpuUsage = document.getElementById('pipelineCpuUsage');
+    const cpuValue = document.getElementById('pipelineCpuValue');
+    const cpuFill = document.getElementById('pipelineCpuMeterFill');
+    assert.equal(label.textContent, 'Total Delay: 0 samples');
+
+    audioManager.listeners.get('dspLatency')({ samples: 384 });
+    assert.equal(label.textContent, 'Total Delay: 384 samples');
+
+    audioManager.listeners.get('dspLatency')({ samples: -1 });
+    assert.equal(label.textContent, 'Total Delay: 0 samples');
+    manager.updatePipelineLatency(Number.NaN);
+    assert.equal(label.textContent, 'Total Delay: 0 samples');
+
+    audioManager.listeners.get('pipelineCpuUsage')({ average: 24.25 });
+    assert.equal(cpuValue.textContent, 'CPU: Avg 24.3%');
+    assert.equal(cpuFill.style.width, '24.25%');
+    assert.equal(cpuUsage.dataset.level, 'normal');
+
+    manager.updatePipelineCpuUsage(120);
+    assert.equal(cpuFill.style.width, '100%');
+    assert.equal(cpuUsage.dataset.level, 'overload');
+
+    manager.updatePipelineCpuUsage(Number.NaN);
+    assert.equal(cpuValue.textContent, 'CPU: Avg 0.0%');
+    assert.equal(cpuUsage.dataset.level, 'normal');
+  });
+});
+
+test('Pipeline Analyzer host owns absolute open state and disposes the Electron listener', () => {
+  const previousWindow = globalThis.window;
+  let menuListener = null;
+  let pageHideListener = null;
+  let unsubscribeCount = 0;
+  let refreshCount = 0;
+  let disposeCount = 0;
+  globalThis.window = {
+    electronAPI: {
+      onSetPipelineAnalyzerOpen(callback) {
+        menuListener = callback;
+        return () => {
+          unsubscribeCount += 1;
+          menuListener = null;
+        };
+      }
+    },
+    addEventListener(name, callback) {
+      if (name === 'pagehide') pageHideListener = callback;
+    },
+    removeEventListener(name, callback) {
+      if (name === 'pagehide' && pageHideListener === callback) pageHideListener = null;
+    }
+  };
+  const manager = Object.create(UIManager.prototype);
+  manager.pipelineAnalyzerMenuUnsubscribe = null;
+  manager.pipelineAnalyzerPageHideHandler = null;
+  manager.pipelineAnalyzerController = {
+    state: { open: false },
+    setOpen(open) { this.state.open = open === true; },
+    dispose() { disposeCount += 1; }
+  };
+  manager.refreshApplicationMenu = () => { refreshCount += 1; };
+
+  try {
+    manager.initPipelineAnalyzerMenuIntegration();
+    assert.equal(typeof menuListener, 'function');
+    assert.equal(typeof pageHideListener, 'function');
+
+    assert.equal(manager.setPipelineAnalyzerOpen(true), true);
+    assert.equal(manager.pipelineAnalyzerController.state.open, true);
+    assert.equal(refreshCount, 1);
+    assert.equal(manager.setPipelineAnalyzerOpen(true), false);
+    assert.equal(refreshCount, 1);
+
+    menuListener(false);
+    assert.equal(manager.pipelineAnalyzerController.state.open, false);
+    assert.equal(refreshCount, 2);
+
+    manager.disposePipelineAnalyzerIntegration();
+    assert.equal(unsubscribeCount, 1);
+    assert.equal(disposeCount, 1);
+    assert.equal(pageHideListener, null);
+    manager.disposePipelineAnalyzerIntegration();
+    assert.equal(unsubscribeCount, 1);
+    assert.equal(disposeCount, 1);
+  } finally {
+    globalThis.window = previousWindow;
+  }
+});
 
 test('constructs, delegates manager methods, translates errors, parses and serializes URL state', async () => {
   const validState = encodePipelineState([

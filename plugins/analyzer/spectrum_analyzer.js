@@ -6,6 +6,13 @@ const SPECTRUM_PAYLOAD_HEADER_BYTES = 12;
 const SPECTRUM_FLAG_BINS_TRUNCATED = 1;
 const SPECTRUM_MAX_POINTS = 14;
 const SPECTRUM_MAX_POINT_BIN_COUNT = 8190;
+const SPECTRUM_MIN_DISPLAY_FREQ = 20;
+const SPECTRUM_MAX_DISPLAY_FREQ = 40000;
+const SPECTRUM_DISPLAY_FREQ_RANGE =
+    SPECTRUM_MAX_DISPLAY_FREQ - SPECTRUM_MIN_DISPLAY_FREQ;
+const SPECTRUM_LOG_MIN_DISPLAY_FREQ = Math.log10(SPECTRUM_MIN_DISPLAY_FREQ);
+const SPECTRUM_LOG_DISPLAY_FREQ_RANGE =
+    Math.log10(SPECTRUM_MAX_DISPLAY_FREQ) - SPECTRUM_LOG_MIN_DISPLAY_FREQ;
 
 class SpectrumAnalyzerPlugin extends PluginBase {
     constructor() {
@@ -14,6 +21,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         // Initialize parameters
         this.dr = -96;
         this.pt = 12;
+        this.sc = 'log';
         const fftSize = 1 << this.pt; // Using bit shift for power of 2
         this.spectrum = new Float32Array(fftSize >> 1).fill(-144);
         this.peaks = new Float32Array(fftSize >> 1).fill(-144);
@@ -187,10 +195,27 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         this.updateParameters();
     }
 
+    setFrequencyScale(value) {
+        const scale = value === 'linear' ? 'linear' : 'log';
+        if (scale === this.sc) return;
+        this.sc = scale;
+        this.updateParameters();
+        this.drawGraph();
+    }
+
+    frequencyToX(freq, width) {
+        if (this.sc === 'linear') {
+            return width * (freq - SPECTRUM_MIN_DISPLAY_FREQ) / SPECTRUM_DISPLAY_FREQ_RANGE;
+        }
+        return width * (Math.log10(freq) - SPECTRUM_LOG_MIN_DISPLAY_FREQ) /
+            SPECTRUM_LOG_DISPLAY_FREQ_RANGE;
+    }
+
     // Reset parameters
     reset() {
         this.setDBRange(-96);
         this.setPoints(12); // Note: constructor uses 12, reset button might use 10. Keeping 12 here.
+        this.setFrequencyScale('log');
     }
 
     getParameters() {
@@ -199,7 +224,8 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             type: this.constructor.name,
             enabled: this.enabled,
             dr: this.dr,
-            pt: this.pt
+            pt: this.pt,
+            sc: this.sc
         };
     }
 
@@ -207,6 +233,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         if (params.enabled !== undefined) this.enabled = params.enabled;
         if (params.dr !== undefined) this.setDBRange(params.dr);
         if (params.pt !== undefined) this.setPoints(params.pt);
+        if (params.sc !== undefined) this.setFrequencyScale(params.sc);
         this.updateParameters();
     }
 
@@ -471,6 +498,17 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         pointsRow.appendChild(pointsValue);
         container.appendChild(pointsRow);
 
+        const frequencyScaleRow = this.createRadioGroup(
+            'Frequency Scale',
+            [
+                { value: 'log', label: 'Log' },
+                { value: 'linear', label: 'Linear' }
+            ],
+            this.sc,
+            value => this.setFrequencyScale(value)
+        );
+        container.appendChild(frequencyScaleRow);
+
         const { container: graphContainer, canvas, dispose } = this.createResponsiveGraph({
             maxWidth: 1024,
             aspectRatio: '32 / 15',
@@ -498,6 +536,8 @@ class SpectrumAnalyzerPlugin extends PluginBase {
 
             pointsSlider.value = defaultPoints;
             pointsValue.value = 1 << defaultPoints;
+            const logScaleRadio = frequencyScaleRow.querySelector('input[value="log"]');
+            if (logScaleRadio) logScaleRadio.checked = true;
 
             this.reset(); // This will call setDBRange and setPoints
         };
@@ -591,10 +631,10 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         ctx.lineWidth = dpr;
 
         // --- Dynamic Frequency Axis Scaling ---
-        const minDisplayFreq = 20; // Hz
+        const minDisplayFreq = SPECTRUM_MIN_DISPLAY_FREQ;
         const nyquistFreq = this.sampleRate / 2;
         // Max display frequency is Nyquist, but ensure it's at least minDisplayFreq
-        let maxDisplayFreq = 40000; // Fixed max display frequency
+        const maxDisplayFreq = SPECTRUM_MAX_DISPLAY_FREQ;
 
         if (this.sampleRate <= 0 || nyquistFreq <= minDisplayFreq) { // Not enough range or invalid sampleRate
             ctx.fillStyle = '#fff';
@@ -604,20 +644,20 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             return;
         }
 
-        const logMinDisplayFreq = Math.log10(minDisplayFreq);
-        const logMaxDisplayFreq = Math.log10(maxDisplayFreq);
-        const logFreqRange = logMaxDisplayFreq - logMinDisplayFreq;
-
-        if (logFreqRange <= 0) { // Avoid division by zero or negative log range
+        if (maxDisplayFreq <= minDisplayFreq) {
              ctx.fillStyle = '#fff'; ctx.font = `${14 * dpr}px Arial`; ctx.textAlign = 'center';
-             ctx.fillText('Invalid Frequency Range for Log Scale', width / 2, height / 2);
+             ctx.fillText('Invalid Frequency Range', width / 2, height / 2);
              return;
         }
 
         // Vertical grid lines (frequency) - Dynamic
-        let baseGridFreqs = isNarrow
-            ? [20, 100, 1000, 10000, 20000]
-            : [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]; // Common audio freqs
+        let baseGridFreqs = this.sc === 'linear'
+            ? (isNarrow
+                ? [20, 10000, 20000, 30000, 40000]
+                : [20, 5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000])
+            : (isNarrow
+                ? [20, 100, 1000, 10000, 20000]
+                : [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]);
         // Add Nyquist to the list if it's not too close to another major tick, or for the max label
         // Filter and ensure min/max are present
         let gridFreqsToDraw = baseGridFreqs.filter(f => f >= minDisplayFreq && f <= maxDisplayFreq);
@@ -626,7 +666,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         gridFreqsToDraw = [...new Set(gridFreqsToDraw)].sort((a, b) => a - b); // Unique & sorted
 
         gridFreqsToDraw.forEach(freq => {
-            const x = width * (Math.log10(freq) - logMinDisplayFreq) / logFreqRange;
+            const x = this.frequencyToX(freq, width);
             if (x >=0 && x <= width) { // Draw only if within canvas
                 ctx.beginPath();
                 ctx.moveTo(x, 0);
@@ -672,10 +712,10 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         for (let i = 0; i < binCount; i++) {
             const freq = (i * this.sampleRate) / fftSize; // Correct bin frequency calculation
 
-            if (freq < minDisplayFreq || freq > maxDisplayFreq || logFreqRange <=0 ) continue;
+            if (freq < minDisplayFreq || freq > maxDisplayFreq) continue;
 
             const currentFreqClamped = Math.max(minDisplayFreq, Math.min(freq, maxDisplayFreq));
-            const x = Math.round(width * (Math.log10(currentFreqClamped) - logMinDisplayFreq) / logFreqRange);
+            const x = Math.round(this.frequencyToX(currentFreqClamped, width));
             
             const spectrumLevel = this.spectrum[i] > 0 ? 0 : this.spectrum[i];
             const peakLevel = this.peaks[i] > 0 ? 0 : this.peaks[i];

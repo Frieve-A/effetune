@@ -262,6 +262,8 @@ EffeTune 2.1.0では、カタログスキーマv3を採用し、CUE形式のア�
 
 インパルス応答を保存した測定では、結果画面に正規化された **インパルス応答** プロットが表示されます。初期表示は検出した立ち上がりを0 msとする0～10 msです。マウスホイールまたはボタンで時間軸を拡大・縮小し、プロットのドラッグまたはスライダーで時間方向にスクロールできます。測定点を選ぶと対応するプロットに切り替わり、**すべて（平均）** ではインパルス応答を保存した最初の測定点がグラフ上部に明示されて表示されます。プロット下の **インパルス応答をWAVでエクスポート** を使うと、表示中の測定点の全応答を正規化せず、測定時のサンプリング周波数を保ったモノラル32ビット浮動小数点WAVとして保存できます。
 
+現在のパイプラインのFrequency、Phase、Group Delay、Impulse特性を、最大4つの出力と保存済みスピーカー特性を含めて確認する方法は、[Pipeline Analyzerガイド](pipeline-analyzer.md)を参照してください。
+
 ## よく使われるエフェクトの組み合わせ
 
 あなたのリスニング体験を向上させるための人気のエフェクト組み合わせをいくつかご紹介します:
@@ -367,6 +369,7 @@ EffeTune 2.1.0では、カタログスキーマv3を採用し、CUE形式のア�
 | Lo-Fi     | Vinyl Simulator | 入力をモデル化した溝にカッティングし、物理的な針モデルで再生 | [詳細](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | スピーカーコーンの微細な動きによる自然でダイナミックな音変化をシミュレート | [詳細](plugins/modulation.md#doppler-distortion) |
 | Modulation | Pitch Shifter | テンポを変えずに音楽のピッチを上げ下げ | [詳細](plugins/modulation.md#pitch-shifter) |
+| Modulation | Pitch Shifter HQ | 位相の乱れによる音のにじみを抑えてピッチを上げ下げ | [詳細](plugins/modulation.md#pitch-shifter-hq) |
 | Modulation | Tremolo | 音量ベースのモジュレーション効果 | [詳細](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | テープやレコード風のさりげないピッチ揺れでビンテージ感を追加 | [詳細](plugins/modulation.md#wow-flutter) |
 | Resonator | Horn Resonator | カスタマイズ可能な寸法でのホーン共振シミュレーション | [詳細](plugins/resonator.md#horn-resonator) |
@@ -376,6 +379,7 @@ EffeTune 2.1.0では、カタログスキーマv3を採用し、CUE形式のア�
 | Reverb    | FDN Reverb | リッチで密度の高いリバーブテクスチャを生成するフィードバック・ディレイ・ネットワーク・リバーブ | [詳細](plugins/reverb.md#fdn-reverb) |
 | Reverb    | IR Reverb | 取り込んだ部屋や機器のインパルス応答を使うコンボリューションリバーブ | [詳細](plugins/reverb.md#ir-reverb) |
 | Reverb    | RS Reverb | 自然な拡散を伴うランダム散乱リバーブ | [詳細](plugins/reverb.md#rs-reverb) |
+| Saturation| Bandwidth Extender | 検出または指定したカットオフより上に高域成分を生成 | [詳細](plugins/saturation.md#bandwidth-extender) |
 | Saturation| Dynamic Saturation | スピーカーコーンの非線形変位をシミュレート | [詳細](plugins/saturation.md#dynamic-saturation) |
 | Saturation| Exciter | 明瞭さと存在感を高める倍音成分を追加 | [詳細](plugins/saturation.md#exciter) |
 | Saturation| Hard Clipping | デジタルハードクリッピング効果 | [詳細](plugins/saturation.md#hard-clipping) |
@@ -383,7 +387,7 @@ EffeTune 2.1.0では、カタログスキーマv3を採用し、CUE形式のア�
 | Saturation| Multiband Saturation | 低域・中域・高域に温かみやエッジを別々に追加 | [詳細](plugins/saturation.md#multiband-saturation) |
 | Saturation| Saturation | アナログ風の温かい豊かさとキャラクターを追加 | [詳細](plugins/saturation.md#saturation) |
 | Saturation| Sub Synth | ベース強化のため、フィルター処理した低周波信号をミックス | [詳細](plugins/saturation.md#sub-synth) |
-| Saturation| Tube Simulator | 真空管のライン段とプッシュプル・パワーアンプを動的にモデル化 | [詳細](plugins/saturation.md#tube-simulator) |
+| Saturation| Tube Simulator | 真空管ライン段と、プッシュプルまたはシングルエンド三極管（300B/2A3）のパワーアンプをモデル化 | [詳細](plugins/saturation.md#tube-simulator) |
 | Spatial   | Crossfeed Filter | 自然なステレオイメージのためのヘッドホン用クロスフィードフィルター | [詳細](plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | 中央と左右の響きを調整するため、ステレオとMid/Sideを相互変換 | [詳細](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5バンド周波数依存のステレオバランス制御 | [詳細](plugins/spatial.md#multiband-balance) |

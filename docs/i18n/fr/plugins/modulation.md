@@ -1,6 +1,6 @@
 ---
 title: "Plugins Modulation - EffeTune"
-description: "Plugins d'effets de modulation incluant Tremolo, Wow Flutter, Pitch Shifter et Doppler Distortion."
+description: "Plugins d'effets de modulation incluant Doppler Distortion, Pitch Shifter, Pitch Shifter HQ, Tremolo et Wow Flutter."
 lang: fr
 ---
 
@@ -12,6 +12,7 @@ Une collection de plugins qui ajoutent du mouvement et des variations à votre m
 
 - [Doppler Distortion](#doppler-distortion) - Simule les changements naturels et dynamiques du son dus aux mouvements subtils de la membrane du haut-parleur.
 - [Pitch Shifter](#pitch-shifter) - Modifie la hauteur de votre musique sans altérer la vitesse de lecture
+- [Pitch Shifter HQ](#pitch-shifter-hq) - Modifie la hauteur avec moins d'artefacts de phase lorsque la qualité prime sur la latence ou la charge CPU
 - [Tremolo](#tremolo) - Crée des variations rythmiques de volume pour un son pulsé et dynamique
 - [Wow Flutter](#wow-flutter) - Recrée les légères variations de hauteur caractéristiques des disques vinyles et des magnétophones
 
@@ -67,6 +68,28 @@ Un effet qui modifie la hauteur de votre musique sans en altérer la vitesse de 
   - Influence la fluidité de la transition entre les segments modifiés
   - Des valeurs plus faibles peuvent paraître plus immédiates, mais potentiellement moins fluides
   - Des valeurs plus élevées créent des transitions plus douces entre les segments, mais peuvent augmenter les fluctuations sonores et provoquer une sensation de chevauchement
+
+## Pitch Shifter HQ
+
+Un transpositeur de meilleure qualité pour une écoute attentive, lorsque la réduction du flou dû aux déphasages compte davantage qu'une faible latence ou une charge CPU réduite. Il modifie la hauteur sans changer la vitesse de lecture et maintient les composantes spectrales mieux regroupées que le Pitch Shifter standard. En contrepartie, il sollicite davantage le processeur et ajoute un retard de traitement fixe d'environ 106,7 à 116,1ms : environ 106,7ms à 48, 96 et 192kHz, et environ 116,1ms à 44,1, 88,2 et 176,4kHz. Il nécessite le moteur DSP WASM d'EffeTune ; si ce moteur n'est pas disponible, le signal audio est transmis sans traitement.
+
+Pitch Shifter HQ ne conserve pas les formants. Les transpositions importantes modifient donc le timbre apparent des voix et des instruments en plus de leur hauteur.
+
+### Guide de l'expérience d'écoute
+
+- Pour un changement discret, commencez avec **Pitch Shift** à -1 ou +1 et laissez **Fine Tune** à 0.
+- Utilisez **Fine Tune** pour accorder une musique légèrement trop haute ou trop basse sans la déplacer d'un demi-ton complet.
+- Préférez Pitch Shifter HQ au Pitch Shifter standard lorsque la réduction des artefacts de phase justifie la charge CPU et le retard supplémentaires. Utilisez la version standard si la latence est importante ou si l'appareil est moins puissant.
+- Comparez soigneusement les transpositions importantes : la hauteur évolue de manière stable, mais l'absence de conservation des formants rend le changement de timbre plus évident.
+
+### Paramètres
+
+- **Pitch Shift** - Modifie la hauteur globale en demi-tons (-6 à +6)
+  - Les valeurs négatives abaissent la hauteur et les valeurs positives l'augmentent
+  - Zéro laisse la hauteur inchangée
+- **Fine Tune** - Ajuste la hauteur en cents (-50 à +50)
+  - Permet un réglage précis entre les demi-tons
+  - 100 cents correspondent à un demi-ton
 
 ## Tremolo
 

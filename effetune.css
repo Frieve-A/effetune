@@ -592,7 +592,7 @@ input[type="checkbox"] {
     flex-grow: 1;
     background-color: #2d2d2d;
     border-radius: 4px;
-    padding: 20px;
+    padding: 20px 20px 44px;
     position: relative;
     transition: transform 0.3s ease, width 0.3s ease;
     z-index: 10;
@@ -603,6 +603,64 @@ input[type="checkbox"] {
     display: flex;
     gap: 10px;
     width: 100%;
+}
+
+#pipelineStats {
+    position: absolute;
+    right: 20px;
+    bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    color: #888;
+    font-size: 12px;
+    line-height: 1.2;
+    pointer-events: none;
+    user-select: none;
+}
+
+.pipeline-cpu-usage {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.pipeline-cpu-meter {
+    width: 72px;
+    height: 6px;
+    overflow: hidden;
+    border-radius: 3px;
+    background: #1b1b1b;
+    box-shadow: inset 0 0 0 1px #444;
+}
+
+.pipeline-cpu-meter-fill {
+    display: block;
+    width: 0;
+    height: 100%;
+    background: #45a66b;
+    transition: width 0.15s linear, background-color 0.15s linear;
+}
+
+.pipeline-cpu-usage[data-level="high"] .pipeline-cpu-meter-fill {
+    background: #c8a53d;
+}
+
+.pipeline-cpu-usage[data-level="overload"] .pipeline-cpu-meter-fill {
+    background: #c85555;
+}
+
+body.layout-mobile #pipelineList {
+    padding-bottom: 50px;
+}
+
+body.layout-mobile #pipelineStats {
+    right: 10px;
+    bottom: 10px;
+    align-items: flex-end;
+    flex-direction: column;
+    gap: 4px;
 }
 
 /* Pipeline column */
@@ -1201,13 +1259,27 @@ input[type="checkbox"] {
     min-width: 120px;
 }
 
-.plugin-parameter-ui .parameter-row input[type="number"]{
+.plugin-parameter-ui .parameter-row input[type="number"],
+.pipeline-analyzer-panel input[type='number'] {
     width: 80px;
     padding: 4px;
     background-color: #3d3d3d;
     border: 1px solid #4d4d4d;
     color: #ffffff;
     border-radius: 4px;
+}
+
+body:not(.layout-mobile) .plugin-parameter-ui .parameter-row input[type="number"],
+body:not(.layout-mobile) .pipeline-analyzer-panel input[type="number"] {
+    box-sizing: border-box;
+    height: 26px;
+    min-height: 26px;
+    padding: 4px;
+    border: 1px solid #4d4d4d;
+    border-radius: 4px;
+    font: inherit;
+    line-height: normal;
+    color-scheme: dark;
 }
 
 .plugin-parameter-ui .parameter-row input[type="text"] {
@@ -1223,7 +1295,8 @@ input[type="checkbox"] {
     min-width: 80px;
 }
 
-.plugin-parameter-ui select {
+.plugin-parameter-ui select,
+.pipeline-analyzer-panel select {
     background-color: #3d3d3d;
     border: 1px solid #4d4d4d;
     color: #ffffff;
@@ -2637,6 +2710,8 @@ body {
 .plugin-parameter-ui .parameter-row input[type="number"],
 .plugin-parameter-ui .parameter-row input[type="text"],
 .plugin-parameter-ui select,
+.pipeline-analyzer-panel input[type="number"],
+.pipeline-analyzer-panel select,
 .dbt-name-input,
 .dbt-count-input,
 .routing-dialog-row select,
@@ -2651,6 +2726,8 @@ body {
 .plugin-parameter-ui .parameter-row input[type="number"]:focus,
 .plugin-parameter-ui .parameter-row input[type="text"]:focus,
 .plugin-parameter-ui select:focus,
+.pipeline-analyzer-panel input[type="number"]:focus,
+.pipeline-analyzer-panel select:focus,
 .dbt-name-input:focus,
 .dbt-count-input:focus,
 .routing-dialog-row select:focus,
@@ -2896,6 +2973,8 @@ h1 {
 .plugin-parameter-ui input[type="text"],
 .plugin-parameter-ui select,
 .multichannel-panel-ui input[type="number"],
+.pipeline-analyzer-panel input[type="number"],
+.pipeline-analyzer-panel select,
 .dbt-name-input,
 .dbt-count-input,
 .routing-dialog-row select,
@@ -2914,6 +2993,7 @@ h1 {
 .routing-dialog-row select option,
 .audio-config-dialog select option,
 .config-dialog select option,
+.pipeline-analyzer-panel select option,
 .config-select option {
     background-color: #373737 !important;
     color: var(--et-text-primary) !important;
@@ -2938,6 +3018,7 @@ h1 {
 .routing-dialog-row select option:hover,
 .audio-config-dialog select option:hover,
 .config-dialog select option:hover,
+.pipeline-analyzer-panel select option:hover,
 .config-select option:hover {
     background-color: #454545 !important;
     color: #ffffff !important;
@@ -2948,6 +3029,7 @@ h1 {
 .routing-dialog-row select option:checked,
 .audio-config-dialog select option:checked,
 .config-dialog select option:checked,
+.pipeline-analyzer-panel select option:checked,
 .config-select option:checked {
     background-color: var(--et-accent-pressed) !important;
     color: #ffffff !important;
@@ -2959,6 +3041,8 @@ h1 {
 .plugin-parameter-ui input[type="text"]:focus,
 .plugin-parameter-ui select:focus,
 .multichannel-panel-ui input[type="number"]:focus,
+.pipeline-analyzer-panel input[type="number"]:focus,
+.pipeline-analyzer-panel select:focus,
 .dbt-name-input:focus,
 .dbt-count-input:focus,
 .routing-dialog-row select:focus,

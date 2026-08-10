@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "PitchShifterHQPlugin",
+  "id": "unity-delayed-dry",
+  "stimulus": "imp",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 12289,
+  "blockSize": 63,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "ps": 0,
+    "ft": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:d8dd3cd4c50dbb39a8b6dba336f59b3793a1d104dec1cbb70f17e69a32ff25d4",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type PitchShifterHQPlugin --promote-production-native",
+  "outputFloats": 12289,
+  "byteLength": 49156,
+  "binary": "case-004.f32"
+}

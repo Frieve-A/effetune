@@ -78,6 +78,21 @@ function createPort(name, calls) {
     postMessage(message) {
       calls.push(['postMessage', name, message]);
       this.messages.push(message);
+      if (message?.type === 'requestDspLatency') {
+        this.onmessage?.({ data: {
+          type: 'dspLatencyResponse',
+          requestId: message.requestId,
+          samples: this.latencySamples ?? 0,
+          compensated: true
+        } });
+      } else if (message?.type === 'setOutputDelay') {
+        this.outputDelaySamples = message.samples;
+        this.onmessage?.({ data: {
+          type: 'outputDelaySet',
+          requestId: message.requestId,
+          samples: message.samples
+        } });
+      }
     }
   };
 }
@@ -114,6 +129,7 @@ function createAudioWorkletNodeClass(calls, options = {}) {
       this.workletName = name;
       this.workletOptions = workletOptions;
       this.port = createPort(`worklet:${name}`, calls);
+      this.port.latencySamples = options.latencySamples ?? 0;
       calls.push(['newAudioWorkletNode', name, workletOptions]);
     }
   };
@@ -280,6 +296,9 @@ function installFakes(manager, calls, options = {}) {
       skipAudioInit = value;
     }
   };
+  if (workletNode?.port) {
+    workletNode.port.onmessage = event => manager.handleWorkletMessage(event, workletNode);
+  }
 
   manager.ioManager = {
     stream: options.stream ?? { id: 'stream' },
@@ -315,6 +334,9 @@ function installFakes(manager, calls, options = {}) {
     setMasterBypass(masterBypass) {
       calls.push(['pipelineProcessor.setMasterBypass', masterBypass]);
       this.masterBypass = masterBypass;
+    },
+    prepareSectionAwarePluginData() {
+      return [];
     },
     async rebuildPipeline(isInitializing) {
       calls.push(['pipelineProcessor.rebuildPipeline', isInitializing]);
@@ -709,7 +731,9 @@ test('initializes audio and worklet phases with success, warnings, messages, and
     };
     manager.registerPipelineProcessors = () => calls.push(['manager.registerPipelineProcessors']);
     const overloadStates = [];
+    const cpuUsage = [];
     manager.addEventListener('audioProcessingOverload', data => overloadStates.push(data.active));
+    manager.addEventListener('pipelineCpuUsage', data => cpuUsage.push(data));
     assert.equal(await manager.initializeAudioWorklet(), '');
     manager.workletNode.port.onmessage({
       data: { type: 'audioProcessingOverload', active: true }
@@ -718,9 +742,19 @@ test('initializes audio and worklet phases with success, warnings, messages, and
       data: { type: 'audioProcessingOverload', active: false }
     });
     manager.workletNode.port.onmessage({ data: { type: 'sleepModeChanged', isSleepMode: true } });
+    manager.workletNode.port.onmessage({
+      data: { type: 'pipelineCpuUsage', average: 24.5 }
+    });
+    manager.workletNode.port.onmessage({
+      data: { type: 'pipelineCpuUsage', average: -1 }
+    });
     manager.workletNode.port.onmessage({ data: { type: 'processorMissing', pluginType: 'AlphaPlugin' } });
     await Promise.resolve();
     assert.deepEqual(overloadStates, [true, false]);
+    assert.deepEqual(cpuUsage, [
+      { average: 24.5 },
+      { average: 0 }
+    ]);
     assert.equal(calls.some(call => call[0] === 'manager.registerPipelineProcessors'), true);
   });
 
@@ -1570,8 +1604,8 @@ test('fades output with scheduled ramps and immediate fallbacks', async () => {
   });
 });
 
-test('builds, routes, selects, and disables parallel blind-test pipelines', async () => {
-  await withAudioManager({}, async ({ calls, manager }) => {
+test('builds, routes, aligns, selects, and disables parallel blind-test pipelines', async () => {
+  await withAudioManager({ audioWorkletNodeOptions: { latencySamples: 320 } }, async ({ calls, manager }) => {
     assert.equal(manager.isParallelActive(), false);
     assert.deepEqual(manager._buildBlindPluginData(null), []);
     const blindData = manager._buildBlindPluginData([
@@ -1592,9 +1626,12 @@ test('builds, routes, selects, and disables parallel blind-test pipelines', asyn
     ]);
     manager._postBlindPlugins(null, manager.pipelineA);
 
+    manager.contextManager.workletNode.port.latencySamples = 192;
     assert.equal(await manager.enableParallelPipelines('B'), true);
     assert.equal(manager.isParallelActive(), true);
     assert.equal(manager._parallelSelection, 'B');
+    assert.equal(manager.contextManager.workletNode.port.outputDelaySamples, 128);
+    assert.equal(manager._parallelWorkletB.port.outputDelaySamples, 0);
     manager._parallelWorkletB.port.onmessage({ data: { ignored: true } });
     assert.equal(calls.some(call => call[0] === 'newAudioWorkletNode'), true);
     const auxiliaryWorkletOptions = calls.find(call => call[0] === 'newAudioWorkletNode')?.[2];
@@ -1620,7 +1657,8 @@ test('builds, routes, selects, and disables parallel blind-test pipelines', asyn
       call[1] === 'partialFailure').length >= 2);
     manager.setBlindSelection('B', 0.04);
     assert.equal(manager._parallelSelection, 'B');
-    manager.disableParallelPipelines();
+    assert.equal(await manager.disableParallelPipelines(), true);
+    assert.equal(manager.contextManager.workletNode.port.outputDelaySamples, 0);
     assert.equal(manager.isParallelActive(), false);
     assert.equal(manager.connectSourceToPipeline(null), false);
   });
@@ -1663,6 +1701,7 @@ test('parallel routing rejects source connection failures and tolerates ramp ass
     assert.equal(await manager.enableParallelPipelines('A'), false);
     assert.equal(manager.isParallelActive(), false);
     assert.equal(manager.isParallelProcessing(), false);
+    await Promise.resolve();
     assert.equal(manager._hasParallelResources(), false);
     manager.contextManager.workletNode.options.throwConnect = true;
     const badNode = new FakeNode('badSource', [], { throwConnect: true });
@@ -1793,7 +1832,7 @@ test('parallel pipelines keep realtime output alive and release it on teardown',
       activationKeepaliveIndex);
 
     const teardownStartIndex = calls.length;
-    await manager.disableParallelPipelines();
+    assert.equal(await manager.disableParallelPipelines(), true);
     assert.deepEqual(keepaliveEvents, [
       ['realtimeKeepalive', true, true, false],
       ['realtimeKeepalive', false, false, false]

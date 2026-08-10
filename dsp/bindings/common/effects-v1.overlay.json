@@ -895,7 +895,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "827d402d2571e31e79f94b91a5618c183aaa8ac6f39d8570e84751b08ac0c3d8",
-    "privateLayoutSha256": "2cc628230da003412da1fa01648a056d60d69de773bf7c016d9fdd1ac7618707"
+    "publicCatalogSha256": "439c969d1ef80e1aeab6c524f458481eecb2a6fe8bc3e46ea277920e9f21bb1a",
+    "privateLayoutSha256": "549215a20bcacd90050b30e85696b79ea816710a3c5cfe03f4493f6966528c06"
   }
 }

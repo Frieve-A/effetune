@@ -64,6 +64,15 @@ function createElement(documentRef, tagName, id = '') {
       if (child.id) documentRef.elementsById.set(child.id, child);
       return child;
     },
+    append(...children) {
+      children.forEach(child => this.appendChild(child));
+    },
+    replaceChildren(...children) {
+      this.children.forEach(child => { child.parentNode = null; });
+      this.children = [];
+      this.childNodes = this.children;
+      children.forEach(child => this.appendChild(child));
+    },
     removeChild(child) {
       this.children = this.children.filter(candidate => candidate !== child);
       this.childNodes = this.children;
@@ -141,6 +150,9 @@ function createDocument() {
     body: null,
     documentElement: null,
     createElement(tagName) {
+      return createElement(documentRef, tagName);
+    },
+    createElementNS(_namespace, tagName) {
       return createElement(documentRef, tagName);
     },
     getElementById(id) {

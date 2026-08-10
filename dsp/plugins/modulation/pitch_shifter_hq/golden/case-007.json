@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "PitchShifterHQPlugin",
+  "id": "all8-96k",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 8,
+  "frameCount": 14337,
+  "blockSize": 128,
+  "channelMode": "all8",
+  "channel": null,
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "ps": -4,
+    "ft": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:d8dd3cd4c50dbb39a8b6dba336f59b3793a1d104dec1cbb70f17e69a32ff25d4",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type PitchShifterHQPlugin --promote-production-native",
+  "outputFloats": 114696,
+  "byteLength": 458784,
+  "binary": "case-007.f32"
+}

@@ -117,6 +117,7 @@ ET_EXPORT uint32_t et_telemetry_read(et_engine engine, uint8_t *output, uint32_t
 
 ET_EXPORT et_status et_pipeline_configure(et_engine engine, const uint8_t *descriptor,
                                           uint32_t descriptor_bytes);
+ET_EXPORT uint32_t et_pipeline_latency(et_engine engine);
 ET_EXPORT et_status et_pipeline_process(et_engine engine, uint32_t channel_count,
                                         uint32_t frame_count, double time_seconds,
                                         uint32_t master_bypass);

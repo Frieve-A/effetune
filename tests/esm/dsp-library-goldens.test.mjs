@@ -15,7 +15,7 @@ import {
 } from '../../tools/verify-dsp-library-goldens.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const GOLDEN_CASE_COUNT = 775;
+const GOLDEN_CASE_COUNT = 781;
 const EFFECT_COUNT = 83;
 const WORKLET_GOLDEN_CASE_COUNT = 84;
 const NON_IDENTITY_EFFECT_COUNT = 78;
@@ -386,8 +386,8 @@ test('frozen DSP library acceptance inventory stays complete', async () => {
   assert.equal(inventory.effects, EFFECT_COUNT);
   assert.equal(inventory.total, GOLDEN_CASE_COUNT);
   assert.equal(inventory.assetCases, 20);
-  assert.equal(inventory.eventCases, 127);
-  assert.equal(inventory.eventCount, 442);
+  assert.equal(inventory.eventCases, 130);
+  assert.equal(inventory.eventCount, 445);
   assert.deepEqual(inventory.sampleRates, [
     32000,
     44100,

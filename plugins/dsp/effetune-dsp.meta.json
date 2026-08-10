@@ -1,16 +1,16 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:1e46f26d7a51f22747ce105a425cf83be4c71ed3f9b1342275cdff2bed6e0590",
+  "sourceDigest": "sha256:ef7c70a9529e82c8bce984aae5f0654e7c82b26f94392e9923cf10f3032cf8fa",
   "emsdkVersion": "6.0.2",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:2a3c283e9f45f68d561b2d651a8c73d78cab2a8f8cbc74f6f99ebcc64e408598",
+    "digest": "sha256:d4dfe80f4a83288f392229cdf647ac299b45cba75dd404a3ea9beae3f9dc6df8",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
         "kind": "file",
-        "sha256": "sha256:97e277947544bcb21015c9fe289af338fbe6f46b97dda233d24b594704bd2059"
+        "sha256": "sha256:b0570a7920bce522a35543a3582108f95cadb5a63ca3ab6af52d3be8b390dc09"
       },
       {
         "id": "dsp/core/allocation_guard.cpp",
@@ -35,17 +35,17 @@
       {
         "id": "dsp/core/engine.cpp",
         "kind": "file",
-        "sha256": "sha256:49b8be2b35956dbd34c0cb46a48da64132b8b2b4395437ab3381755936fb4741"
+        "sha256": "sha256:4c5b04d89a7cb2b437a6acdb2f0d49fec686d5cfdad1aa854b3564d11b531922"
       },
       {
         "id": "dsp/core/engine.h",
         "kind": "file",
-        "sha256": "sha256:5959f7d0bca55fb80c580d16cf7f22859db87b3d20a46f589d96f7682f80fd49"
+        "sha256": "sha256:2bce9081ea8fb9feead0216245b9cba835f5e0d7462dbef3b4d8ff55270b82ec"
       },
       {
         "id": "dsp/core/registry.cpp",
         "kind": "file",
-        "sha256": "sha256:64c18288f9be512826a01e93c387c9b0105fa716cdd36db5c01e9e9a757132b8"
+        "sha256": "sha256:1ca815678d0ecc13ee7dfd35f8c0af6b2ea1d4ff1e7100177349057b7ebbdcab"
       },
       {
         "id": "dsp/core/registry.h",
@@ -75,7 +75,7 @@
       {
         "id": "dsp/include/effetune/abi.h",
         "kind": "file",
-        "sha256": "sha256:2e13c9f28ba46ec8a0397a003d360923ccb3367639918e0d24d02ed4f6726894"
+        "sha256": "sha256:a29f9c9b764b654faad87979429885f3546b7501e466d723bcdc8d13bfb02f60"
       },
       {
         "id": "dsp/include/effetune/dsp/halfband.h",
@@ -130,7 +130,7 @@
       {
         "id": "js/audio/dsp-engine-binding.js",
         "kind": "file",
-        "sha256": "sha256:5186b3cd1a1d6897f644bfded4ad2f5542e09addf913e98f85b14a95825240e0"
+        "sha256": "sha256:8c328fc58efa92a2b21678bd6da480fd5d2e72c5ebf01739e0a6c3a1f20ce9d3"
       },
       {
         "id": "production-build#g726-resolved-authority",
@@ -786,6 +786,12 @@
       "assets": []
     },
     {
+      "name": "PitchShifterHQPlugin",
+      "hash": 3982397611,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
       "name": "TremoloPlugin",
       "hash": 1836520376,
       "byteCapacity": 0,
@@ -853,6 +859,12 @@
       "assets": []
     },
     {
+      "name": "BandwidthExtenderPlugin",
+      "hash": 3030838001,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
       "name": "DynamicSaturationPlugin",
       "hash": 3365051379,
       "byteCapacity": 0,
@@ -896,7 +908,7 @@
     },
     {
       "name": "TubeSimulatorPlugin",
-      "hash": 3886736006,
+      "hash": 127429451,
       "byteCapacity": 0,
       "assets": []
     },
@@ -926,7 +938,7 @@
     }
   ],
   "sizes": {
-    "baseline": 801049,
-    "simd": 892774
+    "baseline": 901225,
+    "simd": 997570
   }
 }

@@ -85,6 +85,7 @@ Cria padrões coloridos que mostram como sua música muda ao longo do tempo. As 
 - **Points** - Tamanho de FFT usado na visualização (256 a 16384)
   - Números maiores: Mais detalhe de frequência, mas atualização temporal mais lenta
   - Números menores: Movimento mais rápido, mas menos detalhe de frequência
+- **Frequency Scale** - **Log** reserva mais espaço de exibição para as frequências baixas; **Linear** distribui larguras de frequência iguais em intervalos iguais.
 - O analisador usa a média dos canais esquerdo e direito. A entrada mono é analisada diretamente.
 
 ## Spectrum Analyzer
@@ -113,6 +114,7 @@ Cria uma exibição visual em tempo real das frequências da sua música, dos gr
 - **Points** - O quanto a visualização separa frequências próximas (256 a 16384)
   - Números maiores: Mais detalhe de frequência, com atualizações mais lentas
   - Números menores: Atualizações mais rápidas, com menos detalhe de frequência
+- **Frequency Scale** - **Log** reserva mais espaço de exibição para as frequências baixas; **Linear** distribui larguras de frequência iguais em intervalos iguais.
 - O analisador usa a média dos canais esquerdo e direito. A entrada mono é analisada diretamente.
 
 ### Formas Divertidas de Usar Essas Ferramentas

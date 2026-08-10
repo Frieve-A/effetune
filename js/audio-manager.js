@@ -117,10 +117,13 @@ export class AudioManager {
         this.dspModuleInfo = null;
         this.dspCapabilities = null;
         this.dspPipelineLatencySamples = 0;
+        this.dspPipelineLatencyCompensated = false;
         this._dspReadyFallbacks = new Map();
         this._dspCapabilitiesByNode = new Map();
         this._dspReadyTokens = new Map();
         this._pendingDspActivationRequests = new Map();
+        this._pendingDspControlRequests = new Map();
+        this._dspControlRequestSequence = 0;
         this._wasmAssetStatesByNode = new Map();
         this._wasmAssetExpectedRevisionsByNode = new Map();
         this._wasmAssetExpectedReplayEpochsByNode = new Map();
@@ -133,6 +136,9 @@ export class AudioManager {
         this._dspReadyTransitionPromise = null;
         this._dspTransitionGeneration = -1;
         this._dspExecutionGenerationsByNode = new Map();
+        this._dspExecutionStateRevision = 0;
+        this._dspExecutionStateOwner = null;
+        this._dspExecutionStates = new Map();
         this._tubeRuntimeEventsByNode = new WeakMap();
         this._audioGraphGeneration = 0;
         this._topologyRevision = 0;
@@ -619,6 +625,52 @@ export class AudioManager {
         return this.contextManager?.workletNode || this.workletNode || null;
     }
 
+    _resetDspExecutionStateSnapshot() {
+        this._dspExecutionStateRevision = (this._dspExecutionStateRevision || 0) + 1;
+        this._dspExecutionStateOwner = null;
+        this._dspExecutionStates = new Map();
+    }
+
+    getDspExecutionStateSnapshot() {
+        const owner = this._dspExecutionStateOwner;
+        const primaryWorklet = this._getPrimaryWorkletNode();
+        const current = owner && owner.workletNode === primaryWorklet &&
+            owner.graphGeneration === this._audioGraphGeneration &&
+            owner.workletEpoch === this._primaryWorkletEpoch &&
+            owner.topologyRevision === this._topologyRevision;
+        const states = current
+            ? [...this._dspExecutionStates.values()].map(state => Object.freeze({ ...state }))
+            : [];
+        return Object.freeze({
+            revision: this._dspExecutionStateRevision || 0,
+            graphGeneration: this._audioGraphGeneration || 0,
+            workletEpoch: this._primaryWorkletEpoch || 0,
+            topologyRevision: this._topologyRevision || 0,
+            states: Object.freeze(states)
+        });
+    }
+
+    _matchPrimaryDspExecutionPlugin(pluginId, pluginType) {
+        const parallelBranch = (this._parallelPreparing || this._parallelActive) &&
+            this._parallelBranchSnapshot?.pipelineA;
+        const plugins = Array.isArray(parallelBranch?.plugins)
+            ? parallelBranch.plugins
+            : this.pipeline;
+        const preparedPlugins = Array.isArray(parallelBranch?.pluginData)
+            ? parallelBranch.pluginData
+            : this.pipelineProcessor?.prepareSectionAwarePluginData?.();
+        if (!Array.isArray(plugins) || !Array.isArray(preparedPlugins)) return null;
+
+        const plugin = plugins.find(candidate => candidate?.id === pluginId &&
+            candidate?.constructor?.name === pluginType);
+        const prepared = preparedPlugins.find(candidate => candidate?.id === pluginId &&
+            candidate?.type === pluginType);
+        if (!plugin || !prepared || prepared.enabled === false) return null;
+
+        const optionalDspPrepared = prepared.wasmParams instanceof Float32Array;
+        return pluginRequiresWasmExecution(plugin) || optionalDspPrepared ? plugin : null;
+    }
+
     _isDspModuleLoadRequestCurrent(request) {
         return this._dspModuleLoadRequest === request &&
             this._getPrimaryWorkletNode() === request.primaryWorklet &&
@@ -782,11 +834,13 @@ export class AudioManager {
     }
 
     _advanceAudioGraphGeneration() {
+        this._cancelPendingDspControlRequests();
         this._cancelPendingWasmAssetReadyRequests();
         this._cancelPendingWasmAssetDescriptorRequests();
         this._cancelPendingSignedExternalAssetRequests();
         this._disposeParallelBranchSnapshot(this._parallelBranchSnapshot);
         this._audioGraphGeneration = (this._audioGraphGeneration || 0) + 1;
+        this._resetDspExecutionStateSnapshot();
         const barrier = this._parallelDspBarrier;
         if (barrier && !barrier.settled) {
             barrier.settled = true;
@@ -798,6 +852,14 @@ export class AudioManager {
         this._parallelDspBarrier = null;
         this._advancePowerWorkletGraphGeneration();
         return this._audioGraphGeneration;
+    }
+
+    _cancelPendingDspControlRequests() {
+        for (const request of this._pendingDspControlRequests?.values() || []) {
+            if (request.timer !== null) clearTimeout(request.timer);
+            request.resolve(null);
+        }
+        this._pendingDspControlRequests?.clear();
     }
 
     _advancePowerWorkletGraphGeneration() {
@@ -1226,11 +1288,13 @@ export class AudioManager {
         barrier.requestedMode = mode;
         barrier.requestVersion++;
         barrier.branchSnapshot ??= this._createParallelBranchSnapshot(barrier.generation);
-        barrier.assetDeadline ??= Date.now() + DSP_BYTES_READY_TIMEOUT_MS;
         if (barrier.activationPromise) return barrier.activationPromise;
 
         const startTransition = () => {
             let appliedRequest = null;
+            const requestIsCurrent = () => appliedRequest?.version === barrier.requestVersion &&
+                this._isParallelDspBarrierCurrent(barrier) &&
+                this._isParallelBranchSnapshotCurrent(barrier.branchSnapshot);
             const assetExpectationsActive = () => {
                 if (!appliedRequest) return false;
                 for (const [workletNode, expected] of appliedRequest.assetExpectations || []) {
@@ -1245,7 +1309,8 @@ export class AudioManager {
                     appliedRequest = {
                         version: barrier.requestVersion,
                         mode: barrier.requestedMode,
-                        targetTypes: [...barrier.targetTypes]
+                        targetTypes: [...barrier.targetTypes],
+                        deadline: Date.now() + DSP_BYTES_READY_TIMEOUT_MS
                     };
                     if (appliedRequest.targetTypes.length > 0) {
                         for (const workletNode of barrier.workletNodes) {
@@ -1260,10 +1325,10 @@ export class AudioManager {
                     const branchSnapshot = barrier.branchSnapshot;
                     const descriptorsReady = await this._waitForParallelBranchAssets(
                         branchSnapshot,
-                        barrier.assetDeadline
+                        appliedRequest.deadline
                     );
                     if (!descriptorsReady || !this._isParallelBranchSnapshotCurrent(branchSnapshot)) {
-                        if (this._isParallelDspBarrierCurrent(barrier)) {
+                        if (requestIsCurrent()) {
                             this.dispatchEvent('parallelInvalidated', {
                                 reason: 'asset-not-ready',
                                 restorePrimaryDsp: true
@@ -1325,7 +1390,7 @@ export class AudioManager {
                         [workletA, exactA],
                         [workletB, exactB]
                     ]);
-                    const remaining = barrier.assetDeadline - Date.now();
+                    const remaining = appliedRequest.deadline - Date.now();
                     const [assetsAReady, assetsBReady] = await Promise.all([
                         this._waitForWasmAssetsActive(
                             workletA,
@@ -1344,7 +1409,7 @@ export class AudioManager {
                         !this._areWasmAssetExpectationsActive(workletA, exactA) ||
                         !this._areWasmAssetExpectationsActive(workletB, exactB) ||
                         !this._isParallelBranchSnapshotCurrent(branchSnapshot)) {
-                        if (this._isParallelDspBarrierCurrent(barrier)) {
+                        if (requestIsCurrent()) {
                             this.dispatchEvent('parallelInvalidated', {
                                 reason: 'asset-not-ready',
                                 restorePrimaryDsp: true
@@ -1352,13 +1417,18 @@ export class AudioManager {
                         }
                         return false;
                     }
-                    return true;
+                    return this._alignParallelPipelineLatency(
+                        barrier,
+                        workletA,
+                        workletB,
+                        appliedRequest.deadline
+                    );
                 },
                 barrier.generation,
                 {
                     beforeUnmute: () => {
                         if (!assetExpectationsActive()) {
-                            if (this._isParallelDspBarrierCurrent(barrier)) {
+                            if (requestIsCurrent()) {
                                 this.dispatchEvent('parallelInvalidated', {
                                     reason: 'asset-not-ready',
                                     restorePrimaryDsp: true
@@ -1372,12 +1442,17 @@ export class AudioManager {
                 }
             ).then(applied => {
                 barrier.activationPromise = null;
-                if (!applied || !this._isParallelDspBarrierCurrent(barrier)) {
+                if (!this._isParallelDspBarrierCurrent(barrier) ||
+                    !this._isParallelBranchSnapshotCurrent(barrier.branchSnapshot)) {
                     this._settleParallelDspBarrier(barrier, 'cancelled');
                     return false;
                 }
-                if (!appliedRequest || appliedRequest.version !== barrier.requestVersion) {
+                if (appliedRequest && appliedRequest.version !== barrier.requestVersion) {
                     return startTransition();
+                }
+                if (!applied) {
+                    this._settleParallelDspBarrier(barrier, 'cancelled');
+                    return false;
                 }
                 if (!assetExpectationsActive()) {
                     this.dispatchEvent('parallelInvalidated', {
@@ -1654,10 +1729,121 @@ export class AudioManager {
         this._finalizeParallelDspBarrier(barrier, [], 'js');
     }
 
+    _clearDspPipelineLatency(sampleRate = this.audioContext?.sampleRate) {
+        if ((this.dspPipelineLatencySamples || 0) === 0 &&
+            this.dspPipelineLatencyCompensated !== true) {
+            return;
+        }
+        this.dspPipelineLatencySamples = 0;
+        this.dspPipelineLatencyCompensated = false;
+        this.dispatchEvent('dspLatency', {
+            type: 'dspLatency',
+            samples: 0,
+            sampleRate,
+            compensated: false
+        });
+    }
+
+    _requestDspControl(workletNode, type, replyType, payload, timeoutMs) {
+        if (!workletNode?.port || !(timeoutMs > 0)) return Promise.resolve(null);
+        if (!(this._pendingDspControlRequests instanceof Map)) {
+            this._pendingDspControlRequests = new Map();
+        }
+        this._dspControlRequestSequence = Number.isInteger(this._dspControlRequestSequence)
+            ? this._dspControlRequestSequence + 1
+            : 1;
+        const requestId = this._dspControlRequestSequence;
+        const pending = this._pendingDspControlRequests;
+        let resolve;
+        const promise = new Promise(done => { resolve = done; });
+        const request = {
+            workletNode,
+            replyType,
+            timer: null,
+            resolve
+        };
+        pending.set(requestId, request);
+        try {
+            workletNode.port.postMessage({ type, requestId, ...payload });
+            if (pending.get(requestId) === request) {
+                request.timer = setTimeout(() => {
+                    if (pending.get(requestId) !== request) return;
+                    pending.delete(requestId);
+                    resolve(null);
+                }, timeoutMs);
+            }
+        } catch (_) {
+            if (request.timer !== null) clearTimeout(request.timer);
+            pending.delete(requestId);
+            resolve(null);
+        }
+        return promise;
+    }
+
+    _settleDspControlResponse(workletNode, data) {
+        if (!(this._pendingDspControlRequests instanceof Map) ||
+            !Number.isInteger(data?.requestId)) return false;
+        const request = this._pendingDspControlRequests.get(data.requestId);
+        if (!request || request.workletNode !== workletNode || request.replyType !== data.type) {
+            return false;
+        }
+        if (request.timer !== null) clearTimeout(request.timer);
+        this._pendingDspControlRequests.delete(data.requestId);
+        request.resolve(data);
+        return true;
+    }
+
+    _requestWorkletLatency(workletNode, timeoutMs) {
+        return this._requestDspControl(
+            workletNode,
+            'requestDspLatency',
+            'dspLatencyResponse',
+            {},
+            timeoutMs
+        );
+    }
+
+    _setWorkletOutputDelay(workletNode, samples, timeoutMs) {
+        return this._requestDspControl(
+            workletNode,
+            'setOutputDelay',
+            'outputDelaySet',
+            { samples },
+            timeoutMs
+        );
+    }
+
+    async _alignParallelPipelineLatency(barrier, workletA, workletB, deadline) {
+        const timeoutMs = deadline - Date.now();
+        if (!(timeoutMs > 0)) return false;
+        const [latencyA, latencyB] = await Promise.all([
+            this._requestWorkletLatency(workletA, timeoutMs),
+            this._requestWorkletLatency(workletB, timeoutMs)
+        ]);
+        if (!latencyA || !latencyB || !this._isParallelDspBarrierCurrent(barrier)) return false;
+        const samplesA = Number.isInteger(latencyA.samples) && latencyA.samples >= 0
+            ? latencyA.samples
+            : 0;
+        const samplesB = Number.isInteger(latencyB.samples) && latencyB.samples >= 0
+            ? latencyB.samples
+            : 0;
+        const target = samplesA > samplesB ? samplesA : samplesB;
+        const remaining = deadline - Date.now();
+        if (!(remaining > 0)) return false;
+        const [delayA, delayB] = await Promise.all([
+            this._setWorkletOutputDelay(workletA, target - samplesA, remaining),
+            this._setWorkletOutputDelay(workletB, target - samplesB, remaining)
+        ]);
+        return !!delayA && !!delayB && this._isParallelDspBarrierCurrent(barrier) &&
+            delayA.samples === target - samplesA && delayB.samples === target - samplesB;
+    }
+
     handleWorkletMessage(event, workletNode = this.workletNode) {
         const data = event?.data || {};
         if (!this._isActiveDspWorklet(workletNode)) return;
-        if (data.type === 'assetState') {
+        if (data.type === 'dspLatencyResponse' || data.type === 'outputDelaySet') {
+            this._settleDspControlResponse(workletNode, data);
+        } else if (data.type === 'assetState') {
             this._updateWasmAssetState(
                 workletNode,
                 data.pluginId,
@@ -1676,6 +1862,10 @@ export class AudioManager {
             this.powerPolicyController?.handleWorkletPowerEvent?.(data, workletNode);
         } else if (data.type === 'audioProcessingOverload' && typeof data.active === 'boolean') {
             this.dispatchEvent('audioProcessingOverload', { active: data.active });
+        } else if (data.type === 'pipelineCpuUsage') {
+            if (workletNode !== this._getPrimaryWorkletNode()) return;
+            const average = Number.isFinite(data.average) && data.average >= 0 ? data.average : 0;
+            this.dispatchEvent('pipelineCpuUsage', { average });
         } else if (data.type === 'sleepModeChanged') {
             this.dispatchEvent('sleepModeChanged', {
                 isSleepMode: data.isSleepMode,
@@ -1693,15 +1883,34 @@ export class AudioManager {
                 !['pending', 'active', 'bypassed'].includes(data.state) ||
                 (data.state === 'bypassed' && !DSP_EXECUTION_BYPASS_REASONS.has(data.reason)) ||
                 (data.state !== 'bypassed' && data.reason != null)) return;
-            const plugin = [this.pipelineA, this.pipelineB, this.pipeline]
-                .filter(Array.isArray)
-                .flat()
-                .find(candidate => candidate?.id === data.pluginId &&
-                    candidate?.constructor?.name === data.pluginType);
-            if (!plugin || !pluginRequiresWasmExecution(plugin)) return;
+            const plugin = this._matchPrimaryDspExecutionPlugin(data.pluginId, data.pluginType);
+            if (!plugin) return;
             const currentGeneration = this._dspExecutionGenerationsByNode.get(workletNode) ?? -1;
             if (data.generation < currentGeneration) return;
             this._dspExecutionGenerationsByNode.set(workletNode, data.generation);
+            const owner = this._dspExecutionStateOwner;
+            if (!owner || owner.workletNode !== workletNode ||
+                owner.graphGeneration !== this._audioGraphGeneration ||
+                owner.workletEpoch !== this._primaryWorkletEpoch ||
+                owner.topologyRevision !== this._topologyRevision ||
+                owner.executionGeneration !== data.generation) {
+                this._dspExecutionStates = new Map();
+                this._dspExecutionStateOwner = {
+                    workletNode,
+                    graphGeneration: this._audioGraphGeneration,
+                    workletEpoch: this._primaryWorkletEpoch,
+                    topologyRevision: this._topologyRevision,
+                    executionGeneration: data.generation
+                };
+            }
+            this._dspExecutionStates.set(data.pluginId, Object.freeze({
+                pluginId: data.pluginId,
+                pluginType: data.pluginType,
+                state: data.state,
+                reason: data.reason ?? null,
+                generation: data.generation
+            }));
+            this._dspExecutionStateRevision = (this._dspExecutionStateRevision || 0) + 1;
             plugin.onMessage?.({ ...data, validated: true });
             this.dispatchEvent('dspExecutionState', { ...data, validated: true });
         } else if (data.type === 'tubeSimulatorCircuitFault') {
@@ -1805,19 +2014,15 @@ export class AudioManager {
             workletNode?.port?.postMessage({ type: 'dspCleanupFailed' });
             this.dispatchEvent('dspFailed', data);
         } else if (data.type === 'dspLatency') {
-            const samples = Number.isInteger(data.samples) && data.samples > 0 ? data.samples : 0;
+            if (workletNode !== this._getPrimaryWorkletNode()) return;
+            const samples = Number.isInteger(data.samples) && data.samples >= 0 ? data.samples : 0;
+            const compensated = data.compensated === true;
             const sampleRate = typeof data.sampleRate === 'number' && data.sampleRate > 0
                 ? data.sampleRate
                 : this.audioContext?.sampleRate;
             this.dspPipelineLatencySamples = samples;
-            if (samples > 0) {
-                const milliseconds = sampleRate > 0 ? samples * 1000 / sampleRate : 0;
-                console.info(
-                    `[dsp-wasm] Pipeline latency: ${samples} samples (${milliseconds.toFixed(2)} ms); ` +
-                    'delay compensation is not applied.'
-                );
-            }
-            this.dispatchEvent('dspLatency', { ...data, samples, sampleRate });
+            this.dspPipelineLatencyCompensated = compensated;
+            this.dispatchEvent('dspLatency', { ...data, samples, sampleRate, compensated });
         } else if (data.type === 'dspCleanupNeeded') {
             workletNode?.port?.postMessage({ type: 'dspCleanupFailed' });
         } else if (data.type === 'dspTelemetry') {
@@ -2245,10 +2450,11 @@ export class AudioManager {
             });
         }
         if (this._parallelPreparing || this._parallelActive || this._hasParallelResources()) {
-            this.disableParallelPipelines({ restorePrimaryDsp: false });
+            await this.disableParallelPipelines({ restorePrimaryDsp: false });
         } else {
             this._advanceAudioGraphGeneration();
         }
+        this._clearDspPipelineLatency();
         this._connectedPipelineSources.clear();
         // Clean up audio I/O
         this.ioManager.cleanupAudio();
@@ -2716,6 +2922,124 @@ export class AudioManager {
         return this._syncWasmAssetMembership(primaryWorklet, pipeline, {
             trackState: true
         }) !== null;
+    }
+
+    getEffectiveActiveWasmAssetSnapshot(plugin, slots = null, options = {}) {
+        const primaryWorklet = options.primaryWorklet ?? this._getPrimaryWorkletNode();
+        const requestedSlots = Array.isArray(slots)
+            ? [...new Set(slots.filter(slot => Number.isInteger(slot) && slot >= 0))]
+            : [...(plugin?.getWasmAssets?.().keys?.() || [])];
+        const assets = new Map();
+        const revisions = new Map();
+        const rejectedCandidates = new Map();
+        const pendingSlots = [];
+        const missingSlots = [];
+        const membership = this._wasmAssetMembershipByNode?.get(primaryWorklet);
+        const states = this._wasmAssetStatesByNode?.get(primaryWorklet);
+        const expectedRevisions = this._wasmAssetExpectedRevisionsByNode?.get(primaryWorklet);
+        const expectedReplayEpochs = this._wasmAssetExpectedReplayEpochsByNode?.get(primaryWorklet);
+        const desiredAssets = plugin?.getWasmAssets?.() || new Map();
+        const ownsPrimarySlot = Number.isInteger(plugin?.id) &&
+            membership?.get(plugin.id) === plugin;
+
+        for (const slot of requestedSlots) {
+            const key = this._wasmAssetKey(plugin?.id, slot);
+            const state = states?.get(key);
+            const status = Number.isInteger(state) ? (state >>> 0) & 0xff : 0;
+            const operationRevision = expectedRevisions?.get(key);
+            const replayEpoch = expectedReplayEpochs?.get(key) ?? null;
+            const rejection = plugin?.getWasmAssetLastRejection?.(slot);
+            if (rejection) rejectedCandidates.set(slot, rejection);
+
+            if (ownsPrimarySlot && status === 3 &&
+                Number.isSafeInteger(operationRevision) && operationRevision > 0) {
+                const descriptor = plugin?.getWasmAssetRevisionDescriptor?.(
+                    slot,
+                    operationRevision
+                );
+                if (descriptor?.payload instanceof ArrayBuffer) {
+                    assets.set(slot, descriptor);
+                    revisions.set(slot, Object.freeze({ operationRevision, replayEpoch }));
+                    continue;
+                }
+            }
+
+            const desired = desiredAssets.get(slot);
+            const desiredRevision = desired?.operationRevision;
+            const expectedDesired = ownsPrimarySlot && desired &&
+                (!Number.isSafeInteger(desiredRevision) || operationRevision === desiredRevision);
+            if (status === 1 || status === 2 || (status === 0 && expectedDesired)) {
+                pendingSlots.push(slot);
+            } else {
+                missingSlots.push(slot);
+            }
+        }
+
+        return Object.freeze({
+            primaryWorklet,
+            assets,
+            revisions,
+            rejectedCandidates,
+            pendingSlots: Object.freeze(pendingSlots),
+            missingSlots: Object.freeze(missingSlots),
+            ready: pendingSlots.length === 0 && missingSlots.length === 0,
+            stale: false,
+            timedOut: false
+        });
+    }
+
+    waitForEffectiveActiveWasmAssets(plugin, slots = null, options = {}) {
+        const timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+            ? options.timeoutMs
+            : DSP_BYTES_READY_TIMEOUT_MS;
+        const primaryWorklet = options.primaryWorklet ?? this._getPrimaryWorkletNode();
+        const generation = this._audioGraphGeneration;
+        const evaluate = () => this.getEffectiveActiveWasmAssetSnapshot(
+            plugin,
+            slots,
+            { primaryWorklet }
+        );
+        const initial = evaluate();
+        if (initial.pendingSlots.length === 0) return Promise.resolve(initial);
+
+        return new Promise(resolve => {
+            let settled = false;
+            let timer = null;
+            let unsubscribePlugin = () => {};
+            const onGraphRebuilt = () => settle({
+                ...evaluate(),
+                ready: false,
+                stale: true
+            });
+            const settle = result => {
+                if (settled) return;
+                settled = true;
+                if (timer !== null) clearTimeout(timer);
+                unsubscribePlugin();
+                this.removeEventListener('audioGraphRebuilt', onGraphRebuilt);
+                resolve(Object.freeze(result));
+            };
+            const check = () => {
+                if (generation !== this._audioGraphGeneration ||
+                    primaryWorklet !== this._getPrimaryWorkletNode()) {
+                    onGraphRebuilt();
+                    return;
+                }
+                const snapshot = evaluate();
+                if (snapshot.pendingSlots.length === 0) settle(snapshot);
+            };
+            const subscribe = plugin?.addWasmAssetSnapshotChangeListener;
+            unsubscribePlugin = typeof subscribe === 'function'
+                ? subscribe.call(plugin, check)
+                : () => {};
+            this.addEventListener('audioGraphRebuilt', onGraphRebuilt);
+            timer = setTimeout(() => settle({
+                ...evaluate(),
+                ready: false,
+                timedOut: true
+            }), timeoutMs);
+            check();
+        });
     }
 
     _syncWasmAssetMembership(workletNode, pipeline, options = {}) {
@@ -3553,7 +3877,8 @@ export class AudioManager {
                     wB.port.postMessage({ type: 'dspTelemetryReturn', packet: data.packet }, [data.packet]);
                 } else if (data?.type === 'assetState' || data?.type === 'assetLoadRejected' ||
                     data?.type === 'dspReady' || data?.type === 'dspFailed' ||
-                    data?.type === 'dspCleanupNeeded' || data?.type === 'powerStateAck' ||
+                    data?.type === 'dspCleanupNeeded' || data?.type === 'dspLatencyResponse' ||
+                    data?.type === 'outputDelaySet' || data?.type === 'powerStateAck' ||
                     data?.type === 'powerObservation' || data?.type === 'powerFirstRender' ||
                     data?.type === 'powerHeartbeat' || data?.type === 'temporalStatePrepared') {
                     this.handleWorkletMessage(event, wB);
@@ -3602,7 +3927,6 @@ export class AudioManager {
 
             const barrier = this._createParallelDspBarrier([wA, wB]);
             barrier.branchSnapshot = branchSnapshot;
-            barrier.assetDeadline = assetDeadline;
             const preferredTypes = this.getEnabledDspTypes();
             barrier.desiredTypes = this.dspModuleInfo ? [...preferredTypes] : null;
             const preference = window.audioPreferences || window.electronIntegration?.audioPreferences || {};
@@ -3862,87 +4186,107 @@ export class AudioManager {
 
         this._parallelPreparing = false;
         this._parallelActive = false;
-        this._advanceAudioGraphGeneration();
-        const outputOwner = this._captureOutputOwner();
-
-        // Disconnect the input tap first so branch B loses all its input edges
-        // (player sources connect through the tap), letting wB be released.
-        for (const source of this._getPipelineInputSources()) {
-            try { source.disconnect(tap); } catch (_) { /* ignore */ }
-        }
-        try { tap?.disconnect(); } catch (_) { /* ignore */ }
-        try { wB?.disconnect(); } catch (_) { /* ignore */ }
-        try { selA?.disconnect(); } catch (_) { /* ignore */ }
-        try { selB?.disconnect(); } catch (_) { /* ignore */ }
-        // Full disconnect then single reconnect avoids any duplicate wA -> out edge.
-        try { wA?.disconnect(); } catch (_) { /* ignore */ }
-        try { if (wA && out) wA.connect(out); } catch (_) { /* ignore */ }
-
-        if (wB) {
-            this.clearDspReadyFallback(wB);
-            this._completeDspActivationRequest(wB, false);
-            this._settleWasmAssetReadyRequest(wB, false);
-            this._wasmAssetStatesByNode?.delete(wB);
-            this._wasmAssetExpectedRevisionsByNode?.delete(wB);
-            this._wasmAssetExpectedReplayEpochsByNode?.delete(wB);
-            const membership = this._wasmAssetMembershipByNode?.get(wB);
-            for (const plugin of new Set(membership?.values() || [])) {
-                plugin?.dropWasmAssetTarget?.(wB);
+        const generation = this._advanceAudioGraphGeneration();
+        let graphReleased = false;
+        const releaseParallelGraph = () => {
+            if (graphReleased) return;
+            graphReleased = true;
+            // Drop branch B's input edges before releasing its output route.
+            for (const source of this._getPipelineInputSources()) {
+                try { source.disconnect(tap); } catch (_) { /* ignore */ }
             }
-            this._wasmAssetMembershipByNode?.delete(wB);
-            this._dspCapabilitiesByNode?.delete(wB);
-            this._dspReadyTokens?.delete(wB);
-            if (wB.port) wB.port.onmessage = null;
-        }
+            try { tap?.disconnect(); } catch (_) { /* ignore */ }
+            try { wB?.disconnect(); } catch (_) { /* ignore */ }
+            try { selA?.disconnect(); } catch (_) { /* ignore */ }
+            try { selB?.disconnect(); } catch (_) { /* ignore */ }
+            try { wA?.disconnect(); } catch (_) { /* ignore */ }
+            try { if (wA && out) wA.connect(out); } catch (_) { /* ignore */ }
 
-        this._parallelWorkletB = null;
-        this._parallelSelA = null;
-        this._parallelSelB = null;
-        this._parallelInputTap = null;
-        this._syncRealtimeOutputKeepalive();
+            if (wB) {
+                this.clearDspReadyFallback(wB);
+                this._completeDspActivationRequest(wB, false);
+                this._settleWasmAssetReadyRequest(wB, false);
+                this._wasmAssetStatesByNode?.delete(wB);
+                this._wasmAssetExpectedRevisionsByNode?.delete(wB);
+                this._wasmAssetExpectedReplayEpochsByNode?.delete(wB);
+                const membership = this._wasmAssetMembershipByNode?.get(wB);
+                for (const plugin of new Set(membership?.values() || [])) {
+                    plugin?.dropWasmAssetTarget?.(wB);
+                }
+                this._wasmAssetMembershipByNode?.delete(wB);
+                this._dspCapabilitiesByNode?.delete(wB);
+                this._dspReadyTokens?.delete(wB);
+                if (wB.port) wB.port.onmessage = null;
+            }
+
+            this._parallelWorkletB = null;
+            this._parallelSelA = null;
+            this._parallelSelB = null;
+            this._parallelInputTap = null;
+            this._syncRealtimeOutputKeepalive();
+        };
+
+        const restoreDirectOutput = async (restorePrimaryDsp) => {
+            if (wA?.port) {
+                const delayReset = await this._setWorkletOutputDelay(
+                    wA,
+                    0,
+                    assetDeadline - Date.now()
+                );
+                if (!delayReset || delayReset.samples !== 0) return false;
+            }
+            releaseParallelGraph();
+            if (!restorePrimaryDsp || !wA?.port) return true;
+
+            wA.port.postMessage({
+                type: 'updatePlugins',
+                plugins: primaryPluginData,
+                masterBypass: primaryMasterBypass
+            });
+            if (this._syncWasmAssetMembership(wA, primaryPipeline, {
+                generation: this._audioGraphGeneration,
+                replayNew: false,
+                trackState: true
+            }) === null) return false;
+            const expected = this._replayPipelineWasmAssets(wA, primaryPipeline, {
+                generation: this._audioGraphGeneration,
+                trackState: true,
+                assetMaps: primaryAssetMaps
+            });
+            if (expected === null) return false;
+            const exact = this._captureWasmAssetExpectations(wA, expected);
+            if (exact === null) return false;
+            const ready = await this._waitForWasmAssetsActive(
+                wA,
+                expected,
+                this._audioGraphGeneration,
+                assetDeadline - Date.now()
+            );
+            return ready === true && this._areWasmAssetExpectationsActive(wA, exact);
+        };
+
         const teardownPromise = (async () => {
             if (options.restorePrimaryDsp === false || !wA?.port) {
-                this._fadeInOutputIfOwned(outputOwner, PIPELINE_SWITCH_FADE_SECONDS);
-                return true;
+                return this._runDspOutputTransition(
+                    wA?.port ? new Set([wA]) : new Set(),
+                    () => true,
+                    generation,
+                    { beforeUnmute: () => restoreDirectOutput(false) }
+                );
             }
 
             try {
                 const preferredTypes = this.getEnabledDspTypes();
-                const beforeUnmute = async () => {
-                    wA.port.postMessage({
-                        type: 'updatePlugins',
-                        plugins: primaryPluginData,
-                        masterBypass: primaryMasterBypass
-                    });
-                    if (this._syncWasmAssetMembership(wA, primaryPipeline, {
-                        generation: this._audioGraphGeneration,
-                        replayNew: false,
-                        trackState: true
-                    }) === null) return false;
-                    const expected = this._replayPipelineWasmAssets(wA, primaryPipeline, {
-                        generation: this._audioGraphGeneration,
-                        trackState: true,
-                        assetMaps: primaryAssetMaps
-                    });
-                    if (expected === null) return false;
-                    const exact = this._captureWasmAssetExpectations(wA, expected);
-                    if (exact === null) return false;
-                    const ready = await this._waitForWasmAssetsActive(
-                        wA,
-                        expected,
-                        this._audioGraphGeneration,
-                        assetDeadline - Date.now()
-                    );
-                    return ready === true && this._areWasmAssetExpectationsActive(wA, exact);
-                };
                 const restoration = preferredTypes.length === 0 ||
                     this._dspCapabilitiesByNode?.has(wA)
                     ? this._transitionDspConfiguration(
                         new Set([wA]),
                         preferredTypes,
-                        { beforeUnmute }
+                        { beforeUnmute: () => restoreDirectOutput(true) }
                     )
-                    : this._reinitializeDspWorklet(wA, preferredTypes, { beforeUnmute });
+                    : this._reinitializeDspWorklet(wA, preferredTypes, {
+                        beforeUnmute: () => restoreDirectOutput(true)
+                    });
                 return await restoration;
             } catch (error) {
                 throw error;
@@ -4102,6 +4446,7 @@ export class AudioManager {
     setMasterBypass(bypass) {
         if (this.masterBypass !== bypass) {
             this.masterBypass = bypass;
+            if (this.masterBypass) this._clearDspPipelineLatency();
             this.pipelineProcessor.setMasterBypass(this.masterBypass);
             return this.rebuildPipeline();
         }

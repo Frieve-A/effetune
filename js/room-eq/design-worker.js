@@ -58,6 +58,7 @@ globalThis.onmessage = async event => {
             payload,
             previews: result.previews,
             qualityWarnings: result.qualityWarnings,
+            diagnostics: result.diagnostics,
             supportsFullPhase: result.supportsFullPhase,
             latencyInfo: result.latencyInfo
         }, transferables);

@@ -6743,8 +6743,8 @@
     },
     "TubeSimulator": {
       "internalType": "TubeSimulatorPlugin",
-      "layoutHash": 3886736006,
-      "floatCount": 20,
+      "layoutHash": 127429451,
+      "floatCount": 24,
       "packedParameters": [
         {
           "publicName": "inputVolume",
@@ -6981,6 +6981,54 @@
             "ag"
           ],
           "offset": 19,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "seTube",
+          "field": "seTube",
+          "keys": [
+            "sd"
+          ],
+          "offset": 20,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "seBPlus",
+          "field": "seBPlus",
+          "keys": [
+            "sb"
+          ],
+          "offset": 21,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "seCathodeResistor",
+          "field": "seCathodeResistor",
+          "keys": [
+            "sr"
+          ],
+          "offset": 22,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "sePrimaryImpedance",
+          "field": "sePrimaryImpedance",
+          "keys": [
+            "sp"
+          ],
+          "offset": 23,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -7267,5 +7315,5 @@
     "dsp/plugins/spatial/multiband_balance/params.json": "dsp/plugins/spatial/multiband_balance/golden/index.json",
     "dsp/plugins/spatial/stereo_blend/params.json": "dsp/plugins/spatial/stereo_blend/golden/index.json"
   },
-  "contractDigest": "2cc628230da003412da1fa01648a056d60d69de773bf7c016d9fdd1ac7618707"
+  "contractDigest": "549215a20bcacd90050b30e85696b79ea816710a3c5cfe03f4493f6966528c06"
 }

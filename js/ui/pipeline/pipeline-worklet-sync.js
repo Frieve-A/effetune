@@ -24,6 +24,10 @@ export class PipelineWorkletSync {
         return Array.isArray(this.audioManager.pipeline) ? this.audioManager.pipeline : [];
     }
 
+    notifyPipelineAnalysisInvalidated(reason) {
+        this.audioManager?.dispatchEvent?.('pipelineAnalysisInvalidated', { reason });
+    }
+
     getAudioSampleRate() {
         return this.audioManager?.contextManager?.audioContext?.sampleRate ??
             this.audioManager?.audioContext?.sampleRate ??
@@ -81,6 +85,7 @@ export class PipelineWorkletSync {
             this.audioManager.syncPrimaryWasmAssetMembership?.(this.getCurrentPipeline());
         }
         this.updateURL();
+        this.notifyPipelineAnalysisInvalidated('pipeline-full-update');
     }
 
     /**
@@ -96,6 +101,7 @@ export class PipelineWorkletSync {
             }, 'pipeline-plugin-update');
         }
         this.updateURL();
+        this.notifyPipelineAnalysisInvalidated('pipeline-plugin-update');
     }
 
     /**
@@ -118,6 +124,7 @@ export class PipelineWorkletSync {
             }, 'pipeline-master-bypass');
         }
         this.updateURL();
+        this.notifyPipelineAnalysisInvalidated('pipeline-master-bypass');
     }
 
     /**
@@ -173,6 +180,7 @@ export class PipelineWorkletSync {
             }, 'pipeline-batch-update');
         }
         this.updateURL();
+        this.notifyPipelineAnalysisInvalidated('pipeline-batch-update');
     }
 
     /**
@@ -187,6 +195,7 @@ export class PipelineWorkletSync {
             }, 'pipeline-plugin-remove');
         }
         this.updateURL();
+        this.notifyPipelineAnalysisInvalidated('pipeline-plugin-remove');
     }
 
     /**
@@ -206,6 +215,7 @@ export class PipelineWorkletSync {
             }, 'pipeline-plugin-add');
         }
         this.updateURL();
+        this.notifyPipelineAnalysisInvalidated('pipeline-plugin-add');
     }
 
     /**
@@ -222,6 +232,7 @@ export class PipelineWorkletSync {
             }, 'pipeline-plugin-reorder');
         }
         this.updateURL();
+        this.notifyPipelineAnalysisInvalidated('pipeline-plugin-reorder');
     }
 
     /**

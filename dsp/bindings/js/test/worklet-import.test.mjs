@@ -13,7 +13,11 @@ test('package processor registers its package-owned processor', async () => {
   let registration;
   globalThis.AudioWorkletProcessor = class {
     constructor() {
-      this.port = { postMessage() {}, onmessage: null };
+      this.port = {
+        messages: [],
+        postMessage: message => this.port.messages.push(message),
+        onmessage: null
+      };
     }
   };
   globalThis.registerProcessor = (name, Processor) => {
@@ -24,6 +28,15 @@ test('package processor registers its package-owned processor', async () => {
     await import(`../dist/worklet-processor.js?test=${Date.now()}`);
     assert.equal(registration.name, 'effetune-dsp-processor');
     assert.equal(typeof registration.Processor, 'function');
+    const processor = new registration.Processor();
+    await processor.initialize({
+      channels: 2,
+      document: { version: 1, chain: [] },
+      resolvedAssets: new Map(),
+      wasmBytes: null,
+      seed: 0
+    });
+    assert.deepEqual(processor.port.messages, [{ type: 'ready', latencySamples: 0 }]);
   } finally {
     if (priorProcessor === undefined) delete globalThis.AudioWorkletProcessor;
     else globalThis.AudioWorkletProcessor = priorProcessor;
@@ -66,9 +79,12 @@ test('worklet protocol restores public errors and reset restores the initial doc
       }]
     };
     const node = new EffeTuneNode({}, 2, document, 42);
+    node._handleMessage({ type: 'ready', latencySamples: 144 });
+    assert.equal(node.latencySamples, 144);
     const update = node.setParam('gain', 'volume', -12);
     await Promise.resolve();
     const updateCommand = node.port.messages.at(-1);
+    node._handleMessage({ type: 'latency', latencySamples: 288 });
     node._handleMessage({
       type: 'commandResult',
       commandId: updateCommand.commandId,
@@ -76,10 +92,12 @@ test('worklet protocol restores public errors and reset restores the initial doc
     });
     await update;
     assert.equal(node._document.chain[0].parameters.volume, -12);
+    assert.equal(node.latencySamples, 288);
 
     const reset = node.reset();
     await Promise.resolve();
     const resetCommand = node.port.messages.at(-1);
+    node._handleMessage({ type: 'latency', latencySamples: 144 });
     node._handleMessage({
       type: 'commandResult',
       commandId: resetCommand.commandId,
@@ -87,6 +105,7 @@ test('worklet protocol restores public errors and reset restores the initial doc
     });
     await reset;
     assert.equal(node._document.chain[0].parameters.volume, -6);
+    assert.equal(node.latencySamples, 144);
 
     const command = node._command({ type: 'test' });
     const commandMessage = node.port.messages.at(-1);
@@ -99,6 +118,7 @@ test('worklet protocol restores public errors and reset restores the initial doc
     });
     await assert.rejects(command, ValidationError);
     node.close();
+    assert.throws(() => node.latencySamples, error => error.name === 'StateError');
 
     const failed = new EffeTuneNode({}, 2, document, 42);
     const ready = failed._waitUntilReady();

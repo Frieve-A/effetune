@@ -44,6 +44,7 @@ class PluginBase {
         this._wasmAssetPendingPredecessors = new Map();
         this._wasmAssetRevisionDescriptors = new Map();
         this._wasmAssetResidentDescriptors = new Map();
+        this._wasmAssetLastRejections = new Map();
         this._wasmAssetChangeListeners = new Set();
         this._wasmAssetSnapshotChangeListeners = new Set();
         this._wasmAssetTargetResolver = null;
@@ -181,9 +182,11 @@ class PluginBase {
                 this._wasmAssetStateRevisions.set(slot, operationRevision);
                 if ((event.data.state & 0xff) === 3) {
                     this._wasmAssetPendingPredecessors.delete(slot);
+                    this._wasmAssetLastRejections.delete(slot);
                     this._pruneWasmAssetRevisionDescriptors(slot, operationRevision);
                 }
                 this.onWasmAssetState(slot, event.data.state >>> 0, operationRevision);
+                this._notifyWasmAssetSnapshotChange();
             } else if (event.data.type === 'assetLoadRejected') {
                 const slot = event.data.slot >>> 0;
                 const operationRevision = event.data.operationRevision;
@@ -267,6 +270,12 @@ class PluginBase {
                     this._wasmAssetStateRevisions.delete(slot);
                     this._wasmAssetLogicalReplayEpochs.delete(slot);
                 }
+                this._wasmAssetLastRejections.set(slot, Object.freeze({
+                    operationRevision,
+                    reason: typeof event.data.reason === 'string' ? event.data.reason : 'rejected',
+                    residentRetained,
+                    retainedOperationRevision: residentRetained ? retainedOperationRevision : null
+                }));
                 this.onWasmAssetRejected(slot, event.data.reason, operationRevision, {
                     residentRetained,
                     replayFailure,
@@ -383,6 +392,20 @@ class PluginBase {
 
     getWasmAssetOperationRevision(slot) {
         return this._wasmAssetOperationRevisions.get(slot) ?? null;
+    }
+
+    getWasmAssetRevisionDescriptor(slot, operationRevision) {
+        const descriptor = this._getWasmAssetRevisionDescriptor(slot, operationRevision);
+        if (!descriptor?.payload) return null;
+        return {
+            ...descriptor,
+            payload: descriptor.payload.slice(0)
+        };
+    }
+
+    getWasmAssetLastRejection(slot) {
+        const rejection = this._wasmAssetLastRejections.get(slot);
+        return rejection ? { ...rejection } : null;
     }
 
     getWasmAssetDeliveryRevisions(slot) {
@@ -624,6 +647,7 @@ class PluginBase {
             normalized.footprintBytes < descriptor.payload.byteLength) {
             throw new TypeError('A WASM asset footprint must cover the payload with a safe integer byte count');
         }
+        this._wasmAssetLastRejections.delete(slot);
         this._pinPotentialWasmAssetResident(slot, this._wasmAssets.get(slot));
         this._wasmAssetLogicalReplayEpochs.delete(slot);
         normalized.operationRevision = this._nextWasmAssetOperationRevision(slot);
@@ -718,12 +742,13 @@ class PluginBase {
             throw new TypeError('A WASM asset requires a non-negative slot');
         }
         this._clearWasmAssetResidentDescriptor(slot);
+        const rejectionRemoved = this._wasmAssetLastRejections.delete(slot);
         this._wasmAssetLogicalReplayEpochs.delete(slot);
         const operationRevision = this._nextWasmAssetOperationRevision(slot);
         const removed = this._wasmAssets.delete(slot);
         this._wasmAssetStates.delete(slot);
         this._wasmAssetStateRevisions.delete(slot);
-        if (removed) this._notifyWasmAssetChange();
+        if (removed || rejectionRemoved) this._notifyWasmAssetChange();
         const request = {
             type: 'clear',
             operationRevision
@@ -1735,6 +1760,7 @@ class PluginBase {
         this._wasmAssetPendingPredecessors.clear();
         this._wasmAssetRevisionDescriptors.clear();
         this._wasmAssetResidentDescriptors.clear();
+        this._wasmAssetLastRejections.clear();
         this._wasmAssetOperationCounters.clear();
         this._wasmAssetOperationRevisions.clear();
         this._wasmAssetTargetResolver = null;

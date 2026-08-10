@@ -9,6 +9,7 @@ const explicit = [
   'effetune.css',
   'effetune-mobile.css',
   'effetune-library.css',
+  'pipeline-analyzer.css',
   'features/effetune-benchmark.js',
   'manifest.json',
   'package.json',

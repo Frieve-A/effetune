@@ -9,6 +9,7 @@
 
 #if defined(ET_ENABLE_TEST_KERNEL)
 extern "C" const ::effetune::KernelDescriptor *et_kernel_descriptor_TestGainPlugin() noexcept;
+extern "C" const ::effetune::KernelDescriptor *et_kernel_descriptor_TestDelayPlugin() noexcept;
 #endif
 
 namespace effetune::registry {
@@ -21,7 +22,7 @@ constexpr DescriptorFunction kDescriptors[] = {
 #include "../registry.inc"
 #undef EFFETUNE_PLUGIN
 #if defined(ET_ENABLE_TEST_KERNEL)
-    &et_kernel_descriptor_TestGainPlugin,
+    &et_kernel_descriptor_TestGainPlugin, &et_kernel_descriptor_TestDelayPlugin,
 #endif
     nullptr};
 

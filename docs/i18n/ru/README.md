@@ -255,6 +255,8 @@ EffeTune создан для аудиоэнтузиастов, которые х
 
 Для измерений с сохраненной импульсной характеристикой в результатах отображается нормированный график **Импульсная характеристика**. Начальный диапазон — от 0 до 10 мс относительно обнаруженного начала. Масштабируйте ось времени колесом мыши или кнопками, а для прокрутки перетаскивайте график или используйте ползунок. При выборе точки график обновляется; для **Все (среднее)** отображается первая точка с сохраненной импульсной характеристикой, название которой указано над графиком. Используйте **Экспортировать импульсную характеристику (WAV)** под графиком, чтобы сохранить полную ненормированную характеристику отображаемой точки в виде монофонического WAV с 32-битными числами с плавающей точкой и частотой дискретизации измерения.
 
+О том, как просмотреть частоту, фазу, групповую задержку и импульс активного pipeline для четырёх выходов и сохранённых откликов динамиков, см. в [руководстве по Pipeline Analyzer](pipeline-analyzer.md).
+
 ## Распространенные комбинации эффектов
 
 Ниже приведены некоторые популярные комбинации эффектов для улучшения качества прослушивания:
@@ -354,6 +356,7 @@ EffeTune создан для аудиоэнтузиастов, которые х
 | Lo-Fi     | Vinyl Simulator | Записывает вход в моделируемую канавку и воспроизводит ее физической моделью иглы | [Подробнее](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | Имитирует естественные динамические изменения звука от небольших движений диффузора динамика | [Подробнее](plugins/modulation.md#doppler-distortion) |
 | Modulation | Pitch Shifter | Повышает или понижает высоту музыки без изменения темпа | [Подробнее](plugins/modulation.md#pitch-shifter) |
+| Modulation | Pitch Shifter HQ | Повышает или понижает высоту с меньшим количеством фазовых артефактов | [Подробнее](plugins/modulation.md#pitch-shifter-hq) |
 | Modulation | Tremolo | Эффект модуляции громкости | [Подробнее](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | Добавляет легкое дрожание высоты в стиле ленты или пластинки для винтажного характера | [Подробнее](plugins/modulation.md#wow-flutter) |
 | Resonator | Horn Resonator | Симуляция резонанса рупора с настраиваемыми размерами | [Подробнее](plugins/resonator.md#horn-resonator) |
@@ -363,6 +366,7 @@ EffeTune создан для аудиоэнтузиастов, которые х
 | Reverb    | FDN Reverb | Feedback Delay Network reverb с насыщенными плотными реверберационными текстурами | [Подробнее](plugins/reverb.md#fdn-reverb) |
 | Reverb    | IR Reverb | Свёрточная реверберация с импортированными импульсными характеристиками помещений и оборудования | [Подробнее](plugins/reverb.md#ir-reverb) |
 | Reverb    | RS Reverb | Реверберация с случайным рассеянием и естественной диффузией | [Подробнее](plugins/reverb.md#rs-reverb) |
+| Saturation| Bandwidth Extender | Генерирует высокочастотный контент выше обнаруженной или заданной частоты среза | [Подробнее](plugins/saturation.md#bandwidth-extender) |
 | Saturation| Dynamic Saturation | Имитирует нелинейное смещение диффузоров динамиков | [Подробнее](plugins/saturation.md#dynamic-saturation) |
 | Saturation| Exciter | Добавляет гармоники для ясности и присутствия | [Подробнее](plugins/saturation.md#exciter) |
 | Saturation| Hard Clipping | Цифровой эффект жесткого клиппирования | [Подробнее](plugins/saturation.md#hard-clipping) |
@@ -370,7 +374,7 @@ EffeTune создан для аудиоэнтузиастов, которые х
 | Saturation| Multiband Saturation | Отдельно добавляет теплоту или остроту в низах, середине и верхах | [Подробнее](plugins/saturation.md#multiband-saturation) |
 | Saturation| Saturation | Добавляет теплую аналоговую насыщенность и характер | [Подробнее](plugins/saturation.md#saturation) |
 | Saturation| Sub Synth | Подмешивает фильтрованный низкочастотный сигнал для усиления баса | [Подробнее](plugins/saturation.md#sub-synth) |
-| Saturation| Tube Simulator | Динамически моделирует ламповые линейные каскады и двухтактный усилитель мощности | [Подробнее](plugins/saturation.md#tube-simulator) |
+| Saturation| Tube Simulator | Моделирует ламповые линейные каскады и двухтактные либо однотактные триодные усилители мощности на 300B/2A3 | [Подробнее](plugins/saturation.md#tube-simulator) |
 | Spatial   | Crossfeed Filter | Наушниковый crossfeed-фильтр для естественной стереокартины | [Подробнее](plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | Преобразует stereo и Mid/Side для настройки центра и пространства | [Подробнее](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5-полосное управление стереобалансом по частотам | [Подробнее](plugins/spatial.md#multiband-balance) |

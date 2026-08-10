@@ -82,6 +82,7 @@
       "effetune.css",
       "effetune-mobile.css",
       "effetune-library.css",
+      "pipeline-analyzer.css",
       "sw.js",
       "sw-precache.js",
       "manifest.json",

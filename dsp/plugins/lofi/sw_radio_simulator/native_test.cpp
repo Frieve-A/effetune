@@ -624,7 +624,7 @@ void testSyncDetectorLocksToTheCarrier() {
   processTone(harness, 0.25, 24000u, 0u, sample_rate);
   check(harness.syncPllState() == 1.0, "the synchronous detector reaches the tracking state");
   const double estimated = harness.syncPllFrequencyHz();
-  check(estimated > 240.0 && estimated < 260.0,
+  check(estimated < -240.0 && estimated > -260.0,
         "the recovered carrier frequency matches the tuning offset");
 
   // Retuning away from a locked station is the only way out of the tracking state, so this is the
@@ -855,24 +855,23 @@ double ssbBand(const std::vector<float> &samples, double frequency) noexcept {
   return bandPower(samples, kSsbWindowStart, kSsbWindowLength, kSsbSampleRate, frequency);
 }
 
-// The Phase 0 frozen sign convention: delta = tn*1000 - bf, USB moves every component up by
-// delta and LSB down by delta. With tn=0.5 kHz and bf=200 Hz a 1 kHz tone lands on 1300 Hz in
-// USB and on 700 Hz in LSB, and the unwanted sideband sits at least ~50 dB down by design;
-// 30 dB is asserted. The sk=0 / sk=100 endpoints validate the complex propagation equation
-// rather than sound quality: a ground-only and a skywave-only path must both preserve the
-// single-sideband structure.
+// Positive Tuning means that the receiver is tuned above the station. A 1 kHz tone therefore
+// lands on 700 Hz in USB and on 1300 Hz in LSB at +0.3 kHz. The unwanted sideband sits at least
+// ~50 dB down by design; 30 dB is asserted. The sk=0 / sk=100 endpoints validate the complex
+// propagation equation rather than sound quality: a ground-only and a skywave-only path must
+// both preserve the single-sideband structure.
 void testSsbShiftSignAndSidebandSuppression() {
   for (float skywave : {0.0F, 100.0F}) {
     const std::vector<float> usb =
-        renderSsbSpectral(ssbCleanParams(1.0F, 0.5F, 200.0F, skywave), 0.25, 1000.0);
+        renderSsbSpectral(ssbCleanParams(1.0F, 0.3F, 0.0F, skywave), 0.25, 1000.0);
     const std::vector<float> lsb =
-        renderSsbSpectral(ssbCleanParams(2.0F, 0.5F, 200.0F, skywave), 0.25, 1000.0);
-    check(ssbBand(usb, 1300.0) > 1000.0 * ssbBand(usb, 700.0),
-          "USB keeps f+delta dominant over the unwanted sideband");
-    check(ssbBand(usb, 1300.0) > 1000.0 * ssbBand(usb, 1000.0),
+        renderSsbSpectral(ssbCleanParams(2.0F, 0.3F, 0.0F, skywave), 0.25, 1000.0);
+    check(ssbBand(usb, 700.0) > 1000.0 * ssbBand(usb, 1300.0),
+          "USB shifts down when the receiver is tuned high");
+    check(ssbBand(usb, 700.0) > 1000.0 * ssbBand(usb, 1000.0),
           "USB leaves no component at the untranslated tone");
-    check(ssbBand(lsb, 700.0) > 1000.0 * ssbBand(lsb, 1300.0),
-          "LSB keeps f-delta dominant over the unwanted sideband");
+    check(ssbBand(lsb, 1300.0) > 1000.0 * ssbBand(lsb, 700.0),
+          "LSB shifts up when the receiver is tuned high");
   }
 
   // A zero offset (delta = 0) reproduces the programme frequency exactly.
@@ -897,12 +896,12 @@ void testSsbShiftSignAndSidebandSuppression() {
 // stay suppressed by the allpass design.
 void testSsbCarrierSuppression() {
   const std::vector<float> silence =
-      renderSsbSpectral(ssbCleanParams(1.0F, 0.3F, 0.0F, 0.0F), 0.0, 1000.0);
+      renderSsbSpectral(ssbCleanParams(1.0F, -0.3F, 0.0F, 0.0F), 0.0, 1000.0);
   const double silence_residual =
       singleBinAmplitude(silence, kSsbWindowStart, kSsbWindowLength, kSsbSampleRate, 300.0);
   check(silence_residual < 0.01, "silent carrier residual stays at the noise floor");
 
-  Params driven_params = ssbCleanParams(1.0F, 0.3F, 0.0F, 0.0F);
+  Params driven_params = ssbCleanParams(1.0F, -0.3F, 0.0F, 0.0F);
   driven_params.compression = 20.0F;
   const std::vector<float> driven = renderSsbSpectral(driven_params, 0.9, 1000.0);
   const double driven_residual =
@@ -914,7 +913,7 @@ void testSsbCarrierSuppression() {
 
   KernelHarness music_harness(static_cast<float>(kSsbSampleRate), 2u);
   music_harness.seed(0x0301c0deu, 0x5eedbea7u);
-  music_harness.stage(ssbCleanParams(1.0F, 0.3F, 0.0F, 0.0F));
+  music_harness.stage(ssbCleanParams(1.0F, -0.3F, 0.0F, 0.0F));
   const std::vector<float> music =
       renderCapture(music_harness, kSsbTotalFrames, [](std::uint32_t frame) {
         const double t = static_cast<double>(frame) / kSsbSampleRate;

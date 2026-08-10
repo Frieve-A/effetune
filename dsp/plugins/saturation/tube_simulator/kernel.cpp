@@ -40,10 +40,14 @@ struct TubeSimulatorPluginParams {
   float actualSpeakerLoad;
   float safetyTrim;
   float autoGainReduction;
+  float seTube;
+  float seBPlus;
+  float seCathodeResistor;
+  float sePrimaryImpedance;
   static constexpr std::uint32_t kHash = 0u;
-  static constexpr std::uint32_t kFloatCount = 20u;
+  static constexpr std::uint32_t kFloatCount = 24u;
 };
-static_assert(sizeof(TubeSimulatorPluginParams) == sizeof(float) * 20u);
+static_assert(sizeof(TubeSimulatorPluginParams) == sizeof(float) * 24u);
 
 } // namespace effetune::generated
 #endif
@@ -267,6 +271,7 @@ constexpr std::size_t kTelemetryPayloadFloats = 41u;
 constexpr std::size_t kTelemetrySafetyReductionIndex = 40u;
 constexpr std::size_t kTelemetryPayloadBytes = kTelemetryPayloadFloats * sizeof(float);
 constexpr double kPowerOutputReferencePeakV = 25.0;
+constexpr int kBypassDriverIndex = 3;
 constexpr std::uint32_t kRuntimeCauseNone = 0u;
 constexpr std::uint32_t kRuntimeCauseFeedbackOscillation = 1u;
 constexpr std::uint32_t kRuntimeCauseProcessingSafetyFailure = 2u;
@@ -349,7 +354,43 @@ struct Path2Parameters {
   // Output-stage safety trim. Attenuation only, applied behind the amplifier model.
   double safetyTrimDb = 0.0;
   bool autoGainReduction = true;
+  int seTube = 0;
+  double seBPlus = 400.0;
+  double seCathodeResistor = 1000.0;
+  int sePrimaryImpedance = 1;
 };
+
+struct SeTubeModel {
+  double mu;
+  double ka;
+  double alpha;
+  double v0;
+  double sc;
+  double vs;
+  double standingCurrentA;
+  double windingResistanceOhm;
+  double magnetizingInductanceH;
+  double leakageInductanceH;
+  double coreLossResistanceOhm;
+  double resonanceHz;
+  double cathodeCapacitanceF;
+  double powerTheveninResistanceOhm;
+  double powerCapacitanceF;
+  double nfbTapTurnsRatio;
+};
+
+constexpr std::array<SeTubeModel, 2> kSeTubeModels = {{
+    {3.85, 0.000906, 1.5, 9.35, 0.75, 35.0, 0.06, 120.0, 12.0, 0.018, 60000.0, 850.0, 100e-6, 150.0,
+     47e-6, 0.1},
+    {4.2, 0.000846, 1.5, -2.62, 0.75, 30.0, 0.06, 105.0, 10.0, 0.015, 50000.0, 900.0, 100e-6, 120.0,
+     47e-6, 0.1},
+}};
+
+[[nodiscard]] constexpr double
+effectivePrimaryImpedanceOhm(double primary_impedance_ohm, double assumed_speaker_load_ohm,
+                             double actual_speaker_load_ohm) noexcept {
+  return primary_impedance_ohm * actual_speaker_load_ohm / assumed_speaker_load_ohm;
+}
 
 using PhaseCPowerProfile = effetune::dsp::tube_simulator_phase_c_generated::PowerProfile;
 using PhaseCSpeakerProfile = effetune::dsp::tube_simulator_phase_c_generated::SpeakerProfile;
@@ -374,8 +415,8 @@ powerLutInverseStep(const std::array<double, Size> &axis) {
   return steps;
 }
 
-// One output valve: its three axes, the reciprocal bracket widths of the two interpolated
-// derivative axes, and the two reciprocal amplification factors that build the composite control
+// One output valve: its three axes, their reciprocal bracket widths, and the two reciprocal
+// amplification factors that build the composite control
 // voltage. An EL84 cuts off near -15 V of grid and an EL34 near -39 V, and their plate and screen
 // swings scale by the same factor, so the two valves carry separate axes rather than sharing one
 // set whose knots would sit outside the operating box of whichever valve is selected.
@@ -385,34 +426,26 @@ struct PowerTubeTables {
   std::array<double, 6> screenCathodeAxis{};
   std::array<double, 11> controlVoltageInverseStep{};
   std::array<double, 11> plateCathodeInverseStep{};
+  std::array<double, 6> screenCathodeInverseStep{};
   double inverseScreenAmplificationFactor = 0.0;
   double inversePlateAmplificationFactor = 0.0;
   std::uint32_t lut = 0u;
 };
 
-inline constexpr auto kEl84ControlVoltageInverseStep =
-    powerLutInverseStep(effetune::dsp::tube_simulator_phase_c_generated::kEl84ControlVoltageAxis);
-inline constexpr auto kEl84PlateCathodeInverseStep =
-    powerLutInverseStep(effetune::dsp::tube_simulator_phase_c_generated::kEl84PlateCathodeAxis);
-inline constexpr auto kEl34ControlVoltageInverseStep =
-    powerLutInverseStep(effetune::dsp::tube_simulator_phase_c_generated::kEl34ControlVoltageAxis);
-inline constexpr auto kEl34PlateCathodeInverseStep =
-    powerLutInverseStep(effetune::dsp::tube_simulator_phase_c_generated::kEl34PlateCathodeAxis);
-
 [[nodiscard]] inline PowerTubeTables powerTubeTables(std::uint32_t lut) noexcept {
   using namespace effetune::dsp::tube_simulator_phase_c_generated;
-  const OutputTubeModel &model = kOutputTubeModels[lut == 0u ? 0u : 1u];
+  const OutputTubeModel &model = kOutputTubeModels[lut];
   // The axes are copied into the struct rather than pointed at, so the interpolation reads one
   // contiguous block instead of chasing a pointer per axis eight times a sample and channel.
-  return PowerTubeTables{lut == 0u ? kEl84ControlVoltageAxis : kEl34ControlVoltageAxis,
-                         lut == 0u ? kEl84PlateCathodeAxis : kEl34PlateCathodeAxis,
-                         lut == 0u ? kEl84ScreenCathodeAxis : kEl34ScreenCathodeAxis,
-                         lut == 0u ? kEl84ControlVoltageInverseStep
-                                   : kEl34ControlVoltageInverseStep,
-                         lut == 0u ? kEl84PlateCathodeInverseStep : kEl34PlateCathodeInverseStep,
+  return PowerTubeTables{kControlVoltageAxes[lut],
+                         kPlateCathodeAxes[lut],
+                         kScreenCathodeAxes[lut],
+                         powerLutInverseStep(kControlVoltageAxes[lut]),
+                         powerLutInverseStep(kPlateCathodeAxes[lut]),
+                         powerLutInverseStep(kScreenCathodeAxes[lut]),
                          model.inverseScreenAmplificationFactor,
                          model.inversePlateAmplificationFactor,
-                         lut == 0u ? 0u : 1u};
+                         lut};
 }
 
 struct PowerLutScratch {
@@ -422,6 +455,15 @@ struct PowerLutScratch {
   double ia = 0.0;
   double ig2 = 0.0;
   double iaPlateDerivative = 0.0;
+  double iaScreenDerivative = 0.0;
+  double ig2PlateDerivative = 0.0;
+  double ig2ScreenDerivative = 0.0;
+};
+
+struct FixedScreenLutWeights {
+  double voltage = 0.0;
+  std::array<std::size_t, 2> indices{};
+  std::array<double, 2> weights{};
 };
 
 // Block constants for the fixed 12AX7 long-tailed pair and the two coupling capacitors.
@@ -464,6 +506,8 @@ struct PowerOptCoefficients {
   double capacitorStep = 0.0;
   double inverseMagnetizingCoefficient = 0.0;
   double magnetizingHistoryCoefficient = 0.0;
+  double magnetizingStep = 0.0;
+  double inverseCoreLossResistanceOhm = 0.0;
   double inverseFastDt = 0.0;
 
   double turnsRatio = 0.0;
@@ -494,6 +538,14 @@ struct PowerLtpQuiescent {
   double cathodeV = 0.0;
   double plateV = 0.0;
   double gridCouplingV = 0.0;
+};
+
+struct SeQuiescent {
+  double currentA = 0.0;
+  double cathodeV = 0.0;
+  double bPlusV = 0.0;
+  double plateV = 0.0;
+  double residualA = 0.0;
 };
 
 // Fast-rate publication of a slow-integrated node voltage. The slow grid integrates the real
@@ -564,6 +616,7 @@ struct PowerState {
   double optCurrentA = 0.0;
   double magnetizingCurrentA = 0.0;
   double optCapacitorV = 0.0;
+  double primaryVoltageV = 0.0;
   double speakerVoiceCurrentA = 0.0;
   double speakerResonanceCurrentA = 0.0;
   double speakerCapacitorV = 0.0;
@@ -1228,6 +1281,10 @@ public:
     hashDouble(hash, applied_parameters_.actualLoadOhm);
     hashDouble(hash, applied_parameters_.safetyTrimDb);
     hashWord(hash, applied_parameters_.autoGainReduction ? 1u : 0u);
+    hashWord(hash, static_cast<std::uint64_t>(applied_parameters_.seTube));
+    hashDouble(hash, applied_parameters_.seBPlus);
+    hashDouble(hash, applied_parameters_.seCathodeResistor);
+    hashWord(hash, static_cast<std::uint64_t>(applied_parameters_.sePrimaryImpedance));
     hashDouble(hash, controls_.safetyUserTarget);
     hashDouble(hash, safety_auto_gain_);
     hashDouble(hash, safety_auto_target_);
@@ -1504,9 +1561,14 @@ public:
   }
 
   [[nodiscard]] std::uint32_t circuitProfileIdForTesting() const noexcept {
-    return applied_parameters_.outputStage == 0
-               ? static_cast<std::uint32_t>(tube_index_)
-               : static_cast<std::uint32_t>(power_profile_index_ + 1u);
+    if (applied_parameters_.outputStage == 0) {
+      return static_cast<std::uint32_t>(tube_index_);
+    }
+    if (applied_parameters_.outputStage == 1) {
+      return static_cast<std::uint32_t>(power_profile_index_ + 1u);
+    }
+    return 100u + static_cast<std::uint32_t>(applied_parameters_.seTube * 3 +
+                                             applied_parameters_.sePrimaryImpedance);
   }
 
   [[nodiscard]] bool runtimeFiniteForTesting() const noexcept { return finiteRuntimeDomain(); }
@@ -1894,12 +1956,19 @@ public:
 #endif
 
 private:
+  [[nodiscard]] bool driverBypassed() const noexcept { return tube_index_ == kBypassDriverIndex; }
+
+  [[nodiscard]] int effectiveDriverTubeIndex() const noexcept {
+    // The bypassed driver is dormant, but reset seeding still needs a valid table.
+    return driverBypassed() ? 0 : tube_index_;
+  }
+
   [[nodiscard]] const TubeParameters &activeTube() const noexcept {
-    return kTubeRows[static_cast<std::size_t>(tube_index_)];
+    return kTubeRows[static_cast<std::size_t>(effectiveDriverTubeIndex())];
   }
 
   [[nodiscard]] const TubeTables &tubeTable() const noexcept {
-    return tubeTables()[static_cast<std::size_t>(tube_index_)];
+    return tubeTables()[static_cast<std::size_t>(effectiveDriverTubeIndex())];
   }
 
   [[nodiscard]] GridEvaluation evaluateGrid(double vgk) const noexcept {
@@ -1947,6 +2016,10 @@ private:
     const double actual_load = static_cast<double>(params_.actualSpeakerLoad);
     const double safety_trim = static_cast<double>(params_.safetyTrim);
     const double auto_gain_reduction = static_cast<double>(params_.autoGainReduction);
+    const double se_tube = static_cast<double>(params_.seTube);
+    const double se_b_plus = static_cast<double>(params_.seBPlus);
+    const double se_cathode_resistor = static_cast<double>(params_.seCathodeResistor);
+    const double se_primary_impedance = static_cast<double>(params_.sePrimaryImpedance);
     if (!std::isfinite(actual_load) || actual_load < 2.0 || actual_load > 32.0) {
       return false;
     }
@@ -1956,23 +2029,29 @@ private:
       return false;
     }
     if (!std::isfinite(drive) || drive < -96.0 || drive > 0.0 || !std::isfinite(tube) ||
-        tube < 0.0 || tube > 2.0 || tube != std::floor(tube) || !std::isfinite(bias) ||
+        tube < 0.0 || tube > 3.0 || tube != std::floor(tube) || !std::isfinite(bias) ||
         bias < -50.0 || bias > 50.0 || !std::isfinite(plate) || plate < 150.0 || plate > 300.0 ||
         !std::isfinite(source) || source < 0.6 || source > 100.0 || !std::isfinite(supply) ||
         supply < 0.1 || supply > 47.0 || !std::isfinite(output) || output < -48.0 ||
         output > 48.0 || !std::isfinite(mix) || mix < 0.0 || mix > 100.0 ||
-        !std::isfinite(input_reference) || input_reference < 0.1 || input_reference > 20.0 ||
+        !std::isfinite(input_reference) || input_reference < 0.1 || input_reference > 300.0 ||
         !std::isfinite(feedback) || feedback < 0.0 || feedback > 30.0 ||
-        !std::isfinite(output_stage) || output_stage < 0.0 || output_stage > 1.0 ||
+        !std::isfinite(output_stage) || output_stage < 0.0 || output_stage > 2.0 ||
         output_stage != std::floor(output_stage) || !std::isfinite(power_tube) ||
-        power_tube < 0.0 || power_tube > 1.0 || power_tube != std::floor(power_tube) ||
+        power_tube < 0.0 || power_tube > 3.0 || power_tube != std::floor(power_tube) ||
         !std::isfinite(power_b_plus) || power_b_plus < 300.0 || power_b_plus > 470.0 ||
         !std::isfinite(cathode_resistor) || cathode_resistor < 270.0 || cathode_resistor > 500.0 ||
         !std::isfinite(screen_tap) || screen_tap < 0.0 || screen_tap > 2.0 ||
         screen_tap != std::floor(screen_tap) || !std::isfinite(primary_impedance) ||
         primary_impedance < 0.0 || primary_impedance > 2.0 ||
         primary_impedance != std::floor(primary_impedance) || !std::isfinite(speaker_load) ||
-        speaker_load < 0.0 || speaker_load > 3.0 || speaker_load != std::floor(speaker_load)) {
+        speaker_load < 0.0 || speaker_load > 3.0 || speaker_load != std::floor(speaker_load) ||
+        !std::isfinite(se_tube) || se_tube < 0.0 || se_tube > 1.0 ||
+        se_tube != std::floor(se_tube) || !std::isfinite(se_b_plus) || se_b_plus < 250.0 ||
+        se_b_plus > 450.0 || !std::isfinite(se_cathode_resistor) || se_cathode_resistor < 700.0 ||
+        se_cathode_resistor > 1300.0 || !std::isfinite(se_primary_impedance) ||
+        se_primary_impedance < 0.0 || se_primary_impedance > 2.0 ||
+        se_primary_impedance != std::floor(se_primary_impedance)) {
       return false;
     }
     decoded = {drive,
@@ -1994,7 +2073,11 @@ private:
                static_cast<int>(speaker_load),
                actual_load,
                safety_trim,
-               auto_gain_reduction != 0.0};
+               auto_gain_reduction != 0.0,
+               static_cast<int>(se_tube),
+               se_b_plus,
+               se_cathode_resistor,
+               static_cast<int>(se_primary_impedance)};
     return true;
   }
 
@@ -2012,29 +2095,40 @@ private:
 
   [[nodiscard]] static bool resetClassChanged(const Path2Parameters &left,
                                               const Path2Parameters &right) noexcept {
-    return left.feedbackDb != right.feedbackDb || left.tubeIndex != right.tubeIndex ||
-           left.outputStage != right.outputStage || left.powerTube != right.powerTube ||
-           left.screenTap != right.screenTap;
+    if (left.outputStage != right.outputStage) {
+      return true;
+    }
+    if (left.feedbackDb != right.feedbackDb || left.tubeIndex != right.tubeIndex) {
+      return true;
+    }
+    if (left.outputStage == 1) {
+      return left.powerTube != right.powerTube || left.screenTap != right.screenTap;
+    }
+    return left.outputStage == 2 && left.seTube != right.seTube;
   }
 
   [[nodiscard]] static bool finiteParameters(const Path2Parameters &parameters) noexcept {
     return std::isfinite(parameters.driveDb) && parameters.tubeIndex >= 0 &&
-           parameters.tubeIndex < 3 && std::isfinite(parameters.biasPercent) &&
+           parameters.tubeIndex < 4 && std::isfinite(parameters.biasPercent) &&
            std::isfinite(parameters.plateV) && std::isfinite(parameters.sourceZKOhm) &&
            std::isfinite(parameters.supplyKOhm) && std::isfinite(parameters.outputDb) &&
            std::isfinite(parameters.mixPercent) && std::isfinite(parameters.inputReference) &&
            std::isfinite(parameters.feedbackDb) && parameters.outputStage >= 0 &&
-           parameters.outputStage < 2 && parameters.powerTube >= 0 && parameters.powerTube < 2 &&
+           parameters.outputStage < 3 && parameters.powerTube >= 0 && parameters.powerTube < 4 &&
            std::isfinite(parameters.powerBPlus) && std::isfinite(parameters.cathodeResistor) &&
            parameters.screenTap >= 0 && parameters.screenTap < 3 &&
            parameters.primaryImpedance >= 0 && parameters.primaryImpedance < 3 &&
            parameters.speakerLoad >= 0 && parameters.speakerLoad < 4 &&
            std::isfinite(parameters.actualLoadOhm) && parameters.actualLoadOhm > 0.0 &&
-           std::isfinite(parameters.safetyTrimDb);
+           std::isfinite(parameters.safetyTrimDb) && parameters.seTube >= 0 &&
+           parameters.seTube < 2 && std::isfinite(parameters.seBPlus) &&
+           std::isfinite(parameters.seCathodeResistor) && parameters.sePrimaryImpedance >= 0 &&
+           parameters.sePrimaryImpedance < 3;
   }
 
-  // Number of the twenty parameter values that differ. Used only by the safety-reduction reset
-  // rule, which needs to tell one control write from a whole-record write.
+  // Number of active parameter values that differ. Used only by the safety-reduction reset rule,
+  // which needs to tell one control write from a whole-record write. A stage change retains the
+  // original all-field count so loading a cross-topology preset still clears the reduction.
   [[nodiscard]] static std::uint32_t changedParameterCount(const Path2Parameters &left,
                                                            const Path2Parameters &right) noexcept {
     std::uint32_t count = 0u;
@@ -2048,27 +2142,48 @@ private:
     count += left.mixPercent != right.mixPercent ? 1u : 0u;
     count += left.inputReference != right.inputReference ? 1u : 0u;
     count += left.feedbackDb != right.feedbackDb ? 1u : 0u;
-    count += left.outputStage != right.outputStage ? 1u : 0u;
-    count += left.powerTube != right.powerTube ? 1u : 0u;
-    count += left.powerBPlus != right.powerBPlus ? 1u : 0u;
-    count += left.cathodeResistor != right.cathodeResistor ? 1u : 0u;
-    count += left.screenTap != right.screenTap ? 1u : 0u;
-    count += left.primaryImpedance != right.primaryImpedance ? 1u : 0u;
-    count += left.speakerLoad != right.speakerLoad ? 1u : 0u;
-    count += left.actualLoadOhm != right.actualLoadOhm ? 1u : 0u;
     count += left.safetyTrimDb != right.safetyTrimDb ? 1u : 0u;
     count += left.autoGainReduction != right.autoGainReduction ? 1u : 0u;
+    const bool stage_changed = left.outputStage != right.outputStage;
+    count += stage_changed ? 1u : 0u;
+    if (stage_changed || left.outputStage == 1) {
+      count += left.powerTube != right.powerTube ? 1u : 0u;
+      count += left.powerBPlus != right.powerBPlus ? 1u : 0u;
+      count += left.cathodeResistor != right.cathodeResistor ? 1u : 0u;
+      count += left.screenTap != right.screenTap ? 1u : 0u;
+      count += left.primaryImpedance != right.primaryImpedance ? 1u : 0u;
+    }
+    if (stage_changed || left.outputStage != 0) {
+      count += left.speakerLoad != right.speakerLoad ? 1u : 0u;
+      count += left.actualLoadOhm != right.actualLoadOhm ? 1u : 0u;
+    }
+    if (stage_changed || left.outputStage == 2) {
+      count += left.seTube != right.seTube ? 1u : 0u;
+      count += left.seBPlus != right.seBPlus ? 1u : 0u;
+      count += left.seCathodeResistor != right.seCathodeResistor ? 1u : 0u;
+      count += left.sePrimaryImpedance != right.sePrimaryImpedance ? 1u : 0u;
+    }
     return count;
   }
 
   [[nodiscard]] static bool trialEligibleChanged(const Path2Parameters &left,
                                                  const Path2Parameters &right) noexcept {
-    return resetClassChanged(left, right) || left.biasPercent != right.biasPercent ||
-           left.plateV != right.plateV || left.sourceZKOhm != right.sourceZKOhm ||
-           left.supplyKOhm != right.supplyKOhm || left.inputReference != right.inputReference ||
-           left.powerBPlus != right.powerBPlus || left.cathodeResistor != right.cathodeResistor ||
-           left.primaryImpedance != right.primaryImpedance ||
-           left.speakerLoad != right.speakerLoad || left.actualLoadOhm != right.actualLoadOhm;
+    if (resetClassChanged(left, right) || left.biasPercent != right.biasPercent ||
+        left.plateV != right.plateV || left.sourceZKOhm != right.sourceZKOhm ||
+        left.supplyKOhm != right.supplyKOhm || left.inputReference != right.inputReference) {
+      return true;
+    }
+    if (left.outputStage == 1) {
+      return left.powerBPlus != right.powerBPlus || left.cathodeResistor != right.cathodeResistor ||
+             left.primaryImpedance != right.primaryImpedance ||
+             left.speakerLoad != right.speakerLoad || left.actualLoadOhm != right.actualLoadOhm;
+    }
+    if (left.outputStage == 2) {
+      return left.seBPlus != right.seBPlus || left.seCathodeResistor != right.seCathodeResistor ||
+             left.sePrimaryImpedance != right.sePrimaryImpedance ||
+             left.speakerLoad != right.speakerLoad || left.actualLoadOhm != right.actualLoadOhm;
+    }
+    return false;
   }
 
   [[nodiscard]] FeedbackCalibration feedbackCalibration(int tube_index,
@@ -2132,8 +2247,11 @@ private:
   }
 
   void applyFeedbackCalibration() noexcept {
-    FeedbackCalibration calibration =
-        feedbackCalibration(tube_index_, applied_parameters_.feedbackDb);
+    const int calibration_tube_index = effectiveDriverTubeIndex();
+    FeedbackCalibration calibration = feedbackCalibration(
+        calibration_tube_index, driverBypassed() && applied_parameters_.outputStage == 0
+                                    ? 0.0
+                                    : applied_parameters_.feedbackDb);
     if (applied_parameters_.outputStage == 1) {
       // The Power branch carries its own compensator. Its plant is a different circuit from the
       // Line branch - a phase inverter, a push-pull pair, an output transformer and a loudspeaker -
@@ -2147,7 +2265,7 @@ private:
           nullptr;
       for (const auto &record :
            effetune::dsp::tube_simulator_phase_c_generated::kPowerFeedbackRecords) {
-        if (record.driverTube == static_cast<std::uint32_t>(tube_index_) &&
+        if (record.driverTube == static_cast<std::uint32_t>(calibration_tube_index) &&
             record.powerTube == static_cast<std::uint32_t>(applied_parameters_.powerTube) &&
             record.screenTap == static_cast<std::uint32_t>(applied_parameters_.screenTap) &&
             record.primary == static_cast<std::uint32_t>(applied_parameters_.primaryImpedance) &&
@@ -2157,7 +2275,27 @@ private:
           break;
         }
       }
-      if (selected != nullptr) {
+      if (selected != nullptr && driverBypassed()) {
+        // The measured response contains the selected driver's gain and the fixed interstage
+        // divider. Bypass injects Input Reference directly at the phase-inverter coupling
+        // capacitor, so remove both factors. The shorter plant uses an identity compensator; the
+        // normal instability detector remains the safety boundary for aggressive feedback.
+        const std::size_t driver_group = static_cast<std::size_t>(calibration_tube_index) * 2u +
+                                         static_cast<std::size_t>(family);
+        const std::size_t driver_offset = driver_group * kFeedbackGroupStride;
+        const double driver_a0 =
+            std::hypot(feedbackTableValue(driver_offset), feedbackTableValue(driver_offset + 1u));
+        const double divider =
+            power_ltp_.preVolumeSourceConductance * power_ltp_.inverseWiperConductanceOpen;
+        const double bypass_a0 =
+            std::hypot(selected->detectorReal, selected->detectorImaginary) / driver_a0 / divider;
+        calibration.b0 = 1.0;
+        calibration.b1 = 0.0;
+        calibration.a1 = 0.0;
+        calibration.a2 = 0.0;
+        calibration.a0 = bypass_a0;
+        calibration.beta = calibration.q / bypass_a0;
+      } else if (selected != nullptr) {
         // Ladder knot: the compensator is the anchor blended towards the identity filter along
         // v = log1p(q)/log1p(q30), the same rule the Line ladder knots were generated with, so the
         // sixty-one knots the design fixture records are reproduced exactly at every setting.
@@ -2199,6 +2337,38 @@ private:
       }
       // The Power branch takes its output level from the transformer secondary, so the loop is not
       // asked to hand back the gain it removed.
+      calibration.makeup = 1.0;
+    } else if (applied_parameters_.outputStage == 2) {
+      calibration.feedbackDb = applied_parameters_.feedbackDb;
+      calibration.q = std::pow(10.0, calibration.feedbackDb / 20.0) - 1.0;
+      calibration.b0 = 1.0;
+      calibration.b1 = 0.0;
+      calibration.a1 = 0.0;
+      calibration.a2 = 0.0;
+      const std::uint32_t family = rate_config_.internalRate == 352800.0 ? 0u : 1u;
+      const effetune::dsp::tube_simulator_phase_c_generated::SeFeedbackRecord *selected = nullptr;
+      for (const auto &record :
+           effetune::dsp::tube_simulator_phase_c_generated::kSeFeedbackRecords) {
+        if (record.driverTube == static_cast<std::uint32_t>(calibration_tube_index) &&
+            record.seTube == static_cast<std::uint32_t>(applied_parameters_.seTube) &&
+            record.primary == static_cast<std::uint32_t>(applied_parameters_.sePrimaryImpedance) &&
+            record.speakerLoad == static_cast<std::uint32_t>(applied_parameters_.speakerLoad) &&
+            record.family == family) {
+          selected = &record;
+          break;
+        }
+      }
+      if (selected != nullptr && driverBypassed()) {
+        const std::size_t driver_group = static_cast<std::size_t>(calibration_tube_index) * 2u +
+                                         static_cast<std::size_t>(family);
+        const std::size_t driver_offset = driver_group * kFeedbackGroupStride;
+        const double driver_a0 =
+            std::hypot(feedbackTableValue(driver_offset), feedbackTableValue(driver_offset + 1u));
+        calibration.a0 = selected->a0 / driver_a0;
+      } else {
+        calibration.a0 = selected == nullptr ? 1.0 : selected->a0;
+      }
+      calibration.beta = calibration.q / calibration.a0;
       calibration.makeup = 1.0;
     }
     controls_.feedbackDb = calibration.feedbackDb;
@@ -2261,6 +2431,9 @@ private:
     // belong to the reset class: moving the trim must not mute the output for a transition.
     applied_parameters_.safetyTrimDb = decoded.safetyTrimDb;
     applied_parameters_.autoGainReduction = decoded.autoGainReduction;
+    applied_parameters_.seBPlus = decoded.seBPlus;
+    applied_parameters_.seCathodeResistor = decoded.seCathodeResistor;
+    applied_parameters_.sePrimaryImpedance = decoded.sePrimaryImpedance;
     applyPath2Parameters(false);
     if (reference_changed) {
       FastChannel dc_fast{};
@@ -2275,16 +2448,15 @@ private:
       return;
     }
     // The accumulated reduction is cleared on exactly two conditions: the safety trim value
-    // changed, or two or more of the twenty parameter values changed in one commit.
+    // changed, or two or more active parameter values changed in one commit.
     //
     // The count is the discriminator between a knob and a preset. A control commits one key at a
     // time, so an ordinary move differs in exactly one value and protection is kept; a preset load
-    // that actually moves the circuit differs in several at once. That second condition is what
-    // lets such a load clear the reduction even though the preset carries the default safety trim
-    // of 0 dB, which on its own would be no change at all. Re-selecting the preset the circuit is
-    // already on after moving one single control differs in that one value alone, so it keeps the
-    // reduction rather than clearing it; that errs towards keeping the protection in force, and
-    // the trim itself remains the way to give it up deliberately.
+    // that actually moves the active circuit differs in several at once. Inactive topology fields
+    // are excluded so editing dimmed controls cannot surrender protection; cross-topology presets
+    // retain the original all-field count. Re-selecting the preset the circuit is already on after
+    // moving one single control differs in that one value alone, so it keeps the reduction rather
+    // than clearing it; the trim itself remains the way to give it up deliberately.
     //
     // Both conditions are value differences against the last committed set, never write edges.
     // The host rewrites the whole parameter block on a cadence of its own and paramsDirty()
@@ -2534,6 +2706,18 @@ private:
   // quiescent solves (some nine hundred valve-table evaluations) on the audio thread per commit
   // even when the branch was Line and none of the results were ever read.
   void applyPowerParameters() noexcept {
+    if (applied_parameters_.outputStage == 2) {
+      power_speaker_index_ = static_cast<std::size_t>(applied_parameters_.speakerLoad);
+      const PhaseCSpeakerProfile &assumed = powerSpeakerProfile();
+      static constexpr std::array<double, 3> primary_values = {2500.0, 3500.0, 5000.0};
+      power_primary_ohm_ =
+          primary_values[static_cast<std::size_t>(applied_parameters_.sePrimaryImpedance)];
+      power_speaker_scale_ = applied_parameters_.actualLoadOhm / assumed.loadOhm;
+      power_selected_turns_ratio_ = std::sqrt(power_primary_ohm_ / assumed.loadOhm);
+      refreshSeOptCoefficients();
+      solveSeQuiescent();
+      return;
+    }
     if (applied_parameters_.outputStage != 1) {
       return;
     }
@@ -2561,6 +2745,96 @@ private:
     refreshPowerLtpCoefficients();
     refreshPowerOptCoefficients();
     solvePowerLtpQuiescent();
+  }
+
+  void refreshSeOptCoefficients() noexcept {
+    constexpr double pi = 3.141592653589793238462643383279502884;
+    const SeTubeModel &model = kSeTubeModels[static_cast<std::size_t>(applied_parameters_.seTube)];
+    const PhaseCSpeakerProfile speaker = scaledSpeakerProfile();
+    const double dt = rate_config_.fastDt;
+    PowerOptCoefficients &opt = power_opt_coeff_;
+    opt.distributedScreenTap = false;
+    opt.screenTapTurnsRatio = 0.0;
+    opt.centerToTapResistanceOhm = 0.0;
+    opt.tapToPlateResistanceOhm = model.windingResistanceOhm;
+    opt.screenSeriesResistanceOhm = 0.0;
+    opt.leakageInductanceH = model.leakageInductanceH;
+    opt.magnetizingInductanceH = model.magnetizingInductanceH;
+    opt.coreLossResistanceOhm = model.coreLossResistanceOhm;
+    const double reflected_load = effectivePrimaryImpedanceOhm(
+        power_primary_ohm_, powerSpeakerProfile().loadOhm, applied_parameters_.actualLoadOhm);
+    // The primary winding is in the tube's DC KVL. The transformer port contains the reflected
+    // speaker/leakage series branch in parallel with magnetizing inductance and core loss; charging
+    // winding DCR here as well would count the same copper loss twice.
+    opt.effectiveResistanceOhm = reflected_load;
+    opt.seriesCapacitanceF = 1.0 / (2.0 * pi * model.resonanceHz * 2.0 * pi * model.resonanceHz *
+                                    model.leakageInductanceH);
+    const double leakage_over_dt = model.leakageInductanceH / dt;
+    const double capacitor_reactance = dt / (4.0 * opt.seriesCapacitanceF);
+    const double series_coefficient =
+        leakage_over_dt + opt.effectiveResistanceOhm * 0.5 + capacitor_reactance;
+    opt.inverseSeriesCoefficient = 1.0 / series_coefficient;
+    opt.seriesHistoryCoefficient =
+        leakage_over_dt - opt.effectiveResistanceOhm * 0.5 - capacitor_reactance;
+    opt.capacitorStep = dt / (2.0 * opt.seriesCapacitanceF);
+    const double magnetizing_over_dt = model.magnetizingInductanceH / dt;
+    const double magnetizing_coefficient = magnetizing_over_dt + model.coreLossResistanceOhm * 0.5;
+    opt.inverseMagnetizingCoefficient = 1.0 / magnetizing_coefficient;
+    opt.magnetizingHistoryCoefficient = magnetizing_over_dt - model.coreLossResistanceOhm * 0.5;
+    opt.magnetizingStep = dt / (2.0 * model.magnetizingInductanceH);
+    opt.inverseCoreLossResistanceOhm = 1.0 / model.coreLossResistanceOhm;
+    opt.inverseFastDt = 1.0 / dt;
+    opt.turnsRatio = power_selected_turns_ratio_;
+    opt.halfPrimaryTurnsRatio = power_selected_turns_ratio_;
+    opt.windingResistanceOhm = model.windingResistanceOhm;
+    opt.inverseWindingResistanceOhm = 1.0 / model.windingResistanceOhm;
+    opt.centerToTapResistanceShare = 0.0;
+    opt.primaryDriveOhm = power_primary_ohm_;
+    opt.halfPrimaryReflectedOhm = reflected_load;
+    opt.plateLoadFactor = 1.0;
+    opt.speakerLoadOhm = speaker.loadOhm;
+    const double voice_step_raw = dt / speaker.voiceInductanceH;
+    opt.voiceStepLimited = voice_step_raw > 0.25;
+    opt.voiceStep = opt.voiceStepLimited ? 0.25 : voice_step_raw;
+    opt.voiceResistanceOhm = speaker.voiceResistanceOhm;
+    const double resonance_step_raw = dt / speaker.resonanceInductanceH;
+    opt.resonanceStepLimited = resonance_step_raw > 0.25;
+    opt.resonanceStep = opt.resonanceStepLimited ? 0.25 : resonance_step_raw;
+    opt.resonanceResistanceOhm = speaker.resonanceResistanceOhm;
+    opt.speakerCapacitorStep = dt / speaker.resonanceCapacitanceF;
+    opt.nfbTapGain = model.nfbTapTurnsRatio;
+  }
+
+  void solveSeQuiescent() noexcept {
+    const SeTubeModel &model = kSeTubeModels[static_cast<std::size_t>(applied_parameters_.seTube)];
+    double current = model.standingCurrentA;
+    PlateEvaluation evaluation{};
+    double residual = 0.0;
+    for (int iteration = 0; iteration < 16; ++iteration) {
+      const double cathode = current * applied_parameters_.seCathodeResistor;
+      const double b_plus =
+          applied_parameters_.seBPlus - current * model.powerTheveninResistanceOhm;
+      const double plate = b_plus - current * model.windingResistanceOhm;
+      evaluation = evaluateSeTriode(model, -cathode, plate - cathode);
+      residual = current - evaluation.current;
+      const double current_derivative =
+          -evaluation.gridDerivative * applied_parameters_.seCathodeResistor -
+          evaluation.plateDerivative *
+              (model.powerTheveninResistanceOhm + model.windingResistanceOhm +
+               applied_parameters_.seCathodeResistor);
+      const double derivative = 1.0 - current_derivative;
+      if (!std::isfinite(derivative) || absolute(derivative) < 1e-12) {
+        break;
+      }
+      current -= residual / derivative;
+      current = current < 0.0 ? 0.0 : (current > 0.25 ? 0.25 : current);
+    }
+    const double cathode = current * applied_parameters_.seCathodeResistor;
+    const double b_plus = applied_parameters_.seBPlus - current * model.powerTheveninResistanceOhm;
+    const double plate = b_plus - current * model.windingResistanceOhm;
+    evaluation = evaluateSeTriode(model, -cathode, plate - cathode);
+    residual = current - evaluation.current;
+    se_quiescent_ = {current, cathode, b_plus, plate, residual};
   }
 
   // The measured profile of the assumed speaker, scaled to the load actually connected by
@@ -2691,8 +2965,9 @@ private:
   };
 
   [[nodiscard]] PowerStandingCurrent powerStandingCurrent() const noexcept {
-    return applied_parameters_.powerTube == 1 ? PowerStandingCurrent{0.0625, 0.005}
-                                              : PowerStandingCurrent{0.035, 0.004};
+    const auto index = static_cast<std::size_t>(applied_parameters_.powerTube);
+    const auto &model = effetune::dsp::tube_simulator_phase_c_generated::kOutputTubeModels[index];
+    return PowerStandingCurrent{model.standingPlateCurrentA, model.standingScreenCurrentA};
   }
 
   // Reservoir voltage the running branch actually presents to the valves. The supply parameter is
@@ -2804,14 +3079,13 @@ private:
                                             std::size_t plate, std::size_t screen,
                                             std::size_t field) noexcept {
     constexpr std::size_t plate_count =
-        effetune::dsp::tube_simulator_phase_c_generated::kEl84PlateCathodeAxis.size();
+        effetune::dsp::tube_simulator_phase_c_generated::kPlateCathodeAxes[0].size();
     constexpr std::size_t screen_count =
-        effetune::dsp::tube_simulator_phase_c_generated::kEl84ScreenCathodeAxis.size();
+        effetune::dsp::tube_simulator_phase_c_generated::kScreenCathodeAxes[0].size();
     const std::size_t index =
         ((control * plate_count + plate) * screen_count + screen) * 2u + field;
     const std::uint64_t bits =
-        lut == 0u ? effetune::dsp::tube_simulator_phase_c_generated::kEl84LutBits[index]
-                  : effetune::dsp::tube_simulator_phase_c_generated::kEl34LutBits[index];
+        effetune::dsp::tube_simulator_phase_c_generated::kOutputTubeLutBits[lut][index];
     return std::bit_cast<double>(bits);
   }
 
@@ -2830,12 +3104,84 @@ private:
     bracketPowerLutAxis(tube.screenCathodeAxis, vg2k, scratch.screen);
     ia = 0.0;
     ig2 = 0.0;
-    // Both interpolated axes are bracketed linearly, so the exact partial derivative of the
-    // bounded trilinear model with respect to Vak is the axis difference of the same eight taps
-    // scaled by the bracket widths. The plate reaches the model through the plate axis and through
-    // its share of the control voltage, so both paths are accumulated here; that removes the
-    // shifted interpolation solvePowerPlate previously needed for a finite-difference Newton
-    // derivative, and above the knee the control path is the whole of the plate resistance.
+    // Exact plate and screen partial derivatives of the bounded trilinear model come from the same
+    // eight taps. Each terminal reaches the model through its own axis and its share of the
+    // composite control voltage, so both paths are accumulated.
+    double ia_plate_derivative = 0.0;
+    double ia_screen_derivative = 0.0;
+    double ia_control_derivative = 0.0;
+    double ig2_plate_derivative = 0.0;
+    double ig2_screen_derivative = 0.0;
+    double ig2_control_derivative = 0.0;
+    const double plate_inverse_step = scratch.plate.upper == scratch.plate.lower
+                                          ? 0.0
+                                          : tube.plateCathodeInverseStep[scratch.plate.upper];
+    const double screen_inverse_step = scratch.screen.upper == scratch.screen.lower
+                                           ? 0.0
+                                           : tube.screenCathodeInverseStep[scratch.screen.upper];
+    const double control_inverse_step = scratch.control.upper == scratch.control.lower
+                                            ? 0.0
+                                            : tube.controlVoltageInverseStep[scratch.control.upper];
+    const std::uint32_t lut = tube.lut;
+    for (std::size_t cx = 0u; cx < 2u; ++cx) {
+      const std::size_t ci = cx == 0u ? scratch.control.lower : scratch.control.upper;
+      const double cw = cx == 0u ? 1.0 - scratch.control.fraction : scratch.control.fraction;
+      const double control_slope = cx == 0u ? -control_inverse_step : control_inverse_step;
+      for (std::size_t px = 0u; px < 2u; ++px) {
+        const std::size_t pi = px == 0u ? scratch.plate.lower : scratch.plate.upper;
+        const double pw = px == 0u ? 1.0 - scratch.plate.fraction : scratch.plate.fraction;
+        const double plate_slope = px == 0u ? -plate_inverse_step : plate_inverse_step;
+        const double control_plate_weight = cw * pw;
+        const double plate_slope_weight = cw * plate_slope;
+        const double control_slope_weight = pw * control_slope;
+        for (std::size_t sx = 0u; sx < 2u; ++sx) {
+          const std::size_t si = sx == 0u ? scratch.screen.lower : scratch.screen.upper;
+          const double sw = sx == 0u ? 1.0 - scratch.screen.fraction : scratch.screen.fraction;
+          const double screen_slope = sx == 0u ? -screen_inverse_step : screen_inverse_step;
+          const double ia_value = powerLutValue(lut, ci, pi, si, 0u);
+          const double ig2_value = powerLutValue(lut, ci, pi, si, 1u);
+          const double screen_scaled = ia_value * sw;
+          ia += screen_scaled * control_plate_weight;
+          ig2 += ig2_value * control_plate_weight * sw;
+          ia_plate_derivative += screen_scaled * plate_slope_weight;
+          ia_control_derivative += screen_scaled * control_slope_weight;
+          ia_screen_derivative += ia_value * control_plate_weight * screen_slope;
+          ig2_plate_derivative += ig2_value * plate_slope_weight * sw;
+          ig2_control_derivative += ig2_value * control_slope_weight * sw;
+          ig2_screen_derivative += ig2_value * control_plate_weight * screen_slope;
+        }
+      }
+    }
+    scratch.ia = ia;
+    scratch.ig2 = ig2;
+    scratch.iaPlateDerivative =
+        ia_plate_derivative + ia_control_derivative * tube.inversePlateAmplificationFactor;
+    scratch.iaScreenDerivative =
+        ia_screen_derivative + ia_control_derivative * tube.inverseScreenAmplificationFactor;
+    scratch.ig2PlateDerivative =
+        ig2_plate_derivative + ig2_control_derivative * tube.inversePlateAmplificationFactor;
+    scratch.ig2ScreenDerivative =
+        ig2_screen_derivative + ig2_control_derivative * tube.inverseScreenAmplificationFactor;
+  }
+
+  [[nodiscard]] FixedScreenLutWeights
+  fixedScreenLutWeights(double vg2k, PowerLutScratch &scratch) const noexcept {
+    bracketPowerLutAxis(power_tube_tables_.screenCathodeAxis, vg2k, scratch.screen);
+    return {vg2k,
+            {scratch.screen.lower, scratch.screen.upper},
+            {1.0 - scratch.screen.fraction, scratch.screen.fraction}};
+  }
+
+  void interpolatePowerTubeFixedScreen(double vgk, double vak, const FixedScreenLutWeights &screen,
+                                       PowerLutScratch &scratch, double &ia,
+                                       double &ig2) const noexcept {
+    const PowerTubeTables &tube = power_tube_tables_;
+    const double vc = vgk + screen.voltage * tube.inverseScreenAmplificationFactor +
+                      vak * tube.inversePlateAmplificationFactor;
+    bracketPowerLutAxis(tube.controlVoltageAxis, vc, scratch.control);
+    bracketPowerLutAxis(tube.plateCathodeAxis, vak, scratch.plate);
+    ia = 0.0;
+    ig2 = 0.0;
     double ia_plate_derivative = 0.0;
     double ia_control_derivative = 0.0;
     const double plate_inverse_step = scratch.plate.upper == scratch.plate.lower
@@ -2853,19 +3199,17 @@ private:
         const std::size_t pi = px == 0u ? scratch.plate.lower : scratch.plate.upper;
         const double pw = px == 0u ? 1.0 - scratch.plate.fraction : scratch.plate.fraction;
         const double plate_slope = px == 0u ? -plate_inverse_step : plate_inverse_step;
-        // The two derivative weights differ from the interpolation weight only by which axis
-        // factor is replaced with that axis slope, so both are hoisted out of the screen loop and
-        // the inner body keeps a single extra multiply-add over a plain trilinear tap.
         const double control_plate_weight = cw * pw;
         const double plate_slope_weight = cw * plate_slope;
         const double control_slope_weight = pw * control_slope;
         for (std::size_t sx = 0u; sx < 2u; ++sx) {
-          const std::size_t si = sx == 0u ? scratch.screen.lower : scratch.screen.upper;
-          const double sw = sx == 0u ? 1.0 - scratch.screen.fraction : scratch.screen.fraction;
+          const std::size_t si = screen.indices[sx];
+          const double sw = screen.weights[sx];
           const double ia_value = powerLutValue(lut, ci, pi, si, 0u);
+          const double ig2_value = powerLutValue(lut, ci, pi, si, 1u);
           const double screen_scaled = ia_value * sw;
           ia += screen_scaled * control_plate_weight;
-          ig2 += powerLutValue(lut, ci, pi, si, 1u) * control_plate_weight * sw;
+          ig2 += ig2_value * control_plate_weight * sw;
           ia_plate_derivative += screen_scaled * plate_slope_weight;
           ia_control_derivative += screen_scaled * control_slope_weight;
         }
@@ -2878,6 +3222,27 @@ private:
   }
 
   void resetPowerState(PowerState &state) noexcept {
+    if (applied_parameters_.outputStage == 2) {
+      const double ia = se_quiescent_.currentA;
+      state = PowerState{};
+      state.cathodePushV = se_quiescent_.cathodeV;
+      state.cathodePullV = state.cathodePushV;
+      state.bPlusV = se_quiescent_.bPlusV;
+      state.platePushV = se_quiescent_.plateV;
+      state.platePullV = state.platePushV;
+      state.iaPushA = ia;
+      state.iaPullA = ia;
+      state.magnetizingCurrentA = ia;
+      state.primaryVoltageV = 0.0;
+      const double dc_residual = absolute(se_quiescent_.residualA);
+      maximum_dc_residual_ =
+          dc_residual > maximum_dc_residual_ ? dc_residual : maximum_dc_residual_;
+      seedRamp(state.cathodePushRamp, state.cathodePushV);
+      seedRamp(state.cathodePullRamp, state.cathodePullV);
+      seedRamp(state.bPlusRamp, state.bPlusV);
+      seedRamp(state.screenRamp, 0.0);
+      return;
+    }
     const PhaseCPowerProfile &profile = powerProfile();
     const PowerStandingCurrent standing = powerStandingCurrent();
     const double ia = standing.ia;
@@ -2895,9 +3260,12 @@ private:
     state.screenTapV = state.bPlusV - (ia + ig2) * profile.primaryCenterToTapResistanceOhm;
     state.platePushV = state.screenTapV - ia * profile.primaryTapToPlateResistanceOhm;
     state.platePullV = state.platePushV;
+    const auto tube_index = static_cast<std::size_t>(applied_parameters_.powerTube);
+    const auto &tube_model =
+        effetune::dsp::tube_simulator_phase_c_generated::kOutputTubeModels[tube_index];
     state.screenV = profile.screenTapTurnsRatio > 0.0
                         ? state.screenTapV - ig2 * profile.screenResistanceOhm
-                        : (applied_parameters_.powerTube == 1 ? 425.0 : 300.0);
+                        : tube_model.fixedScreenGroundV;
     state.screenPushV = state.screenV;
     state.screenPullV = state.screenV;
     state.iaPushA = ia;
@@ -2934,15 +3302,10 @@ private:
   // drop of its own left the plate KVL disagreeing with the screen-tap KVL - and with the reset
   // seed - by (i_series*Rw - ig2*Rct), some 4.7 V near full output on an EL84 6.6k/8 ohm pair.
   //
-  // The emf is taken in the same sample. The trapezoidal companion of the transformer series branch
-  // is a resistor in series with a history source, so the branch current is an affine function of
-  // the ampere-turn drive the two tubes produce, and substituting it leaves the plate voltage as
-  // the only unknown - the existing three-step Newton keeps solving one scalar equation and gains
-  // no iteration. A one-sample-late emf would instead close a loop of gain
-  // halfPrimaryReflectedOhm/rp around the tube, which passes one for an ultra-linear connection and
-  // for any tube driven into its knee. The opposite tube's share of the drive is the only term left
-  // on the previous sample; its fixed-point gain is Zr*G/(1 + (Rw + Zr)*G), below one for every
-  // tube conductance G, so the sequential push-then-pull structure stays stable unconditionally.
+  // The emf is taken in the same sample. A distributed screen depends on that emf and on both valve
+  // currents, so its terminal voltage and the plate voltage are solved together. Keeping those two
+  // KVL equations in one Newton step avoids a high-transconductance screen fixed point outside the
+  // Jacobian. A fixed screen remains the original scalar plate solve.
   [[nodiscard]] PowerPlateResult solvePowerPlate(bool push, PowerState &state,
                                                  double opposite_drive,
                                                  PowerLutScratch &scratch) noexcept {
@@ -2962,36 +3325,86 @@ private:
     double series_current = 0.0;
     double induced = 0.0;
     double screen = state.screenRamp.applied;
-    for (int iteration = 0; iteration < 3; ++iteration) {
+    if (!opt.distributedScreenTap) {
+      const FixedScreenLutWeights screen_weights = fixedScreenLutWeights(screen - cathode, scratch);
+      for (int iteration = 0; iteration < 3; ++iteration) {
+        series_current =
+            (signed_drive_ohm * (drive - opposite_drive) - history) * opt.inverseSeriesCoefficient;
+        induced = signed_reflected_ohm * series_current;
+        interpolatePowerTubeFixedScreen(grid - cathode, plate - cathode, screen_weights, scratch,
+                                        ia, ig2);
+        residual = (state.bPlusRamp.applied - induced - plate) * inverse_resistance - ia -
+                   ig2 * opt.centerToTapResistanceShare;
+        const double derivative =
+            -inverse_resistance - opt.plateLoadFactor * scratch.iaPlateDerivative;
+        if (!std::isfinite(derivative) || absolute(derivative) < 1e-12) {
+          ++safety_limits_;
+          step_safety_hit_ = true;
+          break;
+        }
+        plate -= residual / derivative;
+        drive = ia + opt.screenTapTurnsRatio * ig2;
+      }
       series_current =
           (signed_drive_ohm * (drive - opposite_drive) - history) * opt.inverseSeriesCoefficient;
       induced = signed_reflected_ohm * series_current;
-      screen = opt.distributedScreenTap
-                   ? screenTapVoltage(induced, ia, ig2, state.bPlusRamp.applied) -
-                         ig2 * opt.screenSeriesResistanceOhm
-                   : state.screenRamp.applied;
-      interpolatePowerTube(grid - cathode, plate - cathode, screen - cathode, scratch, ia, ig2);
+      interpolatePowerTubeFixedScreen(grid - cathode, plate - cathode, screen_weights, scratch, ia,
+                                      ig2);
+      drive = ia + opt.screenTapTurnsRatio * ig2;
+      const double screen_tap = screenTapVoltage(induced, ia, ig2, state.bPlusRamp.applied);
       residual = (state.bPlusRamp.applied - induced - plate) * inverse_resistance - ia -
                  ig2 * opt.centerToTapResistanceShare;
-      const double derivative =
-          -inverse_resistance - opt.plateLoadFactor * scratch.iaPlateDerivative;
-      if (!std::isfinite(derivative) || absolute(derivative) < 1e-12) {
+      return {plate, screen, screen_tap, ia, ig2, drive, residual};
+    }
+    screen = push ? state.screenPushV : state.screenPullV;
+    const double emf_drive_gain =
+        opt.primaryDriveOhm * opt.halfPrimaryReflectedOhm * opt.inverseSeriesCoefficient;
+    for (int iteration = 0; iteration < 3; ++iteration) {
+      interpolatePowerTube(grid - cathode, plate - cathode, screen - cathode, scratch, ia, ig2);
+      drive = ia + opt.screenTapTurnsRatio * ig2;
+      series_current =
+          (signed_drive_ohm * (drive - opposite_drive) - history) * opt.inverseSeriesCoefficient;
+      induced = signed_reflected_ohm * series_current;
+      residual = (state.bPlusRamp.applied - induced - plate) * inverse_resistance - ia -
+                 ig2 * opt.centerToTapResistanceShare;
+      const double screen_residual =
+          screen - state.bPlusRamp.applied + opt.screenTapTurnsRatio * induced +
+          opt.centerToTapResistanceOhm * ia +
+          (opt.centerToTapResistanceOhm + opt.screenSeriesResistanceOhm) * ig2;
+      const double induced_plate_derivative =
+          emf_drive_gain *
+          (scratch.iaPlateDerivative + opt.screenTapTurnsRatio * scratch.ig2PlateDerivative);
+      const double induced_screen_derivative =
+          emf_drive_gain *
+          (scratch.iaScreenDerivative + opt.screenTapTurnsRatio * scratch.ig2ScreenDerivative);
+      const double j11 = (-1.0 - induced_plate_derivative) * inverse_resistance -
+                         scratch.iaPlateDerivative -
+                         opt.centerToTapResistanceShare * scratch.ig2PlateDerivative;
+      const double j12 = -induced_screen_derivative * inverse_resistance -
+                         scratch.iaScreenDerivative -
+                         opt.centerToTapResistanceShare * scratch.ig2ScreenDerivative;
+      const double j21 = opt.screenTapTurnsRatio * induced_plate_derivative +
+                         opt.centerToTapResistanceOhm * scratch.iaPlateDerivative +
+                         (opt.centerToTapResistanceOhm + opt.screenSeriesResistanceOhm) *
+                             scratch.ig2PlateDerivative;
+      const double j22 = 1.0 + opt.screenTapTurnsRatio * induced_screen_derivative +
+                         opt.centerToTapResistanceOhm * scratch.iaScreenDerivative +
+                         (opt.centerToTapResistanceOhm + opt.screenSeriesResistanceOhm) *
+                             scratch.ig2ScreenDerivative;
+      const double determinant = j11 * j22 - j12 * j21;
+      if (!std::isfinite(determinant) || absolute(determinant) < 1e-12) {
         ++safety_limits_;
         step_safety_hit_ = true;
         break;
       }
-      plate -= residual / derivative;
-      drive = ia + opt.screenTapTurnsRatio * ig2;
+      plate += (-residual * j22 + j12 * screen_residual) / determinant;
+      screen += (j21 * residual - j11 * screen_residual) / determinant;
     }
+    interpolatePowerTube(grid - cathode, plate - cathode, screen - cathode, scratch, ia, ig2);
+    drive = ia + opt.screenTapTurnsRatio * ig2;
     series_current =
         (signed_drive_ohm * (drive - opposite_drive) - history) * opt.inverseSeriesCoefficient;
     induced = signed_reflected_ohm * series_current;
-    screen = opt.distributedScreenTap
-                 ? screenTapVoltage(induced, ia, ig2, state.bPlusRamp.applied) -
-                       ig2 * opt.screenSeriesResistanceOhm
-                 : state.screenRamp.applied;
-    interpolatePowerTube(grid - cathode, plate - cathode, screen - cathode, scratch, ia, ig2);
-    drive = ia + opt.screenTapTurnsRatio * ig2;
     const double screen_tap = screenTapVoltage(induced, ia, ig2, state.bPlusRamp.applied);
     residual = (state.bPlusRamp.applied - induced - plate) * inverse_resistance - ia -
                ig2 * opt.centerToTapResistanceShare;
@@ -3043,8 +3456,13 @@ private:
         trapezoidPowerRc(previous_b_plus, supply_source, profile.powerTheveninResistanceOhm,
                          profile.powerCapacitanceF, dt);
     if (profile.screenTapTurnsRatio == 0.0) {
+      const auto tube_index = static_cast<std::size_t>(applied_parameters_.powerTube);
+      const auto &tube_model =
+          effetune::dsp::tube_simulator_phase_c_generated::kOutputTubeModels[tube_index];
       const double screen_source =
-          (applied_parameters_.powerBPlus - 20.0) / profile.screenResistanceOhm - mean_screen;
+          (applied_parameters_.powerBPlus - tube_model.fixedScreenSupplyDropV) /
+              profile.screenResistanceOhm -
+          mean_screen;
       state.screenV = trapezoidPowerRc(previous_screen, screen_source, profile.screenResistanceOhm,
                                        profile.screenCapacitanceF, dt);
       retargetRamp(state.screenRamp, state.screenV, inverse_window, window);
@@ -3079,8 +3497,12 @@ private:
     const double new_current = right_hand * opt.inverseSeriesCoefficient;
     const double new_capacitor = old_capacitor + opt.capacitorStep * (new_current + old_current);
     const double old_magnetizing = state.magnetizingCurrentA;
-    const double new_magnetizing = (source + opt.magnetizingHistoryCoefficient * old_magnetizing) *
-                                   opt.inverseMagnetizingCoefficient;
+    const double old_primary_voltage = state.primaryVoltageV;
+    const double new_magnetizing =
+        applied_parameters_.outputStage == 2
+            ? old_magnetizing + opt.magnetizingStep * (old_primary_voltage + source)
+            : (source + opt.magnetizingHistoryCoefficient * old_magnetizing) *
+                  opt.inverseMagnetizingCoefficient;
     const double midpoint_current = 0.5 * (old_current + new_current);
     const double midpoint_magnetizing = 0.5 * (old_magnetizing + new_magnetizing);
     const double old_energy = 0.5 * opt.leakageInductanceH * old_current * old_current +
@@ -3089,17 +3511,27 @@ private:
     const double new_energy = 0.5 * opt.leakageInductanceH * new_current * new_current +
                               0.5 * opt.seriesCapacitanceF * new_capacitor * new_capacitor +
                               0.5 * opt.magnetizingInductanceH * new_magnetizing * new_magnetizing;
+    const double midpoint_primary_voltage = 0.5 * (old_primary_voltage + source);
     const double residual =
-        source * (midpoint_current + midpoint_magnetizing) -
-        opt.effectiveResistanceOhm * midpoint_current * midpoint_current -
-        opt.coreLossResistanceOhm * midpoint_magnetizing * midpoint_magnetizing -
-        (new_energy - old_energy) * opt.inverseFastDt;
+        applied_parameters_.outputStage == 2
+            ? midpoint_primary_voltage *
+                      (midpoint_current + midpoint_magnetizing +
+                       midpoint_primary_voltage * opt.inverseCoreLossResistanceOhm) -
+                  opt.effectiveResistanceOhm * midpoint_current * midpoint_current -
+                  midpoint_primary_voltage * midpoint_primary_voltage *
+                      opt.inverseCoreLossResistanceOhm -
+                  (new_energy - old_energy) * opt.inverseFastDt
+            : source * (midpoint_current + midpoint_magnetizing) -
+                  opt.effectiveResistanceOhm * midpoint_current * midpoint_current -
+                  opt.coreLossResistanceOhm * midpoint_magnetizing * midpoint_magnetizing -
+                  (new_energy - old_energy) * opt.inverseFastDt;
     const double absolute_residual = absolute(residual);
     maximum_energy_residual_ =
         absolute_residual > maximum_energy_residual_ ? absolute_residual : maximum_energy_residual_;
     state.optCurrentA = new_current;
     state.optCapacitorV = new_capacitor;
     state.magnetizingCurrentA = new_magnetizing;
+    state.primaryVoltageV = source;
 
     const double secondary_current = new_current * opt.turnsRatio;
     if (opt.voiceStepLimited) {
@@ -3127,7 +3559,8 @@ private:
     return output;
   }
 
-  [[nodiscard]] double advancePower(int channel, double input) noexcept {
+  [[nodiscard]] double advancePower(int channel, double input,
+                                    bool driver_bypassed = false) noexcept {
     PowerState &state = power_state_[channel];
     advanceRamp(state.cathodePushRamp);
     advanceRamp(state.cathodePullRamp);
@@ -3157,12 +3590,17 @@ private:
     // where Rth is the parallel combination of the two pot sections.
     const double wiper_source =
         input * ltp.preVolumeSourceConductance + state.ltpInputCapV * ltp.inverseLtpGridLeak;
-    double wiper = wiper_source * ltp.inverseWiperConductanceOpen;
+    // Bypass input is already calibrated as the physical voltage at the power-stage input, so it
+    // is injected at the phase-inverter coupling capacitor instead of passing through the fixed
+    // interstage volume network.
+    double wiper = driver_bypassed ? input : wiper_source * ltp.inverseWiperConductanceOpen;
     double ltp_grid_a = wiper - state.ltpInputCapV;
     double ltp_grid_current = 0.0;
     if (ltp_grid_a > ltp_cathode0) {
-      wiper = (wiper_source + ltp.inverseGridStopper * (state.ltpInputCapV + ltp_cathode0)) *
-              ltp.inverseWiperConductanceConducting;
+      if (!driver_bypassed) {
+        wiper = (wiper_source + ltp.inverseGridStopper * (state.ltpInputCapV + ltp_cathode0)) *
+                ltp.inverseWiperConductanceConducting;
+      }
       ltp_grid_a = wiper - state.ltpInputCapV;
       ltp_grid_current = (ltp_grid_a - ltp_cathode0) * ltp.inverseGridStopper;
     }
@@ -3288,6 +3726,113 @@ private:
     if (state.slowCounter >= static_cast<std::uint32_t>(rate_config_.slowWindow)) {
       state.slowCounter = 0u;
       updatePowerSlow(state);
+    }
+    accumulatePowerWindow(state);
+    if (!finitePowerState(state) || !std::isfinite(output)) {
+      ++finite_faults_;
+      block_finite_fault_ = true;
+      resetPowerState(state);
+      return 0.0;
+    }
+    return output / kPowerOutputReferencePeakV;
+  }
+
+  [[nodiscard]] static PlateEvaluation evaluateSeTriode(const SeTubeModel &model, double vgk,
+                                                        double vak) noexcept {
+    if (vak <= 0.0) {
+      return {0.0, 0.0, 0.0};
+    }
+    const double z = (vgk + vak / model.mu - model.v0) / model.sc;
+    const double softplus = exactSoftplus(z);
+    const double exponential = std::exp(z >= 0.0 ? -z : z);
+    const double sigmoid = z >= 0.0 ? 1.0 / (1.0 + exponential) : exponential / (1.0 + exponential);
+    const double u = model.sc * softplus;
+    const double amplitude = model.ka * std::pow(u, model.alpha);
+    const double amplitude_derivative =
+        u > 0.0 ? model.ka * model.alpha * std::pow(u, model.alpha - 1.0) * sigmoid : 0.0;
+    const double knee_exponential = std::exp(-vak / model.vs);
+    const double knee = 1.0 - knee_exponential;
+    return {amplitude * knee, amplitude_derivative * knee,
+            amplitude_derivative * knee / model.mu + amplitude * knee_exponential / model.vs};
+  }
+
+  void updateSeSlow(PowerState &state, const SeTubeModel &model) noexcept {
+    const double inverse_window = 1.0 / static_cast<double>(rate_config_.slowWindow);
+    const double mean_current = state.slowAccumulatorPushA * inverse_window;
+    state.slowAccumulatorPushA = 0.0;
+    const double previous_cathode = state.cathodePushV;
+    const double previous_b_plus = state.bPlusV;
+    state.cathodePushV =
+        trapezoidPowerRc(previous_cathode, mean_current, applied_parameters_.seCathodeResistor,
+                         model.cathodeCapacitanceF, rate_config_.slowDt);
+    state.cathodePullV = state.cathodePushV;
+    const double supply_source =
+        applied_parameters_.seBPlus / model.powerTheveninResistanceOhm - mean_current;
+    state.bPlusV =
+        trapezoidPowerRc(previous_b_plus, supply_source, model.powerTheveninResistanceOhm,
+                         model.powerCapacitanceF, rate_config_.slowDt);
+    retargetRamp(state.cathodePushRamp, state.cathodePushV, inverse_window,
+                 static_cast<double>(rate_config_.slowWindow));
+    retargetRamp(state.cathodePullRamp, state.cathodePullV, inverse_window,
+                 static_cast<double>(rate_config_.slowWindow));
+    retargetRamp(state.bPlusRamp, state.bPlusV, inverse_window,
+                 static_cast<double>(rate_config_.slowWindow));
+    ++slow_publish_count_;
+  }
+
+  [[nodiscard]] double advanceSingleEnded(int channel, double input) noexcept {
+    PowerState &state = power_state_[channel];
+    const SeTubeModel &model = kSeTubeModels[static_cast<std::size_t>(applied_parameters_.seTube)];
+    advanceRamp(state.cathodePushRamp);
+    advanceRamp(state.cathodePullRamp);
+    advanceRamp(state.bPlusRamp);
+    const double cathode = state.cathodePushRamp.applied;
+    double plate = state.platePushV;
+    PlateEvaluation evaluation = evaluateSeTriode(model, input - cathode, plate - cathode);
+    const PowerOptCoefficients &opt = power_opt_coeff_;
+    const double series_history =
+        -state.optCapacitorV + opt.seriesHistoryCoefficient * state.optCurrentA;
+    const double magnetizing_history =
+        state.magnetizingCurrentA + opt.magnetizingStep * state.primaryVoltageV;
+    const double transformer_conductance =
+        opt.inverseSeriesCoefficient + opt.magnetizingStep + opt.inverseCoreLossResistanceOhm;
+    double residual = 0.0;
+    for (int iteration = 0; iteration < 4; ++iteration) {
+      const double primary_voltage =
+          state.bPlusRamp.applied - plate - model.windingResistanceOhm * evaluation.current;
+      const double transformer_current = primary_voltage * transformer_conductance +
+                                         series_history * opt.inverseSeriesCoefficient +
+                                         magnetizing_history;
+      residual = evaluation.current - transformer_current;
+      const double derivative =
+          evaluation.plateDerivative +
+          transformer_conductance * (1.0 + model.windingResistanceOhm * evaluation.plateDerivative);
+      if (!std::isfinite(derivative) || absolute(derivative) < 1e-12) {
+        ++safety_limits_;
+        step_safety_hit_ = true;
+        break;
+      }
+      plate -= residual / derivative;
+      evaluation = evaluateSeTriode(model, input - cathode, plate - cathode);
+    }
+    const double primary_voltage =
+        state.bPlusRamp.applied - plate - model.windingResistanceOhm * evaluation.current;
+    const double transformer_current = primary_voltage * transformer_conductance +
+                                       series_history * opt.inverseSeriesCoefficient +
+                                       magnetizing_history;
+    residual = evaluation.current - transformer_current;
+    const double absolute_residual = absolute(residual);
+    maximum_kcl_ = absolute_residual > maximum_kcl_ ? absolute_residual : maximum_kcl_;
+    state.platePushV = plate;
+    state.platePullV = plate;
+    state.iaPushA = evaluation.current;
+    state.iaPullA = evaluation.current;
+    const double output = advancePowerOutputLoad(primary_voltage, state);
+    state.slowAccumulatorPushA += evaluation.current;
+    ++state.slowCounter;
+    if (state.slowCounter >= static_cast<std::uint32_t>(rate_config_.slowWindow)) {
+      state.slowCounter = 0u;
+      updateSeSlow(state, model);
     }
     accumulatePowerWindow(state);
     if (!finitePowerState(state) || !std::isfinite(output)) {
@@ -3469,6 +4014,7 @@ private:
       recovery_slow_[channel] = slow_[channel];
       last_plate_current_[channel] = {0.0, 0.0};
       feedback_filter_[channel] = FeedbackFilterState{};
+      bypass_drive_[static_cast<std::size_t>(channel)] = 0.0;
       if (!upsample_state_[channel].empty()) {
         std::fill(upsample_state_[channel].begin(), upsample_state_[channel].end(), 0.0);
       }
@@ -5117,7 +5663,7 @@ private:
   void runFastCore(std::uint32_t frame_count) noexcept {
     const std::uint32_t internal_frames =
         frame_count * static_cast<std::uint32_t>(rate_config_.factor);
-    const bool power_stage = applied_parameters_.outputStage == 1;
+    const bool output_stage = applied_parameters_.outputStage != 0;
 #if ET_TUBE_HAS_F64X2
     if (useSimdPath()) {
       for (std::uint32_t index = 0u; index < internal_frames; ++index) {
@@ -5128,30 +5674,58 @@ private:
 #if ET_TUBE_SIMULATOR_TEST_STATE
         beginFastKclStepForTesting(index, host_frame);
 #endif
-        const double reference = power_stage ? 0.0 : plate_reference_[host_frame];
+        const double reference = output_stage ? 0.0 : plate_reference_[host_frame];
         StereoPair output;
-        if (power_stage) {
-          // The whole forward path of this sample is evaluated before the compensator, so the tap
-          // the compensator subtracts is this sample's, not the previous one's. See
-          // advanceDriverOutput.
-          const StereoPair driver = advanceStereoOutput();
-          const StereoPair powered = {advancePower(0, driver[0]), advancePower(1, driver[1])};
-          observeFeedbackSignal(0, feedback_q_[host_frame]);
-          observeFeedbackSignal(1, feedback_q_[host_frame]);
-          const StereoPair input = {
-              applyFeedbackFilter(0, internal_input_[0][index], feedback_q_[host_frame], reference),
-              applyFeedbackFilter(1, internal_input_[1][index], feedback_q_[host_frame],
-                                  reference)};
-          const std::array<bool, kChannels> valid = advanceStereoInput(input);
-          output = StereoPair{valid[0] ? powered[0] : 0.0, valid[1] ? powered[1] : 0.0};
+        if (output_stage) {
+          if (driverBypassed()) {
+            // Preserve the skipped driver's causal sample boundary explicitly. The power plant is
+            // advanced first, this sample's feedback tap is observed, and the newly compensated
+            // input is stored for the next fast sample.
+            step_safety_hit_ = false;
+            output = applied_parameters_.outputStage == 1
+                         ? StereoPair{advancePower(0, bypass_drive_[0], true),
+                                      advancePower(1, bypass_drive_[1], true)}
+                         : StereoPair{advanceSingleEnded(0, bypass_drive_[0]),
+                                      advanceSingleEnded(1, bypass_drive_[1])};
+            if (step_safety_hit_) {
+              block_safety_hit_ = true;
+            }
+            observeFeedbackSignal(0, feedback_q_[host_frame]);
+            observeFeedbackSignal(1, feedback_q_[host_frame]);
+            bypass_drive_[0] = applyFeedbackFilter(0, internal_input_[0][index],
+                                                   feedback_q_[host_frame], reference);
+            bypass_drive_[1] = applyFeedbackFilter(1, internal_input_[1][index],
+                                                   feedback_q_[host_frame], reference);
+          } else {
+            // The whole forward path of this sample is evaluated before the compensator, so the
+            // tap it subtracts is this sample's. See advanceDriverOutput.
+            const StereoPair driver = advanceStereoOutput();
+            const StereoPair powered =
+                applied_parameters_.outputStage == 1
+                    ? StereoPair{advancePower(0, driver[0]), advancePower(1, driver[1])}
+                    : StereoPair{advanceSingleEnded(0, driver[0]),
+                                 advanceSingleEnded(1, driver[1])};
+            observeFeedbackSignal(0, feedback_q_[host_frame]);
+            observeFeedbackSignal(1, feedback_q_[host_frame]);
+            const StereoPair input = {applyFeedbackFilter(0, internal_input_[0][index],
+                                                          feedback_q_[host_frame], reference),
+                                      applyFeedbackFilter(1, internal_input_[1][index],
+                                                          feedback_q_[host_frame], reference)};
+            const std::array<bool, kChannels> valid = advanceStereoInput(input);
+            output = StereoPair{valid[0] ? powered[0] : 0.0, valid[1] ? powered[1] : 0.0};
+          }
         } else {
           const StereoPair input = {
               applyFeedbackFilter(0, internal_input_[0][index], feedback_q_[host_frame], reference),
               applyFeedbackFilter(1, internal_input_[1][index], feedback_q_[host_frame],
                                   reference)};
-          output = advanceStereo(input) * 0.001;
-          observeFeedbackSignal(0, feedback_q_[host_frame]);
-          observeFeedbackSignal(1, feedback_q_[host_frame]);
+          if (driverBypassed()) {
+            output = input / applied_parameters_.inputReference;
+          } else {
+            output = advanceStereo(input) * 0.001;
+            observeFeedbackSignal(0, feedback_q_[host_frame]);
+            observeFeedbackSignal(1, feedback_q_[host_frame]);
+          }
         }
         observeFeedbackDetector(internal_input_[0][index], internal_input_[1][index], output[0],
                                 output[1], reference, host_frame);
@@ -5169,14 +5743,31 @@ private:
 #if ET_TUBE_SIMULATOR_TEST_STATE
       beginFastKclStepForTesting(index, host_frame);
 #endif
-      const double reference = power_stage ? 0.0 : plate_reference_[host_frame];
-      if (power_stage) {
-        // One channel at a time: the per-sample safety flag is a single scalar, and the power
-        // stage sits between the two halves of the driver here.
+      const double reference = output_stage ? 0.0 : plate_reference_[host_frame];
+      if (output_stage) {
         for (int channel = 0; channel < kChannels; ++channel) {
+          if (driverBypassed()) {
+            const std::size_t slot = static_cast<std::size_t>(channel);
+            step_safety_hit_ = false;
+            const double powered = applied_parameters_.outputStage == 1
+                                       ? advancePower(channel, bypass_drive_[slot], true)
+                                       : advanceSingleEnded(channel, bypass_drive_[slot]);
+            if (step_safety_hit_) {
+              block_safety_hit_ = true;
+            }
+            observeFeedbackSignal(channel, feedback_q_[host_frame]);
+            bypass_drive_[slot] = applyFeedbackFilter(channel, internal_input_[channel][index],
+                                                      feedback_q_[host_frame], reference);
+            internal_output_[channel][index] = powered;
+            continue;
+          }
+          // One channel at a time: the per-sample safety flag is a single scalar, and the power
+          // stage sits between the two halves of the driver here.
           const double driver = advanceDriverOutput(channel);
           const bool driver_safety_hit = step_safety_hit_;
-          const double powered = advancePower(channel, driver);
+          const double powered = applied_parameters_.outputStage == 1
+                                     ? advancePower(channel, driver)
+                                     : advanceSingleEnded(channel, driver);
           observeFeedbackSignal(channel, feedback_q_[host_frame]);
           const double error = applyFeedbackFilter(channel, internal_input_[channel][index],
                                                    feedback_q_[host_frame], reference);
@@ -5184,6 +5775,18 @@ private:
           internal_output_[channel][index] = advanceDriverInput(channel, error) ? powered : 0.0;
         }
       } else {
+        if (driverBypassed()) {
+          internal_output_[0][index] = applyFeedbackFilter(0, internal_input_[0][index],
+                                                           feedback_q_[host_frame], reference) /
+                                       applied_parameters_.inputReference;
+          internal_output_[1][index] = applyFeedbackFilter(1, internal_input_[1][index],
+                                                           feedback_q_[host_frame], reference) /
+                                       applied_parameters_.inputReference;
+          observeFeedbackDetector(internal_input_[0][index], internal_input_[1][index],
+                                  internal_output_[0][index], internal_output_[1][index], reference,
+                                  host_frame);
+          continue;
+        }
         const double driver_left =
             advanceChannel(0, applyFeedbackFilter(0, internal_input_[0][index],
                                                   feedback_q_[host_frame], reference));
@@ -5496,12 +6099,13 @@ private:
         return false;
       }
     }
-    return finiteContainer(drive_gain_) && finiteContainer(output_gain_) &&
-           finiteContainer(wet_mix_) && finiteContainer(feedback_q_) &&
-           finiteContainer(feedback_makeup_) && finiteContainer(plate_reference_) &&
-           finiteContainer(fault_wet_) && finiteContainer(transition_wet_) &&
-           finiteContainer(safe_dry_) && finiteContainer(safety_user_) &&
-           finiteContainer(wet_chain_) && finiteContainer(segment_audio_);
+    return finiteContainer(bypass_drive_) && finiteContainer(drive_gain_) &&
+           finiteContainer(output_gain_) && finiteContainer(wet_mix_) &&
+           finiteContainer(feedback_q_) && finiteContainer(feedback_makeup_) &&
+           finiteContainer(plate_reference_) && finiteContainer(fault_wet_) &&
+           finiteContainer(transition_wet_) && finiteContainer(safe_dry_) &&
+           finiteContainer(safety_user_) && finiteContainer(wet_chain_) &&
+           finiteContainer(segment_audio_);
   }
 
   void restoreRuntimeBaseline() noexcept {
@@ -5545,6 +6149,7 @@ private:
       std::fill(internal_work_[channel].begin(), internal_work_[channel].end(), 0.0);
       last_plate_current_[channel] = {0.0, 0.0};
       feedback_filter_[channel] = FeedbackFilterState{};
+      bypass_drive_[static_cast<std::size_t>(channel)] = 0.0;
     }
     schedulePlateReference(fast_[0].stage[1].plateVoltage, true);
     std::fill(drive_gain_.begin(), drive_gain_.end(), controls_.drive);
@@ -5576,22 +6181,23 @@ private:
       const FastChannel &fast = fast_[channel];
       const SlowState &slow = slow_[channel];
       const std::size_t offset = static_cast<std::size_t>(channel) * 20u;
-      telemetry_payload_[offset] = static_cast<float>(slow.cathode[0].voltage);
-      telemetry_payload_[offset + 1u] = static_cast<float>(slow.cathode[1].voltage);
-      telemetry_payload_[offset + 2u] = static_cast<float>(slow.supply.voltage);
-      telemetry_payload_[offset + 3u] =
-          static_cast<float>(fast.stage[0].gridVoltage - slow.cathode[0].voltage);
-      telemetry_payload_[offset + 4u] =
-          static_cast<float>(fast.stage[0].plateVoltage - slow.cathode[0].voltage);
-      telemetry_payload_[offset + 5u] = static_cast<float>(last_plate_current_[channel][0]);
-      telemetry_payload_[offset + 6u] =
-          static_cast<float>(fast.stage[1].gridVoltage - slow.cathode[1].voltage);
-      telemetry_payload_[offset + 7u] =
-          static_cast<float>(fast.stage[1].plateVoltage - slow.cathode[1].voltage);
-      telemetry_payload_[offset + 8u] = static_cast<float>(last_plate_current_[channel][1]);
-      if (applied_parameters_.outputStage == 1) {
+      if (!driverBypassed()) {
+        telemetry_payload_[offset] = static_cast<float>(slow.cathode[0].voltage);
+        telemetry_payload_[offset + 1u] = static_cast<float>(slow.cathode[1].voltage);
+        telemetry_payload_[offset + 2u] = static_cast<float>(slow.supply.voltage);
+        telemetry_payload_[offset + 3u] =
+            static_cast<float>(fast.stage[0].gridVoltage - slow.cathode[0].voltage);
+        telemetry_payload_[offset + 4u] =
+            static_cast<float>(fast.stage[0].plateVoltage - slow.cathode[0].voltage);
+        telemetry_payload_[offset + 5u] = static_cast<float>(last_plate_current_[channel][0]);
+        telemetry_payload_[offset + 6u] =
+            static_cast<float>(fast.stage[1].gridVoltage - slow.cathode[1].voltage);
+        telemetry_payload_[offset + 7u] =
+            static_cast<float>(fast.stage[1].plateVoltage - slow.cathode[1].voltage);
+        telemetry_payload_[offset + 8u] = static_cast<float>(last_plate_current_[channel][1]);
+      }
+      if (applied_parameters_.outputStage != 0) {
         const PowerState &power = power_state_[channel];
-        const PhaseCPowerProfile &profile = powerProfile();
         telemetry_payload_[offset + 9u] = static_cast<float>(power.ltpBalanceV);
         telemetry_payload_[offset + 10u] =
             static_cast<float>(power.platePushV - power.cathodePushV);
@@ -5604,8 +6210,13 @@ private:
             static_cast<float>(power.screenPushV - power.cathodePushV);
         telemetry_payload_[offset + 16u] =
             static_cast<float>(power.screenPullV - power.cathodePullV);
+        const double magnetizing_inductance =
+            applied_parameters_.outputStage == 1
+                ? powerProfile().magnetizingInductanceH
+                : kSeTubeModels[static_cast<std::size_t>(applied_parameters_.seTube)]
+                      .magnetizingInductanceH;
         telemetry_payload_[offset + 17u] =
-            static_cast<float>(profile.magnetizingInductanceH * power.magnetizingCurrentA);
+            static_cast<float>(magnetizing_inductance * power.magnetizingCurrentA);
         telemetry_payload_[offset + 18u] = static_cast<float>(power.publishedVrms);
         telemetry_payload_[offset + 19u] = static_cast<float>(power.publishedRealPower);
       }
@@ -5695,6 +6306,7 @@ private:
     hashDouble(hash, state.optCurrentA);
     hashDouble(hash, state.magnetizingCurrentA);
     hashDouble(hash, state.optCapacitorV);
+    hashDouble(hash, state.primaryVoltageV);
     hashDouble(hash, state.speakerVoiceCurrentA);
     hashDouble(hash, state.speakerResonanceCurrentA);
     hashDouble(hash, state.speakerCapacitorV);
@@ -5747,6 +6359,10 @@ private:
     hashDouble(hash, parameters.actualLoadOhm);
     hashDouble(hash, parameters.safetyTrimDb);
     hashWord(hash, parameters.autoGainReduction ? 1u : 0u);
+    hashWord(hash, static_cast<std::uint64_t>(parameters.seTube));
+    hashDouble(hash, parameters.seBPlus);
+    hashDouble(hash, parameters.seCathodeResistor);
+    hashWord(hash, static_cast<std::uint64_t>(parameters.sePrimaryImpedance));
   }
 #endif
 
@@ -5808,6 +6424,9 @@ private:
     double iCout = 0.0;
   };
   std::array<DriverSplit, kChannels> driver_split_{};
+  // Explicit causal handoff for Power-only processing. It replaces the one-fast-sample boundary
+  // that naturally exists inside the skipped two-stage driver.
+  std::array<double, kChannels> bypass_drive_{};
 #if ET_TUBE_HAS_F64X2
   // Held as scalars per lane: a vector-typed member would raise the alignment of the whole kernel
   // above the engine's instance storage alignment.
@@ -5830,6 +6449,7 @@ private:
   PowerLtpCoefficients power_ltp_{};
   PowerOptCoefficients power_opt_coeff_{};
   PowerLtpQuiescent power_ltp_quiescent_{};
+  SeQuiescent se_quiescent_{};
   PowerTubeTables power_tube_tables_ = powerTubeTables(0u);
   std::size_t power_profile_index_ = 2u;
   std::size_t power_speaker_index_ = 1u;

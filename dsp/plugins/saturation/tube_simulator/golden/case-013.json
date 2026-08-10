@@ -1,0 +1,57 @@
+{
+  "formatVersion": 1,
+  "type": "TubeSimulatorPlugin",
+  "id": "se-300b-feedback-step",
+  "stimulus": "sin1k",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 12288,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 12,
+  "seed": "0xeffe7a52",
+  "params": {
+    "dr": -42,
+    "tp": "12AU7",
+    "bi": 0,
+    "pv": 250,
+    "sz": 10,
+    "su": 10,
+    "og": 0,
+    "mx": 100,
+    "iv": 2.828,
+    "nf": 0,
+    "os": "SingleEnded",
+    "pt": "EL84",
+    "pb": 320,
+    "kr": 270,
+    "st": "0",
+    "zp": "8.0",
+    "sl": "8",
+    "rl": 8,
+    "sg": 0,
+    "ag": true,
+    "sd": "300B",
+    "sb": 400,
+    "sr": 1000,
+    "sp": "3.5",
+    "fr": true
+  },
+  "events": [
+    {
+      "frame": 1024,
+      "params": {
+        "nf": 3
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "a415ce15d2c11bd0be299469802cfaba3e48c735276c6b2a678ebde329e50275",
+  "outputFloats": 24576,
+  "byteLength": 98304,
+  "binary": "case-013.f32"
+}

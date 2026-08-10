@@ -114,6 +114,11 @@ export async function updateApplicationMenu(isElectron) {
           { type: 'separator' },
           { label: t('menu.view.effectPipeline') },
           { label: t('menu.view.musicLibrary') },
+          {
+            label: t('menu.view.pipelineAnalyzer'),
+            type: 'checkbox',
+            checked: window.uiManager.pipelineAnalyzerController?.state?.open === true
+          },
           { type: 'separator' },
           { label: t('menu.view.toggleFullscreen') },
           { label: t('menu.view.miniPlayer') }

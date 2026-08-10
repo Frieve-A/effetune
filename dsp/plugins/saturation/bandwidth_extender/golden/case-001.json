@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "BandwidthExtenderPlugin",
+  "id": "auto-both-components-band-limited-noise",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 12000,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "ha": 100,
+    "na": 100,
+    "cm": "Auto",
+    "cf": 16000
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:17d6fa0bd06f4fa6da40977f873d6573a3dac6181370e0a686b0b54997d7ae85",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type BandwidthExtenderPlugin --promote-production-native",
+  "outputFloats": 24000,
+  "byteLength": 96000,
+  "binary": "case-001.f32"
+}

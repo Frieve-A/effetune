@@ -258,6 +258,8 @@ EffeTune 2.1.0引入了采用目录架构v3的音乐库，可按曲目浏览CUE�
 
 保存了脉冲响应数据的测量会在结果中显示归一化的**脉冲响应**图。初始范围为从检测到的起点算起的0～10 ms。可使用鼠标滚轮或按钮缩放时间轴，并通过拖动图形或使用滑块沿时间方向滚动。选择测量点时图形会随之更新；选择**全部（平均）**时，将显示第一个保存了脉冲响应的测量点，并在图形上方标明该点。使用图形下方的**导出脉冲响应 (WAV)**，可将当前显示测量点的完整未归一化响应保存为采用测量采样率的单声道32位浮点WAV文件。
 
+如需查看当前 pipeline 的频率、相位、群延迟和脉冲响应，并包含最多四个输出和已保存的扬声器响应，请参阅 [Pipeline Analyzer 指南](pipeline-analyzer.md)。
+
 ## 常见效果组合
 
 以下是一些流行的效果组合，旨在提升您的聆听体验：
@@ -357,6 +359,7 @@ EffeTune 2.1.0引入了采用目录架构v3的音乐库，可按曲目浏览CUE�
 | Lo-Fi     | Vinyl Simulator | 将输入刻入模拟唱槽，再用物理唱针模型播放 | [详情](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | 模拟因扬声器振膜微动引起的自然动态音色变化 | [详情](plugins/modulation.md#doppler-distortion) |
 | Modulation | Pitch Shifter | 在不改变速度的情况下升高或降低音乐音高 | [详情](plugins/modulation.md#pitch-shifter) |
+| Modulation | Pitch Shifter HQ | 减少相位伪影，更细致地升高或降低音高 | [详情](plugins/modulation.md#pitch-shifter-hq) |
 | Modulation | Tremolo | 基于音量的调制效果 | [详情](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | 加入轻微磁带或唱片式音高摇摆，营造复古特性 | [详情](plugins/modulation.md#wow-flutter) |
 | Resonator | Horn Resonator | 具有可自定义尺寸的号角共鸣模拟 | [详情](plugins/resonator.md#horn-resonator) |
@@ -366,6 +369,7 @@ EffeTune 2.1.0引入了采用目录架构v3的音乐库，可按曲目浏览CUE�
 | Reverb    | FDN Reverb | 反馈延迟网络混响，产生丰富密集的混响纹理 | [详情](plugins/reverb.md#fdn-reverb) |
 | Reverb    | IR Reverb | 使用导入房间和设备脉冲响应的卷积混响 | [详情](plugins/reverb.md#ir-reverb) |
 | Reverb    | RS Reverb | 具有自然扩散的随机散射混响 | [详情](plugins/reverb.md#rs-reverb) |
+| Saturation| Bandwidth Extender | 在检测或指定的截止频率以上生成高频内容 | [详情](plugins/saturation.md#bandwidth-extender) |
 | Saturation| Dynamic Saturation | 模拟扬声器振膜的非线性位移 | [详情](plugins/saturation.md#dynamic-saturation) |
 | Saturation| Exciter | 添加谐波内容以增强清晰度和存在感 | [详情](plugins/saturation.md#exciter) |
 | Saturation| Hard Clipping | 数字硬削波效果 | [详情](plugins/saturation.md#hard-clipping) |
@@ -373,7 +377,7 @@ EffeTune 2.1.0引入了采用目录架构v3的音乐库，可按曲目浏览CUE�
 | Saturation| Multiband Saturation | 分别为低频、中频和高频添加暖度或边缘感 | [详情](plugins/saturation.md#multiband-saturation) |
 | Saturation| Saturation | 添加模拟风格的温暖、丰润和个性 | [详情](plugins/saturation.md#saturation) |
 | Saturation| Sub Synth | 混入经过滤波的低频信号以增强低音 | [详情](plugins/saturation.md#sub-synth) |
-| Saturation| Tube Simulator | 动态模拟电子管线路级和推挽功率放大器 | [详情](plugins/saturation.md#tube-simulator) |
+| Saturation| Tube Simulator | 模拟电子管线路级以及推挽或 300B/2A3 单端三极管功率放大器 | [详情](plugins/saturation.md#tube-simulator) |
 | Spatial   | Crossfeed Filter | 用于自然立体声成像的耳机交叉馈送滤波器 | [详情](plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | 在立体声和 Mid/Side 之间转换，用于调整中央与氛围成分 | [详情](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5 频段频率相关立体声平衡控制 | [详情](plugins/spatial.md#multiband-balance) |

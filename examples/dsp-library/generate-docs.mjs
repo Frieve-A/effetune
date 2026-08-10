@@ -1141,7 +1141,8 @@ Catalog latency badges are qualitative declarations. Python
 runtime aggregate. \`Chain.latency_samples()\` in Python and \`chain.latencySamples()\`
 in JavaScript report the same aggregate without opening a stream, so offline
 \`process()\` output can be phase-aligned.
-The AudioWorklet wrapper does not expose a latency getter.
+\`EffeTuneNode.latencySamples\` exposes the cached real-time aggregate. Creation and
+awaited \`setParam()\` or \`reset()\` calls update it before returning.
 
 ## Source-generating effects
 
@@ -1232,7 +1233,8 @@ Reproduction requires the exact input block list and every event's content, fram
 order, including \`setParam\` and \`reset\` positions. Scheduled frame events are stream
 operations. Close streams deterministically. Python exposes the aggregate
 \`latency_samples\`; JavaScript exposes the same value as \`latencySamples\` on a
-\`ChainStream\`. The AudioWorklet wrapper has no latency getter.
+\`ChainStream\`. \`EffeTuneNode.latencySamples\` exposes the cached aggregate for
+the AudioWorklet path.
 
 Python and JavaScript event \`parameters\` are partial updates merged with the effect's
 current semantic values. Frames are zero-based within that \`process()\` input. Events
@@ -1598,10 +1600,12 @@ node.unsubscribe(callback: TelemetryCallback): boolean
 node.setParam(effectId: string, parameterName: string, value: unknown): Promise<void>
 node.reset(): Promise<void>
 node.close(): void
+node.latencySamples: number
 node.droppedTelemetryFrames: number`)}
 
-Import \`EffeTuneNode\` from \`@effetune/dsp/worklet\`. It has no latency getter and
-does not accept scheduled frame events. See
+Import \`EffeTuneNode\` from \`@effetune/dsp/worklet\`. The \`latencySamples\` getter
+is refreshed by creation and awaited mutations; the wrapper does not accept scheduled
+frame events. See
 [Compatibility](/dsp/reference/compatibility/#analyzers-and-telemetry) for decoded
 telemetry frame fields. Asset-configuration parameters listed under
 [Streaming and events](/dsp/concepts/streaming-and-events/) cannot be changed on an

@@ -266,6 +266,8 @@ To remove the audio interface's own response, connect its output directly to its
 
 Saved measurements with impulse-response data show a normalized **Impulse Response** plot in the results. It opens at 0–10 ms from the detected onset. Use the mouse wheel or buttons to zoom the time axis, and drag the plot or use the slider to scroll. Selecting a measurement point updates the plot; **All (Average)** displays the first point that has saved impulse-response data and identifies it above the graph. Use **Export Impulse Response (WAV)** below the plot to save the displayed point's complete, unnormalized response as a mono 32-bit floating-point WAV at the measurement sample rate.
 
+To inspect the active pipeline's Frequency, Phase, Group Delay, and Impulse responses—including up to four selected outputs and optional saved speaker responses—see the [Pipeline Analyzer guide](docs/pipeline-analyzer.md).
+
 ## Common Effect Combinations
 
 Here are some popular effect combinations to enhance your listening experience:
@@ -366,6 +368,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Lo-Fi     | Vinyl Simulator | Cuts the input into a modeled groove and plays it back with a physical stylus model | [Details](docs/plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | Simulates natural, dynamic changes in sound caused by subtle speaker cone movements | [Details](docs/plugins/modulation.md#doppler-distortion) |
 | Modulation | Pitch Shifter | Raises or lowers music pitch without changing tempo | [Details](docs/plugins/modulation.md#pitch-shifter) |
+| Modulation | Pitch Shifter HQ | Raises or lowers pitch with fewer phase artifacts for careful listening | [Details](docs/plugins/modulation.md#pitch-shifter-hq) |
 | Modulation | Tremolo | Volume-based modulation effect | [Details](docs/plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | Adds subtle tape or record-style pitch wavering for vintage character | [Details](docs/plugins/modulation.md#wow-flutter) |
 | Resonator | Horn Resonator | Horn resonance simulation with customizable dimensions | [Details](docs/plugins/resonator.md#horn-resonator) |
@@ -375,6 +378,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Reverb    | FDN Reverb | Feedback Delay Network reverb with rich, dense reverb textures | [Details](docs/plugins/reverb.md#fdn-reverb) |
 | Reverb    | IR Reverb | Convolution reverb using imported room and equipment impulse responses | [Details](docs/plugins/reverb.md#ir-reverb) |
 | Reverb    | RS Reverb | Random scattering reverb with natural diffusion | [Details](docs/plugins/reverb.md#rs-reverb) |
+| Saturation| Bandwidth Extender | Generates high-frequency content above a detected or specified cutoff | [Details](docs/plugins/saturation.md#bandwidth-extender) |
 | Saturation| Dynamic Saturation | Simulates the nonlinear displacement of speaker cones | [Details](docs/plugins/saturation.md#dynamic-saturation) |
 | Saturation| Exciter | Add harmonic content to enhance clarity and presence | [Details](docs/plugins/saturation.md#exciter) |
 | Saturation| Hard Clipping | Digital hard clipping effect | [Details](docs/plugins/saturation.md#hard-clipping) |
@@ -382,7 +386,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Saturation| Multiband Saturation | Adds warmth or edge separately to low, mid, and high ranges | [Details](docs/plugins/saturation.md#multiband-saturation) |
 | Saturation| Saturation | Adds warm analog-style richness and character | [Details](docs/plugins/saturation.md#saturation) |
 | Saturation| Sub Synth | Mixes in a filtered low-frequency signal for bass enhancement | [Details](docs/plugins/saturation.md#sub-synth) |
-| Saturation| Tube Simulator | Models tube line stages or a push-pull power amplifier with dynamic operating points | [Details](docs/plugins/saturation.md#tube-simulator) |
+| Saturation| Tube Simulator | Models tube line stages and push-pull or single-ended triode (300B/2A3) power amplifiers | [Details](docs/plugins/saturation.md#tube-simulator) |
 | Spatial   | Crossfeed Filter | Headphone crossfeed filter for natural stereo imaging | [Details](docs/plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | Converts between stereo and Mid/Side for center/ambience adjustments | [Details](docs/plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5-band frequency-dependent stereo balance control | [Details](docs/plugins/spatial.md#multiband-balance) |

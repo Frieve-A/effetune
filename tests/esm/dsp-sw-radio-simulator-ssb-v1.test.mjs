@@ -377,7 +377,7 @@ test('SW Radio Simulator SSB physics: shift sign, sideband suppression, carrier 
   const spectralBase = {
     fr: true, enabled: true,
     tb: 4.5, pe: 50, md: 90, cp: 6, sg: -15, sk: 0, fd: 0.5, ds: 1.4, st: 0,
-    in: -80, io: 10, mo: 'USB', tn: 0.5, bf: 200, bw: 6, de: 'Envelope',
+    in: -80, io: 10, mo: 'USB', tn: 0.3, bf: 0, bw: 6, de: 'Envelope',
     ag: 'Fast', dt: 50, hm: -80, hz: '50', sp: 'Off', og: 0, mx: 100
   };
   const SAMPLE_RATE = 48000;
@@ -404,18 +404,18 @@ test('SW Radio Simulator SSB physics: shift sign, sideband suppression, carrier 
   const measure = (samples, frequency) =>
     bandPower(samples, WINDOW_START, SAMPLE_RATE, SAMPLE_RATE, frequency);
 
-  // Sign convention: delta = tn*1000 - bf. With tn=0.5 kHz and bf=200 Hz the
-  // 1 kHz tone lands on 1300 Hz in USB and on 700 Hz in LSB, and the unwanted
-  // sideband stays at least ~50 dB down (Phase 0 anchor); 30 dB is asserted.
+  // Positive Tuning means that the receiver is tuned above the station. A 1 kHz
+  // tone therefore lands on 700 Hz in USB and on 1300 Hz in LSB at +0.3 kHz,
+  // while the unwanted sideband stays at least ~50 dB down; 30 dB is asserted.
   for (const sk of [0, 100]) {
     const usb = renderSpectral({ sk, mo: 'USB' }, tone(0.25));
     const lsb = renderSpectral({ sk, mo: 'LSB' }, tone(0.25));
-    assert.ok(measure(usb, 1300) > 1000 * measure(usb, 700),
-      `USB keeps f+delta dominant at sk=${sk}`);
-    assert.ok(measure(usb, 1300) > 1000 * measure(usb, 1000),
+    assert.ok(measure(usb, 700) > 1000 * measure(usb, 1300),
+      `USB shifts down when the receiver is tuned high at sk=${sk}`);
+    assert.ok(measure(usb, 700) > 1000 * measure(usb, 1000),
       `USB leaves no component at the untranslated tone at sk=${sk}`);
-    assert.ok(measure(lsb, 700) > 1000 * measure(lsb, 1300),
-      `LSB keeps f-delta dominant at sk=${sk}`);
+    assert.ok(measure(lsb, 1300) > 1000 * measure(lsb, 700),
+      `LSB shifts up when the receiver is tuned high at sk=${sk}`);
   }
 
   // The BFO alone must produce the same delta with the opposite knob:
@@ -427,7 +427,7 @@ test('SW Radio Simulator SSB physics: shift sign, sideband suppression, carrier 
   // Carrier residual: the suppressed carrier would fall on |delta| = 300 Hz.
   // Silence leaves only the amplified noise floor there, far below the level a
   // leaked carrier would reach once the SSB AGC normalizes it to its -18 dBFS target.
-  const silence = renderSpectral({ tn: 0.3, bf: 0 }, () => 0);
+  const silence = renderSpectral({ tn: -0.3, bf: 0 }, () => 0);
   const silenceResidual =
     singleBinAmplitude(silence, WINDOW_START, SAMPLE_RATE, SAMPLE_RATE, 300);
   assert.ok(silenceResidual < 0.01,
@@ -436,7 +436,7 @@ test('SW Radio Simulator SSB physics: shift sign, sideband suppression, carrier 
   // A 0.9 amplitude tone through the full 20 dB limiter maximizes the DC the
   // asymmetric limiter can generate; the low cut must keep it from reappearing
   // as a re-inserted carrier tone at |delta|.
-  const driven = renderSpectral({ tn: 0.3, bf: 0, cp: 20 }, tone(0.9));
+  const driven = renderSpectral({ tn: -0.3, bf: 0, cp: 20 }, tone(0.9));
   const drivenResidual =
     singleBinAmplitude(driven, WINDOW_START, SAMPLE_RATE, SAMPLE_RATE, 300);
   const drivenMain =

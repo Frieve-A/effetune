@@ -389,6 +389,11 @@ et_status et_pipeline_configure(et_engine engine, const std::uint8_t *descriptor
   return target == nullptr ? ET_ERR_ARGS : target->configurePipeline(descriptor, descriptor_bytes);
 }
 
+std::uint32_t et_pipeline_latency(et_engine engine) {
+  const effetune::Engine *target = findEngine(engine);
+  return target == nullptr ? 0u : target->pipelineLatency();
+}
+
 et_status et_pipeline_process(et_engine engine, std::uint32_t channel_count,
                               std::uint32_t frame_count, double time_seconds,
                               std::uint32_t master_bypass) {

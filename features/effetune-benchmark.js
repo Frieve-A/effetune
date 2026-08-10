@@ -450,7 +450,6 @@ class WasmBenchmarkRuntime {
                 assetSlots.push(slot);
             }
 
-            const arena = this.binding.getArenaViews();
             const descriptorParameters = {
                 ...parameters,
                 // The existing multichannel benchmark passes every channel to the plugin.
@@ -467,6 +466,7 @@ class WasmBenchmarkRuntime {
                 this.binding.pipelineConfigure(descriptor),
                 `${typeName} pipeline configuration`
             );
+            const arena = this.binding.getArenaViews();
 
             const session = new WasmBenchmarkSession(
                 this,

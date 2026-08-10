@@ -128,7 +128,7 @@ function clickMenu(menu) {
   for (const section of menu.template) {
     for (const item of section.submenu || []) {
       if (typeof item.click === 'function') {
-        item.click();
+        item.click(item);
       }
     }
   }
@@ -139,10 +139,12 @@ function createMenuTemplate() {
     label: `${prefix}-${index}`,
     enabled: index % 2 === 0
   }));
+  const viewItems = items(12, 'view');
+  viewItems[8] = { ...viewItems[8], type: 'checkbox', checked: true };
   return {
     file: { label: 'File X', submenu: items(14, 'file') },
     edit: { label: 'Edit X', submenu: items(9, 'edit') },
-    view: { label: 'View X', submenu: items(10, 'view') },
+    view: { label: 'View X', submenu: viewItems },
     settings: { label: 'Settings X', submenu: items(4, 'settings') },
     help: { label: 'Help X', submenu: items(5, 'help') }
   };
@@ -734,11 +736,19 @@ test('IPC handlers manage menus, tray presets, documentation, default menu creat
     const translatedMenu = electron.Menu.getApplicationMenu();
     assert.equal(translatedMenu.template[2].submenu[6].accelerator, 'CommandOrControl+E');
     assert.equal(translatedMenu.template[2].submenu[7].accelerator, 'CommandOrControl+L');
+    assert.equal(translatedMenu.template[2].submenu[8].type, 'checkbox');
+    assert.equal(translatedMenu.template[2].submenu[8].checked, true);
     clickMenu(translatedMenu);
     await Promise.resolve();
+    assert.deepEqual(
+      calls.find(call => call[0] === 'webContents.send' && call[1] === 'set-pipeline-analyzer-open'),
+      ['webContents.send', 'set-pipeline-analyzer-open', true]
+    );
 
     const appMenu = handlers.get('get-application-menu')();
     assert.equal(appMenu.file.label, 'File X');
+    assert.equal(appMenu.view.submenu[8].type, 'checkbox');
+    assert.equal(appMenu.view.submenu[8].checked, true);
 
     assert.deepEqual(handlers.get('hide-application-menu')(), { success: true });
     assert.equal(handlers.get('get-application-menu')(), null);
@@ -746,6 +756,8 @@ test('IPC handlers manage menus, tray presets, documentation, default menu creat
     const defaultMenu = electron.Menu.getApplicationMenu();
     assert.equal(defaultMenu.template[2].submenu[6].accelerator, 'CommandOrControl+E');
     assert.equal(defaultMenu.template[2].submenu[7].accelerator, 'CommandOrControl+L');
+    assert.equal(defaultMenu.template[2].submenu[8].type, 'checkbox');
+    assert.equal(defaultMenu.template[2].submenu[8].checked, false);
     clickMenu(defaultMenu);
     await Promise.resolve();
 

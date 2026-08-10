@@ -103,3 +103,69 @@ test('Web playback source preserves the CUE descriptor including zero and null b
     file
   });
 });
+
+test('Web play resolves a deep source ordinal before materializing the preceding queue', async () => {
+  const tracks = Array.from({ length: 6 }, (_, index) => ({
+    trackUid: `track-${index + 1}`,
+    title: `Track ${index + 1}`,
+    artist: 'Artist',
+    albumArtist: 'Artist',
+    album: 'Album',
+    artworkId: null
+  }));
+  let releaseRead;
+  let signalReadStarted;
+  const readGate = new Promise(resolve => { releaseRead = resolve; });
+  const readStarted = new Promise(resolve => { signalReadStarted = resolve; });
+  const sequenceItems = [];
+  let nextId = 0;
+  let ordinalReads = 0;
+  const coordinator = new WebLibraryServiceCoordinator({
+    idFactory: () => `id-${++nextId}`,
+    repository: {
+      async queryTracks() { return { rows: [] }; },
+      async retainContext() { return { retained: true }; },
+      async releaseRetainedContext() { return { released: true }; },
+      async readContextPageAtOrdinal({ ordinal }) {
+        ordinalReads += 1;
+        return { rows: [tracks[ordinal]], catalogVersion: 1, pageStartOrdinal: ordinal };
+      },
+      async readContextPage() {
+        signalReadStarted();
+        await readGate;
+        return { rows: tracks, catalogVersion: 1, nextCursor: null };
+      },
+      async createPlaybackSequence() {},
+      async appendPlaybackSequenceItems({ items }) { sequenceItems.push(...items); },
+      async sealPlaybackSequence() {}
+    }
+  });
+  const receipt = await coordinator.start({
+    operationKind: 'play',
+    selectionDescriptor: { mode: 'all', contextToken: 'context-1', exclusions: [] },
+    target: {},
+    options: { currentOrdinal: 5, sourceOrdinal: 5 }
+  });
+
+  await readStarted;
+  let timeoutId;
+  try {
+    const provisionalEntry = await Promise.race([
+      coordinator.getProvisionalEntry(receipt.operationId),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Provisional entry was not resolved early')), 1_000);
+      })
+    ]);
+    assert.equal(provisionalEntry.trackUid, 'track-6');
+    assert.equal(provisionalEntry.ordinal, 5);
+    assert.equal(ordinalReads, 1);
+  } finally {
+    clearTimeout(timeoutId);
+    releaseRead();
+  }
+
+  const status = await coordinator.waitForTerminal(receipt.operationId);
+  assert.equal(status.terminalKind, 'succeeded');
+  assert.equal(sequenceItems[5].entryInstanceId, status.result.result.firstEntry.entryInstanceId);
+  coordinator.close();
+});

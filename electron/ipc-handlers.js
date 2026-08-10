@@ -1105,15 +1105,26 @@ function registerIpcHandlers() {
                 }
               }
             },
+            {
+              label: menuTemplate.view.submenu[8].label, // Pipeline Analyzer
+              type: 'checkbox',
+              checked: menuTemplate.view.submenu[8].checked === true,
+              click: menuItem => {
+                const mainWin = constants.getMainWindow();
+                if (mainWin) {
+                  mainWin.webContents.send('set-pipeline-analyzer-open', menuItem.checked === true);
+                }
+              }
+            },
             { type: 'separator' },
             {
               id: 'toggle-fullscreen',
               role: 'togglefullscreen',
-              label: menuTemplate.view.submenu[9].label, // Toggle Fullscreen
+              label: menuTemplate.view.submenu[10].label, // Toggle Fullscreen
               enabled: !isMiniMode
             },
             {
-              label: menuTemplate.view.submenu[10]?.label || 'Mini Player',
+              label: menuTemplate.view.submenu[11]?.label || 'Mini Player',
               accelerator: 'CommandOrControl+Shift+M',
               click: () => {
                 const mainWin = constants.getMainWindow();
@@ -1313,7 +1324,9 @@ function registerIpcHandlers() {
         view: {
           label: menu.items[2].label,
           submenu: menu.items[2].submenu.items.map(item => ({
-            label: item.label
+            label: item.label,
+            type: item.type,
+            checked: item.type === 'checkbox' ? item.checked === true : undefined
           }))
         },
         settings: {
@@ -1680,6 +1693,17 @@ function createMenu() {
             const mainWin = constants.getMainWindow();
             if (mainWin) {
               mainWin.webContents.send('open-library-view');
+            }
+          }
+        },
+        {
+          label: 'Pipeline Analyzer',
+          type: 'checkbox',
+          checked: false,
+          click: menuItem => {
+            const mainWin = constants.getMainWindow();
+            if (mainWin) {
+              mainWin.webContents.send('set-pipeline-analyzer-open', menuItem.checked === true);
             }
           }
         },

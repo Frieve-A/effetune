@@ -123,6 +123,7 @@ function createPrecacheFixture(t) {
     'effetune.css',
     'effetune-mobile.css',
     'effetune-library.css',
+    'pipeline-analyzer.css',
     'manifest.json',
     'sw.js'
   ]) {

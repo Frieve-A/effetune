@@ -72,6 +72,7 @@
     <link rel="stylesheet" href="effetune.css">
     <link rel="stylesheet" href="effetune-mobile.css">
     <link rel="stylesheet" href="effetune-library.css">
+    <link rel="stylesheet" href="pipeline-analyzer.css">
     <link rel="icon" href="images/favicon.ico" type="image/x-icon">
     <link rel="icon" href="images/icon_192x192.png" type="image/png" sizes="192x192">
     <link rel="apple-touch-icon" sizes="180x180" href="images/icon_180x180.png">
@@ -223,6 +224,7 @@
                         <button class="header-button save-button" id="savePresetButton" title="Save preset"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M15.2 3.5a2 2 0 0 1 1.4.6l3.3 3.3a2 2 0 0 1 .6 1.4V18.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2z"/><path d="M16.5 20.5v-6a1 1 0 0 0-1-1h-7a1 1 0 0 0-1 1v6"/><path d="M8 3.5v3.2a1 1 0 0 0 1 1h5"/></svg></button>
                         <button class="header-button delete-preset-button" id="deletePresetButton" title="Delete preset"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
                         <button class="header-button share-button" id="shareButton" title="Share pipeline">Share</button>
+                        <button class="header-button pipeline-analyzer-button" id="pipelineAnalyzerButton" title="Open Pipeline Analyzer" aria-label="Open Pipeline Analyzer" aria-controls="pipelineAnalyzerPanel" aria-expanded="false" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M3 17h3l2-7 3 10 3-15 2 12h5"/></svg></button>
                     </div>
                     <button class="column-control-button" id="decreaseColumnsButton" title="Decrease columns"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M5.5 12h13"/></svg></button>
                     <button class="column-control-button" id="increaseColumnsButton" title="Increase columns"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M12 5.5v13M5.5 12h13"/></svg></button>
@@ -234,7 +236,17 @@
                 </div>
                 <!-- Columns and plugin items will be added here by JS -->
             </div>
+            <div id="pipelineStats">
+                <div id="pipelineCpuUsage" class="pipeline-cpu-usage" role="img" aria-label="CPU: Avg 0.0%" data-level="normal">
+                    <span class="pipeline-cpu-meter" aria-hidden="true">
+                        <span id="pipelineCpuMeterFill" class="pipeline-cpu-meter-fill"></span>
+                    </span>
+                    <span id="pipelineCpuValue">CPU: Avg 0.0%</span>
+                </div>
+                <div id="pipelineLatency">Total Delay: 0 samples</div>
+            </div>
         </div>
+        <aside class="pipeline-analyzer-panel" id="pipelineAnalyzerPanel" hidden></aside>
     </div>
 
     <script src="js/vendor/jszip-3.10.1.min.js"></script>

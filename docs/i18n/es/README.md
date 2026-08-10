@@ -258,6 +258,8 @@ Para eliminar la respuesta propia de la interfaz de audio, conecta directamente 
 
 Las mediciones que contienen datos de respuesta impulsional muestran un gráfico normalizado de **Respuesta impulsional** en los resultados. La vista inicial abarca de 0 a 10 ms desde el inicio detectado. Usa la rueda del ratón o los botones para ampliar o reducir el eje temporal, y arrastra el gráfico o usa el control deslizante para desplazarte. Al seleccionar un punto de medición se actualiza el gráfico; **Todos (promedio)** muestra el primer punto con una respuesta impulsional guardada y lo identifica sobre el gráfico. Usa **Exportar respuesta impulsional (WAV)** debajo del gráfico para guardar la respuesta completa y sin normalizar del punto mostrado como un WAV mono de coma flotante de 32 bits con la frecuencia de muestreo de la medición.
 
+Para consultar la frecuencia, fase, retardo de grupo e impulso del pipeline activo, con hasta cuatro salidas y respuestas de altavoz guardadas, consulta la [guía de Pipeline Analyzer](pipeline-analyzer.md).
+
 ## Combinaciones Comunes de Efectos
 
 Aquí hay algunas combinaciones populares de efectos para mejorar tu experiencia de escucha:
@@ -358,6 +360,7 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | Lo-Fi     | Vinyl Simulator | Graba la entrada en un surco modelado y la reproduce con una aguja física simulada | [Detalles](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | Simula cambios dinámicos y naturales en el sonido causados por movimientos sutiles del cono del altavoz | [Detalles](plugins/modulation.md#doppler-distortion) |
 | Modulation | Pitch Shifter | Sube o baja el tono de la música sin cambiar el tempo | [Detalles](plugins/modulation.md#pitch-shifter) |
+| Modulation | Pitch Shifter HQ | Sube o baja el tono con menos artefactos de fase para una escucha atenta | [Detalles](plugins/modulation.md#pitch-shifter-hq) |
 | Modulation | Tremolo | Efecto de modulación basado en volumen | [Detalles](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | Añade una sutil fluctuación de tono tipo cinta o disco para carácter vintage | [Detalles](plugins/modulation.md#wow-flutter) |
 | Resonator | Horn Resonator | Simulación de resonancia de bocina con dimensiones personalizables | [Detalles](plugins/resonator.md#horn-resonator) |
@@ -367,6 +370,7 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | Reverb    | FDN Reverb | Reverberación de red de retardo con retroalimentación que produce texturas de reverb ricas y densas | [Detalles](plugins/reverb.md#fdn-reverb) |
 | Reverb    | IR Reverb | Reverberación por convolución con respuestas al impulso importadas de salas y equipos | [Detalles](plugins/reverb.md#ir-reverb) |
 | Reverb    | RS Reverb | Reverberación de dispersión aleatoria con difusión natural | [Detalles](plugins/reverb.md#rs-reverb) |
+| Saturation| Bandwidth Extender | Genera contenido de alta frecuencia por encima de un corte detectado o especificado | [Detalles](plugins/saturation.md#bandwidth-extender) |
 | Saturation| Dynamic Saturation | Simula el desplazamiento no lineal de conos de altavoz | [Detalles](plugins/saturation.md#dynamic-saturation) |
 | Saturation| Exciter | Añade contenido armónico para mejorar la claridad y presencia | [Detalles](plugins/saturation.md#exciter) |
 | Saturation| Hard Clipping | Efecto de recorte duro digital | [Detalles](plugins/saturation.md#hard-clipping) |
@@ -374,7 +378,7 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | Saturation| Multiband Saturation | Añade calidez o filo por separado a graves, medios y agudos | [Detalles](plugins/saturation.md#multiband-saturation) |
 | Saturation| Saturation | Añade riqueza y carácter cálidos de estilo analógico | [Detalles](plugins/saturation.md#saturation) |
 | Saturation| Sub Synth | Mezcla una señal de baja frecuencia filtrada para reforzar los graves | [Detalles](plugins/saturation.md#sub-synth) |
-| Saturation| Tube Simulator | Modela dinámicamente etapas de línea a válvulas y un amplificador de potencia push-pull | [Detalles](plugins/saturation.md#tube-simulator) |
+| Saturation| Tube Simulator | Modela etapas de línea a válvulas y amplificadores de potencia push-pull o de triodo single-ended 300B/2A3 | [Detalles](plugins/saturation.md#tube-simulator) |
 | Spatial   | Crossfeed Filter | Filtro de alimentación cruzada para auriculares para imagen estéreo natural | [Detalles](plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | Convierte entre estéreo y Mid/Side para ajustar centro y ambiente | [Detalles](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | Control de balance estéreo dependiente de frecuencia de 5 bandas | [Detalles](plugins/spatial.md#multiband-balance) |

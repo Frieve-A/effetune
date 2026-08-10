@@ -32,6 +32,10 @@
     "rl": 8,
     "sg": 0,
     "ag": true,
+    "sd": "300B",
+    "sb": 400,
+    "sr": 1000,
+    "sp": "3.5",
     "fr": true
   },
   "events": [],
@@ -39,7 +43,7 @@
     "abs": 0.00001,
     "policy": "per-sample"
   },
-  "jsEngineHash": "f316d72cf8bcaf19510d09dfbab309ddd0b9cf72961647f50fbbcf15ef516ed3",
+  "jsEngineHash": "a415ce15d2c11bd0be299469802cfaba3e48c735276c6b2a678ebde329e50275",
   "outputFloats": 2304,
   "byteLength": 9216,
   "binary": "case-002.f32"

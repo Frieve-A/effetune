@@ -1,6 +1,6 @@
 ---
 title: "मॉड्यूलेशन प्लगइन - EffeTune"
-description: "Tremolo, Wow Flutter, Pitch Shifter और Doppler Distortion सहित modulation effect प्लगइन।"
+description: "Doppler Distortion, Pitch Shifter, Pitch Shifter HQ, Tremolo और Wow Flutter सहित modulation effect प्लगइन।"
 lang: hi
 ---
 
@@ -12,6 +12,7 @@ lang: hi
 
 - [Doppler Distortion](#doppler-distortion) - स्पीकर कॉन के सूक्ष्म आंदोलन द्वारा उत्पन्न प्राकृतिक, गतिशील ध्वनि परिवर्तनों का अनुकरण करता है।
 - [Pitch Shifter](#pitch-shifter) - आपके संगीत के प्लेबैक स्पीड को प्रभावित किए बिना उसके स्वर को बदलता है
+- [Pitch Shifter HQ](#pitch-shifter-hq) - जब latency या CPU usage से अधिक sound quality महत्वपूर्ण हो, तब कम phase artifacts के साथ pitch बदलता है
 - [Tremolo](#tremolo) - धड़कती, गतिशील ध्वनि के लिए लयबद्ध वॉल्यूम परिवर्तनों का निर्माण करता है
 - [Wow Flutter](#wow-flutter) - विनाइल रिकॉर्ड्स और टेप प्लेयर्स के कोमल स्वर परिवर्तनों को पुनर्जीवित करता है
 
@@ -70,6 +71,28 @@ Doppler Distortion स्पीकर कॉन के भौतिक आंद
   - यह निर्धारित करता है कि pitch-shifted सेगमेंट्स कितनी सुचारू रूप से मिलते हैं
   - निम्न मान अधिक तात्कालिक सुनाई दे सकते हैं, परंतु संभावित रूप से कम सुचारू
   - उच्च मान सेगमेंट्स के बीच अधिक सुचारू संक्रमण बनाते हैं, परंतु इससे ध्वनि में डगमगाहट बढ़ सकती है और ओवरलैपिंग की अनुभूति हो सकती है
+
+## Pitch Shifter HQ
+
+ध्यान से सुनने के लिए बनाया गया एक उच्च-गुणवत्ता वाला pitch shifter, जब कम latency या कम CPU usage की तुलना में phase smearing घटाना अधिक महत्वपूर्ण हो। यह playback speed बदले बिना pitch बदलता है और standard Pitch Shifter की तुलना में spectral components को बेहतर ढंग से साथ रखता है। बदले में, यह अधिक CPU उपयोग करता है और लगभग 106.7–116.1ms की fixed processing latency जोड़ता है: 48, 96 और 192kHz पर लगभग 106.7ms तथा 44.1, 88.2 और 176.4kHz पर लगभग 116.1ms। इसके लिए EffeTune का WASM DSP engine आवश्यक है; यदि यह engine उपलब्ध न हो, तो audio बिना processing के गुजरता है।
+
+Pitch Shifter HQ formants को सुरक्षित नहीं रखता। इसलिए बड़े pitch shifts से pitch के साथ-साथ आवाज़ों और वाद्ययंत्रों का स्वरूप भी बदलता है।
+
+### सुनने का अनुभव गाइड
+
+- हल्के बदलाव के लिए **Pitch Shift** को -1 या +1 से शुरू करें और **Fine Tune** को 0 पर रखें।
+- पूरे semitone से बदले बिना थोड़े ऊँचे या नीचे सुर वाले संगीत से मेल कराने के लिए **Fine Tune** का उपयोग करें।
+- जब कम phase artifacts के लिए अतिरिक्त CPU usage और latency स्वीकार्य हों, तब standard Pitch Shifter के बजाय Pitch Shifter HQ चुनें। latency-sensitive listening या कम शक्ति वाले device पर standard version का उपयोग करें।
+- बड़े shifts की तुलना ध्यान से करें: pitch स्थिर रूप से बदलता है, लेकिन formants सुरक्षित न रहने से timbre का बदलाव अधिक स्पष्ट होता है।
+
+### पैरामीटर
+
+- **Pitch Shift** - पूरे pitch को semitones में बदलता है (-6 से +6)
+  - नकारात्मक मान pitch को कम और सकारात्मक मान बढ़ाते हैं
+  - शून्य पर pitch नहीं बदलता
+- **Fine Tune** - pitch को cents में समायोजित करता है (-50 से +50)
+  - semitones के बीच सटीक समायोजन के लिए उपयोग करें
+  - 100 cents एक semitone के बराबर हैं
 
 ## Tremolo
 

@@ -123,6 +123,104 @@ function installCanvasStubs(plugin) {
   return { drawCalls, putCalls };
 }
 
+test('Spectrogram persists frequency scale and reprojects canonical history immediately', () => {
+  const hub = createHub();
+  const runtime = loadSpectrogram({ hub });
+  const plugin = subscribedPlugin(runtime);
+  const { putCalls } = installCanvasStubs(plugin);
+  const cellCount = 256;
+  const historyWidth = 1024;
+  const minFrequency = 20;
+  const maxFrequency = 40000;
+  const displayRow = 128;
+  const firstIntensity = row => (row * 7) % 256;
+  const secondIntensity = row => (row * 11 + 37) % 256;
+  const pixelColor = (row, column) => {
+    const offset = (row * historyWidth + column) * 4;
+    return Array.from(plugin.imageDataCache.data.slice(offset, offset + 3));
+  };
+  const intensityColor = intensity => Array.from(plugin.spectrogramColorLut.slice(
+    intensity * 3,
+    intensity * 3 + 3
+  ));
+  const linearFrequencyAtRow = row => maxFrequency -
+    (row / (cellCount - 1)) * (maxFrequency - minFrequency);
+  const canonicalRowAtLinearDisplayRow = row => {
+    const logMin = Math.log10(minFrequency);
+    const logMax = Math.log10(maxFrequency);
+    return (cellCount - 1) *
+      (logMax - Math.log10(linearFrequencyAtRow(row))) / (logMax - logMin);
+  };
+  const interpolatedIntensity = (sourceRow, valueAtRow) => {
+    const firstRow = Math.floor(sourceRow);
+    const secondRow = Math.min(firstRow + 1, cellCount - 1);
+    const fraction = sourceRow - firstRow;
+    return Math.round(
+      valueAtRow(firstRow) + (valueAtRow(secondRow) - valueAtRow(firstRow)) * fraction
+    );
+  };
+
+  assert.equal(plugin.getParameters().sc, 'log');
+  assert.equal(plugin.freqToY(20), 255);
+  assert.equal(plugin.freqToY(40000), 0);
+
+  hub.emit(makeSpectrogramFrame({ intensity: firstIntensity }).frame);
+  assert.equal(plugin.spectrogramIntensityBuffer[123 * historyWidth], 93);
+  plugin.setParameters({ sc: 'linear' });
+
+  assert.equal(plugin.getParameters().sc, 'linear');
+  assert.equal(plugin.freqToY(20010), 127);
+  assert.equal(plugin.spectrogramIntensityBuffer[123 * historyWidth], 93);
+  const linearSourceRow = canonicalRowAtLinearDisplayRow(displayRow);
+  const firstLinearIntensity = interpolatedIntensity(linearSourceRow, firstIntensity);
+  assert.deepEqual(
+    pixelColor(displayRow, 0),
+    intensityColor(firstLinearIntensity)
+  );
+
+  hub.emit(makeSpectrogramFrame({ timeSeconds: 0.01, intensity: secondIntensity }).frame);
+  const secondLinearIntensity = interpolatedIntensity(linearSourceRow, secondIntensity);
+  assert.equal(plugin.spectrogramIntensityBuffer[123 * historyWidth + 1], 110);
+  assert.deepEqual(
+    pixelColor(displayRow, 1),
+    intensityColor(secondLinearIntensity)
+  );
+
+  plugin.setFrequencyScale('log');
+  assert.equal(plugin.getParameters().sc, 'log');
+  assert.deepEqual(pixelColor(displayRow, 0), intensityColor(128));
+  assert.deepEqual(pixelColor(displayRow, 1), intensityColor(165));
+  assert.ok(putCalls.length >= 5);
+
+  plugin.setFrequencyScale('linear');
+  plugin.setParameters({ sc: 'unsupported' });
+  assert.equal(plugin.getParameters().sc, 'log');
+  plugin.setFrequencyScale('linear');
+  plugin.reset();
+  assert.equal(plugin.getParameters().sc, 'log');
+
+  const logMin = Math.log10(minFrequency);
+  const logMax = Math.log10(maxFrequency);
+  const canonicalFrequency = Math.pow(
+    10,
+    logMax - (20 / (cellCount - 1)) * (logMax - logMin)
+  );
+  plugin.dspSpectrogramActive = false;
+  plugin.spectrogramBuffer.fill(-144);
+  plugin.spectrogramBuffer.fill(-12, 20 * historyWidth, 22 * historyWidth);
+  plugin.setFrequencyScale('linear');
+  const legacyDisplayRow = (cellCount - 1) - Math.round(
+    (cellCount - 1) *
+      (canonicalFrequency - minFrequency) / (maxFrequency - minFrequency)
+  );
+  const legacyPixelOffset = legacyDisplayRow * historyWidth * 4;
+  assert.ok(plugin.imageDataCache.data[legacyPixelOffset] > 0);
+  assert.equal(plugin.spectrogramBuffer[20 * historyWidth], -12);
+  plugin.setFrequencyScale('log');
+  assert.equal(plugin.getParameters().sc, 'log');
+  assert.ok(plugin.imageDataCache.data[20 * historyWidth * 4] > 0);
+});
+
 test('Spectrogram synchronously copies v1 columns without running a main-thread FFT', () => {
   const hub = createHub();
   const runtime = loadSpectrogram({ hub });

@@ -1,0 +1,11 @@
+{
+  "type": "BandwidthExtenderPlugin",
+  "tolerance": { "abs": 0.000002, "policy": "per-sample" },
+  "parityReference": "production-native-promoted-v1",
+  "fields": [
+    { "name": "harmonicAmount", "key": "ha", "kind": "float", "min": 0, "max": 200, "default": 100, "unit": "%" },
+    { "name": "noiseAmount", "key": "na", "kind": "float", "min": 0, "max": 200, "default": 100, "unit": "%" },
+    { "name": "cutoffMode", "key": "cm", "kind": "enum", "values": ["Auto", "Manual"], "default": "Auto" },
+    { "name": "cutoffFrequency", "key": "cf", "kind": "float", "min": 6000, "max": 20000, "default": 16000, "unit": "Hz" }
+  ]
+}

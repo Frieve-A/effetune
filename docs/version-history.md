@@ -6,6 +6,15 @@ lang: en
 
 # Version History
 
+### Version 2.5.0 (TBD, 2026)
+- Added Bandwidth Extender for generating plausible high-frequency content in bandwidth-limited audio
+- Added Pipeline Analyzer for viewing the active pipeline's frequency, phase, group delay, and impulse responses across up to four outputs with optional speaker IRs
+- Added Pitch Shifter HQ for high-quality pitch shifting
+- Added a low-frequency phase correction mode to Room EQ
+- Expanded Tube Simulator with 6L6GC and KT88 power-tube models, single-ended triode (300B/2A3) circuits, and Pre, Power, and Pre+Power presets
+- Added automatic pipeline latency compensation plus Total Delay and CPU Avg displays
+- Various minor improvements
+
 ### Version 2.4.0 (Aug 8, 2026)
 - Added Tube Simulator, Cassette Artifacts and Tape Artifacts effects
 - Added SBC Codec Simulator, G.726 Simulator, GSM-FR Simulator and MP3 Codec Simulator effects

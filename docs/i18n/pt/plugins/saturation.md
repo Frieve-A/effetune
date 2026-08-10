@@ -10,6 +10,7 @@ Uma coleção de plugins que adicionam calor e caráter à sua música. Esses ef
 
 ## Lista de Plugins
 
+- [Bandwidth Extender](#bandwidth-extender) - Gera agudos acima de um corte detectado ou definido
 - [Dynamic Saturation](#dynamic-saturation) - Simula o deslocamento não linear de cones de alto-falantes
 - [Exciter](#exciter) - Adiciona conteúdo harmônico para melhorar a clareza e presença
 - [Hard Clipping](#hard-clipping) - Adiciona intensidade e borda ao som
@@ -18,6 +19,27 @@ Uma coleção de plugins que adicionam calor e caráter à sua música. Esses ef
 - [Saturation](#saturation) - Adiciona calor e riqueza como equipamentos vintage
 - [Sub Synth](#sub-synth) - Adiciona um sinal filtrado de baixa frequência para reforçar os graves
 - [Tube Simulator](#tube-simulator) - Modela estágios de linha valvulados e um amplificador de potência push-pull
+
+## Bandwidth Extender
+
+Bandwidth Extender destina-se a áudio com um corte claro nos agudos, como alguns MP3 de baixa taxa de bits. Ele analisa o par estéreo em conjunto e adiciona conteúdo novo apenas acima do limite detectado ou definido. Não recupera a forma de onda original; no modo Auto, fica inativo quando não encontra um corte estável.
+
+A banda gerada tem dois componentes ajustáveis separadamente: continuação harmônica relacionada à entrada e ruído moldado determinístico. O sinal seco é mantido em ganho unitário e atrasado para ficar alinhado ao processamento por sobreposição e soma.
+
+### Guia de aprimoramento sonoro
+
+- Comece com **Auto** e ambos os controles Amount no valor padrão de 100%. Use **Manual** se souber a frequência de corte.
+- Reduza **Noise Amount** em material tonal sustentado ou **Harmonic Amount** em percussão e sons de respiração. Mantenha ambos ativos em material misto.
+- Compare com bypass no mesmo volume. Para apenas clarear áudio de banda completa, use o Exciter.
+
+### Parâmetros
+
+- **Harmonic Amount** (0-200%, padrão: 100%) controla apenas a continuação harmônica: 0% a remove, 100% é o nível de referência e 200% a duplica sem alterar o ruído nem o sinal seco.
+- **Noise Amount** (0-200%, padrão: 100%) controla apenas o ruído moldado: 0% o remove, 100% é o nível de referência e 200% o duplica sem alterar os harmônicos nem o sinal seco.
+- **Cutoff** seleciona **Auto**, que procura uma queda espectral acentuada e persistente comum aos dois canais, ou **Manual**.
+- **Manual Cutoff** (6000-20000 Hz) define o início da geração no modo Manual.
+
+Aceita mono e pares estéreo de 44,1 a 192 kHz e requer WebAssembly. A janela de análise de cerca de 21 ms é informada ao host como latência para manter os caminhos seco e gerado alinhados.
 
 ## Dynamic Saturation
 
@@ -468,70 +490,109 @@ Um efeito especializado que reforça os graves misturando um sinal filtrado de b
 
 ## Tube Simulator
 
-Tube Simulator modela uma cadeia elétrica completa com valores reais de componentes de circuitos valvulados. **Line** usa sozinho o amplificador de pequenos sinais de dois estágios. **Push-Pull Power** encaminha esse mesmo driver, através de um volume fixo, a um inversor de fase 12AX7 resolvido como um par diferencial de válvulas reais e, dali, a duas válvulas de saída EL84 ou EL34, um transformador de saída e uma carga de alto-falante dependente da frequência. Bias, B+, transformador e carga são calculados conforme o sinal muda; por isso, harmônicos, compressão, queda da alimentação e amortecimento elétrico respondem à música. A carga de alto-falante representa a carga elétrica vista pelo amplificador, não uma caixa acústica ou microfone.
+Tube Simulator modela uma cadeia elétrica completa com valores reais de componentes de circuitos valvulados. **Line** usa sozinho o amplificador de pequenos sinais de dois estágios. **Push-Pull Power** encaminha esse mesmo driver, através de um volume fixo, a um inversor de fase 12AX7 resolvido como um par diferencial de válvulas reais e, dali, a duas válvulas de saída EL84, EL34, 6L6GC ou KT88, um transformador de saída e uma carga de alto-falante dependente da frequência. Bias, B+, transformador e carga são calculados conforme o sinal muda; por isso, harmônicos, compressão, queda da alimentação e amortecimento elétrico respondem à música. A carga de alto-falante representa a carga elétrica vista pelo amplificador, não uma caixa acústica ou microfone.
+
+Selecionar **Bypass** em Driver Type remove o driver comum de dois estágios. Push-Pull Power mantém o inversor de fase e as válvulas de saída necessários; SE Triode alimenta diretamente a válvula de saída selecionada.
+
+**SE Triode** dispensa inversor de fase e alimentação de tela: uma única 300B ou 2A3 alimenta um transformador de saída single-ended com entreferro. Comece com os 3dB de Negative Feedback do preset; para realimentação leve, a faixa recomendada é 0–6dB.
 
 ### Guia de Ajuste do Som
 
-- O plugin abre em **EL84 Pentode @2%**, portanto um conversor D/A de 2 Vrms não precisa de ajustes. Os valores reais de fábrica são Input Reference 2.828 Vpk, Input Volume -55.9648dB, 12AX7, Negative Feedback 3dB e Output Trim +4.626dB, que colocam o circuito push-pull EL84 em 2% de distorção harmônica total com ganho unitário.
+- O plugin abre em **EL84 Pentode @2%**, incluindo o Output Trim de -7.372dB já ajustado em nível.
 - Se saturar demais, reduza Input Volume para diminuir a tensão interna e use Output Trim apenas para recuperar o volume de audição. Output Trim não recupera headroom dentro do circuito.
-- Escolha **Line Default** quando quiser apenas o circuito de linha de pequeno sinal em vez de um amplificador de potência.
-- Use os presets **Listening (THD-matched)** quando quiser comparar válvulas e circuitos apenas pelo caráter sonoro. Eles já estão igualados em volume entre si, então nada precisa ser ajustado ao trocar de um para outro.
-- Para uma resposta de potência contida, comece com **EL84 Distributed 10 W**. Compare com **EL84 Pentode 10 W** para ouvir o efeito da ligação da grade de tela e da carga do transformador com a mesma família de válvulas.
-- Use **EL34 Distributed 20–37 W** para explorar o circuito EL34 de maior tensão. Iguale o volume com Output Trim antes de comparar com EL84.
+- Escolha um preset **Pre** de **0.01%** ou **0.1%** para uma coloração transparente do estágio de linha, ou mantenha as opções **@1%** existentes quando quiser harmônicos mais evidentes.
+- Use o grupo **Pre** para o driver de dois estágios sozinho, **Power** para os estágios de potência com Driver Type em Bypass e **Pre+Power** para o caminho completo de driver e potência. Todos os presets selecionáveis são calibrados para um nível de distorção adequado à audição e para o mesmo nível de reprodução.
+- Para uma resposta de potência contida, comece com **EL84 Distributed 10 W @2%**. Compare com **EL84 Pentode 10 W @2%** para ouvir o efeito da ligação da grade de tela e da carga do transformador com a mesma família de válvulas.
+- Use **EL34 Distributed 20–37 W @2%** para explorar o circuito EL34 de maior tensão. Seu nível já está ajustado ao dos outros presets Power e Pre+Power.
+- Use **6L6GC Pentode @2%** para o circuito de tetrodo de feixe de menor transcondutância, ou **KT88 Distributed @2%** para o modelo KT88 de maior corrente com tomada de tela de 43%.
+- Selecione **300B SE @2%** e **2A3 SE @2%** para comparar os dois circuitos single-ended completos. Como cada um usa uma única válvula de saída, os harmônicos pares não são cancelados como em um par push-pull balanceado.
+- Em SE Triode, comece com os 3dB de Negative Feedback do preset. A faixa útil habitual para realimentação leve é de 0–6dB: 0dB abre a malha, enquanto 6dB proporciona uma resposta mais controlada sem transformar o circuito em um projeto de alta realimentação.
 - Reduzir Negative Feedback evidencia mais os harmônicos e variações de nível em malha aberta; aumentar deixa a resposta em malha fechada mais controlada. Se uma combinação extrema acionar o bypass de segurança, volte a um preset.
 - Reduza Wet/Dry Mix para adicionar a resposta do circuito de modo sutil.
 
 ### Layout do Painel
 
-Os 20 parâmetros estão distribuídos em cinco abas, abaixo da lista **Preset**.
+Os 24 parâmetros estão distribuídos em cinco abas, abaixo da lista **Preset**.
 
 - **Input** - Input Volume, Input Reference, Source Z
-- **Driver** - Tube, Bias, Plate, Supply, Negative Feedback
-- **Power** - Output Circuit, Power Tubes, Output B+, Cathode Resistor
-- **Transformer** - Screen Tap, Transformer Primary, Assumed Speaker Load, Actual Speaker Load
+- **Driver** - Driver Type, Bias, Plate, Supply, Negative Feedback
+- **Power** - Output Circuit; Power Tubes, Output B+ e Cathode Resistor para Push-Pull Power; SE Triode, SE B+ e SE Cathode Resistor para single-ended
+- **Transformer** - Screen Tap, Push-Pull Primary, SE Primary, Assumed Speaker Load, Actual Speaker Load
 - **Output** - Output Trim, Output Safety Trim, Auto Gain Reduction, Wet/Dry Mix
 
-A lista Preset começa por **Custom**, seguida dos grupos **Listening (THD-matched)** e **Circuit**; Custom aparece sempre que os ajustes atuais não correspondem a nenhum preset; os ajustes de proteção de saída (Output Safety Trim e Auto Gain Reduction) não fazem parte dessa comparação. Enquanto Output Circuit estiver em Line, os sete controles do circuito de potência das abas Power e Transformer ficam esmaecidos. Eles continuam ajustáveis e mantêm seus valores.
+A lista Preset começa por **Custom**, seguida dos grupos **Pre**, **Power** e **Pre+Power**. Pre reúne ajustes Line, Power reúne estágios de potência com Driver Type em Bypass e Pre+Power reúne o caminho completo de driver e potência. Custom aparece sempre que os ajustes atuais não correspondem a nenhum preset; os ajustes de proteção de saída (Output Safety Trim e Auto Gain Reduction) não fazem parte dessa comparação. As abas Power e Transformer mostram apenas os controles usados pelo Output Circuit selecionado. Line oculta todos os controles de saída de potência, Push-Pull Power oculta os quatro controles exclusivos de SE e SE Triode oculta os cinco controles exclusivos de Push-Pull Power. Os controles ocultos mantêm seus valores para quando o circuito correspondente for selecionado novamente.
 
 ### Presets de Circuito e Valores Padrão
 
-O plugin inicia com o preset de audição **EL84 Pentode @2%**. Um preset aplica todo o circuito da tabela; qualquer alteração posterior cria uma configuração personalizada.
+Na inicialização, todos os valores de circuito, excitação, carga e saída correspondem a **EL84 Pentode @2%**; por isso, o menu Preset abre nessa opção. Depois disso, alterar um valor de circuito, excitação ou saída incluído na correspondência mostra Custom. Output Safety Trim e Auto Gain Reduction são excluídos dessa correspondência, portanto mudar qualquer um desses ajustes de proteção não altera a seleção do preset.
 
 | Circuit Preset | Output Circuit | Driver / válvulas de saída | Negative Feedback | Ajustes de potência | Entrada / saída |
 | --- | --- | --- | ---: | --- | --- |
-| Line Default | Line | 12AU7 / — | 30dB | Mantém os valores dos controles de potência, mas eles ficam esmaecidos | Input Volume 0dB, Input Reference 2.828 Vpk, Output Trim +9dB |
-| EL84 Pentode 10 W | Push-Pull Power | 12AX7 / EL84 ×2 | 3dB | Output B+ 329.696 V, Cathode Resistor 270 Ω / valve, Screen Tap 0%, Transformer Primary 8.0 kΩ, Assumed Speaker Load 15 Ω | Input Volume 0dB, Input Reference 2.828 Vpk, Output Trim 0dB |
-| EL84 Distributed 10 W | Push-Pull Power | 12AX7 / EL84 ×2 | 3dB | Output B+ 330.107 V, Cathode Resistor 270 Ω / valve, Screen Tap 20%, Transformer Primary 6.6 kΩ, Assumed Speaker Load 15 Ω | Input Volume 0dB, Input Reference 2.828 Vpk, Output Trim 0dB |
-| EL34 Distributed 20–37 W | Push-Pull Power | 12AX7 / EL34 ×2 | 4dB | Output B+ 443.775 V, Cathode Resistor 470 Ω / valve, Screen Tap 43%, Transformer Primary 6.6 kΩ, Assumed Speaker Load 8 Ω | Input Volume 0dB, Input Reference 2.828 Vpk, Output Trim 0dB |
+| Line Default | Line | 12AU7 / — | 30dB | Mantém os valores de potência, mas oculta os controles | Input Volume 0dB, Input Reference 2.828 Vpk, Output Trim +9dB |
+| EL84 Pentode 10 W | Push-Pull Power | 12AX7 / EL84 ×2 | 3dB | Output B+ 329.696 V, Cathode Resistor 270 Ω / valve, Screen Tap 0%, Transformer Primary 8.0 kΩ, Assumed Speaker Load 15 Ω | Input Volume 0dB, Input Reference 2.828 Vpk, Output Trim -19.675dB |
+| EL84 Distributed 10 W | Push-Pull Power | 12AX7 / EL84 ×2 | 3dB | Output B+ 330.107 V, Cathode Resistor 270 Ω / valve, Screen Tap 20%, Transformer Primary 6.6 kΩ, Assumed Speaker Load 15 Ω | Input Volume 0dB, Input Reference 2.828 Vpk, Output Trim -17.331dB |
+| EL34 Distributed 20–37 W | Push-Pull Power | 12AX7 / EL34 ×2 | 4dB | Output B+ 443.775 V, Cathode Resistor 470 Ω / valve, Screen Tap 43%, Transformer Primary 6.6 kΩ, Assumed Speaker Load 8 Ω | Input Volume 0dB, Input Reference 2.828 Vpk, Output Trim -17.230dB |
+| 6L6GC Pentode | Push-Pull Power | 12AX7 / 6L6GC ×2 | 3dB | Output B+ 391.454 V, Cathode Resistor 483.871 Ω / valve, Screen Tap 0%, Transformer Primary 6.6 kΩ, Assumed Speaker Load 8 Ω | Input Volume 0dB, Input Reference 2.828 Vpk, Output Trim -15.267dB |
+| KT88 Distributed | Push-Pull Power | 12AX7 / KT88 ×2 | 4dB | Output B+ 379.290 V, Cathode Resistor 400 Ω / valve, Screen Tap 43%, Transformer Primary 6.0 kΩ, Assumed Speaker Load 8 Ω | Input Volume 0dB, Input Reference 2.828 Vpk, Output Trim -16.166dB |
+| 300B Single-Ended | SE Triode | 12AU7 / 300B | 3dB | SE B+ 400 V, SE Cathode Resistor 1000 Ω, SE Primary 3.5 kΩ, Assumed Speaker Load 8 Ω | Input Volume -42dB, Input Reference 2.828 Vpk, Output Trim +38.795dB |
+| 2A3 Single-Ended | SE Triode | 12AU7 / 2A3 | 3dB | SE B+ 300 V, SE Cathode Resistor 750 Ω, SE Primary 2.5 kΩ, Assumed Speaker Load 8 Ω | Input Volume -42dB, Input Reference 2.828 Vpk, Output Trim +37.461dB |
 
-Os quatro presets usam Bias 0%, Plate 250 V, Source Z 10 kΩ, Supply 10 kΩ e Wet/Dry Mix 100%. Cada preset também ajusta Actual Speaker Load para o seu Assumed Speaker Load, de modo que parte do ponto de projeto do circuito.
+Os oito presets usam Bias 0%, Plate 250 V, Source Z 10 kΩ, Supply 10 kΩ e Wet/Dry Mix 100%. Cada preset também ajusta Actual Speaker Load para o seu Assumed Speaker Load, de modo que parte do ponto de projeto do circuito.
 
-### Presets de Audição
+Os novos projetos Power separam os dados publicados das adaptações impostas pelos controles do plugin. O preset 6L6GC segue o ponto push-pull AB1 referido ao cátodo dos [dados Ei-RC da 6L6GC](https://frank.pocnet.net/sheets/084/6/6L6GC.pdf); seu resistor de cátodo reproduz em CC a polarização fixa desse ponto. O modelo de corrente KT88 segue o ponto ultralinear com polarização de cátodo dos [dados GEC da KT88](https://keith-snook.info/valve-data/KT88%20GEC%20Data.pdf), enquanto a derivação de 40% e a carga de 5 kΩ publicadas são projetadas nos controles disponíveis de 43% e 6.0 kΩ. A resistência do primário e as indutâncias de pequeno sinal usam as medições dos [Monolith B-8/6K6](https://www.monolithmagnetics.com/sites/default/files/datasheets/Push-Pull-output-transformers/datasheet%20B-8%206K6%20300B%20push%20pull%20output%20tube%20amplifier%20transformer%20prelim.pdf) e [B-8/8k](https://www.monolithmagnetics.com/sites/default/files/B-8_8k_0.pdf). Os demais coeficientes de perdas, ressonância, realimentação e alimentação continuam sendo parâmetros explícitos do modelo, e não medições atribuídas a esses transformadores.
 
-O grupo **Listening (THD-matched)** reúne sete ajustes calibrados. Cada um herda todos os valores de circuito do preset de Circuit em que se baseia, e apenas Input Volume, Input Reference e Output Trim são calibrados, de modo que o circuito em si permanece intacto. Os sete ficam dentro de ±0.0005dB do mesmo nível em 1 kHz, então alternar entre eles muda o caráter e não o volume.
+### Presets calibrados
 
-| Listening Preset | Baseado em | Alteração de circuito | Input Volume | Input Reference | Output Trim |
-| --- | --- | --- | ---: | ---: | ---: |
-| Line 12AU7 @1% | Line Default | — | 0dB | 20 Vpk | -7.749dB |
-| Line 12AT7 @1% | Line Default | Tube 12AT7 | -3.6973dB | 2.828 Vpk | -9.42dB |
-| Line 12AX7 @1% | Line Default | Tube 12AX7 | -4.4805dB | 2.828 Vpk | -11.276dB |
-| Line 12AU7 Open-Loop @3% | Line Default | Negative Feedback 0dB | -16.793dB | 2.828 Vpk | +26.427dB |
-| EL84 Pentode @2% | EL84 Pentode 10 W | — | -55.9648dB | 2.828 Vpk | +4.626dB |
-| EL84 Distributed @2% | EL84 Distributed 10 W | — | -52.9414dB | 2.828 Vpk | +4.908dB |
-| EL34 Distributed @2% | EL34 Distributed 20–37 W | — | -43.6504dB | 2.828 Vpk | +5.212dB |
+Os 35 ajustes selecionáveis usam um ponto de calibração reproduzível compartilhado com o padrão do Pipeline Analyzer. THD e nível de reprodução são medidos a 96 kHz com uma senoide de 1 kHz e pico de -12dBFS (RMS -15.01dBFS), após três segundos de estabilização, com a carga de projeto e Auto Gain Reduction desativado. Esse nível foi escolhido como referência prática que aproxima o corpo médio a forte de música comercial masterizada típica, sem tratar picos ocasionais próximos da escala total como operação normal. Não é um padrão de loudness nem garante o mesmo THD em música real. Os valores Measured THD da tabela valem apenas para a senoide estabilizada; o THD instantâneo na música varia com a forma de onda, o fator de crista, o espectro, o nível instantâneo e o estado do circuito. Input Volume e Input Reference definem o ponto de distorção da senoide; depois, Output Trim iguala o ganho RMS CA a 0dB com a mesma referência. Power-only KT88 usa 2dB de Negative Feedback por estabilidade; o circuito Pre+Power correspondente mantém 4dB.
 
-O circuito de linha com 12AU7 fica um pouco abaixo de 1% de distorção mesmo no limite de Input Reference, por isso Line 12AU7 @1% assume o valor máximo que esse circuito alcança.
+| Grupo | Preset | Input Volume | Input Reference | Output Trim | Measured THD |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Pre | Line 12AT7 @0.01% | -13.7480dB | 2.828 Vpk | +0.619dB | 0.0100% |
+| Pre | Line 12AT7 @0.1% | 0dB | 4.5552 Vpk | -17.268dB | 0.1000% |
+| Pre | Line 12AX7 @0.01% | -24.2637dB | 2.828 Vpk | +8.508dB | 0.0100% |
+| Pre | Line 12AX7 @0.1% | -4.4922dB | 2.828 Vpk | -11.264dB | 0.1000% |
+| Pre | Line 12AU7 Open-Loop @0.1% | -19.2715dB | 2.828 Vpk | +28.495dB | 0.1000% |
+| Pre | Line 12AT7 @1% | 0dB | 7.3556 Vpk | -21.421dB | 0.9974% |
+| Pre | Line 12AX7 @1% | 0dB | 6.7213 Vpk | -23.276dB | 1.0003% |
+| Pre | Line 12AU7 Open-Loop @1% | -9.2656dB | 2.828 Vpk | +18.592dB | 1.0002% |
+| Power | EL84 Pentode 10 W @0.1% | -26.5957dB | 2.828 Vpk | +8.696dB | 0.1001% |
+| Power | EL84 Distributed 10 W @0.1% | -21.7676dB | 2.828 Vpk | +7.363dB | 0.1002% |
+| Power | EL34 Distributed 20–37 W @0.1% | -8.1543dB | 2.828 Vpk | +3.767dB | 0.1000% |
+| Power | 6L6GC Pentode @0.1% | -19.3047dB | 2.828 Vpk | +12.251dB | 0.1003% |
+| Power | KT88 Distributed @0.1% | 0dB | 3.1263 Vpk | -3.485dB | 0.1002% |
+| Power | 300B SE @0.1% | 0dB | 35.4586 Vpk | +16.582dB | 0.1000% |
+| Power | 300B SE @1% | 0dB | 295.9454 Vpk | -1.794dB | 1.0000% |
+| Power | 2A3 SE @0.1% | 0dB | 18.1347 Vpk | +21.072dB | 0.1000% |
+| Power | 2A3 SE @1% | 0dB | 167.2455 Vpk | +1.816dB | 1.0000% |
+| Power | EL84 Pentode 10 W @2% | -9.7148dB | 2.828 Vpk | -7.483dB | 1.9995% |
+| Power | EL84 Distributed 10 W @2% | -6.5352dB | 2.828 Vpk | -7.322dB | 2.0005% |
+| Power | EL34 Distributed 20–37 W @2% | 0dB | 5.2781 Vpk | -9.510dB | 1.9995% |
+| Power | 6L6GC Pentode @2% | 0dB | 3.3694 Vpk | -7.187dB | 2.0004% |
+| Power | KT88 Distributed @2% | 0dB | 7.4992 Vpk | -10.748dB | 1.9970% |
+| Pre+Power | EL84 Distributed @0.1% | -58.4629dB | 2.828 Vpk | +9.910dB | 0.1000% |
+| Pre+Power | EL34 Distributed @0.1% | -56.4629dB | 2.828 Vpk | +17.947dB | 0.1000% |
+| Pre+Power | 6L6GC Pentode @0.1% | -58.4551dB | 2.828 Vpk | +17.255dB | 0.1000% |
+| Pre+Power | KT88 Distributed @0.1% | -56.4629dB | 2.828 Vpk | +21.698dB | 0.1000% |
+| Pre+Power | 300B SE @0.1% | -15.2227dB | 2.828 Vpk | +12.027dB | 0.1000% |
+| Pre+Power | 2A3 SE @0.1% | -23.2598dB | 2.828 Vpk | +18.722dB | 0.1000% |
+| Pre+Power | EL84 Pentode @2% | -44.0059dB | 2.828 Vpk | -7.372dB | 2.0004% |
+| Pre+Power | EL84 Distributed @2% | -40.9746dB | 2.828 Vpk | -7.091dB | 2.0005% |
+| Pre+Power | EL34 Distributed @2% | -31.6797dB | 2.828 Vpk | -6.779dB | 2.0000% |
+| Pre+Power | 6L6GC Pentode @2% | -35.2070dB | 2.828 Vpk | -5.145dB | 1.9998% |
+| Pre+Power | KT88 Distributed @2% | -31.5391dB | 2.828 Vpk | -3.147dB | 1.9997% |
+| Pre+Power | 300B SE @2% | -2.4824dB | 2.828 Vpk | -0.439dB | 2.0000% |
+| Pre+Power | 2A3 SE @2% | -4.2266dB | 2.828 Vpk | -0.093dB | 2.0002% |
+
+O ponto de 0.01% do Line 12AU7 Open-Loop exige cerca de +48.5dB de Output Trim para igualar o nível, ligeiramente acima do limite atual de +48dB; por isso, esse circuito oferece apenas ajustes de 0.1% e 1%. O caminho EL84 Pentode completo de Pre+Power não fica abaixo de 0.3055% na faixa útil de medição e, portanto, não tem preset Pre+Power @0.1%. O limite superior de Input Reference foi ampliado para 300 Vpk para calibrar os circuitos SE 300B e 2A3 com Driver Type em Bypass em 0.1% e 1% sem alterar seus projetos. Os registros antigos de compatibilidade SE, não selecionáveis, permanecem em 20 Vpk; os novos presets usam registros de calibração distintos.
 
 ### Parâmetros
-- **Preset** - Carrega um preset de Circuit (Line Default ou um dos três circuitos completos de amplificador de potência) ou um dos ajustes de Listening (THD-matched)
-- **Input Volume** (-96 a 0dB) - Atenuador passivo situado depois do terminal de entrada
-  - 0dB corresponde à abertura total e nunca amplifica a tensão do terminal
-  - Valores mais baixos reduzem a tensão que entra em Stage 1 e aumentam o headroom interno
-- **Tube** (12AX7, 12AT7 ou 12AU7) - Seleciona as constantes da válvula usadas nos dois estágios
-  - 12AX7 oferece o maior ganho de tensão e é excitada com mais facilidade
-  - 12AT7 oferece ganho intermediário
-  - 12AU7 oferece menor ganho e mais headroom
-  - No modo Power, esse circuito de dois estágios continua sendo o driver e alimenta o inversor de fase 12AX7 fixo através de um volume fixo
+- **Preset** - Carrega um ajuste de Pre, Power ou Pre+Power
+- **Input Volume** (-96 a 0dB) - Atenua a entrada calibrada antes do caminho de sinal ativo selecionado
+  - 0dB corresponde à abertura total; valores mais baixos reduzem o drive interno e aumentam o headroom
+- **Driver Type** (12AX7, 12AT7, 12AU7 ou Bypass) - Seleciona as válvulas do driver de dois estágios ou remove esse driver do caminho do sinal
+  - 12AX7 oferece o maior ganho de tensão, 12AT7 é intermediária e 12AU7 oferece o menor ganho e o maior headroom
+  - Em Push-Pull Power, alimenta o inversor de fase 12AX7 fixo; em SE Triode, excita diretamente a válvula de saída selecionada
+  - Bypass destina-se aos presets Power. Push-Pull Power mantém seu inversor de fase; SE Triode alimenta a válvula de saída sem o driver comum. Line com Bypass é uma passagem direta alinhada no tempo, e Negative Feedback não tem efeito nela
 - **Bias** (-50 a +50%) - Desloca o ponto de operação da polarização de cátodo
   - Aumentar reduz a resistência de cátodo modelada e desloca os estágios para uma corrente maior
   - Reduzir aumenta a resistência de cátodo e desloca os estágios para uma corrente menor
@@ -559,22 +620,25 @@ O circuito de linha com 12AU7 fica um pouco abaixo de 1% de distorção mesmo no
 - **Wet/Dry Mix** (0 a 100%) - Mistura os sinais original e processado alinhados no tempo
   - Valores baixos preservam mais do sinal original; valores altos destacam a resposta do modelo valvulado
   - Mesmo em 0%, o caminho original permanece atrasado em 64 samples para manter o alinhamento
-- **Input Reference** (0.100 a 20.000 Vpk) - Define a tensão de pico no terminal de entrada representada por um pico digital de 0dBFS
+- **Input Reference** (0.100 a 300.000 Vpk) - Define a tensão de pico no terminal de entrada representada por um pico digital de 0dBFS
   - 2.828 Vpk corresponde a uma senoide de 2 Vrms em escala completa; 5.657 Vpk corresponde a 4 Vrms
-  - Stage 1 recebe Input Reference multiplicado por Input Volume antes da sobreamostragem
-  - É uma calibração física de entrada, não um controle adicional de excitação
-- **Output Circuit** (Line ou Push-Pull Power) - Seleciona a topologia modelada
+  - O caminho de sinal ativo recebe Input Reference multiplicado por Input Volume; é uma calibração física de entrada, não outro controle de ganho de saída
+- **Output Circuit** (Line, Push-Pull Power ou SE Triode) - Seleciona a topologia modelada; SE Triode acrescenta uma 300B ou 2A3 e um transformador com entreferro
   - Line termina depois do driver de dois estágios e não processa as válvulas de potência, o transformador nem a carga de alto-falante
   - Push-Pull Power acrescenta o inversor de fase e todo o circuito de saída de potência
-- **Power Tubes** (EL84 ×2 ou EL34 ×2) - Seleciona o modelo de corrente das válvulas de saída e os componentes correspondentes; afeta apenas o modo Power
-  - Os dois modelos seguem dados reais de válvulas de saída em placa, grade de tela e grade de controle, incluindo o corte total alcançado quando a grade é levada suficientemente ao negativo
+- **Power Tubes** (EL84 ×2, EL34 ×2, 6L6GC ×2 ou KT88 ×2) - Seleciona o modelo de corrente das válvulas de saída e os componentes correspondentes; afeta apenas o modo Power
+  - Os quatro modelos seguem dados reais de válvulas de saída em placa, grade de tela e grade de controle, incluindo o corte total alcançado quando a grade é levada suficientemente ao negativo
 - **Output B+** (300 a 470 V) - Define a tensão de alimentação do estágio de potência; valores maiores aumentam a excursão de tensão disponível e a dissipação das válvulas
 - **Cathode Resistor** (270 a 500 Ω / valve) - Define o resistor de polarização de cátodo separado de cada válvula de saída
   - Uma resistência maior reduz a corrente de repouso; uma resistência menor a aumenta
 - **Screen Tap** (0%, 20% ou 43%) - Seleciona a ligação da grade de tela
   - 0% usa a alimentação fixa da grade de tela; 20% e 43% ligam as grades às derivações correspondentes do primário do transformador para operação com carga distribuída (ultralinear)
   - A derivação é uma relação de espiras, portanto as grades de tela acompanham essa fração do acoplamento magnético do enrolamento primário
-- **Transformer Primary** (6.0, 6.6 ou 8.0 kΩ) - Seleciona a impedância primária placa a placa do transformador de saída e, junto com Assumed Speaker Load, sua relação de espiras
+- **SE Triode** (300B ou 2A3) - Seleciona a válvula de saída single-ended
+- **SE B+** (250–450 V) - Ajusta a alimentação do estágio single-ended
+- **SE Cathode Resistor** (700–1300 Ω) - Ajusta o resistor de polarização de cátodo da válvula de saída
+- **Push-Pull Primary** (6.0, 6.6 ou 8.0 kΩ) - Seleciona a impedância primária placa a placa do transformador push-pull
+- **SE Primary** (2.5, 3.5 ou 5.0 kΩ) - Seleciona a impedância primária do transformador single-ended com entreferro
 - **Assumed Speaker Load** (4, 8, 15 ou 16 Ω) - Seleciona a derivação do secundário do transformador e a impedância nominal em torno da qual o circuito é projetado
   - Cada opção usa uma carga elétrica RLC dependente da frequência, em vez de um resistor simples, e afeta a carga do transformador e a realimentação
 - **Actual Speaker Load** (2 a 32 Ω) - Define a impedância do alto-falante realmente ligado a essa derivação
@@ -583,7 +647,7 @@ O circuito de linha com 12AU7 fica um pouco abaixo de 1% de distorção mesmo no
 
 ### Proteção do Nível de Saída
 
-Os presets de Circuit não são equalizados em volume entre si. Mudar Tube de 12AU7 para 12AX7 eleva o nível em cerca de 25dB, e mudar Output Circuit de Line para Push-Pull Power o eleva em cerca de 33dB, porque os dois circuitos são normalizados por referências de fundo de escala diferentes. Output Safety Trim e Auto Gain Reduction protegem desse salto o equipamento ligado à saída.
+Ao carregar qualquer preset, seu Output Trim calibrado também é aplicado; assim, os 35 presets selecionáveis ficam equalizados em nível nas condições de referência acima. Alterar manualmente Driver Type, Output Circuit ou outro parâmetro não compensa Output Trim de forma automática e pode causar um grande salto de nível. Output Safety Trim e Auto Gain Reduction protegem desses saltos o equipamento ligado à saída.
 
 - Sempre que a magnitude de uma amostra de saída ultrapassa 0 dBFS de pico, o Output Safety Trim é reduzido de imediato exatamente no quanto essa amostra excede. Todas as amostras são examinadas, portanto não há janela de detecção nem média. O limiar é um valor de política fixo.
 - A redução é aplicada por uma rampa unidirecional de 20 ms, de modo que o nível se desloca sem degrau.
@@ -597,24 +661,21 @@ Os presets de Circuit não são equalizados em volume entre si. Mudar Tube de 12
 
 ### Bypass de Segurança e Recuperação
 
-- Se o modelo detectar oscilação de realimentação, ele faz uma transição do sinal processado para o caminho original alinhado em latência e trava o bypass seguro. Reduza Negative Feedback, selecione um preset padrão ou altere outro ajuste do circuito. A nova configuração é testada enquanto a saída permanece original; se estiver estável, o sinal processado retorna suavemente. Se a instabilidade continuar, o bypass permanece ativo.
+- Se o modelo detectar oscilação de realimentação, ele faz uma transição do sinal processado para o caminho original alinhado em latência e trava o bypass seguro. Reduza Negative Feedback, selecione um preset disponível ou altere outro ajuste do circuito. A nova configuração é testada enquanto a saída permanece original; se estiver estável, o sinal processado retorna suavemente. Se a instabilidade continuar, o bypass permanece ativo.
 - Se ocorrer outra falha de segurança no processamento, o plugin muda para a saída original segura. Restaure as configurações padrão do circuito e recarregue o efeito.
 - Taxas de amostragem ou modos de canal incompatíveis, processamento WebAssembly indisponível e interrupção do mecanismo de processamento também acionam o bypass. O status abaixo do HUD informa o que fazer.
 
 ### Como Ler o HUD
-- **Input Reference (0 dBFS)** mostra a tensão do terminal em Vpk, o valor Vrms de uma senoide e o valor correspondente de escala completa em dBu (**dBuFS**)
-- **Stage 1 External Input (0 dBFS)** mostra a tensão de pico depois de Input Volume e antes da rede de entrada modelada
-- **Stage 1 bias** e **Stage 2 bias** mostram a tensão atual de bias de cátodo nos canais esquerdo e direito
-- **B+** mostra a tensão instantânea da alimentação após a queda modelada
-- **Plate − B+ sag** mostra a tensão de placa de cada estágio em relação a B+; um valor mais negativo indica uma queda maior
+- **Input Reference (0 dBFS)** mostra a calibração do terminal em Vpk, Vrms de uma senoide e **dBuFS**. **Stage 1 External Input (0 dBFS)** mostra a tensão de pico depois de Input Volume
+- **Stage 1 Bias**, **Stage 2 Bias**, **B+** e **Plate − B+ Sag** mostram os pontos de operação atuais do driver de dois estágios. Eles aparecem como indisponíveis quando Driver Type está em Bypass. Um valor de sag mais negativo significa que a placa está mais abaixo de sua alimentação
 - Em Line, os dois gráficos mostram as características de placa e os pontos de operação recentes de Stage 1 e Stage 2, desenhados como pontos isolados e não como uma linha contínua
   - O eixo horizontal é a tensão ânodo-cátodo, **Vak (V)**, e o vertical é a corrente de placa, **Ia (mA)**
   - As curvas cinza finas são as características de placa estáticas da válvula em vários valores de **Vgk**; a linha tracejada mais clara é a reta de carga do circuito
   - Ciano representa o canal esquerdo e laranja o direito; pontos espalhados por uma área maior indicam uma faixa de operação maior
 - Em Push-Pull Power, os gráficos mudam para as retas de carga **Push** e **Pull** e desenham como pontos as correntes de placa recentes das duas válvulas de saída
-- **Power LTP Balance** mostra a tensão diferencial do inversor de fase, e **Power B+** mostra a alimentação do estágio de potência após a queda
+- **Power LTP Balance** mostra a tensão diferencial do inversor de fase de Push-Pull Power. **Power B+** mostra a alimentação do estágio de potência após a queda em ambas as topologias de potência
 - **Speaker Output (100 ms)** e **Speaker Real Power (100 ms)** mostram medições elétricas em janelas não sobrepostas de 100 ms na carga selecionada. Real Power é calculada com a tensão e a corrente instantâneas da carga, não apenas com Vrms² dividido pela impedância nominal
-- **Transformer Flux** mostra em webers o fluxo magnético modelado do transformador de saída. As leituras exclusivas do estágio de potência só são relevantes quando Push-Pull Power está selecionado
+- **Transformer Flux** mostra em webers o fluxo magnético modelado do transformador de saída. As leituras de saída de potência são relevantes em Push-Pull Power e SE Triode
 - O status abaixo do gráfico informa se o processamento está carregando, ativo ou em bypass seguro e mostra sempre a redução atual da proteção de saída em dB, inclusive quando é de 0.0 dB
 
 ### Requisitos de Processamento e Latência

@@ -791,6 +791,7 @@ class RoomEqPlugin extends PluginBase {
         this.dw = 6;
         this.pa = true;
         this.pl = 500;
+        this.le = false;
         this.mb = 6;
         this.cr = 100;
         this.pr = 100;
@@ -831,6 +832,7 @@ class RoomEqPlugin extends PluginBase {
         this._additionalEqEditor = null;
         this._phaseCorrectionControl = null;
         this._phaseLowControl = null;
+        this._lowFrequencyPhaseExtensionControl = null;
         this._referencePointSelect = null;
         this._responseView = 'frequency';
         this._responseViewElements = null;
@@ -864,6 +866,10 @@ class RoomEqPlugin extends PluginBase {
             impulseResponseRequired: [
                 'roomEq.error.directPhaseRequiresIr',
                 'Correction needs impulse-response data for the selected measurement. Choose Minimum or Linear, or select a measurement with IR data.'
+            ],
+            lowFrequencyPhaseExtensionLimited: [
+                'roomEq.warning.lowFrequencyPhaseExtensionLimited',
+                'Low-frequency phase extension was limited by the measurement or settings. Room EQ used the available measurement window and, when necessary, reduced or skipped the correction; the rest of the filter remains active.'
             ]
         };
         const message = messages[code];
@@ -872,6 +878,26 @@ class RoomEqPlugin extends PluginBase {
             return this._t(...messages.filterAccuracy);
         }
         return this._t(...message);
+    }
+
+    _qualityWarningForDesign(result) {
+        const existingWarning = result.qualityWarnings?.[0];
+        if (existingWarning) return existingWarning;
+        const extensionBandExists = this.fl < Math.min(
+            this._phaseLowDisplayFrequency(),
+            this.fh,
+            this._sampleRate * 0.45
+        );
+        const lowPhaseLimited = this.le && this.pm === 'full' && this.pr > 0 &&
+            result.diagnostics?.lowFrequencyPhaseExtension?.some(diagnostic =>
+                diagnostic?.state === 'reduced' ||
+                diagnostic?.state === 'disabled' && (
+                    diagnostic.reason === 'firEnergy' ||
+                    diagnostic.reason === 'groupDelay' ||
+                    diagnostic.reason === 'dftWorkBudget' ||
+                    diagnostic.reason === 'insufficientData' && extensionBandExists
+                ));
+        return lowPhaseLimited ? 'lowFrequencyPhaseExtensionLimited' : undefined;
     }
 
     process(context, data) {
@@ -929,6 +955,7 @@ class RoomEqPlugin extends PluginBase {
             dw: this.dw,
             pa: this.pa,
             pl: this.pl,
+            le: this.le,
             mb: this.mb,
             cr: this.cr,
             pr: this.pr,
@@ -977,6 +1004,10 @@ class RoomEqPlugin extends PluginBase {
         }
         if (!this.pa) {
             this.pl = Math.max(this.pl, this._manualPhaseLowMinimumFrequency());
+        }
+        if (params.le !== undefined) {
+            this.le = params.le === true || params.le === 1 ||
+                params.le === 'true' || params.le === '1';
         }
         if (params.mb !== undefined) this.mb = this.parseFiniteNumber(params.mb, 0, 18, this.mb);
         if (params.cr !== undefined) {
@@ -1034,7 +1065,7 @@ class RoomEqPlugin extends PluginBase {
     _designSignature() {
         return JSON.stringify([
             this.pm, this.tp, this.sm, this.fl, this.fh, this.dw, this.pa, this.pl,
-            this.mb, this.cr, this.pr, this.rp,
+            this.le, this.mb, this.cr, this.pr, this.rp,
             this.eqBands, this.measurementId, this._sampleRate, this._outputChannelCount, this.channel
         ]);
     }
@@ -1055,6 +1086,10 @@ class RoomEqPlugin extends PluginBase {
         const inputs = this._phaseCorrectionControl?.querySelectorAll?.('input') || [];
         for (const input of inputs) input.disabled = disabled;
         if (this._referencePointSelect) this._referencePointSelect.disabled = disabled;
+        if (this._lowFrequencyPhaseExtensionControl) {
+            this._lowFrequencyPhaseExtensionControl.checked = this.le;
+            this._lowFrequencyPhaseExtensionControl.disabled = disabled;
+        }
         this._syncPhaseLowControl();
     }
 
@@ -1268,6 +1303,7 @@ class RoomEqPlugin extends PluginBase {
             highFrequency: this.fh,
             directWindowMs: this.dw,
             phaseLowFrequency: this.pa ? null : this.pl,
+            lowFrequencyPhaseExtension: this.pm === 'full' && this.le,
             maxBoostDb: this.mb,
             correctionAmount: this.cr / 100,
             phaseCorrectionAmount: this.pr / 100,
@@ -1374,7 +1410,7 @@ class RoomEqPlugin extends PluginBase {
             if (!await this._stageDesign(result, generation)) return false;
             if (this._disposed || generation !== this._designGeneration) return false;
             this._renderMeasurement();
-            const warning = result.qualityWarnings?.[0];
+            const warning = this._qualityWarningForDesign(result);
             this._candidateWarning = warning ? this._qualityWarningMessage(warning) : null;
             this._setStatus(this._t('roomEq.status.designing', 'Designing correction filters…'),
                 'preparing');
@@ -2532,6 +2568,17 @@ class RoomEqPlugin extends PluginBase {
         container.appendChild(this.createParameterControl(this._t('roomEq.parameter.directWindow', 'Direct Window'),
             1, 50, 0.1, this.dw, value => this.setParameters({ dw: value }), 'ms'));
         container.appendChild(this._createPhaseLowControl());
+        const lowFrequencyPhaseExtensionControl = this.createCheckboxControl(
+            this._t(
+                'roomEq.parameter.lowFrequencyPhaseExtension',
+                'Low-frequency Phase Extension'
+            ),
+            this.le,
+            value => this.setParameters({ le: value })
+        );
+        this._lowFrequencyPhaseExtensionControl =
+            lowFrequencyPhaseExtensionControl.querySelector('input');
+        container.appendChild(lowFrequencyPhaseExtensionControl);
         container.appendChild(this.createParameterControl(this._t('roomEq.parameter.maxBoost', 'Max Boost'),
             0, 18, 0.1, this.mb, value => this.setParameters({ mb: value }), 'dB'));
         container.appendChild(this.createParameterControl(
@@ -2630,6 +2677,7 @@ class RoomEqPlugin extends PluginBase {
         this._responseViewElements = null;
         this._phaseCorrectionControl = null;
         this._phaseLowControl = null;
+        this._lowFrequencyPhaseExtensionControl = null;
         this._referencePointSelect = null;
         this._statusElement = null;
         this._latencyElement = null;

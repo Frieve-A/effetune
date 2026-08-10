@@ -76,6 +76,7 @@ function createBinding(options = {}) {
   const pipelineProcessStatuses = [...(options.pipelineProcessStatuses ?? [])];
   const telemetryBytes = [...(options.telemetryBytes ?? [])];
   let nextInstance = 100;
+  let lastPipelineDescriptor = new Uint8Array(0);
   let unexpectedMemoryGrowth = false;
   const binding = {
     calls,
@@ -116,7 +117,9 @@ function createBinding(options = {}) {
     },
     instanceLatency(id) {
       calls.push(['instanceLatency', id]);
-      return options.instanceLatency ?? 0;
+      return typeof options.instanceLatency === 'function'
+        ? options.instanceLatency(id)
+        : (options.instanceLatency ?? 0);
     },
     instanceSetParams(id, params, hash) {
       calls.push(['instanceSetParams', id, [...params], hash]);
@@ -157,7 +160,11 @@ function createBinding(options = {}) {
       const status = processStatuses.length > 0 ? processStatuses.shift() : 0;
       if (status === 0 || options.instanceMutateOnFailure) {
         const view = viewsByPointer.get(audioPtr);
-        for (let index = 0; index < channels * frames; index++) view[index] *= options.wasmGain ?? 2;
+        if (typeof options.instanceProcessImpl === 'function') {
+          options.instanceProcessImpl(id, view, channels, frames);
+        } else {
+          for (let index = 0; index < channels * frames; index++) view[index] *= options.wasmGain ?? 2;
+        }
       }
       if (options.growMemoryOnInstanceProcess) {
         binding.memory.grow(1);
@@ -168,8 +175,26 @@ function createBinding(options = {}) {
     },
     pipelineConfigure(descriptor) {
       const copy = Uint8Array.from(descriptor);
+      lastPipelineDescriptor = copy;
       calls.push(['pipelineConfigure', copy]);
       return options.pipelineConfigureStatus ?? -6;
+    },
+    pipelineLatency() {
+      const nodeCount = lastPipelineDescriptor.byteLength >= 8
+        ? new DataView(
+          lastPipelineDescriptor.buffer,
+          lastPipelineDescriptor.byteOffset,
+          lastPipelineDescriptor.byteLength
+        ).getUint32(4, true)
+        : 0;
+      const configuredLatency = options.pipelineLatency ?? options.instanceLatency ?? 0;
+      const latency = nodeCount === 0
+        ? 0
+        : (typeof configuredLatency === 'function'
+          ? configuredLatency(lastPipelineDescriptor)
+          : configuredLatency);
+      calls.push(['pipelineLatency', latency]);
+      return latency;
     },
     pipelineProcess(channels, frames, time, masterBypass) {
       calls.push(['pipelineProcess', channels, frames, time, masterBypass]);
@@ -451,10 +476,36 @@ function messagesOf(posts, type) {
   return posts.filter(entry => entry.message.type === type);
 }
 
-test('worklet reports sustained effect-processing deadline overruns but ignores pipeline bypass', async () => {
-  const nowValues = [0, 10, 14, 20, 24, 30, 31, 40, 46];
+test('worklet reports one-second average pipeline CPU usage against the render budget',
+  async () => {
+  const elapsedValues = Array.from({ length: 375 }, (_, index) => index === 374 ? 4 : 1);
   const harness = await createWorkletHarness({
-    performanceNow: () => nowValues.shift() ?? 46
+    performanceNow: () => elapsedValues.shift() ?? 0
+  });
+
+  for (let quantum = 0; quantum < 375; quantum++) {
+    harness.processor.finishPipelineCpuMeasurement(0, 128);
+  }
+
+  const messages = messagesOf(harness.posts, 'pipelineCpuUsage').map(entry => entry.message);
+  assert.equal(messages.length, 1);
+  assert.ok(Math.abs(messages[0].average - 37.8) < 1e-9);
+  assert.equal('peak' in messages[0], false);
+  assert.equal(harness.processor.pipelineCpuFrames, 0);
+  assert.equal(harness.processor.pipelineCpuElapsedMs, 0);
+});
+
+test('worklet reports sustained effect-processing deadline overruns but ignores pipeline bypass', async () => {
+  const nowValues = [
+    0, 0,
+    10, 10, 10,
+    20, 20, 24, 24,
+    30, 30, 34, 34,
+    40, 40, 41, 41,
+    50, 50, 56, 56
+  ];
+  const harness = await createWorkletHarness({
+    performanceNow: () => nowValues.shift() ?? 56
   });
   await registerFallback(harness);
   await harness.send({
@@ -1491,6 +1542,7 @@ test('worklet adopts grown WASM memory when instance creation returns zero', asy
 test('worklet reports the active main-bus latency only when the routed value changes', async () => {
   const binding = createBinding({
     instanceLatency: 96,
+    pipelineLatency: 192,
     pipelineConfigureStatus: 0
   });
   const harness = await createWorkletHarness({ binding });
@@ -1510,7 +1562,7 @@ test('worklet reports the active main-bus latency only when the routed value cha
   assert.equal(latencyMessages.length, 1);
   assert.equal(latencyMessages[0].message.samples, 192);
   assert.equal(latencyMessages[0].message.sampleRate, 48000);
-  assert.equal(latencyMessages[0].message.compensated, false);
+  assert.equal(latencyMessages[0].message.compensated, true);
 
   await harness.send({
     type: 'updatePlugin',
@@ -1521,6 +1573,220 @@ test('worklet reports the active main-bus latency only when the routed value cha
   latencyMessages = messagesOf(harness.posts, 'dspLatency');
   assert.equal(latencyMessages.length, 2);
   assert.equal(latencyMessages[1].message.samples, 0);
+});
+
+test('asset latency changes rebuild native and fallback plans without metadata-only churn', async () => {
+  let liveLatency = 0;
+  let assetCommits = 0;
+  const bindingOptions = {
+    instanceLatency: () => liveLatency,
+    pipelineLatency: () => liveLatency,
+    pipelineConfigureStatus: 0,
+    assetCommitStatus() {
+      assetCommits++;
+      if (assetCommits === 1) liveLatency = 128;
+      return 0;
+    },
+    assetState: 3
+  };
+  const binding = createBinding(bindingOptions);
+  const harness = await createWorkletHarness({ binding });
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [pluginConfig()],
+    masterBypass: false
+  });
+  await harness.send({ type: 'dspEnableTypes', types: ['VolumePlugin'] });
+  await harness.send({ type: 'dspModule', module: {} });
+  const configureCount = () => binding.calls.filter(call => call[0] === 'pipelineConfigure').length;
+  const setAsset = operationRevision => harness.send({
+    type: 'setPluginAsset',
+    pluginId: 7,
+    slot: 0,
+    formatTag: 1,
+    pathCount: 0,
+    processingChannels: 1,
+    footprintBytes: 36,
+    operationRevision,
+    payload: assetPayload(operationRevision)
+  });
+
+  assert.equal(configureCount(), 1);
+  await setAsset(1);
+  assert.equal(configureCount(), 2);
+  assert.equal(harness.processor.dspLatencyPlan.totalSamples, 128);
+  assert.equal(messagesOf(harness.posts, 'dspLatency').at(-1).message.samples, 128);
+
+  await setAsset(2);
+  assert.equal(configureCount(), 2);
+
+  liveLatency = 0;
+  await harness.send({ type: 'clearPluginAsset', pluginId: 7, slot: 0, operationRevision: 3 });
+  assert.equal(configureCount(), 3);
+  assert.equal(harness.processor.dspLatencyPlan.totalSamples, 0);
+  assert.equal(messagesOf(harness.posts, 'dspLatency').at(-1).message.samples, 0);
+
+  bindingOptions.pipelineConfigureStatus = -6;
+  liveLatency = 64;
+  await setAsset(4);
+  assert.equal(configureCount(), 4);
+  assert.equal(harness.processor.dspPipelineReady, false);
+  assert.equal(harness.processor.dspLatencyPlan.totalSamples, 64);
+
+  liveLatency = 96;
+  await setAsset(5);
+  assert.equal(configureCount(), 4);
+  assert.equal(harness.processor.dspLatencyPlan.totalSamples, 96);
+});
+
+test('native descriptors omit channels that disappear when output width shrinks', async () => {
+  const binding = createBinding({
+    instanceLatency: 64,
+    pipelineConfigureStatus: 0
+  });
+  const harness = await createWorkletHarness({ binding, outputChannels: 8 });
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [pluginConfig({ channel: '78' })],
+    masterBypass: false
+  });
+  await harness.send({ type: 'dspEnableTypes', types: ['VolumePlugin'] });
+  await harness.send({ type: 'dspModule', module: {} });
+
+  let configureCall = binding.calls.filter(call => call[0] === 'pipelineConfigure').at(-1);
+  assert.equal(decodeDspPipelineDescriptor(configureCall[1]).nodes.length, 1);
+  assert.equal(harness.processor.dspPipelineLatencySamples, 64);
+
+  await harness.send({ type: 'updateAudioConfig', outputChannels: 2 });
+  configureCall = binding.calls.filter(call => call[0] === 'pipelineConfigure').at(-1);
+  assert.equal(decodeDspPipelineDescriptor(configureCall[1]).nodes.length, 0);
+  assert.equal(harness.processor.dspPipelineLatencySamples, 0);
+  assert.equal(harness.processor.dspPipelineReady, true);
+});
+
+test('hybrid routing aligns cross-bus merges across render quanta', async () => {
+  const latency = 132;
+  const length = latency + 1;
+  const histories = Array.from({ length: 2 }, () => new Float32Array(length));
+  const positions = new Uint32Array(2);
+  const binding = createBinding({
+    instanceLatency: id => id === 100 ? latency : 0,
+    pipelineConfigureStatus: -6,
+    instanceProcessImpl(id, view, channels, frames) {
+      if (id !== 100) return;
+      for (let channel = 0; channel < channels; channel++) {
+        let position = positions[channel];
+        for (let frame = 0; frame < frames; frame++) {
+          histories[channel][position] = view[channel * frames + frame];
+          let read = position - latency;
+          if (read < 0) read += length;
+          view[channel * frames + frame] = histories[channel][read];
+          position++;
+          if (position === length) position = 0;
+        }
+        positions[channel] = position;
+      }
+    }
+  });
+  const harness = await createWorkletHarness({ binding });
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [
+      pluginConfig({ id: 7, inputBus: 0, outputBus: 1 }),
+      pluginConfig({ id: 8, inputBus: 0, outputBus: 1 }),
+      pluginConfig({ id: 9, inputBus: 1, outputBus: 0 })
+    ],
+    masterBypass: false
+  });
+  await harness.send({ type: 'dspEnableTypes', types: ['VolumePlugin'] });
+  await harness.send({ type: 'dspModule', module: {} });
+
+  const impulse = Array.from({ length: 2 }, () => {
+    const channel = new Float32Array(128);
+    channel[0] = 1;
+    return channel;
+  });
+  const first = Array.from({ length: 2 }, () => new Float32Array(128));
+  assert.equal(harness.processor.process([impulse], [first], {}), true);
+  assert.ok(first.every(channel => channel.every(sample => sample === 0)));
+  const silence = Array.from({ length: 2 }, () => new Float32Array(128));
+  const second = Array.from({ length: 2 }, () => new Float32Array(128));
+  assert.equal(harness.processor.process([silence], [second], {}), true);
+  assert.equal(second[0][latency - 128], 3);
+  assert.equal(second[1][latency - 128], 3);
+  assert.equal(harness.processor.dspPipelineLatencySamples, latency);
+  assert.equal(messagesOf(harness.posts, 'dspLatency').at(-1).message.compensated, true);
+});
+
+test('hybrid final output compensation aligns selected and untouched channels', async () => {
+  const latency = 4;
+  const history = new Float32Array(latency + 1);
+  let position = 0;
+  const binding = createBinding({
+    instanceLatency: latency,
+    pipelineConfigureStatus: -6,
+    instanceProcessImpl(_id, view, _channels, frames) {
+      for (let frame = 0; frame < frames; frame++) {
+        history[position] = view[frame];
+        let read = position - latency;
+        if (read < 0) read += history.length;
+        view[frame] = history[read];
+        position++;
+        if (position === history.length) position = 0;
+      }
+    }
+  });
+  const harness = await createWorkletHarness({ binding });
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [pluginConfig({ channel: 'L' })],
+    masterBypass: false
+  });
+  await harness.send({ type: 'dspEnableTypes', types: ['VolumePlugin'] });
+  await harness.send({ type: 'dspModule', module: {} });
+
+  const input = Array.from({ length: 2 }, () => {
+    const channel = new Float32Array(128);
+    channel[0] = 1;
+    return channel;
+  });
+  const output = Array.from({ length: 2 }, () => new Float32Array(128));
+  assert.equal(harness.processor.process([input], [output], {}), true);
+  assert.equal(output[0][latency], 1);
+  assert.equal(output[1][latency], 1);
+  assert.equal(output[0][0], 0);
+  assert.equal(output[1][0], 0);
+});
+
+test('worklet answers latency queries and applies ABX-only output delay separately', async () => {
+  const harness = await createWorkletHarness();
+  await harness.send({ type: 'requestDspLatency', requestId: 17 });
+  assert.deepEqual({ ...messagesOf(harness.posts, 'dspLatencyResponse').at(-1).message }, {
+    type: 'dspLatencyResponse', requestId: 17, samples: 0, compensated: false
+  });
+
+  await harness.send({ type: 'setOutputDelay', requestId: 18, samples: 132 });
+  assert.deepEqual({ ...messagesOf(harness.posts, 'outputDelaySet').at(-1).message }, {
+    type: 'outputDelaySet', requestId: 18, samples: 132
+  });
+  const impulse = Array.from({ length: 2 }, () => {
+    const channel = new Float32Array(128);
+    channel[0] = 1;
+    return channel;
+  });
+  const first = Array.from({ length: 2 }, () => new Float32Array(128));
+  harness.processor.process([impulse], [first], {});
+  assert.ok(first.every(channel => channel.every(sample => sample === 0)));
+  const silence = Array.from({ length: 2 }, () => new Float32Array(128));
+  const second = Array.from({ length: 2 }, () => new Float32Array(128));
+  harness.processor.process([silence], [second], {});
+  assert.equal(second[0][4], 1);
+  assert.equal(second[1][4], 1);
+  assert.equal(harness.processor.dspPipelineLatencySamples, 0);
+
+  await harness.send({ type: 'setOutputDelay', requestId: 19, samples: 0 });
+  const immediate = processBlock(harness.processor, 0.25);
+  assert.ok(immediate.every(channel => channel.every(sample => sample === 0.25)));
 });
 
 test('worklet restores the input block and falls back to hybrid after pipeline failure', async () => {
@@ -4390,13 +4656,15 @@ test('worklet preserves routing for declaratively unsupported execution modes', 
       name: 'unsupported 32 kHz stereo',
       sampleRate: 32000,
       channel: null,
-      reason: 'unsupportedSampleRate'
+      reason: 'unsupportedSampleRate',
+      expectedOutput: [0.5, 0.5]
     },
     {
       name: '96 kHz all channels',
       sampleRate: 96000,
       channel: 'A',
-      reason: 'unsupportedChannelMode'
+      reason: 'unsupportedChannelMode',
+      expectedOutput: [0.5, 0.5]
     },
     {
       name: '96 kHz mono stereo target on different buses',
@@ -4404,7 +4672,7 @@ test('worklet preserves routing for declaratively unsupported execution modes', 
       outputChannels: 1,
       channel: null,
       reason: 'unsupportedChannelMode',
-      expectedOutput: [0.75]
+      expectedOutput: [0.5]
     },
     {
       name: '96 kHz incomplete 3/4 pair on different buses',
@@ -4412,7 +4680,8 @@ test('worklet preserves routing for declaratively unsupported execution modes', 
       outputChannels: 3,
       channel: '34',
       reason: 'unsupportedChannelMode',
-      expectedOutput: [0.25, 0.25, 0.75]
+      expectedOutput: [0, 0, 0.5],
+      settledOutput: [0.25, 0.25, 0.75]
     }
   ];
 
@@ -4493,7 +4762,7 @@ test('worklet preserves routing for declaratively unsupported execution modes', 
       });
       assert.equal(harness.processor.dspPipelineReady, false);
       assert.equal(harness.processor.dspPipelinePluginCount, 0);
-      assert.equal(harness.processor.dspPipelineLatencySamples, 0);
+      assert.equal(harness.processor.dspPipelineLatencySamples, 64);
 
       const output = processBlock(
         harness.processor,
@@ -4505,9 +4774,11 @@ test('worklet preserves routing for declaratively unsupported execution modes', 
         output.map(channel => channel[0]),
         expectedOutput
       );
-      assert.ok(output.every((channel, index) =>
-        channel.every(sample => sample === expectedOutput[index])
-      ));
+      assert.deepEqual(output.map(channel => channel[63]), expectedOutput);
+      assert.deepEqual(
+        output.map(channel => channel[64]),
+        testCase.settledOutput ?? output.map(() => 0.75)
+      );
       assert.equal(
         binding.calls.filter(call => call[0] === 'pipelineProcess').length,
         0
@@ -4520,7 +4791,7 @@ test('worklet preserves routing for declaratively unsupported execution modes', 
         state: 'bypassed',
         reason: testCase.reason
       });
-      assert.equal(harness.processor.dspPipelineLatencySamples, 0);
+      assert.equal(harness.processor.dspPipelineLatencySamples, 64);
     });
   }
 });
@@ -4961,8 +5232,9 @@ test('worklet shares mono and first-pair routing for high-rate compressed codecs
     const processedChannels = testCase.outputChannels === 1 ? 1 : 2;
     assert.ok(active.slice(0, processedChannels)
       .every(channel => channel.every(sample => sample === 1.5)));
-    assert.ok(active.slice(processedChannels)
-      .every(channel => channel.every(sample => sample === 0.75)));
+    assert.ok(active.slice(processedChannels).every(channel => channel.every(
+      sample => sample === (testCase.fullPipeline ? 0.75 : 0)
+    )), `${codec.type} ${testCase.sampleRate}: ${active.map(channel => channel[0]).join(',')}`);
     assert.equal(harness.processor.dspPipelineReady, testCase.fullPipeline);
     // Both the full-pipeline descriptor and the per-instance fallback must
     // surface the codec's wet latency to the host.

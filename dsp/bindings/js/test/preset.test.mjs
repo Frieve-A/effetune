@@ -61,6 +61,26 @@ test('explicit legacy import converts long and short parameters and channels', (
   assert.ok(Math.abs(short.chain[0].parameters.pivotFrequency - 1000) < 1e-9);
 });
 
+test('legacy analyzer frequency scale display state is validated and discarded', () => {
+  for (const name of ['Spectrum Analyzer', 'Spectrogram']) {
+    for (const scale of ['log', 'linear']) {
+      const preset = importLegacyPreset({
+        pipeline: [{ name, parameters: { sc: scale } }]
+      });
+      assert.equal(Object.hasOwn(preset.chain[0].parameters, 'sc'), false);
+    }
+    assert.throws(
+      () => importLegacyPreset({ pipeline: [{ name, parameters: { sc: 'invalid' } }] }),
+      error => error instanceof ValidationError &&
+        error.message.includes('invalid frequency scale display state')
+    );
+    assert.throws(
+      () => importLegacyPreset({ pipeline: [{ name, parameters: { sc: 'log', mystery: 1 } }] }),
+      ValidationError
+    );
+  }
+});
+
 test('legacy importer rejects routing and channel values a serial chain cannot represent', () => {
   assert.throws(() => importLegacyPreset({
     pipeline: [{

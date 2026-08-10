@@ -141,8 +141,11 @@ latency declarations, but no private implementation mapping.
 For stateful processing, `ChainStream.latencySamples` reports aggregate runtime
 latency and matches Python `Stream.latency_samples` for the same chain and
 sample rate. `chain.latencySamples({ sampleRate })` reports the same value
-without opening a stream, which aligns offline `process()` output.
-`EffeTuneNode` does not expose a latency getter.
+without opening a stream. `EffeTuneNode.latencySamples` exposes the cached
+aggregate for real-time processing; initialization and awaited `setParam()` or
+`reset()` calls update it before returning. These APIs report latency without
+trimming or padding offline output, so the host decides how to place rendered
+audio.
 
 For real-time processing:
 
@@ -156,6 +159,7 @@ const node = await EffeTuneNode.create(context, preset, {
 });
 source.connect(node).connect(context.destination);
 await node.setParam('voice', 'threshold', -20);
+console.log(node.latencySamples);
 await node.reset();
 node.close();
 ```

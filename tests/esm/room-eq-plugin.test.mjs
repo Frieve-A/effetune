@@ -225,6 +225,8 @@ test('Room EQ keeps Phase Low automatic by default and supports a manual lower e
     assert.equal(plugin.pl, 500);
     assert.equal(plugin._automaticPhaseLowFrequency(), 500);
     assert.equal(plugin._designConfig().phaseLowFrequency, null);
+    assert.equal(plugin.le, false);
+    assert.equal(plugin._designConfig().lowFrequencyPhaseExtension, false);
 
     plugin.setParameters({ dw: 10, pa: false });
     assert.equal(plugin.pa, false);
@@ -242,6 +244,45 @@ test('Room EQ keeps Phase Low automatic by default and supports a manual lower e
     assert.equal(plugin.pa, true);
     assert.equal(plugin._designConfig().phaseLowFrequency, null);
     plugin.cleanup();
+});
+
+test('Room EQ serializes low-frequency phase extension without changing legacy defaults', () => {
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    const legacyConfig = plugin._designConfig();
+    const legacySignature = plugin._designSignature();
+
+    plugin.setParameters({ le: 'true' });
+    assert.equal(plugin.le, true);
+    assert.notEqual(plugin._designSignature(), legacySignature);
+    assert.equal(plugin._designConfig().lowFrequencyPhaseExtension, false);
+    plugin.setParameters({ pm: 'full' });
+    assert.equal(plugin._designConfig().lowFrequencyPhaseExtension, true);
+    assert.equal(plugin.getSerializableParameters().le, true);
+    plugin.setParameters({ le: 'false' });
+    assert.equal(plugin.le, false);
+    assert.equal(plugin.getSerializableParameters().le, false);
+    plugin.setParameters({ le: 1 });
+    assert.equal(plugin.le, true);
+
+    const restored = new Plugin();
+    restored.setSerializedParameters(plugin.getSerializableParameters());
+    assert.equal(restored.le, true);
+    assert.equal(restored._designConfig().lowFrequencyPhaseExtension, true);
+    restored.setParameters({ pm: 'lin' });
+    assert.equal(restored.le, true);
+    assert.equal(restored._designConfig().lowFrequencyPhaseExtension, false);
+    restored.setParameters({ pm: 'full' });
+    assert.equal(restored._designConfig().lowFrequencyPhaseExtension, true);
+
+    const legacy = new Plugin();
+    legacy.setSerializedParameters({ pm: 'full' });
+    assert.equal(legacy.le, false);
+    assert.equal(legacy._designConfig().lowFrequencyPhaseExtension, false);
+    assert.equal(legacyConfig.lowFrequencyPhaseExtension, false);
+    plugin.cleanup();
+    restored.cleanup();
+    legacy.cleanup();
 });
 
 test('Room EQ keeps the automatic Phase Low slider fill synced with Direct Window', () => {
@@ -316,22 +357,33 @@ test('Room EQ disables Phase Correction outside Correction mode', () => {
         valueInput: { disabled: false, value: '' },
         auto: { checked: false, disabled: false }
     };
+    plugin._lowFrequencyPhaseExtensionControl = { checked: true, disabled: false };
 
     plugin._syncPhaseCorrectionControl();
     assert.ok(inputs.every(input => input.disabled));
     assert.equal(plugin._phaseLowControl.auto.disabled, true);
     assert.equal(plugin._phaseLowControl.slider.disabled, true);
     assert.equal(plugin._phaseLowControl.valueInput.disabled, true);
+    assert.equal(plugin._lowFrequencyPhaseExtensionControl.disabled, true);
+    assert.equal(plugin._lowFrequencyPhaseExtensionControl.checked, false);
     plugin.setParameters({ pm: 'full' });
     assert.ok(inputs.every(input => !input.disabled));
     assert.equal(plugin._phaseLowControl.auto.disabled, false);
     assert.equal(plugin._phaseLowControl.slider.disabled, true);
     assert.equal(plugin._phaseLowControl.valueInput.disabled, true);
+    assert.equal(plugin._lowFrequencyPhaseExtensionControl.disabled, false);
+    plugin.setParameters({ le: true });
+    assert.equal(plugin._lowFrequencyPhaseExtensionControl.checked, true);
     plugin.setParameters({ pa: false });
     assert.equal(plugin._phaseLowControl.slider.disabled, false);
     assert.equal(plugin._phaseLowControl.valueInput.disabled, false);
     plugin.setParameters({ pm: 'min' });
     assert.ok(inputs.every(input => input.disabled));
+    assert.equal(plugin.le, true);
+    assert.equal(plugin._lowFrequencyPhaseExtensionControl.disabled, true);
+    plugin.setParameters({ pm: 'full' });
+    assert.equal(plugin._lowFrequencyPhaseExtensionControl.checked, true);
+    assert.equal(plugin._lowFrequencyPhaseExtensionControl.disabled, false);
     plugin.cleanup();
 });
 
@@ -1008,6 +1060,42 @@ test('Room EQ keeps channel-independent quality warnings in English', () => {
     assert.equal(warning, 'The Room EQ filter may be inaccurate. Increase Taps or Smoothing.');
     assert.equal(translationCalls, 0);
     assert.doesNotMatch(warning, /Channel \d+/);
+    plugin.cleanup();
+});
+
+test('Room EQ reports one plain warning when requested low-frequency phase extension is limited', () => {
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    plugin.setParameters({ pm: 'full', le: true });
+    const result = {
+        qualityWarnings: [],
+        diagnostics: {
+            lowFrequencyPhaseExtension: [
+                { state: 'applied', scale: 1, reason: null },
+                { state: 'reduced', scale: 1, reason: 'insufficientData' }
+            ]
+        }
+    };
+
+    const code = plugin._qualityWarningForDesign(result);
+    assert.equal(code, 'lowFrequencyPhaseExtensionLimited');
+    assert.equal(
+        plugin._qualityWarningMessage(code),
+        'Low-frequency phase extension was limited by the measurement or settings. Room EQ used the available measurement window and, when necessary, reduced or skipped the correction; the rest of the filter remains active.'
+    );
+    assert.doesNotMatch(plugin._qualityWarningMessage(code), /insufficientData/);
+    result.diagnostics.lowFrequencyPhaseExtension = [
+        { state: 'disabled', scale: 0, reason: 'groupDelay' }
+    ];
+    assert.equal(
+        plugin._qualityWarningForDesign(result),
+        'lowFrequencyPhaseExtensionLimited'
+    );
+    result.qualityWarnings.push('filterAccuracy');
+    assert.equal(plugin._qualityWarningForDesign(result), 'filterAccuracy');
+    result.qualityWarnings.length = 0;
+    plugin.setParameters({ le: false });
+    assert.equal(plugin._qualityWarningForDesign(result), undefined);
     plugin.cleanup();
 });
 

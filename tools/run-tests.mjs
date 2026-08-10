@@ -39,10 +39,11 @@ function collectCoverageIncludeArgs(directory, { exclude = [] } = {}) {
     .map(file => `--test-coverage-include=${file}`);
 }
 
-function runNodeTestPhase(name, args) {
+function runNodeTestPhase(name, args, env = {}) {
   const result = spawnSync(process.execPath, args, {
     cwd: repoRoot,
-    stdio: 'inherit'
+    stdio: 'inherit',
+    env: { ...process.env, ...env }
   });
 
   if (result.status !== 0) {
@@ -137,8 +138,12 @@ function checkTestSourceHygiene(testFiles) {
 const cjsTests = collectTestFiles(path.join(repoRoot, 'tests/cjs'), '.test.cjs');
 const performanceTests = ['tests/esm/room-eq-performance.test.mjs'];
 const performanceTestSet = new Set(performanceTests);
+// This DOM stress test runs in its own process because the shared Node test process
+// can exhaust memory. The file requires an explicit isolated-run opt-in.
+const isolatedTests = ['tests/esm/pipeline-analyzer-ui.test.mjs'];
+const isolatedTestSet = new Set(isolatedTests);
 const esmTests = collectTestFiles(path.join(repoRoot, 'tests/esm'), '.test.mjs')
-  .filter(file => !performanceTestSet.has(file));
+  .filter(file => !performanceTestSet.has(file) && !isolatedTestSet.has(file));
 const cjsCoverageIncludes = collectCoverageIncludeArgs(path.join(repoRoot, 'electron'), {
   exclude: ['electron/main.js']
 });
@@ -186,6 +191,13 @@ if (esmTests.length > 0) {
     ...esmTests
   ]);
 }
+
+runNodeTestPhase('Pipeline Analyzer UI tests', [
+  '--test',
+  ...isolatedTests
+], {
+  EFFETUNE_RUN_PIPELINE_ANALYZER_UI_TEST: '1'
+});
 
 runNodeTestPhase('Performance tests', [
   '--test',

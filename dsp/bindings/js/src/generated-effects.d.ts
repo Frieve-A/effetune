@@ -1345,7 +1345,7 @@ export declare function createSubSynth(options?: SubSynthOptions): SubSynth;
 
 export interface TubeSimulatorOptions extends CommonEffectOptions {
   readonly inputVolume?: number;
-  readonly tube?: "12AX7" | "12AT7" | "12AU7";
+  readonly tube?: "12AX7" | "12AT7" | "12AU7" | "Bypass";
   readonly bias?: number;
   readonly plateVoltage?: number;
   readonly sourceImpedance?: number;
@@ -1354,8 +1354,8 @@ export interface TubeSimulatorOptions extends CommonEffectOptions {
   readonly mix?: number;
   readonly inputReference?: number;
   readonly negativeFeedback?: number;
-  readonly outputStage?: "Line" | "Power";
-  readonly powerTube?: "EL84" | "EL34";
+  readonly outputStage?: "Line" | "Power" | "SingleEnded";
+  readonly powerTube?: "EL84" | "EL34" | "6L6GC" | "KT88";
   readonly powerBPlus?: number;
   readonly cathodeResistor?: number;
   readonly screenTap?: "0" | "20" | "43";
@@ -1364,6 +1364,10 @@ export interface TubeSimulatorOptions extends CommonEffectOptions {
   readonly actualSpeakerLoad?: number;
   readonly safetyTrim?: number;
   readonly autoGainReduction?: boolean;
+  readonly seTube?: "300B" | "2A3";
+  readonly seBPlus?: number;
+  readonly seCathodeResistor?: number;
+  readonly sePrimaryImpedance?: "2.5" | "3.5" | "5.0";
   readonly assets?: never;
 }
 

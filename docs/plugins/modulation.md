@@ -1,6 +1,6 @@
 ---
 title: "Modulation Plugins - EffeTune"
-description: "Modulation effect plugins including Tremolo, Wow Flutter, Pitch Shifter, and Doppler Distortion."
+description: "Modulation effect plugins including Doppler Distortion, Pitch Shifter, Pitch Shifter HQ, Tremolo, and Wow Flutter."
 lang: en
 ---
 
@@ -12,6 +12,7 @@ A collection of plugins that add movement and variation to your music through mo
 
 - [Doppler Distortion](#doppler-distortion) - Simulates the natural, dynamic shifts in sound from subtle speaker cone movement.
 - [Pitch Shifter](#pitch-shifter) - Changes the pitch of your music without affecting playback speed
+- [Pitch Shifter HQ](#pitch-shifter-hq) - Changes pitch with fewer phase artifacts when sound quality matters more than latency or CPU use
 - [Tremolo](#tremolo) - Creates rhythmic volume variations for a pulsing, dynamic sound
 - [Wow Flutter](#wow-flutter) - Recreates the gentle pitch variations of vinyl records and tape players
 
@@ -67,6 +68,28 @@ An effect that changes the pitch of your music without affecting its playback sp
   - Affects how smoothly the pitch-shifted segments blend together
   - Lower values may sound more immediate but potentially less smooth
   - Higher values create smoother transitions between segments, but may increase sound wavering and create an overlapping sensation
+
+## Pitch Shifter HQ
+
+A higher-quality pitch shifter for careful listening when reduced phase smearing is more important than low latency or CPU use. It changes pitch without changing playback speed and keeps spectral components more firmly grouped than the standard Pitch Shifter. It uses more CPU and adds a fixed processing delay of approximately 106.7–116.1ms: approximately 106.7ms at 48, 96, and 192kHz, and approximately 116.1ms at 44.1, 88.2, and 176.4kHz. It requires EffeTune's WASM DSP engine. If that engine is unavailable, the audio passes through unchanged.
+
+Pitch Shifter HQ does not preserve formants. Larger shifts therefore change the apparent character of voices and instruments as well as their pitch.
+
+### Listening Experience Guide
+
+- For a subtle change, start with **Pitch Shift** at -1 or +1 and leave **Fine Tune** at 0.
+- Use **Fine Tune** to match music that is slightly sharp or flat without moving by a full semitone.
+- Choose Pitch Shifter HQ instead of the standard Pitch Shifter when fewer phase artifacts are worth the extra CPU use and delay. Use the standard version for latency-sensitive listening or lower-powered devices.
+- Compare larger shifts carefully: the pitch remains stable, but the lack of formant preservation makes the tonal character change more obvious.
+
+### Parameters
+
+- **Pitch Shift** - Changes the overall pitch in semitones (-6 to +6)
+  - Negative values lower the pitch; positive values raise it
+  - Zero leaves the pitch unchanged
+- **Fine Tune** - Adjusts pitch in cents (-50 to +50)
+  - Use it for precise adjustment between semitones
+  - 100 cents equals one semitone
 
 ## Tremolo
 

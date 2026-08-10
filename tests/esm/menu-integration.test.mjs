@@ -163,8 +163,11 @@ test('updateApplicationMenu sends enabled menu labels and updates the tray', asy
   assert.equal(appMenu.edit.submenu[0].enabled, true);
   assert.equal(appMenu.view.submenu[6].label, 'label:menu.view.effectPipeline');
   assert.equal(appMenu.view.submenu[7].label, 'label:menu.view.musicLibrary');
-  assert.equal(appMenu.view.submenu[9].label, 'label:menu.view.toggleFullscreen');
-  assert.equal(appMenu.view.submenu[10].label, 'label:menu.view.miniPlayer');
+  assert.equal(appMenu.view.submenu[8].label, 'label:menu.view.pipelineAnalyzer');
+  assert.equal(appMenu.view.submenu[8].type, 'checkbox');
+  assert.equal(appMenu.view.submenu[8].checked, false);
+  assert.equal(appMenu.view.submenu[10].label, 'label:menu.view.toggleFullscreen');
+  assert.equal(appMenu.view.submenu[11].label, 'label:menu.view.miniPlayer');
   assert.equal(appMenu.help.submenu[1].label, 'Discord');
   assert.equal(harness.calls[2][0], 'updateTrayMenu');
 });

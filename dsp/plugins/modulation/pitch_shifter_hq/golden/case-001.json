@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "PitchShifterHQPlugin",
+  "id": "upward-stereo-noise",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 7169,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "ps": 3,
+    "ft": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:d8dd3cd4c50dbb39a8b6dba336f59b3793a1d104dec1cbb70f17e69a32ff25d4",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type PitchShifterHQPlugin --promote-production-native",
+  "outputFloats": 14338,
+  "byteLength": 57352,
+  "binary": "case-001.f32"
+}

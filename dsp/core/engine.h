@@ -2,6 +2,7 @@
 #define EFFETUNE_CORE_ENGINE_H
 
 #include "arena.h"
+#include "effetune/dsp/delay_line.h"
 #include "effetune/kernel.h"
 #include "effetune/telemetry.h"
 
@@ -62,6 +63,9 @@ public:
                               std::uint32_t descriptor_bytes) noexcept;
   et_status processPipeline(std::uint32_t channel_count, std::uint32_t frame_count,
                             double time_seconds, std::uint32_t master_bypass) noexcept;
+  [[nodiscard]] std::uint32_t pipelineLatency() const noexcept {
+    return pipeline_configured_ ? pipeline_latency_samples_ : 0u;
+  }
 
   [[nodiscard]] bool prepared() const noexcept { return prepared_; }
   [[nodiscard]] float *combined() noexcept { return arena_.combined(); }
@@ -97,6 +101,14 @@ private:
     std::uint8_t sectionGate = 1;
   };
 
+  enum class DelayTarget : std::uint8_t { None = 0, Destination = 1, Incoming = 2 };
+
+  struct PipelineMergeCompensation {
+    std::array<DelayTarget, 8> targets{};
+    std::array<std::uint32_t, 8> delays{};
+    dsp::DelayLine delayLine;
+  };
+
   [[nodiscard]] static et_instance makeHandle(std::uint32_t slot,
                                               std::uint16_t generation) noexcept;
   [[nodiscard]] InstanceSlot *findInstance(et_instance instance) noexcept;
@@ -108,18 +120,28 @@ private:
   void processSlot(InstanceSlot &slot, float *audio, std::uint32_t channel_count,
                    std::uint32_t frame_count, double time_seconds) noexcept;
   void maybeWriteTelemetry(InstanceSlot &slot, std::uint32_t frame_count) noexcept;
+  void invalidatePipeline() noexcept;
+  void resetPipelineDelayHistory() noexcept;
+  static void applyDelay(dsp::DelayLine &delay_line, std::uint32_t channel,
+                         std::uint32_t delay_samples, float *audio,
+                         std::uint32_t frame_count) noexcept;
 
   Arena arena_;
   TelemetryRing telemetry_;
   std::array<InstanceSlot, kMaxInstances> instances_{};
   std::array<PipelineNode, kMaxPipelineNodes> pipeline_{};
+  std::array<PipelineMergeCompensation, kMaxPipelineNodes> pipeline_compensation_{};
+  std::array<std::uint32_t, 8> pipeline_output_delays_{};
+  dsp::DelayLine pipeline_output_delay_line_;
   std::uint32_t pipeline_count_ = 0;
+  std::uint32_t pipeline_latency_samples_ = 0;
   float sample_rate_ = 0.0F;
   float telemetry_rate_hz_ = 60.0F;
   std::uint32_t max_channels_ = 0;
   std::uint32_t max_frames_ = 0;
   bool prepared_ = false;
   bool pipeline_configured_ = false;
+  bool pipeline_delay_history_dirty_ = false;
 };
 
 } // namespace effetune

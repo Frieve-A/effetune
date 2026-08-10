@@ -11,6 +11,21 @@ function createPort() {
     onmessage: null,
     postMessage(message, transfer = []) {
       this.messages.push({ message, transfer });
+      if (message?.type === 'requestDspLatency') {
+        this.onmessage?.({ data: {
+          type: 'dspLatencyResponse',
+          requestId: message.requestId,
+          samples: this.latencySamples ?? 0,
+          compensated: true
+        } });
+      } else if (message?.type === 'setOutputDelay') {
+        this.outputDelaySamples = message.samples;
+        this.onmessage?.({ data: {
+          type: 'outputDelaySet',
+          requestId: message.requestId,
+          samples: message.samples
+        } });
+      }
     }
   };
 }
@@ -36,6 +51,8 @@ function createManager() {
   const manager = Object.create(AudioManager.prototype);
   manager.dspModuleInfo = null;
   manager.dspCapabilities = null;
+  manager.dspPipelineLatencySamples = 0;
+  manager.dspPipelineLatencyCompensated = false;
   manager._dspReadyFallbacks = new Map();
   manager._dspCapabilitiesByNode = new Map();
   manager._dspReadyTokens = new Map();
@@ -52,6 +69,7 @@ function createManager() {
   manager._dspExecutionGenerationsByNode = new Map();
   manager._tubeRuntimeEventsByNode = new WeakMap();
   manager._audioGraphGeneration = 1;
+  manager._topologyRevision = 1;
   manager._primaryWorkletEpoch = 1;
   manager._outputFadeToken = 0;
   manager._parallelDspBarrier = null;
@@ -67,6 +85,16 @@ function createManager() {
   manager.pipelineB = [];
   manager.pipeline = manager.pipelineA;
   manager.currentPipeline = 'A';
+  manager.pipelineProcessor = {
+    prepareSectionAwarePluginData() {
+      return manager.pipeline.map(plugin => ({
+        id: plugin.id,
+        type: plugin.constructor.name,
+        enabled: plugin.enabled,
+        parameters: plugin.getParameters?.() || {}
+      }));
+    }
+  };
   manager.telemetryHub = { handleMessage() {}, setPort() {} };
   manager.dispatchEvent = () => {};
   return manager;
@@ -275,6 +303,7 @@ function configureParallelManager(manager, mainWorklet) {
   };
   manager.workletNode = mainWorklet;
   manager.contextManager = { audioContext: context, workletNode: mainWorklet, lowLatencyMode: false };
+  mainWorklet.port.onmessage = event => manager.handleWorkletMessage(event, mainWorklet);
   manager.ioManager = { outputGainNode: output, sourceNode: null };
   manager.pipelineA = [new VolumePlugin(1, 'A')];
   manager.pipelineB = [new VolumePlugin(2, 'B')];
@@ -685,6 +714,7 @@ test('AudioManager rejects execution state from plugins without a WASM requireme
   manager.contextManager = { workletNode: main };
   manager.pipelineA = [volume];
   manager.pipeline = manager.pipelineA;
+  manager.getEnabledDspTypes = () => ['VolumePlugin'];
   const dispatched = [];
   manager.dispatchEvent = (type, data) => dispatched.push({ type, data });
   const state = (generation, reason) => ({
@@ -1504,17 +1534,79 @@ test('AudioManager performs a full plugin resync on dspReady and routes telemetr
       type: 'dspLatency',
       samples: 96,
       sampleRate: 48000,
-      compensated: false
+      compensated: true
     };
     manager.handleWorkletMessage({ data: latencyMessage }, node);
     assert.equal(manager.dspPipelineLatencySamples, 96);
+    assert.equal(manager.dspPipelineLatencyCompensated, true);
     assert.deepEqual(events.at(-1), {
       type: 'dspLatency',
       data: latencyMessage
     });
 
+    manager.handleWorkletMessage({
+      data: { type: 'dspLatency', samples: -1, compensated: 'yes' }
+    }, node);
+    assert.equal(manager.dspPipelineLatencySamples, 0);
+    assert.equal(manager.dspPipelineLatencyCompensated, false);
+    manager.handleWorkletMessage({ data: latencyMessage }, node);
+
     manager.handleWorkletMessage({ data: { type: 'dspFailed', stage: 'runtime', error: 'trap' } }, node);
+    assert.equal(manager.dspPipelineLatencySamples, 96);
+    assert.equal(manager.dspPipelineLatencyCompensated, true);
     assert.ok(messageOf(node.port, 'dspCleanupFailed'));
+  });
+});
+
+test('AudioManager leaves primary Total owned by primary latency messages', async () => {
+  await withGlobals({ window: {} }, async () => {
+    const manager = createManager();
+    const primary = createNode('primary');
+    const auxiliary = createNode('auxiliary');
+    manager.workletNode = primary;
+    manager.contextManager = { workletNode: primary };
+    manager._parallelPreparing = true;
+    manager._parallelWorkletB = auxiliary;
+    manager.dspPipelineLatencySamples = 144;
+    manager.dspPipelineLatencyCompensated = true;
+
+    manager.handleWorkletMessage({
+      data: { type: 'dspFailed', stage: 'runtime:2', error: 'branch fallback' }
+    }, auxiliary);
+    manager.handleWorkletMessage({ data: { type: 'dspCleanupNeeded' } }, auxiliary);
+    manager.handleWorkletMessage({
+      data: { type: 'dspFailed', stage: 'runtime:1', error: 'primary fallback' }
+    }, primary);
+    manager.handleWorkletMessage({ data: { type: 'dspCleanupNeeded' } }, primary);
+
+    assert.equal(manager.dspPipelineLatencySamples, 144);
+    assert.equal(manager.dspPipelineLatencyCompensated, true);
+    manager.handleWorkletMessage({
+      data: { type: 'dspLatency', samples: 0, sampleRate: 48000, compensated: false }
+    }, primary);
+    assert.equal(manager.dspPipelineLatencySamples, 0);
+    assert.equal(manager.dspPipelineLatencyCompensated, false);
+  });
+});
+
+test('AudioManager clears pipeline latency immediately on master bypass', async () => {
+  await withGlobals({ window: {} }, async () => {
+    const manager = createManager();
+    const events = [];
+    manager.dspPipelineLatencySamples = 128;
+    manager.dspPipelineLatencyCompensated = true;
+    manager.pipelineProcessor = { setMasterBypass() {} };
+    manager.rebuildPipeline = async () => {};
+    manager.dispatchEvent = (type, data) => events.push({ type, data });
+
+    await manager.setMasterBypass(true);
+
+    assert.equal(manager.dspPipelineLatencySamples, 0);
+    assert.equal(manager.dspPipelineLatencyCompensated, false);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].type, 'dspLatency');
+    assert.equal(events[0].data.samples, 0);
+    assert.equal(events[0].data.compensated, false);
   });
 });
 
@@ -1774,7 +1866,7 @@ test('AudioManager no-op parallel teardown preserves primary DSP retry and trans
   });
 });
 
-test('AudioManager active parallel reset synchronously invalidates and tears down the test graph', async () => {
+test('AudioManager active parallel reset invalidates before awaiting muted graph teardown', async () => {
   await withGlobals({
     window: {},
     console: { error() {}, warn() {}, log() {}, info() {} }
@@ -1790,6 +1882,7 @@ test('AudioManager active parallel reset synchronously invalidates and tears dow
       async closeAudioContext() {},
       getSkipAudioInitDuringSampleRateChange() { return false; }
     };
+    main.port.onmessage = event => manager.handleWorkletMessage(event, main);
     manager.ioManager = {
       outputGainNode: createNode('output'),
       sourceNode: null,
@@ -1809,9 +1902,10 @@ test('AudioManager active parallel reset synchronously invalidates and tears dow
     assert.equal(events[0].data.reason, 'audioReset');
     assert.equal(events[0].data.restorePrimaryDsp, false);
     assert.equal(manager._parallelActive, false);
-    assert.equal(manager._parallelWorkletB, null);
+    assert.equal(manager._parallelWorkletB, auxiliary);
     assert.equal(manager._primaryWorkletEpoch, epoch + 1);
     await resetting;
+    assert.equal(manager._parallelWorkletB, null);
   });
 });
 
@@ -2121,6 +2215,197 @@ test('AudioManager transitions existing DSP enable changes on every active workl
       assert.deepEqual(enableMessages[0].message.types, []);
       assert.deepEqual(enableMessages.at(-1).message.types, ['VolumePlugin']);
     }
+  });
+});
+
+test('AudioManager refreshes ABX activation deadlines after a settled barrier ages out', async () => {
+  await withGlobals({
+    window: { location: { pathname: '/app/index.html', search: '' }, audioPreferences: { useWasmDsp: false } },
+    document: { hidden: false }
+  }, async () => {
+    const manager = createManager();
+    const main = createNode('main');
+    configureParallelManager(manager, main);
+    const auxiliary = createNode('auxiliary');
+    auxiliary.port.onmessage = event => manager.handleWorkletMessage(event, auxiliary);
+    manager._parallelWorkletB = auxiliary;
+    manager._parallelActive = true;
+    manager.dspModuleInfo = { meta: { kernels: [] }, paramPackers: new Map() };
+    manager._applyParallelRouting = () => true;
+
+    const barrier = manager._createParallelDspBarrier([main, auxiliary]);
+    manager._settleParallelDspBarrier(barrier, 'js');
+    barrier.assetDeadline = Date.now() - 1;
+
+    const fades = [];
+    manager.fadeOutOutput = () => {
+      fades.push('out');
+      return ++manager._outputFadeToken;
+    };
+    manager.fadeInOutputForToken = token => {
+      if (token !== manager._outputFadeToken) return false;
+      fades.push('in');
+      return true;
+    };
+
+    assert.equal(await manager.updateAudioConfig({ outputChannels: 4, useWasmDsp: false }), true);
+    assert.deepEqual(fades, ['out', 'in']);
+    for (const node of [main, auxiliary]) {
+      assert.ok(messageOf(node.port, 'requestDspLatency'));
+      assert.ok(messageOf(node.port, 'setOutputDelay'));
+    }
+  });
+});
+
+test('AudioManager retries a coalesced ABX activation after the earlier deadline expires', async () => {
+  await withGlobals({
+    window: { location: { pathname: '/app/index.html', search: '' }, audioPreferences: { useWasmDsp: false } },
+    document: { hidden: false }
+  }, async () => {
+    const manager = createManager();
+    const main = createNode('main');
+    configureParallelManager(manager, main);
+    const auxiliary = createNode('auxiliary');
+    auxiliary.port.onmessage = event => manager.handleWorkletMessage(event, auxiliary);
+    manager._parallelWorkletB = auxiliary;
+    manager._parallelActive = true;
+    manager.dspModuleInfo = { meta: { kernels: [] }, paramPackers: new Map() };
+    manager._applyParallelRouting = () => true;
+    manager._createParallelDspBarrier([main, auxiliary]);
+
+    const fades = [];
+    manager.fadeOutOutput = () => {
+      fades.push('out');
+      return ++manager._outputFadeToken;
+    };
+    manager.fadeInOutputForToken = token => {
+      if (token !== manager._outputFadeToken) return false;
+      fades.push('in');
+      return true;
+    };
+
+    let releaseReadiness;
+    const delayedReadiness = new Promise(resolve => { releaseReadiness = resolve; });
+    let resolveQueriesStarted;
+    const queriesStarted = new Promise(resolve => { resolveQueriesStarted = resolve; });
+    const queryTimeouts = [];
+    manager._requestWorkletLatency = (_workletNode, timeoutMs) => {
+      queryTimeouts.push(timeoutMs);
+      if (queryTimeouts.length === 2) resolveQueriesStarted();
+      if (queryTimeouts.length <= 2) {
+        return delayedReadiness.then(() => ({ samples: 0 }));
+      }
+      return Promise.resolve({ samples: 0 });
+    };
+
+    const originalDateNow = Date.now;
+    let now = 1000;
+    Date.now = () => now;
+    try {
+      const first = manager.updateAudioConfig({ outputChannels: 4, useWasmDsp: false });
+      await queriesStarted;
+      now = 3900;
+      const second = manager.updateAudioConfig({ outputChannels: 6, useWasmDsp: false });
+      assert.equal(second, first);
+
+      now = 4100;
+      releaseReadiness();
+      assert.equal(await first, true);
+      assert.equal(await second, true);
+    } finally {
+      Date.now = originalDateNow;
+    }
+
+    assert.equal(queryTimeouts.length, 4);
+    assert.ok(queryTimeouts.every(timeoutMs => timeoutMs > 0));
+    assert.deepEqual(fades, ['out', 'out', 'in']);
+    assert.equal(main.port.messages.filter(entry => entry.message.type === 'setOutputDelay').length, 1);
+    assert.equal(auxiliary.port.messages.filter(entry => entry.message.type === 'setOutputDelay').length, 1);
+  });
+});
+
+test('AudioManager suppresses superseded ABX asset invalidation before retrying', async () => {
+  await withGlobals({
+    window: { location: { pathname: '/app/index.html', search: '' }, audioPreferences: { useWasmDsp: false } },
+    document: { hidden: false }
+  }, async () => {
+    const manager = createManager();
+    const main = createNode('main');
+    configureParallelManager(manager, main);
+    const auxiliary = createNode('auxiliary');
+    auxiliary.port.onmessage = event => manager.handleWorkletMessage(event, auxiliary);
+    manager._parallelWorkletB = auxiliary;
+    manager._parallelActive = true;
+    manager.dspModuleInfo = { meta: { kernels: [] }, paramPackers: new Map() };
+    manager._applyParallelRouting = () => true;
+    manager._createParallelDspBarrier([main, auxiliary]);
+
+    const fades = [];
+    manager.fadeOutOutput = () => {
+      fades.push('out');
+      return ++manager._outputFadeToken;
+    };
+    manager.fadeInOutputForToken = token => {
+      if (token !== manager._outputFadeToken) return false;
+      fades.push('in');
+      return true;
+    };
+
+    let releaseDescriptors;
+    const delayedDescriptors = new Promise(resolve => { releaseDescriptors = resolve; });
+    let resolveDescriptorWaitStarted;
+    const descriptorWaitStarted = new Promise(resolve => { resolveDescriptorWaitStarted = resolve; });
+    const descriptorDeadlines = [];
+    manager._waitForParallelBranchAssets = (_snapshot, deadline) => {
+      descriptorDeadlines.push(deadline);
+      if (descriptorDeadlines.length === 1) {
+        resolveDescriptorWaitStarted();
+        return delayedDescriptors;
+      }
+      return true;
+    };
+
+    const listeners = new Map();
+    manager.eventManager = {
+      addEventListener(name, listener) {
+        if (!listeners.has(name)) listeners.set(name, new Set());
+        listeners.get(name).add(listener);
+      },
+      dispatchEvent(name, data) {
+        for (const listener of listeners.get(name) || []) listener(data);
+      }
+    };
+    let invalidations = 0;
+    manager.addEventListener('parallelInvalidated', () => {
+      invalidations++;
+      manager._parallelActive = false;
+      manager._parallelDspBarrier = null;
+      manager._audioGraphGeneration++;
+    });
+
+    const originalDateNow = Date.now;
+    let now = 1000;
+    Date.now = () => now;
+    try {
+      const first = manager.updateAudioConfig({ outputChannels: 4, useWasmDsp: false });
+      await descriptorWaitStarted;
+      now = 3900;
+      const second = manager.updateAudioConfig({ outputChannels: 6, useWasmDsp: false });
+      assert.equal(second, first);
+
+      now = 4100;
+      releaseDescriptors(false);
+      assert.equal(await first, true);
+      assert.equal(await second, true);
+    } finally {
+      Date.now = originalDateNow;
+    }
+
+    assert.equal(invalidations, 0);
+    assert.deepEqual(descriptorDeadlines, [4000, 7100]);
+    assert.deepEqual(fades, ['out', 'out', 'in']);
+    assert.equal(main.port.messages.filter(entry => entry.message.type === 'setOutputDelay').length, 1);
+    assert.equal(auxiliary.port.messages.filter(entry => entry.message.type === 'setOutputDelay').length, 1);
   });
 });
 
@@ -2859,7 +3144,6 @@ test('AudioManager invalidates a settled DBT once before changed comparison data
       assert.equal(manager._parallelPreparing, false);
       assert.equal(snapshot.disposed, true);
       assert.equal(pluginA.assetSnapshotListeners.size, 0);
-      assert.equal(auxiliary.port.onmessage, null);
       if (change === 'asset') {
         assert.equal(main.port.messages.filter(entry =>
           entry.message.type === 'setPluginAsset').length, primaryAssetsBefore + 1);
@@ -2870,6 +3154,8 @@ test('AudioManager invalidates a settled DBT once before changed comparison data
         assert.equal(auxiliary.port.messages.filter(entry =>
           entry.message.type === 'updatePlugin').length, auxiliaryUpdatesBefore);
       }
+      for (let index = 0; index < 4; index++) await Promise.resolve();
+      assert.equal(auxiliary.port.onmessage, null);
     });
   }
 });
@@ -3450,6 +3736,7 @@ test('AudioManager restores the current output owner when parallel construction 
     manager._parallelSelA = createNode('sel-a');
     manager._parallelSelB = createNode('sel-b');
     manager._parallelInputTap = createNode('tap');
+    main.port.outputDelaySamples = 64;
     manager.getEnabledDspTypes = () => ['VolumePlugin'];
     manager._dspCapabilitiesByNode.set(main, { type: 'dspReady' });
 
@@ -3475,10 +3762,8 @@ test('AudioManager restores the current output owner when parallel construction 
     assert.equal(manager.ioManager.outputGainNode.gain.value, 0);
     assert.equal(manager._parallelActive, false);
     assert.equal(manager._parallelPreparing, false);
-    assert.equal(manager._parallelWorkletB, null);
-    assert.equal(manager._parallelSelA, null);
-    assert.equal(manager._parallelSelB, null);
-    assert.equal(manager._parallelInputTap, null);
+    assert.notEqual(manager._parallelWorkletB, null);
+    assert.equal(messageOf(main.port, 'setOutputDelay'), undefined);
 
     let retrySettled = false;
     const retry = manager.enableParallelPipelines('A').then(result => {
@@ -3489,6 +3774,11 @@ test('AudioManager restores the current output owner when parallel construction 
     assert.equal(retrySettled, false);
     releaseFade();
     assert.equal(await restoring, true);
+    assert.equal(main.port.outputDelaySamples, 0);
+    assert.equal(manager._parallelWorkletB, null);
+    assert.equal(manager._parallelSelA, null);
+    assert.equal(manager._parallelSelB, null);
+    assert.equal(manager._parallelInputTap, null);
     assert.equal(await retry, false);
     assert.equal(manager.ioManager.outputGainNode.gain.value, 1);
   });
@@ -3632,7 +3922,9 @@ test('AudioManager auxiliary worklet receives DSP bytes and returns telemetry pa
       }
     };
     manager.contextManager = { audioContext: context, workletNode: mainWorklet, lowLatencyMode: false };
+    mainWorklet.port.onmessage = event => manager.handleWorkletMessage(event, mainWorklet);
     manager.ioManager = { outputGainNode: output, sourceNode: null };
+    manager.pipelineProcessor = { prepareSectionAwarePluginData: () => [] };
     manager.dspModuleInfo = {
       module: null,
       bytes: Uint8Array.of(0, 97, 115, 109).buffer,

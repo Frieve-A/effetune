@@ -110,6 +110,139 @@
           }
         }
       ]
+    },
+    {
+      "id": "power-6l6gc-pentode",
+      "stimulus": "sin1k",
+      "frames": 2048,
+      "events": [
+        {
+          "frame": 128,
+          "params": {
+            "dr": -48,
+            "tp": "12AX7",
+            "og": 0,
+            "iv": 2.828,
+            "nf": 3,
+            "os": "Power",
+            "pt": "6L6GC",
+            "pb": 391.454,
+            "kr": 483.871,
+            "st": "0",
+            "zp": "6.6",
+            "sl": "8",
+            "rl": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "power-kt88-distributed",
+      "stimulus": "sin1k",
+      "frames": 2048,
+      "events": [
+        {
+          "frame": 128,
+          "params": {
+            "dr": -48,
+            "tp": "12AX7",
+            "og": 0,
+            "iv": 2.828,
+            "nf": 4,
+            "os": "Power",
+            "pt": "KT88",
+            "pb": 379.29,
+            "kr": 400,
+            "st": "43",
+            "zp": "6.0",
+            "sl": "8",
+            "rl": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "power-only-el84-pentode",
+      "stimulus": "sin1k",
+      "frames": 4096,
+      "params": {
+        "dr": 0,
+        "tp": "Bypass",
+        "og": 0,
+        "iv": 2.828,
+        "nf": 3,
+        "os": "Power",
+        "pt": "EL84",
+        "pb": 329.696,
+        "kr": 270,
+        "st": "0",
+        "zp": "8.0",
+        "sl": "15",
+        "rl": 15
+      }
+    },
+    {
+      "id": "power-only-300b",
+      "stimulus": "sin1k",
+      "frames": 12288,
+      "params": {
+        "dr": 0,
+        "tp": "Bypass",
+        "og": 0,
+        "iv": 2.828,
+        "nf": 3,
+        "os": "SingleEnded",
+        "sd": "300B",
+        "sb": 400,
+        "sr": 1000,
+        "sp": "3.5",
+        "sl": "8",
+        "rl": 8
+      }
+    },
+    {
+      "id": "se-300b-feedback-step",
+      "stimulus": "sin1k",
+      "frames": 12288,
+      "params": {
+        "dr": -42,
+        "tp": "12AU7",
+        "og": 0,
+        "iv": 2.828,
+        "nf": 0,
+        "os": "SingleEnded",
+        "sd": "300B",
+        "sb": 400,
+        "sr": 1000,
+        "sp": "3.5",
+        "sl": "8",
+        "rl": 8
+      },
+      "events": [
+        {
+          "frame": 1024,
+          "params": { "nf": 3 }
+        }
+      ]
+    },
+    {
+      "id": "se-2a3-light-feedback",
+      "stimulus": "sin1k",
+      "frames": 76800,
+      "params": {
+        "dr": -42,
+        "tp": "12AU7",
+        "og": 0,
+        "iv": 2.828,
+        "nf": 6,
+        "os": "SingleEnded",
+        "sd": "2A3",
+        "sb": 300,
+        "sr": 750,
+        "sp": "2.5",
+        "sl": "8",
+        "rl": 8
+      }
     }
   ]
 }

@@ -117,7 +117,8 @@ Params makeParams(float input_volume = -30.0F, float tube = 2.0F, float bias = 0
                   float cathode_resistor = 270.0F, float screen_tap = 0.0F,
                   float primary_impedance = 2.0F, float speaker_load = 1.0F,
                   float actual_speaker_load = 8.0F, float safety_trim = 0.0F,
-                  float auto_gain_reduction = 1.0F) noexcept {
+                  float auto_gain_reduction = 1.0F, float se_tube = 0.0F, float se_b_plus = 400.0F,
+                  float se_cathode_resistor = 1000.0F, float se_primary_impedance = 1.0F) noexcept {
   return {input_volume,
           tube,
           bias,
@@ -137,7 +138,28 @@ Params makeParams(float input_volume = -30.0F, float tube = 2.0F, float bias = 0
           speaker_load,
           actual_speaker_load,
           safety_trim,
-          auto_gain_reduction};
+          auto_gain_reduction,
+          se_tube,
+          se_b_plus,
+          se_cathode_resistor,
+          se_primary_impedance};
+}
+
+Params makeSeParams(float feedback_db = 0.0F, float actual_load_ohm = 8.0F,
+                    float driver_tube = 2.0F, float se_tube = 0.0F, float primary = 1.0F) noexcept {
+  Params params = makeParams();
+  params.inputVolume = -42.0F;
+  params.tube = driver_tube;
+  params.outputTrim = 0.0F;
+  params.negativeFeedback = feedback_db;
+  params.outputStage = 2.0F;
+  params.speakerLoad = 1.0F;
+  params.actualSpeakerLoad = actual_load_ohm;
+  params.seTube = se_tube;
+  params.seBPlus = se_tube == 0.0F ? 400.0F : 300.0F;
+  params.seCathodeResistor = se_tube == 0.0F ? 1000.0F : 750.0F;
+  params.sePrimaryImpedance = primary;
+  return params;
 }
 
 std::array<double, 17> parameterValues(const Params &params) noexcept {
@@ -618,7 +640,7 @@ void testDescriptorSchemaPrepareAndTelemetryDeferral() {
   check(std::string_view(descriptor->typeName) == "TubeSimulatorPlugin",
         "descriptor type name matches");
   check(descriptor->paramsHash == Params::kHash, "descriptor hash matches parameter struct");
-  check(descriptor->paramsFloatCount == 20u, "descriptor exposes 20 Float32 parameters");
+  check(descriptor->paramsFloatCount == 24u, "descriptor exposes 24 Float32 parameters");
   check(descriptor->paramsByteCapacity == 0u, "descriptor has no structured parameter bytes");
   check(descriptor->objectSize == sizeof(Kernel), "descriptor object size matches kernel");
   check(descriptor->objectSize <= kKernelStorageBytes, "descriptor object fits engine storage");
@@ -1102,6 +1124,88 @@ void testSafetyReductionResetRule() {
   record.bias = 5.0F;
   check(commitAndSettle(harness, record) == 1.0,
         "a commit changing two values clears the reduction");
+
+  static_cast<void>(renderSafetyTone(harness, kSafetySettleBlocks, phase));
+  renderSafetySilence(harness, kSafetySettleBlocks);
+  check(harness.concrete().safetyReductionForTesting()[0] < 1.0,
+        "the reduction re-engaged before the cross-topology preset check");
+  Params cross_topology_preset = record;
+  cross_topology_preset.outputStage = 2.0F;
+  cross_topology_preset.seTube = 1.0F;
+  cross_topology_preset.seBPlus = 300.0F;
+  cross_topology_preset.seCathodeResistor = 750.0F;
+  check(commitAndSettle(harness, cross_topology_preset) == 1.0,
+        "a cross-topology preset retains the all-field safety reset semantics");
+}
+
+void testSafetyReductionIgnoresInactiveTopologyFields() {
+  const auto verify_inactive_change = [](const Params &initial, const Params &changed,
+                                         const char *topology) {
+    KernelHarness reference(kSafetySampleRate);
+    KernelHarness changed_harness(kSafetySampleRate);
+    reference.stageAndCommit(initial);
+    changed_harness.stageAndCommit(initial);
+    reference.reset();
+    changed_harness.reset();
+    std::uint32_t reference_phase = 0u;
+    std::uint32_t changed_phase = 0u;
+    static_cast<void>(renderSafetyTone(reference, kSafetySettleBlocks, reference_phase));
+    static_cast<void>(renderSafetyTone(changed_harness, kSafetySettleBlocks, changed_phase));
+    renderSafetySilence(reference, kSafetySettleBlocks);
+    renderSafetySilence(changed_harness, kSafetySettleBlocks);
+    const std::array<double, 3> engaged = changed_harness.concrete().safetyReductionForTesting();
+    check(engaged[0] < 1.0 && engaged[0] == engaged[1] && engaged[2] == 0.0, topology);
+    check(reference.concrete().safetyReductionForTesting() == engaged,
+          "the inactive-field comparison starts from identical safety attenuation");
+    const auto transition_before = changed_harness.concrete().feedbackTransitionForTesting();
+    const auto fault_before = changed_harness.concrete().faultStateForTesting();
+    const auto event_before = changed_harness.concrete().runtimeEventForTesting();
+
+    changed_harness.stageAndCommit(changed);
+    check(changed_harness.concrete().safetyReductionForTesting() == engaged,
+          "batched inactive fields preserve safety gain, target, and remaining frames");
+    check(changed_harness.concrete().feedbackTransitionForTesting() == transition_before &&
+              changed_harness.concrete().faultStateForTesting() == fault_before &&
+              changed_harness.concrete().runtimeEventForTesting() == event_before,
+          "batched inactive fields preserve transition, fault, and runtime event state");
+    const std::vector<float> probe = makeSignal(512u, 113u, 1.0e-6F);
+    check(render(reference, probe, {37u, 128u, 5u}) ==
+              render(changed_harness, probe, {37u, 128u, 5u}),
+          "batched inactive fields preserve attenuated audio exactly");
+    check(changed_harness.concrete().safetyReductionForTesting() == engaged &&
+              changed_harness.concrete().runtimeEventForTesting() == event_before,
+          "inactive-field audio leaves the safety attenuation and runtime event unchanged");
+  };
+
+  Params line = makeSafetyParams();
+  Params line_changed = line;
+  line_changed.powerTube = 3.0F;
+  line_changed.screenTap = 2.0F;
+  line_changed.seTube = 1.0F;
+  line_changed.seBPlus = 300.0F;
+  verify_inactive_change(line, line_changed,
+                         "Line safety attenuation engages before inactive fields change");
+
+  Params power = makeSafetyParams();
+  power.outputStage = 1.0F;
+  Params power_changed = power;
+  power_changed.seTube = 1.0F;
+  power_changed.seBPlus = 300.0F;
+  power_changed.seCathodeResistor = 750.0F;
+  power_changed.sePrimaryImpedance = 2.0F;
+  verify_inactive_change(power, power_changed,
+                         "Power safety attenuation engages before inactive SE fields change");
+
+  Params single_ended = makeSafetyParams();
+  single_ended.outputStage = 2.0F;
+  Params single_ended_changed = single_ended;
+  single_ended_changed.powerTube = 3.0F;
+  single_ended_changed.powerBPlus = 470.0F;
+  single_ended_changed.cathodeResistor = 500.0F;
+  single_ended_changed.screenTap = 2.0F;
+  single_ended_changed.primaryImpedance = 0.0F;
+  verify_inactive_change(single_ended, single_ended_changed,
+                         "SE safety attenuation engages before inactive Power fields change");
 }
 
 // The assumed load selects the measured speaker profile and fixes the turns ratio; the actual
@@ -1571,13 +1675,14 @@ bool parseFrameList(std::string_view source, std::vector<std::uint32_t> &values)
 
 Params paramsFromValues(const std::vector<float> &values) noexcept {
   if (values.size() == Params::kFloatCount) {
-    return {values[0],  values[1],  values[2],  values[3],  values[4],  values[5],  values[6],
-            values[7],  values[8],  values[9],  values[10], values[11], values[12], values[13],
-            values[14], values[15], values[16], values[17], values[18], values[19]};
+    return {values[0],  values[1],  values[2],  values[3],  values[4],  values[5],
+            values[6],  values[7],  values[8],  values[9],  values[10], values[11],
+            values[12], values[13], values[14], values[15], values[16], values[17],
+            values[18], values[19], values[20], values[21], values[22], values[23]};
   }
-  return {values[0], values[1], values[2], values[3], values[4], values[5], values[6],
-          values[7], values[8], values[9], 0.0F,      0.0F,      320.0F,    270.0F,
-          0.0F,      2.0F,      1.0F,      8.0F,      0.0F,      1.0F};
+  return {values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7],
+          values[8], values[9], 0.0F,      0.0F,      320.0F,    270.0F,    0.0F,      2.0F,
+          1.0F,      8.0F,      0.0F,      1.0F,      0.0F,      400.0F,    1000.0F,   1.0F};
 }
 
 bool parseParameterList(std::string_view source, std::vector<float> &values) {
@@ -2142,11 +2247,11 @@ void testFastKclScalarSimdDiagnostic() {
 
 void testPhaseCPowerTopologyAndStateRules() {
   using namespace effetune::dsp::tube_simulator_phase_c_generated;
-  check(kPowerProfiles.size() == 18u, "Phase C exposes all 18 power profiles");
+  check(kPowerProfiles.size() == 36u, "Phase C exposes all 36 power profiles");
   check(kSpeakerProfiles.size() == 4u, "Phase C exposes all four speaker profiles");
-  check(kPowerFeedbackRecords.size() == 432u, "Phase C exposes all 432 power feedback records");
+  check(kPowerFeedbackRecords.size() == 864u, "Phase C exposes all 864 power feedback records");
 
-  for (int power_tube = 0; power_tube < 2; ++power_tube) {
+  for (int power_tube = 0; power_tube < 4; ++power_tube) {
     for (int screen_tap = 0; screen_tap < 3; ++screen_tap) {
       for (int primary = 0; primary < 3; ++primary) {
         KernelHarness harness;
@@ -2215,22 +2320,89 @@ void testPhaseCPowerTopologyAndStateRules() {
           "EL34 quiescent plate dissipation stays inside the published rating");
   }
 
+  // The Ei-RC fixed-bias row is represented by an individual cathode-resistor DC equivalent. The
+  // data-derived fixed-screen drop must retain its 360 V / 270 V cathode-referenced terminals.
+  {
+    const auto &fixture = kAddedPowerTubeCanonicalDc[0];
+    KernelHarness quiescent(96000.0F);
+    quiescent.stageAndCommit(makeParams(-40.0F, 0.0F, 0.0F, 250.0F, 10.0F, 10.0F, 0.0F, 100.0F,
+                                        0.1F, 0.0F, 1.0F, 2.0F,
+                                        static_cast<float>(fixture.supplyGroundV), 483.8709677F,
+                                        0.0F, 1.0F, 1.0F, 8.0F, 0.0F, 0.0F));
+    const auto seeded = quiescent.concrete().powerDcStateForTesting(0);
+    check(std::abs(seeded[4] - 292.5) <= 1.0e-6 && seeded[7] == fixture.sourceIaA &&
+              seeded[8] == fixture.sourceIg2A,
+          "6L6GC reset seed uses the source-projected screen and zero-signal currents");
+    settlePowerQuiescentState(quiescent, 96000u);
+    const auto settled = quiescent.concrete().powerDcStateForTesting(0);
+    check(std::abs((settled[1] - settled[5]) - fixture.sourcePlateCathodeV) <= 0.05,
+          "6L6GC canonical anode settles on the published cathode-referenced voltage");
+    check(std::abs((settled[4] - settled[5]) - fixture.sourceScreenCathodeV) <= 0.05,
+          "6L6GC canonical screen settles on the published cathode-referenced voltage");
+    check(std::abs(settled[5] - 22.5) <= 0.15,
+          "6L6GC cathode-resistor equivalent retains the published grid bias magnitude");
+    check(std::abs(settled[7] - fixture.sourceIaA) <= 0.01 * fixture.sourceIaA &&
+              std::abs(settled[8] - fixture.sourceIg2A) <= 0.01 * fixture.sourceIg2A,
+          "6L6GC canonical currents reproduce the Ei-RC zero-signal row within one per cent");
+    check(quiescent.concrete().finiteFaultsForTesting() == 0u &&
+              quiescent.concrete().safetyLimitsForTesting() == 0u &&
+              quiescent.concrete().runtimeFiniteForTesting(),
+          "6L6GC fixed-screen solve remains finite without safety intervention");
+    check(quiescent.concrete().maximumDcResidualForTesting() <= 1.0e-9,
+          "6L6GC fixed-screen solve meets the Power DC residual gate");
+  }
+
+  // KT88's higher transconductance exposes any screen-current fixed point left outside the
+  // distributed-load Jacobian. The GEC 328 V / 328 V source point remains the LUT fit anchor. The
+  // 43% ABI tap and the measured winding DCR instead put the runtime screen near 331.24 V when the
+  // supply inversion constrains Vak to 328 V; all three primary choices must settle there.
+  for (float sample_rate : {88200.0F, 96000.0F}) {
+    const auto &fixture = kAddedPowerTubeCanonicalDc[1];
+    for (std::size_t primary = 0u; primary < 3u; ++primary) {
+      KernelHarness kt88(sample_rate);
+      kt88.stageAndCommit(makeParams(-40.0F, 0.0F, 0.0F, 250.0F, 10.0F, 10.0F, 0.0F, 100.0F, 0.1F,
+                                     0.0F, 1.0F, 3.0F, static_cast<float>(fixture.supplyGroundV),
+                                     400.0F, 2.0F, static_cast<float>(primary), 0.0F, 4.0F, 0.0F,
+                                     0.0F));
+      settlePowerQuiescentState(kt88, static_cast<std::uint32_t>(sample_rate));
+      const auto settled = kt88.concrete().powerDcStateForTesting(0);
+      check(std::abs((settled[1] - settled[5]) - fixture.sourcePlateCathodeV) <= 0.05 &&
+                std::abs((settled[2] - settled[5]) - fixture.sourcePlateCathodeV) <= 0.05,
+            "KT88 distributed anodes settle on the GEC cathode-referenced design point");
+      check(std::abs((settled[4] - settled[5]) - fixture.expectedRuntimeScreenCathodeV) <= 0.2 &&
+                std::abs(settled[5] - 34.8) <= 1.5,
+            "KT88 screen and cathode settle on the documented ABI projection");
+      check(std::abs(settled[7] - fixture.sourceIaA) <= 0.05 * fixture.sourceIaA &&
+                std::abs(settled[8] - fixture.sourceIg2A) <= 0.05 * fixture.sourceIg2A,
+            "KT88 distributed currents remain consistent with the GEC current-split model");
+      check(kt88.concrete().finiteFaultsForTesting() == 0u &&
+                kt88.concrete().safetyLimitsForTesting() == 0u &&
+                kt88.concrete().runtimeFiniteForTesting(),
+            "KT88 distributed solve remains finite without safety intervention");
+      check(kt88.concrete().maximumKclResidualForTesting() <= 1.0e-9 &&
+                kt88.concrete().maximumDcResidualForTesting() <= 1.0e-9,
+            "KT88 distributed solve meets the Power KCL and DC residual gates");
+    }
+  }
+
   // The normative DC point has to be a point on the valve tables, not only the seed the reset
   // writes. The earlier surrogate tables answered 21.6 mA where Mullard Issue 2 lists 62.5 mA, so
   // the operating point drifted away as soon as the branch ran. The same tables must also cut off:
   // below the composite control voltage the plate current is exactly zero, at every plate and
   // screen voltage, which is what makes a large signal clip on the valve instead of on a table end.
-  for (int power_tube = 0; power_tube < 2; ++power_tube) {
+  for (int power_tube = 0; power_tube < 4; ++power_tube) {
     const OutputTubeModel &model = kOutputTubeModels[static_cast<std::size_t>(power_tube)];
     check(model.inverseScreenAmplificationFactor > 0.0 &&
               model.inversePlateAmplificationFactor > 0.0,
           "Output-tube composite control voltage carries both amplification factors");
-    const auto &control_axis = power_tube == 0 ? kEl84ControlVoltageAxis : kEl34ControlVoltageAxis;
-    const auto &lut = power_tube == 0 ? kEl84LutBits : kEl34LutBits;
+    const auto &control_axis = kControlVoltageAxes[static_cast<std::size_t>(power_tube)];
+    const auto &lut = kOutputTubeLutBits[static_cast<std::size_t>(power_tube)];
     check(control_axis[0] == 0.0, "Output-tube control-voltage axis starts on the cut-off plane");
     bool cut_off_row_is_zero = true;
     for (std::size_t index = 0u;
-         index < kEl84PlateCathodeAxis.size() * kEl84ScreenCathodeAxis.size() * 2u; ++index) {
+         index < kPlateCathodeAxes[static_cast<std::size_t>(power_tube)].size() *
+                     kScreenCathodeAxes[static_cast<std::size_t>(power_tube)].size() * 2u;
+         ++index) {
       cut_off_row_is_zero = cut_off_row_is_zero && lut[index] == 0u;
     }
     check(cut_off_row_is_zero,
@@ -2365,6 +2537,220 @@ void testPhaseCPowerTopologyAndStateRules() {
     }
   }
   check(line_power_fields_zero, "Line telemetry keeps all 11 Power fields zero");
+}
+
+void testSingleEndedCoupledCircuitAndFeedback() {
+  using namespace effetune::dsp::tube_simulator_phase_c_generated;
+  check(kSeFeedbackRecords.size() == 144u,
+        "Phase C exposes all 144 independently measured SE feedback records");
+
+  constexpr std::array<double, 2> supply_resistance = {150.0, 120.0};
+  constexpr std::array<double, 2> winding_resistance = {120.0, 105.0};
+  for (int tube = 0; tube < 2; ++tube) {
+    for (int primary = 0; primary < 3; ++primary) {
+      for (int speaker = 0; speaker < 4; ++speaker) {
+        KernelHarness quiescent;
+        Params params = makeSeParams(0.0F,
+                                     speaker == 0   ? 4.0F
+                                     : speaker == 1 ? 8.0F
+                                     : speaker == 2 ? 15.0F
+                                                    : 16.0F,
+                                     0.0F, static_cast<float>(tube), static_cast<float>(primary));
+        params.speakerLoad = static_cast<float>(speaker);
+        quiescent.stageAndCommit(params);
+        const auto dc = quiescent.concrete().powerDcStateForTesting(0);
+        check(std::abs(dc[5] - dc[7] * params.seCathodeResistor) <= 1.0e-10 &&
+                  std::abs(dc[0] - (params.seBPlus - dc[7] * supply_resistance[tube])) <= 1.0e-10 &&
+                  std::abs(dc[1] - (dc[0] - dc[7] * winding_resistance[tube])) <= 1.0e-10,
+              "SE reset seed satisfies the cathode, supply, and winding DC path");
+        check(quiescent.concrete().maximumDcResidualForTesting() <= 1.0e-12,
+              "SE reset seed is the self-consistent tube DC solution");
+      }
+    }
+  }
+
+  KernelHarness calibration;
+  const Params calibrated = makeSeParams(6.0F, 8.0F, 2.0F, 0.0F, 1.0F);
+  calibration.stageAndCommit(calibrated);
+  const SeFeedbackRecord *expected_record = nullptr;
+  for (const SeFeedbackRecord &record : kSeFeedbackRecords) {
+    if (record.driverTube == 2u && record.seTube == 0u && record.primary == 1u &&
+        record.speakerLoad == 1u && record.family == 1u) {
+      expected_record = &record;
+      break;
+    }
+  }
+  check(expected_record != nullptr, "Phase C carries the selected SE feedback record");
+  const auto feedback = calibration.concrete().activeFeedbackCalibrationForTesting();
+  const double q6 = std::pow(10.0, 6.0 / 20.0) - 1.0;
+  check(expected_record != nullptr && feedback[2] == 1.0 && feedback[3] == 0.0 &&
+            feedback[4] == 0.0 && feedback[5] == 0.0 && feedback[6] == expected_record->a0 &&
+            feedback[7] == q6 / expected_record->a0 && feedback[8] == 1.0,
+        "SE feedback selects measured A0 and derives beta from the requested reduction");
+
+  KernelHarness load4;
+  KernelHarness load16;
+  load4.stageAndCommit(makeSeParams(0.0F, 4.0F, 0.0F));
+  load16.stageAndCommit(makeSeParams(0.0F, 16.0F, 0.0F));
+  settlePowerQuiescentState(load4, 96000u);
+  settlePowerQuiescentState(load16, 96000u);
+  const std::vector<float> excitation = makeSignal(4096u, 0u, 0.002F);
+  const std::vector<float> output4 = render(load4, excitation, {128u, 31u, 7u});
+  const std::vector<float> output16 = render(load16, excitation, {128u, 31u, 7u});
+  check(output4 != output16,
+        "nf=0 SE output changes when the actual speaker impedance reflected to the plate changes");
+  check(load4.concrete().powerDcStateForTesting(0)[1] !=
+            load16.concrete().powerDcStateForTesting(0)[1],
+        "actual speaker impedance participates in the running SE plate equation");
+  check(load4.concrete().maximumKclResidualForTesting() <= 1.0e-10 &&
+            load16.concrete().maximumKclResidualForTesting() <= 1.0e-10,
+        "coupled SE tube and transformer solves close KCL at nf=0");
+}
+
+void testInactiveOutputParametersDoNotReset() {
+  const auto verify_inactive_change = [](const Params &initial, const Params &changed,
+                                         const char *message) {
+    KernelHarness reference;
+    KernelHarness changed_harness;
+    reference.stageAndCommit(initial);
+    changed_harness.stageAndCommit(initial);
+    std::vector<float> prefix = makeSignal(128u, 0u, 0.01F);
+    reference.process(prefix, 128u);
+    prefix = makeSignal(128u, 0u, 0.01F);
+    changed_harness.process(prefix, 128u);
+    const auto resets_before = changed_harness.concrete().centralResetStateForTesting();
+    const auto transition_before = changed_harness.concrete().feedbackTransitionForTesting();
+    const auto fault_before = changed_harness.concrete().faultStateForTesting();
+    const auto event_before = changed_harness.concrete().runtimeEventForTesting();
+    changed_harness.stageAndCommit(changed);
+    check(changed_harness.concrete().centralResetStateForTesting() == resets_before &&
+              changed_harness.concrete().feedbackTransitionForTesting() == transition_before &&
+              changed_harness.concrete().faultStateForTesting() == fault_before &&
+              changed_harness.concrete().runtimeEventForTesting() == event_before,
+          message);
+    const std::vector<float> next = makeSignal(512u, 128u, 0.01F);
+    check(render(reference, next, {37u, 128u, 5u}) ==
+              render(changed_harness, next, {37u, 128u, 5u}),
+          "inactive output parameters leave the audio state and output unchanged");
+  };
+
+  Params line = makeParams();
+  Params line_changed = line;
+  line_changed.powerTube = 3.0F;
+  line_changed.screenTap = 2.0F;
+  line_changed.seTube = 1.0F;
+  verify_inactive_change(line, line_changed, "Line ignores inactive Power and SE reset fields");
+
+  Params power = makeParams();
+  power.outputStage = 1.0F;
+  Params power_changed = power;
+  power_changed.seTube = 1.0F;
+  verify_inactive_change(power, power_changed, "Power ignores the inactive SE tube field");
+
+  Params se = makeSeParams();
+  Params se_changed = se;
+  se_changed.powerTube = 3.0F;
+  se_changed.screenTap = 2.0F;
+  verify_inactive_change(se, se_changed, "SE ignores inactive Power tube and screen fields");
+}
+
+void testDriverBypassTransitionsResetDormantState() {
+  constexpr float sample_rate = 96000.0F;
+  const std::uint32_t fade_frames = static_cast<std::uint32_t>(std::ceil(sample_rate * 0.005F));
+  const std::uint32_t warmup_frames = static_cast<std::uint32_t>(std::ceil(sample_rate * 0.050F));
+  const std::uint32_t active_frames = warmup_frames + fade_frames;
+  const std::vector<std::uint32_t> partitions = {37u, 128u, 5u};
+
+  const auto active_state_matches = [](KernelHarness &left, KernelHarness &right) {
+    if (left.concrete().slowStateForTesting() != right.concrete().slowStateForTesting() ||
+        left.concrete().accumulatorForTesting() != right.concrete().accumulatorForTesting() ||
+        left.concrete().controlCurrentForTesting() != right.concrete().controlCurrentForTesting() ||
+        left.concrete().controlTargetsForTesting() != right.concrete().controlTargetsForTesting() ||
+        left.concrete().activeFeedbackCalibrationForTesting() !=
+            right.concrete().activeFeedbackCalibrationForTesting() ||
+        left.concrete().runtimeEventForTesting() != right.concrete().runtimeEventForTesting()) {
+      return false;
+    }
+    for (int channel = 0; channel < 2; ++channel) {
+      if (left.concrete().powerDcStateForTesting(channel) !=
+              right.concrete().powerDcStateForTesting(channel) ||
+          left.concrete().powerLtpStateForTesting(channel) !=
+              right.concrete().powerLtpStateForTesting(channel) ||
+          left.concrete().powerOutputStateForTesting(channel) !=
+              right.concrete().powerOutputStateForTesting(channel) ||
+          left.concrete().powerWindowStateForTesting(channel) !=
+              right.concrete().powerWindowStateForTesting(channel)) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  std::array<Params, 2> normal_params{};
+  normal_params[0] =
+      makeParams(-42.0F, 0.0F, 20.0F, 275.0F, 2.0F, 30.0F, 0.0F, 100.0F, 2.828F, 3.0F, 1.0F, 0.0F,
+                 329.696F, 270.0F, 0.0F, 2.0F, 2.0F, 15.0F, 0.0F, 0.0F);
+  normal_params[1] = makeSeParams(3.0F, 8.0F, 0.0F, 0.0F, 1.0F);
+  normal_params[1].inputVolume = -42.0F;
+  normal_params[1].outputTrim = 0.0F;
+  normal_params[1].autoGainReduction = 0.0F;
+
+  for (std::size_t topology = 0u; topology < normal_params.size(); ++topology) {
+    const Params normal = normal_params[topology];
+    Params bypass = normal;
+    bypass.tube = 3.0F;
+
+    KernelHarness transitioned(sample_rate);
+    transitioned.stageAndCommit(normal);
+    const std::vector<float> normal_history = makeSignal(fade_frames, 0u, 0.02F);
+    render(transitioned, normal_history, partitions);
+
+    transitioned.stageAndCommit(bypass);
+    check(transitioned.concrete().feedbackTransitionForTesting()[0] == 1u,
+          "driver-to-Bypass change begins the reset-class transition");
+    const std::vector<float> forward_fade = makeSignal(fade_frames, fade_frames, 0.02F);
+    render(transitioned, forward_fade, partitions);
+    KernelHarness fresh_bypass(sample_rate);
+    fresh_bypass.stageAndCommit(bypass);
+    const std::vector<float> forward_active = makeSignal(active_frames, fade_frames * 2u, 0.02F);
+    render(transitioned, forward_active, partitions);
+    render(fresh_bypass, forward_active, partitions);
+    check(transitioned.concrete().feedbackTransitionForTesting()[0] == 0u,
+          "driver-to-Bypass transition completes its 5+50+5 ms cycle");
+    check(active_state_matches(transitioned, fresh_bypass),
+          topology == 0u ? "Push-Pull Bypass state matches a fresh harness after driver removal"
+                         : "SE Bypass state matches a fresh harness after driver removal");
+    const std::vector<float> forward_probe =
+        makeSignal(256u, fade_frames * 2u + active_frames, 0.02F);
+    check(render(transitioned, forward_probe, partitions) ==
+              render(fresh_bypass, forward_probe, partitions),
+          topology == 0u ? "Push-Pull Bypass output matches a fresh harness after driver removal"
+                         : "SE Bypass output matches a fresh harness after driver removal");
+
+    transitioned.stageAndCommit(normal);
+    check(transitioned.concrete().feedbackTransitionForTesting()[0] == 1u,
+          "Bypass-to-driver change begins the reset-class transition");
+    const std::uint32_t reverse_phase = fade_frames * 2u + active_frames + 256u;
+    const std::vector<float> reverse_fade = makeSignal(fade_frames, reverse_phase, 0.02F);
+    render(transitioned, reverse_fade, partitions);
+    KernelHarness fresh_driver(sample_rate);
+    fresh_driver.stageAndCommit(normal);
+    const std::vector<float> reverse_active =
+        makeSignal(active_frames, reverse_phase + fade_frames, 0.02F);
+    render(transitioned, reverse_active, partitions);
+    render(fresh_driver, reverse_active, partitions);
+    check(transitioned.concrete().feedbackTransitionForTesting()[0] == 0u,
+          "Bypass-to-driver transition completes its 5+50+5 ms cycle");
+    check(active_state_matches(transitioned, fresh_driver),
+          topology == 0u ? "Push-Pull driver state matches a fresh harness after leaving Bypass"
+                         : "SE driver state matches a fresh harness after leaving Bypass");
+    const std::vector<float> reverse_probe =
+        makeSignal(256u, reverse_phase + fade_frames + active_frames, 0.02F);
+    check(render(transitioned, reverse_probe, partitions) ==
+              render(fresh_driver, reverse_probe, partitions),
+          topology == 0u ? "Push-Pull driver output matches a fresh harness after leaving Bypass"
+                         : "SE driver output matches a fresh harness after leaving Bypass");
+  }
 }
 
 void testEl34PhysicalObservation() {
@@ -2526,6 +2912,7 @@ int main(int argc, char **argv) {
   testSafetyReductionSurvivesResetAndFaultRecovery();
   testSafetyReductionFreezesWhenDisabled();
   testSafetyReductionResetRule();
+  testSafetyReductionIgnoresInactiveTopologyFields();
   testActualSpeakerLoadScalesTheNetwork();
 #if ET_TUBE_HAS_F64X2
   testSafetyReductionScalarSimdParity();
@@ -2535,6 +2922,9 @@ int main(int argc, char **argv) {
   testScalarSimdParity();
   testFastKclScalarSimdDiagnostic();
   testPhaseCPowerTopologyAndStateRules();
+  testSingleEndedCoupledCircuitAndFeedback();
+  testInactiveOutputParametersDoNotReset();
+  testDriverBypassTransitionsResetDormantState();
   testEl34PhysicalObservation();
   testSafeguardedPlateFallbackTortureCorner();
   testFiniteSafetyRecovery();

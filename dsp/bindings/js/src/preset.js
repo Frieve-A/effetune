@@ -254,6 +254,10 @@ const LEGACY_ECHOED_STRUCTURAL_KEYS_V1 = Object.freeze(['pluginType', 'ch', 'ib'
 // dropped for these two effects only.
 const LEGACY_ECHOED_ENABLED_EFFECTS_V1 = Object.freeze(['HornResonator', 'HornResonatorPlus']);
 
+// These analyzers persist their frequency-axis choice for display only. Validate
+// the known values before discarding it so other unknown parameters remain strict.
+const LEGACY_FREQUENCY_SCALE_EFFECTS_V1 = Object.freeze(['SpectrumAnalyzer', 'Spectrogram']);
+
 function dropEchoedStructuralKeysV1(parameters, effectType) {
   for (const key of LEGACY_ECHOED_STRUCTURAL_KEYS_V1) delete parameters[key];
   if (LEGACY_ECHOED_ENABLED_EFFECTS_V1.includes(effectType)) delete parameters.en;
@@ -339,6 +343,13 @@ function expandLegacyObjectArrayV1(parameters, {
 
 function prepareLegacyParametersV1(effectType, source) {
   const parameters = dropEchoedStructuralKeysV1({ ...source }, effectType);
+  if (LEGACY_FREQUENCY_SCALE_EFFECTS_V1.includes(effectType) &&
+      Object.hasOwn(parameters, 'sc')) {
+    if (parameters.sc !== 'log' && parameters.sc !== 'linear') {
+      throw new ValidationError(`Legacy ${effectType} contains invalid frequency scale display state.`);
+    }
+    delete parameters.sc;
+  }
   let processingEnabled = true;
   if (effectType === 'Matrix' && Object.hasOwn(parameters, 'mx')) {
     if (Object.hasOwn(parameters, 'matrixRoutes')) {

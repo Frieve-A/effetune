@@ -60,6 +60,7 @@ Creates colorful patterns that show how your music changes over time. Colors sho
 - **Points** - FFT size used for the display (256 to 16384)
   - Higher numbers: More frequency detail, but slower time updates
   - Lower numbers: Faster movement, but less frequency detail
+- **Frequency Scale** - **Log** gives low frequencies more display space; **Linear** places equal frequency widths at equal intervals.
 - The analyzer uses the average of the left and right channels. Mono input is analyzed directly.
 
 [Back to all effects](/dsp/effects/)

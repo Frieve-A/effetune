@@ -258,6 +258,8 @@
 
 تعرض القياسات التي حُفظت معها بيانات استجابة نبضية مخطط **استجابة النبضة** بعد تطبيع السعة في شاشة النتائج. يبدأ العرض من 0 إلى 10 ms بالنسبة إلى بداية الاستجابة المكتشفة. استخدم عجلة الماوس أو الأزرار لتكبير محور الزمن وتصغيره، واسحب المخطط أو استخدم شريط التمرير للتنقل عبر الزمن. يتغير المخطط عند اختيار نقطة قياس؛ أما **الكل (المتوسط)** فيعرض أول نقطة لها استجابة نبضية محفوظة ويبيّن اسمها أعلى المخطط. استخدم **تصدير الاستجابة النبضية (WAV)** أسفل المخطط لحفظ الاستجابة الكاملة غير المُطبَّعة للنقطة المعروضة كملف WAV أحادي القناة بفاصلة عائمة 32 بت وبمعدل أخذ عينات القياس.
 
+لمعاينة التردد والطور وتأخر المجموعة والنبضة لخط المعالجة النشط، مع ما يصل إلى أربعة مخارج واستجابات سماعات محفوظة، راجع [دليل Pipeline Analyzer](pipeline-analyzer.md).
+
 ## تركيبات التأثيرات الشائعة
 
 إليك بعض التركيبات الشائعة للتأثيرات لتعزيز تجربة الاستماع:
@@ -358,6 +360,7 @@
 | Lo-Fi | Vinyl Simulator | يقطع الإدخال في أخدود مُنمذج ثم يشغله بنموذج فيزيائي للإبرة | [تفاصيل](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | يحاكي تغيرات طبيعية ديناميكية في الصوت ناتجة عن حركات طفيفة في مخروط السماعة | [تفاصيل](plugins/modulation.md#doppler-distortion) |
 | Modulation | Pitch Shifter | يرفع أو يخفض درجة الموسيقى من دون تغيير السرعة | [تفاصيل](plugins/modulation.md#pitch-shifter) |
+| Modulation | Pitch Shifter HQ | يرفع أو يخفض الدرجة مع آثار طور أقل للاستماع الدقيق | [تفاصيل](plugins/modulation.md#pitch-shifter-hq) |
 | Modulation | Tremolo | تأثير تضمين يعتمد على مستوى الصوت | [تفاصيل](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | يضيف تمايلًا لطيفًا في الدرجة بطابع الشريط أو الأسطوانة | [تفاصيل](plugins/modulation.md#wow-flutter) |
 | Resonator | Horn Resonator | يحاكي رنين القرن بأبعاد قابلة للتخصيص | [تفاصيل](plugins/resonator.md#horn-resonator) |
@@ -367,6 +370,7 @@
 | Reverb | FDN Reverb | صدى Feedback Delay Network بنسيج صدى غني وكثيف | [تفاصيل](plugins/reverb.md#fdn-reverb) |
 | Reverb | IR Reverb | صدى التفاف يستخدم استجابات نبضية مستوردة للغرف والمعدات | [تفاصيل](plugins/reverb.md#ir-reverb) |
 | Reverb | RS Reverb | صدى random scattering بانتشار طبيعي | [تفاصيل](plugins/reverb.md#rs-reverb) |
+| Saturation | Bandwidth Extender | يولّد محتوى عالي التردد فوق تردد قطع مكتشف أو محدد | [تفاصيل](plugins/saturation.md#bandwidth-extender) |
 | Saturation | Dynamic Saturation | يحاكي الإزاحة غير الخطية لمخاريط السماعات | [تفاصيل](plugins/saturation.md#dynamic-saturation) |
 | Saturation | Exciter | يضيف محتوى توافقيًا لتعزيز الوضوح والحضور | [تفاصيل](plugins/saturation.md#exciter) |
 | Saturation | Hard Clipping | تأثير قص رقمي صلب | [تفاصيل](plugins/saturation.md#hard-clipping) |
@@ -374,7 +378,7 @@
 | Saturation | Multiband Saturation | يضيف دفئًا أو حدة بشكل منفصل للنطاقات المنخفضة والمتوسطة والعالية | [تفاصيل](plugins/saturation.md#multiband-saturation) |
 | Saturation | Saturation | يضيف غنى وطابعًا دافئًا بأسلوب تناظري | [تفاصيل](plugins/saturation.md#saturation) |
 | Saturation | Sub Synth | يمزج إشارة منخفضة التردد ومرشحة لتعزيز الجهير | [تفاصيل](plugins/saturation.md#sub-synth) |
-| Saturation | Tube Simulator | يحاكي ديناميكياً مراحل صمامية خطية ومضخم قدرة بدفع وسحب | [تفاصيل](plugins/saturation.md#tube-simulator) |
+| Saturation | Tube Simulator | يحاكي مراحل الخط الصمامية ومضخمات القدرة بالدفع والسحب أو أحادية الطرف بصمامات ثلاثية 300B/2A3 | [تفاصيل](plugins/saturation.md#tube-simulator) |
 | Spatial | Crossfeed Filter | مرشح crossfeed لسماعات الرأس للحصول على صورة ستيريو طبيعية | [تفاصيل](plugins/spatial.md#crossfeed-filter) |
 | Spatial | MS Matrix | يحول بين الستيريو وMid/Side لضبط المركز والأجواء | [تفاصيل](plugins/spatial.md#ms-matrix) |
 | Spatial | Multiband Balance | تحكم خماسي النطاق في توازن الستيريو حسب التردد | [تفاصيل](plugins/spatial.md#multiband-balance) |

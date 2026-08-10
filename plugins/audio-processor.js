@@ -42,6 +42,7 @@ const REQUIRED_FUNCTION_EXPORTS = [
     'et_telemetry_capacity',
     'et_telemetry_read',
     'et_pipeline_configure',
+    'et_pipeline_latency',
     'et_pipeline_process'
 ];
 
@@ -817,7 +818,21 @@ class DspEngineBinding {
         this._refreshViews();
         this._assertRange(ptr, bytes.byteLength, 'Pipeline descriptor');
         this.u8.set(bytes, ptr);
-        return this.exports.et_pipeline_configure(this.engine, ptr, bytes.byteLength);
+        this._preparing = true;
+        let status = ET_ERR_STATE;
+        try {
+            status = this.exports.et_pipeline_configure(this.engine, ptr, bytes.byteLength);
+        } finally {
+            this._refreshViews();
+            this._preparing = false;
+        }
+        this.getArenaViews();
+        return status;
+    }
+
+    pipelineLatency() {
+        if (!this.engine) return 0;
+        return this.exports.et_pipeline_latency(this.engine) >>> 0;
     }
 
     pipelineProcess(channelCount, frameCount, timeSeconds, masterBypass = false) {
@@ -944,6 +959,21 @@ function workletChannelSelection(channel, outputChannelCount) {
     return { mode, firstChannel, requiredChannels, availableChannels };
 }
 
+function workletRoutingSelection(channel, outputChannelCount, executionBypassed = false) {
+    const selection = workletChannelSelection(channel, outputChannelCount);
+    if (!selection) return null;
+    if (selection.availableChannels === selection.requiredChannels) return selection;
+    if (executionBypassed && selection.availableChannels === 1) {
+        return {
+            mode: 'single',
+            firstChannel: selection.firstChannel,
+            requiredChannels: 1,
+            availableChannels: 1
+        };
+    }
+    return null;
+}
+
 function pluginExecutionUnsupportedReason(plugin, sampleRate, outputChannelCount) {
     const capabilities = plugin?.executionCapabilities;
     if (!capabilities || typeof capabilities !== 'object') return null;
@@ -985,6 +1015,36 @@ const ET_DSP_PIPELINE_NODE_BYTES = 12;
 const ET_DSP_PIPELINE_MAX_NODES = 128;
 const AUDIO_PROCESSING_OVERLOAD_CONFIRM_QUANTA = 2;
 const AUDIO_PROCESSING_OVERLOAD_HEARTBEAT_SECONDS = 1;
+
+class WorkletSampleDelayLine {
+    constructor(channelCount, maximumDelaySamples) {
+        this.channelCount = channelCount;
+        this.length = maximumDelaySamples + 1;
+        this.samples = new Float32Array(channelCount * this.length);
+        this.writeIndices = new Uint32Array(channelCount);
+    }
+
+    reset() {
+        this.samples.fill(0);
+        this.writeIndices.fill(0);
+    }
+
+    processChannel(audio, offset, frameCount, channel, delaySamples) {
+        if (delaySamples === 0 || channel >= this.channelCount) return;
+        const length = this.length;
+        const channelOffset = channel * length;
+        let writeIndex = this.writeIndices[channel];
+        for (let frame = 0; frame < frameCount; frame++) {
+            this.samples[channelOffset + writeIndex] = audio[offset + frame];
+            let readIndex = writeIndex - delaySamples;
+            if (readIndex < 0) readIndex += length;
+            audio[offset + frame] = this.samples[channelOffset + readIndex];
+            writeIndex++;
+            if (writeIndex === length) writeIndex = 0;
+        }
+        this.writeIndices[channel] = writeIndex;
+    }
+}
 
 function encodeWorkletDspChannelSpec(channel, outputChannelCount = 2) {
     if (channel === null || channel === undefined) return outputChannelCount === 1 ? 0 : -1;
@@ -1050,6 +1110,8 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.processingOverloadConsecutiveQuanta = 0;
         this.processingOverloadActive = false;
         this.processingOverloadLastReportFrame = Number.NEGATIVE_INFINITY;
+        this.pipelineCpuFrames = 0;
+        this.pipelineCpuElapsedMs = 0;
 
         // WebAssembly DSP state. The legacy processor registry remains authoritative
         // until a parity-gated type has a live instance with current packed params.
@@ -1078,6 +1140,11 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspPipelineReady = false;
         this.dspPipelinePluginCount = 0;
         this.dspPipelineLatencySamples = 0;
+        this.dspPipelineLatencyCompensated = false;
+        this.dspLatencyPlan = null;
+        this.dspInstanceLatencySnapshot = new Map();
+        this.outputDelaySamples = 0;
+        this.outputDelayLine = null;
         this.dspExecutionGeneration = 0;
         this.dspExecutionStates = new Map();
         this.dspExecutionRuntimeFallbacks = new Set();
@@ -1288,6 +1355,22 @@ class PluginProcessor extends AudioWorkletProcessor {
                 case 'dspCleanupFailed':
                     this.cleanupDspFailures();
                     break;
+                case 'requestDspLatency':
+                    this.port.postMessage({
+                        type: 'dspLatencyResponse',
+                        requestId: data.requestId,
+                        samples: this.dspPipelineLatencySamples,
+                        compensated: this.dspPipelineLatencyCompensated
+                    });
+                    break;
+                case 'setOutputDelay':
+                    this.setOutputDelay(data.samples);
+                    this.port.postMessage({
+                        type: 'outputDelaySet',
+                        requestId: data.requestId,
+                        samples: this.outputDelaySamples
+                    });
+                    break;
                 case 'registerProcessor':
                     this._invalidatePowerSkipForMutation();
                     this.registerPluginProcessor(data.pluginType, data.processor);
@@ -1308,6 +1391,9 @@ class PluginProcessor extends AudioWorkletProcessor {
                     this._invalidatePowerSkipForMutation();
                     this.reorderPlugin(data.fromIndex, data.toIndex);
                     break;
+                case 'resetProcessingState':
+                    this.resetConfiguredProcessingState(data.requestId);
+                    break;
                 case 'reset':
                     this._invalidatePowerSkipForMutation();
                     this.clearAudioProcessingOverload();
@@ -1323,6 +1409,9 @@ class PluginProcessor extends AudioWorkletProcessor {
                     this.dspAssetStateReplayEpochs.clear();
                     this.dspDeferredAssetStages.clear();
                     this.masterBypass = false;
+                    this.resetDspLatencyPlan();
+                    this.setOutputDelay(0);
+                    this.publishDspPipelineLatency(0, false);
                     break;
                 case 'userActivity':
                     { // Block scope for const time
@@ -1515,6 +1604,42 @@ class PluginProcessor extends AudioWorkletProcessor {
         if (!wasmInstance) return true;
         if (!this.dspBinding) return false;
         return this.dspBinding.resetInstance(wasmInstance.id) === 0;
+    }
+
+    resetConfiguredProcessingState(requestId = null) {
+        let ok = true;
+        let error = null;
+        try {
+            if (this.dspLive && this.dspBinding) {
+                const status = this.dspBinding.reset();
+                if (status !== 0) throw new Error(`DSP reset failed with status ${status}`);
+            }
+            this.pluginContexts.clear();
+            this.currentFrame = 0;
+            this.processingDeadlineSequence = 0;
+            this.clearAudioProcessingOverload();
+            this.audioLevelMonitoring.lastInputActiveTime = 0;
+            this.audioLevelMonitoring.lastOutputActiveTime = 0;
+            this.audioLevelMonitoring.lastUserActivityTime = 0;
+            this.audioLevelMonitoring.isSleepMode = false;
+            this.combinedBuffer?.fill(0);
+            for (const buffer of this.busBuffers.values()) buffer.fill(0);
+            for (const action of this.dspLatencyPlan?.nodeActions?.values() || []) {
+                action.delayLine?.reset();
+            }
+            this.dspLatencyPlan?.outputDelayLine?.reset();
+            this.outputDelayLine?.reset();
+        } catch (resetError) {
+            ok = false;
+            error = resetError?.message || String(resetError);
+            console.error(`Configured processing-state reset failed: ${error}`);
+        }
+        this.port.postMessage({
+            type: 'processingStateReset',
+            requestId,
+            ok,
+            ...(error && { error })
+        });
     }
 
     _prepareAutomaticMonitoringState() {
@@ -2112,8 +2237,8 @@ class PluginProcessor extends AudioWorkletProcessor {
                 () => new Uint8Array(ET_DSP_TELEMETRY_BYTES)
             );
             this.reconcileDspInstances();
-            this.refreshDspPipeline();
             this.dspExecutionInitializing = false;
+            this.refreshDspPipeline();
             this.publishWasmOnlyExecutionStates();
             this.port.postMessage({
                 type: 'dspReady',
@@ -2179,7 +2304,8 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspBinding = null;
         this.dspLive = false;
         this.dspPipelineReady = false;
-        this.publishDspPipelineLatency(0);
+        this.resetDspLatencyPlan();
+        this.publishDspPipelineLatency(0, false);
         this.wasmKernels.clear();
         this.dspPacketPool = [];
         this.dspPendingInstanceDestroy = [];
@@ -2192,7 +2318,8 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspDeferredAssetStages.clear();
         this.dspLive = false;
         this.dspPipelineReady = false;
-        this.publishDspPipelineLatency(0);
+        this.resetDspLatencyPlan();
+        this.publishDspPipelineLatency(0, false);
         this.wasmInstances.clear();
         this.dspPendingInstanceDestroy = [];
         this.dspEngineNeedsCleanup = true;
@@ -2204,6 +2331,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             }
         }
         ++this.dspExecutionGeneration;
+        this.rebuildDspLatencyPlan();
         this.publishWasmOnlyExecutionStates(true);
         this.port.postMessage({ type: 'dspCleanupNeeded' });
     }
@@ -2809,11 +2937,13 @@ class PluginProcessor extends AudioWorkletProcessor {
                 true,
                 cached.replayEpoch
             );
+            this.refreshDspPipelineForLatencyChange();
             return false;
         }
         this.postAssetState(pluginId, slot,
             this.dspBinding.instanceAssetState(entry.id, slot), cached.operationRevision, true,
             cached.replayEpoch);
+        this.refreshDspPipelineForLatencyChange();
         return true;
     }
 
@@ -2842,6 +2972,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         const entry = this.wasmInstances.get(pluginId);
         if (entry && this.dspBinding) this.dspBinding.instanceAssetAbort(entry.id, slot);
         this.postAssetState(pluginId, slot, 0, operationRevision, false, replayEpoch);
+        this.refreshDspPipelineForLatencyChange();
     }
 
     isDspAssetWakeEligible(pluginId) {
@@ -2883,19 +3014,58 @@ class PluginProcessor extends AudioWorkletProcessor {
             this.audioLevelMonitoring.isSleepMode = false;
             this.powerPolicy.pendingConfigWake = true;
         }
-        if (changed && this.dspPipelineReady) this.updateDspPipelineLatency();
+        if (changed) this.refreshDspPipelineForLatencyChange();
         return preparing;
     }
 
-    refreshDspPipeline() {
+    captureDspInstanceLatencySnapshot() {
+        const snapshot = new Map();
+        if (!this.dspLive || !this.dspBinding) return snapshot;
+        for (const plugin of this.plugins) {
+            const entry = this.wasmInstances.get(plugin.id);
+            if (!entry?.ready) continue;
+            try {
+                snapshot.set(plugin.id, this.dspBinding.instanceLatency(entry.id) >>> 0);
+            } catch (error) {
+                this.reportDspFailure(`latency:${plugin.id}`, error?.message || String(error));
+            }
+        }
+        return snapshot;
+    }
+
+    dspInstanceLatencySnapshotsEqual(left, right) {
+        if (!(left instanceof Map) || left.size !== right.size) return false;
+        for (const [pluginId, samples] of right) {
+            if (left.get(pluginId) !== samples) return false;
+        }
+        return true;
+    }
+
+    refreshDspPipelineForLatencyChange() {
+        const snapshot = this.captureDspInstanceLatencySnapshot();
+        if (this.dspInstanceLatencySnapshotsEqual(this.dspInstanceLatencySnapshot, snapshot)) {
+            return false;
+        }
+        if (this.dspPipelineReady) {
+            this.refreshDspPipeline(snapshot);
+        } else {
+            this.rebuildDspLatencyPlan(snapshot);
+        }
+        return true;
+    }
+
+    refreshDspPipeline(latencySnapshot = this.captureDspInstanceLatencySnapshot()) {
         this.dspPipelineReady = false;
         this.dspPipelinePluginCount = 0;
         if (!this.dspLive || !this.dspBinding) {
-            this.publishDspPipelineLatency(0);
+            this.dspInstanceLatencySnapshot = new Map();
+            this.resetDspLatencyPlan();
+            this.publishDspPipelineLatency(0, false);
             return;
         }
 
-        this.updateDspPipelineLatency();
+        this.rebuildDspLatencyPlan(latencySnapshot);
+        if (this.masterBypass) return;
 
         const nodes = [];
         let insideSection = false;
@@ -2912,6 +3082,12 @@ class PluginProcessor extends AudioWorkletProcessor {
                 this.dspSampleRate,
                 this.outputChannelCount
             )) return;
+
+            const selection = workletRoutingSelection(
+                plugin.channel,
+                this.outputChannelCount
+            );
+            if (!selection) continue;
 
             const entry = this.wasmInstances.get(plugin.id);
             if (!entry?.ready) return;
@@ -2931,27 +3107,57 @@ class PluginProcessor extends AudioWorkletProcessor {
                 this.reportDspFailure('pipeline-configure', `status ${status}`);
                 return;
             }
+            this.adoptDspArena();
             this.dspPipelinePluginCount = nodes.length;
             this.dspPipelineReady = true;
+            this.publishDspPipelineLatency(this.dspBinding.pipelineLatency(), true);
         } catch (error) {
             this.reportDspFailure('pipeline-configure', error?.message || String(error));
         }
     }
 
-    publishDspPipelineLatency(samples) {
-        const normalized = Number.isInteger(samples) && samples > 0 ? samples : 0;
-        if (normalized === this.dspPipelineLatencySamples) return;
+    publishDspPipelineLatency(samples, compensated = false) {
+        const normalized = !this.masterBypass && Number.isInteger(samples) && samples > 0
+            ? samples
+            : 0;
+        const normalizedCompensated = !this.masterBypass && compensated === true;
+        if (normalized === this.dspPipelineLatencySamples &&
+            normalizedCompensated === this.dspPipelineLatencyCompensated) return;
         this.dspPipelineLatencySamples = normalized;
+        this.dspPipelineLatencyCompensated = normalizedCompensated;
         this.port.postMessage({
             type: 'dspLatency',
             samples: normalized,
             sampleRate: this.dspSampleRate || globalThis.sampleRate,
-            compensated: false
+            compensated: normalizedCompensated
         });
     }
 
-    updateDspPipelineLatency() {
-        const busLatency = [0, 0, 0, 0, 0];
+    resetDspLatencyPlan() {
+        this.dspLatencyPlan = null;
+    }
+
+    rebuildDspLatencyPlan(latencySnapshot = this.captureDspInstanceLatencySnapshot()) {
+        this.resetDspLatencyPlan();
+        this.dspInstanceLatencySnapshot = latencySnapshot;
+        if (!this.dspLive || !this.dspBinding || this.masterBypass) {
+            this.publishDspPipelineLatency(0, false);
+            return;
+        }
+
+        const channelCount = Number.isInteger(this.outputChannelCount) &&
+            this.outputChannelCount > 0 && this.outputChannelCount <= ET_DSP_MAX_CHANNELS
+            ? this.outputChannelCount
+            : 0;
+        if (channelCount === 0) {
+            this.publishDspPipelineLatency(0, false);
+            return;
+        }
+
+        const latency = Array.from({ length: 5 }, () => new Uint32Array(channelCount));
+        const hasContent = Array.from({ length: 5 }, () => new Uint8Array(channelCount));
+        hasContent[0].fill(1);
+        const nodeActions = new Map();
         let insideSection = false;
         let sectionEnabled = true;
         for (const plugin of this.plugins) {
@@ -2961,33 +3167,172 @@ class PluginProcessor extends AudioWorkletProcessor {
                 continue;
             }
             if (!plugin.enabled || (insideSection && !sectionEnabled)) continue;
-            if (pluginExecutionUnsupportedReason(
-                plugin,
-                this.dspSampleRate,
-                this.outputChannelCount
-            )) continue;
+            const executionBypassed = this.isPluginExecutionBypassed(plugin);
 
             const inputBus = plugin.inputBus;
             const outputBus = plugin.outputBus;
-            if (!Number.isInteger(inputBus) || inputBus < 0 || inputBus >= busLatency.length ||
-                !Number.isInteger(outputBus) || outputBus < 0 || outputBus >= busLatency.length) {
+            if (!Number.isInteger(inputBus) || inputBus < 0 || inputBus >= latency.length ||
+                !Number.isInteger(outputBus) || outputBus < 0 || outputBus >= latency.length) {
                 continue;
             }
-            const entry = this.wasmInstances.get(plugin.id);
-            let pluginLatency = 0;
-            if (entry?.ready) {
-                try {
-                    pluginLatency = this.dspBinding.instanceLatency(entry.id) >>> 0;
-                } catch (error) {
-                    this.reportDspFailure(`latency:${plugin.id}`, error?.message || String(error));
+            const selection = workletRoutingSelection(
+                plugin.channel,
+                channelCount,
+                executionBypassed
+            );
+            if (!selection) continue;
+            const pluginLatency = executionBypassed
+                ? 0
+                : (latencySnapshot.get(plugin.id) ?? 0);
+
+            const targets = new Uint8Array(channelCount);
+            const delays = new Uint32Array(channelCount);
+            let maximumDelay = 0;
+            const firstChannel = selection.firstChannel;
+            const endChannel = firstChannel + selection.requiredChannels;
+            for (let channel = firstChannel; channel < endChannel; channel++) {
+                const inputLatency = hasContent[inputBus][channel] ? latency[inputBus][channel] : 0;
+                const incomingLatency = inputLatency + pluginLatency;
+                if (!Number.isSafeInteger(incomingLatency) || incomingLatency > 0xffffffff) {
+                    console.error('DSP pipeline latency exceeds the supported sample range.');
+                    this.publishDspPipelineLatency(0, false);
+                    return;
+                }
+                if (inputBus === outputBus) {
+                    latency[outputBus][channel] = incomingLatency;
+                    hasContent[outputBus][channel] = 1;
+                    continue;
+                }
+                if (!hasContent[outputBus][channel]) {
+                    latency[outputBus][channel] = incomingLatency;
+                    hasContent[outputBus][channel] = 1;
+                    continue;
+                }
+
+                const destinationLatency = latency[outputBus][channel];
+                if (destinationLatency < incomingLatency) {
+                    const delay = incomingLatency - destinationLatency;
+                    targets[channel] = 1;
+                    delays[channel] = delay;
+                    maximumDelay = delay > maximumDelay ? delay : maximumDelay;
+                    latency[outputBus][channel] = incomingLatency;
+                } else if (incomingLatency < destinationLatency) {
+                    const delay = destinationLatency - incomingLatency;
+                    targets[channel] = 2;
+                    delays[channel] = delay;
+                    maximumDelay = delay > maximumDelay ? delay : maximumDelay;
                 }
             }
-            const routedLatency = busLatency[inputBus] + pluginLatency;
-            if (inputBus === outputBus || routedLatency > busLatency[outputBus]) {
-                busLatency[outputBus] = routedLatency;
+            if (maximumDelay > 0) {
+                nodeActions.set(plugin.id, {
+                    targets,
+                    delays,
+                    delayLine: new WorkletSampleDelayLine(channelCount, maximumDelay)
+                });
             }
         }
-        this.publishDspPipelineLatency(busLatency[0]);
+
+        let totalSamples = 0;
+        for (let channel = 0; channel < channelCount; channel++) {
+            if (hasContent[0][channel] && latency[0][channel] > totalSamples) {
+                totalSamples = latency[0][channel];
+            }
+        }
+        const outputDelays = new Uint32Array(channelCount);
+        let maximumOutputDelay = 0;
+        for (let channel = 0; channel < channelCount; channel++) {
+            outputDelays[channel] = totalSamples - (hasContent[0][channel] ? latency[0][channel] : 0);
+            maximumOutputDelay = outputDelays[channel] > maximumOutputDelay
+                ? outputDelays[channel]
+                : maximumOutputDelay;
+        }
+        this.dspLatencyPlan = {
+            nodeActions,
+            outputDelays,
+            outputDelayLine: maximumOutputDelay > 0
+                ? new WorkletSampleDelayLine(channelCount, maximumOutputDelay)
+                : null,
+            totalSamples
+        };
+        this.publishDspPipelineLatency(totalSamples, true);
+    }
+
+    applyDspMergeCompensation(pluginId, processMode, pairStartChannel, singleChannelIndex,
+        outputBuffer, incomingBuffer, channelCount, frameCount) {
+        const action = this.dspLatencyPlan?.nodeActions.get(pluginId);
+        if (!action) return;
+
+        let firstChannel = 0;
+        let routedChannels = channelCount;
+        if (processMode === 'pair') {
+            firstChannel = pairStartChannel;
+            routedChannels = 2;
+        } else if (processMode === 'single') {
+            firstChannel = singleChannelIndex;
+            routedChannels = 1;
+        }
+        for (let offset = 0; offset < routedChannels; offset++) {
+            const channel = firstChannel + offset;
+            const target = action.targets[channel];
+            if (target === 1) {
+                action.delayLine.processChannel(
+                    outputBuffer,
+                    channel * frameCount,
+                    frameCount,
+                    channel,
+                    action.delays[channel]
+                );
+            } else if (target === 2) {
+                action.delayLine.processChannel(
+                    incomingBuffer,
+                    offset * frameCount,
+                    frameCount,
+                    channel,
+                    action.delays[channel]
+                );
+            }
+        }
+    }
+
+    applyDspFinalOutputCompensation(mainBusBuffer, channelCount, frameCount) {
+        const plan = this.dspLatencyPlan;
+        if (!plan?.outputDelayLine) return;
+        for (let channel = 0; channel < channelCount; channel++) {
+            const delay = plan.outputDelays[channel];
+            if (delay > 0) {
+                plan.outputDelayLine.processChannel(
+                    mainBusBuffer,
+                    channel * frameCount,
+                    frameCount,
+                    channel,
+                    delay
+                );
+            }
+        }
+    }
+
+    setOutputDelay(samples) {
+        const normalized = Number.isInteger(samples) && samples > 0 && samples <= 0xffffffff
+            ? samples
+            : 0;
+        this.outputDelaySamples = normalized;
+        this.outputDelayLine = normalized > 0
+            ? new WorkletSampleDelayLine(this.outputChannelCount, normalized)
+            : null;
+    }
+
+    applyOutputDelay(output, channelCount, frameCount) {
+        if (!this.outputDelayLine || this.outputDelaySamples === 0) return;
+        const channels = output.length < channelCount ? output.length : channelCount;
+        for (let channel = 0; channel < channels; channel++) {
+            this.outputDelayLine.processChannel(
+                output[channel],
+                0,
+                frameCount,
+                channel,
+                this.outputDelaySamples
+            );
+        }
     }
 
     restoreDspPipelineInput(combinedBuffer, totalSize, input, channelCount, frameCount) {
@@ -3106,6 +3451,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 target[frame] = combinedBuffer[offset + frame];
             }
         }
+        this.applyOutputDelay(output, outputChannelCount, blockSize);
 
         const threshold = 2 * this.audioLevelMonitoring._silenceThresholdAmplitude;
         let hasOutputSignal = false;
@@ -3155,6 +3501,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             }
         }
         ++this.dspExecutionGeneration;
+        this.rebuildDspLatencyPlan();
         this.publishWasmOnlyExecutionStates(true);
         this.port.postMessage({ type: 'dspCleanupNeeded' });
     }
@@ -3307,10 +3654,21 @@ class PluginProcessor extends AudioWorkletProcessor {
             : { state: 'pending', reason: null };
     }
 
+    isPluginExecutionBypassed(plugin) {
+        return requiresWasmExecution(plugin)
+            ? this.wasmOnlyExecutionState(plugin).state !== 'active'
+            : pluginExecutionUnsupportedReason(
+                plugin,
+                this.dspSampleRate,
+                this.outputChannelCount
+            ) !== null;
+    }
+
     publishWasmOnlyExecutionStates(force = false, engineStopped = false) {
         const activeIds = new Set();
         for (const plugin of this.plugins) {
-            if (!requiresWasmExecution(plugin)) continue;
+            const reportsOptionalDspState = plugin?.wasmParams instanceof Float32Array;
+            if (!requiresWasmExecution(plugin) && !reportsOptionalDspState) continue;
             activeIds.add(plugin.id);
             const status = this.wasmOnlyExecutionState(plugin, engineStopped);
             const key = `${status.state}:${status.reason || ''}:${this.dspExecutionGeneration}`;
@@ -3649,6 +4007,28 @@ class PluginProcessor extends AudioWorkletProcessor {
             : Date.now();
     }
 
+    finishPipelineCpuMeasurement(startedAt, blockSize) {
+        const sampleRate = globalThis.sampleRate;
+        if (!Number.isFinite(startedAt) || !Number.isInteger(blockSize) || blockSize <= 0 ||
+            !Number.isFinite(sampleRate) || sampleRate <= 0) return;
+
+        const elapsedMs = this.audioProcessingClockNow() - startedAt;
+        if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return;
+
+        this.pipelineCpuFrames += blockSize;
+        this.pipelineCpuElapsedMs += elapsedMs;
+
+        if (this.pipelineCpuFrames < sampleRate) return;
+
+        const measuredAudioMs = this.pipelineCpuFrames * 1000 / sampleRate;
+        this.port.postMessage({
+            type: 'pipelineCpuUsage',
+            average: this.pipelineCpuElapsedMs * 100 / measuredAudioMs
+        });
+        this.pipelineCpuFrames = 0;
+        this.pipelineCpuElapsedMs = 0;
+    }
+
     finishAudioProcessingDeadline(startedAt, sequence, blockSize, processedPlugin) {
         if (!this.isAudioProcessingOverloadMonitoringActive() ||
             !processedPlugin || this.masterBypass ||
@@ -3686,8 +4066,18 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
     }
 
-    // Optimized process method
     process(inputs, outputs, parameters) {
+        const inputBlockSize = inputs?.[0]?.[0]?.length;
+        const outputBlockSize = outputs?.[0]?.[0]?.length;
+        const blockSize = inputBlockSize || outputBlockSize || 128;
+        const startedAt = this.audioProcessingClockNow();
+        const keepAlive = this.processPipeline(inputs, outputs, parameters);
+        this.finishPipelineCpuMeasurement(startedAt, blockSize);
+        return keepAlive;
+    }
+
+    // Optimized pipeline processing method
+    processPipeline(inputs, outputs, parameters) {
         const processingDeadlineSequence = ++this.processingDeadlineSequence;
         this.flushDeferredDspAssetStages();
         this.pollDspAssetStates();
@@ -4090,13 +4480,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             if (!plugin.enabled || (insideSection && !activeSectionEnabled)) {
                 continue;
             }
-            const executionBypassed = requiresWasmExecution(plugin)
-                ? this.wasmOnlyExecutionState(plugin).state !== 'active'
-                : pluginExecutionUnsupportedReason(
-                    plugin,
-                    this.dspSampleRate,
-                    this.outputChannelCount
-                ) !== null;
+            const executionBypassed = this.isPluginExecutionBypassed(plugin);
 
             // Get the compiled processor function for this plugin type
             // Unsupported execution modes still use the normal channel and bus
@@ -4158,7 +4542,11 @@ class PluginProcessor extends AudioWorkletProcessor {
             let singleChannelIndex = -1;// Channel index (0-based) for single channel
 
             // Use the same normalized selection as capability checks and full-pipeline routing.
-            const channelSelection = workletChannelSelection(targetChannelSpec, outputChannelCount);
+            const channelSelection = workletRoutingSelection(
+                targetChannelSpec,
+                outputChannelCount,
+                executionBypassed
+            );
             if (!channelSelection) {
                 // The specifier does not name any channel layout. Leave processMode
                 // at 'skip' so the plugin is bypassed instead of throwing out of
@@ -4168,7 +4556,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                     this.reportedInvalidChannels.add(invalidChannelKey);
                     console.warn(`Invalid channel specifier "${targetChannelSpec}" for plugin ${plugin.id}`);
                 }
-            } else if (channelSelection.availableChannels === channelSelection.requiredChannels) {
+            } else {
                 if (channelSelection.mode === 'all') {
                     processMode = 'all';
                     numProcessingChannels = channelSelection.requiredChannels;
@@ -4179,20 +4567,6 @@ class PluginProcessor extends AudioWorkletProcessor {
                 } else {
                     processMode = 'single';
                     singleChannelIndex = channelSelection.firstChannel;
-                    numProcessingChannels = 1;
-                }
-            }
-
-            if (executionBypassed && processMode === 'skip') {
-                const selection = workletChannelSelection(
-                    targetChannelSpec,
-                    outputChannelCount
-                );
-                if (selection?.availableChannels === 1) {
-                    // Preserve pass-through routing for the available half of an
-                    // unsupported stereo pair when the output is one channel short.
-                    processMode = 'single';
-                    singleChannelIndex = selection.firstChannel;
                     numProcessingChannels = 1;
                 }
             }
@@ -4352,6 +4726,16 @@ class PluginProcessor extends AudioWorkletProcessor {
 
              // --- 9e. Apply Result to Output Bus Buffer ---
              if (inputBus !== outputBus) {
+                 this.applyDspMergeCompensation(
+                     plugin.id,
+                     processMode,
+                     pairStartChannel,
+                     singleChannelIndex,
+                     outputBuffer,
+                     finalResultBuffer,
+                     outputChannelCount,
+                     blockSize
+                 );
                  // Additive mixing: Add the processed result to the output buffer
                  if (processMode === 'all') {
                      // Optimized: Use dedicated mixing buffer for better performance
@@ -4463,6 +4847,11 @@ class PluginProcessor extends AudioWorkletProcessor {
         const mainBusBuffer = busBuffers.get(0); // Get the final state of the main bus
 
         if (mainBusBuffer) {
+            this.applyDspFinalOutputCompensation(
+                mainBusBuffer,
+                outputChannelCount,
+                blockSize
+            );
             // Determine the number of channels to actually copy to the physical output
             const outputChannelsToWrite = Math.min(output.length, outputChannelCount);
 
@@ -4485,6 +4874,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                     console.warn(`Source offset ${srcOffset} out of bounds for mainBusBuffer (length ${mainBusBuffer.length}) when writing output channel ${ch}.`);
                 }
             }
+            this.applyOutputDelay(output, outputChannelCount, blockSize);
         } else {
             // Should not happen if bus 0 is always initialized. Fallback: zero out physical output.
             console.error("Main bus (0) buffer not found at the end of processing!");

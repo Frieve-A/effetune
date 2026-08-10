@@ -1,0 +1,69 @@
+{
+  "formatVersion": 1,
+  "type": "TubeSimulatorPlugin",
+  "id": "power-kt88-distributed",
+  "stimulus": "sin1k",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 2048,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 9,
+  "seed": "0xeffe7a57",
+  "params": {
+    "dr": -30,
+    "tp": "12AU7",
+    "bi": 0,
+    "pv": 250,
+    "sz": 10,
+    "su": 10,
+    "og": 39,
+    "mx": 100,
+    "iv": 2.828,
+    "nf": 0,
+    "os": "Line",
+    "pt": "EL84",
+    "pb": 320,
+    "kr": 270,
+    "st": "0",
+    "zp": "8.0",
+    "sl": "8",
+    "rl": 8,
+    "sg": 0,
+    "ag": true,
+    "sd": "300B",
+    "sb": 400,
+    "sr": 1000,
+    "sp": "3.5",
+    "fr": true
+  },
+  "events": [
+    {
+      "frame": 128,
+      "params": {
+        "dr": -48,
+        "tp": "12AX7",
+        "og": 0,
+        "iv": 2.828,
+        "nf": 4,
+        "os": "Power",
+        "pt": "KT88",
+        "pb": 379.29,
+        "kr": 400,
+        "st": "43",
+        "zp": "6.0",
+        "sl": "8",
+        "rl": 8
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "a415ce15d2c11bd0be299469802cfaba3e48c735276c6b2a678ebde329e50275",
+  "outputFloats": 4096,
+  "byteLength": 16384,
+  "binary": "case-010.f32"
+}

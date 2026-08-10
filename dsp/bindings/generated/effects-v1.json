@@ -5745,7 +5745,7 @@
           "name": "inputVolume",
           "type": "number",
           "count": 1,
-          "default": -55.9648,
+          "default": -44.0059,
           "unit": "dB",
           "minimum": -96,
           "maximum": 0
@@ -5758,7 +5758,8 @@
           "values": [
             "12AX7",
             "12AT7",
-            "12AU7"
+            "12AU7",
+            "Bypass"
           ]
         },
         {
@@ -5801,7 +5802,7 @@
           "name": "outputTrim",
           "type": "number",
           "count": 1,
-          "default": 4.626,
+          "default": -7.372,
           "unit": "dB",
           "minimum": -48,
           "maximum": 48
@@ -5822,7 +5823,7 @@
           "default": 2.828,
           "unit": "Vpk",
           "minimum": 0.1,
-          "maximum": 20
+          "maximum": 300
         },
         {
           "name": "negativeFeedback",
@@ -5840,7 +5841,8 @@
           "default": "Power",
           "values": [
             "Line",
-            "Power"
+            "Power",
+            "SingleEnded"
           ]
         },
         {
@@ -5850,7 +5852,9 @@
           "default": "EL84",
           "values": [
             "EL84",
-            "EL34"
+            "EL34",
+            "6L6GC",
+            "KT88"
           ]
         },
         {
@@ -5928,6 +5932,45 @@
           "type": "boolean",
           "count": 1,
           "default": true
+        },
+        {
+          "name": "seTube",
+          "type": "string",
+          "count": 1,
+          "default": "300B",
+          "values": [
+            "300B",
+            "2A3"
+          ]
+        },
+        {
+          "name": "seBPlus",
+          "type": "number",
+          "count": 1,
+          "default": 400,
+          "unit": "V",
+          "minimum": 250,
+          "maximum": 450
+        },
+        {
+          "name": "seCathodeResistor",
+          "type": "number",
+          "count": 1,
+          "default": 1000,
+          "unit": "Ohm",
+          "minimum": 700,
+          "maximum": 1300
+        },
+        {
+          "name": "sePrimaryImpedance",
+          "type": "string",
+          "count": 1,
+          "default": "3.5",
+          "values": [
+            "2.5",
+            "3.5",
+            "5.0"
+          ]
         }
       ],
       "seeded": false,
@@ -6113,7 +6156,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "827d402d2571e31e79f94b91a5618c183aaa8ac6f39d8570e84751b08ac0c3d8",
-    "privateLayoutSha256": "2cc628230da003412da1fa01648a056d60d69de773bf7c016d9fdd1ac7618707"
+    "publicCatalogSha256": "439c969d1ef80e1aeab6c524f458481eecb2a6fe8bc3e46ea277920e9f21bb1a",
+    "privateLayoutSha256": "549215a20bcacd90050b30e85696b79ea816710a3c5cfe03f4493f6966528c06"
   }
 }

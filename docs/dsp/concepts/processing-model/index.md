@@ -16,7 +16,8 @@ Catalog latency badges are qualitative declarations. Python
 runtime aggregate. `Chain.latency_samples()` in Python and `chain.latencySamples()`
 in JavaScript report the same aggregate without opening a stream, so offline
 `process()` output can be phase-aligned.
-The AudioWorklet wrapper does not expose a latency getter.
+`EffeTuneNode.latencySamples` exposes the cached real-time aggregate. Creation and
+awaited `setParam()` or `reset()` calls update it before returning.
 
 ## Source-generating effects
 

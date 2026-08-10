@@ -258,6 +258,8 @@ EffeTune 2.1.0에서는 카탈로그 스키마 v3를 사용하는 음악 라이�
 
 임펄스 응답 데이터가 저장된 측정은 결과 화면에 정규화된 **임펄스 응답** 그래프를 표시합니다. 초기 범위는 감지된 시작점을 0 ms로 한 0~10 ms입니다. 마우스 휠이나 버튼으로 시간축을 확대·축소하고, 그래프를 끌거나 슬라이더를 사용해 시간 방향으로 스크롤할 수 있습니다. 측정 지점을 선택하면 그래프도 바뀌며, **전체(평균)**에서는 임펄스 응답이 저장된 첫 번째 지점을 그래프 위에 표시하고 해당 응답을 보여 줍니다. 그래프 아래의 **임펄스 응답 내보내기 (WAV)**를 사용하면 표시 중인 지점의 전체 응답을 정규화하지 않고 측정 샘플링 주파수의 모노 32비트 부동 소수점 WAV로 저장할 수 있습니다.
 
+현재 파이프라인의 주파수, 위상, 그룹 지연, 임펄스 응답을 최대 네 개 출력과 저장된 스피커 응답까지 포함해 확인하는 방법은 [Pipeline Analyzer 가이드](pipeline-analyzer.md)를 참조하세요.
+
 ## 일반적인 이펙트 조합
 
 다음은 청취 경험을 향상시키기 위한 인기 있는 이펙트 조합입니다:
@@ -362,6 +364,7 @@ EffeTune 2.1.0에서는 카탈로그 스키마 v3를 사용하는 음악 라이�
 | Lo-Fi | Vinyl Simulator | 입력을 모델링한 홈에 커팅한 뒤 물리적 스타일러스 모델로 재생 | [세부 정보](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | 미세한 스피커 콘 움직임으로 인한 자연스럽고 동적인 사운드 변화를 시뮬레이션 | [세부 정보](plugins/modulation.md#doppler-distortion) |
 | Modulation | Pitch Shifter | 템포를 바꾸지 않고 음악의 피치를 올리거나 내림 | [세부 정보](plugins/modulation.md#pitch-shifter) |
+| Modulation | Pitch Shifter HQ | 위상 아티팩트를 줄이면서 피치를 올리거나 내림 | [세부 정보](plugins/modulation.md#pitch-shifter-hq) |
 | Modulation | Tremolo | 볼륨 기반 모듈레이션 이펙트 | [세부 정보](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | 테이프나 레코드 같은 은은한 피치 흔들림으로 빈티지한 느낌 추가 | [세부 정보](plugins/modulation.md#wow-flutter) |
 | Resonator | Horn Resonator | 조절 가능한 치수의 혼 공명 시뮬레이션 | [세부 정보](plugins/resonator.md#horn-resonator) |
@@ -371,6 +374,7 @@ EffeTune 2.1.0에서는 카탈로그 스키마 v3를 사용하는 음악 라이�
 | Reverb | FDN Reverb | 풍부하고 조밀한 리버브 질감을 만드는 Feedback Delay Network 리버브 | [세부 정보](plugins/reverb.md#fdn-reverb) |
 | Reverb | IR Reverb | 가져온 공간·장비 임펄스 응답을 사용하는 컨볼루션 리버브 | [세부 정보](plugins/reverb.md#ir-reverb) |
 | Reverb | RS Reverb | 자연스러운 확산을 갖춘 랜덤 스캐터링 리버브 | [세부 정보](plugins/reverb.md#rs-reverb) |
+| Saturation | Bandwidth Extender | 감지하거나 지정한 컷오프 위에 고주파 성분 생성 | [세부 정보](plugins/saturation.md#bandwidth-extender) |
 | Saturation | Dynamic Saturation | 스피커 콘의 비선형 변위를 시뮬레이션 | [세부 정보](plugins/saturation.md#dynamic-saturation) |
 | Saturation | Exciter | 명료도와 존재감을 높이는 하모닉 성분 추가 | [세부 정보](plugins/saturation.md#exciter) |
 | Saturation | Hard Clipping | 디지털 하드 클리핑 이펙트 | [세부 정보](plugins/saturation.md#hard-clipping) |
@@ -378,7 +382,7 @@ EffeTune 2.1.0에서는 카탈로그 스키마 v3를 사용하는 음악 라이�
 | Saturation | Multiband Saturation | 저역, 중역, 고역에 따뜻함이나 엣지를 따로 추가 | [세부 정보](plugins/saturation.md#multiband-saturation) |
 | Saturation | Saturation | 아날로그풍의 따뜻한 풍성함과 캐릭터를 추가 | [세부 정보](plugins/saturation.md#saturation) |
 | Saturation | Sub Synth | 저역 보강을 위해 필터 처리한 저주파 신호를 믹스 | [세부 정보](plugins/saturation.md#sub-synth) |
-| Saturation | Tube Simulator | 진공관 라인단과 푸시풀 파워 앰프를 동적으로 모델링 | [세부 정보](plugins/saturation.md#tube-simulator) |
+| Saturation | Tube Simulator | 진공관 라인단과 푸시풀 또는 300B/2A3 싱글 엔디드 트라이오드 파워 앰프를 모델링 | [세부 정보](plugins/saturation.md#tube-simulator) |
 | Spatial | Crossfeed Filter | 자연스러운 스테레오 이미지를 위한 헤드폰 크로스피드 필터 | [세부 정보](plugins/spatial.md#crossfeed-filter) |
 | Spatial | MS Matrix | 중앙과 주변감을 조정하기 위해 스테레오와 Mid/Side를 상호 변환 | [세부 정보](plugins/spatial.md#ms-matrix) |
 | Spatial | Multiband Balance | 5밴드 주파수 의존 스테레오 밸런스 제어 | [세부 정보](plugins/spatial.md#multiband-balance) |

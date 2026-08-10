@@ -128,11 +128,13 @@ node.unsubscribe(callback: TelemetryCallback): boolean
 node.setParam(effectId: string, parameterName: string, value: unknown): Promise<void>
 node.reset(): Promise<void>
 node.close(): void
+node.latencySamples: number
 node.droppedTelemetryFrames: number
 ```
 
-Import `EffeTuneNode` from `@effetune/dsp/worklet`. It has no latency getter and
-does not accept scheduled frame events. See
+Import `EffeTuneNode` from `@effetune/dsp/worklet`. The `latencySamples` getter
+is refreshed by creation and awaited mutations; the wrapper does not accept scheduled
+frame events. See
 [Compatibility](/dsp/reference/compatibility/#analyzers-and-telemetry) for decoded
 telemetry frame fields. Asset-configuration parameters listed under
 [Streaming and events](/dsp/concepts/streaming-and-events/) cannot be changed on an

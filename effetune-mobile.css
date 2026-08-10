@@ -929,6 +929,8 @@ body.layout-mobile .plugin-parameter-ui .parameter-row input[type="range"] {
 }
 
 body.layout-mobile .plugin-parameter-ui .parameter-row input[type="number"],
+body.layout-mobile .pipeline-analyzer-panel input[type='number'],
+body.layout-mobile .pipeline-analyzer-panel select,
 body.layout-mobile .plugin-parameter-ui .parameter-row input[type="text"],
 body.layout-mobile .plugin-parameter-ui select,
 body.layout-mobile .routing-dialog-row select,

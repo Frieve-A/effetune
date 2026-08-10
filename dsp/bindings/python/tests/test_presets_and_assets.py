@@ -446,6 +446,41 @@ class PresetAndAssetTests(unittest.TestCase):
         self.assertEqual(chain.effects[0].parameters["ratio"], 4)
         self.assertTrue(report.warnings)
 
+    def test_legacy_analyzer_frequency_scale_display_state_is_validated_and_discarded(
+        self,
+    ) -> None:
+        for name in ("Spectrum Analyzer", "Spectrogram"):
+            for scale in ("log", "linear"):
+                with self.subTest(name=name, scale=scale):
+                    chain, _ = effetune.Chain.from_legacy_preset(
+                        {"pipeline": [{"name": name, "parameters": {"sc": scale}}]}
+                    )
+                    self.assertNotIn("sc", chain.effects[0].parameters)
+            with self.subTest(name=name, scale="invalid"):
+                with self.assertRaisesRegex(
+                    effetune.ValidationError,
+                    r"invalid frequency scale display state",
+                ):
+                    effetune.Chain.from_legacy_preset(
+                        {
+                            "pipeline": [
+                                {"name": name, "parameters": {"sc": "invalid"}}
+                            ]
+                        }
+                    )
+            with self.subTest(name=name, parameter="mystery"):
+                with self.assertRaises(effetune.ValidationError):
+                    effetune.Chain.from_legacy_preset(
+                        {
+                            "pipeline": [
+                                {
+                                    "name": name,
+                                    "parameters": {"sc": "log", "mystery": 1},
+                                }
+                            ]
+                        }
+                    )
+
     def test_legacy_null_channel_preserves_stereo_and_unsupported_routing_fails(self) -> None:
         chain, _ = effetune.Chain.from_legacy_preset(
             {

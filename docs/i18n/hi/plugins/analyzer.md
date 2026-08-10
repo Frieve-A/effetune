@@ -85,6 +85,7 @@ displayed waveform captured points को time order में जोड़त�
 - **Points** - display के लिए उपयोग होने वाला FFT size (256 से 16384)
   - अधिक numbers: अधिक frequency detail, लेकिन time updates धीमे
   - कम numbers: तेज़ movement, लेकिन कम frequency detail
+- **Frequency Scale** - **Log** कम आवृत्तियों को display पर अधिक जगह देता है; **Linear** समान आवृत्ति चौड़ाइयों को समान अंतराल पर दिखाता है।
 - analyzer left और right channels का average उपयोग करता है। Mono input सीधे analyze होता है।
 
 ## Spectrum Analyzer
@@ -113,6 +114,7 @@ displayed waveform captured points को time order में जोड़त�
 - **Points** - display nearby frequencies को कितनी बारीकी से अलग करता है (256 से 16384)
   - अधिक numbers: अधिक frequency detail, updates धीमे
   - कम numbers: तेज़ updates, कम frequency detail
+- **Frequency Scale** - **Log** कम आवृत्तियों को display पर अधिक जगह देता है; **Linear** समान आवृत्ति चौड़ाइयों को समान अंतराल पर दिखाता है।
 - analyzer left और right channels का average उपयोग करता है। Mono input सीधे analyze होता है।
 
 ### इन टूल का उपयोग करने के मज़ेदार तरीके

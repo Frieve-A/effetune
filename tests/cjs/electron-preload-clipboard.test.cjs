@@ -335,6 +335,11 @@ test('preload exposes listener registration wrappers', () => {
   harness.listeners.get('open-effect-pipeline-view')({});
   api.onOpenLibraryView(() => calls.push(['onOpenLibraryView']));
   harness.listeners.get('open-library-view')({});
+  const unsubscribePipelineAnalyzer = api.onSetPipelineAnalyzerOpen(open => {
+    calls.push(['onSetPipelineAnalyzerOpen', open]);
+  });
+  harness.listeners.get('set-pipeline-analyzer-open')({}, true);
+  harness.listeners.get('set-pipeline-analyzer-open')({}, 'not-a-boolean');
   api.onExitMiniPlayer(() => calls.push(['onExitMiniPlayer']));
   harness.listeners.get('exit-mini-player')({});
   api.onToggleMiniPlayer(() => calls.push(['onToggleMiniPlayer']));
@@ -359,6 +364,8 @@ test('preload exposes listener registration wrappers', () => {
   );
   unsubscribeOpenPreset();
   assert.equal(harness.listeners.has('open-preset-file'), false);
+  unsubscribePipelineAnalyzer();
+  assert.equal(harness.listeners.has('set-pipeline-analyzer-open'), false);
 
   assert.deepEqual(calls, [
     ['onExportPreset'],
@@ -382,6 +389,8 @@ test('preload exposes listener registration wrappers', () => {
     ['onStartDoubleBlindTest'],
     ['onOpenEffectPipelineView'],
     ['onOpenLibraryView'],
+    ['onSetPipelineAnalyzerOpen', true],
+    ['onSetPipelineAnalyzerOpen', false],
     ['onExitMiniPlayer'],
     ['onToggleMiniPlayer'],
     ['onAddMusicFolder'],

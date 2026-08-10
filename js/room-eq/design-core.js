@@ -11,6 +11,15 @@ const IMPULSE_PREVIEW_MAX_FREQUENCY = 20000;
 const GROUP_DELAY_REFERENCE_FREQUENCY = 1000;
 const QUALITY_WARNING_FILTER_ACCURACY = 'filterAccuracy';
 const QUALITY_WARNING_IMPULSE_RESPONSE_REQUIRED = 'impulseResponseRequired';
+const LOW_PHASE_DFT_WORK_BUDGET = 8_000_000;
+const LOW_PHASE_SCALE_STEPS = [1, 0.5, 0.25];
+const MAX_LOW_PHASE_EDGE_ENERGY_RATIO = 0.002;
+const LOW_PHASE_SUBSONIC_CLOSURE_HZ = 20;
+const LOW_PHASE_INACTIVE_RMS_TOLERANCE = 0.00025;
+const LOW_PHASE_INACTIVE_P95_TOLERANCE = 0.00075;
+const LOW_PHASE_ACTIVE_ABSOLUTE_TOLERANCE = 0.0001;
+const LOW_PHASE_ACTIVE_P95_ABSOLUTE_TOLERANCE = 0.00075;
+const LOW_PHASE_ACTIVE_RELATIVE_TOLERANCE = 0.02;
 const analysisCache = new Map();
 const synthesisPlanCache = new Map();
 const designCache = new Map();
@@ -81,6 +90,30 @@ function unwrapPhaseFrom(phases, first) {
         if (difference > Math.PI) offset -= 2 * Math.PI;
         else if (difference < -Math.PI) offset += 2 * Math.PI;
         output[index] += offset;
+    }
+    return output;
+}
+
+function unwrapPhaseAround(phases, anchor) {
+    const output = Float64Array.from(phases);
+    let offset = 0;
+    for (let index = anchor + 1; index < output.length; index += 1) {
+        const current = output[index] + offset;
+        const difference = current - output[index - 1];
+        if (difference > Math.PI) offset -= 2 * Math.PI;
+        else if (difference < -Math.PI) offset += 2 * Math.PI;
+        output[index] += offset;
+    }
+    for (let index = anchor - 1; index >= 0; index -= 1) {
+        let value = output[index];
+        const difference = value - output[index + 1];
+        if (difference > Math.PI) value -= 2 * Math.PI * Math.ceil(
+            (difference - Math.PI) / (2 * Math.PI)
+        );
+        else if (difference < -Math.PI) value += 2 * Math.PI * Math.ceil(
+            (-difference - Math.PI) / (2 * Math.PI)
+        );
+        output[index] = value;
     }
     return output;
 }
@@ -191,11 +224,57 @@ function reduceSpectrumToLogGrid(real, imag, sampleRate, fftSize, frequencies) {
     return output;
 }
 
-function analyzeImpulse(impulse, contextRate, frequencies) {
-    const cacheable = typeof impulse.measurementId === 'string' && impulse.measurementId &&
-        Number.isSafeInteger(impulse.pointId);
+function impulseDataDigest(data) {
+    const scratch = new DataView(new ArrayBuffer(4));
+    let first = 2166136261;
+    let second = 0;
+    for (let index = 0; index < data.length; index += 1) {
+        scratch.setFloat32(0, data[index], true);
+        for (let byteIndex = 0; byteIndex < 4; byteIndex += 1) {
+            const value = scratch.getUint8(byteIndex);
+            first = Math.imul(first ^ value, 16777619);
+            second += value;
+            second += second << 10;
+            second ^= second >>> 6;
+        }
+    }
+    second += second << 3;
+    second ^= second >>> 11;
+    second += second << 15;
+    return `${data.length}:${first >>> 0}:${second >>> 0}`;
+}
+
+function impulseSourceIdentity(measurement, impulse) {
+    const point = (measurement?.points || []).find(candidate =>
+        candidate.pointId === impulse.pointId);
+    return [
+        impulse.measurementId || measurement?.id || null,
+        measurement?.lastModified || null,
+        measurement?.timestamp || null,
+        impulse.pointId,
+        point?.lastModified || null,
+        point?.timestamp || null,
+        impulse.onsetIndex,
+        impulseDataDigest(impulse.data)
+    ];
+}
+
+function magnitudeSpectrum(analysis) {
+    if (analysis.spectrumMagnitude) return analysis.spectrumMagnitude;
+    const input = new Float64Array(analysis.fftSize);
+    input.set(analysis.samples);
+    const spectrum = realTransform(input);
+    analysis.spectrumMagnitude = Float64Array.from(
+        spectrum.real,
+        (real, bin) => Math.hypot(real, spectrum.imag[bin])
+    );
+    return analysis.spectrumMagnitude;
+}
+
+function analyzeImpulse(impulse, contextRate, frequencies, sourceIdentity) {
+    const cacheable = sourceIdentity !== null;
     const cacheKey = cacheable
-        ? `${impulse.measurementId}:${impulse.pointId}:${contextRate}:${impulse.sampleRate}:` +
+        ? `${JSON.stringify(sourceIdentity)}:${contextRate}:${impulse.sampleRate}:` +
             `${impulse.data.length}:${impulse.refScale ?? 1}`
         : '';
     const cached = cacheable ? analysisCache.get(cacheKey) : null;
@@ -216,11 +295,16 @@ function analyzeImpulse(impulse, contextRate, frequencies) {
     const input = new Float64Array(fftSize);
     input.set(samples);
     const spectrum = realTransform(input);
+    const spectrumMagnitude = Float64Array.from(
+        spectrum.real,
+        (real, bin) => Math.hypot(real, spectrum.imag[bin])
+    );
     const analysis = {
         samples,
         onsetIndex,
         fftSize,
         directCache: new Map(),
+        spectrumMagnitude,
         magnitude: reduceSpectrumToLogGrid(
             spectrum.real,
             spectrum.imag,
@@ -272,8 +356,17 @@ function directSpectrum(analysis, sampleRate, directWindowMs, synthesisFrequenci
     }
     const result = {
         magnitude: interpolateValues(sourceFrequencies.subarray(1), magnitude.subarray(1), synthesisFrequencies),
+        fullMagnitude: interpolateValues(
+            sourceFrequencies.subarray(1),
+            magnitudeSpectrum(analysis).subarray(1),
+            synthesisFrequencies
+        ),
         phase: interpolateValues(sourceFrequencies.subarray(1), unwrapPhase(phase).subarray(1), synthesisFrequencies),
-        phaseCorrectionCache: new Map()
+        phaseCorrectionCache: new Map(),
+        lowPhaseCorrectionCache: new Map(),
+        samples: analysis.samples,
+        onsetIndex: analysis.onsetIndex,
+        sampleRate
     };
     analysis.directCache.set(cacheKey, result);
     if (analysis.directCache.size > 8) analysis.directCache.delete(analysis.directCache.keys().next().value);
@@ -443,10 +536,250 @@ function smoothSynthesisValues(values, frequencies, config) {
     );
 }
 
-function directPhaseCorrection(direct, frequencies, config, fftSize) {
+function lowPhaseClosureWeight(frequency, low) {
+    if (frequency <= 0) return 0;
+    if (frequency >= low) return 1;
+    const position = frequency / low;
+    return 0.5 - 0.5 * Math.cos(Math.PI * position);
+}
+
+function lowPhaseCorrectionGate(frequency, low) {
+    if (frequency <= low) return 0;
+    const upper = low * 2 ** (1 / 3);
+    if (frequency >= upper) return 1;
+    const position = Math.log2(frequency / low) * 3;
+    return 0.5 - 0.5 * Math.cos(Math.PI * position);
+}
+
+function frequencyDependentLowSpectrum(
+    direct,
+    frequencies,
+    config,
+    high
+) {
+    if (!direct.samples || !Number.isSafeInteger(direct.onsetIndex)) return null;
+    const low = config.lowFrequency;
+    if (low >= high) return null;
+    const cacheKey = [
+        'spectrum',
+        low,
+        high,
+        config.directWindowMs,
+        config.taps,
+        config.sampleRate,
+        frequencies.length
+    ].join(':');
+    const cached = direct.lowPhaseCorrectionCache?.get(cacheKey);
+    if (cached) return cached;
+
+    let first = 0;
+    while (first < frequencies.length && frequencies[first] < low) first += 1;
+    let anchor = first;
+    while (anchor < frequencies.length && frequencies[anchor] < high) anchor += 1;
+    if (anchor >= frequencies.length || anchor <= first) return null;
+
+    const magnitude = Float64Array.from(direct.magnitude);
+    const wrappedPhase = Float64Array.from(direct.phase);
+    const coverage = new Float64Array(frequencies.length);
+    coverage[anchor] = 1;
+    const onset = direct.onsetIndex;
+    const sampleRate = direct.sampleRate;
+    const start = onset - Math.round(sampleRate * 0.001) > 0
+        ? onset - Math.round(sampleRate * 0.001)
+        : 0;
+    const availableWindow = (direct.samples.length - onset) / sampleRate;
+    const directWindow = config.directWindowMs / 1000;
+    let coverageLimited = false;
+
+    for (let index = first; index < anchor; index += 1) {
+        const frequency = frequencies[index];
+        const requestedWindow = directWindow * high / frequency;
+        const windowLimited = requestedWindow > availableWindow;
+        let window = requestedWindow;
+        if (window > availableWindow) window = availableWindow;
+        if (window <= 0) continue;
+        const fadeSamples = Math.max(1, Math.floor(window * sampleRate));
+        const end = Math.min(direct.samples.length, onset + fadeSamples);
+        let real = 0;
+        let imaginary = 0;
+        const omega = 2 * Math.PI * frequency / sampleRate;
+        for (let sampleIndex = start; sampleIndex < end; sampleIndex += 1) {
+            let gain = 1;
+            if (sampleIndex >= onset) {
+                const position = (sampleIndex - onset) / fadeSamples;
+                gain = 0.5 + 0.5 * Math.cos(Math.PI * position);
+            }
+            const sample = direct.samples[sampleIndex] * gain;
+            const phase = omega * sampleIndex;
+            real += sample * Math.cos(phase);
+            imaginary -= sample * Math.sin(phase);
+        }
+        magnitude[index] = Math.hypot(real, imaginary);
+        wrappedPhase[index] = Math.atan2(imaginary, real);
+        coverage[index] = window < requestedWindow ? window / requestedWindow : 1;
+        if (windowLimited) coverageLimited = true;
+    }
+
+    const phase = unwrapPhaseAround(wrappedPhase, anchor);
+    const result = {
+        first,
+        anchor,
+        magnitude,
+        phase,
+        coverage,
+        coverageLimited
+    };
+    direct.lowPhaseCorrectionCache?.set(cacheKey, result);
+    if (direct.lowPhaseCorrectionCache?.size > 8) {
+        direct.lowPhaseCorrectionCache.delete(
+            direct.lowPhaseCorrectionCache.keys().next().value
+        );
+    }
+    return result;
+}
+
+function frequencyDependentLowPhaseAnalysis(direct, frequencies, config, fftSize) {
+    if (!config.lowFrequencyPhaseExtension) return null;
+    const high = Math.min(
+        phaseCorrectionLowFrequency(config),
+        config.highFrequency,
+        config.sampleRate * 0.45
+    );
+    const spectrum = frequencyDependentLowSpectrum(
+        direct,
+        frequencies,
+        config,
+        high
+    );
+    if (!spectrum) return null;
+    const cacheKey = [
+        'delay',
+        config.lowFrequency,
+        high,
+        config.directWindowMs,
+        config.smoothing,
+        config.taps,
+        config.sampleRate,
+        config.highFrequency,
+        fftSize
+    ].join(':');
+    const cached = direct.lowPhaseCorrectionCache?.get(cacheKey);
+    if (cached) return cached;
+
+    const fixed = directPhaseAnalysis(direct, frequencies, config, fftSize);
+    const floor = fixed.floor;
+    const physicalMagnitude = Float64Array.from(
+        direct.fullMagnitude || spectrum.magnitude,
+        magnitude => magnitude > floor ? magnitude : floor
+    );
+    const measuredMinimumPhase = minimumPhaseForMagnitude(physicalMagnitude, fftSize);
+    const hybridTotal = unwrapPhaseAround(spectrum.phase, spectrum.anchor);
+    const onsetDelay = direct.onsetIndex / direct.sampleRate;
+    const totalAnchorPhase = hybridTotal[spectrum.anchor] +
+        2 * Math.PI * frequencies[spectrum.anchor] * onsetDelay;
+    const totalResidual = Float64Array.from(frequencies, (frequency, index) =>
+        hybridTotal[index] + 2 * Math.PI * frequency * onsetDelay - totalAnchorPhase);
+    const smoothedTotalResidual = smoothSynthesisValues(totalResidual, frequencies, config);
+    const hybridWrappedExcess = Float64Array.from(
+        spectrum.phase,
+        (phase, index) => phase - measuredMinimumPhase[index]
+    );
+    const hybridExcess = unwrapPhaseAround(hybridWrappedExcess, spectrum.anchor);
+    const anchorPhase = hybridExcess[spectrum.anchor] +
+        2 * Math.PI * frequencies[spectrum.anchor] * onsetDelay;
+    const residual = Float64Array.from(frequencies, (frequency, index) =>
+        hybridExcess[index] + 2 * Math.PI * frequency * onsetDelay - anchorPhase);
+    const smoothedResidual = smoothSynthesisValues(residual, frequencies, config);
+
+    const intervalDelays = new Float64Array(spectrum.anchor + 1);
+    const hybridIntervalDelays = new Float64Array(spectrum.anchor + 1);
+    const totalIntervalDelays = new Float64Array(spectrum.anchor + 1);
+    const fixedBlend = new Float64Array(spectrum.anchor + 1);
+    const reliability = new Float64Array(spectrum.anchor + 1);
+    const blendStart = high / 2 ** (1 / 3);
+    for (let index = spectrum.first + 1; index <= spectrum.anchor; index += 1) {
+        const deltaOmega = 2 * Math.PI * (frequencies[index] - frequencies[index - 1]);
+        const hybridDelay = deltaOmega === 0
+            ? 0
+            : -(smoothedResidual[index] - smoothedResidual[index - 1]) / deltaOmega;
+        const totalDelay = deltaOmega === 0
+            ? 0
+            : -(smoothedTotalResidual[index] - smoothedTotalResidual[index - 1]) /
+                deltaOmega;
+        const midpoint = Math.sqrt(frequencies[index - 1] * frequencies[index]);
+        let blend = 0;
+        if (midpoint > blendStart) {
+            let position = Math.log2(midpoint / blendStart) * 3;
+            if (position > 1) position = 1;
+            blend = 0.5 - 0.5 * Math.cos(Math.PI * position);
+        }
+        hybridIntervalDelays[index] = hybridDelay;
+        totalIntervalDelays[index] = totalDelay;
+        fixedBlend[index] = blend;
+        intervalDelays[index] = hybridDelay * (1 - blend) +
+            fixed.intervalDelays[index] * blend;
+        const lowMagnitude = spectrum.magnitude[index - 1] < spectrum.magnitude[index]
+            ? spectrum.magnitude[index - 1]
+            : spectrum.magnitude[index];
+        const magnitudeRatio = lowMagnitude / floor;
+        const magnitudeReliability = magnitudeRatio < 1
+            ? magnitudeRatio * magnitudeRatio
+            : 1;
+        const timeReliability = spectrum.coverage[index - 1] < spectrum.coverage[index]
+            ? spectrum.coverage[index - 1]
+            : spectrum.coverage[index];
+        reliability[index] = magnitudeReliability * timeReliability;
+    }
+    const result = {
+        first: spectrum.first,
+        anchor: spectrum.anchor,
+        intervalDelays,
+        hybridIntervalDelays,
+        totalIntervalDelays,
+        fixedBlend,
+        reliability,
+        magnitude: spectrum.magnitude,
+        floor,
+        coverageLimited: spectrum.coverageLimited
+    };
+    direct.lowPhaseCorrectionCache?.set(cacheKey, result);
+    if (direct.lowPhaseCorrectionCache?.size > 8) {
+        direct.lowPhaseCorrectionCache.delete(
+            direct.lowPhaseCorrectionCache.keys().next().value
+        );
+    }
+    return result;
+}
+
+function lowPhaseDftWork(directs, frequencies, config, high) {
+    const directWindow = config.directWindowMs / 1000;
+    let work = 0;
+    for (const direct of directs) {
+        if (!direct.samples || !Number.isSafeInteger(direct.onsetIndex)) continue;
+        const preroll = direct.onsetIndex - Math.max(
+            0,
+            direct.onsetIndex - Math.round(direct.sampleRate * 0.001)
+        );
+        const sourceWindow = (direct.samples.length - direct.onsetIndex) /
+            direct.sampleRate;
+        for (const frequency of frequencies) {
+            if (frequency < config.lowFrequency) continue;
+            if (frequency >= high) break;
+            let window = directWindow * high / frequency;
+            if (window > sourceWindow) window = sourceWindow;
+            if (window <= 0) continue;
+            work += preroll + Math.max(1, Math.floor(window * direct.sampleRate));
+            if (work > LOW_PHASE_DFT_WORK_BUDGET) return work;
+        }
+    }
+    return work;
+}
+
+function directPhaseAnalysis(direct, frequencies, config, fftSize) {
     const low = phaseCorrectionLowFrequency(config);
     const high = Math.min(config.highFrequency, config.sampleRate * 0.45);
     const cacheKey = [
+        'analysis',
         low,
         high,
         config.directWindowMs,
@@ -499,22 +832,55 @@ function directPhaseCorrection(direct, frequencies, config, fftSize) {
     const residual = Float64Array.from(frequencies, (frequency, index) =>
         excess[index] - (intercept + slope * 2 * Math.PI * frequency));
     const smoothedResidual = smoothSynthesisValues(residual, frequencies, config);
+    const intervalDelays = new Float64Array(frequencies.length);
+    const limit = config.directWindowMs / 1000;
+    for (let index = 1; index < frequencies.length; index += 1) {
+        const deltaOmega = 2 * Math.PI * (frequencies[index] - frequencies[index - 1]);
+        let delay = deltaOmega === 0
+            ? 0
+            : -(smoothedResidual[index] - smoothedResidual[index - 1]) / deltaOmega;
+        if (delay > limit) delay = limit;
+        else if (delay < -limit) delay = -limit;
+        intervalDelays[index] = delay;
+    }
+    const result = {
+        first,
+        low,
+        high,
+        floor,
+        slope,
+        intercept,
+        intervalDelays
+    };
+    direct.phaseCorrectionCache?.set(cacheKey, result);
+    if (direct.phaseCorrectionCache?.size > 8) {
+        direct.phaseCorrectionCache.delete(direct.phaseCorrectionCache.keys().next().value);
+    }
+    return result;
+}
+
+function directPhaseCorrection(direct, frequencies, config, fftSize) {
+    const analysis = directPhaseAnalysis(direct, frequencies, config, fftSize);
+    const { first, low, high } = analysis;
+    const cacheKey = [
+        'correction',
+        low,
+        high,
+        config.directWindowMs,
+        config.smoothing,
+        config.sampleRate,
+        fftSize
+    ].join(':');
+    const cached = direct.phaseCorrectionCache?.get(cacheKey);
+    if (cached) return cached;
     const phase = new Float64Array(frequencies.length);
-    let previousFrequency = frequencies[first] || low;
-    let previousResidual = smoothedResidual[first] || 0;
     for (let index = first + 1; index < frequencies.length; index += 1) {
         if (frequencies[index] > high) {
             phase[index] = phase[index - 1];
             continue;
         }
-        const deltaOmega = 2 * Math.PI * (frequencies[index] - previousFrequency);
-        let delay = deltaOmega === 0 ? 0 : -(smoothedResidual[index] - previousResidual) / deltaOmega;
-        const limit = config.directWindowMs / 1000;
-        if (delay > limit) delay = limit;
-        else if (delay < -limit) delay = -limit;
-        phase[index] = phase[index - 1] - delay * deltaOmega;
-        previousFrequency = frequencies[index];
-        previousResidual = smoothedResidual[index];
+        const deltaOmega = 2 * Math.PI * (frequencies[index] - frequencies[index - 1]);
+        phase[index] = phase[index - 1] - analysis.intervalDelays[index] * deltaOmega;
     }
     for (let index = 0; index < phase.length; index += 1) {
         phase[index] *= correctionWeight(
@@ -529,6 +895,158 @@ function directPhaseCorrection(direct, frequencies, config, fftSize) {
         direct.phaseCorrectionCache.delete(direct.phaseCorrectionCache.keys().next().value);
     }
     return phase;
+}
+
+function consensusLowPhaseCorrection(
+    target,
+    directs,
+    upperCorrection,
+    alignmentGroupDelayPerAmount,
+    frequencies,
+    config,
+    fftSize
+) {
+    if (!config.lowFrequencyPhaseExtension) {
+        return { phase: null, reason: 'notRequested' };
+    }
+    const high = Math.min(
+        phaseCorrectionLowFrequency(config),
+        config.highFrequency,
+        config.sampleRate * 0.45
+    );
+    const workSources = directs.includes(target) ? directs : [target, ...directs];
+    if (lowPhaseDftWork(workSources, frequencies, config, high) > LOW_PHASE_DFT_WORK_BUDGET) {
+        return { phase: null, reason: 'dftWorkBudget' };
+    }
+    const targetAnalysis = frequencyDependentLowPhaseAnalysis(
+        target,
+        frequencies,
+        config,
+        fftSize
+    );
+    if (!targetAnalysis) return { phase: null, reason: 'insufficientData' };
+    const pointAnalyses = directs.map(direct =>
+        direct === target
+            ? targetAnalysis
+            : frequencyDependentLowPhaseAnalysis(direct, frequencies, config, fftSize));
+    const upperIndex = targetAnalysis.anchor + 1;
+    let upperBoundaryDelay = targetAnalysis.intervalDelays[targetAnalysis.anchor];
+    if (upperCorrection && upperIndex < frequencies.length) {
+        const deltaOmega = 2 * Math.PI * (
+            frequencies[upperIndex] - frequencies[targetAnalysis.anchor]
+        );
+        if (deltaOmega > 0) {
+            upperBoundaryDelay = -(
+                upperCorrection[upperIndex] - upperCorrection[targetAnalysis.anchor]
+            ) / deltaOmega;
+        }
+    }
+    const commonDelays = new Float64Array(frequencies.length);
+    for (let index = targetAnalysis.first + 1;
+        index <= targetAnalysis.anchor;
+        index += 1) {
+        let commonDelay = targetAnalysis.hybridIntervalDelays[index];
+        if (pointAnalyses.length > 1) {
+            const estimates = [];
+            let weightedDelay = 0;
+            let weightedDelaySquared = 0;
+            let weightSum = 0;
+            for (const analysis of pointAnalyses) {
+                if (!analysis) continue;
+                const weight = analysis.reliability[index];
+                const delay = analysis.hybridIntervalDelays[index];
+                if (weight <= 0) continue;
+                estimates.push({ delay, weight });
+                weightedDelay += delay * weight;
+                weightedDelaySquared += delay * delay * weight;
+                weightSum += weight;
+            }
+            estimates.sort((left, right) => left.delay - right.delay);
+            let cumulativeWeight = 0;
+            commonDelay = 0;
+            for (let estimateIndex = 0; estimateIndex < estimates.length; estimateIndex += 1) {
+                const estimate = estimates[estimateIndex];
+                cumulativeWeight += estimate.weight;
+                const halfWeight = weightSum / 2;
+                const halfTolerance = Number.EPSILON * Math.max(1, weightSum) * 8;
+                if (Math.abs(cumulativeWeight - halfWeight) <= halfTolerance &&
+                    estimateIndex + 1 < estimates.length) {
+                    commonDelay = (estimate.delay + estimates[estimateIndex + 1].delay) / 2;
+                    break;
+                }
+                if (cumulativeWeight > halfWeight) {
+                    commonDelay = estimate.delay;
+                    break;
+                }
+            }
+            if (weightedDelaySquared > 0 && weightSum > 0) {
+                commonDelay *= weightedDelay * weightedDelay /
+                    (weightedDelaySquared * weightSum);
+            }
+        }
+        commonDelays[index] = commonDelay;
+    }
+    let smoothedCommonDelays = commonDelays;
+    if (pointAnalyses.length > 1) {
+        const smoothingInput = Float64Array.from(commonDelays);
+        smoothingInput.fill(
+            commonDelays[targetAnalysis.first + 1],
+            0,
+            targetAnalysis.first + 1
+        );
+        smoothingInput.fill(
+            commonDelays[targetAnalysis.anchor],
+            targetAnalysis.anchor + 1
+        );
+        smoothedCommonDelays = smoothSynthesisValues(
+            smoothingInput,
+            frequencies,
+            {
+                ...config,
+                smoothing: config.smoothing < 1 / 3 ? 1 / 3 : config.smoothing
+            }
+        );
+    }
+    const phase = new Float64Array(frequencies.length);
+    for (let index = targetAnalysis.anchor;
+        index > targetAnalysis.first;
+        index -= 1) {
+        const blend = targetAnalysis.fixedBlend[index];
+        const deltaOmega = 2 * Math.PI * (frequencies[index] - frequencies[index - 1]);
+        const midpoint = Math.sqrt(frequencies[index] * frequencies[index - 1]);
+        const targetDelay = (
+            smoothedCommonDelays[index] - alignmentGroupDelayPerAmount
+        ) * (1 - blend) + upperBoundaryDelay * blend;
+        const gatedTargetDelay = targetDelay * lowPhaseCorrectionGate(
+            midpoint,
+            config.lowFrequency
+        );
+        phase[index - 1] = phase[index] + gatedTargetDelay * deltaOmega;
+    }
+    let activeLast = targetAnalysis.first;
+    for (let index = targetAnalysis.first + 1;
+        index <= targetAnalysis.anchor && targetAnalysis.fixedBlend[index] === 0;
+        index += 1) {
+        activeLast = index;
+    }
+    let activeFirst = targetAnalysis.first + 1;
+    const lowGateEnd = config.lowFrequency * 2 ** (1 / 3);
+    while (activeFirst <= activeLast &&
+        Math.sqrt(frequencies[activeFirst - 1] * frequencies[activeFirst]) < lowGateEnd) {
+        activeFirst += 1;
+    }
+    return {
+        phase,
+        reason: null,
+        guard: {
+            first: targetAnalysis.first,
+            activeFirst,
+            activeLast,
+            referenceTotalDelays: targetAnalysis.totalIntervalDelays
+        },
+        coverageLimited: targetAnalysis.coverageLimited ||
+            pointAnalyses.some(analysis => analysis?.coverageLimited === true)
+    };
 }
 
 function consensusDirectPhaseCorrection(directs, frequencies, config, fftSize) {
@@ -720,46 +1238,14 @@ function verifySynthesis(taps, intendedMagnitudes, intendedReal, intendedImagina
     const maximumPhaseErrorRadians = config.phase === 'min'
         ? 0
         : Math.acos(Math.max(-1, Math.min(1, minimumPhaseCosine)));
-    return { maximumMagnitudeErrorDb, maximumPhaseErrorRadians };
+    return {
+        verification: { maximumMagnitudeErrorDb, maximumPhaseErrorRadians },
+        actualSpectrum: spectrum
+    };
 }
 
-function synthesizeFilter(correctionDb, gridFrequencies, config, phaseSource) {
-    const plan = getSynthesisPlan(gridFrequencies, config);
-    const { fftSize, binFrequencies } = plan;
-    const interpolated = interpolateWithPlan(correctionDb, plan);
-    const magnitudes = Float64Array.from(interpolated, dbToGain);
-    let phase = new Float64Array(magnitudes.length);
-    if (config.phase === 'min') {
-        phase = Float64Array.from(minimumPhaseForMagnitude(magnitudes, fftSize));
-    } else if (config.phase === 'full') {
-        const referencePhase = Float64Array.from(minimumPhaseForMagnitude(magnitudes, fftSize));
-        phase = Float64Array.from(referencePhase);
-        const correction = phaseSource?.candidates?.length
-            ? consensusDirectPhaseCorrection(
-                phaseSource.candidates,
-                binFrequencies,
-                config,
-                fftSize
-            )
-            : null;
-        for (let bin = 0; bin < phase.length; bin += 1) {
-            phase[bin] -= (correction?.[bin] || 0) * config.phaseCorrectionAmount;
-        }
-        const timingAlignment = phaseSource?.timing && config.phaseCorrectionAmount > 0
-            ? correctionTimingAlignment(
-                phaseSource.timing,
-                magnitudes,
-                referencePhase,
-                phase,
-                config,
-                fftSize
-            )
-            : 0;
-        for (let bin = 0; bin < phase.length; bin += 1) {
-            phase[bin] += 2 * Math.PI * binFrequencies[bin] * timingAlignment -
-                2 * Math.PI * bin / fftSize * (config.taps / 2);
-        }
-    }
+function renderSynthesis(magnitudes, phase, config, plan) {
+    const { fftSize } = plan;
     const real = new Float64Array(fftSize / 2 + 1);
     const imag = new Float64Array(fftSize / 2 + 1);
     if (config.phase === 'lin') {
@@ -784,11 +1270,337 @@ function synthesizeFilter(correctionDb, gridFrequencies, config, phaseSource) {
     for (let index = 0; index < config.taps; index += 1) {
         taps[index] = time[index] * window[index];
     }
+    const verified = verifySynthesis(taps, magnitudes, real, imag, config);
     return {
         taps,
         magnitudes,
-        verification: verifySynthesis(taps, magnitudes, real, imag, config)
+        verification: verified.verification,
+        actualSpectrum: verified.actualSpectrum
     };
+}
+
+function lowPhaseEdgeEnergyRatio(taps) {
+    const edgeLength = Math.max(1, Math.ceil(taps.length * 0.05));
+    let totalEnergy = 0;
+    let edgeEnergy = 0;
+    for (let index = 0; index < taps.length; index += 1) {
+        const energy = taps[index] * taps[index];
+        totalEnergy += energy;
+        if (index < edgeLength || index >= taps.length - edgeLength) edgeEnergy += energy;
+    }
+    const denominator = totalEnergy > 0 ? totalEnergy : 1;
+    return edgeEnergy / denominator;
+}
+
+function lowPhaseSynthesisIsSafe(candidate, baseline) {
+    const candidateEdge = lowPhaseEdgeEnergyRatio(candidate.taps);
+    const baselineEdge = lowPhaseEdgeEnergyRatio(baseline.taps);
+    const edgeLimit = Math.max(
+        MAX_LOW_PHASE_EDGE_ENERGY_RATIO,
+        baselineEdge * 1.05 + 1e-8
+    );
+    return candidateEdge <= edgeLimit;
+}
+
+function lowPhaseCandidateSpectrum(
+    magnitudes,
+    basePhase,
+    correction,
+    amount,
+    frequencies,
+    first
+) {
+    const candidateMagnitudes = Float64Array.from(magnitudes);
+    const candidatePhase = Float64Array.from(basePhase);
+    const endpointPhase = correction[first] * amount;
+    const endpointReal = Math.cos(endpointPhase);
+    const endpointImaginary = -Math.sin(endpointPhase);
+    for (let bin = 1; bin < candidatePhase.length; bin += 1) {
+        if (bin >= first) {
+            candidatePhase[bin] -= correction[bin] * amount;
+            continue;
+        }
+        const frequency = frequencies[bin];
+        if (frequency >= LOW_PHASE_SUBSONIC_CLOSURE_HZ) {
+            candidatePhase[bin] -= endpointPhase;
+            continue;
+        }
+        const weight = lowPhaseClosureWeight(
+            frequency,
+            LOW_PHASE_SUBSONIC_CLOSURE_HZ
+        );
+        const real = 1 - weight + weight * endpointReal;
+        const imaginary = weight * endpointImaginary;
+        candidateMagnitudes[bin] *= Math.hypot(real, imaginary);
+        candidatePhase[bin] += Math.atan2(imaginary, real);
+    }
+    return { magnitudes: candidateMagnitudes, phase: candidatePhase };
+}
+
+function lowPhaseRelativeDelays(candidate, baseline, frequencies) {
+    const candidateSpectrum = candidate.actualSpectrum;
+    const baselineSpectrum = baseline.actualSpectrum;
+    const wrapped = new Float64Array(frequencies.length);
+    let first = 1;
+    while (first < frequencies.length &&
+        frequencies[first] < LOW_PHASE_SUBSONIC_CLOSURE_HZ) {
+        first += 1;
+    }
+    for (let bin = first; bin < wrapped.length; bin += 1) {
+        const candidateReal = candidateSpectrum.real[bin];
+        const candidateImaginary = candidateSpectrum.imag[bin];
+        const baselineReal = baselineSpectrum.real[bin];
+        const baselineImaginary = baselineSpectrum.imag[bin];
+        wrapped[bin] = Math.atan2(
+            candidateImaginary * baselineReal - candidateReal * baselineImaginary,
+            candidateReal * baselineReal + candidateImaginary * baselineImaginary
+        );
+    }
+    const phase = unwrapPhaseFrom(wrapped, first);
+    const delays = new Float64Array(frequencies.length);
+    for (let bin = first + 1; bin < delays.length; bin += 1) {
+        const deltaOmega = 2 * Math.PI * (frequencies[bin] - frequencies[bin - 1]);
+        if (deltaOmega > 0) {
+            delays[bin] = -(phase[bin] - phase[bin - 1]) / deltaOmega;
+        }
+    }
+    return delays;
+}
+
+function lowPhaseActualFilterDelays(rendered, frequencies, config) {
+    const spectrum = rendered.actualSpectrum;
+    const wrapped = new Float64Array(frequencies.length);
+    const centerDelay = config.taps / (2 * config.sampleRate);
+    for (let bin = 1; bin < wrapped.length; bin += 1) {
+        wrapped[bin] = Math.atan2(spectrum.imag[bin], spectrum.real[bin]) +
+            2 * Math.PI * frequencies[bin] * centerDelay;
+    }
+    const phase = unwrapPhaseFrom(wrapped, 1);
+    const delays = new Float64Array(frequencies.length);
+    for (let bin = 2; bin < delays.length; bin += 1) {
+        const deltaOmega = 2 * Math.PI * (frequencies[bin] - frequencies[bin - 1]);
+        if (deltaOmega > 0) {
+            delays[bin] = -(phase[bin] - phase[bin - 1]) / deltaOmega;
+        }
+    }
+    return delays;
+}
+
+function lowPhaseDelayScore(delays, frequencies, first, last) {
+    if (last < first) return { rms: 0, p95: 0 };
+    const distribution = [];
+    let squared = 0;
+    let weightSum = 0;
+    for (let index = first; index <= last; index += 1) {
+        const low = frequencies[index - 1];
+        const high = frequencies[index];
+        if (!(low > 0) || !(high > low)) continue;
+        const weight = Math.log(high / low);
+        const magnitude = Math.abs(delays[index]);
+        distribution.push({ magnitude, weight });
+        squared += magnitude * magnitude * weight;
+        weightSum += weight;
+    }
+    if (weightSum === 0) return { rms: 0, p95: 0 };
+    distribution.sort((left, right) => left.magnitude - right.magnitude);
+    const percentileWeight = weightSum * 0.95;
+    let cumulative = 0;
+    let p95 = distribution[distribution.length - 1].magnitude;
+    for (const entry of distribution) {
+        cumulative += entry.weight;
+        if (cumulative >= percentileWeight) {
+            p95 = entry.magnitude;
+            break;
+        }
+    }
+    return { rms: Math.sqrt(squared / weightSum), p95 };
+}
+
+function lowPhaseDoesNotWorsen(
+    candidate,
+    baseline,
+    guard,
+    frequencies,
+    config
+) {
+    const relativeDelays = lowPhaseRelativeDelays(candidate, baseline, frequencies);
+    let inactiveFirst = 1;
+    while (inactiveFirst < guard.first &&
+        frequencies[inactiveFirst - 1] < LOW_PHASE_SUBSONIC_CLOSURE_HZ) {
+        inactiveFirst += 1;
+    }
+    const inactive = lowPhaseDelayScore(
+        relativeDelays,
+        frequencies,
+        inactiveFirst,
+        guard.first - 1
+    );
+    if (inactive.rms > LOW_PHASE_INACTIVE_RMS_TOLERANCE ||
+        inactive.p95 > LOW_PHASE_INACTIVE_P95_TOLERANCE) {
+        return false;
+    }
+
+    const baselineFilterDelays = lowPhaseActualFilterDelays(
+        baseline,
+        frequencies,
+        config
+    );
+    const baselineResidual = new Float64Array(frequencies.length);
+    const candidateResidual = new Float64Array(frequencies.length);
+    for (let index = guard.activeFirst; index <= guard.activeLast; index += 1) {
+        baselineResidual[index] = guard.referenceTotalDelays[index] +
+            baselineFilterDelays[index];
+        candidateResidual[index] = baselineResidual[index] + relativeDelays[index];
+    }
+    const baselineScore = lowPhaseDelayScore(
+        baselineResidual,
+        frequencies,
+        guard.activeFirst,
+        guard.activeLast
+    );
+    const candidateScore = lowPhaseDelayScore(
+        candidateResidual,
+        frequencies,
+        guard.activeFirst,
+        guard.activeLast
+    );
+    const rmsTolerance = Math.max(
+        LOW_PHASE_ACTIVE_ABSOLUTE_TOLERANCE,
+        baselineScore.rms * LOW_PHASE_ACTIVE_RELATIVE_TOLERANCE
+    );
+    const p95Tolerance = Math.max(
+        LOW_PHASE_ACTIVE_P95_ABSOLUTE_TOLERANCE,
+        baselineScore.p95 * LOW_PHASE_ACTIVE_RELATIVE_TOLERANCE
+    );
+    return candidateScore.rms <= baselineScore.rms + rmsTolerance &&
+        candidateScore.p95 <= baselineScore.p95 + p95Tolerance;
+}
+
+function synthesizeFilter(correctionDb, gridFrequencies, config, phaseSource) {
+    const plan = getSynthesisPlan(gridFrequencies, config);
+    const { fftSize, binFrequencies } = plan;
+    const interpolated = interpolateWithPlan(correctionDb, plan);
+    const magnitudes = Float64Array.from(interpolated, dbToGain);
+    let phase = new Float64Array(magnitudes.length);
+    let fullReferencePhase = null;
+    let unalignedFullPhase = null;
+    let fullTimingAlignment = 0;
+    let lowCorrection = null;
+    let lowGuard = null;
+    let lowCoverageLimited = false;
+    let lowPhaseDiagnostic = {
+        state: 'disabled',
+        scale: 0,
+        reason: !config.lowFrequencyPhaseExtension
+            ? 'notRequested'
+            : config.phase !== 'full'
+                ? 'fullPhaseRequired'
+                : config.phaseCorrectionAmount === 0
+                    ? 'phaseCorrectionDisabled'
+                    : 'insufficientData'
+    };
+    if (config.phase === 'min') {
+        phase = Float64Array.from(minimumPhaseForMagnitude(magnitudes, fftSize));
+    } else if (config.phase === 'full') {
+        fullReferencePhase = Float64Array.from(minimumPhaseForMagnitude(magnitudes, fftSize));
+        phase = Float64Array.from(fullReferencePhase);
+        const correction = phaseSource?.candidates?.length
+            ? consensusDirectPhaseCorrection(
+                phaseSource.candidates,
+                binFrequencies,
+                config,
+                fftSize
+            )
+            : null;
+        for (let bin = 0; bin < phase.length; bin += 1) {
+            phase[bin] -= (correction?.[bin] || 0) * config.phaseCorrectionAmount;
+        }
+        unalignedFullPhase = Float64Array.from(phase);
+        fullTimingAlignment = phaseSource?.timing && config.phaseCorrectionAmount > 0
+            ? correctionTimingAlignment(
+                phaseSource.timing,
+                magnitudes,
+                fullReferencePhase,
+                phase,
+                config,
+                fftSize
+            )
+            : 0;
+        const lowResult = config.phaseCorrectionAmount > 0 && phaseSource?.candidates?.length
+            ? consensusLowPhaseCorrection(
+                phaseSource.timing,
+                phaseSource.candidates,
+                correction,
+                fullTimingAlignment / config.phaseCorrectionAmount,
+                binFrequencies,
+                config,
+                fftSize
+            )
+            : null;
+        lowCorrection = lowResult?.phase || null;
+        lowGuard = lowResult?.guard || null;
+        lowCoverageLimited = lowResult?.coverageLimited === true;
+        if (lowResult?.reason) lowPhaseDiagnostic.reason = lowResult.reason;
+        for (let bin = 0; bin < phase.length; bin += 1) {
+            phase[bin] += 2 * Math.PI * binFrequencies[bin] * fullTimingAlignment -
+                2 * Math.PI * bin / fftSize * (config.taps / 2);
+        }
+    }
+    const baseline = renderSynthesis(magnitudes, phase, config, plan);
+    if (!lowCorrection || config.phaseCorrectionAmount === 0) {
+        baseline.lowPhaseDiagnostic = lowPhaseDiagnostic;
+        return baseline;
+    }
+    let reductionReason = null;
+    for (const scale of LOW_PHASE_SCALE_STEPS) {
+        const candidateSpectrum = lowPhaseCandidateSpectrum(
+            magnitudes,
+            unalignedFullPhase,
+            lowCorrection,
+            config.phaseCorrectionAmount * scale,
+            binFrequencies,
+            lowGuard.first
+        );
+        for (let bin = 0; bin < candidateSpectrum.phase.length; bin += 1) {
+            candidateSpectrum.phase[bin] +=
+                2 * Math.PI * binFrequencies[bin] * fullTimingAlignment -
+                2 * Math.PI * bin / fftSize * (config.taps / 2);
+        }
+        const candidate = renderSynthesis(
+            candidateSpectrum.magnitudes,
+            candidateSpectrum.phase,
+            config,
+            plan
+        );
+        const energySafe = lowPhaseSynthesisIsSafe(candidate, baseline);
+        const groupDelaySafe = lowPhaseDoesNotWorsen(
+            candidate,
+            baseline,
+            lowGuard,
+            binFrequencies,
+            config
+        );
+        if (energySafe && groupDelaySafe) {
+            candidate.lowPhaseDiagnostic = {
+                state: scale === 1 && !lowCoverageLimited ? 'applied' : 'reduced',
+                scale,
+                reason: scale < 1
+                    ? reductionReason || 'groupDelay'
+                    : lowCoverageLimited
+                        ? 'insufficientData'
+                        : null
+            };
+            return candidate;
+        }
+        if (!groupDelaySafe) reductionReason = 'groupDelay';
+        else if (!energySafe && reductionReason === null) reductionReason = 'firEnergy';
+    }
+    baseline.lowPhaseDiagnostic = {
+        state: 'disabled',
+        scale: 0,
+        reason: reductionReason || 'groupDelay'
+    };
+    return baseline;
 }
 
 function alignedPhaseOnGrid(samples, alignmentSamples, sampleRate, frequencies, minimumFftSize = 0) {
@@ -985,6 +1797,7 @@ function normalizeConfig(config) {
         lowFrequency: Math.max(20, config.lowFrequency ?? 20),
         highFrequency: Math.min(20000, config.highFrequency ?? 16000),
         directWindowMs: Math.max(1, Math.min(50, config.directWindowMs ?? 6)),
+        lowFrequencyPhaseExtension: config.lowFrequencyPhaseExtension === true,
         phaseLowFrequency: config.phaseLowFrequency === null ||
             config.phaseLowFrequency === undefined ||
             !Number.isFinite(requestedPhaseLowFrequency)
@@ -1009,6 +1822,7 @@ function designCacheKey(config, sources) {
         lowFrequency: config.lowFrequency,
         highFrequency: config.highFrequency,
         directWindowMs: config.directWindowMs,
+        lowFrequencyPhaseExtension: config.lowFrequencyPhaseExtension,
         phaseLowFrequency: config.phaseLowFrequency,
         maxBoostDb: config.maxBoostDb,
         correctionAmount: config.correctionAmount,
@@ -1025,10 +1839,6 @@ function designCacheKey(config, sources) {
     const sourceIdentity = (sources || []).map(source => {
         if (!source?.measurement) return null;
         const measurement = source.measurement;
-        const pointTimestamps = new Map((measurement.points || []).map(point => [
-            point.pointId,
-            point.timestamp || null
-        ]));
         const impulses = (source.impulses || []).filter(impulse => impulse?.data);
         return {
             measurement: [
@@ -1037,11 +1847,8 @@ function designCacheKey(config, sources) {
                 measurement.timestamp || null
             ],
             impulses: impulses.map(impulse => [
-                impulse.measurementId || measurement.id || null,
-                impulse.pointId,
-                pointTimestamps.get(impulse.pointId) || null,
+                ...impulseSourceIdentity(measurement, impulse),
                 impulse.sampleRate,
-                impulse.onsetIndex,
                 impulse.refScale ?? 1,
                 impulse.data.length
             ]),
@@ -1079,6 +1886,10 @@ function cloneDesignResult(result) {
             } : null
         } : null),
         qualityWarnings: [...result.qualityWarnings],
+        diagnostics: {
+            lowFrequencyPhaseExtension: result.diagnostics.lowFrequencyPhaseExtension
+                .map(value => ({ ...value }))
+        },
         supportsFullPhase: result.supportsFullPhase,
         latencyInfo: { ...result.latencyInfo },
         config: {
@@ -1098,6 +1909,7 @@ export function designRoomEq(request) {
     const eqDb = equalizerDb(config, frequencies);
     const channels = [];
     const previews = [];
+    const lowPhaseDiagnostics = [];
     const qualityWarnings = [];
     let supportsFullPhase = true;
     for (let channelIndex = 0; channelIndex < (request.sources || []).length; channelIndex += 1) {
@@ -1105,6 +1917,13 @@ export function designRoomEq(request) {
         if (!source?.measurement) {
             channels.push(unitImpulse(config));
             previews.push(null);
+            lowPhaseDiagnostics.push({
+                state: 'disabled',
+                scale: 0,
+                reason: config.lowFrequencyPhaseExtension
+                    ? 'impulseResponseRequired'
+                    : 'notRequested'
+            });
             continue;
         }
         const impulses = Array.isArray(source.impulses) ? source.impulses.filter(value => value?.data) : [];
@@ -1113,7 +1932,12 @@ export function designRoomEq(request) {
         let referenceAnalysis = null;
         let phaseSource = null;
         if (impulses.length) {
-            const analyses = impulses.map(impulse => analyzeImpulse(impulse, config.sampleRate, frequencies));
+            const analyses = impulses.map(impulse => analyzeImpulse(
+                impulse,
+                config.sampleRate,
+                frequencies,
+                impulseSourceIdentity(source.measurement, impulse)
+            ));
             const powerMean = new Float64Array(frequencies.length);
             const decibelMean = new Float64Array(frequencies.length);
             for (const analysis of analyses) {
@@ -1215,6 +2039,7 @@ export function designRoomEq(request) {
             qualityWarnings.push(QUALITY_WARNING_FILTER_ACCURACY);
         }
         channels.push(synthesis.taps);
+        lowPhaseDiagnostics.push(synthesis.lowPhaseDiagnostic);
         const phasePreviews = referenceAnalysis
             ? createPhasePreviews(referenceAnalysis, synthesis.taps, config, frequencies)
             : null;
@@ -1240,6 +2065,9 @@ export function designRoomEq(request) {
         channels,
         previews,
         qualityWarnings,
+        diagnostics: {
+            lowFrequencyPhaseExtension: lowPhaseDiagnostics
+        },
         supportsFullPhase,
         latencyInfo: {
             filterDelaySamples: config.phase === 'min' ? 0 : config.taps / 2,

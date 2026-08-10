@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "BandwidthExtenderPlugin",
+  "id": "manual-harmonic-only-mono",
+  "stimulus": "sweep",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 4097,
+  "blockSize": 63,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "ha": 100,
+    "na": 0,
+    "cm": "Manual",
+    "cf": 12000
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:17d6fa0bd06f4fa6da40977f873d6573a3dac6181370e0a686b0b54997d7ae85",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type BandwidthExtenderPlugin --promote-production-native",
+  "outputFloats": 4097,
+  "byteLength": 16388,
+  "binary": "case-002.f32"
+}

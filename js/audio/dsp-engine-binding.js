@@ -36,6 +36,7 @@ const REQUIRED_FUNCTION_EXPORTS = [
     'et_telemetry_capacity',
     'et_telemetry_read',
     'et_pipeline_configure',
+    'et_pipeline_latency',
     'et_pipeline_process'
 ];
 
@@ -811,7 +812,21 @@ export class DspEngineBinding {
         this._refreshViews();
         this._assertRange(ptr, bytes.byteLength, 'Pipeline descriptor');
         this.u8.set(bytes, ptr);
-        return this.exports.et_pipeline_configure(this.engine, ptr, bytes.byteLength);
+        this._preparing = true;
+        let status = ET_ERR_STATE;
+        try {
+            status = this.exports.et_pipeline_configure(this.engine, ptr, bytes.byteLength);
+        } finally {
+            this._refreshViews();
+            this._preparing = false;
+        }
+        this.getArenaViews();
+        return status;
+    }
+
+    pipelineLatency() {
+        if (!this.engine) return 0;
+        return this.exports.et_pipeline_latency(this.engine) >>> 0;
     }
 
     pipelineProcess(channelCount, frameCount, timeSeconds, masterBypass = false) {

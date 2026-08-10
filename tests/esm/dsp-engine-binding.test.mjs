@@ -157,7 +157,12 @@ function createFakeInstance(options = {}) {
     },
     et_pipeline_configure(engine, ptr, length) {
       calls.push(['pipelineConfigure', engine, [...new Uint8Array(memory.buffer, ptr, length)]]);
+      if (options.growDuringPipelineConfigure) memory.grow(1);
       return options.pipelineStatus ?? 0;
+    },
+    et_pipeline_latency(engine) {
+      calls.push(['pipelineLatency', engine]);
+      return options.pipelineLatency ?? 384;
     },
     et_pipeline_process(...args) {
       calls.push(['pipelineProcess', ...args]);
@@ -175,6 +180,7 @@ test('binding rejects missing ABI exports and invalid instances', () => {
   delete fake.exports.et_engine_reset;
   assert.throws(() => new DspEngineBinding(fake.instance), /et_engine_reset/);
   assert.ok(REQUIRED_FUNCTION_EXPORTS.includes('et_pipeline_process'));
+  assert.ok(REQUIRED_FUNCTION_EXPORTS.includes('et_pipeline_latency'));
   assert.ok(REQUIRED_FUNCTION_EXPORTS.includes('et_instance_set_param_bytes'));
   assert.ok(REQUIRED_FUNCTION_EXPORTS.includes('et_instance_asset_begin'));
   assert.ok(REQUIRED_FUNCTION_EXPORTS.includes('et_instance_runtime_event'));
@@ -320,8 +326,10 @@ test('binding reads telemetry and stages pipeline descriptors without temporary 
   assert.equal(stagingViewCalls, 0);
 
   assert.equal(binding.pipelineConfigure(Uint8Array.of(1, 2, 3)), 0);
+  assert.equal(binding.pipelineLatency(), 384);
   assert.equal(binding.pipelineProcess(2, 128, 4.25, true), 0);
   assert.ok(fake.calls.some(call => call[0] === 'pipelineConfigure' && String(call[2]) === '1,2,3'));
+  assert.ok(fake.calls.some(call => call[0] === 'pipelineLatency' && call[1] === 7));
   assert.ok(fake.calls.some(call => call[0] === 'pipelineProcess' && call.at(-1) === 1));
   assert.equal(fake.calls.some(call => call[0] === 'malloc'), false);
   assert.equal(fake.calls.some(call => call[0] === 'free'), false);
@@ -444,6 +452,19 @@ test('pipeline configuration after asset growth reuses scratch memory without gr
   assert.equal(binding.memoryGrowthViolation, false);
   assert.deepEqual(warnings, []);
   assert.equal(fake.calls.some(call => call[0] === 'malloc'), false);
+});
+
+test('pipeline configuration permits memory growth and refreshes arena views', () => {
+  const fake = createFakeInstance({ growDuringPipelineConfigure: true });
+  const binding = new DspEngineBinding(fake.instance);
+  binding.createEngine();
+  binding.prepare(48000, 2, 128, 64);
+  const previousBuffer = fake.memory.buffer;
+
+  assert.equal(binding.pipelineConfigure(Uint8Array.of(1, 2, 3)), 0);
+  assert.notEqual(fake.memory.buffer, previousBuffer);
+  assert.equal(binding.memoryGrowthViolation, false);
+  assert.equal(binding.getArenaViews().combined.buffer, fake.memory.buffer);
 });
 
 test('WASI imports report debug writes and surface proc_exit without host dependencies', () => {

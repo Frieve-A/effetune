@@ -23,6 +23,7 @@ export declare class EffeTuneNode extends AudioWorkletNode {
       readonly (Effect | ChainEffectInput)[],
     options?: EffeTuneNodeOptions
   ): Promise<EffeTuneNode>;
+  readonly latencySamples: number;
   readonly droppedTelemetryFrames: number;
   subscribe(callback: TelemetryCallback): () => void;
   unsubscribe(callback: TelemetryCallback): boolean;

@@ -83,6 +83,22 @@ This runs:
 The precache check never regenerates a stale `sw-precache.js`; if it fails, run
 `npm run assets:web` and then rerun `npm run verify`.
 
+Before pushing, also check the committed dependency graph:
+
+```bash
+npm audit --audit-level=moderate
+```
+
+When dependency metadata changes, reproduce the CI install and supply-chain
+checks before the normal verification. Do not use `--force` or
+`--legacy-peer-deps` to conceal an incompatible update.
+
+```bash
+npm ci --ignore-scripts
+npm audit signatures
+npm run verify
+```
+
 For narrower verification, use:
 
 ```bash
@@ -152,7 +168,8 @@ CMake 3.24 or newer, Ninja, and a C++20 compiler.
 ```bash
 npm run gen:dsp
 npm run test:dsp:warnings
-npm run test:dsp
+npm run test:dsp -- --native-build-type=Debug
+npm run test:dsp -- --native-build-type=Release
 npm run build:dsp
 npm run test:dsp:parity
 ```
@@ -162,11 +179,26 @@ npm run test:dsp:parity
 - `test:dsp:warnings` uses the pinned Emscripten Clang frontend to compile every native
   test source registered with CMake using warnings as errors, including
   `-Wunused-but-set-variable`.
-- `test:dsp` builds the native core, allocation guard, and parity runner, then runs CTest.
+- The two `test:dsp` runs build the native core, allocation guard, and parity
+  runner, then run CTest in both configurations used by CI.
 - `build:dsp` verifies the active Emscripten version and rebuilds the committed baseline
   and SIMD modules plus deterministic metadata under `plugins/dsp/`; it also runs the
   native-test warning check before building the modules.
 - `test:dsp:parity` checks both shipped modules against the committed JavaScript goldens.
+
+Regenerate an affected golden whenever DSP behavior or an input that defines
+the golden changes. Those inputs include the reference implementation, cases,
+comparison policy or tolerance, and revision metadata; a metadata-only mismatch
+is still stale generated state. Exact native parity can also vary by compiler or
+architecture, so run the native acceptance path on every available
+CI-equivalent platform and report unavailable platforms as residual risk rather
+than changing a tolerance from CI evidence alone.
+
+The root Node.js suite does not run installed Python wheel tests. Changes to a
+DSP binding, generated cross-language contract, or its tests must also run that
+binding's package and acceptance checks. For Python, build and install a
+candidate wheel, then use the same unittest, native-export audit, and golden
+runner sequence defined in `.github/workflows/dsp-library-ci.yml`.
 
 Set `EMSDK` to the activated SDK root on Windows. Use `npm run build:dsp -- --check` for
 a write-free freshness check. Kernel preparation and instance creation run between audio quanta and may

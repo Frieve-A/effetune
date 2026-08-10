@@ -56,6 +56,7 @@ function createElement(tagName) {
     className: '',
     style: {},
     listeners: {},
+    parentNode: null,
     hidden: false,
     textWriteCount: 0,
     get textContent() {
@@ -70,8 +71,18 @@ function createElement(tagName) {
     width: tagName === 'canvas' ? 800 : 0,
     height: tagName === 'canvas' ? 300 : 0,
     appendChild(child) {
+      child.parentNode = this;
       this.children.push(child);
       return child;
+    },
+    contains(candidate) {
+      if (candidate === this) return true;
+      return this.children.some(child => child.contains?.(candidate));
+    },
+    remove() {
+      if (!this.parentNode) return;
+      this.parentNode.children = this.parentNode.children.filter(child => child !== this);
+      this.parentNode = null;
     },
     setAttribute(name, value) {
       this.attributes[name] = String(value);
@@ -98,10 +109,20 @@ function createElement(tagName) {
     querySelector(selector) {
       return this.querySelectorAll(selector)[0] || null;
     },
+    focus() {
+      this.focused = true;
+    },
+    scrollIntoView() {},
     getBoundingClientRect() {
+      const width = this.clientWidth || 800;
+      const height = this.clientHeight || 300;
       return {
-        width: this.clientWidth || 800,
-        height: this.clientHeight || 300
+        left: 100,
+        top: 100,
+        right: 100 + width,
+        bottom: 100 + height,
+        width,
+        height
       };
     }
   };
@@ -249,19 +270,27 @@ function buildSliderRow(control, sliderValue, numberValue, wiring) {
   return row;
 }
 
-// Rewrites the listening bank to an empty array so the "omit empty option
+// Rewrites the Pre bank to an empty array so the "omit empty option
 // group" path in _createPresetControl stays exercised even though the shipped
-// bank is populated. The lookahead pins the match to the declaration that
-// immediately precedes TUBE_SIMULATOR_PRESET_GROUPS.
-const LISTENING_BANK_DECLARATION =
-  /const TUBE_SIMULATOR_LISTENING_PRESETS = Object\.freeze\(\[[\s\S]*?\r?\n\]\);\r?\n(?=const TUBE_SIMULATOR_PRESET_GROUPS)/;
+// bank is populated.
+const PRE_BANK_DECLARATION =
+  /const TUBE_SIMULATOR_PRE_PRESETS = Object\.freeze\(\[[\s\S]*?\r?\n\]\);/;
 
-function withEmptyListeningBank(source) {
-  assert.match(source, LISTENING_BANK_DECLARATION);
+function withEmptyPreBank(source) {
+  assert.match(source, PRE_BANK_DECLARATION);
   return source.replace(
-    LISTENING_BANK_DECLARATION,
-    'const TUBE_SIMULATOR_LISTENING_PRESETS = Object.freeze([]);\n'
+    PRE_BANK_DECLARATION,
+    'const TUBE_SIMULATOR_PRE_PRESETS = Object.freeze([]);'
   );
+}
+
+function readInjectedPhaseCReferenceTables(source) {
+  const declaration = 'const TUBE_SIMULATOR_PHASE_C_REFERENCE_TABLES = Object.freeze(';
+  const begin = source.indexOf(declaration);
+  const marker = source.indexOf('// __TUBE_PHASE_C_REFERENCE_TABLES_INJECT_END__', begin);
+  const end = source.lastIndexOf(');', marker);
+  assert.ok(begin >= 0 && marker > begin && end > begin);
+  return JSON.parse(source.slice(begin + declaration.length, end));
 }
 
 async function createPlugin({ transformSource } = {}) {
@@ -460,9 +489,39 @@ async function createPlugin({ transformSource } = {}) {
     }
   }
 
+  const documentListeners = {};
+  const document = {
+    createElement,
+    body: createElement('body'),
+    documentElement: { clientWidth: 1280, clientHeight: 720 },
+    addEventListener(type, handler) {
+      (documentListeners[type] ||= []).push(handler);
+    },
+    removeEventListener(type, handler) {
+      documentListeners[type] = (documentListeners[type] || [])
+        .filter(candidate => candidate !== handler);
+    },
+    dispatch(type, event) {
+      for (const handler of documentListeners[type] || []) handler(event);
+    }
+  };
+  const windowListeners = {};
+  const window = {
+    devicePixelRatio: 1,
+    innerWidth: 1280,
+    innerHeight: 720,
+    IntersectionObserver: FakeIntersectionObserver,
+    addEventListener(type, handler) {
+      (windowListeners[type] ||= []).push(handler);
+    },
+    removeEventListener(type, handler) {
+      windowListeners[type] = (windowListeners[type] || [])
+        .filter(candidate => candidate !== handler);
+    }
+  };
   const context = {
     PluginBase,
-    document: { createElement },
+    document,
     performance: { now: () => 1234 },
     console: { warn() {} },
     IntersectionObserver: FakeIntersectionObserver,
@@ -475,15 +534,12 @@ async function createPlugin({ transformSource } = {}) {
     cancelAnimationFrame(id) {
       rafCallbacks.delete(id);
     },
-    window: {
-      devicePixelRatio: 1,
-      IntersectionObserver: FakeIntersectionObserver
-    }
+    window
   };
   context.window.cancelAnimationFrame = context.cancelAnimationFrame;
   vm.runInNewContext(source, context);
   const plugin = new context.window.TubeSimulatorPlugin();
-  plugin.__testHarness = { observers, rafCallbacks, rafRequests, window: context.window };
+  plugin.__testHarness = { observers, rafCallbacks, rafRequests, window, document };
   return plugin;
 }
 
@@ -494,6 +550,18 @@ function findByClass(root, className) {
     if (found) return found;
   }
   return null;
+}
+
+function presetUi(root, plugin) {
+  const row = findByClass(root, 'tube-simulator-preset-row');
+  const control = findByClass(row, 'tube-simulator-preset-control');
+  return {
+    row,
+    label: row.children[0],
+    select: control.querySelector('select'),
+    trigger: findByClass(control, 'tube-simulator-preset-trigger'),
+    list: plugin?.presetList || findByClass(control, 'tube-simulator-preset-list')
+  };
 }
 
 function tubeTelemetryFrame({
@@ -609,12 +677,12 @@ async function createReferenceHarness(params, sampleRate = 96000) {
   };
 }
 
-test('Tube Simulator freezes the Phase C 20-field schema and enum packing', async () => {
+test('Tube Simulator freezes the 24-field schema and enum packing', async () => {
   const raw = JSON.parse(await fs.readFile(schemaPath, 'utf8'));
   const schema = validateParamSpec(raw, schemaPath);
 
   assert.equal(schema.type, 'TubeSimulatorPlugin');
-  assert.equal(schema.floatCount, 20);
+  assert.equal(schema.floatCount, 24);
   assert.deepEqual(
     raw.fields.map(({ key, kind, min, max, default: defaultValue, values }) => ({
       key,
@@ -625,23 +693,26 @@ test('Tube Simulator freezes the Phase C 20-field schema and enum packing', asyn
       ...(values !== undefined && { values })
     })),
     [
-      { key: 'dr', kind: 'float', min: -96, max: 0, default: -55.9648 },
+      { key: 'dr', kind: 'float', min: -96, max: 0, default: -44.0059 },
       {
         key: 'tp',
         kind: 'enum',
         default: '12AX7',
-        values: ['12AX7', '12AT7', '12AU7']
+        values: ['12AX7', '12AT7', '12AU7', 'Bypass']
       },
       { key: 'bi', kind: 'float', min: -50, max: 50, default: 0 },
       { key: 'pv', kind: 'float', min: 150, max: 300, default: 250 },
       { key: 'sz', kind: 'float', min: 0.6, max: 100, default: 10 },
       { key: 'su', kind: 'float', min: 0.1, max: 47, default: 10 },
-      { key: 'og', kind: 'float', min: -48, max: 48, default: 4.626 },
+      { key: 'og', kind: 'float', min: -48, max: 48, default: -7.372 },
       { key: 'mx', kind: 'float', min: 0, max: 100, default: 100 },
-      { key: 'iv', kind: 'float', min: 0.1, max: 20, default: 2.828 },
+      { key: 'iv', kind: 'float', min: 0.1, max: 300, default: 2.828 },
       { key: 'nf', kind: 'float', min: 0, max: 30, default: 3 },
-      { key: 'os', kind: 'enum', default: 'Power', values: ['Line', 'Power'] },
-      { key: 'pt', kind: 'enum', default: 'EL84', values: ['EL84', 'EL34'] },
+      {
+        key: 'os', kind: 'enum', default: 'Power',
+        values: ['Line', 'Power', 'SingleEnded']
+      },
+      { key: 'pt', kind: 'enum', default: 'EL84', values: ['EL84', 'EL34', '6L6GC', 'KT88'] },
       { key: 'pb', kind: 'float', min: 300, max: 470, default: 329.696 },
       { key: 'kr', kind: 'float', min: 270, max: 500, default: 270 },
       { key: 'st', kind: 'enum', default: '0', values: ['0', '20', '43'] },
@@ -649,7 +720,11 @@ test('Tube Simulator freezes the Phase C 20-field schema and enum packing', asyn
       { key: 'sl', kind: 'enum', default: '15', values: ['4', '8', '15', '16'] },
       { key: 'rl', kind: 'float', min: 2, max: 32, default: 15 },
       { key: 'sg', kind: 'float', min: -96, max: 0, default: 0 },
-      { key: 'ag', kind: 'bool', default: true }
+      { key: 'ag', kind: 'bool', default: true },
+      { key: 'sd', kind: 'enum', default: '300B', values: ['300B', '2A3'] },
+      { key: 'sb', kind: 'float', min: 250, max: 450, default: 400 },
+      { key: 'sr', kind: 'float', min: 700, max: 1300, default: 1000 },
+      { key: 'sp', kind: 'enum', default: '3.5', values: ['2.5', '3.5', '5.0'] }
     ]
   );
 
@@ -663,8 +738,9 @@ test('Tube Simulator freezes the Phase C 20-field schema and enum packing', asyn
 
   assert.deepEqual(
     [...packer.pack({ tp: '12AX7' })],
-    [Math.fround(-55.9648), 0, 0, 250, 10, 10, Math.fround(4.626), 100,
-      Math.fround(2.828), 3, 1, 0, Math.fround(329.696), 270, 0, 2, 2, 15, 0, 1]
+    [Math.fround(-44.0059), 0, 0, 250, 10, 10, Math.fround(-7.372), 100,
+      Math.fround(2.828), 3, 1, 0, Math.fround(329.696), 270, 0, 2, 2, 15, 0, 1,
+      0, 400, 1000, 1]
   );
   assert.deepEqual(
     [...packer.pack({
@@ -679,11 +755,69 @@ test('Tube Simulator freezes the Phase C 20-field schema and enum packing', asyn
       iv: 99,
       nf: 99
     })],
-    [0, 1, -50, 300, Math.fround(0.6), 47, -48, 100, 20, 30,
-      1, 0, Math.fround(329.696), 270, 0, 2, 2, 15, 0, 1]
+    [0, 1, -50, 300, Math.fround(0.6), 47, -48, 100, 99, 30,
+      1, 0, Math.fround(329.696), 270, 0, 2, 2, 15, 0, 1,
+      0, 400, 1000, 1]
   );
   assert.equal(packer.pack({ tp: '12AU7' })[1], 2);
   assert.equal(packer.pack({ tp: 'unsupported' })[1], 0);
+});
+
+test('Tube Simulator private Power circuits reuse the generated Phase C profiles', async () => {
+  const source = await fs.readFile(pluginSourcePath, 'utf8');
+  const tables = readInjectedPhaseCReferenceTables(source);
+  const plugin = await createPlugin();
+  const sharedKeys = [
+    'circuitProfileId',
+    'ltpRc',
+    'gridRc',
+    'cathodeRc',
+    'screenSupplyRc',
+    'powerSupplyRc',
+    'outputTubeLutId',
+    'optCoefficients',
+    'nfbTapNode',
+    'nfbTapTurnsRatio',
+    'nfbPolarity'
+  ];
+
+  for (const parameters of [
+    { os: 'Power', pt: '6L6GC', st: '0', zp: '6.6', sl: '8' },
+    { os: 'Power', pt: 'KT88', st: '43', zp: '6.0', sl: '8' }
+  ]) {
+    const profile = tables.profiles.find(candidate =>
+      candidate.key.pt === parameters.pt && candidate.key.st === parameters.st &&
+      candidate.key.zp === parameters.zp);
+    assert.ok(profile);
+    const circuit = JSON.parse(JSON.stringify(plugin.derivePrivateCircuit(parameters)));
+    for (const key of sharedKeys) assert.deepEqual(circuit[key], profile[key]);
+    assert.equal(circuit.screenTapRatio, profile.screenTapTurnsRatio);
+    assert.equal(circuit.primaryImpedanceOhm, Number(parameters.zp) * 1000);
+    assert.equal(circuit.speakerLoadOhm, Number(parameters.sl));
+    assert.equal(
+      circuit.selectedSpeakerTurnsRatio,
+      Math.sqrt(circuit.primaryImpedanceOhm / circuit.speakerLoadOhm)
+    );
+  }
+});
+
+test('Tube Simulator derives independent 300B and 2A3 single-ended circuits', async () => {
+  const plugin = await createPlugin();
+  for (const parameters of [
+    { os: 'SingleEnded', sd: '300B', sb: 400, sr: 1000, sp: '3.5', sl: '8' },
+    { os: 'SingleEnded', sd: '2A3', sb: 300, sr: 750, sp: '2.5', sl: '8' }
+  ]) {
+    const circuit = plugin.derivePrivateCircuit(parameters);
+    assert.match(circuit.circuitProfileId, /^se-triode-v1-/);
+    assert.equal(circuit.primaryImpedanceOhm, Number(parameters.sp) * 1000);
+    assert.equal(circuit.speakerLoadOhm, Number(parameters.sl));
+    assert.equal(circuit.nfbTapNode, 'single-ended-secondary-feedback-winding');
+    assert.equal(circuit.nfbTapTurnsRatio, 0.1);
+    assert.equal(
+      circuit.selectedSpeakerTurnsRatio,
+      Math.sqrt(circuit.primaryImpedanceOhm / circuit.speakerLoadOhm)
+    );
+  }
 });
 
 test('Tube Simulator Phase A projection is explicit and independent of Phase B defaults',
@@ -702,7 +836,8 @@ test('Tube Simulator Phase A projection is explicit and independent of Phase B d
     assert.deepEqual(
       [...packer.pack(PHASE_A_PROJECTION_PARAMS)],
       [-30, 2, 0, 250, 10, 10, 39, 100, Math.fround(2.828), 0,
-        1, 0, Math.fround(329.696), 270, 0, 2, 2, 15, 0, 1]
+        1, 0, Math.fround(329.696), 270, 0, 2, 2, 15, 0, 1,
+        0, 400, 1000, 1]
     );
 
     const plugin = await createPlugin();
@@ -726,13 +861,13 @@ test('Tube Simulator defaults, validation, serialization, and reference shell ma
         .map(key => [key, plugin.getParameters()[key]])
     ),
     {
-      dr: -55.9648,
+      dr: -44.0059,
       tp: '12AX7',
       bi: 0,
       pv: 250,
       sz: 10,
       su: 10,
-      og: 4.626,
+      og: -7.372,
       mx: 100,
       iv: 2.828,
       nf: 3
@@ -748,7 +883,7 @@ test('Tube Simulator defaults, validation, serialization, and reference shell ma
     su: 99,
     og: -99,
     mx: 101,
-    iv: 99,
+    iv: 999,
     nf: 99,
     fr: true
   });
@@ -766,7 +901,7 @@ test('Tube Simulator defaults, validation, serialization, and reference shell ma
       su: 47,
       og: -48,
       mx: 100,
-      iv: 20,
+      iv: 300,
       nf: 30
     }
   );
@@ -887,7 +1022,7 @@ const EXPECTED_TAB_CONTROLS = Object.freeze([
       unit: 'dB', options: undefined
     },
     {
-      kind: 'log', label: 'Input Reference', min: 0.1, max: 20, step: 0.001,
+      kind: 'log', label: 'Input Reference', min: 0.1, max: 300, step: 0.001,
       unit: 'Vpk', options: undefined
     },
     {
@@ -897,8 +1032,12 @@ const EXPECTED_TAB_CONTROLS = Object.freeze([
   ]],
   ['driver', [
     {
-      kind: 'enum', label: 'Tube', min: undefined, max: undefined, step: undefined,
-      unit: undefined, options: ['12AX7', '12AT7', '12AU7']
+      kind: 'enum', label: 'Driver Type', min: undefined, max: undefined, step: undefined,
+      unit: undefined,
+      options: [
+        { value: '12AX7', label: '12AX7' }, { value: '12AT7', label: '12AT7' },
+        { value: '12AU7', label: '12AU7' }, { value: 'Bypass', label: 'Bypass' }
+      ]
     },
     {
       kind: 'linear', label: 'Bias', min: -50, max: 50, step: 1,
@@ -923,7 +1062,8 @@ const EXPECTED_TAB_CONTROLS = Object.freeze([
       step: undefined, unit: undefined,
       options: [
         { value: 'Line', label: 'Line' },
-        { value: 'Power', label: 'Push-Pull Power' }
+        { value: 'Power', label: 'Push-Pull Power' },
+        { value: 'SingleEnded', label: 'SE Triode' }
       ]
     },
     {
@@ -931,7 +1071,9 @@ const EXPECTED_TAB_CONTROLS = Object.freeze([
       step: undefined, unit: undefined,
       options: [
         { value: 'EL84', label: 'EL84 ×2' },
-        { value: 'EL34', label: 'EL34 ×2' }
+        { value: 'EL34', label: 'EL34 ×2' },
+        { value: '6L6GC', label: '6L6GC ×2' },
+        { value: 'KT88', label: 'KT88 ×2' }
       ]
     },
     {
@@ -941,6 +1083,21 @@ const EXPECTED_TAB_CONTROLS = Object.freeze([
     {
       kind: 'linear', label: 'Cathode Resistor', min: 270, max: 500, step: 1,
       unit: 'Ω / valve', options: undefined
+    },
+    {
+      kind: 'enum', label: 'SE Triode', min: undefined, max: undefined,
+      step: undefined, unit: undefined,
+      options: [
+        { value: '300B', label: '300B' }, { value: '2A3', label: '2A3' }
+      ]
+    },
+    {
+      kind: 'linear', label: 'SE B+', min: 250, max: 450, step: 0.001,
+      unit: 'V', options: undefined
+    },
+    {
+      kind: 'linear', label: 'SE Cathode Resistor', min: 700, max: 1300, step: 1,
+      unit: 'Ω', options: undefined
     },
   ]],
   ['transformer', [
@@ -953,11 +1110,19 @@ const EXPECTED_TAB_CONTROLS = Object.freeze([
       ]
     },
     {
-      kind: 'enum', label: 'Transformer Primary', min: undefined, max: undefined,
+      kind: 'enum', label: 'Push-Pull Primary', min: undefined, max: undefined,
       step: undefined, unit: undefined,
       options: [
         { value: '6.0', label: '6.0 kΩ' }, { value: '6.6', label: '6.6 kΩ' },
         { value: '8.0', label: '8.0 kΩ' }
+      ]
+    },
+    {
+      kind: 'enum', label: 'SE Primary', min: undefined, max: undefined,
+      step: undefined, unit: undefined,
+      options: [
+        { value: '2.5', label: '2.5 kΩ' }, { value: '3.5', label: '3.5 kΩ' },
+        { value: '5.0', label: '5.0 kΩ' }
       ]
     },
     {
@@ -1021,7 +1186,7 @@ test('Tube Simulator creates Phase C controls, one responsive graph, and status'
   assert.deepEqual(
     Object.keys(plugin._controls).sort(),
     ['ag', 'bi', 'dr', 'iv', 'kr', 'mx', 'nf', 'og', 'os', 'pb', 'pt', 'pv', 'rl',
-      'sg', 'sl', 'st', 'su', 'sz', 'tp', 'zp']
+      'sb', 'sd', 'sg', 'sl', 'sp', 'sr', 'st', 'su', 'sz', 'tp', 'zp']
   );
 
   // Settings come first and the read-outs follow, the same order every other
@@ -1106,19 +1271,24 @@ test('Tube Simulator keeps the HUD outside five accessible parameter tabs', asyn
     tabs.children.map(tab => tab.classList.contains('active')),
     [false, false, false, true, false]
   );
-  // Tab selection is UI-only state and never reaches the 17-field record.
+  // Tab selection is UI-only state and never reaches the 21-field record.
   assert.equal('selectedTab' in plugin.getSerializableParameters(), false);
 });
 
-test('Tube Simulator Preset dropdown lists Custom first, then the listening and circuit banks',
+test('Tube Simulator Preset dropdown lists Custom first, then signal-path groups',
   async () => {
     const plugin = await createPlugin();
     const container = plugin.createUI();
-    const presetRow = findByClass(container, 'tube-simulator-preset-row');
-    const [labelElement, select] = presetRow.children;
+    const { label: labelElement, select, trigger, list } = presetUi(container, plugin);
 
     assert.equal(labelElement.textContent, 'Preset:');
-    assert.equal(labelElement.htmlFor, select.id);
+    assert.equal(labelElement.htmlFor, trigger.id);
+    assert.equal(select.hidden, true);
+    assert.equal(select.attributes['aria-hidden'], 'true');
+    assert.equal(trigger.attributes['aria-haspopup'], 'listbox');
+    assert.equal(trigger.attributes['aria-controls'], list.id);
+    assert.equal(list.attributes.role, 'listbox');
+    assert.equal(plugin.__testHarness.document.body.contains(list), true);
     assert.equal(select.children[0].tagName, 'option');
     assert.equal(select.children[0].value, '');
     assert.equal(select.children[0].textContent, 'Custom');
@@ -1131,35 +1301,83 @@ test('Tube Simulator Preset dropdown lists Custom first, then the listening and 
       [
         {
           tagName: 'optgroup',
-          label: 'Listening (THD-matched)',
+          label: 'Pre',
           options: [
-            ['listening-line-12au7-thd1', 'Line 12AU7 @1%'],
+            ['listening-line-12at7-thd0p01', 'Line 12AT7 @0.01%'],
+            ['listening-line-12at7-thd0p1', 'Line 12AT7 @0.1%'],
+            ['listening-line-12ax7-thd0p01', 'Line 12AX7 @0.01%'],
+            ['listening-line-12ax7-thd0p1', 'Line 12AX7 @0.1%'],
+            ['listening-line-12au7-open-loop-thd0p1', 'Line 12AU7 Open-Loop @0.1%'],
             ['listening-line-12at7-thd1', 'Line 12AT7 @1%'],
             ['listening-line-12ax7-thd1', 'Line 12AX7 @1%'],
-            ['listening-line-12au7-open-loop-thd3', 'Line 12AU7 Open-Loop @3%'],
-            ['listening-power-el84-pentode-thd2', 'EL84 Pentode @2%'],
-            ['listening-power-el84-distributed-thd2', 'EL84 Distributed @2%'],
-            ['listening-power-el34-distributed-thd2', 'EL34 Distributed @2%']
+            ['listening-line-12au7-open-loop-thd1', 'Line 12AU7 Open-Loop @1%']
           ]
         },
         {
           tagName: 'optgroup',
-          label: 'Circuit',
+          label: 'Power',
           options: [
-            ['line-default', 'Line Default'],
-            ['power-el84-pentode-10w', 'EL84 Pentode 10 W'],
-            ['power-el84-distributed-10w', 'EL84 Distributed 10 W'],
-            ['power-el34-distributed-20-37w', 'EL34 Distributed 20–37 W']
+            ['power-only-el84-pentode-10w-thd0p1', 'EL84 Pentode 10 W @0.1%'],
+            ['power-only-el84-distributed-10w-thd0p1', 'EL84 Distributed 10 W @0.1%'],
+            ['power-only-el34-distributed-20-37w-thd0p1', 'EL34 Distributed 20–37 W @0.1%'],
+            ['power-only-6l6gc-pentode-thd0p1', '6L6GC Pentode @0.1%'],
+            ['power-only-kt88-distributed-thd0p1', 'KT88 Distributed @0.1%'],
+            ['power-only-se-300b-thd0p1', '300B SE @0.1%'],
+            ['power-only-se-300b-thd1', '300B SE @1%'],
+            ['power-only-se-2a3-thd0p1', '2A3 SE @0.1%'],
+            ['power-only-se-2a3-thd1', '2A3 SE @1%'],
+            ['power-only-el84-pentode-10w', 'EL84 Pentode 10 W @2%'],
+            ['power-only-el84-distributed-10w', 'EL84 Distributed 10 W @2%'],
+            ['power-only-el34-distributed-20-37w', 'EL34 Distributed 20–37 W @2%'],
+            ['power-only-6l6gc-pentode', '6L6GC Pentode @2%'],
+            ['power-only-kt88-distributed', 'KT88 Distributed @2%']
+          ]
+        },
+        {
+          tagName: 'optgroup',
+          label: 'Pre+Power',
+          options: [
+            ['listening-power-el84-distributed-thd0p1', 'EL84 Distributed @0.1%'],
+            ['listening-power-el34-distributed-thd0p1', 'EL34 Distributed @0.1%'],
+            ['listening-power-6l6gc-pentode-thd0p1', '6L6GC Pentode @0.1%'],
+            ['listening-power-kt88-distributed-thd0p1', 'KT88 Distributed @0.1%'],
+            ['listening-se-300b-thd0p1', '300B SE @0.1%'],
+            ['listening-se-2a3-thd0p1', '2A3 SE @0.1%'],
+            ['listening-power-el84-pentode-thd2', 'EL84 Pentode @2%'],
+            ['listening-power-el84-distributed-thd2', 'EL84 Distributed @2%'],
+            ['listening-power-el34-distributed-thd2', 'EL34 Distributed @2%'],
+            ['listening-power-6l6gc-pentode-thd2', '6L6GC Pentode @2%'],
+            ['listening-power-kt88-distributed-thd2', 'KT88 Distributed @2%'],
+            ['listening-se-300b-thd2', '300B SE @2%'],
+            ['listening-se-2a3-thd2', '2A3 SE @2%']
           ]
         }
       ]
     );
+    assert.deepEqual(
+      list.children
+        .filter(child => child.classList.contains('tube-simulator-preset-group'))
+        .map(group => group.textContent),
+      ['Pre', 'Power', 'Pre+Power']
+    );
+    assert.equal(
+      list.children.filter(child =>
+        child.classList.contains('tube-simulator-preset-option')).length,
+      36
+    );
 
-    // The shipped defaults are the EL84 Pentode @2% listening preset, so the
-    // dropdown opens on it rather than on Custom.
-    assert.equal(select.value, 'listening-power-el84-pentode-thd2');
+    const defaultPresetId = 'listening-power-el84-pentode-thd2';
+    assert.equal(select.value, defaultPresetId,
+      'a fresh Tube Simulator must open on the calibrated EL84 Pentode @2% preset');
+    assert.equal(trigger.textContent, 'EL84 Pentode @2%');
+    const explicitDefault = await createPlugin();
+    assert.equal(explicitDefault.applyCanonicalPreset(defaultPresetId), true);
+    assert.deepEqual(plugin.getSerializableParameters(), explicitDefault.getSerializableParameters(),
+      'fresh defaults and explicitly selecting EL84 Pentode @2% must be identical');
+
     plugin.setParameters({ tp: '12AU7' });
     assert.equal(select.value, '');
+    assert.equal(trigger.textContent, 'Custom');
     assert.equal(plugin.tp, '12AU7');
 
     // Custom is inert: re-selecting it must not touch any parameter.
@@ -1172,23 +1390,41 @@ test('Tube Simulator Preset dropdown lists Custom first, then the listening and 
     // Custom is display-only, so picking it from a state that DOES match a
     // preset must leave the parameters alone and snap the dropdown back to the
     // matching entry rather than parking on a label that contradicts the state.
-    plugin.applyCanonicalPreset('line-default');
-    assert.equal(select.value, 'line-default');
+    plugin.applyCanonicalPreset('listening-line-12at7-thd1');
+    assert.equal(select.value, 'listening-line-12at7-thd1');
     const matched = plugin.getSerializableParameters();
     select.value = '';
     select.dispatch('change');
     assert.deepEqual(plugin.getSerializableParameters(), matched);
-    assert.equal(select.value, 'line-default');
+    assert.equal(select.value, 'listening-line-12at7-thd1');
 
-    select.value = 'power-el34-distributed-20-37w';
-    select.dispatch('change');
+    for (const legacyId of [
+      'listening-line-12au7-thd1',
+      'power-only-se-300b',
+      'power-only-se-2a3'
+    ]) {
+      assert.equal(plugin.applyCanonicalPreset(legacyId), true,
+        `${legacyId} must remain programmatically applicable for compatibility`);
+      assert.equal(select.value, '', `${legacyId} must remain hidden and display Custom`);
+    }
+
+    trigger.dispatch('click');
+    assert.equal(list.hidden, false);
+    assert.equal(trigger.attributes['aria-expanded'], 'true');
+    assert.equal(list.style.maxHeight, '316px');
+    plugin.__testHarness.document.dispatch('scroll', { type: 'scroll', target: list });
+    assert.equal(list.hidden, false, 'scrolling the preset list must not close it');
+    list.children.find(option =>
+      option.presetId === 'listening-power-el34-distributed-thd2').dispatch('click');
+    assert.equal(list.hidden, true);
+    assert.equal(trigger.attributes['aria-expanded'], 'false');
     assert.equal(plugin.os, 'Power');
     assert.equal(plugin.pt, 'EL34');
     assert.equal(plugin.st, '43');
-    assert.equal(select.value, 'power-el34-distributed-20-37w');
+    assert.equal(select.value, 'listening-power-el34-distributed-thd2');
 
-    // A listening entry is selectable exactly like a circuit entry, and the
-    // round-tripped select value proves all 17 fields landed on that preset.
+    // A calibrated entry is selectable exactly like a circuit entry, and the
+    // round-tripped select value proves all 21 fields landed on that preset.
     select.value = 'listening-line-12ax7-thd1';
     select.dispatch('change');
     assert.equal(plugin.os, 'Line');
@@ -1196,25 +1432,56 @@ test('Tube Simulator Preset dropdown lists Custom first, then the listening and 
     assert.equal(plugin.nf, 30);
     assert.equal(select.value, 'listening-line-12ax7-thd1');
 
+    select.value = 'power-only-el84-pentode-10w';
+    select.dispatch('change');
+    assert.equal(plugin.os, 'Power');
+    assert.equal(plugin.tp, 'Bypass');
+    assert.equal(select.value, 'power-only-el84-pentode-10w');
+
     plugin.cleanup();
     assert.equal(plugin.presetControl, null);
+    assert.equal(plugin.presetList, null);
+    assert.equal(plugin.__testHarness.document.body.contains(list), false);
   });
 
 test('Tube Simulator Preset dropdown omits an option group whose bank is empty', async () => {
-  const plugin = await createPlugin({ transformSource: withEmptyListeningBank });
+  const plugin = await createPlugin({ transformSource: withEmptyPreBank });
   const container = plugin.createUI();
-  const [, select] = findByClass(container, 'tube-simulator-preset-row').children;
+  const { select, list } = presetUi(container, plugin);
 
   assert.equal(select.children[0].value, '');
   assert.deepEqual(
     select.children.slice(1).map(group => group.label),
-    ['Circuit']
+    ['Power', 'Pre+Power']
   );
   assert.equal(
-    select.children.some(child => child.label === 'Listening (THD-matched)'),
+    select.children.some(child => child.label === 'Pre'),
     false
   );
+  assert.deepEqual(
+    list.children
+      .filter(child => child.classList.contains('tube-simulator-preset-group'))
+      .map(group => group.textContent),
+    ['Power', 'Pre+Power']
+  );
   plugin.cleanup();
+});
+
+test('Tube Simulator keeps legacy canonical IDs programmatically applicable but hidden', async () => {
+  const plugin = await createPlugin();
+  const container = plugin.createUI();
+  const { select } = presetUi(container, plugin);
+  const optionIds = select.children.slice(1)
+    .flatMap(group => group.children.map(option => option.value));
+  const canonical = plugin.constructor.getCanonicalPresets();
+
+  assert.equal(optionIds.length, 35);
+  assert.equal(canonical.length, 8);
+  for (const preset of canonical) {
+    assert.equal(optionIds.includes(preset.id), false, `${preset.id} leaked into the menu`);
+    assert.equal(plugin.applyCanonicalPreset(preset.id), true, `${preset.id} is no longer applicable`);
+    assert.equal(select.value, '', `${preset.id} should display as Custom`);
+  }
 });
 
 test('Tube Simulator resynchronizes every control DOM node from parameter state', async () => {
@@ -1230,7 +1497,7 @@ test('Tube Simulator resynchronizes every control DOM node from parameter state'
     };
   };
 
-  plugin.applyCanonicalPreset('power-el34-distributed-20-37w');
+  plugin.applyCanonicalPreset('listening-power-el34-distributed-thd2');
   assert.deepEqual(readRow('tp').checked, ['12AX7']);
   assert.deepEqual(readRow('os').checked, ['Power']);
   assert.deepEqual(readRow('pt').checked, ['EL34']);
@@ -1264,7 +1531,7 @@ test('Tube Simulator resynchronizes every control DOM node from parameter state'
   assert.deepEqual(readRow('os').checked, ['Line']);
   assert.deepEqual(readRow('tp').checked, ['12AU7']);
   assert.equal(readRow('dr').number, 0);
-  assert.equal(findByClass(container, 'tube-simulator-preset-row').children[1].value, 'line-default');
+  assert.equal(presetUi(container, plugin).select.value, '');
 });
 
 test('Tube Simulator keeps typed text in the number input that drove the setter', async () => {
@@ -1309,62 +1576,76 @@ test('Tube Simulator keeps typed text in the number input that drove the setter'
   // Anything that is not the row's own control still refreshes that row.
   plugin.setParameters({ pv: 210 });
   assert.equal(Number(plate.value), 210);
-  plugin.applyCanonicalPreset('line-default');
+  plugin.applyCanonicalPreset('listening-line-12au7-thd1');
   assert.equal(Number(plate.value), 250);
   assert.equal(Number(numberInput('pb').value), 320);
 });
 
-test('Tube Simulator dims inactive Power rows without disabling them', async () => {
+test('Tube Simulator removes inactive output-circuit rows from the layout', async () => {
   const plugin = await createPlugin();
   plugin.createUI();
-  const dimmable = [...plugin._powerDimmableRows];
+  const common = [...plugin._powerRows];
+  const pushPull = [...plugin._ppRows];
+  const singleEnded = [...plugin._seRows];
 
-  // Three valve rows on the Power tab plus four transformer and speaker rows on the
-  // Transformer tab: the dimming spans both halves of the split.
-  assert.equal(dimmable.length, 7);
+  assert.equal(common.length, 2);
+  assert.equal(pushPull.length, 5);
+  assert.equal(singleEnded.length, 4);
   assert.equal(plugin.os, 'Power');
   assert.deepEqual(
-    dimmable.map(row => row.classList.contains('tube-simulator-dimmed')),
-    [false, false, false, false, false, false, false]
+    [common, pushPull, singleEnded].map(rows => rows.every(row => row.hidden)),
+    [false, false, true]
+  );
+
+  plugin.setParameters({ os: 'SingleEnded' });
+  assert.deepEqual(
+    [common, pushPull, singleEnded].map(rows => rows.every(row => row.hidden)),
+    [false, true, false]
   );
 
   plugin.setParameters({ os: 'Line' });
   assert.deepEqual(
-    dimmable.map(row => row.classList.contains('tube-simulator-dimmed')),
-    [true, true, true, true, true, true, true]
+    [common, pushPull, singleEnded].map(rows => rows.every(row => row.hidden)),
+    [true, true, true]
   );
   assert.equal(
-    dimmable.every(row =>
+    [...common, ...pushPull, ...singleEnded].every(row =>
       row.querySelectorAll('input').every(input => !input.disabled)),
     true
   );
-  plugin.setParameters({ os: 'Power' });
-  assert.deepEqual(
-    dimmable.map(row => row.classList.contains('tube-simulator-dimmed')),
-    [false, false, false, false, false, false, false]
-  );
-  // Dimmed values remain part of the serialized 17-field record.
+  // Hidden values remain part of the serialized 21-field record.
   assert.equal(plugin.getSerializableParameters().pt, 'EL84');
+  assert.equal(plugin.getSerializableParameters().sd, '300B');
 });
 
-test('Tube Simulator UI wiring pins the tab roles, preset dropdown, and mobile styles',
+test('Tube Simulator UI wiring pins the tab roles, preset dropdown, and tab sizing',
   async () => {
-    const [source, css] = await Promise.all([
+    const [source, css, appCss] = await Promise.all([
       fs.readFile(pluginSourcePath, 'utf8'),
       fs.readFile(
         path.join(repoRoot, 'plugins', 'saturation', 'tube_simulator.css'), 'utf8'
-      )
+      ),
+      fs.readFile(path.join(repoRoot, 'effetune.css'), 'utf8')
     ]);
     assert.match(source, /setAttribute\('role', 'tablist'\)/);
     assert.match(source, /setAttribute\('role', 'tabpanel'\)/);
     assert.match(source, /setAttribute\('aria-controls'/);
     assert.match(source, /setAttribute\('aria-labelledby'/);
     assert.match(source, /TUBE_SIMULATOR_LISTENING_PRESETS = Object\.freeze\(/);
-    assert.match(source, /label: 'Listening \(THD-matched\)'/);
+    assert.match(source, /label: 'Pre'/);
+    assert.match(source, /label: 'Power'/);
+    assert.match(source, /label: 'Pre\+Power'/);
     assert.doesNotMatch(source, /'Circuit Preset'/);
     assert.match(css, /body\.layout-mobile \.tube-simulator-tab \{/);
-    assert.match(css, /\.tube-simulator-dimmed \{/);
-    assert.doesNotMatch(css, /\.tube-simulator-dimmed[^}]*disabled/);
+    assert.match(css, /\.tube-simulator-tab-content \{[^}]*min-height: 153px;/s);
+    assert.match(
+      css,
+      /body\.layout-mobile \.tube-simulator-tab-content \{[^}]*min-height: 0;/s
+    );
+    assert.match(css, /\.tube-simulator-tab-content \.parameter-row\[hidden\] \{/);
+    assert.doesNotMatch(css, /\.tube-simulator-dimmed/);
+    assert.match(css, /\.tube-simulator-preset-list \{[^}]*overflow-y: auto;/s);
+    assert.match(appCss, /::\-webkit-scrollbar-thumb \{/);
   });
 
 test('Tube Simulator telemetry parser rejects mismatched and non-finite frames', async () => {
@@ -1420,6 +1701,46 @@ test('Tube Simulator HUD plots recent Ia-Vak trajectories over plate curves and 
     Math.abs(plugin.hudCharacteristics.loadLine.yValues[0] - 250 / 22000) < 1e-9
   );
   assert.equal(plugin.hudCharacteristics.loadLine.yValues[1], 0);
+
+  plugin.setParameters({
+    os: 'SingleEnded', sd: '300B', sb: 400, sr: 1000, sp: '3.5', sl: '8', rl: 8
+  });
+  plugin._appendTrajectory(telemetry);
+  assert.equal(plugin.hudAxes.xMax, 400);
+  assert.equal(plugin.hudCharacteristics.plateCurves.length, 7);
+  assert.equal(
+    plugin.trajectories.stage1LeftX[0], telemetry.left.powerPlatePushV
+  );
+  assert.equal(
+    plugin.trajectories.stage2LeftX[0], telemetry.right.powerPlatePushV
+  );
+  const seLoadLine = plugin.hudCharacteristics.loadLine;
+  assert.ok(seLoadLine.yValues[0] > seLoadLine.yValues[1]);
+  assert.ok(Math.abs(
+    (seLoadLine.yValues[0] - seLoadLine.yValues[1]) /
+      (seLoadLine.xValues[1] - seLoadLine.xValues[0]) - 1 / 3500
+  ) < 1e-9);
+  const matchedLoadRevision = plugin.hudAxesRevision;
+  plugin.setParameters({ rl: 4 });
+  const fourOhmLoadLine = plugin.hudCharacteristics.loadLine;
+  assert.ok(Math.abs(
+    (fourOhmLoadLine.yValues[0] - fourOhmLoadLine.yValues[1]) /
+      (fourOhmLoadLine.xValues[1] - fourOhmLoadLine.xValues[0]) - 1 / 1750
+  ) < 1e-9);
+  assert.equal(plugin.hudAxesRevision, matchedLoadRevision + 1);
+  plugin.setParameters({ rl: 16 });
+  const sixteenOhmLoadLine = plugin.hudCharacteristics.loadLine;
+  assert.ok(Math.abs(
+    (sixteenOhmLoadLine.yValues[0] - sixteenOhmLoadLine.yValues[1]) /
+      (sixteenOhmLoadLine.xValues[1] - sixteenOhmLoadLine.xValues[0]) - 1 / 7000
+  ) < 1e-9);
+  assert.equal(plugin.hudAxesRevision, matchedLoadRevision + 2);
+  const seCurrentAt400 = sixteenOhmLoadLine.yValues[1];
+  plugin.setParameters({ sr: 1500 });
+  plugin._appendTrajectory(telemetry);
+  assert.notEqual(plugin.hudCharacteristics.loadLine.yValues[1], seCurrentAt400);
+  assert.ok(plugin.hudCharacteristics.loadLine.yValues[1] < seCurrentAt400);
+  plugin.setParameters({ os: 'Line', tp: '12AU7' });
 
   for (let index = 0; index < 96; index++) {
     plugin.trajectories.stage1LeftX[index] = index;
@@ -1679,6 +2000,75 @@ test('Tube Simulator reference safety recovery keeps current controls and resets
     assert.equal(exactFloat32(recoveredOutput, freshOutput), true);
   });
 
+test('Tube Simulator reference keeps safety attenuation across batched inactive fields',
+  async () => {
+    const sampleRate = 44100;
+    const toneFrames = 48 * 128;
+    const tone = new Float32Array(toneFrames * 2);
+    const silence = new Float32Array(tone.length);
+    for (let channel = 0; channel < 2; channel++) {
+      const offset = channel * toneFrames;
+      for (let frame = 0; frame < toneFrames; frame++) {
+        tone[offset + frame] = Math.sin(2 * Math.PI * 1000 * frame / sampleRate);
+      }
+    }
+    const probeFrames = 256;
+    const probe = new Float32Array(probeFrames * 2);
+    for (let channel = 0; channel < 2; channel++) {
+      const offset = channel * probeFrames;
+      for (let frame = 0; frame < probeFrames; frame++) {
+        probe[offset + frame] = 0.01 * Math.sin(2 * Math.PI * frame / 37);
+      }
+    }
+
+    const cases = [
+      {
+        name: 'Line',
+        params: { os: 'Line', dr: -30, og: 48, mx: 100, iv: 2.828, ag: true },
+        inactive: { pt: 'KT88', st: '43', sd: '2A3' }
+      },
+      {
+        name: 'Power',
+        params: { os: 'Power', dr: -30, og: 48, mx: 100, iv: 2.828, ag: true },
+        inactive: { sd: '2A3', sb: 300, sr: 750, sp: '5.0' }
+      },
+      {
+        name: 'SingleEnded',
+        params: {
+          os: 'SingleEnded', dr: -30, og: 48, mx: 100, iv: 2.828, ag: true,
+          sd: '300B', sb: 400, sr: 1000, sp: '3.5'
+        },
+        inactive: { pt: 'KT88', pb: 470, kr: 500, st: '43', zp: '8.0' }
+      }
+    ];
+
+    for (const testCase of cases) {
+      const reference = await createReferenceHarness(testCase.params, sampleRate);
+      const changed = await createReferenceHarness(testCase.params, sampleRate);
+      reference.process(tone, [128]);
+      changed.process(tone, [128]);
+      reference.process(silence, [128]);
+      changed.process(silence, [128]);
+      const engaged = changed.checkpoint();
+      assert.ok(engaged.outputSafety[0] < 1, `${testCase.name} safety attenuation engages`);
+      assert.equal(engaged.outputSafety[3], 0, `${testCase.name} safety ramp completes`);
+      assert.deepEqual(reference.checkpoint().outputSafety, engaged.outputSafety);
+
+      changed.setParameters(testCase.inactive);
+      const referenceOutput = reference.process(probe, [37, 128, 5]);
+      const changedOutput = changed.process(probe, [37, 128, 5]);
+      const after = changed.checkpoint();
+      assert.deepEqual(after.outputSafety, engaged.outputSafety,
+        `${testCase.name} inactive fields preserve gain, target, step, and remaining`);
+      assert.deepEqual(after.runtimeEvent, engaged.runtimeEvent,
+        `${testCase.name} inactive fields preserve the runtime event`);
+      assert.deepEqual(after.feedbackTransition, engaged.feedbackTransition,
+        `${testCase.name} inactive fields preserve transition state`);
+      assert.equal(exactFloat32(changedOutput, referenceOutput), true,
+        `${testCase.name} inactive fields preserve audio exactly`);
+    }
+  });
+
 test('Tube Simulator caches telemetry without HUD work while hidden or power-disabled', async () => {
   const plugin = await createPlugin();
   const subscriptions = [];
@@ -1816,18 +2206,59 @@ test('Tube Simulator Phase A input calibration applies exactly once and preserve
   assert.notEqual(afterChange.controls[0], beforeChange.controls[0]);
 });
 
-// Documentation guard. The Circuit Presets table in the shipped
-// docs restates canonical preset values by hand, so recalibrating a preset used
-// to leave every language file quietly stale. These two tests tie the English
-// table back to the plugin source and then tie the nine translations back to
-// the English table.
+// Documentation guard. The three preset tables restate plugin values by hand,
+// so each row is tied back to its preset instead of merely comparing the set of
+// numbers that happens to occur somewhere in the section.
 const ENGLISH_SATURATION_DOC = path.join(repoRoot, 'docs', 'plugins', 'saturation.md');
+const GENERATED_TUBE_SIMULATOR_DOC = path.join(
+  repoRoot, 'docs', 'dsp', 'effects', 'tube-simulator', 'index.md'
+);
 const TRANSLATED_SATURATION_DOCS = Object.freeze(
   ['ar', 'es', 'fr', 'hi', 'ja', 'ko', 'pt', 'ru', 'zh'].map(language => ({
     language,
     file: path.join(repoRoot, 'docs', 'i18n', language, 'plugins', 'saturation.md')
   }))
 );
+
+// Independent documentation contract: these values are deliberately baked
+// here instead of being derived from the plugin or calibration harness.
+const DOCUMENTED_PRESET_THD = Object.freeze([
+  Object.freeze({ group: 'Pre', label: 'Line 12AT7 @0.01%', thdPercent: 0.01 }),
+  Object.freeze({ group: 'Pre', label: 'Line 12AT7 @0.1%', thdPercent: 0.1 }),
+  Object.freeze({ group: 'Pre', label: 'Line 12AX7 @0.01%', thdPercent: 0.01 }),
+  Object.freeze({ group: 'Pre', label: 'Line 12AX7 @0.1%', thdPercent: 0.1 }),
+  Object.freeze({ group: 'Pre', label: 'Line 12AU7 Open-Loop @0.1%', thdPercent: 0.1 }),
+  Object.freeze({ group: 'Pre', label: 'Line 12AT7 @1%', thdPercent: 0.9974 }),
+  Object.freeze({ group: 'Pre', label: 'Line 12AX7 @1%', thdPercent: 1.0003 }),
+  Object.freeze({ group: 'Pre', label: 'Line 12AU7 Open-Loop @1%', thdPercent: 1.0002 }),
+  Object.freeze({ group: 'Power', label: 'EL84 Pentode 10 W @0.1%', thdPercent: 0.1001 }),
+  Object.freeze({ group: 'Power', label: 'EL84 Distributed 10 W @0.1%', thdPercent: 0.1002 }),
+  Object.freeze({ group: 'Power', label: 'EL34 Distributed 20–37 W @0.1%', thdPercent: 0.1 }),
+  Object.freeze({ group: 'Power', label: '6L6GC Pentode @0.1%', thdPercent: 0.1003 }),
+  Object.freeze({ group: 'Power', label: 'KT88 Distributed @0.1%', thdPercent: 0.1002 }),
+  Object.freeze({ group: 'Power', label: '300B SE @0.1%', thdPercent: 0.1 }),
+  Object.freeze({ group: 'Power', label: '300B SE @1%', thdPercent: 1 }),
+  Object.freeze({ group: 'Power', label: '2A3 SE @0.1%', thdPercent: 0.1 }),
+  Object.freeze({ group: 'Power', label: '2A3 SE @1%', thdPercent: 1 }),
+  Object.freeze({ group: 'Power', label: 'EL84 Pentode 10 W @2%', thdPercent: 1.9995 }),
+  Object.freeze({ group: 'Power', label: 'EL84 Distributed 10 W @2%', thdPercent: 2.0005 }),
+  Object.freeze({ group: 'Power', label: 'EL34 Distributed 20–37 W @2%', thdPercent: 1.9995 }),
+  Object.freeze({ group: 'Power', label: '6L6GC Pentode @2%', thdPercent: 2.0004 }),
+  Object.freeze({ group: 'Power', label: 'KT88 Distributed @2%', thdPercent: 1.997 }),
+  Object.freeze({ group: 'Pre+Power', label: 'EL84 Distributed @0.1%', thdPercent: 0.1 }),
+  Object.freeze({ group: 'Pre+Power', label: 'EL34 Distributed @0.1%', thdPercent: 0.1 }),
+  Object.freeze({ group: 'Pre+Power', label: '6L6GC Pentode @0.1%', thdPercent: 0.1 }),
+  Object.freeze({ group: 'Pre+Power', label: 'KT88 Distributed @0.1%', thdPercent: 0.1 }),
+  Object.freeze({ group: 'Pre+Power', label: '300B SE @0.1%', thdPercent: 0.1 }),
+  Object.freeze({ group: 'Pre+Power', label: '2A3 SE @0.1%', thdPercent: 0.1 }),
+  Object.freeze({ group: 'Pre+Power', label: 'EL84 Pentode @2%', thdPercent: 2.0004 }),
+  Object.freeze({ group: 'Pre+Power', label: 'EL84 Distributed @2%', thdPercent: 2.0005 }),
+  Object.freeze({ group: 'Pre+Power', label: 'EL34 Distributed @2%', thdPercent: 2 }),
+  Object.freeze({ group: 'Pre+Power', label: '6L6GC Pentode @2%', thdPercent: 1.9998 }),
+  Object.freeze({ group: 'Pre+Power', label: 'KT88 Distributed @2%', thdPercent: 1.9997 }),
+  Object.freeze({ group: 'Pre+Power', label: '300B SE @2%', thdPercent: 2 }),
+  Object.freeze({ group: 'Pre+Power', label: '2A3 SE @2%', thdPercent: 2.0002 })
+]);
 
 // The heading is the anchor README links to, so it is also the section marker.
 function tubeSimulatorSection(source, file) {
@@ -1838,10 +2269,14 @@ function tubeSimulatorSection(source, file) {
   return next === -1 ? rest : rest.slice(0, next + 1);
 }
 
-// Row order is not asserted: the table is keyed by the preset label so a
-// reordered or reformatted table still resolves to the same canonical record.
-// Keying on the label is also what keeps the Listening bank table, which has the
-// same column count, out of the result.
+function outputTrimDb(cell, table, label) {
+  const match = /Output Trim ([+-]?\d+(?:\.\d+)?)dB/.exec(cell ?? '');
+  assert.ok(match, `the ${table} row for "${label}" has no Output Trim value`);
+  return Number(match[1]);
+}
+
+// Row order is intentionally free: English GUI labels remain English in every
+// translation and provide a stable, low-maintenance key into each table.
 function parseCircuitPresetRows(section, labels) {
   const rows = new Map();
   for (const line of section.split('\n')) {
@@ -1855,123 +2290,279 @@ function parseCircuitPresetRows(section, labels) {
     assert.equal(rows.has(cells[0]), false,
       `"${cells[0]}" appears twice in the Circuit Presets table`);
     const bPlus = /Output B\+ (-?\d+(?:\.\d+)?) V/.exec(cells[4] ?? '');
+    const inputVolume = /Input Volume ([+-]?\d+(?:\.\d+)?)dB/.exec(cells[5] ?? '');
+    const inputReference = /Input Reference ([+-]?\d+(?:\.\d+)?) Vpk/.exec(cells[5] ?? '');
+    assert.ok(inputVolume,
+      `the Circuit Presets row for "${cells[0]}" has no Input Volume value`);
+    assert.ok(inputReference,
+      `the Circuit Presets row for "${cells[0]}" has no Input Reference value`);
     rows.set(cells[0], {
       negativeFeedbackDb: Number(feedback[1]),
-      outputBPlusV: bPlus ? Number(bPlus[1]) : null
+      outputBPlusV: bPlus ? Number(bPlus[1]) : null,
+      inputVolumeDb: Number(inputVolume[1]),
+      inputReferenceVpk: Number(inputReference[1]),
+      outputTrimDb: outputTrimDb(cells[5], 'Circuit Presets', cells[0])
     });
   }
   return rows;
 }
 
-// Same label-keyed approach for the Listening bank. Its table has
-// the same column count as the Circuit one, so the label set is again what keeps
-// the two apart. Only the three calibrated values are documented per row; every
-// other value is inherited from the Circuit preset named in "Based on".
-function parseListeningPresetRows(section, labels) {
+function parseSelectablePresetRows(section, tables) {
   const rows = new Map();
+  const groups = new Map(tables.groups.map(group => [
+    group.label, new Map(group.presets.map(preset => [preset.label, preset]))
+  ]));
+  const listening = new Map(tables.listening.map(preset => [preset.label, preset]));
+  const power = new Map(tables.powerOnly.map(preset => [preset.label, preset]));
+  const add = (group, label, inputVolume, inputReference, outputTrim, measuredThd) => {
+    const key = `${group}/${label}`;
+    assert.equal(rows.has(key), false, `"${key}" appears twice in the calibrated preset tables`);
+    assert.ok(inputVolume && inputReference && outputTrim && measuredThd,
+      `the calibrated preset row for "${key}" is incomplete`);
+    rows.set(key, {
+      inputVolumeDb: Number(inputVolume[1]),
+      inputReferenceVpk: Number(inputReference[1]),
+      outputTrimDb: Number(outputTrim[1]),
+      measuredThdPercent: Number(measuredThd[1])
+    });
+  };
   for (const line of section.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) continue;
     const cells = trimmed.slice(1, -1).split('|').map(cell => cell.trim());
-    if (!labels.has(cells[0])) continue;
-    assert.equal(rows.has(cells[0]), false,
-      `"${cells[0]}" appears twice in the Listening Presets table`);
-    const inputVolume = /^([+-]?\d+(?:\.\d+)?)dB$/.exec(cells[3] ?? '');
-    const inputReference = /^([+-]?\d+(?:\.\d+)?) Vpk$/.exec(cells[4] ?? '');
-    const outputTrim = /^([+-]?\d+(?:\.\d+)?)dB$/.exec(cells[5] ?? '');
-    assert.ok(inputVolume,
-      `the Listening Presets row for "${cells[0]}" has no Input Volume value`);
-    assert.ok(inputReference,
-      `the Listening Presets row for "${cells[0]}" has no Input Reference value`);
-    assert.ok(outputTrim,
-      `the Listening Presets row for "${cells[0]}" has no Output Trim value`);
-    rows.set(cells[0], {
-      basedOn: cells[1] ?? '',
-      inputVolumeDb: Number(inputVolume[1]),
-      inputReferenceVpk: Number(inputReference[1]),
-      outputTrimDb: Number(outputTrim[1])
-    });
+    if (groups.get(cells[0])?.has(cells[1])) {
+      add(cells[0], cells[1], /^([+-]?\d+(?:\.\d+)?)dB$/.exec(cells[2] ?? ''),
+        /^([+-]?\d+(?:\.\d+)?) Vpk$/.exec(cells[3] ?? ''),
+        /^([+-]?\d+(?:\.\d+)?)dB$/.exec(cells[4] ?? ''),
+        /^([+-]?\d+(?:\.\d+)?)%$/.exec(cells[5] ?? ''));
+      continue;
+    }
+    if (cells.length >= 7 && listening.has(cells[0])) {
+      const preset = listening.get(cells[0]);
+      const group = preset.params.os === 'Line' ? 'Pre' : 'Pre+Power';
+      add(group, cells[0], /^([+-]?\d+(?:\.\d+)?)dB$/.exec(cells[3] ?? ''),
+        /^([+-]?\d+(?:\.\d+)?) Vpk$/.exec(cells[4] ?? ''),
+        /^([+-]?\d+(?:\.\d+)?)dB$/.exec(cells[5] ?? ''),
+        /^([+-]?\d+(?:\.\d+)?)%$/.exec(cells[6] ?? ''));
+      continue;
+    }
+    if (cells.length === 2 && power.has(cells[0])) {
+      const values = /^([+-]?\d+(?:\.\d+)?)dB \/ ([+-]?\d+(?:\.\d+)?) Vpk \/ ([+-]?\d+(?:\.\d+)?)dB \/ ([+-]?\d+(?:\.\d+)?)%$/.exec(cells[1] ?? '');
+      add('Power', cells[0], values && [values[0], values[1]],
+        values && [values[0], values[2]], values && [values[0], values[3]],
+        values && [values[0], values[4]]);
+    }
   }
   return rows;
 }
 
-function numericTokens(section) {
-  return new Set(section.match(/\d+(?:\.\d+)?/g) || []);
+function assertKt88Exception(section, file, tables) {
+  const powerOnly = tables.powerOnly.find(
+    preset => preset.id === 'power-only-kt88-distributed');
+  const preAndPower = tables.canonical.find(preset => preset.id === 'power-kt88-distributed');
+  assert.ok(powerOnly, 'Power-only KT88 preset is unavailable');
+  assert.ok(preAndPower, 'Pre+Power KT88 preset is unavailable');
+
+  const sentence = section.split('\n').find(line =>
+    line.includes('Power-only') && line.includes('KT88') &&
+    line.includes('Pre+Power') &&
+    line.includes('Negative Feedback'));
+  assert.ok(sentence, `${file} does not explain the Power-only KT88 feedback exception`);
+  const powerFeedback = `${powerOnly.params.nf}dB`;
+  const preAndPowerFeedback = `${preAndPower.params.nf}dB`;
+  assert.ok(sentence.includes(powerFeedback) && sentence.includes(preAndPowerFeedback),
+    `${file} must associate Power-only KT88 with ${powerFeedback} and ` +
+      `Pre+Power KT88 with ${preAndPowerFeedback}`);
 }
 
-test('Tube Simulator docs restate the canonical Circuit and Listening preset values', async () => {
-  const tables = readPluginPresetTables(repoRoot);
-  const section = tubeSimulatorSection(
-    await fs.readFile(ENGLISH_SATURATION_DOC, 'utf8'), ENGLISH_SATURATION_DOC
-  );
-  const rows = parseCircuitPresetRows(
+function assertPresetDocumentation(section, file, tables) {
+  const canonicalRows = parseCircuitPresetRows(
     section, new Set(tables.canonical.map(preset => preset.label))
   );
-
-  assert.equal(rows.size, tables.canonical.length,
-    'the Circuit Presets table must carry exactly one row per canonical preset');
+  assert.equal(canonicalRows.size, tables.canonical.length,
+    `${file} must carry exactly one Circuit row per canonical preset`);
 
   for (const preset of tables.canonical) {
-    const row = rows.get(preset.label);
-    assert.ok(row, `the Circuit Presets table has no row for "${preset.label}"`);
+    const row = canonicalRows.get(preset.label);
+    assert.ok(row, `${file} has no Circuit row for "${preset.label}"`);
     assert.equal(row.negativeFeedbackDb, preset.params.nf,
-      `${preset.label} documents Negative Feedback ${row.negativeFeedbackDb}dB but the ` +
-      'plugin canonical table says ' + `${preset.params.nf}dB`);
-    // Line Default runs the line circuit, so its power supply is not documented.
-    if (preset.params.os !== 'Power') {
+      `${file}: ${preset.label} maps to the wrong canonical Negative Feedback`);
+    assert.equal(row.inputVolumeDb, preset.params.dr,
+      `${file}: ${preset.label} maps to the wrong canonical Input Volume`);
+    assert.equal(row.inputReferenceVpk, preset.params.iv,
+      `${file}: ${preset.label} maps to the wrong canonical Input Reference`);
+    assert.equal(row.outputTrimDb, preset.params.og,
+      `${file}: ${preset.label} maps to the wrong canonical Output Trim`);
+    if (preset.params.os === 'Power') {
+      assert.equal(row.outputBPlusV, preset.params.pb,
+        `${file}: ${preset.label} maps to the wrong canonical Output B+`);
+    } else {
       assert.equal(row.outputBPlusV, null,
-        `${preset.label} is a line preset and must not document an Output B+ value`);
-      continue;
+        `${file}: ${preset.label} must not document an Output B+ value`);
     }
-    assert.equal(row.outputBPlusV, preset.params.pb,
-      `${preset.label} documents Output B+ ${row.outputBPlusV} V but the plugin canonical ` +
-      `table says ${preset.params.pb} V`);
   }
 
-  const listeningRows = parseListeningPresetRows(
-    section, new Set(tables.listening.map(preset => preset.label))
-  );
-
-  assert.equal(listeningRows.size, tables.listening.length,
-    'the Listening Presets table must carry exactly one row per listening preset');
-
-  const canonicalLabels = new Set(tables.canonical.map(preset => preset.label));
-  for (const preset of tables.listening) {
-    const row = listeningRows.get(preset.label);
-    assert.ok(row, `the Listening Presets table has no row for "${preset.label}"`);
-    // "Based on" is prose, but it has to name a Circuit preset that exists:
-    // renaming a canonical preset otherwise leaves the bank pointing at nothing.
-    assert.ok(canonicalLabels.has(row.basedOn),
-      `${preset.label} is documented as based on "${row.basedOn}", which is not a ` +
-      'Circuit preset label');
+  const calibratedRows = parseSelectablePresetRows(section, tables);
+  const selectable = tables.groups.flatMap(group =>
+    group.presets.map(preset => ({ group: group.label, ...preset })));
+  const documentedThdByKey = new Map(DOCUMENTED_PRESET_THD.map(entry =>
+    [`${entry.group}/${entry.label}`, entry.thdPercent]));
+  assert.equal(DOCUMENTED_PRESET_THD.length, 35,
+    'the independent Measured THD contract must cover Pre 8, Power 14, and Pre+Power 13');
+  assert.equal(documentedThdByKey.size, DOCUMENTED_PRESET_THD.length,
+    'the independent Measured THD contract contains a duplicate row');
+  assert.equal(calibratedRows.size, selectable.length,
+    `${file} must carry exactly one calibrated row per selectable preset`);
+  assert.deepEqual(new Set(documentedThdByKey.keys()),
+    new Set(selectable.map(preset => `${preset.group}/${preset.label}`)),
+    'the independent Measured THD contract must cover all 35 selectable rows');
+  for (const preset of selectable) {
+    const label = `${preset.group}/${preset.label}`;
+    const row = calibratedRows.get(label);
+    assert.ok(row, `${file} has no calibrated row for "${label}"`);
     assert.equal(row.inputVolumeDb, preset.params.dr,
-      `${preset.label} documents Input Volume ${row.inputVolumeDb}dB but the plugin ` +
-      `listening table says ${preset.params.dr}dB`);
+      `${file}: ${label} maps to the wrong Input Volume`);
     assert.equal(row.inputReferenceVpk, preset.params.iv,
-      `${preset.label} documents Input Reference ${row.inputReferenceVpk} Vpk but the ` +
-      `plugin listening table says ${preset.params.iv} Vpk`);
+      `${file}: ${label} maps to the wrong Input Reference`);
     assert.equal(row.outputTrimDb, preset.params.og,
-      `${preset.label} documents Output Trim ${row.outputTrimDb}dB but the plugin ` +
-      `listening table says ${preset.params.og}dB`);
+      `${file}: ${label} maps to the wrong Output Trim`);
+    assert.equal(row.measuredThdPercent, documentedThdByKey.get(label),
+      `${file}: ${label} maps to the wrong baked Measured THD`);
+  }
+
+  assertKt88Exception(section, file, tables);
+}
+
+test('Tube Simulator English docs map every preset table row to the plugin', async () => {
+  const tables = readPluginPresetTables(repoRoot);
+  const section = tubeSimulatorSection(
+    await fs.readFile(ENGLISH_SATURATION_DOC, 'utf8'), ENGLISH_SATURATION_DOC);
+  assertPresetDocumentation(section, ENGLISH_SATURATION_DOC, tables);
+});
+
+test('Tube Simulator translations map every preset table row to the plugin', async () => {
+  const tables = readPluginPresetTables(repoRoot);
+  for (const { language, file } of TRANSLATED_SATURATION_DOCS) {
+    const section = tubeSimulatorSection(await fs.readFile(file, 'utf8'), file);
+    assertPresetDocumentation(section, `docs/i18n/${language}/plugins/saturation.md`, tables);
   }
 });
 
-test('Tube Simulator translations carry every number the English section states', async () => {
-  const english = numericTokens(tubeSimulatorSection(
-    await fs.readFile(ENGLISH_SATURATION_DOC, 'utf8'), ENGLISH_SATURATION_DOC
-  ));
-  assert.ok(english.size > 0, 'the English section states no numbers at all');
+test('Tube Simulator listening guides only present selectable preset names as choices', async () => {
+  const tables = readPluginPresetTables(repoRoot);
+  const selectableLabels = new Set(
+    tables.groups.flatMap(group => group.presets.map(preset => preset.label))
+  );
+  const hiddenLabels = tables.canonical.map(preset => preset.label);
 
   for (const { language, file } of TRANSLATED_SATURATION_DOCS) {
-    const translated = numericTokens(
-      tubeSimulatorSection(await fs.readFile(file, 'utf8'), file)
-    );
-    // Containment, not equality: a translation may spell a count as a word or a
-    // digit where English does the opposite, and that is a wording choice, not a
-    // value. Every number the English section states still has to be present.
-    const missing = [...english].filter(token => !translated.has(token));
-    assert.deepEqual(missing, [],
-      `docs/i18n/${language}/plugins/saturation.md is missing the numbers ` +
-      `${missing.join(', ')} that the English Tube Simulator section states`);
+    const section = tubeSimulatorSection(await fs.readFile(file, 'utf8'), file);
+    const guideStart = section.indexOf('\n### ');
+    const guideEnd = section.indexOf('\n### ', guideStart + 1);
+    const guide = section.slice(guideStart, guideEnd);
+
+    for (const label of hiddenLabels) {
+      assert.equal(guide.includes(`**${label}**`), false,
+        `docs/i18n/${language} presents hidden canonical preset "${label}" as selectable`);
+    }
+    for (const match of guide.matchAll(/\*\*([^*]+@\d+(?:\.\d+)?%)\*\*/g)) {
+      assert.ok(selectableLabels.has(match[1]),
+        `docs/i18n/${language} uses non-selectable preset name "${match[1]}"`);
+    }
+  }
+});
+
+test('Tube Simulator docs describe the exact startup preset and protection exclusions', async () => {
+  const documents = [
+    { file: ENGLISH_SATURATION_DOC, exclusion: 'excluded from matching' },
+    { file: GENERATED_TUBE_SIMULATOR_DOC, exclusion: 'excluded from matching' },
+    ...TRANSLATED_SATURATION_DOCS.map(document => ({
+      ...document,
+      exclusion: ({
+        ar: 'مستبعدان من المطابقة', es: 'se excluyen de la comparación',
+        fr: 'exclus de cette comparaison', hi: 'मिलान से बाहर', ja: '照合対象外',
+        ko: '매칭에서 제외', pt: 'excluídos dessa correspondência',
+        ru: 'исключены из сопоставления', zh: '不参与匹配'
+      })[document.language]
+    }))
+  ];
+
+  for (const { file, exclusion } of documents) {
+    const section = tubeSimulatorSection(await fs.readFile(file, 'utf8'), file);
+    const paragraph = section.split(/\r?\n\r?\n/)
+      .find(candidate => candidate.includes(exclusion));
+    assert.ok(paragraph, `${file} does not document preset matching exclusions`);
+    assert.match(paragraph, /\*\*EL84 Pentode @2%\*\*/);
+    assert.match(paragraph, /\bCustom\b/);
+    assert.doesNotMatch(paragraph, /\+(?:3\.958|4\.63)dB/);
+    assert.match(paragraph, /Output Safety Trim/);
+    assert.match(paragraph, /Auto Gain Reduction/);
+    assert.ok(paragraph.includes(exclusion),
+      `${file} does not say that protection settings are excluded from preset matching`);
+    assert.match(section, /-7\.372dB/,
+      `${file} does not document the default preset's calibrated Output Trim`);
+  }
+});
+
+test('Tube Simulator presets are grouped by Pre, Power, and Pre+Power signal paths', () => {
+  const tables = readPluginPresetTables(repoRoot);
+  const expectedPowerIds = [
+    'power-only-el84-pentode-10w-thd0p1',
+    'power-only-el84-distributed-10w-thd0p1',
+    'power-only-el34-distributed-20-37w-thd0p1',
+    'power-only-6l6gc-pentode-thd0p1',
+    'power-only-kt88-distributed-thd0p1',
+    'power-only-se-300b-thd0p1',
+    'power-only-se-300b-thd1',
+    'power-only-se-2a3-thd0p1',
+    'power-only-se-2a3-thd1',
+    'power-only-el84-pentode-10w',
+    'power-only-el84-distributed-10w',
+    'power-only-el34-distributed-20-37w',
+    'power-only-6l6gc-pentode',
+    'power-only-kt88-distributed'
+  ];
+
+  assert.deepEqual(tables.groups.map(group => group.label), ['Pre', 'Power', 'Pre+Power']);
+  assert.equal(tables.powerOnly.length, 7);
+  assert.deepEqual(
+    tables.groups[1].presets.map(preset => preset.id),
+    expectedPowerIds,
+    'the Power group must contain exactly the selectable power-only bank'
+  );
+
+  const ids = tables.groups.flatMap(group => group.presets.map(preset => preset.id));
+  assert.equal(new Set(ids).size, ids.length, 'a preset appears in more than one signal-path group');
+  assert.equal(ids.length, 35);
+  assert.deepEqual(tables.groups.map(group => group.presets.length), [8, 14, 13]);
+  assert.ok(tables.groups[0].presets.every(preset => preset.params.os === 'Line'));
+  assert.ok(tables.groups[2].presets.every(preset =>
+    preset.params.os !== 'Line' && preset.params.tp !== 'Bypass'));
+});
+
+test('Power-only presets retain their power circuits while bypassing the common driver', () => {
+  const tables = readPluginPresetTables(repoRoot);
+  const canonicalById = new Map(tables.canonical.map(preset => [preset.id, preset]));
+  const calibratedFields = new Set(['dr', 'tp', 'iv', 'og']);
+
+  for (const preset of tables.powerOnly) {
+    assert.equal(preset.params.tp, 'Bypass', `${preset.id} does not bypass the driver`);
+    assert.notEqual(preset.params.os, 'Line', `${preset.id} has no power circuit`);
+
+    const suffix = preset.id.slice('power-only-'.length);
+    const base = canonicalById.get(suffix.startsWith('se-') ? suffix : `power-${suffix}`);
+    assert.ok(base, `${preset.id} has no canonical circuit base`);
+    for (const field of tables.fields) {
+      if (calibratedFields.has(field)) continue;
+      if (field === 'nf' && preset.id === 'power-only-kt88-distributed') {
+        assert.equal(preset.params.nf, 2,
+          'Power-only KT88 must use the stable direct-drive feedback setting');
+        assert.equal(preset.params.og, -10.748,
+          'Power-only KT88 must keep its calibrated Output Trim');
+        continue;
+      }
+      assert.equal(preset.params[field], base.params[field],
+        `${preset.id} changed canonical circuit field ${field}`);
+    }
   }
 });

@@ -184,6 +184,7 @@ export class EffeTuneNode extends AudioWorkletNodeBase {
     this._seed = seed;
     this._closed = false;
     this._runtimeError = null;
+    this._latencySamples = 0;
     this._nextCommandId = 1;
     this._pending = new Map();
     this._telemetryCallbacks = new Set();
@@ -237,7 +238,16 @@ export class EffeTuneNode extends AudioWorkletNodeBase {
       return;
     }
     if (message?.type === 'ready') {
+      this._latencySamples = Number.isInteger(message.latencySamples) && message.latencySamples >= 0
+        ? message.latencySamples
+        : 0;
       this._resolveReady();
+      return;
+    }
+    if (message?.type === 'latency') {
+      this._latencySamples = Number.isInteger(message.latencySamples) && message.latencySamples >= 0
+        ? message.latencySamples
+        : 0;
       return;
     }
     if (message?.type === 'initializationError') {
@@ -313,6 +323,11 @@ export class EffeTuneNode extends AudioWorkletNodeBase {
   get droppedTelemetryFrames() {
     this._assertOpen();
     return this._droppedTelemetryFrames;
+  }
+
+  get latencySamples() {
+    this._assertOpen();
+    return this._latencySamples;
   }
 
   subscribe(callback) {

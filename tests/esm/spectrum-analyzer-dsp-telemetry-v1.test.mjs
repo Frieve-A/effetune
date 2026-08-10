@@ -93,6 +93,25 @@ function subscribedPlugin(runtime, id = 37) {
   return plugin;
 }
 
+test('Spectrum Analyzer persists the selected frequency scale and maps linear x positions', () => {
+  const runtime = loadSpectrumAnalyzer();
+  const plugin = new runtime.SpectrumAnalyzerPlugin();
+
+  assert.equal(plugin.getParameters().sc, 'log');
+  assert.equal(plugin.frequencyToX(20, 100), 0);
+  assert.equal(plugin.frequencyToX(40000, 100), 100);
+
+  plugin.setParameters({ sc: 'linear' });
+  assert.equal(plugin.getParameters().sc, 'linear');
+  assert.equal(plugin.frequencyToX(20010, 100), 50);
+
+  plugin.setParameters({ sc: 'unsupported' });
+  assert.equal(plugin.getParameters().sc, 'log');
+  plugin.setFrequencyScale('linear');
+  plugin.reset();
+  assert.equal(plugin.getParameters().sc, 'log');
+});
+
 test('Spectrum Analyzer synchronously copies v1 telemetry without running a main-thread FFT', () => {
   const hub = createHub();
   const runtime = loadSpectrumAnalyzer({ hub });

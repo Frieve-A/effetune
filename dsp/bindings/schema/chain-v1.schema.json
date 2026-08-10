@@ -6875,14 +6875,15 @@
               "minimum": -96,
               "maximum": 0,
               "x-effetune-unit": "dB",
-              "default": -55.9648
+              "default": -44.0059
             },
             "tube": {
               "type": "string",
               "enum": [
                 "12AX7",
                 "12AT7",
-                "12AU7"
+                "12AU7",
+                "Bypass"
               ],
               "default": "12AX7"
             },
@@ -6919,7 +6920,7 @@
               "minimum": -48,
               "maximum": 48,
               "x-effetune-unit": "dB",
-              "default": 4.626
+              "default": -7.372
             },
             "mix": {
               "type": "number",
@@ -6931,7 +6932,7 @@
             "inputReference": {
               "type": "number",
               "minimum": 0.1,
-              "maximum": 20,
+              "maximum": 300,
               "x-effetune-unit": "Vpk",
               "default": 2.828
             },
@@ -6946,7 +6947,8 @@
               "type": "string",
               "enum": [
                 "Line",
-                "Power"
+                "Power",
+                "SingleEnded"
               ],
               "default": "Power"
             },
@@ -6954,7 +6956,9 @@
               "type": "string",
               "enum": [
                 "EL84",
-                "EL34"
+                "EL34",
+                "6L6GC",
+                "KT88"
               ],
               "default": "EL84"
             },
@@ -7017,6 +7021,37 @@
             "autoGainReduction": {
               "type": "boolean",
               "default": true
+            },
+            "seTube": {
+              "type": "string",
+              "enum": [
+                "300B",
+                "2A3"
+              ],
+              "default": "300B"
+            },
+            "seBPlus": {
+              "type": "number",
+              "minimum": 250,
+              "maximum": 450,
+              "x-effetune-unit": "V",
+              "default": 400
+            },
+            "seCathodeResistor": {
+              "type": "number",
+              "minimum": 700,
+              "maximum": 1300,
+              "x-effetune-unit": "Ohm",
+              "default": 1000
+            },
+            "sePrimaryImpedance": {
+              "type": "string",
+              "enum": [
+                "2.5",
+                "3.5",
+                "5.0"
+              ],
+              "default": "3.5"
             }
           }
         }

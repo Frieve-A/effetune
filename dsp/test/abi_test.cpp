@@ -8,6 +8,9 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <initializer_list>
+#include <span>
+#include <vector>
 
 namespace effetune::test {
 namespace {
@@ -52,6 +55,31 @@ std::array<std::uint8_t, 20> descriptor(et_instance instance, std::uint8_t input
   bytes[14] = output_bus;
   bytes[15] = static_cast<std::uint8_t>(channel_spec);
   bytes[16] = 1u;
+  return bytes;
+}
+
+struct PipelineNodeDescriptor {
+  et_instance instance;
+  std::uint8_t inputBus;
+  std::uint8_t outputBus;
+  std::int8_t channelSpec;
+};
+
+std::vector<std::uint8_t> pipelineDescriptor(std::initializer_list<PipelineNodeDescriptor> nodes) {
+  std::vector<std::uint8_t> bytes(8u + nodes.size() * 12u, 0u);
+  writeU32(bytes.data(), 1u);
+  writeU32(bytes.data() + 4u, static_cast<std::uint32_t>(nodes.size()));
+  std::uint32_t index = 0u;
+  for (const PipelineNodeDescriptor &node : nodes) {
+    std::uint8_t *record = bytes.data() + 8u + index * 12u;
+    writeU32(record, node.instance);
+    record[4] = 1u;
+    record[5] = node.inputBus;
+    record[6] = node.outputBus;
+    record[7] = static_cast<std::uint8_t>(node.channelSpec);
+    record[8] = 1u;
+    ++index;
+  }
   return bytes;
 }
 
@@ -202,6 +230,99 @@ void testPipelineValidationAndRouting() {
   ET_CHECK(et_pipeline_configure(engine, empty.data(), static_cast<std::uint32_t>(empty.size())) ==
            ET_OK);
   ET_CHECK(et_pipeline_process(engine, 4u, 4u, 0.0, 0u) == ET_OK);
+  et_engine_destroy(engine);
+}
+
+void testPipelineLatencyCompensation() {
+  constexpr std::uint32_t kFrames = 128u;
+  constexpr std::uint32_t kLatency = 192u;
+  const et_engine engine = et_engine_create();
+  ET_CHECK(et_engine_prepare(engine, 48000.0F, 2u, kFrames, 256u) == ET_OK);
+  ET_CHECK(et_pipeline_latency(engine) == 0u);
+
+  const et_instance delay = et_instance_create(engine, "TestDelayPlugin");
+  const et_instance send = et_instance_create(engine, "TestGainPlugin");
+  const et_instance merge = et_instance_create(engine, "TestGainPlugin");
+  const float unity = 1.0F;
+  ET_CHECK(delay != 0u && send != 0u && merge != 0u);
+  ET_CHECK(et_instance_set_params(engine, send, &unity, 1u, kTestHash, 0u) == ET_OK);
+  ET_CHECK(et_instance_set_params(engine, merge, &unity, 1u, kTestHash, 0u) == ET_OK);
+
+  const auto routed = pipelineDescriptor({
+      {delay, 0u, 1u, -2},
+      {send, 0u, 1u, -2},
+      {merge, 1u, 0u, -2},
+  });
+  ET_CHECK(et_pipeline_configure(engine, routed.data(),
+                                 static_cast<std::uint32_t>(routed.size())) == ET_OK);
+  ET_CHECK(et_pipeline_latency(engine) == kLatency);
+
+  float *main_bus = et_arena_combined_ptr(engine);
+  std::array<float, kFrames * 2u> first{};
+  first[0] = 1.0F;
+  first[kFrames] = 1.0F;
+  std::memcpy(main_bus, first.data(), first.size() * sizeof(float));
+  ET_CHECK(et_pipeline_process(engine, 2u, kFrames, 0.0, 0u) == ET_OK);
+  for (float sample : std::span(main_bus, first.size())) {
+    ET_CHECK(sample == 0.0F);
+  }
+  std::memset(main_bus, 0, first.size() * sizeof(float));
+  ET_CHECK(et_pipeline_process(engine, 2u, kFrames, 0.1, 0u) == ET_OK);
+  ET_CHECK(main_bus[kLatency - kFrames] == 3.0F);
+  ET_CHECK(main_bus[kFrames + kLatency - kFrames] == 3.0F);
+
+  ET_CHECK(et_engine_reset(engine) == ET_OK);
+  const auto selected = pipelineDescriptor({{delay, 0u, 0u, 0}});
+  ET_CHECK(et_pipeline_configure(engine, selected.data(),
+                                 static_cast<std::uint32_t>(selected.size())) == ET_OK);
+  ET_CHECK(et_pipeline_latency(engine) == kLatency);
+  std::memcpy(main_bus, first.data(), first.size() * sizeof(float));
+  ET_CHECK(et_pipeline_process(engine, 2u, kFrames, 0.2, 0u) == ET_OK);
+  std::memset(main_bus, 0, first.size() * sizeof(float));
+  ET_CHECK(et_pipeline_process(engine, 2u, kFrames, 0.3, 0u) == ET_OK);
+  const std::uint32_t delayed_frame = kLatency - kFrames;
+  ET_CHECK(main_bus[delayed_frame] == 1.0F);
+  ET_CHECK(main_bus[kFrames + delayed_frame] == 1.0F);
+
+  ET_CHECK(et_engine_reset(engine) == ET_OK);
+  std::memcpy(main_bus, first.data(), first.size() * sizeof(float));
+  ET_CHECK(et_pipeline_process(engine, 2u, kFrames, 0.4, 0u) == ET_OK);
+  ET_CHECK(et_engine_reset(engine) == ET_OK);
+  std::memset(main_bus, 0, first.size() * sizeof(float));
+  ET_CHECK(et_pipeline_process(engine, 2u, kFrames, 0.5, 0u) == ET_OK);
+  ET_CHECK(et_pipeline_process(engine, 2u, kFrames, 0.6, 0u) == ET_OK);
+  for (float sample : std::span(main_bus, first.size())) {
+    ET_CHECK(sample == 0.0F);
+  }
+
+  ET_CHECK(et_engine_reset(engine) == ET_OK);
+  std::array<float, kFrames * 2u> compensation_history{};
+  compensation_history[kFrames] = 1.0F;
+  std::memcpy(main_bus, compensation_history.data(), compensation_history.size() * sizeof(float));
+  ET_CHECK(et_pipeline_process(engine, 2u, kFrames, 0.7, 0u) == ET_OK);
+
+  std::memcpy(main_bus, first.data(), first.size() * sizeof(float));
+  ET_CHECK(et_pipeline_process(engine, 2u, kFrames, 0.8, 1u) == ET_OK);
+  ET_CHECK(main_bus[0] == 1.0F && main_bus[kFrames] == 1.0F);
+  ET_CHECK(et_pipeline_process(engine, 2u, kFrames, 0.9, 1u) == ET_OK);
+  ET_CHECK(main_bus[0] == 1.0F && main_bus[kFrames] == 1.0F);
+
+  std::memset(main_bus, 0, first.size() * sizeof(float));
+  ET_CHECK(et_pipeline_process(engine, 2u, kFrames, 1.0, 0u) == ET_OK);
+  for (float sample : std::span(main_bus, first.size())) {
+    ET_CHECK(sample == 0.0F);
+  }
+  std::memset(main_bus, 0, first.size() * sizeof(float));
+  ET_CHECK(et_pipeline_process(engine, 2u, kFrames, 1.1, 0u) == ET_OK);
+  for (float sample : std::span(main_bus, first.size())) {
+    ET_CHECK(sample == 0.0F);
+  }
+
+  std::array<std::uint8_t, 8> empty{};
+  writeU32(empty.data(), 1u);
+  ET_CHECK(et_pipeline_configure(engine, empty.data(), static_cast<std::uint32_t>(empty.size())) ==
+           ET_OK);
+  ET_CHECK(et_pipeline_latency(engine) == 0u);
   et_engine_destroy(engine);
 }
 
@@ -357,6 +478,7 @@ void runAbiTests() {
   testAllocationGuardScope();
   testDiscoveryAndLifecycle();
   testPipelineValidationAndRouting();
+  testPipelineLatencyCompensation();
   testPipelineDescriptorFuzz();
   testTelemetryCadence();
   testAssetLifecycle();

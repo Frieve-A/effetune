@@ -22,9 +22,12 @@ const pluginPath = path.join(repoRoot, 'plugins', 'saturation', 'tube_simulator.
 const design = verifyDesignInvariants();
 const checkOnly = process.argv.includes('--check');
 const tubeCodes = new Map([['12AX7', 0], ['12AT7', 1], ['12AU7', 2]]);
-const powerTubeCodes = new Map([['EL84', 0], ['EL34', 1]]);
+const powerTubeCodes = new Map([['EL84', 0], ['EL34', 1], ['6L6GC', 2], ['KT88', 3]]);
+const outputTubeLutCodes = new Map(design.tubeLuts.map((lut, index) => [lut.id, index]));
 const screenTapCodes = new Map([['0', 0], ['20', 1], ['43', 2]]);
 const primaryCodes = new Map([['6.0', 0], ['6.6', 1], ['8.0', 2]]);
+const seTubeCodes = new Map([['300B', 0], ['2A3', 1]]);
+const sePrimaryCodes = new Map([['2.5', 0], ['3.5', 1], ['5.0', 2]]);
 const speakerCodes = new Map([['4', 0], ['8', 1], ['15', 2], ['16', 3]]);
 
 function fail(message) {
@@ -58,10 +61,11 @@ function code(map, value, label) {
   return result;
 }
 
-if (design.circuitProfiles?.length !== 18) fail('expected 18 circuit profiles');
+if (design.circuitProfiles?.length !== 36) fail('expected 36 circuit profiles');
 if (design.speakerProfiles?.length !== 4) fail('expected 4 speaker profiles');
-if (design.tubeLuts?.length !== 2) fail('expected 2 output-tube LUTs');
-if (design.powerA0Records?.length !== 432) fail('expected 432 Power feedback records');
+if (design.tubeLuts?.length !== 4) fail('expected 4 output-tube LUTs');
+if (design.powerA0Records?.length !== 864) fail('expected 864 Power feedback records');
+if (design.seA0Records?.length !== 144) fail('expected 144 SE feedback records');
 
 const profileRows = design.circuitProfiles.map((profile, index) => {
   const opt = profile.optCoefficients;
@@ -95,7 +99,7 @@ const profileRows = design.circuitProfiles.map((profile, index) => {
     `${number(profile.nfbTapTurnsRatio, 'NFB tap turns ratio')}, ` +
     `${number(profile.nfbPolarity, 'NFB polarity')}, ` +
     `${number(profile.screenTapTurnsRatio, 'screen tap ratio')}, ` +
-    `${profile.outputTubeLutId.startsWith('el84') ? 0 : 1}u, ` +
+    `${code(outputTubeLutCodes, profile.outputTubeLutId, 'output-tube LUT')}u, ` +
     `${profile.sentinelProfile === true ? 'true' : 'false'}}`;
 });
 
@@ -108,9 +112,8 @@ const speakerRows = design.speakerProfiles.map(profile =>
   `${number(profile.resonanceCapacitanceF, 'speaker resonance C')}}`
 );
 
-// Each output tube carries its own axes: an EL84 cuts off near -15 V of grid and an EL34 near
-// -39 V, and their plate and screen swings differ by the same factor, so one shared axis set would
-// spend most of its knots outside the operating box of whichever valve is selected.
+// Each output tube carries its own axes because their cutoff voltages and operating boxes differ,
+// so one shared axis set would spend most knots outside the selected valve's operating box.
 const tubeAxes = design.tubeLuts.map(lut => {
   const axes = lut.axes;
   if (axes?.controlVoltageV?.length !== 11 || axes?.plateCathodeV?.length !== 11 ||
@@ -128,21 +131,33 @@ const tubeAxes = design.tubeLuts.map(lut => {
 // read the identical rounded constant.
 const tubeModelRows = design.tubeLuts.map(lut =>
   `    {${number(1 / lut.controlVoltage.screenAmplificationFactor, 'inverse screen mu')}, ` +
-  `${number(1 / lut.controlVoltage.plateAmplificationFactor, 'inverse plate mu')}}`);
+  `${number(1 / lut.controlVoltage.plateAmplificationFactor, 'inverse plate mu')}, ` +
+  `${number(lut.controlVoltage.datasheet.presetPlateCurrentA, 'standing plate current')}, ` +
+  `${number(lut.controlVoltage.datasheet.presetScreenCurrentA, 'standing screen current')}, ` +
+  `${number(lut.controlVoltage.datasheet.fixedScreenGroundV, 'fixed screen voltage')}, ` +
+  `${number(lut.fixedScreenSupplyDropV, 'fixed screen supply drop')}}`);
 const tubeModels = design.tubeLuts.map(lut => ({
   inverseScreenAmplificationFactor: 1 / lut.controlVoltage.screenAmplificationFactor,
-  inversePlateAmplificationFactor: 1 / lut.controlVoltage.plateAmplificationFactor
+  inversePlateAmplificationFactor: 1 / lut.controlVoltage.plateAmplificationFactor,
+  standingPlateCurrentA: lut.controlVoltage.datasheet.presetPlateCurrentA,
+  standingScreenCurrentA: lut.controlVoltage.datasheet.presetScreenCurrentA,
+  fixedScreenGroundV: lut.controlVoltage.datasheet.fixedScreenGroundV,
+  fixedScreenSupplyDropV: lut.fixedScreenSupplyDropV
 }));
-const tubePrefixes = ['kEl84', 'kEl34'];
 
-function doubleArray(name, values) {
-  return `inline constexpr std::array<double, ${values.length}> ${name} = {{\n` +
-    values.map(value => `    ${number(value, name)}`).join(',\n') + '\n}};\n';
+function doubleMatrix(name, values) {
+  const width = values[0].length;
+  return `inline constexpr std::array<std::array<double, ${width}>, ${values.length}> ${name} = {{\n` +
+    values.map(row => `    {{${row.map(value => number(value, name)).join(', ')}}}`).join(',\n') +
+    '\n}};\n';
 }
 
-function bitArray(name, values) {
-  return `inline constexpr std::array<std::uint64_t, ${values.length}> ${name} = {{\n` +
-    values.map(value => `    ${uint64Bits(value)}`).join(',\n') + '\n}};\n';
+function bitMatrix(name, values) {
+  const width = values[0].length;
+  return `inline constexpr std::array<std::array<std::uint64_t, ${width}>, ${values.length}> ${name} = {{\n` +
+    values.map(row =>
+      `    {{\n${row.map(value => `        ${uint64Bits(value)}`).join(',\n')}\n    }}`
+    ).join(',\n') + '\n}};\n';
 }
 
 // The Power ladder is the anchor blended towards the identity filter along
@@ -219,8 +234,42 @@ const a0Rows = design.powerA0Records.map(record => {
     `${number(anchor.a1, 'Power anchor a1')}, ${number(anchor.a2, 'Power anchor a2')}}`;
 });
 
+const seA0Rows = design.seA0Records.map(record => {
+  const key = record.a0Key;
+  if (!Array.isArray(key) || key.length !== 6 || key[0] !== 'single-ended-v1') {
+    fail('invalid SE feedback key');
+  }
+  return `    {${code(tubeCodes, key[1], 'driver tube')}u, ` +
+    `${code(seTubeCodes, key[2], 'SE tube')}u, ` +
+    `${code(sePrimaryCodes, key[3], 'SE primary impedance')}u, ` +
+    `${code(speakerCodes, key[4], 'speaker load')}u, ` +
+    `${key[5] === 352800 ? 0 : 1}u, ` +
+    `${number(record.gdet0.real, 'SE detector real')}, ` +
+    `${number(record.gdet0.imaginary, 'SE detector imaginary')}, ` +
+    `${number(record.a0, 'SE A0')}}`;
+});
+
 const dc = design.el34NormativeFixture.dc;
 const sourcePoint = design.el34NormativeFixture.sourcePoint;
+const addedPowerTubeDcRows = design.addedPowerTubeFixtures.map(fixture => {
+  const sourceIaA = fixture.sourceAnchor.plateCurrentA ?? fixture.abiProjection.plateCurrentA;
+  const sourceIg2A = fixture.sourceAnchor.screenCurrentA ?? fixture.abiProjection.screenCurrentA;
+  const expectedRuntimeScreenCathodeV =
+    fixture.abiProjection.runtimeScreenCathodeExpectation ?? fixture.sourceAnchor.screenCathodeV;
+  return `  {${code(powerTubeCodes, fixture.powerTube, 'canonical power tube')}u, ` +
+    `${number(fixture.dc.supplyGroundV, 'canonical supply')}, ` +
+    `${number(fixture.dc.centerTapGroundV, 'canonical center tap')}, ` +
+    `${number(fixture.dc.plateGroundV, 'canonical plate')}, ` +
+    `${number(fixture.dc.screenGroundV, 'canonical screen')}, ` +
+    `${number(fixture.dc.cathodeGroundV, 'canonical cathode')}, ` +
+    `${number(fixture.dc.plateCathodeV, 'canonical Vak')}, ` +
+    `${number(fixture.dc.screenCathodeV, 'canonical Vg2k')}, ` +
+    `${number(fixture.dc.iaA, 'canonical Ia')}, ${number(fixture.dc.ig2A, 'canonical Ig2')}, ` +
+    `${number(fixture.sourceAnchor.plateCathodeV, 'source Vak')}, ` +
+    `${number(fixture.sourceAnchor.screenCathodeV, 'source Vg2k')}, ` +
+    `${number(sourceIaA, 'source Ia')}, ${number(sourceIg2A, 'source Ig2')}, ` +
+    `${number(expectedRuntimeScreenCathodeV, 'ABI projected Vg2k')}}`;
+});
 const output = `// Generated by scripts/generate-tube-phase-c-tables.mjs. Do not edit.\n` +
 `#ifndef EFFETUNE_TUBE_SIMULATOR_PHASE_C_TABLES_GENERATED_H\n` +
 `#define EFFETUNE_TUBE_SIMULATOR_PHASE_C_TABLES_GENERATED_H\n\n` +
@@ -239,21 +288,21 @@ const output = `// Generated by scripts/generate-tube-phase-c-tables.mjs. Do not
 `  double coreLossResistanceOhm; double resonanceHz; double dampingRatio; double feedbackDampingCoupling;\n` +
 `  double nfbTapTurnsRatio; double nfbPolarity; double screenTapTurnsRatio;\n` +
 `  std::uint32_t outputTubeLut; bool sentinelProfile;\n};\n` +
-`inline constexpr std::array<PowerProfile, 18> kPowerProfiles = {{\n${profileRows.join(',\n')}\n}};\n\n` +
+`inline constexpr std::array<PowerProfile, 36> kPowerProfiles = {{\n${profileRows.join(',\n')}\n}};\n\n` +
 `struct SpeakerProfile {\n` +
 `  std::uint32_t code; double loadOhm; double voiceResistanceOhm; double voiceInductanceH;\n` +
 `  double resonanceResistanceOhm; double resonanceInductanceH; double resonanceCapacitanceF;\n};\n` +
 `inline constexpr std::array<SpeakerProfile, 4> kSpeakerProfiles = {{\n${speakerRows.join(',\n')}\n}};\n\n` +
-tubeAxes.map((axes, index) =>
-  doubleArray(`${tubePrefixes[index]}ControlVoltageAxis`, axes.controlVoltageV) + '\n' +
-  doubleArray(`${tubePrefixes[index]}PlateCathodeAxis`, axes.plateCathodeV) + '\n' +
-  doubleArray(`${tubePrefixes[index]}ScreenCathodeAxis`, axes.screenCathodeV) + '\n').join('') +
+doubleMatrix('kControlVoltageAxes', tubeAxes.map(axes => axes.controlVoltageV)) + '\n' +
+doubleMatrix('kPlateCathodeAxes', tubeAxes.map(axes => axes.plateCathodeV)) + '\n' +
+doubleMatrix('kScreenCathodeAxes', tubeAxes.map(axes => axes.screenCathodeV)) + '\n' +
 `struct OutputTubeModel {\n` +
-`  double inverseScreenAmplificationFactor; double inversePlateAmplificationFactor;\n};\n` +
-`inline constexpr std::array<OutputTubeModel, 2> kOutputTubeModels = {{\n` +
+`  double inverseScreenAmplificationFactor; double inversePlateAmplificationFactor;\n` +
+`  double standingPlateCurrentA; double standingScreenCurrentA; double fixedScreenGroundV;\n` +
+`  double fixedScreenSupplyDropV;\n};\n` +
+`inline constexpr std::array<OutputTubeModel, 4> kOutputTubeModels = {{\n` +
 `${tubeModelRows.join(',\n')}\n}};\n\n` +
-bitArray('kEl84LutBits', design.tubeLuts[0].valuesBinary64) + '\n' +
-bitArray('kEl34LutBits', design.tubeLuts[1].valuesBinary64) + '\n' +
+bitMatrix('kOutputTubeLutBits', design.tubeLuts.map(lut => lut.valuesBinary64)) + '\n' +
 `struct PowerFeedbackRecord {\n` +
 `  std::uint32_t driverTube; std::uint32_t powerTube; std::uint32_t screenTap;\n` +
 `  std::uint32_t primary; std::uint32_t speakerLoad; std::uint32_t family;\n` +
@@ -264,8 +313,15 @@ bitArray('kEl34LutBits', design.tubeLuts[1].valuesBinary64) + '\n' +
 // it only put a value into the shipped artifact that no consumer could keep honest. It stays in
 // the design fixture, where the canonical feedback derivation checks itself against it.
 `  double anchorB0; double anchorB1; double anchorA1; double anchorA2;\n};\n` +
-`inline constexpr std::array<PowerFeedbackRecord, 432> kPowerFeedbackRecords = ` +
+`inline constexpr std::array<PowerFeedbackRecord, 864> kPowerFeedbackRecords = ` +
 `{{\n${a0Rows.join(',\n')}\n}};\n\n` +
+`struct SeFeedbackRecord {\n` +
+`  std::uint32_t driverTube; std::uint32_t seTube; std::uint32_t primary;\n` +
+`  std::uint32_t speakerLoad; std::uint32_t family;\n` +
+`  double detectorReal; double detectorImaginary; double a0;\n` +
+`};\n` +
+`inline constexpr std::array<SeFeedbackRecord, 144> kSeFeedbackRecords = ` +
+`{{\n${seA0Rows.join(',\n')}\n}};\n\n` +
 // The DC oracle is the settled state of the running branch, so it carries the supply parameter
 // separately from the centre tap it feeds: the reservoir Thevenin resistance sits between them and
 // both valves' cathode current crosses it.
@@ -288,6 +344,15 @@ bitArray('kEl34LutBits', design.tubeLuts[1].valuesBinary64) + '\n' +
 `${number(sourcePoint.ig2A, 'EL34 datasheet Ig2')}};\n` +
 `inline constexpr double kEl34NominalScreenCathodeV = ` +
 `${number(sourcePoint.screenGroundNominalV - dc.cathodeGroundV, 'EL34 nominal Vg2k')};\n\n` +
+`struct AddedPowerTubeCanonicalDc {\n` +
+`  std::uint32_t powerTube; double supplyGroundV; double centerTapGroundV;\n` +
+`  double plateGroundV; double screenGroundV; double cathodeGroundV;\n` +
+`  double plateCathodeV; double screenCathodeV; double iaA; double ig2A;\n` +
+`  double sourcePlateCathodeV; double sourceScreenCathodeV;\n` +
+`  double sourceIaA; double sourceIg2A; double expectedRuntimeScreenCathodeV;\n` +
+`};\n` +
+`inline constexpr std::array<AddedPowerTubeCanonicalDc, 2> kAddedPowerTubeCanonicalDc = {{\n` +
+`${addedPowerTubeDcRows.join(',\n')}\n}};\n\n` +
 `} // namespace effetune::dsp::tube_simulator_phase_c_generated\n\n#endif\n`;
 
 function writeOrCheck(filePath, contents, label) {
@@ -341,6 +406,11 @@ const referenceTables = {
       a1: record.anchor.a1,
       a2: record.anchor.a2
     }
+  })),
+  seA0: design.seA0Records.map(record => ({
+    key: record.a0Key,
+    detector: record.gdet0,
+    a0: record.a0
   })),
   el34Dc: design.el34NormativeFixture.dc
 };

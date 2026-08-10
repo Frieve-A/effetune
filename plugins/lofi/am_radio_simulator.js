@@ -379,14 +379,15 @@ const AM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
     }
 
     function updateTuningModel(state) {
-        const tuningHz = state.controls.tn * 1000;
-        const interfererHz = tuningHz + state.controls.io * 1000;
+        const receiverTuningHz = state.controls.tn * 1000;
+        const stationHz = -receiverTuningHz;
+        const interfererHz = state.controls.io * 1000 - receiverTuningHz;
         const ifCutoffHz = state.controls.bw * 500;
-        state.stationTuningOffsetHz = clampTuningOffset(tuningHz);
+        state.stationTuningOffsetHz = clampTuningOffset(stationHz);
         state.interfererTuningOffsetHz = clampTuningOffset(interfererHz);
         state.stationTuningPhaseIncrement = TWO_PI * state.stationTuningOffsetHz / state.sampleRate;
         state.interfererTuningPhaseIncrement = TWO_PI * state.interfererTuningOffsetHz / state.sampleRate;
-        state.stationTuningGain = tuningReceptionGain(tuningHz, state.stationTuningOffsetHz,
+        state.stationTuningGain = tuningReceptionGain(stationHz, state.stationTuningOffsetHz,
             state.controls.tb * 1000, ifCutoffHz);
         state.interfererTuningGain = tuningReceptionGain(interfererHz,
             state.interfererTuningOffsetHz, 4500, ifCutoffHz);

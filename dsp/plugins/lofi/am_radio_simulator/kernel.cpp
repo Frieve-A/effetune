@@ -818,6 +818,14 @@ public:
     return clampTuningOffset(offset_hz);
   }
 
+  [[nodiscard]] double debugStationTuningOffset() const noexcept {
+    return station_tuning_offset_hz_;
+  }
+
+  [[nodiscard]] double debugInterfererTuningOffset() const noexcept {
+    return interferer_tuning_offset_hz_;
+  }
+
   [[nodiscard]] double debugDelayQChecksum() const noexcept {
     double checksum = 0.0;
     for (std::size_t index = 0u; index < delay_q_.size(); ++index) {
@@ -1881,14 +1889,15 @@ private:
   }
 
   void updateTuningModel() noexcept {
-    const double tuning_hz = controls_.tuning * 1000.0;
-    const double interferer_hz = tuning_hz + controls_.interferenceOffset * 1000.0;
+    const double receiver_tuning_hz = controls_.tuning * 1000.0;
+    const double station_hz = -receiver_tuning_hz;
+    const double interferer_hz = controls_.interferenceOffset * 1000.0 - receiver_tuning_hz;
     const double if_cutoff_hz = controls_.ifBandwidth * 500.0;
-    station_tuning_offset_hz_ = clampTuningOffset(tuning_hz);
+    station_tuning_offset_hz_ = clampTuningOffset(station_hz);
     interferer_tuning_offset_hz_ = clampTuningOffset(interferer_hz);
     station_tuning_phase_increment_ = kTwoPi * station_tuning_offset_hz_ / sample_rate_;
     interferer_tuning_phase_increment_ = kTwoPi * interferer_tuning_offset_hz_ / sample_rate_;
-    station_tuning_gain_ = tuningReceptionGain(tuning_hz, station_tuning_offset_hz_,
+    station_tuning_gain_ = tuningReceptionGain(station_hz, station_tuning_offset_hz_,
                                                controls_.txBandwidth * 1000.0, if_cutoff_hz);
     interferer_tuning_gain_ =
         tuningReceptionGain(interferer_hz, interferer_tuning_offset_hz_, 4500.0, if_cutoff_hz);
@@ -2132,6 +2141,16 @@ extern "C" double et_am_debug_modeled_tuning_offset(effetune::PluginKernel *kern
                                                     double offset_hz) noexcept {
   return static_cast<effetune::plugins::lofi::AMRadioSimulatorKernel *>(kernel)
       ->debugModeledTuningOffset(offset_hz);
+}
+
+extern "C" double et_am_debug_station_tuning_offset(effetune::PluginKernel *kernel) noexcept {
+  return static_cast<effetune::plugins::lofi::AMRadioSimulatorKernel *>(kernel)
+      ->debugStationTuningOffset();
+}
+
+extern "C" double et_am_debug_interferer_tuning_offset(effetune::PluginKernel *kernel) noexcept {
+  return static_cast<effetune::plugins::lofi::AMRadioSimulatorKernel *>(kernel)
+      ->debugInterfererTuningOffset();
 }
 
 extern "C" double et_am_debug_delay_q_checksum(effetune::PluginKernel *kernel) noexcept {

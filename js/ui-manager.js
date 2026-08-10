@@ -35,6 +35,8 @@ import {
     collectUniquePipelinePlugins,
     formatMissingExternalAssetSummary
 } from './ui/pipeline/external-asset-info.js';
+import { PipelineAnalyzerController } from './pipeline-analyzer/controller.js';
+import { PipelineAnalyzerUI } from './pipeline-analyzer/ui.js';
 
 function usesIOSFilePicker(windowRef = window) {
     const navigatorRef = windowRef?.navigator || globalThis.navigator;
@@ -114,6 +116,8 @@ export class UIManager {
         this.libraryRecoveryUnsubscribe = null;
         this.libraryRecoveryRoot = null;
         this.libraryRecoveryResetButton = null;
+        this.pipelineAnalyzerMenuUnsubscribe = null;
+        this.pipelineAnalyzerPageHideHandler = null;
         this.libraryRecoveryTitle = null;
         this.libraryRecoveryMessage = null;
         this.libraryDeferredStartupOptions = null;
@@ -131,6 +135,11 @@ export class UIManager {
         this.shareButton = document.getElementById('shareButton');
         this.pluginList = document.getElementById('pluginList');
         this.pipelineList = document.getElementById('pipelineList');
+        this.pipelineLatency = document.getElementById('pipelineLatency');
+        this.pipelineCpuUsage = document.getElementById('pipelineCpuUsage');
+        this.pipelineCpuMeterFill = document.getElementById('pipelineCpuMeterFill');
+        this.pipelineCpuValue = document.getElementById('pipelineCpuValue');
+        this.pipelineCpuAveragePercent = 0;
         this.pipelineEmpty = document.getElementById('pipelineEmpty');
         this.sampleRate = document.getElementById('sampleRate');
 
@@ -154,6 +163,19 @@ export class UIManager {
         // Initialize managers
         this.pluginListManager = new PluginListManager(pluginManager);
         this.pipelineManager = new PipelineManager(audioManager, pluginManager, this.expandedPlugins, this.pluginListManager);
+        this.pipelineAnalyzerUI = new PipelineAnalyzerUI({
+            onOpenChange: open => this.setPipelineAnalyzerOpen(open),
+            onConfigurationChange: (configuration, meta) =>
+                this.pipelineAnalyzerController?.setConfiguration(configuration, meta),
+            onRefreshMeasurements: () => this.pipelineAnalyzerController?.refreshMeasurements()
+        });
+        this.pipelineAnalyzerController = new PipelineAnalyzerController({
+            audioManager,
+            workletSync: this.pipelineManager.core.workletSync,
+            ui: this.pipelineAnalyzerUI
+        });
+        this.pipelineAnalyzerController.initialize();
+        this.initPipelineAnalyzerMenuIntegration();
         this.stateManager = new StateManager(audioManager);
         this.mobileMenu = new MobileMenu(this);
         this.mobileNav = new MobileNav(this);
@@ -226,6 +248,12 @@ export class UIManager {
                     this.doubleBlindTest._updateStartAvailability();
                 }
             });
+            this.audioManager.addEventListener('dspLatency', (data) => {
+                this.updatePipelineLatency(data?.samples);
+            });
+            this.audioManager.addEventListener('pipelineCpuUsage', (data) => {
+                this.updatePipelineCpuUsage(data?.average);
+            });
             return true;
         }).catch(error => {
             console.error('Failed to initialize localization:', error);
@@ -258,6 +286,33 @@ export class UIManager {
     updatePipelineUI() {
         this.pipelineManager.updatePipelineUI();
         this.refreshRangeFillStyling();
+    }
+
+    updatePipelineLatency(samples) {
+        if (!this.pipelineLatency) return;
+        const normalizedSamples = Number.isInteger(samples) && samples >= 0 ? samples : 0;
+        this.pipelineLatency.textContent = this.t('ui.pipelineLatency', {
+            samples: normalizedSamples
+        });
+    }
+
+    updatePipelineCpuUsage(average) {
+        if (!this.pipelineCpuUsage) return;
+        const normalizedAverage = Number.isFinite(average) && average >= 0 ? average : 0;
+        this.pipelineCpuAveragePercent = normalizedAverage;
+        const averageLabel = normalizedAverage.toFixed(1);
+        const label = this.t('ui.pipelineCpuUsage', {
+            average: averageLabel
+        });
+
+        if (this.pipelineCpuValue) this.pipelineCpuValue.textContent = label;
+        this.pipelineCpuUsage.setAttribute('aria-label', label);
+        this.pipelineCpuUsage.dataset.level = normalizedAverage >= 100
+            ? 'overload'
+            : (normalizedAverage >= 75 ? 'high' : 'normal');
+        if (this.pipelineCpuMeterFill) {
+            this.pipelineCpuMeterFill.style.width = `${Math.min(normalizedAverage, 100)}%`;
+        }
     }
 
     initRangeFillStyling() {
@@ -582,6 +637,51 @@ export class UIManager {
             .catch((err) => console.warn('Failed to refresh application menu:', err));
     }
 
+    setPipelineAnalyzerOpen(open) {
+        const controller = this.pipelineAnalyzerController;
+        if (!controller) return false;
+        const wasOpen = controller.state?.open === true;
+        controller.setOpen(open === true);
+        const changed = (controller.state?.open === true) !== wasOpen;
+        if (changed) this.refreshApplicationMenu();
+        return changed;
+    }
+
+    initPipelineAnalyzerMenuIntegration() {
+        const subscribe = window.electronAPI?.onSetPipelineAnalyzerOpen;
+        if (!this.pipelineAnalyzerMenuUnsubscribe && typeof subscribe === 'function') {
+            this.pipelineAnalyzerMenuUnsubscribe = subscribe(open => {
+                this.setPipelineAnalyzerOpen(open === true);
+            });
+        }
+        if (!this.pipelineAnalyzerPageHideHandler) {
+            this.pipelineAnalyzerPageHideHandler = event => {
+                if (event?.persisted !== true) this.disposePipelineAnalyzerIntegration();
+            };
+            window.addEventListener?.('pagehide', this.pipelineAnalyzerPageHideHandler);
+        }
+    }
+
+    disposePipelineAnalyzerIntegration() {
+        const unsubscribe = this.pipelineAnalyzerMenuUnsubscribe;
+        this.pipelineAnalyzerMenuUnsubscribe = null;
+        if (typeof unsubscribe === 'function') {
+            try {
+                unsubscribe();
+            } catch (error) {
+                console.warn('Failed to remove Pipeline Analyzer menu listener:', error);
+            }
+        }
+        if (this.pipelineAnalyzerPageHideHandler) {
+            window.removeEventListener?.('pagehide', this.pipelineAnalyzerPageHideHandler);
+            this.pipelineAnalyzerPageHideHandler = null;
+        }
+        const controller = this.pipelineAnalyzerController;
+        this.pipelineAnalyzerController = null;
+        this.pipelineAnalyzerUI = null;
+        controller?.dispose?.();
+    }
+
     updateURL() {
         // Suppressed while the Double Blind Test is open so pipeline data never
         // leaks into the address bar.
@@ -666,6 +766,7 @@ export class UIManager {
     // Call this method after audio context is initialized
     initAudio() {
         if (this.audioManager.audioContext) {
+            this.pipelineAnalyzerController?.refreshAudioFormat?.();
             this.updateSampleRateDisplay();
 
             // Set up a MutationObserver to watch for changes to the sampleRate element
@@ -1017,6 +1118,8 @@ export class UIManager {
      */
     updateUITexts() {
         this.updateSampleRateStatus();
+        this.updatePipelineLatency(this.audioManager?.dspPipelineLatencySamples ?? 0);
+        this.updatePipelineCpuUsage(this.pipelineCpuAveragePercent);
 
         // Update static UI elements
         const subtitleElement = document.querySelector('.subtitle');

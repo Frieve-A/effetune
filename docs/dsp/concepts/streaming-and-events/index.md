@@ -12,7 +12,8 @@ Reproduction requires the exact input block list and every event's content, fram
 order, including `setParam` and `reset` positions. Scheduled frame events are stream
 operations. Close streams deterministically. Python exposes the aggregate
 `latency_samples`; JavaScript exposes the same value as `latencySamples` on a
-`ChainStream`. The AudioWorklet wrapper has no latency getter.
+`ChainStream`. `EffeTuneNode.latencySamples` exposes the cached aggregate for
+the AudioWorklet path.
 
 Python and JavaScript event `parameters` are partial updates merged with the effect's
 current semantic values. Frames are zero-based within that `process()` input. Events

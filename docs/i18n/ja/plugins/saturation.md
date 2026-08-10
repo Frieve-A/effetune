@@ -1,15 +1,16 @@
 ---
 title: "サチュレーションプラグイン - EffeTune"
-description: "Saturation、Exciter、Hard Clippingなど、音に温かみや歪みを加えるプラグイン。"
+description: "Bandwidth Extender、Saturation、Exciter、Hard Clippingなど、倍音加工と帯域補完を行うプラグイン。"
 lang: ja
 ---
 
 # サチュレーションプラグイン
 
-音楽に温かみと個性を加えるプラグインのコレクションです。これらのエフェクトは、デジタル音楽をよりアナログ的に響かせ、ビンテージオーディオ機器が音に与えるような心地よい豊かさを追加することができます。
+倍音の加工と帯域補完を行うプラグインのコレクションです。温かみや歪みを加えるほか、明確に帯域制限された音源では、抑制の効いた高域成分を生成できます。
 
 ## プラグイン一覧
 
+- [Bandwidth Extender](#bandwidth-extender) - 検出または指定したカットオフより上に高域成分を生成
 - [Dynamic Saturation](#dynamic-saturation) - スピーカーコーンの非線形変位をシミュレーション
 - [Exciter](#exciter) - 明瞭さと存在感を高める倍音成分を追加
 - [Hard Clipping](#hard-clipping) - サウンドに強さとエッジを追加
@@ -17,7 +18,32 @@ lang: ja
 - [Multiband Saturation](#multiband-saturation) - 低域・中域・高域を独立して整える
 - [Saturation](#saturation) - ビンテージ機器のような温かみと豊かさを追加
 - [Sub Synth](#sub-synth) - 低域強調のため、フィルター処理した低周波信号を追加
-- [Tube Simulator](#tube-simulator) - 真空管のライン段とプッシュプル・パワーアンプをモデル化
+- [Tube Simulator](#tube-simulator) - 真空管のライン段とプッシュプル／シングルエンド・パワーアンプをモデル化
+
+## Bandwidth Extender
+
+Bandwidth Extenderは、一部の低ビットレートMP3のように、高域に明確なカットオフがある音源向けの機能です。ステレオの左右を一組として解析し、検出または指定した境界より上にだけ新しい成分を加えます。失われた元の波形を復元するものではなく、Autoで安定したカットオフを検出できない場合は通常、処理を行いません。
+
+生成帯域は、個別に調整できる2つの成分で構成されます。入力に関連する倍音の延長は、音程のある素材と残存スペクトルのつながりを保ち、決定的に再現できる整形ノイズは、打楽器などのノイズ的な素材が不自然に単調になるのを防ぎます。原音はユニティゲインのまま保ち、オーバーラップ加算処理と同じ遅延にそろえて出力します。
+
+### 音質向上ガイド
+
+- コーデックで帯域制限された音楽では、まず**Auto**を選び、2つのAmountを既定値の100%にして試します。
+- 既知のカットオフがあるのにAutoが動作しない場合は**Manual**を選び、測定した境界に合わせます。
+- 持続する音程成分が中心なら**Noise Amount**を下げ、打楽器や息のような成分が中心なら**Harmonic Amount**を下げます。両方を含む音源では、2つとも有効にして調整してください。
+- 音量をそろえてバイパスと比較してください。どちらのAmountも対応する生成成分だけを増減し、元音源にない細部を復元することはできません。
+- すでに十分な高域がある音源を単に明るくする用途には使わないでください。その目的にはExciterが適しています。
+
+### パラメーター
+
+- **Harmonic Amount**（0～200%、既定値100%）- 倍音の延長だけを調整します。0%でこの成分を除き、100%が基準レベル、200%で2倍になります。整形ノイズと原音のレベルは変わりません。
+- **Noise Amount**（0～200%、既定値100%）- 決定的な整形ノイズだけを調整します。0%でこの成分を除き、100%が基準レベル、200%で2倍になります。倍音の延長と原音のレベルは変わりません。
+- **Cutoff** - 欠落帯域の境界を決める方法を選びます。
+  - **Auto**は左右共通の急峻で持続するスペクトル低下を探し、確信度が低い場合は効果を抑えます。
+  - **Manual**はManual Cutoffの値を使用しますが、無音判定とナイキスト周波数付近の安全制限は維持します。
+- **Manual Cutoff**（6000～20000 Hz）- Manual時に生成を始める周波数です。効果を強調するためにむやみに下げず、測定した音源の境界に合わせてください。
+
+Bandwidth Extenderは、44.1、48、88.2、96、176.4、192 kHzのモノラルおよびステレオペアに対応し、WebAssembly処理を必要とします。約21 msの解析窓による遅延はホストへ報告され、原音と生成音の時間位置はそろいます。
 
 ## Dynamic Saturation
 
@@ -468,68 +494,109 @@ Harmonic Distortionプラグインは、2次から5次の非線形項を調整�
 
 ## Tube Simulator
 
-Tube Simulatorは、真空管回路の部品定数に基づく電気的な信号経路全体をモデル化します。**Line**は2段の小信号増幅回路のみを使用します。**Push-Pull Power**では、同じドライバーが固定ボリュームを介して、実管の差動対として解かれる12AX7の位相反転段へ送られ、そこからEL84またはEL34の2本の出力管、出力トランス、周波数依存のスピーカー負荷へと続きます。バイアス、B+、トランス、スピーカー負荷の状態を音楽に合わせて逐次解くため、倍音、圧縮、電源サグ、電気的なダンピングが信号に応じて変化します。スピーカー負荷はアンプから見た電気負荷をモデル化するもので、キャビネットやマイクのシミュレーションではありません。
+Tube Simulatorは、真空管回路の部品定数に基づく電気的な信号経路全体をモデル化します。**Line**は2段の小信号増幅回路のみを使用します。**Push-Pull Power**では通常、そのドライバーから12AX7位相反転段を経て、EL84、EL34、6L6GC、KT88のいずれか2本の出力管を駆動します。**SE Triode**では通常、位相反転段やスクリーン電源を使わず、ドライバーから300Bまたは2A3を1本だけ駆動し、ギャップ入りのシングルエンド出力トランスへ接続します。Driver Typeで**Bypass**を選ぶと、共通の2段ドライバーを信号経路から外せます。Push-Pull Powerに必要な位相反転段と出力管はそのまま動作し、SE Triodeでは選択した出力管へ直接入力されます。どちらのパワー回路も同じ周波数依存スピーカー負荷を駆動します。バイアス、B+、トランス、スピーカー負荷の状態を音楽に合わせて逐次解くため、倍音、圧縮、電源サグ、電気的なダンピングが信号に応じて変化します。スピーカー負荷はアンプから見た電気負荷をモデル化するもので、キャビネットやマイクのシミュレーションではありません。
 
 ### 音質調整ガイド
 
-- プラグインは**EL84 Pentode @2%**で起動するので、2 VrmsのD/Aコンバーターならそのまま使えます。実際の製品既定値は、Input Reference 2.828 Vpk、Input Volume -55.9648dB、12AX7、Negative Feedback 3dB、Output Trim +4.626dBで、EL84プッシュプル回路を全高調波歪率2%・利得等倍の動作点に置いています。
+- プラグインは、音量較正済みのOutput Trim -7.372dBを含む**EL84 Pentode @2%**で起動します。
 - 飽和が強すぎると感じる場合は、Input Volumeを下げて回路へ入る電圧を減らし、その後にOutput Trimで再生音量だけを戻します。Output Trimを上げても内部ヘッドルームは増えません。
-- パワーアンプではなく小信号のライン回路だけを使いたいときは**Line Default**を選びます。
-- 真空管や回路の音色だけを比較したい場合は、**Listening (THD-matched)**のプリセットを使います。互いに音量がそろえてあるため、切り替えの際にトリムを調整する必要はありません。
-- 穏やかなパワーアンプの応答から始めるには、**EL84 Distributed 10 W**が適しています。**EL84 Pentode 10 W**と切り替えると、出力管を同じに保ったまま、スクリーン接続とトランス負荷の違いを比較できます。
-- より高電圧のEL34回路を試す場合は、**EL34 Distributed 20–37 W**を選びます。EL84と比べる前に、Output Trimで音量をそろえてください。
+- 透明感を保ったライン段の色付けには**Pre**の**0.01%**または**0.1%**プリセットを選び、倍音をより明確に加えたい場合は既存の**@1%**を使います。
+- 2段ドライバーだけを使う設定は**Pre**、Driver TypeをBypassにしたパワー段だけの設定は**Power**、ドライバーとパワー段を組み合わせた設定は**Pre+Power**から選びます。選択できる全プリセットは、リスニング向けの歪率と同じ再生音量に較正されています。
+- **Power**の**300B SE @0.1%**または**2A3 SE @0.1%**は、出力三極管1本だけを軽く駆動する設定です。各**@1%**は共通ドライバーを加えず、純A級シングル三極管で小信号時にも現れる高めの歪率を再現します。
+- 穏やかなパワーアンプの応答から始めるには、**EL84 Distributed 10 W @2%**が適しています。**EL84 Pentode 10 W @2%**と切り替えると、出力管を同じに保ったまま、スクリーン接続とトランス負荷の違いを比較できます。
+- より高電圧のEL34回路を試す場合は、**EL34 Distributed 20–37 W @2%**を選びます。このプリセットも、ほかのPowerおよびPre+Power設定と音量がそろっています。
+- 相互コンダクタンスが低めのビーム四極管回路には**6L6GC Pentode @2%**、大電流のKT88モデルを43%スクリーンタップで使う回路には**KT88 Distributed @2%**を選びます。
+- ドライバーを含むシングルエンド回路の比較には、**300B SE @2%**と**2A3 SE @2%**を選びます。出力管が1本なので、プッシュプルのように偶数次倍音が相殺されません。
+- SE Triodeでは、まずプリセットのNegative Feedback 3dBから始めます。軽い帰還として通常使いやすい範囲は0〜6dBです。0dBでループを開き、6dBでは高帰還型にせず応答をやや引き締められます。
 - Negative Feedbackを下げると回路のオープンループ時の倍音やレベル変化が現れやすくなり、上げるとクローズドループの応答がより安定します。極端な組み合わせで安全バイパスが作動したら、プリセットに戻してください。
 - 真空管回路の応答を控えめに加えたい場合は、Wet/Dry Mixを下げます。
 
 ### パネルの構成
 
-20個のパラメータは、**Preset**ドロップダウンの下にある5つのタブに配置されています。
+24個のパラメータは、**Preset**ドロップダウンの下にある5つのタブに配置されています。
 
 - **Input** - Input Volume、Input Reference、Source Z
-- **Driver** - Tube、Bias、Plate、Supply、Negative Feedback
-- **Power** - Output Circuit、Power Tubes、Output B+、Cathode Resistor
-- **Transformer** - Screen Tap、Transformer Primary、Assumed Speaker Load、Actual Speaker Load
+- **Driver** - Driver Type、Bias、Plate、Supply、Negative Feedback
+- **Power** - Output Circuit、プッシュプル用のPower Tubes、Output B+、Cathode Resistor、シングルエンド用のSE Triode、SE B+、SE Cathode Resistor
+- **Transformer** - Screen Tap、Push-Pull Primary、SE Primary、Assumed Speaker Load、Actual Speaker Load
 - **Output** - Output Trim、Output Safety Trim、Auto Gain Reduction、Wet/Dry Mix
 
-Presetドロップダウンは先頭に**Custom**があり、続いて**Listening (THD-matched)**と**Circuit**の2グループが並びます。どのプリセットとも一致しない設定のときはCustomが表示されます。出力保護系の設定(Output Safety TrimとAuto Gain Reduction)はこの照合の対象外です。Output CircuitがLineの間は、PowerタブとTransformerタブにあるパワー回路の7項目が淡色表示になります。操作は可能で、値もそのまま保持されます。
+Presetドロップダウンは先頭に**Custom**があり、続いて**Pre**、**Power**、**Pre+Power**の3グループが並びます。Preには較正済みのLine設定が8種類、PowerにはDriver TypeをBypassにした較正済みのパワー段設定が14種類、Pre+Powerには較正済みの完全なドライバー＋パワー段設定が13種類あります。未較正の基準回路レコードは回路定数の一元的な定義として内部に保持しますが、メニューには重複表示しません。どのプリセットとも一致しない設定のときはCustomが表示されます。出力保護系の設定(Output Safety TrimとAuto Gain Reduction)はこの照合の対象外です。PowerタブとTransformerタブには、選択したOutput Circuitで使う項目だけが表示されます。Lineではパワー出力用の全項目、Push-Pull PowerではSE専用の4項目、SE Triodeではプッシュプル専用の5項目が非表示になります。非表示の項目も値は保持され、対応する回路を次に選んだときに再び使われます。
 
 ### 回路プリセットと既定値
 
-プラグインはリスニングプリセット**EL84 Pentode @2%**で起動します。プリセットを選ぶと以下の回路全体が設定され、その後にいずれかの値を変えるとカスタム設定になります。
+起動時は、回路、駆動条件、負荷、出力の全設定が**EL84 Pentode @2%**と一致するため、Presetドロップダウンもこの項目を表示します。その後、プリセット照合対象の回路値、駆動条件、出力値を変えるとCustomになります。Output Safety TrimとAuto Gain Reductionは照合対象外なので、どちらの保護設定を変えてもプリセット表示は変わりません。
+
+以下の表は、選択可能なプリセットが引き継ぐ内部の基準回路値です。これらはモデル化した回路設計を保持しますが、独立したメニュー項目ではありません。未較正の基準値と較正済み設定を両方表示すると、同じ回路が危険な駆動点または効果のほぼない駆動点と重複するためです。プリセットを選ぶと較正済みの回路全体が設定されます。
 
 | Circuit Preset | Output Circuit | ドライバー / 出力管 | Negative Feedback | パワー段の設定 | 入出力 |
 | --- | --- | --- | ---: | --- | --- |
-| Line Default | Line | 12AU7 / — | 30dB | パワー段の値は保持されるが、淡色表示になる | Input Volume 0dB、Input Reference 2.828 Vpk、Output Trim +9dB |
-| EL84 Pentode 10 W | Push-Pull Power | 12AX7 / EL84 ×2 | 3dB | Output B+ 329.696 V、Cathode Resistor 270 Ω / valve、Screen Tap 0%、Transformer Primary 8.0 kΩ、Assumed Speaker Load 15 Ω | Input Volume 0dB、Input Reference 2.828 Vpk、Output Trim 0dB |
-| EL84 Distributed 10 W | Push-Pull Power | 12AX7 / EL84 ×2 | 3dB | Output B+ 330.107 V、Cathode Resistor 270 Ω / valve、Screen Tap 20%、Transformer Primary 6.6 kΩ、Assumed Speaker Load 15 Ω | Input Volume 0dB、Input Reference 2.828 Vpk、Output Trim 0dB |
-| EL34 Distributed 20–37 W | Push-Pull Power | 12AX7 / EL34 ×2 | 4dB | Output B+ 443.775 V、Cathode Resistor 470 Ω / valve、Screen Tap 43%、Transformer Primary 6.6 kΩ、Assumed Speaker Load 8 Ω | Input Volume 0dB、Input Reference 2.828 Vpk、Output Trim 0dB |
+| Line Default | Line | 12AU7 / — | 30dB | パワー段の値は保持されるが、非表示になる | Input Volume 0dB、Input Reference 2.828 Vpk、Output Trim +9dB |
+| EL84 Pentode 10 W | Push-Pull Power | 12AX7 / EL84 ×2 | 3dB | Output B+ 329.696 V、Cathode Resistor 270 Ω / valve、Screen Tap 0%、Transformer Primary 8.0 kΩ、Assumed Speaker Load 15 Ω | Input Volume 0dB、Input Reference 2.828 Vpk、Output Trim -19.675dB |
+| EL84 Distributed 10 W | Push-Pull Power | 12AX7 / EL84 ×2 | 3dB | Output B+ 330.107 V、Cathode Resistor 270 Ω / valve、Screen Tap 20%、Transformer Primary 6.6 kΩ、Assumed Speaker Load 15 Ω | Input Volume 0dB、Input Reference 2.828 Vpk、Output Trim -17.331dB |
+| EL34 Distributed 20–37 W | Push-Pull Power | 12AX7 / EL34 ×2 | 4dB | Output B+ 443.775 V、Cathode Resistor 470 Ω / valve、Screen Tap 43%、Transformer Primary 6.6 kΩ、Assumed Speaker Load 8 Ω | Input Volume 0dB、Input Reference 2.828 Vpk、Output Trim -17.230dB |
+| 6L6GC Pentode | Push-Pull Power | 12AX7 / 6L6GC ×2 | 3dB | Output B+ 391.454 V、Cathode Resistor 483.871 Ω / valve、Screen Tap 0%、Transformer Primary 6.6 kΩ、Assumed Speaker Load 8 Ω | Input Volume 0dB、Input Reference 2.828 Vpk、Output Trim -15.267dB |
+| KT88 Distributed | Push-Pull Power | 12AX7 / KT88 ×2 | 4dB | Output B+ 379.290 V、Cathode Resistor 400 Ω / valve、Screen Tap 43%、Transformer Primary 6.0 kΩ、Assumed Speaker Load 8 Ω | Input Volume 0dB、Input Reference 2.828 Vpk、Output Trim -16.166dB |
+| 300B Single-Ended | SE Triode | 12AU7 / 300B | 3dB | SE B+ 400 V、SE Cathode Resistor 1000 Ω、SE Primary 3.5 kΩ、Assumed Speaker Load 8 Ω | Input Volume -42dB、Input Reference 2.828 Vpk、Output Trim +38.795dB |
+| 2A3 Single-Ended | SE Triode | 12AU7 / 2A3 | 3dB | SE B+ 300 V、SE Cathode Resistor 750 Ω、SE Primary 2.5 kΩ、Assumed Speaker Load 8 Ω | Input Volume -42dB、Input Reference 2.828 Vpk、Output Trim +37.461dB |
 
-4つのプリセットはいずれも、Bias 0%、Plate 250 V、Source Z 10 kΩ、Supply 10 kΩ、Wet/Dry Mix 100%を使います。また、いずれのプリセットもActual Speaker LoadをそのAssumed Speaker Loadに合わせるため、回路の設計点から始まります。
+8つの基準回路はいずれも、Bias 0%、Plate 250 V、Source Z 10 kΩ、Supply 10 kΩ、Wet/Dry Mix 100%を使います。また、選択可能な全プリセットでActual Speaker LoadをそのAssumed Speaker Loadに合わせるため、回路の設計点から始まります。
 
-### リスニングプリセット
+追加したPower回路では、公開回路データとプラグインの選択肢に合わせた投影を区別しています。6L6GCプリセットは、[Ei-RC 6L6GCデータ](https://frank.pocnet.net/sheets/084/6/6L6GC.pdf)にあるカソード基準のプッシュプルAB1動作例に基づき、固定バイアスの動作点を同じ直流バイアスになるカソード抵抗で表現しています。KT88の電流モデルは、[GEC KT88データ](https://keith-snook.info/valve-data/KT88%20GEC%20Data.pdf)のカソードバイアスUL動作例に基づき、資料の40%タップと5 kΩ負荷を、選択可能な43%と6.0 kΩへ投影しています。一次巻線抵抗と小信号インダクタンスには、[Monolith B-8/6K6](https://www.monolithmagnetics.com/sites/default/files/datasheets/Push-Pull-output-transformers/datasheet%20B-8%206K6%20300B%20push%20pull%20output%20tube%20amplifier%20transformer%20prelim.pdf)および[B-8/8k](https://www.monolithmagnetics.com/sites/default/files/B-8_8k_0.pdf)の実測値を使っています。これ以外のトランス損失、共振、帰還、電源の係数は、これらのトランスの実測値とはせず、明示的なモデルパラメーターとして扱っています。
 
-**Listening (THD-matched)**のグループには、較正済みの7つの設定があります。いずれも回路の値は基準となるCircuitプリセットからそのまま引き継ぎ、較正されるのはInput Volume、Input Reference、Output Trimの3つだけなので、回路そのものは変わりません。7つとも1 kHzのレベルが±0.0005dB以内でそろっているため、切り替えても音量は変わらず、音色の違いだけが分かります。
+### 較正済みプリセット
 
-| Listening Preset | 基準 | 回路の変更 | Input Volume | Input Reference | Output Trim |
-| --- | --- | --- | ---: | ---: | ---: |
-| Line 12AU7 @1% | Line Default | — | 0dB | 20 Vpk | -7.749dB |
-| Line 12AT7 @1% | Line Default | Tube 12AT7 | -3.6973dB | 2.828 Vpk | -9.42dB |
-| Line 12AX7 @1% | Line Default | Tube 12AX7 | -4.4805dB | 2.828 Vpk | -11.276dB |
-| Line 12AU7 Open-Loop @3% | Line Default | Negative Feedback 0dB | -16.793dB | 2.828 Vpk | +26.427dB |
-| EL84 Pentode @2% | EL84 Pentode 10 W | — | -55.9648dB | 2.828 Vpk | +4.626dB |
-| EL84 Distributed @2% | EL84 Distributed 10 W | — | -52.9414dB | 2.828 Vpk | +4.908dB |
-| EL34 Distributed @2% | EL34 Distributed 20–37 W | — | -43.6504dB | 2.828 Vpk | +5.212dB |
+選択可能な35種類は、Pipeline Analyzerの既定値と共通の再現可能な較正点を使います。各プリセットの設計スピーカー負荷を使い、Auto Gain Reductionを無効にして、96 kHz、1 kHz、ピーク-12dBFS（正弦波RMS -15.01dBFS）の正弦波を3秒間整定させ、THDと再生レベルを測定します。このレベルは、まれに現れるフルスケール近くのピークではなく、一般的なマスタリング済み商業音源の平均的な部分から音量の大きい部分を近似する実用上の基準として選んだものです。ラウドネス規格ではなく、実際の音楽で同じTHDになることを保証するものでもありません。表の実測THDは整定後の正弦波だけに適用され、実際の音楽における瞬時THDは波形、クレストファクター、スペクトル、瞬時レベル、回路状態によって変化します。Input VolumeとInput Referenceで正弦波の歪率を決め、同じ基準でAC RMS利得が0dBになるようOutput Trimを調整します。Power-onlyのKT88は安定性のためNegative Feedbackを2dBとし、対応するPre+Power回路は4dBを維持します。
 
-12AU7のライン回路はInput Referenceの上限でも歪率1%にわずかに届かないため、Line 12AU7 @1%はこの回路が到達できる最大値になっています。
+| グループ | プリセット | Input Volume | Input Reference | Output Trim | 実測THD |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Pre | Line 12AT7 @0.01% | -13.7480dB | 2.828 Vpk | +0.619dB | 0.0100% |
+| Pre | Line 12AT7 @0.1% | 0dB | 4.5552 Vpk | -17.268dB | 0.1000% |
+| Pre | Line 12AX7 @0.01% | -24.2637dB | 2.828 Vpk | +8.508dB | 0.0100% |
+| Pre | Line 12AX7 @0.1% | -4.4922dB | 2.828 Vpk | -11.264dB | 0.1000% |
+| Pre | Line 12AU7 Open-Loop @0.1% | -19.2715dB | 2.828 Vpk | +28.495dB | 0.1000% |
+| Pre | Line 12AT7 @1% | 0dB | 7.3556 Vpk | -21.421dB | 0.9974% |
+| Pre | Line 12AX7 @1% | 0dB | 6.7213 Vpk | -23.276dB | 1.0003% |
+| Pre | Line 12AU7 Open-Loop @1% | -9.2656dB | 2.828 Vpk | +18.592dB | 1.0002% |
+| Power | EL84 Pentode 10 W @0.1% | -26.5957dB | 2.828 Vpk | +8.696dB | 0.1001% |
+| Power | EL84 Distributed 10 W @0.1% | -21.7676dB | 2.828 Vpk | +7.363dB | 0.1002% |
+| Power | EL34 Distributed 20–37 W @0.1% | -8.1543dB | 2.828 Vpk | +3.767dB | 0.1000% |
+| Power | 6L6GC Pentode @0.1% | -19.3047dB | 2.828 Vpk | +12.251dB | 0.1003% |
+| Power | KT88 Distributed @0.1% | 0dB | 3.1263 Vpk | -3.485dB | 0.1002% |
+| Power | 300B SE @0.1% | 0dB | 35.4586 Vpk | +16.582dB | 0.1000% |
+| Power | 300B SE @1% | 0dB | 295.9454 Vpk | -1.794dB | 1.0000% |
+| Power | 2A3 SE @0.1% | 0dB | 18.1347 Vpk | +21.072dB | 0.1000% |
+| Power | 2A3 SE @1% | 0dB | 167.2455 Vpk | +1.816dB | 1.0000% |
+| Power | EL84 Pentode 10 W @2% | -9.7148dB | 2.828 Vpk | -7.483dB | 1.9995% |
+| Power | EL84 Distributed 10 W @2% | -6.5352dB | 2.828 Vpk | -7.322dB | 2.0005% |
+| Power | EL34 Distributed 20–37 W @2% | 0dB | 5.2781 Vpk | -9.510dB | 1.9995% |
+| Power | 6L6GC Pentode @2% | 0dB | 3.3694 Vpk | -7.187dB | 2.0004% |
+| Power | KT88 Distributed @2% | 0dB | 7.4992 Vpk | -10.748dB | 1.9970% |
+| Pre+Power | EL84 Distributed @0.1% | -58.4629dB | 2.828 Vpk | +9.910dB | 0.1000% |
+| Pre+Power | EL34 Distributed @0.1% | -56.4629dB | 2.828 Vpk | +17.947dB | 0.1000% |
+| Pre+Power | 6L6GC Pentode @0.1% | -58.4551dB | 2.828 Vpk | +17.255dB | 0.1000% |
+| Pre+Power | KT88 Distributed @0.1% | -56.4629dB | 2.828 Vpk | +21.698dB | 0.1000% |
+| Pre+Power | 300B SE @0.1% | -15.2227dB | 2.828 Vpk | +12.027dB | 0.1000% |
+| Pre+Power | 2A3 SE @0.1% | -23.2598dB | 2.828 Vpk | +18.722dB | 0.1000% |
+| Pre+Power | EL84 Pentode @2% | -44.0059dB | 2.828 Vpk | -7.372dB | 2.0004% |
+| Pre+Power | EL84 Distributed @2% | -40.9746dB | 2.828 Vpk | -7.091dB | 2.0005% |
+| Pre+Power | EL34 Distributed @2% | -31.6797dB | 2.828 Vpk | -6.779dB | 2.0000% |
+| Pre+Power | 6L6GC Pentode @2% | -35.2070dB | 2.828 Vpk | -5.145dB | 1.9998% |
+| Pre+Power | KT88 Distributed @2% | -31.5391dB | 2.828 Vpk | -3.147dB | 1.9997% |
+| Pre+Power | 300B SE @2% | -2.4824dB | 2.828 Vpk | -0.439dB | 2.0000% |
+| Pre+Power | 2A3 SE @2% | -4.2266dB | 2.828 Vpk | -0.093dB | 2.0002% |
+
+Line 12AU7 Open-Loop回路の0.01%点を音量較正するには約+48.5dBのOutput Trimが必要で、現在の上限+48dBをわずかに超えるため、この回路には0.1%と1%だけを用意しています。EL84 Pentodeの完全なPre+Power経路は実用的な測定範囲で0.3055%より下がらないため、Pre+Power @0.1%はありません。ドライバーをBypassした300Bおよび2A3のSE回路を、回路設計を変えずに0.1%と1%へ較正できるよう、Input Referenceの上限を300 Vpkへ拡張しました。選択不可の旧SE互換レコードは20 Vpkのまま保持し、新しい選択可能プリセットには別の較正レコードを使っています。
 
 ### パラメータ
 
-- **Preset** - Circuitプリセット(Line Defaultまたは3種類のパワーアンプ回路)、あるいはListening (THD-matched)の設定を読み込む
-- **Input Volume** (-96〜0dB) - 校正された入力端子とStage 1の間にある受動アッテネーター
+- **Preset** - Pre、Power、Pre+Powerの設定を読み込む
+- **Input Volume** (-96〜0dB) - 選択した信号経路へ入る前の較正済み入力を減衰させる
   - 0dBが全開。値を下げるほど内部の駆動電圧が減り、ヘッドルームが広がる
-- **Tube** (12AX7、12AT7、12AU7) - 2段ドライバーの真空管を選択
+- **Driver Type** (12AX7、12AT7、12AU7、Bypass) - 2段ドライバーの真空管を選ぶか、そのドライバーを信号経路から外す
   - 電圧利得は12AX7が最も高く、12AT7が中間、12AU7が最も低くてヘッドルームが広い
-  - Powerモードでもこの2段回路がドライバーとして働き、固定ボリュームを介して固定12AX7の位相反転段を駆動する
+  - Push-Pull Powerでは固定12AX7の位相反転段を、SE Triodeでは選択した出力三極管を直接駆動する
+  - BypassはPowerプリセット用。Push-Pull Powerでは位相反転段を残し、SE Triodeでは共通ドライバーを通さず出力管へ入力する。LineでBypassを選ぶと遅延補正された素通しとなり、Negative Feedbackは作用しない
 - **Bias** (-50〜+50%) - 2段のドライバーのカソードバイアス動作点を移動
   - 上げるとモデル上のカソード抵抗が小さくなり、電流の多い側へ移動。下げると逆に動く
 - **Plate** (150〜300 V) - ドライバー段のプレート電源を設定
@@ -539,8 +606,9 @@ Presetドロップダウンは先頭に**Custom**があり、続いて**Listenin
 - **Supply** (0.1〜47 kΩ) - ドライバー段のB+電源抵抗
   - 上げると電流の増加に伴う電源サグが大きくなり、下げると電源がより安定する
 - **Negative Feedback** (0〜30dB) - 校正されたグローバル負帰還量を設定
-  - Lineでは2段目のプレート応答、Push-Pull Powerでは出力トランスの固定フィードバック巻線から戻す
+  - Lineでは2段目のプレート応答、2種類のパワー回路では出力トランスの固定フィードバック巻線から戻す
   - 上げると一般にオープンループ利得と歪みが減り、応答が締まる。0dBで負帰還ループが開く
+  - SE Triodeは軽い帰還を想定しているため、3dBから始め、通常は0〜6dBの範囲で調整する
   - スピーカー負荷に対する電気的なダンピングはこのループそのものから生じるため、上げるほど負荷を制動する力も強くなる
 - **Output Trim** (-48〜+48dB) - 回路の後で処理音のデジタルレベルを調整。内部の駆動電圧は変わらない
 - **Output Safety Trim** (-96〜0dB) - 回路の後に働く、Output Trimとは別系統のリニアトリム。出力レベル保護が専用に使う
@@ -551,21 +619,26 @@ Presetドロップダウンは先頭に**Custom**があり、続いて**Listenin
   - オフにすると新たな低減は蓄積されず、すでに適用された低減はそのまま残る
 - **Wet/Dry Mix** (0〜100%) - 処理音とレイテンシをそろえた原音をブレンド
   - 0%でも、時間整合に必要な固定64 samplesの遅延は原音経路に残る
-- **Input Reference** (0.100〜20.000 Vpk) - デジタルの0dBFS peakに対応する入力端子のピーク電圧
+- **Input Reference** (0.100〜300.000 Vpk) - デジタルの0dBFS peakに対応する入力端子のピーク電圧
   - 2.828 Vpkはフルスケール正弦波の2 Vrms、5.657 Vpkは4 Vrmsに相当
-  - Stage 1に入るのはInput ReferenceにInput Volumeを掛けた電圧。出力利得ではなく、物理的な入力校正
-- **Output Circuit** (Line、Push-Pull Power) - モデル化する回路構成を選択
+  - 選択した信号経路に入るのはInput ReferenceにInput Volumeを掛けた電圧。出力利得ではなく、物理的な入力校正
+- **Output Circuit** (Line、Push-Pull Power、SE Triode) - モデル化する回路構成を選択
   - Lineは2段ドライバーの後で終了し、出力管、トランス、スピーカー負荷は処理しない
   - Push-Pull Powerは位相反転段とパワー出力回路全体を加える
-- **Power Tubes** (EL84 ×2、EL34 ×2) - 出力管の電流モデルと対応する回路部品を選択。Powerモードでのみ有効
-  - いずれのモデルもプレート、スクリーン、グリッド電圧にわたって実際の出力管データに従い、グリッドを十分に負へ振ったときの完全な遮断まで再現する
+  - SE Triodeは直接駆動する300Bまたは2A3を1本と、ギャップ入りシングルエンド出力トランスを加える
+- **Power Tubes** (EL84 ×2、EL34 ×2、6L6GC ×2、KT88 ×2) - 出力管の電流モデルと対応する回路部品を選択。Powerモードでのみ有効
+  - 4種類のモデルはいずれもプレート、スクリーン、グリッド電圧にわたって実際の出力管データに従い、グリッドを十分に負へ振ったときの完全な遮断まで再現する
 - **Output B+** (300〜470 V) - パワー段の電源電圧。上げると取り出せる電圧振幅と出力管の損失が増える
 - **Cathode Resistor** (270〜500 Ω / valve) - 各出力管の独立したカソードバイアス抵抗
   - 抵抗を上げると無信号電流が減り、下げると増える
+- **SE Triode** (300B、2A3) - シングルエンドの直熱出力三極管モデルを選択。SE Triodeでのみ有効
+- **SE B+** (250〜450 V) - シングルエンド出力段の電源電圧を設定
+- **SE Cathode Resistor** (700〜1300 Ω) - 1本の出力三極管のカソードバイアス抵抗を設定
 - **Screen Tap** (0%、20%、43%) - 出力管のスクリーン接続を選択
   - 0%は固定スクリーン電源、20%と43%は対応する出力トランス一次側タップに接続し、分布負荷(ウルトラリニア)動作にする
   - タップは巻数比なので、スクリーンは一次巻線の磁束結合のうちその割合ぶんに追従する
-- **Transformer Primary** (6.0、6.6、8.0 kΩ) - 出力トランスのプレート間一次インピーダンスを選択。Assumed Speaker Loadとの組み合わせで巻数比も決まる
+- **Push-Pull Primary** (6.0、6.6、8.0 kΩ) - プッシュプル出力トランスのプレート間一次インピーダンスを選択。Assumed Speaker Loadとの組み合わせで巻数比も決まる
+- **SE Primary** (2.5、3.5、5.0 kΩ) - ギャップ入りシングルエンド出力トランスの一次インピーダンスを選択。Assumed Speaker Loadとの組み合わせで巻数比も決まる
 - **Assumed Speaker Load** (4、8、15、16 Ω) - トランス二次側のタップと、回路が想定するスピーカーの公称インピーダンスを選択
   - 単純な抵抗ではなく、それぞれの周波数依存RLC負荷がトランス負荷と帰還に影響する
 - **Actual Speaker Load** (2〜32 Ω) - そのタップに実際につないだスピーカーのインピーダンスを設定
@@ -574,7 +647,7 @@ Presetドロップダウンは先頭に**Custom**があり、続いて**Listenin
 
 ### 出力レベル保護
 
-Circuitプリセットは互いに音量がそろえられていません。Tubeを12AU7から12AX7へ変えると約25dB、Output CircuitをLineからPush-Pull Powerへ変えると約33dB出力が上がります。2つの回路はフルスケールの基準が異なるためです。Output Safety TrimとAuto Gain Reductionは、この急な上昇から出力につながった機器を保護します。
+どのプリセットを読み込んでも較正済みのOutput Trimが適用されるため、選択可能な35プリセットは上記の基準条件で音量がそろいます。ただし、Driver Type、Output Circuitなどのパラメーターを手動で変更しても、Output Trimは自動補正されません。そのため、手動変更によって大きなレベル差が生じることがあります。Output Safety TrimとAuto Gain Reductionは、そのような急変から出力につながった機器を保護します。
 
 - 出力サンプルの振幅が0 dBFS peakを超えるたびに、その超過分ちょうどだけOutput Safety Trimが即座に下げられます。全サンプルを検査するため、検出窓も平均化もありません。このしきい値は固定のポリシー値です。
 - 低減は20 msの一方向ランプで適用されるため、レベルは段差なく移動します。
@@ -588,20 +661,21 @@ Circuitプリセットは互いに音量がそろえられていません。Tube
 
 ### 安全バイパスと復帰
 
-- 帰還発振を検出すると、回路の処理音からレイテンシをそろえた原音へフェードし、安全バイパスをラッチします。Negative Feedbackを下げる、標準プリセットを選ぶ、または他の回路設定を変えてください。出力を原音に保ったまま新しい設定を試験し、安定していれば滑らかに処理音へ戻ります。不安定なままならバイパスを継続します。
+- 帰還発振を検出すると、回路の処理音からレイテンシをそろえた原音へフェードし、安全バイパスをラッチします。Negative Feedbackを下げる、利用可能なプリセットを選ぶ、または他の回路設定を変えてください。出力を原音に保ったまま新しい設定を試験し、安定していれば滑らかに処理音へ戻ります。不安定なままならバイパスを継続します。
 - その他の処理上の安全異常が起きた場合も、安全な原音出力に切り替えます。回路設定を既定値に戻し、エフェクトを読み込み直してください。
 - 非対応のサンプルレートやチャンネルモード、WebAssembly処理が利用できない場合、処理エンジンが停止した場合もバイパスします。HUD下のステータスに対処方法が表示されます。
 
 ### HUDの読み方
 
 - **Input Reference (0 dBFS)**は入力端子の校正値をVpk、正弦波Vrms、**dBuFS**で表示します。**Stage 1 External Input (0 dBFS)**はInput Volume通過後のピーク電圧です。
-- **Stage 1 Bias**、**Stage 2 Bias**、**B+**、**Plate − B+ Sag**は、どちらのOutput Circuitでも2段ドライバーの現在の動作点を示します。サグの値がより負であるほど、プレート電圧が電源電圧から大きく下がっています。
+- **Stage 1 Bias**、**Stage 2 Bias**、**B+**、**Plate − B+ Sag**は2段ドライバーの現在の動作点を示し、Driver TypeがBypassのときは利用不可として表示されます。サグの値がより負であるほど、プレート電圧が電源電圧から大きく下がっています。
 - Lineでは、2つのグラフがStage 1とStage 2を表します。細い灰色の曲線は静的なプレート特性、破線はロードラインで、直近の動作点は線でつながずに個々の点として描かれます。
 - Push-Pull Powerでは、グラフが**Push**と**Pull**のロードラインに切り替わり、2本の出力管の直近のプレート電流動作点を点で示します。
+- SE Triodeでは、左右のパネルに各チャンネルの1本の出力三極管について、プレート特性、ロードライン、動作点を表示します。
 - グラフの横軸はプレート・カソード間電圧 **Vak (V)**、縦軸はプレート電流 **Ia (mA)**です。水色が左音声チャンネル、オレンジが右チャンネルで、点の広がりが大きいほどその段が広い動作範囲で駆動されています。
-- **Power LTP Balance**は位相反転段の差動電圧、**Power B+**は電源サグ後のパワー段電源を示します。
+- **Power LTP Balance**はプッシュプル位相反転段の差動電圧です。**Power B+**は、どちらのパワー回路でも電源サグ後のパワー段電源を示します。
 - **Speaker Output (100 ms)**と**Speaker Real Power (100 ms)**は、選択したスピーカー負荷における重複のない100 msごとの電気測定値です。Real Powerは瞬時負荷電圧と電流から計算されるため、Vrmsの2乗を公称インピーダンスで割った値とは限りません。
-- **Transformer Flux**は、モデル上の出力トランスの磁束をウェーバで示します。Power専用の値はPush-Pull Powerを選んでいるときに意味を持ちます。
+- **Transformer Flux**は、モデル上の出力トランスの磁束をウェーバで示します。パワー出力の値はPush-Pull PowerとSE Triodeで意味を持ちます。
 - グラフ下のステータスには、処理の読み込み中、動作中、安全バイパス中の状態に加えて、現在の出力保護による低減量が0.0 dBのときも含めて常に表示されます。
 
 ### 動作条件とレイテンシ

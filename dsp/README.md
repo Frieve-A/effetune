@@ -410,7 +410,9 @@ BrickwallLimiter reports:
 - At 2x, 4x, or 8x oversampling: the same lookahead term plus
   `ceil(62 / oversampling)` samples
 
-The host reports aggregate pipeline latency but does not compensate for it.
+The routed EffeTune host reports and compensates aggregate pipeline latency.
+Serial library bindings report latency without trimming or padding rendered
+output, leaving offline placement to the host application.
 
 The Phase-5 pipeline descriptor is validated transactionally. A malformed
 descriptor returns `ET_ERR_DESC` and leaves the previous valid descriptor

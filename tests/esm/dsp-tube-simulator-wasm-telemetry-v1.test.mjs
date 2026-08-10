@@ -10,7 +10,7 @@ const SAMPLE_RATE = 96000;
 const BLOCK_SIZE = 128;
 const TELEMETRY_BYTES = 32768;
 const TELEMETRY_BLOCKS = 13;
-const TUBE_PARAMS_HASH = 0xe7aae286;
+const TUBE_PARAMS_HASH = 0x07986b4b;
 const SUPPORTED_SAMPLE_RATES = [44100, 48000, 88200, 96000, 176400, 192000];
 // These cases exercise the small-signal line circuit, so they name the output stage
 // instead of inheriting the product default.
@@ -181,6 +181,120 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
       }
     });
 
+  test(`Tube Simulator bypass in ${artifact} skips driver controls and keeps power telemetry`,
+    async () => {
+      const bytes = fs.readFileSync(
+        new URL(`../../plugins/dsp/${artifact}`, import.meta.url));
+      const binding = await instantiateDsp(bytes);
+      try {
+        assert.notEqual(binding.createEngine(), 0);
+        assert.equal(binding.prepare(SAMPLE_RATE, 2, BLOCK_SIZE, TELEMETRY_BYTES), 0);
+        assert.equal(binding.setTelemetryRate(60), 0);
+        const packer = DSP_PARAM_PACKERS.get('TubeSimulatorPlugin');
+        const arena = binding.getArenaViews();
+        const topologies = [
+          {
+            name: 'Push-Pull Power',
+            tapId: 1931,
+            params: {
+              dr: -42, tp: 'Bypass', og: 0, mx: 100, iv: 2.828, nf: 3,
+              os: 'Power', pt: 'EL84', pb: 329.696, kr: 270,
+              st: '0', zp: '8.0', sl: '15', rl: 15, ag: false
+            }
+          },
+          {
+            name: 'SE Triode',
+            tapId: 1932,
+            params: {
+              dr: -42, tp: 'Bypass', og: 0, mx: 100, iv: 2.828, nf: 3,
+              os: 'SingleEnded', sd: '300B', sb: 400, sr: 1000,
+              sp: '3.5', sl: '8', rl: 8, ag: false
+            }
+          }
+        ];
+
+        for (const topology of topologies) {
+          const lowDriver = binding.createInstance('TubeSimulatorPlugin');
+          const highDriver = binding.createInstance('TubeSimulatorPlugin');
+          assert.notEqual(lowDriver, 0);
+          assert.notEqual(highDriver, 0);
+          assert.equal(binding.instanceSetTap(lowDriver, topology.tapId), 0);
+          assert.equal(binding.instanceSetParams(
+            lowDriver,
+            packer.pack({ ...topology.params, bi: -50, pv: 150, sz: 0.6, su: 0.1 }),
+            packer.hash
+          ), 0);
+          assert.equal(binding.instanceSetParams(
+            highDriver,
+            packer.pack({ ...topology.params, bi: 50, pv: 300, sz: 100, su: 47 }),
+            packer.hash
+          ), 0);
+
+          for (let block = 0; block < 24; block++) {
+            const input = Float32Array.from(
+              { length: BLOCK_SIZE * 2 },
+              (_, index) => 0.05 * Math.sin(2 * Math.PI * (index + block * BLOCK_SIZE) / 79)
+            );
+            arena.combined.set(input);
+            assert.equal(binding.instanceProcess(
+              lowDriver, arena.offsets.combined, 2, BLOCK_SIZE,
+              block * BLOCK_SIZE / SAMPLE_RATE
+            ), 0);
+            const expected = new Float32Array(
+              arena.combined.subarray(0, input.length));
+            arena.combined.set(input);
+            assert.equal(binding.instanceProcess(
+              highDriver, arena.offsets.combined, 2, BLOCK_SIZE,
+              block * BLOCK_SIZE / SAMPLE_RATE
+            ), 0);
+            assert.deepEqual(
+              new Float32Array(arena.combined.subarray(0, input.length)),
+              expected,
+              `${topology.name} Bypass output depends on dormant driver controls`
+            );
+          }
+
+          readFrames(binding);
+          const processTelemetryBlocks = signal => {
+            for (let block = 0; block < TELEMETRY_BLOCKS; block++) {
+              for (let index = 0; index < BLOCK_SIZE * 2; index++) {
+                arena.combined[index] = signal
+                  ? 0.2 * Math.sin(2 * Math.PI * (index + block * BLOCK_SIZE) / 67)
+                  : 0;
+              }
+              assert.equal(binding.instanceProcess(
+                lowDriver, arena.offsets.combined, 2, BLOCK_SIZE, 0), 0);
+            }
+            const frames = readFrames(binding).frames
+              .filter(frame => frame.tapId === topology.tapId);
+            assert.ok(frames.length >= 1);
+            return assertTubeFrame(frames.at(-1), topology.tapId);
+          };
+          const silentTelemetry = processTelemetryBlocks(false);
+          const drivenTelemetry = processTelemetryBlocks(true);
+          for (const offset of [0, 20]) {
+            assert.deepEqual(
+              drivenTelemetry.slice(offset, offset + 9),
+              Array(9).fill(0),
+              `${topology.name} Bypass exposes dormant driver telemetry`
+            );
+            assert.ok(
+              drivenTelemetry.slice(offset + 9, offset + 20)
+                .some(value => value !== 0),
+              `${topology.name} Bypass does not publish power telemetry`
+            );
+            assert.notDeepEqual(
+              drivenTelemetry.slice(offset + 9, offset + 20),
+              silentTelemetry.slice(offset + 9, offset + 20),
+              `${topology.name} power telemetry does not respond to input`
+            );
+          }
+        }
+      } finally {
+        binding.close();
+      }
+    });
+
   test(`Tube Simulator telemetry from ${artifact} discovers the kernel and isolates taps`, async () => {
     assert.equal(TelemetryFrameType.TAP_TUBE_SIMULATOR, 19);
     const bytes = fs.readFileSync(new URL(`../../plugins/dsp/${artifact}`, import.meta.url));
@@ -207,7 +321,7 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
 
       const packer = DSP_PARAM_PACKERS.get('TubeSimulatorPlugin');
       assert.equal(packer.hash, TUBE_PARAMS_HASH);
-      assert.equal(packer.floatCount, 20);
+      assert.equal(packer.floatCount, 24);
       assert.equal(binding.instanceSetParams(
         leftTapInstance,
         packer.pack({

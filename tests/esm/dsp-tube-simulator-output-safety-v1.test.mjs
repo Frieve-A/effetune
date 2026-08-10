@@ -447,8 +447,9 @@ test('applying a canonical preset lands on 0 dB of safety trim and clears the re
   // than leaving the user with a mismatch nobody asked for.
   assert.equal(plugin.rl, Number(preset.params.sl),
     'a preset must land on a speaker matched to its assumed load');
-  // Safety trim is not part of preset identity, so the dropdown still resolves to the preset.
-  assert.equal(plugin._matchingCanonicalPresetId(), preset.id);
+  // Legacy canonical records remain programmatically applicable, but are intentionally hidden
+  // from the listening-calibrated dropdown and therefore resolve to Custom in the UI.
+  assert.equal(plugin._matchingCanonicalPresetId(), '');
 
   // The engine sees a commit that differs in far more than two values, which is what clears the
   // accumulated reduction; the written sg of 0 dB would not, since 0 dB is the usual value.

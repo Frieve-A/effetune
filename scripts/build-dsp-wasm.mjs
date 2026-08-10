@@ -336,7 +336,7 @@ export async function smokeWasm(filePath, expectedSimd) {
     'et_instance_set_param_bytes', 'et_instance_asset_begin', 'et_instance_asset_commit',
     'et_instance_asset_abort', 'et_instance_asset_state',
     'et_instance_process', 'et_instance_runtime_event',
-    'et_pipeline_configure', 'et_pipeline_process'
+    'et_pipeline_configure', 'et_pipeline_latency', 'et_pipeline_process'
   ];
   for (const name of required) {
     if (!(name in api)) {

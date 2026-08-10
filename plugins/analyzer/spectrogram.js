@@ -4,6 +4,32 @@ const SPECTROGRAM_PAYLOAD_BYTES = 268;
 const SPECTROGRAM_PAYLOAD_HEADER_BYTES = 12;
 const SPECTROGRAM_CELL_COUNT = 256;
 const SPECTROGRAM_HISTORY_WIDTH = 1024;
+const SPECTROGRAM_MIN_DISPLAY_FREQ = 20;
+const SPECTROGRAM_MAX_DISPLAY_FREQ = 40000;
+const SPECTROGRAM_DISPLAY_FREQ_RANGE =
+    SPECTROGRAM_MAX_DISPLAY_FREQ - SPECTROGRAM_MIN_DISPLAY_FREQ;
+const SPECTROGRAM_LOG_MIN_DISPLAY_FREQ = Math.log10(SPECTROGRAM_MIN_DISPLAY_FREQ);
+const SPECTROGRAM_LOG_MAX_DISPLAY_FREQ = Math.log10(SPECTROGRAM_MAX_DISPLAY_FREQ);
+const SPECTROGRAM_LOG_DISPLAY_FREQ_RANGE =
+    SPECTROGRAM_LOG_MAX_DISPLAY_FREQ - SPECTROGRAM_LOG_MIN_DISPLAY_FREQ;
+const SPECTROGRAM_LINEAR_TO_CANONICAL_ROW = new Float64Array(SPECTROGRAM_CELL_COUNT);
+for (let row = 0; row < SPECTROGRAM_CELL_COUNT; row++) {
+    const position = row / (SPECTROGRAM_CELL_COUNT - 1);
+    const frequency = SPECTROGRAM_MAX_DISPLAY_FREQ - position * SPECTROGRAM_DISPLAY_FREQ_RANGE;
+    SPECTROGRAM_LINEAR_TO_CANONICAL_ROW[row] = (SPECTROGRAM_CELL_COUNT - 1) *
+        (SPECTROGRAM_LOG_MAX_DISPLAY_FREQ - Math.log10(frequency)) /
+        SPECTROGRAM_LOG_DISPLAY_FREQ_RANGE;
+}
+const SPECTROGRAM_COLOR_STOPS = [
+    { pos: 0.000, r: 0,   g: 0,   b: 0 },
+    { pos: 0.166, r: 0,   g: 0,   b: 255 },
+    { pos: 0.333, r: 0,   g: 255, b: 255 },
+    { pos: 0.500, r: 0,   g: 255, b: 0 },
+    { pos: 0.666, r: 255, g: 255, b: 0 },
+    { pos: 0.833, r: 255, g: 0,   b: 0 },
+    { pos: 1.000, r: 255, g: 255, b: 255 }
+];
+const SPECTROGRAM_COLOR_BRIGHTNESS = 0.75;
 
 class SpectrogramPlugin extends PluginBase {
     constructor() {
@@ -12,6 +38,7 @@ class SpectrogramPlugin extends PluginBase {
         // Initialize parameters
         this.dr = -96;
         this.pt = 12;  // exponent for FFT size (2^pt)
+        this.sc = 'log';
         const fftSize = 1 << this.pt; // using bit shift for power of 2
         this.spectrum = new Float32Array(fftSize >> 1).fill(-144);
         this.lastProcessTime = performance.now() / 1000;
@@ -162,12 +189,11 @@ class SpectrogramPlugin extends PluginBase {
         return result;
     }
 
-    // Convert frequency to log-scaled y coordinate (0-255 for spectrogram buffer)
+    // Convert frequency to the selected display y coordinate (0-255).
     freqToY(freq) {
-        const minDisplayFreq = 20;
+        const minDisplayFreq = SPECTROGRAM_MIN_DISPLAY_FREQ;
         const nyquistFreq = this.sampleRate / 2;
-        // Ensure maxDisplayFreq is at least minDisplayFreq, use Nyquist as upper bound.
-        const maxDisplayFreq = 40000; //Fixed
+        const maxDisplayFreq = SPECTROGRAM_MAX_DISPLAY_FREQ;
 
         if (this.sampleRate <= 0 || nyquistFreq <= minDisplayFreq || freq < minDisplayFreq) {
              return 255; // Map to bottom for frequencies below min or invalid sample rate
@@ -176,19 +202,44 @@ class SpectrogramPlugin extends PluginBase {
             return 0; // Map to top for frequencies above max
         }
 
-        const logMin = Math.log10(minDisplayFreq);
-        const logMax = Math.log10(maxDisplayFreq);
-        const logRange = logMax - logMin;
-
-        if (logRange <= 0) return 255; // Avoid issues with zero or negative range
-
         // Clamp freq just in case, though prior checks should handle it
         const freqClamped = Math.max(minDisplayFreq, Math.min(freq, maxDisplayFreq));
-        
-        // Spectrogram typically has low frequencies at the bottom, high at the top.
-        // y=0 is top, y=255 is bottom for a 256-pixel high spectrogram image.
-        const y = 255 - Math.round(255 * (Math.log10(freqClamped) - logMin) / logRange);
+
+        let normalized;
+        if (this.sc === 'linear') {
+            normalized = (freqClamped - minDisplayFreq) / SPECTROGRAM_DISPLAY_FREQ_RANGE;
+        } else {
+            normalized = (Math.log10(freqClamped) - SPECTROGRAM_LOG_MIN_DISPLAY_FREQ) /
+                SPECTROGRAM_LOG_DISPLAY_FREQ_RANGE;
+        }
+        const y = 255 - Math.round(255 * normalized);
         return y < 0 ? 0 : (y > 255 ? 255 : y);
+    }
+
+    displayRowToFrequency(row) {
+        const position = row / (SPECTROGRAM_CELL_COUNT - 1);
+        if (this.sc === 'linear') {
+            return SPECTROGRAM_MAX_DISPLAY_FREQ -
+                position * SPECTROGRAM_DISPLAY_FREQ_RANGE;
+        }
+        return Math.pow(
+            10,
+            SPECTROGRAM_LOG_MAX_DISPLAY_FREQ - position * SPECTROGRAM_LOG_DISPLAY_FREQ_RANGE
+        );
+    }
+
+    displayRowToCanonicalRow(row) {
+        if (this.sc === 'log') return row;
+        return SPECTROGRAM_LINEAR_TO_CANONICAL_ROW[row];
+    }
+
+    sampleCanonicalRow(values, sourceRow, column = 0, stride = 1) {
+        const firstRow = Math.floor(sourceRow);
+        const secondRow = firstRow + 1 < SPECTROGRAM_CELL_COUNT ? firstRow + 1 : firstRow;
+        const fraction = sourceRow - firstRow;
+        const firstValue = values[firstRow * stride + column];
+        const secondValue = values[secondRow * stride + column];
+        return firstValue + (secondValue - firstValue) * fraction;
     }
 
     binToFreq(bin, fftSize) {
@@ -231,11 +282,31 @@ class SpectrogramPlugin extends PluginBase {
         this.updateParameters();
     }
 
+    setFrequencyScale(value) {
+        const scale = value === 'linear' ? 'linear' : 'log';
+        if (scale === this.sc) return;
+        this.sc = scale;
+        this.repaintSpectrogramHistory();
+        this.updateParameters();
+    }
+
+    repaintSpectrogramHistory() {
+        if (!this.imageDataCache) return;
+        if (this.dspSpectrogramActive) {
+            this.paintDspSpectrogramImage();
+        } else {
+            this.paintLegacySpectrogramImage();
+        }
+        this.tempCtx?.putImageData(this.imageDataCache, 0, 0);
+        this.drawGraph();
+    }
+
     reset() {
         this.setDBRange(-96);
         this.setPoints(10); // Original reset used 10, constructor 12. Sticking to 10 for reset.
         this.spectrogramBuffer.fill(-144);
         this.resetDspSpectrogramHistory();
+        this.setFrequencyScale('log');
         this.clearSpectrogramImage();
         this.secondMarkers = [];
         this.prevTime = null;
@@ -248,7 +319,8 @@ class SpectrogramPlugin extends PluginBase {
             type: this.constructor.name,
             enabled: this.enabled,
             dr: this.dr,
-            pt: this.pt
+            pt: this.pt,
+            sc: this.sc
         };
     }
 
@@ -256,6 +328,7 @@ class SpectrogramPlugin extends PluginBase {
         if (params.enabled !== undefined) this.enabled = params.enabled;
         if (params.dr !== undefined) this.setDBRange(params.dr);
         if (params.pt !== undefined) this.setPoints(params.pt);
+        if (params.sc !== undefined) this.setFrequencyScale(params.sc);
         this.updateParameters();
     }
 
@@ -494,18 +567,18 @@ class SpectrogramPlugin extends PluginBase {
         if (Number.isFinite(t)) this.updateSecondMarkers(t);
         
         // Add new spectrum data to the rightmost column of the spectrogram display buffer
-        const minDisplayFreq = 20;
+        const minDisplayFreq = SPECTROGRAM_MIN_DISPLAY_FREQ;
         const nyquistFreq = this.sampleRate / 2;
-        const maxDisplayFreq = 40000; //Fixed
-        const logMin = Math.log10(minDisplayFreq);
-        const logMax = Math.log10(maxDisplayFreq);
-        const logRange = logMax - logMin;
+        const maxDisplayFreq = SPECTROGRAM_MAX_DISPLAY_FREQ;
 
-        for (let y = 0; y < spectroHeight; y++) { // y is pixel row, 0=top, 255=bottom
+        for (let y = 0; y < spectroHeight; y++) { // Keep legacy history in canonical log rows.
             let dbValue = -144; // Default for out-of-range frequencies
-            if (logRange > 0 && this.sampleRate > 0) {
-                // Map y (0 to spectroHeight-1, top to bottom) to frequency (log scale, high to low freq)
-                const freq = Math.pow(10, logMax - (y / (spectroHeight - 1)) * logRange);
+            if (this.sampleRate > 0) {
+                const freq = Math.pow(
+                    10,
+                    SPECTROGRAM_LOG_MAX_DISPLAY_FREQ -
+                        (y / (spectroHeight - 1)) * SPECTROGRAM_LOG_DISPLAY_FREQ_RANGE
+                );
                 
                 if (freq >= minDisplayFreq && freq <= nyquistFreq) { // Ensure we interpolate within valid FFT data
                     const binFloat = (freq * fftSize) / this.sampleRate;
@@ -521,12 +594,18 @@ class SpectrogramPlugin extends PluginBase {
                 }
             }
             this.spectrogramBuffer[y * spectroWidth + (spectroWidth - 1)] = dbValue;
-            if (this.imageDataCache) {
-                const color = this.dbToColor(dbValue);
-                const offset = (y * spectroWidth + (spectroWidth - 1)) * 4;
-                this.imageDataCache.data[offset] = color[0];
-                this.imageDataCache.data[offset + 1] = color[1];
-                this.imageDataCache.data[offset + 2] = color[2];
+        }
+        if (this.imageDataCache) {
+            for (let y = 0; y < spectroHeight; y++) {
+                const sourceRow = this.displayRowToCanonicalRow(y);
+                const dbValue = this.sampleCanonicalRow(
+                    this.spectrogramBuffer,
+                    sourceRow,
+                    spectroWidth - 1,
+                    spectroWidth
+                );
+                const offset = (y * spectroWidth + spectroWidth - 1) * 4;
+                this.writeDbColor(this.imageDataCache.data, offset, dbValue);
                 this.imageDataCache.data[offset + 3] = 255;
             }
         }
@@ -582,6 +661,16 @@ class SpectrogramPlugin extends PluginBase {
         pointsRow.appendChild(pointsLabel); pointsRow.appendChild(pointsSlider); pointsRow.appendChild(pointsValue);
         container.appendChild(pointsRow);
 
+        container.appendChild(this.createRadioGroup(
+            'Frequency Scale',
+            [
+                { value: 'log', label: 'Log' },
+                { value: 'linear', label: 'Linear' }
+            ],
+            this.sc,
+            value => this.setFrequencyScale(value)
+        ));
+
         const { container: graphContainer, canvas, dispose } = this.createResponsiveGraph({
             maxWidth: 1024,
             aspectRatio: '32 / 15',
@@ -607,6 +696,8 @@ class SpectrogramPlugin extends PluginBase {
         for (let i = 0, len = data.length; i < len; i += 4) { data[i]=0; data[i+1]=0; data[i+2]=0; data[i+3]=255; }
         if (this.dspSpectrogramActive) {
             this.paintDspSpectrogramImage();
+        } else {
+            this.paintLegacySpectrogramImage();
         }
         this.tempCtx.putImageData(this.imageDataCache, 0, 0);
         
@@ -684,25 +775,15 @@ class SpectrogramPlugin extends PluginBase {
 
     createSpectrogramColorLut() {
         const lut = new Uint8ClampedArray(256 * 3);
-        const colorStops = [
-            { pos: 0.000, r: 0,   g: 0,   b: 0 },
-            { pos: 0.166, r: 0,   g: 0,   b: 255 },
-            { pos: 0.333, r: 0,   g: 255, b: 255 },
-            { pos: 0.500, r: 0,   g: 255, b: 0 },
-            { pos: 0.666, r: 255, g: 255, b: 0 },
-            { pos: 0.833, r: 255, g: 0,   b: 0 },
-            { pos: 1.000, r: 255, g: 255, b: 255 }
-        ];
-        const brightness = 0.75;
         for (let intensity = 0; intensity < 256; intensity++) {
             const normalized = intensity / 255;
-            let lower = colorStops[0];
-            let upper = colorStops[colorStops.length - 1];
-            for (let index = 0; index < colorStops.length - 1; index++) {
-                if (normalized >= colorStops[index].pos &&
-                    normalized <= colorStops[index + 1].pos) {
-                    lower = colorStops[index];
-                    upper = colorStops[index + 1];
+            let lower = SPECTROGRAM_COLOR_STOPS[0];
+            let upper = SPECTROGRAM_COLOR_STOPS[SPECTROGRAM_COLOR_STOPS.length - 1];
+            for (let index = 0; index < SPECTROGRAM_COLOR_STOPS.length - 1; index++) {
+                if (normalized >= SPECTROGRAM_COLOR_STOPS[index].pos &&
+                    normalized <= SPECTROGRAM_COLOR_STOPS[index + 1].pos) {
+                    lower = SPECTROGRAM_COLOR_STOPS[index];
+                    upper = SPECTROGRAM_COLOR_STOPS[index + 1];
                     break;
                 }
             }
@@ -710,13 +791,13 @@ class SpectrogramPlugin extends PluginBase {
             const position = range === 0 ? 0 : (normalized - lower.pos) / range;
             const offset = intensity * 3;
             lut[offset] = Math.round(
-                (lower.r + (upper.r - lower.r) * position) * brightness
+                (lower.r + (upper.r - lower.r) * position) * SPECTROGRAM_COLOR_BRIGHTNESS
             );
             lut[offset + 1] = Math.round(
-                (lower.g + (upper.g - lower.g) * position) * brightness
+                (lower.g + (upper.g - lower.g) * position) * SPECTROGRAM_COLOR_BRIGHTNESS
             );
             lut[offset + 2] = Math.round(
-                (lower.b + (upper.b - lower.b) * position) * brightness
+                (lower.b + (upper.b - lower.b) * position) * SPECTROGRAM_COLOR_BRIGHTNESS
             );
         }
         return lut;
@@ -726,7 +807,9 @@ class SpectrogramPlugin extends PluginBase {
         if (!this.imageDataCache || !this.spectrogramColorLut) return;
         const pixels = this.imageDataCache.data;
         for (let row = 0; row < SPECTROGRAM_CELL_COUNT; row++) {
-            const colorOffset = intensities[row] * 3;
+            const sourceRow = this.displayRowToCanonicalRow(row);
+            const intensity = Math.round(this.sampleCanonicalRow(intensities, sourceRow));
+            const colorOffset = intensity * 3;
             const pixelOffset =
                 (row * SPECTROGRAM_HISTORY_WIDTH + column) * 4;
             pixels[pixelOffset] = this.spectrogramColorLut[colorOffset];
@@ -745,6 +828,26 @@ class SpectrogramPlugin extends PluginBase {
         );
     }
 
+    paintLegacySpectrogramImage() {
+        if (!this.imageDataCache || !this.spectrogramBuffer) return;
+        const pixels = this.imageDataCache.data;
+        for (let row = 0; row < SPECTROGRAM_CELL_COUNT; row++) {
+            const sourceRow = this.displayRowToCanonicalRow(row);
+            for (let column = 0; column < SPECTROGRAM_HISTORY_WIDTH; column++) {
+                const dbValue = this.sampleCanonicalRow(
+                    this.spectrogramBuffer,
+                    sourceRow,
+                    column,
+                    SPECTROGRAM_HISTORY_WIDTH
+                );
+                const pixelOffset =
+                    (row * SPECTROGRAM_HISTORY_WIDTH + column) * 4;
+                this.writeDbColor(pixels, pixelOffset, dbValue);
+                pixels[pixelOffset + 3] = 255;
+            }
+        }
+    }
+
     paintDspSpectrogramImage() {
         if (!this.imageDataCache || !this.spectrogramIntensityBuffer ||
             !this.spectrogramColorLut) {
@@ -752,10 +855,17 @@ class SpectrogramPlugin extends PluginBase {
         }
         const pixels = this.imageDataCache.data;
         for (let row = 0; row < SPECTROGRAM_CELL_COUNT; row++) {
+            const sourceRow = this.displayRowToCanonicalRow(row);
             for (let column = 0; column < SPECTROGRAM_HISTORY_WIDTH; column++) {
-                const sourceOffset = row * SPECTROGRAM_HISTORY_WIDTH + column;
-                const colorOffset = this.spectrogramIntensityBuffer[sourceOffset] * 3;
-                const pixelOffset = sourceOffset * 4;
+                const intensity = Math.round(this.sampleCanonicalRow(
+                    this.spectrogramIntensityBuffer,
+                    sourceRow,
+                    column,
+                    SPECTROGRAM_HISTORY_WIDTH
+                ));
+                const colorOffset = intensity * 3;
+                const pixelOffset =
+                    (row * SPECTROGRAM_HISTORY_WIDTH + column) * 4;
                 pixels[pixelOffset] = this.spectrogramColorLut[colorOffset];
                 pixels[pixelOffset + 1] = this.spectrogramColorLut[colorOffset + 1];
                 pixels[pixelOffset + 2] = this.spectrogramColorLut[colorOffset + 2];
@@ -765,33 +875,38 @@ class SpectrogramPlugin extends PluginBase {
     }
 
 
-    dbToColor(db) {
+    writeDbColor(target, offset, db) {
         if (db > 0) db = 0; // Clamp db
         const normalizedValue = (db - this.dr) / (-this.dr); // this.dr is negative
         const clampedValue = Math.max(0, Math.min(1, normalizedValue));
-        
-        const colorStops = [
-            { pos: 0.000, r: 0,   g: 0,   b: 0 },
-            { pos: 0.166, r: 0,   g: 0,   b: 255 },
-            { pos: 0.333, r: 0,   g: 255, b: 255 },
-            { pos: 0.500, r: 0,   g: 255, b: 0 },
-            { pos: 0.666, r: 255, g: 255, b: 0 },
-            { pos: 0.833, r: 255, g: 0,   b: 0 },
-            { pos: 1.000, r: 255, g: 255, b: 255 }
-        ];
-        let lower = colorStops[0], upper = colorStops[colorStops.length - 1];
-        for (let i = 0; i < colorStops.length - 1; i++) {
-            if (clampedValue >= colorStops[i].pos && clampedValue <= colorStops[i + 1].pos) {
-                lower = colorStops[i]; upper = colorStops[i + 1]; break;
+
+        let lower = SPECTROGRAM_COLOR_STOPS[0];
+        let upper = SPECTROGRAM_COLOR_STOPS[SPECTROGRAM_COLOR_STOPS.length - 1];
+        for (let i = 0; i < SPECTROGRAM_COLOR_STOPS.length - 1; i++) {
+            if (clampedValue >= SPECTROGRAM_COLOR_STOPS[i].pos &&
+                clampedValue <= SPECTROGRAM_COLOR_STOPS[i + 1].pos) {
+                lower = SPECTROGRAM_COLOR_STOPS[i];
+                upper = SPECTROGRAM_COLOR_STOPS[i + 1];
+                break;
             }
         }
         const range = upper.pos - lower.pos;
         const normalizedPos = range === 0 ? 0 : (clampedValue - lower.pos) / range;
-        const brightness = 0.75; // As in original
-        const r = Math.round((lower.r + (upper.r - lower.r) * normalizedPos) * brightness);
-        const g = Math.round((lower.g + (upper.g - lower.g) * normalizedPos) * brightness);
-        const b = Math.round((lower.b + (upper.b - lower.b) * normalizedPos) * brightness);
-        return [r, g, b];
+        target[offset] = Math.round(
+            (lower.r + (upper.r - lower.r) * normalizedPos) * SPECTROGRAM_COLOR_BRIGHTNESS
+        );
+        target[offset + 1] = Math.round(
+            (lower.g + (upper.g - lower.g) * normalizedPos) * SPECTROGRAM_COLOR_BRIGHTNESS
+        );
+        target[offset + 2] = Math.round(
+            (lower.b + (upper.b - lower.b) * normalizedPos) * SPECTROGRAM_COLOR_BRIGHTNESS
+        );
+    }
+
+    dbToColor(db) {
+        const color = [0, 0, 0];
+        this.writeDbColor(color, 0, db);
+        return color;
     }
 
     drawGraph() {
@@ -855,15 +970,19 @@ class SpectrogramPlugin extends PluginBase {
         ctx.lineWidth = dpr; // Thinner than spectrum analyzer grid for less prominence
 
         // --- Dynamic Frequency Grid for Spectrogram Y-Axis ---
-        const minDisplayFreq = 20;
+        const minDisplayFreq = SPECTROGRAM_MIN_DISPLAY_FREQ;
         const nyquistFreq = this.sampleRate / 2;
-        const maxDisplayFreq = 40000; // Fixed max display frequency
+        const maxDisplayFreq = SPECTROGRAM_MAX_DISPLAY_FREQ;
 
         if (this.sampleRate > 0 && nyquistFreq > minDisplayFreq) {
             // Base frequencies for labels, filter/adjust based on dynamic range
-            let baseGridFreqs = isNarrow
-                ? [20, 100, 1000, 10000, 20000]
-                : [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+            let baseGridFreqs = this.sc === 'linear'
+                ? (isNarrow
+                    ? [20, 10000, 20000, 30000, 40000]
+                    : [20, 5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000])
+                : (isNarrow
+                    ? [20, 100, 1000, 10000, 20000]
+                    : [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]);
             let gridFreqsToDraw = baseGridFreqs.filter(f => f >= minDisplayFreq && f <= maxDisplayFreq);
             // Ensure min/max are candidates if not present, then sort.
             if (!gridFreqsToDraw.includes(minDisplayFreq) && minDisplayFreq > 0) gridFreqsToDraw.push(minDisplayFreq);

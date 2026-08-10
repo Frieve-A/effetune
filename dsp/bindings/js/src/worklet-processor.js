@@ -8,6 +8,7 @@ class EffeTuneDspProcessor extends AudioWorkletProcessor {
     this.session = null;
     this.ready = false;
     this.closed = false;
+    this.latencySamples = null;
     this.channels = 0;
     this.pendingCommands = [];
     this.sourceChannels = [];
@@ -66,7 +67,8 @@ class EffeTuneDspProcessor extends AudioWorkletProcessor {
         );
       }
       this.ready = true;
-      this.port.postMessage({ type: 'ready' });
+      this.latencySamples = this.session?.latencySamples ?? 0;
+      this.port.postMessage({ type: 'ready', latencySamples: this.latencySamples });
     } catch (error) {
       this.port.postMessage({
         type: 'initializationError',
@@ -94,6 +96,11 @@ class EffeTuneDspProcessor extends AudioWorkletProcessor {
           this.telemetryEnabled = command.enabled === true;
           this.session?.setTelemetryEnabled(this.telemetryEnabled);
           continue;
+        }
+        const latencySamples = this.session?.latencySamples ?? 0;
+        if (latencySamples !== this.latencySamples) {
+          this.latencySamples = latencySamples;
+          this.port.postMessage({ type: 'latency', latencySamples });
         }
         this.port.postMessage({ type: 'commandResult', commandId: command.commandId, ok: true });
       } catch (error) {

@@ -258,6 +258,8 @@ EffeTune 2.1.0 में कैटलॉग स्कीमा v3 पर आध�
 
 जिन मापों में impulse response data सेव है, उनके results में normalized **Impulse Response** plot दिखाई देता है। शुरुआत में detected onset को 0 ms मानकर 0–10 ms का हिस्सा दिखता है। Time axis को zoom करने के लिए mouse wheel या buttons और समय में scroll करने के लिए plot को drag करें या slider इस्तेमाल करें। Measurement point चुनने पर plot बदल जाता है; **सभी (औसत)** में सेव impulse response वाला पहला point दिखता है और उसका नाम graph के ऊपर दिया जाता है। Plot के नीचे **आवेग प्रतिक्रिया निर्यात करें (WAV)** से दिखाए गए point की पूरी, बिना normalize की गई response को measurement की sampling rate पर mono 32-bit floating-point WAV के रूप में सेव किया जा सकता है।
 
+सक्रिय pipeline की आवृत्ति, फेज़, ग्रुप डिले और इम्पल्स प्रतिक्रिया को अधिकतम चार आउटपुट और सहेजी गई स्पीकर प्रतिक्रियाओं सहित देखने के लिए [Pipeline Analyzer गाइड](pipeline-analyzer.md) देखें।
+
 ## सामान्य इफेक्ट संयोजन
 
 सुनने के अनुभव को बेहतर बनाने के लिए कुछ लोकप्रिय इफेक्ट संयोजन:
@@ -358,6 +360,7 @@ EffeTune 2.1.0 में कैटलॉग स्कीमा v3 पर आध�
 | Lo-Fi     | Vinyl Simulator | input को modeled groove में काटकर physical stylus model से चलाता है | [विवरण](plugins/lofi.md#vinyl-simulator) |
 | Modulation | Doppler Distortion | subtle speaker cone movements से होने वाले natural, dynamic sound changes simulate करता है | [विवरण](plugins/modulation.md#doppler-distortion) |
 | Modulation | Pitch Shifter | tempo बदले बिना music pitch ऊपर या नीचे करता है | [विवरण](plugins/modulation.md#pitch-shifter) |
+| Modulation | Pitch Shifter HQ | ध्यान से सुनने के लिए कम phase artifacts के साथ pitch ऊपर या नीचे करता है | [विवरण](plugins/modulation.md#pitch-shifter-hq) |
 | Modulation | Tremolo | volume-based modulation effect | [विवरण](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | vintage character के लिए tape या record-style subtle pitch wavering जोड़ता है | [विवरण](plugins/modulation.md#wow-flutter) |
 | Resonator | Horn Resonator | customizable dimensions वाला horn resonance simulation | [विवरण](plugins/resonator.md#horn-resonator) |
@@ -367,6 +370,7 @@ EffeTune 2.1.0 में कैटलॉग स्कीमा v3 पर आध�
 | Reverb    | FDN Reverb | rich, dense reverb textures वाला Feedback Delay Network reverb | [विवरण](plugins/reverb.md#fdn-reverb) |
 | Reverb    | IR Reverb | इम्पोर्ट की गई room और equipment impulse responses वाला convolution reverb | [विवरण](plugins/reverb.md#ir-reverb) |
 | Reverb    | RS Reverb | natural diffusion वाला random scattering reverb | [विवरण](plugins/reverb.md#rs-reverb) |
+| Saturation| Bandwidth Extender | पहचाने गए या निर्धारित cutoff के ऊपर high-frequency content बनाता है | [विवरण](plugins/saturation.md#bandwidth-extender) |
 | Saturation| Dynamic Saturation | speaker cones के nonlinear displacement को simulate करता है | [विवरण](plugins/saturation.md#dynamic-saturation) |
 | Saturation| Exciter | clarity और presence बढ़ाने के लिए harmonic content जोड़ता है | [विवरण](plugins/saturation.md#exciter) |
 | Saturation| Hard Clipping | digital hard clipping effect | [विवरण](plugins/saturation.md#hard-clipping) |
@@ -374,7 +378,7 @@ EffeTune 2.1.0 में कैटलॉग स्कीमा v3 पर आध�
 | Saturation| Multiband Saturation | low, mid और high ranges में warmth या edge अलग-अलग जोड़ता है | [विवरण](plugins/saturation.md#multiband-saturation) |
 | Saturation| Saturation | warm analog-style richness और character जोड़ता है | [विवरण](plugins/saturation.md#saturation) |
 | Saturation| Sub Synth | bass enhancement के लिए filtered low-frequency signal मिलाता है | [विवरण](plugins/saturation.md#sub-synth) |
-| Saturation| Tube Simulator | ट्यूब लाइन चरणों और पुश-पुल पावर एम्प्लिफ़ायर को गतिशील रूप से मॉडल करता है | [विवरण](plugins/saturation.md#tube-simulator) |
+| Saturation| Tube Simulator | tube line stages और push-pull या 300B/2A3 single-ended triode power amplifiers को मॉडल करता है | [विवरण](plugins/saturation.md#tube-simulator) |
 | Spatial   | Crossfeed Filter | natural stereo imaging के लिए headphone crossfeed filter | [विवरण](plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | center/ambience adjustments के लिए stereo और Mid/Side के बीच convert करता है | [विवरण](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5-band frequency-dependent stereo balance control | [विवरण](plugins/spatial.md#multiband-balance) |

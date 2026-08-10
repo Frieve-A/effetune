@@ -2,13 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import FFT from '../../js/utils/measurement-dsp/fft.js';
+import { createConsoleHarness, withGlobals } from '../helpers/global-test-utils.mjs';
 import {
     interpolateLogResponse,
     smoothFrequencyResponse
 } from '../../js/utils/measurement-dsp/smoothing.js';
 import {
+    clearRoomEqAnalysisCache,
     clearRoomEqDesignCache,
     designRoomEq,
+    setRoomEqFftBackend,
     softLimitBoost
 } from '../../js/room-eq/design-core.js';
 
@@ -23,6 +26,22 @@ function wrapPhase(phase) {
     while (wrapped > Math.PI) wrapped -= 2 * Math.PI;
     while (wrapped < -Math.PI) wrapped += 2 * Math.PI;
     return wrapped;
+}
+
+function unwrapPhases(phases) {
+    const result = Float64Array.from(phases);
+    for (let index = 1; index < result.length; index += 1) {
+        let difference = result[index] - result[index - 1];
+        while (difference > Math.PI) {
+            result[index] -= 2 * Math.PI;
+            difference -= 2 * Math.PI;
+        }
+        while (difference < -Math.PI) {
+            result[index] += 2 * Math.PI;
+            difference += 2 * Math.PI;
+        }
+    }
+    return result;
 }
 
 function linearPhaseResidualRms(spectrum, sampleRate, lowFrequency, highFrequency) {
@@ -1094,6 +1113,1033 @@ test('measured phase correction fixture keeps early pre-response energy bounded'
     assert.ok(earlyEnergy / totalEnergy < 0.02);
 });
 
+function lowFrequencyAllPassSource(id, coefficient = -0.98, sampleCount = 12000) {
+    const onset = 128;
+    const impulse = new Float32Array(sampleCount);
+    impulse[onset] = coefficient;
+    for (let index = 1; index < sampleCount - onset; index += 1) {
+        impulse[onset + index] = (1 - coefficient * coefficient) *
+            (-coefficient) ** (index - 1);
+    }
+    const measurement = {
+        id,
+        timestamp: 'fixed',
+        points: [{ pointId: 1, timestamp: 'fixed' }],
+        averageFrequencyResponse: []
+    };
+    return {
+        measurement,
+        impulses: [{
+            measurementId: id,
+            pointId: 1,
+            sampleRate: 48000,
+            onsetIndex: onset,
+            refScale: 1,
+            data: impulse
+        }]
+    };
+}
+
+function lowFrequencyAllPassCascadeSource(id, coefficient, stages, sampleCount = 12000) {
+    const source = lowFrequencyAllPassSource(id, coefficient, sampleCount);
+    let input = new Float32Array(sampleCount);
+    input[128] = 1;
+    for (let stage = 0; stage < stages; stage += 1) {
+        const output = new Float32Array(sampleCount);
+        let previousInput = 0;
+        let previousOutput = 0;
+        for (let index = 128; index < sampleCount; index += 1) {
+            output[index] = coefficient * input[index] + previousInput -
+                coefficient * previousOutput;
+            previousInput = input[index];
+            previousOutput = output[index];
+        }
+        input = output;
+    }
+    source.impulses[0].data = input;
+    return source;
+}
+
+function lowFrequencyMinimumPhaseSource(id, coefficient, stages, sampleCount = 24000) {
+    const onset = 128;
+    let input = new Float32Array(sampleCount);
+    input[onset] = 1;
+    for (let stage = 0; stage < stages; stage += 1) {
+        const output = new Float32Array(sampleCount);
+        let previousOutput = 0;
+        for (let index = onset; index < sampleCount; index += 1) {
+            output[index] = (1 - coefficient) * input[index] +
+                coefficient * previousOutput;
+            previousOutput = output[index];
+        }
+        input = output;
+    }
+    const measurement = {
+        id,
+        timestamp: 'fixed',
+        points: [{ pointId: 1, timestamp: 'fixed' }],
+        averageFrequencyResponse: []
+    };
+    return {
+        measurement,
+        impulses: [{
+            measurementId: id,
+            pointId: 1,
+            sampleRate: 48000,
+            onsetIndex: onset,
+            refScale: 1,
+            data: input
+        }]
+    };
+}
+
+function multipointAllPassSource(id, stages, coefficient = -0.98) {
+    const measurement = {
+        id,
+        timestamp: 'fixed',
+        points: stages.map((unused, pointId) => ({ pointId })),
+        averageFrequencyResponse: []
+    };
+    const impulses = stages.map((stageCount, pointId) => {
+        const source = lowFrequencyAllPassCascadeSource(
+            `${id}-point-${pointId}`,
+            coefficient,
+            stageCount,
+            24000
+        );
+        return {
+            ...source.impulses[0],
+            measurementId: measurement.id,
+            pointId
+        };
+    });
+    return { measurement, impulses };
+}
+
+function lowPhaseExtensionConfig(overrides = {}) {
+    return {
+        sampleRate: 48000,
+        taps: 8192,
+        phase: 'full',
+        smoothing: 0.05,
+        lowFrequency: 50,
+        highFrequency: 16000,
+        directWindowMs: 6,
+        phaseLowFrequency: 500,
+        correctionAmount: 0,
+        phaseCorrectionAmount: 1,
+        ...overrides
+    };
+}
+
+function lowPhaseExtensionDesign(source, overrides = {}) {
+    return designRoomEq({
+        config: lowPhaseExtensionConfig(overrides),
+        sources: [source]
+    });
+}
+
+function responseResidualRms(impulse, correction, lowFrequency, highFrequency) {
+    const fftSize = correction.length * 2;
+    const input = spectrumFor(impulse, fftSize);
+    const filter = spectrumFor(correction, fftSize);
+    const corrected = {
+        real: new Float64Array(filter.real.length),
+        imag: new Float64Array(filter.imag.length)
+    };
+    for (let bin = 0; bin < corrected.real.length; bin += 1) {
+        corrected.real[bin] = input.real[bin] * filter.real[bin] -
+            input.imag[bin] * filter.imag[bin];
+        corrected.imag[bin] = input.real[bin] * filter.imag[bin] +
+            input.imag[bin] * filter.real[bin];
+    }
+    return linearPhaseResidualRms(corrected, 48000, lowFrequency, highFrequency);
+}
+
+function groupDelayBandStats(result, lowFrequency, highFrequency) {
+    const preview = result.previews[0];
+    const before = [];
+    const after = [];
+    for (let index = 0; index < preview.frequencies.length; index += 1) {
+        const frequency = preview.frequencies[index];
+        if (frequency < lowFrequency || frequency > highFrequency) continue;
+        before.push(preview.groupDelayResponse.before[index]);
+        after.push(preview.groupDelayResponse.after[index]);
+    }
+    const rms = values => Math.sqrt(
+        values.reduce((sum, value) => sum + value * value, 0) / values.length
+    );
+    return {
+        beforeRms: rms(before),
+        afterRms: rms(after),
+        afterMaximum: Math.max(...after.map(Math.abs)),
+        afterSpan: Math.max(...after) - Math.min(...after)
+    };
+}
+
+function groupDelayDifferenceRms(first, second, lowFrequency, highFrequency) {
+    const firstPreview = first.previews[0];
+    const secondPreview = second.previews[0];
+    let squaredDifference = 0;
+    let count = 0;
+    for (let index = 0; index < firstPreview.frequencies.length; index += 1) {
+        const frequency = firstPreview.frequencies[index];
+        if (frequency < lowFrequency || frequency > highFrequency) continue;
+        const difference = firstPreview.groupDelayResponse.after[index] -
+            secondPreview.groupDelayResponse.after[index];
+        squaredDifference += difference * difference;
+        count += 1;
+    }
+    return Math.sqrt(squaredDifference / count);
+}
+
+function filterRelativeGroupDelayStats(first, second, lowFrequency, highFrequency) {
+    const fftSize = first.length * 2;
+    const firstSpectrum = spectrumFor(first, fftSize);
+    const secondSpectrum = spectrumFor(second, fftSize);
+    const wrapped = new Float64Array(firstSpectrum.real.length);
+    for (let bin = 0; bin < wrapped.length; bin += 1) {
+        wrapped[bin] = Math.atan2(
+            firstSpectrum.imag[bin] * secondSpectrum.real[bin] -
+                firstSpectrum.real[bin] * secondSpectrum.imag[bin],
+            firstSpectrum.real[bin] * secondSpectrum.real[bin] +
+                firstSpectrum.imag[bin] * secondSpectrum.imag[bin]
+        );
+    }
+    const phase = unwrapPhases(wrapped);
+    const magnitudes = [];
+    for (let bin = 1; bin < phase.length; bin += 1) {
+        const frequency = bin * 48000 / fftSize;
+        const previousFrequency = (bin - 1) * 48000 / fftSize;
+        if (previousFrequency < lowFrequency || frequency >= highFrequency) continue;
+        const delayMs = -(phase[bin] - phase[bin - 1]) * 1000 /
+            (2 * Math.PI * (frequency - previousFrequency));
+        magnitudes.push(Math.abs(delayMs));
+    }
+    magnitudes.sort((left, right) => left - right);
+    const rms = Math.sqrt(
+        magnitudes.reduce((sum, value) => sum + value * value, 0) /
+        (magnitudes.length || 1)
+    );
+    return {
+        rms,
+        p95: magnitudes[Math.min(
+            magnitudes.length - 1,
+            Math.floor(magnitudes.length * 0.95)
+        )] || 0
+    };
+}
+
+function maximumSubsonicSpectrumDifference(first, second, highFrequency = 20) {
+    const fftSize = first.length * 2;
+    const firstSpectrum = spectrumFor(first, fftSize);
+    const secondSpectrum = spectrumFor(second, fftSize);
+    let maximum = 0;
+    for (let bin = 0; bin * 48000 / fftSize < highFrequency; bin += 1) {
+        const difference = Math.hypot(
+            firstSpectrum.real[bin] - secondSpectrum.real[bin],
+            firstSpectrum.imag[bin] - secondSpectrum.imag[bin]
+        );
+        if (difference > maximum) maximum = difference;
+    }
+    return maximum;
+}
+
+function maximumFilterDifference(first, second) {
+    let maximum = 0;
+    for (let index = 0; index < first.length; index += 1) {
+        const difference = Math.abs(first[index] - second[index]);
+        if (difference > maximum) maximum = difference;
+    }
+    return maximum;
+}
+
+function filterEnergyProfile(taps) {
+    const edgeLength = Math.ceil(taps.length * 0.05);
+    let total = 0;
+    let edge = 0;
+    for (let index = 0; index < taps.length; index += 1) {
+        const energy = taps[index] * taps[index];
+        total += energy;
+        if (index < edgeLength || index >= taps.length - edgeLength) edge += energy;
+    }
+    return edge / total;
+}
+
+function countingFftBackend(counts) {
+    return {
+        realTransform(input) {
+            counts.real += 1;
+            return new FFT(input.length).realTransform(input);
+        },
+        inverseRealTransform(real, imag, size) {
+            counts.inverse += 1;
+            return new FFT(size).inverseRealTransform(real, imag);
+        }
+    };
+}
+
+test('low-frequency phase extension is opt-in and disabled designs remain unchanged', () => {
+    const source = lowFrequencyAllPassSource('low-phase-opt-in');
+    const omitted = lowPhaseExtensionDesign(source);
+    const disabled = lowPhaseExtensionDesign(source, {
+        lowFrequencyPhaseExtension: false
+    });
+
+    assert.equal(omitted.config.lowFrequencyPhaseExtension, false);
+    assert.deepEqual(disabled.channels[0], omitted.channels[0]);
+});
+
+test('frequency-dependent phase window reduces low-frequency all-pass residual', () => {
+    const source = lowFrequencyAllPassSource('low-phase-all-pass');
+    const disabled = lowPhaseExtensionDesign(source);
+    const enabled = lowPhaseExtensionDesign(source, {
+        lowFrequencyPhaseExtension: true
+    });
+    const impulse = source.impulses[0].data;
+    const disabledResidual = responseResidualRms(
+        impulse,
+        disabled.channels[0],
+        70,
+        350
+    );
+    const enabledResidual = responseResidualRms(
+        impulse,
+        enabled.channels[0],
+        70,
+        350
+    );
+
+    assert.ok(enabledResidual < disabledResidual * 0.8,
+        `residual changed from ${disabledResidual} to ${enabledResidual}`);
+    assert.deepEqual(enabled.diagnostics.lowFrequencyPhaseExtension[0], {
+        state: 'applied',
+        scale: 1,
+        reason: null
+    });
+});
+
+test('low-frequency phase extension aligns clean 10 and 20 ms-class group delay to zero', () => {
+    for (const [stages, maximumResidualMs] of [[5, 1], [10, 2]]) {
+        const source = lowFrequencyAllPassCascadeSource(
+            `low-phase-absolute-delay-${stages}`,
+            -0.98,
+            stages,
+            24000
+        );
+        const result = lowPhaseExtensionDesign(source, {
+            taps: 32768,
+            lowFrequency: 50,
+            lowFrequencyPhaseExtension: true
+        });
+        const low = groupDelayBandStats(result, 70, 350);
+        const deepLow = groupDelayBandStats(result, 70, 150);
+        const crossing = groupDelayBandStats(result, 450, 550);
+
+        assert.ok(low.afterRms <= maximumResidualMs,
+            `${stages} stages left ${low.afterRms} ms RMS (before ${low.beforeRms}); ` +
+            `deep low ${deepLow.afterRms} ms (before ${deepLow.beforeRms}); ` +
+            JSON.stringify(result.diagnostics.lowFrequencyPhaseExtension[0]));
+        assert.ok(low.afterRms < low.beforeRms * 0.25);
+        assert.ok(deepLow.afterRms <= maximumResidualMs);
+        assert.ok(deepLow.afterRms < deepLow.beforeRms * 0.25);
+        assert.ok(crossing.afterSpan <= 1,
+            `${stages} stages left ${crossing.afterSpan} ms across Phase Low`);
+        assert.deepEqual(result.diagnostics.lowFrequencyPhaseExtension[0], {
+            state: 'applied',
+            scale: 1,
+            reason: null
+        });
+    }
+});
+
+test('subsonic phase closure stays out of the inactive correction band', () => {
+    const source = lowFrequencyAllPassCascadeSource(
+        'low-phase-subsonic-closure',
+        -0.98,
+        5,
+        24000
+    );
+    for (const lowFrequency of [20, 29, 50, 100]) {
+        for (const phaseCorrectionAmount of [0.25, 0.5, 1]) {
+            const common = {
+                taps: 32768,
+                lowFrequency,
+                phaseCorrectionAmount
+            };
+            const disabled = lowPhaseExtensionDesign(source, common);
+            const enabled = lowPhaseExtensionDesign(source, {
+                ...common,
+                lowFrequencyPhaseExtension: true
+            });
+            const inactive = filterRelativeGroupDelayStats(
+                enabled.channels[0],
+                disabled.channels[0],
+                20,
+                lowFrequency
+            );
+            const activeLow = Math.max(lowFrequency * 2 ** (1 / 3), 70);
+            const disabledActive = groupDelayBandStats(disabled, activeLow, 350);
+            const enabledActive = groupDelayBandStats(enabled, activeLow, 350);
+            assert.ok(inactive.rms <= 0.25,
+                `${lowFrequency} Hz/${phaseCorrectionAmount} inactive RMS ` +
+                `${inactive.rms} ms`);
+            assert.ok(inactive.p95 <= 0.75,
+                `${lowFrequency} Hz/${phaseCorrectionAmount} inactive p95 ` +
+                `${inactive.p95} ms`);
+            assert.ok(enabledActive.afterRms <= disabledActive.afterRms + 0.1,
+                `${lowFrequency} Hz/${phaseCorrectionAmount} active RMS changed from ` +
+                `${disabledActive.afterRms} to ${enabledActive.afterRms}`);
+            assert.equal(enabled.diagnostics.lowFrequencyPhaseExtension[0].scale, 1);
+        }
+    }
+});
+
+test('subsonic chord stays continuous when applied phase wraps', () => {
+    const source = lowFrequencyAllPassCascadeSource(
+        'low-phase-subsonic-branch',
+        -0.98,
+        5,
+        24000
+    );
+    const designs = [0.559, 0.56, 0.561].map(phaseCorrectionAmount =>
+        lowPhaseExtensionDesign(source, {
+            taps: 32768,
+            lowFrequency: 29,
+            phaseCorrectionAmount,
+            lowFrequencyPhaseExtension: true
+        }));
+
+    assert.ok(maximumSubsonicSpectrumDifference(
+        designs[0].channels[0],
+        designs[1].channels[0]
+    ) <= 0.05);
+    assert.ok(maximumSubsonicSpectrumDifference(
+        designs[1].channels[0],
+        designs[2].channels[0]
+    ) <= 0.05);
+    for (const design of designs) {
+        assert.equal(design.diagnostics.lowFrequencyPhaseExtension[0].scale, 1);
+    }
+});
+
+test('low-frequency phase extension does not invert a non-flat minimum-phase response', () => {
+    const source = lowFrequencyMinimumPhaseSource(
+        'low-phase-minimum-phase-response',
+        0.995,
+        1
+    );
+    const disabled = lowPhaseExtensionDesign(source, {
+        taps: 32768,
+        lowFrequency: 50,
+        correctionAmount: 0
+    });
+    const enabled = lowPhaseExtensionDesign(source, {
+        taps: 32768,
+        lowFrequency: 50,
+        correctionAmount: 0,
+        lowFrequencyPhaseExtension: true
+    });
+    const disabledLow = groupDelayBandStats(disabled, 70, 350);
+    const enabledLow = groupDelayBandStats(enabled, 70, 350);
+
+    assert.ok(enabledLow.afterRms <= 1,
+        `minimum-phase response left ${enabledLow.afterRms} ms RMS ` +
+        `(disabled ${disabledLow.afterRms}, ` +
+        `${JSON.stringify(enabled.diagnostics.lowFrequencyPhaseExtension[0])})`);
+    assert.ok(enabledLow.afterRms <= disabledLow.afterRms + 0.1,
+        `minimum-phase RMS changed from ${disabledLow.afterRms} to ${enabledLow.afterRms}`);
+});
+
+test('low-frequency phase extension preserves Additional EQ minimum phase', () => {
+    const source = lowFrequencyMinimumPhaseSource(
+        'low-phase-additional-eq',
+        0.995,
+        1
+    );
+    const config = {
+        taps: 32768,
+        lowFrequency: 50,
+        correctionAmount: 0,
+        eqBands: [{
+            enabled: true,
+            type: 'ls',
+            frequency: 120,
+            gain: 6,
+            q: 0.707
+        }]
+    };
+    const disabled = lowPhaseExtensionDesign(source, config);
+    const enabled = lowPhaseExtensionDesign(source, {
+        ...config,
+        lowFrequencyPhaseExtension: true
+    });
+    const differenceRms = groupDelayDifferenceRms(enabled, disabled, 70, 350);
+
+    assert.ok(differenceRms <= 0.1,
+        `Additional EQ group delay changed by ${differenceRms} ms RMS`);
+});
+
+test('low-frequency phase consensus does not turn point-specific late sound into delay', () => {
+    const onset = 128;
+    const sampleCount = 12000;
+    const measurement = {
+        id: 'low-phase-nuisance-only',
+        timestamp: 'fixed',
+        points: [{ pointId: 0 }, { pointId: 1 }, { pointId: 2 }],
+        averageFrequencyResponse: []
+    };
+    const impulses = [
+        [480, 0.45],
+        [960, -0.4],
+        [1920, 0.35]
+    ].map(([offset, amplitude], pointId) => {
+        const data = new Float32Array(sampleCount);
+        data[onset] = 1;
+        data[onset + offset] = amplitude;
+        return {
+            measurementId: measurement.id,
+            pointId,
+            sampleRate: 48000,
+            onsetIndex: onset,
+            refScale: 1,
+            data
+        };
+    });
+    const source = { measurement, impulses };
+    const disabled = lowPhaseExtensionDesign(source, {
+        taps: 32768,
+        lowFrequency: 50
+    });
+    const enabled = lowPhaseExtensionDesign(source, {
+        taps: 32768,
+        lowFrequency: 50,
+        lowFrequencyPhaseExtension: true
+    });
+    const disabledLow = groupDelayBandStats(disabled, 70, 350);
+    const enabledLow = groupDelayBandStats(enabled, 70, 350);
+
+    assert.ok(enabledLow.afterRms <= disabledLow.afterRms + 0.1,
+        `nuisance RMS changed from ${disabledLow.afterRms} to ${enabledLow.afterRms}`);
+});
+
+test('low-frequency phase consensus averages an exactly split delay pair', () => {
+    const onset = 128;
+    const measurement = {
+        id: 'low-phase-split-delay-pair',
+        timestamp: 'fixed',
+        points: [{ pointId: 0 }, { pointId: 1 }],
+        averageFrequencyResponse: []
+    };
+    const impulses = [0.2, -0.2].map((amplitude, pointId) => {
+        const data = new Float32Array(12000);
+        data[onset] = 1;
+        data[onset + 480] = amplitude;
+        return {
+            measurementId: measurement.id,
+            pointId,
+            sampleRate: 48000,
+            onsetIndex: onset,
+            refScale: 1,
+            data
+        };
+    });
+    const source = { measurement, impulses };
+    const disabled = lowPhaseExtensionDesign(source, {
+        taps: 32768,
+        lowFrequency: 50
+    });
+    const enabled = lowPhaseExtensionDesign(source, {
+        taps: 32768,
+        lowFrequency: 50,
+        lowFrequencyPhaseExtension: true
+    });
+    const differenceRms = groupDelayDifferenceRms(enabled, disabled, 70, 350);
+
+    assert.ok(differenceRms <= 0.1,
+        `split-pair consensus changed group delay by ${differenceRms} ms RMS`);
+    assert.equal(enabled.diagnostics.lowFrequencyPhaseExtension[0].scale, 1);
+});
+
+test('low-frequency phase consensus corrects common delay through point-specific late sound', () => {
+    const base = lowFrequencyAllPassCascadeSource(
+        'low-phase-common-delay-base',
+        -0.98,
+        5,
+        24000
+    );
+    const measurement = {
+        id: 'low-phase-common-delay-nuisance',
+        timestamp: 'fixed',
+        points: [{ pointId: 0 }, { pointId: 1 }, { pointId: 2 }],
+        averageFrequencyResponse: []
+    };
+    const impulses = [
+        [480, 0.35],
+        [960, -0.3],
+        [1920, 0.25]
+    ].map(([offset, amplitude], pointId) => {
+        const data = Float32Array.from(base.impulses[0].data);
+        data[128 + offset] += amplitude;
+        return {
+            measurementId: measurement.id,
+            pointId,
+            sampleRate: 48000,
+            onsetIndex: 128,
+            refScale: 1,
+            data
+        };
+    });
+    const source = { measurement, impulses };
+    const disabled = lowPhaseExtensionDesign(source, {
+        taps: 32768,
+        lowFrequency: 50,
+        directWindowMs: 20
+    });
+    const enabled = lowPhaseExtensionDesign(source, {
+        taps: 32768,
+        lowFrequency: 50,
+        directWindowMs: 20,
+        lowFrequencyPhaseExtension: true
+    });
+    const disabledLow = groupDelayBandStats(disabled, 70, 350);
+    const enabledLow = groupDelayBandStats(enabled, 70, 350);
+
+    assert.ok(enabledLow.afterRms < disabledLow.afterRms * 0.5,
+        `common-delay RMS changed from ${disabledLow.afterRms} to ${enabledLow.afterRms}`);
+});
+
+test('low-frequency phase consensus keeps the Phase Low boundary connected when agreement falls', () => {
+    const result = lowPhaseExtensionDesign(multipointAllPassSource(
+        'low-phase-boundary-agreement',
+        [1, 5, 15]
+    ), {
+        taps: 32768,
+        lowFrequency: 50,
+        directWindowMs: 20,
+        lowFrequencyPhaseExtension: true
+    });
+    const crossing = groupDelayBandStats(result, 475, 525);
+
+    assert.ok(crossing.afterSpan <= 1,
+        `consensus left ${crossing.afterSpan} ms across Phase Low`);
+    assert.deepEqual(result.diagnostics.lowFrequencyPhaseExtension[0], {
+        state: 'applied',
+        scale: 1,
+        reason: null
+    });
+});
+
+test('low-frequency phase consensus keeps a moderately varying common delay', () => {
+    const source = multipointAllPassSource(
+        'low-phase-moderate-consensus',
+        [5, 10, 15]
+    );
+    const disabled = lowPhaseExtensionDesign(source, {
+        taps: 32768,
+        lowFrequency: 50
+    });
+    const enabled = lowPhaseExtensionDesign(source, {
+        taps: 32768,
+        lowFrequency: 50,
+        lowFrequencyPhaseExtension: true
+    });
+    const middleImpulse = source.impulses[1].data;
+    const disabledResidual = responseResidualRms(
+        middleImpulse,
+        disabled.channels[0],
+        70,
+        350
+    );
+    const enabledResidual = responseResidualRms(
+        middleImpulse,
+        enabled.channels[0],
+        70,
+        350
+    );
+    const disabledTotal = groupDelayBandStats(disabled, 70, 350);
+    const enabledTotal = groupDelayBandStats(enabled, 70, 350);
+
+    assert.ok(enabledResidual < disabledResidual * 0.65,
+        `moderate consensus residual changed from ${disabledResidual} to ` +
+        `${enabledResidual}; ${JSON.stringify(
+            enabled.diagnostics.lowFrequencyPhaseExtension[0]
+        )}`);
+    assert.ok(enabledTotal.afterRms < disabledTotal.afterRms,
+        `moderate total RMS changed from ${disabledTotal.afterRms} to ` +
+        `${enabledTotal.afterRms}`);
+    assert.ok(enabled.diagnostics.lowFrequencyPhaseExtension[0].scale >= 0.5);
+});
+
+test('low-frequency phase consensus guard scores aligned-average total delay', () => {
+    const source = multipointAllPassSource(
+        'low-phase-consensus-guard-median',
+        [1, 8, 10]
+    );
+    for (const phaseCorrectionAmount of [0.5, 1]) {
+        const common = {
+            taps: 32768,
+            lowFrequency: 50,
+            phaseCorrectionAmount
+        };
+        const disabled = lowPhaseExtensionDesign(source, common);
+        const enabled = lowPhaseExtensionDesign(source, {
+            ...common,
+            lowFrequencyPhaseExtension: true
+        });
+        const disabledActive = groupDelayBandStats(disabled, 70, 350);
+        const enabledActive = groupDelayBandStats(enabled, 70, 350);
+        const diagnostic = enabled.diagnostics.lowFrequencyPhaseExtension[0];
+
+        assert.ok(enabledActive.afterRms <= disabledActive.afterRms + 0.1,
+            `${phaseCorrectionAmount} active RMS changed from ` +
+            `${disabledActive.afterRms} to ${enabledActive.afterRms}; ` +
+            JSON.stringify(diagnostic));
+        assert.ok(diagnostic.scale < 1,
+            `${phaseCorrectionAmount} retained unsafe scale 1`);
+        assert.equal(diagnostic.reason, 'groupDelay');
+    }
+});
+
+test('low-frequency phase extension preserves established high-frequency phase shape', () => {
+    const source = lowFrequencyAllPassSource('low-phase-high-frequency');
+    source.impulses[0].data[128 + 480] += 0.2;
+    const disabled = spectrumFor(lowPhaseExtensionDesign(source).channels[0]);
+    const enabled = spectrumFor(lowPhaseExtensionDesign(source, {
+        lowFrequencyPhaseExtension: true
+    }).channels[0]);
+    const relative = {
+        real: new Float64Array(disabled.real.length),
+        imag: new Float64Array(disabled.imag.length)
+    };
+    for (let bin = 0; bin < disabled.real.length; bin += 1) {
+        const denominator = disabled.real[bin] ** 2 + disabled.imag[bin] ** 2;
+        relative.real[bin] = (
+            disabled.real[bin] * enabled.real[bin] +
+            disabled.imag[bin] * enabled.imag[bin]
+        ) / denominator;
+        relative.imag[bin] = (
+            enabled.imag[bin] * disabled.real[bin] -
+            enabled.real[bin] * disabled.imag[bin]
+        ) / denominator;
+    }
+    const residual = linearPhaseResidualRms(relative, 48000, 650, 16000);
+    assert.ok(residual < 0.01, `high-frequency phase residual was ${residual}`);
+});
+
+test('low-frequency onset realignment keeps established high-band phase shape', () => {
+    const source = lowFrequencyAllPassSource(
+        'low-phase-timing-alignment',
+        -0.954369238433428
+    );
+    for (const [offset, value] of [
+        [51, -0.2441999531],
+        [22, 0.2861377761],
+        [65, -0.1944137604],
+        [55, 0.1039664840],
+        [91, -0.2955503101],
+        [73, -0.5462668184],
+        [217, 0.4871767650],
+        [234, 0.2278593527]
+    ]) {
+        source.impulses[0].data[128 + offset] += value;
+    }
+    const disabled = spectrumFor(lowPhaseExtensionDesign(source).channels[0]);
+    const enabled = spectrumFor(lowPhaseExtensionDesign(source, {
+        lowFrequencyPhaseExtension: true
+    }).channels[0]);
+    const relative = {
+        real: new Float64Array(disabled.real.length),
+        imag: new Float64Array(disabled.imag.length)
+    };
+    for (let bin = 1; bin < disabled.real.length; bin += 1) {
+        const denominator = disabled.real[bin] ** 2 + disabled.imag[bin] ** 2;
+        relative.real[bin] = (
+            disabled.real[bin] * enabled.real[bin] +
+            disabled.imag[bin] * enabled.imag[bin]
+        ) / denominator;
+        relative.imag[bin] = (
+            enabled.imag[bin] * disabled.real[bin] -
+            enabled.real[bin] * disabled.imag[bin]
+        ) / denominator;
+    }
+    const residual = linearPhaseResidualRms(relative, 48000, 650, 16000);
+    assert.ok(residual < 0.01, `high-band phase residual was ${residual}`);
+});
+
+test('low-frequency phase consensus weakens a point-specific phase feature', () => {
+    const first = lowFrequencyAllPassSource('low-phase-consensus-first');
+    const second = lowFrequencyAllPassSource('low-phase-consensus-second', 0.98);
+    const measurement = {
+        id: 'low-phase-consensus',
+        timestamp: 'fixed',
+        points: [{ pointId: 0 }, { pointId: 1 }],
+        averageFrequencyResponse: []
+    };
+    const source = {
+        measurement,
+        impulses: [first.impulses[0], second.impulses[0]].map((impulse, pointId) => ({
+            ...impulse,
+            measurementId: measurement.id,
+            pointId
+        }))
+    };
+    const single = spectrumFor(lowPhaseExtensionDesign(source, {
+        lowFrequencyPhaseExtension: true,
+        referencePoint: 1
+    }).channels[0]);
+    const consensus = spectrumFor(lowPhaseExtensionDesign(source, {
+        lowFrequencyPhaseExtension: true,
+        referencePoint: 0
+    }).channels[0]);
+
+    assert.ok(
+        linearPhaseResidualRms(consensus, 48000, 70, 350) <
+        linearPhaseResidualRms(single, 48000, 70, 350)
+    );
+});
+
+test('low-frequency phase extension safely degrades for short impulse responses', () => {
+    const source = lowFrequencyAllPassSource('low-phase-short-ir', -0.98, 420);
+    const result = lowPhaseExtensionDesign(source, {
+        lowFrequencyPhaseExtension: true,
+        taps: 8192,
+        lowFrequency: 20
+    });
+    const phaseDisabled = lowPhaseExtensionDesign(source, {
+        lowFrequencyPhaseExtension: true,
+        taps: 8192,
+        lowFrequency: 20,
+        phaseCorrectionAmount: 0
+    });
+    const baseline = lowPhaseExtensionDesign(source, {
+        lowFrequencyPhaseExtension: false,
+        taps: 8192,
+        lowFrequency: 20,
+        phaseCorrectionAmount: 0
+    });
+
+    assert.ok(result.channels[0].every(Number.isFinite));
+    assert.deepEqual(phaseDisabled.channels[0], baseline.channels[0]);
+    assert.deepEqual(result.diagnostics.lowFrequencyPhaseExtension[0], {
+        state: 'reduced',
+        scale: 1,
+        reason: 'insufficientData'
+    });
+});
+
+test('low-frequency phase extension uses measured data beyond the FIR half-window', () => {
+    const result = lowPhaseExtensionDesign(
+        lowFrequencyAllPassSource('low-phase-fir-window-coverage'),
+        {
+            lowFrequencyPhaseExtension: true,
+            sampleRate: 48000,
+            taps: 8192,
+            lowFrequency: 20,
+            phaseLowFrequency: 500
+        }
+    );
+
+    assert.deepEqual(result.diagnostics.lowFrequencyPhaseExtension[0], {
+        state: 'applied',
+        scale: 1,
+        reason: null
+    });
+});
+
+test('low-frequency phase analysis cache follows remeasurement revisions and IR identity', () => {
+    clearRoomEqAnalysisCache();
+    clearRoomEqDesignCache();
+    const first = lowFrequencyAllPassSource('low-phase-remeasurement', -0.98);
+    first.measurement.timestamp = 'v1';
+    first.measurement.points[0].timestamp = 'v1';
+    const firstTaps = lowPhaseExtensionDesign(first, {
+        lowFrequencyPhaseExtension: true
+    }).channels[0];
+
+    const revisedData = lowFrequencyAllPassSource('unused', 0.98).impulses[0].data;
+    first.impulses[0].data.set(revisedData);
+    const revisedTaps = lowPhaseExtensionDesign(first, {
+        lowFrequencyPhaseExtension: true
+    }).channels[0];
+    const fresh = lowFrequencyAllPassSource('low-phase-remeasurement-fresh', 0.98);
+    fresh.measurement.timestamp = 'v1';
+    fresh.measurement.points[0].timestamp = 'v1';
+    const freshTaps = lowPhaseExtensionDesign(fresh, {
+        lowFrequencyPhaseExtension: true
+    }).channels[0];
+
+    assert.ok(maximumFilterDifference(firstTaps, revisedTaps) > 0.1);
+    assert.ok(maximumFilterDifference(revisedTaps, freshTaps) < 1e-7);
+
+    const replacement = lowFrequencyAllPassSource('low-phase-remeasurement', -0.95);
+    replacement.measurement.timestamp = 'v1';
+    replacement.measurement.points[0].timestamp = 'v1';
+    const replacementTaps = lowPhaseExtensionDesign(replacement, {
+        lowFrequencyPhaseExtension: true
+    }).channels[0];
+    const replacementFresh = lowFrequencyAllPassSource(
+        'low-phase-remeasurement-replacement-fresh',
+        -0.95
+    );
+    replacementFresh.measurement.timestamp = 'v1';
+    replacementFresh.measurement.points[0].timestamp = 'v1';
+    const replacementFreshTaps = lowPhaseExtensionDesign(replacementFresh, {
+        lowFrequencyPhaseExtension: true
+    }).channels[0];
+    assert.ok(maximumFilterDifference(revisedTaps, replacementTaps) > 0.1);
+    assert.ok(maximumFilterDifference(replacementTaps, replacementFreshTaps) < 1e-7);
+});
+
+test('analysis cache reuses structured-cloned IR content across worker requests', () => {
+    const source = lowFrequencyAllPassSource('low-phase-structured-clone-cache');
+    const counts = { real: 0, inverse: 0 };
+    setRoomEqFftBackend(countingFftBackend(counts));
+    try {
+        clearRoomEqAnalysisCache();
+        clearRoomEqDesignCache();
+        lowPhaseExtensionDesign(source, { lowFrequencyPhaseExtension: true });
+        const firstRealTransforms = counts.real;
+
+        counts.real = 0;
+        counts.inverse = 0;
+        clearRoomEqDesignCache();
+        lowPhaseExtensionDesign(structuredClone(source), {
+            lowFrequencyPhaseExtension: true
+        });
+
+        assert.ok(counts.real <= firstRealTransforms - 2,
+            `structured clone repeated analysis (${firstRealTransforms} then ${counts.real})`);
+
+        const revisedClone = structuredClone(source);
+        revisedClone.measurement.timestamp = 'revised';
+        counts.real = 0;
+        counts.inverse = 0;
+        clearRoomEqDesignCache();
+        lowPhaseExtensionDesign(revisedClone, { lowFrequencyPhaseExtension: true });
+        assert.ok(counts.real >= firstRealTransforms,
+            `timestamp revision reused analysis (${firstRealTransforms} then ${counts.real})`);
+    } finally {
+        setRoomEqFftBackend(null);
+        clearRoomEqAnalysisCache();
+        clearRoomEqDesignCache();
+    }
+});
+
+test('impulse analysis cache follows onset changes on the same stored IR', () => {
+    clearRoomEqAnalysisCache();
+    clearRoomEqDesignCache();
+    const data = new Float32Array(4096);
+    data[128] = 1;
+    data[170] = 0.3;
+    data[256] = -0.8;
+    data[298] = 0.2;
+    const source = lowFrequencyAllPassSource('low-phase-onset-cache');
+    source.impulses[0].data = data;
+    lowPhaseExtensionDesign(source, { lowFrequencyPhaseExtension: true });
+
+    source.impulses[0].onsetIndex = 256;
+    const revisedTaps = lowPhaseExtensionDesign(source, {
+        lowFrequencyPhaseExtension: true
+    }).channels[0];
+    const fresh = lowFrequencyAllPassSource('low-phase-onset-cache-fresh');
+    fresh.impulses[0] = {
+        ...source.impulses[0],
+        measurementId: fresh.measurement.id,
+        data: Float32Array.from(data)
+    };
+    const freshTaps = lowPhaseExtensionDesign(fresh, {
+        lowFrequencyPhaseExtension: true
+    }).channels[0];
+
+    assert.ok(maximumFilterDifference(revisedTaps, freshTaps) < 1e-7);
+});
+
+test('low-frequency direct DFT budget disables pathological sample-bin work', () => {
+    const source = lowFrequencyAllPassSource('low-phase-work-budget');
+    const overrides = {
+        taps: 131072,
+        directWindowMs: 50,
+        lowFrequency: 20,
+        highFrequency: 16000,
+        phaseLowFrequency: 16000
+    };
+    const disabled = lowPhaseExtensionDesign(source, overrides);
+    const enabled = lowPhaseExtensionDesign(source, {
+        ...overrides,
+        lowFrequencyPhaseExtension: true
+    });
+
+    assert.deepEqual(enabled.channels[0], disabled.channels[0]);
+    assert.deepEqual(enabled.diagnostics.lowFrequencyPhaseExtension[0], {
+        state: 'disabled',
+        scale: 0,
+        reason: 'dftWorkBudget'
+    });
+    assert.ok(!enabled.qualityWarnings.includes('dftWorkBudget'));
+});
+
+test('zero phase correction skips low-frequency extension analysis', () => {
+    const source = lowFrequencyAllPassSource('low-phase-zero-amount');
+    const counts = { real: 0, inverse: 0 };
+    setRoomEqFftBackend(countingFftBackend(counts));
+    try {
+        clearRoomEqAnalysisCache();
+        clearRoomEqDesignCache();
+        const disabled = lowPhaseExtensionDesign(source, {
+            phaseCorrectionAmount: 0
+        });
+        const disabledCounts = { ...counts };
+
+        counts.real = 0;
+        counts.inverse = 0;
+        clearRoomEqAnalysisCache();
+        clearRoomEqDesignCache();
+        const enabled = lowPhaseExtensionDesign(structuredClone(source), {
+            lowFrequencyPhaseExtension: true,
+            phaseCorrectionAmount: 0
+        });
+
+        assert.deepEqual(enabled.channels[0], disabled.channels[0]);
+        assert.deepEqual(counts, disabledCounts);
+        assert.deepEqual(enabled.diagnostics.lowFrequencyPhaseExtension[0], {
+            state: 'disabled',
+            scale: 0,
+            reason: 'phaseCorrectionDisabled'
+        });
+    } finally {
+        setRoomEqFftBackend(null);
+        clearRoomEqAnalysisCache();
+        clearRoomEqDesignCache();
+    }
+});
+
+test('low-frequency phase extension rejects a stress candidate that worsens inactive delay', () => {
+    const source = lowFrequencyAllPassCascadeSource('low-phase-fir-safety', -0.98, 128);
+    try {
+        clearRoomEqAnalysisCache();
+        const disabled = lowPhaseExtensionDesign(source);
+        clearRoomEqAnalysisCache();
+        clearRoomEqDesignCache();
+        const enabled = lowPhaseExtensionDesign(source, {
+            lowFrequencyPhaseExtension: true
+        });
+        const edge = filterEnergyProfile(enabled.channels[0]);
+        const baselineEdge = filterEnergyProfile(disabled.channels[0]);
+
+        assert.ok(edge <= Math.max(0.002, baselineEdge * 1.05 + 1e-8));
+        assert.deepEqual(enabled.channels[0], disabled.channels[0]);
+        assert.deepEqual(enabled.diagnostics.lowFrequencyPhaseExtension[0], {
+            state: 'disabled',
+            scale: 0,
+            reason: 'groupDelay'
+        });
+    } finally {
+        clearRoomEqAnalysisCache();
+        clearRoomEqDesignCache();
+    }
+});
+
 test('whole-design cache returns independent result arrays', () => {
     clearRoomEqDesignCache();
     const request = {
@@ -1108,4 +2154,65 @@ test('whole-design cache returns independent result arrays', () => {
     second.channels[0][4096] = 456;
     const third = designRoomEq(request);
     assert.equal(third.channels[0][4096], expected);
+});
+
+test('design worker preserves low-phase fallback diagnostics across postMessage', async () => {
+    const messages = [];
+    await withGlobals({
+        console: createConsoleHarness({ warn() {} }),
+        onmessage: undefined,
+        postMessage(message, transferables = []) {
+            messages.push(structuredClone(message, { transfer: transferables }));
+        }
+    }, async () => {
+        try {
+            await import(`../../js/room-eq/design-worker.js?test=${Date.now()}`);
+            await globalThis.onmessage({
+                data: structuredClone({
+                    type: 'design',
+                    requestId: 1,
+                    config: lowPhaseExtensionConfig({
+                        taps: 131072,
+                        directWindowMs: 50,
+                        lowFrequency: 20,
+                        phaseLowFrequency: 16000,
+                        lowFrequencyPhaseExtension: true
+                    }),
+                    sources: [lowFrequencyAllPassSource('worker-low-phase-budget')]
+                })
+            });
+            await globalThis.onmessage({
+                data: structuredClone({
+                    type: 'design',
+                    requestId: 2,
+                    config: lowPhaseExtensionConfig({
+                        lowFrequencyPhaseExtension: true
+                    }),
+                    sources: [lowFrequencyAllPassCascadeSource(
+                        'worker-low-phase-reduced',
+                        -0.98,
+                        128
+                    )]
+                })
+            });
+
+            assert.deepEqual(messages.map(message => ({
+                requestId: message.requestId,
+                diagnostic: message.diagnostics.lowFrequencyPhaseExtension[0]
+            })), [
+                {
+                    requestId: 1,
+                    diagnostic: { state: 'disabled', scale: 0, reason: 'dftWorkBudget' }
+                },
+                {
+                    requestId: 2,
+                    diagnostic: { state: 'disabled', scale: 0, reason: 'groupDelay' }
+                }
+            ]);
+        } finally {
+            setRoomEqFftBackend(null);
+            clearRoomEqAnalysisCache();
+            clearRoomEqDesignCache();
+        }
+    });
 });

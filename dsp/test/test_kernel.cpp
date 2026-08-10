@@ -1,5 +1,6 @@
 #include "effetune/kernel.h"
 
+#include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -106,6 +107,54 @@ private:
   std::uint32_t asset_state_ = ET_ASSET_STATE_NONE;
 };
 
+struct TestDelayParams {
+  static constexpr std::uint32_t kHash = 0xd31a0192u;
+  static constexpr std::uint32_t kFloatCount = 0u;
+};
+
+class TestDelayKernel final : public PluginKernel {
+  EFFETUNE_PARAMS(TestDelayParams)
+
+public:
+  static constexpr std::uint32_t kLatencySamples = 192u;
+  static constexpr std::uint32_t kDelayLength = kLatencySamples + 1u;
+
+  void prepare(const PrepareInfo &) override {}
+
+  void reset() noexcept override {
+    samples_.fill(0.0F);
+    write_indices_.fill(0u);
+  }
+
+  void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
+               const ProcessInfo &) noexcept override {
+    for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+      const std::uint32_t channel_offset = channel * kDelayLength;
+      std::uint32_t write_index = write_indices_[channel];
+      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        samples_[channel_offset + write_index] = audio[channel * frame_count + frame];
+        std::uint32_t read_index = write_index + kDelayLength - kLatencySamples;
+        if (read_index >= kDelayLength) {
+          read_index -= kDelayLength;
+        }
+        audio[channel * frame_count + frame] = samples_[channel_offset + read_index];
+        ++write_index;
+        if (write_index == kDelayLength) {
+          write_index = 0u;
+        }
+      }
+      write_indices_[channel] = write_index;
+    }
+  }
+
+  [[nodiscard]] std::uint32_t latencySamples() const noexcept override { return kLatencySamples; }
+
+private:
+  std::array<float, 8u * kDelayLength> samples_{};
+  std::array<std::uint32_t, 8> write_indices_{};
+};
+
 } // namespace effetune::test
 
 EFFETUNE_REGISTER_KERNEL(TestGainPlugin, effetune::test::TestGainKernel)
+EFFETUNE_REGISTER_KERNEL(TestDelayPlugin, effetune::test::TestDelayKernel)

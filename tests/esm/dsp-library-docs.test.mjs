@@ -489,6 +489,13 @@ test('Phase 1 docs publish symmetric catalogs, latency, and bundle writers', () 
   const processing = fs.readFileSync(path.join(
     repoRoot, 'docs', 'dsp', 'concepts', 'processing-model', 'index.md'
   ), 'utf8');
+  const javascriptReadme = fs.readFileSync(path.join(
+    repoRoot, 'dsp', 'bindings', 'js', 'README.md'
+  ), 'utf8');
+  const workletTypes = fs.readFileSync(path.join(
+    repoRoot, 'dsp', 'bindings', 'js', 'src', 'worklet.d.ts'
+  ), 'utf8');
+  const dspReadme = fs.readFileSync(path.join(repoRoot, 'dsp', 'README.md'), 'utf8');
 
   assert.match(python, /`EFFECT_METADATA` is the machine-readable catalog/);
   assert.match(python, /Chain\.from_bundle\(source: str\) -> Chain/);
@@ -503,7 +510,10 @@ test('Phase 1 docs publish symmetric catalogs, latency, and bundle writers', () 
   assert.match(assets, /`effetune bundle pack CHAIN DESTINATION --asset ID=FILE`/);
   assert.match(assets, /public `encodeEta1\(\)` helper/);
   assert.match(assets, /--preset cli-bundle --subtype FLOAT/);
-  assert.match(processing, /AudioWorklet wrapper does not expose a latency getter/);
+  assert.match(processing, /ChainStream\.latencySamples/);
+  assert.match(javascriptReadme, /`EffeTuneNode\.latencySamples` exposes the cached/);
+  assert.match(workletTypes, /readonly latencySamples: number;/);
+  assert.match(dspReadme, /routed EffeTune host reports and compensates aggregate pipeline latency/);
 });
 
 test('Generated docs distinguish semantic names from language-specific entry points', () => {

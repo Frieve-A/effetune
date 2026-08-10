@@ -18,6 +18,8 @@ extern "C" double et_am_debug_tuning_reception_gain(effetune::PluginKernel *kern
                                                     double if_bandwidth_hz) noexcept;
 extern "C" double et_am_debug_modeled_tuning_offset(effetune::PluginKernel *kernel,
                                                     double offset_hz) noexcept;
+extern "C" double et_am_debug_station_tuning_offset(effetune::PluginKernel *kernel) noexcept;
+extern "C" double et_am_debug_interferer_tuning_offset(effetune::PluginKernel *kernel) noexcept;
 extern "C" double et_am_debug_delay_q_checksum(effetune::PluginKernel *kernel) noexcept;
 
 namespace {
@@ -116,6 +118,12 @@ public:
 
   double modeledTuningOffset(double offset_hz) const noexcept {
     return et_am_debug_modeled_tuning_offset(kernel_, offset_hz);
+  }
+
+  double stationTuningOffset() const noexcept { return et_am_debug_station_tuning_offset(kernel_); }
+
+  double interfererTuningOffset() const noexcept {
+    return et_am_debug_interferer_tuning_offset(kernel_);
   }
 
   double delayQChecksum() const noexcept { return et_am_debug_delay_q_checksum(kernel_); }
@@ -807,6 +815,16 @@ void testExtendedTuningModel() {
   check(positive > 0.015 && positive < 0.016,
         "maximum detuning applies the wideband IF stop-band loss");
   check(positive == negative, "tuning reception loss is symmetric");
+  Params params = defaultParams();
+  params.tuning = 0.5F;
+  params.interferenceOffset = 9.0F;
+  std::vector<float> audio(1u, 0.0F);
+  harness.stage(params);
+  harness.process(audio, 1u, 1u);
+  check(harness.stationTuningOffset() == -500.0,
+        "positive tuning places the desired station below the receiver");
+  check(harness.interfererTuningOffset() == 8500.0,
+        "positive tuning moves the receiver toward the higher adjacent station");
   const ProgramMeasurement centered = measureProgram(0.0F);
   const ProgramMeasurement detuned = measureProgram(30.0F);
   check(centered.differenceRms > detuned.differenceRms * 10.0,

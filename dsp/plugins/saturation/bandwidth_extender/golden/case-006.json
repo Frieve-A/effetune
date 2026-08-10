@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "BandwidthExtenderPlugin",
+  "id": "one-frame-blocks",
+  "stimulus": "sin1k",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 3073,
+  "blockSize": 1,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "ha": 61,
+    "na": 29,
+    "cm": "Manual",
+    "cf": 10000
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:17d6fa0bd06f4fa6da40977f873d6573a3dac6181370e0a686b0b54997d7ae85",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type BandwidthExtenderPlugin --promote-production-native",
+  "outputFloats": 3073,
+  "byteLength": 12292,
+  "binary": "case-006.f32"
+}

@@ -106,7 +106,7 @@ Static events use a carrier-relative vector-area calibration: each event is scal
 
 #### Receiver
 
-- **Tuning** (-30.0 to +30.0 kHz) - Offsets the receiver from the desired station. Small offsets reduce clarity and increase asymmetric filtering distortion; at large offsets, the station falls below the receiver noise floor.
+- **Tuning** (-30.0 to +30.0 kHz) - Offsets the receiver from the desired station; positive values tune above the station and negative values tune below it. Small offsets reduce clarity and increase asymmetric filtering distortion; at large offsets, the station falls below the receiver noise floor. The direction also determines whether the receiver moves toward or away from the higher adjacent station set by Interf. Offset.
 - **IF Bandwidth** (2.0 to 20.0 kHz) - Sets the receiver's total IF passband. Narrow settings reject more noise and interference but remove more treble; wide settings retain more detail.
 - **AGC Speed** (Slow, Mid, or Fast) - Sets how quickly automatic gain control follows signal changes. Slow emphasizes gradual recovery and pumping; Fast controls rapid fades more tightly.
 - **Detector RC** (20 to 500 µs) - Sets the envelope detector's discharge time. Longer values smooth the envelope more but increase high-frequency diagonal-clipping distortion at strong modulation.

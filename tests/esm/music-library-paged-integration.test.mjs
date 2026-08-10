@@ -2755,12 +2755,12 @@ test('row Play uses a selection-relative ordinal without changing playlist occur
 
   assert.deepEqual(calls, [
     ['play', descriptor, {
-      options: { currentOrdinal: 1 }
+      options: { currentOrdinal: 1, sourceOrdinal: 41 }
     }],
     ['play', {
       mode: 'explicit', contextToken: 'playlist-context', trackUids: ['occurrence-c']
     }, {
-      options: { currentOrdinal: 0 }
+      options: { currentOrdinal: 0, sourceOrdinal: 41 }
     }]
   ]);
 });
@@ -2826,6 +2826,7 @@ test('mobile ordinary actions target the full current context with zero selectio
       descriptor: {
         mode: 'explicit', contextToken: 'mobile-context', trackUids: ['track-3']
       },
+      sourceOrdinal: 3,
       currentOrdinal: 0,
       targetName: ''
     });
@@ -2867,6 +2868,7 @@ test('mobile row actions ignore hidden selection outside selection mode', async 
       descriptor: {
         mode: 'explicit', contextToken: 'mobile-context', trackUids: ['track-3']
       },
+      sourceOrdinal: 3,
       currentOrdinal: 0,
       targetName: ''
     });
@@ -2875,6 +2877,7 @@ test('mobile row actions ignore hidden selection outside selection mode', async 
     assert.equal(view.usesPagedContextAction({ totalCount: 4 }), false);
     assert.deepEqual(view.createPagedTrackActionIntent({ trackUid: 'track-3' }, 3), {
       descriptor,
+      sourceOrdinal: 3,
       currentOrdinal: 1,
       targetName: ''
     });
@@ -3244,13 +3247,13 @@ test('paged track double-click and focused Enter variants reach playback through
           mode: 'all', contextToken: 'context-1', exclusions: []
         },
         target: {},
-        options: { currentOrdinal: 1 }
+        options: { currentOrdinal: 1, sourceOrdinal: 1 }
       },
       {
         operationKind: 'play',
         selectionDescriptor: focusedDescriptor,
         target: {},
-        options: { currentOrdinal: 0 }
+        options: { currentOrdinal: 0, sourceOrdinal: 1 }
       },
       {
         operationKind: 'playNext',
@@ -4783,7 +4786,7 @@ for (const [detailType, currentView, keyField] of PAGED_ARTWORK_DETAIL_CASES) {
   });
 }
 
-test('paged media card Play opens the entity filter before starting playback', async () => {
+test('paged media card Play starts playback without competing with an entity page load', async () => {
   const row = new PagedDomElement('div');
   const artwork = new PagedDomElement('span');
   const openButton = new PagedDomElement('button');
@@ -4848,9 +4851,6 @@ test('paged media card Play opens the entity filter before starting playback', a
     playButton.listeners.get('click')({ stopPropagation: () => { stopped += 1; } });
     assert.equal(stopped, 2);
     assert.deepEqual(calls.slice(2), [
-      ['open', {
-        type: 'artist', key: 'artist-1', title: 'Artist One', representativeTrackUid: 'track-1'
-      }],
       ['play', 'artist', item]
     ]);
 

@@ -1,6 +1,6 @@
 ---
 title: "Plugins de modulación - EffeTune"
-description: "Plugins de modulación como Tremolo, Wow Flutter, Pitch Shifter y Doppler Distortion."
+description: "Plugins de modulación como Doppler Distortion, Pitch Shifter, Pitch Shifter HQ, Tremolo y Wow Flutter."
 lang: es
 ---
 
@@ -12,6 +12,7 @@ Una colección de plugins que añaden movimiento y variación a tu música media
 
 - [Doppler Distortion](#doppler-distortion) - Simula los cambios naturales y dinámicos en el sonido producidos por el sutil movimiento del cono del altavoz.
 - [Pitch Shifter](#pitch-shifter) - Cambia el tono de tu música sin afectar la velocidad de reproducción
+- [Pitch Shifter HQ](#pitch-shifter-hq) - Cambia el tono con menos artefactos de fase cuando la calidad importa más que la latencia o el uso de CPU
 - [Tremolo](#tremolo) - Crea variaciones rítmicas de volumen para un sonido pulsante y dinámico
 - [Wow Flutter](#wow-flutter) - Recrea las suaves variaciones de tono de los discos de vinilo y los reproductores de cinta
 
@@ -67,6 +68,28 @@ Un efecto que cambia el tono de tu música sin afectar su velocidad de reproducc
   - Afecta la suavidad con la que se mezclan los segmentos con cambio de tono
   - Valores más bajos pueden sonar más inmediatos pero potencialmente menos suaves
   - Valores más altos crean transiciones más suaves entre segmentos, pero pueden aumentar la fluctuación del sonido y generar una sensación de superposición
+
+## Pitch Shifter HQ
+
+Un cambiador de tono de mayor calidad para una escucha atenta, pensado para cuando reducir el emborronamiento de fase importa más que una baja latencia o un menor uso de CPU. Cambia el tono sin alterar la velocidad de reproducción y mantiene los componentes espectrales mejor agrupados que el Pitch Shifter estándar. A cambio, usa más CPU y añade un retardo de procesamiento fijo de unos 106,7–116,1ms: unos 106,7ms a 48, 96 y 192kHz, y unos 116,1ms a 44,1, 88,2 y 176,4kHz. Requiere el motor DSP WASM de EffeTune; si ese motor no está disponible, el audio pasa sin procesarse.
+
+Pitch Shifter HQ no conserva los formantes. Por tanto, los cambios grandes modifican tanto el carácter aparente de las voces y los instrumentos como su tono.
+
+### Guía de experiencia auditiva
+
+- Para un cambio sutil, empieza con **Pitch Shift** en -1 o +1 y deja **Fine Tune** en 0.
+- Usa **Fine Tune** para ajustar música que esté ligeramente alta o baja sin desplazarla un semitono completo.
+- Elige Pitch Shifter HQ en lugar del Pitch Shifter estándar cuando merezca la pena aceptar más uso de CPU y retardo a cambio de menos artefactos de fase. Usa la versión estándar si la latencia es importante o el dispositivo tiene menos potencia.
+- Compara con cuidado los cambios grandes: el tono cambia de forma estable, pero la falta de conservación de formantes hace más evidente el cambio de timbre.
+
+### Parámetros
+
+- **Pitch Shift** - Cambia el tono general en semitonos (-6 a +6)
+  - Los valores negativos bajan el tono y los positivos lo suben
+  - Cero no cambia el tono
+- **Fine Tune** - Ajusta el tono en cents (-50 a +50)
+  - Permite un ajuste preciso entre semitonos
+  - 100 cents equivalen a un semitono
 
 ## Tremolo
 

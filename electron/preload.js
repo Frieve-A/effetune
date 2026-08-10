@@ -157,6 +157,7 @@ const ALLOWED_IPC_LISTENER_CHANNELS = new Set([
   'reload-with-pipeline-state',
   'request-tray-menu-update',
   'rescan-library',
+  'set-pipeline-analyzer-open',
   'start-double-blind-test',
   'toggle-mini-player',
   'update-available'
@@ -343,6 +344,11 @@ contextBridge.exposeInMainWorld(
   onOpenEffectPipelineView: (callback) => addNoArgIpcListener('open-effect-pipeline-view', callback),
   onOpenFrequencyResponseMeasurement: (callback) => addNoArgIpcListener('open-frequency-response-measurement', callback),
   onOpenLibraryView: (callback) => addNoArgIpcListener('open-library-view', callback),
+  onSetPipelineAnalyzerOpen: (callback) => addIpcListener(
+    'set-pipeline-analyzer-open',
+    callback,
+    args => [args[0] === true]
+  ),
   onReloadWithPipelineState: (callback) => addNoArgIpcListener('reload-with-pipeline-state', callback),
   onExitMiniPlayer: (callback) => addNoArgIpcListener('exit-mini-player', callback),
   onToggleMiniPlayer: (callback) => addNoArgIpcListener('toggle-mini-player', callback),

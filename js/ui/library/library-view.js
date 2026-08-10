@@ -3562,7 +3562,6 @@ export class LibraryView {
         playButton?.addEventListener('click', event => {
           event.stopPropagation();
           this.dispatchPagedRowAction(row, () => {
-            openDetail();
             return this.startPagedEntityPlay(entityType, item);
           });
         });
@@ -3696,7 +3695,7 @@ export class LibraryView {
     return this.trackPreparedPagedAction({
       operationKind: 'play',
       descriptor: Object.freeze({ mode: 'all', contextToken, exclusions: [] }),
-      request: { options: { currentOrdinal: ordinal } },
+      request: { options: { currentOrdinal: ordinal, sourceOrdinal: ordinal } },
       targetName: track.title || track.fileName || ''
     });
   }
@@ -3723,6 +3722,7 @@ export class LibraryView {
       : 0;
     return Object.freeze({
       descriptor,
+      sourceOrdinal: ordinal,
       currentOrdinal: Number.isSafeInteger(selectedOrdinal) && selectedOrdinal >= 0
         ? selectedOrdinal
         : null,
@@ -3739,7 +3739,11 @@ export class LibraryView {
     const actionRequest = operationKind === 'play' && Number.isSafeInteger(intent.currentOrdinal)
       ? {
           ...request,
-          options: { ...(request.options || {}), currentOrdinal: intent.currentOrdinal }
+          options: {
+            ...(request.options || {}),
+            currentOrdinal: intent.currentOrdinal,
+            sourceOrdinal: intent.sourceOrdinal
+          }
         }
       : request;
     return this.trackPreparedPagedAction({
