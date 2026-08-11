@@ -85,6 +85,8 @@ Para usar o EffeTune com players de CD, players de rede ou outras fontes física
 
 Abra **Configuração...** no menu **Configurações** para escolher o idioma, a opção **Visualização ao iniciar:** e o comportamento do pipeline de efeitos na inicialização. A opção **Visualização ao iniciar:** pode ser **Effect Pipeline (padrão)** ou **Biblioteca de música**. Ao escolher **Biblioteca de música**, use a lista ao lado para definir qual seção será exibida primeiro: **Faixas**, **Álbuns**, **Artistas**, **Gêneros**, **Subpastas**, **Pastas** ou **Playlists**.
 
+As versões desktop compatíveis também podem ser controladas por aplicativos OpenHome na mesma rede local. O recurso fica desativado por padrão; consulte [Controle remoto OpenHome](music-library.md#controle-remoto-openhome-aplicativo-desktop) para ver configuração, acesso à rede, compatibilidade e limitações.
+
 ### Procurando música na Biblioteca de música
 
 1. No PC, abra pelo botão **Biblioteca de música** no cabeçalho; no móvel, pela aba **Biblioteca**; no aplicativo desktop, por **Visualizar > Biblioteca de música**.
@@ -382,6 +384,7 @@ Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/
 | Spatial   | Crossfeed Filter | Filtro de crossfeed para fones de ouvido para imagem estéreo natural | [Detalhes](plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | Converte entre estéreo e Mid/Side para ajustes de centro e ambiência | [Detalhes](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | Controle de balanço estéreo dependente de frequência de 5 bandas | [Detalhes](plugins/spatial.md#multiband-balance) |
+| Spatial   | Phase Select EQ | Realça ou atenua componentes de frequência conforme a diferença de fase L/R | [Detalhes](plugins/spatial.md#phase-select-eq) |
 | Spatial   | Stereo Blend | Controla a largura estéreo, de mono a estéreo ampliado | [Detalhes](plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | Gerador de tons de teste e ruído para verificar alto-falantes/fones | [Detalhes](plugins/others.md#oscillator) |
 | Control   | Section | Agrupa efeitos para que uma seção inteira possa ser colocada em bypass ou restaurada | [Detalhes](plugins/control.md) |

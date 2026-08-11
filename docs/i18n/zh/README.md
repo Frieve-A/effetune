@@ -85,6 +85,8 @@ EffeTune 专为希望提升音乐聆听体验的音频爱好者而设计。无�
 
 打开 **设置 > 配置...**，可选择语言、设置 **启动时显示:**，以及配置 Effect Pipeline 的启动方式。**启动时显示:** 可设为 **Effect Pipeline（默认）** 或 **音乐库**。选择 **音乐库** 后，可从旁边的列表选择首先显示的视图：**曲目**、**专辑**、**艺人**、**流派**、**子文件夹**、**文件夹** 或 **播放列表**。
 
+受支持的桌面版本还可以通过同一局域网中的 OpenHome 应用进行控制。此功能默认关闭；有关设置、网络访问、兼容性和限制，请参阅 [OpenHome 远程控制](music-library.md#openhome-远程控制桌面应用)。
+
 ### 用音乐库查找音乐
 
 1. 在 PC 布局中，点击页眉中的 **音乐库** 按钮；在移动端，打开 **音乐库** 标签；在桌面应用中，也可以通过 **视图 > 音乐库** 打开。
@@ -381,6 +383,7 @@ EffeTune 2.1.0引入了采用目录架构v3的音乐库，可按曲目浏览CUE�
 | Spatial   | Crossfeed Filter | 用于自然立体声成像的耳机交叉馈送滤波器 | [详情](plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | 在立体声和 Mid/Side 之间转换，用于调整中央与氛围成分 | [详情](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5 频段频率相关立体声平衡控制 | [详情](plugins/spatial.md#multiband-balance) |
+| Spatial   | Phase Select EQ | 按 L/R 相位差选择并提升或衰减频率成分 | [详情](plugins/spatial.md#phase-select-eq) |
 | Spatial   | Stereo Blend | 从单声道到增强立体声控制声场宽度 | [详情](plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | 用于检查扬声器/耳机的测试音和噪声发生器 | [详情](plugins/others.md#oscillator) |
 | Control   | Section | 将效果分组，让整个区段可被旁路或恢复 | [详情](plugins/control.md) |

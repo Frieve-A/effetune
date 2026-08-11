@@ -3,7 +3,7 @@
 Version: 0.4.0
 Python package: effetune
 npm package: @effetune/dsp
-Catalog entries: 83
+Catalog entries: 84
 
 Canonical resources:
 - https://effetune.frieve.com/dsp/

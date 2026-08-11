@@ -1,6 +1,6 @@
 ---
 title: "Plugins de Áudio Espacial - EffeTune"
-description: "Plugins de áudio espacial, incluindo Stereo Blend, Crossfeed Filter, MS Matrix e Multiband Balance."
+description: "Plugins de áudio espacial, incluindo Crossfeed Filter, MS Matrix, Multiband Balance, Phase Select EQ e Stereo Blend."
 lang: pt
 ---
 
@@ -13,6 +13,7 @@ Uma coleção de plugins que aprimoram como a música soa em seus fones de ouvid
 - [Crossfeed Filter](#crossfeed-filter) - Filtro de crossfeed para fones de ouvido para imagem estéreo natural
 - [MS Matrix](#ms-matrix) - Converte estéreo para Mid/Side e de volta para cadeias avançadas de ajuste estéreo
 - [Multiband Balance](#multiband-balance) - Controle de balanço estéreo dependente de frequência de 5 bandas
+- [Phase Select EQ](#phase-select-eq) - Realça ou atenua componentes de frequência conforme a diferença de fase L/R
 - [Stereo Blend](#stereo-blend) - Controla a largura estéreo de estéreo com polaridade lateral invertida, passando por mono, até estéreo expandido
 
 ## Crossfeed Filter
@@ -237,6 +238,42 @@ Cada banda tem controle de balanço independente:
    - Compare com bypass para perspectiva
 
 Lembre-se: O Multiband Balance é uma ferramenta poderosa que requer ajuste cuidadoso. Comece com configurações sutis e aumente a complexidade conforme necessário. Sempre verifique seus ajustes tanto em estéreo quanto em mono para garantir compatibilidade.
+
+## Phase Select EQ
+
+O Phase Select EQ realça ou atenua componentes de frequência de um sinal estéreo conforme o valor absoluto da diferença de fase entre os canais esquerdo e direito. Ele aplica o mesmo ganho positivo aos dois espectros, portanto não gira, corrige nem cria diferenças de fase. Use-o quando um som ocupar uma região específica de frequência e fase estéreo que um equalizador baseado somente em frequência não consegue isolar.
+
+Cinco Bands independentes estão sempre disponíveis. Cada Band tem um **Core**, onde o Gain é aplicado por completo, e uma **Transition**, onde o multiplicador retorna suavemente a 100%. Os Gains de Bands sobrepostos são multiplicados; por exemplo, 150% e 50% resultam em 75%. Vários realces podem ultrapassar 0 dBFS, portanto mantenha margem suficiente e compare com o bypass.
+
+A latência de processamento informada pelo Phase Select EQ é a soma do tamanho da FFT com o tamanho do salto (hop). A 48 kHz, isso corresponde a 4.096 + 1.024 = 5.120 amostras, cerca de 106,7 ms (cerca de 116,1 ms a 44,1 kHz). Consulte o atraso acumulado da cadeia em **Total Delay** no aplicativo. Essa latência pode afetar o monitoramento em tempo real e a sincronização entre áudio e vídeo.
+
+### Como ler o mapa de fase
+
+- O eixo vertical mostra a frequência em escala logarítmica: graves embaixo e agudos em cima.
+- O eixo horizontal mostra a diferença de fase L/R com sinal: 0° no centro significa em fase, enquanto -180° e +180° nas extremidades são o mesmo ponto em oposição de fase.
+- Cada ponto representa um componente de entrada medido recentemente. Componentes mais fortes aparecem maiores e mais brilhantes; pontos antigos desaparecem gradualmente.
+- Os componentes medidos aparecem como pontos brancos. Apenas os quadros dos Bands ativados são desenhados; o Band em edição fica verde brilhante e os demais verde-claro. O número no canto superior esquerdo do Core identifica o Band.
+- A seleção usa o valor **absoluto** da diferença de fase. Por isso, uma única região lógica é espelhada em torno de 0° e processa +60° e -60° da mesma forma. Trocar L/R espelha os pontos, mas não altera os componentes processados.
+- A área interna delimitada é o Core e a área externa mais clara é a Transition. Uma região que inclui 0° se une no centro; uma região que alcança 180° continua entre as duas bordas do mapa.
+
+### Guia de melhoria sonora
+
+1. **Suavizar agudos muito abertos**: ajuste um Band em 4–12 kHz e 90–180°. Comece entre 70 e 90%, com transições amplas.
+2. **Dar presença a vocais centralizados**: ajuste um Band em 1–4 kHz e 0–30°. Comece entre 110 e 125%.
+3. **Controlar ambiência difusa nos graves-médios**: ajuste um Band em 150–600 Hz e 60–150°. Comece entre 80 e 90% e amplie as transições.
+
+Essas faixas de fase representam tendências comuns, não posições fixas das fontes sonoras. Observe onde os pontos realmente aparecem na gravação, faça pequenos ajustes e confirme o resultado com fones e alto-falantes.
+
+### Parâmetros
+
+- **Band 1-5 / caixa de seleção** (Off/On): Seleciona um Band para edição e o ativa ou desativa sem alterar seus ajustes.
+- **Gain** (0% a 200%): Define o multiplicador de nível dentro do Core. 100% não altera o nível, 0% remove o componente selecionado e 200% duplica sua amplitude.
+- **Core Low Frequency / Core High Frequency** (20 Hz a 40 kHz, respeitando o limite da taxa de amostragem atual): Definem a faixa de frequência processada a 100%.
+- **Core Low Phase / Core High Phase** (0° a 180°): Definem a faixa absoluta de diferença de fase L/R processada a 100%.
+- **Low Frequency Transition / High Frequency Transition**: Definem quanto o efeito diminui abaixo e acima do Core de frequência.
+- **Low Phase Transition / High Phase Transition**: Definem quanto o efeito diminui em direção a 0° e 180°.
+
+As alças do mapa editam os mesmos valores dos controles numéricos: arraste dentro do Core para movê-lo, as bordas ou os cantos para redimensioná-lo e as alças externas para ajustar cada Transition separadamente. Quando um Core inclui 0°, use a alça de divisão na linha central para separá-lo em duas partes simétricas. Todos os valores também ficam disponíveis em campos numéricos identificados para edição precisa ou pelo teclado.
 
 ## Stereo Blend
 

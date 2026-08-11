@@ -60,6 +60,7 @@ export class AudioContextManager {
     this.mediaSourceGeneration = 0;
     this.pendingMediaActivation = null;
     this.pendingMediaCandidateReadiness = new Set();
+    this.openHomeCorsElements = new WeakSet();
     this.privatePipelineSourceGates = new WeakMap();
     this.playbackChannelAdapters = new WeakMap();
     
@@ -1838,6 +1839,21 @@ export class AudioContextManager {
   }
   
   // ===== AUDIO ELEMENT MANAGEMENT =====
+
+  setAudioElementSource(audioElement, source) {
+    if (isLoopbackOpenHomeMediaGatewayUrl(source)) {
+      audioElement.crossOrigin = 'anonymous';
+      this.openHomeCorsElements.add(audioElement);
+    } else if (this.openHomeCorsElements.has(audioElement)) {
+      if (typeof audioElement.removeAttribute === 'function') {
+        audioElement.removeAttribute('crossorigin');
+      } else {
+        audioElement.crossOrigin = null;
+      }
+      this.openHomeCorsElements.delete(audioElement);
+    }
+    audioElement.src = source;
+  }
   
   /**
    * Set up audio element for a track (metadata and fallback only)
@@ -1859,12 +1875,12 @@ export class AudioContextManager {
     if (isBlobObject(mediaSource)) {
       this.revokeCurrentObjectURL();
       this.currentObjectURL = URL.createObjectURL(mediaSource);
-      this.audioPlayer.audioElement.src = this.currentObjectURL;
+      this.setAudioElementSource(this.audioPlayer.audioElement, this.currentObjectURL);
     } else if (typeof mediaSource === 'string' && mediaSource.length > 0) {
       this.revokeCurrentObjectURL();
       const formattedSource = this.getMediaElementSourceUrl(mediaSource);
       if (!formattedSource) return false;
-      this.audioPlayer.audioElement.src = formattedSource;
+      this.setAudioElementSource(this.audioPlayer.audioElement, formattedSource);
     } else {
       return false;
     }
@@ -1977,10 +1993,10 @@ export class AudioContextManager {
       if (this.pendingRegionMetadata?.activeRegion === this.activeRegion) {
         this.settlePendingRegionMetadata(false);
       }
-      if (e.target.error && e.target.error.code !== MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
-        if (window.uiManager) {
-          window.uiManager.setError(`Audio playback error: ${e.target.error?.message || 'Unknown error'}`);
-        }
+      const mediaError = e.target.error;
+      if (mediaError && mediaError.code !== MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
+        console.warn('[AudioContextManager] Audio element reported a playback error:', mediaError);
+        window.uiManager?.setError?.('error.audioPlaybackFailed', true);
       }
     };
     
@@ -2033,7 +2049,7 @@ export class AudioContextManager {
           this.setupEventHandlers();
           
           if (oldSrc) {
-            this.audioPlayer.audioElement.src = oldSrc;
+            this.setAudioElementSource(this.audioPlayer.audioElement, oldSrc);
           }
           
           this.mediaSource = this.audioPlayer.audioContext.createMediaElementSource(this.audioPlayer.audioElement);
@@ -3969,11 +3985,11 @@ export class AudioContextManager {
     let objectURL = null;
     if (isBlobObject(sourceValue)) {
       objectURL = URL.createObjectURL(sourceValue);
-      element.src = objectURL;
+      this.setAudioElementSource(element, objectURL);
     } else if (typeof sourceValue === 'string' && sourceValue.length > 0) {
       const formattedSource = this.getMediaElementSourceUrl(sourceValue);
       if (!formattedSource) throw new Error('Invalid media source');
-      element.src = formattedSource;
+      this.setAudioElementSource(element, formattedSource);
     } else {
       throw new Error('Invalid track: no media source provided');
     }
@@ -4423,7 +4439,7 @@ export class AudioContextManager {
         }
         
         const silentDataUrl = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
-        this.audioPlayer.audioElement.src = silentDataUrl;
+        this.setAudioElementSource(this.audioPlayer.audioElement, silentDataUrl);
       }
       
       const useInputWithPlayer = this.getUseInputWithPlayer();
@@ -4513,6 +4529,26 @@ function electronFilePathToMediaUrl(filePath) {
     index === 1 && /^[A-Za-z]:$/.test(segment) ? segment : encodeURIComponent(segment)
   )).join('/');
   return `file://${encoded}`;
+}
+
+function isLoopbackOpenHomeMediaGatewayUrl(source) {
+  if (typeof source !== 'string') return false;
+  let url;
+  try {
+    url = new URL(source);
+  } catch (_) {
+    return false;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+  if (!/^\/openhome-media\/[A-Za-z0-9_-]{32}$/.test(url.pathname)) return false;
+
+  const hostname = url.hostname.startsWith('[') && url.hostname.endsWith(']')
+    ? url.hostname.slice(1, -1)
+    : url.hostname;
+  if (hostname === '::1' || hostname === 'localhost' || hostname === 'localhost.') return true;
+  const octets = hostname.split('.');
+  return octets.length === 4 && octets[0] === '127' &&
+    octets.every(octet => /^\d{1,3}$/.test(octet) && Number(octet) <= 255);
 }
 
 function isFileObject(value) {

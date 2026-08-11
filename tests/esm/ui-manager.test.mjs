@@ -411,6 +411,36 @@ function createDeferred() {
   return { promise, resolve, reject };
 }
 
+function createOpenHomeBridge(calls) {
+  const subscribe = name => listener => {
+    calls.push([`openHome.${name}`, listener]);
+    return () => calls.push([`openHome.remove${name}`]);
+  };
+  return {
+    rendererReady() {
+      calls.push(['openHome.rendererReady']);
+      return true;
+    },
+    rendererUnavailable() {
+      calls.push(['openHome.rendererUnavailable']);
+      return true;
+    },
+    respond() {
+      return true;
+    },
+    publishState() {
+      calls.push(['openHome.publishState']);
+      return true;
+    },
+    resetComplete() {
+      return true;
+    },
+    onAction: subscribe('onAction'),
+    onCancel: subscribe('onCancel'),
+    onReset: subscribe('onReset')
+  };
+}
+
 async function withUIHarness(options = {}, callback) {
   const calls = [];
   const document = createDocument();
@@ -700,8 +730,12 @@ test('constructs, delegates manager methods, translates errors, parses and seria
     manager.setError('Failure', true);
     const supersededErrorTimer = timers.at(-1);
     manager.setError('status.loading');
+    const infoTimer = timers.at(-1);
+    assert.equal(infoTimer.delay, 5000);
     supersededErrorTimer.fn();
     assert.equal(manager.stateManager.errorDisplay.textContent, 'status.loading');
+    infoTimer.fn();
+    assert.equal(manager.stateManager.errorDisplay.textContent, '');
 
     manager.showTransientMessage('success.urlCopied');
     const firstMessageTimer = timers.at(-1);
@@ -1210,6 +1244,119 @@ test('shares URLs, opens music, manages presets, and creates audio players', asy
     AudioPlayer.prototype.loadFiles = originalLoadFiles;
     AudioPlayer.prototype.close = originalClose;
   }
+});
+
+test('saved OpenHome enablement waits for runtime readiness before creating its renderer', async () => {
+  const enabledCalls = [];
+  const enabledBridge = createOpenHomeBridge(enabledCalls);
+  await withUIHarness({
+    appConfig: { openHomeRemoteControl: true },
+    electronAPI: { openHomeV1: enabledBridge }
+  }, async ({ manager }) => {
+    assert.equal(manager.audioPlayer, null);
+    assert.equal(enabledCalls.some(call => call[0] === 'openHome.rendererReady'), false);
+
+    const player = manager.setOpenHomeRemoteRuntimeReady();
+    await flushMicrotasks();
+    assert.ok(player);
+    assert.equal(player.ui.container, null);
+    assert.equal(manager.openHomeRendererPlayer, player);
+    assert.equal(enabledCalls.filter(call => call[0] === 'openHome.rendererReady').length, 1);
+
+    manager.setOpenHomeRemoteControlEnabled(false);
+    await flushMicrotasks();
+    assert.equal(manager.audioPlayer, null);
+    assert.equal(enabledCalls.filter(call => call[0] === 'openHome.rendererUnavailable').length, 1);
+  });
+
+  const disabledCalls = [];
+  await withUIHarness({
+    appConfig: { openHomeRemoteControl: false },
+    electronAPI: { openHomeV1: createOpenHomeBridge(disabledCalls) }
+  }, async ({ manager }) => {
+    manager.setOpenHomeRemoteRuntimeReady();
+    assert.equal(manager.audioPlayer, null);
+    assert.equal(disabledCalls.some(call => call[0] === 'openHome.rendererReady'), false);
+  });
+});
+
+test('enabling OpenHome before runtime readiness defers and then reuses one renderer endpoint', async () => {
+  const bridgeCalls = [];
+  await withUIHarness({
+    appConfig: { openHomeRemoteControl: false },
+    electronAPI: { openHomeV1: createOpenHomeBridge(bridgeCalls) }
+  }, async ({ manager }) => {
+    assert.equal(manager.audioPlayer, null);
+
+    assert.equal(manager.setOpenHomeRemoteControlEnabled(true), null);
+    assert.equal(bridgeCalls.some(call => call[0] === 'openHome.rendererReady'), false);
+
+    const earlyPlayer = manager.createAudioPlayer([], false);
+    assert.equal(bridgeCalls.some(call => call[0] === 'openHome.rendererReady'), false);
+
+    const player = manager.setOpenHomeRemoteRuntimeReady();
+    await flushMicrotasks();
+    assert.ok(player);
+    assert.equal(player, earlyPlayer);
+    assert.equal(manager.audioPlayer, player);
+    assert.equal(manager.setOpenHomeRemoteControlEnabled(true), player);
+    assert.equal(bridgeCalls.filter(call => call[0] === 'openHome.rendererReady').length, 1);
+
+    manager.setOpenHomeRemoteControlEnabled(false);
+    await flushMicrotasks();
+    assert.equal(manager.audioPlayer, null);
+    assert.equal(bridgeCalls.filter(call => call[0] === 'openHome.rendererUnavailable').length, 1);
+  });
+});
+
+test('enabling OpenHome after runtime readiness creates its renderer immediately', async () => {
+  const bridgeCalls = [];
+  await withUIHarness({
+    appConfig: { openHomeRemoteControl: false },
+    electronAPI: { openHomeV1: createOpenHomeBridge(bridgeCalls) }
+  }, async ({ manager }) => {
+    assert.equal(manager.setOpenHomeRemoteRuntimeReady(), null);
+    const player = manager.setOpenHomeRemoteControlEnabled(true);
+    await flushMicrotasks();
+    assert.ok(player);
+    assert.equal(manager.audioPlayer, player);
+    assert.equal(bridgeCalls.filter(call => call[0] === 'openHome.rendererReady').length, 1);
+
+    manager.setOpenHomeRemoteControlEnabled(false);
+    await flushMicrotasks();
+  });
+});
+
+test('closing the player UI keeps the OpenHome renderer alive until the feature is disabled', async () => {
+  const bridgeCalls = [];
+  await withUIHarness({
+    appConfig: { openHomeRemoteControl: true },
+    electronAPI: { openHomeV1: createOpenHomeBridge(bridgeCalls) }
+  }, async ({ calls, manager }) => {
+    const player = manager.setOpenHomeRemoteRuntimeReady();
+    await flushMicrotasks();
+    player.ui.container = { id: 'player-ui' };
+    player.ui.removeUI = () => {
+      calls.push(['AudioPlayerUI.removeUI']);
+      player.ui.container = null;
+    };
+    player.playbackManager.savePlayerState = () => calls.push(['AudioPlayer.savePlayerState']);
+    player.stop = async () => calls.push(['AudioPlayer.stop']);
+
+    assert.equal(player.close(), false);
+    await flushMicrotasks();
+    assert.equal(manager.audioPlayer, player);
+    assert.equal(player.ui.container, null);
+    assert.equal(calls.some(call => call[0] === 'AudioPlayer.savePlayerState'), true);
+    assert.equal(calls.some(call => call[0] === 'AudioPlayer.stop'), true);
+    assert.equal(calls.some(call => call[0] === 'AudioPlayerUI.removeUI'), true);
+    assert.equal(bridgeCalls.some(call => call[0] === 'openHome.rendererUnavailable'), false);
+
+    manager.setOpenHomeRemoteControlEnabled(false);
+    await flushMicrotasks();
+    assert.equal(manager.audioPlayer, null);
+    assert.equal(bridgeCalls.filter(call => call[0] === 'openHome.rendererUnavailable').length, 1);
+  });
 });
 
 test('share success warning stays bound to the pipeline copied before clipboard completion', async () => {

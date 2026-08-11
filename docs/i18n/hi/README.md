@@ -85,6 +85,8 @@ CD प्लेयर, नेटवर्क प्लेयर या अन्
 
 **सेटिंग्स** मेनू में **कॉन्फ़िगरेशन...** खोलें। यहां आप भाषा, **स्टार्टअप पर दिखाया जाने वाला दृश्य:**, और स्टार्टअप पर Effect Pipeline के व्यवहार को चुन सकते हैं। स्टार्टअप दृश्य के लिए **Effect Pipeline (डिफ़ॉल्ट)** या **संगीत लाइब्रेरी** चुना जा सकता है। अगर आप **संगीत लाइब्रेरी** चुनते हैं, तो साथ दी गई सूची से तय करें कि सबसे पहले कौन-सा दृश्य खुले: **ट्रैक**, **एल्बम**, **कलाकार**, **शैलियाँ**, **सबफ़ोल्डर**, **फ़ोल्डर**, या **प्लेलिस्ट**।
 
+समर्थित डेस्कटॉप बिल्ड को उसी स्थानीय नेटवर्क के OpenHome ऐप से भी नियंत्रित किया जा सकता है। यह सुविधा डिफ़ॉल्ट रूप से बंद रहती है; सेटअप, नेटवर्क एक्सेस, संगतता और सीमाओं के लिए [OpenHome रिमोट कंट्रोल](music-library.md#openhome-रिमोट-कंट्रोल-डेस्कटॉप-ऐप) देखें।
+
 ### संगीत लाइब्रेरी में संगीत ढूँढना
 
 1. PC पर हेडर में **संगीत लाइब्रेरी** बटन से, मोबाइल पर **लाइब्रेरी** टैब से, और डेस्कटॉप ऐप में **देखें > संगीत लाइब्रेरी** से खोलें।
@@ -382,6 +384,7 @@ EffeTune 2.1.0 में कैटलॉग स्कीमा v3 पर आध�
 | Spatial   | Crossfeed Filter | natural stereo imaging के लिए headphone crossfeed filter | [विवरण](plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | center/ambience adjustments के लिए stereo और Mid/Side के बीच convert करता है | [विवरण](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5-band frequency-dependent stereo balance control | [विवरण](plugins/spatial.md#multiband-balance) |
+| Spatial   | Phase Select EQ | L/R phase difference से चुने गए frequency components को boost या cut करता है | [विवरण](plugins/spatial.md#phase-select-eq) |
 | Spatial   | Stereo Blend | mono से enhanced stereo तक stereo width control करता है | [विवरण](plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | speakers/headphones जांचने के लिए test tone और noise generator | [विवरण](plugins/others.md#oscillator) |
 | Control   | Section | effects को group करता है ताकि पूरा section bypass या restore किया जा सके | [विवरण](plugins/control.md) |

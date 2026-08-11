@@ -2477,6 +2477,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             this.destroyDspInstance(plugin.id);
             entry = null;
         }
+        const wasReady = entry?.ready === true;
         if (!entry) {
             const previousMemory = this.bufferPool.combined?.buffer;
             let id = 0;
@@ -2508,7 +2509,6 @@ class PluginProcessor extends AudioWorkletProcessor {
             if (tapStatus !== 0) {
                 this.reportDspFailure(`instance:${plugin.id}`, `tap binding returned ${tapStatus}`);
             }
-            this.restageDspAssets(plugin.id);
             this.postTubeSimulatorRuntimeEvent(plugin, entry, true);
         }
 
@@ -2557,6 +2557,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         } else {
             entry.ready = false;
         }
+        if (!wasReady && entry.ready) this.restageDspAssets(plugin.id);
     }
 
     normalizeAssetOperationRevision(value) {

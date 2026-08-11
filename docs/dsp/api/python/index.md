@@ -13,7 +13,7 @@ pip install effetune
 
 These signatures summarize the typed public surface. The installed `py.typed`
 package and generated effect stubs remain authoritative for individual effect options;
-the 83 effect signatures are not repeated here.
+the 84 effect signatures are not repeated here.
 
 ## Effect names and constructor keywords
 
@@ -143,7 +143,7 @@ on_telemetry=callback)`, and Stream subscriptions deliver decoded
 `TelemetryFrame` subclasses. See [Compatibility](/dsp/reference/compatibility/#analyzers-and-telemetry)
 for exact frame fields.
 
-`EFFECT_METADATA` is the machine-readable catalog, `EFFECT_CLASSES` maps all 83
+`EFFECT_METADATA` is the machine-readable catalog, `EFFECT_CLASSES` maps all 84
 semantic names to their classes, and
 `create_effect(effect_type: str, **options: object) -> Effect` is the generic
 constructor. `Stream.latency_samples` is the live aggregate, distinct from catalog

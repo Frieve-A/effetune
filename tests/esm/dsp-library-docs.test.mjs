@@ -505,7 +505,7 @@ test('Phase 1 docs publish symmetric catalogs, latency, and bundle writers', () 
   assert.match(javascript, /class Chain \{/);
   assert.match(javascript, /interface ChainStream \{/);
   assert.match(javascript, /EffeTuneNode\.create\(/);
-  assert.match(javascript, /all 83 root class\/factory pairs/);
+  assert.match(javascript, /all 84 root class\/factory pairs/);
   assert.match(javascript, /numerically symmetric with Python/);
   assert.match(assets, /`effetune bundle pack CHAIN DESTINATION --asset ID=FILE`/);
   assert.match(assets, /public `encodeEta1\(\)` helper/);

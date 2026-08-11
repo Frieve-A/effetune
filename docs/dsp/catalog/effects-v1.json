@@ -6463,6 +6463,171 @@
       "sourceGenerating": false
     },
     {
+      "type": "PhaseSelectEQ",
+      "parameters": [
+        {
+          "name": "regionEnabled",
+          "type": "boolean",
+          "count": 5,
+          "default": [
+            true,
+            false,
+            false,
+            false,
+            false
+          ]
+        },
+        {
+          "name": "outerFrequencyLow",
+          "type": "number",
+          "count": 5,
+          "default": [
+            80,
+            80,
+            80,
+            80,
+            80
+          ],
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 40000
+        },
+        {
+          "name": "coreFrequencyLow",
+          "type": "number",
+          "count": 5,
+          "default": [
+            100,
+            100,
+            100,
+            100,
+            100
+          ],
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 40000
+        },
+        {
+          "name": "coreFrequencyHigh",
+          "type": "number",
+          "count": 5,
+          "default": [
+            10000,
+            10000,
+            10000,
+            10000,
+            10000
+          ],
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 40000
+        },
+        {
+          "name": "outerFrequencyHigh",
+          "type": "number",
+          "count": 5,
+          "default": [
+            12000,
+            12000,
+            12000,
+            12000,
+            12000
+          ],
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 40000
+        },
+        {
+          "name": "outerPhaseLow",
+          "type": "number",
+          "count": 5,
+          "default": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "unit": "degree",
+          "minimum": 0,
+          "maximum": 180
+        },
+        {
+          "name": "corePhaseLow",
+          "type": "number",
+          "count": 5,
+          "default": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "unit": "degree",
+          "minimum": 0,
+          "maximum": 180
+        },
+        {
+          "name": "corePhaseHigh",
+          "type": "number",
+          "count": 5,
+          "default": [
+            30,
+            30,
+            30,
+            30,
+            30
+          ],
+          "unit": "degree",
+          "minimum": 0,
+          "maximum": 180
+        },
+        {
+          "name": "outerPhaseHigh",
+          "type": "number",
+          "count": 5,
+          "default": [
+            45,
+            45,
+            45,
+            45,
+            45
+          ],
+          "unit": "degree",
+          "minimum": 0,
+          "maximum": 180
+        },
+        {
+          "name": "gain",
+          "type": "number",
+          "count": 5,
+          "default": [
+            100,
+            100,
+            100,
+            100,
+            100
+          ],
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 200
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      },
+      "assets": [],
+      "displayName": "Phase Select EQ",
+      "category": "spatial",
+      "summary": "Applies gain only where the stereo phase difference falls within configured frequency-and-phase regions.",
+      "sourceGenerating": false
+    },
+    {
       "type": "StereoBlend",
       "parameters": [
         {
@@ -6488,7 +6653,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "439c969d1ef80e1aeab6c524f458481eecb2a6fe8bc3e46ea277920e9f21bb1a",
-    "privateLayoutSha256": "549215a20bcacd90050b30e85696b79ea816710a3c5cfe03f4493f6966528c06"
+    "publicCatalogSha256": "c2094f9f30f781430c61befcf255274278782983008a7d466827ce617c03b325",
+    "privateLayoutSha256": "bac00ff064e5d37cd15faf5722af36efc684b04cb17bfbf6b247c1a709a82284"
   }
 }

@@ -137,6 +137,39 @@ const libraryPlaybackV1 = Object.freeze({
   resolveSequenceEntrySource: (request) => ipcRenderer.invoke('library-playback-v1:resolve-sequence-entry-source', request)
 });
 
+const openHomeV1 = Object.freeze({
+  apiVersion: 1,
+  getStatus: () => ipcRenderer.invoke('openhome-v1:get-status', {}),
+  setEnabled: enabled => {
+    if (typeof enabled !== 'boolean') throw new TypeError('OpenHome enabled state must be boolean');
+    return ipcRenderer.invoke('openhome-v1:set-enabled', { enabled });
+  },
+  setFriendlyName: friendlyName => {
+    if (typeof friendlyName !== 'string') throw new TypeError('OpenHome player name must be a string');
+    return ipcRenderer.invoke('openhome-v1:set-friendly-name', { friendlyName });
+  },
+  rendererReady: () => ipcRenderer.invoke('openhome-v1:renderer-ready', {}),
+  rendererUnavailable: () => ipcRenderer.invoke('openhome-v1:renderer-unavailable', {}),
+  respond: response => ipcRenderer.invoke('openhome-v1:response', response),
+  resetComplete: ack => ipcRenderer.invoke('openhome-v1:reset-ack', ack),
+  publishState: snapshot => ipcRenderer.invoke('openhome-v1:state', snapshot),
+  onAction: callback => addSingleArgIpcListener('openhome-v1:action', callback),
+  onCancel: callback => addSingleArgIpcListener('openhome-v1:cancel', callback),
+  onReset: callback => addSingleArgIpcListener('openhome-v1:reset', callback),
+  onStatus: callback => addSingleArgIpcListener('openhome-v1:status', callback)
+});
+
+function withoutOpenHomeOwnedConfig(config) {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return config;
+  const {
+    openHomeRemoteControl: _openHomeRemoteControl,
+    openHomeDeviceId: _openHomeDeviceId,
+    openHomeFriendlyName: _openHomeFriendlyName,
+    ...rendererOwnedConfig
+  } = config;
+  return rendererOwnedConfig;
+}
+
 const libraryRecoveryV1 = Object.freeze({
   apiVersion: 1,
   getState: () => ipcRenderer.invoke('library-recovery-v1:get-state', {}),
@@ -235,6 +268,9 @@ contextBridge.exposeInMainWorld(
 
     // Bounded disk-backed playback sequence access is separate from the four durable service verbs.
     libraryPlaybackV1,
+
+    // Versioned OpenHome bridge exposes only bounded player actions and state snapshots.
+    openHomeV1,
     
     // Documentation operations
     openDocumentation: (path) => ipcRenderer.invoke('open-documentation', path),
@@ -404,7 +440,7 @@ contextBridge.exposeInMainWorld(
     
     // Load and save config
     loadConfig: () => ipcRenderer.invoke('load-config'),
-    saveConfig: (cfg) => ipcRenderer.invoke('save-config', cfg),
+    saveConfig: (cfg) => ipcRenderer.invoke('save-config', withoutOpenHomeOwnedConfig(cfg)),
     setMiniPlayerMode: (options) => ipcRenderer.invoke('set-mini-player-mode', options),
     setAlwaysOnTop: (flag) => ipcRenderer.invoke('set-always-on-top', flag),
     

@@ -7,6 +7,11 @@ on:
         description: Platform stage to build
         required: true
         type: string
+      openhome_source_bundle:
+        description: Include exact Linux libnl source artifacts for a desktop release
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -30,12 +35,37 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
+      - name: Install Linux OpenHome build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ '${{ inputs.openhome_source_bundle }}' == 'true' ]]; then
+            sources=/etc/apt/sources.list.d/ubuntu.sources
+            test -f "$sources"
+            sudo sed -i 's/^Types: deb$/Types: deb deb-src/' "$sources"
+            grep -F 'Types: deb deb-src' "$sources"
+          fi
+          sudo apt-get update
+          packages=(libnl-3-dev libnl-genl-3-dev)
+          if [[ '${{ inputs.openhome_source_bundle }}' == 'true' ]]; then
+            packages+=(dpkg-dev)
+          fi
+          sudo apt-get install --yes "${packages[@]}"
+
       - name: Generate web assets
         run: npm run assets:web
 
       - name: Build
+        shell: bash
         run: |
+          set -euo pipefail
           npm run clean
+          npm run build:openhome-sidecar -- --no-publish-development
+          if [[ '${{ inputs.openhome_source_bundle }}' == 'true' ]]; then
+            npm run collect:openhome-linux-provenance -- --with-source
+          else
+            npm run verify:openhome-linux-provenance
+          fi
           npx electron-builder --publish never
         env:
           USE_HARD_LINKS: false
@@ -44,6 +74,25 @@ jobs:
       - name: Verify packaged DSP artifacts
         run: npm run smoke:dsp-package
 
+      - name: Verify packaged OpenHome artifacts
+        run: npm run smoke:openhome-package
+
+      - name: Verify Linux OpenHome loader contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          sidecar="dist/linux-unpacked/resources/openhome/effetune-openhome-sidecar"
+          dependencies="$(readelf -d "$sidecar")"
+          grep -F 'Shared library: [libnl-3.so.' <<<"$dependencies"
+          grep -F 'Shared library: [libnl-genl-3.so.' <<<"$dependencies"
+          grep -F 'Library runpath: [$ORIGIN]' <<<"$dependencies"
+          ldd "$sidecar" | grep -F "$PWD/dist/linux-unpacked/resources/openhome/libnl-3.so."
+          ldd "$sidecar" | grep -F "$PWD/dist/linux-unpacked/resources/openhome/libnl-genl-3.so."
+
+      - name: Require complete Linux OpenHome source artifacts for release
+        if: inputs.openhome_source_bundle
+        run: npm run verify:openhome-linux-provenance -- --require-source
+
       - name: Package Linux AppImage
         shell: bash
         run: |
@@ -51,6 +100,7 @@ jobs:
           version="$(node -p "require('./package.json').version")"
           appimage="EffeTune-${version}.AppImage"
           release_zip="EffeTune-${version}-Linux-AppImage.zip"
+          source_zip="EffeTune-${version}-OpenHome-Linux-Source.zip"
 
           # Keep the executable mode inside the release ZIP because the outer
           # Actions artifact ZIP does not preserve Unix file permissions.
@@ -61,12 +111,24 @@ jobs:
             stored_mode="$(zipinfo -l "${release_zip}" "${appimage}" | awk -v file="${appimage}" '$NF == file { print $1 }')"
             test "${stored_mode}" = "-rwxr-xr-x"
           )
+          if [[ '${{ inputs.openhome_source_bundle }}' == 'true' ]]; then
+            runtime_root="native/openhome-sidecar/build/linux-x64"
+            test -f "${runtime_root}/libnl-runtime-manifest.json"
+            test -d "${runtime_root}/libnl-source"
+            (
+              cd "$runtime_root"
+              zip -9 -r "$GITHUB_WORKSPACE/dist/${source_zip}" \
+                libnl-runtime-manifest.json libnl-source
+            )
+          fi
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: linux-artifacts
-          path: dist/*-Linux-AppImage.zip
+          path: |
+            dist/*-Linux-AppImage.zip
+            dist/*-OpenHome-Linux-Source.zip
           if-no-files-found: error
           compression-level: 0
 
@@ -97,6 +159,7 @@ jobs:
       - name: Build
         run: |
           npm run clean
+          npm run build:openhome-sidecar -- --no-publish-development
           npx electron-builder --publish never
         env:
           USE_HARD_LINKS: false
@@ -104,6 +167,9 @@ jobs:
 
       - name: Verify packaged DSP artifacts
         run: npm run smoke:dsp-package
+
+      - name: Verify packaged OpenHome artifacts
+        run: npm run smoke:openhome-package
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -114,8 +180,16 @@ jobs:
 
   build-macos:
     if: inputs.stage == 'macos'
-    name: Build macOS
-    runs-on: macos-latest
+    name: Build macOS (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: x64
+          - runner: macos-15
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - name: Check out Git repository
@@ -137,9 +211,11 @@ jobs:
         run: npm run assets:web
 
       - name: Build
+        shell: bash
         run: |
           npm run clean
-          npx electron-builder --publish never
+          npm run build:openhome-sidecar -- --arch ${{ matrix.arch }} --no-publish-development
+          npx electron-builder --mac --${{ matrix.arch }} --publish never
         env:
           USE_HARD_LINKS: false
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -147,9 +223,12 @@ jobs:
       - name: Verify packaged DSP artifacts
         run: npm run smoke:dsp-package
 
+      - name: Verify packaged OpenHome artifacts
+        run: npm run smoke:openhome-package
+
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: macos-artifacts
+          name: macos-${{ matrix.arch }}-artifacts
           path: dist/**/*.dmg
           if-no-files-found: error

@@ -152,4 +152,14 @@ While you scroll the track list, EffeTune keeps nearby pages cached. In the mobi
 
 Multiple tabs or application instances are unsupported. A second writable open is rejected to protect the catalog. Using different EffeTune versions with the same Library is also unsupported.
 
+## OpenHome Remote Control (Desktop App)
+
+On supported desktop builds, EffeTune can appear as an OpenHome player to controller apps on the same local network. Open **Settings > Config...**, enable **Allow OpenHome controllers on this network**, and wait until the status says that EffeTune is available. The default player name is `EffeTune (computer name)`; use **Player name** to give each computer a recognizable name such as `EffeTune Living Room`. The setting is off by default.
+
+OpenHome does not require a sign-in. While this setting is enabled, other devices on the local network can view playback metadata, replace or edit the Player queue, and control playback. If Windows Firewall asks for permission, allow EffeTune only on **Private networks**, not **Public networks**. Turn the setting off when remote control is not needed.
+
+Supported packages are Windows x64, macOS on Intel or Apple silicon, and Linux x64. This feature is not available in the web app or mobile browsers. Basic queue and playback operation has been verified with BubbleUPnP on Android; other OpenHome controllers can differ in how they display services and unsupported controls. EffeTune is an OpenHome Playlist source, not a UPnP AV MediaRenderer, and no compatibility or certification claim is made.
+
+Controllers can add HTTP or HTTPS audio, manage one remote queue, play, pause, stop, skip, seek, repeat, and shuffle. Remote audio still passes through the current EffeTune effect pipeline. OpenHome control does not provide EffeTune effect editing, local file-path access, master volume, Radio, Songcast, or synchronized multi-room playback. Gapless playback is not guaranteed, and technical metadata can remain unknown until the source provides it. Sleep, wake, VPN, or network-interface changes can make the player disappear briefly while it reconnects.
+
 [← Back to README](../README.md)

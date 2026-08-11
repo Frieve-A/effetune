@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "archives": [
+    {
+      "name": "ohNet",
+      "commit": "88672a33bbe182a5a0ae1558fc598d62b7adbfbb",
+      "url": "https://codeload.github.com/openhome/ohNet/zip/88672a33bbe182a5a0ae1558fc598d62b7adbfbb",
+      "sha256": "5147f076214dc0455541c1515207feff95f7cec76fdaf24d23ccdb5f56f2a9b0",
+      "license": "MIT with separately licensed bundled components",
+      "licenseFiles": [
+        "License.txt",
+        "MitLicense.txt",
+        "OpenHome/Functor.h",
+        "OpenHome/md5.c",
+        "OpenHome/sha1.c",
+        "thirdparty/libb64/cencode.c",
+        "thirdparty/libnl-3.11.0/COPYING",
+        "thirdparty/mDNSResponder-1310.80.1/LICENSE"
+      ]
+    },
+    {
+      "name": "ohNetGenerated",
+      "commit": "f241aca511a2e881715baea1e79d4f320af4fac0",
+      "url": "https://codeload.github.com/openhome/ohNetGenerated/zip/f241aca511a2e881715baea1e79d4f320af4fac0",
+      "sha256": "629eda8524c0b91d71b97094a266762a9d054a24dc98b5b7777eb8420fed2756",
+      "license": "MIT",
+      "licenseFiles": ["License.txt"]
+    }
+  ]
+}

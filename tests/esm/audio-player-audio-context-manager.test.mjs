@@ -1953,12 +1953,15 @@ test('audio element setup, metadata, media session, and fallback naming stay syn
     audioPlayer.audioElement.dispatch('timeupdate');
     assert.equal(state.currentTrackPosition, 3);
 
+    const playbackErrors = [];
     audioPlayer.audioElement.error = { code: 1, message: 'broken' };
-    window.uiManager = { setError: message => calls.push(['ui.setError', message]) };
+    window.uiManager = { setError: (...args) => playbackErrors.push(args) };
     audioPlayer.audioElement.dispatch('error', { target: audioPlayer.audioElement });
-    assert.equal(calls.some(call => call[0] === 'ui.setError'), true);
+    assert.deepEqual(playbackErrors, [['error.audioPlaybackFailed', true]]);
+    assert.equal(playbackErrors.flat().includes('broken'), false);
     audioPlayer.audioElement.error = { code: MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED, message: 'unsupported' };
     audioPlayer.audioElement.dispatch('error', { target: audioPlayer.audioElement });
+    assert.equal(playbackErrors.length, 1);
 
     state.isStopped = false;
     manager.handleTrackEnded = () => calls.push(['element.ended']);

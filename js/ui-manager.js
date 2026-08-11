@@ -46,7 +46,7 @@ function usesIOSFilePicker(windowRef = window) {
         || (platform === 'MacIntel' && Number(navigatorRef?.maxTouchPoints || 0) > 1);
 }
 
-const ERROR_MESSAGE_DURATION_MS = 5000;
+const MESSAGE_DISPLAY_DURATION_MS = 5000;
 const AUDIO_GLITCH_WARNING_DURATION_MS = 10000;
 const MINI_PLAYER_ALWAYS_ON_TOP_STORAGE_KEY = 'miniPlayerAlwaysOnTop';
 const WEB_MUSIC_FILE_ACCEPT = 'audio/*,video/mp4,image/jpeg,image/png,.mp4,.cue,.jpg,.png';
@@ -91,6 +91,9 @@ export class UIManager {
 
         // Audio player reference
         this.audioPlayer = null;
+        this.openHomeRemoteControlEnabled = false;
+        this.openHomeRemoteRuntimeReady = false;
+        this.openHomeRendererPlayer = null;
         this.miniPlayerMode = false;
         this.miniPlayerTargetMode = false;
         this.miniPlayerAlwaysOnTop = readStoredBoolean(MINI_PLAYER_ALWAYS_ON_TOP_STORAGE_KEY);
@@ -259,6 +262,10 @@ export class UIManager {
             console.error('Failed to initialize localization:', error);
             return false;
         });
+
+        this.setOpenHomeRemoteControlEnabled(
+            window.appConfig?.openHomeRemoteControl === true
+        );
     }
 
     // Delegate to PluginListManager
@@ -423,13 +430,11 @@ export class UIManager {
         this.transientMessageTimer = timeoutId;
     }
 
-    // Delegate to StateManager with translation. Errors are notifications, not
-    // persistent state indicators, so they must never remain in the header forever.
+    // Header messages are notifications, not persistent state indicators, so they
+    // must never remain visible indefinitely.
     setError(message, isError = false, params = {}) {
         this._setMessage(message, isError, params);
-        if (isError) {
-            this._scheduleMessageClear(ERROR_MESSAGE_DURATION_MS);
-        }
+        this._scheduleMessageClear(MESSAGE_DISPLAY_DURATION_MS);
     }
 
     showTransientMessage(message, isError = false, params = {}, duration = 3000) {
@@ -2087,6 +2092,39 @@ export class UIManager {
         placeholder?.parentNode?.removeChild?.(placeholder);
     }
 
+    setOpenHomeRemoteControlEnabled(enabled) {
+        this.openHomeRemoteControlEnabled = enabled === true;
+
+        if (this.openHomeRemoteControlEnabled) {
+            if (!this.openHomeRemoteRuntimeReady || !window.electronAPI?.openHomeV1) {
+                return this.audioPlayer;
+            }
+            const player = this.createAudioPlayer([], false);
+            player.activateOpenHomePlaybackAdapter?.();
+            this.openHomeRendererPlayer = player;
+            return player;
+        }
+
+        const retainedPlayer = this.openHomeRendererPlayer;
+        this.openHomeRendererPlayer = null;
+        if (retainedPlayer && retainedPlayer === this.audioPlayer && !retainedPlayer.ui?.container) {
+            retainedPlayer.close({ force: true });
+        }
+        return this.audioPlayer;
+    }
+
+    setOpenHomeRemoteRuntimeReady() {
+        this.openHomeRemoteRuntimeReady = true;
+        if (!this.openHomeRemoteControlEnabled) return this.audioPlayer;
+        return this.setOpenHomeRemoteControlEnabled(true);
+    }
+
+    shouldRetainAudioPlayerForOpenHome(player) {
+        return this.openHomeRemoteControlEnabled &&
+            player === this.audioPlayer &&
+            player === this.openHomeRendererPlayer;
+    }
+
     /**
      * Create audio player for music file playback
      * @param {string[]} filePaths - Array of file paths to load
@@ -2106,11 +2144,15 @@ export class UIManager {
         // Close existing player if any
         if (this.audioPlayer) {
             this.preserveAudioPlayerLayoutForReplacement();
-            this.audioPlayer.close();
+            this.audioPlayer.close({ force: true });
         }
 
         // Create new player
         this.audioPlayer = new AudioPlayer(this.audioManager);
+        if (this.openHomeRemoteControlEnabled && this.openHomeRemoteRuntimeReady) {
+            this.audioPlayer.activateOpenHomePlaybackAdapter?.();
+            this.openHomeRendererPlayer = this.audioPlayer;
+        }
         if (this.libraryPlaybackBridge) {
             this.audioPlayer.libraryOperationService = this.libraryPlaybackBridge;
         }

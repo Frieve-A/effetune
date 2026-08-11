@@ -476,6 +476,11 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
     SOURCES plugins/spatial/multiband_balance/native_test.cpp
     INCLUDE_DIRS core
     WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_phase_select_eq_tests
+    SOURCES plugins/spatial/phase_select_eq/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
 
   if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_executable(effetune_dsp_allocation_guard_probe test/allocation_guard_probe.cpp)

@@ -1342,6 +1342,26 @@ class MultibandBalance(Effect):
         channel: EffectChannel = ...,
     ) -> None: ...
 
+class PhaseSelectEQ(Effect):
+    effect_type: Literal["PhaseSelectEQ"]
+    def __init__(
+        self,
+        *,
+        region_enabled: tuple[bool, bool, bool, bool, bool] = ...,
+        outer_frequency_low: tuple[float, float, float, float, float] = ...,
+        core_frequency_low: tuple[float, float, float, float, float] = ...,
+        core_frequency_high: tuple[float, float, float, float, float] = ...,
+        outer_frequency_high: tuple[float, float, float, float, float] = ...,
+        outer_phase_low: tuple[float, float, float, float, float] = ...,
+        core_phase_low: tuple[float, float, float, float, float] = ...,
+        core_phase_high: tuple[float, float, float, float, float] = ...,
+        outer_phase_high: tuple[float, float, float, float, float] = ...,
+        gain: tuple[float, float, float, float, float] = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
 class StereoBlend(Effect):
     effect_type: Literal["StereoBlend"]
     def __init__(

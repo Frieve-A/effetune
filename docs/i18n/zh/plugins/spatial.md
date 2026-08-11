@@ -1,6 +1,6 @@
 ---
 title: "空间音频插件 - EffeTune"
-description: "用于耳机和扬声器聆听的空间处理插件，包括 Crossfeed Filter、MS Matrix、Multiband Balance 和 Stereo Blend。"
+description: "用于耳机和扬声器聆听的空间处理插件，包括 Crossfeed Filter、MS Matrix、Multiband Balance、Phase Select EQ 和 Stereo Blend。"
 lang: zh
 ---
 
@@ -13,6 +13,7 @@ lang: zh
 - [Crossfeed Filter](#crossfeed-filter) - 用于自然耳机声像的交叉馈送滤波器
 - [MS Matrix](#ms-matrix) - 在立体声与 Mid/Side 之间转换，用于高级立体声调整链
 - [Multiband Balance](#multiband-balance) - 5 频段频率相关立体声平衡控制
+- [Phase Select EQ](#phase-select-eq) - 按 L/R 相位差选择并提升或衰减频率成分
 - [Stereo Blend](#stereo-blend) - 从极性互换立体声、单声道到增强立体声的宽度控制
 
 ## Crossfeed Filter
@@ -199,6 +200,42 @@ MS Matrix 可将普通立体声转换为 Mid/Side 格式，也可将 Mid/Side �
 2. 播放熟悉的音乐，找出偏向一侧的频率范围
 3. 只调整相关频段
 4. 每次以小步进调整，并频繁旁路比较
+
+## Phase Select EQ
+
+Phase Select EQ 根据左右声道之间相位差的绝对值，提升或衰减立体声信号中的特定频率成分。它对两侧频谱施加相同的正增益，因此不会旋转、校正相位差，也不会产生新的相位差。当某个声音集中在特定的频率和立体声相位区域，而普通的纯频率均衡器无法将其分离时，可以使用此插件。
+
+始终可使用五个独立的 Band。每个 Band 包含完整应用 Gain 的 **Core**，以及倍率平滑回到 100% 的 **Transition**。重叠 Band 的 Gain 相乘；例如 150% 与 50% 重叠后结果为 75%。多个提升叠加后可能超过 0 dBFS，因此请保留足够余量，并与 bypass 进行比较。
+
+Phase Select EQ 报告的处理延迟等于 FFT 大小与 Hop 大小之和。在 48 kHz 下，4,096 + 1,024 = 5,120 个采样点，约为 106.7 ms（在 44.1 kHz 下约为 116.1 ms）。可在应用的 **Total Delay** 中查看整条处理链的累计延迟。该延迟可能影响实时监听以及音频与视频的同步。
+
+### 如何读取相位图
+
+- 纵轴为对数频率：低频在下，高频在上。
+- 横轴显示带符号的 L/R 相位差：中央 0° 表示同相，两端的 -180° 与 +180° 是同一个反相点。
+- 每个点代表最近测得的输入成分。越强的成分越大、越亮，较早的点会逐渐淡出。
+- 测得的成分以白点显示。只绘制已启用 Band 的边框；当前编辑的 Band 为亮绿色，其余已启用 Band 为浅绿色。Core 左上角的数字表示 Band 编号。
+- 选择依据是相位差的**绝对值**。因此，一个逻辑区域会以 0° 为中心镜像显示，并以相同方式处理 +60° 和 -60°。交换 L/R 只会镜像这些点，不会改变处理对象。
+- 边界清晰的内部区域是 Core，外侧较淡的区域是 Transition。包含 0° 的区域会在中央连为一体；延伸至 180° 的区域会跨越相位图的左右边缘连续显示。
+
+### 音质调整指南
+
+1. **减轻宽阔高频的刺激感**：将 Band 设置在约 4–12 kHz、90–180°，从 70–90% 和较宽的 Transition 开始。
+2. **增强中央人声的存在感**：将 Band 设置在约 1–4 kHz、0–30°，从 110–125% 开始。
+3. **整理扩散的中低频氛围**：将 Band 设置在约 150–600 Hz、60–150°，从 80–90% 开始，再逐渐加宽频率 Transition。
+
+这些相位范围只是常见趋势，并不代表固定的声源位置。请观察实际录音中点出现的位置，进行小幅调整，并分别用耳机和扬声器确认效果。
+
+### 参数
+
+- **Band 1-5 / 复选框** (Off/On)：选择要编辑的 Band，并在不改变设置的情况下启用或停用它。
+- **Gain** (0% 至 200%)：设置 Core 内的电平倍率。100% 不改变电平，0% 移除选中的成分，200% 将振幅加倍。
+- **Core Low Frequency / Core High Frequency** (20 Hz 至 40 kHz，受当前采样率上限限制)：设置 100% 处理的频率范围。
+- **Core Low Phase / Core High Phase** (0° 至 180°)：设置 100% 处理的 L/R 绝对相位差范围。
+- **Low Frequency Transition / High Frequency Transition**：设置频率 Core 下方和上方的效果渐变范围。
+- **Low Phase Transition / High Phase Transition**：设置朝向 0° 和 180° 的效果渐变范围。
+
+相位图手柄与数值控件编辑相同的值：拖动 Core 内部可移动整个区域，拖动 Core 的边或角可调整大小，拖动外侧边缘手柄可单独调整各个 Transition。当 Core 包含 0° 时，可使用中央线上的分割手柄将其分成左右对称的两部分。所有值也可通过带标签的数值输入框进行精确输入或键盘操作。
 
 ## Stereo Blend
 

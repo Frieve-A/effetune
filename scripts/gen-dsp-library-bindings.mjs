@@ -149,6 +149,7 @@ export const PUBLIC_EFFECT_TYPES = Object.freeze([
   'CrossfeedFilter',
   'MSMatrix',
   'MultibandBalance',
+  'PhaseSelectEQ',
   'StereoBlend'
 ]);
 export const FROZEN_PARAM_DIRECTORIES = Object.freeze({
@@ -234,6 +235,7 @@ export const FROZEN_PARAM_DIRECTORIES = Object.freeze({
   CrossfeedFilterPlugin: 'dsp/plugins/spatial/crossfeed_filter',
   MSMatrixPlugin: 'dsp/plugins/spatial/ms_matrix',
   MultibandBalancePlugin: 'dsp/plugins/spatial/multiband_balance',
+  PhaseSelectEqPlugin: 'dsp/plugins/spatial/phase_select_eq',
   StereoBlendPlugin: 'dsp/plugins/spatial/stereo_blend'
 });
 

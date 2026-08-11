@@ -115,8 +115,8 @@ test('generated effects import and the public catalog stays semantic', async () 
   const compressor = new generated.Compressor({ threshold: -18 });
   assert.equal(compressor.type, 'Compressor');
   assert.equal(compressor.parameters.threshold, -18);
-  assert.equal(EFFECT_TYPES.length, 83);
-  assert.equal(EFFECT_CATALOG.effects.length, 83);
+  assert.equal(EFFECT_TYPES.length, 84);
+  assert.equal(EFFECT_CATALOG.effects.length, 84);
   assert.deepEqual(EFFECT_CATALOG.channels, [
     'all', 'stereo', 'left', 'right',
     '1', '2', '3', '4', '5', '6', '7', '8', '34', '56', '78'

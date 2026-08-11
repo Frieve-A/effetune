@@ -1,0 +1,80 @@
+{
+  "formatVersion": 1,
+  "type": "PhaseSelectEqPlugin",
+  "id": "region-events-latch-by-frame",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 28673,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 11,
+  "seed": "0xeffe7a55",
+  "params": {
+    "regions": [
+      {
+        "en": true,
+        "ofl": 80,
+        "fl": 100,
+        "fh": 10000,
+        "ofh": 12000,
+        "opl": 0,
+        "pl": 0,
+        "ph": 45,
+        "oph": 60,
+        "gn": 150
+      }
+    ]
+  },
+  "events": [
+    {
+      "frame": 9001,
+      "params": {
+        "regions": [
+          {
+            "en": true,
+            "ofl": 160,
+            "fl": 240,
+            "fh": 6000,
+            "ofh": 9000,
+            "opl": 30,
+            "pl": 60,
+            "ph": 120,
+            "oph": 150,
+            "gn": 50
+          }
+        ]
+      }
+    },
+    {
+      "frame": 17003,
+      "params": {
+        "regions": [
+          {
+            "en": true,
+            "ofl": 80,
+            "fl": 100,
+            "fh": 10000,
+            "ofh": 12000,
+            "opl": 0,
+            "pl": 0,
+            "ph": 180,
+            "oph": 180,
+            "gn": 100
+          }
+        ]
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:9ba7a535d1f8111862793e1273116148327ada15d856574c269bd2f53cce2bb3",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type PhaseSelectEqPlugin --promote-production-native",
+  "outputFloats": 57346,
+  "byteLength": 229384,
+  "binary": "case-012.f32"
+}

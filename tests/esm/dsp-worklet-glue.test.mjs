@@ -737,6 +737,64 @@ test('worklet re-stages cached assets after a forced instance reconcile', async 
   assert.ok(binding.calls.some(call => call[0] === 'destroyInstance' && call[1] === 100));
 });
 
+test('worklet re-stages cached assets when packed parameters make an instance ready', async () => {
+  let reportedLatency = 0;
+  let binding;
+  binding = createBinding({
+    instanceLatency: () => reportedLatency,
+    assetCommitStatus() {
+      const params = binding.calls.findLast(call => call[0] === 'instanceSetParams')?.[2];
+      reportedLatency = 128 + (params?.[1] ?? 0);
+      return 0;
+    },
+    capabilities: {
+      abiVersion: 1,
+      simd: false,
+      kernels: [{
+        name: 'RoomEqPlugin', hash: 0x1234, byteCapacity: 0,
+        assetCapacity: 4096, kernelIndex: 0
+      }]
+    }
+  });
+  const harness = await createWorkletHarness({ binding });
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [roomEqPluginConfig({
+      channel: 'L',
+      parameters: { enabled: true, lt: '128', fd: 16384, dy: 0, gn: 0 },
+      wasmParams: undefined
+    })],
+    masterBypass: false
+  });
+  await harness.send({ type: 'dspEnableTypes', types: ['RoomEqPlugin'] });
+  await harness.send({
+    type: 'setPluginAsset', pluginId: 7, slot: 0, formatTag: 1,
+    headBlock: 128, rateDivider: 1, pathCount: 0, inputCount: 0, processingChannels: 1,
+    footprintBytes: 1024, operationRevision: 1, payload: assetPayload(1)
+  });
+  assert.equal(binding.calls.some(call => call[0] === 'instanceSetAsset'), false);
+
+  await harness.send({ type: 'dspModule', module: { compiled: true } });
+  assert.equal(harness.processor.wasmInstances.get(7).ready, false);
+  assert.equal(binding.calls.some(call => call[0] === 'instanceSetAsset'), false);
+
+  await harness.send({
+    type: 'updatePlugin',
+    plugin: roomEqPluginConfig({
+      channel: 'L',
+      parameters: { enabled: true, lt: '128', fd: 16384, dy: 0, gn: 0 },
+      wasmParams: Float32Array.of(1, 16384, 0, 0)
+    })
+  });
+
+  const paramsIndex = binding.calls.findIndex(call => call[0] === 'instanceSetParams');
+  const assetIndex = binding.calls.findIndex(call => call[0] === 'instanceSetAsset');
+  assert.ok(paramsIndex >= 0 && assetIndex > paramsIndex);
+  assert.equal(reportedLatency, 16512);
+  assert.equal(harness.processor.dspLatencyPlan.totalSamples, 16512);
+  assert.deepEqual([...harness.processor.dspLatencyPlan.outputDelays], [0, 16512]);
+});
+
 test('worklet marks failed reconcile replay as destructive and drops stale asset bookkeeping', async () => {
   let stagingAttempt = 0;
   const binding = createBinding({

@@ -30,11 +30,12 @@ jobs:
     outputs:
       dsp_core: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || ((github.event_name == 'push' || github.event_name == 'pull_request') && steps.changes.outputs.dsp_core == 'true') }}
       dsp_library: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || ((github.event_name == 'push' || github.event_name == 'pull_request') && steps.changes.outputs.dsp_library == 'true') }}
+      openhome: ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && steps.changes.outputs.openhome == 'true' }}
       electron: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/heads/feature/')) }}
       pages: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) }}
       codeql: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.base_ref == 'main') }}
       power_browser: ${{ github.event_name == 'pull_request' }}
-      any: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || (github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/heads/feature/') || steps.changes.outputs.dsp_core == 'true' || steps.changes.outputs.dsp_library == 'true')) }}
+      any: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || (github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/heads/feature/') || steps.changes.outputs.dsp_core == 'true' || steps.changes.outputs.dsp_library == 'true' || steps.changes.outputs.openhome == 'true')) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -101,6 +102,19 @@ jobs:
               - '.github/workflows/dsp-library-ci.yml'
               - '.github/workflows/dsp-library-release.yml'
               - '.github/workflows/pages.yml'
+              - '.github/workflows/ci.yml'
+            openhome:
+              - 'native/openhome-sidecar/**'
+              - 'scripts/build-openhome-sidecar.mjs'
+              - 'tools/openhome-linux-provenance.mjs'
+              - 'tools/verify-openhome-package.mjs'
+              - 'electron/openhome-*.cjs'
+              - 'js/ui/audio-player/openhome-playback-adapter.js'
+              - 'tests/cjs/electron-openhome-*.test.cjs'
+              - 'tests/esm/openhome-playback-adapter.test.mjs'
+              - 'package.json'
+              - '.github/workflows/build.yml'
+              - '.github/workflows/desktop-release.yml'
               - '.github/workflows/ci.yml'
 
   dsp-library-preflight:
@@ -274,6 +288,63 @@ jobs:
     uses: ./.github/workflows/power-browser.yml
     permissions:
       contents: read
+
+  openhome-native:
+    name: OpenHome sidecar (${{ matrix.label }})
+    needs: [scope, common]
+    if: >-
+      always() && !cancelled() &&
+      needs.scope.outputs.openhome == 'true' &&
+      needs.common.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows x64
+            runner: windows-latest
+            command: npm run pack:win
+          - label: Linux x64
+            runner: ubuntu-latest
+            command: npm run build:openhome-sidecar -- --no-publish-development
+          - label: macOS x64
+            runner: macos-15-intel
+            command: npm run build:openhome-sidecar -- --arch x64 --no-publish-development
+          - label: macOS arm64
+            runner: macos-15
+            command: npm run build:openhome-sidecar -- --arch arm64 --no-publish-development
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Install Linux OpenHome build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libnl-3-dev libnl-genl-3-dev
+      - name: Build and verify OpenHome sidecar
+        run: ${{ matrix.command }}
+      - name: Verify Linux OpenHome provenance manifest
+        if: runner.os == 'Linux'
+        run: npm run verify:openhome-linux-provenance
+      - name: Verify Linux OpenHome loader contract
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sidecar="native/openhome-sidecar/build/linux-x64/effetune-openhome-sidecar"
+          dependencies="$(readelf -d "$sidecar")"
+          grep -F 'Shared library: [libnl-3.so.' <<<"$dependencies"
+          grep -F 'Shared library: [libnl-genl-3.so.' <<<"$dependencies"
+          grep -F 'Library runpath: [$ORIGIN]' <<<"$dependencies"
+          ldd "$sidecar" | grep -F "$PWD/native/openhome-sidecar/build/linux-x64/libnl-3.so."
+          ldd "$sidecar" | grep -F "$PWD/native/openhome-sidecar/build/linux-x64/libnl-genl-3.so."
 
   codeql-javascript:
     name: CodeQL JavaScript
@@ -487,6 +558,7 @@ jobs:
       - dsp-library-linux
       - pages-build
       - power-browser
+      - openhome-native
       - codeql-javascript
       - codeql-cpp
       - electron-windows
@@ -514,6 +586,7 @@ jobs:
           SELECT_DSP_CORE: ${{ needs.scope.outputs.dsp_core }}
           SELECT_PAGES: ${{ needs.scope.outputs.pages }}
           SELECT_POWER_BROWSER: ${{ needs.scope.outputs.power_browser }}
+          SELECT_OPENHOME: ${{ needs.scope.outputs.openhome }}
           COMMON_RESULT: ${{ needs.common.result }}
           DSP_LIBRARY_PREFLIGHT_RESULT: ${{ needs.dsp-library-preflight.result }}
           CODEQL_ACTIONS_RESULT: ${{ needs.codeql-actions.result }}
@@ -523,6 +596,7 @@ jobs:
           DSP_LIBRARY_LINUX_RESULT: ${{ needs.dsp-library-linux.result }}
           PAGES_BUILD_RESULT: ${{ needs.pages-build.result }}
           POWER_BROWSER_RESULT: ${{ needs.power-browser.result }}
+          OPENHOME_NATIVE_RESULT: ${{ needs.openhome-native.result }}
           CODEQL_JAVASCRIPT_RESULT: ${{ needs.codeql-javascript.result }}
           CODEQL_CPP_RESULT: ${{ needs.codeql-cpp.result }}
           ELECTRON_WINDOWS_RESULT: ${{ needs.electron-windows.result }}
@@ -572,6 +646,7 @@ jobs:
           check_result "$SELECT_PAGES" pages-build "$PAGES_BUILD_RESULT"
           check_result "$SELECT_PAGES" pages-deploy "$PAGES_DEPLOY_RESULT"
           check_result "$SELECT_POWER_BROWSER" power-browser "$POWER_BROWSER_RESULT"
+          check_result "$SELECT_OPENHOME" openhome-native "$OPENHOME_NATIVE_RESULT"
 
           if (( ${#failures[@]} != 0 )); then
             printf '%s\n' "${failures[@]}" >&2

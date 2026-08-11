@@ -12,10 +12,15 @@ import {
 } from './app-bootstrap.js';
 import { normalizeMusicLibraryStartupView } from './library/constants.js';
 import { createUpdateNotification } from './update-notification.js';
+import { MIC_DENIED_PREFIX } from './audio/audio-io-manager.js';
 
 const TRANSIENT_PIPELINE_RESTORE_PARAM = 'restorePipeline';
 const TRANSIENT_PIPELINE_RESTORE_VALUE = 'transient';
 const TRANSIENT_PIPELINE_STATE_STORAGE_KEY = 'effetune_transient_pipeline_state';
+
+function isSuccessfulAudioGraphBuild(result) {
+    return typeof result !== 'string' || result.length === 0;
+}
 
 // Make electronIntegration globally accessible first
 window.electronIntegration = electronIntegration;
@@ -451,6 +456,9 @@ class App {
             // This allows the audio context to be created early, but defers
             // the heavy AudioWorklet initialization until after GUI is rendered
             const audioInitResult = await this.audioManager.initAudio();
+            const audioRuntimeReady = !(typeof audioInitResult === 'string' &&
+                audioInitResult.startsWith('Audio Error:') &&
+                !audioInitResult.startsWith(MIC_DENIED_PREFIX));
             
             // Store the audio initialization result for later
             this.audioInitResult = audioInitResult;
@@ -499,7 +507,7 @@ class App {
             }
             
             // First initialize AudioWorklet (before creating plugins)
-            await this.initializeAudioWorklet();
+            const audioWorkletReady = await this.initializeAudioWorklet();
             
             // Optional wait after AudioWorklet initialization
             if (INITIALIZATION_CONFIG.AUDIOWORKLET_TO_PIPELINE_WAIT > 0) {
@@ -508,7 +516,7 @@ class App {
             
             // Initialize pipeline state and build audio pipeline as a single operation
             // This ensures plugins are created with AudioWorklet already initialized
-            await this.initializeAndBuildPipeline();
+            const audioGraphReady = await this.initializeAndBuildPipeline();
 
             // All updatePlugins messages from the startup sequence (saved state,
             // startup/CLI/tray preset) have been posted to the worklet by now.
@@ -520,7 +528,14 @@ class App {
 
             // Power ownership starts only after the initial graph and output
             // safety fade are fully established.
-            await this.audioManager.startPowerPolicyController?.();
+            const powerRuntimeReady = typeof this.audioManager.startPowerPolicyController === 'function';
+            if (powerRuntimeReady) {
+                await this.audioManager.startPowerPolicyController();
+            }
+
+            if (audioRuntimeReady && audioWorkletReady && audioGraphReady && powerRuntimeReady) {
+                this.uiManager.setOpenHomeRemoteRuntimeReady?.();
+            }
 
             // Set up event listeners and finalize initialization
             this.setupEventListeners();
@@ -574,19 +589,19 @@ class App {
 
     /**
      * Initialize AudioWorklet only (without pipeline)
-     * @returns {Promise<void>}
+     * @returns {Promise<boolean>} Whether the playback runtime is ready
      */
     async initializeAudioWorklet() {
         // Skip if this is the first launch (during splash screen)
         const isElectron = window.electronIntegration && window.electronIntegration.isElectron;
         const isFirstLaunch = window.isFirstLaunch === true;
         if (isFirstLaunch && isElectron) {
-            return;
+            return false;
         }
         
         // Skip if force skip flag is set
         if (window.__FORCE_SKIP_PIPELINE_STATE_LOAD === true) {
-            return;
+            return false;
         }
         
         // Initialize AudioWorklet only (no pipeline building)
@@ -596,7 +611,9 @@ class App {
         if (workletResult && typeof workletResult === 'string' && workletResult.startsWith('Audio Error:')) {
             this.hasAudioError = true;
             console.warn('AudioWorklet initialization error:', workletResult);
+            return false;
         }
+        return true;
     }
 
     restoreDoubleBlindTestFromUrl() {
@@ -657,7 +674,7 @@ class App {
     /**
      * Initialize and build pipeline as a single operation
      * This ensures plugins are created with AudioWorklet already initialized
-     * @returns {Promise<void>}
+     * @returns {Promise<boolean>} Whether the initial audio graph was built successfully
      */
     async initializeAndBuildPipeline() {
         // Check if running in Electron environment
@@ -674,7 +691,7 @@ class App {
         // If this is the first launch (during splash screen), don't initialize pipeline
         // This prevents overwriting existing settings during splash screen
         if (isFirstLaunch && isElectron) {
-            return;
+            return false;
         }
         
         // Try to load pipeline state from file if in Electron environment and no preset file was specified via command line
@@ -682,7 +699,7 @@ class App {
         if (window.__FORCE_SKIP_PIPELINE_STATE_LOAD === true && !restoreTransientPipeline) {
             // Clear the flag after using it
             window.__FORCE_SKIP_PIPELINE_STATE_LOAD = false;
-            return;
+            return false;
         }
         
         // Check if a command line preset file was specified
@@ -771,7 +788,7 @@ class App {
                     }
                     
                     // Rebuild pipeline with force flag to ensure complete rebuild
-                    await this.audioManager.rebuildPipeline(true);
+                    const rebuildResult = await this.audioManager.rebuildPipeline(true);
                     // Debug logs removed for release
                     
                     // If there was an audio player, make sure it's properly connected to the new pipeline
@@ -791,7 +808,7 @@ class App {
                     // Clear the pending preset file path
                     window.pendingPresetFilePath = null;
                     
-                    return;
+                    return isSuccessfulAudioGraphBuild(rebuildResult);
                 } catch (error) {
                     console.error('Error loading preset file:', error);
                 }
@@ -830,9 +847,9 @@ class App {
                                 }
                             }
 
-                            await this.audioManager.rebuildPipeline(true);
+                            const rebuildResult = await this.audioManager.rebuildPipeline(true);
                             this.restoreDoubleBlindTestFromUrl();
-                            return;
+                            return isSuccessfulAudioGraphBuild(rebuildResult);
                         } catch (error) {
                             console.error('Error loading startup preset:', error);
                             this.setStartupWarning(`Failed to load startup preset '${startupConfig.startupPreset}'.`);
@@ -874,9 +891,9 @@ class App {
                             }
                             
                             // Rebuild pipeline with force flag to ensure complete rebuild
-                            await this.audioManager.rebuildPipeline(true);
+                            const rebuildResult = await this.audioManager.rebuildPipeline(true);
                             
-                            return;
+                            return isSuccessfulAudioGraphBuild(rebuildResult);
                         } catch (error) {
                             console.error('Error loading startup preset:', error);
                         }
@@ -1057,6 +1074,7 @@ class App {
         
         // Important: Build the audio pipeline immediately after creating plugins
         // This ensures audio processing is connected properly
+        let rebuildResult;
         try {
             // Force disconnect all existing connections first
             if (this.audioManager.workletNode) {
@@ -1069,13 +1087,13 @@ class App {
             }
             
             // Rebuild pipeline to ensure audio processing is connected
-            await this.audioManager.rebuildPipeline(true);
+            rebuildResult = await this.audioManager.rebuildPipeline(true);
             
         } catch (error) {
             console.error('Error building audio pipeline:', error);
             // Try one more time after a short delay
             await new Promise(resolve => setTimeout(resolve, 100));
-            await this.audioManager.rebuildPipeline(true);
+            rebuildResult = await this.audioManager.rebuildPipeline(true);
             console.log('Audio pipeline rebuilt after error');
         }
 
@@ -1091,6 +1109,7 @@ class App {
             await window.pipelineManager.presetManager.loadPreset(window.pendingTrayPresetName);
             window.pendingTrayPresetName = null;
         }
+        return isSuccessfulAudioGraphBuild(rebuildResult);
     }
 
     /**

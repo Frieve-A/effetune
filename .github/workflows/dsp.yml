@@ -71,7 +71,7 @@ jobs:
           node tools/dsp-parity/run.mjs --native
       - name: Package Electron application
         if: inputs.package_smoke
-        run: npm run pack
+        run: npm run pack:win
       - name: Verify packaged DSP artifacts
         if: inputs.package_smoke
         run: npm run smoke:dsp-package

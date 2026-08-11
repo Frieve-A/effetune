@@ -83,6 +83,7 @@
     {"type":"CrossfeedFilter","class":"CrossfeedFilter","factory":"createCrossfeedFilter"},
     {"type":"MSMatrix","class":"MSMatrix","factory":"createMSMatrix"},
     {"type":"MultibandBalance","class":"MultibandBalance","factory":"createMultibandBalance"},
+    {"type":"PhaseSelectEQ","class":"PhaseSelectEQ","factory":"createPhaseSelectEQ"},
     {"type":"StereoBlend","class":"StereoBlend","factory":"createStereoBlend"}
   ]
 }

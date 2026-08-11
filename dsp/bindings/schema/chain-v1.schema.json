@@ -300,6 +300,9 @@
           "$ref": "#/$defs/MultibandBalance"
         },
         {
+          "$ref": "#/$defs/PhaseSelectEQ"
+        },
+        {
           "$ref": "#/$defs/StereoBlend"
         }
       ]
@@ -7237,6 +7240,214 @@
                 0,
                 0,
                 0
+              ]
+            }
+          }
+        }
+      }
+    },
+    "PhaseSelectEQ": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "PhaseSelectEQ"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "regionEnabled": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "boolean"
+              },
+              "default": [
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            "outerFrequencyLow": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 20,
+                "maximum": 40000,
+                "x-effetune-unit": "Hz"
+              },
+              "default": [
+                80,
+                80,
+                80,
+                80,
+                80
+              ]
+            },
+            "coreFrequencyLow": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 20,
+                "maximum": 40000,
+                "x-effetune-unit": "Hz"
+              },
+              "default": [
+                100,
+                100,
+                100,
+                100,
+                100
+              ]
+            },
+            "coreFrequencyHigh": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 20,
+                "maximum": 40000,
+                "x-effetune-unit": "Hz"
+              },
+              "default": [
+                10000,
+                10000,
+                10000,
+                10000,
+                10000
+              ]
+            },
+            "outerFrequencyHigh": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 20,
+                "maximum": 40000,
+                "x-effetune-unit": "Hz"
+              },
+              "default": [
+                12000,
+                12000,
+                12000,
+                12000,
+                12000
+              ]
+            },
+            "outerPhaseLow": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 180,
+                "x-effetune-unit": "degree"
+              },
+              "default": [
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            },
+            "corePhaseLow": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 180,
+                "x-effetune-unit": "degree"
+              },
+              "default": [
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            },
+            "corePhaseHigh": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 180,
+                "x-effetune-unit": "degree"
+              },
+              "default": [
+                30,
+                30,
+                30,
+                30,
+                30
+              ]
+            },
+            "outerPhaseHigh": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 180,
+                "x-effetune-unit": "degree"
+              },
+              "default": [
+                45,
+                45,
+                45,
+                45,
+                45
+              ]
+            },
+            "gain": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 200,
+                "x-effetune-unit": "%"
+              },
+              "default": [
+                100,
+                100,
+                100,
+                100,
+                100
               ]
             }
           }

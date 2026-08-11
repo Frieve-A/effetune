@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
+import { CatalogSequence } from '../../js/ui/audio-player/playback-sequence.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
 class FakeFile {
@@ -104,6 +105,17 @@ function createAudioPlayer(options = {}) {
       calls.push(['updatePlaylist', playlist.map(track => track?.name), index]);
       state.playlist = [...playlist];
       state.currentTrackIndex = index;
+    },
+    updateCatalogSequence(update) {
+      calls.push(['updateCatalogSequence', { ...update }]);
+      Object.assign(state, {
+        sequenceKind: 'catalog',
+        sequenceId: update.sequenceId,
+        playlistLength: update.itemCount,
+        currentTrackIndex: update.currentOrdinal,
+        currentTrack: update.currentTrack,
+        playbackGeneration: update.playbackGeneration
+      });
     },
     updateState(update, label) {
       calls.push(['updateState', { ...update }, label]);
@@ -265,6 +277,59 @@ function createDeferred() {
   });
   return { promise, resolve };
 }
+
+test('playback queue snapshots restore catalog and materialized sequence ownership', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ currentTrackIndex: 1 });
+    audioPlayer.stateManager.updateQueueWindow = () => {};
+    const manager = makeManager(audioPlayer);
+    const catalogTrack = { path: 'catalog.flac', name: 'Catalog track' };
+    const sequence = new CatalogSequence({
+      sequenceId: 'catalog-restore',
+      itemCount: 5,
+      readPage: async ({ startOrdinal, limit }) => Array.from({ length: limit }, (_value, index) => ({
+        trackUid: `track-${startOrdinal + index}`,
+        name: `Track ${startOrdinal + index}`
+      })),
+      resolveSource: async () => ({ path: 'catalog.flac' }),
+      shuffleSeed: 31,
+      shuffleEpoch: 2,
+      shuffleEnabled: true,
+      shuffleTransportOffset: 1
+    });
+    manager.installCatalogSequence(sequence, {
+      currentOrdinal: 1,
+      currentTrack: catalogTrack,
+      resolvedEntries: new Map([[1, catalogTrack]])
+    });
+    const catalogSnapshot = manager.capturePlaybackQueueSnapshot();
+    const descriptor = sequence.getDescriptor();
+
+    sequence.setShuffle(false);
+    manager.replaceMaterializedPlaylist([{ path: 'remote.flac', name: 'Remote track' }], 0);
+    assert.equal(manager.catalogSequence, null);
+    assert.equal(manager.restorePlaybackQueueSnapshot(catalogSnapshot), true);
+    assert.equal(manager.catalogSequence, sequence);
+    assert.equal(manager.sequence.kind, 'catalog');
+    assert.equal(manager.sequence.sequenceId, 'catalog-restore');
+    assert.equal(manager.sequence.itemCount, 5);
+    assert.deepEqual(sequence.getDescriptor(), descriptor);
+    assert.equal(audioPlayer.state.currentTrackIndex, 1);
+    assert.equal(audioPlayer.state.currentTrack, catalogTrack);
+    assert.equal(audioPlayer.state.shuffleMode, true);
+    assert.equal(manager.resolvedCatalogEntries.get(1), catalogTrack);
+
+    manager.deactivateCatalogSequence();
+    setPlaylist(manager, ['Original one', 'Original two']);
+    const materializedSnapshot = manager.capturePlaybackQueueSnapshot();
+    manager.replaceMaterializedPlaylist([{ path: 'replacement.flac', name: 'Replacement' }], 0);
+    assert.equal(manager.restorePlaybackQueueSnapshot(materializedSnapshot), true);
+    manager.syncPlaylistState(1);
+    assert.deepEqual(manager.playlist.map(track => track.name), ['Original one', 'Original two']);
+    assert.equal(manager.sequence.kind, 'materialized');
+    assert.equal(audioPlayer.state.currentTrackIndex, 1);
+  });
+});
 
 test('catalog queue publishes only the latest request for the current ordinal', async () => {
   await withPlaybackGlobals({}, async () => {
@@ -945,6 +1010,34 @@ test('playNext and onTrackEnded handle repeat, shuffle, errors, and terminal sta
     setPlaylist(manager);
     manager.onTrackEnded();
     await flushMicrotasks();
+  });
+});
+
+test('shuffle repeat boundaries do not immediately reselect the previous entry', async () => {
+  await withPlaybackGlobals({ randomValues: [0] }, async () => {
+    const audioPlayer = createAudioPlayer({
+      currentTrackIndex: 1,
+      repeatMode: 'ALL',
+      shuffleMode: true
+    });
+    const manager = makeManager(audioPlayer);
+    setPlaylist(manager, ['One', 'Two']);
+
+    assert.equal(await manager.playNext(false, { forceQueueMove: true }), true);
+    assert.deepEqual(
+      audioPlayer.calls.findLast(([name]) => name === 'transitionToNextTrack'),
+      ['transitionToNextTrack', 'One', 0]
+    );
+
+    Object.assign(audioPlayer.state, {
+      currentTrack: manager.playlist[0],
+      currentTrackIndex: 0
+    });
+    assert.equal(await manager.playPrevious(false, { forceQueueMove: true }), true);
+    assert.deepEqual(
+      audioPlayer.calls.findLast(([name]) => name === 'transitionToNextTrack'),
+      ['transitionToNextTrack', 'Two', 1]
+    );
   });
 });
 

@@ -1,0 +1,141 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 127,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    { "id": "neutral-delayed-dry", "stimulus": "imp", "frames": 12289 },
+    {
+      "id": "single-boost",
+      "stimulus": "noise",
+      "frames": 16385,
+      "params": { "regions": [
+        { "en": true, "ofl": 80, "fl": 100, "fh": 10000, "ofh": 12000,
+          "opl": 0, "pl": 0, "ph": 180, "oph": 180, "gn": 150 }
+      ] }
+    },
+    {
+      "id": "single-cut-44k1",
+      "stimulus": "sweep",
+      "sampleRate": 44100,
+      "blockSize": 113,
+      "frames": 14337,
+      "params": { "regions": [
+        { "en": true, "ofl": 120, "fl": 240, "fh": 6000, "ofh": 9000,
+          "opl": 0, "pl": 20, "ph": 120, "oph": 150, "gn": 50 }
+      ] }
+    },
+    {
+      "id": "phase-transition",
+      "stimulus": "noise",
+      "frames": 16387,
+      "blockSize": 65,
+      "params": { "regions": [
+        { "en": true, "ofl": 20, "fl": 20, "fh": 20000, "ofh": 22000,
+          "opl": 20, "pl": 70, "ph": 110, "oph": 160, "gn": 200 }
+      ] }
+    },
+    {
+      "id": "frequency-transition-96k",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "frames": 24579,
+      "blockSize": 97,
+      "params": { "regions": [
+        { "en": true, "ofl": 125, "fl": 500, "fh": 4000, "ofh": 16000,
+          "opl": 0, "pl": 0, "ph": 180, "oph": 180, "gn": 50 }
+      ] }
+    },
+    {
+      "id": "corner-transition",
+      "stimulus": "noise",
+      "frames": 16391,
+      "blockSize": 31,
+      "params": { "regions": [
+        { "en": true, "ofl": 250, "fl": 1000, "fh": 4000, "ofh": 8000,
+          "opl": 0, "pl": 90, "ph": 135, "oph": 180, "gn": 200 }
+      ] }
+    },
+    {
+      "id": "two-regions-non-overlap",
+      "stimulus": "sweep",
+      "frames": 18433,
+      "params": { "regions": [
+        { "en": true, "ofl": 80, "fl": 100, "fh": 800, "ofh": 1000,
+          "opl": 0, "pl": 0, "ph": 60, "oph": 75, "gn": 150 },
+        { "en": true, "ofl": 1200, "fl": 1500, "fh": 8000, "ofh": 10000,
+          "opl": 90, "pl": 105, "ph": 180, "oph": 180, "gn": 50 }
+      ] }
+    },
+    {
+      "id": "overlap-boost-cut-product",
+      "stimulus": "noise",
+      "frames": 16385,
+      "params": { "regions": [
+        { "en": true, "ofl": 80, "fl": 100, "fh": 12000, "ofh": 16000,
+          "opl": 0, "pl": 0, "ph": 180, "oph": 180, "gn": 150 },
+        { "en": true, "ofl": 80, "fl": 100, "fh": 12000, "ofh": 16000,
+          "opl": 0, "pl": 0, "ph": 180, "oph": 180, "gn": 50 }
+      ] }
+    },
+    {
+      "id": "mono-active-is-delayed-dry",
+      "stimulus": "noise",
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 8193,
+      "blockSize": 1,
+      "params": { "regions": [
+        { "en": true, "ofl": 20, "fl": 20, "fh": 40000, "ofh": 40000,
+          "opl": 0, "pl": 0, "ph": 180, "oph": 180, "gn": 200 }
+      ] }
+    },
+    {
+      "id": "all8-first-pair-only",
+      "stimulus": "noise",
+      "channels": 8,
+      "channelMode": "all8",
+      "frames": 12801,
+      "blockSize": 128,
+      "params": { "regions": [
+        { "en": true, "ofl": 20, "fl": 20, "fh": 20000, "ofh": 22000,
+          "opl": 0, "pl": 0, "ph": 180, "oph": 180, "gn": 50 }
+      ] }
+    },
+    {
+      "id": "maximum-rate-192k",
+      "stimulus": "noise",
+      "sampleRate": 192000,
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 40963,
+      "blockSize": 127,
+      "params": { "regions": [
+        { "en": true, "ofl": 1000, "fl": 2000, "fh": 24000, "ofh": 40000,
+          "opl": 30, "pl": 60, "ph": 120, "oph": 150, "gn": 150 }
+      ] }
+    },
+    {
+      "id": "region-events-latch-by-frame",
+      "stimulus": "noise",
+      "frames": 28673,
+      "blockSize": 127,
+      "params": { "regions": [
+        { "en": true, "ofl": 80, "fl": 100, "fh": 10000, "ofh": 12000,
+          "opl": 0, "pl": 0, "ph": 45, "oph": 60, "gn": 150 }
+      ] },
+      "events": [
+        { "frame": 9001, "params": { "regions": [
+          { "en": true, "ofl": 160, "fl": 240, "fh": 6000, "ofh": 9000,
+            "opl": 30, "pl": 60, "ph": 120, "oph": 150, "gn": 50 }
+        ] } },
+        { "frame": 17003, "params": { "regions": [
+          { "en": true, "ofl": 80, "fl": 100, "fh": 10000, "ofh": 12000,
+            "opl": 0, "pl": 0, "ph": 180, "oph": 180, "gn": 100 }
+        ] } }
+      ]
+    }
+  ]
+}

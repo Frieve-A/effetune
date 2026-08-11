@@ -28,6 +28,10 @@ function createPacket(frames) {
   return buffer;
 }
 
+test('Phase Select EQ uses the next unassigned telemetry frame type', () => {
+  assert.equal(TelemetryFrameType.TAP_PHASE_SELECT_MAP, 20);
+});
+
 test('packet parser exposes complete aligned frames with scoped payload views', () => {
   const packet = createPacket([
     {

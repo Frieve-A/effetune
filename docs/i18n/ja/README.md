@@ -88,6 +88,8 @@ CDプレーヤー、ネットワークプレーヤー、またはその他の外
 
 **設定 > 環境設定...** を開くと、言語、起動時の表示、起動時のエフェクトパイプライン動作を選べます。起動時の表示は **Effect Pipeline**（デフォルト）または **Music Library** から選択できます。Music Libraryを選んだ場合は、隣のリストで最初に表示する項目を **曲**、**アルバム**、**アーティスト**、**ジャンル**、**サブフォルダ**、**フォルダ**、**プレイリスト** から選べます。
 
+対応するデスクトップ版は、同じLAN上のOpenHomeアプリからも操作できます。初期状態では無効です。設定方法、ネットワーク公開、互換性、制約については[OpenHomeリモート操作](music-library.md#openhomeリモート操作デスクトップ版)を参照してください。
+
 ### Music Libraryで音楽を探す
 
 1. PCではヘッダーの **Music Library** ボタン、モバイルでは **ライブラリ** タブ、デスクトップアプリでは **表示 > Music Library** から開きます。
@@ -391,6 +393,7 @@ EffeTune 2.1.0では、カタログスキーマv3を採用し、CUE形式のア�
 | Spatial   | Crossfeed Filter | 自然なステレオイメージのためのヘッドホン用クロスフィードフィルター | [詳細](plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | 中央と左右の響きを調整するため、ステレオとMid/Sideを相互変換 | [詳細](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5バンド周波数依存のステレオバランス制御 | [詳細](plugins/spatial.md#multiband-balance) |
+| Spatial   | Phase Select EQ | L/R位相差で選んだ周波数成分をブーストまたはカット | [詳細](plugins/spatial.md#phase-select-eq) |
 | Spatial   | Stereo Blend | モノラルから拡張ステレオまでステレオ幅を制御 | [詳細](plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | スピーカーやヘッドホン確認用のテストトーン/ノイズジェネレーター | [詳細](plugins/others.md#oscillator) |
 | Control   | Section | 複数のエフェクトをグループ化し、セクション全体をバイパスまたは復帰 | [詳細](plugins/control.md) |

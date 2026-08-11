@@ -215,6 +215,19 @@
           }
         },
         {
+          "name": "Phase Select EQ",
+          "enabled": true,
+          "parameters": {
+            "regions": [
+              { "en": true, "ofl": 60, "fl": 80, "fh": 800, "ofh": 1000, "opl": 0, "pl": 0, "ph": 20, "oph": 30, "gn": 130 },
+              { "en": true, "ofl": 900, "fl": 1200, "fh": 5000, "ofh": 6500, "opl": 25, "pl": 35, "ph": 80, "oph": 95, "gn": 60 },
+              { "en": false, "ofl": 80, "fl": 100, "fh": 10000, "ofh": 12000, "opl": 0, "pl": 0, "ph": 30, "oph": 45, "gn": 100 },
+              { "en": false, "ofl": 80, "fl": 100, "fh": 10000, "ofh": 12000, "opl": 0, "pl": 0, "ph": 30, "oph": 45, "gn": 100 },
+              { "en": false, "ofl": 80, "fl": 100, "fh": 10000, "ofh": 12000, "opl": 0, "pl": 0, "ph": 30, "oph": 45, "gn": 100 }
+            ]
+          }
+        },
+        {
           "name": "MultiChannel Panel",
           "enabled": true,
           "parameters": {
@@ -342,6 +355,23 @@
           "frequency3": 2200,
           "frequency4": 8800,
           "balance": [-40, -20, 0, 20, 40]
+        }
+      },
+      {
+        "type": "PhaseSelectEQ",
+        "enabled": true,
+        "channel": "stereo",
+        "parameters": {
+          "regionEnabled": [true, true, false, false, false],
+          "outerFrequencyLow": [60, 900, 80, 80, 80],
+          "coreFrequencyLow": [80, 1200, 100, 100, 100],
+          "coreFrequencyHigh": [800, 5000, 10000, 10000, 10000],
+          "outerFrequencyHigh": [1000, 6500, 12000, 12000, 12000],
+          "outerPhaseLow": [0, 25, 0, 0, 0],
+          "corePhaseLow": [0, 35, 0, 0, 0],
+          "corePhaseHigh": [20, 80, 30, 30, 30],
+          "outerPhaseHigh": [30, 95, 45, 45, 45],
+          "gain": [130, 60, 100, 100, 100]
         }
       },
       {
@@ -755,8 +785,8 @@
       "flattened": "the node is a Section: it is folded into the surrounding chain and contributes no effect",
       "assetBackedRejected": "the semantic effect replaces the app's filter-design parameters with a precomputed impulse-response asset, so the app export carries no convertible parameters; both bindings reject the node up front with the listed error type and message rather than reporting the app's parameters as unsupported fields"
     },
-    "count": 89,
-    "outcomeCounts": {"imports":77,"assetBackedRejected":10,"flattened":2},
+    "count": 90,
+    "outcomeCounts": {"imports":78,"assetBackedRejected":10,"flattened":2},
     "entries": [
       {"displayName":"Level Meter","variant":"default","outcome":"imports","types":["LevelMeter"],"channel":"stereo","node":{"name":"Level Meter","enabled":true,"parameters":{}}},
       {"displayName":"Oscilloscope","variant":"default","outcome":"imports","types":["Oscilloscope"],"channel":"stereo","node":{"name":"Oscilloscope","enabled":true,"parameters":{"dt":0.01,"tm":"Auto","tl":0,"te":"Rising","ho":0.0001,"dl":0,"vo":0}}},
@@ -844,6 +874,7 @@
       {"displayName":"Crossfeed Filter","variant":"default","outcome":"imports","types":["CrossfeedFilter"],"channel":"stereo","node":{"name":"Crossfeed Filter","enabled":true,"parameters":{"lv":-6,"dl":0.3,"lf":700}}},
       {"displayName":"MS Matrix","variant":"default","outcome":"imports","types":["MSMatrix"],"channel":"stereo","node":{"name":"MS Matrix","enabled":true,"parameters":{"md":0,"mg":0,"sg":0,"sw":0}}},
       {"displayName":"Multiband Balance","variant":"default","outcome":"imports","types":["MultibandBalance"],"channel":"stereo","node":{"name":"Multiband Balance","enabled":true,"parameters":{"f1":100,"f2":500,"f3":2000,"f4":8000,"bands":[{"balance":0},{"balance":0},{"balance":0},{"balance":0},{"balance":0}]}}},
+      {"displayName":"Phase Select EQ","variant":"default","outcome":"imports","types":["PhaseSelectEQ"],"channel":"stereo","node":{"name":"Phase Select EQ","enabled":true,"parameters":{"regions":[{"en":true,"ofl":80,"fl":100,"fh":10000,"ofh":12000,"opl":0,"pl":0,"ph":30,"oph":45,"gn":100},{"en":false,"ofl":80,"fl":100,"fh":10000,"ofh":12000,"opl":0,"pl":0,"ph":30,"oph":45,"gn":100},{"en":false,"ofl":80,"fl":100,"fh":10000,"ofh":12000,"opl":0,"pl":0,"ph":30,"oph":45,"gn":100},{"en":false,"ofl":80,"fl":100,"fh":10000,"ofh":12000,"opl":0,"pl":0,"ph":30,"oph":45,"gn":100},{"en":false,"ofl":80,"fl":100,"fh":10000,"ofh":12000,"opl":0,"pl":0,"ph":30,"oph":45,"gn":100}]}}},
       {"displayName":"Stereo Blend","variant":"default","outcome":"imports","types":["StereoBlend"],"channel":"stereo","node":{"name":"Stereo Blend","enabled":true,"parameters":{"stereo":60}}},
       {"displayName":"Section","variant":"default","outcome":"flattened","types":[],"node":{"name":"Section","enabled":true,"parameters":{"cm":""}}},
       {"displayName":"Section","variant":"channelRight","outcome":"flattened","types":[],"node":{"name":"Section","enabled":true,"parameters":{"cm":"","ch":"R"},"channel":"R"}}

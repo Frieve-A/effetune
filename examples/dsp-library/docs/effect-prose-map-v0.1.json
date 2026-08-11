@@ -83,6 +83,7 @@
     "CrossfeedFilter": ["docs/plugins/spatial.md", "Crossfeed Filter"],
     "MSMatrix": ["docs/plugins/spatial.md", "MS Matrix"],
     "MultibandBalance": ["docs/plugins/spatial.md", "Multiband Balance"],
+    "PhaseSelectEQ": ["docs/plugins/spatial.md", "Phase Select EQ"],
     "StereoBlend": ["docs/plugins/spatial.md", "Stereo Blend"]
   }
 }

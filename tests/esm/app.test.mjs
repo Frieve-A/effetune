@@ -303,6 +303,7 @@ function createDependencies(calls, options = {}) {
     initPluginList() { calls.push(['ui.initPluginList']); },
     initDragAndDrop() { calls.push(['ui.initDragAndDrop']); },
     initAudio() { calls.push(['ui.initAudio']); },
+    setOpenHomeRemoteRuntimeReady() { calls.push(['ui.setOpenHomeRemoteRuntimeReady']); },
     updatePipelineUI(force) { calls.push(['ui.updatePipelineUI', force]); },
     updateURL() { calls.push(['ui.updateURL']); },
     updatePipelineToggleButton() { calls.push(['ui.updatePipelineToggleButton']); },
@@ -379,11 +380,16 @@ function createDependencies(calls, options = {}) {
         throw new Error('rebuild failed');
       }
       if (options.rebuildReject) throw new Error('rebuild failed');
+      return options.rebuildResult;
     },
     async waitForDspActivationBeforeOutput() {
       calls.push(['audio.waitForDspActivationBeforeOutput']);
     },
     fadeInOutput() { calls.push(['audio.fadeInOutput']); },
+    async startPowerPolicyController() {
+      calls.push(['audio.startPowerPolicyController']);
+      if (options.powerStartReject) throw new Error('power start failed');
+    },
     setCurrentPipeline(pipeline) {
       calls.push(['audio.setCurrentPipeline', pipeline]);
       this.currentPipeline = pipeline;
@@ -749,6 +755,31 @@ test('App initialize handles success, audio warnings, and initialization failure
     assert.ok(calls.findIndex(call => call[0] === 'presetManager.loadPresetList') <
       calls.findIndex(call => call[0] === 'ui.initPluginList'));
     assert.equal(calls.some(call => call[0] === 'ui.showLibraryView' && call[1]?.focusSearch === false), true);
+    assert.equal(calls.some(call => call[0] === 'ui.setOpenHomeRemoteRuntimeReady'), false);
+  });
+
+  await withAppModule({}, async ({ calls, mod }) => {
+    mod.INITIALIZATION_CONFIG.AUDIOWORKLET_TO_PIPELINE_WAIT = 0;
+    const app = new mod.App(createDependencies(calls, {
+      initAudioResult: 'Audio Error: Microphone access denied. Music file playback mode will still work.'
+    }));
+    await app.initialize();
+    const fadeIndex = calls.findIndex(call => call[0] === 'audio.fadeInOutput');
+    const powerIndex = calls.findIndex(call => call[0] === 'audio.startPowerPolicyController');
+    const remoteReadyIndex = calls.findIndex(call => call[0] === 'ui.setOpenHomeRemoteRuntimeReady');
+    assert.ok(fadeIndex >= 0 && fadeIndex < powerIndex);
+    assert.ok(powerIndex < remoteReadyIndex);
+  });
+
+  await withAppModule({}, async ({ calls, mod }) => {
+    mod.INITIALIZATION_CONFIG.AUDIOWORKLET_TO_PIPELINE_WAIT = 0;
+    const app = new mod.App(createDependencies(calls, {
+      rebuildResult: 'Audio Error: graph unavailable'
+    }));
+    await app.initialize();
+    assert.equal(app.initialized, true);
+    assert.equal(calls.some(call => call[0] === 'audio.startPowerPolicyController'), true);
+    assert.equal(calls.some(call => call[0] === 'ui.setOpenHomeRemoteRuntimeReady'), false);
   });
 
   await withAppModule({}, async ({ calls, mod }) => {
@@ -757,6 +788,26 @@ test('App initialize handles success, audio warnings, and initialization failure
     await app.initialize();
     assert.equal(app.initialized, true);
     assert.equal(calls.some(call => call[0] === 'ui.setError' && call[1] === 'load plugins failed'), true);
+    assert.equal(calls.some(call => call[0] === 'ui.setOpenHomeRemoteRuntimeReady'), false);
+  });
+
+  await withAppModule({}, async ({ calls, mod }) => {
+    mod.INITIALIZATION_CONFIG.AUDIOWORKLET_TO_PIPELINE_WAIT = 0;
+    const deps = createDependencies(calls, { powerStartReject: true });
+    const app = new mod.App(deps);
+    await app.initialize();
+    assert.equal(calls.some(call => call[0] === 'audio.startPowerPolicyController'), true);
+    assert.equal(calls.some(call => call[0] === 'ui.setOpenHomeRemoteRuntimeReady'), false);
+  });
+
+  await withAppModule({}, async ({ calls, mod, timers }) => {
+    mod.INITIALIZATION_CONFIG.AUDIOWORKLET_TO_PIPELINE_WAIT = 0;
+    const app = new mod.App(createDependencies(calls, { rebuildReject: true }));
+    const initializePromise = app.initialize();
+    await flushAndRunTimers(timers);
+    await initializePromise;
+    assert.equal(app.initialized, true);
+    assert.equal(calls.some(call => call[0] === 'ui.setOpenHomeRemoteRuntimeReady'), false);
   });
 
   await withAppModule({}, async ({ calls, mod }) => {
@@ -1404,8 +1455,15 @@ test('initializeAndBuildPipeline restores first-launch and URL state payloads', 
     window.electronIntegration = { isElectron: true };
     window.isFirstLaunch = true;
     const app = new mod.App(createDependencies(calls));
-    await app.initializeAndBuildPipeline();
+    assert.equal(await app.initializeAndBuildPipeline(), false);
     assert.equal(calls.some(call => call[0] === 'audio.setCurrentPipeline'), false);
+  });
+
+  await withAppModule({ forceSkip: true }, async ({ calls, mod, window }) => {
+    window.electronIntegration = { isElectron: true };
+    const app = new mod.App(createDependencies(calls));
+    assert.equal(await app.initializeAndBuildPipeline(), false);
+    assert.equal(window.__FORCE_SKIP_PIPELINE_STATE_LOAD, false);
   });
 
   await withAppModule({
@@ -1418,7 +1476,7 @@ test('initializeAndBuildPipeline restores first-launch and URL state payloads', 
         pipelineB: [{ name: 'RouteB', enabled: false, inputBus: 1, outputBus: 0, channel: 'R', parameters: { gain: 2 } }]
       }
     }));
-    await app.initializeAndBuildPipeline();
+    assert.equal(await app.initializeAndBuildPipeline(), true);
     assert.equal(calls.some(call => call[0] === 'audio.setCurrentPipeline' && call[1] === 'A'), true);
   });
 
@@ -1427,7 +1485,7 @@ test('initializeAndBuildPipeline restores first-launch and URL state payloads', 
     const app = new mod.App(createDependencies(calls, {
       urlState: [{ name: 'SingleRoute', enabled: true, inputBus: 0, outputBus: 1, channel: 'M', parameters: { gain: 3 } }]
     }));
-    await app.initializeAndBuildPipeline();
+    assert.equal(await app.initializeAndBuildPipeline(), true);
     assert.equal(calls.some(call => call[0] === 'pluginManager.createPlugin' && call[1] === 'SingleRoute'), true);
   });
 });
@@ -1467,7 +1525,7 @@ test('initializeAndBuildPipeline applies Web startup config after shared URL pri
       }),
       loadStartupConfig: async () => ({ pipelineStartup: 'preset', startupPreset: 'WebStartup' })
     });
-    await app.initializeAndBuildPipeline();
+    assert.equal(await app.initializeAndBuildPipeline(), true);
     assert.equal(calls.some(call => call[0] === 'presetManager.loadPreset' && call[1] === 'WebStartup'), true);
     assert.equal(calls.some(call => call[0] === 'ui.parsePipelineState'), true);
     assert.equal(calls.some(call => call[0] === 'dbt.restoreFromShare' && call[1] === 'share'), true);
@@ -1568,7 +1626,7 @@ test('initializeAndBuildPipeline handles command-line preset success and malform
       workletDisconnectReject: true
     });
     const app = new mod.App(deps);
-    await app.initializeAndBuildPipeline();
+    assert.equal(await app.initializeAndBuildPipeline(), true);
     const loadedPreset = calls.find(call => call[0] === 'ui.loadPreset')?.[1];
     assert.equal(window.ORIGINAL_PIPELINE_STATE_LOADED, false);
     assert.equal(loadedPreset.name, 'Object');
@@ -1625,7 +1683,7 @@ test('initializeAndBuildPipeline handles configured startup presets and pending 
       }),
       loadStartupConfig: async () => ({ pipelineStartup: 'preset', startupPreset: 'Startup' })
     });
-    await app.initializeAndBuildPipeline();
+    assert.equal(await app.initializeAndBuildPipeline(), true);
     assert.equal(window.ORIGINAL_PIPELINE_STATE_LOADED, false);
     assert.equal(calls.some(call => call[0] === 'presetManager.loadPreset' && call[1] === 'Startup'), true);
   });
@@ -1674,7 +1732,7 @@ test('initializeAndBuildPipeline handles configured startup presets and pending 
     });
     const pipelinePromise = app.initializeAndBuildPipeline();
     await flushAndRunTimers(timers);
-    await pipelinePromise;
+    assert.equal(await pipelinePromise, true);
     const rebuildAttempts = calls.filter(call => call[0] === 'audio.rebuildPipeline' && call[1] === true);
     assert.equal(calls.some(call => call[0] === 'console.error' && call[1] === 'Error loading pipeline state:'), true);
     assert.equal(rebuildAttempts.length >= 2, true);

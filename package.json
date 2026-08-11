@@ -10,12 +10,16 @@
     "build:vendor": "node scripts/verify-sqlite-wasm-vendor.mjs && node scripts/build-music-metadata-vendor.mjs",
     "gen:dsp": "node scripts/gen-dsp-params.mjs",
     "build:dsp": "node scripts/build-dsp-wasm.mjs",
+    "build:openhome-sidecar": "node scripts/build-openhome-sidecar.mjs",
+    "collect:openhome-linux-provenance": "node tools/openhome-linux-provenance.mjs",
+    "verify:openhome-linux-provenance": "node tools/openhome-linux-provenance.mjs --verify",
     "test:dsp": "node scripts/build-dsp-wasm.mjs --native-tests",
     "test:dsp:warnings": "node scripts/build-dsp-wasm.mjs --native-test-warning-check",
     "test:dsp:parity": "node tools/dsp-parity/run.mjs --wasm && node tools/dsp-parity/run.mjs --wasm --simd",
     "test:dsp:telemetry-soak": "node tools/dsp-parity/telemetry-soak.mjs",
     "test:power-browser": "node tools/run-power-browser-smoke.mjs",
     "smoke:dsp-package": "node tools/verify-dsp-package.mjs dist",
+    "smoke:openhome-package": "node tools/verify-openhome-package.mjs dist",
     "docs:dsp": "node examples/dsp-library/generate-docs.mjs",
     "docs:dsp:check": "node examples/dsp-library/verify-site-inputs.mjs && node examples/dsp-library/generate-docs.mjs --check",
     "assets:web": "npm run build:vendor && node scripts/generate-sw-precache.js",
@@ -33,15 +37,15 @@
     "test:library-scale:web-sqlite": "node tools/library-scale/run-web-sqlite.mjs --size 1000000",
     "verify": "npm run assets:web:check && npm run check:install-scripts && npm run lint && npm test",
     "clean": "rimraf dist node_modules/.cache",
-    "build": "npm run assets:web && npm run clean && electron-builder --win --publish never",
-    "build:portable": "npm run assets:web && npm run clean && electron-builder --win portable --publish never",
-    "build:installer": "npm run assets:web && npm run clean && electron-builder --win nsis --publish never",
-    "build:mac": "npm run assets:web && npm run clean && electron-builder --mac --x64 --arm64 --publish never",
-    "build:mac:arm64": "npm run assets:web && npm run clean && electron-builder --mac --arm64 --publish never",
-    "build:mac:x64": "npm run assets:web && npm run clean && electron-builder --mac --x64 --publish never",
-    "build:linux": "npm run assets:web && npm run clean && electron-builder --linux --publish never",
-    "pack": "npm run assets:web && npm run clean && electron-builder --dir",
-    "dist": "npm run assets:web && electron-builder"
+    "build": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && electron-builder --win --publish never",
+    "build:portable": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && electron-builder --win portable --publish never",
+    "build:installer": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && electron-builder --win nsis --publish never",
+    "build:mac:arm64": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --arch arm64 --no-publish-development && electron-builder --mac --arm64 --publish never",
+    "build:mac:x64": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --arch x64 --no-publish-development && electron-builder --mac --x64 --publish never",
+    "build:linux": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && electron-builder --linux --publish never",
+    "pack": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && electron-builder --dir",
+    "pack:win": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && electron-builder --dir --win --publish never && npm run smoke:openhome-package",
+    "dist": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && electron-builder"
   },
   "author": "Frieve",
   "license": "MIT",
@@ -163,6 +167,16 @@
       }
     ],
     "win": {
+      "extraResources": [
+        {
+          "from": "native/openhome-sidecar/build/win32-x64/effetune-openhome-sidecar.exe",
+          "to": "openhome/effetune-openhome-sidecar.exe"
+        },
+        {
+          "from": "native/openhome-sidecar/THIRD_PARTY_NOTICES.txt",
+          "to": "openhome/THIRD_PARTY_NOTICES.txt"
+        }
+      ],
       "target": [
         {
           "target": "nsis",
@@ -193,23 +207,48 @@
       "artifactName": "${productName}-${version}-Portable.${ext}"
     },
     "mac": {
-      "target": [
+      "extraResources": [
         {
-          "target": "dmg",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
+          "from": "native/openhome-sidecar/build/darwin-${arch}/effetune-openhome-sidecar",
+          "to": "openhome/effetune-openhome-sidecar"
+        },
+        {
+          "from": "native/openhome-sidecar/THIRD_PARTY_NOTICES.txt",
+          "to": "openhome/THIRD_PARTY_NOTICES.txt"
         }
       ],
+      "target": "dmg",
       "category": "public.app-category.music",
       "darkModeSupport": true,
-      "artifactName": "${productName}-${version}-${arch}.${ext}",
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "dmg": {},
     "linux": {
+      "extraResources": [
+        {
+          "from": "native/openhome-sidecar/build/linux-${arch}/effetune-openhome-sidecar",
+          "to": "openhome/effetune-openhome-sidecar"
+        },
+        {
+          "from": "native/openhome-sidecar/build/linux-${arch}",
+          "to": "openhome",
+          "filter": [
+            "libnl*-3.so*"
+          ]
+        },
+        {
+          "from": "native/openhome-sidecar/build/linux-${arch}/libnl-runtime-manifest.json",
+          "to": "openhome/libnl-runtime-manifest.json"
+        },
+        {
+          "from": "native/openhome-sidecar/THIRD_PARTY_NOTICES.txt",
+          "to": "openhome/THIRD_PARTY_NOTICES.txt"
+        },
+        {
+          "from": "native/openhome-sidecar/licenses/libnl-LGPL-2.1.txt",
+          "to": "openhome/libnl-LGPL-2.1.txt"
+        }
+      ],
       "target": "AppImage",
       "category": "Audio",
       "executableName": "effetune",
@@ -224,8 +263,7 @@
     },
     "asar": true,
     "asarUnpack": [],
-    "npmRebuild": false,
-    "forceCodeSigning": false
+    "npmRebuild": false
   },
   "dependencies": {
     "music-metadata": "^11.14.0"

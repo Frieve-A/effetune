@@ -92,6 +92,8 @@ To use EffeTune with CD players, network players, or other physical sources:
 
 Open **Settings > Config...** to choose **Language**, set **Startup view:**, and configure **Effect Pipeline at startup:**. **Startup view:** can be **Effect Pipeline (Default)** or **Music Library**. When you choose Music Library, use its list to select **Tracks**, **Albums**, **Artists**, **Genres**, **Subfolders**, **Folders**, or **Playlists** as the first library view.
 
+Supported desktop builds can also be controlled by OpenHome apps on the same local network. This is off by default; see [OpenHome Remote Control](docs/music-library.md#openhome-remote-control-desktop-app) for setup, network access, compatibility, and limitations.
+
 ### Browsing Your Music Library
 
 1. Open **Music Library** from the PC header, the mobile **Library** tab, or **View > Music Library** in the desktop app.
@@ -390,6 +392,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Spatial   | Crossfeed Filter | Headphone crossfeed filter for natural stereo imaging | [Details](docs/plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | Converts between stereo and Mid/Side for center/ambience adjustments | [Details](docs/plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5-band frequency-dependent stereo balance control | [Details](docs/plugins/spatial.md#multiband-balance) |
+| Spatial   | Phase Select EQ | Boosts or cuts frequency components selected by L/R phase difference | [Details](docs/plugins/spatial.md#phase-select-eq) |
 | Spatial   | Stereo Blend | Controls stereo width from mono to enhanced stereo | [Details](docs/plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | Test tone and noise generator for checking speakers/headphones | [Details](docs/plugins/others.md#oscillator) |
 | Control   | Section | Groups effects so a whole section can be bypassed or restored | [Details](docs/plugins/control.md) |

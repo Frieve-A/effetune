@@ -333,6 +333,26 @@ def _prepare_legacy_parameters_v1(
             count=5,
             members={"balance": "balance"},
         )
+    elif effect_type == "PhaseSelectEQ":
+        _expand_legacy_object_array_v1(
+            parameters,
+            effect_label="Phase Select EQ",
+            array_key="regions",
+            count=5,
+            members={
+                "en": "regionEnabled",
+                "ofl": "outerFrequencyLow",
+                "fl": "coreFrequencyLow",
+                "fh": "coreFrequencyHigh",
+                "ofh": "outerFrequencyHigh",
+                "opl": "outerPhaseLow",
+                "pl": "corePhaseLow",
+                "ph": "corePhaseHigh",
+                "oph": "outerPhaseHigh",
+                "gn": "gain",
+            },
+            item_label="region",
+        )
     elif effect_type == "MultiChannelPanel":
         _expand_legacy_short_key_arrays_v1(
             parameters,

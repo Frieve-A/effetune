@@ -198,6 +198,24 @@ const LEGACY_OBJECT_ARRAYS_V1 = Object.freeze({
     count: 5,
     members: Object.freeze({ balance: 'balance' })
   }),
+  PhaseSelectEQ: Object.freeze({
+    effectLabel: 'Phase Select EQ',
+    arrayKey: 'regions',
+    count: 5,
+    members: Object.freeze({
+      en: 'regionEnabled',
+      ofl: 'outerFrequencyLow',
+      fl: 'coreFrequencyLow',
+      fh: 'coreFrequencyHigh',
+      ofh: 'outerFrequencyHigh',
+      opl: 'outerPhaseLow',
+      pl: 'corePhaseLow',
+      ph: 'corePhaseHigh',
+      oph: 'outerPhaseHigh',
+      gn: 'gain'
+    }),
+    itemLabel: 'region'
+  }),
   MultibandSaturation: Object.freeze({
     effectLabel: 'Multiband Saturation',
     arrayKey: 'bands',

@@ -210,6 +210,27 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
   ]);
 });
 
+test('preload keeps OpenHome settings under the versioned host API', async () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+  const config = {
+    language: 'ja',
+    openHomeRemoteControl: false,
+    openHomeDeviceId: 'renderer-controlled-id',
+    openHomeFriendlyName: 'renderer-controlled-name'
+  };
+
+  await harness.exposed.electronAPI.saveConfig(config);
+
+  assert.deepEqual(harness.invocations.at(-1), ['save-config', { language: 'ja' }]);
+  assert.deepEqual(config, {
+    language: 'ja',
+    openHomeRemoteControl: false,
+    openHomeDeviceId: 'renderer-controlled-id',
+    openHomeFriendlyName: 'renderer-controlled-name'
+  });
+});
+
 test('preload derives dropped playlist paths in the isolated world before requesting a grant', async () => {
   const harness = createPreloadHarness();
   loadPreload(harness);
@@ -242,6 +263,57 @@ test('preload rejects oversized IR library writes before invoking the main proce
     error => error?.code === 'ERR_IR_LIBRARY_DATA_TOO_LARGE'
   );
   assert.equal(harness.invocations.length, invocationsBeforeOversizedWrites);
+});
+
+test('preload exposes only the versioned OpenHome control bridge', async () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+  const bridge = harness.exposed.electronAPI.openHomeV1;
+
+  assert.equal(bridge.apiVersion, 1);
+  await bridge.getStatus();
+  await bridge.setEnabled(true);
+  await bridge.setFriendlyName('EffeTune Living Room');
+  await bridge.rendererReady();
+  await bridge.rendererUnavailable();
+  await bridge.respond({ requestId: 'a1', ok: true, result: {} });
+  await bridge.resetComplete({ resetId: 'reset-1', ok: true });
+  await bridge.publishState({ transportState: 'Stopped' });
+  assert.deepEqual(harness.invocations.slice(-8), [
+    ['openhome-v1:get-status', {}],
+    ['openhome-v1:set-enabled', { enabled: true }],
+    ['openhome-v1:set-friendly-name', { friendlyName: 'EffeTune Living Room' }],
+    ['openhome-v1:renderer-ready', {}],
+    ['openhome-v1:renderer-unavailable', {}],
+    ['openhome-v1:response', { requestId: 'a1', ok: true, result: {} }],
+    ['openhome-v1:reset-ack', { resetId: 'reset-1', ok: true }],
+    ['openhome-v1:state', { transportState: 'Stopped' }]
+  ]);
+  assert.throws(() => bridge.setEnabled('yes'), TypeError);
+  assert.throws(() => bridge.setFriendlyName(false), TypeError);
+
+  const actions = [];
+  const remove = bridge.onAction(action => actions.push(action));
+  harness.listeners.get('openhome-v1:action')({}, { requestId: 'a2' });
+  assert.deepEqual(actions, [{ requestId: 'a2' }]);
+  remove();
+  assert.equal(harness.listeners.has('openhome-v1:action'), false);
+
+  const cancellations = [];
+  const removeCancel = bridge.onCancel(cancel => cancellations.push(cancel));
+  harness.listeners.get('openhome-v1:cancel')({}, { requestId: 'a2' });
+  assert.deepEqual(cancellations, [{ requestId: 'a2' }]);
+  removeCancel();
+  assert.equal(harness.listeners.has('openhome-v1:cancel'), false);
+
+  const resets = [];
+  const removeReset = bridge.onReset(reset => resets.push(reset));
+  harness.listeners.get('openhome-v1:reset')({}, { resetId: 'reset-2' });
+  assert.deepEqual(resets, [{ resetId: 'reset-2' }]);
+  removeReset();
+  assert.equal(harness.listeners.has('openhome-v1:reset'), false);
+  assert.equal(Object.hasOwn(bridge, 'invoke'), false);
+  assert.equal(Object.hasOwn(bridge, 'send'), false);
 });
 
 test('preload forwards only the safe oversized-index read code', async () => {

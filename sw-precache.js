@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.4.0-a2957c87f656d8a8";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.4.0-b3d85dcb22b82219";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./effetune-library.css",
   "./effetune-mobile.css",
@@ -159,6 +159,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/ui/audio-player/catalog-playback-bridge.js",
   "./js/ui/audio-player/media-session-anchor.js",
   "./js/ui/audio-player/media-session-manager.js",
+  "./js/ui/audio-player/openhome-playback-adapter.js",
   "./js/ui/audio-player/playback-manager.js",
   "./js/ui/audio-player/playback-region.js",
   "./js/ui/audio-player/playback-sequence.js",
@@ -365,6 +366,8 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./plugins/spatial/ms_matrix.js",
   "./plugins/spatial/multiband_balance.css",
   "./plugins/spatial/multiband_balance.js",
+  "./plugins/spatial/phase_select_eq.css",
+  "./plugins/spatial/phase_select_eq.js",
   "./plugins/spatial/stereo_blend.js",
   "./presets/4ch/matrix.effetune_preset",
   "./presets/4ch/rear_reverb.effetune_preset",

@@ -131,6 +131,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
   const t = window.uiManager?.t
     ? window.uiManager.t.bind(window.uiManager)
     : key => key;
+  const openHomeAPI = isElectron ? window.electronAPI?.openHomeV1 : null;
 
   // Fix for single preset case: auto-set startupPreset if pipelineStartup is 'preset' but startupPreset is empty
   if (config.pipelineStartup === 'preset' && (!config.startupPreset || config.startupPreset === '') && presetNames.length > 0) {
@@ -161,6 +162,20 @@ export async function showConfigDialog(isElectron, currentConfig) {
           <input type="checkbox" id="check-updates" ${config.checkForUpdatesOnStartup !== false ? 'checked' : ''}>
           <label for="check-updates" id="config-check-updates-label"></label>
         </div>
+      </div>
+      <div class="device-section" id="openhome-section">
+        <label class="section-label" id="openhome-title"></label>
+        <div class="openhome-name-row">
+          <label for="openhome-friendly-name" id="openhome-friendly-name-label"></label>
+          <input type="text" id="openhome-friendly-name" maxlength="128" aria-describedby="openhome-friendly-name-help">
+        </div>
+        <div class="openhome-help openhome-name-help" id="openhome-friendly-name-help"></div>
+        <div class="checkbox-container">
+          <input type="checkbox" id="openhome-enabled" disabled aria-describedby="openhome-risk">
+          <label for="openhome-enabled" id="openhome-enabled-label"></label>
+        </div>
+        <div class="openhome-status" id="openhome-status" role="status" aria-live="polite"></div>
+        <div class="openhome-help" id="openhome-risk"></div>
       </div>` : '';
 
   const powerSavingSection = `
@@ -333,6 +348,53 @@ export async function showConfigDialog(isElectron, currentConfig) {
     .power-setting-row[hidden] {
       display: none;
     }
+    .openhome-name-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 8px 0 0 26px;
+    }
+    .openhome-name-row label {
+      flex: 0 0 auto;
+      color: #ddd;
+      font-size: 13px;
+    }
+    .openhome-name-row input {
+      min-width: 0;
+      flex: 1 1 auto;
+      padding: 6px 8px;
+      border: 1px solid #555;
+      border-radius: 4px;
+      background: #262626;
+      color: #eee;
+    }
+    .openhome-name-row input:focus {
+      border-color: #888;
+      outline: none;
+    }
+    .openhome-name-row input:disabled {
+      opacity: 0.6;
+    }
+    .openhome-status {
+      margin: 8px 0 0 26px;
+      color: #bbb;
+      font-size: 12px;
+      font-weight: bold;
+      line-height: 1.4;
+    }
+    .openhome-status[data-state="published"] {
+      color: #9ee6a7;
+    }
+    .openhome-status[data-state="error"],
+    .openhome-status[data-state="unavailable"] {
+      color: #ffb2a8;
+    }
+    .openhome-help {
+      margin: 6px 0 0 26px;
+      color: #bbb;
+      font-size: 12px;
+      line-height: 1.45;
+    }
     .power-advanced-settings {
       margin: 12px 0 0 26px;
       padding-top: 10px;
@@ -443,8 +505,16 @@ export async function showConfigDialog(isElectron, currentConfig) {
       }
       .power-mode-help,
       .power-saving-warning,
-      .power-advanced-settings {
+      .power-advanced-settings,
+      .openhome-status,
+      .openhome-name-row,
+      .openhome-help {
         margin-left: 0;
+      }
+      .openhome-name-row {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 4px;
       }
       .power-setting-row {
         align-items: stretch;
@@ -561,6 +631,164 @@ export async function showConfigDialog(isElectron, currentConfig) {
     }
   }
 
+  let openHomeStatus = null;
+  let openHomeStatusLoaded = false;
+  let openHomeStatusReadFailed = false;
+  let openHomeOperationFailed = false;
+  let openHomeChangeInFlight = false;
+  let openHomeNameChangeInFlight = false;
+  let openHomeRequestedEnabled = false;
+  let removeOpenHomeStatusListener = null;
+
+  function publishOpenHomeEnabled(enabled) {
+    const publishedConfig = window.appConfig || config;
+    const publishedEnabled = publishedConfig.openHomeRemoteControl === true;
+    config.openHomeRemoteControl = enabled;
+    window.uiManager?.setOpenHomeRemoteControlEnabled?.(enabled);
+    if (publishedEnabled === enabled) return;
+    publishElectronConfigSnapshot({
+      ...publishedConfig,
+      openHomeRemoteControl: enabled
+    });
+  }
+
+  function publishOpenHomeFriendlyName(friendlyName) {
+    if (typeof friendlyName !== 'string' || !friendlyName) return;
+    config.openHomeFriendlyName = friendlyName;
+    publishElectronConfigSnapshot({
+      ...(window.appConfig || config),
+      openHomeFriendlyName: friendlyName
+    });
+  }
+
+  function acceptOpenHomeStatus(status) {
+    if (!status || typeof status !== 'object' || typeof status.enabled !== 'boolean') {
+      return false;
+    }
+    openHomeStatus = { ...status };
+    openHomeStatusLoaded = true;
+    openHomeStatusReadFailed = false;
+    publishOpenHomeEnabled(status.enabled);
+    if (typeof status.friendlyName === 'string' && status.friendlyName) {
+      config.openHomeFriendlyName = status.friendlyName;
+    }
+    return true;
+  }
+
+  function getOpenHomeStatusPresentation() {
+    if (!openHomeAPI) {
+      return { key: 'unavailable', state: 'unavailable' };
+    }
+    if (!openHomeStatusLoaded) {
+      return { key: 'loading', state: 'pending' };
+    }
+    if (openHomeOperationFailed) {
+      return { key: 'updateFailed', state: 'error' };
+    }
+    if (openHomeStatusReadFailed || openHomeStatus?.state === 'failed') {
+      return { key: 'error', state: 'error' };
+    }
+    if (openHomeStatus?.available === false || openHomeStatus?.state === 'unavailable') {
+      return { key: 'unavailable', state: 'unavailable' };
+    }
+    if (openHomeChangeInFlight) {
+      return {
+        key: openHomeRequestedEnabled ? 'enabling' : 'disabling',
+        state: 'pending'
+      };
+    }
+    if (openHomeStatus?.state === 'stopping') {
+      return { key: 'stopping', state: 'pending' };
+    }
+    if (!openHomeStatus?.enabled) {
+      return { key: 'stopped', state: 'stopped' };
+    }
+    if (!openHomeStatus.rendererReady) {
+      return { key: 'waiting', state: 'pending' };
+    }
+    if (openHomeStatus.state === 'ready') {
+      return { key: 'published', state: 'published' };
+    }
+    return { key: 'starting', state: 'pending' };
+  }
+
+  function renderOpenHomeStatus() {
+    const input = document.getElementById('openhome-enabled');
+    const nameInput = document.getElementById('openhome-friendly-name');
+    const statusElement = document.getElementById('openhome-status');
+    if (!input || !nameInput || !statusElement) return;
+    input.checked = openHomeChangeInFlight
+      ? openHomeRequestedEnabled
+      : Boolean(openHomeStatus?.enabled);
+    input.disabled = !openHomeAPI || openHomeChangeInFlight || !openHomeStatusLoaded ||
+      (openHomeStatus?.available === false && openHomeStatus?.enabled !== true);
+    if (!openHomeNameChangeInFlight && document.activeElement !== nameInput) {
+      nameInput.value = openHomeStatus?.friendlyName || config.openHomeFriendlyName || '';
+    }
+    nameInput.disabled = !openHomeAPI || openHomeNameChangeInFlight || !openHomeStatusLoaded;
+    const presentation = getOpenHomeStatusPresentation();
+    statusElement.textContent = t(`dialog.config.openHome.status.${presentation.key}`);
+    statusElement.setAttribute('data-state', presentation.state);
+  }
+
+  async function refreshOpenHomeStatus() {
+    if (!openHomeAPI || typeof openHomeAPI.getStatus !== 'function') {
+      openHomeStatusLoaded = true;
+      renderOpenHomeStatus();
+      return false;
+    }
+    try {
+      const status = await openHomeAPI.getStatus();
+      if (!acceptOpenHomeStatus(status)) throw new Error('Invalid OpenHome status response');
+      renderOpenHomeStatus();
+      return true;
+    } catch (error) {
+      openHomeStatusLoaded = true;
+      openHomeStatusReadFailed = true;
+      console.error('Failed to read OpenHome remote control status:', error);
+      renderOpenHomeStatus();
+      return false;
+    }
+  }
+
+  async function applyOpenHomeEnabled(enabled) {
+    if (openHomeChangeInFlight || typeof openHomeAPI?.setEnabled !== 'function') return;
+    openHomeChangeInFlight = true;
+    openHomeRequestedEnabled = enabled;
+    openHomeOperationFailed = false;
+    renderOpenHomeStatus();
+    try {
+      const status = await openHomeAPI.setEnabled(enabled);
+      if (!acceptOpenHomeStatus(status)) throw new Error('Invalid OpenHome status response');
+    } catch (error) {
+      console.error('Failed to update OpenHome remote control:', error);
+      await refreshOpenHomeStatus();
+      openHomeOperationFailed = true;
+    } finally {
+      openHomeChangeInFlight = false;
+      renderOpenHomeStatus();
+    }
+  }
+
+  async function applyOpenHomeFriendlyName(friendlyName) {
+    if (openHomeNameChangeInFlight || typeof openHomeAPI?.setFriendlyName !== 'function') return;
+    openHomeNameChangeInFlight = true;
+    openHomeOperationFailed = false;
+    renderOpenHomeStatus();
+    try {
+      const status = await openHomeAPI.setFriendlyName(friendlyName);
+      if (!acceptOpenHomeStatus(status)) throw new Error('Invalid OpenHome status response');
+      publishOpenHomeFriendlyName(status.friendlyName);
+    } catch (error) {
+      console.error('Failed to update the OpenHome player name:', error);
+      await refreshOpenHomeStatus();
+      openHomeOperationFailed = true;
+    } finally {
+      openHomeNameChangeInFlight = false;
+      renderOpenHomeStatus();
+    }
+  }
+
   function renderDialogTexts() {
     document.getElementById('config-title').textContent = t('dialog.config.title');
     const autoLaunchLabel = document.getElementById('config-auto-launch-label');
@@ -571,6 +799,20 @@ export async function showConfigDialog(isElectron, currentConfig) {
     if (trayLabel) trayLabel.textContent = t('dialog.config.minimizeToTray');
     const checkUpdatesLabel = document.getElementById('config-check-updates-label');
     if (checkUpdatesLabel) checkUpdatesLabel.textContent = t('dialog.config.checkForUpdatesOnStartup');
+    const openHomeTitle = document.getElementById('openhome-title');
+    if (openHomeTitle) openHomeTitle.textContent = t('dialog.config.openHome.title');
+    const openHomeEnabledLabel = document.getElementById('openhome-enabled-label');
+    if (openHomeEnabledLabel) openHomeEnabledLabel.textContent = t('dialog.config.openHome.enable');
+    const openHomeFriendlyNameLabel = document.getElementById('openhome-friendly-name-label');
+    if (openHomeFriendlyNameLabel) {
+      openHomeFriendlyNameLabel.textContent = t('dialog.config.openHome.friendlyName');
+    }
+    const openHomeFriendlyNameHelp = document.getElementById('openhome-friendly-name-help');
+    if (openHomeFriendlyNameHelp) {
+      openHomeFriendlyNameHelp.textContent = t('dialog.config.openHome.friendlyNameHelp');
+    }
+    const openHomeRisk = document.getElementById('openhome-risk');
+    if (openHomeRisk) openHomeRisk.textContent = t('dialog.config.openHome.risk');
     document.getElementById('config-language-label').textContent = t('dialog.config.language');
     document.getElementById('config-startup-view-label').textContent = t('dialog.config.startupView');
     document.getElementById('config-startup-view-effects-label').textContent = t('dialog.config.startupView.effects');
@@ -607,6 +849,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     renderPresetOptions();
     renderPowerSettingOptions();
     syncPowerSettingControls();
+    renderOpenHomeStatus();
   }
 
   function publishElectronConfig(nextConfig) {
@@ -759,6 +1002,14 @@ export async function showConfigDialog(isElectron, currentConfig) {
       await save({ checkForUpdatesOnStartup: e.target.checked });
     });
   }
+  const openHomeEnabled = document.getElementById('openhome-enabled');
+  openHomeEnabled?.addEventListener('change', async e => {
+    await applyOpenHomeEnabled(e.target.checked);
+  });
+  const openHomeFriendlyName = document.getElementById('openhome-friendly-name');
+  openHomeFriendlyName?.addEventListener('change', async e => {
+    await applyOpenHomeFriendlyName(e.target.value);
+  });
   [
     [document.getElementById('power-mode-continuous'), PowerPolicy.CONTINUOUS],
     [document.getElementById('power-mode-balanced'), PowerPolicy.BALANCED],
@@ -820,6 +1071,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
     });
   }
   function closeDialog() {
+    removeOpenHomeStatusListener?.();
+    removeOpenHomeStatusListener = null;
     document.body.removeChild(overlay);
     document.head.removeChild(style);
     document.removeEventListener('keydown', handleKeydown);
@@ -836,4 +1089,16 @@ export async function showConfigDialog(isElectron, currentConfig) {
 
   document.getElementById('close-btn').addEventListener('click', closeDialog);
   document.addEventListener('keydown', handleKeydown);
+
+  if (typeof openHomeAPI?.onStatus === 'function') {
+    removeOpenHomeStatusListener = openHomeAPI.onStatus(status => {
+      if (!acceptOpenHomeStatus(status)) {
+        console.warn('Ignored an invalid OpenHome remote control status update');
+        return;
+      }
+      if (!openHomeChangeInFlight) openHomeOperationFailed = false;
+      renderOpenHomeStatus();
+    });
+  }
+  await refreshOpenHomeStatus();
 }

@@ -6,6 +6,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { sourceDigestInputPaths } from '../../scripts/build-dsp-wasm.mjs';
+import { openHomeSidecarBuildContract } from '../../scripts/build-openhome-sidecar.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -43,14 +44,25 @@ const NAMED_EXTENSION_PATTERN = /\/[^/]*\.[A-Za-z0-9_+-]{1,10}$/;
 const WINDOWS_ROOT_PATTERN = /^[A-Za-z]:\//;
 const URL_SCHEME_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//;
 
-function gitTrackedFiles() {
-  const result = spawnSync('git', ['ls-files', '-z'], {
+function gitFiles(args) {
+  const result = spawnSync('git', ['ls-files', '-z', ...args], {
     cwd: repoRoot,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024
   });
   assert.equal(result.status, 0, `git ls-files failed: ${result.stderr}`);
   return new Set(result.stdout.split('\0').filter(Boolean));
+}
+
+function gitTrackedFiles() {
+  return gitFiles([]);
+}
+
+// Pre-commit verification runs before staging. Include non-ignored additions so
+// a new tracked source can satisfy another new reference while both remain
+// visible to review; ignored build products remain excluded.
+function gitReviewableFiles() {
+  return gitFiles(['--cached', '--others', '--exclude-standard']);
 }
 
 function scannedSources(tracked) {
@@ -106,7 +118,7 @@ export function resolveReference(relativeFile, rawValue) {
 }
 
 export function findUntrackedReferences({
-  files, readSource, fileExists, isTracked
+  files, readSource, fileExists, isTracked, isGeneratedOutput = () => false
 }) {
   const violations = [];
   for (const file of files) {
@@ -118,6 +130,7 @@ export function findUntrackedReferences({
       if (ABSENCE_ONLY_REFERENCES.has(resolved)) continue;
       if (!fileExists(resolved)) continue;
       if (isTracked(resolved)) continue;
+      if (isGeneratedOutput(file, resolved)) continue;
       violations.push(`${file} -> ${resolved}`);
     }
   }
@@ -133,9 +146,15 @@ function existingRepositoryFile(relativePath) {
   }
 }
 
-test('tracked scripts, tools, and tests reference no untracked repository file', () => {
+function isOpenHomeGeneratedPackageReference(file, candidate) {
+  return candidate === openHomeSidecarBuildContract.output &&
+    (file === 'package.json' || file === openHomeSidecarBuildContract.producer);
+}
+
+test('review-visible scripts, tools, and tests reference no hidden repository file', () => {
   const tracked = gitTrackedFiles();
-  const files = scannedSources(tracked);
+  const reviewable = gitReviewableFiles();
+  const files = scannedSources(reviewable);
   assert.ok(files.length > 100, `scan set unexpectedly small: ${files.length}`);
   assert.ok(files.includes('dsp/CMakeLists.txt'));
   assert.ok(files.includes('package.json'));
@@ -144,7 +163,8 @@ test('tracked scripts, tools, and tests reference no untracked repository file',
     files,
     readSource: file => fs.readFileSync(path.join(repoRoot, file), 'utf8'),
     fileExists: existingRepositoryFile,
-    isTracked: candidate => tracked.has(candidate)
+    isTracked: candidate => reviewable.has(candidate),
+    isGeneratedOutput: isOpenHomeGeneratedPackageReference
   });
   assert.deepEqual(
     violations,
@@ -160,6 +180,73 @@ test('tracked scripts, tools, and tests reference no untracked repository file',
       `${reference} is now tracked; drop it from ABSENCE_ONLY_REFERENCES`
     );
   }
+});
+
+test('the OpenHome package input is produced from review-visible sources before packaging', () => {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
+  const tracked = gitTrackedFiles();
+  const reviewable = gitReviewableFiles();
+  const contract = openHomeSidecarBuildContract;
+
+  assert.equal(tracked.has(contract.output), false, 'generated sidecar must not be tracked');
+  assert.equal(reviewable.has(contract.output), false, 'generated sidecar must remain ignored');
+  for (const input of [contract.producer, ...contract.inputs]) {
+    assert.equal(
+      reviewable.has(input),
+      true,
+      `OpenHome sidecar build input must be visible for review: ${input}`
+    );
+  }
+
+  assert.equal(
+    packageJson.scripts['build:openhome-sidecar'],
+    `node ${contract.producer}`,
+    'the package producer must invoke the canonical sidecar build script'
+  );
+  const resources = packageJson.build?.win?.extraResources ?? [];
+  assert.equal(
+    resources.filter(resource => resource.from === contract.output).length,
+    1,
+    'the Windows package must contain exactly one canonical sidecar output'
+  );
+  for (const resource of resources) {
+    if (resource.from === contract.output) continue;
+    assert.equal(
+      reviewable.has(resource.from),
+      true,
+      `non-generated package resource must be visible for review: ${resource.from}`
+    );
+  }
+
+  const windowsPackageScripts = ['build', 'build:portable', 'build:installer', 'pack:win'];
+  for (const scriptName of windowsPackageScripts) {
+    const command = packageJson.scripts[scriptName];
+    const producerIndex = command.indexOf('npm run build:openhome-sidecar');
+    const builderIndex = command.indexOf('electron-builder');
+    assert.ok(
+      producerIndex >= 0 && builderIndex > producerIndex,
+      `${scriptName} must build the sidecar before electron-builder`
+    );
+  }
+});
+
+test('the generated-output exemption is limited to its package and producer', () => {
+  const generated = openHomeSidecarBuildContract.output;
+  const sources = new Map([
+    ['package.json', `{"from":"${generated}"}`],
+    [openHomeSidecarBuildContract.producer, `const output = '${generated}';`],
+    ['tools/unrelated.mjs', `const hiddenInput = '${generated}';`]
+  ]);
+
+  const violations = findUntrackedReferences({
+    files: [...sources.keys()],
+    readSource: file => sources.get(file),
+    fileExists: candidate => candidate === generated,
+    isTracked: () => false,
+    isGeneratedOutput: isOpenHomeGeneratedPackageReference
+  });
+
+  assert.deepEqual(violations, [`tools/unrelated.mjs -> ${generated}`]);
 });
 
 test('the DSP wasm source digest reads only tracked repository files', () => {

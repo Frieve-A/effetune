@@ -22,8 +22,8 @@ _REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 class GoldenComparatorTests(unittest.TestCase):
     def test_frozen_inventory_uses_all_generated_indexes(self) -> None:
         cases = _RUNNER.discover_cases(_REPOSITORY_ROOT)
-        self.assertEqual(len(cases), 781)
-        self.assertEqual(len({case["publicType"] for case in cases}), 83)
+        self.assertEqual(len(cases), 793)
+        self.assertEqual(len({case["publicType"] for case in cases}), 84)
 
     def test_public_pattern_metadata_identifies_only_binding_invalid_case(
         self,
@@ -49,6 +49,20 @@ class GoldenComparatorTests(unittest.TestCase):
                 )
             ],
         )
+
+    def test_partial_legacy_object_arrays_fill_generated_defaults(self) -> None:
+        case = next(
+            case
+            for case in _RUNNER.discover_cases(_REPOSITORY_ROOT)
+            if case["publicType"] == "PhaseSelectEQ"
+            and case["metadata"]["id"] == "single-boost"
+        )
+
+        parameters = _RUNNER.semantic_parameters(case, case["metadata"]["params"])
+
+        self.assertEqual(parameters["regionEnabled"], [True, False, False, False, False])
+        self.assertEqual(parameters["gain"], [150, 100, 100, 100, 100])
+        self.assertEqual(parameters["outerFrequencyLow"], [80, 80, 80, 80, 80])
 
     def test_discovery_reads_only_generated_frozen_index_paths(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -399,6 +399,13 @@ is 1; `TAP_SCOPE_SNAPSHOT` (type 3), `TAP_STEREO_FIELD` (type 6), and
   voltage, B+ voltage, stage 1 grid-to-cathode voltage, stage 1 plate-to-cathode
   voltage, stage 1 plate current, stage 2 grid-to-cathode voltage, stage 2
   plate-to-cathode voltage, and stage 2 plate current, in that order.
+- **Type 20 — `TAP_PHASE_SELECT_MAP`.** Format version 1 is a 16-byte header
+  followed by `pointCount` 12-byte records, for an exact payload size of
+  `16 + 12 * pointCount` bytes. The header contains sample rate as float32,
+  `pointCount` as `u16` (maximum 512), flags as `u16`, FFT size as `u32`, and
+  frame maximum level in dB as float32. Each record contains float32 frequency
+  in Hz, signed L/R phase difference in degrees (-180 to +180), and level in dB
+  relative to the frame maximum.
 
 ### Latency and Pipeline Descriptors
 

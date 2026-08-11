@@ -1,0 +1,17 @@
+{
+  "type": "PhaseSelectEqPlugin",
+  "tolerance": { "abs": 0.00002, "policy": "per-sample" },
+  "parityReference": "production-native-promoted-v1",
+  "fields": [
+    { "name": "enabled", "key": "en", "objectArrayKey": "regions", "memberKey": "en", "kind": "bool", "count": 5, "default": [true, false, false, false, false] },
+    { "name": "outerFrequencyLow", "key": "ofl", "objectArrayKey": "regions", "memberKey": "ofl", "kind": "float", "count": 5, "min": 20, "max": 40000, "default": [80, 80, 80, 80, 80], "unit": "Hz" },
+    { "name": "coreFrequencyLow", "key": "fl", "objectArrayKey": "regions", "memberKey": "fl", "kind": "float", "count": 5, "min": 20, "max": 40000, "default": [100, 100, 100, 100, 100], "unit": "Hz" },
+    { "name": "coreFrequencyHigh", "key": "fh", "objectArrayKey": "regions", "memberKey": "fh", "kind": "float", "count": 5, "min": 20, "max": 40000, "default": [10000, 10000, 10000, 10000, 10000], "unit": "Hz" },
+    { "name": "outerFrequencyHigh", "key": "ofh", "objectArrayKey": "regions", "memberKey": "ofh", "kind": "float", "count": 5, "min": 20, "max": 40000, "default": [12000, 12000, 12000, 12000, 12000], "unit": "Hz" },
+    { "name": "outerPhaseLow", "key": "opl", "objectArrayKey": "regions", "memberKey": "opl", "kind": "float", "count": 5, "min": 0, "max": 180, "default": [0, 0, 0, 0, 0], "unit": "degree" },
+    { "name": "corePhaseLow", "key": "pl", "objectArrayKey": "regions", "memberKey": "pl", "kind": "float", "count": 5, "min": 0, "max": 180, "default": [0, 0, 0, 0, 0], "unit": "degree" },
+    { "name": "corePhaseHigh", "key": "ph", "objectArrayKey": "regions", "memberKey": "ph", "kind": "float", "count": 5, "min": 0, "max": 180, "default": [30, 30, 30, 30, 30], "unit": "degree" },
+    { "name": "outerPhaseHigh", "key": "oph", "objectArrayKey": "regions", "memberKey": "oph", "kind": "float", "count": 5, "min": 0, "max": 180, "default": [45, 45, 45, 45, 45], "unit": "degree" },
+    { "name": "gain", "key": "gn", "objectArrayKey": "regions", "memberKey": "gn", "kind": "float", "count": 5, "min": 0, "max": 200, "default": [100, 100, 100, 100, 100], "unit": "%" }
+  ]
+}

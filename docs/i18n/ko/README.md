@@ -88,6 +88,8 @@ CD 플레이어, 네트워크 플레이어 또는 기타 물리적 소스를 사
 
 **설정** 메뉴의 **구성...**을 열면 언어, 시작 시 표시, 시작 시 효과 파이프라인 동작을 선택할 수 있습니다. 시작 시 표시는 **Effect Pipeline (기본값)** 또는 **음악 라이브러리** 중에서 선택할 수 있습니다. **음악 라이브러리**를 선택한 경우 옆의 목록에서 처음 표시할 항목을 **트랙**, **앨범**, **아티스트**, **장르**, **하위 폴더**, **폴더**, **플레이리스트** 중에서 선택할 수 있습니다.
 
+지원되는 데스크톱 빌드는 같은 로컬 네트워크의 OpenHome 앱에서도 제어할 수 있습니다. 기본적으로 꺼져 있습니다. 설정 방법, 네트워크 공개, 호환성 및 제한 사항은 [OpenHome 원격 제어](music-library.md#openhome-원격-제어데스크톱-앱)를 참조하세요.
+
 ### 음악 라이브러리에서 음악 찾기
 
 1. PC에서는 헤더의 **음악 라이브러리** 버튼, 모바일에서는 **라이브러리** 탭, 데스크톱 앱에서는 **보기 > 음악 라이브러리**에서 엽니다.
@@ -386,6 +388,7 @@ EffeTune 2.1.0에서는 카탈로그 스키마 v3를 사용하는 음악 라이�
 | Spatial | Crossfeed Filter | 자연스러운 스테레오 이미지를 위한 헤드폰 크로스피드 필터 | [세부 정보](plugins/spatial.md#crossfeed-filter) |
 | Spatial | MS Matrix | 중앙과 주변감을 조정하기 위해 스테레오와 Mid/Side를 상호 변환 | [세부 정보](plugins/spatial.md#ms-matrix) |
 | Spatial | Multiband Balance | 5밴드 주파수 의존 스테레오 밸런스 제어 | [세부 정보](plugins/spatial.md#multiband-balance) |
+| Spatial | Phase Select EQ | L/R 위상차로 선택한 주파수 성분을 부스트 또는 컷 | [세부 정보](plugins/spatial.md#phase-select-eq) |
 | Spatial | Stereo Blend | 모노부터 확장 스테레오까지 스테레오 폭 제어 | [세부 정보](plugins/spatial.md#stereo-blend) |
 | Others | Oscillator | 스피커나 헤드폰 확인용 테스트 톤/노이즈 제너레이터 | [세부 정보](plugins/others.md#oscillator) |
 | Control | Section | 여러 이펙트를 그룹화해 섹션 전체를 바이패스하거나 복원 | [세부 정보](plugins/control.md) |

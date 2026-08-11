@@ -97,6 +97,7 @@
     "CrossfeedFilter": { "displayName": "Crossfeed Filter", "category": "spatial", "summary": "Feeds a filtered portion of each stereo channel into the opposite channel.", "sourceGenerating": false },
     "MSMatrix": { "displayName": "MS Matrix", "category": "spatial", "summary": "Encodes, decodes, or adjusts mid-side stereo components.", "sourceGenerating": false },
     "MultibandBalance": { "displayName": "Multiband Balance", "category": "spatial", "summary": "Adjusts left-right balance independently across frequency bands.", "sourceGenerating": false },
+    "PhaseSelectEQ": { "displayName": "Phase Select EQ", "category": "spatial", "summary": "Applies gain only where the stereo phase difference falls within configured frequency-and-phase regions.", "sourceGenerating": false },
     "StereoBlend": { "displayName": "Stereo Blend", "category": "spatial", "summary": "Blends stereo channels to adjust width and channel separation.", "sourceGenerating": false }
   }
 }

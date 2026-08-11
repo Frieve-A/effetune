@@ -34,6 +34,10 @@ const {
 const {
   registerLibraryServiceIpc
 } = require('./library-service-coordinator.cjs');
+const {
+  createOpenHomeControlHost,
+  registerOpenHomeIpc
+} = require('./openhome-control-host.cjs');
 const releaseVersionModulePromise = import(pathToFileURL(
   path.join(__dirname, '../js/release-version.mjs')
 ).href);
@@ -53,7 +57,7 @@ function isSupportedPlaybackAudioPath(filePath) {
 
 let tray = null;
 let isAppQuitting = false;
-let libraryCatalogShutdownReady = false;
+let appServicesShutdownReady = false;
 let libraryServiceCoordinator = null;
 let disposeLibraryServiceIpc = null;
 let libraryCatalogScanRuntime = null;
@@ -64,6 +68,10 @@ let disposeLibraryCatalogFailureListener = null;
 let libraryCatalogRecovery = null;
 let disposeLibraryCatalogRecoveryIpc = null;
 let libraryCatalogClosePromise = null;
+let openHomeControlHost = null;
+let disposeOpenHomeIpc = null;
+let disposePowerMonitorEvents = null;
+let appServicesClosePromise = null;
 
 async function closeLibraryCatalogServices() {
   const utilityHost = libraryCatalogUtilityHost;
@@ -165,6 +173,21 @@ async function closeLibraryCatalogRecovery() {
     if (libraryCatalogRecovery === recovery) libraryCatalogRecovery = null;
   })();
   return libraryCatalogClosePromise;
+}
+
+async function closeApplicationServices() {
+  if (appServicesClosePromise) return appServicesClosePromise;
+  disposePowerMonitorEvents?.();
+  disposePowerMonitorEvents = null;
+  disposeOpenHomeIpc?.();
+  disposeOpenHomeIpc = null;
+  const openHomeHost = openHomeControlHost;
+  openHomeControlHost = null;
+  appServicesClosePromise = Promise.all([
+    closeLibraryCatalogRecovery(),
+    openHomeHost?.dispose()
+  ]);
+  return appServicesClosePromise;
 }
 
 // When true, mainWindow.show() is deferred from its ready-to-show handler to
@@ -280,10 +303,22 @@ function stopWatchdog() {
   watchdogSystemSuspended = false;
 }
 
+function updateOpenHomeEnvironmentAvailability(available) {
+  const host = openHomeControlHost;
+  if (!host) return;
+  void host.setEnvironmentAvailable(available).catch(error => {
+    console.error(
+      'OpenHome power lifecycle diagnostic:',
+      String(error?.code || error?.name || 'environment-update-failed').slice(0, 128)
+    );
+  });
+}
+
 function handleSystemSuspendForWatchdog() {
   watchdogArmedBeforeSystemSuspend = watchdogArmedBeforeSystemSuspend || watchdogArmed;
   watchdogSystemSuspended = true;
   disarmRendererWatchdog('system-suspend');
+  updateOpenHomeEnvironmentAvailability(false);
 }
 
 function handleSystemResumeForWatchdog() {
@@ -291,14 +326,20 @@ function handleSystemResumeForWatchdog() {
   watchdogArmedBeforeSystemSuspend = false;
   watchdogSystemSuspended = false;
   if (shouldRearm) armRendererWatchdog('system-resume');
+  updateOpenHomeEnvironmentAvailability(true);
 }
 
 function registerWatchdogPowerEvents() {
+  if (disposePowerMonitorEvents) return;
   // Date.now() advances while the computer sleeps. Without suspending the
   // watchdog too, its first timer after wake can mistake normal sleep for a
   // frozen renderer and force a relaunch before current pipeline state is saved.
   powerMonitor.on('suspend', handleSystemSuspendForWatchdog);
   powerMonitor.on('resume', handleSystemResumeForWatchdog);
+  disposePowerMonitorEvents = () => {
+    powerMonitor.removeListener('suspend', handleSystemSuspendForWatchdog);
+    powerMonitor.removeListener('resume', handleSystemResumeForWatchdog);
+  };
 }
 
 // Renderer-ping IPC: registered here (not in ipc-handlers.js) so it can update
@@ -328,6 +369,11 @@ ipcMain.handle('renderer-watchdog-disarm', (_event, reason) => {
 if (process.platform === 'darwin') {
   app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
 }
+
+// OpenHome transport commands arrive over IPC and therefore cannot carry a
+// Chromium transient user activation. Allow the desktop audio player to honor
+// those explicit remote playback commands.
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 // Set up logging to file for debugging (disabled for release)
 function setupFileLogging() {
@@ -429,7 +475,11 @@ function createWindow() {
     if (isMainFrame && !isInPlace) {
       ipcHandlers.restoreNormalWindowShape?.();
       disarmRendererWatchdog(`navigation:${url}`);
+      void openHomeControlHost?.setRendererUnavailable();
     }
+  });
+  mainWindow.webContents.on('render-process-gone', () => {
+    void openHomeControlHost?.setRendererUnavailable();
   });
 
   // Enable file drag and drop for the window
@@ -944,6 +994,7 @@ function createWindow() {
   });
   
   mainWindow.on('closed', () => {
+    void openHomeControlHost?.setRendererUnavailable();
     constants.setMainWindow(null);
   });
 }
@@ -1394,7 +1445,8 @@ async function initializeApp() {
     libraryStartupView: 'tracks',
     pipelineStartup: 'last',
     startupPreset: '',
-    checkForUpdatesOnStartup: true
+    checkForUpdatesOnStartup: true,
+    openHomeRemoteControl: false
   };
   const cfg = { ...cfgDefaults, ...configModule.loadConfig() };
   configModule.saveConfig(cfg);
@@ -1425,6 +1477,19 @@ async function initializeApp() {
   disposeLibraryCatalogRecoveryIpc = registerLibraryCatalogRecoveryIpc({
     ipcMain,
     recovery: libraryCatalogRecovery,
+    getMainWindow: () => constants.getMainWindow()
+  });
+
+  openHomeControlHost = createOpenHomeControlHost({
+    app,
+    constants,
+    config: configModule,
+    getMainWindow: () => constants.getMainWindow(),
+    onDiagnostic: code => console.error('OpenHome diagnostic:', code)
+  });
+  disposeOpenHomeIpc = registerOpenHomeIpc({
+    ipcMain,
+    host: openHomeControlHost,
     getMainWindow: () => constants.getMainWindow()
   });
 
@@ -1605,7 +1670,7 @@ app.whenReady().then(async () => {
       'EffeTune could not start',
       'EffeTune could not finish starting. Restart the application and try again.'
     );
-    await closeLibraryCatalogRecovery().catch(() => {});
+    await closeApplicationServices().catch(() => {});
     app.quit();
     return;
   }
@@ -1627,14 +1692,14 @@ app.whenReady().then(async () => {
 app.on('before-quit', (event) => {
   isAppQuitting = true;
   stopWatchdog();
-  if (!libraryCatalogShutdownReady && libraryCatalogRecovery) {
+  if (!appServicesShutdownReady && (libraryCatalogRecovery || openHomeControlHost)) {
     event.preventDefault();
-    closeLibraryCatalogRecovery()
+    closeApplicationServices()
       .catch(error => {
-        console.error('Failed to close the music catalog cleanly:', error?.code || error?.name || 'unknown');
+        console.error('Failed to close application services cleanly:', error?.code || error?.name || 'unknown');
       })
       .finally(() => {
-        libraryCatalogShutdownReady = true;
+        appServicesShutdownReady = true;
         app.quit();
       });
   }

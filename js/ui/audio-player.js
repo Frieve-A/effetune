@@ -9,6 +9,7 @@ import { AudioContextManager } from './audio-player/audio-context-manager.js';
 import { StateManager } from './audio-player/state-manager.js';
 import { MediaSessionManager } from './audio-player/media-session-manager.js';
 import { createMediaSessionAnchor } from './audio-player/media-session-anchor.js';
+import { OpenHomePlaybackAdapter } from './audio-player/openhome-playback-adapter.js';
 import { WakeLockManager } from '../utils/wake-lock-manager.js';
 import { createRecentlyPlayedTracker } from '../library/playlists/recently-played-tracker.js';
 
@@ -43,6 +44,7 @@ export class AudioPlayer {
     this.ui = new AudioPlayerUI(this);
     this.contextManager = new AudioContextManager(this, audioManager);
     this.mediaSessionManager = new MediaSessionManager(this);
+    this.openHomePlaybackAdapter = null;
     // Mobile browsers only surface mediaSession metadata, headset keys, and
     // background playback for pages that play a media element. The player
     // renders through Web Audio only, so anchor the session with a silent
@@ -77,6 +79,13 @@ export class AudioPlayer {
 
   set audioContext(audioContext) {
     this._audioContext = audioContext ?? null;
+  }
+
+  activateOpenHomePlaybackAdapter() {
+    if (!this.openHomePlaybackAdapter) {
+      this.openHomePlaybackAdapter = new OpenHomePlaybackAdapter(this);
+    }
+    return this.openHomePlaybackAdapter;
   }
   
   /**
@@ -145,6 +154,24 @@ export class AudioPlayer {
       const controller = this.audioManager?.powerPolicyController;
       const result = controller?.enabled
         ? controller.beginUserGestureResume?.(
+            this.contextManager?.getPlaybackResumeKind?.() || 'player-only-play'
+          )
+        : this.audioManager?.contextManager?.resumeAudioContext?.();
+      return Promise.resolve(result ?? true).then(value => value !== false, () => false);
+    } catch (_) {
+      return Promise.resolve(false);
+    }
+  }
+
+  /**
+   * Resume playback for an explicit command received from a remote controller.
+   * Electron permits this path without a DOM user-activation event.
+   */
+  resumeAudioContextForRemotePlayback() {
+    try {
+      const controller = this.audioManager?.powerPolicyController;
+      const result = controller?.enabled
+        ? controller.ensureActive?.(
             this.contextManager?.getPlaybackResumeKind?.() || 'player-only-play'
           )
         : this.audioManager?.contextManager?.resumeAudioContext?.();
@@ -248,7 +275,14 @@ export class AudioPlayer {
   /**
    * NEW: Enhanced close method with proper cleanup
    */
-  close() {
+  close({ force = false } = {}) {
+    if (!force && window.uiManager?.shouldRetainAudioPlayerForOpenHome?.(this)) {
+      this.playbackManager.savePlayerState();
+      void this.stop().catch(() => {});
+      this.ui.removeUI();
+      return false;
+    }
+
     console.log('[AudioPlayer] Closing audio player');
     
     // Save player state
@@ -267,6 +301,7 @@ export class AudioPlayer {
     // Clear OS-level media controls and metadata
     this.mediaSessionManager?.dispose();
     this.mediaSessionAnchor?.dispose();
+    this.openHomePlaybackAdapter?.dispose();
 
     // Release screen wake lock, if held
     this.wakeLockManager?.dispose();
@@ -283,6 +318,7 @@ export class AudioPlayer {
     }
     
     console.log('[AudioPlayer] Audio player closed');
+    return true;
   }
   
   /**

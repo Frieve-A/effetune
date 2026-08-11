@@ -10,7 +10,7 @@ tree without distribution metadata reports `0+source`.
 <!-- BEGIN DSP-LIBRARY-PYTHON-SUMMARY -->
 EffeTune is a deterministic audio-effects library backed by the same
 host-neutral C++20 DSP core used by the EffeTune application. Version 0.4.0
-provides 83 semantic effect classes, ordered serial chains, stateful block
+provides 84 semantic effect classes, ordered serial chains, stateful block
 processing, semantic presets, bounded impulse-response bundles, and a small
 audio-file CLI.
 <!-- END DSP-LIBRARY-PYTHON-SUMMARY -->

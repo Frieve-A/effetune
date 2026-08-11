@@ -890,12 +890,27 @@
       "internalType": "MultibandBalancePlugin"
     },
     {
+      "type": "PhaseSelectEQ",
+      "internalType": "PhaseSelectEqPlugin",
+      "parameters": {
+        "enabled": {
+          "name": "regionEnabled"
+        }
+      },
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      }
+    },
+    {
       "type": "StereoBlend",
       "internalType": "StereoBlendPlugin"
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "439c969d1ef80e1aeab6c524f458481eecb2a6fe8bc3e46ea277920e9f21bb1a",
-    "privateLayoutSha256": "549215a20bcacd90050b30e85696b79ea816710a3c5cfe03f4493f6966528c06"
+    "publicCatalogSha256": "c2094f9f30f781430c61befcf255274278782983008a7d466827ce617c03b325",
+    "privateLayoutSha256": "bac00ff064e5d37cd15faf5722af36efc684b04cb17bfbf6b247c1a709a82284"
   }
 }

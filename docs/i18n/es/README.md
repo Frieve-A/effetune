@@ -85,6 +85,8 @@ Para usar EffeTune con reproductores de CD, reproductores de red u otras fuentes
 
 En el menú **Configuración**, abre **Configuración...** para elegir el idioma, la vista al inicio y el comportamiento del pipeline de efectos al iniciar. La vista al inicio puede ser **Effect Pipeline (predeterminado)** o **Biblioteca musical**. Si eliges **Biblioteca musical**, usa la lista de al lado para elegir qué sección aparecerá primero: **Pistas**, **Álbumes**, **Artistas**, **Géneros**, **Subcarpetas**, **Carpetas** o **Listas de reproducción**.
 
+Las versiones de escritorio compatibles también pueden controlarse desde aplicaciones OpenHome en la misma red local. Esta función está desactivada de forma predeterminada; consulta [Control remoto OpenHome](music-library.md#control-remoto-openhome-aplicación-de-escritorio) para conocer la configuración, el acceso de red, la compatibilidad y las limitaciones.
+
 ### Buscar música en la Biblioteca musical
 
 1. En PC, ábrela con el botón **Biblioteca musical** del encabezado; en móvil, con la pestaña **Biblioteca**; en la aplicación de escritorio, desde **Ver > Biblioteca musical**.
@@ -382,6 +384,7 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | Spatial   | Crossfeed Filter | Filtro de alimentación cruzada para auriculares para imagen estéreo natural | [Detalles](plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | Convierte entre estéreo y Mid/Side para ajustar centro y ambiente | [Detalles](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | Control de balance estéreo dependiente de frecuencia de 5 bandas | [Detalles](plugins/spatial.md#multiband-balance) |
+| Spatial   | Phase Select EQ | Realza o atenúa componentes de frecuencia según la diferencia de fase L/R | [Detalles](plugins/spatial.md#phase-select-eq) |
 | Spatial   | Stereo Blend | Controla la anchura estéreo desde polaridad lateral invertida, pasando por mono, hasta estéreo ampliado | [Detalles](plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | Generador de tonos de prueba y ruido para comprobar altavoces/auriculares | [Detalles](plugins/others.md#oscillator) |
 | Control   | Section | Agrupa efectos para poder omitir o restaurar una sección completa | [Detalles](plugins/control.md) |

@@ -299,11 +299,6 @@ To build the application, use the following npm commands:
   npm run build:installer
   ```
 
-- **Build macOS application**:
-  ```bash
-  npm run build:mac
-  ```
-
 - **Build macOS application (ARM64 only)**:
   ```bash
   npm run build:mac:arm64
@@ -331,6 +326,81 @@ The Electron build scripts and GitHub Pages workflow run `npm run assets:web` au
 The web app uses `manifest.json`, `sw.js`, and generated `sw-precache.js` for installable/offline app-shell support. Service Worker registration is web-only and is skipped in Electron.
 
 Before release, verify that the web app loads normally, can be installed where supported, and still opens after going offline once the app shell has been cached.
+
+### OpenHome Sidecar
+
+The native OpenHome sidecar requires Node.js, npm, CMake 3.21 or newer, and a
+64-bit native C++ toolchain. Platform prerequisites are:
+
+- Windows x64: Visual Studio 2022 C++ build tools, including the x64 compiler
+  and NMake.
+- macOS x64 or arm64: Xcode Command Line Tools, CMake, and Make. Build each
+  architecture on its matching GitHub Actions runner or host architecture.
+- Linux x64: GCC or Clang, CMake, Make, pkg-config, `libnl-3-dev`,
+  `libnl-genl-3-dev`, `dpkg-dev`, `readelf`, and `ldd`. Exact source bundle
+  generation also requires enabled `deb-src` entries for the same Ubuntu
+  repositories that supplied the installed binary packages.
+
+Use the canonical producer before packaging:
+
+```bash
+npm run build:openhome-sidecar -- --no-publish-development
+```
+
+For macOS, select exactly one architecture on both the producer and
+electron-builder command line. The maintained package entry points do this and
+start from a clean output directory:
+
+```bash
+npm run build:mac:x64
+npm run build:mac:arm64
+```
+
+The producer downloads revisions pinned in
+`native/openhome-sidecar/dependencies.lock.json`, verifies every archive's
+SHA-256 hash, and reuses the ignored `native/openhome-sidecar/cache/` directory.
+It runs CTest and a stdio handshake smoke, then writes one of:
+
+- `native/openhome-sidecar/build/win32-x64/effetune-openhome-sidecar.exe`
+- `native/openhome-sidecar/build/darwin-x64/effetune-openhome-sidecar`
+- `native/openhome-sidecar/build/darwin-arm64/effetune-openhome-sidecar`
+- `native/openhome-sidecar/build/linux-x64/effetune-openhome-sidecar`
+
+Linux builds dynamically link libnl. The producer copies the exact libnl and
+libnl-genl shared objects resolved by the build host's loader beside the
+sidecar, and the executable resolves them through `$ORIGIN`. The AppImage keeps
+those files beside the sidecar under `resources/openhome/` and includes the
+tracked libnl license text. On Linux, the canonical producer also writes
+`libnl-runtime-manifest.json` with each packaged binary's SHA-256, exact dpkg
+package/version/architecture, and exact source package/version before packaging
+can begin. `npm run smoke:openhome-package` verifies that manifest against the
+package contents and, on Linux, verifies packaged loader resolution.
+
+Tagged desktop release builds enable Ubuntu `deb-src` entries and run:
+
+```bash
+npm run collect:openhome-linux-provenance -- --with-source
+npm run verify:openhome-linux-provenance -- --require-source
+```
+
+This downloads the exact Debian source package set referenced by the installed
+libnl binaries, verifies the `.dsc` SHA-256 list and `dpkg-source` extraction,
+and fails the release if the upstream source or distribution patch/build
+archive is missing. The Linux release artifact contains both
+`EffeTune-<version>-Linux-AppImage.zip` and
+`EffeTune-<version>-OpenHome-Linux-Source.zip`; the latter contains the source
+files and the same provenance manifest shipped inside the AppImage.
+
+Use `npm run pack:win` for an unpacked Windows package and smoke check, or
+`npm run build:linux` for the Linux AppImage. The macOS commands above produce
+one DMG architecture per clean build.
+
+Desktop release packaging runs only in `Frieve-A/effetune` for an exact
+`v${package.version}` tag. A preflight job must succeed before any platform job
+runs. The Windows, macOS, and Linux jobs produce the same unsigned packages as
+the maintained platform build commands. Tags beginning with `dsp-v` belong to
+the separate DSP library release workflow and cannot start the desktop release
+workflow.
 
 ## Build Output
 
@@ -415,13 +485,10 @@ Root web assets such as `effetune-mobile.css`, `sw.js`, `sw-precache.js`, `manif
    - Ensure all dependencies are installed with `npm install`
    - Check for any peer dependency warnings
 
-2. **Build fails with code signing errors**:
-   - Set `forceCodeSigning` to `false` in the build configuration
-   - Or provide valid code signing certificates
-3. **Electron download fails**:
+2. **Electron download fails**:
    - Check your internet connection
 
-4. **Antivirus blocking the build**:
+3. **Antivirus blocking the build**:
    - Temporarily disable antivirus software
    - Add exceptions for the project directory
 

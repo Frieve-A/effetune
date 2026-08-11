@@ -1,0 +1,41 @@
+{
+  "formatVersion": 1,
+  "type": "PhaseSelectEqPlugin",
+  "id": "mono-active-is-delayed-dry",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 8193,
+  "blockSize": 1,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "regions": [
+      {
+        "en": true,
+        "ofl": 20,
+        "fl": 20,
+        "fh": 40000,
+        "ofh": 40000,
+        "opl": 0,
+        "pl": 0,
+        "ph": 180,
+        "oph": 180,
+        "gn": 200
+      }
+    ]
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:9ba7a535d1f8111862793e1273116148327ada15d856574c269bd2f53cce2bb3",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type PhaseSelectEqPlugin --promote-production-native",
+  "outputFloats": 8193,
+  "byteLength": 32772,
+  "binary": "case-009.f32"
+}

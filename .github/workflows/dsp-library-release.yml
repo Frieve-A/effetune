@@ -335,7 +335,7 @@ jobs:
           npm run test:dsp -- --native-build-type=Release
           node tools/dsp-parity/run.mjs --native
       - name: Package Electron application
-        run: npm run pack
+        run: npm run pack:win
       - name: Verify packaged DSP artifacts
         run: npm run smoke:dsp-package
       - name: Build CPython 3.12 stable-ABI wheel

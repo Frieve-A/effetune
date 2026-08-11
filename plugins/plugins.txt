@@ -103,5 +103,6 @@ saturation/tube_simulator: Tube Simulator | Saturation | TubeSimulatorPlugin | c
 spatial/crossfeed_filter: Crossfeed Filter | Spatial | CrossfeedFilterPlugin
 spatial/ms_matrix: MS Matrix | Spatial | MSMatrixPlugin
 spatial/multiband_balance: Multiband Balance | Spatial | MultibandBalancePlugin | css
+spatial/phase_select_eq: Phase Select EQ | Spatial | PhaseSelectEqPlugin | css
 spatial/stereo_blend: Stereo Blend | Spatial | StereoBlendPlugin
 control/section: Section | Control | SectionPlugin

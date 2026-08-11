@@ -8,6 +8,7 @@ lang: en
 
 ### Version 2.5.0 (TBD, 2026)
 - Added Bandwidth Extender for generating plausible high-frequency content in bandwidth-limited audio
+- Added Phase Select EQ for boosting or cutting stereo frequency components selected by L/R phase difference
 - Added Pipeline Analyzer for viewing the active pipeline's frequency, phase, group delay, and impulse responses across up to four outputs with optional speaker IRs
 - Added Pitch Shifter HQ for high-quality pitch shifting
 - Added a low-frequency phase correction mode to Room EQ

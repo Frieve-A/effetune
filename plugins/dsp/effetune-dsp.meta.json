@@ -1,6 +1,6 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:ef7c70a9529e82c8bce984aae5f0654e7c82b26f94392e9923cf10f3032cf8fa",
+  "sourceDigest": "sha256:3b0b3c14306100b9095e024d22d5956d806df82f5db888f2cc1ab5e0757d6fcc",
   "emsdkVersion": "6.0.2",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
@@ -931,6 +931,12 @@
       "assets": []
     },
     {
+      "name": "PhaseSelectEqPlugin",
+      "hash": 4158366201,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
       "name": "StereoBlendPlugin",
       "hash": 648556109,
       "byteCapacity": 0,
@@ -938,7 +944,7 @@
     }
   ],
   "sizes": {
-    "baseline": 901225,
-    "simd": 997570
+    "baseline": 911708,
+    "simd": 1008774
   }
 }

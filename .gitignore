@@ -15,6 +15,12 @@ _site/
 
 # Tests
 /tests/*
+!/tests/cjs/
+/tests/cjs/*
+!/tests/cjs/electron-openhome-control-host.test.cjs
+!/tests/cjs/electron-openhome-main-integration.test.cjs
+!/tests/cjs/electron-openhome-media-gateway.test.cjs
+!/tests/cjs/electron-openhome-sidecar-manager.test.cjs
 !/tests/esm/
 /tests/esm/*
 !/tests/esm/audio-session-type-controller.test.mjs
@@ -30,6 +36,7 @@ _site/
 !/tests/esm/dsp-gsm-full-rate-audioworklet-gate.test.mjs
 !/tests/esm/dsp-gsm-full-rate-simulator-port-v1.test.mjs
 !/tests/esm/dsp-mp3-codec-simulator-port-v1.test.mjs
+!/tests/esm/dsp-phase-select-eq-port.test.mjs
 !/tests/esm/dsp-pitch-shifter-hq-port-v1.test.mjs
 !/tests/esm/dsp-sw-radio-simulator-ssb-v1.test.mjs
 !/tests/esm/dsp-tube-simulator-listening-presets-v1.test.mjs
@@ -38,6 +45,10 @@ _site/
 !/tests/esm/dsp-tube-simulator-standard-v1-fixture.test.mjs
 !/tests/esm/dsp-tube-simulator-wasm-telemetry-v1.test.mjs
 !/tests/esm/media-session-anchor.test.mjs
+!/tests/esm/openhome-handshake-smoke.test.mjs
+!/tests/esm/openhome-playback-adapter.test.mjs
+!/tests/esm/openhome-windows-workflow-contract.test.mjs
+!/tests/esm/phase-select-eq-ui.test.mjs
 !/tests/esm/pipeline-analyzer-analysis-core.test.mjs
 !/tests/esm/pipeline-analyzer-controller.test.mjs
 !/tests/esm/pipeline-analyzer-host.test.mjs
@@ -67,6 +78,7 @@ _site/
 !/tests/helpers/cue-directory-stage-repository.mjs
 !/tests/helpers/fake-dom.mjs
 !/tests/helpers/global-test-utils.mjs
+!/tests/helpers/openhome-handshake-smoke-child.mjs
 !/tests/helpers/pipeline-analyzer-node-worker.mjs
 !/tests/fixtures/
 /tests/fixtures/*

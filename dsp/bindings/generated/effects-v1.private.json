@@ -7209,6 +7209,174 @@
       ],
       "assets": []
     },
+    "PhaseSelectEQ": {
+      "internalType": "PhaseSelectEqPlugin",
+      "layoutHash": 4158366201,
+      "floatCount": 50,
+      "packedParameters": [
+        {
+          "publicName": "regionEnabled",
+          "field": "enabled",
+          "keys": [
+            "en0",
+            "en1",
+            "en2",
+            "en3",
+            "en4"
+          ],
+          "offset": 0,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outerFrequencyLow",
+          "field": "outerFrequencyLow",
+          "keys": [
+            "ofl0",
+            "ofl1",
+            "ofl2",
+            "ofl3",
+            "ofl4"
+          ],
+          "offset": 5,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "coreFrequencyLow",
+          "field": "coreFrequencyLow",
+          "keys": [
+            "fl0",
+            "fl1",
+            "fl2",
+            "fl3",
+            "fl4"
+          ],
+          "offset": 10,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "coreFrequencyHigh",
+          "field": "coreFrequencyHigh",
+          "keys": [
+            "fh0",
+            "fh1",
+            "fh2",
+            "fh3",
+            "fh4"
+          ],
+          "offset": 15,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outerFrequencyHigh",
+          "field": "outerFrequencyHigh",
+          "keys": [
+            "ofh0",
+            "ofh1",
+            "ofh2",
+            "ofh3",
+            "ofh4"
+          ],
+          "offset": 20,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outerPhaseLow",
+          "field": "outerPhaseLow",
+          "keys": [
+            "opl0",
+            "opl1",
+            "opl2",
+            "opl3",
+            "opl4"
+          ],
+          "offset": 25,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "corePhaseLow",
+          "field": "corePhaseLow",
+          "keys": [
+            "pl0",
+            "pl1",
+            "pl2",
+            "pl3",
+            "pl4"
+          ],
+          "offset": 30,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "corePhaseHigh",
+          "field": "corePhaseHigh",
+          "keys": [
+            "ph0",
+            "ph1",
+            "ph2",
+            "ph3",
+            "ph4"
+          ],
+          "offset": 35,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outerPhaseHigh",
+          "field": "outerPhaseHigh",
+          "keys": [
+            "oph0",
+            "oph1",
+            "oph2",
+            "oph3",
+            "oph4"
+          ],
+          "offset": 40,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "gain",
+          "field": "gain",
+          "keys": [
+            "gn0",
+            "gn1",
+            "gn2",
+            "gn3",
+            "gn4"
+          ],
+          "offset": 45,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
     "StereoBlend": {
       "internalType": "StereoBlendPlugin",
       "layoutHash": 648556109,
@@ -7313,7 +7481,8 @@
     "dsp/plugins/spatial/crossfeed_filter/params.json": "dsp/plugins/spatial/crossfeed_filter/golden/index.json",
     "dsp/plugins/spatial/ms_matrix/params.json": "dsp/plugins/spatial/ms_matrix/golden/index.json",
     "dsp/plugins/spatial/multiband_balance/params.json": "dsp/plugins/spatial/multiband_balance/golden/index.json",
+    "dsp/plugins/spatial/phase_select_eq/params.json": "dsp/plugins/spatial/phase_select_eq/golden/index.json",
     "dsp/plugins/spatial/stereo_blend/params.json": "dsp/plugins/spatial/stereo_blend/golden/index.json"
   },
-  "contractDigest": "549215a20bcacd90050b30e85696b79ea816710a3c5cfe03f4493f6966528c06"
+  "contractDigest": "bac00ff064e5d37cd15faf5722af36efc684b04cb17bfbf6b247c1a709a82284"
 }

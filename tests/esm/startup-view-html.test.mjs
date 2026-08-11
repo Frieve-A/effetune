@@ -7,6 +7,16 @@ function getEffetuneHtml() {
   return fs.readFileSync(new URL('../../effetune.html', import.meta.url), 'utf8');
 }
 
+function getCspDirective(name) {
+  const html = getEffetuneHtml();
+  const cspMatch = html.match(/<meta\s+[^>]*http-equiv="Content-Security-Policy"[^>]*content="([^"]+)"/);
+  assert.ok(cspMatch, 'Missing Content-Security-Policy meta tag');
+  return cspMatch[1]
+    .split(';')
+    .map(part => part.trim())
+    .find(part => part.startsWith(`${name} `));
+}
+
 function getEarlyStartupViewScript() {
   const html = getEffetuneHtml();
   const markerIndex = html.indexOf('Apply the Web startup view preference');
@@ -73,15 +83,19 @@ test('effetune.html applies the Web library startup class before the app module 
 });
 
 test('effetune.html permits blob artwork duplication fetches in connect-src', () => {
-  const html = getEffetuneHtml();
-  const cspMatch = html.match(/<meta\s+[^>]*http-equiv="Content-Security-Policy"[^>]*content="([^"]+)"/);
-  assert.ok(cspMatch, 'Missing Content-Security-Policy meta tag');
-
-  const connectSrc = cspMatch[1]
-    .split(';')
-    .map(part => part.trim())
-    .find(part => part.startsWith('connect-src '));
-
+  const connectSrc = getCspDirective('connect-src');
   assert.ok(connectSrc, 'Missing connect-src directive');
   assert.equal(connectSrc.split(/\s+/).includes('blob:'), true);
+});
+
+test('effetune.html permits media only from its existing sources and the OpenHome loopback gateway', () => {
+  const mediaSrc = getCspDirective('media-src');
+  assert.ok(mediaSrc, 'Missing media-src directive');
+  assert.deepEqual(mediaSrc.split(/\s+/), [
+    'media-src',
+    "'self'",
+    'blob:',
+    'data:',
+    'http://127.0.0.1:*'
+  ]);
 });

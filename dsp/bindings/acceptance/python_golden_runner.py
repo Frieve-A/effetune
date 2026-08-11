@@ -240,18 +240,22 @@ def semantic_parameters(case: dict[str, Any], legacy: dict[str, Any]) -> dict[st
                         value
                         for value in legacy.values()
                         if isinstance(value, list)
-                        and len(value) == packed["count"]
+                        and 0 < len(value) <= packed["count"]
                         and all(isinstance(item, dict) for item in value)
+                        and any(array_key in item for item in value)
                     ),
                     None,
                 )
                 if object_array is not None:
                     default = definition["default"]
                     values = [
-                        reverse_transform(packed["transform"], item[array_key])
-                        if array_key in item
+                        reverse_transform(
+                            packed["transform"], object_array[index][array_key]
+                        )
+                        if index < len(object_array)
+                        and array_key in object_array[index]
                         else default[index] if isinstance(default, list) else default
-                        for index, item in enumerate(object_array)
+                        for index in range(packed["count"])
                     ]
         if values is None:
             default = definition["default"]

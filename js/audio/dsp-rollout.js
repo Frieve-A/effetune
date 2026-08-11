@@ -83,6 +83,7 @@ export const SHIPPED_ENABLED_TYPES = Object.freeze([
     'CrossfeedFilterPlugin',
     'MSMatrixPlugin',
     'MultibandBalancePlugin',
+    'PhaseSelectEqPlugin',
     'StereoBlendPlugin'
 ]);
 

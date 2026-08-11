@@ -13,7 +13,7 @@ npm install @effetune/dsp
 
 The package is ESM-only. These signatures follow the shipped `index.d.ts` and
 `worklet.d.ts`. The generated declarations remain authoritative for individual
-effect options; the 83 named class/factory pairs are
+effect options; the 84 named class/factory pairs are
 not repeated here.
 
 ## Chain creation and offline processing
@@ -110,7 +110,7 @@ createEffect<T extends EffectType>(
 ```
 
 `encodeEta1()` validates finite, equal-length planar channels and matrix paths.
-`EFFECT_CATALOG`, `EFFECT_CLASSES`, and all 83 root class/factory pairs cover the
+`EFFECT_CATALOG`, `EFFECT_CLASSES`, and all 84 root class/factory pairs cover the
 same semantic catalog as Python without private implementation data.
 
 ## AudioWorklet

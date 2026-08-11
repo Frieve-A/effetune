@@ -33,6 +33,18 @@ async function withMutedConsole(method, callback) {
 
 function createConfigHarness(options = {}) {
   const calls = [];
+  const openHomeCalls = [];
+  const openHomeRendererStates = [];
+  const openHomeStatusListeners = new Set();
+  let openHomeStatus = {
+    apiVersion: 1,
+    enabled: false,
+    rendererReady: true,
+    available: true,
+    state: 'stopped',
+    friendlyName: 'EffeTune (Test PC)',
+    ...(options.openHomeStatus || {})
+  };
   const document = createFakeDocument(options.documentOptions);
   const electronAPI = {
     async loadConfig() {
@@ -48,10 +60,44 @@ function createConfigHarness(options = {}) {
         throw options.saveConfigError;
       }
       return options.saveConfigResult ?? { success: true };
+    },
+    openHomeV1: {
+      async getStatus() {
+        openHomeCalls.push(['getStatus']);
+        if (options.openHomeGetStatusError) throw options.openHomeGetStatusError;
+        return { ...openHomeStatus };
+      },
+      async setEnabled(enabled) {
+        openHomeCalls.push(['setEnabled', enabled]);
+        if (options.openHomeSetEnabledError) throw options.openHomeSetEnabledError;
+        openHomeStatus = {
+          ...openHomeStatus,
+          enabled,
+          state: enabled ? 'ready' : 'stopped'
+        };
+        return { ...openHomeStatus };
+      },
+      async setFriendlyName(friendlyName) {
+        openHomeCalls.push(['setFriendlyName', friendlyName]);
+        if (options.openHomeSetFriendlyNameError) throw options.openHomeSetFriendlyNameError;
+        openHomeStatus = { ...openHomeStatus, friendlyName: friendlyName.trim() || 'EffeTune (Test PC)' };
+        return { ...openHomeStatus };
+      },
+      onStatus(listener) {
+        openHomeCalls.push(['onStatus']);
+        openHomeStatusListeners.add(listener);
+        return () => {
+          openHomeCalls.push(['removeStatusListener']);
+          openHomeStatusListeners.delete(listener);
+        };
+      }
     }
   };
   const uiManager = {
     t: key => `label:${key}`,
+    setOpenHomeRemoteControlEnabled(enabled) {
+      openHomeRendererStates.push(enabled);
+    },
     ...options.uiManager
   };
   const windowObject = {
@@ -74,7 +120,17 @@ function createConfigHarness(options = {}) {
     };
   }
 
-  return { calls, document, window: windowObject };
+  return {
+    calls,
+    document,
+    openHomeCalls,
+    openHomeRendererStates,
+    window: windowObject,
+    emitOpenHomeStatus(status) {
+      openHomeStatus = { ...openHomeStatus, ...status };
+      for (const listener of openHomeStatusListeners) listener({ ...openHomeStatus });
+    }
+  };
 }
 
 function createLocalStorage(initial = {}) {
@@ -1198,6 +1254,143 @@ test('showConfigDialog tolerates missing optional selects and language preferenc
   });
 });
 
+test('OpenHome settings follow authoritative status events and remove their listener on close', async () => {
+  const harness = createConfigHarness({
+    config: { openHomeRemoteControl: false }
+  });
+
+  await withGlobals({ window: harness.window, document: harness.document }, async () => {
+    await showConfigDialog(true, {});
+    const input = harness.document.getElementById('openhome-enabled');
+    const nameInput = harness.document.getElementById('openhome-friendly-name');
+    const status = harness.document.getElementById('openhome-status');
+    assert.equal(input.checked, false);
+    assert.equal(input.disabled, false);
+    assert.equal(status.textContent, 'label:dialog.config.openHome.status.stopped');
+    assert.equal(status.getAttribute('data-state'), 'stopped');
+    assert.equal(nameInput.value, 'EffeTune (Test PC)');
+    assert.equal(
+      harness.document.getElementById('openhome-friendly-name-label').textContent,
+      'label:dialog.config.openHome.friendlyName'
+    );
+    assert.equal(
+      harness.document.getElementById('openhome-risk').textContent,
+      'label:dialog.config.openHome.risk'
+    );
+    assert.equal(input.getAttribute('aria-describedby'), 'openhome-risk');
+    assert.equal(harness.document.getElementById('openhome-firewall'), null);
+
+    harness.emitOpenHomeStatus({ enabled: true, state: 'ready' });
+    assert.equal(input.checked, true);
+    assert.equal(status.textContent, 'label:dialog.config.openHome.status.published');
+    assert.equal(status.getAttribute('data-state'), 'published');
+    assert.equal(harness.window.appConfig.openHomeRemoteControl, true);
+
+    harness.emitOpenHomeStatus({ enabled: false, available: true, state: 'stopping' });
+    assert.equal(input.checked, false);
+    assert.equal(status.textContent, 'label:dialog.config.openHome.status.stopping');
+
+    harness.emitOpenHomeStatus({ enabled: false, available: false, state: 'unavailable' });
+    assert.equal(input.checked, false);
+    assert.equal(input.disabled, true);
+    assert.equal(status.textContent, 'label:dialog.config.openHome.status.unavailable');
+    assert.equal(status.getAttribute('data-state'), 'unavailable');
+
+    harness.document.getElementById('close-btn').dispatchEvent('click');
+  });
+
+  assert.deepEqual(harness.openHomeCalls, [
+    ['onStatus'],
+    ['getStatus'],
+    ['removeStatusListener']
+  ]);
+});
+
+test('OpenHome setting changes use setEnabled without generic config saves', async () => {
+  const harness = createConfigHarness({
+    config: { language: 'en', openHomeRemoteControl: false }
+  });
+
+  await withGlobals({ window: harness.window, document: harness.document }, async () => {
+    await showConfigDialog(true, {});
+    const input = harness.document.getElementById('openhome-enabled');
+    input.checked = true;
+    await input.dispatchEvent('change');
+
+    assert.equal(input.checked, true);
+    assert.equal(input.disabled, false);
+    assert.equal(
+      harness.document.getElementById('openhome-status').textContent,
+      'label:dialog.config.openHome.status.published'
+    );
+    assert.equal(harness.window.appConfig.openHomeRemoteControl, true);
+    assert.equal(harness.calls.some(call => call[0] === 'saveConfig'), false);
+  });
+
+  assert.deepEqual(harness.openHomeCalls.slice(0, 3), [
+    ['onStatus'],
+    ['getStatus'],
+    ['setEnabled', true]
+  ]);
+  assert.deepEqual(harness.openHomeRendererStates, [false, true]);
+});
+
+test('OpenHome player name changes use the host API and update the authoritative setting', async () => {
+  const harness = createConfigHarness({
+    config: { language: 'en', openHomeRemoteControl: false }
+  });
+
+  await withGlobals({ window: harness.window, document: harness.document }, async () => {
+    await showConfigDialog(true, {});
+    const input = harness.document.getElementById('openhome-friendly-name');
+    input.value = 'EffeTune Living Room';
+    await input.dispatchEvent('change');
+
+    assert.equal(input.value, 'EffeTune Living Room');
+    assert.equal(harness.window.appConfig.openHomeFriendlyName, 'EffeTune Living Room');
+    assert.equal(harness.calls.some(call => call[0] === 'saveConfig'), false);
+  });
+
+  assert.deepEqual(harness.openHomeCalls.slice(0, 3), [
+    ['onStatus'],
+    ['getStatus'],
+    ['setFriendlyName', 'EffeTune Living Room']
+  ]);
+});
+
+test('OpenHome setting failures roll back from getStatus and show a general-user error', async () => {
+  const harness = createConfigHarness({
+    config: { openHomeRemoteControl: false },
+    openHomeSetEnabledError: new Error('internal sidecar detail')
+  });
+
+  await withGlobals({ window: harness.window, document: harness.document }, async () => {
+    await showConfigDialog(true, {});
+    const input = harness.document.getElementById('openhome-enabled');
+    input.checked = true;
+    await withMutedConsole('error', () => input.dispatchEvent('change'));
+
+    assert.equal(input.checked, false);
+    assert.equal(input.disabled, false);
+    assert.equal(
+      harness.document.getElementById('openhome-status').textContent,
+      'label:dialog.config.openHome.status.updateFailed'
+    );
+    assert.equal(
+      harness.document.getElementById('openhome-status').textContent.includes('sidecar'),
+      false
+    );
+    assert.equal(harness.window.appConfig, null);
+  });
+
+  assert.deepEqual(harness.openHomeCalls.slice(0, 4), [
+    ['onStatus'],
+    ['getStatus'],
+    ['setEnabled', true],
+    ['getStatus']
+  ]);
+});
+
 test('all locales include the Web power-saving settings copy', () => {
   const locales = ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh'];
   const keys = [
@@ -1234,6 +1427,44 @@ test('all locales include the Web power-saving settings copy', () => {
   const japanese = readFileSync(new URL('../../js/locales/ja.json5', import.meta.url), 'utf8');
   assert.equal(japanese.includes(
     '最大省電力では、バックグラウンドの無音またはPlayerモードで音声入力が未使用の状態が設定時間続くと、EffeTuneは音声入力を停止します。Playerの再生は継続する場合があります。外部入力の信号が戻っても入力は自動再開されません。アプリを開いて「音声処理を再開」を選んでください。'
+  ), true);
+});
+
+test('all locales include the OpenHome remote control settings copy', () => {
+  const locales = ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh'];
+  const keys = [
+    'dialog.config.openHome.title',
+    'dialog.config.openHome.friendlyName',
+    'dialog.config.openHome.friendlyNameHelp',
+    'dialog.config.openHome.enable',
+    'dialog.config.openHome.risk',
+    'dialog.config.openHome.status.loading',
+    'dialog.config.openHome.status.enabling',
+    'dialog.config.openHome.status.disabling',
+    'dialog.config.openHome.status.starting',
+    'dialog.config.openHome.status.stopping',
+    'dialog.config.openHome.status.waiting',
+    'dialog.config.openHome.status.published',
+    'dialog.config.openHome.status.stopped',
+    'dialog.config.openHome.status.unavailable',
+    'dialog.config.openHome.status.error',
+    'dialog.config.openHome.status.updateFailed'
+  ];
+
+  for (const locale of locales) {
+    const source = readFileSync(new URL(`../../js/locales/${locale}.json5`, import.meta.url), 'utf8');
+    for (const key of keys) {
+      assert.equal(source.includes(`"${key}":`), true, `${locale} is missing ${key}`);
+    }
+  }
+
+  const english = readFileSync(new URL('../../js/locales/en.json5', import.meta.url), 'utf8');
+  assert.equal(english.includes(
+    'devices on your local network can view playback metadata, change the Player queue, and control playback. No sign-in is required.'
+  ), true);
+  const japanese = readFileSync(new URL('../../js/locales/ja.json5', import.meta.url), 'utf8');
+  assert.equal(japanese.includes(
+    '同じLAN上の端末はログインなしで再生中の曲情報を閲覧し、Playerのキューを変更して再生を操作できます。'
   ), true);
 });
 
