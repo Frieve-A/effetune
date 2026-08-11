@@ -1498,3 +1498,153 @@ export const DSP_PARAM_PACKERS = new Map([
   ["VolumePlugin", Object.freeze({ pack: packVolumePluginParams, hash: VolumePlugin_PARAMS_HASH, floatCount: 1 })],
   ["WowFlutterPlugin", Object.freeze({ pack: packWowFlutterPluginParams, hash: WowFlutterPlugin_PARAMS_HASH, floatCount: 7 })],
 ]);
+
+const freezeAutomationDescriptor = descriptor => {
+  if (descriptor.values) Object.freeze(descriptor.values);
+  return Object.freeze(descriptor);
+};
+
+export const DSP_AUTOMATION_CATALOG = Object.freeze({
+  AMRadioSimulatorPlugin: Object.freeze([]),
+  AutoLevelerPlugin: Object.freeze([]),
+  BandPassFilterPlugin: Object.freeze([]),
+  BitCrusherPlugin: Object.freeze([]),
+  BluetoothSBCSimulatorPlugin: Object.freeze([]),
+  BrickwallLimiterPlugin: Object.freeze([]),
+  CassetteArtifactsPlugin: Object.freeze([]),
+  ChannelDividerPlugin: Object.freeze([]),
+  CombFilterPlugin: Object.freeze([]),
+  CompressorPlugin: Object.freeze([]),
+  CrossfeedFilterPlugin: Object.freeze([]),
+  DattorroPlateReverbPlugin: Object.freeze([]),
+  DCOffsetPlugin: Object.freeze([]),
+  DelayPlugin: Object.freeze([]),
+  DigitalErrorEmulatorPlugin: Object.freeze([]),
+  DopplerDistortionPlugin: Object.freeze([]),
+  DSD64IMDSimulatorPlugin: Object.freeze([]),
+  DynamicSaturationPlugin: Object.freeze([]),
+  EarphoneCableSimPlugin: Object.freeze([]),
+  ExciterPlugin: Object.freeze([]),
+  ExpanderPlugin: Object.freeze([]),
+  FDNReverbPlugin: Object.freeze([]),
+  FifteenBandGEQPlugin: Object.freeze([]),
+  FifteenBandPEQPlugin: Object.freeze([]),
+  FIRCrossoverPlugin: Object.freeze([]),
+  FiveBandDynamicEQ: Object.freeze([]),
+  FiveBandFIRPEQPlugin: Object.freeze([]),
+  FiveBandPEQPlugin: Object.freeze([]),
+  FMRadioSimulatorPlugin: Object.freeze([]),
+  G726ADPCMSimulatorPlugin: Object.freeze([]),
+  GatePlugin: Object.freeze([]),
+  GroupDelayEqPlugin: Object.freeze([]),
+  GSMFullRateSimulatorPlugin: Object.freeze([]),
+  HardClippingPlugin: Object.freeze([]),
+  HarmonicDistortionPlugin: Object.freeze([]),
+  HiPassFilterPlugin: Object.freeze([]),
+  HornResonatorPlugin: Object.freeze([]),
+  HornResonatorPlusPlugin: Object.freeze([]),
+  HumGeneratorPlugin: Object.freeze([]),
+  IRReverbPlugin: Object.freeze([]),
+  LevelMeterPlugin: Object.freeze([]),
+  LoPassFilterPlugin: Object.freeze([]),
+  LoudnessEqualizerPlugin: Object.freeze([]),
+  MatrixPlugin: Object.freeze([]),
+  ModalResonatorPlugin: Object.freeze([]),
+  MP3CodecSimulatorPlugin: Object.freeze([]),
+  MSMatrixPlugin: Object.freeze([]),
+  MultibandBalancePlugin: Object.freeze([]),
+  MultibandCompressorPlugin: Object.freeze([]),
+  MultibandExpanderPlugin: Object.freeze([]),
+  MultibandSaturationPlugin: Object.freeze([]),
+  MultibandTransientPlugin: Object.freeze([]),
+  MultiChannelPanelPlugin: Object.freeze([]),
+  MutePlugin: Object.freeze([]),
+  NarrowRangePlugin: Object.freeze([]),
+  NoiseBlenderPlugin: Object.freeze([]),
+  OscillatorPlugin: Object.freeze([]),
+  OscilloscopePlugin: Object.freeze([]),
+  PitchShifterPlugin: Object.freeze([]),
+  PolarityInversionPlugin: Object.freeze([]),
+  PowerAmpSagPlugin: Object.freeze([]),
+  RoomEqPlugin: Object.freeze([]),
+  RSReverbPlugin: Object.freeze([]),
+  SaturationPlugin: Object.freeze([]),
+  SimpleJitterPlugin: Object.freeze([]),
+  SpectrogramPlugin: Object.freeze([]),
+  SpectrumAnalyzerPlugin: Object.freeze([]),
+  StereoBalancePlugin: Object.freeze([]),
+  StereoBlendPlugin: Object.freeze([]),
+  StereoMeterPlugin: Object.freeze([]),
+  SubSynthPlugin: Object.freeze([]),
+  SWRadioSimulatorPlugin: Object.freeze([]),
+  TapeArtifactsPlugin: Object.freeze([]),
+  TiltEQPlugin: Object.freeze([]),
+  TimeAlignmentPlugin: Object.freeze([]),
+  ToneControlPlugin: Object.freeze([]),
+  TransientShaperPlugin: Object.freeze([]),
+  TremoloPlugin: Object.freeze([]),
+  TubeSimulatorPlugin: Object.freeze([]),
+  VinylArtifactsPlugin: Object.freeze([]),
+  VinylSimulatorPlugin: Object.freeze([]),
+  VolumePlugin: Object.freeze([]),
+  WowFlutterPlugin: Object.freeze([]),
+});
+
+function clampAutomationNormalized(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(0, value));
+}
+
+export function normalizeDSPAutomationValue(descriptor, plainValue) {
+  switch (descriptor.normalization) {
+    case 'linear': {
+      const value = typeof plainValue === 'number' && Number.isFinite(plainValue)
+        ? plainValue : descriptor.default;
+      return clampAutomationNormalized(
+        (value - descriptor.minimum) / (descriptor.maximum - descriptor.minimum)
+      );
+    }
+    case 'log': {
+      const value = typeof plainValue === 'number' && Number.isFinite(plainValue)
+        ? plainValue : descriptor.default;
+      const clamped = Math.min(descriptor.maximum, Math.max(descriptor.minimum, value));
+      return Math.log(clamped / descriptor.minimum) /
+        Math.log(descriptor.maximum / descriptor.minimum);
+    }
+    case 'integer': {
+      const value = Number.isSafeInteger(plainValue) ? plainValue : descriptor.default;
+      return clampAutomationNormalized(
+        (value - descriptor.minimum) / descriptor.stepCount
+      );
+    }
+    case 'bool':
+      return plainValue === true || plainValue === 1 ? 1 :
+        plainValue === false || plainValue === 0 ? 0 : descriptor.default ? 1 : 0;
+    case 'enum': {
+      const index = descriptor.values.indexOf(plainValue);
+      const fallback = descriptor.values.indexOf(descriptor.default);
+      return (index < 0 ? fallback : index) / descriptor.stepCount;
+    }
+    default: throw new TypeError('Unknown DSP automation normalization');
+  }
+}
+
+export function denormalizeDSPAutomationValue(descriptor, normalizedValue) {
+  const normalized = Number.isFinite(normalizedValue)
+    ? clampAutomationNormalized(normalizedValue)
+    : normalizeDSPAutomationValue(descriptor, descriptor.default);
+  switch (descriptor.normalization) {
+    case 'linear':
+      return descriptor.minimum + normalized * (descriptor.maximum - descriptor.minimum);
+    case 'log':
+      return descriptor.minimum *
+        Math.pow(descriptor.maximum / descriptor.minimum, normalized);
+    case 'integer':
+      return descriptor.minimum + Math.round(normalized * descriptor.stepCount);
+    case 'bool':
+      return normalized >= 0.5;
+    case 'enum':
+      return descriptor.values[Math.round(normalized * descriptor.stepCount)];
+    default: throw new TypeError('Unknown DSP automation normalization');
+  }
+}
