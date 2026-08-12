@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "AutoPanPlugin",
+  "id": "all8-192000",
+  "stimulus": "sweep",
+  "sampleRate": 192000,
+  "channels": 8,
+  "frameCount": 8003,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "rt": 20,
+    "dp": 87.5,
+    "ct": -15.5,
+    "wd": 91.25,
+    "wf": "Triangle",
+    "ph": 359.5
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "a59a4a1b17d3786878ca3fee9f15d64fc38d272c45f12de6192e82497a07409f",
+  "outputFloats": 64024,
+  "byteLength": 256096,
+  "binary": "case-005.f32"
+}

@@ -2,6 +2,8 @@
   "_free",
   "_et_abi_version",
   "_et_build_flags",
+  "_et_graph_capabilities",
+  "_et_graph_version",
   "_et_kernel_count",
   "_et_kernel_name",
   "_et_kernel_params_hash",
@@ -41,5 +43,14 @@
   "_et_telemetry_capacity",
   "_et_telemetry_read",
   "_et_pipeline_configure",
-  "_et_pipeline_process"
+  "_et_pipeline_latency",
+  "_et_pipeline_process",
+  "_et_graph_configure",
+  "_et_graph_reset",
+  "_et_graph_set_instance_params",
+  "_et_graph_latency",
+  "_et_graph_process",
+  "_et_graph_snapshot_size",
+  "_et_graph_snapshot_copy",
+  "_et_graph_read_diagnostic"
 ]

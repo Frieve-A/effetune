@@ -25,6 +25,7 @@ class PluginBase {
         this.powerGainUpperBoundDb = null;
         this.id = null; // Will be set by createPlugin
         this.errorState = null; // Holds error state
+        this._jsFallbackCapacityNoticeActive = false;
         this.inputBus = null; // Input bus (null = default Main bus, index 0)
         this.outputBus = null; // Output bus (null = default Main bus, index 0)
         this.channel = null; // Channel processing: null ('All'), 'Left', 'Right'
@@ -343,7 +344,29 @@ class PluginBase {
 
     // Default message handler (can be overridden by subclasses)
     onMessage(message) {
-        // Default implementation does nothing
+        if (message?.type !== 'dspExecutionState' || message.validated !== true) return;
+        const capacityBypassed = message.state === 'bypassed' &&
+            message.reason === 'jsFallbackCapacityExceeded';
+        if (!capacityBypassed) {
+            this._jsFallbackCapacityNoticeActive = false;
+            return;
+        }
+        if (this._jsFallbackCapacityNoticeActive) return;
+        this._jsFallbackCapacityNoticeActive = true;
+
+        const normalizedName = typeof this.name === 'string'
+            ? Array.from(this.name, character => {
+                const code = character.charCodeAt(0);
+                return code < 32 || code === 127 ? ' ' : character;
+            }).join('').replace(/\s+/g, ' ').trim().slice(0, 80)
+            : '';
+        const effectName = normalizedName || 'Effect';
+        window.uiManager?.showTransientMessage?.(
+            'status.jsFallbackCapacityExceeded',
+            true,
+            { effectName },
+            5000
+        );
     }
 
     onWasmAssetState(slot, state, operationRevision) {
@@ -1189,10 +1212,10 @@ class PluginBase {
             // Allow typing slightly outside bounds temporarily before clamping on blur/enter
             const val = parseFloat(e.target.value);
             if (!Number.isFinite(val)) return;
-            setter(val); // Update internal value immediately
-            lastAppliedValue = val;
             // Update slider thumb, clamping it within bounds
             slider.value = Math.max(min, Math.min(max, val));
+            setter(val); // Update internal value immediately
+            lastAppliedValue = val;
         });
 
         // Clamp value on blur or Enter key press for the number input
@@ -1280,16 +1303,16 @@ class PluginBase {
 
         slider.addEventListener('input', (e) => {
             const linearValue = logSliderToLinear(parseFloat(e.target.value));
-            setter(linearValue);
             valueInput.value = linearValue.toFixed(step < 0.1 ? 2 : (step < 1 ? 1 : 0));
+            setter(linearValue);
         });
 
         valueInput.addEventListener('input', (e) => {
             const val = parseFloat(e.target.value) || min;
             const clampedVal = Math.max(min, Math.min(max, val));
-            setter(clampedVal);
             e.target.value = clampedVal.toFixed(step < 0.1 ? 2 : (step < 1 ? 1 : 0));
             slider.value = linearToLogSlider(clampedVal);
+            setter(clampedVal);
         });
 
         // Clamp value on blur or Enter key press for the number input
@@ -1297,13 +1320,13 @@ class PluginBase {
             const val = parseFloat(e.target.value) || min;
             const clampedVal = Math.max(min, Math.min(max, val));
             if (clampedVal !== val) {
-                setter(clampedVal);
                 e.target.value = clampedVal.toFixed(step < 0.1 ? 2 : (step < 1 ? 1 : 0));
                 slider.value = linearToLogSlider(clampedVal);
+                setter(clampedVal);
             } else if (isNaN(val)) {
-                setter(min);
                 e.target.value = min.toFixed(step < 0.1 ? 2 : (step < 1 ? 1 : 0));
                 slider.value = linearToLogSlider(min);
+                setter(min);
             }
         };
         valueInput.addEventListener('blur', clampAndUpdate);

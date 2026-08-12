@@ -368,9 +368,15 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Lo-Fi     | Tape Artifacts | Records music onto a modeled reel-to-reel tape and plays it back | [Details](docs/plugins/lofi.md#tape-artifacts) |
 | Lo-Fi     | Vinyl Artifacts | Adds vinyl-style pops, crackle, hiss, rumble, and stereo noise bleed | [Details](docs/plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi     | Vinyl Simulator | Cuts the input into a modeled groove and plays it back with a physical stylus model | [Details](docs/plugins/lofi.md#vinyl-simulator) |
+| Modulation | Auto Filter | Sweeps a resonant filter with an LFO or the music's amplitude envelope | [Details](docs/plugins/modulation.md#auto-filter) |
+| Modulation | Auto Pan | Moves stereo-pair level smoothly across the listening field | [Details](docs/plugins/modulation.md#auto-pan) |
+| Modulation | Chorus | Adds moving delayed voices for chorus, ensemble, flanging, or vibrato | [Details](docs/plugins/modulation.md#chorus) |
 | Modulation | Doppler Distortion | Simulates natural, dynamic changes in sound caused by subtle speaker cone movements | [Details](docs/plugins/modulation.md#doppler-distortion) |
+| Modulation | Frequency Shifter | Translates frequencies, applies ring modulation, or creates a barber-pole shift | [Details](docs/plugins/modulation.md#frequency-shifter) |
+| Modulation | Phaser | Creates moving peaks and notches with classic or barber-pole sweeps | [Details](docs/plugins/modulation.md#phaser) |
 | Modulation | Pitch Shifter | Raises or lowers music pitch without changing tempo | [Details](docs/plugins/modulation.md#pitch-shifter) |
 | Modulation | Pitch Shifter HQ | Raises or lowers pitch with fewer phase artifacts for careful listening | [Details](docs/plugins/modulation.md#pitch-shifter-hq) |
+| Modulation | Rotary Speaker | Combines independent horn and drum motion for a rotary-speaker effect | [Details](docs/plugins/modulation.md#rotary-speaker) |
 | Modulation | Tremolo | Volume-based modulation effect | [Details](docs/plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | Adds subtle tape or record-style pitch wavering for vintage character | [Details](docs/plugins/modulation.md#wow-flutter) |
 | Resonator | Horn Resonator | Horn resonance simulation with customizable dimensions | [Details](docs/plugins/resonator.md#horn-resonator) |

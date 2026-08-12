@@ -1,0 +1,61 @@
+{
+  "formatVersion": 1,
+  "type": "PhaserPlugin",
+  "id": "discrete-transitions",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 9001,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "md": "Classic",
+    "rt": 0.5,
+    "cf": 1000,
+    "rg": 3,
+    "st": 6,
+    "fb": 20,
+    "sp": 90,
+    "dr": "Up",
+    "mx": 50
+  },
+  "events": [
+    {
+      "frame": 257,
+      "params": {
+        "st": 12
+      }
+    },
+    {
+      "frame": 2501,
+      "params": {
+        "md": "Barber-pole",
+        "dr": "Up"
+      }
+    },
+    {
+      "frame": 5003,
+      "params": {
+        "dr": "Down"
+      }
+    },
+    {
+      "frame": 7501,
+      "params": {
+        "md": "Classic",
+        "st": 4
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "dd62b1916ffb692313669102c864f20001d21de83257c0285d5f0f14b58bcc68",
+  "outputFloats": 18002,
+  "byteLength": 72008,
+  "binary": "case-008.f32"
+}

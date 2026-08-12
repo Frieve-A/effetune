@@ -26,7 +26,7 @@ extern "C" {
 std::uint32_t et_abi_version(void) { return EFFETUNE_DSP_ABI_VERSION; }
 
 std::uint32_t et_build_flags(void) {
-  std::uint32_t flags = 0;
+  std::uint32_t flags = ET_BUILD_GRAPH;
 #if defined(ET_SIMD)
   flags |= ET_BUILD_SIMD;
 #endif
@@ -35,6 +35,10 @@ std::uint32_t et_build_flags(void) {
 #endif
   return flags;
 }
+
+std::uint32_t et_graph_capabilities(void) { return ET_GRAPH_CAPABILITY_V1; }
+
+std::uint32_t et_graph_version(void) { return effetune::GraphPlan::kDescriptorVersion; }
 
 std::uint32_t et_kernel_count(void) { return effetune::registry::count(); }
 
@@ -401,6 +405,58 @@ et_status et_pipeline_process(et_engine engine, std::uint32_t channel_count,
   return target == nullptr
              ? ET_ERR_ARGS
              : target->processPipeline(channel_count, frame_count, time_seconds, master_bypass);
+}
+
+et_status et_graph_configure(et_engine engine, const std::uint8_t *descriptor,
+                             std::uint32_t descriptor_bytes) {
+  effetune::Engine *target = findEngine(engine);
+  return target == nullptr ? ET_ERR_ARGS : target->configureGraph(descriptor, descriptor_bytes);
+}
+
+et_status et_graph_reset(et_engine engine) {
+  effetune::Engine *target = findEngine(engine);
+  return target == nullptr ? ET_ERR_ARGS : target->resetGraph();
+}
+
+et_status et_graph_set_instance_params(et_engine engine, et_instance instance, const float *packed,
+                                       std::uint32_t float_count, std::uint32_t params_hash,
+                                       std::uint32_t changed_index) {
+  effetune::Engine *target = findEngine(engine);
+  return target == nullptr ? ET_ERR_ARGS
+                           : target->setGraphInstanceParams(instance, packed, float_count,
+                                                            params_hash, changed_index);
+}
+
+std::uint32_t et_graph_latency(et_engine engine) {
+  const effetune::Engine *target = findEngine(engine);
+  return target == nullptr ? 0u : target->graphLatency();
+}
+
+et_status et_graph_process(et_engine engine, std::uint32_t channel_count, std::uint32_t frame_count,
+                           double time_seconds) {
+  effetune::Engine *target = findEngine(engine);
+  return target == nullptr ? ET_ERR_ARGS
+                           : target->processGraph(channel_count, frame_count, time_seconds);
+}
+
+std::uint32_t et_graph_snapshot_size(et_engine engine) {
+  const effetune::Engine *target = findEngine(engine);
+  return target == nullptr ? 0u : target->graphSnapshotSize();
+}
+
+et_status et_graph_snapshot_copy(et_engine engine, std::uint8_t *output,
+                                 std::uint32_t output_bytes) {
+  const effetune::Engine *target = findEngine(engine);
+  return target == nullptr ? ET_ERR_ARGS : target->copyGraphSnapshot(output, output_bytes);
+}
+
+et_status et_graph_read_diagnostic(et_engine engine, et_graph_diagnostic *out_diagnostic) {
+  const effetune::Engine *target = findEngine(engine);
+  if (target == nullptr || out_diagnostic == nullptr) {
+    return ET_ERR_ARGS;
+  }
+  *out_diagnostic = target->graphDiagnostic();
+  return ET_OK;
 }
 
 } // extern "C"

@@ -11,7 +11,7 @@ from typing import Any
 
 import numpy as np
 
-from .errors import AssetError, EffectError, ValidationError
+from .errors import AssetError, EffectError, ValidationError, set_validation_detail
 
 UINT32_MAX = (1 << 32) - 1
 MAX_BLOCK_SIZE = 16_384
@@ -47,12 +47,14 @@ def _catalog() -> tuple[dict[str, Any], dict[str, type]]:
 
 def effect_metadata(effect_type: str) -> dict[str, Any]:
     if not isinstance(effect_type, str):
-        raise EffectError("effect type must be a string")
+        raise set_validation_detail(EffectError("effect type must be a string"), "type")
     metadata, _ = _catalog()
     try:
         return metadata[effect_type]
     except KeyError as error:
-        raise EffectError(f"unsupported effect type: {effect_type}") from error
+        raise set_validation_detail(
+            EffectError(f"unsupported effect type: {effect_type}"), "type"
+        ) from error
 
 
 def validate_seed(seed: Any) -> int:
@@ -200,26 +202,36 @@ def validate_parameters(effect_type: str, parameters: Mapping[str, Any] | None) 
     definitions = {entry["name"]: entry for entry in metadata["parameters"]}
     unknown = sorted(set(source) - set(definitions))
     if unknown:
-        raise ValidationError(
-            f"{effect_type}.parameters contains unknown fields: {', '.join(unknown)}"
+        raise set_validation_detail(
+            ValidationError(
+                f"{effect_type}.parameters contains unknown fields: {', '.join(unknown)}"
+            ),
+            "parameter",
+            unknown[0],
         )
     result: dict[str, Any] = {}
     for name, definition in definitions.items():
         value = source[name] if name in source else copy.deepcopy(definition["default"])
         count = int(definition.get("count", 1))
-        if count == 1:
-            result[name] = _validate_scalar(definition, value, f"{effect_type}.{name}")
-            continue
-        if (
-            isinstance(value, (str, bytes, bytearray))
-            or not isinstance(value, Sequence)
-            or len(value) != count
-        ):
-            raise ValidationError(f"{effect_type}.{name} must contain exactly {count} values")
-        result[name] = tuple(
-            _validate_scalar(definition, item, f"{effect_type}.{name}[{index}]")
-            for index, item in enumerate(value)
-        )
+        try:
+            if count == 1:
+                result[name] = _validate_scalar(definition, value, f"{effect_type}.{name}")
+                continue
+            if (
+                isinstance(value, (str, bytes, bytearray))
+                or not isinstance(value, Sequence)
+                or len(value) != count
+            ):
+                raise ValidationError(
+                    f"{effect_type}.{name} must contain exactly {count} values"
+                )
+            result[name] = tuple(
+                _validate_scalar(definition, item, f"{effect_type}.{name}[{index}]")
+                for index, item in enumerate(value)
+            )
+        except ValidationError as error:
+            set_validation_detail(error, "parameter", name)
+            raise
     return result
 
 
@@ -234,19 +246,34 @@ def validate_assets(
     elif isinstance(assets, Mapping):
         source = assets
     else:
-        raise AssetError(f"{effect_type}.assets must be an object")
+        raise set_validation_detail(
+            AssetError(f"{effect_type}.assets must be an object"), "assets"
+        )
     unknown = sorted(set(source) - set(definitions))
     if unknown:
-        raise AssetError(f"{effect_type}.assets contains unknown fields: {', '.join(unknown)}")
+        raise set_validation_detail(
+            AssetError(
+                f"{effect_type}.assets contains unknown fields: {', '.join(unknown)}"
+            ),
+            "assets",
+        )
     missing = sorted(name for name in definitions if name not in source)
     if missing:
-        raise AssetError(
-            f"{effect_type}.assets is missing required fields: {', '.join(missing)}"
+        raise set_validation_detail(
+            AssetError(
+                f"{effect_type}.assets is missing required fields: {', '.join(missing)}"
+            ),
+            "assets",
         )
     result: dict[str, str] = {}
     for name, value in source.items():
         if not isinstance(value, str) or not value or len(value) > 128:
-            raise AssetError(f"{effect_type}.assets.{name} must be a non-empty string")
+            raise set_validation_detail(
+                AssetError(
+                    f"{effect_type}.assets.{name} must be a non-empty string"
+                ),
+                "assets",
+            )
         result[name] = value
     return result
 
@@ -266,7 +293,9 @@ def validate_effect_options(
         raise ValidationError("effect enabled must be a boolean")
     if not isinstance(channel, str) or channel not in CHANNELS:
         values = ", ".join(sorted(CHANNELS))
-        raise ValidationError(f"effect channel must be one of: {values}")
+        raise set_validation_detail(
+            ValidationError(f"effect channel must be one of: {values}"), "channel"
+        )
     return (
         validate_parameters(effect_type, parameters),
         id,
@@ -369,7 +398,7 @@ def pack_parameter_bytes(effect: Any) -> np.ndarray | None:
     return np.ascontiguousarray(packed)
 
 
-def validate_chain_document(document: Any) -> list[Any]:
+def validate_chain_document(document: Any, *, entry_label: str | None = None) -> list[Any]:
     if not isinstance(document, Mapping):
         raise ValidationError("chain document must be an object")
     unknown = sorted(set(document) - {"version", "chain"})
@@ -385,17 +414,18 @@ def validate_chain_document(document: Any) -> list[Any]:
     effects: list[Effect] = []
     explicit_ids: set[str] = set()
     for index, node in enumerate(nodes):
+        label = entry_label or f"chain[{index}]"
         if not isinstance(node, Mapping):
-            raise ValidationError(f"chain[{index}] must be an object")
+            raise ValidationError(f"{label} must be an object")
         unknown_node = sorted(
             set(node) - {"id", "type", "enabled", "channel", "parameters", "assets"}
         )
         if unknown_node:
             raise ValidationError(
-                f"chain[{index}] contains unknown fields: {', '.join(unknown_node)}"
+                f"{label} contains unknown fields: {', '.join(unknown_node)}"
             )
         if "type" not in node or "parameters" not in node:
-            raise ValidationError(f"chain[{index}] requires type and parameters")
+            raise ValidationError(f"{label} requires type and parameters")
         effect = Effect(
             node["type"],
             parameters=node["parameters"],

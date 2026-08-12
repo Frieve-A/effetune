@@ -42,6 +42,8 @@ groups:
         url: "/dsp/api/javascript/"
       - title: "Chain v1"
         url: "/dsp/reference/chain-v1/"
+      - title: "Graph v1"
+        url: "/dsp/reference/graph-v1/"
       - title: "Bundle v1"
         url: "/dsp/reference/bundle-v1/"
       - title: "Compatibility"

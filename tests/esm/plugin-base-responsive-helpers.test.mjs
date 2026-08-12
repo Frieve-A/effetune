@@ -9,6 +9,7 @@ class FakeElement {
     this.children = [];
     this.parentNode = null;
     this.eventListeners = new Map();
+    this.dataset = {};
     this.style = {};
     this.className = '';
     this.id = '';
@@ -17,6 +18,8 @@ class FakeElement {
     this.value = '';
     this.textContent = '';
     this.checked = false;
+    this.disabled = false;
+    this.hidden = false;
     this.width = 0;
     this.height = 0;
     this.autocomplete = '';
@@ -55,6 +58,27 @@ class FakeElement {
     }
   }
 
+  querySelector(selector) {
+    return this.querySelectorAll(selector)[0] || null;
+  }
+
+  querySelectorAll(selector) {
+    const matches = element => {
+      if (selector === 'select') return element.tagName === 'SELECT';
+      const inputType = /^input\[type="([^"]+)"\]$/.exec(selector)?.[1];
+      return inputType !== undefined && element.tagName === 'INPUT' && element.type === inputType;
+    };
+    const found = [];
+    const visit = element => {
+      for (const child of element.children) {
+        if (matches(child)) found.push(child);
+        visit(child);
+      }
+    };
+    visit(this);
+    return found;
+  }
+
   setPointerCapture(pointerId) {
     this.pointerCapture = pointerId;
   }
@@ -91,7 +115,7 @@ function loadPluginBase(overrides = {}) {
     ...overrides.globals
   };
   vm.runInNewContext(`${source}\nthis.PluginBaseRef = PluginBase;`, context);
-  return { PluginBase: context.PluginBaseRef, documentRef };
+  return { PluginBase: context.PluginBaseRef, documentRef, context };
 }
 
 function createPlugin() {
@@ -99,6 +123,13 @@ function createPlugin() {
   const plugin = new PluginBase('Responsive Test', 'Test helpers');
   plugin.id = 'plugin-1';
   return plugin;
+}
+
+function loadModulationPlugin(sourcePath, exportName) {
+  const { context } = loadPluginBase();
+  const source = fs.readFileSync(new URL(sourcePath, import.meta.url), 'utf8');
+  vm.runInContext(`${source}\nthis.PluginRef = ${exportName};`, context);
+  return context.PluginRef;
 }
 
 test('PluginBase creates mobile-friendly select, checkbox, and radio controls', () => {
@@ -201,6 +232,61 @@ test('PluginBase parameter controls preserve the last finite value while editing
   assert.deepEqual(calls, [0, 10, 0]);
   assert.equal(Number(valueInput.value), 0);
   assert.equal(Number(slider.value), 0);
+});
+
+test('PluginBase linear controls retain Chorus canonical Delay and Depth values', () => {
+  const ChorusPlugin = loadModulationPlugin('../../plugins/modulation/chorus.js', 'ChorusPlugin');
+  const plugin = new ChorusPlugin();
+  plugin.createUI();
+  const assertControl = (row, expected) => {
+    assert.equal(Number(row.children[1].value), expected);
+    assert.equal(Number(row.children[2].value), expected);
+  };
+
+  const delayRow = plugin._uiControls.dl;
+  const depthRow = plugin._uiControls.dp;
+  depthRow.children[2].value = '20';
+  depthRow.children[2].dispatch('input');
+  assert.deepEqual({ delay: plugin.dl, depth: plugin.dp }, { delay: 12, depth: 12 });
+  assertControl(delayRow, 12);
+  assertControl(depthRow, 12);
+
+  delayRow.children[2].value = '2';
+  delayRow.children[2].dispatch('input');
+  assert.deepEqual({ delay: plugin.dl, depth: plugin.dp }, { delay: 2, depth: 2 });
+  assertControl(delayRow, 2);
+  assertControl(depthRow, 2);
+
+  plugin.cleanup();
+});
+
+test('PluginBase linear controls retain Frequency Shifter canonical minimum and maximum values', () => {
+  const FrequencyShifterPlugin = loadModulationPlugin(
+    '../../plugins/modulation/frequency_shifter.js',
+    'FrequencyShifterPlugin'
+  );
+  const plugin = new FrequencyShifterPlugin();
+  plugin.createUI();
+  const assertControl = (row, expected) => {
+    assert.equal(Number(row.children[1].value), expected);
+    assert.equal(Number(row.children[2].value), expected);
+  };
+
+  const minimumRow = plugin._uiControls.mn;
+  const maximumRow = plugin._uiControls.mx;
+  minimumRow.children[2].value = '900';
+  minimumRow.children[2].dispatch('input');
+  assert.deepEqual({ minimum: plugin.mn, maximum: plugin.mx }, { minimum: 800, maximum: 900 });
+  assertControl(minimumRow, 800);
+  assertControl(maximumRow, 900);
+
+  maximumRow.children[2].value = '100';
+  maximumRow.children[2].dispatch('input');
+  assert.deepEqual({ minimum: plugin.mn, maximum: plugin.mx }, { minimum: 100, maximum: 800 });
+  assertControl(minimumRow, 100);
+  assertControl(maximumRow, 800);
+
+  plugin.cleanup();
 });
 
 test('PluginBase creates responsive graph containers and maps pointer coordinates', () => {

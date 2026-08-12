@@ -1,0 +1,38 @@
+{
+  "formatVersion": 1,
+  "type": "AutoFilterPlugin",
+  "id": "envelope-band-pass",
+  "stimulus": "sweep",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 7003,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "md": "Envelope",
+    "ft": "Band-pass",
+    "lf": 180,
+    "hf": 2400,
+    "rs": 5,
+    "mx": 100,
+    "rt": 0.5,
+    "wf": "Sine",
+    "sp": 0,
+    "sn": 30,
+    "at": 8,
+    "rl": 180,
+    "dr": "Up"
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "9d5dc5c1300ebc4ebcdb87e2a81f8eb64f7fc0132d3bfaf91652af8ced8cd6a0",
+  "outputFloats": 14006,
+  "byteLength": 56024,
+  "binary": "case-002.f32"
+}

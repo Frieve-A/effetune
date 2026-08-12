@@ -1,0 +1,26 @@
+{
+  "defaults": { "sampleRate": 48000, "blockSize": 64, "channels": 2, "channelMode": "stereo" },
+  "cases": [
+    { "id": "default-stereo", "stimulus": "noise", "frames": 4099 },
+    { "id": "dry-transparent", "stimulus": "sweep", "frames": 1001, "params": { "mx": 0 } },
+    { "id": "ensemble-six-voices", "stimulus": "noise", "sampleRate": 96000, "blockSize": 127, "channels": 5, "channelMode": "all5", "frames": 5003, "params": { "md": "Ensemble", "rt": 1.7, "dl": 24, "dp": 9, "vc": 6, "ss": 100, "mx": 70 } },
+    { "id": "flanger-negative-feedback", "stimulus": "imp", "sampleRate": 192000, "blockSize": 113, "channels": 8, "frames": 12001, "params": { "md": "Flanger", "rt": 4, "dl": 2, "dp": 1.8, "fb": -75, "ss": 75, "mx": 50 } },
+    { "id": "vibrato-mono", "stimulus": "sin1k", "sampleRate": 44100, "blockSize": 83, "channels": 1, "channelMode": "mono", "frames": 4001, "params": { "md": "Vibrato", "rt": 5.5, "dl": 8, "dp": 5, "mx": 0 } },
+    { "id": "depth-canonicalization", "stimulus": "noise", "frames": 2003, "params": { "dl": 3, "dp": 20 } },
+    { "id": "mode-and-voice-transitions", "stimulus": "noise", "frames": 7001, "events": [
+      { "frame": 257, "params": { "md": "Ensemble", "vc": 6 } },
+      { "frame": 2049, "params": { "md": "Flanger", "dl": 1, "dp": 0.8, "fb": 75 } },
+      { "frame": 4097, "params": { "md": "Vibrato", "rt": 6 } },
+      { "frame": 6001, "params": { "md": "Chorus", "vc": 2, "mx": 35 } }
+    ] },
+    { "id": "one-frame-events", "stimulus": "noise", "sampleRate": 96000, "blockSize": 1, "channels": 3, "channelMode": "all3", "frames": 1003, "events": [
+      { "frame": 1, "params": { "rt": 10, "ss": 100 } },
+      { "frame": 499, "params": { "dl": 0.5, "dp": 20 } }
+    ] },
+    { "id": "pending-during-fade-up", "stimulus": "noise", "blockSize": 1024, "channels": 1, "channelMode": "mono", "frames": 1027, "params": { "mx": 100 }, "events": [
+      { "frame": 1, "params": { "md": "Flanger", "dl": 2, "dp": 1, "vc": 1, "fb": 50 } },
+      { "frame": 361, "params": { "md": "Ensemble", "vc": 6 } }
+    ] },
+    { "id": "stereo-chorus-active-spread", "stimulus": "noise", "frames": 5003, "params": { "md": "Stereo Chorus", "rt": 0.65, "dl": 15, "dp": 4, "vc": 2, "ss": 80, "mx": 100 } }
+  ]
+}

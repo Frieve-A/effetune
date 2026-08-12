@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "AutoPanPlugin",
+  "id": "mono-pass-through",
+  "stimulus": "sq50",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 3001,
+  "blockSize": 83,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "rt": 4,
+    "dp": 100,
+    "ct": -35,
+    "wd": 80,
+    "wf": "Triangle",
+    "ph": 73
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "a59a4a1b17d3786878ca3fee9f15d64fc38d272c45f12de6192e82497a07409f",
+  "outputFloats": 3001,
+  "byteLength": 12004,
+  "binary": "case-003.f32"
+}

@@ -69,6 +69,7 @@ set(
   core/arena.cpp
   core/design_fft.cpp
   core/engine.cpp
+  core/graph.cpp
   core/partitioned_convolver.cpp
   core/registry.cpp
   core/telemetry.cpp)
@@ -107,7 +108,7 @@ endif()
 add_library(effetune_dsp_core STATIC ${EFFETUNE_DSP_SOURCES})
 target_include_directories(
   effetune_dsp_core
-  PUBLIC include
+  PUBLIC include bindings/generated
   PRIVATE core generated/cpp)
 target_link_libraries(effetune_dsp_core PUBLIC pffft)
 target_compile_definitions(
@@ -228,6 +229,11 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
     INCLUDE_DIRS core test
     WRAP_MALLOC)
   et_add_dsp_test(
+    effetune_dsp_graph_tests
+    SOURCES test/graph_test.cpp
+    INCLUDE_DIRS core
+    WRAP_MALLOC)
+  et_add_dsp_test(
     effetune-dsp-parity-runner
     SOURCES test/parity_runner.cpp
     INCLUDE_DIRS core
@@ -337,8 +343,33 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
     INCLUDE_DIRS core generated/cpp
     WRAP_MALLOC)
   et_add_dsp_test(
+    effetune_dsp_auto_filter_tests
+    SOURCES plugins/modulation/auto_filter/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_auto_pan_tests
+    SOURCES plugins/modulation/auto_pan/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_chorus_tests
+    SOURCES plugins/modulation/chorus/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
     effetune_dsp_doppler_distortion_tests
     SOURCES plugins/modulation/doppler_distortion/native_test.cpp)
+  et_add_dsp_test(
+    effetune_dsp_frequency_shifter_tests
+    SOURCES plugins/modulation/frequency_shifter/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_phaser_tests
+    SOURCES plugins/modulation/phaser/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
   et_add_dsp_test(
     effetune_dsp_pitch_shifter_tests
     SOURCES plugins/modulation/pitch_shifter/native_test.cpp
@@ -347,6 +378,11 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
   et_add_dsp_test(
     effetune_dsp_pitch_shifter_hq_tests
     SOURCES plugins/modulation/pitch_shifter_hq/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_rotary_speaker_tests
+    SOURCES plugins/modulation/rotary_speaker/native_test.cpp
     INCLUDE_DIRS core generated/cpp
     WRAP_MALLOC)
   et_add_dsp_test(

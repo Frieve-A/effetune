@@ -364,9 +364,15 @@ EffeTune 2.1.0에서는 카탈로그 스키마 v3를 사용하는 음악 라이�
 | Lo-Fi | Tape Artifacts | 음악을 모델링한 릴 테이프에 녹음하고 재생 | [세부 정보](plugins/lofi.md#tape-artifacts) |
 | Lo-Fi | Vinyl Artifacts | 레코드풍 팝, 크래클, 히스, 럼블, 스테레오 노이즈 블리드를 추가 | [세부 정보](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi | Vinyl Simulator | 입력을 모델링한 홈에 커팅한 뒤 물리적 스타일러스 모델로 재생 | [세부 정보](plugins/lofi.md#vinyl-simulator) |
+| Modulation | Auto Filter | LFO 또는 음량 엔벌로프로 공진 필터를 스윕 | [세부 정보](plugins/modulation.md#auto-filter) |
+| Modulation | Auto Pan | 각 스테레오 페어의 레벨을 좌우로 부드럽게 이동 | [세부 정보](plugins/modulation.md#auto-pan) |
+| Modulation | Chorus | 움직이는 딜레이로 코러스, 앙상블, 플랜저 또는 비브라토를 추가 | [세부 정보](plugins/modulation.md#chorus) |
 | Modulation | Doppler Distortion | 미세한 스피커 콘 움직임으로 인한 자연스럽고 동적인 사운드 변화를 시뮬레이션 | [세부 정보](plugins/modulation.md#doppler-distortion) |
+| Modulation | Frequency Shifter | 주파수 이동, 링 모듈레이션 또는 바버폴 시프트를 적용 | [세부 정보](plugins/modulation.md#frequency-shifter) |
+| Modulation | Phaser | 클래식 또는 바버폴 스윕으로 움직이는 피크와 노치를 생성 | [세부 정보](plugins/modulation.md#phaser) |
 | Modulation | Pitch Shifter | 템포를 바꾸지 않고 음악의 피치를 올리거나 내림 | [세부 정보](plugins/modulation.md#pitch-shifter) |
 | Modulation | Pitch Shifter HQ | 위상 아티팩트를 줄이면서 피치를 올리거나 내림 | [세부 정보](plugins/modulation.md#pitch-shifter-hq) |
+| Modulation | Rotary Speaker | 혼과 드럼의 독립적인 회전을 결합 | [세부 정보](plugins/modulation.md#rotary-speaker) |
 | Modulation | Tremolo | 볼륨 기반 모듈레이션 이펙트 | [세부 정보](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | 테이프나 레코드 같은 은은한 피치 흔들림으로 빈티지한 느낌 추가 | [세부 정보](plugins/modulation.md#wow-flutter) |
 | Resonator | Horn Resonator | 조절 가능한 치수의 혼 공명 시뮬레이션 | [세부 정보](plugins/resonator.md#horn-resonator) |

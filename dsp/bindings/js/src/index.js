@@ -25,12 +25,15 @@ export {
   Delay,
   TimeAlignment,
   AMRadioSimulator,
+  AutoFilter,
   AutoLeveler,
+  AutoPan,
   BitCrusher,
   BluetoothSBCSimulator,
   BrickwallLimiter,
   BandPassFilter,
   CassetteArtifacts,
+  Chorus,
   CombFilter,
   Compressor,
   CrossfeedFilter,
@@ -47,6 +50,7 @@ export {
   Expander,
   FDNReverb,
   FMRadioSimulator,
+  FrequencyShifter,
   FifteenBandGEQ,
   FifteenBandPEQ,
   FiveBandDynamicEQ,
@@ -76,9 +80,11 @@ export {
   NarrowRange,
   NoiseBlender,
   Oscillator,
+  Phaser,
   PhaseSelectEQ,
   PitchShifter,
   PowerAmpSag,
+  RotarySpeaker,
   RSReverb,
   RoomEQ,
   Saturation,
@@ -112,12 +118,15 @@ export {
   createDelay,
   createTimeAlignment,
   createAMRadioSimulator,
+  createAutoFilter,
   createAutoLeveler,
+  createAutoPan,
   createBandPassFilter,
   createBitCrusher,
   createBluetoothSBCSimulator,
   createBrickwallLimiter,
   createCassetteArtifacts,
+  createChorus,
   createCombFilter,
   createCompressor,
   createCrossfeedFilter,
@@ -132,6 +141,7 @@ export {
   createExpander,
   createFDNReverb,
   createFMRadioSimulator,
+  createFrequencyShifter,
   createFifteenBandGEQ,
   createFifteenBandPEQ,
   createFiveBandDynamicEQ,
@@ -161,9 +171,11 @@ export {
   createNarrowRange,
   createNoiseBlender,
   createOscillator,
+  createPhaser,
   createPhaseSelectEQ,
   createPitchShifter,
   createPowerAmpSag,
+  createRotarySpeaker,
   createRSReverb,
   createRoomEQ,
   createSaturation,
@@ -184,6 +196,14 @@ export {
 export { getEffectCatalog } from './catalog.js';
 export { encodeEta1 } from './assets.js';
 export { Chain, createChain, isBundleDocument } from './runtime.js';
+export { Graph, GraphStream, createGraph } from './graph.js';
+export {
+  chainDocumentFromGraph,
+  createSendReturnGraphDocument,
+  createWetDryGraphDocument,
+  graphDocumentFromChain,
+  normalizeGraphDocument
+} from './graph-document.js';
 export { importLegacyPreset, parsePreset } from './preset.js';
 
 import { getEffectCatalog } from './catalog.js';

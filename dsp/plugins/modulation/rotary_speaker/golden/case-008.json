@@ -1,0 +1,43 @@
+{
+  "formatVersion": 1,
+  "type": "RotarySpeakerPlugin",
+  "id": "fast200-stop25-transition",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 24001,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "ss": "Fast",
+    "sp": 200,
+    "ac": 0.1,
+    "xo": 800,
+    "rb": 0,
+    "sw": 100,
+    "dd": 100,
+    "ad": 100,
+    "mx": 100
+  },
+  "events": [
+    {
+      "frame": 10001,
+      "params": {
+        "ss": "Stop",
+        "sp": 25,
+        "ac": 2.2
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "08370065509cabeb9e6c59e754457a91bdfb05f3c914c452e2fb686e1c3a4aba",
+  "outputFloats": 48002,
+  "byteLength": 192008,
+  "binary": "case-008.f32"
+}

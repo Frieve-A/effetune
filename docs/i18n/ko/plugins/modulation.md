@@ -1,6 +1,6 @@
 ---
 title: "모듈레이션 플러그인 - EffeTune"
-description: "Doppler Distortion, Pitch Shifter, Pitch Shifter HQ, Tremolo, Wow Flutter를 포함한 모듈레이션 이펙트 플러그인입니다."
+description: "Auto Filter, Auto Pan, Chorus, Frequency Shifter, Phaser, Rotary Speaker를 포함한 모듈레이션 이펙트입니다."
 lang: ko
 ---
 
@@ -10,11 +10,81 @@ lang: ko
 
 ## 플러그인 목록
 
+- [Auto Filter](#auto-filter) - LFO 또는 엔벌로프로 공진 필터를 스윕
+- [Auto Pan](#auto-pan) - 각 스테레오 페어를 음장 안에서 부드럽게 이동
+- [Chorus](#chorus) - 코러스, 앙상블, 플랜저와 비브라토를 하나로 제공
 - [Doppler Distortion](#doppler-distortion) - 섬세한 스피커 콘의 미세한 움직임으로 인해 발생하는 자연스럽고 역동적인 사운드 변화를 시뮬레이션합니다.
+- [Frequency Shifter](#frequency-shifter) - 주파수 이동, Ring Mod 또는 바버폴 스윕을 적용
+- [Phaser](#phaser) - all-pass 필터로 움직이는 피크와 노치를 생성
 - [Pitch Shifter](#pitch-shifter) - 음악의 재생 속도에 영향을 주지 않고 피치를 변경합니다
 - [Pitch Shifter HQ](#pitch-shifter-hq) - 지연이나 CPU 사용량보다 음질이 중요할 때 위상 아티팩트를 줄이면서 피치를 변경합니다
+- [Rotary Speaker](#rotary-speaker) - 혼과 드럼의 독립적인 움직임을 결합
 - [Tremolo](#tremolo) - 박자감 있는 리듬의 볼륨 변화를 만들어 역동적인 사운드를 제공합니다
 - [Wow Flutter](#wow-flutter) - 비닐 레코드와 테이프 플레이어의 부드러운 피치 변화를 재현합니다
+
+## Auto Filter
+
+LFO 또는 입력 신호의 엔벌로프로 상태 변수 필터를 자동으로 움직입니다. Envelope 모드는 Envelope Filter나 Auto Wah로 사용할 수 있습니다. 알고리즘 지연은 0입니다.
+
+### 음질 조정 팁
+
+- 부드러운 음색 변화에는 LFO와 Low-pass를 선택하고 Resonance를 낮게, Mix를 약 30–50%로 시작하십시오.
+- Auto Wah에는 Envelope와 Band-pass를 선택하고, 강한 소리에서 필터가 적절히 열리도록 Sensitivity를 조정하십시오.
+- Attack을 길게 하면 어택에 대한 반응이 부드러워지고, Release를 길게 하면 필터가 더 매끄럽게 돌아옵니다.
+
+### 파라미터
+
+- **Style**: 모든 파라미터를 한 번에 지정하는 완전한 팩토리 설정입니다. **Auto Filter Sweep**(LFO), **Stereo Filter Sweep**(LFO), **Envelope Filter**(Envelope), **Auto Wah**(Envelope), **Reverse Auto Wah**(Envelope) 중에서 선택할 수 있습니다. 개별 파라미터를 바꾸면 **Custom**으로 전환됩니다.
+- **Mode**: 주기적으로 움직이는 LFO와 음량을 따라가는 Envelope를 전환합니다.
+- **Filter Type**: Low-pass, Band-pass, High-pass 중에서 선택합니다.
+- **Minimum Frequency / Maximum Frequency**(20–20,000 Hz): 이동 범위입니다. 순서가 반대이면 자동으로 정렬되고, 값이 같으면 고정됩니다. 처리 중에는 나이퀴스트 주파수 아래의 안전한 범위로 제한됩니다.
+- **Resonance**(Q 0.5–20): 값이 높을수록 컷오프 주변을 더 강조합니다.
+- **Mix**(0–100%): 원음과 필터 처리음의 비율입니다. 0%에서는 원음만 출력됩니다.
+- **Rate**, **Waveform**, **Stereo Phase**: LFO의 속도, 궤적, 각 스테레오 쌍 안의 위상 차이입니다. LFO 모드에서만 사용합니다.
+- **Sensitivity**, **Attack**, **Release**, **Direction**: 엔벌로프의 반응량, 상승 시간, 복귀 시간, 이동 방향입니다. Envelope 모드에서만 사용합니다.
+
+## Auto Pan
+
+인접한 각 스테레오 쌍의 음량을 좌우로 움직입니다. 쌍 사이의 오디오는 섞지 않으며, 마지막에 채널 하나가 남으면 모노로 처리합니다. 알고리즘 지연은 0입니다.
+
+### 음질 조정 팁
+
+- 느긋한 움직임에는 Rate를 약 0.2–0.5 Hz로, Depth를 적당히 설정해 시작하십시오.
+- 헤드폰에서 폭이 너무 넓게 느껴지면 Width를 낮추고, 좌우 기준 위치는 Center로 조정하십시오.
+- Sine은 양 끝에서 천천히 움직이고, Triangle은 더 일정한 속도로 움직입니다.
+
+### 파라미터
+
+- **Style**: 모든 파라미터를 한 번에 지정하는 완전한 팩토리 설정입니다. **Gentle Auto Pan**, **Wide Auto Pan**, **Fast Auto Pan** 중에서 선택할 수 있습니다. 개별 파라미터를 바꾸면 **Custom**으로 전환됩니다.
+- **Rate**(0.05–20 Hz): 이동 속도입니다.
+- **Depth**(0–100%): Center를 기준으로 한 이동량입니다. 0%에서는 변화가 없습니다.
+- **Center**(-100–100%): 중심 위치를 왼쪽이나 오른쪽으로 옮깁니다.
+- **Width**(0–100%): 사용하는 스테레오 폭입니다.
+- **Waveform**: Sine 또는 Triangle입니다.
+- **Phase**(0–360°): 주기 운동의 시작 위치입니다.
+
+## Chorus
+
+4점 3차 보간을 적용한 여러 가변 지연음을 더합니다. Mode에서 Chorus, Stereo Chorus, Ensemble, Flanger, Vibrato를 선택할 수 있습니다. 가변 지연은 들리는 늦어짐을 만들지만 고정 지연은 아니므로 보고되는 알고리즘 지연은 0입니다.
+
+### 음질 조정 팁
+
+- 자연스러운 두께에는 Classic Chorus 또는 Stereo Chorus를 사용하고 Rate와 Depth를 적당히 설정하십시오.
+- Ensemble은 Voices를 늘릴수록 조밀해집니다. Depth가 너무 높으면 피치 흔들림이 두드러집니다.
+- Feedback은 Flanger에서만 사용합니다. 양수와 음수는 콤 필터의 극성을 바꿉니다.
+- Vibrato는 항상 100% wet입니다.
+
+### 파라미터
+
+- **Style**: 모든 파라미터를 한 번에 지정하는 완전한 팩토리 설정입니다. **Classic Chorus**(Chorus), **Stereo Chorus**(Stereo Chorus), **Ensemble**(Ensemble), **Flanger**(Flanger), **Jet Flanger**(Flanger), **Vibrato**(Vibrato) 중에서 선택할 수 있습니다. 개별 파라미터를 바꾸면 **Custom**으로 전환됩니다.
+- **Mode**: Chorus, Stereo Chorus, Ensemble, Flanger, Vibrato 중에서 선택합니다.
+- **Rate**(0.05–10 Hz): 모듈레이션 속도입니다.
+- **Delay**(0.5–30 ms): wet 신호의 기준 지연입니다.
+- **Depth**(0–20 ms): 지연 변화량입니다. 음수 지연 읽기를 막기 위해 저장 값은 Delay 이하로 제한됩니다.
+- **Voices**(1–6): Chorus와 Ensemble의 가변 탭 수입니다. 다른 모드에서는 무시됩니다.
+- **Stereo Spread**(0–100%): 각 스테레오 쌍 안의 모듈레이션 차이입니다. Chorus 모드에서는 무시됩니다.
+- **Feedback**(-75–75%): Flanger에서만 사용합니다.
+- **Mix**(0–100%): 원음과 wet 신호의 선형 비율입니다. Vibrato에서는 무시되며 항상 100% wet입니다.
 
 ## Doppler Distortion
 
@@ -47,6 +117,52 @@ lang: ko
 - **Damping Factor:** 1.5 N·s/m  
 
 이러한 설정은 원래의 사운드를 압도하지 않으면서 청취 경험을 풍부하게 하는 미묘한 Doppler Distortion 효과를 제공합니다.
+
+## Frequency Shifter
+
+각 주파수 성분을 피치 비율이 아니라 일정한 Hz만큼 옮깁니다. Ring Mod는 캐리어와 곱하고, Barber-pole은 계속 상승하거나 하강하는 듯한 이동을 겹칩니다. Shift와 Barber-pole은 Hilbert 해석 신호 FIR을 사용하며, Ring Mod는 같은 FIFO에서 꺼낸 동일 지연의 실수 신호에 캐리어를 곱합니다. 따라서 모든 모드에서 원음과 처리음의 시간이 맞습니다. 고정 지연은 샘플레이트에 따라 달라지며 DSP Library에서 보고됩니다.
+
+### 음질 조정 팁
+
+- 은은한 변화에는 Shift를 선택하고 약 ±5–15 Hz에서 시작하십시오. Pitch Shifter와 달리 배음 간격도 바뀝니다.
+- 금속성 음색에는 Ring Mod를 사용하십시오. Carrier Frequency를 낮추면 원음의 리듬을 유지하기 쉽습니다.
+- 연속적인 이동감에는 낮은 Rate의 Barber-pole을 사용하고, 선명도를 유지하려면 Mix를 적당히 설정하십시오.
+
+### 파라미터
+
+- **Style**: 모든 파라미터를 한 번에 지정하는 완전한 팩토리 설정입니다. **Shift Up**(Shift), **Shift Down**(Shift), **Fine Detune**(Shift), **Ring Modulator**(Ring Mod), **Barber-pole Up**(Barber-pole), **Barber-pole Down**(Barber-pole) 중에서 선택할 수 있습니다. 개별 파라미터를 바꾸면 **Custom**으로 전환됩니다.
+- **Mode**: Shift, Ring Mod, Barber-pole입니다.
+- **Shift**(-5,000–5,000 Hz): Shift 모드의 이동량입니다. 양수는 위로, 음수는 아래로 이동합니다.
+- **Carrier Frequency**(0.1–10,000 Hz): Ring Mod의 캐리어 주파수입니다.
+- **Minimum Shift / Maximum Shift**(0–5,000 Hz): Barber-pole의 범위입니다. 순서가 반대이면 정렬되고, 값이 같으면 고정됩니다.
+- **Rate**(0.01–2 Hz), **Direction**: Barber-pole의 속도와 방향입니다.
+- **Stereo Phase**(0–180°): 모든 모드에서 각 스테레오 쌍의 좌우 캐리어 또는 스윕에 위상 차이를 줍니다.
+- **Mix**(0–100%): 동일 지연된 원음과 처리음의 비율입니다. 0%에서도 명시된 고정 지연은 남습니다.
+
+큰 이동에서는 나이퀴스트 주파수를 넘는 성분이 생겨 aliasing이 들릴 수 있습니다. 초기 버전은 오버샘플링을 하지 않습니다.
+
+## Phaser
+
+원음과 all-pass 필터 체인의 출력을 섞어 움직이는 피크와 노치를 만듭니다. Classic은 왕복하고, Barber-pole은 3개의 일정 전력 윈도우를 겹쳐 계속 상승하거나 하강하는 느낌을 만듭니다. 알고리즘 지연은 0입니다.
+
+### 음질 조정 팁
+
+- 선명한 노치에는 Classic, 4–6 Stages, 중간 정도의 Range, 약 50% Mix부터 시작하십시오.
+- Stages와 Feedback을 높일수록 더 깊고 공진감이 강해집니다. 어택이 지나치게 착색되면 낮추십시오.
+- Stereo Phase로 폭을 조정하고, 연속 운동에는 Barber-pole Up/Down을 선택하십시오.
+
+### 파라미터
+
+- **Style**: 모든 파라미터를 한 번에 지정하는 완전한 팩토리 설정입니다. **Classic Phaser**(Classic), **Deep Phaser**(Classic), **Stereo Phaser**(Classic), **Barber-pole Up**(Barber-pole), **Barber-pole Down**(Barber-pole) 중에서 선택할 수 있습니다. 개별 파라미터를 바꾸면 **Custom**으로 전환됩니다.
+- **Mode**: Classic 또는 Barber-pole입니다.
+- **Rate**(0.05–10 Hz): 스윕 속도입니다.
+- **Center Frequency**(80–8,000 Hz): 로그 스윕의 중심입니다.
+- **Range**(0–6 octaves): 스윕 폭입니다.
+- **Stages**(2–12의 짝수): all-pass 단계 수입니다. 늘리면 노치가 더 많아집니다.
+- **Feedback**(-90–90%): 처리음을 입력으로 되돌리는 양입니다. 절댓값은 강도를, 부호는 강조 방식을 바꿉니다.
+- **Stereo Phase**(0–180°): 각 스테레오 쌍 안의 움직임 차이입니다.
+- **Direction**: Barber-pole의 Up/Down입니다. Classic에서는 무시됩니다.
+- **Mix**(0–100%): 원음과 처리음의 선형 비율입니다. 중앙 부근에서 상쇄가 가장 깊습니다.
 
 ## Pitch Shifter
 
@@ -90,6 +206,29 @@ Pitch Shifter HQ는 포먼트를 보존하지 않습니다. 따라서 큰 폭으
 - **Fine Tune** - 센트 단위로 피치를 조절합니다 (-50~+50)
   - 반음 사이를 정밀하게 조절할 때 사용합니다
   - 100센트는 1반음입니다
+
+## Rotary Speaker
+
+Linkwitz–Riley 크로스오버로 고역 혼과 저역 드럼을 나눈 뒤, 서로 다른 회전 속도, 음량 변조, 짧은 도플러 지연을 적용합니다. 특정 Leslie 캐비닛을 실측해 재현한 모델은 아닙니다. 가변 지연이므로 고정 알고리즘 지연으로 보고하지 않습니다.
+
+### 음질 조정 팁
+
+- Slow는 느긋하고 Fast는 강한 회전감을 만듭니다. Acceleration을 길게 하면 속도 변화가 더 자연스럽게 들립니다.
+- 피치 움직임은 Doppler Depth, 음량 움직임은 Amplitude Depth로 조정하십시오.
+- Rotor Balance로 드럼과 혼의 비율을, Stereo Width로 폭을 조정하십시오.
+
+### 파라미터
+
+- **Style**: 모든 파라미터를 한 번에 지정하는 완전한 팩토리 설정입니다. **Rotary Slow**(Slow), **Rotary Fast**(Fast), **Gentle Rotary**(Slow), **Leslie Slow**(Slow), **Leslie Fast**(Fast) 중에서 선택할 수 있습니다. 개별 파라미터를 바꾸면 **Custom**으로 전환됩니다.
+- **Speed State**: Stop, Slow, Fast입니다. 전환할 때 음소거 없이 연속적으로 가속하거나 감속합니다.
+- **Speed**(25–200%): 혼과 드럼 모두의 속도 배율입니다.
+- **Acceleration**(0.1–10 s): 로터가 새로운 속도로 얼마나 빠르게 변화할지를 설정합니다.
+- **Crossover**(200–2,000 Hz): 드럼 대역과 혼 대역을 나누는 주파수입니다.
+- **Rotor Balance**(-100–100%): 음수는 드럼을, 양수는 혼을 강조합니다.
+- **Stereo Width**(0–100%): 스테레오 쌍의 폭입니다.
+- **Doppler Depth**(0–100%): 가변 지연에 의한 피치 변화량입니다.
+- **Amplitude Depth**(0–100%): 가상 로터 방향에 의한 음량 변화량입니다.
+- **Mix**(0–100%): 원음과 회전음의 비율입니다. 0%에서는 원음만 출력됩니다.
 
 ## Tremolo
 

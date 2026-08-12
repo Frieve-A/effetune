@@ -712,10 +712,14 @@ class PhaseSelectEqPlugin extends PluginBase {
         this._onPointerMove = event => this._handlePointerMove(event);
         this._onPointerUp = event => this._finishPointer(event, false);
         this._onPointerCancel = event => this._finishPointer(event, true);
+        this._onPointerLeave = () => {
+            if (!this._pointerState) this.canvas.style.cursor = '';
+        };
         this.canvas.addEventListener('pointerdown', this._onPointerDown);
         this.canvas.addEventListener('pointermove', this._onPointerMove);
         this.canvas.addEventListener('pointerup', this._onPointerUp);
         this.canvas.addEventListener('pointercancel', this._onPointerCancel);
+        this.canvas.addEventListener('pointerleave', this._onPointerLeave);
     }
 
     _unbindCanvasPointerEvents() {
@@ -724,6 +728,7 @@ class PhaseSelectEqPlugin extends PluginBase {
         this.canvas.removeEventListener('pointermove', this._onPointerMove);
         this.canvas.removeEventListener('pointerup', this._onPointerUp);
         this.canvas.removeEventListener('pointercancel', this._onPointerCancel);
+        this.canvas.removeEventListener('pointerleave', this._onPointerLeave);
     }
 
     _handlePointerDown(event) {
@@ -752,12 +757,17 @@ class PhaseSelectEqPlugin extends PluginBase {
             }
         };
         this.canvas.setPointerCapture?.(event.pointerId);
+        this.canvas.style.cursor = this._cursorForHit(hit, true);
         event.preventDefault();
     }
 
     _handlePointerMove(event) {
         const point = this._eventPoint(event);
-        if (!this._pointerState || this._pointerState.pointerId !== event.pointerId) return;
+        if (!this._pointerState) {
+            this.canvas.style.cursor = this._cursorForHit(this._hitTest(point.x, point.y), false);
+            return;
+        }
+        if (this._pointerState.pointerId !== event.pointerId) return;
         this._pendingPointerMove = point;
         if (this._pointerMoveFrame === null) {
             const schedule = typeof requestAnimationFrame === 'function'
@@ -841,6 +851,12 @@ class PhaseSelectEqPlugin extends PluginBase {
         if (cancel) this._commitRegion(state.hit.index, state.originalRegion);
         this.canvas.releasePointerCapture?.(event.pointerId);
         this._pointerState = null;
+        if (Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
+            const point = this._eventPoint(event);
+            this.canvas.style.cursor = this._cursorForHit(this._hitTest(point.x, point.y), false);
+        } else {
+            this.canvas.style.cursor = '';
+        }
         event.preventDefault();
     }
 
@@ -851,8 +867,23 @@ class PhaseSelectEqPlugin extends PluginBase {
             this.canvas?.releasePointerCapture?.(state.pointerId);
             this._pointerState = null;
             this._pendingPointerMove = null;
+            this.canvas.style.cursor = '';
             event.preventDefault();
         }
+    }
+
+    _cursorForHit(hit, dragging) {
+        if (!hit) return '';
+        if (hit.mode === 'move') return dragging ? 'grabbing' : 'grab';
+        if (hit.phaseEdge && hit.frequencyEdge) {
+            const leftHalf = hit.x < this._phaseToX(0);
+            const leftEdge = leftHalf ? hit.phaseEdge === 'high' : hit.phaseEdge === 'low';
+            const topEdge = hit.frequencyEdge === 'high';
+            return leftEdge === topEdge ? 'nwse-resize' : 'nesw-resize';
+        }
+        if (hit.phaseEdge) return 'ew-resize';
+        if (hit.frequencyEdge) return 'ns-resize';
+        return '';
     }
 
     _logicalHandlePoint(hit, region) {

@@ -26,6 +26,14 @@ const tsIndexPath = path.join(repoRoot, 'dsp', 'bindings', 'js', 'src', 'index.d
 
 const chainSchemaId = 'https://effetune.frieve.com/dsp/schemas/chain-v1.schema.json';
 const bundleSchemaId = 'https://effetune.frieve.com/dsp/schemas/bundle-v1.schema.json';
+const graphSchemaId = 'https://effetune.frieve.com/dsp/schemas/graph-v1.schema.json';
+export const GRAPH_V1_CAPACITY = Object.freeze({
+  maxStructuralNodes: 128,
+  maxEffectiveInstances: 96,
+  maxEdges: 512,
+  maxLiveBuffers: 129,
+  maxWorkspaceBytes: 64 * 1024 * 1024
+});
 const maximumAssetBytes = 32 * 1024 * 1024;
 const maximumUint32 = 0xffffffff;
 const digestPattern = /^[0-9a-f]{64}$/;
@@ -126,8 +134,14 @@ export const PUBLIC_EFFECT_TYPES = Object.freeze([
   'TapeArtifacts',
   'VinylArtifacts',
   'VinylSimulator',
+  'AutoFilter',
+  'AutoPan',
+  'Chorus',
   'DopplerDistortion',
+  'FrequencyShifter',
+  'Phaser',
   'PitchShifter',
+  'RotarySpeaker',
   'Tremolo',
   'WowFlutter',
   'Oscillator',
@@ -212,8 +226,14 @@ export const FROZEN_PARAM_DIRECTORIES = Object.freeze({
   TapeArtifactsPlugin: 'dsp/plugins/lofi/tape_artifacts',
   VinylArtifactsPlugin: 'dsp/plugins/lofi/vinyl_artifacts',
   VinylSimulatorPlugin: 'dsp/plugins/lofi/vinyl_simulator',
+  AutoFilterPlugin: 'dsp/plugins/modulation/auto_filter',
+  AutoPanPlugin: 'dsp/plugins/modulation/auto_pan',
+  ChorusPlugin: 'dsp/plugins/modulation/chorus',
   DopplerDistortionPlugin: 'dsp/plugins/modulation/doppler_distortion',
+  FrequencyShifterPlugin: 'dsp/plugins/modulation/frequency_shifter',
+  PhaserPlugin: 'dsp/plugins/modulation/phaser',
   PitchShifterPlugin: 'dsp/plugins/modulation/pitch_shifter',
+  RotarySpeakerPlugin: 'dsp/plugins/modulation/rotary_speaker',
   TremoloPlugin: 'dsp/plugins/modulation/tremolo',
   WowFlutterPlugin: 'dsp/plugins/modulation/wow_flutter',
   OscillatorPlugin: 'dsp/plugins/others/oscillator',
@@ -1015,6 +1035,238 @@ function chainSchema(catalog) {
   };
 }
 
+function graphSchema(catalog) {
+  const identifier = {
+    type: 'string',
+    minLength: 1,
+    maxLength: 128
+  };
+  const definitions = {
+    ...chainSchema(catalog).$defs,
+    endpoint: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['id'],
+      properties: {
+        id: identifier
+      }
+    },
+    node: {
+      allOf: [
+        { $ref: '#/$defs/effect' },
+        { required: ['id'] }
+      ]
+    },
+    endpointReference: identifier,
+    edge: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['id', 'source', 'destination'],
+      properties: {
+        id: identifier,
+        source: { $ref: '#/$defs/endpointReference' },
+        destination: { $ref: '#/$defs/endpointReference' },
+        gain: {
+          type: 'number',
+          minimum: 0,
+          maximum: 4,
+          default: 1
+        },
+        mute: {
+          type: 'boolean',
+          default: false
+        },
+        pan: {
+          type: 'number',
+          minimum: -1,
+          maximum: 1,
+          default: 0,
+          description: 'Optional normalized stereo balance. Its presence is rejected for non-stereo streams.'
+        },
+        mixGroup: {
+          ...identifier,
+          default: 'default'
+        },
+        solo: {
+          type: 'boolean',
+          default: false
+        }
+      }
+    }
+  };
+  return {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    $id: graphSchemaId,
+    title: 'EffeTune DSP Graph v1',
+    description:
+      'Canonical semantic v1 static audio DAG with one main input and one main output.',
+    type: 'object',
+    additionalProperties: false,
+    required: ['version', 'input', 'output', 'nodes', 'edges'],
+    properties: {
+      version: {
+        type: 'integer',
+        const: 1
+      },
+      input: {
+        $ref: '#/$defs/endpoint',
+        description: 'The single host main input endpoint.'
+      },
+      output: {
+        $ref: '#/$defs/endpoint',
+        description: 'The single host main output endpoint.'
+      },
+      nodes: {
+        type: 'array',
+        maxItems: GRAPH_V1_CAPACITY.maxStructuralNodes,
+        items: {
+          $ref: '#/$defs/node'
+        }
+      },
+      edges: {
+        type: 'array',
+        maxItems: GRAPH_V1_CAPACITY.maxEdges,
+        items: {
+          $ref: '#/$defs/edge'
+        }
+      }
+    },
+    'x-effetune-capacity': GRAPH_V1_CAPACITY,
+    $comment:
+      'Global ID uniqueness, endpoint direction, references, acyclicity, structural connectivity, stream channel compatibility, and finite-number checks are runtime validation responsibilities.',
+    $defs: definitions
+  };
+}
+
+function graphContract() {
+  return {
+    version: 1,
+    schemaId: graphSchemaId,
+    capacity: GRAPH_V1_CAPACITY,
+    document: {
+      nodeShape: 'effect',
+      nodeIdRequired: true,
+      endpointReference: 'id',
+      idNamespace: 'global',
+      hostInputs: 1,
+      hostOutputs: 1,
+      nodeAudioInputs: 1,
+      nodeAudioOutputs: 1,
+      cycles: false,
+      nestedGraphs: false,
+      mutableStructureDuringStream: false
+    },
+    edge: {
+      defaults: {
+        gain: 1,
+        mute: false,
+        pan: 0,
+        mixGroup: 'default',
+        solo: false
+      },
+      ranges: {
+        gain: [0, 4],
+        pan: [-1, 1]
+      },
+      panLayouts: ['stereo'],
+      panLaw: 'linear-balance-no-boost',
+      operationOrder: ['gain', 'pan', 'fanInCompensation', 'sum'],
+      sumOrder: 'edge-id-utf8-bytewise',
+      soloScope: ['destination', 'mixGroup'],
+      mutePrecedesSolo: true
+    },
+    canonicalization: {
+      materializedNodeDefaults: ['enabled', 'channel', 'parameters'],
+      materializedEdgeDefaults: ['gain', 'mute', 'mixGroup', 'solo'],
+      optionalPresencePreserved: ['pan'],
+      nodeOrder: 'id-utf8-bytewise',
+      edgeOrder: 'id-utf8-bytewise'
+    },
+    schedule: {
+      readyNodeOrder: 'node-id-utf8-bytewise',
+      documentArrayOrderAffectsAudio: false,
+      physicalParallelism: false
+    },
+    states: ['effective', 'dormant', 'disabled-bypass'],
+    identity: {
+      emptyGraph: 'unity-zero-latency',
+      disabledNode: 'identity-zero-latency-no-instance'
+    },
+    enabledNodeWithoutActiveInput: 'zero-filled-input',
+    latency: {
+      unit: 'samples',
+      valueShape: 'stream-channel-vector',
+      publicValue: 'main-output-common-max',
+      compensationOrder: ['fanIn', 'preNodeProcessingGroup', 'mainOutput'],
+      authoritativeSource: 'prepared-effective-instance'
+    },
+    adcEligibility: [
+      {
+        effectType: 'IRReverb',
+        whenReportedLatency: 'positive',
+        parameter: 'dryLevel',
+        acceptedMaximum: -96,
+        failureCode: 'GRAPH_UNSUPPORTED_CAPABILITY'
+      }
+    ],
+    recipes: {
+      wetDry: 'ordinary-graph-edges',
+      sendReturn: 'ordinary-graph-edges',
+      positiveLatencyIRReverb: 'wet-only-node-with-external-dry-edge'
+    },
+    snapshots: {
+      document: ['nodes', 'edges', 'incoming', 'outgoing', 'structuralConnectivity',
+        'structuralTopologicalOrder'],
+      compile: ['elementStates', 'effectiveSchedule', 'bufferAssignments',
+        'perChannelLatencies', 'processingGroups', 'fanInCompensation',
+        'preNodeCompensation', 'outputCompensation', 'latencySamples', 'capacity'],
+      visualization: {
+        preservesStructuralNodesAndEdges: true,
+        nodeStatusFields: ['effective', 'dormant', 'disabledBypass', 'state'],
+        edgeStatusFields: ['active', 'suppressed', 'dormant', 'state']
+      },
+      layoutCoordinates: false
+    },
+    compileErrorCodes: [
+      'GRAPH_CAPACITY',
+      'GRAPH_INSTANCE_PREPARE',
+      'GRAPH_LATENCY_OVERFLOW',
+      'GRAPH_UNSUPPORTED_CAPABILITY',
+      'GRAPH_PLAN_MEMORY'
+    ]
+  };
+}
+
+function graphCapacityCppHeader() {
+  return `// Generated by scripts/gen-dsp-library-bindings.mjs. Do not edit.
+#pragma once
+
+#include <cstddef>
+
+namespace effetune::graph_contract {
+inline constexpr std::size_t kMaxStructuralNodes = ${GRAPH_V1_CAPACITY.maxStructuralNodes};
+inline constexpr std::size_t kMaxEffectiveInstances = ${GRAPH_V1_CAPACITY.maxEffectiveInstances};
+inline constexpr std::size_t kMaxEdges = ${GRAPH_V1_CAPACITY.maxEdges};
+inline constexpr std::size_t kMaxLiveBuffers = ${GRAPH_V1_CAPACITY.maxLiveBuffers};
+inline constexpr std::size_t kMaxWorkspaceBytes = ${GRAPH_V1_CAPACITY.maxWorkspaceBytes};
+} // namespace effetune::graph_contract
+`;
+}
+
+function graphCapacityJavaScript() {
+  return `// Generated by scripts/gen-dsp-library-bindings.mjs. Do not edit.
+export const GRAPH_V1_CAPACITY = Object.freeze(${JSON.stringify(GRAPH_V1_CAPACITY, null, 2)});
+`;
+}
+
+function graphCapacityPython() {
+  return `# Generated by scripts/gen-dsp-library-bindings.mjs. Do not edit.
+
+GRAPH_V1_CAPACITY = ${JSON.stringify(GRAPH_V1_CAPACITY, null, 2)
+    .replaceAll('"', "'")}
+`;
+}
+
 function bundleSchema() {
   const topologyNames = ['unspecified', 'mono', 'independent', 'trueStereo', 'matrix'];
   return {
@@ -1574,8 +1826,15 @@ export function generateOutputs(catalog = buildCatalog()) {
   return new Map([
     [path.join(generatedRoot, 'effects-v1.json'), jsonFile(publicOutput)],
     [path.join(generatedRoot, 'effects-v1.private.json'), jsonFile(privateOutput)],
+    [path.join(generatedRoot, 'graph-v1.contract.json'), jsonFile(graphContract())],
+    [path.join(generatedRoot, 'graph-v1-capacity.h'), graphCapacityCppHeader()],
+    [path.join(repoRoot, 'dsp', 'bindings', 'js', 'src',
+      'generated-graph-contract.js'), graphCapacityJavaScript()],
+    [path.join(repoRoot, 'dsp', 'bindings', 'python', 'src', 'effetune',
+      '_generated_graph_contract.py'), graphCapacityPython()],
     [path.join(schemaRoot, 'chain-v1.schema.json'), jsonFile(chainSchema(catalog))],
     [path.join(schemaRoot, 'bundle-v1.schema.json'), jsonFile(bundleSchema())],
+    [path.join(schemaRoot, 'graph-v1.schema.json'), jsonFile(graphSchema(catalog))],
     [pythonOutput, pythonForCatalog(catalog)],
     [pythonStubOutput, pythonStubForCatalog(catalog)],
     [jsOutput, jsForCatalog(catalog)],

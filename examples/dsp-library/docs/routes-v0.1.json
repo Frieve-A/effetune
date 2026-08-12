@@ -19,6 +19,7 @@
     { "id": "python-api", "status": "launch", "path": "/dsp/api/python/", "title": "Python API", "output": "docs/dsp/api/python/index.md", "installSurfaces": ["python"] },
     { "id": "javascript-api", "status": "launch", "path": "/dsp/api/javascript/", "title": "JavaScript API", "output": "docs/dsp/api/javascript/index.md", "installSurfaces": ["npm"] },
     { "id": "chain-v1", "status": "launch", "path": "/dsp/reference/chain-v1/", "title": "Chain v1", "output": "docs/dsp/reference/chain-v1/index.md" },
+    { "id": "graph-v1", "status": "launch", "path": "/dsp/reference/graph-v1/", "title": "Graph v1", "output": "docs/dsp/reference/graph-v1/index.md", "anchors": ["document", "apis", "recipes", "queries-and-snapshots", "errors", "limitations"] },
     { "id": "bundle-v1", "status": "launch", "path": "/dsp/reference/bundle-v1/", "title": "Bundle v1", "output": "docs/dsp/reference/bundle-v1/index.md" },
     { "id": "compatibility", "status": "launch", "path": "/dsp/reference/compatibility/", "title": "Compatibility", "output": "docs/dsp/reference/compatibility/index.md", "anchors": ["analyzers-and-telemetry"] },
     { "id": "verification", "status": "launch", "path": "/dsp/reference/verification/", "title": "Verification", "output": "docs/dsp/reference/verification/index.md" },
@@ -26,6 +27,7 @@
     { "id": "faq", "status": "launch", "path": "/dsp/faq/", "title": "FAQ", "output": "docs/dsp/faq/index.md", "anchors": ["errors"] },
     { "id": "demo", "status": "launch", "path": "/dsp/demo/", "title": "Live demo", "source": "examples/dsp-library/index.html", "externalSource": true },
     { "id": "chain-schema", "status": "launch", "path": "/dsp/schemas/chain-v1.schema.json", "title": "Chain v1 schema", "source": "dsp/bindings/schema/chain-v1.schema.json", "raw": true },
+    { "id": "graph-schema", "status": "launch", "path": "/dsp/schemas/graph-v1.schema.json", "title": "Graph v1 schema", "source": "dsp/bindings/schema/graph-v1.schema.json", "raw": true },
     { "id": "bundle-schema", "status": "launch", "path": "/dsp/schemas/bundle-v1.schema.json", "title": "Bundle v1 schema", "source": "dsp/bindings/schema/bundle-v1.schema.json", "raw": true },
     { "id": "catalog", "status": "launch", "path": "/dsp/catalog/effects-v1.json", "title": "Effect catalog", "output": "docs/dsp/catalog/effects-v1.json", "raw": true },
     { "id": "llms", "status": "launch", "path": "/dsp/llms.txt", "title": "LLM index", "output": "docs/dsp/llms.txt", "raw": true },
@@ -52,15 +54,15 @@
       { "label": "Effects", "routeIds": ["effects"] },
       { "label": "Build", "routeIds": ["ml-data-augmentation", "schema-driven-agent"] },
       { "label": "Understand", "routeIds": ["processing-model", "determinism", "chain-and-presets", "streaming-and-events", "assets-and-bundles"] },
-      { "label": "Reference", "routeIds": ["python-api", "javascript-api", "chain-v1", "bundle-v1", "compatibility", "verification", "release-integrity"] },
+      { "label": "Reference", "routeIds": ["python-api", "javascript-api", "chain-v1", "graph-v1", "bundle-v1", "compatibility", "verification", "release-integrity"] },
       { "label": "Help", "routeIds": ["faq", "demo"] }
     ]
   },
   "nonRouteOutputs": [
     { "id": "root-readme", "output": "README.md", "snippet": "root-readme-bridge.md", "language": "markdown", "marker": "DSP-LIBRARY-BRIDGE" },
     { "id": "python-readme-summary", "output": "dsp/bindings/python/README.md", "summary": "python", "marker": "DSP-LIBRARY-PYTHON-SUMMARY" },
-    { "id": "python-readme", "output": "dsp/bindings/python/README.md", "install": "pip install effetune", "snippet": "python-start.py", "language": "python", "marker": "DSP-LIBRARY-PYTHON-START" },
+    { "id": "python-readme", "output": "dsp/bindings/python/README.md", "install": "pip install effetune", "snippet": "python-start.py", "graphSnippet": "graph-start.py", "language": "python", "marker": "DSP-LIBRARY-PYTHON-START" },
     { "id": "javascript-readme-summary", "output": "dsp/bindings/js/README.md", "summary": "javascript", "marker": "DSP-LIBRARY-JAVASCRIPT-SUMMARY" },
-    { "id": "javascript-readme", "output": "dsp/bindings/js/README.md", "install": "npm install @effetune/dsp", "snippet": "javascript-start.mjs", "language": "js", "marker": "DSP-LIBRARY-JAVASCRIPT-START" }
+    { "id": "javascript-readme", "output": "dsp/bindings/js/README.md", "install": "npm install @effetune/dsp", "snippet": "javascript-start.mjs", "graphSnippet": "graph-start.mjs", "language": "js", "marker": "DSP-LIBRARY-JAVASCRIPT-START" }
   ]
 }

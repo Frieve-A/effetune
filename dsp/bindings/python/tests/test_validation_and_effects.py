@@ -28,8 +28,8 @@ class ValidationAndEffectsTests(unittest.TestCase):
             effetune._generated_effects.create_effect("NotAnEffect")
 
     def test_generated_catalog_imports_and_constructs_all_approved_classes(self) -> None:
-        self.assertEqual(len(EFFECT_CLASSES), 84)
-        self.assertEqual(len(EFFECT_METADATA["effects"]), 84)
+        self.assertEqual(len(EFFECT_CLASSES), 90)
+        self.assertEqual(len(EFFECT_METADATA["effects"]), 90)
         asset_effects = {
             "FIRCrossover",
             "FiveBandFIRPEQ",
@@ -72,6 +72,42 @@ class ValidationAndEffectsTests(unittest.TestCase):
             effetune.FiveBandPEQ(gains=(0, 0))
         with self.assertRaises(effetune.ValidationError):
             effetune.HardClipping(mode="unknown")
+
+    def test_phaser_stage_choices_are_preserved_and_odd_values_are_rejected(self) -> None:
+        for stages in (2, 4, 6, 8, 10, 12):
+            with self.subTest(stages=stages):
+                self.assertEqual(
+                    effetune.Phaser(stages=stages).parameters["stages"], stages
+                )
+                chain = effetune.Chain.from_preset(
+                    {
+                        "version": 1,
+                        "chain": [
+                            {
+                                "type": "Phaser",
+                                "parameters": {"stages": stages},
+                            }
+                        ],
+                    }
+                )
+                self.assertEqual(chain.effects[0].parameters["stages"], stages)
+
+        for stages in (3, 5, 7, 9, 11):
+            with self.subTest(stages=stages):
+                with self.assertRaises(effetune.ValidationError):
+                    effetune.Phaser(stages=stages)
+                with self.assertRaises(effetune.ValidationError):
+                    effetune.Chain.from_preset(
+                        {
+                            "version": 1,
+                            "chain": [
+                                {
+                                    "type": "Phaser",
+                                    "parameters": {"stages": stages},
+                                }
+                            ],
+                        }
+                    )
 
     def test_chain_version_and_effect_channel_fail_with_validation_errors(self) -> None:
         with self.assertRaises(effetune.ValidationError):

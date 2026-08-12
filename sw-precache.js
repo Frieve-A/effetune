@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.4.0-b3d85dcb22b82219";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.4.0-723b8364200db32f";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./effetune-library.css",
   "./effetune-mobile.css",
@@ -328,9 +328,15 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./plugins/lofi/vinyl_artifacts.js",
   "./plugins/lofi/vinyl_simulator.css",
   "./plugins/lofi/vinyl_simulator.js",
+  "./plugins/modulation/auto_filter.js",
+  "./plugins/modulation/auto_pan.js",
+  "./plugins/modulation/chorus.js",
   "./plugins/modulation/doppler_distortion.js",
+  "./plugins/modulation/frequency_shifter.js",
+  "./plugins/modulation/phaser.js",
   "./plugins/modulation/pitch_shifter.js",
   "./plugins/modulation/pitch_shifter_hq.js",
+  "./plugins/modulation/rotary_speaker.js",
   "./plugins/modulation/tremolo.js",
   "./plugins/modulation/wow_flutter.js",
   "./plugins/others/oscillator.js",

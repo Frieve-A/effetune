@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "type": "PhaserPlugin",
+  "id": "barber-down",
+  "stimulus": "sin1k",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 9001,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "md": "Barber-pole",
+    "rt": 0.75,
+    "cf": 900,
+    "rg": 4,
+    "st": 6,
+    "fb": -25,
+    "sp": 90,
+    "dr": "Down",
+    "mx": 50
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "dd62b1916ffb692313669102c864f20001d21de83257c0285d5f0f14b58bcc68",
+  "outputFloats": 18002,
+  "byteLength": 72008,
+  "binary": "case-006.f32"
+}

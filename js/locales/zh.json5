@@ -50,6 +50,7 @@
   "status.filesSavedToFolder": "{count} 个文件已保存到 {folder}",
   "status.filesSaved": "{count} 个文件已保存到所选文件夹",
   "status.libraryTracksSkippedOffline": "已跳过 {count} 首曲目（离线）",
+  "status.jsFallbackCapacityExceeded": "为避免在当前采样率和输出声道数下播放中断，已将 {effectName} 切换为 bypass。请降低采样率或减少输出声道数。",
 
   // 界面元素
   "ui.resetButton": "重置音频",
@@ -486,6 +487,7 @@
   "irLibrary.error.fileTooLarge": "所选脉冲响应过大。请选择较短的脉冲响应，然后重试。",
   "irLibrary.error.importFolder": "无法导入文件夹。请重试。",
   "dbt.error.parallelStartFailed": "由于两个处理管线尚未准备就绪，无法开始测试。请等待效果器加载完成后重试。",
+  "dbt.error.jsFallbackCapacityExceeded": "使用 JavaScript 效果器同时处理两个管线会占用过多 CPU，因此无法运行测试。请启用 WebAssembly DSP 或简化管线后重试。",
   "irReverb.name.impulseResponse": "脉冲响应",
   "irReverb.name.theImpulseResponse": "脉冲响应",
   "irReverb.name.theImpulseResponseCapitalized": "脉冲响应",

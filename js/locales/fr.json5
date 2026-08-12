@@ -50,6 +50,7 @@
   "status.filesSavedToFolder": "{count} fichier(s) enregistré(s) dans {folder}",
   "status.filesSaved": "{count} fichier(s) enregistré(s) dans le dossier sélectionné",
   "status.libraryTracksSkippedOffline": "{count} piste(s) ignorée(s) (hors ligne)",
+  "status.jsFallbackCapacityExceeded": "Le bypass de {effectName} a été activé pour éviter des interruptions de lecture avec la fréquence d’échantillonnage et le nombre de canaux de sortie actuels. Réduisez la fréquence d’échantillonnage ou le nombre de canaux de sortie.",
 
   // Éléments de l'interface
   "ui.resetButton": "Réinitialiser l'audio",
@@ -486,6 +487,7 @@
   "irLibrary.error.fileTooLarge": "La réponse impulsionnelle sélectionnée est trop volumineuse. Choisissez-en une plus courte et réessayez.",
   "irLibrary.error.importFolder": "Impossible d'importer le dossier. Réessayez.",
   "dbt.error.parallelStartFailed": "Le test n’a pas pu démarrer, car les deux chaînes de traitement n’étaient pas prêtes. Attendez la fin du chargement des effets, puis réessayez.",
+  "dbt.error.jsFallbackCapacityExceeded": "Le test n’a pas pu s’exécuter, car le traitement des deux chaînes avec des effets JavaScript demanderait trop de ressources processeur. Activez le DSP WebAssembly ou simplifiez les chaînes, puis réessayez.",
   "irReverb.name.impulseResponse": "Réponse impulsionnelle",
   "irReverb.name.theImpulseResponse": "la réponse impulsionnelle",
   "irReverb.name.theImpulseResponseCapitalized": "La réponse impulsionnelle",

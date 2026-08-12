@@ -92,6 +92,33 @@ function createPort(name, calls) {
           requestId: message.requestId,
           samples: message.samples
         } });
+      } else if (message?.type === 'requestJsFallbackBudgetState') {
+        const required = this.jsFallbackRequiredSampleChannels ?? 0;
+        const budget = this.jsFallbackBudgetSampleChannels ?? 96000;
+        this.onmessage?.({ data: {
+          type: 'jsFallbackBudgetState',
+          requestId: message.requestId,
+          budgetSampleChannels: budget,
+          requiredSampleChannels: required,
+          admittedSampleChannels: required <= budget ? required : 0,
+          capacityExceeded: required > budget,
+          intrinsicCapacityExceeded: this.jsFallbackIntrinsicCapacityExceeded === true,
+          generation: this.jsFallbackGeneration ?? 1
+        } });
+      } else if (message?.type === 'configureJsFallbackBudget') {
+        this.jsFallbackBudgetSampleChannels = message.budgetSampleChannels;
+        if (!Number.isInteger(message.requestId)) return;
+        const required = this.jsFallbackRequiredSampleChannels ?? 0;
+        this.onmessage?.({ data: {
+          type: 'jsFallbackBudgetState',
+          requestId: message.requestId,
+          budgetSampleChannels: message.budgetSampleChannels,
+          requiredSampleChannels: required,
+          admittedSampleChannels: required <= message.budgetSampleChannels ? required : 0,
+          capacityExceeded: required > message.budgetSampleChannels,
+          intrinsicCapacityExceeded: this.jsFallbackIntrinsicCapacityExceeded === true,
+          generation: this.jsFallbackGeneration ?? 1
+        } });
       }
     }
   };

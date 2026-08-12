@@ -3,22 +3,34 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
+  buildEvents,
   chooseWorkletPlans,
   discoverFrozenGoldenCases,
   expectedValidationRejection,
   isAcceptanceComplete,
+  runJsModulationCrossFieldContract,
   runPythonAcceptanceBackend,
+  stageJsPackage,
   summarizeInventory
 } from '../../tools/verify-dsp-library-goldens.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const GOLDEN_CASE_COUNT = 793;
-const EFFECT_COUNT = 84;
-const WORKLET_GOLDEN_CASE_COUNT = 85;
-const NON_IDENTITY_EFFECT_COUNT = 79;
+const GOLDEN_CASE_COUNT = 847;
+const EFFECT_COUNT = 90;
+const WORKLET_GOLDEN_CASE_COUNT = 91;
+const NON_IDENTITY_EFFECT_COUNT = 85;
+
+test('JavaScript modulation cross-field stream state is canonical', async t => {
+  const stageRoot = await stageJsPackage(repoRoot);
+  t.after(() => fs.rm(stageRoot, { recursive: true, force: true }));
+  const api = await import(`${pathToFileURL(path.join(stageRoot, 'index.js')).href}?modulation-state=1`);
+  for (const variant of ['baseline', 'simd']) {
+    assert.equal(await runJsModulationCrossFieldContract(api, variant), true, variant);
+  }
+});
 
 function successfulPythonBackend(total = GOLDEN_CASE_COUNT) {
   return {
@@ -35,7 +47,9 @@ function successfulPythonBackend(total = GOLDEN_CASE_COUNT) {
       differentSeed: true,
       reset: true,
       closeIdempotent: true,
-      closedRejects: true
+      closedRejects: true,
+      modulationCrossField: true,
+      frequencyShifterLatency: true
     },
     expectedValidationRejections: [{
       case: 'Matrix/malformed-routes-are-dropped',
@@ -62,7 +76,9 @@ function completionFixture(pythonBackend) {
       differentSeed: true,
       closeIdempotent: true,
       closedRejects: true,
-      statefulStream: true
+      statefulStream: true,
+      modulationCrossField: true,
+      frequencyShifterLatency: true
     }
   });
   const worklet = prefix => ({
@@ -386,8 +402,8 @@ test('frozen DSP library acceptance inventory stays complete', async () => {
   assert.equal(inventory.effects, EFFECT_COUNT);
   assert.equal(inventory.total, GOLDEN_CASE_COUNT);
   assert.equal(inventory.assetCases, 20);
-  assert.equal(inventory.eventCases, 131);
-  assert.equal(inventory.eventCount, 447);
+  assert.equal(inventory.eventCases, 146);
+  assert.equal(inventory.eventCount, 494);
   assert.deepEqual(inventory.sampleRates, [
     32000,
     44100,
@@ -399,7 +415,7 @@ test('frozen DSP library acceptance inventory stays complete', async () => {
     352800,
     384000
   ]);
-  assert.deepEqual(inventory.channels, [1, 2, 4, 6, 8]);
+  assert.deepEqual(inventory.channels, [1, 2, 3, 4, 5, 6, 8]);
   assert.deepEqual(inventory.blockSizes, [
     1,
     17,
@@ -410,6 +426,7 @@ test('frozen DSP library acceptance inventory stays complete', async () => {
     64,
     65,
     73,
+    79,
     83,
     89,
     91,
@@ -425,7 +442,8 @@ test('frozen DSP library acceptance inventory stays complete', async () => {
     257,
     511,
     512,
-    575
+    575,
+    1024
   ]);
 });
 
@@ -444,6 +462,48 @@ test('public pattern metadata identifies only the binding-invalid frozen case', 
       reason: 'pattern-mismatch'
     }
   }]);
+});
+
+test('golden events preserve supplied semantic fields and cross-field key order', async () => {
+  const { cases } = await discoverFrozenGoldenCases();
+  const matrix = [
+    ['AutoFilter', ['lf', 'hf'], ['minimumFrequency', 'maximumFrequency']],
+    ['Chorus', ['dl', 'dp'], ['delay', 'depth']],
+    ['FrequencyShifter', ['mn', 'mx'], ['minimumShift', 'maximumShift']]
+  ];
+  for (const [type, legacyKeys, semanticKeys] of matrix) {
+    const testCase = cases.find(candidate =>
+      candidate.publicType === type && candidate.metadata.events?.some(event =>
+        legacyKeys.every(key => Object.hasOwn(event.params ?? {}, key))
+      )
+    );
+    assert.ok(testCase, type);
+    const eventIndex = testCase.metadata.events.findIndex(event =>
+      legacyKeys.every(key => Object.hasOwn(event.params ?? {}, key))
+    );
+    const events = buildEvents(testCase);
+    assert.deepEqual(
+      Object.keys(events[eventIndex].parameters).filter(key => semanticKeys.includes(key)),
+      semanticKeys,
+      type
+    );
+    assert.equal(
+      Object.keys(events[eventIndex].parameters).length,
+      Object.keys(testCase.metadata.events[eventIndex].params).length,
+      type
+    );
+
+    const reversed = structuredClone(testCase);
+    reversed.metadata.events[eventIndex].params = Object.fromEntries(
+      Object.entries(reversed.metadata.events[eventIndex].params).reverse()
+    );
+    assert.deepEqual(
+      Object.keys(buildEvents(reversed)[eventIndex].parameters)
+        .filter(key => semanticKeys.includes(key)),
+      [...semanticKeys].reverse(),
+      `${type} reversed`
+    );
+  }
 });
 
 test('AudioWorklet plans retain compatible frozen golden contracts', async () => {
@@ -515,14 +575,18 @@ test('acceptance completion fails closed on missing or shrunk backend results', 
           differentSeed: true,
           reset: true,
           closeIdempotent: true,
-          closedRejects: true
+          closedRejects: true,
+          modulationCrossField: true,
+          frequencyShifterLatency: true
         }
       : {
           sameSeed: true,
           differentSeed: true,
           closeIdempotent: true,
           closedRejects: true,
-          statefulStream: true
+          statefulStream: true,
+          modulationCrossField: true,
+          frequencyShifterLatency: true
         }
   });
   const worklet = (prefix = '') => ({
@@ -583,7 +647,9 @@ test('acceptance completion fails closed on missing or shrunk backend results', 
       differentSeed: true,
       renamedReset: true,
       closeIdempotent: true,
-      closedRejects: true
+      closedRejects: true,
+      modulationCrossField: true,
+      frequencyShifterLatency: true
     },
     {
       sameSeed: true,
@@ -591,6 +657,8 @@ test('acceptance completion fails closed on missing or shrunk backend results', 
       reset: true,
       closeIdempotent: true,
       closedRejects: true,
+      modulationCrossField: true,
+      frequencyShifterLatency: true,
       extra: true
     }
   ]) {

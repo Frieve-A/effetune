@@ -2,6 +2,9 @@
 
 Documentation: [effetune.frieve.com/dsp/](https://effetune.frieve.com/dsp/)
 
+Graph v1 is opt-in. Its current capacities and delay-storage accounting are
+published in the [Graph v1 guide](https://effetune.frieve.com/dsp/reference/graph-v1/#capacity).
+
 Source and issues: [Frieve-A/effetune](https://github.com/Frieve-A/effetune)
 
 `effetune.__version__` comes from installed wheel metadata. An unpacked source
@@ -10,7 +13,7 @@ tree without distribution metadata reports `0+source`.
 <!-- BEGIN DSP-LIBRARY-PYTHON-SUMMARY -->
 EffeTune is a deterministic audio-effects library backed by the same
 host-neutral C++20 DSP core used by the EffeTune application. Version 0.4.0
-provides 84 semantic effect classes, ordered serial chains, stateful block
+provides 90 semantic effect classes, ordered serial chains, stateful block
 processing, semantic presets, bounded impulse-response bundles, and a small
 audio-file CLI.
 <!-- END DSP-LIBRARY-PYTHON-SUMMARY -->
@@ -33,6 +36,38 @@ audio = np.ascontiguousarray(np.stack((mono, mono)))
 chain = et.Chain([et.Volume(volume=-6)])
 output = chain.process(audio, sample_rate=48_000)
 print(output.shape, float(np.max(np.abs(output))))
+```
+
+### Graph v1 quickstart
+
+Graph v1 is opt-in routing for branching and merging:
+
+```python
+import numpy as np
+import effetune as et
+
+audio = np.full((2, 128), 0.25, dtype=np.float32)
+graph = et.Graph.wet_dry(
+    et.Volume(id="wet", volume=-6),
+    dry=0.5,
+    wet=0.5,
+)
+stream = None
+
+try:
+    offline = graph.process(audio, sample_rate=48_000)
+    stream = graph.stream(48_000, channels=2, block_size=128)
+    continuous = stream.process(audio)
+    print(
+        float(offline[0, 0]),
+        float(continuous[0, 0]),
+        stream.latency_samples,
+        stream.compile_snapshot["effectiveSchedule"],
+    )
+finally:
+    if stream is not None:
+        stream.close()
+    graph.close()
 ```
 <!-- END DSP-LIBRARY-PYTHON-START -->
 
@@ -183,13 +218,69 @@ passing `--subtype` explicitly silences, and when the rendered peak exceeds
 full scale and is clipped by an integer PCM output. Both warnings leave the
 exit code at 0.
 
-`EFFECT_METADATA` is the public machine-readable semantic catalog for all 83
+`EFFECT_METADATA` is the public machine-readable semantic catalog for all 90
 root effect classes. It contains channel choices, parameters, required assets,
 telemetry, and latency declarations without private native implementation
 details. `Stream.latency_samples` reports aggregate runtime latency and matches
 JavaScript `ChainStream.latencySamples` for the same chain and sample rate.
 `Chain.latency_samples(sample_rate, ...)` reports the same aggregate without
 opening a stream, which aligns offline `process()` output.
+
+### Modulation Style recipes
+
+The application-only **Style** selector is not a DSP parameter or a second
+preset API. The following dictionaries use the equivalent Python constructor
+parameter names. Copy one into a named constructor, for example
+`Chorus(**MODULATION_STYLES["Chorus"]["Flanger"])`, or use it as the effect's
+recipe when building Chain JSON (where `to_dict()` emits semantic camel-case
+parameter names).
+
+```python
+MODULATION_STYLES = {
+    "AutoFilter": {
+        "Auto Filter Sweep": {"mode": "LFO", "filter_type": "Low-pass", "minimum_frequency": 200, "maximum_frequency": 4000, "resonance": 1.5, "mix": 80, "rate": 0.5, "waveform": "Sine", "stereo_phase": 0, "sensitivity": 24, "attack": 20, "release": 250, "direction": "Up"},
+        "Stereo Filter Sweep": {"mode": "LFO", "filter_type": "Low-pass", "minimum_frequency": 160, "maximum_frequency": 6000, "resonance": 2, "mix": 85, "rate": 0.35, "waveform": "Sine", "stereo_phase": 120, "sensitivity": 24, "attack": 20, "release": 250, "direction": "Up"},
+        "Envelope Filter": {"mode": "Envelope", "filter_type": "Low-pass", "minimum_frequency": 100, "maximum_frequency": 5000, "resonance": 1.2, "mix": 85, "rate": 0.5, "waveform": "Sine", "stereo_phase": 0, "sensitivity": 24, "attack": 18, "release": 300, "direction": "Up"},
+        "Auto Wah": {"mode": "Envelope", "filter_type": "Band-pass", "minimum_frequency": 180, "maximum_frequency": 2400, "resonance": 5, "mix": 100, "rate": 0.5, "waveform": "Sine", "stereo_phase": 0, "sensitivity": 30, "attack": 8, "release": 180, "direction": "Up"},
+        "Reverse Auto Wah": {"mode": "Envelope", "filter_type": "Band-pass", "minimum_frequency": 180, "maximum_frequency": 2800, "resonance": 4, "mix": 100, "rate": 0.5, "waveform": "Sine", "stereo_phase": 0, "sensitivity": 30, "attack": 12, "release": 350, "direction": "Down"},
+    },
+    "AutoPan": {
+        "Gentle Auto Pan": {"rate": 0.35, "depth": 45, "center": 0, "width": 70, "waveform": "Sine", "phase": 0},
+        "Wide Auto Pan": {"rate": 0.7, "depth": 100, "center": 0, "width": 100, "waveform": "Sine", "phase": 0},
+        "Fast Auto Pan": {"rate": 4, "depth": 85, "center": 0, "width": 100, "waveform": "Triangle", "phase": 0},
+    },
+    "Chorus": {
+        "Classic Chorus": {"mode": "Chorus", "rate": 0.8, "delay": 12, "depth": 3, "voices": 3, "stereo_spread": 60, "feedback": 0, "mix": 45},
+        "Stereo Chorus": {"mode": "Stereo Chorus", "rate": 0.65, "delay": 15, "depth": 4, "voices": 2, "stereo_spread": 80, "feedback": 0, "mix": 50},
+        "Ensemble": {"mode": "Ensemble", "rate": 0.45, "delay": 20, "depth": 6, "voices": 6, "stereo_spread": 100, "feedback": 0, "mix": 60},
+        "Flanger": {"mode": "Flanger", "rate": 0.35, "delay": 2.5, "depth": 2, "voices": 1, "stereo_spread": 35, "feedback": 45, "mix": 50},
+        "Jet Flanger": {"mode": "Flanger", "rate": 0.18, "delay": 1.5, "depth": 1.4, "voices": 1, "stereo_spread": 70, "feedback": -75, "mix": 55},
+        "Vibrato": {"mode": "Vibrato", "rate": 4.5, "delay": 8, "depth": 5, "voices": 1, "stereo_spread": 50, "feedback": 0, "mix": 100},
+    },
+    "FrequencyShifter": {
+        "Shift Up": {"mode": "Shift", "shift": 8, "carrier_frequency": 440, "minimum_shift": 20, "maximum_shift": 800, "rate": 0.15, "direction": "Up", "stereo_phase": 0, "mix": 100},
+        "Shift Down": {"mode": "Shift", "shift": -8, "carrier_frequency": 440, "minimum_shift": 20, "maximum_shift": 800, "rate": 0.15, "direction": "Down", "stereo_phase": 0, "mix": 100},
+        "Fine Detune": {"mode": "Shift", "shift": 2, "carrier_frequency": 440, "minimum_shift": 20, "maximum_shift": 800, "rate": 0.15, "direction": "Up", "stereo_phase": 90, "mix": 55},
+        "Ring Modulator": {"mode": "Ring Mod", "shift": 8, "carrier_frequency": 440, "minimum_shift": 20, "maximum_shift": 800, "rate": 0.15, "direction": "Up", "stereo_phase": 0, "mix": 100},
+        "Barber-pole Up": {"mode": "Barber-pole", "shift": 8, "carrier_frequency": 440, "minimum_shift": 20, "maximum_shift": 900, "rate": 0.12, "direction": "Up", "stereo_phase": 90, "mix": 85},
+        "Barber-pole Down": {"mode": "Barber-pole", "shift": -8, "carrier_frequency": 440, "minimum_shift": 20, "maximum_shift": 900, "rate": 0.12, "direction": "Down", "stereo_phase": 90, "mix": 85},
+    },
+    "Phaser": {
+        "Classic Phaser": {"mode": "Classic", "rate": 0.5, "center_frequency": 1000, "range": 3, "stages": 6, "feedback": 20, "stereo_phase": 90, "direction": "Up", "mix": 50},
+        "Deep Phaser": {"mode": "Classic", "rate": 0.25, "center_frequency": 700, "range": 4.5, "stages": 12, "feedback": 55, "stereo_phase": 30, "direction": "Up", "mix": 55},
+        "Stereo Phaser": {"mode": "Classic", "rate": 0.65, "center_frequency": 1200, "range": 3.5, "stages": 8, "feedback": 25, "stereo_phase": 120, "direction": "Up", "mix": 50},
+        "Barber-pole Up": {"mode": "Barber-pole", "rate": 0.35, "center_frequency": 1000, "range": 5, "stages": 8, "feedback": 30, "stereo_phase": 60, "direction": "Up", "mix": 55},
+        "Barber-pole Down": {"mode": "Barber-pole", "rate": 0.35, "center_frequency": 1000, "range": 5, "stages": 8, "feedback": 30, "stereo_phase": 60, "direction": "Down", "mix": 55},
+    },
+    "RotarySpeaker": {
+        "Rotary Slow": {"speed_state": "Slow", "speed": 100, "acceleration": 2.2, "crossover": 800, "rotor_balance": 0, "stereo_width": 75, "doppler_depth": 45, "amplitude_depth": 55, "mix": 70},
+        "Rotary Fast": {"speed_state": "Fast", "speed": 100, "acceleration": 1.4, "crossover": 800, "rotor_balance": 0, "stereo_width": 85, "doppler_depth": 65, "amplitude_depth": 70, "mix": 78},
+        "Gentle Rotary": {"speed_state": "Slow", "speed": 75, "acceleration": 3, "crossover": 900, "rotor_balance": 0, "stereo_width": 45, "doppler_depth": 25, "amplitude_depth": 30, "mix": 55},
+        "Leslie Slow": {"speed_state": "Slow", "speed": 100, "acceleration": 2.8, "crossover": 800, "rotor_balance": -5, "stereo_width": 80, "doppler_depth": 50, "amplitude_depth": 60, "mix": 75},
+        "Leslie Fast": {"speed_state": "Fast", "speed": 100, "acceleration": 1.8, "crossover": 800, "rotor_balance": -5, "stereo_width": 90, "doppler_depth": 70, "amplitude_depth": 75, "mix": 82},
+    },
+}
+```
 
 ## CLI
 

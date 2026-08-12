@@ -15,6 +15,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace nb = nanobind;
@@ -52,6 +53,12 @@ void writeU32(std::uint8_t *bytes, std::uint32_t value) noexcept {
   bytes[1] = static_cast<std::uint8_t>(value >> 8u);
   bytes[2] = static_cast<std::uint8_t>(value >> 16u);
   bytes[3] = static_cast<std::uint8_t>(value >> 24u);
+}
+
+std::uint32_t readU32(const std::uint8_t *bytes) noexcept {
+  return static_cast<std::uint32_t>(bytes[0]) | (static_cast<std::uint32_t>(bytes[1]) << 8u) |
+         (static_cast<std::uint32_t>(bytes[2]) << 16u) |
+         (static_cast<std::uint32_t>(bytes[3]) << 24u);
 }
 
 std::size_t nextPowerOfTwo(std::size_t value) noexcept {
@@ -234,7 +241,13 @@ public:
                 engine_->setInstanceParams(handle, parameters.data(),
                                            static_cast<std::uint32_t>(parameters.shape(0)),
                                            layout_hash, 0u));
-    nodes_.push_back({handle, channelSpec(channel)});
+    Node node;
+    node.handle = handle;
+    node.channel_spec = channelSpec(channel);
+    node.seed = seed;
+    node.layout_hash = layout_hash;
+    node.parameters.assign(parameters.data(), parameters.data() + parameters.shape(0));
+    nodes_.push_back(std::move(node));
     return static_cast<std::uint32_t>(nodes_.size() - 1u);
   }
 
@@ -332,6 +345,42 @@ public:
     finished_ = true;
   }
 
+  et_status finishGraph(PackedUint8 descriptor_input) {
+    requireOpen();
+    if (finished_ || descriptor_input.shape(0) < 32u ||
+        descriptor_input.shape(0) > std::numeric_limits<std::uint32_t>::max()) {
+      throw std::invalid_argument("invalid Graph descriptor");
+    }
+    std::vector<std::uint8_t> descriptor(descriptor_input.data(),
+                                         descriptor_input.data() + descriptor_input.shape(0));
+    const std::uint32_t node_count = readU32(descriptor.data() + 8u);
+    const std::size_t node_bytes = static_cast<std::size_t>(node_count) * 24u;
+    if (node_bytes > descriptor.size() - 32u) {
+      throw std::invalid_argument("invalid Graph node records");
+    }
+    for (std::uint32_t index = 0u; index < node_count; ++index) {
+      std::uint8_t *record = descriptor.data() + 32u + static_cast<std::size_t>(index) * 24u;
+      const std::uint32_t token = readU32(record);
+      if (token == 0u) {
+        continue;
+      }
+      if (token > nodes_.size()) {
+        throw std::invalid_argument("invalid Graph instance token");
+      }
+      writeU32(record, nodes_[token - 1u].handle);
+    }
+    prewarmAssets();
+    checkStatus("DSP reset", engine_->reset());
+    restoreInitialNodeConfiguration();
+    const et_status status =
+        engine_->configureGraph(descriptor.data(), static_cast<std::uint32_t>(descriptor.size()));
+    if (status == ET_OK) {
+      graph_mode_ = true;
+      finished_ = true;
+    }
+    return status;
+  }
+
   void setEffectParameters(std::uint32_t node_index, PackedFloat32 parameters,
                            std::uint32_t layout_hash) {
     requireOpen();
@@ -345,6 +394,18 @@ public:
                                            layout_hash, 0u));
   }
 
+  et_status setGraphInstanceParameters(std::uint32_t node_index, PackedFloat32 parameters,
+                                       std::uint32_t layout_hash, std::uint32_t changed_index) {
+    requireOpen();
+    if (!finished_ || !graph_mode_ || node_index >= nodes_.size() ||
+        parameters.shape(0) > std::numeric_limits<std::uint32_t>::max()) {
+      throw std::invalid_argument("cannot update this Graph effect");
+    }
+    return engine_->setGraphInstanceParams(nodes_[node_index].handle, parameters.data(),
+                                           static_cast<std::uint32_t>(parameters.shape(0)),
+                                           layout_hash, changed_index);
+  }
+
   void setEffectParameterBytes(std::uint32_t node_index, PackedUint8 parameters,
                                std::uint32_t layout_hash) {
     requireOpen();
@@ -356,6 +417,11 @@ public:
                 engine_->setInstanceParamBytes(nodes_[node_index].handle, parameters.data(),
                                                static_cast<std::uint32_t>(parameters.shape(0)),
                                                layout_hash, 0u));
+    if (!finished_) {
+      nodes_[node_index].parameter_bytes.assign(parameters.data(),
+                                                parameters.data() + parameters.shape(0));
+      nodes_[node_index].layout_hash = layout_hash;
+    }
   }
 
   void processInPlace(PlanarFloat32 audio) {
@@ -374,12 +440,28 @@ public:
     processed_frames_ += frames;
   }
 
+  void processGraphInPlace(PlanarFloat32 audio) {
+    requireOpen();
+    if (!finished_ || !graph_mode_ || audio.shape(0) != channels_ || audio.shape(1) == 0u ||
+        audio.shape(1) > block_size_) {
+      throw std::invalid_argument("invalid native Graph audio block");
+    }
+    const auto frames = static_cast<std::uint32_t>(audio.shape(1));
+    const std::size_t floats = static_cast<std::size_t>(channels_) * frames;
+    std::memcpy(engine_->combined(), audio.data(), floats * sizeof(float));
+    checkStatus("DSP Graph processing",
+                engine_->processGraph(channels_, frames,
+                                      static_cast<double>(processed_frames_) / sample_rate_));
+    std::memcpy(audio.data(), engine_->combined(), floats * sizeof(float));
+    processed_frames_ += frames;
+  }
+
   void reset() {
     requireOpen();
     if (!finished_) {
       throw std::runtime_error("native chain is not ready");
     }
-    checkStatus("DSP reset", engine_->reset());
+    checkStatus("DSP reset", graph_mode_ ? engine_->resetGraph() : engine_->reset());
     processed_frames_ = 0u;
   }
 
@@ -411,6 +493,32 @@ public:
     return latency;
   }
 
+  std::uint32_t graphLatencySamples() const {
+    requireOpen();
+    if (!finished_ || !graph_mode_) {
+      throw std::runtime_error("native Graph is not ready");
+    }
+    return engine_->graphLatency();
+  }
+
+  nb::bytes graphSnapshot() const {
+    requireOpen();
+    if (!finished_ || !graph_mode_) {
+      throw std::runtime_error("native Graph is not ready");
+    }
+    std::vector<std::uint8_t> bytes(engine_->graphSnapshotSize());
+    checkStatus("DSP Graph snapshot",
+                engine_->copyGraphSnapshot(bytes.data(), static_cast<std::uint32_t>(bytes.size())));
+    return nb::bytes(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+  }
+
+  nb::tuple graphDiagnostic() const {
+    requireOpen();
+    const et_graph_diagnostic &diagnostic = engine_->graphDiagnostic();
+    return nb::make_tuple(diagnostic.status, diagnostic.kind, diagnostic.index, diagnostic.path,
+                          diagnostic.required, diagnostic.capacity);
+  }
+
   void close() noexcept {
     engine_.reset();
     nodes_.clear();
@@ -418,12 +526,17 @@ public:
     finished_ = false;
     processed_frames_ = 0u;
     last_telemetry_dropped_ = 0u;
+    graph_mode_ = false;
   }
 
 private:
   struct Node {
-    et_instance handle;
-    std::int8_t channel_spec;
+    et_instance handle = 0u;
+    std::int8_t channel_spec = -2;
+    std::uint32_t seed = 0u;
+    std::uint32_t layout_hash = 0u;
+    std::vector<float> parameters;
+    std::vector<std::uint8_t> parameter_bytes;
   };
 
   struct AssetNode {
@@ -458,6 +571,23 @@ private:
     }
   }
 
+  void restoreInitialNodeConfiguration() {
+    for (const Node &node : nodes_) {
+      checkStatus("DSP seed restoration", engine_->setInstanceSeed(node.handle, node.seed, 0u));
+      checkStatus("DSP parameter restoration",
+                  engine_->setInstanceParams(node.handle, node.parameters.data(),
+                                             static_cast<std::uint32_t>(node.parameters.size()),
+                                             node.layout_hash, 0u));
+      if (!node.parameter_bytes.empty()) {
+        checkStatus(
+            "DSP structured parameter restoration",
+            engine_->setInstanceParamBytes(node.handle, node.parameter_bytes.data(),
+                                           static_cast<std::uint32_t>(node.parameter_bytes.size()),
+                                           node.layout_hash, 0u));
+      }
+    }
+  }
+
   double sample_rate_;
   std::uint32_t channels_;
   std::uint32_t block_size_;
@@ -468,6 +598,7 @@ private:
   std::uint64_t processed_frames_ = 0u;
   std::uint32_t last_telemetry_dropped_ = 0u;
   bool finished_ = false;
+  bool graph_mode_ = false;
 };
 
 } // namespace
@@ -485,15 +616,24 @@ NB_MODULE(_native, module) {
            nb::arg("rate_divider"), nb::arg("paths").noconvert(), nb::arg("input_count"),
            nb::arg("processing_channels"))
       .def("finish", &NativeChain::finish)
+      .def("finish_graph", &NativeChain::finishGraph, nb::arg("descriptor").noconvert())
       .def("set_effect_parameters", &NativeChain::setEffectParameters, nb::arg("node_index"),
            nb::arg("parameters").noconvert(), nb::arg("layout_hash"))
+      .def("set_graph_instance_parameters", &NativeChain::setGraphInstanceParameters,
+           nb::arg("node_index"), nb::arg("parameters").noconvert(), nb::arg("layout_hash"),
+           nb::arg("changed_index"))
       .def("set_effect_parameter_bytes", &NativeChain::setEffectParameterBytes,
            nb::arg("node_index"), nb::arg("parameters").noconvert(), nb::arg("layout_hash"))
       .def("process_in_place", &NativeChain::processInPlace, nb::arg("audio").noconvert())
+      .def("process_graph_in_place", &NativeChain::processGraphInPlace,
+           nb::arg("audio").noconvert())
       .def("set_telemetry_enabled", &NativeChain::setTelemetryEnabled, nb::arg("enabled"))
       .def("read_telemetry", &NativeChain::readTelemetry)
       .def("last_telemetry_dropped", &NativeChain::lastTelemetryDropped)
       .def("reset", &NativeChain::reset)
       .def("latency_samples", &NativeChain::latencySamples)
+      .def("graph_latency_samples", &NativeChain::graphLatencySamples)
+      .def("graph_snapshot", &NativeChain::graphSnapshot)
+      .def("graph_diagnostic", &NativeChain::graphDiagnostic)
       .def("close", &NativeChain::close);
 }

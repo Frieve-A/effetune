@@ -1,16 +1,16 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:3b0b3c14306100b9095e024d22d5956d806df82f5db888f2cc1ab5e0757d6fcc",
+  "sourceDigest": "sha256:f4716d2e975dbf49dfd1aac2dcfaffc245a004f00a9d7d4be45df8210648c06b",
   "emsdkVersion": "6.0.2",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:d4dfe80f4a83288f392229cdf647ac299b45cba75dd404a3ea9beae3f9dc6df8",
+    "digest": "sha256:82a2eeac5a008f296c5021e62c06219a35c85f13e3b19aab5292cddb2df62d0e",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
         "kind": "file",
-        "sha256": "sha256:b0570a7920bce522a35543a3582108f95cadb5a63ca3ab6af52d3be8b390dc09"
+        "sha256": "sha256:ae52245f49287e6bf3345ba0860e65c7eb9d49fe61fabb0a3fb3459bb9eb6676"
       },
       {
         "id": "dsp/core/allocation_guard.cpp",
@@ -35,12 +35,12 @@
       {
         "id": "dsp/core/engine.cpp",
         "kind": "file",
-        "sha256": "sha256:4c5b04d89a7cb2b437a6acdb2f0d49fec686d5cfdad1aa854b3564d11b531922"
+        "sha256": "sha256:50ed34a6013301c67d9996d72359fce70b3e8317efbf9079d03e2aa1b448842a"
       },
       {
         "id": "dsp/core/engine.h",
         "kind": "file",
-        "sha256": "sha256:2bce9081ea8fb9feead0216245b9cba835f5e0d7462dbef3b4d8ff55270b82ec"
+        "sha256": "sha256:60d78a6f39e881846a53c4213972f11be0c40e66a36d5b6897859e52298006d1"
       },
       {
         "id": "dsp/core/registry.cpp",
@@ -65,7 +65,7 @@
       {
         "id": "dsp/exports.txt",
         "kind": "file",
-        "sha256": "sha256:a80c7af5a36d703cae78efc96e7458d238cbff7a9ac86ffaecdb2e6d19d18735"
+        "sha256": "sha256:d9fafe26c1f1d23eaa4f38fa61073f992f34a0649e85eac39df9bd1dc8215342"
       },
       {
         "id": "dsp/generated/cpp/G726ADPCMSimulatorPluginParams.h",
@@ -75,7 +75,7 @@
       {
         "id": "dsp/include/effetune/abi.h",
         "kind": "file",
-        "sha256": "sha256:a29f9c9b764b654faad87979429885f3546b7501e466d723bcdc8d13bfb02f60"
+        "sha256": "sha256:18dcdc3fdd2af9de4b7acb27dacb3441b01a441e9447af1908efb69437b3909a"
       },
       {
         "id": "dsp/include/effetune/dsp/halfband.h",
@@ -130,17 +130,17 @@
       {
         "id": "js/audio/dsp-engine-binding.js",
         "kind": "file",
-        "sha256": "sha256:8c328fc58efa92a2b21678bd6da480fd5d2e72c5ebf01739e0a6c3a1f20ce9d3"
+        "sha256": "sha256:4c0efb5c75ee0c051ba2fc0804f908d61363d077fec95f86f5b390a8eb031cc9"
       },
       {
         "id": "production-build#g726-resolved-authority",
         "kind": "derived",
-        "sha256": "sha256:083288185aaf9068f11cca8ffef3eefc2a68f8d9aab59f4a43bc2d141e2218be"
+        "sha256": "sha256:872376fbba212753fe6283376ec83125c55906cf51b746cebae39882acc2490d"
       },
       {
         "id": "production-build#g726-source-authority",
         "kind": "derived",
-        "sha256": "sha256:957f4ed2f398b92b5d6dce22cfabd431b8445dd0b66e3d0312c063c16e09447e"
+        "sha256": "sha256:2f0ae13c16cc15cd2953365a24f94d90cbe00ce65a525368a67a6855459affed"
       },
       {
         "id": "tools/dsp-parity/cases.mjs",
@@ -180,7 +180,7 @@
           "target_compile_options(pffft PRIVATE -msimd128)",
           "set_target_properties(pffft PROPERTIES POSITION_INDEPENDENT_CODE ON)",
           "target_link_libraries(pffft PUBLIC m)",
-          "target_include_directories( effetune_dsp_core PUBLIC include PRIVATE core generated/cpp)",
+          "target_include_directories( effetune_dsp_core PUBLIC include bindings/generated PRIVATE core generated/cpp)",
           "target_link_libraries(effetune_dsp_core PUBLIC pffft)",
           "target_compile_definitions( effetune_dsp_core PRIVATE $<$<BOOL:${ET_SIMD}>:ET_SIMD=1> $<$<BOOL:${ET_DEBUG_STATE}>:ET_DEBUG_STATE=1> $<$<CONFIG:Debug>:ET_DEBUG_BUILD=1> $<$<CONFIG:Debug>:ET_ALLOCATION_GUARD=1> $<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:ET_WRAP_MALLOC=1> $<$<BOOL:${BUILD_TESTING}>:ET_ENABLE_TEST_KERNEL=1>)",
           "target_link_options( effetune_dsp_core INTERFACE $<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-Wl,--wrap=malloc>)",
@@ -222,7 +222,7 @@
             "-DBUILD_TESTING=OFF"
           ]
         },
-        "digest": "sha256:9f661f9436b7a66184aec1c77806dbfa36d5fe8ed156e4911a771fae4a0d95da"
+        "digest": "sha256:c2ea8f18f42afd6375341c9df08f4f21ef57a44875f540126eef084101ddef99"
       },
       "resolved": {
         "source": "configured CMake Ninja compile/link edges",
@@ -255,49 +255,49 @@
                 "source": "dsp/core/abi.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
               },
               {
                 "source": "dsp/core/allocation_guard.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
               },
               {
                 "source": "dsp/core/arena.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
               },
               {
                 "source": "dsp/core/engine.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
               },
               {
                 "source": "dsp/core/registry.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
               },
               {
                 "source": "dsp/core/telemetry.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
               },
               {
                 "source": "dsp/plugins/lofi/g726_adpcm_simulator/kernel.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
               },
               {
                 "source": "dsp/wasm/no_entry.cpp",
                 "definitions": "-DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/vendor/pffft/include/pffft"
               }
             ],
             "linkCommand": {
@@ -334,49 +334,49 @@
                 "source": "dsp/core/abi.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
               },
               {
                 "source": "dsp/core/allocation_guard.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
               },
               {
                 "source": "dsp/core/arena.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
               },
               {
                 "source": "dsp/core/engine.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
               },
               {
                 "source": "dsp/core/registry.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
               },
               {
                 "source": "dsp/core/telemetry.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
               },
               {
                 "source": "dsp/plugins/lofi/g726_adpcm_simulator/kernel.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
               },
               {
                 "source": "dsp/wasm/no_entry.cpp",
                 "definitions": "-DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/vendor/pffft/include/pffft"
               }
             ],
             "linkCommand": {
@@ -386,7 +386,7 @@
             }
           }
         },
-        "digest": "sha256:49d590ffe39aeb113169fefad12d64eef03bd8125686fbed577ddb0f86b4f833"
+        "digest": "sha256:25a31669bb24da034d90512065fd746433745ead5d247e352c9ed08b3cbd24ea"
       }
     }
   },
@@ -774,8 +774,38 @@
       "assets": []
     },
     {
+      "name": "AutoFilterPlugin",
+      "hash": 1612236675,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
+      "name": "AutoPanPlugin",
+      "hash": 1469569767,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
+      "name": "ChorusPlugin",
+      "hash": 2730690922,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
       "name": "DopplerDistortionPlugin",
       "hash": 10372816,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
+      "name": "FrequencyShifterPlugin",
+      "hash": 1854760556,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
+      "name": "PhaserPlugin",
+      "hash": 2823426285,
       "byteCapacity": 0,
       "assets": []
     },
@@ -788,6 +818,12 @@
     {
       "name": "PitchShifterHQPlugin",
       "hash": 3982397611,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
+      "name": "RotarySpeakerPlugin",
+      "hash": 1430720979,
       "byteCapacity": 0,
       "assets": []
     },
@@ -944,7 +980,7 @@
     }
   ],
   "sizes": {
-    "baseline": 911708,
-    "simd": 1008774
+    "baseline": 974974,
+    "simd": 1071451
   }
 }

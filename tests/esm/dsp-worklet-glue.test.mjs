@@ -286,7 +286,7 @@ async function instantiateDspBinding(payload, options) {
       now: options.performanceNow ?? (() => 0)
     },
     currentTime: 0,
-    sampleRate: 48000,
+    sampleRate: options.sampleRate ?? 48000,
     __instantiateDspBinding: async (payload, factoryOptions) => {
       factories.push({ payload, factoryOptions });
       if (options.instantiateError) throw options.instantiateError;
@@ -344,6 +344,11 @@ function pluginConfig(overrides = {}) {
 
 const TEST_WASM_EXECUTION_CAPABILITIES = Object.freeze({
   requiresWasm: true
+});
+const TEST_LIMITED_JS_FALLBACK_CAPABILITIES = Object.freeze({
+  jsFallbackCapacity: Object.freeze({
+    maxJsFallbackSampleChannels: 96000
+  })
 });
 const TEST_STEREO_PAIR_WASM_CAPABILITIES = Object.freeze({
   requiresWasm: true,
@@ -460,6 +465,105 @@ async function registerFallback(harness) {
     pluginType: 'VolumePlugin',
     processor: 'for (let i = 0; i < data.length; i++) data[i] += 10; return data;'
   });
+}
+
+async function registerIdentityFallback(harness) {
+  await harness.send({
+    type: 'registerProcessor',
+    pluginType: 'VolumePlugin',
+    processor: 'return data;'
+  });
+}
+
+async function registerFrequencyShifterFallback(harness) {
+  await harness.send({
+    type: 'registerProcessor',
+    pluginType: 'FrequencyShifterPlugin',
+    processor: `
+      const delay = parameters.sampleRate <= 48000 ? 114 :
+        (parameters.sampleRate <= 96000 ? 228 : 456);
+      if (context.delay !== delay || context.channelCount !== parameters.channelCount) {
+        context.delay = delay;
+        context.channelCount = parameters.channelCount;
+        context.histories = Array.from(
+          { length: parameters.channelCount },
+          () => new Float32Array(delay + 1)
+        );
+        context.positions = new Uint32Array(parameters.channelCount);
+      }
+      for (let channel = 0; channel < parameters.channelCount; channel++) {
+        const history = context.histories[channel];
+        let position = context.positions[channel];
+        const offset = channel * parameters.blockSize;
+        for (let frame = 0; frame < parameters.blockSize; frame++) {
+          history[position] = data[offset + frame];
+          let read = position - delay;
+          if (read < 0) read += history.length;
+          data[offset + frame] = history[read];
+          position++;
+          if (position === history.length) position = 0;
+        }
+        context.positions[channel] = position;
+      }
+      return data;
+    `
+  });
+}
+
+async function registerObservedFallback(harness, pluginType, gain = 100) {
+  await harness.send({
+    type: 'registerProcessor',
+    pluginType,
+    processor: `
+      context.jsRuns = (context.jsRuns || 0) + 1;
+      for (let i = 0; i < data.length; i++) data[i] += ${gain};
+      return data;
+    `
+  });
+}
+
+function frequencyShifterPluginConfig(overrides = {}) {
+  return pluginConfig({
+    type: 'FrequencyShifterPlugin',
+    executionCapabilities: TEST_LIMITED_JS_FALLBACK_CAPABILITIES,
+    parameters: { enabled: true },
+    wasmParams: new Float32Array(9),
+    wasmParamsHash: 0x6e8d666c,
+    ...overrides
+  });
+}
+
+function routedLatencyPlugins() {
+  return [
+    frequencyShifterPluginConfig({ id: 7, inputBus: 0, outputBus: 1 }),
+    pluginConfig({ id: 8, inputBus: 0, outputBus: 1 }),
+    pluginConfig({ id: 9, inputBus: 1, outputBus: 0 })
+  ];
+}
+
+function processRoutedImpulse(processor, latency) {
+  const quanta = Math.floor(latency / 128) + 1;
+  const rendered = [];
+  for (let quantum = 0; quantum < quanta; quantum++) {
+    const input = Array.from({ length: 2 }, () => new Float32Array(128));
+    if (quantum === 0) {
+      input[0][0] = 1;
+      input[1][0] = 1;
+    }
+    const output = Array.from({ length: 2 }, () => new Float32Array(128));
+    assert.equal(processor.process([input], [output], {}), true);
+    rendered.push(output);
+  }
+  for (let frame = 0; frame < latency; frame++) {
+    const quantum = Math.floor(frame / 128);
+    const offset = frame % 128;
+    assert.equal(rendered[quantum][0][offset], 0);
+    assert.equal(rendered[quantum][1][offset], 0);
+  }
+  const quantum = Math.floor(latency / 128);
+  const offset = latency % 128;
+  assert.equal(rendered[quantum][0][offset], 3);
+  assert.equal(rendered[quantum][1][offset], 3);
 }
 
 function processBlock(processor, value = 1, channelCount = 2) {
@@ -1722,6 +1826,63 @@ test('native descriptors omit channels that disappear when output width shrinks'
   assert.equal(harness.processor.dspPipelineReady, true);
 });
 
+test('dsp-off Frequency Shifter fallback aligns routed merges and reports latency', async () => {
+  const harness = await createWorkletHarness();
+  await registerIdentityFallback(harness);
+  await registerFrequencyShifterFallback(harness);
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: routedLatencyPlugins(),
+    masterBypass: false
+  });
+
+  assert.equal(harness.processor.dspLive, false);
+  assert.equal(harness.processor.dspLatencyPlan.totalSamples, 114);
+  assert.deepEqual({ ...messagesOf(harness.posts, 'dspLatency').at(-1).message }, {
+    type: 'dspLatency', samples: 114, sampleRate: 48000, compensated: true
+  });
+  processRoutedImpulse(harness.processor, 114);
+
+  await harness.send({ type: 'updateAudioConfig', sampleRate: 96000, outputChannels: 1 });
+  assert.equal(harness.processor.dspLatencyPlan.totalSamples, 228);
+  assert.deepEqual({ ...messagesOf(harness.posts, 'dspLatency').at(-1).message }, {
+    type: 'dspLatency', samples: 228, sampleRate: 96000, compensated: true
+  });
+});
+
+test('per-instance WASM fallback uses Frequency Shifter JS latency at the active rate', async () => {
+  const binding = createBinding({
+    paramsStatus: -6,
+    capabilities: {
+      abiVersion: 1,
+      simd: false,
+      kernels: [{
+        name: 'FrequencyShifterPlugin', hash: 0x6e8d666c,
+        byteCapacity: 0, kernelIndex: 0
+      }]
+    }
+  });
+  const harness = await createWorkletHarness({ binding, sampleRate: 48000 });
+  await registerIdentityFallback(harness);
+  await registerFrequencyShifterFallback(harness);
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: routedLatencyPlugins(),
+    masterBypass: false
+  });
+  await harness.send({ type: 'dspEnableTypes', types: ['FrequencyShifterPlugin'] });
+  await harness.send({ type: 'dspModule', module: {} });
+
+  assert.equal(harness.processor.dspLive, true);
+  assert.equal(harness.processor.wasmInstances.get(7).ready, false);
+  assert.equal(harness.processor.dspPipelineReady, false);
+  assert.equal(harness.processor.dspLatencyPlan.totalSamples, 114);
+  assert.deepEqual({ ...messagesOf(harness.posts, 'dspLatency').at(-1).message }, {
+    type: 'dspLatency', samples: 114, sampleRate: 48000, compensated: true
+  });
+  processRoutedImpulse(harness.processor, 114);
+});
+
 test('hybrid routing aligns cross-bus merges across render quanta', async () => {
   const latency = 132;
   const length = latency + 1;
@@ -2033,6 +2194,454 @@ test('worklet selects JS fallback for rollout, packing, and process failures the
   await harness.send({ type: 'dspCleanupFailed' });
   assert.equal(harness.processor.dspPendingInstanceDestroy.length, 0);
   assert.ok(binding.calls.some(call => call[0] === 'destroyInstance'));
+});
+
+test('worklet applies the declared JavaScript fallback sample-channel capacity', async t => {
+  const cases = [
+    { name: '48 kHz stereo is safe', sampleRate: 48000, outputChannels: 2, runs: true },
+    { name: '96 kHz mono is the safe boundary', sampleRate: 96000, outputChannels: 1, runs: true },
+    { name: '96 kHz eight-channel is bypassed', sampleRate: 96000, outputChannels: 8, runs: false },
+    { name: '192 kHz stereo is bypassed', sampleRate: 192000, outputChannels: 2, runs: false },
+    { name: '192 kHz eight-channel is bypassed', sampleRate: 192000, outputChannels: 8, runs: false }
+  ];
+
+  for (const testCase of cases) {
+    await t.test(testCase.name, async () => {
+      const capacityPlugin = frequencyShifterPluginConfig({
+        channel: 'A', wasmParams: undefined, wasmParamsHash: undefined
+      });
+      const harness = await createWorkletHarness(testCase);
+      await registerObservedFallback(harness, capacityPlugin.type);
+      await harness.send({ type: 'updatePlugins', plugins: [capacityPlugin] });
+
+      const output = processBlock(harness.processor, 1, testCase.outputChannels);
+      const expectedSample = testCase.runs ? 101 : 1;
+      assert.ok(output.every(channel => channel.every(sample => sample === expectedSample)));
+      assert.equal(harness.processor.pluginContexts.get(capacityPlugin.id)?.jsRuns,
+        testCase.runs ? 1 : undefined);
+      if (!testCase.runs) {
+        const state = messagesOf(harness.posts, 'dspExecutionState').filter(
+          entry => entry.message.pluginId === capacityPlugin.id
+        ).at(-1).message;
+        assert.deepEqual({ state: state.state, reason: state.reason }, {
+          state: 'bypassed', reason: 'jsFallbackCapacityExceeded'
+        });
+      }
+    });
+  }
+});
+
+test('capacity-limited JavaScript fallbacks share one ordered stereo budget', async () => {
+  const plugins = [7, 8].map(id => frequencyShifterPluginConfig({
+    id,
+    channel: 'A',
+    wasmParams: undefined,
+    wasmParamsHash: undefined
+  }));
+  const harness = await createWorkletHarness({ sampleRate: 48000, outputChannels: 2 });
+  await registerObservedFallback(harness, plugins[0].type);
+  await harness.send({ type: 'updatePlugins', plugins });
+
+  const output = processBlock(harness.processor, 1, 2);
+  assert.ok(output.every(channel => channel.every(sample => sample === 101)));
+  assert.equal(harness.processor.pluginContexts.get(7)?.jsRuns, 1);
+  assert.equal(harness.processor.pluginContexts.get(8)?.jsRuns, undefined);
+  const capacityOwners = messagesOf(harness.posts, 'dspExecutionState')
+    .map(entry => entry.message)
+    .filter(message => message.reason === 'jsFallbackCapacityExceeded');
+  assert.equal(capacityOwners.at(-1).pluginId, 8);
+});
+
+test('worklet reports and applies a configured JavaScript fallback capacity limit', async () => {
+  const capacityPlugin = frequencyShifterPluginConfig({
+    channel: 'A', wasmParams: undefined, wasmParamsHash: undefined
+  });
+  const harness = await createWorkletHarness({ sampleRate: 48000, outputChannels: 2 });
+  await registerObservedFallback(harness, capacityPlugin.type);
+  await harness.send({ type: 'updatePlugins', plugins: [capacityPlugin] });
+
+  await harness.send({ type: 'requestJsFallbackBudgetState', requestId: 1 });
+  let state = messagesOf(harness.posts, 'jsFallbackBudgetState').at(-1).message;
+  assert.deepEqual({
+    requestId: state.requestId,
+    budget: state.budgetSampleChannels,
+    required: state.requiredSampleChannels,
+    admitted: state.admittedSampleChannels,
+    exceeded: state.capacityExceeded,
+    intrinsicExceeded: state.intrinsicCapacityExceeded
+  }, {
+    requestId: 1,
+    budget: 96000,
+    required: 96000,
+    admitted: 96000,
+    exceeded: false,
+    intrinsicExceeded: false
+  });
+
+  await harness.send({
+    type: 'configureJsFallbackBudget', requestId: 2, budgetSampleChannels: 0
+  });
+  state = messagesOf(harness.posts, 'jsFallbackBudgetState').at(-1).message;
+  assert.deepEqual({
+    requestId: state.requestId,
+    budget: state.budgetSampleChannels,
+    required: state.requiredSampleChannels,
+    admitted: state.admittedSampleChannels,
+    exceeded: state.capacityExceeded
+  }, { requestId: 2, budget: 0, required: 96000, admitted: 0, exceeded: true });
+  const execution = messagesOf(harness.posts, 'dspExecutionState')
+    .map(entry => entry.message)
+    .filter(message => message.pluginId === capacityPlugin.id)
+    .at(-1);
+  assert.deepEqual({
+    state: execution.state,
+    reason: execution.reason,
+    cost: execution.jsFallbackSampleChannels
+  }, {
+    state: 'bypassed',
+    reason: 'jsFallbackCapacityExceeded',
+    cost: 96000
+  });
+});
+
+test('different capacity-limited types share the same JavaScript fallback budget', async () => {
+  const first = frequencyShifterPluginConfig({
+    id: 7,
+    channel: 'A',
+    wasmParams: undefined,
+    wasmParamsHash: undefined
+  });
+  const second = frequencyShifterPluginConfig({
+    id: 8,
+    type: 'PhaserPlugin',
+    channel: 'A',
+    wasmParams: undefined,
+    wasmParamsHash: undefined
+  });
+  const harness = await createWorkletHarness({ sampleRate: 48000, outputChannels: 2 });
+  await registerObservedFallback(harness, first.type, 10);
+  await registerObservedFallback(harness, second.type, 20);
+  await harness.send({ type: 'updatePlugins', plugins: [first, second] });
+
+  const output = processBlock(harness.processor, 1, 2);
+  assert.ok(output.every(channel => channel.every(sample => sample === 11)));
+  assert.equal(harness.processor.pluginContexts.get(first.id)?.jsRuns, 1);
+  assert.equal(harness.processor.pluginContexts.get(second.id)?.jsRuns, undefined);
+});
+
+test('capacity-limited mono fallbacks admit two instances and bypass the third', async () => {
+  const plugins = [7, 8, 9].map(id => frequencyShifterPluginConfig({
+    id,
+    channel: 'L',
+    wasmParams: undefined,
+    wasmParamsHash: undefined
+  }));
+  const harness = await createWorkletHarness({ sampleRate: 48000, outputChannels: 2 });
+  await registerObservedFallback(harness, plugins[0].type);
+  await harness.send({ type: 'updatePlugins', plugins });
+
+  const output = processBlock(harness.processor, 1, 2);
+  assert.ok(output[0].every(sample => sample === 201));
+  assert.equal(harness.processor.pluginContexts.get(7)?.jsRuns, 1);
+  assert.equal(harness.processor.pluginContexts.get(8)?.jsRuns, 1);
+  assert.equal(harness.processor.pluginContexts.get(9)?.jsRuns, undefined);
+});
+
+test('ready WASM and disabled instances do not consume JavaScript fallback capacity', async () => {
+  const type = 'FrequencyShifterPlugin';
+  const hash = 0x6e8d666c;
+  const plugins = [
+    frequencyShifterPluginConfig({
+      id: 7,
+      enabled: false,
+      channel: 'A',
+      wasmParams: undefined,
+      wasmParamsHash: undefined
+    }),
+    frequencyShifterPluginConfig({ id: 8, channel: 'A' }),
+    frequencyShifterPluginConfig({
+      id: 9,
+      channel: 'A',
+      wasmParams: undefined,
+      wasmParamsHash: undefined
+    }),
+    frequencyShifterPluginConfig({
+      id: 10,
+      channel: 'A',
+      wasmParams: undefined,
+      wasmParamsHash: undefined
+    })
+  ];
+  const binding = createBinding({
+    capabilities: {
+      abiVersion: 1,
+      simd: false,
+      kernels: [{ name: type, hash, byteCapacity: 0, kernelIndex: 0 }]
+    },
+    pipelineConfigureStatus: -6,
+    wasmGain: 2
+  });
+  const harness = await createWorkletHarness({
+    sampleRate: 48000,
+    outputChannels: 2,
+    binding
+  });
+  await registerObservedFallback(harness, type);
+  await harness.send({ type: 'updatePlugins', plugins });
+  await harness.send({ type: 'dspEnableTypes', types: [type] });
+  await harness.send({ type: 'dspModule', module: {} });
+
+  const output = processBlock(harness.processor, 1, 2);
+  assert.ok(output.every(channel => channel.every(sample => sample === 102)));
+  assert.equal(harness.processor.pluginContexts.get(7)?.jsRuns, undefined);
+  assert.equal(harness.processor.pluginContexts.get(9)?.jsRuns, 1);
+  assert.equal(harness.processor.pluginContexts.get(10)?.jsRuns, undefined);
+});
+
+test('worklet bypasses a same-quantum WASM failure when fallback capacity is exhausted', async () => {
+  const type = 'FrequencyShifterPlugin';
+  const hash = 0x6e8d666c;
+  const first = frequencyShifterPluginConfig({
+    id: 7,
+    channel: 'A',
+    wasmParams: undefined,
+    wasmParamsHash: undefined
+  });
+  const failing = frequencyShifterPluginConfig({ id: 8, channel: 'A' });
+  const trailing = pluginConfig({
+    id: 9,
+    channel: 'A',
+    wasmParams: undefined,
+    wasmParamsHash: undefined
+  });
+  const binding = createBinding({
+    capabilities: {
+      abiVersion: 1,
+      simd: false,
+      kernels: [{ name: type, hash, byteCapacity: 0, kernelIndex: 0 }]
+    },
+    pipelineConfigureStatus: -6,
+    processStatuses: [-7],
+    instanceMutateOnFailure: true,
+    wasmGain: 9
+  });
+  const harness = await createWorkletHarness({
+    sampleRate: 48000,
+    outputChannels: 2,
+    binding
+  });
+  await registerObservedFallback(harness, type);
+  await registerObservedFallback(harness, trailing.type, 10);
+  await harness.send({ type: 'updatePlugins', plugins: [first, failing, trailing] });
+  await harness.send({ type: 'dspEnableTypes', types: [type] });
+  await harness.send({ type: 'dspModule', module: {} });
+
+  const output = processBlock(harness.processor, 1, 2);
+  assert.ok(output.every(channel => channel.every(sample => sample === 111)));
+  assert.equal(harness.processor.pluginContexts.get(first.id)?.jsRuns, 1);
+  assert.equal(harness.processor.pluginContexts.get(failing.id)?.jsRuns, undefined);
+  assert.equal(harness.processor.pluginContexts.get(trailing.id)?.jsRuns, 1);
+  const state = messagesOf(harness.posts, 'dspExecutionState')
+    .map(entry => entry.message)
+    .filter(message => message.pluginId === failing.id)
+    .at(-1);
+  assert.deepEqual({ state: state.state, reason: state.reason }, {
+    state: 'bypassed',
+    reason: 'jsFallbackCapacityExceeded'
+  });
+});
+
+test('Frequency Shifter latency follows the shared admission owner after recovery', async () => {
+  const first = frequencyShifterPluginConfig({
+    id: 7,
+    channel: 'A',
+    wasmParams: undefined,
+    wasmParamsHash: undefined
+  });
+  const second = frequencyShifterPluginConfig({
+    id: 8,
+    channel: 'A',
+    wasmParams: undefined,
+    wasmParamsHash: undefined
+  });
+  const harness = await createWorkletHarness({ sampleRate: 48000, outputChannels: 2 });
+  await registerFrequencyShifterFallback(harness);
+  await harness.send({ type: 'updatePlugins', plugins: [first, second] });
+  assert.equal(harness.processor.dspPipelineLatencySamples, 114);
+
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [{ ...first, enabled: false }, second]
+  });
+  assert.equal(harness.processor.dspPipelineLatencySamples, 114);
+  const secondState = messagesOf(harness.posts, 'dspExecutionState')
+    .map(entry => entry.message)
+    .filter(message => message.pluginId === second.id)
+    .at(-1);
+  assert.notEqual(secondState.reason, 'jsFallbackCapacityExceeded');
+  const output = processBlock(harness.processor, 0.25, 2);
+  assert.equal(harness.processor.pluginContexts.has(first.id), false);
+  assert.equal(harness.processor.pluginContexts.get(second.id)?.delay, 114);
+  assert.ok(output.every(channel => channel[0] === 0));
+});
+
+test('capacity-limited fallbacks remain pending during WASM initialization', async () => {
+  const capacityPlugin = frequencyShifterPluginConfig({
+    channel: 'A', wasmParams: undefined, wasmParamsHash: undefined
+  });
+  const harness = await createWorkletHarness({ sampleRate: 96000, outputChannels: 8 });
+  await registerObservedFallback(harness, capacityPlugin.type);
+  await registerObservedFallback(harness, 'VolumePlugin', 10);
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [capacityPlugin, pluginConfig({ id: 8, channel: 'A', wasmParams: undefined })]
+  });
+
+  harness.processor.dspExecutionInitializing = true;
+  harness.processor.publishWasmOnlyExecutionStates(true);
+  const output = processBlock(harness.processor, 0.25, 8);
+  assert.ok(output.every(channel => channel.every(sample => sample === 10.25)));
+  assert.equal(harness.processor.pluginContexts.get(capacityPlugin.id)?.jsRuns, undefined);
+  const state = messagesOf(harness.posts, 'dspExecutionState').filter(
+    entry => entry.message.pluginId === capacityPlugin.id
+  ).at(-1).message;
+  assert.deepEqual({ state: state.state, reason: state.reason }, { state: 'pending', reason: null });
+});
+
+test('ordinary Auto Pan JavaScript fallback has no sample-channel capacity gate', async () => {
+  const autoPan = await createWorkletHarness({ sampleRate: 192000, outputChannels: 8 });
+  await registerObservedFallback(autoPan, 'AutoPanPlugin');
+  await autoPan.send({
+    type: 'updatePlugins',
+    plugins: [pluginConfig({
+      type: 'AutoPanPlugin', channel: 'A', wasmParams: undefined, wasmParamsHash: undefined
+    })]
+  });
+  const output = processBlock(autoPan.processor, 1, 8);
+  assert.ok(output.every(channel => channel.every(sample => sample === 101)));
+});
+
+test('worklet keeps over-capacity fallbacks bypassed across WASM startup failures', async t => {
+  const capacityPlugin = frequencyShifterPluginConfig({ channel: 'A' });
+  const kernel = {
+    name: capacityPlugin.type,
+    hash: capacityPlugin.wasmParamsHash,
+    byteCapacity: 0,
+    kernelIndex: 0
+  };
+  const cases = [
+    { name: 'instantiate', harnessOptions: { instantiateError: new Error('test instantiate failure') } },
+    { name: 'create', bindingOptions: { createInstanceResult: 0 } },
+    { name: 'set_params', bindingOptions: { paramsStatus: -4 } }
+  ];
+
+  for (const testCase of cases) {
+    await t.test(testCase.name, async () => {
+      const binding = createBinding({
+        capabilities: { abiVersion: 1, simd: false, kernels: [kernel] },
+        ...testCase.bindingOptions
+      });
+      const harness = await createWorkletHarness({
+        sampleRate: 192000,
+        outputChannels: 8,
+        binding,
+        ...testCase.harnessOptions
+      });
+      await registerObservedFallback(harness, capacityPlugin.type);
+      await harness.send({ type: 'updatePlugins', plugins: [capacityPlugin] });
+      await harness.send({ type: 'dspEnableTypes', types: [capacityPlugin.type] });
+      await harness.send({ type: 'dspModule', module: {} });
+
+      const output = processBlock(harness.processor, 0.5, 8);
+      assert.ok(output.every(channel => channel.every(sample => sample === 0.5)));
+      assert.equal(harness.processor.pluginContexts.get(capacityPlugin.id)?.jsRuns, undefined);
+      const state = messagesOf(harness.posts, 'dspExecutionState').filter(
+        entry => entry.message.pluginId === capacityPlugin.id
+      ).at(-1).message;
+      assert.deepEqual({ state: state.state, reason: state.reason }, {
+        state: 'bypassed', reason: 'jsFallbackCapacityExceeded'
+      });
+    });
+  }
+});
+
+test('worklet uses ready over-capacity WASM and bypasses the same block after failure',
+  async t => {
+  for (const failure of [null, -7, new Error('test process failure')]) {
+    await t.test(failure === null ? 'active' : failure instanceof Error ? 'throw' : 'status',
+      async () => {
+      const capacityPlugin = frequencyShifterPluginConfig({ channel: 'A' });
+      const binding = createBinding({
+        capabilities: {
+          abiVersion: 1,
+          simd: false,
+          kernels: [{
+            name: capacityPlugin.type,
+            hash: capacityPlugin.wasmParamsHash,
+            byteCapacity: 0,
+            kernelIndex: 0
+          }]
+        },
+        pipelineConfigureStatus: -6,
+        processStatuses: typeof failure === 'number' ? [failure] : [],
+        instanceProcessError: failure instanceof Error ? failure : undefined,
+        instanceMutateOnFailure: failure !== null,
+        wasmGain: 2
+      });
+      const harness = await createWorkletHarness({
+        sampleRate: 192000, outputChannels: 8, binding
+      });
+      await registerObservedFallback(harness, capacityPlugin.type);
+      await harness.send({ type: 'updatePlugins', plugins: [capacityPlugin] });
+      await harness.send({ type: 'dspEnableTypes', types: [capacityPlugin.type] });
+      await harness.send({ type: 'dspModule', module: {} });
+
+      const output = processBlock(harness.processor, 1, 8);
+      const expected = failure === null ? 2 : 1;
+      assert.ok(output.every(channel => channel.every(sample => sample === expected)));
+      assert.equal(harness.processor.pluginContexts.get(capacityPlugin.id)?.jsRuns, undefined);
+      const state = messagesOf(harness.posts, 'dspExecutionState').filter(
+        entry => entry.message.pluginId === capacityPlugin.id
+      ).at(-1).message;
+      assert.deepEqual({ state: state.state, reason: state.reason }, failure === null
+        ? { state: 'active', reason: null }
+        : { state: 'bypassed', reason: 'jsFallbackCapacityExceeded' });
+    });
+  }
+});
+
+test('Frequency Shifter capacity bypass reports zero latency and restores it on recovery',
+  async () => {
+  const capacityPlugin = frequencyShifterPluginConfig({ channel: 'A' });
+  const binding = createBinding({
+    capabilities: {
+      abiVersion: 1,
+      simd: false,
+      kernels: [{
+        name: capacityPlugin.type,
+        hash: capacityPlugin.wasmParamsHash,
+        byteCapacity: 0,
+        kernelIndex: 0
+      }]
+    },
+    instanceLatency: 321,
+    pipelineConfigureStatus: -6
+  });
+  const harness = await createWorkletHarness({
+    sampleRate: 192000, outputChannels: 8, binding
+  });
+  await registerFrequencyShifterFallback(harness);
+  await harness.send({ type: 'updatePlugins', plugins: [capacityPlugin] });
+  assert.equal(harness.processor.dspPipelineLatencySamples, 0);
+
+  await harness.send({ type: 'updateAudioConfig', sampleRate: 48000, outputChannels: 2 });
+  assert.equal(harness.processor.dspPipelineLatencySamples, 114);
+
+  await harness.send({ type: 'updateAudioConfig', sampleRate: 192000, outputChannels: 8 });
+  assert.equal(harness.processor.dspPipelineLatencySamples, 0);
+  await harness.send({ type: 'dspEnableTypes', types: [capacityPlugin.type] });
+  await harness.send({ type: 'dspModule', module: {} });
+  assert.equal(harness.processor.dspPipelineLatencySamples, 321);
 });
 
 test('worklet transfers telemetry packets, accepts pool returns, and falls back after memory growth', async () => {

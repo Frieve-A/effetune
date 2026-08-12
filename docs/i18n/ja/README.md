@@ -369,9 +369,15 @@ EffeTune 2.1.0では、カタログスキーマv3を採用し、CUE形式のア�
 | Lo-Fi     | Tape Artifacts | 音楽をモデル化したオープンリールテープに録音して再生 | [詳細](plugins/lofi.md#tape-artifacts) |
 | Lo-Fi     | Vinyl Artifacts | レコード風のポップノイズ、クラックル、ヒス、ランブル、ステレオノイズ漏れを追加 | [詳細](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi     | Vinyl Simulator | 入力をモデル化した溝にカッティングし、物理的な針モデルで再生 | [詳細](plugins/lofi.md#vinyl-simulator) |
+| Modulation | Auto Filter | LFOまたは音量エンベロープで共振フィルターをスイープ | [詳細](plugins/modulation.md#auto-filter) |
+| Modulation | Auto Pan | ステレオペアの音量を左右へなめらかに移動 | [詳細](plugins/modulation.md#auto-pan) |
+| Modulation | Chorus | コーラス、アンサンブル、フランジャー、ビブラートの揺らぎを追加 | [詳細](plugins/modulation.md#chorus) |
 | Modulation | Doppler Distortion | スピーカーコーンの微細な動きによる自然でダイナミックな音変化をシミュレート | [詳細](plugins/modulation.md#doppler-distortion) |
+| Modulation | Frequency Shifter | 周波数移動、リング変調、バーバーポールシフトを適用 | [詳細](plugins/modulation.md#frequency-shifter) |
+| Modulation | Phaser | クラシックまたはバーバーポール方式のピークとノッチの動きを生成 | [詳細](plugins/modulation.md#phaser) |
 | Modulation | Pitch Shifter | テンポを変えずに音楽のピッチを上げ下げ | [詳細](plugins/modulation.md#pitch-shifter) |
 | Modulation | Pitch Shifter HQ | 位相の乱れによる音のにじみを抑えてピッチを上げ下げ | [詳細](plugins/modulation.md#pitch-shifter-hq) |
+| Modulation | Rotary Speaker | ホーンとドラムの異なる回転を組み合わせたロータリースピーカー効果 | [詳細](plugins/modulation.md#rotary-speaker) |
 | Modulation | Tremolo | 音量ベースのモジュレーション効果 | [詳細](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | テープやレコード風のさりげないピッチ揺れでビンテージ感を追加 | [詳細](plugins/modulation.md#wow-flutter) |
 | Resonator | Horn Resonator | カスタマイズ可能な寸法でのホーン共振シミュレーション | [詳細](plugins/resonator.md#horn-resonator) |

@@ -26,6 +26,25 @@ export function packAMRadioSimulatorPluginParams(params = {}) {
   return packed;
 }
 
+export const AutoFilterPlugin_PARAMS_HASH = 0x6018c783;
+export function packAutoFilterPluginParams(params = {}) {
+  const packed = new Float32Array(13);
+  packed[0] = (() => { const index = ["LFO","Envelope"].indexOf(params["md"]); return index < 0 ? 0 : index; })();
+  packed[1] = (() => { const index = ["Low-pass","Band-pass","High-pass"].indexOf(params["ft"]); return index < 0 ? 0 : index; })();
+  packed[2] = (() => { const value = params["lf"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 200; if (value < 20) return 20; if (value > 20000) return 20000; return value; })();
+  packed[3] = (() => { const value = params["hf"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 4000; if (value < 20) return 20; if (value > 20000) return 20000; return value; })();
+  packed[4] = (() => { const value = params["rs"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 1.5; if (value < 0.5) return 0.5; if (value > 20) return 20; return value; })();
+  packed[5] = (() => { const value = params["mx"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 80; if (value < 0) return 0; if (value > 100) return 100; return value; })();
+  packed[6] = (() => { const value = params["rt"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0.5; if (value < 0.05) return 0.05; if (value > 20) return 20; return value; })();
+  packed[7] = (() => { const index = ["Sine","Triangle"].indexOf(params["wf"]); return index < 0 ? 0 : index; })();
+  packed[8] = (() => { const value = params["sp"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < 0) return 0; if (value > 180) return 180; return value; })();
+  packed[9] = (() => { const value = params["sn"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 24; if (value < 0) return 0; if (value > 60) return 60; return value; })();
+  packed[10] = (() => { const value = params["at"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 20; if (value < 1) return 1; if (value > 500) return 500; return value; })();
+  packed[11] = (() => { const value = params["rl"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 250; if (value < 10) return 10; if (value > 2000) return 2000; return value; })();
+  packed[12] = (() => { const index = ["Up","Down"].indexOf(params["dr"]); return index < 0 ? 0 : index; })();
+  return packed;
+}
+
 export const AutoLevelerPlugin_PARAMS_HASH = 0xe0b1f34d;
 export function packAutoLevelerPluginParams(params = {}) {
   const packed = new Float32Array(7);
@@ -36,6 +55,18 @@ export function packAutoLevelerPluginParams(params = {}) {
   packed[4] = (() => { const value = params["at"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 50; if (value < 1) return 1; if (value > 1000) return 1000; return value; })();
   packed[5] = (() => { const value = params["rt"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 5000; if (value < 10) return 10; if (value > 10000) return 10000; return value; })();
   packed[6] = (() => { const value = params["gt"]; if (!(typeof value === 'number' && Number.isFinite(value))) return -60; if (value < -96) return -96; if (value > -24) return -24; return value; })();
+  return packed;
+}
+
+export const AutoPanPlugin_PARAMS_HASH = 0x5797dae7;
+export function packAutoPanPluginParams(params = {}) {
+  const packed = new Float32Array(6);
+  packed[0] = (() => { const value = params["rt"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0.35; if (value < 0.05) return 0.05; if (value > 20) return 20; return value; })();
+  packed[1] = (() => { const value = params["dp"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 45; if (value < 0) return 0; if (value > 100) return 100; return value; })();
+  packed[2] = (() => { const value = params["ct"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[3] = (() => { const value = params["wd"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 70; if (value < 0) return 0; if (value > 100) return 100; return value; })();
+  packed[4] = (() => { const index = ["Sine","Triangle"].indexOf(params["wf"]); return index < 0 ? 0 : index; })();
+  packed[5] = (() => { const value = params["ph"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < 0) return 0; if (value > 360) return 360; return value; })();
   return packed;
 }
 
@@ -122,6 +153,20 @@ export function packChannelDividerPluginParams(params = {}) {
   packed[4] = (() => { const value = params["s2"]; if (!(Number.isSafeInteger(value))) return -24; if (value < -96) return -96; if (value > -12) return -12; return value; })();
   packed[5] = (() => { const value = params["f3"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 8000; if (value < 10) return 10; if (value > 40000) return 40000; return value; })();
   packed[6] = (() => { const value = params["s3"]; if (!(Number.isSafeInteger(value))) return -24; if (value < -96) return -96; if (value > -12) return -12; return value; })();
+  return packed;
+}
+
+export const ChorusPlugin_PARAMS_HASH = 0xa2c3096a;
+export function packChorusPluginParams(params = {}) {
+  const packed = new Float32Array(8);
+  packed[0] = (() => { const index = ["Chorus","Stereo Chorus","Ensemble","Flanger","Vibrato"].indexOf(params["md"]); return index < 0 ? 0 : index; })();
+  packed[1] = (() => { const value = params["rt"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0.8; if (value < 0.05) return 0.05; if (value > 10) return 10; return value; })();
+  packed[2] = (() => { const value = params["dl"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 12; if (value < 0.5) return 0.5; if (value > 30) return 30; return value; })();
+  packed[3] = (() => { const value = params["dp"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 3; if (value < 0) return 0; if (value > 20) return 20; return value; })();
+  packed[4] = (() => { const value = params["vc"]; if (!(Number.isSafeInteger(value))) return 3; if (value < 1) return 1; if (value > 6) return 6; return value; })();
+  packed[5] = (() => { const value = params["ss"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 60; if (value < 0) return 0; if (value > 100) return 100; return value; })();
+  packed[6] = (() => { const value = params["fb"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -75) return -75; if (value > 75) return 75; return value; })();
+  packed[7] = (() => { const value = params["mx"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 45; if (value < 0) return 0; if (value > 100) return 100; return value; })();
   return packed;
 }
 
@@ -551,6 +596,21 @@ export function packFMRadioSimulatorPluginParams(params = {}) {
   packed[9] = (() => { const index = ["Auto","Stereo","Mono"].indexOf(params["sm"]); return index < 0 ? 0 : index; })();
   packed[10] = (() => { const value = params["og"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -24) return -24; if (value > 24) return 24; return value; })();
   packed[11] = (() => { const value = params["mx"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 100; if (value < 0) return 0; if (value > 100) return 100; return value; })();
+  return packed;
+}
+
+export const FrequencyShifterPlugin_PARAMS_HASH = 0x6e8d666c;
+export function packFrequencyShifterPluginParams(params = {}) {
+  const packed = new Float32Array(9);
+  packed[0] = (() => { const index = ["Shift","Ring Mod","Barber-pole"].indexOf(params["md"]); return index < 0 ? 0 : index; })();
+  packed[1] = (() => { const value = params["sh"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 8; if (value < -5000) return -5000; if (value > 5000) return 5000; return value; })();
+  packed[2] = (() => { const value = params["cf"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 440; if (value < 0.1) return 0.1; if (value > 10000) return 10000; return value; })();
+  packed[3] = (() => { const value = params["mn"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 20; if (value < 0) return 0; if (value > 5000) return 5000; return value; })();
+  packed[4] = (() => { const value = params["mx"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 800; if (value < 0) return 0; if (value > 5000) return 5000; return value; })();
+  packed[5] = (() => { const value = params["rt"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0.15; if (value < 0.01) return 0.01; if (value > 2) return 2; return value; })();
+  packed[6] = (() => { const index = ["Up","Down"].indexOf(params["dr"]); return index < 0 ? 0 : index; })();
+  packed[7] = (() => { const value = params["sp"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < 0) return 0; if (value > 180) return 180; return value; })();
+  packed[8] = (() => { const value = params["mix"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 100; if (value < 0) return 0; if (value > 100) return 100; return value; })();
   return packed;
 }
 
@@ -1034,6 +1094,21 @@ export function packOscilloscopePluginParams(params = {}) {
   return packed;
 }
 
+export const PhaserPlugin_PARAMS_HASH = 0xa84a10ed;
+export function packPhaserPluginParams(params = {}) {
+  const packed = new Float32Array(9);
+  packed[0] = (() => { const index = ["Classic","Barber-pole"].indexOf(params["md"]); return index < 0 ? 0 : index; })();
+  packed[1] = (() => { const value = params["rt"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0.5; if (value < 0.05) return 0.05; if (value > 10) return 10; return value; })();
+  packed[2] = (() => { const value = params["cf"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 1000; if (value < 80) return 80; if (value > 8000) return 8000; return value; })();
+  packed[3] = (() => { const value = params["rg"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 3; if (value < 0) return 0; if (value > 6) return 6; return value; })();
+  packed[4] = (() => { const value = params["st"]; if (!(Number.isSafeInteger(value))) return 6; if (value < 2) return 2; if (value > 12) return 12; return value; })();
+  packed[5] = (() => { const value = params["fb"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 20; if (value < -90) return -90; if (value > 90) return 90; return value; })();
+  packed[6] = (() => { const value = params["sp"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 90; if (value < 0) return 0; if (value > 180) return 180; return value; })();
+  packed[7] = (() => { const index = ["Up","Down"].indexOf(params["dr"]); return index < 0 ? 0 : index; })();
+  packed[8] = (() => { const value = params["mx"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 50; if (value < 0) return 0; if (value > 100) return 100; return value; })();
+  return packed;
+}
+
 export const PhaseSelectEqPlugin_PARAMS_HASH = 0xf7dba1f9;
 export function packPhaseSelectEqPluginParams(params = {}) {
   const packed = new Float32Array(50);
@@ -1131,6 +1206,21 @@ export function packRoomEqPluginParams(params = {}) {
   packed[1] = (() => { const value = params["fd"]; if (!(Number.isSafeInteger(value))) return 16384; if (value < 0) return 0; if (value > 65536) return 65536; return value; })();
   packed[2] = (() => { const value = params["dy"]; if (!(Number.isSafeInteger(value))) return 0; if (value < 0) return 0; if (value > 3840) return 3840; return value; })();
   packed[3] = (() => { const value = params["gn"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -12) return -12; if (value > 12) return 12; return value; })();
+  return packed;
+}
+
+export const RotarySpeakerPlugin_PARAMS_HASH = 0x554711d3;
+export function packRotarySpeakerPluginParams(params = {}) {
+  const packed = new Float32Array(9);
+  packed[0] = (() => { const index = ["Stop","Slow","Fast"].indexOf(params["ss"]); return index < 0 ? 1 : index; })();
+  packed[1] = (() => { const value = params["sp"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 100; if (value < 25) return 25; if (value > 200) return 200; return value; })();
+  packed[2] = (() => { const value = params["ac"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 2.2; if (value < 0.1) return 0.1; if (value > 10) return 10; return value; })();
+  packed[3] = (() => { const value = params["xo"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 800; if (value < 200) return 200; if (value > 2000) return 2000; return value; })();
+  packed[4] = (() => { const value = params["rb"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[5] = (() => { const value = params["sw"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 75; if (value < 0) return 0; if (value > 100) return 100; return value; })();
+  packed[6] = (() => { const value = params["dd"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 45; if (value < 0) return 0; if (value > 100) return 100; return value; })();
+  packed[7] = (() => { const value = params["ad"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 55; if (value < 0) return 0; if (value > 100) return 100; return value; })();
+  packed[8] = (() => { const value = params["mx"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 70; if (value < 0) return 0; if (value > 100) return 100; return value; })();
   return packed;
 }
 
@@ -1407,7 +1497,9 @@ export function packWowFlutterPluginParams(params = {}) {
 
 export const DSP_PARAM_LAYOUTS = Object.freeze({
   AMRadioSimulatorPlugin: Object.freeze({ hash: AMRadioSimulatorPlugin_PARAMS_HASH, floatCount: 21 }),
+  AutoFilterPlugin: Object.freeze({ hash: AutoFilterPlugin_PARAMS_HASH, floatCount: 13 }),
   AutoLevelerPlugin: Object.freeze({ hash: AutoLevelerPlugin_PARAMS_HASH, floatCount: 7 }),
+  AutoPanPlugin: Object.freeze({ hash: AutoPanPlugin_PARAMS_HASH, floatCount: 6 }),
   BandPassFilterPlugin: Object.freeze({ hash: BandPassFilterPlugin_PARAMS_HASH, floatCount: 4 }),
   BandwidthExtenderPlugin: Object.freeze({ hash: BandwidthExtenderPlugin_PARAMS_HASH, floatCount: 4 }),
   BitCrusherPlugin: Object.freeze({ hash: BitCrusherPlugin_PARAMS_HASH, floatCount: 5 }),
@@ -1415,6 +1507,7 @@ export const DSP_PARAM_LAYOUTS = Object.freeze({
   BrickwallLimiterPlugin: Object.freeze({ hash: BrickwallLimiterPlugin_PARAMS_HASH, floatCount: 6 }),
   CassetteArtifactsPlugin: Object.freeze({ hash: CassetteArtifactsPlugin_PARAMS_HASH, floatCount: 12 }),
   ChannelDividerPlugin: Object.freeze({ hash: ChannelDividerPlugin_PARAMS_HASH, floatCount: 7 }),
+  ChorusPlugin: Object.freeze({ hash: ChorusPlugin_PARAMS_HASH, floatCount: 8 }),
   CombFilterPlugin: Object.freeze({ hash: CombFilterPlugin_PARAMS_HASH, floatCount: 4 }),
   CompressorPlugin: Object.freeze({ hash: CompressorPlugin_PARAMS_HASH, floatCount: 6 }),
   CrossfeedFilterPlugin: Object.freeze({ hash: CrossfeedFilterPlugin_PARAMS_HASH, floatCount: 3 }),
@@ -1436,6 +1529,7 @@ export const DSP_PARAM_LAYOUTS = Object.freeze({
   FiveBandFIRPEQPlugin: Object.freeze({ hash: FiveBandFIRPEQPlugin_PARAMS_HASH, floatCount: 2 }),
   FiveBandPEQPlugin: Object.freeze({ hash: FiveBandPEQPlugin_PARAMS_HASH, floatCount: 25 }),
   FMRadioSimulatorPlugin: Object.freeze({ hash: FMRadioSimulatorPlugin_PARAMS_HASH, floatCount: 12 }),
+  FrequencyShifterPlugin: Object.freeze({ hash: FrequencyShifterPlugin_PARAMS_HASH, floatCount: 9 }),
   G726ADPCMSimulatorPlugin: Object.freeze({ hash: G726ADPCMSimulatorPlugin_PARAMS_HASH, floatCount: 4 }),
   GatePlugin: Object.freeze({ hash: GatePlugin_PARAMS_HASH, floatCount: 6 }),
   GroupDelayEqPlugin: Object.freeze({ hash: GroupDelayEqPlugin_PARAMS_HASH, floatCount: 2 }),
@@ -1465,12 +1559,14 @@ export const DSP_PARAM_LAYOUTS = Object.freeze({
   NoiseBlenderPlugin: Object.freeze({ hash: NoiseBlenderPlugin_PARAMS_HASH, floatCount: 3 }),
   OscillatorPlugin: Object.freeze({ hash: OscillatorPlugin_PARAMS_HASH, floatCount: 7 }),
   OscilloscopePlugin: Object.freeze({ hash: OscilloscopePlugin_PARAMS_HASH, floatCount: 7 }),
+  PhaserPlugin: Object.freeze({ hash: PhaserPlugin_PARAMS_HASH, floatCount: 9 }),
   PhaseSelectEqPlugin: Object.freeze({ hash: PhaseSelectEqPlugin_PARAMS_HASH, floatCount: 50 }),
   PitchShifterHQPlugin: Object.freeze({ hash: PitchShifterHQPlugin_PARAMS_HASH, floatCount: 2 }),
   PitchShifterPlugin: Object.freeze({ hash: PitchShifterPlugin_PARAMS_HASH, floatCount: 4 }),
   PolarityInversionPlugin: Object.freeze({ hash: PolarityInversionPlugin_PARAMS_HASH, floatCount: 0 }),
   PowerAmpSagPlugin: Object.freeze({ hash: PowerAmpSagPlugin_PARAMS_HASH, floatCount: 4 }),
   RoomEqPlugin: Object.freeze({ hash: RoomEqPlugin_PARAMS_HASH, floatCount: 4 }),
+  RotarySpeakerPlugin: Object.freeze({ hash: RotarySpeakerPlugin_PARAMS_HASH, floatCount: 9 }),
   RSReverbPlugin: Object.freeze({ hash: RSReverbPlugin_PARAMS_HASH, floatCount: 9 }),
   SaturationPlugin: Object.freeze({ hash: SaturationPlugin_PARAMS_HASH, floatCount: 4 }),
   SimpleJitterPlugin: Object.freeze({ hash: SimpleJitterPlugin_PARAMS_HASH, floatCount: 1 }),
@@ -1496,7 +1592,9 @@ export const DSP_PARAM_LAYOUTS = Object.freeze({
 
 export const DSP_PARAM_PACKERS = new Map([
   ["AMRadioSimulatorPlugin", Object.freeze({ pack: packAMRadioSimulatorPluginParams, hash: AMRadioSimulatorPlugin_PARAMS_HASH, floatCount: 21 })],
+  ["AutoFilterPlugin", Object.freeze({ pack: packAutoFilterPluginParams, hash: AutoFilterPlugin_PARAMS_HASH, floatCount: 13 })],
   ["AutoLevelerPlugin", Object.freeze({ pack: packAutoLevelerPluginParams, hash: AutoLevelerPlugin_PARAMS_HASH, floatCount: 7 })],
+  ["AutoPanPlugin", Object.freeze({ pack: packAutoPanPluginParams, hash: AutoPanPlugin_PARAMS_HASH, floatCount: 6 })],
   ["BandPassFilterPlugin", Object.freeze({ pack: packBandPassFilterPluginParams, hash: BandPassFilterPlugin_PARAMS_HASH, floatCount: 4 })],
   ["BandwidthExtenderPlugin", Object.freeze({ pack: packBandwidthExtenderPluginParams, hash: BandwidthExtenderPlugin_PARAMS_HASH, floatCount: 4 })],
   ["BitCrusherPlugin", Object.freeze({ pack: packBitCrusherPluginParams, hash: BitCrusherPlugin_PARAMS_HASH, floatCount: 5 })],
@@ -1504,6 +1602,7 @@ export const DSP_PARAM_PACKERS = new Map([
   ["BrickwallLimiterPlugin", Object.freeze({ pack: packBrickwallLimiterPluginParams, hash: BrickwallLimiterPlugin_PARAMS_HASH, floatCount: 6 })],
   ["CassetteArtifactsPlugin", Object.freeze({ pack: packCassetteArtifactsPluginParams, hash: CassetteArtifactsPlugin_PARAMS_HASH, floatCount: 12 })],
   ["ChannelDividerPlugin", Object.freeze({ pack: packChannelDividerPluginParams, hash: ChannelDividerPlugin_PARAMS_HASH, floatCount: 7 })],
+  ["ChorusPlugin", Object.freeze({ pack: packChorusPluginParams, hash: ChorusPlugin_PARAMS_HASH, floatCount: 8 })],
   ["CombFilterPlugin", Object.freeze({ pack: packCombFilterPluginParams, hash: CombFilterPlugin_PARAMS_HASH, floatCount: 4 })],
   ["CompressorPlugin", Object.freeze({ pack: packCompressorPluginParams, hash: CompressorPlugin_PARAMS_HASH, floatCount: 6 })],
   ["CrossfeedFilterPlugin", Object.freeze({ pack: packCrossfeedFilterPluginParams, hash: CrossfeedFilterPlugin_PARAMS_HASH, floatCount: 3 })],
@@ -1525,6 +1624,7 @@ export const DSP_PARAM_PACKERS = new Map([
   ["FiveBandFIRPEQPlugin", Object.freeze({ pack: packFiveBandFIRPEQPluginParams, hash: FiveBandFIRPEQPlugin_PARAMS_HASH, floatCount: 2 })],
   ["FiveBandPEQPlugin", Object.freeze({ pack: packFiveBandPEQPluginParams, hash: FiveBandPEQPlugin_PARAMS_HASH, floatCount: 25 })],
   ["FMRadioSimulatorPlugin", Object.freeze({ pack: packFMRadioSimulatorPluginParams, hash: FMRadioSimulatorPlugin_PARAMS_HASH, floatCount: 12 })],
+  ["FrequencyShifterPlugin", Object.freeze({ pack: packFrequencyShifterPluginParams, hash: FrequencyShifterPlugin_PARAMS_HASH, floatCount: 9 })],
   ["G726ADPCMSimulatorPlugin", Object.freeze({ pack: packG726ADPCMSimulatorPluginParams, hash: G726ADPCMSimulatorPlugin_PARAMS_HASH, floatCount: 4 })],
   ["GatePlugin", Object.freeze({ pack: packGatePluginParams, hash: GatePlugin_PARAMS_HASH, floatCount: 6 })],
   ["GroupDelayEqPlugin", Object.freeze({ pack: packGroupDelayEqPluginParams, hash: GroupDelayEqPlugin_PARAMS_HASH, floatCount: 2 })],
@@ -1554,12 +1654,14 @@ export const DSP_PARAM_PACKERS = new Map([
   ["NoiseBlenderPlugin", Object.freeze({ pack: packNoiseBlenderPluginParams, hash: NoiseBlenderPlugin_PARAMS_HASH, floatCount: 3 })],
   ["OscillatorPlugin", Object.freeze({ pack: packOscillatorPluginParams, hash: OscillatorPlugin_PARAMS_HASH, floatCount: 7 })],
   ["OscilloscopePlugin", Object.freeze({ pack: packOscilloscopePluginParams, hash: OscilloscopePlugin_PARAMS_HASH, floatCount: 7 })],
+  ["PhaserPlugin", Object.freeze({ pack: packPhaserPluginParams, hash: PhaserPlugin_PARAMS_HASH, floatCount: 9 })],
   ["PhaseSelectEqPlugin", Object.freeze({ pack: packPhaseSelectEqPluginParams, hash: PhaseSelectEqPlugin_PARAMS_HASH, floatCount: 50 })],
   ["PitchShifterHQPlugin", Object.freeze({ pack: packPitchShifterHQPluginParams, hash: PitchShifterHQPlugin_PARAMS_HASH, floatCount: 2 })],
   ["PitchShifterPlugin", Object.freeze({ pack: packPitchShifterPluginParams, hash: PitchShifterPlugin_PARAMS_HASH, floatCount: 4 })],
   ["PolarityInversionPlugin", Object.freeze({ pack: packPolarityInversionPluginParams, hash: PolarityInversionPlugin_PARAMS_HASH, floatCount: 0 })],
   ["PowerAmpSagPlugin", Object.freeze({ pack: packPowerAmpSagPluginParams, hash: PowerAmpSagPlugin_PARAMS_HASH, floatCount: 4 })],
   ["RoomEqPlugin", Object.freeze({ pack: packRoomEqPluginParams, hash: RoomEqPlugin_PARAMS_HASH, floatCount: 4 })],
+  ["RotarySpeakerPlugin", Object.freeze({ pack: packRotarySpeakerPluginParams, hash: RotarySpeakerPlugin_PARAMS_HASH, floatCount: 9 })],
   ["RSReverbPlugin", Object.freeze({ pack: packRSReverbPluginParams, hash: RSReverbPlugin_PARAMS_HASH, floatCount: 9 })],
   ["SaturationPlugin", Object.freeze({ pack: packSaturationPluginParams, hash: SaturationPlugin_PARAMS_HASH, floatCount: 4 })],
   ["SimpleJitterPlugin", Object.freeze({ pack: packSimpleJitterPluginParams, hash: SimpleJitterPlugin_PARAMS_HASH, floatCount: 1 })],
@@ -1582,3 +1684,162 @@ export const DSP_PARAM_PACKERS = new Map([
   ["VolumePlugin", Object.freeze({ pack: packVolumePluginParams, hash: VolumePlugin_PARAMS_HASH, floatCount: 1 })],
   ["WowFlutterPlugin", Object.freeze({ pack: packWowFlutterPluginParams, hash: WowFlutterPlugin_PARAMS_HASH, floatCount: 7 })],
 ]);
+
+const freezeAutomationDescriptor = descriptor => {
+  if (descriptor.values) Object.freeze(descriptor.values);
+  return Object.freeze(descriptor);
+};
+
+export const DSP_AUTOMATION_CATALOG = Object.freeze({
+  AMRadioSimulatorPlugin: Object.freeze([]),
+  AutoFilterPlugin: Object.freeze([]),
+  AutoLevelerPlugin: Object.freeze([]),
+  AutoPanPlugin: Object.freeze([]),
+  BandPassFilterPlugin: Object.freeze([]),
+  BandwidthExtenderPlugin: Object.freeze([]),
+  BitCrusherPlugin: Object.freeze([]),
+  BluetoothSBCSimulatorPlugin: Object.freeze([]),
+  BrickwallLimiterPlugin: Object.freeze([]),
+  CassetteArtifactsPlugin: Object.freeze([]),
+  ChannelDividerPlugin: Object.freeze([]),
+  ChorusPlugin: Object.freeze([]),
+  CombFilterPlugin: Object.freeze([]),
+  CompressorPlugin: Object.freeze([]),
+  CrossfeedFilterPlugin: Object.freeze([]),
+  DattorroPlateReverbPlugin: Object.freeze([]),
+  DCOffsetPlugin: Object.freeze([]),
+  DelayPlugin: Object.freeze([]),
+  DigitalErrorEmulatorPlugin: Object.freeze([]),
+  DopplerDistortionPlugin: Object.freeze([]),
+  DSD64IMDSimulatorPlugin: Object.freeze([]),
+  DynamicSaturationPlugin: Object.freeze([]),
+  EarphoneCableSimPlugin: Object.freeze([]),
+  ExciterPlugin: Object.freeze([]),
+  ExpanderPlugin: Object.freeze([]),
+  FDNReverbPlugin: Object.freeze([]),
+  FifteenBandGEQPlugin: Object.freeze([]),
+  FifteenBandPEQPlugin: Object.freeze([]),
+  FIRCrossoverPlugin: Object.freeze([]),
+  FiveBandDynamicEQ: Object.freeze([]),
+  FiveBandFIRPEQPlugin: Object.freeze([]),
+  FiveBandPEQPlugin: Object.freeze([]),
+  FMRadioSimulatorPlugin: Object.freeze([]),
+  FrequencyShifterPlugin: Object.freeze([]),
+  G726ADPCMSimulatorPlugin: Object.freeze([]),
+  GatePlugin: Object.freeze([]),
+  GroupDelayEqPlugin: Object.freeze([]),
+  GSMFullRateSimulatorPlugin: Object.freeze([]),
+  HardClippingPlugin: Object.freeze([]),
+  HarmonicDistortionPlugin: Object.freeze([]),
+  HiPassFilterPlugin: Object.freeze([]),
+  HornResonatorPlugin: Object.freeze([]),
+  HornResonatorPlusPlugin: Object.freeze([]),
+  HumGeneratorPlugin: Object.freeze([]),
+  IRReverbPlugin: Object.freeze([]),
+  LevelMeterPlugin: Object.freeze([]),
+  LoPassFilterPlugin: Object.freeze([]),
+  LoudnessEqualizerPlugin: Object.freeze([]),
+  MatrixPlugin: Object.freeze([]),
+  ModalResonatorPlugin: Object.freeze([]),
+  MP3CodecSimulatorPlugin: Object.freeze([]),
+  MSMatrixPlugin: Object.freeze([]),
+  MultibandBalancePlugin: Object.freeze([]),
+  MultibandCompressorPlugin: Object.freeze([]),
+  MultibandExpanderPlugin: Object.freeze([]),
+  MultibandSaturationPlugin: Object.freeze([]),
+  MultibandTransientPlugin: Object.freeze([]),
+  MultiChannelPanelPlugin: Object.freeze([]),
+  MutePlugin: Object.freeze([]),
+  NarrowRangePlugin: Object.freeze([]),
+  NoiseBlenderPlugin: Object.freeze([]),
+  OscillatorPlugin: Object.freeze([]),
+  OscilloscopePlugin: Object.freeze([]),
+  PhaserPlugin: Object.freeze([]),
+  PhaseSelectEqPlugin: Object.freeze([]),
+  PitchShifterHQPlugin: Object.freeze([]),
+  PitchShifterPlugin: Object.freeze([]),
+  PolarityInversionPlugin: Object.freeze([]),
+  PowerAmpSagPlugin: Object.freeze([]),
+  RoomEqPlugin: Object.freeze([]),
+  RotarySpeakerPlugin: Object.freeze([]),
+  RSReverbPlugin: Object.freeze([]),
+  SaturationPlugin: Object.freeze([]),
+  SimpleJitterPlugin: Object.freeze([]),
+  SpectrogramPlugin: Object.freeze([]),
+  SpectrumAnalyzerPlugin: Object.freeze([]),
+  StereoBalancePlugin: Object.freeze([]),
+  StereoBlendPlugin: Object.freeze([]),
+  StereoMeterPlugin: Object.freeze([]),
+  SubSynthPlugin: Object.freeze([]),
+  SWRadioSimulatorPlugin: Object.freeze([]),
+  TapeArtifactsPlugin: Object.freeze([]),
+  TiltEQPlugin: Object.freeze([]),
+  TimeAlignmentPlugin: Object.freeze([]),
+  ToneControlPlugin: Object.freeze([]),
+  TransientShaperPlugin: Object.freeze([]),
+  TremoloPlugin: Object.freeze([]),
+  TubeSimulatorPlugin: Object.freeze([]),
+  VinylArtifactsPlugin: Object.freeze([]),
+  VinylSimulatorPlugin: Object.freeze([]),
+  VolumePlugin: Object.freeze([]),
+  WowFlutterPlugin: Object.freeze([]),
+});
+
+function clampAutomationNormalized(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(0, value));
+}
+
+export function normalizeDSPAutomationValue(descriptor, plainValue) {
+  switch (descriptor.normalization) {
+    case 'linear': {
+      const value = typeof plainValue === 'number' && Number.isFinite(plainValue)
+        ? plainValue : descriptor.default;
+      return clampAutomationNormalized(
+        (value - descriptor.minimum) / (descriptor.maximum - descriptor.minimum)
+      );
+    }
+    case 'log': {
+      const value = typeof plainValue === 'number' && Number.isFinite(plainValue)
+        ? plainValue : descriptor.default;
+      const clamped = Math.min(descriptor.maximum, Math.max(descriptor.minimum, value));
+      return Math.log(clamped / descriptor.minimum) /
+        Math.log(descriptor.maximum / descriptor.minimum);
+    }
+    case 'integer': {
+      const value = Number.isSafeInteger(plainValue) ? plainValue : descriptor.default;
+      return clampAutomationNormalized(
+        (value - descriptor.minimum) / descriptor.stepCount
+      );
+    }
+    case 'bool':
+      return plainValue === true || plainValue === 1 ? 1 :
+        plainValue === false || plainValue === 0 ? 0 : descriptor.default ? 1 : 0;
+    case 'enum': {
+      const index = descriptor.values.indexOf(plainValue);
+      const fallback = descriptor.values.indexOf(descriptor.default);
+      return (index < 0 ? fallback : index) / descriptor.stepCount;
+    }
+    default: throw new TypeError('Unknown DSP automation normalization');
+  }
+}
+
+export function denormalizeDSPAutomationValue(descriptor, normalizedValue) {
+  const normalized = Number.isFinite(normalizedValue)
+    ? clampAutomationNormalized(normalizedValue)
+    : normalizeDSPAutomationValue(descriptor, descriptor.default);
+  switch (descriptor.normalization) {
+    case 'linear':
+      return descriptor.minimum + normalized * (descriptor.maximum - descriptor.minimum);
+    case 'log':
+      return descriptor.minimum *
+        Math.pow(descriptor.maximum / descriptor.minimum, normalized);
+    case 'integer':
+      return descriptor.minimum + Math.round(normalized * descriptor.stepCount);
+    case 'bool':
+      return normalized >= 0.5;
+    case 'enum':
+      return descriptor.values[Math.round(normalized * descriptor.stepCount)];
+    default: throw new TypeError('Unknown DSP automation normalization');
+  }
+}

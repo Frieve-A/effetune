@@ -1,0 +1,55 @@
+{
+  "formatVersion": 1,
+  "type": "AutoFilterPlugin",
+  "id": "pending-during-fade-up",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 1027,
+  "blockSize": 1024,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "md": "LFO",
+    "ft": "Low-pass",
+    "lf": 200,
+    "hf": 4000,
+    "rs": 1.5,
+    "mx": 100,
+    "rt": 0.5,
+    "wf": "Sine",
+    "sp": 0,
+    "sn": 24,
+    "at": 20,
+    "rl": 250,
+    "dr": "Up"
+  },
+  "events": [
+    {
+      "frame": 1,
+      "params": {
+        "md": "Envelope",
+        "ft": "Band-pass",
+        "dr": "Down"
+      }
+    },
+    {
+      "frame": 181,
+      "params": {
+        "md": "LFO",
+        "ft": "High-pass",
+        "wf": "Triangle"
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "9d5dc5c1300ebc4ebcdb87e2a81f8eb64f7fc0132d3bfaf91652af8ced8cd6a0",
+  "outputFloats": 1027,
+  "byteLength": 4108,
+  "binary": "case-009.f32"
+}

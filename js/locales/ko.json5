@@ -50,6 +50,7 @@
   "status.filesSavedToFolder": "{count}개 파일이 {folder}에 저장되었습니다",
   "status.filesSaved": "{count}개 파일이 선택한 폴더에 저장되었습니다",
   "status.libraryTracksSkippedOffline": "{count}곡을 건너뛰었습니다 (오프라인)",
+  "status.jsFallbackCapacityExceeded": "현재 샘플 레이트와 출력 채널 수에서 재생 중단을 방지하기 위해 {effectName} 효과가 bypass되었습니다. 샘플 레이트를 낮추거나 출력 채널 수를 줄이세요.",
 
   // UI 요소
   "ui.resetButton": "오디오 재설정",
@@ -486,6 +487,7 @@
   "irLibrary.error.fileTooLarge": "선택한 임펄스 응답이 너무 큽니다. 더 짧은 임펄스 응답을 선택하고 다시 시도하십시오.",
   "irLibrary.error.importFolder": "폴더를 가져올 수 없습니다. 다시 시도하십시오.",
   "dbt.error.parallelStartFailed": "두 파이프라인이 모두 준비되지 않아 테스트를 시작할 수 없습니다. 이펙트 로딩이 끝난 후 다시 시도하세요.",
+  "dbt.error.jsFallbackCapacityExceeded": "두 파이프라인을 JavaScript 이펙트로 처리하면 CPU 부하가 너무 커지므로 테스트를 실행할 수 없습니다. WebAssembly DSP를 활성화하거나 파이프라인을 단순화한 후 다시 시도하세요.",
   "irReverb.name.impulseResponse": "임펄스 응답",
   "irReverb.name.theImpulseResponse": "임펄스 응답",
   "irReverb.name.theImpulseResponseCapitalized": "임펄스 응답",

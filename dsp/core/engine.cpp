@@ -1,5 +1,7 @@
 #include "engine.h"
 
+#include "IRReverbPluginParams.h"
+#include "VolumePluginParams.h"
 #include "allocation_guard.h"
 #include "registry.h"
 
@@ -13,6 +15,17 @@ namespace {
 
 constexpr std::uint32_t kDescriptorHeaderBytes = 8;
 constexpr std::uint32_t kDescriptorNodeBytes = 12;
+constexpr std::uint32_t kIrDryLevelIndex = 4u;
+constexpr float kIrDrySilenceDb = -96.0F;
+
+bool isGraphMutableType(const KernelDescriptor &descriptor) noexcept {
+  return std::strcmp(descriptor.typeName, "VolumePlugin") == 0 ||
+         std::strcmp(descriptor.typeName, "IRReverbPlugin") == 0;
+}
+
+bool isIrReverb(const KernelDescriptor &descriptor) noexcept {
+  return std::strcmp(descriptor.typeName, "IRReverbPlugin") == 0;
+}
 
 std::uint32_t readU32(const std::uint8_t *input) noexcept {
   return static_cast<std::uint32_t>(input[0]) | (static_cast<std::uint32_t>(input[1]) << 8u) |
@@ -39,6 +52,77 @@ void Engine::invalidatePipeline() noexcept {
   pipeline_delay_history_dirty_ = false;
 }
 
+void Engine::invalidateGraph() noexcept {
+  releaseGraphOwnership();
+  graph_ = GraphPlan{};
+  graph_diagnostic_ = {ET_OK, ET_GRAPH_DIAGNOSTIC_GRAPH, 0u, ET_GRAPH_PATH_NONE, 0u, 0u};
+}
+
+void Engine::releaseGraphOwnership() noexcept {
+  for (InstanceSlot &slot : instances_) {
+    slot.graphOwned = false;
+    slot.graphInitialParametersValid = false;
+  }
+}
+
+void Engine::installGraphOwnership() noexcept {
+  for (std::uint32_t index = 0u; index < instances_.size(); ++index) {
+    InstanceSlot &slot = instances_[index];
+    if (slot.kernel == nullptr) {
+      continue;
+    }
+    const et_instance handle = makeHandle(index, slot.generation);
+    slot.graphOwned = graph_.references(handle);
+    if (slot.graphOwned && slot.graphParametersValid) {
+      slot.graphInitialParameters = slot.graphParameters;
+      slot.graphInitialParametersValid = true;
+    }
+  }
+}
+
+bool Engine::graphUniformOutputLatency(const InstanceSlot &slot) const noexcept {
+  if (!isIrReverb(*slot.descriptor)) {
+    return true;
+  }
+  return slot.graphParametersValid &&
+         slot.graphParameterCount == generated::IRReverbPluginParams::kFloatCount &&
+         slot.graphParameters[kIrDryLevelIndex] <= kIrDrySilenceDb;
+}
+
+bool Engine::graphRequiresActiveAsset(const InstanceSlot &slot) const noexcept {
+  if (slot.kernel->assetCapacity(0u) == 0u) {
+    return false;
+  }
+  constexpr std::array<const char *, 5> required_types{"FIRCrossoverPlugin", "FiveBandFIRPEQPlugin",
+                                                       "GroupDelayEqPlugin", "IRReverbPlugin",
+                                                       "RoomEqPlugin"};
+  for (const char *type_name : required_types) {
+    if (std::strcmp(slot.descriptor->typeName, type_name) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void Engine::resetGraphOwnedInstances() noexcept {
+  for (InstanceSlot &slot : instances_) {
+    if (!slot.graphOwned) {
+      continue;
+    }
+    if (slot.graphInitialParametersValid) {
+      static_cast<void>(slot.kernel->stageParameters(slot.graphInitialParameters.data(),
+                                                     slot.graphParameterCount,
+                                                     slot.descriptor->paramsHash));
+      slot.kernel->applyPendingParameters();
+      slot.graphParameters = slot.graphInitialParameters;
+      slot.graphParametersValid = true;
+    }
+    slot.kernel->reset();
+    slot.telemetrySequence = 0u;
+    slot.telemetryFrames = 0.0;
+  }
+}
+
 void Engine::resetPipelineDelayHistory() noexcept {
   for (std::uint32_t index = 0u; index < pipeline_count_; ++index) {
     pipeline_compensation_[index].delayLine.reset();
@@ -61,6 +145,7 @@ et_status Engine::prepare(float sample_rate, std::uint32_t max_channels, std::ui
   destroyAllInstances();
   prepared_ = false;
   invalidatePipeline();
+  invalidateGraph();
   const et_status status =
       arena_.prepare(sample_rate, max_channels, max_frames, telemetry_ring_bytes);
   if (status != ET_OK) {
@@ -82,13 +167,24 @@ et_status Engine::reset() noexcept {
   arena_.clear();
   telemetry_.adopt(arena_.telemetryStorage(), arena_.telemetryCapacity());
   for (InstanceSlot &slot : instances_) {
-    if (slot.kernel != nullptr) {
+    if (slot.kernel != nullptr && !slot.graphOwned) {
       slot.kernel->reset();
       slot.telemetrySequence = 0;
       slot.telemetryFrames = 0.0;
     }
   }
+  resetGraphOwnedInstances();
   resetPipelineDelayHistory();
+  graph_.reset();
+  return ET_OK;
+}
+
+et_status Engine::resetGraph() noexcept {
+  if (!prepared_ || !graph_.configured()) {
+    return ET_ERR_STATE;
+  }
+  resetGraphOwnedInstances();
+  graph_.reset();
   return ET_OK;
 }
 
@@ -188,6 +284,12 @@ void Engine::destroySlot(InstanceSlot &slot) noexcept {
     slot.tapId = 0;
     slot.telemetrySequence = 0;
     slot.telemetryFrames = 0.0;
+    slot.graphParameters = {};
+    slot.graphInitialParameters = {};
+    slot.graphParameterCount = 0u;
+    slot.graphParametersValid = false;
+    slot.graphInitialParametersValid = false;
+    slot.graphOwned = false;
     ++slot.generation;
     if (slot.generation == 0u) {
       slot.generation = 1u;
@@ -203,7 +305,7 @@ void Engine::destroyAllInstances() noexcept {
 
 void Engine::destroyInstance(et_instance instance) noexcept {
   InstanceSlot *slot = findInstance(instance);
-  if (slot != nullptr) {
+  if (slot != nullptr && !slot->graphOwned) {
     destroySlot(*slot);
     invalidatePipeline();
   }
@@ -213,6 +315,9 @@ et_status Engine::resetInstance(et_instance instance) noexcept {
   InstanceSlot *slot = findInstance(instance);
   if (slot == nullptr) {
     return ET_ERR_ARGS;
+  }
+  if (slot->graphOwned) {
+    return ET_ERR_STATE;
   }
   slot->kernel->reset();
   slot->telemetrySequence = 0;
@@ -230,6 +335,9 @@ et_status Engine::setInstanceTap(et_instance instance, std::uint32_t tap_id) noe
   if (slot == nullptr) {
     return ET_ERR_ARGS;
   }
+  if (slot->graphOwned) {
+    return ET_ERR_STATE;
+  }
   slot->tapId = tap_id;
   slot->telemetrySequence = 0;
   return ET_OK;
@@ -240,6 +348,9 @@ et_status Engine::setInstanceSeed(et_instance instance, std::uint32_t seed_low,
   InstanceSlot *slot = findInstance(instance);
   if (slot == nullptr) {
     return ET_ERR_ARGS;
+  }
+  if (slot->graphOwned) {
+    return ET_ERR_STATE;
   }
   slot->kernel->setRandomSeed(seed_low, seed_high);
   return ET_OK;
@@ -252,10 +363,20 @@ et_status Engine::setInstanceParams(et_instance instance, const float *packed,
   if (slot == nullptr) {
     return ET_ERR_ARGS;
   }
+  if (slot->graphOwned) {
+    return ET_ERR_STATE;
+  }
   if (offset_frames != 0u) {
     return ET_ERR_ARGS;
   }
-  return slot->kernel->stageParameters(packed, float_count, params_hash);
+  const et_status status = slot->kernel->stageParameters(packed, float_count, params_hash);
+  if (status == ET_OK && isGraphMutableType(*slot->descriptor)) {
+    std::memcpy(slot->graphParameters.data(), packed,
+                static_cast<std::size_t>(float_count) * sizeof(float));
+    slot->graphParameterCount = float_count;
+    slot->graphParametersValid = true;
+  }
+  return status;
 }
 
 et_status Engine::setInstanceParamBytes(et_instance instance, const std::uint8_t *packed,
@@ -264,6 +385,9 @@ et_status Engine::setInstanceParamBytes(et_instance instance, const std::uint8_t
   InstanceSlot *slot = findInstance(instance);
   if (slot == nullptr) {
     return ET_ERR_ARGS;
+  }
+  if (slot->graphOwned) {
+    return ET_ERR_STATE;
   }
   if (offset_frames != 0u || slot->descriptor->paramsByteCapacity == 0u ||
       byte_count > slot->descriptor->paramsByteCapacity ||
@@ -279,10 +403,11 @@ et_status Engine::setInstanceParamBytes(et_instance instance, const std::uint8_t
 std::uint8_t *Engine::beginInstanceAsset(et_instance instance, std::uint32_t asset_slot,
                                          const AssetBeginInfo &info) noexcept {
   InstanceSlot *slot = findInstance(instance);
-  if (slot == nullptr || info.channels == 0u || info.channels > 8u || info.frames == 0u ||
-      info.byteSize == 0u || info.byteSize > slot->kernel->assetCapacity(asset_slot) ||
-      info.topology > 4u || info.processingChannels == 0u ||
-      info.processingChannels > max_channels_ || info.footprintBytes < info.byteSize ||
+  if (slot == nullptr || slot->graphOwned || info.channels == 0u || info.channels > 8u ||
+      info.frames == 0u || info.byteSize == 0u ||
+      info.byteSize > slot->kernel->assetCapacity(asset_slot) || info.topology > 4u ||
+      info.processingChannels == 0u || info.processingChannels > max_channels_ ||
+      info.footprintBytes < info.byteSize ||
       info.footprintBytes > slot->kernel->assetCapacity(asset_slot) ||
       (info.headBlock != 0u && info.headBlock != 128u && info.headBlock != 256u &&
        info.headBlock != 512u && info.headBlock != 1024u) ||
@@ -301,12 +426,15 @@ et_status Engine::commitInstanceAsset(et_instance instance, std::uint32_t asset_
   if (slot == nullptr || byte_size == 0u) {
     return ET_ERR_ARGS;
   }
+  if (slot->graphOwned) {
+    return ET_ERR_STATE;
+  }
   return slot->kernel->commitAsset(asset_slot, byte_size, format_tag);
 }
 
 void Engine::abortInstanceAsset(et_instance instance, std::uint32_t asset_slot) noexcept {
   InstanceSlot *slot = findInstance(instance);
-  if (slot != nullptr) {
+  if (slot != nullptr && !slot->graphOwned) {
     slot->kernel->clearAsset(asset_slot);
   }
 }
@@ -361,6 +489,9 @@ et_status Engine::processInstance(et_instance instance, float *audio, std::uint3
   InstanceSlot *slot = findInstance(instance);
   if (slot == nullptr) {
     return ET_ERR_ARGS;
+  }
+  if (slot->graphOwned) {
+    return ET_ERR_STATE;
   }
   allocation_guard::Scope allocation_scope;
   processSlot(*slot, audio, channel_count, frame_count, time_seconds);
@@ -439,10 +570,11 @@ et_status Engine::configurePipeline(const std::uint8_t *descriptor,
     node.outputBus = record[6];
     node.channelSpec = static_cast<std::int8_t>(record[7]);
     node.sectionGate = record[8];
+    const InstanceSlot *slot = findInstance(node.instance);
     if (node.enabled > 1u || node.sectionGate > 1u || node.inputBus >= Arena::kBusCount ||
         node.outputBus >= Arena::kBusCount || !validChannelSpec(node.channelSpec) ||
-        record[9] != 0u || record[10] != 0u || record[11] != 0u ||
-        findInstance(node.instance) == nullptr) {
+        record[9] != 0u || record[10] != 0u || record[11] != 0u || slot == nullptr ||
+        slot->graphOwned) {
       return ET_ERR_DESC;
     }
     for (std::uint32_t prior = 0; prior < index; ++prior) {
@@ -681,6 +813,118 @@ et_status Engine::processPipeline(std::uint32_t channel_count, std::uint32_t fra
                  frame_count);
     }
   }
+  return ET_OK;
+}
+
+et_status Engine::configureGraph(const std::uint8_t *descriptor,
+                                 std::uint32_t descriptor_bytes) noexcept {
+  if (!prepared_) {
+    graph_diagnostic_ = {
+        ET_ERR_STATE, ET_GRAPH_DIAGNOSTIC_GRAPH, 0u, ET_GRAPH_PATH_DOCUMENT, 0u, 0u};
+    return ET_ERR_STATE;
+  }
+
+  GraphPlan candidate;
+#if defined(ET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY)
+  et_status status = ET_ERR_OOM;
+  try {
+    status = candidate.configure(*this, descriptor, descriptor_bytes);
+  } catch (...) {
+    status = ET_ERR_OOM;
+  }
+#else
+  const et_status status = candidate.configure(*this, descriptor, descriptor_bytes);
+#endif
+  if (status != ET_OK) {
+    graph_diagnostic_ = candidate.diagnostic();
+    if (graph_diagnostic_.status == ET_OK) {
+      graph_diagnostic_ = {status, ET_GRAPH_DIAGNOSTIC_GRAPH,    0u, ET_GRAPH_PATH_GRAPH_MEMORY,
+                           0u,     GraphPlan::kMaxWorkspaceBytes};
+    }
+    return status;
+  }
+  invalidatePipeline();
+  releaseGraphOwnership();
+  graph_ = std::move(candidate);
+  installGraphOwnership();
+  resetGraphOwnedInstances();
+  graph_.reset();
+  graph_diagnostic_ = graph_.diagnostic();
+  return ET_OK;
+}
+
+et_status Engine::setGraphInstanceParams(et_instance instance, const float *packed,
+                                         std::uint32_t float_count, std::uint32_t params_hash,
+                                         std::uint32_t changed_index) noexcept {
+  InstanceSlot *slot = findInstance(instance);
+  if (!graph_.configured() || slot == nullptr || !slot->graphOwned) {
+    return ET_ERR_STATE;
+  }
+  const std::uint32_t node_index = graph_.originalIndex(instance);
+  const auto reject = [&](std::uint32_t path) {
+    graph_diagnostic_ = {
+        ET_ERR_GRAPH_UNSUPPORTED_CAPABILITY, ET_GRAPH_DIAGNOSTIC_NODE, node_index, path, 0u, 0u};
+    return ET_ERR_GRAPH_UNSUPPORTED_CAPABILITY;
+  };
+  if (packed == nullptr || params_hash != slot->descriptor->paramsHash ||
+      float_count != slot->descriptor->paramsFloatCount || changed_index >= float_count ||
+      !slot->graphParametersValid || slot->graphParameterCount != float_count) {
+    return reject(ET_GRAPH_PATH_NODE_INSTANCE);
+  }
+
+  const bool volume = std::strcmp(slot->descriptor->typeName, "VolumePlugin") == 0;
+  const bool ir_reverb = isIrReverb(*slot->descriptor);
+  if ((!volume || changed_index != 0u || params_hash != generated::VolumePluginParams::kHash ||
+       float_count != generated::VolumePluginParams::kFloatCount) &&
+      (!ir_reverb || changed_index != kIrDryLevelIndex ||
+       params_hash != generated::IRReverbPluginParams::kHash ||
+       float_count != generated::IRReverbPluginParams::kFloatCount)) {
+    return reject(ET_GRAPH_PATH_NODE_INSTANCE);
+  }
+  for (std::uint32_t index = 0u; index < float_count; ++index) {
+    if (index != changed_index && packed[index] != slot->graphParameters[index]) {
+      return reject(ET_GRAPH_PATH_NODE_INSTANCE);
+    }
+  }
+  if (ir_reverb && slot->kernel->latencySamples() != 0u) {
+    const bool was_silent = slot->graphParameters[kIrDryLevelIndex] <= kIrDrySilenceDb;
+    const bool is_silent = packed[kIrDryLevelIndex] <= kIrDrySilenceDb;
+    if (was_silent != is_silent) {
+      return reject(ET_GRAPH_PATH_NODE_LATENCY);
+    }
+  }
+
+  const et_status status = slot->kernel->stageParameters(packed, float_count, params_hash);
+  if (status != ET_OK) {
+    return status;
+  }
+  std::memcpy(slot->graphParameters.data(), packed,
+              static_cast<std::size_t>(float_count) * sizeof(float));
+  graph_diagnostic_ = {ET_OK, ET_GRAPH_DIAGNOSTIC_GRAPH, 0u, ET_GRAPH_PATH_NONE, 0u, 0u};
+  return ET_OK;
+}
+
+et_status Engine::processGraph(std::uint32_t channel_count, std::uint32_t frame_count,
+                               double time_seconds) noexcept {
+  float *main_bus = arena_.combined();
+  const et_status validation =
+      validateProcessArgs(main_bus, channel_count, frame_count, time_seconds);
+  if (validation != ET_OK) {
+    return validation;
+  }
+  return graph_.process(*this, channel_count, frame_count, time_seconds);
+}
+
+et_status Engine::copyGraphSnapshot(std::uint8_t *output,
+                                    std::uint32_t output_bytes) const noexcept {
+  const std::vector<std::uint8_t> &snapshot = graph_.snapshot();
+  if (!graph_.configured()) {
+    return ET_ERR_STATE;
+  }
+  if (output == nullptr || output_bytes < snapshot.size()) {
+    return ET_ERR_ARGS;
+  }
+  std::memcpy(output, snapshot.data(), snapshot.size());
   return ET_OK;
 }
 

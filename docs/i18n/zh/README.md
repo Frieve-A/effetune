@@ -359,9 +359,15 @@ EffeTune 2.1.0引入了采用目录架构v3的音乐库，可按曲目浏览CUE�
 | Lo-Fi     | Tape Artifacts | 将音乐录到建模的开盘磁带上再放出来 | [详情](plugins/lofi.md#tape-artifacts) |
 | Lo-Fi     | Vinyl Artifacts | 加入黑胶风格的爆点、噼啪声、嘶声、隆隆声和立体声噪声串扰 | [详情](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi     | Vinyl Simulator | 将输入刻入模拟唱槽，再用物理唱针模型播放 | [详情](plugins/lofi.md#vinyl-simulator) |
+| Modulation | Auto Filter | 通过LFO或音量包络扫动共振滤波器 | [详情](plugins/modulation.md#auto-filter) |
+| Modulation | Auto Pan | 让每个立体声声道对的电平在声场中平滑移动 | [详情](plugins/modulation.md#auto-pan) |
+| Modulation | Chorus | 通过移动延迟加入合唱、合奏、镶边或颤音 | [详情](plugins/modulation.md#chorus) |
 | Modulation | Doppler Distortion | 模拟因扬声器振膜微动引起的自然动态音色变化 | [详情](plugins/modulation.md#doppler-distortion) |
+| Modulation | Frequency Shifter | 进行频率平移、环形调制或理发杆式频移 | [详情](plugins/modulation.md#frequency-shifter) |
+| Modulation | Phaser | 以经典或理发杆式扫频产生移动的峰和陷波 | [详情](plugins/modulation.md#phaser) |
 | Modulation | Pitch Shifter | 在不改变速度的情况下升高或降低音乐音高 | [详情](plugins/modulation.md#pitch-shifter) |
 | Modulation | Pitch Shifter HQ | 减少相位伪影，更细致地升高或降低音高 | [详情](plugins/modulation.md#pitch-shifter-hq) |
+| Modulation | Rotary Speaker | 结合高音号角与低音鼓的独立旋转 | [详情](plugins/modulation.md#rotary-speaker) |
 | Modulation | Tremolo | 基于音量的调制效果 | [详情](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | 加入轻微磁带或唱片式音高摇摆，营造复古特性 | [详情](plugins/modulation.md#wow-flutter) |
 | Resonator | Horn Resonator | 具有可自定义尺寸的号角共鸣模拟 | [详情](plugins/resonator.md#horn-resonator) |

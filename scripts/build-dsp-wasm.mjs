@@ -330,13 +330,17 @@ export async function smokeWasm(filePath, expectedSimd) {
   const instance = await WebAssembly.instantiate(module, createImports(module));
   const api = instance.exports;
   const required = [
-    'memory', 'malloc', 'free', 'et_abi_version', 'et_build_flags', 'et_kernel_count',
+    'memory', 'malloc', 'free', 'et_abi_version', 'et_build_flags',
+    'et_graph_capabilities', 'et_graph_version', 'et_kernel_count',
     'et_kernel_name', 'et_kernel_params_hash', 'et_kernel_param_bytes_capacity',
     'et_kernel_asset_capacity', 'et_engine_create', 'et_engine_prepare',
     'et_instance_set_param_bytes', 'et_instance_asset_begin', 'et_instance_asset_commit',
     'et_instance_asset_abort', 'et_instance_asset_state',
     'et_instance_process', 'et_instance_runtime_event',
-    'et_pipeline_configure', 'et_pipeline_latency', 'et_pipeline_process'
+    'et_pipeline_configure', 'et_pipeline_latency', 'et_pipeline_process',
+    'et_graph_configure', 'et_graph_reset', 'et_graph_set_instance_params',
+    'et_graph_latency', 'et_graph_process',
+    'et_graph_snapshot_size', 'et_graph_snapshot_copy', 'et_graph_read_diagnostic'
   ];
   for (const name of required) {
     if (!(name in api)) {
@@ -350,6 +354,10 @@ export async function smokeWasm(filePath, expectedSimd) {
   }
   if (Boolean(buildFlags & 1) !== expectedSimd) {
     fail(`${path.basename(filePath)} reports incorrect SIMD build flags`);
+  }
+  if ((buildFlags & 4) === 0 || (api.et_graph_capabilities() & 1) === 0 ||
+      api.et_graph_version() !== 1) {
+    fail(`${path.basename(filePath)} does not expose Graph v1 capability`);
   }
   const count = api.et_kernel_count();
   const kernels = [];

@@ -37,6 +37,7 @@
     },
     "./processor": "./dist/worklet-processor.js",
     "./schemas/chain-v1.json": "./dist/schemas/chain-v1.schema.json",
+    "./schemas/graph-v1.json": "./dist/schemas/graph-v1.schema.json",
     "./schemas/bundle-v1.json": "./dist/schemas/bundle-v1.schema.json",
     "./catalog": {
       "types": "./dist/catalog-entry.d.ts",

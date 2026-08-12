@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "type": "FrequencyShifterPlugin",
+  "id": "one-frame-blocks-96k",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 3,
+  "frameCount": 6001,
+  "blockSize": 1,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 6,
+  "seed": "0xeffe7a58",
+  "params": {
+    "md": "Barber-pole",
+    "sh": 8,
+    "cf": 440,
+    "mn": 10,
+    "mx": 2000,
+    "rt": 1.7,
+    "dr": "Up",
+    "sp": 45,
+    "mix": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "534549173cd3b77f1b2c17c77c68454549654eddd36891bd666dee790c9f3855",
+  "outputFloats": 18003,
+  "byteLength": 72012,
+  "binary": "case-007.f32"
+}

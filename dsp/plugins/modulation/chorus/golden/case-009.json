@@ -1,0 +1,51 @@
+{
+  "formatVersion": 1,
+  "type": "ChorusPlugin",
+  "id": "pending-during-fade-up",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 1027,
+  "blockSize": 1024,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "md": "Chorus",
+    "rt": 0.8,
+    "dl": 12,
+    "dp": 3,
+    "vc": 3,
+    "ss": 60,
+    "fb": 0,
+    "mx": 100
+  },
+  "events": [
+    {
+      "frame": 1,
+      "params": {
+        "md": "Flanger",
+        "dl": 2,
+        "dp": 1,
+        "vc": 1,
+        "fb": 50
+      }
+    },
+    {
+      "frame": 361,
+      "params": {
+        "md": "Ensemble",
+        "vc": 6
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "cd8d937332e8bb9b1133e50fa4e513e0e00e3d96eb6e320d38205d26d16c3eb4",
+  "outputFloats": 1027,
+  "byteLength": 4108,
+  "binary": "case-009.f32"
+}

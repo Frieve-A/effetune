@@ -5,7 +5,7 @@ import * as dsp from '@effetune/dsp';
 
 const python = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const types = dsp.EFFECT_CATALOG.effects.map(effect => effect.type);
-assert.equal(types.length, 84);
+assert.equal(types.length, 90);
 assert.deepEqual(dsp.EFFECT_CATALOG, python.catalog);
 assert.deepEqual(dsp.EFFECT_CATALOG.channels, dsp.EFFECT_CHANNELS);
 assert.ok(dsp.EFFECT_CATALOG.effects.every(effect =>

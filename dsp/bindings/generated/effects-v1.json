@@ -4302,6 +4302,291 @@
       "assets": []
     },
     {
+      "type": "AutoFilter",
+      "parameters": [
+        {
+          "name": "mode",
+          "type": "string",
+          "count": 1,
+          "default": "LFO",
+          "values": [
+            "LFO",
+            "Envelope"
+          ]
+        },
+        {
+          "name": "filterType",
+          "type": "string",
+          "count": 1,
+          "default": "Low-pass",
+          "values": [
+            "Low-pass",
+            "Band-pass",
+            "High-pass"
+          ]
+        },
+        {
+          "name": "minimumFrequency",
+          "type": "number",
+          "count": 1,
+          "default": 200,
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 20000
+        },
+        {
+          "name": "maximumFrequency",
+          "type": "number",
+          "count": 1,
+          "default": 4000,
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 20000
+        },
+        {
+          "name": "resonance",
+          "type": "number",
+          "count": 1,
+          "default": 1.5,
+          "unit": "Q",
+          "minimum": 0.5,
+          "maximum": 20
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 80,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "rate",
+          "type": "number",
+          "count": 1,
+          "default": 0.5,
+          "unit": "Hz",
+          "minimum": 0.05,
+          "maximum": 20
+        },
+        {
+          "name": "waveform",
+          "type": "string",
+          "count": 1,
+          "default": "Sine",
+          "values": [
+            "Sine",
+            "Triangle"
+          ]
+        },
+        {
+          "name": "stereoPhase",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "deg",
+          "minimum": 0,
+          "maximum": 180
+        },
+        {
+          "name": "sensitivity",
+          "type": "number",
+          "count": 1,
+          "default": 24,
+          "unit": "dB",
+          "minimum": 0,
+          "maximum": 60
+        },
+        {
+          "name": "attack",
+          "type": "number",
+          "count": 1,
+          "default": 20,
+          "unit": "ms",
+          "minimum": 1,
+          "maximum": 500
+        },
+        {
+          "name": "release",
+          "type": "number",
+          "count": 1,
+          "default": 250,
+          "unit": "ms",
+          "minimum": 10,
+          "maximum": 2000
+        },
+        {
+          "name": "direction",
+          "type": "string",
+          "count": 1,
+          "default": "Up",
+          "values": [
+            "Up",
+            "Down"
+          ]
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "AutoPan",
+      "parameters": [
+        {
+          "name": "rate",
+          "type": "number",
+          "count": 1,
+          "default": 0.35,
+          "unit": "Hz",
+          "minimum": 0.05,
+          "maximum": 20
+        },
+        {
+          "name": "depth",
+          "type": "number",
+          "count": 1,
+          "default": 45,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "center",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "%",
+          "minimum": -100,
+          "maximum": 100
+        },
+        {
+          "name": "width",
+          "type": "number",
+          "count": 1,
+          "default": 70,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "waveform",
+          "type": "string",
+          "count": 1,
+          "default": "Sine",
+          "values": [
+            "Sine",
+            "Triangle"
+          ]
+        },
+        {
+          "name": "phase",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "deg",
+          "minimum": 0,
+          "maximum": 360
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "Chorus",
+      "parameters": [
+        {
+          "name": "mode",
+          "type": "string",
+          "count": 1,
+          "default": "Chorus",
+          "values": [
+            "Chorus",
+            "Stereo Chorus",
+            "Ensemble",
+            "Flanger",
+            "Vibrato"
+          ]
+        },
+        {
+          "name": "rate",
+          "type": "number",
+          "count": 1,
+          "default": 0.8,
+          "unit": "Hz",
+          "minimum": 0.05,
+          "maximum": 10
+        },
+        {
+          "name": "delay",
+          "type": "number",
+          "count": 1,
+          "default": 12,
+          "unit": "ms",
+          "minimum": 0.5,
+          "maximum": 30
+        },
+        {
+          "name": "depth",
+          "type": "number",
+          "count": 1,
+          "default": 3,
+          "unit": "ms",
+          "minimum": 0,
+          "maximum": 20
+        },
+        {
+          "name": "voices",
+          "type": "integer",
+          "count": 1,
+          "default": 3,
+          "minimum": 1,
+          "maximum": 6
+        },
+        {
+          "name": "stereoSpread",
+          "type": "number",
+          "count": 1,
+          "default": 60,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "feedback",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "%",
+          "minimum": -75,
+          "maximum": 75
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 45,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
       "type": "DopplerDistortion",
       "parameters": [
         {
@@ -4349,6 +4634,203 @@
       "assets": []
     },
     {
+      "type": "FrequencyShifter",
+      "parameters": [
+        {
+          "name": "mode",
+          "type": "string",
+          "count": 1,
+          "default": "Shift",
+          "values": [
+            "Shift",
+            "Ring Mod",
+            "Barber-pole"
+          ]
+        },
+        {
+          "name": "shift",
+          "type": "number",
+          "count": 1,
+          "default": 8,
+          "unit": "Hz",
+          "minimum": -5000,
+          "maximum": 5000
+        },
+        {
+          "name": "carrierFrequency",
+          "type": "number",
+          "count": 1,
+          "default": 440,
+          "unit": "Hz",
+          "minimum": 0.1,
+          "maximum": 10000
+        },
+        {
+          "name": "minimumShift",
+          "type": "number",
+          "count": 1,
+          "default": 20,
+          "unit": "Hz",
+          "minimum": 0,
+          "maximum": 5000
+        },
+        {
+          "name": "maximumShift",
+          "type": "number",
+          "count": 1,
+          "default": 800,
+          "unit": "Hz",
+          "minimum": 0,
+          "maximum": 5000
+        },
+        {
+          "name": "rate",
+          "type": "number",
+          "count": 1,
+          "default": 0.15,
+          "unit": "Hz",
+          "minimum": 0.01,
+          "maximum": 2
+        },
+        {
+          "name": "direction",
+          "type": "string",
+          "count": 1,
+          "default": "Up",
+          "values": [
+            "Up",
+            "Down"
+          ]
+        },
+        {
+          "name": "stereoPhase",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "degrees",
+          "minimum": 0,
+          "maximum": 180
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      },
+      "assets": []
+    },
+    {
+      "type": "Phaser",
+      "parameters": [
+        {
+          "name": "mode",
+          "type": "string",
+          "count": 1,
+          "default": "Classic",
+          "values": [
+            "Classic",
+            "Barber-pole"
+          ]
+        },
+        {
+          "name": "rate",
+          "type": "number",
+          "count": 1,
+          "default": 0.5,
+          "unit": "Hz",
+          "minimum": 0.05,
+          "maximum": 10
+        },
+        {
+          "name": "centerFrequency",
+          "type": "number",
+          "count": 1,
+          "default": 1000,
+          "unit": "Hz",
+          "minimum": 80,
+          "maximum": 8000
+        },
+        {
+          "name": "range",
+          "type": "number",
+          "count": 1,
+          "default": 3,
+          "unit": "octaves",
+          "minimum": 0,
+          "maximum": 6
+        },
+        {
+          "name": "stages",
+          "type": "integer",
+          "count": 1,
+          "default": 6,
+          "values": [
+            2,
+            4,
+            6,
+            8,
+            10,
+            12
+          ]
+        },
+        {
+          "name": "feedback",
+          "type": "number",
+          "count": 1,
+          "default": 20,
+          "unit": "%",
+          "minimum": -90,
+          "maximum": 90
+        },
+        {
+          "name": "stereoPhase",
+          "type": "number",
+          "count": 1,
+          "default": 90,
+          "unit": "degrees",
+          "minimum": 0,
+          "maximum": 180
+        },
+        {
+          "name": "direction",
+          "type": "string",
+          "count": 1,
+          "default": "Up",
+          "values": [
+            "Up",
+            "Down"
+          ]
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 50,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
       "type": "PitchShifter",
       "parameters": [
         {
@@ -4386,6 +4868,100 @@
           "unit": "ms",
           "minimum": 20,
           "maximum": 40
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "RotarySpeaker",
+      "parameters": [
+        {
+          "name": "speedState",
+          "type": "string",
+          "count": 1,
+          "default": "Slow",
+          "values": [
+            "Stop",
+            "Slow",
+            "Fast"
+          ]
+        },
+        {
+          "name": "speed",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 25,
+          "maximum": 200
+        },
+        {
+          "name": "acceleration",
+          "type": "number",
+          "count": 1,
+          "default": 2.2,
+          "unit": "s",
+          "minimum": 0.1,
+          "maximum": 10
+        },
+        {
+          "name": "crossover",
+          "type": "number",
+          "count": 1,
+          "default": 800,
+          "unit": "Hz",
+          "minimum": 200,
+          "maximum": 2000
+        },
+        {
+          "name": "rotorBalance",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "%",
+          "minimum": -100,
+          "maximum": 100
+        },
+        {
+          "name": "stereoWidth",
+          "type": "number",
+          "count": 1,
+          "default": 75,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "dopplerDepth",
+          "type": "number",
+          "count": 1,
+          "default": 45,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "amplitudeDepth",
+          "type": "number",
+          "count": 1,
+          "default": 55,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 70,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
         }
       ],
       "seeded": false,
@@ -6317,7 +6893,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "c2094f9f30f781430c61befcf255274278782983008a7d466827ce617c03b325",
-    "privateLayoutSha256": "bac00ff064e5d37cd15faf5722af36efc684b04cb17bfbf6b247c1a709a82284"
+    "publicCatalogSha256": "20fb170009524684de3ee674f8fe20c4d8d5d64eb56f0a61d23d1e6066890464",
+    "privateLayoutSha256": "46b03b458f10f26ff6a07e0cbbb74acbdd08ce99320fe51582728a8535fb1277"
   }
 }

@@ -15,31 +15,35 @@ const DEFAULT_SUMMARY = path.join(
   'dsp-library-goldens-summary.json'
 );
 const EXPECTED_BACKENDS = Object.freeze({
-  'python-native': 793,
-  'javascript-baseline': 793,
-  'javascript-simd': 793
+  'python-native': 847,
+  'javascript-baseline': 847,
+  'javascript-simd': 847
 });
 const EXPECTED_WORKLET_GOLDEN = Object.freeze({
-  'chromium-audioworklet-baseline': 85,
-  'chromium-audioworklet-simd': 85
+  'chromium-audioworklet-baseline': 91,
+  'chromium-audioworklet-simd': 91
 });
 const EXPECTED_WORKLET_NONIDENTITY = Object.freeze({
-  'chromium-audioworklet-nonidentity-baseline': 79,
-  'chromium-audioworklet-nonidentity-simd': 79
+  'chromium-audioworklet-nonidentity-baseline': 85,
+  'chromium-audioworklet-nonidentity-simd': 85
 });
 const PYTHON_STATE_CONTRACTS = Object.freeze([
   'sameSeed',
   'differentSeed',
   'reset',
   'closeIdempotent',
-  'closedRejects'
+  'closedRejects',
+  'modulationCrossField',
+  'frequencyShifterLatency'
 ]);
 const JAVASCRIPT_STATE_CONTRACTS = Object.freeze([
   'sameSeed',
   'differentSeed',
   'closeIdempotent',
   'closedRejects',
-  'statefulStream'
+  'statefulStream',
+  'modulationCrossField',
+  'frequencyShifterLatency'
 ]);
 const EXPECTED_VALIDATION_REJECTIONS = Object.freeze({
   'python-native': 1,
@@ -269,16 +273,18 @@ function semanticParameters(testCase, legacy) {
       } else if (packed.count > 1 && prefixes.size === 1) {
         const objectArray = Object.values(legacy).find(value =>
           Array.isArray(value) &&
-          value.length === packed.count &&
+          value.length > 0 &&
+          value.length <= packed.count &&
           value.every(item =>
             item !== null &&
             typeof item === 'object' &&
             !Array.isArray(item))
+          && value.some(item => Object.hasOwn(item, arrayKey))
         );
         if (objectArray) {
-          values = objectArray.map((item, index) =>
-            Object.hasOwn(item, arrayKey)
-              ? reverseTransform(packed.transform, item[arrayKey])
+          values = Array.from({ length: packed.count }, (_, index) =>
+            index < objectArray.length && Object.hasOwn(objectArray[index], arrayKey)
+              ? reverseTransform(packed.transform, objectArray[index][arrayKey])
               : Array.isArray(definition.default)
                 ? definition.default[index]
                 : definition.default
@@ -306,6 +312,40 @@ function semanticParameters(testCase, legacy) {
       : definition.default;
   }
   return parameters;
+}
+
+function suppliedSemanticNames(testCase, supplied) {
+  const names = [];
+  const append = name => {
+    if (!names.includes(name)) names.push(name);
+  };
+  for (const legacyName of Object.keys(supplied)) {
+    for (const packed of testCase.implementation.packedParameters) {
+      const prefixes = new Set(packed.keys.map(key => key.replace(/[0-9]+$/, '')));
+      const [arrayKey] = prefixes;
+      const aggregate = packed.count > 1 && prefixes.size === 1 && arrayKey === legacyName;
+      const objectArray = packed.count > 1 && prefixes.size === 1 &&
+        Array.isArray(supplied[legacyName]) && supplied[legacyName].some(item =>
+          item !== null &&
+          typeof item === 'object' &&
+          !Array.isArray(item) &&
+          Object.hasOwn(item, arrayKey)
+        );
+      if (packed.keys.includes(legacyName) || aggregate || objectArray) {
+        append(packed.publicName);
+      }
+    }
+    const structured = testCase.implementation.structuredParameter;
+    if (structured?.key === legacyName) append(structured.publicName);
+  }
+  return names;
+}
+
+function semanticEventParameters(testCase, current, supplied) {
+  const snapshot = semanticParameters(testCase, current);
+  return Object.fromEntries(
+    suppliedSemanticNames(testCase, supplied).map(name => [name, snapshot[name]])
+  );
 }
 
 export function expectedValidationRejection(testCase) {
@@ -423,14 +463,14 @@ function semanticDocument(testCase) {
   return { version: 1, chain: [node] };
 }
 
-function buildEvents(testCase) {
+export function buildEvents(testCase) {
   let current = { ...testCase.metadata.params };
   return (testCase.metadata.events ?? []).map(event => {
     current = { ...current, ...(event.params ?? {}) };
     return {
       frame: event.frame,
       effectId: 'golden-effect',
-      parameters: semanticParameters(testCase, current)
+      parameters: semanticEventParameters(testCase, current, event.params ?? {})
     };
   });
 }
@@ -461,7 +501,7 @@ function decodeFloat32(buffer) {
   return output;
 }
 
-async function stageJsPackage(repoRoot) {
+export async function stageJsPackage(repoRoot) {
   const stageRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-dsp-acceptance-'));
   const sourceRoot = path.join(repoRoot, 'dsp', 'bindings', 'js', 'src');
   for (const entry of await fs.readdir(sourceRoot, { withFileTypes: true })) {
@@ -645,6 +685,125 @@ async function runJsVariant(api, cases, variant) {
   };
 }
 
+function audioEquals(left, right) {
+  return left.length === right.length && left.every((channel, index) =>
+    Buffer.from(channel.buffer, channel.byteOffset, channel.byteLength).equals(
+      Buffer.from(
+        right[index].buffer,
+        right[index].byteOffset,
+        right[index].byteLength
+      )
+    )
+  );
+}
+
+export async function runJsModulationCrossFieldContract(api, variant) {
+  const source = [
+    Float32Array.from({ length: 512 }, (_, index) => Math.sin(index * 0.071) * 0.4),
+    Float32Array.from({ length: 512 }, (_, index) => Math.cos(index * 0.053) * 0.3)
+  ];
+  const cases = [
+    {
+      type: 'AutoFilter',
+      supplied: { minimumFrequency: 8000, maximumFrequency: 200 },
+      canonical: { minimumFrequency: 200, maximumFrequency: 8000 }
+    },
+    {
+      type: 'Chorus',
+      supplied: { delay: 0.5, depth: 20 },
+      canonical: { delay: 0.5, depth: 0.5 }
+    },
+    {
+      type: 'FrequencyShifter',
+      supplied: { minimumShift: 900, maximumShift: 20 },
+      canonical: { minimumShift: 20, maximumShift: 900 }
+    }
+  ];
+  for (const testCase of cases) {
+    const EffectClass = api[testCase.type];
+    if (typeof EffectClass !== 'function') return false;
+    const id = `${testCase.type}-cross-field`;
+    const named = await api.createChain([
+      new EffectClass({ id, ...testCase.supplied })
+    ], { variant, cache: true });
+    const serialized = await api.createChain(JSON.stringify({
+      version: 1,
+      chain: [{ id, type: testCase.type, parameters: testCase.supplied }]
+    }), { variant, cache: true });
+    const canonical = await api.createChain({
+      version: 1,
+      chain: [{ id, type: testCase.type, parameters: testCase.canonical }]
+    }, { variant, cache: true });
+    try {
+      if (JSON.stringify(named.preset) !== JSON.stringify(serialized.preset)) return false;
+      const expected = await canonical.process(source, {
+        sampleRate: 48000,
+        blockSize: 64
+      });
+      if (!audioEquals(
+        await named.process(source, { sampleRate: 48000, blockSize: 64 }),
+        expected
+      )) return false;
+      if (!audioEquals(
+        await serialized.process(source, { sampleRate: 48000, blockSize: 64 }),
+        expected
+      )) return false;
+
+      const entries = Object.entries(testCase.supplied);
+      for (const ordered of [entries, [...entries].reverse()]) {
+        const eventChain = await api.createChain([
+          new EffectClass({ id })
+        ], { variant, cache: true });
+        const stream = await eventChain.stream({
+          sampleRate: 48000,
+          channels: 2,
+          blockSize: 64
+        });
+        try {
+          const actual = await stream.process(source, {
+            events: ordered.map(([name, value]) => ({
+              frame: 0,
+              effectId: id,
+              parameters: { [name]: value }
+            }))
+          });
+          if (!audioEquals(actual, expected)) return false;
+          if (JSON.stringify(stream.preset) !== JSON.stringify(canonical.preset)) return false;
+          if (JSON.stringify(stream.effects) !== JSON.stringify(canonical.effects)) return false;
+        } finally {
+          stream.close();
+          eventChain.close();
+        }
+      }
+    } finally {
+      named.close();
+      serialized.close();
+      canonical.close();
+    }
+  }
+  return true;
+}
+
+async function runJsFrequencyShifterLatencyContract(api, variant) {
+  const chain = await api.createChain([
+    new api.FrequencyShifter()
+  ], { variant, cache: true });
+  try {
+    for (const [sampleRate, expected] of [[48000, 114], [96000, 228], [192000, 456]]) {
+      if (await chain.latencySamples({ sampleRate, channels: 2 }) !== expected) return false;
+      const stream = await chain.stream({ sampleRate, channels: 2, blockSize: 64 });
+      try {
+        if (stream.latencySamples !== expected) return false;
+      } finally {
+        stream.close();
+      }
+    }
+    return true;
+  } finally {
+    chain.close();
+  }
+}
+
 async function runJsStateContracts(api, variant) {
   const document = {
     version: 1,
@@ -671,12 +830,16 @@ async function runJsStateContracts(api, variant) {
   } catch (error) {
     closedRejects = error instanceof api.StateError;
   }
+  const modulationCrossField = await runJsModulationCrossFieldContract(api, variant);
+  const frequencyShifterLatency = await runJsFrequencyShifterLatencyContract(api, variant);
   return {
     sameSeed,
     differentSeed,
     closeIdempotent: true,
     closedRejects,
-    statefulStream: typeof chain.stream === 'function'
+    statefulStream: typeof chain.stream === 'function',
+    modulationCrossField,
+    frequencyShifterLatency
   };
 }
 
@@ -1270,10 +1433,10 @@ export async function runAcceptance(options = {}) {
     backends: [],
     status: 'failed'
   };
-  if (inventorySummary.effects !== 84 ||
-      inventorySummary.total !== 793 ||
+  if (inventorySummary.effects !== 90 ||
+      inventorySummary.total !== 847 ||
       inventorySummary.assetCases !== 20 ||
-      inventorySummary.eventCases !== 131) {
+      inventorySummary.eventCases !== 146) {
     throw new Error(
       `Frozen inventory mismatch: ${JSON.stringify(inventorySummary)}`
     );

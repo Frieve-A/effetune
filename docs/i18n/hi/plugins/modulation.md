@@ -1,6 +1,6 @@
 ---
 title: "मॉड्यूलेशन प्लगइन - EffeTune"
-description: "Doppler Distortion, Pitch Shifter, Pitch Shifter HQ, Tremolo और Wow Flutter सहित modulation effect प्लगइन।"
+description: "Auto Filter, Auto Pan, Chorus, Frequency Shifter, Phaser और Rotary Speaker सहित modulation effects।"
 lang: hi
 ---
 
@@ -10,11 +10,81 @@ lang: hi
 
 ## प्लगइन सूची
 
+- [Auto Filter](#auto-filter) - LFO या envelope से resonant filter sweep करता है
+- [Auto Pan](#auto-pan) - हर stereo pair को sound field में सहजता से घुमाता है
+- [Chorus](#chorus) - Chorus, Ensemble, Flanger और Vibrato को एक effect में देता है
 - [Doppler Distortion](#doppler-distortion) - स्पीकर कॉन के सूक्ष्म आंदोलन द्वारा उत्पन्न प्राकृतिक, गतिशील ध्वनि परिवर्तनों का अनुकरण करता है।
+- [Frequency Shifter](#frequency-shifter) - frequency shift, Ring Mod या Barber-pole sweep लगाता है
+- [Phaser](#phaser) - all-pass filters से moving peaks और notches बनाता है
 - [Pitch Shifter](#pitch-shifter) - आपके संगीत के प्लेबैक स्पीड को प्रभावित किए बिना उसके स्वर को बदलता है
 - [Pitch Shifter HQ](#pitch-shifter-hq) - जब latency या CPU usage से अधिक sound quality महत्वपूर्ण हो, तब कम phase artifacts के साथ pitch बदलता है
+- [Rotary Speaker](#rotary-speaker) - horn और drum की स्वतंत्र गति को जोड़ता है
 - [Tremolo](#tremolo) - धड़कती, गतिशील ध्वनि के लिए लयबद्ध वॉल्यूम परिवर्तनों का निर्माण करता है
 - [Wow Flutter](#wow-flutter) - विनाइल रिकॉर्ड्स और टेप प्लेयर्स के कोमल स्वर परिवर्तनों को पुनर्जीवित करता है
+
+## Auto Filter
+
+LFO या input signal के envelope से state-variable filter को अपने-आप चलाता है। Envelope mode को Envelope Filter या Auto Wah की तरह इस्तेमाल किया जा सकता है। algorithmic latency शून्य है।
+
+### ध्वनि समायोजन के सुझाव
+
+- हल्के tonal बदलाव के लिए LFO, Low-pass, कम Resonance और लगभग 30–50% Mix से शुरू करें।
+- Auto Wah के लिए Envelope और Band-pass चुनें, फिर Sensitivity को इस तरह मिलाएँ कि तेज़ ध्वनि filter को उचित मात्रा में खोले।
+- लंबा Attack शुरुआत की प्रतिक्रिया को नरम करता है; लंबा Release वापसी को अधिक सहज बनाता है।
+
+### पैरामीटर
+
+- **Style**: सभी parameters को एक साथ तय करने वाली पूरी factory setting। विकल्प **Auto Filter Sweep** (LFO), **Stereo Filter Sweep** (LFO), **Envelope Filter** (Envelope), **Auto Wah** (Envelope) और **Reverse Auto Wah** (Envelope) हैं। किसी parameter को अलग से बदलने पर यह **Custom** हो जाता है।
+- **Mode**: नियमित रूप से चलने वाले LFO और volume का अनुसरण करने वाले Envelope के बीच बदलता है।
+- **Filter Type**: Low-pass, Band-pass या High-pass।
+- **Minimum Frequency / Maximum Frequency** (20–20,000 Hz): गति की सीमा। उलटे क्रम को अपने-आप सही किया जाता है; समान मान filter को स्थिर रखते हैं। processing के दौरान सीमा Nyquist frequency से नीचे सुरक्षित क्षेत्र में रखी जाती है।
+- **Resonance** (Q 0.5–20): अधिक मान cutoff के आसपास अधिक जोर देते हैं।
+- **Mix** (0–100%): मूल और filtered ध्वनि का अनुपात। 0% पर केवल मूल ध्वनि रहती है।
+- **Rate**, **Waveform**, **Stereo Phase**: LFO की गति, पथ और हर stereo pair के भीतर phase difference। केवल LFO mode में उपयोग होते हैं।
+- **Sensitivity**, **Attack**, **Release**, **Direction**: envelope की प्रतिक्रिया, rise, return और दिशा। केवल Envelope mode में उपयोग होते हैं।
+
+## Auto Pan
+
+हर पास-पास के stereo pair की volume को बाएँ और दाएँ चलाता है। pairs के बीच audio नहीं मिलाता, और अंत में बचा अकेला channel mono माना जाता है। algorithmic latency शून्य है।
+
+### ध्वनि समायोजन के सुझाव
+
+- आरामदेह गति के लिए लगभग 0.2–0.5 Hz Rate और मध्यम Depth से शुरू करें।
+- headphones में प्रभाव बहुत चौड़ा लगे तो Width घटाएँ; बाएँ/दाएँ का आधार Center से मिलाएँ।
+- Sine किनारों पर धीरे चलती है, जबकि Triangle की गति अधिक समान रहती है।
+
+### पैरामीटर
+
+- **Style**: सभी parameters की पूरी factory setting। विकल्प **Gentle Auto Pan**, **Wide Auto Pan** और **Fast Auto Pan** हैं। अलग parameter बदलने पर यह **Custom** हो जाता है।
+- **Rate** (0.05–20 Hz): गति।
+- **Depth** (0–100%): Center के आसपास चलने की मात्रा। 0% पर कोई बदलाव नहीं।
+- **Center** (-100–100%): मध्य स्थिति को बाएँ या दाएँ खिसकाता है।
+- **Width** (0–100%): इस्तेमाल की जाने वाली stereo width।
+- **Waveform**: Sine या Triangle।
+- **Phase** (0–360°): नियमित गति की शुरुआती स्थिति।
+
+## Chorus
+
+चार-point cubic interpolation वाले कई variable-delay signals जोड़ता है। Mode में Chorus, Stereo Chorus, Ensemble, Flanger और Vibrato हैं। variable delay सुनाई देने वाला विलंब बनाता है, पर fixed latency नहीं है; इसलिए reported algorithmic latency शून्य है।
+
+### ध्वनि समायोजन के सुझाव
+
+- प्राकृतिक मोटाई के लिए Classic Chorus या Stereo Chorus के साथ मध्यम Rate और Depth रखें।
+- Voices बढ़ाने पर Ensemble अधिक घना होता है। बहुत अधिक Depth pitch wobble को स्पष्ट करती है।
+- केवल Flanger Feedback का उपयोग करता है; positive और negative मान comb-filter polarity बदलते हैं।
+- Vibrato हमेशा 100% wet है।
+
+### पैरामीटर
+
+- **Style**: सभी parameters की पूरी factory setting। विकल्प **Classic Chorus** (Chorus), **Stereo Chorus** (Stereo Chorus), **Ensemble** (Ensemble), **Flanger** (Flanger), **Jet Flanger** (Flanger) और **Vibrato** (Vibrato) हैं। अलग parameter बदलने पर यह **Custom** हो जाता है।
+- **Mode**: Chorus, Stereo Chorus, Ensemble, Flanger या Vibrato।
+- **Rate** (0.05–10 Hz): modulation की गति।
+- **Delay** (0.5–30 ms): wet signal का आधार delay।
+- **Depth** (0–20 ms): delay में बदलाव। negative-delay read रोकने के लिए saved value को Delay तक सीमित किया जाता है।
+- **Voices** (1–6): Chorus और Ensemble में variable taps की संख्या। अन्य modes में अनदेखा होता है।
+- **Stereo Spread** (0–100%): हर stereo pair में modulation difference। Chorus mode में अनदेखा होता है।
+- **Feedback** (-75–75%): केवल Flanger में उपयोग होता है।
+- **Mix** (0–100%): मूल और wet signal का linear ratio। Vibrato में अनदेखा होता है और हमेशा 100% wet रहता है।
 
 ## Doppler Distortion
 
@@ -50,6 +120,52 @@ Doppler Distortion स्पीकर कॉन के भौतिक आंद
 - **Damping Factor:** 1.5 N·s/m  
 
 ये सेटिंग्स एक सूक्ष्म Doppler Distortion प्रदान करती हैं, जो मूल ध्वनि को ओवरपावर किए बिना आपके सुनने के अनुभव को समृद्ध बनाती हैं।
+
+## Frequency Shifter
+
+हर frequency component को pitch ratio के बजाय निश्चित Hz से खिसकाता है। Ring Mod signal को carrier से गुणा करता है; Barber-pole shifts को overlap करके लगातार ऊपर या नीचे जाने का आभास देता है। Shift और Barber-pole Hilbert analytic-signal FIR का उपयोग करते हैं; Ring Mod उसी FIFO से मिले बराबर-delay वाले real signal को carrier से गुणा करता है। इसलिए मूल और processed signals सभी modes में time-aligned रहते हैं। fixed latency sample rate पर निर्भर है और DSP Library इसे report करती है।
+
+### ध्वनि समायोजन के सुझाव
+
+- हल्के बदलाव के लिए Shift चुनें और लगभग ±5–15 Hz से शुरू करें। Pitch Shifter के विपरीत harmonic spacing भी बदलती है।
+- metallic timbre के लिए Ring Mod इस्तेमाल करें। कम Carrier Frequency मूल rhythm को बनाए रखने में मदद करती है।
+- लगातार गति के लिए कम Rate वाला Barber-pole और clarity के लिए मध्यम Mix रखें।
+
+### पैरामीटर
+
+- **Style**: सभी parameters की पूरी factory setting। विकल्प **Shift Up** (Shift), **Shift Down** (Shift), **Fine Detune** (Shift), **Ring Modulator** (Ring Mod), **Barber-pole Up** (Barber-pole) और **Barber-pole Down** (Barber-pole) हैं। अलग parameter बदलने पर यह **Custom** हो जाता है।
+- **Mode**: Shift, Ring Mod या Barber-pole।
+- **Shift** (-5,000–5,000 Hz): Shift mode की मात्रा। positive मान ऊपर और negative मान नीचे खिसकाते हैं।
+- **Carrier Frequency** (0.1–10,000 Hz): Ring Mod का carrier frequency।
+- **Minimum Shift / Maximum Shift** (0–5,000 Hz): Barber-pole की सीमा। उलटा क्रम सही किया जाता है; समान मान shift को स्थिर रखते हैं।
+- **Rate** (0.01–2 Hz), **Direction**: Barber-pole की गति और दिशा।
+- **Stereo Phase** (0–180°): सभी modes में हर stereo pair के बाएँ और दाएँ carrier या sweep में अंतर देता है।
+- **Mix** (0–100%): बराबर-delay वाले मूल और processed signal का अनुपात। 0% पर भी बताई गई fixed latency रहती है।
+
+बड़े shifts Nyquist frequency से ऊपर components बना सकते हैं, जिससे aliasing सुनाई दे सकती है। शुरुआती version oversampling नहीं करता।
+
+## Phaser
+
+moving peaks और notches बनाने के लिए मूल signal को all-pass filter chain के output से मिलाता है। Classic आगे-पीछे चलता है; Barber-pole तीन constant-power windows को overlap करके लगातार ऊपर या नीचे जाने का आभास देता है। algorithmic latency शून्य है।
+
+### ध्वनि समायोजन के सुझाव
+
+- साफ़ notches के लिए Classic, 4–6 Stages, मध्यम Range और लगभग 50% Mix से शुरू करें।
+- Stages और Feedback बढ़ाने पर प्रभाव अधिक गहरा और resonant होता है। attacks बहुत रंगीन हों तो इन्हें घटाएँ।
+- Stereo Phase से width मिलाएँ; लगातार गति के लिए Barber-pole Up/Down चुनें।
+
+### पैरामीटर
+
+- **Style**: सभी parameters की पूरी factory setting। विकल्प **Classic Phaser** (Classic), **Deep Phaser** (Classic), **Stereo Phaser** (Classic), **Barber-pole Up** (Barber-pole) और **Barber-pole Down** (Barber-pole) हैं। अलग parameter बदलने पर यह **Custom** हो जाता है।
+- **Mode**: Classic या Barber-pole।
+- **Rate** (0.05–10 Hz): sweep की गति।
+- **Center Frequency** (80–8,000 Hz): logarithmic sweep का केंद्र।
+- **Range** (0–6 octaves): sweep की चौड़ाई।
+- **Stages** (2 से 12 के सम अंक): all-pass stages की संख्या। अधिक stages से अधिक notches बनते हैं।
+- **Feedback** (-90–90%): processed signal को input में लौटाने की मात्रा। absolute value ताकत और sign emphasis का ढंग बदलता है।
+- **Stereo Phase** (0–180°): हर stereo pair के भीतर गति का अंतर।
+- **Direction**: Barber-pole का Up/Down। Classic में अनदेखा होता है।
+- **Mix** (0–100%): मूल और processed signal का linear ratio। बीच के पास cancellation सबसे गहरी होती है।
 
 ## Pitch Shifter
 
@@ -93,6 +209,29 @@ Pitch Shifter HQ formants को सुरक्षित नहीं रखत
 - **Fine Tune** - pitch को cents में समायोजित करता है (-50 से +50)
   - semitones के बीच सटीक समायोजन के लिए उपयोग करें
   - 100 cents एक semitone के बराबर हैं
+
+## Rotary Speaker
+
+Linkwitz–Riley crossover से signal को high-frequency horn और low-frequency drum में बाँटता है, फिर दोनों पर अलग rotation speed, volume modulation और छोटा Doppler delay लगाता है। यह किसी खास Leslie cabinet का measured model नहीं है। variable delay के कारण इसे fixed algorithmic latency के रूप में report नहीं किया जाता।
+
+### ध्वनि समायोजन के सुझाव
+
+- Slow आरामदेह और Fast अधिक तीव्र rotation देता है। लंबी Acceleration speed change को अधिक प्राकृतिक बनाती है।
+- pitch movement को Doppler Depth और volume movement को Amplitude Depth से मिलाएँ।
+- drum और horn का अनुपात Rotor Balance तथा चौड़ाई Stereo Width से मिलाएँ।
+
+### पैरामीटर
+
+- **Style**: सभी parameters की पूरी factory setting। विकल्प **Rotary Slow** (Slow), **Rotary Fast** (Fast), **Gentle Rotary** (Slow), **Leslie Slow** (Slow) और **Leslie Fast** (Fast) हैं। अलग parameter बदलने पर यह **Custom** हो जाता है।
+- **Speed State**: Stop, Slow या Fast। बदलते समय mute किए बिना लगातार तेज़ या धीमा होता है।
+- **Speed** (25–200%): horn और drum दोनों की speed multiplier।
+- **Acceleration** (0.1–10 s): rotors नई speed की ओर कितनी तेज़ी से बढ़ते हैं।
+- **Crossover** (200–2,000 Hz): drum और horn bands को बाँटने वाली frequency।
+- **Rotor Balance** (-100–100%): negative मान drum और positive मान horn को उभारते हैं।
+- **Stereo Width** (0–100%): stereo pair की चौड़ाई।
+- **Doppler Depth** (0–100%): variable delay से होने वाला pitch variation।
+- **Amplitude Depth** (0–100%): virtual rotor direction से होने वाला volume variation।
+- **Mix** (0–100%): मूल और rotating sound का अनुपात। 0% पर केवल मूल ध्वनि रहती है।
 
 ## Tremolo
 

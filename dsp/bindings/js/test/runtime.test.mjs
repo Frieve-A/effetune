@@ -6,8 +6,10 @@ import { generateStimulus } from '../../../../tools/dsp-parity/stimuli.mjs';
 
 import {
   AssetError,
+  AutoFilter,
   BitCrusher,
   BrickwallLimiter,
+  Chorus,
   Compressor,
   EFFECT_CATALOG,
   EFFECT_METADATA,
@@ -17,6 +19,7 @@ import {
   LoPassFilter,
   Matrix,
   Oscilloscope,
+  Phaser,
   Spectrogram,
   SpectrumAnalyzer,
   StereoMeter,
@@ -27,6 +30,7 @@ import {
   encodeEta1,
   EffectError,
   EffeTuneRuntimeError,
+  FrequencyShifter,
   isBundleDocument
 } from '../dist/index.js';
 import { loadDspArtifact } from '../dist/artifacts.js';
@@ -115,8 +119,8 @@ test('generated effects import and the public catalog stays semantic', async () 
   const compressor = new generated.Compressor({ threshold: -18 });
   assert.equal(compressor.type, 'Compressor');
   assert.equal(compressor.parameters.threshold, -18);
-  assert.equal(EFFECT_TYPES.length, 84);
-  assert.equal(EFFECT_CATALOG.effects.length, 84);
+  assert.equal(EFFECT_TYPES.length, 90);
+  assert.equal(EFFECT_CATALOG.effects.length, 90);
   assert.deepEqual(EFFECT_CATALOG.channels, [
     'all', 'stereo', 'left', 'right',
     '1', '2', '3', '4', '5', '6', '7', '8', '34', '56', '78'
@@ -126,6 +130,281 @@ test('generated effects import and the public catalog stays semantic', async () 
   assert.equal(Object.hasOwn(entry, '_EFFECT_IMPLEMENTATION'), false);
   assert.equal(typeof isBundleDocument, 'function');
   assert.equal(isBundleDocument({ version: 1, chain: {}, assets: [] }), true);
+});
+
+test('modulation cross-field rules match across constructors, JSON, and partial event order', async t => {
+  const source = [
+    Float32Array.from({ length: 512 }, (_, index) => Math.sin(index * 0.071) * 0.4),
+    Float32Array.from({ length: 512 }, (_, index) => Math.cos(index * 0.053) * 0.3)
+  ];
+  const cases = [
+    {
+      type: 'AutoFilter',
+      EffectClass: AutoFilter,
+      supplied: { minimumFrequency: 8000, maximumFrequency: 200 },
+      canonical: { minimumFrequency: 200, maximumFrequency: 8000 },
+      updates: { minimumFrequency: 100, maximumFrequency: 9000 },
+      canonicalize(parameters) {
+        const values = { ...parameters };
+        if (values.minimumFrequency > values.maximumFrequency) {
+          [values.minimumFrequency, values.maximumFrequency] =
+            [values.maximumFrequency, values.minimumFrequency];
+        }
+        return values;
+      }
+    },
+    {
+      type: 'Chorus',
+      EffectClass: Chorus,
+      supplied: { delay: 0.5, depth: 20 },
+      canonical: { delay: 0.5, depth: 0.5 },
+      updates: { delay: 10, depth: 0.25 },
+      canonicalize(parameters) {
+        return {
+          ...parameters,
+          depth: parameters.depth > parameters.delay
+            ? parameters.delay
+            : parameters.depth
+        };
+      }
+    },
+    {
+      type: 'FrequencyShifter',
+      EffectClass: FrequencyShifter,
+      supplied: { minimumShift: 900, maximumShift: 20 },
+      canonical: { minimumShift: 20, maximumShift: 900 },
+      updates: { minimumShift: 10, maximumShift: 1000 },
+      canonicalize(parameters) {
+        const values = { ...parameters };
+        if (values.minimumShift > values.maximumShift) {
+          [values.minimumShift, values.maximumShift] =
+            [values.maximumShift, values.minimumShift];
+        }
+        return values;
+      }
+    }
+  ];
+  for (const testCase of cases) {
+    await t.test(`${testCase.type} cross-field matrix`, async () => {
+      const id = `${testCase.type}-cross-field`;
+      const named = await createChain([
+        new testCase.EffectClass({ id, ...testCase.supplied })
+      ], { variant: 'baseline' });
+      const serialized = await createChain(JSON.stringify({
+        version: 1,
+        chain: [{ id, type: testCase.type, parameters: testCase.supplied }]
+      }), { variant: 'baseline' });
+      const canonical = await createChain({
+        version: 1,
+        chain: [{ id, type: testCase.type, parameters: testCase.canonical }]
+      }, { variant: 'baseline' });
+      try {
+        assert.deepEqual(named.preset, serialized.preset);
+        for (const [name, value] of Object.entries(testCase.supplied)) {
+          assert.equal(named.effects[0].parameters[name], value);
+        }
+        const expected = await canonical.process(source, {
+          sampleRate: 48000,
+          blockSize: 64
+        });
+        assert.deepEqual(
+          await named.process(source, { sampleRate: 48000, blockSize: 64 }),
+          expected
+        );
+        assert.deepEqual(
+          await serialized.process(source, { sampleRate: 48000, blockSize: 64 }),
+          expected
+        );
+
+        const entries = Object.entries(testCase.supplied);
+        for (const ordered of [entries, [...entries].reverse()]) {
+          const eventChain = await createChain([
+            new testCase.EffectClass({ id })
+          ], { variant: 'baseline' });
+          const stream = await eventChain.stream({
+            sampleRate: 48000,
+            channels: 2,
+            blockSize: 64
+          });
+          try {
+            const actual = await stream.process(source, {
+              events: ordered.map(([name, value]) => ({
+                frame: 0,
+                effectId: id,
+                parameters: { [name]: value }
+              }))
+            });
+            assert.deepEqual(actual, expected);
+            assert.deepEqual(stream.preset, canonical.preset);
+            assert.deepEqual(stream.effects, canonical.effects);
+          } finally {
+            stream.close();
+            eventChain.close();
+          }
+        }
+
+        for (const surface of ['setParam', 'event']) {
+          for (const names of [Object.keys(testCase.updates), Object.keys(testCase.updates).reverse()]) {
+            const candidateChain = await createChain(JSON.stringify({
+              version: 1,
+              chain: [{ id, type: testCase.type, parameters: testCase.supplied }]
+            }), { variant: 'baseline' });
+            const referenceChain = await createChain({
+              version: 1,
+              chain: [{ id, type: testCase.type, parameters: testCase.canonical }]
+            }, { variant: 'baseline' });
+            const candidateStream = await candidateChain.stream({
+              sampleRate: 48000,
+              channels: 2,
+              blockSize: 64
+            });
+            const referenceStream = await referenceChain.stream({
+              sampleRate: 48000,
+              channels: 2,
+              blockSize: 64
+            });
+            try {
+              let effective = { ...testCase.canonical };
+              const raw = { ...testCase.supplied };
+              let verifiedRoundTrip = false;
+              const steps = [
+                [names[0], testCase.supplied[names[0]]],
+                [names[1], testCase.supplied[names[1]]],
+                [names[0], testCase.updates[names[0]]],
+                [names[1], testCase.updates[names[1]]]
+              ];
+              for (const [name, value] of steps) {
+                raw[name] = value;
+                effective = testCase.canonicalize({ ...effective, [name]: value });
+                const referenceOutput = await referenceStream.process(source, {
+                  events: [{ frame: 0, effectId: id, parameters: effective }]
+                });
+                let candidateOutput;
+                if (surface === 'setParam') {
+                  candidateStream.setParam(id, name, value);
+                  candidateOutput = await candidateStream.process(source);
+                } else {
+                  candidateOutput = await candidateStream.process(source, {
+                    events: [{ frame: 0, effectId: id, parameters: { [name]: value } }]
+                  });
+                }
+                assert.deepEqual(candidateOutput, referenceOutput);
+                assert.deepEqual(candidateStream.preset, referenceStream.preset);
+                assert.deepEqual(candidateStream.effects, referenceStream.effects);
+                for (const parameterName of Object.keys(testCase.supplied)) {
+                  assert.equal(
+                    candidateStream.effects[0].parameters[parameterName],
+                    effective[parameterName]
+                  );
+                }
+
+                const rawDiffersFromEffective = Object.keys(testCase.supplied)
+                  .some(parameterName => raw[parameterName] !== effective[parameterName]);
+                if (!verifiedRoundTrip && rawDiffersFromEffective) {
+                  const exposedPreset = candidateStream.preset;
+                  exposedPreset.chain[0].enabled = false;
+                  assert.equal(candidateStream.preset.chain[0].enabled, true);
+
+                  const snapshot = candidateStream.preset;
+                  const restoredChain = await createChain(snapshot, { variant: 'baseline' });
+                  const expectedStateChain = await createChain(referenceStream.preset, {
+                    variant: 'baseline'
+                  });
+                  const restoredStream = await restoredChain.stream({
+                    sampleRate: 48000,
+                    channels: 2,
+                    blockSize: 64
+                  });
+                  try {
+                    assert.deepEqual(restoredChain.preset, snapshot);
+                    assert.deepEqual(restoredChain.effects, snapshot.chain);
+                    assert.deepEqual(restoredStream.preset, snapshot);
+                    assert.deepEqual(restoredStream.effects, snapshot.chain);
+                    assert.deepEqual(
+                      await restoredStream.process(source),
+                      await expectedStateChain.process(source, {
+                        sampleRate: 48000,
+                        blockSize: 64
+                      })
+                    );
+                  } finally {
+                    restoredStream.close();
+                    restoredChain.close();
+                    expectedStateChain.close();
+                  }
+                  verifiedRoundTrip = true;
+                }
+              }
+              assert.equal(verifiedRoundTrip, true);
+            } finally {
+              candidateStream.close();
+              referenceStream.close();
+              candidateChain.close();
+              referenceChain.close();
+            }
+          }
+        }
+      } finally {
+        named.close();
+        serialized.close();
+        canonical.close();
+      }
+    });
+  }
+});
+
+test('Phaser stage choices are preserved and odd values are rejected across public surfaces', async () => {
+  const stagesDefinition = EFFECT_METADATA.effects
+    .find(effect => effect.type === 'Phaser').parameters
+    .find(parameter => parameter.name === 'stages');
+  const allowedStages = [2, 4, 6, 8, 10, 12];
+  assert.deepEqual(stagesDefinition.values, allowedStages);
+
+  for (const stages of allowedStages) {
+    const fromConstructor = normalizeChainDocument([new Phaser({ stages })]).chain[0];
+    assert.equal(fromConstructor.parameters.stages, stages);
+    const fromJson = normalizeChainDocument({
+      version: 1,
+      chain: [{ type: 'Phaser', parameters: { stages } }]
+    }).chain[0];
+    assert.equal(fromJson.parameters.stages, stages);
+  }
+
+  for (const stages of [3, 5, 7, 9, 11]) {
+    assert.throws(
+      () => normalizeChainDocument([new Phaser({ stages })]),
+      ValidationError
+    );
+    assert.throws(
+      () => normalizeChainDocument({
+        version: 1,
+        chain: [{ type: 'Phaser', parameters: { stages } }]
+      }),
+      ValidationError
+    );
+    await assert.rejects(createChain([new Phaser({ stages })]), ValidationError);
+  }
+
+  const chain = await createChain([
+    new Phaser({ id: 'phaser', stages: 6 })
+  ], { variant: 'baseline' });
+  const stream = await chain.stream({ sampleRate: 48000, channels: 1, blockSize: 8 });
+  try {
+    await assert.rejects(
+      stream.process(constantAudio(1, 8, 0.25), {
+        events: [{ frame: 0, effectId: 'phaser', parameters: { stages: 7 } }]
+      }),
+      ValidationError
+    );
+    assert.equal(stream.effects[0].parameters.stages, 6);
+    await stream.process(constantAudio(1, 8, 0.25), {
+      events: [{ frame: 0, effectId: 'phaser', parameters: { stages: 12 } }]
+    });
+    assert.equal(stream.effects[0].parameters.stages, 12);
+  } finally {
+    stream.close();
+    chain.close();
+  }
 });
 
 test('all generated effects normalize and pack against their private layouts', () => {
@@ -658,6 +937,23 @@ test('chain latencySamples matches an opened stream without disturbing later res
   const invalidChain = await createChain([new Volume({ volume: 0 })], { variant: 'baseline' });
   await assert.rejects(invalidChain.latencySamples({ sampleRate: 0 }), ValidationError);
   invalidChain.close();
+});
+
+test('Frequency Shifter reports its sample-rate-dependent latency on chains and streams', async () => {
+  const chain = await createChain([new FrequencyShifter()], { variant: 'baseline' });
+  try {
+    for (const [sampleRate, expected] of [[48000, 114], [96000, 228], [192000, 456]]) {
+      assert.equal(await chain.latencySamples({ sampleRate, channels: 2 }), expected);
+      const stream = await chain.stream({ sampleRate, channels: 2, blockSize: 64 });
+      try {
+        assert.equal(stream.latencySamples, expected);
+      } finally {
+        stream.close();
+      }
+    }
+  } finally {
+    chain.close();
+  }
 });
 
 test('parameter events validate boundaries, ordering, ids, and semantic values before processing', async () => {

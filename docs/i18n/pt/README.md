@@ -360,9 +360,15 @@ Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/
 | Lo-Fi     | Tape Artifacts | Grava a música em uma fita de rolo modelada e a reproduz | [Detalhes](plugins/lofi.md#tape-artifacts) |
 | Lo-Fi     | Vinyl Artifacts | Adiciona estalos, crackle, hiss, rumble e vazamento de ruído estéreo no estilo vinil | [Detalhes](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi     | Vinyl Simulator | Grava a entrada em um sulco modelado e a reproduz com uma agulha física simulada | [Detalhes](plugins/lofi.md#vinyl-simulator) |
+| Modulation | Auto Filter | Varre um filtro ressonante com LFO ou com o envelope de amplitude | [Detalhes](plugins/modulation.md#auto-filter) |
+| Modulation | Auto Pan | Move suavemente o nível de cada par estéreo pelo campo sonoro | [Detalhes](plugins/modulation.md#auto-pan) |
+| Modulation | Chorus | Adiciona chorus, ensemble, flanger ou vibrato com atrasos móveis | [Detalhes](plugins/modulation.md#chorus) |
 | Modulation | Doppler Distortion | Simula mudanças naturais e dinâmicas no som causadas por sutis movimentos do cone do alto-falante | [Detalhes](plugins/modulation.md#doppler-distortion) |
+| Modulation | Frequency Shifter | Desloca frequências, aplica modulação em anel ou efeito barber-pole | [Detalhes](plugins/modulation.md#frequency-shifter) |
+| Modulation | Phaser | Cria picos e vales móveis com varredura clássica ou barber-pole | [Detalhes](plugins/modulation.md#phaser) |
 | Modulation | Pitch Shifter | Sobe ou desce o pitch da música sem mudar o tempo | [Detalhes](plugins/modulation.md#pitch-shifter) |
 | Modulation | Pitch Shifter HQ | Sobe ou desce o pitch com menos artefatos de fase para uma audição atenta | [Detalhes](plugins/modulation.md#pitch-shifter-hq) |
+| Modulation | Rotary Speaker | Combina movimentos independentes de corneta e tambor | [Detalhes](plugins/modulation.md#rotary-speaker) |
 | Modulation | Tremolo | Efeito de modulação baseado em volume | [Detalhes](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | Adiciona uma oscilação sutil de pitch no estilo fita ou disco para caráter vintage | [Detalhes](plugins/modulation.md#wow-flutter) |
 | Resonator | Horn Resonator | Simulação de ressonância de corno com dimensões personalizáveis | [Detalhes](plugins/resonator.md#horn-resonator) |

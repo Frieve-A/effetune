@@ -16,12 +16,15 @@ export type {
   DelayOptions,
   TimeAlignmentOptions,
   AMRadioSimulatorOptions,
+  AutoFilterOptions,
   AutoLevelerOptions,
+  AutoPanOptions,
   BandPassFilterOptions,
   BitCrusherOptions,
   BluetoothSBCSimulatorOptions,
   BrickwallLimiterOptions,
   CassetteArtifactsOptions,
+  ChorusOptions,
   CombFilterOptions,
   CommonEffectOptions,
   CompressorOptions,
@@ -40,6 +43,7 @@ export type {
   ExpanderOptions,
   FDNReverbOptions,
   FMRadioSimulatorOptions,
+  FrequencyShifterOptions,
   FifteenBandGEQOptions,
   FifteenBandPEQOptions,
   FiveBandDynamicEQOptions,
@@ -70,9 +74,11 @@ export type {
   NarrowRangeOptions,
   NoiseBlenderOptions,
   OscillatorOptions,
+  PhaserOptions,
   PhaseSelectEQOptions,
   PitchShifterOptions,
   PowerAmpSagOptions,
+  RotarySpeakerOptions,
   RSReverbOptions,
   RoomEQOptions,
   SaturationOptions,
@@ -108,12 +114,15 @@ export {
   Delay,
   TimeAlignment,
   AMRadioSimulator,
+  AutoFilter,
   AutoLeveler,
+  AutoPan,
   BandPassFilter,
   BitCrusher,
   BluetoothSBCSimulator,
   BrickwallLimiter,
   CassetteArtifacts,
+  Chorus,
   CombFilter,
   Compressor,
   CrossfeedFilter,
@@ -130,6 +139,7 @@ export {
   Expander,
   FDNReverb,
   FMRadioSimulator,
+  FrequencyShifter,
   FifteenBandGEQ,
   FifteenBandPEQ,
   FiveBandDynamicEQ,
@@ -159,9 +169,11 @@ export {
   NarrowRange,
   NoiseBlender,
   Oscillator,
+  Phaser,
   PhaseSelectEQ,
   PitchShifter,
   PowerAmpSag,
+  RotarySpeaker,
   RSReverb,
   RoomEQ,
   Saturation,
@@ -195,12 +207,15 @@ export {
   createDelay,
   createTimeAlignment,
   createAMRadioSimulator,
+  createAutoFilter,
   createAutoLeveler,
+  createAutoPan,
   createBandPassFilter,
   createBitCrusher,
   createBluetoothSBCSimulator,
   createBrickwallLimiter,
   createCassetteArtifacts,
+  createChorus,
   createCombFilter,
   createCompressor,
   createCrossfeedFilter,
@@ -215,6 +230,7 @@ export {
   createExpander,
   createFDNReverb,
   createFMRadioSimulator,
+  createFrequencyShifter,
   createFifteenBandGEQ,
   createFifteenBandPEQ,
   createFiveBandDynamicEQ,
@@ -244,9 +260,11 @@ export {
   createNarrowRange,
   createNoiseBlender,
   createOscillator,
+  createPhaser,
   createPhaseSelectEQ,
   createPitchShifter,
   createPowerAmpSag,
+  createRotarySpeaker,
   createRSReverb,
   createRoomEQ,
   createSaturation,
@@ -270,7 +288,12 @@ export type { EffectDefinition } from './effect.js';
 import type { Effect } from './effect.js';
 import type { EffectChannel, EffectType } from './generated-effects.js';
 
-export declare class EffeTuneError extends Error {}
+export declare class EffeTuneError extends Error {
+  readonly code?: string;
+  readonly path?: string;
+  readonly nodeId?: string;
+  readonly edgeId?: string;
+}
 export declare class ValidationError extends EffeTuneError {}
 export declare class EffectError extends EffeTuneError {}
 export declare class AssetError extends EffeTuneError {}
@@ -521,6 +544,226 @@ export declare function createChain(
     readonly (Effect | ChainEffectInput)[],
   options?: CreateChainOptions
 ): Promise<Chain>;
+
+export interface GraphEndpoint {
+  readonly id: string;
+}
+
+export interface GraphNode extends ChainEffect {}
+
+export interface GraphNodeInput extends ChainEffectInput {
+  readonly id: string;
+}
+
+export interface GraphEdge {
+  readonly id: string;
+  readonly source: string;
+  readonly destination: string;
+  readonly gain: number;
+  readonly mute: boolean;
+  readonly pan?: number;
+  readonly mixGroup: string;
+  readonly solo: boolean;
+}
+
+export interface GraphEdgeInput {
+  readonly id: string;
+  readonly source: string;
+  readonly destination: string;
+  readonly gain?: number;
+  readonly mute?: boolean;
+  readonly pan?: number;
+  readonly mixGroup?: string;
+  readonly solo?: boolean;
+}
+
+export interface GraphDocument {
+  readonly version: 1;
+  readonly input: GraphEndpoint;
+  readonly output: GraphEndpoint;
+  readonly nodes: readonly GraphNode[];
+  readonly edges: readonly GraphEdge[];
+}
+
+export interface GraphDocumentInput {
+  readonly version: 1;
+  readonly input: GraphEndpoint;
+  readonly output: GraphEndpoint;
+  readonly nodes: readonly GraphNodeInput[];
+  readonly edges: readonly GraphEdgeInput[];
+}
+
+export interface GraphCompileSnapshot {
+  readonly version: 1;
+  readonly identity: boolean;
+  readonly silence: boolean;
+  readonly effectiveSchedule: readonly string[];
+  readonly nodes: readonly GraphCompileNodeSnapshot[];
+  readonly edges: readonly GraphCompileEdgeSnapshot[];
+  readonly outputLatency: readonly number[];
+  readonly outputCompensation: readonly number[];
+  readonly latencySamples: number;
+  readonly capacity: Readonly<{ bufferSlots: number; workspaceBytes: number }>;
+}
+
+export interface GraphCompileNodeSnapshot {
+  readonly id: string;
+  readonly effective: boolean;
+  readonly dormant: boolean;
+  readonly enabled: boolean;
+  readonly disabledBypass: boolean;
+  readonly scheduleIndex: number | null;
+  readonly bufferSlot: number | null;
+  readonly processingGroup: Readonly<{ firstChannel: number; channelCount: number }>;
+  readonly kernelLatency: number;
+  readonly inputLatency: readonly number[];
+  readonly outputLatency: readonly number[];
+  readonly preNodeCompensation: readonly number[];
+}
+
+export interface GraphCompileEdgeSnapshot {
+  readonly id: string;
+  readonly active: boolean;
+  readonly suppressed: boolean;
+  readonly dormant: boolean;
+  readonly fanInCompensation: readonly number[];
+}
+
+export type GraphVisualizationState =
+  | 'structural'
+  | 'effective'
+  | 'dormant'
+  | 'disabled-bypass'
+  | 'suppressed';
+
+export interface GraphVisualizationEndpoint {
+  readonly id: string;
+  readonly kind: 'input' | 'output';
+}
+
+export interface GraphVisualizationEffectNode {
+  readonly id: string;
+  readonly kind: 'effect';
+  readonly effectType: EffectType;
+  readonly enabled: boolean;
+  readonly effective?: boolean;
+  readonly dormant?: boolean;
+  readonly disabledBypass?: boolean;
+  readonly state: GraphVisualizationState;
+}
+
+export interface GraphVisualizationEdge {
+  readonly id: string;
+  readonly source: string;
+  readonly destination: string;
+  readonly active?: boolean;
+  readonly suppressed?: boolean;
+  readonly dormant?: boolean;
+  readonly state: GraphVisualizationState;
+}
+
+export interface GraphVisualizationSnapshot {
+  readonly version: 1;
+  readonly nodes: readonly (GraphVisualizationEndpoint | GraphVisualizationEffectNode)[];
+  readonly edges: readonly GraphVisualizationEdge[];
+}
+
+export interface GraphStructuralSnapshot {
+  readonly document: GraphDocument;
+  readonly topologicalOrder: readonly string[];
+  readonly incoming: Readonly<Record<string, readonly string[]>>;
+  readonly outgoing: Readonly<Record<string, readonly string[]>>;
+}
+
+export interface CreateGraphOptions extends ArtifactOptions {
+  readonly assetResolver?: AssetResolver | { resolve: AssetResolver };
+}
+
+export interface GraphProcessOptions {
+  readonly sampleRate: number;
+  readonly seed?: number;
+  readonly blockSize?: number;
+}
+
+export interface GraphStreamOptions extends GraphProcessOptions {
+  readonly channels?: number;
+}
+
+export interface GraphRecipeOptions {
+  readonly nodeId?: string;
+  readonly inputId?: string;
+  readonly outputId?: string;
+}
+
+export interface WetDryGraphOptions extends GraphRecipeOptions {
+  readonly wet?: number;
+  readonly dry?: number;
+}
+
+export interface SendReturnGraphOptions extends GraphRecipeOptions {
+  readonly send?: number;
+  readonly returnGain?: number;
+}
+
+export declare class Graph {
+  private constructor();
+  static load(input: string | GraphDocumentInput, options?: CreateGraphOptions): Promise<Graph>;
+  static fromChain(
+    chain: Chain | ChainDocumentInput | readonly (Effect | ChainEffectInput)[],
+    options?: CreateGraphOptions
+  ): Promise<Graph>;
+  static wetDry(effect: Effect | ChainEffectInput, options?: WetDryGraphOptions): GraphDocument;
+  static sendReturn(effect: Effect | ChainEffectInput, options?: SendReturnGraphOptions): GraphDocument;
+  readonly nodes: readonly GraphNode[];
+  readonly edges: readonly GraphEdge[];
+  toJSON(): GraphDocument;
+  toChain(): ChainDocument;
+  serialize(space?: number): string;
+  getNode(id: string): GraphNode | null;
+  getEdge(id: string): GraphEdge | null;
+  incoming(id: string): readonly GraphEdge[];
+  outgoing(id: string): readonly GraphEdge[];
+  structuralSnapshot(): GraphStructuralSnapshot;
+  visualizationSnapshot(): GraphVisualizationSnapshot;
+  stream(options: GraphStreamOptions): Promise<GraphStream>;
+  latencySamples(options: LatencyOptions): Promise<number>;
+  process(audio: readonly Float32Array[], options: GraphProcessOptions): Promise<Float32Array[]>;
+  close(): void;
+}
+
+export declare class GraphStream {
+  readonly graph: GraphDocument;
+  readonly latencySamples: number;
+  readonly compileSnapshot: GraphCompileSnapshot;
+  visualizationSnapshot(): GraphVisualizationSnapshot;
+  setParam(nodeId: string, parameterName: string, value: unknown): this;
+  reset(): this;
+  process(audio: readonly Float32Array[]): Promise<Float32Array[]>;
+  close(): void;
+}
+
+export declare function createGraph(
+  input: string | GraphDocumentInput,
+  options?: CreateGraphOptions
+): Promise<Graph>;
+
+export declare function normalizeGraphDocument(
+  input: string | GraphDocumentInput
+): GraphDocument;
+export declare function graphDocumentFromChain(
+  input: ChainDocumentInput | readonly (Effect | ChainEffectInput)[]
+): GraphDocument;
+export declare function chainDocumentFromGraph(
+  input: GraphDocumentInput
+): ChainDocument;
+export declare function createWetDryGraphDocument(
+  effect: Effect | ChainEffectInput,
+  options?: WetDryGraphOptions
+): GraphDocument;
+export declare function createSendReturnGraphDocument(
+  effect: Effect | ChainEffectInput,
+  options?: SendReturnGraphOptions
+): GraphDocument;
 
 export declare function parsePreset(
   input: string | ChainDocumentInput | readonly (Effect | ChainEffectInput)[]

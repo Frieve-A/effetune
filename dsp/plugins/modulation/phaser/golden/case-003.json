@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "type": "PhaserPlugin",
+  "id": "classic-maximum-stages",
+  "stimulus": "imp",
+  "sampleRate": 192000,
+  "channels": 8,
+  "frameCount": 16001,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "md": "Classic",
+    "rt": 10,
+    "cf": 8000,
+    "rg": 6,
+    "st": 12,
+    "fb": 90,
+    "sp": 180,
+    "dr": "Up",
+    "mx": 50
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "dd62b1916ffb692313669102c864f20001d21de83257c0285d5f0f14b58bcc68",
+  "outputFloats": 128008,
+  "byteLength": 512032,
+  "binary": "case-003.f32"
+}

@@ -3,16 +3,18 @@
 Version: 0.4.0
 Python package: effetune
 npm package: @effetune/dsp
-Catalog entries: 84
+Catalog entries: 90
 
 Canonical resources:
 - https://effetune.frieve.com/dsp/
 - https://effetune.frieve.com/dsp/catalog/effects-v1.json
 - https://effetune.frieve.com/dsp/schemas/chain-v1.schema.json
+- https://effetune.frieve.com/dsp/schemas/graph-v1.schema.json
 - https://effetune.frieve.com/dsp/schemas/bundle-v1.schema.json
 - https://effetune.frieve.com/dsp/getting-started/python/
 - https://effetune.frieve.com/dsp/getting-started/javascript/
 - https://effetune.frieve.com/dsp/concepts/determinism/
+- https://effetune.frieve.com/dsp/reference/graph-v1/
 - https://effetune.frieve.com/dsp/reference/compatibility/
 
 MCP, measurement, resampling, ffmpeg, integrated LUFS, and true-peak APIs are not implemented in v0.1.

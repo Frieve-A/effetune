@@ -5,6 +5,8 @@
 #include "effetune/dsp/delay_line.h"
 #include "effetune/kernel.h"
 #include "effetune/telemetry.h"
+#include "graph-v1-capacity.h"
+#include "graph.h"
 
 #include <array>
 #include <cstddef>
@@ -14,7 +16,8 @@ namespace effetune {
 
 class Engine {
 public:
-  static constexpr std::uint32_t kMaxInstances = 96;
+  static constexpr std::uint32_t kMaxInstances =
+      static_cast<std::uint32_t>(graph_contract::kMaxEffectiveInstances);
   static constexpr std::uint32_t kMaxPipelineNodes = 128;
   static constexpr std::uint32_t kKernelStorageBytes = 8192;
   static constexpr std::uint32_t kPipelineDescriptorVersion = 1;
@@ -67,6 +70,22 @@ public:
     return pipeline_configured_ ? pipeline_latency_samples_ : 0u;
   }
 
+  et_status configureGraph(const std::uint8_t *descriptor, std::uint32_t descriptor_bytes) noexcept;
+  et_status resetGraph() noexcept;
+  et_status setGraphInstanceParams(et_instance instance, const float *packed,
+                                   std::uint32_t float_count, std::uint32_t params_hash,
+                                   std::uint32_t changed_index) noexcept;
+  et_status processGraph(std::uint32_t channel_count, std::uint32_t frame_count,
+                         double time_seconds) noexcept;
+  [[nodiscard]] std::uint32_t graphLatency() const noexcept { return graph_.latency(); }
+  [[nodiscard]] std::uint32_t graphSnapshotSize() const noexcept {
+    return static_cast<std::uint32_t>(graph_.snapshot().size());
+  }
+  et_status copyGraphSnapshot(std::uint8_t *output, std::uint32_t output_bytes) const noexcept;
+  [[nodiscard]] const et_graph_diagnostic &graphDiagnostic() const noexcept {
+    return graph_diagnostic_;
+  }
+
   [[nodiscard]] bool prepared() const noexcept { return prepared_; }
   [[nodiscard]] float *combined() noexcept { return arena_.combined(); }
   [[nodiscard]] float *bus(std::uint32_t index) noexcept { return arena_.bus(index); }
@@ -82,6 +101,8 @@ public:
   }
 
 private:
+  friend class GraphPlan;
+
   struct InstanceSlot {
     alignas(std::max_align_t) std::array<std::byte, kKernelStorageBytes> storage{};
     const KernelDescriptor *descriptor = nullptr;
@@ -90,6 +111,12 @@ private:
     std::uint32_t tapId = 0;
     std::uint32_t telemetrySequence = 0;
     double telemetryFrames = 0.0;
+    std::array<float, 6> graphParameters{};
+    std::array<float, 6> graphInitialParameters{};
+    std::uint32_t graphParameterCount = 0u;
+    bool graphParametersValid = false;
+    bool graphInitialParametersValid = false;
+    bool graphOwned = false;
   };
 
   struct PipelineNode {
@@ -121,6 +148,12 @@ private:
                    std::uint32_t frame_count, double time_seconds) noexcept;
   void maybeWriteTelemetry(InstanceSlot &slot, std::uint32_t frame_count) noexcept;
   void invalidatePipeline() noexcept;
+  void invalidateGraph() noexcept;
+  void releaseGraphOwnership() noexcept;
+  void installGraphOwnership() noexcept;
+  [[nodiscard]] bool graphUniformOutputLatency(const InstanceSlot &slot) const noexcept;
+  [[nodiscard]] bool graphRequiresActiveAsset(const InstanceSlot &slot) const noexcept;
+  void resetGraphOwnedInstances() noexcept;
   void resetPipelineDelayHistory() noexcept;
   static void applyDelay(dsp::DelayLine &delay_line, std::uint32_t channel,
                          std::uint32_t delay_samples, float *audio,
@@ -139,6 +172,9 @@ private:
   float telemetry_rate_hz_ = 60.0F;
   std::uint32_t max_channels_ = 0;
   std::uint32_t max_frames_ = 0;
+  GraphPlan graph_;
+  et_graph_diagnostic graph_diagnostic_{
+      ET_OK, ET_GRAPH_DIAGNOSTIC_GRAPH, 0u, ET_GRAPH_PATH_NONE, 0u, 0u};
   bool prepared_ = false;
   bool pipeline_configured_ = false;
   bool pipeline_delay_history_dirty_ = false;

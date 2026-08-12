@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "type": "ChorusPlugin",
+  "id": "dry-transparent",
+  "stimulus": "sweep",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1001,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "md": "Chorus",
+    "rt": 0.8,
+    "dl": 12,
+    "dp": 3,
+    "vc": 3,
+    "ss": 60,
+    "fb": 0,
+    "mx": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "cd8d937332e8bb9b1133e50fa4e513e0e00e3d96eb6e320d38205d26d16c3eb4",
+  "outputFloats": 2002,
+  "byteLength": 8008,
+  "binary": "case-002.f32"
+}

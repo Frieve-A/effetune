@@ -841,6 +841,132 @@ export class DspEngineBinding {
         );
     }
 
+    graphCapabilities() {
+        if (typeof this.exports.et_graph_capabilities !== 'function') return 0;
+        return this.exports.et_graph_capabilities() >>> 0;
+    }
+
+    get graphSupported() {
+        return Boolean(
+            (this.graphCapabilities() & 1) !== 0 &&
+            typeof this.exports.et_graph_configure === 'function' &&
+            typeof this.exports.et_graph_latency === 'function' &&
+            typeof this.exports.et_graph_process === 'function' &&
+            typeof this.exports.et_graph_snapshot_size === 'function' &&
+            typeof this.exports.et_graph_snapshot_copy === 'function' &&
+            typeof this.exports.et_graph_read_diagnostic === 'function' &&
+            typeof this.exports.et_graph_set_instance_params === 'function' &&
+            typeof this.exports.et_graph_reset === 'function'
+        );
+    }
+
+    graphConfigure(descriptor) {
+        if (!this.engine || !this.prepared || !this.graphSupported) return ET_ERR_STATE;
+        const bytes = toUint8View(descriptor, 'Graph descriptor');
+        if (bytes.byteLength === 0) return ET_ERR_STATE;
+        this._preparing = true;
+        let ptr = 0;
+        try {
+            ptr = this.exports.malloc(bytes.byteLength) >>> 0;
+            this._refreshViews();
+            if (!ptr) return ET_ERR_STATE;
+            this._assertRange(ptr, bytes.byteLength, 'Graph descriptor');
+            this.u8.set(bytes, ptr);
+            return this.exports.et_graph_configure(this.engine, ptr, bytes.byteLength);
+        } finally {
+            if (ptr) this.exports.free(ptr);
+            this._refreshViews();
+            this._preparing = false;
+            if (this.engine && this.prepared) this.getArenaViews();
+        }
+    }
+
+    graphLatency() {
+        if (!this.engine || !this.graphSupported) return 0;
+        return this.exports.et_graph_latency(this.engine) >>> 0;
+    }
+
+    graphProcess(channelCount, frameCount, timeSeconds) {
+        if (!this.engine || !this.graphSupported) return ET_ERR_STATE;
+        this._refreshViews();
+        return this.exports.et_graph_process(
+            this.engine,
+            channelCount >>> 0,
+            frameCount >>> 0,
+            timeSeconds
+        );
+    }
+
+    graphSetInstanceParams(instanceId, packed, paramsHash, changedIndex) {
+        if (!this.engine || !this.graphSupported) return ET_ERR_STATE;
+        const values = packed instanceof Float32Array ? packed : Float32Array.from(packed || []);
+        const byteLength = values.length * Float32Array.BYTES_PER_ELEMENT;
+        if (byteLength > SCRATCH_BYTES) {
+            throw new DspBindingError('Packed Graph parameters exceed the scratch-buffer capacity');
+        }
+        const ptr = this.exports.et_scratch_ptr(this.engine) >>> 0;
+        this._refreshViews();
+        this._assertRange(ptr, byteLength, 'Packed Graph parameter block');
+        new Float32Array(this._memoryBuffer, ptr, values.length).set(values);
+        return this.exports.et_graph_set_instance_params(
+            this.engine,
+            instanceId,
+            ptr,
+            values.length,
+            paramsHash >>> 0,
+            changedIndex >>> 0
+        );
+    }
+
+    graphReset() {
+        if (!this.engine || !this.graphSupported) return ET_ERR_STATE;
+        return this.exports.et_graph_reset(this.engine);
+    }
+
+    graphSnapshot() {
+        if (!this.engine || !this.graphSupported) return null;
+        const byteLength = this.exports.et_graph_snapshot_size(this.engine) >>> 0;
+        if (byteLength === 0) return new Uint8Array();
+        let ptr = 0;
+        this._preparing = true;
+        try {
+            ptr = this.exports.malloc(byteLength) >>> 0;
+            this._refreshViews();
+            if (!ptr) throw new DspBindingError('Unable to allocate the Graph snapshot buffer');
+            this._assertRange(ptr, byteLength, 'Graph snapshot');
+            const status = this.exports.et_graph_snapshot_copy(
+                this.engine,
+                ptr,
+                byteLength
+            );
+            if (status !== ET_OK) {
+                throw new DspBindingError('DSP Graph snapshot could not be read');
+            }
+            return new Uint8Array(this.u8.slice(ptr, ptr + byteLength));
+        } finally {
+            if (ptr) this.exports.free(ptr);
+            this._refreshViews();
+            this._preparing = false;
+            if (this.engine && this.prepared) this.getArenaViews();
+        }
+    }
+
+    graphDiagnostic() {
+        if (!this.engine || !this.graphSupported) return null;
+        const ptr = this.exports.et_scratch_ptr(this.engine) >>> 0;
+        this._refreshViews();
+        this._assertRange(ptr, 24, 'Graph diagnostic');
+        if (this.exports.et_graph_read_diagnostic(this.engine, ptr) !== ET_OK) return null;
+        return {
+            status: this.dataView.getInt32(ptr, true),
+            kind: this.dataView.getUint32(ptr + 4, true),
+            index: this.dataView.getUint32(ptr + 8, true),
+            path: this.dataView.getUint32(ptr + 12, true),
+            required: this.dataView.getUint32(ptr + 16, true),
+            capacity: this.dataView.getUint32(ptr + 20, true)
+        };
+    }
+
     markFailed() {
         this.failed = true;
     }

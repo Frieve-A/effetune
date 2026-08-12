@@ -156,6 +156,15 @@ export class PluginListManager {
         item.className = 'plugin-item';
         item.draggable = true;
         item.textContent = plugin.name;
+        const aliases = plugin.constructor.searchAliases;
+        if (Array.isArray(aliases)) {
+            const normalizedAliases = aliases
+                .filter(alias => typeof alias === 'string' && alias.trim() !== '')
+                .map(alias => alias.trim());
+            if (normalizedAliases.length > 0) {
+                item.dataset.searchAliases = normalizedAliases.join('\n');
+            }
+        }
         
         const description = document.createElement('div');
         description.className = 'plugin-description';

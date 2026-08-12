@@ -1,6 +1,6 @@
 ---
 title: "调制插件 - EffeTune"
-description: "包含 Doppler Distortion、Pitch Shifter、Pitch Shifter HQ、Tremolo 和 Wow Flutter 的调制效果插件。"
+description: "包含Auto Filter、Auto Pan、Chorus、Frequency Shifter、Phaser和Rotary Speaker的调制效果。"
 lang: zh
 ---
 
@@ -10,11 +10,81 @@ lang: zh
 
 ## 插件列表
 
+- [Auto Filter](#auto-filter) - 由LFO或包络扫动共振滤波器
+- [Auto Pan](#auto-pan) - 在声场中平滑移动每个立体声声道对
+- [Chorus](#chorus) - 集成合唱、合奏、镶边和颤音
 - [Doppler Distortion](#doppler-distortion) - 模拟扬声器振膜细微运动造成的自然动态变化
+- [Frequency Shifter](#frequency-shifter) - 进行频率平移、Ring Mod或理发杆式扫频
+- [Phaser](#phaser) - 通过全通滤波器产生移动的峰与陷波
 - [Pitch Shifter](#pitch-shifter) - 在不改变速度的情况下调整音高
 - [Pitch Shifter HQ](#pitch-shifter-hq) - 在音质比延迟和CPU占用更重要时，以更少的相位伪影调整音高
+- [Rotary Speaker](#rotary-speaker) - 结合高音号角与低音鼓的独立运动
 - [Tremolo](#tremolo) - 基于音量的调制效果
 - [Wow Flutter](#wow-flutter) - 加入磁带或唱片式音高摇摆
+
+## Auto Filter
+
+使用LFO或输入信号的包络自动驱动状态变量滤波器。Envelope模式可用作Envelope Filter或Auto Wah。算法延迟为0。
+
+### 音质调整提示
+
+- 若想获得柔和的音色变化，可先选择LFO和Low-pass，使用较低的Resonance，并将Mix设为约30–50%。
+- 若想获得Auto Wah效果，可选择Envelope和Band-pass，并调整Sensitivity，使较强的声音能适度打开滤波器。
+- 延长Attack可柔化对声音起音的响应；延长Release可使滤波器更平滑地回落。
+
+### 参数
+
+- **Style**：一次设置所有参数的完整出厂预设。可选**Auto Filter Sweep**（LFO）、**Stereo Filter Sweep**（LFO）、**Envelope Filter**（Envelope）、**Auto Wah**（Envelope）和**Reverse Auto Wah**（Envelope）。单独修改任一参数后会变为**Custom**。
+- **Mode**：在周期性运动的LFO与跟随音量的Envelope之间切换。
+- **Filter Type**：选择Low-pass、Band-pass或High-pass。
+- **Minimum Frequency / Maximum Frequency**（20–20,000 Hz）：移动范围。若顺序相反会自动重排；若数值相同则保持固定。处理时会限制在低于奈奎斯特频率的安全范围内。
+- **Resonance**（Q 0.5–20）：数值越高，对截止频率附近的强调越明显。
+- **Mix**（0–100%）：原声与滤波后声音的比例。0%时仅保留原声。
+- **Rate**、**Waveform**、**Stereo Phase**：LFO的速度、运动轨迹及每个立体声声道对内的相位差。仅用于LFO模式。
+- **Sensitivity**、**Attack**、**Release**、**Direction**：包络的响应量、起音时间、回落时间及移动方向。仅用于Envelope模式。
+
+## Auto Pan
+
+让相邻的每个立体声声道对在左右之间移动音量。不同声道对之间不会混音，最后多出的单个声道按单声道处理。算法延迟为0。
+
+### 音质调整提示
+
+- 可从约0.2–0.5 Hz的Rate和适中的Depth开始，以获得舒缓的移动感。
+- 如果耳机中的移动范围过宽，可降低Width；左右基准位置可用Center调整。
+- Sine在两端移动较慢，Triangle则以更均匀的速度移动。
+
+### 参数
+
+- **Style**：一次设置所有参数的完整出厂预设。可选**Gentle Auto Pan**、**Wide Auto Pan**和**Fast Auto Pan**。单独修改任一参数后会变为**Custom**。
+- **Rate**（0.05–20 Hz）：移动速度。
+- **Depth**（0–100%）：相对于Center的移动量。0%时无变化。
+- **Center**（-100–100%）：将中心位置向左或向右移动。
+- **Width**（0–100%）：使用的立体声宽度。
+- **Waveform**：Sine或Triangle。
+- **Phase**（0–360°）：周期运动的起始位置。
+
+## Chorus
+
+叠加多个采用四点三次插值的可变延迟声部。Mode可选择Chorus、Stereo Chorus、Ensemble、Flanger和Vibrato。可变延迟会产生可听见的延后，但并非固定延迟，因此报告的算法延迟为0。
+
+### 音质调整提示
+
+- 若想自然地增加厚度，可使用Classic Chorus或Stereo Chorus，并采用适中的Rate和Depth。
+- Ensemble会随Voices增加而变得更密集。Depth过高会使音高摇摆更明显。
+- 只有Flanger使用Feedback；正值与负值会改变梳状滤波器的极性。
+- Vibrato始终为100%处理声。
+
+### 参数
+
+- **Style**：一次设置所有参数的完整出厂预设。可选**Classic Chorus**（Chorus）、**Stereo Chorus**（Stereo Chorus）、**Ensemble**（Ensemble）、**Flanger**（Flanger）、**Jet Flanger**（Flanger）和**Vibrato**（Vibrato）。单独修改任一参数后会变为**Custom**。
+- **Mode**：选择Chorus、Stereo Chorus、Ensemble、Flanger或Vibrato。
+- **Rate**（0.05–10 Hz）：摇摆速度。
+- **Delay**（0.5–30 ms）：处理声的基准延迟。
+- **Depth**（0–20 ms）：延迟的变化量。为避免负延迟读取，保存值会限制为不高于Delay。
+- **Voices**（1–6）：Chorus和Ensemble中的可变抽头数。在其他模式中忽略。
+- **Stereo Spread**（0–100%）：每个立体声声道对内的摇摆偏移。在Chorus模式中忽略。
+- **Feedback**（-75–75%）：仅用于Flanger。
+- **Mix**（0–100%）：原声与处理声的线性比例。在Vibrato中忽略，并始终为100%处理声。
 
 ## Doppler Distortion
 
@@ -45,6 +115,52 @@ lang: zh
 - **Speaker Mass:** 0.03 kg
 - **Spring Constant:** 6000 N/m
 - **Damping Factor:** 1.5 N·s/m
+
+## Frequency Shifter
+
+将每个频率分量移动固定的Hz数，而不是按音高比例移动。Ring Mod将信号与载波相乘；Barber-pole则叠加多个频移，营造持续上升或下降的感觉。Shift和Barber-pole使用Hilbert解析信号FIR；Ring Mod把从同一FIFO取出的等延迟实信号与载波相乘。因此所有模式下原声与处理声的时间都保持对齐。固定延迟随采样率变化，并由DSP Library报告。
+
+### 音质调整提示
+
+- 若想获得细微变化，可选择Shift并从约±5–15 Hz开始。与Pitch Shifter不同，它也会改变泛音间距。
+- 若想获得金属质感，可使用Ring Mod。降低Carrier Frequency更容易保留原声的节奏。
+- 若想获得持续移动感，可使用低Rate的Barber-pole，并将Mix保持适中以维持清晰度。
+
+### 参数
+
+- **Style**：一次设置所有参数的完整出厂预设。可选**Shift Up**（Shift）、**Shift Down**（Shift）、**Fine Detune**（Shift）、**Ring Modulator**（Ring Mod）、**Barber-pole Up**（Barber-pole）和**Barber-pole Down**（Barber-pole）。单独修改任一参数后会变为**Custom**。
+- **Mode**：Shift、Ring Mod或Barber-pole。
+- **Shift**（-5,000–5,000 Hz）：Shift模式中的移动量。正值向上移动，负值向下移动。
+- **Carrier Frequency**（0.1–10,000 Hz）：Ring Mod的载波频率。
+- **Minimum Shift / Maximum Shift**（0–5,000 Hz）：Barber-pole的范围。若顺序相反会自动重排；若数值相同则保持固定。
+- **Rate**（0.01–2 Hz）、**Direction**：Barber-pole的速度和方向。
+- **Stereo Phase**（0–180°）：在所有模式下，使每个立体声声道对的左右载波或扫频产生相位差。
+- **Mix**（0–100%）：等延迟原声与处理声的比例。即使为0%，所述固定延迟仍然存在。
+
+大幅频移可能产生超过奈奎斯特频率的分量，并造成可听见的混叠。初始版本不进行过采样。
+
+## Phaser
+
+将原声与全通滤波器链的输出混合，产生移动的峰与陷波。Classic往返扫动；Barber-pole叠加三个恒功率窗口，营造持续上升或下降的感觉。算法延迟为0。
+
+### 音质调整提示
+
+- 若想获得清晰的陷波，可从Classic、4–6个Stages、适中的Range和约50%的Mix开始。
+- 提高Stages和Feedback会让效果更深、更具共振感。如果声音起音被过度着色，可将其降低。
+- 用Stereo Phase调整宽度；若需持续运动，可选择Barber-pole Up/Down。
+
+### 参数
+
+- **Style**：一次设置所有参数的完整出厂预设。可选**Classic Phaser**（Classic）、**Deep Phaser**（Classic）、**Stereo Phaser**（Classic）、**Barber-pole Up**（Barber-pole）和**Barber-pole Down**（Barber-pole）。单独修改任一参数后会变为**Custom**。
+- **Mode**：Classic或Barber-pole。
+- **Rate**（0.05–10 Hz）：扫频速度。
+- **Center Frequency**（80–8,000 Hz）：对数扫频的中心。
+- **Range**（0–6 octaves）：扫频宽度。
+- **Stages**（2–12中的偶数）：全通级数。增加时会产生更多陷波。
+- **Feedback**（-90–90%）：将处理声反馈至输入的量。绝对值决定强度，符号改变强调方式。
+- **Stereo Phase**（0–180°）：每个立体声声道对内的运动偏移。
+- **Direction**：Barber-pole的Up/Down方向。在Classic中忽略。
+- **Mix**（0–100%）：原声与处理声的线性比例。在中间位置附近抵消最深。
 
 ## Pitch Shifter
 
@@ -88,6 +204,29 @@ Pitch Shifter HQ不保留共振峰。因此，移调幅度较大时，除了音�
 - **Fine Tune** - 以音分为单位调整音高（-50 到 +50）
   - 用于在半音之间进行精确调整
   - 100音分等于1个半音
+
+## Rotary Speaker
+
+通过Linkwitz–Riley分频器将信号分成高频号角与低频鼓轮，并分别施加不同的转速、音量调制和短时多普勒延迟。它并非对某一特定Leslie音箱的实测还原。由于采用可变延迟，因此不会报告为固定算法延迟。
+
+### 音质调整提示
+
+- Slow产生舒缓的移动感，Fast带来更强的旋转感。延长Acceleration可让转速变化听起来更自然。
+- 用Doppler Depth调整音高运动，用Amplitude Depth调整音量运动。
+- 用Rotor Balance调整鼓轮与号角的比例，用Stereo Width调整宽度。
+
+### 参数
+
+- **Style**：一次设置所有参数的完整出厂预设。可选**Rotary Slow**（Slow）、**Rotary Fast**（Fast）、**Gentle Rotary**（Slow）、**Leslie Slow**（Slow）和**Leslie Fast**（Fast）。单独修改任一参数后会变为**Custom**。
+- **Speed State**：Stop、Slow或Fast。切换时会连续加速或减速，不会静音。
+- **Speed**（25–200%）：号角与鼓轮的共同速度倍率。
+- **Acceleration**（0.1–10 s）：设置转子接近新转速的快慢。
+- **Crossover**（200–2,000 Hz）：分隔鼓轮频段与号角频段的频率。
+- **Rotor Balance**（-100–100%）：负值强调鼓轮，正值强调号角。
+- **Stereo Width**（0–100%）：立体声声道对的宽度。
+- **Doppler Depth**（0–100%）：可变延迟产生的音高变化量。
+- **Amplitude Depth**（0–100%）：虚拟转子方向产生的音量变化量。
+- **Mix**（0–100%）：原声与旋转声的比例。0%时仅保留原声。
 
 ## Tremolo
 

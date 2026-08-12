@@ -473,6 +473,57 @@ test('dragging inside the selected outer rectangle moves the whole band', async 
   plugin._finishPointer({ pointerId: 18, preventDefault() {} }, false);
 });
 
+test('canvas cursors preview handle resizing and rectangle dragging', async () => {
+  const { Plugin } = await loadPlugin();
+  const plugin = new Plugin();
+  plugin.createUI();
+  plugin.regions[0] = Plugin.normalizeRegion({
+    en: true, ofl: 100, fl: 500, fh: 2000, ofh: 8000,
+    opl: 20, pl: 40, ph: 100, oph: 140, gn: 100
+  });
+  const handles = plugin._selectedHandles();
+  const hover = point => plugin.canvas.listeners.get('pointermove')({
+    clientX: point.x, clientY: point.y, pointerId: 30, isPrimary: true,
+    preventDefault() {}
+  });
+
+  const horizontal = handles.find(handle => handle.phaseEdge && !handle.frequencyEdge);
+  hover(horizontal);
+  assert.equal(plugin.canvas.style.cursor, 'ew-resize');
+
+  const vertical = handles.find(handle => handle.frequencyEdge && !handle.phaseEdge);
+  hover(vertical);
+  assert.equal(plugin.canvas.style.cursor, 'ns-resize');
+
+  const topLeft = handles.find(handle =>
+    handle.x < plugin._phaseToX(0) && handle.phaseEdge === 'high' &&
+    handle.frequencyEdge === 'high');
+  hover(topLeft);
+  assert.equal(plugin.canvas.style.cursor, 'nwse-resize');
+
+  const topRight = handles.find(handle =>
+    handle.x < plugin._phaseToX(0) && handle.phaseEdge === 'low' &&
+    handle.frequencyEdge === 'high');
+  hover(topRight);
+  assert.equal(plugin.canvas.style.cursor, 'nesw-resize');
+
+  const rectangle = { x: plugin._phaseToX(60), y: plugin._frequencyToY(200) };
+  hover(rectangle);
+  assert.equal(plugin.canvas.style.cursor, 'grab');
+  plugin.canvas.listeners.get('pointerdown')({
+    clientX: rectangle.x, clientY: rectangle.y, pointerId: 30, isPrimary: true,
+    preventDefault() {}
+  });
+  assert.equal(plugin.canvas.style.cursor, 'grabbing');
+  plugin.canvas.listeners.get('pointerup')({
+    clientX: rectangle.x, clientY: rectangle.y, pointerId: 30,
+    preventDefault() {}
+  });
+  assert.equal(plugin.canvas.style.cursor, 'grab');
+  plugin.canvas.listeners.get('pointerleave')();
+  assert.equal(plugin.canvas.style.cursor, '');
+});
+
 test('a center low-phase drag chooses either side once and then locks there', async () => {
   const { Plugin } = await loadPlugin();
   const plugin = new Plugin();

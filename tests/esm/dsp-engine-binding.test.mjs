@@ -276,6 +276,24 @@ test('binding discovers capabilities and drives engine and instance lifecycle', 
   assert.equal(binding.instanceSetParamBytes(1, new Uint8Array(0), 0), ET_ERR_STATE);
 });
 
+test('an older Chain-only artifact stays usable and reports Graph as unsupported', () => {
+  const fake = createFakeInstance();
+  const binding = new DspEngineBinding(fake.instance);
+
+  assert.equal(binding.graphCapabilities(), 0);
+  assert.equal(binding.graphSupported, false);
+  assert.equal(binding.createEngine(), 7);
+  assert.equal(binding.prepare(48000, 2, 128, 64), 0);
+  assert.equal(binding.graphConfigure(Uint8Array.of(1)), ET_ERR_STATE);
+  assert.equal(binding.graphProcess(2, 128, 0), ET_ERR_STATE);
+  assert.equal(binding.graphReset(), ET_ERR_STATE);
+  assert.equal(binding.graphLatency(), 0);
+  assert.equal(binding.graphSnapshot(), null);
+  assert.equal(binding.graphDiagnostic(), null);
+  assert.equal(binding.createInstance('VolumePlugin'), 11);
+  binding.close();
+});
+
 test('binding adopts every arena slab and resolves only arena-backed views', () => {
   const fake = createFakeInstance();
   const binding = new DspEngineBinding(fake.instance);

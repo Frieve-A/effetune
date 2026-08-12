@@ -351,12 +351,17 @@ export class UIManager {
         const handleRangeInput = (event) => {
             const input = event.target;
             if (input?.matches?.('input[type="range"]')) {
-                this._rangeFillInput(input);
+                const pluginRoot = input.closest?.('.plugin-parameter-ui');
+                if (pluginRoot) {
+                    this.refreshRangeFillStyling(pluginRoot);
+                } else {
+                    this._rangeFillInput(input);
+                }
                 return;
             }
 
-            const rangeFillRoot = input?.closest?.('.parameter-row') ??
-                input?.closest?.('.plugin-parameter-ui');
+            const rangeFillRoot = input?.closest?.('.plugin-parameter-ui') ??
+                input?.closest?.('.parameter-row');
             if (rangeFillRoot) {
                 this.refreshRangeFillStyling(rangeFillRoot);
             }

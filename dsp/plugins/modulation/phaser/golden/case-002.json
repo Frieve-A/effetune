@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "type": "PhaserPlugin",
+  "id": "dry-transparent",
+  "stimulus": "sweep",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1001,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "md": "Classic",
+    "rt": 0.5,
+    "cf": 1000,
+    "rg": 3,
+    "st": 6,
+    "fb": 20,
+    "sp": 90,
+    "dr": "Up",
+    "mx": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "dd62b1916ffb692313669102c864f20001d21de83257c0285d5f0f14b58bcc68",
+  "outputFloats": 2002,
+  "byteLength": 8008,
+  "binary": "case-002.f32"
+}

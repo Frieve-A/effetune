@@ -9,7 +9,7 @@ permalink: /dsp/
 
 **Deterministic DSP for Python, JavaScript, browsers, humans, and agents.**
 
-EffeTune DSP v0.4.0 is an MIT-licensed audio processing library with 84 catalog-registered effects, analyzers, and utilities. Python and WebAssembly run the same host-neutral C++20 core and use the same semantic Chain JSON, so a preset does not need to be reauthored for each surface.
+EffeTune DSP v0.4.0 is an MIT-licensed audio processing library with 90 catalog-registered effects, analyzers, and utilities. Python and WebAssembly run the same host-neutral C++20 core and use the same semantic Chain JSON, so a preset does not need to be reauthored for each surface.
 
 Process arrays and files offline, keep state across a continuous stream, or run the package-owned AudioWorklet in a browser. The EffeTune app is an optional visual preset editor; the Python and JavaScript packages work independently.
 
@@ -23,13 +23,15 @@ Try the [live demo](/dsp/demo/) or follow the [schema-driven agent recipe](/dsp/
 
 ## One library, several ways to work
 
-The [Python API](/dsp/api/python/) provides semantic classes for all 84 catalog types, with NumPy-oriented offline and streaming processing. The [JavaScript API](/dsp/api/javascript/) makes every catalog type available through generic `createEffect` and Chain APIs, plus 84 generated named class/factory pairs. The generic and named JavaScript surfaces both cover the complete catalog.
+The [Python API](/dsp/api/python/) provides semantic classes for all 90 catalog types, with NumPy-oriented offline and streaming processing. The [JavaScript API](/dsp/api/javascript/) makes every catalog type available through generic `createEffect` and Chain APIs, plus 90 generated named class/factory pairs. The generic and named JavaScript surfaces both cover the complete catalog.
 
 In a browser, use JavaScript for offline rendering or the packaged [AudioWorklet path](/dsp/getting-started/audioworklet/) for real-time processing. In Python, use the same model from an application, notebook, or the [CLI](/dsp/getting-started/cli/) for file and batch workflows.
 
 ## From one effect to a reproducible pipeline
 
 [Chain JSON](/dsp/concepts/chain-and-presets/) is an ordered serial pipeline with strict semantic effect names and parameters. It is readable as a preset, accepted by both language bindings, and described by a public schema that humans and automation can validate before processing.
+
+When the routing itself is part of the program, the opt-in [Graph v1](/dsp/reference/graph-v1/) document describes parallel branches, additive merges, wet/dry and send/return shapes, and automatic delay compensation. It is a separate document type and does not change Chain v1.
 
 Offline calls begin with fresh DSP state. Streaming calls preserve history across blocks, including delay and reverb tails, and scheduled parameter events are part of that history. Seeded execution is repeatable when the input, sample rate, channel layout, Chain, seed, block boundaries, and event sequence are the same. See [Determinism](/dsp/concepts/determinism/) and [Streaming and events](/dsp/concepts/streaming-and-events/) for the exact contract.
 

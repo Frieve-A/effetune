@@ -1,0 +1,15 @@
+{
+  "type": "RotarySpeakerPlugin",
+  "tolerance": { "abs": 0.0001, "policy": "per-sample" },
+  "fields": [
+    { "name": "speedState", "key": "ss", "kind": "enum", "default": "Slow", "values": ["Stop", "Slow", "Fast"] },
+    { "name": "speed", "key": "sp", "kind": "float", "min": 25, "max": 200, "default": 100, "unit": "%" },
+    { "name": "acceleration", "key": "ac", "kind": "float", "min": 0.1, "max": 10, "default": 2.2, "unit": "s" },
+    { "name": "crossover", "key": "xo", "kind": "float", "min": 200, "max": 2000, "default": 800, "unit": "Hz" },
+    { "name": "rotorBalance", "key": "rb", "kind": "float", "min": -100, "max": 100, "default": 0, "unit": "%" },
+    { "name": "stereoWidth", "key": "sw", "kind": "float", "min": 0, "max": 100, "default": 75, "unit": "%" },
+    { "name": "dopplerDepth", "key": "dd", "kind": "float", "min": 0, "max": 100, "default": 45, "unit": "%" },
+    { "name": "amplitudeDepth", "key": "ad", "kind": "float", "min": 0, "max": 100, "default": 55, "unit": "%" },
+    { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "default": 70, "unit": "%" }
+  ]
+}

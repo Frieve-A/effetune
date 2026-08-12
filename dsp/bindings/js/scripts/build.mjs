@@ -33,6 +33,7 @@ const copies = [
   ['plugins/dsp/effetune-dsp.meta.json', 'assets/effetune-dsp.meta.json'],
   ['plugins/dsp/NOTICE.txt', 'assets/NOTICE.txt'],
   ['dsp/bindings/schema/chain-v1.schema.json', 'schemas/chain-v1.schema.json'],
+  ['dsp/bindings/schema/graph-v1.schema.json', 'schemas/graph-v1.schema.json'],
   ['dsp/bindings/schema/bundle-v1.schema.json', 'schemas/bundle-v1.schema.json'],
   ['dsp/bindings/generated/effects-v1.json', 'catalog/effects-v1.json']
 ];

@@ -1,0 +1,149 @@
+{
+  "version": 1,
+  "tolerance": {
+    "policy": "per-sample",
+    "abs": 0.000001
+  },
+  "cases": [
+    {
+      "id": "wet-only-ir-left-adc",
+      "sampleRate": 48000,
+      "channels": 2,
+      "seed": 4660,
+      "frames": 256,
+      "blockSplits": [64, 64, 64, 64],
+      "document": {
+        "version": 1,
+        "input": {"id": "input"},
+        "output": {"id": "output"},
+        "nodes": [
+          {
+            "id": "wet",
+            "type": "IRReverb",
+            "enabled": true,
+            "channel": "left",
+            "parameters": {
+              "channelMode": "mono",
+              "latency": 128,
+              "convolutionRate": "full",
+              "wetLevel": 0,
+              "dryLevel": -96,
+              "preDelay": 0
+            },
+            "assets": {"impulseResponse": "identity-ir"}
+          }
+        ],
+        "edges": [
+          {"id": "dry", "source": "input", "destination": "output", "gain": 0.5},
+          {"id": "wet-in", "source": "input", "destination": "wet"},
+          {"id": "wet-out", "source": "wet", "destination": "output", "gain": 0.5}
+        ]
+      },
+      "assets": {
+        "identity-ir": {
+          "sampleRate": 48000,
+          "topology": "mono",
+          "channels": [[1]]
+        }
+      },
+      "input": {
+        "kind": "impulse",
+        "frame": 0,
+        "channelValues": [1, 1]
+      },
+      "expected": {
+        "latencySamples": 128,
+        "audio": {
+          "kind": "sparse",
+          "points": [
+            {"channel": 0, "frame": 128, "value": 1},
+            {"channel": 1, "frame": 128, "value": 1}
+          ]
+        },
+        "snapshot": {
+          "effectiveSchedule": ["wet"],
+          "nodes": [
+            {
+              "id": "wet",
+              "processingGroup": {"firstChannel": 0, "channelCount": 1},
+              "kernelLatency": 128,
+              "inputLatency": [0, 0],
+              "outputLatency": [128, 0],
+              "preNodeCompensation": [0, 0]
+            }
+          ],
+          "edges": [
+            {"id": "dry", "fanInCompensation": [128, 0]},
+            {"id": "wet-in", "fanInCompensation": [0, 0]},
+            {"id": "wet-out", "fanInCompensation": [0, 0]}
+          ],
+          "outputLatency": [128, 0],
+          "outputCompensation": [0, 128],
+          "latencySamples": 128
+        }
+      }
+    },
+    {
+      "id": "time-alignment-block-split-reset",
+      "sampleRate": 48000,
+      "channels": 2,
+      "seed": 4660,
+      "frames": 96,
+      "blockSplits": [17, 31, 48],
+      "document": {
+        "version": 1,
+        "input": {"id": "input"},
+        "output": {"id": "output"},
+        "nodes": [
+          {
+            "id": "delay",
+            "type": "TimeAlignment",
+            "enabled": true,
+            "channel": "all",
+            "parameters": {"delay": 1}
+          }
+        ],
+        "edges": [
+          {"id": "in", "source": "input", "destination": "delay"},
+          {"id": "out", "source": "delay", "destination": "output"}
+        ]
+      },
+      "input": {
+        "kind": "impulse",
+        "frame": 0,
+        "channelValues": [1, -0.5]
+      },
+      "expected": {
+        "latencySamples": 0,
+        "audio": {
+          "kind": "sparse",
+          "points": [
+            {"channel": 0, "frame": 48, "value": 1},
+            {"channel": 1, "frame": 48, "value": -0.5}
+          ]
+        },
+        "snapshot": {
+          "effectiveSchedule": ["delay"],
+          "nodes": [
+            {
+              "id": "delay",
+              "processingGroup": {"firstChannel": 0, "channelCount": 2},
+              "kernelLatency": 0,
+              "inputLatency": [0, 0],
+              "outputLatency": [0, 0],
+              "preNodeCompensation": [0, 0]
+            }
+          ],
+          "edges": [
+            {"id": "in", "fanInCompensation": [0, 0]},
+            {"id": "out", "fanInCompensation": [0, 0]}
+          ],
+          "outputLatency": [0, 0],
+          "outputCompensation": [0, 0],
+          "latencySamples": 0
+        }
+      },
+      "resetEquality": true
+    }
+  ]
+}

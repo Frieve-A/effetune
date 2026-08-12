@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "type": "RotarySpeakerPlugin",
+  "id": "all8-192k",
+  "stimulus": "sweep",
+  "sampleRate": 192000,
+  "channels": 8,
+  "frameCount": 12001,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "ss": "Fast",
+    "sp": 100,
+    "ac": 1.5,
+    "xo": 1800,
+    "rb": 40,
+    "sw": 100,
+    "dd": 75,
+    "ad": 80,
+    "mx": 75
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "08370065509cabeb9e6c59e754457a91bdfb05f3c914c452e2fb686e1c3a4aba",
+  "outputFloats": 96008,
+  "byteLength": 384032,
+  "binary": "case-005.f32"
+}

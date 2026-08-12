@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "type": "ChorusPlugin",
+  "id": "vibrato-mono",
+  "stimulus": "sin1k",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 4001,
+  "blockSize": 83,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "md": "Vibrato",
+    "rt": 5.5,
+    "dl": 8,
+    "dp": 5,
+    "vc": 3,
+    "ss": 60,
+    "fb": 0,
+    "mx": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "cd8d937332e8bb9b1133e50fa4e513e0e00e3d96eb6e320d38205d26d16c3eb4",
+  "outputFloats": 4001,
+  "byteLength": 16004,
+  "binary": "case-005.f32"
+}

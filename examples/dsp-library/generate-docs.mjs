@@ -9,6 +9,9 @@ const docsDataRoot = path.join(sourceRoot, 'docs');
 const bindingCatalogPath = path.join(
   repoRoot, 'dsp', 'bindings', 'generated', 'effects-v1.json'
 );
+const graphContractPath = path.join(
+  repoRoot, 'dsp', 'bindings', 'generated', 'graph-v1.contract.json'
+);
 const outputRoot = path.join(repoRoot, 'docs', 'dsp');
 const safeSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const manifestSegmentPattern = /^[A-Za-z0-9._-]+$/;
@@ -260,6 +263,7 @@ function codeBlock(language, source) {
 
 function loadSources() {
   const catalog = readJson(bindingCatalogPath);
+  const graphContract = readJson(graphContractPath);
   const overlay = readJson(path.join(docsDataRoot, 'effects-v1.docs.json'));
   const overlaySchema = readJson(path.join(
     docsDataRoot, 'effects-v1.docs.schema.json'
@@ -351,6 +355,7 @@ function loadSources() {
   }
   return {
     catalog,
+    graphContract,
     overlay,
     mapping,
     routes,
@@ -527,6 +532,20 @@ export function routeMap(routes) {
         descriptor.snippet,
         `Non-route snippet ${descriptor.id}`
       );
+      if (descriptor.graphSnippet !== undefined) {
+        if (typeof descriptor.graphSnippet !== 'string') {
+          fail(`Non-route Graph snippet ${descriptor.id} must be a path.`);
+        }
+        validateManifestRelativePath(
+          descriptor.graphSnippet,
+          `Non-route Graph snippet ${descriptor.id}`
+        );
+        resolveUnderRoot(
+          path.join(docsDataRoot, 'snippets'),
+          descriptor.graphSnippet,
+          `Non-route Graph snippet ${descriptor.id}`
+        );
+      }
     } else if (!['python', 'javascript'].includes(descriptor.summary)) {
       fail(`Non-route output ${descriptor.id} has an invalid summary source.`);
     }
@@ -657,6 +676,7 @@ const npmExportDescriptions = Object.freeze({
   './worklet': 'AudioWorklet `EffeTuneNode` wrapper',
   './processor': 'Side-effect AudioWorklet processor module',
   './schemas/chain-v1.json': 'Chain v1 JSON Schema',
+  './schemas/graph-v1.json': 'Graph v1 JSON Schema',
   './schemas/bundle-v1.json': 'Bundle v1 JSON Schema',
   './catalog': 'ESM catalog exports',
   './catalog.json': 'Machine-readable effect catalog JSON'
@@ -851,6 +871,11 @@ function landingPage(catalog, version, convenienceExports) {
       'both language bindings, and described by a public schema that humans and automation ' +
       'can validate before processing.',
     '',
+    'When the routing itself is part of the program, the opt-in ' +
+      '[Graph v1](/dsp/reference/graph-v1/) document describes parallel branches, additive ' +
+      'merges, wet/dry and send/return shapes, and automatic delay compensation. It is a ' +
+      'separate document type and does not change Chain v1.',
+    '',
     'Offline calls begin with fresh DSP state. Streaming calls preserve history across ' +
       'blocks, including delay and reverb tails, and scheduled parameter events are part of ' +
       'that history. Seeded execution is repeatable when the input, sample rate, channel ' +
@@ -921,11 +946,17 @@ function landingPage(catalog, version, convenienceExports) {
 }
 
 function staticPages(sources) {
-  const { catalog, convenienceExports, npmPackage, routes } = sources;
+  const { catalog, convenienceExports, graphContract, npmPackage, routes } = sources;
   const version = npmPackage.version;
   const pythonSnippet = read(path.join(docsDataRoot, 'snippets', 'python-start.py'));
   const javascriptSnippet = read(path.join(
     docsDataRoot, 'snippets', 'javascript-start.mjs'
+  ));
+  const pythonGraphSnippet = read(path.join(
+    docsDataRoot, 'snippets', 'graph-start.py'
+  ));
+  const javascriptGraphSnippet = read(path.join(
+    docsDataRoot, 'snippets', 'graph-start.mjs'
   ));
   const workletSnippet = read(path.join(
     docsDataRoot, 'snippets', 'audioworklet-start.js'
@@ -1000,6 +1031,17 @@ Offline calls start with fresh state. Use \`Chain.stream()\` when filter history
 tails, or seeded random state must continue. See [Python API](/dsp/api/python/)
 and [Determinism](/dsp/concepts/determinism/).
 
+## Graph v1 quickstart
+
+Graph v1 is opt-in routing for branching and merging. This complete example uses the
+wet/dry recipe, processes once with fresh state, then opens a stateful static stream and
+reads its prepared compile snapshot:
+
+${codeBlock('python', pythonGraphSnippet)}
+
+See [Graph v1](/dsp/reference/graph-v1/) for the document contract, conversion from a
+Chain, capacity, and stable error fields.
+
 ## Reading an audio file
 
 SoundFile returns \`(frames, channels)\`. Convert it explicitly to the library's
@@ -1039,6 +1081,17 @@ class/factory exports all support every registered type.
 Every input sample must be finite. Offline and streaming calls reject \`NaN\`,
 \`Infinity\`, and \`-Infinity\` with \`ValidationError\` before native processing;
 a rejected stream block does not change filter state.
+
+## Graph v1 quickstart
+
+Graph v1 is opt-in routing for branching and merging. This complete example uses the
+wet/dry recipe, processes once with fresh state, then opens a stateful static stream and
+reads its prepared compile snapshot:
+
+${codeBlock('js', javascriptGraphSnippet)}
+
+See [Graph v1](/dsp/reference/graph-v1/) for the document contract, conversion from a
+Chain, capacity, and stable error fields.
 `);
 
   add('audioworklet-start', `
@@ -1136,11 +1189,19 @@ Audio uses planar channels and an explicit sample rate. Chain effects run serial
 array order. The caller owns decode, encode, resampling, and buffers. Offline processing
 starts fresh; streams retain filter, delay, tail, and random history.
 
+Chain is serial only. Branching, merging, and automatic delay compensation are available
+through the opt-in [Graph v1](/dsp/reference/graph-v1/) model, which does not change
+Chain v1.
+
 Catalog latency badges are qualitative declarations. Python
 \`Stream.latency_samples\` and JavaScript \`ChainStream.latencySamples\` expose the same
 runtime aggregate. \`Chain.latency_samples()\` in Python and \`chain.latencySamples()\`
 in JavaScript report the same aggregate without opening a stream, so offline
 \`process()\` output can be phase-aligned.
+\`graph.latency_samples()\` in Python and \`graph.latencySamples()\` in JavaScript report
+the prepared common-max Graph aggregate without opening a stream, and
+\`GraphStream.latency_samples\` / \`GraphStream.latencySamples\` expose it on an open
+stream.
 \`EffeTuneNode.latencySamples\` exposes the cached real-time aggregate. Creation and
 awaited \`setParam()\` or \`reset()\` calls update it before returning.
 
@@ -1372,6 +1433,8 @@ chain_document = {
 
 \`pitchShift\` is not an alias for the \`pitch_shift\` constructor keyword. Every
 effect page lists both names directly from the generated catalog.
+\`GraphStream.set_param()\` also takes the semantic catalog name (camelCase, for example
+\`dryLevel\`), not the snake_case constructor keyword.
 
 ## Chain
 
@@ -1415,6 +1478,82 @@ directory or its \`bundle.json\`.
 \`latency_samples()\` reports the same aggregate an opened stream would report for that
 sample rate and channel layout, without processing audio. Offline \`process()\` output is
 not latency-compensated, so use this value to align it against the input.
+
+## Graph and GraphStream
+
+${codeBlock('python', `Graph(document: Any, *, asset_resolver: AssetResolver | None = None)
+Graph.from_dict(document: Mapping[str, Any], *, asset_resolver: AssetResolver | None = None) -> Graph
+Graph.load(json_text: str, *, asset_resolver: AssetResolver | None = None) -> Graph
+Graph.from_chain(chain: Chain, *, asset_resolver: AssetResolver | None = None) -> Graph
+Graph.wet_dry(effect: Effect | Mapping[str, Any], *, wet: float = 1.0,
+              dry: float = 1.0, node_id: str | None = None,
+              input_id: str = "input", output_id: str = "output",
+              asset_resolver: AssetResolver | None = None) -> Graph
+Graph.send_return(effect: Effect | Mapping[str, Any], *, send: float = 1.0,
+                  return_gain: float = 1.0, node_id: str | None = None,
+                  input_id: str = "input", output_id: str = "output",
+                  asset_resolver: AssetResolver | None = None) -> Graph
+
+graph.to_dict() -> dict[str, Any]
+graph.serialize(*, indent: int | None = None) -> str
+graph.nodes: tuple[dict[str, Any], ...]
+graph.edges: tuple[dict[str, Any], ...]
+graph.to_chain() -> Chain
+graph.get_node(node_id: str) -> dict[str, Any] | None
+graph.get_edge(edge_id: str) -> dict[str, Any] | None
+graph.incoming(endpoint_id: str) -> tuple[dict[str, Any], ...]
+graph.outgoing(endpoint_id: str) -> tuple[dict[str, Any], ...]
+graph.structural_snapshot() -> dict[str, Any]
+graph.visualization_snapshot() -> dict[str, Any]
+graph.process(audio: np.ndarray, *, sample_rate: float, seed: int = 0,
+              block_size: int = 128, asset_resolver: AssetResolver | None = None) -> np.ndarray
+graph.latency_samples(sample_rate: float, *, channels: int = 2,
+                      block_size: int = 128,
+                      asset_resolver: AssetResolver | None = None) -> int
+graph.stream(sample_rate: float, *, channels: int, block_size: int = 128,
+             seed: int = 0,
+             asset_resolver: AssetResolver | None = None) -> GraphStream
+graph.close() -> None
+
+graph_stream.graph: dict[str, Any]
+graph_stream.closed: bool
+graph_stream.latency_samples: int
+graph_stream.compile_snapshot: dict[str, Any]
+graph_stream.visualization_snapshot() -> dict[str, Any]
+graph_stream.set_param(node_id: str, parameter_name: str, value: Any) -> GraphStream
+graph_stream.process(audio: np.ndarray) -> np.ndarray
+graph_stream.reset() -> GraphStream
+graph_stream.close() -> None
+
+wet_dry_graph_document(effect, *, wet=1.0, dry=1.0, node_id=None,
+                       input_id="input", output_id="output") -> dict[str, Any]
+send_return_graph_document(effect, *, send=1.0, return_gain=1.0, node_id=None,
+                           input_id="input", output_id="output") -> dict[str, Any]`)}
+
+\`wet_dry_graph_document()\` and \`send_return_graph_document()\` are the module-level
+equivalents that return the same canonical documents \`Graph.wet_dry()\` and
+\`Graph.send_return()\` build from; their canonical IDs are listed in
+[Graph v1](/dsp/reference/graph-v1/#recipes). \`node_id\` defaults to the effect's own ID
+and falls back to \`wet\` or \`return\`; \`input_id\` and \`output_id\` default to
+\`input\` and \`output\`.
+
+\`Graph.load()\` reads Graph JSON text, not a file path or URL. \`to_dict()\`, query
+results, and snapshots are caller-owned copies; treat snapshots as read-only diagnostics.
+\`to_chain()\` accepts only an empty Graph or one serial path whose edges all use identity
+controls; it returns a new \`Chain\`. A GraphStream is a context manager: entering returns
+the open stream and exiting closes it. \`closed\` remains readable after close; processing,
+resetting, parameter updates, and runtime-property inspection then raise \`StateError\`.
+\`process()\` uses fresh state by opening and closing a stream internally. Graph stream
+preparation performs native instance/asset preparation and graph compilation, so it can
+fail after the document has already loaded. \`GraphStream.process()\` accepts only audio
+and has no \`events=\` keyword; supplying one raises a plain Python \`TypeError\`, which is
+outside the \`EffeTuneError\` hierarchy. The JavaScript surface instead raises
+\`ValidationError\` for a second options argument. Call \`set_param()\` only between
+process calls; an update outside the stream-safe allowlist raises \`ValidationError\` with
+\`GRAPH_RECONFIGURATION_REQUIRED\`. An unknown node ID raises
+\`GRAPH_DOCUMENT_REFERENCE\` and a value the catalog rejects raises
+\`GRAPH_DOCUMENT_PARAMETER\`, both as \`ValidationError\`. \`reset()\` restores initial
+parameters and state, and \`close()\` is idempotent.
 
 ## Stream
 
@@ -1534,6 +1673,102 @@ before native state is reached.
 opened stream would report for that rate and layout, without processing audio. Offline
 \`process()\` output is not latency-compensated, so use this value to align it.
 
+## Graph and GraphStream
+
+${codeBlock('ts', `createGraph(
+  input: string | GraphDocumentInput,
+  options?: CreateGraphOptions
+): Promise<Graph>
+
+class Graph {
+  static load(input: string | GraphDocumentInput, options?: CreateGraphOptions): Promise<Graph>
+  static fromChain(chain: Chain | ChainDocumentInput |
+                   readonly (Effect | ChainEffectInput)[],
+                   options?: CreateGraphOptions): Promise<Graph>
+  static wetDry(effect: Effect | ChainEffectInput, options?: WetDryGraphOptions): GraphDocument
+  static sendReturn(effect: Effect | ChainEffectInput, options?: SendReturnGraphOptions): GraphDocument
+  readonly nodes: readonly GraphNode[]
+  readonly edges: readonly GraphEdge[]
+  toJSON(): GraphDocument
+  toChain(): ChainDocument
+  serialize(space?: number): string
+  getNode(id: string): GraphNode | null
+  getEdge(id: string): GraphEdge | null
+  incoming(id: string): readonly GraphEdge[]
+  outgoing(id: string): readonly GraphEdge[]
+  structuralSnapshot(): GraphStructuralSnapshot
+  visualizationSnapshot(): GraphVisualizationSnapshot
+  process(audio: readonly Float32Array[], options: GraphProcessOptions): Promise<Float32Array[]>
+  latencySamples(options: LatencyOptions): Promise<number>
+  stream(options: GraphStreamOptions): Promise<GraphStream>
+  close(): void
+}
+
+interface GraphStream {
+  readonly graph: GraphDocument
+  readonly latencySamples: number
+  readonly compileSnapshot: GraphCompileSnapshot
+  visualizationSnapshot(): GraphVisualizationSnapshot
+  setParam(nodeId: string, parameterName: string, value: unknown): this
+  process(audio: readonly Float32Array[]): Promise<Float32Array[]>
+  reset(): this
+  close(): void
+}
+
+interface GraphStructuralSnapshot {
+  readonly document: GraphDocument
+  readonly topologicalOrder: readonly string[]
+  readonly incoming: Readonly<Record<string, readonly string[]>>
+  readonly outgoing: Readonly<Record<string, readonly string[]>>
+}`)}
+
+${codeBlock('ts', `interface GraphProcessOptions {
+  sampleRate: number
+  seed?: number      // 0
+  blockSize?: number // 128
+}
+
+interface GraphStreamOptions extends GraphProcessOptions {
+  channels?: number  // 2
+}
+
+interface GraphRecipeOptions {
+  nodeId?: string   // the effect's own id, else "wet" / "return"
+  inputId?: string  // "input"
+  outputId?: string // "output"
+}
+
+interface WetDryGraphOptions extends GraphRecipeOptions {
+  wet?: number // 1
+  dry?: number // 1
+}
+
+interface SendReturnGraphOptions extends GraphRecipeOptions {
+  send?: number       // 1
+  returnGain?: number // 1
+}`)}
+
+The trailing comments show the defaults. \`wet\`, \`dry\`, \`send\`, and \`returnGain\`
+become the linear gains on the edges emitted by each recipe. The recipe helpers return a
+document rather than a \`Graph\`; see [Graph v1](/dsp/reference/graph-v1/#recipes) for
+the canonical node and edge IDs.
+
+When the \`Graph.load()\` input is a string it is Graph JSON text, not a file path or
+URL. \`toJSON()\`, query results, and snapshots are caller-owned copies; treat snapshots
+as read-only diagnostics. \`toChain()\` accepts only an empty Graph or one serial path
+whose edges all use identity controls; it returns a new Chain document. \`process()\`
+uses fresh state by opening and closing a stream
+internally. For a nonempty graph, \`createGraph()\` / \`Graph.load()\` validate the
+document and load the selected DSP artifact; \`stream()\` then prepares native instances
+and assets and compiles the graph, so either phase can fail. \`GraphStream.process()\`
+accepts only audio: passing options, including \`events\`, raises \`ValidationError\`
+because scheduled events are not supported. Call \`setParam()\` only between awaited
+process calls; an update outside the stream-safe allowlist raises \`ValidationError\`
+with \`GRAPH_RECONFIGURATION_REQUIRED\`. An unknown node ID raises
+\`GRAPH_DOCUMENT_REFERENCE\` and a value the catalog rejects raises
+\`GRAPH_DOCUMENT_PARAMETER\`, both as \`ValidationError\`. \`reset()\` restores initial
+parameters and state, and \`close()\` is idempotent.
+
 ## Stateful stream
 
 ${codeBlock('ts', `interface ChainStream {
@@ -1618,6 +1853,16 @@ documents. The public package entry points are derived from the package export m
 
 ${npmExportTable(npmPackage)}
 
+These synchronous Graph document builders never load the DSP artifact:
+
+| Export | Result |
+|---|---|
+| \`normalizeGraphDocument()\` | Canonical Graph document from document input, with defaults materialized and nodes/edges sorted by ID |
+| \`graphDocumentFromChain()\` | Serial Graph document built from a Chain document or effect list |
+| \`chainDocumentFromGraph()\` | Chain document from an empty or serial identity-control Graph |
+| \`createWetDryGraphDocument()\` | Same wet/dry document as \`Graph.wetDry()\` |
+| \`createSendReturnGraphDocument()\` | Same send/return document as \`Graph.sendReturn()\` |
+
 \`ValidationError\` covers audio/documents/options,
 \`EffectError\` unknown effects, \`AssetError\` assets, \`EffeTuneRuntimeError\`
 backend failures, and \`StateError\` invalid lifecycle operations.
@@ -1628,6 +1873,401 @@ The [raw schema](/dsp/schemas/chain-v1.schema.json) is authoritative. A document
 \`version: 1\` and ordered \`chain\` items. IDs are unique when present; semantic types,
 parameters, channels, enabled state, and asset references reject unknown fields.
 Some asset and cross-field rules require runtime validation after schema validation.
+`);
+
+  add('graph-v1', `
+Graph v1 is an experimental, opt-in processing model for explicit static audio DAGs.
+It adds branching, deterministic additive merging, wet/dry and send/return routing,
+edge controls, and automatic delay compensation without changing Chain v1. Choose a
+Chain for an ordinary serial effect list; choose a Graph only when the routing itself is
+part of the program.
+
+The first version has one host main input and one host main output. Every effect node
+still has one audio input and one audio output and uses the same semantic effect fields
+as Chain v1. A graph is prepared before processing and remains structurally immutable
+for the stream lifetime.
+
+## Document
+
+The [raw schema](/dsp/schemas/graph-v1.schema.json) is authoritative. This serial graph
+uses flat Effect objects as nodes; there is no nested \`effect\` property:
+
+${codeBlock('json', `{
+  "version": 1,
+  "input": { "id": "input" },
+  "output": { "id": "output" },
+  "nodes": [
+    {
+      "id": "level",
+      "type": "Volume",
+      "enabled": true,
+      "channel": "all",
+      "parameters": { "volume": -6 }
+    }
+  ],
+  "edges": [
+    { "id": "input-level", "source": "input", "destination": "level" },
+    { "id": "level-output", "source": "level", "destination": "output" }
+  ]
+}`)}
+
+The input, output, node, and edge IDs are stable nonempty strings. Endpoint and node IDs
+share the reference namespace; edge IDs are also unique. Sources and destinations are
+ID strings, not port objects. The input is source-only, the output is destination-only,
+and every structural node and edge must lie on a path from input to output. Dangling
+references, duplicate IDs, self-loops, cycles, and structurally disconnected elements
+are rejected before processing.
+
+Edge controls have these meanings:
+
+| Field | Default | Contract |
+|---|---:|---|
+| \`gain\` | \`1\` | Finite linear amplitude from 0 through 4 |
+| \`mute\` | \`false\` | A muted edge never contributes |
+| \`pan\` | omitted, behaving as \`0\` | Optional linear stereo balance from -1 through 1; any explicit value is rejected outside a stereo stream |
+| \`mixGroup\` | \`"default"\` | Selects the solo group at one destination |
+| \`solo\` | \`false\` | If a group contains a solo edge, only its non-muted solo edges contribute |
+
+Mute takes precedence over solo. An active edge applies gain, pan, fan-in compensation,
+then summing. Edges entering one destination are summed by edge ID in UTF-8 byte order;
+ready nodes use node ID in the same order. Document array order therefore does not
+change audio. Canonical serialization materializes ordinary node and edge defaults and
+sorts nodes and edges by ID. An omitted \`pan\` stays omitted so a caller's explicit pan
+request remains distinguishable during stream-layout validation.
+
+An empty graph is a unity, zero-latency identity. A disabled node is a zero-latency
+identity bypass and does not create an effect instance. Mute and solo can make a branch
+dormant without making the structural document invalid. An enabled node that still has
+an active outgoing route to the output runs with zero-filled input even if all incoming
+edges are suppressed, regardless of effect type. The presence of any such node prevents
+the silence shortcut.
+
+## APIs
+
+JavaScript exposes the asynchronous \`createGraph()\`, \`Graph\`, and \`GraphStream\`
+surface plus the synchronous document helpers \`normalizeGraphDocument()\`,
+\`graphDocumentFromChain()\`, \`chainDocumentFromGraph()\`,
+\`createWetDryGraphDocument()\`, and \`createSendReturnGraphDocument()\`. Python exposes
+\`Graph\` and \`GraphStream\` with the same behavior and Python naming conventions, plus
+the module-level \`wet_dry_graph_document()\` and \`send_return_graph_document()\`
+builders.
+
+A Graph can be loaded from a document, serialized, processed once with fresh state, or
+opened as a stateful stream. It reports the prepared graph's common-max latency and
+offers node, edge, adjacency, structural, and visualization queries. A GraphStream owns
+the installed immutable plan and exposes processing, latency, the compile snapshot,
+reset, safe parameter updates, and close. Both objects retain their own normalized copy;
+mutating the caller's original document cannot alter an active plan.
+
+\`Graph.fromChain()\` in JavaScript and \`Graph.from_chain()\` in Python create a serial
+input-to-effects-to-output graph without changing the Chain or its parameters. They do
+not replace Chain as the default API. A configuration that cannot meet Graph delay-
+compensation rules fails with the same stable \`code\`, the same JSON \`path\`, and the
+same offending node ID as the equivalent hand-written Graph document. The human-readable
+message is not part of that guarantee, and the configuration is never silently rewritten.
+
+Migration in the other direction is intentionally narrower. JavaScript \`toChain()\`
+returns a Chain document, while Python \`to_chain()\` returns a new \`Chain\`. Conversion
+is allowed only for an empty Graph or a single input-to-nodes-to-output serial path whose
+every edge has identity controls: \`gain = 1\`, \`mute = false\`, \`solo = false\`,
+\`mixGroup = "default"\`, and omitted or zero \`pan\`. Branching, merging, or any
+non-identity edge control raises \`GRAPH_DOCUMENT_CONNECTIVITY\`; conversion never drops
+routing behavior.
+
+JavaScript conversion is asynchronous:
+
+${codeBlock('js', `import { Graph, createChain, createVolume } from '@effetune/dsp';
+
+const chain = await createChain([createVolume({ id: 'level', volume: -6 })]);
+const graph = await Graph.fromChain(chain);
+graph.close();
+chain.close();`)}
+
+Python conversion is synchronous and keeps Python naming conventions:
+
+${codeBlock('python', `import effetune as et
+
+chain = et.Chain([et.Volume(id="level", volume=-6)])
+graph = et.Graph.from_chain(chain)
+graph.close()`)}
+
+### Supported surfaces
+
+| Surface | Offline Graph | Stateful GraphStream | Status |
+|---|---:|---:|---|
+| JavaScript binding | Yes | Yes | Public Graph v1 API |
+| Python binding | Yes | Yes | Public Graph v1 API |
+| AudioWorklet / \`EffeTuneNode\` | No | No | Chain v1 only |
+| CLI | No | No | Chain v1 documents only |
+| Bundle documents | No | No | Bundles contain Chain v1 only |
+| EffeTune app executor | No | No | The app pipeline does not execute Graph v1 |
+
+Graph v1 has no scheduled parameter events. \`GraphStream.process()\` takes audio only;
+JavaScript rejects a second options argument (including \`{ events: ... }\`) with
+\`ValidationError\`, matching Python's audio-only method. Await each process call before
+calling \`setParam()\` / \`set_param()\`; updates are supported only between process
+calls, never concurrently with processing.
+
+Only explicitly classified stream-safe parameters can change on an active GraphStream.
+Parameters affecting latency, assets, channel selection, allocation, prepared state, or
+delay-compensation eligibility require a new stream. This includes
+\`FIRCrossover.bandCount\`, \`IRReverb.channelMode\`, and
+\`IRReverb.convolutionRate\`. For a positive-latency IRReverb, crossing the
+\`dryLevel = -96 dB\` eligibility boundary in either direction also requires a new stream.
+
+The current stream-safe allowlist is deliberately small:
+
+- \`Volume.volume\`.
+- \`IRReverb.dryLevel\` when latency is zero, or when both the current and new values are
+  \`-96 dB\`, the parameter minimum. The positive-latency wet-only eligibility rule still
+  applies.
+
+Every other parameter update raises \`ValidationError\` with
+\`GRAPH_RECONFIGURATION_REQUIRED\`; create a new stream for that configuration.
+
+## Recipes
+
+Wet/dry and send/return are ordinary graph shapes, not separate runtime types.
+
+JavaScript \`Graph.wetDry()\` / \`Graph.sendReturn()\` are exactly equivalent to
+\`createWetDryGraphDocument()\` / \`createSendReturnGraphDocument()\`: the static methods
+return the same canonical document as the function forms. Python \`Graph.wet_dry()\` /
+\`Graph.send_return()\` construct a \`Graph\` from the same canonical document returned by
+\`wet_dry_graph_document()\` / \`send_return_graph_document()\`. There is no hidden
+difference between the corresponding forms.
+
+- A wet/dry graph fans the input out to a dry edge and a wet effect node, then joins both
+  at the output. Set the two output-edge gains for the desired mix.
+- A send/return graph keeps the main route, adds an input-to-effect send edge, then mixes
+  the effect's return edge at the destination. Additional sends use the same pattern.
+- A positive-latency IRReverb must be wet-only internally: set \`dryLevel\` to
+  \`-96 dB\`, the parameter minimum, and use an external dry edge. The compiler delays
+  the shorter dry route to align it with the prepared wet route. Any internal dry value
+  above the minimum is rejected rather than coerced.
+
+| Recipe | Node ID | Edge IDs |
+|---|---|---|
+| Wet/dry | \`nodeId\`, else the effect's own ID, else \`wet\` | \`dry\`, \`wet-input\`, \`wet-output\` |
+| Send/return | \`nodeId\`, else the effect's own ID, else \`return\` | \`main\`, \`send\`, \`return\` |
+| \`fromChain()\` / \`from_chain()\` | Chain item IDs are kept | \`route-1\`, \`route-2\`, ... one per hop including the final hop to the output |
+
+Endpoint IDs default to \`input\` and \`output\` for the wet/dry and send/return recipes;
+\`fromChain()\` / \`from_chain()\` use \`main-input\` and \`main-output\`. For
+\`fromChain()\` / \`from_chain()\`, a generated ID that collides with an existing node ID
+gets a \`-2\`, \`-3\`, ... suffix.
+
+This is the document produced by
+\`Graph.wetDry(createVolume({ id: 'wet', volume: -6 }), { dry: 0.5, wet: 0.5 })\`:
+
+${codeBlock('json', `{
+  "version": 1,
+  "input": { "id": "input" },
+  "output": { "id": "output" },
+  "nodes": [
+    {
+      "id": "wet",
+      "type": "Volume",
+      "enabled": true,
+      "channel": "all",
+      "parameters": { "volume": -6 }
+    }
+  ],
+  "edges": [
+    {
+      "id": "dry",
+      "source": "input",
+      "destination": "output",
+      "gain": 0.5,
+      "mute": false,
+      "mixGroup": "main",
+      "solo": false
+    },
+    {
+      "id": "wet-input",
+      "source": "input",
+      "destination": "wet",
+      "gain": 1,
+      "mute": false,
+      "mixGroup": "default",
+      "solo": false
+    },
+    {
+      "id": "wet-output",
+      "source": "wet",
+      "destination": "output",
+      "gain": 0.5,
+      "mute": false,
+      "mixGroup": "main",
+      "solo": false
+    }
+  ]
+}`)}
+
+The two edges that reach the output share \`mixGroup "main"\`, so soloing either edge
+selects between the wet and dry paths.
+
+The document helpers only build canonical Graph documents. They add no hidden processing
+semantics, buses, or special node types.
+
+## Queries and snapshots
+
+Document queries preserve the complete structural graph: normalized nodes and edges,
+incoming and outgoing edge IDs, structural connectivity, and structural topological
+order. The visualization snapshot contains the same structural elements and status data
+but no coordinates or drawing dependency.
+
+\`structuralSnapshot()\` / \`structural_snapshot()\` returns exactly four keys:
+\`document\`, \`topologicalOrder\`, \`incoming\`, and \`outgoing\`.
+
+The visualization snapshot's input and output endpoint entries contain only \`id\` and
+\`kind\`; only effect nodes and edges carry a \`state\`.
+
+The compile snapshot describes one prepared stream: effective, dormant, and disabled-
+bypass elements; execution order; each node output's reusable buffer slot; processing
+channel groups; node input/output and final-output latency; fan-in, pre-node, and final-
+output compensation; common-max public latency; and capacity use. Treat snapshots as
+read-only diagnostics. Graph v1 has no telemetry callback, subscription, or observation
+API; analyzer telemetry remains available only on the documented Chain surfaces.
+
+The word "effective" carries two different meanings, so read them separately. The
+per-node snapshot flag \`effective\` means only that an active route still reaches the
+node, so the plan gives it a schedule position and an output buffer slot. It is also
+\`true\` for a disabled node on an active route; that node is additionally reported with
+\`disabledBypass: true\` and still occupies a buffer slot even though its zero-latency
+identity bypass creates no effect instance. The published capacity limit counts effect
+instances instead, so only enabled nodes with \`effective: true\` consume it. A node no
+active route reaches is \`dormant\` and not effective.
+
+- \`version\` is always \`1\`, the compile snapshot format version.
+- \`identity\` is true when the compiled document has no nodes and no edges, making the
+  stream a bit-exact, zero-latency pass-through.
+- \`silence\` is true when the graph is not \`identity\`, no active route carries main
+  input to the output, and no enabled node has an active outgoing route to the output,
+  so the output is all zeros.
+
+\`scheduleIndex\` and \`bufferSlot\` are \`null\` in JavaScript and \`None\` in Python
+whenever the node holds no such slot: every dormant node has neither, and a \`silence\`
+plan allocates no buffers, so every node reports a null \`bufferSlot\`.
+
+Delay compensation uses latency reported by each effective instance after assets are
+active. It aligns every fan-in per channel, aligns each multi-channel processing group
+before its kernel, then aligns all output channels to one common maximum. Preparation
+also allocates all live buffers and delay state. Processing performs no graph validation,
+allocation, asset activation, lock, I/O, or WebAssembly memory growth.
+
+## Capacity
+
+Graph v1 publishes the implementation limits used by every binding. A document may
+contain at most ${graphContract.capacity.maxStructuralNodes} structural nodes and
+${graphContract.capacity.maxEdges} edges. Preparation may create at most
+${graphContract.capacity.maxEffectiveInstances} effect instances, assign at
+most ${graphContract.capacity.maxLiveBuffers} live buffers, and reserve at most
+${graphContract.capacity.maxWorkspaceBytes.toLocaleString('en-US')} bytes of workspace.
+Delay lines for fan-in, pre-node processing groups, and the main output share that
+workspace limit; there is no separate public delay-line quota.
+
+## Errors
+
+Document failures use stable \`GRAPH_DOCUMENT_*\` codes and a JSON path.
+
+| Code | Meaning |
+|---|---|
+| \`GRAPH_DOCUMENT_ID\` | A missing, empty, duplicated, or otherwise invalid input, output, node, or edge ID |
+| \`GRAPH_DOCUMENT_REFERENCE\` | An edge names an undeclared endpoint or node, the source-only input or destination-only output rule is broken, a node is not a valid effect document, a node names an unknown effect type at \`/nodes/<i>/type\`, or a node's \`assets\` are invalid at \`/nodes/<i>/assets\` |
+| \`GRAPH_DOCUMENT_CYCLE\` | A self-loop or a longer cycle makes the document non-acyclic |
+| \`GRAPH_DOCUMENT_CONNECTIVITY\` | A node or edge is off every input-to-output path, or a conversion target is not an empty or serial identity-control graph |
+| \`GRAPH_DOCUMENT_CHANNEL\` | A node \`channel\` selector is invalid, or an explicit edge \`pan\` was supplied for a non-stereo stream layout |
+| \`GRAPH_DOCUMENT_EDGE_CONTROL\` | An edge \`gain\`, \`pan\`, \`mute\`, \`solo\`, or \`mixGroup\` value is out of range or invalid for the layout |
+| \`GRAPH_DOCUMENT_PARAMETER\` | A node parameter failed catalog validation; \`path\` is \`/nodes/<i>/parameters/<name>\`. A rejected \`setParam()\` / \`set_param()\` value reports the same code and path |
+
+Preparation can additionally report:
+
+| Code | Meaning |
+|---|---|
+| \`GRAPH_CAPACITY\` | A published structural-node, effective-instance, edge, live-buffer, or workspace capacity was exceeded |
+| \`GRAPH_INSTANCE_PREPARE\` | An effective effect or required asset could not become ready before installation |
+| \`GRAPH_LATENCY_OVERFLOW\` | A cumulative latency cannot be represented safely |
+| \`GRAPH_UNSUPPORTED_CAPABILITY\` | The prepared configuration cannot satisfy Graph v1 processing or latency rules |
+| \`GRAPH_PLAN_MEMORY\` | The complete immutable plan could not be allocated |
+
+Error type does not follow the stage. Every \`GRAPH_DOCUMENT_*\` code and a
+\`GRAPH_UNSUPPORTED_CAPABILITY\` raised for the document arrive as \`ValidationError\`
+because each one is a caller-fixable document mistake; an unknown effect type arrives as
+\`EffectError\` with the \`GRAPH_DOCUMENT_REFERENCE\` code, and a node whose \`assets\`
+are missing, unknown, empty, or supplied to an effect that takes none arrives as
+\`AssetError\` with that same code and \`/nodes/<i>/assets\`. A JavaScript DSP artifact
+built without Graph v1 support is the one \`GRAPH_UNSUPPORTED_CAPABILITY\` that stays a
+runtime error, because no document change fixes it. The remaining preparation codes
+(\`GRAPH_CAPACITY\`, \`GRAPH_INSTANCE_PREPARE\`, \`GRAPH_LATENCY_OVERFLOW\`, and
+\`GRAPH_PLAN_MEMORY\`) arrive as the runtime error type, except that an asset the
+resolver cannot supply or prepare keeps \`AssetError\` with \`GRAPH_INSTANCE_PREPARE\`
+and \`/nodes/<i>/assets\`. The class therefore follows the cause, not the stage: branch
+on \`code\` rather than on the class when both stages must be handled together.
+
+A rejected \`setParam()\` / \`set_param()\` reports one of three codes: a node ID absent
+from the document gives \`GRAPH_DOCUMENT_REFERENCE\` with an empty \`path\`, a node the
+prepared plan does not run gives \`GRAPH_RECONFIGURATION_REQUIRED\` with \`/nodes/<i>\`,
+and a value the catalog rejects gives \`GRAPH_DOCUMENT_PARAMETER\`.
+
+Errors include the graph path and, when applicable, the offending node or edge ID.
+JavaScript uses camelCase \`nodeId\` and \`edgeId\`; Python uses \`node_id\` and
+\`edge_id\`. Failed preparation installs nothing and returns no partial stream.
+
+Document normalization and validation happen when the Graph is created or loaded. A
+string passed to \`Graph.load()\` is JSON document text, not a path or URL. JavaScript
+also loads the selected DSP artifact while creating a nonempty Graph. Native effect and
+asset preparation, layout checks, latency analysis, and graph compilation happen when
+\`stream()\` is called; offline \`process()\` reaches the same phase because it opens a
+temporary stream. Code that recovers from Graph errors must therefore cover both Graph
+creation and stream preparation.
+
+Catch the public base error and branch on stable \`code\` and \`path\` fields. Do not
+parse the human-readable message:
+
+${codeBlock('js', `import { EffeTuneError, createGraph } from '@effetune/dsp';
+
+export async function processGraph(document, audio) {
+  let graph;
+  let stream;
+  try {
+    graph = await createGraph(document);
+    stream = await graph.stream({ sampleRate: 48000, channels: audio.length });
+    return await stream.process(audio);
+  } catch (error) {
+    if (!(error instanceof EffeTuneError)) throw error;
+    console.error(error.code ?? error.name, error.path ?? '', error.message);
+    return null;
+  } finally {
+    stream?.close();
+    graph?.close();
+  }
+}`)}
+
+${codeBlock('python', `import effetune as et
+
+def process_graph(document, audio):
+    graph = None
+    stream = None
+    try:
+        graph = et.Graph(document)
+        stream = graph.stream(48_000, channels=audio.shape[0])
+        return stream.process(audio)
+    except et.EffeTuneError as error:
+        print(error.code or type(error).__name__, error.path or "", str(error))
+        return None
+    finally:
+        if stream is not None:
+            stream.close()
+        if graph is not None:
+            graph.close()`)}
+
+## Limitations
+
+Graph v1 does not provide sidechains, key inputs, multiple node ports, multiple host I/O
+buses, feedback or cycles, nested runtime graphs, physical thread parallelism, structural
+editing during a stream, state-preserving plan replacement, or clickless graph switching.
+It does not replace the EffeTune application's existing pipeline executor. These are
+deliberate first-version boundaries, not alternate schema fields.
 `);
 
   add('bundle-v1', `
@@ -1646,6 +2286,9 @@ is acceptance-tested. Other evergreen browsers are designed for but unverified.
 AudioWorklet support requires HTTPS or localhost; direct \`file:\` loading is unsupported.
 The npm package is ESM-only; use \`.mjs\` or a consumer package with
 \`"type": "module"\`. CommonJS \`require()\` is unsupported.
+
+Graph v1 is supported on the JavaScript and Python bindings only; see
+[Graph v1 supported surfaces](/dsp/reference/graph-v1/#supported-surfaces).
 
 The core does not decode, encode, resample, call ffmpeg, host VST/AU, or expose public
 integrated-LUFS/true-peak measurement.
@@ -1714,8 +2357,8 @@ R128, true peak, and dynamics gain-reduction observations are not part of this A
 `);
 
   add('verification', `
-The frozen wrapper reference origin is 71 JavaScript-derived cases plus 5 native
-direct-double cases. Maintainers run:
+The frozen wrapper reference origin is 80 JavaScript-derived effect suites, 5 native
+direct-double suites, and 5 production-native-promoted suites. Maintainers run:
 
 ${codeBlock('console', 'node tools/verify-dsp-library-goldens.mjs')}
 
@@ -1848,13 +2491,30 @@ function replaceGeneratedBlock(source, descriptor, sources) {
       descriptor.snippet,
       `Non-route snippet ${descriptor.id}`
     ));
+    const graphSnippet = descriptor.graphSnippet
+      ? read(resolveUnderRoot(
+          path.join(docsDataRoot, 'snippets'),
+          descriptor.graphSnippet,
+          `Non-route Graph snippet ${descriptor.id}`
+        ))
+      : null;
     contents = descriptor.language === 'markdown'
       ? snippet.trimEnd()
       : [
           ...(descriptor.install
             ? [codeBlock('console', descriptor.install), '']
             : []),
-          codeBlock(descriptor.language, snippet)
+          codeBlock(descriptor.language, snippet),
+          ...(graphSnippet
+            ? [
+                '',
+                '### Graph v1 quickstart',
+                '',
+                'Graph v1 is opt-in routing for branching and merging:',
+                '',
+                codeBlock(descriptor.language, graphSnippet)
+              ]
+            : [])
         ].join('\n');
   }
   const replacement = [
@@ -1901,10 +2561,12 @@ function llmsText(sources) {
     '- https://effetune.frieve.com/dsp/',
     '- https://effetune.frieve.com/dsp/catalog/effects-v1.json',
     '- https://effetune.frieve.com/dsp/schemas/chain-v1.schema.json',
+    '- https://effetune.frieve.com/dsp/schemas/graph-v1.schema.json',
     '- https://effetune.frieve.com/dsp/schemas/bundle-v1.schema.json',
     '- https://effetune.frieve.com/dsp/getting-started/python/',
     '- https://effetune.frieve.com/dsp/getting-started/javascript/',
     '- https://effetune.frieve.com/dsp/concepts/determinism/',
+    '- https://effetune.frieve.com/dsp/reference/graph-v1/',
     '- https://effetune.frieve.com/dsp/reference/compatibility/',
     '',
     'MCP, measurement, resampling, ffmpeg, integrated LUFS, and true-peak APIs are not implemented in v0.1.',

@@ -1,0 +1,14 @@
+{
+  "type": "ChorusPlugin",
+  "tolerance": { "abs": 0.00003, "policy": "per-sample" },
+  "fields": [
+    { "name": "mode", "key": "md", "kind": "enum", "values": ["Chorus", "Stereo Chorus", "Ensemble", "Flanger", "Vibrato"], "default": "Chorus" },
+    { "name": "rate", "key": "rt", "kind": "float", "min": 0.05, "max": 10, "default": 0.8, "unit": "Hz" },
+    { "name": "delay", "key": "dl", "kind": "float", "min": 0.5, "max": 30, "default": 12, "unit": "ms" },
+    { "name": "depth", "key": "dp", "kind": "float", "min": 0, "max": 20, "default": 3, "unit": "ms" },
+    { "name": "voices", "key": "vc", "kind": "int", "min": 1, "max": 6, "default": 3 },
+    { "name": "stereoSpread", "key": "ss", "kind": "float", "min": 0, "max": 100, "default": 60, "unit": "%" },
+    { "name": "feedback", "key": "fb", "kind": "float", "min": -75, "max": 75, "default": 0, "unit": "%" },
+    { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "default": 45, "unit": "%" }
+  ]
+}

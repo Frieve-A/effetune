@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "type": "PhaserPlugin",
+  "id": "barber-up",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 5,
+  "frameCount": 10003,
+  "blockSize": 113,
+  "channelMode": "all5",
+  "channel": null,
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "md": "Barber-pole",
+    "rt": 1.2,
+    "cf": 1400,
+    "rg": 5,
+    "st": 8,
+    "fb": 35,
+    "sp": 120,
+    "dr": "Up",
+    "mx": 55
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "dd62b1916ffb692313669102c864f20001d21de83257c0285d5f0f14b58bcc68",
+  "outputFloats": 50015,
+  "byteLength": 200060,
+  "binary": "case-005.f32"
+}

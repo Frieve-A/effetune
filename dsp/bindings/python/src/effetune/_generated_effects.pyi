@@ -945,6 +945,63 @@ class VinylSimulator(Effect):
         channel: EffectChannel = ...,
     ) -> None: ...
 
+class AutoFilter(Effect):
+    effect_type: Literal["AutoFilter"]
+    def __init__(
+        self,
+        *,
+        mode: Literal["LFO", "Envelope"] = ...,
+        filter_type: Literal["Low-pass", "Band-pass", "High-pass"] = ...,
+        minimum_frequency: float = ...,
+        maximum_frequency: float = ...,
+        resonance: float = ...,
+        mix: float = ...,
+        rate: float = ...,
+        waveform: Literal["Sine", "Triangle"] = ...,
+        stereo_phase: float = ...,
+        sensitivity: float = ...,
+        attack: float = ...,
+        release: float = ...,
+        direction: Literal["Up", "Down"] = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
+class AutoPan(Effect):
+    effect_type: Literal["AutoPan"]
+    def __init__(
+        self,
+        *,
+        rate: float = ...,
+        depth: float = ...,
+        center: float = ...,
+        width: float = ...,
+        waveform: Literal["Sine", "Triangle"] = ...,
+        phase: float = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
+class Chorus(Effect):
+    effect_type: Literal["Chorus"]
+    def __init__(
+        self,
+        *,
+        mode: Literal["Chorus", "Stereo Chorus", "Ensemble", "Flanger", "Vibrato"] = ...,
+        rate: float = ...,
+        delay: float = ...,
+        depth: float = ...,
+        voices: int = ...,
+        stereo_spread: float = ...,
+        feedback: float = ...,
+        mix: float = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
 class DopplerDistortion(Effect):
     effect_type: Literal["DopplerDistortion"]
     def __init__(
@@ -959,6 +1016,44 @@ class DopplerDistortion(Effect):
         channel: EffectChannel = ...,
     ) -> None: ...
 
+class FrequencyShifter(Effect):
+    effect_type: Literal["FrequencyShifter"]
+    def __init__(
+        self,
+        *,
+        mode: Literal["Shift", "Ring Mod", "Barber-pole"] = ...,
+        shift: float = ...,
+        carrier_frequency: float = ...,
+        minimum_shift: float = ...,
+        maximum_shift: float = ...,
+        rate: float = ...,
+        direction: Literal["Up", "Down"] = ...,
+        stereo_phase: float = ...,
+        mix: float = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
+class Phaser(Effect):
+    effect_type: Literal["Phaser"]
+    def __init__(
+        self,
+        *,
+        mode: Literal["Classic", "Barber-pole"] = ...,
+        rate: float = ...,
+        center_frequency: float = ...,
+        range: float = ...,
+        stages: Literal[2, 4, 6, 8, 10, 12] = ...,
+        feedback: float = ...,
+        stereo_phase: float = ...,
+        direction: Literal["Up", "Down"] = ...,
+        mix: float = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
 class PitchShifter(Effect):
     effect_type: Literal["PitchShifter"]
     def __init__(
@@ -968,6 +1063,25 @@ class PitchShifter(Effect):
         fine_tune: int = ...,
         window_size: int = ...,
         crossfade_time: float = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
+class RotarySpeaker(Effect):
+    effect_type: Literal["RotarySpeaker"]
+    def __init__(
+        self,
+        *,
+        speed_state: Literal["Stop", "Slow", "Fast"] = ...,
+        speed: float = ...,
+        acceleration: float = ...,
+        crossover: float = ...,
+        rotor_balance: float = ...,
+        stereo_width: float = ...,
+        doppler_depth: float = ...,
+        amplitude_depth: float = ...,
+        mix: float = ...,
         id: str | None = ...,
         enabled: bool = ...,
         channel: EffectChannel = ...,

@@ -1,0 +1,72 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 64,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    { "id": "default-stereo", "stimulus": "noise", "frames": 4099 },
+    {
+      "id": "neutral-depth",
+      "stimulus": "sweep",
+      "frames": 3073,
+      "params": { "rt": 20, "dp": 0, "ct": 100, "wd": 100, "wf": "Triangle", "ph": 360 }
+    },
+    {
+      "id": "mono-pass-through",
+      "stimulus": "sq50",
+      "channels": 1,
+      "channelMode": "mono",
+      "blockSize": 83,
+      "frames": 3001,
+      "params": { "rt": 4, "dp": 100, "ct": -35, "wd": 80, "wf": "Triangle", "ph": 73 }
+    },
+    {
+      "id": "odd-multiple-pairs",
+      "stimulus": "noise",
+      "channels": 5,
+      "blockSize": 127,
+      "frames": 5003,
+      "params": { "rt": 0.05, "dp": 100, "ct": 20, "wd": 100, "wf": "Sine", "ph": 181 }
+    },
+    {
+      "id": "all8-192000",
+      "stimulus": "sweep",
+      "sampleRate": 192000,
+      "channels": 8,
+      "blockSize": 127,
+      "frames": 8003,
+      "params": { "rt": 20, "dp": 87.5, "ct": -15.5, "wd": 91.25, "wf": "Triangle", "ph": 359.5 }
+    },
+    {
+      "id": "waveform-and-continuous-events",
+      "stimulus": "noise",
+      "frames": 6007,
+      "events": [
+        { "frame": 31, "params": { "rt": 2.75, "dp": 100 } },
+        { "frame": 1025, "params": { "wf": "Triangle" } },
+        { "frame": 3073, "params": { "ct": 45, "wd": 35, "ph": 220 } },
+        { "frame": 5001, "params": { "wf": "Sine", "rt": 0.1 } }
+      ]
+    },
+    {
+      "id": "one-frame-blocks",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "blockSize": 1,
+      "channels": 3,
+      "frames": 4097
+    },
+    {
+      "id": "pending-during-fade-up",
+      "stimulus": "noise",
+      "blockSize": 512,
+      "frames": 367,
+      "events": [
+        { "frame": 1, "params": { "wf": "Triangle" } },
+        { "frame": 181, "params": { "wf": "Sine" } }
+      ]
+    }
+  ]
+}

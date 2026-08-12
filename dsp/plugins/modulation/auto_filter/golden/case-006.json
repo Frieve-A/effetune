@@ -1,0 +1,38 @@
+{
+  "formatVersion": 1,
+  "type": "AutoFilterPlugin",
+  "id": "all8-192000",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 8,
+  "frameCount": 12007,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "md": "Envelope",
+    "ft": "Band-pass",
+    "lf": 20,
+    "hf": 20000,
+    "rs": 20,
+    "mx": 100,
+    "rt": 0.5,
+    "wf": "Sine",
+    "sp": 0,
+    "sn": 60,
+    "at": 1,
+    "rl": 10,
+    "dr": "Down"
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "9d5dc5c1300ebc4ebcdb87e2a81f8eb64f7fc0132d3bfaf91652af8ced8cd6a0",
+  "outputFloats": 96056,
+  "byteLength": 384224,
+  "binary": "case-006.f32"
+}

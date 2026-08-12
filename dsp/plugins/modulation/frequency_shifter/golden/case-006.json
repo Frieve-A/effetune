@@ -1,0 +1,68 @@
+{
+  "formatVersion": 1,
+  "type": "FrequencyShifterPlugin",
+  "id": "mode-direction-events",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 8003,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "md": "Shift",
+    "sh": 8,
+    "cf": 440,
+    "mn": 20,
+    "mx": 800,
+    "rt": 0.15,
+    "dr": "Up",
+    "sp": 0,
+    "mix": 100
+  },
+  "events": [
+    {
+      "frame": 511,
+      "params": {
+        "md": "Ring Mod",
+        "cf": 2400,
+        "mix": 70
+      }
+    },
+    {
+      "frame": 2049,
+      "params": {
+        "md": "Barber-pole",
+        "mn": 50,
+        "mx": 1200,
+        "rt": 0.8,
+        "dr": "Down"
+      }
+    },
+    {
+      "frame": 4097,
+      "params": {
+        "dr": "Up",
+        "sp": 135
+      }
+    },
+    {
+      "frame": 6501,
+      "params": {
+        "md": "Shift",
+        "sh": -37.5,
+        "mix": 50
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "534549173cd3b77f1b2c17c77c68454549654eddd36891bd666dee790c9f3855",
+  "outputFloats": 16006,
+  "byteLength": 64024,
+  "binary": "case-006.f32"
+}

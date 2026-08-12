@@ -106,6 +106,26 @@ state, while streaming preserves state across blocks.
 For file and batch processing without writing an application, see the
 [CLI guide](https://effetune.frieve.com/dsp/getting-started/cli/).
 
+### Graph v1
+
+Graph v1 is an experimental, opt-in API for static directed acyclic processing
+graphs. It keeps the same Effect objects as Chain v1 while adding fan-out,
+deterministic additive fan-in, edge gain/mute/stereo-pan/solo controls, wet/dry
+and send/return routing, and automatic delay compensation. Chain remains the
+default for serial processing, and existing Chain documents and behavior are
+unchanged.
+
+A Graph is fully validated, prepared, and allocated before its immutable plan
+is installed. The audio callback does not validate or traverse the document,
+allocate memory, activate assets, or change the graph structure. See the
+[Graph v1 guide](https://effetune.frieve.com/dsp/reference/graph-v1/) for the
+document, JavaScript and Python APIs, recipes, snapshots, errors, and deliberate
+first-version limitations.
+
+The generated Graph contract is the capacity authority for the schema, core,
+bindings, and public guide. Delay-compensation storage shares its published
+workspace limit rather than a separate delay quota.
+
 ## DSP Core Development
 
 This directory contains the host-neutral C++20 DSP core. It has no browser or

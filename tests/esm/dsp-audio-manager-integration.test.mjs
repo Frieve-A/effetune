@@ -25,6 +25,33 @@ function createPort() {
           requestId: message.requestId,
           samples: message.samples
         } });
+      } else if (message?.type === 'requestJsFallbackBudgetState') {
+        const required = this.jsFallbackRequiredSampleChannels ?? 0;
+        const budget = this.jsFallbackBudgetSampleChannels ?? 96000;
+        this.onmessage?.({ data: {
+          type: 'jsFallbackBudgetState',
+          requestId: message.requestId,
+          budgetSampleChannels: budget,
+          requiredSampleChannels: required,
+          admittedSampleChannels: required <= budget ? required : 0,
+          capacityExceeded: required > budget,
+          intrinsicCapacityExceeded: this.jsFallbackIntrinsicCapacityExceeded === true,
+          generation: this.jsFallbackGeneration ?? 1
+        } });
+      } else if (message?.type === 'configureJsFallbackBudget') {
+        this.jsFallbackBudgetSampleChannels = message.budgetSampleChannels;
+        if (!Number.isInteger(message.requestId)) return;
+        const required = this.jsFallbackRequiredSampleChannels ?? 0;
+        this.onmessage?.({ data: {
+          type: 'jsFallbackBudgetState',
+          requestId: message.requestId,
+          budgetSampleChannels: message.budgetSampleChannels,
+          requiredSampleChannels: required,
+          admittedSampleChannels: required <= message.budgetSampleChannels ? required : 0,
+          capacityExceeded: required > message.budgetSampleChannels,
+          intrinsicCapacityExceeded: this.jsFallbackIntrinsicCapacityExceeded === true,
+          generation: this.jsFallbackGeneration ?? 1
+        } });
       }
     }
   };
@@ -76,6 +103,7 @@ function createManager() {
   manager._parallelBranchSnapshot = null;
   manager._parallelPreparing = false;
   manager._parallelTeardownPromise = null;
+  manager._parallelFallbackBudgetInvalidated = false;
   manager._connectedPipelineSources = new Set();
   manager._dspModuleLoadPromise = null;
   manager._dspModuleLoadRequest = null;
@@ -114,6 +142,25 @@ class WasmOnlyTestPlugin {
 class RoomEqPlugin extends WasmOnlyTestPlugin {}
 class AMRadioSimulatorPlugin extends WasmOnlyTestPlugin {}
 class TubeSimulatorPlugin extends WasmOnlyTestPlugin {}
+
+class CapacityLimitedPlugin {
+  static executionCapabilities = Object.freeze({
+    jsFallbackCapacity: Object.freeze({
+      bypassAtOrAboveSampleRate: 192000,
+      processingChannelCount: 8
+    })
+  });
+
+  constructor(id) {
+    this.id = id;
+    this.enabled = true;
+    this.messages = [];
+  }
+
+  onMessage(message) {
+    this.messages.push(message);
+  }
+}
 
 class VolumePlugin {
   constructor(id, branch) {
@@ -682,16 +729,17 @@ test('AudioManager validates every generic WASM execution bypass reason', () => 
     'wasmUnavailable',
     'rolloutDisabled',
     'runtimeFallback',
+    'jsFallbackCapacityExceeded',
     'engineStopped'
   ];
 
   reasons.forEach((reason, index) => {
     manager.handleWorkletMessage({ data: state(index + 20, reason) }, main);
   });
-  manager.handleWorkletMessage({ data: state(26, 'internalFailure') }, main);
-  manager.handleWorkletMessage({ data: state(27, 'wasmUnavailable') }, auxiliary);
+  manager.handleWorkletMessage({ data: state(27, 'internalFailure') }, main);
+  manager.handleWorkletMessage({ data: state(28, 'wasmUnavailable') }, auxiliary);
   manager.handleWorkletMessage({ data: state(19, 'wasmUnavailable') }, main);
-  manager.handleWorkletMessage({ data: state(28, 'wasmUnavailable', {
+  manager.handleWorkletMessage({ data: state(29, 'wasmUnavailable', {
     pluginType: 'VolumePlugin'
   }) }, main);
 
@@ -702,7 +750,163 @@ test('AudioManager validates every generic WASM execution bypass reason', () => 
   assert.equal(dispatched.length, reasons.length);
   assert.deepEqual(
     dispatched.map(entry => entry.data.generation),
-    [20, 21, 22, 23, 24, 25]
+    [20, 21, 22, 23, 24, 25, 26]
+  );
+});
+
+test('AudioManager validates capacity state without requiring packed WASM parameters', () => {
+  const manager = createManager();
+  const main = createNode('main');
+  const plugin = new CapacityLimitedPlugin(46);
+  manager.workletNode = main;
+  manager.contextManager = { workletNode: main };
+  manager.pipelineA = [plugin];
+  manager.pipeline = manager.pipelineA;
+
+  manager.handleWorkletMessage({ data: {
+    type: 'dspExecutionState',
+    pluginId: 46,
+    pluginType: 'CapacityLimitedPlugin',
+    state: 'bypassed',
+    reason: 'jsFallbackCapacityExceeded',
+    generation: 1
+  } }, main);
+
+  assert.equal(plugin.messages.length, 1);
+  assert.equal(plugin.messages[0].reason, 'jsFallbackCapacityExceeded');
+  assert.equal(plugin.messages[0].validated, true);
+});
+
+test('AudioManager reports auxiliary capacity overflow and stops an invalid comparison', () => {
+  const manager = createManager();
+  const main = createNode('main');
+  const auxiliary = createNode('auxiliary');
+  const pluginA = new CapacityLimitedPlugin(46);
+  const pluginB = new CapacityLimitedPlugin(47);
+  manager.workletNode = main;
+  manager.contextManager = { workletNode: main };
+  manager.pipelineA = [pluginA];
+  manager.pipelineB = [pluginB];
+  manager.pipeline = manager.pipelineA;
+  manager._parallelActive = true;
+  manager._parallelWorkletB = auxiliary;
+  manager._parallelBranchSnapshot = {
+    pipelineA: {
+      plugins: [pluginA],
+      pluginData: [{ id: 46, type: 'CapacityLimitedPlugin', enabled: true }]
+    },
+    pipelineB: {
+      plugins: [pluginB],
+      pluginData: [{ id: 47, type: 'CapacityLimitedPlugin', enabled: true }]
+    }
+  };
+  const dispatched = [];
+  let teardownCount = 0;
+  manager.dispatchEvent = (type, data) => dispatched.push({ type, data });
+  manager.disableParallelPipelines = () => {
+    teardownCount++;
+    manager._parallelActive = false;
+    return true;
+  };
+
+  manager.handleWorkletMessage({ data: {
+    type: 'dspExecutionState',
+    pluginId: 47,
+    pluginType: 'CapacityLimitedPlugin',
+    state: 'bypassed',
+    reason: 'jsFallbackCapacityExceeded',
+    jsFallbackSampleChannels: 96000,
+    generation: 3
+  } }, auxiliary);
+
+  assert.equal(pluginB.messages.length, 0, 'hidden branch state must not mutate plugin UI state');
+  assert.equal(dispatched[0].type, 'dspExecutionState');
+  assert.equal(dispatched[0].data.branch, 'B');
+  assert.equal(dispatched[0].data.validated, true);
+  assert.deepEqual(dispatched[1], {
+    type: 'parallelInvalidated',
+    data: {
+      reason: 'jsFallbackCapacityExceeded',
+      branch: 'B',
+      restorePrimaryDsp: true
+    }
+  });
+  assert.equal(teardownCount, 1);
+});
+
+test('AudioManager fixes two parallel fallback quotas within one 96k budget', async () => {
+  const manager = createManager();
+  const main = createNode('main');
+  const auxiliary = createNode('auxiliary');
+  manager.workletNode = main;
+  manager.contextManager = { workletNode: main };
+  manager._parallelPreparing = true;
+  manager._parallelWorkletB = auxiliary;
+  main.port.jsFallbackRequiredSampleChannels = 48000;
+  auxiliary.port.jsFallbackRequiredSampleChannels = 48000;
+  main.port.onmessage = event => manager.handleWorkletMessage(event, main);
+  auxiliary.port.onmessage = event => manager.handleWorkletMessage(event, auxiliary);
+  const barrier = manager._createParallelDspBarrier([main, auxiliary]);
+
+  const prepared = await manager._prepareParallelJsFallbackBudgets(
+    barrier,
+    main,
+    auxiliary,
+    Date.now() + 1000
+  );
+
+  assert.equal(prepared, true);
+  assert.deepEqual([
+    main.port.jsFallbackBudgetSampleChannels,
+    auxiliary.port.jsFallbackBudgetSampleChannels
+  ], [48000, 48000]);
+  assert.equal(
+    main.port.messages.some(entry => entry.message.type === 'configureJsFallbackBudget' &&
+      entry.message.budgetSampleChannels === 48000),
+    true
+  );
+  assert.equal(
+    auxiliary.port.messages.some(entry => entry.message.type === 'configureJsFallbackBudget' &&
+      entry.message.budgetSampleChannels === 48000),
+    true
+  );
+});
+
+test('AudioManager rejects parallel fallback demand above the combined 96k budget', async () => {
+  const manager = createManager();
+  const main = createNode('main');
+  const auxiliary = createNode('auxiliary');
+  manager.workletNode = main;
+  manager.contextManager = { workletNode: main };
+  manager._parallelPreparing = true;
+  manager._parallelWorkletB = auxiliary;
+  main.port.jsFallbackRequiredSampleChannels = 96000;
+  auxiliary.port.jsFallbackRequiredSampleChannels = 48000;
+  main.port.onmessage = event => manager.handleWorkletMessage(event, main);
+  auxiliary.port.onmessage = event => manager.handleWorkletMessage(event, auxiliary);
+  const dispatched = [];
+  manager.dispatchEvent = (type, data) => dispatched.push({ type, data });
+  const barrier = manager._createParallelDspBarrier([main, auxiliary]);
+
+  const prepared = await manager._prepareParallelJsFallbackBudgets(
+    barrier,
+    main,
+    auxiliary,
+    Date.now() + 1000
+  );
+
+  assert.equal(prepared, false);
+  assert.deepEqual(dispatched, [{
+    type: 'parallelInvalidated',
+    data: { reason: 'jsFallbackCapacityExceeded', restorePrimaryDsp: true }
+  }]);
+  assert.equal(
+    main.port.messages.some(entry => entry.message.type === 'configureJsFallbackBudget'),
+    false
+  );
+  assert.equal(
+    auxiliary.port.messages.some(entry => entry.message.type === 'configureJsFallbackBudget'),
+    false
   );
 });
 
@@ -1863,6 +2067,10 @@ test('AudioManager no-op parallel teardown preserves primary DSP retry and trans
     assert.equal(manager._dspReadyFallbacks.get(main), fallbackState);
     assert.equal(manager._dspReadyTransitionPromise, transition);
     assert.equal(manager._audioGraphGeneration, generation);
+    assert.equal(
+      main.port.messages.at(-1).message.budgetSampleChannels,
+      96000
+    );
   });
 });
 
@@ -1934,7 +2142,7 @@ test('AudioManager normal teardown restores preferred primary DSP with or withou
       const barrier = manager._createParallelDspBarrier([main, auxiliary]);
       manager._settleParallelDspBarrier(barrier, 'js');
       if (withCapability) manager._dspCapabilitiesByNode.set(main, { type: 'dspReady' });
-      return { manager, main };
+      return { manager, main, auxiliary };
     };
 
     const cached = setup(true);
@@ -1943,6 +2151,8 @@ test('AudioManager normal teardown restores preferred primary DSP with or withou
       cached.main.port.messages.filter(entry => entry.message.type === 'dspEnableTypes').at(-1).message.types,
       ['VolumePlugin']
     );
+    assert.equal(cached.main.port.jsFallbackBudgetSampleChannels, 96000);
+    assert.equal(cached.auxiliary.port.jsFallbackBudgetSampleChannels, 0);
 
     const cold = setup(false);
     const restoring = cold.manager.disableParallelPipelines();

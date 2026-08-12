@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "type": "ChorusPlugin",
+  "id": "flanger-negative-feedback",
+  "stimulus": "imp",
+  "sampleRate": 192000,
+  "channels": 8,
+  "frameCount": 12001,
+  "blockSize": 113,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "md": "Flanger",
+    "rt": 4,
+    "dl": 2,
+    "dp": 1.8,
+    "vc": 3,
+    "ss": 75,
+    "fb": -75,
+    "mx": 50
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "cd8d937332e8bb9b1133e50fa4e513e0e00e3d96eb6e320d38205d26d16c3eb4",
+  "outputFloats": 96008,
+  "byteLength": 384032,
+  "binary": "case-004.f32"
+}

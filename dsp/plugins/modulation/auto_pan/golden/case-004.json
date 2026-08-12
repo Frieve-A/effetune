@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "AutoPanPlugin",
+  "id": "odd-multiple-pairs",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 5,
+  "frameCount": 5003,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "rt": 0.05,
+    "dp": 100,
+    "ct": 20,
+    "wd": 100,
+    "wf": "Sine",
+    "ph": 181
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "a59a4a1b17d3786878ca3fee9f15d64fc38d272c45f12de6192e82497a07409f",
+  "outputFloats": 25015,
+  "byteLength": 100060,
+  "binary": "case-004.f32"
+}

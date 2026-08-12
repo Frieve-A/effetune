@@ -62,6 +62,31 @@ def _validate_stream_parameter_update(
         )
 
 
+def _canonicalize_processing_parameters(
+    effect_type: str, parameters: Mapping[str, Any]
+) -> dict[str, Any]:
+    canonical = dict(parameters)
+    if (
+        effect_type == "AutoFilter"
+        and canonical["minimumFrequency"] > canonical["maximumFrequency"]
+    ):
+        canonical["minimumFrequency"], canonical["maximumFrequency"] = (
+            canonical["maximumFrequency"],
+            canonical["minimumFrequency"],
+        )
+    elif effect_type == "Chorus" and canonical["depth"] > canonical["delay"]:
+        canonical["depth"] = canonical["delay"]
+    elif (
+        effect_type == "FrequencyShifter"
+        and canonical["minimumShift"] > canonical["maximumShift"]
+    ):
+        canonical["minimumShift"], canonical["maximumShift"] = (
+            canonical["maximumShift"],
+            canonical["minimumShift"],
+        )
+    return canonical
+
+
 def _effect_channels(channel: str, channels: int) -> int:
     if channel == "all":
         return channels
@@ -260,6 +285,7 @@ class Stream:
             str, tuple[int, Effect, np.ndarray, np.ndarray | None, int]
         ] = {}
         self._current_parameters: dict[str, dict[str, Any]] = {}
+        self._processing_parameters: dict[str, dict[str, Any]] = {}
 
         enabled = [(index, effect) for index, effect in enumerate(chain.effects) if effect.enabled]
         resolved_assets: dict[int, Any] = {}
@@ -397,6 +423,11 @@ class Stream:
                         layout_hash,
                     )
                     self._current_parameters[effect.id] = dict(effect.parameters)
+                    self._processing_parameters[effect.id] = (
+                        _canonicalize_processing_parameters(
+                            effect.effect_type, effect.parameters
+                        )
+                    )
             native.finish()
             for native_index, packed_bytes, layout_hash in initial_parameter_bytes:
                 native.set_effect_parameter_bytes(
@@ -491,6 +522,7 @@ class Stream:
                 packed_bytes,
                 layout_hash,
                 parameters,
+                processing_parameters,
             ) in prepared_events:
                 self._process_range(output, cursor, frame)
                 self._native.set_effect_parameters(
@@ -501,6 +533,7 @@ class Stream:
                         native_index, packed_bytes, layout_hash
                     )
                 self._current_parameters[effect_id] = parameters
+                self._processing_parameters[effect_id] = processing_parameters
                 cursor = frame
             self._process_range(output, cursor, output.shape[1])
         except Exception as error:
@@ -510,19 +543,44 @@ class Stream:
     def _prepare_events(
         self, events: Iterable[Mapping[str, Any]], frames: int
     ) -> list[
-        tuple[int, str, int, np.ndarray, np.ndarray | None, int, dict[str, Any]]
+        tuple[
+            int,
+            str,
+            int,
+            np.ndarray,
+            np.ndarray | None,
+            int,
+            dict[str, Any],
+            dict[str, Any],
+        ]
     ]:
         try:
             supplied = list(events)
         except TypeError as error:
             raise ValidationError("events must be an iterable of parameter event objects") from error
         prepared: list[
-            tuple[int, str, int, np.ndarray, np.ndarray | None, int, dict[str, Any]]
+            tuple[
+                int,
+                str,
+                int,
+                np.ndarray,
+                np.ndarray | None,
+                int,
+                dict[str, Any],
+                dict[str, Any],
+            ]
         ] = []
         working_parameters = {
             effect_id: dict(parameters)
             for effect_id, parameters in self._current_parameters.items()
         }
+        working_processing_parameters = {
+            effect_id: dict(parameters)
+            for effect_id, parameters in self._processing_parameters.items()
+        }
+        pending_patches: dict[
+            str, tuple[int, dict[str, Any], dict[str, Any]]
+        ] = {}
         for index, event in enumerate(supplied):
             if not isinstance(event, Mapping) or set(event) != {
                 "frame",
@@ -557,9 +615,26 @@ class Stream:
             merged.update(parameters)
             validated = validate_parameters(effect.effect_type, merged)
             working_parameters[effect_id] = validated
+
+            pending = pending_patches.get(effect_id)
+            if pending is None or pending[0] != int(frame):
+                pending = (
+                    int(frame),
+                    dict(working_processing_parameters[effect_id]),
+                    {},
+                )
+                pending_patches[effect_id] = pending
+            pending[2].update(parameters)
+            processing_merged = dict(pending[1])
+            processing_merged.update(pending[2])
+            processing_validated = _canonicalize_processing_parameters(
+                effect.effect_type,
+                validate_parameters(effect.effect_type, processing_merged),
+            )
+            working_processing_parameters[effect_id] = processing_validated
             event_effect = Effect(
                 effect.effect_type,
-                parameters=validated,
+                parameters=processing_validated,
                 assets=effect.assets,
             )
             packed, layout_hash, _ = pack_parameters(event_effect)
@@ -573,6 +648,7 @@ class Stream:
                     packed_bytes,
                     layout_hash,
                     validated,
+                    processing_validated,
                 )
             )
         if any(
@@ -634,6 +710,11 @@ class Stream:
                         native_index, initial_packed_bytes, layout_hash
                     )
                 self._current_parameters[effect_id] = dict(effect.parameters)
+                self._processing_parameters[effect_id] = (
+                    _canonicalize_processing_parameters(
+                        effect.effect_type, effect.parameters
+                    )
+                )
         except Exception as error:
             raise EffeTuneRuntimeError("native DSP reset failed") from error
 

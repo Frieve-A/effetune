@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "AutoPanPlugin",
+  "id": "default-stereo",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 4099,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "rt": 0.35,
+    "dp": 45,
+    "ct": 0,
+    "wd": 70,
+    "wf": "Sine",
+    "ph": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "a59a4a1b17d3786878ca3fee9f15d64fc38d272c45f12de6192e82497a07409f",
+  "outputFloats": 8198,
+  "byteLength": 32792,
+  "binary": "case-001.f32"
+}

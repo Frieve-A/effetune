@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "type": "RotarySpeakerPlugin",
+  "id": "stop-mono-neutral-motion",
+  "stimulus": "sweep",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 7003,
+  "blockSize": 83,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "ss": "Stop",
+    "sp": 100,
+    "ac": 2.2,
+    "xo": 200,
+    "rb": 0,
+    "sw": 0,
+    "dd": 0,
+    "ad": 0,
+    "mx": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "08370065509cabeb9e6c59e754457a91bdfb05f3c914c452e2fb686e1c3a4aba",
+  "outputFloats": 7003,
+  "byteLength": 28012,
+  "binary": "case-003.f32"
+}

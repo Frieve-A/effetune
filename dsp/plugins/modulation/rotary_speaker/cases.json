@@ -1,0 +1,74 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 64,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    { "id": "slow-default", "stimulus": "sweep", "frames": 7001 },
+    {
+      "id": "fast-maximum-motion",
+      "stimulus": "noise",
+      "frames": 8003,
+      "params": { "ss": "Fast", "sp": 200, "ac": 0.1, "xo": 2000, "rb": 0, "sw": 100, "dd": 100, "ad": 100, "mx": 100 }
+    },
+    {
+      "id": "stop-mono-neutral-motion",
+      "stimulus": "sweep",
+      "sampleRate": 44100,
+      "blockSize": 83,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 7003,
+      "params": { "ss": "Stop", "xo": 200, "rb": 0, "sw": 0, "dd": 0, "ad": 0, "mx": 100 }
+    },
+    {
+      "id": "odd-multichannel-96k",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "blockSize": 127,
+      "channels": 5,
+      "frames": 9001,
+      "params": { "ss": "Slow", "sp": 125, "ac": 3.7, "xo": 1200, "rb": -35, "sw": 85, "dd": 60, "ad": 45, "mx": 80 }
+    },
+    {
+      "id": "all8-192k",
+      "stimulus": "sweep",
+      "sampleRate": 192000,
+      "blockSize": 127,
+      "channels": 8,
+      "frames": 12001,
+      "params": { "ss": "Fast", "sp": 100, "ac": 1.5, "xo": 1800, "rb": 40, "sw": 100, "dd": 75, "ad": 80, "mx": 75 }
+    },
+    {
+      "id": "continuous-speed-events",
+      "stimulus": "noise",
+      "frames": 10003,
+      "events": [
+        { "frame": 1001, "params": { "ss": "Fast" } },
+        { "frame": 3001, "params": { "sp": 150, "ac": 0.5, "sw": 100 } },
+        { "frame": 5501, "params": { "ss": "Stop", "xo": 1400 } },
+        { "frame": 8501, "params": { "ss": "Slow", "rb": -50, "mx": 50 } }
+      ]
+    },
+    {
+      "id": "dry-transparent-one-frame",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "blockSize": 1,
+      "channels": 3,
+      "frames": 6001,
+      "params": { "ss": "Fast", "sp": 200, "sw": 100, "dd": 100, "ad": 100, "mx": 0 }
+    },
+    {
+      "id": "fast200-stop25-transition",
+      "stimulus": "noise",
+      "frames": 24001,
+      "params": { "ss": "Fast", "sp": 200, "ac": 0.1, "xo": 800, "rb": 0, "sw": 100, "dd": 100, "ad": 100, "mx": 100 },
+      "events": [
+        { "frame": 10001, "params": { "ss": "Stop", "sp": 25, "ac": 2.2 } }
+      ]
+    }
+  ]
+}

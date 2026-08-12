@@ -3,8 +3,8 @@
 <!-- BEGIN DSP-LIBRARY-JAVASCRIPT-SUMMARY -->
 EffeTune DSP provides the same MIT-licensed C++ audio kernels used by EffeTune
 as a self-contained WebAssembly package for Node.js and evergreen browsers.
-Version 0.4.0 exposes all 84 catalog types through the generic Chain and
-`createEffect` APIs and 84 generated named convenience classes,
+Version 0.4.0 exposes all 90 catalog types through the generic Chain and
+`createEffect` APIs and 90 generated named convenience classes,
 decoded analyzer telemetry, versioned semantic presets, deterministic seeds, and an AudioWorklet wrapper.
 <!-- END DSP-LIBRARY-JAVASCRIPT-SUMMARY -->
 
@@ -39,6 +39,44 @@ const output = await chain.process(input, { sampleRate: 48000 });
 console.log(output.length, output[0].length, output[0][0]);
 chain.close();
 ```
+
+### Graph v1 quickstart
+
+Graph v1 is opt-in routing for branching and merging:
+
+```js
+import { Graph, createGraph, createVolume } from '@effetune/dsp';
+
+const input = [
+  new Float32Array(128).fill(0.25),
+  new Float32Array(128).fill(0.25)
+];
+const graphDocument = Graph.wetDry(
+  createVolume({ id: 'wet', volume: -6 }),
+  { dry: 0.5, wet: 0.5 }
+);
+const graph = await createGraph(graphDocument);
+let stream;
+
+try {
+  const offline = await graph.process(input, { sampleRate: 48000 });
+  stream = await graph.stream({
+    sampleRate: 48000,
+    channels: 2,
+    blockSize: 128
+  });
+  const continuous = await stream.process(input);
+  console.log(
+    offline[0][0],
+    continuous[0][0],
+    stream.latencySamples,
+    stream.compileSnapshot.effectiveSchedule
+  );
+} finally {
+  stream?.close();
+  graph.close();
+}
+```
 <!-- END DSP-LIBRARY-JAVASCRIPT-START -->
 
 The package is ESM-only. Save the example as `start.mjs` and run
@@ -51,9 +89,13 @@ Public package entry points are:
 - `@effetune/dsp/worklet` for `EffeTuneNode`
 - `@effetune/dsp/processor` for the side-effect AudioWorklet processor
 - `@effetune/dsp/schemas/chain-v1.json` for the Chain v1 JSON Schema
+- `@effetune/dsp/schemas/graph-v1.json` for the Graph v1 JSON Schema
 - `@effetune/dsp/schemas/bundle-v1.json` for the Bundle v1 JSON Schema
 - `@effetune/dsp/catalog` for ESM catalog exports
 - `@effetune/dsp/catalog.json` for the machine-readable catalog JSON
+
+Graph v1 is opt-in. Its current capacities and delay-storage accounting are
+published in the [Graph v1 guide](https://effetune.frieve.com/dsp/reference/graph-v1/#capacity).
 
 Every offline `process()` call starts from fresh DSP state and returns newly
 owned `Float32Array` channels. Input arrays are never mutated. Effects run in
@@ -134,9 +176,64 @@ verify exact byte length and SHA-256 before accepting an ETA1 payload. The
 complete payload and convolution footprint must fit the 32 MiB kernel cap.
 
 `EFFECT_CATALOG` and `getEffectCatalog()` expose the machine-readable semantic
-catalog for all 83 root classes and their `create<Type>()` factories. The
+catalog for all 90 root classes and their `create<Type>()` factories. The
 catalog contains channel choices, parameters, required assets, telemetry, and
 latency declarations, but no private implementation mapping.
+
+### Modulation Style recipes
+
+The application-only **Style** selector is not a DSP parameter or a second
+preset API. The following JSON-compatible objects are the equivalent public
+parameter dictionaries. Copy one into a named constructor, for example
+`new Chorus(MODULATION_STYLES.Chorus.Flanger)`, or into a Chain effect's
+`parameters` object.
+
+```js
+const MODULATION_STYLES = {
+  AutoFilter: {
+    "Auto Filter Sweep": { mode: "LFO", filterType: "Low-pass", minimumFrequency: 200, maximumFrequency: 4000, resonance: 1.5, mix: 80, rate: 0.5, waveform: "Sine", stereoPhase: 0, sensitivity: 24, attack: 20, release: 250, direction: "Up" },
+    "Stereo Filter Sweep": { mode: "LFO", filterType: "Low-pass", minimumFrequency: 160, maximumFrequency: 6000, resonance: 2, mix: 85, rate: 0.35, waveform: "Sine", stereoPhase: 120, sensitivity: 24, attack: 20, release: 250, direction: "Up" },
+    "Envelope Filter": { mode: "Envelope", filterType: "Low-pass", minimumFrequency: 100, maximumFrequency: 5000, resonance: 1.2, mix: 85, rate: 0.5, waveform: "Sine", stereoPhase: 0, sensitivity: 24, attack: 18, release: 300, direction: "Up" },
+    "Auto Wah": { mode: "Envelope", filterType: "Band-pass", minimumFrequency: 180, maximumFrequency: 2400, resonance: 5, mix: 100, rate: 0.5, waveform: "Sine", stereoPhase: 0, sensitivity: 30, attack: 8, release: 180, direction: "Up" },
+    "Reverse Auto Wah": { mode: "Envelope", filterType: "Band-pass", minimumFrequency: 180, maximumFrequency: 2800, resonance: 4, mix: 100, rate: 0.5, waveform: "Sine", stereoPhase: 0, sensitivity: 30, attack: 12, release: 350, direction: "Down" }
+  },
+  AutoPan: {
+    "Gentle Auto Pan": { rate: 0.35, depth: 45, center: 0, width: 70, waveform: "Sine", phase: 0 },
+    "Wide Auto Pan": { rate: 0.7, depth: 100, center: 0, width: 100, waveform: "Sine", phase: 0 },
+    "Fast Auto Pan": { rate: 4, depth: 85, center: 0, width: 100, waveform: "Triangle", phase: 0 }
+  },
+  Chorus: {
+    "Classic Chorus": { mode: "Chorus", rate: 0.8, delay: 12, depth: 3, voices: 3, stereoSpread: 60, feedback: 0, mix: 45 },
+    "Stereo Chorus": { mode: "Stereo Chorus", rate: 0.65, delay: 15, depth: 4, voices: 2, stereoSpread: 80, feedback: 0, mix: 50 },
+    Ensemble: { mode: "Ensemble", rate: 0.45, delay: 20, depth: 6, voices: 6, stereoSpread: 100, feedback: 0, mix: 60 },
+    Flanger: { mode: "Flanger", rate: 0.35, delay: 2.5, depth: 2, voices: 1, stereoSpread: 35, feedback: 45, mix: 50 },
+    "Jet Flanger": { mode: "Flanger", rate: 0.18, delay: 1.5, depth: 1.4, voices: 1, stereoSpread: 70, feedback: -75, mix: 55 },
+    Vibrato: { mode: "Vibrato", rate: 4.5, delay: 8, depth: 5, voices: 1, stereoSpread: 50, feedback: 0, mix: 100 }
+  },
+  FrequencyShifter: {
+    "Shift Up": { mode: "Shift", shift: 8, carrierFrequency: 440, minimumShift: 20, maximumShift: 800, rate: 0.15, direction: "Up", stereoPhase: 0, mix: 100 },
+    "Shift Down": { mode: "Shift", shift: -8, carrierFrequency: 440, minimumShift: 20, maximumShift: 800, rate: 0.15, direction: "Down", stereoPhase: 0, mix: 100 },
+    "Fine Detune": { mode: "Shift", shift: 2, carrierFrequency: 440, minimumShift: 20, maximumShift: 800, rate: 0.15, direction: "Up", stereoPhase: 90, mix: 55 },
+    "Ring Modulator": { mode: "Ring Mod", shift: 8, carrierFrequency: 440, minimumShift: 20, maximumShift: 800, rate: 0.15, direction: "Up", stereoPhase: 0, mix: 100 },
+    "Barber-pole Up": { mode: "Barber-pole", shift: 8, carrierFrequency: 440, minimumShift: 20, maximumShift: 900, rate: 0.12, direction: "Up", stereoPhase: 90, mix: 85 },
+    "Barber-pole Down": { mode: "Barber-pole", shift: -8, carrierFrequency: 440, minimumShift: 20, maximumShift: 900, rate: 0.12, direction: "Down", stereoPhase: 90, mix: 85 }
+  },
+  Phaser: {
+    "Classic Phaser": { mode: "Classic", rate: 0.5, centerFrequency: 1000, range: 3, stages: 6, feedback: 20, stereoPhase: 90, direction: "Up", mix: 50 },
+    "Deep Phaser": { mode: "Classic", rate: 0.25, centerFrequency: 700, range: 4.5, stages: 12, feedback: 55, stereoPhase: 30, direction: "Up", mix: 55 },
+    "Stereo Phaser": { mode: "Classic", rate: 0.65, centerFrequency: 1200, range: 3.5, stages: 8, feedback: 25, stereoPhase: 120, direction: "Up", mix: 50 },
+    "Barber-pole Up": { mode: "Barber-pole", rate: 0.35, centerFrequency: 1000, range: 5, stages: 8, feedback: 30, stereoPhase: 60, direction: "Up", mix: 55 },
+    "Barber-pole Down": { mode: "Barber-pole", rate: 0.35, centerFrequency: 1000, range: 5, stages: 8, feedback: 30, stereoPhase: 60, direction: "Down", mix: 55 }
+  },
+  RotarySpeaker: {
+    "Rotary Slow": { speedState: "Slow", speed: 100, acceleration: 2.2, crossover: 800, rotorBalance: 0, stereoWidth: 75, dopplerDepth: 45, amplitudeDepth: 55, mix: 70 },
+    "Rotary Fast": { speedState: "Fast", speed: 100, acceleration: 1.4, crossover: 800, rotorBalance: 0, stereoWidth: 85, dopplerDepth: 65, amplitudeDepth: 70, mix: 78 },
+    "Gentle Rotary": { speedState: "Slow", speed: 75, acceleration: 3, crossover: 900, rotorBalance: 0, stereoWidth: 45, dopplerDepth: 25, amplitudeDepth: 30, mix: 55 },
+    "Leslie Slow": { speedState: "Slow", speed: 100, acceleration: 2.8, crossover: 800, rotorBalance: -5, stereoWidth: 80, dopplerDepth: 50, amplitudeDepth: 60, mix: 75 },
+    "Leslie Fast": { speedState: "Fast", speed: 100, acceleration: 1.8, crossover: 800, rotorBalance: -5, stereoWidth: 90, dopplerDepth: 70, amplitudeDepth: 75, mix: 82 }
+  }
+};
+```
 
 For stateful processing, `ChainStream.latencySamples` reports aggregate runtime
 latency and matches Python `Stream.latency_samples` for the same chain and

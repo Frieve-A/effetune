@@ -4932,6 +4932,354 @@
       ],
       "assets": []
     },
+    "AutoFilter": {
+      "internalType": "AutoFilterPlugin",
+      "layoutHash": 1612236675,
+      "floatCount": 13,
+      "packedParameters": [
+        {
+          "publicName": "mode",
+          "field": "mode",
+          "keys": [
+            "md"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "filterType",
+          "field": "filterType",
+          "keys": [
+            "ft"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "minimumFrequency",
+          "field": "minimumFrequency",
+          "keys": [
+            "lf"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "maximumFrequency",
+          "field": "maximumFrequency",
+          "keys": [
+            "hf"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "resonance",
+          "field": "resonance",
+          "keys": [
+            "rs"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "rate",
+          "field": "rate",
+          "keys": [
+            "rt"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "waveform",
+          "field": "waveform",
+          "keys": [
+            "wf"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "stereoPhase",
+          "field": "stereoPhase",
+          "keys": [
+            "sp"
+          ],
+          "offset": 8,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "sensitivity",
+          "field": "sensitivity",
+          "keys": [
+            "sn"
+          ],
+          "offset": 9,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "attack",
+          "field": "attack",
+          "keys": [
+            "at"
+          ],
+          "offset": 10,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "release",
+          "field": "release",
+          "keys": [
+            "rl"
+          ],
+          "offset": 11,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "direction",
+          "field": "direction",
+          "keys": [
+            "dr"
+          ],
+          "offset": 12,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "AutoPan": {
+      "internalType": "AutoPanPlugin",
+      "layoutHash": 1469569767,
+      "floatCount": 6,
+      "packedParameters": [
+        {
+          "publicName": "rate",
+          "field": "rate",
+          "keys": [
+            "rt"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "depth",
+          "field": "depth",
+          "keys": [
+            "dp"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "center",
+          "field": "center",
+          "keys": [
+            "ct"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "width",
+          "field": "width",
+          "keys": [
+            "wd"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "waveform",
+          "field": "waveform",
+          "keys": [
+            "wf"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "phase",
+          "field": "phase",
+          "keys": [
+            "ph"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "Chorus": {
+      "internalType": "ChorusPlugin",
+      "layoutHash": 2730690922,
+      "floatCount": 8,
+      "packedParameters": [
+        {
+          "publicName": "mode",
+          "field": "mode",
+          "keys": [
+            "md"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "rate",
+          "field": "rate",
+          "keys": [
+            "rt"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "delay",
+          "field": "delay",
+          "keys": [
+            "dl"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "depth",
+          "field": "depth",
+          "keys": [
+            "dp"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "voices",
+          "field": "voices",
+          "keys": [
+            "vc"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "stereoSpread",
+          "field": "stereoSpread",
+          "keys": [
+            "ss"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "feedback",
+          "field": "feedback",
+          "keys": [
+            "fb"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
     "DopplerDistortion": {
       "internalType": "DopplerDistortionPlugin",
       "layoutHash": 10372816,
@@ -4988,6 +5336,238 @@
       ],
       "assets": []
     },
+    "FrequencyShifter": {
+      "internalType": "FrequencyShifterPlugin",
+      "layoutHash": 1854760556,
+      "floatCount": 9,
+      "packedParameters": [
+        {
+          "publicName": "mode",
+          "field": "mode",
+          "keys": [
+            "md"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "shift",
+          "field": "shift",
+          "keys": [
+            "sh"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "carrierFrequency",
+          "field": "carrierFrequency",
+          "keys": [
+            "cf"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "minimumShift",
+          "field": "minimumShift",
+          "keys": [
+            "mn"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "maximumShift",
+          "field": "maximumShift",
+          "keys": [
+            "mx"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "rate",
+          "field": "rate",
+          "keys": [
+            "rt"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "direction",
+          "field": "direction",
+          "keys": [
+            "dr"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "stereoPhase",
+          "field": "stereoPhase",
+          "keys": [
+            "sp"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mix"
+          ],
+          "offset": 8,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "Phaser": {
+      "internalType": "PhaserPlugin",
+      "layoutHash": 2823426285,
+      "floatCount": 9,
+      "packedParameters": [
+        {
+          "publicName": "mode",
+          "field": "mode",
+          "keys": [
+            "md"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "rate",
+          "field": "rate",
+          "keys": [
+            "rt"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "centerFrequency",
+          "field": "centerFrequency",
+          "keys": [
+            "cf"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "range",
+          "field": "range",
+          "keys": [
+            "rg"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "stages",
+          "field": "stages",
+          "keys": [
+            "st"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "feedback",
+          "field": "feedback",
+          "keys": [
+            "fb"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "stereoPhase",
+          "field": "stereoPhase",
+          "keys": [
+            "sp"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "direction",
+          "field": "direction",
+          "keys": [
+            "dr"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 8,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
     "PitchShifter": {
       "internalType": "PitchShifterPlugin",
       "layoutHash": 1998192054,
@@ -5036,6 +5616,122 @@
             "xf"
           ],
           "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "RotarySpeaker": {
+      "internalType": "RotarySpeakerPlugin",
+      "layoutHash": 1430720979,
+      "floatCount": 9,
+      "packedParameters": [
+        {
+          "publicName": "speedState",
+          "field": "speedState",
+          "keys": [
+            "ss"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "speed",
+          "field": "speed",
+          "keys": [
+            "sp"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "acceleration",
+          "field": "acceleration",
+          "keys": [
+            "ac"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "crossover",
+          "field": "crossover",
+          "keys": [
+            "xo"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "rotorBalance",
+          "field": "rotorBalance",
+          "keys": [
+            "rb"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "stereoWidth",
+          "field": "stereoWidth",
+          "keys": [
+            "sw"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "dopplerDepth",
+          "field": "dopplerDepth",
+          "keys": [
+            "dd"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "amplitudeDepth",
+          "field": "amplitudeDepth",
+          "keys": [
+            "ad"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 8,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -7458,8 +8154,14 @@
     "dsp/plugins/lofi/tape_artifacts/params.json": "dsp/plugins/lofi/tape_artifacts/golden/index.json",
     "dsp/plugins/lofi/vinyl_artifacts/params.json": "dsp/plugins/lofi/vinyl_artifacts/golden/index.json",
     "dsp/plugins/lofi/vinyl_simulator/params.json": "dsp/plugins/lofi/vinyl_simulator/golden/index.json",
+    "dsp/plugins/modulation/auto_filter/params.json": "dsp/plugins/modulation/auto_filter/golden/index.json",
+    "dsp/plugins/modulation/auto_pan/params.json": "dsp/plugins/modulation/auto_pan/golden/index.json",
+    "dsp/plugins/modulation/chorus/params.json": "dsp/plugins/modulation/chorus/golden/index.json",
     "dsp/plugins/modulation/doppler_distortion/params.json": "dsp/plugins/modulation/doppler_distortion/golden/index.json",
+    "dsp/plugins/modulation/frequency_shifter/params.json": "dsp/plugins/modulation/frequency_shifter/golden/index.json",
+    "dsp/plugins/modulation/phaser/params.json": "dsp/plugins/modulation/phaser/golden/index.json",
     "dsp/plugins/modulation/pitch_shifter/params.json": "dsp/plugins/modulation/pitch_shifter/golden/index.json",
+    "dsp/plugins/modulation/rotary_speaker/params.json": "dsp/plugins/modulation/rotary_speaker/golden/index.json",
     "dsp/plugins/modulation/tremolo/params.json": "dsp/plugins/modulation/tremolo/golden/index.json",
     "dsp/plugins/modulation/wow_flutter/params.json": "dsp/plugins/modulation/wow_flutter/golden/index.json",
     "dsp/plugins/others/oscillator/params.json": "dsp/plugins/others/oscillator/golden/index.json",
@@ -7484,5 +8186,5 @@
     "dsp/plugins/spatial/phase_select_eq/params.json": "dsp/plugins/spatial/phase_select_eq/golden/index.json",
     "dsp/plugins/spatial/stereo_blend/params.json": "dsp/plugins/spatial/stereo_blend/golden/index.json"
   },
-  "contractDigest": "bac00ff064e5d37cd15faf5722af36efc684b04cb17bfbf6b247c1a709a82284"
+  "contractDigest": "46b03b458f10f26ff6a07e0cbbb74acbdd08ce99320fe51582728a8535fb1277"
 }

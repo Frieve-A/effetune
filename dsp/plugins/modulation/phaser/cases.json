@@ -1,0 +1,26 @@
+{
+  "defaults": { "sampleRate": 48000, "blockSize": 64, "channels": 2, "channelMode": "stereo" },
+  "cases": [
+    { "id": "default-classic", "stimulus": "noise", "frames": 4099 },
+    { "id": "dry-transparent", "stimulus": "sweep", "frames": 1001, "params": { "mx": 0 } },
+    { "id": "classic-maximum-stages", "stimulus": "imp", "sampleRate": 192000, "blockSize": 127, "channels": 8, "frames": 16001, "params": { "rt": 10, "cf": 8000, "rg": 6, "st": 12, "fb": 90, "sp": 180, "mx": 50 } },
+    { "id": "classic-negative-feedback", "stimulus": "imp", "sampleRate": 44100, "blockSize": 83, "channels": 1, "channelMode": "mono", "frames": 12001, "params": { "rt": 0.05, "cf": 80, "rg": 6, "st": 10, "fb": -90, "mx": 60 } },
+    { "id": "barber-up", "stimulus": "noise", "sampleRate": 96000, "blockSize": 113, "channels": 5, "channelMode": "all5", "frames": 10003, "params": { "md": "Barber-pole", "rt": 1.2, "cf": 1400, "rg": 5, "st": 8, "fb": 35, "sp": 120, "dr": "Up", "mx": 55 } },
+    { "id": "barber-down", "stimulus": "sin1k", "frames": 9001, "params": { "md": "Barber-pole", "rt": 0.75, "cf": 900, "rg": 4, "st": 6, "fb": -25, "dr": "Down", "mx": 50 } },
+    { "id": "barber-zero-range", "stimulus": "sweep", "blockSize": 79, "frames": 4099, "params": { "md": "Barber-pole", "rt": 10, "cf": 1400, "rg": 0, "st": 8, "fb": 0, "sp": 180, "dr": "Up", "mx": 100 } },
+    { "id": "discrete-transitions", "stimulus": "noise", "frames": 9001, "events": [
+      { "frame": 257, "params": { "st": 12 } },
+      { "frame": 2501, "params": { "md": "Barber-pole", "dr": "Up" } },
+      { "frame": 5003, "params": { "dr": "Down" } },
+      { "frame": 7501, "params": { "md": "Classic", "st": 4 } }
+    ] },
+    { "id": "one-frame-continuous-events", "stimulus": "noise", "sampleRate": 96000, "blockSize": 1, "channels": 3, "channelMode": "all3", "frames": 1003, "events": [
+      { "frame": 1, "params": { "rt": 10, "cf": 8000, "rg": 6 } },
+      { "frame": 499, "params": { "fb": -90, "sp": 180, "mx": 100 } }
+    ] },
+    { "id": "pending-during-fade-up", "stimulus": "noise", "blockSize": 1024, "channels": 1, "channelMode": "mono", "frames": 1027, "params": { "mx": 100 }, "events": [
+      { "frame": 1, "params": { "md": "Barber-pole", "st": 12, "dr": "Down" } },
+      { "frame": 361, "params": { "md": "Classic", "st": 4, "dr": "Up" } }
+    ] }
+  ]
+}

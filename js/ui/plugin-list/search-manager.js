@@ -148,6 +148,7 @@ export class SearchManager {
     filterPlugins(searchText) {
         const contentContainer = this.pluginList.querySelector('.plugin-list-content');
         if (!contentContainer) return;
+        const normalizedSearch = searchText.trim().toLowerCase();
 
         const categoryRows = contentContainer.querySelectorAll('.category-row');
         let totalVisibleEffects = 0;
@@ -171,11 +172,13 @@ export class SearchManager {
             items.forEach(item => {
                 // Get plugin name (direct text content, excluding description)
                 const pluginName = item.childNodes[0].textContent.trim();
+                const searchAliases = item.dataset.searchAliases || '';
                 
                 // Check if matches search criteria
-                const matchesSearch = searchText === '' || 
-                    categoryTitle.textContent.toLowerCase().includes(searchText.toLowerCase()) ||
-                    pluginName.toLowerCase().includes(searchText.toLowerCase());
+                const matchesSearch = normalizedSearch === '' ||
+                    categoryTitle.textContent.toLowerCase().includes(normalizedSearch) ||
+                    pluginName.toLowerCase().includes(normalizedSearch) ||
+                    searchAliases.toLowerCase().includes(normalizedSearch);
                 
                 // Show/hide this plugin
                 item.style.display = matchesSearch ? '' : 'none';
@@ -189,13 +192,13 @@ export class SearchManager {
             categoryRow.style.display = hasVisibleItems ? '' : 'none';
             
             // When searching, always show the items if there are matches
-            if (searchText && hasVisibleItems) {
+            if (normalizedSearch && hasVisibleItems) {
                 categoryItems.style.display = 'flex';
                 if (effectsCount) effectsCount.style.display = 'none';
                 // Update indicator to "expanded" state but don't change the actual state in storage
                 const indicator = categoryTitle.querySelector('.collapse-indicator');
                 if (indicator) indicator.textContent = '⌵';
-            } else if (!searchText) {
+            } else if (!normalizedSearch) {
                 // When not searching, restore the previous collapsed state
                 this.pluginListManager.updateCategoryVisibility(category);
             } else {
@@ -209,11 +212,11 @@ export class SearchManager {
         const effectCountDiv = this.pluginList.querySelector('#effectCount');
         if (effectCountDiv) {
             if (window.uiManager && window.uiManager.t) {
-                effectCountDiv.textContent = searchText ?
+                effectCountDiv.textContent = normalizedSearch ?
                     window.uiManager.t('ui.effectsFound', { count: totalVisibleEffects }) :
                     window.uiManager.t('ui.effectsAvailable', { count: totalVisibleEffects });
             } else {
-                effectCountDiv.textContent = searchText ?
+                effectCountDiv.textContent = normalizedSearch ?
                     `${totalVisibleEffects} effects found` :
                     `${totalVisibleEffects} effects available`;
             }

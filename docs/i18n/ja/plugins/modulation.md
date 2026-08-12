@@ -1,6 +1,6 @@
 ---
 title: "モジュレーションプラグイン - EffeTune"
-description: "Doppler Distortion、Pitch Shifter、Pitch Shifter HQ、Tremolo、Wow Flutterなどのモジュレーションエフェクトプラグイン。"
+description: "Auto Filter、Auto Pan、Chorus、Frequency Shifter、Phaser、Rotary Speakerなどのモジュレーションエフェクトプラグイン。"
 lang: ja
 ---
 
@@ -10,11 +10,81 @@ lang: ja
 
 ## プラグイン一覧
 
+- [Auto Filter](#auto-filter) - LFOまたは音量エンベロープで共振フィルターをスイープ
+- [Auto Pan](#auto-pan) - ステレオペアの音量を左右へなめらかに移動
+- [Chorus](#chorus) - コーラス、アンサンブル、フランジャー、ビブラートの揺らぎを追加
 - [Doppler Distortion](#doppler-distortion) - スピーカーコーンのわずかな動きによる自然で動的な音の変化をシミュレート
+- [Frequency Shifter](#frequency-shifter) - 周波数移動、リング変調、バーバーポールシフトを適用
+- [Phaser](#phaser) - クラシックまたはバーバーポール方式のピークとノッチの動きを生成
 - [Pitch Shifter](#pitch-shifter) - 再生速度を変えずに音楽のピッチを変更
 - [Pitch Shifter HQ](#pitch-shifter-hq) - 遅延やCPU負荷より音質を重視し、位相の乱れを抑えてピッチを変更
+- [Rotary Speaker](#rotary-speaker) - ホーンとドラムの異なる回転を組み合わせたロータリースピーカー効果
 - [Tremolo](#tremolo) - 脈打つようなリズミカルな音量変化を作成
 - [Wow Flutter](#wow-flutter) - レコードやテーププレーヤーの穏やかなピッチ揺れを再現
+
+## Auto Filter
+
+LFOまたは入力音のエンベロープでステートバリアブルフィルターを自動的に動かします。EnvelopeモードはEnvelope FilterやAuto Wahとして使えます。アルゴリズム上の遅延は0です。
+
+### 音質調整のヒント
+
+- 穏やかな音色変化にはLFO、Low-pass、低めのResonance、30〜50%程度のMixから始めます。
+- Auto WahにはEnvelopeとBand-passを選び、強い音でフィルターが適度に開くようSensitivityを調整します。
+- Attackを長くすると打音への反応が丸くなり、Releaseを長くすると戻りがなめらかになります。
+
+### パラメータ
+
+- **Style**: 全パラメータをまとめて設定する完全なファクトリー設定です。候補は**Auto Filter Sweep**（LFO）、**Stereo Filter Sweep**（LFO）、**Envelope Filter**（Envelope）、**Auto Wah**（Envelope）、**Reverse Auto Wah**（Envelope）です。個別のパラメータを変更すると**Custom**になります。
+- **Mode**: 周期的に動くLFOと、音量に追従するEnvelopeを切り替えます。
+- **Filter Type**: Low-pass、Band-pass、High-passを選びます。
+- **Minimum Frequency / Maximum Frequency** (20〜20,000 Hz): 移動範囲です。逆順なら自動で並べ替え、同じ値なら固定されます。処理時はナイキスト周波数より安全な範囲に制限されます。
+- **Resonance** (Q 0.5〜20): 高いほどカットオフ付近を強調します。
+- **Mix** (0〜100%): 原音とフィルター音の比率です。0%は原音のままです。
+- **Rate**、**Waveform**、**Stereo Phase**: LFOの速度、軌跡、ステレオペア内の位相差です。LFOモードだけで使います。
+- **Sensitivity**、**Attack**、**Release**、**Direction**: Envelopeの反応量、立ち上がり、戻り、移動方向です。Envelopeモードだけで使います。
+
+## Auto Pan
+
+隣接する各ステレオペアの音量を左右へ動かします。ペア間で音声は混ぜず、最後に余った1チャンネルはモノラルとして扱います。アルゴリズム上の遅延は0です。
+
+### 音質調整のヒント
+
+- 0.2〜0.5 Hz程度のRateと控えめなDepthから始めると、ゆったりした動きになります。
+- ヘッドホンで広すぎる場合はWidthを下げ、左右の基準位置はCenterで調整します。
+- Sineは端でゆっくり、Triangleはより均一な速度で移動します。
+
+### パラメータ
+
+- **Style**: 全パラメータをまとめて設定する完全なファクトリー設定です。候補は**Gentle Auto Pan**、**Wide Auto Pan**、**Fast Auto Pan**です。個別のパラメータを変更すると**Custom**になります。
+- **Rate** (0.05〜20 Hz): 移動速度。
+- **Depth** (0〜100%): Centerを基準にした移動量。0%は変化なしです。
+- **Center** (-100〜100%): 中心位置を左右へ移します。
+- **Width** (0〜100%): 使用するステレオ幅。
+- **Waveform**: SineまたはTriangle。
+- **Phase** (0〜360°): 周期運動の開始位置。
+
+## Chorus
+
+4点3次補間した複数の可変ディレイ音を加えます。Stereo Chorus、Ensemble、Flanger、VibratoをModeで選べます。可変ディレイは聞こえる遅れを作りますが固定遅延ではないため、報告されるアルゴリズム遅延は0です。
+
+### 音質調整のヒント
+
+- 自然な厚みにはClassic ChorusまたはStereo Chorusを使い、RateとDepthを控えめにします。
+- EnsembleはVoicesを増やすほど密になります。Depthを上げすぎるとピッチの揺れが目立ちます。
+- FlangerだけがFeedbackを使います。正負でコームフィルターの極性が変わります。
+- Vibratoは常に100%ウェットです。
+
+### パラメータ
+
+- **Style**: 全パラメータをまとめて設定する完全なファクトリー設定です。候補は**Classic Chorus**（Chorus）、**Stereo Chorus**（Stereo Chorus）、**Ensemble**（Ensemble）、**Flanger**（Flanger）、**Jet Flanger**（Flanger）、**Vibrato**（Vibrato）です。個別のパラメータを変更すると**Custom**になります。
+- **Mode**: Chorus、Stereo Chorus、Ensemble、Flanger、Vibratoを選びます。
+- **Rate** (0.05〜10 Hz): 揺れの速度。
+- **Delay** (0.5〜30 ms): ウェット音の基準遅延。
+- **Depth** (0〜20 ms): 遅延の変化量。負の読み出しを防ぐため、保存値はDelay以下に制限されます。
+- **Voices** (1〜6): ChorusとEnsembleの可変タップ数。他のモードでは無視されます。
+- **Stereo Spread** (0〜100%): ステレオペア内の揺れのずれ。Chorusモードでは無視されます。
+- **Feedback** (-75〜75%): Flangerだけで使います。
+- **Mix** (0〜100%): 原音とウェット音の直線的な比率。Vibratoでは無視され100%ウェットです。
 
 ## Doppler Distortion
 
@@ -47,6 +117,52 @@ lang: ja
 - **Damping Factor:** 1.5 N·s/m
 
 これらの設定では、元の音を圧倒せずに聴き心地を豊かにする、控えめなDoppler Distortionになります。
+
+## Frequency Shifter
+
+各周波数成分を音程比ではなく一定のHzだけ移動します。Ring Modは搬送波との乗算、Barber-poleは上昇または下降し続けるように感じる重ね合わせです。ShiftとBarber-poleはHilbert解析信号FIRを使い、Ring Modは同じFIFOから取り出した整合遅延済みの実信号に搬送波を乗算します。そのため、どのモードでも原音と処理音のタイミングが揃います。固定遅延はサンプルレートにより変わり、DSP Libraryから報告されます。
+
+### 音質調整のヒント
+
+- 控えめな変化にはShiftを選び、±5〜15 Hz程度から始めます。Pitch Shifterとは異なり、倍音間隔も変化します。
+- 金属的な響きにはRing Modを使います。Carrier Frequencyを下げると原音のリズムを残しやすくなります。
+- 連続的な移動感にはBarber-poleを低いRateで使い、明瞭さを保つにはMixを控えめにします。
+
+### パラメータ
+
+- **Style**: 全パラメータをまとめて設定する完全なファクトリー設定です。候補は**Shift Up**（Shift）、**Shift Down**（Shift）、**Fine Detune**（Shift）、**Ring Modulator**（Ring Mod）、**Barber-pole Up**（Barber-pole）、**Barber-pole Down**（Barber-pole）です。個別のパラメータを変更すると**Custom**になります。
+- **Mode**: Shift、Ring Mod、Barber-pole。
+- **Shift** (-5,000〜5,000 Hz): Shiftモードの移動量。正で上、負で下へ移動します。
+- **Carrier Frequency** (0.1〜10,000 Hz): Ring Modの搬送周波数。
+- **Minimum Shift / Maximum Shift** (0〜5,000 Hz): Barber-poleの範囲。逆順なら並べ替え、同値なら固定されます。
+- **Rate** (0.01〜2 Hz)、**Direction**: Barber-poleの速度と方向。
+- **Stereo Phase** (0〜180°): 全モードで、各ステレオペアの左右間に搬送波またはスイープのずれを付けます。
+- **Mix** (0〜100%): 整合ディレイ済み原音と処理音の比率。0%でも記載された固定遅延は残ります。
+
+大きなシフトではナイキスト周波数を超える成分が生じ、エイリアシングが聞こえる場合があります。初期版はオーバーサンプリングを行いません。
+
+## Phaser
+
+原音とオールパスフィルター列の出力を混ぜ、動くピークとノッチを作ります。Classicは往復し、Barber-poleは3つの定電力ウィンドウを重ねて連続上昇・下降の感覚を作ります。アルゴリズム上の遅延は0です。
+
+### 音質調整のヒント
+
+- 明瞭なノッチにはClassic、4〜6 Stages、中程度のRange、50%前後のMixから始めます。
+- StagesとFeedbackを上げるほど深く共振的になります。音の立ち上がりが色付きすぎる場合は下げます。
+- Stereo Phaseで広がりを調整し、連続運動にはBarber-pole Up/Downを選びます。
+
+### パラメータ
+
+- **Style**: 全パラメータをまとめて設定する完全なファクトリー設定です。候補は**Classic Phaser**（Classic）、**Deep Phaser**（Classic）、**Stereo Phaser**（Classic）、**Barber-pole Up**（Barber-pole）、**Barber-pole Down**（Barber-pole）です。個別のパラメータを変更すると**Custom**になります。
+- **Mode**: ClassicまたはBarber-pole。
+- **Rate** (0.05〜10 Hz): スイープ速度。
+- **Center Frequency** (80〜8,000 Hz): 対数スイープの中心。
+- **Range** (0〜6 octaves): スイープ幅。
+- **Stages** (2〜12の偶数): オールパス段数。増やすとノッチが増えます。
+- **Feedback** (-90〜90%): 処理音を入力へ戻す量。絶対値で強さ、符号で強調の仕方が変わります。
+- **Stereo Phase** (0〜180°): ステレオペア内の動きのずれ。
+- **Direction**: Barber-poleのUp/Down。Classicでは無視されます。
+- **Mix** (0〜100%): 原音と処理音の直線的な比率。中央付近で打ち消しが最も深くなります。
 
 ## Pitch Shifter
 
@@ -90,6 +206,29 @@ Pitch Shifter HQはフォルマントを維持しません。そのため、シ�
 - **Fine Tune** - セント単位でピッチを調整 (-50 から +50)
   - 半音の間を正確に調整するときに使う
   - 100セントで1半音
+
+## Rotary Speaker
+
+Linkwitz–Rileyクロスオーバーで高域ホーンと低域ドラムに分け、それぞれ異なる回転速度、音量変調、短いドップラーディレイを与えます。特定のLeslieキャビネットを実測再現したものではありません。可変ディレイのため固定アルゴリズム遅延としては報告しません。
+
+### 音質調整のヒント
+
+- Slowはゆったり、Fastは強い回転感になります。Accelerationを長くすると回転速度の変化を自然に聞かせられます。
+- ピッチの動きはDoppler Depth、音量の動きはAmplitude Depthで調整します。
+- Rotor Balanceでドラムとホーンの比率、Stereo Widthで広がりを整えます。
+
+### パラメータ
+
+- **Style**: 全パラメータをまとめて設定する完全なファクトリー設定です。候補は**Rotary Slow**（Slow）、**Rotary Fast**（Fast）、**Gentle Rotary**（Slow）、**Leslie Slow**（Slow）、**Leslie Fast**（Fast）です。個別のパラメータを変更すると**Custom**になります。
+- **Speed State**: Stop、Slow、Fast。切り替え時はミュートせず連続的に加減速します。
+- **Speed** (25〜200%): ホーンとドラム双方の速度倍率。
+- **Acceleration** (0.1〜10 s): ローターが新しい速度に近づく速さ。
+- **Crossover** (200〜2,000 Hz): ドラム帯域とホーン帯域の分割周波数。
+- **Rotor Balance** (-100〜100%): 負でドラム、正でホーンを強調。
+- **Stereo Width** (0〜100%): ステレオペアの広がり。
+- **Doppler Depth** (0〜100%): 可変ディレイによるピッチ変動量。
+- **Amplitude Depth** (0〜100%): 仮想ローター方向による音量変動量。
+- **Mix** (0〜100%): 原音と回転音の比率。0%は原音のままです。
 
 ## Tremolo
 

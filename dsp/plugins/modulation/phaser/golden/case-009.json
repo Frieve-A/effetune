@@ -1,0 +1,51 @@
+{
+  "formatVersion": 1,
+  "type": "PhaserPlugin",
+  "id": "one-frame-continuous-events",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 3,
+  "frameCount": 1003,
+  "blockSize": 1,
+  "channelMode": "all3",
+  "channel": null,
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "md": "Classic",
+    "rt": 0.5,
+    "cf": 1000,
+    "rg": 3,
+    "st": 6,
+    "fb": 20,
+    "sp": 90,
+    "dr": "Up",
+    "mx": 50
+  },
+  "events": [
+    {
+      "frame": 1,
+      "params": {
+        "rt": 10,
+        "cf": 8000,
+        "rg": 6
+      }
+    },
+    {
+      "frame": 499,
+      "params": {
+        "fb": -90,
+        "sp": 180,
+        "mx": 100
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "dd62b1916ffb692313669102c864f20001d21de83257c0285d5f0f14b58bcc68",
+  "outputFloats": 3009,
+  "byteLength": 12036,
+  "binary": "case-009.f32"
+}

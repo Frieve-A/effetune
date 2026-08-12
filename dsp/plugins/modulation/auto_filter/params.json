@@ -1,0 +1,19 @@
+{
+  "type": "AutoFilterPlugin",
+  "tolerance": { "abs": 0.00001, "policy": "per-sample" },
+  "fields": [
+    { "name": "mode", "key": "md", "kind": "enum", "values": ["LFO", "Envelope"], "default": "LFO" },
+    { "name": "filterType", "key": "ft", "kind": "enum", "values": ["Low-pass", "Band-pass", "High-pass"], "default": "Low-pass" },
+    { "name": "minimumFrequency", "key": "lf", "kind": "float", "min": 20, "max": 20000, "default": 200, "unit": "Hz" },
+    { "name": "maximumFrequency", "key": "hf", "kind": "float", "min": 20, "max": 20000, "default": 4000, "unit": "Hz" },
+    { "name": "resonance", "key": "rs", "kind": "float", "min": 0.5, "max": 20, "default": 1.5, "unit": "Q" },
+    { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "default": 80, "unit": "%" },
+    { "name": "rate", "key": "rt", "kind": "float", "min": 0.05, "max": 20, "default": 0.5, "unit": "Hz" },
+    { "name": "waveform", "key": "wf", "kind": "enum", "values": ["Sine", "Triangle"], "default": "Sine" },
+    { "name": "stereoPhase", "key": "sp", "kind": "float", "min": 0, "max": 180, "default": 0, "unit": "deg" },
+    { "name": "sensitivity", "key": "sn", "kind": "float", "min": 0, "max": 60, "default": 24, "unit": "dB" },
+    { "name": "attack", "key": "at", "kind": "float", "min": 1, "max": 500, "default": 20, "unit": "ms" },
+    { "name": "release", "key": "rl", "kind": "float", "min": 10, "max": 2000, "default": 250, "unit": "ms" },
+    { "name": "direction", "key": "dr", "kind": "enum", "values": ["Up", "Down"], "default": "Up" }
+  ]
+}

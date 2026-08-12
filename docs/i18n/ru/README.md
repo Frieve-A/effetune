@@ -356,9 +356,15 @@ EffeTune создан для аудиоэнтузиастов, которые х
 | Lo-Fi     | Tape Artifacts | Записывает музыку на моделируемую катушечную ленту и воспроизводит её | [Подробнее](plugins/lofi.md#tape-artifacts) |
 | Lo-Fi     | Vinyl Artifacts | Добавляет виниловые pops, crackle, hiss, rumble и утечку стереошума | [Подробнее](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi     | Vinyl Simulator | Записывает вход в моделируемую канавку и воспроизводит ее физической моделью иглы | [Подробнее](plugins/lofi.md#vinyl-simulator) |
+| Modulation | Auto Filter | Перемещает резонансный фильтр с помощью LFO или огибающей громкости | [Подробнее](plugins/modulation.md#auto-filter) |
+| Modulation | Auto Pan | Плавно перемещает уровень каждой стереопары в звуковом поле | [Подробнее](plugins/modulation.md#auto-pan) |
+| Modulation | Chorus | Добавляет хорус, ансамбль, фленжер или вибрато движущимися задержками | [Подробнее](plugins/modulation.md#chorus) |
 | Modulation | Doppler Distortion | Имитирует естественные динамические изменения звука от небольших движений диффузора динамика | [Подробнее](plugins/modulation.md#doppler-distortion) |
+| Modulation | Frequency Shifter | Сдвигает частоты, выполняет кольцевую модуляцию или barber-pole-сдвиг | [Подробнее](plugins/modulation.md#frequency-shifter) |
+| Modulation | Phaser | Создаёт движущиеся пики и провалы классической или barber-pole-развёрткой | [Подробнее](plugins/modulation.md#phaser) |
 | Modulation | Pitch Shifter | Повышает или понижает высоту музыки без изменения темпа | [Подробнее](plugins/modulation.md#pitch-shifter) |
 | Modulation | Pitch Shifter HQ | Повышает или понижает высоту с меньшим количеством фазовых артефактов | [Подробнее](plugins/modulation.md#pitch-shifter-hq) |
+| Modulation | Rotary Speaker | Объединяет независимое движение рупора и барабана | [Подробнее](plugins/modulation.md#rotary-speaker) |
 | Modulation | Tremolo | Эффект модуляции громкости | [Подробнее](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | Добавляет легкое дрожание высоты в стиле ленты или пластинки для винтажного характера | [Подробнее](plugins/modulation.md#wow-flutter) |
 | Resonator | Horn Resonator | Симуляция резонанса рупора с настраиваемыми размерами | [Подробнее](plugins/resonator.md#horn-resonator) |

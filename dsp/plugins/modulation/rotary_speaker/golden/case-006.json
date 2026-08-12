@@ -1,0 +1,64 @@
+{
+  "formatVersion": 1,
+  "type": "RotarySpeakerPlugin",
+  "id": "continuous-speed-events",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 10003,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 5,
+  "seed": "0xeffe7a5b",
+  "params": {
+    "ss": "Slow",
+    "sp": 100,
+    "ac": 2.2,
+    "xo": 800,
+    "rb": 0,
+    "sw": 75,
+    "dd": 45,
+    "ad": 55,
+    "mx": 70
+  },
+  "events": [
+    {
+      "frame": 1001,
+      "params": {
+        "ss": "Fast"
+      }
+    },
+    {
+      "frame": 3001,
+      "params": {
+        "sp": 150,
+        "ac": 0.5,
+        "sw": 100
+      }
+    },
+    {
+      "frame": 5501,
+      "params": {
+        "ss": "Stop",
+        "xo": 1400
+      }
+    },
+    {
+      "frame": 8501,
+      "params": {
+        "ss": "Slow",
+        "rb": -50,
+        "mx": 50
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "08370065509cabeb9e6c59e754457a91bdfb05f3c914c452e2fb686e1c3a4aba",
+  "outputFloats": 20006,
+  "byteLength": 80024,
+  "binary": "case-006.f32"
+}

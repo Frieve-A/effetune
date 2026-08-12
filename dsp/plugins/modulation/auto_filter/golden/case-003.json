@@ -1,0 +1,38 @@
+{
+  "formatVersion": 1,
+  "type": "AutoFilterPlugin",
+  "id": "reverse-envelope-high-pass-mono",
+  "stimulus": "sq50",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 5003,
+  "blockSize": 83,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "md": "Envelope",
+    "ft": "High-pass",
+    "lf": 80,
+    "hf": 12000,
+    "rs": 12,
+    "mx": 75,
+    "rt": 0.5,
+    "wf": "Sine",
+    "sp": 0,
+    "sn": 60,
+    "at": 1,
+    "rl": 2000,
+    "dr": "Down"
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "9d5dc5c1300ebc4ebcdb87e2a81f8eb64f7fc0132d3bfaf91652af8ced8cd6a0",
+  "outputFloats": 5003,
+  "byteLength": 20012,
+  "binary": "case-003.f32"
+}

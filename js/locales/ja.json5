@@ -49,6 +49,7 @@
   "status.filesSavedToFolder": "{count} ファイルを {folder} に保存しました",
   "status.filesSaved": "{count} ファイルを選択したフォルダに保存しました",
   "status.libraryTracksSkippedOffline": "{count} 曲はオフラインのためスキップしました",
+  "status.jsFallbackCapacityExceeded": "現在のサンプルレートと出力チャンネル数では再生が中断するおそれがあるため、{effectName} をバイパスしました。サンプルレートを下げるか、出力チャンネル数を減らしてください。",
 
   // UI要素
   "ui.resetButton": "オーディオをリセット",
@@ -410,6 +411,7 @@
   "dbt.copyFailure": "テストURLのコピーに失敗しました。",
   "dbt.error.invalidConfig": "設定が正しくありません。テスト回数を確認してください。",
   "dbt.error.parallelStartFailed": "両方のパイプラインの準備が整わなかったため、テストを開始できませんでした。エフェクトの読み込みが完了してから、もう一度お試しください。",
+  "dbt.error.jsFallbackCapacityExceeded": "JavaScript エフェクトで両方のパイプラインを処理すると CPU 負荷が高くなりすぎるため、テストを実行できませんでした。WebAssembly DSP を有効にするか、パイプラインを簡素化してから、もう一度お試しください。",
   "dbt.info.config1": "パイプラインを自由に切り替えて、ブラインドで判定します。",
   "dbt.info.config2": "テスト回数を増やすほど結果は正確になりますが、時間がかかります。",
   "dbt.info.config3": "URLを共有すると、まったく同じテストを他の人にも試してもらえます。",

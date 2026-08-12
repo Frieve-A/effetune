@@ -36,12 +36,14 @@ const PIPELINE_SWITCH_SILENCE_SECONDS = 0.05;
 const DSP_MODULE_LOAD_TIMEOUT_MS = 1000;
 const DSP_MODULE_READY_TIMEOUT_MS = 1000;
 const DSP_BYTES_READY_TIMEOUT_MS = 3000;
+const JS_FALLBACK_SAMPLE_CHANNEL_BUDGET = 96000;
 const DSP_EXECUTION_BYPASS_REASONS = new Set([
     'unsupportedSampleRate',
     'unsupportedChannelMode',
     'wasmUnavailable',
     'rolloutDisabled',
     'runtimeFallback',
+    'jsFallbackCapacityExceeded',
     'engineStopped'
 ]);
 
@@ -149,6 +151,7 @@ export class AudioManager {
         this._parallelBranchSnapshot = null;
         this._parallelPreparing = false;
         this._parallelTeardownPromise = null;
+        this._parallelFallbackBudgetInvalidated = false;
         this._connectedPipelineSources = new Set();
         this._dspModuleLoadPromise = null;
         this._dspModuleLoadRequest = null;
@@ -668,7 +671,36 @@ export class AudioManager {
         if (!plugin || !prepared || prepared.enabled === false) return null;
 
         const optionalDspPrepared = prepared.wasmParams instanceof Float32Array;
-        return pluginRequiresWasmExecution(plugin) || optionalDspPrepared ? plugin : null;
+        const reportsCapacityState = getPluginExecutionCapabilities(plugin)?.jsFallbackCapacity;
+        return pluginRequiresWasmExecution(plugin) || optionalDspPrepared || reportsCapacityState
+            ? plugin
+            : null;
+    }
+
+    _parallelBranchForWorklet(workletNode) {
+        if (!this._parallelPreparing && !this._parallelActive) return null;
+        if (workletNode === this._getPrimaryWorkletNode()) return 'A';
+        if (workletNode === this._parallelWorkletB) return 'B';
+        return null;
+    }
+
+    _matchParallelDspExecutionPlugin(branch, pluginId, pluginType) {
+        const snapshot = branch === 'A'
+            ? this._parallelBranchSnapshot?.pipelineA
+            : branch === 'B'
+                ? this._parallelBranchSnapshot?.pipelineB
+                : null;
+        if (!snapshot) return null;
+        const plugin = snapshot.plugins?.find(candidate => candidate?.id === pluginId &&
+            candidate?.constructor?.name === pluginType);
+        const prepared = snapshot.pluginData?.find(candidate => candidate?.id === pluginId &&
+            candidate?.type === pluginType);
+        if (!plugin || !prepared || prepared.enabled === false) return null;
+        const optionalDspPrepared = prepared.wasmParams instanceof Float32Array;
+        const reportsCapacityState = getPluginExecutionCapabilities(plugin)?.jsFallbackCapacity;
+        return pluginRequiresWasmExecution(plugin) || optionalDspPrepared || reportsCapacityState
+            ? plugin
+            : null;
     }
 
     _isDspModuleLoadRequestCurrent(request) {
@@ -1352,10 +1384,6 @@ export class AudioManager {
                         this._postBlindPluginData(workletA, branchSnapshot.pipelineA.pluginData);
                         this._postBlindPluginData(workletB, branchSnapshot.pipelineB.pluginData);
                     }
-                    if (!this._applyParallelRouting({
-                        pluginDataA: branchSnapshot.pipelineA.pluginData,
-                        pluginDataB: branchSnapshot.pipelineB.pluginData
-                    })) return false;
                     if (this._syncWasmAssetMembership(
                         workletA,
                         branchSnapshot.pipelineA.plugins,
@@ -1417,6 +1445,16 @@ export class AudioManager {
                         }
                         return false;
                     }
+                    if (!await this._prepareParallelJsFallbackBudgets(
+                        barrier,
+                        workletA,
+                        workletB,
+                        appliedRequest.deadline
+                    )) return false;
+                    if (!this._applyParallelRouting({
+                        pluginDataA: branchSnapshot.pipelineA.pluginData,
+                        pluginDataB: branchSnapshot.pipelineB.pluginData
+                    })) return false;
                     return this._alignParallelPipelineLatency(
                         barrier,
                         workletA,
@@ -1813,6 +1851,102 @@ export class AudioManager {
         );
     }
 
+    _requestWorkletJsFallbackBudgetState(workletNode, timeoutMs) {
+        return this._requestDspControl(
+            workletNode,
+            'requestJsFallbackBudgetState',
+            'jsFallbackBudgetState',
+            {},
+            timeoutMs
+        );
+    }
+
+    _setWorkletJsFallbackBudget(workletNode, budgetSampleChannels, timeoutMs) {
+        return this._requestDspControl(
+            workletNode,
+            'configureJsFallbackBudget',
+            'jsFallbackBudgetState',
+            { budgetSampleChannels },
+            timeoutMs
+        );
+    }
+
+    _postWorkletJsFallbackBudget(workletNode, budgetSampleChannels) {
+        if (!workletNode?.port) return false;
+        try {
+            workletNode.port.postMessage({
+                type: 'configureJsFallbackBudget',
+                budgetSampleChannels
+            });
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    _isValidJsFallbackBudgetState(state) {
+        return !!state && Number.isFinite(state.budgetSampleChannels) &&
+            state.budgetSampleChannels >= 0 &&
+            Number.isFinite(state.requiredSampleChannels) &&
+            state.requiredSampleChannels >= 0 &&
+            Number.isFinite(state.admittedSampleChannels) &&
+            state.admittedSampleChannels >= 0 &&
+            typeof state.capacityExceeded === 'boolean' &&
+            typeof state.intrinsicCapacityExceeded === 'boolean' &&
+            Number.isInteger(state.generation);
+    }
+
+    async _prepareParallelJsFallbackBudgets(barrier, workletA, workletB, deadline) {
+        const timeoutMs = deadline - Date.now();
+        if (!(timeoutMs > 0)) return false;
+        const [stateA, stateB] = await Promise.all([
+            this._requestWorkletJsFallbackBudgetState(workletA, timeoutMs),
+            this._requestWorkletJsFallbackBudgetState(workletB, timeoutMs)
+        ]);
+        if (!this._isParallelDspBarrierCurrent(barrier) ||
+            !this._isValidJsFallbackBudgetState(stateA) ||
+            !this._isValidJsFallbackBudgetState(stateB)) return false;
+
+        const requiredA = stateA.requiredSampleChannels;
+        const requiredB = stateB.requiredSampleChannels;
+        if (stateA.intrinsicCapacityExceeded || stateB.intrinsicCapacityExceeded ||
+            requiredA + requiredB > JS_FALLBACK_SAMPLE_CHANNEL_BUDGET) {
+            this.dispatchEvent('parallelInvalidated', {
+                reason: 'jsFallbackCapacityExceeded',
+                restorePrimaryDsp: true
+            });
+            return false;
+        }
+
+        // A running comparison keeps these exact branch quotas for its lifetime.
+        // Recovery may reduce consumption, but no later event reallocates that
+        // headroom to the other branch.
+        if (this._parallelActive) {
+            return !stateA.capacityExceeded && !stateB.capacityExceeded;
+        }
+
+        const remaining = deadline - Date.now();
+        if (!(remaining > 0)) return false;
+        const [configuredA, configuredB] = await Promise.all([
+            this._setWorkletJsFallbackBudget(workletA, requiredA, remaining),
+            this._setWorkletJsFallbackBudget(workletB, requiredB, remaining)
+        ]);
+        const valid = this._isParallelDspBarrierCurrent(barrier) &&
+            this._isValidJsFallbackBudgetState(configuredA) &&
+            this._isValidJsFallbackBudgetState(configuredB);
+        if (valid && (configuredA.capacityExceeded || configuredB.capacityExceeded)) {
+            this.dispatchEvent('parallelInvalidated', {
+                reason: 'jsFallbackCapacityExceeded',
+                restorePrimaryDsp: true
+            });
+            return false;
+        }
+        return valid &&
+            configuredA.budgetSampleChannels === requiredA &&
+            configuredB.budgetSampleChannels === requiredB &&
+            !configuredA.capacityExceeded && !configuredB.capacityExceeded;
+    }
+
     async _alignParallelPipelineLatency(barrier, workletA, workletB, deadline) {
         const timeoutMs = deadline - Date.now();
         if (!(timeoutMs > 0)) return false;
@@ -1841,7 +1975,8 @@ export class AudioManager {
     handleWorkletMessage(event, workletNode = this.workletNode) {
         const data = event?.data || {};
         if (!this._isActiveDspWorklet(workletNode)) return;
-        if (data.type === 'dspLatencyResponse' || data.type === 'outputDelaySet') {
+        if (data.type === 'dspLatencyResponse' || data.type === 'outputDelaySet' ||
+            data.type === 'jsFallbackBudgetState') {
             this._settleDspControlResponse(workletNode, data);
         } else if (data.type === 'assetState') {
             this._updateWasmAssetState(
@@ -1878,16 +2013,42 @@ export class AudioManager {
                 console.error('[AudioManager] Failed to rebuild after missing processor report:', error);
             });
         } else if (data.type === 'dspExecutionState') {
-            if (workletNode !== this._getPrimaryWorkletNode() ||
+            const branch = this._parallelBranchForWorklet(workletNode);
+            const isPrimary = workletNode === this._getPrimaryWorkletNode();
+            if ((!isPrimary && branch !== 'B') ||
                 !Number.isInteger(data.pluginId) || !Number.isInteger(data.generation) ||
                 !['pending', 'active', 'bypassed'].includes(data.state) ||
                 (data.state === 'bypassed' && !DSP_EXECUTION_BYPASS_REASONS.has(data.reason)) ||
-                (data.state !== 'bypassed' && data.reason != null)) return;
-            const plugin = this._matchPrimaryDspExecutionPlugin(data.pluginId, data.pluginType);
+                (data.state !== 'bypassed' && data.reason != null) ||
+                (data.jsFallbackSampleChannels !== undefined &&
+                    (!Number.isFinite(data.jsFallbackSampleChannels) ||
+                        data.jsFallbackSampleChannels < 0))) return;
+            const plugin = isPrimary
+                ? this._matchPrimaryDspExecutionPlugin(data.pluginId, data.pluginType)
+                : this._matchParallelDspExecutionPlugin(
+                    branch,
+                    data.pluginId,
+                    data.pluginType
+                );
             if (!plugin) return;
             const currentGeneration = this._dspExecutionGenerationsByNode.get(workletNode) ?? -1;
             if (data.generation < currentGeneration) return;
             this._dspExecutionGenerationsByNode.set(workletNode, data.generation);
+            const validated = {
+                ...data,
+                ...(branch && { branch }),
+                validated: true
+            };
+
+            if (!isPrimary) {
+                this.dispatchEvent('dspExecutionState', validated);
+                if (this._parallelActive && data.state === 'bypassed' &&
+                    data.reason === 'jsFallbackCapacityExceeded' &&
+                    getPluginExecutionCapabilities(plugin)?.jsFallbackCapacity) {
+                    this._invalidateParallelFallbackBudget(branch);
+                }
+                return;
+            }
             const owner = this._dspExecutionStateOwner;
             if (!owner || owner.workletNode !== workletNode ||
                 owner.graphGeneration !== this._audioGraphGeneration ||
@@ -1908,11 +2069,17 @@ export class AudioManager {
                 pluginType: data.pluginType,
                 state: data.state,
                 reason: data.reason ?? null,
+                jsFallbackSampleChannels: data.jsFallbackSampleChannels ?? 0,
                 generation: data.generation
             }));
             this._dspExecutionStateRevision = (this._dspExecutionStateRevision || 0) + 1;
-            plugin.onMessage?.({ ...data, validated: true });
-            this.dispatchEvent('dspExecutionState', { ...data, validated: true });
+            plugin.onMessage?.(validated);
+            this.dispatchEvent('dspExecutionState', validated);
+            if (this._parallelActive && data.state === 'bypassed' &&
+                data.reason === 'jsFallbackCapacityExceeded' &&
+                getPluginExecutionCapabilities(plugin)?.jsFallbackCapacity) {
+                this._invalidateParallelFallbackBudget(branch || 'A');
+            }
         } else if (data.type === 'tubeSimulatorCircuitFault') {
             if (workletNode !== this._getPrimaryWorkletNode() ||
                 !Number.isInteger(data.pluginId) ||
@@ -2699,6 +2866,20 @@ export class AudioManager {
         return !!(this._parallelPreparing || this._parallelActive || this._parallelWorkletB ||
             this._parallelSelA || this._parallelSelB || this._parallelInputTap ||
             this._parallelDspBarrier || this._parallelTeardownPromise);
+    }
+
+    _invalidateParallelFallbackBudget(branch) {
+        if (!this._parallelActive || this._parallelFallbackBudgetInvalidated) return false;
+        this._parallelFallbackBudgetInvalidated = true;
+        this.dispatchEvent('parallelInvalidated', {
+            reason: 'jsFallbackCapacityExceeded',
+            branch,
+            restorePrimaryDsp: true
+        });
+        if (this._parallelActive) {
+            void Promise.resolve(this.disableParallelPipelines()).catch(() => {});
+        }
+        return true;
     }
 
     _captureOutputOwner() {
@@ -3877,8 +4058,9 @@ export class AudioManager {
                     wB.port.postMessage({ type: 'dspTelemetryReturn', packet: data.packet }, [data.packet]);
                 } else if (data?.type === 'assetState' || data?.type === 'assetLoadRejected' ||
                     data?.type === 'dspReady' || data?.type === 'dspFailed' ||
-                    data?.type === 'dspCleanupNeeded' || data?.type === 'dspLatencyResponse' ||
-                    data?.type === 'outputDelaySet' || data?.type === 'powerStateAck' ||
+                    data?.type === 'dspExecutionState' || data?.type === 'dspCleanupNeeded' ||
+                    data?.type === 'dspLatencyResponse' || data?.type === 'outputDelaySet' ||
+                    data?.type === 'jsFallbackBudgetState' || data?.type === 'powerStateAck' ||
                     data?.type === 'powerObservation' || data?.type === 'powerFirstRender' ||
                     data?.type === 'powerHeartbeat' || data?.type === 'temporalStatePrepared') {
                     this.handleWorkletMessage(event, wB);
@@ -3906,6 +4088,12 @@ export class AudioManager {
             this._parallelSelection = initialSelection;
             this._parallelPreparing = true;
             this._parallelActive = false;
+            this._parallelFallbackBudgetInvalidated = false;
+
+            // Until the joint preflight completes, only the existing primary
+            // branch may use the normal JavaScript fallback budget.
+            this._postWorkletJsFallbackBudget(wA, JS_FALLBACK_SAMPLE_CHANNEL_BUDGET);
+            this._postWorkletJsFallbackBudget(wB, 0);
 
             // Both worklets must know every plugin type used by either pipeline.
             this._registerProcessorsOnWorklet(wA, [
@@ -4154,6 +4342,10 @@ export class AudioManager {
     disableParallelPipelines(options = {}) {
         if (this._parallelTeardownPromise) return this._parallelTeardownPromise;
         if (!this._hasParallelResources()) {
+            this._postWorkletJsFallbackBudget(
+                this._getPrimaryWorkletNode(),
+                JS_FALLBACK_SAMPLE_CHANNEL_BUDGET
+            );
             this._disposeParallelBranchSnapshot(this._parallelBranchSnapshot);
             this._syncRealtimeOutputKeepalive();
             return false;
@@ -4184,6 +4376,11 @@ export class AudioManager {
         const primaryMasterBypass = this.masterBypass === true;
         const assetDeadline = Date.now() + DSP_BYTES_READY_TIMEOUT_MS;
 
+        // Restore the ordinary single-pipeline ownership before either worklet
+        // can process another configuration message.
+        this._postWorkletJsFallbackBudget(wA, JS_FALLBACK_SAMPLE_CHANNEL_BUDGET);
+        this._postWorkletJsFallbackBudget(wB, 0);
+        this._parallelFallbackBudgetInvalidated = false;
         this._parallelPreparing = false;
         this._parallelActive = false;
         const generation = this._advanceAudioGraphGeneration();

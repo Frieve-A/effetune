@@ -1,6 +1,6 @@
 ---
 title: "Plugins de modulación - EffeTune"
-description: "Plugins de modulación como Doppler Distortion, Pitch Shifter, Pitch Shifter HQ, Tremolo y Wow Flutter."
+description: "Efectos de modulación como Auto Filter, Auto Pan, Chorus, Frequency Shifter, Phaser y Rotary Speaker."
 lang: es
 ---
 
@@ -10,11 +10,81 @@ Una colección de plugins que añaden movimiento y variación a tu música media
 
 ## Lista de Plugins
 
+- [Auto Filter](#auto-filter) - Barre un filtro resonante con un LFO o con la envolvente de la señal
+- [Auto Pan](#auto-pan) - Mueve suavemente cada par estéreo por el campo sonoro
+- [Chorus](#chorus) - Ofrece chorus, ensemble, flanger y vibrato mediante retardos móviles
 - [Doppler Distortion](#doppler-distortion) - Simula los cambios naturales y dinámicos en el sonido producidos por el sutil movimiento del cono del altavoz.
+- [Frequency Shifter](#frequency-shifter) - Traslada frecuencias, aplica Ring Mod o un barrido Barber-pole
+- [Phaser](#phaser) - Crea picos y muescas móviles mediante barridos de fase
 - [Pitch Shifter](#pitch-shifter) - Cambia el tono de tu música sin afectar la velocidad de reproducción
 - [Pitch Shifter HQ](#pitch-shifter-hq) - Cambia el tono con menos artefactos de fase cuando la calidad importa más que la latencia o el uso de CPU
+- [Rotary Speaker](#rotary-speaker) - Combina el movimiento independiente de bocina y tambor
 - [Tremolo](#tremolo) - Crea variaciones rítmicas de volumen para un sonido pulsante y dinámico
 - [Wow Flutter](#wow-flutter) - Recrea las suaves variaciones de tono de los discos de vinilo y los reproductores de cinta
+
+## Auto Filter
+
+Mueve automáticamente un filtro de variable de estado mediante un LFO o la envolvente de la señal de entrada. El modo Envelope puede usarse como Envelope Filter o Auto Wah. La latencia algorítmica es 0.
+
+### Consejos de ajuste
+
+- Para un cambio tonal suave, empiece con LFO, Low-pass, una Resonance baja y un Mix de aproximadamente 30–50%.
+- Para Auto Wah, elija Envelope y Band-pass, y ajuste Sensitivity para que los sonidos fuertes abran el filtro en la medida adecuada.
+- Un Attack más largo suaviza la respuesta a los ataques, mientras que un Release más largo hace que el filtro regrese con mayor suavidad.
+
+### Parámetros
+
+- **Style**: Ajuste de fábrica completo que define todos los parámetros. Las opciones son **Auto Filter Sweep** (LFO), **Stereo Filter Sweep** (LFO), **Envelope Filter** (Envelope), **Auto Wah** (Envelope) y **Reverse Auto Wah** (Envelope). Al modificar un parámetro individual, cambia a **Custom**.
+- **Mode**: Alterna entre LFO, que se mueve de forma periódica, y Envelope, que sigue el volumen.
+- **Filter Type**: Permite elegir Low-pass, Band-pass o High-pass.
+- **Minimum Frequency / Maximum Frequency** (20–20.000 Hz): Definen el intervalo de movimiento. Si están en orden inverso, se reordenan automáticamente; si son iguales, el filtro queda fijo. Durante el procesamiento se limitan a un margen seguro por debajo de la frecuencia de Nyquist.
+- **Resonance** (Q 0,5–20): Los valores más altos realzan más la zona cercana a la frecuencia de corte.
+- **Mix** (0–100%): Proporción entre la señal original y la señal filtrada. Al 0% solo se oye la señal original.
+- **Rate**, **Waveform**, **Stereo Phase**: Velocidad, trayectoria y diferencia de fase dentro de cada par estéreo del LFO. Solo se usan en el modo LFO.
+- **Sensitivity**, **Attack**, **Release**, **Direction**: Cantidad de respuesta, tiempo de subida, tiempo de retorno y dirección del movimiento de la envolvente. Solo se usan en el modo Envelope.
+
+## Auto Pan
+
+Mueve el volumen de cada par estéreo adyacente de izquierda a derecha. No mezcla audio entre pares y, si queda un último canal sin pareja, lo trata como mono. La latencia algorítmica es 0.
+
+### Consejos de ajuste
+
+- Empiece con una Rate de aproximadamente 0,2–0,5 Hz y una Depth moderada para obtener un movimiento relajado.
+- Si el efecto resulta demasiado amplio con auriculares, reduzca Width; ajuste la posición base izquierda/derecha con Center.
+- Sine se desplaza más despacio en los extremos, mientras que Triangle mantiene una velocidad más uniforme.
+
+### Parámetros
+
+- **Style**: Ajuste de fábrica completo que define todos los parámetros. Las opciones son **Gentle Auto Pan**, **Wide Auto Pan** y **Fast Auto Pan**. Al modificar un parámetro individual, cambia a **Custom**.
+- **Rate** (0,05–20 Hz): Velocidad del movimiento.
+- **Depth** (0–100%): Cantidad de movimiento alrededor de Center. Al 0% no hay cambio.
+- **Center** (-100–100%): Desplaza la posición central hacia la izquierda o la derecha.
+- **Width** (0–100%): Amplitud estéreo utilizada.
+- **Waveform**: Sine o Triangle.
+- **Phase** (0–360°): Posición inicial del movimiento periódico.
+
+## Chorus
+
+Añade varias señales de retardo variable con interpolación cúbica de cuatro puntos. Mode permite elegir Stereo Chorus, Ensemble, Flanger o Vibrato, además de Chorus. Los retardos variables producen un retraso audible, pero no constituyen una latencia fija; por ello, la latencia algorítmica indicada es 0.
+
+### Consejos de ajuste
+
+- Para añadir grosor natural, use Classic Chorus o Stereo Chorus con valores moderados de Rate y Depth.
+- Ensemble se vuelve más denso al aumentar Voices. Una Depth excesiva hace más evidente la variación de tono.
+- Solo Flanger utiliza Feedback. Los valores positivos y negativos cambian la polaridad del filtro de peine.
+- Vibrato siempre usa una señal 100% procesada.
+
+### Parámetros
+
+- **Style**: Ajuste de fábrica completo que define todos los parámetros. Las opciones son **Classic Chorus** (Chorus), **Stereo Chorus** (Stereo Chorus), **Ensemble** (Ensemble), **Flanger** (Flanger), **Jet Flanger** (Flanger) y **Vibrato** (Vibrato). Al modificar un parámetro individual, cambia a **Custom**.
+- **Mode**: Permite elegir Chorus, Stereo Chorus, Ensemble, Flanger o Vibrato.
+- **Rate** (0,05–10 Hz): Velocidad de la modulación.
+- **Delay** (0,5–30 ms): Retardo de referencia de la señal procesada.
+- **Depth** (0–20 ms): Cantidad de variación del retardo. Para evitar lecturas con retardo negativo, el valor guardado se limita a Delay.
+- **Voices** (1–6): Número de derivaciones variables en Chorus y Ensemble. Se ignora en los demás modos.
+- **Stereo Spread** (0–100%): Diferencia de modulación dentro de cada par estéreo. Se ignora en el modo Chorus.
+- **Feedback** (-75–75%): Solo se usa en Flanger.
+- **Mix** (0–100%): Proporción lineal entre la señal original y la procesada. En Vibrato se ignora y la señal es siempre 100% procesada.
 
 ## Doppler Distortion
 
@@ -47,6 +117,52 @@ Para una mejora equilibrada y natural, comienza con:
 - **Damping Factor:** 1.5 N·s/m  
 
 Estos ajustes proporcionan un sutil Doppler Distortion que enriquece la experiencia auditiva sin opacar el sonido original.
+
+## Frequency Shifter
+
+Desplaza cada componente de frecuencia una cantidad fija en Hz, no según una relación de tono. Ring Mod multiplica por una portadora, mientras que Barber-pole superpone desplazamientos para crear la sensación de un ascenso o descenso continuo. Shift y Barber-pole usan un FIR de señal analítica de Hilbert; Ring Mod multiplica por la portadora la señal real con el mismo retardo, extraída de la misma FIFO. Así, la señal original y la procesada quedan alineadas en todos los modos. La latencia fija depende de la frecuencia de muestreo y la comunica DSP Library.
+
+### Consejos de ajuste
+
+- Para un cambio discreto, elija Shift y empiece con aproximadamente ±5–15 Hz. A diferencia de Pitch Shifter, también cambia el espaciado entre armónicos.
+- Para un timbre metálico, use Ring Mod. Una Carrier Frequency más baja ayuda a conservar el ritmo de la señal original.
+- Para una sensación de movimiento continuo, use Barber-pole con una Rate baja y mantenga Mix moderado para conservar la claridad.
+
+### Parámetros
+
+- **Style**: Ajuste de fábrica completo que define todos los parámetros. Las opciones son **Shift Up** (Shift), **Shift Down** (Shift), **Fine Detune** (Shift), **Ring Modulator** (Ring Mod), **Barber-pole Up** (Barber-pole) y **Barber-pole Down** (Barber-pole). Al modificar un parámetro individual, cambia a **Custom**.
+- **Mode**: Shift, Ring Mod o Barber-pole.
+- **Shift** (-5.000–5.000 Hz): Cantidad de desplazamiento en el modo Shift. Los valores positivos desplazan hacia arriba y los negativos hacia abajo.
+- **Carrier Frequency** (0,1–10.000 Hz): Frecuencia de la portadora de Ring Mod.
+- **Minimum Shift / Maximum Shift** (0–5.000 Hz): Intervalo de Barber-pole. Si están en orden inverso, se reordenan; si son iguales, el desplazamiento queda fijo.
+- **Rate** (0,01–2 Hz), **Direction**: Velocidad y dirección de Barber-pole.
+- **Stereo Phase** (0–180°): En todos los modos, introduce un desfase de la portadora o del barrido entre los canales izquierdo y derecho de cada par estéreo.
+- **Mix** (0–100%): Proporción entre la señal original con retardo compensado y la señal procesada. Incluso al 0% se mantiene la latencia fija indicada.
+
+Los desplazamientos grandes pueden generar componentes por encima de la frecuencia de Nyquist y producir aliasing audible. La versión inicial no aplica sobremuestreo.
+
+## Phaser
+
+Mezcla la señal original con la salida de una cadena de filtros all-pass para crear picos y muescas móviles. Classic oscila en ambos sentidos; Barber-pole superpone tres ventanas de potencia constante para dar una sensación continua de ascenso o descenso. La latencia algorítmica es 0.
+
+### Consejos de ajuste
+
+- Para obtener muescas claras, empiece con Classic, 4–6 Stages, un Range moderado y un Mix cercano al 50%.
+- Al aumentar Stages y Feedback, el efecto se vuelve más profundo y resonante. Redúzcalos si colorea demasiado los ataques.
+- Ajuste la amplitud con Stereo Phase y elija Barber-pole Up/Down para un movimiento continuo.
+
+### Parámetros
+
+- **Style**: Ajuste de fábrica completo que define todos los parámetros. Las opciones son **Classic Phaser** (Classic), **Deep Phaser** (Classic), **Stereo Phaser** (Classic), **Barber-pole Up** (Barber-pole) y **Barber-pole Down** (Barber-pole). Al modificar un parámetro individual, cambia a **Custom**.
+- **Mode**: Classic o Barber-pole.
+- **Rate** (0,05–10 Hz): Velocidad del barrido.
+- **Center Frequency** (80–8.000 Hz): Centro del barrido logarítmico.
+- **Range** (0–6 octavas): Amplitud del barrido.
+- **Stages** (números pares de 2 a 12): Número de etapas all-pass. Al aumentarlo se añaden más muescas.
+- **Feedback** (-90–90%): Cantidad de señal procesada que vuelve a la entrada. El valor absoluto determina la intensidad y el signo cambia la forma del realce.
+- **Stereo Phase** (0–180°): Diferencia de movimiento dentro de cada par estéreo.
+- **Direction**: Up/Down de Barber-pole. Se ignora en Classic.
+- **Mix** (0–100%): Proporción lineal entre la señal original y la procesada. La cancelación es más profunda cerca del punto medio.
 
 ## Pitch Shifter
 
@@ -90,6 +206,29 @@ Pitch Shifter HQ no conserva los formantes. Por tanto, los cambios grandes modif
 - **Fine Tune** - Ajusta el tono en cents (-50 a +50)
   - Permite un ajuste preciso entre semitonos
   - 100 cents equivalen a un semitono
+
+## Rotary Speaker
+
+Divide la señal entre una bocina de agudos y un tambor de graves mediante un crossover Linkwitz–Riley, y aplica a cada uno una velocidad de rotación, una modulación de volumen y un breve retardo Doppler diferentes. No reproduce mediciones de un recinto Leslie concreto. Debido al retardo variable, no se comunica como latencia algorítmica fija.
+
+### Consejos de ajuste
+
+- Slow produce un movimiento relajado y Fast una rotación más intensa. Una Acceleration más larga hace que los cambios de velocidad suenen más naturales.
+- Ajuste el movimiento de tono con Doppler Depth y el movimiento de volumen con Amplitude Depth.
+- Use Rotor Balance para equilibrar tambor y bocina, y Stereo Width para ajustar la amplitud.
+
+### Parámetros
+
+- **Style**: Ajuste de fábrica completo que define todos los parámetros. Las opciones son **Rotary Slow** (Slow), **Rotary Fast** (Fast), **Gentle Rotary** (Slow), **Leslie Slow** (Slow) y **Leslie Fast** (Fast). Al modificar un parámetro individual, cambia a **Custom**.
+- **Speed State**: Stop, Slow o Fast. Al cambiar, acelera o desacelera de forma continua sin silenciarse.
+- **Speed** (25–200%): Multiplicador de velocidad tanto de la bocina como del tambor.
+- **Acceleration** (0,1–10 s): Determina la rapidez con la que los rotores se aproximan a una nueva velocidad.
+- **Crossover** (200–2.000 Hz): Frecuencia que separa las bandas del tambor y la bocina.
+- **Rotor Balance** (-100–100%): Los valores negativos realzan el tambor y los positivos la bocina.
+- **Stereo Width** (0–100%): Amplitud de cada par estéreo.
+- **Doppler Depth** (0–100%): Cantidad de variación de tono producida por el retardo variable.
+- **Amplitude Depth** (0–100%): Cantidad de variación de volumen producida por la dirección del rotor virtual.
+- **Mix** (0–100%): Proporción entre la señal original y la señal rotatoria. Al 0% solo se oye la señal original.
 
 ## Tremolo
 

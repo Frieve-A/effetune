@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "schemaId": "https://effetune.frieve.com/dsp/schemas/graph-v1.schema.json",
+  "capacity": {
+    "maxStructuralNodes": 128,
+    "maxEffectiveInstances": 96,
+    "maxEdges": 512,
+    "maxLiveBuffers": 129,
+    "maxWorkspaceBytes": 67108864
+  },
+  "document": {
+    "nodeShape": "effect",
+    "nodeIdRequired": true,
+    "endpointReference": "id",
+    "idNamespace": "global",
+    "hostInputs": 1,
+    "hostOutputs": 1,
+    "nodeAudioInputs": 1,
+    "nodeAudioOutputs": 1,
+    "cycles": false,
+    "nestedGraphs": false,
+    "mutableStructureDuringStream": false
+  },
+  "edge": {
+    "defaults": {
+      "gain": 1,
+      "mute": false,
+      "pan": 0,
+      "mixGroup": "default",
+      "solo": false
+    },
+    "ranges": {
+      "gain": [
+        0,
+        4
+      ],
+      "pan": [
+        -1,
+        1
+      ]
+    },
+    "panLayouts": [
+      "stereo"
+    ],
+    "panLaw": "linear-balance-no-boost",
+    "operationOrder": [
+      "gain",
+      "pan",
+      "fanInCompensation",
+      "sum"
+    ],
+    "sumOrder": "edge-id-utf8-bytewise",
+    "soloScope": [
+      "destination",
+      "mixGroup"
+    ],
+    "mutePrecedesSolo": true
+  },
+  "canonicalization": {
+    "materializedNodeDefaults": [
+      "enabled",
+      "channel",
+      "parameters"
+    ],
+    "materializedEdgeDefaults": [
+      "gain",
+      "mute",
+      "mixGroup",
+      "solo"
+    ],
+    "optionalPresencePreserved": [
+      "pan"
+    ],
+    "nodeOrder": "id-utf8-bytewise",
+    "edgeOrder": "id-utf8-bytewise"
+  },
+  "schedule": {
+    "readyNodeOrder": "node-id-utf8-bytewise",
+    "documentArrayOrderAffectsAudio": false,
+    "physicalParallelism": false
+  },
+  "states": [
+    "effective",
+    "dormant",
+    "disabled-bypass"
+  ],
+  "identity": {
+    "emptyGraph": "unity-zero-latency",
+    "disabledNode": "identity-zero-latency-no-instance"
+  },
+  "enabledNodeWithoutActiveInput": "zero-filled-input",
+  "latency": {
+    "unit": "samples",
+    "valueShape": "stream-channel-vector",
+    "publicValue": "main-output-common-max",
+    "compensationOrder": [
+      "fanIn",
+      "preNodeProcessingGroup",
+      "mainOutput"
+    ],
+    "authoritativeSource": "prepared-effective-instance"
+  },
+  "adcEligibility": [
+    {
+      "effectType": "IRReverb",
+      "whenReportedLatency": "positive",
+      "parameter": "dryLevel",
+      "acceptedMaximum": -96,
+      "failureCode": "GRAPH_UNSUPPORTED_CAPABILITY"
+    }
+  ],
+  "recipes": {
+    "wetDry": "ordinary-graph-edges",
+    "sendReturn": "ordinary-graph-edges",
+    "positiveLatencyIRReverb": "wet-only-node-with-external-dry-edge"
+  },
+  "snapshots": {
+    "document": [
+      "nodes",
+      "edges",
+      "incoming",
+      "outgoing",
+      "structuralConnectivity",
+      "structuralTopologicalOrder"
+    ],
+    "compile": [
+      "elementStates",
+      "effectiveSchedule",
+      "bufferAssignments",
+      "perChannelLatencies",
+      "processingGroups",
+      "fanInCompensation",
+      "preNodeCompensation",
+      "outputCompensation",
+      "latencySamples",
+      "capacity"
+    ],
+    "visualization": {
+      "preservesStructuralNodesAndEdges": true,
+      "nodeStatusFields": [
+        "effective",
+        "dormant",
+        "disabledBypass",
+        "state"
+      ],
+      "edgeStatusFields": [
+        "active",
+        "suppressed",
+        "dormant",
+        "state"
+      ]
+    },
+    "layoutCoordinates": false
+  },
+  "compileErrorCodes": [
+    "GRAPH_CAPACITY",
+    "GRAPH_INSTANCE_PREPARE",
+    "GRAPH_LATENCY_OVERFLOW",
+    "GRAPH_UNSUPPORTED_CAPABILITY",
+    "GRAPH_PLAN_MEMORY"
+  ]
+}

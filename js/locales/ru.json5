@@ -50,6 +50,7 @@
   "status.filesSavedToFolder": "{count} файл(ов) сохранено в {folder}",
   "status.filesSaved": "{count} файл(ов) сохранено в выбранную папку",
   "status.libraryTracksSkippedOffline": "Пропущено треков: {count} (офлайн)",
+  "status.jsFallbackCapacityExceeded": "Эффект {effectName} переведён в режим bypass, чтобы избежать прерываний воспроизведения при текущей частоте дискретизации и количестве выходных каналов. Уменьшите частоту дискретизации или количество выходных каналов.",
 
   // Элементы интерфейса
   "ui.resetButton": "Сбросить аудио",
@@ -486,6 +487,7 @@
   "irLibrary.error.fileTooLarge": "Выбранная импульсная характеристика слишком велика. Выберите более короткую и повторите попытку.",
   "irLibrary.error.importFolder": "Не удалось импортировать папку. Повторите попытку.",
   "dbt.error.parallelStartFailed": "Не удалось начать тест, поскольку оба тракта обработки не были готовы. Дождитесь загрузки эффектов и повторите попытку.",
+  "dbt.error.jsFallbackCapacityExceeded": "Не удалось выполнить тест: обработка обоих трактов эффектами JavaScript потребовала бы слишком много ресурсов процессора. Включите WebAssembly DSP или упростите тракты и повторите попытку.",
   "irReverb.name.impulseResponse": "Импульсная характеристика",
   "irReverb.name.theImpulseResponse": "импульсную характеристику",
   "irReverb.name.theImpulseResponseCapitalized": "Импульсная характеристика",

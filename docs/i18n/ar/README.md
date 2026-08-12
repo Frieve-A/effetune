@@ -360,9 +360,15 @@
 | Lo-Fi | Tape Artifacts | يسجل الموسيقى على شريط مغناطيسي مُنمذج ذي بكرتين ثم يعيد تشغيلها | [تفاصيل](plugins/lofi.md#tape-artifacts) |
 | Lo-Fi | Vinyl Artifacts | يضيف طقطقات وفرقعة وهسيسًا ورمبلًا وتسرب ضوضاء ستيريو بطابع الفينيل | [تفاصيل](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi | Vinyl Simulator | يقطع الإدخال في أخدود مُنمذج ثم يشغله بنموذج فيزيائي للإبرة | [تفاصيل](plugins/lofi.md#vinyl-simulator) |
+| Modulation | Auto Filter | يمسح مرشحًا رنّانًا بواسطة LFO أو غلاف مستوى الصوت | [تفاصيل](plugins/modulation.md#auto-filter) |
+| Modulation | Auto Pan | يحرّك مستوى كل زوج ستيريو بسلاسة عبر المجال الصوتي | [تفاصيل](plugins/modulation.md#auto-pan) |
+| Modulation | Chorus | يضيف Chorus أو Ensemble أو Flanger أو Vibrato بتأخيرات متحركة | [تفاصيل](plugins/modulation.md#chorus) |
 | Modulation | Doppler Distortion | يحاكي تغيرات طبيعية ديناميكية في الصوت ناتجة عن حركات طفيفة في مخروط السماعة | [تفاصيل](plugins/modulation.md#doppler-distortion) |
+| Modulation | Frequency Shifter | ينقل الترددات أو يطبق Ring Mod أو إزاحة Barber-pole | [تفاصيل](plugins/modulation.md#frequency-shifter) |
+| Modulation | Phaser | ينشئ قممًا وفجوات متحركة بمسح Classic أو Barber-pole | [تفاصيل](plugins/modulation.md#phaser) |
 | Modulation | Pitch Shifter | يرفع أو يخفض درجة الموسيقى من دون تغيير السرعة | [تفاصيل](plugins/modulation.md#pitch-shifter) |
 | Modulation | Pitch Shifter HQ | يرفع أو يخفض الدرجة مع آثار طور أقل للاستماع الدقيق | [تفاصيل](plugins/modulation.md#pitch-shifter-hq) |
+| Modulation | Rotary Speaker | يجمع الحركة المستقلة للبوق والأسطوانة | [تفاصيل](plugins/modulation.md#rotary-speaker) |
 | Modulation | Tremolo | تأثير تضمين يعتمد على مستوى الصوت | [تفاصيل](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | يضيف تمايلًا لطيفًا في الدرجة بطابع الشريط أو الأسطوانة | [تفاصيل](plugins/modulation.md#wow-flutter) |
 | Resonator | Horn Resonator | يحاكي رنين القرن بأبعاد قابلة للتخصيص | [تفاصيل](plugins/resonator.md#horn-resonator) |

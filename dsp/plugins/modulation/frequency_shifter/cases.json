@@ -1,0 +1,88 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 64,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    { "id": "shift-default", "stimulus": "sweep", "frames": 4099 },
+    {
+      "id": "ring-mod-matched-latency",
+      "stimulus": "noise",
+      "frames": 4097,
+      "params": { "md": "Ring Mod", "cf": 997.3, "sp": 120, "mix": 100 }
+    },
+    {
+      "id": "barber-up-reversed-bounds",
+      "stimulus": "noise",
+      "frames": 7001,
+      "params": { "md": "Barber-pole", "mn": 900, "mx": 20, "rt": 0.37, "dr": "Up", "sp": 90, "mix": 85 }
+    },
+    {
+      "id": "barber-stationary-down",
+      "stimulus": "sweep",
+      "sampleRate": 44100,
+      "blockSize": 83,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 5003,
+      "params": { "md": "Barber-pole", "mn": 173, "mx": 173, "rt": 0.2, "dr": "Down", "sp": 180, "mix": 100 }
+    },
+    {
+      "id": "near-nyquist-192k-all8",
+      "stimulus": "sweep",
+      "sampleRate": 192000,
+      "blockSize": 127,
+      "channels": 8,
+      "frames": 12001,
+      "params": { "md": "Shift", "sh": 5000, "sp": 180, "mix": 100 }
+    },
+    {
+      "id": "mode-direction-events",
+      "stimulus": "noise",
+      "frames": 8003,
+      "events": [
+        { "frame": 511, "params": { "md": "Ring Mod", "cf": 2400, "mix": 70 } },
+        { "frame": 2049, "params": { "md": "Barber-pole", "mn": 50, "mx": 1200, "rt": 0.8, "dr": "Down" } },
+        { "frame": 4097, "params": { "dr": "Up", "sp": 135 } },
+        { "frame": 6501, "params": { "md": "Shift", "sh": -37.5, "mix": 50 } }
+      ]
+    },
+    {
+      "id": "one-frame-blocks-96k",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "blockSize": 1,
+      "channels": 3,
+      "frames": 6001,
+      "params": { "md": "Barber-pole", "mn": 10, "mx": 2000, "rt": 1.7, "dr": "Up", "sp": 45 }
+    },
+    {
+      "id": "transition-restaging-cancellation-direction",
+      "stimulus": "noise",
+      "blockSize": 127,
+      "frames": 1601,
+      "events": [
+        { "frame": 511, "params": { "md": "Barber-pole", "dr": "Down", "rt": 0.8 } },
+        { "frame": 543, "params": { "md": "Ring Mod", "cf": 997.3 } },
+        { "frame": 607, "params": { "md": "Barber-pole", "dr": "Up", "mn": 40, "mx": 1200 } },
+        { "frame": 671, "params": { "dr": "Down" } },
+        { "frame": 703, "params": { "dr": "Up" } },
+        { "frame": 831, "params": { "dr": "Down" } },
+        { "frame": 1023, "params": { "md": "Shift", "sh": -37.5 } }
+      ]
+    },
+    {
+      "id": "barber-moving-stationary-moving-events",
+      "stimulus": "sweep",
+      "frames": 9001,
+      "params": { "md": "Barber-pole", "mn": 20, "mx": 900, "rt": 2, "dr": "Up", "sp": 90, "mix": 100 },
+      "events": [
+        { "frame": 2049, "params": { "mn": 173, "mx": 173 } },
+        { "frame": 5501, "params": { "dr": "Down" } },
+        { "frame": 7001, "params": { "mn": 20, "mx": 900 } }
+      ]
+    }
+  ]
+}

@@ -50,6 +50,7 @@
   "status.filesSavedToFolder": "تم حفظ {count} ملف(ات) في {folder}",
   "status.filesSaved": "تم حفظ {count} ملف(ات) في المجلد المحدد",
   "status.libraryTracksSkippedOffline": "تم تخطي {count} من المقاطع (غير متصلة)",
+  "status.jsFallbackCapacityExceeded": "تم وضع {effectName} في وضع bypass لتجنب انقطاع التشغيل عند معدل العينة الحالي وعدد قنوات الإخراج الحالي. اخفض معدل العينة أو قلّل عدد قنوات الإخراج.",
 
   // عناصر واجهة المستخدم
   "ui.resetButton": "إعادة تعيين الصوت",
@@ -486,6 +487,7 @@
   "irLibrary.error.fileTooLarge": "الاستجابة النبضية المحددة كبيرة جدًا. اختر استجابة نبضية أقصر وحاول مرة أخرى.",
   "irLibrary.error.importFolder": "تعذر استيراد المجلد. حاول مرة أخرى.",
   "dbt.error.parallelStartFailed": "تعذّر بدء الاختبار لأن مساري المعالجة لم يكونا جاهزين. انتظر حتى يكتمل تحميل المؤثرات، ثم حاول مرة أخرى.",
+  "dbt.error.jsFallbackCapacityExceeded": "تعذّر تشغيل الاختبار لأن معالجة المسارين بمؤثرات JavaScript تتطلب قدرة كبيرة جدًا من المعالج. فعّل WebAssembly DSP أو بسّط المسارين، ثم حاول مرة أخرى.",
   "irReverb.name.impulseResponse": "الاستجابة النبضية",
   "irReverb.name.theImpulseResponse": "الاستجابة النبضية",
   "irReverb.name.theImpulseResponseCapitalized": "الاستجابة النبضية",

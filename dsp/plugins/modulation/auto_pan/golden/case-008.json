@@ -1,0 +1,44 @@
+{
+  "formatVersion": 1,
+  "type": "AutoPanPlugin",
+  "id": "pending-during-fade-up",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 367,
+  "blockSize": 512,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "rt": 0.35,
+    "dp": 45,
+    "ct": 0,
+    "wd": 70,
+    "wf": "Sine",
+    "ph": 0
+  },
+  "events": [
+    {
+      "frame": 1,
+      "params": {
+        "wf": "Triangle"
+      }
+    },
+    {
+      "frame": 181,
+      "params": {
+        "wf": "Sine"
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.000002,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "a59a4a1b17d3786878ca3fee9f15d64fc38d272c45f12de6192e82497a07409f",
+  "outputFloats": 734,
+  "byteLength": 2936,
+  "binary": "case-008.f32"
+}

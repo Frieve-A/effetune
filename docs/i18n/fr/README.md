@@ -360,9 +360,15 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 | Lo-Fi     | Tape Artifacts | Enregistre la musique sur une bande magnétique à bobines modélisée puis la relit | [Détails](plugins/lofi.md#tape-artifacts) |
 | Lo-Fi     | Vinyl Artifacts | Ajoute des pops, crépitements, souffle, rumble et fuite de bruit stéréo façon vinyle | [Détails](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi     | Vinyl Simulator | Grave le signal dans un sillon modélisé puis le lit avec un modèle physique de pointe | [Détails](plugins/lofi.md#vinyl-simulator) |
+| Modulation | Auto Filter | Balaye un filtre résonant avec un LFO ou l'enveloppe du signal | [Détails](plugins/modulation.md#auto-filter) |
+| Modulation | Auto Pan | Déplace doucement le niveau de chaque paire stéréo dans l'espace | [Détails](plugins/modulation.md#auto-pan) |
+| Modulation | Chorus | Ajoute chorus, ensemble, flanger ou vibrato par retards mobiles | [Détails](plugins/modulation.md#chorus) |
 | Modulation | Doppler Distortion | Simule les changements naturels et dynamiques du son causés par de subtiles oscillations du cône de haut-parleur | [Détails](plugins/modulation.md#doppler-distortion) |
+| Modulation | Frequency Shifter | Translate les fréquences, applique une modulation en anneau ou un décalage barber-pole | [Détails](plugins/modulation.md#frequency-shifter) |
+| Modulation | Phaser | Crée des pics et creux mobiles par balayage classique ou barber-pole | [Détails](plugins/modulation.md#phaser) |
 | Modulation | Pitch Shifter | Monte ou baisse la hauteur de la musique sans changer le tempo | [Détails](plugins/modulation.md#pitch-shifter) |
 | Modulation | Pitch Shifter HQ | Monte ou baisse la hauteur avec moins d'artefacts de phase pour une écoute attentive | [Détails](plugins/modulation.md#pitch-shifter-hq) |
+| Modulation | Rotary Speaker | Combine les mouvements indépendants de la trompe et du tambour | [Détails](plugins/modulation.md#rotary-speaker) |
 | Modulation | Tremolo | Effet de modulation basé sur le volume | [Détails](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | Ajoute un léger flottement de hauteur façon bande ou disque pour une couleur vintage | [Détails](plugins/modulation.md#wow-flutter) |
 | Resonator | Horn Resonator | Simulation de résonance de cornet avec dimensions personnalisables | [Détails](plugins/resonator.md#horn-resonator) |

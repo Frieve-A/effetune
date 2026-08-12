@@ -1,7 +1,13 @@
 import { DSP_PARAM_PACKERS } from './internal/dsp-params.generated.js';
 import { getEffectDefinition, getEffectImplementation } from './catalog.js';
 import { Effect, validateChannel, validateParameterValue } from './effect.js';
-import { AssetError, EffeTuneError, EffectError, ValidationError } from './errors.js';
+import {
+  AssetError,
+  EffeTuneError,
+  EffectError,
+  ValidationError,
+  withValidationDetail
+} from './errors.js';
 
 const DOCUMENT_KEYS = new Set(['version', 'chain']);
 const EFFECT_KEYS = new Set(['id', 'type', 'enabled', 'channel', 'parameters', 'assets']);
@@ -51,34 +57,47 @@ function cloneEffect(effect) {
   };
 }
 
-function fromPlainEffect(value, index) {
-  if (!isRecord(value)) throw new ValidationError(`Chain entry ${index} must be an object.`);
+function fromPlainEffect(value, index, label = `Chain entry ${index}`) {
+  if (!isRecord(value)) throw new ValidationError(`${label} must be an object.`);
   for (const key of Object.keys(value)) {
     if (!EFFECT_KEYS.has(key)) {
-      throw new ValidationError(`Chain entry ${index} has an unsupported field: ${key}`);
+      throw new ValidationError(`${label} has an unsupported field: ${key}`);
     }
   }
   if (typeof value.type !== 'string') {
-    throw new ValidationError(`Chain entry ${index} requires an effect type.`);
+    throw new ValidationError(`${label} requires an effect type.`);
   }
   if (!isRecord(value.parameters)) {
-    throw new ValidationError(`Chain entry ${index} requires a parameters object.`);
+    throw new ValidationError(`${label} requires a parameters object.`);
   }
-  const definition = getEffectDefinition(value.type);
+  let definition;
+  try {
+    definition = getEffectDefinition(value.type);
+  } catch (error) {
+    throw withValidationDetail(error, { kind: 'type' });
+  }
   const id = value.id;
   if (id !== undefined &&
       (typeof id !== 'string' || id.length < 1 || id.length > 128)) {
-    throw new ValidationError(`Chain entry ${index} has an invalid effect id.`);
+    throw new ValidationError(`${label} has an invalid effect id.`);
   }
   const enabled = value.enabled ?? true;
   if (typeof enabled !== 'boolean') {
-    throw new ValidationError(`Chain entry ${index} enabled must be boolean.`);
+    throw new ValidationError(`${label} enabled must be boolean.`);
   }
-  const channel = validateChannel(value.channel ?? 'all');
+  let channel;
+  try {
+    channel = validateChannel(value.channel ?? 'all');
+  } catch (error) {
+    throw withValidationDetail(error, { kind: 'channel' });
+  }
   const parameterByName = new Map(definition.parameters.map(parameter => [parameter.name, parameter]));
   for (const key of Object.keys(value.parameters)) {
     if (!parameterByName.has(key)) {
-      throw new ValidationError(`Unknown parameter ${value.type}.${key}.`);
+      throw withValidationDetail(
+        new ValidationError(`Unknown parameter ${value.type}.${key}.`),
+        { kind: 'parameter', parameter: key }
+      );
     }
   }
   const parameters = {};
@@ -86,26 +105,34 @@ function fromPlainEffect(value, index) {
     const supplied = Object.hasOwn(value.parameters, parameter.name)
       ? value.parameters[parameter.name]
       : parameter.default;
-    parameters[parameter.name] = validateParameterValue(value.type, parameter, supplied);
+    try {
+      parameters[parameter.name] = validateParameterValue(value.type, parameter, supplied);
+    } catch (error) {
+      throw withValidationDetail(error, { kind: 'parameter', parameter: parameter.name });
+    }
   }
   const declaredAssets = definition.assets ?? [];
   let assets;
-  if (declaredAssets.length === 0) {
-    if (value.assets !== undefined) throw new AssetError(`${value.type} does not accept external assets.`);
-  } else {
-    if (!isRecord(value.assets)) throw new AssetError(`${value.type} requires an assets object.`);
-    const allowed = new Set(declaredAssets.map(asset => asset.name));
-    for (const name of Object.keys(value.assets)) {
-      if (!allowed.has(name)) throw new AssetError(`${value.type} has no asset named ${name}.`);
-    }
-    assets = {};
-    for (const asset of declaredAssets) {
-      const reference = value.assets[asset.name];
-      if (asset.required && (typeof reference !== 'string' || reference.length < 1 || reference.length > 128)) {
-        throw new AssetError(`${value.type}.${asset.name} requires a non-empty asset reference.`);
+  try {
+    if (declaredAssets.length === 0) {
+      if (value.assets !== undefined) throw new AssetError(`${value.type} does not accept external assets.`);
+    } else {
+      if (!isRecord(value.assets)) throw new AssetError(`${value.type} requires an assets object.`);
+      const allowed = new Set(declaredAssets.map(asset => asset.name));
+      for (const name of Object.keys(value.assets)) {
+        if (!allowed.has(name)) throw new AssetError(`${value.type} has no asset named ${name}.`);
       }
-      if (reference !== undefined) assets[asset.name] = reference;
+      assets = {};
+      for (const asset of declaredAssets) {
+        const reference = value.assets[asset.name];
+        if (asset.required && (typeof reference !== 'string' || reference.length < 1 || reference.length > 128)) {
+          throw new AssetError(`${value.type}.${asset.name} requires a non-empty asset reference.`);
+        }
+        if (reference !== undefined) assets[asset.name] = reference;
+      }
     }
+  } catch (error) {
+    throw withValidationDetail(error, { kind: 'assets' });
   }
   return { id, type: value.type, enabled, channel, parameters, ...(assets ? { assets } : {}) };
 }
@@ -134,7 +161,7 @@ function assignIds(effects) {
   });
 }
 
-export function normalizeChainDocument(input) {
+export function normalizeChainDocument(input, { entryLabel } = {}) {
   let entries;
   if (Array.isArray(input)) {
     entries = input;
@@ -149,7 +176,11 @@ export function normalizeChainDocument(input) {
     entries = input.chain;
   }
   const effects = entries.map((entry, index) =>
-    fromPlainEffect(entry instanceof Effect ? entry.toJSON() : entry, index)
+    fromPlainEffect(
+      entry instanceof Effect ? entry.toJSON() : entry,
+      index,
+      entryLabel ?? `Chain entry ${index}`
+    )
   );
   return {
     version: 1,
@@ -250,12 +281,39 @@ export function packEffect(effect) {
 export function setEffectParameter(effect, parameterName, value) {
   const definition = getEffectDefinition(effect.type);
   const parameter = definition.parameters.find(entry => entry.name === parameterName);
-  if (!parameter) throw new ValidationError(`Unknown parameter ${effect.type}.${parameterName}.`);
-  const validated = validateParameterValue(effect.type, parameter, value);
+  if (!parameter) {
+    throw withValidationDetail(
+      new ValidationError(`Unknown parameter ${effect.type}.${parameterName}.`),
+      { kind: 'parameter', parameter: parameterName }
+    );
+  }
+  let validated;
+  try {
+    validated = validateParameterValue(effect.type, parameter, value);
+  } catch (error) {
+    throw withValidationDetail(error, { kind: 'parameter', parameter: parameterName });
+  }
   return {
     ...cloneEffect(effect),
     parameters: { ...effect.parameters, [parameterName]: validated }
   };
+}
+
+export function canonicalizeEffectForProcessing(effect) {
+  const canonical = cloneEffect(effect);
+  const parameters = canonical.parameters;
+  if (effect.type === 'AutoFilter' &&
+      parameters.minimumFrequency > parameters.maximumFrequency) {
+    [parameters.minimumFrequency, parameters.maximumFrequency] =
+      [parameters.maximumFrequency, parameters.minimumFrequency];
+  } else if (effect.type === 'Chorus' && parameters.depth > parameters.delay) {
+    parameters.depth = parameters.delay;
+  } else if (effect.type === 'FrequencyShifter' &&
+      parameters.minimumShift > parameters.maximumShift) {
+    [parameters.minimumShift, parameters.maximumShift] =
+      [parameters.maximumShift, parameters.minimumShift];
+  }
+  return canonical;
 }
 
 export function validateStreamParameterUpdate(effect, parameterName) {

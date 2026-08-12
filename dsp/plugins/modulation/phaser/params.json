@@ -1,0 +1,15 @@
+{
+  "type": "PhaserPlugin",
+  "tolerance": { "abs": 0.00003, "policy": "per-sample" },
+  "fields": [
+    { "name": "mode", "key": "md", "kind": "enum", "values": ["Classic", "Barber-pole"], "default": "Classic" },
+    { "name": "rate", "key": "rt", "kind": "float", "min": 0.05, "max": 10, "default": 0.5, "unit": "Hz" },
+    { "name": "centerFrequency", "key": "cf", "kind": "float", "min": 80, "max": 8000, "default": 1000, "unit": "Hz" },
+    { "name": "range", "key": "rg", "kind": "float", "min": 0, "max": 6, "default": 3, "unit": "octaves" },
+    { "name": "stages", "key": "st", "kind": "int", "min": 2, "max": 12, "default": 6 },
+    { "name": "feedback", "key": "fb", "kind": "float", "min": -90, "max": 90, "default": 20, "unit": "%" },
+    { "name": "stereoPhase", "key": "sp", "kind": "float", "min": 0, "max": 180, "default": 90, "unit": "degrees" },
+    { "name": "direction", "key": "dr", "kind": "enum", "values": ["Up", "Down"], "default": "Up" },
+    { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "default": 50, "unit": "%" }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "type": "ChorusPlugin",
+  "id": "stereo-chorus-active-spread",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 5003,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 9,
+  "seed": "0xeffe7a57",
+  "params": {
+    "md": "Stereo Chorus",
+    "rt": 0.65,
+    "dl": 15,
+    "dp": 4,
+    "vc": 2,
+    "ss": 80,
+    "fb": 0,
+    "mx": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "cd8d937332e8bb9b1133e50fa4e513e0e00e3d96eb6e320d38205d26d16c3eb4",
+  "outputFloats": 10006,
+  "byteLength": 40024,
+  "binary": "case-010.f32"
+}

@@ -14,6 +14,9 @@ AudioWorklet support requires HTTPS or localhost; direct `file:` loading is unsu
 The npm package is ESM-only; use `.mjs` or a consumer package with
 `"type": "module"`. CommonJS `require()` is unsupported.
 
+Graph v1 is supported on the JavaScript and Python bindings only; see
+[Graph v1 supported surfaces](/dsp/reference/graph-v1/#supported-surfaces).
+
 The core does not decode, encode, resample, call ffmpeg, host VST/AU, or expose public
 integrated-LUFS/true-peak measurement.
 

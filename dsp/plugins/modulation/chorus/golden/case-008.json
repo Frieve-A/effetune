@@ -1,0 +1,48 @@
+{
+  "formatVersion": 1,
+  "type": "ChorusPlugin",
+  "id": "one-frame-events",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 3,
+  "frameCount": 1003,
+  "blockSize": 1,
+  "channelMode": "all3",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "md": "Chorus",
+    "rt": 0.8,
+    "dl": 12,
+    "dp": 3,
+    "vc": 3,
+    "ss": 60,
+    "fb": 0,
+    "mx": 45
+  },
+  "events": [
+    {
+      "frame": 1,
+      "params": {
+        "rt": 10,
+        "ss": 100
+      }
+    },
+    {
+      "frame": 499,
+      "params": {
+        "dl": 0.5,
+        "dp": 20
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "cd8d937332e8bb9b1133e50fa4e513e0e00e3d96eb6e320d38205d26d16c3eb4",
+  "outputFloats": 3009,
+  "byteLength": 12036,
+  "binary": "case-008.f32"
+}

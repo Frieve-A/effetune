@@ -6,14 +6,14 @@ lang: en
 
 # Version History
 
-### Version 2.5.0 (TBD, 2026)
-- Added Bandwidth Extender for generating plausible high-frequency content in bandwidth-limited audio
-- Added Phase Select EQ for boosting or cutting stereo frequency components selected by L/R phase difference
-- Added Pipeline Analyzer for viewing the active pipeline's frequency, phase, group delay, and impulse responses across up to four outputs with optional speaker IRs
-- Added Pitch Shifter HQ for high-quality pitch shifting
-- Added a low-frequency phase correction mode to Room EQ
+### Version 2.5.0 (Aug 15, 2026)
+- Added Bandwidth Extender, Phase Select EQ and Pitch Shifter HQ effects
+- Added Auto Filter, Auto Pan, Chorus, Frequency Shifter, Phaser and Rotary Speaker effects
 - Expanded Tube Simulator with 6L6GC and KT88 power-tube models, single-ended triode (300B/2A3) circuits, and Pre, Power, and Pre+Power presets
-- Added automatic pipeline latency compensation plus Total Delay and CPU Avg displays
+- Added a low-frequency phase correction mode to Room EQ
+- Added Pipeline Analyzer for viewing the active pipeline's frequency, phase, group delay, and impulse responses across up to four outputs with optional speaker IRs
+- Added automatic pipeline latency compensation
+- Added OpenHome remote control support to the desktop app
 - Various minor improvements
 
 ### Version 2.4.0 (Aug 8, 2026)

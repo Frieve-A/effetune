@@ -18,6 +18,11 @@ from .errors import (
     StateError,
     ValidationError,
 )
+from .graph import Graph, GraphStream
+from .graph_document import (
+    send_return_graph_document,
+    wet_dry_graph_document,
+)
 from .presets import LegacyImportReport, import_legacy_preset
 from .telemetry import (
     LevelTelemetryChannel,
@@ -49,6 +54,8 @@ __all__ = [
     "EffectError",
     "EffeTuneError",
     "EffeTuneRuntimeError",
+    "Graph",
+    "GraphStream",
     "LegacyImportReport",
     "LevelTelemetryChannel",
     "LevelTelemetryFrame",
@@ -62,5 +69,7 @@ __all__ = [
     "ValidationError",
     "__version__",
     "import_legacy_preset",
+    "send_return_graph_document",
+    "wet_dry_graph_document",
     *_generated_all,
 ]

@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "type": "FrequencyShifterPlugin",
+  "id": "barber-up-reversed-bounds",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 7001,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "md": "Barber-pole",
+    "sh": 8,
+    "cf": 440,
+    "mn": 900,
+    "mx": 20,
+    "rt": 0.37,
+    "dr": "Up",
+    "sp": 90,
+    "mix": 85
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "534549173cd3b77f1b2c17c77c68454549654eddd36891bd666dee790c9f3855",
+  "outputFloats": 14002,
+  "byteLength": 56008,
+  "binary": "case-003.f32"
+}

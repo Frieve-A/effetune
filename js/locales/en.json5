@@ -50,6 +50,7 @@
   "status.filesSavedToFolder": "{count} file(s) saved to {folder}",
   "status.filesSaved": "{count} file(s) saved to selected folder",
   "status.libraryTracksSkippedOffline": "{count} track(s) skipped (offline)",
+  "status.jsFallbackCapacityExceeded": "{effectName} was bypassed to prevent playback interruptions at the current sample rate and output channel count. Lower the sample rate or reduce the number of output channels.",
 
   // UI elements
   "ui.resetButton": "Reset Audio",
@@ -411,6 +412,7 @@
   "dbt.copyFailure": "Failed to copy the test URL.",
   "dbt.error.invalidConfig": "Invalid configuration. Please check the number of tests.",
   "dbt.error.parallelStartFailed": "The test could not start because both pipelines were not ready. Wait for the effects to finish loading, then try again.",
+  "dbt.error.jsFallbackCapacityExceeded": "The test could not run because processing both pipelines with JavaScript effects would require too much CPU. Enable WebAssembly DSP or simplify the pipelines, then try again.",
   "dbt.info.config1": "Switch freely between the pipelines and judge them blind.",
   "dbt.info.config2": "Increasing the number of tests yields more reliable results but takes longer.",
   "dbt.info.config3": "Share the URL to let others take the exact same test.",

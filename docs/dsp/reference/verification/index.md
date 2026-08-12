@@ -7,8 +7,8 @@ permalink: /dsp/reference/verification/
 ---
 # Verification
 
-The frozen wrapper reference origin is 71 JavaScript-derived cases plus 5 native
-direct-double cases. Maintainers run:
+The frozen wrapper reference origin is 80 JavaScript-derived effect suites, 5 native
+direct-double suites, and 5 production-native-promoted suites. Maintainers run:
 
 ```console
 node tools/verify-dsp-library-goldens.mjs

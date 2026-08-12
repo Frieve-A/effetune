@@ -32,10 +32,56 @@ enum {
   ET_ERR_UNKNOWN_TYPE = -4,
   ET_ERR_HASH = -5,
   ET_ERR_DESC = -6,
-  ET_ERR_UNSUPPORTED = -7
+  ET_ERR_UNSUPPORTED = -7,
+  ET_ERR_GRAPH_INVALID = -8,
+  ET_ERR_GRAPH_CYCLE = -9,
+  ET_ERR_GRAPH_DISCONNECTED = -10,
+  ET_ERR_GRAPH_CAPACITY = -11,
+  ET_ERR_GRAPH_LATENCY_OVERFLOW = -12,
+  ET_ERR_GRAPH_UNSUPPORTED_CAPABILITY = -13,
+  ET_ERR_GRAPH_INSTANCE_PREPARE = -14
 };
 
-enum { ET_BUILD_SIMD = 1u << 0u, ET_BUILD_DEBUG = 1u << 1u };
+enum { ET_BUILD_SIMD = 1u << 0u, ET_BUILD_DEBUG = 1u << 1u, ET_BUILD_GRAPH = 1u << 2u };
+
+enum { ET_GRAPH_CAPABILITY_V1 = 1u << 0u };
+
+enum {
+  ET_GRAPH_DIAGNOSTIC_GRAPH = 0u,
+  ET_GRAPH_DIAGNOSTIC_NODE = 1u,
+  ET_GRAPH_DIAGNOSTIC_EDGE = 2u
+};
+
+enum {
+  ET_GRAPH_PATH_NONE = 0u,
+  ET_GRAPH_PATH_DOCUMENT = 1u,
+  ET_GRAPH_PATH_NODE_ID = 2u,
+  ET_GRAPH_PATH_NODE_INSTANCE = 3u,
+  ET_GRAPH_PATH_NODE_ASSET = 4u,
+  ET_GRAPH_PATH_NODE_LATENCY = 5u,
+  ET_GRAPH_PATH_NODE_CHANNEL = 6u,
+  ET_GRAPH_PATH_EDGE_ID = 7u,
+  ET_GRAPH_PATH_EDGE_SOURCE = 8u,
+  ET_GRAPH_PATH_EDGE_DESTINATION = 9u,
+  ET_GRAPH_PATH_EDGE_GAIN = 10u,
+  ET_GRAPH_PATH_EDGE_PAN = 11u,
+  ET_GRAPH_PATH_EDGE_CONTROL = 12u,
+  ET_GRAPH_PATH_GRAPH_CYCLE = 13u,
+  ET_GRAPH_PATH_GRAPH_CONNECTIVITY = 14u,
+  ET_GRAPH_PATH_GRAPH_BUFFERS = 15u,
+  ET_GRAPH_PATH_GRAPH_DELAY = 16u,
+  ET_GRAPH_PATH_GRAPH_MEMORY = 17u,
+  ET_GRAPH_PATH_GRAPH_LATENCY = 18u
+};
+
+typedef struct et_graph_diagnostic {
+  int32_t status;
+  uint32_t kind;
+  uint32_t index;
+  uint32_t path;
+  uint32_t required;
+  uint32_t capacity;
+} et_graph_diagnostic;
 
 enum {
   ET_ASSET_F32_MULTICH = 1u,
@@ -48,6 +94,8 @@ enum {
 
 ET_EXPORT uint32_t et_abi_version(void);
 ET_EXPORT uint32_t et_build_flags(void);
+ET_EXPORT uint32_t et_graph_capabilities(void);
+ET_EXPORT uint32_t et_graph_version(void);
 ET_EXPORT uint32_t et_kernel_count(void);
 ET_EXPORT int32_t et_kernel_name(uint32_t index, char *buffer, uint32_t buffer_size);
 ET_EXPORT uint32_t et_kernel_params_hash(uint32_t index);
@@ -121,6 +169,26 @@ ET_EXPORT uint32_t et_pipeline_latency(et_engine engine);
 ET_EXPORT et_status et_pipeline_process(et_engine engine, uint32_t channel_count,
                                         uint32_t frame_count, double time_seconds,
                                         uint32_t master_bypass);
+
+/*
+ * Graph descriptor v1 is a bounded little-endian binary document. Effect instances,
+ * parameters, seeds, and assets must be prepared before et_graph_configure. Configure
+ * reads the prepared instances' authoritative latency and atomically installs a complete
+ * immutable execution plan. A failed configure leaves any previous plan installed.
+ */
+ET_EXPORT et_status et_graph_configure(et_engine engine, const uint8_t *descriptor,
+                                       uint32_t descriptor_bytes);
+ET_EXPORT et_status et_graph_reset(et_engine engine);
+ET_EXPORT et_status et_graph_set_instance_params(et_engine engine, et_instance instance,
+                                                 const float *packed, uint32_t float_count,
+                                                 uint32_t params_hash, uint32_t changed_index);
+ET_EXPORT uint32_t et_graph_latency(et_engine engine);
+ET_EXPORT et_status et_graph_process(et_engine engine, uint32_t channel_count, uint32_t frame_count,
+                                     double time_seconds);
+ET_EXPORT uint32_t et_graph_snapshot_size(et_engine engine);
+ET_EXPORT et_status et_graph_snapshot_copy(et_engine engine, uint8_t *output,
+                                           uint32_t output_bytes);
+ET_EXPORT et_status et_graph_read_diagnostic(et_engine engine, et_graph_diagnostic *out_diagnostic);
 
 #ifdef __cplusplus
 }

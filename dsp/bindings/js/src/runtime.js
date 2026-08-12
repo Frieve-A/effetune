@@ -4,6 +4,7 @@ import { createEngineSession } from './engine.js';
 import { StateError, ValidationError } from './errors.js';
 import {
   normalizeChainDocument,
+  canonicalizeEffectForProcessing,
   channelRange,
   packEffect,
   setEffectParameter,
@@ -90,18 +91,31 @@ function updateEffectParameters(effect, parameters) {
   return updated;
 }
 
+function updateProcessingEffectParameters(effect, parameters) {
+  return canonicalizeEffectForProcessing(updateEffectParameters(effect, parameters));
+}
+
+function canonicalizeDocumentForProcessing(document) {
+  return {
+    version: 1,
+    chain: document.chain.map(canonicalizeEffectForProcessing)
+  };
+}
+
 function replaceEffect(document, index, effect) {
   const chain = [...document.chain];
   chain[index] = effect;
   return { version: 1, chain };
 }
 
-function validateParameterEvents(events, document, frameCount) {
+function validateParameterEvents(events, document, processingDocument, frameCount) {
   if (events === undefined) return [];
   if (!Array.isArray(events)) {
     throw new ValidationError('events must be an array.');
   }
   let workingDocument = cloneDocument(document);
+  let workingProcessingDocument = cloneDocument(processingDocument);
+  const pendingPatches = new Map();
   let previousFrame = -1;
   return events.map((event, eventIndex) => {
     if (!isRecord(event)) {
@@ -123,12 +137,32 @@ function validateParameterEvents(events, document, frameCount) {
     previousFrame = event.frame;
     const index = effectIndex(workingDocument, event.effectId);
     const effect = updateEffectParameters(workingDocument.chain[index], event.parameters);
+    let pending = pendingPatches.get(event.effectId);
+    if (!pending || pending.frame !== event.frame) {
+      pending = {
+        frame: event.frame,
+        effect: workingProcessingDocument.chain[index],
+        parameters: {}
+      };
+      pendingPatches.set(event.effectId, pending);
+    }
+    Object.assign(pending.parameters, event.parameters);
+    const processingEffect = updateProcessingEffectParameters(
+      pending.effect,
+      pending.parameters
+    );
     workingDocument = replaceEffect(workingDocument, index, effect);
+    workingProcessingDocument = replaceEffect(
+      workingProcessingDocument,
+      index,
+      processingEffect
+    );
     return {
       frame: event.frame,
       effectId: event.effectId,
       effect,
-      packed: packEffect(effect)
+      processingEffect,
+      packed: packEffect(processingEffect)
     };
   });
 }
@@ -142,6 +176,9 @@ class ChainStream {
   }) {
     this._initialDocument = cloneDocument(document);
     this._document = cloneDocument(document);
+    this._initialProcessingDocument = canonicalizeDocumentForProcessing(document);
+    this._processingDocument = cloneDocument(this._initialProcessingDocument);
+    this._pendingProcessingPatches = new Map();
     this._session = session;
     this._sampleRate = sampleRate;
     this._channels = channels;
@@ -154,7 +191,7 @@ class ChainStream {
 
   get preset() {
     this._assertOpen();
-    return cloneDocument(this._document);
+    return cloneDocument(this._processingDocument);
   }
 
   get effects() {
@@ -180,9 +217,27 @@ class ChainStream {
     const index = effectIndex(this._document, effectId);
     validateStreamParameterUpdate(this._document.chain[index], parameterName);
     const effect = setEffectParameter(this._document.chain[index], parameterName, value);
-    const packed = packEffect(effect);
+    let pending = this._pendingProcessingPatches.get(effectId);
+    if (!pending) {
+      pending = {
+        effect: this._processingDocument.chain[index],
+        parameters: {}
+      };
+      this._pendingProcessingPatches.set(effectId, pending);
+    }
+    pending.parameters[parameterName] = value;
+    const processingEffect = updateProcessingEffectParameters(
+      pending.effect,
+      pending.parameters
+    );
+    const packed = packEffect(processingEffect);
     this._session?.setPacked(effectId, packed.values, packed.hash, packed.bytes);
     this._document = replaceEffect(this._document, index, effect);
+    this._processingDocument = replaceEffect(
+      this._processingDocument,
+      index,
+      processingEffect
+    );
     return this;
   }
 
@@ -211,9 +266,15 @@ class ChainStream {
         `Audio has ${layout.channels} channel(s); this stream requires ${this._channels}.`
       );
     }
-    const parameterEvents = validateParameterEvents(events, this._document, layout.frames);
+    const parameterEvents = validateParameterEvents(
+      events,
+      this._document,
+      this._processingDocument,
+      layout.frames
+    );
     const output = audio.map(channel => new Float32Array(channel));
     if (layout.frames === 0) return output;
+    this._pendingProcessingPatches.clear();
 
     let offset = 0;
     let eventIndex = 0;
@@ -228,6 +289,11 @@ class ChainStream {
         );
         const index = effectIndex(this._document, event.effectId);
         this._document = replaceEffect(this._document, index, event.effect);
+        this._processingDocument = replaceEffect(
+          this._processingDocument,
+          index,
+          event.processingEffect
+        );
         eventIndex += 1;
       }
       const nextEventFrame = parameterEvents[eventIndex]?.frame ?? layout.frames;
@@ -254,6 +320,8 @@ class ChainStream {
     this._assertOpen();
     this._session?.reset();
     this._document = cloneDocument(this._initialDocument);
+    this._processingDocument = cloneDocument(this._initialProcessingDocument);
+    this._pendingProcessingPatches.clear();
     this._processedFrames = 0;
     return this;
   }

@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "type": "ChorusPlugin",
+  "id": "ensemble-six-voices",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 5,
+  "frameCount": 5003,
+  "blockSize": 127,
+  "channelMode": "all5",
+  "channel": null,
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "md": "Ensemble",
+    "rt": 1.7,
+    "dl": 24,
+    "dp": 9,
+    "vc": 6,
+    "ss": 100,
+    "fb": 0,
+    "mx": 70
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "cd8d937332e8bb9b1133e50fa4e513e0e00e3d96eb6e320d38205d26d16c3eb4",
+  "outputFloats": 25015,
+  "byteLength": 100060,
+  "binary": "case-003.f32"
+}

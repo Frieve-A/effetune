@@ -390,6 +390,22 @@ class NativeChainTests(unittest.TestCase):
         with self.assertRaises(effetune.ValidationError):
             plain.latency_samples(0)
 
+    def test_frequency_shifter_latency_matches_chain_and_open_stream(self) -> None:
+        chain = effetune.Chain([effetune.FrequencyShifter()])
+        for sample_rate, expected in (
+            (48_000, 114),
+            (96_000, 228),
+            (192_000, 456),
+        ):
+            with self.subTest(sample_rate=sample_rate):
+                self.assertEqual(
+                    chain.latency_samples(sample_rate, channels=2), expected
+                )
+                with chain.stream(
+                    sample_rate, channels=2, block_size=64
+                ) as stream:
+                    self.assertEqual(stream.latency_samples, expected)
+
     def test_chain_latency_resolves_assets_for_convolution_effects(self) -> None:
         ir = effetune.AssetData(
             np.array([[1.0]], dtype=np.float32), 48_000, topology="mono"
@@ -662,6 +678,221 @@ class NativeChainTests(unittest.TestCase):
                 rejected.process(source), unchanged.process(source)
             )
 
+    def test_modulation_cross_field_rules_match_constructor_json_and_event_order(
+        self,
+    ) -> None:
+        frames = np.arange(512, dtype=np.float32)
+        source = np.vstack(
+            (
+                np.sin(frames * np.float32(0.071)) * np.float32(0.4),
+                np.cos(frames * np.float32(0.053)) * np.float32(0.3),
+            )
+        ).astype(np.float32, copy=False)
+
+        def canonicalize(
+            effect_type: str, parameters: dict[str, float]
+        ) -> dict[str, float]:
+            values = dict(parameters)
+            if effect_type == "AutoFilter":
+                if values["minimumFrequency"] > values["maximumFrequency"]:
+                    values["minimumFrequency"], values["maximumFrequency"] = (
+                        values["maximumFrequency"],
+                        values["minimumFrequency"],
+                    )
+            elif effect_type == "Chorus":
+                values["depth"] = min(values["depth"], values["delay"])
+            elif values["minimumShift"] > values["maximumShift"]:
+                values["minimumShift"], values["maximumShift"] = (
+                    values["maximumShift"],
+                    values["minimumShift"],
+                )
+            return values
+
+        cases = (
+            (
+                "AutoFilter",
+                effetune.AutoFilter,
+                {"minimum_frequency": 8000, "maximum_frequency": 200},
+                {"minimumFrequency": 8000, "maximumFrequency": 200},
+                {"minimumFrequency": 200, "maximumFrequency": 8000},
+                {"minimumFrequency": 100, "maximumFrequency": 9000},
+            ),
+            (
+                "Chorus",
+                effetune.Chorus,
+                {"delay": 0.5, "depth": 20},
+                {"delay": 0.5, "depth": 20},
+                {"delay": 0.5, "depth": 0.5},
+                {"delay": 10, "depth": 0.25},
+            ),
+            (
+                "FrequencyShifter",
+                effetune.FrequencyShifter,
+                {"minimum_shift": 900, "maximum_shift": 20},
+                {"minimumShift": 900, "maximumShift": 20},
+                {"minimumShift": 20, "maximumShift": 900},
+                {"minimumShift": 10, "maximumShift": 1000},
+            ),
+        )
+        for (
+            effect_type,
+            effect_class,
+            constructor,
+            supplied,
+            canonical,
+            updates,
+        ) in cases:
+            with self.subTest(effect=effect_type):
+                effect_id = f"{effect_type}-cross-field"
+                named = effetune.Chain(
+                    [effect_class(id=effect_id, **constructor)]
+                )
+                serialized = effetune.Chain.from_preset(
+                    json.dumps(
+                        {
+                            "version": 1,
+                            "chain": [
+                                {
+                                    "id": effect_id,
+                                    "type": effect_type,
+                                    "parameters": supplied,
+                                }
+                            ],
+                        }
+                    )
+                )
+                canonical_chain = effetune.Chain.from_preset(
+                    {
+                        "version": 1,
+                        "chain": [
+                            {
+                                "id": effect_id,
+                                "type": effect_type,
+                                "parameters": canonical,
+                            }
+                        ],
+                    }
+                )
+                self.assertEqual(named.to_dict(), serialized.to_dict())
+                expected = canonical_chain.process(
+                    source, sample_rate=48_000, block_size=64
+                )
+                np.testing.assert_array_equal(
+                    named.process(source, sample_rate=48_000, block_size=64),
+                    expected,
+                )
+                np.testing.assert_array_equal(
+                    serialized.process(
+                        source, sample_rate=48_000, block_size=64
+                    ),
+                    expected,
+                )
+
+                entries = list(supplied.items())
+                for ordered in (entries, list(reversed(entries))):
+                    event_chain = effetune.Chain(
+                        [effect_class(id=effect_id)]
+                    )
+                    with event_chain.stream(
+                        48_000, channels=2, block_size=64
+                    ) as stream:
+                        actual = stream.process(
+                            source,
+                            events=[
+                                {
+                                    "frame": 0,
+                                    "effectId": effect_id,
+                                    "parameters": {name: value},
+                                }
+                                for name, value in ordered
+                            ],
+                        )
+                        np.testing.assert_array_equal(actual, expected)
+                        self.assertEqual(
+                            stream._current_parameters[effect_id],
+                            named.effects[0].parameters,
+                        )
+
+                for names in (list(updates), list(reversed(updates))):
+                    candidate_chain = effetune.Chain.from_preset(
+                        {
+                            "version": 1,
+                            "chain": [
+                                {
+                                    "id": effect_id,
+                                    "type": effect_type,
+                                    "parameters": supplied,
+                                }
+                            ],
+                        }
+                    )
+                    reference_chain = effetune.Chain.from_preset(
+                        {
+                            "version": 1,
+                            "chain": [
+                                {
+                                    "id": effect_id,
+                                    "type": effect_type,
+                                    "parameters": canonical,
+                                }
+                            ],
+                        }
+                    )
+                    with candidate_chain.stream(
+                        48_000, channels=2, block_size=64
+                    ) as candidate_stream, reference_chain.stream(
+                        48_000, channels=2, block_size=64
+                    ) as reference_stream:
+                        steps = (
+                            (names[0], supplied[names[0]]),
+                            (names[1], supplied[names[1]]),
+                            (names[0], updates[names[0]]),
+                            (names[1], updates[names[1]]),
+                        )
+                        effective = dict(canonical)
+                        raw = dict(supplied)
+                        for name, value in steps:
+                            raw[name] = value
+                            effective = canonicalize(
+                                effect_type, {**effective, name: value}
+                            )
+                            expected_output = reference_stream.process(
+                                source,
+                                events=[
+                                    {
+                                        "frame": 0,
+                                        "effectId": effect_id,
+                                        "parameters": effective,
+                                    }
+                                ],
+                            )
+                            actual_output = candidate_stream.process(
+                                source,
+                                events=[
+                                    {
+                                        "frame": 0,
+                                        "effectId": effect_id,
+                                        "parameters": {name: value},
+                                    }
+                                ],
+                            )
+                            np.testing.assert_array_equal(
+                                actual_output, expected_output
+                            )
+                        for name in supplied:
+                            self.assertEqual(
+                                candidate_stream._current_parameters[effect_id][
+                                    name
+                                ],
+                                raw[name],
+                            )
+                            self.assertEqual(
+                                candidate_stream._processing_parameters[
+                                    effect_id
+                                ][name],
+                                effective[name],
+                            )
+
     def test_stream_parameter_event_validation_is_explicit(self) -> None:
         source = np.ones((1, 8), dtype=np.float32)
         chain = effetune.Chain([effetune.Volume(id="gain")])
@@ -714,6 +945,34 @@ class NativeChainTests(unittest.TestCase):
                 ):
                     stream.process(source, events=events)
 
+    def test_phaser_stage_events_reject_odd_values_without_mutating_state(self) -> None:
+        source = np.full((1, 8), 0.25, dtype=np.float32)
+        chain = effetune.Chain([effetune.Phaser(id="phaser", stages=6)])
+        with chain.stream(48_000, channels=1, block_size=8) as stream:
+            with self.assertRaises(effetune.ValidationError):
+                stream.process(
+                    source,
+                    events=[
+                        {
+                            "frame": 0,
+                            "effectId": "phaser",
+                            "parameters": {"stages": 7},
+                        }
+                    ],
+                )
+            self.assertEqual(stream._current_parameters["phaser"]["stages"], 6)
+            stream.process(
+                source,
+                events=[
+                    {
+                        "frame": 0,
+                        "effectId": "phaser",
+                        "parameters": {"stages": 12},
+                    }
+                ],
+            )
+            self.assertEqual(stream._current_parameters["phaser"]["stages"], 12)
+
     def test_seed_reproduces_stochastic_output(self) -> None:
         source = np.linspace(-0.8, 0.8, 1024, dtype=np.float32).reshape(1, -1)
         chain = effetune.Chain(
@@ -743,7 +1002,7 @@ class NativeChainTests(unittest.TestCase):
             topology="automatic",
         )
         source_four_channels = np.vstack((source, source))
-        self.assertEqual(len(EFFECT_METADATA["effects"]), 84)
+        self.assertEqual(len(EFFECT_METADATA["effects"]), 90)
         for metadata in EFFECT_METADATA["effects"]:
             effect_type = metadata["type"]
             definition = metadata["parameters"][0] if metadata["parameters"] else None

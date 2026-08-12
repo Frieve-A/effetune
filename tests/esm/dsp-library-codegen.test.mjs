@@ -32,6 +32,9 @@ const chainSchemaPath = path.join(
 const bundleSchemaPath = path.join(
   repoRoot, 'dsp', 'bindings', 'schema', 'bundle-v1.schema.json'
 );
+const graphFixturePath = path.join(
+  repoRoot, 'dsp', 'bindings', 'common', 'graph-v1-contract.fixture.json'
+);
 const pythonPath = path.join(
   repoRoot, 'dsp', 'bindings', 'python', 'src', 'effetune', '_generated_effects.py'
 );
@@ -52,6 +55,17 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
+function generatedJson(catalog, suffix) {
+  const entry = [...generateOutputs(catalog)]
+    .find(([filePath]) => filePath.replaceAll('\\', '/').endsWith(suffix));
+  assert.ok(entry, `missing generated output ${suffix}`);
+  return JSON.parse(entry[1]);
+}
+
+function compareUtf8(left, right) {
+  return Buffer.compare(Buffer.from(left, 'utf8'), Buffer.from(right, 'utf8'));
+}
+
 function effectByType(catalog, type) {
   const effect = catalog.effects.find(candidate => candidate.type === type);
   assert.ok(effect, `missing ${type}`);
@@ -68,12 +82,12 @@ test('frozen catalog selects every approved source-backed effect in canonical or
   const catalog = buildCatalog();
   assert.equal(catalog.version, 1);
   assert.deepEqual(catalog.effects.map(effect => effect.type), [...PUBLIC_EFFECT_TYPES]);
-  assert.equal(catalog.effects.length, 84);
+  assert.equal(catalog.effects.length, 90);
 
   const specs = new Map(Object.values(FROZEN_PARAM_DIRECTORIES).flatMap(directory =>
     loadParamSpecs(path.join(repoRoot, directory))
   ).map(spec => [spec.type, spec]));
-  assert.equal(specs.size, 84);
+  assert.equal(specs.size, 90);
   for (const effect of catalog.effects) {
     const spec = specs.get(effect.implementation.internalType);
     assert.ok(spec, `missing source metadata for ${effect.type}`);
@@ -119,6 +133,10 @@ test('semantic transforms, discrete values, seed tags, and IR slot mapping are f
     [1, 2, 4, 8]
   );
   assert.deepEqual(
+    parameterByName(effectByType(catalog, 'Phaser'), 'stages').values,
+    [2, 4, 6, 8, 10, 12]
+  );
+  assert.deepEqual(
     parameterByName(effectByType(catalog, 'HiPassFilter'), 'slope').values,
     [0, -12, -24, -36, -48, -60, -72, -84, -96]
   );
@@ -158,6 +176,10 @@ test('semantic transforms, discrete values, seed tags, and IR slot mapping are f
     kind: 'sampleRateDependent',
     dependsOn: ['sampleRate']
   });
+  assert.deepEqual(effectByType(catalog, 'FrequencyShifter').latency, {
+    kind: 'sampleRateDependent',
+    dependsOn: ['sampleRate']
+  });
 
   const fm = effectByType(catalog, 'FMRadioSimulator');
   assert.deepEqual(
@@ -189,8 +211,8 @@ test('v0.1 named convenience exports exactly match the canonical catalog', () =>
   const expectedTypes = catalog.effects.map(effect => effect.type);
 
   assert.deepEqual(manifest.exports.map(entry => entry.type), expectedTypes);
-  assert.equal(catalog.effects.length, 84);
-  assert.equal(manifest.exports.length, 84);
+  assert.equal(catalog.effects.length, 90);
+  assert.equal(manifest.exports.length, 90);
   for (const entry of manifest.exports) {
     assert.equal(entry.class, entry.type);
     assert.equal(entry.factory, `create${entry.type}`);
@@ -248,7 +270,7 @@ test('public metadata is separated from the frozen private implementation mappin
   assert.equal(privateCatalog.contractDigest, publicCatalog.contractDigests.privateLayoutSha256);
   assert.equal(privateCatalog.channelMapping.stereo, null);
   assert.equal(privateCatalog.channelMapping.all, 'A');
-  assert.equal(Object.keys(privateCatalog.frozenGoldenIndexes).length, 84);
+  assert.equal(Object.keys(privateCatalog.frozenGoldenIndexes).length, 90);
   for (const effect of buildCatalog().effects) {
     const source = effect.implementation.source;
     assert.equal(
@@ -296,7 +318,7 @@ test('public chain and bundle schemas exclude legacy representations', () => {
   assert.deepEqual(chain.required, ['version', 'chain']);
   assert.equal(chain.properties.version.const, 1);
   assert.deepEqual(chain.$defs.channel.enum, [...EFFECT_CHANNELS]);
-  assert.equal(chain.$defs.effect.oneOf.length, 84);
+  assert.equal(chain.$defs.effect.oneOf.length, 90);
   for (const type of [
     'FIRCrossover',
     'FiveBandFIRPEQ',
@@ -313,6 +335,10 @@ test('public chain and bundle schemas exclude legacy representations', () => {
   assert.equal(
     chain.$defs.Matrix.properties.parameters.properties.matrixRoutes.pattern,
     '^(?:p?[0-8][0-8])*$'
+  );
+  assert.deepEqual(
+    chain.$defs.Phaser.properties.parameters.properties.stages.enum,
+    [2, 4, 6, 8, 10, 12]
   );
   assert.equal(
     Object.hasOwn(chain.$defs.Compressor.properties, 'assets'),
@@ -378,6 +404,8 @@ test('generated language surfaces expose all approved thin classes and typed fac
     python,
     /class IRReverb\(Effect\):[\s\S]*channel="all",\s+assets=None,\s+\):/
   );
+  assert.match(pythonStub, /stages: Literal\[2, 4, 6, 8, 10, 12\] = \.\.\./);
+  assert.match(declarations, /readonly stages\?: 2 \| 4 \| 6 \| 8 \| 10 \| 12;/);
   assert.doesNotMatch(
     python,
     /class Volume\(Effect\):[\s\S]*?assets=None[\s\S]*?class StereoBalance/
@@ -467,5 +495,168 @@ test('generated files are byte-for-byte current', () => {
   assert.deepEqual(stale, []);
   for (const [filePath, expected] of generateOutputs(catalog)) {
     assert.equal(fs.readFileSync(filePath, 'utf8'), expected);
+  }
+});
+
+test('Graph v1 schema fixes the single-port DAG document boundary', () => {
+  const catalog = buildCatalog();
+  const schema = generatedJson(catalog, '/schema/graph-v1.schema.json');
+  const chainSchema = generatedJson(catalog, '/schema/chain-v1.schema.json');
+
+  assert.equal(schema.$id, 'https://effetune.frieve.com/dsp/schemas/graph-v1.schema.json');
+  assert.deepEqual(schema.required, ['version', 'input', 'output', 'nodes', 'edges']);
+  assert.equal(schema.additionalProperties, false);
+  assert.deepEqual(schema.$defs.endpoint.required, ['id']);
+  assert.deepEqual(Object.keys(schema.$defs.endpoint.properties), ['id']);
+  assert.deepEqual(schema.$defs.node.allOf, [
+    { $ref: '#/$defs/effect' },
+    { required: ['id'] }
+  ]);
+  assert.equal(schema.$defs.effect.oneOf.length, PUBLIC_EFFECT_TYPES.length);
+  assert.equal(schema.properties.nodes.maxItems, 128);
+  assert.equal(schema.properties.edges.maxItems, 512);
+  assert.deepEqual(schema['x-effetune-capacity'], {
+    maxStructuralNodes: 128,
+    maxEffectiveInstances: 96,
+    maxEdges: 512,
+    maxLiveBuffers: 129,
+    maxWorkspaceBytes: 67_108_864
+  });
+  assert.deepEqual(schema.$defs.effect, chainSchema.$defs.effect);
+  for (const type of PUBLIC_EFFECT_TYPES) {
+    assert.deepEqual(schema.$defs[type], chainSchema.$defs[type]);
+  }
+
+  const edge = schema.$defs.edge;
+  assert.deepEqual(edge.required, ['id', 'source', 'destination']);
+  assert.equal(edge.additionalProperties, false);
+  assert.deepEqual(edge.properties.gain, {
+    type: 'number', minimum: 0, maximum: 4, default: 1
+  });
+  assert.deepEqual(edge.properties.mute, { type: 'boolean', default: false });
+  assert.equal(edge.properties.pan.minimum, -1);
+  assert.equal(edge.properties.pan.maximum, 1);
+  assert.equal(edge.properties.pan.default, 0);
+  assert.equal(edge.properties.mixGroup.default, 'default');
+  assert.equal(edge.properties.mixGroup.minLength, 1);
+  assert.deepEqual(edge.properties.solo, { type: 'boolean', default: false });
+});
+
+test('Graph v1 generated metadata records canonical controls, scheduling, and snapshots', () => {
+  const contract = generatedJson(buildCatalog(), '/generated/graph-v1.contract.json');
+
+  assert.equal(contract.version, 1);
+  assert.deepEqual(contract.capacity, {
+    maxStructuralNodes: 128,
+    maxEffectiveInstances: 96,
+    maxEdges: 512,
+    maxLiveBuffers: 129,
+    maxWorkspaceBytes: 67_108_864
+  });
+  assert.equal(contract.document.nodeShape, 'effect');
+  assert.equal(contract.document.nodeIdRequired, true);
+  assert.equal(contract.document.endpointReference, 'id');
+  assert.equal(contract.document.hostInputs, 1);
+  assert.equal(contract.document.hostOutputs, 1);
+  assert.equal(contract.document.cycles, false);
+  assert.deepEqual(contract.edge.defaults, {
+    gain: 1,
+    mute: false,
+    pan: 0,
+    mixGroup: 'default',
+    solo: false
+  });
+  assert.deepEqual(contract.edge.operationOrder, [
+    'gain', 'pan', 'fanInCompensation', 'sum'
+  ]);
+  assert.equal(contract.edge.sumOrder, 'edge-id-utf8-bytewise');
+  assert.deepEqual(contract.edge.soloScope, ['destination', 'mixGroup']);
+  assert.deepEqual(contract.canonicalization.materializedEdgeDefaults, [
+    'gain', 'mute', 'mixGroup', 'solo'
+  ]);
+  assert.deepEqual(contract.canonicalization.optionalPresencePreserved, ['pan']);
+  assert.equal(contract.schedule.readyNodeOrder, 'node-id-utf8-bytewise');
+  assert.equal(contract.schedule.documentArrayOrderAffectsAudio, false);
+  assert.deepEqual(contract.states, ['effective', 'dormant', 'disabled-bypass']);
+  assert.equal(contract.latency.valueShape, 'stream-channel-vector');
+  assert.deepEqual(contract.latency.compensationOrder, [
+    'fanIn', 'preNodeProcessingGroup', 'mainOutput'
+  ]);
+  assert.deepEqual(contract.adcEligibility, [{
+    effectType: 'IRReverb',
+    whenReportedLatency: 'positive',
+    parameter: 'dryLevel',
+    acceptedMaximum: -96,
+    failureCode: 'GRAPH_UNSUPPORTED_CAPABILITY'
+  }]);
+  assert.equal(contract.recipes.wetDry, 'ordinary-graph-edges');
+  assert.equal(contract.recipes.sendReturn, 'ordinary-graph-edges');
+  assert.deepEqual(contract.snapshots.visualization, {
+    preservesStructuralNodesAndEdges: true,
+    nodeStatusFields: ['effective', 'dormant', 'disabledBypass', 'state'],
+    edgeStatusFields: ['active', 'suppressed', 'dormant', 'state']
+  });
+  assert.equal(contract.snapshots.layoutCoordinates, false);
+});
+
+test('Graph v1 shared fixtures use stable IDs and canonical array order', () => {
+  const graphFixture = readJson(graphFixturePath);
+  assert.equal(graphFixture.version, 1);
+  assert.ok(graphFixture.valid.length >= 6);
+  assert.ok(graphFixture.invalid.length >= 6);
+  assert.deepEqual(graphFixture.boundaries, {
+    identifierUnicodeScalar: '😀',
+    maxIdentifierScalars: 128,
+    maxStructuralNodes: 128,
+    maxEffectiveInstances: 96,
+    maxEdges: 512
+  });
+  assert.equal(
+    Array.from(graphFixture.boundaries.identifierUnicodeScalar.repeat(128)).length,
+    graphFixture.boundaries.maxIdentifierScalars
+  );
+  assert.equal(graphFixture.recipeCases[0].name, 'zero-latency-ir-dry-enabled');
+  assert.equal(graphFixture.recipeCases[0].node.parameters.latency, 0);
+  assert.equal(graphFixture.recipeCases[0].node.parameters.dryLevel, 0);
+
+  for (const entry of graphFixture.valid) {
+    const graph = entry.document;
+    assert.equal(graph.version, 1, entry.name);
+    assert.deepEqual(Object.keys(graph.input), ['id'], entry.name);
+    assert.deepEqual(Object.keys(graph.output), ['id'], entry.name);
+    assert.ok(entry.expectedPlan, entry.name);
+
+    const ids = [
+      graph.input.id,
+      graph.output.id,
+      ...graph.nodes.map(node => node.id),
+      ...graph.edges.map(edge => edge.id)
+    ];
+    assert.equal(new Set(ids).size, ids.length, entry.name);
+    assert.deepEqual(
+      graph.nodes.map(node => node.id),
+      [...graph.nodes.map(node => node.id)].sort(compareUtf8),
+      entry.name
+    );
+    assert.deepEqual(
+      graph.edges.map(edge => edge.id),
+      [...graph.edges.map(edge => edge.id)].sort(compareUtf8),
+      entry.name
+    );
+  }
+
+  const names = new Set(graphFixture.invalid.map(entry => entry.name));
+  assert.deepEqual(names, new Set([
+    'duplicate-node-id',
+    'dangling-destination',
+    'cycle',
+    'structurally-disconnected-node',
+    'gain-out-of-range',
+    'pan-on-mono-stream',
+    'empty-mix-group'
+  ]));
+  for (const entry of graphFixture.invalid) {
+    assert.match(entry.code, /^GRAPH_DOCUMENT_[A-Z_]+$/);
+    assert.match(entry.path, /^\//);
   }
 });

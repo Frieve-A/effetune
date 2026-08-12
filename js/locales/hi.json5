@@ -50,6 +50,7 @@
   "status.filesSavedToFolder": "{count} फ़ाइल(ें) {folder} में सहेजी गईं",
   "status.filesSaved": "{count} फ़ाइल(ें) चयनित फ़ोल्डर में सहेजी गईं",
   "status.libraryTracksSkippedOffline": "{count} ट्रैक छोड़े गए (ऑफ़लाइन)",
+  "status.jsFallbackCapacityExceeded": "मौजूदा सैंपल रेट और आउटपुट चैनलों की संख्या पर प्लेबैक रुकने से बचाने के लिए {effectName} को bypass किया गया है। सैंपल रेट या आउटपुट चैनलों की संख्या कम करें।",
 
   // यूआई तत्व
   "ui.resetButton": "ऑडियो रीसेट करें",
@@ -486,6 +487,7 @@
   "irLibrary.error.fileTooLarge": "चुनी गई impulse response बहुत बड़ी है। छोटी impulse response चुनें और फिर प्रयास करें।",
   "irLibrary.error.importFolder": "Folder इम्पोर्ट नहीं हुआ। फिर प्रयास करें।",
   "dbt.error.parallelStartFailed": "दोनों प्रोसेसिंग पाइपलाइन तैयार न होने के कारण परीक्षण शुरू नहीं हो सका। इफ़ेक्ट लोड होने तक प्रतीक्षा करें, फिर दोबारा प्रयास करें।",
+  "dbt.error.jsFallbackCapacityExceeded": "दोनों पाइपलाइन को JavaScript इफ़ेक्ट के साथ प्रोसेस करने में बहुत अधिक CPU की आवश्यकता होगी, इसलिए परीक्षण नहीं चल सका। WebAssembly DSP चालू करें या पाइपलाइन सरल बनाएँ, फिर दोबारा प्रयास करें।",
   "irReverb.name.impulseResponse": "Impulse response",
   "irReverb.name.theImpulseResponse": "impulse response",
   "irReverb.name.theImpulseResponseCapitalized": "Impulse response",

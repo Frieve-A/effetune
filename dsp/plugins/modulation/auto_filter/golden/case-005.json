@@ -1,0 +1,38 @@
+{
+  "formatVersion": 1,
+  "type": "AutoFilterPlugin",
+  "id": "reversed-bounds-all5",
+  "stimulus": "sweep",
+  "sampleRate": 48000,
+  "channels": 5,
+  "frameCount": 6007,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "md": "LFO",
+    "ft": "Low-pass",
+    "lf": 16000,
+    "hf": 40,
+    "rs": 8.5,
+    "mx": 62.5,
+    "rt": 0.05,
+    "wf": "Sine",
+    "sp": 137,
+    "sn": 24,
+    "at": 20,
+    "rl": 250,
+    "dr": "Up"
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "9d5dc5c1300ebc4ebcdb87e2a81f8eb64f7fc0132d3bfaf91652af8ced8cd6a0",
+  "outputFloats": 30035,
+  "byteLength": 120140,
+  "binary": "case-005.f32"
+}

@@ -847,6 +847,132 @@ class DspEngineBinding {
         );
     }
 
+    graphCapabilities() {
+        if (typeof this.exports.et_graph_capabilities !== 'function') return 0;
+        return this.exports.et_graph_capabilities() >>> 0;
+    }
+
+    get graphSupported() {
+        return Boolean(
+            (this.graphCapabilities() & 1) !== 0 &&
+            typeof this.exports.et_graph_configure === 'function' &&
+            typeof this.exports.et_graph_latency === 'function' &&
+            typeof this.exports.et_graph_process === 'function' &&
+            typeof this.exports.et_graph_snapshot_size === 'function' &&
+            typeof this.exports.et_graph_snapshot_copy === 'function' &&
+            typeof this.exports.et_graph_read_diagnostic === 'function' &&
+            typeof this.exports.et_graph_set_instance_params === 'function' &&
+            typeof this.exports.et_graph_reset === 'function'
+        );
+    }
+
+    graphConfigure(descriptor) {
+        if (!this.engine || !this.prepared || !this.graphSupported) return ET_ERR_STATE;
+        const bytes = toUint8View(descriptor, 'Graph descriptor');
+        if (bytes.byteLength === 0) return ET_ERR_STATE;
+        this._preparing = true;
+        let ptr = 0;
+        try {
+            ptr = this.exports.malloc(bytes.byteLength) >>> 0;
+            this._refreshViews();
+            if (!ptr) return ET_ERR_STATE;
+            this._assertRange(ptr, bytes.byteLength, 'Graph descriptor');
+            this.u8.set(bytes, ptr);
+            return this.exports.et_graph_configure(this.engine, ptr, bytes.byteLength);
+        } finally {
+            if (ptr) this.exports.free(ptr);
+            this._refreshViews();
+            this._preparing = false;
+            if (this.engine && this.prepared) this.getArenaViews();
+        }
+    }
+
+    graphLatency() {
+        if (!this.engine || !this.graphSupported) return 0;
+        return this.exports.et_graph_latency(this.engine) >>> 0;
+    }
+
+    graphProcess(channelCount, frameCount, timeSeconds) {
+        if (!this.engine || !this.graphSupported) return ET_ERR_STATE;
+        this._refreshViews();
+        return this.exports.et_graph_process(
+            this.engine,
+            channelCount >>> 0,
+            frameCount >>> 0,
+            timeSeconds
+        );
+    }
+
+    graphSetInstanceParams(instanceId, packed, paramsHash, changedIndex) {
+        if (!this.engine || !this.graphSupported) return ET_ERR_STATE;
+        const values = packed instanceof Float32Array ? packed : Float32Array.from(packed || []);
+        const byteLength = values.length * Float32Array.BYTES_PER_ELEMENT;
+        if (byteLength > SCRATCH_BYTES) {
+            throw new DspBindingError('Packed Graph parameters exceed the scratch-buffer capacity');
+        }
+        const ptr = this.exports.et_scratch_ptr(this.engine) >>> 0;
+        this._refreshViews();
+        this._assertRange(ptr, byteLength, 'Packed Graph parameter block');
+        new Float32Array(this._memoryBuffer, ptr, values.length).set(values);
+        return this.exports.et_graph_set_instance_params(
+            this.engine,
+            instanceId,
+            ptr,
+            values.length,
+            paramsHash >>> 0,
+            changedIndex >>> 0
+        );
+    }
+
+    graphReset() {
+        if (!this.engine || !this.graphSupported) return ET_ERR_STATE;
+        return this.exports.et_graph_reset(this.engine);
+    }
+
+    graphSnapshot() {
+        if (!this.engine || !this.graphSupported) return null;
+        const byteLength = this.exports.et_graph_snapshot_size(this.engine) >>> 0;
+        if (byteLength === 0) return new Uint8Array();
+        let ptr = 0;
+        this._preparing = true;
+        try {
+            ptr = this.exports.malloc(byteLength) >>> 0;
+            this._refreshViews();
+            if (!ptr) throw new DspBindingError('Unable to allocate the Graph snapshot buffer');
+            this._assertRange(ptr, byteLength, 'Graph snapshot');
+            const status = this.exports.et_graph_snapshot_copy(
+                this.engine,
+                ptr,
+                byteLength
+            );
+            if (status !== ET_OK) {
+                throw new DspBindingError('DSP Graph snapshot could not be read');
+            }
+            return new Uint8Array(this.u8.slice(ptr, ptr + byteLength));
+        } finally {
+            if (ptr) this.exports.free(ptr);
+            this._refreshViews();
+            this._preparing = false;
+            if (this.engine && this.prepared) this.getArenaViews();
+        }
+    }
+
+    graphDiagnostic() {
+        if (!this.engine || !this.graphSupported) return null;
+        const ptr = this.exports.et_scratch_ptr(this.engine) >>> 0;
+        this._refreshViews();
+        this._assertRange(ptr, 24, 'Graph diagnostic');
+        if (this.exports.et_graph_read_diagnostic(this.engine, ptr) !== ET_OK) return null;
+        return {
+            status: this.dataView.getInt32(ptr, true),
+            kind: this.dataView.getUint32(ptr + 4, true),
+            index: this.dataView.getUint32(ptr + 8, true),
+            path: this.dataView.getUint32(ptr + 12, true),
+            required: this.dataView.getUint32(ptr + 16, true),
+            capacity: this.dataView.getUint32(ptr + 20, true)
+        };
+    }
+
     markFailed() {
         this.failed = true;
     }
@@ -898,8 +1024,42 @@ async function instantiateDspBinding(moduleOrBytes, {
 }
 // __ETDSP_BINDING_INJECT_END__
 
+const JS_FALLBACK_SAMPLE_CHANNEL_BUDGET = 96000;
+
+const JS_FALLBACK_LATENCY_RESOLVERS = new Map([
+    ['FrequencyShifterPlugin', sampleRate => {
+        const hilbertStride = sampleRate <= 48000 ? 1 : (sampleRate <= 96000 ? 2 : 4);
+        return 114 * hilbertStride;
+    }]
+]);
+
+function resolveJsFallbackLatency(pluginType, sampleRate) {
+    if (typeof pluginType !== 'string' || !Number.isFinite(sampleRate) || sampleRate <= 0) {
+        return 0;
+    }
+    const resolver = JS_FALLBACK_LATENCY_RESOLVERS.get(pluginType);
+    return resolver ? resolver(sampleRate) >>> 0 : 0;
+}
+
 function requiresWasmExecution(plugin) {
     return plugin?.executionCapabilities?.requiresWasm === true;
+}
+
+function jsFallbackCapacityLimit(plugin) {
+    const capacity = plugin?.executionCapabilities?.jsFallbackCapacity;
+    if (!capacity || typeof capacity !== 'object' ||
+        !Number.isFinite(capacity.maxJsFallbackSampleChannels) ||
+        capacity.maxJsFallbackSampleChannels <= 0) return null;
+    return capacity.maxJsFallbackSampleChannels;
+}
+
+function jsFallbackSampleChannelCost(plugin, sampleRate, outputChannelCount) {
+    if (!Number.isFinite(sampleRate) || sampleRate <= 0) return 0;
+    const selection = workletChannelSelection(plugin.channel, outputChannelCount);
+    const actualProcessingChannelCount = selection?.availableChannels === selection.requiredChannels
+        ? selection.requiredChannels
+        : 0;
+    return sampleRate * actualProcessingChannelCount;
 }
 
 function workletChannelSelection(channel, outputChannelCount) {
@@ -1142,7 +1302,14 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspPipelineLatencySamples = 0;
         this.dspPipelineLatencyCompensated = false;
         this.dspLatencyPlan = null;
-        this.dspInstanceLatencySnapshot = new Map();
+        this.executionLatencySnapshot = new Map();
+        this.jsFallbackAdmissions = new Map();
+        this.jsFallbackSampleChannelCosts = new Map();
+        this.jsFallbackSampleChannelBudget = JS_FALLBACK_SAMPLE_CHANNEL_BUDGET;
+        this.jsFallbackRequiredSampleChannels = 0;
+        this.jsFallbackAdmittedSampleChannels = 0;
+        this.jsFallbackCapacityExceeded = false;
+        this.jsFallbackIntrinsicCapacityExceeded = false;
         this.outputDelaySamples = 0;
         this.outputDelayLine = null;
         this.dspExecutionGeneration = 0;
@@ -1370,6 +1537,12 @@ class PluginProcessor extends AudioWorkletProcessor {
                         requestId: data.requestId,
                         samples: this.outputDelaySamples
                     });
+                    break;
+                case 'requestJsFallbackBudgetState':
+                    this.publishJsFallbackBudgetState(data.requestId);
+                    break;
+                case 'configureJsFallbackBudget':
+                    this.configureJsFallbackBudget(data);
                     break;
                 case 'registerProcessor':
                     this._invalidatePowerSkipForMutation();
@@ -2304,13 +2477,12 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspBinding = null;
         this.dspLive = false;
         this.dspPipelineReady = false;
-        this.resetDspLatencyPlan();
-        this.publishDspPipelineLatency(0, false);
         this.wasmKernels.clear();
         this.dspPacketPool = [];
         this.dspPendingInstanceDestroy = [];
         this.dspEngineNeedsCleanup = false;
         this.bufferPool = this.createLegacyBufferPool();
+        this.rebuildDspLatencyPlan();
     }
 
     failDspEngine(stage, error) {
@@ -2318,8 +2490,6 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspDeferredAssetStages.clear();
         this.dspLive = false;
         this.dspPipelineReady = false;
-        this.resetDspLatencyPlan();
-        this.publishDspPipelineLatency(0, false);
         this.wasmInstances.clear();
         this.dspPendingInstanceDestroy = [];
         this.dspEngineNeedsCleanup = true;
@@ -3019,22 +3189,136 @@ class PluginProcessor extends AudioWorkletProcessor {
         return preparing;
     }
 
-    captureDspInstanceLatencySnapshot() {
-        const snapshot = new Map();
-        if (!this.dspLive || !this.dspBinding) return snapshot;
+    captureJsFallbackAdmissions() {
+        const admissions = new Map();
+        const costs = new Map();
+        const sampleRate = this.dspSampleRate || globalThis.sampleRate;
+        let usedSampleChannels = 0;
+        let intrinsicUsedSampleChannels = 0;
+        let requiredSampleChannels = 0;
+        let capacityExceeded = false;
+        let intrinsicCapacityExceeded = false;
+        let insideSection = false;
+        let sectionEnabled = true;
         for (const plugin of this.plugins) {
-            const entry = this.wasmInstances.get(plugin.id);
-            if (!entry?.ready) continue;
-            try {
-                snapshot.set(plugin.id, this.dspBinding.instanceLatency(entry.id) >>> 0);
-            } catch (error) {
-                this.reportDspFailure(`latency:${plugin.id}`, error?.message || String(error));
+            if (plugin.type === 'SectionPlugin') {
+                insideSection = true;
+                sectionEnabled = Boolean(plugin.enabled);
+                continue;
             }
+            const capacityLimit = jsFallbackCapacityLimit(plugin);
+            if (capacityLimit === null) continue;
+            const entry = this.dspLive ? this.wasmInstances.get(plugin.id) : null;
+            if (!plugin.enabled || (insideSection && !sectionEnabled) || entry?.ready) {
+                admissions.set(plugin.id, true);
+                costs.set(plugin.id, 0);
+                continue;
+            }
+            const cost = jsFallbackSampleChannelCost(
+                plugin,
+                sampleRate,
+                this.outputChannelCount
+            );
+            costs.set(plugin.id, cost);
+            requiredSampleChannels += cost;
+            const intrinsicAdmitted = intrinsicUsedSampleChannels + cost <= capacityLimit;
+            if (intrinsicAdmitted) {
+                intrinsicUsedSampleChannels += cost;
+            } else {
+                intrinsicCapacityExceeded = true;
+            }
+            const branchLimit = this.jsFallbackSampleChannelBudget < capacityLimit
+                ? this.jsFallbackSampleChannelBudget
+                : capacityLimit;
+            const admitted = usedSampleChannels + cost <= branchLimit;
+            admissions.set(plugin.id, admitted);
+            if (admitted) {
+                usedSampleChannels += cost;
+            } else {
+                capacityExceeded = true;
+            }
+        }
+        this.jsFallbackSampleChannelCosts = costs;
+        this.jsFallbackRequiredSampleChannels = requiredSampleChannels;
+        this.jsFallbackAdmittedSampleChannels = usedSampleChannels;
+        this.jsFallbackCapacityExceeded = capacityExceeded;
+        this.jsFallbackIntrinsicCapacityExceeded = intrinsicCapacityExceeded;
+        return admissions;
+    }
+
+    publishJsFallbackBudgetState(requestId) {
+        this.refreshJsFallbackAdmissions();
+        this.port.postMessage({
+            type: 'jsFallbackBudgetState',
+            requestId,
+            budgetSampleChannels: this.jsFallbackSampleChannelBudget,
+            requiredSampleChannels: this.jsFallbackRequiredSampleChannels,
+            admittedSampleChannels: this.jsFallbackAdmittedSampleChannels,
+            capacityExceeded: this.jsFallbackCapacityExceeded,
+            intrinsicCapacityExceeded: this.jsFallbackIntrinsicCapacityExceeded,
+            generation: this.dspExecutionGeneration
+        });
+    }
+
+    configureJsFallbackBudget(data) {
+        const requested = data?.budgetSampleChannels;
+        if (!Number.isFinite(requested) || requested < 0) return;
+        this.jsFallbackSampleChannelBudget = requested < JS_FALLBACK_SAMPLE_CHANNEL_BUDGET
+            ? requested
+            : JS_FALLBACK_SAMPLE_CHANNEL_BUDGET;
+        ++this.dspExecutionGeneration;
+        this.refreshDspPipeline();
+        this.publishWasmOnlyExecutionStates(true);
+        if (Number.isInteger(data.requestId)) {
+            this.publishJsFallbackBudgetState(data.requestId);
+        }
+    }
+
+    refreshJsFallbackAdmissions() {
+        const admissions = this.captureJsFallbackAdmissions();
+        const changed = !this.executionAdmissionSnapshotsEqual(
+            this.jsFallbackAdmissions,
+            admissions
+        );
+        this.jsFallbackAdmissions = admissions;
+        return changed;
+    }
+
+    executionAdmissionSnapshotsEqual(left, right) {
+        if (!(left instanceof Map) || left.size !== right.size) return false;
+        for (const [pluginId, admitted] of right) {
+            if (left.get(pluginId) !== admitted) return false;
+        }
+        return true;
+    }
+
+    isJsFallbackAdmitted(plugin) {
+        return this.jsFallbackAdmissions.get(plugin.id) !== false;
+    }
+
+    captureExecutionLatencySnapshot() {
+        const snapshot = new Map();
+        const sampleRate = this.dspSampleRate || globalThis.sampleRate;
+        for (const plugin of this.plugins) {
+            if (this.isPluginExecutionBypassed(plugin)) continue;
+            const entry = this.dspLive && this.dspBinding
+                ? this.wasmInstances.get(plugin.id)
+                : null;
+            if (entry?.ready) {
+                try {
+                    snapshot.set(plugin.id, this.dspBinding.instanceLatency(entry.id) >>> 0);
+                } catch (error) {
+                    this.reportDspFailure(`latency:${plugin.id}`, error?.message || String(error));
+                }
+                continue;
+            }
+            const fallbackLatency = resolveJsFallbackLatency(plugin.type, sampleRate);
+            if (fallbackLatency > 0) snapshot.set(plugin.id, fallbackLatency);
         }
         return snapshot;
     }
 
-    dspInstanceLatencySnapshotsEqual(left, right) {
+    executionLatencySnapshotsEqual(left, right) {
         if (!(left instanceof Map) || left.size !== right.size) return false;
         for (const [pluginId, samples] of right) {
             if (left.get(pluginId) !== samples) return false;
@@ -3043,8 +3327,9 @@ class PluginProcessor extends AudioWorkletProcessor {
     }
 
     refreshDspPipelineForLatencyChange() {
-        const snapshot = this.captureDspInstanceLatencySnapshot();
-        if (this.dspInstanceLatencySnapshotsEqual(this.dspInstanceLatencySnapshot, snapshot)) {
+        this.refreshJsFallbackAdmissions();
+        const snapshot = this.captureExecutionLatencySnapshot();
+        if (this.executionLatencySnapshotsEqual(this.executionLatencySnapshot, snapshot)) {
             return false;
         }
         if (this.dspPipelineReady) {
@@ -3055,17 +3340,18 @@ class PluginProcessor extends AudioWorkletProcessor {
         return true;
     }
 
-    refreshDspPipeline(latencySnapshot = this.captureDspInstanceLatencySnapshot()) {
+    refreshDspPipeline(latencySnapshot = null) {
+        if (!(latencySnapshot instanceof Map)) {
+            this.refreshJsFallbackAdmissions();
+            latencySnapshot = this.captureExecutionLatencySnapshot();
+        }
         this.dspPipelineReady = false;
         this.dspPipelinePluginCount = 0;
+        this.rebuildDspLatencyPlan(latencySnapshot);
         if (!this.dspLive || !this.dspBinding) {
-            this.dspInstanceLatencySnapshot = new Map();
-            this.resetDspLatencyPlan();
-            this.publishDspPipelineLatency(0, false);
             return;
         }
 
-        this.rebuildDspLatencyPlan(latencySnapshot);
         if (this.masterBypass) return;
 
         const nodes = [];
@@ -3138,10 +3424,14 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspLatencyPlan = null;
     }
 
-    rebuildDspLatencyPlan(latencySnapshot = this.captureDspInstanceLatencySnapshot()) {
+    rebuildDspLatencyPlan(latencySnapshot = null) {
+        if (!(latencySnapshot instanceof Map)) {
+            this.refreshJsFallbackAdmissions();
+            latencySnapshot = this.captureExecutionLatencySnapshot();
+        }
         this.resetDspLatencyPlan();
-        this.dspInstanceLatencySnapshot = latencySnapshot;
-        if (!this.dspLive || !this.dspBinding || this.masterBypass) {
+        this.executionLatencySnapshot = latencySnapshot;
+        if (this.masterBypass) {
             this.publishDspPipelineLatency(0, false);
             return;
         }
@@ -3255,7 +3545,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 : null,
             totalSamples
         };
-        this.publishDspPipelineLatency(totalSamples, true);
+        this.publishDspPipelineLatency(totalSamples, this.dspLive || totalSamples > 0);
     }
 
     applyDspMergeCompensation(pluginId, processMode, pairStartChannel, singleChannelIndex,
@@ -3627,6 +3917,14 @@ class PluginProcessor extends AudioWorkletProcessor {
 
     wasmOnlyExecutionState(plugin, engineStopped = false) {
         if (engineStopped) return { state: 'bypassed', reason: 'engineStopped' };
+        const capacityExceeded = !this.isJsFallbackAdmitted(plugin);
+        const entry = this.dspLive ? this.wasmInstances.get(plugin.id) : null;
+        if (capacityExceeded) {
+            if (entry?.ready) return { state: 'active', reason: null };
+            return this.dspExecutionInitializing
+                ? { state: 'pending', reason: null }
+                : { state: 'bypassed', reason: 'jsFallbackCapacityExceeded' };
+        }
         if (this.dspExecutionInitializing) return { state: 'pending', reason: null };
         if (this.dspFailedTypes.has(plugin.type)) {
             return { state: 'bypassed', reason: 'runtimeFallback' };
@@ -3649,13 +3947,16 @@ class PluginProcessor extends AudioWorkletProcessor {
         if (!this.dspLive || !this.wasmKernels.has(plugin.type)) {
             return { state: 'bypassed', reason: 'wasmUnavailable' };
         }
-        const entry = this.wasmInstances.get(plugin.id);
         return entry?.ready
             ? { state: 'active', reason: null }
             : { state: 'pending', reason: null };
     }
 
     isPluginExecutionBypassed(plugin) {
+        if (!this.isJsFallbackAdmitted(plugin)) {
+            const entry = this.dspLive ? this.wasmInstances.get(plugin.id) : null;
+            if (!entry?.ready) return true;
+        }
         return requiresWasmExecution(plugin)
             ? this.wasmOnlyExecutionState(plugin).state !== 'active'
             : pluginExecutionUnsupportedReason(
@@ -3669,7 +3970,10 @@ class PluginProcessor extends AudioWorkletProcessor {
         const activeIds = new Set();
         for (const plugin of this.plugins) {
             const reportsOptionalDspState = plugin?.wasmParams instanceof Float32Array;
-            if (!requiresWasmExecution(plugin) && !reportsOptionalDspState) continue;
+            const reportsCapacityState = plugin?.executionCapabilities?.jsFallbackCapacity &&
+                typeof plugin.executionCapabilities.jsFallbackCapacity === 'object';
+            if (!requiresWasmExecution(plugin) && !reportsOptionalDspState &&
+                !reportsCapacityState) continue;
             activeIds.add(plugin.id);
             const status = this.wasmOnlyExecutionState(plugin, engineStopped);
             const key = `${status.state}:${status.reason || ''}:${this.dspExecutionGeneration}`;
@@ -3681,6 +3985,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 pluginType: plugin.type,
                 state: status.state,
                 reason: status.reason,
+                jsFallbackSampleChannels: this.jsFallbackSampleChannelCosts.get(plugin.id) || 0,
                 sampleRate: this.dspSampleRate || globalThis.sampleRate,
                 generation: this.dspExecutionGeneration
             });
@@ -4356,6 +4661,14 @@ class PluginProcessor extends AudioWorkletProcessor {
             }
         }
 
+        // Admission is reset for each full-processing quantum. Every consumer
+        // below reads the same ordered decision map, including a later
+        // same-quantum WASM failure that rebuilds it before JavaScript fallback.
+        if (this.refreshJsFallbackAdmissions()) {
+            this.refreshDspPipelineForLatencyChange();
+            this.publishWasmOnlyExecutionStates();
+        }
+
         const dspPipelineResult = this.tryDspPipeline(
             combinedBuffer,
             totalSize,
@@ -4481,7 +4794,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             if (!plugin.enabled || (insideSection && !activeSectionEnabled)) {
                 continue;
             }
-            const executionBypassed = this.isPluginExecutionBypassed(plugin);
+            let executionBypassed = this.isPluginExecutionBypassed(plugin);
 
             // Get the compiled processor function for this plugin type
             // Unsupported execution modes still use the normal channel and bus
@@ -4693,6 +5006,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                             plugin,
                             processError ? (processError?.message || String(processError)) : `process returned ${status}`
                         );
+                        executionBypassed = this.isPluginExecutionBypassed(plugin);
                     }
                 }
             }

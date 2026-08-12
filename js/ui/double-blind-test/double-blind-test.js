@@ -253,7 +253,7 @@ export class DoubleBlindTest {
         this._showConfigScreen();
         this.updateTexts();
         this._updateStartAvailability();
-        this._showParallelStartError();
+        this._showParallelStartError(detail.reason);
     }
 
     _applyGating(on) {
@@ -552,9 +552,12 @@ export class DoubleBlindTest {
         this.els.test.classList.remove('hidden');
     }
 
-    _showParallelStartError() {
+    _showParallelStartError(reason = null) {
         if (!this.els.configError) return;
-        this.els.configError.textContent = this.t('dbt.error.parallelStartFailed');
+        const key = reason === 'jsFallbackCapacityExceeded'
+            ? 'dbt.error.jsFallbackCapacityExceeded'
+            : 'dbt.error.parallelStartFailed';
+        this.els.configError.textContent = this.t(key);
         this.els.configError.classList.remove('hidden');
     }
 

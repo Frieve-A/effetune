@@ -1,0 +1,38 @@
+{
+  "formatVersion": 1,
+  "type": "AutoFilterPlugin",
+  "id": "default-lfo-low-pass",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 6001,
+  "blockSize": 64,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "md": "LFO",
+    "ft": "Low-pass",
+    "lf": 200,
+    "hf": 4000,
+    "rs": 1.5,
+    "mx": 80,
+    "rt": 0.5,
+    "wf": "Sine",
+    "sp": 0,
+    "sn": 24,
+    "at": 20,
+    "rl": 250,
+    "dr": "Up"
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "9d5dc5c1300ebc4ebcdb87e2a81f8eb64f7fc0132d3bfaf91652af8ced8cd6a0",
+  "outputFloats": 12002,
+  "byteLength": 48008,
+  "binary": "case-001.f32"
+}

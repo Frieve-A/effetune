@@ -1,0 +1,456 @@
+{
+  "version": 1,
+  "boundaries": {
+    "identifierUnicodeScalar": "😀",
+    "maxIdentifierScalars": 128,
+    "maxStructuralNodes": 128,
+    "maxEffectiveInstances": 96,
+    "maxEdges": 512
+  },
+  "recipeCases": [
+    {
+      "name": "zero-latency-ir-dry-enabled",
+      "recipe": "wetDry",
+      "expected": "valid",
+      "node": {
+        "id": "wet",
+        "type": "IRReverb",
+        "parameters": {
+          "channelMode": "automatic",
+          "latency": 0,
+          "convolutionRate": "auto",
+          "wetLevel": 0,
+          "dryLevel": 0,
+          "preDelay": 0
+        },
+        "assets": { "impulseResponse": "room-ir" }
+      }
+    }
+  ],
+  "valid": [
+    {
+      "name": "empty-identity",
+      "document": {
+        "version": 1,
+        "input": { "id": "input" },
+        "output": { "id": "output" },
+        "nodes": [],
+        "edges": []
+      },
+      "expectedPlan": "identity"
+    },
+    {
+      "name": "serial",
+      "document": {
+        "version": 1,
+        "input": { "id": "input" },
+        "output": { "id": "output" },
+        "nodes": [
+          {
+            "id": "volume",
+            "type": "Volume",
+            "enabled": true,
+            "channel": "all",
+            "parameters": { "volume": -6 }
+          }
+        ],
+        "edges": [
+          {
+            "id": "input-volume",
+            "source": "input",
+            "destination": "volume",
+            "gain": 1,
+            "mute": false,
+            "mixGroup": "default",
+            "solo": false
+          },
+          {
+            "id": "volume-output",
+            "source": "volume",
+            "destination": "output",
+            "gain": 1,
+            "mute": false,
+            "mixGroup": "default",
+            "solo": false
+          }
+        ]
+      },
+      "expectedPlan": "effective"
+    },
+    {
+      "name": "wet-dry-ir-diamond",
+      "recipe": "wetDry",
+      "document": {
+        "version": 1,
+        "input": { "id": "input" },
+        "output": { "id": "output" },
+        "nodes": [
+          {
+            "id": "wet",
+            "type": "IRReverb",
+            "enabled": true,
+            "channel": "all",
+            "parameters": {
+              "channelMode": "automatic",
+              "latency": 128,
+              "convolutionRate": "auto",
+              "wetLevel": 0,
+              "dryLevel": -96,
+              "preDelay": 0
+            },
+            "assets": { "impulseResponse": "room-ir" }
+          }
+        ],
+        "edges": [
+          {
+            "id": "dry",
+            "source": "input",
+            "destination": "output",
+            "gain": 0.5,
+            "mute": false,
+            "mixGroup": "main",
+            "solo": false
+          },
+          {
+            "id": "wet-input",
+            "source": "input",
+            "destination": "wet",
+            "gain": 1,
+            "mute": false,
+            "mixGroup": "default",
+            "solo": false
+          },
+          {
+            "id": "wet-output",
+            "source": "wet",
+            "destination": "output",
+            "gain": 0.5,
+            "mute": false,
+            "mixGroup": "main",
+            "solo": false
+          }
+        ]
+      },
+      "expectedPlan": "effective"
+    },
+    {
+      "name": "send-return",
+      "recipe": "sendReturn",
+      "document": {
+        "version": 1,
+        "input": { "id": "input" },
+        "output": { "id": "output" },
+        "nodes": [
+          {
+            "id": "return-level",
+            "type": "Volume",
+            "enabled": true,
+            "channel": "all",
+            "parameters": { "volume": -3 }
+          }
+        ],
+        "edges": [
+          {
+            "id": "main",
+            "source": "input",
+            "destination": "output",
+            "gain": 1,
+            "mute": false,
+            "mixGroup": "main",
+            "solo": false
+          },
+          {
+            "id": "return",
+            "source": "return-level",
+            "destination": "output",
+            "gain": 1,
+            "mute": false,
+            "mixGroup": "main",
+            "solo": false
+          },
+          {
+            "id": "send",
+            "source": "input",
+            "destination": "return-level",
+            "gain": 0.25,
+            "mute": false,
+            "mixGroup": "default",
+            "solo": false
+          }
+        ]
+      },
+      "expectedPlan": "effective"
+    },
+    {
+      "name": "muted-input-oscillator",
+      "document": {
+        "version": 1,
+        "input": { "id": "input" },
+        "output": { "id": "output" },
+        "nodes": [
+          {
+            "id": "oscillator",
+            "type": "Oscillator",
+            "enabled": true,
+            "channel": "all",
+            "parameters": {}
+          }
+        ],
+        "edges": [
+          {
+            "id": "muted-input",
+            "source": "input",
+            "destination": "oscillator",
+            "gain": 1,
+            "mute": true,
+            "mixGroup": "default",
+            "solo": false
+          },
+          {
+            "id": "oscillator-output",
+            "source": "oscillator",
+            "destination": "output",
+            "gain": 1,
+            "mute": false,
+            "mixGroup": "default",
+            "solo": false
+          }
+        ]
+      },
+      "expectedPlan": "zero-input-enabled-node"
+    },
+    {
+      "name": "muted-output-oscillator",
+      "document": {
+        "version": 1,
+        "input": { "id": "input" },
+        "output": { "id": "output" },
+        "nodes": [
+          {
+            "id": "oscillator",
+            "type": "Oscillator",
+            "enabled": true,
+            "channel": "all",
+            "parameters": {}
+          }
+        ],
+        "edges": [
+          {
+            "id": "muted-output",
+            "source": "oscillator",
+            "destination": "output",
+            "gain": 1,
+            "mute": true,
+            "mixGroup": "default",
+            "solo": false
+          },
+          {
+            "id": "oscillator-input",
+            "source": "input",
+            "destination": "oscillator",
+            "gain": 1,
+            "mute": false,
+            "mixGroup": "default",
+            "solo": false
+          }
+        ]
+      },
+      "expectedPlan": "silence-with-dormant-node"
+    },
+    {
+      "name": "muted-solo-suppresses-normal-edge",
+      "document": {
+        "version": 1,
+        "input": { "id": "input" },
+        "output": { "id": "output" },
+        "nodes": [
+          {
+            "id": "volume",
+            "type": "Volume",
+            "enabled": true,
+            "channel": "all",
+            "parameters": { "volume": 0 }
+          }
+        ],
+        "edges": [
+          {
+            "id": "input-volume",
+            "source": "input",
+            "destination": "volume",
+            "gain": 1,
+            "mute": false,
+            "mixGroup": "default",
+            "solo": false
+          },
+          {
+            "id": "muted-solo",
+            "source": "input",
+            "destination": "output",
+            "gain": 1,
+            "mute": true,
+            "mixGroup": "main",
+            "solo": true
+          },
+          {
+            "id": "volume-output",
+            "source": "volume",
+            "destination": "output",
+            "gain": 1,
+            "mute": false,
+            "mixGroup": "main",
+            "solo": false
+          }
+        ]
+      },
+      "expectedPlan": "silence-with-dormant-node",
+      "expectedEffectiveNodeIds": [],
+      "expectedActiveEdgeIds": [],
+      "expectedOutput": 0
+    },
+    {
+      "name": "disabled-bypass",
+      "document": {
+        "version": 1,
+        "input": { "id": "input" },
+        "output": { "id": "output" },
+        "nodes": [
+          {
+            "id": "disabled",
+            "type": "Volume",
+            "enabled": false,
+            "channel": "all",
+            "parameters": { "volume": -12 }
+          }
+        ],
+        "edges": [
+          { "id": "in", "source": "input", "destination": "disabled" },
+          { "id": "out", "source": "disabled", "destination": "output" }
+        ]
+      },
+      "expectedPlan": "disabled-bypass",
+      "expectedVisualization": {
+        "nodeIds": ["disabled"],
+        "edgeIds": ["in", "out"],
+        "nodeState": "disabled-bypass"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "duplicate-node-id",
+      "code": "GRAPH_DOCUMENT_ID",
+      "path": "/nodes/1/id",
+      "document": {
+        "version": 1,
+        "input": { "id": "input" },
+        "output": { "id": "output" },
+        "nodes": [
+          { "id": "level", "type": "Volume", "parameters": {} },
+          { "id": "level", "type": "Volume", "parameters": {} }
+        ],
+        "edges": [
+          { "id": "first", "source": "input", "destination": "level" },
+          { "id": "last", "source": "level", "destination": "output" }
+        ]
+      }
+    },
+    {
+      "name": "dangling-destination",
+      "code": "GRAPH_DOCUMENT_REFERENCE",
+      "path": "/edges/0/destination",
+      "document": {
+        "version": 1,
+        "input": { "id": "input" },
+        "output": { "id": "output" },
+        "nodes": [],
+        "edges": [
+          { "id": "dangling", "source": "input", "destination": "missing" }
+        ]
+      }
+    },
+    {
+      "name": "cycle",
+      "code": "GRAPH_DOCUMENT_CYCLE",
+      "path": "/edges/2",
+      "document": {
+        "version": 1,
+        "input": { "id": "input" },
+        "output": { "id": "output" },
+        "nodes": [
+          { "id": "a", "type": "Volume", "parameters": {} },
+          { "id": "b", "type": "Volume", "parameters": {} }
+        ],
+        "edges": [
+          { "id": "input-a", "source": "input", "destination": "a" },
+          { "id": "a-b", "source": "a", "destination": "b" },
+          { "id": "b-a", "source": "b", "destination": "a" },
+          { "id": "b-output", "source": "b", "destination": "output" }
+        ]
+      }
+    },
+    {
+      "name": "structurally-disconnected-node",
+      "code": "GRAPH_DOCUMENT_CONNECTIVITY",
+      "path": "/nodes/0",
+      "document": {
+        "version": 1,
+        "input": { "id": "input" },
+        "output": { "id": "output" },
+        "nodes": [
+          { "id": "unused", "type": "Volume", "parameters": {} }
+        ],
+        "edges": [
+          { "id": "direct", "source": "input", "destination": "output" }
+        ]
+      }
+    },
+    {
+      "name": "gain-out-of-range",
+      "code": "GRAPH_DOCUMENT_EDGE_CONTROL",
+      "path": "/edges/0/gain",
+      "document": {
+        "version": 1,
+        "input": { "id": "input" },
+        "output": { "id": "output" },
+        "nodes": [],
+        "edges": [
+          { "id": "direct", "source": "input", "destination": "output", "gain": 4.1 }
+        ]
+      }
+    },
+    {
+      "name": "pan-on-mono-stream",
+      "code": "GRAPH_DOCUMENT_CHANNEL",
+      "path": "/edges/0/pan",
+      "streamChannels": 1,
+      "document": {
+        "version": 1,
+        "input": { "id": "input" },
+        "output": { "id": "output" },
+        "nodes": [],
+        "edges": [
+          { "id": "direct", "source": "input", "destination": "output", "pan": 0 }
+        ]
+      }
+    },
+    {
+      "name": "empty-mix-group",
+      "code": "GRAPH_DOCUMENT_EDGE_CONTROL",
+      "path": "/edges/0/mixGroup",
+      "document": {
+        "version": 1,
+        "input": { "id": "input" },
+        "output": { "id": "output" },
+        "nodes": [],
+        "edges": [
+          {
+            "id": "direct",
+            "source": "input",
+            "destination": "output",
+            "mixGroup": ""
+          }
+        ]
+      }
+    }
+  ]
+}

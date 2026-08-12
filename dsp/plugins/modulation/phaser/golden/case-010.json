@@ -1,0 +1,51 @@
+{
+  "formatVersion": 1,
+  "type": "PhaserPlugin",
+  "id": "pending-during-fade-up",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 1027,
+  "blockSize": 1024,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 9,
+  "seed": "0xeffe7a57",
+  "params": {
+    "md": "Classic",
+    "rt": 0.5,
+    "cf": 1000,
+    "rg": 3,
+    "st": 6,
+    "fb": 20,
+    "sp": 90,
+    "dr": "Up",
+    "mx": 100
+  },
+  "events": [
+    {
+      "frame": 1,
+      "params": {
+        "md": "Barber-pole",
+        "st": 12,
+        "dr": "Down"
+      }
+    },
+    {
+      "frame": 361,
+      "params": {
+        "md": "Classic",
+        "st": 4,
+        "dr": "Up"
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00003,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "dd62b1916ffb692313669102c864f20001d21de83257c0285d5f0f14b58bcc68",
+  "outputFloats": 1027,
+  "byteLength": 4108,
+  "binary": "case-010.f32"
+}

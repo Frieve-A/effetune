@@ -281,6 +281,53 @@ def semantic_parameters(case: dict[str, Any], legacy: dict[str, Any]) -> dict[st
     return result
 
 
+def supplied_semantic_names(
+    case: dict[str, Any], supplied: dict[str, Any]
+) -> list[str]:
+    names: list[str] = []
+    for legacy_name, supplied_value in supplied.items():
+        for packed in case["implementation"]["packedParameters"]:
+            keys = packed["keys"]
+            prefixes = {re.sub(r"[0-9]+$", "", key) for key in keys}
+            array_key = next(iter(prefixes)) if len(prefixes) == 1 else None
+            aggregate = (
+                packed["count"] > 1
+                and array_key is not None
+                and array_key == legacy_name
+            )
+            object_array = (
+                packed["count"] > 1
+                and array_key is not None
+                and isinstance(supplied_value, list)
+                and any(
+                    isinstance(item, dict) and array_key in item
+                    for item in supplied_value
+                )
+            )
+            if (
+                legacy_name in keys or aggregate or object_array
+            ) and packed["publicName"] not in names:
+                names.append(packed["publicName"])
+        structured = case["implementation"].get("structuredParameter")
+        if (
+            structured is not None
+            and structured["key"] == legacy_name
+            and structured["publicName"] not in names
+        ):
+            names.append(structured["publicName"])
+    return names
+
+
+def semantic_event_parameters(
+    case: dict[str, Any], current: dict[str, Any], supplied: dict[str, Any]
+) -> dict[str, Any]:
+    snapshot = semantic_parameters(case, current)
+    return {
+        name: snapshot[name]
+        for name in supplied_semantic_names(case, supplied)
+    }
+
+
 def expected_validation_rejection(case: dict[str, Any]) -> dict[str, str] | None:
     parameters = semantic_parameters(case, case["metadata"]["params"])
     for definition in case["definition"]["parameters"]:
@@ -507,12 +554,13 @@ def build_events(case: dict[str, Any]) -> list[dict[str, Any]]:
     current = dict(case["metadata"]["params"])
     events: list[dict[str, Any]] = []
     for event in case["metadata"].get("events", ()):
-        current.update(event.get("params", {}))
+        supplied = event.get("params", {})
+        current.update(supplied)
         events.append(
             {
                 "frame": event["frame"],
                 "effectId": "golden-effect",
-                "parameters": semantic_parameters(case, current),
+                "parameters": semantic_event_parameters(case, current, supplied),
             }
         )
     return events
@@ -536,6 +584,204 @@ def process_event_case(
         if "events" not in inspect.signature(stream.process).parameters:
             raise NotImplementedError("Stream.process(..., events=...) is unavailable")
         return stream.process(source, events=events)
+
+
+def run_modulation_cross_field_contract(effetune: Any) -> bool:
+    frames = np.arange(512, dtype=np.float32)
+    source = np.vstack(
+        (
+            np.sin(frames * np.float32(0.071)) * np.float32(0.4),
+            np.cos(frames * np.float32(0.053)) * np.float32(0.3),
+        )
+    ).astype(np.float32, copy=False)
+
+    def canonicalize(
+        effect_type: str, parameters: dict[str, float]
+    ) -> dict[str, float]:
+        values = dict(parameters)
+        if effect_type == "AutoFilter":
+            if values["minimumFrequency"] > values["maximumFrequency"]:
+                values["minimumFrequency"], values["maximumFrequency"] = (
+                    values["maximumFrequency"],
+                    values["minimumFrequency"],
+                )
+        elif effect_type == "Chorus":
+            values["depth"] = min(values["depth"], values["delay"])
+        elif values["minimumShift"] > values["maximumShift"]:
+            values["minimumShift"], values["maximumShift"] = (
+                values["maximumShift"],
+                values["minimumShift"],
+            )
+        return values
+
+    cases = (
+        (
+            "AutoFilter",
+            {"minimum_frequency": 8000, "maximum_frequency": 200},
+            {"minimumFrequency": 8000, "maximumFrequency": 200},
+            {"minimumFrequency": 200, "maximumFrequency": 8000},
+            {"minimumFrequency": 100, "maximumFrequency": 9000},
+        ),
+        (
+            "Chorus",
+            {"delay": 0.5, "depth": 20},
+            {"delay": 0.5, "depth": 20},
+            {"delay": 0.5, "depth": 0.5},
+            {"delay": 10, "depth": 0.25},
+        ),
+        (
+            "FrequencyShifter",
+            {"minimum_shift": 900, "maximum_shift": 20},
+            {"minimumShift": 900, "maximumShift": 20},
+            {"minimumShift": 20, "maximumShift": 900},
+            {"minimumShift": 10, "maximumShift": 1000},
+        ),
+    )
+    for effect_type, constructor_parameters, supplied, canonical, updates in cases:
+        effect_class = getattr(effetune, effect_type)
+        effect_id = f"{effect_type}-cross-field"
+        named = effetune.Chain(
+            [effect_class(id=effect_id, **constructor_parameters)]
+        )
+        serialized = effetune.Chain.from_preset(
+            json.dumps(
+                {
+                    "version": 1,
+                    "chain": [
+                        {
+                            "id": effect_id,
+                            "type": effect_type,
+                            "parameters": supplied,
+                        }
+                    ],
+                }
+            )
+        )
+        canonical_chain = effetune.Chain.from_preset(
+            {
+                "version": 1,
+                "chain": [
+                    {
+                        "id": effect_id,
+                        "type": effect_type,
+                        "parameters": canonical,
+                    }
+                ],
+            }
+        )
+        if named.to_dict() != serialized.to_dict():
+            return False
+        expected = canonical_chain.process(
+            source, sample_rate=48_000, block_size=64
+        )
+        if not np.array_equal(
+            named.process(source, sample_rate=48_000, block_size=64), expected
+        ):
+            return False
+        if not np.array_equal(
+            serialized.process(source, sample_rate=48_000, block_size=64),
+            expected,
+        ):
+            return False
+
+        entries = list(supplied.items())
+        for ordered in (entries, list(reversed(entries))):
+            event_chain = effetune.Chain([effect_class(id=effect_id)])
+            events = [
+                {
+                    "frame": 0,
+                    "effectId": effect_id,
+                    "parameters": {name: value},
+                }
+                for name, value in ordered
+            ]
+            with event_chain.stream(
+                48_000, channels=2, block_size=64
+            ) as stream:
+                if not np.array_equal(
+                    stream.process(source, events=events), expected
+                ):
+                    return False
+
+        for names in (list(updates), list(reversed(updates))):
+            candidate_chain = effetune.Chain.from_preset(
+                {
+                    "version": 1,
+                    "chain": [
+                        {
+                            "id": effect_id,
+                            "type": effect_type,
+                            "parameters": supplied,
+                        }
+                    ],
+                }
+            )
+            reference_chain = effetune.Chain.from_preset(
+                {
+                    "version": 1,
+                    "chain": [
+                        {
+                            "id": effect_id,
+                            "type": effect_type,
+                            "parameters": canonical,
+                        }
+                    ],
+                }
+            )
+            with candidate_chain.stream(
+                48_000, channels=2, block_size=64
+            ) as candidate_stream, reference_chain.stream(
+                48_000, channels=2, block_size=64
+            ) as reference_stream:
+                steps = (
+                    (names[0], supplied[names[0]]),
+                    (names[1], supplied[names[1]]),
+                    (names[0], updates[names[0]]),
+                    (names[1], updates[names[1]]),
+                )
+                effective = dict(canonical)
+                for name, value in steps:
+                    effective = canonicalize(
+                        effect_type, {**effective, name: value}
+                    )
+                    expected_output = reference_stream.process(
+                        source,
+                        events=[
+                            {
+                                "frame": 0,
+                                "effectId": effect_id,
+                                "parameters": effective,
+                            }
+                        ],
+                    )
+                    actual_output = candidate_stream.process(
+                        source,
+                        events=[
+                            {
+                                "frame": 0,
+                                "effectId": effect_id,
+                                "parameters": {name: value},
+                            }
+                        ],
+                    )
+                    if not np.array_equal(actual_output, expected_output):
+                        return False
+            if candidate_chain.to_dict()["chain"][0]["parameters"] != (
+                serialized.to_dict()["chain"][0]["parameters"]
+            ):
+                return False
+    return True
+
+
+def run_frequency_shifter_latency_contract(effetune: Any) -> bool:
+    chain = effetune.Chain([effetune.FrequencyShifter()])
+    for sample_rate, expected in ((48_000, 114), (96_000, 228), (192_000, 456)):
+        if chain.latency_samples(sample_rate, channels=2) != expected:
+            return False
+        with chain.stream(sample_rate, channels=2, block_size=64) as stream:
+            if stream.latency_samples != expected:
+                return False
+    return True
 
 
 def run_state_contracts(effetune: Any) -> dict[str, Any]:
@@ -569,6 +815,252 @@ def run_state_contracts(effetune: Any) -> dict[str, Any]:
         result["closedRejects"] = False
     except effetune.StateError:
         result["closedRejects"] = True
+    result["modulationCrossField"] = run_modulation_cross_field_contract(effetune)
+    result["frequencyShifterLatency"] = run_frequency_shifter_latency_contract(
+        effetune
+    )
+    return result
+
+
+def run_graph_contracts(effetune: Any, repo_root: Path) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    serial_document = {
+        "version": 1,
+        "input": {"id": "input"},
+        "output": {"id": "output"},
+        "nodes": [
+            {"id": "level", "type": "Volume", "parameters": {"volume": -6}}
+        ],
+        "edges": [
+            {"id": "in", "source": "input", "destination": "level"},
+            {"id": "out", "source": "level", "destination": "output"},
+        ],
+    }
+    block = np.ones((1, 64), dtype=np.float32)
+    graph = effetune.Graph.from_dict(serial_document)
+    with graph.stream(48_000, channels=1, block_size=64) as stream:
+        first = stream.process(block)
+        result["serialFirstBlock"] = bool(
+            first.shape == block.shape and 0 < first[0, 0] < 1
+        )
+        stream.set_param("level", "volume", -12)
+        updated = stream.process(block)
+        result["serialUpdate"] = bool(0 < updated[0, 0] < first[0, 0])
+        stream.reset()
+        replay = stream.process(block)
+        result["serialReset"] = bool(np.allclose(first, replay, rtol=0, atol=1e-6))
+        visualization = stream.visualization_snapshot()
+        result["serialVisualization"] = bool(
+            any(
+                node.get("id") == "level" and node.get("state") == "effective"
+                for node in visualization["nodes"]
+            )
+            and len(visualization["edges"]) == 2
+        )
+    graph.close()
+
+    diamond_document = {
+        "version": 1,
+        "input": {"id": "input"},
+        "output": {"id": "output"},
+        "nodes": [
+            {"id": "left", "type": "Volume", "parameters": {"volume": 0}},
+            {"id": "right", "type": "Volume", "parameters": {"volume": 0}},
+        ],
+        "edges": [
+            {"id": "in-left", "source": "input", "destination": "left"},
+            {"id": "in-right", "source": "input", "destination": "right"},
+            {"id": "left-out", "source": "left", "destination": "output", "gain": 0.5},
+            {"id": "right-out", "source": "right", "destination": "output", "gain": 0.5},
+        ],
+    }
+    diamond = effetune.Graph.from_dict(diamond_document)
+    with diamond.stream(48_000, channels=1, block_size=64) as stream:
+        mixed = stream.process(block)
+        snapshot = stream.compile_snapshot
+        result["diamondMix"] = bool(np.allclose(mixed, block, rtol=0, atol=1e-6))
+        result["diamondAdcSnapshot"] = bool(
+            snapshot["latencySamples"] == 0
+            and len(snapshot["edges"]) == 4
+            and all(len(edge["fanInCompensation"]) == 1 for edge in snapshot["edges"])
+        )
+    diamond.close()
+
+    fixture = json.loads(
+        (repo_root / "dsp/bindings/common/graph-v1-contract.fixture.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    fixture_by_name = {entry["name"]: entry["document"] for entry in fixture["valid"]}
+    for name, expected_state in (
+        ("muted-input-oscillator", "effective"),
+        ("muted-output-oscillator", "dormant"),
+        ("disabled-bypass", "disabled-bypass"),
+    ):
+        candidate = effetune.Graph.from_dict(fixture_by_name[name])
+        with candidate.stream(48_000, channels=1, block_size=64) as stream:
+            observed = stream.process(np.zeros((1, 64), dtype=np.float32))
+            node = next(
+                item
+                for item in stream.visualization_snapshot()["nodes"]
+                if item.get("kind") == "effect"
+            )
+            result[name] = bool(
+                node["state"] == expected_state and np.all(np.isfinite(observed))
+            )
+        candidate.close()
+
+    asset_resolutions = 0
+    asset = effetune.AssetData(
+        samples=np.ones((1, 1), dtype=np.float32),
+        sample_rate=48_000,
+        topology="mono",
+    )
+
+    def resolve_graph_asset(reference: str) -> Any:
+        nonlocal asset_resolutions
+        if reference != "tiny-ir":
+            raise RuntimeError("unexpected Graph asset reference")
+        asset_resolutions += 1
+        return asset
+
+    asset_graph = effetune.Graph.from_dict(
+        {
+            "version": 1,
+            "input": {"id": "input"},
+            "output": {"id": "output"},
+            "nodes": [
+                {
+                    "id": "room",
+                    "type": "IRReverb",
+                    "parameters": {
+                        "channelMode": "mono",
+                        "latency": 0,
+                        "convolutionRate": "full",
+                        "wetLevel": 0,
+                        "dryLevel": -96,
+                        "preDelay": 0,
+                    },
+                    "assets": {"impulseResponse": "tiny-ir"},
+                }
+            ],
+            "edges": [
+                {"id": "in", "source": "input", "destination": "room"},
+                {"id": "out", "source": "room", "destination": "output"},
+            ],
+        },
+        asset_resolver=resolve_graph_asset,
+    )
+    with asset_graph.stream(48_000, channels=1, block_size=64) as stream:
+        observed = stream.process(np.ones((1, 64), dtype=np.float32))
+        result["assetPrewarm"] = bool(
+            asset_resolutions == 1 and np.all(np.isfinite(observed))
+        )
+    asset_graph.close()
+    return result
+
+
+def _snapshot_contains(expected: Any, actual: Any) -> bool:
+    if isinstance(expected, list):
+        return (
+            isinstance(actual, list)
+            and len(expected) == len(actual)
+            and all(
+                _snapshot_contains(expected_value, actual_value)
+                for expected_value, actual_value in zip(expected, actual)
+            )
+        )
+    if isinstance(expected, dict):
+        return isinstance(actual, dict) and all(
+            key in actual and _snapshot_contains(value, actual[key])
+            for key, value in expected.items()
+        )
+    return expected == actual
+
+
+def run_graph_parity_contracts(effetune: Any, repo_root: Path) -> dict[str, Any]:
+    fixture = json.loads(
+        (repo_root / "dsp/bindings/common/graph-v1-parity.fixture.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    tolerance = float(fixture["tolerance"]["abs"])
+    result: dict[str, Any] = {}
+    for case in fixture["cases"]:
+        source = np.zeros((case["channels"], case["frames"]), dtype=np.float32)
+        if case["input"]["kind"] != "impulse":
+            raise RuntimeError(f"unsupported Graph parity input: {case['input']['kind']}")
+        for channel, value in enumerate(case["input"]["channelValues"]):
+            source[channel, case["input"]["frame"]] = value
+
+        expected = np.zeros_like(source)
+        if case["expected"]["audio"]["kind"] != "sparse":
+            raise RuntimeError(
+                f"unsupported Graph parity output: {case['expected']['audio']['kind']}"
+            )
+        for point in case["expected"]["audio"]["points"]:
+            expected[point["channel"], point["frame"]] = point["value"]
+
+        assets = {
+            reference: effetune.AssetData(
+                samples=np.asarray(asset["channels"], dtype=np.float32),
+                sample_rate=asset["sampleRate"],
+                topology=asset["topology"],
+            )
+            for reference, asset in case.get("assets", {}).items()
+        }
+
+        def resolve_asset(reference: str) -> Any:
+            if reference not in assets:
+                raise RuntimeError(f"unknown Graph parity asset: {reference}")
+            return assets[reference]
+
+        graph = effetune.Graph.from_dict(
+            case["document"],
+            asset_resolver=resolve_asset,
+        )
+        try:
+            with graph.stream(
+                case["sampleRate"],
+                channels=case["channels"],
+                block_size=max(case["blockSplits"]),
+                seed=case["seed"],
+            ) as stream:
+                blocks = []
+                offset = 0
+                for frames in case["blockSplits"]:
+                    blocks.append(
+                        stream.process(source[:, offset : offset + frames].copy())
+                    )
+                    offset += frames
+                if offset != case["frames"]:
+                    raise RuntimeError(
+                        f"Graph parity block splits cover {offset} of {case['frames']} frames"
+                    )
+                observed = np.concatenate(blocks, axis=1)
+                passed = bool(
+                    stream.latency_samples == case["expected"]["latencySamples"]
+                    and _snapshot_contains(
+                        case["expected"]["snapshot"], stream.compile_snapshot
+                    )
+                    and np.allclose(observed, expected, rtol=0, atol=tolerance)
+                )
+                if case.get("resetEquality"):
+                    stream.reset()
+                    replay_blocks = []
+                    offset = 0
+                    for frames in case["blockSplits"]:
+                        replay_blocks.append(
+                            stream.process(source[:, offset : offset + frames].copy())
+                        )
+                        offset += frames
+                    replay = np.concatenate(replay_blocks, axis=1)
+                    passed = passed and bool(
+                        np.allclose(replay, observed, rtol=0, atol=tolerance)
+                    )
+                result[case["id"]] = passed
+        finally:
+            graph.close()
     return result
 
 
@@ -674,6 +1166,14 @@ def main() -> int:
         state_contracts = run_state_contracts(effetune)
     except Exception as error:
         state_contracts = {"error": f"{type(error).__name__}: {error}"}
+    try:
+        graph_contracts = run_graph_contracts(effetune, repo_root)
+    except Exception as error:
+        graph_contracts = {"error": f"{type(error).__name__}: {error}"}
+    try:
+        graph_parity_contracts = run_graph_parity_contracts(effetune, repo_root)
+    except Exception as error:
+        graph_parity_contracts = {"error": f"{type(error).__name__}: {error}"}
     summary = {
         "backend": "python-native",
         "packageVersion": getattr(effetune, "__version__", "unknown"),
@@ -690,6 +1190,8 @@ def main() -> int:
         },
         "residuals": residuals,
         "stateContracts": state_contracts,
+        "graphContracts": graph_contracts,
+        "graphParityContracts": graph_parity_contracts,
         "expectedValidationRejections": expected_validation_rejections,
         "failures": failures,
         "unexecuted": unexecuted,
@@ -699,7 +1201,11 @@ def main() -> int:
         arguments.summary.write_text(
             json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
-    contracts_pass = all(value is True for value in state_contracts.values())
+    contracts_pass = (
+        all(value is True for value in state_contracts.values())
+        and all(value is True for value in graph_contracts.values())
+        and all(value is True for value in graph_parity_contracts.values())
+    )
     if failures or unexecuted or not contracts_pass:
         print(
             json.dumps(
@@ -707,6 +1213,8 @@ def main() -> int:
                     "failures": failures,
                     "unexecuted": unexecuted,
                     "stateContracts": state_contracts,
+                    "graphContracts": graph_contracts,
+                    "graphParityContracts": graph_parity_contracts,
                 },
                 separators=(",", ":"),
             ),

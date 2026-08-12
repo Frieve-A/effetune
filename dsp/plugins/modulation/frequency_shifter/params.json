@@ -1,0 +1,15 @@
+{
+  "type": "FrequencyShifterPlugin",
+  "tolerance": { "abs": 0.0001, "policy": "per-sample" },
+  "fields": [
+    { "name": "mode", "key": "md", "kind": "enum", "default": "Shift", "values": ["Shift", "Ring Mod", "Barber-pole"] },
+    { "name": "shift", "key": "sh", "kind": "float", "min": -5000, "max": 5000, "default": 8, "unit": "Hz" },
+    { "name": "carrierFrequency", "key": "cf", "kind": "float", "min": 0.1, "max": 10000, "default": 440, "unit": "Hz" },
+    { "name": "minimumShift", "key": "mn", "kind": "float", "min": 0, "max": 5000, "default": 20, "unit": "Hz" },
+    { "name": "maximumShift", "key": "mx", "kind": "float", "min": 0, "max": 5000, "default": 800, "unit": "Hz" },
+    { "name": "rate", "key": "rt", "kind": "float", "min": 0.01, "max": 2, "default": 0.15, "unit": "Hz" },
+    { "name": "direction", "key": "dr", "kind": "enum", "default": "Up", "values": ["Up", "Down"] },
+    { "name": "stereoPhase", "key": "sp", "kind": "float", "min": 0, "max": 180, "default": 0, "unit": "degrees" },
+    { "name": "mix", "key": "mix", "kind": "float", "min": 0, "max": 100, "default": 100, "unit": "%" }
+  ]
+}

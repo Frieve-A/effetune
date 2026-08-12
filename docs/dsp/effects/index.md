@@ -7,7 +7,7 @@ permalink: /dsp/effects/
 ---
 # Effects
 
-Browse all 84 semantic types registered in the v1 binding catalog. The list remains readable without JavaScript.
+Browse all 90 semantic types registered in the v1 binding catalog. The list remains readable without JavaScript.
 
 <label for="effect-filter">Filter effects</label>
 <input id="effect-filter" type="search" placeholder="Name, type, category, seeded, or asset" data-dsp-effect-filter>
@@ -92,8 +92,14 @@ Browse all 84 semantic types registered in the v1 binding catalog. The list rema
 
 ## Modulation
 
+- [Auto Filter](/dsp/effects/auto-filter/) (`AutoFilter`) — Provides Auto Filter sweeps, Envelope Filter response, and Auto Wah movement with a resonant state-variable filter. <span data-effect-tags="modulation  "></span>
+- [Auto Pan](/dsp/effects/auto-pan/) (`AutoPan`) — Creates Auto Pan movement by applying periodic complementary gain changes within each stereo pair. <span data-effect-tags="modulation  "></span>
+- [Chorus](/dsp/effects/chorus/) (`Chorus`) — Creates Chorus, Stereo Chorus, Ensemble, Flanger, or Vibrato effects with interpolated moving delay voices. <span data-effect-tags="modulation  "></span>
 - [Doppler Distortion](/dsp/effects/doppler-distortion/) (`DopplerDistortion`) — Modulates delay to model pitch movement caused by changing distance. <span data-effect-tags="modulation  "></span>
+- [Frequency Shifter](/dsp/effects/frequency-shifter/) (`FrequencyShifter`) — Provides Frequency Shifter, Ring Modulator, or Barber-pole Frequency Shifter processing with analytic-signal translation or direct multiplication. <span data-effect-tags="modulation  "></span>
+- [Phaser](/dsp/effects/phaser/) (`Phaser`) — Creates moving peaks and notches as a classic Phaser or Barber-pole Phaser with all-pass sweeps. <span data-effect-tags="modulation  "></span>
 - [Pitch Shifter](/dsp/effects/pitch-shifter/) (`PitchShifter`) — Shifts pitch while retaining the input duration. <span data-effect-tags="modulation  "></span>
+- [Rotary Speaker](/dsp/effects/rotary-speaker/) (`RotarySpeaker`) — Creates Rotary Speaker motion, commonly known as a Leslie effect, by combining crossover-separated horn and drum amplitude and Doppler movement. <span data-effect-tags="modulation  "></span>
 - [Tremolo](/dsp/effects/tremolo/) (`Tremolo`) — Modulates amplitude periodically at a configurable rate and depth. <span data-effect-tags="modulation seeded "></span>
 - [Wow Flutter](/dsp/effects/wow-flutter/) (`WowFlutter`) — Applies slow and fast pitch variation associated with imperfect mechanical playback. <span data-effect-tags="modulation seeded "></span>
 

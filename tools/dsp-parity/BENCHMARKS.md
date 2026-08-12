@@ -1109,3 +1109,81 @@ All six parity comparisons passed the direct-double reference with maximum absol
 error below `6e-8`. The two latency cases are part of the normal committed golden-set
 discovery, so baseline WASM, SIMD WASM, and native CI runs keep both the maximum asset
 admission and preparation-time ceiling persistent.
+
+### Modulation Effects Rollout Review
+
+Measured on 2026-08-12 with Node v24.13.0 on a 13th Gen Intel Core i9-13900KF,
+Windows NT 10.0.26200.0. The committed WASM artifacts use Emscripten 6.0.2 with
+`-O3 -flto`; the SIMD artifact also uses `-msimd128`. This was a bounded rollout
+review, not an exhaustive mode sweep: each effect used its representative most
+expensive mode at 48 kHz/two channels and the supported maximum of 192 kHz/eight
+channels, with 128-frame blocks, 0.25 seconds of audio, one warmup, and three measured
+repetitions. Native results use the Release runner and include process and temporary-file
+overhead.
+
+The current benchmark harness requires `--quantum-stats` for per-instance WASM modes,
+but does not allow it with JS/native in the same invocation, so each point used these two
+commands (with the effect-specific parameters below):
+
+```text
+node tools/dsp-parity/bench.mjs --type <type> --modes js,native --sample-rates <rate> --channels <channels> --block-size 128 --duration 0.25 --warmup 1 --repetitions 3 --native-runner dsp/build/fix6-rotary-msvc/Release/effetune-dsp-parity-runner.exe --params '<params>'
+node tools/dsp-parity/bench.mjs --type <type> --modes wasm,simd --sample-rates <rate> --channels <channels> --block-size 128 --duration 0.25 --warmup 1 --repetitions 3 --quantum-stats --params '<params>'
+```
+
+| Type | Representative worst mode |
+| --- | --- |
+| `AutoFilterPlugin` | Envelope, Band-pass, 20-20,000 Hz, Q 20, maximum sensitivity |
+| `AutoPanPlugin` | Sine, 20 Hz, maximum depth and width |
+| `ChorusPlugin` | Ensemble, six voices, maximum rate, delay, depth, and spread |
+| `FrequencyShifterPlugin` | Barber-pole, 20-5,000 Hz, maximum rate and spread |
+| `PhaserPlugin` | Barber-pole, 12 stages, maximum rate, range, feedback, and spread |
+| `RotarySpeakerPlugin` | Fast at 200%, 0.1 s acceleration, maximum motion depths |
+
+WASM columns report `end-to-end realtime factor / average quantum CPU / p99 quantum
+CPU`. A required one-second process warmup is included inside the short end-to-end WASM
+timing but excluded from the quantum measurements, so quantum CPU is the steady-state
+rollout metric for these deliberately short runs.
+
+| Effect | Configuration | JS | Native | WASM | WASM SIMD |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Auto Filter | 48 kHz / 2 ch | 4.07x | 6.77x | 46.74x / 0.28% / 0.75% | 46.67x / 0.28% / 0.75% |
+| Auto Filter | 192 kHz / 8 ch | 0.28x | 4.09x | 5.66x / 3.28% / 4.50% | 5.51x / 3.39% / 4.50% |
+| Auto Pan | 48 kHz / 2 ch | 12.33x | 6.35x | 74.95x / 0.32% / 0.50% | 81.74x / 0.10% / 0.25% |
+| Auto Pan | 192 kHz / 8 ch | 2.70x | 4.72x | 29.71x / 0.45% / 0.75% | 29.02x / 0.45% / 0.75% |
+| Chorus | 48 kHz / 2 ch | 2.68x | 6.02x | 17.34x / 0.99% / 1.25% | 17.15x / 1.00% / 1.50% |
+| Chorus | 192 kHz / 8 ch | 0.11x | 2.94x | 1.35x / 14.58% / 17.25% | 1.29x / 14.99% / 17.50% |
+| Frequency Shifter | 48 kHz / 2 ch | 1.34x | 7.53x | 13.59x / 1.34% / 1.75% | 13.53x / 1.32% / 1.75% |
+| Frequency Shifter | 192 kHz / 8 ch | 0.07x | 2.87x | 1.41x / 14.01% / 17.00% | 1.47x / 13.28% / 15.00% |
+| Phaser | 48 kHz / 2 ch | 0.84x | 4.81x | 12.96x / 1.38% / 2.25% | 13.08x / 1.38% / 2.00% |
+| Phaser | 192 kHz / 8 ch | 0.03x | 1.60x | 3.24x / 20.57% / 22.25% | 3.25x / 20.48% / 22.00% |
+| Rotary Speaker | 48 kHz / 2 ch | 2.26x | 6.70x | 33.66x / 0.68% / 1.00% | 34.52x / 0.42% / 0.75% |
+| Rotary Speaker | 192 kHz / 8 ch | 0.14x | 4.76x | 3.32x / 5.78% / 7.25% | 3.30x / 5.84% / 6.75% |
+
+The 192 kHz/eight-channel Phaser WASM point was repeated separately with two seconds of
+audio because the mandatory one-second warmup dominated the initial 0.25-second
+end-to-end factor. The standalone baseline and SIMD confirmations produced the figures in
+the table with zero deadline misses. The worst accelerated result is therefore Phaser at
+about 20.6% average and 22.3% p99 of one core, while the conservative native end-to-end
+factor remains 1.60x. All six accelerated rollout paths have sufficient headroom; no
+effect-specific optimization or SIMD specialization is justified by this review.
+
+The JS reference is not a maximum-capacity performance path: worst-mode Phaser measures
+0.84x at the representative point, and at 192 kHz/eight channels only Auto Pan remains
+above realtime. This is a fallback limitation, not a reason to withhold the faster
+native/WASM rollout (doing so would select the slower path), but it should remain visible
+if a future release adds a real-time performance guarantee for DSP-off operation.
+
+#### Phaser JavaScript Fallback Follow-up
+
+The Phaser JavaScript fallback was remeasured after moving finite-input validation out
+of each all-pass stage. The representative Barber-pole worst mode used 12 stages and
+maximum rate, range, feedback, and stereo spread. At 48 kHz/two channels, the median
+improved from 0.54x to 4.34x realtime with two-second renders, two warmups, and three
+measured repetitions. A single two-second 192 kHz/eight-channel measurement after two
+warmups reached 0.17x realtime. The high-capacity point remains an accelerated-path use
+case, while the normal stereo fallback now has substantial realtime headroom.
+
+```text
+node tools/dsp-parity/bench.mjs --type PhaserPlugin --modes js --sample-rates 48000 --channels 2 --block-size 128 --duration 2 --warmup 2 --repetitions 3 --params '{"md":"Barber-pole","rt":10,"cf":8000,"rg":6,"st":12,"fb":90,"sp":180,"dr":"Down","mx":100}'
+node tools/dsp-parity/bench.mjs --type PhaserPlugin --modes js --sample-rates 192000 --channels 8 --block-size 128 --duration 2 --warmup 2 --repetitions 1 --params '{"md":"Barber-pole","rt":10,"cf":8000,"rg":6,"st":12,"fb":90,"sp":180,"dr":"Down","mx":100}'
+```

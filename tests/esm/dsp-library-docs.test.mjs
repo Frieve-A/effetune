@@ -476,6 +476,94 @@ test('browser Start and ML safety snippets retain their public contracts', () =>
   assert.match(ml, /np\.max\(np\.abs\(output\)\) <= 1/);
 });
 
+test('Graph quickstarts publish exact lifecycle, conversion, and stable error APIs', () => {
+  const pythonStart = fs.readFileSync(path.join(
+    repoRoot, 'docs', 'dsp', 'getting-started', 'python', 'index.md'
+  ), 'utf8');
+  const javascriptStart = fs.readFileSync(path.join(
+    repoRoot, 'docs', 'dsp', 'getting-started', 'javascript', 'index.md'
+  ), 'utf8');
+  const graphReference = fs.readFileSync(path.join(
+    repoRoot, 'docs', 'dsp', 'reference', 'graph-v1', 'index.md'
+  ), 'utf8');
+  const pythonReadme = fs.readFileSync(path.join(
+    repoRoot, 'dsp', 'bindings', 'python', 'README.md'
+  ), 'utf8');
+  const javascriptReadme = fs.readFileSync(path.join(
+    repoRoot, 'dsp', 'bindings', 'js', 'README.md'
+  ), 'utf8');
+  const pythonApi = fs.readFileSync(path.join(
+    repoRoot, 'docs', 'dsp', 'api', 'python', 'index.md'
+  ), 'utf8');
+  const javascriptApi = fs.readFileSync(path.join(
+    repoRoot, 'docs', 'dsp', 'api', 'javascript', 'index.md'
+  ), 'utf8');
+
+  for (const source of [javascriptStart, javascriptReadme]) {
+    assert.match(source, /import \{ Graph, createGraph, createVolume \} from '@effetune\/dsp'/);
+    assert.match(source, /Graph\.wetDry\(/);
+    assert.match(source, /await createGraph\(graphDocument\)/);
+    assert.match(source, /await graph\.process\(/);
+    assert.match(source, /await graph\.stream\(/);
+    assert.match(source, /stream\.compileSnapshot\.effectiveSchedule/);
+    assert.match(source, /stream\?\.close\(\)/);
+    assert.match(source, /graph\.close\(\)/);
+  }
+  for (const source of [pythonStart, pythonReadme]) {
+    assert.match(source, /import effetune as et/);
+    assert.match(source, /et\.Graph\.wet_dry\(/);
+    assert.match(source, /graph\.process\(/);
+    assert.match(source, /graph\.stream\(48_000, channels=2/);
+    assert.match(source, /stream\.compile_snapshot\["effectiveSchedule"\]/);
+    assert.match(source, /stream\.close\(\)/);
+    assert.match(source, /graph\.close\(\)/);
+  }
+  assert.match(graphReference, /await Graph\.fromChain\(chain\)/);
+  assert.match(graphReference, /et\.Graph\.from_chain\(chain\)/);
+  assert.match(graphReference, /JavaScript `toChain\(\)`\s+returns a Chain document/);
+  assert.match(graphReference, /Python `to_chain\(\)` returns a new `Chain`/);
+  assert.match(graphReference, /`gain = 1`, `mute = false`, `solo = false`/);
+  assert.match(
+    graphReference,
+    /non-identity edge control raises\s+`GRAPH_DOCUMENT_CONNECTIVITY`/
+  );
+  assert.match(graphReference, /error instanceof EffeTuneError/);
+  assert.match(graphReference, /except et\.EffeTuneError as error/);
+  assert.match(graphReference, /error\.code \?\? error\.name, error\.path \?\? ''/);
+  assert.match(graphReference, /error\.code or type\(error\)\.__name__, error\.path or ""/);
+  assert.match(graphReference, /stream\?\.close\(\);\s+graph\?\.close\(\)/);
+  assert.match(graphReference, /if stream is not None:\s+stream\.close\(\)\s+if graph is not None:/);
+  assert.doesNotMatch(
+    graphReference,
+    /graph = et\.Graph\.from_chain\(chain\)\s+graph\.close\(\)\s+chain\.close\(\)/
+  );
+  assert.match(graphReference, /AudioWorklet \/ `EffeTuneNode` \| No \| No/);
+  assert.match(graphReference, /Graph v1 has no scheduled parameter events/);
+  assert.match(graphReference, /`Volume\.volume`/);
+  assert.match(graphReference, /`IRReverb\.dryLevel`/);
+  assert.match(
+    graphReference,
+    /Graph v1 has no telemetry callback, subscription, or observation\s+API/
+  );
+  assert.match(graphReference, /selected DSP artifact while creating a nonempty Graph/);
+  assert.match(graphReference, /graph compilation happen when\s+`stream\(\)` is called/);
+
+  assert.match(pythonApi, /Graph\.load\(json_text: str/);
+  assert.match(pythonApi, /graph\.nodes: tuple\[dict\[str, Any\], \.\.\.\]/);
+  assert.match(pythonApi, /graph\.edges: tuple\[dict\[str, Any\], \.\.\.\]/);
+  assert.match(pythonApi, /graph\.to_chain\(\) -> Chain/);
+  assert.match(pythonApi, /graph_stream\.closed: bool/);
+  assert.match(pythonApi, /A GraphStream is a context manager/);
+  assert.match(pythonApi, /graph_stream\.process\(audio: np\.ndarray\)/);
+  assert.match(pythonApi, /GRAPH_RECONFIGURATION_REQUIRED/);
+  assert.match(javascriptApi, /static load\(input: string \| GraphDocumentInput/);
+  assert.match(javascriptApi, /readonly nodes: readonly GraphNode\[\]/);
+  assert.match(javascriptApi, /readonly edges: readonly GraphEdge\[\]/);
+  assert.match(javascriptApi, /toChain\(\): ChainDocument/);
+  assert.match(javascriptApi, /process\(audio: readonly Float32Array\[\]\): Promise<Float32Array\[\]>/);
+  assert.match(javascriptApi, /passing options, including `events`, raises `ValidationError`/);
+});
+
 test('Phase 1 docs publish symmetric catalogs, latency, and bundle writers', () => {
   const python = fs.readFileSync(path.join(
     repoRoot, 'docs', 'dsp', 'api', 'python', 'index.md'
@@ -505,7 +593,7 @@ test('Phase 1 docs publish symmetric catalogs, latency, and bundle writers', () 
   assert.match(javascript, /class Chain \{/);
   assert.match(javascript, /interface ChainStream \{/);
   assert.match(javascript, /EffeTuneNode\.create\(/);
-  assert.match(javascript, /all 84 root class\/factory pairs/);
+  assert.match(javascript, /all 90 root class\/factory pairs/);
   assert.match(javascript, /numerically symmetric with Python/);
   assert.match(assets, /`effetune bundle pack CHAIN DESTINATION --asset ID=FILE`/);
   assert.match(assets, /public `encodeEta1\(\)` helper/);

@@ -360,9 +360,15 @@ EffeTune 2.1.0 में कैटलॉग स्कीमा v3 पर आध�
 | Lo-Fi     | Tape Artifacts | संगीत को मॉडल किए गए reel-to-reel टेप पर रिकॉर्ड करके वापस चलाता है | [विवरण](plugins/lofi.md#tape-artifacts) |
 | Lo-Fi     | Vinyl Artifacts | vinyl-style pops, crackle, hiss, rumble और stereo noise bleed जोड़ता है | [विवरण](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi     | Vinyl Simulator | input को modeled groove में काटकर physical stylus model से चलाता है | [विवरण](plugins/lofi.md#vinyl-simulator) |
+| Modulation | Auto Filter | LFO या amplitude envelope से resonant filter को sweep करता है | [विवरण](plugins/modulation.md#auto-filter) |
+| Modulation | Auto Pan | हर stereo pair के level को sound field में सहजता से घुमाता है | [विवरण](plugins/modulation.md#auto-pan) |
+| Modulation | Chorus | moving delays से chorus, ensemble, flanger या vibrato जोड़ता है | [विवरण](plugins/modulation.md#chorus) |
 | Modulation | Doppler Distortion | subtle speaker cone movements से होने वाले natural, dynamic sound changes simulate करता है | [विवरण](plugins/modulation.md#doppler-distortion) |
+| Modulation | Frequency Shifter | frequencies को shift करता है, ring modulation या barber-pole shift लगाता है | [विवरण](plugins/modulation.md#frequency-shifter) |
+| Modulation | Phaser | classic या barber-pole sweep से moving peaks और notches बनाता है | [विवरण](plugins/modulation.md#phaser) |
 | Modulation | Pitch Shifter | tempo बदले बिना music pitch ऊपर या नीचे करता है | [विवरण](plugins/modulation.md#pitch-shifter) |
 | Modulation | Pitch Shifter HQ | ध्यान से सुनने के लिए कम phase artifacts के साथ pitch ऊपर या नीचे करता है | [विवरण](plugins/modulation.md#pitch-shifter-hq) |
+| Modulation | Rotary Speaker | horn और drum की स्वतंत्र rotation को जोड़ता है | [विवरण](plugins/modulation.md#rotary-speaker) |
 | Modulation | Tremolo | volume-based modulation effect | [विवरण](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | vintage character के लिए tape या record-style subtle pitch wavering जोड़ता है | [विवरण](plugins/modulation.md#wow-flutter) |
 | Resonator | Horn Resonator | customizable dimensions वाला horn resonance simulation | [विवरण](plugins/resonator.md#horn-resonator) |

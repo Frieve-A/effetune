@@ -360,9 +360,15 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | Lo-Fi     | Tape Artifacts | Graba la música en una cinta de bobina abierta modelada y la reproduce | [Detalles](plugins/lofi.md#tape-artifacts) |
 | Lo-Fi     | Vinyl Artifacts | Añade pops, crackle, hiss, rumble y fuga de ruido estéreo al estilo vinilo | [Detalles](plugins/lofi.md#vinyl-artifacts) |
 | Lo-Fi     | Vinyl Simulator | Graba la entrada en un surco modelado y la reproduce con una aguja física simulada | [Detalles](plugins/lofi.md#vinyl-simulator) |
+| Modulation | Auto Filter | Barre un filtro resonante mediante un LFO o la envolvente de amplitud | [Detalles](plugins/modulation.md#auto-filter) |
+| Modulation | Auto Pan | Desplaza suavemente el nivel de cada par estéreo por el campo sonoro | [Detalles](plugins/modulation.md#auto-pan) |
+| Modulation | Chorus | Añade chorus, ensemble, flanging o vibrato mediante retardos móviles | [Detalles](plugins/modulation.md#chorus) |
 | Modulation | Doppler Distortion | Simula cambios dinámicos y naturales en el sonido causados por movimientos sutiles del cono del altavoz | [Detalles](plugins/modulation.md#doppler-distortion) |
+| Modulation | Frequency Shifter | Traslada frecuencias, aplica modulación en anillo o un desplazamiento barber-pole | [Detalles](plugins/modulation.md#frequency-shifter) |
+| Modulation | Phaser | Crea picos y muescas móviles con barridos clásicos o barber-pole | [Detalles](plugins/modulation.md#phaser) |
 | Modulation | Pitch Shifter | Sube o baja el tono de la música sin cambiar el tempo | [Detalles](plugins/modulation.md#pitch-shifter) |
 | Modulation | Pitch Shifter HQ | Sube o baja el tono con menos artefactos de fase para una escucha atenta | [Detalles](plugins/modulation.md#pitch-shifter-hq) |
+| Modulation | Rotary Speaker | Combina el movimiento independiente de bocina y tambor | [Detalles](plugins/modulation.md#rotary-speaker) |
 | Modulation | Tremolo | Efecto de modulación basado en volumen | [Detalles](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | Añade una sutil fluctuación de tono tipo cinta o disco para carácter vintage | [Detalles](plugins/modulation.md#wow-flutter) |
 | Resonator | Horn Resonator | Simulación de resonancia de bocina con dimensiones personalizables | [Detalles](plugins/resonator.md#horn-resonator) |

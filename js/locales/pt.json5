@@ -50,6 +50,7 @@
   "status.filesSavedToFolder": "{count} arquivo(s) salvo(s) em {folder}",
   "status.filesSaved": "{count} arquivo(s) salvo(s) na pasta selecionada",
   "status.libraryTracksSkippedOffline": "{count} faixa(s) ignorada(s) (offline)",
+  "status.jsFallbackCapacityExceeded": "O efeito {effectName} foi colocado em bypass para evitar interrupções na reprodução com a taxa de amostragem e o número de canais de saída atuais. Reduza a taxa de amostragem ou o número de canais de saída.",
 
   // Elementos da interface
   "ui.resetButton": "Redefinir Áudio",
@@ -486,6 +487,7 @@
   "irLibrary.error.fileTooLarge": "A resposta ao impulso selecionada é grande demais. Escolha uma resposta mais curta e tente novamente.",
   "irLibrary.error.importFolder": "Não foi possível importar a pasta. Tente novamente.",
   "dbt.error.parallelStartFailed": "Não foi possível iniciar o teste porque as duas cadeias de processamento não estavam prontas. Aguarde o carregamento dos efeitos e tente novamente.",
+  "dbt.error.jsFallbackCapacityExceeded": "Não foi possível executar o teste porque processar as duas cadeias com efeitos JavaScript exigiria CPU demais. Ative o WebAssembly DSP ou simplifique as cadeias e tente novamente.",
   "irReverb.name.impulseResponse": "Resposta ao impulso",
   "irReverb.name.theImpulseResponse": "a resposta ao impulso",
   "irReverb.name.theImpulseResponseCapitalized": "A resposta ao impulso",

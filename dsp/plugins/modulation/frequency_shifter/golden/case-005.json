@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "type": "FrequencyShifterPlugin",
+  "id": "near-nyquist-192k-all8",
+  "stimulus": "sweep",
+  "sampleRate": 192000,
+  "channels": 8,
+  "frameCount": 12001,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "md": "Shift",
+    "sh": 5000,
+    "cf": 440,
+    "mn": 20,
+    "mx": 800,
+    "rt": 0.15,
+    "dr": "Up",
+    "sp": 180,
+    "mix": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "534549173cd3b77f1b2c17c77c68454549654eddd36891bd666dee790c9f3855",
+  "outputFloats": 96008,
+  "byteLength": 384032,
+  "binary": "case-005.f32"
+}

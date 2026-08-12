@@ -71,11 +71,15 @@ for (const identity of [
 const chainSchema = JSON.parse(
   fs.readFileSync(path.join(schemaRoot, 'chain-v1.schema.json'), 'utf8')
 );
+const graphSchema = JSON.parse(
+  fs.readFileSync(path.join(schemaRoot, 'graph-v1.schema.json'), 'utf8')
+);
 const bundleSchema = JSON.parse(
   fs.readFileSync(path.join(schemaRoot, 'bundle-v1.schema.json'), 'utf8')
 );
 if (
   chainSchema.$id !== `${canonicalOrigin}${routesById.get('chain-schema').path}` ||
+  graphSchema.$id !== `${canonicalOrigin}${routesById.get('graph-schema').path}` ||
   bundleSchema.$id !== `${canonicalOrigin}${routesById.get('bundle-schema').path}` ||
   bundleSchema.properties?.chain?.$ref !== chainSchema.$id
 ) {
@@ -83,6 +87,7 @@ if (
 }
 if (
   chainSchema.properties?.version?.const !== 1 ||
+  graphSchema.properties?.version?.const !== 1 ||
   bundleSchema.properties?.version?.const !== 1
 ) {
   throw new Error('DSP schemas must describe version 1 documents.');

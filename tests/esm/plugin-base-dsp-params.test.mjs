@@ -829,3 +829,70 @@ test('PluginBase invokes the optional channel hook exactly once per effective ch
   plugin.updateParameters();
   assert.equal(runtime.messages.length, 4);
 });
+
+test('PluginBase shows one sanitized capacity notice and rearms after recovery', () => {
+  const runtime = loadPluginBase();
+  const plugin = createPlugin(runtime);
+  plugin.name = 'Frequency\nShifter\u0000';
+  const notices = [];
+  let clears = 0;
+  runtime.windowRef.uiManager = {
+    showTransientMessage(...args) {
+      notices.push(args);
+    },
+    clearError() {
+      clears++;
+    }
+  };
+  const bypassed = {
+    type: 'dspExecutionState',
+    pluginId: 7,
+    pluginType: 'FrequencyShifterPlugin',
+    state: 'bypassed',
+    reason: 'jsFallbackCapacityExceeded',
+    stage: 'runtime:7',
+    error: 'internal trap'
+  };
+
+  plugin.onMessage(bypassed);
+  plugin.onMessage({ ...bypassed, validated: true });
+  plugin.onMessage({ ...bypassed, validated: true, generation: 2 });
+
+  assert.equal(notices.length, 1);
+  assert.equal(notices[0][1], true);
+  assert.deepEqual(Object.keys(notices[0][2]), ['effectName']);
+  assert.equal(notices[0][2].effectName, 'Frequency Shifter');
+  assert.equal(notices[0][3], 5000);
+  assert.equal(notices[0][0], 'status.jsFallbackCapacityExceeded');
+  assert.doesNotMatch(JSON.stringify(notices[0]), /runtime|trap|plugin-7/);
+
+  plugin.onMessage({
+    ...bypassed,
+    validated: true,
+    state: 'active',
+    reason: null,
+    generation: 3
+  });
+  assert.equal(plugin._jsFallbackCapacityNoticeActive, false);
+  assert.equal(clears, 0);
+
+  plugin.onMessage({ ...bypassed, validated: true, generation: 4 });
+  assert.equal(notices.length, 2);
+  assert.equal(clears, 0);
+});
+
+test('PluginBase capacity notice has matching effect-name translations in every locale', () => {
+  for (const locale of ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh']) {
+    const source = fs.readFileSync(
+      new URL(`../../js/locales/${locale}.json5`, import.meta.url),
+      'utf8'
+    );
+    const match = source.match(/"status\.jsFallbackCapacityExceeded"\s*:\s*"([^"]*)"/);
+    assert.ok(match, `${locale} is missing the normal playback capacity notice`);
+    assert.deepEqual(
+      [...match[1].matchAll(/\{([^{}]+)\}/g)].map(entry => entry[1]),
+      ['effectName'],
+      `${locale} capacity notice placeholders`
+    );
+  }
+});

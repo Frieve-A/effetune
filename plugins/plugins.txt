@@ -78,9 +78,15 @@ lofi/sw_radio_simulator: SW Radio Simulator | Lo-Fi | SWRadioSimulatorPlugin | c
 lofi/tape_artifacts: Tape Artifacts | Lo-Fi | TapeArtifactsPlugin | css
 lofi/vinyl_artifacts: Vinyl Artifacts | Lo-Fi | VinylArtifactsPlugin
 lofi/vinyl_simulator: Vinyl Simulator | Lo-Fi | VinylSimulatorPlugin | css
+modulation/auto_filter: Auto Filter | Modulation | AutoFilterPlugin
+modulation/auto_pan: Auto Pan | Modulation | AutoPanPlugin
+modulation/chorus: Chorus | Modulation | ChorusPlugin
 modulation/doppler_distortion: Doppler Distortion | Modulation | DopplerDistortionPlugin
+modulation/frequency_shifter: Frequency Shifter | Modulation | FrequencyShifterPlugin
+modulation/phaser: Phaser | Modulation | PhaserPlugin
 modulation/pitch_shifter: Pitch Shifter | Modulation | PitchShifterPlugin
 modulation/pitch_shifter_hq: Pitch Shifter HQ | Modulation | PitchShifterHQPlugin
+modulation/rotary_speaker: Rotary Speaker | Modulation | RotarySpeakerPlugin
 modulation/tremolo: Tremolo | Modulation | TremoloPlugin
 modulation/wow_flutter: Wow Flutter | Modulation | WowFlutterPlugin
 others/oscillator: Oscillator | Others | OscillatorPlugin

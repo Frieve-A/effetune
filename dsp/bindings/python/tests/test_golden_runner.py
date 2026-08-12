@@ -22,8 +22,8 @@ _REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 class GoldenComparatorTests(unittest.TestCase):
     def test_frozen_inventory_uses_all_generated_indexes(self) -> None:
         cases = _RUNNER.discover_cases(_REPOSITORY_ROOT)
-        self.assertEqual(len(cases), 793)
-        self.assertEqual(len({case["publicType"] for case in cases}), 84)
+        self.assertEqual(len(cases), 847)
+        self.assertEqual(len({case["publicType"] for case in cases}), 90)
 
     def test_public_pattern_metadata_identifies_only_binding_invalid_case(
         self,
@@ -63,6 +63,66 @@ class GoldenComparatorTests(unittest.TestCase):
         self.assertEqual(parameters["regionEnabled"], [True, False, False, False, False])
         self.assertEqual(parameters["gain"], [150, 100, 100, 100, 100])
         self.assertEqual(parameters["outerFrequencyLow"], [80, 80, 80, 80, 80])
+
+    def test_events_preserve_only_supplied_semantic_fields_and_key_order(
+        self,
+    ) -> None:
+        cases = _RUNNER.discover_cases(_REPOSITORY_ROOT)
+        matrix = (
+            (
+                "AutoFilter",
+                ("lf", "hf"),
+                ("minimumFrequency", "maximumFrequency"),
+            ),
+            ("Chorus", ("dl", "dp"), ("delay", "depth")),
+            (
+                "FrequencyShifter",
+                ("mn", "mx"),
+                ("minimumShift", "maximumShift"),
+            ),
+        )
+        for effect_type, legacy_keys, semantic_keys in matrix:
+            with self.subTest(effect=effect_type):
+                case = next(
+                    candidate
+                    for candidate in cases
+                    if candidate["publicType"] == effect_type
+                    and any(
+                        all(key in event.get("params", {}) for key in legacy_keys)
+                        for event in candidate["metadata"].get("events", ())
+                    )
+                )
+                event_index = next(
+                    index
+                    for index, event in enumerate(case["metadata"]["events"])
+                    if all(key in event.get("params", {}) for key in legacy_keys)
+                )
+                parameters = _RUNNER.build_events(case)[event_index]["parameters"]
+                self.assertEqual(
+                    tuple(key for key in parameters if key in semantic_keys),
+                    semantic_keys,
+                )
+                self.assertEqual(
+                    len(parameters),
+                    len(case["metadata"]["events"][event_index]["params"]),
+                )
+
+                reversed_case = json.loads(json.dumps(case, default=str))
+                supplied = reversed_case["metadata"]["events"][event_index][
+                    "params"
+                ]
+                reversed_case["metadata"]["events"][event_index]["params"] = {
+                    key: supplied[key] for key in reversed(tuple(supplied))
+                }
+                reversed_parameters = _RUNNER.build_events(reversed_case)[event_index][
+                    "parameters"
+                ]
+                self.assertEqual(
+                    tuple(
+                        key for key in reversed_parameters if key in semantic_keys
+                    ),
+                    tuple(reversed(semantic_keys)),
+                )
 
     def test_discovery_reads_only_generated_frozen_index_paths(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
