@@ -26,6 +26,7 @@ import {
 import {
   parseBuildOptions,
   parseLinuxLibnlDependencies,
+  posixOhNetMakeArgs,
 } from '../../scripts/build-openhome-sidecar.mjs';
 
 const workflows = {
@@ -188,6 +189,21 @@ test('packaging builds can preserve a verified architecture artifact without pub
     publishDevelopment: false,
   });
   assert.equal(parseBuildOptions([]).publishDevelopment, true);
+});
+
+test('OpenHome dependency builds use portable copy arguments on macOS', () => {
+  assert.deepEqual(posixOhNetMakeArgs('darwin', 'arm64'), [
+    'ohNetCore',
+    'rsync=no',
+    'cp=cp',
+  ]);
+  assert.deepEqual(posixOhNetMakeArgs('darwin', 'x64'), [
+    'ohNetCore',
+    'rsync=no',
+    'cp=cp',
+    'Mac-x64=1',
+  ]);
+  assert.deepEqual(posixOhNetMakeArgs('linux', 'x64'), ['ohNetCore', 'rsync=no']);
 });
 
 test('desktop tag jobs build every platform package after exact-version preflight', () => {

@@ -163,8 +163,8 @@ std::optional<std::string> DecodeBase64(std::string_view input) {
     const int b = decode(input[offset + 1]);
     const int c = pad2 ? 0 : decode(input[offset + 2]);
     const int d = pad3 ? 0 : decode(input[offset + 3]);
-    if (a < 0 || b < 0 || c < 0 || d < 0 || pad2 && !pad3 ||
-        (pad2 || pad3) && offset + 4 != input.size()) {
+    if (a < 0 || b < 0 || c < 0 || d < 0 || (pad2 && !pad3) ||
+        ((pad2 || pad3) && offset + 4 != input.size())) {
       return std::nullopt;
     }
     const std::uint32_t block = (static_cast<std::uint32_t>(a) << 18) |

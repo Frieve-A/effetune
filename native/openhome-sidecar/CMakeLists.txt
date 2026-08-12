@@ -30,8 +30,8 @@ add_executable(effetune-openhome-sidecar
     src/protocol.cpp
     src/providers.cpp
     ${GENERATED_PROVIDER_SOURCES})
-target_include_directories(effetune-openhome-sidecar PRIVATE
-    src
+target_include_directories(effetune-openhome-sidecar PRIVATE src)
+target_include_directories(effetune-openhome-sidecar SYSTEM PRIVATE
     "${OHNET_ROOT}/Build/Include"
     "${GENERATED_PROVIDER_DIR}")
 target_compile_definitions(effetune-openhome-sidecar PRIVATE DEFINE_LITTLE_ENDIAN)

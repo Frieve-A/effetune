@@ -455,6 +455,15 @@ function posixOhNetLibrary(ohNetRoot, platform, architecture) {
   return join(ohNetRoot, 'Build', 'Obj', 'Posix', 'Release', 'libohNetCore.a');
 }
 
+export function posixOhNetMakeArgs(platform, architecture) {
+  const args = ['ohNetCore', 'rsync=no'];
+  if (platform === 'darwin') {
+    args.push('cp=cp');
+    if (architecture === 'x64') args.push('Mac-x64=1');
+  }
+  return args;
+}
+
 async function main() {
   const { architecture, publishDevelopment } = parseBuildOptions(process.argv.slice(2));
   validateTarget(process.platform, architecture);
@@ -495,8 +504,7 @@ async function main() {
     ohNetLibrary = join(ohNetRoot, 'Build', 'Obj', 'Windows', 'Release', 'ohNetCore.lib');
   } else {
     console.log(`Building pinned ohNetCore (Release, ${architecture})...`);
-    const makeArgs = ['ohNetCore', 'rsync=no'];
-    if (process.platform === 'darwin' && architecture === 'x64') makeArgs.push('Mac-x64=1');
+    const makeArgs = posixOhNetMakeArgs(process.platform, architecture);
     let makeEnvironment = process.env;
     if (process.platform === 'linux') {
       const libnlCflags = capture('pkg-config', [

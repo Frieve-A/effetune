@@ -37,6 +37,7 @@ public:
     try {
       auto *params = OpenHome::Net::InitialisationParams::Create();
       params->SetDvUpnpServerPort(0);
+      params->SetSchedulingPolicy(OpenHome::Environment::EScheduleNone);
       params->SetLogOutput(
           OpenHome::MakeFunctorMsg(logger_, &StderrLogger::Log));
       if (useLoopback_)
