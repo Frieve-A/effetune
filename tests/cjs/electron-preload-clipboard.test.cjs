@@ -3,9 +3,7 @@ const test = require('node:test');
 
 const {
   loadFreshModule,
-  withModuleLoadStub,
-  withMutedConsoleAsync,
-  withPatchedProperty
+  withModuleLoadStub
 } = require('../helpers/cjs-module-utils.cjs');
 
 function createPreloadHarness() {
@@ -50,24 +48,7 @@ function createPreloadHarness() {
       }
     }
   };
-  const documentListeners = new Map();
-  const document = {
-    addEventListener(type, callback) {
-      if (!documentListeners.has(type)) {
-        documentListeners.set(type, []);
-      }
-      documentListeners.get(type).push(callback);
-    },
-    dispatchEvent(type, event = {}) {
-      for (const callback of documentListeners.get(type) || []) {
-        callback(event);
-      }
-    }
-  };
-
   return {
-    document,
-    documentListeners,
     electron,
     exposed,
     invocations,
@@ -79,27 +60,9 @@ function createPreloadHarness() {
 }
 
 function loadPreload(harness) {
-  const originalDocument = global.document;
-  const originalWindow = global.window;
-  global.document = harness.document;
-  global.window = {};
-
-  try {
-    withModuleLoadStub({ electron: harness.electron }, () => {
-      loadFreshModule('../../electron/preload.js');
-    });
-  } finally {
-    if (originalDocument === undefined) {
-      delete global.document;
-    } else {
-      global.document = originalDocument;
-    }
-    if (originalWindow === undefined) {
-      delete global.window;
-    } else {
-      global.window = originalWindow;
-    }
-  }
+  withModuleLoadStub({ electron: harness.electron }, () => {
+    loadFreshModule('../../electron/preload.js');
+  });
 }
 
 test('preload exposes electronAPI invoke and send wrappers', async () => {
@@ -107,8 +70,12 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
   loadPreload(harness);
   const api = harness.exposed.electronAPI;
 
+  assert.deepEqual(Object.keys(harness.exposed), ['electronAPI']);
   assert.equal(api.platform, process.platform);
   assert.equal(Object.hasOwn(api, 'ipcRenderer'), false);
+  assert.equal(Object.hasOwn(api, 'openDocumentation'), false);
+  assert.equal(Object.hasOwn(api, 'getApplicationMenu'), false);
+  assert.equal(Object.hasOwn(api, 'onAudioFilesDropped'), false);
 
   const invokeCases = [
     ['showSaveDialog', ['save-options'], ['show-save-dialog', 'save-options']],
@@ -123,7 +90,6 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
     ['abortAtomicFileWrite', ['token'], ['abort-atomic-file-write', 'token']],
     ['readClipboardText', [], ['read-clipboard-text']],
     ['writeClipboardText', ['pipeline'], ['write-clipboard-text', 'pipeline']],
-    ['openDocumentation', ['/docs'], ['open-documentation', '/docs']],
     ['openExternalUrl', ['https://example.test'], ['open-external-url', 'https://example.test']],
     ['openExternal', ['https://example.test'], ['open-external-url', 'https://example.test']],
     ['getAudioDevices', [], ['get-audio-devices']],
@@ -150,7 +116,6 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
       [{ pipelineA: [{ name: 'Volume' }], pipelineB: null, currentPipeline: 'A' }],
       ['open-frequency-response-measurement', { pipelineA: [{ name: 'Volume' }], pipelineB: null, currentPipeline: 'A' }]
     ],
-    ['getApplicationMenu', [], ['get-application-menu']],
     ['getPath', ['userData'], ['getPath', 'userData']],
     ['joinPaths', ['base', 'child', 'leaf'], ['joinPaths', 'base', 'child', 'leaf']],
     ['fileExists', ['file'], ['fileExists', 'file']],
@@ -397,8 +362,6 @@ test('preload exposes listener registration wrappers', () => {
   harness.listeners.get('show-about-dialog')({}, { version: '1.0.0' });
   api.onWindowVisibilityChanged(data => calls.push(['onWindowVisibilityChanged', data]));
   harness.listeners.get('window-visibility-changed')({}, { hidden: true });
-  api.onAudioFilesDropped(filePaths => calls.push(['onAudioFilesDropped', filePaths]));
-  harness.listeners.get('audio-files-dropped')({}, ['drop.wav']);
   api.onRequestTrayMenuUpdate(() => calls.push(['onRequestTrayMenuUpdate']));
   harness.listeners.get('request-tray-menu-update')({});
   api.onStartDoubleBlindTest(() => calls.push(['onStartDoubleBlindTest']));
@@ -456,7 +419,6 @@ test('preload exposes listener registration wrappers', () => {
     ['onLoadUserPreset', 'Preset'],
     ['onShowAboutDialog', { version: '1.0.0' }],
     ['onWindowVisibilityChanged', { hidden: true }],
-    ['onAudioFilesDropped', ['drop.wav']],
     ['onRequestTrayMenuUpdate'],
     ['onStartDoubleBlindTest'],
     ['onOpenEffectPipelineView'],
@@ -483,94 +445,4 @@ test('preload isFirstLaunch normalizes fulfilled and rejected IPC results', asyn
   assert.equal(await harness.exposed.electronAPI.isFirstLaunch(), true);
   harness.rejectInvokeChannels.add('get-first-launch-flag');
   assert.equal(await harness.exposed.electronAPI.isFirstLaunch(), false);
-});
-
-test('preload electronFileSystem wrappers map files and recover from failures', async () => {
-  const harness = createPreloadHarness();
-  loadPreload(harness);
-  const fileSystem = harness.exposed.electronFileSystem;
-  const files = [
-    { name: 'a.wav', size: 1, type: 'audio/wav', lastModified: 2, path: 'C:\\a.wav' },
-    { name: 'b.wav', size: 3, type: 'audio/wav', lastModified: 4, path: '' }
-  ];
-
-  assert.deepEqual(await fileSystem.getRealPath(files[0]), {
-    channel: 'get-file-path',
-    args: [{ name: 'a.wav', size: 1, type: 'audio/wav', lastModified: 2 }]
-  });
-  assert.deepEqual(await fileSystem.getRealPaths(files), {
-    channel: 'get-file-paths',
-    args: [[
-      { name: 'a.wav', size: 1, type: 'audio/wav', lastModified: 2 },
-      { name: 'b.wav', size: 3, type: 'audio/wav', lastModified: 4 }
-    ]]
-  });
-  assert.deepEqual(await fileSystem.handleDroppedFiles(files), {
-    channel: 'handle-dropped-files-with-paths',
-    args: [['C:\\a.wav']]
-  });
-  assert.deepEqual(await fileSystem.handleDroppedFiles([files[1]]), {
-    channel: 'handle-dropped-files',
-    args: [[{ name: 'b.wav', size: 3, type: 'audio/wav', lastModified: 4 }]]
-  });
-  assert.deepEqual(await fileSystem.handleDroppedPresetFile(files[0]), {
-    channel: 'handle-dropped-preset-file',
-    args: [{ name: 'a.wav', size: 1, type: 'audio/wav', lastModified: 2 }]
-  });
-
-  await withMutedConsoleAsync('error', async () => {
-    harness.throwInvokeChannels.add('get-file-path');
-    assert.equal(await fileSystem.getRealPath(files[0]), null);
-    harness.throwInvokeChannels.add('get-file-paths');
-    assert.deepEqual(await fileSystem.getRealPaths(files), []);
-    harness.throwInvokeChannels.add('handle-dropped-files-with-paths');
-    assert.deepEqual(await fileSystem.handleDroppedFiles(files), []);
-    harness.throwInvokeChannels.add('handle-dropped-preset-file');
-    assert.equal(await fileSystem.handleDroppedPresetFile(files[0]), null);
-  });
-});
-
-test('preload drag and drop diagnostics forward dropped file paths', () => {
-  const harness = createPreloadHarness();
-  loadPreload(harness);
-
-  const domLoaded = harness.documentListeners.get('DOMContentLoaded')[0];
-  const originalWindow = global.window;
-  const originalDocument = global.document;
-  global.window = {};
-  global.document = harness.document;
-  try {
-    domLoaded();
-    withPatchedProperty(Date, 'now', () => 1000, () => {
-      harness.document.dispatchEvent('dragover', {});
-      assert.equal(global.window._lastDragOverLog, 1000);
-    });
-    withPatchedProperty(Date, 'now', () => 1500, () => {
-      harness.document.dispatchEvent('dragover', {});
-      assert.equal(global.window._lastDragOverLog, 1000);
-    });
-    withPatchedProperty(Date, 'now', () => 2501, () => {
-      harness.document.dispatchEvent('dragover', {});
-      assert.equal(global.window._lastDragOverLog, 2501);
-    });
-  } finally {
-    if (originalWindow === undefined) {
-      delete global.window;
-    } else {
-      global.window = originalWindow;
-    }
-    if (originalDocument === undefined) {
-      delete global.document;
-    } else {
-      global.document = originalDocument;
-    }
-  }
-
-  harness.document.dispatchEvent('drop', {});
-  harness.document.dispatchEvent('drop', { dataTransfer: {} });
-  harness.document.dispatchEvent('drop', { dataTransfer: { files: [] } });
-  harness.document.dispatchEvent('drop', { dataTransfer: { files: [{ path: '' }] } });
-  harness.document.dispatchEvent('drop', { dataTransfer: { files: [{ path: 'C:\\song.wav' }] } });
-
-  assert.deepEqual(harness.sends.at(-1), ['files-dropped', ['C:\\song.wav']]);
 });

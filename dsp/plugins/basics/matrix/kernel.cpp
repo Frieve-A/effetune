@@ -1,5 +1,6 @@
 #include "effetune/kernel.h"
 #include "MatrixPluginParams.h"
+#include "binary_io.h"
 
 #include <array>
 #include <cstddef>
@@ -20,12 +21,7 @@ struct Route {
   std::uint8_t phase = 0u;
 };
 
-void writeU32(std::uint8_t *output, std::uint32_t value) noexcept {
-  output[0] = static_cast<std::uint8_t>(value & 0xffu);
-  output[1] = static_cast<std::uint8_t>((value >> 8u) & 0xffu);
-  output[2] = static_cast<std::uint8_t>((value >> 16u) & 0xffu);
-  output[3] = static_cast<std::uint8_t>(value >> 24u);
-}
+using binary_io::writeU32;
 
 std::uint16_t readU16(const std::uint8_t *input) noexcept {
   return static_cast<std::uint16_t>(input[0]) |

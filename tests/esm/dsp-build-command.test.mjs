@@ -135,15 +135,11 @@ test('DSP source digest ignores generated JavaScript package output', t => {
 
 test('production source digest includes promoted GSM inputs', () => {
   const productionPaths = new Set(sourceDigestInputPaths());
-  const phase0Paths = new Set(sourceDigestInputPaths({ includePhase0: true }));
   const gsmDirectory = 'dsp/plugins/lofi/gsm_full_rate_simulator/';
   const gsmHeader = 'dsp/generated/cpp/GSMFullRateSimulatorPluginParams.h';
 
   assert.equal([...productionPaths].some(file => file.startsWith(gsmDirectory)), true);
   assert.equal(productionPaths.has(gsmHeader), true);
-  assert.equal([...phase0Paths].some(file => file.startsWith(gsmDirectory)), true);
-  assert.equal(phase0Paths.has(gsmHeader), true);
-  assert.equal(sourceDigest(), sourceDigest({ includePhase0: true }));
 });
 
 test('CMake compiles promoted GSM Full Rate sources exactly once by default', () => {

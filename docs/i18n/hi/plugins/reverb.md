@@ -11,13 +11,13 @@ lang: hi
 ## प्लगइन सूची
 
 - [Dattorro Plate Reverb](#dattorro-plate-reverb) - Dattorro एल्गोरिदम पर आधारित क्लासिक प्लेट रिवर्ब
-- [FDN Reverb](#fdn-reverb) - हैडामार्ड डिफ्यूजन के साथ फीडबैक डिले नेटवर्क आर्किटेक्चर का उपयोग करने वाला परिष्कृत रिवर्ब
+- [FDN Reverb](#fdn-reverb) - घना और प्राकृतिक room reverb
 - [IR Reverb](#ir-reverb) - इम्पोर्ट की गई impulse response पर आधारित convolution reverb
 - [RS Reverb](#rs-reverb) - प्राकृतिक कमरा परिवेश और स्थान बनाता है
 
 ## Dattorro Plate Reverb
 
-Jon Dattorro के 1997 के प्रसिद्ध लेख "Effect Design, Part 1: Reverberator and Other Filters" पर आधारित एक क्लासिक प्लेट रिवर्ब कार्यान्वयन। यह एल्गोरिदम अपनी समृद्ध, मुलायम ध्वनि गुणवत्ता के लिए प्रसिद्ध है और डिजिटल रिवर्ब डिज़ाइन में एक संदर्भ मानक बन गया है। आपके संगीत में समृद्ध, चमकदार परिवेश जोड़ने के लिए उत्तम।
+Jon Dattorro के 1997 design पर आधारित plate reverb। यह किसी खास room की छाप दिए बिना घनी, मुलायम decay और खुला ambience जोड़ता है।
 
 रूटिंग नोट: Dattorro Plate Reverb एक stereo plate model है। दो से अधिक चैनलों के साथ route करने पर सभी routed input channels mono से stereo बनने वाली साझा plate में जाते हैं, लेकिन wet/dry mix केवल पहले routed stereo pair पर लिखा जाता है। अतिरिक्त channels plate input में योगदान देते हैं और अन्यथा बिना बदले गुजरते हैं, Dry Mix 0% होने पर भी; उन्हें wet return नहीं मिलता और वे स्वतंत्र plate tanks नहीं हैं।
 
@@ -40,18 +40,18 @@ Jon Dattorro के 1997 के प्रसिद्ध लेख "Effect Desig
   - 0-10ms: तत्काल रिवर्ब, घनिष्ठ अनुभव
   - 10-30ms: प्राकृतिक स्थान का अनुभव
   - 30-99.9ms: बड़े स्थानों का प्रभाव बनाता है
-  - जब अधिकतम pre-delay चाहिए, तो ठीक 100.0ms से बचें; मौजूदा कार्यान्वयन इस अंतिम मान को ऐसे मानता है जैसे कोई वास्तविक pre-delay न हो
+  - अधिकतम pre-delay के लिए 100.0ms से थोड़ा कम मान रखें; ठीक 100.0ms पर सुनाई देने वाला pre-delay लगभग समाप्त हो जाता है
 - **Bandwidth** - इनपुट सिग्नल फ़िल्टरिंग (0.0 से 1.0)
   - कम मान: गहरा, गर्म इनपुट टोन
   - अधिक मान (1.0 के करीब): अधिक चमकीला, पूर्ण आवृत्ति इनपुट
-  - डिफ़ॉल्ट 0.9995: Dattorro द्वारा सुझाया गया इष्टतम
+  - डिफ़ॉल्ट 0.9995: लगभग पूरा frequency range
 - **Input Diff 1** - पहला चरण इनपुट डिफ्यूजन (0.0 से 1.0)
   - इनपुट सिग्नल के प्रारंभिक फैलाव को नियंत्रित करता है
-  - डिफ़ॉल्ट 0.75: Dattorro लेख से अनुशंसित मान
+  - डिफ़ॉल्ट 0.75: मुलायम शुरुआती reflections के लिए संतुलित setting
   - अधिक मान: अधिक फैली हुई, मुलायम प्रारंभिक प्रतिबिंब
 - **Input Diff 2** - दूसरा चरण इनपुट डिफ्यूजन (0.0 से 1.0)
   - इनपुट सिग्नल को और फैलाता है
-  - डिफ़ॉल्ट 0.625: Dattorro लेख से अनुशंसित मान
+  - डिफ़ॉल्ट 0.625: घनत्व और स्पष्टता का संतुलन
   - जटिल डिफ्यूजन बनाने के लिए Input Diff 1 के साथ काम करता है
 - **Decay** - रिवर्ब पूंछ कितनी देर तक रहती है (0.0 से 1.0)
   - कम (0.1-0.3): छोटा, नियंत्रित क्षय
@@ -59,7 +59,7 @@ Jon Dattorro के 1997 के प्रसिद्ध लेख "Effect Desig
   - अधिक (0.7-1.0): लंबी, विस्तृत पूंछ
 - **Decay Diff 1** - टैंक में क्षय डिफ्यूजन (0.0 से 1.0)
   - क्षय चरण के दौरान घनत्व को नियंत्रित करता है
-  - डिफ़ॉल्ट 0.70: Dattorro लेख से अनुशंसित मान
+  - डिफ़ॉल्ट 0.70: smooth plate decay के लिए संतुलित setting
   - रिवर्ब पूंछ की चिकनाई को प्रभावित करता है
 - **Damping** - समय के साथ उच्च आवृत्ति अवशोषण (0.0 से 1.0)
   - 0.0: कोई डैम्पिंग नहीं, हर जगह चमकीला रिवर्ब
@@ -137,7 +137,7 @@ Dattorro Plate Reverb आपके श्रवण अनुभव में cla
 
 ## FDN Reverb
 
-एक परिष्कृत रिवर्ब इफेक्ट जो हैडामार्ड डिफ्यूजन मैट्रिक्स के साथ फीडबैक डिले नेटवर्क (FDN) आर्किटेक्चर का उपयोग करता है। यह एल्गोरिदम रिवर्ब विशेषताओं पर बेहतर नियंत्रण के साथ समृद्ध, प्राकृतिक ध्वनि वाले स्थान बनाता है।
+FDN Reverb घनी और प्राकृतिक decay जोड़ता है। Dry या close recording में room size और distance का अधिक स्पष्ट एहसास देने के लिए इसका उपयोग करें।
 
 रूटिंग नोट: FDN Reverb एक stereo reverb model है जिसमें एक साझा feedback tank है। दो से अधिक चैनलों के साथ route करने पर हर channel स्वतंत्र per-channel tank के बजाय इसी साझा tank को क्रम से advance करता है। channel 1 को left wet मिलता है और channels 2+ को right wet मिलता है।
 
@@ -173,7 +173,6 @@ Dattorro Plate Reverb आपके श्रवण अनुभव में cla
   - अधिक मान: अधिक विशाल, खुली ध्वनि गुणवत्ता
   - मौलिक समय संबंधों को प्रभावित करता है
 - **Delay Spread** - लाइनों के बीच देरी के समय कितना भिन्न होता है (0.0 से 25.0 ms)
-  - कार्यान्वयन: प्रत्येक देरी लाइन पावर कर्व का उपयोग करके क्रमिक रूप से लंबी हो जाती है (0.8 घातांक)
   - 0.0ms: सभी लाइनों का समान आधार समय (अधिक नियमित पैटर्न)
   - अधिक मान: अधिक प्राकृतिक, अनियमित प्रतिबिंब पैटर्न
   - वास्तविक ध्वनिक स्थानों में पाई जाने वाली यथार्थवादी विविधता जोड़ता है
@@ -193,8 +192,7 @@ Dattorro Plate Reverb आपके श्रवण अनुभव में cla
   - 0.1-0.5Hz: बहुत धीमी, कोमल गति
   - 1.0-2.0Hz: प्राकृतिक लगने वाली विविधता
   - 3.0-5.0Hz: तेज़, अधिक स्पष्ट मॉड्यूलेशन
-- **Diffusion** - हैडामार्ड मैट्रिक्स सिग्नल को कितना मिलाता है (0 से 100%)
-  - कार्यान्वयन: लागू की गई मैट्रिक्स मिक्सिंग की मात्रा को नियंत्रित करता है
+- **Diffusion** - reflections कितनी घनी और आपस में मिली हुई लगती हैं (0 से 100%)
   - 0%: न्यूनतम मिक्सिंग, अधिक अलग प्रतिध्वनि पैटर्न
   - 50%: प्राकृतिक ध्वनि के लिए संतुलित डिफ्यूजन
   - 100%: सबसे चिकनी घनत्व के लिए अधिकतम मिक्सिंग
@@ -206,7 +204,6 @@ Dattorro Plate Reverb आपके श्रवण अनुभव में cla
   - आमतौर पर सामान्य सुनने के लिए 100% पर रखा जाता है
   - विशेष वातावरणीय प्रभावों के लिए कम किया जा सकता है
 - **Stereo Width** - रिवर्ब स्टीरियो में कितना व्यापक फैलता है (0 से 200%)
-  - कार्यान्वयन: 0% = मोनो, 100% = सामान्य स्टीरियो, 200% = अतिशयोक्तिपूर्ण चौड़ाई
   - 0%: रिवर्ब केंद्र में दिखाई देता है (मोनो)
   - 100%: प्राकृतिक स्टीरियो प्रसार
   - 200%: अतिरिक्त-चौड़ी स्टीरियो छवि
@@ -296,9 +293,9 @@ IR Reverb इम्पोर्ट की गई impulse response (IR) के �
 
 Mono एक IR लगाता है, Independent channels अलग रखता है, True Stereo LL/LR/RL/RR paths चलाता है और Diagonal Matrix केवल matching input/output channels जोड़ता है। Auto में stereo selection वाला हर चार-channel IR इसी क्रम में समझा जाता है; Quad या किसी अन्य चार-channel layout के लिए Independent या Diagonal Matrix स्पष्ट रूप से चुनें। True Stereo pair के लिए मिलते-जुलते `L`/`R` या `Left`/`Right` नाम वाले files साथ चुनें।
 
-मूल files **Impulse Response Library** में रखी जाती हैं। Web app site-private OPFS और desktop app managed storage उपयोग करता है। Library मूल filenames दिखाती है और filename से खोजने, entry load करने या delete करने देती है। Sample rate बदलने पर मूल file से data फिर तैयार होता है। Site data मिटने या storage pressure से browser data हट सकता है, इसलिए अपनी अलग copy रखें।
+इम्पोर्ट की गई IR files **Impulse Response Library** में रखी जाती हैं, जहाँ आप मूल filename से उन्हें खोज, load या delete कर सकते हैं। Web app में ये files browser में save होती हैं और site data मिटाने या browser द्वारा storage खाली करने पर खो सकती हैं। Desktop app इन्हें अपने application data में रखता है। हर जरूरी IR की अलग copy रखें।
 
-Shared URL और preset में केवल ID होता है, IR audio या filename नहीं। पाने वाले को वही file इम्पोर्ट करनी या substitute चुनना होगा। IR न मिले तो wet signal नहीं बनता; WASM न मिले तो केवल configured dry signal pass होता है। [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/) और [Freesound](https://freesound.org/) पर सामग्री मिल सकती है, लेकिन हर file की license (जैसे CC0, CC BY या CC BY-NC), author, attribution और commercial-use शर्त EffeTune से अलग जाँचकर सुरक्षित रखें; EffeTune license जानकारी को store या verify नहीं करता।
+Shared URL और preset IR की पहचान करते हैं, पर उसका audio data शामिल नहीं करते। IR उपलब्ध न हो तो wet sound नहीं बनता; IR को फिर import या select करें, या कोई दूसरा IR चुनें। Dry signal **Dry** setting के अनुसार चलता रहता है। [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/) और [Freesound](https://freesound.org/) पर सामग्री मिल सकती है, लेकिन हर file की license (जैसे CC0, CC BY या CC BY-NC), author, attribution और commercial-use शर्त EffeTune से अलग जाँचकर सुरक्षित रखें; EffeTune license जानकारी को store या verify नहीं करता।
 
 ## RS Reverb
 
@@ -319,9 +316,7 @@ Shared URL और preset में केवल ID होता है, IR audio
   - आकर्षक ध्वनि परिदृश्य बनाता है
 
 ### पैरामीटर
-- **Pre-Delay** - सहेजा और दिखाया जाने वाला नियंत्रण (0 से 50 ms)
-  - मौजूदा कार्यान्वयन में यह मान रिवर्ब प्रोसेसिंग में उपयोग नहीं होता
-  - इसे बदलने से दूरी या गहराई का एहसास नहीं बदलता; सुनाई देने वाले स्थानिक बदलावों के लिए Room Size, Reverb Time और Mix का उपयोग करें
+- **Pre-Delay** (0 से 50 ms) - इस control को बदलने से अभी ध्वनि नहीं बदलती। Space का आकार और गहराई बदलने के लिए Room Size, Reverb Time और Mix का उपयोग करें
 - **Room Size** - स्थान कितना बड़ा लगता है, यह सेट करता है (2.0 से 50.0 m)
   - छोटा (2-5m): आरामदायक कमरे का अनुभव
   - मध्यम (5-15m): लाइव रूम वातावरण

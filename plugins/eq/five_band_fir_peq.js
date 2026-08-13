@@ -195,23 +195,6 @@ class FiveBandFIRPEQPlugin extends PluginBase {
     this.setParameters(parameters, false);
   }
 
-  toggleBandEnabled(index) {
-    this.setBand(index, undefined, undefined, undefined, undefined, !this[`e${index}`]);
-  }
-
-  reset() {
-    const parameters = { pm: 'min', tp: 32768, lt: '128', enabled: true };
-    FiveBandFIRPEQPlugin.BANDS.forEach((band, index) => {
-      parameters[`f${index}`] = band.frequency;
-      parameters[`g${index}`] = 0;
-      parameters[`q${index}`] = 0.7;
-      parameters[`s${index}`] = 12;
-      parameters[`t${index}`] = 'pk';
-      parameters[`e${index}`] = true;
-    });
-    this.setParameters(parameters);
-  }
-
   _bands() {
     return FiveBandFIRPEQPlugin.BANDS.map((_, index) => ({
       frequency: this[`f${index}`],

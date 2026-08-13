@@ -7,6 +7,7 @@ import i18n from '../i18n.js';
 import {
     normalizeResponseToZeroDb as normalizeFrequencyResponseToZeroDb
 } from '../response-normalization.js';
+import { createGraphGeometry } from '../graph-geometry.js';
 
 const GraphUtils = {
     /**
@@ -226,9 +227,6 @@ const GraphUtils = {
         const height = ctx.canvas.height;
         const padding = { top: 20, right: 20, bottom: 30, left: 50 };
         
-        const graphWidth = width - padding.left - padding.right;
-        const graphHeight = height - padding.top - padding.bottom;
-        
         // Find min/max values
         const minFreq = 20;
         const maxFreq = 20000;
@@ -242,14 +240,18 @@ const GraphUtils = {
             this.currentMeasurement?.sweepMaxFreq
         );
         
-        // Setup scales
-        const scaleX = (freq) => {
-            return padding.left + graphWidth * (Math.log10(freq) - Math.log10(minFreq)) / (Math.log10(maxFreq) - Math.log10(minFreq));
-        };
-        
-        const scaleY = (db) => {
-            return padding.top + graphHeight - graphHeight * (db - minDb) / (maxDb - minDb);
-        };
+        const {
+            frequencyToX: scaleX,
+            valueToY: scaleY
+        } = createGraphGeometry({
+            width,
+            height,
+            padding,
+            minFrequency: minFreq,
+            maxFrequency: maxFreq,
+            minValue: minDb,
+            maxValue: maxDb
+        });
         
         // Draw axes
         ctx.strokeStyle = '#555';

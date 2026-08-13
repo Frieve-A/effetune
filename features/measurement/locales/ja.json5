@@ -122,6 +122,17 @@
   "error:interfaceCalibrationProcessingFailed": "キャリブレーションを適用した測定を完了できませんでした。接続と設定を確認して、この測定点をもう一度測定してください。",
   "error:measurementSetupFailed": "測定の準備ができませんでした。オーディオデバイスを確認して、もう一度お試しください。",
   "error:levelAdjustmentFailed": "音声入力の準備ができませんでした。入力デバイスを確認して、もう一度お試しください。",
+  "error:audioUnsupported": "このブラウザーでは音声測定を実行できません。最新版のChromeまたはEdgeを使用してください。",
+  "error:audioInitFailed": "オーディオデバイスを準備できませんでした。ブラウザーの権限を確認して、もう一度お試しください。",
+  "error:measurementNameRequired": "続行する前に測定名を入力してください。",
+  "error:invalidSweepRange": "スイープ範囲は1 Hzから{max} Hzの間で、下限が上限より小さくなるように設定してください。",
+  "error:testSignalFailed": "テスト信号を操作できませんでした。オーディオ出力を確認して、もう一度お試しください。",
+  "error:measurementConfigUnavailable": "測定設定を利用できなくなりました。新しい測定を開始してください。",
+  "error:measurementFailed": "測定を完了できませんでした。オーディオデバイスを確認して、この測定点をもう一度測定してください。",
+  "error:measurementImportFailed": "測定ファイルが正しくありません。EffeTuneからエクスポートした測定JSONファイルを選択してください。",
+  "error:clipboardWriteFailed": "PEQ設定をコピーできませんでした。クリップボードへのアクセスを確認して、もう一度お試しください。",
+  "error:correctionUpdateFailed": "補正を更新できませんでした。設定を確認して、もう一度お試しください。",
+  "error:measurementDisplayFailed": "測定結果の表示を更新できませんでした。測定をもう一度選択してください。",
   
   // メッセージ
   "message:peqCopied": "PEQ設定がクリップボードにコピーされました。コピーした設定はEffeTuneのエフェクトパイプラインにCtrl+Vで貼り付けられます。", // PEQコピー成功メッセージ

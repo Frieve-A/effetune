@@ -11,7 +11,7 @@ lang: hi
 ## प्लगइन सूची
 
 - [Auto Leveler](#auto-leveler) - लगातार सुनने के अनुभव के लिए स्वचालित वॉल्यूम समायोजन
-- [Brickwall Limiter](#brickwall-limiter) - सुरक्षित और आरामदायक श्रवण के लिए पारदर्शी पीक नियंत्रण
+- [Brickwall Limiter](#brickwall-limiter) - डिजिटल क्लिपिंग रोकने वाला पारदर्शी पीक नियंत्रण
 - [Compressor](#compressor) - अधिक आरामदायक श्रवण के लिए स्वचालित रूप से वॉल्यूम स्तर को संतुलित करता है (ऊपरी विस्तार सहित)
 - [Expander](#expander) - थ्रेशोल्ड के नीचे डायनामिक रेंज विस्तार रेशियो और नी नियंत्रण के साथ (ऊपरी संपीड़न सहित)
 - [Gate](#gate) - threshold से नीचे आने वाले low-level gaps या pauses को कम करता है
@@ -121,21 +121,14 @@ lang: hi
 
 ## Brickwall Limiter
 
-एक उच्च-गुणवत्ता वाला पीक लिमिटर जो सुनिश्चित करता है कि आपका संगीत कभी भी एक निर्दिष्ट स्तर से अधिक न हो, जो प्राकृतिक ध्वनि गुणवत्ता को बनाए रखते हुए डिजिटल क्लिपिंग को रोकता है। संगीत की डायनामिक्स से समझौता किए बिना आपकी ऑडियो सिस्टम की सुरक्षा और आरामदायक श्रवण स्तर सुनिश्चित करने के लिए आदर्श है।
+यह पीक लिमिटर चेन के डिजिटल सिग्नल को तय ceiling से नीचे रखते हुए संगीत की dynamics को यथासंभव बनाए रखता है। जब पहले के effects ऊँचे peaks बनाते हों, इसे effect chain के अंत के पास रखें। यह signal peaks को सीमित करता है; सुनने का volume playback device पर अलग से तय करें।
 
 ### श्रवण वृद्धि गाइड
-- शास्त्रीय संगीत:
-  - ऑर्केस्ट्रल क्रेशेंडो का सुरक्षित रूप से आनंद लें
-  - पियानो रचनाओं की प्राकृतिक डायनामिक्स बनाए रखें
-  - लाइव रिकॉर्डिंग में अप्रत्याशित पीक से सुरक्षा
-- पॉप/रॉक संगीत:
-  - तीव्र खंडों के दौरान स्थिर वॉल्यूम बनाए रखें
-  - किसी भी श्रवण स्तर पर डायनामिक संगीत का आनंद लें
-  - बास वाले खंडों में विकृति को रोकें
-- इलेक्ट्रॉनिक संगीत:
-  - सिंथेसाइज़र पीक को पारदर्शी रूप से नियंत्रित करें
-  - ओवरलोड को रोकते हुए प्रभाव बनाए रखें
-  - बास ड्रॉप को शक्तिशाली लेकिन नियंत्रित रखें
+- EQ, saturation या दूसरे effects से बने peaks को पकड़ने के लिए इसे chain के अंत के पास, **Level Meter** से पहले रखें।
+- Input Gain 0 dB, Threshold -3 dB, Margin -1 dB और Release 100 ms से शुरू करें।
+- यदि limiting बार-बार हो या संगीत का impact घटे, Input Gain कम करें या Threshold को 0 dB की ओर बढ़ाएँ।
+- pumping सुनाई दे तो Release बढ़ाएँ। transients धुँधले या distorted लगें तो छोटा Release या कम limiting आजमाएँ।
+- limiter के बाद **Level Meter** से digital peak level जाँचें। सुनने का volume amplifier या playback device पर अलग से सेट करें।
 
 ### पैरामीटर
 - **Input Gain** (-18dB से +18dB)
@@ -147,9 +140,9 @@ lang: hi
 - **Threshold** (-24dB से 0dB)
   - Margin लागू होने से पहले limiting शुरू होने वाला peak level सेट करता है
   - effective ceiling Threshold + Margin है
-  - निम्न मान अधिक सुरक्षा मार्जिन प्रदान करते हैं
+  - कम मान पीक के लिए अधिक गुंजाइश छोड़ते हैं
   - उच्च मान अधिक डायनामिक्स बनाए रखते हैं
-  - धीमी सुरक्षा के लिए -3dB से शुरू करें
+  - हल्की peak limiting के लिए -3dB से शुरू करें
 
 - **Release Time** (10ms से 500ms)
   - लिमिटिंग हटने की गति
@@ -164,7 +157,7 @@ lang: hi
   - 3ms एक अच्छा संतुलन है
 
 - **Margin** (-1.000dB से 0.000dB)
-  - Threshold में fine safety offset जोड़ता है
+  - Threshold में एक छोटा downward offset जोड़ता है
   - actual ceiling Threshold + Margin है
   - उदाहरण: Threshold -3dB और Margin -1.000dB होने पर limiting लगभग -4dB पर होती है
   - डिफ़ॉल्ट -1.000dB अधिकतर material के लिए अच्छा काम करता है
@@ -177,12 +170,11 @@ lang: hi
 
 ### नियंत्रण और मीटरिंग
 - Input Gain, Threshold, Margin, Release, Lookahead और Oversampling के direct controls
-- limiter gain-reduction information host या status metering के लिए internally report होती है
 - plugin panel अलग peak-level graph नहीं दिखाता
 
 ### अनुशंसित सेटिंग्स
 
-#### पारदर्शी सुरक्षा
+#### पारदर्शी पीक नियंत्रण
 - Input Gain: 0dB
 - Threshold: -3dB
 - Release: 100ms
@@ -191,7 +183,7 @@ lang: hi
 - Oversampling: 4x
 - Effective ceiling: लगभग -4dB
 
-#### अधिकतम सुरक्षा
+#### अतिरिक्त पीक हेडरूम
 - Input Gain: -6dB
 - Threshold: -6dB
 - Release: 50ms

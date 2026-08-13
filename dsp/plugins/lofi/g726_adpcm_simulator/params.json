@@ -4,8 +4,8 @@
   "parityReference": "production-native-promoted-v1",
   "fields": [
     { "name": "bitrate", "key": "br", "kind": "enum", "values": ["16", "24", "32", "40"], "default": "32", "unit": "kbit/s" },
-    { "name": "outputGain", "key": "og", "kind": "float", "min": -24, "max": 12, "default": 0, "unit": "dB" },
-    { "name": "mix", "key": "mx", "kind": "int", "min": 0, "max": 100, "default": 100, "unit": "%" },
-    { "name": "radioBitErrorExponent", "key": "re", "kind": "float", "min": -6, "max": -2, "default": -6 }
+    { "name": "outputGain", "key": "og", "kind": "float", "min": -24, "max": 12, "default": 0, "unit": "dB", "automation": true },
+    { "name": "mix", "key": "mx", "kind": "int", "min": 0, "max": 100, "default": 100, "unit": "%", "automation": true },
+    { "name": "radioBitErrorExponent", "key": "re", "kind": "float", "min": -6, "max": -2, "default": -6, "automation": true }
   ]
 }

@@ -122,6 +122,17 @@
   "error:interfaceCalibrationProcessingFailed": "La mesure étalonnée n’a pas pu aboutir. Vérifiez la configuration et mesurez de nouveau ce point.",
   "error:measurementSetupFailed": "La mesure n’a pas pu être préparée. Vérifiez les périphériques audio et réessayez.",
   "error:levelAdjustmentFailed": "L’entrée audio n’a pas pu être préparée. Vérifiez le périphérique d’entrée et réessayez.",
+  "error:audioUnsupported": "Ce navigateur ne permet pas les mesures audio. Utilisez la dernière version de Chrome ou Edge.",
+  "error:audioInitFailed": "Les périphériques audio n’ont pas pu être préparés. Vérifiez les autorisations du navigateur et réessayez.",
+  "error:measurementNameRequired": "Saisissez un nom pour cette mesure avant de continuer.",
+  "error:invalidSweepRange": "Réglez la plage de balayage entre 1 Hz et {max} Hz, avec une limite basse inférieure à la limite haute.",
+  "error:testSignalFailed": "Le signal de test n’a pas pu être contrôlé. Vérifiez la sortie audio et réessayez.",
+  "error:measurementConfigUnavailable": "Les réglages de mesure ne sont plus disponibles. Lancez une nouvelle mesure.",
+  "error:measurementFailed": "La mesure n’a pas pu être terminée. Vérifiez les périphériques audio et mesurez à nouveau ce point.",
+  "error:measurementImportFailed": "Le fichier de mesure n’est pas valide. Sélectionnez un fichier JSON de mesure exporté par EffeTune.",
+  "error:clipboardWriteFailed": "Les réglages PEQ n’ont pas pu être copiés. Vérifiez l’accès au presse-papiers et réessayez.",
+  "error:correctionUpdateFailed": "La correction n’a pas pu être mise à jour. Vérifiez les réglages et réessayez.",
+  "error:measurementDisplayFailed": "L’affichage de la mesure n’a pas pu être actualisé. Sélectionnez à nouveau la mesure.",
 
   // Messages
   "message:peqCopied": "Paramètres PEQ copiés dans le presse-papiers avec succès. Les paramètres copiés peuvent être collés dans le pipeline d'effets d'EffeTune avec Ctrl+V.",

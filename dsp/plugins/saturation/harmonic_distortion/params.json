@@ -2,10 +2,10 @@
   "type": "HarmonicDistortionPlugin",
   "tolerance": { "abs": 0.00001, "policy": "per-sample" },
   "fields": [
-    { "name": "secondHarmonic", "key": "h2", "kind": "float", "min": -30, "max": 30, "default": 2, "unit": "%" },
-    { "name": "thirdHarmonic", "key": "h3", "kind": "float", "min": -30, "max": 30, "default": 3, "unit": "%" },
-    { "name": "fourthHarmonic", "key": "h4", "kind": "float", "min": -30, "max": 30, "default": 0.5, "unit": "%" },
-    { "name": "fifthHarmonic", "key": "h5", "kind": "float", "min": -30, "max": 30, "default": 0.3, "unit": "%" },
-    { "name": "sensitivity", "key": "sn", "kind": "float", "min": 0.1, "max": 2, "default": 0.5 }
+    { "name": "secondHarmonic", "key": "h2", "kind": "float", "min": -30, "max": 30, "default": 2, "unit": "%", "automation": true },
+    { "name": "thirdHarmonic", "key": "h3", "kind": "float", "min": -30, "max": 30, "default": 3, "unit": "%", "automation": true },
+    { "name": "fourthHarmonic", "key": "h4", "kind": "float", "min": -30, "max": 30, "default": 0.5, "unit": "%", "automation": true },
+    { "name": "fifthHarmonic", "key": "h5", "kind": "float", "min": -30, "max": 30, "default": 0.3, "unit": "%", "automation": true },
+    { "name": "sensitivity", "key": "sn", "kind": "float", "min": 0.1, "max": 2, "default": 0.5, "automation": true }
   ]
 }

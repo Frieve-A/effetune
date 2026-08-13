@@ -1,6 +1,8 @@
 #include "effetune/kernel.h"
 #include "FIRCrossoverPluginParams.h"
+#include "binary_io.h"
 #include "effetune/dsp/partitioned_convolver.h"
+#include "nothrow_storage.h"
 
 #include <array>
 #include <cmath>
@@ -35,12 +37,7 @@ std::uint32_t readU32(const std::uint8_t *bytes) noexcept {
          (static_cast<std::uint32_t>(bytes[3]) << 24u);
 }
 
-void writeU32(std::uint8_t *bytes, std::uint32_t value) noexcept {
-  bytes[0] = static_cast<std::uint8_t>(value & 0xffu);
-  bytes[1] = static_cast<std::uint8_t>((value >> 8u) & 0xffu);
-  bytes[2] = static_cast<std::uint8_t>((value >> 16u) & 0xffu);
-  bytes[3] = static_cast<std::uint8_t>(value >> 24u);
-}
+using binary_io::writeU32;
 
 std::uint32_t delaySamples(float value) noexcept {
   if (!(value > 0.0F))
@@ -50,34 +47,12 @@ std::uint32_t delaySamples(float value) noexcept {
   return static_cast<std::uint32_t>(value);
 }
 
-template <typename T> class NothrowStorage {
+template <typename T> class CrossoverStorage : public NothrowStorage<T> {
 public:
-  ~NothrowStorage() { delete[] data_; }
-  NothrowStorage(const NothrowStorage &) = delete;
-  NothrowStorage &operator=(const NothrowStorage &) = delete;
-  NothrowStorage() = default;
-
-  bool allocate(std::size_t count) noexcept {
-    delete[] data_;
-    data_ = count == 0u ? nullptr : new (std::nothrow) T[count];
-    return count == 0u || data_ != nullptr;
-  }
-
-  void release() noexcept {
-    delete[] data_;
-    data_ = nullptr;
-  }
-
   void clear(std::size_t count) noexcept {
-    if (data_ != nullptr)
-      std::memset(data_, 0, count * sizeof(T));
+    if (this->data() != nullptr)
+      std::memset(this->data(), 0, count * sizeof(T));
   }
-
-  [[nodiscard]] T *data() noexcept { return data_; }
-  [[nodiscard]] const T *data() const noexcept { return data_; }
-
-private:
-  T *data_ = nullptr;
 };
 
 } // namespace
@@ -250,7 +225,7 @@ public:
                                      static_cast<std::uint64_t>(kAdmissionHeadroom);
     if (probeBytes > std::numeric_limits<std::size_t>::max())
       return nullptr;
-    NothrowStorage<std::uint8_t> admissionProbe;
+    CrossoverStorage<std::uint8_t> admissionProbe;
     if (!admissionProbe.allocate(static_cast<std::size_t>(probeBytes)))
       return nullptr;
     admissionProbe.release();
@@ -442,10 +417,10 @@ private:
   std::uint32_t slice_offset_ = 0u;
   std::uint32_t telemetry_channels_ = 0u;
   dsp::PartitionedConvolver convolver_;
-  NothrowStorage<float> staging_payload_;
-  NothrowStorage<float> wet_audio_;
-  NothrowStorage<float> dry_delay_;
-  NothrowStorage<float> wet_delay_;
+  CrossoverStorage<float> staging_payload_;
+  CrossoverStorage<float> wet_audio_;
+  CrossoverStorage<float> dry_delay_;
+  CrossoverStorage<float> wet_delay_;
   AssetBeginInfo begin_info_{};
   std::uint32_t asset_state_ = ET_ASSET_STATE_NONE;
   std::uint32_t asset_reason_ = 0u;

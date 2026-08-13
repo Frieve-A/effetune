@@ -2,6 +2,7 @@
 #include "IRReverbPluginParams.h"
 #include "effetune/dsp/halfband.h"
 #include "effetune/dsp/partitioned_convolver.h"
+#include "nothrow_storage.h"
 
 #include <algorithm>
 #include <array>
@@ -87,46 +88,16 @@ std::uint64_t estimateConvolverMemoryUpperBound(const dsp::ConvolverConfig &conf
   return bytes;
 }
 
-template <typename T> class NothrowStorage {
+template <typename T> class IRStorage : public NothrowStorage<T> {
 public:
-  NothrowStorage() = default;
-  ~NothrowStorage() { delete[] data_; }
-  NothrowStorage(const NothrowStorage &) = delete;
-  NothrowStorage &operator=(const NothrowStorage &) = delete;
-
-  bool allocate(std::size_t count) noexcept {
-    delete[] data_;
-    data_ = nullptr;
-    count_ = 0u;
-    if (count == 0u)
-      return true;
-    data_ = new (std::nothrow) T[count];
-    if (data_ == nullptr)
-      return false;
-    count_ = count;
-    return true;
+  [[nodiscard]] T *begin() noexcept { return this->data(); }
+  [[nodiscard]] T *end() noexcept { return this->data() + this->size(); }
+  [[nodiscard]] const T *begin() const noexcept { return this->data(); }
+  [[nodiscard]] const T *end() const noexcept { return this->data() + this->size(); }
+  [[nodiscard]] T &operator[](std::size_t index) noexcept { return this->data()[index]; }
+  [[nodiscard]] const T &operator[](std::size_t index) const noexcept {
+    return this->data()[index];
   }
-  void release() noexcept {
-    delete[] data_;
-    data_ = nullptr;
-    count_ = 0u;
-  }
-  [[nodiscard]] T *data() noexcept { return data_; }
-  [[nodiscard]] const T *data() const noexcept { return data_; }
-  [[nodiscard]] T *begin() noexcept { return data_; }
-  [[nodiscard]] T *end() noexcept { return data_ + count_; }
-  [[nodiscard]] const T *begin() const noexcept { return data_; }
-  [[nodiscard]] const T *end() const noexcept { return data_ + count_; }
-  [[nodiscard]] T &operator[](std::size_t index) noexcept { return data_[index]; }
-  [[nodiscard]] const T &operator[](std::size_t index) const noexcept { return data_[index]; }
-  void clear() noexcept {
-    if (data_ != nullptr)
-      std::memset(data_, 0, count_ * sizeof(T));
-  }
-
-private:
-  T *data_ = nullptr;
-  std::size_t count_ = 0u;
 };
 
 using StagingPayload = NothrowStorage<float>;
@@ -697,12 +668,12 @@ private:
   AssetBeginInfo begin_info_{};
   dsp::PartitionedConvolver convolver_{};
   StagingPayload staging_payload_;
-  NothrowStorage<float> full_rate_audio_;
-  NothrowStorage<dsp::Halfband2x> decimators_;
-  NothrowStorage<dsp::Halfband2x> interpolators_;
-  NothrowStorage<float> pre_delay_;
-  NothrowStorage<std::uint32_t> pre_delay_positions_;
-  NothrowStorage<float> wet_fifo_;
+  IRStorage<float> full_rate_audio_;
+  IRStorage<dsp::Halfband2x> decimators_;
+  IRStorage<dsp::Halfband2x> interpolators_;
+  IRStorage<float> pre_delay_;
+  IRStorage<std::uint32_t> pre_delay_positions_;
+  IRStorage<float> wet_fifo_;
   std::array<float, kMaximumChannels> conv_frame_{};
   std::array<float, kMaximumChannels> wet_frame_{};
   std::array<float, kMaximumChannels> last_wet_{};

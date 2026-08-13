@@ -6,17 +6,15 @@ lang: fr
 
 # Utiliser la Bibliothèque musicale
 
-La version 2.1.0 introduit la Bibliothèque musicale compatible avec les fichiers CUE et fondée sur le schéma de catalogue v3. Les dossiers et les playlists de l'ancienne Bibliothèque musicale ne sont pas repris : ajoutez de nouveau vos dossiers, puis recréez ou réimportez vos playlists. L'ancien catalogue et vos fichiers audio ne sont pas modifiés.
-
 La Bibliothèque musicale indexe les dossiers de musique que vous choisissez et vous permet de parcourir votre collection locale par morceaux, albums, artistes, genres, sous-dossiers, dossiers, ajouts récents et listes de lecture. Comme pour la lecture normale des fichiers musicaux, le son passe par le pipeline d'effets EffeTune actuel.
 
 La Bibliothèque musicale enregistre le catalogue interne de l'application, le cache des illustrations et les listes de lecture. Elle ne modifie, ne renomme, ne déplace et ne supprime jamais les fichiers musicaux eux-mêmes.
 
 ## Environnements disponibles
 
-- **Application de bureau :** utilise l'analyseur de dossiers complet et permet de réutiliser les dossiers choisis au prochain démarrage. La version de bureau peut aussi afficher les morceaux dans le dossier qui contient leur fichier.
-- **Navigateurs Chromium sur ordinateur avec File System Access :** enregistrent durablement le handle du dossier sélectionné. Il peut être réutilisé après un rechargement une fois l'accès accordé, même si le navigateur peut redemander une autorisation.
-- **Navigateurs mobiles, Safari, Firefox et autres navigateurs sans File System Access :** ne conservent les objets `File` sélectionnés que pendant la session de page en cours. Le catalogue reste enregistré, mais les fichiers ne peuvent plus être rouverts après un rechargement. Sélectionnez de nouveau le dossier ou les fichiers après chaque rechargement ; EffeTune les rattache aux entrées existantes grâce au chemin relatif normalisé.
+- **Application de bureau :** utilise l'analyse complète des dossiers et peut conserver les dossiers sélectionnés entre les lancements. Elle peut aussi afficher un morceau dans son dossier.
+- **Navigateurs Chromium sur PC avec File System Access :** peuvent conserver l'accès aux dossiers sélectionnés après un rechargement. Le navigateur peut redemander l'autorisation.
+- **Navigateurs mobiles, Safari, Firefox et autres sans File System Access :** ne conservent l'accès aux fichiers sélectionnés que pendant la session en cours. Le catalogue reste enregistré, mais sélectionnez de nouveau le dossier ou les fichiers après chaque rechargement pour qu'EffeTune puisse les rattacher.
 
 La Bibliothèque musicale indexe les extensions de fichiers multimédias courantes, notamment MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM et MP4. Elle peut aussi utiliser une feuille CUE externe pour diviser en morceaux un fichier d'album WAV ou FLAC placé dans le même dossier. Pour les fichiers MP4, EffeTune lit uniquement la piste audio et n'affiche pas la vidéo. La lecture effective, y compris la prise en charge du codec audio contenu dans le MP4, dépend aussi des capacités de décodage du navigateur et du système d'exploitation.
 
@@ -143,13 +141,15 @@ Lors de l'exportation, si vous choisissez **Chemins relatifs**, les chemins sont
 - Le cache des illustrations et les listes de lecture sont des données internes à l'application, pas des modifications intégrées aux fichiers musicaux.
 - Le classement par **Sous-dossiers** est déduit des chemins relatifs enregistrés dans le catalogue.
 - L'espace de stockage du navigateur peut être effacé par les paramètres du navigateur ou par une action de l'utilisateur. Exportez les listes de lecture importantes si nécessaire.
-- Dans les navigateurs avec File System Access, les autorisations déterminent si le handle de dossier conservé peut être réutilisé après un rechargement. Avec la méthode de repli, les fichiers sélectionnés ne durent que le temps de la session et doivent toujours être sélectionnés de nouveau après un rechargement.
+- Dans les navigateurs avec File System Access, les autorisations déterminent si l'accès au dossier reste disponible après un rechargement. Dans les autres navigateurs, sélectionnez de nouveau les fichiers après chaque rechargement.
 
 ## Grandes bibliothèques
 
-Le catalogue conserve les données sur le disque et répartit le travail en pages ou en lots limités ; une grande collection n'a donc pas besoin d'être chargée entièrement en mémoire. Les mesures d'échelle et à référence fixe sont des diagnostics locaux et facultatifs destinés au développement. Elles ne conditionnent ni les commits, ni les versions, ni `verify`, ni GitHub Actions et ne constituent pas une garantie générale de performances. La durée d'analyse et les limites pratiques dépendent de la vitesse du stockage, de la mémoire disponible, des métadonnées, des illustrations et des limites du navigateur ou du système d'exploitation.
+EffeTune charge progressivement les grandes collections au lieu de conserver toute la bibliothèque en mémoire. Le temps d'analyse et les limites pratiques dépendent de la vitesse du stockage, de la mémoire disponible, des métadonnées, des pochettes et des limites du navigateur ou du système d'exploitation.
 
-Pendant le défilement de la liste des morceaux, EffeTune garde les pages voisines en cache. Sur mobile, il lit jusqu'à deux pages à l'avance dans le sens du défilement, donne la priorité à la page requise à l'écran sur les lectures anticipées supplémentaires et réutilise les lignes visibles qui se chevauchent. Même si le défilement continue, les lectures terminées pour la zone d'affichage sont immédiatement publiées dans ce cache limité. Les demandes de position sont regroupées sur la plus récente et, si celle-ci se trouve dans la page qui vient d'être chargée, aucune lecture supplémentaire de la base de données n'est effectuée. Les lectures anticipées en attente devenues inutiles sont abandonnées. SQLite permet l'interruption, mais les adaptateurs du catalogue exécutent actuellement chaque instruction de manière synchrone et n'exposent aucun moyen de l'interrompre depuis un autre worker. Un déplacement exceptionnellement rapide peut donc encore laisser un bref espace vide jusqu'à la fin de la lecture en cours, surtout sur un stockage lent.
+Les morceaux proches sont chargés à mesure que vous faites défiler la liste. Un déplacement exceptionnellement rapide peut afficher brièvement des lignes vides jusqu'au chargement des morceaux demandés, surtout avec un stockage lent.
+
+Utilisez la Bibliothèque musicale dans une seule fenêtre EffeTune à la fois.
 
 ## Télécommande OpenHome (application de bureau)
 

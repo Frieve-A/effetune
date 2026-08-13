@@ -22,7 +22,7 @@ Uma coleção de plugins que adicionam caráter vintage e qualidades nostálgica
 - [MP3 Codec Simulator](#mp3-codec-simulator) - Simula uma conversão limpa de MPEG Layer III em baixo bitrate
 - [Noise Blender](#noise-blender) - Adiciona textura atmosférica de fundo
 - [SBC Codec Simulator](#sbc-codec-simulator) - Reproduz uma conversão Bluetooth A2DP SBC com perda de pacotes da ligação e ocultação opcionais
-- [Simple Jitter](#simple-jitter) - Cria imperfeições digitais vintage sutis
+- [Simple Jitter](#simple-jitter) - Compara pequenas flutuações de clock ou acrescenta movimento criativo com valores altos
 - [SW Radio Simulator](#sw-radio-simulator) - Passa a música por uma cadeia modelada de transmissão em onda curta, propagação ionosférica e recepção
 - [Tape Artifacts](#tape-artifacts) - Grava a música em uma fita de rolo modelada e a reproduz
 - [Vinyl Artifacts](#vinyl-artifacts) - Adiciona estalos, crackle, hiss, rumble e vazamento de ruído estéreo no estilo vinil
@@ -49,24 +49,13 @@ Este efeito requer um ambiente compatível com seu processamento em tempo real. 
 - **Profundidade do desvanecimento:** novas instâncias usam Skywave em 1% para proporcionar variações de nível mais calmas em Mono e um desvanecimento noturno menos acentuado. Eleve Skywave para cerca de 8% quando quiser um desvanecimento claramente mais profundo; valores maiores intensificam ainda mais o efeito.
 - Comece com Mix em 100% ao avaliar o modelo de rádio. Reduza-o apenas se quiser preservar deliberadamente parte da imagem estéreo original.
 
-### Mistura C-QUAM e modelo de Static
-
-Em C-QUAM, a mistura estéreo automática observa perdas de sinal qualificadas em dois eixos ortogonais do receptor: o sinal de soma decodificado e a região do piloto de 25 Hz do sinal de diferença em quadratura. O efeito do AGC é removido das duas observações, e a qualidade só diminui quando a perda coincide nos dois eixos. Essa regra de coincidência evita que mudanças normais do programa em apenas um eixo sejam confundidas com um desvanecimento de RF. A observação só funciona enquanto o PLL está em TRACK e o piloto é aceito; nos demais casos, ela é apagada.
-
-O valor padrão de Skywave para novas instâncias é 1%, adotado depois que as verificações integradas do modelo foram aprovadas. Presets salvos mantêm o valor de Skywave armazenado explicitamente. Em comparação com 8%, o ajuste de 1% produz em Mono variações de nível mais calmas e desvanecimentos menos profundos; selecione cerca de 8% para simular um desvanecimento noturno mais severo.
-
-A faixa validada e congelada da resposta de qualidade começa em Fading Speed 0.05 Hz. Uma atenuação que varie muito mais devagar que a constante de queda de 60 s da referência adaptativa é incorporada a essa referência e, intencionalmente, não é mantida como perda contínua de qualidade. A tolerância residual de programa de 0.75 dB, o deslocamento de razão de 0.04, a banda de observação do piloto Q=4, as constantes de tempo de qualidade de 0.05/0.2/0.5/60 s e a zona morta de 0.5 dB com intervalo de transição de 5.0 dB são calibrações empíricas do simulador, não especificações gerais dos receptores C-QUAM.
-
-Essa observação fiel ao receptor compartilha com o hardware C-QUAM baseado em piloto uma ambiguidade dependente do programa. Se o programa contiver ao mesmo tempo energia de diferença perto de 25 Hz e uma soma/DC assimétrica, o término simultâneo dos dois componentes poderá reduzir brevemente a mistura estéreo, pois apresenta ao receptor os mesmos indícios de um desvanecimento de RF. Da mesma forma, um resíduo coerente em oposição de fase pode reduzir a observação de qualidade enquanto o PLL permanece em TRACK e o piloto continua aceito. Esses são comportamentos intencionais dentro dos limites aprovados do modelo, não defeitos.
-
-Os eventos Static usam uma calibração de área vetorial relativa à portadora. Cada evento parte de uma área de 20.0 µs referida à portadora nominal da estação desejada, com distribuição uniforme empírica de 0.5 a 1.5 e fase aleatória. Os eventos são agendados por prazos absolutos em precisão dupla, não por uma contagem regressiva de amostras arredondada; assim, o tempo permanece contínuo entre blocos de renderização e vários eventos que vencem na mesma amostra são acumulados. A escala de 20.0 µs e sua distribuição são calibrações empíricas do simulador.
 
 ### Parâmetros
 
 #### Station
 
 - **Radio** (ligado ou desligado) - Liga e desliga a transmissão da estação. Com ela desligada, a portadora desaparece por completo e no receptor restam apenas a estática atmosférica, a estação adjacente e o seu próprio ruído, com o AGC aberto ao máximo e esse fundo soando alto. Use-o para ouvir o instante em que uma estação entra ou sai do ar. Não é a mesma coisa que desligar o próprio efeito, que deixa a música passar sem alteração.
-- **Stereo Mode** (Mono ou C-QUAM) - Mono usa um receptor tradicional com detector de envoltória. C-QUAM oferece recepção estéreo, com relação sinal/ruído menor em estéreo do que em mono, e faz a transição automática para mono quando o sinal está fraco ou fora de sintonia. Como o receptor usa um método de detecção fisicamente diferente, a troca de modo também pode alterar o timbre; Detector RC e seu corte diagonal só se aplicam a Mono e não têm efeito em C-QUAM. O estéreo C-QUAM funciona com taxas de amostragem de até 192 kHz; acima disso, a recepção é mono. A simulação modela apenas o limite de fase de modulação C-QUAM c(5) da FCC, e não um teste completo de conformidade.
+- **Stereo Mode** (Mono ou C-QUAM) - Mono usa um receptor tradicional com detetor de envolvente. C-QUAM oferece receção estéreo e transita automaticamente para mono quando o sinal está fraco ou fora de sintonia. A troca de modo também pode alterar o timbre; Detector RC só se aplica a Mono. O estéreo C-QUAM funciona até 192 kHz; acima disso, a receção é mono.
 - **TX Bandwidth** (2.0 a 10.0 kHz) - Define a largura de banda de áudio do transmissor. Valores baixos produzem um som mais escuro e limitado; valores altos preservam mais detalhes.
 - **Pre-emphasis** (0 a 100%) - Reforça as frequências altas antes da transmissão. Ajustes maiores acrescentam presença, mas também fazem os picos brilhantes acionarem mais a cadeia de transmissão.
 - **Mod Depth** (10 a 125%) - Define a profundidade da modulação AM. Acima de 100%, surgem sobremodulação e corte dos picos negativos.
@@ -158,96 +147,72 @@ Um efeito que recria o som de dispositivos digitais vintage como consoles de jog
   - Muda o padrão fixo de imperfeição usado por Bit Error
   - Só é audível quando Bit Error está acima de 0%
   - O mesmo valor sempre recria o mesmo padrão de imperfeição
-
 ## Cassette Artifacts
 
-Cassette Artifacts grava a música em uma cassete compacta modelada e a reproduz. O sinal passa pelo codificador Dolby, pelo amplificador de gravação com o realce de agudos e o reforço limitado de graves que ele imprime na fita, pela saturação magnética da camada magnética, pelo apagamento de agudos causado pela polarização de gravação, pelas perdas de comprimento de onda da cabeça reprodutora, pelas quedas de sinal locais da camada magnética, pelo wow e flutter do transporte, pelo azimute da cabeça do deck, que deriva, pela elevação de graves da cabeça reprodutora e pela curva de reprodução que retira novamente o realce de agudos, antes de serem somados o chiado da fita e o ruído de modulação e de o decodificador Dolby entrar em ação. Use-o quando quiser uma música que realmente passou por um deck cassete, em vez de uma música com ruído de cassete colocado por cima.
+Cassette Artifacts combina a resposta de frequência de uma cassete, compressão da fita, chiado, wow e flutter, quedas de sinal e alterações no alinhamento da cabeça. Use-o para obter o caráter completo de um deck cassete, e não apenas uma camada de ruído sobre uma música inalterada.
 
 ### Diferenças em relação a outros efeitos lo-fi
 
-- **Tape Artifacts** modela um gravador de rolo de estúdio, e a diferença entre os dois é a diferença entre os formatos. Nos valores padrão, com sinal pequeno e um hospedeiro de 96 kHz, a cassete cai 2.0 dB em 8 kHz, 4.4 dB em 12 kHz e 7.9 dB em 16 kHz, enquanto o gravador de rolo cai 0.7, 1.7 e 3.5 dB. Com a redução de ruído desligada o fundo da cassete também é o mais alto dos dois - -65.5 dBFS contra os -68.5 dBFS do gravador de rolo - e com Dolby B ou C ele fica abaixo dele, em -73.6 e -82.8 dBFS, a mesma relação que os formatos reais têm. A velocidade é um controle lá e um valor fixo de 4.76 cm/s aqui, e Deck Grade, as colunas Type I/II/IV, Dolby B/C, as quedas de sinal, o azimute da cabeça e o erro de nível Dolby só existem aqui.
-- **Wow Flutter** (Modulation) reproduz apenas a variação de velocidade de um transporte. Escolha-o quando quiser a instabilidade sem a saturação da fita, sem o comportamento dos Type e da polarização, sem a redução de ruído e sem o chiado.
+- **Tape Artifacts** oferece o som mais limpo e de banda mais larga de um gravador de rolo, com velocidade selecionável. Cassette Artifacts é mais escuro e oferece Deck Grade, Tape Type, redução de ruído, quedas de sinal e alinhamento da cabeça, próprios de cassetes.
+- **Wow Flutter** (Modulation) reproduz apenas a variação de velocidade do transporte. Escolha-o quando quiser a instabilidade sem a saturação da fita, o comportamento de Tape Type e Bias, a redução de ruído ou o chiado.
 - **Saturation** e **Hard Clipping** acrescentam apenas não linearidade, sem o comportamento dependente da frequência nem o transporte de um gravador de fita.
-- **Vinyl Artifacts**, **Noise Blender** e **Hum Generator** acrescentam uma camada de ruído sobre uma música inalterada. Aqui o chiado, o ruído de modulação e as quedas de sinal são gerados no ponto correto do deck, portanto a redução de ruído age sobre eles e eles acompanham Tape Type e Hiss como o ruído real de uma cassete faz.
+- **Vinyl Artifacts**, **Noise Blender** e **Hum Generator** acrescentam ruído sem alterar a resposta de frequência nem a dinâmica da música.
 
 ### Guia de caráter sonoro
 
-- **Deck Grade define a classe da máquina:** ele move as bordas da banda e a estabilidade de curto prazo em conjunto, e nada mais. Medidos na polarização de referência, com sinal pequeno e um hospedeiro de 96 kHz, os pontos de -3 dB vão de 13.6 Hz a 18.0 kHz em Reference, de 16.7 Hz a 14.0 kHz em Hi-Fi, de 19.9 Hz a 10.0 kHz em Consumer e de 26.1 Hz a 6.5 kHz em Portable. Em 16 kHz isso dá 2.4, 4.0, 7.8 e 16.7 dB a menos. A oscilação de azimute cresce na mesma ordem - nenhuma em Reference, que é a classe de deck que traz um servo de azimute, e a maior em Portable, onde o topo respira de forma visível.
-- **Record Level é o ponto de operação, não um ganho:** ele declara com que força um pico de 0 dBFS ataca a fita, e o nível de saída não se move com ele. O que se move é todo o resto. No padrão de +9.0 dB, um tom de 1 kHz em escala plena sai com 3.6 dB de arredondamento e cerca de 6% de terceiro harmônico, e em um master moderno denso os 6 dB superiores do material saem como cerca de 4.2 dB. Em +0.0 dB o mesmo material sai quase sem compressão (os 6 dB superiores continuam 5.9 dB) e a fita nunca é usada; em +15.0 dB os 6 dB superiores já colapsaram para cerca de 1.9 dB. O fundo o acompanha um decibel para cada decibel na direção oposta, de modo que subir Record Level compra relação sinal-ruído e gasta faixa dinâmica.
-- **Os graves chegam ao teto primeiro:** o lado de gravação precisa reforçar tudo abaixo de 50 Hz para colocá-lo na fita, e esse reforço tem um teto definido por Deck Grade, então os graves profundos alcançam a saturação antes dos médios. Em um deck Consumer com Record Level em +12.0 dB, um tom em escala plena sai 7.8 dB abaixo em 20 Hz e 5.4 dB abaixo em 40 Hz, contra 3.3 dB em 315 Hz. É essa mesma assimetria que faz os graves caírem.
-- **Tape Type não é uma chave de volume:** um sinal pequeno de 1 kHz sai no mesmo nível nos três, dentro de 0.01 dB. O que muda é a margem e o ruído. Type IV tem a maior margem em agudos - sua saída de saturação em 10 kHz fica 6.5 dB acima de Type II e seu nível máximo de saída em 315 Hz 1 dB acima - e no Record Level padrão ela preserva cerca de 4.9 dB a mais em 10 kHz que Type II em um tom de -6 dBFS, e cerca de 7.5 dB a mais em um de escala plena; o piso de ruído dela, porém, é 2.5 dB pior que o de Type II. Type I é a mais ruidosa das três, 4 dB acima de Type II, e colore sinais pequenos exatamente como Type II, então quase tudo o que se ouve dela é o fundo extra.
-- **A redução de ruído é uma ida e volta casada:** o mesmo compansor de banda deslizante codifica antes da fita e expande depois dela, então em condições ideais a música volta a sair igual. O silenciamento é a cifra efetiva medida, e não os 10 e 20 dB nominais: cerca de 8 dB para Dolby B e cerca de 17 dB para Dolby C, com ponderação A e nos ajustes padrão. O preço é o desvio de rastreamento nos agudos em níveis altos, em que o decodificador lê agudos já comprimidos pela fita como um sinal mais baixo e os abaixa ainda mais; os patamares antissaturação do Dolby C reduzem isso, e em um tom forte de 10 kHz no Record Level padrão C preserva cerca de 3.9 dB a mais que B em um tom de 10 kHz a -6 dBFS, e cerca de 8.4 dB a mais em um de escala plena.
-- **A oitava mais aguda é o limite do deck:** na polarização de referência, com sinal pequeno e um hospedeiro de 96 kHz, o deck Consumer padrão mede +1.1 dB em 50 Hz (a elevação da cabeça), 0.0 dB em 1 kHz, -0.8 dB em 5 kHz, -3.0 dB em 10 kHz e -7.8 dB em 16 kHz, e -2.9 dB em 20 Hz. Essa elevação suave dos graves sobre um extremo grave que já cai e essa queda no topo são a resposta própria do deck, antes de qualquer coisa ser exigida com força.
-- **O transporte é mais lento e mais amplo que o de um rolo:** um wow de capstan em 6.9 Hz, uma rotação de carretel em 0.42 Hz e flutter de banda larga entre 1 e 40 Hz. No padrão de 0.200% a afinação se move cerca de 9 cents de pico a pico, justamente nos 5 a 10 cents em que a modulação de frequência começa a ser ouvida como tal, portanto a instabilidade é audível em notas sustentadas e fica mascarada em material denso; 0.040% é a cifra que um deck de referência publica e move apenas cerca de 2 cents, e o topo de 1.000% da faixa dá cerca de 46 cents, um forte tremular.
-- **Um fundo vivo:** chiado nos silêncios, mais o ruído de modulação que acompanha a própria música, cerca de 48, 50 e 52 dB abaixo do sinal em Type I, Type II e Type IV. Baixe Hiss até -92.0 dB re 250 nWb/m quando quiser um fundo silencioso.
-- **As quedas de sinal são perdas, não cliques:** cada evento é uma depressão suave em cosseno levantado de 2.1 a 21 ms e de 3 a 30 dB em vez de um gate, e o sorteio de profundidade pende para as perdas leves, então o que se ouve normalmente é a música sumindo por um instante, e não um estalo. O padrão de 2.0 eventos/min dá cerca de um evento a cada meio minuto em qualquer trilha isolada.
-- **Azimuth e Dolby Level Error são os eixos de compatibilidade:** ambos têm sinal, e o sinal deles é o ponto. Azimuth escurece o topo nos dois canais e coloca um atraso entre eles, e qual canal vai à frente segue o sinal dele. Um Dolby Level Error acima de zero faz o decodificador cortar de menos, então o resultado é mais brilhante e mais chiado; abaixo de zero ele corta demais e o resultado é mais escuro.
+- **Deck Grade** vai do som amplo e estável de Reference ao som mais escuro e instável de Portable.
+- Aumente **Record Level** para obter mais compressão e saturação; diminua-o para preservar mais a dinâmica. Depois, use Output para igualar o volume.
+- **Tape Type** altera o ruído e a margem antes da saturação. Type I é a mais ruidosa, Type II é equilibrada e Type IV mantém os picos agudos mais limpos.
+- **Noise Reduction** reduz o chiado. Dolby C atua mais que Dolby B, enquanto Off mantém o fundo cru da cassete.
+- Aumente **Wow/Flutter**, **Hiss** ou **Dropouts** para um som mais gasto. **Azimuth** suaviza os agudos e altera sua posição temporal entre os canais.
 
 ### Parâmetros
 
-A velocidade é informada em vez de escolhida: a cassete compacta anda a 4.76 cm/s (1⅞ ips) por definição, portanto ela não é um controle, e a linha de estado no rodapé do painel a nomeia uma única vez, como parte da leitura de Wow/Flutter.
+A velocidade da cassete compacta é fixa, por isso não há controle Speed.
 
-- **Deck Grade** (Reference, Hi-Fi, Consumer ou Portable) - Seleciona a classe do deck. Ele governa apenas os mecanismos que não têm um controle próprio: o orçamento de equalização de gravação que aplaina a perda de comprimento de onda da cabeça, a largura de banda do amplificador de gravação, o teto do reforço de graves na gravação, o tamanho da oscilação de azimute e o formato da elevação de graves da cabeça. Ele nunca mexe em Wow/Flutter, Hiss nem Dropouts, portanto mudá-lo nunca pode descartar os seus próprios ajustes. As bordas da banda, medidas com sinal pequeno em um hospedeiro de 96 kHz, são de 13.6 Hz a 18.0 kHz (Reference), 16.7 Hz a 14.0 kHz (Hi-Fi), 19.9 Hz a 10.0 kHz (Consumer) e 26.1 Hz a 6.5 kHz (Portable), e a oscilação de azimute vale 0, 1, 2 e 4 arcmin de desvio padrão nessas mesmas quatro classes. Reference não tem oscilação nenhuma, porque um deck dessa classe traz um servo de azimute. O padrão Consumer é uma máquina doméstica comum.
-- **Tape Type** (Type I, Type II ou Type IV) - Seleciona a formulação da fita: férrica, alta polarização e metal. É um perfil de margem e de ruído, não um preajuste de equalização nem um controle de nível - um sinal pequeno de 1 kHz sai no mesmo nível nos três, dentro de 0.01 dB. Type II é a coluna de referência: Type I fica 4.0 dB mais ruidosa e Type IV 2.5 dB mais ruidosa, enquanto Type IV tem 6.5 dB a mais de margem em agudos e 1 dB a mais de margem em graves que Type II. Cada Type também tem seu próprio ponto de polarização recomendado, então Bias 0 dB significa um deck corretamente alinhado, qualquer que seja o selecionado.
-- **Noise Reduction** (Off, Dolby B ou Dolby C) - Seleciona a redução de ruído por compansão. É sempre uma ida e volta casada de codificação e decodificação - a mesma lei de banda deslizante grava e reproduz -, portanto silencia a fita sem mudar a música em condições ideais. Dolby B é uma única banda deslizante e Dolby C são duas escalonadas com patamares antissaturação; o silenciamento obtido aqui é medido e não nominal, cerca de 8 dB para B e cerca de 17 dB para C, e depende de Tape Type, Hiss, Dolby Level Error e da taxa de amostragem do hospedeiro, motivo pelo qual a linha de estado informa a cifra dos ajustes atuais. Ambos também apresentam desvio de rastreamento em agudos fortes como um deck real faz, e Dolby C desvia menos que Dolby B.
-- **Bias** (-6.0 a +6.0 dB) - Define a polarização de gravação em relação ao ponto recomendado do Tape Type selecionado. 0 dB é o deck corretamente alinhado: fica 2.5 dB (Type I), 3.0 dB (Type II) ou 2.0 dB (Type IV) acima do pico da curva de sensibilidade de 10 kHz, que é onde um deck é alinhado. Valores mais altos (sobrepolarização) são mais limpos nos graves e médios e mais escuros no topo: em +2.0 dB a sensibilidade em 10 kHz cai 1.67, 1.81 e 1.52 dB nos três Type, e em +6.0 dB cai 5.31, 5.71 e 4.86 dB. Valores mais baixos (subpolarização) são mais brilhantes e mais distorcidos, do jeito que um deck desalinhado é, mas apenas até aquele pico - cerca de -3.6 dB em Type I, -3.9 dB em Type II e -3.2 dB em Type IV, valendo cerca de +2.5, +3.0 e +2.0 dB em 10 kHz - e abaixo dele os agudos escurecem de novo enquanto a distorção continua subindo, de modo que -6.0 dB já é menos brilhante que -4.0 dB. Em 1 kHz todo o percurso se move menos de 0.2 dB, portanto Bias não é um controle de volume.
-- **Record Level** (-12.0 a +18.0 dB) - Define com que força o deck grava. O número é o nível de fita que um pico de 0 dBFS alcança, em dB acima do fluxo de referência de 250 nWb/m, e a linha de estado informa essa convenção. O controle não aplica ganho próprio: enquanto a fita não estiver saturando, o mesmo sinal sai no mesmo nível em qualquer valor de Record Level, portanto o que ele muda é a fita, não o volume. O padrão de +9.0 dB é uma cassete gravada normalmente, em que um tom de 1 kHz em escala plena sai com 3.6 dB de arredondamento e cerca de 6% de terceiro harmônico e os graves profundos já estão no teto. Valores mais baixos recuam na direção de uma cópia que nunca usa a fita - em +0.0 dB um tom em escala plena perde apenas 0.5 dB - e sobem o fundo um decibel para cada decibel, já que o chiado está na fita e a fita agora está mais abaixo do pico. Valores mais altos comprimem mais e silenciam o fundo pela mesma regra; passado cerca de +15.0 dB a faixa dinâmica para de se alargar e só a compressão continua crescendo.
-- **Wow/Flutter** (0 a 1%) - Define a variação de velocidade do transporte, como desvio ponderado de pico segundo a DIN 45507, em porcentagem, nos 4.76 cm/s fixos. 0% é um transporte perfeitamente estável. O padrão de 0.200% fica no meio da janela de 0.15 a 0.25% que os decks cassete comuns publicam e move a afinação cerca de 9 cents de pico a pico, justamente nos 5 a 10 cents em que a modulação de frequência começa a ser ouvida como tal. 0.040% é o pico ponderado que um deck de referência publica e move apenas cerca de 2 cents; o topo de 1.000% da faixa dá cerca de 46 cents, um forte tremular. O movimento é mais lento aqui do que em um gravador de rolo, porque a rotação de carretel em 0.42 Hz o domina.
-- **Hiss** (-92.0 a -42.0 dB re 250 nWb/m) - Define juntos o nível do chiado da fita e do ruído de modulação, como o fluxo sem sinal com ponderação A de Type II com a redução de ruído desligada, referido à referência de 250 nWb/m. Esta é a cifra da própria folha de dados da fita, e não um nível na saída: o ruído está gravado na fita, portanto o que ele mede na saída depende de Record Level. -92.0 dB re 250 nWb/m desliga ambos por completo. O padrão de -60.5 dB re 250 nWb/m é o ruído de polarização que o fabricante publica para uma fita Type II. Type I fica 4.0 dB acima dessa coluna e Type IV 2.5 dB acima, Record Level desloca o conjunto inteiro um decibel para cada decibel, e então o decodificador Dolby remove a sua própria quantidade medida, de modo que o que se ouve nos silêncios não é este número - a linha de estado informa no que ele dá. Tudo isso está antes de Output, então um medidor colocado depois de Output o lê elevado por aquilo que Output estiver marcando. Enquanto a música toca, o que este controle acrescenta principalmente é o ruído de modulação que acompanha o sinal.
-- **Dropouts** (0 a 20 eventos/min) - Define a taxa média de quedas de sinal da camada magnética, contadas por trilha: qualquer canal isolado que você medir verá essa quantidade de eventos por minuto. Metade delas afeta a fita inteira e atinge todos os canais juntos, metade é local a uma trilha. Cada evento é uma depressão suave em cosseno levantado de 2.1 a 21 ms e de 3 a 30 dB, e não um gate, portanto soa como uma breve perda de sinal, não como um clique. O padrão de 2.0 eventos/min é uma cassete em serviço comum, cerca de um evento a cada meio minuto em qualquer trilha; 0 é uma fita impecável e não acrescenta absolutamente nada, e o topo de 20 eventos/min é três vezes o limite de controle de qualidade que uma cassete premium publica, o que é claramente terreno de fita degradada.
-- **Azimuth** (-6.0 a +6.0 arcmin) - Define o erro de alinhamento de cabeça entre o deck que gravou a fita e o deck que a reproduz. Não é um grau de qualidade, e sim o estado de alinhamento daquele par específico de máquinas, motivo pelo qual ele tem sinal e é independente de Deck Grade. Qualquer erro custa agudos nos dois canais: no padrão de +2.0 arcmin um tom de 10 kHz perde 0.25 dB e um de 16 kHz perde 0.60 dB em relação a um par perfeitamente alinhado, e em ±6.0 arcmin isso passa a 1.03 e 2.26 dB. Ele também coloca um atraso de 11.0 µs entre os canais em +2.0 arcmin, e o sinal decide qual canal vai à frente, de modo que uma soma mono de material correlacionado perde mais 0.8 dB em 8 kHz, 1.8 dB em 12 kHz e 3.2 dB em 16 kHz; material não correlacionado não mostra esse pente. Deck Grade acrescenta uma deriva lenta sobre este ajuste, portanto Azimuth é o centro em torno do qual a deriva passeia, e não um valor congelado.
-- **Dolby Level Error** (-3.0 a +3.0 dB) - Define a que distância a referência Dolby do deck de reprodução fica da do deck de gravação. Só significa alguma coisa com Noise Reduction ligada, e o sinal dele é o ponto: acima de zero o decodificador lê a fita como mais forte do que ela é, corta de menos, e o resultado é mais brilhante e mais chiado; abaixo de zero ele corta demais e o resultado é mais escuro. No deck padrão um tom de nível médio se move cerca de 2.4 dB para baixo em 5 kHz e 1.0 dB para baixo em 10 kHz em -3.0 dB, e cerca de 1.9 dB para cima em 5 kHz e 2.2 dB para cima em 10 kHz em +3.0 dB. 0.0 dB são dois decks calibrados um para o outro. O desvio de rastreamento em agudos fortes existe em qualquer ajuste, porque a própria fita muda o sinal entre a codificação e a decodificação; o que este controle abre é o lado brilhante, que um par casado não consegue alcançar.
-- **Output** (-24.0 a +24.0 dB) - Ajusta o nível depois de toda a cadeia. Use-o para igualar o volume ao comparar com o bypass, ou para recuperar o volume que um ajuste alto de Record Level custou.
-- **Mix** (0 a 100%) - Mistura o sinal da cassete com o original. 100% é reprodução de cassete completa. O sinal seco está alinhado no tempo com o caminho da fita, então a região média se mistura de forma limpa - 1 kHz fica dentro de 0.06 dB da unidade em 50% - mas a oitava mais aguda não, porque ali seco e fita já não compartilham a mesma fase e se cancelam em parte. Esse cancelamento não é igual nos dois canais, porque o erro de azimute coloca um atraso entre eles: em 50%, nos ajustes padrão e num hospedeiro de 96 kHz, o canal esquerdo sai 1.7 dB abaixo em 8 kHz, 3.6 dB em 12 kHz, 5.3 dB em 16 kHz e 6.2 dB em 20 kHz, enquanto o canal direito fica 4.4, 8.9, 9.0 e 7.0 dB abaixo nas mesmas frequências. Em 0% a entrada passa totalmente inalterada e o efeito não acrescenta latência; em qualquer outro ajuste ele acrescenta 165 amostras (3.741 ms) num hospedeiro de 44.1 kHz, 179 (3.729 ms) em 48 kHz, 347 (3.615 ms) em 96 kHz e 683 (3.557 ms) em 192 kHz.
+- **Deck Grade** (Reference, Hi-Fi, Consumer ou Portable) - Seleciona o caráter do deck. Reference é o mais amplo e estável; Portable, o mais escuro e instável. Comece com Consumer para um som familiar de deck doméstico.
+- **Tape Type** (Type I, Type II ou Type IV) - Altera o ruído e a margem antes da saturação. Type I é a mais ruidosa, Type II é equilibrada e Type IV mantém os picos agudos mais limpos.
+- **Noise Reduction** (Off, Dolby B ou Dolby C) - Reduz o chiado. Dolby B é moderado, Dolby C é mais forte e Off mantém o fundo cru da cassete. Use Dolby Level Error para obter o som mais brilhante ou mais escuro de decks incompatíveis.
+- **Bias** (-6.0 a +6.0 dB) - Altera os agudos e a distorção. Comece em 0 dB. Pequenos valores positivos soam mais limpos e escuros; pequenos valores negativos, mais brilhantes e ásperos. Valores negativos extremos acrescentam distorção sem continuar clareando o som.
+- **Record Level** (-12.0 a +18.0 dB) - Controla a intensidade com que a fita é gravada. Comece em +9 dB. Aumente-o para obter compressão e saturação mais densas; diminua-o para preservar a dinâmica. Depois, iguale o volume com Output.
+- **Wow/Flutter** (0 a 1%) - Controla a instabilidade de afinação. 0% é estável, o padrão de 0.200% cria um movimento audível de cassete em notas sustentadas e valores maiores produzem a oscilação de um deck gasto.
+- **Hiss** (-92.0 a -42.0 dB re 250 nWb/m) - Controla o chiado da fita e o ruído de modulação relacionado ao sinal. Aumente-o para uma fita mais ruidosa ou use o mínimo para desligar a camada de ruído. A linha de estado mostra o nível de fundo resultante com os ajustes atuais.
+- **Dropouts** (0 a 20 eventos/min) - Define a frequência de breves quedas de sinal. 0 as desativa, 2 eventos/min acrescenta desgaste ocasional e valores maiores soam cada vez mais danificados.
+- **Azimuth** (-6.0 a +6.0 arcmin) - Simula o desalinhamento da cabeça. Afaste-o de 0 para suavizar os agudos e alterar o tempo entre os canais; o sinal escolhe qual canal se adianta.
+- **Dolby Level Error** (-3.0 a +3.0 dB) - Simula uma incompatibilidade entre os decks de gravação e reprodução quando Noise Reduction está ligado. Valores positivos soam mais brilhantes e com mais chiado; valores negativos, mais escuros. Comece em 0 dB.
+- **Output** (-24.0 a +24.0 dB) - Ajusta o nível depois de toda a cadeia. Use-o para igualar o volume ao comparar com o bypass ou para recuperar o volume perdido com Record Level alto.
+- **Mix** (0 a 100%) - Mistura o som de cassete com o original. Comece em 100% para avaliar o efeito completo; diminua-o para um resultado mais sutil. Valores intermediários podem suavizar os agudos mais altos porque os dois caminhos se cancelam parcialmente nessa região.
 
 ### Leitura da linha de estado
 
-A linha sob os controles informa a convenção de Record Level e diz no que os dois ajustes Base dão no deck tal como está configurado no momento, na forma `Record Level +9.0 dB → tape peak +9.0 dB re 250 nWb/m at 0 dBFS in · Wow/Flutter Base 0.200% → 0.200% at 4.76 cm/s (1⅞ ips) · Hiss Base -60.5 dB re 250 nWb/m → -73.6 dBFS, Type I, Dolby B`.
-
-- **Record Level** reapresenta o controle como aquilo que ele significa na fita: o fluxo que um pico de 0 dBFS alcança. É uma declaração da convenção, não um medidor - não existe nenhum -, e um master mais baixo cai proporcionalmente mais abaixo na fita.
-- **Wow/Flutter** informa o valor Base e o efetivo. A velocidade é fixa, então os dois são sempre a mesma cifra; a linha existe para nomear a convenção de medição à qual a porcentagem pertence, e é o único lugar em que a velocidade do transporte é informada.
-- **Hiss** informa o valor Base e o piso sem sinal com ponderação A em que ele se transforma na saída, depois da coluna de Tape Type, de Record Level e do decodificador Dolby, antes de Output. Com Hiss em -92.0 dB re 250 nWb/m toda a família de ruídos está desligada e a linha mostra `→ off`.
-- O piso efetivo é medido, e não derivado dos 10 e 20 dB nominais do Dolby B e C, e depende em conjunto de Tape Type, redução de ruído, Hiss, Dolby Level Error, Record Level e da taxa de amostragem do hospedeiro. Com Hiss no padrão de -60.5 dB re 250 nWb/m e Record Level em +9.0 dB, num hospedeiro de 96 kHz, ele dá:
-
-  | Tape Type | NR Off | Dolby B | Dolby C |
-  |---|---|---|---|
-  | Type I | -65.5 dBFS | -73.6 dBFS | -82.8 dBFS |
-  | Type II | -69.5 dBFS | -77.7 dBFS | -87.0 dBFS |
-  | Type IV | -67.0 dBFS | -75.2 dBFS | -84.4 dBFS |
-
-  Record Level desloca a tabela inteira um decibel para cada decibel: em +12.0 dB toda cifra fica 3 dB mais baixa, e em +6.0 dB toda cifra fica 3 dB mais alta. Quanto o decodificador Dolby remove não muda com isso, porque o piso da fita e a referência do próprio decodificador se movem juntos.
-- Cada combinação é medida uma vez e depois lembrada, então a cifra aparece imediatamente em qualquer ajuste por onde você já tenha passado. Enquanto você arrasta Hiss ou Dolby Level Error por combinações ainda não medidas, a linha mostra `measuring…` e preenche o número assim que o controle para - anunciar uma cifra de aparência definitiva com vários decibéis de erro seria pior que não anunciar nada.
+A linha abaixo dos controles mostra o wow/flutter efetivo e o nível de ruído de fundo com os ajustes atuais. Use-a para comparar alterações em Tape Type, Noise Reduction, Record Level e Hiss. `off` significa que a camada de ruído da fita está desligada.
 
 ### Ajustes recomendados
 
 1. **Deck cassete comum (padrão)**
    - Deck Grade: Consumer, Tape Type: Type I, Noise Reduction: Dolby B, Bias: 0.0 dB, Record Level: +9.0 dB
    - Wow/Flutter: 0.200%, Hiss: -60.5 dB re 250 nWb/m, Dropouts: 2.0 eventos/min, Azimuth: +2.0 arcmin, Dolby Level Error: 0.0 dB, Output: 0.0 dB, Mix: 100%
-   - O som de cassete do dia a dia, e o padrão do próprio plugin: o topo suavizado em 7.9 dB em 16 kHz, uma elevação de 1.1 dB em torno de 50 Hz sobre um extremo grave que já está 2.9 dB abaixo em 20 Hz, cerca de 6% de terceiro harmônico e 3.6 dB de arredondamento em um tom em escala plena, um fundo de -73.6 dBFS num hospedeiro de 96 kHz, um movimento de afinação de cerca de 9 cents e uma queda de sinal a cada meio minuto mais ou menos em cada trilha.
+   - Um som familiar de cassete doméstica, com agudos suavizados, compressão audível, leve movimento de afinação e quedas ocasionais.
 
 2. **Deck de referência, fita metal com Dolby C**
    - Deck Grade: Reference, Tape Type: Type IV, Noise Reduction: Dolby C, Bias: 0.0 dB, Record Level: +9.0 dB
    - Wow/Flutter: 0.040%, Hiss: -60.5 dB re 250 nWb/m, Dropouts: 0.0 eventos/min, Azimuth: 0.0 arcmin, Dolby Level Error: 0.0 dB, Output: 0.0 dB, Mix: 100%
-   - A combinação mais capaz que o formato oferece: um deck Reference chega aos -3 dB em 18.0 kHz e não deriva nada, Type IV traz 6.5 dB a mais de margem em agudos que Type II, e o fundo fica em -84.4 dBFS num hospedeiro de 96 kHz. O piso de fita da própria Type IV é 2.5 dB pior que o de Type II - é o Dolby C que faz deste o ajuste mais silencioso daqui, e ele também é o ajuste que menos desvia o rastreamento em agudos fortes. Com a instabilidade, o chiado, as quedas de sinal e a deriva de azimute todos desligados, este deck é inteiramente determinístico.
+   - O ajuste mais limpo de cassete: amplo, estável e silencioso, com boa margem nos agudos e sem desgaste acrescentado.
 
 3. **Fita férrica, sem redução de ruído**
    - Deck Grade: Consumer, Tape Type: Type I, Noise Reduction: Off, Bias: 0.0 dB, Record Level: +9.0 dB
    - Wow/Flutter: 0.200%, Hiss: -60.5 dB re 250 nWb/m, Dropouts: 2.0 eventos/min, Azimuth: +2.0 arcmin, Dolby Level Error: 0.0 dB, Output: 0.0 dB, Mix: 100%
-   - Uma fita férrica simples gravada sem redução de ruído: o fundo fica em -65.5 dBFS num hospedeiro de 96 kHz, 8.1 dB mais alto que o padrão, e nada o remove, então o chiado é parte do som em todos os silêncios. O timbre é exatamente o do padrão para sinais pequenos - a diferença entre os Type é ruído e margem, não cor - e nada desvia o rastreamento, porque não há decodificador para desviar.
+   - Reprodução crua de cassete férrica, com chiado bem audível nas passagens silenciosas e sem coloração da redução de ruído.
 
 4. **Deck doméstico, ligeiramente sobrepolarizado**
    - Deck Grade: Consumer, Tape Type: Type I, Noise Reduction: Dolby B, Bias: +2.0 dB, Record Level: +12.0 dB
    - Wow/Flutter: 0.300%, Hiss: -58.0 dB re 250 nWb/m, Dropouts: 4.0 eventos/min, Azimuth: +3.0 arcmin, Dolby Level Error: -1.0 dB, Output: +0.5 dB, Mix: 100%
-   - Um deck doméstico comum rodando fita genérica, e uma fita gravada em outro deck: a polarização um pouco alta, então o topo fica cerca de 1.7 dB mais escuro em 10 kHz do que num deck alinhado e os graves e médios um pouco mais limpos, um transporte menos estável, um piso de fita elevado, uma queda de sinal a cada quarto de minuto mais ou menos por trilha, um erro de azimute mais largo e um decodificador calibrado 1 dB abaixo, o que o escurece ainda mais. Record Level está 3 dB acima do padrão, então os 6 dB superiores de um master denso saem como cerca de 3.1 dB e Output sobe um pouco para pagar pela compressão. A linha de estado informa no que o ajuste elevado de Hiss dá depois de Type I, Dolby B e Record Level.
+   - Um som mais escuro e comprimido de deck doméstico, com mais oscilação, chiado, desalinhamento e quedas ocasionais.
 
 5. **Portátil, fita gasta**
    - Deck Grade: Portable, Tape Type: Type I, Noise Reduction: Off, Bias: -2.0 dB, Record Level: +12.0 dB
    - Wow/Flutter: 0.480%, Hiss: -54.0 dB re 250 nWb/m, Dropouts: 8.0 eventos/min, Azimuth: +4.0 arcmin, Dolby Level Error: 0.0 dB, Output: +1.0 dB, Mix: 100%
-   - Um efeito lo-fi deliberadamente degradado. Um deck Portable chega aos -3 dB em 6.5 kHz e em 26 Hz e deriva o dobro do padrão; a polarização está abaixo do ponto alinhado, o que clareia 10 kHz em cerca de 1.6 dB e acrescenta distorção junto; o transporte está bem além do ponto em que a instabilidade é evidente; a fita está alta e ruidosa; o azimute está bastante fora; e as quedas de sinal chegam várias vezes por minuto em todas as trilhas. Record Level está alto o bastante para os graves estarem firmemente no teto, e Output traz o volume de volta.
-
-### Notas sobre o modelo
-
-O efeito modela uma passagem de gravação e reprodução em um deck rodando nos 4.76 cm/s fixos da cassete compacta. O lado de gravação realça os agudos antes da fita e o lado de reprodução retira exatamente o mesmo realce, em vez de seguir uma norma de reprodução publicada; a metade grave da curva é deliberadamente não simétrica, porque o reforço que um deck real aplica abaixo de 50 Hz no lado da gravação tem um teto, e é esse teto que produz tanto a queda dos graves quanto o fato de os graves alcançarem a saturação primeiro. Deck Grade governa apenas os mecanismos que não têm um controle próprio, portanto ele nunca muda Wow/Flutter, Hiss nem Dropouts. A oscilação de azimute é um processo limitado que é puxado de volta ao ajuste de Azimuth, e não um passeio aleatório, e Reference não tem nenhuma, porque um deck dessa classe traz um servo de azimute; com Wow/Flutter em 0, Hiss desligado, Dropouts em 0 e Deck Grade em Reference, nada de aleatório roda. Dolby B e Dolby C são modelados como compansores de banda deslizante casados e funcionam sempre como uma ida e volta completa de codificação e decodificação; não há operação apenas de codificação nem apenas de decodificação, nem qualquer alegação de conformidade com, ou certificação por, alguma especificação de redução de ruído. Dolby Level Error desloca apenas a referência do decodificador, que é a diferença de calibração entre dois decks, e não um segundo estágio de processamento. Fitas Type III, os formatos microcassete e Elcaset, outras velocidades de fita, controle de afinação, autorreverso, cópia por contato, ruído de emenda, zumbido do motor, ruído da carcaça e do mecanismo e vazamento do lado oposto estão fora deste modelo. Não existem estatísticas públicas de quedas de sinal por fita, portanto a faixa de taxa, as durações e as profundidades das quedas são um modelo calibrado restringido por um limite de controle de qualidade publicado, e não a transcrição de dados medidos. O caminho da fita carrega 165 amostras (3.741 ms) de atraso de transporte e processamento num hospedeiro de 44.1 kHz, caindo para 683 amostras (3.557 ms) num de 192 kHz; com Mix em 0% a entrada passa bit a bit sem nenhum atraso. As cifras de timbre citadas acima são medidas num hospedeiro de 96 kHz e no Bias de referência de 0.0 dB. Este efeito custa cerca de uma vez e meia o que Tape Artifacts custa.
+   - Um som de reprodutor portátil intencionalmente degradado, com banda estreita, forte oscilação, ruído, distorção e quedas frequentes.
 
 ## Digital Error Emulator
 
@@ -453,17 +418,13 @@ Este efeito requer um ambiente compatível com seu processamento em tempo real. 
    - Stereo: Auto, Mix: 100%
    - Abaixo do limiar FM: cliques crepitantes, ruído intenso e um programa que entra e sai da estática.
 
-### Notas sobre o modelo
-
-O efeito processa o primeiro par estéreo como uma única cadeia de transmissão; uma entrada mono é transmitida com o canal L−R vazio. RDS, emissoras adjacentes e fontes de interferência estão fora deste modelo. Para o som multibanda de uma "grande emissora", coloque um Multiband Compressor antes deste efeito; para interferências impulsivas, encadeie Noise Blender ou Digital Error Emulator depois.
-
 ## G.726 Simulator
 
 O G.726 Simulator processa o canal mono ou o par estéreo selecionado por uma conversão real de codificação e descodificação ITU-T G.726 a 8 kHz. O par estéreo é combinado em mono antes da codificação, e o sinal descodificado é enviado aos dois canais selecionados. Assim, pode ouvir a largura de banda, a quantização diferencial adaptativa e os erros de predição da telefonia digital. Com Bit Error Rate no valor predefinido, o percurso mantém-se totalmente limpo; ao aumentá-lo, junta os erros de bit de uma ligação sem fios como o DECT.
 
 Os modos de 16, 24, 32 e 40 kbit/s são as quatro taxas normalizadas do G.726. O valor predefinido de 32 kbit/s corresponde ao modo de voz full-slot historicamente usado pelo DECT. Taxas inferiores usam menos bits por amostra a 8 kHz e tornam mais evidentes a quantização granular, os tons sustentados ásperos e a sobrecarga de inclinação. Como o codec foi criado para voz, a música de banda larga evidencia fortemente os seus limites.
 
-Este efeito requer o motor WebAssembly. Se o motor, a taxa de amostragem ou o modo de canais não estiver disponível, a entrada permanece inalterada e o plugin apresenta uma mensagem clara. Ao retomar o processamento após uma suspensão, os reamostradores e o estado preditivo do codec reiniciam em conjunto para não reproduzir áudio armazenado antes da suspensão.
+Se o plugin indicar que o efeito não está disponível, experimente outra frequência de amostragem ou outro modo de canais. Até lá, a entrada permanece inalterada.
 
 ### Guia de melhoria do som
 
@@ -487,7 +448,7 @@ Quando a saída de áudio tem um canal, o GSM-FR Simulator processa esse canal d
 
 Cada trama de 20 ms é representada por parâmetros quantizados de predição linear, predição a longo prazo e excitação por impulsos regulares. Transcodes repete a etapa completa de codificação e descodificação com estados independentes, reproduzindo a codificação em tandem em vez de funcionar como um controlo genérico de «qualidade». Os canais adicionais depois do par estéreo selecionado permanecem inalterados.
 
-Este efeito requer o seu motor de processamento WebAssembly. Se esse motor, a frequência de amostragem ou o modo de canais selecionados não estiverem disponíveis, a entrada permanece inalterada e o plugin apresenta uma mensagem de estado clara. Ao retomar o processamento após uma suspensão, os reamostradores, as memórias de trama e o estado do codec reiniciam em conjunto, evitando reproduzir áudio armazenado antes da suspensão.
+Se o plugin indicar que o efeito não está disponível, experimente outra frequência de amostragem ou outro modo de canais. Até lá, a entrada permanece inalterada.
 
 ### Guia de melhoria sonora
 
@@ -581,7 +542,7 @@ Adiciona uma camada controlável de hum elétrico de 50/60 Hz para uma escuta vi
 
 O MP3 Codec Simulator processa os canais selecionados por uma análise MPEG Layer III simplificada em tempo real, quantização espectral com orçamento limitado de bits e síntese. Use-o para ouvir como um MP3 de baixo bitrate altera transientes, detalhes de altas frequências, tons sustentados e a imagem estéreo. Ele modela somente uma conversão limpa do codec; não adiciona cliques de arquivos danificados, interrupções, perda de pacotes nem erros de transmissão.
 
-O perfil MPEG-1 de 44.1 kHz oferece de 32 a 320 kbit/s. O perfil MPEG-2 de 22.05 kHz oferece de 32 a 160 kbit/s e limita mais a banda codificada. O efeito requer seu mecanismo WebAssembly; quando esse mecanismo, a frequência de amostragem ou o modo de canais selecionados não estiverem disponíveis, o áudio permanece inalterado.
+O perfil MPEG-1 de 44.1 kHz oferece de 32 a 320 kbit/s. O perfil MPEG-2 de 22.05 kHz oferece de 32 a 160 kbit/s e limita mais a banda codificada. Se o plugin indicar que o efeito não está disponível, tente outra frequência de amostragem ou outro modo de canais. A entrada permanece inalterada até que o efeito fique disponível.
 
 ### Guia de aprimoramento sonoro
 
@@ -635,7 +596,7 @@ SBC Codec Simulator processa os canais selecionados com análise SBC em tempo re
 
 O codec opera internamente a 44,1 kHz para a família de taxas de 44,1 kHz e a 48 kHz para a família de 48 kHz. O valor Bitrate, somente leitura, é calculado pela extensão exata do quadro SBC para Bitpool, Channel Mode, Blocks e taxa do codec atuais.
 
-Este efeito requer o mecanismo de processamento WebAssembly. Se esse mecanismo, a frequência de amostragem ou o modo de canais selecionados não estiverem disponíveis, a entrada não será alterada e o plugin exibirá uma mensagem de estado clara.
+Se o plugin indicar que o efeito não está disponível, tente outra frequência de amostragem ou outro modo de canais. A entrada permanece inalterada até que o efeito fique disponível.
 
 ### Guia de aprimoramento do som
 
@@ -659,49 +620,34 @@ Este efeito requer o mecanismo de processamento WebAssembly. Se esse mecanismo, 
 
 ## Simple Jitter
 
-Um efeito que adiciona variações sutis de tempo para criar aquele som digital vintage imperfeito. Pode fazer a música soar como se estivesse tocando em tocadores de CD antigos ou equipamentos digitais vintage.
+O Simple Jitter introduz variações aleatórias no momento de leitura das amostras. A faixa de picossegundos serve para comparar pequenas flutuações realistas do clock; na reprodução normal de música, esses ajustes costumam ser quase impossíveis de distinguir. Para obter uma oscilação ou mudança de textura claramente audível, use microssegundos ou mais. Nesses valores, trate o Simple Jitter como um efeito criativo, não como uma recriação de CD players, aparelhos DAT ou outros equipamentos digitais comuns.
 
-### Guia de Caráter Sonoro
-- Sensação Vintage Sutil:
-  - Adiciona instabilidade suave como equipamentos antigos
-  - Cria um som mais orgânico e menos perfeito
-  - Perfeito para adicionar caráter sutilmente
-- Som Clássico de CD Player:
-  - Recria o som dos primeiros tocadores digitais
-  - Adiciona caráter digital nostálgico
-  - Ótimo para apreciação de música dos anos 90
-- Efeitos Criativos:
-  - Crie efeitos únicos de oscilação
-  - Transforme sons modernos em vintage
-  - Adicione caráter experimental
+### Guia de caráter sonoro
+
+- **Comparação de pequenas flutuações do clock:** Valores em picossegundos mantêm o efeito extremamente discreto. Não espere que 1–500 ps deem um caráter vintage ou de equipamentos digitais antigos que seja reconhecível.
+- **Textura criativa audível:** Valores em microssegundos acrescentam cada vez mais aspereza e instabilidade temporal. Aumente o RMS Jitter aos poucos, pois os ajustes altos ficam extremos rapidamente.
 
 ### Parâmetros
-- **RMS Jitter** - Controla a quantidade de variação de tempo (1ps a 10ms)
-  - Sutil (1-10ps): Caráter vintage suave
-  - Médio (10-100ps): Sensação clássica de CD player
-  - Forte (100ps-1ms): Efeitos criativos de oscilação
 
-### Configurações Recomendadas para Diferentes Estilos
+- **RMS Jitter** (1 ps a 10 ms) - Define a intensidade das variações aleatórias de tempo. Mover o controle para a direita aumenta o efeito em escala logarítmica.
 
-1. Quase Imperceptível
-   - RMS Jitter: 1-5ps
-   - Perfeito para: Fazer a reprodução parecer um pouco menos perfeitamente digital
+### Como ler o indicador
 
-2. Caráter Clássico de CD Player
-   - RMS Jitter: 50-100ps
-   - Perfeito para: Recriar o som dos primeiros equipamentos de reprodução digital
+- O valor ao lado do controle é a variação temporal RMS. A unidade muda automaticamente entre ps, ns, µs e ms.
 
-3. Máquina DAT Vintage
-   - RMS Jitter: 200-500ps
-   - Perfeito para: Caráter de equipamentos de gravação digital dos anos 90
+### Pontos de partida
 
-4. Equipamento Digital Desgastado
-   - RMS Jitter: 1-2ns (1000-2000ps)
-   - Perfeito para: Criar o som de equipamentos digitais envelhecidos ou mal conservados
+1. **Pequena flutuação do clock**
+   - RMS Jitter: 100 ps
+   - Use para comparar uma variação temporal realista e muito pequena; normalmente o som ficará quase inalterado.
 
-5. Efeito Criativo de Oscilação
-   - RMS Jitter: 10-100µs (0.01-0.1ms)
-   - Perfeito para: Efeitos experimentais e modulação de pitch perceptível
+2. **Textura audível**
+   - RMS Jitter: 10 µs
+   - Use como ponto de partida para um efeito criativo claro e depois ajuste de ouvido.
+
+3. **Efeito experimental intenso**
+   - RMS Jitter: 100 µs
+   - Use para obter aspereza e instabilidade acentuadas; reduza o valor se o som perder definição demais.
 
 ## SW Radio Simulator
 
@@ -753,7 +699,7 @@ Este efeito exige um ambiente compatível com seu processamento em tempo real. Q
 
 #### Tuning
 
-- **Mode** (AM, USB ou LSB) - Seleciona como a estação é transmitida e recebida. AM é a radiodifusão de banda lateral dupla que o restante desta descrição pressupõe. USB e LSB suprimem a portadora e transmitem uma única banda lateral, como fazem as estações de radioamador e de serviço, e o receptor recupera o áudio contra o seu próprio oscilador de batimento. Mode também decide quais controles se aplicam: BFO Offset só funciona em USB e LSB, e Detector e Detector RC só em AM. Os controles que não se aplicam aparecem desativados e mantêm seus valores. USB e LSB saem com um nível muito próximo do de AM com os mesmos ajustes, e a diferença que resta depende do fator de crista do programa e de quantas pausas ele tem: material denso mede cerca de um decibel acima de AM, enquanto material do tipo voz com pausas frequentes chega a alguns decibéis acima, porque o AGC levanta o fundo durante as pausas. É o que um receptor real faz: o AGC normaliza o nível dentro da banda passante de FI e, com a portadora suprimida, esse nível é o próprio programa, e não uma portadora constante, de modo que o ganho acompanha o programa e sobe a cada pausa.
+- **Mode** (AM, USB ou LSB) - Seleciona o som de radiodifusão em AM ou o som mais estreito de banda lateral única dos recetores de comunicações. BFO Offset só funciona em USB e LSB; Detector e Detector RC só funcionam em AM. Os controlos desativados mantêm os seus valores.
 - **Tuning** (-5.0 a +5.0 kHz) - Desloca o receptor em relação à estação: valores positivos sintonizam acima dela e valores negativos, abaixo. Desvios pequenos abafam o som, acrescentam distorção de filtragem assimétrica e mudam o volume do assobio de heteródino; desvios maiores empurram a estação para fora da estreita banda passante de FI. Ao sintonizar para cima, o áudio recuperado desce em USB e sobe em LSB; ao sintonizar para baixo, essas direções se invertem.
 - **BFO Offset** (-1000 a +1000 Hz) - Ajusta finamente o oscilador de batimento em USB e LSB; não tem efeito em AM. Junto com Tuning, define o deslocamento de frequência aplicado a tudo o que o receptor recupera. O deslocamento total do receptor em hertz é Tuning × 1000 + BFO Offset: em USB ele é subtraído de cada componente e em LSB é somado a cada um. Zero é exatamente na frequência, algumas dezenas de hertz já deixam o som anasalado, e valores maiores o tornam ininteligível como faz um receptor dessintonizado.
 - **IF Bandwidth** (2.0 a 10.0 kHz) - Define a banda passante de FI do receptor. Ajustes estreitos correspondem à resposta de um receptor de comunicações, que rejeita mais ruído e mais da estação interferente, mas remove mais agudos; ajustes largos preservam mais detalhes e mais interferência. O áudio recuperado chega à metade deste ajuste em todos os modos — cerca de 3 kHz no padrão de 6 kHz; em USB e LSB existe apenas uma banda lateral, então a outra metade da banda passante deixa passar apenas ruído e interferência. Mode não muda este controle por você; reduza-o você mesmo para um som de comunicações mais estreito.
@@ -814,71 +760,64 @@ Este efeito exige um ambiente compatível com seu processamento em tempo real. Q
 7. **Voz de pato fora de frequência**
    - Parta de Estação em banda lateral única e defina BFO Offset: -150 Hz
    - Todos os componentes sobem 150 Hz, então os harmônicos deixam de se alinhar e vozes e instrumentos ficam anasalados e inarmônicos. Mude Mode para LSB com o mesmo ajuste para que tudo desça 150 Hz em vez disso, e use Tuning para desvios maiores.
-
-### Notas sobre o modelo
-
-O efeito processa o primeiro par estéreo como uma única transmissão mono, assim como faz a onda curta real, e o sinal recebido é sempre mono. É modelada apenas uma estação no mesmo canal, e seu programa é ruído conformado, não fala ou música. USB e LSB modelam a recepção de um sinal de banda lateral única com portadora suprimida; a banda lateral é escolhida no transmissor, então o receptor não acrescenta rejeição própria da banda lateral oposta, e os modos CW e de dados não são modelados. Condições reais de banda — mudanças de propagação entre dia e noite e faixas específicas de radiodifusão — estão fora deste modelo; ajuste as condições desejadas com Signal, Fading e os demais controles de propagação.
-
 ## Tape Artifacts
 
-Tape Artifacts grava a música em um gravador de rolo analógico modelado e a reproduz. O sinal passa pelo amplificador de gravação e pelo realce de agudos que ele imprime na fita, pela saturação magnética da própria fita, pelo apagamento de agudos causado pela polarização de gravação, pelas perdas de comprimento de onda da cabeça reprodutora, pelo wow e flutter do transporte, pela elevação de graves da cabeça e pela curva de reprodução que retira exatamente esse mesmo realce, antes de serem somados o chiado da fita e o ruído de modulação. Use-o quando quiser que a música soe como se tivesse passado por um gravador de fita, em vez de apenas receber ruído ou instabilidade por cima.
+Tape Artifacts grava a música em um gravador de rolo analógico modelado e a reproduz. O sinal passa pelo amplificador de gravação e pelo realce de agudos aplicado à fita, pela saturação magnética, pela perda de agudos causada pelo Bias, pelas perdas da cabeça reprodutora, pelo wow e flutter do transporte, pela elevação de graves da cabeça e pela curva de reprodução, antes de receber chiado e ruído de modulação. Use-o quando quiser que a própria música soe como se tivesse passado por um gravador, e não apenas com ruído ou oscilação acrescentados por cima.
 
 ### Diferenças em relação a outros efeitos lo-fi
 
-- **Tape Artifacts** transforma a própria música. A compressão suave, o calor acrescentado, os agudos abrandados e a instabilidade de afinação vêm todos da mesma cadeia modelada de gravação e reprodução, portanto respondem em conjunto a Speed, Tape, Bias e Record Level.
-- **Wow Flutter** (Modulation) reproduz apenas a variação de velocidade de um transporte. Escolha-o quando quiser a instabilidade sem a saturação, a equalização ou o chiado da fita.
+- **Tape Artifacts** altera a própria música. A compressão suave, o calor, os agudos suavizados e a oscilação de afinação vêm da mesma cadeia de gravação e reprodução, portanto respondem em conjunto a Speed, Tape, Bias e Record Level.
+- **Wow Flutter** (Modulation) reproduz apenas a variação de velocidade do transporte. Escolha-o quando quiser a oscilação sem saturação, equalização ou chiado da fita.
 - **Saturation** e **Hard Clipping** acrescentam apenas não linearidade, sem o comportamento dependente da frequência nem o transporte de um gravador de fita.
-- **Noise Blender** e **Hum Generator** acrescentam uma camada de ruído ou hum sobre uma música inalterada. Aqui o chiado e o ruído de modulação são gerados no ponto correto da máquina, portanto acompanham Speed e Tape como o ruído de fita real.
+- **Noise Blender** e **Hum Generator** acrescentam ruído ou hum sobre uma música inalterada. Aqui, o chiado e o ruído de modulação surgem no ponto correspondente da máquina e acompanham Speed e Tape como o ruído de fita real.
 
 ### Guia de caráter sonoro
 
-- **Speed define o timbre básico:** 30 ips é o mais aberto, 15 ips é o som de estúdio conhecido e 7.5 ips fica nitidamente mais escuro, com uma elevação de graves mais forte. O ruído não acompanha simplesmente a velocidade: sem sinal, o piso de chiado é maior a 15 ips e menor a 30 ips, enquanto o ruído de modulação que acompanha a música é mais forte a 7.5 ips.
-- **Compressão suave de nível:** quanto mais alto você ajustar Record Level, mais a fita arredonda os picos antes de distorcer de forma audível, então as passagens fortes ficam mais densas e estáveis em vez de visivelmente ceifadas. No padrão de +6.0 dB e com o Bias de referência de 0.0 dB um tom de 1 kHz em escala plena sai com 0.17 dB de arredondamento e 0.49% de distorção - uma máquina no seu nível de operação normal, não um caminho digital limpo. A quantidade cresce suavemente a partir daí: 0.68 dB e 2.0% em +12.0 dB, e 2.49 dB e 6.8% no topo de +18.0 dB. Qualquer mudança de nível maior que você observe no valor padrão vem da mudança de timbre, não da compressão, e essa vai para os dois lados conforme o material: música com muito grave pode sair cerca de 1 dB mais alta e material com muito agudo, cerca de 1 dB mais baixa.
-- **Calor:** a saturação é assimétrica, portanto produz harmônicos pares e ímpares, e o calor cresce gradualmente conforme Record Level sobe, em vez de surgir de repente.
-- **O transporte é audível em notas sustentadas:** o wow lento e o flutter mais rápido fazem notas longas de piano, órgão e cordas derivarem levemente (0.160%, o desvio que o ajuste indica, com Wow/Flutter e Speed no padrão). É o que mais claramente separa a fita de um arquivo digital.
-- **Um fundo vivo:** nos ajustes normais, o chiado e o ruído de modulação que acompanha a própria música fazem parte do som. O chiado está na fita, portanto Record Level move um decibel para cada decibel aquilo que ele mede na saída. Baixe Hiss até -89.0 dB re 320 nWb/m quando quiser um fundo silencioso.
+- **Speed define o timbre básico:** 30 ips é o mais aberto, 15 ips oferece o conhecido som de estúdio e 7.5 ips é mais escuro, com uma elevação de graves mais forte.
+- **Compressão suave:** aumente Record Level para que a fita arredonde os picos e torne passagens fortes mais densas e quentes. Diminua-o para um resultado mais limpo e dinâmico, depois iguale o volume com Output.
+- **Calor:** a saturação produz harmônicos pares e ímpares, e o calor aumenta gradualmente conforme Record Level sobe.
+- **O transporte aparece em notas sustentadas:** Wow/Flutter acrescenta deriva e tremulação de afinação ao piano, órgão, cordas e outros sons longos.
+- **Um fundo vivo:** Hiss acrescenta tanto um ruído contínuo quanto ruído que acompanha a música. Use o mínimo para não acrescentar ruído de fita.
 
 ### Parâmetros
 
-- **Speed** (7.5, 15 ou 30 ips) - Seleciona a velocidade da fita. Velocidades maiores estendem os agudos e levam a elevação de graves da cabeça para uma frequência mais alta, tornando-a menor: +1.4 dB em 41 Hz a 7.5 ips, +0.8 dB em 80 Hz a 15 ips e +0.4 dB em 159 Hz a 30 ips. Também deixam o wow e o flutter mais rápidos e menos profundos: Wow/Flutter indica o desvio ponderado a 15 ips e a velocidade o multiplica por 1.5 a 7.5 ips e por 0.75 a 30 ips, de modo que os 0.04% que a máquina de referência publica a 15 ips dão os 0.06% e os 0.03% que ela publica para as outras duas. O ruído não anda numa só direção com a velocidade: o piso de chiado é maior a 15 ips e menor a 30 ips, enquanto o ruído de modulação que acompanha a música é mais forte a 7.5 ips. 15 ips é o ajuste usual de estúdio, 7.5 ips é o mais escuro e 30 ips é o mais próximo do original. Wow/Flutter e Hiss são ambos dados nos 15 ips de referência, e a última linha do efeito mostra o valor efetivo de cada um com o Speed, a Tape e o Record Level escolhidos, ao lado da própria convenção de Record Level.
-- **Tape** (Standard ou Master) - Seleciona a formulação da fita. Master tem camada mais espessa e cerca de 3 dB a mais de margem antes de a fita saturar, então permanece limpa por mais tempo e tem um extremo agudo um pouco mais suave. Com Record Level baixo as duas ficam em nível parecido (0.08 dB de diferença no valor padrão), mas quanto mais alto você ajustar Record Level mais alta a Master se mantém: 0.34 dB em +12.0 dB e 1.16 dB em +18.0 dB, justamente porque satura mais tarde, então iguale o volume com Output ao compará-las.
-- **Bias** (-6.0 a +6.0 dB) - Define a polarização de gravação. 0 dB é a máquina corretamente alinhada, e é o ponto a que chega o próprio procedimento de ajuste do fabricante: gravar 10 kHz 20 dB abaixo do nível de operação, achar o pico da curva de sensibilidade e então subir a polarização até que a reprodução tenha caído a quantidade publicada, que na fita Standard é de 1.5 dB a 30 ips, 4.0 dB a 15 ips e 5.0 dB a 7.5 ips. A fita Master difere apenas a 7.5 ips, onde a queda é de 6.5 dB. Valores mais altos (sobrepolarização) são mais limpos e mais abafados. Valores mais baixos (subpolarização) são mais brilhantes e mais distorcidos, como em um deck desalinhado, mas só até esse pico, que na fita Standard fica em torno de -2.7 dB a 30 ips, -4.5 dB a 15 ips e -5.0 dB a 7.5 ips, e na Master a 7.5 ips em torno de -5.7 dB. Abaixo dele os agudos voltam a escurecer enquanto a distorção continua subindo. Quanto brilho se ganha depende tanto da frequência quanto da velocidade: a 30 ips o pico vale 1.5 dB em 10 kHz mas 2.9 dB em 16 kHz, e em -6.0 dB o topo já está mais escuro do que em 0 dB, 0.2 dB em 10 kHz e 0.5 dB em 16 kHz.
-- **Record Level** (-12.0 a +18.0 dB) - Define com que força a máquina grava. O número é o nível de fita que um pico de 0 dBFS alcança, em dB acima do fluxo de referência de 320 nWb/m, e a linha de estado informa essa convenção. O controle não aplica ganho próprio: enquanto a fita não estiver saturando, o mesmo sinal sai no mesmo nível em qualquer valor de Record Level. Esse nível não é exatamente a unidade - fica dentro de 0.05 dB dela, um pouco acima a 30 ips e um pouco abaixo a 7.5 ips -, mas não se move com Record Level. O padrão de +6.0 dB é uma máquina no seu nível de operação normal, em que um tom de 1 kHz em escala plena distorce 0.49%; +12.0 dB dá 2.0% e o topo de +18.0 dB dá 6.8%, e é assim que se obtêm a compressão e o calor da fita. Os picos achatando são a fita, não o controle abaixando algo, então quanto mais forte a fita for atacada mais baixo fica o resultado, e Output está aí para recuperar o volume. Ele também move o fundo um decibel para cada decibel na direção oposta, já que o chiado está gravado na fita e a fita agora está mais abaixo do pico.
-- **Wow/Flutter** (0 a 1%) - Ajusta a variação de velocidade do transporte, como desvio em pico ponderado conforme DIN 45507, em porcentagem a 15 ips. 0% é uma máquina perfeitamente estável. 0.04% é a tolerância que a máquina de estúdio de referência publica nessa velocidade, e escolhê-la dá os 0.06% a 7.5 ips e os 0.03% a 30 ips que essa mesma máquina publica para essas velocidades. O padrão de 0.160% é quatro vezes essa tolerância; valores maiores dão a deriva e o tremor audíveis de um deck gasto, até 1.5% a 7.5 ips.
-- **Hiss** (-89.0 a -39.0 dB re 320 nWb/m) - Ajusta em conjunto o nível do chiado da fita e do ruído de modulação, como o fluxo de chiado com ponderação A a 15 ips na fita Standard, referido à referência de 320 nWb/m. Esta é a cifra da própria folha de dados da fita, e não um nível na saída: o ruído está gravado na fita, portanto o que ele mede na saída depende de Record Level. -89.0 dB re 320 nWb/m desliga os dois por completo. O padrão de -62.5 dB re 320 nWb/m é o ruído de polarização que o fabricante publica para essa fita nessa velocidade; as demais velocidades e a fita Master se afastam dele conforme a folha de dados, de modo que nesse padrão e com Record Level em +6.0 dB as seis combinações vão de -68.0 a -72.0 dBFS, e o conjunto inteiro se move com os dois controles. Todos esses valores estão antes de Output, então um medidor colocado depois de Output os lê elevados pelo que Output estiver marcando. Esse piso é o que se ouve nos silêncios; enquanto a música toca, o que este controle acrescenta sobretudo é o ruído de modulação que acompanha o sinal, cerca de 57 dB abaixo de um tom estável na fita Standard a 15 ips, com alguns decibéis para mais ou para menos nos demais ajustes de Speed e Tape e com material real. Valores maiores tornam o fundo mais evidente.
-- **Output** (-24.0 a +24.0 dB) - Ajusta o nível depois de toda a cadeia. Serve para igualar o volume ao comparar com o bypass ou para recuperar o volume que um ajuste alto de Record Level custou.
-- **Mix** (0 a 100%) - Mistura o sinal de fita com o original. 100% é reprodução de fita completa. O sinal seco está alinhado no tempo com o trajeto de fita, portanto a região média se mistura de forma limpa - 1 kHz fica dentro de 0.1 dB da unidade em qualquer posição de Mix e em qualquer velocidade com o Bias de referência de 0.0 dB, e dentro de 0.5 dB em qualquer ponto do curso de Bias -, mas a oitava mais aguda não, porque ali seco e fita já não compartilham a fase e se cancelam em parte. A 50% o nível em 16 kHz sai 1.7 dB abaixo em um hospedeiro de 44.1 kHz, 2.1 dB em 48 kHz, 4.6 dB em 96 kHz e 5.7 dB em 192 kHz, e em um hospedeiro de 96 ou 192 kHz o ponto mais escuro do controle não é 100% e sim em torno de 70%. Em um hospedeiro de 44.1 kHz ele só escurece conforme você sobe, e em um de 48 kHz o ponto mais escuro é 89%, 0.06 dB abaixo de 100%, de modo que em ambos o meio do controle tem o extremo agudo mais brilhante do que 100%. Em 0% a entrada passa sem qualquer alteração e o efeito não acrescenta latência; em qualquer outro ajuste ele acrescenta 5.26 ms em um hospedeiro de 44.1 kHz e 5.06 ms em um de 192 kHz.
+- **Speed** (7.5, 15 ou 30 ips) - Seleciona a velocidade da fita. Comece em 15 ips; escolha 30 ips para o som mais limpo e aberto ou 7.5 ips para um timbre mais escuro, maior elevação de graves e mais movimento.
+- **Tape** (Standard ou Master) - Seleciona a formulação da fita. Master tem mais margem e permanece mais limpa com Record Level alto; Standard satura antes. Iguale o volume com Output ao compará-las.
+- **Bias** (-6.0 a +6.0 dB) - Altera os agudos e a distorção. Comece em 0 dB. Valores positivos soam mais limpos e escuros; valores moderadamente negativos, mais brilhantes e ásperos. Valores negativos extremos acrescentam distorção sem continuar clareando o som.
+- **Record Level** (-12.0 a +18.0 dB) - Controla a intensidade com que a fita é gravada. Comece em +6 dB, aumente-o para obter mais compressão e calor ou diminua-o para preservar a dinâmica. Use Output para igualar o volume.
+- **Wow/Flutter** (0 a 1%) - Controla o movimento de afinação causado pelo transporte. 0% é estável; aumente-o até que as notas sustentadas tenham a quantidade de deriva e tremulação desejada.
+- **Hiss** (-89.0 a -39.0 dB re 320 nWb/m) - Controla o chiado da fita e o ruído de modulação relacionado ao sinal. Aumente-o para um fundo de fita mais evidente ou use o mínimo para desligar a camada de ruído.
+- **Output** (-24.0 a +24.0 dB) - Ajusta o nível depois de toda a cadeia. Use-o para igualar o volume ao comparar com o bypass ou para recuperar o volume perdido com Record Level alto.
+- **Mix** (0 a 100%) - Mistura o som de fita com o original. Comece em 100% para o efeito completo e diminua-o para uma coloração sutil. Valores intermediários podem suavizar os agudos mais altos por cancelamento parcial.
 
 ### Ajustes recomendados
 
 1. **Fita master de estúdio (padrão)**
    - Speed: 15 ips, Tape: Standard, Bias: 0.0 dB, Record Level: +6.0 dB
    - Wow/Flutter: 0.160%, Hiss: -62.5 dB re 320 nWb/m, Output: 0.0 dB, Mix: 100%
-   - O som de fita do dia a dia, e também o padrão do próprio plugin: o topo suavizado em 3.5 dB a 16 kHz, um reforço de 0.8 dB em torno de 80 Hz, 0.49% de distorção e 0.17 dB de arredondamento em um tom em escala plena, um fundo de -68.5 dBFS e 0.160% de wow e flutter, audível em notas longas e não nos transientes.
+   - Um som equilibrado de gravador de rolo, com agudos suavizados, calor leve, pouco chiado e movimento audível em notas sustentadas.
 
 2. **Cópia limpa em alta velocidade**
    - Speed: 30 ips, Tape: Master, Bias: 0.0 dB, Record Level: 0.0 dB
    - Wow/Flutter: 0.070%, Hiss: -68.5 dB re 320 nWb/m, Output: 0.0 dB, Mix: 100%
-   - Muito próximo do original: 0.07% de distorção e 0.02 dB de arredondamento em um tom em escala plena, 2.2 dB a menos em 16 kHz, um fundo de -72.0 dBFS - no que o ajuste Base de -68.5 dB re 320 nWb/m se torna a 30 ips em fita Master com este Record Level - e 0.053% de wow e flutter. A fita é gravada 6 dB abaixo do padrão, e é isso que a mantém tão limpa. Útil como referência ao comparar os demais ajustes.
+   - O ajuste mais limpo, útil como referência ao comparar colorações de fita mais fortes.
 
 3. **Quente e comprimido**
    - Speed: 15 ips, Tape: Standard, Bias: 0.0 dB, Record Level: +18.0 dB
    - Wow/Flutter: 0.200%, Hiss: -62.5 dB re 320 nWb/m, Output: +1.5 dB, Mix: 100%
-   - A fita é gravada 12 dB acima do padrão, no topo da faixa: um tom em escala plena sai com 2.49 dB de arredondamento e 6.8% de distorção, de modo que a mistura fica mais densa e quente enquanto os picos se achatam. Ao mesmo tempo o fundo cai para -80.5 dBFS, porque o chiado está na fita e a fita agora está bem mais alta. Output sobe, em vez de descer, porque a compressão custa volume; ajuste de ouvido.
+   - Compressão de fita densa e quente, com picos achatados. Depois de ajustar a intensidade, refine Output de ouvido.
 
 4. **Deck doméstico a 7.5 ips**
    - Speed: 7.5 ips, Tape: Standard, Bias: +2.0 dB, Record Level: +12.0 dB
    - Wow/Flutter: 0.300%, Hiss: -59.5 dB re 320 nWb/m, Output: +0.5 dB, Mix: 100%
-   - Mais escuro (10.2 dB a menos em 16 kHz, com um reforço de 1.4 dB em 50 Hz) e mais ruidoso (um fundo de -72.5 dBFS, que é o piso de fita de -73.0 dBFS somado aos seus +0.5 dB de Output), e menos estável (0.450% de wow e flutter), com 1.3% de distorção em um tom em escala plena. A polarização está um pouco alta, como costuma estar em um deck doméstico usando fita genérica: uma máquina comum em vez de uma de estúdio.
+   - Um som mais escuro, ruidoso e instável de máquina doméstica, com saturação moderada.
 
 5. **Transporte gasto**
    - Speed: 7.5 ips, Tape: Standard, Bias: -2.0 dB, Record Level: +15.0 dB
    - Wow/Flutter: 0.480%, Hiss: -56.5 dB re 320 nWb/m, Output: +1.0 dB, Mix: 100%
-   - 0.720% de wow e flutter, 5.2% de distorção e 1.80 dB de arredondamento em um tom em escala plena, e um fundo de -72.0 dBFS - o piso de fita de -73.0 dBFS somado aos seus +1.0 dB de Output - com o topo áspero e adiantado de uma máquina subpolarizada, apenas 4.4 dB a menos em 16 kHz onde uma máquina alinhada nessa velocidade fica 7.2 dB abaixo. Output precisa subir para trazer o volume de volta. Um efeito lo-fi propositalmente degradado.
+   - Um som intencionalmente degradado, com forte movimento de afinação, aspereza, compressão e chiado.
 
-### Notas sobre o modelo
-
-O efeito modela uma passagem de gravação e reprodução em uma máquina corretamente alinhada. O lado da gravação realça os agudos antes da fita e o lado da reprodução retira exatamente esse mesmo realce, em todas as velocidades, em vez de seguir uma norma de equalização publicada como a NAB. Cópia por contato, quedas de sinal da fita, erro de azimute, ruído de emenda e normas de equalização específicas de cada máquina estão fora do modelo. O trajeto de fita carrega de 5.06 a 5.26 ms de atraso de transporte e processamento em hospedeiros de 44.1 a 192 kHz. Os números de timbre citados acima foram medidos em um hospedeiro de 96 kHz com o Bias de referência de 0.0 dB; o extremo agudo depende da taxa de amostragem do hospedeiro, então os 3.5 dB em 16 kHz do padrão passam a 2.7 dB em 44.1 ou 48 kHz.
+Tape Artifacts acrescenta cerca de 5 ms de atraso quando Mix está acima de 0%. Ele se concentra no timbre, na saturação, no chiado e no movimento do transporte da fita; não acrescenta quedas de sinal, ruído de emendas nem erros de alinhamento da cabeça.
 
 ## Vinyl Artifacts
 
@@ -989,7 +928,7 @@ O Vinyl Simulator transforma a própria música por meio de um modelo físico de
 ### Diferença para o Vinyl Artifacts
 
 - **Vinyl Simulator** altera o sinal ao passá-lo pelo sulco e pela agulha modelados. Roughness, Dust, Static, Tracking Force, formato da agulha, Speed e Radius participam do resultado.
-- **Vinyl Artifacts** mantém a música intacta e adiciona pops, crackle, hiss, rumble e vazamento de ruído. É a opção mais leve e previsível, ou a alternativa sem WASM.
+- **Vinyl Artifacts** mantém a música intacta e adiciona pops, crackle, hiss, rumble e fuga de ruído estéreo. Escolha-o para uma camada de ruído mais leve e previsível.
 - Os dois podem ser combinados, mas ajustes fortes de superfície em ambos acumulam cliques e ruído rapidamente.
 
 ### Guia de aprimoramento sonoro
@@ -1021,7 +960,7 @@ O Vinyl Simulator transforma a própria música por meio de um modelo físico de
 
 #### Stylus
 
-- **Shape** (Spherical ou Elliptical) — Geometria de contato. Em Spherical, Scan Radius acompanha Side Radius. A mudança reconstrói a simulação.
+- **Shape** (Spherical ou Elliptical) — Seleciona a forma de contacto da agulha. Elliptical segue melhor os detalhes finos do sulco; Spherical oferece um contacto mais arredondado e tolerante.
 - **Side Radius** (5 a 25 µm) — Raio transversal à parede; altera a área e a pressão de contato.
 - **Scan Radius** (2 a 25 µm) — Raio no sentido do sulco. Pequeno segue detalhes finos; grande faz média em um contato mais amplo.
 - **Tracking Force** (0,5 a 5,0 g) — Força de apoio. Mais pode estabilizar o contato, mas aumenta força e pressão; pouca favorece mistrack e skip.
@@ -1031,7 +970,7 @@ O Vinyl Simulator transforma a própria música por meio de um modelo físico de
 
 #### Output
 
-- **Quality** (Eco, Standard, High ou Ultra) — Define o número base de subpassos físicos e pontos de contato. Para estabilizar a ressonância de contato, o mecanismo pode aumentar automaticamente os subpassos efetivos conforme a taxa de amostragem, Tracking Force, Tip Mass, Compliance, Shape, Side Radius e Scan Radius. Standard é o padrão em tempo real; a mudança reconstrói a simulação.
+- **Quality** (Eco, Standard, High ou Ultra) — Equilibra o detalhe do seguimento do sulco e o uso de CPU. Standard é o ponto de partida recomendado para audição em tempo real.
 - **Output Gain** (-24 a +24 dB) — Nível após equalização RIAA e normalização.
 - **Mix** (0 a 100%) — Mistura a reprodução simulada com o sinal seco alinhado em latência. 0% = seco; 100% = simulado.
 
@@ -1044,7 +983,7 @@ O Vinyl Simulator transforma a própria música por meio de um modelo físico de
 - **Jitter (ns):** variação de tempo no ponto de leitura, visível em Stylus.
 - **Mistrack, Skip, Static Pop e Dust Hit (/s):** taxas recentes, com flash em cada evento. Se repetirem, reduza Cut Level, aumente Tracking Force moderadamente, Radius ou Quality.
 
-O HUD é ativado pela telemetria DSP nativa. Com a reprodução parada ou a telemetria suspensa para economizar energia, ele pode mostrar estado ocioso.
+O HUD atualiza os valores durante a reprodução e pode mostrar um estado inativo quando esta está parada.
 
 ### Configurações recomendadas
 
@@ -1055,23 +994,10 @@ O HUD é ativado pela telemetria DSP nativa. Com a reprodução parada ou a tele
 
 ### Quality e carga de CPU
 
-Cada preset Quality define subpassos base e pontos de contato. Para manter a estabilidade, o mecanismo também calcula `Nmin = ceil(8 × f_c / sampleRate)`, em que a frequência de ressonância de contato `f_c` depende de Tracking Force, Tip Mass, Compliance, Shape, Side Radius e Scan Radius, e usa `effectiveSubsteps = max(base, Nmin)`. Com os ajustes padrão, Standard a 96 kHz permanece na base de 4 subpassos; portanto, a meta de desempenho existente não muda.
+- **Eco** usa menos CPU e é a primeira opção para dispositivos menos potentes.
+- **Standard** é o ponto de partida recomendado para audição normal.
+- **High** melhora o rastreamento do sulco com custo considerável de CPU.
+- **Ultra** é extremamente exigente e raramente útil para audição em tempo real.
+- Taxas de amostragem maiores e ajustes exigentes da agulha também aumentam o uso de CPU. Se a reprodução falhar, reduza primeiro Quality.
 
-A carga principal é proporcional a taxa de amostragem × subpassos efetivos × pontos de contato. As avaliações e cargas relativas da tabela são estimativas base para quando o piso de estabilidade não aumenta os subpassos, e não percentuais de CPU medidos; processador, navegador e WASM SIMD também afetam o resultado.
-
-| Quality | Detalhe base | Avaliações base a 96 kHz | Carga relativa base | Uso |
-|---|---:|---:|---:|---|
-| Eco | 2 × 7 | 2,7 milhões/s | 0,39× | Celular, baixo consumo, várias instâncias |
-| Standard | 4 × 9 | 6,9 milhões/s | 1,00× | Audição normal em tempo real |
-| High | 8 × 13 | 20 milhões/s | 2,89× | Sistemas rápidos, comparação detalhada |
-| Ultra | 20 × 25 | 96 milhões/s | 13,89× | Renderização offline e verificação |
-
-Quando o piso de estabilidade está inativo, aplique à carga relativa base estes multiplicadores: 44,1 kHz = 0,46×; 48 = 0,50×; 88,2 = 0,92×; 96 = 1,00×; 176,4 = 1,84×; 192 = 2,00×. A taxa de amostragem e os ajustes Tracking Force, Tip Mass, Compliance, Shape, Side Radius e Scan Radius podem ativar o piso e elevar a carga real acima desta estimativa base. Se houver falhas, reduza primeiro Quality.
-
-### Requisito de WASM e limites
-
-O Vinyl Simulator exige o núcleo DSP WebAssembly nativo em tempo real. Se WASM estiver desativado com `?dsp=off`, não for compatível ou falhar ao iniciar, a entrada passa sem alteração e a interface informa que WASM é necessário. A simulação JavaScript de referência, muito mais lenta, não é usada como fallback.
-
-O modelo processa o primeiro par estéreo. A deformação da poeira dura apenas enquanto cada partícula está ativa, e a agulha sempre avança por sulco recém-gerado; o desgaste não se acumula entre voltas nem é salvo em presets. Desgaste de longo prazo, visualização 3D, medidores SNR/THD em tempo real, wow/flutter, excentricidade, empenamento, rumble do toca-discos e carga elétrica da cápsula ficam fora do modelo.
-
-Lembre-se: Esses efeitos são feitos para adicionar caráter e nostalgia à sua música. Comece com configurações sutis e ajuste ao gosto!
+Se o Vinyl Simulator não estiver disponível no dispositivo, o áudio passa sem alteração e o painel mostra um aviso. O efeito não adiciona wow, excentricidade, empenamento nem rumble; use Wow Flutter ou outro efeito de ruído quando quiser esses sons.

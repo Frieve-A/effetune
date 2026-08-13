@@ -5,7 +5,6 @@
 import audioUtils from '../audio-utils/index.js';
 import dataStorage from '../dataStorage.js';
 import uiManager from '../ui/ui-manager.js';
-import i18n from '../i18n.js';
 
 // Import controller components
 import LevelAdjustment from './level-adjustment.js';
@@ -64,32 +63,11 @@ export class MeasurementController {
         try {
             await audioUtils.initialize();
             
-            // Setup back button event listeners
-            document.getElementById('backFromLevelBtn').addEventListener('click', () => {
-                this.returnToConfigScreen();
-            });
         } catch (error) {
             console.error('Failed to initialize audio:', error);
         }
     }
 
-    /**
-     * Return to configuration screen from level adjustment
-     */
-    returnToConfigScreen() {
-        // Stop any audio processes
-        if (audioUtils.isWhiteNoiseActive) {
-            audioUtils.stopWhiteNoise();
-            document.getElementById('noiseToggleBtn').textContent = i18n.t('button:playbackTestSignal') || 'Playback test signal for checking volume';
-        }
-        
-        this.stopLevelMeter();
-        audioUtils.stopMicrophoneInput();
-        
-        // Clear any ongoing measurement state
-        this.cleanup();
-    }
-    
     /**
      * Return to level adjustment screen from sweep measurement
      */

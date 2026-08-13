@@ -37,7 +37,7 @@ G.726 Simulator passes the selected mono channel or stereo pair through a real I
 
 The four modes are the standard G.726 rates: 16, 24, 32, and 40 kbit/s. The default 32 kbit/s setting is the historical DECT full-slot speech mode. Lower rates spend fewer bits on each 8 kHz sample and make granular quantization, rough sustained tones, and slope overload more apparent. The codec is designed for speech, so full-band music exposes its limits strongly.
 
-This effect requires its WebAssembly processing engine. If that engine or the selected sample-rate/channel mode is unavailable, the input remains unchanged and the plugin shows a plain-language status message. When processing resumes after suspension, the resamplers and codec prediction state restart together so buffered pre-suspension audio is not replayed.
+If the plugin reports that the effect is unavailable, try another sample rate or channel mode. Until then, the input remains unchanged.
 
 ### Sound Enhancement Guide
 

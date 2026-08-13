@@ -111,7 +111,7 @@ export class UIEventHandler {
             this.pipelineManager.fileProcessor.setupFileDropHandlers();
         }
         
-        // Setup global drag and drop handlers (for browser environment only)
+        // Setup global drag and drop handlers
         //
         // IMPORTANT DRAG & DROP BEHAVIOR NOTES:
         // --------------------------------------
@@ -143,7 +143,7 @@ export class UIEventHandler {
         //    - For music files elsewhere: events bubble up to document handlers
         //
         // DO NOT MODIFY THIS BEHAVIOR without thorough testing of all drag & drop scenarios!
-        if (!window.electronIntegration || !window.electronIntegration.isElectron) {
+        {
             // Add CSS for drag-over effect directly to the document
             const style = document.createElement('style');
             style.id = 'drag-drop-style';
@@ -293,7 +293,6 @@ export class UIEventHandler {
                     }
                     // Process music files (if any and no preset files)
                     else if (musicFiles.length > 0) {
-                        // For browser environment, create audio player directly with the files
                         if (window.uiManager) {
                             // Pass the File objects directly to preserve original file names
                             window.uiManager.createAudioPlayer(musicFiles, false);

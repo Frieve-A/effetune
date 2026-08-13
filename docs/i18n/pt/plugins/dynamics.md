@@ -11,7 +11,7 @@ Uma coleção de plugins que ajudam a equilibrar as partes altas e baixas da sua
 ## Lista de Plugins
 
 - [Auto Leveler](#auto-leveler) - Ajuste automático de volume para uma experiência de audição consistente
-- [Brickwall Limiter](#brickwall-limiter) - Controle transparente de picos para uma audição segura e confortável
+- [Brickwall Limiter](#brickwall-limiter) - Controle transparente dos picos do sinal para evitar clipping digital
 - [Compressor](#compressor) - Equilibra automaticamente os níveis de volume para uma audição mais confortável (inclui expansão para cima)
 - [Expander](#expander) - Expansão de faixa dinâmica abaixo do limite com controle de ratio e knee (inclui compressão para cima)
 - [Gate](#gate) - Reduz pausas ou trechos de baixo nível abaixo de um limiar
@@ -121,11 +121,11 @@ Um controle inteligente de volume que ajusta automaticamente sua música para ma
 
 ## Brickwall Limiter
 
-Um limitador de pico de alta qualidade que garante que sua música nunca exceda um nível específico, prevenindo clipagem digital enquanto mantém a qualidade natural do som. Perfeito para proteger seu sistema de áudio e garantir níveis de audição confortáveis sem comprometer a dinâmica da música.
+Um limitador de pico que mantém os picos do sinal abaixo do ceiling especificado para evitar clipping digital, preservando o máximo possível da dinâmica da música. Ajuste um volume confortável no dispositivo de reprodução; o limiter controla os picos do sinal, não a pressão sonora que chega aos seus ouvidos.
 
 ### Guia de Aprimoramento da Audição
 - Música Clássica:
-  - Aproveite com segurança os crescendos orquestrais completos
+  - Controle os picos dos crescendos orquestrais
   - Mantenha a dinâmica natural das peças de piano
   - Proteja contra picos inesperados em gravações ao vivo
 - Música Pop/Rock:
@@ -147,9 +147,9 @@ Um limitador de pico de alta qualidade que garante que sua música nunca exceda 
 - **Threshold** (-24dB a 0dB)
   - Define o nível de pico em que a limitação começa antes de Margin ser aplicado
   - O teto efetivo é Threshold + Margin
-  - Valores mais baixos fornecem mais margem de segurança
+  - Valores mais baixos deixam mais margem para os picos
   - Valores mais altos preservam mais dinâmica
-  - Comece em -3dB para proteção suave
+  - Comece em -3dB para limitação leve dos picos
 
 - **Release Time** (10ms a 500ms)
   - Rapidez com que a limitação é liberada
@@ -164,7 +164,7 @@ Um limitador de pico de alta qualidade que garante que sua música nunca exceda 
   - 3ms é um bom equilíbrio
 
 - **Margin** (-1.000dB a 0.000dB)
-  - Adiciona um deslocamento fino de segurança ao Threshold
+  - Adiciona um pequeno deslocamento para baixo ao Threshold
   - O teto real é Threshold + Margin
   - Por exemplo, Threshold em -3dB com Margin em -1.000dB limita por volta de -4dB
   - Valor padrão -1.000dB funciona bem para a maioria dos materiais
@@ -177,12 +177,11 @@ Um limitador de pico de alta qualidade que garante que sua música nunca exceda 
 
 ### Controles e Medição
 - Controles diretos para Input Gain, Threshold, Margin, Release, Lookahead e Oversampling
-- Informações de redução de ganho do limitador são reportadas internamente para medição do host ou status
 - O painel do plugin não mostra um gráfico separado de nível de pico
 
 ### Configurações Recomendadas
 
-#### Proteção Transparente
+#### Controle transparente de picos
 - Input Gain: 0dB
 - Threshold: -3dB
 - Release: 100ms
@@ -191,7 +190,7 @@ Um limitador de pico de alta qualidade que garante que sua música nunca exceda 
 - Oversampling: 4x
 - Teto efetivo: cerca de -4dB
 
-#### Máxima Segurança
+#### Mais margem para picos
 - Input Gain: -6dB
 - Threshold: -6dB
 - Release: 50ms

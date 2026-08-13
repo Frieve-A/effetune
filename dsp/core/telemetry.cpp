@@ -1,21 +1,14 @@
 #include "effetune/telemetry.h"
 
+#include "binary_io.h"
+
 #include <cstring>
 
 namespace effetune {
 namespace {
 
-void writeU16(std::uint8_t *output, std::uint16_t value) noexcept {
-  output[0] = static_cast<std::uint8_t>(value & 0xffu);
-  output[1] = static_cast<std::uint8_t>(value >> 8u);
-}
-
-void writeU32(std::uint8_t *output, std::uint32_t value) noexcept {
-  output[0] = static_cast<std::uint8_t>(value & 0xffu);
-  output[1] = static_cast<std::uint8_t>((value >> 8u) & 0xffu);
-  output[2] = static_cast<std::uint8_t>((value >> 16u) & 0xffu);
-  output[3] = static_cast<std::uint8_t>(value >> 24u);
-}
+using binary_io::writeU16;
+using binary_io::writeU32;
 
 } // namespace
 

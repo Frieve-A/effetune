@@ -39,7 +39,7 @@ When the audio output has one channel, GSM-FR Simulator processes that channel d
 
 Each 20 ms frame is represented by quantized linear-prediction, long-term-prediction, and regular-pulse-excitation parameters. Transcodes repeats the complete encode/decode stage with independent state, reproducing tandem coding rather than acting as a generic quality control. Additional channels beyond the selected stereo pair remain unchanged.
 
-This effect requires its WebAssembly processing engine. If that engine or the selected sample-rate/channel mode is unavailable, the input remains unchanged and the plugin shows a plain-language status message. When processing resumes after suspension, the resamplers, frame buffers, and codec state restart together so buffered pre-suspension audio is not replayed.
+If the plugin reports that the effect is unavailable, try another sample rate or channel mode. Until then, the input remains unchanged.
 
 ### Sound Enhancement Guide
 

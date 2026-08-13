@@ -38,26 +38,21 @@ Creates algorithmic reverberation with configurable room and decay behavior.
 
 ## RS Reverb
 
-An effect that can transport your music into different spaces, from cozy rooms to majestic halls. It adds natural echoes and reflections that make your music feel more three-dimensional and immersive.
+RS Reverb adds adjustable reflections and decay, making a dry recording sound as though it is playing in a room or hall.
 
 ### Listening Experience Guide
 - Intimate Space:
-  - Makes music feel like it's in a warm, cozy room
-  - Perfect for up-close, personal listening
-  - Adds subtle depth without losing clarity
-- Concert Hall Experience:
-  - Recreates the grandeur of live performances
-  - Adds majestic space to classical and orchestral music
-  - Creates an immersive concert experience
-- Atmospheric Enhancement:
-  - Adds dreamy, ethereal qualities
-  - Perfect for ambient and atmospheric music
-  - Creates engaging soundscapes
+  - Start with Room Size 8-12m, Reverb Time 1.0-1.5s, and Mix 20-30%
+  - Lower Mix if vocals or instrument attacks lose clarity
+- Hall-like Space:
+  - Start with Room Size 30-40m, Reverb Time 2.0-2.5s, and Mix 30-40%
+  - Shorten Reverb Time if successive notes become blurred
+- Long, Atmospheric Decay:
+  - Start with Room Size 25-40m, Reverb Time 3-6s, and Mix 40-60%
+  - Raise Damping or lower High Damp if the tail is too bright
 
 ### Parameters
-- **Pre-Delay** - Stored and displayed control (0 to 50 ms)
-  - In the current implementation, this value is not used by the reverb processing
-  - Changing it does not alter distance or depth; use Room Size, Reverb Time, and Mix for audible space changes
+- **Pre-Delay** (0 to 50 ms) - Changing this control does not currently change the sound. Use Room Size, Reverb Time, and Mix to adjust the sense of space.
 - **Room Size** - Sets how large the space feels (2.0 to 50.0 m)
   - Small (2-5m): Cozy room feeling
   - Medium (5-15m): Live room atmosphere
@@ -97,25 +92,25 @@ An effect that can transport your music into different spaces, from cozy rooms t
    - Room Size: 30-40m
    - Reverb Time: 2.0-2.5s
    - Mix: 30-40%
-   - Perfect for: Orchestral works, piano concertos
+   - Useful for: Orchestral works, piano concertos
 
 2. Intimate Jazz Club
    - Room Size: 8-12m
    - Reverb Time: 1.0-1.5s
    - Mix: 20-30%
-   - Perfect for: Jazz, acoustic performances
+   - Useful for: Jazz, acoustic performances
 
 3. Modern Pop/Rock
    - Room Size: 15-20m
    - Reverb Time: 1.2-1.8s
    - Mix: 15-25%
-   - Perfect for: Contemporary music
+   - Useful for: Contemporary music
 
 4. Ambient/Electronic
    - Room Size: 25-40m
    - Reverb Time: 3.0-6.0s
    - Mix: 40-60%
-   - Perfect for: Atmospheric electronic music
+   - Useful for: Atmospheric electronic music
 
 ### Quick Start Guide
 
@@ -130,10 +125,9 @@ An effect that can transport your music into different spaces, from cozy rooms t
    - Set Density and Diffusion for texture
 
 3. Fine-Tune the Effect
-   - Use Room Size and Reverb Time for depth; the Pre-Delay control value is not currently reflected in processing
    - Adjust Mix for final balance
    - Trust your ears and adjust to taste
 
-Remember: The goal is to enhance your music with natural space and atmosphere. Start with subtle settings and adjust until you find the perfect balance for your listening experience!
+Start with a low Mix value, then increase it until the added space is clear without obscuring the original recording.
 
 [Back to all effects](/dsp/effects/)

@@ -2043,6 +2043,44 @@ test('device reconnect paths choose platform-specific reset or relaunch behavior
   });
 });
 
+test('pipeline save callers share the normalized full-pipeline payload', async () => {
+  await withAppModule({}, async ({ calls, mod, window }) => {
+    for (const [currentPipeline, expectedCurrentPipeline] of [
+      ['A', 'A'],
+      ['B', 'B'],
+      ['invalid', 'A']
+    ]) {
+      const savedStates = [];
+      window.electronAPI = {
+        async savePipelineStateToFile(state) {
+          savedStates.push(state);
+        },
+        async relaunchApp() {}
+      };
+      const deps = createDependencies(calls, {
+        pipelineA: [{ name: 'A' }],
+        pipelineB: [{ name: 'B' }]
+      });
+      const app = new mod.App(deps);
+      app.audioManager.currentPipeline = currentPipeline;
+
+      const featureNavigationState = app.getPipelineStateForFeatureNavigation();
+      await app._savePipelineStateBeforeRisk();
+      app._appStartTime = Date.now() - 20000;
+      app._lastHdmiReconnectResetTime = 0;
+      await app._doMacosRelaunch();
+
+      const expectedState = {
+        pipelineA: [{ name: 'A' }],
+        pipelineB: [{ name: 'B' }],
+        currentPipeline: expectedCurrentPipeline
+      };
+      assert.deepEqual(featureNavigationState, expectedState);
+      assert.deepEqual(savedStates, [expectedState, expectedState]);
+    }
+  });
+});
+
 test('macOS relaunch save paths recover from missing or failing APIs', async () => {
   await withAppModule({}, async ({ calls, mod, window }) => {
     window.electronAPI = {

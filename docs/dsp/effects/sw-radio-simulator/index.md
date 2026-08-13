@@ -97,22 +97,22 @@ This effect requires an environment that supports its real-time processing. When
 - **Signal** (-50 to 0 dB) - Sets received signal strength. Weaker settings expose more receiver noise and require more AGC gain.
 - **Fading** (0 to 100%) - Distributes the received power between a stable direct path and two delayed ionospheric paths. 0% is steady short-range reception; the default gives the continuous fading of a distant signal; 100% makes fades deepest and selective-fade distortion strongest.
 - **Fading Speed** (0.1 to 10.0 Hz) - Sets how quickly the ionospheric paths change. Low values give slow swells; a few hertz and above turns the movement into rapid flutter.
-- **Delay Spread** (0.2 to 8.0 ms) - Sets the delay difference between the two ionospheric paths. It determines how closely the fading notches are spaced across the audio band — about 1 kHz apart at 1 ms, and closer as the setting rises — which is what makes a deep fade sound watery instead of merely quiet. Short values fade the whole band together; long values let different parts of the spectrum fade at different moments.
+- **Delay Spread** (0.2 to 8.0 ms) - Controls how differently parts of the spectrum fade. Low values mainly move the whole signal together; high values create a stronger watery, uneven fade.
 - **Static** (0 to 100/s) - Sets the rate of lightning-like crashes. Each event is injected ahead of the IF filter and rings through it. 0 switches them off.
 - **Interference** (-80 to 0 dB) - Sets the strength of a station sharing the channel. -80 dB is effectively off; values closer to 0 dB make it louder.
-- **Interf. Offset** (0.1 to 10 kHz) - Sets how far the interfering carrier sits from yours. The two carriers beat at that difference and produce the heterodyne whistle, so this control sets its pitch: below roughly 3 kHz it is a clear tone, and higher settings raise its pitch until the IF filter begins to attenuate it. The interfering program is modeled as shaped noise, so it adds a rough, rushing texture rather than intelligible speech.
+- **Interf. Offset** (0.1 to 10 kHz) - Sets the pitch of the interfering-station whistle. Values below about 3 kHz give a clear tone; higher values raise it until the IF filter begins to remove it.
 
 #### Tuning
 
-- **Mode** (AM, USB, or LSB) - Selects how the station is transmitted and received. AM is the double-sideband broadcast the rest of this description assumes. USB and LSB suppress the carrier and transmit a single sideband, the way amateur and utility stations do, and the receiver recovers the audio against its own beat-frequency oscillator. Mode also decides which controls apply: BFO Offset works only in USB and LSB, and Detector and Detector RC only in AM. Controls that do not apply are shown disabled and keep their values. USB and LSB come out at about the same loudness as AM at the same settings, and the residual difference is set by the program's crest and by how much of it is pauses: dense material measures about a decibel above AM, while voice-like material with frequent pauses measures a few decibels above it, because AGC lifts the background during the gaps. This is what a real receiver does: AGC normalizes the level inside the IF passband, and with the carrier suppressed that level is the program itself instead of a constant carrier, so the gain follows the program and rides up through every pause.
+- **Mode** (AM, USB, or LSB) - Selects broadcast-style AM or the narrower single-sideband sound of communications receivers. BFO Offset works only in USB and LSB; Detector and Detector RC work only in AM. Disabled controls keep their values.
 - **Tuning** (-5.0 to +5.0 kHz) - Offsets the receiver from the station; positive values tune the receiver above the station and negative values tune it below. Small offsets dull the sound, add asymmetric filtering distortion, and change how loud the heterodyne whistle is; larger offsets push the station out of the narrow IF passband. In USB, tuning high shifts the recovered audio down; in LSB, it shifts the audio up. Tuning low reverses those directions.
-- **BFO Offset** (-1000 to +1000 Hz) - Fine-tunes the beat-frequency oscillator in USB and LSB; it has no effect in AM. Together with Tuning it sets the frequency shift applied to everything the receiver recovers. Add Tuning × 1000 and BFO Offset to get the receiver's total offset in hertz: that offset is subtracted from every component in USB and added to every component in LSB. Zero is exactly on frequency, a few tens of hertz already makes the sound nasal, and larger settings render it unintelligible the way a mistuned receiver does.
-- **IF Bandwidth** (2.0 to 10.0 kHz) - Sets the receiver's IF passband. Narrow settings are the communications-receiver response that rejects noise and the co-channel station but removes more treble; wide settings keep more detail and more interference. The recovered audio reaches half this setting in every Mode — about 3 kHz at the 6 kHz default; in USB and LSB only one sideband is present, so the other half of the passband carries only noise and interference. Mode does not change this control for you; lower it yourself for a narrower communications sound.
+- **BFO Offset** (-1000 to +1000 Hz) - Fine-tunes USB and LSB reception. Start at 0 Hz; a small offset makes the sound nasal, while a large offset makes it increasingly inharmonic and hard to recognize.
+- **IF Bandwidth** (2.0 to 10.0 kHz) - Narrows or widens reception. Lower it to reject more noise and get a drier communications sound; raise it to keep more detail. Start at 6 kHz.
 
 #### Receiver
 
-- **Detector** (Envelope or Synchronous) - Envelope is the ordinary diode detector, and it is what turns a deep selective fade into watery distortion. Synchronous recovers the carrier with a PLL and demodulates against it, which greatly reduces that distortion while the fade is deep. It pulls in over roughly ±1 kHz of Tuning and drops out of lock beyond that, so use Envelope while moving the dial. Switching detectors restarts carrier acquisition. It applies to AM only, because USB and LSB always use the BFO product detector.
-- **AGC Speed** (Slow, Mid, or Fast) - Sets how quickly automatic gain control follows the fades. Slow leaves the level swings audible and pumps as the signal recovers; Fast holds the level more tightly. In AM it sets both how fast the gain comes down on a rise and how fast it comes back up. In USB and LSB it sets the recovery only: the gain always comes down within a few milliseconds, as it does in a real single-sideband receiver, so a new phrase is caught immediately instead of bursting through.
+- **Detector** (Envelope or Synchronous) - In AM, Envelope gives watery distortion during deep fades. Synchronous keeps the signal clearer but works best with Tuning within about ±1 kHz; use Envelope while searching for a station.
+- **AGC Speed** (Slow, Mid, or Fast) - Sets how quickly level control follows fades. Slow leaves more swelling and pumping; Fast keeps the level steadier.
 - **Detector RC** (20 to 500 µs) - Sets the envelope detector's discharge time. Longer values smooth the envelope more but increase high-frequency diagonal-clipping distortion at strong modulation. It has no effect when Detector is Synchronous, or in USB and LSB.
 - **Hum** (-80 to -20 dB) - Sets power-supply hum. -80 dB is effectively off. Most of this control modulates receiver gain before detection rather than adding a hum layer.
 - **Hum Freq** (50 or 60 Hz) - Selects the simulated power frequency.
@@ -121,7 +121,7 @@ This effect requires an environment that supports its real-time processing. When
 
 - **Speaker** (Off, Small, or Table) - Selects line output, the restricted speaker of a portable shortwave set, or the fuller response of a tabletop communications receiver.
 - **Output Gain** (-24 to +24 dB) - Adjusts level after receiver and speaker processing.
-- **Mix** (0 to 100%) - Blends the original stereo signal with the simulated mono reception. 100% is full shortwave reception, sent identically to left and right. Mix does not delay the dry signal to align it, so intermediate settings combine dry and wet signals with the receiver and propagation delay between them.
+- **Mix** (0 to 100%) - Blends the original stereo signal with the mono shortwave sound. Start at 100% for the full receiver effect; lower it to restore some original stereo detail.
 
 ### Reading the HUD
 
@@ -165,9 +165,5 @@ This effect requires an environment that supports its real-time processing. When
 7. **Off-Frequency Duck Voice**
    - Start from Single-Sideband Station and set BFO Offset: -150 Hz
    - Every component moves up by 150 Hz, so harmonics no longer line up and voices and instruments turn nasal and inharmonic. Switch Mode to LSB with the same setting to move everything down by 150 Hz instead, and use Tuning for coarser offsets.
-
-### Model Notes
-
-The effect processes the first stereo pair as one mono transmission, as real shortwave does, and the received signal is always mono. One co-channel station is modeled, and its program is shaped noise rather than speech or music. USB and LSB model the reception of a suppressed-carrier single-sideband signal; the sideband is selected at the transmitter, so the receiver adds no opposite-sideband rejection of its own, and CW and data modes are not modeled. Real band conditions — day and night propagation changes and specific broadcast bands — are outside this model; set the conditions you want with Signal, Fading, and the propagation controls.
 
 [Back to all effects](/dsp/effects/)

@@ -1,5 +1,6 @@
 #include "effetune/kernel.h"
 #include "FiveBandDynamicEQParams.h"
+#include "binary_io.h"
 
 #include <algorithm>
 #include <array>
@@ -112,15 +113,7 @@ struct BlockBand final {
   bool enabled = false;
 };
 
-void writeF32(std::uint8_t *output, float value) noexcept {
-  std::uint32_t bits = 0u;
-  static_assert(sizeof(bits) == sizeof(value));
-  std::memcpy(&bits, &value, sizeof(bits));
-  output[0] = static_cast<std::uint8_t>(bits & 0xffu);
-  output[1] = static_cast<std::uint8_t>((bits >> 8u) & 0xffu);
-  output[2] = static_cast<std::uint8_t>((bits >> 16u) & 0xffu);
-  output[3] = static_cast<std::uint8_t>(bits >> 24u);
-}
+using binary_io::writeF32;
 
 BiquadCoefficients calculateCoefficients(FilterType type, double frequency, double q,
                                          double gain_db, double sample_rate) noexcept {

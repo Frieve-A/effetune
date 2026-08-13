@@ -2,11 +2,11 @@
   "type": "AutoPanPlugin",
   "tolerance": { "abs": 0.000002, "policy": "per-sample" },
   "fields": [
-    { "name": "rate", "key": "rt", "kind": "float", "min": 0.05, "max": 20, "default": 0.35, "unit": "Hz" },
-    { "name": "depth", "key": "dp", "kind": "float", "min": 0, "max": 100, "default": 45, "unit": "%" },
-    { "name": "center", "key": "ct", "kind": "float", "min": -100, "max": 100, "default": 0, "unit": "%" },
-    { "name": "width", "key": "wd", "kind": "float", "min": 0, "max": 100, "default": 70, "unit": "%" },
+    { "name": "rate", "key": "rt", "kind": "float", "min": 0.05, "max": 20, "default": 0.35, "unit": "Hz", "automation": { "normalization": "log" } },
+    { "name": "depth", "key": "dp", "kind": "float", "min": 0, "max": 100, "default": 45, "unit": "%", "automation": true },
+    { "name": "center", "key": "ct", "kind": "float", "min": -100, "max": 100, "default": 0, "unit": "%", "automation": true },
+    { "name": "width", "key": "wd", "kind": "float", "min": 0, "max": 100, "default": 70, "unit": "%", "automation": true },
     { "name": "waveform", "key": "wf", "kind": "enum", "values": ["Sine", "Triangle"], "default": "Sine" },
-    { "name": "phase", "key": "ph", "kind": "float", "min": 0, "max": 360, "default": 0, "unit": "deg" }
+    { "name": "phase", "key": "ph", "kind": "float", "min": 0, "max": 360, "default": 0, "unit": "deg", "automation": true }
   ]
 }

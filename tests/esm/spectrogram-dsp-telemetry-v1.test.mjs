@@ -283,15 +283,21 @@ test('Spectrogram ring paints one physical column and draws it in chronological 
 test('Spectrogram color LUT freezes the legacy seven-stop gradient', () => {
   const runtime = loadSpectrogram();
   const plugin = new runtime.SpectrogramPlugin();
-  for (const intensity of [0, 42, 85, 128, 170, 212, 255]) {
-    const db = plugin.dr + intensity / 255 * -plugin.dr;
+  const expectedRgbaByIntensity = new Map([
+    [0, [0, 0, 0, 255]],
+    [42, [0, 0, 190, 255]],
+    [85, [0, 191, 191, 255]],
+    [128, [2, 191, 0, 255]],
+    [170, [191, 190, 0, 255]],
+    [212, [191, 2, 0, 255]],
+    [255, [191, 191, 191, 255]]
+  ]);
+  for (const [intensity, expectedRgba] of expectedRgbaByIntensity) {
     assert.deepEqual(
-      Array.from(plugin.spectrogramColorLut.slice(intensity * 3, intensity * 3 + 3)),
-      Array.from(plugin.dbToColor(db))
+      [...plugin.spectrogramColorLut.slice(intensity * 3, intensity * 3 + 3), 255],
+      expectedRgba
     );
   }
-  assert.deepEqual(Array.from(plugin.spectrogramColorLut.slice(0, 3)), [0, 0, 0]);
-  assert.deepEqual(Array.from(plugin.spectrogramColorLut.slice(255 * 3)), [191, 191, 191]);
 });
 
 test('Spectrogram markers tolerate equal f32 timestamps and reset on regression', () => {

@@ -22,38 +22,20 @@ test('DSP layout hash changes when enum value order changes', () => {
   assert.notEqual(computeLayoutHash(fields), computeLayoutHash(reorderedFields));
 });
 
-test('Phase 0 schemas generate C++ bindings without entering renderer JavaScript', () => {
-  const production = validateParamSpec({
+test('DSP schemas generate C++ and renderer JavaScript bindings', () => {
+  const spec = validateParamSpec({
     type: 'ProductionProbe',
-    tolerance: { abs: 1e-6 },
-    fields: []
-  });
-  const phase0 = validateParamSpec({
-    type: 'Phase0Probe',
-    phase0: true,
     tolerance: { abs: 1e-6 },
     fields: [{
       name: 'gain', key: 'gn', kind: 'float', min: -1, max: 1, default: 0
     }]
   });
-  const outputs = generateOutputs([production, phase0]);
+  const outputs = generateOutputs([spec]);
   const generatedJs = [...outputs.entries()]
     .find(([file]) => file.endsWith('dsp-params.generated.js'))[1];
 
-  assert.equal(production.phase0, false);
-  assert.equal(phase0.phase0, true);
-  assert.ok([...outputs.keys()].some(file => file.endsWith('Phase0ProbeParams.h')));
+  assert.ok([...outputs.keys()].some(file => file.endsWith('ProductionProbeParams.h')));
   assert.match(generatedJs, /ProductionProbe/);
-  assert.doesNotMatch(generatedJs, /Phase0Probe/);
-  assert.throws(
-    () => validateParamSpec({
-      type: 'InvalidPhase0Probe',
-      phase0: 'yes',
-      tolerance: { abs: 1e-6 },
-      fields: []
-    }),
-    /phase0 must be true or false/
-  );
 });
 
 test('DSP parameter generator can reject invalid enum values before packing', async () => {

@@ -36,12 +36,18 @@ function isFrequencyResponse(value) {
         Number.isFinite(entry[0]) && entry[0] > 0 && Number.isFinite(entry[1]));
 }
 
+function normalizeMeasurement(measurement) {
+    const normalized = { ...measurement };
+    delete normalized.correctedResponse;
+    return normalized;
+}
+
 function isIndexedDbUnavailableError(error) {
     return ['SecurityError', 'NotSupportedError', 'InvalidStateError'].includes(error?.name);
 }
 
 function metadataOnlyMeasurement(measurement) {
-    const metadata = structuredClone(measurement);
+    const metadata = normalizeMeasurement(structuredClone(measurement));
     delete metadata._deletedPointIds;
     delete metadata._originalPoints;
     delete metadata._editSnapshot;
@@ -75,7 +81,6 @@ function hasValidImportedScalars(data) {
     if (data.nextPointId !== undefined && !Number.isSafeInteger(data.nextPointId)) return false;
     if (data.averageFrequencyResponse !== undefined &&
         !isFrequencyResponse(data.averageFrequencyResponse)) return false;
-    if (data.correctedResponse !== undefined && !isFrequencyResponse(data.correctedResponse)) return false;
     if (data.peqParameters !== undefined && !Array.isArray(data.peqParameters)) return false;
     if (data.interfaceCalibration !== undefined) {
         const calibration = data.interfaceCalibration;
@@ -253,7 +258,7 @@ export class DataStorage {
                 
                 // Add each measurement to the store
                 for (const measurement of measurements) {
-                    store.put(measurement);
+                    store.put(normalizeMeasurement(measurement));
                 }
                 
                 // Migrate the "do not warn" setting
@@ -300,7 +305,7 @@ export class DataStorage {
                 request.onsuccess = (event) => {
                     const cursor = event.target.result;
                     if (cursor) {
-                        measurements.push(cursor.value);
+                        measurements.push(normalizeMeasurement(cursor.value));
                         cursor.continue();
                     } else {
                         // Done iterating
@@ -333,7 +338,7 @@ export class DataStorage {
         try {
             const storedData = localStorage.getItem(this.STORAGE_KEY);
             if (storedData) {
-                this.measurements = JSON.parse(storedData);
+                this.measurements = JSON.parse(storedData).map(normalizeMeasurement);
                 console.log(`Loaded ${this.measurements.length} measurements from localStorage (fallback)`);
             } else {
                 this.measurements = [];
@@ -356,7 +361,9 @@ export class DataStorage {
                 const transaction = db.transaction([this.STORE_NAME], 'readwrite');
                 const store = transaction.objectStore(this.STORE_NAME);
                 
-                for (const measurement of this.measurements) store.put(measurement);
+                for (const measurement of this.measurements) {
+                    store.put(normalizeMeasurement(measurement));
+                }
                 
                 transaction.oncomplete = () => {
                     resolve(true);
@@ -398,7 +405,7 @@ export class DataStorage {
         const deletedPointIds = Array.isArray(measurement._deletedPointIds)
             ? measurement._deletedPointIds
             : [];
-        const storedMeasurement = { ...measurement };
+        const storedMeasurement = normalizeMeasurement(measurement);
         delete storedMeasurement._deletedPointIds;
         delete storedMeasurement._originalPoints;
         delete storedMeasurement._editSnapshot;
@@ -693,21 +700,21 @@ export class DataStorage {
         // Ensure measurement has an ID and timestamp
         const measurementId = measurement.id || this.generateId();
         
-        const newMeasurement = {
+        const newMeasurement = normalizeMeasurement({
             ...measurement,
             id: measurementId,
             timestamp: measurement.timestamp || new Date().toISOString()
-        };
+        });
 
         // Check if measurement with this ID already exists
         const existingIndex = this.measurements.findIndex(m => m.id === measurementId);
         
         if (existingIndex !== -1) {
             // Update existing measurement
-            const updatedMeasurement = {
+            const updatedMeasurement = normalizeMeasurement({
                 ...newMeasurement,
                 lastModified: new Date().toISOString()
-            };
+            });
             
             const saved = await this.putMeasurement(updatedMeasurement, impulseResponseRecords);
             if (!saved) {
@@ -749,12 +756,12 @@ export class DataStorage {
         }
 
         // Update the measurement
-        const updatedMeasurement = {
+        const updatedMeasurement = normalizeMeasurement({
             ...this.measurements[index],
             ...updatedData,
             id: id, // Ensure ID doesn't change
             lastModified: new Date().toISOString()
-        };
+        });
         const saved = await this.putMeasurement(updatedMeasurement);
         if (!saved) {
             return false;
@@ -845,7 +852,7 @@ export class DataStorage {
             return null;
         }
         
-        const exported = structuredClone(measurement);
+        const exported = normalizeMeasurement(structuredClone(measurement));
         if (includeImpulseResponses) {
             let records;
             try {

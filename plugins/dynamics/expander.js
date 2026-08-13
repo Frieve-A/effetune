@@ -42,8 +42,12 @@ class ExpanderPlugin extends PluginBase {
                 return data;
             }
 
-            // Allocate result buffer
-            const result = new Float32Array(data.length);
+            // Reuse the output buffer while the block layout has the same total length.
+            let result = context.resultBuffer;
+            if (!result || result.length !== data.length) {
+                result = new Float32Array(data.length);
+                context.resultBuffer = result;
+            }
 
             // Constants (kept from original)
             const MIN_ENVELOPE = 1e-6;

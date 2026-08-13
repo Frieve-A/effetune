@@ -122,6 +122,17 @@
   "error:interfaceCalibrationProcessingFailed": "보정 측정을 완료하지 못했습니다. 연결과 설정을 확인한 뒤 이 지점을 다시 측정하십시오.",
   "error:measurementSetupFailed": "측정을 준비하지 못했습니다. 오디오 장치를 확인한 뒤 다시 시도하십시오.",
   "error:levelAdjustmentFailed": "오디오 입력을 준비하지 못했습니다. 입력 장치를 확인한 뒤 다시 시도하십시오.",
+  "error:audioUnsupported": "이 브라우저에서는 오디오 측정을 실행할 수 없습니다. 최신 Chrome 또는 Edge를 사용하십시오.",
+  "error:audioInitFailed": "오디오 장치를 준비하지 못했습니다. 브라우저 권한을 확인한 뒤 다시 시도하십시오.",
+  "error:measurementNameRequired": "계속하기 전에 측정 이름을 입력하십시오.",
+  "error:invalidSweepRange": "스윕 범위를 1 Hz에서 {max} Hz 사이로 설정하고 최솟값이 최댓값보다 작게 하십시오.",
+  "error:testSignalFailed": "테스트 신호를 제어하지 못했습니다. 오디오 출력을 확인한 뒤 다시 시도하십시오.",
+  "error:measurementConfigUnavailable": "측정 설정을 더 이상 사용할 수 없습니다. 새 측정을 시작하십시오.",
+  "error:measurementFailed": "측정을 완료하지 못했습니다. 오디오 장치를 확인하고 이 지점을 다시 측정하십시오.",
+  "error:measurementImportFailed": "측정 파일이 올바르지 않습니다. EffeTune에서 내보낸 측정 JSON 파일을 선택하십시오.",
+  "error:clipboardWriteFailed": "PEQ 설정을 복사하지 못했습니다. 클립보드 접근 권한을 확인한 뒤 다시 시도하십시오.",
+  "error:correctionUpdateFailed": "보정을 업데이트하지 못했습니다. 설정을 확인한 뒤 다시 시도하십시오.",
+  "error:measurementDisplayFailed": "측정 표시를 업데이트하지 못했습니다. 측정을 다시 선택하십시오.",
 
   // Messages
   "message:peqCopied": "PEQ 설정이 클립보드에 성공적으로 복사되었습니다. 복사된 설정은 Ctrl+V로 EffeTune의 이펙트 파이프라인에 붙여넣을 수 있습니다.",

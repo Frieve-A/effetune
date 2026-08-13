@@ -91,7 +91,11 @@ class PowerAmpSagPlugin extends PluginBase {
             // Pre-calculate sample rate inverse for performance, avoiding division in the loop.
             const invSampleRate = 1.0 / SAMPLE_RATE;
 
-            const result = new Float32Array(data.length);
+            let result = context.resultBuffer;
+            if (!result || result.length !== data.length) {
+                result = new Float32Array(data.length);
+                context.resultBuffer = result;
+            }
             let maxEnvelope = 0;
             let totalGainReduction = 0;
 

@@ -9,7 +9,8 @@ import {
   evaluateGsmFullRateRealtimeGate,
   gsmServedAssetHashMismatches,
   GSM_FULL_RATE_AUDIOWORKLET_CONFIGURATION,
-  GSM_FULL_RATE_REALTIME_THRESHOLDS
+  GSM_FULL_RATE_REALTIME_THRESHOLDS,
+  validateGsmSourceDigest
 } from '../../tools/dsp-parity/gsm-full-rate-audioworklet-bench.mjs';
 import { startAudioWorkletTraceCapture } from
   '../../tools/dsp-parity/g726-audioworklet-bench.mjs';
@@ -125,7 +126,30 @@ test('GSM AudioWorklet gate rejects an incomplete campaign', () => {
   );
 });
 
-test('GSM Phase 0 fixture packs its four floats without production runtime exports', async () => {
+test('GSM artifact provenance requires an exact current source digest', () => {
+  const expected = `sha256:${'a'.repeat(64)}`;
+  assert.doesNotThrow(() => validateGsmSourceDigest({ sourceDigest: expected }, expected));
+  assert.throws(
+    () => validateGsmSourceDigest({ sourceDigest: `${expected}0` }, expected),
+    /source digest does not match/
+  );
+  assert.throws(
+    () => validateGsmSourceDigest({ sourceDigest: expected.slice(0, -1) }, expected),
+    /source digest does not match/
+  );
+});
+
+test('GSM campaign revalidates artifact provenance before writing valid evidence', async () => {
+  const source = await fs.readFile(path.join(
+    repoRoot, 'tools', 'dsp-parity', 'gsm-full-rate-audioworklet-bench.mjs'
+  ), 'utf8');
+  assert.match(
+    source,
+    /const finalDigest = sourceDigest\(\);\s*validateGsmSourceDigest\(artifactSet\.metadata, finalDigest\);\s*const output =/
+  );
+});
+
+test('GSM fixture packs its four floats without production runtime exports', async () => {
   const source = await fs.readFile(path.join(
     repoRoot, 'tools', 'dsp-parity', 'gsm-full-rate-audioworklet-bench.html'
   ), 'utf8');

@@ -17,7 +17,7 @@ A collection of plugins that add space and atmosphere to your music. These effec
 
 ## Dattorro Plate Reverb
 
-A classic plate reverb implementation based on Jon Dattorro's renowned algorithm from the 1997 paper "Effect Design, Part 1: Reverberator and Other Filters." This algorithm is celebrated for its lush, smooth sound quality and has become a reference standard in digital reverb design. Perfect for adding rich, shimmering ambience to your music.
+A plate reverb based on Jon Dattorro's 1997 design. It adds a dense, smooth decay that works well when you want spacious ambience without the impression of a specific room.
 
 Routing note: Dattorro Plate Reverb is a stereo plate model. When routed with more than two channels, all routed input channels feed one shared mono-to-stereo plate, but the wet/dry mix is written only to the first routed stereo pair. Additional channels contribute to the plate input and otherwise pass through unchanged, including when Dry Mix is 0%; they do not receive a wet return and are not independent plate tanks.
 
@@ -40,7 +40,7 @@ Routing note: Dattorro Plate Reverb is a stereo plate model. When routed with mo
   - 0-10ms: Immediate reverb, intimate feeling
   - 10-30ms: Natural sense of space
   - 30-99.9ms: Creates impression of larger spaces
-  - Avoid exactly 100.0ms when you want maximum pre-delay; the current implementation treats that endpoint like no effective pre-delay
+  - Avoid exactly 100.0ms when you want maximum pre-delay, because that setting produces almost no audible pre-delay
 - **Bandwidth** - Input signal filtering (0.0 to 1.0)
   - Lower values: Darker, warmer input tone
   - Higher values (near 1.0): Brighter, full-frequency input
@@ -88,28 +88,28 @@ Routing note: Dattorro Plate Reverb is a stereo plate model. When routed with mo
    - Damping: 0.001
    - Mod Depth: 1.0
    - Wet Mix: 25-35%
-   - Perfect for: Solo piano, chamber music
+   - Useful for: Solo piano, chamber music
 
 2. Vocals and Acoustic
    - Decay: 0.4-0.5
    - Damping: 0.002
    - Pre Delay: 15-25ms
    - Wet Mix: 20-30%
-   - Perfect for: Vocals, acoustic guitar
+   - Useful for: Vocals, acoustic guitar
 
 3. Ambient and Atmospheric
    - Decay: 0.8-0.95
    - Mod Depth: 4.0-8.0
    - Mod Rate: 0.5-1.0Hz
    - Wet Mix: 50-70%
-   - Perfect for: Ambient, electronic, soundscapes
+   - Useful for: Ambient, electronic, soundscapes
 
 4. General Enhancement
    - Decay: 0.5
    - Damping: 0.0005
    - Mod Depth: 1.0
    - Wet Mix: 20-30%
-   - Perfect for: All-around use, subtle polish
+   - Useful for: General listening and subtle ambience
 
 ### Quick Start Guide
 
@@ -137,7 +137,7 @@ The Dattorro Plate Reverb brings a classic plate-style ambience to your listenin
 
 ## FDN Reverb
 
-A sophisticated reverb effect based on Feedback Delay Network (FDN) architecture using a Hadamard diffusion matrix. This creates rich, complex reverberation with excellent density and natural decay characteristics, perfect for enhancing your music listening experience with immersive spatial effects.
+FDN Reverb adds a dense, natural-sounding decay. Use it to give dry or close recordings a clearer sense of room size and distance.
 
 Routing note: FDN Reverb is a stereo reverb model with one shared feedback tank. When routed with more than two channels, each routed channel advances that shared tank in sequence rather than using independent per-channel tanks. Channel 1 receives the left wet signal, and channels 2+ receive the right wet signal.
 
@@ -215,28 +215,28 @@ Routing note: FDN Reverb is a stereo reverb model with one shared feedback tank.
    - Density: 8 lines
    - Pre Delay: 30-50ms
    - HF Damp: 4.0-6.0
-   - Perfect for: Orchestral recordings, chamber music
+   - Useful for: Orchestral recordings, chamber music
 
 2. Jazz Club Atmosphere
    - Reverb Time: 1.2-1.8s
    - Density: 6 lines
    - Pre Delay: 15-25ms
    - HF Damp: 2.0-4.0
-   - Perfect for: Acoustic jazz, intimate performances
+   - Useful for: Acoustic jazz, intimate performances
 
 3. Pop/Rock Enhancement
    - Reverb Time: 1.0-2.0s
    - Density: 6-7 lines
    - Pre Delay: 10-30ms
    - Wet Mix: 20-40%
-   - Perfect for: Modern recordings, adding space
+   - Useful for: Recordings that need a little more space
 
 4. Ambient Soundscapes
    - Reverb Time: 4.0-8.0s
    - Density: 8 lines
    - Mod Depth: 3.0-6.0
    - Wet Mix: 60-80%
-   - Perfect for: Atmospheric music, relaxation
+   - Useful for: Atmospheric music and long decays
 
 ### Quick Start Guide
 
@@ -260,7 +260,7 @@ Routing note: FDN Reverb is a stereo reverb model with one shared feedback tank.
    - Keep Dry Mix at 100% for normal listening
    - Fine-tune based on your music and preferences
 
-The FDN Reverb transforms your listening experience by adding realistic acoustic spaces to any recording. Perfect for music lovers who want to enhance their favorite tracks with beautiful, natural-sounding reverberation!
+Start with a low Mix value, then increase it until the added space is audible without masking detail in the recording.
 
 ## IR Reverb
 
@@ -294,34 +294,29 @@ Time runs left to right and level runs from 0 to -90 dB. The solid energy decay 
 
 A mono IR can feed selected channels, independent IR channels stay separate, and a four-channel true-stereo IR uses LL/LR/RL/RR cross-routes. In Auto, every four-channel IR on a stereo selection is interpreted in that order; choose Independent or Diagonal Matrix explicitly for quad or other four-channel layouts. Other multichannel files use a bounded diagonal route; IR Reverb does not create a full surround crossfeed matrix. For paired true-stereo files, select matching `L`/`R` or `Left`/`Right` filenames together.
 
-Imported originals are kept in the IR library. The web app uses browser origin-private storage (OPFS); the desktop app uses its managed application storage. **Impulse Response Library** displays and searches the original filenames and lets you load or delete entries. Changing the audio sample rate rebuilds the prepared data from the stored original. Browser storage can still be removed by site-data cleanup or storage pressure, so keep a separate copy of every IR you need.
+Imported IR files are kept in the **Impulse Response Library**, where you can search, load, or delete them by their original filenames. In the web app, these files are stored in your browser and can be lost if you clear site data or the browser frees storage. The desktop app stores them with its application data. Keep a separate copy of every IR you need.
 
-Shared URLs and presets contain only the IR content ID, not the audio bytes or filename. A recipient must import the exact same file to relink the ID, or deliberately choose a substitute from the library. If the IR is missing, the wet asset is cleared and IR Reverb follows its **Dry** setting. Because convolution is WASM-only, an unavailable WASM engine passes only the configured dry signal and shows a warning.
+Shared URLs and presets identify the IR but do not include its audio data. If the IR is unavailable, no wet sound is produced; import or select the IR again, or choose a replacement. The dry signal continues according to the **Dry** setting.
 
 For freely available material, start with the University of York [OpenAIR library](https://www.openair.hosted.york.ac.uk/), [EchoThief downloads](https://www.echothief.com/downloads/), or individual IR uploads on [Freesound](https://freesound.org/). “Free” does not mean unrestricted: OpenAIR records the license on each content page, and Freesound files may be CC0, CC BY, or CC BY-NC. Check the specific download page, keep the author/source/license with the file, provide attribution where required, and confirm that your intended commercial or redistribution use is permitted. EffeTune does not store or verify licensing information.
 
 ## RS Reverb
 
-An effect that can transport your music into different spaces, from cozy rooms to majestic halls. It adds natural echoes and reflections that make your music feel more three-dimensional and immersive.
+RS Reverb adds adjustable reflections and decay, making a dry recording sound as though it is playing in a room or hall.
 
 ### Listening Experience Guide
 - Intimate Space:
-  - Makes music feel like it's in a warm, cozy room
-  - Perfect for up-close, personal listening
-  - Adds subtle depth without losing clarity
-- Concert Hall Experience:
-  - Recreates the grandeur of live performances
-  - Adds majestic space to classical and orchestral music
-  - Creates an immersive concert experience
-- Atmospheric Enhancement:
-  - Adds dreamy, ethereal qualities
-  - Perfect for ambient and atmospheric music
-  - Creates engaging soundscapes
+  - Start with Room Size 8-12m, Reverb Time 1.0-1.5s, and Mix 20-30%
+  - Lower Mix if vocals or instrument attacks lose clarity
+- Hall-like Space:
+  - Start with Room Size 30-40m, Reverb Time 2.0-2.5s, and Mix 30-40%
+  - Shorten Reverb Time if successive notes become blurred
+- Long, Atmospheric Decay:
+  - Start with Room Size 25-40m, Reverb Time 3-6s, and Mix 40-60%
+  - Raise Damping or lower High Damp if the tail is too bright
 
 ### Parameters
-- **Pre-Delay** - Stored and displayed control (0 to 50 ms)
-  - In the current implementation, this value is not used by the reverb processing
-  - Changing it does not alter distance or depth; use Room Size, Reverb Time, and Mix for audible space changes
+- **Pre-Delay** (0 to 50 ms) - Changing this control does not currently change the sound. Use Room Size, Reverb Time, and Mix to adjust the sense of space.
 - **Room Size** - Sets how large the space feels (2.0 to 50.0 m)
   - Small (2-5m): Cozy room feeling
   - Medium (5-15m): Live room atmosphere
@@ -361,25 +356,25 @@ An effect that can transport your music into different spaces, from cozy rooms t
    - Room Size: 30-40m
    - Reverb Time: 2.0-2.5s
    - Mix: 30-40%
-   - Perfect for: Orchestral works, piano concertos
+   - Useful for: Orchestral works, piano concertos
 
 2. Intimate Jazz Club
    - Room Size: 8-12m
    - Reverb Time: 1.0-1.5s
    - Mix: 20-30%
-   - Perfect for: Jazz, acoustic performances
+   - Useful for: Jazz, acoustic performances
 
 3. Modern Pop/Rock
    - Room Size: 15-20m
    - Reverb Time: 1.2-1.8s
    - Mix: 15-25%
-   - Perfect for: Contemporary music
+   - Useful for: Contemporary music
 
 4. Ambient/Electronic
    - Room Size: 25-40m
    - Reverb Time: 3.0-6.0s
    - Mix: 40-60%
-   - Perfect for: Atmospheric electronic music
+   - Useful for: Atmospheric electronic music
 
 ### Quick Start Guide
 
@@ -394,8 +389,7 @@ An effect that can transport your music into different spaces, from cozy rooms t
    - Set Density and Diffusion for texture
 
 3. Fine-Tune the Effect
-   - Use Room Size and Reverb Time for depth; the Pre-Delay control value is not currently reflected in processing
    - Adjust Mix for final balance
    - Trust your ears and adjust to taste
 
-Remember: The goal is to enhance your music with natural space and atmosphere. Start with subtle settings and adjust until you find the perfect balance for your listening experience!
+Start with a low Mix value, then increase it until the added space is clear without obscuring the original recording.

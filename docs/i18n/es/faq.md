@@ -10,7 +10,7 @@ EffeTune es una aplicación DSP en tiempo real para entusiastas del audio dispon
 
 ## Contenido
 1. Configuración inicial para streaming
-   1.1. Instalación de VB-CABLE y uso de 96 kHz
+   1.1. Instalación de VB-CABLE y corrección opcional de aliasing a 96 kHz
    1.2. Entrada de servicio de streaming (ejemplo con Spotify)
    1.3. Configuración de audio de EffeTune
    1.4. Comprobación de funcionamiento
@@ -36,8 +36,10 @@ EffeTune es una aplicación DSP en tiempo real para entusiastas del audio dispon
 
 Ejemplo en Windows: Spotify → VB-CABLE → EffeTune → DAC/AMP. Los conceptos son similares para otros servicios y sistemas operativos.
 
-### 1.1. Instalación de VB-CABLE y habilitación de 96 kHz
-Descargue el paquete de controladores VB-CABLE, ejecute `VBCABLE_Setup_x64.exe` como administrador y reinicie. Devuelva la salida predeterminada del sistema operativo a sus altavoces/DAC y configure los formatos de **CABLE Input** y **CABLE Output** a 24 bits, 96,000 Hz. Ejecute `VBCABLE_ControlPanel.exe` como administrador, elija **Menú▸Frecuencia de muestreo interna = 96000 Hz**, y luego haga clic en **Reiniciar motor de audio**.
+### 1.1. Instalación de VB-CABLE y corrección opcional de aliasing a 96 kHz
+Descarga el paquete de controladores VB-CABLE, ejecuta `VBCABLE_Setup_x64.exe` como administrador y reinicia el PC. Si la salida predeterminada del sistema cambió a **CABLE Input**, vuelve a seleccionar tus altavoces o DAC.
+
+Si con VB-CABLE aparece ruido de aliasing por encima de 20 kHz, la causa es su funcionamiento interno a 48 kHz. Solo para este problema, configura **CABLE Input** y **CABLE Output** en 24 bits, 96.000 Hz. Después abre `VBCABLE_ControlPanel.exe` como administrador, elige **Menu▸Internal Sample Rate = 96000 Hz** y pulsa **Restart Audio Engine**. Se requieren permisos de administrador para que este ajuste se conserve después de reiniciar el equipo. Este cambio afecta al propio VB-CABLE y no suele ser necesario para usar EffeTune a 96 kHz.
 
 ### 1.2. Enrutamiento del servicio de streaming (ejemplo de Spotify)
 Abra **Configuración▸Sistema▸Sonido▸Mezclador de volumen**, y configure la salida de `Spotify.exe` a **CABLE Input**. Reproduzca una pista para confirmar que no hay sonido desde los altavoces.
@@ -47,7 +49,7 @@ En macOS, utilice **SoundSource** de Rogue Amoeba para asignar la salida de Spot
 Inicie la aplicación de escritorio y abra **Configurar audio**.
 - **Dispositivo de entrada:** CABLE Output (VB-Audio Virtual Cable)
 - **Dispositivo de salida:** DAC/Altavoces físicos
-- **Frecuencia de muestreo:** 96,000 Hz (tasas más bajas pueden degradar la calidad)
+- **Frecuencia de muestreo:** selecciona 96 kHz. Es la tasa de procesamiento interna de EffeTune y normalmente no requiere cambiar las tasas del sistema operativo, los dispositivos de audio ni VB-CABLE. Reduce el aliasing que cae en la banda audible cuando el filtrado antialiasing de los efectos no lineales es limitado. Comprueba la tasa efectiva que muestra la aplicación. Si hay cortes, reduce primero los efectos exigentes o el número de efectos activos y baja la tasa solo si sigue siendo necesario. Este ajuste es independiente de la corrección específica de VB-CABLE descrita arriba.
 
 ### 1.4. Comprobación de funcionamiento
 Con Spotify reproduciendo, alterne el **ON/OFF** principal en EffeTune y confirme que el sonido cambia.
@@ -62,7 +64,7 @@ Con Spotify reproduciendo, alterne el **ON/OFF** principal en EffeTune y confirm
 | ------ | ------ |
 | Cortes o fallos | Elija **Reiniciar audio** desde el menú **Configuración** o el menú de desbordamiento en móvil para reconstruir el pipeline de audio. En la aplicación de escritorio también puede usar **Ver▸Recargar**. Si es necesario, reduzca el número de efectos activos o aumente **Latencia:** en **Configuración de audio** para mejorar la estabilidad (puede afectar la sincronización con video). |
 | Distorsión o recorte | Inserte **Level Meter** al final de la cadena y mantenga los niveles por debajo de 0 dBFS. Añada **Brickwall Limiter** antes del Level Meter si es necesario. |
-| Aliasing por encima de 20 kHz | VB-CABLE puede seguir funcionando a 48 kHz. Revise la configuración inicial. |
+| Ruido de aliasing por encima de 20 kHz al usar VB-CABLE | Su frecuencia interna puede seguir en 48 kHz. Aplica la configuración opcional de 96 kHz de la sección 1.1. |
 
 ### 2.2. Alto uso de CPU
 Desactive los efectos que no esté utilizando o elimínelos del **Effect Pipeline**.
@@ -95,10 +97,10 @@ Out 1‑2 y Out 3‑4 aparecen como dispositivos separados, impidiendo la salida
 - Use **ASIO Link Pro** para exponer un dispositivo virtual de 4 canales (avanzado).
 
 ### 3.3. Retardo de canal y alineación temporal
-Use **MultiChannel Panel** o **Time Alignment** para retrasar canales en pasos de 10 µs (mínimo 1 muestra). Para retrasos grandes, retrase los canales frontales entre 100-400 ms. La sincronización de video debe ajustarse en el lado del reproductor.
+Use **MultiChannel Panel** o **Time Alignment** para retrasar canales en pasos de 10 µs (mínimo 1 muestra). Para alinear los altavoces frontales con altavoces traseros Bluetooth o inalámbricos cuya latencia medida sea mucho mayor, retrase los canales frontales entre 100-400 ms; no es un valor habitual para corregir la distancia entre altavoces. La sincronización de video debe ajustarse en el reproductor.
 
 ### 3.4. Límite de 8 canales y expansión
-Los controladores actuales del sistema operativo admiten hasta 8 canales. EffeTune puede soportar más canales cuando los sistemas operativos lo permitan.
+Actualmente, EffeTune admite hasta 8 canales de salida.
 
 ---
 
@@ -110,7 +112,7 @@ Los controladores actuales del sistema operativo admiten hasta 8 canales. EffeTu
 | No puedo instalar la versión PWA | Use el botón **Instalar versión PWA** del sitio de EffeTune o, en la versión web, abra el menú de engranaje de la esquina superior derecha y elija **Instalar aplicación**. Si la opción no aparece, en Android o PC abra EffeTune con Chrome, Edge u otro navegador basado en Chrome. En iPhone/iPad, ábralo con Safari y use el menú Compartir para añadirlo a la pantalla de inicio. En navegadores integrados en otras aplicaciones, navegación privada o navegadores antiguos, puede que la opción de instalación no aparezca. |
 | ¿Entrada surround (5.1ch, etc.)? | La API Web Audio limita la entrada a 2 canales. La salida y los efectos admiten hasta 8 canales. |
 | ¿Longitud recomendada de la cadena de efectos? | Use tantos efectos como su CPU permita sin causar cortes o alta latencia. |
-| ¿Cómo obtener la mejor calidad de sonido? | Use 96 kHz o superior, comience con ajustes sutiles, monitoree el headroom con **Level Meter**, y añada **Brickwall Limiter** si es necesario. |
+| ¿Cómo obtener la mejor calidad de sonido? | Ajusta la **Tasa de muestreo** de EffeTune a 96 kHz, empieza con ajustes de efectos sutiles y vigila el margen con **Level Meter**. Si hay cortes, reduce primero los efectos exigentes o el número de efectos activos y baja la tasa solo si sigue siendo necesario. Añade **Brickwall Limiter** si hace falta. |
 | ¿Funciona con cualquier fuente? | Sí. Con un dispositivo de audio virtual puede procesar streaming, archivos locales o equipos físicos. |
 | ¿Puede EffeTune reproducir contenido protegido por DRM? | No de forma directa. EffeTune procesa audio, mientras que el contenido protegido está pensado para reproducirse únicamente en entornos autorizados por su proveedor y puede no estar disponible para aplicaciones de procesamiento de audio de terceros. Utilice la aplicación o el sitio web oficial del proveedor y respete sus condiciones y los métodos de salida de audio admitidos. EffeTune no elimina ni elude la protección del contenido. |
 | ¿Puedo usar solo el reproductor de archivos de música, sin entrada de audio? | Sí. Si al iniciar EffeTune el sonido del micrófono se filtra a los auriculares, elija **Ninguno (solo reproductor de archivos de música)** en **Dispositivo de entrada:** dentro de **Configuración de audio**. EffeTune mantiene la cadena de efectos activa con una fuente silenciosa, por lo que el reproductor y los efectos generadores de señal como **Oscillator** siguen funcionando. Si selecciona una entrada de audio, puede procesar el sonido de equipos externos conectados mediante una interfaz de audio USB o comprobar la señal de entrada con **Spectrum Analyzer**. |
@@ -123,7 +125,7 @@ Los controladores actuales del sistema operativo admiten hasta 8 canales. EffeTu
 | ¿Qué formatos de listas de reproducción puede importar o exportar la Biblioteca musical? | La Biblioteca musical puede importar listas M3U, M3U8, PLS y XSPF, y exportar listas M3U8 o XSPF. |
 | ¿La Biblioteca musical modifica mis archivos de audio? | No. El escaneo, la lectura de metadatos, la caché de carátulas, la edición de listas y la reproducción se mantienen dentro de la aplicación y nunca modifican los archivos de audio en disco. |
 | No puedo seleccionar el dispositivo de salida en la aplicación web | Depende de la compatibilidad del navegador y de los permisos. Pruebe en un contexto seguro con Chrome/Chromium o configure el DAC/AMP que quiere usar como salida predeterminada en el sistema operativo o el navegador. |
-| ¿Por qué **Tasa de muestreo:** o **Canales de salida:** no quedan en el valor elegido? | El navegador o el dispositivo pueden redondear o ignorar valores no admitidos. EffeTune funciona con el valor que realmente queda activo. |
+| ¿Por qué **Tasa de muestreo:** o **Canales de salida:** no quedan en el valor elegido? | La pantalla de ajustes muestra 96 kHz como valor predeterminado de la tasa, pero antes de guardarla por primera vez la aplicación puede iniciar con el valor predeterminado del sistema o del navegador. En la versión web, si el navegador o el dispositivo rechazan 96 kHz u otro valor no admitido, EffeTune usa una tasa disponible. Comprueba la tasa efectiva que muestra la aplicación. Los canales de salida disponibles también dependen del navegador y del dispositivo. |
 | ¿Por qué se ha puesto rojo el indicador de tasa de muestreo y canales? | EffeTune detectó que el procesamiento de los efectos activados no terminó a tiempo para funcionar en tiempo real. El aviso rojo desaparece unos 10 segundos después de que el procesamiento se recupere. Reduzca el número de efectos activados. |
 | ¿El reproductor web recuerda la lista de reproducción? | Se guardan los ajustes de repetición y aleatorio, pero la selección normal de archivos no se restaura tras recargar debido a las restricciones del navegador. |
 | ¿Se puede reproducir en móvil con la pantalla apagada? | Depende del navegador y no se puede garantizar, especialmente en iOS. En entornos compatibles se usa Wake Lock, pero la reproducción en segundo plano no está garantizada. |
@@ -145,7 +147,7 @@ Para reproducir el resultado en otro equipo, entrega el archivo IR sin modificar
 ## 5. Respuesta de frecuencia y corrección de sala
 
 ### 5.1. Importación de ajustes de AutoEQ a 15Band PEQ
-Desde EffeTune v1.51 o posterior, puede importar ajustes de ecualizador AutoEQ directamente desde el botón en la parte superior derecha.
+Puede importar ajustes de ecualizador AutoEQ directamente desde el botón en la parte superior derecha.
 
 ### 5.2. Pegado de ajustes de corrección de medición
 Copie los ajustes de 5Band PEQ desde la página de medición y péguelos en la vista **Effect Pipeline** usando **Ctrl+V** o el menú.

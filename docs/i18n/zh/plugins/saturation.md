@@ -18,13 +18,13 @@ lang: zh
 - [Multiband Saturation](#multiband-saturation) - 独立塑造低频、中频和高频范围
 - [Saturation](#saturation) - 添加类似复古设备的温暖感和丰富感
 - [Sub Synth](#sub-synth) - 添加经过滤波的低频信号以增强低频
-- [Tube Simulator](#tube-simulator) - 模拟电子管线路级和推挽功率放大器
+- [Tube Simulator](#tube-simulator) - 模拟电子管线路级以及推挽或单端功率放大器
 
 ## Bandwidth Extender
 
 Bandwidth Extender 适用于高频存在明确截止的音频，例如部分低码率 MP3。它会共同分析左右声道，并且只在检测或指定的边界以上添加新内容。它无法还原原始丢失波形；Auto 找不到稳定截止频率时通常不会进行处理。
 
-生成频带由两个可独立调节的部分组成：与输入相关的谐波延伸，以及确定性的整形噪声。原信号保持单位增益，并延迟到与重叠相加处理路径对齐。
+生成频带由两个可独立调节的部分组成：与输入相关的谐波延伸，以及确定性的整形噪声。原声保持不变，只在其上加入这两个新成分。
 
 ### 听感改善指南
 
@@ -36,10 +36,10 @@ Bandwidth Extender 适用于高频存在明确截止的音频，例如部分低�
 
 - **Harmonic Amount**（0-200%，默认 100%）仅控制谐波延伸：0% 移除此部分，100% 是参考电平，200% 将其加倍且不改变噪声或原信号。
 - **Noise Amount**（0-200%，默认 100%）仅控制整形噪声：0% 移除此部分，100% 是参考电平，200% 将其加倍且不改变谐波或原信号。
-- **Cutoff** 可选择 **Auto**（寻找两个声道共有的陡峭、持续的频谱下降）或 **Manual**。
+- **Cutoff** 可选择 **Auto**（寻找两个声道共有的陡峭、持续的频谱下降）或 **Manual**。在 Manual 下，生成频带会自动限制在当前播放可用的频率范围内。
 - **Manual Cutoff**（6000-20000 Hz）设置 Manual 模式下开始生成的频率。
 
-支持 44.1-192 kHz 的单声道和立体声对，并且需要 WebAssembly。约 21 ms 的分析窗会作为延迟报告给宿主，使原信号与生成信号保持时间对齐。
+Bandwidth Extender 会增加约 21 ms 延迟。如果当前采样率、声道设置或设备无法运行此效果，插件面板会显示旁路提示，声音不会改变。请改用支持的设置或停用该插件。
 
 ## Dynamic Saturation
 
@@ -490,193 +490,82 @@ Harmonic Distortion 插件使用可调的 2 阶到 5 阶非线性项塑造波形
 
 ## Tube Simulator
 
-Tube Simulator 使用真实的电子管电路元件参数模拟完整电气信号链。**Line** 只使用两级小信号电子管放大器；**Push-Pull Power** 则把同一驱动器经过一个固定音量送入按实管差分对求解的 12AX7 倒相级，再送入一对 EL84、EL34、6L6GC 或 KT88 输出管、输出变压器和频率相关的扬声器负载。偏置、B+、变压器和负载状态会随信号实时求解，使谐波、压缩、电源下垂和电气阻尼随音乐变化。扬声器负载模拟的是放大器看到的电气负载，不是箱体或麦克风模拟。
+Tube Simulator 可加入电子管线路级和功率放大器电路随信号变化的谐波、压缩与电源响应。**Line** 仅使用驱动级，**Push-Pull Power** 提供 EL84、EL34、6L6GC 和 KT88 推挽电路，**SE Triode** 提供 300B 和 2A3 单端电路。它会模拟放大器所见的扬声器电气负载，但不会加入音箱或麦克风的声音。
 
-在 Driver Type 中选择 **Bypass** 会跳过共用的两级驱动器。Push-Pull Power 仍保留必需的倒相级和输出管；SE Triode 则直接驱动所选输出管。
+### 听音调整指南
 
-**SE Triode** 不使用倒相级或帘栅电源，而由单只 300B 或 2A3 驱动带气隙的单端输出变压器。建议从预设的 3dB Negative Feedback 开始；轻度反馈通常在 0–6dB 范围内调节。
-
-### 聆听调整指南
-
-- 插件启动时采用 **EL84 Pentode @2%**，包括已完成电平匹配的 Output Trim -7.372dB。
-- 如果饱和过强，请降低 Input Volume 以减少进入电路的电压，再用 Output Trim 恢复听感音量。Output Trim 不会恢复电路内部余量。
-- 若要获得透明的线路级染色，请选择 **Pre** 中的 **0.01%** 或 **0.1%** 预设；需要更明显的谐波时，可继续使用现有的 **@1%** 选项。
-- **Pre** 组用于单独的两级驱动器，**Power** 组用于 Driver Type 设为 Bypass 的功率级，**Pre+Power** 组用于完整的驱动器和功率级信号链。所有可选预设都已校准到适合聆听的失真率和相同的播放电平。
-- 请从 **EL84 Distributed 10 W @2%** 开始体验较克制的功放响应。与 **EL84 Pentode 10 W @2%** 切换比较，可在保持管型不变时听出帘栅连接和变压器负载的影响。
-- 要体验更高电压的 EL34 电路，请选择 **EL34 Distributed 20–37 W @2%**。其电平已与其他 Power 和 Pre+Power 设置匹配。
-- 请选择 **6L6GC Pentode @2%** 体验较低跨导的束射四极管电路，或选择 **KT88 Distributed @2%** 体验电流更大、帘栅抽头为 43% 的 KT88 模型。
-- 请选择 **300B SE @2%** 和 **2A3 SE @2%** 比较两个完整的单端电路。由于只有一只输出管，它们不会像平衡 push-pull 管对那样抵消偶次谐波。
-- 在 SE Triode 模式下，请从预设的 3dB Negative Feedback 开始。轻度反馈通常适用的范围是 0–6dB：0dB 会打开反馈环路，6dB 则能让响应更受控，同时不会使其变成高反馈设计。
-- 降低 Negative Feedback 会保留更多开环谐波和电平变化；提高则使闭环响应更受控。如果极端组合触发安全旁路，请恢复预设。
-- 如果只想轻微加入电子管响应，请降低 Wet/Dry Mix。
+- 想要轻微染色，可在 **Pre** 组中选择名称后缀为 **@0.01%** 或 **@0.1%** 的预设；想让谐波和压缩更容易听出，可选择后缀为 **@1%** 或 **@2%** 的预设。
+- 线路级音色选择 **Pre**，只使用输出级选择 **Power**，完整放大器路径选择 **Pre+Power**。
+- 想要较为克制的推挽音色，可从 **EL84 Distributed 10 W @2%** 开始，再与更紧实、直接的 **EL84 Pentode 10 W @2%** 比较。
+- 想要更明显的偶次谐波和较柔和的单端响应，可尝试 **300B SE @2%** 或 **2A3 SE @2%**。
+- 如果声音压缩或失真过强，请降低 **Input Volume**，再用 **Output Trim** 匹配听音音量。
+- 降低 **Negative Feedback** 会让响应更宽松、谐波更多；提高它会让声音更紧实。SE Triode 可从 3dB 开始，通常在 0–6dB 附近调整。
+- 只想混入少量效果时，请降低 **Wet/Dry Mix**。
 
 ### 面板布局
 
-24 个参数分布在 **Preset** 下拉菜单下方的五个标签页中。
+各项控制位于 **Preset** 下方的五个标签页中。
 
 - **Input** - Input Volume、Input Reference、Source Z
 - **Driver** - Driver Type、Bias、Plate、Supply、Negative Feedback
-- **Power** - Output Circuit；Push-Pull Power 的 Power Tubes、Output B+ 和 Cathode Resistor；单端电路的 SE Triode、SE B+ 和 SE Cathode Resistor
+- **Power** - Output Circuit；推挽电路的 Power Tubes、Output B+、Cathode Resistor；单端电路的 SE Triode、SE B+、SE Cathode Resistor
 - **Transformer** - Screen Tap、Push-Pull Primary、SE Primary、Assumed Speaker Load、Actual Speaker Load
 - **Output** - Output Trim、Output Safety Trim、Auto Gain Reduction、Wet/Dry Mix
 
-Preset 下拉菜单以 **Custom** 开头，其后是 **Pre**、**Power** 和 **Pre+Power** 三组。Pre 包含 Line 设置，Power 包含 Driver Type 设为 Bypass 的功率级设置，Pre+Power 包含完整的驱动器与功率级信号链。当前设置与任何预设都不匹配时会显示 Custom；输出保护设置 (Output Safety Trim 和 Auto Gain Reduction) 不参与该比较。Power 和 Transformer 标签页只显示所选 Output Circuit 使用的控件。Line 会隐藏全部功率输出控件，Push-Pull Power 会隐藏四个 SE 专用控件，SE Triode 会隐藏五个 Push-Pull Power 专用控件。隐藏控件的值会保留，并在下次选择相应电路时继续使用。
+Power 和 Transformer 标签页只显示当前 Output Circuit 会用到的控制项。从预设改动任何电路或音色参数后，界面会显示 **Custom**。
 
-### 电路预设与默认值
+### 选择预设
 
-启动时，所有电路、驱动、负载和输出参数都与 **EL84 Pentode @2%** 一致，因此 Preset 菜单会直接显示该项。此后，改动参与预设匹配的电路、驱动或输出参数会显示 Custom；Output Safety Trim 和 Auto Gain Reduction 不参与匹配，因此改变任一保护设置都不会改变预设选择。
+Tube Simulator启动时使用**EL84 Pentode @2%**；更改电路或音色参数后，预设名称会变为**Custom**，但**Output Safety Trim**和**Auto Gain Reduction**不参与预设匹配，因此调整它们不会改变预设名称。
 
-| Circuit Preset | Output Circuit | 驱动管 / 输出管 | Negative Feedback | 功率级设置 | 输入 / 输出 |
-| --- | --- | --- | ---: | --- | --- |
-| Line Default | Line | 12AU7 / — | 30dB | 保留功率控件的值，但隐藏控件 | Input Volume 0dB，Input Reference 2.828 Vpk，Output Trim +9dB |
-| EL84 Pentode 10 W | Push-Pull Power | 12AX7 / EL84 ×2 | 3dB | Output B+ 329.696 V，Cathode Resistor 270 Ω / valve，Screen Tap 0%，Transformer Primary 8.0 kΩ，Assumed Speaker Load 15 Ω | Input Volume 0dB，Input Reference 2.828 Vpk，Output Trim -19.675dB |
-| EL84 Distributed 10 W | Push-Pull Power | 12AX7 / EL84 ×2 | 3dB | Output B+ 330.107 V，Cathode Resistor 270 Ω / valve，Screen Tap 20%，Transformer Primary 6.6 kΩ，Assumed Speaker Load 15 Ω | Input Volume 0dB，Input Reference 2.828 Vpk，Output Trim -17.331dB |
-| EL34 Distributed 20–37 W | Push-Pull Power | 12AX7 / EL34 ×2 | 4dB | Output B+ 443.775 V，Cathode Resistor 470 Ω / valve，Screen Tap 43%，Transformer Primary 6.6 kΩ，Assumed Speaker Load 8 Ω | Input Volume 0dB，Input Reference 2.828 Vpk，Output Trim -17.230dB |
-| 6L6GC Pentode | Push-Pull Power | 12AX7 / 6L6GC ×2 | 3dB | Output B+ 391.454 V，Cathode Resistor 483.871 Ω / valve，Screen Tap 0%，Transformer Primary 6.6 kΩ，Assumed Speaker Load 8 Ω | Input Volume 0dB，Input Reference 2.828 Vpk，Output Trim -15.267dB |
-| KT88 Distributed | Push-Pull Power | 12AX7 / KT88 ×2 | 4dB | Output B+ 379.290 V，Cathode Resistor 400 Ω / valve，Screen Tap 43%，Transformer Primary 6.0 kΩ，Assumed Speaker Load 8 Ω | Input Volume 0dB，Input Reference 2.828 Vpk，Output Trim -16.166dB |
-| 300B Single-Ended | SE Triode | 12AU7 / 300B | 3dB | SE B+ 400 V，SE Cathode Resistor 1000 Ω，SE Primary 3.5 kΩ，Assumed Speaker Load 8 Ω | Input Volume -42dB，Input Reference 2.828 Vpk，Output Trim +38.795dB |
-| 2A3 Single-Ended | SE Triode | 12AU7 / 2A3 | 3dB | SE B+ 300 V，SE Cathode Resistor 750 Ω，SE Primary 2.5 kΩ，Assumed Speaker Load 8 Ω | Input Volume -42dB，Input Reference 2.828 Vpk，Output Trim +37.461dB |
-
-八个预设均使用 Bias 0%、Plate 250 V、Source Z 10 kΩ、Supply 10 kΩ 和 Wet/Dry Mix 100%。每个预设还会把 Actual Speaker Load 设为其 Assumed Speaker Load，因此都从电路的设计点开始。
-
-新增的 Power 设计会明确区分公开电路数据与为适配插件控件而作的投影。6L6GC 预设遵循 [Ei-RC 6L6GC 数据](https://frank.pocnet.net/sheets/084/6/6L6GC.pdf)中以阴极为参考的推挽 AB1 工作点；其阴极电阻用于在直流上等效该固定偏置工作点。KT88 电流模型遵循 [GEC KT88 数据](https://keith-snook.info/valve-data/KT88%20GEC%20Data.pdf)中的阴极偏置超线性工作点，并将资料中的 40% 抽头和 5 kΩ 负载投影到可选的 43% 与 6.0 kΩ 控件。初级绕组电阻和小信号电感采用 [Monolith B-8/6K6](https://www.monolithmagnetics.com/sites/default/files/datasheets/Push-Pull-output-transformers/datasheet%20B-8%206K6%20300B%20push%20pull%20output%20tube%20amplifier%20transformer%20prelim.pdf)及 [B-8/8k](https://www.monolithmagnetics.com/sites/default/files/B-8_8k_0.pdf)的测量值。其余变压器损耗、谐振、反馈和电源系数仍是明确的模型参数，不会被表述为这些变压器的实测值。
-
-### 已校准预设
-
-全部35个可选设置使用与Pipeline Analyzer默认值共用的可复现校准点。在设计扬声器负载下稳定三秒后，关闭Auto Gain Reduction，以96 kHz、1 kHz、峰值-12dBFS（RMS -15.01dBFS）的正弦波测量THD和播放电平。选择该电平是为了提供一个实用参考，用于近似一般商业母带音乐从平均到响亮的主体部分，而不把偶尔接近满刻度的峰值当作正常工作状态。它不是响度标准，也不保证真实音乐具有相同THD。表中的Measured THD仅适用于稳定后的正弦波；音乐的瞬时THD会随波形、峰值因数、频谱、瞬时电平和电路状态而变化。Input Volume和Input Reference设定正弦波失真点，再用同一参考调整Output Trim，使交流RMS增益达到0dB。为保证稳定性，Power-only KT88使用2dB Negative Feedback；对应的Pre+Power电路保留4dB。
-
-| 组 | Preset | Input Volume | Input Reference | Output Trim | Measured THD |
-| --- | --- | ---: | ---: | ---: | ---: |
-| Pre | Line 12AT7 @0.01% | -13.7480dB | 2.828 Vpk | +0.619dB | 0.0100% |
-| Pre | Line 12AT7 @0.1% | 0dB | 4.5552 Vpk | -17.268dB | 0.1000% |
-| Pre | Line 12AX7 @0.01% | -24.2637dB | 2.828 Vpk | +8.508dB | 0.0100% |
-| Pre | Line 12AX7 @0.1% | -4.4922dB | 2.828 Vpk | -11.264dB | 0.1000% |
-| Pre | Line 12AU7 Open-Loop @0.1% | -19.2715dB | 2.828 Vpk | +28.495dB | 0.1000% |
-| Pre | Line 12AT7 @1% | 0dB | 7.3556 Vpk | -21.421dB | 0.9974% |
-| Pre | Line 12AX7 @1% | 0dB | 6.7213 Vpk | -23.276dB | 1.0003% |
-| Pre | Line 12AU7 Open-Loop @1% | -9.2656dB | 2.828 Vpk | +18.592dB | 1.0002% |
-| Power | EL84 Pentode 10 W @0.1% | -26.5957dB | 2.828 Vpk | +8.696dB | 0.1001% |
-| Power | EL84 Distributed 10 W @0.1% | -21.7676dB | 2.828 Vpk | +7.363dB | 0.1002% |
-| Power | EL34 Distributed 20–37 W @0.1% | -8.1543dB | 2.828 Vpk | +3.767dB | 0.1000% |
-| Power | 6L6GC Pentode @0.1% | -19.3047dB | 2.828 Vpk | +12.251dB | 0.1003% |
-| Power | KT88 Distributed @0.1% | 0dB | 3.1263 Vpk | -3.485dB | 0.1002% |
-| Power | 300B SE @0.1% | 0dB | 35.4586 Vpk | +16.582dB | 0.1000% |
-| Power | 300B SE @1% | 0dB | 295.9454 Vpk | -1.794dB | 1.0000% |
-| Power | 2A3 SE @0.1% | 0dB | 18.1347 Vpk | +21.072dB | 0.1000% |
-| Power | 2A3 SE @1% | 0dB | 167.2455 Vpk | +1.816dB | 1.0000% |
-| Power | EL84 Pentode 10 W @2% | -9.7148dB | 2.828 Vpk | -7.483dB | 1.9995% |
-| Power | EL84 Distributed 10 W @2% | -6.5352dB | 2.828 Vpk | -7.322dB | 2.0005% |
-| Power | EL34 Distributed 20–37 W @2% | 0dB | 5.2781 Vpk | -9.510dB | 1.9995% |
-| Power | 6L6GC Pentode @2% | 0dB | 3.3694 Vpk | -7.187dB | 2.0004% |
-| Power | KT88 Distributed @2% | 0dB | 7.4992 Vpk | -10.748dB | 1.9970% |
-| Pre+Power | EL84 Distributed @0.1% | -58.4629dB | 2.828 Vpk | +9.910dB | 0.1000% |
-| Pre+Power | EL34 Distributed @0.1% | -56.4629dB | 2.828 Vpk | +17.947dB | 0.1000% |
-| Pre+Power | 6L6GC Pentode @0.1% | -58.4551dB | 2.828 Vpk | +17.255dB | 0.1000% |
-| Pre+Power | KT88 Distributed @0.1% | -56.4629dB | 2.828 Vpk | +21.698dB | 0.1000% |
-| Pre+Power | 300B SE @0.1% | -15.2227dB | 2.828 Vpk | +12.027dB | 0.1000% |
-| Pre+Power | 2A3 SE @0.1% | -23.2598dB | 2.828 Vpk | +18.722dB | 0.1000% |
-| Pre+Power | EL84 Pentode @2% | -44.0059dB | 2.828 Vpk | -7.372dB | 2.0004% |
-| Pre+Power | EL84 Distributed @2% | -40.9746dB | 2.828 Vpk | -7.091dB | 2.0005% |
-| Pre+Power | EL34 Distributed @2% | -31.6797dB | 2.828 Vpk | -6.779dB | 2.0000% |
-| Pre+Power | 6L6GC Pentode @2% | -35.2070dB | 2.828 Vpk | -5.145dB | 1.9998% |
-| Pre+Power | KT88 Distributed @2% | -31.5391dB | 2.828 Vpk | -3.147dB | 1.9997% |
-| Pre+Power | 300B SE @2% | -2.4824dB | 2.828 Vpk | -0.439dB | 2.0000% |
-| Pre+Power | 2A3 SE @2% | -4.2266dB | 2.828 Vpk | -0.093dB | 2.0002% |
-
-Line 12AU7 Open-Loop的0.01%工作点需要约+48.5dB的Output Trim才能匹配电平，略高于当前+48dB上限，因此该电路只提供0.1%和1%预设。完整的EL84 Pentode Pre+Power通路在实用测量范围内无法低于0.3055%，所以不提供Pre+Power @0.1%预设。Input Reference上限已扩展到300 Vpk，使Driver Type设为Bypass的300B和2A3 SE电路无需改变电路设计即可校准到0.1%和1%。旧的不可选SE兼容记录仍固定为20 Vpk，新预设则使用独立的校准记录。
+预设名称末尾可作为效果强度的实用参考：**@0.01%** 非常轻微，**@0.1%** 带来轻度染色，**@1%** 或 **@2%** 的谐波与压缩更明显。预设也会设置 Output Trim，方便相互比较，但不同音乐的主观响度仍可能不同；判断音色前，请先用 Output Trim 匹配音量。
 
 ### 参数
-- **Preset** - 加载 Pre、Power 或 Pre+Power 设置
-- **Input Volume** (-96 至 0dB) - 在所选有效信号路径之前衰减经过校准的输入
-  - 0dB 表示完全打开；降低该值会减小内部驱动并增加余量
-- **Driver Type** (12AX7、12AT7、12AU7 或 Bypass) - 选择两级驱动管，或将该驱动器移出信号链
-  - 12AX7 的电压增益最高，12AT7 居中，12AU7 的增益最低而余量最大
-  - 在 Push-Pull Power 中，它驱动固定的 12AX7 倒相级；在 SE Triode 中，它直接驱动所选输出三极管
-  - Bypass 用于 Power 预设。Push-Pull Power 仍保留倒相级；SE Triode 不经过共用驱动器而直接馈入输出三极管。Line 与 Bypass 组合时是延迟对齐的直通路径，Negative Feedback 在其中不起作用
-- **Bias** (-50 至 +50%) - 移动阴极偏置工作点
-  - 提高该值会减小模型中的阴极电阻，使各级工作在更大的电流下
-  - 降低该值会增大阴极电阻，使各级工作在更小的电流下
-- **Plate** (150 至 300V) - 设置模型中的阳极电源电压
-  - 提高该值通常会增加电压余量，使响应更加稳定
-  - 降低该值会使压缩与非线性行为更早出现
-- **Source Z** (0.6 至 100kΩ) - 设置驱动第一级的信号源阻抗
-  - 提高该值会增强与模拟输入电容的相互作用，使高频和瞬态驱动更柔和
-  - 降低该值会更有力地驱动输入，并保留更多高频能量
-- **Supply** (0.1 至 47kΩ) - 设置 B+ 电源电阻
-  - 提高该值会使各级消耗电流时的 B+ 降幅增大，电源下垂更加明显
-  - 降低该值会使电源更稳定，电压波动更小
-- **Negative Feedback** (0 至 30dB) - 设置校准的全局负反馈量
-  - Line 取自第二级阳极；Push-Pull Power 取自变压器的固定次级反馈绕组
-  - 提高通常减少开环增益和失真并收紧响应；0dB 打开反馈环
-  - 扬声器负载的电气阻尼正是由这个反馈环产生的，因此提高该值也会加强放大器对负载的控制力
-- **Output Trim** (-48 至 +48dB) - 在模拟电路之后进行数字电平校准
-  - 它只改变处理后信号的电平，不会增加电子管级的内部余量
-- **Output Safety Trim** (-96 至 0dB) - 在模拟电路之后施加一个与 Output Trim 相互独立的线性电平调整，供输出电平保护专用
-  - Auto Gain Reduction 只会降低该调整量，绝不会写入 Output Trim
-  - 滑块及其数值框显示的是有效调整量，即您设定的值减去当前施加的自动衰减；存储的设定值是您最后一次自己设定的值，保存的也是它
-  - 抓住滑块时，当前显示的有效值即成为您的设定值，因此电平不会跳变，累积的衰减也在此时清除
-- **Auto Gain Reduction** (默认开启) - 允许输出电平保护自行降低 Output Safety Trim
-  - 关闭后不再累积新的衰减，已经施加的衰减保持不变
-- **Wet/Dry Mix** (0 至 100%) - 混合已经时间对齐的原始信号和处理信号
-  - 较低的值会保留更多原始信号；较高的值会突出电子管模型的响应
-  - 即使为 0%，原声路径仍延迟 64 samples，以保持时间对齐
-- **Input Reference** (0.100 至 300.000 Vpk) - 设置数字 0dBFS 峰值所代表的输入端峰值电压
-  - 2.828 Vpk 对应满幅正弦波的 2 Vrms；5.657 Vpk 对应 4 Vrms
-  - 有效信号路径接收 Input Reference 与 Input Volume 相乘后的电压；这是物理输入校准，并非额外的输出增益控制
-- **Output Circuit** (Line、Push-Pull Power 或 SE Triode) - 选择电路拓扑；SE Triode 加入单只 300B 或 2A3 与带气隙变压器
-  - Line 在两级驱动器后结束，不运行功率管、变压器或扬声器负载；Power 模式加入倒相级和完整功率输出电路
-- **Power Tubes** (EL84 ×2、EL34 ×2、6L6GC ×2 或 KT88 ×2) - 选择输出管电流模型及配套元件；仅影响 Power 模式
-  - 四种模型在阳极、帘栅和控制栅电压上均依据实际输出管数据，包括栅压足够负时的完全截止
-- **Output B+** (300 至 470 V) - 设置功率级电源；提高会增大可用电压摆幅和管耗
-- **Cathode Resistor** (270 至 500 Ω / valve) - 每支输出管的独立阴极偏置电阻；提高会减小静态电流，降低会增大
-- **Screen Tap** (0%、20% 或 43%) - 选择帘栅连接。0% 使用固定帘栅电源；20% 和 43% 连至对应的变压器初级抽头，实现分布负载（超线性）
-  - 抽头即匝数比，因此帘栅跟随初级绕组磁通耦合中相应的那一份
-- **SE Triode** (300B 或 2A3) - 选择单端输出管
-- **SE B+** (250–450 V) - 设置单端输出级电源
-- **SE Cathode Resistor** (700–1300 Ω) - 设置输出管阴极偏置电阻
-- **Push-Pull Primary** (6.0、6.6 或 8.0 kΩ) - 选择推挽变压器的阳极间初级阻抗
-- **SE Primary** (2.5、3.5 或 5.0 kΩ) - 选择带气隙单端变压器的初级阻抗
-- **Assumed Speaker Load** (4、8、15 或 16 Ω) - 选择变压器次级抽头以及电路所依据的标称扬声器阻抗。每个选项都是频率相关的 RLC 电气负载，会影响变压器负载和反馈
-- **Actual Speaker Load** (2 至 32 Ω) - 设置实际接在该抽头上的扬声器阻抗
-  - 负载网络按其与 Assumed Speaker Load 之比缩放，因此谐振频率和 Q 值保持不变，只有阻抗水平改变
-  - 匝数比仍取自 Assumed Speaker Load，因此两者不一致时反射到输出管的阻抗会改变，阻尼、可用功率和驱动状态随之变化；两者相同时电路工作在设计点
+
+- **Preset** - 载入 Pre、Power 或 Pre+Power 设置。
+- **Input Volume** (-96 至 0dB) - 降低进入所选电路的电平。数值越低，压缩和失真越少，余量越大。
+- **Driver Type** (12AX7、12AT7、12AU7、Bypass) - 选择两级驱动管，或绕过该驱动级。12AX7 电压增益最高，12AT7 居中，12AU7 增益最低、余量最大。
+- **Bias** (-50 至 +50%) - 移动驱动级的偏置工作点。提高会移向较大电流，降低则移向较小电流，从而改变谐波与压缩特性。
+- **Plate** (150 至 300 V) - 设置驱动级的屏极电压。提高通常会增加电压余量，降低则让压缩和非线性更早出现。
+- **Source Z** (0.6 至 100 kΩ) - 设置馈入第一级的源阻抗。提高后，高频和瞬态可能会变得更柔和。
+- **Supply** (0.1 至 47 kΩ) - 设置驱动级的电源电阻。提高会增强电源下陷，降低会让响应更硬朗、稳定。
+- **Negative Feedback** (0 至 30dB) - 设置全局负反馈量。提高通常会减少失真，并让响应和扬声器控制更紧实；0dB 会断开反馈环路。
+- **Output Trim** (-48 至 +48dB) - 在不改变电路内部驱动强度的情况下调整处理后音量。
+- **Output Safety Trim** (-96 至 0dB) - 供输出保护使用的独立电平控制。Auto Gain Reduction 只会降低此项，不会改写 Output Trim。
+- **Auto Gain Reduction**（默认开启）- 当处理后输出将超过数字满刻度时，自动降低 Output Safety Trim。关闭后不会再增加衰减，但已应用的衰减会保留。
+- **Wet/Dry Mix** (0 至 100%) - 混合处理后声音与原声。数值越低，效果越轻微。
+- **Input Reference** (0.100 至 300.000 Vpk) - 设置数字满刻度峰值所代表的输入电压。提高会更强地驱动电路；日常调整效果强度时优先使用 Input Volume。
+- **Output Circuit** (Line、Push-Pull Power、SE Triode) - 选择电路结构。Line 仅包含驱动级，另外两种模式还包含功率级、输出变压器和扬声器负载。
+- **Power Tubes** (EL84 ×2、EL34 ×2、6L6GC ×2、KT88 ×2) - 选择推挽输出管及其音色特性。
+- **Output B+** (300 至 470 V) - 设置推挽功率级的电源电压。提高会增加可用电压摆幅和输出管的驱动余量。
+- **Cathode Resistor** (270 至 500 Ω / valve) - 设置每只推挽输出管的阴极偏置电阻。提高会降低静态电流，降低则会增加静态电流。
+- **SE Triode** (300B、2A3) - 选择单端输出管。
+- **SE B+** (250 至 450 V) - 设置单端输出级的电源电压。
+- **SE Cathode Resistor** (700 至 1300 Ω) - 设置单端输出管的阴极偏置电阻；不同数值会改变工作点和压缩特性。
+- **Screen Tap** (0%、20%、43%) - 选择推挽输出管的帘栅连接。0% 为五极管连接，20% 和 43% 带来分布负载特性。
+- **Push-Pull Primary** (6.0、6.6、8.0 kΩ) - 设置推挽输出变压器的初级阻抗，从而改变输出管的负载和响应。
+- **SE Primary** (2.5、3.5、5.0 kΩ) - 设置单端输出变压器的初级阻抗。
+- **Assumed Speaker Load** (4、8、15、16 Ω) - 选择电路设计所依据的扬声器阻抗和变压器次级抽头。
+- **Actual Speaker Load** (2 至 32 Ω) - 设置实际连接扬声器的阻抗。它与 Assumed Speaker Load 不同时，输出管所见负载、阻尼和可用功率都会改变；两者相同即为设计工作点。
 
 ### 输出电平保护
 
-载入任一预设时都会应用其校准后的Output Trim，因此35个可选预设在上述参考条件下均已匹配电平。手动更改Driver Type、Output Circuit或其他参数时，Output Trim不会自动补偿，因此可能出现较大的电平跳变。Output Safety Trim和Auto Gain Reduction可保护接在输出端的设备免受此类跳变的影响。
+更改电路参数可能造成较大的电平跳变。开启 **Auto Gain Reduction** 后，当处理输出将超过数字满刻度时，Tube Simulator 会降低 **Output Safety Trim**。衰减量不会自动恢复，并会显示在图表下方的状态栏中。
 
-- 每当输出采样的幅度超过 0 dBFS 峰值时，Output Safety Trim 会立即按该采样超出的量精确降低。由于逐采样检查，因此没有检测窗口，也不做平均。该阈值是固定的策略值。
-- 衰减通过 20 ms 的单向斜坡施加，因此电平变化不会出现台阶。
-- 它只会衰减，绝不恢复。没有释放也没有回升，因此既不是限制器，也不是自动电平调整器。
-- 滑块及其数值框显示的是有效调整量，即您的设定值减去当前施加的衰减量。存储的设定值仍是您最后一次自己设定的值，保存的也是它。
-- 当您自己抓住 Output Safety Trim 时，累积的衰减会被清除。此时显示的有效值即成为您的设定值，因此电平不会跳变。
-- 载入预设会把 Output Safety Trim 恢复为 0dB。累积的衰减会在该调整值本身发生变化、或一次提交同时改变两个及以上的值时被清除，通常的预设载入即属于后者；只改动一个控件后再次选择电路当前所在的预设，只会改变那一个值，因此衰减会被保留。
-- 关闭 Auto Gain Reduction 后不再累积新的衰减，已经施加的衰减保持不变。
-- 当前衰减量会显示在图表下方的状态行中，即使为 0.0 dB 也会显示。
-- 该机制位于放大器模型之外。电路求解、谐波、压缩和电源下垂均不改变；改变的只是输出电平，过载的音质特征不受影响。它抑制的是输出端的数字满刻度溢出，而不是模型产生的失真。
+- 如果衰减量很大，请降低 Input Volume 或 Output Trim，然后重新选择预设或调整 Output Safety Trim。
+- 只有在其他位置监看输出峰值时，才建议关闭 Auto Gain Reduction。
+- 此保护只降低输出电平，不会消除所选电路内部产生的谐波或压缩。
 
 ### 安全旁路与恢复
 
-- 如果检测到反馈振荡，湿声电路会渐变到延迟对齐的干声路径，并锁定安全旁路。降低 Negative Feedback、选择可用预设或改变其他电路参数后，新设置会在保持干声时试运行；若稳定，则平滑恢复处理声，否则继续旁路。
-- 如果遇到其他处理安全故障，插件会切换到安全干声输出。请恢复默认电路设置，然后重新加载效果。
-- 不支持的采样率或声道模式、WebAssembly 不可用或处理引擎停止时也会旁路。HUD 下方的状态会说明处理方法。
+- 如果不稳定的设置触发旁路，请降低 Negative Feedback 或选择一个预设。设置恢复稳定后，处理后的声音会自动返回。
+- 如果旁路状态仍然存在，请恢复预设并重新载入效果。设备无法使用该处理时，原声会不经改变地通过。
 
-### HUD 读取方法
-- **Input Reference (0 dBFS)** 以 Vpk、正弦波 Vrms 和 **dBuFS** 显示输入端校准值。**Stage 1 External Input (0 dBFS)** 显示经过 Input Volume 后的峰值电压
-- **Stage 1 Bias**、**Stage 2 Bias**、**B+** 和 **Plate − B+ Sag** 显示两级驱动器的实时工作点。Driver Type 为 Bypass 时，这些值显示为不可用。Sag 数值越负，表示阳极电压低于其电源电压的幅度越大
-- Line 中，两个图表分别显示 Stage 1 和 Stage 2 的阳极特性和最近的工作点，工作点以离散的点绘制，而不连成线
-  - 横轴为阳极-阴极电压 **Vak (V)**，纵轴为阳极电流 **Ia (mA)**
-  - 细灰线表示电子管在多个 **Vgk** 值下的静态阳极特性，较亮的灰色虚线表示电路的负载线
-  - 青色代表左声道，橙色代表右声道；点的分布范围越大，表示音乐驱动该级跨越的工作范围越宽
-- Push-Pull Power 中，图表切换为 **Push** 和 **Pull** 负载线，并以点绘出两支输出管最近的阳极电流工作点。
-- **Power LTP Balance** 显示 Push-Pull Power 倒相级的差分电压。**Power B+** 显示两种功率拓扑中下垂后的功率级电源。
-- **Speaker Output (100 ms)** 和 **Speaker Real Power (100 ms)** 显示选定负载上不重叠的 100 ms 电气测量。Real Power 由瞬时负载电压和电流计算，不是简单的 Vrms²/标称阻抗。
-- **Transformer Flux** 以韦伯显示模拟输出变压器磁通。功率输出读数在 Push-Pull Power 和 SE Triode 中都有意义。
-- 图表下方的状态会显示处理正在加载、已启用或处于安全旁路，并始终以 dB 显示当前的输出保护衰减量，即使为 0.0 dB 也会显示。
+### HUD 读法
 
-### 处理要求与延迟
-- Tube Simulator 使用 WebAssembly 处理 44.1、48、88.2、96、176.4 和 192 kHz 音频
-- 44.1 kHz 系列在内部以 352.8 kHz 处理，48 kHz 系列在内部以 384 kHz 处理
-- 在 44.1 或 48 kHz 下，由于输入源不包含更高采样率可提供的高频信息，应用的低采样率常规警告仍会显示
-- 支持 Stereo 和声道对模式；不支持的采样率或声道模式使用旁路路径
-- 在所有支持的采样率下，过采样滤波器都会产生固定 64 samples 的延迟（44.1 kHz 下约 1.45ms，192 kHz 下约 0.33ms）
+- 图中的点表示最近的工作点。分布越宽，说明音乐对该级的驱动越强。
+- Line 模式显示两个驱动级，Push-Pull 模式显示两侧输出，SE Triode 模式显示左右声道。
+- **Speaker Output**、**Speaker Real Power** 和 **Transformer Flux** 显示功率级及扬声器负载被驱动的强度。
+- 图表下方的状态栏会显示效果正在工作还是处于旁路，并显示自动输出衰减量。
+
+Tube Simulator 会产生约 0.3 至 1.5ms 的短暂处理延迟，具体取决于采样率。

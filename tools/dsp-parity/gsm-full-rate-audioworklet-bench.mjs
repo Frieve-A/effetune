@@ -65,7 +65,7 @@ function usage() {
     'Usage: node tools/dsp-parity/gsm-full-rate-audioworklet-bench.mjs',
     '  --artifacts-dir <path> --json <file> --power-mode <label>',
     '',
-    'Runs the fixed GSM Full Rate Phase 0 gate with Chromium AudioWorklet tdur.'
+    'Runs the fixed GSM Full Rate real-time gate with Chromium AudioWorklet tdur.'
   ].join('\n');
 }
 
@@ -265,9 +265,7 @@ export async function preflightGsmFullRateArtifacts(artifactsDir) {
     baseline,
     simd
   };
-  if (!artifactSet.metadata.phase0Plugins?.includes(PLUGIN_TYPE)) {
-    throw new Error('DSP artifacts were not built with --phase0-gsm-fr.');
-  }
+  validateGsmSourceDigest(artifactSet.metadata);
   const actualHash = artifactSet.kernels.get(PLUGIN_TYPE);
   if (actualHash !== PARAMS_HASH) {
     throw new Error(
@@ -276,6 +274,12 @@ export async function preflightGsmFullRateArtifacts(artifactsDir) {
     );
   }
   return artifactSet;
+}
+
+export function validateGsmSourceDigest(metadata, expectedSourceDigest = sourceDigest()) {
+  if (metadata.sourceDigest !== expectedSourceDigest) {
+    throw new Error('GSM DSP artifact source digest does not match the current sources.');
+  }
 }
 
 async function snapshotServedAssets(artifactSet) {
@@ -339,7 +343,6 @@ function artifactProvenance(artifactSet) {
     root: artifactSet.root,
     sourceDigest: artifactSet.metadata.sourceDigest,
     abiVersion: artifactSet.metadata.abiVersion,
-    phase0Plugins: artifactSet.metadata.phase0Plugins,
     baseline: {
       buildFlags: artifactSet.baseline.buildFlags,
       bytes: artifactSet.baseline.bytes
@@ -563,7 +566,7 @@ export async function runGsmFullRateAudioWorkletGate({
 }) {
   const artifactSet = await preflightGsmFullRateArtifacts(artifactsDir);
   const servedAssetSnapshot = await snapshotServedAssets(artifactSet);
-  const startingSourceDigest = sourceDigest({ includePhase0: true });
+  const startingSourceDigest = sourceDigest();
   const server = await startIsolatedStaticServer();
   let browser;
   let browserVersion = null;
@@ -642,7 +645,8 @@ export async function runGsmFullRateAudioWorkletGate({
       artifactProvenance: artifactProvenance(artifactSet)
     });
     await assertLocalAssetSnapshot(servedAssetSnapshot);
-    const finalDigest = sourceDigest({ includePhase0: true });
+    const finalDigest = sourceDigest();
+    validateGsmSourceDigest(artifactSet.metadata, finalDigest);
     const output = {
       ...evaluated,
       valid: true,
@@ -669,7 +673,7 @@ export async function runGsmFullRateAudioWorkletGate({
     return output;
   } catch (error) {
     if (!outputWritten) {
-      const finalDigest = sourceDigest({ includePhase0: true });
+      const finalDigest = sourceDigest();
       const evidence = error.gsmTrialEvidence ?? {};
       let currentServedAssets = null;
       let runtimeAssetMismatches = error.gsmAssetHashEvidence?.mismatches ?? [];

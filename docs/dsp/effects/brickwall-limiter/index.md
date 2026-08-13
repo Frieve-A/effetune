@@ -38,21 +38,15 @@ This type has catalog telemetry metadata but no public observation API in v0.1. 
 
 ## Brickwall Limiter
 
-A high-quality peak limiter that ensures your music never exceeds a specified level, preventing digital clipping while maintaining natural sound quality. Perfect for protecting your audio system and ensuring comfortable listening levels without compromising the music's dynamics.
+A peak limiter that keeps the chain's digital signal below a specified ceiling while preserving as much of the music's dynamics as possible. Place it near the end of the effect chain when earlier effects create high peaks. It limits signal peaks, but does not guarantee safe listening levels or protect playback equipment; set the listening volume on your playback device.
 
 ### Listening Enhancement Guide
-- Classical Music:
-  - Safely enjoy full orchestral crescendos
-  - Maintain the natural dynamics of piano pieces
-  - Protect against unexpected peaks in live recordings
-- Pop/Rock Music:
-  - Keep consistent volume during intense passages
-  - Enjoy dynamic music at any listening level
-  - Prevent distortion in bass-heavy sections
-- Electronic Music:
-  - Control synthesizer peaks transparently
-  - Maintain impact while preventing overload
-  - Keep bass drops powerful but controlled
+
+- Put the limiter near the end of the chain, before **Level Meter**, to catch peaks created by EQ, saturation, or other effects.
+- Start with Input Gain at 0 dB, Threshold at -3 dB, Margin at -1 dB, and Release at 100 ms.
+- If limiting is frequent or the music loses impact, lower Input Gain or raise Threshold toward 0 dB.
+- If you hear pumping, lengthen Release. If transients sound smeared or distorted, try a shorter Release or reduce the amount of limiting.
+- Use **Level Meter** after the limiter to confirm the resulting digital peak level. Adjust your amplifier or playback device separately for listening volume.
 
 ### Parameters
 
@@ -65,9 +59,9 @@ A high-quality peak limiter that ensures your music never exceeds a specified le
 - **Threshold** (-24dB to 0dB)
   - Sets the peak level where limiting begins before Margin is applied
   - The effective ceiling is Threshold + Margin
-  - Lower values provide more safety margin
+  - Lower values leave more peak headroom
   - Higher values preserve more dynamics
-  - Start at -3dB for gentle protection
+  - Start at -3dB for light peak limiting
 
 - **Release Time** (10ms to 500ms)
   - How quickly limiting is released
@@ -82,7 +76,7 @@ A high-quality peak limiter that ensures your music never exceeds a specified le
   - 3ms is a good balance
 
 - **Margin** (-1.000dB to 0.000dB)
-  - Adds a fine safety offset to the Threshold
+  - Adds a fine downward offset to the Threshold
   - The actual ceiling is Threshold + Margin
   - For example, Threshold -3dB with Margin -1.000dB limits around -4dB
   - Default -1.000dB works well for most material
@@ -95,12 +89,11 @@ A high-quality peak limiter that ensures your music never exceeds a specified le
 
 ### Controls and Metering
 - Direct controls for Input Gain, Threshold, Margin, Release, Lookahead, and Oversampling
-- Limiter gain-reduction information is reported internally for host or status metering
 - The plugin panel does not show a separate peak-level graph
 
 ### Recommended Settings
 
-#### Transparent Protection
+#### Transparent Peak Control
 - Input Gain: 0dB
 - Threshold: -3dB
 - Release: 100ms
@@ -109,7 +102,7 @@ A high-quality peak limiter that ensures your music never exceeds a specified le
 - Oversampling: 4x
 - Effective ceiling: about -4dB
 
-#### Maximum Safety
+#### Extra Peak Headroom
 - Input Gain: -6dB
 - Threshold: -6dB
 - Release: 50ms

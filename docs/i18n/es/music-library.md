@@ -6,8 +6,6 @@ lang: es
 
 # Cómo usar la Biblioteca musical
 
-La versión 2.1.0 incorpora la Biblioteca musical compatible con CUE y el esquema de catálogo v3. Las carpetas y listas de reproducción de la Biblioteca musical anterior no se transfieren a este catálogo: vuelve a añadir tus carpetas de música y crea o importa de nuevo tus listas. El catálogo anterior y los archivos de audio no se modifican.
-
 La Biblioteca musical indexa las carpetas de música que seleccionas y te permite explorar tu colección local por pistas, álbumes, artistas, géneros, subcarpetas, carpetas, elementos añadidos recientemente y listas de reproducción. El audio reproducido pasa por el pipeline de efectos actual de EffeTune, igual que durante la reproducción normal de archivos de música.
 
 La Biblioteca musical guarda dentro de la aplicación su catálogo, la caché de carátulas y las listas de reproducción. No edita, cambia de nombre, mueve ni elimina los archivos de audio.
@@ -15,8 +13,8 @@ La Biblioteca musical guarda dentro de la aplicación su catálogo, la caché de
 ## Disponibilidad
 
 - **Aplicación de escritorio:** Usa el escáner completo de carpetas y puede mantener disponibles las carpetas seleccionadas entre reinicios de la aplicación. La versión de escritorio también puede mostrar una pista en la carpeta donde está su archivo.
-- **Navegadores Chromium en PC con File System Access:** Guardan de forma persistente el identificador de la carpeta seleccionada. Puede reutilizarse tras recargar una vez concedido el acceso, aunque el navegador puede volver a pedir permiso.
-- **Navegadores móviles, Safari, Firefox y otros sin File System Access:** Conservan los objetos `File` seleccionados solo durante la sesión actual de la página. El catálogo permanece guardado, pero los archivos no pueden volver a abrirse tras recargar. Selecciona otra vez la carpeta o los archivos después de cada recarga; EffeTune los enlaza con las entradas existentes mediante la ruta relativa normalizada.
+- **Navegadores Chromium en PC con File System Access:** Pueden conservar el acceso a las carpetas seleccionadas después de recargar. El navegador puede volver a pedir permiso.
+- **Navegadores móviles, Safari, Firefox y otros sin File System Access:** Conservan el acceso a los archivos seleccionados solo durante la sesión actual. El catálogo permanece guardado, pero vuelve a seleccionar la carpeta o los archivos después de cada recarga para que EffeTune pueda enlazarlos.
 
 La Biblioteca musical indexa extensiones de archivos multimedia habituales, como MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM y MP4. También puede usar una hoja CUE externa para dividir en pistas un archivo de álbum WAV o FLAC situado en la misma carpeta. En los archivos MP4, EffeTune reproduce solo la pista de audio y no muestra el vídeo. La reproducción efectiva, incluido el códec de audio del archivo MP4, también depende de las funciones de decodificación del navegador o del sistema operativo.
 
@@ -143,13 +141,15 @@ Al exportar, si eliges **Rutas relativas**, las rutas se escriben, cuando es pos
 - La caché de carátulas y las listas de reproducción son datos de la aplicación, no cambios incrustados en los archivos de música.
 - La clasificación por **Subcarpetas** se obtiene de las rutas relativas guardadas en el catálogo.
 - El almacenamiento del navegador puede borrarse desde la configuración del navegador o por acciones del usuario. Exporta las listas de reproducción importantes si lo necesitas.
-- En navegadores con File System Access, los permisos determinan si se puede reutilizar el identificador persistente de la carpeta tras recargar. En los navegadores alternativos, los archivos seleccionados son solo de sesión y siempre deben elegirse de nuevo después de recargar.
+- En navegadores con File System Access, los permisos determinan si el acceso a la carpeta sigue disponible tras recargar. En otros navegadores, selecciona de nuevo los archivos después de cada recarga.
 
 ## Bibliotecas grandes
 
-El catálogo conserva los datos en el disco y divide el trabajo en páginas o lotes limitados, por lo que no necesita cargar una colección grande completa en la memoria. Las mediciones de escala y de referencia fija son diagnósticos locales y opcionales para el desarrollo. No condicionan commits, versiones, `verify` ni GitHub Actions y no constituyen una garantía general de rendimiento. El tiempo de análisis y los límites prácticos dependen de la velocidad del almacenamiento, la memoria disponible, los metadatos, las carátulas y las restricciones del navegador o del sistema operativo.
+EffeTune carga las colecciones grandes por etapas, sin mantener toda la biblioteca en la memoria. El tiempo de análisis y los límites prácticos dependen de la velocidad del almacenamiento, la memoria disponible, los metadatos, las carátulas y las restricciones del navegador o del sistema operativo.
 
-Mientras desplazas la lista de pistas, EffeTune mantiene en caché las páginas cercanas. En la disposición móvil, lee por adelantado hasta dos páginas en la dirección actual, da prioridad a la página necesaria en pantalla frente a lecturas anticipadas adicionales y reutiliza las filas visibles que se solapan. Aunque el desplazamiento continúe, las lecturas completadas para la vista se publican de inmediato en esta caché limitada. Las solicitudes de posición se agrupan en la más reciente y, si esta queda dentro de la página que acaba de cargarse, no se realiza otra lectura de la base de datos. Las lecturas anticipadas pendientes que dejan de ser necesarias se descartan. SQLite admite interrupciones, pero los adaptadores del catálogo ejecutan actualmente cada sentencia de forma síncrona y no ofrecen una vía para interrumpirla desde otro worker. Por eso, un salto excepcionalmente rápido todavía puede mostrar un breve espacio vacío hasta que termine la lectura en curso, sobre todo si el almacenamiento es lento.
+Las pistas cercanas se cargan a medida que te desplazas. Un salto excepcionalmente rápido puede mostrar brevemente filas vacías hasta que se carguen las pistas solicitadas, sobre todo con almacenamiento lento.
+
+Usa la Biblioteca musical en una sola ventana de EffeTune.
 
 ## Control remoto OpenHome (aplicación de escritorio)
 

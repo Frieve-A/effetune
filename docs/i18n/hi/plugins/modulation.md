@@ -24,7 +24,7 @@ lang: hi
 
 ## Auto Filter
 
-LFO या input signal के envelope से state-variable filter को अपने-आप चलाता है। Envelope mode को Envelope Filter या Auto Wah की तरह इस्तेमाल किया जा सकता है। algorithmic latency शून्य है।
+Auto Filter resonant filter को अपने-आप चलाता है। **LFO** mode बार-बार sweep करता है, जबकि **Envelope** mode संगीत के level का अनुसरण करके Envelope Filter या Auto Wah जैसा sound बनाता है।
 
 ### ध्वनि समायोजन के सुझाव
 
@@ -45,7 +45,7 @@ LFO या input signal के envelope से state-variable filter को अ�
 
 ## Auto Pan
 
-हर पास-पास के stereo pair की volume को बाएँ और दाएँ चलाता है। pairs के बीच audio नहीं मिलाता, और अंत में बचा अकेला channel mono माना जाता है। algorithmic latency शून्य है।
+Auto Pan हर stereo pair का level बाएँ और दाएँ चलाता है। कोई unpaired channel हो तो वह बीच में रहता है।
 
 ### ध्वनि समायोजन के सुझाव
 
@@ -65,7 +65,7 @@ LFO या input signal के envelope से state-variable filter को अ�
 
 ## Chorus
 
-चार-point cubic interpolation वाले कई variable-delay signals जोड़ता है। Mode में Chorus, Stereo Chorus, Ensemble, Flanger और Vibrato हैं। variable delay सुनाई देने वाला विलंब बनाता है, पर fixed latency नहीं है; इसलिए reported algorithmic latency शून्य है।
+Chorus संगीत की चलती हुई delayed copies जोड़ता है। इसके modes में **Stereo Chorus**, **Ensemble**, **Flanger** और **Vibrato** शामिल हैं; Delay और Depth processed sound को original से थोड़ा पीछे महसूस करा सकते हैं।
 
 ### ध्वनि समायोजन के सुझाव
 
@@ -80,7 +80,7 @@ LFO या input signal के envelope से state-variable filter को अ�
 - **Mode**: Chorus, Stereo Chorus, Ensemble, Flanger या Vibrato।
 - **Rate** (0.05–10 Hz): modulation की गति।
 - **Delay** (0.5–30 ms): wet signal का आधार delay।
-- **Depth** (0–20 ms): delay में बदलाव। negative-delay read रोकने के लिए saved value को Delay तक सीमित किया जाता है।
+- **Depth** (0–20 ms): delay में बदलाव। Depth को अपने आप Delay के मान तक सीमित किया जाता है।
 - **Voices** (1–6): Chorus और Ensemble में variable taps की संख्या। अन्य modes में अनदेखा होता है।
 - **Stereo Spread** (0–100%): हर stereo pair में modulation difference। Chorus mode में अनदेखा होता है।
 - **Feedback** (-75–75%): केवल Flanger में उपयोग होता है।
@@ -123,7 +123,7 @@ Doppler Distortion स्पीकर कॉन के भौतिक आंद
 
 ## Frequency Shifter
 
-हर frequency component को pitch ratio के बजाय निश्चित Hz से खिसकाता है। Ring Mod signal को carrier से गुणा करता है; Barber-pole shifts को overlap करके लगातार ऊपर या नीचे जाने का आभास देता है। Shift और Barber-pole Hilbert analytic-signal FIR का उपयोग करते हैं; Ring Mod उसी FIFO से मिले बराबर-delay वाले real signal को carrier से गुणा करता है। इसलिए मूल और processed signals सभी modes में time-aligned रहते हैं। fixed latency sample rate पर निर्भर है और DSP Library इसे report करती है।
+Frequency Shifter हर frequency component को musical interval के बजाय निश्चित hertz से खिसकाता है। **Ring Mod** metallic sidebands बनाता है, जबकि **Barber-pole** लगातार ऊपर या नीचे जाते shift का आभास देता है। यह effect sample rate के अनुसार थोड़ा processing delay जोड़ता है, Mix 0% पर भी।
 
 ### ध्वनि समायोजन के सुझाव
 
@@ -142,11 +142,11 @@ Doppler Distortion स्पीकर कॉन के भौतिक आंद
 - **Stereo Phase** (0–180°): सभी modes में हर stereo pair के बाएँ और दाएँ carrier या sweep में अंतर देता है।
 - **Mix** (0–100%): बराबर-delay वाले मूल और processed signal का अनुपात। 0% पर भी बताई गई fixed latency रहती है।
 
-बड़े shifts Nyquist frequency से ऊपर components बना सकते हैं, जिससे aliasing सुनाई दे सकती है। शुरुआती version oversampling नहीं करता।
+अगर बड़ा shift अनचाहे रूप से खुरदरा या metallic लगे, तो Shift या Mix कम करें।
 
 ## Phaser
 
-moving peaks और notches बनाने के लिए मूल signal को all-pass filter chain के output से मिलाता है। Classic आगे-पीछे चलता है; Barber-pole तीन constant-power windows को overlap करके लगातार ऊपर या नीचे जाने का आभास देता है। algorithmic latency शून्य है।
+Phaser original sound को filtered copies के साथ मिलाकर moving peaks और notches बनाता है। **Classic** आगे-पीछे sweep करता है, जबकि **Barber-pole** लगातार ऊपर या नीचे चलते motion का आभास देता है।
 
 ### ध्वनि समायोजन के सुझाव
 
@@ -190,7 +190,7 @@ moving peaks और notches बनाने के लिए मूल signal �
 
 ## Pitch Shifter HQ
 
-ध्यान से सुनने के लिए बनाया गया एक उच्च-गुणवत्ता वाला pitch shifter, जब कम latency या कम CPU usage की तुलना में phase smearing घटाना अधिक महत्वपूर्ण हो। यह playback speed बदले बिना pitch बदलता है और standard Pitch Shifter की तुलना में spectral components को बेहतर ढंग से साथ रखता है। बदले में, यह अधिक CPU उपयोग करता है और लगभग 106.7–116.1ms की fixed processing latency जोड़ता है: 48, 96 और 192kHz पर लगभग 106.7ms तथा 44.1, 88.2 और 176.4kHz पर लगभग 116.1ms। इसके लिए EffeTune का WASM DSP engine आवश्यक है; यदि यह engine उपलब्ध न हो, तो audio बिना processing के गुजरता है।
+ध्यान से सुनने के लिए बेहतर-quality pitch shifter, जब कम phase smearing के बदले अधिक CPU और लगभग 107–116 ms delay स्वीकार्य हो। यह playback speed बदले बिना pitch बदलता है और standard Pitch Shifter से spectral components को अधिक मजबूती से साथ रखता है। device पर effect उपलब्ध न हो तो audio बिना बदलाव गुजरता है।
 
 Pitch Shifter HQ formants को सुरक्षित नहीं रखता। इसलिए बड़े pitch shifts से pitch के साथ-साथ आवाज़ों और वाद्ययंत्रों का स्वरूप भी बदलता है।
 
@@ -212,7 +212,7 @@ Pitch Shifter HQ formants को सुरक्षित नहीं रखत
 
 ## Rotary Speaker
 
-Linkwitz–Riley crossover से signal को high-frequency horn और low-frequency drum में बाँटता है, फिर दोनों पर अलग rotation speed, volume modulation और छोटा Doppler delay लगाता है। यह किसी खास Leslie cabinet का measured model नहीं है। variable delay के कारण इसे fixed algorithmic latency के रूप में report नहीं किया जाता।
+Rotary Speaker sound को high-frequency horn और low-frequency drum में बाँटकर दोनों को अलग rotation rates देता है। level movement और छोटा Doppler delay characteristic dual-rotor motion बनाते हैं।
 
 ### ध्वनि समायोजन के सुझाव
 
@@ -223,7 +223,7 @@ Linkwitz–Riley crossover से signal को high-frequency horn और low-f
 ### पैरामीटर
 
 - **Style**: सभी parameters की पूरी factory setting। विकल्प **Rotary Slow** (Slow), **Rotary Fast** (Fast), **Gentle Rotary** (Slow), **Leslie Slow** (Slow) और **Leslie Fast** (Fast) हैं। अलग parameter बदलने पर यह **Custom** हो जाता है।
-- **Speed State**: Stop, Slow या Fast। बदलते समय mute किए बिना लगातार तेज़ या धीमा होता है।
+- **Speed State**: Stop, Slow या Fast। बदलते समय rotors sound को रोके बिना smoothly तेज़ या धीमे होते हैं।
 - **Speed** (25–200%): horn और drum दोनों की speed multiplier।
 - **Acceleration** (0.1–10 s): rotors नई speed की ओर कितनी तेज़ी से बढ़ते हैं।
 - **Crossover** (200–2,000 Hz): drum और horn bands को बाँटने वाली frequency।

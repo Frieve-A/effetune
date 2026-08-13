@@ -24,7 +24,7 @@ Une collection de plugins qui ajoutent du mouvement et des variations à votre m
 
 ## Auto Filter
 
-Anime automatiquement un filtre à variables d'état au moyen d'un LFO ou de l'enveloppe du signal d'entrée. Le mode Envelope peut servir d'Envelope Filter ou d'Auto Wah. La latence algorithmique est nulle.
+Auto Filter anime automatiquement un filtre résonant. Le mode **LFO** répète un balayage, tandis que **Envelope** suit le niveau de la musique pour produire un Envelope Filter ou un Auto Wah.
 
 ### Conseils de réglage
 
@@ -45,7 +45,7 @@ Anime automatiquement un filtre à variables d'état au moyen d'un LFO ou de l'e
 
 ## Auto Pan
 
-Déplace le volume de chaque paire stéréo adjacente de gauche à droite. Les paires ne sont pas mélangées entre elles et un dernier canal isolé est traité en mono. La latence algorithmique est nulle.
+Auto Pan déplace le niveau de chaque paire stéréo entre la gauche et la droite. Un canal non apparié reste centré.
 
 ### Conseils de réglage
 
@@ -65,7 +65,7 @@ Déplace le volume de chaque paire stéréo adjacente de gauche à droite. Les p
 
 ## Chorus
 
-Ajoute plusieurs signaux à retard variable avec une interpolation cubique à quatre points. Mode propose Chorus, Stereo Chorus, Ensemble, Flanger et Vibrato. Les retards variables sont audibles, mais ne constituent pas une latence fixe ; la latence algorithmique annoncée est donc nulle.
+Chorus ajoute des copies retardées et mobiles de la musique. Ses modes couvrent **Stereo Chorus**, **Ensemble**, **Flanger** et **Vibrato** ; Delay et Depth peuvent donner l'impression que le signal traité arrive légèrement après l'original.
 
 ### Conseils de réglage
 
@@ -80,7 +80,7 @@ Ajoute plusieurs signaux à retard variable avec une interpolation cubique à qu
 - **Mode** : Chorus, Stereo Chorus, Ensemble, Flanger ou Vibrato.
 - **Rate** (0,05–10 Hz) : Vitesse de modulation.
 - **Delay** (0,5–30 ms) : Retard de référence du signal traité.
-- **Depth** (0–20 ms) : Variation du retard. Pour éviter une lecture à retard négatif, la valeur enregistrée est limitée à Delay.
+- **Depth** (0–20 ms) : Variation du retard. Depth est automatiquement limité à la valeur de Delay.
 - **Voices** (1–6) : Nombre de prises variables en Chorus et Ensemble. Ignoré dans les autres modes.
 - **Stereo Spread** (0–100%) : Écart de modulation dans chaque paire stéréo. Ignoré en mode Chorus.
 - **Feedback** (-75–75%) : Utilisé uniquement en mode Flanger.
@@ -120,7 +120,7 @@ Ces réglages offrent un Doppler Distortion subtil qui enrichit l'expérience d'
 
 ## Frequency Shifter
 
-Déplace chaque composante fréquentielle d'un nombre fixe de hertz, et non selon un rapport de hauteur. Ring Mod multiplie le signal par une porteuse ; Barber-pole superpose des décalages donnant l'impression d'une montée ou d'une descente continue. Shift et Barber-pole emploient un FIR de signal analytique de Hilbert ; Ring Mod multiplie la porteuse par le signal réel retardé de façon correspondante, extrait de la même FIFO. Les voies d'origine et traitée restent ainsi alignées dans tous les modes. La latence fixe dépend de la fréquence d'échantillonnage et est indiquée par DSP Library.
+Frequency Shifter déplace chaque composante fréquentielle d'un nombre fixe de hertz plutôt que d'un intervalle musical. **Ring Mod** crée des bandes latérales métalliques, tandis que **Barber-pole** donne l'impression d'un décalage qui monte ou descend sans fin. L'effet ajoute un court retard de traitement variable selon la fréquence d'échantillonnage, même avec Mix à 0%.
 
 ### Conseils de réglage
 
@@ -139,11 +139,11 @@ Déplace chaque composante fréquentielle d'un nombre fixe de hertz, et non selo
 - **Stereo Phase** (0–180°) : Dans tous les modes, décale la porteuse ou le balayage entre la gauche et la droite de chaque paire stéréo.
 - **Mix** (0–100%) : Proportion du signal d'origine retardé pour être aligné et du signal traité. Même à 0%, la latence fixe indiquée demeure.
 
-Les décalages importants peuvent créer des composantes au-dessus de la fréquence de Nyquist et rendre l'aliasing audible. La première version n'effectue pas de suréchantillonnage.
+Si un décalage important produit un son rugueux ou métallique indésirable, réduisez Shift ou Mix.
 
 ## Phaser
 
-Mélange le signal d'origine à la sortie d'une chaîne de filtres passe-tout pour créer des pics et des creux mobiles. Classic effectue un aller-retour ; Barber-pole superpose trois fenêtres à puissance constante pour donner une impression continue de montée ou de descente. La latence algorithmique est nulle.
+Phaser mélange le son d'origine à des copies filtrées pour créer des pics et des creux mobiles. **Classic** effectue un balayage aller-retour, tandis que **Barber-pole** suggère un mouvement continu vers le haut ou le bas.
 
 ### Conseils de réglage
 
@@ -187,7 +187,7 @@ Un effet qui modifie la hauteur de votre musique sans en altérer la vitesse de 
 
 ## Pitch Shifter HQ
 
-Un transpositeur de meilleure qualité pour une écoute attentive, lorsque la réduction du flou dû aux déphasages compte davantage qu'une faible latence ou une charge CPU réduite. Il modifie la hauteur sans changer la vitesse de lecture et maintient les composantes spectrales mieux regroupées que le Pitch Shifter standard. En contrepartie, il sollicite davantage le processeur et ajoute un retard de traitement fixe d'environ 106,7 à 116,1ms : environ 106,7ms à 48, 96 et 192kHz, et environ 116,1ms à 44,1, 88,2 et 176,4kHz. Il nécessite le moteur DSP WASM d'EffeTune ; si ce moteur n'est pas disponible, le signal audio est transmis sans traitement.
+Un transpositeur de meilleure qualité pour une écoute attentive lorsque la réduction du flou de phase justifie davantage de CPU et environ 107–116 ms de retard. Il modifie la hauteur sans changer la vitesse de lecture et maintient mieux groupées les composantes spectrales que Pitch Shifter. Si cet effet n'est pas disponible sur votre appareil, le son passe sans modification.
 
 Pitch Shifter HQ ne conserve pas les formants. Les transpositions importantes modifient donc le timbre apparent des voix et des instruments en plus de leur hauteur.
 
@@ -209,7 +209,7 @@ Pitch Shifter HQ ne conserve pas les formants. Les transpositions importantes mo
 
 ## Rotary Speaker
 
-Sépare le signal entre une trompe d'aigus et un tambour de graves au moyen d'un crossover Linkwitz–Riley, puis applique à chacun une vitesse de rotation, une modulation de volume et un court retard Doppler distincts. Il ne reproduit pas les mesures d'une enceinte Leslie particulière. Le retard étant variable, il n'est pas annoncé comme une latence algorithmique fixe.
+Rotary Speaker sépare le son entre une trompe d'aigus et un tambour de graves, puis leur applique des vitesses de rotation différentes. Les variations de niveau et un court retard Doppler créent le mouvement caractéristique des deux rotors.
 
 ### Conseils de réglage
 
@@ -220,7 +220,7 @@ Sépare le signal entre une trompe d'aigus et un tambour de graves au moyen d'un
 ### Paramètres
 
 - **Style** : Réglage d'usine complet de tous les paramètres. Choix : **Rotary Slow** (Slow), **Rotary Fast** (Fast), **Gentle Rotary** (Slow), **Leslie Slow** (Slow) et **Leslie Fast** (Fast). La modification d'un paramètre le fait passer à **Custom**.
-- **Speed State** : Stop, Slow ou Fast. Le changement accélère ou ralentit progressivement, sans coupure.
+- **Speed State** : Stop, Slow ou Fast. Pendant le changement, les rotors accélèrent ou ralentissent en douceur sans interrompre le son.
 - **Speed** (25–200%) : Multiplicateur de vitesse de la trompe et du tambour.
 - **Acceleration** (0,1–10 s) : Règle la vitesse à laquelle les rotors se rapprochent d'une nouvelle vitesse.
 - **Crossover** (200–2 000 Hz) : Fréquence de séparation des bandes du tambour et de la trompe.

@@ -12,11 +12,6 @@ const reservedKeys = new Set([
   'outputBus', 'channel', 'channelCount', 'blockSize', 'sampleRate'
 ]);
 const kinds = new Set(['float', 'int', 'bool', 'enum']);
-const automationEligibility = new Set(['continuous', 'stepped']);
-const automationNormalizations = new Set(['linear', 'log', 'enum', 'bool', 'integer']);
-const automationSafetyKeys = Object.freeze([
-  'latencyChanging', 'structural', 'asset', 'expensiveApply'
-]);
 const policies = new Set(['per-sample', 'spectral']);
 const structuredCodecs = new Set(['matrix-routes-v1']);
 const unsafeJsLiteralCharacters = Object.freeze({
@@ -86,62 +81,29 @@ function validateAutomation(raw, field, source) {
   if (raw === undefined) {
     return null;
   }
-  if (!isPlainObject(raw)) {
-    fail(`field ${field.name} automation must be an object`, source);
+  if (raw !== true && !isPlainObject(raw)) {
+    fail(`field ${field.name} automation must be true or an object`, source);
   }
-  rejectUnknownKeys(raw, new Set([
-    'eligibility', 'key', 'title', 'shortTitle', 'unit', 'normalization', 'safety'
-  ]), `field ${field.name} automation`, source);
-
-  if (!automationEligibility.has(raw.eligibility)) {
-    fail(`field ${field.name} automation.eligibility must be continuous or stepped`, source);
-  }
-  const key = requireIdentifier(
-    raw.key, `field ${field.name} automation.key`, source
-  );
-  if (typeof raw.title !== 'string' || raw.title.trim().length === 0) {
-    fail(`field ${field.name} automation.title must be a non-empty string`, source);
-  }
-  if (raw.shortTitle !== undefined &&
-      (typeof raw.shortTitle !== 'string' || raw.shortTitle.trim().length === 0)) {
-    fail(`field ${field.name} automation.shortTitle must be a non-empty string`, source);
-  }
-  if (typeof raw.unit !== 'string') {
-    fail(`field ${field.name} automation.unit must be a string`, source);
-  }
-  if (!automationNormalizations.has(raw.normalization)) {
-    fail(
-      `field ${field.name} automation.normalization must be one of: ` +
-      [...automationNormalizations].join(', '),
-      source
-    );
+  if (raw !== true) {
+    rejectUnknownKeys(raw, new Set(['normalization']), `field ${field.name} automation`, source);
+    if (raw.normalization !== 'log') {
+      fail(`field ${field.name} automation.normalization must be log`, source);
+    }
   }
 
-  const expected = field.kind === 'float'
-    ? new Set(['linear', 'log'])
-    : new Set([field.kind === 'int' ? 'integer' : field.kind]);
-  if (!expected.has(raw.normalization)) {
-    fail(
-      `field ${field.name} ${field.kind} kind is incompatible with ` +
-      `${raw.normalization} automation normalization`,
-      source
-    );
-  }
-  const expectedEligibility = field.kind === 'float' ? 'continuous' : 'stepped';
-  if (raw.eligibility !== expectedEligibility) {
-    fail(
-      `field ${field.name} ${field.kind} kind requires ${expectedEligibility} ` +
-      'automation eligibility',
-      source
-    );
-  }
+  const normalization = raw === true
+    ? (field.kind === 'float' ? 'linear' : field.kind === 'int' ? 'integer' : field.kind)
+    : raw.normalization;
+  const eligibility = field.kind === 'float' ? 'continuous' : 'stepped';
   if (field.kind === 'float') {
     if (!(field.min < field.max)) {
       fail(`field ${field.name} automated float range must not be empty`, source);
     }
-    if (raw.normalization === 'log' && field.min <= 0) {
+    if (normalization === 'log' && field.min <= 0) {
       fail(`field ${field.name} log automation requires min greater than zero`, source);
     }
+  } else if (normalization === 'log') {
+    fail(`field ${field.name} log automation requires float kind`, source);
   } else if (field.kind === 'int') {
     const steps = field.max - field.min;
     if (steps <= 0 || steps > 0xffffffff) {
@@ -151,38 +113,14 @@ function validateAutomation(raw, field, source) {
     fail(`field ${field.name} enum automation requires at least two values`, source);
   }
 
-  if (!isPlainObject(raw.safety)) {
-    fail(`field ${field.name} automation.safety must be an object`, source);
-  }
-  rejectUnknownKeys(
-    raw.safety, new Set(automationSafetyKeys),
-    `field ${field.name} automation.safety`, source
-  );
-  let safetyFlags = 0;
-  automationSafetyKeys.forEach((name, index) => {
-    const value = raw.safety[name];
-    if (typeof value !== 'boolean') {
-      fail(`field ${field.name} automation.safety.${name} must be true or false`, source);
-    }
-    if (value) {
-      safetyFlags |= 1 << index;
-    }
-  });
-  if (safetyFlags !== 0) {
-    fail(
-      `field ${field.name} cannot be automated because a safety exclusion is set`,
-      source
-    );
-  }
-
+  const title = field.name.replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/^./, character => character.toUpperCase());
   return {
-    eligibility: raw.eligibility,
-    key,
-    title: raw.title,
-    shortTitle: raw.shortTitle ?? raw.title,
-    unit: raw.unit,
-    normalization: raw.normalization,
-    safetyFlags
+    eligibility,
+    title,
+    shortTitle: title,
+    normalization,
+    safetyFlags: 0
   };
 }
 
@@ -213,10 +151,6 @@ export function validateParamSpec(raw, source = '<params.json>') {
     fail('root must be an object', source);
   }
   const type = requireIdentifier(raw.type, 'type', source);
-  if (raw.phase0 !== undefined && typeof raw.phase0 !== 'boolean') {
-    fail('phase0 must be true or false', source);
-  }
-  const phase0 = raw.phase0 === true;
   if (!isPlainObject(raw.tolerance)) {
     fail('tolerance must be an object', source);
   }
@@ -238,8 +172,7 @@ export function validateParamSpec(raw, source = '<params.json>') {
 
   const fieldNames = new Set();
   const packedKeys = new Set();
-  const automationKeys = new Set();
-  const objectArrays = new Map();
+  const jsonStorageRoots = new Map();
   let floatCount = 0;
   const fields = raw.fields.map((rawField, fieldIndex) => {
     if (!isPlainObject(rawField)) {
@@ -265,7 +198,12 @@ export function validateParamSpec(raw, source = '<params.json>') {
       if (packedKeys.has(key)) {
         fail(`packed key collision: ${key}`, source);
       }
+      const storageRoot = jsonStorageRoots.get(key);
+      if (storageRoot && storageRoot.shape !== 'direct') {
+        fail(`JSON storage root shape collision: ${key}`, source);
+      }
       packedKeys.add(key);
+      jsonStorageRoots.set(key, { shape: 'direct' });
     }
     let arrayKey = null;
     if (rawField.arrayKey !== undefined) {
@@ -274,6 +212,14 @@ export function validateParamSpec(raw, source = '<params.json>') {
         fail(`field ${name} arrayKey requires a non-reserved string and count > 1`, source);
       }
       arrayKey = rawField.arrayKey;
+      const storageRoot = jsonStorageRoots.get(arrayKey);
+      if (storageRoot) {
+        if (storageRoot.shape !== 'array') {
+          fail(`JSON storage root shape collision: ${arrayKey}`, source);
+        }
+        fail(`array ${arrayKey} leaf collision`, source);
+      }
+      jsonStorageRoots.set(arrayKey, { shape: 'array' });
     }
     let objectArrayKey = null;
     let memberKey = null;
@@ -295,7 +241,10 @@ export function validateParamSpec(raw, source = '<params.json>') {
       }
       objectArrayKey = rawField.objectArrayKey;
       memberKey = rawField.memberKey;
-      const group = objectArrays.get(objectArrayKey);
+      const group = jsonStorageRoots.get(objectArrayKey);
+      if (group && group.shape !== 'object-array') {
+        fail(`JSON storage root shape collision: ${objectArrayKey}`, source);
+      }
       if (group && group.count !== count) {
         fail(`object array ${objectArrayKey} fields must use the same count`, source);
       }
@@ -305,11 +254,17 @@ export function validateParamSpec(raw, source = '<params.json>') {
       if (group) {
         group.memberKeys.add(memberKey);
       } else {
-        objectArrays.set(objectArrayKey, { count, memberKeys: new Set([memberKey]) });
+        jsonStorageRoots.set(objectArrayKey, {
+          shape: 'object-array', count, memberKeys: new Set([memberKey])
+        });
       }
     }
 
     const defaults = expandDefault(rawField, count, source);
+    if (rawField.unit !== undefined && typeof rawField.unit !== 'string') {
+      fail(`field ${name} unit must be a string`, source);
+    }
+    const unit = rawField.unit ?? '';
     let minimum = null;
     let maximum = null;
     let values = null;
@@ -362,13 +317,6 @@ export function validateParamSpec(raw, source = '<params.json>') {
       values,
       defaults
     }, source);
-    if (automation) {
-      if (automationKeys.has(automation.key)) {
-        fail(`duplicate automation key ${automation.key}`, source);
-      }
-      automationKeys.add(automation.key);
-    }
-
     floatCount += count;
     if (!Number.isSafeInteger(floatCount) || floatCount > 65536) {
       fail('packed parameter layout exceeds 65536 floats', source);
@@ -387,6 +335,7 @@ export function validateParamSpec(raw, source = '<params.json>') {
       values,
       rejectInvalid,
       defaults,
+      unit,
       automation
     };
   });
@@ -449,7 +398,6 @@ export function validateParamSpec(raw, source = '<params.json>') {
   });
   return {
     type,
-    phase0,
     tolerance: { abs, rel: raw.tolerance.rel ?? null, policy },
     fields,
     floatCount,
@@ -531,7 +479,10 @@ export function buildAutomationCatalog(specs) {
         const { minimum, maximum } = automationRange(field);
         for (let element = 0; element < field.count; ++element) {
           parameters.push({
-            key: field.automation.key,
+            key: field.keys[element],
+            arrayKey: field.arrayKey ?? '',
+            objectArrayKey: field.objectArrayKey ?? '',
+            memberKey: field.memberKey ?? '',
             element,
             field: field.name,
             packedOffset: packedOffset + element,
@@ -545,7 +496,7 @@ export function buildAutomationCatalog(specs) {
             stepCount: automationStepCount(field),
             title: field.automation.title,
             shortTitle: field.automation.shortTitle,
-            unit: field.automation.unit,
+            unit: field.unit,
             safetyFlags: field.automation.safetyFlags,
             ...(field.kind === 'enum' ? { values: [...field.values] } : {})
           });
@@ -564,7 +515,8 @@ export function validateAutomationCompatibility(previous, current) {
     fail('automation compatibility inputs must be v1 catalogs');
   }
   const stableMembers = [
-    'kind', 'eligibility', 'normalization', 'minimum', 'maximum', 'stepCount'
+    'arrayKey', 'objectArrayKey', 'memberKey', 'kind', 'eligibility',
+    'normalization', 'minimum', 'maximum', 'default', 'stepCount'
   ];
   for (const [type, previousParameters] of Object.entries(previous.effects)) {
     const currentParameters = current.effects[type] ?? [];
@@ -607,17 +559,31 @@ function cppAutomationCatalog(specs) {
     effects.push({ type, first: parameters.length, count: entries.length });
     parameters.push(...entries);
   }
-  const parameterRows = parameters.map(parameter =>
+  const enumValues = [];
+  const cppParameters = parameters.map(parameter => {
+    const firstEnumValue = enumValues.length;
+    if (parameter.values) enumValues.push(...parameter.values);
+    return {
+      ...parameter,
+      firstEnumValue,
+      enumValueCount: parameter.values?.length ?? 0
+    };
+  });
+  const parameterRows = cppParameters.map(parameter =>
     `  AutomationParameterDescriptor{${cppStringLiteral(parameter.key)}, ` +
-    `${parameter.element}u, ${cppStringLiteral(parameter.field)}, ${parameter.packedOffset}u, ` +
+    `${cppStringLiteral(parameter.arrayKey)}, ${cppStringLiteral(parameter.objectArrayKey)}, ` +
+    `${cppStringLiteral(parameter.memberKey)}, ${parameter.element}u, ` +
+    `${cppStringLiteral(parameter.field)}, ${parameter.packedOffset}u, ` +
     `AutomationParameterKind::${parameter.kind[0].toUpperCase()}${parameter.kind.slice(1)}, ` +
     `AutomationEligibility::${parameter.eligibility === 'continuous' ? 'Continuous' : 'Stepped'}, ` +
     `AutomationNormalization::${parameter.normalization === 'log' ? 'Logarithmic' : parameter.normalization[0].toUpperCase() + parameter.normalization.slice(1)}, ` +
     `${cppFloat(parameter.minimum)}, ${cppFloat(parameter.maximum)}, ` +
     `${cppFloat(parameter.packedDefault)}, ${parameter.stepCount}u, ` +
     `${cppStringLiteral(parameter.title)}, ${cppStringLiteral(parameter.shortTitle)}, ` +
-    `${cppStringLiteral(parameter.unit)}, ${parameter.safetyFlags}u}`
+    `${cppStringLiteral(parameter.unit)}, ${parameter.safetyFlags}u, ` +
+    `${parameter.firstEnumValue}u, ${parameter.enumValueCount}u}`
   ).join(',\n');
+  const enumValueRows = enumValues.map(value => `  ${cppStringLiteral(value)}`).join(',\n');
   const effectRows = effects.map(effect =>
     `  AutomationEffectDescriptor{${cppStringLiteral(effect.type)}, ${effect.first}u, ${effect.count}u}`
   ).join(',\n');
@@ -630,18 +596,23 @@ function cppAutomationCatalog(specs) {
     `enum class AutomationEligibility : std::uint8_t { Continuous, Stepped };\n` +
     `enum class AutomationNormalization : std::uint8_t { Linear, Logarithmic, Enum, Bool, Integer };\n\n` +
     `struct AutomationParameterDescriptor {\n` +
-    `  std::string_view key;\n  std::uint32_t element;\n  std::string_view field;\n` +
+    `  std::string_view key;\n  std::string_view arrayKey;\n` +
+    `  std::string_view objectArrayKey;\n  std::string_view memberKey;\n` +
+    `  std::uint32_t element;\n  std::string_view field;\n` +
     `  std::uint32_t packedOffset;\n  AutomationParameterKind kind;\n` +
     `  AutomationEligibility eligibility;\n  AutomationNormalization normalization;\n` +
     `  float minimum;\n  float maximum;\n  float defaultValue;\n` +
     `  std::uint32_t stepCount;\n  std::string_view title;\n` +
     `  std::string_view shortTitle;\n  std::string_view unit;\n` +
-    `  std::uint8_t safetyFlags;\n};\n\n` +
+    `  std::uint8_t safetyFlags;\n  std::uint32_t firstEnumValue;\n` +
+    `  std::uint32_t enumValueCount;\n};\n\n` +
     `struct AutomationEffectDescriptor {\n  std::string_view type;\n` +
     `  std::uint32_t firstParameter;\n  std::uint32_t parameterCount;\n};\n\n` +
     `// clang-format off\n` +
     `inline constexpr std::array<AutomationParameterDescriptor, ${parameters.length}> kAutomationParameters{{\n` +
     `${parameterRows}${parameterRows ? '\n' : ''}}};\n\n` +
+    `inline constexpr std::array<std::string_view, ${enumValues.length}> kAutomationEnumValues{{\n` +
+    `${enumValueRows}${enumValueRows ? '\n' : ''}}};\n\n` +
     `inline constexpr std::array<AutomationEffectDescriptor, ${effects.length}> kAutomationEffects{{\n` +
     `${effectRows}${effectRows ? '\n' : ''}}};\n` +
     `// clang-format on\n\n` +
@@ -858,7 +829,7 @@ export function generateOutputs(specs) {
     outputs.set(path.join(cppOutputRoot, `${spec.type}Params.h`), cppForSpec(spec));
   }
   outputs.set(path.join(cppOutputRoot, 'AutomationCatalog.h'), cppAutomationCatalog(specs));
-  outputs.set(runtimeJsOutput, jsForSpecs(specs.filter(spec => !spec.phase0)));
+  outputs.set(runtimeJsOutput, jsForSpecs(specs));
   return outputs;
 }
 

@@ -68,85 +68,55 @@ export async function updateApplicationMenu(isElectron) {
     const dbtActive = !!(window.uiManager && window.uiManager.isDoubleBlindActive && window.uiManager.isDoubleBlindActive());
     const editEnabled = !dbtActive;
 
-    // Create a menu template with translated labels
-    const menuTemplate = {
-      file: {
-        label: t('menu.file'),
-        submenu: [
-          { label: t('menu.file.save'), enabled: !dbtActive },
-          { label: t('menu.file.saveAs'), enabled: !dbtActive },
-          { type: 'separator' },
-          { label: t('menu.file.openMusicFile'), enabled: true },
-          { label: t('menu.file.addMusicFolder'), enabled: true },
-          { label: t('menu.file.rescanLibrary'), enabled: true },
-          { label: t('menu.file.processAudioFiles'), enabled: !dbtActive },
-          { type: 'separator' },
-          { label: t('menu.file.exportPreset'), enabled: !dbtActive },
-          { label: t('menu.file.importPreset'), enabled: !dbtActive },
-          { type: 'separator' },
-          { label: t('menu.doubleBlindTest'), enabled: !dbtActive },
-          { type: 'separator' },
-          { label: t('menu.file.quit'), enabled: true }
-        ]
+    // The main process owns menu structure and actions. The renderer only
+    // supplies translated labels and current item state by stable ID.
+    const menuState = {
+      'menu.file': { label: t('menu.file') },
+      'file.save': { label: t('menu.file.save'), enabled: !dbtActive },
+      'file.saveAs': { label: t('menu.file.saveAs'), enabled: !dbtActive },
+      'file.openMusicFile': { label: t('menu.file.openMusicFile'), enabled: true },
+      'file.addMusicFolder': { label: t('menu.file.addMusicFolder'), enabled: true },
+      'file.rescanLibrary': { label: t('menu.file.rescanLibrary'), enabled: true },
+      'file.processAudioFiles': { label: t('menu.file.processAudioFiles'), enabled: !dbtActive },
+      'file.exportPreset': { label: t('menu.file.exportPreset'), enabled: !dbtActive },
+      'file.importPreset': { label: t('menu.file.importPreset'), enabled: !dbtActive },
+      'file.doubleBlindTest': { label: t('menu.doubleBlindTest'), enabled: !dbtActive },
+      'file.quit': { label: t('menu.file.quit'), enabled: true },
+      'menu.edit': { label: t('menu.edit') },
+      'edit.undo': { label: t('menu.edit.undo'), enabled: editEnabled },
+      'edit.redo': { label: t('menu.edit.redo'), enabled: editEnabled },
+      'edit.cut': { label: t('menu.edit.cut'), enabled: editEnabled },
+      'edit.copy': { label: t('menu.edit.copy'), enabled: editEnabled },
+      'edit.paste': { label: t('menu.edit.paste'), enabled: editEnabled },
+      'edit.delete': { label: t('menu.edit.delete'), enabled: editEnabled },
+      'edit.selectAll': { label: t('menu.edit.selectAll'), enabled: editEnabled },
+      'menu.view': { label: t('menu.view') },
+      'view.reload': { label: t('menu.view.reload') },
+      'view.resetZoom': { label: t('menu.view.resetZoom') },
+      'view.zoomIn': { label: t('menu.view.zoomIn') },
+      'view.zoomOut': { label: t('menu.view.zoomOut') },
+      'view.effectPipeline': { label: t('menu.view.effectPipeline') },
+      'view.musicLibrary': { label: t('menu.view.musicLibrary') },
+      'view.pipelineAnalyzer': {
+        label: t('menu.view.pipelineAnalyzer'),
+        checked: window.uiManager.pipelineAnalyzerController?.state?.open === true
       },
-      edit: {
-        label: t('menu.edit'),
-        submenu: [
-          { label: t('menu.edit.undo'), enabled: editEnabled },
-          { label: t('menu.edit.redo'), enabled: editEnabled },
-          { type: 'separator' },
-          { label: t('menu.edit.cut'), enabled: editEnabled },
-          { label: t('menu.edit.copy'), enabled: editEnabled },
-          { label: t('menu.edit.paste'), enabled: editEnabled },
-          { type: 'separator' },
-          { label: t('menu.edit.delete'), enabled: editEnabled },
-          { label: t('menu.edit.selectAll'), enabled: editEnabled }
-        ]
-      },
-      view: {
-        label: t('menu.view'),
-        submenu: [
-          { label: t('menu.view.reload') },
-          { type: 'separator' },
-          { label: t('menu.view.resetZoom') },
-          { label: t('menu.view.zoomIn') },
-          { label: t('menu.view.zoomOut') },
-          { type: 'separator' },
-          { label: t('menu.view.effectPipeline') },
-          { label: t('menu.view.musicLibrary') },
-          {
-            label: t('menu.view.pipelineAnalyzer'),
-            type: 'checkbox',
-            checked: window.uiManager.pipelineAnalyzerController?.state?.open === true
-          },
-          { type: 'separator' },
-          { label: t('menu.view.toggleFullscreen') },
-          { label: t('menu.view.miniPlayer') }
-        ]
-      },
-      settings: {
-        label: t('menu.settings'),
-        submenu: [
-          { label: t('menu.settings.config') },
-          { label: t('menu.settings.audioDevices') },
-          { label: t('menu.settings.performanceBenchmark') },
-          { label: t('menu.settings.frequencyResponseMeasurement') }
-        ]
-      },
-      help: {
-        label: t('menu.help'),
-        submenu: [
-          { label: t('menu.help.help') },
-          { label: 'Discord' },
-          { label: t('menu.help.support') },
-          { type: 'separator' },
-          { label: t('menu.help.about') }
-        ]
-      }
+      'toggle-fullscreen': { label: t('menu.view.toggleFullscreen') },
+      'view.miniPlayer': { label: t('menu.view.miniPlayer') },
+      'menu.settings': { label: t('menu.settings') },
+      'settings.config': { label: t('menu.settings.config') },
+      'settings.audioDevices': { label: t('menu.settings.audioDevices') },
+      'settings.performanceBenchmark': { label: t('menu.settings.performanceBenchmark') },
+      'settings.frequencyResponseMeasurement': { label: t('menu.settings.frequencyResponseMeasurement') },
+      'menu.help': { label: t('menu.help') },
+      'help.help': { label: t('menu.help.help') },
+      'help.discord': { label: 'Discord' },
+      'help.support': { label: t('menu.help.support') },
+      'help.about': { label: t('menu.help.about') }
     };
     
     // Send the menu template to the main process to update the application menu
-    window.electronAPI.updateApplicationMenu(menuTemplate)
+    window.electronAPI.updateApplicationMenu(menuState)
       .then(result => {
         if (!result.success) {
           console.error('Failed to update application menu:', result.error);

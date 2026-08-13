@@ -137,7 +137,7 @@ O Dattorro Plate Reverb traz uma ambiência clássica em estilo de placa para su
 
 ## FDN Reverb
 
-Um efeito de reverb sofisticado baseado na arquitetura de Rede de Atraso de Feedback (FDN) usando uma matriz de difusão Hadamard. Isso cria uma reverberação rica e complexa com excelente densidade e características de decaimento natural, perfeita para aprimorar sua experiência de audição musical com efeitos espaciais imersivos.
+O FDN Reverb acrescenta um decaimento denso e natural. Use-o para dar a gravações secas ou próximas uma noção mais clara de tamanho e distância do ambiente.
 
 Nota de roteamento: FDN Reverb é um modelo de reverb estéreo com um feedback tank compartilhado. Quando roteado com mais de dois canais, cada canal avança esse tank compartilhado em sequência em vez de usar tanks independentes por canal. O canal 1 recebe left wet e os canais 2+ recebem right wet.
 
@@ -293,9 +293,9 @@ O tempo avança da esquerda para a direita e o nível vai de 0 a -90 dB. A curva
 
 Mono aplica uma IR, Independent mantém os canais separados, True Stereo usa LL/LR/RL/RR e Diagonal Matrix conecta apenas entradas e saídas correspondentes. Em Auto, toda IR de quatro canais com seleção estéreo é interpretada nessa ordem; para layouts Quad ou outros layouts de quatro canais, selecione explicitamente Independent ou Diagonal Matrix. Para um par True Stereo, selecione juntos arquivos correspondentes terminados em `L`/`R` ou `Left`/`Right`.
 
-Os originais ficam na **Impulse Response Library**. A versão web usa o OPFS privado do site; o app desktop usa o armazenamento gerenciado do aplicativo. A biblioteca mostra os nomes dos arquivos originais e permite pesquisá-los, carregar entradas ou excluí-las. Uma mudança de sample rate recria os dados a partir do original. Mantenha também uma cópia própria, pois a limpeza de dados do site ou a pressão de armazenamento pode remover dados do navegador.
+Os arquivos IR importados ficam na **Impulse Response Library**, onde você pode pesquisá-los pelo nome original, carregá-los ou excluí-los. Na versão web, eles são armazenados no navegador e podem ser perdidos se você limpar os dados do site ou se o navegador liberar espaço. O app desktop os guarda nos dados do aplicativo. Mantenha uma cópia separada de cada IR necessário.
 
-URLs e presets contêm apenas o ID, nunca o áudio IR nem o nome do arquivo. O destinatário precisa importar o mesmo arquivo ou escolher um substituto. Sem IR não há sinal wet; sem WASM passa apenas o dry configurado. Há material no [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/) e [Freesound](https://freesound.org/), mas verifique a licença de cada download (CC0, CC BY ou CC BY-NC, por exemplo) e preserve autor, fonte, atribuição e permissão comercial fora do EffeTune, que não armazena nem verifica informações de licença.
+URLs compartilhadas e presets identificam a IR, mas não incluem seus dados de áudio. Se a IR não estiver disponível, nenhum som wet será produzido; importe-a ou selecione-a novamente, ou escolha outra. O sinal dry continua conforme a configuração **Dry**. Há material no [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/) e [Freesound](https://freesound.org/), mas verifique a licença de cada download (CC0, CC BY ou CC BY-NC, por exemplo) e preserve autor, fonte, atribuição e permissão comercial fora do EffeTune, que não armazena nem verifica informações de licença.
 
 ## RS Reverb
 

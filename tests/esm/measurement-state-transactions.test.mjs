@@ -8,6 +8,7 @@ import AudioProcessing, {
     createSweepCapturePlan
 } from '../../features/measurement/measurement-controller/audio-processing.js';
 import {
+    default as measurementController,
     MeasurementController,
     MeasurementSetupError
 } from '../../features/measurement/measurement-controller/index.js';
@@ -496,6 +497,141 @@ test('configuration busy state restores each control to its original disabled st
     assert.equal(manager.configControlDisabledStates.size, 0);
 });
 
+test('navigation cleanup selects exactly one controller cleanup owner', t => {
+    const originals = {
+        isRunningMeasurement: measurementController.isRunningMeasurement,
+        cancelMeasurement: measurementController.cancelMeasurement,
+        cleanup: measurementController.cleanup,
+        document: globalThis.document
+    };
+    t.after(() => {
+        measurementController.isRunningMeasurement = originals.isRunningMeasurement;
+        measurementController.cancelMeasurement = originals.cancelMeasurement;
+        measurementController.cleanup = originals.cleanup;
+        globalThis.document = originals.document;
+    });
+
+    const noiseToggleButton = { textContent: 'Stop test signal' };
+    globalThis.document = {
+        getElementById: id => id === 'noiseToggleBtn' ? noiseToggleButton : null
+    };
+    let cancelCalls = 0;
+    let cleanupCalls = 0;
+    measurementController.cancelMeasurement = () => { cancelCalls += 1; };
+    measurementController.cleanup = () => { cleanupCalls += 1; };
+    const manager = new UIManager();
+
+    measurementController.isRunningMeasurement = true;
+    manager.cleanupAudioBeforeNavigation();
+    assert.equal(cancelCalls, 1);
+    assert.equal(cleanupCalls, 0);
+    assert.match(noiseToggleButton.textContent, /test signal/i);
+
+    measurementController.isRunningMeasurement = false;
+    manager.cleanupAudioBeforeNavigation();
+    assert.equal(cancelCalls, 1);
+    assert.equal(cleanupCalls, 1);
+});
+
+test('measurement cancellation performs each concrete audio stop once', t => {
+    const originals = {
+        audioContext: audioUtils.audioContext,
+        stopWhiteNoise: audioUtils.stopWhiteNoise,
+        stopMicrophoneInput: audioUtils.stopMicrophoneInput
+    };
+    t.after(() => {
+        audioUtils.audioContext = originals.audioContext;
+        audioUtils.stopWhiteNoise = originals.stopWhiteNoise;
+        audioUtils.stopMicrophoneInput = originals.stopMicrophoneInput;
+    });
+
+    const calls = { cleanup: 0, sweep: 0, level: 0, noise: 0, microphone: 0 };
+    audioUtils.audioContext = null;
+    audioUtils.stopWhiteNoise = () => { calls.noise += 1; };
+    audioUtils.stopMicrophoneInput = () => { calls.microphone += 1; };
+    const controller = new MeasurementController();
+    controller.isRunningMeasurement = true;
+    controller.stopSweepPlayback = () => { calls.sweep += 1; };
+    controller.stopLevelMeter = () => { calls.level += 1; };
+    const cleanup = controller.cleanup.bind(controller);
+    controller.cleanup = () => {
+        calls.cleanup += 1;
+        cleanup();
+    };
+
+    controller.cancelMeasurement();
+
+    assert.deepEqual(calls, {
+        cleanup: 1,
+        sweep: 1,
+        level: 1,
+        noise: 1,
+        microphone: 1
+    });
+    assert.equal(controller.isRunningMeasurement, false);
+});
+
+test('back, select, start-new, and save-finish transitions have one cleanup boundary', async t => {
+    const originals = {
+        window: globalThis.window,
+        document: globalThis.document
+    };
+    t.after(() => {
+        globalThis.window = originals.window;
+        globalThis.document = originals.document;
+    });
+    globalThis.document = {
+        querySelectorAll: () => [],
+        querySelector: () => null,
+        body: { classList: { contains: () => false } }
+    };
+    globalThis.window = { app: {
+        initializeAudio: async () => {},
+        populateAudioDevices: async () => {},
+        selectSavedAudioDevices: () => {}
+    } };
+
+    const manager = new UIManager();
+    let cleanupCalls = 0;
+    manager.cleanupAudioBeforeNavigation = () => { cleanupCalls += 1; };
+
+    manager.currentScreen = 'levelAdjustmentScreen';
+    manager.showScreen('measurementConfigScreen');
+    assert.equal(cleanupCalls, 1, 'Back cleans up once');
+
+    manager.currentScreen = 'sweepMeasurementScreen';
+    manager.measurementDisplay.updateSelectedMeasurementHighlight = () => {};
+    manager.measurementDisplay.displayMeasurementDetails = () => {};
+    manager.correctionHandler.requestCorrectionUpdate = () => {};
+    await manager.selectMeasurement('measurement-selected');
+    assert.equal(cleanupCalls, 2, 'Select cleans up once');
+
+    manager.currentScreen = 'resultsDisplayScreen';
+    manager.prepareConfigScreen = () => manager.showScreen('measurementConfigScreen');
+    await manager.startNewMeasurement();
+    assert.equal(cleanupCalls, 2, 'Start New does not clean inactive audio');
+
+    manager.currentScreen = 'sweepMeasurementScreen';
+    const finishingController = {
+        ...SweepMeasurement,
+        saveAndFinishMeasurement: async () => 'measurement-finished',
+        cleanup: () => assert.fail('finishMeasurement must not own navigation cleanup')
+    };
+    assert.equal(await finishingController.finishMeasurement(), 'measurement-finished');
+    manager.showScreen('resultsDisplayScreen');
+    assert.equal(cleanupCalls, 3, 'Save and Finish cleans up once via showScreen');
+
+    manager.currentScreen = 'sweepMeasurementScreen';
+    const failingController = {
+        ...SweepMeasurement,
+        saveAndFinishMeasurement: async () => { throw new Error('save failed'); },
+        cleanup: () => assert.fail('failed finish must keep the active screen and audio state')
+    };
+    await assert.rejects(failingController.finishMeasurement(), /save failed/);
+    assert.equal(manager.currentScreen, 'sweepMeasurementScreen');
+    assert.equal(cleanupCalls, 3);
+});
+
 test('next-point level preparation failure preserves the current point and sweep screen', async t => {
     const originalShowScreen = uiManager.showScreen;
     const originalShowNotification = uiManager.showNotification;
@@ -649,8 +785,7 @@ test('corrected point deletion followed by Discard restores the complete snapsho
             correctionHighFreq: 18000,
             smoothing: 0.25,
             eqBandCount: 3,
-            peqParameters: [{ frequency: 100, gain: -2, Q: 1 }],
-            correctedResponse: [[100, 0], [1000, 0.5]]
+            peqParameters: [{ frequency: 100, gain: -2, Q: 1 }]
         };
         const original = structuredClone(measurement);
         dataStorage.measurements = [measurement];
@@ -668,12 +803,7 @@ test('corrected point deletion followed by Discard restores the complete snapsho
         ]);
         globalThis.document = { getElementById: id => elements.get(id) };
         globalThis.window = { app: { audioUtils: {
-            smoothFrequencyResponse: response => response,
-            calculatePEQParameters: () => {
-                calculationStarted = true;
-                return pendingCalculation;
-            },
-            applyCorrectionToResponse: () => [[100, 99]]
+            smoothFrequencyResponse: response => response
         } } };
 
         const manager = new UIManager();
@@ -682,6 +812,12 @@ test('corrected point deletion followed by Discard restores the complete snapsho
         manager.graphRenderer.normalizeResponseToZeroDb = response => response;
         manager.measurementDisplay.displayMeasurementDetails = () => {};
         manager.correctionHandler.updateFrequencyMarkers = () => {};
+        manager.correctionHandler.peqCalculator.calculatePEQParameters = () => {
+            calculationStarted = true;
+            return pendingCalculation;
+        };
+        manager.correctionHandler.requestCorrectionUpdate = generation =>
+            manager.correctionHandler.updateCorrection(generation);
 
         manager.measurementDisplay.deletePoint(0);
         assert.equal(manager.hasUnsavedChanges, true);
@@ -920,8 +1056,7 @@ test('discard-and-continue navigation restores the full snapshot before continui
                 name: 'Original',
                 points: [point(0, 1), point(1, 3)],
                 averageFrequencyResponse: [[100, 2]],
-                peqParameters: [{ frequency: 100, gain: -2, Q: 1 }],
-                correctedResponse: [[100, 0]]
+                peqParameters: [{ frequency: 100, gain: -2, Q: 1 }]
             };
             const measurement = {
                 ...structuredClone(original),

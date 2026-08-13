@@ -122,6 +122,17 @@
   "error:interfaceCalibrationProcessingFailed": "تعذر إكمال القياس بعد المعايرة. تحقق من التوصيل والإعدادات ثم أعد قياس هذه النقطة.",
   "error:measurementSetupFailed": "تعذر تجهيز القياس. تحقق من أجهزة الصوت وحاول مرة أخرى.",
   "error:levelAdjustmentFailed": "تعذر تجهيز إدخال الصوت. تحقق من جهاز الإدخال وحاول مرة أخرى.",
+  "error:audioUnsupported": "لا يمكن لهذا المتصفح إجراء قياسات صوتية. استخدم أحدث إصدار من Chrome أو Edge.",
+  "error:audioInitFailed": "تعذر تجهيز أجهزة الصوت. تحقق من أذونات المتصفح ثم حاول مرة أخرى.",
+  "error:measurementNameRequired": "أدخل اسمًا لهذا القياس قبل المتابعة.",
+  "error:invalidSweepRange": "اضبط نطاق المسح بين 1 هرتز و{max} هرتز، واجعل الحد الأدنى أقل من الحد الأعلى.",
+  "error:testSignalFailed": "تعذر التحكم في إشارة الاختبار. تحقق من خرج الصوت ثم حاول مرة أخرى.",
+  "error:measurementConfigUnavailable": "لم تعد إعدادات القياس متاحة. ابدأ قياسًا جديدًا.",
+  "error:measurementFailed": "تعذر إكمال القياس. تحقق من أجهزة الصوت وأعد قياس هذه النقطة.",
+  "error:measurementImportFailed": "ملف القياس غير صالح. اختر ملف قياس JSON تم تصديره من EffeTune.",
+  "error:clipboardWriteFailed": "تعذر نسخ إعدادات PEQ. تحقق من إذن الوصول إلى الحافظة ثم حاول مرة أخرى.",
+  "error:correctionUpdateFailed": "تعذر تحديث التصحيح. تحقق من الإعدادات ثم حاول مرة أخرى.",
+  "error:measurementDisplayFailed": "تعذر تحديث عرض القياس. حاول اختيار القياس مرة أخرى.",
   
   // Messages
   "message:peqCopied": "تم نسخ إعدادات PEQ إلى الحافظة بنجاح. يمكن لصق الإعدادات في خط أنابيب التأثير في EffeTune عبر Ctrl+V.",

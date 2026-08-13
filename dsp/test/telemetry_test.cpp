@@ -1,9 +1,11 @@
 #include "test_support.h"
 
+#include "binary_io.h"
 #include "effetune/telemetry.h"
 
 #include <array>
 #include <cstdint>
+#include <cstring>
 
 namespace effetune::test {
 namespace {
@@ -36,6 +38,36 @@ void testCompleteFramesAndDropOldest() {
   ET_CHECK((output[54] & kTelemetryFlagDropped) != 0u);
 }
 
+void testHeaderByteLayout() {
+  std::array<std::uint8_t, 32> storage{};
+  TelemetryRing ring;
+  ring.adopt(storage.data(), static_cast<std::uint32_t>(storage.size()));
+  const std::array<std::uint8_t, 3> payload = {0x80u, 0x01u, 0xffu};
+  ET_CHECK(ring.write(0x1234u, 0x5678u, 0x90abcdefu, 0x10203040u, payload.data(),
+                      static_cast<std::uint16_t>(payload.size()), 0x55aau));
+
+  std::array<std::uint8_t, 32> output{};
+  std::uint32_t dropped = 0u;
+  ET_CHECK(ring.read(output.data(), static_cast<std::uint32_t>(output.size()), &dropped) == 20u);
+  ET_CHECK(dropped == 0u);
+  const std::array<std::uint8_t, 20> expected = {
+      0x34u, 0x12u, 0x78u, 0x56u, 0xefu, 0xcdu, 0xabu, 0x90u, 0x40u, 0x30u,
+      0x20u, 0x10u, 0x03u, 0x00u, 0xaau, 0x55u, 0x80u, 0x01u, 0xffu, 0x00u,
+  };
+  ET_CHECK(std::memcmp(output.data(), expected.data(), expected.size()) == 0);
+}
+
+void testLittleEndianWriterByteLayout() {
+  std::array<std::uint8_t, 10> output{};
+  binary_io::writeU16(output.data(), 0xa1b2u);
+  binary_io::writeU32(output.data() + 2u, 0xc3d4e5f6u);
+  binary_io::writeF32(output.data() + 6u, -2.5F);
+  const std::array<std::uint8_t, 10> expected = {
+      0xb2u, 0xa1u, 0xf6u, 0xe5u, 0xd4u, 0xc3u, 0x00u, 0x00u, 0x20u, 0xc0u,
+  };
+  ET_CHECK(std::memcmp(output.data(), expected.data(), expected.size()) == 0);
+}
+
 void testReadNeverSplitsFrame() {
   std::array<std::uint8_t, 64> storage{};
   TelemetryRing ring;
@@ -66,6 +98,8 @@ void testOversizedFrameIsReportedAsDropped() {
 
 void runTelemetryTests() {
   testCompleteFramesAndDropOldest();
+  testHeaderByteLayout();
+  testLittleEndianWriterByteLayout();
   testReadNeverSplitsFrame();
   testOversizedFrameIsReportedAsDropped();
 }

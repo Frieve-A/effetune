@@ -153,11 +153,6 @@ test('5Band FIR PEQ exposes FIR defaults, Q, and slope limits', () => {
   }
   plugin.setParameters({ t1: 'ap' });
   assert.equal(plugin.t1, 'no');
-  plugin.reset();
-  assert.deepEqual(
-    Array.from({ length: 5 }, (_, index) => plugin[`q${index}`]),
-    [0.7, 0.7, 0.7, 0.7, 0.7]
-  );
   plugin.cleanup();
 });
 

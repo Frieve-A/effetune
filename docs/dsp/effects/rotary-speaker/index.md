@@ -38,7 +38,7 @@ Creates Rotary Speaker motion, commonly known as a Leslie effect, by combining c
 
 ## Rotary Speaker
 
-Rotary Speaker splits the signal at a Linkwitz–Riley crossover and gives the high-frequency horn and low-frequency drum different rotation rates. Amplitude movement and short Doppler delay produce a plausible dual-rotor effect; it is not a measured model of a particular Leslie cabinet. The moving delay is not reported as fixed algorithmic latency.
+Rotary Speaker splits the sound between a high-frequency horn and low-frequency drum, then gives them different rotation rates. Level movement and a short Doppler delay create the characteristic dual-rotor motion.
 
 ### Sound Enhancement Guide
 
@@ -50,7 +50,7 @@ Rotary Speaker splits the signal at a Linkwitz–Riley crossover and gives the h
 ### Parameters
 
 - **Style** — loads a complete factory setting for every parameter. Choices are **Rotary Slow** (Slow), **Rotary Fast** (Fast), **Gentle Rotary** (Slow), **Leslie Slow** (Slow), and **Leslie Fast** (Fast). Changing an individual parameter switches Style to **Custom**.
-- **Speed State** — **Stop**, **Slow**, or **Fast** target. Changes accelerate continuously without a second wet mute.
+- **Speed State** — **Stop**, **Slow**, or **Fast** target. During a change, the rotors accelerate or slow down smoothly without interrupting the sound.
 - **Speed** (25–200%) — scales both internal rotor rates while preserving their difference.
 - **Acceleration** (0.1–10 s) — sets how quickly the rotors approach a new speed.
 - **Crossover** (200–2,000 Hz) — divides drum and horn bands.

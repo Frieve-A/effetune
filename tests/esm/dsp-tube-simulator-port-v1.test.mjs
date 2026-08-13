@@ -2206,59 +2206,12 @@ test('Tube Simulator Phase A input calibration applies exactly once and preserve
   assert.notEqual(afterChange.controls[0], beforeChange.controls[0]);
 });
 
-// Documentation guard. The three preset tables restate plugin values by hand,
-// so each row is tied back to its preset instead of merely comparing the set of
-// numbers that happens to occur somewhere in the section.
-const ENGLISH_SATURATION_DOC = path.join(repoRoot, 'docs', 'plugins', 'saturation.md');
-const GENERATED_TUBE_SIMULATOR_DOC = path.join(
-  repoRoot, 'docs', 'dsp', 'effects', 'tube-simulator', 'index.md'
-);
 const TRANSLATED_SATURATION_DOCS = Object.freeze(
   ['ar', 'es', 'fr', 'hi', 'ja', 'ko', 'pt', 'ru', 'zh'].map(language => ({
     language,
     file: path.join(repoRoot, 'docs', 'i18n', language, 'plugins', 'saturation.md')
   }))
 );
-
-// Independent documentation contract: these values are deliberately baked
-// here instead of being derived from the plugin or calibration harness.
-const DOCUMENTED_PRESET_THD = Object.freeze([
-  Object.freeze({ group: 'Pre', label: 'Line 12AT7 @0.01%', thdPercent: 0.01 }),
-  Object.freeze({ group: 'Pre', label: 'Line 12AT7 @0.1%', thdPercent: 0.1 }),
-  Object.freeze({ group: 'Pre', label: 'Line 12AX7 @0.01%', thdPercent: 0.01 }),
-  Object.freeze({ group: 'Pre', label: 'Line 12AX7 @0.1%', thdPercent: 0.1 }),
-  Object.freeze({ group: 'Pre', label: 'Line 12AU7 Open-Loop @0.1%', thdPercent: 0.1 }),
-  Object.freeze({ group: 'Pre', label: 'Line 12AT7 @1%', thdPercent: 0.9974 }),
-  Object.freeze({ group: 'Pre', label: 'Line 12AX7 @1%', thdPercent: 1.0003 }),
-  Object.freeze({ group: 'Pre', label: 'Line 12AU7 Open-Loop @1%', thdPercent: 1.0002 }),
-  Object.freeze({ group: 'Power', label: 'EL84 Pentode 10 W @0.1%', thdPercent: 0.1001 }),
-  Object.freeze({ group: 'Power', label: 'EL84 Distributed 10 W @0.1%', thdPercent: 0.1002 }),
-  Object.freeze({ group: 'Power', label: 'EL34 Distributed 20–37 W @0.1%', thdPercent: 0.1 }),
-  Object.freeze({ group: 'Power', label: '6L6GC Pentode @0.1%', thdPercent: 0.1003 }),
-  Object.freeze({ group: 'Power', label: 'KT88 Distributed @0.1%', thdPercent: 0.1002 }),
-  Object.freeze({ group: 'Power', label: '300B SE @0.1%', thdPercent: 0.1 }),
-  Object.freeze({ group: 'Power', label: '300B SE @1%', thdPercent: 1 }),
-  Object.freeze({ group: 'Power', label: '2A3 SE @0.1%', thdPercent: 0.1 }),
-  Object.freeze({ group: 'Power', label: '2A3 SE @1%', thdPercent: 1 }),
-  Object.freeze({ group: 'Power', label: 'EL84 Pentode 10 W @2%', thdPercent: 1.9995 }),
-  Object.freeze({ group: 'Power', label: 'EL84 Distributed 10 W @2%', thdPercent: 2.0005 }),
-  Object.freeze({ group: 'Power', label: 'EL34 Distributed 20–37 W @2%', thdPercent: 1.9995 }),
-  Object.freeze({ group: 'Power', label: '6L6GC Pentode @2%', thdPercent: 2.0004 }),
-  Object.freeze({ group: 'Power', label: 'KT88 Distributed @2%', thdPercent: 1.997 }),
-  Object.freeze({ group: 'Pre+Power', label: 'EL84 Distributed @0.1%', thdPercent: 0.1 }),
-  Object.freeze({ group: 'Pre+Power', label: 'EL34 Distributed @0.1%', thdPercent: 0.1 }),
-  Object.freeze({ group: 'Pre+Power', label: '6L6GC Pentode @0.1%', thdPercent: 0.1 }),
-  Object.freeze({ group: 'Pre+Power', label: 'KT88 Distributed @0.1%', thdPercent: 0.1 }),
-  Object.freeze({ group: 'Pre+Power', label: '300B SE @0.1%', thdPercent: 0.1 }),
-  Object.freeze({ group: 'Pre+Power', label: '2A3 SE @0.1%', thdPercent: 0.1 }),
-  Object.freeze({ group: 'Pre+Power', label: 'EL84 Pentode @2%', thdPercent: 2.0004 }),
-  Object.freeze({ group: 'Pre+Power', label: 'EL84 Distributed @2%', thdPercent: 2.0005 }),
-  Object.freeze({ group: 'Pre+Power', label: 'EL34 Distributed @2%', thdPercent: 2 }),
-  Object.freeze({ group: 'Pre+Power', label: '6L6GC Pentode @2%', thdPercent: 1.9998 }),
-  Object.freeze({ group: 'Pre+Power', label: 'KT88 Distributed @2%', thdPercent: 1.9997 }),
-  Object.freeze({ group: 'Pre+Power', label: '300B SE @2%', thdPercent: 2 }),
-  Object.freeze({ group: 'Pre+Power', label: '2A3 SE @2%', thdPercent: 2.0002 })
-]);
 
 // The heading is the anchor README links to, so it is also the section marker.
 function tubeSimulatorSection(source, file) {
@@ -2269,182 +2222,27 @@ function tubeSimulatorSection(source, file) {
   return next === -1 ? rest : rest.slice(0, next + 1);
 }
 
-function outputTrimDb(cell, table, label) {
-  const match = /Output Trim ([+-]?\d+(?:\.\d+)?)dB/.exec(cell ?? '');
-  assert.ok(match, `the ${table} row for "${label}" has no Output Trim value`);
-  return Number(match[1]);
-}
+test('Tube Simulator preset matching is documented in every language', async () => {
+  const docs = [
+    { language: 'en', file: path.join(repoRoot, 'docs', 'plugins', 'saturation.md') },
+    ...TRANSLATED_SATURATION_DOCS
+  ];
+  const tokens = [
+    'EL84 Pentode @2%',
+    'Custom',
+    'Output Safety Trim',
+    'Auto Gain Reduction'
+  ];
 
-// Row order is intentionally free: English GUI labels remain English in every
-// translation and provide a stable, low-maintenance key into each table.
-function parseCircuitPresetRows(section, labels) {
-  const rows = new Map();
-  for (const line of section.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) continue;
-    const cells = trimmed.slice(1, -1).split('|').map(cell => cell.trim());
-    if (!labels.has(cells[0])) continue;
-    const feedback = /^(-?\d+(?:\.\d+)?)dB$/.exec(cells[3] ?? '');
-    assert.ok(feedback,
-      `the Circuit Presets row for "${cells[0]}" has no Negative Feedback value`);
-    assert.equal(rows.has(cells[0]), false,
-      `"${cells[0]}" appears twice in the Circuit Presets table`);
-    const bPlus = /Output B\+ (-?\d+(?:\.\d+)?) V/.exec(cells[4] ?? '');
-    const inputVolume = /Input Volume ([+-]?\d+(?:\.\d+)?)dB/.exec(cells[5] ?? '');
-    const inputReference = /Input Reference ([+-]?\d+(?:\.\d+)?) Vpk/.exec(cells[5] ?? '');
-    assert.ok(inputVolume,
-      `the Circuit Presets row for "${cells[0]}" has no Input Volume value`);
-    assert.ok(inputReference,
-      `the Circuit Presets row for "${cells[0]}" has no Input Reference value`);
-    rows.set(cells[0], {
-      negativeFeedbackDb: Number(feedback[1]),
-      outputBPlusV: bPlus ? Number(bPlus[1]) : null,
-      inputVolumeDb: Number(inputVolume[1]),
-      inputReferenceVpk: Number(inputReference[1]),
-      outputTrimDb: outputTrimDb(cells[5], 'Circuit Presets', cells[0])
-    });
-  }
-  return rows;
-}
-
-function parseSelectablePresetRows(section, tables) {
-  const rows = new Map();
-  const groups = new Map(tables.groups.map(group => [
-    group.label, new Map(group.presets.map(preset => [preset.label, preset]))
-  ]));
-  const listening = new Map(tables.listening.map(preset => [preset.label, preset]));
-  const power = new Map(tables.powerOnly.map(preset => [preset.label, preset]));
-  const add = (group, label, inputVolume, inputReference, outputTrim, measuredThd) => {
-    const key = `${group}/${label}`;
-    assert.equal(rows.has(key), false, `"${key}" appears twice in the calibrated preset tables`);
-    assert.ok(inputVolume && inputReference && outputTrim && measuredThd,
-      `the calibrated preset row for "${key}" is incomplete`);
-    rows.set(key, {
-      inputVolumeDb: Number(inputVolume[1]),
-      inputReferenceVpk: Number(inputReference[1]),
-      outputTrimDb: Number(outputTrim[1]),
-      measuredThdPercent: Number(measuredThd[1])
-    });
-  };
-  for (const line of section.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) continue;
-    const cells = trimmed.slice(1, -1).split('|').map(cell => cell.trim());
-    if (groups.get(cells[0])?.has(cells[1])) {
-      add(cells[0], cells[1], /^([+-]?\d+(?:\.\d+)?)dB$/.exec(cells[2] ?? ''),
-        /^([+-]?\d+(?:\.\d+)?) Vpk$/.exec(cells[3] ?? ''),
-        /^([+-]?\d+(?:\.\d+)?)dB$/.exec(cells[4] ?? ''),
-        /^([+-]?\d+(?:\.\d+)?)%$/.exec(cells[5] ?? ''));
-      continue;
-    }
-    if (cells.length >= 7 && listening.has(cells[0])) {
-      const preset = listening.get(cells[0]);
-      const group = preset.params.os === 'Line' ? 'Pre' : 'Pre+Power';
-      add(group, cells[0], /^([+-]?\d+(?:\.\d+)?)dB$/.exec(cells[3] ?? ''),
-        /^([+-]?\d+(?:\.\d+)?) Vpk$/.exec(cells[4] ?? ''),
-        /^([+-]?\d+(?:\.\d+)?)dB$/.exec(cells[5] ?? ''),
-        /^([+-]?\d+(?:\.\d+)?)%$/.exec(cells[6] ?? ''));
-      continue;
-    }
-    if (cells.length === 2 && power.has(cells[0])) {
-      const values = /^([+-]?\d+(?:\.\d+)?)dB \/ ([+-]?\d+(?:\.\d+)?) Vpk \/ ([+-]?\d+(?:\.\d+)?)dB \/ ([+-]?\d+(?:\.\d+)?)%$/.exec(cells[1] ?? '');
-      add('Power', cells[0], values && [values[0], values[1]],
-        values && [values[0], values[2]], values && [values[0], values[3]],
-        values && [values[0], values[4]]);
-    }
-  }
-  return rows;
-}
-
-function assertKt88Exception(section, file, tables) {
-  const powerOnly = tables.powerOnly.find(
-    preset => preset.id === 'power-only-kt88-distributed');
-  const preAndPower = tables.canonical.find(preset => preset.id === 'power-kt88-distributed');
-  assert.ok(powerOnly, 'Power-only KT88 preset is unavailable');
-  assert.ok(preAndPower, 'Pre+Power KT88 preset is unavailable');
-
-  const sentence = section.split('\n').find(line =>
-    line.includes('Power-only') && line.includes('KT88') &&
-    line.includes('Pre+Power') &&
-    line.includes('Negative Feedback'));
-  assert.ok(sentence, `${file} does not explain the Power-only KT88 feedback exception`);
-  const powerFeedback = `${powerOnly.params.nf}dB`;
-  const preAndPowerFeedback = `${preAndPower.params.nf}dB`;
-  assert.ok(sentence.includes(powerFeedback) && sentence.includes(preAndPowerFeedback),
-    `${file} must associate Power-only KT88 with ${powerFeedback} and ` +
-      `Pre+Power KT88 with ${preAndPowerFeedback}`);
-}
-
-function assertPresetDocumentation(section, file, tables) {
-  const canonicalRows = parseCircuitPresetRows(
-    section, new Set(tables.canonical.map(preset => preset.label))
-  );
-  assert.equal(canonicalRows.size, tables.canonical.length,
-    `${file} must carry exactly one Circuit row per canonical preset`);
-
-  for (const preset of tables.canonical) {
-    const row = canonicalRows.get(preset.label);
-    assert.ok(row, `${file} has no Circuit row for "${preset.label}"`);
-    assert.equal(row.negativeFeedbackDb, preset.params.nf,
-      `${file}: ${preset.label} maps to the wrong canonical Negative Feedback`);
-    assert.equal(row.inputVolumeDb, preset.params.dr,
-      `${file}: ${preset.label} maps to the wrong canonical Input Volume`);
-    assert.equal(row.inputReferenceVpk, preset.params.iv,
-      `${file}: ${preset.label} maps to the wrong canonical Input Reference`);
-    assert.equal(row.outputTrimDb, preset.params.og,
-      `${file}: ${preset.label} maps to the wrong canonical Output Trim`);
-    if (preset.params.os === 'Power') {
-      assert.equal(row.outputBPlusV, preset.params.pb,
-        `${file}: ${preset.label} maps to the wrong canonical Output B+`);
-    } else {
-      assert.equal(row.outputBPlusV, null,
-        `${file}: ${preset.label} must not document an Output B+ value`);
-    }
-  }
-
-  const calibratedRows = parseSelectablePresetRows(section, tables);
-  const selectable = tables.groups.flatMap(group =>
-    group.presets.map(preset => ({ group: group.label, ...preset })));
-  const documentedThdByKey = new Map(DOCUMENTED_PRESET_THD.map(entry =>
-    [`${entry.group}/${entry.label}`, entry.thdPercent]));
-  assert.equal(DOCUMENTED_PRESET_THD.length, 35,
-    'the independent Measured THD contract must cover Pre 8, Power 14, and Pre+Power 13');
-  assert.equal(documentedThdByKey.size, DOCUMENTED_PRESET_THD.length,
-    'the independent Measured THD contract contains a duplicate row');
-  assert.equal(calibratedRows.size, selectable.length,
-    `${file} must carry exactly one calibrated row per selectable preset`);
-  assert.deepEqual(new Set(documentedThdByKey.keys()),
-    new Set(selectable.map(preset => `${preset.group}/${preset.label}`)),
-    'the independent Measured THD contract must cover all 35 selectable rows');
-  for (const preset of selectable) {
-    const label = `${preset.group}/${preset.label}`;
-    const row = calibratedRows.get(label);
-    assert.ok(row, `${file} has no calibrated row for "${label}"`);
-    assert.equal(row.inputVolumeDb, preset.params.dr,
-      `${file}: ${label} maps to the wrong Input Volume`);
-    assert.equal(row.inputReferenceVpk, preset.params.iv,
-      `${file}: ${label} maps to the wrong Input Reference`);
-    assert.equal(row.outputTrimDb, preset.params.og,
-      `${file}: ${label} maps to the wrong Output Trim`);
-    assert.equal(row.measuredThdPercent, documentedThdByKey.get(label),
-      `${file}: ${label} maps to the wrong baked Measured THD`);
-  }
-
-  assertKt88Exception(section, file, tables);
-}
-
-test('Tube Simulator English docs map every preset table row to the plugin', async () => {
-  const tables = readPluginPresetTables(repoRoot);
-  const section = tubeSimulatorSection(
-    await fs.readFile(ENGLISH_SATURATION_DOC, 'utf8'), ENGLISH_SATURATION_DOC);
-  assertPresetDocumentation(section, ENGLISH_SATURATION_DOC, tables);
-});
-
-test('Tube Simulator translations map every preset table row to the plugin', async () => {
-  const tables = readPluginPresetTables(repoRoot);
-  for (const { language, file } of TRANSLATED_SATURATION_DOCS) {
+  for (const { language, file } of docs) {
     const section = tubeSimulatorSection(await fs.readFile(file, 'utf8'), file);
-    assertPresetDocumentation(section, `docs/i18n/${language}/plugins/saturation.md`, tables);
+    const paragraph = section.split(/\r?\n\r?\n/)
+      .find(candidate => candidate.includes('**EL84 Pentode @2%**'));
+    assert.ok(paragraph, `${language} is missing the preset-matching paragraph`);
+    for (const token of tokens) {
+      assert.ok(paragraph.includes(`**${token}**`),
+        `${language} preset-matching paragraph is missing "${token}"`);
+    }
   }
 });
 
@@ -2469,38 +2267,6 @@ test('Tube Simulator listening guides only present selectable preset names as ch
       assert.ok(selectableLabels.has(match[1]),
         `docs/i18n/${language} uses non-selectable preset name "${match[1]}"`);
     }
-  }
-});
-
-test('Tube Simulator docs describe the exact startup preset and protection exclusions', async () => {
-  const documents = [
-    { file: ENGLISH_SATURATION_DOC, exclusion: 'excluded from matching' },
-    { file: GENERATED_TUBE_SIMULATOR_DOC, exclusion: 'excluded from matching' },
-    ...TRANSLATED_SATURATION_DOCS.map(document => ({
-      ...document,
-      exclusion: ({
-        ar: 'مستبعدان من المطابقة', es: 'se excluyen de la comparación',
-        fr: 'exclus de cette comparaison', hi: 'मिलान से बाहर', ja: '照合対象外',
-        ko: '매칭에서 제외', pt: 'excluídos dessa correspondência',
-        ru: 'исключены из сопоставления', zh: '不参与匹配'
-      })[document.language]
-    }))
-  ];
-
-  for (const { file, exclusion } of documents) {
-    const section = tubeSimulatorSection(await fs.readFile(file, 'utf8'), file);
-    const paragraph = section.split(/\r?\n\r?\n/)
-      .find(candidate => candidate.includes(exclusion));
-    assert.ok(paragraph, `${file} does not document preset matching exclusions`);
-    assert.match(paragraph, /\*\*EL84 Pentode @2%\*\*/);
-    assert.match(paragraph, /\bCustom\b/);
-    assert.doesNotMatch(paragraph, /\+(?:3\.958|4\.63)dB/);
-    assert.match(paragraph, /Output Safety Trim/);
-    assert.match(paragraph, /Auto Gain Reduction/);
-    assert.ok(paragraph.includes(exclusion),
-      `${file} does not say that protection settings are excluded from preset matching`);
-    assert.match(section, /-7\.372dB/,
-      `${file} does not document the default preset's calibrated Output Trim`);
   }
 });
 

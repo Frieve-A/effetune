@@ -24,7 +24,7 @@ lang: zh
 
 ## Auto Filter
 
-使用LFO或输入信号的包络自动驱动状态变量滤波器。Envelope模式可用作Envelope Filter或Auto Wah。算法延迟为0。
+自动移动共振滤波器。LFO 模式会反复扫频，Envelope 模式则跟随音乐音量，产生 Envelope Filter 或 Auto Wah 的声音。
 
 ### 音质调整提示
 
@@ -37,7 +37,7 @@ lang: zh
 - **Style**：一次设置所有参数的完整出厂预设。可选**Auto Filter Sweep**（LFO）、**Stereo Filter Sweep**（LFO）、**Envelope Filter**（Envelope）、**Auto Wah**（Envelope）和**Reverse Auto Wah**（Envelope）。单独修改任一参数后会变为**Custom**。
 - **Mode**：在周期性运动的LFO与跟随音量的Envelope之间切换。
 - **Filter Type**：选择Low-pass、Band-pass或High-pass。
-- **Minimum Frequency / Maximum Frequency**（20–20,000 Hz）：移动范围。若顺序相反会自动重排；若数值相同则保持固定。处理时会限制在低于奈奎斯特频率的安全范围内。
+- **Minimum Frequency / Maximum Frequency**（20–20,000 Hz）：移动范围。若顺序相反会自动重排；若数值相同则保持固定。播放采样率较低时，可用上限也可能降低。
 - **Resonance**（Q 0.5–20）：数值越高，对截止频率附近的强调越明显。
 - **Mix**（0–100%）：原声与滤波后声音的比例。0%时仅保留原声。
 - **Rate**、**Waveform**、**Stereo Phase**：LFO的速度、运动轨迹及每个立体声声道对内的相位差。仅用于LFO模式。
@@ -45,7 +45,7 @@ lang: zh
 
 ## Auto Pan
 
-让相邻的每个立体声声道对在左右之间移动音量。不同声道对之间不会混音，最后多出的单个声道按单声道处理。算法延迟为0。
+让每个立体声声道对的音量在左右之间移动。若有未配对的声道，该声道会保持在中央。
 
 ### 音质调整提示
 
@@ -65,7 +65,7 @@ lang: zh
 
 ## Chorus
 
-叠加多个采用四点三次插值的可变延迟声部。Mode可选择Chorus、Stereo Chorus、Ensemble、Flanger和Vibrato。可变延迟会产生可听见的延后，但并非固定延迟，因此报告的算法延迟为0。
+叠加多份不断变化的延迟声。Mode 可选择 Chorus、Stereo Chorus、Ensemble、Flanger 和 Vibrato；调高 Delay 和 Depth 后，处理声可能会比原声稍晚。
 
 ### 音质调整提示
 
@@ -80,7 +80,7 @@ lang: zh
 - **Mode**：选择Chorus、Stereo Chorus、Ensemble、Flanger或Vibrato。
 - **Rate**（0.05–10 Hz）：摇摆速度。
 - **Delay**（0.5–30 ms）：处理声的基准延迟。
-- **Depth**（0–20 ms）：延迟的变化量。为避免负延迟读取，保存值会限制为不高于Delay。
+- **Depth**（0–20 ms）：延迟的变化量。Depth 会自动限制为不高于 Delay。
 - **Voices**（1–6）：Chorus和Ensemble中的可变抽头数。在其他模式中忽略。
 - **Stereo Spread**（0–100%）：每个立体声声道对内的摇摆偏移。在Chorus模式中忽略。
 - **Feedback**（-75–75%）：仅用于Flanger。
@@ -118,7 +118,7 @@ lang: zh
 
 ## Frequency Shifter
 
-将每个频率分量移动固定的Hz数，而不是按音高比例移动。Ring Mod将信号与载波相乘；Barber-pole则叠加多个频移，营造持续上升或下降的感觉。Shift和Barber-pole使用Hilbert解析信号FIR；Ring Mod把从同一FIFO取出的等延迟实信号与载波相乘。因此所有模式下原声与处理声的时间都保持对齐。固定延迟随采样率变化，并由DSP Library报告。
+将每个频率分量移动固定的 Hz 数，而不是按音乐音程移动。Ring Mod 会产生金属感的边带，Barber-pole 则营造持续上升或下降的错觉。该效果会产生随采样率变化的短暂处理延迟，即使 Mix 为 0% 也会保留。
 
 ### 音质调整提示
 
@@ -137,11 +137,11 @@ lang: zh
 - **Stereo Phase**（0–180°）：在所有模式下，使每个立体声声道对的左右载波或扫频产生相位差。
 - **Mix**（0–100%）：等延迟原声与处理声的比例。即使为0%，所述固定延迟仍然存在。
 
-大幅频移可能产生超过奈奎斯特频率的分量，并造成可听见的混叠。初始版本不进行过采样。
+如果较大的Shift产生了不需要的粗糙感或金属感，请降低Shift或Mix。
 
 ## Phaser
 
-将原声与全通滤波器链的输出混合，产生移动的峰与陷波。Classic往返扫动；Barber-pole叠加三个恒功率窗口，营造持续上升或下降的感觉。算法延迟为0。
+将原声与经过滤波的副本混合，产生移动的峰与陷波。Classic 往返扫动，Barber-pole 则营造持续上升或下降的感觉。
 
 ### 音质调整提示
 
@@ -207,7 +207,7 @@ Pitch Shifter HQ不保留共振峰。因此，移调幅度较大时，除了音�
 
 ## Rotary Speaker
 
-通过Linkwitz–Riley分频器将信号分成高频号角与低频鼓轮，并分别施加不同的转速、音量调制和短时多普勒延迟。它并非对某一特定Leslie音箱的实测还原。由于采用可变延迟，因此不会报告为固定算法延迟。
+将声音分给高频号角和低频鼓轮，并赋予不同的转速。音量移动和短暂的多普勒延迟会产生双转子的标志性旋转感。
 
 ### 音质调整提示
 
@@ -218,7 +218,7 @@ Pitch Shifter HQ不保留共振峰。因此，移调幅度较大时，除了音�
 ### 参数
 
 - **Style**：一次设置所有参数的完整出厂预设。可选**Rotary Slow**（Slow）、**Rotary Fast**（Fast）、**Gentle Rotary**（Slow）、**Leslie Slow**（Slow）和**Leslie Fast**（Fast）。单独修改任一参数后会变为**Custom**。
-- **Speed State**：Stop、Slow或Fast。切换时会连续加速或减速，不会静音。
+- **Speed State**：Stop、Slow或Fast。切换过程中，转子会平滑加速或减速，声音不会中断。
 - **Speed**（25–200%）：号角与鼓轮的共同速度倍率。
 - **Acceleration**（0.1–10 s）：设置转子接近新转速的快慢。
 - **Crossover**（200–2,000 Hz）：分隔鼓轮频段与号角频段的频率。

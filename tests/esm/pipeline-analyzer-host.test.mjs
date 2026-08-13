@@ -340,17 +340,16 @@ test('Electron View menu mirrors restored Analyzer state and rebuilds localized 
     };
     try {
         await updateApplicationMenu(true);
-        const restoredItem = templates.at(-1).view.submenu[8];
+        const restoredItem = templates.at(-1)['view.pipelineAnalyzer'];
         assert.deepEqual(restoredItem, {
             label: labels.en,
-            type: 'checkbox',
             checked: true
         });
 
         uiManager.pipelineAnalyzerController.state.open = false;
         language = 'ja';
         await updateApplicationMenu(true);
-        const rebuiltItem = templates.at(-1).view.submenu[8];
+        const rebuiltItem = templates.at(-1)['view.pipelineAnalyzer'];
         assert.equal(rebuiltItem.label, labels.ja);
         assert.equal(rebuiltItem.checked, false);
     } finally {
@@ -360,9 +359,9 @@ test('Electron View menu mirrors restored Analyzer state and rebuilds localized 
 
 test('Electron main menu forwards the checkbox absolute value without persistent main state', () => {
     const source = fs.readFileSync(new URL('../../electron/ipc-handlers.js', import.meta.url), 'utf8');
-    assert.match(source, /label: menuTemplate\.view\.submenu\[8\]\.label,[\s\S]*type: 'checkbox',[\s\S]*checked: menuTemplate\.view\.submenu\[8\]\.checked === true/);
-    assert.match(source, /webContents\.send\('set-pipeline-analyzer-open', menuItem\.checked === true\)/);
-    assert.match(source, /label: 'Pipeline Analyzer',[\s\S]*type: 'checkbox',[\s\S]*checked: false/);
+    assert.match(source, /item\('view\.pipelineAnalyzer', \{[\s\S]*label: 'Pipeline Analyzer',[\s\S]*type: 'checkbox',[\s\S]*checked: false/);
+    assert.match(source, /sendToRenderer\('set-pipeline-analyzer-open', menuItem\.checked === true\)/);
+    assert.match(source, /item\.type === 'checkbox' && typeof state\.checked === 'boolean'/);
     assert.doesNotMatch(source, /pipelineAnalyzer(?:Open|Checked)\s*=/);
 });
 

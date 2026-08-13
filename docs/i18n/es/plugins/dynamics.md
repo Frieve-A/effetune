@@ -11,7 +11,7 @@ Una colección de plugins que ayudan a equilibrar las partes fuertes y suaves de
 ## Lista de Plugins
 
 - [Auto Leveler](#auto-leveler) - Ajuste automático de volumen para una experiencia de escucha consistente
-- [Brickwall Limiter](#brickwall-limiter) - Control transparente de picos para una escucha segura y cómoda
+- [Brickwall Limiter](#brickwall-limiter) - Control transparente de picos que evita el recorte digital
 - [Compressor](#compressor) - Equilibra automáticamente los niveles de volumen para una escucha más cómoda (incluye expansión hacia arriba)
 - [Expander](#expander) - Expansión de rango dinámico por debajo del umbral con control de ratio y knee (incluye compresión hacia arriba)
 - [Gate](#gate) - Reduce sonidos de bajo nivel en silencios o pausas por debajo de un umbral
@@ -121,21 +121,14 @@ Un control de volumen inteligente que ajusta automáticamente tu música para ma
 
 ## Brickwall Limiter
 
-Un limitador de picos de alta calidad que asegura que tu música nunca exceda un nivel específico, previniendo la saturación digital mientras mantiene la calidad natural del sonido. Perfecto para proteger tu sistema de audio y asegurar niveles de escucha cómodos sin comprometer la dinámica de la música.
+Un limitador de picos que mantiene la señal digital de la cadena por debajo de un techo especificado y conserva tanta dinámica como sea posible. Colócalo cerca del final de la cadena cuando los efectos anteriores generen picos altos. Limita los picos de señal, pero el volumen de escucha se ajusta por separado en el equipo de reproducción.
 
 ### Guía de Mejora de Escucha
-- Música Clásica:
-  - Disfruta de forma segura los crescendos orquestales completos
-  - Mantiene la dinámica natural de las piezas de piano
-  - Protege contra picos inesperados en grabaciones en vivo
-- Música Pop/Rock:
-  - Mantiene un volumen consistente durante pasajes intensos
-  - Disfruta de música dinámica a cualquier nivel de escucha
-  - Previene la distorsión en secciones con mucho bajo
-- Música Electrónica:
-  - Controla los picos de sintetizador de forma transparente
-  - Mantiene el impacto mientras previene la sobrecarga
-  - Mantiene los drops de bajo potentes pero controlados
+- Colócalo cerca del final de la cadena, antes de **Level Meter**, para recoger los picos creados por EQ, saturación u otros efectos.
+- Empieza con Input Gain en 0 dB, Threshold en -3 dB, Margin en -1 dB y Release en 100 ms.
+- Si limita con frecuencia o la música pierde impacto, baja Input Gain o acerca Threshold a 0 dB.
+- Si oyes bombeo, alarga Release. Si los transitorios suenan borrosos o distorsionados, prueba un Release más corto o reduce la cantidad de limitación.
+- Usa **Level Meter** después del limitador para comprobar el nivel de pico digital. Ajusta aparte el amplificador o dispositivo de reproducción para el volumen de escucha.
 
 ### Parámetros
 - **Input Gain** (-18dB a +18dB)
@@ -147,9 +140,9 @@ Un limitador de picos de alta calidad que asegura que tu música nunca exceda un
 - **Threshold** (-24dB a 0dB)
   - Establece el nivel de pico donde empieza la limitación antes de aplicar Margin
   - El techo efectivo es Threshold + Margin
-  - Valores más bajos proporcionan más margen de seguridad
+  - Valores más bajos dejan más margen para los picos
   - Valores más altos preservan más dinámica
-  - Comienza en -3dB para protección suave
+  - Empieza en -3dB para una limitación ligera
 
 - **Release Time** (10ms a 500ms)
   - Qué tan rápido se libera la limitación
@@ -164,7 +157,7 @@ Un limitador de picos de alta calidad que asegura que tu música nunca exceda un
   - 3ms es un buen equilibrio
 
 - **Margin** (-1.000dB a 0.000dB)
-  - Añade un desplazamiento fino de seguridad al Threshold
+  - Añade un pequeño desplazamiento descendente a Threshold
   - El techo real es Threshold + Margin
   - Por ejemplo, Threshold -3dB con Margin -1.000dB limita alrededor de -4dB
   - Valor predeterminado -1.000dB funciona bien para la mayoría del material
@@ -177,7 +170,6 @@ Un limitador de picos de alta calidad que asegura que tu música nunca exceda un
 
 ### Controles y Medición
 - Controles directos para Input Gain, Threshold, Margin, Release, Lookahead y Oversampling
-- La información de reducción de ganancia del limitador se informa internamente para medición del host o estado
 - El panel del plugin no muestra una gráfica separada de nivel de pico
 
 ### Ajustes Recomendados
@@ -191,7 +183,7 @@ Un limitador de picos de alta calidad que asegura que tu música nunca exceda un
 - Oversampling: 4x
 - Techo efectivo: alrededor de -4dB
 
-#### Máxima Seguridad
+#### Margen de pico adicional
 - Input Gain: -6dB
 - Threshold: -6dB
 - Release: 50ms

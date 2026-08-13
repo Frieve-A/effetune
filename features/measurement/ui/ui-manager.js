@@ -11,6 +11,8 @@ import CorrectionHandler from './correction-handler.js';
 import DialogController from './dialog-controller.js';
 import i18n from '../i18n.js';
 
+const AUDIO_ACTIVE_SCREENS = new Set(['levelAdjustmentScreen', 'sweepMeasurementScreen']);
+
 export class UIManager {
     constructor() {
         this.currentScreen = 'resultsDisplayScreen';
@@ -125,14 +127,7 @@ export class UIManager {
         });
 
         document.getElementById('targetLowFreqSlider').addEventListener('change', () => {
-            // Recalculate PEQ parameters once when drag is complete
-            const spinner = document.getElementById('loading-spinner-results');
-            spinner.style.display = 'block';
-            
-            setTimeout(async () => {
-                await this.correctionHandler.updateCorrection();
-                spinner.style.display = 'none';
-            }, 50);
+            this.correctionHandler.requestCorrectionUpdate();
         });
 
         document.getElementById('targetHighFreqSlider').addEventListener('input', (e) => {
@@ -149,14 +144,7 @@ export class UIManager {
         });
 
         document.getElementById('targetHighFreqSlider').addEventListener('change', () => {
-            // Recalculate PEQ parameters once when drag is complete
-            const spinner = document.getElementById('loading-spinner-results');
-            spinner.style.display = 'block';
-            
-            setTimeout(async () => {
-                await this.correctionHandler.updateCorrection();
-                spinner.style.display = 'none';
-            }, 50);
+            this.correctionHandler.requestCorrectionUpdate();
         });
         
         // Smoothing slider updates the graph immediately
@@ -174,27 +162,13 @@ export class UIManager {
         });
         
         document.getElementById('smoothing').addEventListener('change', () => {
-            const spinner = document.getElementById('loading-spinner-results');
-            spinner.style.display = 'block';
-            
-            // Show spinner and update asynchronously
-            setTimeout(async () => {
-                await this.correctionHandler.updateCorrection();
-                spinner.style.display = 'none';
-            }, 50);
+            this.correctionHandler.requestCorrectionUpdate();
         });
         
         // Add event listeners for EQ settings
         document.querySelectorAll('input[name="eqType"]').forEach(radio => {
             radio.addEventListener('change', () => {
-                const spinner = document.getElementById('loading-spinner-results');
-                spinner.style.display = 'block';
-                
-                // Show spinner and update asynchronously
-                setTimeout(async () => {
-                    await this.correctionHandler.updateCorrection();
-                    spinner.style.display = 'none';
-                }, 50);
+                this.correctionHandler.requestCorrectionUpdate();
             });
         });
         
@@ -204,14 +178,7 @@ export class UIManager {
         });
         
         document.getElementById('eqBandCount').addEventListener('change', () => {
-            const spinner = document.getElementById('loading-spinner-results');
-            spinner.style.display = 'block';
-            
-            // Show spinner and update asynchronously
-            setTimeout(async () => {
-                await this.correctionHandler.updateCorrection();
-                spinner.style.display = 'none';
-            }, 50);
+            this.correctionHandler.requestCorrectionUpdate();
         });
         
         document.getElementById('exportCSVBtn').addEventListener('click', () => this.exportCSV());
@@ -238,12 +205,7 @@ export class UIManager {
      * @param {string} screenId - ID of the screen to show
      */
     showScreen(screenId) {
-        // Define measurement related screens that use audio
-        const measurementScreens = ['levelAdjustmentScreen', 'sweepMeasurementScreen', 'configurationScreen'];
-        const movingToMeasurementScreen = measurementScreens.includes(screenId);
-        
-        // Check if we're leaving a measurement screen to a non-measurement screen
-        if (measurementScreens.includes(this.currentScreen) && !movingToMeasurementScreen) {
+        if (AUDIO_ACTIVE_SCREENS.has(this.currentScreen) && !AUDIO_ACTIVE_SCREENS.has(screenId)) {
             this.cleanupAudioBeforeNavigation();
         }
         
@@ -281,25 +243,21 @@ export class UIManager {
      * Clean up audio resources before navigation
      */
     cleanupAudioBeforeNavigation() {
-        // Stop any ongoing measurement
         if (measurementController.isRunningMeasurement) {
             measurementController.cancelMeasurement();
+        } else {
+            measurementController.cleanup();
         }
-        
-        // Stop white noise if it's playing
-        if (audioUtils.isWhiteNoiseActive) {
-            audioUtils.stopWhiteNoise();
-            document.getElementById('noiseToggleBtn').textContent = i18n.t('button:playbackTestSignal') || 'Playback test signal for checking volume';
+
+        this.resetNoiseToggleButton();
+    }
+
+    resetNoiseToggleButton() {
+        const button = document.getElementById('noiseToggleBtn');
+        if (button) {
+            button.textContent = i18n.t('button:playbackTestSignal') ||
+                'Playback test signal for checking volume';
         }
-        
-        // Stop level meter
-        measurementController.stopLevelMeter();
-        
-        // Stop microphone input
-        audioUtils.stopMicrophoneInput();
-        
-        // Full measurement controller cleanup
-        measurementController.cleanup();
     }
 
     /**
@@ -350,15 +308,16 @@ export class UIManager {
             await window.app.initializeAudio();
             await window.app.populateAudioDevices();
 
-            // Clean up any existing audio resources before starting
-            this.cleanupAudioBeforeNavigation();
-            
             // Proceed with measurement setup by preparing the config screen
             this.prepareConfigScreen();
             window.app.selectSavedAudioDevices();
         } catch (error) {
             console.error('Could not start new measurement due to audio initialization failure:', error);
-            this.showNotification(i18n.t('error:audioInitFailed', { message: error.message }), 'error');
+            this.showNotification(
+                i18n.t('error:audioInitFailed') ||
+                    'The audio devices could not be prepared. Check browser permissions and try again.',
+                'error'
+            );
         }
     }
 
@@ -441,7 +400,11 @@ export class UIManager {
         reader.onload = e => this.importMeasurementText(e.target.result);
         reader.onerror = () => {
             console.error('Error reading measurement import file:', reader.error);
-            alert('Error importing measurement. Invalid format.');
+            this.showNotification(
+                i18n.t('error:measurementImportFailed') ||
+                    'The measurement file could not be opened. Choose a valid measurement JSON file.',
+                'error'
+            );
         };
         
         reader.readAsText(file);
@@ -452,7 +415,11 @@ export class UIManager {
         try {
             const measurementId = await dataStorage.importMeasurementFromJSON(jsonString);
             if (!measurementId) {
-                alert('Error importing measurement. Invalid format.');
+                this.showNotification(
+                    i18n.t('error:measurementImportFailed') ||
+                        'The measurement file is not valid. Choose a measurement JSON file exported by EffeTune.',
+                    'error'
+                );
                 return null;
             }
             this.updateMeasurementList();
@@ -464,7 +431,11 @@ export class UIManager {
                 this.showNotification(i18n.t('message:saveFailed') ||
                     'The measurement could not be saved. Check available storage and try again.', 'error');
             } else {
-                alert('Error importing measurement. Invalid format.');
+                this.showNotification(
+                    i18n.t('error:measurementImportFailed') ||
+                        'The measurement file is not valid. Choose a measurement JSON file exported by EffeTune.',
+                    'error'
+                );
             }
             return null;
         }

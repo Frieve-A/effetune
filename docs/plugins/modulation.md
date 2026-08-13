@@ -24,7 +24,7 @@ A collection of plugins that add movement and variation to your music through mo
 
 ## Auto Filter
 
-Auto Filter moves a stable state-variable filter automatically. **LFO** mode repeats a sweep; **Envelope** mode follows the music's level, covering the familiar Envelope Filter and Auto Wah uses. It reports zero algorithmic latency.
+Auto Filter moves a resonant filter automatically. **LFO** mode repeats a sweep, while **Envelope** mode follows the music's level for Envelope Filter and Auto Wah sounds.
 
 ### Sound Enhancement Guide
 
@@ -37,7 +37,7 @@ Auto Filter moves a stable state-variable filter automatically. **LFO** mode rep
 - **Style** — loads a complete factory setting for every parameter. Choices are **Auto Filter Sweep** (LFO), **Stereo Filter Sweep** (LFO), **Envelope Filter** (Envelope), **Auto Wah** (Envelope), and **Reverse Auto Wah** (Envelope). Changing an individual parameter switches Style to **Custom**.
 - **Mode** — **LFO** sweeps periodically; **Envelope** follows signal level.
 - **Filter Type** — **Low-pass** retains frequencies below the moving cutoff, **Band-pass** emphasizes the region around it, and **High-pass** retains frequencies above it.
-- **Minimum Frequency / Maximum Frequency** (20–20,000 Hz) — set the sweep limits. If supplied in reverse order, EffeTune sorts them; equal values hold the filter stationary. Processing also keeps the cutoff safely below Nyquist.
+- **Minimum Frequency / Maximum Frequency** (20–20,000 Hz) — set the sweep limits. If supplied in reverse order, EffeTune sorts them; equal values hold the filter stationary. The available upper limit can be lower at lower playback sample rates.
 - **Resonance** (Q 0.5–20) — higher values emphasize the moving cutoff more strongly.
 - **Mix** (0–100%) — blends dry and filtered sound; 0% is transparent dry.
 - **Rate** (0.05–20 Hz), **Waveform** (Sine/Triangle), and **Stereo Phase** (0–180°) — control LFO speed, trajectory, and the offset within each stereo pair. They are used only in LFO mode.
@@ -45,7 +45,7 @@ Auto Filter moves a stable state-variable filter automatically. **LFO** mode rep
 
 ## Auto Pan
 
-Auto Pan varies the gains of each adjacent stereo pair without mixing one pair into another. A final unpaired channel follows the mono rule, so it is not moved left or right. The effect has zero algorithmic latency.
+Auto Pan moves the level of each stereo pair between left and right. If the audio has an unpaired channel, that channel remains centered.
 
 ### Sound Enhancement Guide
 
@@ -65,7 +65,7 @@ Auto Pan varies the gains of each adjacent stereo pair without mixing one pair i
 
 ## Chorus
 
-Chorus creates moving, fractionally delayed copies with four-point cubic interpolation. Its modes cover **Stereo Chorus**, **Ensemble**, **Flanger**, and **Vibrato** without adding duplicate effects. The moving lookback is audible but is not a fixed compensable latency, so the reported algorithmic latency is zero.
+Chorus adds moving delayed copies of the music. Its modes cover **Stereo Chorus**, **Ensemble**, **Flanger**, and **Vibrato**; Delay and Depth can make the processed sound feel slightly behind the original.
 
 ### Sound Enhancement Guide
 
@@ -77,16 +77,16 @@ Chorus creates moving, fractionally delayed copies with four-point cubic interpo
 ### Parameters
 
 - **Style** — loads a complete factory setting for every parameter. Choices are **Classic Chorus** (Chorus), **Stereo Chorus** (Stereo Chorus), **Ensemble** (Ensemble), **Flanger** (Flanger), **Jet Flanger** (Flanger), and **Vibrato** (Vibrato). Changing an individual parameter switches Style to **Custom**.
-- **Mode** — selects Chorus, Stereo Chorus, Ensemble, Flanger, or Vibrato topology.
+- **Mode** — selects Chorus, Stereo Chorus, Ensemble, Flanger, or Vibrato.
 - **Rate** (0.05–10 Hz) — sets modulation speed.
 - **Delay** (0.5–30 ms) — sets nominal wet-path delay.
-- **Depth** (0–20 ms) — sets delay excursion. Delay is authoritative: stored Depth is limited to Delay, preventing a negative read time.
-- **Voices** (1–6) — sets normalized moving taps in Chorus and Ensemble; other modes use fixed counts.
+- **Depth** (0–20 ms) — sets delay excursion and is automatically limited to the current **Delay** value.
+- **Voices** (1–6) — sets the number of moving voices in Chorus and Ensemble; other modes ignore it.
 - **Stereo Spread** (0–100%) — offsets motion within each stereo pair in Stereo Chorus, Ensemble, Flanger, and Vibrato. Chorus mode ignores it.
 - **Feedback** (-75–75%) — returns wet output to the delay in Flanger mode only.
 - **Mix** (0–100%) — linearly blends dry and wet sound; Vibrato ignores it and remains 100% wet. 0% is transparent in other modes.
 
-Mode and voice changes pass through a short dry midpoint before incompatible wet state changes, avoiding an abrupt one-sample topology switch.
+Changing Mode or Voices may briefly emphasize the original sound to keep the transition smooth.
 
 ## Doppler Distortion
 
@@ -122,7 +122,7 @@ These settings provide a subtle Doppler Distortion that enriches the listening e
 
 ## Frequency Shifter
 
-Frequency Shifter moves every spectral component by a fixed number of hertz rather than by a musical interval. **Ring Mod** multiplies the signal by a carrier, while **Barber-pole** overlaps repeating translations for a continuous rising or falling impression. **Shift** and **Barber-pole** use a Hilbert analytic-signal FIR; **Ring Mod** instead multiplies the matched-delay real signal from the same FIFO. Dry and wet timing therefore remain aligned in every mode. The fixed latency varies with sample rate and is reported by the DSP library.
+Frequency Shifter moves every frequency component by a fixed number of hertz rather than by a musical interval. **Ring Mod** creates metallic sidebands, while **Barber-pole** creates the impression of a shift that keeps rising or falling. The effect adds a short processing delay that varies with sample rate, including when Mix is 0%.
 
 ### Sound Enhancement Guide
 
@@ -141,11 +141,11 @@ Frequency Shifter moves every spectral component by a fixed number of hertz rath
 - **Stereo Phase** (0–180°) — offsets the carrier or sweep between the left and right channels of each stereo pair in all modes.
 - **Mix** (0–100%) — blends matched-delay dry and shifted sound; 0% is dry in level but still carries the documented fixed latency.
 
-Frequency translation can create components above Nyquist, especially with bright input and large shifts. The first version does not oversample, so use extreme shifts knowingly rather than assuming alias-free output.
+If a large shift sounds rough or metallic in an unwanted way, reduce Shift or Mix.
 
 ## Phaser
 
-Phaser mixes the original sound with cascaded all-pass filters to create moving peaks and notches. **Classic** sweeps back and forth. **Barber-pole** overlaps three bounded, constant-power sweep voices to suggest continuous upward or downward movement. It reports zero algorithmic latency.
+Phaser mixes the original sound with filtered copies to create moving peaks and notches. **Classic** sweeps back and forth, while **Barber-pole** suggests continuous upward or downward movement.
 
 ### Sound Enhancement Guide
 
@@ -157,7 +157,7 @@ Phaser mixes the original sound with cascaded all-pass filters to create moving 
 ### Parameters
 
 - **Style** — loads a complete factory setting for every parameter. Choices are **Classic Phaser** (Classic), **Deep Phaser** (Classic), **Stereo Phaser** (Classic), **Barber-pole Up** (Barber-pole), and **Barber-pole Down** (Barber-pole). Changing an individual parameter switches Style to **Custom**.
-- **Mode** — selects Classic or Barber-pole topology.
+- **Mode** — selects Classic or Barber-pole.
 - **Rate** (0.05–10 Hz) — sets sweep speed.
 - **Center Frequency** (80–8,000 Hz) — sets the geometric center of the sweep.
 - **Range** (0–6 octaves) — sets sweep span in logarithmic frequency.
@@ -167,7 +167,7 @@ Phaser mixes the original sound with cascaded all-pass filters to create moving 
 - **Direction** (Up/Down) — controls Barber-pole direction and is ignored in Classic mode.
 - **Mix** (0–100%) — linearly blends dry and phased sound; the middle region normally produces the deepest cancellation.
 
-Mode, stage, and barber-direction changes cross a short dry midpoint while incompatible recursive state is reset.
+Changing Mode, Stages, or Direction may briefly emphasize the original sound to keep the transition smooth.
 
 ## Pitch Shifter
 
@@ -192,7 +192,7 @@ An effect that changes the pitch of your music without affecting its playback sp
 
 ## Pitch Shifter HQ
 
-A higher-quality pitch shifter for careful listening when reduced phase smearing is more important than low latency or CPU use. It changes pitch without changing playback speed and keeps spectral components more firmly grouped than the standard Pitch Shifter. It uses more CPU and adds a fixed processing delay of approximately 106.7–116.1ms: approximately 106.7ms at 48, 96, and 192kHz, and approximately 116.1ms at 44.1, 88.2, and 176.4kHz. It requires EffeTune's WASM DSP engine. If that engine is unavailable, the audio passes through unchanged.
+A higher-quality pitch shifter for careful listening when reduced phase smearing is worth extra CPU use and about 107-116ms of delay. It changes pitch without changing playback speed and keeps spectral components more firmly grouped than the standard Pitch Shifter. If this effect is unavailable on your device, the audio passes through unchanged.
 
 Pitch Shifter HQ does not preserve formants. Larger shifts therefore change the apparent character of voices and instruments as well as their pitch.
 
@@ -214,7 +214,7 @@ Pitch Shifter HQ does not preserve formants. Larger shifts therefore change the 
 
 ## Rotary Speaker
 
-Rotary Speaker splits the signal at a Linkwitz–Riley crossover and gives the high-frequency horn and low-frequency drum different rotation rates. Amplitude movement and short Doppler delay produce a plausible dual-rotor effect; it is not a measured model of a particular Leslie cabinet. The moving delay is not reported as fixed algorithmic latency.
+Rotary Speaker splits the sound between a high-frequency horn and low-frequency drum, then gives them different rotation rates. Level movement and a short Doppler delay create the characteristic dual-rotor motion.
 
 ### Sound Enhancement Guide
 
@@ -226,7 +226,7 @@ Rotary Speaker splits the signal at a Linkwitz–Riley crossover and gives the h
 ### Parameters
 
 - **Style** — loads a complete factory setting for every parameter. Choices are **Rotary Slow** (Slow), **Rotary Fast** (Fast), **Gentle Rotary** (Slow), **Leslie Slow** (Slow), and **Leslie Fast** (Fast). Changing an individual parameter switches Style to **Custom**.
-- **Speed State** — **Stop**, **Slow**, or **Fast** target. Changes accelerate continuously without a second wet mute.
+- **Speed State** — **Stop**, **Slow**, or **Fast** target. During a change, the rotors accelerate or slow down smoothly without interrupting the sound.
 - **Speed** (25–200%) — scales both internal rotor rates while preserving their difference.
 - **Acceleration** (0.1–10 s) — sets how quickly the rotors approach a new speed.
 - **Crossover** (200–2,000 Hz) — divides drum and horn bands.

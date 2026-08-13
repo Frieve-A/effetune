@@ -40,7 +40,7 @@ Creates a plate-style reverberation using a Dattorro-inspired network.
 
 ## Dattorro Plate Reverb
 
-A classic plate reverb implementation based on Jon Dattorro's renowned algorithm from the 1997 paper "Effect Design, Part 1: Reverberator and Other Filters." This algorithm is celebrated for its lush, smooth sound quality and has become a reference standard in digital reverb design. Perfect for adding rich, shimmering ambience to your music.
+A plate reverb based on Jon Dattorro's 1997 design. It adds a dense, smooth decay that works well when you want spacious ambience without the impression of a specific room.
 
 Routing note: Dattorro Plate Reverb is a stereo plate model. When routed with more than two channels, all routed input channels feed one shared mono-to-stereo plate, but the wet/dry mix is written only to the first routed stereo pair. Additional channels contribute to the plate input and otherwise pass through unchanged, including when Dry Mix is 0%; they do not receive a wet return and are not independent plate tanks.
 
@@ -63,7 +63,7 @@ Routing note: Dattorro Plate Reverb is a stereo plate model. When routed with mo
   - 0-10ms: Immediate reverb, intimate feeling
   - 10-30ms: Natural sense of space
   - 30-99.9ms: Creates impression of larger spaces
-  - Avoid exactly 100.0ms when you want maximum pre-delay; the current implementation treats that endpoint like no effective pre-delay
+  - Avoid exactly 100.0ms when you want maximum pre-delay, because that setting produces almost no audible pre-delay
 - **Bandwidth** - Input signal filtering (0.0 to 1.0)
   - Lower values: Darker, warmer input tone
   - Higher values (near 1.0): Brighter, full-frequency input
@@ -111,28 +111,28 @@ Routing note: Dattorro Plate Reverb is a stereo plate model. When routed with mo
    - Damping: 0.001
    - Mod Depth: 1.0
    - Wet Mix: 25-35%
-   - Perfect for: Solo piano, chamber music
+   - Useful for: Solo piano, chamber music
 
 2. Vocals and Acoustic
    - Decay: 0.4-0.5
    - Damping: 0.002
    - Pre Delay: 15-25ms
    - Wet Mix: 20-30%
-   - Perfect for: Vocals, acoustic guitar
+   - Useful for: Vocals, acoustic guitar
 
 3. Ambient and Atmospheric
    - Decay: 0.8-0.95
    - Mod Depth: 4.0-8.0
    - Mod Rate: 0.5-1.0Hz
    - Wet Mix: 50-70%
-   - Perfect for: Ambient, electronic, soundscapes
+   - Useful for: Ambient, electronic, soundscapes
 
 4. General Enhancement
    - Decay: 0.5
    - Damping: 0.0005
    - Mod Depth: 1.0
    - Wet Mix: 20-30%
-   - Perfect for: All-around use, subtle polish
+   - Useful for: General listening and subtle ambience
 
 ### Quick Start Guide
 

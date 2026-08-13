@@ -11,7 +11,7 @@ lang: zh
 ## 插件列表
 
 - [Auto Leveler](#auto-leveler) - 自动调整音量以保持一致的聆听体验
-- [Brickwall Limiter](#brickwall-limiter) - 透明的峰值控制,实现安全舒适的聆听体验
+- [Brickwall Limiter](#brickwall-limiter) - 透明地控制峰值，防止数字削波
 - [Compressor](#compressor) - 自动平衡音量级别,实现更舒适的聆听体验 (包括向上扩展)
 - [Expander](#expander) - 阈值以下的动态范围扩展与比率和拐点控制 (包括向上压缩)
 - [Gate](#gate) - 降低低于阈值的低电平间隙或停顿
@@ -125,11 +125,11 @@ lang: zh
 
 ## Brickwall Limiter
 
-一个高品质的峰值限制器,确保您的音乐永远不会超过指定的电平,在保持自然音质的同时防止数字削波。完美地保护您的音频系统并确保舒适的聆听电平,同时不损害音乐的动态范围。
+峰值限制器会将信号峰值保持在指定的 ceiling 以下，以防止数字削波，同时尽量保留音乐的动态。请在播放设备上设置舒适的聆听音量；limiter 控制的是信号峰值，而不是到达耳朵的声压。
 
 ### 聆听增强指南
 - 古典音乐:
-  - 安全地欣赏完整的管弦乐渐强
+  - 控制管弦乐渐强的峰值
   - 保持钢琴作品的自然动态
   - 防止现场录音中的意外峰值
 - 流行/摇滚音乐:
@@ -151,9 +151,9 @@ lang: zh
 - **Threshold** (-24dB 到 0dB)
   - 设置应用 Margin 之前开始限制的峰值电平
   - 实际上限为 Threshold + Margin
-  - 较低值提供更多安全余量
+  - 较低值会留出更多峰值余量
   - 较高值保留更多动态
-  - 从 -3dB 开始获得温和保护
+  - 可从 -3dB 开始进行轻度峰值限制
 
 - **Release Time** (10ms 到 500ms)
   - 限制释放的速度
@@ -168,7 +168,7 @@ lang: zh
   - 3ms 是个好的平衡点
 
 - **Margin** (-1.000dB 到 0.000dB)
-  - 为 Threshold 增加精细的安全偏移
+  - 为 Threshold 增加精细的向下偏移
   - 实际上限为 Threshold + Margin
   - 例如 Threshold -3dB 且 Margin -1.000dB 时,大约限制在 -4dB
   - 默认值 -1.000dB 适用于大多数素材
@@ -181,12 +181,11 @@ lang: zh
 
 ### 控制与计量
 - 可直接控制 Input Gain、Threshold、Margin、Release、Lookahead 和 Oversampling
-- 限制器增益减少信息会在内部提供给宿主或状态计量
 - 插件面板不会显示单独的峰值电平图
 
 ### 推荐设置
 
-#### 透明保护
+#### 透明峰值控制
 - Input Gain: 0dB
 - Threshold: -3dB
 - Release: 100ms
@@ -195,7 +194,7 @@ lang: zh
 - Oversampling: 4x
 - Effective ceiling: 约 -4dB
 
-#### 最大安全
+#### 增加峰值余量
 - Input Gain: -6dB
 - Threshold: -6dB
 - Release: 50ms

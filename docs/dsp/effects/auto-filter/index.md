@@ -42,7 +42,7 @@ Provides Auto Filter sweeps, Envelope Filter response, and Auto Wah movement wit
 
 ## Auto Filter
 
-Auto Filter moves a stable state-variable filter automatically. **LFO** mode repeats a sweep; **Envelope** mode follows the music's level, covering the familiar Envelope Filter and Auto Wah uses. It reports zero algorithmic latency.
+Auto Filter moves a resonant filter automatically. **LFO** mode repeats a sweep, while **Envelope** mode follows the music's level for Envelope Filter and Auto Wah sounds.
 
 ### Sound Enhancement Guide
 
@@ -55,7 +55,7 @@ Auto Filter moves a stable state-variable filter automatically. **LFO** mode rep
 - **Style** — loads a complete factory setting for every parameter. Choices are **Auto Filter Sweep** (LFO), **Stereo Filter Sweep** (LFO), **Envelope Filter** (Envelope), **Auto Wah** (Envelope), and **Reverse Auto Wah** (Envelope). Changing an individual parameter switches Style to **Custom**.
 - **Mode** — **LFO** sweeps periodically; **Envelope** follows signal level.
 - **Filter Type** — **Low-pass** retains frequencies below the moving cutoff, **Band-pass** emphasizes the region around it, and **High-pass** retains frequencies above it.
-- **Minimum Frequency / Maximum Frequency** (20–20,000 Hz) — set the sweep limits. If supplied in reverse order, EffeTune sorts them; equal values hold the filter stationary. Processing also keeps the cutoff safely below Nyquist.
+- **Minimum Frequency / Maximum Frequency** (20–20,000 Hz) — set the sweep limits. If supplied in reverse order, EffeTune sorts them; equal values hold the filter stationary. The available upper limit can be lower at lower playback sample rates.
 - **Resonance** (Q 0.5–20) — higher values emphasize the moving cutoff more strongly.
 - **Mix** (0–100%) — blends dry and filtered sound; 0% is transparent dry.
 - **Rate** (0.05–20 Hz), **Waveform** (Sine/Triangle), and **Stereo Phase** (0–180°) — control LFO speed, trajectory, and the offset within each stereo pair. They are used only in LFO mode.

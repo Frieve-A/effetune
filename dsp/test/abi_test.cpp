@@ -3,6 +3,7 @@
 #include "allocation_guard.h"
 #include "effetune/abi.h"
 #include "engine.h"
+#include "nothrow_storage.h"
 
 #include <array>
 #include <cmath>
@@ -10,6 +11,7 @@
 #include <cstring>
 #include <initializer_list>
 #include <span>
+#include <type_traits>
 #include <vector>
 
 namespace effetune::test {
@@ -35,6 +37,41 @@ void testAllocationGuardScope() {
     ET_CHECK(allocation_guard::active() == ((et_build_flags() & ET_BUILD_DEBUG) != 0u));
   }
   ET_CHECK(!allocation_guard::active());
+}
+
+void testNothrowStorageContract() {
+  static_assert(!std::is_copy_constructible_v<NothrowStorage<std::uint32_t>>);
+  static_assert(!std::is_copy_assignable_v<NothrowStorage<std::uint32_t>>);
+
+  NothrowStorage<std::uint32_t> storage;
+  ET_CHECK(storage.data() == nullptr);
+  ET_CHECK(storage.size() == 0u);
+  ET_CHECK(storage.allocate(3u));
+  ET_CHECK(storage.data() != nullptr);
+  ET_CHECK(storage.size() == 3u);
+  storage.data()[0] = 1u;
+  storage.data()[1] = 2u;
+  storage.data()[2] = 3u;
+  storage.clear();
+  ET_CHECK(storage.data()[0] == 0u && storage.data()[1] == 0u && storage.data()[2] == 0u);
+
+  ET_CHECK(storage.allocate(2u));
+  ET_CHECK(storage.data() != nullptr);
+  ET_CHECK(storage.size() == 2u);
+  storage.release();
+  ET_CHECK(storage.data() == nullptr);
+  ET_CHECK(storage.size() == 0u);
+  ET_CHECK(storage.allocate(0u));
+  ET_CHECK(storage.data() == nullptr);
+  ET_CHECK(storage.size() == 0u);
+
+  if ((et_build_flags() & ET_BUILD_DEBUG) != 0u) {
+    allocation_guard::failNothrowAllocationAfterForTesting(0);
+    ET_CHECK(!storage.allocate(4u));
+    allocation_guard::failNothrowAllocationAfterForTesting(-1);
+    ET_CHECK(storage.data() == nullptr);
+    ET_CHECK(storage.size() == 0u);
+  }
 }
 
 void writeU32(std::uint8_t *output, std::uint32_t value) {
@@ -476,6 +513,7 @@ void testAssetLifecycle() {
 
 void runAbiTests() {
   testAllocationGuardScope();
+  testNothrowStorageContract();
   testDiscoveryAndLifecycle();
   testPipelineValidationAndRouting();
   testPipelineLatencyCompensation();

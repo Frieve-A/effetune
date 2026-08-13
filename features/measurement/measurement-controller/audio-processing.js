@@ -202,7 +202,6 @@ const AudioProcessing = {
                 // Check if AudioWorklet is supported
                 if (!audioUtils.audioWorkletSupported) {
                     console.error('AudioWorklet is not supported in this browser');
-                    alert('This browser does not support AudioWorklet. For accurate measurements, please use the latest version of Chrome or Edge.');
                     this.stopSweepPlayback();
                     reject(new Error('AudioWorklet not supported'));
                     return;

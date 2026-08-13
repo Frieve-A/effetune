@@ -98,9 +98,9 @@ CD प्लेयर, नेटवर्क प्लेयर या अन्
 
 PC और मोबाइल दोनों लेआउट में, जब ट्रैक खोज या किसी एल्बम, कलाकार, शैली, सबफ़ोल्डर अथवा प्लेलिस्ट के विवरण में 300 ट्रैक या उससे कम मिलते हैं, तो वे सभी डिफ़ॉल्ट रूप से चुने जाते हैं। 301 ट्रैक या उससे अधिक होने पर कोई ऑटोमेटिक चयन नहीं होता। मोबाइल पर ऑटोमेटिक चयन केवल चयन की स्थिति बदलता है। केवल किसी ट्रैक को देर तक दबाने पर चयन मोड खुलता है और चेकबॉक्स, **सभी चुनें** तथा **सभी का चयन हटाएँ** दिखाई देते हैं; ट्रैक चुनने या उनका चयन हटाने से यह मोड खुलता या बंद नहीं होता, और पंक्ति की सामान्य क्रियाएँ उपलब्ध रहती हैं।
 
-PC के Chromium ब्राउज़र File System Access के फ़ोल्डर हैंडल को स्थायी रूप से सहेज सकते हैं। Safari, Firefox, मोबाइल ब्राउज़र और इस API के बिना अन्य वातावरण चुने हुए `File` ऑब्जेक्ट केवल मौजूदा पेज सत्र तक रखते हैं। हर रीलोड के बाद फ़ोल्डर या फ़ाइलें फिर चुनें; EffeTune सामान्यीकृत सापेक्ष पथ से उन्हें मौजूदा कैटलॉग से दोबारा जोड़ता है।
+PC पर Chromium ब्राउज़र चुने हुए संगीत फ़ोल्डरों की पहुँच अगले सत्रों के लिए बनाए रख सकते हैं। Safari, Firefox, मोबाइल ब्राउज़र और स्थायी फ़ोल्डर पहुँच न देने वाले अन्य ब्राउज़र में हर बार पेज रीलोड होने के बाद फ़ोल्डर या फ़ाइलें फिर से चुनें; EffeTune उन्हें मौजूदा कैटलॉग से दोबारा जोड़ देता है।
 
-EffeTune 2.1.0 में कैटलॉग स्कीमा v3 पर आधारित संगीत लाइब्रेरी पेश की गई है, जिसमें CUE एल्बम को अलग-अलग ट्रैक के रूप में ब्राउज़ किया जा सकता है। पिछली संगीत लाइब्रेरी की स्थिति नहीं अपनाई जाती; संगीत फ़ोल्डर दोबारा जोड़कर स्कैन करें, फिर संगीत लाइब्रेरी की प्लेलिस्ट फिर से बनाएँ या दोबारा आयात करें। पिछला कैटलॉग और ऑडियो फ़ाइलें नहीं बदलतीं। कैटलॉग को बड़ी लाइब्रेरी डिस्क से पृष्ठों में पढ़ने के लिए बनाया गया है। बड़े पैमाने की प्रदर्शन मापें केवल वैकल्पिक, स्थानीय विकास निदान हैं; वे commit, release, `verify` या GitHub Actions की शर्त नहीं हैं और सामान्य प्रदर्शन की गारंटी भी नहीं देतीं।
+बड़ी लाइब्रेरी स्टोरेज से चरणों में लोड होती है; स्कैन और लोड होने की गति डिवाइस, संग्रह और उपलब्ध मेमोरी पर निर्भर करती है। बहुत तेज़ स्क्रॉल करने पर अगली ट्रैक लोड होने तक कुछ समय के लिए खाली पंक्तियाँ दिख सकती हैं, खासकर धीमे स्टोरेज पर।
 
 ### अपनी Effect Chain बनाना
 
@@ -318,7 +318,7 @@ EffeTune 2.1.0 में कैटलॉग स्कीमा v3 पर आध�
 | Delay     | Delay          | सामान्य delay effect | [विवरण](plugins/delay.md#delay) |
 | Delay     | Time Alignment | speakers और listening position alignment के लिए playback timing की fine tuning | [विवरण](plugins/delay.md#time-alignment) |
 | Dynamics  | Auto Leveler | consistent listening experience के लिए LUFS measurement आधारित automatic volume adjustment | [विवरण](plugins/dynamics.md#auto-leveler) |
-| Dynamics  | Brickwall Limiter | safe और comfortable listening के लिए transparent peak control | [विवरण](plugins/dynamics.md#brickwall-limiter) |
+| Dynamics  | Brickwall Limiter | डिजिटल क्लिपिंग रोकने के लिए सिग्नल पीक सीमित करता है | [विवरण](plugins/dynamics.md#brickwall-limiter) |
 | Dynamics  | Compressor | अचानक तेज़ हिस्सों को smooth करके सुनना अधिक आरामदायक बनाता है | [विवरण](plugins/dynamics.md#compressor) |
 | Dynamics  | Expander | threshold से नीचे की शांत ध्वनियों को और शांत करके dynamic contrast वापस लाता है | [विवरण](plugins/dynamics.md#expander) |
 | Dynamics  | Gate | gaps या quiet sections में low-level sound कम करता है | [विवरण](plugins/dynamics.md#gate) |
@@ -418,14 +418,13 @@ Frieve EffeTune को Google Chrome पर जांचा और सत्य�
 
 ### अनुशंसित Sample Rate
 
-nonlinear effects के साथ बेहतर प्रदर्शन के लिए EffeTune को 96kHz या उससे अधिक sample rate पर इस्तेमाल करने की सलाह दी जाती है। यह ऊंचा sample rate saturation और compression जैसे nonlinear effects से ऑडियो प्रोसेस करते समय आदर्श characteristics पाने में मदद करता है।
+EffeTune का **Sample Rate** 96 kHz पर सेट करें। इससे सीमित anti-aliasing वाले nonlinear effects में सुनाई देने वाले band तक लौटने वाला aliasing noise कम होता है। यह सेटिंग EffeTune की internal processing rate नियंत्रित करती है और आम तौर पर OS, audio device तथा VB-CABLE की rates से अलग रखी जा सकती है, इसलिए उन्हें बदलने की जरूरत नहीं होती। ऐप में दिखने वाला effective Sample Rate जाँचें: पहली बार सेटिंग save करने से पहले ऐप OS या browser के default पर शुरू हो सकता है, और Web version में 96 kHz उपलब्ध न होने पर दूसरी rate इस्तेमाल हो सकती है। प्लेबैक कटे तो पहले ज्यादा processing लेने वाले effects कम करें या chain छोटी करें; जरूरत रहे तभी Sample Rate घटाएँ।
 
 ## विकास गाइड
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Frieve-A/effetune)
 
 अपने audio plugins बनाना चाहते हैं? हमारी [प्लगइन विकास गाइड](../../plugin-development.md) देखें।
-डेस्कटॉप ऐप बनाना चाहते हैं? हमारी [बिल्ड गाइड](../../../BUILD.md) देखें।
 
 ## लिंक
 

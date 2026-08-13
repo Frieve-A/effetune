@@ -109,7 +109,11 @@ const LevelAdjustment = {
                 console.log('Toggling white noise ON');
                 if (!this.measurementConfig) {
                     console.error('No measurement configuration available');
-                    alert('Error: Measurement configuration is not available. Please start from the beginning.');
+                    uiManager.showNotification(
+                        i18n.t('error:measurementConfigUnavailable') ||
+                            'The measurement settings are no longer available. Start a new measurement.',
+                        'error'
+                    );
                     return false;
                 }
                 
@@ -146,14 +150,22 @@ const LevelAdjustment = {
                     document.getElementById('noiseToggleBtn').textContent = i18n.t('button:stopTestSignal') || 'Stop test signal';
                 } else {
                     console.error('Failed to start white noise');
-                    alert('Error: Failed to start test signal playback. Please check browser settings.');
+                    uiManager.showNotification(
+                        i18n.t('error:testSignalFailed') ||
+                            'The test signal could not be played. Check the audio output and try again.',
+                        'error'
+                    );
                 }
                 
                 return result;
             }
         } catch (error) {
             console.error('Error toggling white noise:', error);
-            alert(`Error: Error controlling test signal: ${error.message}`);
+            uiManager.showNotification(
+                i18n.t('error:testSignalFailed') ||
+                    'The test signal could not be controlled. Check the audio output and try again.',
+                'error'
+            );
             return false;
         }
     },

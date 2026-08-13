@@ -24,7 +24,7 @@ Uma coleção de plugins que adicionam movimento e variação à sua música atr
 
 ## Auto Filter
 
-Move automaticamente um filtro de estado variável por LFO ou pelo envelope do sinal de entrada. O modo Envelope pode ser usado como Envelope Filter ou Auto Wah. A latência algorítmica é zero.
+Move automaticamente um filtro ressonante. LFO repete uma varredura; Envelope acompanha o nível da música para sons de Envelope Filter ou Auto Wah.
 
 ### Dicas de ajuste
 
@@ -37,7 +37,7 @@ Move automaticamente um filtro de estado variável por LFO ou pelo envelope do s
 - **Style**: Configuração de fábrica completa de todos os parâmetros. Opções: **Auto Filter Sweep** (LFO), **Stereo Filter Sweep** (LFO), **Envelope Filter** (Envelope), **Auto Wah** (Envelope) e **Reverse Auto Wah** (Envelope). Alterar um parâmetro individual muda para **Custom**.
 - **Mode**: Alterna entre o movimento periódico do LFO e o Envelope que acompanha o volume.
 - **Filter Type**: Low-pass, Band-pass ou High-pass.
-- **Minimum Frequency / Maximum Frequency** (20–20.000 Hz): Faixa de movimento. Valores invertidos são reordenados automaticamente; valores iguais fixam o filtro. Durante o processamento, são limitados a uma faixa segura abaixo da frequência de Nyquist.
+- **Minimum Frequency / Maximum Frequency** (20–20.000 Hz): Faixa de movimento. Valores invertidos são reordenados automaticamente; valores iguais fixam o filtro. O limite superior disponível pode ser menor em taxas de amostragem mais baixas.
 - **Resonance** (Q 0,5–20): Valores maiores realçam mais a região próxima ao corte.
 - **Mix** (0–100%): Proporção entre o som original e o filtrado. Em 0%, permanece apenas o som original.
 - **Rate**, **Waveform**, **Stereo Phase**: Velocidade, trajetória e diferença de fase em cada par estéreo do LFO. Usados apenas no modo LFO.
@@ -45,7 +45,7 @@ Move automaticamente um filtro de estado variável por LFO ou pelo envelope do s
 
 ## Auto Pan
 
-Move o volume de cada par estéreo adjacente entre esquerda e direita. Não mistura áudio entre pares e trata um último canal sem par como mono. A latência algorítmica é zero.
+Move o nível de cada par estéreo entre esquerda e direita. Se houver um canal sem par, ele permanece no centro.
 
 ### Dicas de ajuste
 
@@ -65,7 +65,7 @@ Move o volume de cada par estéreo adjacente entre esquerda e direita. Não mist
 
 ## Chorus
 
-Soma vários sinais de atraso variável com interpolação cúbica de quatro pontos. Mode oferece Chorus, Stereo Chorus, Ensemble, Flanger e Vibrato. Os atrasos variáveis são audíveis, mas não constituem latência fixa; por isso, a latência algorítmica informada é zero.
+Adiciona cópias da música com atrasos em movimento. Mode oferece Chorus, Stereo Chorus, Ensemble, Flanger e Vibrato; aumentar Delay e Depth pode fazer o som processado parecer um pouco atrasado em relação ao original.
 
 ### Dicas de ajuste
 
@@ -80,7 +80,7 @@ Soma vários sinais de atraso variável com interpolação cúbica de quatro pon
 - **Mode**: Chorus, Stereo Chorus, Ensemble, Flanger ou Vibrato.
 - **Rate** (0,05–10 Hz): Velocidade da modulação.
 - **Delay** (0,5–30 ms): Atraso-base do sinal processado.
-- **Depth** (0–20 ms): Variação do atraso. Para evitar leitura com atraso negativo, o valor salvo é limitado a Delay.
+- **Depth** (0–20 ms): Variação do atraso. Depth é limitado automaticamente ao valor de Delay.
 - **Voices** (1–6): Número de taps variáveis em Chorus e Ensemble. Ignorado nos outros modos.
 - **Stereo Spread** (0–100%): Diferença de modulação em cada par estéreo. Ignorado no modo Chorus.
 - **Feedback** (-75–75%): Usado apenas em Flanger.
@@ -120,7 +120,7 @@ Essas configurações proporcionam um Doppler Distortion sutil que enriquece a e
 
 ## Frequency Shifter
 
-Move cada componente de frequência por um número fixo de hertz, e não por uma proporção de pitch. Ring Mod multiplica por uma portadora; Barber-pole sobrepõe deslocamentos para criar a sensação de subida ou descida contínua. Shift e Barber-pole usam um FIR de sinal analítico de Hilbert; Ring Mod multiplica a portadora pelo sinal real com atraso correspondente, retirado da mesma FIFO. Assim, os sinais original e processado ficam alinhados em todos os modos. A latência fixa depende da taxa de amostragem e é informada pela DSP Library.
+Move cada componente de frequência por um número fixo de hertz, e não por um intervalo musical. Ring Mod cria bandas laterais metálicas; Barber-pole dá a impressão de um deslocamento que continua subindo ou descendo. O efeito adiciona um pequeno atraso que varia com a taxa de amostragem, inclusive com Mix em 0%.
 
 ### Dicas de ajuste
 
@@ -139,11 +139,11 @@ Move cada componente de frequência por um número fixo de hertz, e não por uma
 - **Stereo Phase** (0–180°): Em todos os modos, cria uma diferença na portadora ou varredura entre esquerda e direita de cada par estéreo.
 - **Mix** (0–100%): Proporção entre o som original com atraso alinhado e o processado. Mesmo em 0%, a latência fixa indicada permanece.
 
-Deslocamentos grandes podem criar componentes acima da frequência de Nyquist e aliasing audível. A versão inicial não usa sobreamostragem.
+Se um deslocamento grande soar áspero ou metálico de forma indesejada, reduza Shift ou Mix.
 
 ## Phaser
 
-Mistura o som original com a saída de uma cadeia de filtros all-pass para criar picos e vales móveis. Classic vai e volta; Barber-pole sobrepõe três janelas de potência constante para dar a sensação de subida ou descida contínua. A latência algorítmica é zero.
+Mistura o som original com cópias filtradas para criar picos e vales móveis. Classic vai e volta; Barber-pole sugere movimento contínuo para cima ou para baixo.
 
 ### Dicas de ajuste
 
@@ -209,7 +209,7 @@ O Pitch Shifter HQ não preserva os formantes. Portanto, mudanças maiores alter
 
 ## Rotary Speaker
 
-Divide o sinal entre a corneta de agudos e o tambor de graves com um crossover Linkwitz–Riley e aplica a cada um velocidade de rotação, modulação de volume e atraso Doppler curto diferentes. Não reproduz medições de uma caixa Leslie específica. Como o atraso é variável, não é informado como latência algorítmica fixa.
+Divide o som entre uma corneta de agudos e um tambor de graves e aplica velocidades de rotação diferentes. O movimento de nível e um curto atraso Doppler criam o movimento característico de dois rotores.
 
 ### Dicas de ajuste
 
@@ -220,7 +220,7 @@ Divide o sinal entre a corneta de agudos e o tambor de graves com um crossover L
 ### Parâmetros
 
 - **Style**: Configuração de fábrica completa de todos os parâmetros. Opções: **Rotary Slow** (Slow), **Rotary Fast** (Fast), **Gentle Rotary** (Slow), **Leslie Slow** (Slow) e **Leslie Fast** (Fast). Alterar um parâmetro individual muda para **Custom**.
-- **Speed State**: Stop, Slow ou Fast. Ao mudar, acelera ou desacelera continuamente, sem silenciar.
+- **Speed State**: Stop, Slow ou Fast. Durante a mudança, os rotores aceleram ou desaceleram suavemente sem interromper o som.
 - **Speed** (25–200%): Multiplicador de velocidade da corneta e do tambor.
 - **Acceleration** (0,1–10 s): Define a rapidez com que os rotores se aproximam de uma nova velocidade.
 - **Crossover** (200–2.000 Hz): Frequência que separa as bandas do tambor e da corneta.

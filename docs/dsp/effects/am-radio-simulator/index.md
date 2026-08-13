@@ -72,24 +72,12 @@ This effect requires an environment that supports its real-time processing. When
 - **Fade depth:** New instances use 1% Skywave for gentler level movement in Mono and a less pronounced nighttime fade. Raise Skywave to about 8% when you specifically want a deeper fade; larger values make the effect more extreme.
 - Start with Mix at 100% when judging the radio model. Lower it only when you intentionally want some of the original stereo image to remain.
 
-### C-QUAM Blend and Static Model
-
-In C-QUAM, automatic stereo blending observes qualified signal loss on two orthogonal receiver axes: the decoded sum and the 25 Hz pilot region of the quadrature difference signal. AGC is removed from both observations, and a loss lowers the quality term only when it coincides on both axes. This loss-coincidence rule keeps ordinary program changes on either axis from being mistaken for an RF fade. It runs only while the PLL is tracking and the pilot is accepted; otherwise, the quality observation is cleared.
-
-The new-instance Skywave default is 1%, adopted after the integrated model checks passed. Saved presets keep their explicitly stored Skywave value. Compared with 8%, the 1% setting gives Mono mode calmer level movement and shallower fades; select about 8% when a more severe nighttime-fade effect is wanted.
-
-The frozen response range begins at Fading Speed 0.05 Hz. Attenuation that changes much more slowly than the adaptive reference's 60 s fall time is absorbed into that reference and is intentionally not retained as a continuing quality loss. The 0.75 dB residual-program allowance, 0.04 ratio offset, Q=4 pilot observation band, 0.05/0.2/0.5/60 s quality time constants, and the 0.5 dB deadband with 5.0 dB transfer span are empirical simulator calibration, not general C-QUAM receiver specifications.
-
-This receiver-faithful observation has the same program ambiguity as pilot C-QUAM hardware. If a program contains both difference energy near 25 Hz and asymmetric sum/DC, ending both components together can briefly lower the stereo blend because it presents the same RF evidence as a fade. A coherent anti-phase residual can likewise drive the quality observation while the PLL remains in TRACK and the pilot remains accepted. These are intentional behaviors within the approved model boundary, not defects.
-
-Static events use a carrier-relative vector-area calibration: each event is scaled from a 20.0 µs area referenced to the nominal desired carrier, with an empirical uniform 0.5-to-1.5 area distribution and random phase. Events are scheduled from double-precision absolute deadlines rather than rounded sample countdowns, so timing remains continuous across render blocks and multiple events due in one sample are accumulated. The 20.0 µs scale and its distribution are empirical simulator calibration.
-
 ### Parameters
 
 #### Station
 
 - **Radio** (on or off) - Switches the station's transmission on and off. With it off the carrier disappears entirely, leaving the receiver with only atmospheric static, the adjacent station, and its own noise, and AGC opens up until that background becomes loud. Use it to hear the moment a station signs on or off the air. This is not the same as turning the effect off, which leaves the music untouched.
-- **Stereo Mode** (Mono or C-QUAM) - Mono uses a traditional envelope-detector receiver. C-QUAM provides stereo reception, with lower stereo S/N than mono, and automatically blends toward mono when the signal is weak or mistuned. Because the receiver uses a physically different detector, switching modes can also change the timbre; Detector RC and its diagonal clipping apply only to Mono and have no effect in C-QUAM. C-QUAM stereo operates at sample rates up to 192 kHz; at higher rates, reception is mono. The simulation models only the FCC C-QUAM c(5) modulation-phase limit and does not represent a complete compliance test.
+- **Stereo Mode** (Mono or C-QUAM) - Mono uses a traditional envelope-detector receiver. C-QUAM provides stereo reception and automatically blends toward mono when the signal is weak or mistuned. Switching modes can also change the timbre; Detector RC applies only to Mono. C-QUAM stereo operates at sample rates up to 192 kHz; at higher rates, reception is mono.
 - **TX Bandwidth** (2.0 to 10.0 kHz) - Sets the transmitter's audio bandwidth. Lower values sound darker and more restricted; higher values preserve more detail.
 - **Pre-emphasis** (0 to 100%) - Boosts upper audio frequencies before transmission. Higher settings add presence but also drive bright peaks harder through the broadcast chain.
 - **Mod Depth** (10 to 125%) - Sets AM modulation depth. Values above 100% create overmodulation and negative-peak clipping.
@@ -100,7 +88,7 @@ Static events use a carrier-relative vector-area calibration: each event is scal
 - **Signal** (-50 to 0 dB) - Sets received signal strength. Weaker settings expose more receiver noise and require more AGC gain.
 - **Skywave** (0 to 100%) - Blends stable groundwave reception with delayed ionospheric paths. New instances default to 1% for gentle movement; around 8% gives a more severe nighttime fade, and higher values make the frequency-selective fading deeper.
 - **Fading Speed** (0.05 to 2.0 Hz) - Sets how quickly skywave conditions vary.
-- **Static** (0 to 100/s) - Sets the rate of lightning-like events. Each carrier-relative event follows an absolute-time schedule and rings through the receiver's IF filter rather than being added after reception.
+- **Static** (0 to 100/s) - Sets the rate of lightning-like events. Raise it for a stormier, more intermittent signal; set it to 0 for none.
 - **Interference** (-80 to 0 dB) - Sets adjacent-station strength. -80 dB switches it off; values closer to 0 dB make it stronger.
 - **Interf. Offset** (5 to 10 kHz) - Sets adjacent-station spacing and the resulting carrier beat frequency. 9 and 10 kHz represent common channel spacing.
 
@@ -118,7 +106,7 @@ Static events use a carrier-relative vector-area calibration: each event is scal
 - **Speaker** (Off, Small, or Table) - Selects line output, a restricted pocket-radio speaker, or a fuller tabletop-radio response.
 - **Output Gain** (-24 to +24 dB) - Adjusts level after receiver and speaker processing.
 - **Mix** (0 to 100%) - Blends the original stereo signal with the simulated mono reception. 0% is unchanged stereo; 100% sends the same wet signal to left and right. Only 100% Mix makes the output fully mono.
-- In C-QUAM, the wet signal is stereo when reception permits; the mono description above applies to Mono mode. Its FIR delay remains within the wet receiver path. Mix does not delay the dry signal to align it, so intermediate settings combine dry and wet signals with that timing difference.
+- In C-QUAM, the wet signal is stereo when reception permits. Use Mix at 100% when judging the decoded stereo image.
 
 ### Reading the HUD
 

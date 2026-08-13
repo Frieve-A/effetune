@@ -98,9 +98,9 @@ EffeTune 专为希望提升音乐聆听体验的音频爱好者而设计。无�
 
 在 PC 和移动布局中，当曲目搜索或专辑、艺人、流派、子文件夹、播放列表详情的结果不超过 300 首时，所有曲目都会默认选中；达到 301 首时则不会自动选择。在移动端，自动选择只会改变选择状态。只有长按曲目才会进入选择模式并显示复选框、**全选** 和 **取消全选**；选择或取消选择曲目不会进入或退出该模式，同时仍可使用常用的行操作。
 
-PC 上的 Chromium 浏览器可以持久保存 File System Access 文件夹句柄。Safari、Firefox、移动浏览器以及其他不支持该 API 的环境，只会在当前页面会话中保留所选的 `File` 对象。每次重新加载后都要重新选择文件夹或文件；EffeTune 会通过规范化的相对路径，将它们重新连接到现有目录。
+PC 上的 Chromium 浏览器可以在不同会话间保留对所选音乐文件夹的访问权限。在 Safari、Firefox、移动浏览器以及其他无法持久保留文件夹访问权限的环境中，每次重新加载后都要重新选择文件夹或文件；EffeTune 会将其重新连接到现有目录。
 
-EffeTune 2.1.0引入了采用目录架构v3的音乐库，可按曲目浏览CUE专辑。旧音乐库的状态不会迁移；请重新添加并扫描音乐文件夹，然后重新创建或导入音乐库播放列表。旧目录和音频文件都不会被修改。目录采用从磁盘分页读取的设计，可处理大型收藏。大规模性能测量只是可选的本地开发诊断，并非 commit、release、`verify` 或 GitHub Actions 的门槛，也不构成一般性的性能保证。
+大型音乐收藏会从存储中分阶段加载；扫描和加载速度取决于设备、收藏规模和可用内存。快速滚动时，下一批曲目加载完成前可能会短暂出现空白行，尤其是在速度较慢的存储设备上。
 
 ### 构建您的效果链
 
@@ -317,7 +317,7 @@ EffeTune 2.1.0引入了采用目录架构v3的音乐库，可按曲目浏览CUE�
 | Delay     | Delay | 标准延迟效果 | [详情](plugins/delay.md#delay) |
 | Delay     | Time Alignment | 为扬声器与聆听位置校准微调播放时序 | [详情](plugins/delay.md#time-alignment) |
 | Dynamics  | Auto Leveler | 基于LUFS测量的自动音量调整，以实现一致的聆听体验 | [详情](plugins/dynamics.md#auto-leveler) |
-| Dynamics  | Brickwall Limiter | 透明的峰值控制，确保安全舒适的聆听 | [详情](plugins/dynamics.md#brickwall-limiter) |
+| Dynamics  | Brickwall Limiter | 在保留动态的同时控制数字峰值 | [详情](plugins/dynamics.md#brickwall-limiter) |
 | Dynamics  | Compressor | 平滑突然变大的段落，让聆听更舒适 | [详情](plugins/dynamics.md#compressor) |
 | Dynamics  | Expander | 让低于阈值的安静声音更安静，以恢复动态对比 | [详情](plugins/dynamics.md#expander) |
 | Dynamics  | Gate | 在间隙或安静段落降低低电平声音 | [详情](plugins/dynamics.md#gate) |
@@ -416,13 +416,11 @@ Frieve EffeTune 已在 Google Chrome 上测试验证运行。该应用需要支�
 
 ### 推荐采样率
 
-为了在非线性效果下获得最佳性能，建议在 96kHz 或更高采样率下使用 EffeTune。更高的采样率有助于在处理饱和和压缩等非线性效果时达到理想特性。
+建议将 EffeTune 的**采样率**设为 96 kHz。这样可以减少抗混叠处理不足的非线性效果器产生的、落入可听频段的混叠噪声。此设置控制 EffeTune 的内部处理率，通常可以独立于操作系统、音频设备和 VB-CABLE 的采样率，因此无需更改后者。请确认应用中显示的实际采样率：首次使用且尚未保存设置时，可能会采用操作系统或浏览器的默认值；如果网页版无法使用 96 kHz，也可能会切换到其他采样率。如果出现丢音，请先减少高负载效果器或缩短效果链，必要时再降低采样率。
 
 ## 开发指南
 
 想要创建您自己的音频插件？请查看我们的 [插件开发指南](../../plugin-development.md)。
-想要构建桌面应用？请查看我们的 [构建指南](../../../BUILD.md)。
-
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Frieve-A/effetune)
 
 ## 链接

@@ -98,9 +98,9 @@ As versões desktop compatíveis também podem ser controladas por aplicativos O
 
 Nos layouts para PC e dispositivos móveis, quando uma pesquisa de faixas ou os detalhes de um álbum, artista, gênero, subpasta ou playlist retornam 300 faixas ou menos, todas são selecionadas por padrão. Com 301 faixas ou mais, não há seleção automática. No celular, a seleção automática altera apenas o estado da seleção. Somente manter uma faixa pressionada abre o modo de seleção e mostra as caixas, **Selecionar tudo** e **Desmarcar tudo**; selecionar ou desmarcar faixas não abre nem encerra esse modo, e as ações normais de cada linha continuam disponíveis.
 
-Os navegadores Chromium no PC podem manter os identificadores de pasta do File System Access. Safari, Firefox, navegadores móveis e outros ambientes sem essa API mantêm os objetos `File` selecionados apenas durante a sessão atual da página. Após cada recarregamento, selecione novamente a pasta ou os arquivos; o EffeTune os reconecta ao catálogo existente pelo caminho relativo normalizado.
+Os navegadores Chromium para PC podem manter o acesso às pastas de música selecionadas entre sessões. No Safari, Firefox, navegadores móveis e outros ambientes sem acesso persistente a pastas, selecione novamente a pasta ou os arquivos após cada recarregamento; o EffeTune os reconecta ao catálogo existente.
 
-A versão 2.1.0 do EffeTune apresenta uma Biblioteca de música baseada no esquema de catálogo v3, que permite navegar por álbuns CUE faixa a faixa. O estado da Biblioteca de música anterior não é transferido; adicione novamente as pastas de música e faça a varredura, depois recrie ou importe novamente as playlists da Biblioteca de música. O catálogo anterior e os arquivos de áudio não são alterados. O catálogo foi projetado para paginar coleções grandes a partir do disco. As medições de desempenho em grande escala são diagnósticos locais e opcionais de desenvolvimento; não são requisitos de commit, release, `verify` ou GitHub Actions, nem uma garantia geral de desempenho.
+Coleções grandes são carregadas do armazenamento em etapas; a velocidade de varredura e carregamento depende do dispositivo, da coleção e da memória disponível. Uma rolagem muito rápida pode mostrar linhas vazias por alguns instantes enquanto as próximas faixas são carregadas, principalmente em armazenamento lento.
 
 ### Construindo Sua Cadeia de Efeitos
 
@@ -318,7 +318,7 @@ Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/
 | Delay     | Delay | Efeito de atraso padrão | [Detalhes](plugins/delay.md#delay) |
 | Delay     | Time Alignment | Ajusta finamente o tempo de reprodução para alinhar caixas e posição de escuta | [Detalhes](plugins/delay.md#time-alignment) |
 | Dynamics  | Auto Leveler | Ajuste automático de volume baseado na medição LUFS para experiência de audição consistente | [Detalhes](plugins/dynamics.md#auto-leveler) |
-| Dynamics  | Brickwall Limiter | Controle transparente de picos para audição segura e confortável | [Detalhes](plugins/dynamics.md#brickwall-limiter) |
+| Dynamics  | Brickwall Limiter | Controle de picos digitais preservando a dinâmica | [Detalhes](plugins/dynamics.md#brickwall-limiter) |
 | Dynamics  | Compressor | Suaviza trechos que ficam altos de repente para uma audição mais confortável | [Detalhes](plugins/dynamics.md#compressor) |
 | Dynamics  | Expander | Restaura contraste dinâmico deixando sons abaixo do limiar ainda mais baixos | [Detalhes](plugins/dynamics.md#expander) |
 | Dynamics  | Gate | Reduz sons de baixo nível em pausas ou trechos silenciosos | [Detalhes](plugins/dynamics.md#gate) |
@@ -417,13 +417,11 @@ Frieve EffeTune foi testado e verificado para funcionar no Google Chrome. A apli
 
 ### Taxa de Amostragem Recomendada
 
-Para um desempenho ideal com efeitos não lineares, recomenda-se usar o EffeTune com uma taxa de amostragem de 96kHz ou superior. Essa taxa de amostragem mais alta ajuda a alcançar características ideais ao processar áudio através de efeitos não lineares, como saturação e compressão.
+Defina a **Taxa de Amostragem** do EffeTune como 96 kHz. Isso reduz o aliasing que retorna à faixa audível quando o antialiasing dos efeitos não lineares é limitado. Essa configuração controla a taxa de processamento interna do EffeTune e normalmente pode ser diferente das taxas do sistema operacional, dos dispositivos de áudio e do VB-CABLE, portanto não é necessário alterá-las. Confira a taxa efetiva exibida no aplicativo: antes de salvar a configuração pela primeira vez, ele pode iniciar com o padrão do sistema ou do navegador; na versão Web, também pode usar outra taxa se 96 kHz não estiver disponível. Se houver cortes, primeiro reduza os efeitos mais exigentes ou encurte a cadeia; diminua a taxa somente se ainda for necessário.
 
 ## Guia de Desenvolvimento
 
 Quer criar seus próprios plugins de áudio? Confira nosso [guia de desenvolvimento de plugins](../../plugin-development.md).
-Quer construir um aplicativo desktop? Confira nosso [Guia de Construção](../../../BUILD.md).
-
 ## Links
 
 [Histórico de versões](../../version-history.md)

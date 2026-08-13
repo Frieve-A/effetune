@@ -118,10 +118,22 @@ function menuFromTemplate(template) {
       ? { items: item.submenu.map(convert) }
       : item.submenu
   });
-  return {
+  const menu = {
     template,
     items: template.map(convert)
   };
+  menu.getMenuItemById = id => {
+    const visit = items => {
+      for (const item of items) {
+        if (item.id === id) return item;
+        const nested = item.submenu?.items ? visit(item.submenu.items) : null;
+        if (nested) return nested;
+      }
+      return null;
+    };
+    return visit(menu.items);
+  };
+  return menu;
 }
 
 function clickMenu(menu) {
@@ -134,19 +146,18 @@ function clickMenu(menu) {
   }
 }
 
-function createMenuTemplate() {
-  const items = (count, prefix) => Array.from({ length: count }, (_, index) => ({
-    label: `${prefix}-${index}`,
-    enabled: index % 2 === 0
-  }));
-  const viewItems = items(12, 'view');
-  viewItems[8] = { ...viewItems[8], type: 'checkbox', checked: true };
+function createMenuState() {
   return {
-    file: { label: 'File X', submenu: items(14, 'file') },
-    edit: { label: 'Edit X', submenu: items(9, 'edit') },
-    view: { label: 'View X', submenu: viewItems },
-    settings: { label: 'Settings X', submenu: items(4, 'settings') },
-    help: { label: 'Help X', submenu: items(5, 'help') }
+    'menu.file': { label: 'File X' },
+    'file.save': { label: 'Save X', enabled: false },
+    'file.openMusicFile': { label: 'Open X', enabled: true },
+    'menu.edit': { label: 'Edit X' },
+    'edit.undo': { label: 'Undo X', enabled: false },
+    'menu.view': { label: 'View X' },
+    'view.pipelineAnalyzer': { label: 'Analyzer X', checked: true },
+    'menu.settings': { label: 'Settings X' },
+    'menu.help': { label: 'Help X' },
+    unknown: { label: 'Ignored' }
   };
 }
 
@@ -317,26 +328,6 @@ function createHarness(options = {}) {
       calls.push(['fileHandlers.readFile', filePath]);
       return { success: true, content: 'data' };
     },
-    async getFilePath(fileInfo) {
-      calls.push(['fileHandlers.getFilePath', fileInfo]);
-      return 'one.wav';
-    },
-    async getFilePaths(filesInfo) {
-      calls.push(['fileHandlers.getFilePaths', filesInfo]);
-      return ['one.wav', 'two.wav'];
-    },
-    async handleDroppedFilesWithPaths(filePaths) {
-      calls.push(['fileHandlers.handleDroppedFilesWithPaths', filePaths]);
-      return filePaths;
-    },
-    async handleDroppedFiles(filesInfo) {
-      calls.push(['fileHandlers.handleDroppedFiles', filesInfo]);
-      return filesInfo;
-    },
-    async handleDroppedPresetFile(fileInfo) {
-      calls.push(['fileHandlers.handleDroppedPresetFile', fileInfo]);
-      return fileInfo;
-    },
     async savePipelineStateToFile(pipelineState, saveOptions) {
       calls.push(saveOptions === undefined
         ? ['fileHandlers.savePipelineStateToFile', pipelineState]
@@ -446,11 +437,6 @@ async function invokeAllDelegates(handlers) {
   );
   assert.equal(handlers.get('joinPaths')({}, 'a', 'b', 'c'), path.join('a', 'b', 'c'));
   assert.equal(handlers.get('fileExists')({}, 'missing'), false);
-  assert.equal(await handlers.get('get-file-path')({}, { name: 'one' }), 'one.wav');
-  assert.deepEqual(await handlers.get('get-file-paths')({}, [{ name: 'one' }]), ['one.wav', 'two.wav']);
-  assert.deepEqual(await handlers.get('handle-dropped-files-with-paths')({}, ['a.wav']), ['a.wav']);
-  assert.deepEqual(await handlers.get('handle-dropped-files')({}, [{ name: 'a.wav' }]), [{ name: 'a.wav' }]);
-  assert.deepEqual(await handlers.get('handle-dropped-preset-file')({}, { name: 'a.effetune_preset' }), { name: 'a.effetune_preset' });
   assert.deepEqual(await handlers.get('save-pipeline-state-to-file')({}, { pipeline: [] }), { success: true });
 }
 
@@ -462,6 +448,18 @@ test('registers core handlers and delegates file, config, update, path, and URL 
     moduleUnderTest.registerIpcHandlers();
 
     const { handlers, listeners } = ipcMain;
+    for (const channel of [
+      'get-file-path',
+      'get-file-paths',
+      'handle-dropped-files-with-paths',
+      'handle-dropped-files',
+      'handle-dropped-preset-file',
+      'get-application-menu',
+      'open-documentation'
+    ]) {
+      assert.equal(handlers.has(channel), false);
+    }
+    assert.equal(listeners.has('files-dropped'), false);
     assert.equal(handlers.get('get-first-launch-flag')(), true);
     assert.deepEqual(handlers.get('get-window-visibility')(), { hidden: false });
     moduleUnderTest.setMainWindow(createMainWindow(calls, { minimized: true }));
@@ -669,7 +667,7 @@ test('save-file canonicalizes a missing settings directory from its existing anc
   });
 });
 
-test('IPC handlers recover from update, permission, config, preference, relaunch, close, and dropped-file failures', async () => {
+test('IPC handlers recover from update, permission, config, preference, relaunch, and close failures', async () => {
   await withHarness({
     platform: 'linux',
     throwGetPendingUpdateInfo: true,
@@ -720,24 +718,103 @@ test('IPC handlers recover from update, permission, config, preference, relaunch
 
     assert.throws(() => handlers.get('relaunch-app')(), /relaunch failed/);
 
-    listeners.get('files-dropped')({}, ['/tmp/a.wav', '/tmp/b.txt', '/tmp/c.FLAC']);
     constants.setMainWindow(null);
-    listeners.get('files-dropped')({}, ['/tmp/a.wav']);
   });
 });
 
-test('IPC handlers manage menus, tray presets, documentation, default menu creation, and application-menu reads', async () => {
+test('IPC handlers manage stable-ID menu state, tray presets, and default menu creation', async () => {
   await withHarness({}, async ({ calls, constants, electron, ipcMain, moduleUnderTest, tempDir }) => {
     moduleUnderTest.registerIpcHandlers();
-    const { handlers, listeners } = ipcMain;
+    const { handlers } = ipcMain;
 
-    const updateResult = handlers.get('update-application-menu')({}, createMenuTemplate());
+    const updateResult = handlers.get('update-application-menu')({}, createMenuState());
     assert.deepEqual(updateResult, { success: true });
     const translatedMenu = electron.Menu.getApplicationMenu();
     assert.equal(translatedMenu.template[2].submenu[6].accelerator, 'CommandOrControl+E');
     assert.equal(translatedMenu.template[2].submenu[7].accelerator, 'CommandOrControl+L');
     assert.equal(translatedMenu.template[2].submenu[8].type, 'checkbox');
     assert.equal(translatedMenu.template[2].submenu[8].checked, true);
+    assert.equal(translatedMenu.getMenuItemById('file.save').label, 'Save X');
+    assert.equal(translatedMenu.getMenuItemById('file.save').enabled, false);
+    assert.equal(translatedMenu.getMenuItemById('file.saveAs').label, 'Save As...');
+    assert.equal(translatedMenu.getMenuItemById('unknown'), null);
+    assert.deepEqual(
+      translatedMenu.template.map(section => ({
+        id: section.id,
+        submenu: section.submenu.map(menuItem => menuItem.type === 'separator'
+          ? 'separator'
+          : menuItem.id)
+      })),
+      [
+        {
+          id: 'menu.file',
+          submenu: [
+            'file.save', 'file.saveAs', 'separator', 'file.openMusicFile',
+            'file.addMusicFolder', 'file.rescanLibrary', 'file.processAudioFiles',
+            'separator', 'file.exportPreset', 'file.importPreset', 'separator',
+            'file.doubleBlindTest', 'separator', 'file.quit'
+          ]
+        },
+        {
+          id: 'menu.edit',
+          submenu: [
+            'edit.undo', 'edit.redo', 'separator', 'edit.cut', 'edit.copy',
+            'edit.paste', 'separator', 'edit.delete', 'edit.selectAll'
+          ]
+        },
+        {
+          id: 'menu.view',
+          submenu: [
+            'view.reload', 'separator', 'view.resetZoom', 'view.zoomIn',
+            'view.zoomOut', 'separator', 'view.effectPipeline',
+            'view.musicLibrary', 'view.pipelineAnalyzer', 'separator',
+            'toggle-fullscreen', 'view.miniPlayer'
+          ]
+        },
+        {
+          id: 'menu.settings',
+          submenu: [
+            'settings.config', 'settings.audioDevices',
+            'settings.performanceBenchmark', 'settings.frequencyResponseMeasurement'
+          ]
+        },
+        {
+          id: 'menu.help',
+          submenu: ['help.help', 'help.discord', 'help.support', 'separator', 'help.about']
+        }
+      ]
+    );
+    assert.equal(translatedMenu.getMenuItemById('file.quit').role, 'quit');
+    assert.equal(translatedMenu.getMenuItemById('toggle-fullscreen').role, 'togglefullscreen');
+    assert.equal(translatedMenu.getMenuItemById('view.reload').accelerator, 'CommandOrControl+R');
+    assert.equal(translatedMenu.getMenuItemById('view.miniPlayer').accelerator, 'CommandOrControl+Shift+M');
+    const menuIds = [];
+    const collectIds = items => {
+      for (const item of items) {
+        if (item.id) menuIds.push(item.id);
+        if (item.submenu?.items) collectIds(item.submenu.items);
+      }
+    };
+    collectIds(translatedMenu.items);
+    assert.equal(new Set(menuIds).size, menuIds.length);
+    assert.deepEqual(menuIds, [
+      'menu.file',
+      'file.save', 'file.saveAs', 'file.openMusicFile', 'file.addMusicFolder',
+      'file.rescanLibrary', 'file.processAudioFiles', 'file.exportPreset',
+      'file.importPreset', 'file.doubleBlindTest', 'file.quit',
+      'menu.edit',
+      'edit.undo', 'edit.redo', 'edit.cut', 'edit.copy', 'edit.paste',
+      'edit.delete', 'edit.selectAll',
+      'menu.view',
+      'view.reload', 'view.resetZoom', 'view.zoomIn', 'view.zoomOut',
+      'view.effectPipeline', 'view.musicLibrary', 'view.pipelineAnalyzer',
+      'toggle-fullscreen', 'view.miniPlayer',
+      'menu.settings',
+      'settings.config', 'settings.audioDevices', 'settings.performanceBenchmark',
+      'settings.frequencyResponseMeasurement',
+      'menu.help',
+      'help.help', 'help.discord', 'help.support', 'help.about'
+    ]);
     clickMenu(translatedMenu);
     await Promise.resolve();
     assert.deepEqual(
@@ -745,13 +822,7 @@ test('IPC handlers manage menus, tray presets, documentation, default menu creat
       ['webContents.send', 'set-pipeline-analyzer-open', true]
     );
 
-    const appMenu = handlers.get('get-application-menu')();
-    assert.equal(appMenu.file.label, 'File X');
-    assert.equal(appMenu.view.submenu[8].type, 'checkbox');
-    assert.equal(appMenu.view.submenu[8].checked, true);
-
     assert.deepEqual(handlers.get('hide-application-menu')(), { success: true });
-    assert.equal(handlers.get('get-application-menu')(), null);
     assert.deepEqual(handlers.get('restore-default-menu')(), { success: true });
     const defaultMenu = electron.Menu.getApplicationMenu();
     assert.equal(defaultMenu.template[2].submenu[6].accelerator, 'CommandOrControl+E');
@@ -784,13 +855,6 @@ test('IPC handlers manage menus, tray presets, documentation, default menu creat
     assert.match(badPresets.error, /Expected property name|JSON/);
     assert.deepEqual(badPresets.presets, []);
 
-    assert.deepEqual(await handlers.get('open-documentation')({}, '/docs/readme.md#intro'), { success: true });
-    assert.deepEqual(await handlers.get('open-documentation')({}, 'https://example.test/docs'), { success: true });
-    listeners.get('files-dropped')({}, ['/tmp/a.mp3', '/tmp/movie.MP4', '/tmp/b.txt']);
-    assert.deepEqual(
-      calls.find(call => call[0] === 'webContents.send' && call[1] === 'audio-files-dropped'),
-      ['webContents.send', 'audio-files-dropped', ['/tmp/a.mp3', '/tmp/movie.MP4']]
-    );
     assert.equal(
       calls.some(call =>
         call[0] === 'webContents.send' &&
@@ -967,10 +1031,9 @@ test('Reload saves and restores the exact pipeline instead of applying startup p
   });
 });
 
-test('IPC handlers recover from menu, tray preset, menu read, navigation, docs, and audio-device errors', async () => {
+test('IPC handlers recover from menu, tray preset, navigation, URL, and audio-device errors', async () => {
   await withHarness({
     throwBuildMenu: true,
-    throwGetMenu: true,
     mainWindowOptions: { rejectJavaScript: true, throwLoadFile: true },
     shellFailures: [new Error('doc failed')],
     microphoneStatuses: ['granted']
@@ -978,15 +1041,14 @@ test('IPC handlers recover from menu, tray preset, menu read, navigation, docs, 
     moduleUnderTest.registerIpcHandlers();
     const { handlers } = ipcMain;
 
-    assert.deepEqual(handlers.get('update-application-menu')({}, createMenuTemplate()), {
+    assert.deepEqual(handlers.get('update-application-menu')({}, createMenuState()), {
       success: false,
       error: 'build menu failed'
     });
-    assert.equal(handlers.get('get-application-menu')(), null);
     assert.deepEqual(handlers.get('hide-application-menu')(), { success: true });
     assert.deepEqual(handlers.get('restore-default-menu')(), { success: false, error: 'build menu failed' });
     assert.deepEqual(await handlers.get('navigate-to-main')(), { success: false, error: 'build menu failed' });
-    assert.deepEqual(await handlers.get('open-documentation')({}, '/docs/readme.md'), { success: false, error: 'doc failed' });
+    assert.deepEqual(await handlers.get('open-external-url')({}, 'https://example.test'), { success: false, error: 'doc failed' });
 
     constants.setMainWindow({ webContents: null });
     assert.deepEqual(await handlers.get('load-preset-from-tray')({}, 'Preset'), {
@@ -1112,7 +1174,7 @@ test('audio preference IPC skips reload only for a verified renderer-managed sil
 test('IPC handlers report menu click rejections and recover from IPC errors', async () => {
   await withHarness({ mainWindowOptions: { rejectJavaScript: true } }, async ({ electron, ipcMain, moduleUnderTest }) => {
     moduleUnderTest.registerIpcHandlers();
-    assert.deepEqual(ipcMain.handlers.get('update-application-menu')({}, createMenuTemplate()), { success: true });
+    assert.deepEqual(ipcMain.handlers.get('update-application-menu')({}, createMenuState()), { success: true });
     clickMenu(electron.Menu.getApplicationMenu());
     await Promise.resolve();
 
@@ -1137,7 +1199,6 @@ test('IPC handlers report menu click rejections and recover from IPC errors', as
     };
     moduleUnderTest.setMainWindow(badWin);
     assert.deepEqual(await ipcMain.handlers.get('load-preset-from-tray')({}, 'Preset'), { success: false, error: 'send failed' });
-    ipcMain.listeners.get('files-dropped')({}, null);
   });
 
   await withHarness({}, async ({ ipcMain, moduleUnderTest }) => {

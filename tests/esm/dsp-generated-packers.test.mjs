@@ -55,14 +55,6 @@ test('every production DSP kernel packs explicit schema defaults matching artifa
   assert.equal(DSP_PARAM_PACKERS.has('G726ADPCMSimulatorPlugin'), true);
   assert.equal(Object.hasOwn(DSP_PARAM_LAYOUTS, 'G726ADPCMSimulatorPlugin'), true);
   assert.equal(generatedSource.includes('G726ADPCMSimulatorPlugin'), true);
-  assert.equal(
-    loadParamSpecs().find(spec => spec.type === 'G726ADPCMSimulatorPlugin')?.phase0,
-    false
-  );
-  assert.equal(
-    loadParamSpecs().find(spec => spec.type === 'GSMFullRateSimulatorPlugin')?.phase0,
-    false
-  );
   assert.equal(DSP_PARAM_PACKERS.has('GSMFullRateSimulatorPlugin'), true);
   assert.equal(Object.hasOwn(DSP_PARAM_LAYOUTS, 'GSMFullRateSimulatorPlugin'), true);
   assert.equal(generatedSource.includes('GSMFullRateSimulatorPlugin'), true);
@@ -116,7 +108,7 @@ test('every production DSP kernel packs explicit schema defaults matching artifa
 });
 
 test('numeric DSP parameters clamp to schema bounds and reject invalid values', () => {
-  for (const spec of loadParamSpecs().filter(candidate => !candidate.phase0)) {
+  for (const spec of loadParamSpecs()) {
     const packer = DSP_PARAM_PACKERS.get(spec.type);
     assert.ok(packer, `${spec.type} packer`);
     let offset = 0;
@@ -156,7 +148,7 @@ test('numeric DSP parameters clamp to schema bounds and reject invalid values', 
 });
 
 test('strict enum DSP parameters reject unknown strings and numeric codes before packing', () => {
-  for (const spec of loadParamSpecs().filter(candidate => !candidate.phase0)) {
+  for (const spec of loadParamSpecs()) {
     const packer = DSP_PARAM_PACKERS.get(spec.type);
     for (const field of spec.fields.filter(candidate => candidate.rejectInvalid)) {
       assert.equal(field.kind, 'enum', `${spec.type}.${field.name} strict enum kind`);

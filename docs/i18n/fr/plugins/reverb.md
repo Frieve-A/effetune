@@ -17,7 +17,7 @@ Une collection de plugins qui ajoutent de l'espace et de l'atmosphère à votre 
 
 ## Dattorro Plate Reverb
 
-Une implémentation classique de reverb à plaque basée sur le célèbre algorithme de Jon Dattorro de l'article de 1997 "Effect Design, Part 1: Reverberator and Other Filters." Cet algorithme est célébré pour sa qualité sonore riche et douce et est devenu une référence dans la conception de reverb numérique. Parfait pour ajouter une ambiance riche et scintillante à votre musique.
+Une reverb à plaque fondée sur le modèle de Jon Dattorro de 1997. Elle ajoute une décroissance dense et douce, idéale pour créer une ambiance spacieuse sans évoquer une pièce précise.
 
 Note de routage : Dattorro Plate Reverb est un modèle de plaque stéréo. Lorsqu'il est routé avec plus de deux canaux, tous les canaux d'entrée routés alimentent une plaque mono-vers-stéréo partagée, mais le mélange wet/dry est écrit uniquement vers la première paire stéréo routée. Les canaux supplémentaires contribuent à l'entrée de la plaque et passent sinon inchangés, même lorsque Dry Mix est à 0 % ; ils ne reçoivent pas de retour wet et ne sont pas des tanks de plaque indépendants.
 
@@ -137,7 +137,7 @@ Le Dattorro Plate Reverb apporte une reverb à plaque classique à votre expéri
 
 ## FDN Reverb
 
-Un effet de reverb sophistiqué basé sur l'architecture de réseau de délais à rétroaction (FDN) utilisant une matrice de diffusion Hadamard. Cela crée une réverbération riche et complexe avec une excellente densité et des caractéristiques de décroissance naturelles, parfait pour améliorer votre expérience d'écoute musicale avec des effets spatiaux immersifs.
+FDN Reverb ajoute une décroissance dense et naturelle. Utilisez-la pour donner aux enregistrements secs ou proches une sensation plus nette de taille de pièce et de distance.
 
 Note de routage : FDN Reverb est un modèle de reverb stéréo avec un feedback tank partagé. Lorsqu'il est routé avec plus de deux canaux, chaque canal fait avancer ce tank partagé en séquence plutôt que d'utiliser des tanks indépendants par canal. Le canal 1 reçoit le left wet et les canaux 2+ reçoivent le right wet.
 
@@ -293,9 +293,9 @@ Le temps va de gauche à droite et le niveau de 0 à -90 dB. La courbe EDC conti
 
 Mono applique une IR, Independent sépare les canaux, True Stereo utilise LL/LR/RL/RR et Diagonal Matrix relie uniquement les entrées et sorties correspondantes. En Auto, toute IR à quatre canaux avec une sélection stéréo est interprétée dans cet ordre ; pour une disposition Quad ou une autre disposition à quatre canaux, choisissez explicitement Independent ou Diagonal Matrix. Pour une paire True Stereo, sélectionnez ensemble des fichiers assortis terminés par `L`/`R` ou `Left`/`Right`.
 
-Les originaux sont conservés dans **Impulse Response Library**. La version web utilise l'OPFS privé du site et l'application de bureau son stockage géré. La bibliothèque affiche les noms de fichiers d'origine et permet de les rechercher, de charger une entrée ou de la supprimer. Un changement de fréquence d'échantillonnage recrée les données depuis l'original. Gardez aussi votre propre copie, car l'effacement des données du site ou la pression de stockage peut supprimer les données du navigateur.
+Les fichiers IR importés sont conservés dans **Impulse Response Library**, où vous pouvez les rechercher par leur nom d'origine, les charger ou les supprimer. Dans la version web, ils sont stockés dans le navigateur et peuvent être perdus si vous effacez les données du site ou si le navigateur libère de l'espace. L'application de bureau les conserve dans ses données. Gardez une copie séparée de chaque IR dont vous avez besoin.
 
-Les URL et presets ne contiennent que l'identifiant, jamais l'audio IR ni le nom du fichier. Le destinataire doit importer le même fichier ou choisir un substitut. Sans IR, aucun signal wet ; sans WASM, seul le signal dry configuré passe. Des IR sont disponibles sur [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/) et [Freesound](https://freesound.org/), mais vérifiez la licence de chaque fichier (CC0, CC BY ou CC BY-NC, par exemple) et conservez auteur, source, attribution et autorisation commerciale en dehors d'EffeTune, qui ne stocke ni ne vérifie les informations de licence.
+Les URL partagées et les presets identifient l'IR, mais n'incluent pas ses données audio. Si l'IR n'est pas disponible, aucun son wet n'est produit ; importez-la ou sélectionnez-la de nouveau, ou choisissez-en une autre. Le signal dry continue selon le réglage **Dry**. Des IR sont disponibles sur [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/) et [Freesound](https://freesound.org/), mais vérifiez la licence de chaque fichier (CC0, CC BY ou CC BY-NC, par exemple) et conservez auteur, source, attribution et autorisation commerciale en dehors d'EffeTune, qui ne stocke ni ne vérifie les informations de licence.
 
 ## RS Reverb
 

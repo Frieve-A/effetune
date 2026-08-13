@@ -251,9 +251,9 @@ IR Reverb 将信号与导入的脉冲响应（IR）进行卷积，再现房间�
 
 Mono应用单个IR，Independent保持通道独立，True Stereo使用LL/LR/RL/RR四条路径，Diagonal Matrix只连接对应编号的输入与输出。在Auto模式下，立体声选择中的所有四通道IR都会按该顺序解释；对于Quad或其他四通道布局，请明确选择Independent或Diagonal Matrix。导入True Stereo文件对时，请同时选择名称末尾匹配的`L`/`R`或`Left`/`Right`文件。
 
-原始文件保存在 **Impulse Response Library** 中。Web版使用站点专用OPFS，桌面版使用应用管理存储。库中显示原始文件名，并可按文件名搜索、加载或删除条目。sample rate变化时会从原始文件重新准备数据。请另行保留备份，因为清除站点数据或存储压力可能删除浏览器数据。
+导入的IR文件保存在 **Impulse Response Library** 中，可按原始文件名搜索、加载或删除。Web版会将文件保存在浏览器内；清除站点数据或浏览器自动释放存储空间时，这些文件可能丢失。桌面版会将其保存在应用数据中。请另行备份需要的IR。
 
-共享URL和preset只包含ID，不包含IR音频或文件名。接收者必须导入同一文件或选择替代IR。缺少IR时不会产生wet信号；无法使用WASM时只通过设定的dry信号。可从[OpenAIR](https://www.openair.hosted.york.ac.uk/)、[EchoThief](https://www.echothief.com/downloads/)和[Freesound](https://freesound.org/)查找素材，但应在EffeTune之外逐项核对并保存许可证（如CC0、CC BY、CC BY-NC）、作者、来源、署名要求和商业使用许可；EffeTune不会保存或验证这些信息。
+共享URL和preset可识别IR，但不包含其音频数据。如果IR不可用，就不会产生wet声音；请重新导入或选择该IR，也可以改用其他IR。dry信号仍按 **Dry** 设置播放。可从[OpenAIR](https://www.openair.hosted.york.ac.uk/)、[EchoThief](https://www.echothief.com/downloads/)和[Freesound](https://freesound.org/)查找素材，但应在EffeTune之外逐项核对并保存许可证（如CC0、CC BY、CC BY-NC）、作者、来源、署名要求和商业使用许可；EffeTune不会保存或验证这些信息。
 
 ## RS Reverb
 

@@ -39,7 +39,7 @@ MP3 Codec Simulator passes the selected channels through a real-time, simplified
 
 The 44.1 kHz MPEG-1 profile offers 32–320 kbit/s. The 22.05 kHz MPEG-2 profile offers 32–160 kbit/s and naturally limits the coded bandwidth more strongly. High settings are useful as comparison points and may sound very close to the input on some material.
 
-This effect requires its WebAssembly processing engine. If that engine or the selected sample-rate/channel mode is unavailable, the input remains unchanged and the plugin shows a plain-language status message.
+If the plugin reports that the effect is unavailable, try another sample rate or channel mode. The input remains unchanged until the effect becomes available.
 
 ### Sound Enhancement Guide
 
@@ -51,7 +51,7 @@ This effect requires its WebAssembly processing engine. If that engine or the se
 
 ### Parameters
 
-- **Codec Rate** — Selects `44.1 kHz (MPEG-1)` or `22.05 kHz (MPEG-2)`. This changes the codec profile, frame structure, and coded bandwidth; it is not just a playback sample-rate control.
+- **Codec Rate** — Selects `44.1 kHz (MPEG-1)` or `22.05 kHz (MPEG-2)`. The 22.05 kHz setting has a narrower coded bandwidth and makes the low-rate character more obvious.
 - **Bitrate** — Sets the total constant bitrate for the mono or stereo stream. MPEG-1 supports 32, 48, 64, 80, 96, 112, 128, 160, 192, 224, 256, and 320 kbit/s. MPEG-2 supports the same choices through 160 kbit/s. Lower values leave fewer bits for each transform frame and make spectral holes, rough tonal components, and transient smear more likely.
 - **Stereo Mode** — `Joint Stereo` can encode the first stereo pair as Mid/Side when that is more efficient. `Stereo` keeps the left and right spectra separate. Joint Stereo does not simply convert the output to mono.
 - **Bit Reservoir** — Lets simple frames save unused main-data capacity for later complex frames. Turning it off makes every frame meet its own budget and can expose stronger frame-to-frame quality variation.

@@ -251,17 +251,14 @@ test('the generated-output exemption is limited to its package and producer', ()
 
 test('the DSP wasm source digest reads only tracked repository files', () => {
   const tracked = gitTrackedFiles();
-  for (const options of [{}, { includePhase0: true }]) {
-    const inputs = sourceDigestInputPaths(options);
-    assert.ok(inputs.length > 0, JSON.stringify(options));
-    const untracked = inputs.filter(input => !tracked.has(input));
-    assert.deepEqual(
-      untracked,
-      [],
-      'build:dsp --check would fail on a clean checkout for ' +
-        `${JSON.stringify(options)}:\n${untracked.join('\n')}`
-    );
-  }
+  const inputs = sourceDigestInputPaths();
+  assert.ok(inputs.length > 0);
+  const untracked = inputs.filter(input => !tracked.has(input));
+  assert.deepEqual(
+    untracked,
+    [],
+    `build:dsp --check would fail on a clean checkout:\n${untracked.join('\n')}`
+  );
 });
 
 test('the reference scan flags an existing repository file that git does not track', () => {

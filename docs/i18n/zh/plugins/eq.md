@@ -604,7 +604,7 @@ Room EQ根据EffeTune保存的一项频率响应测量生成一个FIR校正滤�
 - 将Correction Low和Correction High限制在扬声器和测量麦克风都能可靠工作的范围内。校正超出可信测量范围的频段可能降低准确性。
 - 房间校正稳定后，可用附加EQ设置温和的聆听目标，例如在100 Hz附近加入宽缓的+2 dB Low shelf，或在10 kHz附近小幅调整High shelf。这些频段会改变目标并合并到FIR滤波器中。
 - 需要低延迟时使用 **Minimum**。需要同时校正频率响应和额外相位时使用 **Correction**。先将Reference Point保持为 **一致成分（所有测量点）**，并从Direct Window默认值和 **Phase Correction: 100%** 开始。只有需要针对某个麦克风位置优化额外相位时，才选择单个测量点。如果相位校正听起来过强，可单独降低Phase Correction。
-- **Low-frequency Phase Extension**默认关闭，因此会保留原有的Correction行为以及现有preset的声音。只有需要校正Phase Low以下的额外相位时才将其开启。频率越低，分析窗就越长，因而可能包含房间响应中更晚的部分；所以从一致成分开始最为稳妥。请在多个聆听位置比较结果。如果低频的时间表现随位置变化而变得不稳定，请关闭该扩展。
+- **Low-frequency Phase Extension**默认关闭。只有需要校正Phase Low以下的额外相位时才将其开启。频率越低，分析窗就越长，因而可能包含房间响应中更晚的部分；所以从一致成分开始最为稳妥。请在多个聆听位置比较结果。如果低频的时间表现随位置变化而变得不稳定，请关闭该扩展。
 - Room EQ不会自动计算扬声器距离对齐。**Delay**会为所有处理声道添加相同的手动延迟。不同扬声器组需要不同延迟时，请使用独立的Room EQ实例。
 
 测量是本机引用。URL或preset只保存它的名称和标识符，不包含测量数据。要在另一台设备上使用测量，请先在测量界面启用 **导出测量JSON时包含脉冲响应** 后再导出，然后在另一台设备上导入并选择。此选项默认关闭，包含脉冲响应可能会使文件增大几十MB。找不到测量时会显示警告，Room EQ会使用时间对齐的bypass，而不会继续使用旧的校正数据。
@@ -623,7 +623,7 @@ Room EQ根据EffeTune保存的一项频率响应测量生成一个FIR校正滤�
 - **Correction Low / Correction High** - 设置自动幅度校正的下、上过渡边界。进行高斯平滑前，边界处及边界外的自动校正按0 dB处理。因此，Smoothing决定校正衰减的平缓程度，以及越过各边界后延伸多远。上边界仍会在内部受到限制，以便在音频采样率的奈奎斯特频率以下保留余量。
 - **Direct Window** - Correction使用直达声起点之后1到50 ms的测量响应。在Phase Low及更高频率处，它是固定的分析窗；启用Low-frequency Phase Extension时，它也是向低频延长的分析窗的最短长度。较长窗口可将Auto设置的Phase Low移至更低频率，但也会包含更多房间反射。
 - **Phase Low** - Low-frequency Phase Extension关闭时，设置Correction模式下测得的额外相位校正的下限频率，范围为20到20000 Hz。启用扩展后，Phase Low会成为固定Direct Window与向低频逐渐加长的分析窗之间的边界。默认启用**Auto**；此时Room EQ会在Correction Low与Direct Window内可容纳三个周期的频率之间取较高者（6 ms时为500 Hz）。关闭Auto即可手动设置边界。手动值不受Correction Low限制，但不得低于Direct Window内容纳一个周期所需的频率（6 ms时为167 Hz）。低于自动边界的值更容易受到时间窗截断和房间反射的影响。
-- **Low-frequency Phase Extension** - 在Phase Low以下使用频率越低、长度越长的频率相关分析窗，将测得的额外相位校正从Phase Low向Correction Low扩展。Phase Low及更高频率仍采用原有的固定窗校正。此设置默认关闭，不包含该设置的现有preset也会以关闭状态载入。它只能在Correction中使用；在Minimum和Linear中，控件会停用，但所选值仍会保留。如果测得的脉冲响应比所需的低频时间窗短，Room EQ会使用可用的较短测量时间窗并显示警告。只有在实际生成的FIR接近其时间限制或滤波器设计超出计算预算时，才会减小或跳过校正；Room EQ滤波器的其余部分仍然有效。
+- **Low-frequency Phase Extension** - 在Phase Low以下使用频率越低、长度越长的频率相关分析窗，将测得的额外相位校正从Phase Low向Correction Low扩展。Phase Low及更高频率使用固定分析窗。此设置默认关闭。它只能在Correction中使用；在Minimum和Linear中，控件会停用，但所选值仍会保留。如果测得的脉冲响应比所需的低频时间窗短，Room EQ会使用可用的较短测量时间窗并显示警告。只有在实际生成的FIR接近其时间限制或滤波器设计超出计算预算时，才会减小或跳过校正；Room EQ滤波器的其余部分仍然有效。
 - **Max Boost** - 将自动反转响应产生的提升限制在0到18 dB。限制在高斯平滑前应用，因此达到上限的区域会平滑融入周围的校正曲线。不限制衰减。
 - **Level Correction** - 以1%为步进，在0%到100%之间调节自动幅度校正，并按dB线性缩放。设为0%时，自动电平校正关闭；Phase Correction、Additional EQ、Delay和Gain仍然有效。
 - **Phase Correction** - 以1%为步进，在0%到100%之间调节测得的余相位校正，并且仅在Correction下生效。在Minimum和Linear模式下，其控件会被禁用。设为0%时，余相位校正关闭，而Level Correction仍然有效。Level Correction的幅度响应本身所伴随的最小相位变化仍会保留，因此Phase Correction只控制由测量附加的余相位分量。

@@ -42,7 +42,7 @@ Creates reverberation with a feedback delay network.
 
 ## FDN Reverb
 
-A sophisticated reverb effect based on Feedback Delay Network (FDN) architecture using a Hadamard diffusion matrix. This creates rich, complex reverberation with excellent density and natural decay characteristics, perfect for enhancing your music listening experience with immersive spatial effects.
+FDN Reverb adds a dense, natural-sounding decay. Use it to give dry or close recordings a clearer sense of room size and distance.
 
 Routing note: FDN Reverb is a stereo reverb model with one shared feedback tank. When routed with more than two channels, each routed channel advances that shared tank in sequence rather than using independent per-channel tanks. Channel 1 receives the left wet signal, and channels 2+ receive the right wet signal.
 
@@ -120,28 +120,28 @@ Routing note: FDN Reverb is a stereo reverb model with one shared feedback tank.
    - Density: 8 lines
    - Pre Delay: 30-50ms
    - HF Damp: 4.0-6.0
-   - Perfect for: Orchestral recordings, chamber music
+   - Useful for: Orchestral recordings, chamber music
 
 2. Jazz Club Atmosphere
    - Reverb Time: 1.2-1.8s
    - Density: 6 lines
    - Pre Delay: 15-25ms
    - HF Damp: 2.0-4.0
-   - Perfect for: Acoustic jazz, intimate performances
+   - Useful for: Acoustic jazz, intimate performances
 
 3. Pop/Rock Enhancement
    - Reverb Time: 1.0-2.0s
    - Density: 6-7 lines
    - Pre Delay: 10-30ms
    - Wet Mix: 20-40%
-   - Perfect for: Modern recordings, adding space
+   - Useful for: Recordings that need a little more space
 
 4. Ambient Soundscapes
    - Reverb Time: 4.0-8.0s
    - Density: 8 lines
    - Mod Depth: 3.0-6.0
    - Wet Mix: 60-80%
-   - Perfect for: Atmospheric music, relaxation
+   - Useful for: Atmospheric music and long decays
 
 ### Quick Start Guide
 
@@ -165,6 +165,6 @@ Routing note: FDN Reverb is a stereo reverb model with one shared feedback tank.
    - Keep Dry Mix at 100% for normal listening
    - Fine-tune based on your music and preferences
 
-The FDN Reverb transforms your listening experience by adding realistic acoustic spaces to any recording. Perfect for music lovers who want to enhance their favorite tracks with beautiful, natural-sounding reverberation!
+Start with a low Mix value, then increase it until the added space is audible without masking detail in the recording.
 
 [Back to all effects](/dsp/effects/)

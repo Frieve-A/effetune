@@ -251,15 +251,6 @@ class FiveBandPEQPlugin extends PluginBase {
     if (this.markers) { this.updateMarkers(); }
   }
 
-  reset() {
-    FiveBandPEQPlugin.BANDS.forEach((band, index) => {
-      this.setBand(index, FiveBandPEQPlugin.BANDS[index].freq, 0.0, 1.41, 'pk', true);
-    });
-    this.enabled = true;
-    this.updateParameters();
-    if (this.uiCreated) this.setUIValues();
-  }
-
   getParameters() {
       const params = { type: this.constructor.name, enabled: this.enabled };
       for (let i = 0; i < 5; i++) {

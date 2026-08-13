@@ -150,25 +150,24 @@ test('updateApplicationMenu sends enabled menu labels and updates the tray', asy
     await flushMicrotasks();
   });
 
-  const appMenu = harness.calls[0][1];
+  const menuState = harness.calls[0][1];
   assert.equal(harness.calls[0][0], 'updateApplicationMenu');
-  assert.equal(appMenu.file.label, 'label:menu.file');
-  assert.equal(appMenu.file.submenu[0].enabled, true);
-  assert.equal(appMenu.file.submenu[3].enabled, true);
-  assert.equal(appMenu.file.submenu[4].label, 'label:menu.file.addMusicFolder');
-  assert.equal(appMenu.file.submenu[4].enabled, true);
-  assert.equal(appMenu.file.submenu[5].label, 'label:menu.file.rescanLibrary');
-  assert.equal(appMenu.file.submenu[5].enabled, true);
-  assert.equal(appMenu.file.submenu[9].enabled, true);
-  assert.equal(appMenu.edit.submenu[0].enabled, true);
-  assert.equal(appMenu.view.submenu[6].label, 'label:menu.view.effectPipeline');
-  assert.equal(appMenu.view.submenu[7].label, 'label:menu.view.musicLibrary');
-  assert.equal(appMenu.view.submenu[8].label, 'label:menu.view.pipelineAnalyzer');
-  assert.equal(appMenu.view.submenu[8].type, 'checkbox');
-  assert.equal(appMenu.view.submenu[8].checked, false);
-  assert.equal(appMenu.view.submenu[10].label, 'label:menu.view.toggleFullscreen');
-  assert.equal(appMenu.view.submenu[11].label, 'label:menu.view.miniPlayer');
-  assert.equal(appMenu.help.submenu[1].label, 'Discord');
+  assert.equal(menuState['menu.file'].label, 'label:menu.file');
+  assert.equal(menuState['file.save'].enabled, true);
+  assert.equal(menuState['file.openMusicFile'].enabled, true);
+  assert.equal(menuState['file.addMusicFolder'].label, 'label:menu.file.addMusicFolder');
+  assert.equal(menuState['file.addMusicFolder'].enabled, true);
+  assert.equal(menuState['file.rescanLibrary'].label, 'label:menu.file.rescanLibrary');
+  assert.equal(menuState['file.rescanLibrary'].enabled, true);
+  assert.equal(menuState['file.importPreset'].enabled, true);
+  assert.equal(menuState['edit.undo'].enabled, true);
+  assert.equal(menuState['view.effectPipeline'].label, 'label:menu.view.effectPipeline');
+  assert.equal(menuState['view.musicLibrary'].label, 'label:menu.view.musicLibrary');
+  assert.equal(menuState['view.pipelineAnalyzer'].label, 'label:menu.view.pipelineAnalyzer');
+  assert.equal(menuState['view.pipelineAnalyzer'].checked, false);
+  assert.equal(menuState['toggle-fullscreen'].label, 'label:menu.view.toggleFullscreen');
+  assert.equal(menuState['view.miniPlayer'].label, 'label:menu.view.miniPlayer');
+  assert.equal(menuState['help.discord'].label, 'Discord');
   assert.equal(harness.calls[2][0], 'updateTrayMenu');
 });
 
@@ -184,16 +183,16 @@ test('updateApplicationMenu disables gated items while double blind test is acti
     await flushMicrotasks();
   });
 
-  const appMenu = harness.calls[0][1];
-  assert.equal(appMenu.file.submenu[0].enabled, false);
-  assert.equal(appMenu.file.submenu[3].enabled, true);
-  assert.equal(appMenu.file.submenu[4].enabled, true);
-  assert.equal(appMenu.file.submenu[5].enabled, true);
-  assert.equal(appMenu.file.submenu[6].enabled, false);
-  assert.equal(appMenu.file.submenu[9].enabled, false);
-  assert.equal(appMenu.file.submenu[11].enabled, false);
-  assert.equal(appMenu.edit.submenu[0].enabled, false);
-  assert.equal(appMenu.edit.submenu[8].enabled, false);
+  const menuState = harness.calls[0][1];
+  assert.equal(menuState['file.save'].enabled, false);
+  assert.equal(menuState['file.openMusicFile'].enabled, true);
+  assert.equal(menuState['file.addMusicFolder'].enabled, true);
+  assert.equal(menuState['file.rescanLibrary'].enabled, true);
+  assert.equal(menuState['file.processAudioFiles'].enabled, false);
+  assert.equal(menuState['file.importPreset'].enabled, false);
+  assert.equal(menuState['file.doubleBlindTest'].enabled, false);
+  assert.equal(menuState['edit.undo'].enabled, false);
+  assert.equal(menuState['edit.selectAll'].enabled, false);
 });
 
 test('updateApplicationMenu treats missing double blind state as inactive', async () => {
@@ -204,7 +203,7 @@ test('updateApplicationMenu treats missing double blind state as inactive', asyn
     await flushMicrotasks();
   });
 
-  assert.equal(harness.calls[0][1].file.submenu[0].enabled, true);
+  assert.equal(harness.calls[0][1]['file.save'].enabled, true);
 });
 
 test('updateApplicationMenu logs failed and rejected menu updates', async () => {

@@ -105,9 +105,9 @@ Supported desktop builds can also be controlled by OpenHome apps on the same loc
 
 In both PC and mobile layouts, track searches and album, artist, genre, subfolder, and playlist details select all matching tracks by default when there are 300 tracks or fewer; results with 301 tracks or more are not selected automatically. On mobile, automatic selection changes only the selection state. Only long-pressing a track enters selection mode and shows checkboxes, **Select All**, and **Deselect All**; selecting or deselecting tracks does not enter or leave that mode, and the usual row actions remain available.
 
-PC Chromium browsers can persist File System Access folder handles. Safari, Firefox, mobile browsers, and other browsers without that API keep the selected `File` objects only for the current page session. After every reload, select the folder or files again; EffeTune reconnects them to the existing catalog by normalized relative path.
+PC Chromium browsers can keep access to selected music folders between sessions. In Safari, Firefox, mobile browsers, and other browsers without persistent folder access, select the folder or files again after each reload; EffeTune reconnects them to the existing catalog.
 
-Version 2.1.0 introduces the CUE-enabled Music Library with catalog schema v3. Earlier Music Library folders and playlists are not carried into this catalog, so add the folders again and recreate or re-import your Music Library playlists. The earlier catalog and your audio files are not modified. The catalog is designed to page large collections from disk. Large-scale performance measurements are optional local development diagnostics, not commit, release, `verify`, or GitHub Actions gates and not a general performance guarantee.
+Large collections load in stages from storage; scanning and loading speed depends on your device, collection, and available memory. Very fast scrolling can briefly show blank rows while the next tracks load, especially on slow storage.
 
 ### Building Your Effect Chain
 
@@ -326,7 +326,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Delay     | Delay          | Standard delay effect                                   | [Details](docs/plugins/delay.md#delay) |
 | Delay     | Time Alignment | Fine-tunes playback timing for speaker and listening-position alignment | [Details](docs/plugins/delay.md#time-alignment) |
 | Dynamics  | Auto Leveler | Automatic volume adjustment based on LUFS measurement for consistent listening experience | [Details](docs/plugins/dynamics.md#auto-leveler) |
-| Dynamics  | Brickwall Limiter | Transparent peak control for safe and comfortable listening | [Details](docs/plugins/dynamics.md#brickwall-limiter) |
+| Dynamics  | Brickwall Limiter | Limits signal peaks to prevent digital clipping | [Details](docs/plugins/dynamics.md#brickwall-limiter) |
 | Dynamics  | Compressor | Smooths sudden loud passages for more comfortable listening | [Details](docs/plugins/dynamics.md#compressor) |
 | Dynamics  | Expander | Restores dynamic contrast by making below-threshold quiet sounds quieter | [Details](docs/plugins/dynamics.md#expander) |
 | Dynamics  | Gate | Reduces low-level sound during gaps or quiet sections | [Details](docs/plugins/dynamics.md#gate) |
@@ -426,14 +426,13 @@ Frieve EffeTune has been tested and verified to work on Google Chrome. The appli
 
 ### Recommended Sample Rate
 
-For optimal performance with nonlinear effects, it is recommended to use EffeTune at a sample rate of 96kHz or higher. This higher sample rate helps achieve ideal characteristics when processing audio through nonlinear effects such as saturation and compression.
+Set EffeTune's **Sample Rate** to 96 kHz. This reduces audible-band aliasing from nonlinear effects whose anti-aliasing is limited. The setting controls EffeTune's processing rate and can normally differ from the OS, audio-device, and VB-CABLE rates, so those do not need to be changed. Confirm the effective Sample Rate shown in the app: the initial unsaved setting may follow the OS or browser default, and the Web version may fall back if 96 kHz is unavailable. If playback drops out, first disable demanding effects or shorten the chain; lower the sample rate only if needed.
 
 ## Development Guide
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Frieve-A/effetune)
 
 Want to create your own audio plugins? Check out our [Plugin Development Guide](docs/plugin-development.md).
-Want to build or package EffeTune? Check out our [Build Guide](BUILD.md).
 
 ## DSP Library
 
@@ -449,7 +448,7 @@ Use the package quickstarts for installation and complete runnable examples:
 - [JavaScript and AudioWorklet package](https://effetune.frieve.com/dsp/getting-started/javascript/)
 
 The [DSP Library guide](https://effetune.frieve.com/dsp/) covers effects,
-schemas, deterministic processing, assets, and release verification.
+schemas, processing behavior, and required assets.
 <!-- END DSP-LIBRARY-BRIDGE -->
 
 ## Links

@@ -439,7 +439,7 @@ test('constructor and keyboard/paste listeners handle missing and active documen
   });
 });
 
-test('initDragAndDrop handles browser files, presets, music, errors, and Electron skips', async () => {
+test('initDragAndDrop handles browser and Electron files, presets, music, errors, and playlists', async () => {
   await withUIEventGlobals({}, async harness => {
     createHandler(harness).initDragAndDrop();
     assert.ok(harness.calls.some(call => call[0] === 'createFileDropArea'));
@@ -575,7 +575,20 @@ test('initDragAndDrop handles browser files, presets, music, errors, and Electro
     fileProcessor: null
   }, async harness => {
     createHandler(harness).initDragAndDrop();
-    assert.equal(harness.documentRef.head.children.length, 0);
+    assert.equal(harness.documentRef.head.querySelector('#drag-drop-style') !== null, true);
+
+    harness.documentRef.dispatch('drop', {
+      target: harness.pipeline,
+      dataTransfer: createDataTransfer({
+        types: ['Files'],
+        files: [createFile('electron.wav'), createFile('ignored.txt')]
+      })
+    });
+    assert.ok(harness.calls.some(call =>
+      call[0] === 'createAudioPlayer' &&
+      call[1].length === 1 &&
+      call[1][0].name === 'electron.wav'
+    ));
   });
 });
 

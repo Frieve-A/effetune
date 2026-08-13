@@ -272,8 +272,6 @@ contextBridge.exposeInMainWorld(
     // Versioned OpenHome bridge exposes only bounded player actions and state snapshots.
     openHomeV1,
     
-    // Documentation operations
-    openDocumentation: (path) => ipcRenderer.invoke('open-documentation', path),
     openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
     openExternal: (url) => ipcRenderer.invoke('open-external-url', url),
     
@@ -364,7 +362,7 @@ contextBridge.exposeInMainWorld(
     clearMicrophonePermission: () => ipcRenderer.invoke('clear-microphone-permission'),
     
     // Update application menu with translations
-    updateApplicationMenu: (menuTemplate) => ipcRenderer.invoke('update-application-menu', menuTemplate),
+    updateApplicationMenu: (menuState) => ipcRenderer.invoke('update-application-menu', menuState),
     
       // Update tray menu with translations
   updateTrayMenu: (trayMenuTemplate) => ipcRenderer.invoke('update-tray-menu', trayMenuTemplate),
@@ -415,9 +413,6 @@ contextBridge.exposeInMainWorld(
     openFrequencyResponseMeasurement: (pipelineState) =>
       ipcRenderer.invoke('open-frequency-response-measurement', pipelineState),
     
-    // Get current application menu template
-    getApplicationMenu: () => ipcRenderer.invoke('get-application-menu'),
-    
     // Get path
     getPath: (name) => ipcRenderer.invoke('getPath', name),
     
@@ -444,11 +439,6 @@ contextBridge.exposeInMainWorld(
     setMiniPlayerMode: (options) => ipcRenderer.invoke('set-mini-player-mode', options),
     setAlwaysOnTop: (flag) => ipcRenderer.invoke('set-always-on-top', flag),
     
-    // Listen for audio files dropped event
-    onAudioFilesDropped: (callback) => {
-      return addSingleArgIpcListener('audio-files-dropped', callback);
-    },
-    
     // Signal that the renderer is ready to receive music files
     signalReadyForMusicFiles: () => {
       ipcRenderer.send('renderer-ready-for-music-files');
@@ -470,113 +460,3 @@ contextBridge.exposeInMainWorld(
     }
   }
 );
-
-// Add methods to get the real path of a file
-contextBridge.exposeInMainWorld(
-  'electronFileSystem', {
-    // Get the real path of a file
-    getRealPath: (file) => {
-      try {
-        // In Electron, we need to use IPC to get the file path
-        // because nodeIntegration is false
-        return ipcRenderer.invoke('get-file-path', {
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          lastModified: file.lastModified
-        });
-      } catch (error) {
-        console.error('Error getting real path:', error);
-        return Promise.resolve(null);
-      }
-    },
-    
-    // Get real paths for multiple files
-    getRealPaths: (files) => {
-      try {
-        // Use IPC to get file paths
-        return ipcRenderer.invoke('get-file-paths', Array.from(files).map(file => ({
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          lastModified: file.lastModified
-        })));
-      } catch (error) {
-        console.error('Error getting real paths:', error);
-        return Promise.resolve([]);
-      }
-    },
-    
-    // Handle dropped files
-    handleDroppedFiles: (files) => {
-      try {
-        // Process dropped files in the main process
-        
-        // Get file paths directly
-        const filePaths = Array.from(files).map(file => file.path).filter(Boolean);
-        
-        // If we have file paths, send them to main process
-        if (filePaths.length > 0) {
-          return ipcRenderer.invoke('handle-dropped-files-with-paths', filePaths);
-        }
-        
-        // Fallback: send file info to main process
-        return ipcRenderer.invoke('handle-dropped-files', Array.from(files).map(file => ({
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          lastModified: file.lastModified
-        })));
-      } catch (error) {
-        console.error('Error handling dropped files:', error);
-        return Promise.resolve([]);
-      }
-    },
-    
-    // Handle dropped preset file
-    handleDroppedPresetFile: (file) => {
-      try {
-        // Process dropped preset file in the main process
-        
-        // Send file info to main process to get path
-        return ipcRenderer.invoke('handle-dropped-preset-file', {
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          lastModified: file.lastModified
-        });
-      } catch (error) {
-        console.error('Error handling dropped preset file:', error);
-        return Promise.resolve(null);
-      }
-    }
-  }
-);
-
-// Add a direct event listener for drag and drop events
-// This is a diagnostic addition to help debug the drag and drop issues
-document.addEventListener('DOMContentLoaded', () => {
-  // Add global drag and drop event listeners
-  document.addEventListener('dragover', (e) => {
-    // Only log once per second to avoid flooding the console
-    if (!window._lastDragOverLog || Date.now() - window._lastDragOverLog > 1000) {
-      window._lastDragOverLog = Date.now();
-    }
-  }, false);
-  
-  document.addEventListener('drop', (e) => {
-    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      // Try to get file paths
-      const filePaths = Array.from(e.dataTransfer.files).map(file => file.path).filter(Boolean);
-      
-      // Send to main process
-      if (filePaths.length > 0) {
-        ipcRenderer.send('files-dropped', filePaths);
-      }
-    }
-  }, false);
-});
-
-// Note: We're not adding drag and drop event listeners here anymore
-// to avoid conflicts with the existing drag and drop functionality
-// The existing functionality is implemented in main.js

@@ -22,7 +22,7 @@ lang: hi
 - [MP3 Codec Simulator](#mp3-codec-simulator) - कम bitrate पर साफ़ MPEG Layer III encode/decode round trip का अनुकरण करता है
 - [Noise Blender](#noise-blender) - वातावरणीय पृष्ठभूमि बनावट जोड़ता है
 - [SBC Codec Simulator](#sbc-codec-simulator) - Bluetooth A2DP SBC का encode/decode round trip वैकल्पिक link packet loss और concealment के साथ पुनः बनाता है
-- [Simple Jitter](#simple-jitter) - सूक्ष्म विंटेज डिजिटल अपूर्णताएं बनाता है
+- [Simple Jitter](#simple-jitter) - क्लॉक के सूक्ष्म उतार-चढ़ाव की तुलना करता है या बड़े मानों पर रचनात्मक अस्थिरता जोड़ता है
 - [SW Radio Simulator](#sw-radio-simulator) - संगीत को मॉडल की गई शॉर्टवेव प्रसारण, आयनमंडलीय पथ और रिसीवर शृंखला से गुजारता है
 - [Tape Artifacts](#tape-artifacts) - संगीत को मॉडल किए गए reel-to-reel टेप पर रिकॉर्ड करके वापस चलाता है
 - [Vinyl Artifacts](#vinyl-artifacts) - विनाइल-शैली के पॉप, क्रैकल, हिस, रंबल और स्टेरियो शोर रिसाव जोड़ता है
@@ -49,24 +49,12 @@ AM Radio Simulator संगीत को मॉडल की गई AM प्�
 - **Fading की गहराई:** नई instances में Skywave 1% रहता है, जिससे Mono में level का उतार-चढ़ाव शांत और रात वाला fade हल्का होता है। स्पष्ट रूप से गहरा fade चाहिए तो Skywave को करीब 8% करें; इससे ऊपर के मान प्रभाव को और तीखा बनाते हैं।
 - रेडियो मॉडल का आकलन करते समय Mix को 100% से शुरू करें। मूल स्टीरियो छवि का कुछ भाग जानबूझकर रखना हो तभी इसे घटाएं।
 
-### C-QUAM blend और Static मॉडल
-
-C-QUAM में automatic stereo blend रिसीवर के दो परस्पर लंबवत axes पर मान्य signal loss को देखता है: decoded sum signal और quadrature difference signal के 25 Hz pilot क्षेत्र को। दोनों observations से AGC का प्रभाव हटाया जाता है, और quality तभी घटती है जब loss दोनों axes पर एक साथ आए। यह loss-coincidence नियम किसी एक axis पर सामान्य program बदलाव को RF fade समझने से बचाता है। Observation केवल तब चलता है जब PLL, TRACK में हो और pilot स्वीकार हो; अन्यथा quality observation साफ कर दिया जाता है।
-
-नई instances के लिए Skywave का default 1% है, जिसे integrated model checks पास होने के बाद अपनाया गया। Saved presets में स्पष्ट रूप से store किया गया Skywave मान बना रहता है। 8% की तुलना में 1% पर Mono का level अधिक शांत तरीके से बदलता है और fade कम गहरा होता है; अधिक तीखे रात वाले fade के लिए करीब 8% चुनें।
-
-Quality response की सत्यापित और frozen range Fading Speed 0.05 Hz से शुरू होती है। Adaptive reference के 60 s fall time से बहुत धीमे बदलने वाला attenuation उसी reference में समा जाता है और उसे जानबूझकर लगातार quality loss के रूप में बनाए नहीं रखा जाता। 0.75 dB program-residual allowance, 0.04 ratio offset, Q=4 pilot observation band, 0.05/0.2/0.5/60 s quality time constants, तथा 0.5 dB deadband और 5.0 dB transfer span सामान्य C-QUAM receiver specifications नहीं, बल्कि इस simulator की empirical calibration हैं।
-
-यह receiver-faithful observation pilot वाले C-QUAM hardware के समान program-dependent ambiguity रखता है। यदि किसी program में 25 Hz के पास difference energy और asymmetric sum/DC दोनों हों और दोनों components एक साथ समाप्त हों, तो stereo blend थोड़ी देर के लिए घट सकता है, क्योंकि receiver को वही RF संकेत मिलते हैं जो fade में मिलते हैं। इसी तरह coherent anti-phase residual, PLL के TRACK में और pilot के accepted रहते हुए भी quality observation को घटा सकता है। ये approved model boundary के भीतर जानबूझकर रखे गए व्यवहार हैं, दोष नहीं।
-
-Static events carrier-relative vector-area calibration का उपयोग करते हैं। हर event का area nominal desired carrier के सापेक्ष 20.0 µs से scale होता है, जिसमें empirical 0.5 से 1.5 uniform distribution और random phase लागू होते हैं। Events को rounded sample countdown की जगह double-precision absolute deadlines से schedule किया जाता है, इसलिए render blocks के बीच समय निरंतर रहता है और एक ही sample में due कई events जोड़ दिए जाते हैं। 20.0 µs scale और उसका distribution इस simulator की empirical calibration हैं।
-
 ### पैरामीटर
 
 #### Station
 
 - **Radio** (चालू या बंद) - स्टेशन का प्रसारण चालू या बंद करता है। बंद करने पर carrier पूरी तरह गायब हो जाता है और रिसीवर के पास केवल वायुमंडलीय शोर, पास वाला स्टेशन और उसका अपना शोर बचता है; AGC पूरा खुल जाता है और यही पृष्ठभूमि शोर तेज सुनाई देने लगता है। इससे किसी स्टेशन के प्रसारण शुरू करने या बंद होने का क्षण सुना जा सकता है। यह प्रभाव को बंद करने जैसा नहीं है — वहां संगीत ज्यों का त्यों निकल जाता है।
-- **Stereo Mode** (Mono या C-QUAM) - Mono पारंपरिक envelope-detector receiver का उपयोग करता है। C-QUAM stereo reception देता है, लेकिन stereo में S/N mono से कम होता है और signal कमजोर या tuning से बाहर होने पर reception अपने आप mono की ओर blend होता है। Receiver की detection विधि भौतिक रूप से अलग होने के कारण mode बदलने पर ध्वनि का रंग भी बदल सकता है; Detector RC और उससे होने वाली diagonal clipping केवल Mono पर लागू होते हैं और C-QUAM में प्रभावहीन हैं। C-QUAM stereo 192 kHz तक की sample rates पर काम करता है; इससे अधिक rates पर reception mono हो जाता है। FCC के लिए simulation केवल C-QUAM c(5) की modulation-phase सीमा को model करता है, पूर्ण compliance test को नहीं।
+- **Stereo Mode** (Mono या C-QUAM) - Mono पारंपरिक envelope-detector receiver का उपयोग करता है। C-QUAM stereo reception देता है और signal कमजोर या tuning से बाहर होने पर अपने आप mono की ओर blend होता है। Mode बदलने से ध्वनि का रंग भी बदल सकता है; Detector RC केवल Mono में काम करता है। C-QUAM stereo 192 kHz तक काम करता है; इससे अधिक sample rates पर reception mono हो जाता है।
 - **TX Bandwidth** (2.0 से 10.0 kHz) - ट्रांसमीटर की ऑडियो बैंडविड्थ तय करता है। कम मान ध्वनि को गहरा और सीमित बनाते हैं; अधिक मान ज्यादा विवरण बचाते हैं।
 - **Pre-emphasis** (0 से 100%) - प्रसारण से पहले ऊंची आवृत्तियां बढ़ाता है। अधिक सेटिंग उपस्थिति बढ़ाती है, लेकिन चमकीले peaks प्रसारण शृंखला को अधिक जोर से चलाते हैं।
 - **Mod Depth** (10 से 125%) - AM मॉड्यूलेशन की गहराई तय करता है। 100% से ऊपर ओवरमॉड्यूलेशन और negative-peak clipping होता है।
@@ -161,93 +149,71 @@ Static events carrier-relative vector-area calibration का उपयोग �
 
 ## Cassette Artifacts
 
-Cassette Artifacts संगीत को मॉडल की गई compact cassette पर रिकॉर्ड करता है और फिर वापस चलाता है। सिग्नल Dolby encoder, रिकॉर्ड amplifier तथा उसके द्वारा टेप पर अंकित ऊंची आवृत्तियों के उभार और निचली आवृत्तियों के सीमाबद्ध उभार, चुंबकीय परत के magnetic saturation, रिकॉर्ड bias से होने वाले ऊंची आवृत्तियों के मिटाव, प्लेबैक head के wavelength loss, चुंबकीय परत के स्थानीय dropouts, transport के wow और flutter, deck की बहती हुई head azimuth, प्लेबैक head के head contour, और ऊंची आवृत्तियों के उसी उभार को वापस हटाने वाले प्लेबैक curve से गुजरता है; उसके बाद टेप hiss और modulation noise जुड़ते हैं और Dolby decoder चलता है। जब आप चाहते हैं कि संगीत के ऊपर cassette जैसा शोर रखने के बजाय संगीत सचमुच किसी cassette deck से गुज़रा हुआ लगे, तब इसका उपयोग करें।
+Cassette Artifacts cassette की आवृत्ति प्रतिक्रिया, टेप compression, hiss, wow और flutter, dropouts तथा head alignment के बदलावों को एक साथ जोड़ता है। जब केवल मूल संगीत पर शोर की परत चढ़ाने के बजाय पूरा cassette-deck जैसा चरित्र चाहिए, तब इसका उपयोग करें।
 
 ### अन्य Lo-Fi effects से अंतर
 
-- **Tape Artifacts** एक open-reel स्टूडियो मशीन को मॉडल करता है, और दोनों के बीच का अंतर दोनों formats के बीच का अंतर है। अपने-अपने डिफ़ॉल्ट मानों पर, 96 kHz host पर छोटे सिग्नल के साथ, cassette 8 kHz पर 2.0 dB, 12 kHz पर 4.4 dB और 16 kHz पर 7.9 dB नीचे रहता है, जबकि open-reel मशीन क्रमशः 0.7, 1.7 और 3.5 dB नीचे रहती है। noise reduction बंद होने पर cassette की पृष्ठभूमि भी दोनों में से अधिक तेज़ होती है — open-reel मशीन के -68.5 dBFS के मुकाबले -65.5 dBFS — और Dolby B या C के साथ वह उससे नीचे, -73.6 और -82.8 dBFS तक चली जाती है; यही संबंध असली formats के बीच है। गति वहां एक नियंत्रण है और यहां स्थिर 4.76 cm/s, और Deck Grade, Type I/II/IV के स्तंभ, Dolby B/C, dropouts, head azimuth तथा Dolby level error केवल यहीं हैं।
+- **Tape Artifacts** में चुनी जा सकने वाली गति के साथ अधिक साफ़ और विस्तृत open-reel ध्वनि मिलती है। Cassette Artifacts अधिक गहरा है और इसमें cassette के लिए खास Deck Grade, Tape Type, noise reduction, dropouts तथा head alignment उपलब्ध हैं।
 - **Wow Flutter** (Modulation) केवल transport की गति के उतार-चढ़ाव को दोहराता है। जब आपको टेप saturation, Type और bias का व्यवहार, noise reduction और hiss के बिना सिर्फ कंपन चाहिए, तब इसे चुनें।
 - **Saturation** और **Hard Clipping** केवल non-linearity जोड़ते हैं, टेप मशीन के आवृत्ति-निर्भर व्यवहार और transport के बिना।
-- **Vinyl Artifacts**, **Noise Blender** और **Hum Generator** संगीत को बदले बिना ऊपर से शोर की एक परत जोड़ते हैं। यहां hiss, modulation noise और dropouts deck के सही स्थान पर बनते हैं, इसलिए noise reduction उन पर काम करता है और वे असली cassette शोर की तरह Tape Type और Hiss के साथ बदलते हैं।
+- **Vinyl Artifacts**, **Noise Blender** और **Hum Generator** संगीत की आवृत्ति प्रतिक्रिया या dynamics बदले बिना शोर जोड़ते हैं।
 
 ### ध्वनि चरित्र गाइड
 
-- **Deck Grade मशीन का वर्ग तय करता है:** यह band के सिरों और अल्पकालिक स्थिरता को एक साथ बदलता है, और कुछ नहीं। संदर्भ bias, छोटे सिग्नल और 96 kHz host पर मापने पर -3 dB बिंदु Reference पर 13.6 Hz से 18.0 kHz, Hi-Fi पर 16.7 Hz से 14.0 kHz, Consumer पर 19.9 Hz से 10.0 kHz और Portable पर 26.1 Hz से 6.5 kHz तक चलते हैं। 16 kHz पर यह क्रमशः 2.4, 4.0, 7.8 और 16.7 dB की कमी बनती है। azimuth का डगमगाना भी इसी क्रम में बढ़ता है — Reference पर बिल्कुल नहीं, क्योंकि उसी वर्ग की deck में azimuth servo होता है, और Portable पर सबसे अधिक, जहां ऊपरी सिरा साफ़ दिखने लायक सांस लेता है।
-- **Record Level कार्य बिंदु है, कोई gain नहीं:** यह बताता है कि 0 dBFS का peak टेप को कितने ज़ोर से चलाता है, और output का स्तर इसके साथ नहीं हिलता। हिलता बाकी सब कुछ है। डिफ़ॉल्ट +9.0 dB पर full-scale 1 kHz tone लगभग 6% तीसरे harmonic के साथ 3.6 dB गोल होकर निकलता है, और किसी सघन आधुनिक master पर material के ऊपरी 6 dB लगभग 4.2 dB बनकर निकलते हैं। +0.0 dB पर वही material लगभग बिना compression के निकलता है (ऊपरी 6 dB, 5.9 dB बने रहते हैं) और टेप का उपयोग ही नहीं होता; +15.0 dB तक आते-आते ऊपरी 6 dB सिमटकर लगभग 1.9 dB रह जाते हैं। पृष्ठभूमि इसका उल्टी दिशा में एक decibel के बदले एक decibel अनुसरण करती है, इसलिए Record Level बढ़ाना signal-to-noise खरीदता है और dynamic range खर्च करता है।
-- **निचली आवृत्तियां सबसे पहले छत से टकराती हैं:** रिकॉर्ड पक्ष को 50 Hz से नीचे की हर चीज़ टेप पर चढ़ाने के लिए उभारनी पड़ती है, और उस उभार की एक छत Deck Grade तय करता है, इसलिए गहरी bass मध्य आवृत्तियों से पहले saturation तक पहुंच जाती है। Consumer deck पर Record Level +12.0 dB होने पर full-scale tone 315 Hz के 3.3 dB के मुकाबले 20 Hz पर 7.8 dB और 40 Hz पर 5.4 dB नीचे निकलता है। यही असममिति निचले सिरे के गिरने का कारण भी है।
-- **Tape Type कोई वॉल्यूम स्विच नहीं है:** 1 kHz का छोटा सिग्नल तीनों पर 0.01 dB के भीतर एक ही स्तर पर निकलता है। बदलते हैं headroom और शोर। Type IV के पास ऊंची आवृत्तियों का सबसे अधिक headroom है — इसका 10 kHz saturation output Type II से 6.5 dB ऊपर और 315 Hz पर अधिकतम output स्तर 1 dB ऊपर है — और डिफ़ॉल्ट Record Level पर यह Type II की तुलना में 10 kHz पर -6 dBFS के tone पर लगभग 4.9 dB और full-scale tone पर लगभग 7.5 dB अधिक बचाए रखता है; पर इसका अपना noise floor Type II से 2.5 dB खराब है। Type I तीनों में सबसे शोर वाला है, Type II से 4 dB ऊपर, और छोटे सिग्नलों को ठीक Type II जितना ही रंग देता है, इसलिए उससे जो सुनाई देता है उसका अधिकांश हिस्सा अतिरिक्त पृष्ठभूमि ही है।
-- **noise reduction एक मिलान किया हुआ आवागमन है:** एक ही sliding-band compander टेप से पहले encode करता है और उसके बाद expand करता है, इसलिए आदर्श स्थितियों में संगीत ज्यों का त्यों वापस निकलता है। शांति की मात्रा नाममात्र 10 और 20 dB नहीं बल्कि मापी गई प्रभावी संख्या है: डिफ़ॉल्ट settings पर A-weighted रूप में Dolby B के लिए लगभग 8 dB और Dolby C के लिए लगभग 17 dB। इसकी कीमत ऊंचे स्तरों पर ऊंची आवृत्तियों की mistracking है, जहां decoder टेप से दबी हुई ऊंची आवृत्तियों को अधिक धीमा सिग्नल मानकर उन्हें और नीचे कर देता है; Dolby C के anti-saturation shelves इसे घटाते हैं, और डिफ़ॉल्ट Record Level पर -6 dBFS के 10 kHz tone पर C, B की तुलना में लगभग 3.9 dB और full-scale tone पर लगभग 8.4 dB अधिक बचाता है।
-- **सबसे ऊपरी octave ही deck की सीमा है:** संदर्भ bias, छोटे सिग्नल और 96 kHz host पर डिफ़ॉल्ट Consumer deck 50 Hz पर +1.1 dB (head contour), 1 kHz पर 0.0 dB, 5 kHz पर -0.8 dB, 10 kHz पर -3.0 dB और 16 kHz पर -7.8 dB मापती है, तथा 20 Hz पर -2.9 dB। गिरते हुए निचले सिरे के ऊपर निचली आवृत्तियों का यह हल्का उभार और ऊपर की यह गिरावट ही, कुछ भी ज़ोर से चलाए जाने से पहले, deck की अपनी प्रतिक्रिया है।
-- **transport open-reel से धीमा और अधिक चौड़ा है:** 6.9 Hz का capstan wow, 0.42 Hz का hub घूर्णन और 1 से 40 Hz के बीच broadband flutter। डिफ़ॉल्ट 0.200% पर pitch लगभग 9 cents peak to peak हिलता है, ठीक उन्हीं 5 से 10 cents पर जहां frequency modulation स्वयं सुनाई देने लगती है, इसलिए यह कंपन लंबे स्वरों पर सुनाई देता है और सघन कार्यक्रम में ढक जाता है; 0.040% वह आंकड़ा है जो एक संदर्भ deck प्रकाशित करती है और उसमें हलचल केवल लगभग 2 cents की होती है, और रेंज का शीर्ष 1.000% लगभग 46 cents देता है, यानी तेज़ warble।
-- **जीवंत पृष्ठभूमि:** खाली जगहों में hiss, साथ ही संगीत के ऊपर ही चलने वाला modulation noise, जो Type I, Type II और Type IV पर सिग्नल से क्रमशः लगभग 48, 50 और 52 dB नीचे रहता है। पूरी तरह शांत पृष्ठभूमि चाहिए तो Hiss को -92.0 dB re 250 nWb/m तक नीचे कर दें।
-- **dropouts क्लिक नहीं, सिग्नल की हानि हैं:** हर घटना gate नहीं बल्कि 2.1 से 21 ms और 3 से 30 dB की चिकनी raised-cosine गिरावट है, और गहराई का चयन उथले सिरे की ओर झुका हुआ है, इसलिए प्रायः जो सुनाई देता है वह टिक की आवाज़ नहीं बल्कि संगीत का एक क्षण के लिए बैठ जाना है। डिफ़ॉल्ट 2.0 events/min किसी भी एक track पर लगभग हर आधे मिनट में एक घटना बनती है।
-- **Azimuth और Dolby Level Error अनुकूलता के अक्ष हैं:** दोनों चिह्न-सहित हैं, और उनका चिह्न ही असली बात है। Azimuth दोनों channels पर ऊपरी सिरे को गहरा करता है और उनके बीच एक अंतराल डालता है, और कौन-सा channel आगे रहेगा यह उसके चिह्न से तय होता है। शून्य से ऊपर का Dolby Level Error decoder से बहुत कम कटौती कराता है, इसलिए परिणाम अधिक चमकीला और अधिक hiss वाला होता है; शून्य से नीचे वह बहुत अधिक काट देता है और परिणाम अधिक गहरा होता है।
+- **Deck Grade** में wide और स्थिर Reference से लेकर गहरे और कम स्थिर Portable तक deck का चरित्र चुना जाता है।
+- **Record Level** बढ़ाने पर compression और saturation बढ़ते हैं; घटाने पर dynamics अधिक स्वाभाविक रहती है। बाद में Output से आवाज़ बराबर करें।
+- **Tape Type** शोर और headroom बदलता है। Type I सबसे अधिक शोर वाला, Type II संतुलित और Type IV चमकीले peaks को अधिक साफ़ रखने वाला विकल्प है।
+- **Noise Reduction** hiss घटाता है। Dolby C, Dolby B से अधिक असरदार है; Off कच्ची cassette पृष्ठभूमि छोड़ता है।
+- अधिक घिसे हुए चरित्र के लिए **Wow/Flutter**, **Hiss** या **Dropouts** बढ़ाएं। **Azimuth** ऊंची आवृत्तियों को नरम करता है और channels के बीच timing बदलता है।
 
 ### पैरामीटर
 
-गति चुनी नहीं जाती, बताई जाती है: compact cassette परिभाषा से 4.76 cm/s (1⅞ ips) पर चलती है, इसलिए वह कोई नियंत्रण नहीं है और panel के नीचे की status line उसे एक बार, Wow/Flutter के readout के हिस्से के रूप में, नाम से बता देती है।
+Compact cassette की गति तय होती है, इसलिए Speed का कोई नियंत्रण नहीं है।
 
-- **Deck Grade** (Reference, Hi-Fi, Consumer या Portable) - deck का वर्ग चुनता है। यह केवल उन्हीं तंत्रों को नियंत्रित करता है जिनका अपना कोई नियंत्रण नहीं है: head के wavelength loss को समतल करने वाला record equalization का बजट, रिकॉर्ड amplifier की bandwidth, निचली आवृत्तियों के record उभार की छत, azimuth के डगमगाने का आकार और head contour का आकार। यह Wow/Flutter, Hiss या Dropouts को कभी नहीं छूता, इसलिए इसे बदलने से आपकी अपनी settings कभी नहीं मिटतीं। 96 kHz host पर छोटे सिग्नल के साथ मापे गए band के सिरे 13.6 Hz से 18.0 kHz (Reference), 16.7 Hz से 14.0 kHz (Hi-Fi), 19.9 Hz से 10.0 kHz (Consumer) और 26.1 Hz से 6.5 kHz (Portable) हैं, और इन्हीं चारों पर azimuth के डगमगाने का मानक विचलन क्रमशः 0, 1, 2 और 4 arcmin रहता है। Reference में डगमगाना बिल्कुल नहीं है, क्योंकि उस वर्ग की deck में azimuth servo होता है। डिफ़ॉल्ट Consumer एक साधारण घरेलू मशीन है।
-- **Tape Type** (Type I, Type II या Type IV) - टेप का प्रकार चुनता है: ferric, high-bias और metal। यह न equalizer preset है न level नियंत्रण, बल्कि headroom और शोर का profile है — 1 kHz का छोटा सिग्नल तीनों पर 0.01 dB के भीतर एक ही स्तर पर निकलता है। Type II संदर्भ स्तंभ है: Type I उससे 4.0 dB और Type IV 2.5 dB अधिक शोर वाला है, जबकि Type IV के पास Type II से 6.5 dB अधिक ऊंची आवृत्तियों का headroom और 1 dB अधिक निचली आवृत्तियों का headroom है। हर Type का अपना अनुशंसित bias बिंदु भी है, इसलिए जो भी चुना जाए, Bias 0 dB का अर्थ सही ढंग से align की गई deck ही है।
-- **Noise Reduction** (Off, Dolby B या Dolby C) - companding noise reduction चुनता है। यह हमेशा एक मिलान किया हुआ encode/decode आवागमन है — रिकॉर्ड और प्लेबैक दोनों में वही sliding-band नियम चलता है — इसलिए आदर्श स्थितियों में यह संगीत बदले बिना टेप को शांत करता है। Dolby B एक ही sliding band है और Dolby C anti-saturation shelves वाले दो आगे-पीछे रखे हुए bands; यहां मिलने वाली शांति नाममात्र नहीं बल्कि मापी हुई है, B के लिए लगभग 8 dB और C के लिए लगभग 17 dB, और यह Tape Type, Hiss, Dolby Level Error तथा host sample rate पर निर्भर करती है, इसीलिए status line मौजूदा settings का आंकड़ा बताती है। दोनों असली deck की तरह तेज़ ऊंची आवृत्तियों पर mistrack भी करते हैं, और Dolby C, Dolby B से कम mistrack करता है।
-- **Bias** (-6.0 से +6.0 dB) - चुने हुए Tape Type के अनुशंसित बिंदु के सापेक्ष रिकॉर्डिंग bias तय करता है। 0 dB सही ढंग से align की गई deck है: यह 10 kHz संवेदनशीलता वक्र के शिखर से Type I पर 2.5 dB, Type II पर 3.0 dB और Type IV पर 2.0 dB ऊपर बैठता है, और deck वहीं align की जाती है। अधिक (over-bias) settings निचली और मध्य आवृत्तियों में साफ़ और ऊपर से अधिक गहरी होती हैं: +2.0 dB पर तीनों Type में 10 kHz संवेदनशीलता क्रमशः 1.67, 1.81 और 1.52 dB गिरती है, और +6.0 dB पर 5.31, 5.71 तथा 4.86 dB। कम (under-bias) settings अधिक चमकीली और अधिक distorted होती हैं, ठीक जैसे गलत align की गई deck होती है, पर केवल उस शिखर तक — Type I पर लगभग -3.6 dB, Type II पर -3.9 dB और Type IV पर -3.2 dB, जिनका 10 kHz पर मूल्य लगभग +2.5, +3.0 और +2.0 dB है — और उससे नीचे ऊंची आवृत्तियां फिर गहरी पड़ जाती हैं जबकि distortion बढ़ती रहती है, इसलिए -6.0 dB पहले ही -4.0 dB से कम चमकीला है। 1 kHz पर पूरी रेंज में 0.2 dB से भी कम हलचल होती है, इसलिए Bias कोई वॉल्यूम नियंत्रण नहीं है।
-- **Record Level** (-12.0 से +18.0 dB) - तय करता है कि deck कितने ज़ोर से रिकॉर्ड करती है। यह संख्या वह टेप स्तर है जहां 0 dBFS का peak पहुंचता है, 250 nWb/m के संदर्भ flux से dB ऊपर के रूप में, और status line इसी परिपाटी को बताती है। यह नियंत्रण स्वयं कोई gain नहीं जोड़ता: जब तक टेप संतृप्त नहीं होता, वही संकेत हर Record Level setting पर उसी स्तर पर निकलता है, इसलिए यह टेप को बदलता है, आवाज़ को नहीं। डिफ़ॉल्ट +9.0 dB सामान्य रूप से रिकॉर्ड की गई cassette है, जहां full-scale 1 kHz tone लगभग 6% तीसरे harmonic के साथ 3.6 dB गोल होकर निकलता है और गहरी bass पहले ही छत से जा लगी होती है। नीची settings ऐसे transfer की ओर हटती हैं जो टेप का उपयोग ही नहीं करता — +0.0 dB पर full-scale tone केवल 0.5 dB खोता है — और पृष्ठभूमि को हर decibel के बदले एक decibel ऊपर उठा देती हैं, क्योंकि hiss टेप पर है और अब टेप peak से उतना ही नीचे है। ऊंची settings अधिक compression करती हैं और उसी नियम से पृष्ठभूमि को शांत करती हैं; लगभग +15.0 dB के आगे dynamic range और नहीं खुलती और केवल compression बढ़ती जाती है।
-- **Wow/Flutter** (0 से 1%) - transport के गति-उतार-चढ़ाव को स्थिर 4.76 cm/s पर DIN 45507 peak weighted विचलन के प्रतिशत के रूप में तय करता है। 0% पूरी तरह स्थिर transport है। डिफ़ॉल्ट 0.200% उसी 0.15 से 0.25% की खिड़की के बीच में बैठता है जो साधारण cassette decks प्रकाशित करती हैं, और pitch को लगभग 9 cents peak to peak हिलाता है, ठीक उन्हीं 5 से 10 cents पर जहां frequency modulation स्वयं सुनाई देने लगती है। 0.040% वह weighted peak है जो एक संदर्भ deck प्रकाशित करती है और उसमें हलचल केवल लगभग 2 cents की होती है; रेंज का शीर्ष 1.000% लगभग 46 cents देता है, यानी तेज़ warble। यहां हलचल open-reel मशीन से धीमी है, क्योंकि उस पर 0.42 Hz का hub घूर्णन हावी रहता है।
-- **Hiss** (-92.0 से -42.0 dB re 250 nWb/m) - टेप hiss और modulation noise दोनों का स्तर एक साथ तय करता है, noise reduction बंद होने पर Type II के A-weighted बिना-सिग्नल flux के रूप में, 250 nWb/m के संदर्भ के सापेक्ष। यह output पर का कोई स्तर नहीं बल्कि टेप का अपना datasheet आंकड़ा है: शोर टेप पर रिकॉर्ड होता है, इसलिए output पर वह कितना मापा जाएगा यह Record Level पर निर्भर करता है। -92.0 dB re 250 nWb/m पर दोनों पूरी तरह बंद हो जाते हैं। डिफ़ॉल्ट -60.5 dB re 250 nWb/m वह bias noise है जो निर्माता Type II टेप के लिए प्रकाशित करता है। Type I उस स्तंभ से 4.0 dB और Type IV 2.5 dB ऊपर है, Record Level पूरी चीज़ को एक decibel के बदले एक decibel खिसकाता है, और उसके बाद Dolby decoder अपनी मापी हुई मात्रा हटा देता है, इसलिए खाली जगहों में जो सुनाई देता है वह यह संख्या नहीं है — वह कितना बनता है, यह status line बताती है। यह सब Output से पहले है, इसलिए Output के बाद लगाया गया meter इसे Output जितना ऊपर उठा हुआ पढ़ता है। संगीत बजते समय यह नियंत्रण मुख्यतः सिग्नल के साथ चलने वाला modulation noise जोड़ता है।
-- **Dropouts** (0 से 20 events/min) - चुंबकीय परत के dropouts की औसत दर प्रति track तय करता है: आप जिस भी एक channel को मापें, उसे प्रति मिनट इतनी ही घटनाएं मिलती हैं। इनमें से आधी पूरे टेप की होती हैं और सभी channels को एक साथ प्रभावित करती हैं, आधी किसी एक track तक सीमित होती हैं। हर घटना gate नहीं बल्कि 2.1 से 21 ms और 3 से 30 dB की चिकनी raised-cosine गिरावट है, इसलिए यह क्लिक की तरह नहीं, सिग्नल के थोड़ी देर खो जाने की तरह सुनाई देती है। डिफ़ॉल्ट 2.0 events/min सामान्य उपयोग में चल रही cassette है, यानी किसी भी एक track पर लगभग हर आधे मिनट में एक घटना; 0 एक निर्दोष टेप है और कुछ भी नहीं जोड़ता, और शीर्ष 20 events/min किसी premium cassette द्वारा प्रकाशित गुणवत्ता-नियंत्रण सीमा का तीन गुना है, जो स्पष्ट रूप से खराब हो चुके टेप का क्षेत्र है।
-- **Azimuth** (-6.0 से +6.0 arcmin) - टेप रिकॉर्ड करने वाली deck और उसे चलाने वाली deck के बीच head alignment की त्रुटि तय करता है। यह गुणवत्ता का कोई दर्जा नहीं बल्कि उन्हीं दो मशीनों की alignment की स्थिति है, इसीलिए यह चिह्न-सहित है और Deck Grade से स्वतंत्र है। कोई भी त्रुटि दोनों channels पर ऊंची आवृत्तियों की कीमत लेती है: डिफ़ॉल्ट +2.0 arcmin पर पूरी तरह align किए हुए जोड़े की तुलना में 10 kHz का tone 0.25 dB और 16 kHz का tone 0.60 dB खोता है, और ±6.0 arcmin पर यह 1.03 और 2.26 dB हो जाता है। यह +2.0 arcmin पर दोनों channels के बीच 11.0 µs का अंतराल भी डालता है, और कौन-सा channel आगे रहेगा यह चिह्न तय करता है, इसलिए correlated material का mono योग 8 kHz पर 0.8 dB, 12 kHz पर 1.8 dB और 16 kHz पर 3.2 dB और खो देता है; uncorrelated material में ऐसा कोई comb नहीं दिखता। Deck Grade इस setting के ऊपर एक धीमा बहाव जोड़ता है, इसलिए Azimuth कोई जमा हुआ मान नहीं बल्कि वह केंद्र है जिसके इर्द-गिर्द वह बहाव घूमता है।
-- **Dolby Level Error** (-3.0 से +3.0 dB) - तय करता है कि प्लेबैक deck का Dolby संदर्भ रिकॉर्ड करने वाली deck के संदर्भ से कितना हटा हुआ है। इसका अर्थ केवल Noise Reduction चालू होने पर है, और इसका चिह्न ही असली बात है: शून्य से ऊपर decoder टेप को उससे अधिक तेज़ पढ़ता है, बहुत कम काटता है, और परिणाम अधिक चमकीला तथा अधिक hiss वाला होता है; शून्य से नीचे वह बहुत अधिक काटता है और परिणाम अधिक गहरा होता है। डिफ़ॉल्ट deck पर मध्यम स्तर का tone -3.0 dB पर 5 kHz पर लगभग 2.4 dB और 10 kHz पर लगभग 1.0 dB नीचे जाता है, तथा +3.0 dB पर 5 kHz पर लगभग 1.9 dB और 10 kHz पर लगभग 2.2 dB ऊपर। 0.0 dB का अर्थ है एक-दूसरे के अनुरूप calibrate की गई दो decks। तेज़ ऊंची आवृत्तियों पर mistracking हर setting पर मौजूद रहती है, क्योंकि encode और decode के बीच टेप स्वयं सिग्नल बदल देता है; यह नियंत्रण जो खोलता है वह चमकीला पक्ष है, जहां मिलान किया हुआ जोड़ा पहुंच ही नहीं सकता।
-- **Output** (-24.0 से +24.0 dB) - पूरी शृंखला के बाद स्तर समायोजित करता है। यह bypass से तुलना करते समय आवाज़ मिलाने के लिए है, या ऊंची Record Level setting से घटी आवाज़ वापस लाने के लिए।
-- **Mix** (0 से 100%) - cassette सिग्नल को मूल सिग्नल के साथ मिलाता है। 100% पूरी cassette प्लेबैक है। dry सिग्नल को टेप पथ के साथ delay-aligned किया गया है, इसलिए मध्य आवृत्तियां साफ़-सुथरी मिलती हैं — 50% पर 1 kHz इकाई से 0.06 dB के भीतर रहता है — पर सबसे ऊपरी octave नहीं, क्योंकि वहां dry और टेप की phase मेल नहीं खाती और वे आंशिक रूप से एक-दूसरे को काटते हैं। यह कटाव दोनों channels पर एक जैसा नहीं होता, क्योंकि azimuth त्रुटि दोनों के बीच एक अंतराल डालती है: 96 kHz host पर डिफ़ॉल्ट settings के साथ 50% पर बायां channel 8 kHz पर 1.7 dB, 12 kHz पर 3.6 dB, 16 kHz पर 5.3 dB और 20 kHz पर 6.2 dB नीचे आता है, जबकि दायां channel उन्हीं आवृत्तियों पर क्रमशः 4.4, 8.9, 9.0 और 7.0 dB नीचे रहता है। 0% पर input बिल्कुल अपरिवर्तित निकलता है और effect कोई latency नहीं जोड़ता; किसी भी अन्य setting पर यह 44.1 kHz host पर 165 samples (3.741 ms), 48 kHz पर 179 (3.729 ms), 96 kHz पर 347 (3.615 ms) और 192 kHz पर 683 (3.557 ms) जोड़ता है।
+- **Deck Grade** (Reference, Hi-Fi, Consumer या Portable) - deck का चरित्र चुनता है। Reference सबसे विस्तृत और स्थिर है; Portable सबसे गहरा और अस्थिर। परिचित घरेलू deck की ध्वनि के लिए Consumer से शुरू करें।
+- **Tape Type** (Type I, Type II या Type IV) - टेप का शोर और headroom बदलता है। डिफ़ॉल्ट Type I से शुरू करें; Type II अधिक संतुलित है और Type IV चमकीले peaks को अधिक साफ़ रखता है।
+- **Noise Reduction** (Off, Dolby B या Dolby C) - hiss घटाता है। डिफ़ॉल्ट Dolby B से शुरू करें, अधिक शांति के लिए Dolby C चुनें या कच्ची cassette पृष्ठभूमि के लिए Off करें। अलग-अलग recording और playback decks की रंगत Dolby Level Error से जोड़ें।
+- **Bias** (-6.0 से +6.0 dB) - treble और distortion बदलता है। 0 dB से शुरू करें। थोड़ा positive मान साफ़ और गहरा, थोड़ा negative मान चमकीला और खुरदरा सुनाई देता है। बहुत अधिक negative मान चमक बढ़ाए बिना distortion बढ़ाता है।
+- **Record Level** (-12.0 से +18.0 dB) - टेप को कितनी ज़ोर से चलाया जाए, यह तय करता है। +9 dB से शुरू करें; अधिक compression और saturation के लिए बढ़ाएं, साफ़ dynamics के लिए घटाएं। बाद में Output से आवाज़ बराबर करें।
+- **Wow/Flutter** (0 से 1%) - pitch की अस्थिरता बदलता है। 0% पूरी तरह स्थिर है; 0.200% से शुरू करने पर लंबे स्वरों में cassette जैसा हल्का आंदोलन सुनाई देता है। घिसे deck जैसा warble चाहिए तो इसे बढ़ाएं।
+- **Hiss** (-92.0 से -42.0 dB re 250 nWb/m) - टेप hiss और संगीत के साथ बदलने वाला noise नियंत्रित करता है। -60.5 dB से शुरू करें; अधिक शोर के लिए बढ़ाएं या noise layer बंद करने के लिए न्यूनतम मान चुनें। मौजूदा settings पर बनने वाला background level status line में दिखता है।
+- **Dropouts** (0 से 20 events/min) - छोटे signal dips कितनी बार आएं, यह तय करता है। 2 events/min से शुरू करें; 0 उन्हें बंद करता है और अधिक मान अधिक घिसे टेप जैसा सुनाई देता है।
+- **Azimuth** (-6.0 से +6.0 arcmin) - head misalignment जोड़ता है। डिफ़ॉल्ट +2.0 arcmin से शुरू करें; 0 से जितना दूर जाएंगे, treble उतना नरम होगा और left/right timing उतनी बदलेगी। चिह्न तय करता है कि कौन-सा channel आगे होगा।
+- **Dolby Level Error** (-3.0 से +3.0 dB) - Noise Reduction चालू होने पर recording और playback decks के mismatch को दोहराता है। 0 dB से शुरू करें। Positive मान अधिक चमकीला और hiss वाला, negative मान अधिक गहरा सुनाई देता है।
+- **Output** (-24.0 से +24.0 dB) - पूरी chain के बाद आवाज़ बदलता है। 0 dB से शुरू करें और bypass से तुलना करते समय या ऊंचे Record Level से घटी आवाज़ वापस लाने के लिए समायोजित करें।
+- **Mix** (0 से 100%) - cassette ध्वनि को मूल ध्वनि में मिलाता है। पूरे प्रभाव को सुनने के लिए 100% से शुरू करें; हल्के असर के लिए घटाएं। बीच के मानों पर दोनों paths के आंशिक cancellation से सबसे ऊंची frequencies नरम हो सकती हैं।
 
-### status line पढ़ना
+### Status line को पढ़ना
 
-नियंत्रणों के नीचे की पंक्ति Record Level की परिपाटी बताती है और यह भी कि deck के मौजूदा विन्यास पर दो Base settings कितनी बनती हैं, इस रूप में: `Record Level +9.0 dB → tape peak +9.0 dB re 250 nWb/m at 0 dBFS in · Wow/Flutter Base 0.200% → 0.200% at 4.76 cm/s (1⅞ ips) · Hiss Base -60.5 dB re 250 nWb/m → -73.6 dBFS, Type I, Dolby B`।
-
-- **Record Level** नियंत्रण को उसी रूप में दोहराता है जो टेप पर उसका अर्थ है: वह flux जहां 0 dBFS का peak पहुंचता है। यह परिपाटी का कथन है, कोई meter नहीं — meter है ही नहीं, और अधिक धीमा master टेप पर उतना ही नीचे बैठता है।
-- **Wow/Flutter** Base मान और प्रभावी मान बताता है। गति स्थिर है, इसलिए दोनों हमेशा एक ही आंकड़ा रहते हैं; यह पंक्ति इसलिए है कि वह प्रतिशत किस माप-परिपाटी का है यह नाम से स्पष्ट हो, और यही एकमात्र जगह है जहां transport की गति बताई जाती है।
-- **Hiss** Base मान बताता है और साथ ही वह बिना-सिग्नल A-weighted floor, जो Tape Type के स्तंभ, Record Level और Dolby decoder के बाद तथा Output से पहले output पर बनती है। Hiss के -92.0 dB re 250 nWb/m होने पर पूरा शोर-परिवार बंद हो जाता है और पंक्ति `→ off` दिखाती है।
-- प्रभावी floor मापी हुई है, Dolby B और C के नाममात्र 10 और 20 dB से निकाली हुई नहीं, और यह Tape Type, noise reduction, Hiss, Dolby Level Error, Record Level तथा host sample rate — सब पर एक साथ निर्भर करती है। Hiss के डिफ़ॉल्ट -60.5 dB re 250 nWb/m और Record Level के +9.0 dB पर, 96 kHz host पर, यह इतनी बनती है:
-
-  | Tape Type | NR Off | Dolby B | Dolby C |
-  |---|---|---|---|
-  | Type I | -65.5 dBFS | -73.6 dBFS | -82.8 dBFS |
-  | Type II | -69.5 dBFS | -77.7 dBFS | -87.0 dBFS |
-  | Type IV | -67.0 dBFS | -75.2 dBFS | -84.4 dBFS |
-
-  Record Level पूरी तालिका को एक decibel के बदले एक decibel खिसकाता है: +12.0 dB पर हर आंकड़ा 3 dB नीचे और +6.0 dB पर हर आंकड़ा 3 dB ऊपर। Dolby decoder कितना हटाता है यह इससे नहीं बदलता, क्योंकि टेप की floor और decoder का अपना संदर्भ साथ-साथ खिसकते हैं।
-- हर संयोजन एक बार मापा जाता है और फिर याद रखा जाता है, इसलिए जिस setting से आप पहले गुज़र चुके हैं उसके लिए आंकड़ा तुरंत दिख जाता है। जब आप Hiss या Dolby Level Error को अब तक बिना मापे संयोजनों से खींचकर ले जा रहे होते हैं, तब पंक्ति `measuring…` दिखाती है और नियंत्रण रुकते ही संख्या भर देती है — कई decibel गलत आंकड़े को अंतिम जैसा दिखाकर बताना, कुछ न बताने से बुरा होगा।
+Controls के नीचे की पंक्ति मौजूदा settings के लिए प्रभावी wow/flutter और background-noise level दिखाती है। Tape Type, Noise Reduction, Record Level और Hiss बदलने से पहले और बाद के मानों की तुलना करें। `off` का अर्थ है कि tape-noise layer बंद है।
 
 ### सुझाई गई सेटिंग
 
 1. **साधारण cassette deck (डिफ़ॉल्ट)**
    - Deck Grade: Consumer, Tape Type: Type I, Noise Reduction: Dolby B, Bias: 0.0 dB, Record Level: +9.0 dB
    - Wow/Flutter: 0.200%, Hiss: -60.5 dB re 250 nWb/m, Dropouts: 2.0 events/min, Azimuth: +2.0 arcmin, Dolby Level Error: 0.0 dB, Output: 0.0 dB, Mix: 100%
-   - रोज़मर्रा की cassette ध्वनि, और plugin का अपना डिफ़ॉल्ट भी: 16 kHz पर ऊपरी सिरा 7.9 dB नरम, 20 Hz पर पहले ही 2.9 dB नीचे जा चुके निचले सिरे के ऊपर 50 Hz के आसपास 1.1 dB का उभार, full-scale tone पर लगभग 6% तीसरा harmonic और 3.6 dB की गोलाई, 96 kHz host पर -73.6 dBFS की पृष्ठभूमि, लगभग 9 cents की pitch हलचल, और हर track पर लगभग हर आधे मिनट में एक dropout।
+   - नरम treble, सुनाई देने वाली compression, हल्का pitch movement और कभी-कभार dropouts वाला परिचित घरेलू cassette sound।
 
 2. **Reference deck, Dolby C के साथ metal टेप**
    - Deck Grade: Reference, Tape Type: Type IV, Noise Reduction: Dolby C, Bias: 0.0 dB, Record Level: +9.0 dB
    - Wow/Flutter: 0.040%, Hiss: -60.5 dB re 250 nWb/m, Dropouts: 0.0 events/min, Azimuth: 0.0 arcmin, Dolby Level Error: 0.0 dB, Output: 0.0 dB, Mix: 100%
-   - इस format का सबसे सक्षम संयोजन: Reference deck 18.0 kHz पर -3 dB तक पहुंचती है और बिल्कुल नहीं बहती, Type IV, Type II से 6.5 dB अधिक ऊंची आवृत्तियों का headroom लाता है, और 96 kHz host पर पृष्ठभूमि -84.4 dBFS पर बैठती है। Type IV की अपनी टेप floor Type II से 2.5 dB खराब है — इसे यहां सबसे शांत Dolby C ही बनाता है, और तेज़ ऊंची आवृत्तियों पर mistracking भी यही setting सबसे कम करती है। कंपन, hiss, dropouts और azimuth का बहाव — सब बंद होने के कारण यह deck पूरी तरह deterministic है।
+   - सबसे साफ़ cassette preset: विस्तृत, स्थिर और शांत, चमकीले peaks के लिए भरपूर headroom और बिना अतिरिक्त wear के।
 
 3. **noise reduction के बिना ferric टेप**
    - Deck Grade: Consumer, Tape Type: Type I, Noise Reduction: Off, Bias: 0.0 dB, Record Level: +9.0 dB
    - Wow/Flutter: 0.200%, Hiss: -60.5 dB re 250 nWb/m, Dropouts: 2.0 events/min, Azimuth: +2.0 arcmin, Dolby Level Error: 0.0 dB, Output: 0.0 dB, Mix: 100%
-   - noise reduction के बिना रिकॉर्ड किया गया सादा ferric टेप: 96 kHz host पर पृष्ठभूमि -65.5 dBFS पर बैठती है, डिफ़ॉल्ट से 8.1 dB अधिक तेज़, और उसे हटाने वाला कुछ नहीं है, इसलिए हर खाली जगह में hiss ध्वनि का हिस्सा बन जाता है। छोटे सिग्नलों के लिए रंग ठीक डिफ़ॉल्ट जैसा ही है — Types के बीच का अंतर शोर और headroom का है, रंग का नहीं — और कुछ भी mistrack नहीं करता, क्योंकि mistrack करने के लिए कोई decoder ही नहीं है।
+   - बिना noise reduction का कच्चा ferric cassette playback, जिसमें शांत हिस्सों में hiss साफ़ सुनाई देता है।
 
 4. **घरेलू deck, थोड़ी over-bias**
    - Deck Grade: Consumer, Tape Type: Type I, Noise Reduction: Dolby B, Bias: +2.0 dB, Record Level: +12.0 dB
    - Wow/Flutter: 0.300%, Hiss: -58.0 dB re 250 nWb/m, Dropouts: 4.0 events/min, Azimuth: +3.0 arcmin, Dolby Level Error: -1.0 dB, Output: +0.5 dB, Mix: 100%
-   - सामान्य टेप पर चलने वाली एक साधारण घरेलू deck, और किसी दूसरी deck पर रिकॉर्ड किया गया टेप: bias थोड़ी ऊंची, इसलिए ऊपरी सिरा align की गई deck से 10 kHz पर लगभग 1.7 dB गहरा और निचली तथा मध्य आवृत्तियां थोड़ी साफ़; कम स्थिर transport; ऊपर उठी हुई टेप floor; हर track पर लगभग हर चौथाई मिनट में एक dropout; अधिक चौड़ी azimuth त्रुटि; और 1 dB नीचे calibrate किया हुआ decoder, जो उसे और गहरा कर देता है। Record Level डिफ़ॉल्ट से 3 dB ऊपर है, इसलिए किसी सघन master के ऊपरी 6 dB लगभग 3.1 dB बनकर निकलते हैं और compression की कीमत चुकाने के लिए Output थोड़ा ऊपर जाता है। ऊपर उठी हुई Hiss setting Type I, Dolby B और Record Level के बाद कितनी बनती है, यह status line बताती है।
+   - अधिक गहरी और compressed घरेलू-deck ध्वनि, जिसमें extra wobble, hiss, misalignment और कभी-कभार dropouts हैं।
 
 5. **Portable, घिसा हुआ टेप**
    - Deck Grade: Portable, Tape Type: Type I, Noise Reduction: Off, Bias: -2.0 dB, Record Level: +12.0 dB
    - Wow/Flutter: 0.480%, Hiss: -54.0 dB re 250 nWb/m, Dropouts: 8.0 events/min, Azimuth: +4.0 arcmin, Dolby Level Error: 0.0 dB, Output: +1.0 dB, Mix: 100%
-   - जानबूझकर खराब किया गया lo-fi प्रभाव। Portable deck 6.5 kHz और 26 Hz पर -3 dB तक पहुंचती है और डिफ़ॉल्ट deck से दोगुना बहती है; bias align बिंदु से नीचे है, जो 10 kHz को लगभग 1.6 dB चमकीला करता है और साथ ही distortion भी बढ़ाता है; transport उस बिंदु से कहीं आगे है जहां कंपन स्पष्ट सुनाई देने लगता है; टेप तेज़ और शोर भरा है; azimuth बुरी तरह बिगड़ा हुआ है; और हर track पर dropouts प्रति मिनट कई बार आते हैं। Record Level इतना ऊंचा है कि bass मज़बूती से छत से जा लगी है, और Output आवाज़ वापस ले आता है।
+   - जानबूझकर खराब किया गया portable-player sound, जिसमें संकरी bandwidth, तेज़ wobble, noise, distortion और बार-बार dropouts हैं।
 
-### मॉडल संबंधी टिप्पणियां
-
-यह effect compact cassette की स्थिर 4.76 cm/s गति पर चलने वाली deck पर एक बार की रिकॉर्डिंग और प्लेबैक को मॉडल करता है। रिकॉर्ड पक्ष टेप से पहले ऊंची आवृत्तियां उठाता है और प्लेबैक पक्ष ठीक उतना ही उभार वापस हटा देता है, न कि किसी प्रकाशित प्लेबैक मानक का पालन करता है; curve का निचली आवृत्तियों वाला आधा हिस्सा जानबूझकर असममित है, क्योंकि असली deck 50 Hz से नीचे रिकॉर्ड पक्ष पर जो उभार लगाती है उसकी एक छत होती है, और वही छत निचली आवृत्तियों के गिरने और bass के सबसे पहले saturation तक पहुंचने — दोनों को जन्म देती है। Deck Grade केवल उन्हीं तंत्रों को नियंत्रित करता है जिनका अपना कोई नियंत्रण नहीं है, इसलिए यह Wow/Flutter, Hiss या Dropouts को कभी नहीं बदलता। azimuth का डगमगाना random walk नहीं बल्कि एक सीमाबद्ध प्रक्रिया है जो Azimuth की setting की ओर वापस खींची जाती है, और Reference में यह बिल्कुल नहीं है, क्योंकि उस वर्ग की deck में azimuth servo होता है; Wow/Flutter 0, Hiss बंद, Dropouts 0 और Deck Grade Reference होने पर कुछ भी यादृच्छिक नहीं चलता। Dolby B और Dolby C मिलान किए हुए sliding-band companders के रूप में मॉडल किए गए हैं और हमेशा encode तथा decode के पूरे आवागमन के रूप में चलते हैं; केवल encode या केवल decode जैसा कोई संचालन नहीं है, और किसी भी noise reduction विनिर्देश के अनुपालन या उसके विरुद्ध प्रमाणन का कोई दावा नहीं है। Dolby Level Error केवल decoder के संदर्भ को खिसकाता है, जो दो decks के बीच calibration का अंतर है, कोई दूसरा processing चरण नहीं। Type III टेप, microcassette और Elcaset formats, दूसरी टेप गतियां, pitch control, auto-reverse, print-through, splice noise, motor hum, shell तथा तंत्र का शोर, और विपरीत side से रिसाव इस मॉडल के बाहर हैं। प्रति टेप dropout के कोई सार्वजनिक आंकड़े मौजूद नहीं हैं, इसलिए dropout दर की रेंज, अवधि और गहराई एक प्रकाशित गुणवत्ता-नियंत्रण सीमा से बंधा हुआ calibrated मॉडल है, न कि मापे गए डेटा की नकल। टेप पथ 44.1 kHz host पर transport और processing का 165 samples (3.741 ms) विलंब रखता है, जो 192 kHz host पर घटकर 683 samples (3.557 ms) रह जाता है; Mix 0% पर input बिट-दर-बिट ज्यों का त्यों और बिना किसी विलंब के गुजरता है। ऊपर दिए गए रंग-संबंधी आंकड़े 96 kHz host पर और संदर्भ 0.0 dB Bias पर मापे गए हैं। यह effect Tape Artifacts से लगभग डेढ़ गुना अधिक भार डालता है।
 
 ## Digital Error Emulator
 
@@ -464,7 +430,7 @@ G.726 Simulator चुने हुए mono channel या stereo pair को �
 
 16, 24, 32 और 40 kbit/s G.726 की चार standard rates हैं। Default 32 kbit/s ऐतिहासिक DECT full-slot speech mode है। कम rate पर हर 8 kHz sample के लिए कम bits मिलते हैं, जिससे granular quantization, खुरदरे sustained tones और slope overload अधिक स्पष्ट होते हैं। Codec speech के लिए बना है, इसलिए full-band music इसकी सीमाएँ साफ़ दिखाता है।
 
-इस effect को WebAssembly processing engine चाहिए। Engine, sample rate या channel mode उपलब्ध न हो तो input बदले बिना रहता है और plugin सरल status message दिखाता है। Suspension के बाद processing फिर शुरू होने पर resamplers और codec prediction state साथ में reset होते हैं, इसलिए suspension से पहले buffer हुआ audio दोबारा नहीं बजता।
+यदि plugin effect उपलब्ध न होने की सूचना दे, तो दूसरी sample rate या channel mode आज़माएँ। तब तक input बिना बदलाव के रहता है।
 
 ### ध्वनि सुधार मार्गदर्शिका
 
@@ -488,7 +454,7 @@ Audio output में एक channel होने पर GSM-FR Simulator उ�
 
 हर 20 ms frame को quantized linear prediction, long-term prediction और regular-pulse excitation parameters से दर्शाया जाता है। Transcodes पूरी encode/decode stage को अलग-अलग state के साथ दोहराता है, इसलिए यह सामान्य “quality” control नहीं, बल्कि वास्तविक tandem coding को दोहराता है। चुने हुए stereo pair के बाद के अतिरिक्त channels बिना बदलाव के रहते हैं।
 
-इस effect को अपने WebAssembly processing engine की ज़रूरत होती है। अगर engine, चुना हुआ sample rate या channel mode उपलब्ध न हो, तो input बिना बदलाव के रहता है और plugin साफ़ status message दिखाता है। Suspension के बाद processing दोबारा शुरू होने पर resamplers, frame buffers और codec state साथ में reset होते हैं, इसलिए suspension से पहले buffer हुआ audio दोबारा नहीं बजता।
+यदि plugin effect उपलब्ध न होने की सूचना दे, तो दूसरी sample rate या channel mode आज़माएँ। तब तक input बिना बदलाव के रहता है।
 
 ### साउंड एन्हांसमेंट गाइड
 
@@ -582,7 +548,7 @@ Audio output में एक channel होने पर GSM-FR Simulator उ�
 
 MP3 Codec Simulator चुने हुए चैनलों को real-time में सरल MPEG Layer III analysis, सीमित bit budget वाली spectral quantization और synthesis से गुज़ारता है। इससे आप सुन सकते हैं कि कम bitrate वाला MP3 transients, ऊँची frequencies के detail, sustained tones और stereo image को कैसे बदलता है। यह केवल साफ़ codec round trip का मॉडल है; इसमें damaged file clicks, dropouts, packet loss या transmission errors नहीं जोड़े जाते।
 
-44.1 kHz MPEG-1 profile में 32–320 kbit/s उपलब्ध है। 22.05 kHz MPEG-2 profile में 32–160 kbit/s उपलब्ध है और coded bandwidth अधिक सीमित रहती है। इस effect को WebAssembly processing engine चाहिए; engine, चुना हुआ sample rate या channel mode उपलब्ध न होने पर audio अपरिवर्तित रहता है।
+44.1 kHz MPEG-1 profile में 32–320 kbit/s उपलब्ध है। 22.05 kHz MPEG-2 profile में 32–160 kbit/s उपलब्ध है और coded bandwidth अधिक सीमित रहती है। अगर plugin effect को unavailable दिखाए, तो कोई दूसरा sample rate या channel mode आज़माएँ। Effect उपलब्ध होने तक input audio अपरिवर्तित रहता है।
 
 ### ध्वनि सुधार मार्गदर्शिका
 
@@ -634,9 +600,9 @@ MP3 Codec Simulator चुने हुए चैनलों को real-time �
 
 SBC Codec Simulator चुने गए चैनलों को real-time SBC analysis, bit allocation, quantization और synthesis से गुज़ारता है। इससे आप सुन सकते हैं कि Bluetooth A2DP का अनिवार्य baseline codec high-frequency detail, tonal texture, transients और stereo image को कैसे बदलता है। Packet Loss के default मान पर codec round trip पूरी तरह साफ़ रहता है; इसे बढ़ाने पर असली Bluetooth link जैसी आवाज़ की टूटन आती है।
 
-Codec 44.1 kHz sample-rate परिवार के लिए अंदरूनी तौर पर 44.1 kHz और 48 kHz परिवार के लिए 48 kHz पर चलता है। केवल पढ़ने योग्य Bitrate, मौजूदा Bitpool, Channel Mode, Blocks और codec rate के अनुसार सटीक SBC frame length से निकाला जाता है।
+केवल पढ़ने योग्य Bitrate, मौजूदा Bitpool, Channel Mode और Blocks से बनी stream rate दिखाता है। Settings की तुलना में इसका उपयोग करें; Bitpool स्वयं bitrate नहीं है।
 
-इस effect को WebAssembly processing engine चाहिए। Engine, चुना हुआ sample rate या channel mode उपलब्ध न होने पर input में कोई बदलाव नहीं होता और plugin स्पष्ट status message दिखाता है।
+अगर plugin effect को unavailable दिखाए, तो कोई दूसरा sample rate या channel mode आज़माएँ। Effect उपलब्ध होने तक input audio अपरिवर्तित रहता है।
 
 ### ध्वनि सुधार मार्गदर्शिका
 
@@ -660,49 +626,34 @@ Codec 44.1 kHz sample-rate परिवार के लिए अंदरू�
 
 ## Simple Jitter
 
-एक प्रभाव जो वह अपूर्ण, विंटेज डिजिटल ध्वनि बनाने के लिए सूक्ष्म समय विविधताएं जोड़ता है। यह संगीत को ऐसा बना सकता है जैसे वह पुराने CD प्लेयर या विंटेज डिजिटल उपकरणों के माध्यम से बज रहा हो।
+Simple Jitter सैंपल पढ़े जाने के समय में अनियमित बदलाव जोड़ता है। पिकोसेकंड का दायरा क्लॉक के छोटे और वास्तविक उतार-चढ़ावों की तुलना के लिए है; सामान्य रूप से संगीत सुनते समय इन सेटिंग्स में अंतर कर पाना लगभग असंभव होता है। स्पष्ट अस्थिरता या ध्वनि की बनावट में बदलाव के लिए माइक्रोसेकंड या उससे अधिक का मान इस्तेमाल करें। इन मानों पर Simple Jitter को सामान्य CD प्लेयर, DAT मशीन या दूसरे डिजिटल उपकरण की नकल के बजाय रचनात्मक प्रभाव की तरह इस्तेमाल करें।
 
 ### ध्वनि चरित्र गाइड
-- सूक्ष्म विंटेज अनुभव:
-  - पुराने उपकरणों की तरह धीमी अस्थिरता जोड़ता है
-  - अधिक जैविक, कम पूर्ण ध्वनि बनाता है
-  - सूक्ष्म रूप से चरित्र जोड़ने के लिए बिल्कुल सही
-- क्लासिक CD प्लेयर ध्वनि:
-  - प्रारंभिक डिजिटल प्लेयर की ध्वनि को पुनर्निर्मित करता है
-  - नॉस्टैल्जिक डिजिटल चरित्र जोड़ता है
-  - 90s संगीत सराहना के लिए बढ़िया
-- रचनात्मक प्रभाव:
-  - अनूठे वॉबल प्रभाव बनाएं
-  - आधुनिक ध्वनियों को विंटेज में बदलें
-  - प्रयोगात्मक चरित्र जोड़ें
+
+- **क्लॉक के छोटे उतार-चढ़ावों की तुलना:** पिकोसेकंड के मान प्रभाव को बेहद हल्का रखते हैं। 1–500 ps से कोई पहचानने योग्य विंटेज या शुरुआती डिजिटल उपकरण जैसा चरित्र मिलने की उम्मीद न करें।
+- **सुनाई देने वाली रचनात्मक बनावट:** माइक्रोसेकंड के मान बढ़ाने पर खुरदरापन और समय की अस्थिरता अधिक स्पष्ट होती जाती है। RMS Jitter को धीरे-धीरे बढ़ाएं, क्योंकि ऊंची सेटिंग्स जल्दी ही बहुत तीव्र हो जाती हैं।
 
 ### पैरामीटर
-- **RMS Jitter** - समय विविधता की मात्रा को नियंत्रित करता है (1ps से 10ms)
-  - सूक्ष्म (1-10ps): धीमा विंटेज चरित्र
-  - मध्यम (10-100ps): क्लासिक CD प्लेयर अनुभव
-  - मज़बूत (100ps-1ms): रचनात्मक वॉबल प्रभाव
 
-### विभिन्न शैलियों के लिए अनुशंसित सेटिंग्स
+- **RMS Jitter** (1 ps से 10 ms) - समय में होने वाले अनियमित बदलाव का आकार तय करता है। स्लाइडर को दाईं ओर ले जाने पर लघुगणकीय पैमाने पर प्रभाव बढ़ता है।
 
-1. मुश्किल से महसूस होने वाला
-   - RMS Jitter: 1-5ps
-   - इसके लिए बिल्कुल सही: प्लेबैक को थोड़ा कम पूर्णतः डिजिटल महसूस कराना
+### डिस्प्ले को पढ़ना
 
-2. क्लासिक CD प्लेयर चरित्र
-   - RMS Jitter: 50-100ps
-   - इसके लिए बिल्कुल सही: प्रारंभिक डिजिटल प्लेबैक उपकरण की ध्वनि को दोहराना
+- स्लाइडर के पास दिखने वाला मान समय के बदलाव का RMS मान है। इसकी इकाई ps, ns, µs और ms के बीच अपने आप बदलती है।
 
-3. विंटेज DAT मशीन
-   - RMS Jitter: 200-500ps
-   - इसके लिए बिल्कुल सही: 90s डिजिटल रिकॉर्डिंग उपकरण चरित्र
+### शुरुआती मान
 
-4. घिसे-पिटे डिजिटल उपकरण
-   - RMS Jitter: 1-2ns (1000-2000ps)
-   - इसके लिए बिल्कुल सही: पुराने या खराब रूप से रखरखाव किए गए डिजिटल गियर की ध्वनि बनाना
+1. **क्लॉक का छोटा उतार-चढ़ाव**
+   - RMS Jitter: 100 ps
+   - बहुत छोटे और वास्तविक समय बदलाव की तुलना के लिए इसका उपयोग करें; सामान्यतः आवाज़ लगभग अपरिवर्तित सुनाई देगी।
 
-5. रचनात्मक डगमगाहट प्रभाव
-   - RMS Jitter: 10-100µs (0.01-0.1ms)
-   - इसके लिए बिल्कुल सही: प्रयोगात्मक प्रभाव और ध्यान देने योग्य पिच मॉड्यूलेशन
+2. **सुनाई देने वाली बनावट**
+   - RMS Jitter: 10 µs
+   - स्पष्ट रचनात्मक प्रभाव के शुरुआती मान के रूप में इसका उपयोग करें, फिर सुनकर समायोजित करें।
+
+3. **तीव्र प्रयोगात्मक प्रभाव**
+   - RMS Jitter: 100 µs
+   - स्पष्ट खुरदरापन और अस्थिरता के लिए इसका उपयोग करें; अगर आवाज़ बहुत अधिक बिखरने लगे तो मान घटाएं।
 
 ## SW Radio Simulator
 
@@ -754,7 +705,7 @@ SW Radio Simulator संगीत को एक मॉडल की गई श�
 
 #### Tuning
 
-- **Mode** (AM, USB या LSB) - चुनता है कि स्टेशन किस तरह प्रेषित और प्राप्त होता है। AM वही double-sideband प्रसारण है जिसे यह पूरा विवरण मानकर चलता है। USB और LSB carrier को दबाकर केवल एक sideband भेजते हैं, जैसा amateur और utility स्टेशन करते हैं, और receiver अपने ही beat-frequency oscillator के सापेक्ष ऑडियो पुनः प्राप्त करता है। Mode यह भी तय करता है कि कौन-से नियंत्रण लागू होंगे: BFO Offset केवल USB और LSB में और Detector तथा Detector RC केवल AM में काम करते हैं। जो नियंत्रण लागू नहीं होते वे निष्क्रिय दिखते हैं पर अपने मान बनाए रखते हैं। समान सेटिंग पर USB और LSB का स्तर AM के लगभग बराबर रहता है, और बचा हुआ अंतर कार्यक्रम के crest तथा उसमें मौजूद विरामों की मात्रा से तय होता है: सघन सामग्री AM से लगभग एक डेसिबल ऊपर मापी जाती है, जबकि बार-बार विराम वाली आवाज जैसी सामग्री कुछ डेसिबल तक ऊपर चली जाती है, क्योंकि विरामों के दौरान AGC पृष्ठभूमि को उठा देता है। असली receiver भी यही करता है: AGC IF passband के भीतर के स्तर को सामान्यीकृत करता है, और carrier दबे होने पर वह स्तर स्थिर carrier नहीं बल्कि कार्यक्रम स्वयं होता है, इसलिए gain कार्यक्रम के पीछे-पीछे चलता है और हर विराम पर ऊपर चढ़ जाता है।
+- **Mode** (AM, USB या LSB) - प्रसारण-जैसी AM ध्वनि या communication receiver की संकरी single-sideband ध्वनि चुनता है। BFO Offset केवल USB और LSB में काम करता है; Detector और Detector RC केवल AM में काम करते हैं। निष्क्रिय controls अपने मान बनाए रखते हैं।
 - **Tuning** (-5.0 से +5.0 kHz) - रिसीवर को स्टेशन से हटाता है; धनात्मक मान रिसीवर को स्टेशन से ऊँची आवृत्ति पर और ऋणात्मक मान नीची आवृत्ति पर tune करते हैं। छोटी offset ध्वनि को मंद करती है, असममित filtering से distortion बढ़ाती है और heterodyne सीटी की तीव्रता भी बदलती है; बड़ी offset पर स्टेशन संकरे IF passband से बाहर चला जाता है। ऊँची ओर tune करने पर USB का पुनः प्राप्त ऑडियो नीचे और LSB का ऊपर खिसकता है; नीची ओर tune करने पर दिशाएँ उलट जाती हैं।
 - **BFO Offset** (-1000 से +1000 Hz) - USB और LSB में beat-frequency oscillator को महीन रूप से समायोजित करता है; AM में इसका कोई प्रभाव नहीं। Tuning के साथ मिलकर यह receiver द्वारा पुनः प्राप्त हर घटक का frequency shift तय करता है। Hertz में receiver की कुल offset Tuning × 1000 + BFO Offset है: USB में इसे हर घटक से घटाया जाता है और LSB में हर घटक में जोड़ा जाता है। शून्य का अर्थ ठीक आवृत्ति पर होना है, कुछ दस hertz पर ही ध्वनि नाक से बोली जैसी हो जाती है, और बड़े मान उसे उसी तरह अबूझ बना देते हैं जैसे कोई बेतरतीब tuned receiver करता है।
 - **IF Bandwidth** (2.0 से 10.0 kHz) - रिसीवर का IF passband तय करता है। संकरी सेटिंग communications receiver जैसी है जो noise और उसी चैनल के स्टेशन को अधिक रोकती है लेकिन treble भी अधिक हटाती है; चौड़ी सेटिंग अधिक विवरण के साथ अधिक interference भी रखती है। पुनः प्राप्त ऑडियो हर Mode में इस सेटिंग के आधे तक पहुंचता है — डिफ़ॉल्ट 6 kHz पर लगभग 3 kHz तक; USB और LSB में केवल एक ही sideband होता है, इसलिए passband का दूसरा आधा हिस्सा केवल noise और interference गुजरने देता है। Mode बदलने पर यह नियंत्रण अपने आप नहीं बदलता; अधिक संकरी communications ध्वनि के लिए इसे स्वयं घटाएं।
@@ -816,70 +767,68 @@ SW Radio Simulator संगीत को एक मॉडल की गई श�
    - Single-sideband स्टेशन से शुरू करें और BFO Offset: -150 Hz करें
    - हर घटक 150 Hz ऊपर खिसक जाता है, इसलिए harmonics की पंक्ति बिगड़ जाती है और आवाजें तथा वाद्य नाक से बोली जैसे और बेसुरे हो जाते हैं। उसी सेटिंग पर Mode को LSB करें तो सब कुछ इसके बजाय 150 Hz नीचे खिसकेगा; अधिक मोटे offset के लिए Tuning का उपयोग करें।
 
-### मॉडल संबंधी टिप्पणियां
-
-यह effect पहली stereo जोड़ी को एक ही mono प्रेषण के रूप में संसाधित करता है, ठीक जैसे वास्तविक शॉर्टवेव करता है, और प्राप्त signal हमेशा mono रहता है। उसी चैनल पर केवल एक बाधक स्टेशन model किया गया है, और उसका कार्यक्रम भाषण या संगीत नहीं बल्कि shaped noise है। USB और LSB दबे हुए carrier वाले single-sideband signal के reception को model करते हैं; sideband का चयन transmitter पर होता है, इसलिए receiver अपनी ओर से विपरीत sideband का दमन नहीं जोड़ता, और CW तथा data modes model नहीं किए गए हैं। वास्तविक बैंड परिस्थितियां — दिन-रात के अनुसार propagation में बदलाव और विशिष्ट प्रसारण बैंड — भी इस model के दायरे से बाहर हैं; जो स्थिति चाहिए उसे Signal, Fading और अन्य propagation नियंत्रणों से सेट करें।
 
 ## Tape Artifacts
 
-Tape Artifacts संगीत को मॉडल की गई एनालॉग reel-to-reel टेप मशीन पर रिकॉर्ड करता है और फिर वापस चलाता है। सिग्नल रिकॉर्ड amplifier और उसके द्वारा टेप पर अंकित ऊंची आवृत्तियों के उभार, टेप के अपने चुंबकीय saturation, रिकॉर्ड bias से होने वाले ऊंची आवृत्तियों के मिटाव, प्लेबैक head के wavelength loss, transport के wow और flutter, निचली आवृत्तियों के head bump, और उसी उभार को ठीक उतना ही वापस हटाने वाले प्लेबैक curve से गुजरता है; अंत में टेप hiss और modulation noise जुड़ते हैं। जब आप चाहते हैं कि संगीत ऊपर से शोर या कंपन जोड़ने के बजाय सचमुच टेप मशीन से गुज़रा हुआ लगे, तब इसका उपयोग करें।
+Tape Artifacts संगीत को analog reel-to-reel tape machine से गुज़रे हुए जैसा बनाता है। यह हल्की compression, गर्माहट, नरम treble, hiss और transport movement को एक साथ जोड़ता है। केवल शोर या wobble की परत के बजाय पूरी tape-machine ध्वनि चाहिए, तब इसका उपयोग करें।
 
 ### अन्य Lo-Fi effects से अंतर
 
-- **Tape Artifacts** संगीत को ही बदलता है। हल्की compression, जुड़ती हुई गर्माहट, नरम पड़ती ऊंची आवृत्तियां और pitch का हल्का बहाव — सब एक ही रिकॉर्ड और प्लेबैक शृंखला से आते हैं, इसलिए ये सब Speed, Tape, Bias और Record Level पर एक साथ प्रतिक्रिया देते हैं।
+- **Tape Artifacts** संगीत को ही बदलता है। Compression, गर्माहट, नरम treble और pitch wobble, Speed, Tape, Bias तथा Record Level के साथ मिलकर बदलते हैं।
 - **Wow Flutter** (Modulation) केवल transport की गति के उतार-चढ़ाव को दोहराता है। जब आपको टेप saturation, टेप equalization और hiss के बिना सिर्फ कंपन चाहिए, तब इसे चुनें।
 - **Saturation** और **Hard Clipping** केवल non-linearity जोड़ते हैं, टेप मशीन के आवृत्ति-निर्भर व्यवहार और transport के बिना।
-- **Noise Blender** और **Hum Generator** संगीत को बदले बिना शोर या hum की परत ऊपर जोड़ते हैं। यहां hiss और modulation noise मशीन के सही स्थान पर बनते हैं, इसलिए वे असली टेप शोर की तरह Speed और Tape के साथ बदलते हैं।
+- **Noise Blender** और **Hum Generator** मूल संगीत पर noise या hum की परत जोड़ते हैं; वे tape tone और dynamics नहीं बदलते।
 
 ### ध्वनि चरित्र गाइड
 
-- **Speed मूल टोन तय करता है:** 30 ips सबसे खुला है, 15 ips जानी-पहचानी स्टूडियो ध्वनि है, और 7.5 ips स्पष्ट रूप से अधिक गहरा है, जिसमें निचली आवृत्तियों का उभार भी अधिक है। शोर सीधे-सीधे गति का अनुसरण नहीं करता: बिना सिग्नल के hiss floor 15 ips पर सबसे ऊंचा और 30 ips पर सबसे नीचा होता है, जबकि संगीत के साथ चलने वाला modulation noise 7.5 ips पर सबसे तेज़ होता है।
-- **हल्की level compression:** Record Level जितना ऊंचा रखेंगे, टेप उतना ही पहले — साफ़ सुनाई देने वाली distortion से पहले ही — peaks को गोल कर देता है, इसलिए तेज़ हिस्से स्पष्ट रूप से clip होने के बजाय अधिक सघन और स्थिर हो जाते हैं। डिफ़ॉल्ट +6.0 dB और संदर्भ 0.0 dB Bias पर full-scale 1 kHz tone 0.49% distortion के साथ 0.17 dB गोल होकर निकलता है — अपने सामान्य कार्य स्तर पर चल रही मशीन, न कि कोई साफ़ digital रास्ता। यह मात्रा वहां से सहजता से बढ़ती है: +12.0 dB पर 0.68 dB और 2.0%, तथा शीर्ष +18.0 dB पर 2.49 dB और 6.8%। डिफ़ॉल्ट पर इससे बड़ा जो भी level परिवर्तन दिखे वह compression से नहीं बल्कि टोन बदलने से आता है, और वह material के अनुसार दोनों दिशाओं में जाता है: भारी निचली आवृत्तियों वाला संगीत लगभग 1 dB तेज़ और ऊंची आवृत्तियों से भरा material लगभग 1 dB धीमा निकल सकता है।
+- **Speed मूल tone तय करता है:** 30 ips सबसे खुला, 15 ips परिचित studio sound और 7.5 ips अधिक गहरा है, जिसमें bass lift और movement अधिक हैं।
+- **हल्की compression:** Record Level बढ़ाने पर तेज़ हिस्से सघन और गर्म होते हैं। अधिक साफ़ और dynamic sound के लिए इसे घटाएं, फिर Output से आवाज़ बराबर करें।
 - **गर्माहट:** saturation असममित है, इसलिए यह सम और विषम दोनों harmonics बनाता है और गर्माहट Record Level बढ़ने के साथ अचानक आने के बजाय धीरे-धीरे बढ़ती है।
-- **लंबे स्वरों पर transport सुनाई देता है:** धीमा wow और तेज़ flutter piano, organ और strings के लंबे स्वरों को बहुत हल्का बहा देते हैं (डिफ़ॉल्ट Wow/Flutter और Speed पर setting जो विचलन बताती है वह 0.160%)। टेप को डिजिटल फ़ाइल से सबसे साफ़ यही अलग करता है।
-- **जीवंत पृष्ठभूमि:** सामान्य settings पर hiss और संगीत के साथ चलने वाला modulation noise ध्वनि का हिस्सा होते हैं। hiss टेप पर है, इसलिए output पर वह कितना मापा जाता है इसे Record Level एक decibel के बदले एक decibel खिसकाता है। पूरी तरह शांत पृष्ठभूमि चाहिए तो Hiss को -89.0 dB re 320 nWb/m तक नीचे कर दें।
+- **लंबे स्वरों पर transport सुनाई देता है:** Wow/Flutter piano, organ, strings और दूसरे sustained sounds में pitch drift और shimmer जोड़ता है।
+- **जीवंत पृष्ठभूमि:** Hiss स्थिर tape noise और संगीत के साथ बदलने वाला noise दोनों जोड़ता है। कोई अतिरिक्त tape noise नहीं चाहिए तो इसे न्यूनतम मान पर रखें।
 
 ### पैरामीटर
 
-- **Speed** (7.5 / 15 / 30 ips) - टेप की गति चुनता है। अधिक गति ऊंची आवृत्तियों को बढ़ाती है और निचली आवृत्तियों के head bump को ऊंची आवृत्ति की ओर ले जाकर छोटा करती है: 7.5 ips पर 41 Hz पर +1.4 dB, 15 ips पर 80 Hz पर +0.8 dB, 30 ips पर 159 Hz पर +0.4 dB। wow और flutter तेज़ भी होते हैं और उथले भी: Wow/Flutter 15 ips पर weighted विचलन बताता है और गति उसे 7.5 ips पर 1.5 गुना तथा 30 ips पर 0.75 गुना कर देती है, इसलिए संदर्भ मशीन 15 ips के लिए जो 0.04% प्रकाशित करती है, वह बाकी दोनों गतियों पर वही 0.06% और 0.03% देता है जो वह उनके लिए प्रकाशित करती है। शोर गति के साथ एक ही दिशा में नहीं चलता: hiss floor 15 ips पर सबसे ऊंचा और 30 ips पर सबसे नीचा है, जबकि संगीत के साथ चलने वाला modulation noise 7.5 ips पर सबसे तेज़ है। 15 ips सामान्य स्टूडियो setting है, 7.5 ips सबसे गहरा है, और 30 ips मूल ध्वनि के सबसे करीब है। Wow/Flutter और Hiss दोनों संदर्भ 15 ips के लिए दिए गए हैं, और चुने हुए Speed, Tape तथा Record Level पर उनमें से हर एक कितना बनता है यह, Record Level की अपनी परिपाटी के साथ, effect की अंतिम पंक्ति में दिखता है।
-- **Tape** (Standard / Master) - टेप का प्रकार चुनता है। Master की coating मोटी है और saturation से पहले लगभग 3 dB अधिक headroom है, इसलिए यह अधिक देर तक साफ़ रहती है और इसका ऊपरी सिरा थोड़ा नरम होता है। नीची Record Level settings पर दोनों का स्तर लगभग बराबर रहता है (डिफ़ॉल्ट पर 0.08 dB का अंतर), पर Record Level जितना ऊंचा रखेंगे उतना ही Master तेज़ बनी रहती है: +12.0 dB पर 0.34 dB और +18.0 dB पर 1.16 dB का अंतर — ठीक इसीलिए कि वह देर से saturate होती है; इसलिए तुलना करते समय Output से आवाज़ बराबर करें।
-- **Bias** (-6.0 से +6.0 dB) - रिकॉर्डिंग bias तय करता है। 0 dB सही ढंग से align की गई मशीन है, और यही वह बिंदु है जहां निर्माता की अपनी bias समायोजन प्रक्रिया पहुंचती है: कार्य स्तर से 20 dB नीचे 10 kHz रिकॉर्ड करें, संवेदनशीलता वक्र का शिखर खोजें, फिर bias तब तक बढ़ाएं जब तक प्लेबैक स्तर प्रकाशित मात्रा जितना न गिर जाए — Standard टेप पर यह मात्रा 30 ips पर 1.5 dB, 15 ips पर 4.0 dB और 7.5 ips पर 5.0 dB है। Master टेप केवल 7.5 ips पर अलग है, जहां यह 6.5 dB है। अधिक (over-bias) settings साफ़ और अधिक गहरी होती हैं। कम (under-bias) settings गलत align किए गए deck की तरह अधिक चमकीली और अधिक distorted होती हैं, पर चमक उसी शिखर तक बढ़ती है, जो Standard टेप पर 30 ips पर लगभग -2.7 dB, 15 ips पर लगभग -4.5 dB और 7.5 ips पर लगभग -5.0 dB, तथा Master पर 7.5 ips में लगभग -5.7 dB पर है। उससे नीचे distortion बढ़ती रहती है जबकि ऊंची आवृत्तियां फिर से गहरी पड़ जाती हैं। चमक कितनी बढ़ती है यह गति जितना ही आवृत्ति पर भी निर्भर करता है: 30 ips पर शिखर 10 kHz पर 1.5 dB देता है पर 16 kHz पर 2.9 dB, और -6.0 dB पर ऊपरी सिरा 0 dB की तुलना में पहले ही अधिक गहरा हो चुका होता है — 10 kHz पर 0.2 dB और 16 kHz पर 0.5 dB।
-- **Record Level** (-12.0 से +18.0 dB) - तय करता है कि मशीन कितने ज़ोर से रिकॉर्ड करती है। यह संख्या वह टेप स्तर है जहां 0 dBFS का peak पहुंचता है, 320 nWb/m के संदर्भ flux से dB ऊपर के रूप में, और status line इसी परिपाटी को बताती है। यह नियंत्रण स्वयं कोई gain नहीं जोड़ता: जब तक टेप संतृप्त नहीं होता, वही संकेत हर Record Level setting पर उसी स्तर पर निकलता है। यह स्तर ठीक इकाई नहीं है — यह उससे 0.05 dB के भीतर रहता है, 30 ips पर थोड़ा ऊपर और 7.5 ips पर थोड़ा नीचे — पर Record Level के साथ यह हिलता नहीं। डिफ़ॉल्ट +6.0 dB अपने सामान्य कार्य स्तर पर चल रही मशीन है, जहां full-scale 1 kHz tone 0.49% distort करता है; +12.0 dB पर यह 2.0% और शीर्ष +18.0 dB पर 6.8% देता है, और टेप की compression तथा गर्माहट इसी तरह मिलती है। peaks का चपटा होना टेप से आता है, नियंत्रण द्वारा कुछ भी घटाने से नहीं, इसलिए टेप जितने ज़ोर से चलेगा परिणाम उतना ही धीमा होगा, और आवाज़ वापस लाने के लिए Output है। यह पृष्ठभूमि को भी उल्टी दिशा में हर decibel के बदले एक decibel खिसकाता है, क्योंकि hiss टेप पर रिकॉर्ड होता है और अब टेप peak से उतना ही नीचे है।
-- **Wow/Flutter** (0 से 1%) - transport के गति-उतार-चढ़ाव को 15 ips पर DIN 45507 peak weighted विचलन के प्रतिशत के रूप में तय करता है। 0% पूरी तरह स्थिर मशीन है। 0.04% वही सहनसीमा है जो संदर्भ स्टूडियो मशीन उस गति के लिए प्रकाशित करती है, और इसे रखने पर वही मशीन 7.5 ips के लिए जो 0.06% और 30 ips के लिए जो 0.03% प्रकाशित करती है वही मिलता है। डिफ़ॉल्ट 0.160% इस सहनसीमा का चार गुना है; इससे अधिक मान घिसे हुए deck जैसा सुनाई देने वाला बहाव और झिलमिलाहट देते हैं, 7.5 ips पर 1.5% तक।
-- **Hiss** (-89.0 से -39.0 dB re 320 nWb/m) - टेप hiss और modulation noise दोनों का स्तर एक साथ तय करता है, Standard टेप पर 15 ips के A-weighted hiss flux के रूप में, 320 nWb/m के संदर्भ के सापेक्ष। यह output पर का कोई स्तर नहीं बल्कि टेप का अपना datasheet आंकड़ा है: शोर टेप पर रिकॉर्ड होता है, इसलिए output पर वह कितना मापा जाएगा यह Record Level पर निर्भर करता है। -89.0 dB re 320 nWb/m पर दोनों पूरी तरह बंद हो जाते हैं। डिफ़ॉल्ट -62.5 dB re 320 nWb/m वह bias noise है जो निर्माता उस टेप के लिए उस गति पर प्रकाशित करता है; बाकी गतियां और Master टेप उससे उतना ही हटती हैं जितना datasheet बताती है, इसलिए उस डिफ़ॉल्ट पर और Record Level +6.0 dB पर छह संयोजन -68.0 से -72.0 dBFS के बीच रहते हैं, और दोनों नियंत्रणों के साथ पूरा समूह खिसकता है। ये सभी Output से पहले हैं, इसलिए Output के बाद लगाया गया meter इन्हें Output जितना ऊपर उठा हुआ पढ़ता है। यह floor वह है जो खाली जगहों में सुनाई देता है; संगीत बजते समय यह नियंत्रण मुख्यतः सिग्नल के साथ चलने वाला modulation noise जोड़ता है, जो Standard टेप पर 15 ips पर स्थिर tone से लगभग 57 dB नीचे रहता है, और अन्य Speed तथा Tape संयोजनों पर और असली material पर कुछ dB ऊपर-नीचे होता है। अधिक मान पृष्ठभूमि को अधिक स्पष्ट बनाते हैं।
-- **Output** (-24.0 से +24.0 dB) - पूरी शृंखला के बाद स्तर समायोजित करता है। यह bypass से तुलना करते समय आवाज़ मिलाने के लिए है, या ऊंची Record Level setting से घटी आवाज़ वापस लाने के लिए।
-- **Mix** (0 से 100%) - टेप सिग्नल को मूल सिग्नल के साथ मिलाता है। 100% पूरी टेप प्लेबैक है। dry सिग्नल को टेप पथ के साथ delay-aligned किया गया है, इसलिए मध्य आवृत्तियां साफ़-सुथरी मिलती हैं — संदर्भ 0.0 dB Bias पर Mix की किसी भी स्थिति और किसी भी गति पर 1 kHz इकाई से 0.1 dB के भीतर रहता है, और पूरी Bias रेंज में कहीं भी 0.5 dB के भीतर — पर सबसे ऊपरी octave नहीं, क्योंकि वहां dry और टेप की phase मेल नहीं खाती और वे आंशिक रूप से एक-दूसरे को काटते हैं। 50% पर 16 kHz का स्तर 44.1 kHz host पर 1.7 dB, 48 kHz पर 2.1 dB, 96 kHz पर 4.6 dB और 192 kHz पर 5.7 dB नीचे आता है, और 96 या 192 kHz host पर नियंत्रण का सबसे गहरा बिंदु 100% नहीं बल्कि लगभग 70% है। 44.1 kHz host पर यह ऊपर बढ़ाने के साथ केवल गहरा ही होता जाता है, और 48 kHz host पर सबसे गहरा बिंदु 89% है, जो 100% से 0.06 dB नीचे है; दोनों ही में नियंत्रण का मध्य भाग सबसे ऊपरी सिरे पर 100% से अधिक चमकीला होता है। 0% पर input बिल्कुल अपरिवर्तित निकलता है और effect कोई latency नहीं जोड़ता; किसी भी अन्य setting पर यह 44.1 kHz host पर 5.26 ms और 192 kHz host पर 5.06 ms जोड़ता है।
+- **Speed** (7.5 / 15 / 30 ips) - tape speed चुनता है। 15 ips से शुरू करें; सबसे साफ़ और खुली ध्वनि के लिए 30 ips या गहरे tone, अधिक bass lift और movement के लिए 7.5 ips चुनें।
+- **Tape** (Standard / Master) - tape formulation चुनता है। Standard से शुरू करें; यह पहले saturate होता है। Master में अधिक headroom है और ऊंचे Record Level पर अधिक साफ़ रहता है। तुलना करते समय Output से आवाज़ बराबर करें।
+- **Bias** (-6.0 से +6.0 dB) - treble और distortion बदलता है। 0 dB से शुरू करें। Positive मान साफ़ और गहरे, moderately negative मान चमकीले और खुरदरे होते हैं। बहुत अधिक negative मान चमक बढ़ाए बिना distortion बढ़ाता है।
+- **Record Level** (-12.0 से +18.0 dB) - tape drive नियंत्रित करता है। +6 dB से शुरू करें; अधिक compression और warmth के लिए बढ़ाएं, साफ़ dynamics के लिए घटाएं। Output से loudness बराबर करें।
+- **Wow/Flutter** (0 से 1%) - transport से होने वाला pitch movement नियंत्रित करता है। 0.160% से शुरू करें; 0% पूरी तरह स्थिर है। Sustained notes सुनते हुए मनचाहा drift और shimmer मिलने तक बढ़ाएं।
+- **Hiss** (-89.0 से -39.0 dB re 320 nWb/m) - tape hiss और संगीत के साथ बदलने वाला noise नियंत्रित करता है। -62.5 dB से शुरू करें; अधिक स्पष्ट tape background के लिए बढ़ाएं या noise layer बंद करने के लिए न्यूनतम मान चुनें।
+- **Output** (-24.0 से +24.0 dB) - पूरी chain के बाद level बदलता है। 0 dB से शुरू करें और bypass से तुलना या ऊंचे Record Level से घटी आवाज़ वापस लाने के लिए समायोजित करें।
+- **Mix** (0 से 100%) - tape sound को मूल signal में मिलाता है। पूरे प्रभाव के लिए 100% से शुरू करें और हल्की रंगत के लिए घटाएं। बीच के मानों पर partial cancellation से सबसे ऊंची frequencies नरम हो सकती हैं।
+
+### Status line को पढ़ना
+
+Controls के नीचे की पंक्ति चुनी गई Speed, Tape, Record Level, Wow/Flutter और Hiss के लिए प्रभावी movement तथा background-noise level दिखाती है। Settings की तुलना के लिए इसे देखें। `off` का अर्थ है कि tape-noise layer बंद है।
 
 ### सुझाई गई सेटिंग
 
 1. **स्टूडियो मास्टर टेप (डिफ़ॉल्ट)**
    - Speed: 15 ips, Tape: Standard, Bias: 0.0 dB, Record Level: +6.0 dB
    - Wow/Flutter: 0.160%, Hiss: -62.5 dB re 320 nWb/m, Output: 0.0 dB, Mix: 100%
-   - रोज़मर्रा की टेप ध्वनि, और plugin का अपना डिफ़ॉल्ट भी: 16 kHz पर ऊपरी सिरा 3.5 dB नरम, 80 Hz के आसपास 0.8 dB का उभार, full-scale tone पर 0.49% distortion और 0.17 dB की गोलाई, -68.5 dBFS की पृष्ठभूमि, और 0.160% wow व flutter — लंबे स्वरों पर सुनाई देता है, transients पर नहीं।
+   - नरम treble, हल्की warmth, थोड़ी hiss और sustained notes पर सुनाई देने वाले movement के साथ संतुलित reel-to-reel sound।
 
 2. **तेज़ गति पर साफ़ transfer**
    - Speed: 30 ips, Tape: Master, Bias: 0.0 dB, Record Level: 0.0 dB
    - Wow/Flutter: 0.070%, Hiss: -68.5 dB re 320 nWb/m, Output: 0.0 dB, Mix: 100%
-   - मूल ध्वनि के बहुत करीब: full-scale tone पर 0.07% distortion और 0.02 dB की गोलाई, 16 kHz पर 2.2 dB की कमी, -72.0 dBFS की पृष्ठभूमि — यानी -68.5 dB re 320 nWb/m का Base मान इस Record Level पर 30 ips और Master टेप के साथ जो बन जाता है — और 0.053% wow व flutter। टेप डिफ़ॉल्ट से 6 dB नीचे रिकॉर्ड किया गया है, और इसी से यह इतना साफ़ रहता है। बाकी settings की तुलना करते समय संदर्भ बिंदु के रूप में उपयोगी।
+   - सबसे साफ़ preset, जिसे अधिक tape coloration वाली settings से तुलना के लिए reference की तरह उपयोग किया जा सकता है।
 
 3. **गर्म और सघन**
    - Speed: 15 ips, Tape: Standard, Bias: 0.0 dB, Record Level: +18.0 dB
    - Wow/Flutter: 0.200%, Hiss: -62.5 dB re 320 nWb/m, Output: +1.5 dB, Mix: 100%
-   - टेप डिफ़ॉल्ट से 12 dB ऊपर, रेंज के शीर्ष पर रिकॉर्ड किया गया है: full-scale tone 6.8% distortion के साथ 2.49 dB गोल होकर निकलता है, इसलिए mix अधिक सघन और गर्म हो जाता है जबकि peaks चपटे पड़ते हैं। साथ ही पृष्ठभूमि गिरकर -80.5 dBFS हो जाती है, क्योंकि hiss टेप पर है और टेप अब उतना ही ऊपर बैठा है। compression आवाज़ की कीमत लेती है, इसलिए Output नीचे नहीं बल्कि ऊपर जाता है; अंत में कान से समायोजित करें।
+   - चपटे peaks के साथ घनी और गर्म tape compression। Drive तय करने के बाद Output को कान से fine-tune करें।
 
 4. **7.5 ips पर घरेलू deck**
    - Speed: 7.5 ips, Tape: Standard, Bias: +2.0 dB, Record Level: +12.0 dB
    - Wow/Flutter: 0.300%, Hiss: -59.5 dB re 320 nWb/m, Output: +0.5 dB, Mix: 100%
-   - अधिक गहरा (16 kHz पर 10.2 dB की कमी, 50 Hz पर 1.4 dB का उभार) और अधिक शोर भरा (पृष्ठभूमि -72.5 dBFS, यानी टेप की अपनी -73.0 dBFS floor में इसका +0.5 dB Output जुड़कर), और कम स्थिर (0.450% wow व flutter), full-scale tone पर 1.3% distortion। bias थोड़ा ऊंचा रखा गया है, जैसा सामान्य टेप चलाने वाले घरेलू deck में प्रायः होता है — स्टूडियो मशीन नहीं, बल्कि एक साधारण मशीन।
+   - मध्यम saturation के साथ अधिक गहरा, noisy और कम स्थिर घरेलू-machine sound।
 
 5. **घिसा हुआ transport**
    - Speed: 7.5 ips, Tape: Standard, Bias: -2.0 dB, Record Level: +15.0 dB
    - Wow/Flutter: 0.480%, Hiss: -56.5 dB re 320 nWb/m, Output: +1.0 dB, Mix: 100%
-   - 0.720% wow व flutter, full-scale tone पर 5.2% distortion और 1.80 dB की गोलाई, और -72.0 dBFS की पृष्ठभूमि — टेप की अपनी -73.0 dBFS floor में इसका +1.0 dB Output जुड़कर — साथ में under-bias मशीन जैसा खुरदरा, आगे निकला हुआ ऊपरी सिरा, जो 16 kHz पर केवल 4.4 dB नीचे है जबकि इसी गति पर align की गई मशीन 7.2 dB नीचे रहती है। आवाज़ वापस लाने के लिए Output बढ़ाना पड़ता है। जानबूझकर बिगाड़ा गया lo-fi प्रभाव।
+   - तेज़ pitch movement, grit, compression और hiss वाला जानबूझकर degraded sound।
 
-### मॉडल संबंधी टिप्पणियां
-
-यह effect सही ढंग से align की गई मशीन पर एक बार की रिकॉर्डिंग और प्लेबैक को मॉडल करता है। Equalization NAB जैसे किसी प्रकाशित मानक का पालन नहीं करता; इसके बजाय हर गति पर रिकॉर्ड पक्ष टेप से पहले ऊंची आवृत्तियां उभारता है और प्लेबैक पक्ष ठीक उतना ही उभार वापस हटा देता है। Print-through, टेप dropouts, azimuth त्रुटि, splice noise और मशीन-विशिष्ट equalization मानक इस मॉडल के बाहर हैं। टेप पथ में transport और प्रोसेसिंग का विलंब 44.1 से 192 kHz तक के hosts पर 5.06 से 5.26 ms होता है। ऊपर दिए गए टोन के आंकड़े 96 kHz host पर संदर्भ 0.0 dB Bias के साथ मापे गए हैं; सबसे ऊपरी सिरा host की sample rate पर निर्भर करता है, इसलिए डिफ़ॉल्ट का 16 kHz पर 3.5 dB, 44.1 या 48 kHz पर 2.7 dB हो जाता है।
 
 ## Vinyl Artifacts
 
@@ -989,7 +938,7 @@ Vinyl Simulator भौतिक record-cutting और stylus-playback मॉड�
 ### Vinyl Artifacts से अंतर
 
 - **Vinyl Simulator** signal को model किए गए groove और stylus से गुजारता है। Roughness, Dust, Static, Tracking Force, stylus shape, Speed और Radius सभी परिणाम में भाग लेते हैं।
-- **Vinyl Artifacts** संगीत signal को नहीं बदलता; वह pops, crackle, hiss, rumble और stereo noise bleed जोड़ता है। हल्की, predictable noise layer या WASM न मिलने पर इसे चुनें।
+- **Vinyl Artifacts** संगीत signal को नहीं बदलता; वह pops, crackle, hiss, rumble और stereo noise bleed जोड़ता है। हल्की और predictable noise layer चाहिए तो इसे चुनें।
 - दोनों साथ चल सकते हैं, लेकिन दोनों में surface settings तेज रखने से clicks और noise जल्दी बढ़ते हैं।
 
 ### ध्वनि सुधार मार्गदर्शिका
@@ -1021,7 +970,7 @@ Vinyl Simulator भौतिक record-cutting और stylus-playback मॉड�
 
 #### Stylus
 
-- **Shape** (Spherical या Elliptical) — contact geometry। Spherical में Scan Radius, Side Radius के साथ चलता है। बदलने पर simulation state फिर बनती है।
+- **Shape** (Spherical या Elliptical) — Stylus के contact shape को चुनता है। Elliptical बारीक groove detail को अधिक करीब से follow करता है; Spherical अधिक गोल और सहज contact देता है।
 - **Side Radius** (5 से 25 µm) — groove wall के आर-पार stylus radius; contact area और pressure distribution बदलता है।
 - **Scan Radius** (2 से 25 µm) — groove travel की दिशा का radius। छोटा value fine geometry follow करता है; बड़ा व्यापक contact पर average करता है।
 - **Tracking Force** (0.5 से 5.0 g) — downward stylus force। थोड़ा अधिक contact स्थिर कर सकता है, पर force और pressure बढ़ाता है; बहुत कम होने पर mistrack और skip बढ़ सकते हैं।
@@ -1031,7 +980,7 @@ Vinyl Simulator भौतिक record-cutting और stylus-playback मॉड�
 
 #### Output
 
-- **Quality** (Eco, Standard, High या Ultra) — physical integration के base substeps और contact scan points चुनता है। Contact resonance को stable रखने के लिए engine, sample rate, Tracking Force, Tip Mass, Compliance, Shape, Side Radius और Scan Radius के अनुसार effective substeps को base से ऊपर अपने-आप बढ़ा सकता है। Real-time default Standard है; बदलने पर simulation state फिर बनती है।
+- **Quality** (Eco, Standard, High या Ultra) — groove-tracing detail और CPU उपयोग के बीच संतुलन चुनता है। सामान्य real-time listening के लिए Standard से शुरू करें।
 - **Output Gain** (-24 से +24 dB) — RIAA playback EQ और normalization के बाद का level।
 - **Mix** (0 से 100%) — simulated playback और latency-aligned dry signal का blend। 0% dry, 100% पूरा simulated है।
 
@@ -1044,7 +993,7 @@ Vinyl Simulator भौतिक record-cutting और stylus-playback मॉड�
 - **Jitter (ns):** groove read point का timing variation, Stylus view में दिखता है।
 - **Mistrack, Skip, Static Pop और Dust Hit (/s):** हाल की event rates; नई event पर flash होता है। बार-बार event आए तो Cut Level घटाएँ, Tracking Force थोड़ा बढ़ाएँ, Radius या Quality बढ़ाएँ।
 
-Native DSP telemetry मिलने पर HUD सक्रिय होता है। Playback रुका हो या power saving के लिए telemetry बंद हो तो idle state दिख सकती है।
+Playback के दौरान HUD अपने मान update करता है और playback रुकने पर idle state दिखा सकता है।
 
 ### अनुशंसित सेटिंग्स
 
@@ -1053,25 +1002,12 @@ Native DSP telemetry मिलने पर HUD सक्रिय होता 
 3. **Inner-groove demo:** Cut Level +3 dB, HF Cutoff 14 kHz, Radius 60 mm, Elliptical, Scan Radius 8 µm, Tracking Force 2.0 g, High, Mix 100%; बड़े Radius से Tracking S/E की तुलना करें।
 4. **घिसी surface:** Radius 100 mm, Roughness 35 nm, Dust 25/s, Static 1/s, Scratch 0.5/s, Tracking Force 2.2 g, Standard, Output Gain -3 dB, Mix 100%।
 
-### Quality और CPU load
+### Quality और CPU गाइड
 
-हर Quality preset base substeps और contact points तय करता है। Stability के लिए engine `Nmin = ceil(8 × f_c / sampleRate)` भी निकालता है, जहाँ contact-resonance frequency `f_c`, Tracking Force, Tip Mass, Compliance, Shape, Side Radius और Scan Radius से तय होती है; फिर `effectiveSubsteps = max(base, Nmin)` इस्तेमाल होता है। Default settings पर 96 kHz Standard अपने base 4 substeps पर ही रहता है, इसलिए मौजूदा performance target नहीं बदलता।
-
-मुख्य load sample rate × effective substeps × contact points के समानुपाती है। नीचे contact evaluations और relative load तब के base estimates हैं जब stability floor substeps नहीं बढ़ाता; ये measured CPU percentages नहीं हैं। Processor, browser और WASM SIMD भी वास्तविक load बदलते हैं।
-
-| Quality | Base physical detail | 96 kHz पर base evaluations | Base relative load | उपयोग |
-|---|---:|---:|---:|---|
-| Eco | 2 × 7 | 2.7 million/s | 0.39× | Mobile, low-power, कई instances |
-| Standard | 4 × 9 | 6.9 million/s | 1.00× | सामान्य real-time listening |
-| High | 8 × 13 | 20 million/s | 2.89× | तेज systems, focused comparison |
-| Ultra | 20 × 25 | 96 million/s | 13.89× | Offline rendering और verification |
-
-Stability floor inactive हो तो base relative load पर ये sample-rate multipliers लगाएँ: 44.1 kHz = 0.46×, 48 = 0.50×, 88.2 = 0.92×, 96 = 1.00×, 176.4 = 1.84× और 192 = 2.00×। Sample rate और Tracking Force, Tip Mass, Compliance, Shape, Side Radius तथा Scan Radius settings floor को सक्रिय करके वास्तविक load को base estimate से ऊपर ले जा सकती हैं। Playback टूटे तो पहले Quality घटाएँ।
-
-### WASM आवश्यकता और मॉडल की सीमाएँ
-
-Vinyl Simulator के real-time processing के लिए native WebAssembly DSP kernel जरूरी है। `?dsp=off` से WASM बंद हो, environment असमर्थ हो या initialization fail हो तो input बिना बदलाव pass होता है और UI बताता है कि WASM जरूरी है। बहुत धीमी JavaScript reference simulation को fallback के रूप में नहीं चलाया जाता।
-
-Model पहले stereo pair को process करता है। Dust deformation केवल particle के active रहने तक बचती है और stylus हमेशा नए generated groove पर आगे बढ़ता है; wear अगले revolutions तक जमा नहीं होता और presets में save नहीं होता। Long-term wear, 3D visualization, real-time SNR/THD meters, wow/flutter, eccentricity, warping, turntable rumble और cartridge electrical loading model के बाहर हैं।
+- **Eco** सबसे कम CPU उपयोग करता है और कम शक्तिशाली devices के लिए पहला विकल्प है।
+- **Standard** सामान्य real-time listening का अनुशंसित starting point है।
+- **High** काफी अधिक CPU लेकर groove tracking सुधारता है।
+- **Ultra** बहुत भारी है और real-time listening में शायद ही उपयोगी हो।
+- Playback टूटे तो Quality घटाएँ।
 
 याद रखें: ये प्रभाव आपके संगीत में चरित्र और नॉस्टैल्जिया जोड़ने के लिए हैं। सूक्ष्म सेटिंग्स से शुरू करें और स्वाद के अनुसार समायोजित करें!

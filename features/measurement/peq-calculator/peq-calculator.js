@@ -91,8 +91,3 @@ class PEQCalculator {
 
 // Export module interfaces
 export { PEQCalculator, smoothLog, findPeaksDips, peqResponse, errorFunctionLogSpace, fitPEQ, processCollisions, designPEQ, createDefaultBands };
-
-// Register the calculator class globally for backward compatibility
-if (typeof window !== 'undefined') {
-  window.PEQCalculator = PEQCalculator;
-} 

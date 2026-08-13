@@ -10,10 +10,10 @@ import measurementController, {
     MeasurementSetupError
 } from './measurement-controller/index.js';
 import i18n from './i18n.js'; // Import the i18n module
-import './peq-calculator/peq-calculator.js';
 import { startRendererWatchdogHeartbeat } from '../../js/electron-watchdog.js';
 import { copyTextToClipboard } from '../../js/utils/clipboard-utils.js';
 import { installRangePrecisionControl } from '../../js/ui/range-precision-controller.js';
+import { copyPEQClipboardPayload } from './ui/peq-clipboard.js';
 
 let isAudioInitialized = false;
 let audioInitializationPromise = null;
@@ -36,9 +36,6 @@ async function initializeApp() {
         // Check browser audio support and limitations
         checkBrowserAudioSupport();
         
-        // Initialize PEQ Calculator and override the existing method
-        initializePEQCalculator();
-        
         // Initialize UI last (after data is loaded)
         await uiManager.initialize();
         
@@ -46,7 +43,11 @@ async function initializeApp() {
         setupEventConnections();
     } catch (error) {
         console.error('Error initializing application:', error);
-        alert(`Initialization Error: ${error.message}`);
+        uiManager.showNotification(
+            i18n.t('error:measurementSetupFailed') ||
+                'The measurement tool could not be prepared. Reload the page and try again.',
+            'error'
+        );
     }
 }
 
@@ -65,7 +66,6 @@ async function initializeAudio() {
                 isAudioInitialized = true;
             } catch (error) {
                 console.error('Error initializing audio:', error);
-                alert(`Audio Initialization Error: ${error.message}`);
                 throw error;
             } finally {
                 audioInitializationPromise = null;
@@ -83,7 +83,11 @@ function checkBrowserAudioSupport() {
     // Check if AudioContext is supported
     if (!(window.AudioContext || window.webkitAudioContext)) {
         console.error('AudioContext is not supported in this browser');
-        alert('This browser does not support Web Audio API. Please try another browser.');
+        uiManager.showNotification(
+            i18n.t('error:audioUnsupported') ||
+                'This browser cannot run audio measurements. Use the latest Chrome or Edge.',
+            'error'
+        );
         return;
     }
     
@@ -95,27 +99,6 @@ function checkBrowserAudioSupport() {
     
     // Suspend the temporary context to avoid resource leak
     tempContext.close().catch(e => console.error('Error closing temp context:', e));
-}
-
-/**
- * Initialize and override PEQ calculator
- */
-function initializePEQCalculator() {
-    // Create an instance of the new calculator
-    const peqCalculator = new window.PEQCalculator();
-    
-    // Override the existing method with the new implementation
-    audioUtils.calculatePEQParameters = function(frequencyResponse, lowFreq, highFreq, bandCount, smoothing) {
-        // Convert smoothing value (0.01-1.0) to binsPerOct (3-24)
-        // Lower smoothing = more smoothing (counterintuitive)
-        // So: 0.01 (max smoothing) -> 3 (few bins)
-        //     1.00 (min smoothing) -> 24 (many bins)
-        const binsPerOct = 3 + (smoothing * 21);
-        
-        // Use the new algorithm with converted smoothing parameter
-        // frequencyResponse should already be normalized to 0dB by uiManager.normalizeResponseToZeroDb
-        return peqCalculator.calculatePEQParameters(frequencyResponse, lowFreq, highFreq, bandCount, undefined, binsPerOct);
-    };
 }
 
 /**
@@ -164,7 +147,11 @@ function setupEventConnections() {
 
         // Validate form
         if (!config.name) {
-            alert('Please enter a measurement name');
+            uiManager.showNotification(
+                i18n.t('error:measurementNameRequired') ||
+                    'Enter a name for this measurement before continuing.',
+                'error'
+            );
             return;
         }
 
@@ -174,7 +161,11 @@ function setupEventConnections() {
             (!isFinite(config.sweepMinFreq) || !isFinite(config.sweepMaxFreq) ||
             config.sweepMinFreq < 1 || config.sweepMaxFreq > nyquistLimit ||
             config.sweepMinFreq >= config.sweepMaxFreq)) {
-            alert(`Invalid sweep frequency range. Set 1 <= min < max <= ${nyquistLimit} Hz.`);
+            uiManager.showNotification(
+                i18n.t('error:invalidSweepRange', { max: nyquistLimit }) ||
+                    `Set the sweep range between 1 Hz and ${nyquistLimit} Hz, with the lower value first.`,
+                'error'
+            );
             return;
         }
         
@@ -207,7 +198,11 @@ function setupEventConnections() {
             await measurementController.toggleWhiteNoise();
         } catch (error) {
             console.error('Error in noise toggle handler:', error);
-            alert(`Toggle Button Error: ${error.message}`);
+            uiManager.showNotification(
+                i18n.t('error:testSignalFailed') ||
+                    'The test signal could not be controlled. Check the audio output and try again.',
+                'error'
+            );
         }
     });
     
@@ -252,11 +247,8 @@ function setupEventConnections() {
         }
     });
 
-    // Connect back buttons to properly clean up audio
+    // Return to the configuration screen. Screen transitions own audio cleanup.
     document.getElementById('backFromLevelBtn').addEventListener('click', () => {
-        // Ensure audio cleanup before navigation
-        uiManager.cleanupAudioBeforeNavigation();
-        // Return to config screen
         uiManager.showScreen('measurementConfigScreen');
     });
     
@@ -296,19 +288,28 @@ function setupEventConnections() {
     });
     
     // Copy PEQ settings to clipboard button
-    document.getElementById('copyPEQBtn').addEventListener('click', () => {
+    document.getElementById('copyPEQBtn').addEventListener('click', async () => {
         const measurement = window.app.dataStorage.getMeasurementById(window.app.uiManager.selectedMeasurementId);
         if (!measurement || !measurement.peqParameters) {
             // Replace hardcoded message with i18n call
             const errorMessage = i18n.t('error:noPEQSettings') || 'No PEQ settings available for this measurement';
-            alert(errorMessage);
+            uiManager.showNotification(errorMessage, 'error');
             return;
         }
-        
-        copyPEQToClipboard();
-        // Replace hardcoded message with i18n call
-        const successMessage = i18n.t('message:peqCopied') || 'PEQ settings copied to clipboard successfully. The copied settings can be pasted into EffeTune\'s effect pipeline using Ctrl+V.';
-        window.app.uiManager.showNotification(successMessage);
+
+        try {
+            await copyPEQToClipboard();
+            const successMessage = i18n.t('message:peqCopied') ||
+                'PEQ settings copied to the clipboard. Paste them into EffeTune\'s Effect Pipeline with Ctrl+V.';
+            uiManager.showNotification(successMessage);
+        } catch (error) {
+            console.error('Could not copy PEQ settings:', error);
+            uiManager.showNotification(
+                i18n.t('error:clipboardWriteFailed') ||
+                    'The PEQ settings could not be copied. Check clipboard access and try again.',
+                'error'
+            );
+        }
     });
 
 }
@@ -355,147 +356,17 @@ async function populateAudioDevices() {
 /**
  * Copy PEQ settings to clipboard
  */
-function copyPEQToClipboard() {
+async function copyPEQToClipboard() {
     // Get the current measurement
     const measurement = window.app.dataStorage.getMeasurementById(window.app.uiManager.selectedMeasurementId);
     if (!measurement || !measurement.peqParameters) {
-        alert('No PEQ settings available for this measurement');
-        return;
+        throw new Error('No PEQ settings are available');
     }
     
     // Get the EQ band count
     const bandCount = parseInt(document.getElementById('eqBandCount').value);
     
-    // Sort PEQ parameters by frequency
-    const sortedParams = [...measurement.peqParameters].sort((a, b) => a.frequency - b.frequency);
-    
-    // Define default frequencies for 15Band PEQ
-    const fifteenBandFreqs = [
-        25, 40, 63, 100, 160, 250, 400, 630, 1000, 
-        1600, 2500, 4000, 6300, 10000, 16000
-    ];
-    
-    // For 6 or more bands, use 15Band PEQ
-    if (bandCount >= 6) {
-        // Prepare 15Band PEQ JSON structure
-        const peqJSON = [{
-            "nm": "15Band PEQ",
-            "en": true
-        }];
-        
-        // Add channel information if needed
-        if (measurement.outputChannel === 'left') {
-            peqJSON[0].ch = "L";
-        } else if (measurement.outputChannel === 'right') {
-            peqJSON[0].ch = "R";
-        }
-        
-        // Band activation patterns for different band counts
-        const bandPatterns = {
-            6: "001010101010100",
-            7: "010101010101010",
-            8: "101010101010101",
-            9: "101011010110101",
-            10: "101101101101101",
-            11: "101110111011101",
-            12: "110111101111011",
-            13: "111011111110111",
-            14: "111111101111111",
-            15: "111111111111111"
-        };
-        
-        // Get the appropriate pattern for the band count (or default to all enabled if not specified)
-        const pattern = bandPatterns[bandCount] || "111111111111111";
-        
-        // Map sortedParams to match the pattern
-        let paramIndex = 0;
-        
-        // Add parameters for each band (15 total)
-        for (let i = 0; i < 15; i++) {
-            // Check if this band should be enabled based on the pattern
-            const shouldBeEnabled = pattern.charAt(i) === '1';
-            
-            // Only use a parameter if the band should be enabled
-            const param = shouldBeEnabled && paramIndex < sortedParams.length && paramIndex < bandCount ? 
-                sortedParams[paramIndex++] : null;
-            
-            peqJSON[0][`f${i}`] = param ? param.frequency : fifteenBandFreqs[i];
-            peqJSON[0][`g${i}`] = param ? param.gain : 0;
-            peqJSON[0][`q${i}`] = param ? param.Q : 1;
-            peqJSON[0][`t${i}`] = "pk";
-            peqJSON[0][`e${i}`] = shouldBeEnabled;
-        }
-        
-        // Convert to JSON string
-        const jsonString = JSON.stringify(peqJSON, null, 2);
-        
-        // Copy to clipboard
-        copyTextToClipboard(jsonString).then((ok) => {
-            if (ok) {
-                console.log('PEQ parameters copied to clipboard.');
-            } else {
-                console.error('Failed to copy PEQ parameters');
-                alert('Failed to copy PEQ parameters');
-            }
-        });
-    } else {
-        // Use 5Band PEQ for 5 bands or fewer
-        // Prepare PEQ JSON structure
-        const peqJSON = [{
-            "nm": "5Band PEQ",
-            "en": true
-        }];
-        
-        // Add channel information if needed
-        if (measurement.outputChannel === 'left') {
-            peqJSON[0].ch = "L";
-        } else if (measurement.outputChannel === 'right') {
-            peqJSON[0].ch = "R";
-        }
-        
-        // Band activation patterns for different band counts
-        const bandPatterns = {
-            3: "10101",
-            4: "11011",
-            5: "11111"
-        };
-        
-        // Get the appropriate pattern for the band count (or default to all enabled if not specified)
-        const pattern = bandPatterns[bandCount] || "11111";
-        
-        // Map sortedParams to match the pattern
-        let paramIndex = 0;
-        
-        // Add parameters for each band
-        const maxBands = 5;
-        for (let i = 0; i < maxBands; i++) {
-            // Check if this band should be enabled based on the pattern
-            const shouldBeEnabled = pattern.charAt(i) === '1';
-            
-            // Only use a parameter if the band should be enabled
-            const param = shouldBeEnabled && paramIndex < sortedParams.length && paramIndex < bandCount ? 
-                sortedParams[paramIndex++] : null;
-                
-            peqJSON[0][`f${i}`] = param ? param.frequency : [100, 316, 1000, 3160, 10000][i];
-            peqJSON[0][`g${i}`] = param ? param.gain : 0;
-            peqJSON[0][`q${i}`] = param ? param.Q : 1;
-            peqJSON[0][`t${i}`] = "pk";
-            peqJSON[0][`e${i}`] = shouldBeEnabled;
-        }
-        
-        // Convert to JSON string
-        const jsonString = JSON.stringify(peqJSON, null, 2);
-        
-        // Copy to clipboard
-        copyTextToClipboard(jsonString).then((ok) => {
-            if (ok) {
-                console.log('PEQ parameters copied to clipboard.');
-            } else {
-                console.error('Failed to copy PEQ parameters');
-                alert('Failed to copy PEQ parameters');
-            }
-        });
-    }
+    await copyPEQClipboardPayload(measurement, bandCount, copyTextToClipboard);
 }
 
 /**
@@ -623,7 +494,7 @@ function loadPEQSettings() {
         // Apply settings to current measurement display if any
         if (window.app.uiManager.selectedMeasurementId) {
             window.app.uiManager.updateResultsGraph();
-            window.app.uiManager.updateCorrection();
+            window.app.uiManager.correctionHandler.requestCorrectionUpdate();
         }
     }
 }

@@ -22,7 +22,7 @@ A collection of plugins that add vintage character and nostalgic qualities to yo
 - [MP3 Codec Simulator](#mp3-codec-simulator) - Simulates a clean low-bitrate MPEG Layer III encode/decode round trip
 - [Noise Blender](#noise-blender) - Adds atmospheric background texture
 - [SBC Codec Simulator](#sbc-codec-simulator) - Simulates a Bluetooth A2DP SBC encode/decode round trip with optional link packet loss and concealment
-- [Simple Jitter](#simple-jitter) - Creates subtle vintage digital imperfections
+- [Simple Jitter](#simple-jitter) - Compares tiny clock fluctuations or adds creative movement at larger settings
 - [SW Radio Simulator](#sw-radio-simulator) - Passes the music through a modeled shortwave broadcast, ionospheric path, and receiver
 - [Tape Artifacts](#tape-artifacts) - Records the music onto a modeled reel-to-reel tape and plays it back
 - [Vinyl Artifacts](#vinyl-artifacts) - Adds vinyl-style pops, crackle, hiss, rumble, and stereo noise bleed
@@ -49,24 +49,12 @@ This effect requires an environment that supports its real-time processing. When
 - **Fade depth:** New instances use 1% Skywave for gentler level movement in Mono and a less pronounced nighttime fade. Raise Skywave to about 8% when you specifically want a deeper fade; larger values make the effect more extreme.
 - Start with Mix at 100% when judging the radio model. Lower it only when you intentionally want some of the original stereo image to remain.
 
-### C-QUAM Blend and Static Model
-
-In C-QUAM, automatic stereo blending observes qualified signal loss on two orthogonal receiver axes: the decoded sum and the 25 Hz pilot region of the quadrature difference signal. AGC is removed from both observations, and a loss lowers the quality term only when it coincides on both axes. This loss-coincidence rule keeps ordinary program changes on either axis from being mistaken for an RF fade. It runs only while the PLL is tracking and the pilot is accepted; otherwise, the quality observation is cleared.
-
-The new-instance Skywave default is 1%, adopted after the integrated model checks passed. Saved presets keep their explicitly stored Skywave value. Compared with 8%, the 1% setting gives Mono mode calmer level movement and shallower fades; select about 8% when a more severe nighttime-fade effect is wanted.
-
-The frozen response range begins at Fading Speed 0.05 Hz. Attenuation that changes much more slowly than the adaptive reference's 60 s fall time is absorbed into that reference and is intentionally not retained as a continuing quality loss. The 0.75 dB residual-program allowance, 0.04 ratio offset, Q=4 pilot observation band, 0.05/0.2/0.5/60 s quality time constants, and the 0.5 dB deadband with 5.0 dB transfer span are empirical simulator calibration, not general C-QUAM receiver specifications.
-
-This receiver-faithful observation has the same program ambiguity as pilot C-QUAM hardware. If a program contains both difference energy near 25 Hz and asymmetric sum/DC, ending both components together can briefly lower the stereo blend because it presents the same RF evidence as a fade. A coherent anti-phase residual can likewise drive the quality observation while the PLL remains in TRACK and the pilot remains accepted. These are intentional behaviors within the approved model boundary, not defects.
-
-Static events use a carrier-relative vector-area calibration: each event is scaled from a 20.0 µs area referenced to the nominal desired carrier, with an empirical uniform 0.5-to-1.5 area distribution and random phase. Events are scheduled from double-precision absolute deadlines rather than rounded sample countdowns, so timing remains continuous across render blocks and multiple events due in one sample are accumulated. The 20.0 µs scale and its distribution are empirical simulator calibration.
-
 ### Parameters
 
 #### Station
 
 - **Radio** (on or off) - Switches the station's transmission on and off. With it off the carrier disappears entirely, leaving the receiver with only atmospheric static, the adjacent station, and its own noise, and AGC opens up until that background becomes loud. Use it to hear the moment a station signs on or off the air. This is not the same as turning the effect off, which leaves the music untouched.
-- **Stereo Mode** (Mono or C-QUAM) - Mono uses a traditional envelope-detector receiver. C-QUAM provides stereo reception, with lower stereo S/N than mono, and automatically blends toward mono when the signal is weak or mistuned. Because the receiver uses a physically different detector, switching modes can also change the timbre; Detector RC and its diagonal clipping apply only to Mono and have no effect in C-QUAM. C-QUAM stereo operates at sample rates up to 192 kHz; at higher rates, reception is mono. The simulation models only the FCC C-QUAM c(5) modulation-phase limit and does not represent a complete compliance test.
+- **Stereo Mode** (Mono or C-QUAM) - Mono uses a traditional envelope-detector receiver. C-QUAM provides stereo reception and automatically blends toward mono when the signal is weak or mistuned. Switching modes can also change the timbre; Detector RC applies only to Mono. C-QUAM stereo operates at sample rates up to 192 kHz; at higher rates, reception is mono.
 - **TX Bandwidth** (2.0 to 10.0 kHz) - Sets the transmitter's audio bandwidth. Lower values sound darker and more restricted; higher values preserve more detail.
 - **Pre-emphasis** (0 to 100%) - Boosts upper audio frequencies before transmission. Higher settings add presence but also drive bright peaks harder through the broadcast chain.
 - **Mod Depth** (10 to 125%) - Sets AM modulation depth. Values above 100% create overmodulation and negative-peak clipping.
@@ -77,7 +65,7 @@ Static events use a carrier-relative vector-area calibration: each event is scal
 - **Signal** (-50 to 0 dB) - Sets received signal strength. Weaker settings expose more receiver noise and require more AGC gain.
 - **Skywave** (0 to 100%) - Blends stable groundwave reception with delayed ionospheric paths. New instances default to 1% for gentle movement; around 8% gives a more severe nighttime fade, and higher values make the frequency-selective fading deeper.
 - **Fading Speed** (0.05 to 2.0 Hz) - Sets how quickly skywave conditions vary.
-- **Static** (0 to 100/s) - Sets the rate of lightning-like events. Each carrier-relative event follows an absolute-time schedule and rings through the receiver's IF filter rather than being added after reception.
+- **Static** (0 to 100/s) - Sets the rate of lightning-like events. Raise it for a stormier, more intermittent signal; set it to 0 for none.
 - **Interference** (-80 to 0 dB) - Sets adjacent-station strength. -80 dB switches it off; values closer to 0 dB make it stronger.
 - **Interf. Offset** (5 to 10 kHz) - Sets adjacent-station spacing and the resulting carrier beat frequency. 9 and 10 kHz represent common channel spacing.
 
@@ -95,7 +83,7 @@ Static events use a carrier-relative vector-area calibration: each event is scal
 - **Speaker** (Off, Small, or Table) - Selects line output, a restricted pocket-radio speaker, or a fuller tabletop-radio response.
 - **Output Gain** (-24 to +24 dB) - Adjusts level after receiver and speaker processing.
 - **Mix** (0 to 100%) - Blends the original stereo signal with the simulated mono reception. 0% is unchanged stereo; 100% sends the same wet signal to left and right. Only 100% Mix makes the output fully mono.
-- In C-QUAM, the wet signal is stereo when reception permits; the mono description above applies to Mono mode. Its FIR delay remains within the wet receiver path. Mix does not delay the dry signal to align it, so intermediate settings combine dry and wet signals with that timing difference.
+- In C-QUAM, the wet signal is stereo when reception permits. Use Mix at 100% when judging the decoded stereo image.
 
 ### Reading the HUD
 
@@ -161,93 +149,70 @@ An effect that recreates the sound of vintage digital devices like old gaming co
 
 ## Cassette Artifacts
 
-Cassette Artifacts records the music onto a modeled compact cassette and plays it back. The signal passes through the Dolby encoder, the record amplifier with the treble lift and the bounded low-frequency boost it puts onto the tape, the magnetic saturation of the coating, the treble erasure caused by the record bias, the wavelength losses of the reproduce head, local dropouts in the coating, the wow and flutter of the transport, the drifting head azimuth of the deck, the head contour of the reproduce head, and the playback curve that takes the treble lift off again, before tape hiss and modulation noise are added and the Dolby decoder runs. Use it when you want music that has been through a cassette deck rather than music with cassette-like noise placed on top of it.
+Cassette Artifacts combines cassette frequency response, tape compression, hiss, wow and flutter, dropouts, and head-alignment changes. Use it for a complete cassette-deck character rather than a noise layer added over unchanged music.
 
 ### How It Differs from Other Lo-Fi Effects
 
-- **Tape Artifacts** models an open-reel studio machine, and the difference between the two is the difference between the formats. At their defaults, with a small signal on a 96 kHz host, the cassette is 2.0 dB down at 8 kHz, 4.4 dB at 12 kHz and 7.9 dB at 16 kHz where the open-reel machine is 0.7, 1.7 and 3.5 dB down. With noise reduction off the cassette's background is also the louder of the two - -65.5 dBFS against the open-reel machine's -68.5 dBFS - and with Dolby B or C it drops below it, to -73.6 and -82.8 dBFS, the same relationship the real formats have. Speed is a control there and a fixed 4.76 cm/s here, and Deck Grade, the Type I/II/IV columns, Dolby B/C, the dropouts, the head azimuth and the Dolby level error exist only here.
+- **Tape Artifacts** gives a cleaner, wider-band open-reel sound with selectable speed. Cassette Artifacts is darker and offers cassette-specific Deck Grade, Tape Type, noise reduction, dropouts, and head alignment.
 - **Wow Flutter** (Modulation) reproduces only the speed variation of a transport. Choose it when you want the wobble without tape saturation, the Type and bias behavior, the noise reduction, or the hiss.
 - **Saturation** and **Hard Clipping** add nonlinearity on its own, without the frequency-dependent behavior and the transport of a tape machine.
-- **Vinyl Artifacts**, **Noise Blender** and **Hum Generator** add a noise layer over unchanged music. Here the hiss, the modulation noise and the dropouts are generated at the correct point in the deck, so the noise reduction acts on them and they follow Tape Type and Hiss the way real cassette noise does.
+- **Vinyl Artifacts**, **Noise Blender** and **Hum Generator** add noise without changing the music's frequency response or dynamics.
 
 ### Sound Character Guide
 
-- **Deck Grade sets the class of machine:** it moves the band edges and the short-term stability together, and nothing else. Measured at the reference bias with a small signal on a 96 kHz host, the -3 dB points run 13.6 Hz to 18.0 kHz on Reference, 16.7 Hz to 14.0 kHz on Hi-Fi, 19.9 Hz to 10.0 kHz on Consumer and 26.1 Hz to 6.5 kHz on Portable. At 16 kHz that is 2.4, 4.0, 7.8 and 16.7 dB down. The azimuth wobble grows with the same order - none at all on Reference, which is the class of deck that carries an azimuth servo, and largest on Portable, where the top end visibly breathes.
-- **Record Level is the operating point, not a gain:** it states how hard a 0 dBFS peak drives the tape, and the output level does not move with it. What moves is everything else. At the default +9.0 dB, a full-scale 1 kHz tone comes out 3.6 dB rounded off with about 6% third harmonic, and on a dense modern master the top 6 dB of the material comes out as about 4.2 dB. At +0.0 dB the same material comes out almost uncompressed (the top 6 dB stays 5.9 dB) and the tape is never used; by +15.0 dB the top 6 dB has collapsed to about 1.9 dB. The background follows it one decibel for one decibel in the other direction, so raising Record Level buys signal-to-noise and spends dynamic range.
-- **Bass hits the ceiling first:** the record side has to boost everything below 50 Hz to get it onto the tape, and that boost has a ceiling set by Deck Grade, so deep bass reaches saturation before the midrange does. On a Consumer deck at Record Level +12.0 dB, a full-scale tone comes out 7.8 dB down at 20 Hz and 5.4 dB down at 40 Hz against 3.3 dB at 315 Hz. The same asymmetry is why the low end rolls off at all.
-- **Tape Type is not a volume switch:** a small 1 kHz signal comes out within 0.01 dB of the same level on all three. What changes is headroom and noise. Type IV has the most high-frequency headroom - its 10 kHz saturation output is 6.5 dB above Type II and its 315 Hz maximum output level 1 dB above - and at the default Record Level it keeps about 4.9 dB more at 10 kHz than Type II on a -6 dBFS tone, and about 7.5 dB more on a full-scale one; its own noise floor, though, is 2.5 dB worse than Type II. Type I is the noisiest of the three, 4 dB above Type II, and colors small signals exactly as Type II does, so most of what you hear from it is the extra background.
-- **Noise reduction is a matched round trip:** the same sliding-band compander encodes before the tape and expands after it, so under ideal conditions the music comes back out. The quieting is the measured, effective figure rather than the nominal 10 and 20 dB: about 8 dB for Dolby B and about 17 dB for Dolby C, A-weighted, at the default settings. The price is treble mistracking at high levels, where the decoder reads tape-compressed high frequencies as a quieter signal and turns them down further; Dolby C's anti-saturation shelves reduce it, and at the default Record Level C keeps about 3.9 dB more than B on a 10 kHz tone at -6 dBFS, and about 8.4 dB more on a full-scale one.
-- **The top octave is the deck's limit:** at the reference bias, with a small signal on a 96 kHz host, the default Consumer deck measures +1.1 dB at 50 Hz (the head contour), 0.0 dB at 1 kHz, -0.8 dB at 5 kHz, -3.0 dB at 10 kHz and -7.8 dB at 16 kHz, and -2.9 dB at 20 Hz. That gentle low-frequency lift over a falling low end and that falling top are the deck's own response, before anything is driven hard.
-- **The transport is slower and larger than an open reel's:** a capstan wow at 6.9 Hz, a hub rotation at 0.42 Hz and broadband flutter between 1 and 40 Hz. At the default 0.200% the pitch moves about 9 cents peak to peak, right at the 5 to 10 cents where frequency modulation starts to be heard as such, so the wobble is audible on held notes and masked in dense program; 0.040% is the figure a reference deck publishes and moves only about 2 cents, and the 1.000% top of the range gives about 46 cents, a strong warble.
-- **A living background:** hiss in the gaps, plus modulation noise that rides on the music itself, about 48, 50 and 52 dB below the signal on Type I, Type II and Type IV. Take Hiss all the way down to -92.0 dB re 250 nWb/m when you want a silent background.
-- **Dropouts are losses, not clicks:** each event is a smooth raised-cosine dip of 2.1 to 21 ms and 3 to 30 dB rather than a gate, and the depth draw is weighted toward the shallow end, so what you usually hear is the music briefly ducking rather than a tick. The default 2.0 events/min is about one every half minute on any single track.
-- **Azimuth and Dolby Level Error are the compatibility axes:** both are signed, and their sign is the point. Azimuth darkens the top on both channels and puts a lag between them, and which channel leads follows its sign. A Dolby Level Error above zero makes the decoder cut too little, so the result is brighter and hissier; below zero it cuts too much and the result is duller.
+- **Deck Grade** moves from the wide, steady Reference sound toward the darker and less stable Portable sound.
+- Raise **Record Level** for stronger compression and saturation; lower it for cleaner dynamics. Use Output to match loudness afterward.
+- **Tape Type** changes noise and headroom. Type I is the noisiest, Type II is balanced, and Type IV keeps bright peaks cleaner.
+- **Noise Reduction** lowers hiss. Dolby C is stronger than Dolby B, while Off gives the rawest cassette background.
+- Raise **Wow/Flutter**, **Hiss**, or **Dropouts** for a more worn sound. **Azimuth** darkens and shifts the high frequencies between channels.
 
 ### Parameters
 
-Speed is stated rather than selected: the compact cassette runs at 4.76 cm/s (1⅞ ips) by definition, so it is not a control and the status line at the bottom of the panel names it once, as part of the Wow/Flutter readout.
+Compact cassette speed is fixed, so there is no Speed control.
 
-- **Deck Grade** (Reference, Hi-Fi, Consumer or Portable) - Selects the class of the deck. It governs only the mechanisms that have no control of their own: the record equalization budget that flattens the head's wavelength loss, the record amplifier's bandwidth, the ceiling on the low-frequency record boost, the size of the azimuth wobble and the shape of the head contour. It never touches Wow/Flutter, Hiss or Dropouts, so changing it can never discard your own settings. The band edges, measured with a small signal on a 96 kHz host, are 13.6 Hz to 18.0 kHz (Reference), 16.7 Hz to 14.0 kHz (Hi-Fi), 19.9 Hz to 10.0 kHz (Consumer) and 26.1 Hz to 6.5 kHz (Portable), and the azimuth wobble runs 0, 1, 2 and 4 arcmin of standard deviation over the same four. Reference has no wobble at all, because a deck of that class carries an azimuth servo. The default Consumer is an ordinary domestic machine.
-- **Tape Type** (Type I, Type II or Type IV) - Selects the tape formulation: ferric, high-bias and metal. This is a headroom and noise profile, not an equalizer preset and not a level control - a small 1 kHz signal comes out within 0.01 dB of the same level on all three. Type II is the reference column: Type I sits 4.0 dB noisier and Type IV 2.5 dB noisier, while Type IV has 6.5 dB more high-frequency headroom and 1 dB more low-frequency headroom than Type II. Each Type also has its own recommended bias point, so Bias 0 dB means a correctly aligned deck whichever one is selected.
-- **Noise Reduction** (Off, Dolby B or Dolby C) - Selects the companding noise reduction. This is always a matched encode/decode round trip - the same sliding-band law records and plays back - so it quiets the tape without changing the music under ideal conditions. Dolby B is a single sliding band and Dolby C two staggered ones with anti-saturation shelves; the quieting they deliver here is measured rather than nominal, about 8 dB for B and about 17 dB for C, and it depends on Tape Type, Hiss, Dolby Level Error and the host sample rate, which is why the status line reports the figure for the current settings. Both also mistrack loud treble the way a real deck does, and Dolby C mistracks less than Dolby B.
-- **Bias** (-6.0 to +6.0 dB) - Sets the recording bias relative to the recommended point for the selected Tape Type. 0 dB is the correctly aligned deck: it sits 2.5 dB (Type I), 3.0 dB (Type II) or 2.0 dB (Type IV) over the peak of the 10 kHz sensitivity curve, which is where a deck is aligned. Higher (over-biased) settings are cleaner in the low and mid range and duller on top: at +2.0 dB the 10 kHz sensitivity falls 1.67, 1.81 and 1.52 dB on the three Types, and at +6.0 dB it falls 5.31, 5.71 and 4.86 dB. Lower (under-biased) settings are brighter and more distorted, in the way a misaligned deck is, but only down to that peak - about -3.6 dB on Type I, -3.9 dB on Type II and -3.2 dB on Type IV, worth about +2.5, +3.0 and +2.0 dB at 10 kHz - and below it the treble darkens again while the distortion keeps rising, so -6.0 dB is already less bright than -4.0 dB. At 1 kHz the whole range moves less than 0.2 dB, so Bias is not a volume control.
-- **Record Level** (-12.0 to +18.0 dB) - Sets how hard the deck records. The number is the tape level a 0 dBFS peak reaches, in dB above the 250 nWb/m reference flux, and the status line states that convention. The control adds no gain of its own: as long as the tape is not saturating, the same signal comes out at the same level wherever Record Level is set, so what it changes is the tape, not the volume. The default +9.0 dB is a normally recorded cassette, where a full-scale 1 kHz tone comes out 3.6 dB rounded off with about 6% third harmonic and the deep bass is already into the ceiling. Lower settings back off toward a transfer that never uses the tape - at +0.0 dB a full-scale tone loses only 0.5 dB - and raise the background one decibel for every decibel, since the hiss is on the tape and the tape is now further below the peak. Higher settings compress harder and quiet the background by the same rule; past about +15.0 dB the dynamic range stops widening and only the compression keeps growing.
-- **Wow/Flutter** (0 to 1%) - Sets the speed variation of the transport, as a DIN 45507 peak-weighted deviation in percent at the fixed 4.76 cm/s. 0% is a perfectly steady transport. The default 0.200% sits in the middle of the 0.15 to 0.25% window ordinary cassette decks publish and moves the pitch about 9 cents peak to peak, right at the 5 to 10 cents where frequency modulation begins to be heard as such. 0.040% is the weighted peak a reference deck publishes and moves only about 2 cents; the 1.000% top of the range gives about 46 cents, a strong warble. The movement is slower here than on an open-reel machine, because the hub rotation at 0.42 Hz dominates it.
-- **Hiss** (-92.0 to -42.0 dB re 250 nWb/m) - Sets the level of the tape hiss and the modulation noise together, as the A-weighted no-signal flux of Type II with noise reduction off, referred to the 250 nWb/m reference. This is the tape's own datasheet figure rather than a level at the output: the noise is recorded on the tape, so what it measures at the output depends on Record Level. -92.0 dB re 250 nWb/m switches both off completely. The default -60.5 dB re 250 nWb/m is the bias noise the manufacturer publishes for a Type II tape. Type I sits 4.0 dB above that column and Type IV 2.5 dB above it, Record Level moves the whole thing one decibel for one decibel, and the Dolby decoder then removes its own measured amount, so what you hear in the gaps is not this number - the status line states what it comes to. All of it is ahead of Output, so a meter placed after Output reads it lifted by whatever Output is set to. While the music plays, what this control mostly adds is the modulation noise riding on the signal.
-- **Dropouts** (0 to 20 events/min) - Sets the average rate of coating dropouts, counted per track: whichever single channel you meter, it sees this many events per minute. Half of them are tape-wide and affect every channel together, half are local to one track. Each event is a smooth raised-cosine dip of 2.1 to 21 ms and 3 to 30 dB rather than a gate, so it sounds like a brief loss of signal, not a click. The default 2.0 events/min is a cassette in ordinary service, about one event every half minute on any one track; 0 is a flawless tape and adds nothing at all, and the 20 events/min top is three times the quality-control bound a premium cassette publishes, which is clearly degraded-tape territory.
-- **Azimuth** (-6.0 to +6.0 arcmin) - Sets the head alignment error between the deck that recorded the tape and the deck playing it. It is not a quality grade but the alignment state of that particular pair of machines, which is why it is signed and independent of Deck Grade. Any error costs treble on both channels: at the default +2.0 arcmin a 10 kHz tone loses 0.25 dB and a 16 kHz tone 0.60 dB against a perfectly aligned pair, and at ±6.0 arcmin that becomes 1.03 and 2.26 dB. It also puts a lag of 11.0 µs between the channels at +2.0 arcmin, and the sign decides which channel leads, so a mono sum of correlated material loses a further 0.8 dB at 8 kHz, 1.8 dB at 12 kHz and 3.2 dB at 16 kHz; uncorrelated material shows no such comb. Deck Grade adds a slow drift on top of this setting, so Azimuth is the centre the drift wanders around rather than a frozen value.
-- **Dolby Level Error** (-3.0 to +3.0 dB) - Sets how far the playback deck's Dolby reference sits from the recording deck's. It only means anything with Noise Reduction on, and its sign is the point: above zero the decoder reads the tape as hotter than it is, cuts too little, and the result is brighter and hissier; below zero it cuts too much and the result is duller. At the default deck a mid-level tone moves about 2.4 dB down at 5 kHz and 1.0 dB down at 10 kHz at -3.0 dB, and about 1.9 dB up at 5 kHz and 2.2 dB up at 10 kHz at +3.0 dB. 0.0 dB is two decks calibrated to each other. The mistracking on loud treble is there at every setting, because the tape itself changes the signal between encode and decode; what this control opens is the bright side, which a matched pair cannot reach.
+- **Deck Grade** (Reference, Hi-Fi, Consumer or Portable) - Chooses the deck character. Reference is widest and steadiest; Portable is darkest and least stable. Start with Consumer for a familiar home-deck sound.
+- **Tape Type** (Type I, Type II or Type IV) - Changes tape noise and headroom. Type I is noisiest, Type II is balanced, and Type IV keeps bright peaks cleaner.
+- **Noise Reduction** (Off, Dolby B or Dolby C) - Reduces hiss. Dolby B is moderate, Dolby C is stronger, and Off leaves the raw cassette background. Use Dolby Level Error if you want the brighter or duller sound of mismatched decks.
+- **Bias** (-6.0 to +6.0 dB) - Changes treble and distortion. Start at 0 dB. Small positive values sound cleaner and darker; small negative values sound brighter and rougher. Extreme negative settings become distorted without continuing to brighten.
+- **Record Level** (-12.0 to +18.0 dB) - Controls how hard the tape is driven. Start at +9 dB. Raise it for denser compression and saturation; lower it for cleaner dynamics. Match loudness afterward with Output.
+- **Wow/Flutter** (0 to 1%) - Controls pitch instability. 0% is steady, the 0.200% default gives audible cassette movement on sustained notes, and higher values create a worn-deck warble.
+- **Hiss** (-92.0 to -42.0 dB re 250 nWb/m) - Controls tape hiss and signal-related modulation noise. Raise it for a noisier tape or set it to the minimum to switch the noise layer off. The status line shows the resulting background level for the current settings.
+- **Dropouts** (0 to 20 events/min) - Sets how often brief signal dips occur. 0 disables them, 2 events/min gives occasional wear, and higher values sound increasingly damaged.
+- **Azimuth** (-6.0 to +6.0 arcmin) - Simulates head misalignment. Move away from 0 to soften treble and change the left/right timing; the sign selects which channel leads.
+- **Dolby Level Error** (-3.0 to +3.0 dB) - Simulates a mismatch between recording and playback decks when Noise Reduction is on. Positive values sound brighter and hissier; negative values sound duller. Start at 0 dB.
 - **Output** (-24.0 to +24.0 dB) - Adjusts the level after the whole chain. Use it to match loudness when you compare with bypass, or to bring back the loudness a high Record Level setting has cost.
-- **Mix** (0 to 100%) - Blends the cassette signal with the original. 100% is full cassette playback. The dry signal is delay-aligned with the tape path, so the midrange blends cleanly - 1 kHz stays within 0.06 dB of unity at 50% - but the top octave does not, because dry and tape no longer share the same phase up there and partly cancel. That cancellation is not the same on both channels, because the azimuth error puts a lag between them: at 50% at the default settings on a 96 kHz host the left channel comes out 1.7 dB down at 8 kHz, 3.6 dB at 12 kHz, 5.3 dB at 16 kHz and 6.2 dB at 20 kHz, while the right channel is 4.4, 8.9, 9.0 and 7.0 dB down at the same frequencies. At 0% the input passes through completely unchanged and the effect adds no latency; at any other setting it adds 165 samples (3.741 ms) on a 44.1 kHz host, 179 (3.729 ms) at 48 kHz, 347 (3.615 ms) at 96 kHz and 683 (3.557 ms) at 192 kHz.
+- **Mix** (0 to 100%) - Blends the cassette sound with the original. Start at 100% to judge the full effect; lower it for a subtler result. Intermediate values can soften the highest frequencies because the two paths partly cancel there.
 
 ### Reading the Status Line
 
-The line under the controls states the Record Level convention and reports what the two Base settings come to on the deck as it is currently configured, in the form `Record Level +9.0 dB → tape peak +9.0 dB re 250 nWb/m at 0 dBFS in · Wow/Flutter Base 0.200% → 0.200% at 4.76 cm/s (1⅞ ips) · Hiss Base -60.5 dB re 250 nWb/m → -73.6 dBFS, Type I, Dolby B`.
-
-- **Record Level** restates the control as what it means on the tape: the flux a 0 dBFS peak reaches. It is a statement of the convention, not a meter - there is none, and a quieter master lands correspondingly lower on the tape.
-- **Wow/Flutter** states the Base value and the effective one. The speed is fixed, so the two are always the same figure; the line is there to name the measurement convention the percentage belongs to, and it is the one place the transport speed is stated.
-- **Hiss** states the Base value and the no-signal A-weighted floor it becomes at the output, after the Tape Type column, Record Level and the Dolby decoder, before Output. With Hiss at -92.0 dB re 250 nWb/m the whole noise family is off and the line reads `→ off`.
-- The effective floor is measured, not derived from the nominal 10 and 20 dB of Dolby B and C, and it depends on Tape Type, noise reduction, Hiss, Dolby Level Error, Record Level and the host sample rate together. With Hiss at its -60.5 dB re 250 nWb/m default and Record Level at +9.0 dB, on a 96 kHz host, it comes to:
-
-  | Tape Type | NR Off | Dolby B | Dolby C |
-  |---|---|---|---|
-  | Type I | -65.5 dBFS | -73.6 dBFS | -82.8 dBFS |
-  | Type II | -69.5 dBFS | -77.7 dBFS | -87.0 dBFS |
-  | Type IV | -67.0 dBFS | -75.2 dBFS | -84.4 dBFS |
-
-  Record Level shifts the whole table one decibel for one decibel: at +12.0 dB every figure is 3 dB lower, at +6.0 dB every figure is 3 dB higher. How much the Dolby decoder removes does not change with it, because the tape floor and the decoder's own reference move together.
-- Each combination is measured once and then remembered, so the figure appears immediately for any setting you have already visited. While you drag Hiss or Dolby Level Error through combinations that have not been measured yet, the line reads `measuring…` and fills in the number once the control stops - announcing a settled-looking figure that is several decibels out would be worse than announcing nothing.
+The line below the controls shows the effective wow/flutter and background-noise level for the current settings. Use it to compare changes in Tape Type, Noise Reduction, Record Level, and Hiss. `off` means the tape-noise layer is disabled, and `measuring…` means the displayed estimate is updating.
 
 ### Recommended Settings
 
 1. **Ordinary Cassette Deck (default)**
    - Deck Grade: Consumer, Tape Type: Type I, Noise Reduction: Dolby B, Bias: 0.0 dB, Record Level: +9.0 dB
    - Wow/Flutter: 0.200%, Hiss: -60.5 dB re 250 nWb/m, Dropouts: 2.0 events/min, Azimuth: +2.0 arcmin, Dolby Level Error: 0.0 dB, Output: 0.0 dB, Mix: 100%
-   - The everyday cassette sound, and the plugin's own default: the top softened by 7.9 dB at 16 kHz, a 1.1 dB lift around 50 Hz over a low end that is already 2.9 dB down at 20 Hz, about 6% third harmonic and 3.6 dB of rounding on a full-scale tone, a -73.6 dBFS background on a 96 kHz host, pitch movement of about 9 cents, and a dropout about every half minute on each track.
+   - A familiar home-cassette sound with softened treble, audible compression, light pitch movement, and occasional dropouts.
 
 2. **Reference Deck, Metal Tape with Dolby C**
    - Deck Grade: Reference, Tape Type: Type IV, Noise Reduction: Dolby C, Bias: 0.0 dB, Record Level: +9.0 dB
    - Wow/Flutter: 0.040%, Hiss: -60.5 dB re 250 nWb/m, Dropouts: 0.0 events/min, Azimuth: 0.0 arcmin, Dolby Level Error: 0.0 dB, Output: 0.0 dB, Mix: 100%
-   - The most capable combination the format offers: a Reference deck reaches -3 dB at 18.0 kHz and does not drift at all, Type IV brings 6.5 dB more high-frequency headroom than Type II, and the background sits at -84.4 dBFS on a 96 kHz host. Type IV's own tape floor is 2.5 dB worse than Type II's - it is Dolby C that makes this the quietest setting here, and it is also the setting that mistracks loud treble least. With the wobble, the hiss, the dropouts and the azimuth drift all switched off, this deck is entirely deterministic.
+   - The cleanest cassette preset: wide, steady, and quiet, with strong high-frequency headroom and no added wear.
 
 3. **Ferric Tape, No Noise Reduction**
    - Deck Grade: Consumer, Tape Type: Type I, Noise Reduction: Off, Bias: 0.0 dB, Record Level: +9.0 dB
    - Wow/Flutter: 0.200%, Hiss: -60.5 dB re 250 nWb/m, Dropouts: 2.0 events/min, Azimuth: +2.0 arcmin, Dolby Level Error: 0.0 dB, Output: 0.0 dB, Mix: 100%
-   - A plain ferric tape recorded without noise reduction: the background sits at -65.5 dBFS on a 96 kHz host, 8.1 dB louder than the default, and nothing removes it, so hiss is part of the sound in every gap. The tone is exactly the default's for small signals - the difference between the Types is noise and headroom, not color - and nothing mistracks, because there is no decoder to mistrack.
+   - Raw ferric cassette playback with clearly audible hiss in quiet passages and no noise-reduction coloration.
 
 4. **Home Deck, Slightly Over-Biased**
    - Deck Grade: Consumer, Tape Type: Type I, Noise Reduction: Dolby B, Bias: +2.0 dB, Record Level: +12.0 dB
    - Wow/Flutter: 0.300%, Hiss: -58.0 dB re 250 nWb/m, Dropouts: 4.0 events/min, Azimuth: +3.0 arcmin, Dolby Level Error: -1.0 dB, Output: +0.5 dB, Mix: 100%
-   - An ordinary domestic deck running generic tape, and a tape recorded on a different one: the bias set a little high, so the top is about 1.7 dB darker at 10 kHz than an aligned deck and the low and mid range a little cleaner, a less steady transport, a raised tape floor, a dropout every quarter minute or so per track, a wider azimuth error, and a decoder calibrated 1 dB low, which darkens it further. Record Level is 3 dB above the default, so the top 6 dB of a dense master comes out as about 3.1 dB and Output goes slightly up to pay for the compression. The status line reports what the raised Hiss setting comes to after Type I, Dolby B and the Record Level.
+   - A darker, more compressed home-deck sound with extra wobble, hiss, misalignment, and occasional dropouts.
 
 5. **Portable, Worn Tape**
    - Deck Grade: Portable, Tape Type: Type I, Noise Reduction: Off, Bias: -2.0 dB, Record Level: +12.0 dB
    - Wow/Flutter: 0.480%, Hiss: -54.0 dB re 250 nWb/m, Dropouts: 8.0 events/min, Azimuth: +4.0 arcmin, Dolby Level Error: 0.0 dB, Output: +1.0 dB, Mix: 100%
-   - An intentionally degraded lo-fi effect. A Portable deck reaches -3 dB at 6.5 kHz and 26 Hz and drifts twice as much as the default one; the bias is under the aligned point, which brightens 10 kHz by about 1.6 dB and adds distortion with it; the transport is well past the point where the wobble is obvious; the tape is loud and noisy; the azimuth is badly out; and dropouts arrive several times a minute on every track. Record Level is high enough that the bass is firmly into the ceiling, and Output brings the loudness back.
-
-### Model Notes
-
-The effect models one recording and playback pass on a deck running at the fixed 4.76 cm/s of the compact cassette. The record side lifts the treble before the tape and the playback side takes exactly the same lift off again, rather than following a published reproduce standard; the low-frequency half of the curve is deliberately not symmetric, because the record-side boost a real deck applies below 50 Hz has a ceiling, and that ceiling is what produces both the low-frequency rolloff and the bass reaching saturation first. Deck Grade governs only the mechanisms that have no control of their own, so it never changes Wow/Flutter, Hiss or Dropouts. The azimuth wobble is a bounded process that is pulled back to the Azimuth setting rather than a random walk, and Reference has none at all, because a deck of that class carries an azimuth servo; with Wow/Flutter at 0, Hiss off, Dropouts at 0 and Deck Grade at Reference, nothing random runs at all. Dolby B and Dolby C are modeled as matched sliding-band companders and always run as a complete encode and decode round trip; there is no encode-only or decode-only operation, and no claim of conformance to, or certification against, any noise-reduction specification. Dolby Level Error offsets the decoder's reference only, which is the calibration difference between two decks, not a second processing stage. Type III tapes, microcassette and Elcaset formats, other tape speeds, pitch control, auto-reverse, print-through, splice noise, motor hum, shell and mechanism noise, and bleed from the opposite side are outside this model. No public per-tape dropout statistics exist, so the dropout rate range, durations and depths are a calibrated model constrained by a published quality-control bound rather than a transcription of measured data. The tape path carries 165 samples (3.741 ms) of transport and processing delay on a 44.1 kHz host, falling to 683 samples (3.557 ms) on a 192 kHz one; at Mix 0% the input is passed through bit-exactly with no delay at all. The tone figures quoted above are measured on a 96 kHz host at the reference 0.0 dB Bias. This effect costs about one and a half times as much as Tape Artifacts.
+   - An intentionally degraded portable-player sound with narrow bandwidth, strong wobble, noise, distortion, and frequent dropouts.
 
 ## Digital Error Emulator
 
@@ -463,7 +428,7 @@ G.726 Simulator passes the selected mono channel or stereo pair through a real I
 
 The four modes are the standard G.726 rates: 16, 24, 32, and 40 kbit/s. The default 32 kbit/s setting is the historical DECT full-slot speech mode. Lower rates spend fewer bits on each 8 kHz sample and make granular quantization, rough sustained tones, and slope overload more apparent. The codec is designed for speech, so full-band music exposes its limits strongly.
 
-This effect requires its WebAssembly processing engine. If that engine or the selected sample-rate/channel mode is unavailable, the input remains unchanged and the plugin shows a plain-language status message. When processing resumes after suspension, the resamplers and codec prediction state restart together so buffered pre-suspension audio is not replayed.
+If the plugin reports that the effect is unavailable, try another sample rate or channel mode. Until then, the input remains unchanged.
 
 ### Sound Enhancement Guide
 
@@ -487,7 +452,7 @@ When the audio output has one channel, GSM-FR Simulator processes that channel d
 
 Each 20 ms frame is represented by quantized linear-prediction, long-term-prediction, and regular-pulse-excitation parameters. Transcodes repeats the complete encode/decode stage with independent state, reproducing tandem coding rather than acting as a generic quality control. Additional channels beyond the selected stereo pair remain unchanged.
 
-This effect requires its WebAssembly processing engine. If that engine or the selected sample-rate/channel mode is unavailable, the input remains unchanged and the plugin shows a plain-language status message. When processing resumes after suspension, the resamplers, frame buffers, and codec state restart together so buffered pre-suspension audio is not replayed.
+If the plugin reports that the effect is unavailable, try another sample rate or channel mode. Until then, the input remains unchanged.
 
 ### Sound Enhancement Guide
 
@@ -583,7 +548,7 @@ MP3 Codec Simulator passes the selected channels through a real-time, simplified
 
 The 44.1 kHz MPEG-1 profile offers 32–320 kbit/s. The 22.05 kHz MPEG-2 profile offers 32–160 kbit/s and naturally limits the coded bandwidth more strongly. High settings are useful as comparison points and may sound very close to the input on some material.
 
-This effect requires its WebAssembly processing engine. If that engine or the selected sample-rate/channel mode is unavailable, the input remains unchanged and the plugin shows a plain-language status message.
+If the plugin reports that the effect is unavailable, try another sample rate or channel mode. The input remains unchanged until the effect becomes available.
 
 ### Sound Enhancement Guide
 
@@ -595,7 +560,7 @@ This effect requires its WebAssembly processing engine. If that engine or the se
 
 ### Parameters
 
-- **Codec Rate** — Selects `44.1 kHz (MPEG-1)` or `22.05 kHz (MPEG-2)`. This changes the codec profile, frame structure, and coded bandwidth; it is not just a playback sample-rate control.
+- **Codec Rate** — Selects `44.1 kHz (MPEG-1)` or `22.05 kHz (MPEG-2)`. The 22.05 kHz setting has a narrower coded bandwidth and makes the low-rate character more obvious.
 - **Bitrate** — Sets the total constant bitrate for the mono or stereo stream. MPEG-1 supports 32, 48, 64, 80, 96, 112, 128, 160, 192, 224, 256, and 320 kbit/s. MPEG-2 supports the same choices through 160 kbit/s. Lower values leave fewer bits for each transform frame and make spectral holes, rough tonal components, and transient smear more likely.
 - **Stereo Mode** — `Joint Stereo` can encode the first stereo pair as Mid/Side when that is more efficient. `Stereo` keeps the left and right spectra separate. Joint Stereo does not simply convert the output to mono.
 - **Bit Reservoir** — Lets simple frames save unused main-data capacity for later complex frames. Turning it off makes every frame meet its own budget and can expose stronger frame-to-frame quality variation.
@@ -637,9 +602,9 @@ An effect that adds atmospheric background texture to your music, similar to the
 
 SBC Codec Simulator passes the selected channels through a real-time SBC analysis, bit allocation, quantization, and synthesis path. Use it to hear how the mandatory baseline codec for Bluetooth A2DP can change high-frequency detail, tonal textures, transients, and stereo imaging. With Packet Loss at its default the round trip is completely clean; raising it reproduces the dropouts of a real Bluetooth link.
 
-The codec runs internally at 44.1 kHz for the 44.1 kHz sample-rate family and 48 kHz for the 48 kHz family. The read-only Bitrate value is calculated from the exact SBC frame length for the current Bitpool, Channel Mode, Blocks, and codec rate. It is therefore more informative than treating Bitpool itself as a bitrate.
+The read-only Bitrate value shows the resulting stream rate for the current Bitpool, Channel Mode, and Blocks settings. Use it when comparing configurations; Bitpool itself is not a bitrate.
 
-This effect requires its WebAssembly processing engine. If that engine or the selected sample-rate/channel mode is unavailable, the input remains unchanged and the plugin shows a plain-language status message.
+If the plugin reports that the effect is unavailable, try another sample rate or channel mode. The input remains unchanged until the effect becomes available.
 
 ### Sound Enhancement Guide
 
@@ -656,56 +621,41 @@ This effect requires its WebAssembly processing engine. If that engine or the se
 - **Bitpool** — Sets the quantization-bit budget per SBC frame, from 2 to 53. `Joint Stereo` and `Stereo` share this budget across the stereo pair, while `Dual Channel` spends it on each channel separately. Lower values leave more subbands with few or no bits and make codec artifacts stronger. Bitpool is not a direct kbit/s value.
 - **Channel Mode** — `Joint Stereo` may encode correlated subbands as sum/difference when that reduces the required scale factors. `Stereo` keeps left and right subbands separate. Both share one bitpool across the first stereo pair; Joint Stereo does not simply make the output mono. `Dual Channel` gives each channel its own independent allocation at the full bitpool, so the frame and the bitrate roughly double: this is the configuration behind "SBC XQ", and because left and right are quantized independently the stereo image fluctuates differently than under Joint Stereo.
 - **Blocks** — Selects 4, 8, 12, or 16 subband-sample blocks per SBC frame. Fewer blocks shorten the codec frame and increase fixed overhead relative to coded audio; more blocks adapt scale factors less often.
-- **Bitrate** — Read-only current stream bitrate in kbit/s, calculated from the exact frame bytes and codec rate. It updates when Bitpool, Channel Mode, Blocks, the host sample-rate family, or the host output routing between mono and stereo changes.
+- **Bitrate** — Shows the current stream rate in kbit/s. It updates when Bitpool, Channel Mode, Blocks, sample rate, or mono/stereo routing changes.
 - **Packet Loss** — Sets the Bluetooth link packet loss rate from 0% to 20% (default 0%). At 0% no frames are lost. Higher values drop whole SBC frames in bursts (Gilbert-Elliott model), and the built-in concealment repeats the previous frame with attenuation before fading to silence, giving the interruptions of a real wireless link.
 - **Output** — Adjusts the decoded level from -24.0 to +12.0 dB (default 0.0 dB). Lower it if codec filter overshoot makes peaks too high.
 - **Mix** — Blends the latency-aligned original with the decoded result from 0% to 100%.
 
 ## Simple Jitter
 
-An effect that adds subtle timing variations to create that imperfect, vintage digital sound. It can make music sound like it's playing through old CD players or vintage digital equipment.
+Simple Jitter adds random variations to sample timing. The picosecond range is for comparing small, realistic clock fluctuations; during normal music playback, these settings are usually almost impossible to distinguish. For an obvious change in movement or texture, use microseconds or more. At those values, treat Simple Jitter as a creative effect, not as a model of normal CD players, DAT machines, or other digital equipment.
 
 ### Sound Character Guide
-- Subtle Vintage Feel:
-  - Adds gentle instability like old equipment
-  - Creates a more organic, less perfect sound
-  - Perfect for adding character subtly
-- Classic CD Player Sound:
-  - Recreates the sound of early digital players
-  - Adds nostalgic digital character
-  - Great for 90s music appreciation
-- Creative Effects:
-  - Create unique wobble effects
-  - Transform modern sounds into vintage ones
-  - Add experimental character
+
+- **Small clock-fluctuation comparison:** Picosecond values keep the effect extremely slight. Do not expect 1–500 ps to give a recognizable vintage or early-digital character.
+- **Audible creative texture:** Microsecond values add increasingly obvious roughness and timing instability. Raise RMS Jitter gradually, because high settings quickly become extreme.
 
 ### Parameters
-- **RMS Jitter** - Controls the amount of timing variation (1ps to 10ms)
-  - Subtle (1-10ps): Gentle vintage character
-  - Medium (10-100ps): Classic CD player feel
-  - Strong (100ps-1ms): Creative wobble effects
 
-### Recommended Settings for Different Styles
+- **RMS Jitter** (1 ps to 10 ms) - Sets the size of the random timing variations. Moving the slider to the right increases the effect on a logarithmic scale.
 
-1. Barely Perceptible
-   - RMS Jitter: 1-5ps
-   - Perfect for: Making playback feel slightly less perfectly digital
+### Reading the Display
 
-2. Classic CD Player Character
-   - RMS Jitter: 50-100ps
-   - Perfect for: Recreating the sound of early digital playback equipment
+- The value beside the slider is the RMS timing variation. Its unit changes automatically between ps, ns, µs, and ms.
 
-3. Vintage DAT Machine
-   - RMS Jitter: 200-500ps
-   - Perfect for: 90s digital recording equipment character
+### Starting Points
 
-4. Worn Digital Equipment
-   - RMS Jitter: 1-2ns (1000-2000ps)
-   - Perfect for: Creating the sound of aging or poorly maintained digital gear
+1. **Small Clock Fluctuation**
+   - RMS Jitter: 100 ps
+   - Use this to compare a realistic, very small timing variation; it will normally sound nearly unchanged.
 
-5. Creative Wobble Effect
-   - RMS Jitter: 10-100µs (0.01-0.1ms)
-   - Perfect for: Experimental effects and noticeable pitch modulation
+2. **Audible Texture**
+   - RMS Jitter: 10 µs
+   - Use this as a starting point for a clear creative effect, then adjust by ear.
+
+3. **Strong Experimental Effect**
+   - RMS Jitter: 100 µs
+   - Use this for pronounced roughness and instability; lower it if the music breaks up too much.
 
 ## SW Radio Simulator
 
@@ -750,22 +700,22 @@ This effect requires an environment that supports its real-time processing. When
 - **Signal** (-50 to 0 dB) - Sets received signal strength. Weaker settings expose more receiver noise and require more AGC gain.
 - **Fading** (0 to 100%) - Distributes the received power between a stable direct path and two delayed ionospheric paths. 0% is steady short-range reception; the default gives the continuous fading of a distant signal; 100% makes fades deepest and selective-fade distortion strongest.
 - **Fading Speed** (0.1 to 10.0 Hz) - Sets how quickly the ionospheric paths change. Low values give slow swells; a few hertz and above turns the movement into rapid flutter.
-- **Delay Spread** (0.2 to 8.0 ms) - Sets the delay difference between the two ionospheric paths. It determines how closely the fading notches are spaced across the audio band — about 1 kHz apart at 1 ms, and closer as the setting rises — which is what makes a deep fade sound watery instead of merely quiet. Short values fade the whole band together; long values let different parts of the spectrum fade at different moments.
+- **Delay Spread** (0.2 to 8.0 ms) - Controls how differently parts of the spectrum fade. Low values mainly move the whole signal together; high values create a stronger watery, uneven fade.
 - **Static** (0 to 100/s) - Sets the rate of lightning-like crashes. Each event is injected ahead of the IF filter and rings through it. 0 switches them off.
 - **Interference** (-80 to 0 dB) - Sets the strength of a station sharing the channel. -80 dB is effectively off; values closer to 0 dB make it louder.
-- **Interf. Offset** (0.1 to 10 kHz) - Sets how far the interfering carrier sits from yours. The two carriers beat at that difference and produce the heterodyne whistle, so this control sets its pitch: below roughly 3 kHz it is a clear tone, and higher settings raise its pitch until the IF filter begins to attenuate it. The interfering program is modeled as shaped noise, so it adds a rough, rushing texture rather than intelligible speech.
+- **Interf. Offset** (0.1 to 10 kHz) - Sets the pitch of the interfering-station whistle. Values below about 3 kHz give a clear tone; higher values raise it until the IF filter begins to remove it.
 
 #### Tuning
 
-- **Mode** (AM, USB, or LSB) - Selects how the station is transmitted and received. AM is the double-sideband broadcast the rest of this description assumes. USB and LSB suppress the carrier and transmit a single sideband, the way amateur and utility stations do, and the receiver recovers the audio against its own beat-frequency oscillator. Mode also decides which controls apply: BFO Offset works only in USB and LSB, and Detector and Detector RC only in AM. Controls that do not apply are shown disabled and keep their values. USB and LSB come out at about the same loudness as AM at the same settings, and the residual difference is set by the program's crest and by how much of it is pauses: dense material measures about a decibel above AM, while voice-like material with frequent pauses measures a few decibels above it, because AGC lifts the background during the gaps. This is what a real receiver does: AGC normalizes the level inside the IF passband, and with the carrier suppressed that level is the program itself instead of a constant carrier, so the gain follows the program and rides up through every pause.
+- **Mode** (AM, USB, or LSB) - Selects broadcast-style AM or the narrower single-sideband sound of communications receivers. BFO Offset works only in USB and LSB; Detector and Detector RC work only in AM. Disabled controls keep their values.
 - **Tuning** (-5.0 to +5.0 kHz) - Offsets the receiver from the station; positive values tune the receiver above the station and negative values tune it below. Small offsets dull the sound, add asymmetric filtering distortion, and change how loud the heterodyne whistle is; larger offsets push the station out of the narrow IF passband. In USB, tuning high shifts the recovered audio down; in LSB, it shifts the audio up. Tuning low reverses those directions.
-- **BFO Offset** (-1000 to +1000 Hz) - Fine-tunes the beat-frequency oscillator in USB and LSB; it has no effect in AM. Together with Tuning it sets the frequency shift applied to everything the receiver recovers. Add Tuning × 1000 and BFO Offset to get the receiver's total offset in hertz: that offset is subtracted from every component in USB and added to every component in LSB. Zero is exactly on frequency, a few tens of hertz already makes the sound nasal, and larger settings render it unintelligible the way a mistuned receiver does.
-- **IF Bandwidth** (2.0 to 10.0 kHz) - Sets the receiver's IF passband. Narrow settings are the communications-receiver response that rejects noise and the co-channel station but removes more treble; wide settings keep more detail and more interference. The recovered audio reaches half this setting in every Mode — about 3 kHz at the 6 kHz default; in USB and LSB only one sideband is present, so the other half of the passband carries only noise and interference. Mode does not change this control for you; lower it yourself for a narrower communications sound.
+- **BFO Offset** (-1000 to +1000 Hz) - Fine-tunes USB and LSB reception. Start at 0 Hz; a small offset makes the sound nasal, while a large offset makes it increasingly inharmonic and hard to recognize.
+- **IF Bandwidth** (2.0 to 10.0 kHz) - Narrows or widens reception. Lower it to reject more noise and get a drier communications sound; raise it to keep more detail. Start at 6 kHz.
 
 #### Receiver
 
-- **Detector** (Envelope or Synchronous) - Envelope is the ordinary diode detector, and it is what turns a deep selective fade into watery distortion. Synchronous recovers the carrier with a PLL and demodulates against it, which greatly reduces that distortion while the fade is deep. It pulls in over roughly ±1 kHz of Tuning and drops out of lock beyond that, so use Envelope while moving the dial. Switching detectors restarts carrier acquisition. It applies to AM only, because USB and LSB always use the BFO product detector.
-- **AGC Speed** (Slow, Mid, or Fast) - Sets how quickly automatic gain control follows the fades. Slow leaves the level swings audible and pumps as the signal recovers; Fast holds the level more tightly. In AM it sets both how fast the gain comes down on a rise and how fast it comes back up. In USB and LSB it sets the recovery only: the gain always comes down within a few milliseconds, as it does in a real single-sideband receiver, so a new phrase is caught immediately instead of bursting through.
+- **Detector** (Envelope or Synchronous) - In AM, Envelope gives watery distortion during deep fades. Synchronous keeps the signal clearer but works best with Tuning within about ±1 kHz; use Envelope while searching for a station.
+- **AGC Speed** (Slow, Mid, or Fast) - Sets how quickly level control follows fades. Slow leaves more swelling and pumping; Fast keeps the level steadier.
 - **Detector RC** (20 to 500 µs) - Sets the envelope detector's discharge time. Longer values smooth the envelope more but increase high-frequency diagonal-clipping distortion at strong modulation. It has no effect when Detector is Synchronous, or in USB and LSB.
 - **Hum** (-80 to -20 dB) - Sets power-supply hum. -80 dB is effectively off. Most of this control modulates receiver gain before detection rather than adding a hum layer.
 - **Hum Freq** (50 or 60 Hz) - Selects the simulated power frequency.
@@ -774,7 +724,7 @@ This effect requires an environment that supports its real-time processing. When
 
 - **Speaker** (Off, Small, or Table) - Selects line output, the restricted speaker of a portable shortwave set, or the fuller response of a tabletop communications receiver.
 - **Output Gain** (-24 to +24 dB) - Adjusts level after receiver and speaker processing.
-- **Mix** (0 to 100%) - Blends the original stereo signal with the simulated mono reception. 100% is full shortwave reception, sent identically to left and right. Mix does not delay the dry signal to align it, so intermediate settings combine dry and wet signals with the receiver and propagation delay between them.
+- **Mix** (0 to 100%) - Blends the original stereo signal with the mono shortwave sound. Start at 100% for the full receiver effect; lower it to restore some original stereo detail.
 
 ### Reading the HUD
 
@@ -819,10 +769,6 @@ This effect requires an environment that supports its real-time processing. When
    - Start from Single-Sideband Station and set BFO Offset: -150 Hz
    - Every component moves up by 150 Hz, so harmonics no longer line up and voices and instruments turn nasal and inharmonic. Switch Mode to LSB with the same setting to move everything down by 150 Hz instead, and use Tuning for coarser offsets.
 
-### Model Notes
-
-The effect processes the first stereo pair as one mono transmission, as real shortwave does, and the received signal is always mono. One co-channel station is modeled, and its program is shaped noise rather than speech or music. USB and LSB model the reception of a suppressed-carrier single-sideband signal; the sideband is selected at the transmitter, so the receiver adds no opposite-sideband rejection of its own, and CW and data modes are not modeled. Real band conditions — day and night propagation changes and specific broadcast bands — are outside this model; set the conditions you want with Signal, Fading, and the propagation controls.
-
 ## Tape Artifacts
 
 Tape Artifacts records the music onto a modeled analog reel-to-reel machine and plays it back. The signal passes through the record amplifier and the treble lift it puts onto the tape, the magnetic saturation of the tape itself, the treble erasure caused by the record bias, the wavelength losses of the reproduce head, the wow and flutter of the transport, the low-frequency head bump, and the playback curve that takes exactly that lift off again, before tape hiss and modulation noise are added. Use it when you want music to sound as though it had been through a tape machine rather than simply having noise or wobble placed on top of it.
@@ -836,53 +782,51 @@ Tape Artifacts records the music onto a modeled analog reel-to-reel machine and 
 
 ### Sound Character Guide
 
-- **Speed sets the basic tone:** 30 ips is the most open, 15 ips is the familiar studio sound, and 7.5 ips is clearly darker with a stronger low-frequency lift. The noise does not simply follow the speed: with no signal the hiss floor is highest at 15 ips and lowest at 30 ips, while the modulation noise that rides on the music is strongest at 7.5 ips.
-- **Gentle level compression:** the higher you set Record Level, the more the tape rounds the peaks off before it audibly distorts, so loud passages become denser and steadier rather than obviously clipped. At the default +6.0 dB and the reference 0.0 dB Bias a full-scale 1 kHz tone comes out 0.17 dB rounded off with 0.49% distortion - a machine at its normal operating level, not a clean digital path. The amount grows smoothly from there: 0.68 dB and 2.0% at +12.0 dB, 2.49 dB and 6.8% at the +18.0 dB top. Any larger level change you see at the default comes from the tone shaping and not from the compression, and that one goes either way depending on the material: bass-heavy music can come out about 1 dB louder, and material with a lot of top about 1 dB quieter.
+- **Speed sets the basic tone:** 30 ips is the most open, 15 ips is the familiar studio sound, and 7.5 ips is darker with a stronger low-frequency lift.
+- **Gentle level compression:** raise Record Level to make loud passages denser and warmer as the tape rounds their peaks. Lower it for a cleaner, more dynamic result, then match loudness with Output.
 - **Warmth:** the saturation is asymmetric, so it produces both even and odd harmonics, and the warmth grows gradually as Record Level rises instead of appearing suddenly.
-- **The transport is audible on sustained notes:** slow wow and faster flutter make held piano, organ, and string notes drift very slightly (0.160%, the deviation the setting states, at the default Wow/Flutter and Speed). This is what most clearly separates tape from a digital file.
-- **A living background:** hiss, plus modulation noise that rides on the music itself, is part of the sound at normal settings. The hiss is on the tape, so Record Level moves what it measures at the output one decibel for one decibel. Take Hiss all the way down to -89.0 dB re 320 nWb/m when you want a silent background.
+- **The transport is audible on sustained notes:** Wow/Flutter adds pitch drift and shimmer to piano, organ, strings, and other held sounds.
+- **A living background:** Hiss adds both a steady tape floor and noise that follows the music. Set it to the minimum when you want no added tape noise.
 
 ### Parameters
 
-- **Speed** (7.5, 15, or 30 ips) - Selects the tape speed. Faster speeds extend the treble and move the low-frequency head bump higher in frequency while making it smaller: +1.4 dB at 41 Hz at 7.5 ips, +0.8 dB at 80 Hz at 15 ips, and +0.4 dB at 159 Hz at 30 ips. They also make the wow and flutter faster and shallower: Wow/Flutter states the weighted deviation at 15 ips and the speed multiplies it by 1.5 at 7.5 ips and by 0.75 at 30 ips, so the 0.04% the reference machine publishes at 15 ips gives the 0.06% and 0.03% it publishes at the other two. The noise does not move in one direction with the speed: the hiss floor is highest at 15 ips and lowest at 30 ips, while the modulation noise that rides on the music is strongest at 7.5 ips. 15 ips is the usual studio setting, 7.5 ips is the darkest, and 30 ips is the closest to the original. Wow/Flutter and Hiss are both stated at the reference 15 ips, and the last line of the effect shows what each of them comes to at the Speed, Tape and Record Level you have selected, alongside the Record Level convention itself.
-- **Tape** (Standard or Master) - Selects the tape formulation. Master has a thicker coating and about 3 dB more headroom before the tape saturates, so it stays clean longer and has a slightly softer top end. At low Record Level settings the two are close in level (0.08 dB apart at the default), but the higher you set Record Level the louder Master stays: 0.34 dB at +12.0 dB and 1.16 dB at +18.0 dB, precisely because it saturates later, so re-match the loudness with Output when you compare them.
-- **Bias** (-6.0 to +6.0 dB) - Sets the recording bias. 0 dB is the correctly aligned machine, and it is the point the manufacturer's own bias procedure lands on: record 10 kHz 20 dB below the operating level, find the peak of the sensitivity curve, then raise the bias until playback has dropped by the published amount, which on Standard tape is 1.5 dB at 30 ips, 4.0 dB at 15 ips, and 5.0 dB at 7.5 ips. Master tape differs only at 7.5 ips, where the drop is 6.5 dB. Higher (over-biased) settings are cleaner and duller. Lower (under-biased) settings are brighter and more distorted, in the way a misaligned deck is, but only down to that peak, which on Standard tape sits at about -2.7 dB at 30 ips, -4.5 dB at 15 ips, and -5.0 dB at 7.5 ips, and on Master at 7.5 ips at about -5.7 dB. Below it the treble darkens again while the distortion keeps rising. How much brightening there is depends on the frequency as much as on the speed: at 30 ips the peak is worth 1.5 dB at 10 kHz but 2.9 dB at 16 kHz, and by -6.0 dB the top is already darker than at 0 dB, by 0.2 dB at 10 kHz and 0.5 dB at 16 kHz.
-- **Record Level** (-12.0 to +18.0 dB) - Sets how hard the machine records. The number is the tape level a 0 dBFS peak reaches, in dB above the 320 nWb/m reference flux, and the status line states that convention. The control adds no gain of its own: as long as the tape is not saturating, the same signal comes out at the same level wherever Record Level is set. That level is not exactly unity - it sits within 0.05 dB of it, a little high at 30 ips and a little low at 7.5 ips - but it does not move with Record Level. The default +6.0 dB is a machine at its normal operating level, where a full-scale 1 kHz tone distorts 0.49%; +12.0 dB gives 2.0% and the +18.0 dB top 6.8%, and that is how you get tape compression and warmth out of it. The peaks flattening is the tape, not the control turning anything down, so the harder you drive the tape the quieter the result gets, and Output is there to bring the loudness back. It also moves the background one decibel for every decibel in the other direction, since the hiss is recorded on the tape and the tape is now further below the peak.
-- **Wow/Flutter** (0 to 1%) - Sets the speed variation of the transport, as a DIN 45507 peak-weighted deviation in percent at 15 ips. 0% is a perfectly steady machine. 0.04% is the tolerance the reference studio machine publishes at that speed, and dialing it in gives the 0.06% at 7.5 ips and the 0.03% at 30 ips that the same machine publishes for those speeds. The default 0.160% is four times that tolerance; higher values give the audible drift and shimmer of a worn deck, up to 1.5% at 7.5 ips.
-- **Hiss** (-89.0 to -39.0 dB re 320 nWb/m) - Sets the level of the tape hiss and the modulation noise together, as the A-weighted hiss flux at 15 ips on Standard tape, referred to the 320 nWb/m reference. This is the tape's own datasheet figure rather than a level at the output: the noise is recorded on the tape, so what it measures at the output depends on Record Level. -89.0 dB re 320 nWb/m switches both off completely. The default -62.5 dB re 320 nWb/m is the bias noise the manufacturer publishes for that tape at that speed; the other speeds and Master tape differ from it by the amounts the datasheet gives, so at that default and Record Level +6.0 dB the six combinations run from -68.0 to -72.0 dBFS, and the whole set moves with both controls. All of these are ahead of Output, so a meter placed after Output reads them lifted by whatever Output is set to. That floor is what you hear in the gaps; while the music plays what this control mostly adds is the modulation noise riding on the signal, about 57 dB below a steady tone on Standard tape at 15 ips, and a few decibels either side of that at the other Speed and Tape settings and on real material. Higher values make the background more obvious.
+- **Speed** (7.5, 15, or 30 ips) - Selects tape speed. Start at 15 ips; choose 30 ips for the cleanest, most open sound or 7.5 ips for darker tone, stronger bass lift, and more movement.
+- **Tape** (Standard or Master) - Selects the tape formulation. Master has more headroom and stays cleaner at high Record Level; Standard saturates earlier. Match loudness with Output when comparing them.
+- **Bias** (-6.0 to +6.0 dB) - Changes treble and distortion. Start at 0 dB. Positive values sound cleaner and darker; moderately negative values sound brighter and rougher. Extreme negative values add distortion without continuing to brighten.
+- **Record Level** (-12.0 to +18.0 dB) - Controls how hard the tape is driven. Start at +6 dB, raise it for more compression and warmth, or lower it for cleaner dynamics. Use Output to match loudness.
+- **Wow/Flutter** (0 to 1%) - Controls transport-related pitch movement. 0% is steady; raise it until sustained notes have the amount of drift and shimmer you want.
+- **Hiss** (-89.0 to -39.0 dB re 320 nWb/m) - Controls tape hiss and signal-related modulation noise. Raise it for a more obvious tape background or set it to the minimum to switch the noise layer off.
 - **Output** (-24.0 to +24.0 dB) - Adjusts the level after the whole chain. Use it to match loudness when you compare with bypass, or to bring back the loudness a high Record Level setting has cost.
-- **Mix** (0 to 100%) - Blends the tape signal with the original. 100% is full tape playback. The dry signal is delay-aligned with the tape path, so the midrange blends cleanly - 1 kHz stays within 0.1 dB of unity at every Mix setting and Speed at the reference 0.0 dB Bias, and within 0.5 dB anywhere in the Bias range - but the top octave does not, because dry and tape no longer share the same phase up there and partly cancel. At 50% the level at 16 kHz comes out 1.7 dB down on a 44.1 kHz host, 2.1 dB on 48 kHz, 4.6 dB on 96 kHz, and 5.7 dB on 192 kHz, and on a 96 or 192 kHz host the darkest point of the control is not 100% but around 70%. On a 44.1 kHz host it only gets darker as you turn it up, and on a 48 kHz one the darkest point is 89%, 0.06 dB below 100%, so on both the middle of the control is brighter at the very top than 100% is. At 0% the input passes through completely unchanged and the effect adds no latency; at any other setting it adds 5.26 ms on a 44.1 kHz host, falling to 5.06 ms on a 192 kHz one.
+- **Mix** (0 to 100%) - Blends the tape sound with the original. Start at 100% for the full effect and lower it for subtle coloration. Intermediate values can soften the highest frequencies through partial cancellation.
 
 ### Recommended Settings
 
 1. **Studio Master Tape (default)**
    - Speed: 15 ips, Tape: Standard, Bias: 0.0 dB, Record Level: +6.0 dB
    - Wow/Flutter: 0.160%, Hiss: -62.5 dB re 320 nWb/m, Output: 0.0 dB, Mix: 100%
-   - The everyday tape sound, and the plugin's own default: the top softened by 3.5 dB at 16 kHz, a 0.8 dB lift around 80 Hz, 0.49% distortion and 0.17 dB of rounding on a full-scale tone, a -68.5 dBFS background, and 0.160% wow and flutter, audible on held notes and not on transients.
+   - A balanced reel-to-reel sound with softened treble, gentle warmth, light hiss, and audible movement on sustained notes.
 
 2. **Clean High-Speed Transfer**
    - Speed: 30 ips, Tape: Master, Bias: 0.0 dB, Record Level: 0.0 dB
    - Wow/Flutter: 0.070%, Hiss: -68.5 dB re 320 nWb/m, Output: 0.0 dB, Mix: 100%
-   - Very close to the original: 0.07% distortion and 0.02 dB of rounding on a full-scale tone, 2.2 dB down at 16 kHz, a -72.0 dBFS background - what the -68.5 dB re 320 nWb/m Base setting becomes at 30 ips on Master tape at this Record Level - and 0.053% wow and flutter. The tape is recorded 6 dB below the default, which is what keeps it this clean. Useful as a reference point when comparing the other settings.
+   - The cleanest preset, useful as a reference when comparing stronger tape coloration.
 
 3. **Warm and Compressed**
    - Speed: 15 ips, Tape: Standard, Bias: 0.0 dB, Record Level: +18.0 dB
    - Wow/Flutter: 0.200%, Hiss: -62.5 dB re 320 nWb/m, Output: +1.5 dB, Mix: 100%
-   - The tape is recorded 12 dB above the default, at the top of the range: a full-scale tone comes out 2.49 dB rounded off with 6.8% distortion, so the mix becomes denser and warmer while the peaks flatten. The background drops to -80.5 dBFS at the same time, because the hiss is on the tape and the tape now sits that much higher. Output goes up, not down, because the compression costs loudness; fine-tune it by ear.
+   - Dense, warm tape compression with flattened peaks. Fine-tune Output by ear after setting the drive.
 
 4. **Home Deck at 7.5 ips**
    - Speed: 7.5 ips, Tape: Standard, Bias: +2.0 dB, Record Level: +12.0 dB
    - Wow/Flutter: 0.300%, Hiss: -59.5 dB re 320 nWb/m, Output: +0.5 dB, Mix: 100%
-   - Darker (10.2 dB down at 16 kHz, with a 1.4 dB lift at 50 Hz) and noisier (a -72.5 dBFS background, which is the tape's own -73.0 dBFS floor plus its +0.5 dB of Output), and less steady (0.450% wow and flutter), with 1.3% distortion on a full-scale tone. The bias is set a little high, the way a domestic deck running generic tape usually is: an ordinary machine rather than a studio one.
+   - A darker, noisier, less steady home-machine sound with moderate saturation.
 
 5. **Worn Transport**
    - Speed: 7.5 ips, Tape: Standard, Bias: -2.0 dB, Record Level: +15.0 dB
    - Wow/Flutter: 0.480%, Hiss: -56.5 dB re 320 nWb/m, Output: +1.0 dB, Mix: 100%
-   - 0.720% wow and flutter, 5.2% distortion and 1.80 dB of rounding on a full-scale tone, and a -72.0 dBFS background - the tape's own -73.0 dBFS floor plus its +1.0 dB of Output - with the gritty, forward top of an under-biased machine, only 4.4 dB down at 16 kHz where an aligned machine at this speed is 7.2 dB down. Output has to come up to bring the loudness back. An intentionally degraded lo-fi effect.
+   - An intentionally degraded sound with strong pitch movement, grit, compression, and hiss.
 
-### Model Notes
-
-The effect models one recording and playback pass on a correctly aligned machine. The record side lifts the treble before the tape and the playback side takes exactly the same lift off again, at every speed, rather than following a published equalization standard such as NAB. Print-through, tape dropouts, azimuth error, splice noise, and machine-specific equalization standards are outside this model. The tape path carries 5.06 to 5.26 ms of transport and processing delay on hosts from 44.1 to 192 kHz. The tone figures quoted above are measured on a 96 kHz host at the reference 0.0 dB Bias; the extreme top depends on the host sample rate, so the 3.5 dB at 16 kHz of the default becomes 2.7 dB at 44.1 or 48 kHz.
+Tape Artifacts adds about 5ms of delay when Mix is above 0%. It focuses on tape tone, saturation, hiss, and transport movement; it does not add dropouts, splice noise, or head-alignment errors.
 
 ## Vinyl Artifacts
 
@@ -992,7 +936,7 @@ Vinyl Simulator transforms the music itself through a physical record-cutting an
 ### Vinyl Simulator or Vinyl Artifacts?
 
 - **Vinyl Simulator** changes the input signal by passing it through the modeled groove and stylus. Roughness, dust, static, tracking force, stylus shape, record speed, and radius all take part in the simulation.
-- **Vinyl Artifacts** leaves the music signal itself unchanged and adds controllable pops, crackle, hiss, rumble, and stereo noise bleed. Choose it for a lighter, predictable noise layer or when WASM is unavailable.
+- **Vinyl Artifacts** leaves the music signal itself unchanged and adds controllable pops, crackle, hiss, rumble, and stereo noise bleed. Choose it for a lighter, more predictable noise layer.
 - The two can be combined, but start with one: using strong surface settings in both can make clicks and noise build up quickly.
 
 ### Sound Enhancement Guide
@@ -1024,7 +968,7 @@ Vinyl Simulator transforms the music itself through a physical record-cutting an
 
 #### Stylus
 
-- **Shape** (Spherical or Elliptical) - Selects the contact geometry. Elliptical emphasizes directional groove tracing; Spherical links Scan Radius to Side Radius and gives a rounder contact profile. Changing Shape rebuilds the simulation state.
+- **Shape** (Spherical or Elliptical) - Selects the stylus contact shape. Elliptical follows fine groove detail more closely; Spherical gives a rounder, more forgiving contact profile.
 - **Side Radius** (5 to 25 µm) - Sets the stylus radius across the groove wall. It changes the contact footprint and pressure distribution.
 - **Scan Radius** (2 to 25 µm) - Sets the radius used along the direction of groove travel. Smaller values follow finer geometry; larger values average it over a broader contact. In Spherical mode it follows Side Radius.
 - **Tracking Force** (0.5 to 5.0 g) - Sets downward stylus force. More force can improve contact stability but increases contact force and pressure; too little can raise mistrack and skip activity.
@@ -1034,7 +978,7 @@ Vinyl Simulator transforms the music itself through a physical record-cutting an
 
 #### Output
 
-- **Quality** (Eco, Standard, High, or Ultra) - Selects the base number of physical integration substeps and contact scan points. To keep the contact resonance stable, the engine may automatically raise the effective substeps above this base according to sample rate, Tracking Force, Tip Mass, Compliance, Shape, Side Radius, and Scan Radius. Standard is the default for real-time listening. Changing Quality rebuilds the simulation state.
+- **Quality** (Eco, Standard, High, or Ultra) - Balances groove-tracing detail against CPU use. Standard is the recommended starting point for real-time listening.
 - **Output Gain** (-24 to +24 dB) - Adjusts the level after playback equalization and normalization. Reduce it if strong cutting or surface settings create high peaks.
 - **Mix** (0 to 100%) - Blends the simulated playback with a latency-aligned dry signal. 0% is dry and 100% is fully simulated.
 
@@ -1047,7 +991,7 @@ Vinyl Simulator transforms the music itself through a physical record-cutting an
 - **Jitter (ns)** appears with the Stylus view and reports timing variation at the groove read point.
 - **Mistrack, Skip, Static Pop, and Dust Hit (/s)** show recent event rates. A flash marks a new event; repeated mistracks or skips suggest reducing Cut Level, increasing Tracking Force moderately, choosing a larger Radius, or raising Quality.
 
-The HUD becomes active when native DSP telemetry is available. When playback is stopped or telemetry is paused to save power, it may show an idle state rather than live values.
+The HUD shows live values during playback and may show an idle state while playback is stopped.
 
 ### Recommended Settings
 
@@ -1072,23 +1016,10 @@ The HUD becomes active when native DSP telemetry is available. When playback is 
 
 ### Quality and CPU Guide
 
-Each Quality preset sets base substeps and contact scan points. For stability, the engine also calculates `Nmin = ceil(8 × f_c / sampleRate)`, where the contact-resonance frequency `f_c` depends on Tracking Force, Tip Mass, Compliance, Shape, Side Radius, and Scan Radius, then uses `effectiveSubsteps = max(base, Nmin)`. At the default settings, Standard at 96 kHz remains at its base of 4 substeps, so the existing performance target is unchanged.
+- **Eco** uses the least CPU and is the first choice for lower-powered devices.
+- **Standard** is the recommended starting point for normal listening.
+- **High** improves groove tracing at a substantial CPU cost.
+- **Ultra** is extremely demanding and is rarely useful for real-time listening.
+- Higher sample rates and demanding stylus settings also increase CPU use. If playback breaks up, lower Quality first.
 
-The main workload is proportional to sample rate × effective substeps × contact scan points. The contact-evaluation and relative-load figures below are base estimates for when the stability floor does not raise the substeps, not measured CPU percentages; actual load also depends on the processor, browser, and availability of WASM SIMD.
-
-| Quality | Base detail | Base evaluations at 96 kHz | Base relative load | Suggested use |
-|---|---:|---:|---:|---|
-| Eco | 2 substeps × 7 scan points | 2.7 million/s | 0.39× | Mobile, low-power systems, or several instances |
-| Standard | 4 × 9 | 6.9 million/s | 1.00× | Normal real-time listening |
-| High | 8 × 13 | 20 million/s | 2.89× | Faster systems or focused comparison |
-| Ultra | 20 × 25 | 96 million/s | 13.89× | Offline rendering and verification |
-
-When the stability floor is inactive, apply the following sample-rate multiplier to the base relative load: 44.1 kHz = 0.46×, 48 kHz = 0.50×, 88.2 kHz = 0.92×, 96 kHz = 1.00×, 176.4 kHz = 1.84×, and 192 kHz = 2.00×. Sample rate and the Tracking Force, Tip Mass, Compliance, Shape, Side Radius, and Scan Radius settings can activate the floor and make the actual load higher than this base estimate. If playback breaks up, lower Quality first.
-
-### WASM Requirement and Model Limits
-
-Vinyl Simulator requires the native WebAssembly DSP kernel for real-time processing. If WASM is disabled with `?dsp=off`, unsupported, or fails to initialize, the effect passes the input through unchanged and the UI reports that WASM is required. It does not fall back to the much slower JavaScript reference simulation.
-
-The model processes the first stereo pair. Dust deformation is retained only while each simulated particle remains active; the stylus always advances into newly generated groove, so wear does not accumulate over repeated revolutions and is not saved with presets. Long-term record wear, 3D visualization, real-time SNR/THD meters, wow/flutter, eccentricity, warping, turntable rumble, and cartridge electrical loading are outside this effect's model.
-
-Remember: These effects are meant to add character and nostalgia to your music. Start with subtle settings and adjust to taste!
+If Vinyl Simulator is unavailable on your device, the audio passes through unchanged and the panel shows a notice. The effect does not add wow, eccentricity, warping, or turntable rumble; add Wow Flutter or another noise effect when you want those sounds.

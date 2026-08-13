@@ -35,7 +35,7 @@ Creates Auto Pan movement by applying periodic complementary gain changes within
 
 ## Auto Pan
 
-Auto Pan varies the gains of each adjacent stereo pair without mixing one pair into another. A final unpaired channel follows the mono rule, so it is not moved left or right. The effect has zero algorithmic latency.
+Auto Pan moves the level of each stereo pair between left and right. If the audio has an unpaired channel, that channel remains centered.
 
 ### Sound Enhancement Guide
 

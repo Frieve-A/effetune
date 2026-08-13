@@ -38,7 +38,7 @@ Provides Frequency Shifter, Ring Modulator, or Barber-pole Frequency Shifter pro
 
 ## Frequency Shifter
 
-Frequency Shifter moves every spectral component by a fixed number of hertz rather than by a musical interval. **Ring Mod** multiplies the signal by a carrier, while **Barber-pole** overlaps repeating translations for a continuous rising or falling impression. **Shift** and **Barber-pole** use a Hilbert analytic-signal FIR; **Ring Mod** instead multiplies the matched-delay real signal from the same FIFO. Dry and wet timing therefore remain aligned in every mode. The fixed latency varies with sample rate and is reported by the DSP library.
+Frequency Shifter moves every frequency component by a fixed number of hertz rather than by a musical interval. **Ring Mod** creates metallic sidebands, while **Barber-pole** creates the impression of a shift that keeps rising or falling. The effect adds a short processing delay that varies with sample rate, including when Mix is 0%.
 
 ### Sound Enhancement Guide
 
@@ -57,6 +57,6 @@ Frequency Shifter moves every spectral component by a fixed number of hertz rath
 - **Stereo Phase** (0–180°) — offsets the carrier or sweep between the left and right channels of each stereo pair in all modes.
 - **Mix** (0–100%) — blends matched-delay dry and shifted sound; 0% is dry in level but still carries the documented fixed latency.
 
-Frequency translation can create components above Nyquist, especially with bright input and large shifts. The first version does not oversample, so use extreme shifts knowingly rather than assuming alias-free output.
+If a large shift sounds rough or metallic in an unwanted way, reduce Shift or Mix.
 
 [Back to all effects](/dsp/effects/)

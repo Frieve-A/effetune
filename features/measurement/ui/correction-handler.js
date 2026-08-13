@@ -3,11 +3,19 @@
  */
 
 import dataStorage from '../dataStorage.js';
+import { PEQCalculator } from '../peq-calculator/peq-calculator.js';
+import i18n from '../i18n.js';
+import { createGraphGeometry } from '../graph-geometry.js';
+
+export function smoothingToBinsPerOct(smoothing) {
+    return 3 + smoothing * 21;
+}
 
 class CorrectionHandler {
     constructor(uiManager) {
         this.uiManager = uiManager;
         this.updateCorrectionTimeout = null;
+        this.peqCalculator = new PEQCalculator();
     }
 
     /**
@@ -16,36 +24,11 @@ class CorrectionHandler {
     async updateCorrection(expectedGeneration = this.uiManager.measurementStateGeneration) {
         if (!this.uiManager.selectedMeasurementId) return;
         if (expectedGeneration !== this.uiManager.measurementStateGeneration) return;
-        
-        try {
-            // Show spinner if not already displayed
-            const spinner = document.getElementById('loading-spinner-results');
-            if (spinner.style.display !== 'block') {
-                spinner.style.display = 'block';
-            }
-            
-            // Get settings from UI
-            const settings = this.getTargetSettings();
-            
-            // Update graph with new settings
-            this.uiManager.updateResultsGraph('all');
-            
-            // Update frequency markers
-            this.updateFrequencyMarkers();
-            
-            // Calculate PEQ parameters
-            await this.calculatePEQParameters(settings, expectedGeneration);
 
-            if (expectedGeneration !== this.uiManager.measurementStateGeneration) return;
-
-            // Hide spinner on success
-            spinner.style.display = 'none';
-        } catch (error) {
-            console.error('Error updating correction:', error);
-            // Hide spinner even in case of error
-            document.getElementById('loading-spinner-results').style.display = 'none';
-            throw error;
-        }
+        const settings = this.getTargetSettings();
+        this.uiManager.updateResultsGraph('all');
+        this.updateFrequencyMarkers();
+        await this.calculatePEQParameters(settings, expectedGeneration);
     }
     
     /**
@@ -293,14 +276,15 @@ class CorrectionHandler {
             const height = ctx.canvas.height;
             const padding = { top: 20, right: 20, bottom: 30, left: 50 };
             
-            const graphWidth = width - padding.left - padding.right;
-            
-            // Scale function for x-axis (copied from drawFrequencyGrid)
-            const minFreq = 20;
-            const maxFreq = 20000;
-            const scaleX = (freq) => {
-                return padding.left + graphWidth * (Math.log10(freq) - Math.log10(minFreq)) / (Math.log10(maxFreq) - Math.log10(minFreq));
-            };
+            const { frequencyToX: scaleX } = createGraphGeometry({
+                width,
+                height,
+                padding,
+                minFrequency: 20,
+                maxFrequency: 20000,
+                minValue: -24,
+                maxValue: 24
+            });
             
             // Calculate positions
             const lowFreqPos = scaleX(lowFreq);
@@ -326,25 +310,27 @@ class CorrectionHandler {
         }
     }
 
-    /**
-     * Handle debounced updates (prevent too many consecutive updates)
-     */
-    debounceUpdateCorrection() {
-        // Throttle continuous updates from slider operations
+    requestCorrectionUpdate(expectedGeneration = this.uiManager.measurementStateGeneration) {
+        const spinner = document.getElementById('loading-spinner-results');
+        spinner.style.display = 'block';
+
         if (this.updateCorrectionTimeout) {
             clearTimeout(this.updateCorrectionTimeout);
         }
-        this.updateCorrectionTimeout = setTimeout(async () => {
-            try {
-                await this.updateCorrection();
-                // Hide spinner when complete
-                document.getElementById('loading-spinner-results').style.display = 'none';
-            } catch (error) {
+
+        this.updateCorrectionTimeout = setTimeout(() => {
+            this.updateCorrectionTimeout = null;
+            Promise.resolve(this.updateCorrection(expectedGeneration)).catch(error => {
                 console.error('Error updating correction:', error);
-                // Hide spinner even in case of error
-                document.getElementById('loading-spinner-results').style.display = 'none';
-            }
-        }, 300); // Wait 300ms to limit continuous updates
+                this.uiManager.showNotification(
+                    i18n.t('error:correctionUpdateFailed') ||
+                        'The correction could not be updated. Check the settings and try again.',
+                    'error'
+                );
+            }).finally(() => {
+                spinner.style.display = 'none';
+            });
+        }, 50);
     }
     
     /**
@@ -376,12 +362,14 @@ class CorrectionHandler {
         );
         
         // Calculate PEQ parameters
-        const peqParameters = await window.app.audioUtils.calculatePEQParameters(
+        const binsPerOct = smoothingToBinsPerOct(settings.smoothing);
+        const peqParameters = await this.peqCalculator.calculatePEQParameters(
             smoothedResponse,
             settings.lowFreq,
             settings.highFreq,
             settings.eqBandCount,
-            settings.smoothing
+            undefined,
+            binsPerOct
         );
 
         if (expectedGeneration !== this.uiManager.measurementStateGeneration ||
@@ -398,15 +386,6 @@ class CorrectionHandler {
         
         // Store PEQ parameters
         measurement.peqParameters = peqParameters;
-        
-        // Calculate corrected response
-        const correctedResponse = window.app.audioUtils.applyCorrectionToResponse(
-            responseData,
-            peqParameters
-        );
-        
-        // Store corrected response
-        measurement.correctedResponse = correctedResponse;
         
         // Update graph
         this.uiManager.updateResultsGraph();

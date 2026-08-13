@@ -265,15 +265,6 @@ class EarphoneCableSimPlugin extends PluginBase {
     return z;
   }
 
-  // Total transfer function (with cable + output impedance), complex.
-  _hphys(f) {
-    const C = EarphoneCableSimPlugin;
-    const w = 2 * Math.PI * f;
-    const zl = this._zload(f);
-    const zt = { re: this.zo + this.rc + zl.re, im: w * this.lc * 1e-6 + zl.im };
-    return C._cdiv(zl, zt);
-  }
-
   /* ============================================================
    *  Coefficient computation: physical model -> biquad cascade
    * ============================================================ */

@@ -1,6 +1,7 @@
 #include "effetune/kernel.h"
 #include "FiveBandFIRPEQPluginParams.h"
 #include "effetune/dsp/partitioned_convolver.h"
+#include "nothrow_storage.h"
 
 #include <array>
 #include <cstddef>
@@ -38,45 +39,6 @@ std::uint32_t filterDelaySamples(float value) noexcept {
     return kMaximumFilterDelay;
   return static_cast<std::uint32_t>(value);
 }
-
-template <typename T> class NothrowStorage {
-public:
-  ~NothrowStorage() { delete[] data_; }
-  NothrowStorage(const NothrowStorage &) = delete;
-  NothrowStorage &operator=(const NothrowStorage &) = delete;
-  NothrowStorage() = default;
-
-  bool allocate(std::size_t count) noexcept {
-    delete[] data_;
-    data_ = nullptr;
-    count_ = 0u;
-    if (count == 0u)
-      return true;
-    data_ = new (std::nothrow) T[count];
-    if (data_ == nullptr)
-      return false;
-    count_ = count;
-    return true;
-  }
-
-  void release() noexcept {
-    delete[] data_;
-    data_ = nullptr;
-    count_ = 0u;
-  }
-
-  void clear() noexcept {
-    if (data_ != nullptr)
-      std::memset(data_, 0, count_ * sizeof(T));
-  }
-
-  [[nodiscard]] T *data() noexcept { return data_; }
-  [[nodiscard]] const T *data() const noexcept { return data_; }
-
-private:
-  T *data_ = nullptr;
-  std::size_t count_ = 0u;
-};
 
 } // namespace
 

@@ -66,6 +66,63 @@ function silence(seconds, sampleRate) {
 
 const DEFAULT_PARAMS = { tg: -18, tw: 3000, mg: 12, ng: -36, at: 1, rt: 1, gt: -96 };
 const reference = await loadReferencePlugin('AutoLevelerPlugin');
+const fallbackBufferCases = await Promise.all([
+  {
+    type: 'CompressorPlugin',
+    parameters: { th: -24, rt: 2, at: 10, rl: 100, kn: 3, gn: 0 },
+    measurementKeys: ['gainReduction', 'time']
+  },
+  {
+    type: 'ExpanderPlugin',
+    parameters: { th: -24, rt: 2, at: 10, rl: 100, kn: 3, gn: 0 },
+    measurementKeys: ['gainBoost', 'time']
+  },
+  {
+    type: 'PowerAmpSagPlugin',
+    parameters: { ss: 3, ps: 50, rs: 40, mb: false },
+    measurementKeys: ['gainReduction', 'inputEnvelope', 'time']
+  },
+  {
+    type: 'AutoLevelerPlugin',
+    parameters: { tg: -18, tw: 1000, mg: 0, ng: -12, at: 50, rt: 5000, gt: -60 },
+    measurementKeys: ['inputLufs', 'outputLufs', 'time']
+  }
+].map(async pluginCase => ({
+  ...pluginCase,
+  loaded: pluginCase.type === 'AutoLevelerPlugin' ? reference :
+    await loadReferencePlugin(pluginCase.type)
+})));
+
+function makeFallbackInput(blockSize, channelCount, phase = 0) {
+  return Float32Array.from(
+    { length: blockSize * channelCount },
+    (_, index) => ((index + phase) % 7 - 3) * 0.05
+  );
+}
+
+function runFallbackProcessor(plugin, pluginCase, context, blockSize, channelCount, phase) {
+  const time = phase + 1;
+  return plugin.executeProcessor(
+    context,
+    makeFallbackInput(blockSize, channelCount, phase),
+    {
+      ...plugin.getParameters(),
+      ...pluginCase.parameters,
+      enabled: true,
+      blockSize,
+      channelCount,
+      sampleRate: 48000,
+      time
+    },
+    time
+  );
+}
+
+function assertFallbackResultFullyOverwritten(result, expectedMeasurementKeys) {
+  assert.ok(Array.from(result).every(Number.isFinite));
+  assert.deepEqual(Object.keys(result.measurements).sort(), expectedMeasurementKeys);
+  assert.ok(Object.values(result.measurements).every(Number.isFinite));
+}
 
 // Runs the real plugin processor over interleaved-by-channel blocks and returns both the
 // telemetry it reports and the audio it produced.
@@ -114,6 +171,56 @@ function measuredLufs(outputs, frequency, skipSeconds, sampleRate) {
   }
   return 10 * Math.log10(power) - LUFS_OFFSET;
 }
+
+test('dynamics JS fallbacks reuse only their context-owned output buffer', () => {
+  for (const pluginCase of fallbackBufferCases) {
+    const plugin = new pluginCase.loaded.PluginClass();
+    plugin.setParameters(pluginCase.parameters);
+    const firstContext = {};
+
+    const first = runFallbackProcessor(plugin, pluginCase, firstContext, 4, 1, 0);
+    assert.strictEqual(first, firstContext.resultBuffer, pluginCase.type);
+    assertFallbackResultFullyOverwritten(first, pluginCase.measurementKeys);
+
+    first.fill(Number.NaN);
+    const staleMeasurements = { stale: Number.NaN };
+    first.measurements = staleMeasurements;
+    const changedLayout = runFallbackProcessor(plugin, pluginCase, firstContext, 2, 2, 1);
+    assert.strictEqual(changedLayout, first, pluginCase.type);
+    assert.notStrictEqual(changedLayout.measurements, staleMeasurements, pluginCase.type);
+    assertFallbackResultFullyOverwritten(changedLayout, pluginCase.measurementKeys);
+
+    changedLayout.fill(Number.NaN);
+    changedLayout.measurements = staleMeasurements;
+    const changedLength = runFallbackProcessor(plugin, pluginCase, firstContext, 4, 2, 2);
+    assert.notStrictEqual(changedLength, changedLayout, pluginCase.type);
+    assert.strictEqual(changedLength, firstContext.resultBuffer, pluginCase.type);
+    assertFallbackResultFullyOverwritten(changedLength, pluginCase.measurementKeys);
+
+    const secondContext = {};
+    const separateContextResult = runFallbackProcessor(plugin, pluginCase, secondContext, 4, 2, 2);
+    assert.notStrictEqual(separateContextResult, changedLength, pluginCase.type);
+    assert.strictEqual(separateContextResult, secondContext.resultBuffer, pluginCase.type);
+    assertFallbackResultFullyOverwritten(separateContextResult, pluginCase.measurementKeys);
+
+    const bypassInput = makeFallbackInput(4, 2, 3);
+    const bypassResult = plugin.executeProcessor(
+      firstContext,
+      bypassInput,
+      {
+        ...plugin.getParameters(),
+        ...pluginCase.parameters,
+        enabled: false,
+        blockSize: 4,
+        channelCount: 2,
+        sampleRate: 48000,
+        time: 4
+      },
+      4
+    );
+    assert.strictEqual(bypassResult, bypassInput, pluginCase.type);
+  }
+});
 
 test('the meter reports the BS.1770-4 channel-power sum, not a mono downmix', () => {
   const sampleRate = 48000;

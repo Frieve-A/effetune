@@ -312,9 +312,9 @@ test('production DSP metadata records the complete G.726 performance manifest', 
     'fixture-sdk',
     { abiVersion: 1, kernels, bytes: 1 },
     { abiVersion: 1, kernels, bytes: 1 },
-    [],
     manifest
   ));
+  assert.equal('phase0Plugins' in metadata, false);
   assert.deepEqual(metadata.g726PerformanceInput, manifest);
   assert.deepEqual(
     metadata.g726PerformanceInput.buildAuthority.resolved,

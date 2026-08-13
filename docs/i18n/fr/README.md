@@ -98,9 +98,9 @@ Les versions de bureau compatibles peuvent aussi être pilotées par des applica
 
 Dans les dispositions ordinateur et mobile, lorsqu’une recherche de morceaux ou la fiche d’un album, d’un artiste, d’un genre, d’un sous-dossier ou d’une liste de lecture contient 300 morceaux ou moins, tous sont sélectionnés par défaut. À partir de 301 morceaux, aucune sélection automatique n’est effectuée. Sur mobile, la sélection automatique ne modifie que l’état de sélection. Seul un appui long sur un morceau ouvre le mode sélection et affiche les cases à cocher, **Tout sélectionner** et **Tout désélectionner** ; sélectionner ou désélectionner des morceaux n’ouvre ni ne ferme ce mode, et les actions habituelles des lignes restent disponibles.
 
-Les navigateurs Chromium sur ordinateur peuvent conserver les handles de dossier File System Access. Safari, Firefox, les navigateurs mobiles et les autres environnements dépourvus de cette API ne conservent les objets `File` que pendant la session de page en cours. Après chaque rechargement, sélectionnez de nouveau le dossier ou les fichiers ; EffeTune les rattache au catalogue existant grâce au chemin relatif normalisé.
+Les navigateurs Chromium sur ordinateur peuvent conserver l'accès aux dossiers musicaux sélectionnés entre les sessions. Dans Safari, Firefox, les navigateurs mobiles et les autres environnements sans accès persistant aux dossiers, sélectionnez de nouveau le dossier ou les fichiers après chaque rechargement ; EffeTune les rattache au catalogue existant.
 
-La version 2.1.0 d'EffeTune introduit une Bibliothèque musicale fondée sur le schéma de catalogue v3, qui permet de parcourir les albums CUE morceau par morceau. L'état de l'ancienne Bibliothèque musicale n'est pas repris : ajoutez et analysez de nouveau vos dossiers de musique, puis recréez ou réimportez les listes de lecture de la Bibliothèque musicale. L'ancien catalogue et les fichiers audio ne sont pas modifiés. Le catalogue est conçu pour parcourir les grandes collections par pages depuis le disque. Les mesures de performances à grande échelle sont des diagnostics locaux et facultatifs destinés au développement : elles ne conditionnent ni les commits, ni les versions, ni `verify`, ni GitHub Actions, et ne constituent pas une garantie générale de performances.
+Les grandes collections sont chargées progressivement depuis le stockage ; la vitesse d'analyse et de chargement dépend de l'appareil, de la collection et de la mémoire disponible. Un défilement très rapide peut afficher brièvement des lignes vides pendant le chargement des morceaux suivants, surtout avec un stockage lent.
 
 ### Construction de votre chaîne d'effets
 
@@ -318,7 +318,7 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 | Delay     | Delay          | Effet de retard standard | [Détails](plugins/delay.md#delay) |
 | Delay     | Time Alignment | Réglage fin du timing de lecture pour aligner les enceintes et la position d'écoute | [Détails](plugins/delay.md#time-alignment) |
 | Dynamics  | Auto Leveler | Réglage automatique du volume basé sur la mesure LUFS pour une expérience d'écoute cohérente | [Détails](plugins/dynamics.md#auto-leveler) |
-| Dynamics  | Brickwall Limiter | Contrôle transparent des crêtes pour une écoute sûre et confortable | [Détails](plugins/dynamics.md#brickwall-limiter) |
+| Dynamics  | Brickwall Limiter | Limite les crêtes du signal pour éviter l'écrêtage numérique | [Détails](plugins/dynamics.md#brickwall-limiter) |
 | Dynamics  | Compressor | Lisse les passages soudainement forts pour une écoute plus confortable | [Détails](plugins/dynamics.md#compressor) |
 | Dynamics  | Expander | Restaure le contraste dynamique en rendant plus discrets les sons calmes sous le seuil | [Détails](plugins/dynamics.md#expander) |
 | Dynamics  | Gate | Réduit les sons de faible niveau pendant les silences ou les passages calmes | [Détails](plugins/dynamics.md#gate) |
@@ -417,12 +417,11 @@ Frieve EffeTune a été testé et vérifié pour fonctionner sur Google Chrome. 
 
 ### Fréquence d'échantillonnage recommandée
 
-Pour des performances optimales avec des effets non linéaires, il est recommandé d'utiliser EffeTune à une fréquence d'échantillonnage de 96 kHz ou plus. Cette fréquence d'échantillonnage élevée permet d'obtenir des caractéristiques idéales lors du traitement de l'audio via des effets non linéaires tels que la saturation et la compression.
+Réglez la **Fréquence d'échantillonnage** d'EffeTune sur 96 kHz. Cela réduit le repliement dans la bande audible lorsque l'antirepliement des effets non linéaires est limité. Ce réglage commande la fréquence de traitement interne d'EffeTune et peut normalement différer de celle du système, des périphériques audio et de VB-CABLE : il n'est donc pas nécessaire de les modifier. Vérifiez la fréquence effective affichée dans l'application : avant le premier enregistrement du réglage, la valeur par défaut du système ou du navigateur peut être utilisée, et la version web peut adopter une autre fréquence si 96 kHz n'est pas disponible. En cas de coupures, réduisez d'abord les effets exigeants ou raccourcissez la chaîne ; ne baissez la fréquence que si nécessaire.
 
 ## Guide de développement
 
 Vous souhaitez créer vos propres plugins audio ? Consultez notre [Guide de développement de plugins](../../plugin-development.md).
-Vous souhaitez créer une application de bureau ? Consultez notre [Guide de construction](../../../BUILD.md).
 
 ## Liens
 

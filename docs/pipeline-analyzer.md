@@ -16,13 +16,13 @@ Saved speaker responses are aligned at their detected starts. Separate measureme
 
 Open **Measurement settings** for these controls:
 
-- **Signal** uses **MLS** by default. **TSP** provides a periodic swept-phase signal with the same stabilization and averaging controls. **Unit Impulse** remains available for a direct time-domain capture.
+- **Signal** uses **MLS** by default. **TSP** is an alternative periodic test signal, while **Unit Impulse** directly captures the time response. Each can measure the pipeline differently when effects are nonlinear or change over time.
 - **Level** sets the test-signal peak and defaults to `-12 dBFS`. Linear effects normally give the same normalized response at every level; nonlinear and level-dependent effects can give a different result.
-- **Sequence Length** sets the periodic signal length. MLS uses 32,767 through 524,287 samples; TSP uses the matching powers of two, 32,768 through 524,288. Switching signal keeps the same order. A longer sequence takes more time and memory but represents a longer response before circular overlap. Pipeline Analyzer recommends a longer value when it can identify that need, but never changes it automatically.
-- **Stabilization Periods** defaults to 12. MLS or TSP runs continuously for these periods before capture. The panel shows the actual duration and warns if it is shorter than the known response span or the four-second recommendation.
-- **Averages** defaults to 2. Additional periods reduce repeat variation and make changing or random behavior easier to notice.
+- **Sequence Length** controls how long a response MLS or TSP can measure cleanly. Longer settings take more time and memory. Increase it for delay, reverb, or other long-ringing effects, especially when the analyzer recommends a longer value.
+- **Stabilization Periods** defaults to 12 and lets the pipeline settle before capture. Increase it when slow-moving effects have not reached a steady state.
+- **Averages** defaults to 2. Increase it to reduce run-to-run variation when the graph is unstable; measurements will take longer.
 
-The details also show **Current support**, **Recommended length**, **Recommended stabilization** in periods and seconds, and **Total stimulus time**. These values are guidance only; Pipeline Analyzer never changes your settings automatically.
+The details show whether the current length is sufficient, the recommended length and stabilization time, and the total measurement time. Recommendations are guidance; apply them when they match the effects you are measuring.
 
 Sequence Length, Stabilization Periods, and Averages are disabled only for Unit Impulse. Changing Frequency, Phase, Group Delay, or Impulse only changes the displayed graph and does not remeasure.
 
@@ -37,10 +37,8 @@ The graph always shows **Before** and **After**. Move the pointer across the gra
 
 ## How the measurement works
 
-Each run freezes the current pipeline, parameters, required assets, channel routing, speaker responses, and measurement settings in an isolated worker.
+Each measurement captures the active pipeline, its current settings and routing, and any selected speaker responses. The graphs show the resulting frequency, phase, group-delay, and impulse responses; **After** compensates for latency reported by the pipeline.
 
-MLS uses circular correlation and TSP uses its inverse sweep to recover the periodic response except at DC. The expected constant offset is removed to form a finite causal response for the Impulse graph and speaker convolution. Reported pipeline latency is removed from the displayed **After** phase, group delay, and impulse time. A response that does not fit within the selected period may overlap itself, so use a longer sequence.
+MLS and TSP are best for general response measurement. If delay, reverb, or ringing extends beyond the selected measurement window, the result can overlap itself; increase **Sequence Length**. **Unit Impulse** directly records the response for a limited time, so exceptionally long tails can be cut off.
 
-Unit Impulse sends one impulse at the selected Level, normalizes the captured response by that level, and keeps the existing bounded tail capture. A response that continues beyond the maximum capture is incomplete.
-
-For nonlinear, time-varying, random, noisy, or source-generating effects, every signal produces one captured response at the chosen level and initial state—not a universal transfer function. Such results can legitimately differ between runs. Invalid numeric output or a processor or required asset that cannot be prepared causes the measurement to fail.
+Nonlinear, time-varying, random, noisy, and source-generating effects can produce different results at different levels or between runs. Treat these graphs as snapshots of the selected settings rather than fixed characteristics.

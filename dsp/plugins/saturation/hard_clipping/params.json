@@ -12,7 +12,8 @@
       "min": -60,
       "max": 0,
       "default": -18,
-      "unit": "dB"
+      "unit": "dB",
+      "automation": true
     },
     {
       "name": "mode",

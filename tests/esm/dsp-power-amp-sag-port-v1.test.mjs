@@ -129,7 +129,7 @@ test('Power Amp Sag descriptor, cases, and kernel freeze the v1 port contract', 
   const goldens = await readGoldenSet(path.join(root, 'golden'));
   assert.equal(goldens.length, 9);
   assert.ok(goldens.every(item =>
-    item.metadata.jsEngineHash === '440672761da989cb2b96d4bd3f37c70fd14cb187b8985567e2ce1a555b751ef7'
+    item.metadata.jsEngineHash === 'e0e8683ddeca8983e2a0fca9190a07496eb309f381cc8716a82bcd38d1555f1f'
   ));
   const result = await runParityCli([
     '--root', repoRoot,

@@ -122,6 +122,17 @@
 "error:interfaceCalibrationProcessingFailed": "कैलिब्रेशन वाला माप पूरा नहीं हो सका। setup जाँचें और इस बिंदु को फिर से मापें।",
 "error:measurementSetupFailed": "माप की तैयारी नहीं हो सकी। ऑडियो devices जाँचें और फिर प्रयास करें।",
 "error:levelAdjustmentFailed": "ऑडियो input तैयार नहीं हो सका। input device जाँचें और फिर प्रयास करें।",
+"error:audioUnsupported": "यह browser audio measurement नहीं चला सकता। Chrome या Edge का नवीनतम version इस्तेमाल करें।",
+"error:audioInitFailed": "Audio devices तैयार नहीं हो सके। Browser permissions जाँचें और फिर प्रयास करें।",
+"error:measurementNameRequired": "आगे बढ़ने से पहले measurement का नाम दर्ज करें।",
+"error:invalidSweepRange": "Sweep range को 1 Hz से {max} Hz के बीच रखें और निचली सीमा को ऊपरी सीमा से कम रखें।",
+"error:testSignalFailed": "Test signal नियंत्रित नहीं हो सका। Audio output जाँचें और फिर प्रयास करें।",
+"error:measurementConfigUnavailable": "Measurement settings अब उपलब्ध नहीं हैं। नया measurement शुरू करें।",
+"error:measurementFailed": "Measurement पूरा नहीं हो सका। Audio devices जाँचें और इस point को फिर मापें।",
+"error:measurementImportFailed": "Measurement file मान्य नहीं है। EffeTune से export की गई measurement JSON file चुनें।",
+"error:clipboardWriteFailed": "PEQ settings copy नहीं हो सकीं। Clipboard access जाँचें और फिर प्रयास करें।",
+"error:correctionUpdateFailed": "Correction update नहीं हो सका। Settings जाँचें और फिर प्रयास करें।",
+"error:measurementDisplayFailed": "Measurement display update नहीं हो सका। Measurement को फिर से चुनें।",
 
 // Messages
 "message:peqCopied": "PEQ सेटिंग्स सफलतापूर्वक क्लिपबोर्ड पर कॉपी हो गईं। कॉपी की गई सेटिंग्स को Ctrl+V द्वारा EffeTune के इफेक्ट पाइपलाइन में चिपकाया जा सकता है।", // Success message for PEQ copy

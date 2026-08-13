@@ -137,7 +137,7 @@ Dattorro Plate Reverb는 클래식한 플레이트 리버브의 부드럽고 풍
 
 ## FDN Reverb
 
-Hadamard 확산 매트릭스를 사용한 피드백 딜레이 네트워크(FDN) 아키텍처를 기반으로 한 정교한 리버브 이펙트입니다. 뛰어난 밀도와 자연스러운 감쇠 특성을 가진 풍부하고 복잡한 잔향을 만들어내며, 몰입감 있는 공간 이펙트로 음악 청취 경험을 향상시키는 데 완벽합니다.
+밀도 높고 자연스럽게 감쇠하는 잔향을 더하는 리버브입니다. 건조하거나 가까이 느껴지는 녹음에 방의 크기와 거리감을 더할 때 사용하세요.
 
 라우팅 참고: FDN Reverb는 하나의 공유 feedback tank를 가진 스테레오 reverb model입니다. 두 채널을 초과해 라우팅하면 각 채널은 독립적인 per-channel tank가 아니라 이 공유 tank를 순서대로 진행하며 처리됩니다. 채널 1은 left wet을 받고 채널 2+는 right wet을 받습니다.
 
@@ -193,7 +193,7 @@ Hadamard 확산 매트릭스를 사용한 피드백 딜레이 네트워크(FDN) 
   - 0.1-0.5Hz: 매우 느리고 부드러운 움직임
   - 1.0-2.0Hz: 자연스럽게 들리는 변화
   - 3.0-5.0Hz: 빠르고 더 명백한 모듈레이션
-- **Diffusion** - Hadamard 매트릭스가 신호를 믹스하는 정도(0~100%)
+- **Diffusion** - 반사음이 서로 섞여 부드러워지는 정도(0~100%)
   - 구현: 적용되는 매트릭스 믹싱의 양을 제어
   - 0%: 최소 믹싱, 더 뚜렷한 에코 패턴
   - 50%: 자연스러운 사운드를 위한 균형 잡힌 확산
@@ -296,9 +296,9 @@ IR Reverb는 가져온 임펄스 응답(IR)과 신호을 컨볼루션하여 방,
 
 Mono는 하나의 IR을 적용하고 Independent는 채널을 분리하며 True Stereo는 LL/LR/RL/RR 경로를 사용합니다. Diagonal Matrix는 같은 번호의 입출력만 연결합니다. Auto에서는 스테레오 채널을 선택한 모든 4채널 IR을 이 순서로 해석하므로, Quad 등 다른 4채널 레이아웃에는 Independent 또는 Diagonal Matrix를 직접 선택하십시오. True Stereo pair는 이름 끝이 `L`/`R` 또는 `Left`/`Right`로 대응하는 파일을 함께 선택합니다.
 
-원본은 **Impulse Response Library**에 저장됩니다. 웹 앱은 사이트 전용 OPFS, 데스크톱 앱은 관리형 앱 저장소를 사용합니다. 라이브러리는 원본 파일명을 표시하며 파일명 검색, 항목 불러오기, 삭제를 지원합니다. sample rate가 바뀌면 원본에서 다시 준비합니다. 사이트 데이터 삭제나 저장 공간 부족으로 브라우저 데이터가 지워질 수 있으므로 별도 사본을 보관하십시오.
+가져온 IR 파일은 **Impulse Response Library**에 저장되며 원본 파일명으로 검색하거나 불러오고 삭제할 수 있습니다. 웹 앱에서는 브라우저 안에 저장되므로 사이트 데이터를 삭제하거나 브라우저가 저장 공간을 정리하면 사라질 수 있습니다. 데스크톱 앱에서는 애플리케이션 데이터로 저장됩니다. 필요한 IR은 별도 사본을 보관하십시오.
 
-공유 URL과 preset에는 ID만 들어가며 IR 오디오나 파일명은 포함되지 않습니다. 받는 사람은 같은 파일을 가져오거나 대체 IR을 선택해야 합니다. IR이 없으면 wet 신호가 없고 WASM을 사용할 수 없으면 설정된 dry 신호만 통과합니다. [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/), [Freesound](https://freesound.org/)에서 자료를 찾을 수 있지만 파일별 라이선스(CC0, CC BY, CC BY-NC 등), 제작자, 표시 의무, 상업 이용 가능 여부는 EffeTune 외부에 기록하십시오. EffeTune은 라이선스 정보를 저장하거나 검증하지 않습니다.
+공유 URL과 preset은 IR을 식별하지만 오디오 데이터 자체는 포함하지 않습니다. 해당 IR을 사용할 수 없으면 wet 소리가 나지 않으므로 다시 가져오거나 선택하십시오. 다른 IR로 바꿀 수도 있습니다. dry 신호는 **Dry** 설정을 따릅니다. [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/), [Freesound](https://freesound.org/)에서 자료를 찾을 수 있지만 파일별 라이선스(CC0, CC BY, CC BY-NC 등), 제작자, 표시 의무, 상업 이용 가능 여부는 EffeTune 외부에 기록하십시오. EffeTune은 라이선스 정보를 저장하거나 검증하지 않습니다.
 
 ## RS Reverb
 

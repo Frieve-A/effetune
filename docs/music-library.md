@@ -10,13 +10,11 @@ Music Library indexes selected music folders so you can browse your local collec
 
 Music Library stores its catalog, artwork cache, and playlists inside the app. It does not edit, rename, move, or delete your audio files.
 
-Version 2.1.0 introduces the CUE-enabled Music Library with catalog schema v3. Earlier Music Library folders and playlists are not carried into this catalog, so add your music folders again and recreate or re-import your Music Library playlists. The earlier catalog and your audio files are not modified.
-
 ## Availability
 
 - **Desktop app:** Uses the full folder scanner and can keep selected folders available between launches. Desktop builds can also show a track in its folder.
-- **PC Chromium browsers with File System Access:** Store the selected folder handle persistently. The browser may ask for permission again, but the handle can be reused after a reload once access is granted.
-- **Mobile browsers, Safari, Firefox, and other browsers without File System Access:** Keep selected `File` objects only for the current page session. The catalog remains stored, but the files themselves cannot be reopened after a reload. Select the folder or files again after every reload; EffeTune reconnects them to the existing catalog entries by normalized relative path.
+- **PC Chromium browsers with File System Access:** Can keep access to selected folders after a reload. The browser may ask for permission again.
+- **Mobile browsers, Safari, Firefox, and other browsers without File System Access:** Keep access to selected files only for the current page session. The catalog remains stored, but select the folder or files again after every reload so EffeTune can reconnect them.
 
 Music Library indexes common media file extensions such as MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM, and MP4. It can also use an external CUE sheet to divide a WAV or FLAC album file in the same folder into individual tracks. For MP4 files, EffeTune plays only the audio track and does not display video. Actual playback support, including the audio codec inside an MP4 file, still depends on the browser or OS decoder.
 
@@ -142,15 +140,15 @@ When exporting, choosing **Relative paths** writes paths relative to the export 
 - Music Library reads audio files and metadata but does not write changes to audio files.
 - Artwork caching and playlists are app data, not embedded file changes.
 - Browser storage can be cleared by the browser or user settings. Export important playlists if you need a portable copy.
-- In browsers with File System Access, permission controls whether a persisted folder handle can be reused after reload. In fallback browsers, selected files are session-only and must always be selected again after reload.
+- In browsers with File System Access, permission controls whether folder access remains available after a reload. In other browsers, select the files again after every reload.
 
 ## Large Libraries
 
-The catalog keeps data on disk and pages or streams work in bounded batches so large collections do not need to be loaded into memory at once. Scale and fixed-reference measurements are optional local development diagnostics. They do not gate commits, releases, `verify`, or GitHub Actions and are not a general performance guarantee. Scan time and practical limits depend on storage speed, available memory, metadata, artwork, and browser or OS limits.
+EffeTune loads large collections in stages instead of holding the entire library in memory. Scan time and practical limits depend on storage speed, available memory, metadata, artwork, and browser or OS limits.
 
-While you scroll the track list, EffeTune keeps nearby pages cached. In the mobile layout, it reads up to two pages ahead in the current direction, gives a page needed on screen priority over additional read-ahead, and reuses overlapping visible rows. Completed viewport reads are published to this bounded cache even while scrolling continues. Repeated viewport requests are coalesced to the newest position, and no additional database read is made when that position is covered by the page that just finished loading. Superseded queued read-ahead is discarded. SQLite supports interruption, but the catalog adapters currently execute each statement synchronously and do not expose a cross-worker interruption path. An exceptionally fast jump may therefore still show a brief gap until the current read finishes, especially on slow storage.
+Nearby tracks load as you scroll. An exceptionally fast jump can briefly show blank rows until the requested tracks load, especially on slow storage.
 
-Multiple tabs or application instances are unsupported. A second writable open is rejected to protect the catalog. Using different EffeTune versions with the same Library is also unsupported.
+Use Music Library in one EffeTune window at a time.
 
 ## OpenHome Remote Control (Desktop App)
 

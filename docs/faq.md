@@ -10,7 +10,7 @@ EffeTune is a real-time DSP application for audio enthusiasts available as both 
 
 ## Contents
 1. Initial Setup for Streaming
-   1. Installing VB-CABLE and using 96 kHz
+   1. Installing VB-CABLE and the optional 96 kHz aliasing fix
    2. Streaming service input (Spotify example)
    3. EffeTune audio settings
    4. Operation check
@@ -36,8 +36,11 @@ EffeTune is a real-time DSP application for audio enthusiasts available as both 
 
 Windows example: Spotify → VB-CABLE → EffeTune → DAC/AMP. Concepts are similar for other services and OSes.
 
-### 1.1. Installing VB-CABLE and enabling 96 kHz
-Download the VB-CABLE Driver Pack45, run `VBCABLE_Setup_x64.exe` as administrator, and reboot. Return the OS default output to your speakers/DAC and set both **CABLE Input** and **CABLE Output** formats to 24‑bit, 96,000 Hz. Launch `VBCABLE_ControlPanel.exe` as administrator, choose **Menu▸Internal Sample Rate = 96000 Hz**, then click **Restart Audio Engine**.
+### 1.1. Installing VB-CABLE and the optional 96 kHz aliasing fix
+
+Download the VB-CABLE Driver Pack45, run `VBCABLE_Setup_x64.exe` as administrator, and reboot. Installation may change the OS default output to **CABLE Input**; if so, change it back to your speakers or DAC.
+
+If using VB-CABLE produces aliasing noise above 20 kHz, its internal 48 kHz rate is the cause. For this specific problem, set both **CABLE Input** and **CABLE Output** formats to 24-bit, 96,000 Hz. Then launch `VBCABLE_ControlPanel.exe` as administrator, choose **Menu▸Internal Sample Rate = 96000 Hz**, and click **Restart Audio Engine**. Administrator access is required for this setting to remain after reboot. This changes VB-CABLE itself and is not required for normal use of EffeTune at 96 kHz.
 
 ### 1.2. Streaming service routing (Spotify example)
 Open **Settings▸System▸Sound▸Volume mixer**, and set `Spotify.exe` output to **CABLE Input**. Play a track to confirm silence from the speakers.
@@ -47,7 +50,7 @@ On macOS, use Rogue Amoeba's **SoundSource** to assign Spotify output to **CABLE
 Open EffeTune and choose **Audio Configuration** from the Settings menu.
 - **Input Device:** CABLE Output (VB-Audio Virtual Cable)
 - **Output Device:** Physical DAC/Speakers
-- **Sample Rate:** 96,000 Hz (lower rates may degrade quality)
+- **Sample Rate:** Select 96 kHz. This is EffeTune's internal processing rate and normally does not require changing the OS, audio-device, or VB-CABLE rates. It reduces audible-band aliasing from nonlinear effects whose anti-aliasing is limited. Confirm the effective Sample Rate shown in the app. If playback drops out, first reduce demanding effects or the number of active effects, then lower the rate if needed. This setting is separate from the VB-CABLE-specific fix above.
 
 ### 1.4. Operation check
 With Spotify playing, toggle the master **ON/OFF** in EffeTune and confirm the sound changes.
@@ -62,7 +65,7 @@ With Spotify playing, toggle the master **ON/OFF** in EffeTune and confirm the s
 | ------ | ------ |
 | Dropouts or glitches | Choose **Reset Audio** from the Settings menu or mobile overflow menu. In the desktop app, you can also choose **Reload** from the **View** menu. Reduce the number of active effects if necessary. |
 | Distortion or clipping | Insert **Level Meter** at the end of the chain and keep levels below 0 dBFS. Add **Brickwall Limiter** before Level Meter if needed. |
-| Aliasing above 20 kHz | VB-CABLE may still run at 48 kHz. Recheck the initial setup. |
+| Aliasing above 20 kHz when using VB-CABLE | Its internal rate may still be 48 kHz. Follow the optional 96 kHz procedure in section 1.1. |
 
 ### 2.2. High CPU usage
 Disable effects you're not using or remove them from the **Effect Pipeline**.
@@ -95,10 +98,10 @@ Out 1‑2 and Out 3‑4 appear as separate devices, preventing 4‑channel outpu
 - Use **ASIO Link Pro** to expose one virtual 4‑channel device (advanced).
 
 ### 3.3. Channel delay & time alignment
-Use **MultiChannel Panel** or **Time Alignment** to delay channels in 10 µs steps (minimum 1 sample). For large delays, delay front channels by 100‑400 ms. Video sync must be adjusted on the player side.
+Use **MultiChannel Panel** or **Time Alignment** to delay channels in 10 µs steps (minimum 1 sample). When matching front speakers to Bluetooth or wireless rear speakers with much greater measured latency, delay the front channels by 100‑400 ms; this is not a typical value for speaker-distance correction. Video sync must be adjusted on the player side.
 
 ### 3.4. 8ch limit and expansion
-Current OS drivers support up to 8 channels. EffeTune can support more channels when operating systems allow it.
+EffeTune currently supports up to 8 output channels.
 
 ---
 
@@ -110,7 +113,7 @@ Current OS drivers support up to 8 channels. EffeTune can support more channels 
 | I can't install the PWA version | Use the **Install PWA version** button on the EffeTune site, or open the gear menu in the upper-right of the web app and choose **Install App**. If the install option does not appear, open the site in Chrome or Edge on Android or desktop. On iPhone/iPad, open it in Safari and add it to the Home Screen from the Share menu. In-app browsers, private browsing, and older browsers may not show an install option. |
 | Surround input (5.1ch etc.)? | The Web Audio API limits input to 2 channels. Output and effects support up to 8 channels. |
 | Recommended effect chain length? | Use as many effects as your CPU allows without causing dropouts or high latency. |
-| How to get the best sound quality? | Use 96 kHz or higher, start with subtle settings, monitor headroom with **Level Meter**, and add **Brickwall Limiter** if needed. |
+| How to get the best sound quality? | Set EffeTune's **Sample Rate** to 96 kHz, start with subtle effect settings, and monitor headroom with **Level Meter**. If playback drops out, first reduce demanding effects or the number of active effects, then lower the sample rate if needed. Add **Brickwall Limiter** if needed. |
 | Does it work with any source? | Yes. With a virtual audio device you can process streaming, local files, or physical equipment. |
 | Can EffeTune play DRM-protected content? | Not directly. EffeTune processes audio, while protected content is designed to play only in environments authorized by its provider and may not be available to third-party audio processing apps. Use the provider's official app or website, following its terms and supported audio-output methods. EffeTune does not remove or bypass content protection. |
 | Can I use only the music file player without an audio input? | Yes. If microphone audio bleeds into your headphones or earphones after startup, open **Audio Configuration** and set **Input Device:** to **None (music file player only)**. EffeTune uses a silent source so the effect pipeline remains active for the player and signal-generating effects such as **Oscillator**. If you select an audio input instead, you can process sound from external equipment through a USB audio interface or monitor the input with **Spectrum Analyzer**. |
@@ -123,7 +126,7 @@ Current OS drivers support up to 8 channels. EffeTune can support more channels 
 | Which playlist formats can Music Library import or export? | Music Library can import M3U, M3U8, PLS, and XSPF playlists, and can export M3U8 or XSPF playlists. |
 | Does Music Library change my audio files? | No. Scanning, metadata reading, artwork caching, playlist editing, and playback actions stay inside the app and never modify audio files on disk. |
 | Why is output device selection unavailable in the web app? | Browser support and permissions vary. Use Chrome/Chromium on a secure page, or set the desired DAC/AMP as the OS/browser default output. |
-| Why did Sample Rate or Output Channels fall back to another value? | Browsers and devices may clamp or ignore unsupported values. EffeTune uses the effective value reported by the audio device. |
+| Why did Sample Rate or Output Channels fall back to another value? | The settings screen shows 96 kHz as the Sample Rate default, but before you save a setting the app may start at the OS or browser default. In the Web version, the browser or device may reject 96 kHz or another unsupported value, so EffeTune uses an available rate instead. Check the effective Sample Rate shown in the app. Output-channel support also depends on the browser and device. |
 | Why did the sample-rate and channel indicator turn red? | EffeTune detected that enabled effect processing could not finish in real time. The red warning disappears about 10 seconds after processing recovers. Reduce the number of enabled effects. |
 | Does the web player remember my playlist? | Repeat/shuffle settings are saved, but the selected music files are not restored after reload because browsers do not keep normal file selections. |
 | Does mobile playback continue when the screen turns off? | Not reliably on all browsers, especially iOS. EffeTune uses Wake Lock where available, but background playback is browser-dependent. |
@@ -141,7 +144,7 @@ Current OS drivers support up to 8 channels. EffeTune can support more channels 
 ## 5. Frequency Response & Room Correction
 
 ### 5.1. Importing AutoEQ settings into 15Band PEQ
-From EffeTune v1.51 or later, you can import AutoEQ equalizer settings directly from the button in the top right.
+Import AutoEQ equalizer settings directly from the button in the top right.
 
 ### 5.2. Pasting measurement correction settings
 Copy the 5Band PEQ settings from the measurement page and paste into the **Effect Pipeline** view using **Ctrl+V** or the menu.

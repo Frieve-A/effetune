@@ -420,28 +420,8 @@ function collectDigestFiles(directory, output = []) {
   return output;
 }
 
-function phase0DigestInputs() {
-  const directories = [];
-  const generatedHeaders = new Set();
-  for (const spec of loadParamSpecs().filter(candidate => candidate.phase0)) {
-    directories.push(path.dirname(spec.source));
-    generatedHeaders.add(`dsp/generated/cpp/${spec.type}Params.h`);
-  }
-  return { directories, generatedHeaders };
-}
-
-export function sourceDigestInputPaths({ includePhase0 = false } = {}) {
-  let files = collectDigestFiles(dspRoot);
-  if (!includePhase0) {
-    const phase0 = phase0DigestInputs();
-    files = files.filter(filePath => {
-      const relative = path.relative(repoRoot, filePath).replaceAll('\\', '/');
-      return !phase0.generatedHeaders.has(relative) &&
-        !phase0.directories.some(directory =>
-          relative === directory || relative.startsWith(`${directory}/`)
-        );
-    });
-  }
+export function sourceDigestInputPaths() {
+  const files = collectDigestFiles(dspRoot);
   files.push(
     generator,
     g726PerformanceInputsSource,
@@ -452,9 +432,9 @@ export function sourceDigestInputPaths({ includePhase0 = false } = {}) {
     path.relative(repoRoot, filePath).replaceAll('\\', '/'));
 }
 
-export function sourceDigest(options = {}) {
+export function sourceDigest() {
   const hash = crypto.createHash('sha256');
-  for (const relative of sourceDigestInputPaths(options)) {
+  for (const relative of sourceDigestInputPaths()) {
     const filePath = path.join(repoRoot, ...relative.split('/'));
     hash.update(relative);
     hash.update('\0');
@@ -470,7 +450,6 @@ export function metadataContents(
   emsdkVersion,
   baseline,
   simd,
-  phase0Plugins = [],
   g726PerformanceInput = g726PerformanceInputManifest({ repoRoot })
 ) {
   if (JSON.stringify(baseline.kernels) !== JSON.stringify(simd.kernels)) {
@@ -478,10 +457,9 @@ export function metadataContents(
   }
   return `${JSON.stringify({
     abiVersion: baseline.abiVersion,
-    sourceDigest: sourceDigest({ includePhase0: phase0Plugins.length > 0 }),
+    sourceDigest: sourceDigest(),
     emsdkVersion,
     g726PerformanceInput,
-    ...(phase0Plugins.length > 0 ? { phase0Plugins } : {}),
     kernels: baseline.kernels,
     sizes: { baseline: baseline.bytes, simd: simd.bytes }
   }, null, 2)}\n`;
@@ -533,7 +511,6 @@ async function buildWasm({
   const baselineDestination = path.join(outputRoot, 'effetune-dsp.wasm');
   const simdDestination = path.join(outputRoot, 'effetune-dsp.simd.wasm');
   const metaDestination = path.join(outputRoot, 'effetune-dsp.meta.json');
-  const phase0Plugins = [];
   const resolvedBuildAuthority = resolvedG726WasmBuildAuthority({
     baseline: resolvedG726WasmVariantAuthority({
       repoRoot,
@@ -564,7 +541,6 @@ async function buildWasm({
     emsdk.version,
     baseline,
     simd,
-    phase0Plugins,
     g726PerformanceInputAtEnd
   );
 

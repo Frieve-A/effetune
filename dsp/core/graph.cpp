@@ -1,6 +1,7 @@
 #include "graph.h"
 
 #include "allocation_guard.h"
+#include "binary_io.h"
 #include "engine.h"
 
 #include <algorithm>
@@ -41,12 +42,7 @@ std::int32_t readI32(const std::uint8_t *input) noexcept {
 
 float readF32(const std::uint8_t *input) noexcept { return std::bit_cast<float>(readU32(input)); }
 
-void writeU32(std::uint8_t *output, std::uint32_t value) noexcept {
-  output[0] = static_cast<std::uint8_t>(value & 0xffu);
-  output[1] = static_cast<std::uint8_t>((value >> 8u) & 0xffu);
-  output[2] = static_cast<std::uint8_t>((value >> 16u) & 0xffu);
-  output[3] = static_cast<std::uint8_t>(value >> 24u);
-}
+using binary_io::writeU32;
 
 bool validUtf8(std::span<const std::uint8_t> bytes, std::uint32_t max_scalars) noexcept {
   std::size_t index = 0u;

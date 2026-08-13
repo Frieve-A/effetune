@@ -141,9 +141,6 @@ class MeasurementDisplay {
      * @returns {boolean} Whether the selection was successful
      */
     async selectMeasurement(id) {
-        // Stop any audio processing if we're navigating from an audio-active screen
-        this.uiManager.cleanupAudioBeforeNavigation();
-        
         // Check for unsaved changes
         if (this.uiManager.hasUnsavedChanges) {
             this.uiManager.dialogController.showConfirmation(
@@ -169,16 +166,7 @@ class MeasurementDisplay {
         // Display basic measurement details, but without PEQ calculation yet
         this.displayMeasurementDetails(id, true);
         
-        // Show spinner while calculating PEQ parameters
-        const spinner = document.getElementById('loading-spinner-results');
-        spinner.style.display = 'block';
-        
-        // Calculate PEQ parameters asynchronously
-        setTimeout(async () => {
-            await this.uiManager.correctionHandler.updateCorrection();
-            // Hide spinner when complete
-            spinner.style.display = 'none';
-        }, 50);
+        this.uiManager.correctionHandler.requestCorrectionUpdate();
         
         // Clear unsaved changes flags
         this.uiManager.hasUnsavedChanges = false;
@@ -301,7 +289,7 @@ class MeasurementDisplay {
         
         // If not skipGraphUpdate, calculate and draw initial correction
         if (!skipGraphUpdate) {
-            this.uiManager.correctionHandler.updateCorrection();
+            this.uiManager.correctionHandler.requestCorrectionUpdate();
         }
     }
     
@@ -620,15 +608,12 @@ class MeasurementDisplay {
 
         const hadPEQParameters = measurement.peqParameters && measurement.peqParameters.length > 0;
         delete measurement.peqParameters;
-        delete measurement.correctedResponse;
 
         // Update the UI
         this.displayMeasurementDetails(this.uiManager.selectedMeasurementId, true);
 
         if (hadPEQParameters && measurement.averageFrequencyResponse.length > 0) {
-            this.uiManager.correctionHandler.updateCorrection(stateGeneration).catch(error => {
-                console.error('Error recalculating correction after point deletion:', error);
-            });
+            this.uiManager.correctionHandler.requestCorrectionUpdate(stateGeneration);
         }
         
         // Show edit actions
@@ -691,27 +676,19 @@ class MeasurementDisplay {
             document.getElementById('noMeasurementMessage').style.display = 'none';
             document.getElementById('measurementResults').style.display = 'block';
             
-            // Step 8: Show spinner while loading details
-            const spinner = document.getElementById('loading-spinner-results');
-            spinner.style.display = 'block';
-            
-            // Step 9: Display measurement details
+            // Step 8: Display measurement details
             this.displayMeasurementDetails(targetMeasurementId, true);
-            
-            // Step 10: Calculate PEQ parameters
-            await this.uiManager.correctionHandler.updateCorrection();
-            
-            // Step 11: Hide spinner when complete
-            spinner.style.display = 'none';
+            this.uiManager.correctionHandler.requestCorrectionUpdate();
             
         } catch (error) {
             console.error('Error refreshing measurement display:', error);
             
-            // Hide spinner in case of error
-            document.getElementById('loading-spinner-results').style.display = 'none';
-            
             // Show error notification
-            this.uiManager.dialogController.showNotification(`Error occurred while updating measurement display: ${error.message}`);
+            this.uiManager.showNotification(
+                i18n.t('error:measurementDisplayFailed') ||
+                    'The measurement display could not be updated. Try selecting the measurement again.',
+                'error'
+            );
         }
     }
 }

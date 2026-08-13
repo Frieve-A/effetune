@@ -17,6 +17,7 @@ import {
     isValidImpulseResponse,
     sampleImpulseEnvelope
 } from './impulse-response-plot.js';
+import { createGraphGeometry } from '../graph-geometry.js';
 
 class GraphRenderer {
     constructor(uiManager) {
@@ -542,9 +543,6 @@ class GraphRenderer {
         const height = ctx.canvas.height;
         const padding = { top: 20, right: 20, bottom: 30, left: 50 };
         
-        const graphWidth = width - padding.left - padding.right;
-        const graphHeight = height - padding.top - padding.bottom;
-        
         // Find min/max values
         const minFreq = 20;
         const maxFreq = 20000;
@@ -554,14 +552,18 @@ class GraphRenderer {
         // Process data
         const processedData = normalize ? this.normalizeResponseToZeroDb([...data]) : [...data];
         
-        // Setup scales
-        const scaleX = (freq) => {
-            return padding.left + graphWidth * (Math.log10(freq) - Math.log10(minFreq)) / (Math.log10(maxFreq) - Math.log10(minFreq));
-        };
-        
-        const scaleY = (db) => {
-            return padding.top + graphHeight - graphHeight * (db - minDb) / (maxDb - minDb);
-        };
+        const {
+            frequencyToX: scaleX,
+            valueToY: scaleY
+        } = createGraphGeometry({
+            width,
+            height,
+            padding,
+            minFrequency: minFreq,
+            maxFrequency: maxFreq,
+            minValue: minDb,
+            maxValue: maxDb
+        });
         
         // Draw frequency response
         ctx.strokeStyle = color;
@@ -611,23 +613,24 @@ class GraphRenderer {
         const height = ctx.canvas.height;
         const padding = { top: 20, right: 20, bottom: 30, left: 50 };
         
-        const graphWidth = width - padding.left - padding.right;
-        const graphHeight = height - padding.top - padding.bottom;
-        
         // Frequency and dB ranges
         const minFreq = 20;
         const maxFreq = 20000;
         const minDb = -24;
         const maxDb = 24;
         
-        // Setup scales
-        const scaleX = (freq) => {
-            return padding.left + graphWidth * (Math.log10(freq) - Math.log10(minFreq)) / (Math.log10(maxFreq) - Math.log10(minFreq));
-        };
-        
-        const scaleY = (db) => {
-            return padding.top + graphHeight - graphHeight * (db - minDb) / (maxDb - minDb);
-        };
+        const {
+            frequencyToX: scaleX,
+            valueToY: scaleY
+        } = createGraphGeometry({
+            width,
+            height,
+            padding,
+            minFrequency: minFreq,
+            maxFrequency: maxFreq,
+            minValue: minDb,
+            maxValue: maxDb
+        });
         
         // Draw axes
         ctx.strokeStyle = '#888';

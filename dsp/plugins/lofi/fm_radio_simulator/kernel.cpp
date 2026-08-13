@@ -5,6 +5,7 @@
 // WASM, and WASM+SIMD.
 #include "effetune/kernel.h"
 #include "FMRadioSimulatorPluginParams.h"
+#include "binary_io.h"
 #include "effetune/dsp/xorshift_rng.h"
 #include "peak_controller.h"
 
@@ -572,16 +573,8 @@ struct ComplexSample final {
   float imag;
 };
 
-void writeU32(std::uint8_t *output, std::uint32_t value) noexcept {
-  output[0] = static_cast<std::uint8_t>(value & 0xffu);
-  output[1] = static_cast<std::uint8_t>((value >> 8u) & 0xffu);
-  output[2] = static_cast<std::uint8_t>((value >> 16u) & 0xffu);
-  output[3] = static_cast<std::uint8_t>(value >> 24u);
-}
-
-void writeF32(std::uint8_t *output, float value) noexcept {
-  writeU32(output, std::bit_cast<std::uint32_t>(value));
-}
+using binary_io::writeF32;
+using binary_io::writeU32;
 
 class FMRadioSimulatorKernel final : public PluginKernel {
   EFFETUNE_PARAMS(generated::FMRadioSimulatorPluginParams)

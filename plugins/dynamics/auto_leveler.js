@@ -227,7 +227,11 @@ class AutoLevelerPlugin extends PluginBase {
                 }
             }
 
-            const result = new Float32Array(data.length); // Allocate output buffer
+            let result = context.resultBuffer;
+            if (!result || result.length !== data.length) {
+                result = new Float32Array(data.length);
+                context.resultBuffer = result;
+            }
             let currentSum = context.sum;
             let bufferIndex = context.bufferIndex;
             let validSamples = context.validSamples;
@@ -286,13 +290,11 @@ class AutoLevelerPlugin extends PluginBase {
 
             // --- Final Step: Attach Measurements ---
             // Use the locally determined 'validSamples' count for the check
-            if (validSamples > 0) {
-                result.measurements = {
-                    inputLufs: context.lastLufs,    // Use the value stored in context
-                    outputLufs: context.lastOutputLufs, // Use the value stored in context
-                    time: time // 'time' is assumed available in this scope (processor input)
-                };
-            }
+            result.measurements = validSamples > 0 ? {
+                inputLufs: context.lastLufs,    // Use the value stored in context
+                outputLufs: context.lastOutputLufs, // Use the value stored in context
+                time: time // 'time' is assumed available in this scope (processor input)
+            } : undefined;
 
             return result;
         `);
@@ -450,15 +452,6 @@ class AutoLevelerPlugin extends PluginBase {
         }
         this.updateParameters();
     }
-
-    // Individual parameter setters
-    setTg(value) { this.setParameters({ tg: value }); }
-    setTw(value) { this.setParameters({ tw: value }); }
-    setMg(value) { this.setParameters({ mg: value }); }
-    setNg(value) { this.setParameters({ ng: value }); }
-    setAt(value) { this.setParameters({ at: value }); }
-    setRt(value) { this.setParameters({ rt: value }); }
-    setGt(value) { this.setParameters({ gt: value }); }
 
     handleIntersect(entries) {
         entries.forEach(entry => {

@@ -1,11 +1,11 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:f4716d2e975dbf49dfd1aac2dcfaffc245a004f00a9d7d4be45df8210648c06b",
+  "sourceDigest": "sha256:a4fc2ad34eee33506f9eb2052ce94fe928c54829b3603bad439f26ca7a3232fe",
   "emsdkVersion": "6.0.2",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:82a2eeac5a008f296c5021e62c06219a35c85f13e3b19aab5292cddb2df62d0e",
+    "digest": "sha256:b6e724f4562aa75de427ea70e46b03d44ed3e9942511b5257cf92480efac7c1c",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
@@ -55,7 +55,7 @@
       {
         "id": "dsp/core/telemetry.cpp",
         "kind": "file",
-        "sha256": "sha256:515405f783c4b410567e6b44ec66abd68d1872361840e713518c4bf7425bca42"
+        "sha256": "sha256:a78cfe83117c9ea3714f0fe83e320e377165331c56627283f2193c78012514da"
       },
       {
         "id": "dsp/EMSDK_VERSION",
@@ -115,7 +115,7 @@
       {
         "id": "dsp/plugins/lofi/g726_adpcm_simulator/params.json",
         "kind": "file",
-        "sha256": "sha256:a096e3cb9174c7650a7d024f3dc2c28506f8e1b98b879329cd8a9f5dc3d685ee"
+        "sha256": "sha256:fccbe3d6b852a1f29f86a1f3d1cc6acf855dbfa7d4472cbb2c211abd52ccd61f"
       },
       {
         "id": "dsp/registry.inc#G726ADPCMSimulatorPlugin-entry",
@@ -980,7 +980,7 @@
     }
   ],
   "sizes": {
-    "baseline": 974974,
-    "simd": 1071451
+    "baseline": 975001,
+    "simd": 1071478
   }
 }

@@ -38,7 +38,7 @@ Creates moving peaks and notches as a classic Phaser or Barber-pole Phaser with 
 
 ## Phaser
 
-Phaser mixes the original sound with cascaded all-pass filters to create moving peaks and notches. **Classic** sweeps back and forth. **Barber-pole** overlaps three bounded, constant-power sweep voices to suggest continuous upward or downward movement. It reports zero algorithmic latency.
+Phaser mixes the original sound with filtered copies to create moving peaks and notches. **Classic** sweeps back and forth, while **Barber-pole** suggests continuous upward or downward movement.
 
 ### Sound Enhancement Guide
 
@@ -50,7 +50,7 @@ Phaser mixes the original sound with cascaded all-pass filters to create moving 
 ### Parameters
 
 - **Style** — loads a complete factory setting for every parameter. Choices are **Classic Phaser** (Classic), **Deep Phaser** (Classic), **Stereo Phaser** (Classic), **Barber-pole Up** (Barber-pole), and **Barber-pole Down** (Barber-pole). Changing an individual parameter switches Style to **Custom**.
-- **Mode** — selects Classic or Barber-pole topology.
+- **Mode** — selects Classic or Barber-pole.
 - **Rate** (0.05–10 Hz) — sets sweep speed.
 - **Center Frequency** (80–8,000 Hz) — sets the geometric center of the sweep.
 - **Range** (0–6 octaves) — sets sweep span in logarithmic frequency.
@@ -60,6 +60,6 @@ Phaser mixes the original sound with cascaded all-pass filters to create moving 
 - **Direction** (Up/Down) — controls Barber-pole direction and is ignored in Classic mode.
 - **Mix** (0–100%) — linearly blends dry and phased sound; the middle region normally produces the deepest cancellation.
 
-Mode, stage, and barber-direction changes cross a short dry midpoint while incompatible recursive state is reset.
+Changing Mode, Stages, or Direction may briefly emphasize the original sound to keep the transition smooth.
 
 [Back to all effects](/dsp/effects/)

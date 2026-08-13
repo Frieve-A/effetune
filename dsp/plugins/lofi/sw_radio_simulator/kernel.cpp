@@ -1,5 +1,6 @@
 #include "effetune/kernel.h"
 #include "SWRadioSimulatorPluginParams.h"
+#include "binary_io.h"
 #include "effetune/dsp/xorshift_rng.h"
 
 #include <algorithm>
@@ -117,19 +118,8 @@ constexpr std::array<double, 3u> kAgcReleaseTimes = {3.0, 1.5, 0.750};
 constexpr double kSsbAgcDetectorAttackSeconds = 0.0015;
 constexpr double kSsbAgcGainAttackSeconds = 0.002;
 
-void writeU32(std::uint8_t *output, std::uint32_t value) noexcept {
-  output[0] = static_cast<std::uint8_t>(value & 0xffu);
-  output[1] = static_cast<std::uint8_t>((value >> 8u) & 0xffu);
-  output[2] = static_cast<std::uint8_t>((value >> 16u) & 0xffu);
-  output[3] = static_cast<std::uint8_t>((value >> 24u) & 0xffu);
-}
-
-void writeF32(std::uint8_t *output, float value) noexcept {
-  std::uint32_t bits = 0u;
-  static_assert(sizeof(bits) == sizeof(value));
-  std::memcpy(&bits, &value, sizeof(bits));
-  writeU32(output, bits);
-}
+using binary_io::writeF32;
+using binary_io::writeU32;
 
 struct Biquad final {
   double b0 = 1.0;

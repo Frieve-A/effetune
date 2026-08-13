@@ -381,10 +381,6 @@ test('bad JSON and bad measurement schema return validation failure without muta
         },
         {
             points: [{ frequencyResponse: [[100, 1]] }],
-            correctedResponse: [[-100, 1]]
-        },
-        {
-            points: [{ frequencyResponse: [[100, 1]] }],
             interfaceCalibration: {
                 sourceMeasurementId: 'measurement-source',
                 sourcePointId: 'not-an-integer',
@@ -428,6 +424,74 @@ test('import accepts positive non-aligned frequency grids', async () => {
         'measurement-positive-grid');
     assert.deepEqual(storage.getMeasurementById('measurement-positive-grid').points[0]
         .frequencyResponse, measurement.points[0].frequencyResponse);
+    assert.equal(storage.getMeasurementById('measurement-positive-grid').correctedResponse, undefined);
+});
+
+test('deprecated correctedResponse is removed at every storage boundary', async t => {
+    const legacy = {
+        id: 'measurement-legacy-correction',
+        name: 'Legacy correction',
+        points: [{ frequencyResponse: [[100, 1]] }],
+        correctedResponse: 'invalid legacy value'
+    };
+    const storage = new DataStorage();
+    storage.dispatchEvent = () => {};
+    storage.openDatabase = async () => ({
+        transaction: () => ({
+            objectStore: () => ({
+                index: () => ({
+                    openCursor: () => {
+                        const request = {};
+                        queueMicrotask(() => request.onsuccess?.({
+                            target: {
+                                result: {
+                                    value: structuredClone(legacy),
+                                    continue: () => queueMicrotask(() => request.onsuccess?.({
+                                        target: { result: null }
+                                    }))
+                                }
+                            }
+                        }));
+                        return request;
+                    }
+                })
+            })
+        })
+    });
+
+    await storage.loadMeasurements();
+    assert.equal(storage.measurements[0].correctedResponse, undefined);
+
+    const originalLocalStorage = globalThis.localStorage;
+    globalThis.localStorage = {
+        getItem: key => key === storage.STORAGE_KEY ? JSON.stringify([legacy]) : null
+    };
+    t.after(() => { globalThis.localStorage = originalLocalStorage; });
+    storage.loadFromLocalStorage();
+    assert.equal(storage.measurements[0].correctedResponse, undefined);
+
+    const { storage: mutableStorage, database } = createStorage();
+    await mutableStorage.addMeasurement(legacy);
+    assert.equal(mutableStorage.measurements[0].correctedResponse, undefined);
+    assert.equal(database.measurements.get(legacy.id).correctedResponse, undefined);
+
+    await mutableStorage.updateMeasurement(legacy.id, {
+        name: 'Updated',
+        correctedResponse: [[100, 99]]
+    });
+    assert.equal(mutableStorage.measurements[0].correctedResponse, undefined);
+    assert.equal(database.measurements.get(legacy.id).correctedResponse, undefined);
+
+    mutableStorage.measurements[0].correctedResponse = [[100, 123]];
+    const exported = JSON.parse(await mutableStorage.exportMeasurementToJSON(legacy.id));
+    assert.equal(exported.correctedResponse, undefined);
+
+    const importedId = await mutableStorage.importMeasurementFromJSON(JSON.stringify({
+        ...legacy,
+        id: 'measurement-imported-legacy-correction'
+    }));
+    assert.equal(typeof importedId, 'string');
+    assert.equal(mutableStorage.getMeasurementById(importedId).correctedResponse, undefined);
 });
 
 test('definite IndexedDB unavailability falls back to metadata-only localStorage', async t => {

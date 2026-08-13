@@ -4,4 +4,4 @@ Use the package quickstarts for installation and complete runnable examples:
 - [JavaScript and AudioWorklet package](https://effetune.frieve.com/dsp/getting-started/javascript/)
 
 The [DSP Library guide](https://effetune.frieve.com/dsp/) covers effects,
-schemas, deterministic processing, assets, and release verification.
+schemas, processing behavior, and required assets.

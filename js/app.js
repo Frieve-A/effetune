@@ -1431,14 +1431,7 @@ class App {
         try {
             const core = window.pipelineManager?.core;
             if (window.electronAPI?.savePipelineStateToFile && core && this.audioManager) {
-                const serialize = (pl) => pl
-                    ? pl.map(p => core.getSerializablePluginState(p, false, false, false))
-                    : null;
-                const state = {
-                    pipelineA: serialize(this.audioManager.pipelineA),
-                    pipelineB: serialize(this.audioManager.pipelineB),
-                    currentPipeline: this.audioManager.currentPipeline
-                };
+                const state = getFullPipelineStateForSave(this.audioManager, window.pipelineManager);
                 await window.electronAPI.savePipelineStateToFile(state);
             }
         } catch (err) {
@@ -1482,14 +1475,7 @@ class App {
         try {
             const core = window.pipelineManager?.core;
             if (window.electronAPI?.savePipelineStateToFile && core && this.audioManager) {
-                const serialize = (pl) => pl
-                    ? pl.map(p => core.getSerializablePluginState(p, false, false, false))
-                    : null;
-                const state = {
-                    pipelineA: serialize(this.audioManager.pipelineA),
-                    pipelineB: serialize(this.audioManager.pipelineB),
-                    currentPipeline: this.audioManager.currentPipeline
-                };
+                const state = getFullPipelineStateForSave(this.audioManager, window.pipelineManager);
                 await window.electronAPI.savePipelineStateToFile(state);
             } else if (!core) {
                 console.error('[_doMacosRelaunch] pipelineManager.core unavailable — skipping pipeline save before relaunch');

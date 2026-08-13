@@ -162,8 +162,11 @@ const SweepMeasurement = {
                     'error'
                 );
             } else {
-                // Preserve the established uncalibrated measurement error path.
-                alert(`Error: Measurement error occurred: ${error.message}`);
+                uiManager.showNotification(
+                    i18n.t('error:measurementFailed') ||
+                        'The measurement could not be completed. Check the audio devices and try this point again.',
+                    'error'
+                );
             }
         }
     },
@@ -339,9 +342,6 @@ const SweepMeasurement = {
                 throw new Error('No measurement data available to save');
             }
             
-            // Cleanup audio resources
-            this.cleanup();
-
             // Return the ID for UI processing
             return measurementId;
         } catch (error) {

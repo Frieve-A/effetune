@@ -122,6 +122,17 @@
 "error:interfaceCalibrationProcessingFailed": "No se pudo completar la medición calibrada. Revisa la configuración y vuelve a medir este punto.",
 "error:measurementSetupFailed": "No se pudo preparar la medición. Comprueba los dispositivos de audio y vuelve a intentarlo.",
 "error:levelAdjustmentFailed": "No se pudo preparar la entrada de audio. Comprueba el dispositivo de entrada y vuelve a intentarlo.",
+"error:audioUnsupported": "Este navegador no permite realizar mediciones de audio. Usa la versión más reciente de Chrome o Edge.",
+"error:audioInitFailed": "No se pudieron preparar los dispositivos de audio. Comprueba los permisos del navegador e inténtalo de nuevo.",
+"error:measurementNameRequired": "Escribe un nombre para esta medición antes de continuar.",
+"error:invalidSweepRange": "Ajusta el intervalo de barrido entre 1 Hz y {max} Hz, con el límite inferior por debajo del superior.",
+"error:testSignalFailed": "No se pudo controlar la señal de prueba. Comprueba la salida de audio e inténtalo de nuevo.",
+"error:measurementConfigUnavailable": "Los ajustes de medición ya no están disponibles. Inicia una medición nueva.",
+"error:measurementFailed": "No se pudo completar la medición. Comprueba los dispositivos de audio y vuelve a medir este punto.",
+"error:measurementImportFailed": "El archivo de medición no es válido. Elige un archivo JSON de medición exportado por EffeTune.",
+"error:clipboardWriteFailed": "No se pudieron copiar los ajustes de PEQ. Comprueba el acceso al portapapeles e inténtalo de nuevo.",
+"error:correctionUpdateFailed": "No se pudo actualizar la corrección. Comprueba los ajustes e inténtalo de nuevo.",
+"error:measurementDisplayFailed": "No se pudo actualizar la vista de la medición. Selecciona de nuevo la medición.",
 
 // Messages
 "message:peqCopied": "Ajustes de PEQ copiados al portapapeles correctamente. Los ajustes copiados se pueden pegar en el Pipeline de Efectos de EffeTune con Ctrl+V.", // Success message for PEQ copy

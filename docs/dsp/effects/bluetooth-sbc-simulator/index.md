@@ -37,9 +37,9 @@ Models Bluetooth SBC audio coding with bitpool, channel-mode, and seeded packet-
 
 SBC Codec Simulator passes the selected channels through a real-time SBC analysis, bit allocation, quantization, and synthesis path. Use it to hear how the mandatory baseline codec for Bluetooth A2DP can change high-frequency detail, tonal textures, transients, and stereo imaging. With Packet Loss at its default the round trip is completely clean; raising it reproduces the dropouts of a real Bluetooth link.
 
-The codec runs internally at 44.1 kHz for the 44.1 kHz sample-rate family and 48 kHz for the 48 kHz family. The read-only Bitrate value is calculated from the exact SBC frame length for the current Bitpool, Channel Mode, Blocks, and codec rate. It is therefore more informative than treating Bitpool itself as a bitrate.
+The read-only Bitrate value shows the resulting stream rate for the current Bitpool, Channel Mode, and Blocks settings. Use it when comparing configurations; Bitpool itself is not a bitrate.
 
-This effect requires its WebAssembly processing engine. If that engine or the selected sample-rate/channel mode is unavailable, the input remains unchanged and the plugin shows a plain-language status message.
+If the plugin reports that the effect is unavailable, try another sample rate or channel mode. The input remains unchanged until the effect becomes available.
 
 ### Sound Enhancement Guide
 
@@ -56,7 +56,7 @@ This effect requires its WebAssembly processing engine. If that engine or the se
 - **Bitpool** — Sets the quantization-bit budget per SBC frame, from 2 to 53. `Joint Stereo` and `Stereo` share this budget across the stereo pair, while `Dual Channel` spends it on each channel separately. Lower values leave more subbands with few or no bits and make codec artifacts stronger. Bitpool is not a direct kbit/s value.
 - **Channel Mode** — `Joint Stereo` may encode correlated subbands as sum/difference when that reduces the required scale factors. `Stereo` keeps left and right subbands separate. Both share one bitpool across the first stereo pair; Joint Stereo does not simply make the output mono. `Dual Channel` gives each channel its own independent allocation at the full bitpool, so the frame and the bitrate roughly double: this is the configuration behind "SBC XQ", and because left and right are quantized independently the stereo image fluctuates differently than under Joint Stereo.
 - **Blocks** — Selects 4, 8, 12, or 16 subband-sample blocks per SBC frame. Fewer blocks shorten the codec frame and increase fixed overhead relative to coded audio; more blocks adapt scale factors less often.
-- **Bitrate** — Read-only current stream bitrate in kbit/s, calculated from the exact frame bytes and codec rate. It updates when Bitpool, Channel Mode, Blocks, the host sample-rate family, or the host output routing between mono and stereo changes.
+- **Bitrate** — Shows the current stream rate in kbit/s. It updates when Bitpool, Channel Mode, Blocks, sample rate, or mono/stereo routing changes.
 - **Packet Loss** — Sets the Bluetooth link packet loss rate from 0% to 20% (default 0%). At 0% no frames are lost. Higher values drop whole SBC frames in bursts (Gilbert-Elliott model), and the built-in concealment repeats the previous frame with attenuation before fading to silence, giving the interruptions of a real wireless link.
 - **Output** — Adjusts the decoded level from -24.0 to +12.0 dB (default 0.0 dB). Lower it if codec filter overshoot makes peaks too high.
 - **Mix** — Blends the latency-aligned original with the decoded result from 0% to 100%.

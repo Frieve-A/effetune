@@ -57,7 +57,7 @@ Vinyl Simulator transforms the music itself through a physical record-cutting an
 ### Vinyl Simulator or Vinyl Artifacts?
 
 - **Vinyl Simulator** changes the input signal by passing it through the modeled groove and stylus. Roughness, dust, static, tracking force, stylus shape, record speed, and radius all take part in the simulation.
-- **Vinyl Artifacts** leaves the music signal itself unchanged and adds controllable pops, crackle, hiss, rumble, and stereo noise bleed. Choose it for a lighter, predictable noise layer or when WASM is unavailable.
+- **Vinyl Artifacts** leaves the music signal itself unchanged and adds controllable pops, crackle, hiss, rumble, and stereo noise bleed. Choose it for a lighter, more predictable noise layer.
 - The two can be combined, but start with one: using strong surface settings in both can make clicks and noise build up quickly.
 
 ### Sound Enhancement Guide
@@ -89,7 +89,7 @@ Vinyl Simulator transforms the music itself through a physical record-cutting an
 
 #### Stylus
 
-- **Shape** (Spherical or Elliptical) - Selects the contact geometry. Elliptical emphasizes directional groove tracing; Spherical links Scan Radius to Side Radius and gives a rounder contact profile. Changing Shape rebuilds the simulation state.
+- **Shape** (Spherical or Elliptical) - Selects the stylus contact shape. Elliptical follows fine groove detail more closely; Spherical gives a rounder, more forgiving contact profile.
 - **Side Radius** (5 to 25 µm) - Sets the stylus radius across the groove wall. It changes the contact footprint and pressure distribution.
 - **Scan Radius** (2 to 25 µm) - Sets the radius used along the direction of groove travel. Smaller values follow finer geometry; larger values average it over a broader contact. In Spherical mode it follows Side Radius.
 - **Tracking Force** (0.5 to 5.0 g) - Sets downward stylus force. More force can improve contact stability but increases contact force and pressure; too little can raise mistrack and skip activity.
@@ -99,7 +99,7 @@ Vinyl Simulator transforms the music itself through a physical record-cutting an
 
 #### Output
 
-- **Quality** (Eco, Standard, High, or Ultra) - Selects the base number of physical integration substeps and contact scan points. To keep the contact resonance stable, the engine may automatically raise the effective substeps above this base according to sample rate, Tracking Force, Tip Mass, Compliance, Shape, Side Radius, and Scan Radius. Standard is the default for real-time listening. Changing Quality rebuilds the simulation state.
+- **Quality** (Eco, Standard, High, or Ultra) - Balances groove-tracing detail against CPU use. Standard is the recommended starting point for real-time listening.
 - **Output Gain** (-24 to +24 dB) - Adjusts the level after playback equalization and normalization. Reduce it if strong cutting or surface settings create high peaks.
 - **Mix** (0 to 100%) - Blends the simulated playback with a latency-aligned dry signal. 0% is dry and 100% is fully simulated.
 
@@ -112,7 +112,7 @@ Vinyl Simulator transforms the music itself through a physical record-cutting an
 - **Jitter (ns)** appears with the Stylus view and reports timing variation at the groove read point.
 - **Mistrack, Skip, Static Pop, and Dust Hit (/s)** show recent event rates. A flash marks a new event; repeated mistracks or skips suggest reducing Cut Level, increasing Tracking Force moderately, choosing a larger Radius, or raising Quality.
 
-The HUD becomes active when native DSP telemetry is available. When playback is stopped or telemetry is paused to save power, it may show an idle state rather than live values.
+The HUD shows live values during playback and may show an idle state while playback is stopped.
 
 ### Recommended Settings
 
@@ -137,25 +137,12 @@ The HUD becomes active when native DSP telemetry is available. When playback is 
 
 ### Quality and CPU Guide
 
-Each Quality preset sets base substeps and contact scan points. For stability, the engine also calculates `Nmin = ceil(8 × f_c / sampleRate)`, where the contact-resonance frequency `f_c` depends on Tracking Force, Tip Mass, Compliance, Shape, Side Radius, and Scan Radius, then uses `effectiveSubsteps = max(base, Nmin)`. At the default settings, Standard at 96 kHz remains at its base of 4 substeps, so the existing performance target is unchanged.
+- **Eco** uses the least CPU and is the first choice for lower-powered devices.
+- **Standard** is the recommended starting point for normal listening.
+- **High** improves groove tracing at a substantial CPU cost.
+- **Ultra** is extremely demanding and is rarely useful for real-time listening.
+- Higher sample rates and demanding stylus settings also increase CPU use. If playback breaks up, lower Quality first.
 
-The main workload is proportional to sample rate × effective substeps × contact scan points. The contact-evaluation and relative-load figures below are base estimates for when the stability floor does not raise the substeps, not measured CPU percentages; actual load also depends on the processor, browser, and availability of WASM SIMD.
-
-| Quality | Base detail | Base evaluations at 96 kHz | Base relative load | Suggested use |
-|---|---:|---:|---:|---|
-| Eco | 2 substeps × 7 scan points | 2.7 million/s | 0.39× | Mobile, low-power systems, or several instances |
-| Standard | 4 × 9 | 6.9 million/s | 1.00× | Normal real-time listening |
-| High | 8 × 13 | 20 million/s | 2.89× | Faster systems or focused comparison |
-| Ultra | 20 × 25 | 96 million/s | 13.89× | Offline rendering and verification |
-
-When the stability floor is inactive, apply the following sample-rate multiplier to the base relative load: 44.1 kHz = 0.46×, 48 kHz = 0.50×, 88.2 kHz = 0.92×, 96 kHz = 1.00×, 176.4 kHz = 1.84×, and 192 kHz = 2.00×. Sample rate and the Tracking Force, Tip Mass, Compliance, Shape, Side Radius, and Scan Radius settings can activate the floor and make the actual load higher than this base estimate. If playback breaks up, lower Quality first.
-
-### WASM Requirement and Model Limits
-
-Vinyl Simulator requires the native WebAssembly DSP kernel for real-time processing. If WASM is disabled with `?dsp=off`, unsupported, or fails to initialize, the effect passes the input through unchanged and the UI reports that WASM is required. It does not fall back to the much slower JavaScript reference simulation.
-
-The model processes the first stereo pair. Dust deformation is retained only while each simulated particle remains active; the stylus always advances into newly generated groove, so wear does not accumulate over repeated revolutions and is not saved with presets. Long-term record wear, 3D visualization, real-time SNR/THD meters, wow/flutter, eccentricity, warping, turntable rumble, and cartridge electrical loading are outside this effect's model.
-
-Remember: These effects are meant to add character and nostalgia to your music. Start with subtle settings and adjust to taste!
+If Vinyl Simulator is unavailable on your device, the audio passes through unchanged and the panel shows a notice. The effect does not add wow, eccentricity, warping, or turntable rumble; add Wow Flutter or another noise effect when you want those sounds.
 
 [Back to all effects](/dsp/effects/)

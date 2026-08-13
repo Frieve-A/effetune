@@ -68,10 +68,10 @@
 "button:redo": "重新测量", // Button to redo measurement
 "button:saveAndContinue": "保存并测量另一个点", // Button to save and continue measuring
 "button:saveAndFinish": "保存并完成", // Button to save and finish measurement
-"help:measurementActions": "单击"重新测量"可放弃本次测量并重新测量。\n单击"保存并测量另一个点"可保存本次测量并测量另一个点，以提高校正精度（点击按钮后立即开始测量）。\n单击"保存并完成"可接受本次测量并完成测量。", // Help text for measurement actions
+"help:measurementActions": "单击\"重新测量\"可放弃本次测量并重新测量。\n单击\"保存并测量另一个点\"可保存本次测量并测量另一个点，以提高校正精度（点击按钮后立即开始测量）。\n单击\"保存并完成\"可接受本次测量并完成测量。", // Help text for measurement actions
 
 // Results Display Screen
-"message:noMeasurement": "没有可用的测量。点击"新测量"开始。", // Message when no measurements are available
+"message:noMeasurement": "没有可用的测量。点击\"新测量\"开始。", // Message when no measurements are available
 "title:measurementResults": "测量结果", // Title for measurement results
 "button:saveChanges": "保存更改", // Button to save changes
 "button:discardChanges": "放弃更改", // Button to discard changes
@@ -122,6 +122,17 @@
 "error:interfaceCalibrationProcessingFailed": "无法完成校准测量。请检查连接和设置，然后重新测量此点。",
 "error:measurementSetupFailed": "无法准备测量。请检查音频设备后重试。",
 "error:levelAdjustmentFailed": "无法准备音频输入。请检查输入设备后重试。",
+"error:audioUnsupported": "此浏览器无法进行音频测量。请使用最新版 Chrome 或 Edge。",
+"error:audioInitFailed": "无法准备音频设备。请检查浏览器权限后重试。",
+"error:measurementNameRequired": "请先输入测量名称再继续。",
+"error:invalidSweepRange": "请将扫描范围设置在 1 Hz 到 {max} Hz 之间，并确保下限小于上限。",
+"error:testSignalFailed": "无法控制测试信号。请检查音频输出后重试。",
+"error:measurementConfigUnavailable": "测量设置已不可用。请开始新的测量。",
+"error:measurementFailed": "无法完成测量。请检查音频设备并重新测量此点。",
+"error:measurementImportFailed": "测量文件无效。请选择由 EffeTune 导出的测量 JSON 文件。",
+"error:clipboardWriteFailed": "无法复制 PEQ 设置。请检查剪贴板访问权限后重试。",
+"error:correctionUpdateFailed": "无法更新校正。请检查设置后重试。",
+"error:measurementDisplayFailed": "无法更新测量结果显示。请重新选择该测量。",
 
 // Messages
 "message:peqCopied": "PEQ 设置已成功复制到剪贴板，可通过 Ctrl+V 将复制的设置粘贴到 EffeTune 的效果管道中。", // Success message for PEQ copy

@@ -11,7 +11,7 @@ Une collection de plugins qui aident à équilibrer les parties fortes et douces
 ## Liste des Plugins
 
 - [Auto Leveler](#auto-leveler) - Contrôle automatique du volume pour une expérience d'écoute uniforme
-- [Brickwall Limiter](#brickwall-limiter) - Contrôle transparent des crêtes pour une écoute sûre et confortable
+- [Brickwall Limiter](#brickwall-limiter) - Contrôle transparent des crêtes qui évite l'écrêtage numérique
 - [Compressor](#compressor) - Équilibre automatiquement les niveaux de volume pour une écoute plus confortable (inclut l'expansion vers le haut)
 - [Expander](#expander) - Expansion de plage dynamique en dessous du seuil avec contrôle de ratio et knee (inclut la compression vers le haut)
 - [Gate](#gate) - Réduit les silences ou passages de faible niveau sous un seuil
@@ -121,21 +121,14 @@ Un contrôle intelligent du volume qui ajuste automatiquement votre musique pour
 
 ## Brickwall Limiter
 
-Un limiteur de crêtes de haute qualité qui garantit que votre musique ne dépasse jamais un niveau spécifié, évitant l'écrêtage numérique tout en maintenant une qualité sonore naturelle. Parfait pour protéger votre système audio et assurer des niveaux d'écoute confortables sans compromettre la dynamique de la musique.
+Un limiteur de crêtes qui maintient le signal numérique de la chaîne sous un plafond défini tout en préservant autant que possible la dynamique. Placez-le vers la fin de la chaîne lorsque les effets précédents créent des crêtes élevées. Il limite les crêtes du signal ; réglez séparément le volume d'écoute sur votre appareil de lecture.
 
 ### Guide d'Amélioration de l'Écoute
-- Musique Classique :
-  - Profitez en toute sécurité des crescendos orchestraux complets
-  - Maintenez la dynamique naturelle des pièces de piano
-  - Protégez contre les pics inattendus dans les enregistrements live
-- Musique Pop/Rock :
-  - Maintenez un volume constant pendant les passages intenses
-  - Profitez de la musique dynamique à n'importe quel niveau d'écoute
-  - Prévenez la distorsion dans les sections riches en basses
-- Musique Électronique :
-  - Contrôlez les pics de synthétiseur de manière transparente
-  - Maintenez l'impact tout en évitant la surcharge
-  - Gardez les drops de basse puissants mais contrôlés
+- Placez-le vers la fin de la chaîne, avant **Level Meter**, pour retenir les crêtes créées par l'égalisation, la saturation ou d'autres effets.
+- Commencez avec Input Gain à 0 dB, Threshold à -3 dB, Margin à -1 dB et Release à 100 ms.
+- Si la limitation agit souvent ou si la musique perd de l'impact, baissez Input Gain ou rapprochez Threshold de 0 dB.
+- En cas de pompage, allongez Release. Si les transitoires deviennent flous ou distordus, essayez un Release plus court ou réduisez la limitation.
+- Placez **Level Meter** après le limiteur pour vérifier la crête numérique. Réglez séparément le volume d'écoute sur l'amplificateur ou l'appareil de lecture.
 
 ### Paramètres
 - **Input Gain** (-18dB à +18dB)
@@ -147,9 +140,9 @@ Un limiteur de crêtes de haute qualité qui garantit que votre musique ne dépa
 - **Threshold** (-24dB à 0dB)
   - Définit le niveau de crête où la limitation commence avant application de Margin
   - Le plafond effectif est Threshold + Margin
-  - Valeurs plus basses offrent plus de marge de sécurité
+  - Les valeurs basses laissent davantage de marge aux crêtes
   - Valeurs plus hautes préservent plus de dynamique
-  - Commencez à -3dB pour une protection douce
+  - Commencez à -3dB pour une limitation légère
 
 - **Release Time** (10ms à 500ms)
   - Rapidité de relâchement de la limitation
@@ -164,7 +157,7 @@ Un limiteur de crêtes de haute qualité qui garantit que votre musique ne dépa
   - 3ms est un bon compromis
 
 - **Margin** (-1.000dB à 0.000dB)
-  - Ajoute un décalage fin de sécurité au Threshold
+  - Ajoute un léger décalage vers le bas à Threshold
   - Le plafond réel est Threshold + Margin
   - Par exemple, Threshold -3dB avec Margin -1.000dB limite autour de -4dB
   - La valeur par défaut -1.000dB convient à la plupart des sources
@@ -177,7 +170,6 @@ Un limiteur de crêtes de haute qualité qui garantit que votre musique ne dépa
 
 ### Contrôles et Mesure
 - Contrôles directs pour Input Gain, Threshold, Margin, Release, Lookahead et Oversampling
-- Les informations de réduction de gain du limiteur sont signalées en interne pour l'hôte ou les indicateurs d'état
 - Le panneau du plugin n'affiche pas de graphique de niveau de crête séparé
 
 ### Réglages Recommandés
@@ -191,7 +183,7 @@ Un limiteur de crêtes de haute qualité qui garantit que votre musique ne dépa
 - Oversampling : 4x
 - Plafond effectif : environ -4dB
 
-#### Sécurité Maximale
+#### Marge de crête supplémentaire
 - Input Gain : -6dB
 - Threshold : -6dB
 - Release : 50ms

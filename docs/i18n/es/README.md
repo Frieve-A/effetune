@@ -98,9 +98,9 @@ Las versiones de escritorio compatibles también pueden controlarse desde aplica
 
 Tanto en el diseño para PC como en el móvil, si una búsqueda de pistas o los detalles de un álbum, artista, género, subcarpeta o lista de reproducción devuelven 300 pistas o menos, todas se seleccionan de forma predeterminada. Con 301 pistas o más no hay selección automática. En móvil, la selección automática solo cambia el estado de selección. Solo mantener pulsada una pista abre el modo de selección y muestra las casillas, **Seleccionar todo** y **Deseleccionar todo**; seleccionar o deseleccionar pistas no abre ni cierra ese modo, y las acciones habituales de cada fila siguen disponibles.
 
-Los navegadores Chromium de PC pueden conservar los identificadores de carpeta de File System Access. Safari, Firefox, los navegadores móviles y otros entornos sin esa API solo conservan los objetos `File` durante la sesión actual de la página. Después de cada recarga, vuelve a seleccionar la carpeta o los archivos; EffeTune los enlaza con el catálogo existente mediante la ruta relativa normalizada.
+Los navegadores Chromium de PC pueden conservar el acceso a las carpetas de música seleccionadas entre sesiones. En Safari, Firefox, navegadores móviles y otros entornos sin acceso persistente a carpetas, vuelve a seleccionar la carpeta o los archivos después de cada recarga; EffeTune los enlaza con el catálogo existente.
 
-La versión 2.1.0 de EffeTune incorpora una Biblioteca musical basada en el esquema de catálogo v3 que permite explorar álbumes CUE pista por pista. El estado de la Biblioteca musical anterior no se transfiere: vuelve a añadir y analizar tus carpetas de música, y vuelve a crear o importar las listas de reproducción de la Biblioteca musical. El catálogo anterior y los archivos de audio no se modifican. El catálogo está diseñado para paginar colecciones grandes desde el disco. Las mediciones de rendimiento a gran escala son diagnósticos locales y opcionales para el desarrollo: no son requisitos para commits, versiones, `verify` ni GitHub Actions, y tampoco constituyen una garantía general de rendimiento.
+Las colecciones grandes se cargan por etapas desde el almacenamiento; la velocidad de análisis y carga depende del dispositivo, la colección y la memoria disponible. Al desplazarte muy rápido pueden aparecer filas vacías durante unos instantes mientras se cargan las pistas siguientes, sobre todo con almacenamiento lento.
 
 ### Creando tu Cadena de Efectos
 
@@ -318,7 +318,7 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | Delay     | Delay          | Efecto de retardo estándar | [Detalles](plugins/delay.md#delay) |
 | Delay     | Time Alignment | Ajusta con precisión el tiempo de reproducción para alinear altavoces y posición de escucha | [Detalles](plugins/delay.md#time-alignment) |
 | Dynamics  | Auto Leveler | Ajuste automático de volumen basado en medición LUFS para una experiencia de escucha uniforme | [Detalles](plugins/dynamics.md#auto-leveler) |
-| Dynamics  | Brickwall Limiter | Control de picos transparente para una escucha segura y cómoda | [Detalles](plugins/dynamics.md#brickwall-limiter) |
+| Dynamics  | Brickwall Limiter | Limita los picos de señal para evitar el recorte digital | [Detalles](plugins/dynamics.md#brickwall-limiter) |
 | Dynamics  | Compressor | Suaviza los pasajes que se vuelven fuertes de golpe para una escucha más cómoda | [Detalles](plugins/dynamics.md#compressor) |
 | Dynamics  | Expander | Recupera contraste dinámico haciendo más silenciosos los sonidos bajos por debajo del umbral | [Detalles](plugins/dynamics.md#expander) |
 | Dynamics  | Gate | Reduce sonidos de bajo nivel durante pausas o secciones tranquilas | [Detalles](plugins/dynamics.md#gate) |
@@ -417,12 +417,11 @@ Frieve EffeTune ha sido probado y se ha verificado que funciona en Google Chrome
 
 ### Tasa de Muestreo Recomendada
 
-Para un rendimiento óptimo con efectos no lineales, se recomienda usar EffeTune a una tasa de muestreo de 96kHz o superior. Esta tasa de muestreo más alta ayuda a lograr características ideales al procesar audio a través de efectos no lineales como la saturación y la compresión.
+Ajusta la **Tasa de muestreo** de EffeTune a 96 kHz. Esto reduce el aliasing que cae en la banda audible cuando los efectos no lineales tienen un filtrado antialiasing limitado. El ajuste controla la tasa de procesamiento interna de EffeTune y normalmente puede ser distinta de las tasas del sistema operativo, los dispositivos de audio y VB-CABLE, por lo que no es necesario cambiarlas. Comprueba la tasa efectiva que muestra la aplicación: antes de guardar el ajuste por primera vez puede usarse el valor predeterminado del sistema o del navegador, y la versión web puede recurrir a otra tasa si 96 kHz no está disponible. Si hay cortes, reduce primero los efectos exigentes o acorta la cadena; baja la tasa solo si sigue siendo necesario.
 
 ## Guía de Desarrollo
 
 ¿Quieres crear tus propios plugins de audio? Consulta nuestra [guía de desarrollo de plugins](../../plugin-development.md).
-¿Quieres construir una aplicación de escritorio? Consulta nuestra [Guía de Construcción](../../../BUILD.md).
 
 ## Enlaces
 

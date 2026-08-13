@@ -216,18 +216,6 @@ class SpectrogramPlugin extends PluginBase {
         return y < 0 ? 0 : (y > 255 ? 255 : y);
     }
 
-    displayRowToFrequency(row) {
-        const position = row / (SPECTROGRAM_CELL_COUNT - 1);
-        if (this.sc === 'linear') {
-            return SPECTROGRAM_MAX_DISPLAY_FREQ -
-                position * SPECTROGRAM_DISPLAY_FREQ_RANGE;
-        }
-        return Math.pow(
-            10,
-            SPECTROGRAM_LOG_MAX_DISPLAY_FREQ - position * SPECTROGRAM_LOG_DISPLAY_FREQ_RANGE
-        );
-    }
-
     displayRowToCanonicalRow(row) {
         if (this.sc === 'log') return row;
         return SPECTROGRAM_LINEAR_TO_CANONICAL_ROW[row];
@@ -240,10 +228,6 @@ class SpectrogramPlugin extends PluginBase {
         const firstValue = values[firstRow * stride + column];
         const secondValue = values[secondRow * stride + column];
         return firstValue + (secondValue - firstValue) * fraction;
-    }
-
-    binToFreq(bin, fftSize) {
-        return (bin * this.sampleRate) / fftSize;
     }
 
     setDBRange(value) {
@@ -901,12 +885,6 @@ class SpectrogramPlugin extends PluginBase {
         target[offset + 2] = Math.round(
             (lower.b + (upper.b - lower.b) * normalizedPos) * SPECTROGRAM_COLOR_BRIGHTNESS
         );
-    }
-
-    dbToColor(db) {
-        const color = [0, 0, 0];
-        this.writeDbColor(color, 0, db);
-        return color;
     }
 
     drawGraph() {

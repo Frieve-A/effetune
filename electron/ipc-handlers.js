@@ -298,6 +298,292 @@ function simulateKeyboardShortcut(keyCode, modifiers = []) {
   });
 }
 
+function applyMenuItemState(id, defaults, menuState) {
+  const item = { id, ...defaults };
+  const state = menuState && typeof menuState === 'object' ? menuState[id] : null;
+  if (!state || typeof state !== 'object') return item;
+  if (typeof state.label === 'string') item.label = state.label;
+  if (typeof state.enabled === 'boolean') item.enabled = state.enabled;
+  if (item.type === 'checkbox' && typeof state.checked === 'boolean') {
+    item.checked = state.checked;
+  }
+  return item;
+}
+
+function createApplicationMenuTemplate(menuState = {}) {
+  const item = (id, defaults) => applyMenuItemState(id, defaults, menuState);
+  const sendToRenderer = (channel, ...args) => {
+    const mainWin = constants.getMainWindow();
+    if (mainWin) mainWin.webContents.send(channel, ...args);
+  };
+
+  return [
+    item('menu.file', {
+      label: 'File',
+      submenu: [
+        item('file.save', {
+          label: 'Save',
+          accelerator: 'CommandOrControl+S',
+          click: () => simulateKeyboardShortcut('S', ['control'])
+        }),
+        item('file.saveAs', {
+          label: 'Save As...',
+          accelerator: 'CommandOrControl+Shift+S',
+          click: () => simulateKeyboardShortcut('S', ['control', 'shift'])
+        }),
+        { type: 'separator' },
+        item('file.openMusicFile', {
+          label: 'Open music file...',
+          accelerator: 'CommandOrControl+O',
+          click: () => sendToRenderer('open-music-file')
+        }),
+        item('file.addMusicFolder', {
+          label: 'Add Music Folder...',
+          click: () => sendToRenderer('add-music-folder')
+        }),
+        item('file.rescanLibrary', {
+          label: 'Rescan Music Library',
+          click: () => sendToRenderer('rescan-library')
+        }),
+        item('file.processAudioFiles', {
+          label: 'Process Audio Files with Effects...',
+          click: () => sendToRenderer('process-audio-files')
+        }),
+        { type: 'separator' },
+        item('file.exportPreset', {
+          label: 'Export Preset...',
+          click: () => sendToRenderer('export-preset')
+        }),
+        item('file.importPreset', {
+          label: 'Import Preset...',
+          click: () => sendToRenderer('import-preset')
+        }),
+        { type: 'separator' },
+        item('file.doubleBlindTest', {
+          label: 'Double Blind Test',
+          enabled: true,
+          click: () => sendToRenderer('start-double-blind-test')
+        }),
+        { type: 'separator' },
+        item('file.quit', { role: 'quit' })
+      ]
+    }),
+    item('menu.edit', {
+      label: 'Edit',
+      submenu: [
+        item('edit.undo', {
+          label: 'Undo',
+          accelerator: 'CommandOrControl+Z',
+          click: () => simulateKeyboardShortcut('Z', ['control'])
+        }),
+        item('edit.redo', {
+          label: 'Redo',
+          accelerator: 'CommandOrControl+Y',
+          click: () => simulateKeyboardShortcut('Y', ['control'])
+        }),
+        { type: 'separator' },
+        item('edit.cut', {
+          label: 'Cut',
+          accelerator: 'CommandOrControl+X',
+          click: () => simulateKeyboardShortcut('X', ['control'])
+        }),
+        item('edit.copy', {
+          label: 'Copy',
+          accelerator: 'CommandOrControl+C',
+          click: () => simulateKeyboardShortcut('C', ['control'])
+        }),
+        item('edit.paste', {
+          label: 'Paste',
+          accelerator: 'CommandOrControl+V',
+          click: () => simulateKeyboardShortcut('V', ['control'])
+        }),
+        { type: 'separator' },
+        item('edit.delete', {
+          label: 'Delete',
+          accelerator: 'Delete',
+          click: () => simulateKeyboardShortcut('Delete')
+        }),
+        item('edit.selectAll', {
+          label: 'Select All',
+          accelerator: 'CommandOrControl+A',
+          click: () => simulateKeyboardShortcut('A', ['control'])
+        })
+      ]
+    }),
+    item('menu.view', {
+      label: 'View',
+      submenu: [
+        item('view.reload', {
+          label: 'Reload',
+          accelerator: 'CommandOrControl+R',
+          click: () => {
+            const mainWin = constants.getMainWindow();
+            if (!mainWin) return;
+            mainWin.webContents.executeJavaScript(`
+              // Reset zoom before reload
+              document.body.style.zoom = 1.0;
+            `).catch(err => {
+              console.error('Error resetting zoom before reload:', err.message || String(err));
+            }).finally(() => {
+              mainWin.webContents.send('reload-with-pipeline-state');
+            });
+          }
+        }),
+        { type: 'separator' },
+        item('view.resetZoom', {
+          label: 'Reset Zoom',
+          accelerator: 'CommandOrControl+0',
+          click: () => {
+            const mainWin = constants.getMainWindow();
+            if (!mainWin) return;
+            mainWin.webContents.executeJavaScript(`
+              (function() {
+                document.body.style.zoom = 1.0;
+              })();
+            `).catch(err => {
+              console.error('Error executing zoom reset script:', err.message || String(err));
+            });
+          }
+        }),
+        item('view.zoomIn', {
+          label: 'Zoom In',
+          accelerator: 'CommandOrControl+=',
+          click: () => {
+            const mainWin = constants.getMainWindow();
+            if (!mainWin) return;
+            mainWin.webContents.executeJavaScript(`
+              (function() {
+                const zoom = parseFloat(document.body.style.zoom || '1');
+                const newZoom = Math.min(zoom + 0.1, 3.0);
+                document.body.style.zoom = newZoom;
+              })();
+            `).catch(err => {
+              console.error('Error executing zoom in script:', err.message || String(err));
+            });
+          }
+        }),
+        item('view.zoomOut', {
+          label: 'Zoom Out',
+          accelerator: 'CommandOrControl+-',
+          click: () => {
+            const mainWin = constants.getMainWindow();
+            if (!mainWin) return;
+            mainWin.webContents.executeJavaScript(`
+              (function() {
+                const zoom = parseFloat(document.body.style.zoom || '1');
+                const newZoom = Math.max(zoom - 0.1, 0.3);
+                document.body.style.zoom = newZoom;
+              })();
+            `).catch(err => {
+              console.error('Error executing zoom out script:', err.message || String(err));
+            });
+          }
+        }),
+        { type: 'separator' },
+        item('view.effectPipeline', {
+          label: 'Effect Pipeline',
+          accelerator: 'CommandOrControl+E',
+          click: () => sendToRenderer('open-effect-pipeline-view')
+        }),
+        item('view.musicLibrary', {
+          label: 'Music Library',
+          accelerator: 'CommandOrControl+L',
+          click: () => sendToRenderer('open-library-view')
+        }),
+        item('view.pipelineAnalyzer', {
+          label: 'Pipeline Analyzer',
+          type: 'checkbox',
+          checked: false,
+          click: menuItem => sendToRenderer('set-pipeline-analyzer-open', menuItem.checked === true)
+        }),
+        { type: 'separator' },
+        item('toggle-fullscreen', {
+          role: 'togglefullscreen',
+          enabled: !isMiniMode
+        }),
+        item('view.miniPlayer', {
+          label: 'Mini Player',
+          accelerator: 'CommandOrControl+Shift+M',
+          click: () => sendToRenderer('toggle-mini-player')
+        })
+      ]
+    }),
+    item('menu.settings', {
+      label: 'Settings',
+      submenu: [
+        item('settings.config', {
+          label: 'Config...',
+          click: () => sendToRenderer('config-app')
+        }),
+        item('settings.audioDevices', {
+          label: 'Audio Devices...',
+          click: () => sendToRenderer('config-audio')
+        }),
+        item('settings.performanceBenchmark', {
+          label: 'Performance Benchmark',
+          click: () => {
+            const mainWin = constants.getMainWindow();
+            if (!mainWin) return;
+            restoreNormalWindowShape();
+            mainWin.loadFile('features/effetune_bench.html');
+          }
+        }),
+        item('settings.frequencyResponseMeasurement', {
+          label: 'Frequency Response Measurement',
+          click: () => {
+            const mainWin = constants.getMainWindow();
+            if (!mainWin) return;
+            restoreNormalWindowShape();
+            mainWin.webContents.send('open-frequency-response-measurement');
+          }
+        })
+      ]
+    }),
+    item('menu.help', {
+      label: 'Help',
+      submenu: [
+        item('help.help', {
+          label: 'Help',
+          accelerator: 'F1',
+          click: () => {
+            const mainWin = constants.getMainWindow();
+            if (!mainWin?.webContents) return;
+            mainWin.webContents.executeJavaScript(`
+              const whatsThisLink = document.querySelector('.whats-this');
+              if (whatsThisLink) {
+                whatsThisLink.click();
+              }
+            `).catch(error => {
+              console.error('Error executing Help menu action:', error);
+            });
+          }
+        }),
+        item('help.discord', {
+          label: 'Discord',
+          click: () => shell.openExternal('https://discord.gg/gf95v3Gza2')
+        }),
+        item('help.support', {
+          label: 'Support the Project',
+          click: () => shell.openExternal('https://ko-fi.com/frievea')
+        }),
+        { type: 'separator' },
+        item('help.about', {
+          label: 'About',
+          click: () => sendToRenderer('show-about-dialog', {
+            version: constants.getAppVersion(),
+            icon: path.join(__dirname, '../images/favicon.ico')
+          })
+        })
+      ]
+    })
+  ];
+}
+
+function createMenu(menuState = {}) {
+  const menu = Menu.buildFromTemplate(createApplicationMenuTemplate(menuState));
+  Menu.setApplicationMenu(menu);
+}
+
 // Register all IPC handlers
 function registerIpcHandlers() {
   registerIrLibraryIpc({ ipcMain, getUserDataPath: fileHandlers.getUserDataPath });
@@ -698,31 +984,6 @@ function registerIpcHandlers() {
     return fileHandlers.fileExists(filePath);
   });
 
-  // Handle get file path request
-  ipcMain.handle('get-file-path', async (event, fileInfo) => {
-    return await fileHandlers.getFilePath(fileInfo);
-  });
-
-  // Handle get file paths request
-  ipcMain.handle('get-file-paths', async (event, filesInfo) => {
-    return await fileHandlers.getFilePaths(filesInfo);
-  });
-
-  // Handle dropped files with paths
-  ipcMain.handle('handle-dropped-files-with-paths', async (event, filePaths) => {
-    return await fileHandlers.handleDroppedFilesWithPaths(filePaths);
-  });
-
-  // Handle dropped files (fallback method)
-  ipcMain.handle('handle-dropped-files', async (event, filesInfo) => {
-    return await fileHandlers.handleDroppedFiles(filesInfo);
-  });
-
-  // Handle dropped preset file
-  ipcMain.handle('handle-dropped-preset-file', async (event, fileInfo) => {
-    return await fileHandlers.handleDroppedPresetFile(fileInfo);
-  });
-
   // Handle save pipeline state to file request
   ipcMain.handle('save-pipeline-state-to-file', async (event, pipelineState) => {
     return await fileHandlers.savePipelineStateToFile(pipelineState);
@@ -864,373 +1125,9 @@ function registerIpcHandlers() {
   });
 
   // Handle application menu update request
-  ipcMain.handle('update-application-menu', (event, menuTemplate) => {
+  ipcMain.handle('update-application-menu', (event, menuState) => {
     try {
-      // Create a new menu template with the same structure but updated labels
-      const template = [
-        {
-          label: menuTemplate.file.label,
-          submenu: [
-            {
-              label: menuTemplate.file.submenu[0].label, // Save
-              accelerator: 'CommandOrControl+S',
-              enabled: menuTemplate.file.submenu[0].enabled !== false,
-              click: () => simulateKeyboardShortcut('S', ['control'])
-            },
-            {
-              label: menuTemplate.file.submenu[1].label, // Save As...
-              accelerator: 'CommandOrControl+Shift+S',
-              enabled: menuTemplate.file.submenu[1].enabled !== false,
-              click: () => simulateKeyboardShortcut('S', ['control', 'shift'])
-            },
-            { type: 'separator' },
-            {
-              label: menuTemplate.file.submenu[3].label, // Open music file...
-              accelerator: 'CommandOrControl+O',
-              enabled: menuTemplate.file.submenu[3].enabled !== false,
-              click: () => {
-                const mainWin = constants.getMainWindow();
-                if (mainWin) {
-                  mainWin.webContents.send('open-music-file');
-                }
-              }
-            },
-            {
-              label: menuTemplate.file.submenu[4].label, // Add Music Folder...
-              enabled: menuTemplate.file.submenu[4].enabled !== false,
-              click: () => {
-                const mainWin = constants.getMainWindow();
-                if (mainWin) {
-                  mainWin.webContents.send('add-music-folder');
-                }
-              }
-            },
-            {
-              label: menuTemplate.file.submenu[5].label, // Rescan Music Library
-              enabled: menuTemplate.file.submenu[5].enabled !== false,
-              click: () => {
-                const mainWin = constants.getMainWindow();
-                if (mainWin) {
-                  mainWin.webContents.send('rescan-library');
-                }
-              }
-            },
-            {
-              label: menuTemplate.file.submenu[6].label, // Process Audio Files with Effects...
-              enabled: menuTemplate.file.submenu[6].enabled !== false,
-              click: () => {
-                const mainWin = constants.getMainWindow();
-                if (mainWin) {
-                  mainWin.webContents.send('process-audio-files');
-                }
-              }
-            },
-            { type: 'separator' },
-            {
-              label: menuTemplate.file.submenu[8].label, // Export Preset...
-              enabled: menuTemplate.file.submenu[8].enabled !== false,
-              click: () => {
-                const mainWin = constants.getMainWindow();
-                if (mainWin) {
-                  mainWin.webContents.send('export-preset');
-                }
-              }
-            },
-            {
-              label: menuTemplate.file.submenu[9].label, // Import Preset...
-              enabled: menuTemplate.file.submenu[9].enabled !== false,
-              click: () => {
-                const mainWin = constants.getMainWindow();
-                if (mainWin) {
-                  mainWin.webContents.send('import-preset');
-                }
-              }
-            },
-            { type: 'separator' },
-            {
-              label: menuTemplate.file.submenu[11].label, // Double Blind Test
-              enabled: menuTemplate.file.submenu[11].enabled !== false,
-              click: () => {
-                const mainWin = constants.getMainWindow();
-                if (mainWin) {
-                  mainWin.webContents.send('start-double-blind-test');
-                }
-              }
-            },
-            { type: 'separator' },
-            { role: 'quit', label: menuTemplate.file.submenu[13].label } // Quit
-          ]
-        },
-        {
-          label: menuTemplate.edit.label,
-          submenu: [
-            {
-              label: menuTemplate.edit.submenu[0].label, // Undo
-              accelerator: 'CommandOrControl+Z',
-              enabled: menuTemplate.edit.submenu[0].enabled !== false,
-              click: () => simulateKeyboardShortcut('Z', ['control'])
-            },
-            {
-              label: menuTemplate.edit.submenu[1].label, // Redo
-              accelerator: 'CommandOrControl+Y',
-              enabled: menuTemplate.edit.submenu[1].enabled !== false,
-              click: () => simulateKeyboardShortcut('Y', ['control'])
-            },
-            { type: 'separator' },
-            {
-              label: menuTemplate.edit.submenu[3].label, // Cut
-              accelerator: 'CommandOrControl+X',
-              enabled: menuTemplate.edit.submenu[3].enabled !== false,
-              click: () => simulateKeyboardShortcut('X', ['control'])
-            },
-            {
-              label: menuTemplate.edit.submenu[4].label, // Copy
-              accelerator: 'CommandOrControl+C',
-              enabled: menuTemplate.edit.submenu[4].enabled !== false,
-              click: () => simulateKeyboardShortcut('C', ['control'])
-            },
-            {
-              label: menuTemplate.edit.submenu[5].label, // Paste
-              accelerator: 'CommandOrControl+V',
-              enabled: menuTemplate.edit.submenu[5].enabled !== false,
-              click: () => simulateKeyboardShortcut('V', ['control'])
-            },
-            { type: 'separator' },
-            {
-              label: menuTemplate.edit.submenu[7].label, // Delete
-              accelerator: 'Delete',
-              enabled: menuTemplate.edit.submenu[7].enabled !== false,
-              click: () => simulateKeyboardShortcut('Delete')
-            },
-            {
-              label: menuTemplate.edit.submenu[8].label, // Select All
-              accelerator: 'CommandOrControl+A',
-              enabled: menuTemplate.edit.submenu[8].enabled !== false,
-              click: () => simulateKeyboardShortcut('A', ['control'])
-            }
-          ]
-        },
-        {
-          label: menuTemplate.view.label,
-          submenu: [
-            {
-              label: menuTemplate.view.submenu[0].label, // Reload
-              accelerator: 'CommandOrControl+R',
-              click: () => {
-                const mainWin = constants.getMainWindow();
-                if (mainWin) {
-                  // First ensure we reset any custom zoom
-                  mainWin.webContents.executeJavaScript(`
-                    // Reset zoom before reload
-                    document.body.style.zoom = 1.0;
-                  `).catch(err => {
-                    console.error('Error resetting zoom before reload:', err);
-                  }).finally(() => {
-                    mainWin.webContents.send('reload-with-pipeline-state');
-                  });
-                }
-              }
-            },
-            { type: 'separator' },
-            {
-              label: menuTemplate.view.submenu[2].label, // Reset Zoom
-              accelerator: 'CommandOrControl+0',
-              click: () => {
-                const mainWin = constants.getMainWindow();
-                if (mainWin) {
-                  mainWin.webContents.executeJavaScript(`
-                    (function() {
-                      document.body.style.zoom = 1.0;
-                    })();
-                  `).catch(err => {
-                    console.error('Error executing zoom reset script:', err);
-                  });
-                }
-              }
-            },
-            {
-              label: menuTemplate.view.submenu[3].label, // Zoom In
-              accelerator: 'CommandOrControl+=',
-              click: () => {
-                const mainWin = constants.getMainWindow();
-                if (mainWin) {
-                  mainWin.webContents.executeJavaScript(`
-                    (function() {
-                      const zoom = parseFloat(document.body.style.zoom || '1');
-                      const newZoom = Math.min(zoom + 0.1, 3.0);
-                      document.body.style.zoom = newZoom;
-                    })();
-                  `).catch(err => {
-                    console.error('Error executing zoom in script:', err);
-                  });
-                }
-              }
-            },
-            {
-              label: menuTemplate.view.submenu[4].label, // Zoom Out
-              accelerator: 'CommandOrControl+-',
-              click: () => {
-                const mainWin = constants.getMainWindow();
-                if (mainWin) {
-                  mainWin.webContents.executeJavaScript(`
-                    (function() {
-                      const zoom = parseFloat(document.body.style.zoom || '1');
-                      const newZoom = Math.max(zoom - 0.1, 0.3);
-                      document.body.style.zoom = newZoom;
-                    })();
-                  `).catch(err => {
-                    console.error('Error executing zoom out script:', err);
-                  });
-                }
-              }
-            },
-            { type: 'separator' },
-            {
-              label: menuTemplate.view.submenu[6].label, // Effect Pipeline
-              accelerator: 'CommandOrControl+E',
-              click: () => {
-                const mainWin = constants.getMainWindow();
-                if (mainWin) {
-                  mainWin.webContents.send('open-effect-pipeline-view');
-                }
-              }
-            },
-            {
-              label: menuTemplate.view.submenu[7].label, // Music Library
-              accelerator: 'CommandOrControl+L',
-              click: () => {
-                const mainWin = constants.getMainWindow();
-                if (mainWin) {
-                  mainWin.webContents.send('open-library-view');
-                }
-              }
-            },
-            {
-              label: menuTemplate.view.submenu[8].label, // Pipeline Analyzer
-              type: 'checkbox',
-              checked: menuTemplate.view.submenu[8].checked === true,
-              click: menuItem => {
-                const mainWin = constants.getMainWindow();
-                if (mainWin) {
-                  mainWin.webContents.send('set-pipeline-analyzer-open', menuItem.checked === true);
-                }
-              }
-            },
-            { type: 'separator' },
-            {
-              id: 'toggle-fullscreen',
-              role: 'togglefullscreen',
-              label: menuTemplate.view.submenu[10].label, // Toggle Fullscreen
-              enabled: !isMiniMode
-            },
-            {
-              label: menuTemplate.view.submenu[11]?.label || 'Mini Player',
-              accelerator: 'CommandOrControl+Shift+M',
-              click: () => {
-                const mainWin = constants.getMainWindow();
-                if (mainWin) mainWin.webContents.send('toggle-mini-player');
-              }
-            }
-          ]
-        },
-        {
-          label: menuTemplate.settings.label,
-          submenu: [
-            {
-              label: menuTemplate.settings.submenu[0].label, // Config...
-              click: () => {
-                const mainWin = constants.getMainWindow();
-                if (mainWin) {
-                  mainWin.webContents.send('config-app');
-                }
-              }
-            },
-            {
-              label: menuTemplate.settings.submenu[1].label, // Audio Devices...
-              click: () => {
-                const mainWin = constants.getMainWindow();
-                if (mainWin) {
-                  mainWin.webContents.send('config-audio');
-                }
-              }
-            },
-            {
-              label: menuTemplate.settings.submenu[2].label, // Performance Benchmark
-              click: () => {
-                const mainWin = constants.getMainWindow();
-                if (mainWin) {
-                  restoreNormalWindowShape();
-                  mainWin.loadFile('features/effetune_bench.html');
-                }
-              }
-            },
-            {
-              label: menuTemplate.settings.submenu[3].label, // Frequency Response Measurement
-              click: () => {
-                const mainWin = constants.getMainWindow();
-                if (mainWin) {
-                  restoreNormalWindowShape();
-                  mainWin.webContents.send('open-frequency-response-measurement');
-                }
-              }
-            }
-          ]
-        },
-        {
-          label: menuTemplate.help.label,
-          submenu: [
-            {
-              label: menuTemplate.help.submenu[0].label, // Help
-              accelerator: 'F1', // Add F1 as the keyboard shortcut
-              click: () => {
-                // Simply click the "What's this app" link in the renderer process
-                // This ensures the same behavior in both web and Electron environments
-                const mainWin = constants.getMainWindow();
-            if (mainWin && mainWin.webContents) {
-                  mainWin.webContents.executeJavaScript(`
-                    const whatsThisLink = document.querySelector('.whats-this');
-                    if (whatsThisLink) {
-                      whatsThisLink.click();
-                    }
-                  `).catch(error => {
-                    console.error('Error executing Help menu action:', error);
-                  });
-                }
-              }
-            },
-            {
-              label: menuTemplate.help.submenu[1].label, // Discord
-              click: () => {
-                require('electron').shell.openExternal('https://discord.gg/gf95v3Gza2');
-              }
-            },
-            {
-              label: menuTemplate.help.submenu[2].label, // Support the Project
-              click: () => {
-                require('electron').shell.openExternal('https://ko-fi.com/frievea');
-              }
-            },
-            { type: 'separator' },
-            {
-              label: menuTemplate.help.submenu[4].label, // About
-              click: () => {
-                const mainWin = constants.getMainWindow();
-                if (mainWin) {
-                  mainWin.webContents.send('show-about-dialog', {
-                    version: constants.getAppVersion(),
-                    icon: path.join(__dirname, '../images/favicon.ico')
-                  });
-                }
-              }
-            }
-          ]
-        }
-      ];
-
-      // Build and set the new menu
-      const menu = Menu.buildFromTemplate(template);
-      Menu.setApplicationMenu(menu);
-      
+      createMenu(menuState);
       return { success: true };
     } catch (error) {
       console.error('Error updating application menu:', error);
@@ -1297,59 +1194,6 @@ function registerIpcHandlers() {
     }
   });
 
-  // Handle get application menu request
-  ipcMain.handle('get-application-menu', () => {
-    try {
-      // Get the current menu template
-      const menu = Menu.getApplicationMenu();
-      if (!menu) {
-        return null;
-      }
-      
-      // Create a simplified menu template from the current menu
-      const template = {
-        file: {
-          label: menu.items[0].label,
-          submenu: menu.items[0].submenu.items.map(item => ({
-            label: item.label,
-            role: item.role
-          }))
-        },
-        edit: {
-          label: menu.items[1].label,
-          submenu: menu.items[1].submenu.items.map(item => ({
-            label: item.label
-          }))
-        },
-        view: {
-          label: menu.items[2].label,
-          submenu: menu.items[2].submenu.items.map(item => ({
-            label: item.label,
-            type: item.type,
-            checked: item.type === 'checkbox' ? item.checked === true : undefined
-          }))
-        },
-        settings: {
-          label: menu.items[3].label,
-          submenu: menu.items[3].submenu.items.map(item => ({
-            label: item.label
-          }))
-        },
-        help: {
-          label: menu.items[4].label,
-          submenu: menu.items[4].submenu.items.map(item => ({
-            label: item.label
-          }))
-        }
-      };
-      
-      return template;
-    } catch (error) {
-      console.error('Error getting application menu:', error);
-      return null;
-    }
-  });
-
   // Handle hide application menu request
   ipcMain.handle('hide-application-menu', () => {
     try {
@@ -1409,412 +1253,6 @@ function registerIpcHandlers() {
     return mainPageNavigation;
   });
 
-  // Handle opening documentation
-  ipcMain.handle('open-documentation', async (event, docPath) => {
-    try {
-      // For all documentation, use shell.openExternal to open in default browser
-      // Convert local path to GitHub Pages URL if needed
-      let url = docPath;
-      if (!url.startsWith('http')) {
-        // Extract anchor if present
-        let anchor = '';
-        if (docPath.includes('#')) {
-          const parts = docPath.split('#');
-          docPath = parts[0];
-          anchor = '#' + parts[1];
-        }
-        
-        // Remove any existing extension and add .html
-        docPath = docPath.replace(/\.[^/.]+$/, '') + '.html';
-        
-        // Add anchor back if it was present
-        docPath = docPath + anchor;
-        
-        url = `https://effetune.frieve.com${docPath}`;
-        
-      }
-      await shell.openExternal(url);
-      return { success: true };
-      
-      // Nothing more to do here, we've already opened the URL in the default browser
-    } catch (error) {
-      console.error('Error opening documentation:', error);
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-  });
-
-  // Handle files dropped from preload script
-  ipcMain.on('files-dropped', (event, filePaths) => {
-    try {
-      // Filter for audio files
-      const audioFilePaths = filePaths.filter(filePath => {
-        const ext = path.extname(filePath).toLowerCase();
-        const isAudio = ['.mp3', '.wav', '.ogg', '.flac', '.opus', '.m4a', '.aac', '.webm', '.mp4'].includes(ext);
-        return isAudio;
-      });
-      
-      // Send the audio file paths back to the renderer process
-      const mainWin = constants.getMainWindow();
-      if (mainWin && mainWin.webContents) {
-        mainWin.webContents.send('audio-files-dropped', audioFilePaths);
-      } else {
-        console.error('mainWin or webContents not available');
-      }
-    } catch (error) {
-      console.error('Error handling dropped files:', error);
-    }
-  });
-}
-
-// Create application menu
-function createMenu() {
-  const { Menu } = require('electron');
-  
-  const template = [
-    {
-      label: 'File',
-      submenu: [
-        {
-          label: 'Save',
-          accelerator: 'CommandOrControl+S',
-          click: () => simulateKeyboardShortcut('S', ['control'])
-        },
-        {
-          label: 'Save As...',
-          accelerator: 'CommandOrControl+Shift+S',
-          click: () => simulateKeyboardShortcut('S', ['control', 'shift'])
-        },
-        { type: 'separator' },
-        {
-          label: 'Open music file...',
-          accelerator: 'CommandOrControl+O',
-          click: () => {
-            const mainWin = constants.getMainWindow();
-            if (mainWin) {
-              mainWin.webContents.send('open-music-file');
-            }
-          }
-        },
-        {
-          label: 'Add Music Folder...',
-          click: () => {
-            const mainWin = constants.getMainWindow();
-            if (mainWin) {
-              mainWin.webContents.send('add-music-folder');
-            }
-          }
-        },
-        {
-          label: 'Rescan Music Library',
-          click: () => {
-            const mainWin = constants.getMainWindow();
-            if (mainWin) {
-              mainWin.webContents.send('rescan-library');
-            }
-          }
-        },
-        {
-          label: 'Process Audio Files with Effects...',
-          click: () => {
-            const mainWin = constants.getMainWindow();
-            if (mainWin) {
-              mainWin.webContents.send('process-audio-files');
-            }
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'Export Preset...',
-          click: () => {
-            const mainWin = constants.getMainWindow();
-            if (mainWin) {
-              mainWin.webContents.send('export-preset');
-            }
-          }
-        },
-        {
-          label: 'Import Preset...',
-          click: () => {
-            const mainWin = constants.getMainWindow();
-            if (mainWin) {
-              mainWin.webContents.send('import-preset');
-            }
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'Double Blind Test',
-          enabled: true, // can always be opened (re-evaluated via update-application-menu)
-          click: () => {
-            const mainWin = constants.getMainWindow();
-            if (mainWin) {
-              mainWin.webContents.send('start-double-blind-test');
-            }
-          }
-        },
-        { type: 'separator' },
-        { role: 'quit' }
-      ]
-    },
-    {
-      label: 'Edit',
-      submenu: [
-        {
-          label: 'Undo',
-          accelerator: 'CommandOrControl+Z',
-          click: () => simulateKeyboardShortcut('Z', ['control'])
-        },
-        {
-          label: 'Redo',
-          accelerator: 'CommandOrControl+Y',
-          click: () => simulateKeyboardShortcut('Y', ['control'])
-        },
-        { type: 'separator' },
-        {
-          label: 'Cut',
-          accelerator: 'CommandOrControl+X',
-          click: () => simulateKeyboardShortcut('X', ['control'])
-        },
-        {
-          label: 'Copy',
-          accelerator: 'CommandOrControl+C',
-          click: () => simulateKeyboardShortcut('C', ['control'])
-        },
-        {
-          label: 'Paste',
-          accelerator: 'CommandOrControl+V',
-          click: () => simulateKeyboardShortcut('V', ['control'])
-        },
-        { type: 'separator' },
-        {
-          label: 'Delete',
-          accelerator: 'Delete',
-          click: () => simulateKeyboardShortcut('Delete')
-        },
-        {
-          label: 'Select All',
-          accelerator: 'CommandOrControl+A',
-          click: () => simulateKeyboardShortcut('A', ['control'])
-        }
-      ]
-    },
-    {
-      label: 'View',
-      submenu: [
-        {
-          label: 'Reload',
-          accelerator: 'CommandOrControl+R',
-          click: () => {
-            const mainWin = constants.getMainWindow();
-            if (mainWin) {
-              // First ensure we reset any custom zoom
-              mainWin.webContents.executeJavaScript(`
-                // Reset zoom before reload
-                document.body.style.zoom = 1.0;
-              `).catch(err => {
-                console.error('Error resetting zoom before reload:', err.message || String(err));
-              }).finally(() => {
-                mainWin.webContents.send('reload-with-pipeline-state');
-              });
-            }
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'Reset Zoom',
-          accelerator: 'CommandOrControl+0',
-          click: () => {
-            const mainWin = constants.getMainWindow();
-            if (mainWin) {
-              mainWin.webContents.executeJavaScript(`
-                (function() {
-                  document.body.style.zoom = 1.0;
-                })();
-              `).catch(err => {
-                console.error('Error executing zoom reset script:', err.message || String(err));
-              });
-            }
-          }
-        },
-        {
-          label: 'Zoom In',
-          accelerator: 'CommandOrControl+=',
-          click: () => {
-            const mainWin = constants.getMainWindow();
-            if (mainWin) {
-              mainWin.webContents.executeJavaScript(`
-                (function() {
-                  const zoom = parseFloat(document.body.style.zoom || '1');
-                  const newZoom = Math.min(zoom + 0.1, 3.0);
-                  document.body.style.zoom = newZoom;
-                })();
-              `).catch(err => {
-                console.error('Error executing zoom in script:', err.message || String(err));
-              });
-            }
-          }
-        },
-        {
-          label: 'Zoom Out',
-          accelerator: 'CommandOrControl+-',
-          click: () => {
-            const mainWin = constants.getMainWindow();
-            if (mainWin) {
-              mainWin.webContents.executeJavaScript(`
-                (function() {
-                  const zoom = parseFloat(document.body.style.zoom || '1');
-                  const newZoom = Math.max(zoom - 0.1, 0.3);
-                  document.body.style.zoom = newZoom;
-                })();
-              `).catch(err => {
-                console.error('Error executing zoom out script:', err.message || String(err));
-              });
-            }
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'Effect Pipeline',
-          accelerator: 'CommandOrControl+E',
-          click: () => {
-            const mainWin = constants.getMainWindow();
-            if (mainWin) {
-              mainWin.webContents.send('open-effect-pipeline-view');
-            }
-          }
-        },
-        {
-          label: 'Music Library',
-          accelerator: 'CommandOrControl+L',
-          click: () => {
-            const mainWin = constants.getMainWindow();
-            if (mainWin) {
-              mainWin.webContents.send('open-library-view');
-            }
-          }
-        },
-        {
-          label: 'Pipeline Analyzer',
-          type: 'checkbox',
-          checked: false,
-          click: menuItem => {
-            const mainWin = constants.getMainWindow();
-            if (mainWin) {
-              mainWin.webContents.send('set-pipeline-analyzer-open', menuItem.checked === true);
-            }
-          }
-        },
-        { type: 'separator' },
-        { id: 'toggle-fullscreen', role: 'togglefullscreen', enabled: !isMiniMode },
-        {
-          label: 'Mini Player',
-          accelerator: 'CommandOrControl+Shift+M',
-          click: () => {
-            const mainWin = constants.getMainWindow();
-            if (mainWin) mainWin.webContents.send('toggle-mini-player');
-          }
-        }
-      ]
-    },
-    {
-      label: 'Settings',
-      submenu: [
-        {
-          label: 'Config...',
-          click: () => {
-            const mainWin = constants.getMainWindow();
-            if (mainWin) {
-              mainWin.webContents.send('config-app');
-            }
-          }
-        },
-        {
-          label: 'Audio Devices...',
-          click: () => {
-            const mainWin = constants.getMainWindow();
-            if (mainWin) {
-              mainWin.webContents.send('config-audio');
-            }
-          }
-        },
-        {
-          label: 'Performance Benchmark',
-          click: () => {
-            const mainWin = constants.getMainWindow();
-            if (mainWin) {
-              restoreNormalWindowShape();
-              mainWin.loadFile('features/effetune_bench.html');
-            }
-          }
-        },
-        {
-          label: 'Frequency Response Measurement',
-          click: () => {
-            const mainWin = constants.getMainWindow();
-            if (mainWin) {
-              restoreNormalWindowShape();
-              mainWin.webContents.send('open-frequency-response-measurement');
-            }
-          }
-        }
-      ]
-    },
-    {
-      label: 'Help',
-      submenu: [
-        {
-          label: 'Help',
-          accelerator: 'F1', // Add F1 as the keyboard shortcut
-          click: () => {
-            // Simply click the "What's this app" link in the renderer process
-            // This ensures the same behavior in both web and Electron environments
-            const mainWin = constants.getMainWindow();
-            if (mainWin && mainWin.webContents) {
-              mainWin.webContents.executeJavaScript(`
-                const whatsThisLink = document.querySelector('.whats-this');
-                if (whatsThisLink) {
-                  whatsThisLink.click();
-                }
-              `).catch(error => {
-                console.error('Error executing Help menu action:', error);
-              });
-            }
-          }
-        },
-        {
-          label: 'Discord',
-          click: () => {
-            require('electron').shell.openExternal('https://discord.gg/gf95v3Gza2');
-          }
-        },
-        {
-          label: 'Support the Project',
-          click: () => {
-            require('electron').shell.openExternal('https://ko-fi.com/frievea');
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'About',
-          click: () => {
-            const mainWin = constants.getMainWindow();
-            if (mainWin) {
-              mainWin.webContents.send('show-about-dialog', {
-                version: constants.getAppVersion(),
-                icon: path.join(__dirname, '../images/favicon.ico')
-              });
-            }
-          }
-        }
-      ]
-    }
-  ];
-
-  const menu = Menu.buildFromTemplate(template);
-  Menu.setApplicationMenu(menu);
 }
 
 // Export functions

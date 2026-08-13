@@ -20,7 +20,8 @@
       "kind": "float",
       "min": -1,
       "max": 1,
-      "default": 0.4
+      "default": 0.4,
+      "automation": true
     },
     {
       "name": "dryWetMix",
@@ -29,7 +30,8 @@
       "min": 0,
       "max": 100,
       "default": 50,
-      "unit": "%"
+      "unit": "%",
+      "automation": true
     },
     {
       "name": "combType",

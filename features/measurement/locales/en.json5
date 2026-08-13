@@ -122,6 +122,17 @@
   "error:interfaceCalibrationProcessingFailed": "The calibrated measurement could not be completed. Check the setup and measure this point again.",
   "error:measurementSetupFailed": "The measurement could not be prepared. Check the audio devices and try again.",
   "error:levelAdjustmentFailed": "The audio input could not be prepared. Check the input device and try again.",
+  "error:audioUnsupported": "This browser cannot run audio measurements. Use the latest Chrome or Edge.",
+  "error:audioInitFailed": "The audio devices could not be prepared. Check browser permissions and try again.",
+  "error:measurementNameRequired": "Enter a name for this measurement before continuing.",
+  "error:invalidSweepRange": "Set the sweep range between 1 Hz and {max} Hz, with the lower value first.",
+  "error:testSignalFailed": "The test signal could not be controlled. Check the audio output and try again.",
+  "error:measurementConfigUnavailable": "The measurement settings are no longer available. Start a new measurement.",
+  "error:measurementFailed": "The measurement could not be completed. Check the audio devices and try this point again.",
+  "error:measurementImportFailed": "The measurement file is not valid. Choose a measurement JSON file exported by EffeTune.",
+  "error:clipboardWriteFailed": "The PEQ settings could not be copied. Check clipboard access and try again.",
+  "error:correctionUpdateFailed": "The correction could not be updated. Check the settings and try again.",
+  "error:measurementDisplayFailed": "The measurement display could not be updated. Try selecting the measurement again.",
   
   // Messages
   "message:peqCopied": "PEQ settings copied to clipboard successfully. The copied settings can be pasted into EffeTune's Effect Pipeline by Ctrl+V.", // Success message for PEQ copy

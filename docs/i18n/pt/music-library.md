@@ -6,8 +6,6 @@ lang: pt
 
 # Como Usar a Biblioteca de música
 
-A versão 2.1.0 apresenta a Biblioteca de música compatível com CUE, que usa o esquema de catálogo v3. As pastas e playlists da Biblioteca anterior não são transferidas para esse catálogo; adicione novamente as pastas de música e recrie ou importe de novo as playlists. O catálogo anterior e os arquivos de áudio não são alterados.
-
 A Biblioteca de música indexa as pastas de música selecionadas para que você possa explorar sua coleção local por faixa, álbum, artista, gênero, subpasta, pasta, faixas adicionadas recentemente ou playlist. A reprodução passa pelo Effect Pipeline atual do EffeTune, assim como na reprodução normal de arquivos de música.
 
 A Biblioteca de música armazena o catálogo, o cache de capas e as playlists dentro do aplicativo. Ela não edita, renomeia, move nem exclui os arquivos de música.
@@ -15,8 +13,8 @@ A Biblioteca de música armazena o catálogo, o cache de capas e as playlists de
 ## Ambientes disponíveis
 
 - **Aplicativo desktop:** usa o scanner de pastas completo e consegue manter as pastas selecionadas disponíveis entre inicializações. Na versão desktop, também é possível mostrar uma faixa na pasta onde o arquivo está.
-- **Navegadores Chromium em PC com File System Access:** salvam de forma persistente o identificador da pasta selecionada. Ele pode ser reutilizado após recarregar quando o acesso for concedido, embora o navegador possa pedir permissão novamente.
-- **Navegadores móveis, Safari, Firefox e outros sem File System Access:** mantêm os objetos `File` selecionados apenas durante a sessão atual da página. O catálogo permanece salvo, mas os arquivos não podem ser reabertos após recarregar. Selecione novamente a pasta ou os arquivos depois de cada recarregamento; o EffeTune os reconecta às entradas existentes pelo caminho relativo normalizado.
+- **Navegadores Chromium em PC com File System Access:** podem manter o acesso às pastas selecionadas após recarregar. O navegador pode pedir permissão novamente.
+- **Navegadores móveis, Safari, Firefox e outros sem File System Access:** mantêm acesso aos arquivos selecionados apenas durante a sessão atual da página. O catálogo permanece salvo, mas selecione novamente a pasta ou os arquivos após cada recarregamento para que o EffeTune os reconecte.
 
 A Biblioteca de música indexa extensões comuns de arquivos de mídia, como MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM e MP4. Ela também pode usar uma folha CUE externa para dividir em faixas um arquivo de álbum WAV ou FLAC que esteja na mesma pasta. Nos arquivos MP4, o EffeTune reproduz apenas a faixa de áudio e não exibe o vídeo. A possibilidade real de reprodução, inclusive do codec de áudio contido no MP4, também depende dos recursos de decodificação do navegador ou do sistema operacional.
 
@@ -34,7 +32,7 @@ Se quiser que a Biblioteca de música seja a primeira tela exibida ao iniciar, a
 
 1. Abra a Biblioteca de música.
 2. Selecione **Adicionar pasta de música**.
-3. Escolha a pasta que contém os arquivos de música. Em navegadores móveis ou em navegadores que usam o modo de fallback, o seletor pode pedir que você escolha os arquivos da pasta em vez de conceder acesso persistente à pasta.
+3. Escolha a pasta que contém os arquivos de música. Em navegadores móveis ou sem acesso persistente a pastas, o seletor pode pedir que você escolha os arquivos da pasta.
 4. Aguarde o fim da varredura. A linha de status mostra o número de faixas e álbuns e, durante a indexação, também mostra o andamento.
 
 Se você tentar adicionar uma pasta que já está dentro de uma pasta registrada, o EffeTune avisa sem indexar o mesmo conteúdo em duplicidade. Ao adicionar uma pasta pai que contém pastas já registradas, é possível mesclar as pastas existentes na nova pasta.
@@ -141,15 +139,16 @@ Ao exportar, escolher **Caminhos relativos** grava, quando possível, caminhos r
 
 - A Biblioteca de música lê os arquivos de música e seus metadados, mas não grava alterações nos arquivos de música.
 - O cache de capas e as playlists são dados internos do aplicativo, não alterações incorporadas aos arquivos de música.
-- Os grupos de subpastas são derivados dos caminhos relativos salvos no catálogo.
 - A área de armazenamento do navegador pode ser apagada pelas configurações do navegador ou por ações do usuário. Exporte playlists importantes conforme necessário.
-- Nos navegadores com File System Access, as permissões determinam se o identificador persistente da pasta pode ser reutilizado após recarregar. No modo de fallback, os arquivos selecionados duram apenas durante a sessão e sempre precisam ser escolhidos novamente após recarregar.
+- Nos navegadores com File System Access, a permissão determina se a pasta continua disponível após recarregar. Nos outros navegadores, selecione os arquivos novamente após cada recarregamento.
 
 ## Bibliotecas grandes
 
-O catálogo mantém os dados no disco e divide o trabalho em páginas ou lotes limitados, portanto uma coleção grande não precisa ser carregada inteira na memória. As medições de escala e de referência fixa são diagnósticos locais e opcionais de desenvolvimento. Elas não são requisitos para commits, releases, `verify` ou GitHub Actions e não constituem uma garantia geral de desempenho. O tempo de varredura e os limites práticos dependem da velocidade do armazenamento, da memória disponível, dos metadados, das capas e das limitações do navegador ou do sistema operacional.
+O EffeTune carrega coleções grandes em etapas, sem manter a biblioteca inteira na memória. O tempo de varredura e os limites práticos dependem da velocidade do armazenamento, da memória disponível, dos metadados, das capas e das limitações do navegador ou do sistema operacional.
 
-Enquanto você rola a lista de faixas, o EffeTune mantém as páginas próximas em cache. No layout móvel, ele lê antecipadamente até duas páginas na direção atual, dá prioridade à página necessária na tela sobre leituras antecipadas adicionais e reutiliza as linhas visíveis que se sobrepõem. Mesmo que a rolagem continue, as leituras concluídas para a área visível são publicadas imediatamente nesse cache limitado. As solicitações de posição são agrupadas na mais recente e, se ela estiver na página que acabou de ser carregada, nenhuma leitura adicional do banco de dados é feita. Leituras antecipadas pendentes que deixaram de ser necessárias são descartadas. O SQLite permite interrupções, mas os adaptadores do catálogo executam atualmente cada instrução de forma síncrona e não oferecem um caminho para interrompê-la a partir de outro worker. Por isso, um salto excepcionalmente rápido ainda pode deixar um breve espaço vazio até a leitura em andamento terminar, principalmente em armazenamento lento.
+As faixas próximas são carregadas conforme você rola a lista. Um salto excepcionalmente rápido pode mostrar linhas vazias por alguns instantes até que as faixas solicitadas sejam carregadas, principalmente em armazenamento lento.
+
+Use a Biblioteca de música em uma janela do EffeTune por vez.
 
 ## Controle remoto OpenHome (aplicativo desktop)
 

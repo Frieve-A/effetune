@@ -1,6 +1,7 @@
 #ifndef EFFETUNE_PLUGINS_DYNAMICS_COMMON_H
 #define EFFETUNE_PLUGINS_DYNAMICS_COMMON_H
 
+#include "binary_io.h"
 #include "effetune/dsp/smoothing.h"
 #include "effetune/telemetry.h"
 
@@ -44,13 +45,7 @@ inline void persistEnvelopeAsFloat(dsp::AttackReleaseEnvelope &envelope) noexcep
 
 inline void writeGainReductionTelemetry(TelemetryWriter &writer, float amount_db) noexcept {
   std::array<std::uint8_t, 4u> payload{};
-  std::uint32_t bits = 0u;
-  static_assert(sizeof(bits) == sizeof(amount_db));
-  std::memcpy(&bits, &amount_db, sizeof(bits));
-  payload[0] = static_cast<std::uint8_t>(bits & 0xffu);
-  payload[1] = static_cast<std::uint8_t>((bits >> 8u) & 0xffu);
-  payload[2] = static_cast<std::uint8_t>((bits >> 16u) & 0xffu);
-  payload[3] = static_cast<std::uint8_t>(bits >> 24u);
+  binary_io::writeF32(payload.data(), amount_db);
   writer.write(kTapGainReduction, kTelemetryVersion, payload.data(),
                static_cast<std::uint16_t>(payload.size()));
 }

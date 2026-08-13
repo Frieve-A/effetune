@@ -1,3 +1,4 @@
+#include "binary_io.h"
 #include "effetune/abi.h"
 #include "effetune/kernel.h"
 #include "engine.h"
@@ -48,12 +49,7 @@ void checkStatus(const char *operation, et_status status) {
   }
 }
 
-void writeU32(std::uint8_t *bytes, std::uint32_t value) noexcept {
-  bytes[0] = static_cast<std::uint8_t>(value);
-  bytes[1] = static_cast<std::uint8_t>(value >> 8u);
-  bytes[2] = static_cast<std::uint8_t>(value >> 16u);
-  bytes[3] = static_cast<std::uint8_t>(value >> 24u);
-}
+using effetune::binary_io::writeU32;
 
 std::uint32_t readU32(const std::uint8_t *bytes) noexcept {
   return static_cast<std::uint32_t>(bytes[0]) | (static_cast<std::uint32_t>(bytes[1]) << 8u) |

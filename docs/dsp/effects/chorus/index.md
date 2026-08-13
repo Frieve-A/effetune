@@ -37,7 +37,7 @@ Creates Chorus, Stereo Chorus, Ensemble, Flanger, or Vibrato effects with interp
 
 ## Chorus
 
-Chorus creates moving, fractionally delayed copies with four-point cubic interpolation. Its modes cover **Stereo Chorus**, **Ensemble**, **Flanger**, and **Vibrato** without adding duplicate effects. The moving lookback is audible but is not a fixed compensable latency, so the reported algorithmic latency is zero.
+Chorus adds moving delayed copies of the music. Its modes cover **Stereo Chorus**, **Ensemble**, **Flanger**, and **Vibrato**; Delay and Depth can make the processed sound feel slightly behind the original.
 
 ### Sound Enhancement Guide
 
@@ -49,15 +49,15 @@ Chorus creates moving, fractionally delayed copies with four-point cubic interpo
 ### Parameters
 
 - **Style** — loads a complete factory setting for every parameter. Choices are **Classic Chorus** (Chorus), **Stereo Chorus** (Stereo Chorus), **Ensemble** (Ensemble), **Flanger** (Flanger), **Jet Flanger** (Flanger), and **Vibrato** (Vibrato). Changing an individual parameter switches Style to **Custom**.
-- **Mode** — selects Chorus, Stereo Chorus, Ensemble, Flanger, or Vibrato topology.
+- **Mode** — selects Chorus, Stereo Chorus, Ensemble, Flanger, or Vibrato.
 - **Rate** (0.05–10 Hz) — sets modulation speed.
 - **Delay** (0.5–30 ms) — sets nominal wet-path delay.
-- **Depth** (0–20 ms) — sets delay excursion. Delay is authoritative: stored Depth is limited to Delay, preventing a negative read time.
-- **Voices** (1–6) — sets normalized moving taps in Chorus and Ensemble; other modes use fixed counts.
+- **Depth** (0–20 ms) — sets delay excursion and is automatically limited to the current **Delay** value.
+- **Voices** (1–6) — sets the number of moving voices in Chorus and Ensemble; other modes ignore it.
 - **Stereo Spread** (0–100%) — offsets motion within each stereo pair in Stereo Chorus, Ensemble, Flanger, and Vibrato. Chorus mode ignores it.
 - **Feedback** (-75–75%) — returns wet output to the delay in Flanger mode only.
 - **Mix** (0–100%) — linearly blends dry and wet sound; Vibrato ignores it and remains 100% wet. 0% is transparent in other modes.
 
-Mode and voice changes pass through a short dry midpoint before incompatible wet state changes, avoiding an abrupt one-sample topology switch.
+Changing Mode or Voices may briefly emphasize the original sound to keep the transition smooth.
 
 [Back to all effects](/dsp/effects/)

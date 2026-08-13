@@ -1,5 +1,6 @@
 #include "effetune/kernel.h"
 #include "PowerAmpSagPluginParams.h"
+#include "binary_io.h"
 
 #include <array>
 #include <cmath>
@@ -15,15 +16,7 @@ namespace power_amp_sag_detail {
 constexpr std::uint16_t kTapPowerAmpSag = 12u;
 constexpr std::uint16_t kTelemetryVersion = 1u;
 
-void writeF32(std::uint8_t *output, float value) noexcept {
-  std::uint32_t bits = 0u;
-  static_assert(sizeof(bits) == sizeof(value));
-  std::memcpy(&bits, &value, sizeof(bits));
-  output[0] = static_cast<std::uint8_t>(bits & 0xffu);
-  output[1] = static_cast<std::uint8_t>((bits >> 8u) & 0xffu);
-  output[2] = static_cast<std::uint8_t>((bits >> 16u) & 0xffu);
-  output[3] = static_cast<std::uint8_t>(bits >> 24u);
-}
+using binary_io::writeF32;
 
 } // namespace power_amp_sag_detail
 

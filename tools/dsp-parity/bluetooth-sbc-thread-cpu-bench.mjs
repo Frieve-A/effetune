@@ -349,7 +349,6 @@ function artifactProvenance(artifactSet, baselineSha256, simdSha256) {
     sourceDigest: artifactSet.metadata.sourceDigest,
     emsdkVersion: artifactSet.metadata.emsdkVersion,
     abiVersion: artifactSet.metadata.abiVersion,
-    phase0Plugins: artifactSet.metadata.phase0Plugins,
     baseline: {
       sha256: baselineSha256,
       buildFlags: artifactSet.baseline.buildFlags,
