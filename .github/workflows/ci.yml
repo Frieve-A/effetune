@@ -4,8 +4,8 @@ on:
   push:
     branches:
       - '**'
-    tags-ignore:
-      - 'dsp-v*'
+    tags:
+      - 'v*'
   pull_request:
   schedule:
     - cron: '23 15 * * 4'
@@ -31,7 +31,7 @@ jobs:
       dsp_core: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || ((github.event_name == 'push' || github.event_name == 'pull_request') && steps.changes.outputs.dsp_core == 'true') }}
       dsp_library: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || ((github.event_name == 'push' || github.event_name == 'pull_request') && steps.changes.outputs.dsp_library == 'true') }}
       openhome: ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && steps.changes.outputs.openhome == 'true' }}
-      electron: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/heads/feature/')) }}
+      electron: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
       pages: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) }}
       codeql: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.base_ref == 'main') }}
       power_browser: ${{ github.event_name == 'pull_request' }}
@@ -47,8 +47,20 @@ jobs:
         with:
           filters: |
             dsp_core:
-              - 'dsp/**'
-              - 'plugins/**'
+              - 'dsp/core/**'
+              - 'dsp/generated/**'
+              - 'dsp/plugins/**'
+              - 'dsp/test/**'
+              - 'dsp/vendor/**'
+              - 'dsp/wasm/**'
+              - 'dsp/cmake/**'
+              - 'dsp/CMakeLists.txt'
+              - 'dsp/EMSDK_VERSION'
+              - 'dsp/exports.txt'
+              - 'dsp/registry.inc'
+              - 'plugins/**/*.js'
+              - 'plugins/**/*.css'
+              - 'plugins/plugins.txt'
               - 'js/audio/**'
               - 'js/audio-manager.js'
               - 'js/electron/audioIntegration.js'
@@ -59,11 +71,10 @@ jobs:
               - 'scripts/build-dsp-wasm.mjs'
               - 'tools/dsp-parity/**'
               - 'tools/verify-dsp-package.mjs'
-              - 'tests/esm/**'
+              - 'tests/esm/dsp-*.test.mjs'
               - 'package.json'
               - 'package-lock.json'
               - '.github/workflows/dsp.yml'
-              - '.github/workflows/ci.yml'
             dsp_library:
               - 'dsp/bindings/**'
               - 'dsp/plugins/**'
@@ -115,7 +126,6 @@ jobs:
               - 'package.json'
               - '.github/workflows/build.yml'
               - '.github/workflows/desktop-release.yml'
-              - '.github/workflows/ci.yml'
 
   dsp-library-preflight:
     name: DSP Library preflight
