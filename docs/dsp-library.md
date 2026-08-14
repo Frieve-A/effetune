@@ -9,7 +9,7 @@ permalink: /dsp/
 
 **Deterministic DSP for Python, JavaScript, browsers, humans, and agents.**
 
-EffeTune DSP v0.4.0 is an MIT-licensed audio processing library with 90 catalog-registered effects, analyzers, and utilities. Python and WebAssembly run the same host-neutral C++20 core and use the same semantic Chain JSON, so a preset does not need to be reauthored for each surface.
+EffeTune DSP v0.5.0 is an MIT-licensed audio processing library with 90 catalog-registered effects, analyzers, and utilities. Python and WebAssembly run the same host-neutral C++20 core and use the same semantic Chain JSON, so a preset does not need to be reauthored for each surface.
 
 Process arrays and files offline, keep state across a continuous stream, or run the package-owned AudioWorklet in a browser. The EffeTune app is an optional visual preset editor; the Python and JavaScript packages work independently.
 
