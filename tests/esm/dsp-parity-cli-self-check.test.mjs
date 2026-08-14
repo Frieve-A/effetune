@@ -39,14 +39,41 @@ import {
   NATIVE_CONTROL_HEADER_BYTES,
   NATIVE_CONTROL_STRUCTURED_HEADER_BYTES,
   NATIVE_CONTROL_STRUCTURED_VERSION,
+  isNativeDirectReferenceEngine,
   packParams,
   packStructuredParams,
   paramsLayoutHash,
+  pinnedNativeDirectReferenceHash,
   runNativeCase,
   seedWords
 } from '../../tools/dsp-parity/runners.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+test('IR direct parity reference uses its v2 identity and pinned source hash', async () => {
+  const pluginRoot = path.join(repoRoot, 'dsp', 'plugins', 'reverb', 'ir_reverb');
+  const schema = JSON.parse(await fs.readFile(path.join(pluginRoot, 'params.json'), 'utf8'));
+  const index = JSON.parse(await fs.readFile(
+    path.join(pluginRoot, 'golden', 'index.json'),
+    'utf8'
+  ));
+  const referenceEngine = 'native-ir-direct-double-v2';
+  const referenceHash =
+    '415b6a5d0923bf1040813d5920d9e8a6b730ba5df73ec4256af84c309b13568a';
+
+  assert.equal(schema.parityReference, referenceEngine);
+  assert.equal(isNativeDirectReferenceEngine(referenceEngine), true);
+  assert.equal(isNativeDirectReferenceEngine('native-ir-direct-double-v1'), false);
+  assert.equal(pinnedNativeDirectReferenceHash(referenceEngine), referenceHash);
+  for (const fileName of index.cases) {
+    const metadata = JSON.parse(await fs.readFile(
+      path.join(pluginRoot, 'golden', fileName),
+      'utf8'
+    ));
+    assert.equal(metadata.referenceEngine, referenceEngine, fileName);
+    assert.equal(metadata.referenceHash, referenceHash, fileName);
+  }
+});
 
 async function requireMp3ProductionDiagnostic(t) {
   const diagnosticPath = defaultMp3ProductionDiagnosticPath(repoRoot);

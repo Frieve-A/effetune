@@ -16,6 +16,7 @@
     "lt": "256",
     "cr": "full",
     "dw": 0,
+    "de": true,
     "dl": -96,
     "pd": 0
   },
@@ -38,8 +39,8 @@
     "abs": 0.0002,
     "policy": "per-sample"
   },
-  "referenceEngine": "native-ir-direct-double-v1",
-  "referenceHash": "ebb984943707d4c0ba8839367722c6250b22bea01dd7479fca2a5b2e720244d7",
+  "referenceEngine": "native-ir-direct-double-v2",
+  "referenceHash": "415b6a5d0923bf1040813d5920d9e8a6b730ba5df73ec4256af84c309b13568a",
   "outputFloats": 12288,
   "byteLength": 49152,
   "binary": "case-003.f32"

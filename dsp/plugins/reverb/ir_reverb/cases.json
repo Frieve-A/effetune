@@ -154,6 +154,24 @@
       }
     },
     {
+      "id": "mono-dry-disabled-48000-lt128-d1-block255",
+      "stimulus": "noise",
+      "sampleRate": 48000,
+      "frames": 4096,
+      "channels": 1,
+      "channelMode": "mono",
+      "blockSize": 255,
+      "params": {
+        "cm": "mono", "lt": "128", "cr": "full",
+        "dw": -3, "de": false, "dl": 0, "pd": 5
+      },
+      "asset": {
+        "slot": 0, "format": 1, "channels": 1, "frames": 257,
+        "topology": 1, "headBlock": 128, "rateDivider": 1,
+        "ir": { "kind": "sparse-decay-v1", "seed": 1229121085, "tapCount": 13 }
+      }
+    },
+    {
       "id": "true-stereo-noise-48000-lt128-d1-block63",
       "stimulus": "noise",
       "sampleRate": 48000,

@@ -8,6 +8,7 @@ class IRReverbPlugin extends PluginBase {
         this.lt = '128';
         this.cr = 'auto';
         this.dw = -15;
+        this.de = true;
         this.dl = 0;
         this.pd = 0;
         this.dc = true;
@@ -52,7 +53,9 @@ class IRReverbPlugin extends PluginBase {
         this._outputChannelCount = this._getEngineChannelCount();
         this.registerProcessor(`
             const dryLevel = Number.isFinite(parameters.dl) ? parameters.dl : 0;
-            const dryGain = dryLevel <= -96 ? 0 : Math.pow(10, dryLevel / 20);
+            const dryGain = parameters.de === false || dryLevel <= -96
+                ? 0
+                : Math.pow(10, dryLevel / 20);
             if (dryGain === 1) return data;
             if (dryGain === 0) {
                 data.fill(0);
@@ -90,7 +93,9 @@ class IRReverbPlugin extends PluginBase {
 
     process(context, data, parameters, time) {
         const dryLevel = Number.isFinite(parameters.dl) ? parameters.dl : 0;
-        const dryGain = dryLevel <= -96 ? 0 : Math.pow(10, dryLevel / 20);
+        const dryGain = parameters.de === false || dryLevel <= -96
+            ? 0
+            : Math.pow(10, dryLevel / 20);
         if (dryGain === 1) return data;
         if (dryGain === 0) {
             data.fill(0);
@@ -133,6 +138,7 @@ class IRReverbPlugin extends PluginBase {
             lt: this.lt,
             cr: this.cr,
             dw: this.dw,
+            de: this.de,
             dl: this.dl,
             pd: this.pd,
             dc: this.dc,
@@ -202,6 +208,7 @@ class IRReverbPlugin extends PluginBase {
         if (latencyModes.includes(String(params.lt))) this.lt = String(params.lt);
         if (rateModes.includes(params.cr)) this.cr = params.cr;
         if (params.dw !== undefined) this.dw = this.parseFiniteNumber(params.dw, -96, 12, this.dw);
+        if (params.de !== undefined) this.de = Boolean(params.de);
         if (params.dl !== undefined) this.dl = this.parseFiniteNumber(params.dl, -96, 12, this.dl);
         if (params.pd !== undefined) this.pd = this.parseFiniteNumber(params.pd, 0, 500, this.pd);
         if (params.dc !== undefined) this.dc = Boolean(params.dc);
@@ -622,7 +629,7 @@ class IRReverbPlugin extends PluginBase {
             }), 'preparing');
         } else {
             this._setStatus(this._t('irReverb.error.wasmRequired',
-                'IR Reverb requires WASM audio processing and will pass dry signal through.'), 'error');
+                'IR Reverb requires WASM audio processing. Wet output is unavailable; output follows Dry and Dry Level.'), 'error');
         }
         return true;
     }
@@ -1472,7 +1479,7 @@ class IRReverbPlugin extends PluginBase {
             this.powerGainUpperBoundDb = null;
             return;
         }
-        const dryAmplitude = this.dl <= -96 ? 0 : 10 ** (this.dl / 20);
+        const dryAmplitude = !this.de || this.dl <= -96 ? 0 : 10 ** (this.dl / 20);
         const wetAmplitude = 10 ** ((this.dw + irBoundDb) / 20);
         this.powerGainUpperBoundDb = 20 * Math.log10(dryAmplitude + wetAmplitude);
     }
@@ -1514,7 +1521,7 @@ class IRReverbPlugin extends PluginBase {
             case 1:
                 this._assetRejected = false;
                 this._setStatus(this._t('irReverb.status.wasmNotReady',
-                    'WASM audio processing is not ready. IR Reverb is passing dry signal through.'), 'preparing');
+                    'WASM audio processing is not ready. Wet output is unavailable; output follows Dry and Dry Level.'), 'preparing');
                 break;
             case 2:
                 this._assetRejected = false;
@@ -1874,7 +1881,7 @@ class IRReverbPlugin extends PluginBase {
         const input = document.createElement('input');
         input.type = 'file';
         input.multiple = true;
-        input.accept = 'audio/*,.wav,.flac,.aif,.aiff';
+        input.accept = 'audio/*,.wav,.flac,.aif,.aiff,.irs';
         input.hidden = true;
         input.addEventListener('change', () => {
             const files = Array.from(input.files || []);
@@ -1962,8 +1969,9 @@ class IRReverbPlugin extends PluginBase {
         this._resolvedRateElement = resolvedRate;
         appendAssetControl('cr', convolutionRateRow);
         this._updateResolvedModeDisplay();
-        container.appendChild(this.createParameterControl(this._t('irReverb.parameter.wet', 'Wet'), -96, 12, 0.1, this.dw, value => this.setParameters({ dw: value }), 'dB'));
-        container.appendChild(this.createParameterControl(this._t('irReverb.parameter.dry', 'Dry'), -96, 12, 0.1, this.dl, value => this.setParameters({ dl: value }), 'dB'));
+        container.appendChild(this.createParameterControl(this._t('irReverb.parameter.wet', 'Wet Level'), -96, 12, 0.1, this.dw, value => this.setParameters({ dw: value }), 'dB'));
+        container.appendChild(this.createCheckboxControl(this._t('irReverb.parameter.dryEnabled', 'Dry'), this.de, value => this.setParameters({ de: value })));
+        container.appendChild(this.createParameterControl(this._t('irReverb.parameter.dry', 'Dry Level'), -96, 12, 0.1, this.dl, value => this.setParameters({ dl: value }), 'dB'));
         container.appendChild(this.createParameterControl(this._t('irReverb.parameter.preDelay', 'Pre Delay'), 0, 500, 0.1, this.pd, value => this.setParameters({ pd: value }), 'ms'));
         appendAssetControl('dc', this.createCheckboxControl(this._t('irReverb.parameter.directCut', 'Direct Cut'), this.dc, value => this.setParameters({ dc: value })));
         appendAssetControl('co', this.createParameterControl(this._t('irReverb.parameter.cutOffset', 'Cut Offset'), -20, 50, 0.1, this.co, value => this.setParameters({ co: value }), 'ms'));

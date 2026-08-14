@@ -1,4 +1,4 @@
-import { parseIrAudioHeader, isSupportedIrFileName } from './audio-header-metadata.js';
+import { isSupportedIrFileName, isWavIrAudio, parseIrAudioHeader } from './audio-header-metadata.js';
 import { openIrLibrary } from './ir-library-factory.js';
 import {
   IR_LIBRARY_MAX_ORIGINAL_BYTES,
@@ -97,7 +97,11 @@ async function readFileBytes(file) {
     if (error instanceof RangeError) throw fileTooLargeError();
     throw error;
   }
-  return new Uint8Array(buffer);
+  const bytes = new Uint8Array(buffer);
+  if (/\.irs$/i.test(String(file.name || '')) && !isWavIrAudio(bytes)) {
+    throw new TypeError('An IRS impulse-response file must contain WAV audio.');
+  }
+  return bytes;
 }
 
 export async function enumerateIrDirectory(directoryHandle) {

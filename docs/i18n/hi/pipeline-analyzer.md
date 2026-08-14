@@ -24,13 +24,13 @@ Saved responses को उनकी पहचानी गई शुरुआत
 
 विवरण में बताया जाता है कि मौजूदा लंबाई पर्याप्त है या नहीं, सुझाई गई लंबाई और स्थिरीकरण समय क्या है, और कुल मापन समय कितना है। सुझाव केवल मार्गदर्शन हैं; मापे जा रहे effects के लिए उपयुक्त होने पर उन्हें अपनाएँ।
 
-Sequence Length, Stabilization Periods और Averages केवल Unit Impulse के लिए बंद रहते हैं। Frequency, Phase, Group Delay या Impulse बदलने से केवल दिखाया गया ग्राफ़ बदलता है, मापन दोबारा नहीं होता।
+Sequence Length, Stabilization Periods और Averages केवल Unit Impulse के लिए बंद रहते हैं। Frequency, Phase, Min Group Delay, Excess Group Delay या Impulse बदलने से केवल दिखाया गया ग्राफ़ बदलता है, मापन दोबारा नहीं होता।
 
 ## ग्राफ़ पढ़ना और मापन विधि
 
-**Frequency** स्तर, **Phase** चरण, **Group Delay** आवृत्ति के अनुसार विलंब और **Impulse** समय प्रतिक्रिया दिखाता है। ग्राफ़ हमेशा **Before** और **After** दिखाता है। दोनों मान पढ़ने के लिए पॉइंटर चलाएँ; **Before** पर पॉइंटर रखने से **After** अस्थायी रूप से छिप जाता है। Frequency और Group Delay में एक ही **Smoothing (oct)** लागू होता है। हर frequency curve को अलग से 0 dB पर रखा जाता है; हर impulse अपने सबसे बड़े peak से सामान्यीकृत होकर -2 ms से चुनी हुई **Impulse Range (ms)** तक दिखता है।
+ग्राफ़ के बाहर दिए **Graph** radio buttons से view चुनें। **Frequency** स्तर, **Phase** चरण, **Min Group Delay** magnitude response के minimum-phase हिस्से से बनने वाला delay, **Excess Group Delay** उस हिस्से को हटाने के बाद बचा delay और **Impulse** time response दिखाता है। ग्राफ़ हमेशा **Before** और **After** दिखाता है। दोनों मान पढ़ने के लिए पॉइंटर चलाएँ; **Before** पर पॉइंटर रखने से **After** अस्थायी रूप से छिप जाता है। Frequency और दोनों Group Delay views में **Smoothing (oct)** लागू होता है। हर frequency curve को अलग से 0 dB पर रखा जाता है; हर impulse अपने सबसे बड़े peak से सामान्यीकृत होकर -2 ms से चुनी हुई **Impulse Range (ms)** तक दिखता है।
 
-हर मापन सक्रिय pipeline, उसकी मौजूदा setting और routing, तथा चुनी हुई speaker responses को पकड़ता है। ग्राफ़ frequency, phase, group-delay और impulse responses दिखाते हैं; **After** pipeline द्वारा बताए गए latency की भरपाई करता है।
+हर मापन सक्रिय pipeline, उसकी मौजूदा setting और routing, तथा चुनी हुई speaker responses को पकड़ता है। ग्राफ़ frequency, phase, minimum और excess group-delay तथा impulse responses दिखाते हैं; **After** pipeline द्वारा बताए गए latency की भरपाई करता है।
 
 MLS और TSP सामान्य मापन के लिए उपयुक्त हैं। अगर delay, reverb या ringing चुनी हुई window से आगे बढ़े, तो response अपने ऊपर चढ़ सकता है; **Sequence Length** बढ़ाएँ। **Unit Impulse** सीमित समय तक response सीधे रिकॉर्ड करता है, इसलिए बहुत लंबी tail कट सकती है।
 

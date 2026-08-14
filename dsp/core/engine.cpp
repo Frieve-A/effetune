@@ -15,7 +15,8 @@ namespace {
 
 constexpr std::uint32_t kDescriptorHeaderBytes = 8;
 constexpr std::uint32_t kDescriptorNodeBytes = 12;
-constexpr std::uint32_t kIrDryLevelIndex = 4u;
+constexpr std::uint32_t kIrDryEnabledIndex = 4u;
+constexpr std::uint32_t kIrDryLevelIndex = 5u;
 constexpr float kIrDrySilenceDb = -96.0F;
 
 bool isGraphMutableType(const KernelDescriptor &descriptor) noexcept {
@@ -25,6 +26,10 @@ bool isGraphMutableType(const KernelDescriptor &descriptor) noexcept {
 
 bool isIrReverb(const KernelDescriptor &descriptor) noexcept {
   return std::strcmp(descriptor.typeName, "IRReverbPlugin") == 0;
+}
+
+bool isIrDrySilent(const std::array<float, 7> &parameters) noexcept {
+  return parameters[kIrDryEnabledIndex] == 0.0F || parameters[kIrDryLevelIndex] <= kIrDrySilenceDb;
 }
 
 std::uint32_t readU32(const std::uint8_t *input) noexcept {
@@ -86,7 +91,7 @@ bool Engine::graphUniformOutputLatency(const InstanceSlot &slot) const noexcept 
   }
   return slot.graphParametersValid &&
          slot.graphParameterCount == generated::IRReverbPluginParams::kFloatCount &&
-         slot.graphParameters[kIrDryLevelIndex] <= kIrDrySilenceDb;
+         isIrDrySilent(slot.graphParameters);
 }
 
 bool Engine::graphRequiresActiveAsset(const InstanceSlot &slot) const noexcept {
@@ -876,7 +881,7 @@ et_status Engine::setGraphInstanceParams(et_instance instance, const float *pack
   const bool ir_reverb = isIrReverb(*slot->descriptor);
   if ((!volume || changed_index != 0u || params_hash != generated::VolumePluginParams::kHash ||
        float_count != generated::VolumePluginParams::kFloatCount) &&
-      (!ir_reverb || changed_index != kIrDryLevelIndex ||
+      (!ir_reverb || (changed_index != kIrDryEnabledIndex && changed_index != kIrDryLevelIndex) ||
        params_hash != generated::IRReverbPluginParams::kHash ||
        float_count != generated::IRReverbPluginParams::kFloatCount)) {
     return reject(ET_GRAPH_PATH_NODE_INSTANCE);
@@ -887,8 +892,11 @@ et_status Engine::setGraphInstanceParams(et_instance instance, const float *pack
     }
   }
   if (ir_reverb && slot->kernel->latencySamples() != 0u) {
-    const bool was_silent = slot->graphParameters[kIrDryLevelIndex] <= kIrDrySilenceDb;
-    const bool is_silent = packed[kIrDryLevelIndex] <= kIrDrySilenceDb;
+    std::array<float, 7> next_parameters{};
+    std::memcpy(next_parameters.data(), packed,
+                static_cast<std::size_t>(float_count) * sizeof(float));
+    const bool was_silent = isIrDrySilent(slot->graphParameters);
+    const bool is_silent = isIrDrySilent(next_parameters);
     if (was_silent != is_silent) {
       return reject(ET_GRAPH_PATH_NODE_LATENCY);
     }

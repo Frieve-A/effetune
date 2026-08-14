@@ -99,6 +99,8 @@ class FakeWorker {
             magnitudeDb: new Float32Array([0, 0]),
             phaseDegrees: new Float32Array([0, 0]),
             groupDelayMs: new Float32Array([0, 0]),
+            minimumGroupDelayMs: new Float32Array([0, 0]),
+            excessGroupDelayMs: new Float32Array([0, 0]),
             valid: new Uint8Array([1, 1])
         };
         const impulse = new Float32Array([1]);
@@ -199,6 +201,13 @@ test('state migration keeps participating legacy outputs and applies MLS default
 
 test('state preserves an explicit Auto-off selection', () => {
     assert.equal(normalizePipelineAnalyzerState({ autoRefresh: false }).autoRefresh, false);
+});
+
+test('state migrates the legacy Group Delay view to Min Group Delay', () => {
+    assert.equal(
+        normalizePipelineAnalyzerState({ graphView: 'groupDelay' }).graphView,
+        'minimumGroupDelay'
+    );
 });
 
 test('display settings are bounded independently from measurement settings', () => {

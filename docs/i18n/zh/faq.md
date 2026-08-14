@@ -140,9 +140,9 @@ EffeTune 目前最多支持 8 个输出通道。
 
 ### 分享与复现IR Reverb结果
 
-URL和preset只包含IR ID，不包含音频文件。如果提示IR缺失或没有wet信号，请导入同一原始文件自动重新关联，或在 **Impulse Response Library** 中选择替代IR，并检查 **Dry** 设置。
+URL和preset只包含IR ID，不包含音频文件。如果提示IR缺失或没有wet信号，请导入同一原始文件自动重新关联，或在 **Impulse Response Library** 中选择替代IR，并检查 **Dry** 和 **Dry Level** 设置。
 
-要在其他环境复现结果，请将未经修改的IR文件连同URL/preset以及来源和许可证信息一起提供，同时保持sample rate、通道选择和IR Reverb设置一致。多通道send/return可用 **Matrix** 将所需通道复制到空闲bus，将 **Dry** 设为-96 dB、**Wet** 设为0 dB，并只把wet bus返回到目标输出。
+要在其他环境复现结果，请将未经修改的IR文件连同URL/preset以及来源和许可证信息一起提供，同时保持sample rate、通道选择和IR Reverb设置一致。多通道send/return可用 **Matrix** 将所需通道复制到空闲bus，关闭 **Dry**、将 **Wet Level** 设为0 dB，并只把wet bus返回到目标输出。
 
 ## 5. 频率响应和房间校正
 

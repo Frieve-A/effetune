@@ -559,11 +559,12 @@ def graph_document_from_chain(source: Any) -> dict[str, Any]:
             node["enabled"]
             and node["type"] == "IRReverb"
             and node["parameters"]["latency"] > 0
+            and node["parameters"]["dryEnabled"] is not False
             and node["parameters"]["dryLevel"] > -96
         ):
             raise _error(
-                "IRReverb must be wet-only in a Graph; set dryLevel to -96 dB "
-                "(the parameter minimum) and use the external dry edge.",
+                "IRReverb must be wet-only in a Graph; turn dryEnabled off or set "
+                "dryLevel to -96 dB (the parameter minimum), then use the external dry edge.",
                 code="GRAPH_UNSUPPORTED_CAPABILITY",
                 path=f"/nodes/{index}/parameters/dryLevel",
                 node_id=node["id"],
@@ -693,11 +694,12 @@ def _require_wet_only_ir_reverb(node: Mapping[str, Any]) -> None:
         node["enabled"]
         and node.get("type") == "IRReverb"
         and parameters.get("latency", 0) > 0
+        and parameters.get("dryEnabled", True) is not False
         and parameters.get("dryLevel", 0) > -96
     ):
         raise _error(
-            "IRReverb must be wet-only in a Graph; set dryLevel to -96 dB "
-            "(the parameter minimum) and use the external dry edge.",
+            "IRReverb must be wet-only in a Graph; turn dryEnabled off or set "
+            "dryLevel to -96 dB (the parameter minimum), then use the external dry edge.",
             code="GRAPH_UNSUPPORTED_CAPABILITY",
             path="/nodes/0/parameters/dryLevel",
             node_id=node.get("id"),

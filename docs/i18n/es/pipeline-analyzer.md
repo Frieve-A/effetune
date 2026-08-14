@@ -24,13 +24,13 @@ Abre **Ajustes de medición** para cambiar:
 
 Los detalles indican si la longitud actual es suficiente, la longitud y estabilización recomendadas y el tiempo total de medición. Son recomendaciones: aplícalas cuando correspondan a los efectos que estás midiendo.
 
-Longitud de secuencia, Periodos de estabilización y Promedios solo se desactivan con Impulso unitario. Cambiar Frequency, Phase, Group Delay o Impulse solo cambia el gráfico y no repite la medición.
+Longitud de secuencia, Periodos de estabilización y Promedios solo se desactivan con Impulso unitario. Cambiar Frequency, Phase, Min Group Delay, Excess Group Delay o Impulse solo cambia el gráfico y no repite la medición.
 
 ## Lectura y método
 
-**Frequency** muestra el nivel, **Phase** la fase, **Group Delay** el retardo según la frecuencia e **Impulse** la respuesta temporal. El gráfico siempre muestra **Antes** y **Después**. Mueve el puntero para leer ambos valores; al pasar por **Antes**, **Después** se oculta temporalmente. Frequency y Group Delay comparten **Suavizado (oct)**. Cada curva de frecuencia se referencia por separado a 0 dB; cada impulso se normaliza con su propio pico completo y se muestra desde -2 ms hasta el **Rango del impulso (ms)** elegido.
+Elige la vista con los botones **Graph** situados fuera del gráfico. **Frequency** muestra el nivel, **Phase** la fase, **Min Group Delay** el retardo que implica la parte de fase mínima de la respuesta de magnitud, **Excess Group Delay** el retardo restante tras eliminarla e **Impulse** la respuesta temporal. El gráfico siempre muestra **Antes** y **Después**. Mueve el puntero para leer ambos valores; al pasar por **Antes**, **Después** se oculta temporalmente. Frequency y las dos vistas de Group Delay comparten **Suavizado (oct)**. Cada curva de frecuencia se referencia por separado a 0 dB; cada impulso se normaliza con su propio pico completo y se muestra desde -2 ms hasta el **Rango del impulso (ms)** elegido.
 
-Cada medición captura el pipeline activo, sus ajustes y rutas actuales, y las respuestas de altavoz seleccionadas. Los gráficos muestran las respuestas de frecuencia, fase, retardo de grupo e impulso; **Después** compensa la latencia indicada por el pipeline.
+Cada medición captura el pipeline activo, sus ajustes y rutas actuales, y las respuestas de altavoz seleccionadas. Los gráficos muestran las respuestas de frecuencia, fase, retardo de grupo mínimo, retardo de grupo excedente e impulso; **Después** compensa la latencia indicada por el pipeline.
 
 MLS y TSP son adecuados para la medición general. Si un delay, reverb u otra cola supera la ventana seleccionada, la respuesta puede solaparse consigo misma; aumenta **Longitud de secuencia**. **Impulso unitario** registra directamente la respuesta durante un tiempo limitado, por lo que puede cortar colas excepcionalmente largas.
 

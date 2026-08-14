@@ -413,6 +413,55 @@ function logarithmicBinIndices(fftSize, sampleRate, maximumPoints) {
     return result;
 }
 
+function minimumPhaseForMagnitude(magnitudes, fftSize, magnitudeFloor) {
+    const logMagnitude = new Float64Array(magnitudes.length);
+    const floor = magnitudeFloor > 0 ? magnitudeFloor : Number.MIN_VALUE;
+    for (let bin = 0; bin < magnitudes.length; bin += 1) {
+        logMagnitude[bin] = Math.log(magnitudes[bin] > floor ? magnitudes[bin] : floor);
+    }
+    const fft = new FFT(fftSize);
+    const cepstrum = fft.inverseRealTransform(logMagnitude);
+    for (let index = 1; index < fftSize / 2; index += 1) cepstrum[index] *= 2;
+    for (let index = fftSize / 2 + 1; index < fftSize; index += 1) cepstrum[index] = 0;
+    return fft.realTransform(cepstrum).imag;
+}
+
+function unwrapValidPhase(wrapped, valid) {
+    const unwrapped = new Float64Array(wrapped.length);
+    let previousPhase = 0;
+    let previousValid = false;
+    for (let index = 0; index < wrapped.length; index += 1) {
+        if (!valid[index]) {
+            unwrapped[index] = Number.NaN;
+            previousValid = false;
+            continue;
+        }
+        const phase = wrapped[index];
+        if (!previousValid) {
+            unwrapped[index] = phase;
+        } else {
+            let delta = phase - previousPhase;
+            while (delta > Math.PI) delta -= 2 * Math.PI;
+            while (delta < -Math.PI) delta += 2 * Math.PI;
+            unwrapped[index] = unwrapped[index - 1] + delta;
+        }
+        previousPhase = phase;
+        previousValid = true;
+    }
+    return unwrapped;
+}
+
+function groupDelayForPhase(unwrapped, valid, radiansPerBin) {
+    const groupDelayMs = new Float64Array(unwrapped.length);
+    groupDelayMs.fill(Number.NaN);
+    for (let index = 1; index + 1 < unwrapped.length; index += 1) {
+        if (!valid[index - 1] || !valid[index] || !valid[index + 1]) continue;
+        groupDelayMs[index] = -(unwrapped[index + 1] - unwrapped[index - 1]) /
+            (2 * radiansPerBin) * 1000;
+    }
+    return groupDelayMs;
+}
+
 export function deriveFrequencyResponse(impulse, sampleRate, options = {}) {
     assertFloatArray(impulse, 'Impulse response');
     if (impulse.length === 0) throw new TypeError('Impulse response must not be empty');
@@ -453,37 +502,26 @@ export function deriveFrequencyResponse(impulse, sampleRate, options = {}) {
         if (value > peak) peak = value;
     }
     const magnitudeFloor = peak * MAGNITUDE_FLOOR_AMPLITUDE;
-    const unwrapped = new Float64Array(real.length);
+    const wrapped = new Float64Array(real.length);
     const valid = new Uint8Array(real.length);
-    let previousPhase = 0;
-    let previousValid = false;
     for (let index = 0; index < real.length; index += 1) {
-        if (!(magnitude[index] > magnitudeFloor)) {
-            unwrapped[index] = Number.NaN;
-            previousValid = false;
-            continue;
-        }
+        if (!(magnitude[index] > magnitudeFloor)) continue;
         valid[index] = 1;
-        const phase = Math.atan2(imag[index], real[index]);
-        if (!previousValid) {
-            unwrapped[index] = phase;
-        } else {
-            let delta = phase - previousPhase;
-            while (delta > Math.PI) delta -= 2 * Math.PI;
-            while (delta < -Math.PI) delta += 2 * Math.PI;
-            unwrapped[index] = unwrapped[index - 1] + delta;
-        }
-        previousPhase = phase;
-        previousValid = true;
+        wrapped[index] = Math.atan2(imag[index], real[index]);
     }
-    const groupDelayMs = new Float64Array(real.length);
-    groupDelayMs.fill(Number.NaN);
+    const unwrapped = unwrapValidPhase(wrapped, valid);
+    const minimumPhase = minimumPhaseForMagnitude(magnitude, fftSize, magnitudeFloor);
+    const minimumUnwrapped = unwrapValidPhase(minimumPhase, valid);
+    const excessUnwrapped = new Float64Array(real.length);
+    for (let index = 0; index < excessUnwrapped.length; index += 1) {
+        excessUnwrapped[index] = valid[index]
+            ? unwrapped[index] - minimumUnwrapped[index]
+            : Number.NaN;
+    }
     const radiansPerBin = 2 * Math.PI * sampleRate / fftSize;
-    for (let index = 1; index + 1 < real.length; index += 1) {
-        if (!valid[index - 1] || !valid[index] || !valid[index + 1]) continue;
-        groupDelayMs[index] = -(unwrapped[index + 1] - unwrapped[index - 1]) /
-            (2 * radiansPerBin) * 1000;
-    }
+    const groupDelayMs = groupDelayForPhase(unwrapped, valid, radiansPerBin);
+    const minimumGroupDelayMs = groupDelayForPhase(minimumUnwrapped, valid, radiansPerBin);
+    const excessGroupDelayMs = groupDelayForPhase(excessUnwrapped, valid, radiansPerBin);
     const maximumPoints = Number.isSafeInteger(options.maximumPoints) && options.maximumPoints >= 2
         ? options.maximumPoints
         : 2048;
@@ -494,6 +532,8 @@ export function deriveFrequencyResponse(impulse, sampleRate, options = {}) {
     const magnitudeDb = new Float32Array(bins.length);
     const phaseDegrees = new Float32Array(bins.length);
     const groupDelayReduced = new Float32Array(bins.length);
+    const minimumGroupDelayReduced = new Float32Array(bins.length);
+    const excessGroupDelayReduced = new Float32Array(bins.length);
     const validity = new Uint8Array(bins.length);
     for (let point = 0; point < bins.length; point += 1) {
         const bin = bins[point];
@@ -505,9 +545,13 @@ export function deriveFrequencyResponse(impulse, sampleRate, options = {}) {
             validity[point] = 1;
             phaseDegrees[point] = wrapDegrees(unwrapped[bin] * 180 / Math.PI);
             groupDelayReduced[point] = groupDelayMs[bin];
+            minimumGroupDelayReduced[point] = minimumGroupDelayMs[bin];
+            excessGroupDelayReduced[point] = excessGroupDelayMs[bin];
         } else {
             phaseDegrees[point] = Number.NaN;
             groupDelayReduced[point] = Number.NaN;
+            minimumGroupDelayReduced[point] = Number.NaN;
+            excessGroupDelayReduced[point] = Number.NaN;
         }
     }
     return {
@@ -518,6 +562,8 @@ export function deriveFrequencyResponse(impulse, sampleRate, options = {}) {
         magnitudeDb,
         phaseDegrees,
         groupDelayMs: groupDelayReduced,
+        minimumGroupDelayMs: minimumGroupDelayReduced,
+        excessGroupDelayMs: excessGroupDelayReduced,
         valid: validity,
         magnitudeFloorDb: ANALYSIS_MAGNITUDE_FLOOR_DB
     };

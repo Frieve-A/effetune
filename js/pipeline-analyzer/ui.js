@@ -11,7 +11,13 @@ const SEQUENCE_LENGTHS = Object.freeze([
     ...PIPELINE_ANALYZER_MLS_LENGTHS,
     ...PIPELINE_ANALYZER_TSP_LENGTHS
 ]);
-const GRAPH_VIEWS = Object.freeze(['frequency', 'phase', 'groupDelay', 'impulse']);
+const GRAPH_VIEWS = Object.freeze([
+    'frequency',
+    'phase',
+    'minimumGroupDelay',
+    'excessGroupDelay',
+    'impulse'
+]);
 
 const DEFAULT_MEASUREMENT_SETTINGS = Object.freeze({
     signalType: 'mls',
@@ -60,7 +66,9 @@ const FALLBACK_TEXT = Object.freeze({
     impulseCapture: 'Capture: {samples} samples ({seconds} s)',
     frequency: 'Frequency',
     phase: 'Phase',
-    groupDelay: 'Group Delay',
+    graphSelection: 'Graph',
+    minimumGroupDelay: 'Min Group Delay',
+    excessGroupDelay: 'Excess Group Delay',
     impulse: 'Impulse',
     smoothingOct: 'Smoothing (oct):',
     impulseRange: 'Impulse Range (ms):',
@@ -413,15 +421,29 @@ export class PipelineAnalyzerUI {
         ));
         this.graphShell.addEventListener('pointermove', event => this.updateCursorReadout(event));
         this.graphShell.addEventListener('pointerleave', () => this.clearCursorReadout());
-        this.viewGroup = createElement(this.document, 'div', 'pipeline-analyzer-view-switcher');
+        this.viewGroup = createElement(
+            this.document,
+            'div',
+            'pipeline-analyzer-view-switcher parameter-row radio-group'
+        );
         this.viewGroup.setAttribute('role', 'radiogroup');
+        this.viewLabel = createElement(this.document, 'label');
+        this.viewGroup.appendChild(this.viewLabel);
         this.viewInputs = new Map();
-        for (const value of GRAPH_VIEWS) {
+        for (const [index, value] of GRAPH_VIEWS.entries()) {
+            const option = createElement(
+                this.document,
+                'span',
+                'pipeline-analyzer-view-option'
+            );
             const label = createElement(this.document, 'label');
             const input = createElement(this.document, 'input');
             input.type = 'radio';
+            input.id = `pipelineAnalyzerGraphView${index}`;
             input.name = 'pipelineAnalyzerGraphView';
             input.value = value;
+            input.setAttribute('autocomplete', 'off');
+            label.htmlFor = input.id;
             input.addEventListener('change', () => {
                 if (!input.checked) return;
                 this.configuration.graphView = value;
@@ -430,10 +452,9 @@ export class PipelineAnalyzerUI {
                 this.renderGraph();
                 this.emitConfigurationChange();
             });
-            const text = createElement(this.document, 'span');
-            label.append(input, text);
-            this.viewGroup.appendChild(label);
-            this.viewInputs.set(value, { input, text });
+            option.append(input, label);
+            this.viewGroup.appendChild(option);
+            this.viewInputs.set(value, { input, text: label });
         }
         this.legend = createElement(this.document, 'div', 'pipeline-analyzer-legend');
         this.cursorX = createElement(this.document, 'span', 'pipeline-analyzer-legend-cursor-x');
@@ -441,7 +462,6 @@ export class PipelineAnalyzerUI {
         this.graphShell.append(
             this.graphSvg,
             this.hoverSvg,
-            this.viewGroup,
             this.legend,
             this.graphSpinner
         );
@@ -468,7 +488,7 @@ export class PipelineAnalyzerUI {
             this.displayControls.smoothingOct.row,
             this.displayControls.impulseRangeMs.row
         );
-        this.graphSection.append(this.displayControl, this.graphShell);
+        this.graphSection.append(this.viewGroup, this.displayControl, this.graphShell);
         this.body.appendChild(this.graphSection);
         this.panel.append(header, this.body);
         this.refreshTexts();
@@ -581,7 +601,14 @@ export class PipelineAnalyzerUI {
         this.refreshButton.textContent = this.t('refreshMeasurements');
         this.autoRefreshText.textContent = this.t('auto');
         this.viewGroup.setAttribute('aria-label', this.t('graphView', 'Response graph'));
-        const viewKeys = { frequency: 'frequency', phase: 'phase', groupDelay: 'groupDelay', impulse: 'impulse' };
+        this.viewLabel.textContent = `${this.t('graphSelection')}:`;
+        const viewKeys = {
+            frequency: 'frequency',
+            phase: 'phase',
+            minimumGroupDelay: 'minimumGroupDelay',
+            excessGroupDelay: 'excessGroupDelay',
+            impulse: 'impulse'
+        };
         for (const [value, view] of this.viewInputs) view.text.textContent = this.t(viewKeys[value]);
         this.renderDisplaySettings();
         this.graphSvg.setAttribute('aria-label', this.t('graph'));
@@ -686,7 +713,9 @@ export class PipelineAnalyzerUI {
             : [{}];
         this.configuration = {
             inputChannel: Number.isInteger(configuration.inputChannel) ? configuration.inputChannel : 0,
-            graphView: GRAPH_VIEWS.includes(configuration.graphView) ? configuration.graphView : 'frequency',
+            graphView: GRAPH_VIEWS.includes(configuration.graphView)
+                ? configuration.graphView
+                : configuration.graphView === 'groupDelay' ? 'minimumGroupDelay' : 'frequency',
             autoRefresh: configuration.autoRefresh !== false,
             outputs: outputs.map((output, index) => normalizeOutput(output, index)),
             measurementSettings: normalizeMeasurementSettings(configuration.measurementSettings),
@@ -813,7 +842,8 @@ export class PipelineAnalyzerUI {
         if (!this.displayControl) return;
         const view = this.configuration.graphView;
         const enabled = {
-            smoothingOct: view === 'frequency' || view === 'groupDelay',
+            smoothingOct: view === 'frequency' ||
+                view === 'minimumGroupDelay' || view === 'excessGroupDelay',
             impulseRangeMs: view === 'impulse'
         };
         for (const control of Object.values(this.displayControls)) {
@@ -1216,7 +1246,9 @@ export class PipelineAnalyzerUI {
         if (!Number.isFinite(value)) return '';
         if (viewName === 'frequency') return `${value.toFixed(1)} dB`;
         if (viewName === 'phase') return `${value.toFixed(0)}°`;
-        if (viewName === 'groupDelay') return `${value.toFixed(2)} ms`;
+        if (viewName === 'minimumGroupDelay' || viewName === 'excessGroupDelay') {
+            return `${value.toFixed(2)} ms`;
+        }
         return value.toFixed(2);
     }
 

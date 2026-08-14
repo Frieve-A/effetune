@@ -350,7 +350,7 @@ test('IR Reverb serializes defaults and applies Dry in the JavaScript fallback',
   const plugin = new Plugin();
   assert.deepEqual({ ...plugin.getParameters() }, {
     type: 'IRReverbPlugin', id: 7, enabled: true, ir: '', cm: 'auto', lt: '128', cr: 'auto',
-    dw: -15, dl: 0, pd: 0, dc: true, co: 0, dt: 100, tr: 100
+    dw: -15, de: true, dl: 0, pd: 0, dc: true, co: 0, dt: 100, tr: 100
   });
   const data = new Float32Array([0.25, -0.5]);
   assert.equal(plugin.process({}, data, {}, 0), data);
@@ -362,6 +362,9 @@ test('IR Reverb serializes defaults and applies Dry in the JavaScript fallback',
   const muted = new Float32Array([1, -1]);
   assert.equal(plugin.process({}, muted, { dl: -96 }, 0), muted);
   assert.deepEqual([...muted], [0, 0]);
+  const dryDisabled = new Float32Array([1, -1]);
+  assert.equal(plugin.process({}, dryDisabled, { de: false, dl: 0 }, 0), dryDisabled);
+  assert.deepEqual([...dryDisabled], [0, 0]);
   assert.match(plugin.processorSource, /dryLevel <= -96/);
   assert.equal(plugin.temporalCapability, 'reset-on-resume');
 });
@@ -1104,6 +1107,28 @@ test('IR Reverb propagates the routed wet L1 bound into its power gain bound', a
   };
   assert.equal(await plugin._prepareAndStage(++plugin._generation), true);
   assert.ok(Math.abs(plugin.powerGainUpperBoundDb - (plugin.dw + 20 * Math.log10(2))) < 1e-12);
+});
+
+test('IR Reverb power gain bound follows the Dry switch with a prepared IR', async () => {
+  const { Plugin } = loadPlugin();
+  const plugin = new Plugin();
+  try {
+    plugin.setParameters({ de: false, dl: 0, dw: -6 });
+    plugin._pcm = { channels: [new Float32Array([1, 0])], sampleRate: 48000 };
+    assert.equal(await plugin._prepareAndStage(++plugin._generation), true);
+
+    const wetAmplitude = 10 ** ((
+      plugin.dw + plugin._prepared.analysis.l1GainUpperBoundDb
+    ) / 20);
+    const wetOnlyBound = 20 * Math.log10(wetAmplitude);
+    assert.ok(Math.abs(plugin.powerGainUpperBoundDb - wetOnlyBound) < 1e-12);
+
+    plugin.setParameters({ de: true });
+    const dryAndWetBound = 20 * Math.log10(1 + wetAmplitude);
+    assert.ok(Math.abs(plugin.powerGainUpperBoundDb - dryAndWetBound) < 1e-12);
+  } finally {
+    plugin.cleanup();
+  }
 });
 
 test('IR Reverb preserves common routing properties and re-stages once after channel selection changes', async () => {
@@ -2230,7 +2255,7 @@ test('partial import notices wait for ACTIVE and never replace the no-worklet wa
     try {
       assert.equal(await plugin.importFile(file), true);
       assert.equal(plugin._statusMessage,
-        'IR Reverb requires WASM audio processing and will pass dry signal through.');
+        'IR Reverb requires WASM audio processing. Wet output is unavailable; output follows Dry and Dry Level.');
       assert.match(plugin._pendingReadyNotice, /some files were skipped/);
     } finally {
       plugin.cleanup();
@@ -3069,6 +3094,7 @@ test('IR Reverb UI source exposes persistent library and multi-file import contr
   assert.match(pluginSource, /input\.type = 'file'/);
   assert.match(pluginSource, /input\.multiple = true/);
   assert.match(pluginSource, /input\.hidden = true/);
+  assert.match(pluginSource, /input\.accept = [^;]*\.irs/);
   assert.doesNotMatch(pluginSource, /addEventListener\('drop'/);
   assert.doesNotMatch(pluginSource, /ir-reverb-importer/);
   assert.match(pluginSource, /value: 'true', label: this\._t\('irReverb\.option\.trueStereo', 'True Stereo'\)/);

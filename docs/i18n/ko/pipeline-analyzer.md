@@ -24,20 +24,22 @@ Effect Pipeline 헤더의 그래프 버튼이나 데스크톱 앱의 **View > Pi
 
 세부 정보에는 현재 길이가 충분한지, 권장 길이와 안정화 시간, 전체 측정 시간이 표시됩니다. 권장값은 참고 사항이므로 측정하려는 이펙트에 맞을 때 적용하세요.
 
-Sequence Length, Stabilization Periods, Averages는 Unit Impulse에서만 비활성화됩니다. Frequency, Phase, Group Delay, Impulse를 바꾸는 것은 표시 그래프만 바꾸며 다시 측정하지 않습니다.
+Sequence Length, Stabilization Periods, Averages는 Unit Impulse에서만 비활성화됩니다. Frequency, Phase, Min Group Delay, Excess Group Delay, Impulse를 바꾸는 것은 표시 그래프만 바꾸며 다시 측정하지 않습니다.
 
 ## 그래프 읽기
 
+- 그래프 밖의 **Graph** 라디오 버튼으로 표시할 응답을 선택합니다.
 - **Frequency**는 주파수별 레벨을 표시합니다.
 - **Phase**는 주파수별 위상을 표시합니다.
-- **Group Delay**는 주파수별 지연을 표시합니다.
+- **Min Group Delay**는 크기 응답의 최소 위상 부분이 만드는 지연을 표시합니다.
+- **Excess Group Delay**는 최소 위상 부분을 제거하고 남은 지연을 표시하므로 순수 지연과 그 밖의 비최소 위상 타이밍을 구분하기 쉽습니다.
 - **Impulse**는 시간에 따른 응답을 표시합니다.
 
-그래프에는 항상 **Before**와 **After**가 표시됩니다. 포인터를 그래프 위로 움직이면 같은 주파수나 시간에서 두 곡선의 값을 읽을 수 있고, **Before** 위에 올리면 비교하기 쉽도록 **After**가 잠시 숨겨집니다. 레이아웃이 움직이지 않도록 **Smoothing (oct)**와 **Impulse Range (ms)**는 모든 그래프에서 계속 표시됩니다. Smoothing은 Frequency와 Group Delay에서, Impulse Range는 Impulse에서 사용할 수 있으며 선택한 그래프와 관계없는 항목은 비활성화됩니다. 각 주파수 곡선은 개별적으로 0 dB를 기준으로 맞추고, 각 임펄스는 전체 응답의 자체 피크를 기준으로 표시하며 범위는 -2 ms부터 선택한 Impulse Range까지입니다.
+그래프에는 항상 **Before**와 **After**가 표시됩니다. 포인터를 그래프 위로 움직이면 같은 주파수나 시간에서 두 곡선의 값을 읽을 수 있고, **Before** 위에 올리면 비교하기 쉽도록 **After**가 잠시 숨겨집니다. 레이아웃이 움직이지 않도록 **Smoothing (oct)**와 **Impulse Range (ms)**는 모든 그래프에서 계속 표시됩니다. Smoothing은 Frequency와 두 Group Delay 그래프에서, Impulse Range는 Impulse에서 사용할 수 있으며 선택한 그래프와 관계없는 항목은 비활성화됩니다. 각 주파수 곡선은 개별적으로 0 dB를 기준으로 맞추고, 각 임펄스는 전체 응답의 자체 피크를 기준으로 표시하며 범위는 -2 ms부터 선택한 Impulse Range까지입니다.
 
 ## 측정 방식
 
-각 측정은 현재 파이프라인과 설정, 라우팅, 선택한 스피커 응답을 캡처합니다. 그래프에는 그 결과인 주파수, 위상, 그룹 지연, 임펄스 응답이 표시되며 **After**는 파이프라인이 보고한 지연을 보정합니다.
+각 측정은 현재 파이프라인과 설정, 라우팅, 선택한 스피커 응답을 캡처합니다. 그래프에는 그 결과인 주파수, 위상, 최소 그룹 지연, 초과 그룹 지연, 임펄스 응답이 표시되며 **After**는 파이프라인이 보고한 지연을 보정합니다.
 
 일반적인 응답 측정에는 MLS와 TSP가 적합합니다. 딜레이, 리버브, 링잉이 선택한 측정 창보다 길면 결과가 겹칠 수 있으므로 **Sequence Length**를 늘리세요. **Unit Impulse**는 제한된 시간 동안 응답을 직접 기록하므로 매우 긴 잔향은 잘릴 수 있습니다.
 

@@ -140,9 +140,9 @@ Actualmente, EffeTune admite hasta 8 canales de salida.
 
 ### Compartir y reproducir resultados de IR Reverb
 
-Las URL y los presets contienen solo el ID de la IR, no el audio. Si la IR figura como ausente o no hay señal wet, importa el mismo archivo original para volver a enlazarlo, o elige un sustituto en **Impulse Response Library**, y revisa **Dry**.
+Las URL y los presets contienen solo el ID de la IR, no el audio. Si la IR figura como ausente o no hay señal wet, importa el mismo archivo original para volver a enlazarlo, o elige un sustituto en **Impulse Response Library**, y revisa **Dry** y **Dry Level**.
 
-Para reproducir el resultado en otro equipo, entrega el archivo IR sin modificar junto con la URL o preset y los datos de fuente/licencia; iguala también sample rate, selección de canales y ajustes de IR Reverb. En un send/return multicanal, usa **Matrix** para copiar canales a un bus libre, ajusta **Dry** a -96 dB, deja **Wet** a 0 dB y devuelve el bus wet solo a las salidas deseadas.
+Para reproducir el resultado en otro equipo, entrega el archivo IR sin modificar junto con la URL o preset y los datos de fuente/licencia; iguala también sample rate, selección de canales y ajustes de IR Reverb. En un send/return multicanal, usa **Matrix** para copiar canales a un bus libre, desactiva **Dry**, ajusta **Wet Level** a 0 dB y devuelve el bus wet solo a las salidas deseadas.
 
 ## 5. Respuesta de frecuencia y corrección de sala
 

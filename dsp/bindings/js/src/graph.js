@@ -100,7 +100,13 @@ function reconfigurationRequired(state, node, parameterName) {
 function validateStreamUpdate(state, node, parameterName, value) {
   if (node.type === 'IRReverb' && parameterName === 'dryLevel') {
     if (node.parameters.latency === 0 ||
-        (node.parameters.dryLevel <= -96 && value <= -96)) return 4;
+        node.parameters.dryEnabled === false ||
+        (node.parameters.dryLevel <= -96 && value <= -96)) return 5;
+    throw reconfigurationRequired(state, node, parameterName);
+  }
+  if (node.type === 'IRReverb' && parameterName === 'dryEnabled') {
+    if (node.parameters.latency === 0 || node.parameters.dryLevel <= -96 ||
+        (node.parameters.dryEnabled === false && value === false)) return 4;
     throw reconfigurationRequired(state, node, parameterName);
   }
   if (!STREAM_SAFE_PARAMETERS.get(node.type)?.has(parameterName)) {

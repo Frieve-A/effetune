@@ -469,9 +469,10 @@ export function graphDocumentFromChain(chainInput) {
   const chain = normalizeChainDocument(chainInput);
   for (const [index, node] of chain.chain.entries()) {
     if (node.enabled && node.type === 'IRReverb' &&
-        node.parameters.latency > 0 && node.parameters.dryLevel > -96) {
+        node.parameters.latency > 0 && node.parameters.dryEnabled !== false &&
+        node.parameters.dryLevel > -96) {
       throw graphError(
-        'IRReverb must be wet-only in a Graph; set dryLevel to -96 dB (the parameter minimum) and use the external dry edge.',
+        'IRReverb must be wet-only in a Graph; turn dryEnabled off or set dryLevel to -96 dB (the parameter minimum), then use the external dry edge.',
         {
           code: 'GRAPH_UNSUPPORTED_CAPABILITY',
           path: `/nodes/${index}/parameters/dryLevel`,
@@ -577,9 +578,10 @@ function recipeEffect(effect, nodeId, defaultId) {
 // because the Graph plans delay compensation around a wet-only node.
 function requireWetOnlyIRReverb(node) {
   if (node.enabled && node.type === 'IRReverb' &&
-      node.parameters?.latency > 0 && node.parameters?.dryLevel > -96) {
+      node.parameters?.latency > 0 && node.parameters?.dryEnabled !== false &&
+      node.parameters?.dryLevel > -96) {
     throw graphError(
-      'IRReverb must be wet-only in a Graph; set dryLevel to -96 dB (the parameter minimum) and use the external dry edge.',
+      'IRReverb must be wet-only in a Graph; turn dryEnabled off or set dryLevel to -96 dB (the parameter minimum), then use the external dry edge.',
       {
         code: 'GRAPH_UNSUPPORTED_CAPABILITY',
         path: '/nodes/0/parameters/dryLevel',

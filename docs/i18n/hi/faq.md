@@ -140,9 +140,9 @@ EffeTune अभी अधिकतम 8 आउटपुट चैनलों �
 
 ### IR Reverb परिणाम share और reproduce करना
 
-URL और preset में केवल IR ID होता है, audio file नहीं। IR missing दिखे या wet signal न आए तो उसी मूल file को इम्पोर्ट करके अपने-आप relink करें, या **Impulse Response Library** से substitute चुनें, और **Dry** भी जाँचें।
+URL और preset में केवल IR ID होता है, audio file नहीं। IR missing दिखे या wet signal न आए तो उसी मूल file को इम्पोर्ट करके अपने-आप relink करें, या **Impulse Response Library** से substitute चुनें, और **Dry** व **Dry Level** भी जाँचें।
 
-दूसरे system पर परिणाम दोहराने के लिए unchanged IR file को URL/preset और source/license जानकारी के साथ दें; sample rate, channel selection और IR Reverb settings भी समान रखें। Multichannel send/return में **Matrix** से channels को खाली bus पर copy करें, **Dry** -96 dB और **Wet** 0 dB रखें, फिर wet bus को केवल इच्छित outputs पर लौटाएँ।
+दूसरे system पर परिणाम दोहराने के लिए unchanged IR file को URL/preset और source/license जानकारी के साथ दें; sample rate, channel selection और IR Reverb settings भी समान रखें। Multichannel send/return में **Matrix** से channels को खाली bus पर copy करें, **Dry** को off और **Wet Level** को 0 dB रखें, फिर wet bus को केवल इच्छित outputs पर लौटाएँ।
 
 ## 5. आवृत्ति प्रतिक्रिया और कमरा सुधार
 

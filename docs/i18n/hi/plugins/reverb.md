@@ -268,9 +268,9 @@ IR Reverb इम्पोर्ट की गई impulse response (IR) के �
 
 ### ध्वनि सुधार मार्गदर्शिका
 
-- हल्का room ambience पाने के लिए छोटी IR लें, **Dry** को 0 dB, **Wet** को -18 से -12 dB पर और **Pre Delay** को छोटा रखें।
+- हल्का room ambience पाने के लिए छोटी IR लें, **Dry** को on रखें, **Dry Level** को 0 dB, **Wet Level** को -18 से -12 dB पर और **Pre Delay** को छोटा रखें।
 - बड़े hall के लिए stereo या True Stereo IR लें और लंबी tail को **Decay** तथा **Trim** से कम करें।
-- send/return में **Matrix** से source को दूसरे bus पर भेजें, **Dry** -96 dB और **Wet** 0 dB रखें, फिर send level से reverb की मात्रा तय करें।
+- send/return में **Matrix** से source को दूसरे bus पर भेजें, **Dry** को off और **Wet Level** को 0 dB रखें, फिर send level से reverb की मात्रा तय करें।
 - ठीक वही परिणाम दोहराने के लिए मूल IR file और उसकी source/license जानकारी रखें; समान bytes से समान ID बनता है।
 
 ### पैरामीटर
@@ -278,8 +278,9 @@ IR Reverb इम्पोर्ट की गई impulse response (IR) के �
 - **Channel Mode**: **Auto** एक-channel IR के लिए Mono, stereo channel selection वाले चार-channel IR के लिए True Stereo, IR और selected channels की संख्या समान होने पर Independent, और बाकी मामलों में Diagonal Matrix चुनता है; लागू mode menu के दाईं ओर दिखता है। Mono, Independent, True Stereo (LL/LR/RL/RR paths) या बिना crossfeed वाला Diagonal Matrix स्पष्ट रूप से भी चुना जा सकता है।
 - **Latency**: Zero या 128/256/512/1024 samples। बड़ी value processing pressure घटाती है लेकिन wet path देर से आता है; Zero के लिए Full चाहिए।
 - **Convolution Rate**: Auto, Full, Half या Quarter। Auto में लागू rate menu के दाईं ओर दिखता है। कम rate CPU load और wet bandwidth दोनों घटाता है; Quarter के लिए कम से कम 176.4 kHz चाहिए।
-- **Dry**: मूल signal का level तय करता है। -96 dB पर यह पूरी तरह mute हो जाता है, जो पूरी तरह wet effect या return bus के लिए उपयुक्त है।
-- **Wet**: convolved signal का level -96 से +12 dB। सामान्य insert उपयोग के लिए default -15 dB है। send/return setup में इसे 0 dB रखें और reverb की मात्रा send level से नियंत्रित करें।
+- **Wet Level**: convolved signal का level -96 से +12 dB। सामान्य insert उपयोग के लिए default -15 dB है। send/return setup में इसे 0 dB रखें और reverb की मात्रा send level से नियंत्रित करें।
+- **Dry**: मूल signal को enable करता है और default रूप से on रहता है। इसे off करने पर **Dry Level** का मान सुरक्षित रखते हुए dry signal पूरी तरह हट जाता है।
+- **Dry Level**: **Dry** on होने पर मूल signal का level -96 से +12 dB तक तय करता है। -96 dB पर भी dry signal पूरी तरह mute हो जाता है।
 - **Pre Delay**: केवल wet signal को 0 से 500 ms देर करता है।
 - **Direct Cut** पहचाने गए direct impulse को हटाता है; **Cut Offset** cut point को -20 से +50 ms खिसकाता है। Normalization के लिए बिना काटे IR को ही reference माना जाता है, इसलिए Direct Cut चालू करने पर बची हुई reverb tail तेज़ नहीं होती।
 - **Decay** decay को 10% से 400% तक बदलता है; 100% मूल capture रखता है।
@@ -293,9 +294,9 @@ IR Reverb इम्पोर्ट की गई impulse response (IR) के �
 
 Mono एक IR लगाता है, Independent channels अलग रखता है, True Stereo LL/LR/RL/RR paths चलाता है और Diagonal Matrix केवल matching input/output channels जोड़ता है। Auto में stereo selection वाला हर चार-channel IR इसी क्रम में समझा जाता है; Quad या किसी अन्य चार-channel layout के लिए Independent या Diagonal Matrix स्पष्ट रूप से चुनें। True Stereo pair के लिए मिलते-जुलते `L`/`R` या `Left`/`Right` नाम वाले files साथ चुनें।
 
-इम्पोर्ट की गई IR files **Impulse Response Library** में रखी जाती हैं, जहाँ आप मूल filename से उन्हें खोज, load या delete कर सकते हैं। Web app में ये files browser में save होती हैं और site data मिटाने या browser द्वारा storage खाली करने पर खो सकती हैं। Desktop app इन्हें अपने application data में रखता है। हर जरूरी IR की अलग copy रखें।
+इम्पोर्ट की गई IR files **Impulse Response Library** में रखी जाती हैं, जहाँ आप मूल filename से उन्हें खोज, load या delete कर सकते हैं। WAV audio वाली `.irs` extension की files का नाम बदले बिना उन्हें इम्पोर्ट किया जा सकता है। Web app में ये files browser में save होती हैं और site data मिटाने या browser द्वारा storage खाली करने पर खो सकती हैं। Desktop app इन्हें अपने application data में रखता है। हर जरूरी IR की अलग copy रखें।
 
-Shared URL और preset IR की पहचान करते हैं, पर उसका audio data शामिल नहीं करते। IR उपलब्ध न हो तो wet sound नहीं बनता; IR को फिर import या select करें, या कोई दूसरा IR चुनें। Dry signal **Dry** setting के अनुसार चलता रहता है। [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/) और [Freesound](https://freesound.org/) पर सामग्री मिल सकती है, लेकिन हर file की license (जैसे CC0, CC BY या CC BY-NC), author, attribution और commercial-use शर्त EffeTune से अलग जाँचकर सुरक्षित रखें; EffeTune license जानकारी को store या verify नहीं करता।
+Shared URL और preset IR की पहचान करते हैं, पर उसका audio data शामिल नहीं करते। IR उपलब्ध न हो तो wet sound नहीं बनता; IR को फिर import या select करें, या कोई दूसरा IR चुनें। मूल signal **Dry** और **Dry Level** settings के अनुसार चलता है। [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/) और [Freesound](https://freesound.org/) पर सामग्री मिल सकती है, लेकिन हर file की license (जैसे CC0, CC BY या CC BY-NC), author, attribution और commercial-use शर्त EffeTune से अलग जाँचकर सुरक्षित रखें; EffeTune license जानकारी को store या verify नहीं करता।
 
 ## RS Reverb
 

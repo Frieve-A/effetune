@@ -268,9 +268,9 @@ IR Reverb convolves the signal with an imported impulse response (IR), reproduci
 
 ### Sound Enhancement Guide
 
-- **Subtle room support:** import a short room IR, keep **Dry** at 0 dB, set **Wet** around -18 to -12 dB, and use a short **Pre Delay**. This adds space without obscuring the recording.
-- **Concert-hall expansion:** use a stereo or true-stereo hall IR, lower **Wet** first, then shorten an overly long tail with **Decay** and **Trim**.
-- **Reverberant send/return:** route the source to another bus with **Matrix**, place IR Reverb on that return with **Dry** at -96 dB and **Wet** at 0 dB, then use the send level to control reverb. This avoids adding the dry signal twice and also works for selected multichannel returns.
+- **Subtle room support:** import a short room IR, keep **Dry** on with **Dry Level** at 0 dB, set **Wet Level** around -18 to -12 dB, and use a short **Pre Delay**. This adds space without obscuring the recording.
+- **Concert-hall expansion:** use a stereo or true-stereo hall IR, lower **Wet Level** first, then shorten an overly long tail with **Decay** and **Trim**.
+- **Reverberant send/return:** route the source to another bus with **Matrix**, place IR Reverb on that return with **Dry** off and **Wet Level** at 0 dB, then use the send level to control reverb. This avoids adding the dry signal twice and also works for selected multichannel returns.
 - **Comparison and repeatability:** retain the original IR file and its source/license record. The same IR bytes produce the same library ID, so another installation can relink exactly by importing that file.
 
 ### Parameters
@@ -278,8 +278,9 @@ IR Reverb convolves the signal with an imported impulse response (IR), reproduci
 - **Channel Mode** - Selects how IR channels are routed. **Auto** selects Mono for a one-channel IR, True Stereo for a four-channel IR on a stereo selection, Independent when the IR and selected-channel counts match, and Diagonal Matrix otherwise; the resolved mode appears to the right of the menu. **Mono** applies one IR to the selected channels; **Independent** maps one IR channel to each selected channel; **True Stereo** uses LL/LR/RL/RR paths; **Diagonal Matrix** maps matching input/output channels without crossfeed.
 - **Latency** - Chooses the convolution block latency (Zero, 128, 256, 512, or 1024 samples). Higher settings generally reduce processing pressure but add wet-path delay. **Zero** requires **Convolution Rate = Full**.
 - **Convolution Rate** - Sets the rate used by the wet convolution. **Auto** uses half rate at high context rates and shows the resolved rate to the right of the menu, while **Full**, **Half**, and **Quarter** make the choice explicit. Reduced rates lower processing cost but also reduce wet-path bandwidth; Quarter requires a context rate of at least 176.4 kHz.
-- **Wet** - Sets convolved output level from -96 to +12 dB. The default is -15 dB for typical insert use; in a send/return setup, use 0 dB and control the reverb amount with the send level.
-- **Dry** - Sets direct-signal level from -96 to +12 dB. The -96 dB endpoint mutes the dry signal completely for a fully wet effect or send/return setup.
+- **Wet Level** - Sets convolved output level from -96 to +12 dB. The default is -15 dB for typical insert use; in a send/return setup, use 0 dB and control the reverb amount with the send level.
+- **Dry** - Enables the direct signal. It is on by default; turn it off to remove the dry signal completely while keeping the **Dry Level** setting for later use.
+- **Dry Level** - Sets direct-signal level from -96 to +12 dB while **Dry** is on. The -96 dB endpoint also mutes the dry signal.
 - **Pre Delay** - Delays only the wet signal by 0 to 500 ms, separating the original transient from the room response.
 - **Direct Cut** - Removes the detected direct impulse from the IR so the capture contributes only its reverberant portion. Normalization continues to use the uncut IR as its reference, so enabling Direct Cut does not boost the remaining reverberant tail.
 - **Cut Offset** - Moves the detected cut point by -20 to +50 ms when **Direct Cut** is on.
@@ -294,9 +295,9 @@ Time runs left to right and level runs from 0 to -90 dB. The solid energy decay 
 
 A mono IR can feed selected channels, independent IR channels stay separate, and a four-channel true-stereo IR uses LL/LR/RL/RR cross-routes. In Auto, every four-channel IR on a stereo selection is interpreted in that order; choose Independent or Diagonal Matrix explicitly for quad or other four-channel layouts. Other multichannel files use a bounded diagonal route; IR Reverb does not create a full surround crossfeed matrix. For paired true-stereo files, select matching `L`/`R` or `Left`/`Right` filenames together.
 
-Imported IR files are kept in the **Impulse Response Library**, where you can search, load, or delete them by their original filenames. In the web app, these files are stored in your browser and can be lost if you clear site data or the browser frees storage. The desktop app stores them with its application data. Keep a separate copy of every IR you need.
+Imported IR files are kept in the **Impulse Response Library**, where you can search, load, or delete them by their original filenames. WAV audio with an `.irs` filename extension can be imported without renaming it. In the web app, these files are stored in your browser and can be lost if you clear site data or the browser frees storage. The desktop app stores them with its application data. Keep a separate copy of every IR you need.
 
-Shared URLs and presets identify the IR but do not include its audio data. If the IR is unavailable, no wet sound is produced; import or select the IR again, or choose a replacement. The dry signal continues according to the **Dry** setting.
+Shared URLs and presets identify the IR but do not include its audio data. If the IR is unavailable, no wet sound is produced; import or select the IR again, or choose a replacement. The direct signal continues according to **Dry** and **Dry Level**.
 
 For freely available material, start with the University of York [OpenAIR library](https://www.openair.hosted.york.ac.uk/), [EchoThief downloads](https://www.echothief.com/downloads/), or individual IR uploads on [Freesound](https://freesound.org/). “Free” does not mean unrestricted: OpenAIR records the license on each content page, and Freesound files may be CC0, CC BY, or CC BY-NC. Check the specific download page, keep the author/source/license with the file, provide attribution where required, and confirm that your intended commercial or redistribution use is permitted. EffeTune does not store or verify licensing information.
 

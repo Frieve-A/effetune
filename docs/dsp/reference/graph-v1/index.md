@@ -149,15 +149,17 @@ Only explicitly classified stream-safe parameters can change on an active GraphS
 Parameters affecting latency, assets, channel selection, allocation, prepared state, or
 delay-compensation eligibility require a new stream. This includes
 `FIRCrossover.bandCount`, `IRReverb.channelMode`, and
-`IRReverb.convolutionRate`. For a positive-latency IRReverb, crossing the
-`dryLevel = -96 dB` eligibility boundary in either direction also requires a new stream.
+`IRReverb.convolutionRate`. A positive-latency IRReverb is wet-only when
+`dryEnabled` is false or `dryLevel` is `-96 dB`, the parameter minimum. A change
+that makes its internal dry path active or inactive requires a new stream.
 
 The current stream-safe allowlist is deliberately small:
 
 - `Volume.volume`.
-- `IRReverb.dryLevel` when latency is zero, or when both the current and new values are
-  `-96 dB`, the parameter minimum. The positive-latency wet-only eligibility rule still
-  applies.
+- `IRReverb.dryLevel` when latency is zero, when `dryEnabled` is false, or when both
+  the current and new values are `-96 dB`.
+- `IRReverb.dryEnabled` when latency is zero, when `dryLevel` is `-96 dB`, or when
+  both the current and new values are false.
 
 Every other parameter update raises `ValidationError` with
 `GRAPH_RECONFIGURATION_REQUIRED`; create a new stream for that configuration.
@@ -177,10 +179,10 @@ difference between the corresponding forms.
   at the output. Set the two output-edge gains for the desired mix.
 - A send/return graph keeps the main route, adds an input-to-effect send edge, then mixes
   the effect's return edge at the destination. Additional sends use the same pattern.
-- A positive-latency IRReverb must be wet-only internally: set `dryLevel` to
-  `-96 dB`, the parameter minimum, and use an external dry edge. The compiler delays
-  the shorter dry route to align it with the prepared wet route. Any internal dry value
-  above the minimum is rejected rather than coerced.
+- A positive-latency IRReverb must be wet-only internally: turn `dryEnabled` off or set
+  `dryLevel` to `-96 dB`, the parameter minimum, and use an external dry edge. The
+  compiler delays the shorter dry route to align it with the prepared wet route. An
+  enabled internal dry path above the minimum is rejected rather than coerced.
 
 | Recipe | Node ID | Edge IDs |
 |---|---|---|

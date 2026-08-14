@@ -33,7 +33,7 @@ constexpr std::uint32_t kSolo = 2u;
 constexpr std::uint32_t kPan = 4u;
 constexpr std::uint32_t kTestGainHash = 0xa17e5eedu;
 constexpr std::uint32_t kVolumeHash = 0x66796aa7u;
-constexpr std::uint32_t kIrReverbHash = 0x831d7030u;
+constexpr std::uint32_t kIrReverbHash = 0x96be6b1au;
 
 struct NodeRecord {
   et_instance instance;
@@ -510,7 +510,7 @@ void testIrAuthoritativeLatencyAndOwnership() {
   GRAPH_CHECK(engine.prepare(48000.0F, 2u, 128u, 0u) == ET_OK);
   const et_instance ir = engine.createInstance("IRReverbPlugin");
   GRAPH_CHECK(ir != 0u);
-  std::array<float, 6> params{0.0F, 1.0F, 1.0F, 0.0F, 0.0F, 0.0F};
+  std::array<float, 7> params{0.0F, 1.0F, 1.0F, 0.0F, 1.0F, 0.0F, 0.0F};
   GRAPH_CHECK(engine.setInstanceParams(ir, params.data(), static_cast<std::uint32_t>(params.size()),
                                        kIrReverbHash, 0u) == ET_OK);
 
@@ -544,7 +544,7 @@ void testIrAuthoritativeLatencyAndOwnership() {
               ET_ERR_GRAPH_UNSUPPORTED_CAPABILITY);
   GRAPH_CHECK(engine.graphDiagnostic().path == ET_GRAPH_PATH_NODE_LATENCY);
 
-  params[4] = -96.0F;
+  params[5] = -96.0F;
   GRAPH_CHECK(engine.setInstanceParams(ir, params.data(), static_cast<std::uint32_t>(params.size()),
                                        kIrReverbHash, 0u) == ET_OK);
   graph = descriptor({{ir, "ir"}}, {{kEndpoint, 0u, "in", "mix"}, {0u, kEndpoint, "out", "mix"}});
@@ -556,20 +556,33 @@ void testIrAuthoritativeLatencyAndOwnership() {
   engine.abortInstanceAsset(ir, 0u);
   GRAPH_CHECK((engine.instanceAssetState(ir, 0u) & 0xffu) == ET_ASSET_STATE_ACTIVE);
 
-  params[4] = 0.0F;
+  params[5] = 0.0F;
   GRAPH_CHECK(
       engine.setGraphInstanceParams(ir, params.data(), static_cast<std::uint32_t>(params.size()),
-                                    kIrReverbHash, 4u) == ET_ERR_GRAPH_UNSUPPORTED_CAPABILITY);
+                                    kIrReverbHash, 5u) == ET_ERR_GRAPH_UNSUPPORTED_CAPABILITY);
   GRAPH_CHECK(engine.graphDiagnostic().path == ET_GRAPH_PATH_NODE_LATENCY);
-  params[4] = -100.0F;
+  params[5] = -100.0F;
+  GRAPH_CHECK(engine.setGraphInstanceParams(ir, params.data(),
+                                            static_cast<std::uint32_t>(params.size()),
+                                            kIrReverbHash, 5u) == ET_OK);
+  params[4] = 0.0F;
   GRAPH_CHECK(engine.setGraphInstanceParams(ir, params.data(),
                                             static_cast<std::uint32_t>(params.size()),
                                             kIrReverbHash, 4u) == ET_OK);
+  params[5] = 0.0F;
+  GRAPH_CHECK(engine.setGraphInstanceParams(ir, params.data(),
+                                            static_cast<std::uint32_t>(params.size()),
+                                            kIrReverbHash, 5u) == ET_OK);
+  params[4] = 1.0F;
+  GRAPH_CHECK(
+      engine.setGraphInstanceParams(ir, params.data(), static_cast<std::uint32_t>(params.size()),
+                                    kIrReverbHash, 4u) == ET_ERR_GRAPH_UNSUPPORTED_CAPABILITY);
   GRAPH_CHECK(engine.resetGraph() == ET_OK);
   const auto empty = descriptor({}, {});
   GRAPH_CHECK(engine.configureGraph(empty.data(), static_cast<std::uint32_t>(empty.size())) ==
               ET_OK);
-  params[4] = -96.0F;
+  params[4] = 1.0F;
+  params[5] = -96.0F;
   GRAPH_CHECK(engine.setInstanceParams(ir, params.data(), static_cast<std::uint32_t>(params.size()),
                                        kIrReverbHash, 0u) == ET_OK);
 }

@@ -1,11 +1,11 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:a4fc2ad34eee33506f9eb2052ce94fe928c54829b3603bad439f26ca7a3232fe",
+  "sourceDigest": "sha256:063d980731b7ed7a862c4dc2255db9a4ca8274b26b41f9f7656f6e3260e8bdf2",
   "emsdkVersion": "6.0.2",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:b6e724f4562aa75de427ea70e46b03d44ed3e9942511b5257cf92480efac7c1c",
+    "digest": "sha256:b50736a00940789be0f1ac4cfb8ab918c1ac1226fb9223703c0847d50b82d9e6",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
@@ -35,12 +35,12 @@
       {
         "id": "dsp/core/engine.cpp",
         "kind": "file",
-        "sha256": "sha256:50ed34a6013301c67d9996d72359fce70b3e8317efbf9079d03e2aa1b448842a"
+        "sha256": "sha256:be4717516d9fb48de4a4fb68f5338a490ac4a060c571a22237514f311c2c1126"
       },
       {
         "id": "dsp/core/engine.h",
         "kind": "file",
-        "sha256": "sha256:60d78a6f39e881846a53c4213972f11be0c40e66a36d5b6897859e52298006d1"
+        "sha256": "sha256:373b70d2e7f6925a79c13e067719b40b36539567d26bf6f3d8df575641e47239"
       },
       {
         "id": "dsp/core/registry.cpp",
@@ -160,7 +160,7 @@
       {
         "id": "tools/dsp-parity/runners.mjs",
         "kind": "file",
-        "sha256": "sha256:83be9da46b7fdb60a469c853eb501d1a3a7eca7872b143a0d3e972a633229260"
+        "sha256": "sha256:2149fe3fd23139997563d401277b0ea5cdc1b893d310f970fc4e5f9b8517d11c"
       },
       {
         "id": "tools/dsp-parity/stimuli.mjs",
@@ -877,7 +877,7 @@
     },
     {
       "name": "IRReverbPlugin",
-      "hash": 2199744560,
+      "hash": 2529061658,
       "byteCapacity": 0,
       "assets": [
         {
@@ -980,7 +980,7 @@
     }
   ],
   "sizes": {
-    "baseline": 975001,
-    "simd": 1071478
+    "baseline": 975148,
+    "simd": 1071488
   }
 }

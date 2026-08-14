@@ -457,6 +457,16 @@ test('group delay preview follows the measured slope and reads zero at 1 kHz', (
     const { before, after } = preview.groupDelayResponse;
     assert.equal(before.length, preview.frequencies.length);
     assert.equal(after.length, preview.frequencies.length);
+    for (const component of ['minimum', 'excess']) {
+        assert.equal(
+            preview.groupDelayResponse[component].before.length,
+            preview.frequencies.length
+        );
+        assert.equal(
+            preview.groupDelayResponse[component].after.length,
+            preview.frequencies.length
+        );
+    }
     const nearest = frequency => {
         let best = 0;
         for (let index = 0; index < preview.frequencies.length; index += 1) {
@@ -473,6 +483,14 @@ test('group delay preview follows the measured slope and reads zero at 1 kHz', (
     // any smoothing beyond the configured pass would blunt it.
     assert.ok(before[nearest(500)] < -1.25,
         `500 Hz comb null was ${before[nearest(500)]} ms`);
+    for (let index = 0; index < before.length; index += 1) {
+        const decomposedBefore = preview.groupDelayResponse.minimum.before[index] +
+            preview.groupDelayResponse.excess.before[index];
+        const decomposedAfter = preview.groupDelayResponse.minimum.after[index] +
+            preview.groupDelayResponse.excess.after[index];
+        assert.ok(Math.abs(before[index] - decomposedBefore) < 1e-4);
+        assert.ok(Math.abs(after[index] - decomposedAfter) < 1e-4);
+    }
     let maximumDifference = 0;
     for (let index = 0; index < before.length; index += 1) {
         const difference = Math.abs(before[index] - after[index]);

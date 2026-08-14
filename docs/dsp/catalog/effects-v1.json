@@ -6050,6 +6050,12 @@
           "maximum": 12
         },
         {
+          "name": "dryEnabled",
+          "type": "boolean",
+          "count": 1,
+          "default": true
+        },
+        {
           "name": "dryLevel",
           "type": "number",
           "count": 1,
@@ -7253,7 +7259,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "20fb170009524684de3ee674f8fe20c4d8d5d64eb56f0a61d23d1e6066890464",
-    "privateLayoutSha256": "46b03b458f10f26ff6a07e0cbbb74acbdd08ce99320fe51582728a8535fb1277"
+    "publicCatalogSha256": "1f7621279e4fd1cae842bda2498e76f8afbdd2c05990b246732947b520818d62",
+    "privateLayoutSha256": "e63194ca2bd43f224ade8e5b387a89f68678c9e8c838f4a8faca600a61521c84"
   }
 }

@@ -24,20 +24,22 @@ Abra **Measurement settings** para ajustar:
 
 Os detalhes mostram se o comprimento atual é suficiente, o comprimento e o tempo de estabilização recomendados e o tempo total da medição. As recomendações servem de orientação; aplique-as quando forem adequadas aos efeitos medidos.
 
-Sequence Length, Stabilization Periods e Averages ficam desativados somente com Unit Impulse. Alternar entre Frequency, Phase, Group Delay e Impulse muda apenas o gráfico, sem refazer a medição.
+Sequence Length, Stabilization Periods e Averages ficam desativados somente com Unit Impulse. Alternar entre Frequency, Phase, Min Group Delay, Excess Group Delay e Impulse muda apenas o gráfico, sem refazer a medição.
 
 ## Leitura dos gráficos
 
+- Use os botões de opção **Graph** fora do gráfico para escolher a resposta exibida.
 - **Frequency** mostra o nível por frequência.
 - **Phase** mostra a fase por frequência.
-- **Group Delay** mostra o atraso dependente da frequência.
+- **Min Group Delay** mostra o atraso implícito na parte de fase mínima da resposta de magnitude.
+- **Excess Group Delay** mostra o atraso restante depois de remover a parte de fase mínima, facilitando separar atraso puro e outros tempos de fase não mínima.
 - **Impulse** mostra a resposta ao longo do tempo.
 
-O gráfico sempre mostra **Before** e **After**. Mova o ponteiro para ler as duas curvas na mesma frequência ou instante; ao passar sobre **Before**, **After** fica oculto temporariamente para facilitar a comparação. **Smoothing (oct)** e **Impulse Range (ms)** permanecem visíveis em todos os gráficos para que o layout não se mova. Smoothing fica ativo em Frequency e Group Delay; Impulse Range fica ativo em Impulse. Os controles que não afetam o gráfico escolhido ficam desativados. Cada curva de frequência é referenciada separadamente a 0 dB; cada impulso é escalado pelo pico da própria resposta completa e exibido de -2 ms até o Impulse Range selecionado.
+O gráfico sempre mostra **Before** e **After**. Mova o ponteiro para ler as duas curvas na mesma frequência ou instante; ao passar sobre **Before**, **After** fica oculto temporariamente para facilitar a comparação. **Smoothing (oct)** e **Impulse Range (ms)** permanecem visíveis em todos os gráficos para que o layout não se mova. Smoothing fica ativo em Frequency e nos dois gráficos de Group Delay; Impulse Range fica ativo em Impulse. Os controles que não afetam o gráfico escolhido ficam desativados. Cada curva de frequência é referenciada separadamente a 0 dB; cada impulso é escalado pelo pico da própria resposta completa e exibido de -2 ms até o Impulse Range selecionado.
 
 ## Como funciona a medição
 
-Cada medição captura o pipeline ativo, suas configurações e seu roteamento, além das respostas de alto-falante selecionadas. Os gráficos mostram as respostas resultantes de frequência, fase, atraso de grupo e impulso; **After** compensa a latência informada pelo pipeline.
+Cada medição captura o pipeline ativo, suas configurações e seu roteamento, além das respostas de alto-falante selecionadas. Os gráficos mostram as respostas resultantes de frequência, fase, atraso de grupo mínimo, atraso de grupo excedente e impulso; **After** compensa a latência informada pelo pipeline.
 
 MLS e TSP são adequados à medição geral de resposta. Se delay, reverb ou ressonância ultrapassar a janela de medição, o resultado pode se sobrepor; aumente **Sequence Length**. **Unit Impulse** registra diretamente a resposta por um período limitado, portanto caudas muito longas podem ser cortadas.
 

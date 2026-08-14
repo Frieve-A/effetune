@@ -260,7 +260,7 @@ Pour retirer la réponse propre à l’interface audio, reliez directement sa so
 
 Les mesures contenant des données de réponse impulsionnelle affichent un graphique **Réponse impulsionnelle** normalisé dans les résultats. La vue initiale couvre 0 à 10 ms à partir du début détecté. Utilisez la molette ou les boutons pour modifier l’échelle temporelle, puis faites glisser le graphique ou utilisez le curseur pour vous déplacer. La sélection d’un point met le graphique à jour ; **Tous (moyenne)** affiche le premier point dont la réponse impulsionnelle a été enregistrée et l’identifie au-dessus du graphique. Utilisez **Exporter la réponse impulsionnelle (WAV)** sous le graphique pour enregistrer la réponse complète et non normalisée du point affiché dans un fichier WAV mono à virgule flottante 32 bits, à la fréquence d’échantillonnage de la mesure.
 
-Pour examiner la fréquence, la phase, le retard de groupe et l'impulsion du pipeline actif, avec jusqu'à quatre sorties et des réponses de haut-parleurs enregistrées, consultez le [guide de Pipeline Analyzer](pipeline-analyzer.md).
+Pour examiner la fréquence, la phase, le retard de groupe minimal, le retard de groupe excédentaire et l'impulsion du pipeline actif, avec jusqu'à quatre sorties et des réponses de haut-parleurs enregistrées, consultez le [guide de Pipeline Analyzer](pipeline-analyzer.md).
 
 ## Combinaisons d'effets courantes
 

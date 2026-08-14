@@ -271,9 +271,9 @@ IR Reverb는 가져온 임펄스 응답(IR)과 신호을 컨볼루션하여 방,
 
 ### 음질 향상 가이드
 
-- 은은한 룸감을 더하려면 짧은 IR을 사용하고 **Dry**를 0 dB, **Wet**을 -18~-12 dB, **Pre Delay**를 짧게 설정합니다.
+- 은은한 룸감을 더하려면 짧은 IR을 사용하고 **Dry**를 켠 상태에서 **Dry Level**을 0 dB, **Wet Level**을 -18~-12 dB, **Pre Delay**를 짧게 설정합니다.
 - 콘서트홀의 넓이를 더하려면 stereo 또는 True Stereo IR을 사용하고, 너무 긴 tail은 **Decay**와 **Trim**으로 줄입니다.
-- send/return 구성에서는 **Matrix**로 다른 bus에 보내고 **Dry**를 -96 dB, **Wet**을 0 dB로 둔 뒤 send level로 양을 조절합니다.
+- send/return 구성에서는 **Matrix**로 다른 bus에 보내고 **Dry**를 끈 뒤 **Wet Level**을 0 dB로 설정하고 send level로 양을 조절합니다.
 - 같은 결과를 재현하려면 원본 IR 파일과 출처·라이선스를 보관하십시오. 바이트가 같으면 라이브러리 ID도 같습니다.
 
 ### 파라미터
@@ -281,8 +281,9 @@ IR Reverb는 가져온 임펄스 응답(IR)과 신호을 컨볼루션하여 방,
 - **Channel Mode**: **Auto**는 1채널 IR을 Mono로, 스테레오 채널을 선택한 4채널 IR을 True Stereo로, IR 채널 수와 선택 채널 수가 같으면 Independent로, 그 밖의 경우에는 Diagonal Matrix로 설정합니다. 실제로 선택된 모드는 메뉴 오른쪽에 표시됩니다. Mono, Independent, True Stereo(LL/LR/RL/RR), crossfeed가 없는 Diagonal Matrix를 직접 선택할 수도 있습니다.
 - **Latency**: Zero 또는 128/256/512/1024 samples입니다. 값이 크면 처리 부담은 줄지만 wet path 지연이 늘며, Zero는 Full이 필요합니다.
 - **Convolution Rate**: Auto, Full, Half, Quarter입니다. Auto에서 실제 선택된 rate는 메뉴 오른쪽에 표시됩니다. 낮은 rate는 부하와 wet 대역폭을 줄이며 Quarter는 176.4 kHz 이상이 필요합니다.
-- **Dry**: 원음 레벨을 정합니다. -96 dB에서는 원음이 완전히 음소거되어 완전 wet 효과나 return bus에 적합합니다.
-- **Wet**: 컨볼루션 신호 레벨(-96~+12 dB)입니다. 기본값은 일반적인 insert 사용에 맞춘 -15 dB입니다. send/return 구성에서는 0 dB로 설정하고 send level로 리버브 양을 조절합니다.
+- **Wet Level**: 컨볼루션 신호 레벨(-96~+12 dB)입니다. 기본값은 일반적인 insert 사용에 맞춘 -15 dB입니다. send/return 구성에서는 0 dB로 설정하고 send level로 리버브 양을 조절합니다.
+- **Dry**: 원음을 활성화합니다. 기본값은 켜짐이며, 끄면 **Dry Level** 설정값을 유지하면서 원음을 완전히 제거합니다.
+- **Dry Level**: **Dry**가 켜져 있을 때 원음 레벨(-96~+12 dB)을 정합니다. -96 dB로 설정해도 원음이 음소거됩니다.
 - **Pre Delay**: wet 신호만 0~500 ms 지연합니다.
 - **Direct Cut**은 감지한 직접음을 제거하고, **Cut Offset**은 절단점을 -20~+50 ms 이동합니다. 정규화 기준은 자르기 전 IR로 유지되므로 Direct Cut을 켜도 남은 잔향 꼬리의 레벨이 커지지 않습니다.
 - **Decay**는 감쇠를 10~400%로 바꿉니다. 100%는 원본 상태입니다.
@@ -296,9 +297,9 @@ IR Reverb는 가져온 임펄스 응답(IR)과 신호을 컨볼루션하여 방,
 
 Mono는 하나의 IR을 적용하고 Independent는 채널을 분리하며 True Stereo는 LL/LR/RL/RR 경로를 사용합니다. Diagonal Matrix는 같은 번호의 입출력만 연결합니다. Auto에서는 스테레오 채널을 선택한 모든 4채널 IR을 이 순서로 해석하므로, Quad 등 다른 4채널 레이아웃에는 Independent 또는 Diagonal Matrix를 직접 선택하십시오. True Stereo pair는 이름 끝이 `L`/`R` 또는 `Left`/`Right`로 대응하는 파일을 함께 선택합니다.
 
-가져온 IR 파일은 **Impulse Response Library**에 저장되며 원본 파일명으로 검색하거나 불러오고 삭제할 수 있습니다. 웹 앱에서는 브라우저 안에 저장되므로 사이트 데이터를 삭제하거나 브라우저가 저장 공간을 정리하면 사라질 수 있습니다. 데스크톱 앱에서는 애플리케이션 데이터로 저장됩니다. 필요한 IR은 별도 사본을 보관하십시오.
+가져온 IR 파일은 **Impulse Response Library**에 저장되며 원본 파일명으로 검색하거나 불러오고 삭제할 수 있습니다. WAV 오디오가 들어 있는 `.irs` 확장자 파일은 이름을 바꾸지 않고 가져올 수 있습니다. 웹 앱에서는 브라우저 안에 저장되므로 사이트 데이터를 삭제하거나 브라우저가 저장 공간을 정리하면 사라질 수 있습니다. 데스크톱 앱에서는 애플리케이션 데이터로 저장됩니다. 필요한 IR은 별도 사본을 보관하십시오.
 
-공유 URL과 preset은 IR을 식별하지만 오디오 데이터 자체는 포함하지 않습니다. 해당 IR을 사용할 수 없으면 wet 소리가 나지 않으므로 다시 가져오거나 선택하십시오. 다른 IR로 바꿀 수도 있습니다. dry 신호는 **Dry** 설정을 따릅니다. [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/), [Freesound](https://freesound.org/)에서 자료를 찾을 수 있지만 파일별 라이선스(CC0, CC BY, CC BY-NC 등), 제작자, 표시 의무, 상업 이용 가능 여부는 EffeTune 외부에 기록하십시오. EffeTune은 라이선스 정보를 저장하거나 검증하지 않습니다.
+공유 URL과 preset은 IR을 식별하지만 오디오 데이터 자체는 포함하지 않습니다. 해당 IR을 사용할 수 없으면 wet 소리가 나지 않으므로 다시 가져오거나 선택하십시오. 다른 IR로 바꿀 수도 있습니다. 원음은 **Dry**와 **Dry Level** 설정을 따릅니다. [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/), [Freesound](https://freesound.org/)에서 자료를 찾을 수 있지만 파일별 라이선스(CC0, CC BY, CC BY-NC 등), 제작자, 표시 의무, 상업 이용 가능 여부는 EffeTune 외부에 기록하십시오. EffeTune은 라이선스 정보를 저장하거나 검증하지 않습니다.
 
 ## RS Reverb
 

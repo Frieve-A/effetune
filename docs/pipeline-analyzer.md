@@ -24,20 +24,22 @@ Open **Measurement settings** for these controls:
 
 The details show whether the current length is sufficient, the recommended length and stabilization time, and the total measurement time. Recommendations are guidance; apply them when they match the effects you are measuring.
 
-Sequence Length, Stabilization Periods, and Averages are disabled only for Unit Impulse. Changing Frequency, Phase, Group Delay, or Impulse only changes the displayed graph and does not remeasure.
+Sequence Length, Stabilization Periods, and Averages are disabled only for Unit Impulse. Changing Frequency, Phase, Min Group Delay, Excess Group Delay, or Impulse only changes the displayed graph and does not remeasure.
 
 ## Reading the graphs
 
+- Use the **Graph** radio buttons above the graph to select the response to display.
 - **Frequency** shows level versus frequency.
 - **Phase** shows phase versus frequency.
-- **Group Delay** shows frequency-dependent delay.
+- **Min Group Delay** shows the delay implied by the minimum-phase part of the magnitude response.
+- **Excess Group Delay** shows the remaining delay after the minimum-phase part is removed, making pure delay and other non-minimum-phase timing easier to distinguish.
 - **Impulse** shows the response over time.
 
-The graph always shows **Before** and **After**. Move the pointer across the graph to read both curves at the same frequency or time; moving over **Before** temporarily hides **After** for an unobstructed comparison. **Smoothing (oct)** and **Impulse Range (ms)** remain visible for every graph so the layout does not move. Smoothing is enabled for Frequency and Group Delay; Impulse Range is enabled for Impulse. Controls that do not affect the selected graph are disabled. Each frequency curve is independently referenced to 0 dB, while each impulse is independently scaled to its full-response peak and displayed from -2 ms to the selected Impulse Range.
+The graph always shows **Before** and **After**. Move the pointer across the graph to read both curves at the same frequency or time; moving over **Before** temporarily hides **After** for an unobstructed comparison. **Smoothing (oct)** and **Impulse Range (ms)** remain visible for every graph so the layout does not move. Smoothing is enabled for Frequency and both Group Delay graphs; Impulse Range is enabled for Impulse. Controls that do not affect the selected graph are disabled. Each frequency curve is independently referenced to 0 dB, while each impulse is independently scaled to its full-response peak and displayed from -2 ms to the selected Impulse Range.
 
 ## How the measurement works
 
-Each measurement captures the active pipeline, its current settings and routing, and any selected speaker responses. The graphs show the resulting frequency, phase, group-delay, and impulse responses; **After** compensates for latency reported by the pipeline.
+Each measurement captures the active pipeline, its current settings and routing, and any selected speaker responses. The graphs show the resulting frequency, phase, minimum-group-delay, excess-group-delay, and impulse responses; **After** compensates for latency reported by the pipeline.
 
 MLS and TSP are best for general response measurement. If delay, reverb, or ringing extends beyond the selected measurement window, the result can overlap itself; increase **Sequence Length**. **Unit Impulse** directly records the response for a limited time, so exceptionally long tails can be cut off.
 

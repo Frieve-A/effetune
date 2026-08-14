@@ -721,15 +721,16 @@ export function packHumGeneratorPluginParams(params = {}) {
   return packed;
 }
 
-export const IRReverbPlugin_PARAMS_HASH = 0x831d7030;
+export const IRReverbPlugin_PARAMS_HASH = 0x96be6b1a;
 export function packIRReverbPluginParams(params = {}) {
-  const packed = new Float32Array(6);
+  const packed = new Float32Array(7);
   packed[0] = (() => { const index = ["auto","mono","indep","true","multi"].indexOf(params["cm"]); return index < 0 ? 0 : index; })();
   packed[1] = (() => { const index = ["0","128","256","512","1024"].indexOf(params["lt"]); return index < 0 ? 1 : index; })();
   packed[2] = (() => { const index = ["auto","full","half","quarter"].indexOf(params["cr"]); return index < 0 ? 0 : index; })();
   packed[3] = (() => { const value = params["dw"]; if (!(typeof value === 'number' && Number.isFinite(value))) return -15; if (value < -96) return -96; if (value > 12) return 12; return value; })();
-  packed[4] = (() => { const value = params["dl"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -96) return -96; if (value > 12) return 12; return value; })();
-  packed[5] = (() => { const value = params["pd"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < 0) return 0; if (value > 500) return 500; return value; })();
+  packed[4] = (params["de"] === true || params["de"] === 1 ? 1 : params["de"] === false || params["de"] === 0 ? 0 : 1);
+  packed[5] = (() => { const value = params["dl"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -96) return -96; if (value > 12) return 12; return value; })();
+  packed[6] = (() => { const value = params["pd"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < 0) return 0; if (value > 500) return 500; return value; })();
   return packed;
 }
 
@@ -1540,7 +1541,7 @@ export const DSP_PARAM_LAYOUTS = Object.freeze({
   HornResonatorPlugin: Object.freeze({ hash: HornResonatorPlugin_PARAMS_HASH, floatCount: 8 }),
   HornResonatorPlusPlugin: Object.freeze({ hash: HornResonatorPlusPlugin_PARAMS_HASH, floatCount: 8 }),
   HumGeneratorPlugin: Object.freeze({ hash: HumGeneratorPlugin_PARAMS_HASH, floatCount: 6 }),
-  IRReverbPlugin: Object.freeze({ hash: IRReverbPlugin_PARAMS_HASH, floatCount: 6 }),
+  IRReverbPlugin: Object.freeze({ hash: IRReverbPlugin_PARAMS_HASH, floatCount: 7 }),
   LevelMeterPlugin: Object.freeze({ hash: LevelMeterPlugin_PARAMS_HASH, floatCount: 0 }),
   LoPassFilterPlugin: Object.freeze({ hash: LoPassFilterPlugin_PARAMS_HASH, floatCount: 2 }),
   LoudnessEqualizerPlugin: Object.freeze({ hash: LoudnessEqualizerPlugin_PARAMS_HASH, floatCount: 8 }),
@@ -1635,7 +1636,7 @@ export const DSP_PARAM_PACKERS = new Map([
   ["HornResonatorPlugin", Object.freeze({ pack: packHornResonatorPluginParams, hash: HornResonatorPlugin_PARAMS_HASH, floatCount: 8 })],
   ["HornResonatorPlusPlugin", Object.freeze({ pack: packHornResonatorPlusPluginParams, hash: HornResonatorPlusPlugin_PARAMS_HASH, floatCount: 8 })],
   ["HumGeneratorPlugin", Object.freeze({ pack: packHumGeneratorPluginParams, hash: HumGeneratorPlugin_PARAMS_HASH, floatCount: 6 })],
-  ["IRReverbPlugin", Object.freeze({ pack: packIRReverbPluginParams, hash: IRReverbPlugin_PARAMS_HASH, floatCount: 6 })],
+  ["IRReverbPlugin", Object.freeze({ pack: packIRReverbPluginParams, hash: IRReverbPlugin_PARAMS_HASH, floatCount: 7 })],
   ["LevelMeterPlugin", Object.freeze({ pack: packLevelMeterPluginParams, hash: LevelMeterPlugin_PARAMS_HASH, floatCount: 0 })],
   ["LoPassFilterPlugin", Object.freeze({ pack: packLoPassFilterPluginParams, hash: LoPassFilterPlugin_PARAMS_HASH, floatCount: 2 })],
   ["LoudnessEqualizerPlugin", Object.freeze({ pack: packLoudnessEqualizerPluginParams, hash: LoudnessEqualizerPlugin_PARAMS_HASH, floatCount: 8 })],
@@ -1735,7 +1736,7 @@ export const DSP_AUTOMATION_CATALOG = Object.freeze({
   HornResonatorPlugin: Object.freeze([freezeAutomationDescriptor({"key":"wg","arrayKey":"","objectArrayKey":"","memberKey":"","element":0,"field":"waveguideGain","packedOffset":7,"kind":"float","eligibility":"continuous","normalization":"linear","minimum":-36,"maximum":36,"default":30,"packedDefault":30,"stepCount":0,"title":"Waveguide Gain","shortTitle":"Waveguide Gain","unit":"dB","safetyFlags":0})]),
   HornResonatorPlusPlugin: Object.freeze([freezeAutomationDescriptor({"key":"wg","arrayKey":"","objectArrayKey":"","memberKey":"","element":0,"field":"waveguideGain","packedOffset":7,"kind":"float","eligibility":"continuous","normalization":"linear","minimum":-36,"maximum":36,"default":30,"packedDefault":30,"stepCount":0,"title":"Waveguide Gain","shortTitle":"Waveguide Gain","unit":"dB","safetyFlags":0})]),
   HumGeneratorPlugin: Object.freeze([freezeAutomationDescriptor({"key":"in","arrayKey":"","objectArrayKey":"","memberKey":"","element":0,"field":"instability","packedOffset":4,"kind":"float","eligibility":"continuous","normalization":"linear","minimum":0,"maximum":10,"default":1,"packedDefault":1,"stepCount":0,"title":"Instability","shortTitle":"Instability","unit":"%","safetyFlags":0}), freezeAutomationDescriptor({"key":"lv","arrayKey":"","objectArrayKey":"","memberKey":"","element":0,"field":"level","packedOffset":5,"kind":"float","eligibility":"continuous","normalization":"linear","minimum":-80,"maximum":0,"default":-40,"packedDefault":-40,"stepCount":0,"title":"Level","shortTitle":"Level","unit":"dB","safetyFlags":0})]),
-  IRReverbPlugin: Object.freeze([freezeAutomationDescriptor({"key":"dw","arrayKey":"","objectArrayKey":"","memberKey":"","element":0,"field":"wetLevel","packedOffset":3,"kind":"float","eligibility":"continuous","normalization":"linear","minimum":-96,"maximum":12,"default":-15,"packedDefault":-15,"stepCount":0,"title":"Wet Level","shortTitle":"Wet Level","unit":"dB","safetyFlags":0}), freezeAutomationDescriptor({"key":"dl","arrayKey":"","objectArrayKey":"","memberKey":"","element":0,"field":"dryLevel","packedOffset":4,"kind":"float","eligibility":"continuous","normalization":"linear","minimum":-96,"maximum":12,"default":0,"packedDefault":0,"stepCount":0,"title":"Dry Level","shortTitle":"Dry Level","unit":"dB","safetyFlags":0})]),
+  IRReverbPlugin: Object.freeze([freezeAutomationDescriptor({"key":"dw","arrayKey":"","objectArrayKey":"","memberKey":"","element":0,"field":"wetLevel","packedOffset":3,"kind":"float","eligibility":"continuous","normalization":"linear","minimum":-96,"maximum":12,"default":-15,"packedDefault":-15,"stepCount":0,"title":"Wet Level","shortTitle":"Wet Level","unit":"dB","safetyFlags":0}), freezeAutomationDescriptor({"key":"dl","arrayKey":"","objectArrayKey":"","memberKey":"","element":0,"field":"dryLevel","packedOffset":5,"kind":"float","eligibility":"continuous","normalization":"linear","minimum":-96,"maximum":12,"default":0,"packedDefault":0,"stepCount":0,"title":"Dry Level","shortTitle":"Dry Level","unit":"dB","safetyFlags":0})]),
   LevelMeterPlugin: Object.freeze([]),
   LoPassFilterPlugin: Object.freeze([]),
   LoudnessEqualizerPlugin: Object.freeze([]),

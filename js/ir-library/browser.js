@@ -97,7 +97,7 @@ export function openIrLibraryBrowser({ service, onLoad, audioManager, onClose } 
   const importInput = element('input');
   importInput.type = 'file';
   importInput.multiple = true;
-  importInput.accept = 'audio/*,.wav,.wave,.aif,.aiff,.flac,.mp3,.ogg,.m4a';
+  importInput.accept = 'audio/*,.wav,.wave,.aif,.aiff,.flac,.mp3,.ogg,.m4a,.irs';
   importInput.hidden = true;
   const folderInput = element('input');
   folderInput.type = 'file';

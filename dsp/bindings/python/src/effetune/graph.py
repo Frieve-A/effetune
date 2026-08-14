@@ -131,7 +131,11 @@ def _encode_graph_descriptor(
             flags = 1
             if node["id"] in asset_node_ids:
                 flags |= 2
-            if node["type"] != "IRReverb" or node["parameters"]["dryLevel"] <= -96:
+            if (
+                node["type"] != "IRReverb"
+                or node["parameters"]["dryEnabled"] is False
+                or node["parameters"]["dryLevel"] <= -96
+            ):
                 flags |= 4
         string_offset, string_length = node_strings[index]
         struct.pack_into(
@@ -317,8 +321,8 @@ def _compile_error(
     message = "the native DSP Graph could not be prepared"
     if unsupported:
         message = (
-            "IRReverb must be wet-only in a Graph; set dryLevel to -96 dB "
-            "(the parameter minimum) and use the external dry edge."
+            "IRReverb must be wet-only in a Graph; turn dryEnabled off or set "
+            "dryLevel to -96 dB (the parameter minimum), then use the external dry edge."
             if node_type == "IRReverb"
             else "the native DSP Graph requires a capability this build does not support"
         )
@@ -688,9 +692,21 @@ class GraphStream:
         if effect.effect_type == "IRReverb" and parameter_name == "dryLevel":
             if not (
                 effect.parameters["latency"] == 0
+                or effect.parameters["dryEnabled"] is False
                 or (
                     effect.parameters["dryLevel"] <= -96
                     and validated["dryLevel"] <= -96
+                )
+            ):
+                self._raise_reconfiguration(effect, parameter_name)
+            changed_index = 5
+        elif effect.effect_type == "IRReverb" and parameter_name == "dryEnabled":
+            if not (
+                effect.parameters["latency"] == 0
+                or effect.parameters["dryLevel"] <= -96
+                or (
+                    effect.parameters["dryEnabled"] is False
+                    and validated["dryEnabled"] is False
                 )
             ):
                 self._raise_reconfiguration(effect, parameter_name)

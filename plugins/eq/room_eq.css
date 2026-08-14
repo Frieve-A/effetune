@@ -230,28 +230,6 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
 .room-eq-additional-eq-ui .room-eq-additional-eq-response .room-eq-corrected-response-path {
     stroke: #fff;
 }
-.room-eq-response-view-controls {
-    position: absolute;
-    z-index: 4;
-    top: 5px;
-    left: 50%;
-    display: flex;
-    gap: 12px;
-    padding: 2px 7px;
-    color: #ccc;
-    background: rgba(26, 26, 26, 0.88);
-    border-radius: 3px;
-    font-size: 11px;
-    transform: translateX(-50%);
-    white-space: nowrap;
-}
-.room-eq-response-view-controls label {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-    cursor: pointer;
-}
-.room-eq-response-view-controls input { margin: 0; }
 .room-eq-response-legend {
     position: absolute;
     z-index: 4;
@@ -429,14 +407,8 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
 
 body.layout-mobile .room-eq-measurement-row { flex-wrap: wrap !important; }
 body.layout-mobile .room-eq-measurement-row select { flex-basis: calc(100% - 130px); }
-body.layout-mobile .room-eq-response-view-controls {
-    left: 5px;
-    gap: 7px;
-    font-size: 10px;
-    transform: none;
-}
 body.layout-mobile .room-eq-response-legend {
-    top: calc(5px + var(--et-mobile-control-height) + 8px);
+    top: 5px;
     right: 5px;
     font-size: 10px;
 }

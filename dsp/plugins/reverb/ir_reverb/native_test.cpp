@@ -215,8 +215,9 @@ makePayload(const std::vector<float> &ir, std::uint32_t channels, std::uint32_t 
   return payload;
 }
 
-std::array<float, 6> params(float preDelay = 0.0F, float dryLevel = -96.0F) noexcept {
-  return {0.0F, 1.0F, 1.0F, 0.0F, dryLevel, preDelay};
+std::array<float, 7> params(float preDelay = 0.0F, float dryLevel = -96.0F,
+                            float dryEnabled = 1.0F) noexcept {
+  return {0.0F, 1.0F, 1.0F, 0.0F, dryEnabled, dryLevel, preDelay};
 }
 
 struct Harness final {
@@ -245,7 +246,7 @@ struct Harness final {
       descriptor->destroy(kernel);
   }
 
-  void stageParams(const std::array<float, 6> &values) noexcept {
+  void stageParams(const std::array<float, 7> &values) noexcept {
     IR_CHECK(kernel->stageParameters(values.data(), static_cast<std::uint32_t>(values.size()),
                                      descriptor->paramsHash) == ET_OK);
     kernel->applyPendingParameters();
@@ -485,10 +486,11 @@ void compare(const std::vector<float> &actual, const std::vector<float> &expecte
 }
 
 void expectDryOnly(Harness &harness, std::vector<float> &audio, std::uint32_t frameCount,
-                   float dryLevel) {
-  harness.stageParams(params(0.0F, dryLevel));
+                   float dryLevel, float dryEnabled = 1.0F) {
+  harness.stageParams(params(0.0F, dryLevel, dryEnabled));
   const std::vector<float> input = audio;
-  const float dryGain = dryLevel <= -96.0F ? 0.0F : std::pow(10.0F, dryLevel * 0.05F);
+  const float dryGain =
+      dryEnabled == 0.0F || dryLevel <= -96.0F ? 0.0F : std::pow(10.0F, dryLevel * 0.05F);
   const std::uint32_t allocationBefore = effetune::allocation_guard::violationCount();
   {
     effetune::allocation_guard::Scope guard;
@@ -538,6 +540,9 @@ void testDryOnlyUntilMatchingAssetIsActive() {
   for (std::size_t index = 0u; index < freshAudio.size(); ++index)
     freshAudio[index] = static_cast<float>(index + 1u) / 512.0F;
   expectDryOnly(freshStereo, freshAudio, frames, dryLevel);
+  for (std::size_t index = 0u; index < freshAudio.size(); ++index)
+    freshAudio[index] = static_cast<float>(index + 1u) / 512.0F;
+  expectDryOnly(freshStereo, freshAudio, frames, 0.0F, 0.0F);
 
   Harness multichannel(48000.0F, 8u);
   IR_CHECK(multichannel.stageAsset(makeIr(8u, 1u), 8u, kIndependent, 0u, 1u));
@@ -1199,8 +1204,8 @@ int main() {
   effetune::allocation_guard::setAbortOnViolationForTesting(false);
   const effetune::KernelDescriptor *descriptor = et_kernel_descriptor_IRReverbPlugin();
   IR_CHECK(descriptor != nullptr);
-  IR_CHECK(descriptor != nullptr && descriptor->paramsHash == 0x831d7030u);
-  IR_CHECK(descriptor != nullptr && descriptor->paramsFloatCount == 6u);
+  IR_CHECK(descriptor != nullptr && descriptor->paramsHash == 0x96be6b1au);
+  IR_CHECK(descriptor != nullptr && descriptor->paramsFloatCount == 7u);
   IR_CHECK(descriptor != nullptr && descriptor->assetCapacity(0u) == 32u * 1024u * 1024u);
   testDryOnlyUntilMatchingAssetIsActive();
   testPreparationWarmsFromLiveInputWithoutInterruptingDryOutput();

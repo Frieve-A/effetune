@@ -38,7 +38,7 @@
   },
   "performanceBudgetMs": 2500,
   "referenceEngine": "native-group-delay-eq-direct-double-v1",
-  "referenceHash": "561fee25d5b57f940e580e63e28bf544cc41fc6809acbb065ea1c7b7bfef29a8",
+  "referenceHash": "415b6a5d0923bf1040813d5920d9e8a6b730ba5df73ec4256af84c309b13568a",
   "outputFloats": 48000,
   "byteLength": 192000,
   "binary": "case-001.f32"

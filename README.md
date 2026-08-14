@@ -268,7 +268,7 @@ To remove the audio interface's own response, connect its output directly to its
 
 Saved measurements with impulse-response data show a normalized **Impulse Response** plot in the results. It opens at 0–10 ms from the detected onset. Use the mouse wheel or buttons to zoom the time axis, and drag the plot or use the slider to scroll. Selecting a measurement point updates the plot; **All (Average)** displays the first point that has saved impulse-response data and identifies it above the graph. Use **Export Impulse Response (WAV)** below the plot to save the displayed point's complete, unnormalized response as a mono 32-bit floating-point WAV at the measurement sample rate.
 
-To inspect the active pipeline's Frequency, Phase, Group Delay, and Impulse responses—including up to four selected outputs and optional saved speaker responses—see the [Pipeline Analyzer guide](docs/pipeline-analyzer.md).
+To inspect the active pipeline's Frequency, Phase, Min Group Delay, Excess Group Delay, and Impulse responses—including up to four selected outputs and optional saved speaker responses—see the [Pipeline Analyzer guide](docs/pipeline-analyzer.md).
 
 ## Common Effect Combinations
 

@@ -111,8 +111,8 @@ private:
     std::uint32_t tapId = 0;
     std::uint32_t telemetrySequence = 0;
     double telemetryFrames = 0.0;
-    std::array<float, 6> graphParameters{};
-    std::array<float, 6> graphInitialParameters{};
+    std::array<float, 7> graphParameters{};
+    std::array<float, 7> graphInitialParameters{};
     std::uint32_t graphParameterCount = 0u;
     bool graphParametersValid = false;
     bool graphInitialParametersValid = false;

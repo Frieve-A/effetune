@@ -131,29 +131,17 @@ test('Room EQ keeps its inset plot size over the generic mobile SVG rule', () =>
   }
 });
 
-test('Room EQ separates mobile graph view controls from the legend at narrow widths', () => {
-  const mobileCss = readCss('../../effetune-mobile.css');
+test('Room EQ keeps its external graph controls out of the graph overlay', () => {
   const css = readCss('../../plugins/eq/room_eq.css');
 
-  assert.match(
-    getRule(mobileCss, ':root'),
-    /--et-mobile-control-height:\s*40px;/
-  );
-  assert.match(
-    getRule(css, '.room-eq-response-view-controls'),
-    /top:\s*5px;[\s\S]*left:\s*50%;[\s\S]*transform:\s*translateX\(-50%\);/
-  );
+  assert.doesNotMatch(css, /\.room-eq-response-view-controls\s*\{/);
   assert.match(
     getRule(css, '.room-eq-response-legend'),
     /top:\s*5px;[\s\S]*right:\s*7px;/
   );
   assert.match(
-    getRule(css, 'body.layout-mobile .room-eq-response-view-controls'),
-    /left:\s*5px;[\s\S]*transform:\s*none;/
-  );
-  assert.match(
     getRule(css, 'body.layout-mobile .room-eq-response-legend'),
-    /top:\s*calc\(5px\s*\+\s*var\(--et-mobile-control-height\)\s*\+\s*8px\);[\s\S]*right:\s*5px;/
+    /top:\s*5px;[\s\S]*right:\s*5px;/
   );
 });
 

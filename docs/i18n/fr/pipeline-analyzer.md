@@ -24,13 +24,13 @@ Ouvrez **Réglages de mesure** pour modifier les options suivantes :
 
 Les détails indiquent si la longueur actuelle suffit, la longueur et la stabilisation recommandées, ainsi que la durée totale de la mesure. Ces recommandations sont indicatives ; appliquez-les lorsqu'elles correspondent aux effets mesurés.
 
-Longueur de séquence, Périodes de stabilisation et Moyennes sont désactivées uniquement avec Impulsion unitaire. Changer Frequency, Phase, Group Delay ou Impulse ne fait que modifier le graphique affiché, sans relancer la mesure.
+Longueur de séquence, Périodes de stabilisation et Moyennes sont désactivées uniquement avec Impulsion unitaire. Changer Frequency, Phase, Min Group Delay, Excess Group Delay ou Impulse ne fait que modifier le graphique affiché, sans relancer la mesure.
 
 ## Lecture et méthode
 
-**Frequency** affiche le niveau, **Phase** la phase, **Group Delay** le retard selon la fréquence et **Impulse** la réponse temporelle. Le graphique affiche toujours **Avant** et **Après**. Déplacez le pointeur pour lire les deux valeurs ; lorsque vous survolez **Avant**, **Après** est temporairement masqué. Frequency et Group Delay partagent **Lissage (oct)**. Chaque courbe de fréquence est référencée séparément à 0 dB ; chaque impulsion est normalisée sur son propre pic global et affichée de -2 ms jusqu'à la **Plage d'impulsion (ms)** choisie.
+Choisissez la vue avec les boutons **Graph** placés hors du graphique. **Frequency** affiche le niveau, **Phase** la phase, **Min Group Delay** le retard impliqué par la partie à phase minimale de la réponse en amplitude, **Excess Group Delay** le retard restant après son retrait et **Impulse** la réponse temporelle. Le graphique affiche toujours **Avant** et **Après**. Déplacez le pointeur pour lire les deux valeurs ; lorsque vous survolez **Avant**, **Après** est temporairement masqué. Frequency et les deux vues Group Delay partagent **Lissage (oct)**. Chaque courbe de fréquence est référencée séparément à 0 dB ; chaque impulsion est normalisée sur son propre pic global et affichée de -2 ms jusqu'à la **Plage d'impulsion (ms)** choisie.
 
-Chaque mesure capture le pipeline actif, ses réglages et son routage actuels, ainsi que les réponses de haut-parleur sélectionnées. Les graphiques montrent les réponses en fréquence, phase, retard de groupe et impulsion ; **Après** compense la latence indiquée par le pipeline.
+Chaque mesure capture le pipeline actif, ses réglages et son routage actuels, ainsi que les réponses de haut-parleur sélectionnées. Les graphiques montrent les réponses en fréquence, phase, retard de groupe minimal, retard de groupe excédentaire et impulsion ; **Après** compense la latence indiquée par le pipeline.
 
 MLS et TSP conviennent aux mesures générales. Si un delay, une reverb ou une autre traîne dépasse la fenêtre choisie, la réponse peut se chevaucher ; augmentez la **Longueur de séquence**. **Impulsion unitaire** enregistre directement la réponse pendant une durée limitée et peut donc couper une traîne exceptionnellement longue.
 

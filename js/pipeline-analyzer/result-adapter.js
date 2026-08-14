@@ -335,21 +335,48 @@ export function adaptPipelineAnalysisResult(result, provenance = {}) {
         };
     });
     const phaseRange = { minimum: -180, maximum: 180 };
-    const delaySources = styledSources(BEFORE_COLOR, AFTER_COLOR).map(curve => ({
+    const delaySources = property => styledSources(BEFORE_COLOR, AFTER_COLOR).map(curve => ({
         ...curve,
         displayGroupDelayMs: smoothFiniteRuns(
             curve.spectrum?.frequencies,
-            curve.spectrum?.groupDelayMs,
+            curve.spectrum?.[property] ?? curve.spectrum?.groupDelayMs,
             curve.spectrum?.valid,
             displaySettings.smoothingOct
         )
     }));
-    const delayRange = symmetricRange(delaySources, curve => curve.displayGroupDelayMs, 1);
+    const minimumDelaySources = delaySources('minimumGroupDelayMs');
+    const excessDelaySources = delaySources('excessGroupDelayMs');
+    const minimumDelayRange = symmetricRange(
+        minimumDelaySources,
+        curve => curve.displayGroupDelayMs,
+        1
+    );
+    const excessDelayRange = symmetricRange(
+        excessDelaySources,
+        curve => curve.displayGroupDelayMs,
+        1
+    );
     const timeRange = { minimum: -2, maximum: displaySettings.impulseRangeMs };
     const impulseSources = styledSources(BEFORE_IMPULSE_COLOR, AFTER_COLOR, 1).map(curve => ({
         ...curve,
         impulseDivisor: impulseDivisor(curve.impulse)
     }));
+
+    const groupDelayView = (label, curves, range) => ({
+        xLabel: 'Frequency (Hz)',
+        yLabel: label,
+        xTicks: xAxis.ticks,
+        yTicks: linearTicks(range.minimum, range.maximum, value => `${formatNumber(value, 2)} ms`),
+        curves: viewCurves(curves, curve => spectrumPoints(
+            curve,
+            curve.displayGroupDelayMs,
+            xAxis,
+            range,
+            'ms',
+            2,
+            true
+        ))
+    });
 
     const views = {
         frequency: {
@@ -386,21 +413,16 @@ export function adaptPipelineAnalysisResult(result, provenance = {}) {
                 true
             ))
         },
-        groupDelay: {
-            xLabel: 'Frequency (Hz)',
-            yLabel: 'Group delay (ms)',
-            xTicks: xAxis.ticks,
-            yTicks: linearTicks(delayRange.minimum, delayRange.maximum, value => `${formatNumber(value, 2)} ms`),
-            curves: viewCurves(delaySources, curve => spectrumPoints(
-                curve,
-                curve.displayGroupDelayMs,
-                xAxis,
-                delayRange,
-                'ms',
-                2,
-                true
-            ))
-        },
+        minimumGroupDelay: groupDelayView(
+            'Min group delay (ms)',
+            minimumDelaySources,
+            minimumDelayRange
+        ),
+        excessGroupDelay: groupDelayView(
+            'Excess group delay (ms)',
+            excessDelaySources,
+            excessDelayRange
+        ),
         impulse: {
             xLabel: 'Time (ms)',
             yLabel: 'Amplitude',

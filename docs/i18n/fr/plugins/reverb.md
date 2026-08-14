@@ -268,9 +268,9 @@ IR Reverb convolue le signal avec une réponse impulsionnelle (IR) importée afi
 
 ### Guide d'amélioration sonore
 
-- Pour une ambiance discrète, chargez une IR courte, réglez **Dry** sur 0 dB, **Wet** entre -18 et -12 dB et ajoutez un **Pre Delay** bref.
+- Pour une ambiance discrète, chargez une IR courte, laissez **Dry** activé, réglez **Dry Level** sur 0 dB et **Wet Level** entre -18 et -12 dB, puis ajoutez un **Pre Delay** bref.
 - Pour ouvrir un enregistrement vers une grande salle, utilisez une IR stéréo ou True Stereo, puis raccourcissez une traîne trop longue avec **Decay** et **Trim**.
-- En départ/retour, copiez les sources vers un autre bus avec **Matrix**, réglez **Dry** sur -96 dB, laissez **Wet** à 0 dB et dosez l'effet au niveau du départ.
+- En départ/retour, copiez les sources vers un autre bus avec **Matrix**, désactivez **Dry**, réglez **Wet Level** sur 0 dB et dosez l'effet au niveau du départ.
 - Pour reproduire le résultat, conservez le fichier IR original, sa source et sa licence : les mêmes octets donnent le même identifiant.
 
 ### Paramètres
@@ -278,8 +278,9 @@ IR Reverb convolue le signal avec une réponse impulsionnelle (IR) importée afi
 - **Channel Mode** : **Auto** choisit Mono pour une IR à un canal, True Stereo pour une IR à quatre canaux avec une sélection stéréo, Independent lorsque les nombres de canaux correspondent, et Diagonal Matrix dans les autres cas ; le mode retenu apparaît à droite du menu. Vous pouvez aussi choisir explicitement Mono, Independent, True Stereo (trajets LL/LR/RL/RR) ou Diagonal Matrix sans diaphonie.
 - **Latency** : Zero ou 128/256/512/1024 échantillons. Une valeur élevée allège le traitement mais retarde le signal wet ; Zero impose Full.
 - **Convolution Rate** : Auto, Full, Half ou Quarter. Avec Auto, le taux retenu apparaît à droite du menu. Un taux réduit diminue la charge et la bande passante wet ; Quarter exige au moins 176,4 kHz.
-- **Dry** : règle le niveau du signal d'origine. À -96 dB, il le coupe complètement pour un effet entièrement wet ou un retour.
-- **Wet** : niveau du signal convolué, de -96 à +12 dB. La valeur par défaut est de -15 dB pour une utilisation courante en insert ; en départ/retour, réglez-la sur 0 dB et dosez la réverbération avec le niveau de départ.
+- **Wet Level** : niveau du signal convolué, de -96 à +12 dB. La valeur par défaut est de -15 dB pour une utilisation courante en insert ; en départ/retour, réglez-la sur 0 dB et dosez la réverbération avec le niveau de départ.
+- **Dry** : active le signal d'origine. Cette option est activée par défaut ; désactivez-la pour supprimer complètement le signal direct tout en conservant la valeur de **Dry Level**.
+- **Dry Level** : règle le niveau du signal d'origine de -96 à +12 dB lorsque **Dry** est activé. La valeur -96 dB coupe également ce signal.
 - **Pre Delay** : retarde uniquement le signal wet de 0 à 500 ms.
 - **Direct Cut** supprime l'impulsion directe détectée ; **Cut Offset** décale la coupe de -20 à +50 ms. La normalisation conserve l’IR non coupée comme référence : activer Direct Cut n’augmente donc pas le niveau de la queue de réverbération restante.
 - **Decay** remodèle la décroissance de 10% à 400% ; 100% conserve la prise.
@@ -293,9 +294,9 @@ Le temps va de gauche à droite et le niveau de 0 à -90 dB. La courbe EDC conti
 
 Mono applique une IR, Independent sépare les canaux, True Stereo utilise LL/LR/RL/RR et Diagonal Matrix relie uniquement les entrées et sorties correspondantes. En Auto, toute IR à quatre canaux avec une sélection stéréo est interprétée dans cet ordre ; pour une disposition Quad ou une autre disposition à quatre canaux, choisissez explicitement Independent ou Diagonal Matrix. Pour une paire True Stereo, sélectionnez ensemble des fichiers assortis terminés par `L`/`R` ou `Left`/`Right`.
 
-Les fichiers IR importés sont conservés dans **Impulse Response Library**, où vous pouvez les rechercher par leur nom d'origine, les charger ou les supprimer. Dans la version web, ils sont stockés dans le navigateur et peuvent être perdus si vous effacez les données du site ou si le navigateur libère de l'espace. L'application de bureau les conserve dans ses données. Gardez une copie séparée de chaque IR dont vous avez besoin.
+Les fichiers IR importés sont conservés dans **Impulse Response Library**, où vous pouvez les rechercher par leur nom d'origine, les charger ou les supprimer. Les fichiers portant l'extension `.irs` et contenant des données audio WAV peuvent être importés sans être renommés. Dans la version web, ils sont stockés dans le navigateur et peuvent être perdus si vous effacez les données du site ou si le navigateur libère de l'espace. L'application de bureau les conserve dans ses données. Gardez une copie séparée de chaque IR dont vous avez besoin.
 
-Les URL partagées et les presets identifient l'IR, mais n'incluent pas ses données audio. Si l'IR n'est pas disponible, aucun son wet n'est produit ; importez-la ou sélectionnez-la de nouveau, ou choisissez-en une autre. Le signal dry continue selon le réglage **Dry**. Des IR sont disponibles sur [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/) et [Freesound](https://freesound.org/), mais vérifiez la licence de chaque fichier (CC0, CC BY ou CC BY-NC, par exemple) et conservez auteur, source, attribution et autorisation commerciale en dehors d'EffeTune, qui ne stocke ni ne vérifie les informations de licence.
+Les URL partagées et les presets identifient l'IR, mais n'incluent pas ses données audio. Si l'IR n'est pas disponible, aucun son wet n'est produit ; importez-la ou sélectionnez-la de nouveau, ou choisissez-en une autre. Le signal d'origine suit les réglages **Dry** et **Dry Level**. Des IR sont disponibles sur [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/) et [Freesound](https://freesound.org/), mais vérifiez la licence de chaque fichier (CC0, CC BY ou CC BY-NC, par exemple) et conservez auteur, source, attribution et autorisation commerciale en dehors d'EffeTune, qui ne stocke ni ne vérifie les informations de licence.
 
 ## RS Reverb
 

@@ -240,8 +240,8 @@ class GraphDocumentTests(unittest.TestCase):
             "assets": {"impulseResponse": "room-ir"},
         }
         expected = (
-            "IRReverb must be wet-only in a Graph; set dryLevel to -96 dB "
-            "(the parameter minimum) and use the external dry edge."
+            "IRReverb must be wet-only in a Graph; turn dryEnabled off or set "
+            "dryLevel to -96 dB (the parameter minimum), then use the external dry edge."
         )
         builders = [
             ("wet_dry", lambda: wet_dry_graph_document(wet_plus_dry_ir)),
@@ -268,6 +268,11 @@ class GraphDocumentTests(unittest.TestCase):
             parameters=dict(wet_plus_dry_ir["parameters"], dryLevel=-96),
         )
         send_return_graph_document(wet_only_ir)
+        dry_disabled_ir = dict(
+            wet_plus_dry_ir,
+            parameters=dict(wet_plus_dry_ir["parameters"], dryEnabled=False),
+        )
+        send_return_graph_document(dry_disabled_ir)
 
     def test_recipes_reject_a_non_effect_before_deriving_a_node_id(self) -> None:
         for value in ("Volume", 5, None, ["Volume"]):

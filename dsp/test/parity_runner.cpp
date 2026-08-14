@@ -478,7 +478,7 @@ bool runDirectReference(const std::string &type, const Control &control,
   const bool matrix_topology = asset.begin.topology == kTopologyMatrix && path_count >= 1u &&
                                path_count <= 8u && asset.begin.inputCount >= 1u &&
                                asset.begin.inputCount <= path_count;
-  const std::size_t expected_params = room_eq ? 4u : ir_reverb ? 6u : mono_fir ? 2u : 3u;
+  const std::size_t expected_params = room_eq ? 4u : ir_reverb ? 7u : mono_fir ? 2u : 3u;
   const bool valid_room_eq_asset =
       !room_eq || (asset.begin.topology == kTopologyMono && divider == 1u && ir_channels == 1u &&
                    asset.begin.processingChannels == control.channels &&
@@ -669,9 +669,11 @@ bool runDirectReference(const std::string &type, const Control &control,
   }
 
   const float wet_gain = std::pow(10.0F, control.initialParams[3u] * 0.05F);
-  const float dry_gain = std::pow(10.0F, control.initialParams[4u] * 0.05F);
+  const float dry_gain = control.initialParams[4u] == 0.0F || control.initialParams[5u] <= -96.0F
+                             ? 0.0F
+                             : std::pow(10.0F, control.initialParams[5u] * 0.05F);
   const double requested_delay =
-      static_cast<double>(control.initialParams[5u]) * control.sampleRate * 0.001;
+      static_cast<double>(control.initialParams[6u]) * control.sampleRate * 0.001;
   const std::uint32_t delay =
       requested_delay > 0.0 ? static_cast<std::uint32_t>(requested_delay) : 0u;
   output.assign(input.size(), 0.0F);

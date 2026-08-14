@@ -6,12 +6,12 @@ lang: en
 
 # Version History
 
-### Version 2.5.0 (Aug 15, 2026)
+### Version 2.5.0 (Aug 14, 2026)
 - Added Bandwidth Extender, Phase Select EQ and Pitch Shifter HQ effects
 - Added Auto Filter, Auto Pan, Chorus, Frequency Shifter, Phaser and Rotary Speaker effects
 - Expanded Tube Simulator with 6L6GC and KT88 power-tube models, single-ended triode (300B/2A3) circuits, and Pre, Power, and Pre+Power presets
 - Added a low-frequency phase correction mode to Room EQ
-- Added Pipeline Analyzer for viewing the active pipeline's frequency, phase, group delay, and impulse responses across up to four outputs with optional speaker IRs
+- Added Pipeline Analyzer for viewing the active pipeline's frequency, phase, minimum and excess group delay, and impulse responses across up to four outputs with optional speaker IRs
 - Added automatic pipeline latency compensation
 - Added OpenHome remote control support to the desktop app
 - Various minor improvements

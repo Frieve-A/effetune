@@ -34,8 +34,13 @@ const NATIVE_DIRECT_REFERENCE_ENGINES = new Set([
   'native-fir-crossover-direct-double-v1',
   'native-five-band-fir-peq-direct-double-v1',
   'native-group-delay-eq-direct-double-v1',
-  'native-ir-direct-double-v1',
+  'native-ir-direct-double-v2',
   'native-room-eq-direct-double-v1'
+]);
+
+const PINNED_NATIVE_DIRECT_REFERENCE_HASHES = new Map([
+  ['native-ir-direct-double-v2', '415b6a5d0923bf1040813d5920d9e8a6b730ba5df73ec4256af84c309b13568a'],
+  ['native-room-eq-direct-double-v1', '83045565caf287233033c9a0221826e637f07068df1af63eb59cb246b274133f']
 ]);
 
 export const PRODUCTION_NATIVE_PROMOTED_REFERENCE_ENGINE =
@@ -43,6 +48,10 @@ export const PRODUCTION_NATIVE_PROMOTED_REFERENCE_ENGINE =
 
 export function isNativeDirectReferenceEngine(value) {
   return NATIVE_DIRECT_REFERENCE_ENGINES.has(value);
+}
+
+export function pinnedNativeDirectReferenceHash(value) {
+  return PINNED_NATIVE_DIRECT_REFERENCE_HASHES.get(value) ?? null;
 }
 
 export function isProductionNativePromotedReferenceEngine(value) {

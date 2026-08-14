@@ -100,7 +100,8 @@ export function encodeGraphDescriptor(document, instanceIds, assetNodeIds = new 
     if (node.enabled) {
       flags = 1;
       if (assetNodeIds.has(node.id)) flags |= 2;
-      if (node.type !== 'IRReverb' || node.parameters.dryLevel <= -96) flags |= 4;
+      if (node.type !== 'IRReverb' || node.parameters.dryEnabled === false ||
+          node.parameters.dryLevel <= -96) flags |= 4;
     }
     view.setUint32(offset, instanceIds.get(node.id) ?? 0, true);
     view.setUint32(offset + 4, string.offset, true);
@@ -280,7 +281,7 @@ export function graphCompileError(status, diagnostic, state) {
   let message = 'The DSP Graph could not be prepared.';
   if (unsupported) {
     message = nodeType === 'IRReverb'
-      ? 'IRReverb must be wet-only in a Graph; set dryLevel to -96 dB (the parameter minimum) and use the external dry edge.'
+      ? 'IRReverb must be wet-only in a Graph; turn dryEnabled off or set dryLevel to -96 dB (the parameter minimum), then use the external dry edge.'
       : 'The DSP Graph requires a capability this build does not support.';
   }
   return new ErrorType(message, { code, path, nodeId, edgeId });

@@ -1244,6 +1244,7 @@ class IRReverb(Effect):
         latency: Literal[0, 128, 256, 512, 1024] = ...,
         convolution_rate: Literal["auto", "full", "half", "quarter"] = ...,
         wet_level: float = ...,
+        dry_enabled: bool = ...,
         dry_level: float = ...,
         pre_delay: float = ...,
         id: str | None = ...,

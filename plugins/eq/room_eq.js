@@ -1805,12 +1805,7 @@ class RoomEqPlugin extends PluginBase {
     _createResponseViewControls(editor) {
         const graph = editor?.graphContainer;
         if (!graph) return;
-        const controls = document.createElement('div');
-        controls.className = 'room-eq-response-view-controls';
-        controls.setAttribute('role', 'radiogroup');
-        controls.setAttribute('aria-label', this._t('roomEq.graph.view', 'Response graph'));
-        const inputs = {};
-        for (const option of [
+        const options = [
             {
                 value: 'frequency',
                 label: this._t('roomEq.graph.frequency', 'Frequency')
@@ -1820,28 +1815,33 @@ class RoomEqPlugin extends PluginBase {
                 label: this._t('roomEq.graph.phase', 'Phase')
             },
             {
-                value: 'groupDelay',
-                label: this._t('roomEq.graph.groupDelay', 'Group Delay')
+                value: 'minimumGroupDelay',
+                label: this._t('roomEq.graph.minimumGroupDelay', 'Min Group Delay')
+            },
+            {
+                value: 'excessGroupDelay',
+                label: this._t('roomEq.graph.excessGroupDelay', 'Excess Group Delay')
             },
             {
                 value: 'impulse',
                 label: this._t('roomEq.graph.impulse', 'Impulse')
             }
-        ]) {
-            const label = document.createElement('label');
-            const input = document.createElement('input');
-            input.type = 'radio';
-            input.name = `room-eq-response-view-${this.id}`;
-            input.value = option.value;
-            input.checked = this._responseView === option.value;
-            input.autocomplete = 'off';
-            input.addEventListener('change', () => {
-                if (input.checked) this._setResponseView(option.value);
-            });
-            label.append(input, document.createTextNode(option.label));
-            controls.appendChild(label);
-            inputs[option.value] = input;
-        }
+        ];
+        const controls = this.createRadioGroup(
+            this._t('roomEq.parameter.graph', 'Graph'),
+            options,
+            this._responseView,
+            value => this._setResponseView(value)
+        );
+        controls.classList.add('room-eq-response-view-controls');
+        controls.setAttribute('role', 'radiogroup');
+        controls.setAttribute(
+            'aria-label',
+            this._t('roomEq.graph.view', 'Response graph')
+        );
+        const inputs = Object.fromEntries(
+            Array.from(controls.querySelectorAll('input'), input => [input.value, input])
+        );
 
         const overlays = {
             phase: this._createResponseOverlay(
@@ -1902,7 +1902,11 @@ class RoomEqPlugin extends PluginBase {
                         selector: '.room-eq-phase-before',
                         hidden: '.room-eq-phase-after'
                     },
-                    groupDelay: {
+                    minimumGroupDelay: {
+                        selector: '.room-eq-group-delay-before',
+                        hidden: '.room-eq-group-delay-after'
+                    },
+                    excessGroupDelay: {
                         selector: '.room-eq-group-delay-before',
                         hidden: '.room-eq-group-delay-after'
                     },
@@ -1918,7 +1922,8 @@ class RoomEqPlugin extends PluginBase {
                 views: {
                     frequency: { selector: '.room-eq-corrected-response-path' },
                     phase: { selector: '.room-eq-phase-after' },
-                    groupDelay: { selector: '.room-eq-group-delay-after' },
+                    minimumGroupDelay: { selector: '.room-eq-group-delay-after' },
+                    excessGroupDelay: { selector: '.room-eq-group-delay-after' },
                     impulse: { selector: '.room-eq-impulse-after' }
                 }
             }
@@ -1936,7 +1941,7 @@ class RoomEqPlugin extends PluginBase {
             item.addEventListener('mouseenter', () => {
                 emphasis.restore?.();
                 const view = this._responseView;
-                const container = overlays[view]?.response || editor.responseSvg;
+                const container = this._responseHoverContainer(view) || editor.responseSvg;
                 const selector = views[view]?.selector || null;
                 const hiddenSelector = views[view]?.hidden || null;
                 emphasis.restore = this._emphasizeResponsePath(
@@ -1968,7 +1973,7 @@ class RoomEqPlugin extends PluginBase {
         for (const overlay of Object.values(overlays)) {
             graph.append(overlay.grid, overlay.response, overlay.unavailable);
         }
-        graph.append(hoverOverlay, legend, controls);
+        graph.append(hoverOverlay, legend);
         this._responseViewElements = {
             graph,
             controls,
@@ -1981,6 +1986,7 @@ class RoomEqPlugin extends PluginBase {
         };
         this._bindResponseHover(graph);
         this._setResponseView(this._responseView);
+        return controls;
     }
 
     _bindResponseHover(graph) {
@@ -1998,7 +2004,9 @@ class RoomEqPlugin extends PluginBase {
     _responseHoverContainer(view) {
         return view === 'frequency'
             ? this._additionalEqEditor?.responseSvg
-            : this._responseViewElements?.overlays?.[view]?.response;
+            : this._responseViewElements?.overlays?.[
+                this._isGroupDelayView(view) ? 'groupDelay' : view
+            ]?.response;
     }
 
     // Reads the drawn polyline so every view shares one readout path, whatever the
@@ -2054,7 +2062,7 @@ class RoomEqPlugin extends PluginBase {
             return `${this._additionalEqEditor.yToGain(position * 100).toFixed(1)} dB`;
         }
         if (view === 'phase') return `${(180 - position * 360).toFixed(0)}°`;
-        if (view === 'groupDelay') {
+        if (this._isGroupDelayView(view)) {
             const limit = this._groupDelayAxisLimit;
             return `${(limit - position * 2 * limit).toFixed(2)} ms`;
         }
@@ -2124,7 +2132,13 @@ class RoomEqPlugin extends PluginBase {
     }
 
     _setResponseView(view) {
-        this._responseView = ['frequency', 'phase', 'groupDelay', 'impulse'].includes(view)
+        this._responseView = [
+            'frequency',
+            'phase',
+            'minimumGroupDelay',
+            'excessGroupDelay',
+            'impulse'
+        ].includes(view)
             ? view
             : 'frequency';
         const elements = this._responseViewElements;
@@ -2135,7 +2149,7 @@ class RoomEqPlugin extends PluginBase {
         );
         elements.graph.classList.toggle(
             'room-eq-group-delay-view',
-            this._responseView === 'groupDelay'
+            this._isGroupDelayView(this._responseView)
         );
         elements.graph.classList.toggle(
             'room-eq-impulse-view',
@@ -2146,7 +2160,9 @@ class RoomEqPlugin extends PluginBase {
         }
         this._clearResponseHover();
         if (this._responseView === 'phase') this._drawPhaseResponse();
-        else if (this._responseView === 'groupDelay') this._drawGroupDelayResponse();
+        else if (this._isGroupDelayView(this._responseView)) {
+            this._drawGroupDelayResponse();
+        }
         else if (this._responseView === 'impulse') this._drawImpulseResponse();
         else {
             this._additionalEqEditor?.updateMarkers();
@@ -2331,13 +2347,19 @@ class RoomEqPlugin extends PluginBase {
             ROOM_EQ_GROUP_DELAY_LIMITS_MS[ROOM_EQ_GROUP_DELAY_LIMITS_MS.length - 1];
     }
 
+    _isGroupDelayView(view) {
+        return view === 'minimumGroupDelay' || view === 'excessGroupDelay';
+    }
+
     _drawGroupDelayResponse() {
-        if (this._responseView !== 'groupDelay') return;
+        if (!this._isGroupDelayView(this._responseView)) return;
         const graph = this._prepareFrequencyGraph('groupDelay');
         if (!graph) return;
         const { grid, response, unavailable, width, height } = graph;
         const preview = this._lastDesign?.previews?.find(Boolean);
-        const groupDelayPreview = preview?.groupDelayResponse;
+        const groupDelayPreview = this._responseView === 'minimumGroupDelay'
+            ? preview?.groupDelayResponse?.minimum
+            : preview?.groupDelayResponse?.excess;
         const hasPreview = preview?.frequencies?.length > 1 &&
             preview.frequencies.length === groupDelayPreview?.before?.length &&
             groupDelayPreview.before.length === groupDelayPreview.after?.length;
@@ -2367,7 +2389,7 @@ class RoomEqPlugin extends PluginBase {
                 class: className
             });
         }
-        this._applyBeforeLegendHover('groupDelay', response);
+        this._applyBeforeLegendHover(this._responseView, response);
     }
 
     _waveformPath(samples, width, height, peak, left = 0) {
@@ -2633,8 +2655,11 @@ class RoomEqPlugin extends PluginBase {
             this._drawImpulseResponse();
         };
         this._syncCorrectionPreview();
-        container.appendChild(this._additionalEqEditor.createUI());
-        this._createResponseViewControls(this._additionalEqEditor);
+        const additionalEqUi = this._additionalEqEditor.createUI();
+        const responseViewControls = this._createResponseViewControls(
+            this._additionalEqEditor
+        );
+        container.append(responseViewControls, additionalEqUi);
 
         const statusLine = document.createElement('div');
         statusLine.className = 'room-eq-status-line';

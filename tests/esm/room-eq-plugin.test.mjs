@@ -600,17 +600,30 @@ test('Room EQ graph draws measured, correction, and corrected response curves', 
     editor.dispose();
 });
 
-test('Room EQ offers short Frequency, Phase, Group Delay, and Impulse graph view captions', () => {
+test('Room EQ offers an external Graph radio row with separate group delay views', () => {
+    assert.match(pluginSource,
+        /this\.createRadioGroup\(\s*this\._t\('roomEq\.parameter\.graph', 'Graph'\)/);
+    assert.match(pluginSource,
+        /controls\.setAttribute\('role', 'radiogroup'\);/);
+    assert.match(pluginSource,
+        /controls\.setAttribute\(\s*'aria-label',\s*this\._t\('roomEq\.graph\.view', 'Response graph'\)\s*\);/);
     assert.match(pluginSource,
         /value: 'frequency',\s+label: this\._t\(\s*'roomEq\.graph\.frequency', 'Frequency'/);
     assert.match(pluginSource,
         /value: 'phase',\s+label: this\._t\('roomEq\.graph\.phase', 'Phase'/);
     assert.match(pluginSource,
-        /value: 'groupDelay',\s+label: this\._t\('roomEq\.graph\.groupDelay', 'Group Delay'/);
+        /value: 'minimumGroupDelay',\s+label: this\._t\('roomEq\.graph\.minimumGroupDelay', 'Min Group Delay'/);
+    assert.match(pluginSource,
+        /value: 'excessGroupDelay',\s+label: this\._t\('roomEq\.graph\.excessGroupDelay', 'Excess Group Delay'/);
     assert.match(pluginSource,
         /value: 'impulse',\s+label: this\._t\('roomEq\.graph\.impulse', 'Impulse'/);
     assert.match(pluginSource,
-        /\['frequency', 'phase', 'groupDelay', 'impulse'\]\.includes\(view\)/);
+        /'frequency',\s+'phase',\s+'minimumGroupDelay',\s+'excessGroupDelay',\s+'impulse'/);
+    assert.match(pluginSource, /graph\.append\(hoverOverlay, legend\);/);
+    assert.match(pluginSource,
+        /container\.append\(responseViewControls, additionalEqUi\);/);
+    assert.doesNotMatch(pluginCss,
+        /\.room-eq-response-view-controls\s*\{[^}]*position:\s*absolute/);
     assert.match(pluginCss, /\.room-eq-phase-view \.room-eq-additional-eq-grid/);
     assert.match(pluginCss, /\.room-eq-group-delay-view \.room-eq-additional-eq-grid/);
     assert.match(pluginCss, /\.room-eq-impulse-view \.room-eq-additional-eq-grid/);
@@ -626,6 +639,8 @@ test('Room EQ offers short Frequency, Phase, Group Delay, and Impulse graph view
         pluginSource,
         /'room-eq-response-legend-before',[\s\S]*?selector: '\.room-eq-group-delay-before',\s*hidden: '\.room-eq-group-delay-after'/
     );
+    assert.match(pluginSource,
+        /const container = this\._responseHoverContainer\(view\) \|\| editor\.responseSvg;/);
 });
 
 test('Room EQ graph shows a color-matched legend in its upper-right corner', () => {
@@ -765,16 +780,20 @@ test('Room EQ group delay graph plots both curves on a rounded millisecond axis'
     const grid = svgStub();
     const response = svgStub(400, 200);
     const unavailable = { hidden: false };
-    plugin._responseView = 'groupDelay';
+    plugin._responseView = 'minimumGroupDelay';
     plugin._responseViewElements = {
         overlays: { groupDelay: { grid, response, unavailable } }
     };
+    assert.equal(plugin._responseHoverContainer('minimumGroupDelay'), response);
+    assert.equal(plugin._responseHoverContainer('excessGroupDelay'), response);
     plugin._lastDesign = {
         previews: [{
             frequencies: new Float32Array([20, 100, 1000, 10000]),
             groupDelayResponse: {
-                before: new Float32Array([7, 3, 0, -1]),
-                after: new Float32Array([2, 1, 0, -0.5])
+                minimum: {
+                    before: new Float32Array([7, 3, 0, -1]),
+                    after: new Float32Array([2, 1, 0, -0.5])
+                }
             }
         }]
     };
@@ -845,9 +864,9 @@ test('Room EQ graph hover dots each curve and reads it out beside the legend', (
     assert.equal(value.textContent, '');
     assert.equal(cursorReadout.textContent, '');
 
-    plugin._responseView = 'groupDelay';
+    plugin._responseView = 'excessGroupDelay';
     plugin._groupDelayAxisLimit = 20;
-    assert.equal(plugin._formatHoverValue('groupDelay', 50, 200), '10.00 ms');
+    assert.equal(plugin._formatHoverValue('excessGroupDelay', 50, 200), '10.00 ms');
     plugin._impulseTimeAxis = { startMs: -2, durationMs: 6 };
     assert.equal(plugin._formatHoverCursor('impulse', 100, 400), '0.00 ms');
     assert.equal(plugin._formatHoverValue('impulse', 50, 200), '0.50');

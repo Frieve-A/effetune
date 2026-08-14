@@ -268,9 +268,9 @@ IR Reverb convoluciona la señal con una respuesta al impulso (IR) importada par
 
 ### Guía de mejora del sonido
 
-- Para añadir una sala discreta, usa una IR corta, ajusta **Dry** a 0 dB, **Wet** entre -18 y -12 dB y añade un **Pre Delay** breve.
+- Para añadir una sala discreta, usa una IR corta, deja **Dry** activado, ajusta **Dry Level** a 0 dB y **Wet Level** entre -18 y -12 dB, y añade un **Pre Delay** breve.
 - Para ampliar la sensación de auditorio, usa una IR estéreo o True Stereo y acorta una cola excesiva con **Decay** y **Trim**.
-- Para envío/retorno, copia las fuentes a otro bus con **Matrix**, ajusta **Dry** a -96 dB, deja **Wet** a 0 dB y controla la reverberación con el nivel de envío.
+- Para envío/retorno, copia las fuentes a otro bus con **Matrix**, desactiva **Dry**, ajusta **Wet Level** a 0 dB y controla la reverberación con el nivel de envío.
 - Para reproducir el resultado, conserva el archivo IR original y sus datos de fuente y licencia: los mismos bytes generan el mismo ID.
 
 ### Parámetros
@@ -278,8 +278,9 @@ IR Reverb convoluciona la señal con una respuesta al impulso (IR) importada par
 - **Channel Mode**: **Auto** selecciona Mono para una IR de un canal, True Stereo para una IR de cuatro canales con selección estéreo, Independent cuando coinciden las cantidades de canales y Diagonal Matrix en los demás casos; el modo resultante aparece a la derecha del menú. También permite elegir explícitamente Mono, Independent, True Stereo (rutas LL/LR/RL/RR) o Diagonal Matrix sin cruce entre canales.
 - **Latency**: Zero o 128/256/512/1024 muestras. Los valores altos reducen la presión de proceso pero retrasan la señal wet; Zero requiere Full.
 - **Convolution Rate**: Auto, Full, Half o Quarter. Con Auto, la tasa resultante aparece a la derecha del menú. Las tasas reducidas disminuyen la carga y el ancho de banda wet; Quarter requiere al menos 176,4 kHz.
-- **Dry**: regula el nivel de la señal original. A -96 dB la silencia por completo para un efecto totalmente wet o un retorno.
-- **Wet**: nivel de la señal convolucionada, de -96 a +12 dB. El valor predeterminado es -15 dB para un uso normal como inserto; en una configuración de envío/retorno, ajústalo a 0 dB y controla la cantidad de reverberación con el nivel de envío.
+- **Wet Level**: nivel de la señal convolucionada, de -96 a +12 dB. El valor predeterminado es -15 dB para un uso normal como inserto; en una configuración de envío/retorno, ajústalo a 0 dB y controla la cantidad de reverberación con el nivel de envío.
+- **Dry**: activa la señal original. Está activado de forma predeterminada; desactívalo para eliminar por completo la señal directa sin perder el valor de **Dry Level**.
+- **Dry Level**: regula el nivel de la señal original de -96 a +12 dB cuando **Dry** está activado. El valor -96 dB también la silencia.
 - **Pre Delay**: retrasa solo la señal wet entre 0 y 500 ms.
 - **Direct Cut** elimina el impulso directo detectado; **Cut Offset** desplaza el corte entre -20 y +50 ms. La normalización sigue tomando como referencia la IR sin cortar, por lo que activar Direct Cut no aumenta el nivel de la cola de reverberación restante.
 - **Decay** remodela el decaimiento entre 10% y 400%; 100% conserva la captura.
@@ -293,9 +294,9 @@ El tiempo avanza de izquierda a derecha y el nivel va de 0 a -90 dB. La curva ED
 
 Mono aplica una IR, Independent mantiene canales separados, True Stereo usa LL/LR/RL/RR y Diagonal Matrix conecta solo entradas y salidas equivalentes. En Auto, toda IR de cuatro canales con selección estéreo se interpreta en ese orden; para disposiciones Quad u otras disposiciones de cuatro canales, selecciona explícitamente Independent o Diagonal Matrix. Para un par True Stereo, selecciona juntos archivos coincidentes terminados en `L`/`R` o `Left`/`Right`.
 
-Los archivos IR importados se guardan en **Impulse Response Library**, donde puedes buscarlos por su nombre original, cargarlos o eliminarlos. En la versión web se almacenan dentro del navegador y pueden perderse si borras los datos del sitio o el navegador libera espacio. La aplicación de escritorio los guarda entre sus datos. Conserva una copia aparte de cada IR que necesites.
+Los archivos IR importados se guardan en **Impulse Response Library**, donde puedes buscarlos por su nombre original, cargarlos o eliminarlos. Los archivos con extensión `.irs` que contienen audio WAV se pueden importar sin cambiarles el nombre. En la versión web se almacenan dentro del navegador y pueden perderse si borras los datos del sitio o el navegador libera espacio. La aplicación de escritorio los guarda entre sus datos. Conserva una copia aparte de cada IR que necesites.
 
-Las URL compartidas y los presets identifican la IR, pero no incluyen sus datos de audio. Si la IR no está disponible, no se produce sonido wet; vuelve a importarla o seleccionarla, o elige otra. La señal dry continúa según el ajuste **Dry**. Puedes buscar material en [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/) y [Freesound](https://freesound.org/), pero comprueba la licencia de cada descarga (por ejemplo CC0, CC BY o CC BY-NC) y conserva autor, fuente, atribución y permiso comercial fuera de EffeTune, que no almacena ni verifica la información de licencia.
+Las URL compartidas y los presets identifican la IR, pero no incluyen sus datos de audio. Si la IR no está disponible, no se produce sonido wet; vuelve a importarla o seleccionarla, o elige otra. La señal original sigue los ajustes **Dry** y **Dry Level**. Puedes buscar material en [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/) y [Freesound](https://freesound.org/), pero comprueba la licencia de cada descarga (por ejemplo CC0, CC BY o CC BY-NC) y conserva autor, fuente, atribución y permiso comercial fuera de EffeTune, que no almacena ni verifica la información de licencia.
 
 ## RS Reverb
 

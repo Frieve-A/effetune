@@ -1315,6 +1315,7 @@ export interface IRReverbOptions extends CommonEffectOptions {
   readonly latency?: 0 | 128 | 256 | 512 | 1024;
   readonly convolutionRate?: "auto" | "full" | "half" | "quarter";
   readonly wetLevel?: number;
+  readonly dryEnabled?: boolean;
   readonly dryLevel?: number;
   readonly preDelay?: number;
   readonly assets: IRReverbAssets;

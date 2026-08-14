@@ -290,8 +290,8 @@ test('every Graph recipe rejects a positive-latency IRReverb with one message', 
     assets: { impulseResponse: 'room-ir' }
   };
   const expected =
-    'IRReverb must be wet-only in a Graph; set dryLevel to -96 dB (the parameter minimum) ' +
-    'and use the external dry edge.';
+    'IRReverb must be wet-only in a Graph; turn dryEnabled off or set dryLevel to -96 dB ' +
+    '(the parameter minimum), then use the external dry edge.';
   const builders = [
     ['wetDry', () => createWetDryGraphDocument(wetPlusDryIr)],
     ['sendReturn', () => createSendReturnGraphDocument(wetPlusDryIr)],
@@ -312,6 +312,11 @@ test('every Graph recipe rejects a positive-latency IRReverb with one message', 
     parameters: { ...wetPlusDryIr.parameters, dryLevel: -96 }
   };
   assert.doesNotThrow(() => createSendReturnGraphDocument(wetOnlyIr));
+  const dryDisabledIr = {
+    ...wetPlusDryIr,
+    parameters: { ...wetPlusDryIr.parameters, dryEnabled: false }
+  };
+  assert.doesNotThrow(() => createSendReturnGraphDocument(dryDisabledIr));
 });
 
 test('Graph recipes reject a non-effect before deriving a node id', () => {

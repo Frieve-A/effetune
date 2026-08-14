@@ -339,7 +339,9 @@ private:
     std::uint32_t delay = requested > 0.0 ? static_cast<std::uint32_t>(requested) : 0u;
     if (delay >= pre_delay_length_)
       delay = pre_delay_length_ - 1u;
-    return {params_.dryLevel <= -96.0F ? 0.0F : decibelsToGain(params_.dryLevel),
+    return {params_.dryEnabled == 0.0F || params_.dryLevel <= -96.0F
+                ? 0.0F
+                : decibelsToGain(params_.dryLevel),
             decibelsToGain(params_.wetLevel), delay};
   }
 

@@ -1603,24 +1603,12 @@ function synthesizeFilter(correctionDb, gridFrequencies, config, phaseSource) {
     return baseline;
 }
 
-function alignedPhaseOnGrid(samples, alignmentSamples, sampleRate, frequencies, minimumFftSize = 0) {
-    const fftSize = nextPowerOfTwo(
-        samples.length > minimumFftSize ? samples.length : minimumFftSize
-    );
-    const input = new Float64Array(fftSize);
-    for (let index = 0; index < samples.length; index += 1) {
-        let alignedIndex = index - alignmentSamples;
-        if (alignedIndex < 0) alignedIndex += fftSize;
-        input[alignedIndex] = samples[index];
-    }
-    const spectrum = realTransform(input);
-    const sourceFrequencies = new Float64Array(spectrum.real.length - 1);
-    const sourcePhases = new Float64Array(spectrum.real.length - 1);
-    for (let bin = 1; bin < spectrum.real.length; bin += 1) {
+function interpolatePhaseOnGrid(phases, sampleRate, fftSize, frequencies) {
+    const sourceFrequencies = new Float64Array(phases.length - 1);
+    for (let bin = 1; bin < phases.length; bin += 1) {
         sourceFrequencies[bin - 1] = bin * sampleRate / fftSize;
-        sourcePhases[bin - 1] = Math.atan2(spectrum.imag[bin], spectrum.real[bin]);
     }
-    const unwrapped = unwrapPhase(sourcePhases);
+    const unwrapped = unwrapPhase(phases.subarray(1));
     const result = new Float64Array(frequencies.length);
     let upper = 1;
     for (let index = 0; index < frequencies.length; index += 1) {
@@ -1640,6 +1628,38 @@ function alignedPhaseOnGrid(samples, alignmentSamples, sampleRate, frequencies, 
         }
     }
     return result;
+}
+
+function phaseComponentsOnGrid(
+    samples,
+    alignmentSamples,
+    sampleRate,
+    frequencies,
+    minimumFftSize = 0
+) {
+    const fftSize = nextPowerOfTwo(
+        samples.length > minimumFftSize ? samples.length : minimumFftSize
+    );
+    const input = new Float64Array(fftSize);
+    for (let index = 0; index < samples.length; index += 1) {
+        let alignedIndex = index - alignmentSamples;
+        if (alignedIndex < 0) alignedIndex += fftSize;
+        input[alignedIndex] = samples[index];
+    }
+    const spectrum = realTransform(input);
+    const totalPhase = Float64Array.from(
+        spectrum.real,
+        (real, bin) => Math.atan2(spectrum.imag[bin], real)
+    );
+    const magnitudes = Float64Array.from(
+        spectrum.real,
+        (real, bin) => Math.hypot(real, spectrum.imag[bin])
+    );
+    const minimumPhase = minimumPhaseForMagnitude(magnitudes, fftSize);
+    return {
+        total: interpolatePhaseOnGrid(totalPhase, sampleRate, fftSize, frequencies),
+        minimum: interpolatePhaseOnGrid(minimumPhase, sampleRate, fftSize, frequencies)
+    };
 }
 
 function wrapPhaseDegrees(radians) {
@@ -1689,14 +1709,14 @@ function referencedGroupDelayMs(phaseRadians, frequencies, smoothing) {
 }
 
 function createPhasePreviews(analysis, taps, config, frequencies) {
-    const beforeRadians = alignedPhaseOnGrid(
+    const beforeComponents = phaseComponentsOnGrid(
         analysis.samples,
         analysis.onsetIndex,
         config.sampleRate,
         frequencies
     );
     const filterDelay = config.phase === 'min' ? 0 : taps.length / 2;
-    const filterRadians = alignedPhaseOnGrid(
+    const filterComponents = phaseComponentsOnGrid(
         taps,
         filterDelay,
         config.sampleRate,
@@ -1704,17 +1724,57 @@ function createPhasePreviews(analysis, taps, config, frequencies) {
         taps.length * 2
     );
     const afterRadians = Float64Array.from(
-        beforeRadians,
-        (phase, index) => phase + filterRadians[index]
+        beforeComponents.total,
+        (phase, index) => phase + filterComponents.total[index]
+    );
+    const afterMinimumRadians = Float64Array.from(
+        beforeComponents.minimum,
+        (phase, index) => phase + filterComponents.minimum[index]
+    );
+    const beforeExcessRadians = Float64Array.from(
+        beforeComponents.total,
+        (phase, index) => phase - beforeComponents.minimum[index]
+    );
+    const afterExcessRadians = Float64Array.from(
+        afterRadians,
+        (phase, index) => phase - afterMinimumRadians[index]
     );
     return {
         phase: {
-            before: Float32Array.from(beforeRadians, wrapPhaseDegrees),
+            before: Float32Array.from(beforeComponents.total, wrapPhaseDegrees),
             after: Float32Array.from(afterRadians, wrapPhaseDegrees)
         },
         groupDelay: {
-            before: referencedGroupDelayMs(beforeRadians, frequencies, config.smoothing),
-            after: referencedGroupDelayMs(afterRadians, frequencies, config.smoothing)
+            before: referencedGroupDelayMs(
+                beforeComponents.total,
+                frequencies,
+                config.smoothing
+            ),
+            after: referencedGroupDelayMs(afterRadians, frequencies, config.smoothing),
+            minimum: {
+                before: referencedGroupDelayMs(
+                    beforeComponents.minimum,
+                    frequencies,
+                    config.smoothing
+                ),
+                after: referencedGroupDelayMs(
+                    afterMinimumRadians,
+                    frequencies,
+                    config.smoothing
+                )
+            },
+            excess: {
+                before: referencedGroupDelayMs(
+                    beforeExcessRadians,
+                    frequencies,
+                    config.smoothing
+                ),
+                after: referencedGroupDelayMs(
+                    afterExcessRadians,
+                    frequencies,
+                    config.smoothing
+                )
+            }
         }
     };
 }
@@ -1875,7 +1935,15 @@ function cloneDesignResult(result) {
             } : null,
             groupDelayResponse: preview.groupDelayResponse ? {
                 before: Float32Array.from(preview.groupDelayResponse.before),
-                after: Float32Array.from(preview.groupDelayResponse.after)
+                after: Float32Array.from(preview.groupDelayResponse.after),
+                minimum: {
+                    before: Float32Array.from(preview.groupDelayResponse.minimum.before),
+                    after: Float32Array.from(preview.groupDelayResponse.minimum.after)
+                },
+                excess: {
+                    before: Float32Array.from(preview.groupDelayResponse.excess.before),
+                    after: Float32Array.from(preview.groupDelayResponse.excess.after)
+                }
             } : null,
             impulseResponse: preview.impulseResponse ? {
                 sampleRate: preview.impulseResponse.sampleRate,

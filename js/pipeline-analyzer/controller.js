@@ -16,7 +16,13 @@ import {
 
 const STORAGE_KEY = 'effetune.pipelineAnalyzer.v1';
 const DISPLAY_READAPT_DELAY_MS = 150;
-const GRAPH_VIEWS = new Set(['frequency', 'phase', 'groupDelay', 'impulse']);
+const GRAPH_VIEWS = new Set([
+    'frequency',
+    'phase',
+    'minimumGroupDelay',
+    'excessGroupDelay',
+    'impulse'
+]);
 const MAX_OUTPUTS = 4;
 const MLS_SEQUENCE_LENGTHS = new Set(PIPELINE_ANALYZER_MLS_LENGTHS);
 const TSP_SEQUENCE_LENGTHS = new Set(PIPELINE_ANALYZER_TSP_LENGTHS);
@@ -119,7 +125,8 @@ function outputsFromSavedState(value) {
 
 export function normalizePipelineAnalyzerState(value) {
     const sourceOutputs = outputsFromSavedState(value);
-    const graphView = value?.graphView ?? value?.view;
+    const savedGraphView = value?.graphView ?? value?.view;
+    const graphView = savedGraphView === 'groupDelay' ? 'minimumGroupDelay' : savedGraphView;
     return {
         open: value?.open === true,
         graphView: GRAPH_VIEWS.has(graphView) ? graphView : 'frequency',

@@ -585,8 +585,12 @@ test('Graph v1 generated metadata records canonical controls, scheduling, and sn
   assert.deepEqual(contract.adcEligibility, [{
     effectType: 'IRReverb',
     whenReportedLatency: 'positive',
-    parameter: 'dryLevel',
-    acceptedMaximum: -96,
+    acceptedWhen: {
+      anyOf: [
+        { parameter: 'dryEnabled', equals: false },
+        { parameter: 'dryLevel', maximum: -96 }
+      ]
+    },
     failureCode: 'GRAPH_UNSUPPORTED_CAPABILITY'
   }]);
   assert.equal(contract.recipes.wetDry, 'ordinary-graph-edges');

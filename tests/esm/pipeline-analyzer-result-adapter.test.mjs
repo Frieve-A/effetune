@@ -10,11 +10,13 @@ function spectrum(magnitudeOffset = 0) {
         magnitudeDb: new Float32Array([-6 + magnitudeOffset, magnitudeOffset, -3 + magnitudeOffset]),
         phaseDegrees: new Float32Array([0, -90, 180]),
         groupDelayMs: new Float32Array([1, 2, Number.NaN]),
+        minimumGroupDelayMs: new Float32Array([0.25, 0.5, Number.NaN]),
+        excessGroupDelayMs: new Float32Array([0.75, 1.5, Number.NaN]),
         valid: new Uint8Array([1, 1, 0])
     };
 }
 
-test('adapts Worker Before and After data into four normalized real-unit views', () => {
+test('adapts Worker Before and After data into five normalized real-unit views', () => {
     const result = adaptPipelineAnalysisResult({
         sampleRate: 48000,
         reportedLatency: 64,
@@ -44,10 +46,17 @@ test('adapts Worker Before and After data into four normalized real-unit views',
 
     assert.equal(result.pipelineId, 'B');
     assert.equal(result.measurementSettings.signalType, 'mls');
-    assert.deepEqual(Object.keys(result.views), ['frequency', 'phase', 'groupDelay', 'impulse']);
+    assert.deepEqual(Object.keys(result.views), [
+        'frequency',
+        'phase',
+        'minimumGroupDelay',
+        'excessGroupDelay',
+        'impulse'
+    ]);
     assert.match(result.views.frequency.xLabel, /Hz/);
     assert.match(result.views.frequency.yLabel, /dB/);
-    assert.match(result.views.groupDelay.yLabel, /ms/);
+    assert.match(result.views.minimumGroupDelay.yLabel, /ms/);
+    assert.match(result.views.excessGroupDelay.yLabel, /ms/);
     assert.match(result.views.impulse.xLabel, /ms/);
     assert.deepEqual(result.views.frequency.curves.map(curve => curve.label), ['Before', 'After']);
     assert.deepEqual(result.views.frequency.curves.map(curve => curve.color), ['#b0b0b0', '#00ff00']);
@@ -121,6 +130,8 @@ test('plots mute and exact cancellation at the frequency floor only', () => {
         magnitudeDb: new Float32Array([Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY]),
         phaseDegrees: new Float32Array([Number.NaN, Number.NaN]),
         groupDelayMs: new Float32Array([Number.NaN, Number.NaN]),
+        minimumGroupDelayMs: new Float32Array([Number.NaN, Number.NaN]),
+        excessGroupDelayMs: new Float32Array([Number.NaN, Number.NaN]),
         valid: new Uint8Array([0, 0])
     };
     const result = adaptPipelineAnalysisResult({
@@ -135,7 +146,11 @@ test('plots mute and exact cancellation at the frequency floor only', () => {
         assert.equal(curve.points.every(point => point.yLabel === '−∞ dB'), true);
     }
     assert.equal(result.displayReference.before.frequencyNormalizationDb, 0);
-    for (const view of [result.views.phase, result.views.groupDelay]) {
+    for (const view of [
+        result.views.phase,
+        result.views.minimumGroupDelay,
+        result.views.excessGroupDelay
+    ]) {
         assert.equal(view.curves.every(curve =>
             curve.points.every(point => Number.isNaN(point.x) && Number.isNaN(point.y))
         ), true);
@@ -157,7 +172,8 @@ test('keeps axis titles in English when a translator is supplied', () => {
     })[key] || key);
     assert.equal(result.views.frequency.xLabel, 'Frequency (Hz)');
     assert.equal(result.views.frequency.yLabel, 'Magnitude (dB)');
-    assert.equal(result.views.groupDelay.yLabel, 'Group delay (ms)');
+    assert.equal(result.views.minimumGroupDelay.yLabel, 'Min group delay (ms)');
+    assert.equal(result.views.excessGroupDelay.yLabel, 'Excess group delay (ms)');
     assert.equal(result.views.impulse.xLabel, 'Time (ms)');
 });
 
@@ -167,6 +183,8 @@ test('smooths finite frequency runs without crossing gaps or re-zeroing group de
         magnitudeDb: new Float32Array([0, 12, 0, Number.NaN, 3, 15, 3]),
         phaseDegrees: new Float32Array([0, 0, 0, 0, 0, 0, 0]),
         groupDelayMs: new Float32Array([2, 14, 2, 9, 5, 17, 5]),
+        minimumGroupDelayMs: new Float32Array([1, 7, 1, 4, 2, 8, 2]),
+        excessGroupDelayMs: new Float32Array([1, 7, 1, 5, 3, 9, 3]),
         valid: new Uint8Array([1, 1, 1, 0, 1, 1, 1])
     };
     const result = adaptPipelineAnalysisResult({
@@ -176,12 +194,16 @@ test('smooths finite frequency runs without crossing gaps or re-zeroing group de
     }, { displaySettings: { smoothingOct: 0.5, impulseRangeMs: 6 } });
 
     const frequency = result.views.frequency.curves[0].points;
-    const groupDelay = result.views.groupDelay.curves[0].points;
+    const minimumGroupDelay = result.views.minimumGroupDelay.curves[0].points;
+    const excessGroupDelay = result.views.excessGroupDelay.curves[0].points;
     assert.equal(Number.isNaN(frequency[3].x), true);
-    assert.equal(Number.isNaN(groupDelay[3].x), true);
+    assert.equal(Number.isNaN(minimumGroupDelay[3].x), true);
+    assert.equal(Number.isNaN(excessGroupDelay[3].x), true);
     assert.notEqual(frequency[1].yValue, 12 - result.displayReference.before.frequencyNormalizationDb);
-    assert.notEqual(groupDelay[1].yValue, 14);
-    assert.notEqual(groupDelay[4].yValue, 0);
+    assert.notEqual(minimumGroupDelay[1].yValue, 7);
+    assert.notEqual(minimumGroupDelay[4].yValue, 0);
+    assert.notEqual(excessGroupDelay[1].yValue, 7);
+    assert.notEqual(excessGroupDelay[4].yValue, 0);
 });
 
 test('normalizes each impulse by its full peak and uses the selected fixed time window', () => {
@@ -229,6 +251,8 @@ test('normalizes each very quiet finite response independently before applying t
         magnitudeDb: new Float32Array(magnitudeDb),
         phaseDegrees: new Float32Array([0, 0, 0]),
         groupDelayMs: new Float32Array([0, 0, 0]),
+        minimumGroupDelayMs: new Float32Array([0, 0, 0]),
+        excessGroupDelayMs: new Float32Array([0, 0, 0]),
         valid: new Uint8Array([1, 1, 1])
     });
     const result = adaptPipelineAnalysisResult({

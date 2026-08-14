@@ -1123,6 +1123,46 @@ test('IR audio headers expose WAV, AIFF, and FLAC channel, rate, and frame metad
   assert.deepEqual(parseIrAudioHeader(flac), { channels: 4, sampleRate: 48000, frames: 123 });
 });
 
+test('IR library imports WAV audio stored in an IRS file and rejects other IRS contents', async () => {
+  const backend = new MemoryBackend();
+  const store = await new IrLibraryStore(backend, { onDiagnostic() {} }).open();
+  const service = new IrLibraryService(store, { onDiagnostic() {} });
+  const bytes = wavBytes({ channels: 2, sampleRate: 96000, frames: 7 });
+  const result = await service.importFiles([{
+    name: 'Cabinet.irs',
+    async arrayBuffer() { return bytes.buffer; }
+  }]);
+
+  assert.equal(result.failedCount, 0);
+  assert.equal(result.unsupportedCount, 0);
+  assert.equal(result.imported[0].fileLabel, 'Cabinet.irs');
+  assert.equal(result.imported[0].channels, 2);
+  assert.equal(result.imported[0].sampleRate, 96000);
+  assert.match(store.get(result.imported[0].irId).originals[0].storageName, /\.irs$/);
+
+  let decodedSignature = '';
+  const pcm = await service.resolveDecodedPcm(result.imported[0].irId, 96000, {
+    async decode(buffer) {
+      decodedSignature = new TextDecoder().decode(new Uint8Array(buffer, 0, 4));
+      return { channels: [new Float32Array(7), new Float32Array(7)], sampleRate: 96000 };
+    },
+    async resample(value) { return value; }
+  });
+  assert.equal(decodedSignature, 'RIFF');
+  assert.equal(pcm.channels.length, 2);
+
+  const reopened = await new IrLibraryStore(backend, { onDiagnostic() {} }).open();
+  assert.equal(reopened.get(result.imported[0].irId).originals[0].fileName, 'Cabinet.irs');
+
+  const rejected = await service.importFiles([{
+    name: 'NotWav.irs',
+    async arrayBuffer() { return encode('not WAV audio').buffer; }
+  }]);
+  assert.equal(rejected.failedCount, 1);
+  assert.equal(rejected.unsupportedCount, 0);
+  assert.equal(rejected.imported.length, 0);
+});
+
 test('IR library batch pairing is deterministic and imports unmatched suffix candidates as singles', async () => {
   const backend = new MemoryBackend();
   const store = await new IrLibraryStore(backend, { onDiagnostic() {} }).open();

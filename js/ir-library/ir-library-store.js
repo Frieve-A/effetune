@@ -15,7 +15,7 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const ID_PATTERN = /^[a-f0-9]{24}$/;
 const MANAGED_FILE_PATTERN = /^[a-f0-9]{24}(?:\.(?:L|R))?\.[a-z0-9]{1,10}$/;
-const ORIGINAL_EXTENSIONS = new Set(['.aif', '.aiff', '.bin', '.flac', '.m4a', '.mp3', '.ogg', '.wav']);
+const ORIGINAL_EXTENSIONS = new Set(['.aif', '.aiff', '.bin', '.flac', '.irs', '.m4a', '.mp3', '.ogg', '.wav']);
 const ANALYSIS_REVISION_PATTERN = /^([a-f0-9]{24})\.a([0-9]{9})$/;
 
 function safeText(value, maxLength = 1024) {

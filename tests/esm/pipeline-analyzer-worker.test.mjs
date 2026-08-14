@@ -718,6 +718,36 @@ function prepareRealMultibandExpanderPlugin() {
   return { plugin, prepared };
 }
 
+test('IR Reverb Dry switch mutes the fallback dry path without changing Dry Level', () => {
+  const { plugin } = prepareRealIrReverbPlugin();
+  plugin.setParameters({ de: false, dl: 0 });
+
+  const parameters = plugin.getParameters();
+  assert.equal(parameters.de, false);
+  assert.equal(parameters.dl, 0);
+  const muted = new Float32Array([0.25, -0.5, 1]);
+  plugin.process({}, muted, parameters, 0);
+  assert.deepEqual(Array.from(muted), [0, 0, 0]);
+
+  plugin.setParameters({ de: true });
+  const enabled = new Float32Array([0.25, -0.5, 1]);
+  plugin.process({}, enabled, plugin.getParameters(), 0);
+  assert.deepEqual(Array.from(enabled), [0.25, -0.5, 1]);
+});
+
+test('IR Reverb UI declares Wet Level, Dry, and Dry Level in order', () => {
+  const source = fs.readFileSync(
+    new URL('../../plugins/reverb/ir_reverb.js', import.meta.url),
+    'utf8'
+  );
+  const wetLevel = source.indexOf("'Wet Level'");
+  const drySwitch = source.indexOf("'irReverb.parameter.dryEnabled', 'Dry'");
+  const dryLevel = source.indexOf("'Dry Level'");
+  assert.ok(wetLevel >= 0);
+  assert.ok(drySwitch > wetLevel);
+  assert.ok(dryLevel > drySwitch);
+});
+
 function createIrReverbAsset() {
   const samples = new Float32Array([0.75, -0.25, 0.125]);
   const payload = buildIrAssetPayload({

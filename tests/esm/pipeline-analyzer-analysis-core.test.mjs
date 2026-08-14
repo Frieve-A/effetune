@@ -152,9 +152,31 @@ test('frequency response preserves gain, polarity, integer delay, phase, and gro
   assert.ok(Math.abs(response.magnitudeDb[index] - 20 * Math.log10(2)) < 1e-4);
   assert.equal(response.valid[index], 1);
   assert.ok(Math.abs(response.groupDelayMs[index] - delaySamples / sampleRate * 1000) < 1e-4);
+  assert.ok(Math.abs(response.minimumGroupDelayMs[index]) < 1e-4);
+  assert.ok(Math.abs(
+    response.excessGroupDelayMs[index] - delaySamples / sampleRate * 1000
+  ) < 1e-4);
+  assert.ok(Math.abs(
+    response.minimumGroupDelayMs[index] + response.excessGroupDelayMs[index] -
+    response.groupDelayMs[index]
+  ) < 1e-4);
   const expectedPhase = 180 - 360 * response.frequencies[index] * delaySamples / sampleRate;
   const wrappedExpected = ((expectedPhase + 180) % 360 + 360) % 360 - 180;
   assert.ok(Math.abs(response.phaseDegrees[index] - wrappedExpected) < 1e-3);
+});
+
+test('minimum-phase response stays in Min Group Delay instead of Excess Group Delay', () => {
+  const sampleRate = 48000;
+  const impulse = new Float32Array(2048);
+  impulse[0] = 1;
+  impulse[1] = 0.5;
+  const response = deriveFrequencyResponse(impulse, sampleRate, {
+    fftSize: 2048,
+    maximumPoints: 512
+  });
+  const index = nearestIndex(response.frequencies, 1000);
+  assert.ok(Math.abs(response.minimumGroupDelayMs[index] - response.groupDelayMs[index]) < 1e-6);
+  assert.ok(Math.abs(response.excessGroupDelayMs[index]) < 1e-6);
 });
 
 test('analysis result derives common-grid Before and After responses', () => {
@@ -210,6 +232,8 @@ test('display timing removes the reported pipeline delay after preserving speake
   const index = nearestIndex(spectrum.frequencies, 1000);
   assert.ok(Math.abs(spectrum.magnitudeDb[index]) < 1e-4);
   assert.ok(Math.abs(spectrum.groupDelayMs[index] - 1 / 48000 * 1000) < 1e-4);
+  assert.ok(Math.abs(spectrum.minimumGroupDelayMs[index]) < 1e-4);
+  assert.ok(Math.abs(spectrum.excessGroupDelayMs[index] - 1 / 48000 * 1000) < 1e-4);
   assert.ok(Math.abs(result.before.spectrum.groupDelayMs[index]) < 1e-6);
   const adapted = adaptPipelineAnalysisResult(result);
   const impulsePeak = adapted.views.impulse.curves[1].points.find(point => point.yLabel === '1.00');
@@ -288,7 +312,7 @@ test('MLS recovery exposes untrusted baseline diagnostics when declared support 
   assert.equal(recovered.diagnostics.baselineTrusted, false);
 });
 
-test('speaker IR convolution retains signed Before and After data across all four graph views', () => {
+test('speaker IR convolution retains signed Before and After data across all five graph views', () => {
   const analysis = buildAnalysisResult({
     pipelineResponses: [
       new Float32Array([1, -0.5]),
@@ -312,7 +336,13 @@ test('speaker IR convolution retains signed Before and After data across all fou
   assert.deepEqual([...analysis.after.impulse], [0, 0, 1.5, -0.75]);
 
   const adapted = adaptPipelineAnalysisResult(analysis);
-  assert.deepEqual(Object.keys(adapted.views), ['frequency', 'phase', 'groupDelay', 'impulse']);
+  assert.deepEqual(Object.keys(adapted.views), [
+    'frequency',
+    'phase',
+    'minimumGroupDelay',
+    'excessGroupDelay',
+    'impulse'
+  ]);
   for (const view of Object.values(adapted.views)) {
     assert.deepEqual(view.curves.map(curve => curve.id), ['before', 'after']);
   }

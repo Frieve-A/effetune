@@ -11,12 +11,13 @@ struct IRReverbPluginParams {
   float latency;
   float convRate;
   float wetLevel;
+  float dryEnabled;
   float dryLevel;
   float preDelay;
-  static constexpr std::uint32_t kHash = 0x831d7030u;
-  static constexpr std::uint32_t kFloatCount = 6u;
+  static constexpr std::uint32_t kHash = 0x96be6b1au;
+  static constexpr std::uint32_t kFloatCount = 7u;
 };
-static_assert(6u == 0u || sizeof(IRReverbPluginParams) == sizeof(float) * 6u);
+static_assert(7u == 0u || sizeof(IRReverbPluginParams) == sizeof(float) * 7u);
 
 } // namespace effetune::generated
 

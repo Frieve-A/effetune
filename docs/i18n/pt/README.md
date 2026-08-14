@@ -260,7 +260,7 @@ Para remover a resposta da própria interface de áudio, conecte diretamente a s
 
 As medições que contêm dados de resposta ao impulso mostram um gráfico normalizado de **Resposta ao impulso** nos resultados. A visualização inicial cobre de 0 a 10 ms a partir do início detectado. Use a roda do mouse ou os botões para ajustar o zoom do eixo de tempo e arraste o gráfico ou use o controle deslizante para percorrê-lo. Ao selecionar um ponto, o gráfico é atualizado; **Todos (média)** mostra o primeiro ponto com uma resposta ao impulso salva e o identifica acima do gráfico. Use **Exportar resposta ao impulso (WAV)** abaixo do gráfico para salvar a resposta completa e não normalizada do ponto exibido como um WAV mono de ponto flutuante de 32 bits na taxa de amostragem da medição.
 
-Para consultar frequência, fase, atraso de grupo e impulso do pipeline ativo, com até quatro saídas e respostas de alto-falantes salvas, veja o [guia do Pipeline Analyzer](pipeline-analyzer.md).
+Para consultar frequência, fase, atraso de grupo mínimo, atraso de grupo excedente e impulso do pipeline ativo, com até quatro saídas e respostas de alto-falantes salvas, veja o [guia do Pipeline Analyzer](pipeline-analyzer.md).
 
 ## Combinações Comuns de Efeitos
 

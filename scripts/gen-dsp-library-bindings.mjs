@@ -1204,8 +1204,12 @@ function graphContract() {
       {
         effectType: 'IRReverb',
         whenReportedLatency: 'positive',
-        parameter: 'dryLevel',
-        acceptedMaximum: -96,
+        acceptedWhen: {
+          anyOf: [
+            { parameter: 'dryEnabled', equals: false },
+            { parameter: 'dryLevel', maximum: -96 }
+          ]
+        },
         failureCode: 'GRAPH_UNSUPPORTED_CAPABILITY'
       }
     ],

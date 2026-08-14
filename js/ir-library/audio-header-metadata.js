@@ -73,17 +73,26 @@ function parseFlac(bytes) {
   return sampleRate > 0 ? { channels, sampleRate, frames: frames || null } : null;
 }
 
-export function parseIrAudioHeader(value) {
-  const bytes = value instanceof ArrayBuffer
+function audioBytes(value) {
+  return value instanceof ArrayBuffer
     ? new Uint8Array(value)
     : ArrayBuffer.isView(value)
       ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
       : null;
+}
+
+export function parseIrAudioHeader(value) {
+  const bytes = audioBytes(value);
   if (!bytes) return { channels: null, frames: null, sampleRate: null };
   return parseWav(bytes) || parseAiff(bytes) || parseFlac(bytes) ||
     { channels: null, frames: null, sampleRate: null };
 }
 
+export function isWavIrAudio(value) {
+  const bytes = audioBytes(value);
+  return Boolean(bytes && parseWav(bytes));
+}
+
 export function isSupportedIrFileName(name) {
-  return /\.(?:wav|wave|aif|aiff|flac|mp3|ogg|m4a)$/i.test(String(name || ''));
+  return /\.(?:wav|wave|aif|aiff|flac|mp3|ogg|m4a|irs)$/i.test(String(name || ''));
 }

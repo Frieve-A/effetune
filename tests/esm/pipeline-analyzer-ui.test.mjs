@@ -54,8 +54,9 @@ uiTest('places one accessible Analyzer button directly after Share with dedicate
   assert.match(analyzerCss, /\.pipeline-analyzer-graph-section\s*\{[^}]*container-type:\s*inline-size;/s);
   assert.match(analyzerCss, /@container \(max-width:\s*480px\)/);
   assert.match(analyzerCss, /body\.layout-mobile \.pipeline-analyzer-graph-shell\s*\{[^}]*aspect-ratio:\s*4\s*\/\s*3;/s);
-  assert.match(analyzerCss, /body\.layout-mobile \.pipeline-analyzer-view-switcher\s*\{[^}]*left:\s*5px;[^}]*gap:\s*7px;[^}]*font-size:\s*10px;[^}]*transform:\s*none;/s);
-  assert.match(analyzerCss, /body\.layout-mobile \.pipeline-analyzer-legend\s*\{[^}]*top:\s*calc\(5px \+ var\(--et-mobile-control-height\) \+ 8px\);[^}]*right:\s*5px;[^}]*left:\s*auto;[^}]*font-size:\s*10px;/s);
+  assert.doesNotMatch(analyzerCss, /\.pipeline-analyzer-view-switcher\s*\{[^}]*position:\s*absolute;/s);
+  assert.match(analyzerCss, /body\.layout-mobile \.pipeline-analyzer-legend\s*\{[^}]*top:\s*5px;[^}]*right:\s*5px;[^}]*left:\s*auto;[^}]*font-size:\s*10px;/s);
+  assert.match(uiSource, /this\.graphSection\.append\(this\.viewGroup, this\.displayControl, this\.graphShell\)/);
   assert.doesNotMatch(analyzerCss, /body\.layout-mobile \.pipeline-analyzer-legend-label(?:-short)?\s*\{/s);
   assert.match(mobileCss, /body\.layout-mobile \.pipeline-analyzer-panel input\[type='number'\],\s*body\.layout-mobile \.pipeline-analyzer-panel select,[\s\S]*?min-height:\s*var\(--et-mobile-control-height\);[\s\S]*?font-size:\s*16px;/s);
   assert.match(sharedCss, /\.pipeline-analyzer-panel select option,/);
@@ -338,8 +339,12 @@ uiTest('keeps both display controls mounted, enables only relevant settings, and
   assert.deepEqual(ui.displayControl.children, [smoothing.row, impulse.row]);
   assert.equal(smoothing.range.disabled, true);
   assert.equal(impulse.range.disabled, true);
-  ui.viewInputs.get('groupDelay').input.checked = true;
-  ui.viewInputs.get('groupDelay').input.dispatch('change');
+  ui.viewInputs.get('minimumGroupDelay').input.checked = true;
+  ui.viewInputs.get('minimumGroupDelay').input.dispatch('change');
+  assert.equal(smoothing.range.disabled, false);
+  assert.equal(impulse.range.disabled, true);
+  ui.viewInputs.get('excessGroupDelay').input.checked = true;
+  ui.viewInputs.get('excessGroupDelay').input.dispatch('change');
   assert.equal(smoothing.range.disabled, false);
   assert.equal(impulse.range.disabled, true);
   ui.viewInputs.get('impulse').input.checked = true;
@@ -495,7 +500,7 @@ uiTest('keeps missing speaker IR references explicit and lets identity clear the
   assert.deepEqual(ui.getConfiguration().outputs[0], { channel: 0, measurementId: null, pointId: null });
 });
 
-uiTest('renders four two-curve graph views with synchronized hover and legend highlighting', () => {
+uiTest('renders five two-curve graph views with synchronized hover and legend highlighting', () => {
   const fixture = createFixture();
   const ui = new PipelineAnalyzerUI({ documentRef: fixture.documentRef, windowRef: fixture.windowRef });
   setFormat(ui);
@@ -518,11 +523,24 @@ uiTest('renders four two-curve graph views with synchronized hover and legend hi
       recommendedStabilizationPeriods: 3
     },
     warnings: [{ code: 'period-residual', details: { residualDb: -30 } }],
-    views: { frequency: view, phase: view, groupDelay: view, impulse: view }
+    views: {
+      frequency: view,
+      phase: view,
+      minimumGroupDelay: view,
+      excessGroupDelay: view,
+      impulse: view
+    }
   });
-  assert.equal(ui.viewInputs.size, 4);
+  assert.equal(ui.viewInputs.size, 5);
   assert.ok(ui.legend.parentNode === ui.graphShell, 'the legend must stay in the graph shell');
-  assert.ok(ui.viewGroup.parentNode === ui.graphShell, 'the view group must stay in the graph shell');
+  assert.ok(ui.viewGroup.parentNode === ui.graphSection, 'the view group must stay outside the graph shell');
+  assert.equal(ui.viewLabel.textContent, 'Graph:');
+  assert.equal(ui.viewGroup.classList.contains('parameter-row'), true);
+  assert.equal(ui.viewGroup.classList.contains('radio-group'), true);
+  for (const { input, text } of ui.viewInputs.values()) {
+    assert.equal(input.parentNode, text.parentNode);
+    assert.equal(input.parentNode.classList.contains('pipeline-analyzer-view-option'), true);
+  }
   assert.equal(ui.legend.querySelectorAll('.pipeline-analyzer-legend-row').length, 2);
   assert.equal(ui.legend.children[1].querySelector('.pipeline-analyzer-legend-label').textContent, 'Before');
   assert.equal(ui.legend.children[2].querySelector('.pipeline-analyzer-legend-label').textContent, 'After');
@@ -563,7 +581,13 @@ uiTest('renders four two-curve graph views with synchronized hover and legend hi
   assert.equal(afterPath.classList.contains('is-hidden'), false);
   assert.equal(ui.hoverSvg.querySelectorAll('.pipeline-analyzer-cursor-marker').length, 2);
   assert.ok(ui.graphSvg.children[2] === beforePath, 'curve order must be restored');
-  for (const viewName of ['phase', 'groupDelay', 'impulse', 'frequency']) {
+  for (const viewName of [
+    'phase',
+    'minimumGroupDelay',
+    'excessGroupDelay',
+    'impulse',
+    'frequency'
+  ]) {
     ui.viewInputs.get(viewName).input.checked = true;
     ui.viewInputs.get(viewName).input.dispatch('change');
     ui.graphShell.dispatch('pointermove', { clientX: 512, clientY: 240 });
@@ -602,7 +626,13 @@ uiTest('renders four two-curve graph views with synchronized hover and legend hi
     sampleRate: 48000,
     measurementSettings: { ...ui.getConfiguration().measurementSettings },
     measurement: { stabilizationSeconds: 16.384, totalStimulusSeconds: 19.114 },
-    views: { frequency: view, phase: view, groupDelay: view, impulse: view }
+    views: {
+      frequency: view,
+      phase: view,
+      minimumGroupDelay: view,
+      excessGroupDelay: view,
+      impulse: view
+    }
   });
 });
 
@@ -624,7 +654,15 @@ uiTest('limits hover interpolation to finite adjacent points inside each curve s
       { id: 'after', label: 'After', color: '#00ff00', opacity: 1, points }
     ]
   };
-  ui.setResult({ views: { frequency: view, phase: view, groupDelay: view, impulse: view } });
+  ui.setResult({
+    views: {
+      frequency: view,
+      phase: view,
+      minimumGroupDelay: view,
+      excessGroupDelay: view,
+      impulse: view
+    }
+  });
 
   ui.graphShell.dispatch('pointermove', { clientX: 512, clientY: 240 });
   assert.equal(ui.hoverSvg.children.length, 0);

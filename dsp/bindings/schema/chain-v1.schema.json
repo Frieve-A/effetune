@@ -6807,6 +6807,10 @@
               "x-effetune-unit": "dB",
               "default": -15
             },
+            "dryEnabled": {
+              "type": "boolean",
+              "default": true
+            },
             "dryLevel": {
               "type": "number",
               "minimum": -96,

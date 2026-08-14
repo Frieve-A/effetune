@@ -6646,8 +6646,8 @@
     },
     "IRReverb": {
       "internalType": "IRReverbPlugin",
-      "layoutHash": 2199744560,
-      "floatCount": 6,
+      "layoutHash": 2529061658,
+      "floatCount": 7,
       "packedParameters": [
         {
           "publicName": "channelMode",
@@ -6742,12 +6742,24 @@
           }
         },
         {
+          "publicName": "dryEnabled",
+          "field": "dryEnabled",
+          "keys": [
+            "de"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
           "publicName": "dryLevel",
           "field": "dryLevel",
           "keys": [
             "dl"
           ],
-          "offset": 4,
+          "offset": 5,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -6759,7 +6771,7 @@
           "keys": [
             "pd"
           ],
-          "offset": 5,
+          "offset": 6,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -8186,5 +8198,5 @@
     "dsp/plugins/spatial/phase_select_eq/params.json": "dsp/plugins/spatial/phase_select_eq/golden/index.json",
     "dsp/plugins/spatial/stereo_blend/params.json": "dsp/plugins/spatial/stereo_blend/golden/index.json"
   },
-  "contractDigest": "46b03b458f10f26ff6a07e0cbbb74acbdd08ce99320fe51582728a8535fb1277"
+  "contractDigest": "e63194ca2bd43f224ade8e5b387a89f68678c9e8c838f4a8faca600a61521c84"
 }

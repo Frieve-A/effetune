@@ -167,6 +167,10 @@ test('IR library modal executes filename filtering, sorting, actions, previews, 
     });
     await modal.render();
     await Promise.resolve();
+    const fileInputs = flatten(modal.element).filter(element =>
+      element.tagName === 'INPUT' && element.type === 'file');
+    assert.equal(fileInputs.length, 2);
+    assert.equal(fileInputs.every(input => input.accept.includes('.irs')), true);
     assert.deepEqual(byClass(modal.element, 'ir-library-entry').map(rowName),
       ['Alpha.wav', 'Bravo.wav', 'Yankee.wav', 'Zulu.wav']);
     assert.equal(calls.filter(call => call[0] === 'analysis').length >= 4, true);

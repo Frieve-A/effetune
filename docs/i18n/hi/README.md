@@ -260,7 +260,7 @@ PC पर Chromium ब्राउज़र चुने हुए संगी�
 
 जिन मापों में impulse response data सेव है, उनके results में normalized **Impulse Response** plot दिखाई देता है। शुरुआत में detected onset को 0 ms मानकर 0–10 ms का हिस्सा दिखता है। Time axis को zoom करने के लिए mouse wheel या buttons और समय में scroll करने के लिए plot को drag करें या slider इस्तेमाल करें। Measurement point चुनने पर plot बदल जाता है; **सभी (औसत)** में सेव impulse response वाला पहला point दिखता है और उसका नाम graph के ऊपर दिया जाता है। Plot के नीचे **आवेग प्रतिक्रिया निर्यात करें (WAV)** से दिखाए गए point की पूरी, बिना normalize की गई response को measurement की sampling rate पर mono 32-bit floating-point WAV के रूप में सेव किया जा सकता है।
 
-सक्रिय pipeline की आवृत्ति, फेज़, ग्रुप डिले और इम्पल्स प्रतिक्रिया को अधिकतम चार आउटपुट और सहेजी गई स्पीकर प्रतिक्रियाओं सहित देखने के लिए [Pipeline Analyzer गाइड](pipeline-analyzer.md) देखें।
+सक्रिय pipeline की आवृत्ति, फेज़, न्यूनतम और अतिरिक्त ग्रुप डिले तथा इम्पल्स प्रतिक्रिया को अधिकतम चार आउटपुट और सहेजी गई स्पीकर प्रतिक्रियाओं सहित देखने के लिए [Pipeline Analyzer गाइड](pipeline-analyzer.md) देखें।
 
 ## सामान्य इफेक्ट संयोजन
 

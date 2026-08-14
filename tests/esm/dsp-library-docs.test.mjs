@@ -129,6 +129,19 @@ test('DSP landing explains the cross-surface workflow without competitor framing
   assert.doesNotMatch(landing, /Pedalboard|Spotify|When to choose|comparison/i);
 });
 
+test('IR effect documentation reproduces the app .irs import guidance', () => {
+  const { outputs } = runDocsGenerator({ check: true });
+  const route = routes.routes.find(entry => entry.id === 'effect');
+  const page = outputs.get(path.resolve(
+    repoRoot,
+    route.output.replace('{effect-slug}', 'ir-reverb')
+  ));
+  assert.match(
+    page,
+    /WAV audio with an `\.irs` filename extension can be imported without renaming it\./
+  );
+});
+
 test('DSP pages inherit the shared documentation layout and visual system', () => {
   const dspLayout = fs.readFileSync(path.join(repoRoot, '_layouts', 'dsp.html'), 'utf8');
   const defaultLayout = fs.readFileSync(path.join(repoRoot, '_layouts', 'default.html'), 'utf8');
@@ -477,15 +490,14 @@ test('browser Start and ML safety snippets retain their public contracts', () =>
 });
 
 test('Graph quickstarts publish exact lifecycle, conversion, and stable error APIs', () => {
+  const { outputs } = runDocsGenerator({ check: true });
   const pythonStart = fs.readFileSync(path.join(
     repoRoot, 'docs', 'dsp', 'getting-started', 'python', 'index.md'
   ), 'utf8');
   const javascriptStart = fs.readFileSync(path.join(
     repoRoot, 'docs', 'dsp', 'getting-started', 'javascript', 'index.md'
   ), 'utf8');
-  const graphReference = fs.readFileSync(path.join(
-    repoRoot, 'docs', 'dsp', 'reference', 'graph-v1', 'index.md'
-  ), 'utf8');
+  const graphReference = generatedRoute(outputs, 'graph-v1');
   const pythonReadme = fs.readFileSync(path.join(
     repoRoot, 'dsp', 'bindings', 'python', 'README.md'
   ), 'utf8');
@@ -541,6 +553,11 @@ test('Graph quickstarts publish exact lifecycle, conversion, and stable error AP
   assert.match(graphReference, /Graph v1 has no scheduled parameter events/);
   assert.match(graphReference, /`Volume\.volume`/);
   assert.match(graphReference, /`IRReverb\.dryLevel`/);
+  assert.match(graphReference, /`IRReverb\.dryEnabled`/);
+  assert.match(
+    graphReference,
+    /wet-only when\s+`dryEnabled` is false or `dryLevel` is `-96 dB`/
+  );
   assert.match(
     graphReference,
     /Graph v1 has no telemetry callback, subscription, or observation\s+API/

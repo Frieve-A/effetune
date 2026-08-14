@@ -24,20 +24,22 @@ Pipeline Analyzer 可在不改变实际听到的音频的情况下，测量当�
 
 详细信息会显示当前长度是否足够、建议长度和稳定时间，以及测量总时长。建议值仅供参考，请在适合所测效果器时采用。
 
-仅在选择 Unit Impulse 时，Sequence Length、Stabilization Periods 和 Averages 会被禁用。切换 Frequency、Phase、Group Delay 或 Impulse 只会改变图表显示，不会重新测量。
+仅在选择 Unit Impulse 时，Sequence Length、Stabilization Periods 和 Averages 会被禁用。切换 Frequency、Phase、Min Group Delay、Excess Group Delay 或 Impulse 只会改变图表显示，不会重新测量。
 
 ## 图表的读法
 
+- 使用图表外的 **Graph** 单选按钮选择要显示的响应。
 - **Frequency** 显示电平随频率的变化。
 - **Phase** 显示相位随频率的变化。
-- **Group Delay** 显示随频率变化的延迟。
+- **Min Group Delay** 显示幅度响应的最小相位部分所对应的延迟。
+- **Excess Group Delay** 显示去除最小相位部分后剩余的延迟，便于区分纯延迟和其他非最小相位时序。
 - **Impulse** 显示随时间变化的响应。
 
-图表始终显示 **Before** 和 **After**。移动指针可读取同一频率或时刻的两个数值；指向 **Before** 时会暂时隐藏 **After**，以便清楚比较。为避免布局移动，**Smoothing (oct)** 和 **Impulse Range (ms)** 会一直显示在所有图表中。Smoothing 在 Frequency 和 Group Delay 中可用；Impulse Range 在 Impulse 中可用。与当前图表无关的控件会被禁用。每条频率曲线分别以 0 dB 为基准；每条脉冲按自身完整响应的峰值缩放，并从 -2 ms 显示到所选的 Impulse Range。
+图表始终显示 **Before** 和 **After**。移动指针可读取同一频率或时刻的两个数值；指向 **Before** 时会暂时隐藏 **After**，以便清楚比较。为避免布局移动，**Smoothing (oct)** 和 **Impulse Range (ms)** 会一直显示在所有图表中。Smoothing 在 Frequency 和两个 Group Delay 图表中可用；Impulse Range 在 Impulse 中可用。与当前图表无关的控件会被禁用。每条频率曲线分别以 0 dB 为基准；每条脉冲按自身完整响应的峰值缩放，并从 -2 ms 显示到所选的 Impulse Range。
 
 ## 测量方法
 
-每次测量都会捕获当前 pipeline、其设置和路由，以及所选的扬声器响应。图表显示由此得到的频率、相位、群延迟和脉冲响应；**After** 会补偿 pipeline 报告的延迟。
+每次测量都会捕获当前 pipeline、其设置和路由，以及所选的扬声器响应。图表显示由此得到的频率、相位、最小群延迟、超额群延迟和脉冲响应；**After** 会补偿 pipeline 报告的延迟。
 
 MLS 和 TSP 适合一般的响应测量。如果 delay、reverb 或振铃超出所选测量窗口，结果可能发生重叠；请增大 **Sequence Length**。**Unit Impulse** 会在有限时间内直接记录响应，因此特别长的尾音可能被截断。
 

@@ -226,9 +226,9 @@ IR Reverb 将信号与导入的脉冲响应（IR）进行卷积，再现房间�
 
 ### 音质增强指南
 
-- 添加轻微房间感：使用短IR，将 **Dry** 设为0 dB、**Wet** 设为 -18～-12 dB，并使用较短的 **Pre Delay**。
+- 添加轻微房间感：使用短IR，保持 **Dry** 开启并将 **Dry Level** 设为0 dB、**Wet Level** 设为-18～-12 dB，并使用较短的 **Pre Delay**。
 - 扩展音乐厅空间：使用stereo或True Stereo大厅IR，并用 **Decay** 和 **Trim** 缩短过长尾音。
-- send/return：通过 **Matrix** 将信号复制到另一bus，将 **Dry** 设为-96 dB、**Wet** 设为0 dB，再用send level控制混响量。
+- send/return：通过 **Matrix** 将信号复制到另一bus，关闭 **Dry**、将 **Wet Level** 设为0 dB，再用send level控制混响量。
 - 精确复现：保留原始IR文件及来源和许可证；相同字节会生成相同的库ID。
 
 ### 参数
@@ -236,8 +236,9 @@ IR Reverb 将信号与导入的脉冲响应（IR）进行卷积，再现房间�
 - **Channel Mode**：**Auto**会将单通道IR设为Mono，将立体声选择下的四通道IR设为True Stereo，在IR通道数与所选通道数一致时设为Independent，其余情况设为Diagonal Matrix；实际采用的模式会显示在菜单右侧。也可明确选择Mono、Independent、True Stereo（LL/LR/RL/RR路径）或无串扰的Diagonal Matrix。
 - **Latency**：Zero或128/256/512/1024 samples。数值越高处理压力越低，但wet路径延迟越大；Zero要求Full。
 - **Convolution Rate**：Auto、Full、Half或Quarter。选择Auto时，实际采用的rate会显示在菜单右侧。较低rate可降低负载与wet带宽；Quarter要求至少176.4 kHz。
-- **Dry**：调整原声电平。-96 dB会完全静音原声，适合全wet或return。
-- **Wet**：卷积信号电平，范围-96～+12 dB。默认值为-15 dB，适合一般的insert用法；在send/return配置中，请设为0 dB，并通过send level控制混响量。
+- **Wet Level**：卷积信号电平，范围-96～+12 dB。默认值为-15 dB，适合一般的insert用法；在send/return配置中，请设为0 dB，并通过send level控制混响量。
+- **Dry**：启用原声，默认开启。关闭后会完全移除原声，同时保留 **Dry Level** 的设定值。
+- **Dry Level**：在 **Dry** 开启时调整原声电平，范围-96～+12 dB。设为-96 dB也会将原声静音。
 - **Pre Delay**：仅将wet信号延迟0～500 ms。
 - **Direct Cut** 删除检测到的直接脉冲；**Cut Offset** 将切点移动-20～+50 ms。归一化仍以未切除的IR为基准，因此启用Direct Cut不会放大剩余的混响尾音。
 - **Decay** 将衰减调整为10%～400%；100%保留原始采样。
@@ -251,9 +252,9 @@ IR Reverb 将信号与导入的脉冲响应（IR）进行卷积，再现房间�
 
 Mono应用单个IR，Independent保持通道独立，True Stereo使用LL/LR/RL/RR四条路径，Diagonal Matrix只连接对应编号的输入与输出。在Auto模式下，立体声选择中的所有四通道IR都会按该顺序解释；对于Quad或其他四通道布局，请明确选择Independent或Diagonal Matrix。导入True Stereo文件对时，请同时选择名称末尾匹配的`L`/`R`或`Left`/`Right`文件。
 
-导入的IR文件保存在 **Impulse Response Library** 中，可按原始文件名搜索、加载或删除。Web版会将文件保存在浏览器内；清除站点数据或浏览器自动释放存储空间时，这些文件可能丢失。桌面版会将其保存在应用数据中。请另行备份需要的IR。
+导入的IR文件保存在 **Impulse Response Library** 中，可按原始文件名搜索、加载或删除。内容为WAV音频的`.irs`扩展名文件无需重命名即可导入。Web版会将文件保存在浏览器内；清除站点数据或浏览器自动释放存储空间时，这些文件可能丢失。桌面版会将其保存在应用数据中。请另行备份需要的IR。
 
-共享URL和preset可识别IR，但不包含其音频数据。如果IR不可用，就不会产生wet声音；请重新导入或选择该IR，也可以改用其他IR。dry信号仍按 **Dry** 设置播放。可从[OpenAIR](https://www.openair.hosted.york.ac.uk/)、[EchoThief](https://www.echothief.com/downloads/)和[Freesound](https://freesound.org/)查找素材，但应在EffeTune之外逐项核对并保存许可证（如CC0、CC BY、CC BY-NC）、作者、来源、署名要求和商业使用许可；EffeTune不会保存或验证这些信息。
+共享URL和preset可识别IR，但不包含其音频数据。如果IR不可用，就不会产生wet声音；请重新导入或选择该IR，也可以改用其他IR。原声按 **Dry** 和 **Dry Level** 设置播放。可从[OpenAIR](https://www.openair.hosted.york.ac.uk/)、[EchoThief](https://www.echothief.com/downloads/)和[Freesound](https://freesound.org/)查找素材，但应在EffeTune之外逐项核对并保存许可证（如CC0、CC BY、CC BY-NC）、作者、来源、署名要求和商业使用许可；EffeTune不会保存或验证这些信息。
 
 ## RS Reverb
 
