@@ -31,6 +31,10 @@ test('desktop and DSP Library release tags select only their owning workflows', 
 
   assert.match(desktopRelease, /^\s+- 'v\*'$/m);
   assert.match(dspLibraryRelease, /^\s+- 'dsp-v\*'$/m);
+  assert.doesNotMatch(
+    dspLibraryRelease,
+    /Package Electron application|electron-builder|pack:win|smoke:dsp-package/
+  );
 });
 
 test('central CI changes do not select unrelated product builds', () => {

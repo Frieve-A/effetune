@@ -58,19 +58,22 @@ function jobBlock(workflow, jobName) {
   return lines.slice(start, nextJob < 0 ? lines.length : nextJob).join('\n');
 }
 
-test('Windows packaging workflows use the canonical OpenHome package verification path', () => {
+test('Windows desktop packaging is limited to the explicit Electron path', () => {
   const dspWindows = jobBlock(workflows.dsp, 'windows');
   const releaseWindows = jobBlock(workflows.release, 'windows');
-  for (const block of [dspWindows, releaseWindows]) {
-    assert.match(block, /^\s+run: npm run pack:win$/m);
-    assert.doesNotMatch(block, /^\s+run: npm run pack$/m);
-    assert.match(block, /^\s+run: npm run smoke:dsp-package$/m);
-  }
+  assert.match(dspWindows, /^\s+if: inputs\.package_smoke$/m);
+  assert.match(dspWindows, /^\s+run: npm run pack:win$/m);
+  assert.match(dspWindows, /^\s+run: npm run smoke:dsp-package$/m);
+  assert.doesNotMatch(releaseWindows, /pack:win|smoke:dsp-package|electron-builder/);
+
+  const dspWindowsCaller = jobBlock(workflows.ci, 'dsp-windows');
+  assert.match(dspWindowsCaller, /package_smoke: \$\{\{ needs\.scope\.outputs\.electron == 'true' \}\}/);
 
   const openHomeNative = jobBlock(workflows.ci, 'openhome-native');
   const install = openHomeNative.indexOf('run: npm ci --ignore-scripts');
   const execute = openHomeNative.indexOf('run: ${{ matrix.command }}');
-  assert.match(openHomeNative, /command: npm run pack:win/);
+  assert.match(openHomeNative, /runner: windows-latest\s+command: npm run build:openhome-sidecar -- --no-publish-development/);
+  assert.doesNotMatch(openHomeNative, /pack:win|electron-builder/);
   assert.ok(install >= 0 && execute > install, 'OpenHome CI must install before building and verification');
 });
 

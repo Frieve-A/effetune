@@ -312,7 +312,7 @@ jobs:
         include:
           - label: Windows x64
             runner: windows-latest
-            command: npm run pack:win
+            command: npm run build:openhome-sidecar -- --no-publish-development
           - label: Linux x64
             runner: ubuntu-latest
             command: npm run build:openhome-sidecar -- --no-publish-development
@@ -423,7 +423,7 @@ jobs:
     uses: ./.github/workflows/dsp.yml
     with:
       stage: windows
-      package_smoke: ${{ needs.scope.outputs.electron != 'true' }}
+      package_smoke: ${{ needs.scope.outputs.electron == 'true' }}
     permissions:
       contents: read
 
