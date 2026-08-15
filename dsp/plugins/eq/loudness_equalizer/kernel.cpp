@@ -2,6 +2,7 @@
 #include "LoudnessEqualizerPluginParams.h"
 #include "effetune/dsp/biquad.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -87,11 +88,14 @@ public:
     sample_rate_ = static_cast<double>(info.sampleRate);
     max_channels_ = info.maxChannels;
     states_.resize(max_channels_);
+    const auto requested_frames = static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005));
+    ramp_frames_ = requested_frames == 0u ? 1u : requested_frames;
   }
 
   void reset() noexcept override {
     initialized_ = false;
     coefficients_cached_ = false;
+    ramp_remaining_ = 0u;
     for (LoudnessState &state : states_) {
       state.reset();
     }
@@ -123,15 +127,29 @@ public:
       LoudnessState &state = states_[channel];
       const std::uint32_t offset = channel * frame_count;
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-        const double low_output = dsp::processBiquadDf1Sample(
-            static_cast<double>(audio[offset + frame]), low_shelf_, state.low);
-        const double high_output = dsp::processBiquadDf1Sample(low_output, high_shelf_, state.high);
-        audio[offset + frame] = static_cast<float>(high_output * volume_gain_);
+        const std::uint32_t elapsed = frame + 1u;
+        const double position =
+            static_cast<double>(elapsed < ramp_remaining_ ? elapsed : ramp_remaining_);
+        const Coefficients low = interpolate(low_shelf_, low_step_, position);
+        const Coefficients high = interpolate(high_shelf_, high_step_, position);
+        const double volume = volume_gain_ + volume_step_ * position;
+        const double low_output =
+            dsp::processBiquadDf1Sample(static_cast<double>(audio[offset + frame]), low, state.low);
+        const double high_output = dsp::processBiquadDf1Sample(low_output, high, state.high);
+        audio[offset + frame] = static_cast<float>(high_output * volume);
       }
     }
+    advanceTargets(frame_count);
   }
 
 private:
+  static Coefficients interpolate(const Coefficients &from, const Coefficients &step,
+                                  double position) noexcept {
+    return {from.b0 + step.b0 * position, from.b1 + step.b1 * position,
+            from.b2 + step.b2 * position, from.a1 + step.a1 * position,
+            from.a2 + step.a2 * position};
+  }
+
   [[nodiscard]] bool parametersChanged() const noexcept {
     return !coefficients_cached_ || cached_average_spl_ != params_.averageSpl ||
            cached_relative_volume_ != params_.relativeVolume ||
@@ -149,11 +167,27 @@ private:
     const double gain_multiplier = (85.0 - effective_spl) / 25.0;
     const double low_gain = static_cast<double>(params_.lowGain) * gain_multiplier;
     const double high_gain = static_cast<double>(params_.highGain) * gain_multiplier;
-    volume_gain_ = std::pow(10.0, static_cast<double>(params_.relativeVolume) / 20.0);
-    low_shelf_ = designLowShelf(sample_rate_, static_cast<double>(params_.lowFrequency),
-                                static_cast<double>(params_.lowQ), low_gain);
-    high_shelf_ = designHighShelf(sample_rate_, static_cast<double>(params_.highFrequency),
-                                  static_cast<double>(params_.highQ), high_gain);
+    const double target_volume = std::pow(10.0, static_cast<double>(params_.relativeVolume) / 20.0);
+    const Coefficients target_low =
+        designLowShelf(sample_rate_, static_cast<double>(params_.lowFrequency),
+                       static_cast<double>(params_.lowQ), low_gain);
+    const Coefficients target_high =
+        designHighShelf(sample_rate_, static_cast<double>(params_.highFrequency),
+                        static_cast<double>(params_.highQ), high_gain);
+    if (!coefficients_cached_) {
+      volume_gain_ = target_volume_gain_ = target_volume;
+      low_shelf_ = target_low_shelf_ = target_low;
+      high_shelf_ = target_high_shelf_ = target_high;
+    } else {
+      target_volume_gain_ = target_volume;
+      target_low_shelf_ = target_low;
+      target_high_shelf_ = target_high;
+      const double inverse = 1.0 / static_cast<double>(ramp_frames_);
+      volume_step_ = (target_volume_gain_ - volume_gain_) * inverse;
+      low_step_ = difference(low_shelf_, target_low_shelf_, inverse);
+      high_step_ = difference(high_shelf_, target_high_shelf_, inverse);
+      ramp_remaining_ = ramp_frames_;
+    }
 
     cached_average_spl_ = params_.averageSpl;
     cached_relative_volume_ = params_.relativeVolume;
@@ -165,6 +199,26 @@ private:
     cached_high_frequency_ = params_.highFrequency;
     cached_sample_rate_ = sample_rate_;
     coefficients_cached_ = true;
+  }
+
+  static Coefficients difference(const Coefficients &from, const Coefficients &to,
+                                 double scale) noexcept {
+    return {(to.b0 - from.b0) * scale, (to.b1 - from.b1) * scale, (to.b2 - from.b2) * scale,
+            (to.a1 - from.a1) * scale, (to.a2 - from.a2) * scale};
+  }
+
+  void advanceTargets(std::uint32_t frames) noexcept {
+    const std::uint32_t advanced = frames < ramp_remaining_ ? frames : ramp_remaining_;
+    const double position = static_cast<double>(advanced);
+    volume_gain_ += volume_step_ * position;
+    low_shelf_ = interpolate(low_shelf_, low_step_, position);
+    high_shelf_ = interpolate(high_shelf_, high_step_, position);
+    ramp_remaining_ -= advanced;
+    if (ramp_remaining_ == 0u) {
+      volume_gain_ = target_volume_gain_;
+      low_shelf_ = target_low_shelf_;
+      high_shelf_ = target_high_shelf_;
+    }
   }
 
   double sample_rate_ = 0.0;
@@ -182,8 +236,16 @@ private:
   bool initialized_ = false;
   bool coefficients_cached_ = false;
   double volume_gain_ = 1.0;
+  double target_volume_gain_ = 1.0;
+  double volume_step_ = 0.0;
   Coefficients low_shelf_{};
   Coefficients high_shelf_{};
+  Coefficients target_low_shelf_{};
+  Coefficients target_high_shelf_{};
+  Coefficients low_step_{};
+  Coefficients high_step_{};
+  std::uint32_t ramp_frames_ = 240u;
+  std::uint32_t ramp_remaining_ = 0u;
   std::vector<LoudnessState> states_;
 };
 

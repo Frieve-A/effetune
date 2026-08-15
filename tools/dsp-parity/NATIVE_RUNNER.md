@@ -45,6 +45,23 @@ The seed options carry the golden case's unsigned 64-bit xorshift seed as two de
 the seed outside ETPC preserves the version-1 control layout while matching the WASM and
 JavaScript reference hosts.
 
+## Automation verification
+
+The canonical automation check needs both the normal native runner and a Debug runner.
+The Debug executable is mandatory because the six-rate dense sweep always enables the
+allocation guard:
+
+```text
+npm run test:dsp:automation -- \
+  --native-runner <native-runner> \
+  --allocation-runner <debug-native-runner> \
+  --ir-native-test <ir-reverb-native-test>
+```
+
+`EFFETUNE_DSP_NATIVE_RUNNER` and `EFFETUNE_DSP_ALLOCATION_RUNNER` provide the equivalent
+runner inputs. A Release executable passed as `--allocation-runner` is rejected when the
+sweep requests `--allocations`.
+
 ## ETPC Version 2
 
 Schemas with an optional structured parameter codec use version 2. Offsets 0-31 match

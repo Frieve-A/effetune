@@ -85,7 +85,7 @@ class MultibandBalancePlugin extends PluginBase {
                 // Apply a short fade-in to prevent clicks when filter states are reset
                 context.fadeIn = {
                     counter: 0,
-                    length: Math.min(parameters.blockSize, parameters.sampleRate * 0.005)
+                    length: parameters.sampleRate * 0.005
                 };
             } else if (frequenciesChanged) {
                 // Update frequencies in filterConfig even if reset is not needed
@@ -324,7 +324,8 @@ class MultibandBalancePlugin extends PluginBase {
             }
 
             // Setup band signal buffers using a pooled TypedArray to avoid reallocation
-            if (!context.bandSignals || context.bandSignals.length !== parameters.channelCount) {
+            if (!context.bandSignals || context.bandSignals.length !== parameters.channelCount ||
+                context.bandSignals[0]?.[0]?.length !== parameters.blockSize) {
                 const totalArrays = parameters.channelCount * 5;
                 const arrayPool = new Float32Array(totalArrays * parameters.blockSize);
                 context.bandSignals = Array.from({ length: parameters.channelCount }, (_, ch) => {
@@ -337,7 +338,8 @@ class MultibandBalancePlugin extends PluginBase {
             }
 
             // Create temporary buffers for intermediate results if they don't exist
-            if (!context.tempBuffers || context.tempBuffers.length !== 3) {
+            if (!context.tempBuffers || context.tempBuffers.length !== 3 ||
+                context.tempBuffers[0].length !== parameters.blockSize) {
                 context.tempBuffers = [
                     new Float32Array(parameters.blockSize),
                     new Float32Array(parameters.blockSize),
@@ -392,61 +394,37 @@ class MultibandBalancePlugin extends PluginBase {
             }
 
             // Apply balance and sum bands
-            const balanceValues = parameters.bands.map(b => b.balance / 100); // Convert percentage to -1.0 to 1.0
+            const targetBalances = parameters.bands.map(b => Math.fround(b.balance) / 100);
+            const balanceRampFrames = Math.max(1, Math.ceil(parameters.sampleRate * 0.005));
+            if (!context.currentBalances) {
+                context.currentBalances = targetBalances.slice();
+                context.targetBalances = targetBalances.slice();
+                context.balanceSteps = [0, 0, 0, 0, 0];
+                context.balanceRampRemaining = 0;
+            } else if (targetBalances.some((value, band) => value !== context.targetBalances[band])) {
+                context.targetBalances = targetBalances;
+                context.balanceSteps = targetBalances.map((value, band) =>
+                    (value - context.currentBalances[band]) / balanceRampFrames);
+                context.balanceRampRemaining = balanceRampFrames;
+            }
             const outputBuffer = context.outputBuffer;
-            outputBuffer.fill(0); // Clear output buffer
-            
-            // Process each channel
-            for (let ch = 0; ch < parameters.channelCount; ch++) {
-                const offset = ch * parameters.blockSize;
-                const bandSignals = context.bandSignals[ch];
-                
-                // Process each band with balance in blocks
-                for (let band = 0; band < 5; band++) {
-                    const balance = balanceValues[band];
-                    const bandSignal = bandSignals[band];
-                    
-                    if ((balance >= 0 ? balance : -balance) < 1e-6) {
-                        // Center position (balance = 0): no change
-                        // Process in blocks with loop unrolling
-                        const blockSizeMod4 = parameters.blockSize & ~3;
-                        let i = 0;
-                        
-                        // Main loop with 4-sample unrolling
-                        for (; i < blockSizeMod4; i += 4) {
-                            outputBuffer[offset + i] += bandSignal[i];
-                            outputBuffer[offset + i + 1] += bandSignal[i + 1];
-                            outputBuffer[offset + i + 2] += bandSignal[i + 2];
-                            outputBuffer[offset + i + 3] += bandSignal[i + 3];
-                        }
-                        
-                        // Handle remaining samples
-                        for (; i < parameters.blockSize; i++) {
-                            outputBuffer[offset + i] += bandSignal[i];
-                        }
-                    } else {
-                        // Apply balance
-                        const leftGain = Math.max(0, 1 - balance);
-                        const rightGain = Math.max(0, 1 + balance);
-                        const gain = (ch & 1) === 0 ? leftGain : rightGain;
-                        
-                        // Process in blocks with loop unrolling
-                        const blockSizeMod4 = parameters.blockSize & ~3;
-                        let i = 0;
-                        
-                        // Main loop with 4-sample unrolling
-                        for (; i < blockSizeMod4; i += 4) {
-                            outputBuffer[offset + i] += bandSignal[i] * gain;
-                            outputBuffer[offset + i + 1] += bandSignal[i + 1] * gain;
-                            outputBuffer[offset + i + 2] += bandSignal[i + 2] * gain;
-                            outputBuffer[offset + i + 3] += bandSignal[i + 3] * gain;
-                        }
-                        
-                        // Handle remaining samples
-                        for (; i < parameters.blockSize; i++) {
-                            outputBuffer[offset + i] += bandSignal[i] * gain;
-                        }
+            for (let frame = 0; frame < parameters.blockSize; ++frame) {
+                if (context.balanceRampRemaining > 0) {
+                    for (let band = 0; band < 5; ++band) {
+                        context.currentBalances[band] += context.balanceSteps[band];
                     }
+                    if (--context.balanceRampRemaining === 0) {
+                        context.currentBalances = context.targetBalances.slice();
+                    }
+                }
+                for (let ch = 0; ch < parameters.channelCount; ++ch) {
+                    let sum = 0;
+                    for (let band = 0; band < 5; ++band) {
+                        const balance = context.currentBalances[band];
+                        const gain = Math.max(0, (ch & 1) === 0 ? 1 - balance : 1 + balance);
+                        sum += context.bandSignals[ch][band][frame] * gain;
+                    }
+                    outputBuffer[ch * parameters.blockSize + frame] = sum;
                 }
             }
             

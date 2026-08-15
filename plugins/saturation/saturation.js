@@ -18,16 +18,85 @@ class SaturationPlugin extends PluginBase {
                 blockSize,
                 sampleRate
             } = parameters;
-            const mixRatio = mix / 100;
-            const gainLinear = Math.pow(10, gain / 20);
-            const biasOffset = Math.tanh(drive * bias);
-
-            const len = data.length;
-            for (let i = 0; i < len; i++) {
-                const dry = data[i];
-                const wet = Math.tanh(drive * (dry + bias)) - biasOffset;
-                data[i] = (dry * (1 - mixRatio) + wet * mixRatio) * gainLinear;
+            const nextDrive = Math.fround(drive);
+            const nextBias = Math.fround(bias);
+            const nextMix = Math.fround(mix) / 100;
+            const nextGain = Math.pow(10, Math.fround(gain) / 20);
+            const nextBiasOffset = Math.fround(Math.tanh(nextDrive * nextBias));
+            const rampFrames = Math.max(1, Math.ceil(sampleRate * 0.005));
+            if (context.saturationCurrentDrive === undefined) {
+                context.saturationCurrentDrive = nextDrive;
+                context.saturationCurrentBias = nextBias;
+                context.saturationCurrentMix = nextMix;
+                context.saturationCurrentGain = nextGain;
+                context.saturationCurrentBiasOffset = nextBiasOffset;
+                context.saturationTargetDrive = nextDrive;
+                context.saturationTargetBias = nextBias;
+                context.saturationTargetMix = nextMix;
+                context.saturationTargetGain = nextGain;
+                context.saturationTargetBiasOffset = nextBiasOffset;
+                context.saturationStepDrive = 0;
+                context.saturationStepBias = 0;
+                context.saturationStepMix = 0;
+                context.saturationStepGain = 0;
+                context.saturationStepBiasOffset = 0;
+                context.saturationRemaining = 0;
+            } else if (nextDrive !== context.saturationTargetDrive ||
+                nextBias !== context.saturationTargetBias ||
+                nextMix !== context.saturationTargetMix ||
+                nextGain !== context.saturationTargetGain ||
+                nextBiasOffset !== context.saturationTargetBiasOffset) {
+                context.saturationTargetDrive = nextDrive;
+                context.saturationTargetBias = nextBias;
+                context.saturationTargetMix = nextMix;
+                context.saturationTargetGain = nextGain;
+                context.saturationTargetBiasOffset = nextBiasOffset;
+                context.saturationStepDrive =
+                    (nextDrive - context.saturationCurrentDrive) / rampFrames;
+                context.saturationStepBias =
+                    (nextBias - context.saturationCurrentBias) / rampFrames;
+                context.saturationStepMix =
+                    (nextMix - context.saturationCurrentMix) / rampFrames;
+                context.saturationStepGain =
+                    (nextGain - context.saturationCurrentGain) / rampFrames;
+                context.saturationStepBiasOffset =
+                    (nextBiasOffset - context.saturationCurrentBiasOffset) / rampFrames;
+                context.saturationRemaining = rampFrames;
             }
+
+            let currentDrive = context.saturationCurrentDrive;
+            let currentBias = context.saturationCurrentBias;
+            let currentMix = context.saturationCurrentMix;
+            let currentGain = context.saturationCurrentGain;
+            let currentBiasOffset = context.saturationCurrentBiasOffset;
+            for (let frame = 0; frame < blockSize; ++frame) {
+                if (context.saturationRemaining > 0) {
+                    currentDrive += context.saturationStepDrive;
+                    currentBias += context.saturationStepBias;
+                    currentMix += context.saturationStepMix;
+                    currentGain += context.saturationStepGain;
+                    currentBiasOffset += context.saturationStepBiasOffset;
+                    if (--context.saturationRemaining === 0) {
+                        currentDrive = context.saturationTargetDrive;
+                        currentBias = context.saturationTargetBias;
+                        currentMix = context.saturationTargetMix;
+                        currentGain = context.saturationTargetGain;
+                        currentBiasOffset = context.saturationTargetBiasOffset;
+                    }
+                }
+                for (let channel = 0; channel < channelCount; ++channel) {
+                    const index = channel * blockSize + frame;
+                    const dry = data[index];
+                    const shapedInput = Math.fround(currentDrive * (dry + currentBias));
+                    const wet = Math.fround(Math.tanh(shapedInput)) - currentBiasOffset;
+                    data[index] = (dry * (1 - currentMix) + wet * currentMix) * currentGain;
+                }
+            }
+            context.saturationCurrentDrive = currentDrive;
+            context.saturationCurrentBias = currentBias;
+            context.saturationCurrentMix = currentMix;
+            context.saturationCurrentGain = currentGain;
+            context.saturationCurrentBiasOffset = currentBiasOffset;
             return data;
         `);
     }

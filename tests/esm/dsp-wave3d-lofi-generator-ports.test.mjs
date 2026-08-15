@@ -43,7 +43,7 @@ const ports = [
     ],
     caseCount: 8,
     goldenBytes: 137472,
-    jsEngineHash: '3ed65ebfd33215df3617ceccfd5effaf02368c76e3a7994b1a3e7c2bc6abcb54',
+    jsEngineHash: '06207aed73272781b2d52343f6ff41fa336ba0bd462f0523a8efcc825b4a43c5',
     activeParams: { nt: 'pink', lv: -6, pc: true }
   },
   {
@@ -53,7 +53,7 @@ const ports = [
     fields: [['rmsJitter', 'rj', 'float']],
     caseCount: 5,
     goldenBytes: 183531,
-    jsEngineHash: 'c26463e3c5aabaacb65354944ca5c5752731d032a3e397a93bdbbc9c42dd0a30',
+    jsEngineHash: 'f2ea130dd3d55e8b23843baaba9c85bda0d5cf0fc19227a763b788724995ccea',
     activeParams: { rj: 200 }
   },
   {
@@ -70,7 +70,7 @@ const ports = [
     ],
     caseCount: 8,
     goldenBytes: 232331,
-    jsEngineHash: 'f9de1f3159103739fdc2f77302b463cbb4f85fa3c06869d1b680ff676103114d',
+    jsEngineHash: '204ece24ce5ec38a46ea77ae5ad762ec0d080bbc3de9608f62d5cf286f78ee03',
     activeParams: { fr: 50, tp: 'Dirty', hm: 100, tn: 20, in: 10, lv: -12 }
   },
   {
@@ -88,7 +88,7 @@ const ports = [
     ],
     caseCount: 14,
     goldenBytes: 269579,
-    jsEngineHash: '78bb2fb4268436591587c8303c57371bdf0c9028bdefc4c21d205cb4b2aa6f0a',
+    jsEngineHash: '624d0ef686e16455c16cf260835e6a5482dcff2b5e679c5816c4331a1b917886',
     activeParams: { fr: 880, vl: -6, pn: 0, wf: 'pink', md: 'pulsed', it: 100, wd: 50 }
   }
 ];

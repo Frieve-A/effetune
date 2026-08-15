@@ -68,6 +68,14 @@ class MultiChannelPanelPlugin extends PluginBase {
                 context.delayBuffers = Array.from({ length: numChannelsToProcess }, () => new Float32Array(maxDelaySamples));
                 context.delayWriteIndices = Array.from({ length: numChannelsToProcess }, () => 0); // Stores the current write position for each delay buffer.
                 context.delaySampleRate = sampleRate;
+                context.currentGains = new Float64Array(numChannelsToProcess);
+                context.targetGains = new Float64Array(numChannelsToProcess);
+                context.gainSteps = new Float64Array(numChannelsToProcess);
+                context.currentDelays = new Float64Array(numChannelsToProcess);
+                context.targetDelays = new Float64Array(numChannelsToProcess);
+                context.delaySteps = new Float64Array(numChannelsToProcess);
+                context.controlRampRemaining = new Uint32Array(numChannelsToProcess);
+                context.controlsInitialized = new Uint8Array(numChannelsToProcess);
             }
 
             // Initialize context state for block-based peak tracking over 1/30 second window
@@ -118,17 +126,27 @@ class MultiChannelPanelPlugin extends PluginBase {
                 const channelVolumeDB = volumeLevelsDB[ch];
                 const channelDelayTimeMs = delayTimesMs[ch];
 
-                // Convert volume from decibels to a linear gain factor.
-                const linearGain = Math.pow(10, channelVolumeDB / 20);
+                const targetGain = Math.pow(10, Math.fround(channelVolumeDB) / 20);
 
                 // Access the delay buffer and its properties for the current channel.
                 const delayBuffer = context.delayBuffers[ch];
                 let writeIndex = context.delayWriteIndices[ch];
                 const delayBufferLength = delayBuffer.length; // Cache for performance.
 
-                // Convert delay time from milliseconds to samples, clamped to the allocated buffer.
-                let delayInSamples = Math.floor(channelDelayTimeMs * sampleRate * 0.001);
-                delayInSamples = delayInSamples < 0 ? 0 : (delayInSamples > delayBufferLength ? delayBufferLength : delayInSamples);
+                let targetDelay = Math.fround(channelDelayTimeMs) * sampleRate * 0.001;
+                targetDelay = targetDelay < 0 ? 0 : (targetDelay > delayBufferLength ? delayBufferLength : targetDelay);
+                const rampFrames = Math.max(1, Math.ceil(sampleRate * 0.005));
+                if (!context.controlsInitialized[ch]) {
+                    context.currentGains[ch] = context.targetGains[ch] = targetGain;
+                    context.currentDelays[ch] = context.targetDelays[ch] = targetDelay;
+                    context.controlsInitialized[ch] = 1;
+                } else if (context.targetGains[ch] !== targetGain || context.targetDelays[ch] !== targetDelay) {
+                    context.targetGains[ch] = targetGain;
+                    context.targetDelays[ch] = targetDelay;
+                    context.gainSteps[ch] = (targetGain - context.currentGains[ch]) / rampFrames;
+                    context.delaySteps[ch] = (targetDelay - context.currentDelays[ch]) / rampFrames;
+                    context.controlRampRemaining[ch] = rampFrames;
+                }
 
                 let channelBlockPeak = 0; // Stores the peak absolute sample value for this channel in the current block (pre-gain).
 
@@ -136,57 +154,30 @@ class MultiChannelPanelPlugin extends PluginBase {
                 const shouldEffectivelyMute = (isAnyChannelSoloed && !isChannelSoloActive) || (!isAnyChannelSoloed && isChannelMuteActive);
 
                 // --- Sample processing loop for the current channel ---
-                if (delayInSamples === 0) {
-                    // Optimized path for channels with no delay.
-                    for (let i = 0; i < blockSize; i++) {
-                        const sampleIndex = channelAudioOffset + i;
-                        const currentSample = data[sampleIndex];
-
-                        // Track peak absolute sample value (pre-gain, pre-mute) for metering.
-                        const absSample = Math.abs(currentSample);
-                        if (absSample > channelBlockPeak) {
-                            channelBlockPeak = absSample;
+                for (let i = 0; i < blockSize; i++) {
+                    if (context.controlRampRemaining[ch] > 0) {
+                        context.currentGains[ch] += context.gainSteps[ch];
+                        context.currentDelays[ch] += context.delaySteps[ch];
+                        if (--context.controlRampRemaining[ch] === 0) {
+                            context.currentGains[ch] = context.targetGains[ch];
+                            context.currentDelays[ch] = context.targetDelays[ch];
                         }
-
-                        // Apply gain and mute.
-                        const processedSample = shouldEffectivelyMute ? 0 : currentSample * linearGain;
-                        data[sampleIndex] = processedSample;
-
-                        // Store the processed sample in the delay buffer. This ensures that if delay is
-                        // activated later, the buffer contains relevant processed audio.
-                        delayBuffer[writeIndex] = processedSample; 
-                        writeIndex = (writeIndex + 1) % delayBufferLength;
                     }
-                } else {
-                    // Path for channels with active delay.
-                    // Calculate the read index for the circular delay buffer.
-                    let readIndex = (writeIndex - delayInSamples + delayBufferLength) % delayBufferLength;
-
-                    for (let i = 0; i < blockSize; i++) {
-                        const sampleIndex = channelAudioOffset + i;
-                        const currentInputSample = data[sampleIndex];
-
-                        // Track peak absolute sample value of the *input* signal (pre-gain, pre-mute) for metering.
-                        const absInputSample = Math.abs(currentInputSample);
-                        if (absInputSample > channelBlockPeak) {
-                            channelBlockPeak = absInputSample;
-                        }
-
-                        // Read before writing so the maximum delay, where read and write indices match,
-                        // still returns the sample currently stored in the delay line.
-                        const delayedSample = delayBuffer[readIndex];
-
-                        // Apply gain and mute to the current input sample before storing it in the delay buffer.
-                        const sampleToStoreInDelayBuffer = shouldEffectivelyMute ? 0 : currentInputSample * linearGain;
-                        delayBuffer[writeIndex] = sampleToStoreInDelayBuffer;
-
-                        // The output sample is the delayed sample read from the buffer.
-                        data[sampleIndex] = delayedSample;
-
-                        // Advance write and read indices for the circular buffer.
-                        writeIndex = (writeIndex + 1) % delayBufferLength;
-                        readIndex = (readIndex + 1) % delayBufferLength;
-                    }
+                    const sampleIndex = channelAudioOffset + i;
+                    const currentInputSample = data[sampleIndex];
+                    const absInputSample = Math.abs(currentInputSample);
+                    if (absInputSample > channelBlockPeak) channelBlockPeak = absInputSample;
+                    const processed = shouldEffectivelyMute ? 0 : currentInputSample * context.currentGains[ch];
+                    const delay = context.currentDelays[ch];
+                    const lower = Math.floor(delay);
+                    const fraction = delay - lower;
+                    const newer = lower === 0 ? processed :
+                        delayBuffer[(writeIndex + delayBufferLength - lower) % delayBufferLength];
+                    const older = fraction === 0 || lower >= delayBufferLength ? newer :
+                        delayBuffer[(writeIndex + delayBufferLength - lower - 1) % delayBufferLength];
+                    data[sampleIndex] = newer + (older - newer) * fraction;
+                    delayBuffer[writeIndex] = processed;
+                    writeIndex = (writeIndex + 1) % delayBufferLength;
                 }
 
                 // Store the updated write index for the next processing block.

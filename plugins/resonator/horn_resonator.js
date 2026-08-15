@@ -46,8 +46,8 @@ class HornResonatorPlugin extends PluginBase {
             const needsRecalc = !context.initialized ||
                                 context.sr  !== sr ||
                                 context.chs !== chs ||
-                                // List of parameters that necessitate recalculation
-                                ['ln','th','mo','cv','dp','tr','co']
+                                // Only geometry changes rebuild and clear the waveguide.
+                                ['ln','th','mo','cv']
                                 .some(key => context[key] !== parameters[key]);
 
             /* ---------- 1. Recalculate geometry & filter coefficients if needed -------- */
@@ -161,6 +161,13 @@ class HornResonatorPlugin extends PluginBase {
                 const a1_c = 2.0 * (omega2 - 1.0) * invDen;
                 const a2_c = (omega2 - k + 1.0) * invDen;
                 context.lrCoeffs = { b0_lp, b1_lp, b2_lp, b0_hp, b1_hp, b2_hp, a1_c, a2_c };
+                context.lrTarget = { ...context.lrCoeffs };
+                context.lrStep = { b0_lp: 0, b1_lp: 0, b2_lp: 0, b0_hp: 0, b1_hp: 0,
+                    b2_hp: 0, a1_c: 0, a2_c: 0 };
+                context.lrRemaining = 0; context.gRemaining = 0; context.trRemaining = 0;
+                context.gCurrent = context.g; context.gTarget = context.g;
+                context.trCurrent = context.trCoeff; context.trTarget = context.trCoeff;
+                context.gStep = 0; context.trStep = 0;
 
                 // Initialize crossover filter states
                 const createCrossoverStage = () => Array.from({length: chs}, () => ({x1: DC_OFFSET, x2: -DC_OFFSET, y1: DC_OFFSET, y2: -DC_OFFSET}));
@@ -192,11 +199,40 @@ class HornResonatorPlugin extends PluginBase {
                 context.initialized = true;
             } // End of needsRecalc block
 
+            if (!needsRecalc && context.co !== parameters.co) {
+                const frames = Math.max(1, Math.ceil(sr * 0.005));
+                context.co = parameters.co;
+                const crossoverFreq = Math.max(20, Math.min(sr * 0.5 - 1, context.co));
+                const omega = Math.tan(crossoverFreq * PI / sr), omega2 = omega * omega;
+                const k = SQRT2 * omega, den = omega2 + k + 1.0;
+                const invDen = den < EPS ? 1.0 : 1.0 / den;
+                const target = {
+                    b0_lp: omega2 * invDen, b1_lp: 2 * omega2 * invDen, b2_lp: omega2 * invDen,
+                    b0_hp: invDen, b1_hp: -2 * invDen, b2_hp: invDen,
+                    a1_c: 2 * (omega2 - 1) * invDen, a2_c: (omega2 - k + 1) * invDen
+                };
+                context.lrTarget = target;
+                for (const key in target) context.lrStep[key] = (target[key] - context.lrCoeffs[key]) / frames;
+                context.lrRemaining = frames;
+            }
+            if (!needsRecalc && context.dp !== parameters.dp) {
+                const frames = Math.max(1, Math.ceil(sr * 0.005));
+                context.dp = parameters.dp;
+                context.gTarget = Math.pow(10, -context.dp * (C / sr) / 20);
+                context.gStep = (context.gTarget - context.gCurrent) / frames;
+                context.gRemaining = frames;
+            }
+            if (!needsRecalc && context.tr !== parameters.tr) {
+                const frames = Math.max(1, Math.ceil(sr * 0.005));
+                context.tr = parameters.tr;
+                context.trTarget = context.tr;
+                context.trStep = (context.trTarget - context.trCurrent) / frames;
+                context.trRemaining = frames;
+            }
+
             /* ------------------ 2. Sample processing loop ---------------- */
             const N = context.N;             // Number of waveguide segments
             const R = context.R;             // Reflection coefficient array [N]
-            const g = context.g;             // Damping gain per segment
-            const trCoeff = context.trCoeff; // Throat reflection coefficient
 
             const fwd = context.fwd; // [chs][N+1] Forward wave states
             const rev = context.rev; // [chs][N+1] Reverse wave states
@@ -211,7 +247,6 @@ class HornResonatorPlugin extends PluginBase {
             const rm_y1_states = context.rm_y1_states; // [chs] Output history states
 
             // Crossover filter coefficients and states
-            const { b0_lp, b1_lp, b2_lp, b0_hp, b1_hp, b2_hp, a1_c, a2_c } = context.lrCoeffs;
             const lpStages = context.lrStates.low;  // [2][chs] Low-pass states
             const hpStages = context.lrStates.high; // [2][chs] High-pass states
 
@@ -243,6 +278,17 @@ class HornResonatorPlugin extends PluginBase {
                 // --- Sample Loop ---
                 for (let i = 0; i < bs; i++) {
                     const inputSample = data[channelOffset + i]; // Get input sample
+                    const lrElapsed = Math.min(i + 1, context.lrRemaining);
+                    const b0_lp = context.lrCoeffs.b0_lp + context.lrStep.b0_lp * lrElapsed;
+                    const b1_lp = context.lrCoeffs.b1_lp + context.lrStep.b1_lp * lrElapsed;
+                    const b2_lp = context.lrCoeffs.b2_lp + context.lrStep.b2_lp * lrElapsed;
+                    const b0_hp = context.lrCoeffs.b0_hp + context.lrStep.b0_hp * lrElapsed;
+                    const b1_hp = context.lrCoeffs.b1_hp + context.lrStep.b1_hp * lrElapsed;
+                    const b2_hp = context.lrCoeffs.b2_hp + context.lrStep.b2_hp * lrElapsed;
+                    const a1_c = context.lrCoeffs.a1_c + context.lrStep.a1_c * lrElapsed;
+                    const a2_c = context.lrCoeffs.a2_c + context.lrStep.a2_c * lrElapsed;
+                    const g = context.gCurrent + context.gStep * Math.min(i + 1, context.gRemaining);
+                    const trCoeff = context.trCurrent + context.trStep * Math.min(i + 1, context.trRemaining);
 
                     // --- Apply Crossover Filter (4th order LR) ---
                     let y1_lp, y1_hp;
@@ -316,6 +362,18 @@ class HornResonatorPlugin extends PluginBase {
                 lowDelayIdx[ch] = currentLowDelayWriteIdx; // Store updated delay index
 
             } // --- End of Channel Loop ---
+
+            if (bs >= context.lrRemaining) {
+                context.lrCoeffs = { ...context.lrTarget };
+                context.lrRemaining = 0;
+            } else {
+                for (const key in context.lrCoeffs) context.lrCoeffs[key] += context.lrStep[key] * bs;
+                context.lrRemaining -= bs;
+            }
+            if (bs >= context.gRemaining) { context.gCurrent = context.gTarget; context.gRemaining = 0; }
+            else { context.gCurrent += context.gStep * bs; context.gRemaining -= bs; }
+            if (bs >= context.trRemaining) { context.trCurrent = context.trTarget; context.trRemaining = 0; }
+            else { context.trCurrent += context.trStep * bs; context.trRemaining -= bs; }
 
             return data; // Return processed audio data
         `);

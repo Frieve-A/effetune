@@ -36,6 +36,8 @@ class ExciterPlugin extends PluginBase {
             
             // Recalculate filter coefficients if relevant parameters have changed.
             if (context.lastFreq !== hpfFreq || context.lastSlope !== hpfSlope || context.lastSampleRate !== sampleRate) {
+                const topologyChanged = context.lastSlope !== hpfSlope ||
+                    context.lastSampleRate !== sampleRate || !context.coeffCurrent;
                 context.lastFreq = hpfFreq;
                 context.lastSlope = hpfSlope;
                 context.lastSampleRate = sampleRate;
@@ -49,20 +51,39 @@ class ExciterPlugin extends PluginBase {
                     if (hpfSlope === 1) {
                         // 6dB/oct (1st order Butterworth high-pass)
                         const n = 1 / (1 + omega);
-                        context.b0 = n;
-                        context.b1 = -n;
-                        context.a1 = (omega - 1) * n;
+                        const target = [n, -n, 0, (omega - 1) * n, 0];
+                        if (topologyChanged) {
+                            context.coeffCurrent = target.slice();
+                            context.coeffTarget = target;
+                            context.coeffStep = [0, 0, 0, 0, 0];
+                            context.coeffRemaining = 0;
+                        } else {
+                            const frames = Math.max(1, Math.ceil(sampleRate * 0.005));
+                            context.coeffTarget = target;
+                            context.coeffStep = target.map((value, index) =>
+                                (value - context.coeffCurrent[index]) / frames);
+                            context.coeffRemaining = frames;
+                        }
                         context.firstOrder = true;
                     } else {
                         // 12dB/oct (2nd order Butterworth high-pass)
                         const omega2 = omega * omega;
                         const sqrt2 = Math.SQRT2;
                         const n = 1 / (1 + sqrt2 * omega + omega2);
-                        context.b0 = n;
-                        context.b1 = -2 * n;
-                        context.b2 = n;
-                        context.a1 = 2 * (omega2 - 1) * n;
-                        context.a2 = (1 - sqrt2 * omega + omega2) * n;
+                        const target = [n, -2 * n, n, 2 * (omega2 - 1) * n,
+                            (1 - sqrt2 * omega + omega2) * n];
+                        if (topologyChanged) {
+                            context.coeffCurrent = target.slice();
+                            context.coeffTarget = target;
+                            context.coeffStep = [0, 0, 0, 0, 0];
+                            context.coeffRemaining = 0;
+                        } else {
+                            const frames = Math.max(1, Math.ceil(sampleRate * 0.005));
+                            context.coeffTarget = target;
+                            context.coeffStep = target.map((value, index) =>
+                                (value - context.coeffCurrent[index]) / frames);
+                            context.coeffRemaining = frames;
+                        }
                         context.firstOrder = false;
                     }
                 }
@@ -74,7 +95,8 @@ class ExciterPlugin extends PluginBase {
             // Cache parameters and filter coefficients for this processing block.
             const useHPF = context.useHPF;
             const firstOrder = context.firstOrder;
-            const { b0, b1, b2, a1, a2 } = context;
+            const coefficientAt = (index, frame) => context.coeffCurrent[index] +
+                context.coeffStep[index] * Math.min(frame, context.coeffRemaining);
 
             // Process each audio channel.
             for (let ch = 0; ch < channelCount; ch++) {
@@ -90,6 +112,7 @@ class ExciterPlugin extends PluginBase {
                         // Process audio with 1st Order HPF.
                         for (let i = 0; i < blockSize; i++) {
                             const dry = data[offset + i];
+                            const b0 = coefficientAt(0, i), b1 = coefficientAt(1, i), a1 = coefficientAt(3, i);
                             const y = b0 * dry + b1 * x1 - a1 * y1;
                             x1 = dry;
                             y1 = (Math.abs(y) < 1.0e-25) ? 0 : y;
@@ -100,6 +123,8 @@ class ExciterPlugin extends PluginBase {
                         // Process audio with 2nd Order HPF.
                         for (let i = 0; i < blockSize; i++) {
                             const dry = data[offset + i];
+                            const b0 = coefficientAt(0, i), b1 = coefficientAt(1, i), b2 = coefficientAt(2, i);
+                            const a1 = coefficientAt(3, i), a2 = coefficientAt(4, i);
                             const y = b0 * dry + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
                             x2 = x1;
                             x1 = dry;
@@ -123,6 +148,17 @@ class ExciterPlugin extends PluginBase {
                 state.y1 = y1;
                 state.x2 = x2;
                 state.y2 = y2;
+            }
+
+            if (useHPF && blockSize >= context.coeffRemaining) {
+                context.coeffCurrent = context.coeffTarget.slice();
+                context.coeffStep.fill(0);
+                context.coeffRemaining = 0;
+            } else if (useHPF) {
+                for (let index = 0; index < context.coeffCurrent.length; index++) {
+                    context.coeffCurrent[index] += context.coeffStep[index] * blockSize;
+                }
+                context.coeffRemaining -= blockSize;
             }
             
             return data;

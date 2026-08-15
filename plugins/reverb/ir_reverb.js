@@ -1,3 +1,26 @@
+function advanceIrPreDelayTransition(state, targetSamples, sampleRate, frameCount) {
+    if (state.irPreDelayCurrent === undefined) {
+        state.irPreDelayCurrent = targetSamples;
+        state.irPreDelayTarget = targetSamples;
+        state.irPreDelayStep = 0;
+        state.irPreDelayRemaining = 0;
+    } else if (targetSamples !== state.irPreDelayTarget) {
+        const frames = Math.max(1, Math.ceil(sampleRate * 0.005));
+        state.irPreDelayTarget = targetSamples;
+        state.irPreDelayStep = (targetSamples - state.irPreDelayCurrent) / frames;
+        state.irPreDelayRemaining = frames;
+    }
+    if (frameCount >= state.irPreDelayRemaining) {
+        state.irPreDelayCurrent = state.irPreDelayTarget;
+        state.irPreDelayStep = 0;
+        state.irPreDelayRemaining = 0;
+    } else {
+        state.irPreDelayCurrent += state.irPreDelayStep * frameCount;
+        state.irPreDelayRemaining -= frameCount;
+    }
+    return state.irPreDelayCurrent;
+}
+
 class IRReverbPlugin extends PluginBase {
     constructor() {
         super('IR Reverb', 'Convolution reverb using an imported impulse response');
@@ -52,6 +75,10 @@ class IRReverbPlugin extends PluginBase {
         this._sampleRate = this._getEngineSampleRate();
         this._outputChannelCount = this._getEngineChannelCount();
         this.registerProcessor(`
+            const advancePreDelay = ${advanceIrPreDelayTransition.toString()};
+            const targetPreDelay = (Number.isFinite(parameters.pd) ? parameters.pd : 0) *
+                parameters.sampleRate * 0.001;
+            advancePreDelay(context, targetPreDelay, parameters.sampleRate, parameters.blockSize);
             const dryLevel = Number.isFinite(parameters.dl) ? parameters.dl : 0;
             const dryGain = parameters.de === false || dryLevel <= -96
                 ? 0

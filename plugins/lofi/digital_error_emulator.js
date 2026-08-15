@@ -106,24 +106,23 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
         const CONSTANTS = ${JSON.stringify(this.CONSTANTS)};
         const modeInfo = ${JSON.stringify(this.MODE_DEFINITIONS)}[parameters.md];
         // --- Parameter Change Detection ---
-        // If key parameters change, invalidate current schedule to apply new parameters.
-        const paramsChanged = parameters.be !== context.lastParams.be ||
-                   parameters.md !== context.lastParams.md ||
-                   parameters.rf !== context.lastParams.rf ||
+        // Only a mode or host-rate change changes the schedule format. BER and
+        // reference-rate automation applies to the next event without cancelling
+        // an already scheduled or in-flight error.
+        const scheduleFormatChanged = parameters.md !== context.lastParams.md ||
                    fs !== context.lastParams.sampleRate;
-        if (paramsChanged) {
+        if (scheduleFormatChanged) {
           context.nextEventTime = -1; // Invalidate current schedule (will reschedule with new params)
-          // Clear any active error state to apply new parameters immediately
           context.errorState.active = false;
           context.errorState.samplesRemaining = 0;
           context.errorState.mode = null;
           context.errorState.lastGoodSamples = null;
           context.errorState.totalDuration = 0;
-          context.lastParams.be = parameters.be;
-          context.lastParams.md = parameters.md;
-          context.lastParams.rf = parameters.rf;
-          context.lastParams.sampleRate = fs;
         }
+        context.lastParams.be = parameters.be;
+        context.lastParams.md = parameters.md;
+        context.lastParams.rf = parameters.rf;
+        context.lastParams.sampleRate = fs;
         // --- Dynamic Mode & Parameter Calculation ---
         const wetMix = parameters.wt / 100;
         const dryMix = 1 - wetMix;
@@ -217,8 +216,8 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
           pEventPerUnit = 0.999999999999;
         }
         
-        // Schedule the next error event if one is not already scheduled or active.
-        if (context.nextEventTime < context.sampleCount && !context.errorState.active) {
+        function scheduleNextEvent(currentSample) {
+          if (!(context.nextEventTime < currentSample) || context.errorState.active) return;
           if (pEventPerUnit > 1e-12) {
             // Use numerically stable geometric distribution
             let randomU = Math.random(); // Avoid 0 and 1
@@ -229,7 +228,7 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
             }
             const nextEventInUnits = Math.floor(Math.log1p(-randomU) / Math.log1p(-pEventPerUnit));
             const nextEventOffset = (nextEventInUnits > 0 ? nextEventInUnits : 0) * unitSamples;
-            context.nextEventTime = context.sampleCount + nextEventOffset;
+            context.nextEventTime = currentSample + nextEventOffset;
           } else {
             context.nextEventTime = Infinity; // Effectively no errors
           }
@@ -281,6 +280,7 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
         let i = 0;
         while (i < blockSize) {
           const currentGlobalSample = context.sampleCount + i;
+          scheduleNextEvent(currentGlobalSample);
           
           // --- Handle Ongoing Error State ---
           if (context.errorState.active) {

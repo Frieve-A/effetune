@@ -173,24 +173,20 @@ public:
     const double wet_mix = static_cast<double>(params_.wetMix) / 100.0;
     const double dry_mix = 1.0 - wet_mix;
 
-    if (!last_params_valid_ || last_bit_error_exponent_ != bit_error_exponent ||
-        last_mode_ != mode || last_reference_fs_ != reference_fs ||
-        last_sample_rate_ != sample_rate_) {
+    if (!last_params_valid_ || last_mode_ != mode || last_sample_rate_ != sample_rate_) {
       next_event_time_ = -1.0;
       clearErrorState();
-      last_bit_error_exponent_ = bit_error_exponent;
-      last_mode_ = mode;
-      last_reference_fs_ = reference_fs;
-      last_sample_rate_ = sample_rate_;
-      last_params_valid_ = true;
     }
+    last_bit_error_exponent_ = bit_error_exponent;
+    last_mode_ = mode;
+    last_reference_fs_ = reference_fs;
+    last_sample_rate_ = sample_rate_;
+    last_params_valid_ = true;
 
     const std::uint32_t unit_samples = calculateUnitSamples(mode, reference_fs);
     const double bits_per_unit = calculateBitsPerUnit(mode, unit_samples, channel_count);
     const double event_probability =
         calculateEventProbability(mode, bit_error_exponent, bits_per_unit);
-
-    scheduleNextEvent(event_probability, unit_samples);
 
     const std::size_t audio_samples = static_cast<std::size_t>(channel_count) * frame_count;
     std::copy_n(audio, audio_samples, wet_data_.data());
@@ -201,13 +197,14 @@ public:
     std::uint32_t frame = 0u;
     while (frame < frame_count) {
       const std::uint64_t current_global_sample = sample_count_ + frame;
+      scheduleNextEvent(event_probability, unit_samples, current_global_sample);
 
       if (error_active_) {
         const std::uint32_t block_remaining = frame_count - frame;
         const std::uint32_t samples_to_process =
             block_remaining < error_samples_remaining_ ? block_remaining : error_samples_remaining_;
         processOngoingError(audio, channel_count, frame_count, frame, samples_to_process,
-                            unit_samples, current_global_sample);
+                            error_unit_samples_, current_global_sample);
         error_samples_remaining_ -= samples_to_process;
         if (error_samples_remaining_ == 0u) {
           error_active_ = false;
@@ -237,6 +234,7 @@ public:
           error_active_ = true;
           error_samples_remaining_ = error_duration - samples_in_block;
           error_mode_ = mode;
+          error_unit_samples_ = unit_samples;
           error_total_duration_ = error_duration;
         } else {
           clearErrorState();
@@ -286,6 +284,7 @@ private:
     error_active_ = false;
     error_samples_remaining_ = 0u;
     error_mode_ = Mode::BitHold;
+    error_unit_samples_ = 1u;
     error_total_duration_ = 0u;
   }
 
@@ -366,8 +365,9 @@ private:
     return probability > 0.999999999999 ? 0.999999999999 : probability;
   }
 
-  void scheduleNextEvent(double probability, std::uint32_t unit_samples) noexcept {
-    if (!(next_event_time_ < static_cast<double>(sample_count_)) || error_active_) {
+  void scheduleNextEvent(double probability, std::uint32_t unit_samples,
+                         std::uint64_t current_sample) noexcept {
+    if (!(next_event_time_ < static_cast<double>(current_sample)) || error_active_) {
       return;
     }
     if (probability > 1.0e-12) {
@@ -379,7 +379,7 @@ private:
       }
       const double units = std::floor(std::log1p(-random_value) / std::log1p(-probability));
       const double offset = (units > 0.0 ? units : 0.0) * unit_samples;
-      next_event_time_ = static_cast<double>(sample_count_) + offset;
+      next_event_time_ = static_cast<double>(current_sample) + offset;
     } else {
       next_event_time_ = std::numeric_limits<double>::infinity();
     }
@@ -840,6 +840,7 @@ private:
   std::uint32_t last_channel_count_ = 0u;
   std::uint32_t error_samples_remaining_ = 0u;
   std::uint32_t error_total_duration_ = 0u;
+  std::uint32_t error_unit_samples_ = 1u;
   std::uint32_t selected_seed_low_ = static_cast<std::uint32_t>(dsp::XorShiftRng::kFallbackSeed);
   std::uint32_t selected_seed_high_ = 0u;
   Mode last_mode_ = Mode::BitHold;

@@ -3,7 +3,7 @@
   "tolerance": { "abs": 0.0001, "policy": "per-sample" },
   "fields": [
     { "name": "cutLevel", "key": "lv", "kind": "float", "min": -20, "max": 20, "default": 0, "unit": "dB", "automation": true },
-    { "name": "hfCutoff", "key": "hf", "kind": "float", "min": 6000, "max": 24000, "default": 16000, "unit": "Hz", "automation": true },
+    { "name": "hfCutoff", "key": "hf", "kind": "float", "min": 6000, "max": 24000, "default": 16000, "unit": "Hz", "automation": true, "publicName": "highFrequencyCutoff" },
     { "name": "bassMonoBelow", "key": "mb", "kind": "float", "min": 50, "max": 1000, "default": 250, "unit": "Hz", "automation": true },
     { "name": "sideMix", "key": "sm", "kind": "float", "min": 0, "max": 100, "default": 70, "unit": "%", "automation": true },
     { "name": "speed", "key": "rp", "kind": "enum", "default": "33⅓", "values": ["33⅓", "45", "78"] },

@@ -28,12 +28,26 @@ class StereoBlendPlugin extends PluginBase {
             // 100%: Original stereo image
             // 110-130%: Enhanced stereo for speaker listening
             // 200%: Maximum stereo width (use with caution)
-            const sideGain = stereo / 100;
+            const targetSideGain = Math.fround(stereo) / 100;
+            const rampFrames = Math.max(1, Math.ceil(parameters.sampleRate * 0.005));
+            if (context.currentSideGain === undefined) {
+                context.currentSideGain = targetSideGain;
+                context.targetSideGain = targetSideGain;
+                context.rampRemaining = 0;
+            } else if (context.targetSideGain !== targetSideGain) {
+                context.targetSideGain = targetSideGain;
+                context.sideGainStep = (targetSideGain - context.currentSideGain) / rampFrames;
+                context.rampRemaining = rampFrames;
+            }
 
             const rightOffset = blockSize;
             
             // Process both channels
             for (let i = 0; i < blockSize; i++) {
+                if (context.rampRemaining > 0) {
+                    context.currentSideGain += context.sideGainStep;
+                    if (--context.rampRemaining === 0) context.currentSideGain = context.targetSideGain;
+                }
                 const leftSample = tempBuffer[i];
                 const rightSample = tempBuffer[rightOffset + i];
                 
@@ -42,7 +56,7 @@ class StereoBlendPlugin extends PluginBase {
                 const side = (leftSample - rightSample) * 0.5;
                 
                 // Apply side gain
-                const scaledSide = side * sideGain;
+                const scaledSide = side * context.currentSideGain;
                 
                 // Reconstruct stereo
                 data[i] = mid + scaledSide;

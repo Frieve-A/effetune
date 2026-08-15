@@ -41,6 +41,10 @@ const twoPiTimesSrInv = TWO_PI / sampleRate;
 if (!context.initialized || context.lastChannelCount !== channelCount) {
     context.filterStates = new Array(NUM_BANDS);
     context.coefficients = new Array(NUM_BANDS); // Will store {b0, b1, b2, a1, a2} or null (for bypass)
+    context.coefficientTargets = new Array(NUM_BANDS);
+    context.coefficientSteps = new Array(NUM_BANDS);
+    context.coefficientRemaining = new Uint32Array(NUM_BANDS);
+    context.bandBypassed = new Uint8Array(NUM_BANDS);
     context.previousGains = new Array(NUM_BANDS).fill(NaN); // Use NaN to force initial calculation
     for (let i = 0; i < NUM_BANDS; i++) {
         // Use Array.fill(0.0) for clarity with floating point numbers
@@ -59,6 +63,9 @@ if (!context.initialized || context.lastChannelCount !== channelCount) {
 const coefficients = context.coefficients;
 const filterStates = context.filterStates;
 const previousGains = context.previousGains;
+const coefficientTargets = context.coefficientTargets;
+const coefficientSteps = context.coefficientSteps;
+const coefficientRemaining = context.coefficientRemaining;
 
 // --- Coefficient Calculation ---
 // Update coefficients only for bands where the gain parameter has changed.
@@ -73,10 +80,12 @@ for (let i = 0; i < NUM_BANDS; i++) {
 
         // Check for bypass condition (gain effectively zero)
         const gainAbs = currentGain < 0 ? -currentGain : currentGain; // Optimized Math.abs
+        let target;
         if (gainAbs < GAIN_BYPASS_THRESHOLD) {
-            coefficients[i] = null; // Set to null to signal bypass in processing loop
-            continue; // Skip calculation for this bypassed band
-        }
+            target = { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 };
+            context.bandBypassed[i] = 1;
+        } else {
+            context.bandBypassed[i] = 0;
 
         // --- Calculate Peaking Filter Coefficients ---
         // Formula derived from RBJ Audio EQ Cookbook, adapted for A = sqrt(LinearGain)
@@ -108,12 +117,12 @@ for (let i = 0; i < NUM_BANDS; i++) {
         // --- Normalize Coefficients ---
         const a0_abs = a0_raw < 0 ? -a0_raw : a0_raw;
         if (a0_abs < A0_THRESHOLD) {
-            // Filter is potentially unstable or identity, treat as bypass
-            coefficients[i] = null;
+            target = { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 };
+            context.bandBypassed[i] = 1;
         } else {
             // Normalize using multiplication by inverse for potential speedup
             const invA0 = 1.0 / a0_raw;
-            coefficients[i] = {
+            target = {
                 b0: b0_raw * invA0,
                 b1: b1_raw * invA0,
                 b2: b2_raw * invA0,
@@ -123,6 +132,24 @@ for (let i = 0; i < NUM_BANDS; i++) {
                 a1: a1_raw * invA0,
                 a2: a2_raw * invA0
             };
+        }
+        }
+        if (coefficients[i] === null) {
+            coefficients[i] = { ...target };
+            coefficientTargets[i] = target;
+            coefficientSteps[i] = { b0: 0, b1: 0, b2: 0, a1: 0, a2: 0 };
+            coefficientRemaining[i] = 0;
+        } else {
+            const frames = Math.max(1, Math.ceil(sampleRate * 0.005));
+            coefficientTargets[i] = target;
+            coefficientSteps[i] = {
+                b0: (target.b0 - coefficients[i].b0) / frames,
+                b1: (target.b1 - coefficients[i].b1) / frames,
+                b2: (target.b2 - coefficients[i].b2) / frames,
+                a1: (target.a1 - coefficients[i].a1) / frames,
+                a2: (target.a2 - coefficients[i].a2) / frames
+            };
+            coefficientRemaining[i] = frames;
         }
     }
 }
@@ -141,14 +168,9 @@ for (let ch = startCh; ch < endCh; ch++) {
     for (let bandIndex = 0; bandIndex < NUM_BANDS; bandIndex++) {
         const coef = coefficients[bandIndex]; // Get pre-calculated coefficients
 
-        // Skip this band if it's bypassed (null coefficients)
-        if (coef === null) {
+        if (context.bandBypassed[bandIndex] && coefficientRemaining[bandIndex] === 0) {
             continue;
         }
-
-        // Cache coefficients and state reference for the inner loop
-        const b0 = coef.b0; const b1 = coef.b1; const b2 = coef.b2;
-        const a1 = coef.a1; const a2 = coef.a2;
         const state = filterStates[bandIndex];
 
         // Load state specific to this channel into local variables (avoids repeated lookups)
@@ -159,6 +181,13 @@ for (let ch = startCh; ch < endCh; ch++) {
         for (let i = 0; i < blockSize; i++) {
             const dataIndex = offset + i;
             const x_n = data[dataIndex]; // Current input sample for this band
+            const elapsed = Math.min(i + 1, coefficientRemaining[bandIndex]);
+            const step = coefficientSteps[bandIndex];
+            const b0 = coef.b0 + step.b0 * elapsed;
+            const b1 = coef.b1 + step.b1 * elapsed;
+            const b2 = coef.b2 + step.b2 * elapsed;
+            const a1 = coef.a1 + step.a1 * elapsed;
+            const a2 = coef.a2 + step.a2 * elapsed;
 
             // Apply the 2nd order IIR difference equation using local state
             const y_n = b0 * x_n + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
@@ -177,6 +206,22 @@ for (let ch = startCh; ch < endCh; ch++) {
         state.y1[ch] = y1; state.y2[ch] = y2;
     } // End loop over bands
 } // End loop over channels
+
+for (let bandIndex = 0; bandIndex < NUM_BANDS; bandIndex++) {
+    const remaining = coefficientRemaining[bandIndex];
+    if (remaining === 0) continue;
+    const coef = coefficients[bandIndex], target = coefficientTargets[bandIndex];
+    if (blockSize >= remaining) {
+        coefficients[bandIndex] = { ...target };
+        coefficientRemaining[bandIndex] = 0;
+    } else {
+        const step = coefficientSteps[bandIndex];
+        coef.b0 += step.b0 * blockSize; coef.b1 += step.b1 * blockSize;
+        coef.b2 += step.b2 * blockSize; coef.a1 += step.a1 * blockSize;
+        coef.a2 += step.a2 * blockSize;
+        coefficientRemaining[bandIndex] -= blockSize;
+    }
+}
 
 return data; // Return the modified buffer
 `;

@@ -28,11 +28,6 @@ class ModalResonatorPlugin extends PluginBase {
             const blockSize = parameters.blockSize;
             const TWO_PI = 6.283185307179586;
         
-            // Dry/Wet calculation
-            const mix = parameters.mx;
-            const wetGain = (mix < 50) ? (mix * 0.02) : 1.0;
-            const dryGain = (mix < 50) ? 1.0 : ((100 - mix) * 0.02);
-        
             // 1-pole HPF: y[n] = a * (y[n-1] + x[n] - x[n-1])
             function processHPF(x, st, alpha) {
                 const y = alpha * (st.yPrev + x - st.xPrev);
@@ -82,51 +77,120 @@ class ModalResonatorPlugin extends PluginBase {
                         feedback: 0.0,
                         alphaHPF: 0.0,
                         alphaLPF: 0.0,
-                        gain: 0.0
+                        gain: 0.0,
+                        controlsInitialized: false,
+                        frequencyLog: 0.0, decay: 0.0, highPassLog: 0.0,
+                        lowPassLog: 0.0, gainDb: 0.0,
+                        targetFrequencyLog: 0.0, targetDecay: 0.0,
+                        targetHighPassLog: 0.0, targetLowPassLog: 0.0,
+                        targetGainDb: 0.0
                     };
                 }
         
                 context.initialized = true;
                 context.sampleRate = sampleRate;
                 context.channelCount = channelCount;
+                context.mix = Number(parameters.mx);
+                context.mixTarget = context.mix;
+                context.automationRemaining = 0;
             }
-            if (!context.accum || context.accum.length !== blockSize) {
+            if (!context.accum || context.accum.length !== blockSize ||
+                !context.resonatorTrajectories) {
                 context.accum = new Float32Array(blockSize);
+                context.wetTrajectory = new Float64Array(blockSize);
+                context.dryTrajectory = new Float64Array(blockSize);
+                context.resonatorTrajectories = new Array(5);
+                for (let r = 0; r < 5; ++r) {
+                    context.resonatorTrajectories[r] = {
+                        delay: new Float64Array(blockSize),
+                        feedback: new Float64Array(blockSize),
+                        highPass: new Float64Array(blockSize),
+                        lowPass: new Float64Array(blockSize),
+                        gain: new Float64Array(blockSize)
+                    };
+                }
             }
         
-            // Prepare resonator parameters
             const resonators = context.resonators;
-            for (let r = 0; r < 5; r++) {
+            const trajectories = context.resonatorTrajectories;
+            let controlsChanged = context.mixTarget !== Number(parameters.mx);
+            context.mixTarget = Number(parameters.mx);
+            for (let r = 0; r < 5; ++r) {
                 const p = parameters.rs[r];
                 const cfg = resonators[r];
-                if (!p.en) {
-                    cfg.enabled = false;
-                    continue;
+                cfg.enabled = p.en !== false && p.en !== 0;
+                if (!cfg.controlsInitialized) {
+                    cfg.frequencyLog = cfg.targetFrequencyLog = Number(p.fr);
+                    cfg.decay = cfg.targetDecay = Number(p.dc);
+                    cfg.highPassLog = cfg.targetHighPassLog = Number(p.hp);
+                    cfg.lowPassLog = cfg.targetLowPassLog = Number(p.lp);
+                    cfg.gainDb = cfg.targetGainDb = Number(p.gn);
+                    cfg.controlsInitialized = true;
+                } else {
+                    const frequencyLog = Number(p.fr);
+                    const decay = Number(p.dc);
+                    const highPassLog = Number(p.hp);
+                    const lowPassLog = Number(p.lp);
+                    const gainDb = Number(p.gn);
+                    controlsChanged = controlsChanged ||
+                        cfg.targetFrequencyLog !== frequencyLog ||
+                        cfg.targetDecay !== decay ||
+                        cfg.targetHighPassLog !== highPassLog ||
+                        cfg.targetLowPassLog !== lowPassLog ||
+                        cfg.targetGainDb !== gainDb;
+                    cfg.targetFrequencyLog = frequencyLog;
+                    cfg.targetDecay = decay;
+                    cfg.targetHighPassLog = highPassLog;
+                    cfg.targetLowPassLog = lowPassLog;
+                    cfg.targetGainDb = gainDb;
                 }
-                const freqHz = Math.exp(p.fr);
-                let delaySamp = Math.floor(sampleRate / freqHz);
-                if (delaySamp < 1) delaySamp = 1;
-        
-                const decaySamples = p.dc * 0.001 * sampleRate;
-                let cycles = decaySamples / delaySamp;
-                if (cycles < 0.1) cycles = 0.1;
-                let fb = Math.exp(Math.log(0.001) / cycles);
-                if (fb > 0.999) fb = 0.999;
-        
-                const hpfHz = Math.exp(p.hp);
-                const alphaHPF = Math.exp(-TWO_PI * hpfHz / sampleRate);
-        
-                const lpfHz = Math.exp(p.lp);
-                const alphaLPF = Math.exp(-TWO_PI * lpfHz / sampleRate);
-        
-                const gainLinear = Math.pow(10, p.gn / 20.0);
-        
-                cfg.enabled = true;
-                cfg.delaySamples = delaySamp;
-                cfg.feedback = fb;
-                cfg.alphaHPF = alphaHPF;
-                cfg.alphaLPF = alphaLPF;
-                cfg.gain = gainLinear;
+            }
+            if (controlsChanged) {
+                context.automationRemaining = Math.max(1, Math.ceil(sampleRate * 0.005));
+            }
+            const automationActive = context.automationRemaining > 0;
+            const trajectoryFrames = automationActive ? blockSize : 1;
+            for (let i = 0; i < trajectoryFrames; ++i) {
+                if (context.automationRemaining > 0) {
+                    const rampScale = 1 / context.automationRemaining;
+                    context.mix += (context.mixTarget - context.mix) * rampScale;
+                    for (let r = 0; r < 5; ++r) {
+                        const cfg = resonators[r];
+                        cfg.frequencyLog += (cfg.targetFrequencyLog - cfg.frequencyLog) * rampScale;
+                        cfg.decay += (cfg.targetDecay - cfg.decay) * rampScale;
+                        cfg.highPassLog += (cfg.targetHighPassLog - cfg.highPassLog) * rampScale;
+                        cfg.lowPassLog += (cfg.targetLowPassLog - cfg.lowPassLog) * rampScale;
+                        cfg.gainDb += (cfg.targetGainDb - cfg.gainDb) * rampScale;
+                    }
+                    --context.automationRemaining;
+                    if (context.automationRemaining === 0) {
+                        context.mix = context.mixTarget;
+                        for (let r = 0; r < 5; ++r) {
+                            const cfg = resonators[r];
+                            cfg.frequencyLog = cfg.targetFrequencyLog;
+                            cfg.decay = cfg.targetDecay;
+                            cfg.highPassLog = cfg.targetHighPassLog;
+                            cfg.lowPassLog = cfg.targetLowPassLog;
+                            cfg.gainDb = cfg.targetGainDb;
+                        }
+                    }
+                }
+                context.wetTrajectory[i] = context.mix < 50 ? context.mix * 0.02 : 1;
+                context.dryTrajectory[i] = context.mix < 50 ? 1 : (100 - context.mix) * 0.02;
+                for (let r = 0; r < 5; ++r) {
+                    const cfg = resonators[r];
+                    const tr = trajectories[r];
+                    const delay = Math.max(1, Math.min(
+                        context.delayBuffers[0][r].length - 1,
+                        sampleRate / Math.exp(cfg.frequencyLog)));
+                    let cycles = cfg.decay * 0.001 * sampleRate / delay;
+                    if (cycles < 0.1) cycles = 0.1;
+                    tr.delay[i] = delay;
+                    tr.feedback[i] = Math.min(0.999, Math.exp(Math.log(0.001) / cycles));
+                    tr.highPass[i] = Math.exp(-TWO_PI * Math.exp(cfg.highPassLog) / sampleRate);
+                    tr.lowPass[i] = Math.exp(-TWO_PI * Math.exp(cfg.lowPassLog) / sampleRate);
+                    tr.gain[i] = Math.pow(10, cfg.gainDb / 20);
+                }
             }
         
             const db = context.delayBuffers;
@@ -143,6 +207,7 @@ class ModalResonatorPlugin extends PluginBase {
                 for (let r = 0; r < 5; r++) {
                     const cfg = resonators[r];
                     if (!cfg.enabled) continue;
+                    const tr = trajectories[r];
         
                     const buf = db[ch][r];
                     const len = buf.length;
@@ -151,19 +216,24 @@ class ModalResonatorPlugin extends PluginBase {
                     const lpfState = lpSt[ch][r];
         
                     for (let i = 0; i < blockSize; i++) {
+                        const trajectoryIndex = automationActive ? i : 0;
                         const input = data[offset + i];
         
                         // Delay read (unfiltered feedback)
-                        const readPos = (pos - cfg.delaySamples + len) % len;
-                        const delayedSample = buf[readPos];
+                        const delayFloor = Math.floor(tr.delay[trajectoryIndex]);
+                        const fraction = tr.delay[trajectoryIndex] - delayFloor;
+                        const readPos = (pos - delayFloor + len) % len;
+                        const olderPos = readPos === 0 ? len - 1 : readPos - 1;
+                        const delayedSample = buf[readPos] +
+                            fraction * (buf[olderPos] - buf[readPos]);
         
                         // Write feedback
-                        buf[pos] = input + delayedSample * cfg.feedback;
+                        buf[pos] = input + delayedSample * tr.feedback[trajectoryIndex];
         
                         // Output filter
-                        const afterHPF = processHPF(delayedSample, hpfState, cfg.alphaHPF);
-                        const afterLPF = processLPF(afterHPF, lpfState, cfg.alphaLPF);
-                        const outVal = afterLPF * cfg.gain;
+                        const afterHPF = processHPF(delayedSample, hpfState, tr.highPass[trajectoryIndex]);
+                        const afterLPF = processLPF(afterHPF, lpfState, tr.lowPass[trajectoryIndex]);
+                        const outVal = afterLPF * tr.gain[trajectoryIndex];
         
                         accum[i] += outVal;
         
@@ -176,8 +246,10 @@ class ModalResonatorPlugin extends PluginBase {
         
                 // Dry/Wet mix
                 for (let i = 0; i < blockSize; i++) {
+                    const trajectoryIndex = automationActive ? i : 0;
                     const drySig = data[offset + i];
-                    data[offset + i] = drySig * dryGain + accum[i] * wetGain;
+                    data[offset + i] = drySig * context.dryTrajectory[trajectoryIndex] +
+                        accum[i] * context.wetTrajectory[trajectoryIndex];
                 }
             }
         
@@ -247,7 +319,7 @@ class ModalResonatorPlugin extends PluginBase {
             params.rs.forEach((resonator, index) => {
                 if (index < this.rs.length && resonator) {
                     if (resonator.en !== undefined) {
-                        this.rs[index].en = Boolean(resonator.en);
+                        this.rs[index].en = resonator.en !== false && Number(resonator.en) !== 0;
                     }
                     if (resonator.fr !== undefined) {
                         const fr = Number(resonator.fr);
@@ -291,7 +363,7 @@ class ModalResonatorPlugin extends PluginBase {
                 const resParams = params.resonatorParams;
 
                 if (resParams.en !== undefined) {
-                    resonator.en = Boolean(resParams.en);
+                    resonator.en = resParams.en !== false && Number(resParams.en) !== 0;
                     updated = true;
                 }
                 if (resParams.fr !== undefined) {

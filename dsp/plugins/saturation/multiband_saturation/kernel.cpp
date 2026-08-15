@@ -2,6 +2,7 @@
 #include "MultibandSaturationPluginParams.h"
 #include "effetune/dsp/linkwitz_riley.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -56,6 +57,8 @@ public:
     sample_rate_ = static_cast<double>(info.sampleRate);
     max_channels_ = info.maxChannels;
     max_frames_ = info.maxFrames;
+    const auto requested_frames = static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005));
+    ramp_frames_ = requested_frames == 0u ? 1u : requested_frames;
     lowpass_states_.resize(2u * max_channels_);
     highpass_states_.resize(2u * max_channels_);
     band_signals_.resize(static_cast<std::size_t>(max_channels_) * 3u * max_frames_);
@@ -71,6 +74,8 @@ public:
     fade_present_ = false;
     fade_counter_ = 0u;
     fade_length_ = 0u;
+    controls_initialized_ = false;
+    control_ramp_remaining_ = 0u;
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -99,8 +104,9 @@ public:
       fade_present_ = true;
       fade_counter_ = 0u;
       const std::uint32_t five_milliseconds = static_cast<std::uint32_t>(sample_rate_ * 0.005);
-      fade_length_ = five_milliseconds > frame_count ? frame_count : five_milliseconds;
+      fade_length_ = five_milliseconds;
     }
+    retargetControls();
 
     const std::uint32_t fade_start = fade_counter_;
     const std::uint32_t fade_length = fade_length_;
@@ -125,17 +131,17 @@ public:
                   frame_count);
 
       for (std::uint32_t band = 0u; band < 3u; ++band) {
-        const double drive = static_cast<double>(params_.drive[band]);
-        const double bias = static_cast<double>(params_.bias[band]);
-        const double mix = static_cast<double>(params_.mix[band]) / 100.0;
-        const double inverse_mix = 1.0 - mix;
-        const double gain = std::pow(10.0, static_cast<double>(params_.gain[band]) / 20.0);
-        const double bias_offset = std::tanh(drive * bias);
         float *signal = bandBuffer(channel, band);
         for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+          const std::size_t base = static_cast<std::size_t>(band) * 4u;
+          const double drive = controlAt(base, frame);
+          const double bias = controlAt(base + 1u, frame);
+          const double mix = controlAt(base + 2u, frame) / 100.0;
+          const double gain = std::pow(10.0, controlAt(base + 3u, frame) / 20.0);
+          const double bias_offset = std::tanh(drive * bias);
           const double dry = static_cast<double>(signal[frame]);
           const double wet = std::tanh(drive * (dry + bias)) - bias_offset;
-          signal[frame] = static_cast<float>((dry * inverse_mix + wet * mix) * gain);
+          signal[frame] = static_cast<float>((dry * (1.0 - mix) + wet * mix) * gain);
         }
       }
 
@@ -159,9 +165,52 @@ public:
     } else if (fade_present_) {
       fade_present_ = false;
     }
+    advanceControls(frame_count);
   }
 
 private:
+  void retargetControls() noexcept {
+    std::array<double, 12u> targets{};
+    for (std::size_t band = 0u; band < 3u; ++band) {
+      const std::size_t base = band * 4u;
+      targets[base] = static_cast<double>(params_.drive[band]);
+      targets[base + 1u] = static_cast<double>(params_.bias[band]);
+      targets[base + 2u] = static_cast<double>(params_.mix[band]);
+      targets[base + 3u] = static_cast<double>(params_.gain[band]);
+    }
+    if (!controls_initialized_) {
+      current_controls_ = target_controls_ = targets;
+      controls_initialized_ = true;
+      return;
+    }
+    if (targets == target_controls_)
+      return;
+    target_controls_ = targets;
+    for (std::size_t index = 0u; index < current_controls_.size(); ++index) {
+      control_steps_[index] =
+          (target_controls_[index] - current_controls_[index]) / static_cast<double>(ramp_frames_);
+    }
+    control_ramp_remaining_ = ramp_frames_;
+  }
+
+  [[nodiscard]] double controlAt(std::size_t index, std::uint32_t frame) const noexcept {
+    const std::uint32_t elapsed = frame + 1u;
+    const std::uint32_t progressed =
+        elapsed < control_ramp_remaining_ ? elapsed : control_ramp_remaining_;
+    return current_controls_[index] + control_steps_[index] * static_cast<double>(progressed);
+  }
+
+  void advanceControls(std::uint32_t frames) noexcept {
+    const std::uint32_t advanced =
+        frames < control_ramp_remaining_ ? frames : control_ramp_remaining_;
+    for (std::size_t index = 0u; index < current_controls_.size(); ++index) {
+      current_controls_[index] += control_steps_[index] * static_cast<double>(advanced);
+    }
+    control_ramp_remaining_ -= advanced;
+    if (control_ramp_remaining_ == 0u)
+      current_controls_ = target_controls_;
+  }
+
   [[nodiscard]] float *bandBuffer(std::uint32_t channel, std::uint32_t band) noexcept {
     return band_signals_.data() + (static_cast<std::size_t>(channel) * 3u + band) * max_frames_;
   }
@@ -208,6 +257,12 @@ private:
   std::uint32_t fade_length_ = 0u;
   bool configured_ = false;
   bool fade_present_ = false;
+  bool controls_initialized_ = false;
+  std::array<double, 12u> current_controls_{};
+  std::array<double, 12u> target_controls_{};
+  std::array<double, 12u> control_steps_{};
+  std::uint32_t ramp_frames_ = 240u;
+  std::uint32_t control_ramp_remaining_ = 0u;
 };
 
 static_assert(sizeof(MultibandSaturationKernel) <= 8192u);

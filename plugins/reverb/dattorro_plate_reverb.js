@@ -74,6 +74,11 @@ class DattorroPlateReverbPlugin extends PluginBase {
                 const maxPreDelaySamples = Math.max(1, Math.ceil(sampleRate * 0.1));
                 context.preDelayBuffer = new Float32Array(maxPreDelaySamples).fill(0.0);
                 context.preDelayPos = 0;
+                context.preDelayCurrent = Math.min(maxPreDelaySamples - 1,
+                    p_pd * sampleRate * 0.001);
+                context.preDelayTarget = context.preDelayCurrent;
+                context.preDelayStep = 0;
+                context.preDelayRemaining = 0;
 
                 // Input low-pass filter state
                 context.inputLpfState = 0.0;
@@ -141,7 +146,14 @@ class DattorroPlateReverbPlugin extends PluginBase {
             }
 
             // Pre-calculate coefficients
-            const preDelaySamples = (p_pd * sampleRate * 0.001) | 0;
+            const preDelayTarget = Math.min(context.preDelayBuffer.length - 1,
+                p_pd * sampleRate * 0.001);
+            if (preDelayTarget !== context.preDelayTarget) {
+                const frames = Math.max(1, Math.ceil(sampleRate * 0.005));
+                context.preDelayTarget = preDelayTarget;
+                context.preDelayStep = (preDelayTarget - context.preDelayCurrent) / frames;
+                context.preDelayRemaining = frames;
+            }
             const bandwidth = p_bw;
             const inputDiff1 = p_id1;
             const inputDiff2 = p_id2;
@@ -246,13 +258,22 @@ class DattorroPlateReverbPlugin extends PluginBase {
                 inputSample /= channelCount;
 
                 // Pre-delay
-                let signal;
+                const elapsed = Math.min(i, context.preDelayRemaining);
+                const preDelaySamples = context.preDelayCurrent + context.preDelayStep * elapsed;
+                let signal = inputSample;
                 if (preDelaySamples > 0 && preDelaySamples < preDelayLength) {
-                    let readIdx = preDelayPos - preDelaySamples;
-                    if (readIdx < 0) readIdx += preDelayLength;
-                    signal = preDelayBuffer[readIdx];
-                } else {
-                    signal = inputSample;
+                    if (preDelaySamples < 1) {
+                        const previous = preDelayBuffer[(preDelayPos - 1 + preDelayLength) % preDelayLength];
+                        signal = inputSample + preDelaySamples * (previous - inputSample);
+                    } else {
+                        let read = preDelayPos - preDelaySamples;
+                        while (read < 0) read += preDelayLength;
+                        const first = Math.floor(read) % preDelayLength;
+                        const second = first + 1 === preDelayLength ? 0 : first + 1;
+                        const fraction = read - Math.floor(read);
+                        signal = preDelayBuffer[first] +
+                            fraction * (preDelayBuffer[second] - preDelayBuffer[first]);
+                    }
                 }
                 preDelayBuffer[preDelayPos] = inputSample;
                 if (++preDelayPos >= preDelayLength) preDelayPos = 0;
@@ -446,6 +467,15 @@ class DattorroPlateReverbPlugin extends PluginBase {
                     data[i] = dryLeft * dryMix + leftOut * wetMix;
                     data[blockSize + i] = dryRight * dryMix + rightOut * wetMix;
                 }
+            }
+
+            if (blockSize >= context.preDelayRemaining) {
+                context.preDelayCurrent = context.preDelayTarget;
+                context.preDelayStep = 0;
+                context.preDelayRemaining = 0;
+            } else {
+                context.preDelayCurrent += context.preDelayStep * blockSize;
+                context.preDelayRemaining -= blockSize;
             }
 
             // Update context state

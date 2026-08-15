@@ -1,0 +1,54 @@
+{
+  "name": "Automation mixed-pipeline sentinel",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 384,
+  "seed": "0xeffe7a5e",
+  "tolerance": 0.00002,
+  "pipeline": [
+    {
+      "type": "FDNReverbPlugin",
+      "enabled": true,
+      "parameters": { "rt": 1.2, "wm": 24, "dm": 100 }
+    },
+    {
+      "type": "FiveBandDynamicEQ",
+      "enabled": true,
+      "parameters": {}
+    },
+    {
+      "type": "RoomEqPlugin",
+      "enabled": true,
+      "parameters": { "lt": "128", "fd": 16384, "dy": 0, "gn": 0 },
+      "residentClass": "C"
+    },
+    {
+      "type": "LevelMeterPlugin",
+      "enabled": true,
+      "parameters": {},
+      "residentClass": "D"
+    }
+  ],
+  "events": [
+    { "frame": 64, "plugin": 0, "parameters": { "wm": 42, "dm": 92 } },
+    {
+      "frame": 128,
+      "plugin": 1,
+      "parameters": {
+        "bs": [
+          { "th": -20 },
+          { "th": -22 },
+          { "th": -18, "mg": 9, "a": 4 },
+          { "th": -26 },
+          { "th": -30 }
+        ]
+      }
+    },
+    { "frame": 256, "plugin": 0, "parameters": { "rt": 2.1, "wm": 35 } }
+  ],
+  "partitions": [
+    { "name": "host-128", "pattern": [128] },
+    { "name": "quantum-8", "pattern": [8] },
+    { "name": "irregular", "pattern": [7, 13, 29, 5, 31, 11] }
+  ]
+}

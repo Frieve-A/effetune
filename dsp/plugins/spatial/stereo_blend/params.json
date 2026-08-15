@@ -12,7 +12,8 @@
       "min": -200,
       "max": 200,
       "default": 60,
-      "unit": "%"
+      "unit": "%",
+      "automation": true
     }
   ]
 }

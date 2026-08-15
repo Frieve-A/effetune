@@ -11,7 +11,8 @@
       "kind": "float",
       "min": 0,
       "max": 10,
-      "default": 1.5
+      "default": 1.5,
+      "automation": true
     },
     {
       "name": "bias",
@@ -19,7 +20,8 @@
       "kind": "float",
       "min": -0.3,
       "max": 0.3,
-      "default": 0.1
+      "default": 0.1,
+      "automation": true
     },
     {
       "name": "mix",
@@ -28,7 +30,8 @@
       "min": 0,
       "max": 100,
       "default": 100,
-      "unit": "%"
+      "unit": "%",
+      "automation": true
     },
     {
       "name": "gain",
@@ -37,7 +40,8 @@
       "min": -18,
       "max": 18,
       "default": -2,
-      "unit": "dB"
+      "unit": "dB",
+      "automation": true
     }
   ]
 }

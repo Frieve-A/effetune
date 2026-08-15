@@ -58,26 +58,45 @@ class MultibandExpanderPlugin extends PluginBase {
       const sampleRate = parameters.sampleRate;
       const channelCount = parameters.channelCount;
       const result = data; // Use input buffer directly
+      if (!context.expanderMeasurements) {
+        context.expanderMeasurements = {
+          time: 0,
+          gainBoosts: new Float32Array(5)
+        };
+      }
+      const measurements = context.expanderMeasurements;
 
       // Bypass if disabled
       if (!parameters.enabled) {
-        result.measurements = {
-          time: parameters.time,
-          gainBoosts: context.gainBoosts ? context.gainBoosts.slice(0, 5) : new Float32Array(5)
-        };
+        measurements.time = parameters.time;
+        if (context.gainBoosts) measurements.gainBoosts.set(context.gainBoosts);
+        else measurements.gainBoosts.fill(0);
+        result.measurements = measurements;
         return result;
       }
 
       // --- State Initialization and Management ---
-      const frequencies = [parameters.f1, parameters.f2, parameters.f3, parameters.f4];
+      if (!context.expanderFrequencyScratch) {
+        context.expanderFrequencyScratch = new Float64Array(4);
+      }
+      const frequencies = context.expanderFrequencyScratch;
+      frequencies[0] = parameters.f1;
+      frequencies[1] = parameters.f2;
+      frequencies[2] = parameters.f3;
+      frequencies[3] = parameters.f4;
+      let frequenciesChanged = !context.filterConfig?.frequencies;
+      if (!frequenciesChanged) {
+        for (let i = 0; i < 4; i++) {
+          if (context.filterConfig.frequencies[i] !== frequencies[i]) frequenciesChanged = true;
+        }
+      }
 
       // Check if filter states or config need reset
       const needsReset = !context.filterStates ||
                         !context.filterConfig ||
                         context.filterConfig.sampleRate !== sampleRate ||
                         context.filterConfig.channelCount !== channelCount ||
-                        !context.filterConfig.frequencies ||
-                        context.filterConfig.frequencies.some((f, i) => f !== frequencies[i]);
+                        frequenciesChanged;
 
       if (needsReset) {
         // Create filter state with DC-blocking initialization
@@ -109,9 +128,10 @@ class MultibandExpanderPlugin extends PluginBase {
 
         context.filterConfig = {
           sampleRate: sampleRate,
-          frequencies: frequencies.slice(),
+          frequencies: new Float64Array(4),
           channelCount: channelCount
         };
+        context.filterConfig.frequencies.set(frequencies);
 
         // Apply a short fade-in to prevent clicks when filter states are reset
         context.fadeIn = {
@@ -432,6 +452,36 @@ class MultibandExpanderPlugin extends PluginBase {
           }
       }
       const bandParamsCache = context.bandParams;
+      const rampFrames = Math.max(1, Math.ceil(sampleRate * 0.005));
+      if (!context.curveControlTargets) context.curveControlTargets = new Float64Array(20);
+      const controlTargets = context.curveControlTargets;
+      for (let band = 0; band < 5; band++) {
+        const bp = parameters.bands[band], base = band * 4;
+        controlTargets[base] = Math.fround(bp.t);
+        controlTargets[base + 1] = Math.fround(bp.r);
+        controlTargets[base + 2] = Math.fround(bp.k);
+        controlTargets[base + 3] = Math.fround(bp.g);
+      }
+      if (!context.currentCurveControls) {
+        context.currentCurveControls = new Float64Array(20);
+        context.targetCurveControls = new Float64Array(20);
+        context.currentCurveControls.set(controlTargets);
+        context.targetCurveControls.set(controlTargets);
+        context.curveControlSteps = new Float64Array(20);
+        context.curveRampRemaining = 0;
+      } else {
+        let changed = false;
+        for (let i = 0; i < 20; i++) if (context.targetCurveControls[i] !== controlTargets[i]) changed = true;
+        if (changed) {
+          context.targetCurveControls.set(controlTargets);
+          for (let i = 0; i < 20; i++) context.curveControlSteps[i] =
+            (controlTargets[i] - context.currentCurveControls[i]) / rampFrames;
+          context.curveRampRemaining = rampFrames;
+        }
+      }
+      const currentCurveControls = context.currentCurveControls;
+      const curveControlSteps = context.curveControlSteps;
+      const curveRampRemaining = context.curveRampRemaining;
 
       // --- Lookup Table Setup ---
       if (!context.dbLookup) {
@@ -503,6 +553,7 @@ class MultibandExpanderPlugin extends PluginBase {
         for (let band = 0; band < 5; band++) {
           const bandSignal = bandSignalsCh[band];
           const params = bandParamsCache[band];
+          const curveBase = band * 4;
           const attackCoeff = timeConstants[band * 2];
           const releaseCoeff = timeConstants[band * 2 + 1];
           let envelope = envelopeStates[envelopeOffset + band];
@@ -531,6 +582,15 @@ class MultibandExpanderPlugin extends PluginBase {
                   const idx = i + j;
                   const currentEnvelope = workBuffer[idx];
                   const envelopeDb = fastDb(currentEnvelope);
+                  const curveFrame = Math.min(idx + 1, curveRampRemaining);
+                  const thresholdDb = currentCurveControls[curveBase] +
+                    curveControlSteps[curveBase] * curveFrame;
+                  const ratio = Math.max(0.05, currentCurveControls[curveBase + 1] +
+                    curveControlSteps[curveBase + 1] * curveFrame);
+                  const kneeDb = Math.max(0, currentCurveControls[curveBase + 2] +
+                    curveControlSteps[curveBase + 2] * curveFrame);
+                  const halfKneeDb = kneeDb * 0.5;
+                  const expansionSlope = ratio - 1;
                   const diff = envelopeDb - thresholdDb;
 
                   let gainBoost = 0;
@@ -543,12 +603,13 @@ class MultibandExpanderPlugin extends PluginBase {
                       gainBoost = 0;
                   } else {
                       // Within knee: smooth transition
-                      const t = (diff + halfKneeDb) / kneeDb;
+                      const t = kneeDb > 0 ? (diff + halfKneeDb) / kneeDb : 1;
                       const linearBelow = (-halfKneeDb) * expansionSlope;
                       gainBoost = linearBelow * (1 - t) * (1 - t);
                   }
 
-                  const totalGainDb = params.makeupDb + gainBoost;
+                  const totalGainDb = currentCurveControls[curveBase + 3] +
+                    curveControlSteps[curveBase + 3] * curveFrame + gainBoost;
                   const totalGainLin = fastExpDb(totalGainDb);
                   outputBuffer[idx] += bandSignal[idx] * totalGainLin;
 
@@ -561,6 +622,15 @@ class MultibandExpanderPlugin extends PluginBase {
           for (; i < blockSize; i++) {
               const currentEnvelope = workBuffer[i];
               const envelopeDb = fastDb(currentEnvelope);
+              const curveFrame = Math.min(i + 1, curveRampRemaining);
+              const thresholdDb = currentCurveControls[curveBase] +
+                curveControlSteps[curveBase] * curveFrame;
+              const ratio = Math.max(0.05, currentCurveControls[curveBase + 1] +
+                curveControlSteps[curveBase + 1] * curveFrame);
+              const kneeDb = Math.max(0, currentCurveControls[curveBase + 2] +
+                curveControlSteps[curveBase + 2] * curveFrame);
+              const halfKneeDb = kneeDb * 0.5;
+              const expansionSlope = ratio - 1;
               const diff = envelopeDb - thresholdDb;
 
               let gainBoost = 0;
@@ -569,12 +639,13 @@ class MultibandExpanderPlugin extends PluginBase {
               } else if (diff >= halfKneeDb) {
                   gainBoost = 0;
               } else {
-                  const t = (diff + halfKneeDb) / kneeDb;
+                  const t = kneeDb > 0 ? (diff + halfKneeDb) / kneeDb : 1;
                   const linearBelow = (-halfKneeDb) * expansionSlope;
                   gainBoost = linearBelow * (1 - t) * (1 - t);
               }
 
-              const totalGainDb = params.makeupDb + gainBoost;
+              const totalGainDb = currentCurveControls[curveBase + 3] +
+                curveControlSteps[curveBase + 3] * curveFrame + gainBoost;
               const totalGainLin = fastExpDb(totalGainDb);
               outputBuffer[i] += bandSignal[i] * totalGainLin;
 
@@ -619,10 +690,16 @@ class MultibandExpanderPlugin extends PluginBase {
         context.fadeIn = null;
       }
 
-      result.measurements = {
-        time: parameters.time,
-        gainBoosts: gainBoosts.slice(0, 5)
-      };
+      const curveAdvanced = Math.min(blockSize, context.curveRampRemaining);
+      for (let i = 0; i < 20; i++) {
+        context.currentCurveControls[i] += context.curveControlSteps[i] * curveAdvanced;
+      }
+      context.curveRampRemaining -= curveAdvanced;
+      if (context.curveRampRemaining === 0) context.currentCurveControls.set(context.targetCurveControls);
+
+      measurements.time = parameters.time;
+      measurements.gainBoosts.set(gainBoosts);
+      result.measurements = measurements;
 
       return result;
     `;

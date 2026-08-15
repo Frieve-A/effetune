@@ -4,6 +4,7 @@
 #include "effetune/dsp/linkwitz_riley.h"
 #include "effetune/kernel.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -95,6 +96,7 @@ public:
         !configure<BoundaryVariant>(params, channel_count)) {
       return;
     }
+    prepareControls(params);
 
     const std::uint32_t sections = segment_count_;
     const std::size_t wave_stride = static_cast<std::size_t>(max_segments_) + 1u;
@@ -114,11 +116,14 @@ public:
       float *channel_audio = audio + static_cast<std::size_t>(channel) * frame_count;
 
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        const dsp::LinkwitzRiley24Coefficients crossover = crossover_ramp_.value(frame);
+        const double damping_gain = damping_ramp_.value(frame);
+        const double throat_reflection = throat_reflection_ramp_.value(frame);
         const double input = static_cast<double>(channel_audio[frame]);
         const double output_low =
-            dsp::processLinkwitzRiley24Sample(input, crossover_coefficients_.lowpass, low_state);
+            dsp::processLinkwitzRiley24Sample(input, crossover.lowpass, low_state);
         const double output_high =
-            dsp::processLinkwitzRiley24Sample(input, crossover_coefficients_.highpass, high_state);
+            dsp::processLinkwitzRiley24Sample(input, crossover.highpass, high_state);
 
         for (std::uint32_t section = 0u; section < sections; ++section) {
           const double reflection = static_cast<double>(reflections_[section]);
@@ -126,9 +131,9 @@ public:
           const double reverse_in = static_cast<double>(reverse[section + 1u]);
           const double scatter_difference = reflection * (forward_in - reverse_in);
           forward_temp_[section + 1u] =
-              static_cast<float>(damping_gain_ * (forward_in + scatter_difference));
+              static_cast<float>(damping_gain * (forward_in + scatter_difference));
           reverse_temp_[section] =
-              static_cast<float>(damping_gain_ * (reverse_in + scatter_difference));
+              static_cast<float>(damping_gain * (reverse_in + scatter_difference));
         }
 
         const double mouth_forward = static_cast<double>(forward_temp_[sections]);
@@ -138,7 +143,7 @@ public:
           mouth_x1 = mouth_forward;
           mouth_y1 = reflected_mouth;
           forward_temp_[0u] = static_cast<float>(
-              output_high + throat_reflection_ * static_cast<double>(reverse_temp_[0u]));
+              output_high + throat_reflection * static_cast<double>(reverse_temp_[0u]));
         } else {
           reflected_mouth = mouth_b0_ * mouth_forward - mouth_a1_ * mouth_y1 - mouth_a2_ * mouth_y2;
           mouth_y2 = mouth_y1;
@@ -146,8 +151,7 @@ public:
           const double filtered_throat =
               throat_b0_ * static_cast<double>(reverse_temp_[0u]) - throat_a1_ * throat_y1;
           throat_y1 = filtered_throat;
-          forward_temp_[0u] =
-              static_cast<float>(output_high + throat_reflection_ * filtered_throat);
+          forward_temp_[0u] = static_cast<float>(output_high + throat_reflection * filtered_throat);
         }
         reverse_temp_[sections] = static_cast<float>(reflected_mouth);
 
@@ -172,6 +176,9 @@ public:
       throat_y1_[channel] = static_cast<float>(throat_y1);
       low_delay_indices_[channel] = delay_index;
     }
+    crossover_ramp_.advance(frame_count);
+    damping_ramp_.advance(frame_count);
+    throat_reflection_ramp_.advance(frame_count);
   }
 
   [[nodiscard]] std::uint32_t maximumSegments() const noexcept { return max_segments_; }
@@ -180,13 +187,10 @@ private:
   [[nodiscard]] bool configurationChanged(const Parameters &params,
                                           std::uint32_t channel_count) const noexcept {
     return !configured_ || channel_count_ != channel_count ||
-           configured_params_.crossover != params.crossover ||
            configured_params_.length != params.length ||
            configured_params_.throatDiameter != params.throatDiameter ||
            configured_params_.mouthDiameter != params.mouthDiameter ||
-           configured_params_.curve != params.curve ||
-           configured_params_.damping != params.damping ||
-           configured_params_.throatReflection != params.throatReflection;
+           configured_params_.curve != params.curve;
   }
 
   template <Variant BoundaryVariant>
@@ -225,10 +229,12 @@ private:
       reflections_[section] = static_cast<float>(sum < kEpsilon ? 0.0 : (right - left) / sum);
     }
 
-    damping_gain_ = std::pow(10.0, -static_cast<double>(params.damping) * spatial_step / 20.0);
-    throat_reflection_ = static_cast<double>(params.throatReflection);
     designBoundary<BoundaryVariant>(throat_radius, mouth_radius);
-    designCrossover(static_cast<double>(params.crossover));
+    crossover_ramp_.snap(designCrossover(static_cast<double>(params.crossover)));
+    damping_ramp_.snap(std::pow(10.0, -static_cast<double>(params.damping) * spatial_step / 20.0));
+    throat_reflection_ramp_.snap(static_cast<double>(params.throatReflection));
+    control_targets_ = params;
+    controls_initialized_ = true;
     clearHistory();
 
     configured_params_ = params;
@@ -268,7 +274,8 @@ private:
     }
   }
 
-  void designCrossover(double requested_crossover) noexcept {
+  [[nodiscard]] dsp::LinkwitzRiley24Coefficients
+  designCrossover(double requested_crossover) const noexcept {
     const double maximum = sample_rate_ * 0.5 - 1.0;
     double crossover = requested_crossover > maximum ? maximum : requested_crossover;
     if (crossover < 20.0)
@@ -279,19 +286,124 @@ private:
     const double denominator = omega_squared + butterworth + 1.0;
     const double inverse = denominator < kEpsilon ? 1.0 : 1.0 / denominator;
 
-    dsp::BiquadCoefficients &lowpass = crossover_coefficients_.lowpass;
+    dsp::LinkwitzRiley24Coefficients coefficients{};
+    dsp::BiquadCoefficients &lowpass = coefficients.lowpass;
     lowpass.b0 = omega_squared * inverse;
     lowpass.b1 = 2.0 * lowpass.b0;
     lowpass.b2 = lowpass.b0;
     lowpass.a1 = 2.0 * (omega_squared - 1.0) * inverse;
     lowpass.a2 = (omega_squared - butterworth + 1.0) * inverse;
 
-    dsp::BiquadCoefficients &highpass = crossover_coefficients_.highpass;
+    dsp::BiquadCoefficients &highpass = coefficients.highpass;
     highpass.b0 = inverse;
     highpass.b1 = -2.0 * highpass.b0;
     highpass.b2 = highpass.b0;
     highpass.a1 = lowpass.a1;
     highpass.a2 = lowpass.a2;
+    return coefficients;
+  }
+
+  struct ScalarRamp {
+    double current = 0.0;
+    double target = 0.0;
+    double step = 0.0;
+    std::uint32_t remaining = 0u;
+    void snap(double value) noexcept {
+      current = target = value;
+      step = 0.0;
+      remaining = 0u;
+    }
+    void retarget(double value, std::uint32_t frames) noexcept {
+      if (value == target)
+        return;
+      target = value;
+      remaining = frames;
+      step = (target - current) / static_cast<double>(frames);
+    }
+    [[nodiscard]] double value(std::uint32_t frame) const noexcept {
+      const std::uint32_t elapsed = frame + 1u;
+      return elapsed >= remaining ? target : current + step * static_cast<double>(elapsed);
+    }
+    void advance(std::uint32_t frames) noexcept {
+      if (frames >= remaining) {
+        current = target;
+        step = 0.0;
+        remaining = 0u;
+      } else {
+        current += step * static_cast<double>(frames);
+        remaining -= frames;
+      }
+    }
+  };
+
+  struct CrossoverRamp {
+    dsp::LinkwitzRiley24Coefficients current{};
+    dsp::LinkwitzRiley24Coefficients target{};
+    dsp::LinkwitzRiley24Coefficients step{};
+    std::uint32_t remaining = 0u;
+    static dsp::BiquadCoefficients difference(const dsp::BiquadCoefficients &from,
+                                              const dsp::BiquadCoefficients &to,
+                                              double denominator) noexcept {
+      return {(to.b0 - from.b0) / denominator, (to.b1 - from.b1) / denominator,
+              (to.b2 - from.b2) / denominator, (to.a1 - from.a1) / denominator,
+              (to.a2 - from.a2) / denominator};
+    }
+    static dsp::BiquadCoefficients offset(const dsp::BiquadCoefficients &base,
+                                          const dsp::BiquadCoefficients &delta,
+                                          double amount) noexcept {
+      return {base.b0 + delta.b0 * amount, base.b1 + delta.b1 * amount, base.b2 + delta.b2 * amount,
+              base.a1 + delta.a1 * amount, base.a2 + delta.a2 * amount};
+    }
+    void snap(const dsp::LinkwitzRiley24Coefficients &value) noexcept {
+      current = target = value;
+      step = {};
+      remaining = 0u;
+    }
+    void retarget(const dsp::LinkwitzRiley24Coefficients &value, std::uint32_t frames) noexcept {
+      target = value;
+      const double denominator = static_cast<double>(frames);
+      step.lowpass = difference(current.lowpass, target.lowpass, denominator);
+      step.highpass = difference(current.highpass, target.highpass, denominator);
+      remaining = frames;
+    }
+    [[nodiscard]] dsp::LinkwitzRiley24Coefficients value(std::uint32_t frame) const noexcept {
+      const std::uint32_t elapsed = frame + 1u;
+      if (elapsed >= remaining)
+        return target;
+      const double amount = static_cast<double>(elapsed);
+      return {offset(current.lowpass, step.lowpass, amount),
+              offset(current.highpass, step.highpass, amount)};
+    }
+    void advance(std::uint32_t frames) noexcept {
+      if (frames >= remaining) {
+        current = target;
+        step = {};
+        remaining = 0u;
+      } else {
+        const double amount = static_cast<double>(frames);
+        current = {offset(current.lowpass, step.lowpass, amount),
+                   offset(current.highpass, step.highpass, amount)};
+        remaining -= frames;
+      }
+    }
+  };
+
+  void prepareControls(const Parameters &params) noexcept {
+    if (!controls_initialized_)
+      return;
+    const auto requested_frames = static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005));
+    const auto frames = requested_frames == 0u ? 1u : requested_frames;
+    if (params.crossover != control_targets_.crossover)
+      crossover_ramp_.retarget(designCrossover(static_cast<double>(params.crossover)), frames);
+    const double spatial_step = kSpeedOfSound / sample_rate_;
+    if (params.damping != control_targets_.damping)
+      damping_ramp_.retarget(
+          std::pow(10.0, -static_cast<double>(params.damping) * spatial_step / 20.0), frames);
+    if (params.throatReflection != control_targets_.throatReflection)
+      throat_reflection_ramp_.retarget(static_cast<double>(params.throatReflection), frames);
+    control_targets_.crossover = params.crossover;
+    control_targets_.damping = params.damping;
+    control_targets_.throatReflection = params.throatReflection;
   }
 
   static void clearFloatBuffer(std::vector<float> &buffer) noexcept {
@@ -320,7 +432,10 @@ private:
   }
 
   Parameters configured_params_{};
-  dsp::LinkwitzRiley24Coefficients crossover_coefficients_{};
+  Parameters control_targets_{};
+  CrossoverRamp crossover_ramp_{};
+  ScalarRamp damping_ramp_{};
+  ScalarRamp throat_reflection_ramp_{};
   std::vector<float> impedance_;
   std::vector<float> reflections_;
   std::vector<float> forward_;
@@ -336,8 +451,6 @@ private:
   std::vector<dsp::LinkwitzRiley24State> lowpass_states_;
   std::vector<dsp::LinkwitzRiley24State> highpass_states_;
   double sample_rate_ = 0.0;
-  double damping_gain_ = 1.0;
-  double throat_reflection_ = 0.0;
   double mouth_b0_ = 0.0;
   double mouth_a1_ = 0.0;
   double mouth_a2_ = 0.0;
@@ -349,6 +462,7 @@ private:
   std::uint32_t channel_count_ = 0u;
   std::uint32_t segment_count_ = 1u;
   bool configured_ = false;
+  bool controls_initialized_ = false;
 };
 
 } // namespace effetune::plugins::resonator::horn_waveguide

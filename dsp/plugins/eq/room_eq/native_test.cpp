@@ -1,5 +1,6 @@
 #include "effetune/kernel.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -68,7 +69,7 @@ struct Harness final {
   const effetune::KernelDescriptor *descriptor = et_kernel_descriptor_RoomEqPlugin();
   effetune::PluginKernel *kernel = nullptr;
 
-  Harness() {
+  explicit Harness(float sampleRate = 48000.0F) {
     ROOM_EQ_CHECK(descriptor != nullptr);
     ROOM_EQ_CHECK(descriptor != nullptr && descriptor->objectSize <= storage.size());
     if (descriptor == nullptr || descriptor->objectSize > storage.size())
@@ -76,7 +77,7 @@ struct Harness final {
     kernel = descriptor->construct(storage.data());
     ROOM_EQ_CHECK(kernel != nullptr);
     if (kernel != nullptr) {
-      kernel->prepare({48000.0F, 2u, 128u});
+      kernel->prepare({sampleRate, 2u, 128u});
       ROOM_EQ_CHECK(kernel->preparedSuccessfully());
       stage(parameters());
     }
@@ -138,6 +139,31 @@ void testNoAssetBypassGainAndDelay() {
   delayed[0] = 1.0F;
   harness.kernel->process(delayed.data(), 2u, 8u, {0.0});
   ROOM_EQ_CHECK(std::fabs(delayed[2] - std::pow(10.0F, -6.0F / 20.0F)) < 0.0001F);
+}
+
+void testOutputGainUsesFixedFiveMillisecondRamp() {
+  Harness harness(1000.0F);
+  std::array<float, 16> prime{};
+  prime.fill(1.0F);
+  harness.kernel->process(prime.data(), 2u, 8u, {0.0});
+
+  harness.stage(parameters(0.0F, -6.0F));
+  constexpr std::array<std::uint32_t, 3> partitions{2u, 1u, 4u};
+  std::array<float, 7> captured{};
+  std::uint32_t offset = 0u;
+  for (const auto frames : partitions) {
+    std::array<float, 8> audio{};
+    audio.fill(1.0F);
+    harness.kernel->process(audio.data(), 2u, frames, {0.0});
+    std::copy_n(audio.begin(), frames, captured.begin() + offset);
+    offset += frames;
+  }
+  const float target = std::pow(10.0F, -6.0F / 20.0F);
+  for (std::uint32_t frame = 0u; frame < captured.size(); ++frame) {
+    const float alpha = static_cast<float>(std::min(frame + 1u, 5u)) / 5.0F;
+    const float expected = 1.0F + alpha * (target - 1.0F);
+    ROOM_EQ_CHECK(std::fabs(captured[frame] - expected) < 1.0e-6F);
+  }
 }
 
 void testLatencyPromotionAndFailedReplacement() {
@@ -327,6 +353,7 @@ void testRejectsAssetsBeyondMaximumTapCount() {
 
 int main() {
   testNoAssetBypassGainAndDelay();
+  testOutputGainUsesFixedFiveMillisecondRamp();
   testLatencyPromotionAndFailedReplacement();
   testSharedMonoConvolutionAndDryAlignment();
   testContinuousInputDuringInitialAndReplacementPreparation();

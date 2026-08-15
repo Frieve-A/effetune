@@ -250,6 +250,8 @@ public:
     oversample_odd_.assign(static_cast<std::size_t>(kOsHistory) * channels, 0.0);
     delay_buffers_.assign(static_cast<std::size_t>(kDelayLength) * channels, 0.0F);
     dry_buffers_.assign(static_cast<std::size_t>(kDelayLength) * channels, 0.0F);
+    automation_ramp_frames_ =
+        std::max(1u, static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005)));
   }
 
   void reset() noexcept override {
@@ -257,6 +259,8 @@ public:
     configured_ = false;
     last_channel_count_ = 0u;
     random_.seed(selected_seed_low_, selected_seed_high_);
+    automation_initialized_ = false;
+    mix_ramp_remaining_ = 0u;
   }
 
   void setRandomSeed(std::uint32_t seed_low, std::uint32_t seed_high) noexcept override {
@@ -274,8 +278,8 @@ public:
 
     // mx = 0 must be a bit-for-bit dry path, and the JavaScript takes that exit
     // before any state - the seed included - is drawn.
-    const double mix_ratio = static_cast<double>(params_.mix) * 0.01;
-    if (!(mix_ratio > 0.0)) {
+    const double target_mix = static_cast<double>(params_.mix) * 0.01;
+    if (!(target_mix > 0.0) && (!automation_initialized_ || (mix_ == 0.0 && mix_target_ == 0.0))) {
       return;
     }
 
@@ -317,24 +321,45 @@ public:
     double *oversample_even = oversample_even_.data();
     double *oversample_odd = oversample_odd_.data();
 
-    const double input_trim_gain = std::pow(
+    const double target_input_trim_gain = std::pow(
         10.0, (kSaturationReferenceDbfs + static_cast<double>(params_.recordLevel)) / 20.0);
-    const double makeup_gain = 1.0 / input_trim_gain;
-    const double output_gain = std::pow(10.0, static_cast<double>(params_.output) / 20.0);
-    const double flutter_scale =
+    const double target_output_gain = std::pow(10.0, static_cast<double>(params_.output) / 20.0);
+    const double target_flutter_scale =
         static_cast<double>(params_.wowFlutter) / kWowFlutterReferencePercent;
+    if (!automation_initialized_) {
+      input_trim_gain_ = target_input_trim_gain;
+      output_gain_ = target_output_gain;
+      flutter_scale_ = target_flutter_scale;
+      mix_ = target_mix;
+      input_trim_gain_target_ = target_input_trim_gain;
+      output_gain_target_ = target_output_gain;
+      flutter_scale_target_ = target_flutter_scale;
+      mix_target_ = target_mix;
+      mix_ramp_remaining_ = 0u;
+      automation_initialized_ = true;
+    } else if (target_input_trim_gain != input_trim_gain_target_ ||
+               target_output_gain != output_gain_target_ ||
+               target_flutter_scale != flutter_scale_target_ || target_mix != mix_target_) {
+      input_trim_gain_target_ = target_input_trim_gain;
+      output_gain_target_ = target_output_gain;
+      flutter_scale_target_ = target_flutter_scale;
+      mix_target_ = target_mix;
+      mix_ramp_remaining_ = automation_ramp_frames_;
+    }
+    double input_trim_gain = input_trim_gain_;
+    double output_gain = output_gain_;
+    double flutter_scale = flutter_scale_;
+    double mix_ratio = mix_;
+    std::uint32_t mix_ramp_remaining = mix_ramp_remaining_;
     const double saturation_base = saturation_base_;
     const double memory_scale = memory_scale_;
     const double attack_coefficient = attack_coefficient_;
     const double release_coefficient = release_coefficient_;
     const double dc_coefficient = dc_coefficient_;
     const double negative_ceiling_scale = 1.0 + kSaturationAsymmetry;
-    const double hiss_gain = hiss_gain_ * makeup_gain;
     const double modulation_gain = modulation_gain_;
-    const bool noise_active = hiss_gain > 0.0 || modulation_gain > 0.0;
+    const bool noise_active = hiss_gain_ > 0.0 || modulation_gain > 0.0;
     const double wow_increment = wow_increment_;
-    const double wow_samples = wow_samples_ * flutter_scale;
-    const double flutter_samples = flutter_samples_ * flutter_scale;
     const double flutter_coefficient = flutter_coefficient_;
     const double flutter_normalisation = flutter_normalisation_;
     const double base_delay_samples = base_delay_samples_;
@@ -350,6 +375,23 @@ public:
     std::int32_t rng_state = rng_state_;
 
     for (std::uint32_t i = 0u; i < frame_count; i++) {
+      if (mix_ramp_remaining != 0u) {
+        const double ramp_scale = 1.0 / static_cast<double>(mix_ramp_remaining);
+        input_trim_gain += (target_input_trim_gain - input_trim_gain) * ramp_scale;
+        output_gain += (target_output_gain - output_gain) * ramp_scale;
+        flutter_scale += (target_flutter_scale - flutter_scale) * ramp_scale;
+        mix_ratio += (target_mix - mix_ratio) * ramp_scale;
+        if (--mix_ramp_remaining == 0u) {
+          input_trim_gain = target_input_trim_gain;
+          output_gain = target_output_gain;
+          flutter_scale = target_flutter_scale;
+          mix_ratio = target_mix;
+        }
+      }
+      const double makeup_gain = 1.0 / input_trim_gain;
+      const double hiss_gain = hiss_gain_ * makeup_gain;
+      const double wow_samples = wow_samples_ * flutter_scale;
+      const double flutter_samples = flutter_samples_ * flutter_scale;
       // The transport trajectory is shared by every channel; only the delay
       // line state is per channel.
       wow_phase += wow_increment;
@@ -590,6 +632,11 @@ public:
     flutter_a_ = flutter_a;
     flutter_b_ = flutter_b;
     rng_state_ = rng_state;
+    input_trim_gain_ = input_trim_gain;
+    output_gain_ = output_gain;
+    flutter_scale_ = flutter_scale;
+    mix_ = mix_ratio;
+    mix_ramp_remaining_ = mix_ramp_remaining;
   }
 
 private:
@@ -873,6 +920,17 @@ private:
   double flutter_coefficient_ = 0.0;
   double flutter_normalisation_ = 0.0;
   double base_delay_samples_ = 0.0;
+  std::uint32_t automation_ramp_frames_ = 240u;
+  std::uint32_t mix_ramp_remaining_ = 0u;
+  double input_trim_gain_ = 1.0;
+  double output_gain_ = 1.0;
+  double flutter_scale_ = 1.0;
+  double input_trim_gain_target_ = 1.0;
+  double output_gain_target_ = 1.0;
+  double flutter_scale_target_ = 1.0;
+  double mix_ = 1.0;
+  double mix_target_ = 1.0;
+  bool automation_initialized_ = false;
   dsp::XorShiftRng random_{};
 };
 

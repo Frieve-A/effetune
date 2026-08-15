@@ -5,6 +5,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pluginsRoot = path.join(repoRoot, 'dsp', 'plugins');
+const publicOverlayPath = path.join(
+  repoRoot, 'dsp', 'bindings', 'common', 'effects-v1.overlay.json'
+);
 const cppOutputRoot = path.join(repoRoot, 'dsp', 'generated', 'cpp');
 const runtimeJsOutput = path.join(repoRoot, 'js', 'audio', 'dsp-params.generated.js');
 const reservedKeys = new Set([
@@ -14,6 +17,9 @@ const reservedKeys = new Set([
 const kinds = new Set(['float', 'int', 'bool', 'enum']);
 const policies = new Set(['per-sample', 'spectral']);
 const structuredCodecs = new Set(['matrix-routes-v1']);
+const publicTransformKinds = new Set([
+  'naturalLog', 'log10', 'decibelsFromReference'
+]);
 const unsafeJsLiteralCharacters = Object.freeze({
   '<': '\\u003C',
   '>': '\\u003E',
@@ -77,6 +83,93 @@ function rejectUnknownKeys(value, allowed, label, source) {
   }
 }
 
+function humanizeIdentifier(value) {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
+    .replaceAll('_', ' ')
+    .replace(/^./, character => character.toUpperCase());
+}
+
+function toPublicAutomationValue(value, transform) {
+  if (!transform || transform.kind === 'identity') return value;
+  if (transform.kind === 'naturalLog') return Math.exp(value);
+  if (transform.kind === 'log10') return 10 ** value;
+  return transform.reference * (10 ** (value / 20));
+}
+
+function loadPublicTransforms(filePath = publicOverlayPath) {
+  const source = path.relative(repoRoot, filePath).replaceAll('\\', '/');
+  let overlay;
+  try {
+    overlay = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (error) {
+    fail(`invalid JSON: ${error.message}`, source);
+  }
+  if (!isPlainObject(overlay) || overlay.version !== 1 || !Array.isArray(overlay.effects)) {
+    fail('public transform overlay must contain a v1 effects array', source);
+  }
+  const byType = new Map();
+  for (const effect of overlay.effects) {
+    if (!isPlainObject(effect) || typeof effect.internalType !== 'string' ||
+        (effect.parameters !== undefined && !isPlainObject(effect.parameters))) {
+      fail('public transform overlay contains an invalid effect entry', source);
+    }
+    const fields = new Map();
+    for (const [fieldName, parameter] of Object.entries(effect.parameters ?? {})) {
+      if (!isPlainObject(parameter) || parameter.transform === undefined) continue;
+      const transform = parameter.transform;
+      if (!isPlainObject(transform) || !publicTransformKinds.has(transform.kind)) {
+        fail(`${effect.internalType}.${fieldName} uses an unsupported public transform`, source);
+      }
+      const reference = transform.kind === 'decibelsFromReference'
+        ? requireFinite(
+            transform.reference,
+            `${effect.internalType}.${fieldName} transform reference`, source
+          )
+        : 1;
+      if (!(reference > 0)) {
+        fail(`${effect.internalType}.${fieldName} transform reference must be positive`, source);
+      }
+      const unit = transform.unit;
+      if (unit !== undefined && (typeof unit !== 'string' || unit.length === 0)) {
+        fail(`${effect.internalType}.${fieldName} transform unit must be a non-empty string`, source);
+      }
+      fields.set(fieldName, Object.freeze({ kind: transform.kind, reference, unit }));
+    }
+    byType.set(effect.internalType, fields);
+  }
+  return byType;
+}
+
+function applyPublicTransforms(specs, transformsByType = loadPublicTransforms()) {
+  for (const spec of specs) {
+    const transforms = transformsByType.get(spec.type);
+    if (!transforms) continue;
+    for (const field of spec.fields) {
+      const transform = transforms.get(field.name);
+      if (!transform) continue;
+      if (field.kind !== 'float' || field.count !== 1) {
+        fail(`field ${field.name} public transform requires one float`, spec.source);
+      }
+      field.publicTransform = transform;
+      if (transform.unit !== undefined) {
+        field.unit = transform.unit;
+        if (field.automation) field.automation.unit = transform.unit;
+      }
+      if (!field.automation) continue;
+      const minimum = toPublicAutomationValue(field.min, transform);
+      const maximum = toPublicAutomationValue(field.max, transform);
+      if (!(minimum > 0) || !(maximum > minimum) ||
+          !Number.isFinite(minimum) || !Number.isFinite(maximum)) {
+        fail(`field ${field.name} public log automation range is invalid`, spec.source);
+      }
+      field.automation.normalization = 'log';
+    }
+  }
+  return specs;
+}
+
 function validateAutomation(raw, field, source) {
   if (raw === undefined) {
     return null;
@@ -84,16 +177,21 @@ function validateAutomation(raw, field, source) {
   if (raw !== true && !isPlainObject(raw)) {
     fail(`field ${field.name} automation must be true or an object`, source);
   }
-  if (raw !== true) {
-    rejectUnknownKeys(raw, new Set(['normalization']), `field ${field.name} automation`, source);
+  if (isPlainObject(raw)) {
+    rejectUnknownKeys(
+      raw, new Set(['normalization']), `field ${field.name} automation`, source
+    );
     if (raw.normalization !== 'log') {
-      fail(`field ${field.name} automation.normalization must be log`, source);
+      fail(`field ${field.name} automation normalization override must be log`, source);
+    }
+    if (field.kind !== 'float') {
+      fail(`field ${field.name} log automation requires float kind`, source);
     }
   }
 
-  const normalization = raw === true
-    ? (field.kind === 'float' ? 'linear' : field.kind === 'int' ? 'integer' : field.kind)
-    : raw.normalization;
+  const normalization = field.kind === 'float'
+    ? (isPlainObject(raw) ? 'log' : 'linear')
+    : (field.kind === 'int' ? 'integer' : field.kind);
   const eligibility = field.kind === 'float' ? 'continuous' : 'stepped';
   if (field.kind === 'float') {
     if (!(field.min < field.max)) {
@@ -102,8 +200,6 @@ function validateAutomation(raw, field, source) {
     if (normalization === 'log' && field.min <= 0) {
       fail(`field ${field.name} log automation requires min greater than zero`, source);
     }
-  } else if (normalization === 'log') {
-    fail(`field ${field.name} log automation requires float kind`, source);
   } else if (field.kind === 'int') {
     const steps = field.max - field.min;
     if (steps <= 0 || steps > 0xffffffff) {
@@ -113,12 +209,13 @@ function validateAutomation(raw, field, source) {
     fail(`field ${field.name} enum automation requires at least two values`, source);
   }
 
-  const title = field.name.replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/^./, character => character.toUpperCase());
+  const title = humanizeIdentifier(field.publicName);
   return {
     eligibility,
+    key: field.key,
     title,
     shortTitle: title,
+    unit: field.unit,
     normalization,
     safetyFlags: 0
   };
@@ -151,6 +248,10 @@ export function validateParamSpec(raw, source = '<params.json>') {
     fail('root must be an object', source);
   }
   const type = requireIdentifier(raw.type, 'type', source);
+  if (raw.phase0 !== undefined && typeof raw.phase0 !== 'boolean') {
+    fail('phase0 must be true or false', source);
+  }
+  const phase0 = raw.phase0 === true;
   if (!isPlainObject(raw.tolerance)) {
     fail('tolerance must be an object', source);
   }
@@ -171,8 +272,10 @@ export function validateParamSpec(raw, source = '<params.json>') {
   }
 
   const fieldNames = new Set();
+  const publicNames = new Set();
   const packedKeys = new Set();
-  const jsonStorageRoots = new Map();
+  const automationKeys = new Set();
+  const objectArrays = new Map();
   let floatCount = 0;
   const fields = raw.fields.map((rawField, fieldIndex) => {
     if (!isPlainObject(rawField)) {
@@ -183,6 +286,17 @@ export function validateParamSpec(raw, source = '<params.json>') {
       fail(`duplicate field name ${name}`, source);
     }
     fieldNames.add(name);
+    const publicName = rawField.publicName === undefined
+      ? name
+      : requireIdentifier(rawField.publicName, `field ${name} publicName`, source);
+    if (publicNames.has(publicName)) {
+      fail(`duplicate public field name ${publicName}`, source);
+    }
+    publicNames.add(publicName);
+    const unit = rawField.unit === undefined ? '' : rawField.unit;
+    if (typeof unit !== 'string' || (rawField.unit !== undefined && unit.length === 0)) {
+      fail(`field ${name} unit must be a non-empty string`, source);
+    }
     if (!kinds.has(rawField.kind)) {
       fail(`field ${name} kind must be one of: ${[...kinds].join(', ')}`, source);
     }
@@ -198,12 +312,7 @@ export function validateParamSpec(raw, source = '<params.json>') {
       if (packedKeys.has(key)) {
         fail(`packed key collision: ${key}`, source);
       }
-      const storageRoot = jsonStorageRoots.get(key);
-      if (storageRoot && storageRoot.shape !== 'direct') {
-        fail(`JSON storage root shape collision: ${key}`, source);
-      }
       packedKeys.add(key);
-      jsonStorageRoots.set(key, { shape: 'direct' });
     }
     let arrayKey = null;
     if (rawField.arrayKey !== undefined) {
@@ -212,14 +321,6 @@ export function validateParamSpec(raw, source = '<params.json>') {
         fail(`field ${name} arrayKey requires a non-reserved string and count > 1`, source);
       }
       arrayKey = rawField.arrayKey;
-      const storageRoot = jsonStorageRoots.get(arrayKey);
-      if (storageRoot) {
-        if (storageRoot.shape !== 'array') {
-          fail(`JSON storage root shape collision: ${arrayKey}`, source);
-        }
-        fail(`array ${arrayKey} leaf collision`, source);
-      }
-      jsonStorageRoots.set(arrayKey, { shape: 'array' });
     }
     let objectArrayKey = null;
     let memberKey = null;
@@ -241,10 +342,7 @@ export function validateParamSpec(raw, source = '<params.json>') {
       }
       objectArrayKey = rawField.objectArrayKey;
       memberKey = rawField.memberKey;
-      const group = jsonStorageRoots.get(objectArrayKey);
-      if (group && group.shape !== 'object-array') {
-        fail(`JSON storage root shape collision: ${objectArrayKey}`, source);
-      }
+      const group = objectArrays.get(objectArrayKey);
       if (group && group.count !== count) {
         fail(`object array ${objectArrayKey} fields must use the same count`, source);
       }
@@ -254,17 +352,11 @@ export function validateParamSpec(raw, source = '<params.json>') {
       if (group) {
         group.memberKeys.add(memberKey);
       } else {
-        jsonStorageRoots.set(objectArrayKey, {
-          shape: 'object-array', count, memberKeys: new Set([memberKey])
-        });
+        objectArrays.set(objectArrayKey, { count, memberKeys: new Set([memberKey]) });
       }
     }
 
     const defaults = expandDefault(rawField, count, source);
-    if (rawField.unit !== undefined && typeof rawField.unit !== 'string') {
-      fail(`field ${name} unit must be a string`, source);
-    }
-    const unit = rawField.unit ?? '';
     let minimum = null;
     let maximum = null;
     let values = null;
@@ -310,19 +402,31 @@ export function validateParamSpec(raw, source = '<params.json>') {
 
     const automation = validateAutomation(rawField.automation, {
       name,
+      publicName,
       kind: rawField.kind,
       count,
       min: minimum,
       max: maximum,
       values,
-      defaults
+      defaults,
+      keys,
+      key: rawField.key,
+      unit
     }, source);
+    if (automation) {
+      if (automationKeys.has(automation.key)) {
+        fail(`duplicate automation key ${automation.key}`, source);
+      }
+      automationKeys.add(automation.key);
+    }
+
     floatCount += count;
     if (!Number.isSafeInteger(floatCount) || floatCount > 65536) {
       fail('packed parameter layout exceeds 65536 floats', source);
     }
     return {
       name,
+      publicName,
       key: rawField.key ?? null,
       keys,
       arrayKey,
@@ -398,6 +502,7 @@ export function validateParamSpec(raw, source = '<params.json>') {
   });
   return {
     type,
+    phase0,
     tolerance: { abs, rel: raw.tolerance.rel ?? null, policy },
     fields,
     floatCount,
@@ -443,7 +548,8 @@ export function loadParamSpecs(root = pluginsRoot) {
     types.set(spec.type, source);
     specs.push(spec);
   }
-  return specs.sort((left, right) => left.type.localeCompare(right.type, 'en'));
+  specs.sort((left, right) => left.type.localeCompare(right.type, 'en'));
+  return applyPublicTransforms(specs);
 }
 
 function hex32(value) {
@@ -453,13 +559,21 @@ function hex32(value) {
 function automationRange(field) {
   if (field.kind === 'bool') return { minimum: 0, maximum: 1 };
   if (field.kind === 'enum') return { minimum: 0, maximum: field.values.length - 1 };
-  return { minimum: field.min, maximum: field.max };
+  return {
+    minimum: toPublicAutomationValue(field.min, field.publicTransform),
+    maximum: toPublicAutomationValue(field.max, field.publicTransform)
+  };
 }
 
 function automationPackedDefault(field, index) {
   if (field.kind === 'bool') return field.defaults[index] ? 1 : 0;
   if (field.kind === 'enum') return field.values.indexOf(field.defaults[index]);
   return field.defaults[index];
+}
+
+function automationPublicDefault(field, index) {
+  if (field.kind === 'bool' || field.kind === 'enum') return field.defaults[index];
+  return toPublicAutomationValue(field.defaults[index], field.publicTransform);
 }
 
 function automationStepCount(field) {
@@ -479,24 +593,26 @@ export function buildAutomationCatalog(specs) {
         const { minimum, maximum } = automationRange(field);
         for (let element = 0; element < field.count; ++element) {
           parameters.push({
-            key: field.keys[element],
-            arrayKey: field.arrayKey ?? '',
-            objectArrayKey: field.objectArrayKey ?? '',
-            memberKey: field.memberKey ?? '',
+            key: field.automation.key,
+            publicName: field.publicName,
             element,
-            field: field.name,
+            field: field.keys[element],
+            containerKey: field.arrayKey ?? field.objectArrayKey ?? '',
+            memberKey: field.memberKey ?? '',
             packedOffset: packedOffset + element,
             kind: field.kind,
             eligibility: field.automation.eligibility,
             normalization: field.automation.normalization,
+            transform: field.publicTransform?.kind ?? 'identity',
+            transformReference: field.publicTransform?.reference ?? 1,
             minimum,
             maximum,
-            default: field.defaults[element],
+            default: automationPublicDefault(field, element),
             packedDefault: automationPackedDefault(field, element),
             stepCount: automationStepCount(field),
             title: field.automation.title,
             shortTitle: field.automation.shortTitle,
-            unit: field.unit,
+            unit: field.automation.unit,
             safetyFlags: field.automation.safetyFlags,
             ...(field.kind === 'enum' ? { values: [...field.values] } : {})
           });
@@ -515,16 +631,18 @@ export function validateAutomationCompatibility(previous, current) {
     fail('automation compatibility inputs must be v1 catalogs');
   }
   const stableMembers = [
-    'arrayKey', 'objectArrayKey', 'memberKey', 'kind', 'eligibility',
-    'normalization', 'minimum', 'maximum', 'default', 'stepCount'
+    'publicName', 'key', 'kind', 'eligibility', 'normalization', 'transform',
+    'transformReference', 'minimum', 'maximum', 'default', 'stepCount', 'unit'
   ];
   for (const [type, previousParameters] of Object.entries(previous.effects)) {
     const currentParameters = current.effects[type] ?? [];
     const currentByIdentity = new Map(
-      currentParameters.map(parameter => [`${parameter.key}:${parameter.element}`, parameter])
+      currentParameters.map(parameter => [
+        `${parameter.publicName}:${parameter.element}`, parameter
+      ])
     );
     for (const parameter of previousParameters) {
-      const identity = `${parameter.key}:${parameter.element}`;
+      const identity = `${parameter.publicName}:${parameter.element}`;
       const replacement = currentByIdentity.get(identity);
       if (!replacement) {
         fail(`released automation parameter ${type}.${identity} was removed or renamed`);
@@ -571,14 +689,20 @@ function cppAutomationCatalog(specs) {
   });
   const parameterRows = cppParameters.map(parameter =>
     `  AutomationParameterDescriptor{${cppStringLiteral(parameter.key)}, ` +
-    `${cppStringLiteral(parameter.arrayKey)}, ${cppStringLiteral(parameter.objectArrayKey)}, ` +
-    `${cppStringLiteral(parameter.memberKey)}, ${parameter.element}u, ` +
-    `${cppStringLiteral(parameter.field)}, ${parameter.packedOffset}u, ` +
+    `${cppStringLiteral(parameter.publicName)}, ${parameter.element}u, ` +
+    `${cppStringLiteral(parameter.field)}, ` +
+    `${cppStringLiteral(parameter.containerKey)}, ${cppStringLiteral(parameter.memberKey)}, ` +
+    `${parameter.packedOffset}u, ` +
     `AutomationParameterKind::${parameter.kind[0].toUpperCase()}${parameter.kind.slice(1)}, ` +
     `AutomationEligibility::${parameter.eligibility === 'continuous' ? 'Continuous' : 'Stepped'}, ` +
     `AutomationNormalization::${parameter.normalization === 'log' ? 'Logarithmic' : parameter.normalization[0].toUpperCase() + parameter.normalization.slice(1)}, ` +
+    `AutomationValueTransform::${parameter.transform[0].toUpperCase()}${parameter.transform.slice(1)}, ` +
+    `${cppFloat(parameter.transformReference)}, ` +
     `${cppFloat(parameter.minimum)}, ${cppFloat(parameter.maximum)}, ` +
-    `${cppFloat(parameter.packedDefault)}, ${parameter.stepCount}u, ` +
+    `${cppFloat(parameter.kind === 'bool' || parameter.kind === 'enum'
+      ? parameter.packedDefault
+      : parameter.default)}, ${cppFloat(parameter.packedDefault)}, ` +
+    `${parameter.stepCount}u, ` +
     `${cppStringLiteral(parameter.title)}, ${cppStringLiteral(parameter.shortTitle)}, ` +
     `${cppStringLiteral(parameter.unit)}, ${parameter.safetyFlags}u, ` +
     `${parameter.firstEnumValue}u, ${parameter.enumValueCount}u}`
@@ -595,13 +719,17 @@ function cppAutomationCatalog(specs) {
     `enum class AutomationParameterKind : std::uint8_t { Float, Int, Bool, Enum };\n` +
     `enum class AutomationEligibility : std::uint8_t { Continuous, Stepped };\n` +
     `enum class AutomationNormalization : std::uint8_t { Linear, Logarithmic, Enum, Bool, Integer };\n\n` +
+    `enum class AutomationValueTransform : std::uint8_t {\n` +
+    `  Identity,\n  NaturalLog,\n  Log10,\n  DecibelsFromReference\n};\n\n` +
     `struct AutomationParameterDescriptor {\n` +
-    `  std::string_view key;\n  std::string_view arrayKey;\n` +
-    `  std::string_view objectArrayKey;\n  std::string_view memberKey;\n` +
+    `  std::string_view key;\n  std::string_view publicName;\n` +
     `  std::uint32_t element;\n  std::string_view field;\n` +
+    `  std::string_view containerKey;\n  std::string_view memberKey;\n` +
     `  std::uint32_t packedOffset;\n  AutomationParameterKind kind;\n` +
     `  AutomationEligibility eligibility;\n  AutomationNormalization normalization;\n` +
+    `  AutomationValueTransform transform;\n  float transformReference;\n` +
     `  float minimum;\n  float maximum;\n  float defaultValue;\n` +
+    `  float packedDefaultValue;\n` +
     `  std::uint32_t stepCount;\n  std::string_view title;\n` +
     `  std::string_view shortTitle;\n  std::string_view unit;\n` +
     `  std::uint8_t safetyFlags;\n  std::uint32_t firstEnumValue;\n` +
@@ -733,6 +861,32 @@ function jsAutomationCatalog(specs) {
     '  if (!Number.isFinite(value)) return 0;\n',
     '  return Math.min(1, Math.max(0, value));\n',
     '}\n\n',
+    'export function unpackDSPAutomationValue(descriptor, packedValue) {\n',
+    "  const value = typeof packedValue === 'number' && Number.isFinite(packedValue)\n",
+    '    ? packedValue : descriptor.packedDefault;\n',
+    '  switch (descriptor.transform) {\n',
+    "    case 'identity': return value;\n",
+    "    case 'naturalLog': return Math.exp(value);\n",
+    "    case 'log10': return Math.pow(10, value);\n",
+    "    case 'decibelsFromReference':\n",
+    '      return descriptor.transformReference * Math.pow(10, value / 20);\n',
+    "    default: throw new TypeError('Unknown DSP automation value transform');\n",
+    '  }\n',
+    '}\n\n',
+    'export function packDSPAutomationValue(descriptor, publicValue) {\n',
+    "  const value = typeof publicValue === 'number' && Number.isFinite(publicValue)\n",
+    '    ? publicValue : descriptor.default;\n',
+    '  switch (descriptor.transform) {\n',
+    "    case 'identity': return value;\n",
+    "    case 'naturalLog': return value > 0 ? Math.log(value) : descriptor.packedDefault;\n",
+    "    case 'log10': return value > 0 ? Math.log10(value) : descriptor.packedDefault;\n",
+    "    case 'decibelsFromReference':\n",
+    '      return value > 0 && descriptor.transformReference > 0\n',
+    '        ? 20 * Math.log10(value / descriptor.transformReference)\n',
+    '        : descriptor.packedDefault;\n',
+    "    default: throw new TypeError('Unknown DSP automation value transform');\n",
+    '  }\n',
+    '}\n\n',
     'export function normalizeDSPAutomationValue(descriptor, plainValue) {\n',
     '  switch (descriptor.normalization) {\n',
     "    case 'linear': {\n",
@@ -829,7 +983,7 @@ export function generateOutputs(specs) {
     outputs.set(path.join(cppOutputRoot, `${spec.type}Params.h`), cppForSpec(spec));
   }
   outputs.set(path.join(cppOutputRoot, 'AutomationCatalog.h'), cppAutomationCatalog(specs));
-  outputs.set(runtimeJsOutput, jsForSpecs(specs));
+  outputs.set(runtimeJsOutput, jsForSpecs(specs.filter(spec => !spec.phase0)));
   return outputs;
 }
 

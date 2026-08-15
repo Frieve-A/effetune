@@ -38,6 +38,38 @@ class MultibandSaturationPlugin extends PluginBase {
             // Ensure frequencies are always treated as an array of two elements
             const pFrequencies = [parameters.f1 || 0, parameters.f2 || 0]; 
             const pBands = parameters.bands; // Cache bands array reference
+            const rampFrames = Math.max(1, Math.ceil(pSampleRate * 0.005));
+            if (!context.currentBandControls) {
+                context.currentBandControls = new Float64Array(12);
+                context.targetBandControls = new Float64Array(12);
+                context.bandControlSteps = new Float64Array(12);
+                for (let band = 0; band < 3; band++) {
+                    const base = band * 4;
+                    const bp = pBands[band];
+                    context.currentBandControls[base] = context.targetBandControls[base] = Math.fround(bp.dr);
+                    context.currentBandControls[base + 1] = context.targetBandControls[base + 1] = Math.fround(bp.bs);
+                    context.currentBandControls[base + 2] = context.targetBandControls[base + 2] = Math.fround(bp.mx);
+                    context.currentBandControls[base + 3] = context.targetBandControls[base + 3] = Math.fround(bp.gn);
+                }
+                context.bandControlRampRemaining = 0;
+            } else {
+                let changed = false;
+                for (let band = 0; band < 3; band++) {
+                    const base = band * 4;
+                    const bp = pBands[band];
+                    const values = [Math.fround(bp.dr), Math.fround(bp.bs), Math.fround(bp.mx), Math.fround(bp.gn)];
+                    for (let control = 0; control < 4; control++) {
+                        if (context.targetBandControls[base + control] !== values[control]) changed = true;
+                        context.targetBandControls[base + control] = values[control];
+                    }
+                }
+                if (changed) {
+                    for (let i = 0; i < 12; i++) {
+                        context.bandControlSteps[i] = (context.targetBandControls[i] - context.currentBandControls[i]) / rampFrames;
+                    }
+                    context.bandControlRampRemaining = rampFrames;
+                }
+            }
     
             // Check if filter states need to be reset (more efficiently)
             const currentConfig = context.filterConfig;
@@ -81,8 +113,7 @@ class MultibandSaturationPlugin extends PluginBase {
                 const fadeLength = Math.floor(pSampleRate * 0.005);
                 context.fadeIn = {
                     counter: 0,
-                    // Fade length: 5ms or block size, whichever is smaller
-                    length: fadeLength > pBlockSize ? pBlockSize : fadeLength
+                    length: fadeLength
                 };
                 
                 // Clear cached filters forcing recalculation
@@ -284,50 +315,19 @@ class MultibandSaturationPlugin extends PluginBase {
                 
                 // 3. --- Saturation per Band ---
                 for (let band = 0; band < 3; band++) {
-                    // Cache band-specific parameters locally for the inner loop
-                    const bandParams = pBands[band];
-                    const dr = bandParams.dr;             // Drive
-                    const bs = bandParams.bs;             // Bias
-                    const mixRatio = bandParams.mx / 100.0; // Mix (0.0 to 1.0)
-                    // Use exponentiation operator (**) for potentially better performance/readability
-                    const gainLinear = 10.0**(bandParams.gn / 20.0); 
-                    const biasOffset = Math.tanh(dr * bs); // Pre-calculate tanh offset due to bias
-                    const oneMinusMix = 1.0 - mixRatio;   // Pre-calculate (1 - mix) for wet/dry mixing
-    
                     const bandSignalBuffer = channelBandSignals[band]; // Get the Float32Array for the current band
-                    
-                    // Process saturation with loop unrolling (4 samples at a time)
-                    const blockSizeMod4 = pBlockSize - (pBlockSize % 4);
-                    let i = 0;
-    
-                    // Unrolled loop for saturation
-                    for (; i < blockSizeMod4; i += 4) {
-                        // Sample 1
-                        let dry1 = bandSignalBuffer[i];
-                        let wet1 = Math.tanh(dr * (dry1 + bs)) - biasOffset; // Apply drive, bias, tanh, and offset correction
-                        bandSignalBuffer[i] = (dry1 * oneMinusMix + wet1 * mixRatio) * gainLinear; // Mix and apply gain
-                        
-                        // Sample 2
-                        let dry2 = bandSignalBuffer[i+1];
-                        let wet2 = Math.tanh(dr * (dry2 + bs)) - biasOffset;
-                        bandSignalBuffer[i+1] = (dry2 * oneMinusMix + wet2 * mixRatio) * gainLinear;
-                        
-                        // Sample 3
-                        let dry3 = bandSignalBuffer[i+2];
-                        let wet3 = Math.tanh(dr * (dry3 + bs)) - biasOffset;
-                        bandSignalBuffer[i+2] = (dry3 * oneMinusMix + wet3 * mixRatio) * gainLinear;
-                        
-                        // Sample 4
-                        let dry4 = bandSignalBuffer[i+3];
-                        let wet4 = Math.tanh(dr * (dry4 + bs)) - biasOffset;
-                        bandSignalBuffer[i+3] = (dry4 * oneMinusMix + wet4 * mixRatio) * gainLinear;
-                    }
-                    
-                    // Handle remaining samples (if pBlockSize is not a multiple of 4)
-                    for (; i < pBlockSize; i++) {
+                    const base = band * 4;
+                    for (let i = 0; i < pBlockSize; i++) {
+                        const progressed = Math.min(i + 1, context.bandControlRampRemaining);
+                        const dr = context.currentBandControls[base] + context.bandControlSteps[base] * progressed;
+                        const bs = context.currentBandControls[base + 1] + context.bandControlSteps[base + 1] * progressed;
+                        const mixRatio = (context.currentBandControls[base + 2] + context.bandControlSteps[base + 2] * progressed) / 100;
+                        const gainDb = context.currentBandControls[base + 3] + context.bandControlSteps[base + 3] * progressed;
+                        const gainLinear = 10.0**(gainDb / 20.0);
+                        const biasOffset = Math.tanh(dr * bs);
                         const dry = bandSignalBuffer[i];
                         const wet = Math.tanh(dr * (dry + bs)) - biasOffset;
-                        bandSignalBuffer[i] = (dry * oneMinusMix + wet * mixRatio) * gainLinear;
+                        bandSignalBuffer[i] = (dry * (1 - mixRatio) + wet * mixRatio) * gainLinear;
                     }
                 } // End band saturation loop
                 
@@ -365,6 +365,12 @@ class MultibandSaturationPlugin extends PluginBase {
             } else if (fadeInState) {
                 context.fadeIn = null;
             }
+            const advancedControls = Math.min(pBlockSize, context.bandControlRampRemaining);
+            for (let i = 0; i < 12; i++) {
+                context.currentBandControls[i] += context.bandControlSteps[i] * advancedControls;
+            }
+            context.bandControlRampRemaining -= advancedControls;
+            if (context.bandControlRampRemaining === 0) context.currentBandControls.set(context.targetBandControls);
             // --- End Main Processing Loop ---
     
             // Return the buffer containing the processed audio data

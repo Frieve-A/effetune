@@ -218,6 +218,11 @@ export async function createReferenceSession(typeOrName, {
     jsEngineHash: loaded.jsEngineHash,
     baseSourceHash: loaded.baseSourceHash,
     plugin,
+    inspectProcessorState() {
+      return structuredClone(Object.fromEntries(
+        Object.entries(state).filter(([, value]) => typeof value !== 'function')
+      ));
+    },
     async process(input, {
       sampleRate,
       frames,

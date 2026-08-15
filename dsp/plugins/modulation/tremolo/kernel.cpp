@@ -49,6 +49,10 @@ public:
     sample_rate_ = static_cast<double>(info.sampleRate);
     max_channels_ = info.maxChannels;
     channel_noise_states_.resize(max_channels_);
+    automation_ramp_frames_ = static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005));
+    if (automation_ramp_frames_ == 0u) {
+      automation_ramp_frames_ = 1u;
+    }
   }
 
   void reset() noexcept override {
@@ -60,6 +64,8 @@ public:
     channel_states_initialized_ = false;
     last_channel_count_ = 0u;
     random_.seed(selected_seed_low_, selected_seed_high_);
+    automation_initialized_ = false;
+    automation_ramp_remaining_ = 0u;
   }
 
   void setRandomSeed(std::uint32_t seed_low, std::uint32_t seed_high) noexcept override {
@@ -81,17 +87,71 @@ public:
       channel_states_initialized_ = true;
     }
 
-    const dsp::BiquadCoefficients noise_filter =
+    const dsp::BiquadCoefficients target_filter =
         designNoiseFilter(sample_rate_, static_cast<double>(params_.randomnessCutoff),
                           static_cast<double>(params_.randomnessSlope));
-    const double phase_increment = kTwoPi * static_cast<double>(params_.rate) / sample_rate_;
-    const double channel_phase = static_cast<double>(params_.channelPhase) * kDegreesToRadians;
-    const double sync_ratio = static_cast<double>(params_.channelSync) * 0.01;
-    const double inverse_sync = 1.0 - sync_ratio;
-    const double negative_depth = -static_cast<double>(params_.depth);
-    const double negative_randomness_twice = -static_cast<double>(params_.randomness) * 2.0;
+    if (!automation_initialized_) {
+      rate_ = params_.rate;
+      depth_ = params_.depth;
+      randomness_ = params_.randomness;
+      channel_phase_ = params_.channelPhase;
+      channel_sync_ = params_.channelSync;
+      noise_filter_ = target_filter;
+      target_rate_ = rate_;
+      target_depth_ = depth_;
+      target_randomness_ = randomness_;
+      target_channel_phase_ = channel_phase_;
+      target_channel_sync_ = channel_sync_;
+      target_noise_filter_ = noise_filter_;
+      automation_initialized_ = true;
+    } else if (target_rate_ != static_cast<double>(params_.rate) ||
+               target_depth_ != static_cast<double>(params_.depth) ||
+               target_randomness_ != static_cast<double>(params_.randomness) ||
+               target_channel_phase_ != static_cast<double>(params_.channelPhase) ||
+               target_channel_sync_ != static_cast<double>(params_.channelSync) ||
+               target_noise_filter_.b0 != target_filter.b0 ||
+               target_noise_filter_.b1 != target_filter.b1 ||
+               target_noise_filter_.b2 != target_filter.b2 ||
+               target_noise_filter_.a1 != target_filter.a1 ||
+               target_noise_filter_.a2 != target_filter.a2) {
+      target_rate_ = params_.rate;
+      target_depth_ = params_.depth;
+      target_randomness_ = params_.randomness;
+      target_channel_phase_ = params_.channelPhase;
+      target_channel_sync_ = params_.channelSync;
+      target_noise_filter_ = target_filter;
+      automation_ramp_remaining_ = automation_ramp_frames_;
+    }
 
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      if (automation_ramp_remaining_ != 0u) {
+        const double ramp_scale = 1.0 / static_cast<double>(automation_ramp_remaining_);
+        rate_ += (target_rate_ - rate_) * ramp_scale;
+        depth_ += (target_depth_ - depth_) * ramp_scale;
+        randomness_ += (target_randomness_ - randomness_) * ramp_scale;
+        channel_phase_ += (target_channel_phase_ - channel_phase_) * ramp_scale;
+        channel_sync_ += (target_channel_sync_ - channel_sync_) * ramp_scale;
+        noise_filter_.b0 += (target_noise_filter_.b0 - noise_filter_.b0) * ramp_scale;
+        noise_filter_.b1 += (target_noise_filter_.b1 - noise_filter_.b1) * ramp_scale;
+        noise_filter_.b2 += (target_noise_filter_.b2 - noise_filter_.b2) * ramp_scale;
+        noise_filter_.a1 += (target_noise_filter_.a1 - noise_filter_.a1) * ramp_scale;
+        noise_filter_.a2 += (target_noise_filter_.a2 - noise_filter_.a2) * ramp_scale;
+        --automation_ramp_remaining_;
+        if (automation_ramp_remaining_ == 0u) {
+          rate_ = target_rate_;
+          depth_ = target_depth_;
+          randomness_ = target_randomness_;
+          channel_phase_ = target_channel_phase_;
+          channel_sync_ = target_channel_sync_;
+          noise_filter_ = target_noise_filter_;
+        }
+      }
+      const double phase_increment = kTwoPi * rate_ / sample_rate_;
+      const double channel_phase = channel_phase_ * kDegreesToRadians;
+      const double sync_ratio = channel_sync_ * 0.01;
+      const double inverse_sync = 1.0 - sync_ratio;
+      const double negative_depth = -depth_;
+      const double negative_randomness_twice = -randomness_ * 2.0;
       phase_ += phase_increment;
       if (phase_ >= kTwoPi) {
         phase_ -= kTwoPi;
@@ -99,14 +159,14 @@ public:
 
       const double common_noise = random_.nextFloat01() - 0.5;
       const double filtered_common =
-          dsp::processBiquadTdf2Sample(common_noise, noise_filter, common_noise_state_);
+          dsp::processBiquadTdf2Sample(common_noise, noise_filter_, common_noise_state_);
       for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
         double current_phase = phase_ + static_cast<double>(channel) * channel_phase;
         current_phase -= kTwoPi * std::floor(current_phase / kTwoPi);
 
         const double channel_noise = random_.nextFloat01() - 0.5;
         const double filtered_channel = dsp::processBiquadTdf2Sample(
-            channel_noise, noise_filter, channel_noise_states_[channel]);
+            channel_noise, noise_filter_, channel_noise_states_[channel]);
         const double filtered_noise =
             sync_ratio * filtered_common + inverse_sync * filtered_channel;
         const double base_modulation = (1.0 - std::sin(current_phase)) * 0.5;
@@ -122,11 +182,26 @@ public:
 private:
   double sample_rate_ = 0.0;
   double phase_ = 0.0;
+  double rate_ = 0.0;
+  double depth_ = 0.0;
+  double randomness_ = 0.0;
+  double channel_phase_ = 0.0;
+  double channel_sync_ = 0.0;
+  double target_rate_ = 0.0;
+  double target_depth_ = 0.0;
+  double target_randomness_ = 0.0;
+  double target_channel_phase_ = 0.0;
+  double target_channel_sync_ = 0.0;
   std::uint32_t max_channels_ = 0u;
   std::uint32_t last_channel_count_ = 0u;
   std::uint32_t selected_seed_low_ = static_cast<std::uint32_t>(dsp::XorShiftRng::kFallbackSeed);
   std::uint32_t selected_seed_high_ = 0u;
+  std::uint32_t automation_ramp_frames_ = 240u;
+  std::uint32_t automation_ramp_remaining_ = 0u;
   bool channel_states_initialized_ = false;
+  bool automation_initialized_ = false;
+  dsp::BiquadCoefficients noise_filter_{};
+  dsp::BiquadCoefficients target_noise_filter_{};
   dsp::BiquadTdf2State common_noise_state_{};
   std::vector<dsp::BiquadTdf2State> channel_noise_states_;
   dsp::XorShiftRng random_{};

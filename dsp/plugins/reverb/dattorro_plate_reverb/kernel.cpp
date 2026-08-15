@@ -132,6 +132,7 @@ public:
     lfo_phase2_ = kHalfPi;
     tank_a_interpolation_state_ = 0.0;
     tank_b_interpolation_state_ = 0.0;
+    pre_delay_initialized_ = false;
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -159,9 +160,13 @@ public:
         kTwoPi * static_cast<double>(params_.modulationRate) / sample_rate_;
     const double wet_mix = static_cast<double>(params_.wetMix) * 0.01;
     const double dry_mix = static_cast<double>(params_.dryMix) * 0.01;
-    const double pre_delay_value = static_cast<double>(params_.preDelay) * sample_rate_ * 0.001;
-    const std::uint32_t pre_delay_samples =
-        pre_delay_value > 0.0 ? static_cast<std::uint32_t>(pre_delay_value) : 0u;
+    double pre_delay_samples = static_cast<double>(params_.preDelay) * sample_rate_ * 0.001;
+    if (pre_delay_samples < 0.0)
+      pre_delay_samples = 0.0;
+    const double maximum_pre_delay = static_cast<double>(pre_delay_size_ - 1u);
+    if (pre_delay_samples > maximum_pre_delay)
+      pre_delay_samples = maximum_pre_delay;
+    preparePreDelay(pre_delay_samples);
 
     std::uint32_t pre_delay_position = pre_delay_position_;
     std::uint32_t input_diff0_position = input_diff0_position_;
@@ -196,14 +201,8 @@ public:
       }
       input /= static_cast<double>(channel_count);
 
-      double signal = input;
-      if (pre_delay_samples > 0u && pre_delay_samples < pre_delay_size_) {
-        std::int64_t read = static_cast<std::int64_t>(pre_delay_position) -
-                            static_cast<std::int64_t>(pre_delay_samples);
-        if (read < 0)
-          read += static_cast<std::int64_t>(pre_delay_size_);
-        signal = static_cast<double>(pre_delay_[static_cast<std::size_t>(read)]);
-      }
+      const double signal_delay = pre_delay_ramp_.value(frame);
+      double signal = readPreDelay(input, pre_delay_position, signal_delay);
       pre_delay_[pre_delay_position] = static_cast<float>(input);
       ++pre_delay_position;
       if (pre_delay_position >= pre_delay_size_)
@@ -344,9 +343,70 @@ public:
     lfo_phase2_ = lfo_phase2;
     tank_a_interpolation_state_ = tank_a_interpolation_state;
     tank_b_interpolation_state_ = tank_b_interpolation_state;
+    pre_delay_ramp_.advance(frame_count);
   }
 
 private:
+  struct DelayRamp {
+    double current = 0.0;
+    double target = 0.0;
+    double step = 0.0;
+    std::uint32_t remaining = 0u;
+    void snap(double value) noexcept {
+      current = target = value;
+      step = 0.0;
+      remaining = 0u;
+    }
+    void retarget(double value, std::uint32_t frames) noexcept {
+      if (value == target)
+        return;
+      target = value;
+      remaining = frames;
+      step = (target - current) / static_cast<double>(frames);
+    }
+    [[nodiscard]] double value(std::uint32_t frame) const noexcept {
+      const std::uint32_t elapsed = frame + 1u;
+      return elapsed >= remaining ? target : current + step * static_cast<double>(elapsed);
+    }
+    void advance(std::uint32_t frames) noexcept {
+      if (frames >= remaining) {
+        current = target;
+        remaining = 0u;
+        step = 0.0;
+      } else {
+        current += step * static_cast<double>(frames);
+        remaining -= frames;
+      }
+    }
+  };
+
+  void preparePreDelay(double delay) noexcept {
+    if (!pre_delay_initialized_) {
+      pre_delay_ramp_.snap(delay);
+      pre_delay_initialized_ = true;
+      return;
+    }
+    const auto frames = static_cast<std::uint32_t>(std::max(1.0, std::ceil(sample_rate_ * 0.005)));
+    pre_delay_ramp_.retarget(delay, frames);
+  }
+
+  [[nodiscard]] double readPreDelay(double input, std::uint32_t position,
+                                    double delay) const noexcept {
+    if (!(delay > 0.0))
+      return input;
+    const auto newer_delay = static_cast<std::uint32_t>(delay);
+    const double fraction = delay - static_cast<double>(newer_delay);
+    const auto sample = [&](std::uint32_t tap) noexcept {
+      if (tap == 0u)
+        return input;
+      const std::uint32_t wrapped = tap % pre_delay_size_;
+      const std::uint32_t index = (position + pre_delay_size_ - wrapped) % pre_delay_size_;
+      return static_cast<double>(pre_delay_[index]);
+    };
+    const double newer = sample(newer_delay);
+    return newer + (sample(newer_delay + 1u) - newer) * fraction;
+  }
+
   static void clear(std::vector<float> &buffer) noexcept {
     std::fill(buffer.begin(), buffer.end(), 0.0F);
   }
@@ -440,6 +500,8 @@ private:
   double lfo_phase2_ = kHalfPi;
   double tank_a_interpolation_state_ = 0.0;
   double tank_b_interpolation_state_ = 0.0;
+  bool pre_delay_initialized_ = false;
+  DelayRamp pre_delay_ramp_;
   std::vector<float> pre_delay_;
   std::vector<float> input_diff0_;
   std::vector<float> input_diff1_;

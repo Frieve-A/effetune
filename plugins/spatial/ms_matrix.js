@@ -13,8 +13,20 @@ class MSMatrixPlugin extends PluginBase {
             }
 
             const mode = parameters.md;
-            const midGain = Math.pow(10, parameters.mg / 20);
-            const sideGain = Math.pow(10, parameters.sg / 20);
+            const targetMidGain = Math.pow(10, Math.fround(parameters.mg) / 20);
+            const targetSideGain = Math.pow(10, Math.fround(parameters.sg) / 20);
+            const rampFrames = Math.max(1, Math.ceil(parameters.sampleRate * 0.005));
+            if (context.currentMidGain === undefined) {
+                context.currentMidGain = context.targetMidGain = targetMidGain;
+                context.currentSideGain = context.targetSideGain = targetSideGain;
+                context.rampRemaining = 0;
+            } else if (context.targetMidGain !== targetMidGain || context.targetSideGain !== targetSideGain) {
+                context.targetMidGain = targetMidGain;
+                context.targetSideGain = targetSideGain;
+                context.midGainStep = (targetMidGain - context.currentMidGain) / rampFrames;
+                context.sideGainStep = (targetSideGain - context.currentSideGain) / rampFrames;
+                context.rampRemaining = rampFrames;
+            }
             const doSwap = parameters.sw === 1;
             const blockSize = parameters.blockSize;
             const leftOfs = 0;
@@ -22,42 +34,57 @@ class MSMatrixPlugin extends PluginBase {
 
             let L, R, M, S, Mout, Sout;
 
+            const advanceGains = () => {
+                if (context.rampRemaining > 0) {
+                    context.currentMidGain += context.midGainStep;
+                    context.currentSideGain += context.sideGainStep;
+                    if (--context.rampRemaining === 0) {
+                        context.currentMidGain = context.targetMidGain;
+                        context.currentSideGain = context.targetSideGain;
+                    }
+                }
+            };
+
             if (mode === 0) { // Encode: Stereo → M/S
                 if (doSwap) {
                     for (let i = 0; i < blockSize; ++i) {
+                        advanceGains();
                         L = data[rightOfs + i]; // Swapped R
                         R = data[leftOfs + i];  // Swapped L
                         M = (L + R) * 0.5;
                         S = (L - R) * 0.5;
-                        data[leftOfs + i]  = M * midGain;
-                        data[rightOfs + i] = S * sideGain;
+                        data[leftOfs + i]  = M * context.currentMidGain;
+                        data[rightOfs + i] = S * context.currentSideGain;
                     }
                 } else {
                     for (let i = 0; i < blockSize; ++i) {
+                        advanceGains();
                         L = data[leftOfs + i];
                         R = data[rightOfs + i];
                         M = (L + R) * 0.5;
                         S = (L - R) * 0.5;
-                        data[leftOfs + i]  = M * midGain;
-                        data[rightOfs + i] = S * sideGain;
+                        data[leftOfs + i]  = M * context.currentMidGain;
+                        data[rightOfs + i] = S * context.currentSideGain;
                     }
                 }
             } else { // Decode: M/S → Stereo
                 if (doSwap) {
                     for (let i = 0; i < blockSize; ++i) {
+                        advanceGains();
                         M = data[leftOfs + i];
                         S = data[rightOfs + i];
-                        Mout = M * midGain;
-                        Sout = S * sideGain;
+                        Mout = M * context.currentMidGain;
+                        Sout = S * context.currentSideGain;
                         data[leftOfs + i]  = Mout - Sout; // Original R -> Swapped L out
                         data[rightOfs + i] = Mout + Sout; // Original L -> Swapped R out
                     }
                 } else {
                     for (let i = 0; i < blockSize; ++i) {
+                        advanceGains();
                         M = data[leftOfs + i];
                         S = data[rightOfs + i];
-                        Mout = M * midGain;
-                        Sout = S * sideGain;
+                        Mout = M * context.currentMidGain;
+                        Sout = S * context.currentSideGain;
                         data[leftOfs + i]  = Mout + Sout; // Original L
                         data[rightOfs + i] = Mout - Sout; // Original R
                     }

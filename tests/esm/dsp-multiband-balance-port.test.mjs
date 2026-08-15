@@ -65,7 +65,8 @@ test('MultibandBalance freezes its object-array layout and generated packer', as
       min: -100,
       max: 100,
       default: [0, 0, 0, 0, 0],
-      unit: '%'
+      unit: '%',
+      automation: true
     }
   );
 
@@ -96,7 +97,7 @@ test('MultibandBalance goldens preserve deterministic crossover reset behavior',
   assert.equal(goldens.every(item => item.metadata.type === 'MultibandBalancePlugin'), true);
   assert.equal(
     goldens.every(item => item.metadata.jsEngineHash ===
-      'abb0f1d4ce9f260e9536fb119aca607802047e8d21ff941be6f7971675ca5c2c'),
+      '263d94ba7df809535ef55974a1ccb43352981de884c232f70c88bd5dce86c978'),
     true
   );
   assert.ok(goldens.some(item => item.metadata.sampleRate === 192000));

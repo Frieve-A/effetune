@@ -20,7 +20,8 @@
       "min": -18,
       "max": 18,
       "default": 0,
-      "unit": "dB"
+      "unit": "dB",
+      "automation": true
     },
     {
       "name": "sideGain",
@@ -29,7 +30,8 @@
       "min": -18,
       "max": 18,
       "default": 0,
-      "unit": "dB"
+      "unit": "dB",
+      "automation": true
     },
     {
       "name": "swap",

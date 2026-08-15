@@ -29,7 +29,7 @@ const ports = [
     telemetryKind: 0,
     measurement: 'gainReductions',
     memberKeys: ['t', 'r', 'a', 'rl', 'k', 'g'],
-    jsEngineHash: 'a7d70df6a67d13b3f1631f65286cce814aaa220c71b3405e8e01a7a910ee412e'
+    jsEngineHash: '271ccb3dd1f01eae3cad872f25ff11e7230a369d13cad1ed013dc1ff78dd94b7'
   },
   {
     type: 'MultibandExpanderPlugin',
@@ -40,7 +40,7 @@ const ports = [
     telemetryKind: 1,
     measurement: 'gainBoosts',
     memberKeys: ['t', 'r', 'a', 'rl', 'k', 'g'],
-    jsEngineHash: '708d067fa44b7db6d7fff5ec1bcff23ab1361eb486eab33d0ed6e0e459bf2275'
+    jsEngineHash: '1bba988214bff9c12fd8f407fde1abee3157c3498f80b38300d25109655faae3'
   },
   {
     type: 'MultibandTransientPlugin',
@@ -51,7 +51,7 @@ const ports = [
     telemetryKind: 2,
     measurement: 'gains',
     memberKeys: ['fa', 'fr', 'sa', 'sr', 'gt', 'gs', 'sm'],
-    jsEngineHash: '09f027cf207cd94386ea0ab1879a3243a919b3f033490eb817f231fd93015e1a'
+    jsEngineHash: '20ea47579a6649ce538e02ca37c126eaf19b3ded5a8c2e8d4f8d0fc8fd3eeea8'
   }
 ];
 

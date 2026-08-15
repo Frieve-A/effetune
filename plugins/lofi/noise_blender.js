@@ -49,7 +49,23 @@ class NoiseBlenderPlugin extends PluginBase {
             } = parameters;
 
             // Convert dB level to linear gain, handle very low levels efficiently
-            const levelGain = (levelDb <= -96.0) ? 0.0 : Math.pow(10.0, levelDb / 20.0);
+            const targetLevelGain = (levelDb <= -96.0) ? 0.0 : Math.pow(10.0, Math.fround(levelDb) / 20.0);
+            const rampFrames = Math.max(1, Math.ceil(parameters.sampleRate * 0.005));
+            if (context.currentLevelGain === undefined) {
+                context.currentLevelGain = context.targetLevelGain = targetLevelGain;
+                context.levelRampRemaining = 0;
+            } else if (context.targetLevelGain !== targetLevelGain) {
+                context.targetLevelGain = targetLevelGain;
+                context.levelGainStep = (targetLevelGain - context.currentLevelGain) / rampFrames;
+                context.levelRampRemaining = rampFrames;
+            }
+            const advanceLevel = () => {
+                if (context.levelRampRemaining > 0) {
+                    context.currentLevelGain += context.levelGainStep;
+                    if (--context.levelRampRemaining === 0) context.currentLevelGain = context.targetLevelGain;
+                }
+                return context.currentLevelGain;
+            };
 
             // --- Noise Generation ---
             const brownNoiseNormalizationFactor = 0.04166666666666666666666666666667; // Factor to approximate RMS normalization
@@ -62,6 +78,7 @@ class NoiseBlenderPlugin extends PluginBase {
                 // belongs to each channel sample.
                 if (noiseType === 'white') {
                     for (let i = 0; i < blockSize; i++) {
+                        const levelGain = advanceLevel();
                         for (let ch = 0; ch < channelCount; ch++) {
                             const offset = ch * blockSize;
                             const white = Math.random() * 2.0 - 1.0;
@@ -70,6 +87,7 @@ class NoiseBlenderPlugin extends PluginBase {
                     }
                 } else if (noiseType === 'pink') {
                     for (let i = 0; i < blockSize; i++) {
+                        const levelGain = advanceLevel();
                         for (let ch = 0; ch < channelCount; ch++) {
                             const offset = ch * blockSize;
                             const pinkState = context.pinkNoiseState[ch];
@@ -95,6 +113,7 @@ class NoiseBlenderPlugin extends PluginBase {
                     }
                 } else {
                     for (let i = 0; i < blockSize; i++) {
+                        const levelGain = advanceLevel();
                         for (let ch = 0; ch < channelCount; ch++) {
                             const offset = ch * blockSize;
                             const brownState = context.brownNoiseState[ch];
@@ -126,6 +145,7 @@ class NoiseBlenderPlugin extends PluginBase {
                 if (noiseType === 'white') {
                     // White noise generation loop (fill noiseBuffer)
                     for (let i = 0; i < blockSize; i++) {
+                        const levelGain = advanceLevel();
                         const white = Math.random() * 2.0 - 1.0;
                         noiseBuffer[i] = white * levelGain; // Store scaled white noise
                     }
@@ -135,6 +155,7 @@ class NoiseBlenderPlugin extends PluginBase {
                     let b4 = pinkState[4], b5 = pinkState[5], b6 = pinkState[6];
 
                     for (let i = 0; i < blockSize; i++) {
+                        const levelGain = advanceLevel();
                         const white = Math.random() * 2.0 - 1.0;
 
                         // Apply Paul Kellett's filter coefficients
@@ -161,6 +182,7 @@ class NoiseBlenderPlugin extends PluginBase {
                     let dcOffset = brownState[1];
 
                     for (let i = 0; i < blockSize; i++) {
+                        const levelGain = advanceLevel();
                         const white = Math.random() * 2.0 - 1.0;
                         const brown = lastBrown + white;
                         let output = brown - dcOffset;
@@ -175,15 +197,12 @@ class NoiseBlenderPlugin extends PluginBase {
                 } // End noise type check (shared noise)
 
                 // --- Apply Shared Noise Buffer to All Channels ---
-                // Skip if gain is zero
-                if (levelGain !== 0.0) {
-                    for (let ch = 0; ch < channelCount; ch++) {
-                        const offset = ch * blockSize;
-                        for (let i = 0; i < blockSize; i++) {
-                            data[offset + i] += noiseBuffer[i]; // Add noise from buffer
-                        }
+                for (let ch = 0; ch < channelCount; ch++) {
+                    const offset = ch * blockSize;
+                    for (let i = 0; i < blockSize; i++) {
+                        data[offset + i] += noiseBuffer[i]; // Add noise from buffer
                     }
-                } // End channel loop (!perChannel)
+                }
             } // End perChannel check
 
             // Return the modified data buffer

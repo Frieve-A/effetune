@@ -29,7 +29,7 @@ const ports = [
     hash: 0xb531a24a,
     floatCount: 6,
     caseCount: 8,
-    jsEngineHash: 'e4f6586e5e32f1f7c94bbc8e615b53212cd047e1dda7073434b1cca80845cf9f'
+    jsEngineHash: '745a6411cb107f431bd4922550be99fa36378ad68246d1acfe02ade4679f4e8b'
   },
   {
     type: 'TransientShaperPlugin',

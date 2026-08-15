@@ -28,6 +28,11 @@ class CrossfeedFilterPlugin extends PluginBase {
                 context.delayBufferL = new Float32Array(maxDelaySamples);
                 context.delayBufferR = new Float32Array(maxDelaySamples);
                 context.delayPos = 0;
+                context.delayCurrent = Math.min(maxDelaySamples - 1,
+                    Math.max(0, Math.floor(parameters.dl * sampleRate / 1000)));
+                context.delayTarget = context.delayCurrent;
+                context.delayStep = 0;
+                context.delayRemaining = 0;
                 
                 // Initialize LPF states
                 context.lpfStateL = 0;
@@ -38,7 +43,14 @@ class CrossfeedFilterPlugin extends PluginBase {
 
             // Pre-calculate coefficients
             const levelGain = Math.pow(10, parameters.lv / 20);
-            const delaySamples = Math.floor(parameters.dl * sampleRate / 1000);
+            const delayTarget = Math.min(context.delayBufferL.length - 1,
+                Math.max(0, Math.floor(parameters.dl * sampleRate / 1000)));
+            if (delayTarget !== context.delayTarget) {
+                const frames = Math.max(1, Math.ceil(sampleRate * 0.005));
+                context.delayTarget = delayTarget;
+                context.delayStep = (delayTarget - context.delayCurrent) / frames;
+                context.delayRemaining = frames;
+            }
             
             // LPF coefficient
             const lpfFreq = parameters.lf;
@@ -59,10 +71,17 @@ class CrossfeedFilterPlugin extends PluginBase {
                 context.delayBufferL[context.delayPos] = leftInput;
                 context.delayBufferR[context.delayPos] = rightInput;
                 
-                const readPos = (context.delayPos - delaySamples + size) % size;
-                
-                const delayedLeft = context.delayBufferL[readPos];
-                const delayedRight = context.delayBufferR[readPos];
+                const elapsed = Math.min(i + 1, context.delayRemaining);
+                const delaySamples = context.delayCurrent + context.delayStep * elapsed;
+                let read = context.delayPos - delaySamples;
+                while (read < 0) read += size;
+                const first = Math.floor(read) % size;
+                const second = first + 1 === size ? 0 : first + 1;
+                const fraction = read - Math.floor(read);
+                const delayedLeft = context.delayBufferL[first] +
+                    fraction * (context.delayBufferL[second] - context.delayBufferL[first]);
+                const delayedRight = context.delayBufferR[first] +
+                    fraction * (context.delayBufferR[second] - context.delayBufferR[first]);
                 
                 context.delayPos = (context.delayPos + 1) % size;
                 
@@ -78,6 +97,15 @@ class CrossfeedFilterPlugin extends PluginBase {
                 
                 data[leftOffset + i] = leftOutput;
                 data[rightOffset + i] = rightOutput;
+            }
+
+            if (blockSize >= context.delayRemaining) {
+                context.delayCurrent = context.delayTarget;
+                context.delayStep = 0;
+                context.delayRemaining = 0;
+            } else {
+                context.delayCurrent += context.delayStep * blockSize;
+                context.delayRemaining -= blockSize;
             }
 
             return data;
@@ -132,4 +160,4 @@ class CrossfeedFilterPlugin extends PluginBase {
 }
 
 // Register the plugin globally
-window.CrossfeedFilterPlugin = CrossfeedFilterPlugin; 
+window.CrossfeedFilterPlugin = CrossfeedFilterPlugin;

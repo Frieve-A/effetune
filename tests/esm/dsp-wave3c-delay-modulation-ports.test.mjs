@@ -33,7 +33,7 @@ const ports = [
     ],
     caseCount: 10,
     identityCase: 'dry-only-warms-lines',
-    jsEngineHash: 'e2785f239eaa7638a742009e6fde671fdfaba7df4ad5c257b89480d7ffb6050e',
+    jsEngineHash: '68965ed0fb1b850402614c3f85f7699579410cb2a418959d8431870aa4ffa1a4',
     activeParams: { pd: 0, ds: 1, dp: 75, hd: 8000, ld: 120, mx: 65, fb: 80, pp: 100 }
   },
   {
@@ -43,7 +43,7 @@ const ports = [
     fields: [['delay', 'dl', 'float']],
     caseCount: 7,
     identityCase: 'zero-delay-identity',
-    jsEngineHash: 'd6ac1cee76d78c8ce4c3cd8b176d9ded6e2f8598757241cb4642f1fcb3b674d3',
+    jsEngineHash: '6bb59bc89c8578455605a025557dac9190a72ba3706eaa0d6ead5b74231d8d9e',
     activeParams: { dl: 1 }
   },
   {
@@ -61,7 +61,7 @@ const ports = [
     ],
     caseCount: 8,
     identityCase: 'zero-depth-random-state',
-    jsEngineHash: 'db53baf8a2955142f0ec9073e06ff49116ed62e9113cbe284ee5b57d8d39715e',
+    jsEngineHash: '2bea3db13f93436a2a1c6612ac806fa50c96ff8bbd7785cd901d6990ae9a22ed',
     activeParams: { rt: 13, dp: 8, rn: 24, rc: 300, rs: -4, cp: 90, cs: 40 }
   }
 ];
@@ -245,8 +245,13 @@ test('Wave 3c kernels preserve shared primitives and realtime constraints', asyn
   for (const directory of ['delay/delay', 'delay/time_alignment']) {
     const source = await fs.readFile(path.join(pluginsRoot, directory, 'kernel.cpp'), 'utf8');
     assert.match(source, /#include "effetune\/dsp\/delay_line\.h"/);
-    assert.match(source, /delay_samples - 1u/);
   }
+  const delay = await fs.readFile(path.join(pluginsRoot, 'delay/delay/kernel.cpp'), 'utf8');
+  assert.match(delay, /current_delay - 1\.0/);
+  const alignment = await fs.readFile(
+    path.join(pluginsRoot, 'delay/time_alignment/kernel.cpp'), 'utf8'
+  );
+  assert.match(alignment, /lower == 0u \? input : delay_\.read\(channel, lower - 1u\)/);
 
   const tremolo = await fs.readFile(
     path.join(pluginsRoot, 'modulation/tremolo/kernel.cpp'),

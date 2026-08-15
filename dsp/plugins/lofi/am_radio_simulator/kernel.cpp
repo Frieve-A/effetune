@@ -348,6 +348,7 @@ public:
     } else if (speaker_transition_remaining_ == 0u && speaker != speaker_) {
       startSpeakerTransition(speaker);
     }
+    captureControlTargets();
 
     // Radio off takes the transmitter off the air, so the transmitter telemetry
     // has nothing to report: the modulation meter must not keep showing a
@@ -358,6 +359,7 @@ public:
     const bool radio_on = params_.radio >= 0.5F;
     double block_mod_peak = 0.0;
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      advanceControlEnvelope();
       if (control_remaining_ == 0u) {
         updateControl();
       }
@@ -825,6 +827,8 @@ public:
     return checksum;
   }
 
+  [[nodiscard]] double debugControlOutputGain() const noexcept { return controls_.outputGain; }
+
 private:
   static constexpr int kNoPreviousMode = -1;
   static constexpr int kMonoMode = 0;
@@ -1061,8 +1065,7 @@ private:
   }
 
   void initializeSampleRateCoefficients() noexcept {
-    control_smoothing_ =
-        1.0 - std::exp(-static_cast<double>(kControlInterval) / (sample_rate_ * 0.020));
+    control_smoothing_ = 1.0 - std::exp(-1.0 / (sample_rate_ * 0.020));
     pre_emphasis_pole_ = std::exp(-kTwoPi * 2100.0 / sample_rate_);
     limiter_attack_coefficient_ = std::exp(-1.0 / (sample_rate_ * 0.002));
     limiter_release_coefficient_ = std::exp(-1.0 / (sample_rate_ * 0.080));
@@ -1134,6 +1137,7 @@ private:
         static_cast<double>(params_.detectorRc),   static_cast<double>(params_.hum),
         static_cast<double>(params_.outputGain),   static_cast<double>(params_.mix),
         params_.humFrequency < 0.5F ? 50.0 : 60.0};
+    control_targets_ = controls_;
     updateTuningModel();
     random_state_ = base_random_state_;
     resetStaticRandomState();
@@ -1760,33 +1764,48 @@ private:
     tap.stepQ = (target_q - tap.q) / static_cast<double>(kControlInterval);
   }
 
+  void captureControlTargets() noexcept {
+    control_targets_ = {
+        static_cast<double>(params_.txBandwidth),  static_cast<double>(params_.preEmphasis),
+        static_cast<double>(params_.modDepth),     static_cast<double>(params_.compression),
+        static_cast<double>(params_.signal),       static_cast<double>(params_.skywave),
+        static_cast<double>(params_.fadingSpeed),  static_cast<double>(params_.staticRate),
+        static_cast<double>(params_.interference), static_cast<double>(params_.interferenceOffset),
+        static_cast<double>(params_.tuning),       static_cast<double>(params_.ifBandwidth),
+        static_cast<double>(params_.detectorRc),   static_cast<double>(params_.hum),
+        static_cast<double>(params_.outputGain),   static_cast<double>(params_.mix),
+        params_.humFrequency < 0.5F ? 50.0 : 60.0};
+  }
+
+  void advanceControlEnvelope() noexcept {
+    auto smooth = [this](double &current, const double target) noexcept {
+      current += control_smoothing_ * (target - current);
+    };
+    smooth(controls_.txBandwidth, control_targets_.txBandwidth);
+    smooth(controls_.preEmphasis, control_targets_.preEmphasis);
+    smooth(controls_.modDepth, control_targets_.modDepth);
+    smooth(controls_.compression, control_targets_.compression);
+    smooth(controls_.signal, control_targets_.signal);
+    smooth(controls_.skywave, control_targets_.skywave);
+    smooth(controls_.fadingSpeed, control_targets_.fadingSpeed);
+    smooth(controls_.staticRate, control_targets_.staticRate);
+    smooth(controls_.interference, control_targets_.interference);
+    smooth(controls_.interferenceOffset, control_targets_.interferenceOffset);
+    smooth(controls_.tuning, control_targets_.tuning);
+    smooth(controls_.ifBandwidth, control_targets_.ifBandwidth);
+    smooth(controls_.detectorRc, control_targets_.detectorRc);
+    smooth(controls_.hum, control_targets_.hum);
+    smooth(controls_.outputGain, control_targets_.outputGain);
+    smooth(controls_.mix, control_targets_.mix);
+    smooth(controls_.humFrequency, control_targets_.humFrequency);
+  }
+
   void updateControl() noexcept {
     const int requested_mode =
         params_.stereoMode >= 0.5F && cquam_mask_supported_ ? kCquamMode : kMonoMode;
     if (requested_mode != stereo_mode_ && previous_stereo_mode_ == kNoPreviousMode) {
       startModeTransition(requested_mode);
     }
-    auto smooth = [this](double &current, float target) noexcept {
-      current += control_smoothing_ * (static_cast<double>(target) - current);
-    };
-    smooth(controls_.txBandwidth, params_.txBandwidth);
-    smooth(controls_.preEmphasis, params_.preEmphasis);
-    smooth(controls_.modDepth, params_.modDepth);
-    smooth(controls_.compression, params_.compression);
-    smooth(controls_.signal, params_.signal);
-    smooth(controls_.skywave, params_.skywave);
-    smooth(controls_.fadingSpeed, params_.fadingSpeed);
-    smooth(controls_.staticRate, params_.staticRate);
-    smooth(controls_.interference, params_.interference);
-    smooth(controls_.interferenceOffset, params_.interferenceOffset);
-    smooth(controls_.tuning, params_.tuning);
-    smooth(controls_.ifBandwidth, params_.ifBandwidth);
-    smooth(controls_.detectorRc, params_.detectorRc);
-    smooth(controls_.hum, params_.hum);
-    smooth(controls_.outputGain, params_.outputGain);
-    smooth(controls_.mix, params_.mix);
-    const double hum_frequency = params_.humFrequency < 0.5F ? 50.0 : 60.0;
-    controls_.humFrequency += control_smoothing_ * (hum_frequency - controls_.humFrequency);
     configureBank(tx_filters_, controls_.txBandwidth * 1000.0, kButterworth8Q, sample_rate_ * 3.0);
     configureBank(tx_difference_filters_, controls_.txBandwidth * 1000.0, kButterworth8Q,
                   sample_rate_ * 3.0);
@@ -1917,6 +1936,7 @@ private:
   std::uint32_t control_remaining_ = 0u;
   double control_smoothing_ = 0.0;
   Controls controls_{};
+  Controls control_targets_{};
   Biquad tx_high_pass_{};
   Biquad tx_difference_high_pass_{};
   double pre_emphasis_pole_ = 0.0;
@@ -2146,4 +2166,9 @@ extern "C" double et_am_debug_interferer_tuning_offset(effetune::PluginKernel *k
 extern "C" double et_am_debug_delay_q_checksum(effetune::PluginKernel *kernel) noexcept {
   return static_cast<effetune::plugins::lofi::AMRadioSimulatorKernel *>(kernel)
       ->debugDelayQChecksum();
+}
+
+extern "C" double et_am_debug_control_output_gain(effetune::PluginKernel *kernel) noexcept {
+  return static_cast<effetune::plugins::lofi::AMRadioSimulatorKernel *>(kernel)
+      ->debugControlOutputGain();
 }

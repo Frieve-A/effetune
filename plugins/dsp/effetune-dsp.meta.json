@@ -1,11 +1,11 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:00067361c0a5d99d45cf1d82c9bf6551d0403f895a8fa49ca21a6c79baf5c4d1",
+  "sourceDigest": "sha256:5f17800ae3363c88aada7f91c1c55b15bc4f00fd5c310ed51f26d2caf696afbb",
   "emsdkVersion": "6.0.2",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:b50736a00940789be0f1ac4cfb8ab918c1ac1226fb9223703c0847d50b82d9e6",
+    "digest": "sha256:521552b7a91de43ed414e0b0ff756915a3afa14f4a145e3affe59be507997aaa",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
@@ -115,7 +115,7 @@
       {
         "id": "dsp/plugins/lofi/g726_adpcm_simulator/params.json",
         "kind": "file",
-        "sha256": "sha256:fccbe3d6b852a1f29f86a1f3d1cc6acf855dbfa7d4472cbb2c211abd52ccd61f"
+        "sha256": "sha256:a1222e7a5af1dbe1ed1ecd621d432ce85b872433ec1ff85267f61a5f930a57d1"
       },
       {
         "id": "dsp/registry.inc#G726ADPCMSimulatorPlugin-entry",
@@ -160,7 +160,7 @@
       {
         "id": "tools/dsp-parity/runners.mjs",
         "kind": "file",
-        "sha256": "sha256:2149fe3fd23139997563d401277b0ea5cdc1b893d310f970fc4e5f9b8517d11c"
+        "sha256": "sha256:6e4858b264bab359378f7781b5dde6cb2c4680f6fdcd559fa464beabff3995b8"
       },
       {
         "id": "tools/dsp-parity/stimuli.mjs",
@@ -980,7 +980,7 @@
     }
   ],
   "sizes": {
-    "baseline": 975148,
-    "simd": 1071488
+    "baseline": 1036433,
+    "simd": 1135536
   }
 }

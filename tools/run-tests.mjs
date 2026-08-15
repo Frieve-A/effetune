@@ -145,6 +145,10 @@ const performanceTestSet = new Set(performanceTests);
 // can exhaust memory. The file requires an explicit isolated-run opt-in.
 const isolatedTests = ['tests/esm/pipeline-analyzer-ui.test.mjs'];
 const isolatedTestSet = new Set(isolatedTests);
+const automationContractTests = [
+  'tools/dsp-parity/automation-mixed.test.mjs',
+  'dsp/plugins/reverb/ir_reverb/automation_test.mjs'
+];
 const esmTests = collectTestFiles(path.join(repoRoot, 'tests/esm'), '.test.mjs')
   .filter(file => !performanceTestSet.has(file) && !isolatedTestSet.has(file));
 const cjsCoverageIncludes = collectCoverageIncludeArgs(path.join(repoRoot, 'electron'), {
@@ -171,7 +175,7 @@ if (cjsTests.length === 0 && esmTests.length === 0) {
   process.exit(1);
 }
 
-const allTests = [...cjsTests, ...esmTests, ...performanceTests];
+const allTests = [...cjsTests, ...esmTests, ...automationContractTests, ...performanceTests];
 checkTestTitles(allTests);
 checkTestSourceHygiene(allTests);
 
@@ -194,6 +198,11 @@ if (esmTests.length > 0) {
     ...esmTests
   ]);
 }
+
+runNodeTestPhase('DSP automation contract tests', [
+  '--test',
+  ...automationContractTests
+]);
 
 runNodeTestPhase('Pipeline Analyzer UI tests', [
   '--test',

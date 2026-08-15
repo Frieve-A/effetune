@@ -82,9 +82,13 @@ public:
     const double wet_mix = static_cast<double>(params_.wetMix) * 0.01;
     const double dry_mix = static_cast<double>(params_.dryMix) * 0.01;
     const double stereo_width = static_cast<double>(params_.stereoWidth) * 0.01;
-    const double pre_delay_value = static_cast<double>(params_.preDelay) * sample_rate_ * 0.001;
-    const std::uint32_t pre_delay_samples =
-        pre_delay_value > 0.0 ? static_cast<std::uint32_t>(pre_delay_value) : 0u;
+    double pre_delay_samples = static_cast<double>(params_.preDelay) * sample_rate_ * 0.001;
+    if (pre_delay_samples < 0.0)
+      pre_delay_samples = 0.0;
+    const double maximum_pre_delay = static_cast<double>(pre_delay_length_ - 1u);
+    if (pre_delay_samples > maximum_pre_delay)
+      pre_delay_samples = maximum_pre_delay;
+    preparePreDelay(pre_delay_samples);
 
     double hf_normalized = static_cast<double>(params_.highFrequencyDamp) / 12.0;
     if (hf_normalized < 0.0)
@@ -170,13 +174,8 @@ public:
         float *pre_delay =
             pre_delay_.data() + static_cast<std::size_t>(channel) * pre_delay_length_;
         std::uint32_t &pre_position = pre_delay_positions_[channel];
-        double tank_input = input;
-        if (pre_delay_samples > 0u) {
-          const std::uint32_t wrapped_delay = pre_delay_samples % pre_delay_length_;
-          const std::uint32_t read =
-              (pre_position + pre_delay_length_ - wrapped_delay) % pre_delay_length_;
-          tank_input = static_cast<double>(pre_delay[read]);
-        }
+        const double tank_input =
+            readPreDelay(input, pre_delay, pre_position, pre_delay_ramp_.value(frame));
         pre_delay[pre_position] = static_cast<float>(input);
         ++pre_position;
         if (pre_position >= pre_delay_length_)
@@ -266,9 +265,70 @@ public:
         audio[audio_index] = static_cast<float>(input * dry_mix + wet * wet_mix);
       }
     }
+    pre_delay_ramp_.advance(frame_count);
   }
 
 private:
+  struct DelayRamp {
+    double current = 0.0;
+    double target = 0.0;
+    double step = 0.0;
+    std::uint32_t remaining = 0u;
+    void snap(double value) noexcept {
+      current = target = value;
+      step = 0.0;
+      remaining = 0u;
+    }
+    void retarget(double value, std::uint32_t frames) noexcept {
+      if (value == target)
+        return;
+      target = value;
+      remaining = frames;
+      step = (target - current) / static_cast<double>(frames);
+    }
+    [[nodiscard]] double value(std::uint32_t frame) const noexcept {
+      const std::uint32_t elapsed = frame + 1u;
+      return elapsed >= remaining ? target : current + step * static_cast<double>(elapsed);
+    }
+    void advance(std::uint32_t frames) noexcept {
+      if (frames >= remaining) {
+        current = target;
+        remaining = 0u;
+        step = 0.0;
+      } else {
+        current += step * static_cast<double>(frames);
+        remaining -= frames;
+      }
+    }
+  };
+
+  void preparePreDelay(double delay) noexcept {
+    if (!pre_delay_initialized_) {
+      pre_delay_ramp_.snap(delay);
+      pre_delay_initialized_ = true;
+      return;
+    }
+    const auto frames = static_cast<std::uint32_t>(std::max(1.0, std::ceil(sample_rate_ * 0.005)));
+    pre_delay_ramp_.retarget(delay, frames);
+  }
+
+  [[nodiscard]] double readPreDelay(double input, const float *buffer, std::uint32_t position,
+                                    double delay) const noexcept {
+    if (!(delay > 0.0))
+      return input;
+    const auto newer_delay = static_cast<std::uint32_t>(delay);
+    const double fraction = delay - static_cast<double>(newer_delay);
+    const auto sample = [&](std::uint32_t tap) noexcept {
+      if (tap == 0u)
+        return input;
+      const std::uint32_t wrapped = tap % pre_delay_length_;
+      const std::uint32_t index = (position + pre_delay_length_ - wrapped) % pre_delay_length_;
+      return static_cast<double>(buffer[index]);
+    };
+    const double newer = sample(newer_delay);
+    return newer + (sample(newer_delay + 1u) - newer) * fraction;
+  }
+
   void clearRuntimeState() noexcept {
     for (std::vector<float> &line : delay_lines_) {
       std::fill(line.begin(), line.end(), 0.0F);
@@ -283,6 +343,7 @@ private:
     random_delay_offsets_ms_.fill(0.0F);
     active_channel_count_ = 0u;
     tank_initialized_ = false;
+    pre_delay_initialized_ = false;
   }
   void initializeTank() noexcept {
     for (std::vector<float> &line : delay_lines_) {
@@ -317,6 +378,8 @@ private:
   std::uint32_t selected_seed_low_ = static_cast<std::uint32_t>(dsp::XorShiftRng::kFallbackSeed);
   std::uint32_t selected_seed_high_ = 0u;
   bool tank_initialized_ = false;
+  bool pre_delay_initialized_ = false;
+  DelayRamp pre_delay_ramp_;
   dsp::XorShiftRng random_{};
   std::array<std::vector<float>, kLineCount> delay_lines_;
   std::array<std::uint32_t, kLineCount> delay_positions_{};

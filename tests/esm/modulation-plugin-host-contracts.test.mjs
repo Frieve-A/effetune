@@ -204,7 +204,7 @@ test('Style changes refresh linear and logarithmic slider fills across modulatio
   }
 });
 
-test('Auto Filter logarithmic inputs retain canonical DOM values when bounds cross', () => {
+test('Auto Filter logarithmic inputs retain independent DOM values when bounds cross', () => {
   const runtime = loadRuntime();
   const originalDocument = globalThis.document;
   globalThis.document = runtime.documentRef;
@@ -215,15 +215,14 @@ test('Auto Filter logarithmic inputs retain canonical DOM values when bounds cro
   runtime.documentRef.body.appendChild(plugin.createUI());
 
   try {
-    const initialUpper = plugin.hf;
     const minimumRow = plugin._uiControls.lf;
     const minimumSlider = minimumRow.querySelector('input[type="range"]');
     const minimumNumber = minimumRow.querySelector('input[type="number"]');
     minimumSlider.value = String(logarithmicPosition(16000, 20, 20000));
     minimumSlider.dispatch('input');
 
-    assert.equal(plugin.lf, initialUpper);
-    assert.ok(Math.abs(plugin.hf - 16000) < 1e-8);
+    assert.ok(Math.abs(plugin.lf - 16000) < 1e-8);
+    assert.equal(plugin.hf, 4000);
     assert.equal(Number(minimumNumber.value), plugin.lf);
     assert.ok(Math.abs(Number(minimumSlider.value) - logarithmicPosition(plugin.lf, 20, 20000)) < 1e-8);
     assert.equal(minimumSlider.style['--et-range-fill'], expectedFill(minimumSlider));
@@ -236,8 +235,8 @@ test('Auto Filter logarithmic inputs retain canonical DOM values when bounds cro
     maximumNumber.value = '100';
     maximumNumber.dispatch('input');
 
-    assert.equal(plugin.lf, 100);
-    assert.equal(plugin.hf, 1200);
+    assert.equal(plugin.lf, 1200);
+    assert.equal(plugin.hf, 100);
     assert.equal(Number(maximumNumber.value), plugin.hf);
     assert.ok(Math.abs(Number(maximumSlider.value) - logarithmicPosition(plugin.hf, 20, 20000)) < 1e-8);
     assert.equal(minimumSlider.style['--et-range-fill'], expectedFill(minimumSlider));

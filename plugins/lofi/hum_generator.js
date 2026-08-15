@@ -47,6 +47,9 @@ class HumGeneratorPlugin extends PluginBase {
                 context.lastChannelCount = channelCount;
                 context.sampleRate = sampleRate;
                 context.delayBufferLength = maxCombDelaySamples;
+                context.frequencyCurrent = fr; context.frequencyTarget = fr; context.frequencyStep = 0;
+                context.harmonicsCurrent = hm; context.harmonicsTarget = hm; context.harmonicsStep = 0;
+                context.frequencyRemaining = 0; context.harmonicsRemaining = 0;
                 context.initialized = true;
             }
 
@@ -77,10 +80,50 @@ class HumGeneratorPlugin extends PluginBase {
             };
 
             const harmonicsCutoff = 200.0 + (hm / 100.0) ** 2 * 10000.0;
-            const harmonicsCoeffs = calculateLowpassCoeffs(harmonicsCutoff, 0.707);
+            const harmonicsTargetCoeffs = calculateLowpassCoeffs(harmonicsCutoff, 0.707);
             
             const toneCutoff = tn * 1000.0;
-            const toneCoeffs = calculateLowpassCoeffs(toneCutoff, 1.0);
+            const toneTargetCoeffs = calculateLowpassCoeffs(toneCutoff, 1.0);
+            const keys = ['b0', 'b1', 'b2', 'a1', 'a2'];
+            const frames = Math.max(1, Math.ceil(sampleRate * 0.005));
+            const retargetCoeffs = (name, target) => {
+                if (!context[name]) {
+                    context[name] = { ...target };
+                    context[name + 'Target'] = target;
+                    context[name + 'Step'] = { b0: 0, b1: 0, b2: 0, a1: 0, a2: 0 };
+                    context[name + 'Remaining'] = 0;
+                } else if (keys.some(key => target[key] !== context[name + 'Target'][key])) {
+                    context[name + 'Target'] = target;
+                    const step = context[name + 'Step'];
+                    for (const key of keys) step[key] = (target[key] - context[name][key]) / frames;
+                    context[name + 'Remaining'] = frames;
+                }
+            };
+            retargetCoeffs('harmonicsCoeffs', harmonicsTargetCoeffs);
+            retargetCoeffs('toneCoeffs', toneTargetCoeffs);
+            if (fr !== context.frequencyTarget) {
+                context.frequencyTarget = fr;
+                context.frequencyStep = (fr - context.frequencyCurrent) / frames;
+                context.frequencyRemaining = frames;
+            }
+            if (hm !== context.harmonicsTarget) {
+                context.harmonicsTarget = hm;
+                context.harmonicsStep = (hm - context.harmonicsCurrent) / frames;
+                context.harmonicsRemaining = frames;
+            }
+            const controlAt = (current, step, remaining, i) => current + step * Math.min(i + 1, remaining);
+            const processBiquadAt = (input, state, name, i) => {
+                const current = context[name], step = context[name + 'Step'];
+                const elapsed = Math.min(i + 1, context[name + 'Remaining']);
+                const b0 = current.b0 + step.b0 * elapsed, b1 = current.b1 + step.b1 * elapsed;
+                const b2 = current.b2 + step.b2 * elapsed, a1 = current.a1 + step.a1 * elapsed;
+                const a2 = current.a2 + step.a2 * elapsed;
+                let output = b0 * input + b1 * state.x1 + b2 * state.x2 - a1 * state.y1 - a2 * state.y2;
+                output += DENORMAL_OFFSET;
+                output = output > 10.0 ? 10.0 : (output < -10.0 ? -10.0 : output);
+                state.x2 = state.x1; state.x1 = input; state.y2 = state.y1; state.y1 = output;
+                return output;
+            };
             
             // Final gain from Level parameter
             const finalGain = 10 ** (lv / 20.0);
@@ -94,13 +137,13 @@ class HumGeneratorPlugin extends PluginBase {
             // This creates separate, optimized paths for each 'tp' value.
 
             if (tp === 'Standard') {
-                const combDelaySamples = Math.floor(0.5 / fr * sampleRate);
                 for (let i = 0; i < blockSize; i++) {
+                    const currentFr = controlAt(context.frequencyCurrent, context.frequencyStep, context.frequencyRemaining, i);
                     // Update LFOs and oscillator (common for all channels)
                     lfoPhase1 = (lfoPhase1 + lfo1Inc) % TWO_PI;
                     lfoPhase2 = (lfoPhase2 + lfo2Inc) % TWO_PI;
                     const combinedLfo = (Math.sin(lfoPhase1) + Math.sin(lfoPhase2)) * 0.5;
-                    const modulatedFreq = fr * (1.0 + combinedLfo * freqModDepth);
+                    const modulatedFreq = currentFr * (1.0 + combinedLfo * freqModDepth);
                     const phaseInc = TWO_PI * modulatedFreq * INV_SAMPLE_RATE;
                     oscillatorPhase = (oscillatorPhase + phaseInc) % TWO_PI;
                     const oscillatorOutput = (oscillatorPhase * INV_PI) - 1.0;
@@ -112,9 +155,14 @@ class HumGeneratorPlugin extends PluginBase {
                         // 1. Harmonic Shaper (Comb filter)
                         const delayBuffer = context.delayBuffers[ch];
                         let delayPos = context.delayPositions[ch];
-                        if (combDelaySamples > 0 && combDelaySamples < delayBuffer.length) {
-                            const readPos = (delayPos - combDelaySamples + delayBuffer.length) % delayBuffer.length;
-                            const delayedSample = delayBuffer[readPos];
+                        const combDelaySamples = 0.5 / currentFr * sampleRate;
+                        if (combDelaySamples > 0 && combDelaySamples < delayBuffer.length - 1) {
+                            let read = delayPos - combDelaySamples;
+                            while (read < 0) read += delayBuffer.length;
+                            const first = Math.floor(read) % delayBuffer.length;
+                            const second = first + 1 === delayBuffer.length ? 0 : first + 1;
+                            const fraction = read - Math.floor(read);
+                            const delayedSample = delayBuffer[first] + fraction * (delayBuffer[second] - delayBuffer[first]);
                             delayBuffer[delayPos] = wetSignal;
                             wetSignal = (wetSignal - delayedSample) * 0.5;
                         }
@@ -122,18 +170,12 @@ class HumGeneratorPlugin extends PluginBase {
                         
                         // 2. Harmonic Dampener (Biquad Lowpass - Inlined)
                         const hState = context.harmonicFilterStates[ch];
-                        let filterOut = harmonicsCoeffs.b0 * wetSignal + harmonicsCoeffs.b1 * hState.x1 + harmonicsCoeffs.b2 * hState.x2 - harmonicsCoeffs.a1 * hState.y1 - harmonicsCoeffs.a2 * hState.y2;
-                        filterOut += DENORMAL_OFFSET;
-                        filterOut = filterOut > 10.0 ? 10.0 : (filterOut < -10.0 ? -10.0 : filterOut);
-                        hState.x2 = hState.x1; hState.x1 = wetSignal; hState.y2 = hState.y1; hState.y1 = filterOut;
+                        let filterOut = processBiquadAt(wetSignal, hState, 'harmonicsCoeffs', i);
                         wetSignal = filterOut;
 
                         // 3. Tone Control (Biquad Lowpass - Inlined)
                         const tState = context.toneFilterStates[ch];
-                        filterOut = toneCoeffs.b0 * wetSignal + toneCoeffs.b1 * tState.x1 + toneCoeffs.b2 * tState.x2 - toneCoeffs.a1 * tState.y1 - toneCoeffs.a2 * tState.y2;
-                        filterOut += DENORMAL_OFFSET;
-                        filterOut = filterOut > 10.0 ? 10.0 : (filterOut < -10.0 ? -10.0 : filterOut);
-                        tState.x2 = tState.x1; tState.x1 = wetSignal; tState.y2 = tState.y1; tState.y1 = filterOut;
+                        filterOut = processBiquadAt(wetSignal, tState, 'toneCoeffs', i);
                         wetSignal = filterOut;
                         
                         // 4. Amplitude & Mixing
@@ -141,13 +183,15 @@ class HumGeneratorPlugin extends PluginBase {
                     }
                 }
             } else if (tp === 'Dirty') {
-                const drive = 1.0 + (hm / 100.0 * 3.0);
                 for (let i = 0; i < blockSize; i++) {
+                    const currentFr = controlAt(context.frequencyCurrent, context.frequencyStep, context.frequencyRemaining, i);
+                    const currentHm = controlAt(context.harmonicsCurrent, context.harmonicsStep, context.harmonicsRemaining, i);
+                    const drive = 1.0 + (currentHm / 100.0 * 3.0);
                     // Update LFOs and oscillator
                     lfoPhase1 = (lfoPhase1 + lfo1Inc) % TWO_PI;
                     lfoPhase2 = (lfoPhase2 + lfo2Inc) % TWO_PI;
                     const combinedLfo = (Math.sin(lfoPhase1) + Math.sin(lfoPhase2)) * 0.5;
-                    const modulatedFreq = fr * (1.0 + combinedLfo * freqModDepth);
+                    const modulatedFreq = currentFr * (1.0 + combinedLfo * freqModDepth);
                     const phaseInc = TWO_PI * modulatedFreq * INV_SAMPLE_RATE;
                     oscillatorPhase = (oscillatorPhase + phaseInc) % TWO_PI;
                     const oscillatorOutput = (oscillatorPhase * INV_PI) - 1.0;
@@ -158,10 +202,7 @@ class HumGeneratorPlugin extends PluginBase {
                         
                         // 1. Harmonic Dampener
                         const hState = context.harmonicFilterStates[ch];
-                        let filterOut = harmonicsCoeffs.b0 * wetSignal + harmonicsCoeffs.b1 * hState.x1 + harmonicsCoeffs.b2 * hState.x2 - harmonicsCoeffs.a1 * hState.y1 - harmonicsCoeffs.a2 * hState.y2;
-                        filterOut += DENORMAL_OFFSET;
-                        filterOut = filterOut > 10.0 ? 10.0 : (filterOut < -10.0 ? -10.0 : filterOut);
-                        hState.x2 = hState.x1; hState.x1 = wetSignal; hState.y2 = hState.y1; hState.y1 = filterOut;
+                        let filterOut = processBiquadAt(wetSignal, hState, 'harmonicsCoeffs', i);
                         wetSignal = filterOut;
 
                         // 2. Distortion
@@ -169,10 +210,7 @@ class HumGeneratorPlugin extends PluginBase {
                        
                         // 3. Tone Control
                         const tState = context.toneFilterStates[ch];
-                        filterOut = toneCoeffs.b0 * wetSignal + toneCoeffs.b1 * tState.x1 + toneCoeffs.b2 * tState.x2 - toneCoeffs.a1 * tState.y1 - toneCoeffs.a2 * tState.y2;
-                        filterOut += DENORMAL_OFFSET;
-                        filterOut = filterOut > 10.0 ? 10.0 : (filterOut < -10.0 ? -10.0 : filterOut);
-                        tState.x2 = tState.x1; tState.x1 = wetSignal; tState.y2 = tState.y1; tState.y1 = filterOut;
+                        filterOut = processBiquadAt(wetSignal, tState, 'toneCoeffs', i);
                         wetSignal = filterOut;
 
                         // 4. Amplitude & Mixing
@@ -181,11 +219,12 @@ class HumGeneratorPlugin extends PluginBase {
                 }
             } else { // 'Rich' type (and any other default)
                 for (let i = 0; i < blockSize; i++) {
+                    const currentFr = controlAt(context.frequencyCurrent, context.frequencyStep, context.frequencyRemaining, i);
                     // Update LFOs and oscillator
                     lfoPhase1 = (lfoPhase1 + lfo1Inc) % TWO_PI;
                     lfoPhase2 = (lfoPhase2 + lfo2Inc) % TWO_PI;
                     const combinedLfo = (Math.sin(lfoPhase1) + Math.sin(lfoPhase2)) * 0.5;
-                    const modulatedFreq = fr * (1.0 + combinedLfo * freqModDepth);
+                    const modulatedFreq = currentFr * (1.0 + combinedLfo * freqModDepth);
                     const phaseInc = TWO_PI * modulatedFreq * INV_SAMPLE_RATE;
                     oscillatorPhase = (oscillatorPhase + phaseInc) % TWO_PI;
                     const oscillatorOutput = (oscillatorPhase * INV_PI) - 1.0;
@@ -196,18 +235,12 @@ class HumGeneratorPlugin extends PluginBase {
                         
                         // 1. Harmonic Dampener
                         const hState = context.harmonicFilterStates[ch];
-                        let filterOut = harmonicsCoeffs.b0 * wetSignal + harmonicsCoeffs.b1 * hState.x1 + harmonicsCoeffs.b2 * hState.x2 - harmonicsCoeffs.a1 * hState.y1 - harmonicsCoeffs.a2 * hState.y2;
-                        filterOut += DENORMAL_OFFSET;
-                        filterOut = filterOut > 10.0 ? 10.0 : (filterOut < -10.0 ? -10.0 : filterOut);
-                        hState.x2 = hState.x1; hState.x1 = wetSignal; hState.y2 = hState.y1; hState.y1 = filterOut;
+                        let filterOut = processBiquadAt(wetSignal, hState, 'harmonicsCoeffs', i);
                         wetSignal = filterOut;
 
                         // 2. Tone Control
                         const tState = context.toneFilterStates[ch];
-                        filterOut = toneCoeffs.b0 * wetSignal + toneCoeffs.b1 * tState.x1 + toneCoeffs.b2 * tState.x2 - toneCoeffs.a1 * tState.y1 - toneCoeffs.a2 * tState.y2;
-                        filterOut += DENORMAL_OFFSET;
-                        filterOut = filterOut > 10.0 ? 10.0 : (filterOut < -10.0 ? -10.0 : filterOut);
-                        tState.x2 = tState.x1; tState.x1 = wetSignal; tState.y2 = tState.y1; tState.y1 = filterOut;
+                        filterOut = processBiquadAt(wetSignal, tState, 'toneCoeffs', i);
                         wetSignal = filterOut;
                         
                         // 3. Amplitude & Mixing
@@ -220,6 +253,32 @@ class HumGeneratorPlugin extends PluginBase {
             context.lfoPhase1 = lfoPhase1;
             context.lfoPhase2 = lfoPhase2;
             context.oscillatorPhase = oscillatorPhase;
+            if (blockSize >= context.frequencyRemaining) {
+                context.frequencyCurrent = context.frequencyTarget;
+                context.frequencyRemaining = 0;
+            } else {
+                context.frequencyCurrent += context.frequencyStep * blockSize;
+                context.frequencyRemaining -= blockSize;
+            }
+            if (blockSize >= context.harmonicsRemaining) {
+                context.harmonicsCurrent = context.harmonicsTarget;
+                context.harmonicsRemaining = 0;
+            } else {
+                context.harmonicsCurrent += context.harmonicsStep * blockSize;
+                context.harmonicsRemaining -= blockSize;
+            }
+            for (const name of ['harmonicsCoeffs', 'toneCoeffs']) {
+                const remainingName = name + 'Remaining';
+                const remaining = context[remainingName];
+                if (!remaining) continue;
+                if (blockSize >= remaining) {
+                    context[name] = { ...context[name + 'Target'] };
+                    context[remainingName] = 0;
+                } else {
+                    for (const key of keys) context[name][key] += context[name + 'Step'][key] * blockSize;
+                    context[remainingName] -= blockSize;
+                }
+            }
 
             return data;
         `);

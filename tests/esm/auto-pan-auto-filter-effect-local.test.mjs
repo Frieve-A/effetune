@@ -195,12 +195,12 @@ test('Auto Pan applies the latest fade-up request only at the next dry midpoint'
     'the re-specified waveform becomes audible only after the midpoint');
 });
 
-test('Auto Filter canonicalizes bounds atomically and switches conditional standard rows', async () => {
+test('Auto Filter retains independent bounds and switches conditional standard rows', async () => {
   const Plugin = await loadPlugin('auto_filter.js', 'AutoFilterPlugin');
   const plugin = new Plugin();
   plugin.setParameters({ hf: 100, lf: 8000 });
-  assert.equal(plugin.lf, 100);
-  assert.equal(plugin.hf, 8000);
+  assert.equal(plugin.lf, 8000);
+  assert.equal(plugin.hf, 100);
   plugin.setParameters({ lf: 1200, hf: 1200 });
   assert.equal(plugin.lf, 1200);
   assert.equal(plugin.hf, 1200);

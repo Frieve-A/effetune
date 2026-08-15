@@ -7,11 +7,13 @@
   "fields": [
     {
       "name": "pivotExponent",
+      "publicName": "pivotFrequency",
       "key": "f0",
       "kind": "float",
       "min": 3,
       "max": 9.9,
-      "default": 6.91
+      "default": 6.91,
+      "automation": true
     },
     {
       "name": "slope",
@@ -20,7 +22,8 @@
       "min": -12,
       "max": 12,
       "default": 0,
-      "unit": "dB/oct"
+      "unit": "dB/oct",
+      "automation": true
     }
   ]
 }

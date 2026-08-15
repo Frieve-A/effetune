@@ -2,6 +2,7 @@
 #include "TiltEQPluginParams.h"
 #include "effetune/dsp/biquad.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -72,12 +73,15 @@ public:
   void prepare(const PrepareInfo &info) override {
     sample_rate_ = static_cast<double>(info.sampleRate);
     max_channels_ = info.maxChannels;
+    const auto requested_frames = static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005));
+    transition_frames_ = requested_frames == 0u ? 1u : requested_frames;
     states_.resize(max_channels_);
   }
 
   void reset() noexcept override {
     initialized_ = false;
     state_created_ = false;
+    transition_remaining_ = 0u;
     for (TiltState &state : states_) {
       state.reset();
     }
@@ -91,28 +95,22 @@ public:
 
     const float raw_pivot = params_.pivotExponent;
     const float raw_slope = params_.slope;
-    const double slope = static_cast<double>(raw_slope);
-    if (slope < 0.01 && slope > -0.01) {
-      return;
-    }
-
     const bool channel_changed = last_channel_count_ != channel_count;
     if (!initialized_ || channel_changed || last_pivot_ != raw_pivot || last_slope_ != raw_slope) {
       configure(channel_count, raw_pivot, raw_slope, channel_changed);
     }
 
-    for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
-      TiltState &state = states_[channel];
-      const std::uint32_t offset = channel * frame_count;
-      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-        const double low_output = dsp::processBiquadDf1Sample(
-            static_cast<double>(audio[offset + frame]), low_shelf_, state.lowShelf);
+    for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      advanceTransition();
+      for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+        TiltState &state = states_[channel];
+        const std::uint32_t index = channel * frame_count + frame;
+        const double low_output = dsp::processBiquadDf1Sample(static_cast<double>(audio[index]),
+                                                              low_shelf_, state.lowShelf);
         const double high_output =
             dsp::processBiquadDf1Sample(low_output, high_shelf_, state.highShelf);
-        audio[offset + frame] = static_cast<float>(high_output);
+        audio[index] = static_cast<float>(high_output);
       }
-      dsp::quantizeBiquadStateToFloat(state.lowShelf);
-      dsp::quantizeBiquadStateToFloat(state.highShelf);
     }
   }
 
@@ -126,18 +124,59 @@ private:
       state_created_ = true;
     }
 
-    const double pivot = std::exp(static_cast<double>(raw_pivot));
-    const double omega = kTwoPi * pivot / sample_rate_;
-    const double cosine = std::cos(omega);
-    const double sine = std::sin(omega);
     const double slope = static_cast<double>(raw_slope);
-    low_shelf_ = designLowShelf(cosine, sine, -2.0 * slope);
-    high_shelf_ = designHighShelf(cosine, sine, 2.0 * slope);
+    Coefficients next_low{};
+    Coefficients next_high{};
+    if (slope <= -0.01 || slope >= 0.01) {
+      const double pivot = std::exp(static_cast<double>(raw_pivot));
+      const double omega = kTwoPi * pivot / sample_rate_;
+      const double cosine = std::cos(omega);
+      const double sine = std::sin(omega);
+      next_low = designLowShelf(cosine, sine, -2.0 * slope);
+      next_high = designHighShelf(cosine, sine, 2.0 * slope);
+    }
+
+    if (!initialized_) {
+      low_shelf_ = next_low;
+      high_shelf_ = next_high;
+      transition_remaining_ = 0u;
+    } else {
+      setTransition(low_shelf_, next_low, low_step_);
+      setTransition(high_shelf_, next_high, high_step_);
+      transition_remaining_ = transition_frames_;
+    }
 
     last_channel_count_ = channel_count;
     last_pivot_ = raw_pivot;
     last_slope_ = raw_slope;
     initialized_ = true;
+  }
+
+  void setTransition(const Coefficients &current, const Coefficients &target,
+                     Coefficients &step) const noexcept {
+    const double divisor = static_cast<double>(transition_frames_);
+    step.b0 = (target.b0 - current.b0) / divisor;
+    step.b1 = (target.b1 - current.b1) / divisor;
+    step.b2 = (target.b2 - current.b2) / divisor;
+    step.a1 = (target.a1 - current.a1) / divisor;
+    step.a2 = (target.a2 - current.a2) / divisor;
+  }
+
+  void advanceTransition() noexcept {
+    if (transition_remaining_ == 0u) {
+      return;
+    }
+    low_shelf_.b0 += low_step_.b0;
+    low_shelf_.b1 += low_step_.b1;
+    low_shelf_.b2 += low_step_.b2;
+    low_shelf_.a1 += low_step_.a1;
+    low_shelf_.a2 += low_step_.a2;
+    high_shelf_.b0 += high_step_.b0;
+    high_shelf_.b1 += high_step_.b1;
+    high_shelf_.b2 += high_step_.b2;
+    high_shelf_.a1 += high_step_.a1;
+    high_shelf_.a2 += high_step_.a2;
+    --transition_remaining_;
   }
 
   double sample_rate_ = 0.0;
@@ -147,8 +186,12 @@ private:
   float last_slope_ = 0.0F;
   bool initialized_ = false;
   bool state_created_ = false;
+  std::uint32_t transition_frames_ = 1u;
+  std::uint32_t transition_remaining_ = 0u;
   Coefficients low_shelf_{};
   Coefficients high_shelf_{};
+  Coefficients low_step_{};
+  Coefficients high_step_{};
   std::vector<TiltState> states_;
 };
 

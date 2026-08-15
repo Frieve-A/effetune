@@ -1,6 +1,8 @@
 #include "effetune/kernel.h"
 #include "SubSynthPluginParams.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -128,6 +130,7 @@ public:
     sub_lowpass_states_.resize(state_count);
     sub_highpass_states_.resize(state_count);
     dry_highpass_states_.resize(state_count);
+    ramp_frames_ = std::max(1u, static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005)));
   }
 
   void reset() noexcept override {
@@ -136,6 +139,8 @@ public:
     sub_lowpass_layout_ = {};
     sub_highpass_layout_ = {};
     dry_highpass_layout_ = {};
+    controls_initialized_ = false;
+    ramp_remaining_ = 0u;
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -147,45 +152,54 @@ public:
     const StageLayout sub_lowpass = computeStages(params_.subLowPassSlope);
     const StageLayout sub_highpass = computeStages(params_.subHighPassSlope);
     const StageLayout dry_highpass = computeStages(params_.dryHighPassSlope);
+    bool shape_changed = false;
     if (!initialized_) {
       clearStates();
       sub_lowpass_layout_ = sub_lowpass;
       sub_highpass_layout_ = sub_highpass;
       dry_highpass_layout_ = dry_highpass;
       initialized_ = true;
+      shape_changed = true;
     } else {
       if (!sameShape(sub_lowpass_layout_, sub_lowpass)) {
         clearStates(sub_lowpass_states_);
         sub_lowpass_layout_ = sub_lowpass;
+        shape_changed = true;
       }
       if (!sameShape(sub_highpass_layout_, sub_highpass)) {
         clearStates(sub_highpass_states_);
         sub_highpass_layout_ = sub_highpass;
+        shape_changed = true;
       }
       if (!sameShape(dry_highpass_layout_, dry_highpass)) {
         clearStates(dry_highpass_states_);
         dry_highpass_layout_ = dry_highpass;
+        shape_changed = true;
       }
     }
 
-    const FirstOrderCoefficients sub_lowpass_first =
-        firstOrderLowpass(static_cast<double>(params_.subLowPassFrequency), sample_rate_);
-    const SecondOrderCoefficients sub_lowpass_second =
-        secondOrderLowpass(static_cast<double>(params_.subLowPassFrequency), sample_rate_);
-    const FirstOrderCoefficients sub_highpass_first =
-        firstOrderHighpass(static_cast<double>(params_.subHighPassFrequency), sample_rate_);
-    const SecondOrderCoefficients sub_highpass_second =
-        secondOrderHighpass(static_cast<double>(params_.subHighPassFrequency), sample_rate_);
-    const FirstOrderCoefficients dry_highpass_first =
-        firstOrderHighpass(static_cast<double>(params_.dryHighPassFrequency), sample_rate_);
-    const SecondOrderCoefficients dry_highpass_second =
-        secondOrderHighpass(static_cast<double>(params_.dryHighPassFrequency), sample_rate_);
-    const double sub_gain = static_cast<double>(params_.subLevel) / 100.0;
-    const double dry_gain = static_cast<double>(params_.dryLevel) / 100.0;
+    retargetControls(shape_changed);
 
     for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
       const std::uint32_t offset = channel * frame_count;
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        const std::uint32_t progressed = frame + 1u;
+        const double position =
+            static_cast<double>(progressed < ramp_remaining_ ? progressed : ramp_remaining_);
+        const FirstOrderCoefficients sub_lowpass_first =
+            interpolate(first_current_[0], first_steps_[0], position);
+        const FirstOrderCoefficients sub_highpass_first =
+            interpolate(first_current_[1], first_steps_[1], position);
+        const FirstOrderCoefficients dry_highpass_first =
+            interpolate(first_current_[2], first_steps_[2], position);
+        const SecondOrderCoefficients sub_lowpass_second =
+            interpolate(second_current_[0], second_steps_[0], position);
+        const SecondOrderCoefficients sub_highpass_second =
+            interpolate(second_current_[1], second_steps_[1], position);
+        const SecondOrderCoefficients dry_highpass_second =
+            interpolate(second_current_[2], second_steps_[2], position);
+        const double sub_gain = levels_[0] + level_steps_[0] * position;
+        const double dry_gain = levels_[1] + level_steps_[1] * position;
         double dry = static_cast<double>(audio[offset + frame]);
         double sub = dry >= 0.0 ? dry : -dry;
         if (sub_lowpass.total() != 0u) {
@@ -203,9 +217,94 @@ public:
         audio[offset + frame] = static_cast<float>(dry * dry_gain + sub * sub_gain);
       }
     }
+    advanceControls(frame_count);
   }
 
 private:
+  template <typename Coefficients>
+  static Coefficients interpolate(const Coefficients &from, const Coefficients &step,
+                                  double position) noexcept {
+    Coefficients result{};
+    result.b0 = from.b0 + step.b0 * position;
+    result.b1 = from.b1 + step.b1 * position;
+    result.a1 = from.a1 + step.a1 * position;
+    if constexpr (requires { result.b2; }) {
+      result.b2 = from.b2 + step.b2 * position;
+      result.a2 = from.a2 + step.a2 * position;
+    }
+    return result;
+  }
+
+  template <typename Coefficients>
+  static Coefficients difference(const Coefficients &from, const Coefficients &to,
+                                 double scale) noexcept {
+    Coefficients result{};
+    result.b0 = (to.b0 - from.b0) * scale;
+    result.b1 = (to.b1 - from.b1) * scale;
+    result.a1 = (to.a1 - from.a1) * scale;
+    if constexpr (requires { result.b2; }) {
+      result.b2 = (to.b2 - from.b2) * scale;
+      result.a2 = (to.a2 - from.a2) * scale;
+    }
+    return result;
+  }
+
+  void retargetControls(bool snap) noexcept {
+    const std::array<FirstOrderCoefficients, 3u> first_targets{
+        firstOrderLowpass(static_cast<double>(params_.subLowPassFrequency), sample_rate_),
+        firstOrderHighpass(static_cast<double>(params_.subHighPassFrequency), sample_rate_),
+        firstOrderHighpass(static_cast<double>(params_.dryHighPassFrequency), sample_rate_)};
+    const std::array<SecondOrderCoefficients, 3u> second_targets{
+        secondOrderLowpass(static_cast<double>(params_.subLowPassFrequency), sample_rate_),
+        secondOrderHighpass(static_cast<double>(params_.subHighPassFrequency), sample_rate_),
+        secondOrderHighpass(static_cast<double>(params_.dryHighPassFrequency), sample_rate_)};
+    const std::array<double, 2u> level_targets{static_cast<double>(params_.subLevel) / 100.0,
+                                               static_cast<double>(params_.dryLevel) / 100.0};
+    const std::array<float, 5u> raw{params_.subLevel, params_.dryLevel, params_.subLowPassFrequency,
+                                    params_.subHighPassFrequency, params_.dryHighPassFrequency};
+    if (!controls_initialized_ || snap) {
+      first_current_ = first_targets_ = first_targets;
+      second_current_ = second_targets_ = second_targets;
+      levels_ = target_levels_ = level_targets;
+      cached_controls_ = raw;
+      controls_initialized_ = true;
+      ramp_remaining_ = 0u;
+      return;
+    }
+    if (raw == cached_controls_)
+      return;
+    cached_controls_ = raw;
+    first_targets_ = first_targets;
+    second_targets_ = second_targets;
+    target_levels_ = level_targets;
+    const double inverse = 1.0 / static_cast<double>(ramp_frames_);
+    for (std::size_t index = 0u; index < 3u; ++index) {
+      first_steps_[index] = difference(first_current_[index], first_targets_[index], inverse);
+      second_steps_[index] = difference(second_current_[index], second_targets_[index], inverse);
+    }
+    for (std::size_t index = 0u; index < 2u; ++index) {
+      level_steps_[index] = (target_levels_[index] - levels_[index]) * inverse;
+    }
+    ramp_remaining_ = ramp_frames_;
+  }
+
+  void advanceControls(std::uint32_t frames) noexcept {
+    const std::uint32_t advanced = std::min(frames, ramp_remaining_);
+    const double position = static_cast<double>(advanced);
+    for (std::size_t index = 0u; index < 3u; ++index) {
+      first_current_[index] = interpolate(first_current_[index], first_steps_[index], position);
+      second_current_[index] = interpolate(second_current_[index], second_steps_[index], position);
+    }
+    for (std::size_t index = 0u; index < 2u; ++index)
+      levels_[index] += level_steps_[index] * position;
+    ramp_remaining_ -= advanced;
+    if (ramp_remaining_ == 0u) {
+      first_current_ = first_targets_;
+      second_current_ = second_targets_;
+      levels_ = target_levels_;
+    }
+  }
+
   [[nodiscard]] static bool sameShape(const StageLayout &left, const StageLayout &right) noexcept {
     return left.order1 == right.order1 && left.order2 == right.order2;
   }
@@ -245,6 +344,19 @@ private:
   StageLayout sub_highpass_layout_{};
   StageLayout dry_highpass_layout_{};
   bool initialized_ = false;
+  bool controls_initialized_ = false;
+  std::array<float, 5u> cached_controls_{};
+  std::array<FirstOrderCoefficients, 3u> first_current_{};
+  std::array<FirstOrderCoefficients, 3u> first_targets_{};
+  std::array<FirstOrderCoefficients, 3u> first_steps_{};
+  std::array<SecondOrderCoefficients, 3u> second_current_{};
+  std::array<SecondOrderCoefficients, 3u> second_targets_{};
+  std::array<SecondOrderCoefficients, 3u> second_steps_{};
+  std::array<double, 2u> levels_{};
+  std::array<double, 2u> target_levels_{};
+  std::array<double, 2u> level_steps_{};
+  std::uint32_t ramp_frames_ = 240u;
+  std::uint32_t ramp_remaining_ = 0u;
   std::vector<FilterState> sub_lowpass_states_;
   std::vector<FilterState> sub_highpass_states_;
   std::vector<FilterState> dry_highpass_states_;

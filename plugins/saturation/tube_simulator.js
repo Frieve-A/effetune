@@ -2211,15 +2211,18 @@ const TUBE_SIMULATOR_REFERENCE_PROCESSOR = `
         const drive = decoded.inputReference * Math.pow(10, decoded.driveDb / 20);
         const output = Math.pow(10, decoded.outputDb / 20);
         const mix = decoded.mixPercent / 100;
+        const inputReference = decoded.inputReference;
         const safetyUser = Math.pow(10, decoded.safetyTrimDb / 20);
         state.controls.driveTarget = drive;
         state.controls.outputTarget = output;
         state.controls.mixTarget = mix;
+        state.controls.inputReferenceTarget = inputReference;
         state.controls.safetyUserTarget = safetyUser;
         if (resetControls) {
             state.controls.drive = drive;
             state.controls.output = output;
             state.controls.mix = mix;
+            state.controls.inputReference = inputReference;
             state.controls.safetyUser = safetyUser;
         }
     }
@@ -3580,6 +3583,43 @@ const TUBE_SIMULATOR_REFERENCE_PROCESSOR = `
         return false;
     }
 
+    function fastAutomationOnlyChanged(left, right) {
+        return left.tubeIndex === right.tubeIndex &&
+            left.biasPercent === right.biasPercent &&
+            left.plateV === right.plateV &&
+            left.sourceZKOhm === right.sourceZKOhm &&
+            left.supplyKOhm === right.supplyKOhm &&
+            left.feedbackDb === right.feedbackDb &&
+            left.outputStage === right.outputStage &&
+            left.powerTube === right.powerTube &&
+            left.powerBPlus === right.powerBPlus &&
+            left.cathodeResistor === right.cathodeResistor &&
+            left.screenTap === right.screenTap &&
+            left.primaryImpedance === right.primaryImpedance &&
+            left.speakerLoad === right.speakerLoad &&
+            left.actualLoadOhm === right.actualLoadOhm &&
+            left.autoGainReduction === right.autoGainReduction &&
+            left.seTube === right.seTube &&
+            left.seBPlus === right.seBPlus &&
+            left.seCathodeResistor === right.seCathodeResistor &&
+            left.sePrimaryImpedance === right.sePrimaryImpedance;
+    }
+
+    function applyFastAutomationParameters(state, decoded) {
+        state.parameters.driveDb = decoded.driveDb;
+        state.parameters.outputDb = decoded.outputDb;
+        state.parameters.mixPercent = decoded.mixPercent;
+        state.parameters.inputReference = decoded.inputReference;
+        state.parameters.safetyTrimDb = decoded.safetyTrimDb;
+        const controls = state.controls;
+        controls.driveTarget = decoded.inputReference *
+            Math.pow(10, decoded.driveDb / 20);
+        controls.outputTarget = Math.pow(10, decoded.outputDb / 20);
+        controls.mixTarget = decoded.mixPercent / 100;
+        controls.inputReferenceTarget = decoded.inputReference;
+        controls.safetyUserTarget = Math.pow(10, decoded.safetyTrimDb / 20);
+    }
+
     function copyNonResetParameters(target, source) {
         target.driveDb = source.driveDb;
         target.biasPercent = source.biasPercent;
@@ -3638,6 +3678,12 @@ const TUBE_SIMULATOR_REFERENCE_PROCESSOR = `
             decoded.driveDb !== state.parameters.driveDb ||
             decoded.outputDb !== state.parameters.outputDb ||
             decoded.mixPercent !== state.parameters.mixPercent;
+        // These five lanes only retarget existing smoothers. Keep them out of applyParameters(),
+        // whose power branch recomputes coefficients and solves its quiescent point.
+        if (fastAutomationOnlyChanged(decoded, state.parameters)) {
+            applyFastAutomationParameters(state, decoded);
+            return;
+        }
         if (state.runtimeEvent.latched === 1 &&
             state.runtimeEvent.cause === 1 &&
             state.fault.state === 1 && circuitChanged) {
@@ -5345,6 +5391,7 @@ const TUBE_SIMULATOR_REFERENCE_PROCESSOR = `
         const driveGain = new Float64Array(frameCount);
         const outputGain = new Float64Array(frameCount);
         const wetMix = new Float64Array(frameCount);
+        const inputReference = new Float64Array(frameCount);
         const safetyUser = new Float64Array(frameCount);
         for (let frame = 0; frame < frameCount; ++frame) {
             state.controls.drive += state.controls.coefficient *
@@ -5353,11 +5400,14 @@ const TUBE_SIMULATOR_REFERENCE_PROCESSOR = `
                 (state.controls.outputTarget - state.controls.output);
             state.controls.mix += state.controls.coefficient *
                 (state.controls.mixTarget - state.controls.mix);
+            state.controls.inputReference += state.controls.coefficient *
+                (state.controls.inputReferenceTarget - state.controls.inputReference);
             state.controls.safetyUser += state.controls.coefficient *
                 (state.controls.safetyUserTarget - state.controls.safetyUser);
             driveGain[frame] = state.controls.drive;
             outputGain[frame] = state.controls.output;
             wetMix[frame] = state.controls.mix;
+            inputReference[frame] = state.controls.inputReference;
             safetyUser[frame] = state.controls.safetyUser;
         }
 
@@ -5447,7 +5497,7 @@ const TUBE_SIMULATOR_REFERENCE_PROCESSOR = `
                     for (let channel = 0; channel < K.channels; ++channel) {
                         internalOutput[channel][index] = applyFeedback(
                             state, channel, internalInput[channel][index]) /
-                            state.parameters.inputReference;
+                            inputReference[hostFrame];
                     }
                 } else {
                     const driverLeft = advanceChannel(

@@ -1,6 +1,7 @@
 #include "effetune/kernel.h"
 #include "HumGeneratorPluginParams.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -74,6 +75,7 @@ public:
   void reset() noexcept override {
     clearState();
     initialized_ = false;
+    controls_initialized_ = false;
     last_channel_count_ = 0u;
   }
 
@@ -95,21 +97,12 @@ public:
     const double instability = static_cast<double>(params_.instability) * 0.01;
     const double frequency_modulation_depth = instability * 0.02;
     const double amplitude_modulation_depth = instability * 0.1;
-    const double harmonics = static_cast<double>(params_.harmonics);
-    const double harmonics_cutoff = 200.0 + (harmonics * 0.01) * (harmonics * 0.01) * 10000.0;
-    const FilterCoefficients harmonic_coefficients =
-        lowpass(harmonics_cutoff, 0.707, inverse_sample_rate);
-    const FilterCoefficients tone_coefficients =
-        lowpass(static_cast<double>(params_.tone) * 1000.0, 1.0, inverse_sample_rate);
+    prepareControls(inverse_sample_rate);
     const double final_gain = std::pow(10.0, static_cast<double>(params_.level) / 20.0);
-    const double base_frequency = static_cast<double>(params_.frequency);
     std::uint32_t hum_type = static_cast<std::uint32_t>(params_.humType);
     if (hum_type > 2u) {
       hum_type = 1u;
     }
-    const double dirty_drive = 1.0 + harmonics * 0.03;
-    const std::uint32_t comb_delay =
-        static_cast<std::uint32_t>(std::floor(0.5 / base_frequency * sample_rate_));
 
     double lfo_phase1 = lfo_phase1_;
     double lfo_phase2 = lfo_phase2_;
@@ -118,6 +111,12 @@ public:
       lfo_phase1 = std::fmod(lfo_phase1 + lfo_increment1, kTwoPi);
       lfo_phase2 = std::fmod(lfo_phase2 + lfo_increment2, kTwoPi);
       const double combined_lfo = (std::sin(lfo_phase1) + std::sin(lfo_phase2)) * 0.5;
+      const double base_frequency = frequency_ramp_.value(frame);
+      const double harmonics = harmonics_ramp_.value(frame);
+      const double dirty_drive = 1.0 + harmonics * 0.03;
+      const double comb_delay = 0.5 / base_frequency * sample_rate_;
+      const FilterCoefficients harmonic_coefficients = harmonic_filter_ramp_.value(frame);
+      const FilterCoefficients tone_coefficients = tone_filter_ramp_.value(frame);
       const double modulated_frequency =
           base_frequency * (1.0 + combined_lfo * frequency_modulation_depth);
       const double phase_increment = kTwoPi * modulated_frequency * inverse_sample_rate;
@@ -130,12 +129,16 @@ public:
         if (hum_type == 0u) {
           const std::size_t delay_offset = static_cast<std::size_t>(channel) * delay_length_;
           const std::uint32_t position = delay_positions_[channel];
-          if (comb_delay > 0u && comb_delay < delay_length_) {
-            const std::uint32_t read_position = position >= comb_delay
-                                                    ? position - comb_delay
-                                                    : position + delay_length_ - comb_delay;
+          if (comb_delay > 0.0 && comb_delay < static_cast<double>(delay_length_ - 1u)) {
+            const auto newer_delay = static_cast<std::uint32_t>(comb_delay);
+            const double fraction = comb_delay - static_cast<double>(newer_delay);
+            const std::uint32_t newer = (position + delay_length_ - newer_delay) % delay_length_;
+            const std::uint32_t older = newer == 0u ? delay_length_ - 1u : newer - 1u;
+            const double newer_sample = static_cast<double>(delay_buffers_[delay_offset + newer]);
             const double delayed =
-                static_cast<double>(delay_buffers_[delay_offset + read_position]);
+                newer_sample +
+                (static_cast<double>(delay_buffers_[delay_offset + older]) - newer_sample) *
+                    fraction;
             delay_buffers_[delay_offset + position] = static_cast<float>(wet);
             wet = (wet - delayed) * 0.5;
           }
@@ -160,9 +163,117 @@ public:
     lfo_phase1_ = lfo_phase1;
     lfo_phase2_ = lfo_phase2;
     oscillator_phase_ = oscillator_phase;
+    frequency_ramp_.advance(frame_count);
+    harmonics_ramp_.advance(frame_count);
+    harmonic_filter_ramp_.advance(frame_count);
+    tone_filter_ramp_.advance(frame_count);
   }
 
 private:
+  struct ScalarRamp {
+    double current = 0.0;
+    double target = 0.0;
+    double step = 0.0;
+    std::uint32_t remaining = 0u;
+    void snap(double value) noexcept {
+      current = target = value;
+      step = 0.0;
+      remaining = 0u;
+    }
+    void retarget(double value, std::uint32_t frames) noexcept {
+      if (value == target)
+        return;
+      target = value;
+      remaining = frames;
+      step = (target - current) / static_cast<double>(frames);
+    }
+    [[nodiscard]] double value(std::uint32_t frame) const noexcept {
+      const std::uint32_t elapsed = frame + 1u;
+      return elapsed >= remaining ? target : current + step * static_cast<double>(elapsed);
+    }
+    void advance(std::uint32_t frames) noexcept {
+      if (frames >= remaining) {
+        current = target;
+        step = 0.0;
+        remaining = 0u;
+      } else {
+        current += step * static_cast<double>(frames);
+        remaining -= frames;
+      }
+    }
+  };
+
+  struct FilterRamp {
+    FilterCoefficients current{};
+    FilterCoefficients target{};
+    FilterCoefficients step{};
+    std::uint32_t remaining = 0u;
+    void snap(const FilterCoefficients &value) noexcept {
+      current = target = value;
+      step = {};
+      remaining = 0u;
+    }
+    void retarget(const FilterCoefficients &value, std::uint32_t frames) noexcept {
+      target = value;
+      const double denominator = static_cast<double>(frames);
+      step = {(target.b0 - current.b0) / denominator, (target.b1 - current.b1) / denominator,
+              (target.b2 - current.b2) / denominator, (target.a1 - current.a1) / denominator,
+              (target.a2 - current.a2) / denominator};
+      remaining = frames;
+    }
+    [[nodiscard]] FilterCoefficients value(std::uint32_t frame) const noexcept {
+      const std::uint32_t elapsed = frame + 1u;
+      if (elapsed >= remaining)
+        return target;
+      const double offset = static_cast<double>(elapsed);
+      return {current.b0 + step.b0 * offset, current.b1 + step.b1 * offset,
+              current.b2 + step.b2 * offset, current.a1 + step.a1 * offset,
+              current.a2 + step.a2 * offset};
+    }
+    void advance(std::uint32_t frames) noexcept {
+      if (frames >= remaining) {
+        current = target;
+        step = {};
+        remaining = 0u;
+      } else {
+        const double offset = static_cast<double>(frames);
+        current = {current.b0 + step.b0 * offset, current.b1 + step.b1 * offset,
+                   current.b2 + step.b2 * offset, current.a1 + step.a1 * offset,
+                   current.a2 + step.a2 * offset};
+        remaining -= frames;
+      }
+    }
+  };
+
+  void prepareControls(double inverse_sample_rate) noexcept {
+    const double frequency = static_cast<double>(params_.frequency);
+    const double harmonics = static_cast<double>(params_.harmonics);
+    const double harmonics_cutoff = 200.0 + (harmonics * 0.01) * (harmonics * 0.01) * 10000.0;
+    const FilterCoefficients harmonic = lowpass(harmonics_cutoff, 0.707, inverse_sample_rate);
+    const FilterCoefficients tone =
+        lowpass(static_cast<double>(params_.tone) * 1000.0, 1.0, inverse_sample_rate);
+    if (!controls_initialized_) {
+      frequency_ramp_.snap(frequency);
+      harmonics_ramp_.snap(harmonics);
+      harmonic_filter_ramp_.snap(harmonic);
+      tone_filter_ramp_.snap(tone);
+      harmonics_target_ = harmonics;
+      tone_target_ = params_.tone;
+      controls_initialized_ = true;
+      return;
+    }
+    const auto requested_frames = static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005));
+    const auto frames = requested_frames == 0u ? 1u : requested_frames;
+    frequency_ramp_.retarget(frequency, frames);
+    harmonics_ramp_.retarget(harmonics, frames);
+    if (harmonics != harmonics_target_)
+      harmonic_filter_ramp_.retarget(harmonic, frames);
+    if (params_.tone != tone_target_)
+      tone_filter_ramp_.retarget(tone, frames);
+    harmonics_target_ = harmonics;
+    tone_target_ = params_.tone;
+  }
+
   void clearState() noexcept {
     lfo_phase1_ = 0.0;
     lfo_phase2_ = 0.0;
@@ -189,6 +300,13 @@ private:
   std::uint32_t delay_length_ = 0u;
   std::uint32_t last_channel_count_ = 0u;
   bool initialized_ = false;
+  bool controls_initialized_ = false;
+  double harmonics_target_ = 0.0;
+  float tone_target_ = 0.0F;
+  ScalarRamp frequency_ramp_;
+  ScalarRamp harmonics_ramp_;
+  FilterRamp harmonic_filter_ramp_;
+  FilterRamp tone_filter_ramp_;
   std::vector<float> delay_buffers_;
   std::vector<std::uint32_t> delay_positions_;
   std::vector<FilterState> harmonic_states_;

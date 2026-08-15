@@ -110,8 +110,7 @@ class MultibandTransientPlugin extends PluginBase {
                 const fadeLength = Math.floor(pSampleRate * 0.005);
                 context.fadeIn = {
                     counter: 0,
-                    // Fade length: 5ms or block size, whichever is smaller
-                    length: fadeLength > pBlockSize ? pBlockSize : fadeLength
+                    length: fadeLength
                 };
                 
                 // Clear cached filters forcing recalculation

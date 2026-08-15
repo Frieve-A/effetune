@@ -14,17 +14,15 @@ if (!parameters.enabled) return data;
 
 // --- Parameter & Context Caching ---
 const { channelCount, blockSize, sampleRate } = parameters;
-const f0 = Math.exp(parameters.f0); // Convert exponent to actual frequency (Hz)
-const slopeDbOct = parameters.sl;
-
-// Skip processing if slope is essentially zero
-if (Math.abs(slopeDbOct) < 0.01) return data;
+const f0Raw = Math.fround(parameters.f0);
+const f0 = Math.exp(f0Raw); // Match the native float parameter representation.
+const slopeDbOct = Math.fround(parameters.sl);
 
 // --- State Initialization & Management ---
 // Initialize context only once or if channel count or filter parameters change.
 const needsInit = !context.initialized ||
                     context.lastChannelCount !== channelCount ||
-                    context.lastF0 !== parameters.f0 || // Compare against the raw parameter
+                    context.lastF0 !== f0Raw ||
                     context.lastSlope !== slopeDbOct;
 
 if (needsInit) {
@@ -38,16 +36,16 @@ if (needsInit) {
     // Create filter states if not exists or if channel count changed
     if (!context.filterState || context.lastChannelCount !== channelCount) {
         context.filterState = {
-            xl1: new Float32Array(channelCount), // Use Float32Array for potentially better performance
-            xl2: new Float32Array(channelCount),
-            yl1: new Float32Array(channelCount),
-            yl2: new Float32Array(channelCount),
-            xh1: new Float32Array(channelCount),
-            xh2: new Float32Array(channelCount),
-            yh1: new Float32Array(channelCount),
-            yh2: new Float32Array(channelCount)
+            xl1: new Float64Array(channelCount),
+            xl2: new Float64Array(channelCount),
+            yl1: new Float64Array(channelCount),
+            yl2: new Float64Array(channelCount),
+            xh1: new Float64Array(channelCount),
+            xh2: new Float64Array(channelCount),
+            yh1: new Float64Array(channelCount),
+            yh2: new Float64Array(channelCount)
         };
-        // Note: Float32Array initialization automatically fills with 0.0
+        // Typed array initialization automatically fills with 0.0.
     }
 
     // Calculate shelf filter coefficients
@@ -75,7 +73,8 @@ if (needsInit) {
 
     // Normalize Low Shelf coefficients by 1/a0l
     const invA0l = 1.0 / a0l;
-    context.lowShelfCoefs = {
+    const lowTarget = Math.abs(slopeDbOct) < 0.01 ?
+      { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 } : {
         b0: b0l * invA0l,
         b1: b1l * invA0l,
         b2: b2l * invA0l,
@@ -104,7 +103,8 @@ if (needsInit) {
 
     // Normalize High Shelf coefficients by 1/a0h
     const invA0h = 1.0 / a0h;
-    context.highShelfCoefs = {
+    const highTarget = Math.abs(slopeDbOct) < 0.01 ?
+      { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 } : {
         b0: b0h * invA0h,
         b1: b1h * invA0h,
         b2: b2h * invA0h,
@@ -112,66 +112,58 @@ if (needsInit) {
         a2: a2h * invA0h
     };
 
+    if (!context.lowShelfCoefs) {
+        context.lowShelfCoefs = lowTarget;
+        context.highShelfCoefs = highTarget;
+        context.transitionRemaining = 0;
+    } else {
+        const transitionFrames = Math.max(1, Math.ceil(sampleRate * 0.005));
+        const makeStep = (current, target) => ({
+            b0: (target.b0 - current.b0) / transitionFrames,
+            b1: (target.b1 - current.b1) / transitionFrames,
+            b2: (target.b2 - current.b2) / transitionFrames,
+            a1: (target.a1 - current.a1) / transitionFrames,
+            a2: (target.a2 - current.a2) / transitionFrames
+        });
+        context.lowShelfStep = makeStep(context.lowShelfCoefs, lowTarget);
+        context.highShelfStep = makeStep(context.highShelfCoefs, highTarget);
+        context.transitionRemaining = transitionFrames;
+    }
+
     // Update context tracking variables
     context.lastChannelCount = channelCount;
-    context.lastF0 = parameters.f0;
+    context.lastF0 = f0Raw;
     context.lastSlope = slopeDbOct;
     context.initialized = true;
 }
 
 // --- Audio Processing ---
-// Determine start and end channels for processing loop
-const startCh = 0; // Always start from channel 0
-const endCh = channelCount; // Process all available channels
-
-// Get filter coefficients and state (already cached in context)
 const lcf = context.lowShelfCoefs;
 const hcf = context.highShelfCoefs;
 const state = context.filterState;
 
-// Process samples block by block, channel by channel
-for (let ch = startCh; ch < endCh; ch++) {
-    const offset = ch * blockSize; // Calculate base offset for this channel once
+for (let frame = 0; frame < blockSize; ++frame) {
+    if (context.transitionRemaining > 0) {
+        for (const key of ['b0', 'b1', 'b2', 'a1', 'a2']) {
+            lcf[key] += context.lowShelfStep[key];
+            hcf[key] += context.highShelfStep[key];
+        }
+        --context.transitionRemaining;
+    }
+    for (let ch = 0; ch < channelCount; ++ch) {
+        const dataIndex = ch * blockSize + frame;
+        const input = data[dataIndex];
+        const lowShelfOutput = lcf.b0 * input + lcf.b1 * state.xl1[ch] +
+            lcf.b2 * state.xl2[ch] - lcf.a1 * state.yl1[ch] - lcf.a2 * state.yl2[ch];
+        state.xl2[ch] = state.xl1[ch]; state.xl1[ch] = input;
+        state.yl2[ch] = state.yl1[ch]; state.yl1[ch] = lowShelfOutput;
 
-    // Get filter states for this channel from context state arrays
-    let xl1 = state.xl1[ch], xl2 = state.xl2[ch], yl1 = state.yl1[ch], yl2 = state.yl2[ch];
-    let xh1 = state.xh1[ch], xh2 = state.xh2[ch], yh1 = state.yh1[ch], yh2 = state.yh2[ch];
-
-    // Cache coefficients locally for the inner loop
-    const lb0 = lcf.b0, lb1 = lcf.b1, lb2 = lcf.b2, la1 = lcf.a1, la2 = lcf.a2;
-    const hb0 = hcf.b0, hb1 = hcf.b1, hb2 = hcf.b2, ha1 = hcf.a1, ha2 = hcf.a2;
-
-    // Process each sample in the block
-    for (let i = 0; i < blockSize; i++) {
-        const dataIndex = offset + i;
-        const input = data[dataIndex]; // Current input sample
-
-        // Apply low shelf filter (Direct Form I)
-        // y[n] = b0*x[n] + b1*x[n-1] + b2*x[n-2] - a1*y[n-1] - a2*y[n-2]
-        let lowShelfOutput = lb0 * input + lb1 * xl1 + lb2 * xl2 - la1 * yl1 - la2 * yl2;
-
-        // Update low shelf state (input and output history)
-        xl2 = xl1;
-        xl1 = input;
-        yl2 = yl1;
-        yl1 = lowShelfOutput; // Store intermediate output
-
-        // Apply high shelf filter to the output of low shelf (Direct Form I)
-        let highShelfOutput = hb0 * lowShelfOutput + hb1 * xh1 + hb2 * xh2 - ha1 * yh1 - ha2 * yh2;
-
-        // Update high shelf state (input and output history)
-        xh2 = xh1;
-        xh1 = lowShelfOutput; // Input to high shelf is output from low shelf
-        yh2 = yh1;
-        yh1 = highShelfOutput;
-
-        // Write final output back to buffer
+        const highShelfOutput = hcf.b0 * lowShelfOutput + hcf.b1 * state.xh1[ch] +
+            hcf.b2 * state.xh2[ch] - hcf.a1 * state.yh1[ch] - hcf.a2 * state.yh2[ch];
+        state.xh2[ch] = state.xh1[ch]; state.xh1[ch] = lowShelfOutput;
+        state.yh2[ch] = state.yh1[ch]; state.yh1[ch] = highShelfOutput;
         data[dataIndex] = highShelfOutput;
     }
-
-    // Save filter states back to context state arrays for the next block
-    state.xl1[ch] = xl1; state.xl2[ch] = xl2; state.yl1[ch] = yl1; state.yl2[ch] = yl2;
-    state.xh1[ch] = xh1; state.xh2[ch] = xh2; state.yh1[ch] = yh1; state.yh2[ch] = yh2;
 }
 
 return data; // Return the modified buffer

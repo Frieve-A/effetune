@@ -43,7 +43,11 @@ const cmakeBuildRoot = join(buildRoot, 'cmake');
 const lockPath = join(sidecarRoot, 'dependencies.lock.json');
 
 function quoteForCmd(value) {
-  return `"${String(value).replaceAll('"', '""')}"`;
+  const text = String(value);
+  if (text.includes('"') || text.includes('\r') || text.includes('\n')) {
+    throw new Error('Windows command path contains an unsupported character.');
+  }
+  return `"${text}"`;
 }
 
 function run(command, args, options = {}) {
@@ -79,12 +83,22 @@ const LIBNL_SONAME = /^libnl(?:-genl)?-3\.so(?:\..+)?$/;
 export function parseLinuxLibnlDependencies(output) {
   const dependencies = new Map();
   for (const line of output.split(/\r?\n/)) {
-    const match = line.match(/^\s*(libnl(?:-genl)?-3\.so(?:\.[^\s]+)*)\s+=>\s+(\S+)/);
-    if (!match) continue;
-    if (match[2] === 'not') {
-      throw new Error(`Linux loader could not resolve ${match[1]}.`);
+    const separator = line.indexOf('=>');
+    if (separator < 0) continue;
+    const soname = line.slice(0, separator).trim();
+    if (!LIBNL_SONAME.test(soname)) continue;
+    const resolution = line.slice(separator + 2).trimStart();
+    let pathEnd = 0;
+    while (pathEnd < resolution.length && resolution[pathEnd] !== ' ' &&
+           resolution[pathEnd] !== '\t') {
+      pathEnd += 1;
     }
-    dependencies.set(match[1], match[2]);
+    if (pathEnd === 0) continue;
+    const resolvedPath = resolution.slice(0, pathEnd);
+    if (resolvedPath === 'not') {
+      throw new Error(`Linux loader could not resolve ${soname}.`);
+    }
+    dependencies.set(soname, resolvedPath);
   }
   const names = [...dependencies.keys()];
   if (!names.some(name => name.startsWith('libnl-3.so.'))
@@ -136,10 +150,13 @@ function collectLinuxLibnlRuntime(executable, targetOutputRoot) {
 }
 
 function runInVisualStudio(command, cwd, vsDevCmd) {
-  const wrapper = join(buildRoot, `.vs-build-${process.pid}.cmd`);
+  const wrapperName = `.vs-build-${process.pid}.cmd`;
+  const wrapper = join(buildRoot, wrapperName);
   const contents = [
     '@echo off',
     `call ${quoteForCmd(vsDevCmd)} -arch=x64 -host_arch=x64 >nul`,
+    'if errorlevel 1 exit /b %errorlevel%',
+    `cd /d ${quoteForCmd(cwd)}`,
     'if errorlevel 1 exit /b %errorlevel%',
     command,
     'exit /b %errorlevel%',
@@ -147,7 +164,18 @@ function runInVisualStudio(command, cwd, vsDevCmd) {
   ].join('\r\n');
   writeFileSync(wrapper, contents, { encoding: 'utf8', flag: 'w' });
   try {
-    run(process.env.ComSpec ?? 'cmd.exe', ['/d', '/c', wrapper], { cwd });
+    const result = spawnSync('cmd.exe', ['/d', '/c', wrapperName], {
+      cwd: buildRoot,
+      env: process.env,
+      stdio: 'inherit',
+      windowsHide: true,
+    });
+    if (result.error) {
+      throw result.error;
+    }
+    if (result.status !== 0) {
+      throw new Error(`cmd.exe exited with code ${result.status}.`);
+    }
   } finally {
     rmSync(wrapper, { force: true });
   }

@@ -1,6 +1,8 @@
 #include "effetune/kernel.h"
 #include "CombFilterPluginParams.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -23,7 +25,7 @@ public:
   void reset() noexcept override {
     configured_ = false;
     last_channel_count_ = 0u;
-    last_delay_ = 0u;
+    delay_initialized_ = false;
     for (float &sample : delay_buffer_) {
       sample = 0.0F;
     }
@@ -39,13 +41,21 @@ public:
     }
 
     const double frequency = static_cast<double>(params_.fundamentalFrequency);
-    const std::uint32_t rounded_delay = static_cast<std::uint32_t>(sample_rate_ / frequency + 0.5);
-    const std::uint32_t delay = rounded_delay < 2u ? 2u : rounded_delay;
-    if (delay > max_delay_) {
+    const double requested_delay = sample_rate_ / frequency;
+    const double delay = requested_delay < 2.0 ? 2.0 : requested_delay;
+    if (delay > static_cast<double>(max_delay_)) {
       return;
     }
-    if (!configured_ || last_channel_count_ != channel_count || last_delay_ != delay) {
-      clearDelay(channel_count, delay);
+    if (!configured_ || last_channel_count_ != channel_count) {
+      clearDelay(channel_count);
+    }
+    if (!delay_initialized_) {
+      delay_.snap(delay);
+      delay_initialized_ = true;
+    } else {
+      const auto requested_frames = static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005));
+      const auto transition_frames = requested_frames == 0u ? 1u : requested_frames;
+      delay_.retarget(delay, transition_frames);
     }
 
     const double feedback = static_cast<double>(params_.feedbackGain);
@@ -57,31 +67,75 @@ public:
       std::uint32_t write_position = write_positions_[channel];
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
         const double input = static_cast<double>(audio[audio_offset + frame]);
-        const double delayed = static_cast<double>(delay_buffer_[delay_offset + write_position]);
+        const double delayed = readDelay(delay_offset, write_position, delay_.value(frame));
         const double wet = input + feedback * delayed;
         delay_buffer_[delay_offset + write_position] =
             feedforward ? static_cast<float>(input) : static_cast<float>(wet);
         ++write_position;
-        if (write_position == delay) {
+        if (write_position == max_delay_) {
           write_position = 0u;
         }
         audio[audio_offset + frame] = static_cast<float>((1.0 - mix) * input + mix * wet);
       }
       write_positions_[channel] = write_position;
     }
+    delay_.advance(frame_count);
   }
 
 private:
-  void clearDelay(std::uint32_t channel_count, std::uint32_t delay) noexcept {
+  struct DelayRamp {
+    double current = 0.0;
+    double target = 0.0;
+    double step = 0.0;
+    std::uint32_t remaining = 0u;
+    void snap(double value) noexcept {
+      current = target = value;
+      step = 0.0;
+      remaining = 0u;
+    }
+    void retarget(double value, std::uint32_t frames) noexcept {
+      if (value == target)
+        return;
+      target = value;
+      remaining = frames;
+      step = (target - current) / static_cast<double>(frames);
+    }
+    [[nodiscard]] double value(std::uint32_t frame) const noexcept {
+      const std::uint32_t elapsed = frame + 1u;
+      return elapsed >= remaining ? target : current + step * static_cast<double>(elapsed);
+    }
+    void advance(std::uint32_t frames) noexcept {
+      if (frames >= remaining) {
+        current = target;
+        remaining = 0u;
+        step = 0.0;
+      } else {
+        current += step * static_cast<double>(frames);
+        remaining -= frames;
+      }
+    }
+  };
+
+  [[nodiscard]] double readDelay(std::size_t offset, std::uint32_t write,
+                                 double delay) const noexcept {
+    const auto newer_delay = static_cast<std::uint32_t>(delay);
+    const double fraction = delay - static_cast<double>(newer_delay);
+    const std::uint32_t newer = (write + max_delay_ - newer_delay) % max_delay_;
+    const std::uint32_t older = newer == 0u ? max_delay_ - 1u : newer - 1u;
+    const double newer_sample = static_cast<double>(delay_buffer_[offset + newer]);
+    const double older_sample = static_cast<double>(delay_buffer_[offset + older]);
+    return newer_sample + (older_sample - newer_sample) * fraction;
+  }
+
+  void clearDelay(std::uint32_t channel_count) noexcept {
     for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
       const std::size_t offset = static_cast<std::size_t>(channel) * max_delay_;
-      for (std::uint32_t sample = 0u; sample < delay; ++sample) {
+      for (std::uint32_t sample = 0u; sample < max_delay_; ++sample) {
         delay_buffer_[offset + sample] = 0.0F;
       }
       write_positions_[channel] = 0u;
     }
     last_channel_count_ = channel_count;
-    last_delay_ = delay;
     configured_ = true;
   }
 
@@ -89,8 +143,9 @@ private:
   std::uint32_t max_channels_ = 0u;
   std::uint32_t max_delay_ = 0u;
   std::uint32_t last_channel_count_ = 0u;
-  std::uint32_t last_delay_ = 0u;
   bool configured_ = false;
+  bool delay_initialized_ = false;
+  DelayRamp delay_;
   std::vector<float> delay_buffer_;
   std::vector<std::uint32_t> write_positions_;
 };

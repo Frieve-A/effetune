@@ -57,15 +57,18 @@ public:
   }
 
   void reset() noexcept override {
-    for (FilterBank &bank : low_pass_)
-      resetBank(bank);
-    for (FilterBank &bank : high_pass_)
-      resetBank(bank);
+    for (auto &set : low_pass_)
+      for (FilterBank &bank : set)
+        resetBank(bank);
+    for (auto &set : high_pass_)
+      for (FilterBank &bank : set)
+        resetBank(bank);
     configured_ = false;
     configured_channels_ = 0u;
     configured_bands_ = 0u;
     fade_counter_ = 0u;
     fade_length_ = 0u;
+    transition_remaining_ = 0u;
     telemetry_channels_ = 0u;
   }
 
@@ -93,38 +96,51 @@ public:
                                                        finiteOr(params_.slope3, -24.0F)};
 
     if (!configured_ || configured_channels_ != channel_count || configured_bands_ != band_count ||
-        configured_frequencies_ != frequencies || configured_slopes_ != slopes) {
-      configure(channel_count, band_count, frequencies, slopes, frame_count);
+        configured_slopes_ != slopes) {
+      configureInitial(channel_count, band_count, frequencies, slopes, frame_count);
+    } else if (requested_frequencies_ != frequencies) {
+      requested_frequencies_ = frequencies;
+      if (transition_remaining_ == 0u)
+        beginTransition(frequencies);
+    }
+    if (transition_remaining_ == 0u && configured_frequencies_ != requested_frequencies_) {
+      beginTransition(requested_frequencies_);
     }
 
     const std::size_t stereo_samples = static_cast<std::size_t>(frame_count) * 2u;
     std::memcpy(input_.data(), audio, stereo_samples * sizeof(float));
-    std::memset(audio, 0, static_cast<std::size_t>(channel_count) * frame_count * sizeof(float));
-
-    if (band_count == 2u) {
-      filter(input_.data(), temporary_one_.data(), frame_count, low_pass_[0]);
-      filter(input_.data(), temporary_two_.data(), frame_count, high_pass_[0]);
-      copyBand(audio, temporary_one_.data(), 0u, frame_count);
-      copyBand(audio, temporary_two_.data(), 2u, frame_count);
-    } else if (band_count == 3u) {
-      filter(input_.data(), temporary_one_.data(), frame_count, low_pass_[0]);
-      filter(input_.data(), temporary_two_.data(), frame_count, high_pass_[0]);
-      copyBand(audio, temporary_one_.data(), 0u, frame_count);
-      filter(temporary_two_.data(), temporary_one_.data(), frame_count, low_pass_[1]);
-      filter(temporary_two_.data(), temporary_two_.data(), frame_count, high_pass_[1]);
-      copyBand(audio, temporary_one_.data(), 2u, frame_count);
-      copyBand(audio, temporary_two_.data(), 4u, frame_count);
+    if (transition_remaining_ == 0u) {
+      renderBands(input_.data(), audio, channel_count, band_count, frame_count,
+                  low_pass_[active_bank_], high_pass_[active_bank_], temporary_one_.data(),
+                  temporary_two_.data());
     } else {
-      filter(input_.data(), temporary_one_.data(), frame_count, low_pass_[0]);
-      filter(input_.data(), temporary_two_.data(), frame_count, high_pass_[0]);
-      copyBand(audio, temporary_one_.data(), 0u, frame_count);
-      filter(temporary_two_.data(), temporary_one_.data(), frame_count, low_pass_[1]);
-      filter(temporary_two_.data(), temporary_two_.data(), frame_count, high_pass_[1]);
-      copyBand(audio, temporary_one_.data(), 2u, frame_count);
-      filter(temporary_two_.data(), temporary_one_.data(), frame_count, low_pass_[2]);
-      filter(temporary_two_.data(), temporary_two_.data(), frame_count, high_pass_[2]);
-      copyBand(audio, temporary_one_.data(), 4u, frame_count);
-      copyBand(audio, temporary_two_.data(), 6u, frame_count);
+      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        std::array<float, 8u> active_output{};
+        std::array<float, 8u> target_output{};
+        const float left = input_[frame];
+        const float right = input_[frame_count + frame];
+        renderFrame(left, right, band_count, low_pass_[active_bank_], high_pass_[active_bank_],
+                    active_output);
+        const std::uint32_t target_bank = 1u - active_bank_;
+        renderFrame(left, right, band_count, low_pass_[target_bank], high_pass_[target_bank],
+                    target_output);
+        const double fade = 1.0 - static_cast<double>(transition_remaining_) /
+                                      static_cast<double>(transition_length_);
+        for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+          const std::size_t index = static_cast<std::size_t>(channel) * frame_count + frame;
+          const double old_sample = channel < active_output.size() ? active_output[channel] : 0.0;
+          const double new_sample = channel < target_output.size() ? target_output[channel] : 0.0;
+          audio[index] = static_cast<float>(old_sample + (new_sample - old_sample) * fade);
+        }
+        --transition_remaining_;
+        if (transition_remaining_ == 0u) {
+          active_bank_ = target_bank;
+          configured_frequencies_ = transition_frequencies_;
+          if (configured_frequencies_ != requested_frequencies_) {
+            beginTransition(requested_frequencies_);
+          }
+        }
+      }
     }
 
     applyFade(audio, channel_count, frame_count);
@@ -228,13 +244,14 @@ private:
     bank.count = count * 2u;
   }
 
-  void configure(std::uint32_t channel_count, std::uint32_t band_count,
+  void designSet(std::uint32_t bank_index, std::uint32_t band_count,
                  const std::array<float, kCrossoverCount> &frequencies,
-                 const std::array<float, kCrossoverCount> &slopes,
-                 std::uint32_t frame_count) noexcept {
+                 const std::array<float, kCrossoverCount> &slopes, bool preserve_state) noexcept {
     for (std::uint32_t index = 0u; index < kCrossoverCount; ++index) {
-      resetBank(low_pass_[index]);
-      resetBank(high_pass_[index]);
+      const FilterBank low_state = low_pass_[active_bank_][index];
+      const FilterBank high_state = high_pass_[active_bank_][index];
+      resetBank(low_pass_[bank_index][index]);
+      resetBank(high_pass_[bank_index][index]);
       if (index >= band_count - 1u)
         continue;
       double frequency = static_cast<double>(frequencies[index]);
@@ -243,18 +260,41 @@ private:
         frequency = 10.0;
       if (frequency > maximum)
         frequency = maximum;
-      designBank(low_pass_[index], sample_rate_, frequency, slopes[index], false);
-      designBank(high_pass_[index], sample_rate_, frequency, slopes[index], true);
+      designBank(low_pass_[bank_index][index], sample_rate_, frequency, slopes[index], false);
+      designBank(high_pass_[bank_index][index], sample_rate_, frequency, slopes[index], true);
+      if (preserve_state) {
+        low_pass_[bank_index][index].states = low_state.states;
+        high_pass_[bank_index][index].states = high_state.states;
+      }
     }
+  }
+
+  void configureInitial(std::uint32_t channel_count, std::uint32_t band_count,
+                        const std::array<float, kCrossoverCount> &frequencies,
+                        const std::array<float, kCrossoverCount> &slopes,
+                        std::uint32_t frame_count) noexcept {
+    active_bank_ = 0u;
+    designSet(active_bank_, band_count, frequencies, slopes, false);
     configured_ = true;
     configured_channels_ = channel_count;
     configured_bands_ = band_count;
     configured_frequencies_ = frequencies;
+    requested_frequencies_ = frequencies;
+    transition_frequencies_ = frequencies;
     configured_slopes_ = slopes;
     fade_counter_ = 0u;
     const std::uint32_t requested_fade =
         static_cast<std::uint32_t>(std::ceil(static_cast<double>(sample_rate_) * 0.005));
     fade_length_ = requested_fade < frame_count ? requested_fade : frame_count;
+    transition_length_ = requested_fade < 1u ? 1u : requested_fade;
+    transition_remaining_ = 0u;
+  }
+
+  void beginTransition(const std::array<float, kCrossoverCount> &frequencies) noexcept {
+    const std::uint32_t target_bank = 1u - active_bank_;
+    designSet(target_bank, configured_bands_, frequencies, configured_slopes_, true);
+    transition_frequencies_ = frequencies;
+    transition_remaining_ = transition_length_;
   }
 
   static void filter(const float *input, float *output, std::uint32_t frame_count,
@@ -286,10 +326,76 @@ private:
     }
   }
 
+  static float filterSample(float input, std::uint32_t channel, FilterBank &bank) noexcept {
+    float value = input;
+    for (std::uint32_t section = 0u; section < bank.count; ++section) {
+      const Coefficients &coefficients = bank.coefficients[section];
+      FilterState &state = bank.states[section][channel];
+      const double filtered = coefficients.b0 * value + coefficients.b1 * state.x1 +
+                              coefficients.b2 * state.x2 - coefficients.a1 * state.y1 -
+                              coefficients.a2 * state.y2;
+      state.x2 = state.x1;
+      state.x1 = value;
+      state.y2 = state.y1;
+      value = static_cast<float>(filtered);
+      state.y1 = value;
+    }
+    return value;
+  }
+
+  static void renderFrame(float left, float right, std::uint32_t band_count,
+                          std::array<FilterBank, kCrossoverCount> &low_pass,
+                          std::array<FilterBank, kCrossoverCount> &high_pass,
+                          std::array<float, 8u> &output) noexcept {
+    const std::array<float, 2u> input = {left, right};
+    for (std::uint32_t channel = 0u; channel < 2u; ++channel) {
+      output[channel] = filterSample(input[channel], channel, low_pass[0]);
+      float remainder = filterSample(input[channel], channel, high_pass[0]);
+      if (band_count == 2u) {
+        output[2u + channel] = remainder;
+        continue;
+      }
+      output[2u + channel] = filterSample(remainder, channel, low_pass[1]);
+      remainder = filterSample(remainder, channel, high_pass[1]);
+      if (band_count == 3u) {
+        output[4u + channel] = remainder;
+        continue;
+      }
+      output[4u + channel] = filterSample(remainder, channel, low_pass[2]);
+      output[6u + channel] = filterSample(remainder, channel, high_pass[2]);
+    }
+  }
+
   static void copyBand(float *audio, const float *source, std::uint32_t first_channel,
                        std::uint32_t frame_count) noexcept {
     std::memcpy(audio + static_cast<std::size_t>(first_channel) * frame_count, source,
                 static_cast<std::size_t>(frame_count) * 2u * sizeof(float));
+  }
+
+  static void renderBands(const float *input, float *output, std::uint32_t channel_count,
+                          std::uint32_t band_count, std::uint32_t frame_count,
+                          std::array<FilterBank, kCrossoverCount> &low_pass,
+                          std::array<FilterBank, kCrossoverCount> &high_pass, float *temporary_one,
+                          float *temporary_two) noexcept {
+    std::memset(output, 0, static_cast<std::size_t>(channel_count) * frame_count * sizeof(float));
+    filter(input, temporary_one, frame_count, low_pass[0]);
+    filter(input, temporary_two, frame_count, high_pass[0]);
+    copyBand(output, temporary_one, 0u, frame_count);
+    if (band_count == 2u) {
+      copyBand(output, temporary_two, 2u, frame_count);
+      return;
+    }
+    filter(temporary_two, temporary_one, frame_count, low_pass[1]);
+    filter(temporary_two, temporary_two, frame_count, high_pass[1]);
+    copyBand(output, temporary_one, 2u, frame_count);
+    if (band_count == 3u) {
+      copyBand(output, temporary_two, 4u, frame_count);
+      return;
+    }
+    filter(temporary_two, temporary_one, frame_count, low_pass[2]);
+    filter(temporary_two, temporary_two, frame_count, high_pass[2]);
+    copyBand(output, temporary_one, 4u, frame_count);
+    copyBand(output, temporary_two, 6u, frame_count);
   }
 
   void applyFade(float *audio, std::uint32_t channel_count, std::uint32_t frame_count) noexcept {
@@ -305,17 +411,22 @@ private:
   }
 
   float sample_rate_ = 48000.0F;
-  std::array<FilterBank, kCrossoverCount> low_pass_{};
-  std::array<FilterBank, kCrossoverCount> high_pass_{};
+  std::array<std::array<FilterBank, kCrossoverCount>, 2u> low_pass_{};
+  std::array<std::array<FilterBank, kCrossoverCount>, 2u> high_pass_{};
   std::vector<float> input_;
   std::vector<float> temporary_one_;
   std::vector<float> temporary_two_;
   std::array<float, kCrossoverCount> configured_frequencies_{};
+  std::array<float, kCrossoverCount> requested_frequencies_{};
+  std::array<float, kCrossoverCount> transition_frequencies_{};
   std::array<float, kCrossoverCount> configured_slopes_{};
   std::uint32_t configured_channels_ = 0u;
   std::uint32_t configured_bands_ = 0u;
   std::uint32_t fade_counter_ = 0u;
   std::uint32_t fade_length_ = 0u;
+  std::uint32_t active_bank_ = 0u;
+  std::uint32_t transition_length_ = 1u;
+  std::uint32_t transition_remaining_ = 0u;
   std::uint32_t telemetry_channels_ = 0u;
   bool configured_ = false;
 };

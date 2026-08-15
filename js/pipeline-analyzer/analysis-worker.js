@@ -364,6 +364,17 @@ function assertFiniteSelectedOutput(output, outputChannels, frameCount = ANALYSI
     }
 }
 
+function fillPeriodicInput(target, excitation, processedSamples) {
+    const sequenceOffset = processedSamples % excitation.length;
+    const available = excitation.length - sequenceOffset;
+    if (available >= target.length) {
+        target.set(excitation.subarray(sequenceOffset, sequenceOffset + target.length));
+        return;
+    }
+    target.set(excitation.subarray(sequenceOffset));
+    target.set(excitation.subarray(0, target.length - available), available);
+}
+
 function warning(code, details = {}) {
     return { code, details };
 }
@@ -414,7 +425,7 @@ function measureImpulse(host, snapshot, settings, reportedLatency, post, token) 
                 { length: snapshot.channelCount },
                 () => new Float32Array(ANALYSIS_QUANTUM_SIZE)
             );
-            if (capturedLength === 0) input[snapshot.inputChannel][0] = amplitude;
+            if (capturedLength === 0) input.at(snapshot.inputChannel).fill(amplitude, 0, 1);
             const output = host.processBlock(input);
             assertFiniteSelectedOutput(output, snapshot.outputChannels);
             for (let route = 0; route < snapshot.outputChannels.length; route += 1) {
@@ -466,10 +477,8 @@ function measurePeriodic(host, snapshot, settings, reportedLatency, post, token)
     );
     postProgress(post, token, 'measuring', 0, totalSamples);
     for (let processed = 0; processed < totalSamples; processed += ANALYSIS_QUANTUM_SIZE) {
-        const selectedInput = input[snapshot.inputChannel];
-        for (let frame = 0; frame < ANALYSIS_QUANTUM_SIZE; frame += 1) {
-            selectedInput[frame] = excitation[(processed + frame) % settings.sequenceLength];
-        }
+        const selectedInput = input.at(snapshot.inputChannel);
+        fillPeriodicInput(selectedInput, excitation, processed);
         const output = host.processBlock(input);
         const validFrames = totalSamples - processed < ANALYSIS_QUANTUM_SIZE
             ? totalSamples - processed

@@ -4,6 +4,7 @@
 #include "../multiband_common.h"
 #include "../multiband_telemetry.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -82,6 +83,7 @@ public:
     output_.resize(info.maxFrames);
     envelope_work_.resize(info.maxFrames);
     lookup_.prepare();
+    ramp_frames_ = std::max(1u, static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005)));
     reset();
   }
 
@@ -97,6 +99,8 @@ public:
     has_measurement_ = false;
     fade_counter_ = 0u;
     fade_length_ = 0u;
+    controls_initialized_ = false;
+    control_ramp_remaining_ = 0u;
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -111,13 +115,14 @@ public:
     const multiband_detail::CrossoverChange change =
         crossover_.configure(frequencies, channel_count);
     if (change.filtersReset)
-      startFade(frame_count);
+      startFade();
     if (change.dynamicsReset) {
       for (float &envelope : envelopes_) {
         envelope = static_cast<float>(kMinimumEnvelope);
       }
     }
     crossover_.split(audio, channel_count, frame_count);
+    retargetControls();
 
     std::array<float, multiband_detail::kFiveBandCount * 2u> time_constants{};
     const double sample_rate_ms = sample_rate_ / 1000.0;
@@ -159,32 +164,20 @@ public:
         }
         envelopes_[envelope_offset + band] = static_cast<float>(envelope);
 
-        const double threshold = static_cast<double>(params_.threshold[band]);
-        double ratio = static_cast<double>(params_.ratio[band]);
-        if (ratio < 0.5)
-          ratio = 0.5;
-        if (ratio > 20.0)
-          ratio = 20.0;
-        double knee = static_cast<double>(params_.knee[band]);
-        if (knee < 0.0)
-          knee = 0.0;
-        const double half_knee = knee * 0.5;
-        const double slope = ratio == 1.0 ? 0.0 : 1.0 - 1.0 / ratio;
-        const double makeup = std::exp(static_cast<double>(params_.gain[band]) * kGainFactor);
-        const double maximum_difference = lookup_.decibels(maximum_envelope) - threshold;
+        static_cast<void>(maximum_envelope);
         latest_values_[band] = 0.0F;
-
-        if (maximum_difference <= -half_knee) {
-          for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-            const double sum = static_cast<double>(output_[frame]) +
-                               static_cast<double>(band_signal[frame]) * makeup;
-            output_[frame] = static_cast<float>(sum);
-          }
-          continue;
-        }
 
         double last_gain_reduction = 0.0;
         for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+          const std::size_t base = static_cast<std::size_t>(band) * 4u;
+          const double threshold = controlAt(base, frame);
+          const double ratio = std::clamp(controlAt(base + 1u, frame), 0.5, 20.0);
+          double knee = controlAt(base + 2u, frame);
+          if (knee < 0.0)
+            knee = 0.0;
+          const double half_knee = knee * 0.5;
+          const double slope = ratio == 1.0 ? 0.0 : 1.0 - 1.0 / ratio;
+          const double makeup = std::exp(controlAt(base + 3u, frame) * kGainFactor);
           const double difference =
               lookup_.decibels(static_cast<double>(envelope_work_[frame])) - threshold;
           double gain_change = 0.0;
@@ -193,7 +186,7 @@ public:
           } else if (difference >= half_knee) {
             gain_change = difference * slope;
           } else {
-            const double position = (difference + half_knee) / knee;
+            const double position = knee > 0.0 ? (difference + half_knee) / knee : 1.0;
             gain_change = slope * knee * position * position * 0.5;
           }
           const double magnitude = gain_change >= 0.0 ? gain_change : -gain_change;
@@ -224,6 +217,7 @@ public:
         }
       }
     }
+    advanceControls(frame_count);
 
     if (fade_active) {
       const std::uint32_t next = fade_start + frame_count;
@@ -240,10 +234,50 @@ public:
   }
 
 private:
-  void startFade(std::uint32_t frame_count) noexcept {
+  void retargetControls() noexcept {
+    std::array<double, multiband_detail::kFiveBandCount * 4u> targets{};
+    for (std::size_t band = 0u; band < multiband_detail::kFiveBandCount; ++band) {
+      const std::size_t base = band * 4u;
+      targets[base] = params_.threshold[band];
+      targets[base + 1u] = params_.ratio[band];
+      targets[base + 2u] = params_.knee[band];
+      targets[base + 3u] = params_.gain[band];
+    }
+    if (!controls_initialized_) {
+      current_controls_ = target_controls_ = targets;
+      controls_initialized_ = true;
+      return;
+    }
+    if (targets == target_controls_)
+      return;
+    target_controls_ = targets;
+    for (std::size_t index = 0u; index < targets.size(); ++index) {
+      control_steps_[index] =
+          (targets[index] - current_controls_[index]) / static_cast<double>(ramp_frames_);
+    }
+    control_ramp_remaining_ = ramp_frames_;
+  }
+
+  double controlAt(std::size_t index, std::uint32_t frame) const noexcept {
+    return current_controls_[index] +
+           control_steps_[index] *
+               static_cast<double>(std::min(frame + 1u, control_ramp_remaining_));
+  }
+
+  void advanceControls(std::uint32_t frames) noexcept {
+    const std::uint32_t advanced = std::min(frames, control_ramp_remaining_);
+    for (std::size_t index = 0u; index < current_controls_.size(); ++index) {
+      current_controls_[index] += control_steps_[index] * static_cast<double>(advanced);
+    }
+    control_ramp_remaining_ -= advanced;
+    if (control_ramp_remaining_ == 0u)
+      current_controls_ = target_controls_;
+  }
+
+  void startFade() noexcept {
     const double requested = std::ceil(sample_rate_ * 0.005);
     const std::uint32_t requested_frames = static_cast<std::uint32_t>(requested);
-    fade_length_ = requested_frames < frame_count ? requested_frames : frame_count;
+    fade_length_ = requested_frames;
     fade_counter_ = 0u;
   }
 
@@ -259,6 +293,12 @@ private:
   std::uint32_t fade_counter_ = 0u;
   std::uint32_t fade_length_ = 0u;
   bool has_measurement_ = false;
+  bool controls_initialized_ = false;
+  std::array<double, multiband_detail::kFiveBandCount * 4u> current_controls_{};
+  std::array<double, multiband_detail::kFiveBandCount * 4u> target_controls_{};
+  std::array<double, multiband_detail::kFiveBandCount * 4u> control_steps_{};
+  std::uint32_t ramp_frames_ = 240u;
+  std::uint32_t control_ramp_remaining_ = 0u;
 };
 
 static_assert(sizeof(MultibandCompressorKernel) <= 8192u);

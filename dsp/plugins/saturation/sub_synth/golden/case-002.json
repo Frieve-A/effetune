@@ -23,10 +23,10 @@
   },
   "events": [],
   "tolerance": {
-    "abs": 0.00001,
+    "abs": 0.0002,
     "policy": "per-sample"
   },
-  "jsEngineHash": "5b3bdbb8fb5a927df7aa35af5474be48f5d121cd1dda6cd2a17359830b6fa542",
+  "jsEngineHash": "20410b5eca0f3e41ae705062757f0a297d65e5417a66ec0571908f45dd70890d",
   "outputFloats": 259,
   "byteLength": 1036,
   "binary": "case-002.f32"

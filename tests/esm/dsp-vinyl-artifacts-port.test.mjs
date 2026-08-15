@@ -104,7 +104,7 @@ test('Vinyl Artifacts goldens preserve seeded noise across parameter transitions
     assert.equal(golden.metadata.type, 'VinylArtifactsPlugin');
     assert.equal(
       golden.metadata.jsEngineHash,
-      '5c2e5b24e7aae67fd7fc36350980199fead02a82bde07f794d2a4d76d3227085'
+      '0c3c00a883ac2f1baf7f8c3f5b139cca54e3cebf21f787513331469d59d69b78'
     );
     assert.ok(golden.expected.every(Number.isFinite));
   }
@@ -117,7 +117,7 @@ test('Vinyl Artifacts goldens preserve seeded noise across parameter transitions
   assert.ok(goldens.some(item => item.metadata.events.length >= 4));
 });
 
-test('Vinyl Artifacts reference freezes state at zero mix and writes only stereo', async () => {
+test('Vinyl Artifacts reference freezes state after the zero-mix ramp and writes only stereo', async () => {
   const params = {
     pp: 120, pl: 0, cm: 2000, cl: 0, hs: 0, rb: 0,
     xt: 100, tn: 3.5, wr: 200, rt: 100, rm: 'Velocity', mx: 100
@@ -141,13 +141,23 @@ test('Vinyl Artifacts reference freezes state at zero mix and writes only stereo
     blockSize: 127
   });
 
-  const bypass = testSignal(61, 4, 137);
   paused.plugin.mx = 0;
+  uninterrupted.plugin.mx = 0;
+  const rampInput = testSignal(240, 2, 137);
+  await paused.process(rampInput.slice(), {
+    sampleRate: 48000, frames: 240, channels: 2, blockSize: 240
+  });
+  await uninterrupted.process(rampInput.slice(), {
+    sampleRate: 48000, frames: 240, channels: 2, blockSize: 240
+  });
+
+  const bypass = testSignal(61, 4, 401);
   assert.deepEqual(
     await paused.process(bypass, { sampleRate: 48000, frames: 61, channels: 4, blockSize: 61 }),
     bypass
   );
   paused.plugin.mx = 100;
+  uninterrupted.plugin.mx = 100;
 
   const suffix = testSignal(113, 2, 257);
   assert.deepEqual(

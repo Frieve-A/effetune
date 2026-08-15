@@ -274,6 +274,7 @@ public:
     fade_step_ = 0.0;
     initialized_ = false;
     old_available_ = false;
+    rebuild_pending_ = false;
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -291,26 +292,22 @@ public:
       old_available_ = false;
       fade_ = 1.0;
       fade_step_ = 0.0;
+      rebuild_pending_ = false;
       last_channel_count_ = channel_count;
       initialized_ = true;
+    } else if (rebuild_pending_ && !old_available_) {
+      beginTransition();
+      rebuild_pending_ = false;
     } else if (paramsDirty()) {
-      old_coefficients_ = active_coefficients_;
-      old_states_ = active_states_;
-      old_section_count_ = active_section_count_;
-      old_available_ = true;
-      buildCascade(active_coefficients_, active_section_count_);
-      resetStates(active_states_);
-      std::uint32_t fade_samples =
-          static_cast<std::uint32_t>(std::round(static_cast<double>(sample_rate_) * 0.02));
-      if (fade_samples < 128u) {
-        fade_samples = 128u;
+      if (old_available_) {
+        rebuild_pending_ = true;
+      } else {
+        beginTransition();
       }
-      fade_step_ = 1.0 / static_cast<double>(fade_samples);
-      fade_ = 0.0;
     }
 
-    const bool fading = fade_ < 1.0 && old_available_;
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      const bool fading = fade_ < 1.0 && old_available_;
       const double blend = fade_ < 1.0 ? fade_ : 1.0;
       for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
         const std::uint32_t audio_index = channel * frame_count + frame;
@@ -330,14 +327,15 @@ public:
         if (fade_ > 1.0) {
           fade_ = 1.0;
         }
+        if (fade_ >= 1.0) {
+          old_available_ = false;
+          old_section_count_ = 0u;
+          if (rebuild_pending_) {
+            beginTransition();
+            rebuild_pending_ = false;
+          }
+        }
       }
-    }
-    if (!fading) {
-      fade_ = 1.0;
-    }
-    if (fade_ >= 1.0) {
-      old_available_ = false;
-      old_section_count_ = 0u;
     }
   }
 
@@ -360,6 +358,21 @@ private:
                                           states[section * kMaxChannels + channel]);
     }
     return value;
+  }
+
+  void beginTransition() noexcept {
+    old_coefficients_ = active_coefficients_;
+    old_states_ = active_states_;
+    old_section_count_ = active_section_count_;
+    old_available_ = true;
+    buildCascade(active_coefficients_, active_section_count_);
+    resetStates(active_states_);
+    std::uint32_t fade_samples =
+        static_cast<std::uint32_t>(std::round(static_cast<double>(sample_rate_) * 0.02));
+    if (fade_samples < 128u)
+      fade_samples = 128u;
+    fade_step_ = 1.0 / static_cast<double>(fade_samples);
+    fade_ = 0.0;
   }
 
   void buildCascade(Coefficients &output, std::size_t &section_count) noexcept {
@@ -471,6 +484,7 @@ private:
   double fade_step_ = 0.0;
   bool initialized_ = false;
   bool old_available_ = false;
+  bool rebuild_pending_ = false;
 };
 
 static_assert(sizeof(EarphoneCableSimKernel) <= 8192u);

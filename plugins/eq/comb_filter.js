@@ -11,25 +11,33 @@ const dryWetMix = parameters.dw;       // Dry-Wet Mix (0 to 100)
 const combType = parameters.ct;        // Comb Type: "fb" (Feedback) or "ff" (Feedforward)
 
 // Initialize context if needed
-if (!context.initialized) {
+if (!context.initialized || context.sampleRate !== parameters.sampleRate ||
+    context.delayBuffers.length !== channelCount) {
+    const maxDelay = Math.max(2, Math.floor(parameters.sampleRate / 20 + 0.5));
     context.delayBuffers = new Array(channelCount);
     context.writePositions = new Array(channelCount);
+    for (let ch = 0; ch < channelCount; ch++) {
+        context.delayBuffers[ch] = new Float32Array(maxDelay);
+        context.writePositions[ch] = 0;
+    }
+    context.sampleRate = parameters.sampleRate;
+    context.delayCurrent = Math.max(2, Math.min(maxDelay,
+        parameters.sampleRate / fundamentalFreq));
+    context.delayTarget = context.delayCurrent;
+    context.delayStep = 0;
+    context.delayRemaining = 0;
     context.initialized = true;
 }
 
 // Calculate delay in samples
 const sampleRate = parameters.sampleRate; // Get sample rate from parameters
-const delaySamples = Math.max(2, Math.round(sampleRate / fundamentalFreq));
-
-// Reset buffers if channel count changes or delay changes
-if (context.delayBuffers.length !== channelCount || context.lastDelay !== delaySamples) {
-    context.delayBuffers = new Array(channelCount);
-    context.writePositions = new Array(channelCount);
-    for (let ch = 0; ch < channelCount; ch++) {
-        context.delayBuffers[ch] = new Float32Array(delaySamples).fill(0);
-        context.writePositions[ch] = 0;
-    }
-    context.lastDelay = delaySamples;
+const delayTarget = Math.max(2, Math.min(context.delayBuffers[0].length,
+    sampleRate / fundamentalFreq));
+if (delayTarget !== context.delayTarget) {
+    const frames = Math.max(1, Math.ceil(sampleRate * 0.005));
+    context.delayTarget = delayTarget;
+    context.delayStep = (delayTarget - context.delayCurrent) / frames;
+    context.delayRemaining = frames;
 }
 
 // Process each channel
@@ -41,8 +49,16 @@ for (let ch = 0; ch < channelCount; ch++) {
     for (let i = 0; i < blockSize; i++) {
         const inputSample = data[offset + i];
         
-        // Read from delay buffer
-        const delayedSample = delayBuffer[writePos];
+        // Move only the fractional read tap; the ring history remains intact.
+        const elapsed = Math.min(i + 1, context.delayRemaining);
+        const delaySamples = context.delayCurrent + context.delayStep * elapsed;
+        let read = writePos - delaySamples;
+        while (read < 0) read += delayBuffer.length;
+        const first = Math.floor(read) % delayBuffer.length;
+        const second = first + 1 === delayBuffer.length ? 0 : first + 1;
+        const fraction = read - Math.floor(read);
+        const delayedSample = delayBuffer[first] +
+            fraction * (delayBuffer[second] - delayBuffer[first]);
         
         // Comb filter processing based on type
         let wetSample;
@@ -62,7 +78,7 @@ for (let ch = 0; ch < channelCount; ch++) {
         }
         
         // Update write position (circular buffer)
-        writePos = (writePos + 1) % delaySamples;
+        writePos = (writePos + 1) % delayBuffer.length;
         
         // Dry-Wet mix: out[n] = (1 - mix) * x[n] + mix * y[n]
         const mix = dryWetMix / 100.0;
@@ -71,6 +87,15 @@ for (let ch = 0; ch < channelCount; ch++) {
     
     // Store write position for next block
     context.writePositions[ch] = writePos;
+}
+
+if (blockSize >= context.delayRemaining) {
+    context.delayCurrent = context.delayTarget;
+    context.delayStep = 0;
+    context.delayRemaining = 0;
+} else {
+    context.delayCurrent += context.delayStep * blockSize;
+    context.delayRemaining -= blockSize;
 }
 
 // Send sample rate to main thread for UI updates

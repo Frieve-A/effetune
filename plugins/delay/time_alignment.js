@@ -29,11 +29,22 @@ class TimeAlignmentPlugin extends PluginBase {
                 context.delayIndices = Array.from({ length: parameters.channelCount }, () => 0);
                 context.sampleRate = parameters.sampleRate;
                 context.maxDelaySamples = maxDelaySamples;
+                context.currentDelaySamples = undefined;
             }
 
-            // Calculate delay in samples
-            const rawDelaySamples = Math.floor(parameters.dl * parameters.sampleRate / 1000);
-            const delaySamples = rawDelaySamples < 0 ? 0 : (rawDelaySamples > maxDelaySamples ? maxDelaySamples : rawDelaySamples);
+            // Retarget a short fractional-delay ramp. Adjacent reads form a bounded two-tap fade.
+            const rawDelaySamples = Math.fround(parameters.dl) * parameters.sampleRate / 1000;
+            const targetDelaySamples = rawDelaySamples < 0 ? 0 : (rawDelaySamples > maxDelaySamples ? maxDelaySamples : rawDelaySamples);
+            const rampFrames = Math.max(1, Math.ceil(parameters.sampleRate * 0.005));
+            if (context.currentDelaySamples === undefined) {
+                context.currentDelaySamples = context.targetDelaySamples = targetDelaySamples;
+                context.delayStep = 0;
+                context.delayRampRemaining = 0;
+            } else if (context.targetDelaySamples !== targetDelaySamples) {
+                context.targetDelaySamples = targetDelaySamples;
+                context.delayStep = (targetDelaySamples - context.currentDelaySamples) / rampFrames;
+                context.delayRampRemaining = rampFrames;
+            }
 
             // Always process all channels
             for (let ch = 0; ch < parameters.channelCount; ch++) {
@@ -41,30 +52,30 @@ class TimeAlignmentPlugin extends PluginBase {
                 const delayBuffer = context.delayBuffers[ch];
                 let writeIndex = context.delayIndices[ch];
 
-                if (delaySamples === 0) {
-                    // No delay: output current sample directly and update the delay buffer
-                    for (let i = 0; i < parameters.blockSize; i++) {
-                        const currentSample = data[offset + i];
-                        delayBuffer[writeIndex] = currentSample;
-                        writeIndex = (writeIndex + 1) % delayBuffer.length;
-                    }
-                } else {
-                    // Compute readIndex offset by delaySamples
-                    let readIndex = (writeIndex + delayBuffer.length - delaySamples) % delayBuffer.length;
-                    for (let i = 0; i < parameters.blockSize; i++) {
-                        const currentSample = data[offset + i];
-                        // Output the delayed sample from the buffer
-                        data[offset + i] = delayBuffer[readIndex];
-                        // Write current sample into the delay buffer
-                        delayBuffer[writeIndex] = currentSample;
-                        // Increment indices in circular buffer
-                        writeIndex = (writeIndex + 1) % delayBuffer.length;
-                        readIndex = (readIndex + 1) % delayBuffer.length;
-                    }
+                for (let i = 0; i < parameters.blockSize; i++) {
+                    const currentSample = data[offset + i];
+                    const progressed = Math.min(i + 1, context.delayRampRemaining);
+                    const delaySamples = context.delayRampRemaining === 0 ? context.currentDelaySamples :
+                        (progressed === context.delayRampRemaining && i + 1 >= context.delayRampRemaining ?
+                            context.targetDelaySamples : context.currentDelaySamples + context.delayStep * progressed);
+                    const lower = Math.floor(delaySamples);
+                    const fraction = delaySamples - lower;
+                    const lowerSample = lower === 0 ? currentSample :
+                        delayBuffer[(writeIndex + delayBuffer.length - lower) % delayBuffer.length];
+                    const upperSample = fraction === 0 || lower >= maxDelaySamples ? lowerSample :
+                        delayBuffer[(writeIndex + delayBuffer.length - lower - 1) % delayBuffer.length];
+                    data[offset + i] = lowerSample + (upperSample - lowerSample) * fraction;
+                    delayBuffer[writeIndex] = currentSample;
+                    writeIndex = (writeIndex + 1) % delayBuffer.length;
                 }
                 // Save updated write index for next block processing
                 context.delayIndices[ch] = writeIndex;
             }
+
+            const advanced = Math.min(parameters.blockSize, context.delayRampRemaining);
+            context.currentDelaySamples += context.delayStep * advanced;
+            context.delayRampRemaining -= advanced;
+            if (context.delayRampRemaining === 0) context.currentDelaySamples = context.targetDelaySamples;
 
             return data;
         `);

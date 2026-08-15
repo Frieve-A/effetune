@@ -12,7 +12,8 @@
       "min": 20,
       "max": 4000,
       "default": 60,
-      "unit": "Hz"
+      "unit": "Hz",
+      "automation": true
     },
     {
       "name": "highPassSlope",
@@ -30,7 +31,8 @@
       "min": 200,
       "max": 40000,
       "default": 5000,
-      "unit": "Hz"
+      "unit": "Hz",
+      "automation": true
     },
     {
       "name": "lowPassSlope",

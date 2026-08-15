@@ -6,10 +6,14 @@ if (!parameters.enabled) return data;
 
 const channelCount = parameters.channelCount;
 const blockSize = parameters.blockSize;
-const hpFreq = parameters.hf;
-const lpFreq = parameters.lf;
+const hpFreq = Math.fround(parameters.hf);
+const lpFreq = Math.fround(parameters.lf);
 const hpSlope = parameters.hs;
 const lpSlope = parameters.ls;
+
+if (!context.pingPongBuffer || context.pingPongBuffer.length !== blockSize * channelCount) {
+  context.pingPongBuffer = new Float32Array(blockSize * channelCount);
+}
 
 // Helper functions for Linkwitz-Riley design
 function computeButterworthQs(N) {
@@ -160,127 +164,82 @@ function applyMultiBiquadFilter(inputSignal, finalOutputSignal, coeffsArray, biq
   }
 }
 
-// --- Hi Pass Processing ---
-{
-  const freq = hpFreq;
-  const slope = hpSlope;
-  
-  let needsReset = !context.hpf || !context.hpf.filterStates || !context.hpf.filterConfig ||
-                   context.hpf.filterConfig.sampleRate !== sampleRate ||
-                   context.hpf.filterConfig.channelCount !== channelCount ||
-                   context.hpf.filterConfig.freq !== freq ||
-                   context.hpf.filterConfig.slope !== slope;
-
-  if (needsReset || !context.hpf.cachedCoeffs) {
-    const clampedFreq = Math.max(10.0, Math.min(freq, sampleRate * 0.499));
-    const hpSections = designLinkwitzRileySections(sampleRate, clampedFreq, Math.abs(slope), "hp");
-    
-    context.hpf = context.hpf || {};
-    context.hpf.cachedCoeffs = hpSections;
-    
-    // Initialize filter states based on actual section counts
-    if (needsReset) {
-      const dcOffset = 1e-25;
-      
-      const createSingleBiquadStateAndInit = () => {
-        const state = { 
-          x1: new Float32Array(channelCount), 
-          x2: new Float32Array(channelCount), 
-          y1: new Float32Array(channelCount), 
-          y2: new Float32Array(channelCount) 
-        };
-        for (let ch = 0; ch < channelCount; ch++) {
-          state.x1[ch] = dcOffset; 
-          state.x2[ch] = -dcOffset;
-          state.y1[ch] = dcOffset; 
-          state.y2[ch] = -dcOffset;
-        }
-        return state;
-      };
-      
-      context.hpf.filterStates = [];
-      if (context.hpf.cachedCoeffs && context.hpf.cachedCoeffs.length > 0) {
-        for (let j = 0; j < context.hpf.cachedCoeffs.length; j++) {
-          context.hpf.filterStates.push(createSingleBiquadStateAndInit());
-        }
-      }
-      
-      context.hpf.filterConfig = {
-        sampleRate, channelCount, freq, slope
-      };
-      
-      // Allocate pingPongBuffer for multi-stage filtering
-      if (!context.pingPongBuffer || context.pingPongBuffer.length !== blockSize * channelCount) {
-        context.pingPongBuffer = new Float32Array(blockSize * channelCount);
-      }
+function createFilterBank(freq, slope, type) {
+  const clampedFreq = Math.max(10.0, Math.min(freq, sampleRate * 0.45));
+  const cachedCoeffs = designLinkwitzRileySections(sampleRate, clampedFreq, Math.abs(slope), type);
+  const dcOffset = Math.fround(1e-25);
+  const filterStates = cachedCoeffs.map(() => {
+    const state = {
+      x1: new Float64Array(channelCount), x2: new Float64Array(channelCount),
+      y1: new Float64Array(channelCount), y2: new Float64Array(channelCount)
+    };
+    for (let ch = 0; ch < channelCount; ++ch) {
+      state.x1[ch] = dcOffset; state.x2[ch] = -dcOffset;
+      state.y1[ch] = dcOffset; state.y2[ch] = -dcOffset;
     }
-  }
-
-  // Apply Linkwitz-Riley high-pass filter
-  if (context.hpf.cachedCoeffs && context.hpf.cachedCoeffs.length > 0) {
-    applyMultiBiquadFilter(data, data, context.hpf.cachedCoeffs, context.hpf.filterStates);
-  }
+    return state;
+  });
+  return { cachedCoeffs, filterStates, sampleRate, channelCount, freq, slope };
 }
 
-// --- Lo Pass Processing ---
-{
-  const freq = lpFreq;
-  const slope = lpSlope;
-  
-  let needsReset = !context.lpf || !context.lpf.filterStates || !context.lpf.filterConfig ||
-                   context.lpf.filterConfig.sampleRate !== sampleRate ||
-                   context.lpf.filterConfig.channelCount !== channelCount ||
-                   context.lpf.filterConfig.freq !== freq ||
-                   context.lpf.filterConfig.slope !== slope;
+function createChain() {
+  return {
+    hpf: createFilterBank(hpFreq, hpSlope, "hp"),
+    lpf: createFilterBank(lpFreq, lpSlope, "lp")
+  };
+}
 
-  if (needsReset || !context.lpf.cachedCoeffs) {
-    const clampedFreq = Math.max(10.0, Math.min(freq, sampleRate * 0.499));
-    const lpSections = designLinkwitzRileySections(sampleRate, clampedFreq, Math.abs(slope), "lp");
-    
-    context.lpf = context.lpf || {};
-    context.lpf.cachedCoeffs = lpSections;
-    
-    // Initialize filter states based on actual section counts
-    if (needsReset) {
-      const dcOffset = 1e-25;
-      
-      const createSingleBiquadStateAndInit = () => {
-        const state = { 
-          x1: new Float32Array(channelCount), 
-          x2: new Float32Array(channelCount), 
-          y1: new Float32Array(channelCount), 
-          y2: new Float32Array(channelCount) 
-        };
-        for (let ch = 0; ch < channelCount; ch++) {
-          state.x1[ch] = dcOffset; 
-          state.x2[ch] = -dcOffset;
-          state.y1[ch] = dcOffset; 
-          state.y2[ch] = -dcOffset;
-        }
-        return state;
-      };
-      
-      context.lpf.filterStates = [];
-      if (context.lpf.cachedCoeffs && context.lpf.cachedCoeffs.length > 0) {
-        for (let j = 0; j < context.lpf.cachedCoeffs.length; j++) {
-          context.lpf.filterStates.push(createSingleBiquadStateAndInit());
-        }
-      }
-      
-      context.lpf.filterConfig = {
-        sampleRate, channelCount, freq, slope
-      };
-      
-      // Allocate pingPongBuffer for multi-stage filtering (reuse if already allocated)
-      if (!context.pingPongBuffer || context.pingPongBuffer.length !== blockSize * channelCount) {
-        context.pingPongBuffer = new Float32Array(blockSize * channelCount);
-      }
+function chainMatches(chain) {
+  return chain && chain.hpf.sampleRate === sampleRate && chain.hpf.channelCount === channelCount &&
+    chain.hpf.freq === hpFreq && chain.hpf.slope === hpSlope &&
+    chain.lpf.freq === lpFreq && chain.lpf.slope === lpSlope;
+}
+
+function applyChain(signal, chain) {
+  applyMultiBiquadFilter(signal, signal, chain.hpf.cachedCoeffs, chain.hpf.filterStates);
+  applyMultiBiquadFilter(signal, signal, chain.lpf.cachedCoeffs, chain.lpf.filterStates);
+}
+
+const sampleCount = blockSize * channelCount;
+if (!context.bandPass || !context.bandPass.chains[context.bandPass.active] ||
+    context.bandPass.chains[context.bandPass.active].hpf.sampleRate !== sampleRate ||
+    context.bandPass.chains[context.bandPass.active].hpf.channelCount !== channelCount) {
+  context.bandPass = { chains: [createChain(), null], active: 0, fadeFrame: 0, fadeFrames: 0 };
+}
+
+const transition = context.bandPass;
+if (transition.fadeFrames === 0 && !chainMatches(transition.chains[transition.active])) {
+  transition.chains[1 - transition.active] = createChain();
+  transition.fadeFrame = 0;
+  transition.fadeFrames = Math.max(1, Math.ceil(sampleRate * 0.005));
+}
+
+if (transition.fadeFrames === 0) {
+  applyChain(data, transition.chains[transition.active]);
+} else {
+  if (!context.transitionActive || context.transitionActive.length !== sampleCount) {
+    context.transitionActive = new Float32Array(sampleCount);
+    context.transitionTarget = new Float32Array(sampleCount);
+  }
+  context.transitionActive.set(data);
+  context.transitionTarget.set(data);
+  applyChain(context.transitionActive, transition.chains[transition.active]);
+  applyChain(context.transitionTarget, transition.chains[1 - transition.active]);
+
+  for (let ch = 0; ch < channelCount; ++ch) {
+    const offset = ch * blockSize;
+    for (let frame = 0; frame < blockSize; ++frame) {
+      const alpha = Math.min(1, (transition.fadeFrame + frame + 1) / transition.fadeFrames);
+      const index = offset + frame;
+      data[index] = context.transitionActive[index] * (1 - alpha) +
+        context.transitionTarget[index] * alpha;
     }
   }
-
-  // Apply Linkwitz-Riley low-pass filter
-  if (context.lpf.cachedCoeffs && context.lpf.cachedCoeffs.length > 0) {
-    applyMultiBiquadFilter(data, data, context.lpf.cachedCoeffs, context.lpf.filterStates);
+  transition.fadeFrame += blockSize;
+  if (transition.fadeFrame >= transition.fadeFrames) {
+    transition.active = 1 - transition.active;
+    transition.fadeFrame = 0;
+    transition.fadeFrames = 0;
   }
 }
 

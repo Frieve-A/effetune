@@ -22,11 +22,18 @@ const blockSize = parameters.blockSize;
 
 // --- Filter Coefficient Calculation (must be done first to determine section counts) ---
 // Strict Linkwitz-Riley implementation: Butterworth_N cascaded twice
-let needsReset = !context.filterStates || !context.filterConfig ||
-                 context.filterConfig.sampleRate !== sampleRate ||
-                 context.filterConfig.channelCount !== channelCount ||
-                 context.filterConfig.freq !== freq ||
-                 context.filterConfig.slope !== slope;
+let topologyReset = !context.filterStates || !context.filterConfig ||
+                    context.filterConfig.sampleRate !== sampleRate ||
+                    context.filterConfig.channelCount !== channelCount ||
+                    context.filterConfig.slope !== slope;
+let frequencyChanged = !topologyReset && context.filterConfig.freq !== freq;
+if (!frequencyChanged && context.transitionRemaining > 0) {
+  context.pendingFreq = undefined;
+  context.pendingCoeffs = null;
+}
+const queueFrequencyChange = frequencyChanged && context.transitionRemaining > 0;
+if (queueFrequencyChange && context.pendingFreq === freq) frequencyChanged = false;
+let needsReset = topologyReset || frequencyChanged;
 
 if (needsReset || !context.cachedCoeffs) {
   // Helper functions for Linkwitz-Riley design
@@ -121,10 +128,8 @@ if (needsReset || !context.cachedCoeffs) {
   const clampedFreq = Math.max(10.0, Math.min(freq, sampleRate * 0.499));
   const hpSections = designLinkwitzRileySections(sampleRate, clampedFreq, Math.abs(slope), "hp");
   
-  context.cachedCoeffs = hpSections;
-  
   // Initialize filter states based on actual section counts
-  if (needsReset) {
+  if (topologyReset) {
     const dcOffset = 1e-25;
     
     const createSingleBiquadStateAndInit = () => {
@@ -143,9 +148,10 @@ if (needsReset || !context.cachedCoeffs) {
       return state;
     };
     
+    context.cachedCoeffs = hpSections;
     context.filterStates = [];
-    if (context.cachedCoeffs && context.cachedCoeffs.length > 0) {
-      for (let j = 0; j < context.cachedCoeffs.length; j++) {
+    if (hpSections.length > 0) {
+      for (let j = 0; j < hpSections.length; j++) {
         context.filterStates.push(createSingleBiquadStateAndInit());
       }
     }
@@ -155,10 +161,30 @@ if (needsReset || !context.cachedCoeffs) {
     };
     
     // Allocate pingPongBuffer for multi-stage filtering
-    if (!context.pingPongBuffer || context.pingPongBuffer.length !== blockSize * channelCount) {
-      context.pingPongBuffer = new Float32Array(blockSize * channelCount);
+    context.transitionRemaining = 0;
+    context.pendingFreq = undefined;
+    context.pendingCoeffs = null;
+  } else if (frequencyChanged) {
+    if (queueFrequencyChange) {
+      context.pendingFreq = freq;
+      context.pendingCoeffs = hpSections;
+    } else {
+      context.transitionCoeffs = hpSections;
+      context.transitionStates = context.filterStates.map(state => ({
+        x1: state.x1.slice(), x2: state.x2.slice(), y1: state.y1.slice(), y2: state.y2.slice()
+      }));
+      context.transitionRemaining = Math.max(1, Math.ceil(sampleRate * 0.005));
+      context.transitionTotal = context.transitionRemaining;
+      context.filterConfig.freq = freq;
     }
   }
+}
+
+const bufferLength = blockSize * channelCount;
+if (!context.pingPongBuffer || context.pingPongBuffer.length !== bufferLength) {
+  context.pingPongBuffer = new Float32Array(bufferLength);
+  context.sourceBuffer = new Float32Array(bufferLength);
+  context.transitionOutput = new Float32Array(bufferLength);
 }
 
 // --- Audio Processing ---
@@ -228,8 +254,61 @@ function applyMultiBiquadFilter(inputSignal, finalOutputSignal, coeffsArray, biq
   }
 }
 
-// Apply Linkwitz-Riley high-pass filter
-applyMultiBiquadFilter(data, data, context.cachedCoeffs, context.filterStates);
+function processCascadeSample(input, channel, coeffsArray, statesArray) {
+  let output = input;
+  for (let section = 0; section < coeffsArray.length; ++section) {
+    const c = coeffsArray[section];
+    const state = statesArray[section];
+    const x1 = state.x1[channel], x2 = state.x2[channel];
+    const y1 = state.y1[channel], y2 = state.y2[channel];
+    const filtered = c.b0 * output + c.b1 * x1 + c.b2 * x2 - c.a1 * y1 - c.a2 * y2;
+    state.x2[channel] = x1; state.x1[channel] = output;
+    state.y2[channel] = y1; state.y1[channel] = filtered;
+    output = filtered;
+  }
+  return output;
+}
+
+// Apply Linkwitz-Riley high-pass filter. Frequency-only changes render a
+// second state-preserving bank and crossfade over 5 ms.
+if (context.transitionRemaining > 0) {
+  for (let i = 0; i < blockSize; ++i) {
+    if (context.transitionRemaining > 0) {
+      const mix = 1 - context.transitionRemaining / context.transitionTotal;
+      for (let ch = 0; ch < channelCount; ++ch) {
+        const index = ch * blockSize + i;
+        const input = data[index];
+        const oldOutput = processCascadeSample(input, ch, context.cachedCoeffs, context.filterStates);
+        const newOutput = processCascadeSample(input, ch, context.transitionCoeffs, context.transitionStates);
+        data[index] = oldOutput + mix * (newOutput - oldOutput);
+      }
+      --context.transitionRemaining;
+      if (context.transitionRemaining === 0) {
+        context.cachedCoeffs = context.transitionCoeffs;
+        context.filterStates = context.transitionStates;
+        context.transitionCoeffs = null;
+        context.transitionStates = null;
+        if (context.pendingCoeffs) {
+          context.transitionCoeffs = context.pendingCoeffs;
+          context.transitionStates = context.filterStates.map(state => ({
+            x1: state.x1.slice(), x2: state.x2.slice(), y1: state.y1.slice(), y2: state.y2.slice()
+          }));
+          context.transitionRemaining = context.transitionTotal;
+          context.filterConfig.freq = context.pendingFreq;
+          context.pendingFreq = undefined;
+          context.pendingCoeffs = null;
+        }
+      }
+    } else {
+      for (let ch = 0; ch < channelCount; ++ch) {
+        const index = ch * blockSize + i;
+        data[index] = processCascadeSample(data[index], ch, context.cachedCoeffs, context.filterStates);
+      }
+    }
+  }
+} else {
+  applyMultiBiquadFilter(data, data, context.cachedCoeffs, context.filterStates);
+}
 
 return data; // Return the modified data array
 `;

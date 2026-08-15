@@ -83,11 +83,25 @@ This runs:
 The precache check never regenerates a stale `sw-precache.js`; if it fails, run
 `npm run assets:web` and then rerun `npm run verify`.
 
-Before pushing, also check the committed dependency graph:
+Before every commit, run the owning audit and outdated checks for every
+dependency manifest. For the root npm dependency graph, run:
 
 ```bash
 npm audit --audit-level=moderate
+npm outdated
 ```
+
+Also inspect all current Dependabot alerts and pull requests, including GitHub
+Actions updates. Resolve every available update in the prospective commit or an
+earlier local commit; routine and development-only updates are not deferred to a
+later Dependabot run.
+
+Install or configure missing audit and analysis tooling as part of commit
+readiness. Run every check supported by the current host. When a check genuinely
+requires an unavailable operating system, hardware capability, credential,
+external service, or equivalent environment, record only that omitted scope and
+its residual risk and continue with the remaining checks; a missing local tool or
+ordinary configuration is not by itself an acceptable omission.
 
 When dependency metadata changes, reproduce the CI install and supply-chain
 checks before the normal verification. Do not use `--force` or

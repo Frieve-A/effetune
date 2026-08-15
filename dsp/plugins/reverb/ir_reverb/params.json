@@ -12,6 +12,6 @@
     { "name": "wetLevel", "key": "dw", "kind": "float", "min": -96, "max": 12, "default": -15, "unit": "dB", "automation": true },
     { "name": "dryEnabled", "key": "de", "kind": "bool", "default": true },
     { "name": "dryLevel", "key": "dl", "kind": "float", "min": -96, "max": 12, "default": 0, "unit": "dB", "automation": true },
-    { "name": "preDelay", "key": "pd", "kind": "float", "min": 0, "max": 500, "default": 0, "unit": "ms" }
+    { "name": "preDelay", "key": "pd", "kind": "float", "min": 0, "max": 500, "default": 0, "unit": "ms", "automation": true }
   ]
 }

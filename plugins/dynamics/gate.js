@@ -133,11 +133,28 @@ class GatePlugin extends PluginBase {
     
             // Cache frequently used gate parameters
             const gateParams = context.gateParams;
-            const threshold = gateParams.th;
-            const halfKnee = gateParams.halfKnee;
-            const invRatio = gateParams.invRatio; // Note: This is ratio - 1
-            const gainParam = gateParams.gn;    // Gain parameter in dB
-            const kneeWidth = gateParams.kn;    // Cached knee width
+            const curveTargets = [gateParams.th, gateParams.rt, gateParams.kn, gateParams.gn];
+            if (!context.curveCurrent) {
+                context.curveCurrent = curveTargets.slice();
+                context.curveTargets = curveTargets.slice();
+                context.curveSteps = [0, 0, 0, 0];
+                context.curveRemaining = [0, 0, 0, 0];
+            } else if (curveTargets.some((value, index) => value !== context.curveTargets[index])) {
+                const frames = Math.max(1, Math.floor(parameters.sampleRate * 0.005));
+                curveTargets.forEach((value, index) => {
+                    if (value === context.curveTargets[index]) return;
+                    context.curveTargets[index] = value;
+                    context.curveSteps[index] =
+                        (value - context.curveCurrent[index]) / frames;
+                    context.curveRemaining[index] = frames;
+                });
+            }
+            const curveValue = (index, frame) => {
+                const elapsed = Math.min(frame + 1, context.curveRemaining[index]);
+                return elapsed === context.curveRemaining[index]
+                    ? context.curveTargets[index]
+                    : context.curveCurrent[index] + context.curveSteps[index] * elapsed;
+            };
     
             // Initialize envelope state per channel if not already set or channel count changed
             // Check channelCount directly as it's the dependency
@@ -188,15 +205,6 @@ class GatePlugin extends PluginBase {
             const lutMinDb = context.MIN_DB;
             const lutExpMaxIndex = expLookupSize - 1;
             const lutDbMaxIndex = dbLookupSize - 1;
-    
-            // Precompute output gain independently from gate reduction.
-            let outputGainFactor;
-            if (context.precomputedOutputGainFactor === undefined) { // Check if invalidated
-                outputGainFactor = Math.exp(gainParam * gainFactor);
-                context.precomputedOutputGainFactor = outputGainFactor; // Cache the computed value
-                // context.lastGn is implicitly tracked by gateParams check above
-            }
-            outputGainFactor = context.precomputedOutputGainFactor; // Use the precomputed/cached value
     
             // --- Main Processing Loop ---
             let blockMaxGainReduction = 0; // Track max GR for measurements
@@ -268,26 +276,30 @@ class GatePlugin extends PluginBase {
                         envelopeDb1 = dbLookup[db_idx1];
                     }
                     // --- End Inlined fastDb ---
-                    let diff1 = threshold - envelopeDb1;
+                    const threshold1 = curveValue(0, i);
+                    const invRatio1 = curveValue(1, i) - 1.0;
+                    const kneeWidth1 = curveValue(2, i);
+                    const halfKnee1 = kneeWidth1 * 0.5;
+                    let diff1 = threshold1 - envelopeDb1;
                     let gainReduction1 = 0;
                     // Calculate gain reduction only if ratio > 1 and input is above lower knee boundary
-                    if (invRatio > 1e-9 && diff1 > -halfKnee) { // Use epsilon for float comparison, invRatio > 0 means ratio > 1
-                        if (diff1 >= halfKnee) { // Above knee: Hard knee characteristic
-                            gainReduction1 = diff1 * invRatio;
+                    if (invRatio1 > 1e-9 && diff1 > -halfKnee1) { // Use epsilon for float comparison, invRatio > 0 means ratio > 1
+                        if (diff1 >= halfKnee1) { // Above knee: Hard knee characteristic
+                            gainReduction1 = diff1 * invRatio1;
                         } else { // In knee: Soft knee characteristic
                             // Avoid division by zero/small kneeWidth
-                            if (kneeWidth > 1e-9) {
-                               const kneeFactor1 = (diff1 + halfKnee) / kneeWidth; // Position within the knee (0 to 1)
+                            if (kneeWidth1 > 1e-9) {
+                               const kneeFactor1 = (diff1 + halfKnee1) / kneeWidth1; // Position within the knee (0 to 1)
                                // Original formula structure: GR = invRatio * kneeWidth * 0.5 * kneeFactor^2
                                // Ensure factor is non-negative before squaring (should be due to diff > -halfKnee)
-                               gainReduction1 = 0.5 * invRatio * kneeWidth * kneeFactor1 * kneeFactor1;
+                               gainReduction1 = 0.5 * invRatio1 * kneeWidth1 * kneeFactor1 * kneeFactor1;
                             } // Else: kneeWidth is near zero, effectively hard knee (handled by diff >= halfKnee)
                         }
                         // Ensure gain reduction is not negative (can happen with numerical instability)
                         if (gainReduction1 < 0) gainReduction1 = 0;
                     }
                     if (gainReduction1 > blockMaxGainReduction) blockMaxGainReduction = gainReduction1;
-                    let totalGainLin1 = outputGainFactor;
+                    let totalGainLin1 = Math.exp(curveValue(3, i) * gainFactor);
                     if (gainReduction1 > 1e-9) { // Apply reduction only if it is significant
                         // --- Inlined fastExp(gainReduction1) ---
                         let reductionGainLin1;
@@ -316,15 +328,17 @@ class GatePlugin extends PluginBase {
                         const db_idx2 = db_idx2_floor < 0 ? 0 : (db_idx2_floor > lutDbMaxIndex ? lutDbMaxIndex : db_idx2_floor);
                         envelopeDb2 = dbLookup[db_idx2];
                     }
-                    let diff2 = threshold - envelopeDb2;
+                    const threshold2 = curveValue(0, i + 1), invRatio2 = curveValue(1, i + 1) - 1.0;
+                    const kneeWidth2 = curveValue(2, i + 1), halfKnee2 = kneeWidth2 * 0.5;
+                    let diff2 = threshold2 - envelopeDb2;
                     let gainReduction2 = 0;
-                    if (invRatio > 1e-9 && diff2 > -halfKnee) {
-                        if (diff2 >= halfKnee) { gainReduction2 = diff2 * invRatio; }
-                        else { if (kneeWidth > 1e-9) { const kneeFactor2 = (diff2 + halfKnee) / kneeWidth; gainReduction2 = 0.5 * invRatio * kneeWidth * kneeFactor2 * kneeFactor2; } }
+                    if (invRatio2 > 1e-9 && diff2 > -halfKnee2) {
+                        if (diff2 >= halfKnee2) { gainReduction2 = diff2 * invRatio2; }
+                        else { if (kneeWidth2 > 1e-9) { const kneeFactor2 = (diff2 + halfKnee2) / kneeWidth2; gainReduction2 = 0.5 * invRatio2 * kneeWidth2 * kneeFactor2 * kneeFactor2; } }
                         if (gainReduction2 < 0) gainReduction2 = 0;
                     }
                     if (gainReduction2 > blockMaxGainReduction) blockMaxGainReduction = gainReduction2;
-                    let totalGainLin2 = outputGainFactor;
+                    let totalGainLin2 = Math.exp(curveValue(3, i + 1) * gainFactor);
                     if (gainReduction2 > 1e-9) {
                         let reductionGainLin2;
                         if (gainReduction2 >= 60) { reductionGainLin2 = expLookup[lutExpMaxIndex]; }
@@ -351,15 +365,17 @@ class GatePlugin extends PluginBase {
                         const db_idx3 = db_idx3_floor < 0 ? 0 : (db_idx3_floor > lutDbMaxIndex ? lutDbMaxIndex : db_idx3_floor);
                         envelopeDb3 = dbLookup[db_idx3];
                     }
-                    let diff3 = threshold - envelopeDb3;
+                    const threshold3 = curveValue(0, i + 2), invRatio3 = curveValue(1, i + 2) - 1.0;
+                    const kneeWidth3 = curveValue(2, i + 2), halfKnee3 = kneeWidth3 * 0.5;
+                    let diff3 = threshold3 - envelopeDb3;
                     let gainReduction3 = 0;
-                    if (invRatio > 1e-9 && diff3 > -halfKnee) {
-                        if (diff3 >= halfKnee) { gainReduction3 = diff3 * invRatio; }
-                        else { if (kneeWidth > 1e-9) { const kneeFactor3 = (diff3 + halfKnee) / kneeWidth; gainReduction3 = 0.5 * invRatio * kneeWidth * kneeFactor3 * kneeFactor3; } }
+                    if (invRatio3 > 1e-9 && diff3 > -halfKnee3) {
+                        if (diff3 >= halfKnee3) { gainReduction3 = diff3 * invRatio3; }
+                        else { if (kneeWidth3 > 1e-9) { const kneeFactor3 = (diff3 + halfKnee3) / kneeWidth3; gainReduction3 = 0.5 * invRatio3 * kneeWidth3 * kneeFactor3 * kneeFactor3; } }
                         if (gainReduction3 < 0) gainReduction3 = 0;
                     }
                     if (gainReduction3 > blockMaxGainReduction) blockMaxGainReduction = gainReduction3;
-                    let totalGainLin3 = outputGainFactor;
+                    let totalGainLin3 = Math.exp(curveValue(3, i + 2) * gainFactor);
                     if (gainReduction3 > 1e-9) {
                         let reductionGainLin3;
                         if (gainReduction3 >= 60) { reductionGainLin3 = expLookup[lutExpMaxIndex]; }
@@ -386,15 +402,17 @@ class GatePlugin extends PluginBase {
                         const db_idx4 = db_idx4_floor < 0 ? 0 : (db_idx4_floor > lutDbMaxIndex ? lutDbMaxIndex : db_idx4_floor);
                         envelopeDb4 = dbLookup[db_idx4];
                     }
-                    let diff4 = threshold - envelopeDb4;
+                    const threshold4 = curveValue(0, i + 3), invRatio4 = curveValue(1, i + 3) - 1.0;
+                    const kneeWidth4 = curveValue(2, i + 3), halfKnee4 = kneeWidth4 * 0.5;
+                    let diff4 = threshold4 - envelopeDb4;
                     let gainReduction4 = 0;
-                    if (invRatio > 1e-9 && diff4 > -halfKnee) {
-                        if (diff4 >= halfKnee) { gainReduction4 = diff4 * invRatio; }
-                        else { if (kneeWidth > 1e-9) { const kneeFactor4 = (diff4 + halfKnee) / kneeWidth; gainReduction4 = 0.5 * invRatio * kneeWidth * kneeFactor4 * kneeFactor4; } }
+                    if (invRatio4 > 1e-9 && diff4 > -halfKnee4) {
+                        if (diff4 >= halfKnee4) { gainReduction4 = diff4 * invRatio4; }
+                        else { if (kneeWidth4 > 1e-9) { const kneeFactor4 = (diff4 + halfKnee4) / kneeWidth4; gainReduction4 = 0.5 * invRatio4 * kneeWidth4 * kneeFactor4 * kneeFactor4; } }
                         if (gainReduction4 < 0) gainReduction4 = 0;
                     }
                     if (gainReduction4 > blockMaxGainReduction) blockMaxGainReduction = gainReduction4;
-                    let totalGainLin4 = outputGainFactor;
+                    let totalGainLin4 = Math.exp(curveValue(3, i + 3) * gainFactor);
                     if (gainReduction4 > 1e-9) {
                         let reductionGainLin4;
                         if (gainReduction4 >= 60) { reductionGainLin4 = expLookup[lutExpMaxIndex]; }
@@ -435,17 +453,21 @@ class GatePlugin extends PluginBase {
                      }
                     // --- End Inlined fastDb ---
     
-                    let diff = threshold - envelopeDb;
+                    const currentThreshold = curveValue(0, i);
+                    const currentInvRatio = curveValue(1, i) - 1.0;
+                    const currentKneeWidth = curveValue(2, i);
+                    const currentHalfKnee = currentKneeWidth * 0.5;
+                    let diff = currentThreshold - envelopeDb;
                     let gainReduction = 0;
-                    if (invRatio > 1e-9 && diff > -halfKnee) {
-                        if (diff >= halfKnee) { gainReduction = diff * invRatio; }
-                        else { if (kneeWidth > 1e-9) { const kneeFactor = (diff + halfKnee) / kneeWidth; gainReduction = 0.5 * invRatio * kneeWidth * kneeFactor * kneeFactor; } }
+                    if (currentInvRatio > 1e-9 && diff > -currentHalfKnee) {
+                        if (diff >= currentHalfKnee) { gainReduction = diff * currentInvRatio; }
+                        else { if (currentKneeWidth > 1e-9) { const kneeFactor = (diff + currentHalfKnee) / currentKneeWidth; gainReduction = 0.5 * currentInvRatio * currentKneeWidth * kneeFactor * kneeFactor; } }
                         if (gainReduction < 0) gainReduction = 0;
                     }
     
                     if (gainReduction > blockMaxGainReduction) blockMaxGainReduction = gainReduction;
     
-                    let totalGainLin = outputGainFactor;
+                    let totalGainLin = Math.exp(curveValue(3, i) * gainFactor);
                     if (gainReduction > 1e-9) { // Apply reduction only if it is significant
                         // --- Inlined fastExp(gainReduction) ---
                          let reductionGainLin;
@@ -468,6 +490,16 @@ class GatePlugin extends PluginBase {
                 // Update envelope state for the next block
                 envelopeStates[ch] = envelope;
             } // End of channel loop
+
+            context.curveCurrent = context.curveCurrent.map((value, index) => {
+                if (blockSize >= context.curveRemaining[index]) {
+                    context.curveRemaining[index] = 0;
+                    context.curveSteps[index] = 0;
+                    return context.curveTargets[index];
+                }
+                context.curveRemaining[index] -= blockSize;
+                return value + context.curveSteps[index] * blockSize;
+            });
     
             // --- Set measurements ---
             // Attaching properties to a TypedArray is non-standard but replicates original behavior.

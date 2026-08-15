@@ -2,6 +2,7 @@
 #include "MultiChannelPanelPluginParams.h"
 #include "binary_io.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -35,6 +36,8 @@ public:
     delay_capacity_ = requested_delay < 1.0 ? 1u : static_cast<std::uint32_t>(requested_delay);
     const double requested_peaks = std::floor(static_cast<double>(sample_rate_) / 30.0);
     peak_capacity_ = requested_peaks < 1.0 ? 1u : static_cast<std::uint32_t>(requested_peaks);
+    ramp_frames_ = std::max(
+        1u, static_cast<std::uint32_t>(std::ceil(static_cast<double>(sample_rate_) * 0.005)));
     delay_lines_.resize(static_cast<std::size_t>(kMaximumChannels) * delay_capacity_);
     peak_windows_.resize(static_cast<std::size_t>(kMaximumChannels) * peak_capacity_);
     reset();
@@ -52,6 +55,8 @@ public:
     blocks_per_window_ = 0u;
     block_index_ = 0u;
     telemetry_channels_ = 0u;
+    control_initialized_.fill(0u);
+    ramp_remaining_.fill(0u);
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -94,59 +99,32 @@ public:
       double volume_db = static_cast<double>(params_.volume[channel]);
       if (!std::isfinite(volume_db))
         volume_db = 0.0;
-      const double linear_gain = std::pow(10.0, volume_db / 20.0);
+      const double target_gain = std::pow(10.0, volume_db / 20.0);
       double delay_ms = static_cast<double>(params_.delay[channel]);
       if (!std::isfinite(delay_ms))
         delay_ms = 0.0;
-      int delay_samples =
-          static_cast<int>(std::floor(delay_ms * static_cast<double>(sample_rate_) * 0.001));
-      if (delay_samples < 0)
-        delay_samples = 0;
-      if (delay_samples > static_cast<int>(delay_capacity_)) {
-        delay_samples = static_cast<int>(delay_capacity_);
-      }
+      const double target_delay = std::clamp(delay_ms * static_cast<double>(sample_rate_) * 0.001,
+                                             0.0, static_cast<double>(delay_capacity_));
+      retargetChannel(channel, target_gain, target_delay);
 
       float *channel_audio = audio + static_cast<std::size_t>(channel) * frame_count;
       float *delay_line = delay_lines_.data() + static_cast<std::size_t>(channel) * delay_capacity_;
       std::uint32_t write_index = write_indices_[channel];
       float block_peak = 0.0F;
 
-      if (delay_samples == 0) {
-        for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-          const float input = channel_audio[frame];
-          const float absolute = input < 0.0F ? -input : input;
-          if (absolute > block_peak)
-            block_peak = absolute;
-          const float processed =
-              effectively_muted ? 0.0F
-                                : static_cast<float>(static_cast<double>(input) * linear_gain);
-          channel_audio[frame] = processed;
-          delay_line[write_index] = processed;
-          ++write_index;
-          if (write_index == delay_capacity_)
-            write_index = 0u;
-        }
-      } else {
-        std::uint32_t read_index =
-            (write_index + delay_capacity_ - static_cast<std::uint32_t>(delay_samples)) %
-            delay_capacity_;
-        for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-          const float input = channel_audio[frame];
-          const float absolute = input < 0.0F ? -input : input;
-          if (absolute > block_peak)
-            block_peak = absolute;
-          const float delayed = delay_line[read_index];
-          delay_line[write_index] =
-              effectively_muted ? 0.0F
-                                : static_cast<float>(static_cast<double>(input) * linear_gain);
-          channel_audio[frame] = delayed;
-          ++write_index;
-          if (write_index == delay_capacity_)
-            write_index = 0u;
-          ++read_index;
-          if (read_index == delay_capacity_)
-            read_index = 0u;
-        }
+      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        advanceChannel(channel);
+        const float input = channel_audio[frame];
+        const float absolute = input < 0.0F ? -input : input;
+        if (absolute > block_peak)
+          block_peak = absolute;
+        const float processed =
+            effectively_muted ? 0.0F
+                              : static_cast<float>(static_cast<double>(input) * gains_[channel]);
+        channel_audio[frame] = readFractional(delay_line, write_index, processed, delays_[channel]);
+        delay_line[write_index] = processed;
+        if (++write_index == delay_capacity_)
+          write_index = 0u;
       }
       write_indices_[channel] = write_index;
 
@@ -183,6 +161,48 @@ public:
   }
 
 private:
+  void retargetChannel(std::uint32_t channel, double gain, double delay) noexcept {
+    if (control_initialized_[channel] == 0u) {
+      gains_[channel] = target_gains_[channel] = gain;
+      delays_[channel] = target_delays_[channel] = delay;
+      control_initialized_[channel] = 1u;
+      return;
+    }
+    if (target_gains_[channel] == gain && target_delays_[channel] == delay)
+      return;
+    target_gains_[channel] = gain;
+    target_delays_[channel] = delay;
+    gain_steps_[channel] = (gain - gains_[channel]) / static_cast<double>(ramp_frames_);
+    delay_steps_[channel] = (delay - delays_[channel]) / static_cast<double>(ramp_frames_);
+    ramp_remaining_[channel] = ramp_frames_;
+  }
+
+  void advanceChannel(std::uint32_t channel) noexcept {
+    if (ramp_remaining_[channel] == 0u)
+      return;
+    gains_[channel] += gain_steps_[channel];
+    delays_[channel] += delay_steps_[channel];
+    if (--ramp_remaining_[channel] == 0u) {
+      gains_[channel] = target_gains_[channel];
+      delays_[channel] = target_delays_[channel];
+    }
+  }
+
+  [[nodiscard]] float readFractional(const float *line, std::uint32_t write_index, float current,
+                                     double delay) const noexcept {
+    if (delay <= 0.0)
+      return current;
+    const std::uint32_t lower = static_cast<std::uint32_t>(delay);
+    const double fraction = delay - static_cast<double>(lower);
+    const float newer =
+        lower == 0u ? current : line[(write_index + delay_capacity_ - lower) % delay_capacity_];
+    if (fraction == 0.0 || lower >= delay_capacity_)
+      return newer;
+    const float older = line[(write_index + delay_capacity_ - lower - 1u) % delay_capacity_];
+    return static_cast<float>(static_cast<double>(newer) +
+                              (static_cast<double>(older) - newer) * fraction);
+  }
+
   void clearDelayState() noexcept {
     for (float &sample : delay_lines_)
       sample = 0.0F;
@@ -202,6 +222,14 @@ private:
   std::array<std::uint32_t, kMaximumChannels> write_indices_{};
   std::array<float, kMaximumChannels> window_peaks_{};
   std::array<std::uint8_t, kMaximumChannels> effectively_muted_{};
+  std::array<std::uint8_t, kMaximumChannels> control_initialized_{};
+  std::array<double, kMaximumChannels> gains_{};
+  std::array<double, kMaximumChannels> target_gains_{};
+  std::array<double, kMaximumChannels> gain_steps_{};
+  std::array<double, kMaximumChannels> delays_{};
+  std::array<double, kMaximumChannels> target_delays_{};
+  std::array<double, kMaximumChannels> delay_steps_{};
+  std::array<std::uint32_t, kMaximumChannels> ramp_remaining_{};
   std::array<std::uint8_t, kMaximumPayloadBytes> payload_{};
   std::uint32_t delay_capacity_ = 1u;
   std::uint32_t peak_capacity_ = 1u;
@@ -209,6 +237,7 @@ private:
   std::uint32_t blocks_per_window_ = 0u;
   std::uint32_t block_index_ = 0u;
   std::uint32_t telemetry_channels_ = 0u;
+  std::uint32_t ramp_frames_ = 240u;
 };
 
 EFFETUNE_REGISTER_KERNEL(MultiChannelPanelPlugin, MultiChannelPanelKernel)

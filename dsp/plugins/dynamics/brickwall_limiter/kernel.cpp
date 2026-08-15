@@ -80,7 +80,7 @@ public:
     std::fill(x_buffer_.begin(), x_buffer_.end(), 0.0F);
     std::fill(z_buffer_.begin(), z_buffer_.end(), 0.0F);
     std::fill(gain_states_.begin(), gain_states_.end(), 1.0F);
-    std::fill(threshold_lookup_.begin(), threshold_lookup_.end(), 1.0F);
+    buildThresholdLookup();
     delay_line_.reset();
     prototype_.fill(0.0F);
     for (auto &phase : polyphase_) {
@@ -92,11 +92,10 @@ public:
     active_delay_samples_ = 0u;
     active_lookahead_ = 0.0;
     maximum_phase_length_ = 0u;
-    threshold_linear_ = 1.0;
+    controls_initialized_ = false;
     latest_reduction_db_ = 0.0F;
     topology_initialized_ = false;
     path_initialized_ = false;
-    threshold_lookup_valid_ = false;
     has_measurement_ = false;
   }
 
@@ -115,21 +114,24 @@ public:
 
     constexpr double kLn10Over20 = 0.11512925464970229;
     const double input_gain = std::exp(static_cast<double>(params_.inputGain) * kLn10Over20);
-    const std::size_t sample_count = static_cast<std::size_t>(channel_count) * frame_count;
-    for (std::size_t index = 0u; index < sample_count; ++index) {
-      input_buffer_[index] = static_cast<float>(static_cast<double>(audio[index]) * input_gain);
+    const double effective_threshold =
+        std::exp((static_cast<double>(params_.threshold) + static_cast<double>(params_.margin)) *
+                 kLn10Over20);
+    prepareControlRamps(input_gain, effective_threshold, oversampling);
+    for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+      const std::size_t offset = static_cast<std::size_t>(channel) * frame_count;
+      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        input_buffer_[offset + frame] = static_cast<float>(
+            static_cast<double>(audio[offset + frame]) * input_gain_ramp_.value(frame));
+      }
     }
+    input_gain_ramp_.advance(frame_count);
 
     double release_ms = static_cast<double>(params_.release);
     if (release_ms < 10.0) {
       release_ms = 10.0;
     }
     const double release_seconds = release_ms * 0.001;
-    const double effective_threshold =
-        std::exp((static_cast<double>(params_.threshold) + static_cast<double>(params_.margin)) *
-                 kLn10Over20);
-    updateThresholdLookup(effective_threshold);
-
     if (oversampling == 1u) {
       processOriginalRate(audio, channel_count, frame_count, release_seconds);
     } else {
@@ -158,6 +160,52 @@ private:
   static constexpr double kLookupScale = 1024.0 / kLookupMaximum;
   static constexpr double kPi = 3.141592653589793;
 
+  struct LinearRamp {
+    double current = 1.0;
+    double target = 1.0;
+    double step = 0.0;
+    std::uint32_t remaining = 0u;
+    void snap(double value) noexcept {
+      current = target = value;
+      step = 0.0;
+      remaining = 0u;
+    }
+    void retarget(double value, std::uint32_t frames) noexcept {
+      if (value == target)
+        return;
+      target = value;
+      remaining = frames;
+      step = (target - current) / static_cast<double>(frames);
+    }
+    [[nodiscard]] double value(std::uint32_t frame) const noexcept {
+      return frame >= remaining ? target : current + step * static_cast<double>(frame);
+    }
+    void advance(std::uint32_t frames) noexcept {
+      if (frames >= remaining) {
+        current = target;
+        step = 0.0;
+        remaining = 0u;
+      } else {
+        current += step * static_cast<double>(frames);
+        remaining -= frames;
+      }
+    }
+  };
+
+  void prepareControlRamps(double input_gain, double threshold,
+                           std::uint32_t oversampling) noexcept {
+    if (!controls_initialized_) {
+      input_gain_ramp_.snap(input_gain);
+      threshold_ramp_.snap(threshold);
+      controls_initialized_ = true;
+      return;
+    }
+    const auto input_frames =
+        static_cast<std::uint32_t>(std::max(1.0, std::ceil(sample_rate_ * 0.005)));
+    input_gain_ramp_.retarget(input_gain, input_frames);
+    threshold_ramp_.retarget(threshold, input_frames * oversampling);
+  }
+
   [[nodiscard]] std::uint32_t normalizedOversampling() const noexcept {
     const auto value = static_cast<std::uint32_t>(params_.oversampling);
     return value == 2u || value == 4u || value == 8u ? value : 1u;
@@ -185,7 +233,7 @@ private:
     active_delay_samples_ = 0u;
     active_lookahead_ = 0.0;
     path_initialized_ = false;
-    threshold_lookup_valid_ = false;
+    controls_initialized_ = false;
     delay_line_.reset();
     std::fill(gain_states_.begin(), gain_states_.end(), 1.0F);
     std::fill(upsample_states_.begin(), upsample_states_.end(), 0.0F);
@@ -199,35 +247,26 @@ private:
     topology_initialized_ = true;
   }
 
-  void updateThresholdLookup(double threshold) noexcept {
-    if (threshold_lookup_valid_ && threshold == threshold_linear_) {
-      return;
-    }
+  void buildThresholdLookup() noexcept {
     constexpr double kInverseLookupSize = 1.0 / static_cast<double>(kLookupSize);
     for (std::uint32_t index = 0u; index < kLookupSize; ++index) {
       const double magnitude = static_cast<double>(index) * kInverseLookupSize * kLookupMaximum;
-      double gain = 1.0;
-      if (magnitude > 1.0e-6 && magnitude > threshold) {
-        gain = threshold / magnitude;
-      }
-      threshold_lookup_[index] = static_cast<float>(gain);
+      threshold_lookup_[index] = magnitude > 1.0e-6 ? static_cast<float>(1.0 / magnitude) : 0.0F;
     }
-    threshold_linear_ = threshold;
-    threshold_lookup_valid_ = true;
   }
 
-  [[nodiscard]] double thresholdGain(double magnitude) const noexcept {
-    if (magnitude <= 1.0e-6 || magnitude <= threshold_linear_) {
+  [[nodiscard]] double thresholdGain(double magnitude, double threshold) const noexcept {
+    if (magnitude <= 1.0e-6 || magnitude <= threshold) {
       return 1.0;
     }
     if (magnitude > kLookupMaximum) {
-      return threshold_linear_ / magnitude;
+      return threshold / magnitude;
     }
     std::uint32_t index = static_cast<std::uint32_t>(magnitude * kLookupScale);
     if (index >= kLookupSize) {
       index = kLookupSize - 1u;
     }
-    return static_cast<double>(threshold_lookup_[index]);
+    return threshold * static_cast<double>(threshold_lookup_[index]);
   }
 
   [[nodiscard]] std::uint32_t originalDelaySamples() const noexcept {
@@ -259,12 +298,13 @@ private:
         delay_line_.push(channel, input_buffer_[offset + frame]);
         const double delayed_value = static_cast<double>(delayed);
         const double magnitude = delayed_value >= 0.0 ? delayed_value : -delayed_value;
-        const double target = thresholdGain(magnitude);
+        const double target = thresholdGain(magnitude, threshold_ramp_.value(frame));
         gain = target < gain ? target : release * gain + release_inverse * target;
         audio[offset + frame] = static_cast<float>(delayed_value * gain);
       }
       gain_states_[channel] = static_cast<float>(gain);
     }
+    threshold_ramp_.advance(frame_count);
   }
 
   void processOversampled(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -322,12 +362,13 @@ private:
         delay_line_.push(channel, oversampled_[offset + frame]);
         const double delayed_value = static_cast<double>(delayed);
         const double magnitude = delayed_value >= 0.0 ? delayed_value : -delayed_value;
-        const double target = thresholdGain(magnitude);
+        const double target = thresholdGain(magnitude, threshold_ramp_.value(frame));
         gain = target < gain ? target : release * gain + release_inverse * target;
         processed_oversampled_[offset + frame] = static_cast<float>(delayed_value * gain);
       }
       gain_states_[channel] = static_cast<float>(gain);
     }
+    threshold_ramp_.advance(oversampled_frames);
 
     const std::uint32_t phase_span = (kFilterLength + factor - 1u) / factor;
     const std::uint32_t downsample_state_length = factor * (phase_span - 1u);
@@ -460,8 +501,9 @@ private:
   std::array<std::array<float, kFilterLength>, kMaximumOversampling> polyphase_{};
   std::array<std::uint32_t, kMaximumOversampling> phase_lengths_{};
   double sample_rate_ = 0.0;
-  double threshold_linear_ = 1.0;
   double active_lookahead_ = 0.0;
+  LinearRamp input_gain_ramp_;
+  LinearRamp threshold_ramp_;
   std::uint32_t max_channels_ = 0u;
   std::uint32_t max_frames_ = 0u;
   std::uint32_t active_channels_ = 0u;
@@ -473,7 +515,7 @@ private:
   bool params_pending_ = false;
   bool topology_initialized_ = false;
   bool path_initialized_ = false;
-  bool threshold_lookup_valid_ = false;
+  bool controls_initialized_ = false;
   bool has_measurement_ = false;
   bool delay_prepared_ = false;
 };

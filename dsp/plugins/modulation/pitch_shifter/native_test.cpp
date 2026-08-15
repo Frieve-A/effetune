@@ -155,15 +155,30 @@ void testUnityPitchFreezesBeforeShapeChange() {
       renderSequence(uninterrupted, active, 2u, 180u, 11u);
   check(prefix_paused == prefix_uninterrupted, "prefixes start in lockstep");
 
+  constexpr std::array<std::uint32_t, 2> settle_blocks = {128u, 112u};
+  for (std::size_t block = 0u; block < settle_blocks.size(); ++block) {
+    const std::uint32_t frames = settle_blocks[block];
+    std::vector<float> settling_paused =
+        signal(frames, 2u, 1501u + static_cast<std::uint32_t>(block) * 131u);
+    std::vector<float> settling_uninterrupted = settling_paused;
+    const Params unity = activeParams(0.0F, 0.0F, 80.0F, 20.0F);
+    paused.stage(unity);
+    uninterrupted.stage(unity);
+    paused.process(settling_paused, 2u, frames);
+    uninterrupted.process(settling_uninterrupted, 2u, frames);
+    check(settling_paused == settling_uninterrupted,
+          "unity transition remains deterministic through the bounded ramp");
+  }
+
   std::vector<float> bypass = signal(97u, 4u, 1701u);
   const std::vector<float> bypass_input = bypass;
   paused.stage(activeParams(0.0F, 0.0F, 500.0F, 40.0F));
   paused.process(bypass, 4u, 97u);
-  check(bypass == bypass_input, "unity pitch returns all channels unchanged");
+  check(bypass == bypass_input, "settled unity pitch returns all channels unchanged");
 
   const std::vector<float> resumed = renderSequence(paused, active, 2u, 32u, 2501u);
   const std::vector<float> control = renderSequence(uninterrupted, active, 2u, 32u, 2501u);
-  check(resumed == control, "unity pitch freezes state and defers shape reset");
+  check(resumed == control, "settled unity pitch freezes state and defers shape reset");
 }
 
 void testShapeChangesResetAllState() {

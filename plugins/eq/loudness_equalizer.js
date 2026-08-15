@@ -52,6 +52,8 @@ class LoudnessEqualizerPlugin extends PluginBase {
         
             // --- Coefficient Calculation (only if needed) ---
             if (needsRecalculation) {
+                const previousCoefficients = context.c ? { ...context.c } : null;
+                const previousVolumeGain = context.volumeGain;
                 // console.log('Recalculating coefficients...'); // Debug
                 // Average SPL is the listening level at 0 dB Relative Volume.
                 // Keep the correction within the model's 60–85 dB range.
@@ -151,6 +153,28 @@ class LoudnessEqualizerPlugin extends PluginBase {
                 context.cachedLg = lg; context.cachedLf = lf; context.cachedLq = lq;
                 context.cachedHg = hg; context.cachedHf = hf; context.cachedHq = hq;
                 context.cachedSampleRate = sampleRate;
+
+                const targetCoefficients = { ...context.c };
+                const targetVolumeGain = context.volumeGain;
+                const rampFrames = Math.max(1, Math.ceil(sampleRate * 0.005));
+                if (previousCoefficients) {
+                    context.c = previousCoefficients;
+                    context.volumeGain = previousVolumeGain;
+                    context.targetCoefficients = targetCoefficients;
+                    context.targetVolumeGain = targetVolumeGain;
+                    context.coefficientSteps = {};
+                    for (const key of Object.keys(targetCoefficients)) {
+                        context.coefficientSteps[key] = (targetCoefficients[key] - context.c[key]) / rampFrames;
+                    }
+                    context.volumeGainStep = (targetVolumeGain - context.volumeGain) / rampFrames;
+                    context.coefficientRampRemaining = rampFrames;
+                } else {
+                    context.targetCoefficients = targetCoefficients;
+                    context.targetVolumeGain = targetVolumeGain;
+                    context.coefficientSteps = {};
+                    context.volumeGainStep = 0;
+                    context.coefficientRampRemaining = 0;
+                }
         
                 // console.log('Coefficients recalculated and cached:', context.c); // Debug
             } // end needsRecalculation check
@@ -160,11 +184,8 @@ class LoudnessEqualizerPlugin extends PluginBase {
         
             // Retrieve cached coefficients into local variables for maximum performance inside loops
             // This avoids repeated property lookups (context.c.lb0 etc.)
-            const lb0 = context.c.lb0; const lb1 = context.c.lb1; const lb2 = context.c.lb2;
-            const la1 = context.c.la1; const la2 = context.c.la2;
-            const hb0 = context.c.hb0; const hb1 = context.c.hb1; const hb2 = context.c.hb2;
-            const ha1 = context.c.ha1; const ha2 = context.c.ha2;
-            const volumeGain = context.volumeGain;
+            const coefficientAt = (key, frame) => context.c[key] +
+                (context.coefficientSteps[key] || 0) * Math.min(frame + 1, context.coefficientRampRemaining || 0);
         
             // Local references to state arrays (reduces property lookups in outer loop)
             const lowStates = context.filterStates.low;
@@ -191,11 +212,14 @@ class LoudnessEqualizerPlugin extends PluginBase {
                 // Process block for the current channel
                 // Use direct index 'i' starting from offset for potentially clearer data access
                 for (let i = offset; i < end; i++) {
+                    const frame = i - offset;
                     const input = data[i]; // Cache input sample
         
                     // --- Process low shelf using local state vars ---
                     // Direct Form II Transposed structure calculation
-                    const lowOutput = lb0 * input + lb1 * lx1 + lb2 * lx2 - la1 * ly1 - la2 * ly2;
+                    const lowOutput = coefficientAt('lb0', frame) * input + coefficientAt('lb1', frame) * lx1 +
+                        coefficientAt('lb2', frame) * lx2 - coefficientAt('la1', frame) * ly1 -
+                        coefficientAt('la2', frame) * ly2;
         
                     // Update low shelf local state vars for next sample
                     lx2 = lx1;       // x[n-2] = x[n-1]
@@ -206,7 +230,9 @@ class LoudnessEqualizerPlugin extends PluginBase {
                     // --- Process high shelf using local state vars ---
                     // Input to high shelf is the output of the low shelf
                     // Direct Form II Transposed structure calculation
-                    const highOutput = hb0 * lowOutput + hb1 * hx1 + hb2 * hx2 - ha1 * hy1 - ha2 * hy2;
+                    const highOutput = coefficientAt('hb0', frame) * lowOutput + coefficientAt('hb1', frame) * hx1 +
+                        coefficientAt('hb2', frame) * hx2 - coefficientAt('ha1', frame) * hy1 -
+                        coefficientAt('ha2', frame) * hy2;
         
                     // Update high shelf local state vars for next sample
                     hx2 = hx1;        // x[n-2] = x[n-1] (using lowOutput as input)
@@ -215,7 +241,8 @@ class LoudnessEqualizerPlugin extends PluginBase {
                     hy1 = highOutput; // y[n-1] = y[n]
         
                     // Write final output back to the data array
-                    data[i] = highOutput * volumeGain;
+                    data[i] = highOutput * (context.volumeGain + context.volumeGainStep *
+                        Math.min(frame + 1, context.coefficientRampRemaining || 0));
                 }
         
                 // Write back updated local state vars to the context object for the next block
@@ -223,6 +250,19 @@ class LoudnessEqualizerPlugin extends PluginBase {
                 currentLowState.y1 = ly1; currentLowState.y2 = ly2;
                 currentHighState.x1 = hx1; currentHighState.x2 = hx2;
                 currentHighState.y1 = hy1; currentHighState.y2 = hy2;
+            }
+
+            const advanced = Math.min(blockSize, context.coefficientRampRemaining || 0);
+            if (advanced > 0) {
+                for (const key of Object.keys(context.c)) {
+                    context.c[key] += (context.coefficientSteps[key] || 0) * advanced;
+                }
+                context.volumeGain += context.volumeGainStep * advanced;
+                context.coefficientRampRemaining -= advanced;
+                if (context.coefficientRampRemaining === 0) {
+                    context.c = { ...context.targetCoefficients };
+                    context.volumeGain = context.targetVolumeGain;
+                }
             }
         
             // Return the modified data array

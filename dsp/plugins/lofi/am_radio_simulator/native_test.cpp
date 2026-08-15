@@ -21,6 +21,7 @@ extern "C" double et_am_debug_modeled_tuning_offset(effetune::PluginKernel *kern
 extern "C" double et_am_debug_station_tuning_offset(effetune::PluginKernel *kernel) noexcept;
 extern "C" double et_am_debug_interferer_tuning_offset(effetune::PluginKernel *kernel) noexcept;
 extern "C" double et_am_debug_delay_q_checksum(effetune::PluginKernel *kernel) noexcept;
+extern "C" double et_am_debug_control_output_gain(effetune::PluginKernel *kernel) noexcept;
 
 namespace {
 
@@ -127,6 +128,7 @@ public:
   }
 
   double delayQChecksum() const noexcept { return et_am_debug_delay_q_checksum(kernel_); }
+  double controlOutputGain() const noexcept { return et_am_debug_control_output_gain(kernel_); }
 
   std::uint32_t telemetry(std::array<std::uint8_t, kTelemetryBytes> &output,
                           std::uint32_t tap_id) noexcept {
@@ -409,6 +411,32 @@ void testDeterminismAndBlockDivision() {
   const std::vector<float> seed_5 = render_seed(5u);
   check(seed_1 != seed_2 && seed_2 != seed_3 && seed_4 != seed_5,
         "adjacent execution seeds select distinct simulations");
+}
+
+void testQuantumAutomationCapturesIntermediateTargets() {
+  KernelHarness harness;
+  Params params = defaultParams();
+  std::vector<float> quantum(8u, 0.0F);
+  harness.stage(params);
+  harness.process(quantum, 1u, 8u);
+  const double initial = harness.controlOutputGain();
+
+  params.outputGain = 24.0F;
+  harness.stage(params);
+  harness.process(quantum, 1u, 8u);
+  const double after_maximum = harness.controlOutputGain();
+  params.outputGain = -24.0F;
+  harness.stage(params);
+  harness.process(quantum, 1u, 8u);
+  const double after_minimum = harness.controlOutputGain();
+  params.outputGain = 0.0F;
+  harness.stage(params);
+  harness.process(quantum, 1u, 8u);
+  const double after_default = harness.controlOutputGain();
+
+  check(after_maximum > initial, "Q=8 captures the maximum target direction");
+  check(after_minimum < after_maximum, "Q=8 captures the intervening minimum direction");
+  check(after_default > after_minimum, "Q=8 captures the final default direction");
 }
 
 void testModeTransitionDeterminismAndBlockDivision() {
@@ -895,6 +923,7 @@ void testStaticRateIncreaseRescalesThePendingDeadline() {
 int main() {
   testRoutingAndTelemetry();
   testDeterminismAndBlockDivision();
+  testQuantumAutomationCapturesIntermediateTargets();
   testModeTransitionDeterminismAndBlockDivision();
   testRapidModeReversalDeterminismAndBlockDivision();
   testModeTransitionRunsCompleteParallelPaths();

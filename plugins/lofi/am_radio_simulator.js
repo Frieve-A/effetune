@@ -531,8 +531,15 @@ const AM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
             delay2Samples: Math.floor(sampleRate * 0.0023 + 0.5),
             sampleCounter: 0,
             controlRemaining: 0,
-            controlSmoothing: 1 - Math.exp(-CONTROL_INTERVAL / (sampleRate * 0.020)),
+            controlSmoothing: 1 - Math.exp(-1 / (sampleRate * 0.020)),
             controls: {
+                tb: parameters.tb, pe: parameters.pe, md: parameters.md, cp: parameters.cp,
+                sg: parameters.sg, sk: parameters.sk, fd: parameters.fd, st: parameters.st,
+                in: parameters.in, io: parameters.io, tn: parameters.tn, bw: parameters.bw,
+                dt: parameters.dt, hm: parameters.hm, og: parameters.og, mx: parameters.mx,
+                hz: Number(parameters.hz)
+            },
+            controlTargets: {
                 tb: parameters.tb, pe: parameters.pe, md: parameters.md, cp: parameters.cp,
                 sg: parameters.sg, sk: parameters.sk, fd: parameters.fd, st: parameters.st,
                 in: parameters.in, io: parameters.io, tn: parameters.tn, bw: parameters.bw,
@@ -1222,18 +1229,48 @@ const AM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         tap.stepQ = (targetQ - tap.q) / CONTROL_INTERVAL;
     }
 
+    function captureControlTargets(state) {
+        const target = state.controlTargets;
+        target.tb = parameters.tb; target.pe = parameters.pe;
+        target.md = parameters.md; target.cp = parameters.cp;
+        target.sg = parameters.sg; target.sk = parameters.sk;
+        target.fd = parameters.fd; target.st = parameters.st;
+        target.in = parameters.in; target.io = parameters.io;
+        target.tn = parameters.tn; target.bw = parameters.bw;
+        target.dt = parameters.dt; target.hm = parameters.hm;
+        target.og = parameters.og; target.mx = parameters.mx;
+        target.hz = Number(parameters.hz);
+    }
+
+    function advanceControlEnvelope(state) {
+        const current = state.controls;
+        const target = state.controlTargets;
+        const amount = state.controlSmoothing;
+        current.tb += amount * (target.tb - current.tb);
+        current.pe += amount * (target.pe - current.pe);
+        current.md += amount * (target.md - current.md);
+        current.cp += amount * (target.cp - current.cp);
+        current.sg += amount * (target.sg - current.sg);
+        current.sk += amount * (target.sk - current.sk);
+        current.fd += amount * (target.fd - current.fd);
+        current.st += amount * (target.st - current.st);
+        current.in += amount * (target.in - current.in);
+        current.io += amount * (target.io - current.io);
+        current.tn += amount * (target.tn - current.tn);
+        current.bw += amount * (target.bw - current.bw);
+        current.dt += amount * (target.dt - current.dt);
+        current.hm += amount * (target.hm - current.hm);
+        current.og += amount * (target.og - current.og);
+        current.mx += amount * (target.mx - current.mx);
+        current.hz += amount * (target.hz - current.hz);
+    }
+
     function updateControl(state) {
         const requestedMode = parameters.sm === 'C-QUAM' && state.cquamMaskSupported ?
             'C-QUAM' : 'Mono';
         if (requestedMode !== state.stereoMode && state.previousStereoMode === null) {
             startModeTransition(state, requestedMode);
         }
-        const keys = ['tb', 'pe', 'md', 'cp', 'sg', 'sk', 'fd', 'st', 'in', 'io', 'tn', 'bw', 'dt', 'hm', 'og', 'mx'];
-        for (let index = 0; index < keys.length; index++) {
-            const key = keys[index];
-            state.controls[key] += state.controlSmoothing * (parameters[key] - state.controls[key]);
-        }
-        state.controls.hz += state.controlSmoothing * (Number(parameters.hz) - state.controls.hz);
         configureBank(state.txFilters, state.controls.tb * 1000, BUTTERWORTH_8_Q, state.sampleRate * 3);
         configureBank(state.txDifferenceFilters, state.controls.tb * 1000,
             BUTTERWORTH_8_Q, state.sampleRate * 3);
@@ -1328,6 +1365,7 @@ const AM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
     } else if (state.speakerTransitionRemaining === 0 && state.speaker !== selectedSpeaker) {
         startSpeakerTransition(state, selectedSpeaker);
     }
+    captureControlTargets(state);
 
     // Radio off takes the transmitter off the air, so the transmitter telemetry
     // has nothing to report: the modulation meter must not keep showing a
@@ -1338,6 +1376,7 @@ const AM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
     const radioOn = radioEnabled(parameters.rd);
     let blockModPeak = 0;
     for (let frame = 0; frame < blockSize; frame++) {
+        advanceControlEnvelope(state);
         if (state.controlRemaining === 0) updateControl(state);
         state.controlRemaining--;
         state.fade1.i += state.fade1.stepI;

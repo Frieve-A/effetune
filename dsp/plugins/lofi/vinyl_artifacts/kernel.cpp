@@ -170,6 +170,8 @@ public:
     high_shelf_states_.resize(max_channels_);
     last_input_.resize(max_channels_);
     wet_samples_.resize(max_channels_);
+    automation_ramp_frames_ =
+        std::max(1u, static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005)));
   }
 
   void reset() noexcept override {
@@ -184,6 +186,8 @@ public:
     low_shelf_bypassed_ = true;
     high_shelf_bypassed_ = true;
     random_.seed(selected_seed_low_, selected_seed_high_);
+    automation_initialized_ = false;
+    mix_ramp_remaining_ = 0u;
   }
 
   void setRandomSeed(std::uint32_t seed_low, std::uint32_t seed_high) noexcept override {
@@ -199,59 +203,63 @@ public:
       return;
     }
 
-    const double mix_amount = static_cast<double>(params_.mix) / 100.0;
-    if (mix_amount < 1.0e-6) {
+    const double target_mix = static_cast<double>(params_.mix) / 100.0;
+    if (target_mix < 1.0e-6 && (!automation_initialized_ || (mix_ == 0.0 && mix_target_ == 0.0))) {
       return;
     }
     if (!configured_ || last_channel_count_ != channel_count) {
       resetForChannels(channel_count);
     }
 
-    const double wear_multiplier = static_cast<double>(params_.wear) / 100.0;
-    const double pop_level = static_cast<double>(params_.popLevel);
-    const double crackle_level = static_cast<double>(params_.crackleLevel);
-    const double hiss_level = static_cast<double>(params_.hissLevel);
-    const double rumble_level = static_cast<double>(params_.rumbleLevel);
-    const double pop_gain = pop_level <= kMinimumDbLevel || wear_multiplier < 1.0e-6
-                                ? 0.0
-                                : std::exp(pop_level * kDbToLinearFast);
-    const double crackle_gain = crackle_level <= kMinimumDbLevel || wear_multiplier < 1.0e-6
-                                    ? 0.0
-                                    : std::exp(crackle_level * kDbToLinearFast);
-    const double hiss_gain = hiss_level <= kMinimumDbLevel || wear_multiplier < 1.0e-6
-                                 ? 0.0
-                                 : std::exp(hiss_level * kDbToLinearFast);
-    const double rumble_gain =
-        rumble_level <= kMinimumDbLevel ? 0.0 : std::exp(rumble_level * kDbToLinearFast);
-
     const double inverse_sample_rate = 1.0 / sample_rate_;
-    const double pop_probability =
-        pop_gain > 0.0 ? (static_cast<double>(params_.popsPerMinute) * wear_multiplier / 60.0) *
-                             inverse_sample_rate
-                       : 0.0;
-    const double crackle_probability =
-        crackle_gain > 0.0
-            ? (static_cast<double>(params_.cracklesPerMinute) * wear_multiplier / 60.0) *
-                  inverse_sample_rate
-            : 0.0;
-
     const double react_amount = static_cast<double>(params_.react) / 100.0;
-    const double crosstalk_amount = (static_cast<double>(params_.crosstalk) / 100.0) * 0.5;
     const double profile_ratio = static_cast<double>(params_.noiseProfile) / 10.0;
     const double low_shelf_db = 20.0 * (1.0 - profile_ratio);
     const double high_shelf_db = -20.0 * (1.0 - profile_ratio);
 
     calculateHpf(3500.0, 0.707, sample_rate_, crackle_hpf_coefficients_);
-    const BiquadCoefficients *rumble_coefficients = nullptr;
-    if (rumble_gain > 0.0) {
-      calculateLpf(70.0, 0.707, sample_rate_, rumble_lpf_coefficients_);
-      rumble_coefficients = &rumble_lpf_coefficients_;
+    calculateLpf(70.0, 0.707, sample_rate_, rumble_lpf_coefficients_);
+    target_low_shelf_coefficients_ = {};
+    target_high_shelf_coefficients_ = {};
+    calculateLowShelf(50.0, low_shelf_db, 0.707, sample_rate_, target_low_shelf_coefficients_);
+    calculateHighShelf(2122.0, high_shelf_db, 0.707, sample_rate_, target_high_shelf_coefficients_);
+    if (!automation_initialized_) {
+      pop_level_ = params_.popLevel;
+      crackle_level_ = params_.crackleLevel;
+      hiss_level_ = params_.hissLevel;
+      rumble_level_ = params_.rumbleLevel;
+      wear_ = static_cast<double>(params_.wear) / 100.0;
+      crosstalk_ = (static_cast<double>(params_.crosstalk) / 100.0) * 0.5;
+      target_pop_level_ = pop_level_;
+      target_crackle_level_ = crackle_level_;
+      target_hiss_level_ = hiss_level_;
+      target_rumble_level_ = rumble_level_;
+      target_wear_ = wear_;
+      target_crosstalk_ = crosstalk_;
+      target_noise_profile_ = params_.noiseProfile;
+      mix_ = target_mix;
+      mix_target_ = target_mix;
+      mix_ramp_remaining_ = 0u;
+      low_shelf_coefficients_ = target_low_shelf_coefficients_;
+      high_shelf_coefficients_ = target_high_shelf_coefficients_;
+      automation_initialized_ = true;
+    } else if (params_.popLevel != target_pop_level_ ||
+               params_.crackleLevel != target_crackle_level_ ||
+               params_.hissLevel != target_hiss_level_ ||
+               params_.rumbleLevel != target_rumble_level_ ||
+               static_cast<double>(params_.wear) / 100.0 != target_wear_ ||
+               static_cast<double>(params_.crosstalk) / 200.0 != target_crosstalk_ ||
+               params_.noiseProfile != target_noise_profile_ || target_mix != mix_target_) {
+      target_pop_level_ = params_.popLevel;
+      target_crackle_level_ = params_.crackleLevel;
+      target_hiss_level_ = params_.hissLevel;
+      target_rumble_level_ = params_.rumbleLevel;
+      target_wear_ = static_cast<double>(params_.wear) / 100.0;
+      target_crosstalk_ = static_cast<double>(params_.crosstalk) / 200.0;
+      target_noise_profile_ = params_.noiseProfile;
+      mix_target_ = target_mix;
+      mix_ramp_remaining_ = automation_ramp_frames_;
     }
-    const bool low_shelf_enabled =
-        calculateLowShelf(50.0, low_shelf_db, 0.707, sample_rate_, low_shelf_coefficients_);
-    const bool high_shelf_enabled =
-        calculateHighShelf(2122.0, high_shelf_db, 0.707, sample_rate_, high_shelf_coefficients_);
-    updateShelfBypass(channel_count, low_shelf_enabled, high_shelf_enabled);
 
     double control_signal = 0.0;
     if (react_amount > 0.0) {
@@ -286,17 +294,51 @@ public:
       control_signal = (scaled_energy > 1.0 ? 1.0 : scaled_energy) * react_amount;
     }
 
-    const double reactive_pop_probability = pop_probability * (1.0 + control_signal * 15.0);
-    const double reactive_crackle_probability = crackle_probability * (1.0 + control_signal * 8.0);
-    const double hiss_factor = 0.11 * hiss_gain * wear_multiplier;
-    const double pop_impulse_gain = pop_gain * kPopCompensationGain;
-    const double crackle_impulse_gain = crackle_gain * kCrackleCompensationGain;
-    const BiquadCoefficients *low_shelf_coefficients =
-        low_shelf_enabled ? &low_shelf_coefficients_ : nullptr;
-    const BiquadCoefficients *high_shelf_coefficients =
-        high_shelf_enabled ? &high_shelf_coefficients_ : nullptr;
-
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      if (mix_ramp_remaining_ != 0u) {
+        const double ramp_scale = 1.0 / static_cast<double>(mix_ramp_remaining_);
+        pop_level_ += (target_pop_level_ - pop_level_) * ramp_scale;
+        crackle_level_ += (target_crackle_level_ - crackle_level_) * ramp_scale;
+        hiss_level_ += (target_hiss_level_ - hiss_level_) * ramp_scale;
+        rumble_level_ += (target_rumble_level_ - rumble_level_) * ramp_scale;
+        wear_ += (target_wear_ - wear_) * ramp_scale;
+        crosstalk_ += (target_crosstalk_ - crosstalk_) * ramp_scale;
+        mix_ += (mix_target_ - mix_) * ramp_scale;
+        rampCoefficients(low_shelf_coefficients_, target_low_shelf_coefficients_, ramp_scale);
+        rampCoefficients(high_shelf_coefficients_, target_high_shelf_coefficients_, ramp_scale);
+        if (--mix_ramp_remaining_ == 0u) {
+          pop_level_ = target_pop_level_;
+          crackle_level_ = target_crackle_level_;
+          hiss_level_ = target_hiss_level_;
+          rumble_level_ = target_rumble_level_;
+          wear_ = target_wear_;
+          crosstalk_ = target_crosstalk_;
+          mix_ = mix_target_;
+          low_shelf_coefficients_ = target_low_shelf_coefficients_;
+          high_shelf_coefficients_ = target_high_shelf_coefficients_;
+        }
+      }
+      const double pop_gain = pop_level_ <= kMinimumDbLevel || wear_ < 1.0e-6
+                                  ? 0.0
+                                  : std::exp(pop_level_ * kDbToLinearFast);
+      const double crackle_gain = crackle_level_ <= kMinimumDbLevel || wear_ < 1.0e-6
+                                      ? 0.0
+                                      : std::exp(crackle_level_ * kDbToLinearFast);
+      const double hiss_gain = hiss_level_ <= kMinimumDbLevel || wear_ < 1.0e-6
+                                   ? 0.0
+                                   : std::exp(hiss_level_ * kDbToLinearFast);
+      const double rumble_gain =
+          rumble_level_ <= kMinimumDbLevel ? 0.0 : std::exp(rumble_level_ * kDbToLinearFast);
+      const double pop_probability =
+          pop_gain > 0.0 ? params_.popsPerMinute * wear_ / 60.0 * inverse_sample_rate : 0.0;
+      const double crackle_probability =
+          crackle_gain > 0.0 ? params_.cracklesPerMinute * wear_ / 60.0 * inverse_sample_rate : 0.0;
+      const double reactive_pop_probability = pop_probability * (1.0 + control_signal * 15.0);
+      const double reactive_crackle_probability =
+          crackle_probability * (1.0 + control_signal * 8.0);
+      const double hiss_factor = 0.11 * hiss_gain * wear_;
+      const double pop_impulse_gain = pop_gain * kPopCompensationGain;
+      const double crackle_impulse_gain = crackle_gain * kCrackleCompensationGain;
       const bool pop_trigger = random_.nextFloat01() < reactive_pop_probability;
       const bool crackle_trigger = random_.nextFloat01() < reactive_crackle_probability;
 
@@ -364,14 +406,14 @@ public:
             brown = -0.95;
           }
           rumble.brown = brown;
-          total_noise +=
-              processSafeBiquad(rumble.brown * rumble_gain, rumble.filter, rumble_coefficients);
+          total_noise += processSafeBiquad(rumble.brown * rumble_gain, rumble.filter,
+                                           &rumble_lpf_coefficients_);
         }
 
         const double low_shelf_output =
-            processSafeBiquad(total_noise, low_shelf_states_[channel], low_shelf_coefficients);
+            processSafeBiquad(total_noise, low_shelf_states_[channel], &low_shelf_coefficients_);
         wet_samples_[channel] = static_cast<float>(processSafeBiquad(
-            low_shelf_output, high_shelf_states_[channel], high_shelf_coefficients));
+            low_shelf_output, high_shelf_states_[channel], &high_shelf_coefficients_));
       }
 
       const float dry_left = audio[frame];
@@ -379,21 +421,30 @@ public:
       if (channel_count > 1u) {
         const float dry_right = audio[frame_count + frame];
         double wet_right = wet_samples_[1];
-        if (crosstalk_amount > 1.0e-6) {
+        if (crosstalk_ > 1.0e-6) {
           const double original_left = wet_left;
           const double original_right = wet_right;
-          const double direct_mix = 1.0 - crosstalk_amount;
-          wet_left = original_left * direct_mix + original_right * crosstalk_amount;
-          wet_right = original_right * direct_mix + original_left * crosstalk_amount;
+          const double direct_mix = 1.0 - crosstalk_;
+          wet_left = original_left * direct_mix + original_right * crosstalk_;
+          wet_right = original_right * direct_mix + original_left * crosstalk_;
         }
         audio[frame_count + frame] =
-            static_cast<float>(static_cast<double>(dry_right) + wet_right * mix_amount);
+            static_cast<float>(static_cast<double>(dry_right) + wet_right * mix_);
       }
-      audio[frame] = static_cast<float>(static_cast<double>(dry_left) + wet_left * mix_amount);
+      audio[frame] = static_cast<float>(static_cast<double>(dry_left) + wet_left * mix_);
     }
   }
 
 private:
+  static void rampCoefficients(BiquadCoefficients &current, const BiquadCoefficients &target,
+                               double ramp_scale) noexcept {
+    current.b0 += (target.b0 - current.b0) * ramp_scale;
+    current.b1 += (target.b1 - current.b1) * ramp_scale;
+    current.b2 += (target.b2 - current.b2) * ramp_scale;
+    current.a1 += (target.a1 - current.a1) * ramp_scale;
+    current.a2 += (target.a2 - current.a2) * ramp_scale;
+  }
+
   void clearChannelStates() noexcept {
     std::fill(pink_states_.begin(), pink_states_.end(), PinkState{});
     std::fill(pop_states_.begin(), pop_states_.end(), PopState{});
@@ -438,11 +489,29 @@ private:
 
   double sample_rate_ = 0.0;
   double energy_smooth_ = 0.0;
+  std::uint32_t automation_ramp_frames_ = 240u;
+  std::uint32_t mix_ramp_remaining_ = 0u;
+  double pop_level_ = 0.0;
+  double crackle_level_ = 0.0;
+  double hiss_level_ = 0.0;
+  double rumble_level_ = 0.0;
+  double wear_ = 0.0;
+  double crosstalk_ = 0.0;
+  double mix_ = 0.0;
+  double target_pop_level_ = 0.0;
+  double target_crackle_level_ = 0.0;
+  double target_hiss_level_ = 0.0;
+  double target_rumble_level_ = 0.0;
+  double target_wear_ = 0.0;
+  double target_crosstalk_ = 0.0;
+  double mix_target_ = 0.0;
+  float target_noise_profile_ = 0.0F;
   std::uint32_t max_channels_ = 0u;
   std::uint32_t last_channel_count_ = 0u;
   std::uint32_t selected_seed_low_ = static_cast<std::uint32_t>(dsp::XorShiftRng::kFallbackSeed);
   std::uint32_t selected_seed_high_ = 0u;
   bool configured_ = false;
+  bool automation_initialized_ = false;
   bool low_shelf_bypassed_ = true;
   bool high_shelf_bypassed_ = true;
   std::vector<PinkState> pink_states_;
@@ -457,6 +526,8 @@ private:
   BiquadCoefficients rumble_lpf_coefficients_;
   BiquadCoefficients low_shelf_coefficients_;
   BiquadCoefficients high_shelf_coefficients_;
+  BiquadCoefficients target_low_shelf_coefficients_;
+  BiquadCoefficients target_high_shelf_coefficients_;
   dsp::XorShiftRng random_{};
 };
 

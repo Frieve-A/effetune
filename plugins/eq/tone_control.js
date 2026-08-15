@@ -148,6 +148,33 @@ class ToneControlPlugin extends PluginBase {
         trebleA2 = a2_tmp * invA0;
     }
 
+    const targetCoeffs = [
+        bassB0, bassB1, bassB2, bassA1, bassA2,
+        midB0, midB1, midB2, midA1, midA2,
+        trebleB0, trebleB1, trebleB2, trebleA1, trebleA2
+    ];
+    const rampFrames = Math.max(1, Math.ceil(sampleRate * 0.005));
+    if (!context.toneCoeffs) {
+        context.toneCoeffs = Float64Array.from(targetCoeffs);
+        context.targetToneCoeffs = Float64Array.from(targetCoeffs);
+        context.toneCoeffSteps = new Float64Array(15);
+        context.toneRampRemaining = 0;
+    } else {
+        let changed = false;
+        for (let i = 0; i < 15; i++) {
+            if (context.targetToneCoeffs[i] !== targetCoeffs[i]) changed = true;
+            context.targetToneCoeffs[i] = targetCoeffs[i];
+        }
+        if (changed) {
+            for (let i = 0; i < 15; i++) {
+                context.toneCoeffSteps[i] = (context.targetToneCoeffs[i] - context.toneCoeffs[i]) / rampFrames;
+            }
+            context.toneRampRemaining = rampFrames;
+        }
+    }
+    const coefficientAt = (index, frame) => context.toneCoeffs[index] +
+        context.toneCoeffSteps[index] * Math.min(frame + 1, context.toneRampRemaining);
+
     // --- Process Audio ---
     // Process samples block by block, channel by channel
     for (let ch = 0; ch < channelCount; ch++) {
@@ -166,38 +193,38 @@ class ToneControlPlugin extends PluginBase {
             const idx = offset + i; // Direct index into the data buffer
             let sample = data[idx]; // Current sample value
 
-            // Apply Bass filter (Low Shelf) if active
-            if (bassActive) {
+            {
                 const x_n = sample; // Input for this filter stage
                 // Retrieve previous state values for this channel
                 const x1 = b_x1[ch]; const x2 = b_x2[ch];
                 const y1 = b_y1[ch]; const y2 = b_y2[ch];
                 // Apply the 2nd order IIR difference equation:
                 // y[n] = b0*x[n] + b1*x[n-1] + b2*x[n-2] - a1*y[n-1] - a2*y[n-2]
-                const y_n = bassB0 * x_n + bassB1 * x1 + bassB2 * x2 - bassA1 * y1 - bassA2 * y2;
+                const y_n = coefficientAt(0, i) * x_n + coefficientAt(1, i) * x1 +
+                    coefficientAt(2, i) * x2 - coefficientAt(3, i) * y1 - coefficientAt(4, i) * y2;
                 // Update state arrays for the next sample calculation
                 b_x2[ch] = x1; b_x1[ch] = x_n;
                 b_y2[ch] = y1; b_y1[ch] = y_n;
                 sample = y_n; // Output of this stage is input to the next
             }
 
-            // Apply Mid filter (Peaking) if active
-            if (midActive) {
+            {
                 const x_n = sample;
                 const x1 = m_x1[ch]; const x2 = m_x2[ch];
                 const y1 = m_y1[ch]; const y2 = m_y2[ch];
-                const y_n = midB0 * x_n + midB1 * x1 + midB2 * x2 - midA1 * y1 - midA2 * y2;
+                const y_n = coefficientAt(5, i) * x_n + coefficientAt(6, i) * x1 +
+                    coefficientAt(7, i) * x2 - coefficientAt(8, i) * y1 - coefficientAt(9, i) * y2;
                 m_x2[ch] = x1; m_x1[ch] = x_n;
                 m_y2[ch] = y1; m_y1[ch] = y_n;
                 sample = y_n;
             }
 
-            // Apply Treble filter (High Shelf) if active
-            if (trebleActive) {
+            {
                 const x_n = sample;
                 const x1 = t_x1[ch]; const x2 = t_x2[ch];
                 const y1 = t_y1[ch]; const y2 = t_y2[ch];
-                const y_n = trebleB0 * x_n + trebleB1 * x1 + trebleB2 * x2 - trebleA1 * y1 - trebleA2 * y2;
+                const y_n = coefficientAt(10, i) * x_n + coefficientAt(11, i) * x1 +
+                    coefficientAt(12, i) * x2 - coefficientAt(13, i) * y1 - coefficientAt(14, i) * y2;
                 t_x2[ch] = x1; t_x1[ch] = x_n;
                 t_y2[ch] = y1; t_y1[ch] = y_n;
                 sample = y_n;
@@ -207,6 +234,11 @@ class ToneControlPlugin extends PluginBase {
             data[idx] = sample;
         }
     }
+
+    const advanced = Math.min(blockSize, context.toneRampRemaining);
+    for (let i = 0; i < 15; i++) context.toneCoeffs[i] += context.toneCoeffSteps[i] * advanced;
+    context.toneRampRemaining -= advanced;
+    if (context.toneRampRemaining === 0) context.toneCoeffs.set(context.targetToneCoeffs);
 
     return data; // Return the modified buffer
     `;

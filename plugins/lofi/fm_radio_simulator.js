@@ -536,7 +536,7 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
             emphasisTau: TAU50, deCoefficient: 0, preInverse: 1,
             dcCoefficient: F(Math.exp(-TWO_PI * DC_CUT_HZ / host)),
             processingAmountTarget: 0, processingDriveTarget: 1, limiterRelease: F(0.999),
-            signalAmplitude: 1, tuningKhz: 0, ifBandKhz: F(230),
+            signalAmplitudeTarget: 1, tuningKhz: 0, ifBandKhz: F(230),
             multipathTarget: 0, pathDelayTargetUs: F(5), fadingHz: 0, stereoMode: 0,
             outputGainTarget: 1, mixTarget: 1, cnrBlend: 1, demodScale: 1,
             // Control ramps (20 ms), mirroring kernel.cpp bit for bit:
@@ -546,6 +546,7 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
             controlAlphaMpx: F(1 - Math.exp(-1 / (0.020 * mpx))),
             controlAlphaCore: F(1 - Math.exp(-1 / (0.020 * core))),
             processingAmountCurrent: 0, processingDriveCurrent: 1,
+            signalAmplitudeCurrent: 1,
             multipathCurrent: 0, pathDelayCurrentUs: 5,
             outputGainCurrent: 1, mixCurrent: 1,
             tuningCurrentKhz: 0, tuningRampStepKhz: 0,
@@ -585,7 +586,8 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         // Radio off models the transmitter going dark: the RF carrier amplitude is
         // zeroed, so the receiver only picks up its own thermal noise and the
         // limiter/discriminator chain turns it into full-scale FM hiss.
-        state.signalAmplitude = p.rd ? F(Math.pow(10, F(F(p.st - 60) / 20))) : 0;
+        state.signalAmplitudeTarget = p.rd ? F(Math.pow(10, F(F(p.st - 60) / 20))) : 0;
+        const ifBandChanged = !state.controlsConfigured || state.ifBandKhz !== p.bw;
         state.ifBandKhz = p.bw;
         state.multipathTarget = F(p.mp * C001);
         state.pathDelayTargetUs = p.dl;
@@ -598,18 +600,21 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         if (!state.controlsConfigured) {
             state.processingAmountCurrent = state.processingAmountTarget;
             state.processingDriveCurrent = state.processingDriveTarget;
+            state.signalAmplitudeCurrent = state.signalAmplitudeTarget;
             state.multipathCurrent = state.multipathTarget;
             state.pathDelayCurrentUs = state.pathDelayTargetUs;
             state.outputGainCurrent = state.outputGainTarget;
             state.mixCurrent = state.mixTarget;
         }
-        const q8 = [0.5097955791, 0.6013448869, 0.8999762231, 2.5629154477];
-        const cutoff = 500 * state.ifBandKhz;
         // Coefficient update only: IF filter state is never cleared by parameter
         // changes; a bw change keeps the TDF2 states (kernel.cpp contract).
-        for (let index = 0; index < 4; index++) {
-            configureLowPass(state.ifReal[index], cutoff, q8[index], state.coreRate);
-            configureLowPass(state.ifImag[index], cutoff, q8[index], state.coreRate);
+        if (ifBandChanged) {
+            const q8 = [0.5097955791, 0.6013448869, 0.8999762231, 2.5629154477];
+            const cutoff = 500 * state.ifBandKhz;
+            for (let index = 0; index < 4; index++) {
+                configureLowPass(state.ifReal[index], cutoff, q8[index], state.coreRate);
+                configureLowPass(state.ifImag[index], cutoff, q8[index], state.coreRate);
+            }
         }
         configureOscillator(state.pilotTx, 19000, state.mpxRate);
         configureOscillator(state.pilotRx, 19000, state.mpxRate);
@@ -672,6 +677,8 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
             (state.multipathTarget - state.multipathCurrent);
         state.pathDelayCurrentUs += state.controlAlphaCore *
             (state.pathDelayTargetUs - state.pathDelayCurrentUs);
+        state.signalAmplitudeCurrent += state.controlAlphaCore *
+            (state.signalAmplitudeTarget - state.signalAmplitudeCurrent);
         const multipathAmount = F(state.multipathCurrent);
         if (state.tuningRampRemaining > 0) {
             state.tuningRampRemaining--;
@@ -720,8 +727,9 @@ const FM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         state.multipathPosition = state.multipathPosition + 1 === state.multipathSize ?
             0 : state.multipathPosition + 1;
 
-        real = F(real * state.signalAmplitude);
-        imag = F(imag * state.signalAmplitude);
+        const signalAmplitude = F(state.signalAmplitudeCurrent);
+        real = F(real * signalAmplitude);
+        imag = F(imag * signalAmplitude);
         real = F(real + F(NOISE_SIGMA * noiseNext(state.noise)));
         imag = F(imag + F(NOISE_SIGMA * noiseNext(state.noise)));
         const tuneSine = F(state.tuning.sine);

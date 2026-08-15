@@ -2,6 +2,7 @@
 #include "NoiseBlenderPluginParams.h"
 #include "effetune/dsp/xorshift_rng.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -27,6 +28,9 @@ public:
   void prepare(const PrepareInfo &info) override {
     max_channels_ = info.maxChannels;
     max_frames_ = info.maxFrames;
+    const auto requested_frames =
+        static_cast<std::uint32_t>(std::ceil(static_cast<double>(info.sampleRate) * 0.005));
+    ramp_frames_ = requested_frames == 0u ? 1u : requested_frames;
     pink_states_.resize(max_channels_);
     brown_states_.resize(max_channels_);
     noise_buffer_.resize(max_frames_);
@@ -35,6 +39,8 @@ public:
   void reset() noexcept override {
     clearStates();
     initialized_ = false;
+    level_initialized_ = false;
+    level_ramp_remaining_ = 0u;
     last_channel_count_ = 0u;
     random_.seed(selected_seed_low_, selected_seed_high_);
   }
@@ -61,34 +67,36 @@ public:
     if (noise_type > 2u) {
       noise_type = 2u;
     }
-    const double level_db = static_cast<double>(params_.level);
-    const double level_gain = level_db <= -96.0 ? 0.0 : std::pow(10.0, level_db / 20.0);
+    retargetLevel();
     const bool per_channel = params_.perChannel != 0.0F;
 
     if (per_channel) {
       // Advance the shared RNG frame-first so block boundaries cannot reassign noise to channels.
       if (noise_type == 0u) {
         for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+          advanceLevel();
           for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
             const std::uint32_t index = channel * frame_count + frame;
             const double white = random_.nextFloatSigned();
             audio[index] =
-                static_cast<float>(static_cast<double>(audio[index]) + white * level_gain);
+                static_cast<float>(static_cast<double>(audio[index]) + white * level_gain_);
           }
         }
       } else if (noise_type == 1u) {
         for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+          advanceLevel();
           for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
             const std::uint32_t index = channel * frame_count + frame;
-            const double scaled = nextPink(pink_states_[channel]) * level_gain;
+            const double scaled = nextPink(pink_states_[channel]) * level_gain_;
             audio[index] = static_cast<float>(static_cast<double>(audio[index]) + scaled);
           }
         }
       } else {
         for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+          advanceLevel();
           for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
             const std::uint32_t index = channel * frame_count + frame;
-            const double scaled = nextBrown(brown_states_[channel]) * level_gain;
+            const double scaled = nextBrown(brown_states_[channel]) * level_gain_;
             audio[index] = static_cast<float>(static_cast<double>(audio[index]) + scaled);
           }
         }
@@ -98,30 +106,54 @@ public:
 
     if (noise_type == 0u) {
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-        noise_buffer_[frame] = static_cast<float>(random_.nextFloatSigned() * level_gain);
+        advanceLevel();
+        noise_buffer_[frame] = static_cast<float>(random_.nextFloatSigned() * level_gain_);
       }
     } else if (noise_type == 1u) {
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-        noise_buffer_[frame] = static_cast<float>(nextPink(pink_states_[0]) * level_gain);
+        advanceLevel();
+        noise_buffer_[frame] = static_cast<float>(nextPink(pink_states_[0]) * level_gain_);
       }
     } else {
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-        noise_buffer_[frame] = static_cast<float>(nextBrown(brown_states_[0]) * level_gain);
+        advanceLevel();
+        noise_buffer_[frame] = static_cast<float>(nextBrown(brown_states_[0]) * level_gain_);
       }
     }
 
-    if (level_gain != 0.0) {
-      for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
-        const std::uint32_t offset = channel * frame_count;
-        for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-          audio[offset + frame] = static_cast<float>(static_cast<double>(audio[offset + frame]) +
-                                                     static_cast<double>(noise_buffer_[frame]));
-        }
+    for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+      const std::uint32_t offset = channel * frame_count;
+      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        audio[offset + frame] = static_cast<float>(static_cast<double>(audio[offset + frame]) +
+                                                   static_cast<double>(noise_buffer_[frame]));
       }
     }
   }
 
 private:
+  void retargetLevel() noexcept {
+    const double level_db = static_cast<double>(params_.level);
+    const double target = level_db <= -96.0 ? 0.0 : std::pow(10.0, level_db / 20.0);
+    if (!level_initialized_) {
+      level_gain_ = target_level_gain_ = target;
+      level_initialized_ = true;
+      return;
+    }
+    if (target == target_level_gain_)
+      return;
+    target_level_gain_ = target;
+    level_step_ = (target_level_gain_ - level_gain_) / static_cast<double>(ramp_frames_);
+    level_ramp_remaining_ = ramp_frames_;
+  }
+
+  void advanceLevel() noexcept {
+    if (level_ramp_remaining_ == 0u)
+      return;
+    level_gain_ += level_step_;
+    if (--level_ramp_remaining_ == 0u)
+      level_gain_ = target_level_gain_;
+  }
+
   void clearStates() noexcept {
     for (PinkState &state : pink_states_) {
       for (double &value : state.values) {
@@ -165,6 +197,12 @@ private:
   std::uint32_t selected_seed_low_ = static_cast<std::uint32_t>(dsp::XorShiftRng::kFallbackSeed);
   std::uint32_t selected_seed_high_ = 0u;
   bool initialized_ = false;
+  bool level_initialized_ = false;
+  double level_gain_ = 0.0;
+  double target_level_gain_ = 0.0;
+  double level_step_ = 0.0;
+  std::uint32_t ramp_frames_ = 240u;
+  std::uint32_t level_ramp_remaining_ = 0u;
   std::vector<PinkState> pink_states_;
   std::vector<BrownState> brown_states_;
   std::vector<float> noise_buffer_;

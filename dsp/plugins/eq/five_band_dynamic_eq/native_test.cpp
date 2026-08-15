@@ -244,7 +244,7 @@ void testDisabledBandFreezesAllState() {
   DYNAMIC_EQ_CHECK(actual == expected);
 }
 
-void testCoefficientHoldQuirkAndStatePreservation() {
+void testGeometryTransitionAndStatePreservation() {
   Params original = defaultParams();
   for (float &enabled : original.enabled)
     enabled = 0.0F;
@@ -278,26 +278,23 @@ void testCoefficientHoldQuirkAndStatePreservation() {
   held.q[0] = 7.0F;
   changed.stage(held);
   control.stage(original);
-  std::vector<float> held_output = sineBlock(frame_position);
-  std::vector<float> original_output = held_output;
-  changed.process(held_output, 1u, kMaximumFrames);
-  control.process(original_output, 1u, kMaximumFrames);
-  DYNAMIC_EQ_CHECK(held_output == original_output);
-  frame_position += kMaximumFrames;
-
-  held.threshold[0] = -1.0F;
-  Params original_with_new_threshold = original;
-  original_with_new_threshold.threshold[0] = -1.0F;
-  changed.stage(held);
-  control.stage(original_with_new_threshold);
   bool outputs_differ = false;
-  for (std::uint32_t block = 0u; block < 10u; ++block) {
+  float previous = 0.0F;
+  bool have_previous = false;
+  for (std::uint32_t block = 0u; block < 6u; ++block) {
     std::vector<float> changed_block = sineBlock(frame_position);
     std::vector<float> control_block = changed_block;
     changed.process(changed_block, 1u, kMaximumFrames);
     control.process(control_block, 1u, kMaximumFrames);
     if (changed_block != control_block)
       outputs_differ = true;
+    for (float sample : changed_block) {
+      DYNAMIC_EQ_CHECK(std::isfinite(sample));
+      if (have_previous)
+        DYNAMIC_EQ_CHECK(std::abs(sample - previous) < 2.0F);
+      previous = sample;
+      have_previous = true;
+    }
     frame_position += kMaximumFrames;
   }
   DYNAMIC_EQ_CHECK(outputs_differ);
@@ -309,7 +306,7 @@ int main() {
   testFrameAndReset();
   testChannelChangeFullyResetsState();
   testDisabledBandFreezesAllState();
-  testCoefficientHoldQuirkAndStatePreservation();
+  testGeometryTransitionAndStatePreservation();
   if (failures != 0) {
     std::fprintf(stderr, "%d FiveBandDynamicEQ native check(s) failed\n", failures);
     return 1;

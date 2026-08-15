@@ -133,9 +133,11 @@ const TAPE_ARTIFACTS_REFERENCE_PROCESSOR = `
     const sampleRate = parameters.sampleRate;
     if (!(blockSize > 0) || !(channelCount > 0) || !(sampleRate > 0)) return data;
 
-    const mixRatio = parameters.mx * 0.01;
+    const targetMix = parameters.mx * 0.01;
     // mx = 0 must be a bit-for-bit dry path.
-    if (!(mixRatio > 0)) return data;
+    if (!(targetMix > 0) && (!context.tapeArtifacts ||
+        !context.tapeArtifacts.automationInitialized ||
+        (context.tapeArtifacts.mix === 0 && context.tapeArtifacts.mixTarget === 0))) return data;
 
     const SPEEDS = ${JSON.stringify(TAPE_ARTIFACTS_SPEEDS)};
     const TAPES = ${JSON.stringify(TAPE_ARTIFACTS_TAPES)};
@@ -619,7 +621,17 @@ const TAPE_ARTIFACTS_REFERENCE_PROCESSOR = `
             flutterCoefficient: 0,
             flutterNormalisation: 0,
             baseDelaySamples: 0,
-            configurationKey: ''
+            configurationKey: '',
+            inputTrimGain: 1,
+            outputGain: 1,
+            flutterScale: 1,
+            inputTrimGainTarget: 1,
+            outputGainTarget: 1,
+            flutterScaleTarget: 1,
+            mix: targetMix,
+            mixTarget: targetMix,
+            mixRampRemaining: 0,
+            automationInitialized: false
         };
         let seed = Math.floor(((typeof context.__seededRandom === 'function'
             ? context.__seededRandom
@@ -834,10 +846,36 @@ const TAPE_ARTIFACTS_REFERENCE_PROCESSOR = `
     // what puts it there. The makeup below takes it straight back out again, so
     // the control changes how hard the tape is hit and how far the noise sits
     // under the programme, and nothing else.
-    const inputTrimGain = Math.pow(10, (SATURATION_REFERENCE_DBFS + parameters.rl) / 20);
-    const makeupGain = 1 / inputTrimGain;
-    const outputGain = Math.pow(10, parameters.og / 20);
-    const flutterScale = parameters.wf / WOW_FLUTTER_REFERENCE_PERCENT;
+    const targetInputTrimGain = Math.pow(10,
+        (SATURATION_REFERENCE_DBFS + parameters.rl) / 20);
+    const targetOutputGain = Math.pow(10, parameters.og / 20);
+    const targetFlutterScale = parameters.wf / WOW_FLUTTER_REFERENCE_PERCENT;
+    if (!state.automationInitialized) {
+        state.inputTrimGain = targetInputTrimGain;
+        state.outputGain = targetOutputGain;
+        state.flutterScale = targetFlutterScale;
+        state.mix = targetMix;
+        state.inputTrimGainTarget = targetInputTrimGain;
+        state.outputGainTarget = targetOutputGain;
+        state.flutterScaleTarget = targetFlutterScale;
+        state.mixTarget = targetMix;
+        state.mixRampRemaining = 0;
+        state.automationInitialized = true;
+    } else if (targetInputTrimGain !== state.inputTrimGainTarget ||
+        targetOutputGain !== state.outputGainTarget ||
+        targetFlutterScale !== state.flutterScaleTarget || targetMix !== state.mixTarget) {
+        state.inputTrimGainTarget = targetInputTrimGain;
+        state.outputGainTarget = targetOutputGain;
+        state.flutterScaleTarget = targetFlutterScale;
+        state.mixTarget = targetMix;
+        const requestedRampFrames = Math.ceil(sampleRate * 0.005);
+        state.mixRampRemaining = requestedRampFrames > 1 ? requestedRampFrames : 1;
+    }
+    let inputTrimGain = state.inputTrimGain;
+    let outputGain = state.outputGain;
+    let flutterScale = state.flutterScale;
+    let mixRatio = state.mix;
+    let mixRampRemaining = state.mixRampRemaining;
     const saturationBase = state.saturationBase;
     const memoryScale = state.memoryScale;
     const attackCoefficient = state.attackCoefficient;
@@ -854,12 +892,9 @@ const TAPE_ARTIFACTS_REFERENCE_PROCESSOR = `
     // measurement - and the amplitude rides with the trim instead. The
     // modulation index does not, and must not: it is multiplicative and already
     // dimensionless.
-    const hissGain = state.hissGain * makeupGain;
     const modulationGain = state.modulationGain;
-    const noiseActive = hissGain > 0 || modulationGain > 0;
+    const noiseActive = state.hissGain > 0 || modulationGain > 0;
     const wowIncrement = state.wowIncrement;
-    const wowSamples = state.wowSamples * flutterScale;
-    const flutterSamples = state.flutterSamples * flutterScale;
     const flutterCoefficient = state.flutterCoefficient;
     const flutterNormalisation = state.flutterNormalisation;
     const baseDelaySamples = state.baseDelaySamples;
@@ -875,6 +910,23 @@ const TAPE_ARTIFACTS_REFERENCE_PROCESSOR = `
     let rngState = state.rngState;
 
     for (let i = 0; i < blockSize; i++) {
+        if (mixRampRemaining !== 0) {
+            const rampScale = 1 / mixRampRemaining;
+            inputTrimGain += (targetInputTrimGain - inputTrimGain) * rampScale;
+            outputGain += (targetOutputGain - outputGain) * rampScale;
+            flutterScale += (targetFlutterScale - flutterScale) * rampScale;
+            mixRatio += (targetMix - mixRatio) * rampScale;
+            if (--mixRampRemaining === 0) {
+                inputTrimGain = targetInputTrimGain;
+                outputGain = targetOutputGain;
+                flutterScale = targetFlutterScale;
+                mixRatio = targetMix;
+            }
+        }
+        const makeupGain = 1 / inputTrimGain;
+        const hissGain = state.hissGain * makeupGain;
+        const wowSamples = state.wowSamples * flutterScale;
+        const flutterSamples = state.flutterSamples * flutterScale;
         // Transport trajectory is shared by every channel; only the delay line
         // state is per channel.
         wowPhase += wowIncrement;
@@ -1111,6 +1163,11 @@ const TAPE_ARTIFACTS_REFERENCE_PROCESSOR = `
     state.flutterA = flutterA;
     state.flutterB = flutterB;
     state.rngState = rngState;
+    state.inputTrimGain = inputTrimGain;
+    state.outputGain = outputGain;
+    state.flutterScale = flutterScale;
+    state.mix = mixRatio;
+    state.mixRampRemaining = mixRampRemaining;
 
     return data;
 `;

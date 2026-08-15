@@ -76,14 +76,18 @@ public:
   void prepare(const PrepareInfo &info) override {
     sample_rate_ = static_cast<double>(info.sampleRate);
     max_channels_ = info.maxChannels;
-    states_.resize(kMaximumSections * static_cast<std::size_t>(max_channels_));
+    for (Bank &bank : banks_) {
+      bank.states.resize(kMaximumSections * static_cast<std::size_t>(max_channels_));
+    }
   }
 
   void reset() noexcept override {
     configured_ = false;
-    section_count_ = 0u;
-    for (State &state : states_) {
-      state.reset();
+    fade_remaining_ = 0u;
+    for (Bank &bank : banks_) {
+      bank.section_count = 0u;
+      for (State &state : bank.states)
+        state.reset();
     }
   }
 
@@ -95,63 +99,157 @@ public:
 
     const double frequency = static_cast<double>(params_.frequency);
     const float raw_slope = params_.slope;
-    if (!configured_ || last_channel_count_ != channel_count || last_frequency_ != frequency ||
-        last_slope_ != raw_slope) {
-      configure(channel_count, frequency, raw_slope);
+    if (!configured_ || last_channel_count_ != channel_count || last_slope_ != raw_slope) {
+      configureInitial(channel_count, frequency, raw_slope);
+    } else if (frequency != requested_frequency_) {
+      requested_frequency_ = frequency;
+      if (fade_remaining_ == 0u)
+        beginFrequencyTransition(frequency);
     }
-    if (section_count_ == 0u) {
+    if (fade_remaining_ == 0u && active_frequency_ != requested_frequency_) {
+      beginFrequencyTransition(requested_frequency_);
+    }
+    if (banks_[active_bank_].section_count == 0u) {
       return;
     }
 
-    for (std::size_t section = 0u; section < section_count_; ++section) {
-      for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
-        State &state = states_[section * max_channels_ + channel];
-        const std::uint32_t offset = channel * frame_count;
-        for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-          const double output = dsp::processBiquadDf1Sample(
-              static_cast<double>(audio[offset + frame]), coefficients_[section], state);
-          audio[offset + frame] = static_cast<float>(output);
+    if (fade_remaining_ == 0u) {
+      processStable(audio, channel_count, frame_count, banks_[active_bank_]);
+      return;
+    }
+
+    for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      if (fade_remaining_ == 0u) {
+        Bank &bank = banks_[active_bank_];
+        for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+          const std::size_t index = static_cast<std::size_t>(channel) * frame_count + frame;
+          audio[index] = processSample(audio[index], channel, bank);
         }
-        dsp::quantizeBiquadStateToFloat(state);
+        continue;
+      }
+      Bank &old_bank = banks_[active_bank_];
+      Bank &new_bank = banks_[1u - active_bank_];
+      for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+        const std::size_t index = static_cast<std::size_t>(channel) * frame_count + frame;
+        const float input = audio[index];
+        const float old_output = processSample(input, channel, old_bank);
+        const float new_output = processSample(input, channel, new_bank);
+        const double fade =
+            1.0 - static_cast<double>(fade_remaining_) / static_cast<double>(fade_frames_);
+        audio[index] = static_cast<float>(static_cast<double>(old_output) +
+                                          (static_cast<double>(new_output) - old_output) * fade);
+      }
+      --fade_remaining_;
+      if (fade_remaining_ == 0u) {
+        active_bank_ = 1u - active_bank_;
+        active_frequency_ = transition_frequency_;
+        if (active_frequency_ != requested_frequency_) {
+          beginFrequencyTransition(requested_frequency_);
+        }
       }
     }
+    quantizeStates(channel_count, banks_[0u]);
+    quantizeStates(channel_count, banks_[1u]);
   }
 
 private:
-  void configure(std::uint32_t channel_count, double frequency, float raw_slope) noexcept {
+  struct Bank {
+    std::array<Coefficients, kMaximumSections> coefficients{};
+    std::vector<State> states;
+    std::size_t section_count = 0u;
+  };
+
+  void design(Bank &bank, double frequency, float raw_slope) noexcept {
     const double nyquist_limit = sample_rate_ * 0.499;
     const double lower_bounded = frequency < 10.0 ? 10.0 : frequency;
     const double clamped_frequency = lower_bounded > nyquist_limit ? nyquist_limit : lower_bounded;
-    section_count_ =
-        designSections(sample_rate_, clamped_frequency, static_cast<int>(raw_slope), coefficients_);
+    bank.section_count = designSections(sample_rate_, clamped_frequency,
+                                        static_cast<int>(raw_slope), bank.coefficients);
+  }
 
+  void seedStates(Bank &bank, std::uint32_t channel_count) noexcept {
     const double positive_seed = static_cast<double>(static_cast<float>(1.0e-25));
     const double negative_seed = static_cast<double>(static_cast<float>(-1.0e-25));
-    for (std::size_t section = 0u; section < section_count_; ++section) {
+    for (State &state : bank.states)
+      state.reset();
+    for (std::size_t section = 0u; section < bank.section_count; ++section) {
       for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
-        State &state = states_[section * max_channels_ + channel];
+        State &state = bank.states[section * max_channels_ + channel];
         state.x1 = positive_seed;
         state.x2 = negative_seed;
         state.y1 = positive_seed;
         state.y2 = negative_seed;
       }
     }
+  }
 
+  void configureInitial(std::uint32_t channel_count, double frequency, float raw_slope) noexcept {
+    active_bank_ = 0u;
+    design(banks_[active_bank_], frequency, raw_slope);
+    seedStates(banks_[active_bank_], channel_count);
+    banks_[1u].section_count = banks_[0u].section_count;
+    seedStates(banks_[1u], channel_count);
+    const auto requested_frames = static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005));
+    fade_frames_ = requested_frames == 0u ? 1u : requested_frames;
+    fade_remaining_ = 0u;
     last_channel_count_ = channel_count;
-    last_frequency_ = frequency;
+    active_frequency_ = requested_frequency_ = transition_frequency_ = frequency;
     last_slope_ = raw_slope;
     configured_ = true;
+  }
+
+  void beginFrequencyTransition(double frequency) noexcept {
+    Bank &source = banks_[active_bank_];
+    Bank &target = banks_[1u - active_bank_];
+    design(target, frequency, last_slope_);
+    target.states = source.states;
+    transition_frequency_ = frequency;
+    fade_remaining_ = fade_frames_;
+  }
+
+  [[nodiscard]] float processSample(float input, std::uint32_t channel, Bank &bank) noexcept {
+    float output = input;
+    for (std::size_t section = 0u; section < bank.section_count; ++section) {
+      State &state = bank.states[section * max_channels_ + channel];
+      output = static_cast<float>(dsp::processBiquadDf1Sample(static_cast<double>(output),
+                                                              bank.coefficients[section], state));
+    }
+    return output;
+  }
+
+  void processStable(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
+                     Bank &bank) noexcept {
+    for (std::size_t section = 0u; section < bank.section_count; ++section) {
+      for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+        State &state = bank.states[section * max_channels_ + channel];
+        const std::uint32_t offset = channel * frame_count;
+        for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+          audio[offset + frame] = static_cast<float>(dsp::processBiquadDf1Sample(
+              static_cast<double>(audio[offset + frame]), bank.coefficients[section], state));
+        }
+        dsp::quantizeBiquadStateToFloat(state);
+      }
+    }
+  }
+
+  void quantizeStates(std::uint32_t channel_count, Bank &bank) noexcept {
+    for (std::size_t section = 0u; section < bank.section_count; ++section)
+      for (std::uint32_t channel = 0u; channel < channel_count; ++channel)
+        dsp::quantizeBiquadStateToFloat(bank.states[section * max_channels_ + channel]);
   }
 
   double sample_rate_ = 0.0;
   std::uint32_t max_channels_ = 0u;
   std::uint32_t last_channel_count_ = 0u;
-  double last_frequency_ = 0.0;
+  double active_frequency_ = 0.0;
+  double requested_frequency_ = 0.0;
+  double transition_frequency_ = 0.0;
   float last_slope_ = 0.0F;
   bool configured_ = false;
-  std::size_t section_count_ = 0u;
-  std::array<Coefficients, kMaximumSections> coefficients_{};
-  std::vector<State> states_;
+  std::uint32_t active_bank_ = 0u;
+  std::uint32_t fade_frames_ = 1u;
+  std::uint32_t fade_remaining_ = 0u;
+  std::array<Bank, 2u> banks_;
 };
 
 } // namespace effetune::plugins::eq

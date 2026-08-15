@@ -99,8 +99,17 @@ function verifyLinuxLoader(executablePath, openHomePath) {
   assert.equal(ldd.status, 0, `ldd failed for ${executablePath}: ${ldd.stderr}`);
   const dependencies = new Map();
   for (const line of ldd.stdout.split(/\r?\n/)) {
-    const match = line.match(/^\s*(libnl(?:-genl)?-3\.so(?:\.[^\s]+)*)\s+=>\s+(\S+)/);
-    if (match) dependencies.set(match[1], match[2]);
+    const separator = line.indexOf('=>');
+    if (separator < 0) continue;
+    const soname = line.slice(0, separator).trim();
+    if (!LIBNL_RUNTIME_FILE.test(soname)) continue;
+    const resolution = line.slice(separator + 2).trimStart();
+    let pathEnd = 0;
+    while (pathEnd < resolution.length && resolution[pathEnd] !== ' ' &&
+           resolution[pathEnd] !== '\t') {
+      pathEnd += 1;
+    }
+    if (pathEnd > 0) dependencies.set(soname, resolution.slice(0, pathEnd));
   }
   assert.ok(
     [...dependencies].some(([name]) => name.startsWith('libnl-3.so.')),

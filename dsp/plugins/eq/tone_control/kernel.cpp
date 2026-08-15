@@ -2,6 +2,8 @@
 #include "ToneControlPluginParams.h"
 #include "effetune/dsp/biquad.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -103,10 +105,14 @@ public:
     sample_rate_ = static_cast<double>(info.sampleRate);
     max_channels_ = info.maxChannels;
     states_.resize(max_channels_);
+    const auto requested_frames = static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005));
+    ramp_frames_ = requested_frames == 0u ? 1u : requested_frames;
   }
 
   void reset() noexcept override {
     initialized_ = false;
+    coefficients_initialized_ = false;
+    ramp_remaining_ = 0u;
     for (ToneState &state : states_) {
       state.reset();
     }
@@ -125,42 +131,95 @@ public:
       initialized_ = true;
     }
 
-    const double bass_gain = static_cast<double>(params_.bass);
-    const double mid_gain = static_cast<double>(params_.mid);
-    const double treble_gain = static_cast<double>(params_.treble);
-    const bool bass_active = bass_gain > kGainThreshold || bass_gain < -kGainThreshold;
-    const bool mid_active = mid_gain > kGainThreshold || mid_gain < -kGainThreshold;
-    const bool treble_active = treble_gain > kGainThreshold || treble_gain < -kGainThreshold;
-
-    const Coefficients bass = bass_active ? designBass(sample_rate_, bass_gain) : Coefficients{};
-    const Coefficients mid = mid_active ? designMid(sample_rate_, mid_gain) : Coefficients{};
-    const Coefficients treble =
-        treble_active ? designTreble(sample_rate_, treble_gain) : Coefficients{};
+    retargetCoefficients();
 
     for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
       ToneState &state = states_[channel];
       const std::uint32_t offset = channel * frame_count;
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        const auto coefficients = coefficientsAt(frame);
         double sample = static_cast<double>(audio[offset + frame]);
-        if (bass_active) {
-          sample = dsp::processBiquadDf1Sample(sample, bass, state.bass);
-        }
-        if (mid_active) {
-          sample = dsp::processBiquadDf1Sample(sample, mid, state.mid);
-        }
-        if (treble_active) {
-          sample = dsp::processBiquadDf1Sample(sample, treble, state.treble);
-        }
+        sample = dsp::processBiquadDf1Sample(sample, coefficients[0], state.bass);
+        sample = dsp::processBiquadDf1Sample(sample, coefficients[1], state.mid);
+        sample = dsp::processBiquadDf1Sample(sample, coefficients[2], state.treble);
         audio[offset + frame] = static_cast<float>(sample);
       }
     }
+    advanceCoefficients(frame_count);
   }
 
 private:
+  static Coefficients interpolate(const Coefficients &from, const Coefficients &step,
+                                  double position) noexcept {
+    return {from.b0 + step.b0 * position, from.b1 + step.b1 * position,
+            from.b2 + step.b2 * position, from.a1 + step.a1 * position,
+            from.a2 + step.a2 * position};
+  }
+
+  void retargetCoefficients() noexcept {
+    const std::array<double, 3u> gains{static_cast<double>(params_.bass),
+                                       static_cast<double>(params_.mid),
+                                       static_cast<double>(params_.treble)};
+    std::array<Coefficients, 3u> targets{
+        gains[0] > kGainThreshold || gains[0] < -kGainThreshold ? designBass(sample_rate_, gains[0])
+                                                                : Coefficients{},
+        gains[1] > kGainThreshold || gains[1] < -kGainThreshold ? designMid(sample_rate_, gains[1])
+                                                                : Coefficients{},
+        gains[2] > kGainThreshold || gains[2] < -kGainThreshold
+            ? designTreble(sample_rate_, gains[2])
+            : Coefficients{}};
+    if (!coefficients_initialized_) {
+      current_coefficients_ = target_coefficients_ = targets;
+      cached_gains_ = gains;
+      coefficients_initialized_ = true;
+      return;
+    }
+    if (gains == cached_gains_)
+      return;
+    cached_gains_ = gains;
+    target_coefficients_ = targets;
+    const double inverse = 1.0 / static_cast<double>(ramp_frames_);
+    for (std::size_t index = 0u; index < 3u; ++index) {
+      const Coefficients &from = current_coefficients_[index];
+      const Coefficients &to = target_coefficients_[index];
+      coefficient_steps_[index] = {(to.b0 - from.b0) * inverse, (to.b1 - from.b1) * inverse,
+                                   (to.b2 - from.b2) * inverse, (to.a1 - from.a1) * inverse,
+                                   (to.a2 - from.a2) * inverse};
+    }
+    ramp_remaining_ = ramp_frames_;
+  }
+
+  [[nodiscard]] std::array<Coefficients, 3u> coefficientsAt(std::uint32_t frame) const noexcept {
+    const std::uint32_t elapsed = frame + 1u;
+    const double position =
+        static_cast<double>(elapsed < ramp_remaining_ ? elapsed : ramp_remaining_);
+    return {interpolate(current_coefficients_[0], coefficient_steps_[0], position),
+            interpolate(current_coefficients_[1], coefficient_steps_[1], position),
+            interpolate(current_coefficients_[2], coefficient_steps_[2], position)};
+  }
+
+  void advanceCoefficients(std::uint32_t frames) noexcept {
+    const std::uint32_t advanced = frames < ramp_remaining_ ? frames : ramp_remaining_;
+    for (std::size_t index = 0u; index < 3u; ++index) {
+      current_coefficients_[index] =
+          interpolate(current_coefficients_[index], coefficient_steps_[index], advanced);
+    }
+    ramp_remaining_ -= advanced;
+    if (ramp_remaining_ == 0u)
+      current_coefficients_ = target_coefficients_;
+  }
+
   double sample_rate_ = 0.0;
   std::uint32_t max_channels_ = 0u;
   std::uint32_t last_channel_count_ = 0u;
   bool initialized_ = false;
+  bool coefficients_initialized_ = false;
+  std::array<double, 3u> cached_gains_{};
+  std::array<Coefficients, 3u> current_coefficients_{};
+  std::array<Coefficients, 3u> target_coefficients_{};
+  std::array<Coefficients, 3u> coefficient_steps_{};
+  std::uint32_t ramp_frames_ = 240u;
+  std::uint32_t ramp_remaining_ = 0u;
   std::vector<ToneState> states_;
 };
 

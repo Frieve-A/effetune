@@ -124,7 +124,7 @@ test('Multiband Saturation goldens preserve crossover fades and band transitions
     assert.equal(golden.metadata.type, 'MultibandSaturationPlugin');
     assert.equal(
       golden.metadata.jsEngineHash,
-      'aff52f56e47b4e6567c03c268276b970ca9b506718ae3d936815341f41788bec'
+      'edc8e47dbab27c91ad3eae4d1093febafac62fc0b4c275d5f17992414d7526b8'
     );
     assert.ok(golden.expected.every(Number.isFinite));
   }
@@ -204,6 +204,13 @@ test('Multiband Saturation reference freezes disabled state and resets only LR s
     })
   );
   bandChanged.plugin.setParameters({ bands: defaultBands });
+  const settle = testSignal(240, 2, 907);
+  await bandChanged.process(settle, {
+    sampleRate: 48000, frames: 240, channels: 2, blockSize: 97
+  });
+  await bandControl.process(settle, {
+    sampleRate: 48000, frames: 240, channels: 2, blockSize: 97
+  });
   const bandSuffix = testSignal(173, 2, 1009);
   assert.deepEqual(
     await bandChanged.process(bandSuffix, {

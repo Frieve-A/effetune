@@ -753,7 +753,8 @@ private:
 
   void advanceStagedJob() noexcept {
     while (job_active_ && job_slot_ < kLogicalSlots &&
-           absolute_sample_ - job_start_sample_ >= (job_slot_ + 1u) * stage_slot_samples_) {
+           absolute_sample_ - job_start_sample_ >=
+               static_cast<std::uint64_t>(job_slot_ + 1u) * stage_slot_samples_) {
       runStagedSlot(job_slot_);
       ++job_slot_;
       if (job_slot_ == kLogicalSlots) {

@@ -1,6 +1,7 @@
 #include "effetune/kernel.h"
 #include "DynamicSaturationPluginParams.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -21,6 +22,7 @@ public:
   void reset() noexcept override {
     clearState();
     initialized_ = false;
+    controls_initialized_ = false;
     last_channel_count_ = 0u;
   }
 
@@ -39,12 +41,16 @@ public:
     const double stiffness = static_cast<double>(params_.speakerStiffness);
     const double damping = static_cast<double>(params_.speakerDamping);
     const double inverse_mass = 1.0 / static_cast<double>(params_.speakerMass);
-    const double distortion_drive = static_cast<double>(params_.distortionDrive);
-    const double bias = static_cast<double>(params_.distortionBias);
-    const double distortion_mix = static_cast<double>(params_.distortionMix) * 0.01;
-    const double cone_mix = static_cast<double>(params_.coneMotionMix) * 0.01;
-    const double output_gain = std::pow(10.0, static_cast<double>(params_.outputGain) * 0.05);
-    const double bias_term = std::tanh(distortion_drive * bias);
+    prepareControlRamps();
+    const bool controls_ramping = distortion_drive_.active() || distortion_bias_.active() ||
+                                  distortion_mix_.active() || cone_mix_.active() ||
+                                  output_gain_.active();
+    const double stable_distortion_drive = distortion_drive_.current;
+    const double stable_bias = distortion_bias_.current;
+    const double stable_distortion_mix = distortion_mix_.current * 0.01;
+    const double stable_cone_mix = cone_mix_.current * 0.01;
+    const double stable_output_gain = std::pow(10.0, output_gain_.current * 0.05);
+    const double stable_bias_term = std::tanh(stable_distortion_drive * stable_bias);
     const double time_step = 48000.0 / sample_rate_;
 
     for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
@@ -52,6 +58,17 @@ public:
       double position = static_cast<double>(positions_[channel]);
       double velocity = static_cast<double>(velocities_[channel]);
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        const double distortion_drive =
+            controls_ramping ? distortion_drive_.value(frame) : stable_distortion_drive;
+        const double bias = controls_ramping ? distortion_bias_.value(frame) : stable_bias;
+        const double distortion_mix =
+            controls_ramping ? distortion_mix_.value(frame) * 0.01 : stable_distortion_mix;
+        const double cone_mix = controls_ramping ? cone_mix_.value(frame) * 0.01 : stable_cone_mix;
+        const double output_gain = controls_ramping
+                                       ? std::pow(10.0, output_gain_.value(frame) * 0.05)
+                                       : stable_output_gain;
+        const double bias_term =
+            controls_ramping ? std::tanh(distortion_drive * bias) : stable_bias_term;
         const double input = static_cast<double>(audio[offset + frame]);
         const double force = speaker_drive * input - stiffness * position - damping * velocity;
         const double acceleration = force * inverse_mass;
@@ -95,9 +112,72 @@ public:
       positions_[channel] = static_cast<float>(position);
       velocities_[channel] = static_cast<float>(velocity);
     }
+
+    distortion_drive_.advance(frame_count);
+    distortion_bias_.advance(frame_count);
+    distortion_mix_.advance(frame_count);
+    cone_mix_.advance(frame_count);
+    output_gain_.advance(frame_count);
   }
 
 private:
+  struct LinearRamp {
+    double current = 0.0;
+    double target = 0.0;
+    double step = 0.0;
+    std::uint32_t remaining = 0u;
+    void snap(double value) noexcept {
+      current = target = value;
+      step = 0.0;
+      remaining = 0u;
+    }
+    void retarget(double value, std::uint32_t frames) noexcept {
+      if (value == target)
+        return;
+      target = value;
+      remaining = frames;
+      step = (target - current) / static_cast<double>(frames);
+    }
+    [[nodiscard]] bool active() const noexcept { return remaining != 0u; }
+    [[nodiscard]] double value(std::uint32_t frame) const noexcept {
+      const std::uint32_t elapsed = frame + 1u;
+      return elapsed >= remaining ? target : current + step * static_cast<double>(elapsed);
+    }
+    void advance(std::uint32_t frames) noexcept {
+      if (frames >= remaining) {
+        current = target;
+        remaining = 0u;
+        step = 0.0;
+      } else {
+        current += step * static_cast<double>(frames);
+        remaining -= frames;
+      }
+    }
+  };
+
+  void prepareControlRamps() noexcept {
+    const double drive = static_cast<double>(params_.distortionDrive);
+    const double bias = static_cast<double>(params_.distortionBias);
+    const double distortion_mix = static_cast<double>(params_.distortionMix);
+    const double cone_mix = static_cast<double>(params_.coneMotionMix);
+    const double output_gain = static_cast<double>(params_.outputGain);
+    if (!controls_initialized_) {
+      distortion_drive_.snap(drive);
+      distortion_bias_.snap(bias);
+      distortion_mix_.snap(distortion_mix);
+      cone_mix_.snap(cone_mix);
+      output_gain_.snap(output_gain);
+      controls_initialized_ = true;
+      return;
+    }
+    const auto frames = static_cast<std::uint32_t>(std::max(1.0, std::ceil(sample_rate_ * 0.005)));
+    distortion_drive_.retarget(drive, frames);
+    distortion_bias_.retarget(bias, frames);
+    distortion_mix_.retarget(distortion_mix, frames);
+    cone_mix_.retarget(cone_mix, frames);
+    output_gain_.retarget(output_gain, frames);
+  }
+
   void clearState() noexcept {
     for (float &position : positions_) {
       position = 0.0F;
@@ -111,8 +191,14 @@ private:
   std::uint32_t max_channels_ = 0u;
   std::uint32_t last_channel_count_ = 0u;
   bool initialized_ = false;
+  bool controls_initialized_ = false;
   std::vector<float> positions_;
   std::vector<float> velocities_;
+  LinearRamp distortion_drive_;
+  LinearRamp distortion_bias_;
+  LinearRamp distortion_mix_;
+  LinearRamp cone_mix_;
+  LinearRamp output_gain_;
 };
 
 } // namespace effetune::plugins::saturation

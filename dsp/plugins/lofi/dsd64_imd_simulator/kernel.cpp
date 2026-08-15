@@ -168,6 +168,7 @@ public:
     double meter_output_power = meter_output_power_;
 
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      advanceBCoefficientMorph();
       amount_smoothed += smoothing * (amount_target - amount_smoothed);
       dry_wet_smoothed += smoothing * (dry_wet_target - dry_wet_smoothed);
       output_gain_smoothed += smoothing * (output_gain_target - output_gain_smoothed);
@@ -493,18 +494,36 @@ private:
     hu_coefficients_[5] = lowPass(end_frequency, 0.707, sample_rate_);
     low_pass_coefficients_[0] = lowPass(20000.0, kLowPassQ1, sample_rate_);
     low_pass_coefficients_[1] = lowPass(20000.0, kLowPassQ2, sample_rate_);
-    post_coefficients_[0] = highPass(low_frequency, 0.707, sample_rate_);
-    post_coefficients_[1] = peak(scratch_frequency, 0.9, 6.0, sample_rate_);
-    post_coefficients_[2] = lowPass(high_frequency, 0.707, sample_rate_);
+    std::array<BiquadCoefficients, 3u> post_target = {
+        highPass(low_frequency, 0.707, sample_rate_),
+        peak(scratch_frequency, 0.9, 6.0, sample_rate_),
+        lowPass(high_frequency, 0.707, sample_rate_)};
 
     const double high_pass_frequency = 1000.0 * static_cast<double>(params_.imdPathHpf);
+    std::array<BiquadCoefficients, 2u> high_pass_target{};
     if (high_pass_frequency > 0.0) {
-      high_pass_coefficients_[0] = highPass(high_pass_frequency, kLowPassQ1, sample_rate_);
-      high_pass_coefficients_[1] = highPass(high_pass_frequency, kLowPassQ2, sample_rate_);
-      high_pass_stage_count_ = 2u;
+      high_pass_target[0] = highPass(high_pass_frequency, kLowPassQ1, sample_rate_);
+      high_pass_target[1] = highPass(high_pass_frequency, kLowPassQ2, sample_rate_);
     } else {
-      high_pass_stage_count_ = 0u;
+      high_pass_target[0] = {1.0, 0.0, 0.0, 0.0, 0.0};
+      high_pass_target[1] = {1.0, 0.0, 0.0, 0.0, 0.0};
     }
+
+    if (!coefficients_valid_) {
+      post_coefficients_ = post_target;
+      high_pass_coefficients_ = high_pass_target;
+      post_target_coefficients_ = post_target;
+      high_pass_target_coefficients_ = high_pass_target;
+      coefficient_morph_remaining_ = 0u;
+    } else if (params_.scratchTone != coefficient_scratch_tone_ ||
+               params_.imdPathHpf != coefficient_high_pass_) {
+      post_target_coefficients_ = post_target;
+      high_pass_target_coefficients_ = high_pass_target;
+      coefficient_morph_remaining_ =
+          static_cast<std::uint32_t>(std::max(1.0, std::ceil(sample_rate_ * 0.005)));
+      calculateCoefficientSteps();
+    }
+    high_pass_stage_count_ = 2u;
 
     if (hu_changed) {
       normalization_ = computeNormalization();
@@ -514,6 +533,53 @@ private:
     coefficient_scratch_tone_ = params_.scratchTone;
     coefficient_high_pass_ = params_.imdPathHpf;
     coefficients_valid_ = true;
+  }
+
+  static BiquadCoefficients coefficientStep(const BiquadCoefficients &current,
+                                            const BiquadCoefficients &target,
+                                            std::uint32_t frames) noexcept {
+    const double denominator = static_cast<double>(frames);
+    return {(target.b0 - current.b0) / denominator, (target.b1 - current.b1) / denominator,
+            (target.b2 - current.b2) / denominator, (target.a1 - current.a1) / denominator,
+            (target.a2 - current.a2) / denominator};
+  }
+
+  static void addCoefficientStep(BiquadCoefficients &current,
+                                 const BiquadCoefficients &step) noexcept {
+    current.b0 += step.b0;
+    current.b1 += step.b1;
+    current.b2 += step.b2;
+    current.a1 += step.a1;
+    current.a2 += step.a2;
+  }
+
+  void calculateCoefficientSteps() noexcept {
+    for (std::size_t index = 0u; index < post_coefficients_.size(); ++index) {
+      post_coefficient_steps_[index] =
+          coefficientStep(post_coefficients_[index], post_target_coefficients_[index],
+                          coefficient_morph_remaining_);
+    }
+    for (std::size_t index = 0u; index < high_pass_coefficients_.size(); ++index) {
+      high_pass_coefficient_steps_[index] =
+          coefficientStep(high_pass_coefficients_[index], high_pass_target_coefficients_[index],
+                          coefficient_morph_remaining_);
+    }
+  }
+
+  void advanceBCoefficientMorph() noexcept {
+    if (coefficient_morph_remaining_ == 0u)
+      return;
+    if (coefficient_morph_remaining_ == 1u) {
+      post_coefficients_ = post_target_coefficients_;
+      high_pass_coefficients_ = high_pass_target_coefficients_;
+      coefficient_morph_remaining_ = 0u;
+      return;
+    }
+    for (std::size_t index = 0u; index < post_coefficients_.size(); ++index)
+      addCoefficientStep(post_coefficients_[index], post_coefficient_steps_[index]);
+    for (std::size_t index = 0u; index < high_pass_coefficients_.size(); ++index)
+      addCoefficientStep(high_pass_coefficients_[index], high_pass_coefficient_steps_[index]);
+    --coefficient_morph_remaining_;
   }
 
   double computeNormalization() const noexcept {
@@ -642,6 +708,11 @@ private:
   std::array<BiquadCoefficients, 2u> low_pass_coefficients_{};
   std::array<BiquadCoefficients, 3u> post_coefficients_{};
   std::array<BiquadCoefficients, 2u> high_pass_coefficients_{};
+  std::array<BiquadCoefficients, 3u> post_target_coefficients_{};
+  std::array<BiquadCoefficients, 2u> high_pass_target_coefficients_{};
+  std::array<BiquadCoefficients, 3u> post_coefficient_steps_{};
+  std::array<BiquadCoefficients, 2u> high_pass_coefficient_steps_{};
+  std::uint32_t coefficient_morph_remaining_ = 0u;
   std::vector<float> buf_u_;
   std::vector<float> buf_x_audio_;
   std::vector<float> buf_x_raw_;

@@ -186,7 +186,7 @@ void testBlockSizeIndependence() {
   check(whole == halves, "splitting a block leaves the rendered output unchanged");
 }
 
-void testZeroMixFreezesStateBeforeChannelChange() {
+void testZeroMixFreezesStateAfterConvergence() {
   constexpr std::uint32_t seed_low = 0xeffe7a5eu;
   constexpr std::uint32_t seed_high = 0x10203040u;
   KernelHarness paused;
@@ -202,11 +202,25 @@ void testZeroMixFreezesStateBeforeChannelChange() {
   uninterrupted.process(prefix_uninterrupted, 2u, 127u);
   check(prefix_paused == prefix_uninterrupted, "prefixes start in lockstep");
 
+  constexpr std::array<std::uint32_t, 2> settle_blocks = {128u, 112u};
+  for (std::size_t block = 0u; block < settle_blocks.size(); ++block) {
+    const std::uint32_t frames = settle_blocks[block];
+    std::vector<float> settling_paused =
+        signal(frames, 2u, 71u + static_cast<std::uint32_t>(block) * 131u);
+    std::vector<float> settling_uninterrupted = settling_paused;
+    paused.stage(tapeParams(0.0F));
+    uninterrupted.stage(tapeParams(0.0F));
+    paused.process(settling_paused, 2u, frames);
+    uninterrupted.process(settling_uninterrupted, 2u, frames);
+    check(settling_paused == settling_uninterrupted,
+          "zero-mix transition remains deterministic through the bounded ramp");
+  }
+
   std::vector<float> bypass = signal(61u, 4u, 137u);
   const std::vector<float> bypass_input = bypass;
   paused.stage(tapeParams(0.0F));
   paused.process(bypass, 4u, 61u);
-  check(bypass == bypass_input, "zero mix returns every channel unchanged");
+  check(bypass == bypass_input, "settled zero mix returns every channel unchanged");
 
   std::vector<float> suffix_paused = signal(113u, 2u, 257u);
   std::vector<float> suffix_uninterrupted = suffix_paused;
@@ -215,7 +229,7 @@ void testZeroMixFreezesStateBeforeChannelChange() {
   paused.process(suffix_paused, 2u, 113u);
   uninterrupted.process(suffix_uninterrupted, 2u, 113u);
   check(suffix_paused == suffix_uninterrupted,
-        "zero mix freezes the RNG and defers the channel-count reset");
+        "settled zero mix freezes the RNG and defers the channel-count reset");
 }
 
 void testChannelCountChangeRebuildsState() {
@@ -260,7 +274,7 @@ void testChannelCountChangeRebuildsState() {
 int main() {
   testSeedAndResetReplay();
   testBlockSizeIndependence();
-  testZeroMixFreezesStateBeforeChannelChange();
+  testZeroMixFreezesStateAfterConvergence();
   testChannelCountChangeRebuildsState();
   return failures == 0 ? 0 : 1;
 }

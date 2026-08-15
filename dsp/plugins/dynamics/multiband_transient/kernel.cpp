@@ -73,7 +73,7 @@ public:
       frequencies_ = frequencies;
       channel_count_ = channel_count;
       configured_ = true;
-      startFade(frame_count);
+      startFade();
     }
 
     splitBands(audio, channel_count, frame_count);
@@ -225,9 +225,9 @@ private:
     fade_counter_ += samples;
   }
 
-  void startFade(std::uint32_t frame_count) noexcept {
+  void startFade() noexcept {
     const std::uint32_t requested = static_cast<std::uint32_t>(std::floor(sample_rate_ * 0.005));
-    fade_length_ = requested < frame_count ? requested : frame_count;
+    fade_length_ = requested;
     fade_counter_ = 0u;
   }
 

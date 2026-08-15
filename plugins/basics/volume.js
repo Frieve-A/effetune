@@ -13,10 +13,27 @@ class VolumePlugin extends PluginBase {
                 channelCount, blockSize, type 
             } = parameters;
             
-            const gain = Math.pow(10, volume / 20);
-            const len = data.length;
-            for (let i = 0; i < len ; i++) {
-                data[i] *= gain;
+            const targetGain = Math.pow(10, volume / 20);
+            const rampFrames = Math.max(1, Math.ceil(parameters.sampleRate * 0.005));
+            if (context.currentGain === undefined) {
+                context.currentGain = targetGain;
+                context.targetGain = targetGain;
+                context.gainStep = 0;
+                context.rampRemaining = 0;
+            } else if (context.targetGain !== targetGain) {
+                context.targetGain = targetGain;
+                context.gainStep = (targetGain - context.currentGain) / rampFrames;
+                context.rampRemaining = rampFrames;
+            }
+            for (let frame = 0; frame < blockSize; frame++) {
+                if (context.rampRemaining > 0) {
+                    context.currentGain += context.gainStep;
+                    if (--context.rampRemaining === 0) context.currentGain = context.targetGain;
+                }
+                for (let channel = 0; channel < channelCount; channel++) {
+                    const index = channel * blockSize + frame;
+                    data[index] *= context.currentGain;
+                }
             }
             return data;
         `);

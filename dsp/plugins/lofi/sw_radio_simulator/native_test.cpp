@@ -18,6 +18,7 @@ extern "C" double et_sw_debug_delay_capacity(effetune::PluginKernel *kernel) noe
 extern "C" double et_sw_debug_delay_tap(effetune::PluginKernel *kernel, int index) noexcept;
 extern "C" double et_sw_debug_sync_pll_state(effetune::PluginKernel *kernel) noexcept;
 extern "C" double et_sw_debug_sync_pll_frequency_hz(effetune::PluginKernel *kernel) noexcept;
+extern "C" double et_sw_debug_control_output_gain(effetune::PluginKernel *kernel) noexcept;
 
 namespace {
 
@@ -87,6 +88,7 @@ public:
 
   void seed(std::uint32_t low, std::uint32_t high) noexcept { kernel_->setRandomSeed(low, high); }
   void reset() noexcept { kernel_->reset(); }
+  double controlOutputGain() const noexcept { return et_sw_debug_control_output_gain(kernel_); }
 
   void stage(const Params &params) noexcept {
     const et_status status =
@@ -484,6 +486,32 @@ void testDeterminismAndBlockDivision() {
   const std::vector<float> seed_5 = render_seed(5u);
   check(seed_1 != seed_2 && seed_2 != seed_3 && seed_4 != seed_5,
         "adjacent execution seeds select distinct simulations");
+}
+
+void testQuantumAutomationCapturesIntermediateTargets() {
+  KernelHarness harness;
+  Params params = defaultParams();
+  std::vector<float> quantum(8u, 0.0F);
+  harness.stage(params);
+  harness.process(quantum, 1u, 8u);
+  const double initial = harness.controlOutputGain();
+
+  params.outputGain = 24.0F;
+  harness.stage(params);
+  harness.process(quantum, 1u, 8u);
+  const double after_maximum = harness.controlOutputGain();
+  params.outputGain = -24.0F;
+  harness.stage(params);
+  harness.process(quantum, 1u, 8u);
+  const double after_minimum = harness.controlOutputGain();
+  params.outputGain = 0.0F;
+  harness.stage(params);
+  harness.process(quantum, 1u, 8u);
+  const double after_default = harness.controlOutputGain();
+
+  check(after_maximum > initial, "Q=8 captures the maximum target direction");
+  check(after_minimum < after_maximum, "Q=8 captures the intervening minimum direction");
+  check(after_default > after_minimum, "Q=8 captures the final default direction");
 }
 
 void testDetectorTransitionDeterminismAndBlockDivision() {
@@ -1364,6 +1392,7 @@ void testSsbMaximumShapeAndModeSwitchesNeverAllocate() {
 int main() {
   testRoutingAndTelemetry();
   testDeterminismAndBlockDivision();
+  testQuantumAutomationCapturesIntermediateTargets();
   testDetectorTransitionDeterminismAndBlockDivision();
   testDetectorCrossfadeIsContinuous();
   testSpeakerTransitionAndMaximumShape();

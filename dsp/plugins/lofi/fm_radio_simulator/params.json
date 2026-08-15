@@ -7,7 +7,7 @@
     { "name": "processing", "key": "pr", "kind": "float", "min": 0, "max": 18, "default": 0, "unit": "dB", "automation": true },
     { "name": "signal", "key": "st", "kind": "float", "min": 0, "max": 70, "default": 35, "unit": "dBuV", "automation": true },
     { "name": "tuning", "key": "tn", "kind": "float", "min": -200, "max": 200, "default": 0, "unit": "kHz", "automation": true },
-    { "name": "ifBand", "key": "bw", "kind": "float", "min": 80, "max": 240, "default": 230, "unit": "kHz" },
+    { "name": "ifBand", "key": "bw", "kind": "float", "min": 80, "max": 240, "default": 230, "unit": "kHz", "publicName": "ifBandwidth", "automation": true },
     { "name": "multipath", "key": "mp", "kind": "float", "min": 0, "max": 100, "default": 0, "unit": "%", "automation": true },
     { "name": "pathDelay", "key": "dl", "kind": "float", "min": 0.5, "max": 50, "default": 5, "unit": "us", "automation": { "normalization": "log" } },
     { "name": "fading", "key": "fd", "kind": "float", "min": 0, "max": 20, "default": 0, "unit": "Hz", "automation": true },

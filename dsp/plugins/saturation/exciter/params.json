@@ -2,7 +2,7 @@
   "type": "ExciterPlugin",
   "tolerance": { "abs": 0.00001, "policy": "per-sample" },
   "fields": [
-    { "name": "highPassFrequency", "key": "hf", "kind": "float", "min": 500, "max": 10000, "default": 3000, "unit": "Hz" },
+    { "name": "highPassFrequency", "key": "hf", "kind": "float", "min": 500, "max": 10000, "default": 3000, "unit": "Hz", "automation": true },
     { "name": "highPassSlope", "key": "hs", "kind": "int", "min": 0, "max": 2, "default": 1 },
     { "name": "drive", "key": "dr", "kind": "float", "min": 0, "max": 10, "default": 3, "automation": true },
     { "name": "bias", "key": "bs", "kind": "float", "min": -0.3, "max": 0.3, "default": 0.1, "automation": true },

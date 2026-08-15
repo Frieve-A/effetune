@@ -39,6 +39,10 @@ public:
     max_channels_ = info.maxChannels;
     max_frames_ = info.maxFrames;
     samples_.resize(max_frames_);
+    for (auto &values : control_values_)
+      values.resize(max_frames_);
+    const auto requested_frames = static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005));
+    ramp_frames_ = requested_frames == 0u ? 1u : requested_frames;
     table_storage_.resize(static_cast<std::size_t>(kMaximumCacheEntries) * kTableStride);
   }
 
@@ -53,6 +57,8 @@ public:
     }
     cache_count_ = 0u;
     oldest_cache_entry_ = 0u;
+    controls_initialized_ = false;
+    control_ramp_remaining_ = 0u;
     random_.seed(selected_seed_low_, selected_seed_high_);
   }
 
@@ -82,22 +88,17 @@ public:
     const double pan_angle = (panning + 1.0) * kPi * 0.25;
     const double pan_gain_left = std::cos(pan_angle);
     const double pan_gain_right = std::sin(pan_angle);
+    retargetControls({volume, pan_gain_left, pan_gain_right,
+                      static_cast<double>(params_.interval) * 0.001 * safe_sample_rate,
+                      static_cast<double>(params_.width) * 0.001 * safe_sample_rate});
+    fillControlValues(frame_count);
     std::uint32_t waveform = static_cast<std::uint32_t>(params_.waveform);
     if (waveform > 6u) {
       waveform = 0u;
     }
     const bool pulsed = static_cast<std::uint32_t>(params_.mode) == 1u;
-    const double interval_samples =
-        static_cast<double>(params_.interval) * 0.001 * safe_sample_rate;
-    double pulse_width_samples = static_cast<double>(params_.width) * 0.001 * safe_sample_rate;
-    const double maximum_width = interval_samples * 0.5;
-    if (pulse_width_samples > maximum_width) {
-      pulse_width_samples = maximum_width;
-    }
-    const double pulse_duration = pulse_width_samples * 2.0;
-
     if (waveform == 6u) {
-      generateImpulse(interval_samples, frame_count);
+      generateImpulse(frame_count);
     } else if (waveform == 4u) {
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
         samples_[frame] = static_cast<float>(random_.nextFloatSigned());
@@ -111,6 +112,10 @@ public:
     if (pulsed && waveform != 6u) {
       double pulse_time = pulse_time_;
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        const double interval_samples = control_values_[3][frame];
+        const double maximum_width = interval_samples * 0.5;
+        const double width = control_values_[4][frame];
+        const double pulse_duration = (width < maximum_width ? width : maximum_width) * 2.0;
         const double pulse_position = std::fmod(pulse_time, interval_samples);
         double pulse_gain = 0.0;
         if (pulse_position < pulse_duration) {
@@ -124,28 +129,67 @@ public:
     }
 
     for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
-      double pan_gain = 1.0;
-      if (channel_count >= 2u) {
-        pan_gain = channel == 0u ? pan_gain_left : pan_gain_right;
-        if (channel > 1u) {
-          pan_gain = 0.0;
+      const std::uint32_t offset = channel * frame_count;
+      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        double pan_gain = 1.0;
+        if (channel_count >= 2u) {
+          pan_gain = channel == 0u ? control_values_[1][frame] : control_values_[2][frame];
+          if (channel > 1u)
+            pan_gain = 0.0;
         }
+        const double gain = control_values_[0][frame] * pan_gain;
+        audio[offset + frame] = static_cast<float>(static_cast<double>(audio[offset + frame]) +
+                                                   static_cast<double>(samples_[frame]) * gain);
       }
-      const double gain = volume * pan_gain;
-      if (gain != 0.0) {
-        const std::uint32_t offset = channel * frame_count;
-        for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-          audio[offset + frame] = static_cast<float>(static_cast<double>(audio[offset + frame]) +
-                                                     static_cast<double>(samples_[frame]) * gain);
-        }
+    }
+    advanceControls(frame_count);
+  }
+
+private:
+  void retargetControls(const std::array<double, 5u> &targets) noexcept {
+    if (!controls_initialized_) {
+      current_controls_ = target_controls_ = targets;
+      controls_initialized_ = true;
+      return;
+    }
+    if (targets == target_controls_)
+      return;
+    target_controls_ = targets;
+    for (std::size_t index = 0u; index < targets.size(); ++index) {
+      control_steps_[index] =
+          (targets[index] - current_controls_[index]) / static_cast<double>(ramp_frames_);
+    }
+    control_ramp_remaining_ = ramp_frames_;
+  }
+
+  void fillControlValues(std::uint32_t frames) noexcept {
+    for (std::uint32_t frame = 0u; frame < frames; ++frame) {
+      const std::uint32_t elapsed = frame + 1u;
+      const double position = static_cast<double>(
+          elapsed < control_ramp_remaining_ ? elapsed : control_ramp_remaining_);
+      for (std::size_t index = 0u; index < current_controls_.size(); ++index) {
+        control_values_[index][frame] = current_controls_[index] + control_steps_[index] * position;
       }
     }
   }
 
-private:
-  void generateImpulse(double interval_samples, std::uint32_t frame_count) noexcept {
-    double impulse_position = std::fmod(pulse_time_, interval_samples);
+  void advanceControls(std::uint32_t frames) noexcept {
+    const std::uint32_t advanced =
+        frames < control_ramp_remaining_ ? frames : control_ramp_remaining_;
+    for (std::size_t index = 0u; index < current_controls_.size(); ++index) {
+      current_controls_[index] += control_steps_[index] * static_cast<double>(advanced);
+    }
+    control_ramp_remaining_ -= advanced;
+    if (control_ramp_remaining_ == 0u)
+      current_controls_ = target_controls_;
+  }
+
+  void generateImpulse(std::uint32_t frame_count) noexcept {
+    double impulse_position = pulse_time_;
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      const double interval_samples = control_values_[3][frame];
+      if (impulse_position >= interval_samples)
+        impulse_position = std::fmod(impulse_position, interval_samples);
       samples_[frame] = impulse_position < 1.0 ? 1.0F : 0.0F;
       impulse_position += 1.0;
       if (impulse_position >= interval_samples) {
@@ -345,6 +389,13 @@ private:
   std::uint32_t max_frames_ = 0u;
   std::uint32_t cache_count_ = 0u;
   std::uint32_t oldest_cache_entry_ = 0u;
+  bool controls_initialized_ = false;
+  std::array<double, 5u> current_controls_{};
+  std::array<double, 5u> target_controls_{};
+  std::array<double, 5u> control_steps_{};
+  std::array<std::vector<double>, 5u> control_values_{};
+  std::uint32_t ramp_frames_ = 240u;
+  std::uint32_t control_ramp_remaining_ = 0u;
   std::uint32_t selected_seed_low_ = static_cast<std::uint32_t>(dsp::XorShiftRng::kFallbackSeed);
   std::uint32_t selected_seed_high_ = 0u;
   std::array<float, 7> pink_state_{};

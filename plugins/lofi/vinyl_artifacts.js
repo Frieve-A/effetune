@@ -125,9 +125,11 @@ class VinylArtifactsPlugin extends PluginBase {
             }
 
             const { channelCount, blockSize, sampleRate, enabled, mx } = parameters;
-            const mixAmount = mx / 100.0;
+            const targetMix = mx / 100.0;
 
-            if (!enabled || mixAmount < 1e-6 || channelCount === 0 || sampleRate <= 0) {
+            if (!enabled || (targetMix < 1e-6 && (!context.automationInitialized ||
+                (context.mix === 0 && context.mixTarget === 0))) ||
+                channelCount === 0 || sampleRate <= 0) {
                 return data;
             }
             
@@ -145,46 +147,55 @@ class VinylArtifactsPlugin extends PluginBase {
                 context.rumbleLpfCoeffs = { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 };
                 context.lowShelfCoeffs = { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 };
                 context.highShelfCoeffs = { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 };
+                context.targetLowShelfCoeffs = { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 };
+                context.targetHighShelfCoeffs = { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 };
                 context.lastChannelCount = channelCount;
                 context.lowShelfBypassed = true;
                 context.highShelfBypassed = true;
                 context.initialized = true;
+                context.automationInitialized = false;
             }
             
             const { pp, pl, cm, cl, hs, rb, xt, tn, wr, rt, rm } = parameters;
             const MIN_DB_LEVEL = -80.0;
-            const wearMultiplier = wr / 100.0;
-            
-            const popGain = (pl <= MIN_DB_LEVEL || wearMultiplier < 1e-6) ? 0.0 : Math.exp(pl * DB_TO_LINEAR_FAST);
-            const crackleGain = (cl <= MIN_DB_LEVEL || wearMultiplier < 1e-6) ? 0.0 : Math.exp(cl * DB_TO_LINEAR_FAST);
-            const hissGain = (hs <= MIN_DB_LEVEL || wearMultiplier < 1e-6) ? 0.0 : Math.exp(hs * DB_TO_LINEAR_FAST);
-            const rumbleGain = (rb <= MIN_DB_LEVEL) ? 0.0 : Math.exp(rb * DB_TO_LINEAR_FAST);
-            
             const invSampleRate = 1.0 / sampleRate;
-            const popProb = (popGain > 0.0) ? (pp * wearMultiplier / 60.0) * invSampleRate : 0.0;
-            const crackleProb = (crackleGain > 0.0) ? (cm * wearMultiplier / 60.0) * invSampleRate : 0.0;
-            
             const reactAmount = rt / 100.0;
-            const crosstalkAmount = (xt / 100.0) * 0.5;
             const profileRatio = tn / 10.0;
             const lowShelfDb = 20.0 * (1.0 - profileRatio); 
             const highShelfDb = -20.0 * (1.0 - profileRatio);
             
             const crackleHpfCoeffs = calculateHpfCoeffs(3500.0, 0.707, sampleRate, context.crackleHpfCoeffs);
-            const rumbleLpfCoeffs = (rumbleGain > 0.0) ? calculateLpfCoeffs(70.0, 0.707, sampleRate, context.rumbleLpfCoeffs) : null;
-            const lowShelfCoeffs = calculateLowShelfCoeffs(50.0, lowShelfDb, 0.707, sampleRate, context.lowShelfCoeffs);
-            const highShelfCoeffs = calculateHighShelfCoeffs(2122.0, highShelfDb, 0.707, sampleRate, context.highShelfCoeffs);
-
-            const isLowShelfBypassed = (lowShelfCoeffs === null);
-            if (isLowShelfBypassed !== context.lowShelfBypassed) {
-                for (let ch = 0; ch < channelCount; ch++) { resetBiquadState(context.lowShelfState[ch]); }
-                context.lowShelfBypassed = isLowShelfBypassed;
-            }
-
-            const isHighShelfBypassed = (highShelfCoeffs === null);
-            if (isHighShelfBypassed !== context.highShelfBypassed) {
-                for (let ch = 0; ch < channelCount; ch++) { resetBiquadState(context.highShelfState[ch]); }
-                context.highShelfBypassed = isHighShelfBypassed;
+            const rumbleLpfCoeffs = calculateLpfCoeffs(70.0, 0.707, sampleRate, context.rumbleLpfCoeffs);
+            setBiquadCoeffs(context.targetLowShelfCoeffs, 1, 0, 0, 0, 0);
+            setBiquadCoeffs(context.targetHighShelfCoeffs, 1, 0, 0, 0, 0);
+            calculateLowShelfCoeffs(50.0, lowShelfDb, 0.707, sampleRate,
+                context.targetLowShelfCoeffs);
+            calculateHighShelfCoeffs(2122.0, highShelfDb, 0.707, sampleRate,
+                context.targetHighShelfCoeffs);
+            if (!context.automationInitialized) {
+                context.popLevel = pl; context.crackleLevel = cl;
+                context.hissLevel = hs; context.rumbleLevel = rb;
+                context.wear = wr / 100; context.crosstalk = xt / 200;
+                context.targetPopLevel = pl; context.targetCrackleLevel = cl;
+                context.targetHissLevel = hs; context.targetRumbleLevel = rb;
+                context.targetWear = wr / 100; context.targetCrosstalk = xt / 200;
+                context.targetNoiseProfile = tn;
+                context.mix = targetMix;
+                context.mixTarget = targetMix;
+                context.mixRampRemaining = 0;
+                Object.assign(context.lowShelfCoeffs, context.targetLowShelfCoeffs);
+                Object.assign(context.highShelfCoeffs, context.targetHighShelfCoeffs);
+                context.automationInitialized = true;
+            } else if (pl !== context.targetPopLevel || cl !== context.targetCrackleLevel ||
+                hs !== context.targetHissLevel || rb !== context.targetRumbleLevel ||
+                wr / 100 !== context.targetWear || xt / 200 !== context.targetCrosstalk ||
+                tn !== context.targetNoiseProfile || targetMix !== context.mixTarget) {
+                context.targetPopLevel = pl; context.targetCrackleLevel = cl;
+                context.targetHissLevel = hs; context.targetRumbleLevel = rb;
+                context.targetWear = wr / 100; context.targetCrosstalk = xt / 200;
+                context.targetNoiseProfile = tn;
+                context.mixTarget = targetMix;
+                context.mixRampRemaining = Math.max(1, Math.ceil(sampleRate * 0.005));
             }
 
             let controlSignal = 0.0;
@@ -222,17 +233,72 @@ class VinylArtifactsPlugin extends PluginBase {
                 controlSignal = (scaledEnergy > 1.0 ? 1.0 : scaledEnergy) * reactAmount;
             }
             
-            // Pre-calculate reaction-adjusted probabilities.
-            const popProbReact = popProb * (1.0 + controlSignal * 15.0);
-            const crackleProbReact = crackleProb * (1.0 + controlSignal * 8.0);
-            const hissFactor = 0.11 * hissGain * wearMultiplier;
-            const popImpulseGain = popGain * POP_COMPENSATION_GAIN;
-            const crackleImpulseGain = crackleGain * CRACKLE_COMPENSATION_GAIN;
-
             // Avoid allocating memory in the main processing loop.
             const wetSamples = context.wetSamples;
 
             for (let i = 0; i < blockSize; i++) {
+                if (context.mixRampRemaining !== 0) {
+                    const rampScale = 1 / context.mixRampRemaining;
+                    context.popLevel +=
+                        (context.targetPopLevel - context.popLevel) * rampScale;
+                    context.crackleLevel +=
+                        (context.targetCrackleLevel - context.crackleLevel) * rampScale;
+                    context.hissLevel +=
+                        (context.targetHissLevel - context.hissLevel) * rampScale;
+                    context.rumbleLevel +=
+                        (context.targetRumbleLevel - context.rumbleLevel) * rampScale;
+                    context.wear += (context.targetWear - context.wear) * rampScale;
+                    context.crosstalk +=
+                        (context.targetCrosstalk - context.crosstalk) * rampScale;
+                    context.mix += (context.mixTarget - context.mix) * rampScale;
+                    context.lowShelfCoeffs.b0 +=
+                        (context.targetLowShelfCoeffs.b0 - context.lowShelfCoeffs.b0) * rampScale;
+                    context.lowShelfCoeffs.b1 +=
+                        (context.targetLowShelfCoeffs.b1 - context.lowShelfCoeffs.b1) * rampScale;
+                    context.lowShelfCoeffs.b2 +=
+                        (context.targetLowShelfCoeffs.b2 - context.lowShelfCoeffs.b2) * rampScale;
+                    context.lowShelfCoeffs.a1 +=
+                        (context.targetLowShelfCoeffs.a1 - context.lowShelfCoeffs.a1) * rampScale;
+                    context.lowShelfCoeffs.a2 +=
+                        (context.targetLowShelfCoeffs.a2 - context.lowShelfCoeffs.a2) * rampScale;
+                    context.highShelfCoeffs.b0 +=
+                        (context.targetHighShelfCoeffs.b0 - context.highShelfCoeffs.b0) * rampScale;
+                    context.highShelfCoeffs.b1 +=
+                        (context.targetHighShelfCoeffs.b1 - context.highShelfCoeffs.b1) * rampScale;
+                    context.highShelfCoeffs.b2 +=
+                        (context.targetHighShelfCoeffs.b2 - context.highShelfCoeffs.b2) * rampScale;
+                    context.highShelfCoeffs.a1 +=
+                        (context.targetHighShelfCoeffs.a1 - context.highShelfCoeffs.a1) * rampScale;
+                    context.highShelfCoeffs.a2 +=
+                        (context.targetHighShelfCoeffs.a2 - context.highShelfCoeffs.a2) * rampScale;
+                    if (--context.mixRampRemaining === 0) {
+                        context.popLevel = context.targetPopLevel;
+                        context.crackleLevel = context.targetCrackleLevel;
+                        context.hissLevel = context.targetHissLevel;
+                        context.rumbleLevel = context.targetRumbleLevel;
+                        context.wear = context.targetWear;
+                        context.crosstalk = context.targetCrosstalk;
+                        context.mix = context.mixTarget;
+                        Object.assign(context.lowShelfCoeffs, context.targetLowShelfCoeffs);
+                        Object.assign(context.highShelfCoeffs, context.targetHighShelfCoeffs);
+                    }
+                }
+                const popGain = (context.popLevel <= MIN_DB_LEVEL || context.wear < 1e-6) ?
+                    0 : Math.exp(context.popLevel * DB_TO_LINEAR_FAST);
+                const crackleGain = (context.crackleLevel <= MIN_DB_LEVEL || context.wear < 1e-6) ?
+                    0 : Math.exp(context.crackleLevel * DB_TO_LINEAR_FAST);
+                const hissGain = (context.hissLevel <= MIN_DB_LEVEL || context.wear < 1e-6) ?
+                    0 : Math.exp(context.hissLevel * DB_TO_LINEAR_FAST);
+                const rumbleGain = context.rumbleLevel <= MIN_DB_LEVEL ?
+                    0 : Math.exp(context.rumbleLevel * DB_TO_LINEAR_FAST);
+                const popProbReact = (popGain > 0 ? pp * context.wear / 60 * invSampleRate : 0) *
+                    (1 + controlSignal * 15);
+                const crackleProbReact =
+                    (crackleGain > 0 ? cm * context.wear / 60 * invSampleRate : 0) *
+                    (1 + controlSignal * 8);
+                const hissFactor = 0.11 * hissGain * context.wear;
+                const popImpulseGain = popGain * POP_COMPENSATION_GAIN;
+                const crackleImpulseGain = crackleGain * CRACKLE_COMPENSATION_GAIN;
                 const popTrigger = Math.random() < popProbReact;
                 const crackleTrigger = Math.random() < crackleProbReact;
                 
@@ -301,8 +367,8 @@ class VinylArtifactsPlugin extends PluginBase {
                         totalNoise += processSafeBiquad(rumbleState.brown * rumbleGain, rumbleState, rumbleLpfCoeffs);
                     }
                     
-                    const shelf1Out = processSafeBiquad(totalNoise, context.lowShelfState[ch], lowShelfCoeffs);
-                    wetSamples[ch] = processSafeBiquad(shelf1Out, context.highShelfState[ch], highShelfCoeffs);
+                    const shelf1Out = processSafeBiquad(totalNoise, context.lowShelfState[ch], context.lowShelfCoeffs);
+                    wetSamples[ch] = processSafeBiquad(shelf1Out, context.highShelfState[ch], context.highShelfCoeffs);
                 }
 
                 // --- Mix and Crosstalk ---
@@ -313,15 +379,15 @@ class VinylArtifactsPlugin extends PluginBase {
                     const dryR = data[blockSize + i];
                     let wetR = wetSamples[1];
                     
-                    if (crosstalkAmount > 1e-6) {
+                    if (context.crosstalk > 1e-6) {
                         const oL = wetL, oR = wetR;
-                        const crossMix = 1.0 - crosstalkAmount;
-                        wetL = oL * crossMix + oR * crosstalkAmount; 
-                        wetR = oR * crossMix + oL * crosstalkAmount;
+                        const crossMix = 1.0 - context.crosstalk;
+                        wetL = oL * crossMix + oR * context.crosstalk;
+                        wetR = oR * crossMix + oL * context.crosstalk;
                     }
-                    data[blockSize + i] = dryR + wetR * mixAmount;
+                    data[blockSize + i] = dryR + wetR * context.mix;
                 }
-                data[i] = dryL + wetL * mixAmount;
+                data[i] = dryL + wetL * context.mix;
             }
             return data;
         `);

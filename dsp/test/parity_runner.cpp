@@ -611,19 +611,20 @@ bool runDirectReference(const std::string &type, const Control &control,
           if (wet_mix > 1.0F)
             wet_mix = 1.0F;
         }
-        const std::uint32_t active_manual_delay =
-            manual_delay > 0u && frame < 128u ? 0u : manual_delay;
-        const std::uint32_t dry_delay = asset.begin.headBlock + filter_delay + active_manual_delay;
-        const float dry = frame >= dry_delay ? input[channel_offset + frame - dry_delay] : 0.0F;
-        const float delayed_wet =
-            frame >= active_manual_delay ? wet[channel_offset + frame - active_manual_delay] : 0.0F;
-        float manual_transition_gain = 1.0F;
-        if (manual_delay > 0u && frame < 128u)
-          manual_transition_gain = static_cast<float>(128u - frame) / 128.0F;
-        else if (manual_delay > 0u && frame < 256u)
-          manual_transition_gain = static_cast<float>(frame - 128u) / 128.0F;
-        output[channel_offset + frame] =
-            (dry + wet_mix * (delayed_wet - dry)) * gain * manual_transition_gain;
+        const std::uint32_t resident_latency = asset.begin.headBlock + filter_delay;
+        const float previous_dry =
+            frame >= resident_latency ? input[channel_offset + frame - resident_latency] : 0.0F;
+        const float previous_wet = wet[channel_offset + frame];
+        const std::uint32_t target_dry_delay = resident_latency + manual_delay;
+        const float target_dry =
+            frame >= target_dry_delay ? input[channel_offset + frame - target_dry_delay] : 0.0F;
+        const float target_wet =
+            frame >= manual_delay ? wet[channel_offset + frame - manual_delay] : 0.0F;
+        const float alpha =
+            manual_delay > 0u && frame < 256u ? static_cast<float>(frame) / 256.0F : 1.0F;
+        const float dry = previous_dry + alpha * (target_dry - previous_dry);
+        const float delayed_wet = previous_wet + alpha * (target_wet - previous_wet);
+        output[channel_offset + frame] = (dry + wet_mix * (delayed_wet - dry)) * gain;
       }
     }
     return true;

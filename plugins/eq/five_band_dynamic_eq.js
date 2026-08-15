@@ -159,7 +159,8 @@ class FiveBandDynamicEQ extends PluginBase {
                         ctxBand: null,
                         scCoeffs: { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 },
                         th: 0, ft: 'pk', f: 0, q: 1, kn: 0, r: 1, mg: 0,
-                        halfKnee: 0, ratio: 1, slopeFactor: 0, maxGain: 0
+                        halfKnee: 0, ratio: 1, slopeFactor: 0, maxGain: 0,
+                        geometryInitialized: false, geometryRemaining: 0
                     };
                 }
                 context.currentSample = new Float32Array(channelCount);
@@ -181,7 +182,6 @@ class FiveBandDynamicEQ extends PluginBase {
 
                 let halfKnee = 0.0, slopeFactor = 0.0;
                 if (param_en) {
-                    calculateCoeffs('bp', band.scf, band.scq, 0, sampleRate, params.scCoeffs);
                     halfKnee = band.kn * 0.5;
                     const ratio = band.r;
                     slopeFactor = (ratio === 1.0) ? 0.0 : ((1.0 - 1.0 / ratio) < 0 ? -(1.0 - 1.0 / ratio) : (1.0 - 1.0 / ratio)); // Faster abs
@@ -191,6 +191,25 @@ class FiveBandDynamicEQ extends PluginBase {
                     ctxBand.levelDetector.setRelease(band.rl);
                     ctxBand.gainEnvelope.setAttack(band.a);
                     ctxBand.gainEnvelope.setRelease(band.rl);
+                }
+
+                if (!params.geometryInitialized) {
+                    params.fCurrent = band.f; params.qCurrent = band.q;
+                    params.scfCurrent = band.scf; params.scqCurrent = band.scq;
+                    params.fTarget = band.f; params.qTarget = band.q;
+                    params.scfTarget = band.scf; params.scqTarget = band.scq;
+                    params.fStep = 0; params.qStep = 0; params.scfStep = 0; params.scqStep = 0;
+                    params.geometryRemaining = 0; params.geometryInitialized = true;
+                } else if (band.f !== params.fTarget || band.q !== params.qTarget ||
+                           band.scf !== params.scfTarget || band.scq !== params.scqTarget) {
+                    const frames = Math.max(1, Math.ceil(sampleRate * 0.005));
+                    params.fTarget = band.f; params.qTarget = band.q;
+                    params.scfTarget = band.scf; params.scqTarget = band.scq;
+                    params.fStep = (band.f - params.fCurrent) / frames;
+                    params.qStep = (band.q - params.qCurrent) / frames;
+                    params.scfStep = (band.scf - params.scfCurrent) / frames;
+                    params.scqStep = (band.scq - params.scqCurrent) / frames;
+                    params.geometryRemaining = frames;
                 }
 
                 params.enabled = param_en;
@@ -243,9 +262,16 @@ class FiveBandDynamicEQ extends PluginBase {
                     }
 
                     // --- Mono Dynamics Processing ---
-                    const { ctxBand, scCoeffs, th, halfKnee, ratio, slopeFactor, maxGain, ft, f, q, kn } = params;
+                    const { ctxBand, scCoeffs, th, halfKnee, ratio, slopeFactor, maxGain, ft, kn } = params;
                     const levelDetector = ctxBand.levelDetector;
                     const gainEnvelope = ctxBand.gainEnvelope;
+
+                    const geometryElapsed = Math.min(i, params.geometryRemaining);
+                    const currentF = params.fCurrent + params.fStep * geometryElapsed;
+                    const currentQ = params.qCurrent + params.qStep * geometryElapsed;
+                    const currentScf = params.scfCurrent + params.scfStep * geometryElapsed;
+                    const currentScq = params.scqCurrent + params.scqStep * geometryElapsed;
+                    calculateCoeffs('bp', currentScf, currentScq, 0, sampleRate, scCoeffs);
 
                     // 3a. Mono Sidechain Filter
                     const sc_y0_mono = scCoeffs.b0 * monoSample + ctxBand.mono_sc_w1;
@@ -285,11 +311,14 @@ class FiveBandDynamicEQ extends PluginBase {
                         // 3e. EQ Coefficient Calculation (Conditional, based on mono gain)
                         let eqCoeffs;
                         const gainDiff = final_G_smoothed_mono - bandState.lastGain;
-                        if ((gainDiff > -GAIN_THRESHOLD && gainDiff < GAIN_THRESHOLD)) {
+                        const geometryStable = bandState.lastF === currentF &&
+                            bandState.lastQ === currentQ && bandState.lastType === ft;
+                        if ((gainDiff > -GAIN_THRESHOLD && gainDiff < GAIN_THRESHOLD) && geometryStable) {
                             eqCoeffs = bandState.lastCoeffs;
                         } else {
-                            eqCoeffs = calculateCoeffs(ft, f, q, final_G_smoothed_mono, sampleRate, bandState.lastCoeffs);
+                            eqCoeffs = calculateCoeffs(ft, currentF, currentQ, final_G_smoothed_mono, sampleRate, bandState.lastCoeffs);
                             bandState.lastGain = final_G_smoothed_mono;
+                            bandState.lastF = currentF; bandState.lastQ = currentQ; bandState.lastType = ft;
                         }
 
                         // 3f. Apply EQ Filter (Per Channel)
@@ -312,6 +341,19 @@ class FiveBandDynamicEQ extends PluginBase {
                     data[ch * blockSize + i] = currentSample[ch];
                 }
             } // End sample loop
+
+            for (let bandIdx = 0; bandIdx < numBands; bandIdx++) {
+                const params = bandProcessingParams[bandIdx];
+                if (blockSize >= params.geometryRemaining) {
+                    params.fCurrent = params.fTarget; params.qCurrent = params.qTarget;
+                    params.scfCurrent = params.scfTarget; params.scqCurrent = params.scqTarget;
+                    params.geometryRemaining = 0;
+                } else {
+                    params.fCurrent += params.fStep * blockSize; params.qCurrent += params.qStep * blockSize;
+                    params.scfCurrent += params.scfStep * blockSize; params.scqCurrent += params.scqStep * blockSize;
+                    params.geometryRemaining -= blockSize;
+                }
+            }
 
             // 5. Attach measurements to the output data buffer (as per user's code)
             data.measurements = context.measurements;

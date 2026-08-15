@@ -11,11 +11,19 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <iomanip>
 #include <limits>
+#include <string>
+#include <string_view>
 #include <vector>
 
 extern "C" const effetune::KernelDescriptor *et_kernel_descriptor_IRReverbPlugin() noexcept;
+extern "C" bool et_ir_reverb_read_automation_trace(effetune::PluginKernel *kernel, double *current,
+                                                   double *target, double *step,
+                                                   std::uint32_t *remaining) noexcept;
 
 namespace {
 
@@ -299,6 +307,95 @@ struct Harness final {
   }
 };
 
+const char *argumentValue(int argc, char **argv, std::string_view name) noexcept {
+  for (int index = 1; index + 1 < argc; ++index) {
+    if (std::string_view(argv[index]) == name)
+      return argv[index + 1];
+  }
+  return nullptr;
+}
+
+bool parseChunks(std::string_view source, std::vector<std::uint32_t> &chunks) {
+  chunks.clear();
+  while (!source.empty()) {
+    const std::size_t separator = source.find(',');
+    const std::string token(source.substr(0u, separator));
+    char *end = nullptr;
+    const unsigned long value = std::strtoul(token.c_str(), &end, 10);
+    if (end == token.c_str() || *end != '\0' || value == 0u || value > kMaxFrames)
+      return false;
+    chunks.push_back(static_cast<std::uint32_t>(value));
+    if (separator == std::string_view::npos)
+      break;
+    source.remove_prefix(separator + 1u);
+  }
+  return !chunks.empty();
+}
+
+bool writeAutomationTraceRow(std::ostream &output, effetune::PluginKernel *kernel) {
+  double current = 0.0;
+  double target = 0.0;
+  double step = 0.0;
+  std::uint32_t remaining = 0u;
+  if (!et_ir_reverb_read_automation_trace(kernel, &current, &target, &step, &remaining))
+    return false;
+  output << std::setprecision(17) << current << ',' << target << ',' << step << ',' << remaining
+         << '\n';
+  return static_cast<bool>(output);
+}
+
+int renderAutomationTrace(int argc, char **argv) {
+  const char *outputPath = argumentValue(argc, argv, "--automation-trace");
+  const char *sampleRateText = argumentValue(argc, argv, "--sample-rate");
+  const char *beforeText = argumentValue(argc, argv, "--before");
+  const char *afterText = argumentValue(argc, argv, "--after");
+  if (outputPath == nullptr || sampleRateText == nullptr || beforeText == nullptr ||
+      afterText == nullptr) {
+    std::fputs("usage: native_test --automation-trace FILE --sample-rate RATE "
+               "--before CHUNKS --after CHUNKS\n",
+               stderr);
+    return 2;
+  }
+  char *rateEnd = nullptr;
+  const float sampleRate = std::strtof(sampleRateText, &rateEnd);
+  std::vector<std::uint32_t> before;
+  std::vector<std::uint32_t> after;
+  if (rateEnd == sampleRateText || *rateEnd != '\0' || !std::isfinite(sampleRate) ||
+      sampleRate <= 0.0F || !parseChunks(beforeText, before) || !parseChunks(afterText, after)) {
+    std::fputs("invalid IR automation trace arguments\n", stderr);
+    return 2;
+  }
+
+  Harness harness(sampleRate, 1u);
+  if (harness.kernel == nullptr || !harness.kernel->preparedSuccessfully() ||
+      !harness.stageAsset({1.0F}, 1u, kMono, 128u, 1u)) {
+    return 1;
+  }
+  harness.prepareToActive();
+  harness.stageParams(params(0.0F, 0.0F));
+  std::ofstream output(outputPath, std::ios::binary | std::ios::trunc);
+  if (!output)
+    return 1;
+  const auto processChunks = [&](const std::vector<std::uint32_t> &chunks) {
+    for (const std::uint32_t frames : chunks) {
+      std::vector<float> audio(frames, 0.0F);
+      harness.kernel->process(audio.data(), 1u, frames, {0.0});
+      if (!writeAutomationTraceRow(output, harness.kernel))
+        return false;
+    }
+    return true;
+  };
+  const std::vector<std::uint32_t> prime = {1u};
+  bool ok = processChunks(prime);
+  harness.stageParams(params(10.0F, 0.0F));
+  ok = ok && processChunks(before);
+  harness.stageParams(params(2.0F, 0.0F));
+  ok = ok && processChunks(after);
+  output.close();
+  ok = static_cast<bool>(output) && ok;
+  return ok && failures == 0 ? 0 : 1;
+}
+
 std::vector<float> makeIr(std::uint32_t channels, std::uint32_t frames, float variant = 1.0F) {
   std::vector<float> ir(static_cast<std::size_t>(channels) * frames, 0.0F);
   constexpr std::array<std::uint32_t, 7> taps = {0u, 3u, 31u, 127u, 128u, 257u, 599u};
@@ -324,7 +421,8 @@ std::vector<float> makeInput(std::uint32_t channels, std::uint32_t frames) {
           static_cast<float>(static_cast<std::int32_t>(state >> 8u)) / 8388608.0F * 0.08F;
     }
     input[static_cast<std::size_t>(channel) * frames] += channel == 0u ? 0.8F : -0.6F;
-    input[static_cast<std::size_t>(channel) * frames + 701u] += 0.35F;
+    if (frames > 701u)
+      input[static_cast<std::size_t>(channel) * frames + 701u] += 0.35F;
   }
   return input;
 }
@@ -942,6 +1040,28 @@ void testPredelayAndDryMix() {
   IR_CHECK(std::abs(mixed[138u] - 1.0F) < 2.0e-4F);
 }
 
+void testPredelayTransitionIsBlockPartitionIndependent() {
+  constexpr std::uint32_t frames = 512u;
+  constexpr std::array<std::uint32_t, 1> hostPattern = {128u};
+  constexpr std::array<std::uint32_t, 6> irregularPattern = {2u, 1u, 7u, 13u, 64u, 5u};
+  Harness host(1000.0F);
+  Harness irregular(1000.0F);
+  for (Harness *harness : {&host, &irregular}) {
+    IR_CHECK(harness->stageAsset({1.0F}, 1u, kMono, 128u, 1u));
+    harness->prepareToActive();
+    harness->stageParams(params(0.0F));
+    std::array<float, 2> prime{};
+    harness->kernel->process(prime.data(), 2u, 1u, {0.0});
+    harness->stageParams(params(10.0F));
+  }
+
+  const std::vector<float> input = makeInput(2u, frames);
+  const std::vector<float> hostOutput = renderPattern(host, input, frames, hostPattern);
+  const std::vector<float> irregularOutput =
+      renderPattern(irregular, input, frames, irregularPattern);
+  compare(irregularOutput, hostOutput, 1.0e-7);
+}
+
 void testAssetReplacementAndRejection() {
   const std::vector<float> firstIr = makeIr(1u, 600u);
   const std::vector<float> secondIr = makeIr(1u, 600u, 0.5F);
@@ -1200,7 +1320,15 @@ void testHostFootprintEstimatorGrid() {
 
 } // namespace
 
-int main() {
+int main(int argc, char **argv) {
+  if (argc > 1 && std::string_view(argv[1]) == "--automation-trace")
+    return renderAutomationTrace(argc, argv);
+  if (argc != 1) {
+    std::fputs("usage: native_test [--automation-trace FILE --sample-rate RATE "
+               "--before CHUNKS --after CHUNKS]\n",
+               stderr);
+    return 2;
+  }
   effetune::allocation_guard::setAbortOnViolationForTesting(false);
   const effetune::KernelDescriptor *descriptor = et_kernel_descriptor_IRReverbPlugin();
   IR_CHECK(descriptor != nullptr);
@@ -1218,6 +1346,7 @@ int main() {
   testMalformedMatrixTables();
   testLatencyModesAndReset();
   testPredelayAndDryMix();
+  testPredelayTransitionIsBlockPartitionIndependent();
   testAssetReplacementAndRejection();
   testMalformedCommitAndDryMix();
   if (allocationFailureInjectionAvailable()) {

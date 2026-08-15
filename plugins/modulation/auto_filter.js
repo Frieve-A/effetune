@@ -292,10 +292,6 @@ class AutoFilterPlugin extends PluginBase {
         if (params.rl !== undefined) next.rl = this.parseFiniteNumber(params.rl, 10, 2000, next.rl);
         if (params.dr !== undefined && ['Up', 'Down'].includes(params.dr)) next.dr = params.dr;
 
-        const lower = next.lf < next.hf ? next.lf : next.hf;
-        const upper = next.lf < next.hf ? next.hf : next.lf;
-        next.lf = lower;
-        next.hf = upper;
         Object.assign(this, next);
         if (this._applyingStyleName) {
             this.styleName = this._applyingStyleName;

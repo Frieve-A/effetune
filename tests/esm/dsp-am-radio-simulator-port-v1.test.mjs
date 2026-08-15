@@ -70,7 +70,7 @@ test('AM Radio Simulator freezes the parameter layout and representative parity 
   assert.equal(goldens.length, 21);
   assert.ok(goldens.every(item =>
     item.metadata.jsEngineHash ===
-      'bf95d97d8385807a7b8e7678b3a89b46dbfca95d4d2d4844043b215dd1fdd71e'
+      '2fa9a36ef5ced9e792595130a1de54d20bec8ee35df3405f31d16356a0272c51'
   ));
 });
 

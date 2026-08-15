@@ -29,12 +29,12 @@ const ports = [
   {
     type: 'HornResonatorPlugin',
     folder: 'horn_resonator',
-    jsEngineHash: '689ffc6e99ed7e65b8e5102adecd9010cbf2e10035613c69df2738ffb206a251'
+    jsEngineHash: 'ca2f9a437a5f544912f4313823d76076a159c5e7ecd23f432e48d75c99df6e71'
   },
   {
     type: 'HornResonatorPlusPlugin',
     folder: 'horn_resonator_plus',
-    jsEngineHash: '4c5e7bf83b260cbaafa0c31d8217b531a6e64588d1900c56489b910138a309a3'
+    jsEngineHash: 'c3169e59291adc8ca8780ad32c6424853a959636c3efc223d68b92063d115506'
   }
 ];
 
@@ -145,12 +145,15 @@ test('horn kernels share waveguide precision and reset contracts without process
   const processBody = common.slice(processStart, processEnd);
   assert.ok(processStart >= 0 && processEnd > processStart);
   assert.doesNotMatch(processBody, /\.resize\(|\bnew\b/);
-  for (const key of [
-    'crossover', 'length', 'throatDiameter', 'mouthDiameter', 'curve', 'damping',
-    'throatReflection'
-  ]) {
+  for (const key of ['length', 'throatDiameter', 'mouthDiameter', 'curve']) {
     assert.match(common, new RegExp(`configured_params_\\.${key} != params\\.${key}`));
   }
+  for (const key of ['crossover', 'damping', 'throatReflection']) {
+    assert.doesNotMatch(common, new RegExp(`configured_params_\\.${key} != params\\.${key}`));
+  }
+  assert.match(common, /crossover_ramp_\.retarget/);
+  assert.match(common, /damping_ramp_\.retarget/);
+  assert.match(common, /throat_reflection_ramp_\.retarget/);
   assert.doesNotMatch(common,
     /configured_params_\.waveguideGain != params\.waveguideGain/);
 

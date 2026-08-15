@@ -775,9 +775,6 @@ in 128-frame blocks, and the median of five measured repetitions after two warmu
 | ---: | ---: | ---: |
 | 1.84x (1.0841 s) | 5.34x (0.3746 s) | 5.79x (0.3454 s) |
 
-The rollout plan's 30% CPU ceiling requires at least 3.33x realtime. Both WASM variants
-pass this gate.
-
 The Ultra/192 source comparison used
 `D:\program\proto\sound_toolbox\vinyl_explained` at 192 kHz/stereo in 128-frame
 blocks with the Ultra preset and seed 20260705. Dust, Static, and Scratch were zero;

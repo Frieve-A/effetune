@@ -139,6 +139,16 @@ public:
 
   [[nodiscard]] bool preparedSuccessfully() const noexcept override { return prepared_; }
 
+#if defined(ET_ENABLE_TEST_KERNEL)
+  void readAutomationTrace(double &current, double &target, double &step,
+                           std::uint32_t &remaining) const noexcept {
+    current = pre_delay_ramp_.current;
+    target = pre_delay_ramp_.target;
+    step = pre_delay_ramp_.step;
+    remaining = pre_delay_ramp_.remaining;
+  }
+#endif
+
   void reset() noexcept override {
     convolver_.reset();
     resetRuntimeState();
@@ -322,7 +332,6 @@ private:
   struct MixParameters {
     float dryGain;
     float wetGain;
-    std::uint32_t preDelayFrames;
   };
 
   void releaseFixedStorage() noexcept {
@@ -334,15 +343,23 @@ private:
     wet_fifo_.release();
   }
 
-  [[nodiscard]] MixParameters currentMixParameters() const noexcept {
+  [[nodiscard]] MixParameters currentMixParameters() noexcept {
     const double requested = static_cast<double>(params_.preDelay) * sample_rate_ * 0.001;
-    std::uint32_t delay = requested > 0.0 ? static_cast<std::uint32_t>(requested) : 0u;
-    if (delay >= pre_delay_length_)
-      delay = pre_delay_length_ - 1u;
+    double delay = requested > 0.0 ? requested : 0.0;
+    if (delay >= static_cast<double>(pre_delay_length_))
+      delay = static_cast<double>(pre_delay_length_ - 1u);
+    if (!pre_delay_initialized_) {
+      pre_delay_ramp_.snap(delay);
+      pre_delay_initialized_ = true;
+    } else {
+      const auto frames = static_cast<std::uint32_t>(
+          std::max(1.0, std::ceil(static_cast<double>(sample_rate_) * 0.005)));
+      pre_delay_ramp_.retarget(delay, frames);
+    }
     return {params_.dryEnabled == 0.0F || params_.dryLevel <= -96.0F
                 ? 0.0F
                 : decibelsToGain(params_.dryLevel),
-            decibelsToGain(params_.wetLevel), delay};
+            decibelsToGain(params_.wetLevel)};
   }
 
   bool validateBegin(std::uint32_t slot, const AssetBeginInfo &info) const noexcept {
@@ -439,6 +456,7 @@ private:
       filter.reset();
     std::fill(pre_delay_.begin(), pre_delay_.end(), 0.0F);
     std::fill(pre_delay_positions_.begin(), pre_delay_positions_.end(), 0u);
+    pre_delay_initialized_ = false;
     std::fill(wet_fifo_.begin(), wet_fifo_.end(), 0.0F);
     wet_fifo_read_ = 0u;
     wet_fifo_write_ = 0u;
@@ -577,14 +595,24 @@ private:
     --wet_fifo_size_;
   }
 
-  float applyPreDelay(std::uint32_t channel, float wet, std::uint32_t delay) noexcept {
+  float applyPreDelay(std::uint32_t channel, float wet, double delay) noexcept {
     float *buffer = pre_delay_.data() + static_cast<std::size_t>(channel) * pre_delay_length_;
     std::uint32_t &position = pre_delay_positions_[channel];
     float output = wet;
-    if (delay != 0u) {
-      const std::uint32_t read =
-          position >= delay ? position - delay : position + pre_delay_length_ - delay;
-      output = buffer[read];
+    if (delay > 0.0) {
+      const auto newer_delay = static_cast<std::uint32_t>(delay);
+      const double fraction = delay - static_cast<double>(newer_delay);
+      const auto sample = [&](std::uint32_t tap) noexcept {
+        if (tap == 0u)
+          return wet;
+        const std::uint32_t read =
+            position >= tap ? position - tap : position + pre_delay_length_ - tap;
+        return buffer[read];
+      };
+      const float newer = sample(newer_delay);
+      output =
+          static_cast<float>(static_cast<double>(newer) +
+                             (static_cast<double>(sample(newer_delay + 1u)) - newer) * fraction);
     }
     buffer[position] = wet;
     ++position;
@@ -638,23 +666,60 @@ private:
     const float fade_in = wet_fade_in_remaining_ == 0u
                               ? 1.0F
                               : 1.0F - static_cast<float>(wet_fade_in_remaining_) / kFadeFrames;
+    const double pre_delay = pre_delay_ramp_.value(0u);
     for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
       const std::size_t index = static_cast<std::size_t>(channel) * frame_count + frame;
       float wet = wet_frame_[channel];
       if (wet_fade_in_remaining_ != 0u)
         wet *= fade_in;
-      wet = applyPreDelay(channel, wet, mix.preDelayFrames);
+      wet = applyPreDelay(channel, wet, pre_delay);
       audio[index] = audio[index] * mix.dryGain + wet * mix.wetGain;
       last_wet_[channel] = wet;
     }
     if (wet_fade_in_remaining_ != 0u)
       --wet_fade_in_remaining_;
+    pre_delay_ramp_.advance(1u);
   }
+
+  struct DelayRamp {
+    double current = 0.0;
+    double target = 0.0;
+    double step = 0.0;
+    std::uint32_t remaining = 0u;
+    void snap(double value) noexcept {
+      current = target = value;
+      step = 0.0;
+      remaining = 0u;
+    }
+    void retarget(double value, std::uint32_t frames) noexcept {
+      if (value == target)
+        return;
+      target = value;
+      remaining = frames;
+      step = (target - current) / static_cast<double>(frames);
+    }
+    [[nodiscard]] double value(std::uint32_t frame) const noexcept {
+      const std::uint32_t elapsed = frame + 1u;
+      return elapsed >= remaining ? target : current + step * static_cast<double>(elapsed);
+    }
+    void advance(std::uint32_t frames) noexcept {
+      if (frames >= remaining) {
+        current = target;
+        step = 0.0;
+        remaining = 0u;
+      } else {
+        current += step * static_cast<double>(frames);
+        remaining -= frames;
+      }
+    }
+  };
 
   float sample_rate_ = 0.0F;
   std::uint32_t max_channels_ = 0u;
   std::uint32_t max_frames_ = 0u;
   std::uint32_t pre_delay_length_ = 1u;
+  DelayRamp pre_delay_ramp_;
+  bool pre_delay_initialized_ = false;
   std::uint32_t wet_fifo_capacity_ = 1u;
   std::uint32_t wet_fifo_read_ = 0u;
   std::uint32_t wet_fifo_write_ = 0u;
@@ -684,5 +749,19 @@ private:
 static_assert(sizeof(IRReverbKernel) <= 8192u);
 
 } // namespace effetune::plugins::reverb
+
+#if defined(ET_ENABLE_TEST_KERNEL)
+extern "C" bool et_ir_reverb_read_automation_trace(effetune::PluginKernel *kernel, double *current,
+                                                   double *target, double *step,
+                                                   std::uint32_t *remaining) noexcept {
+  if (kernel == nullptr || current == nullptr || target == nullptr || step == nullptr ||
+      remaining == nullptr) {
+    return false;
+  }
+  static_cast<effetune::plugins::reverb::IRReverbKernel *>(kernel)->readAutomationTrace(
+      *current, *target, *step, *remaining);
+  return true;
+}
+#endif
 
 EFFETUNE_REGISTER_KERNEL(IRReverbPlugin, effetune::plugins::reverb::IRReverbKernel)

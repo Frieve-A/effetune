@@ -428,6 +428,7 @@ public:
         startDetectorTransition(detector);
       }
     }
+    captureControlTargets();
 
     // Radio off takes the transmitter off the air, so the transmitter telemetry has nothing to
     // report: the modulation meter must not keep showing a station that stopped transmitting, and
@@ -436,6 +437,7 @@ public:
     // the RF disappears. radio_ is the same control-rate switch the station gain reads.
     double block_mod_peak = 0.0;
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      advanceControlEnvelope();
       if (control_remaining_ == 0u) {
         updateControl();
       }
@@ -517,10 +519,32 @@ public:
       const std::size_t position2 = delay_position_ >= delay2_samples_
                                         ? delay_position_ - delay2_samples_
                                         : size + delay_position_ - delay2_samples_;
-      const double delayed1 = delay_[position1];
-      const double delayed2 = delay_[position2];
-      const double delayed1_q = delay_q_[position1];
-      const double delayed2_q = delay_q_[position2];
+      const std::size_t old_position1 = delay_position_ >= old_delay1_samples_
+                                            ? delay_position_ - old_delay1_samples_
+                                            : size + delay_position_ - old_delay1_samples_;
+      const std::size_t old_position2 = delay_position_ >= old_delay2_samples_
+                                            ? delay_position_ - old_delay2_samples_
+                                            : size + delay_position_ - old_delay2_samples_;
+      const double transition =
+          delay_transition_remaining_ == 0u
+              ? 1.0
+              : static_cast<double>(kControlInterval - delay_transition_remaining_) /
+                    static_cast<double>(kControlInterval);
+      const double delayed1 =
+          delay_[old_position1] + transition * (delay_[position1] - delay_[old_position1]);
+      const double delayed2 =
+          delay_[old_position2] + transition * (delay_[position2] - delay_[old_position2]);
+      const double delayed1_q =
+          delay_q_[old_position1] + transition * (delay_q_[position1] - delay_q_[old_position1]);
+      const double delayed2_q =
+          delay_q_[old_position2] + transition * (delay_q_[position2] - delay_q_[old_position2]);
+      if (delay_transition_remaining_ != 0u) {
+        --delay_transition_remaining_;
+        if (delay_transition_remaining_ == 0u) {
+          old_delay1_samples_ = delay1_samples_;
+          old_delay2_samples_ = delay2_samples_;
+        }
+      }
       ++delay_position_;
       if (delay_position_ == size) {
         delay_position_ = 0u;
@@ -763,6 +787,8 @@ public:
     return sync_pll_frequency_ * sample_rate_ / kTwoPi;
   }
 
+  [[nodiscard]] double debugControlOutputGain() const noexcept { return controls_.outputGain; }
+
 private:
   static constexpr int kEnvelopeDetector = 0;
   static constexpr int kSynchronousDetector = 1;
@@ -932,8 +958,7 @@ private:
   }
 
   void initializeSampleRateCoefficients() noexcept {
-    control_smoothing_ =
-        1.0 - std::exp(-static_cast<double>(kControlInterval) / (sample_rate_ * 0.020));
+    control_smoothing_ = 1.0 - std::exp(-1.0 / (sample_rate_ * 0.020));
     pre_emphasis_pole_ = std::exp(-kTwoPi * 2100.0 / sample_rate_);
     limiter_attack_coefficient_ = std::exp(-1.0 / (sample_rate_ * 0.002));
     limiter_release_coefficient_ = std::exp(-1.0 / (sample_rate_ * 0.080));
@@ -1070,6 +1095,7 @@ private:
         static_cast<double>(params_.detectorRc),   static_cast<double>(params_.hum),
         static_cast<double>(params_.outputGain),   static_cast<double>(params_.mix),
         params_.humFrequency < 0.5F ? 50.0 : 60.0, static_cast<double>(params_.bfoOffset)};
+    control_targets_ = controls_;
     updateTuningModel();
     updateDelayGeometry();
     random_state_ = base_random_state_;
@@ -1495,31 +1521,44 @@ private:
     tap.stepQ = 0.0;
   }
 
-  void updateControl() noexcept {
-    auto smooth = [this](double &current, float target) noexcept {
-      current += control_smoothing_ * (static_cast<double>(target) - current);
+  void captureControlTargets() noexcept {
+    control_targets_ = {
+        static_cast<double>(params_.txBandwidth),  static_cast<double>(params_.preEmphasis),
+        static_cast<double>(params_.modDepth),     static_cast<double>(params_.compression),
+        static_cast<double>(params_.signal),       static_cast<double>(params_.skywave),
+        static_cast<double>(params_.fadingSpeed),  static_cast<double>(params_.delaySpread),
+        static_cast<double>(params_.interference), static_cast<double>(params_.interferenceOffset),
+        static_cast<double>(params_.tuning),       static_cast<double>(params_.ifBandwidth),
+        static_cast<double>(params_.detectorRc),   static_cast<double>(params_.hum),
+        static_cast<double>(params_.outputGain),   static_cast<double>(params_.mix),
+        params_.humFrequency < 0.5F ? 50.0 : 60.0, static_cast<double>(params_.bfoOffset)};
+  }
+
+  void advanceControlEnvelope() noexcept {
+    auto smooth = [this](double &current, const double target) noexcept {
+      current += control_smoothing_ * (target - current);
     };
-    smooth(controls_.txBandwidth, params_.txBandwidth);
-    smooth(controls_.preEmphasis, params_.preEmphasis);
-    smooth(controls_.modDepth, params_.modDepth);
-    smooth(controls_.compression, params_.compression);
-    smooth(controls_.signal, params_.signal);
-    smooth(controls_.skywave, params_.skywave);
-    smooth(controls_.fadingSpeed, params_.fadingSpeed);
-    smooth(controls_.delaySpread, params_.delaySpread);
-    smooth(controls_.interference, params_.interference);
-    smooth(controls_.interferenceOffset, params_.interferenceOffset);
-    smooth(controls_.tuning, params_.tuning);
-    smooth(controls_.ifBandwidth, params_.ifBandwidth);
-    smooth(controls_.detectorRc, params_.detectorRc);
-    smooth(controls_.hum, params_.hum);
-    smooth(controls_.outputGain, params_.outputGain);
-    smooth(controls_.mix, params_.mix);
-    const double hum_frequency = params_.humFrequency < 0.5F ? 50.0 : 60.0;
-    controls_.humFrequency += control_smoothing_ * (hum_frequency - controls_.humFrequency);
-    // The BFO offset is smoothed like every numeric control so retuning the clarifier glides
-    // in frequency while the product-detector phase stays continuous.
-    smooth(controls_.bfoOffset, params_.bfoOffset);
+    smooth(controls_.txBandwidth, control_targets_.txBandwidth);
+    smooth(controls_.preEmphasis, control_targets_.preEmphasis);
+    smooth(controls_.modDepth, control_targets_.modDepth);
+    smooth(controls_.compression, control_targets_.compression);
+    smooth(controls_.signal, control_targets_.signal);
+    smooth(controls_.skywave, control_targets_.skywave);
+    smooth(controls_.fadingSpeed, control_targets_.fadingSpeed);
+    smooth(controls_.delaySpread, control_targets_.delaySpread);
+    smooth(controls_.interference, control_targets_.interference);
+    smooth(controls_.interferenceOffset, control_targets_.interferenceOffset);
+    smooth(controls_.tuning, control_targets_.tuning);
+    smooth(controls_.ifBandwidth, control_targets_.ifBandwidth);
+    smooth(controls_.detectorRc, control_targets_.detectorRc);
+    smooth(controls_.hum, control_targets_.hum);
+    smooth(controls_.outputGain, control_targets_.outputGain);
+    smooth(controls_.mix, control_targets_.mix);
+    smooth(controls_.humFrequency, control_targets_.humFrequency);
+    smooth(controls_.bfoOffset, control_targets_.bfoOffset);
+  }
+
+  void updateControl() noexcept {
     configureBank(tx_filters_, controls_.txBandwidth * 1000.0, kButterworth8Q, sample_rate_ * 3.0);
     configureBank(if_i_, controls_.ifBandwidth * 500.0, kButterworth6Q, sample_rate_);
     configureBank(if_q_, controls_.ifBandwidth * 500.0, kButterworth6Q, sample_rate_);
@@ -1594,10 +1633,21 @@ private:
     const double spread_seconds = controls_.delaySpread * 1.0e-3;
     const double first = spread_seconds * kSkyFirstDelayRatio;
     const double second = first + spread_seconds;
-    delay1_samples_ = static_cast<std::size_t>(std::floor(sample_rate_ * first + 0.5));
-    delay2_samples_ = static_cast<std::size_t>(std::floor(sample_rate_ * second + 0.5));
-    if (delay2_samples_ >= delay_.size()) {
-      delay2_samples_ = delay_.size() - 1u;
+    const std::size_t next1 = static_cast<std::size_t>(std::floor(sample_rate_ * first + 0.5));
+    std::size_t next2 = static_cast<std::size_t>(std::floor(sample_rate_ * second + 0.5));
+    if (next2 >= delay_.size()) {
+      next2 = delay_.size() - 1u;
+    }
+    if (!initialized_) {
+      delay1_samples_ = old_delay1_samples_ = next1;
+      delay2_samples_ = old_delay2_samples_ = next2;
+      delay_transition_remaining_ = 0u;
+    } else if (next1 != delay1_samples_ || next2 != delay2_samples_) {
+      old_delay1_samples_ = delay1_samples_;
+      old_delay2_samples_ = delay2_samples_;
+      delay1_samples_ = next1;
+      delay2_samples_ = next2;
+      delay_transition_remaining_ = kControlInterval;
     }
   }
 
@@ -1609,10 +1659,14 @@ private:
   std::size_t delay_position_ = 0u;
   std::size_t delay1_samples_ = 0u;
   std::size_t delay2_samples_ = 0u;
+  std::size_t old_delay1_samples_ = 0u;
+  std::size_t old_delay2_samples_ = 0u;
+  std::uint32_t delay_transition_remaining_ = 0u;
   std::uint64_t sample_counter_ = 0u;
   std::uint32_t control_remaining_ = 0u;
   double control_smoothing_ = 0.0;
   Controls controls_{};
+  Controls control_targets_{};
   Biquad tx_high_pass_{};
   double pre_emphasis_pole_ = 0.0;
   double pre_emphasis_shelf_gain_ = 0.0;
@@ -1763,4 +1817,9 @@ extern "C" double et_sw_debug_sync_pll_state(effetune::PluginKernel *kernel) noe
 extern "C" double et_sw_debug_sync_pll_frequency_hz(effetune::PluginKernel *kernel) noexcept {
   return static_cast<effetune::plugins::lofi::SWRadioSimulatorKernel *>(kernel)
       ->debugSyncPllFrequencyHz();
+}
+
+extern "C" double et_sw_debug_control_output_gain(effetune::PluginKernel *kernel) noexcept {
+  return static_cast<effetune::plugins::lofi::SWRadioSimulatorKernel *>(kernel)
+      ->debugControlOutputGain();
 }

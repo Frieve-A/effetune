@@ -14,19 +14,31 @@ class PitchShifterPlugin extends PluginBase {
 
             // Calculate pitch factor (avoiding Math.pow if pitch is unchanged)
             // ps: semitones, ft: fine tune cents
-            let pitchFactor = 1.0;
+            let targetPitchFactor = 1.0;
             if (ps !== 0 || ft !== 0) {
-                pitchFactor = Math.pow(2, ps / 12 + ft / 1200);
+                targetPitchFactor = Math.pow(2, Math.fround(ps) / 12 + Math.fround(ft) / 1200);
                 // Handle potential NaN/Infinity from Math.pow
-                if (!(pitchFactor > 0.0 && pitchFactor < Infinity)) { // Faster than !isFinite() && > 0
-                     pitchFactor = 1.0;
+                if (!(targetPitchFactor > 0.0 && targetPitchFactor < Infinity)) { // Faster than !isFinite() && > 0
+                     targetPitchFactor = 1.0;
                 }
             }
 
-            // Early exit if processing is disabled or pitch factor is 1.0 (no change)
-            if (!parameters.enabled || pitchFactor === 1.0) {
+            if (!parameters.enabled) {
                 return data; // Return original data directly
             }
+            const rampFrames = Math.max(1, Math.ceil(sampleRate * 0.005));
+            if (context.currentPitchFactor === undefined) {
+                context.currentPitchFactor = context.targetPitchFactor = targetPitchFactor;
+                context.pitchRampRemaining = 0;
+                context.pitchStep = 0;
+            } else if (context.targetPitchFactor !== targetPitchFactor) {
+                context.targetPitchFactor = targetPitchFactor;
+                context.pitchStep = (targetPitchFactor - context.currentPitchFactor) / rampFrames;
+                context.pitchRampRemaining = rampFrames;
+            }
+            if (context.currentPitchFactor === 1.0 && context.targetPitchFactor === 1.0) return data;
+            const pitchAt = frame => context.currentPitchFactor + context.pitchStep *
+                Math.min(frame + 1, context.pitchRampRemaining);
 
             // Convert window size from ms to samples (use bitwise OR for flooring positive numbers)
             const windowSize = (ws * sampleRate / 1000) | 0;
@@ -72,7 +84,6 @@ class PitchShifterPlugin extends PluginBase {
 
             // Target number of samples needed in output buffer for continuous reading
             // Add a buffer margin (e.g., 1 sample) for floating point comparisons
-            const targetUnread = currentHopSize * pitchFactor + 1;
 
             // --- Main Processing Loop per Channel ---
             for (let ch = 0; ch < channelCount; ch++) {
@@ -89,6 +100,7 @@ class PitchShifterPlugin extends PluginBase {
 
                 // --- Input Buffering and Processing Trigger ---
                 for (let i = 0; i < blockSize; i++) {
+                    const targetUnread = currentHopSize * pitchAt(i) + 1;
                     // Write input sample to circular buffer
                     inBuf[inputWriteIndex] = data[inOffset + i];
 
@@ -204,6 +216,7 @@ class PitchShifterPlugin extends PluginBase {
                 if (unread < 0) {
                     unread += bufferSize;
                 }
+                const targetUnread = currentHopSize * pitchAt(0) + 1;
 
                 // Only generate output if enough data is available
                 if (unread >= targetUnread) {
@@ -230,7 +243,7 @@ class PitchShifterPlugin extends PluginBase {
                         finalOutput[outOffset + i] = sample1 + (sample2 - sample1) * frac; // (1-frac)*s1 + frac*s2 = s1 + (s2-s1)*frac
 
                         // Advance read position by pitch factor
-                        readPos += pitchFactor;
+                        readPos += pitchAt(i);
 
                         // Wrap read position around the buffer (manual modulo)
                         // It's crucial to keep readPos within [0, bufferSize)
@@ -260,7 +273,7 @@ class PitchShifterPlugin extends PluginBase {
                         const sample1 = outBuf[intIndex];
                         const sample2 = outBuf[nextIndex];
                         finalOutput[outOffset + i] = sample1 + (sample2 - sample1) * frac;
-                        readPos += pitchFactor;
+                        readPos += pitchAt(i);
                          if (readPos >= bufferSize) {
                              while (readPos >= bufferSize) readPos -= bufferSize;
                          }
@@ -271,6 +284,11 @@ class PitchShifterPlugin extends PluginBase {
                 // Update context with the final read position for this channel
                 context.outputReadPos[ch] = readPos;
             }
+
+            const pitchAdvanced = Math.min(blockSize, context.pitchRampRemaining);
+            context.currentPitchFactor += context.pitchStep * pitchAdvanced;
+            context.pitchRampRemaining -= pitchAdvanced;
+            if (context.pitchRampRemaining === 0) context.currentPitchFactor = context.targetPitchFactor;
 
             // Copy final output back to the provided buffer
             data.set(finalOutput);

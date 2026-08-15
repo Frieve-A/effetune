@@ -2,6 +2,7 @@
 #include "NarrowRangePluginParams.h"
 #include "effetune/dsp/biquad.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -27,6 +28,10 @@ struct FilterBank final {
   StageCounts counts{};
   Coefficients firstOrder{};
   Coefficients secondOrder{};
+  Coefficients targetFirstOrder{};
+  Coefficients targetSecondOrder{};
+  Coefficients firstOrderStep{};
+  Coefficients secondOrderStep{};
   std::vector<State> states;
 };
 
@@ -92,6 +97,8 @@ public:
     const std::size_t state_count = kMaximumStages * static_cast<std::size_t>(max_channels_);
     high_pass_.states.resize(state_count);
     low_pass_.states.resize(state_count);
+    const auto requested_frames = static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005));
+    ramp_frames_ = requested_frames == 0u ? 1u : requested_frames;
   }
 
   void reset() noexcept override {
@@ -99,6 +106,7 @@ public:
     high_frequency_cached_ = false;
     low_frequency_cached_ = false;
     states_initialized_ = false;
+    ramp_remaining_ = 0u;
     for (State &state : high_pass_.states) {
       state.reset();
     }
@@ -145,16 +153,8 @@ public:
       recalculate_high = true;
       recalculate_low = true;
     }
-    if (recalculate_high || reinitialize) {
-      const double frequency = static_cast<double>(params_.highPassFrequency);
-      high_pass_.firstOrder = designFirstOrder(sample_rate_, frequency, true);
-      high_pass_.secondOrder = designSecondOrder(sample_rate_, frequency, true);
-    }
-    if (recalculate_low || reinitialize) {
-      const double frequency = static_cast<double>(params_.lowPassFrequency);
-      low_pass_.firstOrder = designFirstOrder(sample_rate_, frequency, false);
-      low_pass_.secondOrder = designSecondOrder(sample_rate_, frequency, false);
-    }
+    if (recalculate_high || recalculate_low || reinitialize)
+      retargetFrequencies(reinitialize);
 
     if (totalStages(high_pass_) == 0u && totalStages(low_pass_) == 0u) {
       return;
@@ -163,15 +163,84 @@ public:
     for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
       const std::uint32_t offset = channel * frame_count;
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        const std::uint32_t elapsed = frame + 1u;
+        const double position =
+            static_cast<double>(elapsed < ramp_remaining_ ? elapsed : ramp_remaining_);
         double sample = static_cast<double>(audio[offset + frame]);
-        sample = processBankSample(high_pass_, sample, channel);
-        sample = processBankSample(low_pass_, sample, channel);
+        sample = processBankSample(
+            high_pass_, sample, channel,
+            interpolate(high_pass_.firstOrder, high_pass_.firstOrderStep, position),
+            interpolate(high_pass_.secondOrder, high_pass_.secondOrderStep, position));
+        sample = processBankSample(
+            low_pass_, sample, channel,
+            interpolate(low_pass_.firstOrder, low_pass_.firstOrderStep, position),
+            interpolate(low_pass_.secondOrder, low_pass_.secondOrderStep, position));
         audio[offset + frame] = static_cast<float>(sample);
       }
     }
+    advanceFrequencies(frame_count);
   }
 
 private:
+  static Coefficients interpolate(const Coefficients &from, const Coefficients &step,
+                                  double position) noexcept {
+    return {from.b0 + step.b0 * position, from.b1 + step.b1 * position,
+            from.b2 + step.b2 * position, from.a1 + step.a1 * position,
+            from.a2 + step.a2 * position};
+  }
+
+  static Coefficients difference(const Coefficients &from, const Coefficients &to,
+                                 double scale) noexcept {
+    return {(to.b0 - from.b0) * scale, (to.b1 - from.b1) * scale, (to.b2 - from.b2) * scale,
+            (to.a1 - from.a1) * scale, (to.a2 - from.a2) * scale};
+  }
+
+  void retargetFrequencies(bool snap) noexcept {
+    high_pass_.targetFirstOrder =
+        designFirstOrder(sample_rate_, static_cast<double>(params_.highPassFrequency), true);
+    high_pass_.targetSecondOrder =
+        designSecondOrder(sample_rate_, static_cast<double>(params_.highPassFrequency), true);
+    low_pass_.targetFirstOrder =
+        designFirstOrder(sample_rate_, static_cast<double>(params_.lowPassFrequency), false);
+    low_pass_.targetSecondOrder =
+        designSecondOrder(sample_rate_, static_cast<double>(params_.lowPassFrequency), false);
+    if (snap) {
+      high_pass_.firstOrder = high_pass_.targetFirstOrder;
+      high_pass_.secondOrder = high_pass_.targetSecondOrder;
+      low_pass_.firstOrder = low_pass_.targetFirstOrder;
+      low_pass_.secondOrder = low_pass_.targetSecondOrder;
+      ramp_remaining_ = 0u;
+      return;
+    }
+    const double inverse = 1.0 / static_cast<double>(ramp_frames_);
+    high_pass_.firstOrderStep =
+        difference(high_pass_.firstOrder, high_pass_.targetFirstOrder, inverse);
+    high_pass_.secondOrderStep =
+        difference(high_pass_.secondOrder, high_pass_.targetSecondOrder, inverse);
+    low_pass_.firstOrderStep =
+        difference(low_pass_.firstOrder, low_pass_.targetFirstOrder, inverse);
+    low_pass_.secondOrderStep =
+        difference(low_pass_.secondOrder, low_pass_.targetSecondOrder, inverse);
+    ramp_remaining_ = ramp_frames_;
+  }
+
+  void advanceFrequencies(std::uint32_t frames) noexcept {
+    const std::uint32_t advanced = frames < ramp_remaining_ ? frames : ramp_remaining_;
+    const double position = static_cast<double>(advanced);
+    high_pass_.firstOrder = interpolate(high_pass_.firstOrder, high_pass_.firstOrderStep, position);
+    high_pass_.secondOrder =
+        interpolate(high_pass_.secondOrder, high_pass_.secondOrderStep, position);
+    low_pass_.firstOrder = interpolate(low_pass_.firstOrder, low_pass_.firstOrderStep, position);
+    low_pass_.secondOrder = interpolate(low_pass_.secondOrder, low_pass_.secondOrderStep, position);
+    ramp_remaining_ -= advanced;
+    if (ramp_remaining_ == 0u) {
+      high_pass_.firstOrder = high_pass_.targetFirstOrder;
+      high_pass_.secondOrder = high_pass_.targetSecondOrder;
+      low_pass_.firstOrder = low_pass_.targetFirstOrder;
+      low_pass_.secondOrder = low_pass_.targetSecondOrder;
+    }
+  }
+
   [[nodiscard]] static std::size_t totalStages(const FilterBank &bank) noexcept {
     return bank.counts.firstOrder + bank.counts.secondOrder;
   }
@@ -199,16 +268,17 @@ private:
     }
   }
 
-  double processBankSample(FilterBank &bank, double input, std::uint32_t channel) noexcept {
+  double processBankSample(FilterBank &bank, double input, std::uint32_t channel,
+                           const Coefficients &first, const Coefficients &second) noexcept {
     std::size_t stage = 0u;
     for (; stage < bank.counts.firstOrder; ++stage) {
       State &state = bank.states[stage * max_channels_ + channel];
-      input = dsp::processBiquadDf1Sample(input, bank.firstOrder, state);
+      input = dsp::processBiquadDf1Sample(input, first, state);
       dsp::quantizeBiquadStateToFloat(state);
     }
     for (; stage < totalStages(bank); ++stage) {
       State &state = bank.states[stage * max_channels_ + channel];
-      input = dsp::processBiquadDf1Sample(input, bank.secondOrder, state);
+      input = dsp::processBiquadDf1Sample(input, second, state);
       dsp::quantizeBiquadStateToFloat(state);
     }
     return input;
@@ -224,6 +294,8 @@ private:
   bool high_frequency_cached_ = false;
   bool low_frequency_cached_ = false;
   bool states_initialized_ = false;
+  std::uint32_t ramp_frames_ = 240u;
+  std::uint32_t ramp_remaining_ = 0u;
   FilterBank high_pass_;
   FilterBank low_pass_;
 };

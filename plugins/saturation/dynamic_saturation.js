@@ -35,11 +35,30 @@ class DynamicSaturationPlugin extends PluginBase {
             const dt = 48000 / sampleRate;
             const dt_half = 0.5 * dt;
         
-            const dstMixRatio = dstMix * 0.01;
-            const coneMixRatio = coneMix * 0.01;
-            const gainLinear = 10**(outGain * 0.05);
             const invSpkMass = 1.0 / spkMass;
-            const dstBiasTerm = Math.tanh(dstDrive * dstBias);
+
+            const controlTargets = [dstDrive, dstBias, dstMix, coneMix, outGain];
+            if (!context.controlCurrent) {
+                context.controlCurrent = controlTargets.slice();
+                context.controlTargets = controlTargets.slice();
+                context.controlSteps = [0, 0, 0, 0, 0];
+                context.controlRemaining = [0, 0, 0, 0, 0];
+            } else if (controlTargets.some((value, index) => value !== context.controlTargets[index])) {
+                const frames = Math.max(1, Math.ceil(sampleRate * 0.005));
+                controlTargets.forEach((value, index) => {
+                    if (value === context.controlTargets[index]) return;
+                    context.controlTargets[index] = value;
+                    context.controlSteps[index] =
+                        (value - context.controlCurrent[index]) / frames;
+                    context.controlRemaining[index] = frames;
+                });
+            }
+            const controlAt = (index, frame) => {
+                const elapsed = Math.min(frame + 1, context.controlRemaining[index]);
+                return elapsed === context.controlRemaining[index]
+                    ? context.controlTargets[index]
+                    : context.controlCurrent[index] + context.controlSteps[index] * elapsed;
+            };
         
             if (!context.initialized || context.channelCount !== channelCount) {
                 context.xpos = new Float32Array(channelCount);
@@ -59,6 +78,11 @@ class DynamicSaturationPlugin extends PluginBase {
                 for (let i = 0; i < blockSize; i++) {
                     const dataIndex = offset + i;
                     const inputSample = data[dataIndex];
+                    const currentDstDrive = controlAt(0, i);
+                    const currentDstBias = controlAt(1, i);
+                    const dstMixRatio = controlAt(2, i) * 0.01;
+                    const coneMixRatio = controlAt(3, i) * 0.01;
+                    const gainLinear = 10**(controlAt(4, i) * 0.05);
         
                     // Improved numerical integration with better stability
                     const force = spkDrive * inputSample - spkStiff * x - spkDamp * v;
@@ -82,7 +106,8 @@ class DynamicSaturationPlugin extends PluginBase {
                     x = xClamped;
                     v = vClamped;
         
-                    const wetDist = Math.tanh(dstDrive * (x + dstBias)) - dstBiasTerm;
+                    const dstBiasTerm = Math.tanh(currentDstDrive * currentDstBias);
+                    const wetDist = Math.tanh(currentDstDrive * (x + currentDstBias)) - dstBiasTerm;
                     const xNl = x + dstMixRatio * (wetDist - x);
                     const coneDelta = (xNl - x) * coneMixRatio;
         
@@ -94,6 +119,16 @@ class DynamicSaturationPlugin extends PluginBase {
                 xpos[ch] = x;
                 vel[ch] = v;
             }
+
+            context.controlCurrent = context.controlCurrent.map((value, index) => {
+                if (blockSize >= context.controlRemaining[index]) {
+                    context.controlRemaining[index] = 0;
+                    context.controlSteps[index] = 0;
+                    return context.controlTargets[index];
+                }
+                context.controlRemaining[index] -= blockSize;
+                return value + context.controlSteps[index] * blockSize;
+            });
         
             return data;
         `);
@@ -304,4 +339,4 @@ class DynamicSaturationPlugin extends PluginBase {
 }
 
 // Register the plugin globally
-window.DynamicSaturationPlugin = DynamicSaturationPlugin; 
+window.DynamicSaturationPlugin = DynamicSaturationPlugin;

@@ -4,7 +4,7 @@
   "fields": [
     { "name": "reverbTime", "key": "rt", "kind": "float", "min": 0.2, "max": 10, "default": 1.2, "unit": "s", "automation": true },
     { "name": "density", "key": "dt", "kind": "int", "min": 4, "max": 8, "default": 8, "unit": "lines" },
-    { "name": "preDelay", "key": "pd", "kind": "float", "min": 0, "max": 100, "default": 10, "unit": "ms" },
+    { "name": "preDelay", "key": "pd", "kind": "float", "min": 0, "max": 100, "default": 10, "unit": "ms", "automation": true },
     { "name": "baseDelay", "key": "bd", "kind": "float", "min": 10, "max": 60, "default": 20, "unit": "ms", "automation": true },
     { "name": "delaySpread", "key": "ds", "kind": "float", "min": 0, "max": 25, "default": 5, "unit": "ms", "automation": true },
     { "name": "highFrequencyDamp", "key": "hd", "kind": "float", "min": 0, "max": 12, "default": 6, "unit": "dB/s", "automation": true },

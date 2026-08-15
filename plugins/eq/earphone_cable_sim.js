@@ -44,6 +44,7 @@ class EarphoneCableSimPlugin extends PluginBase {
     context.oldStates = null;
     context.fade = 1.0;
     context.fadeStep = 0.0;
+    context.pendingSos = null;
     context.lastChannelCount = channelCount;
     context.initialized = true;
   }
@@ -55,28 +56,43 @@ class EarphoneCableSimPlugin extends PluginBase {
   // the new one starts from a clean (zero) state. (Seeding the new sections from the old
   // ones is wrong: the polynomial is re-factored, so sections do not correspond and the
   // injected state causes a large overshoot.)
-  if (sos !== context.activeSos) {
+  const beginTransition = (nextSos) => {
     context.oldSos = context.activeSos;
     context.oldStates = context.activeStates;
-    context.activeSos = sos;
-    context.activeStates = makeStates(sos.length);
+    context.activeSos = nextSos;
+    context.activeStates = makeStates(nextSos.length);
     let fadeSamples = Math.round((sampleRate || 48000) * 0.02);
     if (fadeSamples < 128) fadeSamples = 128;
     context.fadeStep = 1.0 / fadeSamples;
     context.fade = 0.0;
+  };
+
+  if (context.pendingSos !== null && context.oldSos === null) {
+    const pendingSos = context.pendingSos;
+    context.pendingSos = null;
+    beginTransition(pendingSos);
+  }
+  if (sos !== context.activeSos) {
+    if (context.oldSos !== null && context.fade < 1.0) {
+      context.pendingSos = sos;
+    } else {
+      beginTransition(sos);
+    }
+  } else if (context.oldSos !== null) {
+    context.pendingSos = null;
   }
 
-  const activeSos = context.activeSos;
-  const activeStates = context.activeStates;
-  const nActive = activeSos.length;
-  const oldSos = context.oldSos;
-  const oldStates = context.oldStates;
   const fadeStep = context.fadeStep;
   let fade = context.fade;
-  const fading = fade < 1.0 && oldSos !== null;
-  const nOld = fading ? oldSos.length : 0;
 
   for (let i = 0; i < blockSize; i++) {
+    const activeSos = context.activeSos;
+    const activeStates = context.activeStates;
+    const nActive = activeSos.length;
+    const oldSos = context.oldSos;
+    const oldStates = context.oldStates;
+    const fading = fade < 1.0 && oldSos !== null;
+    const nOld = fading ? oldSos.length : 0;
     const t = fade < 1.0 ? fade : 1.0;
     for (let ch = 0; ch < channelCount; ch++) {
       const idx = ch * blockSize + i;
@@ -109,11 +125,23 @@ class EarphoneCableSimPlugin extends PluginBase {
         data[idx] = vn;
       }
     }
-    if (fading && fade < 1.0) { fade += fadeStep; if (fade > 1.0) fade = 1.0; }
+    if (fading && fade < 1.0) {
+      fade += fadeStep;
+      if (fade >= 1.0) {
+        fade = 1.0;
+        context.oldSos = null;
+        context.oldStates = null;
+        if (context.pendingSos !== null) {
+          const pendingSos = context.pendingSos;
+          context.pendingSos = null;
+          beginTransition(pendingSos);
+          fade = context.fade;
+        }
+      }
+    }
   }
 
-  context.fade = fading ? fade : 1.0;
-  if (context.fade >= 1.0) { context.oldSos = null; context.oldStates = null; }
+  context.fade = fade;
   return data;
   `;
 

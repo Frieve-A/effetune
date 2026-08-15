@@ -388,9 +388,21 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         const spreadSeconds = state.controls.ds * 1e-3;
         const first = spreadSeconds * SKY_FIRST_DELAY_RATIO;
         const second = first + spreadSeconds;
-        state.delay1Samples = Math.floor(state.sampleRate * first + 0.5);
-        state.delay2Samples = Math.floor(state.sampleRate * second + 0.5);
-        if (state.delay2Samples >= state.delay.length) state.delay2Samples = state.delay.length - 1;
+        const next1 = Math.floor(state.sampleRate * first + 0.5);
+        let next2 = Math.floor(state.sampleRate * second + 0.5);
+        if (next2 >= state.delay.length) next2 = state.delay.length - 1;
+        if (!state.delayMorphReady) {
+            state.delay1Samples = state.oldDelay1Samples = next1;
+            state.delay2Samples = state.oldDelay2Samples = next2;
+            state.delayTransitionRemaining = 0;
+            state.delayMorphReady = true;
+        } else if (next1 !== state.delay1Samples || next2 !== state.delay2Samples) {
+            state.oldDelay1Samples = state.delay1Samples;
+            state.oldDelay2Samples = state.delay2Samples;
+            state.delay1Samples = next1;
+            state.delay2Samples = next2;
+            state.delayTransitionRemaining = CONTROL_INTERVAL;
+        }
     }
 
     function advancePhase(state, key, increment) {
@@ -693,14 +705,26 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
             delayPosition: 0,
             delay1Samples: 0,
             delay2Samples: 0,
+            oldDelay1Samples: 0,
+            oldDelay2Samples: 0,
+            delayTransitionRemaining: 0,
+            delayMorphReady: false,
             sampleCounter: 0,
             controlRemaining: 0,
-            controlSmoothing: 1 - Math.exp(-CONTROL_INTERVAL / (sampleRate * 0.020)),
+            controlSmoothing: 1 - Math.exp(-1 / (sampleRate * 0.020)),
             // Transmitter on/off is a switch, not a smoothed control: the WASM kernel reads it
             // as params_.radio >= 0.5F, so the reference mirrors that threshold exactly
             // (radioEnabled above) rather than testing truthiness.
             radio: radioEnabled(parameters.rd),
             controls: {
+                tb: parameters.tb, pe: parameters.pe, md: parameters.md, cp: parameters.cp,
+                sg: parameters.sg, sk: parameters.sk, fd: parameters.fd, ds: parameters.ds,
+                in: parameters.in, io: parameters.io, tn: parameters.tn, bw: parameters.bw,
+                dt: parameters.dt, hm: parameters.hm, og: parameters.og, mx: parameters.mx,
+                hz: Number(parameters.hz),
+                bf: Number.isFinite(parameters.bf) ? parameters.bf : 0
+            },
+            controlTargets: {
                 tb: parameters.tb, pe: parameters.pe, md: parameters.md, cp: parameters.cp,
                 sg: parameters.sg, sk: parameters.sk, fd: parameters.fd, ds: parameters.ds,
                 in: parameters.in, io: parameters.io, tn: parameters.tn, bw: parameters.bw,
@@ -915,18 +939,38 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         tap.stepQ = (targetQ - tap.q) / CONTROL_INTERVAL;
     }
 
-    function updateControl(state) {
+    function captureControlTargets(state) {
+        state.controlTargets.tb = parameters.tb;
+        state.controlTargets.pe = parameters.pe;
+        state.controlTargets.md = parameters.md;
+        state.controlTargets.cp = parameters.cp;
+        state.controlTargets.sg = parameters.sg;
+        state.controlTargets.sk = parameters.sk;
+        state.controlTargets.fd = parameters.fd;
+        state.controlTargets.ds = parameters.ds;
+        state.controlTargets.in = parameters.in;
+        state.controlTargets.io = parameters.io;
+        state.controlTargets.tn = parameters.tn;
+        state.controlTargets.bw = parameters.bw;
+        state.controlTargets.dt = parameters.dt;
+        state.controlTargets.hm = parameters.hm;
+        state.controlTargets.og = parameters.og;
+        state.controlTargets.mx = parameters.mx;
+        state.controlTargets.hz = Number(parameters.hz);
+        state.controlTargets.bf = Number.isFinite(parameters.bf) ? parameters.bf : 0;
+    }
+
+    function advanceControlEnvelope(state) {
         const keys = ['tb', 'pe', 'md', 'cp', 'sg', 'sk', 'fd', 'ds', 'in', 'io', 'tn', 'bw',
-            'dt', 'hm', 'og', 'mx'];
+            'dt', 'hm', 'og', 'mx', 'hz', 'bf'];
         for (let index = 0; index < keys.length; index++) {
             const key = keys[index];
-            state.controls[key] += state.controlSmoothing * (parameters[key] - state.controls[key]);
+            state.controls[key] += state.controlSmoothing *
+                (state.controlTargets[key] - state.controls[key]);
         }
-        state.controls.hz += state.controlSmoothing * (Number(parameters.hz) - state.controls.hz);
-        // The BFO offset is smoothed like every numeric control so retuning the clarifier
-        // glides in frequency while the product-detector phase stays continuous.
-        const bfTarget = Number.isFinite(parameters.bf) ? parameters.bf : 0;
-        state.controls.bf += state.controlSmoothing * (bfTarget - state.controls.bf);
+    }
+
+    function updateControl(state) {
         configureBank(state.txFilters, state.controls.tb * 1000, BUTTERWORTH_8_Q,
             state.sampleRate * 3);
         configureBank(state.ifI, state.controls.bw * 500, BUTTERWORTH_6_Q, state.sampleRate);
@@ -1115,6 +1159,7 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
             startDetectorTransition(state, selectedDetector);
         }
     }
+    captureControlTargets(state);
 
     // Radio off takes the transmitter off the air, so the transmitter telemetry has nothing
     // to report: the modulation meter must not keep showing a station that stopped
@@ -1124,6 +1169,7 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
     // switch the station gain reads.
     let blockModPeak = 0;
     for (let frame = 0; frame < blockSize; frame++) {
+        advanceControlEnvelope(state);
         if (state.controlRemaining === 0) updateControl(state);
         state.controlRemaining--;
         state.fade1.i += state.fade1.stepI;
@@ -1199,10 +1245,29 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
         const position2 = state.delayPosition >= state.delay2Samples ?
             state.delayPosition - state.delay2Samples :
             size + state.delayPosition - state.delay2Samples;
-        const delayed1 = state.delay[position1];
-        const delayed2 = state.delay[position2];
-        const delayed1Q = state.delayQ[position1];
-        const delayed2Q = state.delayQ[position2];
+        const oldPosition1 = state.delayPosition >= state.oldDelay1Samples ?
+            state.delayPosition - state.oldDelay1Samples :
+            size + state.delayPosition - state.oldDelay1Samples;
+        const oldPosition2 = state.delayPosition >= state.oldDelay2Samples ?
+            state.delayPosition - state.oldDelay2Samples :
+            size + state.delayPosition - state.oldDelay2Samples;
+        const transition = state.delayTransitionRemaining === 0 ? 1 :
+            (CONTROL_INTERVAL - state.delayTransitionRemaining) / CONTROL_INTERVAL;
+        const delayed1 = state.delay[oldPosition1] +
+            transition * (state.delay[position1] - state.delay[oldPosition1]);
+        const delayed2 = state.delay[oldPosition2] +
+            transition * (state.delay[position2] - state.delay[oldPosition2]);
+        const delayed1Q = state.delayQ[oldPosition1] +
+            transition * (state.delayQ[position1] - state.delayQ[oldPosition1]);
+        const delayed2Q = state.delayQ[oldPosition2] +
+            transition * (state.delayQ[position2] - state.delayQ[oldPosition2]);
+        if (state.delayTransitionRemaining !== 0) {
+            --state.delayTransitionRemaining;
+            if (state.delayTransitionRemaining === 0) {
+                state.oldDelay1Samples = state.delay1Samples;
+                state.oldDelay2Samples = state.delay2Samples;
+            }
+        }
         state.delayPosition++;
         if (state.delayPosition === size) state.delayPosition = 0;
         let stationI;

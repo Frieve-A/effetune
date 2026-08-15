@@ -35,7 +35,7 @@ test('Wow Flutter freezes seeded draw order, state precision, and golden parity'
   assert.ok(commonDraw >= 0 && channelLoop > commonDraw && channelDraw > channelLoop);
   assert.match(kernel, /std::vector<float> delay_buffers_/);
   assert.match(kernel, /double common_x1_/);
-  assert.match(kernel, /channel_x1_\[channel\] = static_cast<float>/);
+  assert.match(kernel, /channel_x1_\[channel\]\s*=\s*static_cast<float>/);
   assert.match(kernel, /void setRandomSeed\(/);
   assert.match(kernel, /random_\.seed\(selected_seed_low_, selected_seed_high_\)/);
   assert.doesNotMatch(kernel, /\b(?:malloc|calloc|realloc|free)\s*\(/);
@@ -43,7 +43,7 @@ test('Wow Flutter freezes seeded draw order, state precision, and golden parity'
   const goldens = await readGoldenSet(path.join(root, 'golden'));
   assert.equal(goldens.length, 9);
   assert.ok(goldens.every(item =>
-    item.metadata.jsEngineHash === '65b606e082428dca8d4b4b74b4838d2d8a6af1015cef8bf1bce25cae27c27eca'
+    item.metadata.jsEngineHash === 'ac1d050f669e9c1764c2c5abc362d454ccb0fffc9b6f42884d20aea55ef5a290'
   ));
   const result = await runParityCli([
     '--root', repoRoot,

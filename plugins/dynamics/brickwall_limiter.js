@@ -77,8 +77,9 @@ class BrickwallLimiterPlugin extends PluginBase {
                 context.X = undefined; // Intermediate buffer for upsampling
                 context.Z = undefined; // Intermediate buffer for downsampling
                 context.thresholdDivLookup = undefined; // Gain lookup table
-                context.lastThresholdLin = undefined; // Threshold used for LUT generation
                 context.thresholdLookupScale = undefined;
+                context.inputGainCurrent = undefined;
+                context.thresholdCurrent = undefined;
                 context.phaseIndices = undefined; // Precalculated indices for downsampling
                 context.phaseRemainders = undefined; // Precalculated phases for downsampling
                 context.prevTime = undefined; // Reset time tracking
@@ -87,6 +88,34 @@ class BrickwallLimiterPlugin extends PluginBase {
             // --- Input Gain Application ---
             // Optimization: Use pre-calculated constant for dB to linear conversion
             const inputGainLinear = Math.exp(inputGainDb * LN10_OVER_20); // Equivalent to Math.pow(10, inputGainDb / 20)
+            const effectiveThresholdLin = Math.exp((thresholdDb + marginDb) * LN10_OVER_20);
+            const rampFrames = Math.max(1, Math.ceil(sampleRate * 0.005));
+            if (context.inputGainCurrent === undefined) {
+                context.inputGainCurrent = inputGainLinear;
+                context.inputGainTarget = inputGainLinear;
+                context.inputGainStep = 0;
+                context.inputGainRemaining = 0;
+                context.thresholdCurrent = effectiveThresholdLin;
+                context.thresholdTarget = effectiveThresholdLin;
+                context.thresholdStep = 0;
+                context.thresholdRemaining = 0;
+            } else {
+                if (inputGainLinear !== context.inputGainTarget) {
+                    context.inputGainTarget = inputGainLinear;
+                    context.inputGainStep = (inputGainLinear - context.inputGainCurrent) / rampFrames;
+                    context.inputGainRemaining = rampFrames;
+                }
+                if (effectiveThresholdLin !== context.thresholdTarget) {
+                    const thresholdFrames = rampFrames * osFactor;
+                    context.thresholdTarget = effectiveThresholdLin;
+                    context.thresholdStep = (effectiveThresholdLin - context.thresholdCurrent) / thresholdFrames;
+                    context.thresholdRemaining = thresholdFrames;
+                }
+            }
+            const inputGainAt = frame => context.inputGainCurrent +
+                context.inputGainStep * Math.min(frame, context.inputGainRemaining);
+            const thresholdAt = frame => context.thresholdCurrent +
+                context.thresholdStep * Math.min(frame, context.thresholdRemaining);
 
             // Reuse or create input buffer
             const dataLength = data.length; // Cache length
@@ -95,19 +124,12 @@ class BrickwallLimiterPlugin extends PluginBase {
             }
             const inputBuffer = context.inputBuffer; // Use local variable
 
-            // Apply input gain with loop unrolling (original optimization maintained)
-            const dataLengthMod4 = dataLength - (dataLength % 4); // More explicit way than bitwise trick
-            let i = 0;
-            // Unrolled loop for multiples of 4
-            for (; i < dataLengthMod4; i += 4) {
-                inputBuffer[i]   = data[i]   * inputGainLinear;
-                inputBuffer[i+1] = data[i+1] * inputGainLinear;
-                inputBuffer[i+2] = data[i+2] * inputGainLinear;
-                inputBuffer[i+3] = data[i+3] * inputGainLinear;
-            }
-            // Process remaining samples
-            for (; i < dataLength; i++) {
-                inputBuffer[i] = data[i] * inputGainLinear;
+            // Apply the same host-frame ramp to every channel.
+            for (let ch = 0; ch < numChannels; ch++) {
+                const offset = ch * blockSize;
+                for (let i = 0; i < blockSize; i++) {
+                    inputBuffer[offset + i] = data[offset + i] * inputGainAt(i);
+                }
             }
 
             // --- Time Delta Calculation (informational, kept as is) ---
@@ -125,16 +147,11 @@ class BrickwallLimiterPlugin extends PluginBase {
             const oneMinusReleaseCoeffSample = 1.0 - releaseCoeffSample;
 
             // --- Threshold Calculation ---
-            const effectiveThresholdDb = thresholdDb + marginDb;
-            // Optimization: Use pre-calculated constant and cache linear threshold
-            const effectiveThresholdLin = Math.exp(effectiveThresholdDb * LN10_OVER_20);
-
             // --- Threshold Division Lookup Table (LUT) ---
-            // Rebuild LUT only if it doesn't exist or the threshold changed
-            // Optimization: Hoist constants and use multiplication by inverse where possible
+            // The table stores only reciprocals, so threshold automation never rebuilds it.
             const LOOKUP_SIZE = 1024;
             const MAX_ABS_VALUE_LUT = 10.0; // Max expected value for LUT range
-            if (!context.thresholdDivLookup || context.lastThresholdLin !== effectiveThresholdLin) {
+            if (!context.thresholdDivLookup) {
                 const INV_LOOKUP_SIZE = 1.0 / LOOKUP_SIZE; // Use multiplication
                 const SCALE_FACTOR = LOOKUP_SIZE / MAX_ABS_VALUE_LUT;
 
@@ -145,16 +162,8 @@ class BrickwallLimiterPlugin extends PluginBase {
 
                 for (let lut_i = 0; lut_i < LOOKUP_SIZE; lut_i++) {
                     const absSample = (lut_i * INV_LOOKUP_SIZE) * MAX_ABS_VALUE_LUT;
-                    if (absSample <= 1e-6) {
-                        lookupTable[lut_i] = 1.0; // Avoid division by zero/small numbers
-                    } else if (absSample > effectiveThresholdLin) {
-                        // Optimization: Calculate inverse outside the condition? No, threshold varies.
-                        lookupTable[lut_i] = effectiveThresholdLin / absSample;
-                    } else {
-                        lookupTable[lut_i] = 1.0; // Below threshold, gain is 1
-                    }
+                    lookupTable[lut_i] = absSample <= 1e-6 ? 0.0 : 1.0 / absSample;
                 }
-                context.lastThresholdLin = effectiveThresholdLin; // Store threshold used for LUT
                 context.thresholdLookupScale = SCALE_FACTOR; // Store scale factor
             }
             // Cache LUT reference and scale locally for the function closure
@@ -163,13 +172,13 @@ class BrickwallLimiterPlugin extends PluginBase {
 
             // Fast lookup function for threshold division (Optimized version from original, slightly adjusted)
             // Defined once outside loops, captures necessary context variables
-            function fastThresholdDiv(absSample) {
+            function fastThresholdDiv(absSample, thresholdLin) {
                 if (absSample <= 1e-6) return 1.0;
-                if (absSample > effectiveThresholdLin) { // Use the cached linear threshold
+                if (absSample > thresholdLin) {
                     // Check if value is outside the optimized LUT range
                     if (absSample > MAX_ABS_VALUE_LUT) {
                         // Calculate directly for large values beyond LUT
-                        return effectiveThresholdLin / absSample;
+                        return thresholdLin / absSample;
                     }
                     // Use lookup table for values within range
                     // Optimization: Use bitwise OR for floor on positive numbers. Clamp index.
@@ -177,10 +186,28 @@ class BrickwallLimiterPlugin extends PluginBase {
                         LOOKUP_SIZE - 1, // Clamp to max index
                         (absSample * thresholdLookupScale_cache) | 0 // Fast floor equivalent for positive numbers
                     );
-                    return thresholdDivLookup_cache[idx]; // Use cached LUT reference
+                    return thresholdLin * thresholdDivLookup_cache[idx];
                 }
                 // Below threshold, return gain 1.0
                 return 1.0;
+            }
+            function advanceControlRamps(inputFrames, thresholdFrames) {
+                if (inputFrames >= context.inputGainRemaining) {
+                    context.inputGainCurrent = context.inputGainTarget;
+                    context.inputGainStep = 0;
+                    context.inputGainRemaining = 0;
+                } else {
+                    context.inputGainCurrent += context.inputGainStep * inputFrames;
+                    context.inputGainRemaining -= inputFrames;
+                }
+                if (thresholdFrames >= context.thresholdRemaining) {
+                    context.thresholdCurrent = context.thresholdTarget;
+                    context.thresholdStep = 0;
+                    context.thresholdRemaining = 0;
+                } else {
+                    context.thresholdCurrent += context.thresholdStep * thresholdFrames;
+                    context.thresholdRemaining -= thresholdFrames;
+                }
             }
 
             // ==============================================================
@@ -241,7 +268,7 @@ class BrickwallLimiterPlugin extends PluginBase {
                         let delayedSample1 = delayBuffer[readWritePos1];
                         delayBuffer[readWritePos1] = inputBuffer[chOffset + k];
                         let absSample1 = delayedSample1 >= 0 ? delayedSample1 : -delayedSample1;
-                        let targetGain1 = fastThresholdDiv(absSample1);
+                        let targetGain1 = fastThresholdDiv(absSample1, thresholdAt(k));
                         let gain1 = (targetGain1 < currentGain)
                                    ? targetGain1
                                    : (releaseCoeffSample * currentGain + oneMinusReleaseCoeffSample * targetGain1);
@@ -252,7 +279,7 @@ class BrickwallLimiterPlugin extends PluginBase {
                         let delayedSample2 = delayBuffer[readWritePos2];
                         delayBuffer[readWritePos2] = inputBuffer[chOffset + k + 1];
                         let absSample2 = delayedSample2 >= 0 ? delayedSample2 : -delayedSample2;
-                        let targetGain2 = fastThresholdDiv(absSample2);
+                        let targetGain2 = fastThresholdDiv(absSample2, thresholdAt(k + 1));
                         currentGain = gain1; // Update currentGain *before* calculating next gain
                         let gain2 = (targetGain2 < currentGain)
                                    ? targetGain2
@@ -264,7 +291,7 @@ class BrickwallLimiterPlugin extends PluginBase {
                         let delayedSample3 = delayBuffer[readWritePos3];
                         delayBuffer[readWritePos3] = inputBuffer[chOffset + k + 2];
                         let absSample3 = delayedSample3 >= 0 ? delayedSample3 : -delayedSample3;
-                        let targetGain3 = fastThresholdDiv(absSample3);
+                        let targetGain3 = fastThresholdDiv(absSample3, thresholdAt(k + 2));
                         currentGain = gain2;
                         let gain3 = (targetGain3 < currentGain)
                                    ? targetGain3
@@ -276,7 +303,7 @@ class BrickwallLimiterPlugin extends PluginBase {
                         let delayedSample4 = delayBuffer[readWritePos4];
                         delayBuffer[readWritePos4] = inputBuffer[chOffset + k + 3];
                         let absSample4 = delayedSample4 >= 0 ? delayedSample4 : -delayedSample4;
-                        let targetGain4 = fastThresholdDiv(absSample4);
+                        let targetGain4 = fastThresholdDiv(absSample4, thresholdAt(k + 3));
                         currentGain = gain3;
                         let gain4 = (targetGain4 < currentGain)
                                    ? targetGain4
@@ -293,7 +320,7 @@ class BrickwallLimiterPlugin extends PluginBase {
                         const delayedSample = delayBuffer[readWritePos];
                         delayBuffer[readWritePos] = inputBuffer[chOffset + k];
                         const absSample = delayedSample >= 0 ? delayedSample : -delayedSample;
-                        const targetGain = fastThresholdDiv(absSample);
+                        const targetGain = fastThresholdDiv(absSample, thresholdAt(k));
                         const newGain = (targetGain < currentGain)
                                        ? targetGain
                                        : (releaseCoeffSample * currentGain + oneMinusReleaseCoeffSample * targetGain);
@@ -318,6 +345,7 @@ class BrickwallLimiterPlugin extends PluginBase {
                 }
                 output.measurements = { time: currentTime, gainReduction: 1.0 - minGain };
 
+                advanceControlRamps(blockSize, blockSize);
                 return output; // Return the processed output buffer
             }
 
@@ -573,7 +601,7 @@ class BrickwallLimiterPlugin extends PluginBase {
                         delayBufferOS[circBufferPos] = oversampled[osBufferOffset + sampleIndex]; // Write current OS sample
 
                         const absSample = delayedSample >= 0 ? delayedSample : -delayedSample; // Use delayed sample for gain calc
-                        const targetGain = fastThresholdDiv(absSample); // Calculate target gain
+                        const targetGain = fastThresholdDiv(absSample, thresholdAt(sampleIndex)); // Calculate target gain
 
                         // Apply gain smoothing (attack/release) using OS coefficients
                         const newGain = (targetGain < currentGain)
@@ -592,7 +620,7 @@ class BrickwallLimiterPlugin extends PluginBase {
                     const delayedSample = delayBufferOS[circBufferPos];
                     delayBufferOS[circBufferPos] = oversampled[osBufferOffset + k_os];
                     const absSample = delayedSample >= 0 ? delayedSample : -delayedSample;
-                    const targetGain = fastThresholdDiv(absSample);
+                    const targetGain = fastThresholdDiv(absSample, thresholdAt(k_os));
                     const newGain = (targetGain < currentGain)
                                    ? targetGain
                                    : (releaseCoeffSampleOS * currentGain + oneMinusReleaseCoeffSampleOS * targetGain);
@@ -743,6 +771,7 @@ class BrickwallLimiterPlugin extends PluginBase {
             // Mark as initialized now that OS processing path is complete (or if already initialized)
             context.initialized = true;
 
+            advanceControlRamps(blockSize, oversampledBlockSize);
             return downsampledOutput; // Return the final processed, downsampled output buffer
         `);
     }

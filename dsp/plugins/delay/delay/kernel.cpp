@@ -46,6 +46,7 @@ public:
       state = 0.0F;
     }
     configured_ = false;
+    delay_ramps_initialized_ = false;
     last_channel_count_ = 0u;
   }
 
@@ -58,21 +59,30 @@ public:
       resetForChannels(channel_count);
     }
 
-    std::uint32_t pre_delay_samples =
-        static_cast<std::uint32_t>(static_cast<double>(params_.preDelay) * sample_rate_ * 0.001);
+    double pre_delay_samples = static_cast<double>(params_.preDelay) * sample_rate_ * 0.001;
     const std::uint32_t max_pre_delay = pre_delay_.maxDelaySamples();
-    if (pre_delay_samples > max_pre_delay) {
-      pre_delay_samples = max_pre_delay;
+    if (pre_delay_samples > static_cast<double>(max_pre_delay)) {
+      pre_delay_samples = static_cast<double>(max_pre_delay);
     }
 
-    std::uint32_t delay_samples =
-        static_cast<std::uint32_t>(static_cast<double>(params_.delaySize) * sample_rate_ * 0.001);
-    if (delay_samples < 1u) {
-      delay_samples = 1u;
+    double delay_samples = static_cast<double>(params_.delaySize) * sample_rate_ * 0.001;
+    if (delay_samples < 1.0) {
+      delay_samples = 1.0;
     }
     const std::uint32_t max_delay = delay_.maxDelaySamples();
-    if (delay_samples > max_delay) {
-      delay_samples = max_delay;
+    if (delay_samples > static_cast<double>(max_delay)) {
+      delay_samples = static_cast<double>(max_delay);
+    }
+    if (!delay_ramps_initialized_) {
+      pre_delay_ramp_.snap(pre_delay_samples);
+      delay_ramp_.snap(delay_samples);
+      delay_ramps_initialized_ = true;
+    } else {
+      const double raw_transition_frames = std::ceil(sample_rate_ * 0.005);
+      const auto transition_frames =
+          static_cast<std::uint32_t>(raw_transition_frames > 1.0 ? raw_transition_frames : 1.0);
+      pre_delay_ramp_.retarget(pre_delay_samples, transition_frames);
+      delay_ramp_.retarget(delay_samples, transition_frames);
     }
 
     const double damp_amount = clampValue(static_cast<double>(params_.damping) * 0.01, 0.0, 1.0);
@@ -96,13 +106,15 @@ public:
     const bool stereo = channel_count == 2u;
 
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      const double current_pre_delay = pre_delay_ramp_.value(frame);
+      const double current_delay = delay_ramp_.value(frame);
       double stereo_delayed_left = 0.0;
       double stereo_delayed_right = 0.0;
       double stereo_damped_left = 0.0;
       double stereo_damped_right = 0.0;
       if (stereo) {
-        stereo_delayed_left = static_cast<double>(delay_.read(0u, delay_samples - 1u));
-        stereo_delayed_right = static_cast<double>(delay_.read(1u, delay_samples - 1u));
+        stereo_delayed_left = static_cast<double>(delay_.readLinear(0u, current_delay - 1.0));
+        stereo_delayed_right = static_cast<double>(delay_.readLinear(1u, current_delay - 1.0));
         const double mono = 0.5 * (stereo_delayed_left + stereo_delayed_right);
         double feedback_left;
         double feedback_right;
@@ -127,10 +139,14 @@ public:
         const std::uint32_t index = channel * frame_count + frame;
         const double input = static_cast<double>(audio[index]);
         double pre_delayed;
-        if (pre_delay_samples == 0u) {
+        if (!(current_pre_delay > 0.0)) {
           pre_delayed = input;
+        } else if (current_pre_delay < 1.0) {
+          const double previous = static_cast<double>(pre_delay_.readLinear(channel, 0.0));
+          pre_delayed = input + current_pre_delay * (previous - input);
         } else {
-          pre_delayed = static_cast<double>(pre_delay_.read(channel, pre_delay_samples - 1u));
+          pre_delayed =
+              static_cast<double>(pre_delay_.readLinear(channel, current_pre_delay - 1.0));
         }
         pre_delay_.push(channel, static_cast<float>(input));
 
@@ -140,16 +156,50 @@ public:
           wet = channel == 0u ? stereo_delayed_left : stereo_delayed_right;
           damped = channel == 0u ? stereo_damped_left : stereo_damped_right;
         } else {
-          wet = static_cast<double>(delay_.read(channel, delay_samples - 1u));
+          wet = static_cast<double>(delay_.readLinear(channel, current_delay - 1.0));
           damped = dampFeedback(channel, wet, low_pole, high_pole, damp_amount, one_minus_damp);
         }
         delay_.push(channel, static_cast<float>(pre_delayed + damped * feedback));
         audio[index] = static_cast<float>(input * dry_gain + wet * wet_gain);
       }
     }
+    pre_delay_ramp_.advance(frame_count);
+    delay_ramp_.advance(frame_count);
   }
 
 private:
+  struct DelayRamp {
+    double current = 0.0;
+    double target = 0.0;
+    double step = 0.0;
+    std::uint32_t remaining = 0u;
+    void snap(double value) noexcept {
+      current = target = value;
+      step = 0.0;
+      remaining = 0u;
+    }
+    void retarget(double value, std::uint32_t frames) noexcept {
+      if (value == target)
+        return;
+      target = value;
+      remaining = frames;
+      step = (target - current) / static_cast<double>(frames);
+    }
+    [[nodiscard]] double value(std::uint32_t frame) const noexcept {
+      return frame >= remaining ? target : current + step * static_cast<double>(frame);
+    }
+    void advance(std::uint32_t frames) noexcept {
+      if (frames >= remaining) {
+        current = target;
+        remaining = 0u;
+        step = 0.0;
+      } else {
+        current += step * static_cast<double>(frames);
+        remaining -= frames;
+      }
+    }
+  };
+
   void resetForChannels(std::uint32_t channel_count) noexcept {
     pre_delay_.reset();
     delay_.reset();
@@ -179,6 +229,9 @@ private:
   std::uint32_t max_channels_ = 0u;
   std::uint32_t last_channel_count_ = 0u;
   bool configured_ = false;
+  bool delay_ramps_initialized_ = false;
+  DelayRamp pre_delay_ramp_;
+  DelayRamp delay_ramp_;
   dsp::DelayLine pre_delay_;
   dsp::DelayLine delay_;
   std::vector<float> low_damp_states_;

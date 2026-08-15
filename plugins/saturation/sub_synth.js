@@ -17,8 +17,6 @@ class SubSynthPlugin extends PluginBase {
       
       const { sl, dl, slf, sls, shf, shs, dhf, dhs, channelCount, blockSize, sampleRate } = parameters;
       const sr = sampleRate;
-      const subLevelGain = sl / 100;
-      const dryLevelGain = dl / 100;  // New Dry Level gain
       
       // Helper to compute stages from slope (in dB/oct)
       function computeStages(slope) {
@@ -126,17 +124,55 @@ class SubSynthPlugin extends PluginBase {
         };
       }
       
+      const coefficientTargets = [subLpf1 || {}, subLpf2 || {}, subHpf1 || {}, subHpf2 || {},
+        dryHpf1 || {}, dryHpf2 || {}];
+      const levelTargets = [Math.fround(sl) / 100, Math.fround(dl) / 100];
+      const shapeSignature = [sls, shs, dhs].join(':');
+      const rampFrames = Math.max(1, Math.ceil(sampleRate * 0.005));
+      if (!context.currentSubCoeffs || context.subShapeSignature !== shapeSignature) {
+        context.currentSubCoeffs = coefficientTargets.map(coeff => ({ ...coeff }));
+        context.targetSubCoeffs = coefficientTargets.map(coeff => ({ ...coeff }));
+        context.subCoeffSteps = coefficientTargets.map(() => ({}));
+        context.currentSubLevels = levelTargets.slice();
+        context.targetSubLevels = levelTargets.slice();
+        context.subLevelSteps = [0, 0];
+        context.subControlRampRemaining = 0;
+        context.subShapeSignature = shapeSignature;
+      } else {
+        let changed = context.targetSubLevels[0] !== levelTargets[0] ||
+          context.targetSubLevels[1] !== levelTargets[1];
+        for (let index = 0; index < coefficientTargets.length; index++) {
+          for (const key of ['b0', 'b1', 'b2', 'a1', 'a2']) {
+            if ((context.targetSubCoeffs[index][key] || 0) !== (coefficientTargets[index][key] || 0)) changed = true;
+          }
+        }
+        if (changed) {
+          context.targetSubCoeffs = coefficientTargets.map(coeff => ({ ...coeff }));
+          context.targetSubLevels = levelTargets.slice();
+          for (let index = 0; index < coefficientTargets.length; index++) {
+            const step = context.subCoeffSteps[index];
+            for (const key of ['b0', 'b1', 'b2', 'a1', 'a2']) {
+              step[key] = ((coefficientTargets[index][key] || 0) -
+                (context.currentSubCoeffs[index][key] || 0)) / rampFrames;
+            }
+          }
+          context.subLevelSteps[0] = (levelTargets[0] - context.currentSubLevels[0]) / rampFrames;
+          context.subLevelSteps[1] = (levelTargets[1] - context.currentSubLevels[1]) / rampFrames;
+          context.subControlRampRemaining = rampFrames;
+        }
+      }
+
       // Helper: create a filter chain array from first-order and second-order stages
-      function createChain(order1, order2, coeff1, coeff2) {
+      function createChain(order1, order2, firstIndex, secondIndex) {
         const chain = [];
-        for (let i = 0; i < order1; i++) chain.push({ type: 1, ...coeff1 });
-        for (let i = 0; i < order2; i++) chain.push({ type: 2, ...coeff2 });
+        for (let i = 0; i < order1; i++) chain.push({ type: 1, coeffIndex: firstIndex });
+        for (let i = 0; i < order2; i++) chain.push({ type: 2, coeffIndex: secondIndex });
         return chain;
       }
       
-      const subLpfChain = createChain(subLpfStages.order1, subLpfStages.order2, subLpf1||{}, subLpf2||{});
-      const subHpfChain = createChain(subHpfStages.order1, subHpfStages.order2, subHpf1||{}, subHpf2||{});
-      const dryHpfChain = createChain(dryHpfStages.order1, dryHpfStages.order2, dryHpf1||{}, dryHpf2||{});
+      const subLpfChain = createChain(subLpfStages.order1, subLpfStages.order2, 0, 1);
+      const subHpfChain = createChain(subHpfStages.order1, subHpfStages.order2, 2, 3);
+      const dryHpfChain = createChain(dryHpfStages.order1, dryHpfStages.order2, 4, 5);
       
       // Cache filter state arrays for speed
       const subLpfStates = context.filterStates.subLpf;
@@ -144,16 +180,24 @@ class SubSynthPlugin extends PluginBase {
       const dryHpfStates = context.filterStates.dryHpf;
       
       // Process a filter chain for one sample on a given channel
-      function processChain(chain, states, sample, ch) {
+      function processChain(chain, states, sample, ch, frame) {
         for (let j = 0; j < chain.length; j++) {
           const stage = chain[j], state = states[j], x = sample;
+          const current = context.currentSubCoeffs[stage.coeffIndex];
+          const step = context.subCoeffSteps[stage.coeffIndex];
+          const position = Math.min(frame + 1, context.subControlRampRemaining);
+          const b0 = (current.b0 || 0) + (step.b0 || 0) * position;
+          const b1 = (current.b1 || 0) + (step.b1 || 0) * position;
+          const a1 = (current.a1 || 0) + (step.a1 || 0) * position;
           if (stage.type === 1) {
-            sample = stage.b0 * x + stage.b1 * state.x1[ch] - stage.a1 * state.y1[ch];
+            sample = b0 * x + b1 * state.x1[ch] - a1 * state.y1[ch];
             state.x1[ch] = x;
             state.y1[ch] = sample;
           } else { // Second-order
-            sample = stage.b0 * x + stage.b1 * state.x1[ch] + stage.b2 * state.x2[ch]
-                     - stage.a1 * state.y1[ch] - stage.a2 * state.y2[ch];
+            const b2 = (current.b2 || 0) + (step.b2 || 0) * position;
+            const a2 = (current.a2 || 0) + (step.a2 || 0) * position;
+            sample = b0 * x + b1 * state.x1[ch] + b2 * state.x2[ch]
+                     - a1 * state.y1[ch] - a2 * state.y2[ch];
             state.x2[ch] = state.x1[ch];
             state.x1[ch] = x;
             state.y2[ch] = state.y1[ch];
@@ -169,12 +213,30 @@ class SubSynthPlugin extends PluginBase {
           const idx = offset + i;
           let dry = data[idx];
           let sub = dry >= 0 ? dry : -dry;
-          if (subLpfChain.length) sub = processChain(subLpfChain, subLpfStates, sub, ch);
-          if (subHpfChain.length) sub = processChain(subHpfChain, subHpfStates, sub, ch);
-          if (dryHpfChain.length) dry = processChain(dryHpfChain, dryHpfStates, dry, ch);
+          if (subLpfChain.length) sub = processChain(subLpfChain, subLpfStates, sub, ch, i);
+          if (subHpfChain.length) sub = processChain(subHpfChain, subHpfStates, sub, ch, i);
+          if (dryHpfChain.length) dry = processChain(dryHpfChain, dryHpfStates, dry, ch, i);
           // Mix processed signals with Dry Level and Sub Level gains
+          const position = Math.min(i + 1, context.subControlRampRemaining);
+          const subLevelGain = context.currentSubLevels[0] + context.subLevelSteps[0] * position;
+          const dryLevelGain = context.currentSubLevels[1] + context.subLevelSteps[1] * position;
           data[idx] = (dry * dryLevelGain) + (sub * subLevelGain);
         }
+      }
+
+      const advanced = Math.min(blockSize, context.subControlRampRemaining);
+      for (let index = 0; index < context.currentSubCoeffs.length; index++) {
+        for (const key of ['b0', 'b1', 'b2', 'a1', 'a2']) {
+          context.currentSubCoeffs[index][key] = (context.currentSubCoeffs[index][key] || 0) +
+            (context.subCoeffSteps[index][key] || 0) * advanced;
+        }
+      }
+      context.currentSubLevels[0] += context.subLevelSteps[0] * advanced;
+      context.currentSubLevels[1] += context.subLevelSteps[1] * advanced;
+      context.subControlRampRemaining -= advanced;
+      if (context.subControlRampRemaining === 0) {
+        context.currentSubCoeffs = context.targetSubCoeffs.map(coeff => ({ ...coeff }));
+        context.currentSubLevels = context.targetSubLevels.slice();
       }
       
       return data;

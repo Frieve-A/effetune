@@ -55,16 +55,55 @@ class ExpanderPlugin extends PluginBase {
             const GAIN_FACTOR = 0.11512925464970229; // ln(10)/20
 
             // Cache frequently used parameters from the 'parameters' object
-            const th = parameters.th;
-            const rt = parameters.rt;
-            const kn = parameters.kn;
-            const gn = parameters.gn; // Makeup gain in dB
             const blockSize = parameters.blockSize;
             const channelCount = parameters.channelCount;
             const sampleRate = parameters.sampleRate;
 
-            // Calculate derived parameters
-            const halfKnee = kn * 0.5;
+            if (!context.curveCurrent) {
+                context.curveCurrent = new Float64Array(4);
+                context.curveTargets = new Float64Array(4);
+                context.curveSteps = new Float64Array(4);
+                context.curveRemaining = new Float64Array(4);
+                context.curveCurrent[0] = context.curveTargets[0] = parameters.th;
+                context.curveCurrent[1] = context.curveTargets[1] = parameters.rt;
+                context.curveCurrent[2] = context.curveTargets[2] = parameters.kn;
+                context.curveCurrent[3] = context.curveTargets[3] = parameters.gn;
+            } else if (parameters.th !== context.curveTargets[0] ||
+                       parameters.rt !== context.curveTargets[1] ||
+                       parameters.kn !== context.curveTargets[2] ||
+                       parameters.gn !== context.curveTargets[3]) {
+                const frames = Math.max(1, Math.floor(sampleRate * 0.005));
+                if (parameters.th !== context.curveTargets[0]) {
+                    context.curveTargets[0] = parameters.th;
+                    context.curveSteps[0] = (parameters.th - context.curveCurrent[0]) / frames;
+                    context.curveRemaining[0] = frames;
+                }
+                if (parameters.rt !== context.curveTargets[1]) {
+                    context.curveTargets[1] = parameters.rt;
+                    context.curveSteps[1] = (parameters.rt - context.curveCurrent[1]) / frames;
+                    context.curveRemaining[1] = frames;
+                }
+                if (parameters.kn !== context.curveTargets[2]) {
+                    context.curveTargets[2] = parameters.kn;
+                    context.curveSteps[2] = (parameters.kn - context.curveCurrent[2]) / frames;
+                    context.curveRemaining[2] = frames;
+                }
+                if (parameters.gn !== context.curveTargets[3]) {
+                    context.curveTargets[3] = parameters.gn;
+                    context.curveSteps[3] = (parameters.gn - context.curveCurrent[3]) / frames;
+                    context.curveRemaining[3] = frames;
+                }
+            }
+            const curveCurrent = context.curveCurrent;
+            const curveTargets = context.curveTargets;
+            const curveSteps = context.curveSteps;
+            const curveRemaining = context.curveRemaining;
+            const thresholdDb = curveCurrent[0];
+            const ratio = curveCurrent[1];
+            const kneeDb = curveCurrent[2];
+            const makeupDb = curveCurrent[3];
+            const curveRamping = curveRemaining[0] !== 0 || curveRemaining[1] !== 0 ||
+                curveRemaining[2] !== 0 || curveRemaining[3] !== 0;
             // For expander: when signal is below threshold, apply expansion
             // Expansion ratio calculation based on requirements:
             // - Ratio 2.0: input at threshold-12dB should output at threshold-24dB (relative -24dB)
@@ -73,7 +112,6 @@ class ExpanderPlugin extends PluginBase {
             // Test: threshold=-12dB, input=-24dB, diff=-12dB
             // Ratio 2.0: output = -12 + (-12) * 2 = -12 - 24 = -36dB (threshold-24dB) ✓
             // Ratio 0.5: output = -12 + (-12) * 0.5 = -12 - 6 = -18dB (threshold-6dB) ✓
-            const expansionSlope = rt - 1; // Expansion slope for below-threshold signals (match graph logic)
 
             // Calculate filter coefficients for attack and release
             const attackSamplesRaw = (parameters.at * sampleRate) / 1000.0;
@@ -213,20 +251,33 @@ class ExpanderPlugin extends PluginBase {
                 for (; i < blockSizeMod4; i += 4) {
                     // --- Sample 1 ---
                     const envDb1 = fastDb(workBuffer[i]);
-                    const diff1 = envDb1 - th;
+                    let th1 = thresholdDb, rt1 = ratio, kn1 = kneeDb, gn1 = makeupDb;
+                    if (curveRamping) {
+                        const frame = i + 1;
+                        const thElapsed = Math.min(frame, curveRemaining[0]);
+                        const rtElapsed = Math.min(frame, curveRemaining[1]);
+                        const knElapsed = Math.min(frame, curveRemaining[2]);
+                        const gnElapsed = Math.min(frame, curveRemaining[3]);
+                        th1 = thElapsed === curveRemaining[0] ? curveTargets[0] : curveCurrent[0] + curveSteps[0] * thElapsed;
+                        rt1 = rtElapsed === curveRemaining[1] ? curveTargets[1] : curveCurrent[1] + curveSteps[1] * rtElapsed;
+                        kn1 = knElapsed === curveRemaining[2] ? curveTargets[2] : curveCurrent[2] + curveSteps[2] * knElapsed;
+                        gn1 = gnElapsed === curveRemaining[3] ? curveTargets[3] : curveCurrent[3] + curveSteps[3] * gnElapsed;
+                    }
+                    const halfKnee1 = kn1 * 0.5, expansionSlope1 = rt1 - 1;
+                    const diff1 = envDb1 - th1;
                     let gb1 = 0.0; // Gain Boost in dB (non-negative)
                     // Expander gain reduction logic:
-                    if (diff1 <= -halfKnee) {
-                        gb1 = diff1 * expansionSlope; // Linear reduction below threshold
-                    } else if (diff1 >= halfKnee) {
+                    if (diff1 <= -halfKnee1) {
+                        gb1 = diff1 * expansionSlope1;
+                    } else if (diff1 >= halfKnee1) {
                         gb1 = 0.0; // No reduction above threshold
                     } else { // Within knee
-                        const t1 = (diff1 + halfKnee) / kn;
+                        const t1 = (diff1 + halfKnee1) / kn1;
                         // Quadratic knee with value continuity at boundaries
-                        const linearBelow = (-halfKnee) * expansionSlope;
+                        const linearBelow = (-halfKnee1) * expansionSlope1;
                         gb1 = linearBelow * (1 - t1) * (1 - t1);
                     }
-                    const finalDbGain1 = gn + gb1; // Total gain = Makeup Gain + Gain Boost
+                    const finalDbGain1 = gn1 + gb1;
                     const linearGain1 = fastExpDb(finalDbGain1); // Convert total dB gain to linear multiplier
                     result[offset + i] = data[offset + i] * linearGain1;
                     const absGb1 = gb1 >= 0 ? gb1 : -gb1;
@@ -234,12 +285,25 @@ class ExpanderPlugin extends PluginBase {
 
                     // --- Sample 2 ---
                     const envDb2 = fastDb(workBuffer[i + 1]);
-                    const diff2 = envDb2 - th;
+                    let th2 = thresholdDb, rt2 = ratio, kn2 = kneeDb, gn2 = makeupDb;
+                    if (curveRamping) {
+                        const frame = i + 2;
+                        const thElapsed = Math.min(frame, curveRemaining[0]);
+                        const rtElapsed = Math.min(frame, curveRemaining[1]);
+                        const knElapsed = Math.min(frame, curveRemaining[2]);
+                        const gnElapsed = Math.min(frame, curveRemaining[3]);
+                        th2 = thElapsed === curveRemaining[0] ? curveTargets[0] : curveCurrent[0] + curveSteps[0] * thElapsed;
+                        rt2 = rtElapsed === curveRemaining[1] ? curveTargets[1] : curveCurrent[1] + curveSteps[1] * rtElapsed;
+                        kn2 = knElapsed === curveRemaining[2] ? curveTargets[2] : curveCurrent[2] + curveSteps[2] * knElapsed;
+                        gn2 = gnElapsed === curveRemaining[3] ? curveTargets[3] : curveCurrent[3] + curveSteps[3] * gnElapsed;
+                    }
+                    const halfKnee2 = kn2 * 0.5, expansionSlope2 = rt2 - 1;
+                    const diff2 = envDb2 - th2;
                     let gb2 = 0.0;
-                    if (diff2 <= -halfKnee) { gb2 = diff2 * expansionSlope; }
-                    else if (diff2 >= halfKnee) { gb2 = 0.0; }
-                    else { const t2 = (diff2 + halfKnee) / kn; const linearBelow2 = (-halfKnee) * expansionSlope; gb2 = linearBelow2 * (1 - t2) * (1 - t2); }
-                    const finalDbGain2 = gn + gb2;
+                    if (diff2 <= -halfKnee2) { gb2 = diff2 * expansionSlope2; }
+                    else if (diff2 >= halfKnee2) { gb2 = 0.0; }
+                    else { const t2 = (diff2 + halfKnee2) / kn2; const linearBelow2 = (-halfKnee2) * expansionSlope2; gb2 = linearBelow2 * (1 - t2) * (1 - t2); }
+                    const finalDbGain2 = gn2 + gb2;
                     const linearGain2 = fastExpDb(finalDbGain2);
                     result[offset + i + 1] = data[offset + i + 1] * linearGain2;
                     const absGb2 = gb2 >= 0 ? gb2 : -gb2;
@@ -247,12 +311,25 @@ class ExpanderPlugin extends PluginBase {
 
                     // --- Sample 3 ---
                     const envDb3 = fastDb(workBuffer[i + 2]);
-                    const diff3 = envDb3 - th;
+                    let th3 = thresholdDb, rt3 = ratio, kn3 = kneeDb, gn3 = makeupDb;
+                    if (curveRamping) {
+                        const frame = i + 3;
+                        const thElapsed = Math.min(frame, curveRemaining[0]);
+                        const rtElapsed = Math.min(frame, curveRemaining[1]);
+                        const knElapsed = Math.min(frame, curveRemaining[2]);
+                        const gnElapsed = Math.min(frame, curveRemaining[3]);
+                        th3 = thElapsed === curveRemaining[0] ? curveTargets[0] : curveCurrent[0] + curveSteps[0] * thElapsed;
+                        rt3 = rtElapsed === curveRemaining[1] ? curveTargets[1] : curveCurrent[1] + curveSteps[1] * rtElapsed;
+                        kn3 = knElapsed === curveRemaining[2] ? curveTargets[2] : curveCurrent[2] + curveSteps[2] * knElapsed;
+                        gn3 = gnElapsed === curveRemaining[3] ? curveTargets[3] : curveCurrent[3] + curveSteps[3] * gnElapsed;
+                    }
+                    const halfKnee3 = kn3 * 0.5, expansionSlope3 = rt3 - 1;
+                    const diff3 = envDb3 - th3;
                     let gb3 = 0.0;
-                    if (diff3 <= -halfKnee) { gb3 = diff3 * expansionSlope; }
-                    else if (diff3 >= halfKnee) { gb3 = 0.0; }
-                    else { const t3 = (diff3 + halfKnee) / kn; const linearBelow3 = (-halfKnee) * expansionSlope; gb3 = linearBelow3 * (1 - t3) * (1 - t3); }
-                    const finalDbGain3 = gn + gb3;
+                    if (diff3 <= -halfKnee3) { gb3 = diff3 * expansionSlope3; }
+                    else if (diff3 >= halfKnee3) { gb3 = 0.0; }
+                    else { const t3 = (diff3 + halfKnee3) / kn3; const linearBelow3 = (-halfKnee3) * expansionSlope3; gb3 = linearBelow3 * (1 - t3) * (1 - t3); }
+                    const finalDbGain3 = gn3 + gb3;
                     const linearGain3 = fastExpDb(finalDbGain3);
                     result[offset + i + 2] = data[offset + i + 2] * linearGain3;
                     const absGb3 = gb3 >= 0 ? gb3 : -gb3;
@@ -260,12 +337,25 @@ class ExpanderPlugin extends PluginBase {
 
                     // --- Sample 4 ---
                     const envDb4 = fastDb(workBuffer[i + 3]);
-                    const diff4 = envDb4 - th;
+                    let th4 = thresholdDb, rt4 = ratio, kn4 = kneeDb, gn4 = makeupDb;
+                    if (curveRamping) {
+                        const frame = i + 4;
+                        const thElapsed = Math.min(frame, curveRemaining[0]);
+                        const rtElapsed = Math.min(frame, curveRemaining[1]);
+                        const knElapsed = Math.min(frame, curveRemaining[2]);
+                        const gnElapsed = Math.min(frame, curveRemaining[3]);
+                        th4 = thElapsed === curveRemaining[0] ? curveTargets[0] : curveCurrent[0] + curveSteps[0] * thElapsed;
+                        rt4 = rtElapsed === curveRemaining[1] ? curveTargets[1] : curveCurrent[1] + curveSteps[1] * rtElapsed;
+                        kn4 = knElapsed === curveRemaining[2] ? curveTargets[2] : curveCurrent[2] + curveSteps[2] * knElapsed;
+                        gn4 = gnElapsed === curveRemaining[3] ? curveTargets[3] : curveCurrent[3] + curveSteps[3] * gnElapsed;
+                    }
+                    const halfKnee4 = kn4 * 0.5, expansionSlope4 = rt4 - 1;
+                    const diff4 = envDb4 - th4;
                     let gb4 = 0.0;
-                    if (diff4 <= -halfKnee) { gb4 = diff4 * expansionSlope; }
-                    else if (diff4 >= halfKnee) { gb4 = 0.0; }
-                    else { const t4 = (diff4 + halfKnee) / kn; const linearBelow4 = (-halfKnee) * expansionSlope; gb4 = linearBelow4 * (1 - t4) * (1 - t4); }
-                    const finalDbGain4 = gn + gb4;
+                    if (diff4 <= -halfKnee4) { gb4 = diff4 * expansionSlope4; }
+                    else if (diff4 >= halfKnee4) { gb4 = 0.0; }
+                    else { const t4 = (diff4 + halfKnee4) / kn4; const linearBelow4 = (-halfKnee4) * expansionSlope4; gb4 = linearBelow4 * (1 - t4) * (1 - t4); }
+                    const finalDbGain4 = gn4 + gb4;
                     const linearGain4 = fastExpDb(finalDbGain4);
                     result[offset + i + 3] = data[offset + i + 3] * linearGain4;
                     const absGb4 = gb4 >= 0 ? gb4 : -gb4;
@@ -275,7 +365,21 @@ class ExpanderPlugin extends PluginBase {
                 // Handle remaining samples (if blockSize is not a multiple of 4)
                 for (; i < blockSize; i++) {
                     const envelopeDb = fastDb(workBuffer[i]);
-                    const diff = envelopeDb - th;
+                    let frameThreshold = thresholdDb, frameRatio = ratio;
+                    let frameKnee = kneeDb, frameMakeup = makeupDb;
+                    if (curveRamping) {
+                        const frame = i + 1;
+                        const thElapsed = Math.min(frame, curveRemaining[0]);
+                        const rtElapsed = Math.min(frame, curveRemaining[1]);
+                        const knElapsed = Math.min(frame, curveRemaining[2]);
+                        const gnElapsed = Math.min(frame, curveRemaining[3]);
+                        frameThreshold = thElapsed === curveRemaining[0] ? curveTargets[0] : curveCurrent[0] + curveSteps[0] * thElapsed;
+                        frameRatio = rtElapsed === curveRemaining[1] ? curveTargets[1] : curveCurrent[1] + curveSteps[1] * rtElapsed;
+                        frameKnee = knElapsed === curveRemaining[2] ? curveTargets[2] : curveCurrent[2] + curveSteps[2] * knElapsed;
+                        frameMakeup = gnElapsed === curveRemaining[3] ? curveTargets[3] : curveCurrent[3] + curveSteps[3] * gnElapsed;
+                    }
+                    const halfKnee = frameKnee * 0.5, expansionSlope = frameRatio - 1;
+                    const diff = envelopeDb - frameThreshold;
                     let gainBoost = 0.0;
 
                     if (diff <= -halfKnee) {
@@ -283,7 +387,7 @@ class ExpanderPlugin extends PluginBase {
                     } else if (diff >= halfKnee) {
                         gainBoost = 0.0;
                     } else {
-                        const t = (diff + halfKnee) / kn;
+                        const t = (diff + halfKnee) / frameKnee;
                         const linearBelow = (-halfKnee) * expansionSlope;
                         gainBoost = linearBelow * (1 - t) * (1 - t);
                     }
@@ -291,11 +395,22 @@ class ExpanderPlugin extends PluginBase {
                     const absGainBoost = gainBoost >= 0 ? gainBoost : -gainBoost;
                     if (absGainBoost > maxGainBoost) maxGainBoost = absGainBoost;
 
-                    const finalDbGain = gn + gainBoost; // Total dB gain
+                    const finalDbGain = frameMakeup + gainBoost;
                     const linearGain = fastExpDb(finalDbGain); // Convert to linear
                     result[offset + i] = data[offset + i] * linearGain;
                 }
             } // End channel loop
+
+            for (let control = 0; control < 4; control++) {
+                if (blockSize >= curveRemaining[control]) {
+                    curveRemaining[control] = 0;
+                    curveSteps[control] = 0;
+                    curveCurrent[control] = curveTargets[control];
+                } else {
+                    curveRemaining[control] -= blockSize;
+                    curveCurrent[control] += curveSteps[control] * blockSize;
+                }
+            }
 
             // Attach measurements
             result.measurements = {

@@ -6,6 +6,6 @@
     { "name": "frequency2", "key": "f2", "kind": "float", "min": 100, "max": 2000, "default": 500, "unit": "Hz" },
     { "name": "frequency3", "key": "f3", "kind": "float", "min": 500, "max": 8000, "default": 2000, "unit": "Hz" },
     { "name": "frequency4", "key": "f4", "kind": "float", "min": 1000, "max": 20000, "default": 8000, "unit": "Hz" },
-    { "name": "balance", "key": "balance", "objectArrayKey": "bands", "memberKey": "balance", "kind": "float", "count": 5, "min": -100, "max": 100, "default": [0, 0, 0, 0, 0], "unit": "%" }
+    { "name": "balance", "key": "balance", "objectArrayKey": "bands", "memberKey": "balance", "kind": "float", "count": 5, "min": -100, "max": 100, "default": [0, 0, 0, 0, 0], "unit": "%" , "automation": true}
   ]
 }

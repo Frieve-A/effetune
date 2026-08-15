@@ -2,6 +2,7 @@
 #include "SimpleJitterPluginParams.h"
 #include "effetune/dsp/xorshift_rng.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -21,6 +22,8 @@ class SimpleJitterKernel final : public PluginKernel {
 public:
   void prepare(const PrepareInfo &info) override {
     sample_rate_ = static_cast<double>(info.sampleRate);
+    const auto requested_frames = static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005));
+    ramp_frames_ = requested_frames == 0u ? 1u : requested_frames;
     max_channels_ = info.maxChannels;
     buffer_size_ = static_cast<std::uint32_t>(sample_rate_ * 0.02 + 0.999);
     if (buffer_size_ == 0u) {
@@ -34,6 +37,8 @@ public:
     buffer_position_ = 0u;
     last_channel_count_ = 0u;
     initialized_ = false;
+    scale_initialized_ = false;
+    ramp_remaining_ = 0u;
     random_.seed(selected_seed_low_, selected_seed_high_);
   }
 
@@ -65,15 +70,28 @@ public:
     } else if (jitter_parameter > 200.0) {
       jitter_parameter = 200.0;
     }
-    const double rms_jitter = kMinimumJitterNanoseconds * std::pow(10.0, jitter_parameter / 20.0);
-    const double jitter_scale = rms_jitter * kSqrtThree;
+    const double target_scale =
+        kMinimumJitterNanoseconds * std::pow(10.0, jitter_parameter / 20.0) * kSqrtThree;
+    if (!scale_initialized_) {
+      current_scale_ = target_scale_ = target_scale;
+      scale_initialized_ = true;
+    } else if (target_scale != target_scale_) {
+      target_scale_ = target_scale;
+      scale_step_ = (target_scale_ - current_scale_) / static_cast<double>(ramp_frames_);
+      ramp_remaining_ = ramp_frames_;
+    }
     const double nanoseconds_to_samples = sample_rate_ / kNanosecondsPerSecond;
     std::uint32_t position = buffer_position_;
 
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      if (ramp_remaining_ != 0u) {
+        current_scale_ += scale_step_;
+        if (--ramp_remaining_ == 0u)
+          current_scale_ = target_scale_;
+      }
       const double random_value = random_.nextFloat01();
       const double positive_random = random_value >= 0.0 ? random_value : -random_value;
-      const double jitter_samples = positive_random * jitter_scale * nanoseconds_to_samples;
+      const double jitter_samples = positive_random * current_scale_ * nanoseconds_to_samples;
       const double delay_position = std::fmod(static_cast<double>(position) - jitter_samples +
                                                   static_cast<double>(buffer_size_),
                                               static_cast<double>(buffer_size_));
@@ -117,6 +135,12 @@ private:
   std::uint32_t selected_seed_low_ = static_cast<std::uint32_t>(dsp::XorShiftRng::kFallbackSeed);
   std::uint32_t selected_seed_high_ = 0u;
   bool initialized_ = false;
+  bool scale_initialized_ = false;
+  double current_scale_ = 0.0;
+  double target_scale_ = 0.0;
+  double scale_step_ = 0.0;
+  std::uint32_t ramp_frames_ = 240u;
+  std::uint32_t ramp_remaining_ = 0u;
   std::vector<float> sample_buffer_;
   dsp::XorShiftRng random_{};
 };

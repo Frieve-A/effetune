@@ -809,6 +809,8 @@ struct ControlState {
   double outputTarget = 1.0;
   double mix = 1.0;
   double mixTarget = 1.0;
+  double inputReference = 2.828;
+  double inputReferenceTarget = 2.828;
   // Manual output safety trim as a linear gain. Smoothed with the same one-pole the other host
   // controls use so that dragging the control does not step the output.
   double safetyUser = 1.0;
@@ -1111,6 +1113,7 @@ public:
       drive_gain_.assign(host_frames, 0.0);
       output_gain_.assign(host_frames, 0.0);
       wet_mix_.assign(host_frames, 0.0);
+      input_reference_.assign(host_frames, 0.0);
       feedback_q_.assign(host_frames, 0.0);
       feedback_makeup_.assign(host_frames, 1.0);
       plate_reference_.assign(host_frames, 0.0);
@@ -1134,6 +1137,7 @@ public:
       drive_gain_.clear();
       output_gain_.clear();
       wet_mix_.clear();
+      input_reference_.clear();
       feedback_q_.clear();
       feedback_makeup_.clear();
       plate_reference_.clear();
@@ -2186,6 +2190,23 @@ private:
     return false;
   }
 
+  [[nodiscard]] static bool fastAutomationOnlyChanged(const Path2Parameters &left,
+                                                      const Path2Parameters &right) noexcept {
+    return left.tubeIndex == right.tubeIndex && left.biasPercent == right.biasPercent &&
+           left.plateV == right.plateV && left.sourceZKOhm == right.sourceZKOhm &&
+           left.supplyKOhm == right.supplyKOhm && left.feedbackDb == right.feedbackDb &&
+           left.outputStage == right.outputStage && left.powerTube == right.powerTube &&
+           left.powerBPlus == right.powerBPlus && left.cathodeResistor == right.cathodeResistor &&
+           left.screenTap == right.screenTap && left.primaryImpedance == right.primaryImpedance &&
+           left.speakerLoad == right.speakerLoad && left.actualLoadOhm == right.actualLoadOhm &&
+           left.autoGainReduction == right.autoGainReduction && left.seTube == right.seTube &&
+           left.seBPlus == right.seBPlus && left.seCathodeResistor == right.seCathodeResistor &&
+           left.sePrimaryImpedance == right.sePrimaryImpedance &&
+           (left.driveDb != right.driveDb || left.outputDb != right.outputDb ||
+            left.mixPercent != right.mixPercent || left.inputReference != right.inputReference ||
+            left.safetyTrimDb != right.safetyTrimDb);
+  }
+
   [[nodiscard]] FeedbackCalibration feedbackCalibration(int tube_index,
                                                         double feedback_db) const noexcept {
     const std::size_t family = rate_config_.internalRate == 352800.0 ? 0u : 1u;
@@ -2443,6 +2464,15 @@ private:
     }
   }
 
+  void applyFastAutomationParameters(const Path2Parameters &decoded) noexcept {
+    applied_parameters_.driveDb = decoded.driveDb;
+    applied_parameters_.outputDb = decoded.outputDb;
+    applied_parameters_.mixPercent = decoded.mixPercent;
+    applied_parameters_.inputReference = decoded.inputReference;
+    applied_parameters_.safetyTrimDb = decoded.safetyTrimDb;
+    updateFastControlTargets(false);
+  }
+
   void commitDecodedParameters() noexcept {
     if (!parameter_commit_pending_) {
       return;
@@ -2488,6 +2518,17 @@ private:
       applyPath2Parameters(false);
       parameter_commit_pending_ = false;
       has_applied_parameters_ = true;
+      return;
+    }
+
+    // These five host lanes only retarget already-existing smoothers. In particular, they must
+    // not enter applyPath2Parameters(), whose power branch recomputes circuit coefficients and
+    // performs a quiescent solve even though none of those circuit inputs changed.
+    if (has_applied_parameters_ &&
+        feedback_transition_.phase == FeedbackTransitionPhase::inactive &&
+        fastAutomationOnlyChanged(decoded_parameters_, applied_parameters_)) {
+      applyFastAutomationParameters(decoded_parameters_);
+      parameter_commit_pending_ = false;
       return;
     }
 
@@ -2682,20 +2723,27 @@ private:
     supply_resistance_ = 1000.0 * applied_parameters_.supplyKOhm;
     supply_capacitance_ = 22e-6 * 10000.0 / supply_resistance_;
     supply_voltage_ = applied_parameters_.plateV;
+    updateFastControlTargets(reset_controls);
+    applyFeedbackCalibration();
+  }
+
+  void updateFastControlTargets(bool reset_controls) noexcept {
     const double drive =
         applied_parameters_.inputReference * std::pow(10.0, applied_parameters_.driveDb / 20.0);
     const double output = std::pow(10.0, applied_parameters_.outputDb / 20.0);
     const double mix = applied_parameters_.mixPercent / 100.0;
+    const double input_reference = applied_parameters_.inputReference;
     const double safety_user = std::pow(10.0, applied_parameters_.safetyTrimDb / 20.0);
     controls_.driveTarget = drive;
     controls_.outputTarget = output;
     controls_.mixTarget = mix;
+    controls_.inputReferenceTarget = input_reference;
     controls_.safetyUserTarget = safety_user;
-    applyFeedbackCalibration();
     if (reset_controls) {
       controls_.drive = drive;
       controls_.output = output;
       controls_.mix = mix;
+      controls_.inputReference = input_reference;
       controls_.safetyUser = safety_user;
     }
   }
@@ -4043,6 +4091,7 @@ private:
     std::fill(drive_gain_.begin(), drive_gain_.end(), 0.0);
     std::fill(output_gain_.begin(), output_gain_.end(), 0.0);
     std::fill(wet_mix_.begin(), wet_mix_.end(), 0.0);
+    std::fill(input_reference_.begin(), input_reference_.end(), 0.0);
     std::fill(feedback_q_.begin(), feedback_q_.end(), controls_.feedbackQ);
     std::fill(feedback_makeup_.begin(), feedback_makeup_.end(), 1.0);
     std::fill(plate_reference_.begin(), plate_reference_.end(), controls_.plateReference);
@@ -5551,6 +5600,8 @@ private:
       controls_.drive += controls_.coefficient * (controls_.driveTarget - controls_.drive);
       controls_.output += controls_.coefficient * (controls_.outputTarget - controls_.output);
       controls_.mix += controls_.coefficient * (controls_.mixTarget - controls_.mix);
+      controls_.inputReference +=
+          controls_.coefficient * (controls_.inputReferenceTarget - controls_.inputReference);
       controls_.safetyUser +=
           controls_.coefficient * (controls_.safetyUserTarget - controls_.safetyUser);
       if (controls_.plateReferenceRemaining != 0u) {
@@ -5563,6 +5614,7 @@ private:
       drive_gain_[frame] = controls_.drive;
       output_gain_[frame] = controls_.output;
       wet_mix_[frame] = controls_.mix;
+      input_reference_[frame] = controls_.inputReference;
       safety_user_[frame] = controls_.safetyUser;
       feedback_q_[frame] = controls_.feedbackQ;
       feedback_makeup_[frame] = controls_.feedbackMakeup;
@@ -5720,7 +5772,7 @@ private:
               applyFeedbackFilter(1, internal_input_[1][index], feedback_q_[host_frame],
                                   reference)};
           if (driverBypassed()) {
-            output = input / applied_parameters_.inputReference;
+            output = input / input_reference_[host_frame];
           } else {
             output = advanceStereo(input) * 0.001;
             observeFeedbackSignal(0, feedback_q_[host_frame]);
@@ -5778,10 +5830,10 @@ private:
         if (driverBypassed()) {
           internal_output_[0][index] = applyFeedbackFilter(0, internal_input_[0][index],
                                                            feedback_q_[host_frame], reference) /
-                                       applied_parameters_.inputReference;
+                                       input_reference_[host_frame];
           internal_output_[1][index] = applyFeedbackFilter(1, internal_input_[1][index],
                                                            feedback_q_[host_frame], reference) /
-                                       applied_parameters_.inputReference;
+                                       input_reference_[host_frame];
           observeFeedbackDetector(internal_input_[0][index], internal_input_[1][index],
                                   internal_output_[0][index], internal_output_[1][index], reference,
                                   host_frame);
@@ -6020,13 +6072,14 @@ private:
     return std::isfinite(controls_.drive) && std::isfinite(controls_.driveTarget) &&
            std::isfinite(controls_.output) && std::isfinite(controls_.outputTarget) &&
            std::isfinite(controls_.mix) && std::isfinite(controls_.mixTarget) &&
-           std::isfinite(controls_.safetyUser) && std::isfinite(controls_.safetyUserTarget) &&
-           std::isfinite(controls_.coefficient) && std::isfinite(controls_.feedbackQ) &&
-           std::isfinite(controls_.feedbackDb) && std::isfinite(controls_.feedbackB0) &&
-           std::isfinite(controls_.feedbackB1) && std::isfinite(controls_.feedbackA1) &&
-           std::isfinite(controls_.feedbackA2) && std::isfinite(controls_.feedbackA0) &&
-           std::isfinite(controls_.feedbackBeta) && std::isfinite(controls_.feedbackMakeup) &&
-           std::isfinite(controls_.plateReference) &&
+           std::isfinite(controls_.inputReference) &&
+           std::isfinite(controls_.inputReferenceTarget) && std::isfinite(controls_.safetyUser) &&
+           std::isfinite(controls_.safetyUserTarget) && std::isfinite(controls_.coefficient) &&
+           std::isfinite(controls_.feedbackQ) && std::isfinite(controls_.feedbackDb) &&
+           std::isfinite(controls_.feedbackB0) && std::isfinite(controls_.feedbackB1) &&
+           std::isfinite(controls_.feedbackA1) && std::isfinite(controls_.feedbackA2) &&
+           std::isfinite(controls_.feedbackA0) && std::isfinite(controls_.feedbackBeta) &&
+           std::isfinite(controls_.feedbackMakeup) && std::isfinite(controls_.plateReference) &&
            std::isfinite(controls_.plateReferenceTarget) &&
            std::isfinite(controls_.plateReferenceStep);
   }
@@ -6100,12 +6153,12 @@ private:
       }
     }
     return finiteContainer(bypass_drive_) && finiteContainer(drive_gain_) &&
-           finiteContainer(output_gain_) && finiteContainer(wet_mix_) &&
-           finiteContainer(feedback_q_) && finiteContainer(feedback_makeup_) &&
-           finiteContainer(plate_reference_) && finiteContainer(fault_wet_) &&
-           finiteContainer(transition_wet_) && finiteContainer(safe_dry_) &&
-           finiteContainer(safety_user_) && finiteContainer(wet_chain_) &&
-           finiteContainer(segment_audio_);
+           finiteContainer(input_reference_) && finiteContainer(output_gain_) &&
+           finiteContainer(wet_mix_) && finiteContainer(feedback_q_) &&
+           finiteContainer(feedback_makeup_) && finiteContainer(plate_reference_) &&
+           finiteContainer(fault_wet_) && finiteContainer(transition_wet_) &&
+           finiteContainer(safe_dry_) && finiteContainer(safety_user_) &&
+           finiteContainer(wet_chain_) && finiteContainer(segment_audio_);
   }
 
   void restoreRuntimeBaseline() noexcept {
@@ -6155,6 +6208,7 @@ private:
     std::fill(drive_gain_.begin(), drive_gain_.end(), controls_.drive);
     std::fill(output_gain_.begin(), output_gain_.end(), controls_.output);
     std::fill(wet_mix_.begin(), wet_mix_.end(), controls_.mix);
+    std::fill(input_reference_.begin(), input_reference_.end(), controls_.inputReference);
     std::fill(feedback_q_.begin(), feedback_q_.end(), controls_.feedbackQ);
     std::fill(feedback_makeup_.begin(), feedback_makeup_.end(), 1.0);
     std::fill(plate_reference_.begin(), plate_reference_.end(), controls_.plateReference);
@@ -6461,6 +6515,7 @@ private:
   std::vector<double> drive_gain_{};
   std::vector<double> output_gain_{};
   std::vector<double> wet_mix_{};
+  std::vector<double> input_reference_{};
   std::vector<double> feedback_q_{};
   std::vector<double> feedback_makeup_{};
   std::vector<double> plate_reference_{};

@@ -125,6 +125,44 @@ bool finite(const std::vector<float> &audio) noexcept {
   return true;
 }
 
+std::vector<float> renderPartition(const std::vector<std::uint32_t> &partition) {
+  constexpr std::uint32_t channels = 2u;
+  std::uint32_t total_frames = 0u;
+  for (const std::uint32_t frames : partition) {
+    total_frames += frames;
+  }
+  const std::vector<float> source = signal(total_frames, channels, 23u);
+  std::vector<float> result(static_cast<std::size_t>(channels) * total_frames);
+  KernelHarness harness;
+  harness.seed(0x6e23a91bu, 0u);
+  const Params params{-2.0F, 2.0F, 48.0F, 100.0F};
+  std::uint32_t position = 0u;
+  for (const std::uint32_t frames : partition) {
+    std::vector<float> block(static_cast<std::size_t>(channels) * frames);
+    for (std::uint32_t channel = 0u; channel < channels; ++channel) {
+      std::copy_n(source.data() + channel * total_frames + position, frames,
+                  block.data() + channel * frames);
+    }
+    harness.stage(params);
+    harness.process(block, channels, frames);
+    for (std::uint32_t channel = 0u; channel < channels; ++channel) {
+      std::copy_n(block.data() + channel * frames, frames,
+                  result.data() + channel * total_frames + position);
+    }
+    position += frames;
+  }
+  return result;
+}
+
+void testPendingScheduleIsPartitionInvariant() {
+  const std::vector<float> blocks128 = renderPartition({128u, 128u, 128u});
+  std::vector<std::uint32_t> blocks8(48u, 8u);
+  const std::vector<float> quantum8 = renderPartition(blocks8);
+  const std::vector<float> irregular = renderPartition({7u, 31u, 5u, 113u, 19u, 83u, 126u});
+  check(blocks128 == quantum8, "pending event schedule is invariant at Q=8");
+  check(blocks128 == irregular, "pending event schedule is invariant for irregular blocks");
+}
+
 void testSeedAndResetReplay() {
   constexpr std::uint32_t seed_low = 0x13579bdfu;
   constexpr std::uint32_t seed_high = 0x2468ace0u;
@@ -194,11 +232,42 @@ void testChannelResetRemainsDeterministic() {
   check(finite(grown_first), "channel-count transition remains finite");
 }
 
+void testBerAndReferenceChangesPreserveOngoingError() {
+  constexpr std::uint32_t seed_low = 0x55aa31c7u;
+  KernelHarness changed;
+  KernelHarness control;
+  changed.seed(seed_low, 0u);
+  control.seed(seed_low, 0u);
+
+  const Params initial = bluetoothLeParams(100.0F);
+  std::vector<float> prefix_changed = signal(128u, 2u, 17u);
+  std::vector<float> prefix_control = prefix_changed;
+  changed.stage(initial);
+  control.stage(initial);
+  changed.process(prefix_changed, 2u, 128u);
+  control.process(prefix_control, 2u, 128u);
+  check(prefix_changed == prefix_control, "seeded error prefix matches");
+
+  Params retargeted = initial;
+  retargeted.bitErrorRateExponent = -10.0F;
+  retargeted.referenceFs = 96.0F;
+  std::vector<float> suffix_changed = signal(128u, 2u, 145u);
+  std::vector<float> suffix_control = suffix_changed;
+  changed.stage(retargeted);
+  control.stage(initial);
+  changed.process(suffix_changed, 2u, 128u);
+  control.process(suffix_control, 2u, 128u);
+  check(suffix_changed == suffix_control,
+        "BER/reference retarget preserves the active event and its concealment state");
+}
+
 } // namespace
 
 int main() {
   testSeedAndResetReplay();
   testWetMixDoesNotResetSchedule();
   testChannelResetRemainsDeterministic();
+  testBerAndReferenceChangesPreserveOngoingError();
+  testPendingScheduleIsPartitionInvariant();
   return failures == 0 ? 0 : 1;
 }

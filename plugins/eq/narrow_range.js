@@ -129,6 +129,7 @@ if (needsReinit || !context.filterStates) {
 }
 
 // Ensure coeffs object exists in context
+const previousCoeffs = context.coeffs ? { ...context.coeffs } : null;
 if (!context.coeffs) {
     context.coeffs = {};
 }
@@ -139,7 +140,7 @@ const PI = 3.141592653589793;
 const SQRT2 = 1.4142135623730951;
 
 // Recalculate HPF Coefficients if frequency changed or states were reinitialized
-if (needsCoeffRecalcHPF || needsReinit) {
+if (needsCoeffRecalcHPF || needsCoeffRecalcLPF || needsReinit) {
   const hpfOrder1 = context.hpfOrder1Stages;
   const hpfOrder2 = context.hpfOrder2Stages;
   const coeffs = context.coeffs;
@@ -187,7 +188,7 @@ if (needsCoeffRecalcHPF || needsReinit) {
 }
 
 // Recalculate LPF Coefficients if frequency changed or states were reinitialized
-if (needsCoeffRecalcLPF || needsReinit) {
+if (needsCoeffRecalcHPF || needsCoeffRecalcLPF || needsReinit) {
   const lpfOrder1 = context.lpfOrder1Stages;
   const lpfOrder2 = context.lpfOrder2Stages;
   const coeffs = context.coeffs;
@@ -234,6 +235,22 @@ if (needsCoeffRecalcLPF || needsReinit) {
   }
 }
 
+if (needsReinit || !previousCoeffs) {
+  context.targetCoeffs = { ...context.coeffs };
+  context.coeffSteps = {};
+  context.coeffRampRemaining = 0;
+} else if (needsCoeffRecalcHPF || needsCoeffRecalcLPF) {
+  const targets = { ...context.coeffs };
+  context.coeffs = previousCoeffs;
+  context.targetCoeffs = targets;
+  context.coeffSteps = {};
+  const rampFrames = Math.max(1, Math.ceil(sampleRate * 0.005));
+  for (const key of Object.keys(targets)) {
+    context.coeffSteps[key] = (targets[key] - context.coeffs[key]) / rampFrames;
+  }
+  context.coeffRampRemaining = rampFrames;
+}
+
 
 // --- Audio Processing ---
 const hpfStates = context.filterStates.hpf;
@@ -248,11 +265,8 @@ if (hpfOrder1Count === 0 && hpfOrder2Count === 0 && lpfOrder1Count === 0 && lpfO
     return data;
 }
 
-// Cache coefficients locally for the processing loop
-const {
-    hp1_b0, hp1_b1, hp1_a1, hp2_b0, hp2_b1, hp2_b2, hp2_a1, hp2_a2,
-    lp1_b0, lp1_b1, lp1_a1, lp2_b0, lp2_b1, lp2_b2, lp2_a1, lp2_a2
-} = context.coeffs;
+const coefficientAt = (key, frame) => context.coeffs[key] +
+  (context.coeffSteps[key] || 0) * Math.min(frame + 1, context.coeffRampRemaining || 0);
 
 
 // Process each channel
@@ -276,7 +290,8 @@ for (let ch = 0, offset = 0; ch < channelCount; ch++, offset += blockSize) {
             // Note: The RBJ formulas result in a1/a2 that need negation in the standard diff eq.
             // Here, a1 is calculated as -((1-c)/(1+c)), so we ADD it.
             // Let's stick to the original structure: y = b0*x + b1*x1 - a1*y1
-            const y_n = hp1_b0 * x_n + hp1_b1 * x1 - hp1_a1 * y1;
+            const y_n = coefficientAt('hp1_b0', i) * x_n + coefficientAt('hp1_b1', i) * x1 -
+              coefficientAt('hp1_a1', i) * y1;
 
             // Update state (use x_n before it's overwritten)
             state.x1[ch] = x_n;
@@ -294,7 +309,9 @@ for (let ch = 0, offset = 0; ch < channelCount; ch++, offset += blockSize) {
 
             // Difference Equation: y[n] = b0*x[n] + b1*x[n-1] + b2*x[n-2] - a1*y[n-1] - a2*y[n-2]
             // RBJ 'a' coeffs usually correspond to the feedback terms with signs appropriate for y[n] = ... - a1*y[n-1] ...
-            const y_n = hp2_b0 * x_n + hp2_b1 * x1 + hp2_b2 * x2 - hp2_a1 * y1 - hp2_a2 * y2;
+            const y_n = coefficientAt('hp2_b0', i) * x_n + coefficientAt('hp2_b1', i) * x1 +
+              coefficientAt('hp2_b2', i) * x2 - coefficientAt('hp2_a1', i) * y1 -
+              coefficientAt('hp2_a2', i) * y2;
 
             // Update state (use x_n, y_n, x1, y1 before overwriting)
             state.x2[ch] = x1; state.x1[ch] = x_n;
@@ -314,7 +331,8 @@ for (let ch = 0, offset = 0; ch < channelCount; ch++, offset += blockSize) {
 
             // Difference Equation: y[n] = b0*x[n] + b1*x[n-1] - a1*y[n-1]
             // lp1_a1 calculated as -((1-c)/(1+c)) -> use subtraction as in original
-            const y_n = lp1_b0 * x_n + lp1_b1 * x1 - lp1_a1 * y1;
+            const y_n = coefficientAt('lp1_b0', i) * x_n + coefficientAt('lp1_b1', i) * x1 -
+              coefficientAt('lp1_a1', i) * y1;
 
             state.x1[ch] = x_n;
             state.y1[ch] = y_n;
@@ -329,7 +347,9 @@ for (let ch = 0, offset = 0; ch < channelCount; ch++, offset += blockSize) {
             const x_n = sample;
 
             // Difference Equation: y[n] = b0*x[n] + b1*x[n-1] + b2*x[n-2] - a1*y[n-1] - a2*y[n-2]
-            const y_n = lp2_b0 * x_n + lp2_b1 * x1 + lp2_b2 * x2 - lp2_a1 * y1 - lp2_a2 * y2;
+            const y_n = coefficientAt('lp2_b0', i) * x_n + coefficientAt('lp2_b1', i) * x1 +
+              coefficientAt('lp2_b2', i) * x2 - coefficientAt('lp2_a1', i) * y1 -
+              coefficientAt('lp2_a2', i) * y2;
 
             state.x2[ch] = x1; state.x1[ch] = x_n;
             state.y2[ch] = y1; state.y1[ch] = y_n;
@@ -339,6 +359,15 @@ for (let ch = 0, offset = 0; ch < channelCount; ch++, offset += blockSize) {
         // Write the final filtered sample back to the data array
         data[offset + i] = sample;
     }
+}
+
+const advancedCoeffs = Math.min(blockSize, context.coeffRampRemaining || 0);
+if (advancedCoeffs > 0) {
+  for (const key of Object.keys(context.coeffs)) {
+    context.coeffs[key] += (context.coeffSteps[key] || 0) * advancedCoeffs;
+  }
+  context.coeffRampRemaining -= advancedCoeffs;
+  if (context.coeffRampRemaining === 0) context.coeffs = { ...context.targetCoeffs };
 }
 
 return data; // Return the modified data array

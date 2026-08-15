@@ -21,7 +21,7 @@ const ports = [
     hash: 0x22bc806f,
     keys: ['pd', 'bw', 'id1', 'id2', 'dc', 'dd1', 'dp', 'md', 'mr', 'wm', 'dm'],
     defaults: [10, 0.9995, 0.75, 0.625, 0.5, 0.7, 0.0005, 1, 1, 30, 100],
-    jsEngineHash: '24c3f5334ca9cc1517d25b259a640a8b37e98359e1db7206259184bc39940f23',
+    jsEngineHash: 'ab953093a0f7ed10bdcb1fc169c90d16dce691971aa6dc7bd05fae37a76cb126',
     caseIds: [
       'default-impulse',
       'minimum-controls-44100',
@@ -40,7 +40,7 @@ const ports = [
     hash: 0x68a00ea5,
     keys: ['rt', 'dt', 'pd', 'bd', 'ds', 'hd', 'lc', 'md', 'mr', 'df', 'wm', 'dm', 'sw'],
     defaults: [1.2, 8, 10, 20, 5, 6, 100, 3, 0.3, 100, 30, 100, 100],
-    jsEngineHash: 'a50d1a4fc340427f53a41e2f5941692f9d5e003cb480888c21ed123a7444c84d',
+    jsEngineHash: '7601035ad872639c3306afc31b5268985b282fc2f24c23cdde69b2089d7979b4',
     caseIds: [
       'default-impulse',
       'minimum-controls-44100',
@@ -59,7 +59,7 @@ const ports = [
     hash: 0xc3be374c,
     keys: ['pd', 'rs', 'rt', 'ds', 'df', 'dp', 'hd', 'ld', 'mx'],
     defaults: [10, 10, 2.4, 8, 0.7, 80, 2000, 200, 16],
-    jsEngineHash: '217ad270ced7aa43a0969563883e52da1e80af136d0ae62fd61b21e97b7c1c8b',
+    jsEngineHash: 'b7d07769211688137fe7eaf75fbd5cbf11a01149e11e72ea444f98e5f8060fc4',
     caseIds: [
       'default-impulse',
       'minimum-controls-44100',
@@ -189,8 +189,9 @@ test('reverb kernels and native tests pin realtime lifecycle and capacity contra
   }
 
   const dattorro = loadedPorts[0].kernel;
-  assert.match(dattorro,
-    /pre_delay_samples > 0u && pre_delay_samples < pre_delay_size_/);
+  assert.match(dattorro, /preparePreDelay\(pre_delay_samples\)/);
+  assert.match(dattorro, /const double signal_delay = pre_delay_ramp_\.value\(frame\)/);
+  assert.match(dattorro, /readPreDelay\(input, pre_delay_position, signal_delay\)/);
   assert.match(dattorro, /input \/= static_cast<double>\(channel_count\)/);
 
   const fdn = loadedPorts[1].kernel;

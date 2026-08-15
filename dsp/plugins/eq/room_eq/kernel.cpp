@@ -119,13 +119,12 @@ public:
       asset_state_ = ET_ASSET_STATE_ACTIVE;
 
     updateDelayTransitions(channelCount);
-    const float targetGain = decibelsToGain(params_.outputGain);
-    const float gainStep = (targetGain - output_gain_) / static_cast<float>(frameCount);
+    retargetOutputGain(decibelsToGain(params_.outputGain));
     const bool replacementDryRequested = params_.latencyMode == kReplacementDryLatencyMode;
     if (!replacementDryRequested)
       replacement_dry_ready_ = false;
     for (std::uint32_t frame = 0u; frame < frameCount; ++frame) {
-      output_gain_ += gainStep;
+      const float outputGain = advanceOutputGain();
       const float latencyRamp = latencyTransitionGain();
       for (std::uint32_t channel = 0u; channel < channelCount; ++channel) {
         const std::size_t audioIndex = static_cast<std::size_t>(channel) * frameCount + frame;
@@ -133,10 +132,20 @@ public:
         dry_delay_.data()[ringBase + delay_position_] = audio[audioIndex];
         wet_delay_.data()[ringBase + delay_position_] = wet_audio_.data()[audioIndex];
 
-        const std::uint32_t manualDelay = activeManualDelay(channel);
         const std::uint32_t totalLatency = activeResidentLatency();
-        const float dry = readDelay(dry_delay_.data() + ringBase, totalLatency + manualDelay);
-        const float wet = readDelay(wet_delay_.data() + ringBase, manualDelay);
+        const std::uint32_t manualDelay = applied_manual_delay_[channel];
+        float dry = readDelay(dry_delay_.data() + ringBase, totalLatency + manualDelay);
+        float wet = readDelay(wet_delay_.data() + ringBase, manualDelay);
+        if (manual_transition_remaining_[channel] != 0u) {
+          const float alpha = 1.0F - static_cast<float>(manual_transition_remaining_[channel]) /
+                                         static_cast<float>(kDelayTransitionFrames);
+          const float previousDry = readDelay(dry_delay_.data() + ringBase,
+                                              totalLatency + previous_manual_delay_[channel]);
+          const float previousWet =
+              readDelay(wet_delay_.data() + ringBase, previous_manual_delay_[channel]);
+          dry = previousDry + alpha * (dry - previousDry);
+          wet = previousWet + alpha * (wet - previousWet);
+        }
         const float targetMix = asset_state_ == ET_ASSET_STATE_ACTIVE &&
                                         channelCount == processing_channels_ &&
                                         !replacementDryRequested
@@ -152,7 +161,7 @@ public:
             wet_mix_[channel] = targetMix;
         }
         const float selected = dry + wet_mix_[channel] * (wet - dry);
-        audio[audioIndex] = selected * output_gain_ * latencyRamp * manualTransitionGain(channel);
+        audio[audioIndex] = selected * outputGain * latencyRamp;
       }
       delay_position_ += 1u;
       if (delay_position_ == delay_capacity_)
@@ -168,7 +177,6 @@ public:
         }
       }
     }
-    output_gain_ = targetGain;
   }
 
   [[nodiscard]] std::uint32_t latencySamples() const noexcept override {
@@ -321,6 +329,10 @@ private:
     wet_delay_.clear();
     delay_position_ = 0u;
     output_gain_ = decibelsToGain(params_.outputGain);
+    output_gain_target_ = output_gain_;
+    output_gain_step_ = 0.0F;
+    output_gain_remaining_ = 0u;
+    output_gain_initialized_ = false;
     wet_mix_.fill(0.0F);
     replacement_dry_ready_ = false;
     applied_manual_delay_.fill(0u);
@@ -329,12 +341,40 @@ private:
     latency_transition_remaining_ = 0u;
   }
 
+  void retargetOutputGain(float target) noexcept {
+    if (!output_gain_initialized_) {
+      output_gain_ = target;
+      output_gain_target_ = target;
+      output_gain_step_ = 0.0F;
+      output_gain_remaining_ = 0u;
+      output_gain_initialized_ = true;
+      return;
+    }
+    if (target == output_gain_target_)
+      return;
+    output_gain_target_ = target;
+    output_gain_remaining_ = static_cast<std::uint32_t>(
+        std::max(1.0, std::ceil(static_cast<double>(sample_rate_) * 0.005)));
+    output_gain_step_ =
+        (output_gain_target_ - output_gain_) / static_cast<float>(output_gain_remaining_);
+  }
+
+  [[nodiscard]] float advanceOutputGain() noexcept {
+    if (output_gain_remaining_ == 0u)
+      return output_gain_;
+    output_gain_ += output_gain_step_;
+    if (--output_gain_remaining_ == 0u) {
+      output_gain_ = output_gain_target_;
+      output_gain_step_ = 0.0F;
+    }
+    return output_gain_;
+  }
+
   void updateDelayTransitions(std::uint32_t channelCount) noexcept {
     for (std::uint32_t channel = 0u; channel < channelCount; ++channel) {
       const std::uint32_t requested = delaySamples(params_.channelDelay, kMaximumManualDelay);
-      if (requested != applied_manual_delay_[channel] &&
-          manual_transition_remaining_[channel] == 0u) {
-        previous_manual_delay_[channel] = applied_manual_delay_[channel];
+      if (requested != applied_manual_delay_[channel]) {
+        previous_manual_delay_[channel] = activeManualDelay(channel);
         applied_manual_delay_[channel] = requested;
         manual_transition_remaining_[channel] = kDelayTransitionFrames;
       }
@@ -361,10 +401,6 @@ private:
 
   [[nodiscard]] float latencyTransitionGain() const noexcept {
     return transitionGain(latency_transition_remaining_);
-  }
-
-  [[nodiscard]] float manualTransitionGain(std::uint32_t channel) const noexcept {
-    return transitionGain(manual_transition_remaining_[channel]);
   }
 
   void advanceDelayTransitions(std::uint32_t channelCount) noexcept {
@@ -410,6 +446,10 @@ private:
   bool resident_asset_seen_ = false;
   bool replacement_dry_ready_ = false;
   float output_gain_ = 1.0F;
+  float output_gain_target_ = 1.0F;
+  float output_gain_step_ = 0.0F;
+  std::uint32_t output_gain_remaining_ = 0u;
+  bool output_gain_initialized_ = false;
   std::array<float, kMaximumChannels> wet_mix_{};
   std::array<std::uint32_t, kMaximumChannels> applied_manual_delay_{};
   std::array<std::uint32_t, kMaximumChannels> previous_manual_delay_{};

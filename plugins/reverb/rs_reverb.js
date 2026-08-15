@@ -115,12 +115,55 @@ class RSReverbPlugin extends PluginBase {
             const rtCoeff = 1 / parameters.rt;
             
             // Pre-calculate feedback gains using stored randomized delays
-            const feedbackGains = new Array(context.randomizedDelays.length);
+            if (!context.rsFeedbackScratch ||
+                context.rsFeedbackScratch.length !== context.randomizedDelays.length) {
+                context.rsFeedbackScratch = new Float64Array(context.randomizedDelays.length);
+            }
+            const feedbackGains = context.rsFeedbackScratch;
             for (let i = 0; i < context.randomizedDelays.length; i++) {
                 const delayTime = context.randomizedDelays[i] * 0.001;
                 const gain = Math.pow(0.001, delayTime * rtCoeff);
                 feedbackGains[i] = gain > 0.99 ? 0.99 : (gain < -0.99 ? -0.99 : gain);
             }
+            if (!context.rsControlScratch) context.rsControlScratch = new Float64Array(5);
+            const targetControls = context.rsControlScratch;
+            targetControls[0] = hdCoeff;
+            targetControls[1] = ldCoeff;
+            targetControls[2] = dampAmount;
+            targetControls[3] = df;
+            targetControls[4] = wetMix;
+            const rampFrames = Math.max(1, Math.ceil(sampleRate * 0.005));
+            if (!context.rsControls) {
+                context.rsControls = new Float64Array(5);
+                context.targetRsControls = new Float64Array(5);
+                context.rsControlSteps = new Float64Array(5);
+                context.rsFeedbackGains = new Float64Array(feedbackGains.length);
+                context.targetRsFeedbackGains = new Float64Array(feedbackGains.length);
+                context.rsFeedbackSteps = new Float64Array(feedbackGains.length);
+                context.rsControls.set(targetControls);
+                context.targetRsControls.set(targetControls);
+                context.rsFeedbackGains.set(feedbackGains);
+                context.targetRsFeedbackGains.set(feedbackGains);
+                context.rsRampRemaining = 0;
+            } else {
+                let changed = false;
+                for (let i = 0; i < targetControls.length; i++) if (context.targetRsControls[i] !== targetControls[i]) changed = true;
+                for (let i = 0; i < feedbackGains.length; i++) if (context.targetRsFeedbackGains[i] !== feedbackGains[i]) changed = true;
+                if (changed) {
+                    context.targetRsControls.set(targetControls);
+                    context.targetRsFeedbackGains.set(feedbackGains);
+                    for (let i = 0; i < targetControls.length; i++) context.rsControlSteps[i] =
+                        (targetControls[i] - context.rsControls[i]) / rampFrames;
+                    for (let i = 0; i < feedbackGains.length; i++) context.rsFeedbackSteps[i] =
+                        (feedbackGains[i] - context.rsFeedbackGains[i]) / rampFrames;
+                    context.rsRampRemaining = rampFrames;
+                }
+            }
+            const rsControls = context.rsControls;
+            const rsControlSteps = context.rsControlSteps;
+            const rsFeedbackGains = context.rsFeedbackGains;
+            const rsFeedbackSteps = context.rsFeedbackSteps;
+            const rsRampRemaining = context.rsRampRemaining;
 
             // Precalculate values used in the inner loop
             const hasDamping = parameters.dp > 0;
@@ -159,6 +202,18 @@ class RSReverbPlugin extends PluginBase {
                 let apf1LastOutput = apf1.lastOutput;
 
                 for (let i = 0; i < blockSize; i++) {
+                    const rampFrame = Math.min(i + 1, rsRampRemaining);
+                    const hdCoeff = rsControls[0] + rsControlSteps[0] * rampFrame;
+                    const ldCoeff = rsControls[1] + rsControlSteps[1] * rampFrame;
+                    const dampAmount = rsControls[2] + rsControlSteps[2] * rampFrame;
+                    const oneMinusDampAmount = 1 - dampAmount;
+                    const df = rsControls[3] + rsControlSteps[3] * rampFrame;
+                    const dfSquared = df * df;
+                    const oneMinusDf = 1 - df;
+                    const oneMinusDfSquared = 1 - dfSquared;
+                    const wetMix = rsControls[4] + rsControlSteps[4] * rampFrame;
+                    const dryGain = wetMix <= 0.5 ? 1 : 2 * (1 - wetMix);
+                    const wetGain = wetMix <= 0.5 ? 2 * wetMix : 1;
                     const input = data[channelDataOffset + i];
                     
                     // Apply pre-delay
@@ -182,7 +237,9 @@ class RSReverbPlugin extends PluginBase {
                         comb.ldState = comb.hdState + ldCoeff * (comb.ldState - comb.hdState);
                         const dampedSample = delayedSample * oneMinusDampAmount + comb.ldState * dampAmount;
                         
-                        combBuffer[combPos] = delayedInput + dampedSample * feedbackGains[j];
+                        const feedbackGain = Math.max(-0.99, Math.min(0.99,
+                            rsFeedbackGains[j] + rsFeedbackSteps[j] * rampFrame));
+                        combBuffer[combPos] = delayedInput + dampedSample * feedbackGain;
                         combPos++;
                         if (combPos >= combLength) combPos = 0;
                         comb.pos = combPos;
@@ -210,7 +267,7 @@ class RSReverbPlugin extends PluginBase {
                     output = out1 * oneMinusDfSquared;
                     
                     // Apply damping filters per channel if needed
-                    if (hasDamping) {
+                    if (dampAmount > 0) {
                         hdState = output + hdCoeff * (hdState - output);
                         ldState = output + ldCoeff * (ldState - output);
                         output = output * oneMinusDampAmount + (hdState * 0.5 + ldState * 0.5) * dampAmount;
@@ -228,6 +285,15 @@ class RSReverbPlugin extends PluginBase {
                 apf1.lastOutput = apf1LastOutput;
                 context.hdStates[ch] = hdState;
                 context.ldStates[ch] = ldState;
+            }
+
+            const rsAdvanced = Math.min(blockSize, context.rsRampRemaining);
+            for (let i = 0; i < context.rsControls.length; i++) context.rsControls[i] += context.rsControlSteps[i] * rsAdvanced;
+            for (let i = 0; i < context.rsFeedbackGains.length; i++) context.rsFeedbackGains[i] += context.rsFeedbackSteps[i] * rsAdvanced;
+            context.rsRampRemaining -= rsAdvanced;
+            if (context.rsRampRemaining === 0) {
+                context.rsControls.set(context.targetRsControls);
+                context.rsFeedbackGains.set(context.targetRsFeedbackGains);
             }
 
             return data;

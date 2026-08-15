@@ -32,6 +32,7 @@ public:
     delay_position_ = 0u;
     low_pass_left_ = 0.0;
     low_pass_right_ = 0.0;
+    delay_initialized_ = false;
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -44,10 +45,17 @@ public:
     const double level_gain = std::pow(10.0, static_cast<double>(params_.level) / 20.0);
     const double requested_delay =
         std::floor(static_cast<double>(params_.delay) * static_cast<double>(sample_rate_) / 1000.0);
-    std::size_t delay_samples =
-        requested_delay > 0.0 ? static_cast<std::size_t>(requested_delay) : 0u;
-    if (delay_samples >= delay_left_.size()) {
-      delay_samples = delay_left_.size() - 1u;
+    double delay_samples = requested_delay > 0.0 ? requested_delay : 0.0;
+    if (delay_samples >= static_cast<double>(delay_left_.size())) {
+      delay_samples = static_cast<double>(delay_left_.size() - 1u);
+    }
+    if (!delay_initialized_) {
+      delay_.snap(delay_samples);
+      delay_initialized_ = true;
+    } else {
+      const auto transition_frames = static_cast<std::uint32_t>(
+          std::max(1.0, std::ceil(static_cast<double>(sample_rate_) * 0.005)));
+      delay_.retarget(delay_samples, transition_frames);
     }
     const double low_pass_coefficient =
         std::exp(-kTwoPi * static_cast<double>(params_.lowPassFrequency) /
@@ -63,9 +71,9 @@ public:
       const float right_input = right[frame];
       delay_left_[delay_position_] = left_input;
       delay_right_[delay_position_] = right_input;
-      const std::size_t read_position = (delay_position_ + size - delay_samples) % size;
-      const float delayed_left = delay_left_[read_position];
-      const float delayed_right = delay_right_[read_position];
+      const double current_delay = delay_.value(frame);
+      const double delayed_left = readDelay(delay_left_, delay_position_, current_delay);
+      const double delayed_right = readDelay(delay_right_, delay_position_, current_delay);
       delay_position_ = (delay_position_ + 1u) % size;
 
       low_pass_left_ = low_pass_input * delayed_left + low_pass_coefficient * low_pass_left_;
@@ -77,15 +85,62 @@ public:
       left[frame] = static_cast<float>(left_output);
       right[frame] = static_cast<float>(right_output);
     }
+    delay_.advance(frame_count);
   }
 
 private:
+  struct DelayRamp {
+    double current = 0.0;
+    double target = 0.0;
+    double step = 0.0;
+    std::uint32_t remaining = 0u;
+    void snap(double value) noexcept {
+      current = target = value;
+      step = 0.0;
+      remaining = 0u;
+    }
+    void retarget(double value, std::uint32_t frames) noexcept {
+      if (value == target)
+        return;
+      target = value;
+      remaining = frames;
+      step = (target - current) / static_cast<double>(frames);
+    }
+    [[nodiscard]] double value(std::uint32_t frame) const noexcept {
+      const std::uint32_t elapsed = frame + 1u;
+      return elapsed >= remaining ? target : current + step * static_cast<double>(elapsed);
+    }
+    void advance(std::uint32_t frames) noexcept {
+      if (frames >= remaining) {
+        current = target;
+        remaining = 0u;
+        step = 0.0;
+      } else {
+        current += step * static_cast<double>(frames);
+        remaining -= frames;
+      }
+    }
+  };
+
+  static double readDelay(const std::vector<float> &buffer, std::size_t write,
+                          double delay) noexcept {
+    const std::size_t size = buffer.size();
+    const auto newer_delay = static_cast<std::size_t>(delay);
+    const double fraction = delay - static_cast<double>(newer_delay);
+    const std::size_t newer = (write + size - newer_delay) % size;
+    const std::size_t older = newer == 0u ? size - 1u : newer - 1u;
+    const double newer_sample = static_cast<double>(buffer[newer]);
+    return newer_sample + (static_cast<double>(buffer[older]) - newer_sample) * fraction;
+  }
+
   std::vector<float> delay_left_;
   std::vector<float> delay_right_;
   float sample_rate_ = 0.0F;
   std::size_t delay_position_ = 0u;
   double low_pass_left_ = 0.0;
   double low_pass_right_ = 0.0;
+  bool delay_initialized_ = false;
+  DelayRamp delay_;
 };
 
 } // namespace effetune::plugins::spatial

@@ -50,6 +50,16 @@ class DelayPlugin extends PluginBase {
                 }
 
                 ctx.channelCount = chCount;
+                ctx.preDelayCurrent = Math.max(0, Math.min(maxPreDelaySamples - 1,
+                    parameters.pd * sRate * 0.001));
+                ctx.preDelayTarget = ctx.preDelayCurrent;
+                ctx.preDelayStep = 0;
+                ctx.preDelayRemaining = 0;
+                ctx.delayCurrent = Math.max(1, Math.min(maxDelaySamples - 1,
+                    parameters.ds * sRate * 0.001));
+                ctx.delayTarget = ctx.delayCurrent;
+                ctx.delayStep = 0;
+                ctx.delayRemaining = 0;
                 ctx.initialized = true;
             };
 
@@ -66,14 +76,38 @@ class DelayPlugin extends PluginBase {
             const maxDelayLen    = delayBuffers[0].length;
 
             // Clamp to ring-buffer usable range [0..len-1] (len would fold to 0)
-            const preDelaySamples = Math.max(
+            const preDelayTarget = Math.max(
                 0,
-                Math.min(maxPreDelayLen - 1, Math.floor(parameters.pd * sampleRate * 0.001))
+                Math.min(maxPreDelayLen - 1, parameters.pd * sampleRate * 0.001)
             );
-            const delaySamples = Math.max(
+            const delayTarget = Math.max(
                 1,
-                Math.min(maxDelayLen - 1, Math.floor(parameters.ds * sampleRate * 0.001))
+                Math.min(maxDelayLen - 1, parameters.ds * sampleRate * 0.001)
             );
+            const rampFrames = Math.max(1, Math.ceil(sampleRate * 0.005));
+            if (preDelayTarget !== context.preDelayTarget) {
+                context.preDelayTarget = preDelayTarget;
+                context.preDelayStep = (preDelayTarget - context.preDelayCurrent) / rampFrames;
+                context.preDelayRemaining = rampFrames;
+            }
+            if (delayTarget !== context.delayTarget) {
+                context.delayTarget = delayTarget;
+                context.delayStep = (delayTarget - context.delayCurrent) / rampFrames;
+                context.delayRemaining = rampFrames;
+            }
+            const readDelay = (buffer, writePos, delay, zeroSample) => {
+                if (delay <= 0) return zeroSample;
+                if (delay < 1) {
+                    const previous = buffer[(writePos - 1 + buffer.length) % buffer.length];
+                    return zeroSample + delay * (previous - zeroSample);
+                }
+                let read = writePos - delay;
+                while (read < 0) read += buffer.length;
+                const first = Math.floor(read) % buffer.length;
+                const second = first + 1 === buffer.length ? 0 : first + 1;
+                const fraction = read - Math.floor(read);
+                return buffer[first] + fraction * (buffer[second] - buffer[first]);
+            };
 
             const dampAmount = Math.max(0.0, Math.min(1.0, parameters.dp * 0.01));
             const oneMinusDampAmount = 1.0 - dampAmount;
@@ -127,6 +161,10 @@ class DelayPlugin extends PluginBase {
             };
 
             for (let i = 0; i < blockSize; i++) {
+                const preElapsed = Math.min(i, context.preDelayRemaining);
+                const preDelaySamples = context.preDelayCurrent + context.preDelayStep * preElapsed;
+                const delayElapsed = Math.min(i, context.delayRemaining);
+                const delaySamples = context.delayCurrent + context.delayStep * delayElapsed;
 
                 // Stereo: read once, compute ping-pong feedback once
                 if (isStereo) {
@@ -136,11 +174,8 @@ class DelayPlugin extends PluginBase {
                     const posL = dL.pos;
                     const posR = dR.pos;
 
-                    const readPosL = (posL - delaySamples + dL.length) % dL.length;
-                    const readPosR = (posR - delaySamples + dR.length) % dR.length;
-
-                    ds0 = dL.buffer[readPosL];
-                    ds1 = dR.buffer[readPosR];
+                    ds0 = readDelay(dL.buffer, posL, delaySamples, 0);
+                    ds1 = readDelay(dR.buffer, posR, delaySamples, 0);
 
                     const mono = 0.5 * (ds0 + ds1);
 
@@ -170,21 +205,10 @@ class DelayPlugin extends PluginBase {
                     const preLen = pre.length;
                     let prePos = pre.pos;
 
-                    let preOut;
-                    if (preDelaySamples === 0) {
-                        preOut = input;
-                        // keep buffer warm (optional)
-                        preBuf[prePos] = input;
-                        prePos++;
-                        if (prePos >= preLen) prePos = 0;
-                    } else {
-                        const preReadPos = (prePos - preDelaySamples + preLen) % preLen;
-                        preOut = preBuf[preReadPos];
-
-                        preBuf[prePos] = input;
-                        prePos++;
-                        if (prePos >= preLen) prePos = 0;
-                    }
+                    const preOut = readDelay(preBuf, prePos, preDelaySamples, input);
+                    preBuf[prePos] = input;
+                    prePos++;
+                    if (prePos >= preLen) prePos = 0;
                     pre.pos = prePos;
 
                     // --- Main Delay ---
@@ -194,11 +218,9 @@ class DelayPlugin extends PluginBase {
                     let dPos = d.pos;
 
                     const writePos = dPos;
-                    const readPos = (dPos - delaySamples + dLen) % dLen;
-
                     const wet = isStereo
-                        ? (ch === 0 ? ds0 : (ch === 1 ? ds1 : dBuf[readPos]))
-                        : dBuf[readPos];
+                        ? (ch === 0 ? ds0 : (ch === 1 ? ds1 : readDelay(dBuf, dPos, delaySamples, 0)))
+                        : readDelay(dBuf, dPos, delaySamples, 0);
 
                     let fbDamped;
                     if (isStereo && ch === 0) {
@@ -220,6 +242,23 @@ class DelayPlugin extends PluginBase {
                     // --- Output Mix ---
                     data[idx] = input * dryGain + wet * wetGain;
                 }
+            }
+
+            if (blockSize >= context.preDelayRemaining) {
+                context.preDelayCurrent = context.preDelayTarget;
+                context.preDelayStep = 0;
+                context.preDelayRemaining = 0;
+            } else {
+                context.preDelayCurrent += context.preDelayStep * blockSize;
+                context.preDelayRemaining -= blockSize;
+            }
+            if (blockSize >= context.delayRemaining) {
+                context.delayCurrent = context.delayTarget;
+                context.delayStep = 0;
+                context.delayRemaining = 0;
+            } else {
+                context.delayCurrent += context.delayStep * blockSize;
+                context.delayRemaining -= blockSize;
             }
 
             return data;

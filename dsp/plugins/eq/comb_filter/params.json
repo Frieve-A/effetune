@@ -12,7 +12,8 @@
       "min": 20,
       "max": 20000,
       "default": 440,
-      "unit": "Hz"
+      "unit": "Hz",
+      "automation": true
     },
     {
       "name": "feedbackGain",

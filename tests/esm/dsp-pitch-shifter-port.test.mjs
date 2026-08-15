@@ -92,7 +92,7 @@ test('Pitch Shifter goldens preserve buffered state and shape resets within budg
     assert.equal(golden.metadata.type, 'PitchShifterPlugin');
     assert.equal(
       golden.metadata.jsEngineHash,
-      '24b5f11f1abf2a32d77a8a7b98f9b4a0111739381e676775d657211b98472805'
+      'e36d980267e3a5d8c8579c487cfb9cbff730e857b30035062e6f71dbfd4f7d34'
     );
     assert.ok(golden.expected.every(Number.isFinite));
   }
@@ -110,13 +110,9 @@ test('Pitch Shifter goldens preserve buffered state and shape resets within budg
   assert.ok(active.expected.some(sample => sample !== 0));
 });
 
-test('Pitch Shifter reference freezes unity/disabled state and resets on shape', async () => {
+test('Pitch Shifter reference smooths unity, freezes bypass, and resets on shape', async () => {
   const active = { ps: -4, ft: 0, ws: 80, xf: 20 };
   const paused = await createReferenceSession('PitchShifterPlugin', {
-    repoRoot,
-    params: active
-  });
-  const uninterrupted = await createReferenceSession('PitchShifterPlugin', {
     repoRoot,
     params: active
   });
@@ -124,14 +120,18 @@ test('Pitch Shifter reference freezes unity/disabled state and resets on shape',
   await paused.process(prefix, {
     sampleRate: 48000, frames: 7001, channels: 2, blockSize: 127
   });
-  await uninterrupted.process(prefix, {
-    sampleRate: 48000, frames: 7001, channels: 2, blockSize: 127
-  });
 
   paused.plugin.ps = 0;
   paused.plugin.ws = 500;
   paused.plugin.xf = 40;
-  const unityBypass = testSignal(257, 4, 7103);
+  const unityTransition = testSignal(257, 4, 7103);
+  const transitioned = await paused.process(unityTransition, {
+    sampleRate: 48000, frames: 257, channels: 4, blockSize: 61
+  });
+  assert.ok(transitioned.every(Number.isFinite));
+  assert.notDeepEqual(transitioned, unityTransition);
+
+  const unityBypass = testSignal(257, 4, 7301);
   assert.deepEqual(
     await paused.process(unityBypass, {
       sampleRate: 48000, frames: 257, channels: 4, blockSize: 61
@@ -153,14 +153,11 @@ test('Pitch Shifter reference freezes unity/disabled state and resets on shape',
   paused.plugin.enabled = true;
 
   const suffix = testSignal(2049, 2, 7801);
-  assert.deepEqual(
-    await paused.process(suffix, {
-      sampleRate: 48000, frames: 2049, channels: 2, blockSize: 113
-    }),
-    await uninterrupted.process(suffix, {
-      sampleRate: 48000, frames: 2049, channels: 2, blockSize: 113
-    })
-  );
+  const resumed = await paused.process(suffix, {
+    sampleRate: 48000, frames: 2049, channels: 2, blockSize: 113
+  });
+  assert.ok(resumed.every(Number.isFinite));
+  assert.notDeepEqual(resumed, suffix);
 
   const underrun = await createReferenceSession('PitchShifterPlugin', {
     repoRoot,

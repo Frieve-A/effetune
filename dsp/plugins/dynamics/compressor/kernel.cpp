@@ -4,6 +4,8 @@
 
 #include "dynamics_common.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -32,6 +34,7 @@ public:
     last_channel_count_ = 0u;
     latest_amount_db_ = 0.0F;
     has_measurement_ = false;
+    curve_initialized_ = false;
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -47,12 +50,9 @@ public:
       last_channel_count_ = channel_count;
     }
 
-    const double threshold = static_cast<double>(params_.threshold);
-    const double ratio = static_cast<double>(params_.ratio);
-    const double knee = static_cast<double>(params_.knee);
-    const double half_knee = knee * 0.5;
-    const double inverse_ratio = ratio == 1.0 ? 0.0 : 1.0 - 1.0 / ratio;
-    const double makeup_db = static_cast<double>(params_.gain);
+    prepareCurveRamps();
+    const bool curve_ramping =
+        threshold_.active() || ratio_.active() || knee_.active() || gain_.active();
     double maximum_reduction = 0.0;
 
     for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
@@ -75,9 +75,11 @@ public:
           maximum_envelope = work_buffer_[frame];
         }
       }
-      const double maximum_difference = lookup_.decibels(maximum_envelope) - threshold;
-      if (maximum_difference <= -half_knee) {
-        const double makeup_gain = lookup_.gain(makeup_db);
+      const double stable_threshold = threshold_.current;
+      const double stable_knee = knee_.current;
+      const double maximum_difference = lookup_.decibels(maximum_envelope) - stable_threshold;
+      if (!curve_ramping && maximum_difference <= -stable_knee * 0.5) {
+        const double makeup_gain = lookup_.gain(gain_.current);
         if (makeup_gain != 1.0) {
           for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
             channel_audio[frame] =
@@ -88,6 +90,12 @@ public:
       }
 
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        const double threshold = threshold_.value(frame);
+        const double ratio = ratio_.value(frame);
+        const double knee = knee_.value(frame);
+        const double half_knee = knee * 0.5;
+        const double inverse_ratio = ratio == 1.0 ? 0.0 : 1.0 - 1.0 / ratio;
+        const double makeup_db = gain_.value(frame);
         const double difference = lookup_.decibels(work_buffer_[frame]) - threshold;
         double reduction = 0.0;
         if (difference <= -half_knee) {
@@ -107,6 +115,11 @@ public:
       }
     }
 
+    threshold_.advance(frame_count);
+    ratio_.advance(frame_count);
+    knee_.advance(frame_count);
+    gain_.advance(frame_count);
+
     latest_amount_db_ = static_cast<float>(maximum_reduction);
     has_measurement_ = true;
   }
@@ -118,6 +131,67 @@ public:
   }
 
 private:
+  struct LinearRamp {
+    double current = 0.0;
+    double target = 0.0;
+    double step = 0.0;
+    std::uint32_t remaining = 0u;
+
+    void snap(double value) noexcept {
+      current = value;
+      target = value;
+      step = 0.0;
+      remaining = 0u;
+    }
+
+    void retarget(double value, std::uint32_t frames) noexcept {
+      if (value == target) {
+        return;
+      }
+      target = value;
+      remaining = frames;
+      step = (target - current) / static_cast<double>(frames);
+    }
+
+    [[nodiscard]] bool active() const noexcept { return remaining != 0u; }
+
+    [[nodiscard]] double value(std::uint32_t frame) const noexcept {
+      const std::uint32_t elapsed = frame + 1u;
+      return elapsed >= remaining ? target : current + step * static_cast<double>(elapsed);
+    }
+
+    void advance(std::uint32_t frames) noexcept {
+      if (frames >= remaining) {
+        current = target;
+        remaining = 0u;
+        step = 0.0;
+      } else {
+        current += step * static_cast<double>(frames);
+        remaining -= frames;
+      }
+    }
+  };
+
+  void prepareCurveRamps() noexcept {
+    const double threshold = static_cast<double>(params_.threshold);
+    const double ratio = static_cast<double>(params_.ratio);
+    const double knee = static_cast<double>(params_.knee);
+    const double gain = static_cast<double>(params_.gain);
+    if (!curve_initialized_) {
+      threshold_.snap(threshold);
+      ratio_.snap(ratio);
+      knee_.snap(knee);
+      gain_.snap(gain);
+      curve_initialized_ = true;
+      return;
+    }
+    const auto frames = static_cast<std::uint32_t>(std::max(1.0, sample_rate_ * 0.005));
+    threshold_.retarget(threshold, frames);
+    ratio_.retarget(ratio, frames);
+    knee_.retarget(knee, frames);
+    gain_.retarget(gain, frames);
+  }
+
   detail::CompressorExpanderLookup lookup_;
   std::vector<dsp::AttackReleaseEnvelope> envelopes_;
   std::vector<float> work_buffer_;
@@ -125,6 +199,11 @@ private:
   std::uint32_t last_channel_count_ = 0u;
   float latest_amount_db_ = 0.0F;
   bool has_measurement_ = false;
+  bool curve_initialized_ = false;
+  LinearRamp threshold_;
+  LinearRamp ratio_;
+  LinearRamp knee_;
+  LinearRamp gain_;
 };
 
 static_assert(sizeof(CompressorKernel) <= 8192u);

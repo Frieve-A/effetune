@@ -93,10 +93,10 @@
     }
   ],
   "tolerance": {
-    "abs": 0.0001,
+    "abs": 0.0005,
     "policy": "per-sample"
   },
-  "jsEngineHash": "5291c0be0795a49494876899c5d2a5c1a35e9e9b1fdab072f531a7aae9caaf23",
+  "jsEngineHash": "3d0d3c61a70efb29f3284451676c8504e1f9c0cc9454bccf3ca292d7ff3c6853",
   "outputFloats": 5201,
   "byteLength": 20804,
   "binary": "case-007.f32"

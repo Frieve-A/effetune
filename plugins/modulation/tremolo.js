@@ -75,14 +75,57 @@ class TremoloPlugin extends PluginBase {
                 } // else: Coefficients remain in pass-through state
             } // else (fc <= 0 or fc >= fs/2): Coefficients remain in pass-through state
 
-            // --- Pre-calculate Loop Invariants ---
-            // Calculate values that don't change within the main processing loop
-            const phaseIncrement = TWO_PI * rate / sampleRate;
-            const channelPhaseRad = channelPhase * DEG_TO_RAD;
-            const syncRatio = channelSync * 0.01;
-            const invSyncRatio = 1.0 - syncRatio; // Calculate complementary ratio
-            const negDepth = -depth;
-            const negRandomnessX2 = -randomness * 2.0; // Pre-calculate factor
+            const targetB0 = norm_b0, targetB1 = norm_b1, targetB2 = norm_b2;
+            const targetA1 = norm_a1, targetA2 = norm_a2;
+            if (context.automationRate === undefined) {
+                context.automationRate = rate;
+                context.automationDepth = depth;
+                context.automationRandomness = randomness;
+                context.automationChannelPhase = channelPhase;
+                context.automationChannelSync = channelSync;
+                context.automationB0 = targetB0; context.automationB1 = targetB1;
+                context.automationB2 = targetB2; context.automationA1 = targetA1;
+                context.automationA2 = targetA2;
+                context.automationTargetRate = rate;
+                context.automationTargetDepth = depth;
+                context.automationTargetRandomness = randomness;
+                context.automationTargetChannelPhase = channelPhase;
+                context.automationTargetChannelSync = channelSync;
+                context.automationTargetB0 = targetB0; context.automationTargetB1 = targetB1;
+                context.automationTargetB2 = targetB2; context.automationTargetA1 = targetA1;
+                context.automationTargetA2 = targetA2;
+                context.automationRampRemaining = 0;
+            } else if (context.automationTargetRate !== rate ||
+                context.automationTargetDepth !== depth ||
+                context.automationTargetRandomness !== randomness ||
+                context.automationTargetChannelPhase !== channelPhase ||
+                context.automationTargetChannelSync !== channelSync ||
+                context.automationTargetB0 !== targetB0 ||
+                context.automationTargetB1 !== targetB1 ||
+                context.automationTargetB2 !== targetB2 ||
+                context.automationTargetA1 !== targetA1 ||
+                context.automationTargetA2 !== targetA2) {
+                context.automationTargetRate = rate;
+                context.automationTargetDepth = depth;
+                context.automationTargetRandomness = randomness;
+                context.automationTargetChannelPhase = channelPhase;
+                context.automationTargetChannelSync = channelSync;
+                context.automationTargetB0 = targetB0; context.automationTargetB1 = targetB1;
+                context.automationTargetB2 = targetB2; context.automationTargetA1 = targetA1;
+                context.automationTargetA2 = targetA2;
+                const requestedRampFrames = Math.ceil(sampleRate * 0.005);
+                context.automationRampRemaining = requestedRampFrames > 1 ?
+                    requestedRampFrames : 1;
+            }
+            let currentRate = context.automationRate;
+            let currentDepth = context.automationDepth;
+            let currentRandomness = context.automationRandomness;
+            let currentChannelPhase = context.automationChannelPhase;
+            let currentChannelSync = context.automationChannelSync;
+            norm_b0 = context.automationB0; norm_b1 = context.automationB1;
+            norm_b2 = context.automationB2; norm_a1 = context.automationA1;
+            norm_a2 = context.automationA2;
+            let automationRampRemaining = context.automationRampRemaining;
             const inv20 = 0.05; // Pre-calculate 1.0 / 20.0 for dB-like to linear conversion
 
             // Load state variables from context into local variables for faster access in the loop
@@ -95,6 +138,34 @@ class TremoloPlugin extends PluginBase {
 
             // --- Main Processing Loop (Iterates over each sample in the block) ---
             for (let i = 0; i < blockSize; ++i) {
+
+                if (automationRampRemaining !== 0) {
+                    const rampScale = 1 / automationRampRemaining;
+                    currentRate += (rate - currentRate) * rampScale;
+                    currentDepth += (depth - currentDepth) * rampScale;
+                    currentRandomness += (randomness - currentRandomness) * rampScale;
+                    currentChannelPhase +=
+                        (channelPhase - currentChannelPhase) * rampScale;
+                    currentChannelSync += (channelSync - currentChannelSync) * rampScale;
+                    norm_b0 += (targetB0 - norm_b0) * rampScale;
+                    norm_b1 += (targetB1 - norm_b1) * rampScale;
+                    norm_b2 += (targetB2 - norm_b2) * rampScale;
+                    norm_a1 += (targetA1 - norm_a1) * rampScale;
+                    norm_a2 += (targetA2 - norm_a2) * rampScale;
+                    if (--automationRampRemaining === 0) {
+                        currentRate = rate; currentDepth = depth;
+                        currentRandomness = randomness;
+                        currentChannelPhase = channelPhase; currentChannelSync = channelSync;
+                        norm_b0 = targetB0; norm_b1 = targetB1; norm_b2 = targetB2;
+                        norm_a1 = targetA1; norm_a2 = targetA2;
+                    }
+                }
+                const phaseIncrement = TWO_PI * currentRate / sampleRate;
+                const channelPhaseRad = currentChannelPhase * DEG_TO_RAD;
+                const syncRatio = currentChannelSync * 0.01;
+                const invSyncRatio = 1.0 - syncRatio;
+                const negDepth = -currentDepth;
+                const negRandomnessX2 = -currentRandomness * 2.0;
 
                 // --- Update Common Phase ---
                 phase += phaseIncrement;
@@ -155,6 +226,15 @@ class TremoloPlugin extends PluginBase {
             context.phase = phase;
             context.common_x1 = common_x1;
             context.common_x2 = common_x2;
+            context.automationRate = currentRate;
+            context.automationDepth = currentDepth;
+            context.automationRandomness = currentRandomness;
+            context.automationChannelPhase = currentChannelPhase;
+            context.automationChannelSync = currentChannelSync;
+            context.automationB0 = norm_b0; context.automationB1 = norm_b1;
+            context.automationB2 = norm_b2; context.automationA1 = norm_a1;
+            context.automationA2 = norm_a2;
+            context.automationRampRemaining = automationRampRemaining;
             // context.ch_x1 and context.ch_x2 were modified in-place via references
 
             // Return the modified audio data buffer

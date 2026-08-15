@@ -2,10 +2,13 @@
 #include "BandPassFilterPluginParams.h"
 #include "effetune/dsp/biquad.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <utility>
 #include <vector>
 
 namespace effetune::plugins::eq {
@@ -95,13 +98,28 @@ public:
     sample_rate_ = static_cast<double>(info.sampleRate);
     max_channels_ = info.maxChannels;
     const std::size_t state_count = kMaximumSections * static_cast<std::size_t>(max_channels_);
-    high_pass_.states.resize(state_count);
-    low_pass_.states.resize(state_count);
+    for (FilterBank &bank : high_pass_) {
+      bank.states.resize(state_count);
+    }
+    for (FilterBank &bank : low_pass_) {
+      bank.states.resize(state_count);
+    }
+    const std::size_t scratch_count =
+        static_cast<std::size_t>(info.maxFrames) * static_cast<std::size_t>(max_channels_);
+    active_scratch_.resize(scratch_count);
+    target_scratch_.resize(scratch_count);
   }
 
   void reset() noexcept override {
-    resetBank(high_pass_);
-    resetBank(low_pass_);
+    for (FilterBank &bank : high_pass_) {
+      resetBank(bank);
+    }
+    for (FilterBank &bank : low_pass_) {
+      resetBank(bank);
+    }
+    active_bank_ = 0u;
+    fade_frame_ = 0u;
+    fade_frames_ = 0u;
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -111,16 +129,59 @@ public:
     }
 
     const double high_frequency = static_cast<double>(params_.highPassFrequency);
-    if (needsConfiguration(high_pass_, channel_count, high_frequency, params_.highPassSlope)) {
-      configureBank(high_pass_, channel_count, high_frequency, params_.highPassSlope, true);
-    }
-    applyBank(high_pass_, audio, channel_count, frame_count);
-
     const double low_frequency = static_cast<double>(params_.lowPassFrequency);
-    if (needsConfiguration(low_pass_, channel_count, low_frequency, params_.lowPassSlope)) {
-      configureBank(low_pass_, channel_count, low_frequency, params_.lowPassSlope, false);
+    FilterBank &active_high = high_pass_[active_bank_];
+    FilterBank &active_low = low_pass_[active_bank_];
+
+    if (!active_high.configured || !active_low.configured ||
+        active_high.lastChannelCount != channel_count ||
+        active_low.lastChannelCount != channel_count) {
+      reset();
+      configureChain(active_bank_, channel_count, high_frequency, low_frequency);
     }
-    applyBank(low_pass_, audio, channel_count, frame_count);
+
+    if (fade_frames_ == 0u && (needsConfiguration(high_pass_[active_bank_], channel_count,
+                                                  high_frequency, params_.highPassSlope) ||
+                               needsConfiguration(low_pass_[active_bank_], channel_count,
+                                                  low_frequency, params_.lowPassSlope))) {
+      const std::uint32_t target_bank = 1u - active_bank_;
+      configureChain(target_bank, channel_count, high_frequency, low_frequency);
+      fade_frame_ = 0u;
+      const auto requested_frames = static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005));
+      fade_frames_ = requested_frames == 0u ? 1u : requested_frames;
+    }
+
+    if (fade_frames_ == 0u) {
+      applyChain(active_bank_, audio, channel_count, frame_count);
+      return;
+    }
+
+    const std::size_t sample_count =
+        static_cast<std::size_t>(channel_count) * static_cast<std::size_t>(frame_count);
+    std::memcpy(active_scratch_.data(), audio, sample_count * sizeof(float));
+    std::memcpy(target_scratch_.data(), audio, sample_count * sizeof(float));
+    applyChain(active_bank_, active_scratch_.data(), channel_count, frame_count);
+    applyChain(1u - active_bank_, target_scratch_.data(), channel_count, frame_count);
+
+    for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+      const std::size_t offset = static_cast<std::size_t>(channel) * frame_count;
+      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        const double position =
+            static_cast<double>(fade_frame_ + frame + 1u) / static_cast<double>(fade_frames_);
+        const double alpha = position < 1.0 ? position : 1.0;
+        const std::size_t index = offset + frame;
+        audio[index] =
+            static_cast<float>(static_cast<double>(active_scratch_[index]) * (1.0 - alpha) +
+                               static_cast<double>(target_scratch_[index]) * alpha);
+      }
+    }
+
+    fade_frame_ += frame_count;
+    if (fade_frame_ >= fade_frames_) {
+      active_bank_ = 1u - active_bank_;
+      fade_frame_ = 0u;
+      fade_frames_ = 0u;
+    }
   }
 
 private:
@@ -140,7 +201,7 @@ private:
 
   void configureBank(FilterBank &bank, std::uint32_t channel_count, double frequency,
                      float raw_slope, bool high_pass) noexcept {
-    const double nyquist_limit = sample_rate_ * 0.499;
+    const double nyquist_limit = sample_rate_ * 0.45;
     const double lower_bounded = frequency < 10.0 ? 10.0 : frequency;
     const double clamped_frequency = lower_bounded > nyquist_limit ? nyquist_limit : lower_bounded;
     bank.sectionCount = designSections(sample_rate_, clamped_frequency, static_cast<int>(raw_slope),
@@ -164,6 +225,19 @@ private:
     bank.configured = true;
   }
 
+  void configureChain(std::uint32_t bank_index, std::uint32_t channel_count, double high_frequency,
+                      double low_frequency) noexcept {
+    configureBank(high_pass_[bank_index], channel_count, high_frequency, params_.highPassSlope,
+                  true);
+    configureBank(low_pass_[bank_index], channel_count, low_frequency, params_.lowPassSlope, false);
+  }
+
+  void applyChain(std::uint32_t bank_index, float *audio, std::uint32_t channel_count,
+                  std::uint32_t frame_count) noexcept {
+    applyBank(high_pass_[bank_index], audio, channel_count, frame_count);
+    applyBank(low_pass_[bank_index], audio, channel_count, frame_count);
+  }
+
   void applyBank(FilterBank &bank, float *audio, std::uint32_t channel_count,
                  std::uint32_t frame_count) noexcept {
     for (std::size_t section = 0u; section < bank.sectionCount; ++section) {
@@ -175,15 +249,19 @@ private:
               static_cast<double>(audio[offset + frame]), bank.coefficients[section], state);
           audio[offset + frame] = static_cast<float>(output);
         }
-        dsp::quantizeBiquadStateToFloat(state);
       }
     }
   }
 
   double sample_rate_ = 0.0;
   std::uint32_t max_channels_ = 0u;
-  FilterBank high_pass_;
-  FilterBank low_pass_;
+  std::array<FilterBank, 2u> high_pass_;
+  std::array<FilterBank, 2u> low_pass_;
+  std::uint32_t active_bank_ = 0u;
+  std::uint32_t fade_frame_ = 0u;
+  std::uint32_t fade_frames_ = 0u;
+  std::vector<float> active_scratch_;
+  std::vector<float> target_scratch_;
 };
 
 } // namespace effetune::plugins::eq

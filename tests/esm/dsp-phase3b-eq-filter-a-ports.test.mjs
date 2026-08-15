@@ -29,7 +29,7 @@ const ports = [
     ],
     caseCount: 9,
     identityCase: 'both-off-identity',
-    jsEngineHash: 'a7e3eb8a0dfa41660b0f0e3a97fb3eafbedbe33270839d1255412b8dbb4ae3c1',
+    jsEngineHash: 'f290fc3220348ca6198607255c5167d75eccb8b78f21ce010a894b1ecd4d9ed7',
     activeParams: { hf: 180, lf: 12000, hs: -36, ls: -24 }
   },
   {
@@ -39,7 +39,7 @@ const ports = [
     fields: [['frequency', 'fr', 'float'], ['slope', 'sl', 'int']],
     caseCount: 9,
     identityCase: 'off-identity',
-    jsEngineHash: '526fcf77d19b55a5a1916da56057e2ce6fc27ab5a1b0eadce3f510ddeb6f5b3d',
+    jsEngineHash: '9af09e8d3e3c38c76ce8b2593a14b23bf169ac20878653a4887181404eb4ef9a',
     activeParams: { fr: 180, sl: -36 }
   },
   {
@@ -49,7 +49,7 @@ const ports = [
     fields: [['frequency', 'fr', 'float'], ['slope', 'sl', 'int']],
     caseCount: 9,
     identityCase: 'off-identity',
-    jsEngineHash: '6d654b6c25d881c452b2154c9953526d64ce473cde3e8b89b304c74a0cc3ce61',
+    jsEngineHash: 'd7d485208b15a7c31e2563aa2d0d459aabbb3b849e19e213d31c9dd2ffe21085',
     activeParams: { fr: 12000, sl: -36 }
   },
   {
@@ -59,7 +59,7 @@ const ports = [
     fields: [['pivotExponent', 'f0', 'float'], ['slope', 'sl', 'float']],
     caseCount: 8,
     identityCase: 'zero-slope-identity',
-    jsEngineHash: 'bda82c12c5273a2f1bc7aa38f67ef76078e8a102b5a4ff407564eb4f4e8e95af',
+    jsEngineHash: 'a241083c43d8f9ab57b9dbed5aa3efc33d492f46b1a16d691ecbb4e798041f76',
     activeParams: { f0: 6.5, sl: 8 }
   },
   {
@@ -73,7 +73,7 @@ const ports = [
     ],
     caseCount: 10,
     identityCase: 'flat-identity',
-    jsEngineHash: 'ce64013ac2d287292ed30a2e41bf3d0e59674e40931ed7869152d9ec35ce6649',
+    jsEngineHash: '2172a8335d1642e3d60ba06c62afaef122b6d25d333917aa6b5f77bbbf3ba1ca',
     activeParams: { bs: 9, md: -6, tr: 12 }
   }
 ];
@@ -229,9 +229,13 @@ test('Phase 3b EQ group A kernels preserve topology and realtime constraints', a
     assert.doesNotMatch(processBody, /\.resize\s*\(|\bnew\b|\bmalloc\s*\(/);
   }
 
-  for (const directory of ['band_pass_filter', 'hi_pass_filter', 'lo_pass_filter', 'tilt_eq']) {
+  for (const directory of ['hi_pass_filter', 'lo_pass_filter']) {
     const source = await fs.readFile(path.join(pluginsRoot, directory, 'kernel.cpp'), 'utf8');
     assert.match(source, /quantizeBiquadStateToFloat/);
+  }
+  for (const directory of ['band_pass_filter', 'tilt_eq']) {
+    const source = await fs.readFile(path.join(pluginsRoot, directory, 'kernel.cpp'), 'utf8');
+    assert.doesNotMatch(source, /quantizeBiquadStateToFloat/);
   }
   const toneSource = await fs.readFile(
     path.join(pluginsRoot, 'tone_control', 'kernel.cpp'),

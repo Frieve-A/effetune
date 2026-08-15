@@ -10,7 +10,7 @@
     { "name": "signal", "key": "sg", "kind": "float", "min": -50, "max": 0, "default": -15, "unit": "dB", "automation": true },
     { "name": "skywave", "key": "sk", "kind": "float", "min": 0, "max": 100, "default": 55, "unit": "%", "automation": true },
     { "name": "fadingSpeed", "key": "fd", "kind": "float", "min": 0.1, "max": 10, "default": 0.5, "unit": "Hz", "automation": { "normalization": "log" } },
-    { "name": "delaySpread", "key": "ds", "kind": "float", "min": 0.2, "max": 8, "default": 1.4, "unit": "ms" },
+    { "name": "delaySpread", "key": "ds", "kind": "float", "min": 0.2, "max": 8, "default": 1.4, "unit": "ms", "automation": {"normalization":"log"} },
     { "name": "staticRate", "key": "st", "kind": "float", "min": 0, "max": 100, "default": 2, "unit": "/s", "automation": true },
     { "name": "interference", "key": "in", "kind": "float", "min": -80, "max": 0, "default": -47, "unit": "dB", "automation": true },
     { "name": "interferenceOffset", "key": "io", "kind": "float", "min": 0.1, "max": 10, "default": 1, "unit": "kHz", "automation": { "normalization": "log" } },

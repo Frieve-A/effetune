@@ -11,6 +11,71 @@ const ROOM_EQ_GRAPH_FREQUENCY_TICKS =
     [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
 const ROOM_EQ_RESPONSE_HIDDEN_CLASS = 'room-eq-response-hidden';
 
+function processRoomEqAutomation(context, data, parameters) {
+    if (!parameters.enabled) return data;
+    const { channelCount, blockSize, sampleRate } = parameters;
+    const maximumDelay = 3840;
+    if (!context.roomEqDelayBuffers || context.roomEqDelayBuffers.length !== channelCount ||
+        context.roomEqSampleRate !== sampleRate) {
+        context.roomEqDelayBuffers = Array.from(
+            { length: channelCount }, () => new Float32Array(maximumDelay + 1));
+        context.roomEqDelayIndices = new Uint32Array(channelCount);
+        context.roomEqAppliedDelay = 0;
+        context.roomEqPreviousDelay = 0;
+        context.roomEqDelayRemaining = 0;
+        context.roomEqGain = Math.pow(10, Math.fround(parameters.gn || 0) / 20);
+        context.roomEqGainTarget = context.roomEqGain;
+        context.roomEqGainStep = 0;
+        context.roomEqGainRemaining = 0;
+        context.roomEqSampleRate = sampleRate;
+    }
+    const requestedDelay = Math.max(
+        0, Math.min(maximumDelay, Math.floor(Math.fround(parameters.dy || 0))));
+    if (requestedDelay !== context.roomEqAppliedDelay) {
+        context.roomEqPreviousDelay = context.roomEqDelayRemaining > 128
+            ? context.roomEqPreviousDelay
+            : context.roomEqAppliedDelay;
+        context.roomEqAppliedDelay = requestedDelay;
+        context.roomEqDelayRemaining = 256;
+    }
+    const targetGain = Math.pow(10, Math.fround(parameters.gn || 0) / 20);
+    if (targetGain !== context.roomEqGainTarget) {
+        context.roomEqGainTarget = targetGain;
+        context.roomEqGainRemaining = Math.max(1, Math.ceil(sampleRate * 0.005));
+        context.roomEqGainStep =
+            (context.roomEqGainTarget - context.roomEqGain) / context.roomEqGainRemaining;
+    }
+    for (let frame = 0; frame < blockSize; frame++) {
+        if (context.roomEqGainRemaining > 0) {
+            context.roomEqGain += context.roomEqGainStep;
+            context.roomEqGainRemaining--;
+            if (context.roomEqGainRemaining === 0) {
+                context.roomEqGain = context.roomEqGainTarget;
+                context.roomEqGainStep = 0;
+            }
+        }
+        const alpha = context.roomEqDelayRemaining > 0
+            ? 1 - context.roomEqDelayRemaining / 256
+            : 1;
+        for (let channel = 0; channel < channelCount; channel++) {
+            const buffer = context.roomEqDelayBuffers[channel];
+            const write = context.roomEqDelayIndices[channel];
+            const index = channel * blockSize + frame;
+            buffer[write] = data[index];
+            const currentRead =
+                (write + buffer.length - context.roomEqAppliedDelay) % buffer.length;
+            const previousRead =
+                (write + buffer.length - context.roomEqPreviousDelay) % buffer.length;
+            const delayed = buffer[previousRead] +
+                alpha * (buffer[currentRead] - buffer[previousRead]);
+            data[index] = delayed * context.roomEqGain;
+            context.roomEqDelayIndices[channel] = (write + 1) % buffer.length;
+        }
+        if (context.roomEqDelayRemaining > 0) context.roomEqDelayRemaining--;
+    }
+    return data;
+}
+
 class RoomEqAdditionalEqEditor {
     constructor({
         host,
@@ -847,7 +912,10 @@ class RoomEqPlugin extends PluginBase {
             }
         };
         globalThis.document?.addEventListener?.('visibilitychange', this._visibilityHandler);
-        this.registerProcessor('return data;');
+        this.registerProcessor(`
+            const processAutomation = ${processRoomEqAutomation.toString()};
+            return processAutomation(context, data, parameters);
+        `);
     }
 
     _t(_key, fallback, params = {}) {
@@ -1039,8 +1107,14 @@ class RoomEqPlugin extends PluginBase {
             : legacyIndex >= 0 ? params[`mn${legacyIndex}`] ?? params.mn?.[legacyIndex] : undefined;
         if (typeof measurementId === 'string') this.measurementId = measurementId.slice(0, 160);
         if (typeof measurementName === 'string') this.measurementName = measurementName.slice(0, 160);
+        const delaySamples = Number(params.dy);
         const delay = params.dl ?? (legacyIndex >= 0 ? params[`dy${legacyIndex}`] : params.dy0);
-        if (delay !== undefined) this.delayMs = this.parseFiniteNumber(delay, 0, 20, this.delayMs);
+        if (Number.isFinite(delaySamples)) {
+            this.delayMs = this.parseFiniteNumber(
+                delaySamples * 1000 / this._sampleRate, 0, 20, this.delayMs);
+        } else if (delay !== undefined) {
+            this.delayMs = this.parseFiniteNumber(delay, 0, 20, this.delayMs);
+        }
         this._updatePowerGainBound();
         this.updateParameters();
         const next = this._designSignature();

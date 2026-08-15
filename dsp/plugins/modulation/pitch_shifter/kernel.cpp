@@ -31,6 +31,8 @@ public:
     output_buffers_.resize(channels * max_buffer_size_);
     windowed_frames_.resize(channels * max_window_size_);
     final_output_.resize(channels * max_frames_);
+    pitch_factors_.resize(max_frames_);
+    ramp_frames_ = std::max(1u, static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005)));
     input_write_indices_.resize(max_channels_);
     process_counters_.resize(max_channels_);
     output_write_indices_.resize(max_channels_);
@@ -48,6 +50,11 @@ public:
     current_channel_count_ = 0u;
     current_window_size_ = 0u;
     current_hop_size_ = 0u;
+    pitch_initialized_ = false;
+    pitch_factor_ = 1.0;
+    target_pitch_factor_ = 1.0;
+    pitch_step_ = 0.0;
+    pitch_ramp_remaining_ = 0u;
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -57,16 +64,18 @@ public:
       return;
     }
 
-    double pitch_factor = 1.0;
+    double target_pitch_factor = 1.0;
     if (params_.pitchShift != 0.0F || params_.fineTune != 0.0F) {
       const double exponent = static_cast<double>(params_.pitchShift) / 12.0 +
                               static_cast<double>(params_.fineTune) / 1200.0;
-      pitch_factor = std::pow(2.0, exponent);
-      if (!(pitch_factor > 0.0 && std::isfinite(pitch_factor))) {
-        pitch_factor = 1.0;
+      target_pitch_factor = std::pow(2.0, exponent);
+      if (!(target_pitch_factor > 0.0 && std::isfinite(target_pitch_factor))) {
+        target_pitch_factor = 1.0;
       }
     }
-    if (pitch_factor == 1.0) {
+    retargetPitch(target_pitch_factor);
+    fillPitchFactors(frame_count);
+    if (pitch_factor_ == 1.0 && target_pitch_factor_ == 1.0) {
       return;
     }
 
@@ -93,10 +102,13 @@ public:
     if (!configured_ || current_channel_count_ != channel_count ||
         current_window_size_ != window_size || current_hop_size_ != hop_size) {
       resetForShape(channel_count, window_size, hop_size);
+      pitch_factor_ = target_pitch_factor_;
+      pitch_step_ = 0.0;
+      pitch_ramp_remaining_ = 0u;
+      std::fill_n(pitch_factors_.begin(), frame_count, pitch_factor_);
     }
 
     const double inverse_hop_size = 1.0 / static_cast<double>(hop_size);
-    const double target_unread = static_cast<double>(hop_size) * pitch_factor + 1.0;
 
     for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
       float *input_buffer =
@@ -111,6 +123,7 @@ public:
       const std::size_t input_offset = static_cast<std::size_t>(channel) * frame_count;
 
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        const double target_unread = static_cast<double>(hop_size) * pitch_factors_[frame] + 1.0;
         input_buffer[input_write_index] = audio[input_offset + frame];
         ++input_write_index;
         if (input_write_index == window_size) {
@@ -198,7 +211,7 @@ public:
         final_output_[output_offset + frame] =
             static_cast<float>(sample1 + (sample2 - sample1) * fraction);
 
-        read_position += pitch_factor;
+        read_position += pitch_factors_[frame];
         while (read_position >= static_cast<double>(buffer_size)) {
           read_position -= static_cast<double>(buffer_size);
         }
@@ -210,9 +223,38 @@ public:
     for (std::size_t index = 0u; index < sample_count; ++index) {
       audio[index] = final_output_[index];
     }
+    advancePitch(frame_count);
   }
 
 private:
+  void retargetPitch(double target) noexcept {
+    if (!pitch_initialized_) {
+      pitch_factor_ = target_pitch_factor_ = target;
+      pitch_initialized_ = true;
+      return;
+    }
+    if (target == target_pitch_factor_)
+      return;
+    target_pitch_factor_ = target;
+    pitch_step_ = (target_pitch_factor_ - pitch_factor_) / static_cast<double>(ramp_frames_);
+    pitch_ramp_remaining_ = ramp_frames_;
+  }
+
+  void fillPitchFactors(std::uint32_t frames) noexcept {
+    for (std::uint32_t frame = 0u; frame < frames; ++frame) {
+      const std::uint32_t position = std::min(frame + 1u, pitch_ramp_remaining_);
+      pitch_factors_[frame] = pitch_factor_ + pitch_step_ * static_cast<double>(position);
+    }
+  }
+
+  void advancePitch(std::uint32_t frames) noexcept {
+    const std::uint32_t advanced = std::min(frames, pitch_ramp_remaining_);
+    pitch_factor_ += pitch_step_ * static_cast<double>(advanced);
+    pitch_ramp_remaining_ -= advanced;
+    if (pitch_ramp_remaining_ == 0u)
+      pitch_factor_ = target_pitch_factor_;
+  }
+
   void clearIndices() noexcept {
     std::fill(input_write_indices_.begin(), input_write_indices_.end(), 0u);
     std::fill(process_counters_.begin(), process_counters_.end(), 0u);
@@ -245,10 +287,17 @@ private:
   std::uint32_t current_window_size_ = 0u;
   std::uint32_t current_hop_size_ = 0u;
   bool configured_ = false;
+  bool pitch_initialized_ = false;
+  double pitch_factor_ = 1.0;
+  double target_pitch_factor_ = 1.0;
+  double pitch_step_ = 0.0;
+  std::uint32_t ramp_frames_ = 240u;
+  std::uint32_t pitch_ramp_remaining_ = 0u;
   std::vector<float> input_buffers_;
   std::vector<float> output_buffers_;
   std::vector<float> windowed_frames_;
   std::vector<float> final_output_;
+  std::vector<double> pitch_factors_;
   std::vector<std::uint32_t> input_write_indices_;
   std::vector<std::uint32_t> process_counters_;
   std::vector<std::uint32_t> output_write_indices_;

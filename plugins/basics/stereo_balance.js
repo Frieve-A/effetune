@@ -15,15 +15,29 @@ class StereoBalancePlugin extends PluginBase {
             } = parameters;
             
             // Process left and right channels
-            const leftGain = balance <= 0 ? 1 : 1 - balance;
-            const rightGain = balance >= 0 ? 1 : 1 + balance;
+            const targetBalance = Math.fround(balance);
+            const rampFrames = Math.max(1, Math.ceil(parameters.sampleRate * 0.005));
+            if (context.currentBalance === undefined) {
+                context.currentBalance = targetBalance;
+                context.targetBalance = targetBalance;
+                context.rampRemaining = 0;
+            } else if (context.targetBalance !== targetBalance) {
+                context.targetBalance = targetBalance;
+                context.balanceStep = (targetBalance - context.currentBalance) / rampFrames;
+                context.rampRemaining = rampFrames;
+            }
 
             // Channels are stereo pairs: even index = left, odd index = right
-            for (let ch = 0; ch < channelCount; ch++) {
-                const gain = (ch & 1) === 0 ? leftGain : rightGain;
-                const offset = ch * blockSize;
-                for (let i = 0; i < blockSize; i++) {
-                    data[offset + i] *= gain;
+            for (let i = 0; i < blockSize; i++) {
+                if (context.rampRemaining > 0) {
+                    context.currentBalance += context.balanceStep;
+                    if (--context.rampRemaining === 0) context.currentBalance = context.targetBalance;
+                }
+                const leftGain = context.currentBalance <= 0 ? 1 : 1 - context.currentBalance;
+                const rightGain = context.currentBalance >= 0 ? 1 : 1 + context.currentBalance;
+                for (let ch = 0; ch < channelCount; ch++) {
+                    const gain = (ch & 1) === 0 ? leftGain : rightGain;
+                    data[ch * blockSize + i] *= gain;
                 }
             }
 

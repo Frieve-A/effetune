@@ -72,27 +72,46 @@ class MultibandCompressorPlugin extends PluginBase {
       const sampleRate = parameters.sampleRate;
       const channelCount = parameters.channelCount;
       const result = data; // Use input buffer directly
+      if (!context.compressorMeasurements) {
+        context.compressorMeasurements = {
+          time: 0,
+          gainReductions: new Float32Array(5)
+        };
+      }
+      const measurements = context.compressorMeasurements;
 
       // Bypass if disabled
       if (!parameters.enabled) {
         // Measurements might still be expected even when bypassed
-        result.measurements = {
-          time: parameters.time,
-          gainReductions: context.gainReductions ? context.gainReductions.slice(0, 5) : new Float32Array(5)
-        };
+        measurements.time = parameters.time;
+        if (context.gainReductions) measurements.gainReductions.set(context.gainReductions);
+        else measurements.gainReductions.fill(0);
+        result.measurements = measurements;
         return result;
       }
 
       // --- State Initialization and Management ---
-      const frequencies = [parameters.f1, parameters.f2, parameters.f3, parameters.f4];
+      if (!context.compressorFrequencyScratch) {
+        context.compressorFrequencyScratch = new Float64Array(4);
+      }
+      const frequencies = context.compressorFrequencyScratch;
+      frequencies[0] = parameters.f1;
+      frequencies[1] = parameters.f2;
+      frequencies[2] = parameters.f3;
+      frequencies[3] = parameters.f4;
+      let frequenciesChanged = !context.filterConfig?.frequencies;
+      if (!frequenciesChanged) {
+        for (let i = 0; i < 4; i++) {
+          if (context.filterConfig.frequencies[i] !== frequencies[i]) frequenciesChanged = true;
+        }
+      }
 
       // Check if filter states or config need reset
       const needsReset = !context.filterStates ||
                         !context.filterConfig ||
                         context.filterConfig.sampleRate !== sampleRate ||
                         context.filterConfig.channelCount !== channelCount ||
-                        !context.filterConfig.frequencies ||
-                        context.filterConfig.frequencies.some((f, i) => f !== frequencies[i]);
+                        frequenciesChanged;
 
       if (needsReset) {
         // Create filter state with DC-blocking initialization
@@ -124,15 +143,15 @@ class MultibandCompressorPlugin extends PluginBase {
 
         context.filterConfig = {
           sampleRate: sampleRate,
-          frequencies: frequencies.slice(), // Store a copy
+          frequencies: new Float64Array(4),
           channelCount: channelCount
         };
+        context.filterConfig.frequencies.set(frequencies);
 
         // Apply a short fade-in to prevent clicks when filter states are reset
         context.fadeIn = {
           counter: 0,
-          // Fade length: 5ms or block size, whichever is smaller
-          length: Math.min(blockSize, Math.ceil(sampleRate * 0.005))
+          length: Math.ceil(sampleRate * 0.005)
         };
         // Ensure envelope states are initialized
         if (!context.envelopeStates || context.envelopeStates.length !== channelCount * 5) {
@@ -490,6 +509,38 @@ class MultibandCompressorPlugin extends PluginBase {
           }
       }
       const bandParamsCache = context.bandParams; // Local ref
+      const rampFrames = Math.max(1, Math.ceil(sampleRate * 0.005));
+      if (!context.curveControlTargets) context.curveControlTargets = new Float64Array(20);
+      const controlTargets = context.curveControlTargets;
+      for (let band = 0; band < 5; band++) {
+        const bp = parameters.bands[band], base = band * 4;
+        controlTargets[base] = Math.fround(bp.t);
+        controlTargets[base + 1] = Math.fround(bp.r);
+        controlTargets[base + 2] = Math.fround(bp.k);
+        controlTargets[base + 3] = Math.fround(bp.g);
+      }
+      if (!context.currentCurveControls) {
+        context.currentCurveControls = new Float64Array(20);
+        context.targetCurveControls = new Float64Array(20);
+        context.currentCurveControls.set(controlTargets);
+        context.targetCurveControls.set(controlTargets);
+        context.curveControlSteps = new Float64Array(20);
+        context.curveRampRemaining = 0;
+      } else {
+        let changed = false;
+        for (let i = 0; i < 20; i++) if (context.targetCurveControls[i] !== controlTargets[i]) changed = true;
+        if (changed) {
+          context.targetCurveControls.set(controlTargets);
+          for (let i = 0; i < 20; i++) {
+            context.curveControlSteps[i] = (controlTargets[i] - context.currentCurveControls[i]) / rampFrames;
+          }
+          context.curveRampRemaining = rampFrames;
+        }
+      }
+      const currentCurveControls = context.currentCurveControls;
+      const curveControlSteps = context.curveControlSteps;
+      const curveRampRemaining = context.curveRampRemaining;
+      const curveRamping = curveRampRemaining > 0;
 
       // --- Lookup Table Setup (as in original) ---
       if (!context.dbLookup) {
@@ -567,6 +618,7 @@ class MultibandCompressorPlugin extends PluginBase {
         for (let band = 0; band < 5; band++) {
           const bandSignal = bandSignalsCh[band]; // Input signal for this band
           const params = bandParamsCache[band];   // Cached compressor params for this band
+          const curveBase = band * 4;
           const attackCoeff = timeConstants[band * 2];
           const releaseCoeff = timeConstants[band * 2 + 1];
           let envelope = envelopeStates[envelopeOffset + band]; // Current envelope state
@@ -600,7 +652,7 @@ class MultibandCompressorPlugin extends PluginBase {
 
           // Skip detailed processing if all samples are below threshold-knee/2
           // This applies to both compression and expansion (gainChange = 0 below knee)
-          if (maxDiff <= -halfKneeDb) {
+          if (!curveRamping && maxDiff <= -halfKneeDb) {
             // Apply only makeup gain
             if (makeupLinear !== 1.0) { // Avoid multiplication by 1
                 for (let i = 0; i < blockSize; i++) {
@@ -625,29 +677,49 @@ class MultibandCompressorPlugin extends PluginBase {
                   const idx = i + j;
                   const currentEnvelope = workBuffer[idx];
                   const envelopeDb = fastDb(currentEnvelope);
-                  const diff = envelopeDb - thresholdDb; // Signal relative to threshold (dB)
+                  let frameThresholdDb = thresholdDb;
+                  let frameHalfKneeDb = halfKneeDb;
+                  let frameKneeDb = kneeDb;
+                  let frameSlope = slope;
+                  let frameMakeupLinear = makeupLinear;
+                  if (curveRamping) {
+                    const curveFrame = Math.min(idx + 1, curveRampRemaining);
+                    frameThresholdDb = currentCurveControls[curveBase] +
+                      curveControlSteps[curveBase] * curveFrame;
+                    const frameRatio = Math.max(0.5, Math.min(20,
+                      currentCurveControls[curveBase + 1] +
+                      curveControlSteps[curveBase + 1] * curveFrame));
+                    frameKneeDb = Math.max(0, currentCurveControls[curveBase + 2] +
+                      curveControlSteps[curveBase + 2] * curveFrame);
+                    frameHalfKneeDb = frameKneeDb * 0.5;
+                    frameSlope = frameRatio === 1 ? 0 : 1 - 1 / frameRatio;
+                    frameMakeupLinear = Math.exp((currentCurveControls[curveBase + 3] +
+                      curveControlSteps[curveBase + 3] * curveFrame) * GAIN_FACTOR);
+                  }
+                  const diff = envelopeDb - frameThresholdDb; // Signal relative to threshold (dB)
 
                   // Unified formula for both compression and expansion
                   // For compression (ratio >= 1): slope > 0, gainChange > 0 above threshold (reduction)
                   // For expansion (ratio < 1): slope < 0, gainChange < 0 above threshold (boost)
                   let gainChange = 0;
-                  if (diff <= -halfKneeDb) {
+                  if (diff <= -frameHalfKneeDb) {
                       // Below knee: no change
                       gainChange = 0;
-                  } else if (diff >= halfKneeDb) {
+                  } else if (diff >= frameHalfKneeDb) {
                       // Above knee: linear gain change
-                      gainChange = diff * slope;
+                      gainChange = diff * frameSlope;
                   } else {
                       // Within knee: quadratic transition
-                      const tVal = (diff + halfKneeDb) / kneeDb;
-                      gainChange = slope * kneeDb * tVal * tVal * 0.5;
+                      const tVal = frameKneeDb > 0 ?
+                        (diff + frameHalfKneeDb) / frameKneeDb : 1;
+                      gainChange = frameSlope * frameKneeDb * tVal * tVal * 0.5;
                   }
 
                   // Apply gain: gainChange > 0 means reduction, gainChange < 0 means boost
                   // fastExp expects positive dB values, so we handle sign
                   const absGainChange = gainChange >= 0 ? gainChange : -gainChange;
                   const gainMultiplier = gainChange >= 0 ? fastExp(absGainChange) : (1.0 / fastExp(absGainChange));
-                  const totalGainLin = makeupLinear * gainMultiplier;
+                  const totalGainLin = frameMakeupLinear * gainMultiplier;
                   outputBuffer[idx] += bandSignal[idx] * totalGainLin;
 
                   // Store last gain change for metering (use absolute value)
@@ -661,22 +733,42 @@ class MultibandCompressorPlugin extends PluginBase {
             for (; i < blockSize; i++) {
               const currentEnvelope = workBuffer[i];
               const envelopeDb = fastDb(currentEnvelope);
-              const diff = envelopeDb - thresholdDb;
+              let frameThresholdDb = thresholdDb;
+              let frameHalfKneeDb = halfKneeDb;
+              let frameKneeDb = kneeDb;
+              let frameSlope = slope;
+              let frameMakeupLinear = makeupLinear;
+              if (curveRamping) {
+                const curveFrame = Math.min(i + 1, curveRampRemaining);
+                frameThresholdDb = currentCurveControls[curveBase] +
+                  curveControlSteps[curveBase] * curveFrame;
+                const frameRatio = Math.max(0.5, Math.min(20,
+                  currentCurveControls[curveBase + 1] +
+                  curveControlSteps[curveBase + 1] * curveFrame));
+                frameKneeDb = Math.max(0, currentCurveControls[curveBase + 2] +
+                  curveControlSteps[curveBase + 2] * curveFrame);
+                frameHalfKneeDb = frameKneeDb * 0.5;
+                frameSlope = frameRatio === 1 ? 0 : 1 - 1 / frameRatio;
+                frameMakeupLinear = Math.exp((currentCurveControls[curveBase + 3] +
+                  curveControlSteps[curveBase + 3] * curveFrame) * GAIN_FACTOR);
+              }
+              const diff = envelopeDb - frameThresholdDb;
 
               // Unified formula for both compression and expansion
               let gainChange = 0;
-              if (diff <= -halfKneeDb) {
+              if (diff <= -frameHalfKneeDb) {
                   gainChange = 0;
-              } else if (diff >= halfKneeDb) {
-                  gainChange = diff * slope;
+              } else if (diff >= frameHalfKneeDb) {
+                  gainChange = diff * frameSlope;
               } else {
-                  const tVal = (diff + halfKneeDb) / kneeDb;
-                  gainChange = slope * kneeDb * tVal * tVal * 0.5;
+                  const tVal = frameKneeDb > 0 ?
+                    (diff + frameHalfKneeDb) / frameKneeDb : 1;
+                  gainChange = frameSlope * frameKneeDb * tVal * tVal * 0.5;
               }
 
               const absGainChange = gainChange >= 0 ? gainChange : -gainChange;
               const gainMultiplier = gainChange >= 0 ? fastExp(absGainChange) : (1.0 / fastExp(absGainChange));
-              const totalGainLin = makeupLinear * gainMultiplier;
+              const totalGainLin = frameMakeupLinear * gainMultiplier;
               outputBuffer[i] += bandSignal[i] * totalGainLin;
 
               if (i === blockSize - 1) {
@@ -727,11 +819,17 @@ class MultibandCompressorPlugin extends PluginBase {
         context.fadeIn = null;
       }
 
+      const curveAdvanced = Math.min(blockSize, context.curveRampRemaining);
+      for (let i = 0; i < 20; i++) {
+        context.currentCurveControls[i] += context.curveControlSteps[i] * curveAdvanced;
+      }
+      context.curveRampRemaining -= curveAdvanced;
+      if (context.curveRampRemaining === 0) context.currentCurveControls.set(context.targetCurveControls);
+
       // Attach measurements to the output
-      result.measurements = {
-        time: parameters.time,
-        gainReductions: gainReductions.slice(0, 5) // Return a copy
-      };
+      measurements.time = parameters.time;
+      measurements.gainReductions.set(gainReductions);
+      result.measurements = measurements;
 
       return result;
     `; // End of processor code string

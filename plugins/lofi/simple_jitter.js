@@ -58,24 +58,39 @@ class SimpleJitterPlugin extends PluginBase {
 
             // Calculate RMS jitter in nanoseconds (logarithmic scale)
             // Clamp parameter to avoid potential issues with extreme values in Math.pow
-            const clampedRmsJitterParam = (rmsJitterParam < -200) ? -200 : (rmsJitterParam > 200 ? 200 : rmsJitterParam);
+            const floatRmsJitterParam = Math.fround(rmsJitterParam);
+            const clampedRmsJitterParam = (floatRmsJitterParam < -200) ? -200 : (floatRmsJitterParam > 200 ? 200 : floatRmsJitterParam);
             const rmsJitterNs = MIN_JITTER_NS * Math.pow(10, clampedRmsJitterParam / 20.0);
 
             // Combine jitter scaling factors (RMS normalization * RMS value)
-            const jitterScaleFactor = rmsJitterNs * SQRT3;
+            const targetJitterScale = rmsJitterNs * SQRT3;
+            const rampFrames = Math.max(1, Math.ceil(sampleRate * 0.005));
+            if (context.currentJitterScale === undefined) {
+                context.currentJitterScale = targetJitterScale;
+                context.targetJitterScale = targetJitterScale;
+                context.jitterRampRemaining = 0;
+            } else if (context.targetJitterScale !== targetJitterScale) {
+                context.targetJitterScale = targetJitterScale;
+                context.jitterScaleStep = (targetJitterScale - context.currentJitterScale) / rampFrames;
+                context.jitterRampRemaining = rampFrames;
+            }
 
             // Cache context buffer position locally for modification within the loop
             let currentBufferPos = context.sampleBufferPos;
 
             // --- Sample Loop ---
             for (let i = 0; i < blockSize; i++) {
+                if (context.jitterRampRemaining > 0) {
+                    context.currentJitterScale += context.jitterScaleStep;
+                    if (--context.jitterRampRemaining === 0) context.currentJitterScale = context.targetJitterScale;
+                }
                 // Generate random value [0, 1)
                 const randomValue = Math.random();
                 // Ensure positive value (though Math.random is always non-negative) - matching original code's structure
                 const positiveRandom = (randomValue >= 0.0) ? randomValue : -randomValue;
 
                 // Calculate jitter amount for this sample in nanoseconds
-                const jitterNs = positiveRandom * jitterScaleFactor;
+                const jitterNs = positiveRandom * context.currentJitterScale;
                 // Convert jitter to samples
                 const jitterSamples = jitterNs * nsToSamplesFactor;
 

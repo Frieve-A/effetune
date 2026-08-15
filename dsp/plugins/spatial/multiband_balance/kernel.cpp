@@ -2,7 +2,9 @@
 #include "MultibandBalancePluginParams.h"
 #include "effetune/dsp/linkwitz_riley.h"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -15,6 +17,8 @@ class MultibandBalanceKernel final : public PluginKernel {
 public:
   void prepare(const PrepareInfo &info) override {
     sample_rate_ = static_cast<double>(info.sampleRate);
+    balance_ramp_frames_ =
+        std::max(1u, static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005)));
     max_channels_ = info.maxChannels;
     max_frames_ = info.maxFrames;
     lowpass_states_.resize(4u * max_channels_);
@@ -31,6 +35,8 @@ public:
     last_channel_count_ = 0u;
     fade_counter_ = 0u;
     fade_length_ = 0.0;
+    balances_initialized_ = false;
+    balance_ramp_remaining_ = 0u;
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -58,10 +64,7 @@ public:
       configured_ = true;
       last_channel_count_ = channel_count;
       fade_counter_ = 0u;
-      const double five_milliseconds = sample_rate_ * 0.005;
-      fade_length_ = static_cast<double>(frame_count) < five_milliseconds
-                         ? static_cast<double>(frame_count)
-                         : five_milliseconds;
+      fade_length_ = sample_rate_ * 0.005;
     }
 
     for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
@@ -88,25 +91,40 @@ public:
       filterBlock(high1, band4, coefficients_[3].highpass, highpassState(3u, channel), frame_count);
     }
 
-    for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
-      const std::size_t output_offset = static_cast<std::size_t>(channel) * frame_count;
-      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-        output_[output_offset + frame] = 0.0F;
+    std::array<double, 5u> next_balances{};
+    for (std::size_t band = 0u; band < next_balances.size(); ++band) {
+      next_balances[band] = static_cast<double>(params_.balance[band]) / 100.0;
+    }
+    if (!balances_initialized_) {
+      current_balances_ = next_balances;
+      target_balances_ = next_balances;
+      balances_initialized_ = true;
+    } else if (next_balances != target_balances_) {
+      target_balances_ = next_balances;
+      for (std::size_t band = 0u; band < target_balances_.size(); ++band) {
+        balance_steps_[band] = (target_balances_[band] - current_balances_[band]) /
+                               static_cast<double>(balance_ramp_frames_);
       }
-      for (std::uint32_t band = 0u; band < 5u; ++band) {
-        const double balance = static_cast<double>(params_.balance[band]) / 100.0;
-        const double magnitude = balance >= 0.0 ? balance : -balance;
-        double gain = 1.0;
-        if (magnitude >= 1.0e-6) {
+      balance_ramp_remaining_ = balance_ramp_frames_;
+    }
+
+    for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      if (balance_ramp_remaining_ != 0u) {
+        for (std::size_t band = 0u; band < current_balances_.size(); ++band) {
+          current_balances_[band] += balance_steps_[band];
+        }
+        if (--balance_ramp_remaining_ == 0u)
+          current_balances_ = target_balances_;
+      }
+      for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+        double sum = 0.0;
+        for (std::uint32_t band = 0u; band < 5u; ++band) {
+          const double balance = current_balances_[band];
           const double candidate = (channel & 1u) == 0u ? 1.0 - balance : 1.0 + balance;
-          gain = candidate > 0.0 ? candidate : 0.0;
+          const double gain = candidate > 0.0 ? candidate : 0.0;
+          sum += static_cast<double>(bandBuffer(channel, band)[frame]) * gain;
         }
-        const float *band_signal = bandBuffer(channel, band);
-        for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-          const std::size_t index = output_offset + frame;
-          output_[index] = static_cast<float>(static_cast<double>(output_[index]) +
-                                              static_cast<double>(band_signal[frame]) * gain);
-        }
+        output_[static_cast<std::size_t>(channel) * frame_count + frame] = static_cast<float>(sum);
       }
     }
 
@@ -178,13 +196,19 @@ private:
   std::vector<float> output_;
   std::array<dsp::LinkwitzRiley24Coefficients, 4u> coefficients_{};
   std::array<float, 4u> last_frequencies_{};
+  std::array<double, 5u> current_balances_{};
+  std::array<double, 5u> target_balances_{};
+  std::array<double, 5u> balance_steps_{};
   double sample_rate_ = 0.0;
   double fade_length_ = 0.0;
   std::uint32_t fade_counter_ = 0u;
   std::uint32_t max_channels_ = 0u;
   std::uint32_t max_frames_ = 0u;
   std::uint32_t last_channel_count_ = 0u;
+  std::uint32_t balance_ramp_frames_ = 240u;
+  std::uint32_t balance_ramp_remaining_ = 0u;
   bool configured_ = false;
+  bool balances_initialized_ = false;
 };
 
 static_assert(sizeof(MultibandBalanceKernel) <= 8192u);

@@ -149,8 +149,8 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
             // IMD Path HPF (24 dB/oct Butterworth, 0 = Off) high-passes both the audible input
             // feeding r_att / r_cross and the summed IMD residual (so r_add is also limited),
             // modelling tweeter-only / crossover-limited IMD. Dry path and noise are unaffected.
-            const coeffKey = FS + '|' + parameters.nc + '|' + parameters.nt + '|' + parameters.st + '|' + parameters.hf;
-            if (context.coeffKey !== coeffKey) {
+            const huKey = FS + '|' + parameters.nc + '|' + parameters.nt;
+            if (context.huKey !== huKey) {
                 const cCol = parameters.nc / 100;
                 const fStart = 24000 + 3000 * cCol;
                 // Clamp the upper edge to the safe side of Nyquist (matters at 88.2 kHz).
@@ -161,19 +161,47 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
                 const fT = Math.sqrt(fStart * fEnd);
                 const W = fEnd - fStart;
                 const f1 = fStart + 0.23 * W, f2 = fStart + 0.51 * W, f3 = fStart + 0.78 * W;
+                context.huC = [hp2(fStart, 0.707), hs2(fT, tilt), pk(f1, 5, 0.6 * R), pk(f2, 7, 1.0 * R), pk(f3, 6, 0.8 * R), lp2(fEnd, 0.707)];
+                context.lp20C = [lp2(20000, LP_Q1), lp2(20000, LP_Q2)];
+                // N_U normalization depends only on H_U (sampleRate, Noise Color, Noise Texture).
+                context.NU = computeNU(context.huC);
+                context.huKey = huKey;
+            }
+            const rampFrames = Math.max(1, Math.ceil(FS * 0.005));
+            const retargetCoefficients = (name, target) => {
+                const currentName = name + 'C';
+                const targetName = name + 'Target';
+                const stepName = name + 'Step';
+                const remainingName = name + 'Remaining';
+                if (!context[currentName]) {
+                    context[currentName] = target.map(stage => stage.slice());
+                    context[targetName] = target;
+                    context[stepName] = target.map(() => [0, 0, 0, 0, 0]);
+                    context[remainingName] = 0;
+                    return;
+                }
+                context[targetName] = target;
+                context[stepName] = target.map((stage, index) => stage.map((value, coefficient) =>
+                    (value - context[currentName][index][coefficient]) / rampFrames));
+                context[remainingName] = rampFrames;
+            };
+            const postKey = FS + '|' + parameters.st;
+            if (context.postKey !== postKey) {
                 const fF = 1000 * parameters.st;
                 const fLraw = 0.15 * fF, fHraw = 2.2 * fF;
                 const fL = fLraw < 500 ? 500 : (fLraw > 2500 ? 2500 : fLraw);
                 const fH = fHraw < 12000 ? 12000 : (fHraw > 20000 ? 20000 : fHraw);
-                context.huC = [hp2(fStart, 0.707), hs2(fT, tilt), pk(f1, 5, 0.6 * R), pk(f2, 7, 1.0 * R), pk(f3, 6, 0.8 * R), lp2(fEnd, 0.707)];
-                context.lp20C = [lp2(20000, LP_Q1), lp2(20000, LP_Q2)];
-                context.postC = [hp2(fL, 0.707), pk(fF, 0.9, 6), lp2(fH, 0.707)];
+                retargetCoefficients('post', [hp2(fL, 0.707), pk(fF, 0.9, 6), lp2(fH, 0.707)]);
+                context.postKey = postKey;
+            }
+            const hpfKey = FS + '|' + parameters.hf;
+            if (context.hpfKey !== hpfKey) {
                 const hpfHz = 1000 * parameters.hf;
-                context.imdHpfC = hpfHz > 0 ? [hp2(hpfHz, LP_Q1), hp2(hpfHz, LP_Q2)] : [];
-                // N_U normalization depends only on H_U (sampleRate, Noise Color, Noise Texture).
-                const huKey = FS + '|' + parameters.nc + '|' + parameters.nt;
-                if (context.huKey !== huKey) { context.NU = computeNU(context.huC); context.huKey = huKey; }
-                context.coeffKey = coeffKey;
+                const identity = [1, 0, 0, 0, 0];
+                retargetCoefficients('imdHpf', hpfHz > 0
+                    ? [hp2(hpfHz, LP_Q1), hp2(hpfHz, LP_Q2)]
+                    : [identity.slice(), identity.slice()]);
+                context.hpfKey = hpfKey;
             }
             const huC = context.huC, lp20C = context.lp20C, postC = context.postC, imdHpfC = context.imdHpfC;
 
@@ -279,15 +307,30 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
             const pMean = context.pMean;
 
             const rng = context.rng;
-            const hpfOn = imdHpfC.length !== 0;   // hoist out of the per-sample loop
-
             let bufPos = context.bufPos;
             let aS = context.aS, pS = context.pS, goS = context.goS, guS = context.guS,
                 a2S = context.a2S, a3S = context.a3S, gattS = context.gattS, gcrossS = context.gcrossS;
             let mAdd = context.mAdd, mAtt = context.mAtt, mCross = context.mCross, mTot = context.mTot, mOut = context.mOut;
             const invCh = 1 / channelCount;
+            const advanceCoefficients = name => {
+                const remainingName = name + 'Remaining';
+                if (context[remainingName] <= 0) return;
+                const current = context[name + 'C'];
+                const step = context[name + 'Step'];
+                const target = context[name + 'Target'];
+                context[remainingName]--;
+                for (let stage = 0; stage < current.length; stage++) {
+                    for (let coefficient = 0; coefficient < 5; coefficient++) {
+                        current[stage][coefficient] = context[remainingName] === 0
+                            ? target[stage][coefficient]
+                            : current[stage][coefficient] + step[stage][coefficient];
+                    }
+                }
+            };
 
             for (let i = 0; i < blockSize; i++) {
+                advanceCoefficients('post');
+                advanceCoefficients('imdHpf');
                 // Per-sample scalar smoothing
                 aS      += lambda_s * (A_t - aS);
                 pS      += lambda_s * (P_t - pS);
@@ -339,7 +382,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
 
                     // Band-limited (optionally HPF'd) input for the IMD model
                     const x_lp = casc(x_in, lpiZ, s4, lp20C);
-                    const x_audio = hpfOn ? casc(x_lp, hpfInZ, s4, imdHpfC) : x_lp;
+                    const x_audio = casc(x_lp, hpfInZ, s4, imdHpfC);
                     bufXa[base + wp] = x_audio;
 
                     const u_d = bufU[base + dp];
@@ -373,7 +416,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
 
                     // IMD Path HPF on the summed residual so r_add is also band-limited.
                     let r_phys = r_add + r_att + r_cross;
-                    if (hpfOn) r_phys = casc(r_phys, hpfOutZ, s4, imdHpfC);
+                    r_phys = casc(r_phys, hpfOutZ, s4, imdHpfC);
                     const r = casc(aS * r_phys, postZ, postBase, postC);
                     const y = goS * (dryG * x_dry + wetG * r);
                     data[ch * blockSize + i] = y;
@@ -381,9 +424,9 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
                     // Accurate per-term meters (after IMD Path HPF, Amount and Post EQ).
                     // Cross is derived from r (linearity), and inactive terms are skipped.
                     const r_add_m = addActive
-                        ? casc(aS * (hpfOn ? casc(r_add, hpfAddZ, s4, imdHpfC) : r_add), postAddZ, postBase, postC) : 0;
+                        ? casc(aS * casc(r_add, hpfAddZ, s4, imdHpfC), postAddZ, postBase, postC) : 0;
                     const r_att_m = attActive
-                        ? casc(aS * (hpfOn ? casc(r_att, hpfAttZ, s4, imdHpfC) : r_att), postAttZ, postBase, postC) : 0;
+                        ? casc(aS * casc(r_att, hpfAttZ, s4, imdHpfC), postAttZ, postBase, postC) : 0;
                     const r_cross_m = r - r_add_m - r_att_m;
                     sqAdd += r_add_m * r_add_m;
                     sqAtt += r_att_m * r_att_m;

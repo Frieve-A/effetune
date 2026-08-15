@@ -88,10 +88,22 @@ class FDNReverbPlugin extends PluginBase {
                     };
                 }
                 context.preDelaySampleRate = sampleRate;
+                context.preDelayCurrent = Math.min(maxPreDelaySamples - 1,
+                    p_pd * sampleRate * 0.001);
+                context.preDelayTarget = context.preDelayCurrent;
+                context.preDelayStep = 0;
+                context.preDelayRemaining = 0;
             }
 
             // --- Per-block parameter calculations ---
-            const preDelaySamples = (p_pd * sampleRate * 0.001) | 0;
+            const preDelayTarget = Math.min(context.preDelayBuffer[0].buffer.length - 1,
+                p_pd * sampleRate * 0.001);
+            if (preDelayTarget !== context.preDelayTarget) {
+                const frames = Math.max(1, Math.ceil(sampleRate * 0.005));
+                context.preDelayTarget = preDelayTarget;
+                context.preDelayStep = (preDelayTarget - context.preDelayCurrent) / frames;
+                context.preDelayRemaining = frames;
+            }
             const baseDelaySamplesParam = p_bd * sampleRate * 0.001;
             const spreadSamplesParam = p_ds * sampleRate * 0.001;
             const densityLines = p_dt; 
@@ -186,6 +198,8 @@ class FDNReverbPlugin extends PluginBase {
             // the left wet tap and channels 1+ receive the right wet tap.
             // --- Main Sample Processing Loop (Hot Path) ---
             for (let i = 0; i < blockSize; i++) {
+                const elapsed = Math.min(i, context.preDelayRemaining);
+                const preDelaySamples = context.preDelayCurrent + context.preDelayStep * elapsed;
                 // Update LFO phases once per sample for all potential lines
                 for (let lineIdx = 0; lineIdx < 8; lineIdx++) {
                     lfoPhases[lineIdx] += lfoIncrement;
@@ -205,8 +219,20 @@ class FDNReverbPlugin extends PluginBase {
                         let fdnTankInput;
 
                         if (preDelaySamples > 0 && preDelayBufferLength > 0) {
-                            const readPos = (preDelayLine.pos - preDelaySamples + preDelayBufferLength) % preDelayBufferLength;
-                            fdnTankInput = preDelayBuffer[readPos];
+                            if (preDelaySamples < 1) {
+                                const previous = preDelayBuffer[
+                                    (preDelayLine.pos - 1 + preDelayBufferLength) % preDelayBufferLength];
+                                fdnTankInput = currentInputSample +
+                                    preDelaySamples * (previous - currentInputSample);
+                            } else {
+                                let read = preDelayLine.pos - preDelaySamples;
+                                while (read < 0) read += preDelayBufferLength;
+                                const first = Math.floor(read) % preDelayBufferLength;
+                                const second = first + 1 === preDelayBufferLength ? 0 : first + 1;
+                                const fraction = read - Math.floor(read);
+                                fdnTankInput = preDelayBuffer[first] +
+                                    fraction * (preDelayBuffer[second] - preDelayBuffer[first]);
+                            }
                         } else {
                             fdnTankInput = currentInputSample;
                         }
@@ -305,6 +331,14 @@ class FDNReverbPlugin extends PluginBase {
                         data[channelGlobalOffset] = currentInputSample * dryMix + wetSignalForThisChannel * wetMix;
                 }
 
+            }
+            if (blockSize >= context.preDelayRemaining) {
+                context.preDelayCurrent = context.preDelayTarget;
+                context.preDelayStep = 0;
+                context.preDelayRemaining = 0;
+            } else {
+                context.preDelayCurrent += context.preDelayStep * blockSize;
+                context.preDelayRemaining -= blockSize;
             }
             return data;
         `);

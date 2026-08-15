@@ -950,10 +950,11 @@ private:
     // Radio off models the transmitter going dark: the RF carrier amplitude is
     // zeroed, so the receiver only picks up its own thermal noise and the
     // limiter/discriminator chain turns it into full-scale FM hiss.
-    signalAmplitude_ = params_.radio >= 0.5F
-                           ? static_cast<float>(std::pow(10.0, (params_.signal - 60.0F) / 20.0F))
-                           : 0.0F;
+    signalAmplitudeTarget_ =
+        params_.radio >= 0.5F ? static_cast<float>(std::pow(10.0, (params_.signal - 60.0F) / 20.0F))
+                              : 0.0F;
     noiseSigma_ = 0.0005F;
+    const bool if_band_changed = !controlsConfigured_ || ifBandKhz_ != params_.ifBand;
     ifBandKhz_ = params_.ifBand;
     multipathTarget_ = params_.multipath * 0.01F;
     pathDelayTargetUs_ = params_.pathDelay;
@@ -968,13 +969,16 @@ private:
     if (!controlsConfigured_) {
       processingAmountCurrent_ = static_cast<double>(processingAmountTarget_);
       processingDriveCurrent_ = static_cast<double>(processingDriveTarget_);
+      signalAmplitudeCurrent_ = static_cast<double>(signalAmplitudeTarget_);
       multipathCurrent_ = static_cast<double>(multipathTarget_);
       pathDelayCurrentUs_ = static_cast<double>(pathDelayTargetUs_);
       outputGainCurrent_ = static_cast<double>(outputGainTarget_);
       mixCurrent_ = static_cast<double>(mixTarget_);
     }
     coreRate_ = ratePlan_->core;
-    configureIfFilters();
+    if (if_band_changed) {
+      configureIfFilters();
+    }
     pilotTx_.configure(19000.0, ratePlan_->mpx);
     pilotRx_.configure(19000.0, ratePlan_->mpx);
     pilotBaseSine_ = pilotRx_.stepSine;
@@ -1106,6 +1110,9 @@ private:
                          (static_cast<double>(multipathTarget_) - multipathCurrent_);
     pathDelayCurrentUs_ += static_cast<double>(controlAlphaCore_) *
                            (static_cast<double>(pathDelayTargetUs_) - pathDelayCurrentUs_);
+    signalAmplitudeCurrent_ +=
+        static_cast<double>(controlAlphaCore_) *
+        (static_cast<double>(signalAmplitudeTarget_) - signalAmplitudeCurrent_);
     const float multipath_amount = static_cast<float>(multipathCurrent_);
     if (tuningRampRemaining_ > 0u) {
       --tuningRampRemaining_;
@@ -1150,8 +1157,9 @@ private:
     multipathPosition_ =
         multipathPosition_ + 1u == multipathDelay_.size() ? 0u : multipathPosition_ + 1u;
 
-    signal.real *= signalAmplitude_;
-    signal.imag *= signalAmplitude_;
+    const float signal_amplitude = static_cast<float>(signalAmplitudeCurrent_);
+    signal.real *= signal_amplitude;
+    signal.imag *= signal_amplitude;
     signal.real += noiseSigma_ * noise_.next();
     signal.imag += noiseSigma_ * noise_.next();
     const float tuned_real = signal.real * static_cast<float>(tuning_.cosine) -
@@ -1292,7 +1300,7 @@ private:
   float processingAmountTarget_ = 0.0F;
   float processingDriveTarget_ = 1.0F;
   float limiterRelease_ = 0.999F;
-  float signalAmplitude_ = 1.0F;
+  float signalAmplitudeTarget_ = 1.0F;
   float noiseSigma_ = 0.0005F;
   float tuningKhz_ = 0.0F;
   float ifBandKhz_ = 230.0F;
@@ -1311,6 +1319,7 @@ private:
   float controlAlphaCore_ = 1.0F;
   double processingAmountCurrent_ = 0.0;
   double processingDriveCurrent_ = 1.0;
+  double signalAmplitudeCurrent_ = 1.0;
   double multipathCurrent_ = 0.0;
   double pathDelayCurrentUs_ = 5.0;
   double outputGainCurrent_ = 1.0;

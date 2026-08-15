@@ -130,6 +130,9 @@ void testPlugin(const effetune::KernelDescriptor *descriptor, std::uint32_t tap_
   checkFrame(harness, 0u, true);
 
   active_params[1] = 1.0F;
+  for (std::uint32_t processed = 0u; processed < 240u; processed += kFrames) {
+    harness.process(active_params, amplitude);
+  }
   harness.process(active_params, amplitude);
   harness.telemetryTick();
   DYNAMICS_CHECK(harness.read() == 20u);

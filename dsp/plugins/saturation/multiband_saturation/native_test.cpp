@@ -168,8 +168,10 @@ void testBandChangesPreserveFilterState() {
   control.process(control_block, 2u, 127u);
   check(changed_block != control_block, "band parameters alter only rendered bands");
 
-  const std::vector<float> changed_suffix = renderSequence(changed, defaults, 2u, 20u, 5001u);
-  const std::vector<float> control_suffix = renderSequence(control, defaults, 2u, 20u, 5001u);
+  static_cast<void>(renderSequence(changed, defaults, 2u, 3u, 5001u));
+  static_cast<void>(renderSequence(control, defaults, 2u, 3u, 5001u));
+  const std::vector<float> changed_suffix = renderSequence(changed, defaults, 2u, 17u, 5394u);
+  const std::vector<float> control_suffix = renderSequence(control, defaults, 2u, 17u, 5394u);
   check(changed_suffix == control_suffix, "band changes preserve all Linkwitz-Riley state");
 }
 

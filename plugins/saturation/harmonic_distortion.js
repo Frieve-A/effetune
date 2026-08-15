@@ -28,28 +28,58 @@ class HarmonicDistortionPlugin extends PluginBase {
 
             // Convert harmonic percentages to polynomial coefficients [-1.0 to 1.0]
             // The negative sign is intentional, flipping the distortion curve shape.
-            const a2 = -secondHarm * 0.01;
-            const a3 = -thirdHarm * 0.01;
-            const a4 = -fourthHarm * 0.01;
-            const a5 = -fifthHarm * 0.01;
-
-            // Pre-calculate inverse sensitivity for efficient level compensation via multiplication.
-            // Add a small epsilon to prevent division by zero if sensitivity can be zero.
-            // Ensure sensitivity parameter range design prevents issues with very small values.
-            const invSensitivity = 1.0 / (sensitivity + 1e-9); // Use epsilon for safety
+            if (!context.harmonicScratch) context.harmonicScratch = new Float64Array(5);
+            const target = context.harmonicScratch;
+            target[0] = -Math.fround(secondHarm) * 0.01;
+            target[1] = -Math.fround(thirdHarm) * 0.01;
+            target[2] = -Math.fround(fourthHarm) * 0.01;
+            target[3] = -Math.fround(fifthHarm) * 0.01;
+            target[4] = Math.fround(sensitivity);
+            const rampFrames = Math.max(1, Math.ceil(parameters.sampleRate * 0.005));
+            if (!context.harmonicCurrent) {
+                context.harmonicCurrent = new Float64Array(5);
+                context.harmonicTarget = new Float64Array(5);
+                context.harmonicStep = new Float64Array(5);
+                context.harmonicCurrent.set(target);
+                context.harmonicTarget.set(target);
+                context.harmonicRemaining = 0;
+            } else if (target[0] !== context.harmonicTarget[0] ||
+                target[1] !== context.harmonicTarget[1] ||
+                target[2] !== context.harmonicTarget[2] ||
+                target[3] !== context.harmonicTarget[3] ||
+                target[4] !== context.harmonicTarget[4]) {
+                context.harmonicTarget.set(target);
+                for (let index = 0; index < 5; ++index) {
+                    context.harmonicStep[index] =
+                        (target[index] - context.harmonicCurrent[index]) / rampFrames;
+                }
+                context.harmonicRemaining = rampFrames;
+            }
 
             // --- Main Processing Loop ---
             // Process samples block by block, channel by channel
-            for (let ch = 0; ch < channelCount; ++ch) {
-                const offset = ch * blockSize; // Calculate base index for the current channel
-
-                // Process each sample in the block for the current channel
-                for (let i = 0; i < blockSize; ++i) {
-                    const index = offset + i;    // Direct index into the data buffer
+            const harmonicCurrent = context.harmonicCurrent;
+            for (let i = 0; i < blockSize; ++i) {
+                if (context.harmonicRemaining > 0) {
+                    for (let parameter = 0; parameter < 5; ++parameter) {
+                        context.harmonicCurrent[parameter] += context.harmonicStep[parameter];
+                    }
+                    if (--context.harmonicRemaining === 0) {
+                        context.harmonicCurrent.set(context.harmonicTarget);
+                    }
+                }
+                const a2 = harmonicCurrent[0];
+                const a3 = harmonicCurrent[1];
+                const a4 = harmonicCurrent[2];
+                const a5 = harmonicCurrent[3];
+                const currentSensitivity = harmonicCurrent[4];
+                const invSensitivity = 1.0 / (currentSensitivity + 1e-9);
+                for (let ch = 0; ch < channelCount; ++ch) {
+                    const index = ch * blockSize + i;
                     const x = data[index];       // Get the original input sample
 
                     // Apply sensitivity scaling to the input signal before distortion
-                    const x_scaled = x * sensitivity;
+                    const x_scaled = x * currentSensitivity;
 
                     // --- Calculate Polynomial Terms ---
                     // Calculate powers of the scaled input efficiently
@@ -71,8 +101,8 @@ class HarmonicDistortionPlugin extends PluginBase {
                     // Compensate output level by multiplying with the pre-calculated inverse sensitivity.
                     // This replaces division (y_nl / sensitivity) with multiplication for potential speed gain.
                     data[index] = y_nl * invSensitivity;
-                } // End Sample Loop
-            } // End Channel Loop
+                }
+            }
 
             // Return the modified data buffer
             return data;

@@ -35,12 +35,14 @@ const NATIVE_DIRECT_REFERENCE_ENGINES = new Set([
   'native-five-band-fir-peq-direct-double-v1',
   'native-group-delay-eq-direct-double-v1',
   'native-ir-direct-double-v2',
-  'native-room-eq-direct-double-v1'
+  'native-room-eq-direct-double-v1',
+  'native-room-eq-direct-double-v2'
 ]);
 
 const PINNED_NATIVE_DIRECT_REFERENCE_HASHES = new Map([
   ['native-ir-direct-double-v2', '415b6a5d0923bf1040813d5920d9e8a6b730ba5df73ec4256af84c309b13568a'],
-  ['native-room-eq-direct-double-v1', '83045565caf287233033c9a0221826e637f07068df1af63eb59cb246b274133f']
+  ['native-room-eq-direct-double-v1', '83045565caf287233033c9a0221826e637f07068df1af63eb59cb246b274133f'],
+  ['native-room-eq-direct-double-v2', '35e819cf73a00e7985580701ae3e468f1cead2f3b595e1061471ba0cd39e65be']
 ]);
 
 export const PRODUCTION_NATIVE_PROMOTED_REFERENCE_ENGINE =
@@ -170,7 +172,8 @@ export function packParams(schema, params = {}) {
   for (const field of schema.fields) {
     const keys = fieldKeys(field);
     for (let index = 0; index < keys.length; index++) {
-      const fallback = Array.isArray(field.default) ? field.default[index] : field.default;
+      const fallback = field.defaults?.[index] ??
+        (Array.isArray(field.default) ? field.default[index] : field.default);
       const hasObjectArray = field.objectArrayKey && Array.isArray(params[field.objectArrayKey]);
       const objectValue = hasObjectArray
         ? params[field.objectArrayKey][index]?.[field.memberKey]
@@ -897,6 +900,7 @@ export async function runWasmPipelineCase({
   const engine = engineCreate();
   if (!engine) throw new Error('et_engine_create returned an invalid handle');
   const instanceHandles = new Map();
+  const currentParameters = new Map();
   const createdInstances = [];
   try {
     const preparedFrames = testCase.blockSize < 32 ? 32 : testCase.blockSize;
@@ -912,6 +916,41 @@ export async function runWasmPipelineCase({
       telemetryBytes: WASM_PIPELINE_TELEMETRY_BYTES
     });
     const seed = seedWords(testCase.seed);
+    const stagePluginParameters = plugin => {
+      const type = plugin.definition?.type;
+      const schema = schemas.get(type);
+      const dspInstance = instanceHandles.get(plugin);
+      const parameters = currentParameters.get(plugin) ?? {};
+      const packed = packParams(schema, parameters);
+      let paramsPtr = 0;
+      try {
+        if (packed.byteLength > 0) {
+          paramsPtr = malloc(packed.byteLength);
+          if (!paramsPtr) throw new Error(`WASM DSP malloc failed for ${type} parameters`);
+          new Float32Array(memory.buffer, paramsPtr, packed.length).set(packed);
+        }
+        checkStatus('et_instance_set_params', setParams(
+          engine, dspInstance, paramsPtr, packed.length, paramsLayoutHash(schema), 0
+        ));
+      } finally {
+        if (paramsPtr) free(paramsPtr);
+      }
+      if (schema.structured) {
+        if (!setParamBytes) throw new Error('WASM DSP artifact is missing structured parameter staging');
+        const packedBytes = packStructuredParams(schema, parameters);
+        const paramBytesPtr = malloc(packedBytes.byteLength);
+        if (!paramBytesPtr) throw new Error(`WASM DSP malloc failed for ${type} structured parameters`);
+        try {
+          new Uint8Array(memory.buffer, paramBytesPtr, packedBytes.byteLength).set(packedBytes);
+          checkStatus('et_instance_set_param_bytes', setParamBytes(
+            engine, dspInstance, paramBytesPtr, packedBytes.byteLength,
+            paramsLayoutHash(schema), 0
+          ));
+        } finally {
+          free(paramBytesPtr);
+        }
+      }
+    };
     for (const plugin of activePlugins) {
       const type = plugin.definition?.type;
       const schema = schemas.get(type);
@@ -931,46 +970,8 @@ export async function runWasmPipelineCase({
         seed.low,
         seed.high
       ));
-
-      const packed = packParams(schema, plugin.params ?? {});
-      let paramsPtr = 0;
-      try {
-        if (packed.byteLength > 0) {
-          paramsPtr = malloc(packed.byteLength);
-          if (!paramsPtr) throw new Error(`WASM DSP malloc failed for ${type} parameters`);
-          new Float32Array(memory.buffer, paramsPtr, packed.length).set(packed);
-        }
-        checkStatus('et_instance_set_params', setParams(
-          engine,
-          dspInstance,
-          paramsPtr,
-          packed.length,
-          paramsLayoutHash(schema),
-          0
-        ));
-      } finally {
-        if (paramsPtr) free(paramsPtr);
-      }
-
-      if (schema.structured) {
-        if (!setParamBytes) throw new Error('WASM DSP artifact is missing structured parameter staging');
-        const packedBytes = packStructuredParams(schema, plugin.params ?? {});
-        const paramBytesPtr = malloc(packedBytes.byteLength);
-        if (!paramBytesPtr) throw new Error(`WASM DSP malloc failed for ${type} structured parameters`);
-        try {
-          new Uint8Array(memory.buffer, paramBytesPtr, packedBytes.byteLength).set(packedBytes);
-          checkStatus('et_instance_set_param_bytes', setParamBytes(
-            engine,
-            dspInstance,
-            paramBytesPtr,
-            packedBytes.byteLength,
-            paramsLayoutHash(schema),
-            0
-          ));
-        } finally {
-          free(paramBytesPtr);
-        }
-      }
+      currentParameters.set(plugin, structuredClone(plugin.params ?? {}));
+      stagePluginParameters(plugin);
     }
 
     const descriptor = buildDspPipelineDescriptor(pipeline, {
@@ -992,10 +993,38 @@ export async function runWasmPipelineCase({
       free(descriptorPtr);
     }
 
+    const events = [...(testCase.events ?? [])].sort((left, right) => left.frame - right.frame);
+    if (events.some(event => !Number.isInteger(event.frame) ||
+      event.frame < 0 || event.frame >= testCase.frames)) {
+      throw new Error('WASM DSP pipeline events must use in-range integer frame offsets');
+    }
+    let eventIndex = 0;
+    const blockSplits = testCase.blockSplits ?? null;
+    let splitIndex = 0;
+    let splitRemaining = blockSplits?.[0] ?? testCase.blockSize;
+    if (blockSplits?.some(frames => !Number.isInteger(frames) || frames <= 0) ||
+      blockSplits && blockSplits.reduce((total, frames) => total + frames, 0) !== testCase.frames) {
+      throw new Error('WASM DSP pipeline block splits must cover the complete case');
+    }
     const output = new Float32Array(input.length);
     let startFrame = 0;
     while (startFrame < testCase.frames) {
-      const blockFrames = Math.min(testCase.blockSize, testCase.frames - startFrame);
+      while (eventIndex < events.length && events[eventIndex].frame === startFrame) {
+        const event = events[eventIndex++];
+        const plugin = activePlugins[event.plugin];
+        if (!plugin) throw new Error(`WASM DSP pipeline event has invalid plugin index ${event.plugin}`);
+        currentParameters.set(plugin, {
+          ...currentParameters.get(plugin),
+          ...(event.params ?? {})
+        });
+        stagePluginParameters(plugin);
+      }
+      const nextEvent = events[eventIndex]?.frame ?? testCase.frames;
+      if (nextEvent < startFrame) throw new Error(`WASM DSP pipeline event at ${nextEvent} was not consumed`);
+      let blockFrames = Math.min(splitRemaining, testCase.frames - startFrame);
+      if (nextEvent > startFrame && nextEvent < startFrame + blockFrames) {
+        blockFrames = nextEvent - startFrame;
+      }
       const audioPtr = arenaPtr(engine);
       const audio = new Float32Array(memory.buffer, audioPtr, testCase.channels * blockFrames);
       copyInputBlock(input, testCase.frames, testCase.channels, startFrame, blockFrames, audio);
@@ -1009,8 +1038,21 @@ export async function runWasmPipelineCase({
       ));
       copyOutputBlock(audio, output, testCase.frames, testCase.channels, startFrame, blockFrames);
       startFrame += blockFrames;
+      splitRemaining -= blockFrames;
+      if (splitRemaining === 0 && startFrame < testCase.frames) {
+        splitIndex++;
+        splitRemaining = blockSplits?.[splitIndex] ?? testCase.blockSize;
+      }
     }
-    return output;
+    if (!testCase.captureFinalState) return output;
+    return {
+      output,
+      state: activePlugins.map((plugin, index) => ({
+        index,
+        type: plugin.definition.type,
+        parameters: structuredClone(currentParameters.get(plugin))
+      }))
+    };
   } finally {
     for (let index = createdInstances.length - 1; index >= 0; index--) {
       instanceDestroy(engine, createdInstances[index]);

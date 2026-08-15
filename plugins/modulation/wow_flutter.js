@@ -38,10 +38,6 @@ class WowFlutterPlugin extends PluginBase {
             const MIN_Q = 0.01; // Minimum Q for Biquad filter stability
 
             // Pre-calculate loop-invariant values derived from parameters
-            const phaseIncrement = TWO_PI * rate / sampleRate;
-            const channelPhaseRad = channelPhase * DEG_TO_RAD;
-            const syncRatio = channelSync * 0.01; // Convert sync percentage to a ratio [0, 1]
-            const oneMinusSyncRatio = 1.0 - syncRatio; // Complementary ratio for noise blending
             const delayMsToSamplesMultiplier = sampleRate * 0.001; // Factor to convert ms to samples
 
             // --- Context Initialization ---
@@ -107,12 +103,58 @@ class WowFlutterPlugin extends PluginBase {
                     norm_a1 = (-2.0 * cosOmega) * a0_inv;
                     norm_a2 = (1.0 - alpha) * a0_inv;
                 } // else: Coefficients remain in the initial pass-through state
-            } else if (fc <= 0.0) {
-                // If filter is effectively bypassed (cutoff at 0Hz), reset filter states to zero
-                // This prevents stale state values from affecting the signal if the filter is re-enabled later
-                context.common_x1 = 0.0; context.common_x2 = 0.0;
-                context.ch_x1.fill(0.0); context.ch_x2.fill(0.0);
             } // else (fc >= fs/2): Coefficients remain pass-through due to potential instability or aliasing
+
+            const targetB0 = norm_b0, targetB1 = norm_b1, targetB2 = norm_b2;
+            const targetA1 = norm_a1, targetA2 = norm_a2;
+            if (context.automationRate === undefined) {
+                context.automationRate = rate; context.automationDepth = depth;
+                context.automationRandomness = randomness;
+                context.automationChannelPhase = channelPhase;
+                context.automationChannelSync = channelSync;
+                context.automationB0 = targetB0; context.automationB1 = targetB1;
+                context.automationB2 = targetB2; context.automationA1 = targetA1;
+                context.automationA2 = targetA2;
+                context.automationTargetRate = rate;
+                context.automationTargetDepth = depth;
+                context.automationTargetRandomness = randomness;
+                context.automationTargetChannelPhase = channelPhase;
+                context.automationTargetChannelSync = channelSync;
+                context.automationTargetB0 = targetB0; context.automationTargetB1 = targetB1;
+                context.automationTargetB2 = targetB2; context.automationTargetA1 = targetA1;
+                context.automationTargetA2 = targetA2;
+                context.automationRampRemaining = 0;
+            } else if (context.automationTargetRate !== rate ||
+                context.automationTargetDepth !== depth ||
+                context.automationTargetRandomness !== randomness ||
+                context.automationTargetChannelPhase !== channelPhase ||
+                context.automationTargetChannelSync !== channelSync ||
+                context.automationTargetB0 !== targetB0 ||
+                context.automationTargetB1 !== targetB1 ||
+                context.automationTargetB2 !== targetB2 ||
+                context.automationTargetA1 !== targetA1 ||
+                context.automationTargetA2 !== targetA2) {
+                context.automationTargetRate = rate;
+                context.automationTargetDepth = depth;
+                context.automationTargetRandomness = randomness;
+                context.automationTargetChannelPhase = channelPhase;
+                context.automationTargetChannelSync = channelSync;
+                context.automationTargetB0 = targetB0; context.automationTargetB1 = targetB1;
+                context.automationTargetB2 = targetB2; context.automationTargetA1 = targetA1;
+                context.automationTargetA2 = targetA2;
+                const requestedRampFrames = Math.ceil(sampleRate * 0.005);
+                context.automationRampRemaining = requestedRampFrames > 1 ?
+                    requestedRampFrames : 1;
+            }
+            let smoothedRate = context.automationRate;
+            let smoothedDepth = context.automationDepth;
+            let smoothedRandomness = context.automationRandomness;
+            let smoothedChannelPhase = context.automationChannelPhase;
+            let smoothedChannelSync = context.automationChannelSync;
+            norm_b0 = context.automationB0; norm_b1 = context.automationB1;
+            norm_b2 = context.automationB2; norm_a1 = context.automationA1;
+            norm_a2 = context.automationA2;
+            let automationRampRemaining = context.automationRampRemaining;
 
 
             // --- Local State Variables ---
@@ -128,6 +170,34 @@ class WowFlutterPlugin extends PluginBase {
 
             // --- Main Processing Loop (Iterates over each sample in the block) ---
             for (let i = 0; i < blockSize; ++i) {
+
+                if (automationRampRemaining !== 0) {
+                    const rampScale = 1 / automationRampRemaining;
+                    smoothedRate += (rate - smoothedRate) * rampScale;
+                    smoothedDepth += (depth - smoothedDepth) * rampScale;
+                    smoothedRandomness +=
+                        (randomness - smoothedRandomness) * rampScale;
+                    smoothedChannelPhase +=
+                        (channelPhase - smoothedChannelPhase) * rampScale;
+                    smoothedChannelSync +=
+                        (channelSync - smoothedChannelSync) * rampScale;
+                    norm_b0 += (targetB0 - norm_b0) * rampScale;
+                    norm_b1 += (targetB1 - norm_b1) * rampScale;
+                    norm_b2 += (targetB2 - norm_b2) * rampScale;
+                    norm_a1 += (targetA1 - norm_a1) * rampScale;
+                    norm_a2 += (targetA2 - norm_a2) * rampScale;
+                    if (--automationRampRemaining === 0) {
+                        smoothedRate = rate; smoothedDepth = depth;
+                        smoothedRandomness = randomness;
+                        smoothedChannelPhase = channelPhase; smoothedChannelSync = channelSync;
+                        norm_b0 = targetB0; norm_b1 = targetB1; norm_b2 = targetB2;
+                        norm_a1 = targetA1; norm_a2 = targetA2;
+                    }
+                }
+                const phaseIncrement = TWO_PI * smoothedRate / sampleRate;
+                const channelPhaseRad = smoothedChannelPhase * DEG_TO_RAD;
+                const syncRatio = smoothedChannelSync * 0.01;
+                const oneMinusSyncRatio = 1.0 - syncRatio;
 
                 // Update base LFO phase and wrap it within [0, 2*PI)
                 currentPhase += phaseIncrement;
@@ -172,9 +242,9 @@ class WowFlutterPlugin extends PluginBase {
                     // Base delay modulated by the LFO (sine wave shifted and scaled to [0, 1])
                     const baseDelay = (1.0 - Math.sin(currentChannelPhase)) * 0.5;
                     // Noise contribution to the delay, scaled by the randomness parameter
-                    const noiseContribution = filteredNoise * randomness; // Noise [0, 1] -> contribution [0, randomness] ms
+                    const noiseContribution = filteredNoise * smoothedRandomness; // Noise [0, 1] -> contribution [0, randomness] ms
                     // Calculate the total delay in milliseconds, scaled by depth and randomness
-                    const totalDelayMs = baseDelay * depth + noiseContribution;
+                    const totalDelayMs = baseDelay * smoothedDepth + noiseContribution;
 
                     // --- Apply Delay ---
                     // Convert total delay from milliseconds to fractional samples
@@ -223,6 +293,15 @@ class WowFlutterPlugin extends PluginBase {
             context.sampleBufferPos = bufferPos;
             context.common_x1 = common_x1; // Store updated common Biquad state 1
             context.common_x2 = common_x2; // Store updated common Biquad state 2
+            context.automationRate = smoothedRate;
+            context.automationDepth = smoothedDepth;
+            context.automationRandomness = smoothedRandomness;
+            context.automationChannelPhase = smoothedChannelPhase;
+            context.automationChannelSync = smoothedChannelSync;
+            context.automationB0 = norm_b0; context.automationB1 = norm_b1;
+            context.automationB2 = norm_b2; context.automationA1 = norm_a1;
+            context.automationA2 = norm_a2;
+            context.automationRampRemaining = automationRampRemaining;
             // Channel-specific Biquad states (context.ch_x1, context.ch_x2) were updated in-place via array references
 
             // Return the modified output data buffer

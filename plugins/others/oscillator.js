@@ -46,7 +46,7 @@ class OscillatorPlugin extends PluginBase {
             const MAX_BANDLIMITED_TABLE_CACHE_ENTRIES = 64;
 
             // Calculate linear volume gain from dB
-            const volume = (volumeDb <= -96.0) ? 0.0 : Math.pow(10.0, volumeDb / 20.0);
+            const targetVolume = (volumeDb <= -96.0) ? 0.0 : Math.pow(10.0, Math.fround(volumeDb) / 20.0);
 
             // Calculate phase increment per sample for oscillators
             const safeSampleRate = (sampleRate > 0) ? sampleRate : 44100.0;
@@ -69,6 +69,37 @@ class OscillatorPlugin extends PluginBase {
                 pulseWidthSamples = maxPulseWidthSamples;
             }
             const pulseDurationSamples = pulseWidthSamples * 2.0; // Width * 2 for full cosine cycle
+            if (!context.oscillatorControlScratch) {
+                context.oscillatorControlScratch = new Float64Array(5);
+            }
+            const targetControls = context.oscillatorControlScratch;
+            targetControls[0] = targetVolume;
+            targetControls[1] = panGainL;
+            targetControls[2] = panGainR;
+            targetControls[3] = intervalSamples;
+            targetControls[4] = pulseWidthSamples;
+            const rampFrames = Math.max(1, Math.ceil(safeSampleRate * 0.005));
+            if (!context.oscillatorControls) {
+                context.oscillatorControls = new Float64Array(5);
+                context.targetOscillatorControls = new Float64Array(5);
+                context.oscillatorControlSteps = new Float64Array(5);
+                context.oscillatorControls.set(targetControls);
+                context.targetOscillatorControls.set(targetControls);
+                context.oscillatorRampRemaining = 0;
+            } else {
+                let changed = false;
+                for (let i = 0; i < 5; i++) if (context.targetOscillatorControls[i] !== targetControls[i]) changed = true;
+                if (changed) {
+                    context.targetOscillatorControls.set(targetControls);
+                    for (let i = 0; i < 5; i++) {
+                        context.oscillatorControlSteps[i] = (targetControls[i] - context.oscillatorControls[i]) / rampFrames;
+                    }
+                    context.oscillatorRampRemaining = rampFrames;
+                }
+            }
+            const oscillatorControls = context.oscillatorControls;
+            const oscillatorControlSteps = context.oscillatorControlSteps;
+            const oscillatorRampRemaining = context.oscillatorRampRemaining;
             const timeIncrementPerSample = 1.0 / safeSampleRate;
 
             // --- Generate Source Samples (Mono) ---
@@ -82,12 +113,16 @@ class OscillatorPlugin extends PluginBase {
 
             // Logic selection outside the main sample loop
             if (waveform === 'impulse') {
-                let impulsePosition = pulseTime % intervalSamples;
+                let impulsePosition = pulseTime;
                 for (let i = 0; i < blockSize; i++) {
+                    const controlFrame = Math.min(i + 1, oscillatorRampRemaining);
+                    const currentInterval = oscillatorControls[3] +
+                        oscillatorControlSteps[3] * controlFrame;
+                    if (impulsePosition >= currentInterval) impulsePosition %= currentInterval;
                     samples[i] = impulsePosition < 1.0 ? 1.0 : 0.0;
                     impulsePosition += 1.0;
-                    if (impulsePosition >= intervalSamples) {
-                        impulsePosition -= intervalSamples;
+                    if (impulsePosition >= currentInterval) {
+                        impulsePosition -= currentInterval;
                     }
                 }
                 pulseTime = impulsePosition;
@@ -246,12 +281,18 @@ class OscillatorPlugin extends PluginBase {
             if (mode === 'pulsed' && waveform !== 'impulse') {
                 for (let i = 0; i < blockSize; i++) {
                     // Calculate position within current pulse cycle
-                    const pulsePosition = pulseTime % intervalSamples;
+                    const controlFrame = Math.min(i + 1, oscillatorRampRemaining);
+                    const currentInterval = oscillatorControls[3] +
+                        oscillatorControlSteps[3] * controlFrame;
+                    const currentPulseWidth = oscillatorControls[4] +
+                        oscillatorControlSteps[4] * controlFrame;
+                    const currentPulseDuration = Math.min(currentPulseWidth, currentInterval * 0.5) * 2;
+                    const pulsePosition = pulseTime % currentInterval;
                     
                     let pulseGain = 0.0;
-                    if (pulsePosition < pulseDurationSamples) {
+                    if (pulsePosition < currentPulseDuration) {
                         // Within pulse duration, apply cosine gain
-                        const x = pulsePosition / pulseDurationSamples; // Normalize to 0-1
+                        const x = pulsePosition / currentPulseDuration; // Normalize to 0-1
                         pulseGain = 0.5 * (1.0 - Math.cos(TWO_PI * x));
                     }
                     
@@ -273,14 +314,28 @@ class OscillatorPlugin extends PluginBase {
                     channelPanGain = (ch === 0) ? panGainL : panGainR;
                     if (ch > 1) channelPanGain = 0.0; // Silence channels beyond stereo
                 }
-                const finalChannelGain = volume * channelPanGain;
-
-                if (finalChannelGain !== 0.0) { // Skip processing if gain is zero
-                    for (let i = 0; i < blockSize; i++) {
-                        data[offset + i] += samples[i] * finalChannelGain; // Mix with input
+                for (let i = 0; i < blockSize; i++) {
+                    const controlFrame = Math.min(i + 1, oscillatorRampRemaining);
+                    if (channelCount >= 2) {
+                        channelPanGain = ch === 0
+                            ? oscillatorControls[1] + oscillatorControlSteps[1] * controlFrame
+                            : oscillatorControls[2] + oscillatorControlSteps[2] * controlFrame;
+                        if (ch > 1) channelPanGain = 0;
                     }
+                    const currentVolume = oscillatorControls[0] +
+                        oscillatorControlSteps[0] * controlFrame;
+                    data[offset + i] += samples[i] * currentVolume * channelPanGain;
                 }
             } // End channel loop
+
+            const controlsAdvanced = Math.min(blockSize, context.oscillatorRampRemaining);
+            for (let i = 0; i < 5; i++) {
+                context.oscillatorControls[i] += context.oscillatorControlSteps[i] * controlsAdvanced;
+            }
+            context.oscillatorRampRemaining -= controlsAdvanced;
+            if (context.oscillatorRampRemaining === 0) {
+                context.oscillatorControls.set(context.targetOscillatorControls);
+            }
 
             // --- Context State Update ---
             // Note: context.phase was updated within the oscillator block

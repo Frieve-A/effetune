@@ -46,16 +46,25 @@ class ChannelDividerPlugin extends PluginBase {
     
       // --- Filter Coefficient Calculation (must be done first to determine section counts) ---
       // Strict Linkwitz-Riley implementation: Butterworth_N cascaded twice
-      let needsReset = !context.filterStates || !context.filterConfig ||
-                       context.filterConfig.sampleRate !== sampleRate ||
-                       context.filterConfig.channelCount !== channelCount ||
-                       context.filterConfig.bandCount !== bandCount ||
-                       context.filterConfig.frequencies[0] !== frequencies[0] ||
-                       context.filterConfig.frequencies[1] !== frequencies[1] ||
-                       context.filterConfig.frequencies[2] !== frequencies[2] ||
-                       context.filterConfig.slopes[0] !== slopes[0] ||
-                       context.filterConfig.slopes[1] !== slopes[1] ||
-                       context.filterConfig.slopes[2] !== slopes[2];
+      const topologyReset = !context.filterStates || !context.filterConfig ||
+                            context.filterConfig.sampleRate !== sampleRate ||
+                            context.filterConfig.channelCount !== channelCount ||
+                            context.filterConfig.bandCount !== bandCount ||
+                            context.filterConfig.slopes[0] !== slopes[0] ||
+                            context.filterConfig.slopes[1] !== slopes[1] ||
+                            context.filterConfig.slopes[2] !== slopes[2];
+      let frequencyChanged = !topologyReset && frequencies.some((value, index) =>
+        index < bandCount - 1 && value !== context.filterConfig.frequencies[index]);
+      if (!frequencyChanged && context.transitionRemaining > 0) {
+        context.pendingFrequencies = null;
+        context.pendingCoeffs = null;
+      }
+      const queueFrequencyChange = frequencyChanged && context.transitionRemaining > 0;
+      if (queueFrequencyChange && context.pendingFrequencies &&
+          frequencies.every((value, index) => value === context.pendingFrequencies[index])) {
+        frequencyChanged = false;
+      }
+      const needsReset = topologyReset || frequencyChanged;
     
       if (needsReset || !context.cachedCoeffs) {
         // Helper functions for Linkwitz-Riley design
@@ -147,10 +156,10 @@ class ChannelDividerPlugin extends PluginBase {
           return lr;
         }
         
-        context.cachedCoeffs = [];
+        const designedCoeffs = [];
         for (let i = 0; i < 3; i++) {
           if (i >= bandCount - 1) {
-            context.cachedCoeffs[i] = null;
+            designedCoeffs[i] = null;
             continue;
           }
           
@@ -161,14 +170,14 @@ class ChannelDividerPlugin extends PluginBase {
           const lpSections = designLinkwitzRileySections(sampleRate, clampedFreq, Math.abs(slope), "lp");
           const hpSections = designLinkwitzRileySections(sampleRate, clampedFreq, Math.abs(slope), "hp");
           
-          context.cachedCoeffs[i] = {
+          designedCoeffs[i] = {
             lp: lpSections,
             hp: hpSections
           };
         }
         
         // Initialize filter states based on actual section counts
-        if (needsReset) {
+        if (topologyReset) {
           const dcOffset = 1e-25;
           
           const createSingleBiquadStateAndInit = () => {
@@ -180,6 +189,7 @@ class ChannelDividerPlugin extends PluginBase {
             return state;
           };
           
+          context.cachedCoeffs = designedCoeffs;
           context.filterStates = { lp: [], hp: [] };
           for (let i = 0; i < 3; i++) {
             if (i >= bandCount - 1) {
@@ -208,6 +218,9 @@ class ChannelDividerPlugin extends PluginBase {
             slopes: [...slopes]
           };
           
+          context.transitionRemaining = 0;
+          context.pendingFrequencies = null;
+          context.pendingCoeffs = null;
           context.fadeIn = {
             counter: 0,
             length: Math.min(blockSize, Math.ceil(sampleRate * 0.005))
@@ -215,20 +228,40 @@ class ChannelDividerPlugin extends PluginBase {
           
           // Allocate pingPongBuffer for multi-stage filtering
           // Stereo processing, so blockSize * 2
-          if (!context.pingPongBuffer || context.pingPongBuffer.length !== blockSize * 2) {
-            context.pingPongBuffer = new Float32Array(blockSize * 2);
+        } else if (frequencyChanged) {
+          const cloneStates = states => states.map(group => group.map(state => ({
+            x1: state.x1.slice(), x2: state.x2.slice(), y1: state.y1.slice(), y2: state.y2.slice()
+          })));
+          if (queueFrequencyChange) {
+            context.pendingFrequencies = frequencies.slice();
+            context.pendingCoeffs = designedCoeffs;
+          } else {
+            context.transitionCoeffs = designedCoeffs;
+            context.transitionStates = {
+              lp: cloneStates(context.filterStates.lp),
+              hp: cloneStates(context.filterStates.hp)
+            };
+            context.transitionRemaining = Math.max(1, Math.ceil(sampleRate * 0.005));
+            context.transitionTotal = context.transitionRemaining;
+            context.filterConfig.frequencies = frequencies.slice();
           }
         }
       }
     
       // --- Buffer Management ---
       const requiredTempBufferSize = blockSize * 2; // Stereo
-      if (!context.tempBuffers || context.tempBuffers[0].length !== requiredTempBufferSize) {
+      if (!context.tempBuffers || context.tempBuffers[0].length !== requiredTempBufferSize ||
+          !context.activeFrameOutput || context.activeFrameOutput.length !== channelCount) {
         context.tempBuffers = [
           new Float32Array(requiredTempBufferSize), // inputCopy
           new Float32Array(requiredTempBufferSize), // temp1 (can be final output or intermediate)
           new Float32Array(requiredTempBufferSize)  // temp2 (can be final output or intermediate)
         ];
+        context.transitionBandOutput = new Float32Array(channelCount * blockSize);
+        context.sourceOutput = new Float32Array(channelCount * blockSize);
+        context.pingPongBuffer = new Float32Array(requiredTempBufferSize);
+        context.activeFrameOutput = new Float64Array(channelCount);
+        context.targetFrameOutput = new Float64Array(channelCount);
       }
       const [inputCopy, temp1, temp2] = context.tempBuffers;
     
@@ -304,49 +337,135 @@ class ChannelDividerPlugin extends PluginBase {
         }
       }
     
-      function copyToOutput(sourceBuffer, outputChannelStart) {
+      function copyToOutput(sourceBuffer, outputChannelStart, output) {
         for (let ch = 0; ch < 2; ++ch) {
-          data.set(sourceBuffer.subarray(ch * blockSize, (ch + 1) * blockSize), (outputChannelStart + ch) * blockSize);
+          output.set(sourceBuffer.subarray(ch * blockSize, (ch + 1) * blockSize), (outputChannelStart + ch) * blockSize);
+        }
+      }
+
+      function processCascadeSample(input, channel, coeffs, states) {
+        let output = input;
+        for (let section = 0; section < coeffs.length; ++section) {
+          const c = coeffs[section];
+          const state = states[section];
+          const x1 = state.x1[channel], x2 = state.x2[channel];
+          const y1 = state.y1[channel], y2 = state.y2[channel];
+          const filtered = c.b0 * output + c.b1 * x1 + c.b2 * x2 - c.a1 * y1 - c.a2 * y2;
+          state.x2[channel] = x1; state.x1[channel] = output;
+          state.y2[channel] = y1; state.y1[channel] = filtered;
+          output = filtered;
+        }
+        return output;
+      }
+
+      function renderFrame(left, right, coeffs, states, output) {
+        output.fill(0);
+        for (let ch = 0; ch < 2; ++ch) {
+          const input = ch === 0 ? left : right;
+          output[ch] = processCascadeSample(input, ch, coeffs[0].lp, states.lp[0]);
+          let remainder = processCascadeSample(input, ch, coeffs[0].hp, states.hp[0]);
+          if (bandCount === 2) {
+            output[2 + ch] = remainder;
+            continue;
+          }
+          output[2 + ch] = processCascadeSample(remainder, ch, coeffs[1].lp, states.lp[1]);
+          remainder = processCascadeSample(remainder, ch, coeffs[1].hp, states.hp[1]);
+          if (bandCount === 3) {
+            output[4 + ch] = remainder;
+            continue;
+          }
+          output[4 + ch] = processCascadeSample(remainder, ch, coeffs[2].lp, states.lp[2]);
+          output[6 + ch] = processCascadeSample(remainder, ch, coeffs[2].hp, states.hp[2]);
         }
       }
     
       // --- Main Processing Logic ---
       // Apply Linkwitz-Riley filters with multiple sections per crossover
       
-      if (bandCount === 2) {
-        applyMultiBiquadFilter(inputCopy, temp1, context.cachedCoeffs[0].lp, context.filterStates.lp[0]);
-        applyMultiBiquadFilter(inputCopy, temp2, context.cachedCoeffs[0].hp, context.filterStates.hp[0]);
+      function renderBands(coeffs, states, output) {
+        output.fill(0);
+        if (bandCount === 2) {
+        applyMultiBiquadFilter(inputCopy, temp1, coeffs[0].lp, states.lp[0]);
+        applyMultiBiquadFilter(inputCopy, temp2, coeffs[0].hp, states.hp[0]);
         
-        copyToOutput(temp1, 0);
-        copyToOutput(temp2, 2);
+        copyToOutput(temp1, 0, output);
+        copyToOutput(temp2, 2, output);
       } else if (bandCount === 3) {
-        applyMultiBiquadFilter(inputCopy, temp1, context.cachedCoeffs[0].lp, context.filterStates.lp[0]); // Lows in temp1
-        applyMultiBiquadFilter(inputCopy, temp2, context.cachedCoeffs[0].hp, context.filterStates.hp[0]); // Mid+High in temp2
-        copyToOutput(temp1, 0);
+        applyMultiBiquadFilter(inputCopy, temp1, coeffs[0].lp, states.lp[0]); // Lows in temp1
+        applyMultiBiquadFilter(inputCopy, temp2, coeffs[0].hp, states.hp[0]); // Mid+High in temp2
+        copyToOutput(temp1, 0, output);
         
         // temp2 (Mid+High) is now input. Result for Mids in temp1.
-        applyMultiBiquadFilter(temp2, temp1, context.cachedCoeffs[1].lp, context.filterStates.lp[1]); // Mids in temp1
+        applyMultiBiquadFilter(temp2, temp1, coeffs[1].lp, states.lp[1]); // Mids in temp1
         // temp2 (Mid+High input) is processed again for Highs. Result for Highs in temp2.
-        applyMultiBiquadFilter(temp2, temp2, context.cachedCoeffs[1].hp, context.filterStates.hp[1]); // Highs in temp2
-        copyToOutput(temp1, 2);
-        copyToOutput(temp2, 4);
+        applyMultiBiquadFilter(temp2, temp2, coeffs[1].hp, states.hp[1]); // Highs in temp2
+        copyToOutput(temp1, 2, output);
+        copyToOutput(temp2, 4, output);
       } else if (bandCount === 4) {
-        applyMultiBiquadFilter(inputCopy, temp1, context.cachedCoeffs[0].lp, context.filterStates.lp[0]); // Lows in temp1
-        applyMultiBiquadFilter(inputCopy, temp2, context.cachedCoeffs[0].hp, context.filterStates.hp[0]); // MidLow+MidHigh+High in temp2
-        copyToOutput(temp1, 0);
+        applyMultiBiquadFilter(inputCopy, temp1, coeffs[0].lp, states.lp[0]); // Lows in temp1
+        applyMultiBiquadFilter(inputCopy, temp2, coeffs[0].hp, states.hp[0]); // MidLow+MidHigh+High in temp2
+        copyToOutput(temp1, 0, output);
         
         // temp2 is input. MidLows in temp1. MidHigh+High overwrites temp2.
-        applyMultiBiquadFilter(temp2, temp1, context.cachedCoeffs[1].lp, context.filterStates.lp[1]); // MidLows in temp1
-        applyMultiBiquadFilter(temp2, temp2, context.cachedCoeffs[1].hp, context.filterStates.hp[1]); // MidHigh+High in temp2
-        copyToOutput(temp1, 2);
+        applyMultiBiquadFilter(temp2, temp1, coeffs[1].lp, states.lp[1]); // MidLows in temp1
+        applyMultiBiquadFilter(temp2, temp2, coeffs[1].hp, states.hp[1]); // MidHigh+High in temp2
+        copyToOutput(temp1, 2, output);
     
         // temp2 (MidHigh+High) is input. MidHighs in temp1. Highs overwrites temp2.
-        applyMultiBiquadFilter(temp2, temp1, context.cachedCoeffs[2].lp, context.filterStates.lp[2]); // MidHighs in temp1
-        applyMultiBiquadFilter(temp2, temp2, context.cachedCoeffs[2].hp, context.filterStates.hp[2]); // Highs in temp2
-        copyToOutput(temp1, 4);
-        copyToOutput(temp2, 6);
+        applyMultiBiquadFilter(temp2, temp1, coeffs[2].lp, states.lp[2]); // MidHighs in temp1
+        applyMultiBiquadFilter(temp2, temp2, coeffs[2].hp, states.hp[2]); // Highs in temp2
+        copyToOutput(temp1, 4, output);
+        copyToOutput(temp2, 6, output);
       }
-      
+      }
+
+      if (context.transitionRemaining > 0) {
+        const activeFrameOutput = context.activeFrameOutput;
+        const targetFrameOutput = context.targetFrameOutput;
+        for (let i = 0; i < blockSize; ++i) {
+          if (context.transitionRemaining === 0) {
+            renderFrame(inputCopy[i], inputCopy[blockSize + i], context.cachedCoeffs,
+              context.filterStates, activeFrameOutput);
+            for (let ch = 0; ch < channelCount; ++ch) {
+              data[ch * blockSize + i] = activeFrameOutput[ch];
+            }
+            continue;
+          }
+          renderFrame(inputCopy[i], inputCopy[blockSize + i], context.cachedCoeffs,
+            context.filterStates, activeFrameOutput);
+          renderFrame(inputCopy[i], inputCopy[blockSize + i], context.transitionCoeffs,
+            context.transitionStates, targetFrameOutput);
+          const mix = 1 - context.transitionRemaining / context.transitionTotal;
+          for (let ch = 0; ch < channelCount; ++ch) {
+            data[ch * blockSize + i] = activeFrameOutput[ch] +
+              mix * (targetFrameOutput[ch] - activeFrameOutput[ch]);
+          }
+          --context.transitionRemaining;
+          if (context.transitionRemaining === 0) {
+            context.cachedCoeffs = context.transitionCoeffs;
+            context.filterStates = context.transitionStates;
+            context.transitionCoeffs = null;
+            context.transitionStates = null;
+            if (context.pendingCoeffs) {
+              context.transitionCoeffs = context.pendingCoeffs;
+              context.transitionStates = {
+                lp: context.filterStates.lp.map(group => group.map(state => ({
+                  x1: state.x1.slice(), x2: state.x2.slice(), y1: state.y1.slice(), y2: state.y2.slice()
+                }))),
+                hp: context.filterStates.hp.map(group => group.map(state => ({
+                  x1: state.x1.slice(), x2: state.x2.slice(), y1: state.y1.slice(), y2: state.y2.slice()
+                })))
+              };
+              context.transitionRemaining = context.transitionTotal;
+              context.filterConfig.frequencies = context.pendingFrequencies;
+              context.pendingFrequencies = null;
+              context.pendingCoeffs = null;
+            }
+          }
+        }
+      } else {
+        renderBands(context.cachedCoeffs, context.filterStates, data);
+      }
       if (context.fadeIn && context.fadeIn.counter < context.fadeIn.length) {
         const fadeLength = context.fadeIn.length;
         let counter = context.fadeIn.counter;
@@ -359,9 +478,7 @@ class ChannelDividerPlugin extends PluginBase {
           counter++;
         }
         context.fadeIn.counter = counter;
-        if (context.fadeIn.counter >= fadeLength) {
-            context.fadeIn = null;
-        }
+        if (counter >= fadeLength) context.fadeIn = null;
       }
       return data;
     `);

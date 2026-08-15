@@ -53,6 +53,11 @@ class FiveBandPEQPlugin extends PluginBase {
       context.lastChannelCount = channelCount;
       context.initialized = true;
       context.lastParams = null; 
+      context.bandParams = new Array(NUM_BANDS);
+      context.bandTopology = new Array(NUM_BANDS);
+      context.coeffTargets = new Array(NUM_BANDS);
+      context.coeffSteps = new Array(NUM_BANDS);
+      context.coeffRemaining = new Uint32Array(NUM_BANDS);
   }
   
   const filterStates = context.filterStates;
@@ -67,9 +72,18 @@ class FiveBandPEQPlugin extends PluginBase {
   let coeffs; 
   
   if (context.lastParams !== currentParamsString) {
-      coeffs = new Array(NUM_BANDS); 
+      const previousCoeffs = context.coeffs;
+      coeffs = previousCoeffs || new Array(NUM_BANDS);
   
       for (let bandIndex = 0; bandIndex < NUM_BANDS; bandIndex++) {
+          const signature = parameters['e' + bandIndex] + ',' + parameters['g' + bandIndex] + ',' +
+              parameters['t' + bandIndex] + ',' + parameters['f' + bandIndex] + ',' +
+              parameters['q' + bandIndex];
+          if (signature === context.bandParams[bandIndex]) continue;
+          const topology = parameters['e' + bandIndex] + ',' + parameters['t' + bandIndex];
+          const topologyChanged = topology !== context.bandTopology[bandIndex];
+          context.bandParams[bandIndex] = signature;
+          context.bandTopology[bandIndex] = topology;
           const bandEnabled = parameters['e' + bandIndex];
           const gainDb = parameters['g' + bandIndex]; 
           const type = parameters['t' + bandIndex];
@@ -86,7 +100,23 @@ class FiveBandPEQPlugin extends PluginBase {
           const isGainBypassed = gainAbs < BYPASS_THRESHOLD && type !== 'lp' && type !== 'hp' && type !== 'bp' && type !== 'no' && type !== 'ap';
   
           if (!bandEnabled || isGainBypassed) {
-              coeffs[bandIndex] = null; 
+              const target = { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 };
+              const current = previousCoeffs && previousCoeffs[bandIndex];
+              if (current && !topologyChanged) {
+                  const frames = Math.max(1, Math.ceil(sampleRate * 0.005));
+                  context.coeffTargets[bandIndex] = target;
+                  context.coeffSteps[bandIndex] = {
+                      b0: (target.b0 - current.b0) / frames, b1: (target.b1 - current.b1) / frames,
+                      b2: (target.b2 - current.b2) / frames, a1: (target.a1 - current.a1) / frames,
+                      a2: (target.a2 - current.a2) / frames
+                  };
+                  context.coeffRemaining[bandIndex] = frames;
+              } else {
+                  coeffs[bandIndex] = { ...target };
+                  context.coeffTargets[bandIndex] = target;
+                  context.coeffSteps[bandIndex] = { b0: 0, b1: 0, b2: 0, a1: 0, a2: 0 };
+                  context.coeffRemaining[bandIndex] = 0;
+              }
               continue; 
           }
   
@@ -154,14 +184,31 @@ class FiveBandPEQPlugin extends PluginBase {
                   a0 = 1.0 + alpha; a1 = neg2CosW0; a2 = 1.0 - alpha;
                   break;
               }
-              default: { coeffs[bandIndex] = null; continue; }
+              default: { coeffs[bandIndex] = { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 }; continue; }
           }
   
           const a0_abs = a0 < 0 ? -a0 : a0; 
-          if (a0_abs < A0_THRESHOLD) { coeffs[bandIndex] = null; }
+          let target;
+          if (a0_abs < A0_THRESHOLD) { target = { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 }; }
           else {
               const invA0 = 1.0 / a0;
-              coeffs[bandIndex] = { b0: b0 * invA0, b1: b1 * invA0, b2: b2 * invA0, a1: a1 * invA0, a2: a2 * invA0 };
+              target = { b0: b0 * invA0, b1: b1 * invA0, b2: b2 * invA0, a1: a1 * invA0, a2: a2 * invA0 };
+          }
+          const current = previousCoeffs && previousCoeffs[bandIndex];
+          if (!current || topologyChanged) {
+              coeffs[bandIndex] = { ...target };
+              context.coeffTargets[bandIndex] = target;
+              context.coeffSteps[bandIndex] = { b0: 0, b1: 0, b2: 0, a1: 0, a2: 0 };
+              context.coeffRemaining[bandIndex] = 0;
+          } else {
+              const frames = Math.max(1, Math.ceil(sampleRate * 0.005));
+              context.coeffTargets[bandIndex] = target;
+              context.coeffSteps[bandIndex] = {
+                  b0: (target.b0 - current.b0) / frames, b1: (target.b1 - current.b1) / frames,
+                  b2: (target.b2 - current.b2) / frames, a1: (target.a1 - current.a1) / frames,
+                  a2: (target.a2 - current.a2) / frames
+              };
+              context.coeffRemaining[bandIndex] = frames;
           }
       } 
       context.coeffs = coeffs; context.lastParams = currentParamsString;
@@ -172,20 +219,40 @@ class FiveBandPEQPlugin extends PluginBase {
       const offset = ch * blockSize; 
       for (let bandIndex = 0; bandIndex < NUM_BANDS; bandIndex++) {
           const bandCoeffs = coeffs[bandIndex];
-          if (bandCoeffs === null) { continue; }
-          const { b0, b1, b2, a1, a2 } = bandCoeffs; 
+          if (context.coeffRemaining[bandIndex] === 0 && bandCoeffs.b0 === 1 &&
+              bandCoeffs.b1 === 0 && bandCoeffs.b2 === 0 && bandCoeffs.a1 === 0 &&
+              bandCoeffs.a2 === 0) { continue; }
           const state = filterStates[bandIndex];
           let x1_ch = state.x1[ch], x2_ch = state.x2[ch]; 
           let y1_ch = state.y1[ch], y2_ch = state.y2[ch]; 
           for (let i = 0; i < blockSize; i++) {
               const dataIndex = offset + i; const x_n = data[dataIndex]; 
+              const elapsed = Math.min(i + 1, context.coeffRemaining[bandIndex]);
+              const step = context.coeffSteps[bandIndex] || { b0: 0, b1: 0, b2: 0, a1: 0, a2: 0 };
+              const b0 = bandCoeffs.b0 + step.b0 * elapsed, b1 = bandCoeffs.b1 + step.b1 * elapsed;
+              const b2 = bandCoeffs.b2 + step.b2 * elapsed, a1 = bandCoeffs.a1 + step.a1 * elapsed;
+              const a2 = bandCoeffs.a2 + step.a2 * elapsed;
               const y_n = b0 * x_n + b1 * x1_ch + b2 * x2_ch - a1 * y1_ch - a2 * y2_ch;
               x2_ch = x1_ch; x1_ch = x_n; y2_ch = y1_ch; y1_ch = y_n;
               data[dataIndex] = y_n;
           }
           state.x1[ch] = x1_ch; state.x2[ch] = x2_ch; state.y1[ch] = y1_ch; state.y2[ch] = y2_ch;
       } 
-  } 
+  }
+  for (let bandIndex = 0; bandIndex < NUM_BANDS; bandIndex++) {
+      const remaining = context.coeffRemaining[bandIndex];
+      if (!remaining) continue;
+      if (blockSize >= remaining) {
+          coeffs[bandIndex] = { ...context.coeffTargets[bandIndex] };
+          context.coeffRemaining[bandIndex] = 0;
+      } else {
+          const current = coeffs[bandIndex], step = context.coeffSteps[bandIndex];
+          current.b0 += step.b0 * blockSize; current.b1 += step.b1 * blockSize;
+          current.b2 += step.b2 * blockSize; current.a1 += step.a1 * blockSize;
+          current.a2 += step.a2 * blockSize;
+          context.coeffRemaining[bandIndex] -= blockSize;
+      }
+  }
   return data; 
   `;
     
