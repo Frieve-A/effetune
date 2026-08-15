@@ -413,7 +413,7 @@ async function withHarness(options, callback) {
       )
     );
   } finally {
-    fs.rmSync(harness.tempDir, { recursive: true, force: true });
+    fs.rmSync(harness.tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }
 
@@ -1082,7 +1082,7 @@ test('IPC handlers manage macOS microphone access and audio preference edge case
     moduleUnderTest.registerIpcHandlers();
     const handlers = ipcMain.handlers;
 
-    fs.rmSync(tempDir, { recursive: true, force: true });
+    fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     assert.deepEqual(await handlers.get('save-audio-preferences')({}, { sampleRate: 48000 }), { success: true });
     fs.rmSync(path.join(tempDir, 'audio-preferences.json'), { force: true });
     assert.deepEqual(await handlers.get('load-audio-preferences')(), { success: true, preferences: null });

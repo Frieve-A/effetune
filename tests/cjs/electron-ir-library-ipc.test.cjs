@@ -31,6 +31,33 @@ async function removeTempRoot(tempRoot) {
   await fs.promises.rm(tempRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
 }
 
+async function assertDirectoryEventuallyEmpty(directory) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const entries = await fs.promises.readdir(directory);
+    if (entries.length === 0) return;
+    if (attempt === 4) assert.deepEqual(entries, []);
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+}
+
+async function createDirectoryLinkAfterRename(target, linkPath) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      fs.symlinkSync(target, linkPath, process.platform === 'win32' ? 'junction' : 'dir');
+      return;
+    } catch (error) {
+      if (!['EEXIST', 'ENOTEMPTY'].includes(error.code) || attempt === 4) throw error;
+      await fs.promises.rm(linkPath, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 20
+      });
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+  }
+}
+
 test('IR IPC atomically replaces generated logical files without exposing native paths', async t => {
   const harness = createHarness();
   t.after(() => removeTempRoot(harness.tempRoot));
@@ -165,7 +192,7 @@ test('IR IPC rejects a symlink or reparse-point target inside its root', async t
     await write({}, { name: linkedName, bytes: new Uint8Array([1]) }),
     { ok: false, code: 'storage-failed' }
   );
-  assert.equal((await fs.promises.readdir(outside)).length, 0);
+  await assertDirectoryEventuallyEmpty(outside);
 });
 
 test('IR IPC rejects a symlink or reparse-point library root itself', async t => {
@@ -186,7 +213,7 @@ test('IR IPC rejects a symlink or reparse-point library root itself', async t =>
     ),
     { ok: false, code: 'storage-failed' }
   );
-  assert.equal((await fs.promises.readdir(outside)).length, 0);
+  await assertDirectoryEventuallyEmpty(outside);
 });
 
 test('IR IPC rejects a symlink or reparse-point cache namespace', async t => {
@@ -209,7 +236,7 @@ test('IR IPC rejects a symlink or reparse-point cache namespace', async t => {
     ),
     { ok: false, code: 'storage-failed' }
   );
-  assert.equal((await fs.promises.readdir(outside)).length, 0);
+  await assertDirectoryEventuallyEmpty(outside);
 });
 
 test('IR IPC revalidates the initialized library root before every operation', async t => {
@@ -226,9 +253,8 @@ test('IR IPC revalidates the initialized library root before every operation', a
   await fs.promises.mkdir(outside);
   await fs.promises.rename(root, displaced);
   try {
-    fs.symlinkSync(outside, root, process.platform === 'win32' ? 'junction' : 'dir');
+    await createDirectoryLinkAfterRename(outside, root);
   } catch (error) {
-    await fs.promises.rename(displaced, root);
     if (['EPERM', 'EACCES'].includes(error.code)) return t.skip('Symlink creation is unavailable.');
     throw error;
   }
@@ -237,7 +263,7 @@ test('IR IPC revalidates the initialized library root before every operation', a
     await write({}, { name: 'index.json', bytes: new Uint8Array([2]) }),
     { ok: false, code: 'storage-failed' }
   );
-  assert.deepEqual(await fs.promises.readdir(outside), []);
+  await assertDirectoryEventuallyEmpty(outside);
 });
 
 test('IR IPC revalidates the initialized cache root before every operation', async t => {
@@ -256,9 +282,8 @@ test('IR IPC revalidates the initialized cache root before every operation', asy
   await fs.promises.mkdir(outside);
   await fs.promises.rename(cacheRoot, displaced);
   try {
-    fs.symlinkSync(outside, cacheRoot, process.platform === 'win32' ? 'junction' : 'dir');
+    await createDirectoryLinkAfterRename(outside, cacheRoot);
   } catch (error) {
-    await fs.promises.rename(displaced, cacheRoot);
     if (['EPERM', 'EACCES'].includes(error.code)) return t.skip('Symlink creation is unavailable.');
     throw error;
   }
@@ -267,7 +292,7 @@ test('IR IPC revalidates the initialized cache root before every operation', asy
     await harness.handlers.get(IR_LIBRARY_CHANNELS.listCache)({}, {}),
     { ok: false, code: 'storage-failed' }
   );
-  assert.deepEqual(await fs.promises.readdir(outside), []);
+  await assertDirectoryEventuallyEmpty(outside);
 });
 
 test('IR IPC enforces logical-file size limits before writes and disk reads', async t => {

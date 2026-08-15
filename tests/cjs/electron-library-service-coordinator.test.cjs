@@ -25,7 +25,7 @@ async function openFixture(t, { repositoryFactory, importSourceProvider, now } =
   t.after(async () => {
     coordinator.dispose();
     await host.close().catch(() => {});
-    fs.rmSync(directory, { recursive: true, force: true });
+    await fs.promises.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
   return { coordinator, directory, host };
 }

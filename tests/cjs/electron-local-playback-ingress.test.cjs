@@ -54,7 +54,7 @@ function metadataFactory(calls, implementation = async () => ({
 
 test('normal local playback admission returns canonical scalar descriptors without reading bytes', async t => {
   const root = createTempDirectory();
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const first = writeFixture(root, 'first.wav', 'small');
   const second = writeFixture(root, 'second.flac', 'larger');
 
@@ -72,7 +72,7 @@ test('normal local playback admission returns canonical scalar descriptors witho
 
 test('Electron direct CUE resolves logical tracks atomically and parses each physical source once', async t => {
   const root = createTempDirectory();
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const cuePath = writeFixture(root, 'album.cue', cueText());
   const audioPath = writeFixture(root, 'album.wav', 'metadata-reader-fixture');
   const metadataCalls = [];
@@ -115,7 +115,7 @@ test('Electron direct CUE resolves logical tracks atomically and parses each phy
 
 test('Electron direct CUE loads sibling artwork with common-name priority', async t => {
   const root = createTempDirectory();
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const cuePath = writeFixture(root, 'album.cue', cueText());
   writeFixture(root, 'album.wav', 'metadata-reader-fixture');
   writeFixture(root, 'album.png', 'audio-name-cover');
@@ -135,7 +135,7 @@ test('Electron direct CUE loads sibling artwork with common-name priority', asyn
 
 test('Electron direct CUE uses the source-audio file stem for sibling artwork', async t => {
   const root = createTempDirectory();
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const cuePath = writeFixture(root, 'disc.cue', cueText('Album Image.flac'));
   writeFixture(root, 'Album Image.flac', 'metadata-reader-fixture');
   writeFixture(root, 'album image.JPG', 'source-cover');
@@ -150,7 +150,7 @@ test('Electron direct CUE uses the source-audio file stem for sibling artwork', 
 
 test('Electron direct CUE rejects mixed selections and files above the bounded CUE limit', async t => {
   const root = createTempDirectory();
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const cuePath = writeFixture(root, 'album.cue', cueText());
   const audioPath = writeFixture(root, 'album.wav', 'audio');
   const ingress = new LocalPlaybackIngress({ metadataParserFactory: metadataFactory([]) });
@@ -169,7 +169,7 @@ test('Electron direct CUE rejects mixed selections and files above the bounded C
 
 test('Electron direct CUE rejects source replacement detected after metadata parsing', async t => {
   const root = createTempDirectory();
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const cuePath = writeFixture(root, 'album.cue', cueText());
   const audioPath = writeFixture(root, 'album.wav', 'before');
 
@@ -183,7 +183,7 @@ test('Electron direct CUE rejects source replacement detected after metadata par
 
 test('Electron direct CUE rejects rename-and-replace of the selected pathname during its read', async t => {
   const root = createTempDirectory();
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const cuePath = writeFixture(root, 'album.cue', cueText());
   const replacementPath = writeFixture(root, 'replacement.cue', cueText());
   writeFixture(root, 'album.wav', 'audio');
@@ -218,7 +218,7 @@ test('Electron direct CUE rejects rename-and-replace of the selected pathname du
 
 test('LocalPlaybackIngress cancel and dispose abort active metadata and close the parser once', async t => {
   const root = createTempDirectory();
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const cuePath = writeFixture(root, 'album.cue', cueText());
   writeFixture(root, 'album.wav', 'audio');
   let notifyParseStarted;

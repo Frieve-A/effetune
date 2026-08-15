@@ -200,7 +200,12 @@ test('folder dialog results are canonicalized in main before reaching the utilit
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-utility-folder-'));
   const folder = path.join(temporary, 'Music');
   await fs.mkdir(folder);
-  t.after(() => fs.rm(temporary, { recursive: true, force: true }));
+  t.after(() => fs.rm(temporary, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100
+  }));
   const child = new FakeUtilityProcess();
   const host = await LibraryCatalogUtilityHost.open({
     dialog: { async showOpenDialog() { return { canceled: false, filePaths: [folder] }; } },

@@ -2,6 +2,7 @@
 #include "allocation_guard.h"
 #include "effetune/kernel.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>

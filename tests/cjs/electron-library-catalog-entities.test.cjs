@@ -14,7 +14,7 @@ async function openCatalog(t) {
   const host = await LibraryCatalogHost.open({ dbPath: path.join(directory, 'catalog.sqlite') });
   t.after(async () => {
     await host.close();
-    fs.rmSync(directory, { recursive: true, force: true });
+    await fs.promises.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
   return { directory, host };
 }
@@ -237,7 +237,7 @@ test('catalog startup rebuilds persisted legacy name sort keys', async t => {
   let host = await LibraryCatalogHost.open({ dbPath });
   t.after(async () => {
     await host.close();
-    fs.rmSync(directory, { recursive: true, force: true });
+    await fs.promises.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
   await seedFolder(host, directory);
   await host.upsertTracks([10, 2, 1].map(number => ({

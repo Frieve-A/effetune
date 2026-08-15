@@ -427,60 +427,60 @@ class NativeChainTests(unittest.TestCase):
             self.assertEqual(latency, stream.latency_samples)
 
     def test_stream_parameter_events_are_frame_relative_ordered_and_persistent(self) -> None:
-        source = np.ones((1, 12), dtype=np.float32)
-        chain = effetune.Chain([effetune.Volume(id="gain", volume=0)])
+        source = np.zeros((1, 12), dtype=np.float32)
+        chain = effetune.Chain([effetune.DCOffset(id="offset", offset=0)])
         with chain.stream(48_000, channels=1, block_size=3) as stream:
             output = stream.process(
                 source,
                 events=[
                     {
                         "frame": 0,
-                        "effectId": "gain",
-                        "parameters": {"volume": -6},
+                        "effectId": "offset",
+                        "parameters": {"offset": 0.25},
                     },
                     {
                         "frame": 4,
-                        "effectId": "gain",
-                        "parameters": {"volume": -12},
+                        "effectId": "offset",
+                        "parameters": {"offset": 0.5},
                     },
                     {
                         "frame": 4,
-                        "effectId": "gain",
-                        "parameters": {"volume": -18},
+                        "effectId": "offset",
+                        "parameters": {"offset": 0.75},
                     },
                     {
                         "frame": 8,
-                        "effectId": "gain",
-                        "parameters": {"volume": 0},
+                        "effectId": "offset",
+                        "parameters": {"offset": 0},
                     },
                 ],
             )
             expected = np.concatenate(
                 (
-                    np.full(4, 10.0 ** (-6.0 / 20.0), dtype=np.float32),
-                    np.full(4, 10.0 ** (-18.0 / 20.0), dtype=np.float32),
-                    np.ones(4, dtype=np.float32),
+                    np.full(4, 0.25, dtype=np.float32),
+                    np.full(4, 0.75, dtype=np.float32),
+                    np.zeros(4, dtype=np.float32),
                 )
             )
-            np.testing.assert_allclose(output[0], expected, rtol=0, atol=1e-7)
+            np.testing.assert_array_equal(output[0], expected)
 
-            persistent = stream.process(np.ones((1, 5), dtype=np.float32))
-            np.testing.assert_array_equal(persistent, np.ones((1, 5), dtype=np.float32))
+            persistent = stream.process(np.zeros((1, 5), dtype=np.float32))
+            np.testing.assert_array_equal(persistent, np.zeros((1, 5), dtype=np.float32))
             stream.process(
-                np.ones((1, 1), dtype=np.float32),
+                np.zeros((1, 1), dtype=np.float32),
                 events=[
                     {
                         "frame": 0,
-                        "effectId": "gain",
-                        "parameters": {"volume": -6},
+                        "effectId": "offset",
+                        "parameters": {"offset": 0.25},
                     }
                 ],
             )
-            reduced = stream.process(np.ones((1, 1), dtype=np.float32))
-            self.assertLess(float(reduced[0, 0]), 1.0)
+            increased = stream.process(np.zeros((1, 1), dtype=np.float32))
+            np.testing.assert_array_equal(increased, np.full((1, 1), 0.25, dtype=np.float32))
             stream.reset()
-            restored = stream.process(np.ones((1, 1), dtype=np.float32))
-            np.testing.assert_array_equal(restored, np.ones((1, 1), dtype=np.float32))
+            restored = stream.process(np.zeros((1, 1), dtype=np.float32))
+            np.testing.assert_array_equal(restored, np.zeros((1, 1), dtype=np.float32))
 
     def test_asset_backed_stream_events_keep_assets_for_live_parameters(self) -> None:
         ir = effetune.AssetData(

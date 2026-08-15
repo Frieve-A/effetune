@@ -15,7 +15,7 @@ async function openCatalog(t) {
   const host = await LibraryCatalogHost.open({ dbPath });
   t.after(async () => {
     await host.close().catch(() => {});
-    fs.rmSync(directory, { recursive: true, force: true });
+    await fs.promises.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
   return { directory, dbPath, host };
 }
@@ -217,7 +217,7 @@ test('startup durably interrupts abandoned operations and releases snapshot owne
   let host = await LibraryCatalogHost.open({ dbPath });
   t.after(async () => {
     await host.close().catch(() => {});
-    fs.rmSync(directory, { recursive: true, force: true });
+    await fs.promises.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
   const source = await host.createContext({ query: '', sort: 'title', direction: 'asc', scope: null });
   const created = await host.receiveOperation(operationRequest({ sourceContextToken: source.contextToken }));
@@ -270,7 +270,7 @@ test('playback sequences preserve duplicate occurrences for one catalog session 
   let host = await LibraryCatalogHost.open({ dbPath });
   t.after(async () => {
     await host.close().catch(() => {});
-    fs.rmSync(directory, { recursive: true, force: true });
+    await fs.promises.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
   await host.createPlaybackSequence({
     sequenceId: 'sequence-1',

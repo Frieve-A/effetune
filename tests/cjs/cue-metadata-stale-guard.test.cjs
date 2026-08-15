@@ -29,7 +29,7 @@ test('CUE metadata completion requires logical identity and the current cue sign
   const host = await LibraryCatalogHost.open({ dbPath: path.join(directory, 'catalog.sqlite') });
   t.after(async () => {
     await host.close();
-    fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+    await fs.promises.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
   await host.upsertFolders([{
     id: 'folder', kind: 'electron', displayName: 'Music', path: directory,

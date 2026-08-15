@@ -11,9 +11,16 @@ const {
   readFileBytes
 } = require('../../electron/bounded-file-reader.js');
 
+const removeTemporaryDirectory = temporary => fs.promises.rm(temporary, {
+  recursive: true,
+  force: true,
+  maxRetries: 5,
+  retryDelay: 20
+});
+
 test('bounded file reader returns an ArrayBuffer for a regular file', async t => {
   const temporary = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'effetune-byte-reader-'));
-  t.after(() => fs.promises.rm(temporary, { recursive: true, force: true }));
+  t.after(() => removeTemporaryDirectory(temporary));
   const filePath = path.join(temporary, 'audio.bin');
   await fs.promises.writeFile(filePath, Buffer.from([1, 2, 3, 4]));
 
@@ -27,7 +34,7 @@ test('bounded file reader returns an ArrayBuffer for a regular file', async t =>
 
 test('bounded file reader validates expected size before allocating', async t => {
   const temporary = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'effetune-byte-identity-'));
-  t.after(() => fs.promises.rm(temporary, { recursive: true, force: true }));
+  t.after(() => removeTemporaryDirectory(temporary));
   const filePath = path.join(temporary, 'audio.bin');
   await fs.promises.writeFile(filePath, Buffer.from([1, 2, 3, 4]));
 
@@ -56,7 +63,7 @@ test('bounded file reader validates expected size before allocating', async t =>
 
 test('bounded file reader rejects oversized and non-regular files', async t => {
   const temporary = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'effetune-byte-limit-'));
-  t.after(() => fs.promises.rm(temporary, { recursive: true, force: true }));
+  t.after(() => removeTemporaryDirectory(temporary));
   const oversized = path.join(temporary, 'oversized.bin');
   await fs.promises.writeFile(oversized, '');
   await fs.promises.truncate(oversized, MAX_FILE_BYTES + 1);

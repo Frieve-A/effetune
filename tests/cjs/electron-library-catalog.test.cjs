@@ -282,7 +282,7 @@ test('binary-identical artwork thumbnails share one persisted blob across tracks
   const host = await LibraryCatalogHost.open({ dbPath });
   t.after(async () => {
     await host.close();
-    fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    await fs.promises.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
   await seedFolder(host, directory);
   await host.upsertTracks([1, 2].map(index => createTrack(index, {

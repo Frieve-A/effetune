@@ -21,7 +21,12 @@ const {
 
 async function createTemporaryUserData(t) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-library-recovery-'));
-  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  t.after(() => fs.rm(directory, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100
+  }));
   return directory;
 }
 

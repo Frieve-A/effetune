@@ -16,7 +16,7 @@ async function openCatalog(t) {
   const host = await LibraryCatalogHost.open({ dbPath: path.join(directory, 'catalog.sqlite') });
   t.after(async () => {
     await host.close().catch(() => {});
-    fs.rmSync(directory, { recursive: true, force: true });
+    await fs.promises.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
   return { directory, host };
 }

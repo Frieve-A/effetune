@@ -168,7 +168,12 @@ test('openPlaybackSelection owns its CUE-aware dialog without changing generic d
 
 test('all local playback admissions share one latest-request coordinator without extending CUE handling', async t => {
   const root = createTempDir('effetune-local-admission');
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(root, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100
+  }));
   const firstPath = path.join(root, 'first.wav');
   const latestPath = path.join(root, 'latest.wav');
   const cuePath = path.join(root, 'album.cue');
