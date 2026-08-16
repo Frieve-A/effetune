@@ -56,7 +56,7 @@ This type can intentionally generate output from zero input at an active setting
 
 ## Tube Simulator
 
-Tube Simulator adds the changing harmonics, compression, and power-supply response of tube line and power-amplifier circuits. **Line** uses the driver stage alone, **Push-Pull Power** offers balanced EL84, EL34, 6L6GC, and KT88 circuits, and **SE Triode** offers single-ended 300B and 2A3 circuits. It models the amplifier's electrical speaker load, but does not add a speaker cabinet or microphone sound.
+Tube Simulator adds the changing harmonics, compression, and power-supply response of tube line and power-amplifier circuits. **Line** uses the driver stage alone, **Push-Pull Power** offers balanced EL84, EL34, 6L6GC, and KT88 circuits, and **SE Triode** offers single-ended 300B and 2A3 circuits. Both power circuits also model the output transformer core, whose magnetic saturation and hysteresis add distortion on loud low frequencies. It models the amplifier's electrical speaker load, but does not add a speaker cabinet or microphone sound.
 
 ### Listening Enhancement Guide
 
@@ -136,7 +136,9 @@ The preset suffix is a practical guide to effect strength: **@0.01%** is very su
   - 0% uses the fixed screen supply; 20% and 43% connect the screens to the corresponding transformer-primary taps for distributed (ultra-linear) loading
   - The tap is a turns ratio, so the screens follow that share of the magnetic coupling in the primary winding
 - **Push-Pull Primary** (6.0, 6.6, or 8.0 kΩ) - Selects the push-pull output transformer's plate-to-plate primary impedance and, together with Assumed Speaker Load, its turns ratio
+  - The choice also sets the core's magnetic saturation flux
 - **SE Primary** (2.5, 3.5, or 5.0 kΩ) - Selects the gapped single-ended transformer's primary impedance and, together with Assumed Speaker Load, its turns ratio
+  - The choice also sets how much flux a given signal drives into the gapped core, so higher impedances reach saturation sooner at the same level. The idle current of single-ended operation keeps a standing flux in the core, so the signal saturates it asymmetrically and adds even-order harmonics at low frequencies
 - **Assumed Speaker Load** (4, 8, 15, or 16 Ω) - Selects the transformer secondary tap and the nominal speaker impedance the circuit is built around
   - Each choice uses a frequency-dependent electrical RLC load rather than a simple resistor and affects transformer loading and feedback
 - **Actual Speaker Load** (2 to 32 Ω) - Sets the impedance of the speaker actually connected to that tap
@@ -160,7 +162,8 @@ Changing circuit parameters can cause a large level jump. With **Auto Gain Reduc
 
 - The dots show recent operating points. A wider spread means the music is driving that stage harder.
 - In Line mode, the panels show the two driver stages. Push-Pull mode shows the two output sides, and SE Triode shows the left and right channels.
-- **Speaker Output**, **Speaker Real Power**, and **Transformer Flux** show how strongly the modeled power stage and speaker load are being driven.
+- **Speaker Output** and **Speaker Real Power** show how strongly the modeled power stage and speaker load are being driven.
+- **Transformer Flux** shows the magnitude of the output transformer's flux linkage in Wb. The harder low frequencies push this reading upward, the more distortion the transformer itself is adding. In SE Triode the reading includes the standing bias flux of the gapped core, so it stays above zero even with no signal.
 - The status below the graph shows whether the effect is active or bypassed and displays any automatic output reduction.
 
 Tube Simulator adds a short processing delay of about 0.3-1.5ms, depending on sample rate.

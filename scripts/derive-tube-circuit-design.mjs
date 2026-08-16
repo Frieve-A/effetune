@@ -6,7 +6,7 @@
 // reference tables injected into plugins/saturation/tube_simulator.js. Nothing else feeds those
 // artifacts: the primary data below plus the derivation code in this file is the whole provenance.
 //
-// The derivation has four stages:
+// The derivation has five stages:
 //
 //   1. Output-tube LUT construction. The ordinary pentode model - composite control voltage,
 //      power-law cathode current, tanh knee - is solved against the published Mullard EL84 and
@@ -23,8 +23,11 @@
 //   4. Ladder fit. A two-pole one-zero compensator is searched per key against the measured plant
 //      under the Line acceptance envelope and the anchor shaping rules, and the winning anchor is
 //      expanded into the 61-knot runtime feedback ladder.
+//   5. Output-transformer magnetics. The saturation flux linkage and the coercive current of each
+//      transformer family are derived in closed form from the published transformer rating, so
+//      the nonlinear core model has its two constants per family without a search.
 //
-// Stages 1, 2 and 4's ladder expansion run on every invocation from the primary data in this
+// Stages 1, 2, 5 and 4's ladder expansion run on every invocation from the primary data in this
 // file; they are cheap and deterministic. Stage 3 and the anchor search cost about eight and a
 // half seconds per key, so a full re-derivation is intentionally a long-running maintenance job.
 // Its result - the measured
@@ -36,6 +39,9 @@
 //       [--write]                                                 rewrite the measured table below
 //   node scripts/derive-tube-circuit-design.mjs --ltp [--write]   re-measure the phase-inverter
 //                                                                 standing currents
+//   node scripts/derive-tube-circuit-design.mjs --magnetics       report the magnetic constants
+//       [--k-sat <margin>]                                        and check the hand-maintained
+//                                                                 single-ended transcription
 //
 // After a sweep lands, regenerate the shipped tables with
 // scripts/generate-tube-phase-c-tables.mjs and re-promote the DSP golden vectors.
@@ -3082,6 +3088,206 @@ export function buildSeA0Records() {
   return records;
 }
 
+// ================================================================================================
+// Stage 5: output-transformer magnetics.
+//
+// The core the output transformer is wound on is not linear, and the two constants derived here
+// are everything a nonlinear core model needs on top of the magnetising inductance the circuit
+// design already carries. The model is written in flux-linkage space (lambda, Wb-turns, referred
+// to the whole primary) so it plugs straight onto that inductance:
+//
+//   anhysteretic curve   i_an(lambda) = (lambda / Lm) / (1 - |lambda| / lambda_sat)
+//   hysteresis offset    i_h = i_c * min(1, |lambda - lambda0| / (0.5 * lambda_sat)) * s
+//
+// lambda_sat is where the core runs out of flux and i_c is the coercive current, the offset a
+// traversed B-H loop puts on the magnetising current. Both follow in closed form from figures an
+// output-transformer datasheet actually publishes, so a family costs no search, no measurement and
+// no free parameter beyond the single margin k_sat below.
+//
+// lambda_sat. An output transformer is rated "P_rated watts down to f_min hertz": at rated power
+// and the lowest guaranteed frequency the core still passes the wave without the distortion
+// running away, which is the standard way OPT data sheets state their low-frequency capability.
+// At that corner the primary voltage is a sine of amplitude sqrt(2 * P_rated * Z_primary), and
+// integrating it gives the peak flux linkage the rating implies:
+//
+//   lambda_rated = sqrt(2) * sqrt(P_rated * Z_primary) / (2 * pi * f_min)
+//
+// Saturation sits above that working peak by the margin k_sat:
+//
+//   push-pull      lambda_sat = k_sat * lambda_rated               (differential drive, lambda0 = 0)
+//   single-ended   lambda_sat = k_sat * (lambda0 + lambda_rated)   (signal rides the DC bias flux)
+//
+// The single-ended lambda0 used for the derivation is the conservative approximation
+// lambda0 ~ Lm * standing current. The runtime seeds the exact solution of i_an(lambda0) = ia,
+// which is linear in lambda0 - clearing the denominator of the Frohlich form gives
+// lambda0 = Lm*ia / (1 + Lm*ia/lambda_sat), not a quadratic - and that value is always smaller
+// than the approximation, so the derived headroom can only come out on the safe side.
+//
+// i_c. The coercive current is set by how much of the rated primary emf the hysteresis offset is
+// allowed to disturb, theta_h = 1 per cent, the low edge of the hysteresis contribution reported
+// for output transformers. The offset current works against the impedance that drives the
+// primary: the half primary for push-pull (primaryDriveOhm = Zpp/2 in the kernel) and the whole
+// primary for single-ended.
+//
+//   Vhat_rated = sqrt(2 * P_rated * Z_primary)
+//   push-pull      i_c = theta_h * Vhat_rated / (Z_primary / 2) = 2*theta_h*sqrt(2*P_rated/Z)
+//   single-ended   i_c = theta_h * Vhat_rated / Z_primary
+//
+// Remanent flux is a result of these two constants, not a target of the derivation: forcing the
+// gapless-GOSS textbook ratio Br/Bs ~ 0.6 would need a coercive current in the tens of
+// milliamps, whose amplitude-independent emf disturbance would wreck the small-signal response.
+//
+// This stage reads nothing but the frozen circuit profiles and the anchors below, so it is a pure
+// closed-form computation - it never touches the measured break-loop tables or the A0 anchor
+// search, and re-running it can never move a frozen calibration.
+// ================================================================================================
+
+// Ratio of the saturation flux linkage to the working peak the transformer rating implies. This is
+// the one free parameter of the whole magnetics derivation; it is one-dimensional and monotone
+// (raising it lowers the distortion the core adds), and 1.3 is the midpoint of the 1.1-1.5 band the
+// low-frequency distortion targets bracket. Phase 4 confirmed the measured M2/M3 of every family
+// lands inside the target band at that midpoint, so it was fixed without any search; only if a
+// family ever falls outside would it be reset by a monotone bisection over 1.1-1.5, and changing it
+// here and regenerating the tables is the whole update.
+export const MAGNETICS_SATURATION_MARGIN = 1.3;
+
+// Share of the rated primary emf the hysteresis offset may disturb. A design constant shared by
+// every family - it carries no per-family freedom.
+export const MAGNETICS_HYSTERESIS_EMF_FRACTION = 0.01;
+
+// Published transformer ratings, one anchor per family.
+//
+// Push-pull: the rating of the general-purpose push-pull output transformers these families are
+// built around (Hammond 1650-series and the equivalent guitar-amplifier and hi-fi irons), quoted
+// at the 30 Hz low corner such data sheets use. The primary impedance is not part of the anchor:
+// it is the selected Zpp of the profile, so the same valve set wound onto a higher-impedance
+// primary correctly derives a proportionally larger saturation flux.
+//
+// Single-ended: a single-ended output transformer is rated as one part, so its power and its
+// primary impedance come from the same published row - the canonical load of the valve it is sold
+// for (3.5k for the 300B, 2.5k for the 2A3), at the 40 Hz corner generic single-ended irons quote.
+// magnetizingInductanceH and standingCurrentA mirror kSeTubeModels in
+// dsp/plugins/saturation/tube_simulator/kernel.cpp and TUBE_SIMULATOR_SE_TUBE_MODELS in
+// plugins/saturation/tube_simulator.js; the --magnetics stage reads both files back and fails if
+// the transcription ever drifts.
+export const OPT_MAGNETIC_ANCHORS = Object.freeze({
+  pushPull: Object.freeze({
+    EL84: Object.freeze({ ratedPowerW: 15, minimumFrequencyHz: 30 }),
+    EL34: Object.freeze({ ratedPowerW: 40, minimumFrequencyHz: 30 }),
+    '6L6GC': Object.freeze({ ratedPowerW: 40, minimumFrequencyHz: 30 }),
+    KT88: Object.freeze({ ratedPowerW: 60, minimumFrequencyHz: 30 })
+  }),
+  singleEnded: Object.freeze({
+    '300B': Object.freeze({
+      ratedPowerW: 8,
+      minimumFrequencyHz: 40,
+      primaryImpedanceOhm: 3500,
+      magnetizingInductanceH: 12,
+      standingCurrentA: 0.06
+    }),
+    '2A3': Object.freeze({
+      ratedPowerW: 3.5,
+      minimumFrequencyHz: 40,
+      primaryImpedanceOhm: 2500,
+      magnetizingInductanceH: 10,
+      standingCurrentA: 0.06
+    })
+  })
+});
+
+// Peak flux linkage the rating implies: the primary sine of amplitude sqrt(2*P*Z) integrated at
+// the low corner.
+export function ratedFluxLinkageWbT(ratedPowerW, primaryImpedanceOhm, minimumFrequencyHz) {
+  return Math.SQRT2 * Math.sqrt(ratedPowerW * primaryImpedanceOhm) /
+    (2 * Math.PI * minimumFrequencyHz);
+}
+
+export function ratedPrimaryPeakV(ratedPowerW, primaryImpedanceOhm) {
+  return Math.sqrt(2 * ratedPowerW * primaryImpedanceOhm);
+}
+
+// The push-pull primary impedance is the plate-to-plate value the profile key names, in kilohms.
+export function powerPrimaryImpedanceOhm(profile) {
+  return Number(profile.key.zp) * 1000;
+}
+
+export function derivePowerMagnetics(profile, {
+  saturationMargin = MAGNETICS_SATURATION_MARGIN,
+  hysteresisEmfFraction = MAGNETICS_HYSTERESIS_EMF_FRACTION
+} = {}) {
+  const anchor = OPT_MAGNETIC_ANCHORS.pushPull[profile.key.pt];
+  if (!anchor) throw new Error(`no magnetic anchor for power tube ${profile.key.pt}`);
+  const primaryImpedanceOhm = powerPrimaryImpedanceOhm(profile);
+  const ratedFluxWbT =
+    ratedFluxLinkageWbT(anchor.ratedPowerW, primaryImpedanceOhm, anchor.minimumFrequencyHz);
+  const ratedPeakV = ratedPrimaryPeakV(anchor.ratedPowerW, primaryImpedanceOhm);
+  return {
+    ratedPowerW: anchor.ratedPowerW,
+    minimumFrequencyHz: anchor.minimumFrequencyHz,
+    primaryImpedanceOhm,
+    ratedPrimaryPeakV: ratedPeakV,
+    ratedFluxLinkageWbT: ratedFluxWbT,
+    // The differential drive of a push-pull primary cancels the standing ampere-turns, so the
+    // signal flux swings about zero and no bias term enters lambda_sat.
+    biasFluxLinkageWbT: 0,
+    fluxSaturationWbT: saturationMargin * ratedFluxWbT,
+    // The plate pair drives the primary through primaryDriveOhm = Zpp/2 (kernel.cpp,
+    // refreshPowerOptCoefficients), so that is the impedance the offset current disturbs.
+    coerciveCurrentA: hysteresisEmfFraction * ratedPeakV / (0.5 * primaryImpedanceOhm)
+  };
+}
+
+export function deriveSeMagnetics(seTube, {
+  saturationMargin = MAGNETICS_SATURATION_MARGIN,
+  hysteresisEmfFraction = MAGNETICS_HYSTERESIS_EMF_FRACTION
+} = {}) {
+  const anchor = OPT_MAGNETIC_ANCHORS.singleEnded[seTube];
+  if (!anchor) throw new Error(`no magnetic anchor for single-ended tube ${seTube}`);
+  const ratedFluxWbT = ratedFluxLinkageWbT(
+    anchor.ratedPowerW, anchor.primaryImpedanceOhm, anchor.minimumFrequencyHz);
+  const ratedPeakV = ratedPrimaryPeakV(anchor.ratedPowerW, anchor.primaryImpedanceOhm);
+  // Conservative bias flux for the derivation only: the whole standing current through the linear
+  // magnetising inductance. The runtime seeds the exact, smaller solution of i_an(lambda0) = ia.
+  const biasFluxWbT = anchor.magnetizingInductanceH * anchor.standingCurrentA;
+  const fluxSaturationWbT = saturationMargin * (biasFluxWbT + ratedFluxWbT);
+  return {
+    seTube,
+    ratedPowerW: anchor.ratedPowerW,
+    minimumFrequencyHz: anchor.minimumFrequencyHz,
+    primaryImpedanceOhm: anchor.primaryImpedanceOhm,
+    magnetizingInductanceH: anchor.magnetizingInductanceH,
+    standingCurrentA: anchor.standingCurrentA,
+    ratedPrimaryPeakV: ratedPeakV,
+    ratedFluxLinkageWbT: ratedFluxWbT,
+    biasFluxLinkageWbT: biasFluxWbT,
+    // What the runtime will actually seed, reported so the derivation and the kernel can be read
+    // against each other: i_an(lambda0) = ia solved exactly.
+    runtimeBiasFluxLinkageWbT: biasFluxWbT / (1 + biasFluxWbT / fluxSaturationWbT),
+    fluxSaturationWbT,
+    // A single-ended primary is driven as a whole winding, so the offset current sees Z_primary.
+    coerciveCurrentA: hysteresisEmfFraction * ratedPeakV / anchor.primaryImpedanceOhm
+  };
+}
+
+// The circuit profiles carrying their magnetic constants. The two values sit behind
+// screenTapTurnsRatio so the shipped PowerProfile keeps its transformer parameters together.
+export function buildMagneticsProfiles(circuitProfiles = CIRCUIT_PROFILES, options = {}) {
+  return Object.freeze(circuitProfiles.map(profile => {
+    const magnetics = derivePowerMagnetics(profile, options);
+    const { sentinelProfile, ...leading } = profile;
+    return Object.freeze({
+      ...leading,
+      fluxSaturationWbT: magnetics.fluxSaturationWbT,
+      coerciveCurrentA: magnetics.coerciveCurrentA,
+      sentinelProfile
+    });
+  }));
+}
+
+export function buildSeMagnetics(options = {}) {
+  return Object.freeze(SE_TUBES.map(seTube => deriveSeMagnetics(seTube, options)));
+}
+
 // The complete derived circuit design: everything scripts/generate-tube-phase-c-tables.mjs needs
 // to emit the C++ tables and the JavaScript reference tables.
 export function deriveTubeCircuitDesign() {
@@ -3105,7 +3311,8 @@ export function deriveTubeCircuitDesign() {
     })
   ]);
   return {
-    circuitProfiles: CIRCUIT_PROFILES,
+    circuitProfiles: buildMagneticsProfiles(),
+    seMagnetics: buildSeMagnetics(),
     speakerProfiles: SPEAKER_PROFILES,
     tubeLuts,
     powerSupplyTable: supplyTable,
@@ -3140,6 +3347,32 @@ export function verifyDesignInvariants(design = deriveTubeCircuitDesign()) {
   if (design.tubeLuts.length !== 4) fail('expected 4 output-tube LUTs');
   if (design.powerA0Records.length !== 864) fail('expected 864 Power A0 records');
   if (design.seA0Records.length !== 144) fail('expected 144 SE A0 records');
+  if (design.seMagnetics.length !== 2) fail('expected 2 single-ended magnetic records');
+  // The magnetic constants are shipped, so the shape a consumer may rely on is checked here: a
+  // positive saturation flux that leaves headroom above the rated working peak, and a coercive
+  // current small enough that the offset it puts on the magnetising current stays a perturbation.
+  for (const profile of design.circuitProfiles) {
+    const derived = derivePowerMagnetics(profile);
+    if (profile.fluxSaturationWbT !== derived.fluxSaturationWbT ||
+        profile.coerciveCurrentA !== derived.coerciveCurrentA) {
+      fail(`${profile.circuitProfileId} carries magnetic constants that are not the derived ones`);
+    }
+    if (!(profile.fluxSaturationWbT > derived.ratedFluxLinkageWbT) ||
+        !(profile.coerciveCurrentA > 0) || !(profile.coerciveCurrentA < 0.01)) {
+      fail(`${profile.circuitProfileId} magnetic constants are outside the derivation contract`);
+    }
+  }
+  for (const record of design.seMagnetics) {
+    if (!(record.fluxSaturationWbT > record.biasFluxLinkageWbT + record.ratedFluxLinkageWbT) ||
+        !(record.coerciveCurrentA > 0) || !(record.coerciveCurrentA < 0.01)) {
+      fail(`${record.seTube} magnetic constants are outside the derivation contract`);
+    }
+    // The bias point has to sit well inside the curve: at the seeded flux the incremental
+    // inductance is 1/(1-x0)^2 times the linear one, and a bias point near the knee would make
+    // that factor - and with it the low-frequency loading of the valve - unreasonable.
+    const x0 = record.runtimeBiasFluxLinkageWbT / record.fluxSaturationWbT;
+    if (!(x0 > 0) || !(x0 < 0.4)) fail(`${record.seTube} bias flux sits too close to saturation`);
+  }
   for (const lut of design.tubeLuts) {
     if (lut.axes.controlVoltageV.length !== 11 || lut.axes.plateCathodeV.length !== 11 ||
         lut.axes.screenCathodeV.length !== 6 || lut.valuesBinary64.length !== 1452) {
@@ -4060,6 +4293,142 @@ function runLtpMeasurement(args) {
   }
 }
 
+// The single-ended magnetic constants are not generated: kSeTubeModels in kernel.cpp and
+// TUBE_SIMULATOR_SE_TUBE_MODELS in the plugin are hand-maintained primary data, so the derivation
+// reads both back and reports what it finds. A transcription that diverges between the kernel and
+// the plugin is caught by parity (golden 1e-5, output-safety 1e-6), because the two implementations
+// then disagree. Drift of the derived values against both implementations at once moves neither
+// side relative to the other, so parity stays silent and this check is the only defence.
+function readJsSeTubeModels() {
+  const source = fs.readFileSync(pluginSourcePath, 'utf8');
+  const start = source.indexOf('const TUBE_SIMULATOR_SE_TUBE_MODELS = Object.freeze({');
+  if (start < 0) return null;
+  const end = source.indexOf('\n});', start);
+  if (end < 0) return null;
+  const block = source.slice(start, end);
+  const models = new Map();
+  for (const seTube of SE_TUBES) {
+    const tubeStart = block.indexOf(`'${seTube}': Object.freeze({`);
+    if (tubeStart < 0) return null;
+    const tubeEnd = block.indexOf('})', tubeStart);
+    const fields = new Map();
+    for (const match of block.slice(tubeStart, tubeEnd).matchAll(
+      /([A-Za-z][A-Za-z0-9]*)\s*:\s*(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)/g)) {
+      fields.set(match[1], Number(match[2]));
+    }
+    models.set(seTube, fields);
+  }
+  return models;
+}
+
+function readKernelSeTubeModels() {
+  const kernelPath = path.join(
+    repoRoot, 'dsp', 'plugins', 'saturation', 'tube_simulator', 'kernel.cpp');
+  const source = fs.readFileSync(kernelPath, 'utf8');
+  const start = source.indexOf('constexpr std::array<SeTubeModel, 2> kSeTubeModels = {{');
+  if (start < 0) return null;
+  const end = source.indexOf('}};', start);
+  if (end < 0) return null;
+  const rows = source.slice(source.indexOf('{{', start) + 2, end)
+    .split('},')
+    .map(row => row.trim())
+    .filter(row => row.startsWith('{'))
+    .map(row => [...row.matchAll(/-?\d+(?:\.\d+)?(?:e-?\d+)?/g)].map(match => Number(match[0])));
+  return rows.length === SE_TUBES.length ? rows : null;
+}
+
+function reportSeTranscription(records, out) {
+  const jsModels = readJsSeTubeModels();
+  const kernelRows = readKernelSeTubeModels();
+  const failures = [];
+  records.forEach((record, index) => {
+    const expected = [
+      ['standingCurrentA', record.standingCurrentA],
+      ['magnetizingInductanceH', record.magnetizingInductanceH],
+      ['fluxSaturationWbT', record.fluxSaturationWbT],
+      ['coerciveCurrentA', record.coerciveCurrentA]
+    ];
+    const jsFields = jsModels?.get(record.seTube);
+    for (const [field, value] of expected) {
+      const found = jsFields?.get(field);
+      if (found === undefined) {
+        failures.push(`${record.seTube}: plugin carries no ${field}`);
+      } else if (Math.abs(found - value) > 1e-12 * Math.max(1, Math.abs(value))) {
+        failures.push(`${record.seTube}: plugin ${field} is ${found}, derived ${value}`);
+      }
+    }
+    // The kernel row is a positional initialiser, so only the two trailing magnetic constants can
+    // be checked by name-free position: they are the last two entries of the row by construction.
+    const row = kernelRows?.[index];
+    if (!row || row.length < 2) {
+      failures.push(`${record.seTube}: kernel row could not be read`);
+    } else {
+      const kernelPairs = [
+        ['fluxSaturationWbT', row[row.length - 2], record.fluxSaturationWbT],
+        ['coerciveCurrentA', row[row.length - 1], record.coerciveCurrentA]
+      ];
+      for (const [field, found, value] of kernelPairs) {
+        if (Math.abs(found - value) > 1e-12 * Math.max(1, Math.abs(value))) {
+          failures.push(`${record.seTube}: kernel ${field} is ${found}, derived ${value}`);
+        }
+      }
+    }
+  });
+  out(failures.length === 0
+    ? 'single-ended transcription: kernel.cpp and tube_simulator.js carry the derived constants\n'
+    : `single-ended transcription mismatch:\n${failures.join('\n')}\n`);
+  return failures.length === 0;
+}
+
+// Stage 5 report. Closed form throughout, so it costs nothing to run and always prints the same
+// table for the same margin.
+function runMagnetics(args) {
+  const marginOption = readOption(args, 'k-sat', null);
+  const saturationMargin = marginOption === null ?
+    MAGNETICS_SATURATION_MARGIN : Number(marginOption);
+  if (!(saturationMargin > 0)) {
+    process.stderr.write('--k-sat must be a positive number\n');
+    process.exitCode = 2;
+    return;
+  }
+  const exploring = saturationMargin !== MAGNETICS_SATURATION_MARGIN;
+  const options = { saturationMargin };
+  const out = text => process.stdout.write(text);
+  out(`k_sat = ${saturationMargin}, theta_h = ${MAGNETICS_HYSTERESIS_EMF_FRACTION}\n`);
+  if (exploring) {
+    out('exploration only: the shipped tables carry MAGNETICS_SATURATION_MARGIN, so a value\n' +
+      'settled here has to be written into that constant before regenerating them\n');
+  }
+  out('\npush-pull families\n');
+  out('profile                   P_rated  f_min    Zpp    lambda_rated   lambda_sat        i_c\n');
+  for (const profile of CIRCUIT_PROFILES) {
+    const record = derivePowerMagnetics(profile, options);
+    out(`${profile.circuitProfileId.padEnd(24)} ` +
+      `${String(record.ratedPowerW).padStart(6)}W ` +
+      `${String(record.minimumFrequencyHz).padStart(4)}Hz ` +
+      `${String(record.primaryImpedanceOhm).padStart(6)} ` +
+      `${record.ratedFluxLinkageWbT.toFixed(6).padStart(13)} ` +
+      `${record.fluxSaturationWbT.toFixed(6).padStart(12)} ` +
+      `${(record.coerciveCurrentA * 1000).toFixed(6).padStart(10)} mA\n`);
+  }
+  const seRecords = buildSeMagnetics(options);
+  out('\nsingle-ended families\n');
+  for (const record of seRecords) {
+    out(`${record.seTube.padEnd(6)} ${record.ratedPowerW}W ${record.minimumFrequencyHz}Hz ` +
+      `Z=${record.primaryImpedanceOhm} Lm=${record.magnetizingInductanceH}H ` +
+      `ia=${record.standingCurrentA}A\n` +
+      `       Vhat_rated=${record.ratedPrimaryPeakV.toFixed(6)} V ` +
+      `lambda_rated=${record.ratedFluxLinkageWbT.toFixed(6)} Wb-t ` +
+      `lambda0(derivation)=${record.biasFluxLinkageWbT.toFixed(6)} Wb-t\n` +
+      `       lambda_sat=${record.fluxSaturationWbT.toFixed(6)} Wb-t ` +
+      `lambda0(runtime)=${record.runtimeBiasFluxLinkageWbT.toFixed(6)} Wb-t ` +
+      `x0=${(record.runtimeBiasFluxLinkageWbT / record.fluxSaturationWbT).toFixed(6)}\n` +
+      `       i_c=${(record.coerciveCurrentA * 1000).toFixed(6)} mA\n`);
+  }
+  out('\n');
+  if (!exploring && !reportSeTranscription(seRecords, out)) process.exitCode = 2;
+}
+
 const invokedDirectly = process.argv[1] &&
   path.resolve(process.argv[1]) === ownPath;
 
@@ -4069,6 +4438,8 @@ if (invokedDirectly) {
     runSeSweep(args);
   } else if (args.includes('--sweep')) {
     runSweep(args);
+  } else if (args.includes('--magnetics')) {
+    runMagnetics(args);
   } else if (args.includes('--ltp')) {
     runLtpMeasurement(args);
   } else {

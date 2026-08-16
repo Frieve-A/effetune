@@ -377,14 +377,35 @@ struct SeTubeModel {
   double powerTheveninResistanceOhm;
   double powerCapacitanceF;
   double nfbTapTurnsRatio;
+  // Magnetic constants of the single-ended output transformer core, derived in closed form from
+  // the published rating of the transformer each valve is sold with by stage 5 of
+  // scripts/derive-tube-circuit-design.mjs (--magnetics reports them and checks this table).
+  // fluxSaturationWbT is where the anhysteretic curve runs out of flux and coerciveCurrentA is
+  // the offset a traversed B-H loop puts on the magnetising current; both are referred to the
+  // whole primary, so they qualify magnetizingInductanceH above. The single-ended saturation
+  // figure carries the standing bias flux the gapped core already holds.
+  double fluxSaturationWbT;
+  double coerciveCurrentA;
 };
 
 constexpr std::array<SeTubeModel, 2> kSeTubeModels = {{
     {3.85, 0.000906, 1.5, 9.35, 0.75, 35.0, 0.06, 120.0, 12.0, 0.018, 60000.0, 850.0, 100e-6, 150.0,
-     47e-6, 0.1},
+     47e-6, 0.1, 2.160045343568232, 0.0006761234037828132},
     {4.2, 0.000846, 1.5, -2.62, 0.75, 30.0, 0.06, 105.0, 10.0, 0.015, 50000.0, 900.0, 100e-6, 120.0,
-     47e-6, 0.1},
+     47e-6, 0.1, 1.4642621489401626, 0.0005291502622129182},
 }};
+
+// Core-magnetics constants shared by the nonlinear transformer model. The flux-ratio clamp keeps
+// the Frohlich division away from its pole - a real core cannot be driven through saturation
+// either, so the clamp is a numerical guard, not a fidelity loss. The excess-current clamp is
+// equally unreachable in normal operation. The hysteresis sign state follows the primary voltage
+// through a first-order lag of 0.1 ms with a 0.05 V soft-sign knee, and is flushed to zero once it
+// decays below the denormal guard.
+constexpr double kFluxRatioLimit = 1.0 - 1.0 / 1048576.0;
+constexpr double kExcessCurrentLimitA = 2.0;
+constexpr double kHysteresisTimeConstantS = 1.0e-4;
+constexpr double kHysteresisVoltageEpsilonV = 0.05;
+constexpr double kHysteresisSignFlushThreshold = 1.0e-30;
 
 [[nodiscard]] constexpr double
 effectivePrimaryImpedanceOhm(double primary_impedance_ohm, double assumed_speaker_load_ohm,
@@ -509,6 +530,27 @@ struct PowerOptCoefficients {
   double magnetizingStep = 0.0;
   double inverseCoreLossResistanceOhm = 0.0;
   double inverseFastDt = 0.0;
+
+  // Nonlinear core magnetics of the output transformer: the Frohlich saturation curve and the
+  // coercive offset in flux-linkage form, plus the bias operating point the linearised difference
+  // injection is expanded about (see seExcessMagnetizingCurrent). The single-ended bias point is
+  // the gapped-core standing flux; the push-pull differential drive cancels the standing
+  // magnetization, so its bias constants collapse to the origin and the slope 1/Lm.
+  double fluxSaturationWbT = 0.0;
+  double coerciveCurrentA = 0.0;
+  double inverseMagnetizingInductance = 0.0;
+  // Reciprocal of the loop-scaling reference flux, half the saturation flux linkage.
+  double inverseFluxReference = 0.0;
+  // Trapezoidal half step of the flux-linkage integration, dt/2.
+  double fluxStep = 0.0;
+  // First-order lag rate of the hysteresis sign state, dt/tau_h.
+  double hysteresisRate = 0.0;
+  // Bias flux linkage of the gapped core and the anhysteretic value and slope there; the
+  // injection subtracts these so the small-signal response at the bias point stays exactly the
+  // linear magnetizing inductance.
+  double fluxBiasWbT = 0.0;
+  double biasCurrentA = 0.0;
+  double biasSlope = 0.0;
 
   double turnsRatio = 0.0;
   double halfPrimaryTurnsRatio = 0.0;
@@ -646,6 +688,15 @@ struct PowerState {
   double realPowerSum = 0.0;
   double publishedVrms = 0.0;
   double publishedRealPower = 0.0;
+  // Nonlinear core magnetics. The flux linkage integrates the same primary voltage as the linear
+  // magnetizing branch, so on the single-ended core the invariant
+  // magnetizingCurrentA - ia == (fluxLinkageWbT - bias) / Lm holds sample by sample. The reset
+  // seeds the single-ended flux at the gapped-core bias point and the push-pull flux at zero.
+  // The sign state is the smoothed sign of the primary voltage that orients the coercive offset,
+  // and the excess current records the committed injection of the last sample.
+  double fluxLinkageWbT = 0.0;
+  double hysteresisSignState = 0.0;
+  double excessCurrentA = 0.0;
   std::uint32_t slowCounter = 0u;
   std::uint32_t powerWindowSamples = 0u;
 };
@@ -2832,6 +2883,17 @@ private:
     opt.magnetizingStep = dt / (2.0 * model.magnetizingInductanceH);
     opt.inverseCoreLossResistanceOhm = 1.0 / model.coreLossResistanceOhm;
     opt.inverseFastDt = 1.0 / dt;
+    opt.fluxSaturationWbT = model.fluxSaturationWbT;
+    opt.coerciveCurrentA = model.coerciveCurrentA;
+    opt.inverseMagnetizingInductance = 1.0 / model.magnetizingInductanceH;
+    opt.inverseFluxReference = 2.0 / model.fluxSaturationWbT;
+    opt.fluxStep = 0.5 * dt;
+    opt.hysteresisRate = dt / kHysteresisTimeConstantS;
+    // The bias operating point depends on the quiescent solve; solveSeQuiescent, which every
+    // single-ended commit runs right after this refresh, fills these in.
+    opt.fluxBiasWbT = 0.0;
+    opt.biasCurrentA = 0.0;
+    opt.biasSlope = 0.0;
     opt.turnsRatio = power_selected_turns_ratio_;
     opt.halfPrimaryTurnsRatio = power_selected_turns_ratio_;
     opt.windingResistanceOhm = model.windingResistanceOhm;
@@ -2883,6 +2945,17 @@ private:
     evaluation = evaluateSeTriode(model, -cathode, plate - cathode);
     residual = current - evaluation.current;
     se_quiescent_ = {current, cathode, b_plus, plate, residual};
+    // Bias flux linkage of the gapped core, carried by the standing current. It solves
+    // i_an(bias) == ia on the Frohlich inverse curve, and that equation is linear in the bias:
+    // (bias/Lm)/(1 - bias/sat) == ia multiplies through the denominator to
+    // bias == Lm*ia/(1 + Lm*ia/sat). The linearised difference injection has value and slope
+    // zero at this point, so the existing magnetizing-branch seed keeps KCL closed at reset.
+    PowerOptCoefficients &opt = power_opt_coeff_;
+    const double linear_flux = model.magnetizingInductanceH * current;
+    const double flux_bias = linear_flux / (1.0 + linear_flux / model.fluxSaturationWbT);
+    opt.fluxBiasWbT = flux_bias;
+    opt.biasCurrentA = seAnhystereticCurrent(flux_bias);
+    opt.biasSlope = seAnhystereticSlope(flux_bias);
   }
 
   // The measured profile of the assumed speaker, scaled to the load actually connected by
@@ -2943,6 +3016,20 @@ private:
         magnetizing_coefficient != 0.0 ? 1.0 / magnetizing_coefficient : 0.0;
     opt.magnetizingHistoryCoefficient = magnetizing_over_dt - profile.coreLossResistanceOhm * 0.5;
     opt.inverseFastDt = dt > 0.0 ? 1.0 / dt : 0.0;
+    // Nonlinear core magnetics of the push-pull transformer, in the same flux-linkage form as the
+    // single-ended core. The two standing currents magnetize the core in opposite directions, so
+    // the bias flux is zero and the linearised-difference constants collapse to the origin: zero
+    // bias current and the linear slope 1/Lm, which turns the shared excess-current expression
+    // into i_x = (flux/Lm)*(x/(1-x)) + i_c*r*s.
+    opt.fluxSaturationWbT = profile.fluxSaturationWbT;
+    opt.coerciveCurrentA = profile.coerciveCurrentA;
+    opt.inverseMagnetizingInductance = 1.0 / profile.magnetizingInductanceH;
+    opt.inverseFluxReference = 2.0 / profile.fluxSaturationWbT;
+    opt.fluxStep = 0.5 * dt;
+    opt.hysteresisRate = dt / kHysteresisTimeConstantS;
+    opt.fluxBiasWbT = 0.0;
+    opt.biasCurrentA = 0.0;
+    opt.biasSlope = opt.inverseMagnetizingInductance;
 
     opt.turnsRatio = power_selected_turns_ratio_;
     opt.halfPrimaryTurnsRatio = 0.5 * power_selected_turns_ratio_;
@@ -3282,6 +3369,11 @@ private:
       state.iaPullA = ia;
       state.magnetizingCurrentA = ia;
       state.primaryVoltageV = 0.0;
+      // Seed the flux linkage at the gapped-core bias point solveSeQuiescent derived from the
+      // standing current (the closed form is linear, see there). The excess injection is zero at
+      // this point, so the magnetizing seed above closes KCL and the start is glitch-free. The
+      // hysteresis sign and the committed excess current start from the zeroed state.
+      state.fluxLinkageWbT = power_opt_coeff_.fluxBiasWbT;
       const double dc_residual = absolute(se_quiescent_.residualA);
       maximum_dc_residual_ =
           dc_residual > maximum_dc_residual_ ? dc_residual : maximum_dc_residual_;
@@ -3560,6 +3652,39 @@ private:
                               0.5 * opt.seriesCapacitanceF * new_capacitor * new_capacitor +
                               0.5 * opt.magnetizingInductanceH * new_magnetizing * new_magnetizing;
     const double midpoint_primary_voltage = 0.5 * (old_primary_voltage + source);
+    // Nonlinear core magnetics of the output transformer, shared by both topologies. The flux
+    // linkage integrates the primary voltage with the same trapezoid as the linear magnetizing
+    // branch, so on the single-ended core the value committed here is bit-identical to the one
+    // the Newton in advanceSingleEnded injected; on the push-pull core the committed excess
+    // current is the injection the next sample's advancePower subtracts from the differential
+    // ampere-turn drive (the one-sample-delayed explicit coupling). The audit terms follow the
+    // linearised-difference split: the midpoint excess current is the power drawn from the
+    // primary, the coercive part of it is dissipation - written so the hysteresis contribution
+    // cancels exactly against the midpoint current and only the trapezoid-versus-closed-form
+    // error of the anhysteretic part reaches the residual - and the closed-form W_x increment is
+    // the stored side (the linear branch's 0.5*Lm*i^2 is already counted above).
+    const double old_flux = state.fluxLinkageWbT;
+    const double sign_state = state.hysteresisSignState;
+    const double new_flux = old_flux + opt.fluxStep * (old_primary_voltage + source);
+    const double old_excess = seExcessMagnetizingCurrent(old_flux, sign_state);
+    const double new_excess = seExcessMagnetizingCurrent(new_flux, sign_state);
+    double old_loop = absolute(old_flux - opt.fluxBiasWbT) * opt.inverseFluxReference;
+    old_loop = old_loop > 1.0 ? 1.0 : old_loop;
+    double new_loop = absolute(new_flux - opt.fluxBiasWbT) * opt.inverseFluxReference;
+    new_loop = new_loop > 1.0 ? 1.0 : new_loop;
+    const double hysteresis_power = opt.coerciveCurrentA * (0.5 * (old_loop + new_loop)) *
+                                    sign_state * midpoint_primary_voltage;
+    const double magnetics_residual = midpoint_primary_voltage * (0.5 * (old_excess + new_excess)) -
+                                      hysteresis_power -
+                                      seExcessEnergyDelta(old_flux, new_flux) * opt.inverseFastDt;
+    // Smoothed sign of the primary voltage orienting the coercive offset: a first-order lag
+    // towards the soft sign v/(|v| + v_eps), clamped to [-1, 1] and flushed once it decays into
+    // denormal territory during long silence.
+    double sign =
+        sign_state + opt.hysteresisRate *
+                         (source / (absolute(source) + kHysteresisVoltageEpsilonV) - sign_state);
+    sign = sign > 1.0 ? 1.0 : (sign < -1.0 ? -1.0 : sign);
+    const double new_sign = absolute(sign) < kHysteresisSignFlushThreshold ? 0.0 : sign;
     const double residual =
         applied_parameters_.outputStage == 2
             ? midpoint_primary_voltage *
@@ -3568,11 +3693,11 @@ private:
                   opt.effectiveResistanceOhm * midpoint_current * midpoint_current -
                   midpoint_primary_voltage * midpoint_primary_voltage *
                       opt.inverseCoreLossResistanceOhm -
-                  (new_energy - old_energy) * opt.inverseFastDt
+                  (new_energy - old_energy) * opt.inverseFastDt + magnetics_residual
             : source * (midpoint_current + midpoint_magnetizing) -
                   opt.effectiveResistanceOhm * midpoint_current * midpoint_current -
                   opt.coreLossResistanceOhm * midpoint_magnetizing * midpoint_magnetizing -
-                  (new_energy - old_energy) * opt.inverseFastDt;
+                  (new_energy - old_energy) * opt.inverseFastDt + magnetics_residual;
     const double absolute_residual = absolute(residual);
     maximum_energy_residual_ =
         absolute_residual > maximum_energy_residual_ ? absolute_residual : maximum_energy_residual_;
@@ -3580,6 +3705,9 @@ private:
     state.optCapacitorV = new_capacitor;
     state.magnetizingCurrentA = new_magnetizing;
     state.primaryVoltageV = source;
+    state.fluxLinkageWbT = new_flux;
+    state.excessCurrentA = new_excess;
+    state.hysteresisSignState = new_sign;
 
     const double secondary_current = new_current * opt.turnsRatio;
     if (opt.voiceStepLimited) {
@@ -3742,10 +3870,17 @@ private:
         state.iaPushA + power_opt_coeff_.screenTapTurnsRatio * state.ig2PushA;
     const double previous_pull_drive =
         state.iaPullA + power_opt_coeff_.screenTapTurnsRatio * state.ig2PullA;
-    PowerPlateResult push =
-        solvePowerPlate(true, state, previous_pull_drive, power_lut_scratch_[channel][0]);
-    PowerPlateResult pull =
-        solvePowerPlate(false, state, previous_push_drive, power_lut_scratch_[channel][1]);
+    // One-sample-delayed coupling of the nonlinear core: the excess magnetizing current committed
+    // at the end of the previous sample is subtracted from the differential ampere-turn drive, so
+    // the primary emf collapses when the core saturates. Both plate load lines see the same
+    // correction through their opposite-drive terms - the push side adds it, the pull side
+    // subtracts it - which keeps signed_drive_ohm*(drive - opposite) equal to the corrected
+    // differential drive for either solve.
+    const double excess_previous = state.excessCurrentA;
+    PowerPlateResult push = solvePowerPlate(true, state, previous_pull_drive + excess_previous,
+                                            power_lut_scratch_[channel][0]);
+    PowerPlateResult pull = solvePowerPlate(false, state, previous_push_drive - excess_previous,
+                                            power_lut_scratch_[channel][1]);
     state.platePushV = push.plateV;
     state.platePullV = pull.plateV;
     state.iaPushA = push.ia;
@@ -3765,7 +3900,8 @@ private:
                                      ? absolute(push.residual)
                                      : absolute(pull.residual);
     maximum_kcl_ = fast_residual > maximum_kcl_ ? fast_residual : maximum_kcl_;
-    const double primary_source = (push.driveA - pull.driveA) * power_opt_coeff_.primaryDriveOhm;
+    const double primary_source =
+        (push.driveA - pull.driveA - excess_previous) * power_opt_coeff_.primaryDriveOhm;
     const double output = advancePowerOutputLoad(primary_source, state);
     state.slowAccumulatorPushA += push.ia + push.ig2;
     state.slowAccumulatorPullA += pull.ia + pull.ig2;
@@ -3802,6 +3938,81 @@ private:
     const double knee = 1.0 - knee_exponential;
     return {amplitude * knee, amplitude_derivative * knee,
             amplitude_derivative * knee / model.mu + amplitude * knee_exponential / model.vs};
+  }
+
+  // Anhysteretic magnetizing current of the Frohlich inverse characteristic,
+  // i_an(flux) = (flux/Lm)/(1 - |flux|/sat). Its small-signal slope at the origin is exactly the
+  // linear magnetizing inductance, and the slope grows monotonically towards saturation, which is
+  // what keeps the Newton conductance moving in the stable direction. The ratio clamp is the
+  // numerical guard of the division; the operation order here is mirrored verbatim by the
+  // JavaScript reference, and the whole magnetics path stays in +,-,*,/ so both implementations
+  // agree bit for bit.
+  [[nodiscard]] double seAnhystereticCurrent(double flux) const noexcept {
+    const PowerOptCoefficients &opt = power_opt_coeff_;
+    double ratio = absolute(flux) / opt.fluxSaturationWbT;
+    ratio = ratio > kFluxRatioLimit ? kFluxRatioLimit : ratio;
+    return flux * opt.inverseMagnetizingInductance / (1.0 - ratio);
+  }
+
+  // d(i_an)/d(flux) = 1/(Lm*(1 - |flux|/sat)^2).
+  [[nodiscard]] double seAnhystereticSlope(double flux) const noexcept {
+    const PowerOptCoefficients &opt = power_opt_coeff_;
+    double ratio = absolute(flux) / opt.fluxSaturationWbT;
+    ratio = ratio > kFluxRatioLimit ? kFluxRatioLimit : ratio;
+    const double margin = 1.0 - ratio;
+    return opt.inverseMagnetizingInductance / (margin * margin);
+  }
+
+  // Excess magnetizing current of the nonlinear core, injected on top of the linear magnetizing
+  // branch as the bias-point linearised difference
+  //   i_x(flux) = i_an(flux) - i_an(bias) - i_an'(bias)*(flux - bias) + i_c*r(flux)*s
+  // with the Rayleigh-style loop scaling r(flux) = min(1, |flux - bias|/(sat/2)). Value and slope
+  // of the non-hysteretic part are zero at the bias point, so the small-signal response - and with
+  // it the frozen break-loop calibration - stays exactly the linear model. The current clamp is a
+  // pure numerical guard that normal operation never reaches.
+  [[nodiscard]] double seExcessMagnetizingCurrent(double flux, double sign_state) const noexcept {
+    const PowerOptCoefficients &opt = power_opt_coeff_;
+    const double swing = flux - opt.fluxBiasWbT;
+    double loop_scale = absolute(swing) * opt.inverseFluxReference;
+    loop_scale = loop_scale > 1.0 ? 1.0 : loop_scale;
+    double current = seAnhystereticCurrent(flux) - opt.biasCurrentA - opt.biasSlope * swing +
+                     opt.coerciveCurrentA * loop_scale * sign_state;
+    current = current > kExcessCurrentLimitA
+                  ? kExcessCurrentLimitA
+                  : (current < -kExcessCurrentLimitA ? -kExcessCurrentLimitA : current);
+    return current;
+  }
+
+  // Newton slope of the excess current, d(i_x)/d(flux) = i_an'(flux) - i_an'(bias). Zero at the
+  // bias point, positive towards saturation; near flux zero it can go as low as
+  // 1/Lm - i_an'(bias), which the linear branch conductance keeps effectively non-negative. The
+  // hysteresis and clamp branches are deliberately left out of the slope - the residual itself is
+  // exact and both implementations share this choice.
+  [[nodiscard]] double seExcessMagnetizingSlope(double flux) const noexcept {
+    return seAnhystereticSlope(flux) - power_opt_coeff_.biasSlope;
+  }
+
+  // Stored-energy increment of the excess current for the energy audit,
+  //   W_x(flux) = integral from bias to flux of (i_an(u) - i_an(bias) - i_an'(bias)*(u - bias)) du
+  // returned as W_x(new) - W_x(old). The linear branch already carries 0.5*Lm*i^2 in the audit,
+  // so only this excess may be added - adding the full magnetization energy would double count.
+  // With W_an(flux) = -(sat/Lm)*(sat*ln(1 - |flux|/sat) + |flux|) the difference needs a single
+  // logarithm: W_an(new) - W_an(old) = -(sat/Lm)*(sat*ln((1 - x_new)/(1 - x_old)) + |new| - |old|).
+  // The audit feeds a telemetry maximum only, so the transcendental is outside the parity path.
+  [[nodiscard]] double seExcessEnergyDelta(double old_flux, double new_flux) const noexcept {
+    const PowerOptCoefficients &opt = power_opt_coeff_;
+    double old_ratio = absolute(old_flux) / opt.fluxSaturationWbT;
+    old_ratio = old_ratio > kFluxRatioLimit ? kFluxRatioLimit : old_ratio;
+    double new_ratio = absolute(new_flux) / opt.fluxSaturationWbT;
+    new_ratio = new_ratio > kFluxRatioLimit ? kFluxRatioLimit : new_ratio;
+    const double anhysteretic =
+        -(opt.fluxSaturationWbT * opt.inverseMagnetizingInductance) *
+        (opt.fluxSaturationWbT * std::log((1.0 - new_ratio) / (1.0 - old_ratio)) +
+         absolute(new_flux) - absolute(old_flux));
+    const double old_swing = old_flux - opt.fluxBiasWbT;
+    const double new_swing = new_flux - opt.fluxBiasWbT;
+    return anhysteretic - opt.biasCurrentA * (new_flux - old_flux) -
+           0.5 * opt.biasSlope * (new_swing * new_swing - old_swing * old_swing);
   }
 
   void updateSeSlow(PowerState &state, const SeTubeModel &model) noexcept {
@@ -3844,17 +4055,26 @@ private:
         state.magnetizingCurrentA + opt.magnetizingStep * state.primaryVoltageV;
     const double transformer_conductance =
         opt.inverseSeriesCoefficient + opt.magnetizingStep + opt.inverseCoreLossResistanceOhm;
+    // The nonlinear core is coupled implicitly: the excess magnetizing current is evaluated at the
+    // end-of-step flux linkage, itself the trapezoid of the primary voltage the same Newton is
+    // solving for, so d(flux)/d(plate) = (dt/2) * d(primary_voltage)/d(plate) enters the Jacobian
+    // through the flux chain rule on the same side as the transformer conductance.
     double residual = 0.0;
     for (int iteration = 0; iteration < 4; ++iteration) {
       const double primary_voltage =
           state.bPlusRamp.applied - plate - model.windingResistanceOhm * evaluation.current;
-      const double transformer_current = primary_voltage * transformer_conductance +
-                                         series_history * opt.inverseSeriesCoefficient +
-                                         magnetizing_history;
+      const double flux_linkage =
+          state.fluxLinkageWbT + opt.fluxStep * (state.primaryVoltageV + primary_voltage);
+      const double transformer_current =
+          primary_voltage * transformer_conductance +
+          series_history * opt.inverseSeriesCoefficient + magnetizing_history +
+          seExcessMagnetizingCurrent(flux_linkage, state.hysteresisSignState);
       residual = evaluation.current - transformer_current;
-      const double derivative =
-          evaluation.plateDerivative +
-          transformer_conductance * (1.0 + model.windingResistanceOhm * evaluation.plateDerivative);
+      const double derivative = evaluation.plateDerivative +
+                                transformer_conductance * (1.0 + model.windingResistanceOhm *
+                                                                     evaluation.plateDerivative) +
+                                seExcessMagnetizingSlope(flux_linkage) * opt.fluxStep *
+                                    (1.0 + model.windingResistanceOhm * evaluation.plateDerivative);
       if (!std::isfinite(derivative) || absolute(derivative) < 1e-12) {
         ++safety_limits_;
         step_safety_hit_ = true;
@@ -3865,9 +4085,12 @@ private:
     }
     const double primary_voltage =
         state.bPlusRamp.applied - plate - model.windingResistanceOhm * evaluation.current;
-    const double transformer_current = primary_voltage * transformer_conductance +
-                                       series_history * opt.inverseSeriesCoefficient +
-                                       magnetizing_history;
+    const double final_flux_linkage =
+        state.fluxLinkageWbT + opt.fluxStep * (state.primaryVoltageV + primary_voltage);
+    const double transformer_current =
+        primary_voltage * transformer_conductance + series_history * opt.inverseSeriesCoefficient +
+        magnetizing_history +
+        seExcessMagnetizingCurrent(final_flux_linkage, state.hysteresisSignState);
     residual = evaluation.current - transformer_current;
     const double absolute_residual = absolute(residual);
     maximum_kcl_ = absolute_residual > maximum_kcl_ ? absolute_residual : maximum_kcl_;
@@ -4629,7 +4852,8 @@ private:
            finiteRamp(state.cathodePullRamp) && finiteRamp(state.bPlusRamp) &&
            finiteRamp(state.screenRamp) && std::isfinite(state.vrmsSquareSum) &&
            std::isfinite(state.realPowerSum) && std::isfinite(state.publishedVrms) &&
-           std::isfinite(state.publishedRealPower);
+           std::isfinite(state.publishedRealPower) && std::isfinite(state.fluxLinkageWbT) &&
+           std::isfinite(state.hysteresisSignState) && std::isfinite(state.excessCurrentA);
   }
 
   [[nodiscard]] bool finitePhysicalChannel(int channel) const noexcept {
@@ -6264,13 +6488,11 @@ private:
             static_cast<float>(power.screenPushV - power.cathodePushV);
         telemetry_payload_[offset + 16u] =
             static_cast<float>(power.screenPullV - power.cathodePullV);
-        const double magnetizing_inductance =
-            applied_parameters_.outputStage == 1
-                ? powerProfile().magnetizingInductanceH
-                : kSeTubeModels[static_cast<std::size_t>(applied_parameters_.seTube)]
-                      .magnetizingInductanceH;
-        telemetry_payload_[offset + 17u] =
-            static_cast<float>(magnetizing_inductance * power.magnetizingCurrentA);
+        // Both cores publish their flux-linkage state directly. The single-ended reading carries
+        // the standing bias flux of the gapped core on top of the signal swing; the push-pull
+        // reading swings about zero because the differential drive cancels the standing
+        // magnetization.
+        telemetry_payload_[offset + 17u] = static_cast<float>(power.fluxLinkageWbT);
         telemetry_payload_[offset + 18u] = static_cast<float>(power.publishedVrms);
         telemetry_payload_[offset + 19u] = static_cast<float>(power.publishedRealPower);
       }
@@ -6388,6 +6610,9 @@ private:
     hashDouble(hash, state.realPowerSum);
     hashDouble(hash, state.publishedVrms);
     hashDouble(hash, state.publishedRealPower);
+    hashDouble(hash, state.fluxLinkageWbT);
+    hashDouble(hash, state.hysteresisSignState);
+    hashDouble(hash, state.excessCurrentA);
     hashWord(hash, state.slowCounter);
     hashWord(hash, state.powerWindowSamples);
   }

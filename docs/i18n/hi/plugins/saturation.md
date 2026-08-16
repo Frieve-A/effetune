@@ -490,7 +490,7 @@ Harmonic Distortion प्लगइन 2nd से 5th order तक adjustable no
 
 ## Tube Simulator
 
-Tube Simulator ट्यूब लाइन और पावर एम्प्लिफ़ायर सर्किट के वे हार्मोनिक्स, कम्प्रेशन और पावर-सप्लाई प्रतिक्रिया जोड़ता है जो सिग्नल के साथ बदलते हैं। **Line** केवल ड्राइवर चरण का उपयोग करता है, **Push-Pull Power** EL84, EL34, 6L6GC और KT88 के संतुलित सर्किट देता है, और **SE Triode** 300B तथा 2A3 के single-ended सर्किट देता है। यह एम्प्लिफ़ायर को दिखाई देने वाले स्पीकर के विद्युत लोड को मॉडल करता है, लेकिन स्पीकर कैबिनेट या माइक्रोफ़ोन की ध्वनि नहीं जोड़ता।
+Tube Simulator ट्यूब लाइन और पावर एम्प्लिफ़ायर सर्किट के वे हार्मोनिक्स, कम्प्रेशन और पावर-सप्लाई प्रतिक्रिया जोड़ता है जो सिग्नल के साथ बदलते हैं। **Line** केवल ड्राइवर चरण का उपयोग करता है, **Push-Pull Power** EL84, EL34, 6L6GC और KT88 के संतुलित सर्किट देता है, और **SE Triode** 300B तथा 2A3 के single-ended सर्किट देता है। दोनों पावर सर्किट आउटपुट ट्रांसफ़ॉर्मर के कोर को भी मॉडल करते हैं, जिसकी चुंबकीय संतृप्ति और हिस्टेरेसिस तेज़ आवाज़ की निचली फ़्रीक्वेंसी पर विरूपण जोड़ते हैं। यह एम्प्लिफ़ायर को दिखाई देने वाले स्पीकर के विद्युत लोड को मॉडल करता है, लेकिन स्पीकर कैबिनेट या माइक्रोफ़ोन की ध्वनि नहीं जोड़ता।
 
 ### सुनकर ध्वनि सुधारने की गाइड
 
@@ -543,8 +543,8 @@ Preset नाम का suffix प्रभाव की तीव्रता �
 - **SE B+** (250 से 450 V) - single-ended output-stage supply सेट करता है।
 - **SE Cathode Resistor** (700 से 1300 Ω) - single-ended tube का bias resistor सेट करता है, जिससे operating point और कम्प्रेशन बदलते हैं।
 - **Screen Tap** (0%, 20% या 43%) - screen-grid connection चुनता है। 0% pentode operation देता है; 20% और 43% distributed loading देते हैं।
-- **Push-Pull Primary** (6.0, 6.6 या 8.0 kΩ) - push-pull transformer की primary impedance सेट करके tube load और प्रतिक्रिया बदलता है।
-- **SE Primary** (2.5, 3.5 या 5.0 kΩ) - single-ended transformer की primary impedance सेट करता है।
+- **Push-Pull Primary** (6.0, 6.6 या 8.0 kΩ) - push-pull transformer की primary impedance सेट करके tube load और प्रतिक्रिया बदलता है। यह चुनाव कोर का चुंबकीय संतृप्ति फ्लक्स भी तय करता है।
+- **SE Primary** (2.5, 3.5 या 5.0 kΩ) - single-ended transformer की primary impedance सेट करता है। यह चुनाव यह भी तय करता है कि कोई दिया गया सिग्नल gap वाले कोर में कितना फ्लक्स भेजता है, इसलिए अधिक impedance पर उसी स्तर पर संतृप्ति जल्दी आती है। single-ended संचालन की निष्क्रिय धारा कोर में एक स्थिर चुंबकीय फ्लक्स बनाए रखती है, इसलिए सिग्नल उसे असममित रूप से संतृप्त करता है और निचली फ़्रीक्वेंसी पर सम-क्रम हार्मोनिक्स जोड़ता है।
 - **Assumed Speaker Load** (4, 8, 15 या 16 Ω) - वह nominal speaker impedance और secondary tap चुनता है जिसके लिए circuit बनाया गया है।
 - **Actual Speaker Load** (2 से 32 Ω) - वास्तव में जुड़े speaker की impedance सेट करता है। Assumed Speaker Load से अंतर होने पर output tubes पर load, damping और उपलब्ध power बदलते हैं; दोनों समान होने पर circuit अपने design point पर चलता है।
 
@@ -565,7 +565,8 @@ Circuit parameters बदलने से level में बड़ा उछा
 
 - बिंदु हाल की operating positions दिखाते हैं। उनका फैलाव जितना अधिक होगा, संगीत उस stage को उतना अधिक drive कर रहा है।
 - Line में दोनों driver stages, Push-Pull में output के दोनों पक्ष और SE Triode में बायाँ तथा दायाँ channel दिखते हैं।
-- **Speaker Output**, **Speaker Real Power** और **Transformer Flux** दिखाते हैं कि power stage और speaker load कितनी तीव्रता से चल रहे हैं।
+- **Speaker Output** और **Speaker Real Power** दिखाते हैं कि power stage और speaker load कितनी तीव्रता से चल रहे हैं।
+- **Transformer Flux** आउटपुट ट्रांसफ़ॉर्मर के flux linkage का परिमाण Wb में दिखाता है। निचली फ़्रीक्वेंसी इस पाठ्यांक को जितना ऊपर धकेलती हैं, ट्रांसफ़ॉर्मर स्वयं उतना ही अधिक विरूपण जोड़ता है। SE Triode में यह पाठ्यांक gap वाले कोर के स्थिर bias फ्लक्स को भी समेटे रहता है, इसलिए सिग्नल न होने पर भी यह शून्य से ऊपर बना रहता है।
 - Graph के नीचे status बताता है कि effect active है या bypass में, और automatic output reduction भी दिखाता है।
 
 Tube Simulator sample rate के अनुसार लगभग 0.3–1.5ms का छोटा processing delay जोड़ता है।

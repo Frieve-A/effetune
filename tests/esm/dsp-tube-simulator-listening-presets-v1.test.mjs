@@ -111,86 +111,89 @@ const LEVEL_MATCHED_PRESET_FINGERPRINTS = Object.freeze([
   Object.freeze({ group: 'Pre', id: 'listening-line-12au7-open-loop-thd1', og: 18.592,
     state: Object.freeze([-9.2656, '12AU7', 0, 250, 10, 10, 100, 2.828, 0, 'Line',
       'EL84', 320, 270, '0', '8.0', '8', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Power', id: 'power-only-el84-pentode-10w-thd0p1', og: 8.696,
-    state: Object.freeze([-26.5957, 'Bypass', 0, 250, 10, 10, 100, 2.828, 3, 'Power',
+  Object.freeze({ group: 'Power', id: 'power-only-el84-pentode-10w-thd0p1', og: 8.692,
+    state: Object.freeze([-26.5898, 'Bypass', 0, 250, 10, 10, 100, 2.828, 3, 'Power',
       'EL84', 329.696, 270, '0', '8.0', '15', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Power', id: 'power-only-el84-distributed-10w-thd0p1', og: 7.363,
-    state: Object.freeze([-21.7676, 'Bypass', 0, 250, 10, 10, 100, 2.828, 3, 'Power',
+  Object.freeze({ group: 'Power', id: 'power-only-el84-distributed-10w-thd0p1', og: 7.368,
+    state: Object.freeze([-21.7715, 'Bypass', 0, 250, 10, 10, 100, 2.828, 3, 'Power',
       'EL84', 330.107, 270, '20', '6.6', '15', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Power', id: 'power-only-el34-distributed-20-37w-thd0p1', og: 3.767,
-    state: Object.freeze([-8.1543, 'Bypass', 0, 250, 10, 10, 100, 2.828, 4, 'Power',
+  Object.freeze({ group: 'Power', id: 'power-only-el34-distributed-20-37w-thd0p1', og: 3.862,
+    state: Object.freeze([-8.248, 'Bypass', 0, 250, 10, 10, 100, 2.828, 4, 'Power',
       'EL34', 443.775, 470, '43', '6.6', '8', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Power', id: 'power-only-6l6gc-pentode-thd0p1', og: 12.251,
-    state: Object.freeze([-19.3047, 'Bypass', 0, 250, 10, 10, 100, 2.828, 3, 'Power',
+  Object.freeze({ group: 'Power', id: 'power-only-6l6gc-pentode-thd0p1', og: 12.257,
+    state: Object.freeze([-19.3086, 'Bypass', 0, 250, 10, 10, 100, 2.828, 3, 'Power',
       '6L6GC', 391.454, 483.871, '0', '6.6', '8', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Power', id: 'power-only-kt88-distributed-thd0p1', og: -3.485,
-    state: Object.freeze([0, 'Bypass', 0, 250, 10, 10, 100, 3.1263, 2, 'Power',
+  Object.freeze({ group: 'Power', id: 'power-only-kt88-distributed-thd0p1', og: -3.474,
+    state: Object.freeze([0, 'Bypass', 0, 250, 10, 10, 100, 3.1228, 2, 'Power',
       'KT88', 379.29, 400, '43', '6.0', '8', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Power', id: 'power-only-se-300b-thd0p1', og: 16.582,
-    state: Object.freeze([0, 'Bypass', 0, 250, 10, 10, 100, 35.4586, 3,
+  Object.freeze({ group: 'Power', id: 'power-only-se-300b-thd0p1', og: 16.672,
+    state: Object.freeze([0, 'Bypass', 0, 250, 10, 10, 100, 35.0937, 3,
       'SingleEnded', 'EL84', 329.696, 270, '0', '8.0', '8', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Power', id: 'power-only-se-300b-thd1', og: -1.794,
-    state: Object.freeze([0, 'Bypass', 0, 250, 10, 10, 100, 295.9454, 3,
+  Object.freeze({ group: 'Power', id: 'power-only-se-300b-thd1', og: -1.74,
+    state: Object.freeze([0, 'Bypass', 0, 250, 10, 10, 100, 294.0743, 3,
       'SingleEnded', 'EL84', 329.696, 270, '0', '8.0', '8', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Power', id: 'power-only-se-2a3-thd0p1', og: 21.072,
-    state: Object.freeze([0, 'Bypass', 0, 250, 10, 10, 100, 18.1347, 3,
+  Object.freeze({ group: 'Power', id: 'power-only-se-2a3-thd0p1', og: 21.17,
+    state: Object.freeze([0, 'Bypass', 0, 250, 10, 10, 100, 17.932, 3,
       'SingleEnded', 'EL84', 329.696, 270, '0', '8.0', '8', '2A3', 300, 750, '2.5']) }),
-  Object.freeze({ group: 'Power', id: 'power-only-se-2a3-thd1', og: 1.816,
-    state: Object.freeze([0, 'Bypass', 0, 250, 10, 10, 100, 167.2455, 3,
+  Object.freeze({ group: 'Power', id: 'power-only-se-2a3-thd1', og: 1.892,
+    state: Object.freeze([0, 'Bypass', 0, 250, 10, 10, 100, 165.7852, 3,
       'SingleEnded', 'EL84', 329.696, 270, '0', '8.0', '8', '2A3', 300, 750, '2.5']) }),
-  Object.freeze({ group: 'Power', id: 'power-only-el84-pentode-10w', og: -7.483,
-    state: Object.freeze([-9.7148, 'Bypass', 0, 250, 10, 10, 100, 2.828, 3, 'Power',
+  Object.freeze({ group: 'Power', id: 'power-only-el84-pentode-10w', og: -7.474,
+    state: Object.freeze([-9.7187, 'Bypass', 0, 250, 10, 10, 100, 2.828, 3, 'Power',
       'EL84', 329.696, 270, '0', '8.0', '15', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Power', id: 'power-only-el84-distributed-10w', og: -7.322,
-    state: Object.freeze([-6.5352, 'Bypass', 0, 250, 10, 10, 100, 2.828, 3, 'Power',
+  Object.freeze({ group: 'Power', id: 'power-only-el84-distributed-10w', og: -7.311,
+    state: Object.freeze([-6.541, 'Bypass', 0, 250, 10, 10, 100, 2.828, 3, 'Power',
       'EL84', 330.107, 270, '20', '6.6', '15', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Power', id: 'power-only-el34-distributed-20-37w', og: -9.51,
-    state: Object.freeze([0, 'Bypass', 0, 250, 10, 10, 100, 5.2781, 4, 'Power',
+  Object.freeze({ group: 'Power', id: 'power-only-el34-distributed-20-37w', og: -9.499,
+    state: Object.freeze([0, 'Bypass', 0, 250, 10, 10, 100, 5.2733, 4, 'Power',
       'EL34', 443.775, 470, '43', '6.6', '8', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Power', id: 'power-only-6l6gc-pentode', og: -7.187,
-    state: Object.freeze([0, 'Bypass', 0, 250, 10, 10, 100, 3.3694, 3, 'Power',
+  Object.freeze({ group: 'Power', id: 'power-only-6l6gc-pentode', og: -7.171,
+    state: Object.freeze([0, 'Bypass', 0, 250, 10, 10, 100, 3.3755, 3, 'Power',
       '6L6GC', 391.454, 483.871, '0', '6.6', '8', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Power', id: 'power-only-kt88-distributed', og: -10.748,
-    state: Object.freeze([0, 'Bypass', 0, 250, 10, 10, 100, 7.4992, 2, 'Power',
+  Object.freeze({ group: 'Power', id: 'power-only-kt88-distributed', og: -10.747,
+    state: Object.freeze([0, 'Bypass', 0, 250, 10, 10, 100, 7.5026, 2, 'Power',
       'KT88', 379.29, 400, '43', '6.0', '8', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Pre+Power', id: 'listening-power-el84-distributed-thd0p1', og: 9.91,
-    state: Object.freeze([-58.4629, '12AX7', 0, 250, 10, 10, 100, 2.828, 3, 'Power',
+  Object.freeze({ group: 'Pre+Power', id: 'listening-power-el84-distributed-thd0p1', og: 9.942,
+    state: Object.freeze([-58.4941, '12AX7', 0, 250, 10, 10, 100, 2.828, 3, 'Power',
       'EL84', 330.107, 270, '20', '6.6', '15', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Pre+Power', id: 'listening-power-el34-distributed-thd0p1', og: 17.947,
-    state: Object.freeze([-56.4629, '12AX7', 0, 250, 10, 10, 100, 2.828, 4, 'Power',
+  Object.freeze({ group: 'Pre+Power', id: 'listening-power-el34-distributed-thd0p1', og: 17.953,
+    state: Object.freeze([-56.4687, '12AX7', 0, 250, 10, 10, 100, 2.828, 4, 'Power',
       'EL34', 443.775, 470, '43', '6.6', '8', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Pre+Power', id: 'listening-power-6l6gc-pentode-thd0p1', og: 17.255,
-    state: Object.freeze([-58.4551, '12AX7', 0, 250, 10, 10, 100, 2.828, 3, 'Power',
+  Object.freeze({ group: 'Pre+Power', id: 'listening-power-6l6gc-pentode-thd0p1', og: 17.309,
+    state: Object.freeze([-58.5078, '12AX7', 0, 250, 10, 10, 100, 2.828, 3, 'Power',
       '6L6GC', 391.454, 483.871, '0', '6.6', '8', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Pre+Power', id: 'listening-power-kt88-distributed-thd0p1', og: 21.698,
-    state: Object.freeze([-56.4629, '12AX7', 0, 250, 10, 10, 100, 2.828, 4, 'Power',
+  Object.freeze({ group: 'Pre+Power', id: 'listening-power-kt88-distributed-thd0p1', og: 21.702,
+    state: Object.freeze([-56.4668, '12AX7', 0, 250, 10, 10, 100, 2.828, 4, 'Power',
       'KT88', 379.29, 400, '43', '6.0', '8', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Pre+Power', id: 'listening-se-300b-thd0p1', og: 12.027,
-    state: Object.freeze([-15.2227, '12AU7', 0, 250, 10, 10, 100, 2.828, 3,
+  Object.freeze({ group: 'Pre+Power', id: 'listening-se-300b-thd0p1', og: 12.116,
+    state: Object.freeze([-15.3125, '12AU7', 0, 250, 10, 10, 100, 2.828, 3,
       'SingleEnded', 'EL84', 329.696, 270, '0', '8.0', '8', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Pre+Power', id: 'listening-se-2a3-thd0p1', og: 18.722,
-    state: Object.freeze([-23.2598, '12AU7', 0, 250, 10, 10, 100, 2.828, 3,
+  Object.freeze({ group: 'Pre+Power', id: 'listening-se-2a3-thd0p1', og: 18.838,
+    state: Object.freeze([-23.375, '12AU7', 0, 250, 10, 10, 100, 2.828, 3,
       'SingleEnded', 'EL84', 329.696, 270, '0', '8.0', '8', '2A3', 300, 750, '2.5']) }),
+  // Pinned to the params.json defaults so a fresh instance opens on this preset rather than
+  // Custom; the calibration harness would move it to dr -44.0137 / og -7.361, a difference
+  // well inside the tolerances asserted below.
   Object.freeze({ group: 'Pre+Power', id: 'listening-power-el84-pentode-thd2', og: -7.372,
     state: Object.freeze([-44.0059, '12AX7', 0, 250, 10, 10, 100, 2.828, 3, 'Power',
       'EL84', 329.696, 270, '0', '8.0', '15', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Pre+Power', id: 'listening-power-el84-distributed-thd2', og: -7.091,
-    state: Object.freeze([-40.9746, '12AX7', 0, 250, 10, 10, 100, 2.828, 3, 'Power',
+  Object.freeze({ group: 'Pre+Power', id: 'listening-power-el84-distributed-thd2', og: -7.077,
+    state: Object.freeze([-40.9844, '12AX7', 0, 250, 10, 10, 100, 2.828, 3, 'Power',
       'EL84', 330.107, 270, '20', '6.6', '15', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Pre+Power', id: 'listening-power-el34-distributed-thd2', og: -6.779,
-    state: Object.freeze([-31.6797, '12AX7', 0, 250, 10, 10, 100, 2.828, 4, 'Power',
+  Object.freeze({ group: 'Pre+Power', id: 'listening-power-el34-distributed-thd2', og: -6.761,
+    state: Object.freeze([-31.6973, '12AX7', 0, 250, 10, 10, 100, 2.828, 4, 'Power',
       'EL34', 443.775, 470, '43', '6.6', '8', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Pre+Power', id: 'listening-power-6l6gc-pentode-thd2', og: -5.145,
-    state: Object.freeze([-35.207, '12AX7', 0, 250, 10, 10, 100, 2.828, 3, 'Power',
+  Object.freeze({ group: 'Pre+Power', id: 'listening-power-6l6gc-pentode-thd2', og: -5.095,
+    state: Object.freeze([-35.2441, '12AX7', 0, 250, 10, 10, 100, 2.828, 3, 'Power',
       '6L6GC', 391.454, 483.871, '0', '6.6', '8', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Pre+Power', id: 'listening-power-kt88-distributed-thd2', og: -3.147,
-    state: Object.freeze([-31.5391, '12AX7', 0, 250, 10, 10, 100, 2.828, 4, 'Power',
+  Object.freeze({ group: 'Pre+Power', id: 'listening-power-kt88-distributed-thd2', og: -3.143,
+    state: Object.freeze([-31.543, '12AX7', 0, 250, 10, 10, 100, 2.828, 4, 'Power',
       'KT88', 379.29, 400, '43', '6.0', '8', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Pre+Power', id: 'listening-se-300b-thd2', og: -0.439,
-    state: Object.freeze([-2.4824, '12AU7', 0, 250, 10, 10, 100, 2.828, 3,
+  Object.freeze({ group: 'Pre+Power', id: 'listening-se-300b-thd2', og: -0.437,
+    state: Object.freeze([-2.4844, '12AU7', 0, 250, 10, 10, 100, 2.828, 3,
       'SingleEnded', 'EL84', 329.696, 270, '0', '8.0', '8', '300B', 400, 1000, '3.5']) }),
-  Object.freeze({ group: 'Pre+Power', id: 'listening-se-2a3-thd2', og: -0.093,
-    state: Object.freeze([-4.2266, '12AU7', 0, 250, 10, 10, 100, 2.828, 3,
+  Object.freeze({ group: 'Pre+Power', id: 'listening-se-2a3-thd2', og: -0.065,
+    state: Object.freeze([-4.2559, '12AU7', 0, 250, 10, 10, 100, 2.828, 3,
       'SingleEnded', 'EL84', 329.696, 270, '0', '8.0', '8', '2A3', 300, 750, '2.5']) }),
 ]);
 
@@ -238,11 +241,11 @@ const BAKED_MEASUREMENTS = Object.freeze([
   }),
   Object.freeze({
     id: 'power-only-el84-pentode-10w-thd0p1', targetThdPercent: 0.1,
-    reachedTarget: true, thdPercent: 0.1001
+    reachedTarget: true, thdPercent: 0.1002
   }),
   Object.freeze({
     id: 'power-only-el84-distributed-10w-thd0p1', targetThdPercent: 0.1,
-    reachedTarget: true, thdPercent: 0.1002
+    reachedTarget: true, thdPercent: 0.0999
   }),
   Object.freeze({
     id: 'power-only-el34-distributed-20-37w-thd0p1', targetThdPercent: 0.1,
@@ -250,7 +253,7 @@ const BAKED_MEASUREMENTS = Object.freeze([
   }),
   Object.freeze({
     id: 'power-only-6l6gc-pentode-thd0p1', targetThdPercent: 0.1,
-    reachedTarget: true, thdPercent: 0.1003
+    reachedTarget: true, thdPercent: 0.1001
   }),
   Object.freeze({
     id: 'power-only-kt88-distributed-thd0p1', targetThdPercent: 0.1,
@@ -262,7 +265,7 @@ const BAKED_MEASUREMENTS = Object.freeze([
   }),
   Object.freeze({
     id: 'power-only-se-300b-thd1', targetThdPercent: 1,
-    reachedTarget: true, thdPercent: 1.0000
+    reachedTarget: true, thdPercent: 0.9999
   }),
   Object.freeze({
     id: 'power-only-se-2a3-thd0p1', targetThdPercent: 0.1,
@@ -270,7 +273,7 @@ const BAKED_MEASUREMENTS = Object.freeze([
   }),
   Object.freeze({
     id: 'power-only-se-2a3-thd1', targetThdPercent: 1,
-    reachedTarget: true, thdPercent: 1.0000
+    reachedTarget: true, thdPercent: 1.0001
   }),
   Object.freeze({
     id: 'listening-power-el84-distributed-thd0p1', targetThdPercent: 0.1,
@@ -300,73 +303,73 @@ const BAKED_MEASUREMENTS = Object.freeze([
     id: 'listening-power-el84-pentode-thd2',
     targetThdPercent: 2,
     reachedTarget: true,
-    thdPercent: 2.0004
+    thdPercent: 2.0099
   }),
   Object.freeze({
     id: 'listening-power-el84-distributed-thd2',
     targetThdPercent: 2,
     reachedTarget: true,
-    thdPercent: 2.0005
+    thdPercent: 2.0007
   }),
   Object.freeze({
     id: 'listening-power-el34-distributed-thd2',
     targetThdPercent: 2,
     reachedTarget: true,
-    thdPercent: 2.0000
+    thdPercent: 2.0002
   }),
   Object.freeze({
     id: 'listening-power-6l6gc-pentode-thd2',
     targetThdPercent: 2,
     reachedTarget: true,
-    thdPercent: 1.9998
+    thdPercent: 2.0000
   }),
   Object.freeze({
     id: 'listening-power-kt88-distributed-thd2',
     targetThdPercent: 2,
     reachedTarget: true,
-    thdPercent: 1.9997
+    thdPercent: 2.0004
   }),
   Object.freeze({
     id: 'listening-se-300b-thd2',
     targetThdPercent: 2,
     reachedTarget: true,
-    thdPercent: 2.0000
+    thdPercent: 1.9999
   }),
   Object.freeze({
     id: 'listening-se-2a3-thd2',
     targetThdPercent: 2,
     reachedTarget: true,
-    thdPercent: 2.0002
+    thdPercent: 2.0000
   }),
   Object.freeze({
     id: 'power-only-el84-pentode-10w',
     targetThdPercent: 2,
     reachedTarget: true,
-    thdPercent: 1.9995
+    thdPercent: 1.9989
   }),
   Object.freeze({
     id: 'power-only-el84-distributed-10w',
     targetThdPercent: 2,
     reachedTarget: true,
-    thdPercent: 2.0005
+    thdPercent: 2.0004
   }),
   Object.freeze({
     id: 'power-only-el34-distributed-20-37w',
     targetThdPercent: 2,
     reachedTarget: true,
-    thdPercent: 1.9995
+    thdPercent: 2.0002
   }),
   Object.freeze({
     id: 'power-only-6l6gc-pentode',
     targetThdPercent: 2,
     reachedTarget: true,
-    thdPercent: 2.0004
+    thdPercent: 2.0001
   }),
   Object.freeze({
     id: 'power-only-kt88-distributed',
     targetThdPercent: 2,
     reachedTarget: true,
-    thdPercent: 1.9970
+    thdPercent: 2.0029
   }),
 ]);
 
@@ -642,8 +645,8 @@ test('Tube Simulator Power-only KT88 keeps its stable feedback and calibrated tr
   assert.ok(preAndPower, 'Pre+Power KT88 preset is unavailable');
   assert.equal(powerOnly.params.nf, 2);
   assert.equal(powerOnly.params.dr, 0);
-  assert.equal(powerOnly.params.iv, 7.4992);
-  assert.equal(powerOnly.params.og, -10.748);
+  assert.equal(powerOnly.params.iv, 7.5026);
+  assert.equal(powerOnly.params.og, -10.747);
   assert.equal(preAndPower.params.nf, 4,
     'the canonical driver-and-power KT88 circuit must keep its original feedback');
 });

@@ -490,7 +490,7 @@ Un efecto especializado que refuerza el extremo grave mezclando una señal filtr
 
 ## Tube Simulator
 
-Tube Simulator añade los armónicos, la compresión y la respuesta de alimentación que cambian con la señal en circuitos de línea y potencia a válvulas. **Line** utiliza solo el driver, **Push-Pull Power** ofrece circuitos equilibrados con EL84, EL34, 6L6GC y KT88, y **SE Triode** ofrece circuitos single-ended con 300B y 2A3. Modela la carga eléctrica del altavoz vista por el amplificador, pero no añade el sonido de una pantalla ni de un micrófono.
+Tube Simulator añade los armónicos, la compresión y la respuesta de alimentación que cambian con la señal en circuitos de línea y potencia a válvulas. **Line** utiliza solo el driver, **Push-Pull Power** ofrece circuitos equilibrados con EL84, EL34, 6L6GC y KT88, y **SE Triode** ofrece circuitos single-ended con 300B y 2A3. Ambos circuitos de potencia modelan también el núcleo del transformador de salida, cuya saturación magnética e histéresis añaden distorsión en los graves a alto volumen. Modela la carga eléctrica del altavoz vista por el amplificador, pero no añade el sonido de una pantalla ni de un micrófono.
 
 ### Guía de Ajuste del Sonido
 
@@ -543,8 +543,8 @@ El sufijo del preset sirve como guía práctica de intensidad: **@0.01%** es muy
 - **SE B+** (250 a 450 V) - Ajusta la alimentación de la etapa single-ended.
 - **SE Cathode Resistor** (700 a 1300 Ω) - Ajusta la resistencia de polarización de la válvula single-ended, cambiando el punto de trabajo y la compresión.
 - **Screen Tap** (0%, 20% o 43%) - Selecciona la conexión de pantalla. 0% corresponde al funcionamiento pentodo; 20% y 43% ofrecen carga distribuida.
-- **Push-Pull Primary** (6.0, 6.6 u 8.0 kΩ) - Ajusta la impedancia primaria del transformador push-pull y cambia la carga y la respuesta de las válvulas.
-- **SE Primary** (2.5, 3.5 o 5.0 kΩ) - Ajusta la impedancia primaria del transformador single-ended.
+- **Push-Pull Primary** (6.0, 6.6 u 8.0 kΩ) - Ajusta la impedancia primaria del transformador push-pull y cambia la carga y la respuesta de las válvulas. También fija el flujo de saturación magnética del núcleo.
+- **SE Primary** (2.5, 3.5 o 5.0 kΩ) - Ajusta la impedancia primaria del transformador single-ended. También determina cuánto flujo introduce una señal dada en el núcleo con entrehierro, así que las impedancias más altas alcanzan la saturación antes con el mismo nivel. La corriente de reposo del funcionamiento single-ended mantiene un flujo permanente en el núcleo, así que la señal lo satura de forma asimétrica y añade armónicos de orden par en los graves.
 - **Assumed Speaker Load** (4, 8, 15 o 16 Ω) - Selecciona la impedancia nominal y la toma secundaria para las que está diseñado el circuito.
 - **Actual Speaker Load** (2 a 32 Ω) - Ajusta la impedancia del altavoz conectado. Si difiere de Assumed Speaker Load, cambian la carga reflejada a las válvulas, el amortiguamiento y la potencia disponible; los valores iguales corresponden al punto de diseño.
 
@@ -565,7 +565,8 @@ Cambiar parámetros del circuito puede causar un salto de nivel importante. Con 
 
 - Los puntos muestran posiciones de funcionamiento recientes. Cuanto más se extienden, más intensamente está excitando la música esa etapa.
 - En Line, los paneles muestran las dos etapas del driver. Push-Pull muestra los dos lados de salida y SE Triode muestra los canales izquierdo y derecho.
-- **Speaker Output**, **Speaker Real Power** y **Transformer Flux** indican cuánto se están excitando la etapa de potencia y la carga del altavoz.
+- **Speaker Output** y **Speaker Real Power** indican cuánto se están excitando la etapa de potencia y la carga del altavoz.
+- **Transformer Flux** muestra la magnitud del flujo concatenado del transformador de salida en Wb. Cuanto más empujan los graves esta lectura hacia arriba, más distorsión añade el propio transformador. En SE Triode la lectura incluye el flujo de polarización permanente del núcleo con entrehierro, así que se mantiene por encima de cero incluso sin señal.
 - El estado bajo el gráfico indica si el efecto está activo o en bypass y muestra cualquier reducción automática de salida.
 
 Tube Simulator añade un breve retardo de procesamiento de unos 0.3 a 1.5ms, según la frecuencia de muestreo.

@@ -494,7 +494,7 @@ Un effet spécialisé qui renforce le bas du spectre en mélangeant un signal ba
 
 ## Tube Simulator
 
-Tube Simulator ajoute les harmoniques, la compression et la réaction de l’alimentation qui évoluent avec le signal dans les étages ligne et de puissance à lampes. **Line** utilise uniquement le driver, **Push-Pull Power** propose des circuits équilibrés à EL84, EL34, 6L6GC et KT88, et **SE Triode** des circuits single-ended à 300B et 2A3. Il modélise la charge électrique du haut-parleur vue par l’amplificateur, mais n’ajoute pas la sonorité d’une enceinte ou d’un microphone.
+Tube Simulator ajoute les harmoniques, la compression et la réaction de l’alimentation qui évoluent avec le signal dans les étages ligne et de puissance à lampes. **Line** utilise uniquement le driver, **Push-Pull Power** propose des circuits équilibrés à EL84, EL34, 6L6GC et KT88, et **SE Triode** des circuits single-ended à 300B et 2A3. Les deux circuits de puissance modélisent aussi le noyau du transformateur de sortie, dont la saturation magnétique et l’hystérésis ajoutent de la distorsion sur les graves à fort niveau. Il modélise la charge électrique du haut-parleur vue par l’amplificateur, mais n’ajoute pas la sonorité d’une enceinte ou d’un microphone.
 
 ### Guide de Réglage à l’Écoute
 
@@ -547,8 +547,8 @@ Le suffixe du preset donne un repère pratique sur l’intensité de l’effet :
 - **SE B+** (250 à 450 V) - Règle l’alimentation de l’étage single-ended.
 - **SE Cathode Resistor** (700 à 1300 Ω) - Règle la résistance de polarisation de la lampe single-ended et modifie son point de fonctionnement et sa compression.
 - **Screen Tap** (0%, 20% ou 43%) - Sélectionne la connexion de grille-écran. 0% correspond au fonctionnement pentode ; 20% et 43% donnent une charge répartie.
-- **Push-Pull Primary** (6.0, 6.6 ou 8.0 kΩ) - Règle l’impédance primaire du transformateur push-pull et modifie la charge des lampes et leur réponse.
-- **SE Primary** (2.5, 3.5 ou 5.0 kΩ) - Règle l’impédance primaire du transformateur single-ended.
+- **Push-Pull Primary** (6.0, 6.6 ou 8.0 kΩ) - Règle l’impédance primaire du transformateur push-pull et modifie la charge des lampes et leur réponse. Ce choix fixe aussi le flux de saturation magnétique du noyau.
+- **SE Primary** (2.5, 3.5 ou 5.0 kΩ) - Règle l’impédance primaire du transformateur single-ended. Ce choix détermine aussi la quantité de flux qu’un signal donné envoie dans le noyau à entrefer, si bien que les impédances plus élevées atteignent la saturation plus tôt à niveau égal. Le courant de repos du fonctionnement single-ended maintient un flux permanent dans le noyau : le signal le sature donc de façon asymétrique et ajoute des harmoniques de rang pair dans les graves.
 - **Assumed Speaker Load** (4, 8, 15 ou 16 Ω) - Sélectionne l’impédance nominale et la prise secondaire pour lesquelles le circuit est conçu.
 - **Actual Speaker Load** (2 à 32 Ω) - Règle l’impédance du haut-parleur réellement connecté. Si elle diffère de Assumed Speaker Load, la charge renvoyée aux lampes, l’amortissement et la puissance disponible changent ; des valeurs identiques correspondent au point de fonctionnement prévu.
 
@@ -569,7 +569,8 @@ La modification des paramètres du circuit peut provoquer un saut important de n
 
 - Les points représentent les positions de fonctionnement récentes. Plus ils sont dispersés, plus la musique sollicite fortement l’étage concerné.
 - En mode Line, les panneaux montrent les deux étages du driver. Push-Pull montre les deux côtés de sortie et SE Triode les canaux gauche et droit.
-- **Speaker Output**, **Speaker Real Power** et **Transformer Flux** indiquent à quel point l’étage de puissance et la charge du haut-parleur sont sollicités.
+- **Speaker Output** et **Speaker Real Power** indiquent à quel point l’étage de puissance et la charge du haut-parleur sont sollicités.
+- **Transformer Flux** affiche l’amplitude du flux totalisé du transformateur de sortie, en Wb. Plus les graves poussent cette valeur vers le haut, plus le transformateur ajoute lui-même de la distorsion. En SE Triode, la valeur inclut le flux de polarisation permanent du noyau à entrefer et reste donc supérieure à zéro même en l’absence de signal.
 - L’état sous le graphique indique si l’effet est actif ou en bypass et affiche toute réduction automatique du niveau de sortie.
 
 Tube Simulator ajoute un bref délai de traitement d’environ 0.3 à 1.5ms selon la fréquence d’échantillonnage.

@@ -1877,7 +1877,10 @@ test('Tube Simulator HUD gates animation, keeps a 96-frame main-thread ring, and
     plugin.hudValues.plateSag2.textContent.length,
     'the two sag readouts must occupy the same number of columns');
   assert.match(plugin.hudValues.ltpBalance.textContent, /^L [+−]\s*\d+\.\d\d \/ R /);
-  assert.match(plugin.hudValues.transformerFlux.textContent, /^L [+−]\d\.\d{6} \/ R /);
+  // The flux readout shows the magnitude of the flux linkage (the single-ended core carries a
+  // standing bias flux), so the sign column is always '+' and the integer part is space-padded
+  // to two columns for the swing towards the saturation figures.
+  assert.match(plugin.hudValues.transformerFlux.textContent, /^L \+[ \d]\d\.\d{6} \/ R /);
 
   const initialRevision = plugin.hudAxesRevision;
   plugin.setParameters({ dr: 6, og: -3, mx: 75 });
@@ -2323,7 +2326,7 @@ test('Power-only presets retain their power circuits while bypassing the common 
       if (field === 'nf' && preset.id === 'power-only-kt88-distributed') {
         assert.equal(preset.params.nf, 2,
           'Power-only KT88 must use the stable direct-drive feedback setting');
-        assert.equal(preset.params.og, -10.748,
+        assert.equal(preset.params.og, -10.747,
           'Power-only KT88 must keep its calibrated Output Trim');
         continue;
       }

@@ -6,6 +6,9 @@ lang: en
 
 # Version History
 
+### Version 2.6.0 (TBD, 2026)
+- Added a magnetic saturation and hysteresis model of the output transformer to Tube Simulator
+
 ### Version 2.5.0 (Aug 14, 2026)
 - Added Bandwidth Extender, Phase Select EQ and Pitch Shifter HQ effects
 - Added Auto Filter, Auto Pan, Chorus, Frequency Shifter, Phaser and Rotary Speaker effects
