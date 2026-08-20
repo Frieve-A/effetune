@@ -1325,22 +1325,64 @@ function localPeakEnergy(samples, center, weights) {
 function dominantEnergyPosition(samples, weights, searchCenter = null, searchRadius = 0) {
     const centerIndex = searchCenter === null ? 0 : Math.round(searchCenter);
     const count = searchCenter === null ? samples.length : searchRadius * 2 + 1;
-    let bestIndex = centerIndex;
+    // The alignment window is Hann: 0.5 plus one cosine term. Advance those
+    // two sums recursively so the peak scan is O(samples), then recompute the
+    // winning neighborhood with the original sum for stable interpolation.
+    const weightRadius = (weights.length - 1) / 2;
+    const angle = Math.PI / (weightRadius + 1);
+    const angleCosine = Math.cos(angle);
+    const angleSine = Math.sin(angle);
+    const edgeCosine = Math.cos(angle * weightRadius);
+    const edgeSine = Math.sin(angle * weightRadius);
+    let index = centerIndex - (searchCenter === null ? 0 : searchRadius);
+    while (index < 0) index += samples.length;
+    while (index >= samples.length) index -= samples.length;
+    let rectangularEnergy = 0;
+    let cosineEnergy = 0;
+    let sineEnergy = 0;
+    for (let offset = -weightRadius; offset <= weightRadius; offset += 1) {
+        let sampleIndex = index + offset;
+        if (sampleIndex < 0) sampleIndex += samples.length;
+        else if (sampleIndex >= samples.length) sampleIndex -= samples.length;
+        const sample = samples[sampleIndex];
+        const energy = sample * sample;
+        const phase = angle * offset;
+        rectangularEnergy += energy;
+        cosineEnergy += energy * Math.cos(phase);
+        sineEnergy += energy * Math.sin(phase);
+    }
+    let bestIndex = index;
     let bestEnergy = -1;
     let bestDistance = Infinity;
     for (let step = 0; step < count; step += 1) {
         const offset = searchCenter === null ? step : step - searchRadius;
-        let index = centerIndex + offset;
-        if (index < 0) index += samples.length;
-        else if (index >= samples.length) index -= samples.length;
-        const energy = localPeakEnergy(samples, index, weights);
+        const energy = 0.5 * (rectangularEnergy + cosineEnergy);
         const distance = Math.abs(offset);
         if (energy > bestEnergy || (energy === bestEnergy && distance < bestDistance)) {
             bestIndex = index;
             bestEnergy = energy;
             bestDistance = distance;
         }
+        if (step + 1 === count) break;
+        let leftIndex = index - weightRadius;
+        if (leftIndex < 0) leftIndex += samples.length;
+        let rightIndex = index + weightRadius + 1;
+        if (rightIndex >= samples.length) rightIndex -= samples.length;
+        const leftSample = samples[leftIndex];
+        const rightSample = samples[rightIndex];
+        const leftEnergy = leftSample * leftSample;
+        const rightEnergy = rightSample * rightSample;
+        rectangularEnergy += rightEnergy - leftEnergy;
+        const sharedCosine = cosineEnergy - leftEnergy * edgeCosine;
+        const sharedSine = sineEnergy + leftEnergy * edgeSine;
+        cosineEnergy = angleCosine * sharedCosine + angleSine * sharedSine +
+            rightEnergy * edgeCosine;
+        sineEnergy = angleCosine * sharedSine - angleSine * sharedCosine +
+            rightEnergy * edgeSine;
+        index += 1;
+        if (index === samples.length) index = 0;
     }
+    bestEnergy = localPeakEnergy(samples, bestIndex, weights);
     const left = localPeakEnergy(samples,
         bestIndex === 0 ? samples.length - 1 : bestIndex - 1, weights);
     const right = localPeakEnergy(samples,
