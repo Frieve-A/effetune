@@ -67,15 +67,26 @@ test('complex FFT round-trips and smoothing retains the established data shape',
 });
 
 test('optimized smoothing matches the reference calculation', () => {
-    const frequencies = createLogFrequencyGrid(20, 20000, 0.025);
-    const response = frequencies.map((frequency, index) => [
-        frequency,
-        4 * Math.sin(index * 0.11) - 2 * Math.cos(index * 0.037)
-    ]);
-    const reference = referenceSmoothFrequencyResponse(response, 0.3);
-    const smoothed = smoothFrequencyResponse(response, 0.3);
-    for (let index = 0; index < smoothed.length; index += 1) {
-        assert.ok(Math.abs(smoothed[index][1] - reference[index][1]) < 1e-10);
+    const cases = [
+        { frequencies: createLogFrequencyGrid(20, 20000, 0.025), sigma: 0.3 },
+        {
+            frequencies: Array.from(
+                { length: 513 },
+                (_, index) => 20 + index * (20000 - 20) / 512
+            ),
+            sigma: 0.05
+        }
+    ];
+    for (const { frequencies, sigma } of cases) {
+        const response = frequencies.map((frequency, index) => [
+            frequency,
+            4 * Math.sin(index * 0.11) - 2 * Math.cos(index * 0.037)
+        ]);
+        const reference = referenceSmoothFrequencyResponse(response, sigma);
+        const smoothed = smoothFrequencyResponse(response, sigma);
+        for (let index = 0; index < smoothed.length; index += 1) {
+            assert.ok(Math.abs(smoothed[index][1] - reference[index][1]) < 1e-10);
+        }
     }
 });
 

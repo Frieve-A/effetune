@@ -12,11 +12,15 @@ export function smoothFrequencyResponse(frequencyResponse, sigma = 0.3) {
     const frequencies = new Float64Array(frequencyResponse.length);
     const magnitudes = new Float64Array(frequencyResponse.length);
     const logFrequencies = new Float64Array(frequencyResponse.length);
+    let ascending = true;
     for (let index = 0; index < frequencyResponse.length; index += 1) {
         const point = readPoint(frequencyResponse[index]);
         frequencies[index] = point.frequency;
         magnitudes[index] = point.magnitude;
         logFrequencies[index] = Math.log2(point.frequency);
+        if (index > 0 && !(logFrequencies[index] >= logFrequencies[index - 1])) {
+            ascending = false;
+        }
     }
     const spacing = (logFrequencies.at(-1) - logFrequencies[0]) /
         (logFrequencies.length - 1);
@@ -26,6 +30,9 @@ export function smoothFrequencyResponse(frequencyResponse, sigma = 0.3) {
         uniform = Math.abs(logFrequencies[index] - expected) <= 1e-10;
     }
     let offsetWeights = null;
+    let weightRadius = frequencyResponse.length - 1;
+    let firstCandidates = null;
+    let lastCandidates = null;
     if (uniform) {
         offsetWeights = new Float64Array(frequencyResponse.length);
         const denominator = 2 * sigma * sigma;
@@ -33,12 +40,48 @@ export function smoothFrequencyResponse(frequencyResponse, sigma = 0.3) {
             const distance = offset * spacing;
             offsetWeights[offset] = Math.exp(-(distance * distance) / denominator);
         }
+        // Far Gaussian weights eventually underflow to exactly zero. Skipping
+        // only those entries preserves the arithmetic result while avoiding a
+        // large empty tail for narrow smoothing widths on dense grids.
+        while (weightRadius > 0 && offsetWeights[weightRadius] === 0) {
+            weightRadius -= 1;
+        }
+    } else if (ascending && Math.exp(-750) === 0) {
+        // exp(-750) is already zero in binary64. On ordered grids, exclude
+        // only points farther away than that conservative boundary so dense
+        // linear-frequency responses do not scan their zero-weight tails.
+        const zeroWeightDistance = sigma * Math.sqrt(1500);
+        firstCandidates = new Int32Array(frequencyResponse.length);
+        lastCandidates = new Int32Array(frequencyResponse.length);
+        let firstCandidate = 0;
+        let lastCandidate = 0;
+        for (let pointIndex = 0; pointIndex < frequencyResponse.length; pointIndex += 1) {
+            const center = logFrequencies[pointIndex];
+            while (logFrequencies[firstCandidate] < center - zeroWeightDistance) {
+                firstCandidate += 1;
+            }
+            if (lastCandidate < firstCandidate) lastCandidate = firstCandidate;
+            while (lastCandidate < frequencyResponse.length &&
+                logFrequencies[lastCandidate] <= center + zeroWeightDistance) {
+                lastCandidate += 1;
+            }
+            firstCandidates[pointIndex] = firstCandidate;
+            lastCandidates[pointIndex] = lastCandidate;
+        }
     }
     return frequencyResponse.map((point, pointIndex) => {
         const frequency = frequencies[pointIndex];
         let weighted = 0;
         let weightTotal = 0;
-        for (let candidateIndex = 0; candidateIndex < frequencyResponse.length; candidateIndex += 1) {
+        const firstCandidate = offsetWeights
+            ? Math.max(0, pointIndex - weightRadius)
+            : firstCandidates?.[pointIndex] ?? 0;
+        const lastCandidate = offsetWeights
+            ? Math.min(frequencyResponse.length, pointIndex + weightRadius + 1)
+            : lastCandidates?.[pointIndex] ?? frequencyResponse.length;
+        for (let candidateIndex = firstCandidate;
+            candidateIndex < lastCandidate;
+            candidateIndex += 1) {
             const distance = logFrequencies[candidateIndex] - logFrequencies[pointIndex];
             const weight = offsetWeights
                 ? offsetWeights[Math.abs(candidateIndex - pointIndex)]
