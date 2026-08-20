@@ -11,6 +11,7 @@
       "kind": "float",
       "min": 20,
       "max": 4000,
+      "step": 1,
       "default": 60,
       "unit": "Hz",
       "automation": true
@@ -30,6 +31,7 @@
       "kind": "float",
       "min": 200,
       "max": 40000,
+      "step": 100,
       "default": 5000,
       "unit": "Hz",
       "automation": true

@@ -19,19 +19,19 @@ const ports = [
     type: 'CompressorPlugin',
     folder: 'compressor',
     measurement: 'gainReduction',
-    jsEngineHash: '1d881fad9d020e48beefed479e2218e2dd1c5cf7d501c8ff35e4f92e82ed9232'
+    jsEngineHash: '6dac5d50d82395bfb78677f91311e7edf1c3c3dd8e628b61599351c8dc5e65cb'
   },
   {
     type: 'GatePlugin',
     folder: 'gate',
     measurement: 'gainReduction',
-    jsEngineHash: '7e314e1984656c198b37dad0afdc728ac987846531a972c0188de75069ce8f13'
+    jsEngineHash: '3c32da0e0124cab0772325fcf818d8972d14457028040036d75cdf324ccdd735'
   },
   {
     type: 'ExpanderPlugin',
     folder: 'expander',
     measurement: 'gainBoost',
-    jsEngineHash: '05c26bd00fe82c609ddb5e6173ba1b1ee66b349d2112180d93d2bd0b5b3229cb'
+    jsEngineHash: '9ef1f7e2c0d69a6ad5b67021bccf594c86fbb2f78750ed7626c48df2a5c36532'
   }
 ];
 

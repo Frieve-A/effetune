@@ -115,8 +115,15 @@ async function loadPlugin({ id = 12, clock = null } = {}) {
     constructor() {
       this.enabled = true;
       this.id = id;
+      this.uiRefreshHooks = [];
     }
     registerProcessor(processor) { this.processorString = processor; }
+    // Mirrors plugin-base's UI-follow seam: createUI registers refresh hooks that
+    // re-read the model, and each hook asks whether the user is holding a control
+    // before it writes. Nothing here fires the hooks, so the guards answer "no".
+    registerUIRefresh(fn) { this.uiRefreshHooks.push(fn); }
+    isHeldByUser() { return false; }
+    isGraphPointerActive() { return false; }
     updateParameters() {}
     cleanup() {}
     canRunAnimation() { return true; }

@@ -330,6 +330,7 @@ class AutoFilterPlugin extends PluginBase {
         } else {
             range.value = String(value);
         }
+        window.uiManager?.refreshRangeFillStyling?.(range);
     }
 
     _syncUI() {
@@ -363,20 +364,20 @@ class AutoFilterPlugin extends PluginBase {
         this._uiControls = {};
         this._uiControls.style = this.createSelectControl(
             'Style', ['Custom', ...Object.keys(this.constructor.factoryStyles)], this.styleName,
-            value => value !== 'Custom' && this.applyStyle(value));
-        this._uiControls.md = this.createSelectControl('Mode', ['LFO', 'Envelope'], this.md, value => this.setParameters({ md: value }));
-        this._uiControls.ft = this.createSelectControl('Filter Type', ['Low-pass', 'Band-pass', 'High-pass'], this.ft, value => this.setParameters({ ft: value }));
-        this._uiControls.lf = this.createLogarithmicParameterControl('Minimum Frequency', 20, 20000, 1, this.lf, value => this.setParameters({ lf: value }), 'Hz');
-        this._uiControls.hf = this.createLogarithmicParameterControl('Maximum Frequency', 20, 20000, 1, this.hf, value => this.setParameters({ hf: value }), 'Hz');
-        this._uiControls.rs = this.createParameterControl('Resonance', 0.5, 20, 0.1, this.rs, value => this.setParameters({ rs: value }), 'Q');
-        this._uiControls.mx = this.createParameterControl('Mix', 0, 100, 1, this.mx, value => this.setParameters({ mx: value }), '%');
-        this._uiControls.rt = this.createLogarithmicParameterControl('Rate', 0.05, 20, 0.01, this.rt, value => this.setParameters({ rt: value }), 'Hz');
-        this._uiControls.wf = this.createSelectControl('Waveform', ['Sine', 'Triangle'], this.wf, value => this.setParameters({ wf: value }));
-        this._uiControls.sp = this.createParameterControl('Stereo Phase', 0, 180, 1, this.sp, value => this.setParameters({ sp: value }), 'deg');
-        this._uiControls.sn = this.createParameterControl('Sensitivity', 0, 60, 1, this.sn, value => this.setParameters({ sn: value }), 'dB');
-        this._uiControls.at = this.createLogarithmicParameterControl('Attack', 1, 500, 1, this.at, value => this.setParameters({ at: value }), 'ms');
-        this._uiControls.rl = this.createLogarithmicParameterControl('Release', 10, 2000, 1, this.rl, value => this.setParameters({ rl: value }), 'ms');
-        this._uiControls.dr = this.createSelectControl('Direction', ['Up', 'Down'], this.dr, value => this.setParameters({ dr: value }));
+            value => value !== 'Custom' && this.applyStyle(value), 'styleName');
+        this._uiControls.md = this.createSelectControl('Mode', ['LFO', 'Envelope'], this.md, value => this.setParameters({ md: value }), 'md');
+        this._uiControls.ft = this.createSelectControl('Filter Type', ['Low-pass', 'Band-pass', 'High-pass'], this.ft, value => this.setParameters({ ft: value }), 'ft');
+        this._uiControls.lf = this.createLogarithmicParameterControl('Minimum Frequency', 20, 20000, 1, this.lf, value => this.setParameters({ lf: value }), 'Hz', 'lf');
+        this._uiControls.hf = this.createLogarithmicParameterControl('Maximum Frequency', 20, 20000, 1, this.hf, value => this.setParameters({ hf: value }), 'Hz', 'hf');
+        this._uiControls.rs = this.createParameterControl('Resonance', 0.5, 20, 0.1, this.rs, value => this.setParameters({ rs: value }), 'Q', 'rs');
+        this._uiControls.mx = this.createParameterControl('Mix', 0, 100, 1, this.mx, value => this.setParameters({ mx: value }), '%', 'mx');
+        this._uiControls.rt = this.createLogarithmicParameterControl('Rate', 0.05, 20, 0.01, this.rt, value => this.setParameters({ rt: value }), 'Hz', 'rt');
+        this._uiControls.wf = this.createSelectControl('Waveform', ['Sine', 'Triangle'], this.wf, value => this.setParameters({ wf: value }), 'wf');
+        this._uiControls.sp = this.createParameterControl('Stereo Phase', 0, 180, 1, this.sp, value => this.setParameters({ sp: value }), 'deg', 'sp');
+        this._uiControls.sn = this.createParameterControl('Sensitivity', 0, 60, 1, this.sn, value => this.setParameters({ sn: value }), 'dB', 'sn');
+        this._uiControls.at = this.createLogarithmicParameterControl('Attack', 1, 500, 1, this.at, value => this.setParameters({ at: value }), 'ms', 'at');
+        this._uiControls.rl = this.createLogarithmicParameterControl('Release', 10, 2000, 1, this.rl, value => this.setParameters({ rl: value }), 'ms', 'rl');
+        this._uiControls.dr = this.createSelectControl('Direction', ['Up', 'Down'], this.dr, value => this.setParameters({ dr: value }), 'dr');
         for (const key of ['style', 'md', 'ft', 'lf', 'hf', 'rs', 'mx', 'rt', 'wf', 'sp', 'sn', 'at', 'rl', 'dr']) {
             container.appendChild(this._uiControls[key]);
         }

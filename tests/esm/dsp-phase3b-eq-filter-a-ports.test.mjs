@@ -29,7 +29,7 @@ const ports = [
     ],
     caseCount: 9,
     identityCase: 'both-off-identity',
-    jsEngineHash: 'f290fc3220348ca6198607255c5167d75eccb8b78f21ce010a894b1ecd4d9ed7',
+    jsEngineHash: '81ed8a5b818adaa540bf5e1a4c964f717aac126e654d1d95d9e75f67c51b022c',
     activeParams: { hf: 180, lf: 12000, hs: -36, ls: -24 }
   },
   {
@@ -39,7 +39,7 @@ const ports = [
     fields: [['frequency', 'fr', 'float'], ['slope', 'sl', 'int']],
     caseCount: 9,
     identityCase: 'off-identity',
-    jsEngineHash: '9af09e8d3e3c38c76ce8b2593a14b23bf169ac20878653a4887181404eb4ef9a',
+    jsEngineHash: 'b83f4740a94078cfe002c0be527d70ebde9fa95cede364559472585fda86bc19',
     activeParams: { fr: 180, sl: -36 }
   },
   {
@@ -49,7 +49,7 @@ const ports = [
     fields: [['frequency', 'fr', 'float'], ['slope', 'sl', 'int']],
     caseCount: 9,
     identityCase: 'off-identity',
-    jsEngineHash: 'd7d485208b15a7c31e2563aa2d0d459aabbb3b849e19e213d31c9dd2ffe21085',
+    jsEngineHash: '6cb0fad03e31c27ae2a66649c0c1b0b0f27359af1ab94ed955ca15852610691e',
     activeParams: { fr: 12000, sl: -36 }
   },
   {
@@ -59,7 +59,7 @@ const ports = [
     fields: [['pivotExponent', 'f0', 'float'], ['slope', 'sl', 'float']],
     caseCount: 8,
     identityCase: 'zero-slope-identity',
-    jsEngineHash: 'a241083c43d8f9ab57b9dbed5aa3efc33d492f46b1a16d691ecbb4e798041f76',
+    jsEngineHash: '1cd280e948ad40bd2e07e65dd722519a8cb3bb9907dd47a4c6f3ea21bf74402b',
     activeParams: { f0: 6.5, sl: 8 }
   },
   {
@@ -73,7 +73,7 @@ const ports = [
     ],
     caseCount: 10,
     identityCase: 'flat-identity',
-    jsEngineHash: '2172a8335d1642e3d60ba06c62afaef122b6d25d333917aa6b5f77bbbf3ba1ca',
+    jsEngineHash: '6f848afb3bbef3ac570256bac2b8c14d9b366d2b56c400cd739b9ad5c4438f77',
     activeParams: { bs: 9, md: -6, tr: 12 }
   }
 ];

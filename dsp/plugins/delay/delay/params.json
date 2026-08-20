@@ -5,13 +5,13 @@
     "policy": "per-sample"
   },
   "fields": [
-    { "name": "preDelay", "key": "pd", "kind": "float", "min": 0, "max": 100, "default": 0, "unit": "ms", "automation": true },
-    { "name": "delaySize", "key": "ds", "kind": "float", "min": 1, "max": 5000, "default": 150, "unit": "ms", "automation": true },
-    { "name": "damping", "key": "dp", "kind": "float", "min": 0, "max": 100, "default": 50, "unit": "%", "automation": true },
-    { "name": "highDamp", "key": "hd", "kind": "float", "min": 20, "max": 20000, "default": 5000, "unit": "Hz", "automation": true },
-    { "name": "lowDamp", "key": "ld", "kind": "float", "min": 20, "max": 20000, "default": 100, "unit": "Hz", "automation": true },
-    { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "default": 16, "unit": "%", "automation": true },
-    { "name": "feedback", "key": "fb", "kind": "float", "min": 0, "max": 99, "default": 50, "unit": "%", "automation": true },
-    { "name": "pingPong", "key": "pp", "kind": "float", "min": 0, "max": 100, "default": 0, "unit": "%", "automation": true }
+    { "name": "preDelay", "key": "pd", "kind": "float", "min": 0, "max": 100, "step": 0.1, "default": 0, "unit": "ms", "automation": true },
+    { "name": "delaySize", "key": "ds", "kind": "float", "min": 1, "max": 5000, "step": 1, "default": 150, "unit": "ms", "automation": true },
+    { "name": "damping", "key": "dp", "kind": "float", "min": 0, "max": 100, "step": 1, "default": 50, "unit": "%", "automation": true },
+    { "name": "highDamp", "key": "hd", "kind": "float", "min": 20, "max": 20000, "step": 1, "default": 5000, "unit": "Hz", "automation": true },
+    { "name": "lowDamp", "key": "ld", "kind": "float", "min": 20, "max": 20000, "step": 1, "default": 100, "unit": "Hz", "automation": true },
+    { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "step": 1, "default": 16, "unit": "%", "automation": true },
+    { "name": "feedback", "key": "fb", "kind": "float", "min": 0, "max": 99, "step": 1, "default": 50, "unit": "%", "automation": true },
+    { "name": "pingPong", "key": "pp", "kind": "float", "min": 0, "max": 100, "step": 1, "default": 0, "unit": "%", "automation": true }
   ]
 }

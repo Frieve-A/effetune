@@ -178,7 +178,15 @@ class FiveBandFIRPEQPlugin extends PluginBase {
     if (previousDesign !== nextDesign) this._scheduleDesign(150);
     else if (previousLatency !== this.lt && this._lastDesign) this._stageDesign(this._lastDesign);
     if (syncUi) this.setUIValues();
-    this.updateMarkers();
+    // Repositioning the markers would yank one out from under the pointer if an
+    // inbound update lands mid-drag. The response curve and the number boxes
+    // still follow; only the marker positions are held off. This plugin drags
+    // with its own mouse/touch handlers rather than bindGraphPointer(), so
+    // activeDragMarker is the signal that actually fires here; the shared probe
+    // is also consulted so the behaviour stays uniform if that ever changes.
+    if (this.activeDragMarker === null && !this.isGraphPointerActive()) {
+      this.updateMarkers();
+    }
     this.updateResponse();
     this._renderStatus();
   }
@@ -556,7 +564,7 @@ class FiveBandFIRPEQPlugin extends PluginBase {
     settings.appendChild(this.createRadioGroup('Phase', [
       { value: 'min', label: 'Minimum Phase' },
       { value: 'lin', label: 'Linear Phase' }
-    ], this.pm, value => this.setParameters({ pm: value })));
+    ], this.pm, value => this.setParameters({ pm: value }), 'pm'));
     settings.appendChild(this.createSelectControl(
       'Taps',
       [8192, 16384, 32768, 65536, 131072].map(value => ({
@@ -564,7 +572,7 @@ class FiveBandFIRPEQPlugin extends PluginBase {
         label: String(value)
       })),
       String(this.tp),
-      value => this.setParameters({ tp: Number(value) })
+      value => this.setParameters({ tp: Number(value) }), 'tp'
     ));
     settings.appendChild(this.createSelectControl(
       'Latency',
@@ -573,7 +581,7 @@ class FiveBandFIRPEQPlugin extends PluginBase {
         label: `${value} samples`
       })),
       this.lt,
-      value => this.setParameters({ lt: value })
+      value => this.setParameters({ lt: value }), 'lt'
     ));
     container.appendChild(settings);
 
@@ -950,6 +958,7 @@ class FiveBandFIRPEQPlugin extends PluginBase {
         100
       ));
       qSlider.setAttribute?.('aria-valuetext', this[`q${index}`].toFixed(2));
+      window.uiManager?.refreshRangeFillStyling?.(qSlider);
     }
     if (q) q.value = this[`q${index}`].toFixed(2);
     if (slopeSlider) {
@@ -962,6 +971,7 @@ class FiveBandFIRPEQPlugin extends PluginBase {
         'aria-valuetext',
         `${this[`s${index}`].toFixed(1)} dB/oct`
       );
+      window.uiManager?.refreshRangeFillStyling?.(slopeSlider);
     }
     if (slope) slope.value = this[`s${index}`].toFixed(1);
     this._setSlopeControlsState(band, this[`t${index}`]);

@@ -379,7 +379,10 @@ class FifteenBandPEQPlugin extends PluginBase {
     if (this.uiCreated) {
       this.setUIValues();
       if (this.responseSvg) { this.updateResponse(); }
-      if (this.markers) { this.updateMarkers(); }
+      // Repositioning the markers would yank one out from under the pointer if an
+      // inbound update lands mid-drag. The number boxes and the response curve
+      // above still follow; only the marker positions are held off.
+      if (this.markers && !this.isGraphPointerActive()) { this.updateMarkers(); }
     }
   }
 
@@ -950,7 +953,10 @@ class FifteenBandPEQPlugin extends PluginBase {
     // Set Q value
     const qSlider = contentPane.querySelector('.fifteen-band-peq-q-slider');
     const qText = contentPane.querySelector('.fifteen-band-peq-q-text');
-    if (qSlider) qSlider.value = this['q' + bandIndex];
+    if (qSlider) {
+      qSlider.value = this['q' + bandIndex];
+      window.uiManager?.refreshRangeFillStyling?.(qSlider);
+    }
     if (qText) qText.value = this['q' + bandIndex].toFixed(2);
     
     // Set frequency (display integer part only)

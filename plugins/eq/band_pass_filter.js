@@ -342,10 +342,11 @@ class BandPassFilterPlugin extends PluginBase {
         this.setHf(value);
         this.drawGraph(canvas);
       },
-      'Hz'
+      'Hz', 'hf'
     );
     // Append the HPF slope selector to the row
-    hpfRow.appendChild(createSlopeSelect(this.hs, v => this.setHs(v), "HPF", canvas));
+    const hpfSlopeSelect = createSlopeSelect(this.hs, v => this.setHs(v), "HPF", canvas);
+    hpfRow.appendChild(hpfSlopeSelect);
 
     // Create LPF row
     const lpfRow = this.createParameterControl("LPF", 10, 40000, 1, this.lf,
@@ -353,15 +354,29 @@ class BandPassFilterPlugin extends PluginBase {
         this.setLf(value);
         this.drawGraph(canvas);
       },
-      'Hz'
+      'Hz', 'lf'
     );
     // Append the LPF slope selector to the row
-    lpfRow.appendChild(createSlopeSelect(this.ls, v => this.setLs(v), "LPF", canvas));
+    const lpfSlopeSelect = createSlopeSelect(this.ls, v => this.setLs(v), "LPF", canvas);
+    lpfRow.appendChild(lpfSlopeSelect);
 
     container.appendChild(hpfRow);
     container.appendChild(lpfRow);
     container.appendChild(graphContainer);
     this.drawGraph(canvas);
+
+    // Automation playback and preset recall change the model without touching the
+    // DOM, so the parts of the UI this plugin builds by hand are refreshed here.
+    // The frequency rows carry modelKeys and follow on their own; the slope
+    // selects and the response curve do not.
+    this.registerUIRefresh(() => {
+      // Tested per element, so one select being held still lets the other track.
+      const heldByUser = el => this.isHeldByUser(el);
+      if (!heldByUser(hpfSlopeSelect)) hpfSlopeSelect.value = this.hs;
+      if (!heldByUser(lpfSlopeSelect)) lpfSlopeSelect.value = this.ls;
+      this.drawGraph(canvas);
+    });
+
     return container;
   }
 

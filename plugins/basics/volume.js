@@ -75,7 +75,7 @@ class VolumePlugin extends PluginBase {
         // Use helper to create volume control
         const volumeControl = this.createParameterControl(
             'Volume', -60, 24, 0.1, this.vl, 
-            (value) => this.setVl(value), 'dB'
+            (value) => this.setVl(value), 'dB', 'vl'
         );
         container.appendChild(volumeControl);
         

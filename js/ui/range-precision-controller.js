@@ -74,6 +74,24 @@ function resolveFineDrag(slider, documentRef) {
     return { target, min, max, step, startValue };
 }
 
+// A fine drag sets the value programmatically, so an inbound UI sync needs an
+// explicit claim to know the control is being operated. Measured in Chromium:
+// the dragged slider does stay `:active`, but pointerdown is default-prevented
+// so no compatibility mouse events fire, and for a logarithmic control the
+// driven target is a separate number input that is neither `:active` nor
+// focused. Flag both ends so the claim never rests on engine-specific `:active`
+// behaviour.
+function setFineActive(session, active) {
+    for (const element of [session.slider, session.target]) {
+        if (!element?.dataset) continue;
+        if (active) {
+            element.dataset.rangeFineActive = '1';
+        } else {
+            delete element.dataset.rangeFineActive;
+        }
+    }
+}
+
 function isVerticalSlider(slider) {
     if (slider.classList?.contains?.('vertical-slider')) {
         return true;
@@ -115,6 +133,7 @@ export function installRangePrecisionControl(
         }
 
         event.preventDefault();
+        setFineActive(session, false);
         if (dispatchChange && session.changed) {
             session.target.dispatchEvent(createControlEvent(documentRef, 'change'));
         }
@@ -158,6 +177,7 @@ export function installRangePrecisionControl(
             previousCursor: slider.style.cursor
         };
 
+        setFineActive(session, true);
         slider.style.cursor = vertical ? 'ns-resize' : 'ew-resize';
         slider.focus?.({ preventScroll: true });
         try {
@@ -220,6 +240,7 @@ export function installRangePrecisionControl(
         documentRef.removeEventListener('pointerup', onPointerUp, true);
         documentRef.removeEventListener('pointercancel', onPointerCancel, true);
         if (session) {
+            setFineActive(session, false);
             session.slider.style.cursor = session.previousCursor;
             session = null;
         }

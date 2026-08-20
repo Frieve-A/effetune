@@ -51,6 +51,20 @@ class PluginBase {
         this._wasmAssetTargetResolver = null;
         this._wasmAssetOperationObserver = null;
 
+        // Controls built by the createXxxControl() helpers that were given an
+        // explicit modelKey, kept so that syncUIControls() can refresh them
+        // when the model is changed from outside the UI.
+        this._syncedUIControls = [];
+
+        // Plugins that build their DOM by hand register a callback here so that
+        // syncUIControls() can refresh it too. Each hook is a plain () => void.
+        this._uiRefreshHooks = [];
+
+        // One probe per bindGraphPointer() binding, each reporting whether that
+        // binding currently has a pointer down. Used to hold refresh hooks off
+        // while the user is dragging a graph marker.
+        this._graphPointerProbes = new Set();
+
         // Intercept every prototype startAnimation() entry, including direct
         // IntersectionObserver callbacks, so they cannot bypass the common gate.
         const unrestrictedStartAnimation = this.startAnimation;
@@ -59,6 +73,21 @@ class PluginBase {
             this.startAnimation = (...args) => {
                 if (!this.canRunAnimation()) return undefined;
                 return unrestrictedStartAnimation.apply(this, args);
+            };
+        }
+
+        // Intercept createUI() the same way so a rebuilt UI starts from an
+        // empty control registry without every plugin having to clear it.
+        // Clearing the refresh hooks and graph-pointer probes here is what makes
+        // them safe: a rebuilt UI can never accumulate stale hooks or probes
+        // still bound to the detached DOM of the previous build.
+        const buildUI = this.createUI;
+        if (typeof buildUI === 'function') {
+            this.createUI = (...args) => {
+                this._syncedUIControls = [];
+                this._uiRefreshHooks = [];
+                this._graphPointerProbes.clear();
+                return buildUI.apply(this, args);
             };
         }
 
@@ -1162,8 +1191,103 @@ class PluginBase {
         }
     }
 
+    // --- UI control synchronisation ---------------------------------------
+    // The control helpers below take an optional `modelKey`: the name of the
+    // plugin property the passed value came from. When it is given, the DOM
+    // elements the helper built are registered so syncUIControls() can push
+    // the model back into them after a change made outside the UI (host
+    // automation, preset recall). Controls fed by a computed value pass no
+    // modelKey and are simply not synchronised; such a plugin has to refresh
+    // its own UI.
+
+    _registerUIControl(modelKey, elements, apply) {
+        if (!modelKey) return;
+        this._syncedUIControls.push({ modelKey, elements, apply });
+    }
+
+    // Register a callback that refreshes hand-built DOM (canvases, SVG markers,
+    // selects a plugin writes itself) from the current model. Called by
+    // syncUIControls() after the helper-built controls, and only while no graph
+    // pointer is down. Hooks are dropped whenever createUI() rebuilds the UI.
+    // Contract: a hook runs on every sync, so one that writes to an element the
+    // user can edit must call isHeldByUser(element) first and skip that element
+    // while it is held. Purely derived output (canvases, curves) needs no check.
+    registerUIRefresh(fn) {
+        if (typeof fn !== 'function') return;
+        this._uiRefreshHooks.push(fn);
+    }
+
+    // True while the user is interacting with `element`, so an inbound sync must
+    // leave it alone. Held-ness has two sources. The first is the element's own
+    // CSS/focus state: a held pointer is `:active` on every control type, so
+    // dragging is covered there, while focus alone only means "still editing"
+    // where the element holds a value the user is part way through entering — a
+    // number or text field being typed into, or a select whose list may be open.
+    // A range, checkbox or radio keeps focus long after the click that set it, so
+    // honouring focus there would leave the last control the user touched
+    // permanently deaf to automation. The second source is an explicit claim
+    // staked by a component that drives a control programmatically, where the CSS
+    // state above cannot see the interaction: range-precision-controller.js sets
+    // `rangeFineActive` for the length of a Shift+fine drag on both the dragged
+    // slider and, for a logarithmic control, the separate number input it drives.
+    // That number input is neither `:active` nor focused (measured), so a caller
+    // that tests it on its own — a hand-written refresh hook rather than the
+    // helper batch, which also sees the slider — would otherwise miss the drag.
+    isHeldByUser(element) {
+        if (!element) return false;
+        if (element.dataset?.rangeFineActive === '1') return true;
+        const activeElement = typeof document !== 'undefined' ? document.activeElement : null;
+        if (element === activeElement
+            && (element.tagName === 'SELECT' || element.type === 'number' || element.type === 'text')) {
+            return true;
+        }
+        return !!element.matches?.(':active');
+    }
+
+    // True while any bindGraphPointer() binding has a pointer down on it.
+    isGraphPointerActive() {
+        for (const probe of this._graphPointerProbes) {
+            if (probe()) return true;
+        }
+        return false;
+    }
+
+    // Push the current model values back into the controls built by the
+    // helpers below. Assigning to `value`/`checked` from script does not
+    // dispatch `input`/`change` events, so the control setters are never
+    // re-entered and this cannot feed back into the model. Plugins that
+    // already refresh their own UI (setUIValues/_syncUI) keep doing so; this
+    // only covers controls created through PluginBase.
+    syncUIControls() {
+        if (!this._syncedUIControls.length && !this._uiRefreshHooks.length) return;
+        // Never take a control away from the user while it is being edited; see
+        // isHeldByUser() above for exactly what counts as held and why.
+        const heldByUser = el => this.isHeldByUser(el);
+        for (const control of this._syncedUIControls) {
+            if (control.elements.some(heldByUser)) continue;
+            control.apply(this[control.modelKey]);
+        }
+        // Hand-built DOM (graph markers, response curves) is repositioned from
+        // the model here. Unlike the controls above there is no per-element
+        // :active test to rely on, so the whole batch is held off while a graph
+        // pointer is down rather than fighting the drag in progress.
+        if (this.isGraphPointerActive()) return;
+        for (const hook of [...this._uiRefreshHooks]) {
+            try {
+                hook();
+            } catch (error) {
+                console.warn(`[${this.name}] UI refresh hook failed:`, error);
+            }
+        }
+    }
+
     // Helper function to create slider/number input parameter controls
-    createParameterControl(label, min, max, step, value, setter, unit = '') {
+    // `toDisplay` is an optional modelValue => displayValue transform for the
+    // controls whose widget range is a scaled view of the stored value (e.g. a
+    // 0..1 model shown on a -100..100 widget). It is applied only on the inbound
+    // sync path; the forward path is unchanged because `setter` already receives
+    // display units and converts them back.
+    createParameterControl(label, min, max, step, value, setter, unit = '', modelKey = null, toDisplay = null) {
         const row = document.createElement('div');
         row.className = 'parameter-row';
 
@@ -1239,6 +1363,16 @@ class PluginBase {
         });
 
 
+        this._registerUIControl(modelKey, [slider, valueInput], (modelValue) => {
+            // lastAppliedValue is already in display units, so convert first.
+            const numericValue = parseFloat(toDisplay ? toDisplay(modelValue) : modelValue);
+            if (!Number.isFinite(numericValue) || numericValue === lastAppliedValue) return;
+            slider.value = numericValue;
+            window.uiManager?.refreshRangeFillStyling?.(slider);
+            valueInput.value = numericValue.toFixed(step < 0.01 ? 3 : (step < 0.1 ? 2 : (step < 1 ? 1 : 0)));
+            lastAppliedValue = numericValue;
+        });
+
         row.appendChild(labelEl);
         row.appendChild(slider);
         row.appendChild(valueInput);
@@ -1248,7 +1382,9 @@ class PluginBase {
 
     // Helper function to create logarithmic slider/number input parameter controls
     // The slider displays logarithmically but the actual value remains linear
-    createLogarithmicParameterControl(label, min, max, step, value, setter, unit = '') {
+    // `toDisplay` behaves exactly as in createParameterControl(): an optional
+    // modelValue => displayValue transform applied only on the inbound sync path.
+    createLogarithmicParameterControl(label, min, max, step, value, setter, unit = '', modelKey = null, toDisplay = null) {
         const row = document.createElement('div');
         row.className = 'parameter-row';
 
@@ -1337,6 +1473,17 @@ class PluginBase {
             }
         });
 
+        this._registerUIControl(modelKey, [slider, valueInput], (modelValue) => {
+            // The displayed (and compared) value is in display units, so convert first.
+            const numericValue = parseFloat(toDisplay ? toDisplay(modelValue) : modelValue);
+            if (!Number.isFinite(numericValue) || numericValue <= 0) return;
+            const formatted = numericValue.toFixed(step < 0.1 ? 2 : (step < 1 ? 1 : 0));
+            if (valueInput.value === formatted) return;
+            slider.value = linearToLogSlider(numericValue);
+            window.uiManager?.refreshRangeFillStyling?.(slider);
+            valueInput.value = formatted;
+        });
+
         row.appendChild(labelEl);
         row.appendChild(slider);
         row.appendChild(valueInput);
@@ -1344,7 +1491,7 @@ class PluginBase {
         return row;
     }
 
-    createSelectControl(label, options, value, setter) {
+    createSelectControl(label, options, value, setter, modelKey = null) {
         const row = document.createElement('div');
         row.className = 'parameter-row';
         const paramName = label.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -1368,12 +1515,17 @@ class PluginBase {
         select.value = value;
         select.addEventListener('change', event => setter(event.target.value));
 
+        this._registerUIControl(modelKey, [select], (modelValue) => {
+            if (select.value === String(modelValue)) return;
+            select.value = modelValue;
+        });
+
         row.appendChild(labelEl);
         row.appendChild(select);
         return row;
     }
 
-    createCheckboxControl(label, checked, setter) {
+    createCheckboxControl(label, checked, setter, modelKey = null) {
         const row = document.createElement('div');
         row.className = 'parameter-row checkbox-row';
         const paramName = label.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -1391,12 +1543,17 @@ class PluginBase {
         checkbox.autocomplete = 'off';
         checkbox.addEventListener('change', event => setter(event.target.checked));
 
+        this._registerUIControl(modelKey, [checkbox], (modelValue) => {
+            if (checkbox.checked === !!modelValue) return;
+            checkbox.checked = !!modelValue;
+        });
+
         row.appendChild(labelEl);
         row.appendChild(checkbox);
         return row;
     }
 
-    createRadioGroup(label, options, value, setter) {
+    createRadioGroup(label, options, value, setter, modelKey = null) {
         const row = document.createElement('div');
         row.className = 'parameter-row radio-group';
         const paramName = label.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -1406,6 +1563,7 @@ class PluginBase {
         labelEl.textContent = `${label}:`;
         row.appendChild(labelEl);
 
+        const radios = [];
         options.forEach((option, index) => {
             const optionValue = typeof option === 'string' ? option : option.value;
             const optionLabel = typeof option === 'string' ? option : option.label;
@@ -1426,8 +1584,17 @@ class PluginBase {
             radioLabel.htmlFor = radioId;
             radioLabel.textContent = optionLabel;
 
+            radios.push(radio);
             row.appendChild(radio);
             row.appendChild(radioLabel);
+        });
+
+        this._registerUIControl(modelKey, radios, (modelValue) => {
+            const selected = String(modelValue);
+            for (const radio of radios) {
+                const checked = radio.value === selected;
+                if (radio.checked !== checked) radio.checked = checked;
+            }
         });
 
         return row;
@@ -1611,11 +1778,26 @@ class PluginBase {
         element.addEventListener('pointerup', finishPointer);
         element.addEventListener('pointercancel', cancelPointer);
 
+        // Expose "a pointer is down on this binding" as a stateless probe rather
+        // than as a shared counter. A counter would need its increment and
+        // decrement to stay balanced, and this binding only observes pointerup
+        // and pointercancel - not lostpointercapture - so any unbalanced path
+        // would leak the count permanently and kill the refresh for good. The
+        // probe owns no state: it just reads activePointerId, which the code
+        // above already sets in onPointerDown and clears in BOTH finishPointer
+        // and cancelPointer, so no new invariant can drift.
+        // activePointerId (pointer down) is deliberately used instead of
+        // `dragging`, which only flips past the 8px tap threshold: a refresh
+        // firing inside that window would still fight the user.
+        const probe = () => activePointerId !== null;
+        this._graphPointerProbes.add(probe);
+
         return () => {
             element.removeEventListener('pointerdown', onPointerDown);
             element.removeEventListener('pointermove', onPointerMove);
             element.removeEventListener('pointerup', finishPointer);
             element.removeEventListener('pointercancel', cancelPointer);
+            this._graphPointerProbes.delete(probe);
         };
     }
 
@@ -1747,6 +1929,9 @@ class PluginBase {
     // Cleanup resources (should be overridden by subclasses).
     cleanup() {
         this._disposeResponsiveGraphs();
+        this._syncedUIControls = [];
+        this._uiRefreshHooks = [];
+        this._graphPointerProbes.clear();
         const clearSlots = new Set(this._wasmAssets.keys());
         for (const deliveries of this._wasmAssetDeliveries.values()) {
             for (const slot of deliveries.keys()) clearSlots.add(slot);

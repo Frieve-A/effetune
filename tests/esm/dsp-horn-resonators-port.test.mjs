@@ -29,12 +29,12 @@ const ports = [
   {
     type: 'HornResonatorPlugin',
     folder: 'horn_resonator',
-    jsEngineHash: 'ca2f9a437a5f544912f4313823d76076a159c5e7ecd23f432e48d75c99df6e71'
+    jsEngineHash: '5e33cf748a2b2fb7bf1cc1adc7dbaa4865790f29f89e266d809c0f42a1d0edb8'
   },
   {
     type: 'HornResonatorPlusPlugin',
     folder: 'horn_resonator_plus',
-    jsEngineHash: 'c3169e59291adc8ca8780ad32c6424853a959636c3efc223d68b92063d115506'
+    jsEngineHash: 'd686b049e0f4506302fae216bf2e6a96d15bc1adbbe7dd9c530c42215bfa81e5'
   }
 ];
 

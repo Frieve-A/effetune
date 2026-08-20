@@ -20,10 +20,16 @@ function loadPlugin() {
       this.enabled = true;
       this.channel = null;
       this.powerGainUpperBoundDb = 0;
+      // UI-follow seam: no graph pointer is down unless a test says otherwise.
+      this.graphPointerActive = false;
     }
 
     registerProcessor(processor) {
       this.processor = processor;
+    }
+
+    isGraphPointerActive() {
+      return this.graphPointerActive;
     }
 
     getParameters() {

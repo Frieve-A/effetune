@@ -415,16 +415,16 @@ class VinylArtifactsPlugin extends PluginBase {
         const c = document.createElement('div');
         c.className = 'vinyl-artifacts-plugin-ui plugin-parameter-ui';
         const UNIFIED_DB_MIN = -80.0; const UNIFIED_DB_MAX = 0.0; const DB_STEP = 0.1;
-        c.appendChild(this.createParameterControl('Pops/min', 0, 120, 1, this.pp, v => this.setParameters({ pp: v })));
-        c.appendChild(this.createParameterControl('Pop Level', UNIFIED_DB_MIN, UNIFIED_DB_MAX, DB_STEP, this.pl, v => this.setParameters({ pl: v }), 'dB'));
-        c.appendChild(this.createParameterControl('Crackles/min', 0, 2000, 10, this.cm, v => this.setParameters({ cm: v })));
-        c.appendChild(this.createParameterControl('Crackle Level', UNIFIED_DB_MIN, UNIFIED_DB_MAX, DB_STEP, this.cl, v => this.setParameters({ cl: v }), 'dB'));
-        c.appendChild(this.createParameterControl('Hiss', UNIFIED_DB_MIN, UNIFIED_DB_MAX, DB_STEP, this.hs, v => this.setParameters({ hs: v }), 'dB'));
-        c.appendChild(this.createParameterControl('Rumble', UNIFIED_DB_MIN, UNIFIED_DB_MAX, DB_STEP, this.rb, v => this.setParameters({ rb: v }), 'dB'));
-        c.appendChild(this.createParameterControl('Crosstalk', 0, 100, 1, this.xt, v => this.setParameters({ xt: v }), '%'));
-        c.appendChild(this.createParameterControl('Noise Profile', 0, 10, 0.1, this.tn, v => this.setParameters({ tn: v })));
-        c.appendChild(this.createParameterControl('Wear', 0, 200, 1, this.wr, v => this.setParameters({ wr: v }), '%'));
-        c.appendChild(this.createParameterControl('React', 0, 100, 1, this.rt, v => this.setParameters({ rt: v }), '%'));
+        c.appendChild(this.createParameterControl('Pops/min', 0, 120, 1, this.pp, v => this.setParameters({ pp: v }), '', 'pp'));
+        c.appendChild(this.createParameterControl('Pop Level', UNIFIED_DB_MIN, UNIFIED_DB_MAX, DB_STEP, this.pl, v => this.setParameters({ pl: v }), 'dB', 'pl'));
+        c.appendChild(this.createParameterControl('Crackles/min', 0, 2000, 10, this.cm, v => this.setParameters({ cm: v }), '', 'cm'));
+        c.appendChild(this.createParameterControl('Crackle Level', UNIFIED_DB_MIN, UNIFIED_DB_MAX, DB_STEP, this.cl, v => this.setParameters({ cl: v }), 'dB', 'cl'));
+        c.appendChild(this.createParameterControl('Hiss', UNIFIED_DB_MIN, UNIFIED_DB_MAX, DB_STEP, this.hs, v => this.setParameters({ hs: v }), 'dB', 'hs'));
+        c.appendChild(this.createParameterControl('Rumble', UNIFIED_DB_MIN, UNIFIED_DB_MAX, DB_STEP, this.rb, v => this.setParameters({ rb: v }), 'dB', 'rb'));
+        c.appendChild(this.createParameterControl('Crosstalk', 0, 100, 1, this.xt, v => this.setParameters({ xt: v }), '%', 'xt'));
+        c.appendChild(this.createParameterControl('Noise Profile', 0, 10, 0.1, this.tn, v => this.setParameters({ tn: v }), '', 'tn'));
+        c.appendChild(this.createParameterControl('Wear', 0, 200, 1, this.wr, v => this.setParameters({ wr: v }), '%', 'wr'));
+        c.appendChild(this.createParameterControl('React', 0, 100, 1, this.rt, v => this.setParameters({ rt: v }), '%', 'rt'));
         const r = document.createElement('div'); r.className = 'parameter-row'; const l = document.createElement('label'); l.textContent = 'React Mode:'; r.appendChild(l);
         const h = document.createElement('div'); h.className = 'radio-group';
         ['Velocity', 'Amplitude'].forEach(m => {
@@ -434,7 +434,10 @@ class VinylArtifactsPlugin extends PluginBase {
             a.appendChild(d); a.appendChild(document.createTextNode(m)); h.appendChild(a);
         });
         r.appendChild(h); c.appendChild(r);
-        c.appendChild(this.createParameterControl('Mix', 0, 100, 1, this.mx, v => this.setParameters({ mx: v }), '%'));
+        c.appendChild(this.createParameterControl('Mix', 0, 100, 1, this.mx, v => this.setParameters({ mx: v }), '%', 'mx'));
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the controls this plugin builds by hand are refreshed here.
+        this.registerUIRefresh(() => { h.querySelectorAll('input[type="radio"]').forEach(d => { d.checked = this.rm === d.value; }); });
         return c;
     }
 }

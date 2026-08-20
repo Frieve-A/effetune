@@ -306,16 +306,16 @@ class RotarySpeakerPlugin extends PluginBase {
         this._uiControls = {};
         this._uiControls.style = this.createSelectControl(
             'Style', ['Custom', ...Object.keys(RotarySpeakerPlugin.factoryStyles)],
-            this.style, this.setStyle.bind(this));
-        this._uiControls.ss = this.createSelectControl('Speed State', ['Stop', 'Slow', 'Fast'], this.ss, this.setSs.bind(this));
-        this._uiControls.sp = this.createParameterControl('Speed', 25, 200, 1, this.sp, this.setSp.bind(this), '%');
-        this._uiControls.ac = this.createParameterControl('Acceleration', 0.1, 10, 0.1, this.ac, this.setAc.bind(this), 's');
-        this._uiControls.xo = this.createLogarithmicParameterControl('Crossover', 200, 2000, 1, this.xo, this.setXo.bind(this), 'Hz');
-        this._uiControls.rb = this.createParameterControl('Rotor Balance', -100, 100, 1, this.rb, this.setRb.bind(this), '%');
-        this._uiControls.sw = this.createParameterControl('Stereo Width', 0, 100, 1, this.sw, this.setSw.bind(this), '%');
-        this._uiControls.dd = this.createParameterControl('Doppler Depth', 0, 100, 1, this.dd, this.setDd.bind(this), '%');
-        this._uiControls.ad = this.createParameterControl('Amplitude Depth', 0, 100, 1, this.ad, this.setAd.bind(this), '%');
-        this._uiControls.mx = this.createParameterControl('Mix', 0, 100, 1, this.mx, this.setMx.bind(this), '%');
+            this.style, this.setStyle.bind(this), 'style');
+        this._uiControls.ss = this.createSelectControl('Speed State', ['Stop', 'Slow', 'Fast'], this.ss, this.setSs.bind(this), 'ss');
+        this._uiControls.sp = this.createParameterControl('Speed', 25, 200, 1, this.sp, this.setSp.bind(this), '%', 'sp');
+        this._uiControls.ac = this.createParameterControl('Acceleration', 0.1, 10, 0.1, this.ac, this.setAc.bind(this), 's', 'ac');
+        this._uiControls.xo = this.createLogarithmicParameterControl('Crossover', 200, 2000, 1, this.xo, this.setXo.bind(this), 'Hz', 'xo');
+        this._uiControls.rb = this.createParameterControl('Rotor Balance', -100, 100, 1, this.rb, this.setRb.bind(this), '%', 'rb');
+        this._uiControls.sw = this.createParameterControl('Stereo Width', 0, 100, 1, this.sw, this.setSw.bind(this), '%', 'sw');
+        this._uiControls.dd = this.createParameterControl('Doppler Depth', 0, 100, 1, this.dd, this.setDd.bind(this), '%', 'dd');
+        this._uiControls.ad = this.createParameterControl('Amplitude Depth', 0, 100, 1, this.ad, this.setAd.bind(this), '%', 'ad');
+        this._uiControls.mx = this.createParameterControl('Mix', 0, 100, 1, this.mx, this.setMx.bind(this), '%', 'mx');
         for (const key of ['style', 'ss', 'sp', 'ac', 'xo', 'rb', 'sw', 'dd', 'ad', 'mx']) {
             container.appendChild(this._uiControls[key]);
         }
@@ -346,6 +346,7 @@ class RotarySpeakerPlugin extends PluginBase {
         } else if (range) {
             range.value = String(value);
         }
+        if (range) window.uiManager?.refreshRangeFillStyling?.(range);
     }
 
     _syncUI() {

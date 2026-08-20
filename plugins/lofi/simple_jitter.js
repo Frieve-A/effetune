@@ -185,6 +185,17 @@ class SimpleJitterPlugin extends PluginBase {
 
         container.appendChild(jitterRow);
 
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the slider this plugin builds by hand is refreshed here. A slider the
+        // user is dragging is left alone, matching how syncUIControls() treats the
+        // helper-built controls.
+        this.registerUIRefresh(() => {
+            if (this.isHeldByUser(jitterSlider)) return;
+            jitterSlider.value = this.rj;
+            window.uiManager?.refreshRangeFillStyling?.(jitterSlider);
+            jitterValue.textContent = this.getDisplayValue();
+        });
+
         return container;
     }
 

@@ -839,31 +839,31 @@ class BrickwallLimiterPlugin extends PluginBase {
         // Input Gain
         container.appendChild(this.createParameterControl(
             'Input Gain', -18, 18, 0.1, this.ig,
-            (value) => this.setIg(value), 'dB'
+            (value) => this.setIg(value), 'dB', 'ig'
         ));
 
         // Threshold
         container.appendChild(this.createParameterControl(
             'Threshold', -24, 0, 0.1, this.th,
-            (value) => this.setTh(value), 'dB'
+            (value) => this.setTh(value), 'dB', 'th'
         ));
         
         // Margin
         container.appendChild(this.createParameterControl(
             'Margin', -1.0, 0.0, 0.01, this.sm,
-            (value) => this.setSm(value), 'dB'
+            (value) => this.setSm(value), 'dB', 'sm'
         ));
 
         // Release Time
         container.appendChild(this.createParameterControl(
             'Release', 10, 500, 1, this.rl,
-            (value) => this.setRl(value), 'ms'
+            (value) => this.setRl(value), 'ms', 'rl'
         ));
 
         // Lookahead Time
         container.appendChild(this.createParameterControl(
             'Lookahead', 0, 10, 0.1, this.la,
-            (value) => this.setLa(value), 'ms'
+            (value) => this.setLa(value), 'ms', 'la'
         ));
         
         // Oversampling (Keep existing control for now)
@@ -888,6 +888,16 @@ class BrickwallLimiterPlugin extends PluginBase {
         osRow.appendChild(osLabel);
         osRow.appendChild(osSelect);
         container.appendChild(osRow);
+
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the controls this plugin builds by hand are refreshed here. A focused
+        // select is left alone, matching how syncUIControls() treats helper-built ones.
+        this.registerUIRefresh(() => {
+            if (this.isHeldByUser(osSelect)) return;
+            [1, 2, 4, 8].forEach((factor, index) => {
+                osSelect.options[index].selected = this.os === factor;
+            });
+        });
 
         return container;
     }

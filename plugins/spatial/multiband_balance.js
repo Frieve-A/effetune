@@ -496,8 +496,31 @@ class MultibandBalancePlugin extends PluginBase {
             const freqNum = i + 1;
             const slider = document.getElementById(`${this.id}-${this.name}-freq${freqNum}-slider`);
             const input = document.getElementById(`${this.id}-${this.name}-freq${freqNum}-input`);
-            if (slider) slider.value = values[i];
+            if (slider) {
+                slider.value = values[i];
+                window.uiManager?.refreshRangeFillStyling?.(slider);
+            }
             if (input) input.value = values[i];
+        }
+    }
+
+    // Rows remembered by createUI(). Their values live in this.bands[i].balance,
+    // which the modelKey sync of PluginBase cannot address, so they are pushed
+    // back into the DOM here.
+    _syncBandControls() {
+        if (!Array.isArray(this._bandControlRows)) return;
+        // Tested per element, so one control being held still lets every other band track.
+        const heldByUser = el => this.isHeldByUser(el);
+        for (const entry of this._bandControlRows) {
+            const band = this.bands[entry.bandIndex];
+            if (!band || !Number.isFinite(band.balance)) continue;
+            const slider = entry.row.querySelector('input[type="range"]');
+            const input = entry.row.querySelector('input[type="number"]');
+            if (slider && !heldByUser(slider)) {
+                slider.value = band.balance;
+                window.uiManager?.refreshRangeFillStyling?.(slider);
+            }
+            if (input && !heldByUser(input)) input.value = band.balance;
         }
     }
 
@@ -547,6 +570,8 @@ class MultibandBalancePlugin extends PluginBase {
     createUI() {
         const container = document.createElement('div');
         container.className = 'multiband-balance-container';
+        // Rebuilt from scratch on every createUI() so no stale rows are kept.
+        this._bandControlRows = [];
 
         // Frequency sliders UI
         const freqContainer = document.createElement('div');
@@ -627,27 +652,26 @@ class MultibandBalancePlugin extends PluginBase {
 
         // Use base helper to create balance sliders
         // Note: Labels reflect band number (1-5)
-        bandBalances.appendChild(this.createParameterControl(
-            'Band 5 Bal.', -100, 100, 1, this.bands[4].balance,
-            (value) => this.setParameters({ band: 4, balance: value }), '%'
-        ));
-        bandBalances.appendChild(this.createParameterControl(
-            'Band 4 Bal.', -100, 100, 1, this.bands[3].balance,
-            (value) => this.setParameters({ band: 3, balance: value }), '%'
-        ));
-        bandBalances.appendChild(this.createParameterControl(
-            'Band 3 Bal.', -100, 100, 1, this.bands[2].balance,
-            (value) => this.setParameters({ band: 2, balance: value }), '%'
-        ));
-        bandBalances.appendChild(this.createParameterControl(
-            'Band 2 Bal.', -100, 100, 1, this.bands[1].balance,
-            (value) => this.setParameters({ band: 1, balance: value }), '%'
-        ));
-        bandBalances.appendChild(this.createParameterControl(
-            'Band 1 Bal.', -100, 100, 1, this.bands[0].balance,
-            (value) => this.setParameters({ band: 0, balance: value }), '%'
-        ));
+        // The value behind each row lives in this.bands[i].balance, which a modelKey
+        // cannot address, so the row is remembered for _syncBandControls().
+        const addBalanceControl = (label, bandIndex) => {
+            const row = this.createParameterControl(
+                label, -100, 100, 1, this.bands[bandIndex].balance,
+                (value) => this.setParameters({ band: bandIndex, balance: value }), '%'
+            );
+            this._bandControlRows.push({ bandIndex, row });
+            bandBalances.appendChild(row);
+        };
+        addBalanceControl('Band 5 Bal.', 4);
+        addBalanceControl('Band 4 Bal.', 3);
+        addBalanceControl('Band 3 Bal.', 2);
+        addBalanceControl('Band 2 Bal.', 1);
+        addBalanceControl('Band 1 Bal.', 0);
         container.appendChild(bandContainer);
+
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the parts of the UI this plugin builds by hand are refreshed here.
+        this.registerUIRefresh(() => this._syncBandControls());
 
         return container;
     }

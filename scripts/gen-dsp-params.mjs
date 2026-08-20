@@ -50,6 +50,13 @@ function requireFinite(value, label, source) {
   return value;
 }
 
+function requirePositiveFinite(value, label, source) {
+  if (requireFinite(value, label, source) <= 0) {
+    fail(`${label} must be greater than zero`, source);
+  }
+  return value;
+}
+
 function expandDefault(field, count, source) {
   const defaults = Array.isArray(field.default)
     ? field.default
@@ -400,6 +407,21 @@ export function validateParamSpec(raw, source = '<params.json>') {
       }
     }
 
+    // The granularity the UI prints this parameter with. plugins/plugin-base.js
+    // createParameterControl() turns it into a decimal count, and the plug-in
+    // prints host-facing values with the same rule, so a host readout carries
+    // the digits the EffeTune window shows rather than a generic precision.
+    // It is expressed in the units the parameter is *published* in: for a field
+    // carrying a public transform (dsp/bindings/common/effects-v1.overlay.json)
+    // that is the transformed unit, not the packed one, because a logarithmic
+    // packing has no constant step.
+    let step = null;
+    if (rawField.step !== undefined) {
+      step = requirePositiveFinite(rawField.step, `field ${name} step`, source);
+    } else if (rawField.automation !== undefined) {
+      fail(`field ${name} must declare a display step because it is automatable`, source);
+    }
+
     const automation = validateAutomation(rawField.automation, {
       name,
       publicName,
@@ -436,6 +458,7 @@ export function validateParamSpec(raw, source = '<params.json>') {
       count,
       min: minimum,
       max: maximum,
+      step,
       values,
       rejectInvalid,
       defaults,
@@ -607,6 +630,7 @@ export function buildAutomationCatalog(specs) {
             transformReference: field.publicTransform?.reference ?? 1,
             minimum,
             maximum,
+            step: field.step,
             default: automationPublicDefault(field, element),
             packedDefault: automationPackedDefault(field, element),
             stepCount: automationStepCount(field),
@@ -699,6 +723,7 @@ function cppAutomationCatalog(specs) {
     `AutomationValueTransform::${parameter.transform[0].toUpperCase()}${parameter.transform.slice(1)}, ` +
     `${cppFloat(parameter.transformReference)}, ` +
     `${cppFloat(parameter.minimum)}, ${cppFloat(parameter.maximum)}, ` +
+    `${cppFloat(parameter.step)}, ` +
     `${cppFloat(parameter.kind === 'bool' || parameter.kind === 'enum'
       ? parameter.packedDefault
       : parameter.default)}, ${cppFloat(parameter.packedDefault)}, ` +
@@ -728,7 +753,7 @@ function cppAutomationCatalog(specs) {
     `  std::uint32_t packedOffset;\n  AutomationParameterKind kind;\n` +
     `  AutomationEligibility eligibility;\n  AutomationNormalization normalization;\n` +
     `  AutomationValueTransform transform;\n  float transformReference;\n` +
-    `  float minimum;\n  float maximum;\n  float defaultValue;\n` +
+    `  float minimum;\n  float maximum;\n  float step;\n  float defaultValue;\n` +
     `  float packedDefaultValue;\n` +
     `  std::uint32_t stepCount;\n  std::string_view title;\n` +
     `  std::string_view shortTitle;\n  std::string_view unit;\n` +

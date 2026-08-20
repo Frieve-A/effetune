@@ -230,11 +230,31 @@ class MatrixPlugin extends PluginBase {
         }
     }
     
+    // Push the current matrixState back into the routing buttons. They are written
+    // only when they are built and by their own click handlers, so an inbound `mx`
+    // change would otherwise leave them showing the previous routing.
+    _syncMatrixButtons() {
+        if (!Array.isArray(this.cellButtons)) return;
+        for (let inputCh = 0; inputCh < this.cellButtons.length; inputCh++) {
+            for (let outputCh = 0; outputCh < this.cellButtons[inputCh].length; outputCh++) {
+                const buttons = this.cellButtons[inputCh][outputCh];
+                const cellState = this.matrixState[inputCh]?.[outputCh];
+                if (!buttons || !cellState) continue;
+                buttons.onButton.className = cellState.active ? 'matrix-button active' : 'matrix-button';
+                buttons.phaseButton.className = cellState.active && cellState.phaseInvert ?
+                    'matrix-button phase-button active' : 'matrix-button phase-button';
+            }
+        }
+    }
+
     // Create UI elements for the plugin
     createUI() {
         const container = document.createElement('div');
         container.className = 'matrix-plugin-ui plugin-parameter-ui';
-        
+
+        // Rebuilt from scratch on every createUI() so no stale buttons are kept.
+        this.cellButtons = Array.from({ length: 8 }, () => new Array(8).fill(null));
+
         // Initialize matrix state from parameter if not already done
         if (this.mx && this.matrixState.every(row => row.every(cell => !cell.active))) {
             this.parseRouting(this.mx);
@@ -323,6 +343,8 @@ class MatrixPlugin extends PluginBase {
                     }
                 });
                 
+                this.cellButtons[inputCh][outputCh] = { onButton, phaseButton };
+
                 cell.appendChild(onButton);
                 cell.appendChild(phaseButton);
                 row.appendChild(cell);
@@ -333,7 +355,11 @@ class MatrixPlugin extends PluginBase {
         
         tableWrapper.appendChild(table);
         container.appendChild(tableWrapper);
-        
+
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the parts of the UI this plugin builds by hand are refreshed here.
+        this.registerUIRefresh(() => this._syncMatrixButtons());
+
         return container;
     }
     

@@ -118,7 +118,7 @@ class TimeAlignmentPlugin extends PluginBase {
         // Use helper to create delay control
         const delayControl = this.createParameterControl(
             'Delay', 0, this.maxDelayTime, 0.01, this.dl,
-            (value) => this.setDelay(value), 'ms'
+            (value) => this.setDelay(value), 'ms', 'dl'
         );
         container.appendChild(delayControl);
 

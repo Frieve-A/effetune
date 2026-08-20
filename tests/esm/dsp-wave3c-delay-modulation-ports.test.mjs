@@ -33,7 +33,7 @@ const ports = [
     ],
     caseCount: 10,
     identityCase: 'dry-only-warms-lines',
-    jsEngineHash: '68965ed0fb1b850402614c3f85f7699579410cb2a418959d8431870aa4ffa1a4',
+    jsEngineHash: 'aa9085db08abe95f885322a6d63657d2bd02acc4e6938cc5c185acd5b8054d0c',
     activeParams: { pd: 0, ds: 1, dp: 75, hd: 8000, ld: 120, mx: 65, fb: 80, pp: 100 }
   },
   {
@@ -43,7 +43,7 @@ const ports = [
     fields: [['delay', 'dl', 'float']],
     caseCount: 7,
     identityCase: 'zero-delay-identity',
-    jsEngineHash: '6bb59bc89c8578455605a025557dac9190a72ba3706eaa0d6ead5b74231d8d9e',
+    jsEngineHash: '6b742f960a331aa41c40be83a5cc82bd459f844d2e7e855f266292a4e32522c8',
     activeParams: { dl: 1 }
   },
   {
@@ -61,7 +61,7 @@ const ports = [
     ],
     caseCount: 8,
     identityCase: 'zero-depth-random-state',
-    jsEngineHash: '2bea3db13f93436a2a1c6612ac806fa50c96ff8bbd7785cd901d6990ae9a22ed',
+    jsEngineHash: '5e594efb9dee178b6f89e31d34a893b7bfa6c242f69a3f83544eb17714176181',
     activeParams: { rt: 13, dp: 8, rn: 24, rc: 300, rs: -4, cp: 90, cs: 40 }
   }
 ];

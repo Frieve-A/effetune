@@ -100,7 +100,7 @@ class StereoBlendPlugin extends PluginBase {
         // Use base helper for Stereo width control
         container.appendChild(this.createParameterControl(
             'Stereo', -200, 200, 1, this.stereo,
-            this.setStereo.bind(this), '%'
+            this.setStereo.bind(this), '%', 'stereo'
         ));
 
         return container;

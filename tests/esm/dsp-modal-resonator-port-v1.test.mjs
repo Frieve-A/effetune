@@ -109,7 +109,7 @@ test('ModalResonatorPlugin object-array ABI, reviewed cases, and goldens stay fr
     assert.equal(goldens.length, 8);
     assert.ok(goldens.every(item => item.metadata.type === 'ModalResonatorPlugin'));
     assert.ok(goldens.every(item => item.metadata.jsEngineHash ===
-      '3d0d3c61a70efb29f3284451676c8504e1f9c0cc9454bccf3ca292d7ff3c6853'));
+      '2a869ff0404c65c46583d6cc77d02affafd3b3b19a900bfd92ec654c9d300082'));
     assert.ok(goldens.every(item => item.expected.every(Number.isFinite)));
 
     const result = await runParityCli([

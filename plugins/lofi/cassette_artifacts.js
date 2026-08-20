@@ -3288,44 +3288,44 @@ class CassetteArtifactsPlugin extends PluginBase {
         container.appendChild(this.createRadioGroup('Deck Grade',
             Object.keys(CASSETTE_ARTIFACTS_CALIBRATION.GRADES)
                 .map(name => ({ value: name, label: name })),
-            this.dg, this.setDg.bind(this)));
+            this.dg, this.setDg.bind(this), 'dg'));
 
         container.appendChild(this.createRadioGroup('Tape Type', [
             { value: 'Type I', label: 'Type I' },
             { value: 'Type II', label: 'Type II' },
             { value: 'Type IV', label: 'Type IV' }
-        ], this.tp, this.setTp.bind(this)));
+        ], this.tp, this.setTp.bind(this), 'tp'));
 
         container.appendChild(this.createRadioGroup('Noise Reduction', [
             { value: 'Off', label: 'Off' },
             { value: 'Dolby B', label: 'Dolby B' },
             { value: 'Dolby C', label: 'Dolby C' }
-        ], this.nr, this.setNr.bind(this)));
+        ], this.nr, this.setNr.bind(this), 'nr'));
 
-        container.appendChild(this.createParameterControl('Bias', -6, 6, 0.1, this.bs, this.setBs.bind(this), 'dB'));
+        container.appendChild(this.createParameterControl('Bias', -6, 6, 0.1, this.bs, this.setBs.bind(this), 'dB', 'bs'));
         container.appendChild(this.createParameterControl('Record Level', -12, 18, 0.1,
-            this.rl, this.setRl.bind(this), 'dB'));
+            this.rl, this.setRl.bind(this), 'dB', 'rl'));
         container.appendChild(this.createParameterControl('Wow/Flutter', 0, 1, 0.001,
-            this.wf, this.setWf.bind(this), '%'));
+            this.wf, this.setWf.bind(this), '%', 'wf'));
         // The unit is spelled out (RS-18): "dB" alone would read as a trim,
         // and the whole point of the W-A unit change is that this number is
         // the tape's own datasheet figure, not a level at the output.
         container.appendChild(this.createParameterControl('Hiss', CASSETTE_ARTIFACTS_HISS_OFF_DB, -42, 0.1,
-            this.hs, this.setHs.bind(this), 'dB re 250 nWb/m'));
+            this.hs, this.setHs.bind(this), 'dB re 250 nWb/m', 'hs'));
         // Step 0.1 events/min and the D_MAX = 20 top are frozen together
         // (W-6): the ledger's QC anchor gives the range its meaning, and a
         // tenth of an event per minute is the finest distinction the
         // Poisson statistics make observable within a listening session.
         container.appendChild(this.createParameterControl('Dropouts', 0, CASSETTE_ARTIFACTS_CALIBRATION.D_MAX, 0.1,
-            this.dp, this.setDp.bind(this), 'events/min'));
+            this.dp, this.setDp.bind(this), 'events/min', 'dp'));
         container.appendChild(this.createParameterControl('Azimuth',
             -CASSETTE_ARTIFACTS_CALIBRATION.AZ_MAX_ARCMIN,
             CASSETTE_ARTIFACTS_CALIBRATION.AZ_MAX_ARCMIN, 0.1,
-            this.az, this.setAz.bind(this), 'arcmin'));
+            this.az, this.setAz.bind(this), 'arcmin', 'az'));
         container.appendChild(this.createParameterControl('Dolby Level Error', -3, 3, 0.1,
-            this.dl, this.setDl.bind(this), 'dB'));
-        container.appendChild(this.createParameterControl('Output', -24, 24, 0.1, this.og, this.setOg.bind(this), 'dB'));
-        container.appendChild(this.createParameterControl('Mix', 0, 100, 1, this.mx, this.setMx.bind(this), '%'));
+            this.dl, this.setDl.bind(this), 'dB', 'dl'));
+        container.appendChild(this.createParameterControl('Output', -24, 24, 0.1, this.og, this.setOg.bind(this), 'dB', 'og'));
+        container.appendChild(this.createParameterControl('Mix', 0, 100, 1, this.mx, this.setMx.bind(this), '%', 'mx'));
 
         // Base Wow/Flutter and Base Hiss are stated at the reference
         // configuration (fixed speed, Type II, NR Off), so the last line

@@ -2,14 +2,14 @@
   "type": "DynamicSaturationPlugin",
   "tolerance": { "abs": 0.00001, "policy": "per-sample" },
   "fields": [
-    { "name": "speakerDrive", "key": "sd", "kind": "float", "min": 0, "max": 10, "default": 3, "automation": true },
-    { "name": "speakerStiffness", "key": "ss", "kind": "float", "min": 0, "max": 10, "default": 2, "automation": true },
-    { "name": "speakerDamping", "key": "sp", "kind": "float", "min": 0.1, "max": 10, "default": 1, "automation": true },
-    { "name": "speakerMass", "key": "sm", "kind": "float", "min": 0.1, "max": 5, "default": 1, "automation": true },
-    { "name": "distortionDrive", "key": "dd", "kind": "float", "min": 0, "max": 10, "default": 1.5, "automation": true },
-    { "name": "distortionBias", "key": "db", "kind": "float", "min": -1, "max": 1, "default": 0.1, "automation": true },
-    { "name": "distortionMix", "key": "dm", "kind": "float", "min": 0, "max": 100, "default": 100, "unit": "%", "automation": true },
-    { "name": "coneMotionMix", "key": "cm", "kind": "float", "min": 0, "max": 100, "default": 20, "unit": "%", "automation": true },
-    { "name": "outputGain", "key": "og", "kind": "float", "min": -18, "max": 18, "default": 0, "unit": "dB", "automation": true }
+    { "name": "speakerDrive", "key": "sd", "kind": "float", "min": 0, "max": 10, "step": 0.1, "default": 3, "automation": true },
+    { "name": "speakerStiffness", "key": "ss", "kind": "float", "min": 0, "max": 10, "step": 0.1, "default": 2, "automation": true },
+    { "name": "speakerDamping", "key": "sp", "kind": "float", "min": 0.1, "max": 10, "step": 0.1, "default": 1, "automation": true },
+    { "name": "speakerMass", "key": "sm", "kind": "float", "min": 0.1, "max": 5, "step": 0.05, "default": 1, "automation": true },
+    { "name": "distortionDrive", "key": "dd", "kind": "float", "min": 0, "max": 10, "step": 0.1, "default": 1.5, "automation": true },
+    { "name": "distortionBias", "key": "db", "kind": "float", "min": -1, "max": 1, "step": 0.02, "default": 0.1, "automation": true },
+    { "name": "distortionMix", "key": "dm", "kind": "float", "min": 0, "max": 100, "step": 1, "default": 100, "unit": "%", "automation": true },
+    { "name": "coneMotionMix", "key": "cm", "kind": "float", "min": 0, "max": 100, "step": 1, "default": 20, "unit": "%", "automation": true },
+    { "name": "outputGain", "key": "og", "kind": "float", "min": -18, "max": 18, "step": 0.1, "default": 0, "unit": "dB", "automation": true }
   ]
 }

@@ -4,9 +4,9 @@
   "fields": [
     { "name": "frequency1", "key": "f1", "kind": "float", "min": 20, "max": 2000, "default": 200, "unit": "Hz" },
     { "name": "frequency2", "key": "f2", "kind": "float", "min": 200, "max": 20000, "default": 4000, "unit": "Hz" },
-    { "name": "drive", "key": "dr", "objectArrayKey": "bands", "memberKey": "dr", "kind": "float", "count": 3, "min": 0, "max": 10, "default": 1.5 , "automation": true},
-    { "name": "bias", "key": "bs", "objectArrayKey": "bands", "memberKey": "bs", "kind": "float", "count": 3, "min": -0.3, "max": 0.3, "default": 0.1 , "automation": true},
-    { "name": "mix", "key": "mx", "objectArrayKey": "bands", "memberKey": "mx", "kind": "float", "count": 3, "min": 0, "max": 100, "default": 100, "unit": "%" , "automation": true},
-    { "name": "gain", "key": "gn", "objectArrayKey": "bands", "memberKey": "gn", "kind": "float", "count": 3, "min": -18, "max": 18, "default": 0, "unit": "dB" , "automation": true}
+    { "name": "drive", "key": "dr", "objectArrayKey": "bands", "memberKey": "dr", "kind": "float", "count": 3, "min": 0, "max": 10, "step": 0.1, "default": 1.5 , "automation": true},
+    { "name": "bias", "key": "bs", "objectArrayKey": "bands", "memberKey": "bs", "kind": "float", "count": 3, "min": -0.3, "max": 0.3, "step": 0.01, "default": 0.1 , "automation": true},
+    { "name": "mix", "key": "mx", "objectArrayKey": "bands", "memberKey": "mx", "kind": "float", "count": 3, "min": 0, "max": 100, "step": 1, "default": 100, "unit": "%" , "automation": true},
+    { "name": "gain", "key": "gn", "objectArrayKey": "bands", "memberKey": "gn", "kind": "float", "count": 3, "min": -18, "max": 18, "step": 0.1, "default": 0, "unit": "dB" , "automation": true}
   ]
 }

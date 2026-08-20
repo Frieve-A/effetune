@@ -2003,7 +2003,11 @@ class AMRadioSimulatorPlugin extends PluginBase {
         this.lastTelemetryAt = now;
     }
 
-    _createZeroAwareLogControl(label, max, value, setter, unit) {
+    // `modelKey` is optional and behaves exactly as it does on the PluginBase
+    // helpers: naming the plugin property this control reads makes the control
+    // follow changes pushed from outside the UI (host automation, preset
+    // recall). Omitting it leaves the control unsynchronised, as before.
+    _createZeroAwareLogControl(label, max, value, setter, unit, modelKey = null) {
         const row = document.createElement('div');
         row.className = 'parameter-row';
         const slug = label.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -2045,6 +2049,17 @@ class AMRadioSimulatorPlugin extends PluginBase {
             setter(next);
             sync(next);
         });
+        // The same sync() that produced the initial render is reused here, so the
+        // inbound path cannot drift from the mapping the constructor uses. A
+        // slider being dragged or a number box being typed into is left alone,
+        // matching how syncUIControls() treats the helper-built controls.
+        if (modelKey) {
+            this.registerUIRefresh(() => {
+                if (this.isHeldByUser(slider) || this.isHeldByUser(number)) return;
+                sync(this[modelKey]);
+                window.uiManager?.refreshRangeFillStyling?.(slider);
+            });
+        }
         row.appendChild(labelElement);
         row.appendChild(slider);
         row.appendChild(number);
@@ -2069,34 +2084,34 @@ class AMRadioSimulatorPlugin extends PluginBase {
         contents.className = 'am-radio-simulator-tab-contents';
         const definitions = [
             { id: 'station', label: 'Station', create: content => {
-                content.appendChild(this.createCheckboxControl('Radio', this.rd, value => this.setParameters({ rd: value })));
+                content.appendChild(this.createCheckboxControl('Radio', this.rd, value => this.setParameters({ rd: value }), 'rd'));
                 content.appendChild(this.createRadioGroup('Stereo Mode', ['Mono', 'C-QUAM'],
-                    this.sm, value => this.setParameters({ sm: value })));
-                content.appendChild(this.createParameterControl('TX Bandwidth', 2, 10, 0.1, this.tb, value => this.setParameters({ tb: value }), 'kHz'));
-                content.appendChild(this.createParameterControl('Pre-emphasis', 0, 100, 1, this.pe, value => this.setParameters({ pe: value }), '%'));
-                content.appendChild(this.createParameterControl('Mod Depth', 10, 125, 1, this.md, value => this.setParameters({ md: value }), '%'));
-                content.appendChild(this.createParameterControl('Compression', 0, 20, 0.1, this.cp, value => this.setParameters({ cp: value }), 'dB'));
+                    this.sm, value => this.setParameters({ sm: value }), 'sm'));
+                content.appendChild(this.createParameterControl('TX Bandwidth', 2, 10, 0.1, this.tb, value => this.setParameters({ tb: value }), 'kHz', 'tb'));
+                content.appendChild(this.createParameterControl('Pre-emphasis', 0, 100, 1, this.pe, value => this.setParameters({ pe: value }), '%', 'pe'));
+                content.appendChild(this.createParameterControl('Mod Depth', 10, 125, 1, this.md, value => this.setParameters({ md: value }), '%', 'md'));
+                content.appendChild(this.createParameterControl('Compression', 0, 20, 0.1, this.cp, value => this.setParameters({ cp: value }), 'dB', 'cp'));
             } },
             { id: 'path', label: 'Path', create: content => {
-                content.appendChild(this.createParameterControl('Signal', -50, 0, 0.1, this.sg, value => this.setParameters({ sg: value }), 'dB'));
-                content.appendChild(this.createParameterControl('Skywave', 0, 100, 1, this.sk, value => this.setParameters({ sk: value }), '%'));
-                content.appendChild(this.createLogarithmicParameterControl('Fading Speed', 0.05, 2, 0.01, this.fd, value => this.setParameters({ fd: value }), 'Hz'));
-                content.appendChild(this._createZeroAwareLogControl('Static', 100, this.st, value => this.setParameters({ st: value }), '/s'));
-                content.appendChild(this.createParameterControl('Interference', -80, 0, 1, this.in, value => this.setParameters({ in: value }), 'dB'));
-                content.appendChild(this.createParameterControl('Interf. Offset', 5, 10, 0.1, this.io, value => this.setParameters({ io: value }), 'kHz'));
+                content.appendChild(this.createParameterControl('Signal', -50, 0, 0.1, this.sg, value => this.setParameters({ sg: value }), 'dB', 'sg'));
+                content.appendChild(this.createParameterControl('Skywave', 0, 100, 1, this.sk, value => this.setParameters({ sk: value }), '%', 'sk'));
+                content.appendChild(this.createLogarithmicParameterControl('Fading Speed', 0.05, 2, 0.01, this.fd, value => this.setParameters({ fd: value }), 'Hz', 'fd'));
+                content.appendChild(this._createZeroAwareLogControl('Static', 100, this.st, value => this.setParameters({ st: value }), '/s', 'st'));
+                content.appendChild(this.createParameterControl('Interference', -80, 0, 1, this.in, value => this.setParameters({ in: value }), 'dB', 'in'));
+                content.appendChild(this.createParameterControl('Interf. Offset', 5, 10, 0.1, this.io, value => this.setParameters({ io: value }), 'kHz', 'io'));
             } },
             { id: 'receiver', label: 'Receiver', create: content => {
-                content.appendChild(this.createParameterControl('Tuning', -30, 30, 0.01, this.tn, value => this.setParameters({ tn: value }), 'kHz'));
-                content.appendChild(this.createParameterControl('IF Bandwidth', 2, 20, 0.1, this.bw, value => this.setParameters({ bw: value }), 'kHz'));
-                content.appendChild(this.createRadioGroup('AGC Speed', ['Slow', 'Mid', 'Fast'], this.ag, value => this.setParameters({ ag: value })));
-                content.appendChild(this.createLogarithmicParameterControl('Detector RC', 20, 500, 1, this.dt, value => this.setParameters({ dt: value }), 'µs'));
-                content.appendChild(this.createParameterControl('Hum', -80, -20, 1, this.hm, value => this.setParameters({ hm: value }), 'dB'));
-                content.appendChild(this.createRadioGroup('Hum Freq', ['50', '60'], this.hz, value => this.setParameters({ hz: value }), 'Hz'));
+                content.appendChild(this.createParameterControl('Tuning', -30, 30, 0.01, this.tn, value => this.setParameters({ tn: value }), 'kHz', 'tn'));
+                content.appendChild(this.createParameterControl('IF Bandwidth', 2, 20, 0.1, this.bw, value => this.setParameters({ bw: value }), 'kHz', 'bw'));
+                content.appendChild(this.createRadioGroup('AGC Speed', ['Slow', 'Mid', 'Fast'], this.ag, value => this.setParameters({ ag: value }), 'ag'));
+                content.appendChild(this.createLogarithmicParameterControl('Detector RC', 20, 500, 1, this.dt, value => this.setParameters({ dt: value }), 'µs', 'dt'));
+                content.appendChild(this.createParameterControl('Hum', -80, -20, 1, this.hm, value => this.setParameters({ hm: value }), 'dB', 'hm'));
+                content.appendChild(this.createRadioGroup('Hum Freq', ['50', '60'], this.hz, value => this.setParameters({ hz: value }), 'hz'));
             } },
             { id: 'output', label: 'Output', create: content => {
-                content.appendChild(this.createRadioGroup('Speaker', ['Small', 'Table', 'Off'], this.sp, value => this.setParameters({ sp: value })));
-                content.appendChild(this.createParameterControl('Output Gain', -24, 24, 0.1, this.og, value => this.setParameters({ og: value }), 'dB'));
-                content.appendChild(this.createParameterControl('Mix', 0, 100, 1, this.mx, value => this.setParameters({ mx: value }), '%'));
+                content.appendChild(this.createRadioGroup('Speaker', ['Small', 'Table', 'Off'], this.sp, value => this.setParameters({ sp: value }), 'sp'));
+                content.appendChild(this.createParameterControl('Output Gain', -24, 24, 0.1, this.og, value => this.setParameters({ og: value }), 'dB', 'og'));
+                content.appendChild(this.createParameterControl('Mix', 0, 100, 1, this.mx, value => this.setParameters({ mx: value }), '%', 'mx'));
             } }
         ];
         for (const definition of definitions) {

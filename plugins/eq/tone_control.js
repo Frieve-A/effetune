@@ -320,19 +320,19 @@ class ToneControlPlugin extends PluginBase {
             this.setBass(value);
             this.drawGraph(canvas); // Update graph
         };
-        container.appendChild(this.createParameterControl('Bass', -24, 24, 0.1, this.bs, bassSetter, 'dB'));
+        container.appendChild(this.createParameterControl('Bass', -24, 24, 0.1, this.bs, bassSetter, 'dB', 'bs'));
 
         const midSetter = (value) => {
             this.setMid(value);
             this.drawGraph(canvas); // Update graph
         };
-        container.appendChild(this.createParameterControl('Mid', -24, 24, 0.1, this.md, midSetter, 'dB'));
+        container.appendChild(this.createParameterControl('Mid', -24, 24, 0.1, this.md, midSetter, 'dB', 'md'));
 
         const trebleSetter = (value) => {
             this.setTreble(value);
             this.drawGraph(canvas); // Update graph
         };
-        container.appendChild(this.createParameterControl('Treble', -24, 24, 0.1, this.tr, trebleSetter, 'dB'));
+        container.appendChild(this.createParameterControl('Treble', -24, 24, 0.1, this.tr, trebleSetter, 'dB', 'tr'));
 
         // Reset button - Keep original structure and class, append to graphContainer
         const resetButton = document.createElement('button');
@@ -363,6 +363,12 @@ class ToneControlPlugin extends PluginBase {
 
         // Initial graph draw
         this.drawGraph(canvas);
+
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the parts of the UI this plugin builds by hand are refreshed here.
+        // All three parameter rows carry modelKeys and follow on their own; the
+        // response curve does not.
+        this.registerUIRefresh(() => this.drawGraph(canvas));
 
         return container;
     }

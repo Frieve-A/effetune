@@ -7,7 +7,7 @@
     { "name": "bitrate", "key": "br", "kind": "enum", "default": "64", "values": ["32", "48", "64", "80", "96", "112", "128", "160", "192", "224", "256", "320"], "rejectInvalid": true },
     { "name": "stereoMode", "key": "sm", "kind": "enum", "default": "Joint Stereo", "values": ["Joint Stereo", "Stereo"], "rejectInvalid": true },
     { "name": "bitReservoir", "key": "rv", "kind": "bool", "default": true },
-    { "name": "outputGain", "key": "og", "kind": "float", "min": -24, "max": 12, "default": 0, "unit": "dB", "automation": true },
-    { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "default": 100, "unit": "%", "automation": true }
+    { "name": "outputGain", "key": "og", "kind": "float", "min": -24, "max": 12, "step": 0.1, "default": 0, "unit": "dB", "automation": true },
+    { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "step": 1, "default": 100, "unit": "%", "automation": true }
   ]
 }

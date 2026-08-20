@@ -19,6 +19,7 @@
       "kind": "float",
       "min": -18,
       "max": 18,
+      "step": 0.1,
       "default": 0,
       "unit": "dB",
       "automation": true
@@ -29,6 +30,7 @@
       "kind": "float",
       "min": -18,
       "max": 18,
+      "step": 0.1,
       "default": 0,
       "unit": "dB",
       "automation": true

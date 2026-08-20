@@ -302,42 +302,42 @@ class DelayPlugin extends PluginBase {
 
         container.appendChild(this.createParameterControl(
             'Pre-Delay', 0, 100, 0.1, this.pd,
-            (value) => this.setParameters({ pd: value }), 'ms'
+            (value) => this.setParameters({ pd: value }), 'ms', 'pd'
         ));
 
         container.appendChild(this.createParameterControl(
             'Delay Size', 1, 5000, 1, this.ds,
-            (value) => this.setParameters({ ds: value }), 'ms'
+            (value) => this.setParameters({ ds: value }), 'ms', 'ds'
         ));
 
         container.appendChild(this.createParameterControl(
             'Damping', 0, 100, 1, this.dp,
-            (value) => this.setParameters({ dp: value }), '%'
+            (value) => this.setParameters({ dp: value }), '%', 'dp'
         ));
 
         container.appendChild(this.createParameterControl(
             'High Damp', 20, 20000, 1, this.hd,
-            (value) => this.setParameters({ hd: value }), 'Hz'
+            (value) => this.setParameters({ hd: value }), 'Hz', 'hd'
         ));
 
         container.appendChild(this.createParameterControl(
             'Low Damp', 20, 20000, 1, this.ld,
-            (value) => this.setParameters({ ld: value }), 'Hz'
+            (value) => this.setParameters({ ld: value }), 'Hz', 'ld'
         ));
 
         container.appendChild(this.createParameterControl(
             'Mix', 0, 100, 1, this.mx,
-            (value) => this.setParameters({ mx: value }), '%'
+            (value) => this.setParameters({ mx: value }), '%', 'mx'
         ));
 
         container.appendChild(this.createParameterControl(
             'Feedback', 0, 99, 1, this.fb,
-            (value) => this.setParameters({ fb: value }), '%'
+            (value) => this.setParameters({ fb: value }), '%', 'fb'
         ));
 
         container.appendChild(this.createParameterControl(
             'Ping-Pong', 0, 100, 1, this.pp,
-            (value) => this.setParameters({ pp: value }), '%'
+            (value) => this.setParameters({ pp: value }), '%', 'pp'
         ));
 
         return container;

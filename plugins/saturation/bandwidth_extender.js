@@ -105,16 +105,16 @@ class BandwidthExtenderPlugin extends PluginBase {
         container.className = 'bandwidth-extender-plugin-ui plugin-parameter-ui';
         container.appendChild(this.createParameterControl(
             'Harmonic Amount', 0, 200, 1, this.ha,
-            value => this.setParameters({ ha: value }), '%'));
+            value => this.setParameters({ ha: value }), '%', 'ha'));
         container.appendChild(this.createParameterControl(
             'Noise Amount', 0, 200, 1, this.na,
-            value => this.setParameters({ na: value }), '%'));
+            value => this.setParameters({ na: value }), '%', 'na'));
         container.appendChild(this.createRadioGroup(
             'Cutoff', BANDWIDTH_EXTENDER_CUTOFF_MODES, this.cm,
-            value => this.setParameters({ cm: value })));
+            value => this.setParameters({ cm: value }), 'cm'));
         this._manualCutoffRow = this.createParameterControl(
             'Manual Cutoff', 6000, 20000, 100, this.cf,
-            value => this.setParameters({ cf: value }), 'Hz');
+            value => this.setParameters({ cf: value }), 'Hz', 'cf');
         container.appendChild(this._manualCutoffRow);
         container.appendChild(this._createStatusElement());
         this._syncCutoffVisibility();

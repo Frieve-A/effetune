@@ -572,7 +572,7 @@ class PowerAmpSagPlugin extends PluginBase {
             0.1,
             this.ss,
             (value) => this.setSagSensitivity(value),
-            'dB'
+            'dB', 'ss'
         ));
         
         container.appendChild(this.createParameterControl(
@@ -582,7 +582,7 @@ class PowerAmpSagPlugin extends PluginBase {
             1,
             this.ps,
             (value) => this.setPowerStability(value),
-            '%'
+            '%', 'ps'
         ));
         
         container.appendChild(this.createParameterControl(
@@ -592,7 +592,7 @@ class PowerAmpSagPlugin extends PluginBase {
             1,
             this.rs,
             (value) => this.setRecoverySpeed(value),
-            '%'
+            '%', 'rs'
         ));
         
         // Monoblock checkbox control
@@ -658,7 +658,13 @@ class PowerAmpSagPlugin extends PluginBase {
         }
         this.observer.observe(this.canvasLeft);
         this.observer.observe(this.canvasRight);
-        
+
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the controls this plugin builds by hand are refreshed here.
+        this.registerUIRefresh(() => {
+            monoblockCheckbox.checked = this.mb;
+        });
+
         return container;
     }
     

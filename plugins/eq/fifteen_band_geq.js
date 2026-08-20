@@ -380,6 +380,12 @@ return data; // Return the modified buffer
         // Initial graph draw
         this.drawGraph(canvas);
 
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the parts of the UI this plugin builds by hand are refreshed here.
+        // Every band slider, its readout and the response curve are hand-built, and
+        // setUIValues() already pushes all of them from the model.
+        this.registerUIRefresh(() => this.setUIValues());
+
         return container;
     }
 
@@ -483,6 +489,7 @@ return data; // Return the modified buffer
         for (let i = 0; i < 15; i++) {
             if (this.sliders && this.sliders[i]) {
                 this.sliders[i].value = this['b' + i];
+                window.uiManager?.refreshRangeFillStyling?.(this.sliders[i]);
             }
             if (this.valueDisplays && this.valueDisplays[i]) {
                 this.valueDisplays[i].textContent = this['b' + i].toFixed(1) + ' dB';

@@ -632,21 +632,21 @@ class FIRCrossoverPlugin extends PluginBase {
     settings.appendChild(this.createRadioGroup('Phase', [
       { value: 'min', label: 'Minimum Phase' },
       { value: 'lin', label: 'Linear Phase' }
-    ], this.pm, value => this.setParameters({ pm: value })));
+    ], this.pm, value => this.setParameters({ pm: value }), 'pm'));
     settings.appendChild(this.createSelectControl('Taps',
       [8192, 16384, 32768, 65536, 131072].map(value => ({
         value: String(value),
         label: String(value)
       })),
       String(this.tp),
-      value => this.setParameters({ tp: Number(value) })));
+      value => this.setParameters({ tp: Number(value) }), 'tp'));
     settings.appendChild(this.createSelectControl('Latency',
       [0, 128, 256, 512, 1024].map(value => ({
         value: String(value),
         label: `${value} samples`
       })),
       this.lt,
-      value => this.setParameters({ lt: value })));
+      value => this.setParameters({ lt: value }), 'lt'));
     container.appendChild(settings);
 
     const bandRow = document.createElement('div');
@@ -795,6 +795,7 @@ class FIRCrossoverPlugin extends PluginBase {
       const frequency = this[`f${index + 1}`];
       control.number.value = String(frequency);
       control.range.value = String(this._frequencyToSlider(frequency));
+      window.uiManager?.refreshRangeFillStyling?.(control.range);
       control.slope.value = String(this[`s${index + 1}`]);
     }
   }

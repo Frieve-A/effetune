@@ -2,11 +2,11 @@
   "type": "GatePlugin",
   "tolerance": { "abs": 0.00001, "policy": "per-sample" },
   "fields": [
-    { "name": "threshold", "key": "th", "kind": "float", "min": -96, "max": 0, "default": -40, "unit": "dB", "automation": true },
-    { "name": "ratio", "key": "rt", "kind": "float", "min": 1, "max": 100, "default": 10, "automation": true },
-    { "name": "attack", "key": "at", "kind": "float", "min": 0.01, "max": 50, "default": 1, "unit": "ms", "automation": true },
-    { "name": "release", "key": "rl", "kind": "float", "min": 10, "max": 2000, "default": 200, "unit": "ms", "automation": true },
-    { "name": "knee", "key": "kn", "kind": "float", "min": 0, "max": 6, "default": 1, "unit": "dB", "automation": true },
-    { "name": "gain", "key": "gn", "kind": "float", "min": -12, "max": 12, "default": 0, "unit": "dB", "automation": true }
+    { "name": "threshold", "key": "th", "kind": "float", "min": -96, "max": 0, "step": 1, "default": -40, "unit": "dB", "automation": true },
+    { "name": "ratio", "key": "rt", "kind": "float", "min": 1, "max": 100, "step": 0.1, "default": 10, "automation": true },
+    { "name": "attack", "key": "at", "kind": "float", "min": 0.01, "max": 50, "step": 0.01, "default": 1, "unit": "ms", "automation": true },
+    { "name": "release", "key": "rl", "kind": "float", "min": 10, "max": 2000, "step": 10, "default": 200, "unit": "ms", "automation": true },
+    { "name": "knee", "key": "kn", "kind": "float", "min": 0, "max": 6, "step": 0.1, "default": 1, "unit": "dB", "automation": true },
+    { "name": "gain", "key": "gn", "kind": "float", "min": -12, "max": 12, "step": 0.1, "default": 0, "unit": "dB", "automation": true }
   ]
 }

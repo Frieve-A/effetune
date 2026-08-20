@@ -24,6 +24,12 @@ class FakeElement {
     this.height = 0;
     this.autocomplete = '';
     this.pointerCapture = null;
+    // `:active` state for isHeldByUser(); flipped by tests, never by the code
+    // under test.
+    this.active = false;
+    // Every event this element was asked to dispatch. The UI-follow apply path
+    // must leave this empty, which is what makes the seam non-reentrant.
+    this.dispatchedEvents = [];
   }
 
   appendChild(child) {
@@ -56,6 +62,16 @@ class FakeElement {
     for (const listener of this.eventListeners.get(type) || []) {
       listener(eventObject);
     }
+  }
+
+  dispatchEvent(event) {
+    this.dispatchedEvents.push(event?.type);
+    this.dispatch(event?.type, event);
+    return true;
+  }
+
+  matches(selector) {
+    return selector === ':active' ? this.active : false;
   }
 
   querySelector(selector) {
@@ -97,6 +113,8 @@ class FakeElement {
 function loadPluginBase(overrides = {}) {
   const source = fs.readFileSync(new URL('../../plugins/plugin-base.js', import.meta.url), 'utf8');
   const documentRef = {
+    // isHeldByUser() reads document.activeElement; tests assign it directly.
+    activeElement: null,
     createElement(tagName) {
       return new FakeElement(tagName);
     }
@@ -131,6 +149,191 @@ function loadModulationPlugin(sourcePath, exportName) {
   vm.runInContext(`${source}\nthis.PluginRef = ${exportName};`, context);
   return context.PluginRef;
 }
+
+// Builds one plugin carrying a modelKey-wired control of each shape the
+// UI-follow seam has to cover: a linear control, a logarithmic one whose widget
+// unit differs from the model unit (seconds stored, milliseconds shown), and a
+// select. `setterCalls` stays empty unless the sync path re-enters the forward
+// path, which it must never do.
+function createSyncPlugin() {
+  const { PluginBase, documentRef } = loadPluginBase();
+  const plugin = new PluginBase('Sync Test', 'UI follow');
+  plugin.id = 'plugin-sync';
+  plugin.gain = -6;
+  plugin.rate = 0.2;
+  plugin.mode = 'b';
+
+  const setterCalls = [];
+  const gainRow = plugin.createParameterControl(
+    'Gain', -30, 0, 0.1, plugin.gain,
+    value => {
+      setterCalls.push(['gain', value]);
+      plugin.gain = value;
+    },
+    'dB', 'gain'
+  );
+  const rateRow = plugin.createLogarithmicParameterControl(
+    'Rate', 1, 10000, 0.1, plugin.rate * 1000,
+    value => {
+      setterCalls.push(['rate', value]);
+      plugin.rate = value / 1000;
+    },
+    'ms', 'rate', modelValue => modelValue * 1000
+  );
+  const modeRow = plugin.createSelectControl(
+    'Mode', [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }], plugin.mode,
+    value => {
+      setterCalls.push(['mode', value]);
+      plugin.mode = value;
+    },
+    'mode'
+  );
+
+  return {
+    plugin,
+    documentRef,
+    setterCalls,
+    gainSlider: gainRow.children[1],
+    gainInput: gainRow.children[2],
+    rateSlider: rateRow.children[1],
+    rateInput: rateRow.children[2],
+    modeSelect: modeRow.children[1]
+  };
+}
+
+test('PluginBase syncUIControls pushes model changes into modelKey-wired controls', () => {
+  const {
+    plugin, setterCalls, gainSlider, gainInput, rateSlider, rateInput, modeSelect
+  } = createSyncPlugin();
+
+  assert.equal(rateInput.value, '200.0');
+
+  plugin.gain = -12;
+  plugin.rate = 2;
+  plugin.mode = 'a';
+  plugin.syncUIControls();
+
+  assert.equal(Number(gainSlider.value), -12);
+  assert.equal(gainInput.value, '-12.0');
+  // toDisplay converts the stored seconds into the millisecond widget unit.
+  assert.equal(rateInput.value, '2000.0');
+  assert.equal(Number(rateSlider.value).toFixed(3), (Math.log10(2000) / 4 * 100).toFixed(3));
+  assert.equal(modeSelect.value, 'a');
+  assert.deepEqual(setterCalls, []);
+});
+
+test('PluginBase syncUIControls skips controls the user is holding', () => {
+  const { plugin, documentRef, gainSlider, gainInput } = createSyncPlugin();
+
+  // A focused number input is mid-edit, so the whole control is off limits.
+  documentRef.activeElement = gainInput;
+  plugin.gain = -20;
+  plugin.syncUIControls();
+  assert.equal(gainInput.value, -6);
+  assert.equal(gainSlider.value, -6);
+
+  documentRef.activeElement = null;
+  plugin.syncUIControls();
+  assert.equal(gainInput.value, '-20.0');
+  assert.equal(Number(gainSlider.value), -20);
+});
+
+test('PluginBase syncUIControls dispatches no input or change events', () => {
+  const {
+    plugin, setterCalls, gainSlider, gainInput, rateSlider, rateInput, modeSelect
+  } = createSyncPlugin();
+  const elements = [gainSlider, gainInput, rateSlider, rateInput, modeSelect];
+  const observed = [];
+  for (const element of elements) {
+    for (const type of ['input', 'change']) {
+      element.addEventListener(type, () => observed.push([element.tagName, type]));
+    }
+  }
+
+  plugin.gain = -12;
+  plugin.rate = 2;
+  plugin.mode = 'a';
+  plugin.syncUIControls();
+
+  // The sync really happened...
+  assert.equal(gainInput.value, '-12.0');
+  assert.equal(rateInput.value, '2000.0');
+  assert.equal(modeSelect.value, 'a');
+  // ...and it stayed one-way: no event was dispatched and no setter re-entered.
+  assert.deepEqual(observed, []);
+  assert.deepEqual(elements.flatMap(element => element.dispatchedEvents), []);
+  assert.deepEqual(setterCalls, []);
+});
+
+test('PluginBase createUI clears the UI-follow registries on every rebuild', () => {
+  const { PluginBase, documentRef } = loadPluginBase();
+  class RebuildPlugin extends PluginBase {
+    constructor() {
+      super('Rebuild Test', 'UI follow');
+      this.id = 'plugin-rebuild';
+      this.gain = -6;
+      this.refreshCount = 0;
+    }
+
+    createUI() {
+      const row = this.createParameterControl(
+        'Gain', -30, 0, 0.1, this.gain, value => { this.gain = value; }, 'dB', 'gain'
+      );
+      this.bindGraphPointer(documentRef.createElement('div'), {});
+      this.registerUIRefresh(() => { this.refreshCount += 1; });
+      return row;
+    }
+  }
+
+  const plugin = new RebuildPlugin();
+  const firstRow = plugin.createUI();
+  assert.equal(plugin._syncedUIControls.length, 1);
+  assert.equal(plugin._uiRefreshHooks.length, 1);
+  assert.equal(plugin._graphPointerProbes.size, 1);
+
+  const secondRow = plugin.createUI();
+  assert.notEqual(firstRow, secondRow);
+  assert.equal(plugin._syncedUIControls.length, 1);
+  assert.equal(plugin._uiRefreshHooks.length, 1);
+  assert.equal(plugin._graphPointerProbes.size, 1);
+
+  plugin.gain = -12;
+  plugin.syncUIControls();
+  // Only the current build's hook ran, and only the current build's control moved.
+  assert.equal(plugin.refreshCount, 1);
+  assert.equal(firstRow.children[2].value, -6);
+  assert.equal(secondRow.children[2].value, '-12.0');
+});
+
+test('PluginBase holds refresh hooks off while a graph pointer is down', () => {
+  const { PluginBase } = loadPluginBase();
+  const plugin = new PluginBase('Graph Sync Test', 'UI follow');
+  plugin.id = 'plugin-graph-sync';
+  plugin.gain = -6;
+
+  const graph = new FakeElement('div');
+  plugin.bindGraphPointer(graph, {});
+  let hookRuns = 0;
+  plugin.registerUIRefresh(() => { hookRuns += 1; });
+  const row = plugin.createParameterControl(
+    'Gain', -30, 0, 0.1, plugin.gain, value => { plugin.gain = value; }, 'dB', 'gain'
+  );
+  const gainInput = row.children[2];
+
+  graph.dispatch('pointerdown', { pointerId: 3, clientX: 5, clientY: 5 });
+  assert.equal(plugin.isGraphPointerActive(), true);
+
+  plugin.gain = -12;
+  plugin.syncUIControls();
+  assert.equal(hookRuns, 0);
+  // Helper-built controls keep following: only hand-built DOM is held off.
+  assert.equal(gainInput.value, '-12.0');
+
+  graph.dispatch('pointerup', { pointerId: 3, clientX: 5, clientY: 5 });
+  assert.equal(plugin.isGraphPointerActive(), false);
+  plugin.syncUIControls();
+  assert.equal(hookRuns, 1);
+});
 
 test('PluginBase creates mobile-friendly select, checkbox, and radio controls', () => {
   const plugin = createPlugin();

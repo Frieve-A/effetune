@@ -2,18 +2,18 @@
   "type": "FDNReverbPlugin",
   "tolerance": { "abs": 0.0001, "policy": "per-sample" },
   "fields": [
-    { "name": "reverbTime", "key": "rt", "kind": "float", "min": 0.2, "max": 10, "default": 1.2, "unit": "s", "automation": true },
+    { "name": "reverbTime", "key": "rt", "kind": "float", "min": 0.2, "max": 10, "step": 0.01, "default": 1.2, "unit": "s", "automation": true },
     { "name": "density", "key": "dt", "kind": "int", "min": 4, "max": 8, "default": 8, "unit": "lines" },
-    { "name": "preDelay", "key": "pd", "kind": "float", "min": 0, "max": 100, "default": 10, "unit": "ms", "automation": true },
-    { "name": "baseDelay", "key": "bd", "kind": "float", "min": 10, "max": 60, "default": 20, "unit": "ms", "automation": true },
-    { "name": "delaySpread", "key": "ds", "kind": "float", "min": 0, "max": 25, "default": 5, "unit": "ms", "automation": true },
-    { "name": "highFrequencyDamp", "key": "hd", "kind": "float", "min": 0, "max": 12, "default": 6, "unit": "dB/s", "automation": true },
-    { "name": "lowCut", "key": "lc", "kind": "int", "min": 20, "max": 500, "default": 100, "unit": "Hz", "automation": true },
-    { "name": "modulationDepth", "key": "md", "kind": "float", "min": 0, "max": 10, "default": 3, "unit": "ct", "automation": true },
-    { "name": "modulationRate", "key": "mr", "kind": "float", "min": 0.1, "max": 5, "default": 0.3, "unit": "Hz", "automation": true },
-    { "name": "diffusion", "key": "df", "kind": "int", "min": 0, "max": 100, "default": 100, "unit": "%", "automation": true },
-    { "name": "wetMix", "key": "wm", "kind": "int", "min": 0, "max": 100, "default": 30, "unit": "%", "automation": true },
-    { "name": "dryMix", "key": "dm", "kind": "int", "min": 0, "max": 100, "default": 100, "unit": "%", "automation": true },
-    { "name": "stereoWidth", "key": "sw", "kind": "int", "min": 0, "max": 200, "default": 100, "unit": "%", "automation": true }
+    { "name": "preDelay", "key": "pd", "kind": "float", "min": 0, "max": 100, "step": 0.1, "default": 10, "unit": "ms", "automation": true },
+    { "name": "baseDelay", "key": "bd", "kind": "float", "min": 10, "max": 60, "step": 0.1, "default": 20, "unit": "ms", "automation": true },
+    { "name": "delaySpread", "key": "ds", "kind": "float", "min": 0, "max": 25, "step": 0.1, "default": 5, "unit": "ms", "automation": true },
+    { "name": "highFrequencyDamp", "key": "hd", "kind": "float", "min": 0, "max": 12, "step": 0.1, "default": 6, "unit": "dB/s", "automation": true },
+    { "name": "lowCut", "key": "lc", "kind": "int", "min": 20, "max": 500, "step": 1, "default": 100, "unit": "Hz", "automation": true },
+    { "name": "modulationDepth", "key": "md", "kind": "float", "min": 0, "max": 10, "step": 0.1, "default": 3, "unit": "ct", "automation": true },
+    { "name": "modulationRate", "key": "mr", "kind": "float", "min": 0.1, "max": 5, "step": 0.01, "default": 0.3, "unit": "Hz", "automation": true },
+    { "name": "diffusion", "key": "df", "kind": "int", "min": 0, "max": 100, "step": 1, "default": 100, "unit": "%", "automation": true },
+    { "name": "wetMix", "key": "wm", "kind": "int", "min": 0, "max": 100, "step": 1, "default": 30, "unit": "%", "automation": true },
+    { "name": "dryMix", "key": "dm", "kind": "int", "min": 0, "max": 100, "step": 1, "default": 100, "unit": "%", "automation": true },
+    { "name": "stereoWidth", "key": "sw", "kind": "int", "min": 0, "max": 200, "step": 1, "default": 100, "unit": "%", "automation": true }
   ]
 }

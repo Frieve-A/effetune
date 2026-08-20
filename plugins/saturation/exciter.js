@@ -397,7 +397,7 @@ class ExciterPlugin extends PluginBase {
         // HPF Frequency control
         const freqRow = this.createParameterControl(
             'HPF Freq', 500, 10000, 10, this.hf,
-            this.setHPFFreq.bind(this), 'Hz'
+            this.setHPFFreq.bind(this), 'Hz', 'hf'
         );
         container.appendChild(freqRow);
 
@@ -410,7 +410,7 @@ class ExciterPlugin extends PluginBase {
             'HPF Slope',
             slopes,
             this.hs,
-            value => this.setHPFSlope(parseInt(value))
+            value => this.setHPFSlope(parseInt(value)), 'hs'
         );
         slopeRow.querySelector('select')?.classList.add('slope-select');
         container.appendChild(slopeRow);
@@ -418,19 +418,19 @@ class ExciterPlugin extends PluginBase {
         // Drive control
         container.appendChild(this.createParameterControl(
             'Drive', 0, 10, 0.1, this.dr,
-            this.setDrive.bind(this)
+            this.setDrive.bind(this), '', 'dr'
         ));
 
         // Bias control
         container.appendChild(this.createParameterControl(
             'Bias', -0.3, 0.3, 0.01, this.bs,
-            this.setBias.bind(this)
+            this.setBias.bind(this), '', 'bs'
         ));
 
         // Mix control
         container.appendChild(this.createParameterControl(
             'Mix', 0, 100, 1, this.mx,
-            this.setMix.bind(this), '%'
+            this.setMix.bind(this), '%', 'mx'
         ));
 
         // Graphs container

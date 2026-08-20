@@ -102,16 +102,16 @@ class G726ADPCMSimulatorPlugin extends PluginBase {
         container.className = 'g726-adpcm-simulator-plugin-ui plugin-parameter-ui';
         container.appendChild(this.createSelectControl('Bitrate',
             G726_ADPCM_SIMULATOR_BITRATES.map(value => ({ value, label: `${value} kbit/s` })),
-            this.br, value => this.setParameters({ br: value })));
+            this.br, value => this.setParameters({ br: value }), 'br'));
         container.appendChild(this.createParameterControl(
             'Output', -24, 12, 0.1, this.og,
-            value => this.setParameters({ og: value }), 'dB'));
+            value => this.setParameters({ og: value }), 'dB', 'og'));
         container.appendChild(this.createParameterControl(
             'Mix', 0, 100, 1, this.mx,
-            value => this.setParameters({ mx: value }), '%'));
+            value => this.setParameters({ mx: value }), '%', 'mx'));
         container.appendChild(this.createParameterControl(
             'Bit Error Rate', -6, -2, 0.1, this.re,
-            value => this.setParameters({ re: value }), '10^x'));
+            value => this.setParameters({ re: value }), '10^x', 're'));
         container.appendChild(this._createStatusElement());
         return container;
     }

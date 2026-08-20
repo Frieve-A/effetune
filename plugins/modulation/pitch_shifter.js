@@ -357,22 +357,22 @@ class PitchShifterPlugin extends PluginBase {
         // Use base helper to create controls
         container.appendChild(this.createParameterControl(
             'Pitch Shift', -6, 6, 1, this.ps,
-            this.setPitchShifter.bind(this), 'semitones'
+            this.setPitchShifter.bind(this), 'semitones', 'ps'
         ));
 
         container.appendChild(this.createParameterControl(
             'Fine Tune', -50, 50, 1, this.ft,
-            this.setFineTune.bind(this), 'cents'
+            this.setFineTune.bind(this), 'cents', 'ft'
         ));
 
         container.appendChild(this.createParameterControl(
             'Window Size', 80, 500, 1, this.ws,
-            this.setWindowSize.bind(this), 'ms'
+            this.setWindowSize.bind(this), 'ms', 'ws'
         ));
 
         container.appendChild(this.createParameterControl(
             'XFade Time', 20, 40, 0.1, this.xf,
-            this.setXFadeTime.bind(this), 'ms'
+            this.setXFadeTime.bind(this), 'ms', 'xf'
         ));
 
         return container;

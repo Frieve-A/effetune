@@ -7119,10 +7119,13 @@ class TubeSimulatorPlugin extends PluginBase {
         const contents = document.createElement('div');
         contents.className = 'tube-simulator-tab-contents';
 
-        const linear = (key, label, min, max, step, unit) => {
+        // `modelKey` defaults to the parameter key so PluginBase keeps the row in step with the
+        // model; pass null for a row that is deliberately drawn from something other than the
+        // stored value and maintains itself.
+        const linear = (key, label, min, max, step, unit, modelKey = key) => {
             const row = this.createParameterControl(
                 label, min, max, step, this[key],
-                value => this._commitParameter(key, value), unit
+                value => this._commitParameter(key, value), unit, modelKey
             );
             this._controls[key] = { kind: 'linear', row, min, max, step };
             return row;
@@ -7130,7 +7133,7 @@ class TubeSimulatorPlugin extends PluginBase {
         const logarithmic = (key, label, min, max, step, unit) => {
             const row = this.createLogarithmicParameterControl(
                 label, min, max, step, this[key],
-                value => this._commitParameter(key, value), unit
+                value => this._commitParameter(key, value), unit, key
             );
             this._controls[key] = { kind: 'log', row, min, max, step };
             return row;
@@ -7138,7 +7141,7 @@ class TubeSimulatorPlugin extends PluginBase {
         const enumeration = (key, label, options) => {
             const row = this.createRadioGroup(
                 label, options, this[key],
-                value => this._commitParameter(key, value)
+                value => this._commitParameter(key, value), key
             );
             this._controls[key] = { kind: 'enum', row };
             return row;
@@ -7146,7 +7149,7 @@ class TubeSimulatorPlugin extends PluginBase {
         const checkbox = (key, label) => {
             const row = this.createCheckboxControl(
                 label, this[key],
-                value => this._commitParameter(key, value)
+                value => this._commitParameter(key, value), key
             );
             this._controls[key] = { kind: 'checkbox', row };
             return row;
@@ -7217,7 +7220,11 @@ class TubeSimulatorPlugin extends PluginBase {
                 content.appendChild(linear('og', 'Output Trim', -48, 48, 0.1, 'dB'));
                 content.appendChild(
                     this._prepareSafetyTrimRow(
-                        linear('sg', 'Output Safety Trim', -96, 0, 0.1, 'dB')));
+                        // Left unregistered on purpose: this row shows the effective trim rather
+                        // than the stored sg, and _syncSafetyTrimControl()/_syncControlsFromState()
+                        // already keep it painted. A generic sync would write the raw setting over
+                        // the attenuation actually in force.
+                        linear('sg', 'Output Safety Trim', -96, 0, 0.1, 'dB', null)));
                 content.appendChild(checkbox('ag', 'Auto Gain Reduction'));
                 content.appendChild(linear('mx', 'Wet/Dry Mix', 0, 100, 1, '%'));
             } }

@@ -220,17 +220,17 @@ class SaturationPlugin extends PluginBase {
         // Use base helper to create controls
         container.appendChild(this.createParameterControl(
             'Drive', 0, 10, 0.1, this.dr,
-            this.setDr.bind(this)
+            this.setDr.bind(this), '', 'dr'
         ));
 
         container.appendChild(this.createParameterControl(
             'Bias', -0.3, 0.3, 0.01, this.bs,
-            this.setBs.bind(this)
+            this.setBs.bind(this), '', 'bs'
         ));
 
         container.appendChild(this.createParameterControl(
             'Mix', 0, 100, 1, this.mx,
-            this.setMx.bind(this), '%'
+            this.setMx.bind(this), '%', 'mx'
         ));
 
         // Graph container for canvas and labels
@@ -250,7 +250,7 @@ class SaturationPlugin extends PluginBase {
         // Gain control
         container.appendChild(this.createParameterControl(
             'Gain', -18, 18, 0.1, this.gn,
-            this.setGn.bind(this), 'dB'
+            this.setGn.bind(this), 'dB', 'gn'
         ));
 
         return container;

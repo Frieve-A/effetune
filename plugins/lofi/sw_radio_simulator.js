@@ -1531,6 +1531,8 @@ class SWRadioSimulatorPlugin extends PluginBase {
         this.bfoRow = null;
         this.detectorRow = null;
         this.detectorRcRow = null;
+        // Mode the gated rows were last laid out for; see _syncModeDependentControls().
+        this._lastSyncedMode = null;
         this.hudCanvas = null;
         this.hudVisible = true;
         this.hudGraphDispose = null;
@@ -1739,7 +1741,11 @@ class SWRadioSimulatorPlugin extends PluginBase {
         this.lastTelemetryAt = now;
     }
 
-    _createZeroAwareLogControl(label, max, value, setter, unit) {
+    // `modelKey` is optional and behaves exactly as it does on the PluginBase
+    // helpers: naming the plugin property this control reads makes the control
+    // follow changes pushed from outside the UI (host automation, preset
+    // recall). Omitting it leaves the control unsynchronised, as before.
+    _createZeroAwareLogControl(label, max, value, setter, unit, modelKey = null) {
         const row = document.createElement('div');
         row.className = 'parameter-row';
         const slug = label.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -1783,6 +1789,17 @@ class SWRadioSimulatorPlugin extends PluginBase {
             setter(next);
             sync(next);
         });
+        // The same sync() that produced the initial render is reused here, so the
+        // inbound path cannot drift from the mapping the constructor uses. A
+        // slider being dragged or a number box being typed into is left alone,
+        // matching how syncUIControls() treats the helper-built controls.
+        if (modelKey) {
+            this.registerUIRefresh(() => {
+                if (this.isHeldByUser(slider) || this.isHeldByUser(number)) return;
+                sync(this[modelKey]);
+                window.uiManager?.refreshRangeFillStyling?.(slider);
+            });
+        }
         row.appendChild(labelElement);
         row.appendChild(slider);
         row.appendChild(number);
@@ -1797,12 +1814,14 @@ class SWRadioSimulatorPlugin extends PluginBase {
     }
 
     // The BFO only exists in SSB and the envelope/synchronous choice only exists in AM, so
-    // the inactive side is disabled while its value is preserved.
+    // the inactive side is disabled while its value is preserved. The applied mode is
+    // remembered so the sync path can skip the row rewrites when nothing changed.
     _syncModeDependentControls() {
         const ssb = this.mo !== 'AM';
         this._setRowDisabled(this.bfoRow, !ssb);
         this._setRowDisabled(this.detectorRow, ssb);
         this._setRowDisabled(this.detectorRcRow, ssb);
+        this._lastSyncedMode = this.mo;
     }
 
     createUI() {
@@ -1827,31 +1846,31 @@ class SWRadioSimulatorPlugin extends PluginBase {
         const definitions = [
             { id: 'station', label: 'Station', create: content => {
                 content.appendChild(this.createCheckboxControl('Radio', this.rd,
-                    value => this.setParameters({ rd: value })));
+                    value => this.setParameters({ rd: value }), 'rd'));
                 content.appendChild(this.createParameterControl('TX Bandwidth', 2, 10, 0.1,
-                    this.tb, value => this.setParameters({ tb: value }), 'kHz'));
+                    this.tb, value => this.setParameters({ tb: value }), 'kHz', 'tb'));
                 content.appendChild(this.createParameterControl('Pre-emphasis', 0, 100, 1,
-                    this.pe, value => this.setParameters({ pe: value }), '%'));
+                    this.pe, value => this.setParameters({ pe: value }), '%', 'pe'));
                 content.appendChild(this.createParameterControl('Mod Depth', 10, 125, 1,
-                    this.md, value => this.setParameters({ md: value }), '%'));
+                    this.md, value => this.setParameters({ md: value }), '%', 'md'));
                 content.appendChild(this.createParameterControl('Compression', 0, 20, 0.1,
-                    this.cp, value => this.setParameters({ cp: value }), 'dB'));
+                    this.cp, value => this.setParameters({ cp: value }), 'dB', 'cp'));
             } },
             { id: 'propagation', label: 'Propagation', create: content => {
                 content.appendChild(this.createParameterControl('Signal', -50, 0, 0.1,
-                    this.sg, value => this.setParameters({ sg: value }), 'dB'));
+                    this.sg, value => this.setParameters({ sg: value }), 'dB', 'sg'));
                 content.appendChild(this.createParameterControl('Fading', 0, 100, 1,
-                    this.sk, value => this.setParameters({ sk: value }), '%'));
+                    this.sk, value => this.setParameters({ sk: value }), '%', 'sk'));
                 content.appendChild(this.createLogarithmicParameterControl('Fading Speed',
-                    0.1, 10, 0.01, this.fd, value => this.setParameters({ fd: value }), 'Hz'));
+                    0.1, 10, 0.01, this.fd, value => this.setParameters({ fd: value }), 'Hz', 'fd'));
                 content.appendChild(this.createLogarithmicParameterControl('Delay Spread',
-                    0.2, 8, 0.01, this.ds, value => this.setParameters({ ds: value }), 'ms'));
+                    0.2, 8, 0.01, this.ds, value => this.setParameters({ ds: value }), 'ms', 'ds'));
                 content.appendChild(this._createZeroAwareLogControl('Static', 100, this.st,
-                    value => this.setParameters({ st: value }), '/s'));
+                    value => this.setParameters({ st: value }), '/s', 'st'));
                 content.appendChild(this.createParameterControl('Interference', -80, 0, 1,
-                    this.in, value => this.setParameters({ in: value }), 'dB'));
+                    this.in, value => this.setParameters({ in: value }), 'dB', 'in'));
                 content.appendChild(this.createLogarithmicParameterControl('Interf. Offset',
-                    0.1, 10, 0.01, this.io, value => this.setParameters({ io: value }), 'kHz'));
+                    0.1, 10, 0.01, this.io, value => this.setParameters({ io: value }), 'kHz', 'io'));
             } },
             // Everything that decides which signal the receiver lands on lives on Tuning;
             // Receiver keeps what happens to that signal once it is in the IF.
@@ -1860,40 +1879,40 @@ class SWRadioSimulatorPlugin extends PluginBase {
                     this.mo, value => {
                         this.setParameters({ mo: value });
                         this._syncModeDependentControls();
-                    }));
+                    }, 'mo'));
                 content.appendChild(this.createParameterControl('Tuning', -5, 5, 0.01,
-                    this.tn, value => this.setParameters({ tn: value }), 'kHz'));
+                    this.tn, value => this.setParameters({ tn: value }), 'kHz', 'tn'));
                 this.bfoRow = this.createParameterControl('BFO Offset', -1000, 1000, 1,
-                    this.bf, value => this.setParameters({ bf: value }), 'Hz');
+                    this.bf, value => this.setParameters({ bf: value }), 'Hz', 'bf');
                 content.appendChild(this.bfoRow);
                 content.appendChild(this.createParameterControl('IF Bandwidth', 2, 10, 0.1,
-                    this.bw, value => this.setParameters({ bw: value }), 'kHz'));
+                    this.bw, value => this.setParameters({ bw: value }), 'kHz', 'bw'));
             } },
             { id: 'receiver', label: 'Receiver', create: content => {
                 this.detectorRow = this.createRadioGroup('Detector',
                     ['Envelope', 'Synchronous'], this.de,
-                    value => this.setParameters({ de: value }));
+                    value => this.setParameters({ de: value }), 'de');
                 content.appendChild(this.detectorRow);
                 content.appendChild(this.createRadioGroup('AGC Speed', ['Slow', 'Mid', 'Fast'],
-                    this.ag, value => this.setParameters({ ag: value })));
+                    this.ag, value => this.setParameters({ ag: value }), 'ag'));
                 this.detectorRcRow = this.createLogarithmicParameterControl('Detector RC',
-                    20, 500, 1, this.dt, value => this.setParameters({ dt: value }), 'µs');
+                    20, 500, 1, this.dt, value => this.setParameters({ dt: value }), 'µs', 'dt');
                 content.appendChild(this.detectorRcRow);
                 content.appendChild(this.createParameterControl('Hum', -80, -20, 1,
-                    this.hm, value => this.setParameters({ hm: value }), 'dB'));
+                    this.hm, value => this.setParameters({ hm: value }), 'dB', 'hm'));
                 content.appendChild(this.createRadioGroup('Hum Freq', ['50', '60'], this.hz,
-                    value => this.setParameters({ hz: value }), 'Hz'));
+                    value => this.setParameters({ hz: value }), 'hz'));
                 // Both gated rows exist by now: the BFO was built with the Tuning tab, which
                 // is created first, and the two detector rows just above.
                 this._syncModeDependentControls();
             } },
             { id: 'output', label: 'Output', create: content => {
                 content.appendChild(this.createRadioGroup('Speaker', ['Small', 'Table', 'Off'],
-                    this.sp, value => this.setParameters({ sp: value })));
+                    this.sp, value => this.setParameters({ sp: value }), 'sp'));
                 content.appendChild(this.createParameterControl('Output Gain', -24, 24, 0.1,
-                    this.og, value => this.setParameters({ og: value }), 'dB'));
+                    this.og, value => this.setParameters({ og: value }), 'dB', 'og'));
                 content.appendChild(this.createParameterControl('Mix', 0, 100, 1,
-                    this.mx, value => this.setParameters({ mx: value }), '%'));
+                    this.mx, value => this.setParameters({ mx: value }), '%', 'mx'));
             } }
         ];
         for (const definition of definitions) {
@@ -1933,6 +1952,13 @@ class SWRadioSimulatorPlugin extends PluginBase {
         panel.appendChild(tabs);
         panel.appendChild(contents);
         container.appendChild(panel);
+        // The Mode radios follow the model on their own now, but the base syncs them by
+        // writing `checked` directly, so the change handler that regates the BFO and
+        // detector rows never runs on that path. Without this, an automated or recalled
+        // mode change moves the radios and leaves the wrong side of the panel disabled.
+        this.registerUIRefresh(() => {
+            if (this._lastSyncedMode !== this.mo) this._syncModeDependentControls();
+        });
         const graph = this.createResponsiveGraph({
             maxWidth: 1024,
             aspectRatio: '16 / 1',
@@ -2093,6 +2119,7 @@ class SWRadioSimulatorPlugin extends PluginBase {
         this.bfoRow = null;
         this.detectorRow = null;
         this.detectorRcRow = null;
+        this._lastSyncedMode = null;
         super.cleanup();
     }
 }

@@ -811,12 +811,12 @@ class GatePlugin extends PluginBase {
         container.className = 'gate-plugin-ui plugin-parameter-ui';
 
         // Use inherited createParameterControl
-        container.appendChild(this.createParameterControl('Threshold', -96, 0, 1, this.th, this.setTh.bind(this), 'dB'));
-        container.appendChild(this.createParameterControl('Ratio', 1, 100, 0.1, this.rt, this.setRt.bind(this), ':1')); // Corrected range/step based on constructor
-        container.appendChild(this.createParameterControl('Attack', 0.01, 50, 0.01, this.at, this.setAt.bind(this), 'ms')); // Corrected range/step based on constructor
-        container.appendChild(this.createParameterControl('Release', 10, 2000, 10, this.rl, this.setRl.bind(this), 'ms')); // Corrected range/step based on constructor
-        container.appendChild(this.createParameterControl('Knee', 0, 6, 0.1, this.kn, this.setKn.bind(this), 'dB')); // Corrected range/step based on constructor
-        container.appendChild(this.createParameterControl('Gain', -12, 12, 0.1, this.gn, this.setGn.bind(this), 'dB'));
+        container.appendChild(this.createParameterControl('Threshold', -96, 0, 1, this.th, this.setTh.bind(this), 'dB', 'th'));
+        container.appendChild(this.createParameterControl('Ratio', 1, 100, 0.1, this.rt, this.setRt.bind(this), ':1', 'rt')); // Corrected range/step based on constructor
+        container.appendChild(this.createParameterControl('Attack', 0.01, 50, 0.01, this.at, this.setAt.bind(this), 'ms', 'at')); // Corrected range/step based on constructor
+        container.appendChild(this.createParameterControl('Release', 10, 2000, 10, this.rl, this.setRl.bind(this), 'ms', 'rl')); // Corrected range/step based on constructor
+        container.appendChild(this.createParameterControl('Knee', 0, 6, 0.1, this.kn, this.setKn.bind(this), 'dB', 'kn')); // Corrected range/step based on constructor
+        container.appendChild(this.createParameterControl('Gain', -12, 12, 0.1, this.gn, this.setGn.bind(this), 'dB', 'gn'));
 
         const canvas = document.createElement('canvas');
         // Set canvas buffer size for high-resolution display.

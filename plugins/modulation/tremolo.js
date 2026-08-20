@@ -247,13 +247,13 @@ class TremoloPlugin extends PluginBase {
         container.className = 'tremolo-plugin-ui plugin-parameter-ui';
 
         // Add parameter controls using the base class method
-        container.appendChild(this.createParameterControl('Rate', 0.1, 50, 0.1, this.rt, this.setRt.bind(this), 'Hz'));
-        container.appendChild(this.createParameterControl('Depth', 0, 12, 0.1, this.dp, this.setDp.bind(this), 'dB'));
-        container.appendChild(this.createParameterControl('Ch Phase', -180, 180, 1, this.cp, this.setCp.bind(this), 'Deg.'));
-        container.appendChild(this.createParameterControl('Randomness', 0, 96, 0.1, this.rn, this.setRn.bind(this), 'dB'));
-        container.appendChild(this.createParameterControl('Randomness Cutoff', 1, 1000, 1, this.rc, this.setRc.bind(this), 'Hz'));
-        container.appendChild(this.createParameterControl('Randomness Slope', -12.0, 0.0, 0.1, this.rs, this.setRs.bind(this), 'dB'));
-        container.appendChild(this.createParameterControl('Ch Sync', 0, 100, 1, this.cs, this.setCs.bind(this), '%'));
+        container.appendChild(this.createParameterControl('Rate', 0.1, 50, 0.1, this.rt, this.setRt.bind(this), 'Hz', 'rt'));
+        container.appendChild(this.createParameterControl('Depth', 0, 12, 0.1, this.dp, this.setDp.bind(this), 'dB', 'dp'));
+        container.appendChild(this.createParameterControl('Ch Phase', -180, 180, 1, this.cp, this.setCp.bind(this), 'Deg.', 'cp'));
+        container.appendChild(this.createParameterControl('Randomness', 0, 96, 0.1, this.rn, this.setRn.bind(this), 'dB', 'rn'));
+        container.appendChild(this.createParameterControl('Randomness Cutoff', 1, 1000, 1, this.rc, this.setRc.bind(this), 'Hz', 'rc'));
+        container.appendChild(this.createParameterControl('Randomness Slope', -12.0, 0.0, 0.1, this.rs, this.setRs.bind(this), 'dB', 'rs'));
+        container.appendChild(this.createParameterControl('Ch Sync', 0, 100, 1, this.cs, this.setCs.bind(this), '%', 'cs'));
 
 
         return container;

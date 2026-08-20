@@ -118,7 +118,10 @@ class RoomEqAdditionalEqEditor {
         });
         if (!this.uiCreated) return;
         this.setUIValues();
-        this.updateMarkers();
+        // Repositioning the markers would yank one out from under the pointer if an
+        // inbound update lands mid-drag. The number boxes and the response curve
+        // still follow; only the marker positions are held off.
+        if (!this.host?.isGraphPointerActive?.()) this.updateMarkers();
         this.updateResponse();
     }
 
@@ -485,6 +488,7 @@ class RoomEqAdditionalEqEditor {
         if (qSlider) {
             qSlider.max = maxQ;
             qSlider.value = parseFloat(this['q' + index]).toFixed(2);
+            window.uiManager?.refreshRangeFillStyling?.(qSlider);
         }
         if (qText) {
             qText.max = maxQ;
@@ -1905,7 +1909,7 @@ class RoomEqPlugin extends PluginBase {
             this._t('roomEq.parameter.graph', 'Graph'),
             options,
             this._responseView,
-            value => this._setResponseView(value)
+            value => this._setResponseView(value), '_responseView'
         );
         controls.classList.add('room-eq-response-view-controls');
         controls.setAttribute('role', 'radiogroup');
@@ -2642,27 +2646,27 @@ class RoomEqPlugin extends PluginBase {
         container.appendChild(measurementRow);
 
         container.appendChild(this.createParameterControl(this._t('roomEq.parameter.delay', 'Delay'),
-            0, 20, 0.01, this.delayMs, value => this.setParameters({ dl: value }), 'ms'));
+            0, 20, 0.01, this.delayMs, value => this.setParameters({ dl: value }), 'ms', 'delayMs'));
 
         container.appendChild(this.createRadioGroup(this._t('roomEq.parameter.phase', 'Phase'), [
             { value: 'min', label: this._t('roomEq.phase.minimum', 'Minimum') },
             { value: 'lin', label: this._t('roomEq.phase.linear', 'Linear') },
             { value: 'full', label: this._t('roomEq.phase.direct', 'Correction') }
-        ], this.pm, value => this.setParameters({ pm: value })));
+        ], this.pm, value => this.setParameters({ pm: value }), 'pm'));
         container.appendChild(this.createSelectControl(this._t('roomEq.parameter.taps', 'Taps'),
             [8192, 16384, 32768, 65536, 131072].map(value => ({ value: String(value), label: String(value) })),
-            String(this.tp), value => this.setParameters({ tp: Number(value) })));
+            String(this.tp), value => this.setParameters({ tp: Number(value) }), 'tp'));
         container.appendChild(this.createSelectControl(this._t('roomEq.parameter.latency', 'Latency'),
             [0, 128, 256, 512, 1024].map(value => ({ value: String(value), label: `${value} samples` })),
-            this.lt, value => this.setParameters({ lt: value })));
+            this.lt, value => this.setParameters({ lt: value }), 'lt'));
         container.appendChild(this.createParameterControl(this._t('roomEq.parameter.smoothing', 'Smoothing'),
-            0.02, 1, 0.01, this.sm, value => this.setParameters({ sm: value }), 'oct'));
+            0.02, 1, 0.01, this.sm, value => this.setParameters({ sm: value }), 'oct', 'sm'));
         container.appendChild(this.createParameterControl(this._t('roomEq.parameter.low', 'Correction Low'),
-            20, 1000, 1, this.fl, value => this.setParameters({ fl: value }), 'Hz'));
+            20, 1000, 1, this.fl, value => this.setParameters({ fl: value }), 'Hz', 'fl'));
         container.appendChild(this.createParameterControl(this._t('roomEq.parameter.high', 'Correction High'),
-            1000, 20000, 10, this.fh, value => this.setParameters({ fh: value }), 'Hz'));
+            1000, 20000, 10, this.fh, value => this.setParameters({ fh: value }), 'Hz', 'fh'));
         container.appendChild(this.createParameterControl(this._t('roomEq.parameter.directWindow', 'Direct Window'),
-            1, 50, 0.1, this.dw, value => this.setParameters({ dw: value }), 'ms'));
+            1, 50, 0.1, this.dw, value => this.setParameters({ dw: value }), 'ms', 'dw'));
         container.appendChild(this._createPhaseLowControl());
         const lowFrequencyPhaseExtensionControl = this.createCheckboxControl(
             this._t(
@@ -2670,19 +2674,19 @@ class RoomEqPlugin extends PluginBase {
                 'Low-frequency Phase Extension'
             ),
             this.le,
-            value => this.setParameters({ le: value })
+            value => this.setParameters({ le: value }), 'le'
         );
         this._lowFrequencyPhaseExtensionControl =
             lowFrequencyPhaseExtensionControl.querySelector('input');
         container.appendChild(lowFrequencyPhaseExtensionControl);
         container.appendChild(this.createParameterControl(this._t('roomEq.parameter.maxBoost', 'Max Boost'),
-            0, 18, 0.1, this.mb, value => this.setParameters({ mb: value }), 'dB'));
+            0, 18, 0.1, this.mb, value => this.setParameters({ mb: value }), 'dB', 'mb'));
         container.appendChild(this.createParameterControl(
             this._t('roomEq.parameter.levelCorrection', 'Level Correction'),
-            0, 100, 1, this.cr, value => this.setParameters({ cr: value }), '%'));
+            0, 100, 1, this.cr, value => this.setParameters({ cr: value }), '%', 'cr'));
         const phaseCorrectionControl = this.createParameterControl(
             this._t('roomEq.parameter.phaseCorrection', 'Phase Correction'),
-            0, 100, 1, this.pr, value => this.setParameters({ pr: value }), '%');
+            0, 100, 1, this.pr, value => this.setParameters({ pr: value }), '%', 'pr');
         this._phaseCorrectionControl = phaseCorrectionControl;
         this._syncPhaseCorrectionControl();
         container.appendChild(phaseCorrectionControl);
@@ -2702,10 +2706,23 @@ class RoomEqPlugin extends PluginBase {
         referencePointRow.append(referencePointLabel, referencePointSelect);
         this._referencePointSelect = referencePointSelect;
         this._renderReferencePoints(null, false);
+        // The rp select's value is written only by _renderReferencePoints(), which
+        // is not reachable from setParameters(), so the control never followed an
+        // inbound change. Mirror that method's selection rule exactly - including
+        // its fallback to '0' when the value is not among the rendered options -
+        // so the two writers cannot disagree. The model is deliberately left
+        // untouched here: a UI refresh must never write back into it.
+        this.registerUIRefresh(() => {
+            const select = this._referencePointSelect;
+            if (!select || this.isHeldByUser(select)) return;
+            const wanted = String(this.rp);
+            const isValid = Array.from(select.options).some(option => option.value === wanted);
+            select.value = isValid ? wanted : '0';
+        });
         this._syncPhaseCorrectionControl();
         container.appendChild(referencePointRow);
         container.appendChild(this.createParameterControl(this._t('roomEq.parameter.gain', 'Gain'),
-            -12, 12, 0.1, this.gn, value => this.setParameters({ gn: value }), 'dB'));
+            -12, 12, 0.1, this.gn, value => this.setParameters({ gn: value }), 'dB', 'gn'));
 
         this._additionalEqEditor?.dispose();
         this._responseViewElements = null;

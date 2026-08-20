@@ -49,7 +49,18 @@ class SectionPlugin extends PluginBase {
 
         commentRow.appendChild(commentInput);
         container.appendChild(commentRow);
-        
+
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the comment field this plugin builds by hand is refreshed here.
+        // A focused text field counts as held by the user, so the write is skipped
+        // while it is focused; otherwise a refresh would overwrite what is being typed.
+        this.registerUIRefresh(() => {
+            if (this.isHeldByUser(commentInput)) return;
+            if (commentInput.value !== this.cm) {
+                commentInput.value = this.cm;
+            }
+        });
+
         return container;
     }
 }

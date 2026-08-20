@@ -454,7 +454,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         container.className = 'plugin-parameter-ui';
 
         container.appendChild(this.createParameterControl(
-            'DB Range', -144, -48, 1, this.dr, (v) => this.setDBRange(v), 'dB'
+            'DB Range', -144, -48, 1, this.dr, (v) => this.setDBRange(v), 'dB', 'dr'
         ));
 
         const pointsRow = document.createElement('div');
@@ -505,7 +505,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
                 { value: 'linear', label: 'Linear' }
             ],
             this.sc,
-            value => this.setFrequencyScale(value)
+            value => this.setFrequencyScale(value), 'sc'
         );
         container.appendChild(frequencyScaleRow);
 
@@ -550,6 +550,18 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             this.observer = new IntersectionObserver(this.handleIntersect.bind(this));
         }
         this.observer.observe(this.canvas);
+
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the Points controls this plugin builds by hand are refreshed here.
+        // The pair is left alone while the user holds it, matching how syncUIControls()
+        // treats the helper-built controls.
+        this.registerUIRefresh(() => {
+            if (this.isHeldByUser(pointsSlider) || this.isHeldByUser(pointsValue)) return;
+            pointsSlider.value = this.pt;
+            window.uiManager?.refreshRangeFillStyling?.(pointsSlider);
+            pointsValue.value = 1 << this.pt;
+        });
+
         return container;
     }
 

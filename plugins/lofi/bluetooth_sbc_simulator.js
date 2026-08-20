@@ -193,13 +193,13 @@ class BluetoothSBCSimulatorPlugin extends PluginBase {
         const container = document.createElement('div');
         container.className = 'bluetooth-sbc-simulator-plugin-ui plugin-parameter-ui';
         container.appendChild(this.createParameterControl(
-            'Bitpool', 2, 53, 1, this.bp, value => this.setParameters({ bp: value }), ''));
+            'Bitpool', 2, 53, 1, this.bp, value => this.setParameters({ bp: value }), '', 'bp'));
         container.appendChild(this.createRadioGroup(
             'Channel Mode', BLUETOOTH_SBC_SIMULATOR_CHANNEL_MODES, this.cm,
-            value => this.setParameters({ cm: value })));
+            value => this.setParameters({ cm: value }), 'cm'));
         container.appendChild(this.createSelectControl(
             'Blocks', BLUETOOTH_SBC_SIMULATOR_BLOCKS, this.bl,
-            value => this.setParameters({ bl: value })));
+            value => this.setParameters({ bl: value }), 'bl'));
 
         const bitrateRow = document.createElement('div');
         bitrateRow.className = 'parameter-row';
@@ -219,13 +219,13 @@ class BluetoothSBCSimulatorPlugin extends PluginBase {
 
         container.appendChild(this.createParameterControl(
             'Packet Loss', 0, 20, 0.1, this.pl,
-            value => this.setParameters({ pl: value }), '%'));
+            value => this.setParameters({ pl: value }), '%', 'pl'));
         container.appendChild(this.createParameterControl(
             'Output', -24, 12, 0.1, this.og,
-            value => this.setParameters({ og: value }), 'dB'));
+            value => this.setParameters({ og: value }), 'dB', 'og'));
         container.appendChild(this.createParameterControl(
             'Mix', 0, 100, 1, this.mx,
-            value => this.setParameters({ mx: value }), '%'));
+            value => this.setParameters({ mx: value }), '%', 'mx'));
         container.appendChild(this._createStatusElement());
         return container;
     }

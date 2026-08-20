@@ -101,16 +101,16 @@ class GSMFullRateSimulatorPlugin extends PluginBase {
         container.className = 'gsm-full-rate-simulator-plugin-ui plugin-parameter-ui';
         container.appendChild(this.createRadioGroup('Transcodes',
             GSM_FULL_RATE_SIMULATOR_TRANSCODES, String(this.tc),
-            value => this.setParameters({ tc: Number(value) })));
+            value => this.setParameters({ tc: Number(value) }), 'tc'));
         container.appendChild(this.createParameterControl(
             'Output', -24, 12, 0.1, this.og,
-            value => this.setParameters({ og: value }), 'dB'));
+            value => this.setParameters({ og: value }), 'dB', 'og'));
         container.appendChild(this.createParameterControl(
             'Mix', 0, 100, 1, this.mx,
-            value => this.setParameters({ mx: value }), '%'));
+            value => this.setParameters({ mx: value }), '%', 'mx'));
         container.appendChild(this.createParameterControl(
             'C/I', 4, 30, 0.1, this.ci,
-            value => this.setParameters({ ci: value }), 'dB'));
+            value => this.setParameters({ ci: value }), 'dB', 'ci'));
         container.appendChild(this._createStatusElement());
         return container;
     }
