@@ -44,6 +44,35 @@ function inverseRealTransform(real, imag, size) {
         new FFT(size).inverseRealTransform(real, imag);
 }
 
+function inverseRealTransformPolarProduct(
+    firstMagnitudes,
+    firstPhases,
+    secondMagnitudes,
+    secondPhases,
+    size
+) {
+    if (typeof fftBackend?.inverseRealTransformPolarProduct === 'function') {
+        return fftBackend.inverseRealTransformPolarProduct(
+            firstMagnitudes,
+            firstPhases,
+            secondMagnitudes,
+            secondPhases,
+            size
+        );
+    }
+    const real = new Float64Array(size / 2 + 1);
+    const imaginary = new Float64Array(real.length);
+    for (let bin = 0; bin < real.length; bin += 1) {
+        const magnitude = firstMagnitudes[bin] * secondMagnitudes[bin];
+        const phase = firstPhases[bin] + secondPhases[bin];
+        real[bin] = magnitude * Math.cos(phase);
+        imaginary[bin] = magnitude * Math.sin(phase);
+    }
+    imaginary[0] = 0;
+    imaginary[imaginary.length - 1] = 0;
+    return inverseRealTransform(real, imaginary, size);
+}
+
 function bandLimitImpulsePreviewSpectrum(spectrum, sampleRate, fftSize) {
     const firstFilteredBin = Math.ceil(
         IMPULSE_PREVIEW_MAX_FREQUENCY * fftSize / sampleRate
@@ -137,6 +166,29 @@ function interpolateValues(frequencies, values, targetFrequencies) {
     return result;
 }
 
+function createInterpolationPlan(frequencies, targetFrequencies) {
+    const lowerIndices = new Uint32Array(targetFrequencies.length);
+    const fractions = new Float64Array(targetFrequencies.length);
+    let upper = 1;
+    for (let index = 0; index < targetFrequencies.length; index += 1) {
+        const frequency = targetFrequencies[index];
+        while (upper < frequencies.length && frequencies[upper] < frequency) upper += 1;
+        if (frequency <= frequencies[0]) {
+            lowerIndices[index] = 0;
+            fractions[index] = 0;
+        } else if (upper >= frequencies.length) {
+            lowerIndices[index] = frequencies.length - 2;
+            fractions[index] = 1;
+        } else {
+            const low = frequencies[upper - 1];
+            const high = frequencies[upper];
+            lowerIndices[index] = upper - 1;
+            fractions[index] = Math.log(frequency / low) / Math.log(high / low);
+        }
+    }
+    return { binFrequencies: targetFrequencies, lowerIndices, fractions };
+}
+
 function getSynthesisPlan(gridFrequencies, config) {
     const fftSize = config.taps * 2;
     const key = `${config.sampleRate}:${config.taps}:${gridFrequencies.length}:` +
@@ -194,6 +246,17 @@ function interpolateWithPlan(values, plan) {
         const lower = plan.lowerIndices[index];
         const fraction = plan.fractions[index];
         result[index] = values[lower] + fraction * (values[lower + 1] - values[lower]);
+    }
+    return result;
+}
+
+function interpolateGainsWithPlan(values, plan) {
+    const result = new Float64Array(plan.binFrequencies.length);
+    for (let index = 0; index < result.length; index += 1) {
+        const lower = plan.lowerIndices[index];
+        const fraction = plan.fractions[index];
+        const decibels = values[lower] + fraction * (values[lower + 1] - values[lower]);
+        result[index] = dbToGain(decibels);
     }
     return result;
 }
@@ -328,8 +391,15 @@ export function clearRoomEqDesignCache() {
     designCache.clear();
 }
 
-function directSpectrum(analysis, sampleRate, directWindowMs, synthesisFrequencies) {
-    const cacheKey = `${directWindowMs}:${synthesisFrequencies.length}`;
+function directSpectrum(
+    analysis,
+    sampleRate,
+    directWindowMs,
+    synthesisFrequencies,
+    includeFullMagnitude
+) {
+    const cacheKey = `${directWindowMs}:${synthesisFrequencies.length}:` +
+        `${includeFullMagnitude ? 1 : 0}`;
     const cached = analysis.directCache.get(cacheKey);
     if (cached) return cached;
     const input = new Float64Array(analysis.fftSize);
@@ -354,14 +424,17 @@ function directSpectrum(analysis, sampleRate, directWindowMs, synthesisFrequenci
         magnitude[bin] = Math.hypot(spectrum.real[bin], spectrum.imag[bin]);
         phase[bin] = Math.atan2(spectrum.imag[bin], spectrum.real[bin]);
     }
+    const sourceFrequencyRange = sourceFrequencies.subarray(1);
+    const interpolationPlan = createInterpolationPlan(
+        sourceFrequencyRange,
+        synthesisFrequencies
+    );
     const result = {
-        magnitude: interpolateValues(sourceFrequencies.subarray(1), magnitude.subarray(1), synthesisFrequencies),
-        fullMagnitude: interpolateValues(
-            sourceFrequencies.subarray(1),
-            magnitudeSpectrum(analysis).subarray(1),
-            synthesisFrequencies
-        ),
-        phase: interpolateValues(sourceFrequencies.subarray(1), unwrapPhase(phase).subarray(1), synthesisFrequencies),
+        magnitude: interpolateWithPlan(magnitude.subarray(1), interpolationPlan),
+        fullMagnitude: includeFullMagnitude
+            ? interpolateWithPlan(magnitudeSpectrum(analysis).subarray(1), interpolationPlan)
+            : null,
+        phase: interpolateWithPlan(unwrapPhase(phase).subarray(1), interpolationPlan),
         phaseCorrectionCache: new Map(),
         lowPhaseCorrectionCache: new Map(),
         samples: analysis.samples,
@@ -923,10 +996,11 @@ function directPhaseAnalysis(direct, frequencies, config, fftSize) {
         ? inBandMagnitudes[Math.floor(inBandMagnitudes.length / 2)]
         : 1;
     const floor = Math.max(MIN_MAGNITUDE, median * 0.01);
-    const regularizedMagnitude = Float64Array.from(
-        direct.magnitude,
-        magnitude => magnitude > floor ? magnitude : floor
-    );
+    const regularizedMagnitude = new Float64Array(direct.magnitude.length);
+    for (let index = 0; index < regularizedMagnitude.length; index += 1) {
+        const magnitude = direct.magnitude[index];
+        regularizedMagnitude[index] = magnitude > floor ? magnitude : floor;
+    }
     const directMinimumPhase = minimumPhaseForMagnitude(regularizedMagnitude, fftSize);
     const rawExcess = new Float64Array(frequencies.length);
     for (let index = 0; index < rawExcess.length; index += 1) {
@@ -950,8 +1024,11 @@ function directPhaseAnalysis(direct, frequencies, config, fftSize) {
     const denominator = count * sumXX - sumX * sumX;
     const slope = denominator === 0 ? 0 : (count * sumXY - sumX * sumY) / denominator;
     const intercept = count === 0 ? 0 : (sumY - slope * sumX) / count;
-    const residual = Float64Array.from(frequencies, (frequency, index) =>
-        excess[index] - (intercept + slope * 2 * Math.PI * frequency));
+    const residual = new Float64Array(frequencies.length);
+    for (let index = 0; index < residual.length; index += 1) {
+        residual[index] = excess[index] -
+            (intercept + slope * 2 * Math.PI * frequencies[index]);
+    }
     // The direct-phase residual is smoothed with the phase smoothing (ps). The
     // reverb path arrives here with smoothing === phaseSmoothing === rs via
     // reverbPhaseConfig, so both paths read the same resolved width.
@@ -1294,17 +1371,13 @@ function reverbExtendedConsensus(directs, frequencies, config, fftSize) {
 }
 
 function predictedDirectResponse(direct, correctionMagnitudes, correctionPhase, fftSize) {
-    const real = new Float64Array(fftSize / 2 + 1);
-    const imaginary = new Float64Array(real.length);
-    for (let bin = 0; bin < real.length; bin += 1) {
-        const magnitude = direct.magnitude[bin] * correctionMagnitudes[bin];
-        const phase = direct.phase[bin] + correctionPhase[bin];
-        real[bin] = magnitude * Math.cos(phase);
-        imaginary[bin] = magnitude * Math.sin(phase);
-    }
-    imaginary[0] = 0;
-    imaginary[imaginary.length - 1] = 0;
-    return inverseRealTransform(real, imaginary, fftSize);
+    return inverseRealTransformPolarProduct(
+        direct.magnitude,
+        direct.phase,
+        correctionMagnitudes,
+        correctionPhase,
+        fftSize
+    );
 }
 
 function localPeakEnergy(samples, center, weights) {
@@ -1723,8 +1796,7 @@ function synthesizeFilter(
 ) {
     const plan = getSynthesisPlan(gridFrequencies, config);
     const { fftSize, binFrequencies } = plan;
-    const interpolated = interpolateWithPlan(correctionDb, plan);
-    let magnitudes = Float64Array.from(interpolated, dbToGain);
+    let magnitudes = interpolateGainsWithPlan(correctionDb, plan);
     let phase = new Float64Array(magnitudes.length);
     let fullReferencePhase = null;
     let unalignedFullPhase = null;
@@ -1746,9 +1818,9 @@ function synthesizeFilter(
                     : 'insufficientData'
     };
     if (config.phase === 'min') {
-        phase = Float64Array.from(minimumPhaseForMagnitude(magnitudes, fftSize));
+        phase = minimumPhaseForMagnitude(magnitudes, fftSize);
     } else if (config.phase === 'full') {
-        fullReferencePhase = Float64Array.from(minimumPhaseForMagnitude(magnitudes, fftSize));
+        fullReferencePhase = minimumPhaseForMagnitude(magnitudes, fftSize);
         phase = Float64Array.from(fullReferencePhase);
         const correction = phaseSource?.candidates?.length
             ? consensusDirectPhaseCorrection(
@@ -1802,13 +1874,10 @@ function synthesizeFilter(
             // loosening the relative edgeLimit exactly when the guard must fire.
             const baseMagnitudes = baseOnlyCorrectionDb === correctionDb
                 ? magnitudes
-                : Float64Array.from(
-                    interpolateWithPlan(baseOnlyCorrectionDb, plan),
-                    dbToGain
-                );
+                : interpolateGainsWithPlan(baseOnlyCorrectionDb, plan);
             const baseReferencePhase = baseMagnitudes === magnitudes
                 ? fullReferencePhase
-                : Float64Array.from(minimumPhaseForMagnitude(baseMagnitudes, fftSize));
+                : minimumPhaseForMagnitude(baseMagnitudes, fftSize);
             const basePhase = Float64Array.from(baseReferencePhase);
             for (let bin = 0; bin < basePhase.length; bin += 1) {
                 basePhase[bin] -= (correction?.[bin] || 0) * config.phaseCorrectionAmount;
@@ -2524,7 +2593,8 @@ export function designRoomEq(request) {
                     referenceAnalysis,
                     config.sampleRate,
                     config.directWindowMs,
-                    synthesisFrequencies
+                    synthesisFrequencies,
+                    config.lowFrequencyPhaseExtension
                 );
                 phaseSource = {
                     timing,
@@ -2533,7 +2603,8 @@ export function designRoomEq(request) {
                             analysis,
                             config.sampleRate,
                             config.directWindowMs,
-                            synthesisFrequencies
+                            synthesisFrequencies,
+                            config.lowFrequencyPhaseExtension
                         ))
                 };
                 if (config.reverbAmount === 0) {
@@ -2568,7 +2639,8 @@ export function designRoomEq(request) {
                             analysis,
                             config.sampleRate,
                             reverbWindowEffectiveMs,
-                            synthesisFrequencies
+                            synthesisFrequencies,
+                            config.lowFrequencyPhaseExtension
                         )),
                         synthesisFrequencies,
                         reverbConfig,

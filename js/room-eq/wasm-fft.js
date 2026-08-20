@@ -64,10 +64,37 @@ export class WasmRoomEqFftBackend {
             packed[bin * 2] = real[bin] || 0;
             packed[bin * 2 + 1] = imag[bin] || 0;
         }
+        return this._runInverse(record, size);
+    }
+
+    inverseRealTransformPolarProduct(
+        firstMagnitudes,
+        firstPhases,
+        secondMagnitudes,
+        secondPhases,
+        size
+    ) {
+        const record = this._handle(size);
+        const packed = this._view(record.input, size);
+        const lastBin = size / 2;
+        packed[0] = firstMagnitudes[0] * secondMagnitudes[0] *
+            Math.cos(firstPhases[0] + secondPhases[0]);
+        packed[1] = firstMagnitudes[lastBin] * secondMagnitudes[lastBin] *
+            Math.cos(firstPhases[lastBin] + secondPhases[lastBin]);
+        for (let bin = 1; bin < lastBin; bin += 1) {
+            const magnitude = firstMagnitudes[bin] * secondMagnitudes[bin];
+            const phase = firstPhases[bin] + secondPhases[bin];
+            packed[bin * 2] = magnitude * Math.cos(phase);
+            packed[bin * 2 + 1] = magnitude * Math.sin(phase);
+        }
+        return this._runInverse(record, size, Float32Array);
+    }
+
+    _runInverse(record, size, OutputArray = Float64Array) {
         if (this.binding.runDesignFft(record.handle, true) !== ET_OK) {
             throw new Error('WASM FFT inverse transform failed');
         }
-        return Float64Array.from(this._view(record.output, size));
+        return OutputArray.from(this._view(record.output, size));
     }
 
     close() {

@@ -56,3 +56,47 @@ test('WASM Room EQ FFT backend maps PFFFT real spectra and round-trips samples',
   }
   backend.close();
 });
+
+test('WASM Room EQ FFT backend transforms a polar spectrum product directly', () => {
+  const size = 64;
+  const backend = new WasmRoomEqFftBackend(createBinding(size));
+  const length = size / 2 + 1;
+  const firstMagnitudes = Float64Array.from(
+    { length },
+    (_, bin) => 0.75 + bin * 0.01
+  );
+  const firstPhases = Float64Array.from(
+    { length },
+    (_, bin) => bin * 0.07
+  );
+  const secondMagnitudes = Float64Array.from(
+    { length },
+    (_, bin) => 1.1 - bin * 0.005
+  );
+  const secondPhases = Float64Array.from(
+    { length },
+    (_, bin) => -bin * 0.03
+  );
+  const real = new Float64Array(length);
+  const imag = new Float64Array(length);
+  for (let bin = 0; bin < length; bin += 1) {
+    const magnitude = firstMagnitudes[bin] * secondMagnitudes[bin];
+    const phase = firstPhases[bin] + secondPhases[bin];
+    real[bin] = magnitude * Math.cos(phase);
+    imag[bin] = magnitude * Math.sin(phase);
+  }
+  imag[0] = 0;
+  imag[length - 1] = 0;
+  const expected = new FFT(size).inverseRealTransform(real, imag);
+  const output = backend.inverseRealTransformPolarProduct(
+    firstMagnitudes,
+    firstPhases,
+    secondMagnitudes,
+    secondPhases,
+    size
+  );
+  for (let index = 0; index < size; index += 1) {
+    assert.ok(Math.abs(output[index] - expected[index]) < 1e-5);
+  }
+  backend.close();
+});
