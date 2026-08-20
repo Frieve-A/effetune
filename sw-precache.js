@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.5.0-c98e0ed8c220e84c";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.5.0-0aa54b4001bb9f34";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./effetune-library.css",
   "./effetune-mobile.css",

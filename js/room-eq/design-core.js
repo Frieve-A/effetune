@@ -1999,26 +1999,39 @@ function phaseComponentsOnGrid(
     alignmentSamples,
     sampleRate,
     frequencies,
-    minimumFftSize = 0
+    minimumFftSize = 0,
+    unalignedSpectrum = null
 ) {
     const fftSize = nextPowerOfTwo(
         samples.length > minimumFftSize ? samples.length : minimumFftSize
     );
-    const input = new Float64Array(fftSize);
-    for (let index = 0; index < samples.length; index += 1) {
-        let alignedIndex = index - alignmentSamples;
-        if (alignedIndex < 0) alignedIndex += fftSize;
-        input[alignedIndex] = samples[index];
+    const reusableSpectrum = unalignedSpectrum?.real?.length === fftSize / 2 + 1 &&
+        unalignedSpectrum?.imag?.length === fftSize / 2 + 1;
+    let spectrum = unalignedSpectrum;
+    if (!reusableSpectrum) {
+        const input = new Float64Array(fftSize);
+        for (let index = 0; index < samples.length; index += 1) {
+            let alignedIndex = index - alignmentSamples;
+            if (alignedIndex < 0) alignedIndex += fftSize;
+            input[alignedIndex] = samples[index];
+        }
+        spectrum = realTransform(input);
     }
-    const spectrum = realTransform(input);
-    const totalPhase = Float64Array.from(
-        spectrum.real,
-        (real, bin) => Math.atan2(spectrum.imag[bin], real)
-    );
-    const magnitudes = Float64Array.from(
-        spectrum.real,
-        (real, bin) => Math.hypot(real, spectrum.imag[bin])
-    );
+    const totalPhase = new Float64Array(spectrum.real.length);
+    const magnitudes = new Float64Array(spectrum.real.length);
+    for (let bin = 0; bin < spectrum.real.length; bin += 1) {
+        const real = spectrum.real[bin];
+        const imaginary = spectrum.imag[bin];
+        let phase = Math.atan2(imaginary, real);
+        if (reusableSpectrum) {
+            phase += 2 * Math.PI * bin * alignmentSamples / fftSize;
+            phase %= 2 * Math.PI;
+            if (phase >= Math.PI) phase -= 2 * Math.PI;
+            else if (phase < -Math.PI) phase += 2 * Math.PI;
+        }
+        totalPhase[bin] = phase;
+        magnitudes[bin] = Math.hypot(real, imaginary);
+    }
     const minimumPhase = minimumPhaseForMagnitude(magnitudes, fftSize);
     return {
         total: interpolatePhaseOnGrid(totalPhase, sampleRate, fftSize, frequencies),
@@ -2072,7 +2085,7 @@ function referencedGroupDelayMs(phaseRadians, frequencies, smoothing) {
     return Float32Array.from(smoothed, value => value - reference);
 }
 
-function createPhasePreviews(analysis, taps, config, frequencies) {
+function createPhasePreviews(analysis, taps, config, frequencies, actualSpectrum = null) {
     const beforeComponents = phaseComponentsOnGrid(
         analysis.samples,
         analysis.onsetIndex,
@@ -2085,24 +2098,23 @@ function createPhasePreviews(analysis, taps, config, frequencies) {
         filterDelay,
         config.sampleRate,
         frequencies,
-        taps.length * 2
+        taps.length * 2,
+        actualSpectrum
     );
-    const afterRadians = Float64Array.from(
-        beforeComponents.total,
-        (phase, index) => phase + filterComponents.total[index]
-    );
-    const afterMinimumRadians = Float64Array.from(
-        beforeComponents.minimum,
-        (phase, index) => phase + filterComponents.minimum[index]
-    );
-    const beforeExcessRadians = Float64Array.from(
-        beforeComponents.total,
-        (phase, index) => phase - beforeComponents.minimum[index]
-    );
-    const afterExcessRadians = Float64Array.from(
-        afterRadians,
-        (phase, index) => phase - afterMinimumRadians[index]
-    );
+    const afterRadians = new Float64Array(frequencies.length);
+    const afterMinimumRadians = new Float64Array(frequencies.length);
+    const beforeExcessRadians = new Float64Array(frequencies.length);
+    const afterExcessRadians = new Float64Array(frequencies.length);
+    for (let index = 0; index < frequencies.length; index += 1) {
+        const beforeTotal = beforeComponents.total[index];
+        const beforeMinimum = beforeComponents.minimum[index];
+        const afterTotal = beforeTotal + filterComponents.total[index];
+        const afterMinimum = beforeMinimum + filterComponents.minimum[index];
+        afterRadians[index] = afterTotal;
+        afterMinimumRadians[index] = afterMinimum;
+        beforeExcessRadians[index] = beforeTotal - beforeMinimum;
+        afterExcessRadians[index] = afterTotal - afterMinimum;
+    }
     return {
         phase: {
             before: Float32Array.from(beforeComponents.total, wrapPhaseDegrees),
@@ -2143,7 +2155,7 @@ function createPhasePreviews(analysis, taps, config, frequencies) {
     };
 }
 
-function createImpulseResponsePreview(analysis, taps, config) {
+function createImpulseResponsePreview(analysis, taps, config, actualSpectrum = null) {
     const previewPrerollMs = 2;
     // Display window: see previewWindowSamples. The Consensus average synthesizes
     // this far as `previewSamples`, a display-only view that is longer than the
@@ -2166,8 +2178,6 @@ function createImpulseResponsePreview(analysis, taps, config) {
     for (let index = 0; index < input.length; index += 1) {
         input[index] = source[inputStart + index] || 0;
     }
-    const paddedTaps = new Float64Array(fftSize);
-    paddedTaps.set(taps);
     const inputSpectrum = realTransform(input);
     bandLimitImpulsePreviewSpectrum(inputSpectrum, config.sampleRate, fftSize);
     const filteredInputTime = inverseRealTransform(
@@ -2175,7 +2185,12 @@ function createImpulseResponsePreview(analysis, taps, config) {
         inputSpectrum.imag,
         fftSize
     );
-    const filterSpectrum = realTransform(paddedTaps);
+    let filterSpectrum = actualSpectrum;
+    if (!filterSpectrum || filterSpectrum.real.length !== fftSize / 2 + 1) {
+        const paddedTaps = new Float64Array(fftSize);
+        paddedTaps.set(taps);
+        filterSpectrum = realTransform(paddedTaps);
+    }
     const correctedReal = new Float64Array(inputSpectrum.real.length);
     const correctedImaginary = new Float64Array(inputSpectrum.imag.length);
     for (let bin = 0; bin < correctedReal.length; bin += 1) {
@@ -2708,7 +2723,13 @@ export function designRoomEq(request) {
         reverbDiagnostics.push(reverbDiagnostic ||
             reverbUnavailableDiagnostic(config, config.reverbWindowEffectiveMs));
         const phasePreviews = referenceAnalysis
-            ? createPhasePreviews(referenceAnalysis, synthesis.taps, config, frequencies)
+            ? createPhasePreviews(
+                referenceAnalysis,
+                synthesis.taps,
+                config,
+                frequencies,
+                synthesis.actualSpectrum
+            )
             : null;
         previews.push({
             channel: channelIndex,
@@ -2722,7 +2743,12 @@ export function designRoomEq(request) {
             phaseResponse: phasePreviews?.phase || null,
             groupDelayResponse: phasePreviews?.groupDelay || null,
             impulseResponse: referenceAnalysis
-                ? createImpulseResponsePreview(referenceAnalysis, synthesis.taps, config)
+                ? createImpulseResponsePreview(
+                    referenceAnalysis,
+                    synthesis.taps,
+                    config,
+                    synthesis.actualSpectrum
+                )
                 : null
         });
     }

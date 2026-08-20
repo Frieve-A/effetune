@@ -4,6 +4,9 @@ function readPoint(point) {
         : { frequency: point.frequency, magnitude: point.magnitude };
 }
 
+let previousUniformKernel = null;
+const MINIMUM_SIGNIFICANT_WEIGHT = Number.EPSILON * Number.EPSILON;
+
 export function smoothFrequencyResponse(frequencyResponse, sigma = 0.3) {
     if (!Array.isArray(frequencyResponse) || frequencyResponse.length < 3 || sigma <= 0) {
         return frequencyResponse || [];
@@ -34,64 +37,101 @@ export function smoothFrequencyResponse(frequencyResponse, sigma = 0.3) {
     let firstCandidates = null;
     let lastCandidates = null;
     if (uniform) {
-        offsetWeights = new Float64Array(frequencyResponse.length);
-        const denominator = 2 * sigma * sigma;
-        for (let offset = 0; offset < offsetWeights.length; offset += 1) {
-            const distance = offset * spacing;
-            offsetWeights[offset] = Math.exp(-(distance * distance) / denominator);
+        if (previousUniformKernel?.length === frequencyResponse.length &&
+            previousUniformKernel.spacing === spacing &&
+            previousUniformKernel.sigma === sigma) {
+            offsetWeights = previousUniformKernel.weights;
+            weightRadius = previousUniformKernel.radius;
+        } else {
+            offsetWeights = new Float64Array(frequencyResponse.length);
+            const denominator = 2 * sigma * sigma;
+            for (let offset = 0; offset < offsetWeights.length; offset += 1) {
+                const distance = offset * spacing;
+                offsetWeights[offset] = Math.exp(-(distance * distance) / denominator);
+            }
+            // Squared binary64 epsilon is far below the accumulator precision.
+            // Excluding that tail avoids empty work on dense grids while retaining
+            // bit-identical Room EQ output.
+            while (weightRadius > 0 &&
+                offsetWeights[weightRadius] <= MINIMUM_SIGNIFICANT_WEIGHT) {
+                weightRadius -= 1;
+            }
+            previousUniformKernel = {
+                length: frequencyResponse.length,
+                spacing,
+                sigma,
+                weights: offsetWeights,
+                radius: weightRadius
+            };
         }
-        // Far Gaussian weights eventually underflow to exactly zero. Skipping
-        // only those entries preserves the arithmetic result while avoiding a
-        // large empty tail for narrow smoothing widths on dense grids.
-        while (weightRadius > 0 && offsetWeights[weightRadius] === 0) {
-            weightRadius -= 1;
-        }
-    } else if (ascending && Math.exp(-750) === 0) {
-        // exp(-750) is already zero in binary64. On ordered grids, exclude
-        // only points farther away than that conservative boundary so dense
-        // linear-frequency responses do not scan their zero-weight tails.
-        const zeroWeightDistance = sigma * Math.sqrt(1500);
+    } else if (ascending) {
+        // Apply the same binary64 significance boundary to ordered nonuniform
+        // grids without changing the fallback behavior for unsorted inputs.
+        const significantDistance = sigma * Math.sqrt(
+            -2 * Math.log(MINIMUM_SIGNIFICANT_WEIGHT)
+        );
         firstCandidates = new Int32Array(frequencyResponse.length);
         lastCandidates = new Int32Array(frequencyResponse.length);
         let firstCandidate = 0;
         let lastCandidate = 0;
         for (let pointIndex = 0; pointIndex < frequencyResponse.length; pointIndex += 1) {
             const center = logFrequencies[pointIndex];
-            while (logFrequencies[firstCandidate] < center - zeroWeightDistance) {
+            while (logFrequencies[firstCandidate] < center - significantDistance) {
                 firstCandidate += 1;
             }
             if (lastCandidate < firstCandidate) lastCandidate = firstCandidate;
             while (lastCandidate < frequencyResponse.length &&
-                logFrequencies[lastCandidate] <= center + zeroWeightDistance) {
+                logFrequencies[lastCandidate] <= center + significantDistance) {
                 lastCandidate += 1;
             }
             firstCandidates[pointIndex] = firstCandidate;
             lastCandidates[pointIndex] = lastCandidate;
         }
     }
-    return frequencyResponse.map((point, pointIndex) => {
+    const smoothed = new Array(frequencyResponse.length);
+    for (let pointIndex = 0; pointIndex < frequencyResponse.length; pointIndex += 1) {
         const frequency = frequencies[pointIndex];
         let weighted = 0;
         let weightTotal = 0;
-        const firstCandidate = offsetWeights
-            ? Math.max(0, pointIndex - weightRadius)
-            : firstCandidates?.[pointIndex] ?? 0;
-        const lastCandidate = offsetWeights
-            ? Math.min(frequencyResponse.length, pointIndex + weightRadius + 1)
-            : lastCandidates?.[pointIndex] ?? frequencyResponse.length;
-        for (let candidateIndex = firstCandidate;
-            candidateIndex < lastCandidate;
-            candidateIndex += 1) {
-            const distance = logFrequencies[candidateIndex] - logFrequencies[pointIndex];
-            const weight = offsetWeights
-                ? offsetWeights[Math.abs(candidateIndex - pointIndex)]
-                : Math.exp(-(distance * distance) / (2 * sigma * sigma));
-            weighted += magnitudes[candidateIndex] * weight;
-            weightTotal += weight;
+        if (offsetWeights) {
+            const firstCandidate = Math.max(0, pointIndex - weightRadius);
+            const lastCandidate = Math.min(
+                frequencyResponse.length,
+                pointIndex + weightRadius + 1
+            );
+            for (let candidateIndex = firstCandidate;
+                candidateIndex < pointIndex;
+                candidateIndex += 1) {
+                const weight = offsetWeights[pointIndex - candidateIndex];
+                weighted += magnitudes[candidateIndex] * weight;
+                weightTotal += weight;
+            }
+            weighted += magnitudes[pointIndex] * offsetWeights[0];
+            weightTotal += offsetWeights[0];
+            for (let candidateIndex = pointIndex + 1;
+                candidateIndex < lastCandidate;
+                candidateIndex += 1) {
+                const weight = offsetWeights[candidateIndex - pointIndex];
+                weighted += magnitudes[candidateIndex] * weight;
+                weightTotal += weight;
+            }
+        } else {
+            const firstCandidate = firstCandidates?.[pointIndex] ?? 0;
+            const lastCandidate = lastCandidates?.[pointIndex] ?? frequencyResponse.length;
+            const denominator = 2 * sigma * sigma;
+            for (let candidateIndex = firstCandidate;
+                candidateIndex < lastCandidate;
+                candidateIndex += 1) {
+                const distance = logFrequencies[candidateIndex] - logFrequencies[pointIndex];
+                const weight = Math.exp(-(distance * distance) / denominator);
+                weighted += magnitudes[candidateIndex] * weight;
+                weightTotal += weight;
+            }
         }
         const magnitude = weighted / weightTotal;
-        return objectFormat ? { frequency, magnitude } : [frequency, magnitude];
-    });
+        smoothed[pointIndex] = objectFormat ? { frequency, magnitude } : [frequency, magnitude];
+    }
+    return smoothed;
 }
 
 export function createLogFrequencyGrid(minFrequency, maxFrequency, spacingOctaves = 0.01) {
