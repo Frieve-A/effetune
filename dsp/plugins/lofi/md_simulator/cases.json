@@ -1,0 +1,179 @@
+{
+  "defaults": {
+    "sampleRate": 96000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo"
+  },
+  "cases": [
+    {
+      "id": "sp-default-program",
+      "stimulus": "noise",
+      "frames": 8193,
+      "params": { "md": "SP (292 kbps)" }
+    },
+    {
+      "id": "sp-transient-44k",
+      "stimulus": "imp",
+      "sampleRate": 44100,
+      "blockSize": 127,
+      "frames": 4609,
+      "params": { "md": "SP (292 kbps)" }
+    },
+    {
+      "id": "sp-sweep-48k-odd-block",
+      "stimulus": "sweep",
+      "sampleRate": 48000,
+      "blockSize": 129,
+      "frames": 4097,
+      "params": { "md": "SP (292 kbps)" }
+    },
+    {
+      "id": "maximum-host-rate",
+      "stimulus": "noise",
+      "sampleRate": 384000,
+      "blockSize": 128,
+      "frames": 32769,
+      "params": { "md": "SP (292 kbps)", "og": -6 }
+    },
+    {
+      "id": "latency-aligned-dry",
+      "stimulus": "imp",
+      "frames": 8193,
+      "params": { "mx": 0 }
+    },
+    {
+      "id": "sp-mono-88k",
+      "stimulus": "step",
+      "sampleRate": 88200,
+      "blockSize": 511,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 16385,
+      "params": { "md": "SP (292 kbps)" }
+    },
+    {
+      "id": "extra-channel-pass-through",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "channels": 4,
+      "channelMode": "all4",
+      "blockSize": 575,
+      "frames": 4097,
+      "params": { "md": "SP (292 kbps)" }
+    },
+    {
+      "id": "sp-tonal-single-frame-blocks",
+      "stimulus": "sin1k",
+      "sampleRate": 44100,
+      "blockSize": 1,
+      "frames": 4609,
+      "params": { "md": "SP (292 kbps)" }
+    },
+    {
+      "id": "sp-dense-192k",
+      "stimulus": "sq50",
+      "sampleRate": 192000,
+      "blockSize": 17,
+      "frames": 20481,
+      "params": { "md": "SP (292 kbps)", "og": 3 }
+    },
+    {
+      "id": "lp2-default-program",
+      "stimulus": "noise",
+      "frames": 8193,
+      "params": { "md": "LP2 (132 kbps)" }
+    },
+    {
+      "id": "lp2-transient-44k",
+      "stimulus": "imp",
+      "sampleRate": 44100,
+      "blockSize": 127,
+      "frames": 4609,
+      "params": { "md": "LP2 (132 kbps)" }
+    },
+    {
+      "id": "lp2-sweep-48k-odd-block",
+      "stimulus": "sweep",
+      "sampleRate": 48000,
+      "blockSize": 129,
+      "frames": 4097,
+      "params": { "md": "LP2 (132 kbps)" }
+    },
+    {
+      "id": "lp2-mono-48k",
+      "stimulus": "step",
+      "sampleRate": 48000,
+      "blockSize": 511,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 6145,
+      "params": { "md": "LP2 (132 kbps)" }
+    },
+    {
+      "id": "lp2-352k-halfband-bridge",
+      "stimulus": "noise",
+      "sampleRate": 352800,
+      "blockSize": 257,
+      "frames": 32769,
+      "params": { "md": "LP2 (132 kbps)" }
+    },
+    {
+      "id": "lp4-tonal-44k",
+      "stimulus": "sin1k",
+      "sampleRate": 44100,
+      "blockSize": 511,
+      "frames": 4609,
+      "params": { "md": "LP4 (66 kbps)" }
+    },
+    {
+      "id": "lp4-joint-stereo-noise",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "blockSize": 128,
+      "frames": 4097,
+      "params": { "md": "LP4 (66 kbps)" }
+    },
+    {
+      "id": "lp4-maximum-host-rate",
+      "stimulus": "noise",
+      "sampleRate": 384000,
+      "blockSize": 128,
+      "frames": 26625,
+      "params": { "md": "LP4 (66 kbps)", "og": -6 }
+    },
+    {
+      "id": "lp4-mono-176k",
+      "stimulus": "sq50",
+      "sampleRate": 176400,
+      "blockSize": 255,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 6145,
+      "params": { "md": "LP4 (66 kbps)" }
+    },
+    {
+      "id": "mode-switch-events",
+      "stimulus": "noise",
+      "frames": 12289,
+      "params": { "md": "SP (292 kbps)", "og": 0, "mx": 100 },
+      "events": [
+        { "frame": 2003, "params": { "md": "LP2 (132 kbps)" } },
+        { "frame": 5009, "params": { "md": "LP4 (66 kbps)" } },
+        { "frame": 8009, "params": { "md": "LP2 (132 kbps)" } },
+        { "frame": 10007, "params": { "md": "SP (292 kbps)" } }
+      ]
+    },
+    {
+      "id": "frame-boundary-controls",
+      "stimulus": "noise",
+      "frames": 12289,
+      "params": { "md": "SP (292 kbps)", "og": 0, "mx": 100 },
+      "events": [
+        { "frame": 2003, "params": { "og": -12 } },
+        { "frame": 5009, "params": { "mx": 35 } },
+        { "frame": 8009, "params": { "og": 6, "mx": 100 } }
+      ]
+    }
+  ]
+}

@@ -3,6 +3,7 @@
   "type": "RoomEqPlugin",
   "cases": [
     "case-001.json",
-    "case-002.json"
+    "case-002.json",
+    "case-003.json"
   ]
 }

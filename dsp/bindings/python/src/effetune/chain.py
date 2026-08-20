@@ -15,6 +15,7 @@ from .assets import (
     AssetResolver,
     resolve_asset,
     resolve_rate_divider,
+    resolve_room_eq_topology,
     resolve_topology,
 )
 from .bundle import Bundle
@@ -42,6 +43,7 @@ _STREAM_RECONFIGURATION_PARAMETERS = {
     ),
     "FiveBandFIRPEQ": frozenset({"latencyMode", "filterDelaySamples"}),
     "GroupDelayEQ": frozenset({"latencyMode", "filterDelaySamples"}),
+    "GroupDelayPEQ": frozenset({"latencyMode", "filterDelaySamples"}),
     "IRReverb": frozenset({"channelMode", "latency", "convolutionRate"}),
     "RoomEQ": frozenset({"latencyMode", "filterDelaySamples"}),
 }
@@ -381,6 +383,10 @@ class Stream:
                                 "or 8 processing channels and one matrix filter "
                                 "channel per band"
                             )
+                    elif effect.effect_type == "RoomEQ":
+                        topology = resolve_room_eq_topology(asset, effect_channels)
+                        divider = 1
+                        head_block = int(effect.parameters["latencyMode"])
                     else:
                         topology = resolve_topology(asset, effect_channels, "mono")
                         divider = 1

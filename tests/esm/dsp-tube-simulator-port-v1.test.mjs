@@ -177,6 +177,11 @@ function createElement(tagName) {
       fillRect() {},
       rect() {},
       fillText() {},
+      // Enough of the real metric for the right-aligned legend: Arial digits and lower-case
+      // letters average about half the font size in width.
+      measureText(text) {
+        return { width: String(text).length * 6 };
+      },
       lineTo() {},
       moveTo() {},
       restore() {},
@@ -1179,9 +1184,18 @@ test('Tube Simulator creates Phase C controls, one responsive graph, and status'
 
   assert.equal(container.className, 'tube-simulator-plugin-ui plugin-parameter-ui');
   assert.match(container.attributes['data-instance-id'], /^tube-simulator-\d+-\d+$/);
+  // The graph view selector sits outside the tabs, directly above the graph it drives.
   assert.deepEqual(
     plugin.controlDefinitions.map(describeControl),
-    EXPECTED_TAB_CONTROLS.flatMap(([, controls]) => controls)
+    [...EXPECTED_TAB_CONTROLS.flatMap(([, controls]) => controls), {
+      kind: 'enum', label: 'Graph', min: undefined, max: undefined,
+      step: undefined, unit: undefined,
+      options: [
+        { value: 'driver', label: 'Stage 1 / Stage 2' },
+        { value: 'pushPull', label: 'Push / Pull' },
+        { value: 'singleEnded', label: 'SE Triode' }
+      ]
+    }]
   );
   assert.deepEqual(
     Object.keys(plugin._controls).sort(),
@@ -1191,19 +1205,23 @@ test('Tube Simulator creates Phase C controls, one responsive graph, and status'
 
   // Settings come first and the read-outs follow, the same order every other
   // plug-in in the app uses.
-  assert.equal(container.children.length, 5);
+  assert.equal(container.children.length, 6);
   assert.equal(
     container.children[0].className,
     'parameter-row tube-simulator-preset-row'
   );
   assert.equal(container.children[1].className, 'tube-simulator-panel');
+  assert.equal(
+    container.children[2].className,
+    'parameter-row radio-group tube-simulator-hud-view'
+  );
   assert.ok(findByClass(container, 'tube-simulator-hud'));
-  assert.equal(container.children[2].children.length, 1);
-  assert.equal(container.children[2].children[0].tagName, 'canvas');
-  assert.equal(container.children[3].className, 'tube-simulator-values');
-  assert.equal(container.children[3].children.length, 12);
+  assert.equal(container.children[3].children.length, 1);
+  assert.equal(container.children[3].children[0].tagName, 'canvas');
+  assert.equal(container.children[4].className, 'tube-simulator-values');
+  assert.equal(container.children[4].children.length, 12);
   assert.deepEqual(
-    container.children[3].children.map(item => item.children[0].textContent),
+    container.children[4].children.map(item => item.children[0].textContent),
     [
       'STAGE 1 BIAS',
       'STAGE 2 BIAS',
@@ -1219,10 +1237,10 @@ test('Tube Simulator creates Phase C controls, one responsive graph, and status'
       'TRANSFORMER FLUX'
     ]
   );
-  assert.equal(container.children[4].className, 'tube-simulator-status');
-  assert.equal(container.children[4].attributes.role, 'status');
-  assert.equal(container.children[4].attributes['aria-live'], 'polite');
-  assert.equal(container.children[4].attributes['aria-atomic'], 'true');
+  assert.equal(container.children[5].className, 'tube-simulator-status');
+  assert.equal(container.children[5].attributes.role, 'status');
+  assert.equal(container.children[5].attributes['aria-live'], 'polite');
+  assert.equal(container.children[5].attributes['aria-atomic'], 'true');
 });
 
 test('Tube Simulator keeps the HUD outside five accessible parameter tabs', async () => {
@@ -1644,6 +1662,16 @@ test('Tube Simulator UI wiring pins the tab roles, preset dropdown, and tab sizi
     );
     assert.match(css, /\.tube-simulator-tab-content \.parameter-row\[hidden\] \{/);
     assert.doesNotMatch(css, /\.tube-simulator-dimmed/);
+    // The graph selector has to sit closer to the graph it drives than to the panel above it, or
+    // it reads as one more parameter row instead of as the graph's own control.
+    assert.match(
+      css,
+      /\.tube-simulator-plugin-ui \.tube-simulator-hud-view \{[^}]*margin-top: 14px;[^}]*margin-bottom: 0;/s
+    );
+    assert.match(
+      css,
+      /\.tube-simulator-hud-view \+ \.tube-simulator-hud \{[^}]*margin-top: 2px;/s
+    );
     assert.match(css, /\.tube-simulator-preset-list \{[^}]*overflow-y: auto;/s);
     assert.match(appCss, /::\-webkit-scrollbar-thumb \{/);
   });
@@ -1705,14 +1733,19 @@ test('Tube Simulator HUD plots recent Ia-Vak trajectories over plate curves and 
   plugin.setParameters({
     os: 'SingleEnded', sd: '300B', sb: 400, sr: 1000, sp: '3.5', sl: '8', rl: 8
   });
+  // The driver is still in the circuit, so the graph stays on it; the single-ended output valve
+  // has to be selected before its axes are the ones on screen.
+  assert.equal(plugin.hudView, 'driver');
+  assert.equal(plugin.hudAxes.xMax, 250);
+  plugin._selectHudView('singleEnded');
   plugin._appendTrajectory(telemetry);
   assert.equal(plugin.hudAxes.xMax, 400);
   assert.equal(plugin.hudCharacteristics.plateCurves.length, 7);
   assert.equal(
-    plugin.trajectories.stage1LeftX[0], telemetry.left.powerPlatePushV
+    plugin.trajectories.pushLeftX[0], telemetry.left.powerPlatePushV
   );
   assert.equal(
-    plugin.trajectories.stage2LeftX[0], telemetry.right.powerPlatePushV
+    plugin.trajectories.pushRightX[0], telemetry.right.powerPlatePushV
   );
   const seLoadLine = plugin.hudCharacteristics.loadLine;
   assert.ok(seLoadLine.yValues[0] > seLoadLine.yValues[1]);
@@ -1747,16 +1780,31 @@ test('Tube Simulator HUD plots recent Ia-Vak trajectories over plate curves and 
     plugin.trajectories.stage1LeftY[index] = 100 + index;
   }
   // Operating points are plotted as points, not as a polyline: the samples are telemetry frames
-  // rather than a continuous curve, so every visible point becomes one rect in a single path that
-  // is filled once.
+  // rather than a continuous curve, so every visible point becomes one rect. Each one carries its
+  // own age-derived opacity, so it also gets its own path and its own fill.
+  const DRAW_NOW = 10000;
+  const FRAME_PERIOD_MS = 30;
+  // Ages the ring back from the write cursor at a fixed cadence, newest slot first, exactly as a
+  // steady telemetry stream would have filled it.
+  const stampTrajectoryTimes = () => {
+    plugin.trajectoryTimes.fill(0);
+    for (let age = 0; age < plugin.trajectoryCount; age++) {
+      const ringIndex = (plugin.trajectoryIndex - 1 - age + 2 * 96) % 96;
+      plugin.trajectoryTimes[ringIndex] = DRAW_NOW - age * FRAME_PERIOD_MS;
+    }
+  };
   const drawTrajectory = (options = {}) => {
     const rects = [];
+    const opacities = [];
     let fills = 0;
     let fillStyle = null;
+    let globalAlpha = 1;
+    stampTrajectoryTimes();
     plugin._drawTrajectory({
       beginPath() {},
       rect(x, y, width, height) {
         rects.push([x, y, width, height]);
+        opacities.push(globalAlpha);
       },
       fill() {
         fills++;
@@ -1766,20 +1814,46 @@ test('Tube Simulator HUD plots recent Ia-Vak trajectories over plate curves and 
       },
       get fillStyle() {
         return fillStyle;
+      },
+      set globalAlpha(value) {
+        globalAlpha = value;
+      },
+      get globalAlpha() {
+        return globalAlpha;
       }
     }, plugin.trajectories.stage1LeftX, plugin.trajectories.stage1LeftY,
-    value => value, value => value, '#fff', options.dpr ?? 1, options.narrow ?? false);
-    return { rects, fills, fillStyle };
+    value => value, value => value, '#fff', options.dpr ?? 1, options.narrow ?? false,
+    options.now ?? DRAW_NOW);
+    return { rects, fills, fillStyle, opacities, globalAlpha };
   };
 
+  // 500 ms of history at a 30 ms cadence is the newest seventeen frames: ages 0 through 480 ms are
+  // inside the window and 510 ms is not.
   plugin.trajectoryIndex = 0;
   plugin.trajectoryCount = 96;
   const full = drawTrajectory();
-  assert.equal(full.rects.length, 6);
-  assert.deepEqual(full.rects[0], [89, 189, 2, 2]);
+  assert.equal(full.rects.length, 17);
+  assert.deepEqual(full.rects[0], [78, 178, 2, 2]);
   assert.deepEqual(full.rects.at(-1), [94, 194, 2, 2]);
-  assert.equal(full.fills, 1, 'every point must go into one filled path');
+  assert.equal(full.fills, 17, 'each point is filled at its own opacity');
   assert.equal(full.fillStyle, '#fff');
+  // Oldest first so the newest point lands on top, and every point dimmer than the one after it.
+  assert.equal(full.opacities.at(-1), 1, 'the newest operating point must be fully opaque');
+  assert.ok(
+    full.opacities.every((opacity, index) =>
+      index === 0 || opacity > full.opacities[index - 1]),
+    'the trail must fade monotonically towards the oldest point'
+  );
+  assert.ok(Math.abs(full.opacities[0] - Math.exp(-480 / 220)) < 1e-9);
+  assert.equal(full.globalAlpha, 1, 'the context must be handed back at full opacity');
+
+  // Frames older than the window are dropped rather than drawn at a vanishing opacity.
+  assert.equal(
+    drawTrajectory({ now: DRAW_NOW + 16 * FRAME_PERIOD_MS }).rects.length,
+    1,
+    'only the newest frame is still inside the window once the trail has aged out'
+  );
+  assert.equal(drawTrajectory({ now: DRAW_NOW + 600 }).rects.length, 0);
 
   // A full ring whose write cursor sits mid-buffer wraps the visible window around the end. The
   // modulo is what keeps it inside the array: read past the end and mapX(undefined) is NaN, and
@@ -1787,10 +1861,10 @@ test('Tube Simulator HUD plots recent Ia-Vak trajectories over plate curves and 
   plugin.trajectoryIndex = 3;
   plugin.trajectoryCount = 96;
   const wrapped = drawTrajectory();
-  assert.equal(wrapped.rects.length, 6);
+  assert.equal(wrapped.rects.length, 17);
   assert.deepEqual(
     wrapped.rects.map(rect => rect[0] + 1),
-    [93, 94, 95, 0, 1, 2],
+    [82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 0, 1, 2],
     'the visible window must wrap around the end of the ring'
   );
   assert.ok(
@@ -1813,7 +1887,7 @@ test('Tube Simulator HUD plots recent Ia-Vak trajectories over plate curves and 
   plugin.trajectoryIndex = 0;
   plugin.trajectoryCount = 96;
   const narrow = drawTrajectory({ narrow: true, dpr: 2 });
-  assert.deepEqual(narrow.rects[0], [86, 186, 8, 8]);
+  assert.deepEqual(narrow.rects[0], [75, 175, 8, 8]);
 
   const container = plugin.createUI();
   assert.match(
@@ -1828,6 +1902,112 @@ test('Tube Simulator HUD plots recent Ia-Vak trajectories over plate curves and 
   assert.equal(findByClass(container, 'tube-simulator-hud').children[0].context.lineWidth, 1);
   plugin.cleanup();
 });
+
+test('Tube Simulator graph selector offers the circuit\'s own stages and falls back downstream',
+  async () => {
+    const plugin = await createPlugin();
+    const container = plugin.createUI();
+    const canvas = findByClass(container, 'tube-simulator-hud').children[0];
+    const row = findByClass(container, 'tube-simulator-hud-view');
+    const options = () => row.querySelectorAll('input[type="radio"]').map(input =>
+      `${input.value}${input.checked ? '*' : ''}${input.disabled ? '-' : ''}`);
+    // Array.from keeps the result in this realm; the panels come out of the plug-in's own.
+    const titles = () => Array.from(plugin._hudPanels(), panel => panel.title);
+    const status = () => findByClass(container, 'tube-simulator-status').textContent;
+    plugin.onMessage({
+      type: 'dspExecutionState',
+      pluginId: plugin.id,
+      pluginType: 'TubeSimulatorPlugin',
+      state: 'active',
+      reason: null,
+      validated: true
+    });
+
+    // Push-Pull Power with a driver in front: two groups to choose from, the output one showing.
+    assert.deepEqual(options(), ['driver', 'pushPull*', 'singleEnded-']);
+    assert.deepEqual(titles(), ['Push', 'Pull']);
+    assert.equal(plugin.hudAxes.xMax, plugin.pb);
+
+    // Tick labels are centred on their tick and the rightmost tick sits on the panel edge, so the
+    // canvas has to keep room for the half that hangs outside it.
+    const drawn = [];
+    canvas.context.fillText = (text, x) => {
+      drawn.push({ text, x, color: canvas.context.fillStyle });
+    };
+    plugin._drawHud();
+    const rightmostTick = Math.max(...drawn
+      .filter(entry => /^\d+$/.test(entry.text))
+      .map(entry => entry.x));
+    assert.ok(
+      canvas.width - rightmostTick >= 16,
+      'the highest plate voltage must not be clipped by the edge of the canvas'
+    );
+
+    // Both channels are overlaid in every panel, so the trace colours are named once, top right.
+    const legend = drawn.filter(entry => entry.text === 'Left' || entry.text === 'Right');
+    assert.deepEqual(
+      legend.map(entry => `${entry.text} ${entry.color}`),
+      ['Right #ffb347', 'Left #69c8ff']
+    );
+    assert.ok(legend[1].x < legend[0].x, 'Left is drawn to the left of Right');
+    assert.ok(
+      canvas.width - legend[0].x >= 16,
+      'the legend must clear the edge of the canvas'
+    );
+
+    plugin._selectHudView('driver');
+    assert.deepEqual(options(), ['driver*', 'pushPull', 'singleEnded-']);
+    assert.deepEqual(titles(), ['Stage 1', 'Stage 2']);
+    assert.equal(plugin.hudAxes.xMax, plugin.pv);
+    plugin._selectHudView('singleEnded');
+    assert.equal(plugin.hudView, 'driver', 'a group outside the circuit cannot be selected');
+
+    // Bypassing the driver drops the selected group, so the most downstream one takes over.
+    plugin.setParameters({ tp: 'Bypass' });
+    assert.deepEqual(options(), ['driver-', 'pushPull*', 'singleEnded-']);
+    plugin.setParameters({ os: 'SingleEnded' });
+    assert.deepEqual(options(), ['driver-', 'pushPull-', 'singleEnded*']);
+    // One valve, so one panel across the full width, carrying both channels like every other one.
+    assert.deepEqual(titles(), ['Output']);
+    assert.equal(plugin._hudPanels()[0].leftX, plugin.trajectories.pushLeftX);
+    assert.equal(plugin._hudPanels()[0].rightX, plugin.trajectories.pushRightX);
+    assert.equal(plugin.hudAxes.xMax, plugin.sb);
+
+    // A selection that survives a settings change is kept, whatever else becomes available.
+    plugin.setParameters({ tp: '12AU7' });
+    assert.deepEqual(options(), ['driver', 'pushPull-', 'singleEnded*']);
+    plugin.setParameters({ os: 'Line' });
+    assert.deepEqual(options(), ['driver*', 'pushPull-', 'singleEnded-']);
+
+    // Line with the driver bypassed runs no valve at all.
+    let backgrounds = 0;
+    let labels = 0;
+    canvas.context.fillRect = () => { backgrounds++; };
+    canvas.context.fillText = () => { labels++; };
+    plugin.setParameters({ tp: 'Bypass' });
+    assert.deepEqual(options(), ['driver-', 'pushPull-', 'singleEnded-']);
+    assert.deepEqual(titles(), []);
+    assert.equal(plugin.hudAxes, null);
+    assert.equal(canvas.attributes['aria-label'], 'No tube stage is active.');
+    assert.equal(status(), 'No tube stage is active. Output safety reduction: 0.0 dB.');
+    backgrounds = 0;
+    labels = 0;
+    plugin._drawHud();
+    assert.equal(backgrounds, 1, 'an empty graph is painted, not left holding the last trail');
+    assert.equal(labels, 0, 'no axis labels are drawn without a stage to plot');
+
+    // A bypassed effect plots nothing either, and keeps the selection for when it comes back.
+    plugin.setParameters({ os: 'Power', tp: '12AU7' });
+    plugin._selectHudView('driver');
+    plugin.setEnabled(false);
+    assert.deepEqual(options(), ['driver*-', 'pushPull-', 'singleEnded-']);
+    assert.deepEqual(titles(), []);
+    assert.equal(status(), 'No tube stage is active.');
+    plugin.setEnabled(true);
+    assert.deepEqual(options(), ['driver*', 'pushPull', 'singleEnded-']);
+    assert.deepEqual(titles(), ['Stage 1', 'Stage 2']);
+    plugin.cleanup();
+  });
 
 test('Tube Simulator HUD gates animation, keeps a 96-frame main-thread ring, and cleans up', async () => {
   const plugin = await createPlugin();
@@ -1879,8 +2059,9 @@ test('Tube Simulator HUD gates animation, keeps a 96-frame main-thread ring, and
   assert.match(plugin.hudValues.ltpBalance.textContent, /^L [+−]\s*\d+\.\d\d \/ R /);
   // The flux readout shows the magnitude of the flux linkage (the single-ended core carries a
   // standing bias flux), so the sign column is always '+' and the integer part is space-padded
-  // to two columns for the swing towards the saturation figures.
-  assert.match(plugin.hudValues.transformerFlux.textContent, /^L \+[ \d]\d\.\d{6} \/ R /);
+  // to two columns for the swing towards the saturation figures. Three fraction digits keep the
+  // sub-10 Wb-turns reading at the same relative resolution the volt-scale readouts get from two.
+  assert.match(plugin.hudValues.transformerFlux.textContent, /^L \+[ \d]\d\.\d{3} \/ R /);
 
   const initialRevision = plugin.hudAxesRevision;
   plugin.setParameters({ dr: 6, og: -3, mx: 75 });

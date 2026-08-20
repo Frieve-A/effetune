@@ -54,7 +54,7 @@ try {
 
   const smoke = [
     "import('@effetune/dsp').then(async m => {",
-    "  if (m.EFFECT_TYPES.length !== 90) throw new Error('catalog mismatch');",
+    "  if (m.EFFECT_TYPES.length !== 92) throw new Error('catalog mismatch');",
     "  if (m.EFFECT_CATALOG.channels.length !== 15) throw new Error('catalog channels missing');",
     "  for (const type of m.EFFECT_TYPES) {",
     "    const factoryName = `create${type}`;",
@@ -161,7 +161,7 @@ try {
     "  const generated = await import('@effetune/dsp');",
     "  new generated.Compressor({threshold: -12});",
     "  const catalog = await import('@effetune/dsp/catalog');",
-    "  if (catalog.EFFECT_CATALOG.effects.length !== 90) throw new Error('catalog subpath failed');",
+    "  if (catalog.EFFECT_CATALOG.effects.length !== 92) throw new Error('catalog subpath failed');",
     "})"
   ].join('\n');
   await run(process.execPath, ['--input-type=module', '--eval', smoke], {

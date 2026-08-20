@@ -12,6 +12,7 @@ const ASSET_NAMES_BY_EFFECT = new Map([
   ['FIRCrossover', ['impulseResponse']],
   ['FiveBandFIRPEQ', ['impulseResponse']],
   ['GroupDelayEQ', ['impulseResponse']],
+  ['GroupDelayPEQ', ['impulseResponse']],
   ['IRReverb', ['impulseResponse']],
   ['RoomEQ', ['impulseResponse']]
 ]);

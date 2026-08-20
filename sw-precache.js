@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.5.0-70e452b0a7ea5f32";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.5.0-97fad50685dbb4d1";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./effetune-library.css",
   "./effetune-mobile.css",
@@ -56,6 +56,9 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/group-delay-eq/design-core.js",
   "./js/group-delay-eq/design-worker.js",
   "./js/group-delay-eq/designer.js",
+  "./js/group-delay-peq/design-core.js",
+  "./js/group-delay-peq/design-worker.js",
+  "./js/group-delay-peq/designer.js",
   "./js/ir-library/audio-header-metadata.js",
   "./js/ir-library/browser.js",
   "./js/ir-library/electron-ir-library-backend.js",
@@ -211,6 +214,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/utils/measurement-dsp/smoothing.js",
   "./js/utils/pipeline-state-codec.js",
   "./js/utils/serialization-utils.js",
+  "./js/utils/space-key-guard.js",
   "./js/utils/wake-lock-manager.js",
   "./js/vendor/jsmediatags-3.9.5.min.js",
   "./js/vendor/jszip-3.10.1.min.js",
@@ -290,6 +294,8 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./plugins/eq/five_band_peq.js",
   "./plugins/eq/group_delay_eq.css",
   "./plugins/eq/group_delay_eq.js",
+  "./plugins/eq/group_delay_peq.css",
+  "./plugins/eq/group_delay_peq.js",
   "./plugins/eq/hi_pass_filter.css",
   "./plugins/eq/hi_pass_filter.js",
   "./plugins/eq/lo_pass_filter.css",
@@ -318,6 +324,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./plugins/lofi/g726_adpcm_simulator.js",
   "./plugins/lofi/gsm_full_rate_simulator.js",
   "./plugins/lofi/hum_generator.js",
+  "./plugins/lofi/md_simulator.js",
   "./plugins/lofi/mp3_codec_simulator.js",
   "./plugins/lofi/noise_blender.js",
   "./plugins/lofi/simple_jitter.js",

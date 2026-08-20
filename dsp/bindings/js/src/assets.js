@@ -705,6 +705,29 @@ function prepareFirFilterAsset(effect, resolvedAssets, {
            path.irChannel !== paths[index].irChannel))) {
       throw new AssetError(`${effect.id} filter paths do not match its band layout.`);
     }
+  } else if (effect.type === 'RoomEQ') {
+    const explicitTopology = asset.format.topology;
+    if (explicitTopology === IR_ASSET_TOPOLOGY.mono ||
+        (explicitTopology === IR_ASSET_TOPOLOGY.unspecified && asset.format.channels === 1)) {
+      topology = IR_ASSET_TOPOLOGY.mono;
+    } else if (explicitTopology === IR_ASSET_TOPOLOGY.independent ||
+               (explicitTopology === IR_ASSET_TOPOLOGY.unspecified &&
+                asset.format.channels === processingChannels)) {
+      topology = IR_ASSET_TOPOLOGY.independent;
+    } else {
+      throw new AssetError(
+        `${effect.id} requires either one shared filter channel or one filter channel per processing channel.`
+      );
+    }
+    assetChannels = asset.format.channels;
+    paths = [];
+    inputCount = 0;
+    if ((topology === IR_ASSET_TOPOLOGY.mono && assetChannels !== 1) ||
+        (topology === IR_ASSET_TOPOLOGY.independent && assetChannels !== processingChannels)) {
+      throw new AssetError(
+        `${effect.id} requires either one shared filter channel or one filter channel per processing channel.`
+      );
+    }
   } else {
     topology = IR_ASSET_TOPOLOGY.mono;
     assetChannels = 1;

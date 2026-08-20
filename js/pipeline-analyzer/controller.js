@@ -25,11 +25,8 @@ const GRAPH_VIEWS = new Set([
 ]);
 const MAX_OUTPUTS = 4;
 const MLS_SEQUENCE_LENGTHS = new Set(PIPELINE_ANALYZER_MLS_LENGTHS);
-const TSP_SEQUENCE_LENGTHS = new Set(PIPELINE_ANALYZER_TSP_LENGTHS);
-const PERIODIC_SEQUENCE_LENGTHS = new Set([
-    ...PIPELINE_ANALYZER_MLS_LENGTHS,
-    ...PIPELINE_ANALYZER_TSP_LENGTHS
-]);
+// TSP and Unit Impulse share the power-of-two lengths; MLS needs its 2^n-1 periods.
+const POWER_OF_TWO_SEQUENCE_LENGTHS = new Set(PIPELINE_ANALYZER_TSP_LENGTHS);
 const DEFAULT_MEASUREMENT_SETTINGS = Object.freeze({
     signalType: 'mls',
     levelDb: -12,
@@ -91,17 +88,15 @@ function normalizeMeasurementSettings(value) {
     const signalType = ['mls', 'tsp', 'impulse'].includes(value?.signalType)
         ? value.signalType
         : 'mls';
-    const allowedLengths = signalType === 'tsp'
-        ? TSP_SEQUENCE_LENGTHS
-        : signalType === 'mls'
-            ? MLS_SEQUENCE_LENGTHS
-            : PERIODIC_SEQUENCE_LENGTHS;
+    const allowedLengths = signalType === 'mls'
+        ? MLS_SEQUENCE_LENGTHS
+        : POWER_OF_TWO_SEQUENCE_LENGTHS;
     return {
         signalType,
         levelDb: clampInteger(value?.levelDb, -60, 0, DEFAULT_MEASUREMENT_SETTINGS.levelDb),
         sequenceLength: allowedLengths.has(value?.sequenceLength)
             ? value.sequenceLength
-            : signalType === 'tsp' ? 65536 : DEFAULT_MEASUREMENT_SETTINGS.sequenceLength,
+            : signalType === 'mls' ? DEFAULT_MEASUREMENT_SETTINGS.sequenceLength : 65536,
         stabilizationPeriods: clampInteger(
             value?.stabilizationPeriods,
             1,

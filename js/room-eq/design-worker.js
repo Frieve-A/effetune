@@ -21,7 +21,9 @@ globalThis.onmessage = async event => {
         const payload = buildIrAssetPayload({
             channels: result.channels,
             sampleRate: result.config.sampleRate,
-            topology: IR_ASSET_TOPOLOGY.mono
+            topology: result.channels.length > 1
+                ? IR_ASSET_TOPOLOGY.independent
+                : IR_ASSET_TOPOLOGY.mono
         });
         const transferables = [payload];
         for (const preview of result.previews) {
@@ -31,6 +33,7 @@ globalThis.onmessage = async event => {
                 preview.measuredDb.buffer,
                 preview.targetDb.buffer,
                 preview.predictedDb.buffer,
+                preview.predictedBaseDb.buffer,
                 preview.baseCorrectionDb.buffer
             );
             if (preview.phaseResponse) {

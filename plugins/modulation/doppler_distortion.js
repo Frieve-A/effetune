@@ -124,10 +124,10 @@ class DopplerDistortionPlugin extends PluginBase {
         container.className = 'doppler-distortion-plugin-ui plugin-parameter-ui';
 
         // Create UI controls using the base class helper
-        container.appendChild(this.createParameterControl('Coil Force', 0.0, 100.0, 0.1, this.cf, this.setCf.bind(this), 'N / V'));
-        container.appendChild(this.createParameterControl('Speaker Mass', 0.001, 0.5, 0.001, this.sm, this.setSm.bind(this), 'kg'));
-        container.appendChild(this.createParameterControl('Spring Constant', 1, 100000, 10, this.sc, this.setSc.bind(this), 'N/m'));
-        container.appendChild(this.createParameterControl('Damping Factor', 0.0, 50.0, 0.1, this.df, this.setDf.bind(this), 'N·s/m'));
+        container.appendChild(this.createParameterControl('Coil Force', 0.0, 100.0, 0.1, this.cf, this.setCf.bind(this), 'N / V', 'cf'));
+        container.appendChild(this.createParameterControl('Speaker Mass', 0.001, 0.5, 0.001, this.sm, this.setSm.bind(this), 'kg', 'sm'));
+        container.appendChild(this.createParameterControl('Spring Constant', 1, 100000, 10, this.sc, this.setSc.bind(this), 'N/m', 'sc'));
+        container.appendChild(this.createParameterControl('Damping Factor', 0.0, 50.0, 0.1, this.df, this.setDf.bind(this), 'N·s/m', 'df'));
 
         return container;
     }

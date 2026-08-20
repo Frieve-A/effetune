@@ -505,9 +505,11 @@ class NarrowRangePlugin extends PluginBase {
 
     // Create HPF and LPF parameter rows
     const hpfRow = createRow("HPF Freq (Hz):", 20, 4000, 1, this.hf, v => this.setHf(v));
-    hpfRow.appendChild(createSlopeSelect(this.hs, v => this.setHs(v), "HPF"));
+    const hpfSlopeSelect = createSlopeSelect(this.hs, v => this.setHs(v), "HPF");
+    hpfRow.appendChild(hpfSlopeSelect);
     const lpfRow = createRow("LPF Freq (Hz):", 200, 40000, 100, this.lf, v => this.setLf(v));
-    lpfRow.appendChild(createSlopeSelect(this.ls, v => this.setLs(v), "LPF"));
+    const lpfSlopeSelect = createSlopeSelect(this.ls, v => this.setLs(v), "LPF");
+    lpfRow.appendChild(lpfSlopeSelect);
 
     // Create graph container and canvas
     const { container: graphContainer, canvas } = this.createResponsiveGraph({
@@ -524,6 +526,30 @@ class NarrowRangePlugin extends PluginBase {
     container.appendChild(lpfRow);
     container.appendChild(graphContainer);
     this.drawGraph(canvas);
+
+    // Automation playback and preset recall change the model without touching the
+    // DOM, so the parts of the UI this plugin builds by hand are refreshed here.
+    // Every control in this plugin is hand-built, so all four of them plus the
+    // response curve are pushed from the model.
+    const hpfInputs = hpfRow.querySelectorAll("input");
+    const lpfInputs = lpfRow.querySelectorAll("input");
+    this.registerUIRefresh(() => {
+      hpfInputs.forEach(input => {
+        input.value = this.hf;
+        // Only the range of the pair carries a track fill to repaint.
+        if (input.type === "range") window.uiManager?.refreshRangeFillStyling?.(input);
+      });
+      lpfInputs.forEach(input => {
+        input.value = this.lf;
+        if (input.type === "range") window.uiManager?.refreshRangeFillStyling?.(input);
+      });
+      // Tested per element, so one select being held still lets the other track.
+      const heldByUser = el => this.isHeldByUser(el);
+      if (!heldByUser(hpfSlopeSelect)) hpfSlopeSelect.value = this.hs;
+      if (!heldByUser(lpfSlopeSelect)) lpfSlopeSelect.value = this.ls;
+      this.drawGraph(canvas);
+    });
+
     return container;
   }
 

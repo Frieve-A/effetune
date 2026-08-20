@@ -34,13 +34,14 @@ const NATIVE_DIRECT_REFERENCE_ENGINES = new Set([
   'native-fir-crossover-direct-double-v1',
   'native-five-band-fir-peq-direct-double-v1',
   'native-group-delay-eq-direct-double-v1',
-  'native-ir-direct-double-v2',
+  'native-group-delay-peq-direct-double-v1',
+  'native-ir-direct-double-v3',
   'native-room-eq-direct-double-v1',
   'native-room-eq-direct-double-v2'
 ]);
 
 const PINNED_NATIVE_DIRECT_REFERENCE_HASHES = new Map([
-  ['native-ir-direct-double-v2', '415b6a5d0923bf1040813d5920d9e8a6b730ba5df73ec4256af84c309b13568a'],
+  ['native-ir-direct-double-v3', '774ded205afffa4abe9af33a297fd97a7065cb439183a44cdad3007e4a7a6ff1'],
   ['native-room-eq-direct-double-v1', '83045565caf287233033c9a0221826e637f07068df1af63eb59cb246b274133f'],
   ['native-room-eq-direct-double-v2', '35e819cf73a00e7985580701ae3e468f1cead2f3b595e1061471ba0cd39e65be']
 ]);

@@ -11,6 +11,16 @@ const ROOM_EQ_GRAPH_FREQUENCY_TICKS =
     [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
 const ROOM_EQ_RESPONSE_HIDDEN_CLASS = 'room-eq-response-hidden';
 
+// Curves are drawn without clamping them to the plot area so they overflow past
+// the top and bottom edges instead of being cropped flat there. Only the path
+// coordinates are bounded, far outside the visible graph box, to keep the path
+// data finite when a value is infinite or absurdly large.
+function boundGraphY(y, height) {
+    const bound = height * 2;
+    if (!Number.isFinite(y)) return y < 0 ? -bound : bound;
+    return y < -bound ? -bound : y > bound ? bound : y;
+}
+
 function processRoomEqAutomation(context, data, parameters) {
     if (!parameters.enabled) return data;
     const { channelCount, blockSize, sampleRate } = parameters;
@@ -118,7 +128,10 @@ class RoomEqAdditionalEqEditor {
         });
         if (!this.uiCreated) return;
         this.setUIValues();
-        this.updateMarkers();
+        // Repositioning the markers would yank one out from under the pointer if an
+        // inbound update lands mid-drag. The number boxes and the response curve
+        // still follow; only the marker positions are held off.
+        if (!this.host?.isGraphPointerActive?.()) this.updateMarkers();
         this.updateResponse();
     }
 
@@ -369,12 +382,13 @@ class RoomEqAdditionalEqEditor {
         qRow.appendChild(qSlider);
         qRow.appendChild(qText);
 
-        const syncQControls = () => {
+        const syncQControls = (normalizeText = false) => {
             const maxQ = ['ls', 'hs'].includes(this['t' + index]) ? 2 : 10;
             qSlider.max = maxQ;
             qText.max = maxQ;
-            qSlider.value = parseFloat(this['q' + index]).toFixed(2);
-            qText.value = parseFloat(this['q' + index]).toFixed(2);
+            const formatted = parseFloat(this['q' + index]).toFixed(2);
+            if (!this.host?.isHeldByUser?.(qSlider)) qSlider.value = formatted;
+            if (normalizeText || !this.host?.isHeldByUser?.(qText)) qText.value = formatted;
         };
         typeSelect.addEventListener('change', () => {
             this.setBand(index, undefined, undefined, parseFloat(qSlider.value), typeSelect.value);
@@ -390,7 +404,7 @@ class RoomEqAdditionalEqEditor {
         };
         qSlider.addEventListener('input', () => updateQ(qSlider.value));
         qText.addEventListener('input', () => updateQ(qText.value));
-        qText.addEventListener('change', syncQControls);
+        qText.addEventListener('change', () => syncQControls(true));
 
         const freqRow = document.createElement('div');
         freqRow.className = 'room-eq-additional-eq-freq-row';
@@ -480,18 +494,26 @@ class RoomEqAdditionalEqEditor {
         const qText = bandControl.querySelector('.room-eq-additional-eq-q-text');
         const freqText = bandControl.querySelector('.room-eq-additional-eq-freq-text');
         const gainText = bandControl.querySelector('.room-eq-additional-eq-gain-text');
-        if (typeSelect) typeSelect.value = this['t' + index];
+        const heldByUser = element => this.host?.isHeldByUser?.(element) ?? false;
+        if (typeSelect && !heldByUser(typeSelect)) typeSelect.value = this['t' + index];
         const maxQ = ['ls', 'hs'].includes(this['t' + index]) ? 2 : 10;
         if (qSlider) {
             qSlider.max = maxQ;
-            qSlider.value = parseFloat(this['q' + index]).toFixed(2);
+            if (!heldByUser(qSlider)) {
+                qSlider.value = parseFloat(this['q' + index]).toFixed(2);
+                window.uiManager?.refreshRangeFillStyling?.(qSlider);
+            }
         }
         if (qText) {
             qText.max = maxQ;
-            qText.value = parseFloat(this['q' + index]).toFixed(2);
+            if (!heldByUser(qText)) qText.value = parseFloat(this['q' + index]).toFixed(2);
         }
-        if (freqText) freqText.value = parseFloat(this['f' + index]).toFixed(0);
-        if (gainText) gainText.value = parseFloat(this['g' + index]).toFixed(1);
+        if (freqText && !heldByUser(freqText)) {
+            freqText.value = parseFloat(this['f' + index]).toFixed(0);
+        }
+        if (gainText && !heldByUser(gainText)) {
+            gainText.value = parseFloat(this['g' + index]).toFixed(1);
+        }
     }
 
     freqToX(frequency) {
@@ -734,6 +756,7 @@ class RoomEqAdditionalEqEditor {
         };
         const measuredDb = interpolate(this.baseResponse?.measuredDb);
         const correctionDb = interpolate(this.baseResponse?.correctionDb);
+        const predictedBaseDb = interpolate(this.baseResponse?.predictedBaseDb);
         while (this.responseSvg.firstChild) {
             this.responseSvg.removeChild(this.responseSvg.firstChild);
         }
@@ -741,7 +764,7 @@ class RoomEqAdditionalEqEditor {
         const appendPath = (values, className, stroke) => {
             const pathData = values.map((gain, index) => {
                 const x = this.freqToX(frequencies[index]) * width / 100;
-                const y = this.gainToY(gain) * height / 100;
+                const y = boundGraphY(this.gainToY(gain) * height / 100, height);
                 return `${index ? 'L' : 'M'} ${x.toFixed(2)},${y.toFixed(2)}`;
             });
             if (!pathData.length) return;
@@ -758,23 +781,27 @@ class RoomEqAdditionalEqEditor {
             const totalCorrectionDb = correctionDb.map(
                 (gain, index) => gain + equalizerDb[index]
             );
-            let normalizedMeasuredDb = measuredDb;
+            const normalizationGainDb = Number.isFinite(this.baseResponse?.normalizationGainDb)
+                ? this.baseResponse.normalizationGainDb
+                : 0;
             if (measuredDb) {
-                const normalizationGainDb = Number.isFinite(this.baseResponse?.normalizationGainDb)
-                    ? this.baseResponse.normalizationGainDb
-                    : 0;
-                normalizedMeasuredDb = measuredDb.map(gain => gain - normalizationGainDb);
                 appendPath(
-                    normalizedMeasuredDb,
+                    measuredDb.map(gain => gain - normalizationGainDb),
                     'room-eq-measured-response-path',
                     '#b0b0b0'
                 );
             }
             appendPath(correctionDb, 'room-eq-base-response-path', '#80c080');
             appendPath(totalCorrectionDb, 'room-eq-combined-response-path', '#00ff00');
-            if (normalizedMeasuredDb) {
+            // The design predicts the corrected result against the unsmoothed
+            // measurement, so it keeps the residue the correction could not reach.
+            // Adding the correction to the smoothed measured curve drawn above would
+            // instead cancel out to the target every time.
+            if (predictedBaseDb) {
                 appendPath(
-                    normalizedMeasuredDb.map((gain, index) => gain + totalCorrectionDb[index]),
+                    predictedBaseDb.map(
+                        (gain, index) => gain - normalizationGainDb + equalizerDb[index]
+                    ),
                     'room-eq-corrected-response-path',
                     '#ffffff'
                 );
@@ -860,6 +887,12 @@ class RoomEqPlugin extends PluginBase {
         this.mb = 6;
         this.cr = 100;
         this.pr = 100;
+        this.rv = 0;
+        this.rw = 300;
+        this.rf = 250;
+        this.rs = 0.05;
+        this.pq = true;
+        this.ps = 0.17;
         this.rp = 0;
         this.gn = 0;
         this.eqBands = [100, 316, 1000, 3160, 10000].map(frequency => ({
@@ -871,12 +904,19 @@ class RoomEqPlugin extends PluginBase {
         }));
         this.measurementId = '';
         this.measurementName = '';
+        this.channelMeasurementIds = ['', '', '', '', '', '', '', ''];
+        this.channelMeasurementNames = ['', '', '', '', '', '', '', ''];
         this.delayMs = 0;
         this.measurementResolved = false;
         this.temporalCapability = 'reset-on-resume';
         this.offlineDspAssetErrorMessageKey = 'roomEq.error.design';
         this._sampleRate = this._getEngineSampleRate();
         this._outputChannelCount = this._getEngineChannelCount();
+        // Last IR channel count resolved for the live output width, or null while the
+        // IR runtime has not answered once. "Unresolved" is a state of its own so a
+        // selection that legitimately routes zero channels can be cached as 0 instead
+        // of being mistaken for a runtime failure.
+        this._irChannelCountCache = null;
         this._runtimePromise = null;
         this._designer = null;
         this._measurementStore = null;
@@ -897,8 +937,16 @@ class RoomEqPlugin extends PluginBase {
         this._additionalEqEditor = null;
         this._phaseCorrectionControl = null;
         this._phaseLowControl = null;
+        this._phaseSmoothingControl = null;
+        this._reverbCorrectionControls = null;
         this._lowFrequencyPhaseExtensionControl = null;
         this._referencePointSelect = null;
+        this._channelMeasurementContainer = null;
+        this._channelMeasurementRows = [];
+        this._channelMeasurementStartIndex = -1;
+        this._previewChannelControl = null;
+        this._previewChannel = 0;
+        this._selectedTab = 'measurement';
         this._responseView = 'frequency';
         this._responseViewElements = null;
         this._beforeLegendHover = null;
@@ -938,6 +986,10 @@ class RoomEqPlugin extends PluginBase {
             lowFrequencyPhaseExtensionLimited: [
                 'roomEq.warning.lowFrequencyPhaseExtensionLimited',
                 'Low-frequency phase extension was limited by the measurement or settings. Room EQ used the available measurement window and, when necessary, reduced or skipped the correction; the rest of the filter remains active.'
+            ],
+            reverbCorrectionLimited: [
+                'roomEq.warning.reverbCorrectionLimited',
+                'Reverb correction was limited by the measurement or settings. The usable reverb window or frequency band was too small, or the synthesized reverb correction did not fit safely within the time limits of the realized FIR, so Room EQ reduced or skipped the reverb correction; the rest of the filter remains active.'
             ]
         };
         const message = messages[code];
@@ -965,7 +1017,11 @@ class RoomEqPlugin extends PluginBase {
                     diagnostic.reason === 'dftWorkBudget' ||
                     diagnostic.reason === 'insufficientData' && extensionBandExists
                 ));
-        return lowPhaseLimited ? 'lowFrequencyPhaseExtensionLimited' : undefined;
+        if (lowPhaseLimited) return 'lowFrequencyPhaseExtensionLimited';
+        const reverbLimited = this.pm === 'full' && this.rv > 0 &&
+            result.diagnostics?.reverbCorrection?.some(diagnostic =>
+                diagnostic?.state === 'reduced' || diagnostic?.state === 'disabled');
+        return reverbLimited ? 'reverbCorrectionLimited' : undefined;
     }
 
     process(context, data) {
@@ -1011,6 +1067,7 @@ class RoomEqPlugin extends PluginBase {
             this._sampleRate = sampleRate;
             this._outputChannelCount = outputChannelCount;
             this._syncAdditionalEqEditor();
+            this._renderChannelMeasurements();
             this._scheduleDesign(0);
         }
         return {
@@ -1027,10 +1084,20 @@ class RoomEqPlugin extends PluginBase {
             mb: this.mb,
             cr: this.cr,
             pr: this.pr,
+            rv: this.rv,
+            rw: this.rw,
+            rf: this.rf,
+            rs: this.rs,
+            pq: this.pq,
+            ps: this.ps,
             rp: this.rp,
             bs: this.eqBands.map(band => ({ ...band })),
             ms: this.measurementId,
-            mn: this.measurementName
+            mn: this.measurementName,
+            ...Object.fromEntries(this.channelMeasurementIds.flatMap((id, index) => [
+                [`ms${index}`, id],
+                [`mn${index}`, this.channelMeasurementNames[index]]
+            ]))
         };
     }
 
@@ -1039,12 +1106,17 @@ class RoomEqPlugin extends PluginBase {
         delete serialized.fd;
         delete serialized.dy;
         serialized.dl = this.delayMs;
+        for (let index = 0; index < 8; index += 1) {
+            if (!serialized[`ms${index}`]) delete serialized[`ms${index}`];
+            if (!serialized[`mn${index}`]) delete serialized[`mn${index}`];
+        }
         return serialized;
     }
 
     setParameters(params = {}) {
         const previous = this._designSignature();
         const previousLatency = this.lt;
+        const previousSelection = this._channelSelectionKey();
         super._setValidatedParameters(params);
         if (['min', 'lin', 'full'].includes(params.pm)) this.pm = params.pm;
         const taps = Number(params.tp);
@@ -1084,6 +1156,21 @@ class RoomEqPlugin extends PluginBase {
         if (params.pr !== undefined) {
             this.pr = Math.round(this.parseFiniteNumber(params.pr, 0, 100, this.pr));
         }
+        if (params.rv !== undefined) {
+            this.rv = Math.round(this.parseFiniteNumber(params.rv, 0, 100, this.rv));
+        }
+        if (params.rw !== undefined) this.rw = this.parseFiniteNumber(params.rw, 20, 1000, this.rw);
+        if (params.rf !== undefined) {
+            this.rf = Math.round(this.parseFiniteNumber(params.rf, 20, 20000, this.rf));
+        }
+        if (params.rs !== undefined) this.rs = this.parseFiniteNumber(params.rs, 0.02, 1, this.rs);
+        if (params.pq !== undefined) {
+            const auto = params.pq === true || params.pq === 1 ||
+                params.pq === 'true' || params.pq === '1';
+            if (this.pq && !auto && params.ps === undefined) this.ps = this.sm;
+            this.pq = auto;
+        }
+        if (params.ps !== undefined) this.ps = this.parseFiniteNumber(params.ps, 0.02, 1, this.ps);
         if (params.rp !== undefined) {
             const referencePoint = Number(params.rp);
             this.rp = Number.isSafeInteger(referencePoint) && referencePoint >= 0
@@ -1094,21 +1181,20 @@ class RoomEqPlugin extends PluginBase {
         if (Array.isArray(params.bs)) {
             this.eqBands = this.eqBands.map((band, index) => this._validatedBand(params.bs[index], band));
         }
-        let legacyIndex = -1;
+        const channelIds = Array.isArray(params.ms) ? params.ms : null;
+        const channelNames = Array.isArray(params.mn) ? params.mn : null;
         for (let index = 0; index < 8; index += 1) {
-            const id = params[`ms${index}`] ?? params.ms?.[index];
-            if (legacyIndex < 0 && typeof id === 'string' && id) legacyIndex = index;
+            const id = params[`ms${index}`] ?? channelIds?.[index];
+            if (typeof id === 'string') this.channelMeasurementIds[index] = id.slice(0, 160);
+            const name = params[`mn${index}`] ?? channelNames?.[index];
+            if (typeof name === 'string') this.channelMeasurementNames[index] = name.slice(0, 160);
         }
-        const measurementId = typeof params.ms === 'string'
-            ? params.ms
-            : legacyIndex >= 0 ? params[`ms${legacyIndex}`] ?? params.ms?.[legacyIndex] : undefined;
-        const measurementName = typeof params.mn === 'string'
-            ? params.mn
-            : legacyIndex >= 0 ? params[`mn${legacyIndex}`] ?? params.mn?.[legacyIndex] : undefined;
+        const measurementId = typeof params.ms === 'string' ? params.ms : undefined;
+        const measurementName = typeof params.mn === 'string' ? params.mn : undefined;
         if (typeof measurementId === 'string') this.measurementId = measurementId.slice(0, 160);
         if (typeof measurementName === 'string') this.measurementName = measurementName.slice(0, 160);
         const delaySamples = Number(params.dy);
-        const delay = params.dl ?? (legacyIndex >= 0 ? params[`dy${legacyIndex}`] : params.dy0);
+        const delay = params.dl ?? params.dy0;
         if (Number.isFinite(delaySamples)) {
             this.delayMs = this.parseFiniteNumber(
                 delaySamples * 1000 / this._sampleRate, 0, 20, this.delayMs);
@@ -1120,9 +1206,106 @@ class RoomEqPlugin extends PluginBase {
         const next = this._designSignature();
         if (previous !== next) this._scheduleDesign(150);
         else if (previousLatency !== this.lt && this._lastDesign) this._stageDesign(this._lastDesign);
+        if (previousSelection !== this._channelSelectionKey()) this._renderChannelMeasurements();
         this._syncAdditionalEqEditor();
         this._syncPhaseCorrectionControl();
         this._renderStatus();
+    }
+
+    _channelSelectionKey() {
+        return JSON.stringify([this.channel, this._outputChannelCount, this.channelMeasurementIds]);
+    }
+
+    // The one definition of "which per-channel slots are in effect". Every consumer
+    // - the assignment checks, source resolution, the rendered rows, the design
+    // signature and the external asset signature - reads this window, so a slot the
+    // UI never shows can never steer the design either.
+    _activeChannelMeasurementIds(
+        channelCount = this._irChannelCountCache,
+        channelMeasurementIds = this.channelMeasurementIds
+    ) {
+        const count = Number.isInteger(channelCount) ? channelCount : 0;
+        return count > 1 ? channelMeasurementIds.slice(0, count) : [];
+    }
+
+    // The dependency view of the same slots. While the effective width is still
+    // unresolved no slot can be placed yet, so every assignment is reported: the
+    // offline asset gates must stay inclusive, whereas the identity consumers above
+    // stay empty so no phantom row, source or signature entry is ever produced.
+    _dependencyChannelMeasurementIds() {
+        return Number.isInteger(this._irChannelCountCache)
+            ? this._activeChannelMeasurementIds()
+            : this.channelMeasurementIds;
+    }
+
+    _hasChannelMeasurements() {
+        return this._dependencyChannelMeasurementIds().some(Boolean);
+    }
+
+    // Null means "the IR runtime could not answer"; every resolved answer, zero
+    // included, is returned as an integer so a selection that routes no channel is
+    // never confused with a runtime failure.
+    async _irChannelCount(outputChannelCount = this._outputChannelCount) {
+        try {
+            const runtime = await this._getRuntime();
+            const count = runtime.selectedIrChannelCount(this.channel, outputChannelCount);
+            return Number.isInteger(count) ? count : 0;
+        } catch {
+            return null;
+        }
+    }
+
+    // Synchronous consumers cannot await the IR runtime, so every resolution for the
+    // live output width refreshes the cache the sync accessors read.
+    async _resolveIrChannelCount(outputChannelCount = this._outputChannelCount) {
+        const count = await this._irChannelCount(outputChannelCount);
+        if (Number.isInteger(count) && outputChannelCount === this._outputChannelCount) {
+            const changed = this._irChannelCountCache !== count;
+            this._irChannelCountCache = count;
+            // The dependency window - and with it the external asset signature - is a
+            // function of this cache, so an asset whose signature was frozen under the
+            // previous value has to be rebuilt: nothing else would ever restage it and
+            // the live signature would disagree with it forever. Both states where a
+            // descriptor already exists count: handed to the host and still awaiting
+            // admission (_candidateAssetRevision), or admitted (_designStaged). A
+            // design that is still running has neither, so it is never aborted - it
+            // reads the new value itself.
+            if (changed && (this._designStaged || this._candidateAssetRevision !== null)) {
+                this._scheduleDesign(0);
+            }
+        }
+        return count;
+    }
+
+    // Resolves the effective slots for one context's channel width. An empty result
+    // means "no slot is in effect here", and the caller falls back to the shared
+    // measurement alone.
+    async _resolveChannelMeasurementIds(
+        measurementId = this.measurementId,
+        outputChannelCount = this._outputChannelCount
+    ) {
+        const active = this._activeChannelMeasurementIds(
+            await this._resolveIrChannelCount(outputChannelCount)
+        );
+        return active.some(Boolean) ? active.map(id => id || measurementId) : [];
+    }
+
+    // First host output channel the per-channel rows map onto: '34' starts at output
+    // 3, so its two rows are Ch 3 and Ch 4 instead of Ch 1 and Ch 2.
+    _channelStartIndex() {
+        const channel = this.channel;
+        if (channel === '34') return 3;
+        if (channel === '56') return 5;
+        if (channel === '78') return 7;
+        if (channel === 'L') return 1;
+        if (channel === 'R') return 2;
+        if (/^[1-8]$/.test(String(channel))) return Number(channel);
+        return 1;
+    }
+
+    _assignedMeasurementIds() {
+        const ids = [this.measurementId, ...this._dependencyChannelMeasurementIds()].filter(Boolean);
+        return [...new Set(ids)];
     }
 
     _validatedBand(candidate, fallback) {
@@ -1139,12 +1322,18 @@ class RoomEqPlugin extends PluginBase {
     _designSignature() {
         return JSON.stringify([
             this.pm, this.tp, this.sm, this.fl, this.fh, this.dw, this.pa, this.pl,
-            this.le, this.mb, this.cr, this.pr, this.rp,
-            this.eqBands, this.measurementId, this._sampleRate, this._outputChannelCount, this.channel
+            this.le, this.mb, this.cr, this.pr, this.rv, this.rw, this.rf, this.rs,
+            this.pq, this.ps, this.rp,
+            this.eqBands, this.measurementId, this._dependencyChannelMeasurementIds(),
+            this._sampleRate, this._outputChannelCount, this.channel
         ]);
     }
 
     onChannelSelectionChanged() {
+        // A channel change never passes through setParameters(), so the per-channel
+        // rows have to be rebuilt from here or they keep the previous row count.
+        this._renderChannelMeasurements();
+        this._renderPreviewChannelSelect();
         this._scheduleDesign(0);
     }
 
@@ -1159,12 +1348,16 @@ class RoomEqPlugin extends PluginBase {
         const disabled = this.pm !== 'full';
         const inputs = this._phaseCorrectionControl?.querySelectorAll?.('input') || [];
         for (const input of inputs) input.disabled = disabled;
+        for (const row of this._reverbCorrectionControls || []) {
+            for (const input of row?.querySelectorAll?.('input') || []) input.disabled = disabled;
+        }
         if (this._referencePointSelect) this._referencePointSelect.disabled = disabled;
         if (this._lowFrequencyPhaseExtensionControl) {
             this._lowFrequencyPhaseExtensionControl.checked = this.le;
             this._lowFrequencyPhaseExtensionControl.disabled = disabled;
         }
         this._syncPhaseLowControl();
+        this._syncPhaseSmoothingControl();
     }
 
     _automaticPhaseLowFrequency() {
@@ -1179,7 +1372,7 @@ class RoomEqPlugin extends PluginBase {
         return Math.max(ROOM_EQ_PHASE_LOW_MIN, Math.ceil(1000 / this.dw));
     }
 
-    _syncPhaseLowControl() {
+    _syncPhaseLowControl({ forceValueInput = false } = {}) {
         const control = this._phaseLowControl;
         if (!control) return;
         const value = Math.max(
@@ -1188,9 +1381,13 @@ class RoomEqPlugin extends PluginBase {
         );
         const logMin = Math.log10(ROOM_EQ_PHASE_LOW_MIN);
         const logRange = Math.log10(ROOM_EQ_PHASE_LOW_MAX) - logMin;
-        control.slider.value = (Math.log10(value) - logMin) / logRange * 100;
-        window.uiManager?.refreshRangeFillStyling?.(control.slider);
-        control.valueInput.value = String(Math.round(value));
+        if (!this.isHeldByUser(control.slider)) {
+            control.slider.value = (Math.log10(value) - logMin) / logRange * 100;
+            window.uiManager?.refreshRangeFillStyling?.(control.slider);
+        }
+        if (forceValueInput || !this.isHeldByUser(control.valueInput)) {
+            control.valueInput.value = String(Math.round(value));
+        }
         control.valueInput.min = String(this._manualPhaseLowMinimumFrequency());
         control.auto.checked = this.pa;
         const unavailable = this.pm !== 'full';
@@ -1211,6 +1408,28 @@ class RoomEqPlugin extends PluginBase {
         );
         row.classList.add('room-eq-phase-low-row');
         const [slider, valueInput] = row.querySelectorAll('input');
+        // The shared logarithmic helper commits and formats every input event, which
+        // prevents a multi-digit value from being typed. Phase Low also has a dynamic
+        // minimum, so keep the text local until the user explicitly commits it.
+        valueInput.addEventListener('input', event => {
+            event.stopImmediatePropagation();
+        }, true);
+        const commitValueInput = event => {
+            event.stopImmediatePropagation();
+            const minimum = this._manualPhaseLowMinimumFrequency();
+            const parsed = parseFloat(valueInput.value);
+            const value = Number.isFinite(parsed) ? parsed : minimum;
+            this.setParameters({
+                pl: Math.max(minimum, Math.min(ROOM_EQ_PHASE_LOW_MAX, value))
+            });
+            this._syncPhaseLowControl({ forceValueInput: true });
+        };
+        valueInput.addEventListener('blur', commitValueInput, true);
+        valueInput.addEventListener('keydown', event => {
+            if (event.key !== 'Enter') return;
+            commitValueInput(event);
+            event.preventDefault();
+        }, true);
         const autoLabel = document.createElement('label');
         autoLabel.className = 'room-eq-phase-low-auto';
         const auto = document.createElement('input');
@@ -1234,6 +1453,64 @@ class RoomEqPlugin extends PluginBase {
         slider.addEventListener('input', () => this._syncPhaseLowControl());
         valueInput.addEventListener('input', () => this._syncPhaseLowControl());
         this._syncPhaseLowControl();
+        return row;
+    }
+
+    _phaseSmoothingDisplayValue() {
+        return this.pq ? this.sm : this.ps;
+    }
+
+    _syncPhaseSmoothingControl() {
+        const control = this._phaseSmoothingControl;
+        if (!control) return;
+        const value = this._phaseSmoothingDisplayValue();
+        if (!this.isHeldByUser(control.slider)) {
+            control.slider.value = String(value);
+            window.uiManager?.refreshRangeFillStyling?.(control.slider);
+        }
+        if (!this.isHeldByUser(control.valueInput)) control.valueInput.value = value.toFixed(2);
+        control.auto.checked = this.pq;
+        const unavailable = this.pm !== 'full';
+        control.auto.disabled = unavailable;
+        control.slider.disabled = unavailable || this.pq;
+        control.valueInput.disabled = unavailable || this.pq;
+    }
+
+    _createPhaseSmoothingControl() {
+        const row = this.createParameterControl(
+            this._t('roomEq.parameter.phaseSmoothing', 'Phase Smoothing'),
+            0.02,
+            1,
+            0.01,
+            this._phaseSmoothingDisplayValue(),
+            value => this.setParameters({ ps: value }),
+            'oct'
+        );
+        row.classList.add('room-eq-phase-low-row');
+        const [slider, valueInput] = row.querySelectorAll('input');
+        const autoLabel = document.createElement('label');
+        autoLabel.className = 'room-eq-phase-low-auto';
+        const auto = document.createElement('input');
+        auto.type = 'checkbox';
+        auto.id = `room-eq-phase-smoothing-auto-${this.id}`;
+        auto.name = auto.id;
+        auto.autocomplete = 'off';
+        auto.addEventListener('change', () => {
+            this.setParameters({
+                pq: auto.checked,
+                ...(!auto.checked && { ps: this.sm })
+            });
+        });
+        autoLabel.htmlFor = auto.id;
+        autoLabel.append(
+            auto,
+            document.createTextNode(this._t('roomEq.option.auto', 'Auto'))
+        );
+        row.insertBefore(autoLabel, valueInput);
+        this._phaseSmoothingControl = { slider, valueInput, auto };
+        slider.addEventListener('input', () => this._syncPhaseSmoothingControl());
+        valueInput.addEventListener('input', () => this._syncPhaseSmoothingControl());
+        this._syncPhaseSmoothingControl();
         return row;
     }
 
@@ -1273,12 +1550,20 @@ class RoomEqPlugin extends PluginBase {
         return fellBack;
     }
 
+    _selectedPreview() {
+        // No substitute curve: a channel without a preview draws empty rather than
+        // showing another channel's response under this channel's label.
+        return this._lastDesign?.previews?.[this._previewChannel] || undefined;
+    }
+
     _syncCorrectionPreview() {
-        const preview = this._lastDesign?.previews?.find(Boolean);
+        this._renderPreviewChannelSelect();
+        const preview = this._selectedPreview();
         this._additionalEqEditor?.syncBaseResponse(preview ? {
             frequencies: preview.frequencies,
             measuredDb: preview.measuredDb,
             correctionDb: preview.baseCorrectionDb,
+            predictedBaseDb: preview.predictedBaseDb,
             normalizationGainDb: preview.referenceLevelDb
         } : null);
     }
@@ -1322,12 +1607,49 @@ class RoomEqPlugin extends PluginBase {
         return this._measurementStore;
     }
 
-    async _sourcesFor(store, isCurrent = () => !this._disposed, measurementId = this.measurementId) {
-        const measurement = measurementId ? await store?.getMeasurement(measurementId) : null;
+    async _sourcesFor(
+        store,
+        isCurrent = () => !this._disposed,
+        measurementId = this.measurementId,
+        outputChannelCount = this._outputChannelCount
+    ) {
+        // The cheap superset test only avoids consulting the IR runtime when nothing
+        // is assigned at all; the exact window is resolved against this context's own
+        // channel width so live and offline never design from different widths.
+        const channelMeasurementIds = this.channelMeasurementIds.some(Boolean)
+            ? await this._resolveChannelMeasurementIds(measurementId, outputChannelCount)
+            : [];
+        const channelIds = channelMeasurementIds.length ? channelMeasurementIds : [measurementId];
         if (!isCurrent()) return null;
-        const storedImpulses = measurement ? await store.getImpulseResponses(measurementId) : [];
-        if (!isCurrent()) return null;
-        const points = Array.isArray(measurement?.points) ? measurement.points : [];
+        const loaded = new Map();
+        for (const id of channelIds) {
+            if (!id || loaded.has(id)) continue;
+            const measurement = await store?.getMeasurement(id);
+            if (!isCurrent()) return null;
+            const storedImpulses = measurement ? await store.getImpulseResponses(id) : [];
+            if (!isCurrent()) return null;
+            loaded.set(id, this._measurementSource(measurement, storedImpulses));
+        }
+        const entries = channelIds.map(id => (id ? loaded.get(id) : null) || null);
+        const isResolved = index => Boolean(
+            entries[index]?.source?.measurement?.averageFrequencyResponse?.length
+        );
+        return {
+            sources: entries.map(entry => entry?.source || null),
+            // An assigned id that cannot be loaded has to fail the whole design:
+            // design-core substitutes a unit impulse for a null source, so a partial
+            // resolve would silently ship one uncorrected channel. Slots that resolve
+            // to no id at all are an intentional pass-through and stay exempt.
+            resolved: channelIds.some((id, index) => isResolved(index)) &&
+                channelIds.every((id, index) => !id || isResolved(index)),
+            supportsFullPhase: channelIds.every((id, index) =>
+                !id || entries[index]?.hasCompleteImpulseSet === true)
+        };
+    }
+
+    _measurementSource(measurement, storedImpulses) {
+        if (!measurement) return null;
+        const points = Array.isArray(measurement.points) ? measurement.points : [];
         const impulsesByPoint = new Map((storedImpulses || []).map(impulse => [
             impulse?.pointId,
             impulse
@@ -1338,12 +1660,8 @@ class RoomEqPlugin extends PluginBase {
             impulse.data.length > 0
         );
         return {
-            sources: [measurement ? {
-                measurement,
-                impulses: hasCompleteImpulseSet ? orderedImpulses : []
-            } : null],
-            resolved: Boolean(measurement?.averageFrequencyResponse?.length),
-            supportsFullPhase: !measurementId || Boolean(measurement && hasCompleteImpulseSet)
+            source: { measurement, impulses: hasCompleteImpulseSet ? orderedImpulses : [] },
+            hasCompleteImpulseSet
         };
     }
 
@@ -1381,6 +1699,11 @@ class RoomEqPlugin extends PluginBase {
             maxBoostDb: this.mb,
             correctionAmount: this.cr / 100,
             phaseCorrectionAmount: this.pr / 100,
+            reverbAmount: this.rv / 100,
+            reverbWindowMs: this.rw,
+            reverbMaxFrequency: this.rf,
+            reverbSmoothing: this.rs,
+            phaseSmoothing: this.pq ? null : this.ps,
             referencePoint: this.rp,
             eqBands: this.eqBands.map(band => ({ ...band }))
         };
@@ -1419,10 +1742,14 @@ class RoomEqPlugin extends PluginBase {
         this._updatePowerGainBound(null);
         this.updateParameters();
         this._renderMeasurement();
+        const assignedIds = this._assignedMeasurementIds();
         this._setStatus(this._t(
             'roomEq.measurement.missing',
             'Measurement not found: {name}',
-            { name: this.measurementName || this.measurementId }
+            {
+                name: assignedIds.map(id => this._measurementNameFor(id)).join(', ') ||
+                    this.measurementName || this.measurementId
+            }
         ), 'warning');
         this._renderStatus();
         return false;
@@ -1431,7 +1758,7 @@ class RoomEqPlugin extends PluginBase {
     async _designAndStage(generation) {
         try {
             if (this._disposed || generation !== this._designGeneration) return false;
-            if (!this.measurementId) {
+            if (!this.measurementId && !this._hasChannelMeasurements()) {
                 if (this._disposed || generation !== this._designGeneration) return false;
                 this.measurementResolved = false;
                 this._designPending = false;
@@ -1517,10 +1844,14 @@ class RoomEqPlugin extends PluginBase {
                 return false;
             }
             const channels = runtime.selectedIrChannelCount(this.channel, this._outputChannelCount);
+            const assetChannels = this._assetChannelCount(result.payload);
+            const topology = assetChannels > 1
+                ? runtime.IR_ASSET_TOPOLOGY.independent
+                : runtime.IR_ASSET_TOPOLOGY.mono;
             const footprintBytes = runtime.estimateIrKernelCommitFootprint({
                 frames: this.tp,
-                assetChannels: 1,
-                topology: runtime.IR_ASSET_TOPOLOGY.mono,
+                assetChannels,
+                topology,
                 processingChannels: channels,
                 headBlock: Number(this.lt)
             });
@@ -1555,36 +1886,75 @@ class RoomEqPlugin extends PluginBase {
         }
     }
 
-    _externalAssetSignature({ sampleRate = this._sampleRate, outputChannelCount = this._outputChannelCount } = {}) {
+    _assetChannelCount(payload) {
+        if (!(payload instanceof ArrayBuffer) || payload.byteLength < 32) return 1;
+        const channels = new DataView(payload).getUint32(4, true);
+        return Math.min(8, Math.max(1, channels));
+    }
+
+    _externalAssetSignature({
+        sampleRate = this._sampleRate,
+        outputChannelCount = this._outputChannelCount,
+        // Over-reports rather than under-reports while the width is unresolved: a
+        // signature that omits a pending assignment could match an asset that was
+        // never designed for it.
+        channelMeasurementIds = this._dependencyChannelMeasurementIds()
+    } = {}) {
         return JSON.stringify([
-            1, this.measurementId, this._designConfig(sampleRate), this.lt, this.channel, outputChannelCount
+            1, this.measurementId, channelMeasurementIds,
+            this._designConfig(sampleRate), this.lt, this.channel, outputChannelCount
         ]);
     }
 
+    // The payload describes its own frame count, so the per-channel offsets never
+    // depend on this.tp - which can already hold a newer Taps value than the staged
+    // asset was built from.
+    _payloadFrameCount(payload, assetChannels) {
+        if (!(payload instanceof ArrayBuffer) || payload.byteLength < 32) return 0;
+        const capacity = Math.floor((payload.byteLength - 32) / (assetChannels * 4));
+        const declared = new DataView(payload).getUint32(8, true);
+        return declared > 0 && declared <= capacity ? declared : capacity;
+    }
+
     _updatePowerGainBound(payload = this._lastDesign?.payload) {
-        if (!(payload instanceof ArrayBuffer) || payload.byteLength < 32 + this.tp * 4) {
+        const assetChannels = this._assetChannelCount(payload);
+        const frames = this._payloadFrameCount(payload, assetChannels);
+        if (frames < 1) {
             this.powerGainUpperBoundDb = this.gn;
             return;
         }
         const samples = new Float32Array(payload, 32);
-        let sum = 0;
-        for (let index = 0; index < this.tp; index += 1) {
-            const value = samples[index];
-            sum += value < 0 ? -value : value;
+        let peak = 0;
+        for (let channel = 0; channel < assetChannels; channel += 1) {
+            const base = channel * frames;
+            let sum = 0;
+            for (let index = 0; index < frames; index += 1) {
+                const value = samples[base + index];
+                sum += value < 0 ? -value : value;
+            }
+            if (sum > peak) peak = sum;
         }
-        this.powerGainUpperBoundDb = this.gn + 20 * Math.log10(sum > 1 ? sum : 1);
+        this.powerGainUpperBoundDb = this.gn + 20 * Math.log10(peak > 1 ? peak : 1);
     }
 
     get externalAssetInfo() {
-        if (!this.measurementId) return null;
+        const ids = this._assignedMeasurementIds();
+        if (!ids.length) return null;
         return {
             missing: !this.measurementResolved,
             pending: this._designPending,
-            ids: [this.measurementId],
-            names: [this.measurementName || 'Measurement'],
+            ids,
+            names: ids.map(id => this._measurementNameFor(id)),
             kind: 'Measurement',
             assetSignature: this._externalAssetSignature()
         };
+    }
+
+    _measurementNameFor(id) {
+        if (id === this.measurementId && this.measurementName) return this.measurementName;
+        const index = this.channelMeasurementIds.indexOf(id);
+        return (index >= 0 && this.channelMeasurementNames[index]) ||
+            this.measurementName || 'Measurement';
     }
 
     get offlineDspAssetRequired() {
@@ -1592,7 +1962,7 @@ class RoomEqPlugin extends PluginBase {
     }
 
     isOfflineDspAssetRequired() {
-        return Boolean(this.measurementId);
+        return Boolean(this.measurementId) || this._hasChannelMeasurements();
     }
 
     _offlineStaleError() {
@@ -1601,26 +1971,40 @@ class RoomEqPlugin extends PluginBase {
         return error;
     }
 
-    async resolveOfflineDspAssetRequirement({ isCurrent = () => true } = {}) {
+    // outputChannelCount is the render width of the context that will consume this
+    // requirement, not the live device width: the asset is designed for exactly the
+    // channel count createOfflineDspState() will declare as processingChannels.
+    async resolveOfflineDspAssetRequirement({
+        isCurrent = () => true,
+        outputChannelCount = this._outputChannelCount
+    } = {}) {
         const generation = this._designGeneration;
         const measurementId = this.measurementId;
+        const channelMeasurementKey = JSON.stringify(this.channelMeasurementIds);
         const operationCurrent = () => !this._disposed && isCurrent() &&
             generation === this._designGeneration;
         if (!operationCurrent()) throw this._offlineStaleError();
-        if (!measurementId) {
-            return { required: false, generation, measurementId, sourceState: null };
-        }
+        const bypass = {
+            required: false,
+            generation,
+            measurementId,
+            channelMeasurementKey,
+            outputChannelCount,
+            sourceState: null
+        };
+        if (!measurementId && !this.channelMeasurementIds.some(Boolean)) return bypass;
         const store = await this._getMeasurementStore(true);
         if (!operationCurrent()) throw this._offlineStaleError();
-        if (!store) {
-            return { required: false, generation, measurementId, sourceState: null };
-        }
-        const sourceState = await this._sourcesFor(store, operationCurrent, measurementId);
+        if (!store) return bypass;
+        const sourceState = await this._sourcesFor(
+            store, operationCurrent, measurementId, outputChannelCount);
         if (!operationCurrent() || !sourceState) throw this._offlineStaleError();
         return {
             required: sourceState.resolved === true,
             generation,
             measurementId,
+            channelMeasurementKey,
+            outputChannelCount,
             sourceState
         };
     }
@@ -1634,6 +2018,7 @@ class RoomEqPlugin extends PluginBase {
         const snapshot = {
             generation: this._designGeneration,
             measurementId: this.measurementId,
+            channelMeasurementIds: [...this.channelMeasurementIds],
             config: this._designConfig(sampleRate),
             latency: this.lt,
             channel: this.channel,
@@ -1657,9 +2042,14 @@ class RoomEqPlugin extends PluginBase {
         });
         if (!operationCurrent()) throw this._offlineStaleError();
         const requirement = offlineDspAssetRequirement ||
-            await this.resolveOfflineDspAssetRequirement({ isCurrent: operationCurrent });
+            await this.resolveOfflineDspAssetRequirement({
+                isCurrent: operationCurrent,
+                outputChannelCount
+            });
         if (!operationCurrent() || requirement.generation !== snapshot.generation ||
-            requirement.measurementId !== snapshot.measurementId) {
+            requirement.measurementId !== snapshot.measurementId ||
+            requirement.outputChannelCount !== outputChannelCount ||
+            requirement.channelMeasurementKey !== JSON.stringify(snapshot.channelMeasurementIds)) {
             throw this._offlineStaleError();
         }
         if (requirement.required !== true) return bypassState();
@@ -1689,10 +2079,13 @@ class RoomEqPlugin extends PluginBase {
             throw error;
         }
         const processingChannels = runtime.selectedIrChannelCount(snapshot.channel, outputChannelCount);
+        const assetChannels = this._assetChannelCount(designed.payload);
         const footprintBytes = runtime.estimateIrKernelCommitFootprint({
             frames: snapshot.config.taps,
-            assetChannels: 1,
-            topology: runtime.IR_ASSET_TOPOLOGY.mono,
+            assetChannels,
+            topology: assetChannels > 1
+                ? runtime.IR_ASSET_TOPOLOGY.independent
+                : runtime.IR_ASSET_TOPOLOGY.mono,
             processingChannels,
             headBlock: Number(snapshot.latency)
         });
@@ -1712,6 +2105,8 @@ class RoomEqPlugin extends PluginBase {
                 externalAssetSignature: JSON.stringify([
                     1,
                     snapshot.measurementId,
+                    this._activeChannelMeasurementIds(
+                        processingChannels, snapshot.channelMeasurementIds),
                     snapshot.config,
                     snapshot.latency,
                     snapshot.channel,
@@ -1798,7 +2193,9 @@ class RoomEqPlugin extends PluginBase {
         if (this._disposed) return;
         await this._renderMeasurement();
         if (this._disposed) return;
-        if (store && scheduleDesign && this.measurementId) this._scheduleDesign(0);
+        if (store && scheduleDesign && (this.measurementId || this._hasChannelMeasurements())) {
+            this._scheduleDesign(0);
+        }
     }
 
     _setStatus(message, state = '') {
@@ -1819,7 +2216,8 @@ class RoomEqPlugin extends PluginBase {
 
     _renderStatus() {
         if (this._disposed || !this._latencyElement) return;
-        const hasFilter = Boolean(this._lastDesign) && Boolean(this.measurementId);
+        const hasFilter = Boolean(this._lastDesign) &&
+            (Boolean(this.measurementId) || this._hasChannelMeasurements());
         const samples = hasFilter ? Number(this.lt) + (this.pm === 'min' ? 0 : this.tp / 2) : 0;
         const milliseconds = samples * 1000 / this._sampleRate;
         const assetLabels = ['bypass', 'staged', 'preparing', 'active', 'error'];
@@ -1854,7 +2252,7 @@ class RoomEqPlugin extends PluginBase {
         for (const measurement of measurements) {
             const option = document.createElement('option');
             option.value = measurement.id;
-            option.textContent = `${measurement.name} · ${measurement.pointCount} pt${measurement.hasIr ? ' · IR' : ''}`;
+            option.textContent = this._measurementOptionLabel(measurement);
             row.select.appendChild(option);
         }
         row.select.value = selected;
@@ -1874,6 +2272,116 @@ class RoomEqPlugin extends PluginBase {
             this.updateParameters();
             if (selected) this._scheduleDesign(0);
         }
+        await this._renderChannelMeasurements(measurements);
+    }
+
+    _measurementOptionLabel(measurement) {
+        return `${measurement.name} · ${measurement.pointCount} pt${measurement.hasIr ? ' · IR' : ''}`;
+    }
+
+    async _renderChannelMeasurements(measurements = null) {
+        if (this._disposed) return;
+        // Resolved before the container check so the cached channel count the
+        // synchronous consumers read stays fresh even without an open editor.
+        const channelCount = await this._resolveIrChannelCount();
+        const container = this._channelMeasurementContainer;
+        if (this._disposed || !container) return;
+        const rowCount = channelCount > 1 ? channelCount : 0;
+        let list = measurements;
+        if (rowCount > 0 && !list) {
+            const store = await this._getMeasurementStore();
+            if (this._disposed || container !== this._channelMeasurementContainer) return;
+            list = store?.listMeasurements?.() || [];
+        }
+        // The labels name host output channels, so a selection that keeps the row
+        // count but moves the first channel ('34' to '78') still has to rebuild.
+        const startIndex = this._channelStartIndex();
+        if (this._channelMeasurementRows.length !== rowCount ||
+            this._channelMeasurementStartIndex !== startIndex) {
+            container.replaceChildren();
+            this._channelMeasurementStartIndex = startIndex;
+            this._channelMeasurementRows = Array.from(
+                { length: rowCount },
+                (_, index) => this._createChannelMeasurementRow(index, container)
+            );
+        }
+        for (let index = 0; index < rowCount; index += 1) {
+            this._renderChannelMeasurementOptions(index, list || []);
+        }
+    }
+
+    _createChannelMeasurementRow(index, container) {
+        const row = document.createElement('div');
+        row.className = 'parameter-row room-eq-channel-measurement-row';
+        const label = document.createElement('label');
+        const select = document.createElement('select');
+        select.id = `room-eq-channel-measurement-${index}-${this.id}`;
+        label.htmlFor = select.id;
+        label.textContent = this._t(
+            'roomEq.parameter.channelMeasurement',
+            'Measurement Ch {channel}',
+            { channel: this._channelStartIndex() + index }
+        );
+        select.addEventListener('change', () => {
+            const option = select.selectedOptions?.[0];
+            this.setParameters({
+                [`ms${index}`]: select.value,
+                [`mn${index}`]: select.value ? option?.textContent || '' : ''
+            });
+        });
+        row.append(label, select);
+        container.appendChild(row);
+        return { row, select };
+    }
+
+    _renderChannelMeasurementOptions(index, measurements) {
+        const select = this._channelMeasurementRows[index]?.select;
+        if (!select) return;
+        select.replaceChildren();
+        const shared = document.createElement('option');
+        shared.value = '';
+        shared.textContent = this._t('roomEq.measurement.shared', '(Shared)');
+        select.appendChild(shared);
+        for (const measurement of measurements) {
+            const option = document.createElement('option');
+            option.value = measurement.id;
+            option.textContent = this._measurementOptionLabel(measurement);
+            select.appendChild(option);
+        }
+        const selected = this.channelMeasurementIds[index];
+        if (selected && !measurements.some(measurement => measurement.id === selected)) {
+            const missing = document.createElement('option');
+            missing.value = selected;
+            missing.textContent = this._t('roomEq.measurement.missing', 'Measurement not found: {name}', {
+                name: this.channelMeasurementNames[index] || selected
+            });
+            select.appendChild(missing);
+        }
+        select.value = selected;
+    }
+
+    _renderPreviewChannelSelect() {
+        const control = this._previewChannelControl;
+        if (!control) return;
+        const previews = this._lastDesign?.previews;
+        const count = Array.isArray(previews) ? previews.length : 0;
+        if (this._previewChannel >= count) this._previewChannel = 0;
+        control.row.hidden = count < 2;
+        const startIndex = this._channelStartIndex();
+        if (control.count !== count || control.startIndex !== startIndex) {
+            control.count = count;
+            control.startIndex = startIndex;
+            control.select.replaceChildren();
+            for (let index = 0; index < count; index += 1) {
+                const option = document.createElement('option');
+                option.value = String(index);
+                option.textContent = this._t('roomEq.channel.label', 'Ch {channel}', {
+                    channel: startIndex + index
+                });
+                control.select.appendChild(option);
+            }
+        }
+        control.select.value = String(this._previewChannel);
     }
 
     _createResponseViewControls(editor) {
@@ -1905,7 +2413,7 @@ class RoomEqPlugin extends PluginBase {
             this._t('roomEq.parameter.graph', 'Graph'),
             options,
             this._responseView,
-            value => this._setResponseView(value)
+            value => this._setResponseView(value), '_responseView'
         );
         controls.classList.add('room-eq-response-view-controls');
         controls.setAttribute('role', 'radiogroup');
@@ -1916,6 +2424,31 @@ class RoomEqPlugin extends PluginBase {
         const inputs = Object.fromEntries(
             Array.from(controls.querySelectorAll('input'), input => [input.value, input])
         );
+
+        const previewChannelRow = document.createElement('span');
+        previewChannelRow.className = 'room-eq-preview-channel';
+        const previewChannelLabel = document.createElement('label');
+        const previewChannelSelect = document.createElement('select');
+        previewChannelSelect.id = `room-eq-preview-channel-${this.id}`;
+        previewChannelLabel.htmlFor = previewChannelSelect.id;
+        previewChannelLabel.textContent = this._t(
+            'roomEq.parameter.previewChannel',
+            'Preview channel'
+        );
+        previewChannelSelect.addEventListener('change', () => {
+            this._previewChannel = Number(previewChannelSelect.value) || 0;
+            this._syncCorrectionPreview();
+            this._additionalEqEditor?.updateResponse?.();
+        });
+        previewChannelRow.append(previewChannelLabel, previewChannelSelect);
+        controls.appendChild(previewChannelRow);
+        this._previewChannelControl = {
+            row: previewChannelRow,
+            select: previewChannelSelect,
+            count: -1,
+            startIndex: -1
+        };
+        this._renderPreviewChannelSelect();
 
         const overlays = {
             phase: this._createResponseOverlay(
@@ -2304,13 +2837,12 @@ class RoomEqPlugin extends PluginBase {
                 previousValue = null;
                 continue;
             }
-            const boundedValue = value < -limit ? -limit : value > limit ? limit : value;
             const x = this._additionalEqEditor.freqToX(frequency) * width / 100;
-            const y = (limit - boundedValue) / (2 * limit) * height;
+            const y = boundGraphY((limit - value) / (2 * limit) * height, height);
             const command = previousValue === null || (breakStep > 0 &&
-                Math.abs(boundedValue - previousValue) > breakStep) ? 'M' : 'L';
+                Math.abs(value - previousValue) > breakStep) ? 'M' : 'L';
             path.push(`${command} ${x.toFixed(2)},${y.toFixed(2)}`);
-            previousValue = boundedValue;
+            previousValue = value;
         }
         return path.join(' ');
     }
@@ -2376,7 +2908,7 @@ class RoomEqPlugin extends PluginBase {
         this._appendVerticalAxis(grid, width, height, 180,
             [180, 90, 0, -90, -180], value => `${value}°`);
 
-        const preview = this._lastDesign?.previews?.find(Boolean);
+        const preview = this._selectedPreview();
         const phasePreview = preview?.phaseResponse;
         const hasPreview = preview?.frequencies?.length > 1 &&
             preview.frequencies.length === phasePreview?.before?.length &&
@@ -2430,7 +2962,7 @@ class RoomEqPlugin extends PluginBase {
         const graph = this._prepareFrequencyGraph('groupDelay');
         if (!graph) return;
         const { grid, response, unavailable, width, height } = graph;
-        const preview = this._lastDesign?.previews?.find(Boolean);
+        const preview = this._selectedPreview();
         const groupDelayPreview = this._responseView === 'minimumGroupDelay'
             ? preview?.groupDelayResponse?.minimum
             : preview?.groupDelayResponse?.excess;
@@ -2539,7 +3071,7 @@ class RoomEqPlugin extends PluginBase {
         impulseGrid.setAttribute('preserveAspectRatio', 'none');
         impulseResponse.setAttribute('viewBox', `0 0 ${width} ${height}`);
 
-        const preview = this._lastDesign?.previews?.find(Boolean)?.impulseResponse;
+        const preview = this._selectedPreview()?.impulseResponse;
         const startMs = preview?.startMs ?? -2;
         const durationMs = preview?.durationMs || Math.max(5, this.dw);
         this._impulseTimeAxis = { startMs, durationMs };
@@ -2612,103 +3144,200 @@ class RoomEqPlugin extends PluginBase {
         this._applyBeforeLegendHover('impulse', impulseResponse);
     }
 
+    _createTabbedPanel(definitions) {
+        const instanceId = `room-eq-tabs-${this.id}`;
+        const panel = document.createElement('div');
+        panel.className = 'room-eq-panel';
+        const tabs = document.createElement('div');
+        tabs.className = 'room-eq-tabs';
+        tabs.setAttribute('role', 'tablist');
+        const contents = document.createElement('div');
+        contents.className = 'room-eq-tab-contents';
+        for (const definition of definitions) {
+            const active = definition.id === this._selectedTab;
+            const tab = document.createElement('button');
+            const content = document.createElement('div');
+            tab.type = 'button';
+            tab.id = `${instanceId}-${definition.id}-tab`;
+            tab.className = `room-eq-tab ${active ? 'active' : ''}`;
+            tab.textContent = definition.label;
+            tab.setAttribute('role', 'tab');
+            tab.setAttribute('aria-selected', active ? 'true' : 'false');
+            tab.setAttribute('aria-controls', `${instanceId}-${definition.id}-panel`);
+            content.id = `${instanceId}-${definition.id}-panel`;
+            content.className = `room-eq-tab-content plugin-parameter-ui ${active ? 'active' : ''}`;
+            content.setAttribute('role', 'tabpanel');
+            content.setAttribute('aria-labelledby', tab.id);
+            content.hidden = !active;
+            definition.create(content);
+            tab.addEventListener('click', () => {
+                tabs.querySelectorAll('.room-eq-tab').forEach(item => {
+                    const selected = item === tab;
+                    item.classList.toggle('active', selected);
+                    item.setAttribute('aria-selected', selected ? 'true' : 'false');
+                });
+                contents.querySelectorAll('.room-eq-tab-content').forEach(item => {
+                    const selected = item === content;
+                    item.classList.toggle('active', selected);
+                    item.hidden = !selected;
+                });
+                this._selectedTab = definition.id;
+            });
+            tabs.appendChild(tab);
+            contents.appendChild(content);
+        }
+        panel.appendChild(tabs);
+        panel.appendChild(contents);
+        return panel;
+    }
+
+    _tabDefinitions() {
+        return [
+            { id: 'measurement', label: this._t('roomEq.tab.measurement', 'Measurement'), create: content => {
+                const measurementRow = document.createElement('div');
+                measurementRow.className = 'parameter-row room-eq-measurement-row';
+                const measurementLabel = document.createElement('label');
+                const measurementSelect = document.createElement('select');
+                measurementSelect.id = `room-eq-measurement-${this.id}`;
+                measurementLabel.htmlFor = measurementSelect.id;
+                measurementLabel.textContent = this._t('roomEq.parameter.measurement', 'Measurement');
+                measurementSelect.addEventListener('change', () => {
+                    const option = measurementSelect.selectedOptions[0];
+                    this.setParameters({
+                        ms: measurementSelect.value,
+                        mn: measurementSelect.value ? option?.textContent || '' : '',
+                        rp: 0
+                    });
+                });
+                const measurementStatus = document.createElement('span');
+                measurementStatus.className = 'room-eq-measurement-status';
+                const refresh = document.createElement('button');
+                refresh.type = 'button';
+                refresh.className = 'room-eq-refresh';
+                refresh.textContent = this._t('roomEq.action.refresh', 'Refresh measurements');
+                refresh.addEventListener('click', () => this._refreshMeasurements(true));
+                measurementRow.append(measurementLabel, measurementSelect, measurementStatus, refresh);
+                this._measurementRow = { select: measurementSelect, status: measurementStatus };
+                content.appendChild(measurementRow);
+
+                const channelMeasurements = document.createElement('div');
+                channelMeasurements.className = 'room-eq-channel-measurements';
+                content.appendChild(channelMeasurements);
+                this._channelMeasurementContainer = channelMeasurements;
+                this._channelMeasurementRows = [];
+                this._channelMeasurementStartIndex = -1;
+
+                const referencePointRow = document.createElement('div');
+                referencePointRow.className = 'parameter-row';
+                const referencePointLabel = document.createElement('label');
+                const referencePointSelect = document.createElement('select');
+                referencePointSelect.id = `room-eq-reference-point-${this.id}`;
+                referencePointLabel.htmlFor = referencePointSelect.id;
+                referencePointLabel.textContent = this._t(
+                    'roomEq.parameter.referencePoint',
+                    'Reference Point'
+                );
+                referencePointSelect.addEventListener('change', () => {
+                    this.setParameters({ rp: Number(referencePointSelect.value) });
+                });
+                referencePointRow.append(referencePointLabel, referencePointSelect);
+                this._referencePointSelect = referencePointSelect;
+                this._renderReferencePoints(null, false);
+                // Keep the hand-built selector aligned with preset recall and host automation.
+                // The refresh is display-only and leaves the model untouched.
+                this.registerUIRefresh(() => {
+                    const select = this._referencePointSelect;
+                    if (!select || this.isHeldByUser(select)) return;
+                    const wanted = String(this.rp);
+                    const isValid = Array.from(select.options)
+                        .some(option => option.value === wanted);
+                    select.value = isValid ? wanted : '0';
+                });
+                content.appendChild(referencePointRow);
+
+                content.appendChild(this.createParameterControl(this._t('roomEq.parameter.delay', 'Delay'),
+                    0, 20, 0.01, this.delayMs, value => this.setParameters({ dl: value }), 'ms', 'delayMs'));
+            } },
+            { id: 'filter', label: this._t('roomEq.tab.filter', 'Filter'), create: content => {
+                content.appendChild(this.createSelectControl(this._t('roomEq.parameter.taps', 'Taps'),
+                    [8192, 16384, 32768, 65536, 131072].map(value => ({ value: String(value), label: String(value) })),
+                    String(this.tp), value => this.setParameters({ tp: Number(value) }), 'tp'));
+                content.appendChild(this.createSelectControl(this._t('roomEq.parameter.latency', 'Latency'),
+                    [0, 128, 256, 512, 1024].map(value => ({ value: String(value), label: `${value} samples` })),
+                    this.lt, value => this.setParameters({ lt: value }), 'lt'));
+                content.appendChild(this.createParameterControl(this._t('roomEq.parameter.smoothing', 'Smoothing'),
+                    0.02, 1, 0.01, this.sm, value => this.setParameters({ sm: value }), 'oct', 'sm'));
+            } },
+            { id: 'level', label: this._t('roomEq.tab.level', 'Level'), create: content => {
+                content.appendChild(this.createParameterControl(this._t('roomEq.parameter.low', 'Correction Low'),
+                    20, 1000, 1, this.fl, value => this.setParameters({ fl: value }), 'Hz', 'fl'));
+                content.appendChild(this.createParameterControl(this._t('roomEq.parameter.high', 'Correction High'),
+                    1000, 20000, 10, this.fh, value => this.setParameters({ fh: value }), 'Hz', 'fh'));
+                content.appendChild(this.createParameterControl(this._t('roomEq.parameter.maxBoost', 'Max Boost'),
+                    0, 18, 0.1, this.mb, value => this.setParameters({ mb: value }), 'dB', 'mb'));
+                content.appendChild(this.createParameterControl(
+                    this._t('roomEq.parameter.levelCorrection', 'Level Correction'),
+                    0, 100, 1, this.cr, value => this.setParameters({ cr: value }), '%', 'cr'));
+                content.appendChild(this.createParameterControl(this._t('roomEq.parameter.gain', 'Gain'),
+                    -12, 12, 0.1, this.gn, value => this.setParameters({ gn: value }), 'dB', 'gn'));
+            } },
+            { id: 'phase', label: this._t('roomEq.tab.phase', 'Phase'), create: content => {
+                content.appendChild(this.createRadioGroup(this._t('roomEq.parameter.phase', 'Phase'), [
+                    { value: 'min', label: this._t('roomEq.phase.minimum', 'Minimum') },
+                    { value: 'lin', label: this._t('roomEq.phase.linear', 'Linear') },
+                    { value: 'full', label: this._t('roomEq.phase.direct', 'Correction') }
+                ], this.pm, value => this.setParameters({ pm: value }), 'pm'));
+                content.appendChild(this._createPhaseSmoothingControl());
+                content.appendChild(this.createParameterControl(this._t('roomEq.parameter.directWindow', 'Direct Window'),
+                    1, 50, 0.1, this.dw, value => this.setParameters({ dw: value }), 'ms', 'dw'));
+                content.appendChild(this._createPhaseLowControl());
+                const lowFrequencyPhaseExtensionControl = this.createCheckboxControl(
+                    this._t(
+                        'roomEq.parameter.lowFrequencyPhaseExtension',
+                        'Low-frequency Phase Extension'
+                    ),
+                    this.le,
+                    value => this.setParameters({ le: value }), 'le'
+                );
+                this._lowFrequencyPhaseExtensionControl =
+                    lowFrequencyPhaseExtensionControl.querySelector('input');
+                content.appendChild(lowFrequencyPhaseExtensionControl);
+                const phaseCorrectionControl = this.createParameterControl(
+                    this._t('roomEq.parameter.phaseCorrection', 'Phase Correction'),
+                    0, 100, 1, this.pr, value => this.setParameters({ pr: value }), '%', 'pr');
+                this._phaseCorrectionControl = phaseCorrectionControl;
+                content.appendChild(phaseCorrectionControl);
+            } },
+            { id: 'reverb', label: this._t('roomEq.tab.reverb', 'Reverb'), create: content => {
+                const reverbCorrectionControls = [
+                    this.createParameterControl(
+                        this._t('roomEq.parameter.reverbCorrection', 'Reverb Correction'),
+                        0, 100, 1, this.rv, value => this.setParameters({ rv: value }), '%', 'rv'),
+                    this.createParameterControl(
+                        this._t('roomEq.parameter.reverbWindow', 'Reverb Window'),
+                        20, 1000, 10, this.rw, value => this.setParameters({ rw: value }), 'ms', 'rw'),
+                    this.createLogarithmicParameterControl(
+                        this._t('roomEq.parameter.reverbMaxFrequency', 'Reverb Max Freq'),
+                        20, 20000, 1, this.rf, value => this.setParameters({ rf: value }), 'Hz', 'rf'),
+                    this.createParameterControl(
+                        this._t('roomEq.parameter.reverbSmoothing', 'Reverb Smoothing'),
+                        0.02, 1, 0.01, this.rs, value => this.setParameters({ rs: value }), 'oct', 'rs')
+                ];
+                this._reverbCorrectionControls = reverbCorrectionControls;
+                for (const row of reverbCorrectionControls) content.appendChild(row);
+            } }
+        ];
+    }
+
     createUI() {
         const container = document.createElement('div');
         container.className = 'plugin-parameter-ui room-eq-ui';
-        const measurementRow = document.createElement('div');
-        measurementRow.className = 'parameter-row room-eq-measurement-row';
-        const measurementLabel = document.createElement('label');
-        const measurementSelect = document.createElement('select');
-        measurementSelect.id = `room-eq-measurement-${this.id}`;
-        measurementLabel.htmlFor = measurementSelect.id;
-        measurementLabel.textContent = this._t('roomEq.parameter.measurement', 'Measurement');
-        measurementSelect.addEventListener('change', () => {
-            const option = measurementSelect.selectedOptions[0];
-            this.setParameters({
-                ms: measurementSelect.value,
-                mn: measurementSelect.value ? option?.textContent || '' : '',
-                rp: 0
-            });
-        });
-        const measurementStatus = document.createElement('span');
-        measurementStatus.className = 'room-eq-measurement-status';
-        const refresh = document.createElement('button');
-        refresh.type = 'button';
-        refresh.className = 'room-eq-refresh';
-        refresh.textContent = this._t('roomEq.action.refresh', 'Refresh measurements');
-        refresh.addEventListener('click', () => this._refreshMeasurements(true));
-        measurementRow.append(measurementLabel, measurementSelect, measurementStatus, refresh);
-        this._measurementRow = { select: measurementSelect, status: measurementStatus };
-        container.appendChild(measurementRow);
-
-        container.appendChild(this.createParameterControl(this._t('roomEq.parameter.delay', 'Delay'),
-            0, 20, 0.01, this.delayMs, value => this.setParameters({ dl: value }), 'ms'));
-
-        container.appendChild(this.createRadioGroup(this._t('roomEq.parameter.phase', 'Phase'), [
-            { value: 'min', label: this._t('roomEq.phase.minimum', 'Minimum') },
-            { value: 'lin', label: this._t('roomEq.phase.linear', 'Linear') },
-            { value: 'full', label: this._t('roomEq.phase.direct', 'Correction') }
-        ], this.pm, value => this.setParameters({ pm: value })));
-        container.appendChild(this.createSelectControl(this._t('roomEq.parameter.taps', 'Taps'),
-            [8192, 16384, 32768, 65536, 131072].map(value => ({ value: String(value), label: String(value) })),
-            String(this.tp), value => this.setParameters({ tp: Number(value) })));
-        container.appendChild(this.createSelectControl(this._t('roomEq.parameter.latency', 'Latency'),
-            [0, 128, 256, 512, 1024].map(value => ({ value: String(value), label: `${value} samples` })),
-            this.lt, value => this.setParameters({ lt: value })));
-        container.appendChild(this.createParameterControl(this._t('roomEq.parameter.smoothing', 'Smoothing'),
-            0.02, 1, 0.01, this.sm, value => this.setParameters({ sm: value }), 'oct'));
-        container.appendChild(this.createParameterControl(this._t('roomEq.parameter.low', 'Correction Low'),
-            20, 1000, 1, this.fl, value => this.setParameters({ fl: value }), 'Hz'));
-        container.appendChild(this.createParameterControl(this._t('roomEq.parameter.high', 'Correction High'),
-            1000, 20000, 10, this.fh, value => this.setParameters({ fh: value }), 'Hz'));
-        container.appendChild(this.createParameterControl(this._t('roomEq.parameter.directWindow', 'Direct Window'),
-            1, 50, 0.1, this.dw, value => this.setParameters({ dw: value }), 'ms'));
-        container.appendChild(this._createPhaseLowControl());
-        const lowFrequencyPhaseExtensionControl = this.createCheckboxControl(
-            this._t(
-                'roomEq.parameter.lowFrequencyPhaseExtension',
-                'Low-frequency Phase Extension'
-            ),
-            this.le,
-            value => this.setParameters({ le: value })
-        );
-        this._lowFrequencyPhaseExtensionControl =
-            lowFrequencyPhaseExtensionControl.querySelector('input');
-        container.appendChild(lowFrequencyPhaseExtensionControl);
-        container.appendChild(this.createParameterControl(this._t('roomEq.parameter.maxBoost', 'Max Boost'),
-            0, 18, 0.1, this.mb, value => this.setParameters({ mb: value }), 'dB'));
-        container.appendChild(this.createParameterControl(
-            this._t('roomEq.parameter.levelCorrection', 'Level Correction'),
-            0, 100, 1, this.cr, value => this.setParameters({ cr: value }), '%'));
-        const phaseCorrectionControl = this.createParameterControl(
-            this._t('roomEq.parameter.phaseCorrection', 'Phase Correction'),
-            0, 100, 1, this.pr, value => this.setParameters({ pr: value }), '%');
-        this._phaseCorrectionControl = phaseCorrectionControl;
+        container.appendChild(this._createTabbedPanel(this._tabDefinitions()));
         this._syncPhaseCorrectionControl();
-        container.appendChild(phaseCorrectionControl);
-        const referencePointRow = document.createElement('div');
-        referencePointRow.className = 'parameter-row';
-        const referencePointLabel = document.createElement('label');
-        const referencePointSelect = document.createElement('select');
-        referencePointSelect.id = `room-eq-reference-point-${this.id}`;
-        referencePointLabel.htmlFor = referencePointSelect.id;
-        referencePointLabel.textContent = this._t(
-            'roomEq.parameter.referencePoint',
-            'Reference Point'
-        );
-        referencePointSelect.addEventListener('change', () => {
-            this.setParameters({ rp: Number(referencePointSelect.value) });
-        });
-        referencePointRow.append(referencePointLabel, referencePointSelect);
-        this._referencePointSelect = referencePointSelect;
-        this._renderReferencePoints(null, false);
-        this._syncPhaseCorrectionControl();
-        container.appendChild(referencePointRow);
-        container.appendChild(this.createParameterControl(this._t('roomEq.parameter.gain', 'Gain'),
-            -12, 12, 0.1, this.gn, value => this.setParameters({ gn: value }), 'dB'));
 
         this._additionalEqEditor?.dispose();
         this._responseViewElements = null;
+        this._previewChannelControl = null;
         this._additionalEqEditor = RoomEqPlugin.createAdditionalEqEditor({
             host: this,
             id: `${this.id}-room-eq`,
@@ -2776,8 +3405,14 @@ class RoomEqPlugin extends PluginBase {
         this._responseViewElements = null;
         this._phaseCorrectionControl = null;
         this._phaseLowControl = null;
+        this._phaseSmoothingControl = null;
+        this._reverbCorrectionControls = null;
         this._lowFrequencyPhaseExtensionControl = null;
         this._referencePointSelect = null;
+        this._channelMeasurementContainer = null;
+        this._channelMeasurementRows = [];
+        this._channelMeasurementStartIndex = -1;
+        this._previewChannelControl = null;
         this._statusElement = null;
         this._latencyElement = null;
         super.cleanup();

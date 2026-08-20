@@ -21,6 +21,7 @@ set_target_properties(phase0_compressor_kernel PROPERTIES POSITION_INDEPENDENT_C
 target_include_directories(
   phase0_compressor_kernel
   PRIVATE
+    "${ET_REPOSITORY_ROOT}/dsp/core"
     "${ET_REPOSITORY_ROOT}/dsp/include"
     "${ET_REPOSITORY_ROOT}/dsp/generated/cpp"
     "${ET_REPOSITORY_ROOT}/dsp/plugins/dynamics/compressor")

@@ -9,11 +9,11 @@ permalink: /dsp/concepts/assets-and-bundles/
 
 ## Asset-required effects
 
-`FIRCrossover`, `FiveBandFIRPEQ`, `GroupDelayEQ`, `IRReverb`, and `RoomEQ`
-require `assets.impulseResponse`. FIR filter effects require prepared coefficients at
-the processing rate; IR Reverb accepts supported convolution topologies. The resolver
-returns Python `AssetData` or deterministic ETA1 bytes/`{bytes, format}` in
-JavaScript. It never relies on repository fixtures.
+`FIRCrossover`, `FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, `IRReverb`, and
+`RoomEQ` require `assets.impulseResponse`. FIR filter effects require prepared
+coefficients at the processing rate; IR Reverb accepts supported convolution
+topologies. The resolver returns Python `AssetData` or deterministic ETA1
+bytes/`{bytes, format}` in JavaScript. It never relies on repository fixtures.
 
 The examples below run each effect with two distinct caller-owned IRs and require
 finite, non-zero, different output. FIR Crossover uses two coefficient channels,
@@ -89,7 +89,7 @@ effetune render input.wav convolved.wav --preset cli-bundle --subtype FLOAT
 For WAV output, omitting `--subtype` keeps SoundFile's PCM_16 default; use
 `--subtype FLOAT` when the rendered samples must remain 32-bit floating point.
 
-Python `AssetData` examples for all five types:
+Python `AssetData` examples for all six types:
 
 ```python
 import numpy as np
@@ -111,6 +111,7 @@ for effect_type in (
     "FIRCrossover",
     "FiveBandFIRPEQ",
     "GroupDelayEQ",
+    "GroupDelayPEQ",
     "IRReverb",
     "RoomEQ",
 ):
@@ -190,6 +191,7 @@ export const ASSET_EFFECT_TYPES = Object.freeze([
   'FIRCrossover',
   'FiveBandFIRPEQ',
   'GroupDelayEQ',
+  'GroupDelayPEQ',
   'RoomEQ',
   'IRReverb'
 ]);
@@ -256,7 +258,7 @@ export function assetSetup(effect, sampleRate = 48000, irVariant = 'a') {
 }
 ```
 
-Then run the JavaScript resolver examples for all five types:
+Then run the JavaScript resolver examples for all six types:
 
 ```js
 import assert from 'node:assert/strict';

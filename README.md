@@ -344,6 +344,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | EQ        | Comb Filter | Adds phasey, hollow, or metallic coloration | [Details](docs/plugins/eq.md#comb-filter) |
 | EQ        | Earphone Cable Sim | Helps check how small normal earphone-cable response shifts usually are | [Details](docs/plugins/eq.md#earphone-cable-sim) |
 | EQ        | Group Delay EQ | Adjusts the delay of each frequency band without changing the tone | [Details](docs/plugins/eq.md#group-delay-eq) |
+| EQ        | Group Delay PEQ | Five-band parametric control of per-frequency delay without changing the tone | [Details](docs/plugins/eq.md#group-delay-peq) |
 | EQ        | Hi Pass Filter | Remove unwanted low frequencies with precision | [Details](docs/plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | Remove unwanted high frequencies with precision | [Details](docs/plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | Frequency balance correction for low-volume listening | [Details](docs/plugins/eq.md#loudness-equalizer) |
@@ -360,6 +361,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Lo-Fi     | G.726 Simulator | Simulates an ITU-T G.726 speech-codec encode/decode round trip with an optional noisy radio link | [Details](docs/plugins/lofi.md#g726-simulator) |
 | Lo-Fi     | GSM-FR Simulator | Simulates a 13 kbit/s GSM-FR speech-codec encode/decode round trip over a radio link with frame erasure concealment | [Details](docs/plugins/lofi.md#gsm-fr-simulator) |
 | Lo-Fi     | Hum Generator | Adds controllable 50/60 Hz electrical hum ambience for vintage/lo-fi listening | [Details](docs/plugins/lofi.md#hum-generator) |
+| Lo-Fi     | MD Simulator | Simulates a MiniDisc-era ATRAC encode and decode round trip | [Details](docs/plugins/lofi.md#md-simulator) |
 | Lo-Fi     | MP3 Codec Simulator | Simulates a clean low-bitrate MPEG Layer III encode/decode round trip | [Details](docs/plugins/lofi.md#mp3-codec-simulator) |
 | Lo-Fi     | Noise Blender | Adds adjustable background noise texture for lo-fi ambience | [Details](docs/plugins/lofi.md#noise-blender) |
 | Lo-Fi     | SBC Codec Simulator | Simulates a Bluetooth A2DP SBC encode/decode round trip with optional link packet loss and concealment | [Details](docs/plugins/lofi.md#sbc-codec-simulator) |

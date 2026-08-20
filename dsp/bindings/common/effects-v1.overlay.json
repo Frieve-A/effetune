@@ -366,6 +366,27 @@
       ]
     },
     {
+      "type": "GroupDelayPEQ",
+      "internalType": "GroupDelayPEQPlugin",
+      "seeded": true,
+      "latency": {
+        "kind": "dynamic",
+        "dependsOn": [
+          "latencyMode",
+          "filterDelaySamples",
+          "impulseResponse"
+        ]
+      },
+      "assets": [
+        {
+          "name": "impulseResponse",
+          "kind": "impulseResponse",
+          "slot": 0,
+          "required": true
+        }
+      ]
+    },
+    {
       "type": "HiPassFilter",
       "internalType": "HiPassFilterPlugin",
       "parameters": {
@@ -605,6 +626,26 @@
     {
       "type": "HumGenerator",
       "internalType": "HumGeneratorPlugin"
+    },
+    {
+      "type": "MDSimulator",
+      "internalType": "MDSimulatorPlugin",
+      "sampleRates": [
+        44100,
+        48000,
+        88200,
+        96000,
+        176400,
+        192000,
+        352800,
+        384000
+      ],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      }
     },
     {
       "type": "MP3CodecSimulator",
@@ -952,7 +993,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "1f7621279e4fd1cae842bda2498e76f8afbdd2c05990b246732947b520818d62",
-    "privateLayoutSha256": "e63194ca2bd43f224ade8e5b387a89f68678c9e8c838f4a8faca600a61521c84"
+    "publicCatalogSha256": "db9bb0c63e12783b16d525de112deaa87886403f6e4202eee7655e83a8756659",
+    "privateLayoutSha256": "3c7c8ff05b4ffafc24aa90422245c024a9d146f5a010d157a719a4c521d5dab3"
   }
 }

@@ -279,7 +279,7 @@ IR Reverb는 가져온 임펄스 응답(IR)과 신호을 컨볼루션하여 방,
 ### 파라미터
 
 - **Channel Mode**: **Auto**는 1채널 IR을 Mono로, 스테레오 채널을 선택한 4채널 IR을 True Stereo로, IR 채널 수와 선택 채널 수가 같으면 Independent로, 그 밖의 경우에는 Diagonal Matrix로 설정합니다. 실제로 선택된 모드는 메뉴 오른쪽에 표시됩니다. Mono, Independent, True Stereo(LL/LR/RL/RR), crossfeed가 없는 Diagonal Matrix를 직접 선택할 수도 있습니다.
-- **Latency**: Zero 또는 128/256/512/1024 samples입니다. 값이 크면 처리 부담은 줄지만 wet path 지연이 늘며, Zero는 Full이 필요합니다.
+- **Latency**: Zero 또는 128/256/512/1024 samples입니다. 값이 크면 처리 부담은 줄지만 이펙트 출력 전체가 늦어지며, 원음도 같은 양만큼 지연되어 잔향과 정렬되고 그 지연은 파이프라인이 보정합니다. Zero는 Full이 필요합니다.
 - **Convolution Rate**: Auto, Full, Half, Quarter입니다. Auto에서 실제 선택된 rate는 메뉴 오른쪽에 표시됩니다. 낮은 rate는 부하와 wet 대역폭을 줄이며 Quarter는 176.4 kHz 이상이 필요합니다.
 - **Wet Level**: 컨볼루션 신호 레벨(-96~+12 dB)입니다. 기본값은 일반적인 insert 사용에 맞춘 -15 dB입니다. send/return 구성에서는 0 dB로 설정하고 send level로 리버브 양을 조절합니다.
 - **Dry**: 원음을 활성화합니다. 기본값은 켜짐이며, 끄면 **Dry Level** 설정값을 유지하면서 원음을 완전히 제거합니다.

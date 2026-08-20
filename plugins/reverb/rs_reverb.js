@@ -336,15 +336,15 @@ class RSReverbPlugin extends PluginBase {
         container.className = 'plugin-parameter-ui';
 
         // Use the base class createParameterControl helper directly
-        container.appendChild(this.createParameterControl('Pre-Delay', 0, 50, 0.1, this.pd, (value) => this.setParameters({ pd: value }), 'ms'));
-        container.appendChild(this.createParameterControl('Room Size', 2.0, 50.0, 0.1, this.rs, (value) => this.setParameters({ rs: value }), 'm'));
-        container.appendChild(this.createParameterControl('Reverb Time', 0.1, 10.0, 0.1, this.rt, (value) => this.setParameters({ rt: value }), 's'));
-        container.appendChild(this.createParameterControl('Density', 4, 8, 1, this.ds, (value) => this.setParameters({ ds: value }), 'lines'));
-        container.appendChild(this.createParameterControl('Diffusion', 0.2, 0.8, 0.01, this.df, (value) => this.setParameters({ df: value }), 'ratio'));
-        container.appendChild(this.createParameterControl('Damping', 0, 100, 1, this.dp, (value) => this.setParameters({ dp: value }), '%'));
-        container.appendChild(this.createParameterControl('High Damp', 1000, 20000, 100, this.hd, (value) => this.setParameters({ hd: value }), 'Hz'));
-        container.appendChild(this.createParameterControl('Low Damp', 20, 500, 1, this.ld, (value) => this.setParameters({ ld: value }), 'Hz'));
-        container.appendChild(this.createParameterControl('Mix', 0, 100, 1, this.mx, (value) => this.setParameters({ mx: value }), '%'));
+        container.appendChild(this.createParameterControl('Pre-Delay', 0, 50, 0.1, this.pd, (value) => this.setParameters({ pd: value }), 'ms', 'pd'));
+        container.appendChild(this.createParameterControl('Room Size', 2.0, 50.0, 0.1, this.rs, (value) => this.setParameters({ rs: value }), 'm', 'rs'));
+        container.appendChild(this.createParameterControl('Reverb Time', 0.1, 10.0, 0.1, this.rt, (value) => this.setParameters({ rt: value }), 's', 'rt'));
+        container.appendChild(this.createParameterControl('Density', 4, 8, 1, this.ds, (value) => this.setParameters({ ds: value }), 'lines', 'ds'));
+        container.appendChild(this.createParameterControl('Diffusion', 0.2, 0.8, 0.01, this.df, (value) => this.setParameters({ df: value }), 'ratio', 'df'));
+        container.appendChild(this.createParameterControl('Damping', 0, 100, 1, this.dp, (value) => this.setParameters({ dp: value }), '%', 'dp'));
+        container.appendChild(this.createParameterControl('High Damp', 1000, 20000, 100, this.hd, (value) => this.setParameters({ hd: value }), 'Hz', 'hd'));
+        container.appendChild(this.createParameterControl('Low Damp', 20, 500, 1, this.ld, (value) => this.setParameters({ ld: value }), 'Hz', 'ld'));
+        container.appendChild(this.createParameterControl('Mix', 0, 100, 1, this.mx, (value) => this.setParameters({ mx: value }), '%', 'mx'));
 
         return container;
     }

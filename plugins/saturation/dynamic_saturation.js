@@ -282,31 +282,31 @@ class DynamicSaturationPlugin extends PluginBase {
         // Use base helper to create controls
         container.appendChild(this.createParameterControl(
             'Speaker Drive', 0, 10, 0.1, this.sd,
-            this.setSd.bind(this)
+            this.setSd.bind(this), '', 'sd'
         ));
         container.appendChild(this.createParameterControl(
             'Speaker Stiffness', 0, 10, 0.1, this.ss,
-            this.setSs.bind(this)
+            this.setSs.bind(this), '', 'ss'
         ));
         container.appendChild(this.createParameterControl(
             'Speaker Damping', 0.1, 10, 0.1, this.sp,
-            this.setSp.bind(this)
+            this.setSp.bind(this), '', 'sp'
         ));
         container.appendChild(this.createParameterControl(
             'Speaker Mass', 0.1, 5, 0.05, this.sm,
-            this.setSm.bind(this)
+            this.setSm.bind(this), '', 'sm'
         ));
         container.appendChild(this.createParameterControl(
             'Distortion Drive', 0, 10, 0.1, this.dd,
-            this.setDd.bind(this)
+            this.setDd.bind(this), '', 'dd'
         ));
         container.appendChild(this.createParameterControl(
             'Distortion Bias', -1, 1, 0.02, this.db,
-            this.setDb.bind(this)
+            this.setDb.bind(this), '', 'db'
         ));
         container.appendChild(this.createParameterControl(
             'Distortion Mix', 0, 100, 1, this.dm,
-            this.setDm.bind(this), '%'
+            this.setDm.bind(this), '%', 'dm'
         ));
 
         // Graph container for canvas and labels
@@ -325,13 +325,13 @@ class DynamicSaturationPlugin extends PluginBase {
         // Cone Motion Mix control
         container.appendChild(this.createParameterControl(
             'Cone Motion Mix', 0, 100, 1, this.cm,
-            this.setCm.bind(this), '%'
+            this.setCm.bind(this), '%', 'cm'
         ));
 
         // Output Gain control
         container.appendChild(this.createParameterControl(
             'Output Gain', -18, 18, 0.1, this.og,
-            this.setOg.bind(this), 'dB'
+            this.setOg.bind(this), 'dB', 'og'
         ));
 
         return container;

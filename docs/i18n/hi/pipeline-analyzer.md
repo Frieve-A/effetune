@@ -18,13 +18,13 @@ Saved responses को उनकी पहचानी गई शुरुआत
 
 - **Signal** में डिफ़ॉल्ट रूप से **MLS** चुना जाता है। **TSP** एक वैकल्पिक आवर्ती टेस्ट सिग्नल है, जबकि **Unit Impulse** सीधे समय-आधारित प्रतिक्रिया पकड़ता है। nonlinear या समय के साथ बदलने वाले effects में ये तरीके pipeline को अलग-अलग तरह से माप सकते हैं।
 - **Level** टेस्ट सिग्नल का पीक तय करता है और डिफ़ॉल्ट -12 dBFS है। linear effects सामान्यतः हर स्तर पर वही सामान्यीकृत प्रतिक्रिया देते हैं; nonlinear और स्तर पर निर्भर effects अलग परिणाम दे सकते हैं।
-- **Sequence Length** तय करता है कि MLS या TSP कितनी लंबी प्रतिक्रिया को साफ़ माप सकता है। लंबी सेटिंग में अधिक समय और मेमोरी लगती है। delay, reverb या लंबे समय तक बजने वाले effects के लिए इसे बढ़ाएँ, खासकर जब analyzer इसकी सलाह दे।
+- **Sequence Length** तय करता है कि कितनी लंबी प्रतिक्रिया साफ़ मापी जा सकती है: MLS और TSP के लिए यह टेस्ट सिग्नल का आवर्तकाल है, और Unit Impulse के लिए impulse के बाद पकड़े जाने वाले samples की संख्या है। लंबी सेटिंग में अधिक समय और मेमोरी लगती है। delay, reverb या लंबे समय तक बजने वाले effects के लिए इसे बढ़ाएँ, खासकर जब analyzer इसकी सलाह दे।
 - **Stabilization Periods** डिफ़ॉल्ट रूप से 12 है और मापन से पहले pipeline को स्थिर होने देता है। धीमे बदलने वाला effect स्थिर न हुआ हो तो इसे बढ़ाएँ।
 - **Averages** डिफ़ॉल्ट रूप से 2 है। ग्राफ़ अस्थिर हो तो अलग-अलग मापों का अंतर घटाने के लिए इसे बढ़ाएँ; मापन में अधिक समय लगेगा।
 
-विवरण में बताया जाता है कि मौजूदा लंबाई पर्याप्त है या नहीं, सुझाई गई लंबाई और स्थिरीकरण समय क्या है, और कुल मापन समय कितना है। सुझाव केवल मार्गदर्शन हैं; मापे जा रहे effects के लिए उपयुक्त होने पर उन्हें अपनाएँ।
+विवरण में बताया जाता है कि मौजूदा लंबाई पर्याप्त है या नहीं, सुझाई गई लंबाई और स्थिरीकरण समय क्या है, और कुल मापन समय कितना है। Unit Impulse के लिए मौजूदा sample rate पर capture की लंबाई samples और सेकंड में दिखती है। सुझाव केवल मार्गदर्शन हैं; मापे जा रहे effects के लिए उपयुक्त होने पर उन्हें अपनाएँ।
 
-Sequence Length, Stabilization Periods और Averages केवल Unit Impulse के लिए बंद रहते हैं। Frequency, Phase, Min Group Delay, Excess Group Delay या Impulse बदलने से केवल दिखाया गया ग्राफ़ बदलता है, मापन दोबारा नहीं होता।
+Stabilization Periods और Averages केवल Unit Impulse के लिए बंद रहते हैं। MLS 2^n-1 samples की लंबाई और TSP तथा Unit Impulse 2^n samples की लंबाई इस्तेमाल करते हैं; सिग्नल बदलने पर सबसे नज़दीकी लंबाई बनी रहती है। Frequency, Phase, Min Group Delay, Excess Group Delay या Impulse बदलने से केवल दिखाया गया ग्राफ़ बदलता है, मापन दोबारा नहीं होता।
 
 ## ग्राफ़ पढ़ना और मापन विधि
 
@@ -32,6 +32,6 @@ Sequence Length, Stabilization Periods और Averages केवल Unit Impulse
 
 हर मापन सक्रिय pipeline, उसकी मौजूदा setting और routing, तथा चुनी हुई speaker responses को पकड़ता है। ग्राफ़ frequency, phase, minimum और excess group-delay तथा impulse responses दिखाते हैं; **After** pipeline द्वारा बताए गए latency की भरपाई करता है।
 
-MLS और TSP सामान्य मापन के लिए उपयुक्त हैं। अगर delay, reverb या ringing चुनी हुई window से आगे बढ़े, तो response अपने ऊपर चढ़ सकता है; **Sequence Length** बढ़ाएँ। **Unit Impulse** सीमित समय तक response सीधे रिकॉर्ड करता है, इसलिए बहुत लंबी tail कट सकती है।
+MLS और TSP सामान्य मापन के लिए उपयुक्त हैं। अगर delay, reverb या ringing चुनी हुई window से आगे बढ़े, तो response अपने ऊपर चढ़ सकता है; **Sequence Length** बढ़ाएँ। **Unit Impulse** ठीक चुनी हुई **Sequence Length** जितने samples रिकॉर्ड करता है, इसलिए उस window से लंबी tail कट जाती है; capture के अंत तक ringing बची हो तो लंबाई बढ़ाएँ।
 
 nonlinear, समय के साथ बदलने वाले, random, noisy या sound-generating effects अलग स्तरों पर या अलग-अलग मापों में अलग परिणाम दे सकते हैं। इन ग्राफ़ों को चुनी हुई setting का snapshot मानें, कोई स्थायी विशेषता नहीं।

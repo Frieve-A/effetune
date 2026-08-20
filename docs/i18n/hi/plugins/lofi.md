@@ -19,6 +19,7 @@ lang: hi
 - [G.726 Simulator](#g726-simulator) - ITU-T G.726 speech codec encode/decode round trip का अनुकरण वैकल्पिक noisy radio link के साथ करता है
 - [GSM-FR Simulator](#gsm-fr-simulator) - 13 kbit/s GSM-FR speech codec encode/decode round trip का अनुकरण radio link पर frame erasure concealment के साथ करता है
 - [Hum Generator](#hum-generator) - विंटेज/lo-fi सुनने के लिए नियंत्रित विद्युत हम वातावरण जोड़ता है
+- [MD Simulator](#md-simulator) - MiniDisc युग के ATRAC encode/decode round trip का अनुकरण करता है
 - [MP3 Codec Simulator](#mp3-codec-simulator) - कम bitrate पर साफ़ MPEG Layer III encode/decode round trip का अनुकरण करता है
 - [Noise Blender](#noise-blender) - वातावरणीय पृष्ठभूमि बनावट जोड़ता है
 - [SBC Codec Simulator](#sbc-codec-simulator) - Bluetooth A2DP SBC का encode/decode round trip वैकल्पिक link packet loss और concealment के साथ पुनः बनाता है
@@ -543,6 +544,28 @@ Audio output में एक channel होने पर GSM-FR Simulator उ�
    - Frequency: 40 Hz, Type: Dirty, Harmonics: 80%
    - Tone: 15.0 kHz, Instability: 6.0%, Level: -36 dB
    - बिल्कुल सही: अधिक स्पष्ट, सुनाई देने वाली hum texture
+
+## MD Simulator
+
+MD Simulator चुने हुए channels को real-time में सरल ATRAC analysis, सीमित bit budget वाली spectral quantization और synthesis से गुज़ारता है, जो MiniDisc में इस्तेमाल हुए ATRAC codec परिवार को मॉडल करता है। इससे सुना जा सकता है कि साफ़ ATRAC round trip transients, ऊँची frequencies के detail और sustained tones की texture को MD deck के तीनों वास्तविक recording modes में कैसे बदलता है।
+
+Mode MD के तीन वास्तविक operating points में से एक चुनता है: SP (292 kbps) ATRAC1 इस्तेमाल करता है, जो मूल standard-play MiniDisc का codec था। LP2 (132 kbps) और LP4 (66 kbps) ATRAC3 इस्तेमाल करते हैं, जो MDLP के दोगुने और चौगुने लंबे recording modes के बराबर हैं; LP4 में इसके अलावा joint stereo coding भी जुड़ती है। Rate जितनी कम होगी, analysis filterbank के लिए bit budget उतना ही कम बचेगा, जिससे transient smear, ऊँची frequencies की "birdies"/swishing noise और कम bit allocation वाला noise अधिक स्पष्ट हो जाता है।
+
+यदि plugin effect उपलब्ध न होने की सूचना दे, तो दूसरी sample rate या channel mode आज़माएँ। तब तक input बिना बदलाव के रहता है।
+
+### ध्वनि सुधार मार्गदर्शिका
+
+- **प्रतिनिधि MD listening:** SP, Output 0 dB और Mix 100% से शुरू करें। यह वही codec है जो अधिकतर असली MD recordings में इस्तेमाल होता था और सबसे साफ़ तुलना बिंदु देता है।
+- **लंबे recording modes का compression सुनें:** उसी passage को LP2 और फिर LP4 से गुज़ारें। Cymbals, घने percussion और चौड़े stereo mixes में bit budget आधा होने और joint stereo coding के कारण क्रमशः खुरदरा होता ऊँची frequencies का detail, और LP4 में पतला व अस्थिर high end सुनाई देता है।
+- **Transient व्यवहार जाँचें:** तेज़ transient वाले sources (castanets, plucked strings, piano attacks) इस्तेमाल करें ताकि ATRAC की transient detection से जुड़ा विशिष्ट pre-echo smear सुना जा सके।
+- **Effect मिलाएँ:** पूरे signal को बदले बिना कुछ MD character जोड़ने के लिए Mix घटाएँ। Dry path decoded path के साथ latency-aligned है।
+- **तुलना से पहले level मिलाएँ:** सुनाई देने वाले या मापे गए loudness अंतर की भरपाई केवल Output से करें। इससे codec का bit allocation नहीं बदलता।
+
+### पैरामीटर
+
+- **Mode** — `SP (292 kbps)`, `LP2 (132 kbps)` या `LP4 (66 kbps)` चुनता है। SP ATRAC1 इस्तेमाल करता है; LP2 और LP4 ATRAC3 इस्तेमाल करते हैं, और LP4 में इसके अलावा joint stereo coding जुड़ती है। कम bitrate पर spectral quantization के लिए कम bits बचते हैं, जिससे codec के artifacts अधिक स्पष्ट होते हैं।
+- **Output** — Codec state या bit allocation बदले बिना decoded output level को -24.0 से +12.0 dB तक समायोजित करता है।
+- **Mix** — Latency-aligned original और decoded result को 0% से 100% तक मिलाता है।
 
 ## MP3 Codec Simulator
 

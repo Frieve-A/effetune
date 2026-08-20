@@ -1,6 +1,12 @@
-.room-eq-measurement-row { display: flex; align-items: center; flex-wrap: nowrap !important; gap: 10px; }
-.room-eq-measurement-row label { min-width: 120px; }
-.room-eq-measurement-row select { flex: 1; min-width: 0; }
+.room-eq-measurement-row,
+.room-eq-channel-measurement-row { display: flex; align-items: center; flex-wrap: nowrap !important; gap: 10px; }
+.room-eq-measurement-row label,
+.room-eq-channel-measurement-row label { min-width: 120px; }
+.room-eq-measurement-row select,
+.room-eq-channel-measurement-row select { flex: 1; min-width: 0; }
+.room-eq-preview-channel { display: inline-flex; align-items: center; gap: 6px; }
+.room-eq-preview-channel[hidden] { display: none; }
+.room-eq-preview-channel label { min-width: auto; }
 .room-eq-measurement-status,
 .room-eq-refresh { flex: 0 0 auto; white-space: nowrap; }
 .room-eq-measurement-status[data-state='warning'],
@@ -25,6 +31,7 @@ body:not(.layout-mobile) .room-eq-phase-low-row { flex-wrap: nowrap; }
 }
 .room-eq-additional-eq-ui .room-eq-additional-eq-graph {
     position: relative;
+    overflow: hidden;
     width: 100%;
     max-width: 1024px;
     aspect-ratio: 1024 / 480;
@@ -46,6 +53,15 @@ body:not(.layout-mobile) .room-eq-phase-low-row { flex-wrap: nowrap; }
 .room-eq-additional-eq-ui .room-eq-additional-eq-grid text {
     fill: #666;
     font-size: 10px;
+}
+/* Curves that leave the plot area keep running into the graph margin instead of
+   being cropped flat at the plot edge; the graph box does the final clipping. */
+.room-eq-additional-eq-ui .room-eq-additional-eq-response,
+.room-eq-phase-response,
+.room-eq-group-delay-response,
+.room-eq-impulse-response,
+.room-eq-hover-overlay {
+    overflow: visible;
 }
 .room-eq-additional-eq-ui .room-eq-additional-eq-response path {
     fill: none;
@@ -405,8 +421,10 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
     display: block;
 }
 
-body.layout-mobile .room-eq-measurement-row { flex-wrap: wrap !important; }
-body.layout-mobile .room-eq-measurement-row select { flex-basis: calc(100% - 130px); }
+body.layout-mobile .room-eq-measurement-row,
+body.layout-mobile .room-eq-channel-measurement-row { flex-wrap: wrap !important; }
+body.layout-mobile .room-eq-measurement-row select,
+body.layout-mobile .room-eq-channel-measurement-row select { flex-basis: calc(100% - 130px); }
 body.layout-mobile .room-eq-response-legend {
     top: 5px;
     right: 5px;
@@ -451,4 +469,79 @@ body.layout-mobile .room-eq-additional-eq-ui .room-eq-hover-overlay {
 }
 body.layout-mobile .room-eq-additional-eq-graph {
     aspect-ratio: 4 / 3;
+}
+.room-eq-panel {
+    padding: 10px;
+    border-radius: 4px;
+    background: #2d2d2d;
+}
+.room-eq-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-bottom: 12px;
+}
+.room-eq-tab {
+    flex: 1 1 100px;
+    min-height: 36px;
+    padding: 8px 14px;
+    border: 1px solid #484848;
+    border-radius: 4px 4px 0 0;
+    color: #ddd;
+    background: #333;
+    cursor: pointer;
+}
+.room-eq-tab:hover {
+    background: #3c3c3c;
+}
+.room-eq-tab.active {
+    border-color: #666;
+    color: #fff;
+    background: #484848;
+}
+.room-eq-tab:focus-visible {
+    outline: 2px solid #7ec8ff;
+    outline-offset: 2px;
+}
+.room-eq-tab-contents {
+    /* Stacking the panels in one grid cell keeps the height of the tallest tab,
+       including rows whose label wraps onto a second line. */
+    display: grid;
+}
+.room-eq-tab-content {
+    display: block;
+    grid-area: 1 / 1;
+}
+.room-eq-tab-content[hidden] {
+    visibility: hidden;
+    pointer-events: none;
+}
+.room-eq-tab-content[hidden] .room-eq-channel-measurements {
+    display: none;
+}
+body.layout-mobile .room-eq-panel,
+body.layout-mobile .room-eq-tab-content {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+body.layout-mobile .room-eq-panel {
+    padding: 8px;
+    overflow-x: clip;
+}
+body.layout-mobile .room-eq-tabs {
+    gap: 4px;
+}
+body.layout-mobile .room-eq-tab {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+    min-height: 42px;
+    padding: 8px 6px;
+}
+body.layout-mobile .room-eq-tab-contents {
+    display: block;
+}
+body.layout-mobile .room-eq-tab-content[hidden] {
+    display: none;
 }

@@ -706,7 +706,7 @@ import('./javascript-start.mjs').then(
     assert.equal(result.telemetry.effectId, 'meter');
     assert.equal(result.telemetry.channels, 2);
     assert.ok(result.telemetry.leftPeak > 0.9);
-    assert.equal(result.convolution.length, 10);
+    assert.equal(result.convolution.length, 12);
     for (const entry of result.convolution) {
       assert.equal(entry.finite, true, JSON.stringify(entry));
       assert.ok(entry.peak > 1e-7, JSON.stringify(entry));

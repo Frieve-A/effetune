@@ -30,7 +30,7 @@ const CHANNEL_COUNT = 8;
 const IMPULSE_SETTINGS = Object.freeze({
   signalType: 'impulse',
   levelDb: -12,
-  sequenceLength: 65535,
+  sequenceLength: 65536,
   stabilizationPeriods: 12,
   averagingPeriods: 2
 });
@@ -428,7 +428,7 @@ test('finite sound-generating output reaches the bounded truncated-success path'
     { type: 'AnalyzerSourceTestPlugin' }
   ));
   assert.equal(result.truncated, true);
-  assert.equal(result.captureLength, 8000 * 8);
+  assert.equal(result.captureLength, IMPULSE_SETTINGS.sequenceLength);
   assert.equal(result.after.impulse.every(Number.isFinite), true);
 });
 
@@ -903,7 +903,7 @@ test('required real Worker gate measures prepared FIR Crossover on outputs 1/3/5
     assert.ok(firstRun.messages.some(message => message.phase === 'preparing'));
     assert.ok(firstRun.messages.some(message => message.phase === 'measuring'));
     assert.equal(result.reportedLatency, 128);
-    assert.equal(result.captureLength, result.reportedLatency + SAMPLE_RATE * 2);
+    assert.equal(result.captureLength, IMPULSE_SETTINGS.sequenceLength);
     assert.equal(result.before.timeOriginSamples, -2);
     assert.equal(result.after.timeOriginSamples, -130);
     assert.equal('routes' in result, false);

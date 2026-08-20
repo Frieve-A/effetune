@@ -189,6 +189,23 @@ test('applySerializedState applies short state through setSerializedParameters',
   ]);
 });
 
+test('applySerializedState syncs a live plugin UI after the model is updated', () => {
+  const plugin = createPlugin({
+    syncUIControls() {
+      this.calls.push(['syncUIControls']);
+    }
+  });
+
+  applySerializedState(plugin, { name: 'Synced', channel: 'L', parameters: { gain: -3 } });
+
+  // Order matters: syncing before updateParameters would push stale values.
+  assert.deepEqual(plugin.calls, [
+    ['setParameters', { gain: -3 }],
+    ['updateParameters'],
+    ['syncUIControls']
+  ]);
+});
+
 test('applySerializedState applies short params through setParameters or direct parameters', () => {
   const viaSetParameters = createPlugin();
   applySerializedState(viaSetParameters, { nm: 'ShortParams', ch: 'Right', mix: 0.5 });

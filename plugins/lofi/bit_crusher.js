@@ -225,7 +225,7 @@ class BitCrusherPlugin extends PluginBase {
         // Use helper for Bit Depth control
         container.appendChild(this.createParameterControl(
             'Bit Depth', 4, 24, 1, this.bd, 
-            (value) => this.setBd(value), ''
+            (value) => this.setBd(value), '', 'bd'
         ));
 
         // TPDF Dither control (keep checkbox)
@@ -251,20 +251,26 @@ class BitCrusherPlugin extends PluginBase {
         // Use helper for ZOH Frequency control
         container.appendChild(this.createParameterControl(
             'ZOH Frequency', 4000, 96000, 100, this.zf, 
-            (value) => this.setZf(value), 'Hz'
+            (value) => this.setZf(value), 'Hz', 'zf'
         ));
         
         // Use helper for Bit Error control
         container.appendChild(this.createParameterControl(
             'Bit Error', 0, 10, 0.01, this.be, 
-            (value) => this.setBe(value), '%'
+            (value) => this.setBe(value), '%', 'be'
         ));
 
         // Use helper for Seed control
         container.appendChild(this.createParameterControl(
             'Random Seed', 0, 1000, 1, this.sd, 
-            (value) => this.setSeed(value), ''
+            (value) => this.setSeed(value), '', 'sd'
         ));
+
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the controls this plugin builds by hand are refreshed here.
+        this.registerUIRefresh(() => {
+            tpdfCheckbox.checked = this.td;
+        });
 
         return container;
     }

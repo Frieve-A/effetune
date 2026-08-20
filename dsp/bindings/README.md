@@ -1,7 +1,7 @@
 # EffeTune DSP language binding contracts
 
 This directory contains the source contract shared by the Python and JavaScript
-bindings. The public v1 catalog contains the 90 effects listed in
+bindings. The public v1 catalog contains the 92 effects listed in
 `common/effects-v1.overlay.json`.
 
 ## Sources of truth
@@ -56,10 +56,11 @@ explicit effect IDs are rejected by the runtime. Existing application
 `pipeline`/`plugins` documents, short parameter keys, and packed layouts are not
 accepted as v1 chain documents.
 
-`FIRCrossover`, `FiveBandFIRPEQ`, `GroupDelayEQ`, `IRReverb`, and `RoomEQ`
-additionally require `assets.impulseResponse`, an opaque resolver key. The four
-FIR filter effects expect prepared coefficient impulses at the processing
-sample rate; `IRReverb` accepts its documented convolution modes and rates.
+`FIRCrossover`, `FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, `IRReverb`,
+and `RoomEQ` additionally require `assets.impulseResponse`, an opaque resolver
+key. The five FIR filter effects expect prepared coefficient impulses at the
+processing sample rate; `IRReverb` accepts its documented convolution modes and
+rates.
 Other v1 effects do not accept `assets`.
 
 `schema/bundle-v1.schema.json` pairs a canonical chain with a bounded asset
@@ -155,9 +156,9 @@ Effect(
 )
 ```
 
-The 90 generated classes expose keyword-only, discoverable parameter
+The 92 generated classes expose keyword-only, discoverable parameter
 signatures. Scalar defaults are literal values and array defaults are immutable
-tuples. The five convolution-backed effects require an `assets` keyword;
+tuples. The six convolution-backed effects require an `assets` keyword;
 effects without assets do not expose it. The generated
 `_generated_effects.pyi` supplies fixed tuples, `Literal` enums,
 `EffectChannel`, and the required typed asset shapes. Classes only gather
@@ -168,7 +169,7 @@ JavaScript `generated-effects.js` imports `Effect` from `./effect.js`, whose
 constructor contract is `Effect(type, options = {})`. Each generated class is a
 thin `constructor(options = {})` wrapper. The declaration file gives every
 effect its own options interface, fixed tuple and enum types, class, and factory.
-The five convolution-backed effect option types require their `assets` member.
+The six convolution-backed effect option types require their `assets` member.
 
 ## Generation and drift check
 

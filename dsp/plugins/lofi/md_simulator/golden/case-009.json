@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "MDSimulatorPlugin",
+  "id": "sp-dense-192k",
+  "stimulus": "sq50",
+  "sampleRate": 192000,
+  "channels": 2,
+  "frameCount": 20481,
+  "blockSize": 17,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "md": "SP (292 kbps)",
+    "og": 3,
+    "mx": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "rel": 0.00002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:bc61dd9f5c24cc4c094b65e83889f51252a62fd8451038f791fda3bb2f67cd04",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type MDSimulatorPlugin --promote-production-native",
+  "outputFloats": 40962,
+  "byteLength": 163848,
+  "binary": "case-009.f32"
+}

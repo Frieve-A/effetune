@@ -18,13 +18,13 @@ Abre **Ajustes de medición** para cambiar:
 
 - **Señal** usa **MLS** de forma predeterminada. **TSP** es una señal de prueba periódica alternativa y **Impulso unitario** captura directamente la respuesta temporal. Cada opción puede medir el pipeline de forma distinta cuando los efectos son no lineales o varían con el tiempo.
 - **Nivel** establece el pico de la señal de prueba y vale -12 dBFS de forma predeterminada. Los efectos lineales suelen dar la misma respuesta normalizada a cualquier nivel; los no lineales o dependientes del nivel pueden cambiar.
-- **Longitud de secuencia** determina cuánto tiempo de respuesta pueden medir MLS o TSP sin solapamiento. Los valores mayores requieren más tiempo y memoria. Auméntala para delays, reverbs u otros efectos con cola larga, sobre todo si el analizador lo recomienda.
+- **Longitud de secuencia** determina cuánta respuesta se puede medir sin solapamiento: en MLS y TSP es el periodo de la señal de prueba y en Impulso unitario es el número de muestras capturadas tras el impulso. Los valores mayores requieren más tiempo y memoria. Auméntala para delays, reverbs u otros efectos con cola larga, sobre todo si el analizador lo recomienda.
 - **Periodos de estabilización** vale 12 de forma predeterminada y deja que el pipeline se estabilice antes de capturar. Auméntalo si un efecto lento aún no ha alcanzado un estado estable.
 - **Promedios** vale 2 de forma predeterminada. Auméntalo para reducir las diferencias entre mediciones cuando el gráfico sea inestable; la medición tardará más.
 
-Los detalles indican si la longitud actual es suficiente, la longitud y estabilización recomendadas y el tiempo total de medición. Son recomendaciones: aplícalas cuando correspondan a los efectos que estás midiendo.
+Los detalles indican si la longitud actual es suficiente, la longitud y estabilización recomendadas y el tiempo total de medición. Con Impulso unitario muestran la longitud de captura en muestras y segundos a la frecuencia de muestreo actual. Son recomendaciones: aplícalas cuando correspondan a los efectos que estás midiendo.
 
-Longitud de secuencia, Periodos de estabilización y Promedios solo se desactivan con Impulso unitario. Cambiar Frequency, Phase, Min Group Delay, Excess Group Delay o Impulse solo cambia el gráfico y no repite la medición.
+Periodos de estabilización y Promedios solo se desactivan con Impulso unitario. MLS usa longitudes de 2^n-1 muestras, mientras que TSP e Impulso unitario usan longitudes de 2^n muestras; al cambiar de señal se conserva la longitud más cercana. Cambiar Frequency, Phase, Min Group Delay, Excess Group Delay o Impulse solo cambia el gráfico y no repite la medición.
 
 ## Lectura y método
 
@@ -32,6 +32,6 @@ Elige la vista con los botones **Graph** situados fuera del gráfico. **Frequenc
 
 Cada medición captura el pipeline activo, sus ajustes y rutas actuales, y las respuestas de altavoz seleccionadas. Los gráficos muestran las respuestas de frecuencia, fase, retardo de grupo mínimo, retardo de grupo excedente e impulso; **Después** compensa la latencia indicada por el pipeline.
 
-MLS y TSP son adecuados para la medición general. Si un delay, reverb u otra cola supera la ventana seleccionada, la respuesta puede solaparse consigo misma; aumenta **Longitud de secuencia**. **Impulso unitario** registra directamente la respuesta durante un tiempo limitado, por lo que puede cortar colas excepcionalmente largas.
+MLS y TSP son adecuados para la medición general. Si un delay, reverb u otra cola supera la ventana seleccionada, la respuesta puede solaparse consigo misma; aumenta **Longitud de secuencia**. **Impulso unitario** registra exactamente la **Longitud de secuencia** seleccionada de muestras, por lo que las colas más largas que esa ventana se cortan; auméntala cuando la cola siga sonando al final de la captura.
 
 Los efectos no lineales, variables en el tiempo, aleatorios, ruidosos o generadores de sonido pueden dar resultados distintos según el nivel o entre mediciones. Considera los gráficos como instantáneas de los ajustes seleccionados, no como características fijas.

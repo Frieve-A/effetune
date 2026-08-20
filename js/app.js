@@ -13,6 +13,7 @@ import {
 import { normalizeMusicLibraryStartupView } from './library/constants.js';
 import { createUpdateNotification } from './update-notification.js';
 import { MIC_DENIED_PREFIX } from './audio/audio-io-manager.js';
+import { installSpaceKeyGuard } from './utils/space-key-guard.js';
 
 const TRANSIENT_PIPELINE_RESTORE_PARAM = 'restorePipeline';
 const TRANSIENT_PIPELINE_RESTORE_VALUE = 'transient';
@@ -21,6 +22,10 @@ const TRANSIENT_PIPELINE_STATE_STORAGE_KEY = 'effetune_transient_pipeline_state'
 function isSuccessfulAudioGraphBuild(result) {
     return typeof result !== 'string' || result.length === 0;
 }
+
+// Free the Space key from the browser's page-scroll default as early as
+// possible, so it stays available for host applications embedding this UI.
+installSpaceKeyGuard();
 
 // Make electronIntegration globally accessible first
 window.electronIntegration = electronIntegration;

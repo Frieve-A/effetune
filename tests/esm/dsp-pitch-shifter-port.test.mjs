@@ -92,7 +92,7 @@ test('Pitch Shifter goldens preserve buffered state and shape resets within budg
     assert.equal(golden.metadata.type, 'PitchShifterPlugin');
     assert.equal(
       golden.metadata.jsEngineHash,
-      'e36d980267e3a5d8c8579c487cfb9cbff730e857b30035062e6f71dbfd4f7d34'
+      '1ec5cde8cbb5f98fb35b2fcd50393c0033871c195cd7baa1f87c0a4620f26563'
     );
     assert.ok(golden.expected.every(Number.isFinite));
   }

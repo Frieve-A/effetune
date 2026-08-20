@@ -13,7 +13,7 @@ tree without distribution metadata reports `0+source`.
 <!-- BEGIN DSP-LIBRARY-PYTHON-SUMMARY -->
 EffeTune is a deterministic audio-effects library backed by the same
 host-neutral C++20 DSP core used by the EffeTune application. Version 0.5.0
-provides 90 semantic effect classes, ordered serial chains, stateful block
+provides 92 semantic effect classes, ordered serial chains, stateful block
 processing, semantic presets, bounded impulse-response bundles, and a small
 audio-file CLI.
 <!-- END DSP-LIBRARY-PYTHON-SUMMARY -->
@@ -129,7 +129,7 @@ Events cannot change parameters that require convolution assets to be staged
 again. Open a new stream after changing `IRReverb.channelMode`, `latency`, or
 `convolutionRate`; `FIRCrossover.bandCount`, `latencyMode`, or
 `filterDelaySamples`; or `latencyMode` / `filterDelaySamples` on
-`FiveBandFIRPEQ`, `GroupDelayEQ`, or `RoomEQ`.
+`FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, or `RoomEQ`.
 `close()` is idempotent. Processing or resetting a closed stream raises
 `StateError`.
 
@@ -177,9 +177,10 @@ The first subscriber enables observations and the last unsubscribe disables
 them. Delivered tuples are caller-owned semantic values. Raw DSP telemetry is
 not a public API.
 
-`FIRCrossover`, `FiveBandFIRPEQ`, `GroupDelayEQ`, `IRReverb`, and `RoomEQ`
-require an `impulseResponse` reference and an asset resolver. The four FIR
-filter effects use prepared coefficient impulses at the processing sample rate.
+`FIRCrossover`, `FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, `IRReverb`,
+and `RoomEQ` require an `impulseResponse` reference and an asset resolver. The
+five FIR filter effects use prepared coefficient impulses at the processing
+sample rate.
 Resolvers return `AssetData` containing finite, C-contiguous planar float32
 samples, an integer sample rate, and an explicit or unambiguous topology. The
 runtime rejects missing, malformed, hash-mismatched, ambiguous, and
@@ -218,7 +219,7 @@ passing `--subtype` explicitly silences, and when the rendered peak exceeds
 full scale and is clipped by an integer PCM output. Both warnings leave the
 exit code at 0.
 
-`EFFECT_METADATA` is the public machine-readable semantic catalog for all 90
+`EFFECT_METADATA` is the public machine-readable semantic catalog for all 92
 root effect classes. It contains channel choices, parameters, required assets,
 telemetry, and latency declarations without private native implementation
 details. `Stream.latency_samples` reports aggregate runtime latency and matches

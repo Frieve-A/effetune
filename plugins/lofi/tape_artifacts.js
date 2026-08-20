@@ -1340,21 +1340,21 @@ class TapeArtifactsPlugin extends PluginBase {
             { value: '7.5', label: '7.5 ips' },
             { value: '15', label: '15 ips' },
             { value: '30', label: '30 ips' }
-        ], this.sp, this.setSp.bind(this)));
+        ], this.sp, this.setSp.bind(this), 'sp'));
 
         container.appendChild(this.createRadioGroup('Tape', [
             { value: 'Standard', label: 'Standard' },
             { value: 'Master', label: 'Master' }
-        ], this.tp, this.setTp.bind(this)));
+        ], this.tp, this.setTp.bind(this), 'tp'));
 
-        container.appendChild(this.createParameterControl('Bias', -6, 6, 0.1, this.bs, this.setBs.bind(this), 'dB'));
-        container.appendChild(this.createParameterControl('Record Level', -12, 18, 0.1, this.rl, this.setRl.bind(this), 'dB'));
+        container.appendChild(this.createParameterControl('Bias', -6, 6, 0.1, this.bs, this.setBs.bind(this), 'dB', 'bs'));
+        container.appendChild(this.createParameterControl('Record Level', -12, 18, 0.1, this.rl, this.setRl.bind(this), 'dB', 'rl'));
         container.appendChild(this.createParameterControl('Wow/Flutter', 0, 1, 0.001,
-            this.wf, this.setWf.bind(this), '%'));
+            this.wf, this.setWf.bind(this), '%', 'wf'));
         container.appendChild(this.createParameterControl('Hiss', TAPE_ARTIFACTS_HISS_OFF_DB, -39, 0.1,
-            this.hs, this.setHs.bind(this), `dB re ${TAPE_ARTIFACTS_REFERENCE_FLUX}`));
-        container.appendChild(this.createParameterControl('Output', -24, 24, 0.1, this.og, this.setOg.bind(this), 'dB'));
-        container.appendChild(this.createParameterControl('Mix', 0, 100, 1, this.mx, this.setMx.bind(this), '%'));
+            this.hs, this.setHs.bind(this), `dB re ${TAPE_ARTIFACTS_REFERENCE_FLUX}`, 'hs'));
+        container.appendChild(this.createParameterControl('Output', -24, 24, 0.1, this.og, this.setOg.bind(this), 'dB', 'og'));
+        container.appendChild(this.createParameterControl('Mix', 0, 100, 1, this.mx, this.setMx.bind(this), '%', 'mx'));
 
         // Base Wow/Flutter and Base Hiss are stated at the reference
         // configuration, so the last line reports what the pair comes to once

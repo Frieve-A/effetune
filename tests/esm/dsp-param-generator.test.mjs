@@ -38,6 +38,59 @@ test('DSP schemas generate C++ and renderer JavaScript bindings', () => {
   assert.match(generatedJs, /ProductionProbe/);
 });
 
+test('DSP parameter generator requires a positive display step on automatable fields', () => {
+  const withStep = step => ({
+    type: 'StepProbe',
+    tolerance: { abs: 1e-6 },
+    fields: [{
+      name: 'gain',
+      key: 'gn',
+      kind: 'float',
+      min: -1,
+      max: 1,
+      default: 0,
+      automation: true,
+      ...(step === undefined ? {} : { step })
+    }]
+  });
+
+  assert.throws(
+    () => validateParamSpec(withStep(undefined)),
+    /must declare a display step/
+  );
+  assert.throws(() => validateParamSpec(withStep(0)), /must be greater than zero/);
+  assert.throws(() => validateParamSpec(withStep(-1)), /must be greater than zero/);
+  assert.ok(validateParamSpec(withStep(0.01)));
+});
+
+test('DSP parameter generator publishes the display step to both bindings', () => {
+  const spec = validateParamSpec({
+    type: 'StepPublicationProbe',
+    tolerance: { abs: 1e-6 },
+    fields: [{
+      name: 'bandGain',
+      key: 'bg',
+      kind: 'float',
+      min: -24,
+      max: 24,
+      step: 0.25,
+      default: 0,
+      unit: 'dB',
+      automation: true
+    }]
+  });
+  const outputs = [...generateOutputs([spec]).entries()];
+  const cpp = outputs.find(([file]) => file.endsWith('AutomationCatalog.h'))[1];
+  const generatedJs = outputs.find(([file]) => file.endsWith('dsp-params.generated.js'))[1];
+
+  // The struct member order is part of the native ABI: step sits between the
+  // range and the default value, so assert the initializer position, not just
+  // the presence of the number.
+  assert.match(cpp, /float minimum;\n  float maximum;\n  float step;\n  float defaultValue;/);
+  assert.match(cpp, /AutomationParameterDescriptor\{"bg".*-24\.0f, 24\.0f, 0\.25f, 0\.0f,/);
+  assert.match(generatedJs, /"publicName":"bandGain".*"maximum":24,"step":0\.25,"default":0/);
+});
+
 test('DSP parameter generator can reject invalid enum values before packing', async () => {
   const spec = validateParamSpec({
     type: 'StrictEnumProbe',

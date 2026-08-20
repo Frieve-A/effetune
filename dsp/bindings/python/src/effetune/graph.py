@@ -11,7 +11,14 @@ from typing import Any
 import numpy as np
 
 from ._base import Effect
-from .assets import AssetData, AssetResolver, resolve_asset, resolve_rate_divider, resolve_topology
+from .assets import (
+    AssetData,
+    AssetResolver,
+    resolve_asset,
+    resolve_rate_divider,
+    resolve_room_eq_topology,
+    resolve_topology,
+)
 from .chain import Chain, _effect_channels, _native_effect_channel
 from .errors import AssetError, EffeTuneRuntimeError, StateError, ValidationError
 from .graph_document import (
@@ -374,6 +381,10 @@ def _prepare_asset(native: Any, native_index: int, effect: Effect, asset: AssetD
                 f"{effect.id or effect.effect_type} requires 4, 6, or 8 "
                 "processing channels and one matrix filter channel per band"
             )
+    elif effect.effect_type == "RoomEQ":
+        topology = resolve_room_eq_topology(asset, effect_channels)
+        divider = 1
+        head_block = int(effect.parameters["latencyMode"])
     else:
         topology = resolve_topology(asset, effect_channels, "mono")
         divider = 1

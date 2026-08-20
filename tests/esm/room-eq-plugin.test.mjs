@@ -110,6 +110,10 @@ class PluginBase {
         return this._nextWasmAssetOperationRevision(slot);
     }
 
+    isHeldByUser() {
+        return false;
+    }
+
     cleanup() {}
 }
 
@@ -309,6 +313,101 @@ test('Room EQ keeps the automatic Phase Low slider fill synced with Direct Windo
     plugin.cleanup();
 });
 
+test('Room EQ preserves held Phase Low elements and synchronises them after release', () => {
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    plugin._scheduleDesign = () => {};
+    plugin.setParameters({ pm: 'full', pa: false, pl: 500 });
+    const control = {
+        slider: { disabled: false, value: 'held-slider' },
+        valueInput: { disabled: false, value: '16' },
+        auto: { checked: false, disabled: false }
+    };
+    plugin._phaseLowControl = control;
+    const held = new Set([control.slider, control.valueInput]);
+    plugin.isHeldByUser = element => held.has(element);
+
+    plugin.setParameters({ pl: 600 });
+    assert.equal(plugin.pl, 600);
+    assert.equal(control.slider.value, 'held-slider');
+    assert.equal(control.valueInput.value, '16');
+
+    held.delete(control.slider);
+    plugin._syncPhaseLowControl();
+    assert.notEqual(control.slider.value, 'held-slider');
+    assert.equal(control.valueInput.value, '16');
+
+    held.delete(control.valueInput);
+    plugin._syncPhaseLowControl();
+    assert.equal(control.valueInput.value, '600');
+    plugin.cleanup();
+});
+
+test('Room EQ Phase Low keeps multi-digit input local and commits against the dynamic minimum', () => {
+    const { Plugin, context } = loadPlugin();
+    context.document.createElement = tabElementStub;
+    context.document.createTextNode = text => ({ textContent: String(text) });
+    const plugin = new Plugin();
+    plugin._scheduleDesign = () => {};
+    let helperInputCalls = 0;
+    let helperCommitCalls = 0;
+    plugin.createLogarithmicParameterControl = (_label, minimum, maximum, _step, value, setter) => {
+        const row = tabElementStub('div');
+        const slider = tabElementStub('input');
+        slider.type = 'range';
+        slider.value = String(value);
+        const valueInput = tabElementStub('input');
+        valueInput.type = 'number';
+        valueInput.value = String(value);
+        valueInput.addEventListener('input', event => {
+            helperInputCalls += 1;
+            const parsed = parseFloat(event.target.value) || minimum;
+            const clamped = Math.max(minimum, Math.min(maximum, parsed));
+            event.target.value = clamped.toFixed(0);
+            setter(clamped);
+        });
+        const commit = event => {
+            helperCommitCalls += 1;
+            const parsed = parseFloat(event.target.value) || minimum;
+            setter(Math.max(minimum, Math.min(maximum, parsed)));
+        };
+        valueInput.addEventListener('blur', commit);
+        valueInput.addEventListener('keydown', event => {
+            if (event.key === 'Enter') commit(event);
+        });
+        row.append(slider, valueInput);
+        return row;
+    };
+    plugin.setParameters({ pm: 'full', pa: false, dw: 10, pl: 500 });
+    const row = plugin._createPhaseLowControl();
+    const valueInput = row.querySelectorAll('input').find(input => input.type === 'number');
+
+    for (const partial of ['4', '42', '425']) {
+        valueInput.value = partial;
+        valueInput.dispatch('input');
+        assert.equal(valueInput.value, partial);
+        assert.equal(plugin.pl, 500);
+    }
+    const enter = valueInput.dispatch('keydown', { key: 'Enter' });
+    assert.equal(enter.defaultPrevented, true);
+    assert.equal(plugin.pl, 425);
+    assert.equal(valueInput.value, '425');
+
+    plugin.setParameters({ dw: 6 });
+    valueInput.value = '100';
+    valueInput.dispatch('input');
+    assert.equal(valueInput.value, '100');
+    assert.equal(plugin.pl, 425);
+    valueInput.dispatch('blur');
+    assert.equal(plugin._manualPhaseLowMinimumFrequency(), 167);
+    assert.equal(plugin.pl, 167);
+    assert.equal(valueInput.value, '167');
+    assert.equal(valueInput.min, '167');
+    assert.equal(helperInputCalls, 0);
+    assert.equal(helperCommitCalls, 0);
+    plugin.cleanup();
+});
+
 test('Room EQ lays out Phase Low, Auto, and its value input on one desktop row', () => {
     assert.match(pluginSource, /roomEq\.parameter\.phaseLow', 'Phase Low'/);
     assert.match(pluginSource, /roomEq\.option\.auto', 'Auto'/);
@@ -432,9 +531,9 @@ test('Room EQ serializes one measurement, common delay, and the selected host ch
     plugin.setParameters({
         pm: 'min',
         tp: 8192,
-        ms0: 'measurement-1',
-        mn0: 'Listening seat',
-        dy0: 1.25,
+        ms: 'measurement-1',
+        mn: 'Listening seat',
+        dl: 1.25,
         cr: 42,
         pr: 73,
         pa: false,
@@ -492,6 +591,83 @@ test('Room EQ owns its Additional EQ editor implementation', () => {
     editor.dispose();
 });
 
+test('Room EQ Additional EQ preserves continuous number input through host model re-entry', () => {
+    const { Plugin, context } = loadPlugin();
+    context.document.createElement = tabElementStub;
+    context.document.createTextNode = text => ({ textContent: String(text) });
+    const plugin = new Plugin();
+    plugin._scheduleDesign = () => {};
+    const held = new Set();
+    plugin.isHeldByUser = element => held.has(element);
+    const editor = context.window.RoomEqPlugin.createAdditionalEqEditor({
+        host: plugin,
+        id: 'room-eq-editor',
+        bands: plugin.eqBands,
+        onChange: bands => plugin.setParameters({ bs: bands })
+    });
+    const band = editor._createBandControls(0);
+    editor.uiCreated = true;
+    editor.uiContainer = {
+        querySelector: selector => selector.includes('data-band="0"') ? band : null
+    };
+    editor.updateMarkers = () => {};
+    editor.updateResponse = () => {};
+    plugin._additionalEqEditor = editor;
+
+    const frequency = band.querySelector('.room-eq-additional-eq-freq-text');
+    const gain = band.querySelector('.room-eq-additional-eq-gain-text');
+    const qText = band.querySelector('.room-eq-additional-eq-q-text');
+    const qSlider = band.querySelector('.room-eq-additional-eq-q-slider');
+    const typeSelect = band.querySelector('.room-eq-additional-eq-filter-type');
+
+    held.add(frequency);
+    frequency.value = '123.';
+    frequency.dispatch('input');
+    assert.equal(plugin.eqBands[0].frequency, 123);
+    assert.equal(frequency.value, '123.');
+    frequency.dispatch('change');
+    assert.equal(frequency.value, '123');
+    held.delete(frequency);
+
+    held.add(gain);
+    gain.value = '-';
+    gain.dispatch('input');
+    assert.equal(plugin.eqBands[0].gain, 0);
+    assert.equal(gain.value, '-');
+    gain.dispatch('change');
+    assert.equal(gain.value, '0.0');
+    held.delete(gain);
+
+    held.add(qText);
+    qText.value = '1.';
+    qText.dispatch('input');
+    assert.equal(plugin.eqBands[0].q, 1);
+    assert.equal(qText.value, '1.');
+    qText.dispatch('change');
+    assert.equal(qText.value, '1.00');
+    held.delete(qText);
+
+    held.add(qSlider);
+    held.add(typeSelect);
+    qSlider.value = 'held-slider';
+    typeSelect.value = 'pk';
+    plugin.setParameters({
+        bs: plugin.eqBands.map((entry, index) => index === 0
+            ? { ...entry, q: 1.5, type: 'hs' }
+            : entry)
+    });
+    assert.equal(qSlider.value, 'held-slider');
+    assert.equal(typeSelect.value, 'pk');
+    assert.equal(qText.value, '1.50');
+
+    held.clear();
+    editor.syncFrom(plugin.eqBands);
+    assert.equal(qSlider.value, '1.50');
+    assert.equal(typeSelect.value, 'hs');
+    editor.dispose();
+    plugin.cleanup();
+});
+
 test('Room EQ wraps its graph in the standard graph container', () => {
     assert.match(pluginSource, /graphContainer\.className = 'graph-container'/);
     assert.match(pluginSource, /graphContainer\.style\.margin = '10px auto'/);
@@ -542,6 +718,7 @@ test('Room EQ graph draws measured, correction, and corrected response curves', 
         frequencies: new Float32Array([10, 20, 20000, 40000]),
         measuredDb: new Float32Array([-40, -30, -30, 0]),
         correctionDb: new Float32Array([1, 1, 1, 1]),
+        predictedBaseDb: new Float32Array([-39, -29, -29, 1]),
         normalizationGainDb: -27
     });
 
@@ -1570,7 +1747,9 @@ test('offline Room EQ warmup includes filter delay for Linear and Correction', a
             supportsFullPhase: true
         });
 
-        const requirement = await plugin.resolveOfflineDspAssetRequirement();
+        const requirement = await plugin.resolveOfflineDspAssetRequirement({
+            outputChannelCount: 1
+        });
         const state = await plugin.createOfflineDspState({
             sampleRate: 48000,
             outputChannelCount: 1,
@@ -1613,7 +1792,9 @@ test('offline Room EQ closes its worker and fails closed when an awaited design 
         };
     };
 
-    const requirement = await plugin.resolveOfflineDspAssetRequirement();
+    const requirement = await plugin.resolveOfflineDspAssetRequirement({
+        outputChannelCount: 1
+    });
     const pending = plugin.createOfflineDspState({
         sampleRate: 48000,
         outputChannelCount: 1,
@@ -1657,5 +1838,1353 @@ test('offline Room EQ uses the packed parameter snapshot captured before worker 
     assert.equal(state.parameters.gn, 2);
     assert.equal(state.parameters.dy, 48);
     assert.equal(state.parameters.ce, undefined);
+    plugin.cleanup();
+});
+
+test('Room EQ serializes reverb correction and phase smoothing parameters', () => {
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    plugin.setParameters({ rv: 40, rw: 500, rf: 2000, rs: 0.1, pq: false, ps: 0.25 });
+    const serialized = plugin.getSerializableParameters();
+    assert.equal(serialized.rv, 40);
+    assert.equal(serialized.rw, 500);
+    assert.equal(serialized.rf, 2000);
+    assert.equal(serialized.rs, 0.1);
+    assert.equal(serialized.pq, false);
+    assert.equal(serialized.ps, 0.25);
+
+    const restored = new Plugin();
+    restored.setSerializedParameters(serialized);
+    assert.equal(restored.rv, 40);
+    assert.equal(restored.rw, 500);
+    assert.equal(restored.rf, 2000);
+    assert.equal(restored.rs, 0.1);
+    assert.equal(restored.pq, false);
+    assert.equal(restored.ps, 0.25);
+    const config = restored._designConfig();
+    assert.equal(config.reverbAmount, 0.4);
+    assert.equal(config.reverbWindowMs, 500);
+    assert.equal(config.reverbMaxFrequency, 2000);
+    assert.equal(config.reverbSmoothing, 0.1);
+    assert.equal(config.phaseSmoothing, 0.25);
+
+    restored.setParameters({ rv: 150, rw: 5, rf: 30000, rs: 2, ps: 0.001 });
+    assert.equal(restored.rv, 100);
+    assert.equal(restored.rw, 20);
+    assert.equal(restored.rf, 20000);
+    assert.equal(restored.rs, 1);
+    assert.equal(restored.ps, 0.02);
+    plugin.cleanup();
+    restored.cleanup();
+});
+
+test('Room EQ redesigns for every reverb and phase smoothing parameter', () => {
+    const { Plugin } = loadPlugin();
+    const overrides = [
+        ['rv', { rv: 40 }],
+        ['rw', { rw: 500 }],
+        ['rf', { rf: 2000 }],
+        ['rs', { rs: 0.1 }],
+        ['pq', { pq: false }],
+        ['ps', { ps: 0.25 }]
+    ];
+    for (const [key, params] of overrides) {
+        const plugin = new Plugin();
+        const baseline = plugin._designSignature();
+        plugin.setParameters(params);
+        assert.notEqual(
+            plugin._designSignature(),
+            baseline,
+            `changing ${key} must change the design signature`
+        );
+        plugin.cleanup();
+    }
+
+    // T-1: the per-channel selection is part of both keys. Assigning or clearing a
+    // slot has to redesign (or the old correction keeps playing until an unrelated
+    // parameter is touched) and has to rebuild the rows.
+    const channelPlugin = new Plugin();
+    let designSchedules = 0;
+    let rowRenders = 0;
+    channelPlugin._scheduleDesign = () => { designSchedules += 1; };
+    channelPlugin._renderChannelMeasurements = () => { rowRenders += 1; };
+    channelPlugin.setParameters({ ms0: 'left', mn0: 'Left seat' });
+    assert.equal(designSchedules, 1, 'assigning a channel measurement must redesign');
+    assert.equal(rowRenders, 1, 'assigning a channel measurement must rebuild the rows');
+    channelPlugin.setParameters({ ms0: '', mn0: '' });
+    assert.equal(designSchedules, 2, 'clearing a channel measurement must redesign');
+    assert.equal(rowRenders, 2, 'clearing a channel measurement must rebuild the rows');
+    channelPlugin.cleanup();
+});
+
+test('Room EQ keeps legacy presets at inert reverb defaults', () => {
+    const { Plugin } = loadPlugin();
+    const legacy = new Plugin();
+    legacy.setSerializedParameters({ pm: 'full', tp: 16384, sm: 0.25 });
+    assert.equal(legacy.rv, 0);
+    assert.equal(legacy.rw, 300);
+    assert.equal(legacy.rf, 250);
+    assert.equal(legacy.rs, 0.05);
+    assert.equal(legacy.pq, true);
+    assert.equal(legacy.ps, 0.17);
+    const config = legacy._designConfig();
+    assert.equal(config.reverbAmount, 0);
+    assert.equal(config.reverbWindowMs, 300);
+    assert.equal(config.reverbMaxFrequency, 250);
+    assert.equal(config.reverbSmoothing, 0.05);
+    assert.equal(config.phaseSmoothing, null);
+    legacy.cleanup();
+});
+
+test('Room EQ disables reverb correction and Phase Smoothing outside Correction mode', () => {
+    assert.match(pluginSource,
+        /createLogarithmicParameterControl\(\s*this\._t\('roomEq\.parameter\.reverbMaxFrequency', 'Reverb Max Freq'\)/);
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    plugin.setParameters({ rv: 35, rw: 400 });
+    const reverbRows = Array.from({ length: 4 }, () => {
+        const inputs = [{ disabled: false }, { disabled: false }];
+        return { inputs, querySelectorAll: () => inputs };
+    });
+    plugin._reverbCorrectionControls = reverbRows;
+    plugin._phaseSmoothingControl = {
+        slider: { disabled: false, value: '' },
+        valueInput: { disabled: false, value: '' },
+        auto: { checked: false, disabled: false }
+    };
+
+    plugin._syncPhaseCorrectionControl();
+    assert.ok(reverbRows.every(row => row.inputs.every(input => input.disabled)));
+    assert.equal(plugin._phaseSmoothingControl.auto.disabled, true);
+    assert.equal(plugin._phaseSmoothingControl.slider.disabled, true);
+    assert.equal(plugin._phaseSmoothingControl.valueInput.disabled, true);
+    assert.equal(plugin.rv, 35);
+    assert.equal(plugin.rw, 400);
+
+    plugin.setParameters({ pm: 'full' });
+    assert.ok(reverbRows.every(row => row.inputs.every(input => !input.disabled)));
+    assert.equal(plugin._phaseSmoothingControl.auto.disabled, false);
+    assert.equal(plugin._phaseSmoothingControl.auto.checked, true);
+    assert.equal(plugin._phaseSmoothingControl.slider.disabled, true);
+    assert.equal(plugin._phaseSmoothingControl.valueInput.disabled, true);
+    assert.equal(plugin._phaseSmoothingControl.slider.value, String(plugin.sm));
+
+    plugin.setParameters({ pq: false });
+    assert.equal(plugin._phaseSmoothingControl.slider.disabled, false);
+    assert.equal(plugin._phaseSmoothingControl.valueInput.disabled, false);
+    assert.equal(plugin._phaseSmoothingControl.auto.checked, false);
+
+    plugin.setParameters({ pm: 'min' });
+    assert.ok(reverbRows.every(row => row.inputs.every(input => input.disabled)));
+    assert.equal(plugin._phaseSmoothingControl.auto.disabled, true);
+    assert.equal(plugin.rv, 35);
+    assert.equal(plugin.pq, false);
+    plugin.cleanup();
+});
+
+test('Room EQ preserves a held Phase Smoothing number input during model synchronisation', () => {
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    plugin._scheduleDesign = () => {};
+    plugin.setParameters({ pm: 'full', pq: false, ps: 0.25 });
+    const control = {
+        slider: { disabled: false, value: '' },
+        valueInput: { disabled: false, value: '0.' },
+        auto: { checked: false, disabled: false }
+    };
+    plugin._phaseSmoothingControl = control;
+    plugin.isHeldByUser = element => element === control.valueInput;
+
+    plugin.setParameters({ ps: 0.6 });
+    assert.equal(plugin.ps, 0.6);
+    assert.equal(control.slider.value, '0.6');
+    assert.equal(control.valueInput.value, '0.');
+
+    plugin.isHeldByUser = () => false;
+    plugin._syncPhaseSmoothingControl();
+    assert.equal(control.valueInput.value, '0.60');
+    plugin.cleanup();
+});
+
+test('Room EQ excludes reverb and phase smoothing keys from packed DSP parameters', () => {
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    plugin.setParameters({ rv: 60, rw: 700, rf: 900, rs: 0.2, pq: false, ps: 0.3 });
+    const packed = plugin._packedParameters();
+    for (const key of ['rv', 'rw', 'rf', 'rs', 'pq', 'ps']) {
+        assert.equal(key in packed, false, `packed parameters must omit ${key}`);
+    }
+    plugin.cleanup();
+});
+
+test('Room EQ reports one plain warning when reverb correction is limited', () => {
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    plugin.setParameters({ pm: 'full', rv: 30 });
+    const result = {
+        qualityWarnings: [],
+        diagnostics: {
+            lowFrequencyPhaseExtension: [],
+            reverbCorrection: [
+                { state: 'applied', scale: 1, effectiveWindowMs: 300 },
+                { state: 'disabled', reason: 'windowBudget', effectiveWindowMs: 40 }
+            ]
+        }
+    };
+
+    const code = plugin._qualityWarningForDesign(result);
+    assert.equal(code, 'reverbCorrectionLimited');
+    assert.equal(
+        plugin._qualityWarningMessage(code),
+        'Reverb correction was limited by the measurement or settings. The usable reverb window or frequency band was too small, or the synthesized reverb correction did not fit safely within the time limits of the realized FIR, so Room EQ reduced or skipped the reverb correction; the rest of the filter remains active.'
+    );
+    assert.doesNotMatch(plugin._qualityWarningMessage(code), /taps/i);
+    result.diagnostics.reverbCorrection = [
+        { state: 'disabled', reason: 'emptyBand', effectiveWindowMs: 300 }
+    ];
+    assert.equal(plugin._qualityWarningForDesign(result), 'reverbCorrectionLimited');
+    result.diagnostics.reverbCorrection = [
+        { state: 'reduced', scale: 0.5, effectiveWindowMs: 120 }
+    ];
+    assert.equal(plugin._qualityWarningForDesign(result), 'reverbCorrectionLimited');
+    result.qualityWarnings.push('filterAccuracy');
+    assert.equal(plugin._qualityWarningForDesign(result), 'filterAccuracy');
+    result.qualityWarnings.length = 0;
+    plugin.setParameters({ rv: 0 });
+    assert.equal(plugin._qualityWarningForDesign(result), undefined);
+    plugin.setParameters({ rv: 30, pm: 'lin' });
+    assert.equal(plugin._qualityWarningForDesign(result), undefined);
+    plugin.cleanup();
+});
+
+test('Room EQ transfers the effective smoothing to Phase Smoothing on Auto release', () => {
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    plugin.setParameters({ sm: 0.3 });
+    plugin.setParameters({ pq: false });
+    assert.equal(plugin.pq, false);
+    assert.equal(plugin.ps, 0.3);
+    plugin.setParameters({ sm: 0.5 });
+    assert.equal(plugin.ps, 0.3);
+    plugin.setParameters({ pq: true });
+    assert.equal(plugin.ps, 0.3);
+    plugin.setParameters({ pq: false, ps: 0.4 });
+    assert.equal(plugin.pq, false);
+    assert.equal(plugin.ps, 0.4);
+    plugin.setParameters({ pq: '1' });
+    assert.equal(plugin.pq, true);
+    plugin.setParameters({ sm: 0.22, pq: 'false' });
+    assert.equal(plugin.pq, false);
+    assert.equal(plugin.ps, 0.22);
+    plugin.cleanup();
+});
+
+test('all locales include the Room EQ reverb correction strings', async () => {
+    const locales = ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh'];
+    const keys = [
+        'roomEq.parameter.phaseSmoothing',
+        'roomEq.parameter.reverbCorrection',
+        'roomEq.parameter.reverbWindow',
+        'roomEq.parameter.reverbMaxFrequency',
+        'roomEq.parameter.reverbSmoothing',
+        'roomEq.warning.reverbCorrectionLimited'
+    ];
+    for (const locale of locales) {
+        const source = await fs.readFile(path.join(repoRoot, 'js', 'locales', `${locale}.json5`), 'utf8');
+        for (const key of keys) {
+            assert.equal(source.includes(`"${key}":`), true, `${locale} is missing ${key}`);
+        }
+    }
+});
+
+function matchesTabSelector(node, selector) {
+    if (selector.startsWith('.')) {
+        return String(node.className || '').split(/\s+/).includes(selector.slice(1));
+    }
+    return node.tagName === selector;
+}
+
+function tabElementStub(tagName) {
+    const element = {
+        tagName,
+        children: [],
+        attributes: {},
+        dataset: {},
+        listeners: {},
+        className: '',
+        hidden: false,
+        textContent: '',
+        appendChild(child) {
+            this.children.push(child);
+            return child;
+        },
+        append(...children) {
+            this.children.push(...children);
+        },
+        insertBefore(child, reference) {
+            const index = this.children.indexOf(reference);
+            if (index < 0) this.children.push(child);
+            else this.children.splice(index, 0, child);
+            return child;
+        },
+        setAttribute(name, value) { this.attributes[name] = String(value); },
+        getAttribute(name) { return name in this.attributes ? this.attributes[name] : null; },
+        addEventListener(type, handler, options = false) {
+            (this.listeners[type] ||= []).push({
+                handler,
+                capture: options === true || options?.capture === true
+            });
+        },
+        dispatch(type, init = {}) {
+            let stopped = false;
+            const event = {
+                target: this,
+                defaultPrevented: false,
+                ...init,
+                preventDefault() { this.defaultPrevented = true; },
+                stopImmediatePropagation() { stopped = true; }
+            };
+            const listeners = this.listeners[type] || [];
+            for (const { handler } of [
+                ...listeners.filter(listener => listener.capture),
+                ...listeners.filter(listener => !listener.capture)
+            ]) {
+                handler(event);
+                if (stopped) break;
+            }
+            return event;
+        },
+        querySelectorAll(selector) {
+            const found = [];
+            const walk = node => {
+                for (const child of node.children || []) {
+                    if (matchesTabSelector(child, selector)) found.push(child);
+                    walk(child);
+                }
+            };
+            walk(this);
+            return found;
+        },
+        querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+    };
+    element.classList = {
+        contains: name => String(element.className || '').split(/\s+/).includes(name),
+        add(name) {
+            if (!this.contains(name)) element.className = `${element.className} ${name}`.trim();
+        },
+        remove(name) {
+            element.className = String(element.className || '')
+                .split(/\s+/).filter(token => token && token !== name).join(' ');
+        },
+        toggle(name, force) {
+            const next = force === undefined ? !this.contains(name) : force;
+            if (next) this.add(name);
+            else this.remove(name);
+            return next;
+        }
+    };
+    return element;
+}
+
+function tabDefinitionSections() {
+    const start = pluginSource.indexOf('_tabDefinitions() {');
+    const end = pluginSource.indexOf('createUI() {', start);
+    return new Map(pluginSource.slice(start, end)
+        .split(/\n            \{ id: '/)
+        .slice(1)
+        .map(section => [section.slice(0, section.indexOf("'")), section]));
+}
+
+test('Room EQ restores the remembered tab and swaps panels on click', () => {
+    const { Plugin, context } = loadPlugin();
+    context.document.createElement = tabElementStub;
+    const plugin = new Plugin();
+    plugin._selectedTab = 'beta';
+    const definitions = ['alpha', 'beta', 'gamma'].map(id => ({
+        id,
+        label: id.toUpperCase(),
+        create: content => content.appendChild(tabElementStub('div'))
+    }));
+    const panel = plugin._createTabbedPanel(definitions);
+    assert.equal(panel.className, 'room-eq-panel');
+    const tabs = panel.querySelectorAll('.room-eq-tab');
+    const contents = panel.querySelectorAll('.room-eq-tab-content');
+    assert.deepEqual(tabs.map(tab => tab.textContent), ['ALPHA', 'BETA', 'GAMMA']);
+    assert.deepEqual(contents.map(content => content.children.length), [1, 1, 1]);
+    assert.deepEqual(tabs.map(tab => tab.classList.contains('active')), [false, true, false]);
+    assert.deepEqual(tabs.map(tab => tab.getAttribute('aria-selected')), ['false', 'true', 'false']);
+    assert.deepEqual(contents.map(content => content.hidden), [true, false, true]);
+    assert.deepEqual(
+        contents.map(content => content.getAttribute('aria-labelledby')),
+        tabs.map(tab => tab.id)
+    );
+
+    tabs[2].dispatch('click');
+    assert.equal(plugin._selectedTab, 'gamma');
+    assert.deepEqual(tabs.map(tab => tab.classList.contains('active')), [false, false, true]);
+    assert.deepEqual(tabs.map(tab => tab.getAttribute('aria-selected')), ['false', 'false', 'true']);
+    assert.deepEqual(contents.map(content => content.hidden), [true, true, false]);
+    assert.deepEqual(contents.map(content => content.classList.contains('active')), [false, false, true]);
+    plugin.cleanup();
+});
+
+test('Room EQ groups its parameter rows into five workflow tabs', () => {
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    assert.equal(plugin._selectedTab, 'measurement');
+    assert.deepEqual(
+        [...plugin._tabDefinitions()].map(({ id, label }) => [id, label]),
+        [
+            ['measurement', 'Measurement'],
+            ['filter', 'Filter'],
+            ['level', 'Level'],
+            ['phase', 'Phase'],
+            ['reverb', 'Reverb']
+        ]
+    );
+
+    const sections = tabDefinitionSections();
+    assert.deepEqual([...sections.keys()], ['measurement', 'filter', 'level', 'phase', 'reverb']);
+    const rows = {
+        measurement: [
+            "'roomEq.parameter.measurement'", "'roomEq.parameter.referencePoint'", 'dl: value',
+            'this._measurementRow =', 'this._referencePointSelect ='
+        ],
+        filter: ['tp: Number(value)', 'lt: value', 'sm: value'],
+        level: ['fl: value', 'fh: value', 'mb: value', 'cr: value', 'gn: value'],
+        phase: [
+            'pm: value', '_createPhaseSmoothingControl()', 'dw: value',
+            '_createPhaseLowControl()', 'le: value', 'pr: value',
+            'this._phaseCorrectionControl =', 'this._lowFrequencyPhaseExtensionControl ='
+        ],
+        reverb: ['rv: value', 'rw: value', 'rf: value', 'rs: value', 'this._reverbCorrectionControls =']
+    };
+    for (const [id, tokens] of Object.entries(rows)) {
+        for (const token of tokens) {
+            assert.equal(sections.get(id).includes(token), true, `${id} tab is missing ${token}`);
+            for (const [otherId, section] of sections) {
+                if (otherId === id) continue;
+                assert.equal(section.includes(token), false, `${otherId} tab should not own ${token}`);
+            }
+        }
+    }
+    assert.match(pluginSource,
+        /container\.appendChild\(this\._createTabbedPanel\(this\._tabDefinitions\(\)\)\);\s*this\._syncPhaseCorrectionControl\(\);/);
+    const createUiStart = pluginSource.indexOf('createUI() {', pluginSource.indexOf('_tabDefinitions() {'));
+    const createUiSource = pluginSource.slice(createUiStart, pluginSource.indexOf('\n    cleanup() {', createUiStart));
+    assert.equal(createUiSource.match(/this\._syncPhaseCorrectionControl\(\);/g).length, 1);
+    assert.match(pluginCss,
+        /\.room-eq-tab\.active \{\s*border-color: #666;\s*color: #fff;\s*background: #484848;\s*\}/);
+    assert.match(pluginCss, /\.room-eq-tab-content\[hidden\] \{\s*display: none;\s*\}/);
+    plugin.cleanup();
+});
+
+test('all locales include the Room EQ tab labels', async () => {
+    const locales = ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh'];
+    const keys = [
+        'roomEq.tab.measurement',
+        'roomEq.tab.filter',
+        'roomEq.tab.level',
+        'roomEq.tab.phase',
+        'roomEq.tab.reverb'
+    ];
+    for (const locale of locales) {
+        const source = await fs.readFile(path.join(repoRoot, 'js', 'locales', `${locale}.json5`), 'utf8');
+        for (const key of keys) {
+            assert.equal(source.includes(`"${key}":`), true, `${locale} is missing ${key}`);
+        }
+    }
+});
+
+// ---------------------------------------------------------------------------
+// Room EQ per-channel measurements (plan.md §2.6 T-1 / T-3 / T-4 / T-6 / T-12 /
+// T-13 / T-14 / T-15).
+// ---------------------------------------------------------------------------
+
+function measurementStoreStub(measurements, impulses = {}) {
+    return {
+        async getMeasurement(id) { return measurements[id]; },
+        async getImpulseResponses(id) { return impulses[id] || []; }
+    };
+}
+
+function channelElementStub(tagName) {
+    return {
+        tagName,
+        children: [],
+        listeners: {},
+        attributes: {},
+        className: '',
+        textContent: '',
+        hidden: false,
+        id: '',
+        htmlFor: '',
+        value: '',
+        appendChild(child) {
+            this.children.push(child);
+            return child;
+        },
+        append(...nodes) {
+            for (const node of nodes) this.children.push(node);
+        },
+        replaceChildren() { this.children = []; },
+        setAttribute(name, value) { this.attributes[name] = String(value); },
+        addEventListener(type, handler) { (this.listeners[type] ||= []).push(handler); },
+        dispatch(type) {
+            for (const handler of this.listeners[type] || []) handler({ target: this });
+        },
+        get selectedOptions() {
+            return this.children.filter(child => child.value === this.value);
+        }
+    };
+}
+
+test('Room EQ keeps one design source while every channel slot is empty', async () => {
+    // T-1: the default path must not consult the IR runtime and must produce the
+    // exact single-source request today's mono asset is designed from.
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    plugin.measurementId = 'shared';
+    plugin._getRuntime = async () => {
+        throw new Error('the default path must not need the IR runtime');
+    };
+    const store = measurementStoreStub({
+        shared: {
+            id: 'shared',
+            points: [{ pointId: 1 }],
+            averageFrequencyResponse: [[1000, -2]]
+        }
+    }, { shared: [{ pointId: 1, data: new Float32Array([1]) }] });
+
+    const result = await plugin._sourcesFor(store);
+    assert.equal(result.sources.length, 1);
+    assert.equal(result.sources[0].measurement.id, 'shared');
+    assert.equal(result.resolved, true);
+    assert.equal(result.supportsFullPhase, true);
+    plugin.cleanup();
+});
+
+test('Room EQ resolves an assigned channel slot and shares the rest', async () => {
+    // T-6: ms0 wins for channel 0, every later channel falls back to the shared ms.
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    plugin.measurementId = 'shared';
+    plugin.channelMeasurementIds[0] = 'left';
+    plugin.channel = 'A';
+    plugin._outputChannelCount = 2;
+    plugin._getRuntime = async () => ({ selectedIrChannelCount: () => 2 });
+    const store = measurementStoreStub({
+        shared: { id: 'shared', points: [{ pointId: 1 }], averageFrequencyResponse: [[1000, -2]] },
+        left: { id: 'left', points: [{ pointId: 1 }], averageFrequencyResponse: [[1000, -4]] }
+    }, {
+        shared: [{ pointId: 1, data: new Float32Array([1]) }],
+        left: [{ pointId: 1, data: new Float32Array([1]) }]
+    });
+
+    const result = await plugin._sourcesFor(store);
+    assert.deepEqual(
+        Array.from(result.sources, source => source.measurement.id),
+        ['left', 'shared']
+    );
+    assert.equal(result.resolved, true);
+    assert.equal(result.supportsFullPhase, true);
+    plugin.cleanup();
+});
+
+test('Room EQ requires impulse data from every measurement it designs from', async () => {
+    // T-12: one channel without a complete IR set has to veto Correction phase.
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    plugin.measurementId = 'complete';
+    plugin.channelMeasurementIds[1] = 'noIr';
+    plugin.channel = 'A';
+    plugin._outputChannelCount = 2;
+    plugin._getRuntime = async () => ({ selectedIrChannelCount: () => 2 });
+    const store = measurementStoreStub({
+        complete: {
+            id: 'complete',
+            points: [{ pointId: 1 }],
+            averageFrequencyResponse: [[1000, -2]]
+        },
+        noIr: { id: 'noIr', points: [{ pointId: 1 }], averageFrequencyResponse: [[1000, -4]] }
+    }, { complete: [{ pointId: 1, data: new Float32Array([1]) }], noIr: [] });
+
+    const mixed = await plugin._sourcesFor(store);
+    assert.deepEqual(
+        Array.from(mixed.sources, source => source.measurement.id),
+        ['complete', 'noIr']
+    );
+    assert.equal(mixed.supportsFullPhase, false);
+
+    plugin.channelMeasurementIds[1] = 'complete';
+    const complete = await plugin._sourcesFor(store);
+    assert.equal(complete.supportsFullPhase, true);
+    plugin.cleanup();
+});
+
+test('Room EQ stages the mono asset header while every channel slot is empty', async () => {
+    // T-3: assetChannels 1 / topology mono / pathCount 0 is the current contract and
+    // stays the contract for the default configuration.
+    const { Plugin, context } = loadPlugin();
+    const plugin = new Plugin();
+    plugin.tp = 8192;
+    plugin.channel = 'A';
+    plugin._outputChannelCount = 4;
+    // The payload has to belong to the plugin realm: the staging code reads its
+    // header through an `instanceof ArrayBuffer` guard.
+    const payload = vm.runInContext(`new ArrayBuffer(${32 + 8192 * 4})`, context);
+    new DataView(payload).setUint32(4, 1, true);
+    const result = { payload };
+    plugin._lastDesign = result;
+    let footprintRequest = null;
+    plugin._getRuntime = async () => ({
+        IR_ASSET_TOPOLOGY: { mono: 1, independent: 2 },
+        selectedIrChannelCount: () => 4,
+        estimateIrKernelCommitFootprint(request) {
+            footprintRequest = request;
+            return payload.byteLength;
+        }
+    });
+
+    assert.equal(await plugin._stageDesign(result), true);
+    assert.deepEqual({ ...footprintRequest }, {
+        frames: 8192,
+        assetChannels: 1,
+        topology: 1,
+        processingChannels: 4,
+        headBlock: 128
+    });
+    assert.equal(plugin.asset.descriptor.pathCount, 0);
+    assert.equal(plugin.asset.descriptor.inputCount, 0);
+    assert.equal(plugin.asset.descriptor.processingChannels, 4);
+    plugin.cleanup();
+});
+
+test('Room EQ stages an independent asset header for a multi-channel design', async () => {
+    const { Plugin, context } = loadPlugin();
+    const plugin = new Plugin();
+    plugin.tp = 8192;
+    plugin.channel = 'A';
+    plugin._outputChannelCount = 2;
+    plugin.channelMeasurementIds[0] = 'left';
+    const payload = vm.runInContext(`new ArrayBuffer(${32 + 2 * 8192 * 4})`, context);
+    new DataView(payload).setUint32(4, 2, true);
+    const result = { payload };
+    plugin._lastDesign = result;
+    let footprintRequest = null;
+    plugin._getRuntime = async () => ({
+        IR_ASSET_TOPOLOGY: { mono: 1, independent: 2 },
+        selectedIrChannelCount: () => 2,
+        estimateIrKernelCommitFootprint(request) {
+            footprintRequest = request;
+            return payload.byteLength;
+        }
+    });
+
+    assert.equal(await plugin._stageDesign(result), true);
+    assert.deepEqual({ ...footprintRequest }, {
+        frames: 8192,
+        assetChannels: 2,
+        topology: 2,
+        processingChannels: 2,
+        headBlock: 128
+    });
+    plugin.cleanup();
+});
+
+test('Room EQ omits every empty channel measurement key from its preset', () => {
+    // T-4: the serialized key set of the current defaults must not grow.
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    const serialized = plugin.getSerializableParameters();
+    assert.deepEqual(Object.keys(serialized).filter(key => /^(ms|mn)\d$/.test(key)), []);
+    assert.equal(serialized.ms, '');
+    assert.equal(serialized.mn, '');
+    assert.equal(serialized.dl, 0);
+
+    plugin.setParameters({ ms: 'shared', mn: 'Listening seat', dl: 2 });
+    assert.deepEqual(
+        Object.keys(plugin.getSerializableParameters()).filter(key => /^(ms|mn)\d$/.test(key)),
+        []
+    );
+    plugin.cleanup();
+});
+
+test('Room EQ round-trips an assigned channel measurement through its preset', () => {
+    // T-13.
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    plugin.setParameters({
+        ms: 'shared',
+        mn: 'Shared seat',
+        ms0: 'left',
+        mn0: 'Left seat',
+        ms3: 'surround',
+        mn3: 'Surround seat'
+    });
+    const serialized = plugin.getSerializableParameters();
+    assert.equal(serialized.ms0, 'left');
+    assert.equal(serialized.mn0, 'Left seat');
+    assert.equal(serialized.ms3, 'surround');
+    assert.equal(serialized.mn3, 'Surround seat');
+    assert.equal(serialized.ms1, undefined);
+    assert.equal(serialized.mn1, undefined);
+
+    const restored = new Plugin();
+    restored.setSerializedParameters(serialized);
+    assert.deepEqual(Array.from(restored.channelMeasurementIds),
+        ['left', '', '', 'surround', '', '', '', '']);
+    assert.deepEqual(Array.from(restored.channelMeasurementNames),
+        ['Left seat', '', '', 'Surround seat', '', '', '', '']);
+    assert.equal(restored.measurementId, 'shared');
+    plugin.cleanup();
+    restored.cleanup();
+});
+
+test('Room EQ reports every assigned measurement as an external asset dependency', () => {
+    // T-14.
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    plugin.setParameters({ ms: 'shared', mn: 'Shared seat', ms0: 'left', mn0: 'Left seat' });
+    const info = plugin.externalAssetInfo;
+    assert.deepEqual(Array.from(info.ids), ['shared', 'left']);
+    assert.deepEqual(Array.from(info.names), ['Shared seat', 'Left seat']);
+    assert.equal(info.missing, true);
+    assert.equal(info.kind, 'Measurement');
+    assert.match(info.assetSignature, /"left"/);
+
+    const channelsOnly = new Plugin();
+    channelsOnly.setParameters({ ms0: 'left', mn0: 'Left seat' });
+    assert.deepEqual(Array.from(channelsOnly.externalAssetInfo.ids), ['left']);
+    assert.equal(channelsOnly.isOfflineDspAssetRequired(), true);
+    assert.equal(new Plugin().externalAssetInfo, null);
+    plugin.cleanup();
+    channelsOnly.cleanup();
+});
+
+test('Room EQ shows one measurement selector per selected IR channel', async () => {
+    // T-15: the row count follows selectedIrChannelCount(), and a single-channel
+    // selection hides the per-channel rows entirely (decision D-7).
+    const { Plugin, context } = loadPlugin();
+    context.document.createElement = channelElementStub;
+    const plugin = new Plugin();
+    const container = channelElementStub('div');
+    plugin._channelMeasurementContainer = container;
+    let channelCount = 2;
+    const measurements = [{ id: 'left', name: 'Left', pointCount: 3, hasIr: true }];
+    plugin._getRuntime = async () => ({
+        selectedIrChannelCount: () => channelCount,
+        openMeasurementStore: async () => ({
+            listMeasurements: () => measurements,
+            async refresh() {},
+            async close() {}
+        })
+    });
+
+    await plugin._renderChannelMeasurements(measurements);
+    assert.equal(container.children.length, 2);
+    assert.deepEqual(
+        Array.from(container.children, row => row.children[0].textContent),
+        ['Measurement Ch 1', 'Measurement Ch 2']
+    );
+    assert.equal(container.children[0].className,
+        'parameter-row room-eq-channel-measurement-row');
+    assert.deepEqual(
+        Array.from(container.children[0].children[1].children, option => option.value),
+        ['', 'left']
+    );
+    assert.equal(container.children[0].children[1].children[0].textContent, '(Shared)');
+
+    const select = container.children[1].children[1];
+    select.value = 'left';
+    select.dispatch('change');
+    assert.equal(plugin.channelMeasurementIds[1], 'left');
+    assert.equal(plugin.channelMeasurementNames[1], 'Left · 3 pt · IR');
+    // The change handler kicks off its own re-render; let it settle so the counts
+    // below observe this test's channel count and not the handler's.
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    channelCount = 8;
+    await plugin._renderChannelMeasurements(measurements);
+    assert.equal(container.children.length, 8);
+
+    // T-2: a measurement deleted from the store has to stay visible on the row that
+    // still points at it, otherwise the row reads as "(Shared)" while the design
+    // fails with "Measurement not found".
+    plugin.channelMeasurementIds[0] = 'deleted';
+    plugin.channelMeasurementNames[0] = 'Deleted seat';
+    await plugin._renderChannelMeasurements(measurements);
+    const deletedSelect = container.children[0].children[1];
+    const deletedOption = deletedSelect.children[deletedSelect.children.length - 1];
+    assert.equal(deletedOption.textContent, 'Measurement not found: Deleted seat');
+    assert.equal(deletedOption.value, 'deleted');
+    assert.equal(deletedSelect.value, 'deleted');
+    plugin.channelMeasurementIds[0] = '';
+    plugin.channelMeasurementNames[0] = '';
+
+    channelCount = 1;
+    await plugin._renderChannelMeasurements(measurements);
+    assert.equal(container.children.length, 0);
+
+    assert.match(pluginCss, /\.room-eq-channel-measurement-row \{ display: flex;/);
+    plugin.cleanup();
+});
+
+test('Room EQ picks the previewed channel and hides the switch for one channel', () => {
+    // D-6 / D-7: the preview channel switch sits in the graph control row and only
+    // appears once more than one channel was designed.
+    const { Plugin, context } = loadPlugin();
+    context.document.createElement = channelElementStub;
+    const plugin = new Plugin();
+    const row = channelElementStub('span');
+    const select = channelElementStub('select');
+    plugin._previewChannelControl = { row, select, count: -1 };
+
+    plugin._lastDesign = { previews: [{ id: 'ch0' }] };
+    plugin._renderPreviewChannelSelect();
+    assert.equal(row.hidden, true);
+
+    plugin._lastDesign = { previews: [{ id: 'ch0' }, { id: 'ch1' }] };
+    plugin._renderPreviewChannelSelect();
+    assert.equal(row.hidden, false);
+    assert.deepEqual(
+        Array.from(select.children, option => option.textContent),
+        ['Ch 1', 'Ch 2']
+    );
+    assert.equal(plugin._selectedPreview().id, 'ch0');
+
+    plugin._previewChannel = 1;
+    assert.equal(plugin._selectedPreview().id, 'ch1');
+    plugin._lastDesign = { previews: [{ id: 'ch0' }] };
+    plugin._renderPreviewChannelSelect();
+    assert.equal(plugin._previewChannel, 0);
+    assert.equal(plugin._selectedPreview().id, 'ch0');
+    assert.match(pluginSource, /previewChannelRow\.className = 'room-eq-preview-channel'/);
+    assert.match(pluginCss, /\.room-eq-preview-channel\[hidden\] \{ display: none; \}/);
+    plugin.cleanup();
+});
+
+// ---------------------------------------------------------------------------
+// Room EQ per-channel measurement invariants (adversarial round 1, F-1 … F-8).
+//
+// Invariant A: the IR channel count a design is built for always comes from the
+//   output width of the context that consumes it.
+// Invariant B: "which per-channel slots are in effect" has one definition that
+//   the checks, the resolution, the rendered rows and both signatures share.
+// ---------------------------------------------------------------------------
+
+function vmPayload(context, channels, frames) {
+    const payload = vm.runInContext(
+        `new ArrayBuffer(${32 + channels * frames * 4})`,
+        context
+    );
+    const header = new DataView(payload);
+    header.setUint32(4, channels, true);
+    header.setUint32(8, frames, true);
+    return payload;
+}
+
+function channelDesignRuntime(context, { frames = 8192, onFootprint = () => {} } = {}) {
+    return {
+        IR_ASSET_TOPOLOGY: { mono: 1, independent: 2 },
+        selectedIrChannelCount: (channel, engineChannels) => engineChannels,
+        createRoomEqDesigner: () => ({
+            async design(_config, sources) {
+                return {
+                    payload: vmPayload(context, sources.length, frames),
+                    supportsFullPhase: true
+                };
+            },
+            close() {}
+        }),
+        estimateIrKernelCommitFootprint(request) {
+            onFootprint(request);
+            return 1024;
+        }
+    };
+}
+
+function twoSeatStore() {
+    return measurementStoreStub({
+        shared: { id: 'shared', points: [{ pointId: 1 }], averageFrequencyResponse: [[1000, -2]] },
+        left: { id: 'left', points: [{ pointId: 1 }], averageFrequencyResponse: [[1000, -4]] }
+    }, {
+        shared: [{ pointId: 1, data: new Float32Array([1]) }],
+        left: [{ pointId: 1, data: new Float32Array([1]) }]
+    });
+}
+
+test('F-1: offline Room EQ designs for the render width, never the live device width',
+    async () => {
+        // Invariant A. The live device is stereo while the render is 8 channels; the
+        // asset the kernel receives has to describe exactly the processing width it
+        // is committed against, otherwise validateBegin() rejects it and the export
+        // silently loses every correction.
+        const { Plugin, context } = loadPlugin();
+        const plugin = new Plugin();
+        plugin.tp = 8192;
+        plugin.channel = 'A';
+        plugin._outputChannelCount = 2;
+        plugin.measurementId = 'shared';
+        plugin.channelMeasurementIds[0] = 'left';
+        let footprintRequest = null;
+        plugin._getRuntime = async () => channelDesignRuntime(context, {
+            onFootprint(request) { footprintRequest = request; }
+        });
+        plugin._getMeasurementStore = async () => twoSeatStore();
+
+        const requirement = await plugin.resolveOfflineDspAssetRequirement({
+            outputChannelCount: 8
+        });
+        assert.equal(requirement.required, true);
+        assert.equal(requirement.outputChannelCount, 8);
+        assert.equal(requirement.sourceState.sources.length, 8);
+
+        const state = await plugin.createOfflineDspState({
+            sampleRate: 48000,
+            outputChannelCount: 8,
+            offlineDspAssetRequirement: requirement
+        });
+        const descriptor = state.assets.get(0);
+        assert.equal(descriptor.processingChannels, 8);
+        assert.equal(footprintRequest.assetChannels, footprintRequest.processingChannels);
+        assert.equal(footprintRequest.assetChannels, 8);
+        assert.equal(footprintRequest.topology, 2);
+        // The live device width must not have leaked into the offline design.
+        assert.equal(plugin._outputChannelCount, 2);
+        // T-4: the signature has to describe the snapshot the asset was designed
+        // from - the render width and the snapshot ids - or two assets of different
+        // widths could compare equal.
+        const signature = JSON.parse(descriptor.externalAssetSignature);
+        assert.equal(signature[2].length, 8);
+        assert.equal(signature[2][0], 'left');
+        plugin.cleanup();
+    });
+
+test('F-1: a requirement resolved at another width cannot be consumed', async () => {
+    // Fail closed rather than commit an asset whose channel count disagrees with
+    // the processing width declared beside it.
+    const { Plugin, context } = loadPlugin();
+    const plugin = new Plugin();
+    plugin.tp = 8192;
+    plugin.channel = 'A';
+    plugin._outputChannelCount = 2;
+    plugin.measurementId = 'shared';
+    plugin.channelMeasurementIds[0] = 'left';
+    plugin._getRuntime = async () => channelDesignRuntime(context);
+    plugin._getMeasurementStore = async () => twoSeatStore();
+
+    const liveRequirement = await plugin.resolveOfflineDspAssetRequirement();
+    assert.equal(liveRequirement.outputChannelCount, 2);
+    assert.equal(liveRequirement.sourceState.sources.length, 2);
+    await assert.rejects(
+        plugin.createOfflineDspState({
+            sampleRate: 48000,
+            outputChannelCount: 8,
+            offlineDspAssetRequirement: liveRequirement
+        }),
+        error => error?.userMessageKey === 'roomEq.error.design'
+    );
+    plugin.cleanup();
+});
+
+test('F-3a: slots past the selected channel count cannot force an independent asset',
+    async () => {
+        // Invariant B. ms4 is unreachable in a two-channel selection, so the design
+        // has to collapse to the single shared source and stage a mono asset.
+        const { Plugin, context } = loadPlugin();
+        const plugin = new Plugin();
+        plugin.tp = 8192;
+        plugin.channel = 'A';
+        plugin._outputChannelCount = 2;
+        plugin.measurementId = 'shared';
+        plugin.channelMeasurementIds[4] = 'left';
+        let footprintRequest = null;
+        plugin._getRuntime = async () => channelDesignRuntime(context, {
+            onFootprint(request) { footprintRequest = request; }
+        });
+        plugin._getMeasurementStore = async () => twoSeatStore();
+
+        const sourceState = await plugin._sourcesFor(twoSeatStore());
+        assert.equal(sourceState.sources.length, 1);
+        assert.equal(sourceState.sources[0].measurement.id, 'shared');
+
+        assert.equal(await plugin._designAndStage(plugin._designGeneration), true);
+        assert.equal(footprintRequest.assetChannels, 1);
+        assert.equal(footprintRequest.topology, 1);
+        assert.equal(footprintRequest.processingChannels, 2);
+        assert.equal(plugin.asset.descriptor.processingChannels, 2);
+        // The unreachable slot is out of the effective window everywhere.
+        assert.deepEqual(Array.from(plugin._activeChannelMeasurementIds()), ['', '']);
+        assert.equal(plugin._hasChannelMeasurements(), false);
+        assert.deepEqual(Array.from(plugin.externalAssetInfo.ids), ['shared']);
+        plugin.cleanup();
+    });
+
+test('F-3b: a single-channel selection shows no rows and designs from the shared measurement',
+    async () => {
+        // Invariant B. The rows disappear below two channels, so ms0 must not keep
+        // steering a design the user can no longer see or edit.
+        const { Plugin, context } = loadPlugin();
+        context.document.createElement = channelElementStub;
+        const plugin = new Plugin();
+        const container = channelElementStub('div');
+        plugin._channelMeasurementContainer = container;
+        plugin.channel = 'L';
+        plugin._outputChannelCount = 2;
+        plugin.measurementId = 'shared';
+        plugin.channelMeasurementIds[0] = 'left';
+        plugin._getRuntime = async () => ({ selectedIrChannelCount: () => 1 });
+
+        await plugin._renderChannelMeasurements([]);
+        assert.equal(container.children.length, 0);
+        assert.equal(plugin._irChannelCountCache, 1);
+        assert.deepEqual(Array.from(plugin._activeChannelMeasurementIds()), []);
+
+        const sourceState = await plugin._sourcesFor(twoSeatStore());
+        assert.equal(sourceState.sources.length, 1);
+        assert.equal(sourceState.sources[0].measurement.id, 'shared');
+        plugin.cleanup();
+    });
+
+test('F-3: the empty per-channel default stays on the single-measurement mono path',
+    async () => {
+        const { Plugin, context } = loadPlugin();
+        const plugin = new Plugin();
+        plugin.tp = 8192;
+        plugin.channel = 'A';
+        plugin._outputChannelCount = 4;
+        plugin.measurementId = 'shared';
+        let footprintRequest = null;
+        plugin._getRuntime = async () => channelDesignRuntime(context, {
+            onFootprint(request) { footprintRequest = request; }
+        });
+        plugin._getMeasurementStore = async () => twoSeatStore();
+
+        const serialized = plugin.getSerializableParameters();
+        assert.deepEqual(Object.keys(serialized).filter(key => /^(ms|mn)\d$/.test(key)), []);
+
+        const sourceState = await plugin._sourcesFor(twoSeatStore());
+        assert.equal(sourceState.sources.length, 1);
+        assert.equal(await plugin._designAndStage(plugin._designGeneration), true);
+        assert.equal(footprintRequest.assetChannels, 1);
+        assert.equal(footprintRequest.topology, 1);
+        assert.equal(footprintRequest.processingChannels, 4);
+        assert.equal(plugin.externalAssetInfo.missing, false);
+        plugin.cleanup();
+    });
+
+test('F-4: one unresolvable assignment fails the whole design', async () => {
+    const { Plugin, context } = loadPlugin();
+    const plugin = new Plugin();
+    plugin.channel = 'A';
+    plugin._outputChannelCount = 2;
+    plugin.setParameters({ ms0: 'left', mn0: 'Left seat', ms1: 'gone', mn1: 'Right seat' });
+    plugin._getRuntime = async () => channelDesignRuntime(context);
+    const store = twoSeatStore();
+    plugin._getMeasurementStore = async () => store;
+
+    const sourceState = await plugin._sourcesFor(store);
+    assert.deepEqual(
+        Array.from(sourceState.sources, source => source?.measurement?.id ?? null),
+        ['left', null]
+    );
+    assert.equal(sourceState.resolved, false);
+
+    assert.equal(await plugin._designAndStage(plugin._designGeneration), false);
+    assert.equal(plugin.measurementResolved, false);
+    assert.equal(plugin.externalAssetInfo.missing, true);
+    // F-7: every assigned measurement is named, even without a shared measurement.
+    assert.equal(plugin._statusMessage, 'Measurement not found: Left seat, Right seat');
+    plugin.cleanup();
+});
+
+test('F-4: a slot left empty against no shared measurement stays resolved', async () => {
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    plugin.channel = 'A';
+    plugin._outputChannelCount = 2;
+    plugin.channelMeasurementIds[0] = 'left';
+    plugin._getRuntime = async () => ({ selectedIrChannelCount: () => 2 });
+
+    const sourceState = await plugin._sourcesFor(twoSeatStore());
+    assert.deepEqual(
+        Array.from(sourceState.sources, source => source?.measurement?.id ?? null),
+        ['left', null]
+    );
+    assert.equal(sourceState.resolved, true);
+    plugin.cleanup();
+});
+
+test('F-5: a channel without a preview draws empty instead of another channel', () => {
+    const { Plugin, context } = loadPlugin();
+    context.document.createElement = channelElementStub;
+    const plugin = new Plugin();
+    const row = channelElementStub('span');
+    const select = channelElementStub('select');
+    plugin._previewChannelControl = { row, select, count: -1, startIndex: -1 };
+    plugin._lastDesign = { previews: [null, { id: 'ch1' }] };
+
+    plugin._renderPreviewChannelSelect();
+    assert.equal(plugin._previewChannel, 0);
+    assert.equal(plugin._selectedPreview(), undefined);
+
+    plugin._previewChannel = 1;
+    assert.equal(plugin._selectedPreview().id, 'ch1');
+    plugin.cleanup();
+});
+
+test('F-6: the power bound reads the staged payload frame count, not the Taps parameter',
+    () => {
+        const { Plugin, context } = loadPlugin();
+        const plugin = new Plugin();
+        plugin.tp = 8192;
+        plugin.gn = -3;
+        const payload = vmPayload(context, 1, 8192);
+        const taps = new Float32Array(payload, 32);
+        taps[0] = 1.25;
+        taps[1] = -0.75;
+        const expected = -3 + 20 * Math.log10(2);
+
+        plugin._updatePowerGainBound(payload);
+        assert.ok(Math.abs(plugin.powerGainUpperBoundDb - expected) < 1e-9);
+
+        // Taps moved on while the staged asset still holds 8192 frames.
+        plugin.tp = 16384;
+        plugin._updatePowerGainBound(payload);
+        assert.ok(Math.abs(plugin.powerGainUpperBoundDb - expected) < 1e-9);
+        plugin.tp = 32768;
+        plugin._updatePowerGainBound(payload);
+        assert.ok(Math.abs(plugin.powerGainUpperBoundDb - expected) < 1e-9);
+
+        // Multi-channel offsets follow the payload frames too.
+        const stereo = vmPayload(context, 2, 4);
+        const stereoTaps = new Float32Array(stereo, 32);
+        stereoTaps.set([1, 0, 0, 0, 2, 1, 0, 0]);
+        plugin._updatePowerGainBound(stereo);
+        assert.ok(Math.abs(plugin.powerGainUpperBoundDb - (-3 + 20 * Math.log10(3))) < 1e-9);
+        plugin.cleanup();
+    });
+
+test('F-8: per-channel labels follow the selected host output channels', async () => {
+    const { Plugin, context } = loadPlugin();
+    context.document.createElement = channelElementStub;
+    const plugin = new Plugin();
+    const container = channelElementStub('div');
+    plugin._channelMeasurementContainer = container;
+    plugin.channel = '34';
+    plugin._outputChannelCount = 4;
+    plugin._getRuntime = async () => ({ selectedIrChannelCount: () => 2 });
+
+    await plugin._renderChannelMeasurements([]);
+    assert.deepEqual(
+        Array.from(container.children, row => row.children[0].textContent),
+        ['Measurement Ch 3', 'Measurement Ch 4']
+    );
+
+    const previewRow = channelElementStub('span');
+    const previewSelect = channelElementStub('select');
+    plugin._previewChannelControl = {
+        row: previewRow,
+        select: previewSelect,
+        count: -1,
+        startIndex: -1
+    };
+    plugin._lastDesign = { previews: [{ id: 'ch0' }, { id: 'ch1' }] };
+    plugin._renderPreviewChannelSelect();
+    assert.deepEqual(
+        Array.from(previewSelect.children, option => option.textContent),
+        ['Ch 3', 'Ch 4']
+    );
+
+    plugin.channel = '78';
+    plugin._outputChannelCount = 8;
+    // T-3: the preview labels follow the first host channel too, so a routing change
+    // that keeps the channel count still has to rebuild the options.
+    plugin._renderPreviewChannelSelect();
+    assert.deepEqual(
+        Array.from(previewSelect.children, option => option.textContent),
+        ['Ch 7', 'Ch 8']
+    );
+    await plugin._renderChannelMeasurements([]);
+    assert.deepEqual(
+        Array.from(container.children, row => row.children[0].textContent),
+        ['Measurement Ch 7', 'Measurement Ch 8']
+    );
+    plugin.cleanup();
+});
+
+test('F-2: a host channel change rebuilds the per-channel rows', async () => {
+    // The routing dialog goes through updateParameters(), never setParameters(),
+    // so the row count has to be refreshed from the channel hook itself.
+    const { Plugin, context } = loadPlugin();
+    context.document.createElement = channelElementStub;
+    const plugin = new Plugin();
+    const container = channelElementStub('div');
+    plugin._channelMeasurementContainer = container;
+    let designSchedules = 0;
+    plugin._scheduleDesign = () => { designSchedules += 1; };
+    plugin._getRuntime = async () => ({
+        selectedIrChannelCount: (channel, engineChannels) =>
+            channel === 'L' ? 1 : engineChannels
+    });
+    plugin._getMeasurementStore = async () => ({ listMeasurements: () => [] });
+    plugin.channel = 'A';
+    plugin._outputChannelCount = 4;
+
+    await plugin._renderChannelMeasurements([]);
+    assert.equal(container.children.length, 4);
+    assert.equal(plugin._irChannelCountCache, 4);
+
+    plugin.channel = 'L';
+    plugin.onChannelSelectionChanged();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(container.children.length, 0);
+    assert.equal(plugin._irChannelCountCache, 1);
+    assert.equal(designSchedules, 1);
+
+    plugin.channel = 'A';
+    plugin.onChannelSelectionChanged();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(container.children.length, 4);
+    assert.equal(designSchedules, 2);
+    plugin.cleanup();
+});
+
+test('R2-1: a selection that routes no channel resolves to zero, not to "unresolved"',
+    async () => {
+        // '34' on a stereo device routes nothing, which is a resolved answer of 0 and
+        // not a runtime failure. Caching it is what keeps the rows, the assignments
+        // and the external asset dependency in agreement: with no row to edit, an
+        // asset dependency reported here could never be cleared by the user and the
+        // whole pipeline would stay stuck on 'asset-not-ready'.
+        const { Plugin } = loadPlugin();
+        const plugin = new Plugin();
+        plugin.channel = '34';
+        plugin._outputChannelCount = 2;
+        plugin.channelMeasurementIds[0] = 'left';
+        plugin.channelMeasurementNames[0] = 'Left seat';
+        plugin._getRuntime = async () => ({
+            selectedIrChannelCount: (channel, engineChannels) =>
+                (channel === '34' ? (engineChannels >= 4 ? 2 : 0) : engineChannels)
+        });
+
+        // Unresolved: the effective width is unknown, so the offline asset gates stay
+        // inclusive rather than dropping an assignment that may well be in effect.
+        assert.equal(plugin._irChannelCountCache, null);
+        assert.equal(plugin._hasChannelMeasurements(), true);
+        assert.equal(plugin.isOfflineDspAssetRequired(), true);
+
+        assert.equal(await plugin._resolveIrChannelCount(), 0);
+        assert.equal(plugin._irChannelCountCache, 0);
+        // Resolved to zero: no slot is in effect, so nothing may claim a dependency.
+        assert.deepEqual(Array.from(plugin._activeChannelMeasurementIds()), []);
+        assert.equal(plugin._hasChannelMeasurements(), false);
+        assert.equal(plugin.isOfflineDspAssetRequired(), false);
+        assert.equal(plugin.externalAssetInfo, null);
+
+        // A runtime failure stays unresolved instead of poisoning the cache with 0.
+        plugin._getRuntime = async () => { throw new Error('IR runtime unavailable'); };
+        assert.equal(await plugin._resolveIrChannelCount(), null);
+        assert.equal(plugin._irChannelCountCache, 0);
+        plugin.cleanup();
+    });
+
+test('F-R3-1: the first channel-count resolve after staging restages the asset', async () => {
+    // The double-blind pipeline builds Room EQ through buildPipeline() without ever
+    // calling createUI(), so the default path - a shared measurement with every
+    // per-channel slot empty - designs and stages while the IR channel count is still
+    // unresolved. The signature frozen into the descriptor then names all eight raw
+    // slots, while the live externalAssetInfo switches to the resolved window as soon
+    // as the editor opens: a permanent disagreement that keeps every parallel
+    // pipeline on 'asset-not-ready'. Resolving the count has to force a restage.
+    const { Plugin, context } = loadPlugin();
+    const plugin = new Plugin();
+    plugin.tp = 8192;
+    plugin.channel = 'A';
+    plugin._outputChannelCount = 2;
+    plugin.measurementId = 'shared';
+    plugin._getRuntime = async () => channelDesignRuntime(context);
+    plugin._getMeasurementStore = async () => twoSeatStore();
+
+    assert.equal(plugin._irChannelCountCache, null);
+    assert.equal(await plugin._designAndStage(plugin._designGeneration), true);
+    plugin.onWasmAssetState(0, 3, plugin._candidateAssetRevision);
+    assert.equal(plugin._designStaged, true);
+    // The default path never consults the IR runtime, so the cache stays unresolved.
+    assert.equal(plugin._irChannelCountCache, null);
+    const stagedSignature = plugin.asset.descriptor.externalAssetSignature;
+    assert.equal(plugin.externalAssetInfo.assetSignature, stagedSignature);
+    assert.equal(JSON.parse(stagedSignature)[2].length, 8);
+
+    // createUI() -> _renderChannelMeasurements() resolves the width for the first time.
+    assert.equal(await plugin._resolveIrChannelCount(), 2);
+    assert.equal(plugin._irChannelCountCache, 2);
+    assert.notEqual(plugin.externalAssetInfo.assetSignature, stagedSignature);
+
+    for (let attempt = 0; attempt < 50 &&
+        plugin.asset.descriptor.externalAssetSignature === stagedSignature; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    plugin.onWasmAssetState(0, 3, plugin._candidateAssetRevision);
+    assert.equal(
+        plugin.asset.descriptor.externalAssetSignature,
+        plugin.externalAssetInfo.assetSignature
+    );
+    // The restage is the whole change: the default path still ships one mono asset
+    // for the same two processing channels.
+    assert.equal(plugin.asset.descriptor.processingChannels, 2);
+    assert.equal(JSON.parse(plugin.asset.descriptor.externalAssetSignature)[2].length, 2);
+
+    // Convergent: the next resolve returns the same width and schedules nothing.
+    const settledSignature = plugin.asset.descriptor.externalAssetSignature;
+    assert.equal(await plugin._resolveIrChannelCount(), 2);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(plugin.asset.descriptor.externalAssetSignature, settledSignature);
+    assert.equal(plugin._designStaged, true);
+    plugin.cleanup();
+});
+
+test('F-R3-2: a resolve between staging and asset admission still restages', async () => {
+    // setWasmAsset() hands the descriptor to the host, but _designStaged only turns
+    // true when the admission round trip reports status 3. Resolving the channel
+    // count inside that window would otherwise leave the already-handed-over
+    // descriptor on the old signature with nothing left to resolve later.
+    const { Plugin, context } = loadPlugin();
+    const plugin = new Plugin();
+    plugin.tp = 8192;
+    plugin.channel = 'A';
+    plugin._outputChannelCount = 2;
+    plugin.measurementId = 'shared';
+    plugin._getRuntime = async () => channelDesignRuntime(context);
+    plugin._getMeasurementStore = async () => twoSeatStore();
+
+    assert.equal(plugin._irChannelCountCache, null);
+    assert.equal(await plugin._designAndStage(plugin._designGeneration), true);
+    // Handed over, not admitted: neither the design nor the asset is settled.
+    assert.equal(plugin._designStaged, false);
+    assert.equal(plugin._designPending, true);
+    assert.notEqual(plugin._candidateAssetRevision, null);
+    const stagedSignature = plugin.asset.descriptor.externalAssetSignature;
+    assert.equal(JSON.parse(stagedSignature)[2].length, 8);
+
+    // createUI() -> _renderChannelMeasurements() lands before status 3 arrives.
+    assert.equal(await plugin._resolveIrChannelCount(), 2);
+    assert.notEqual(plugin.externalAssetInfo.assetSignature, stagedSignature);
+    // The scheduled redesign supersedes the admission that was still in flight.
+    assert.equal(plugin._candidateAssetRevision, null);
+
+    for (let attempt = 0; attempt < 50 &&
+        plugin.asset.descriptor.externalAssetSignature === stagedSignature; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    plugin.onWasmAssetState(0, 3, plugin._candidateAssetRevision);
+    assert.equal(plugin._designStaged, true);
+    assert.equal(
+        plugin.asset.descriptor.externalAssetSignature,
+        plugin.externalAssetInfo.assetSignature
+    );
+    assert.equal(plugin.asset.descriptor.processingChannels, 2);
+    assert.equal(JSON.parse(plugin.asset.descriptor.externalAssetSignature)[2].length, 2);
     plugin.cleanup();
 });

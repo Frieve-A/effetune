@@ -170,7 +170,7 @@ test('FiveBandDynamicEQ object-array layout, cases, and goldens stay frozen', as
   assert.equal(goldens.length, 8);
   assert.ok(goldens.every(item =>
     item.metadata.jsEngineHash ===
-      'b3f4e5b0d96b5a3a23881b98868c83127e10d82728e8ae432accd2b8afe427ae'
+      '8da621e7ca39599d8be2f4fe486bedace7fdeea84235c49c52a7875c1716a7ab'
   ));
   assert.match(kernel, /kGainThreshold = 1\.0e-4/);
   assert.match(kernel, /std::swap\(current, processed\)/);

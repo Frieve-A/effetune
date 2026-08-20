@@ -550,11 +550,11 @@ class EarphoneCableSimPlugin extends PluginBase {
     // ---- Amplifier / cable parameters ----
     const ampSection = document.createElement('div');
     ampSection.className = 'earphone-cable-sim-amp';
-    ampSection.appendChild(this.createParameterControl('Output Z', 0, 20, 0.1, this.zo, (v) => this.setZo(v), 'Ω'));
-    ampSection.appendChild(this.createParameterControl('Cable R', 0, 2, 0.01, this.rc, (v) => this.setRc(v), 'Ω'));
-    ampSection.appendChild(this.createParameterControl('Cable L', 0, 5, 0.1, this.lc, (v) => this.setLc(v), 'µH'));
-    ampSection.appendChild(this.createParameterControl('Voice Coil L', 0.01, 2, 0.01, this.lv, (v) => this.setLv(v), 'mH'));
-    ampSection.appendChild(this.createParameterControl('Base Z', 4, 64, 1, this.zb, (v) => this.setZb(v), 'Ω'));
+    ampSection.appendChild(this.createParameterControl('Output Z', 0, 20, 0.1, this.zo, (v) => this.setZo(v), 'Ω', 'zo'));
+    ampSection.appendChild(this.createParameterControl('Cable R', 0, 2, 0.01, this.rc, (v) => this.setRc(v), 'Ω', 'rc'));
+    ampSection.appendChild(this.createParameterControl('Cable L', 0, 5, 0.1, this.lc, (v) => this.setLc(v), 'µH', 'lc'));
+    ampSection.appendChild(this.createParameterControl('Voice Coil L', 0.01, 2, 0.01, this.lv, (v) => this.setLv(v), 'mH', 'lv'));
+    ampSection.appendChild(this.createParameterControl('Base Z', 4, 64, 1, this.zb, (v) => this.setZb(v), 'Ω', 'zb'));
     container.appendChild(ampSection);
 
     // ---- Resonance controls (5 columns, modelled after 5Band PEQ) ----
@@ -630,7 +630,10 @@ class EarphoneCableSimPlugin extends PluginBase {
       const base = `${this.id}-${this.name}-${label.toLowerCase().replace(/\s+/g, '-')}`;
       const slider = document.getElementById(`${base}-slider`);
       const valueInput = document.getElementById(`${base}-value`);
-      if (slider) slider.value = value;
+      if (slider) {
+        slider.value = value;
+        window.uiManager?.refreshRangeFillStyling?.(slider);
+      }
       if (valueInput) valueInput.value = value.toFixed(toFixed);
     };
     syncCtl('Output Z', this.zo, 1);

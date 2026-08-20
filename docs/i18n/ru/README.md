@@ -332,6 +332,7 @@ EffeTune создан для аудиоэнтузиастов, которые х
 | EQ        | Comb Filter | Добавляет фазовую, полую или металлическую окраску | [Подробнее](plugins/eq.md#comb-filter) |
 | EQ        | Earphone Cable Sim | Помогает проверить, насколько малы обычные сдвиги АЧХ из-за кабеля наушников | [Подробнее](plugins/eq.md#earphone-cable-sim) |
 | EQ        | Group Delay EQ | Регулирует задержку каждой полосы частот, не изменяя тембр | [Подробнее](plugins/eq.md#group-delay-eq) |
+| EQ        | Group Delay PEQ | Параметрическое управление задержкой по частоте в пяти полосах, не изменяя тембр | [Подробнее](plugins/eq.md#group-delay-peq) |
 | EQ        | Hi Pass Filter | Точно убирает нежелательные низкие частоты | [Подробнее](plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | Точно убирает нежелательные высокие частоты | [Подробнее](plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | Коррекция частотного баланса для тихого прослушивания | [Подробнее](plugins/eq.md#loudness-equalizer) |
@@ -348,6 +349,7 @@ EffeTune создан для аудиоэнтузиастов, которые х
 | Lo-Fi     | G.726 Simulator | Имитирует цикл кодирования и декодирования речи ITU-T G.726 с необязательной зашумлённой радиолинией | [Подробнее](plugins/lofi.md#g726-simulator) |
 | Lo-Fi     | GSM-FR Simulator | Имитирует цикл кодирования и декодирования речи GSM-FR с битрейтом 13 кбит/с по радиолинии с маскированием потерь кадров | [Подробнее](plugins/lofi.md#gsm-fr-simulator) |
 | Lo-Fi     | Hum Generator | Добавляет настраиваемый фон электрического гула 50/60 Hz для винтажного или lo-fi прослушивания | [Подробнее](plugins/lofi.md#hum-generator) |
+| Lo-Fi     | MD Simulator | Имитирует цикл кодирования и декодирования ATRAC эпохи MiniDisc | [Подробнее](plugins/lofi.md#md-simulator) |
 | Lo-Fi     | MP3 Codec Simulator | Имитирует чистый цикл кодирования и декодирования MPEG Layer III с низким битрейтом | [Подробнее](plugins/lofi.md#mp3-codec-simulator) |
 | Lo-Fi     | Noise Blender | Добавляет регулируемую текстуру фонового шума для lo-fi атмосферы | [Подробнее](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | SBC Codec Simulator | Воспроизводит цикл кодирования и декодирования Bluetooth A2DP SBC с необязательными потерями пакетов и маскированием | [Подробнее](plugins/lofi.md#sbc-codec-simulator) |

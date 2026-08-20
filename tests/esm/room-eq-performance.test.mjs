@@ -14,7 +14,10 @@ import {
 } from '../../js/room-eq/design-core.js';
 import { WasmRoomEqFftBackend } from '../../js/room-eq/wasm-fft.js';
 import { buildIrAssetPayload, IR_ASSET_TOPOLOGY } from '../../js/ir-library/ir-asset-payload.js';
-import { estimateIrKernelCommitFootprint } from '../../js/ir-library/ir-plugin-contract.js';
+import {
+    estimateIrKernelCommitFootprint,
+    IR_KERNEL_ASSET_CAPACITY_BYTES
+} from '../../js/ir-library/ir-plugin-contract.js';
 import {
     packRoomEqPluginParams,
     RoomEqPlugin_PARAMS_HASH
@@ -28,9 +31,13 @@ const CHANNELS = 8;
 const TAPS = 131072;
 const BLOCK_FRAMES = 128;
 
-function designSources(channelCount) {
+// The reverb path's effective analysis window is clamped by the post-onset data
+// that actually exists, so the fixture length decides what the reverb budget
+// below measures. `sampleCount` therefore has to be settable; every existing
+// caller keeps the 4096-sample default and its fixture bytes are unchanged.
+function designSources(channelCount, sampleCount = 4096) {
     return Array.from({ length: channelCount }, (_, channel) => {
-        const data = new Float32Array(4096);
+        const data = new Float32Array(sampleCount);
         data[128] = 1;
         data[173 + channel] = 0.1 + channel * 0.01;
         const id = `room-eq-performance-${channel}`;
@@ -211,6 +218,49 @@ test('Room EQ PFFFT design and final-4096 convolution stay inside release budget
         assert.equal(direct.channels.length, 1);
         assert.ok(direct.channels[0].every(Number.isFinite));
 
+        // Plan.md section 5 Phase 4 CPU gate: full-phase design with the
+        // reverb correction at the release maximum (taps=131072, rv=1 which
+        // is UI rv=100, rw=300 ms) joins the cold-design budget series. The
+        // synthesis worst case is 7 renders per channel (1 guard baseline +
+        // up to 3 guard-ladder scales + up to 3 LFE-ladder scales); this
+        // scenario passes the guard at scale 1 with le off, so it renders
+        // twice and the ladder scales are not part of the number below.
+        //
+        // This case needs its own fixture: rw_eff is clamped by the available
+        // post-onset window, so on the 4096-sample design fixture it collapses
+        // to (4096-128)/96 = 41.33 ms — one seventh of the 300 ms this budget
+        // claims to cover, and the extended-window analysis and its consensus
+        // are the terms that scale with it. 32768 samples give (32768-128)/96 =
+        // 340 ms of window, so the configured 300 ms is what actually runs; the
+        // assert below pins that premise. The other budgets keep the 4096-sample
+        // fixture unchanged.
+        const reverbSources = designSources(1, 32768);
+        clearRoomEqAnalysisCache();
+        clearRoomEqDesignCache();
+        let reverbDesign = null;
+        const reverbColdMs = cpuElapsed(() => {
+            reverbDesign = designRoomEq({
+                config: {
+                    ...designConfig(TAPS, 6, 'full'),
+                    reverbAmount: 1,
+                    reverbWindowMs: 300
+                },
+                sources: reverbSources
+            });
+        });
+        assert.equal(reverbDesign.diagnostics.reverbCorrection[0].state, 'applied',
+            'premise: the reverb correction must engage in the budget scenario');
+        assert.equal(reverbDesign.diagnostics.reverbCorrection[0].effectiveWindowMs, 300,
+            'premise: the budget must run the configured 300 ms window, not a '
+            + 'data-clamped fraction of it');
+        assert.ok(reverbDesign.channels[0].every(Number.isFinite),
+            'reverb-corrected taps must stay finite');
+        // Frozen budget (plan.md section 5 Phase 4): measured 358/391/406/469 ms
+        // over five runs on Node v22.23.2 (win32-x64), 2026-08-19; the budget is
+        // the worst of those (469 ms) plus a 20 % margin.
+        assert.ok(reverbColdMs < 563,
+            `reverb cold design used ${reverbColdMs.toFixed(1)} ms of CPU time`);
+
         const latencyZero = await benchmarkConvolver(0);
         const latency128 = await benchmarkConvolver(128);
         for (const [name, result] of [['lt=0', latencyZero], ['lt=128', latency128]]) {
@@ -223,6 +273,7 @@ test('Room EQ PFFFT design and final-4096 convolution stay inside release budget
             typicalWarmMs,
             maximumColdMs,
             maximumWarmMs,
+            reverbColdMs,
             latencyZero,
             latency128
         }));
@@ -232,4 +283,27 @@ test('Room EQ PFFFT design and final-4096 convolution stay inside release budget
         clearRoomEqAnalysisCache();
         clearRoomEqDesignCache();
     }
+});
+
+test('Room EQ 8-channel independent IR assets stay inside the kernel capacity', () => {
+    // plan.md section 2.6 T-11: the largest Room EQ asset the UI can request is
+    // 8 channels of 131072 taps published as one independent payload. It has to
+    // commit inside the 32 MiB kernel capacity with the head block engaged.
+    const independent = estimateIrKernelCommitFootprint({
+        frames: TAPS,
+        assetChannels: 8,
+        topology: IR_ASSET_TOPOLOGY.independent,
+        processingChannels: 8,
+        headBlock: 128
+    });
+    assert.equal(independent, 24025008);
+    assert.ok(independent < IR_KERNEL_ASSET_CAPACITY_BYTES,
+        `8-channel independent commit needs ${independent} bytes`);
+    assert.ok(estimateIrKernelCommitFootprint({
+        frames: TAPS,
+        assetChannels: 8,
+        topology: IR_ASSET_TOPOLOGY.independent,
+        processingChannels: 8,
+        headBlock: 0
+    }) < IR_KERNEL_ASSET_CAPACITY_BYTES);
 });

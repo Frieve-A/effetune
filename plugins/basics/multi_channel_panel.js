@@ -330,6 +330,45 @@ class MultiChannelPanelPlugin extends PluginBase {
         }
     }
 
+    // Push the whole model back into the hand-built channel controls.
+    // updateUIControls() above only recolours the followers of a link group, and
+    // setLink() only writes the volume/delay fields while a link is being
+    // established, so nothing else refreshes these on the inbound path.
+    _syncChannelControls() {
+        if (typeof document === 'undefined') return;
+        // Tested per element, so one control being held still lets every other channel track.
+        const heldByUser = el => this.isHeldByUser(el);
+        for (let ch = 0; ch < this.MAX_CHANNELS; ch++) {
+            if (this.muteButtons && this.muteButtons[ch]) {
+                this.muteButtons[ch].style.backgroundColor = this.m[ch] ? '#AF4C4C' : '';
+            }
+
+            if (this.soloButtons && this.soloButtons[ch]) {
+                this.soloButtons[ch].style.backgroundColor = this.s[ch] ? '#4CAF50' : '';
+            }
+
+            if (this.linkButtons && this.linkButtons[ch]) {
+                this.linkButtons[ch].style.backgroundColor = this.l[ch] ? '#4CAFAF' : '';
+            }
+
+            const volSlider = document.getElementById(`${this.id}-${this.name}-v${ch + 1}-slider`);
+            const volInput = document.getElementById(`${this.id}-${this.name}-v${ch + 1}-input`);
+            const delaySlider = document.getElementById(`${this.id}-${this.name}-d${ch + 1}-slider`);
+            const delayInput = document.getElementById(`${this.id}-${this.name}-d${ch + 1}-input`);
+
+            if (volSlider && !heldByUser(volSlider)) {
+                volSlider.value = this.v[ch];
+                window.uiManager?.refreshRangeFillStyling?.(volSlider);
+            }
+            if (volInput && !heldByUser(volInput)) volInput.value = this.v[ch];
+            if (delaySlider && !heldByUser(delaySlider)) {
+                delaySlider.value = this.d[ch];
+                window.uiManager?.refreshRangeFillStyling?.(delaySlider);
+            }
+            if (delayInput && !heldByUser(delayInput)) delayInput.value = this.d[ch];
+        }
+    }
+
     // Find all channels linked to the specified channel
     findLinkedGroup(channel) {
         const group = [channel];
@@ -902,6 +941,10 @@ class MultiChannelPanelPlugin extends PluginBase {
 
         // Start the animation loop for meters
         this.startAnimation();
+
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the parts of the UI this plugin builds by hand are refreshed here.
+        this.registerUIRefresh(() => this._syncChannelControls());
 
         return container;
     }

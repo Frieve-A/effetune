@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "MDSimulatorPlugin",
+  "id": "sp-tonal-single-frame-blocks",
+  "stimulus": "sin1k",
+  "sampleRate": 44100,
+  "channels": 2,
+  "frameCount": 4609,
+  "blockSize": 1,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "md": "SP (292 kbps)",
+    "og": 0,
+    "mx": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "rel": 0.00002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:bc61dd9f5c24cc4c094b65e83889f51252a62fd8451038f791fda3bb2f67cd04",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type MDSimulatorPlugin --promote-production-native",
+  "outputFloats": 9218,
+  "byteLength": 36872,
+  "binary": "case-008.f32"
+}

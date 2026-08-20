@@ -616,6 +616,16 @@ class FiveBandPEQPlugin extends PluginBase {
 
     this._uiCreated(); // Set uiCreated = true and call setUIValues
 
+    // Inbound refresh path: setParameters() only reaches setUIValues() and
+    // updateResponse(), so the drag markers stay frozen when the model is
+    // changed from outside the UI (host automation, preset recall, undo/redo).
+    // PluginBase holds this hook off while a graph pointer is down.
+    this.registerUIRefresh(() => {
+      if (!this.uiCreated || !this.markers || !this.graphContainer) return;
+      this.updateMarkers();
+      this.updateResponse();
+    });
+
     setTimeout(() => { // Defer initial drawing for elements to get dimensions
       this.updateMarkers(); this.updateResponse();
     }, 0);
@@ -645,7 +655,11 @@ class FiveBandPEQPlugin extends PluginBase {
         const currentType = this['t' + i]; const isShelf = currentType === 'ls' || currentType === 'hs';
         const maxQ = isShelf ? 2.0 : 10.0;
 
-        if (qSlider) { qSlider.max = maxQ; qSlider.value = parseFloat(this['q' + i]).toFixed(2); }
+        if (qSlider) {
+            qSlider.max = maxQ;
+            qSlider.value = parseFloat(this['q' + i]).toFixed(2);
+            window.uiManager?.refreshRangeFillStyling?.(qSlider);
+        }
         if (qText) { qText.max = maxQ; qText.value = parseFloat(this['q' + i]).toFixed(2); }
         if (freqText) freqText.value = parseFloat(this['f' + i]).toFixed(0);
         if (gainText) gainText.value = parseFloat(this['g' + i]).toFixed(1);

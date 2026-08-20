@@ -20,6 +20,7 @@ constexpr std::uint32_t kAssetCapacity = 32u * 1024u * 1024u;
 constexpr std::uint32_t kAssetHeaderBytes = 32u;
 constexpr std::uint32_t kAssetMagic = 0x31415445u;
 constexpr std::uint32_t kMonoTopology = 1u;
+constexpr std::uint32_t kIndependentTopology = 2u;
 constexpr std::uint32_t kMaximumChannels = 8u;
 constexpr std::uint32_t kMaximumFilterDelay = 65536u;
 constexpr std::uint32_t kMaximumManualDelay = 3840u;
@@ -200,8 +201,9 @@ public:
     config.irChannels = info.channels;
     config.irFrames = info.frames;
     config.pathCount = info.processingChannels;
+    const bool mono = info.topology == kMonoTopology;
     for (std::uint32_t channel = 0u; channel < info.processingChannels; ++channel)
-      config.paths[channel] = {channel, channel, 0u};
+      config.paths[channel] = {channel, channel, mono ? 0u : channel};
 
     const std::uint64_t probeBytes = static_cast<std::uint64_t>(info.footprintBytes) +
                                      static_cast<std::uint64_t>(kAdmissionHeadroom);
@@ -285,9 +287,12 @@ public:
 
 private:
   bool validateBegin(std::uint32_t slot, const AssetBeginInfo &info) const noexcept {
-    if (slot != kAssetSlot || !prepared_ || info.channels != 1u || info.processingChannels == 0u ||
-        info.processingChannels > max_channels_ || info.frames == 0u || info.frames > 131072u ||
-        info.topology != kMonoTopology ||
+    const bool mono = info.topology == kMonoTopology && info.channels == 1u;
+    const bool independent =
+        info.topology == kIndependentTopology && info.channels == info.processingChannels;
+    if (slot != kAssetSlot || !prepared_ || (!mono && !independent) ||
+        info.processingChannels == 0u || info.processingChannels > max_channels_ ||
+        info.frames == 0u || info.frames > 131072u ||
         (info.headBlock != 0u && info.headBlock != 128u && info.headBlock != 256u &&
          info.headBlock != 512u && info.headBlock != 1024u) ||
         info.rateDivider != 1u || info.pathCount != 0u || info.inputCount != 0u ||
@@ -305,7 +310,7 @@ private:
     return readU32(bytes) == kAssetMagic && readU32(bytes + 4u) == begin_info_.channels &&
            readU32(bytes + 8u) == begin_info_.frames &&
            readU32(bytes + 12u) == static_cast<std::uint32_t>(std::lround(sample_rate_)) &&
-           readU32(bytes + 16u) == kMonoTopology && readU32(bytes + 20u) == 0u &&
+           readU32(bytes + 16u) == begin_info_.topology && readU32(bytes + 20u) == 0u &&
            readU32(bytes + 24u) == 0u && readU32(bytes + 28u) == 0u;
   }
 

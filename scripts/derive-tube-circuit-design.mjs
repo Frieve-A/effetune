@@ -3137,6 +3137,16 @@ export function buildSeA0Records() {
 // gapless-GOSS textbook ratio Br/Bs ~ 0.6 would need a coercive current in the tens of
 // milliamps, whose amplitude-independent emf disturbance would wreck the small-signal response.
 //
+// Lm and lambda_sat come from separate lineages and are not required to agree. Lm is measured
+// small-signal data belonging to one physical transformer part and is carried by the circuit
+// profile: the 6L6GC/KT88 families transcribe the Monolith B-8/6K6 and B-8/8k sheets separately,
+// which is why their 8.0 kOhm profiles read 220 H against 328 H at 6.0/6.6 kOhm, and the EL84/EL34
+// families carry one frozen value across every selectable Zpp. lambda_sat, by contrast, is derived
+// here from the rating, so it alone scales as sqrt(Z_primary). A profile whose Lm does not follow
+// that sqrt law is therefore not an inconsistency: nothing ties a measured magnetising inductance
+// of a real part - itself quoted at whatever flux level its data sheet used - to the rated-flux
+// anchor, and the two enter the core model at different places anyway.
+//
 // This stage reads nothing but the frozen circuit profiles and the anchors below, so it is a pure
 // closed-form computation - it never touches the measured break-loop tables or the A0 anchor
 // search, and re-running it can never move a frozen calibration.

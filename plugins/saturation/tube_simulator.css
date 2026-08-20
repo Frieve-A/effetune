@@ -40,6 +40,28 @@
     white-space: pre-wrap;
 }
 
+/* The selector belongs to the graph below it, not to the parameter panel above, so the space is
+   put above the row and taken out from under it. The specificity has to clear
+   .plugin-parameter-ui .parameter-row, which sets an even 2px margin on both edges. */
+.tube-simulator-plugin-ui .tube-simulator-hud-view {
+    margin-top: 14px;
+    margin-bottom: 0;
+}
+
+/* The canvas carries its own dark band above the panel titles, so only a hairline is needed here
+   to keep the radio labels off the graph frame. */
+.tube-simulator-hud-view + .tube-simulator-hud {
+    margin-top: 2px;
+}
+
+/* An operating-point group the current circuit does not have stays visible but unselectable, so
+   the row also says which graphs the settings would make available. */
+.tube-simulator-hud-view input[type="radio"]:disabled,
+.tube-simulator-hud-view input[type="radio"]:disabled + label {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
 .tube-simulator-hud {
     width: 100%;
     min-height: 160px;

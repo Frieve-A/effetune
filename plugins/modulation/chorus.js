@@ -274,6 +274,7 @@ class ChorusPlugin extends PluginBase {
         } else if (range) {
             range.value = String(value);
         }
+        if (range) window.uiManager?.refreshRangeFillStyling?.(range);
         for (const radio of row.querySelectorAll('input[type="radio"]')) {
             radio.checked = radio.value === value;
         }
@@ -310,23 +311,23 @@ class ChorusPlugin extends PluginBase {
         container.className = 'chorus-plugin-ui plugin-parameter-ui';
         this._uiControls = {};
         this._uiControls.style = this.createSelectControl('Style', [...Object.keys(CHORUS_STYLES), 'Custom'], this.style,
-            value => this.applyStyle(value));
+            value => this.applyStyle(value), 'style');
         this._uiControls.md = this.createRadioGroup('Mode', CHORUS_MODES, this.md,
-            value => this.setParameters({ md: value }));
+            value => this.setParameters({ md: value }), 'md');
         this._uiControls.rt = this.createLogarithmicParameterControl('Rate', 0.05, 10, 0.01, this.rt,
-            value => this.setParameters({ rt: value }), 'Hz');
+            value => this.setParameters({ rt: value }), 'Hz', 'rt');
         this._uiControls.dl = this.createParameterControl('Delay', 0.5, 30, 0.1, this.dl,
-            value => this.setParameters({ dl: value }), 'ms');
+            value => this.setParameters({ dl: value }), 'ms', 'dl');
         this._uiControls.dp = this.createParameterControl('Depth', 0, 20, 0.1, this.dp,
-            value => this.setParameters({ dp: value }), 'ms');
+            value => this.setParameters({ dp: value }), 'ms', 'dp');
         this._uiControls.vc = this.createParameterControl('Voices', 1, 6, 1, this.vc,
-            value => this.setParameters({ vc: value }));
+            value => this.setParameters({ vc: value }), '', 'vc');
         this._uiControls.ss = this.createParameterControl('Stereo Spread', 0, 100, 1, this.ss,
-            value => this.setParameters({ ss: value }), '%');
+            value => this.setParameters({ ss: value }), '%', 'ss');
         this._uiControls.fb = this.createParameterControl('Feedback', -75, 75, 1, this.fb,
-            value => this.setParameters({ fb: value }), '%');
+            value => this.setParameters({ fb: value }), '%', 'fb');
         this._uiControls.mx = this.createParameterControl('Mix', 0, 100, 1, this.mx,
-            value => this.setParameters({ mx: value }), '%');
+            value => this.setParameters({ mx: value }), '%', 'mx');
         for (const key of ['style', 'md', 'rt', 'dl', 'dp', 'vc', 'ss', 'fb', 'mx']) {
             container.appendChild(this._uiControls[key]);
         }

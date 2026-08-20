@@ -257,6 +257,7 @@ class NoiseBlenderPlugin extends PluginBase {
         const typeContainer = document.createElement('div');
         typeContainer.className = 'radio-group';
         const types = ['white', 'pink', 'brown'];
+        const typeRadios = [];
         types.forEach(type => {
             const radioId = `${this.id}-${this.name}-noise-type-${type}`;
             const label = document.createElement('label');
@@ -276,6 +277,7 @@ class NoiseBlenderPlugin extends PluginBase {
             label.appendChild(radio);
             label.appendChild(document.createTextNode(type.charAt(0).toUpperCase() + type.slice(1)));
             typeContainer.appendChild(label);
+            typeRadios.push({ radio, type });
         });
         typeRow.appendChild(typeContainer);
         container.appendChild(typeRow);
@@ -283,7 +285,7 @@ class NoiseBlenderPlugin extends PluginBase {
         // Use helper for Level control
         container.appendChild(this.createParameterControl(
             'Level', -96, 0, 0.1, this.lv, 
-            (value) => this.setParameters({ lv: value }), 'dB'
+            (value) => this.setParameters({ lv: value }), 'dB', 'lv'
         ));
 
         // Per Channel checkbox
@@ -305,6 +307,16 @@ class NoiseBlenderPlugin extends PluginBase {
         perChannelRow.appendChild(perChannelLabel);
         perChannelRow.appendChild(perChannelCheckbox);
         container.appendChild(perChannelRow);
+
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the parts of the UI this plugin builds by hand are refreshed here.
+        // Level is left out: it comes from createParameterControl with a modelKey.
+        this.registerUIRefresh(() => {
+            for (const { radio, type } of typeRadios) {
+                radio.checked = this.nt === type;
+            }
+            perChannelCheckbox.checked = this.pc;
+        });
 
         return container;
     }

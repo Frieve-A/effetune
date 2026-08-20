@@ -119,8 +119,8 @@ test('generated effects import and the public catalog stays semantic', async () 
   const compressor = new generated.Compressor({ threshold: -18 });
   assert.equal(compressor.type, 'Compressor');
   assert.equal(compressor.parameters.threshold, -18);
-  assert.equal(EFFECT_TYPES.length, 90);
-  assert.equal(EFFECT_CATALOG.effects.length, 90);
+  assert.equal(EFFECT_TYPES.length, 92);
+  assert.equal(EFFECT_CATALOG.effects.length, 92);
   assert.deepEqual(EFFECT_CATALOG.channels, [
     'all', 'stereo', 'left', 'right',
     '1', '2', '3', '4', '5', '6', '7', '8', '34', '56', '78'
@@ -412,6 +412,7 @@ test('all generated effects normalize and pack against their private layouts', (
     'FIRCrossover',
     'FiveBandFIRPEQ',
     'GroupDelayEQ',
+    'GroupDelayPEQ',
     'IRReverb',
     'RoomEQ'
   ]);

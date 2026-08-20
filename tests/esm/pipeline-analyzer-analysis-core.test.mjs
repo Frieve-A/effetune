@@ -6,7 +6,6 @@ import {
   alignToQuantum,
   areRouteTailsSettled,
   buildAnalysisResult,
-  captureSchedule,
   convolveImpulseResponses,
   deriveFrequencyResponse,
   isRouteTailSettled,
@@ -70,11 +69,11 @@ function synthesizePeriodicOutput(excitation, taps, pedestal = 0) {
   return output;
 }
 
-test('capture scheduling uses exact worklet quanta and the bounded two/four/eight second tail', () => {
+test('capture lengths align to exact worklet quanta', () => {
   assert.equal(alignToQuantum(0), 0);
   assert.equal(alignToQuantum(1), ANALYSIS_QUANTUM_SIZE);
   assert.equal(alignToQuantum(128), 128);
-  assert.deepEqual(captureSchedule(48000, 64), [96128, 192128, 384128]);
+  assert.equal(alignToQuantum(65536), 65536);
   assert.throws(() => alignToQuantum(-1), /non-negative/);
 });
 
@@ -177,6 +176,71 @@ test('minimum-phase response stays in Min Group Delay instead of Excess Group De
   const index = nearestIndex(response.frequencies, 1000);
   assert.ok(Math.abs(response.minimumGroupDelayMs[index] - response.groupDelayMs[index]) < 1e-6);
   assert.ok(Math.abs(response.excessGroupDelayMs[index]) < 1e-6);
+});
+
+test('group delay of a resonant filter is unchanged by the measurement sequence length', () => {
+  const sampleRate = 48000;
+  // A +12 dB, Q=6 peak at 1 kHz: its group delay peak is narrower than the bin spacing of
+  // the shorter sequences, which is exactly where a bin-to-bin difference would smear it.
+  const centre = 1000;
+  const q = 6;
+  const a = 10 ** (12 / 40);
+  const w0 = 2 * Math.PI * centre / sampleRate;
+  const alpha = Math.sin(w0) / (2 * q);
+  const a0 = 1 + alpha / a;
+  const feedForward = [(1 + alpha * a) / a0, -2 * Math.cos(w0) / a0, (1 - alpha * a) / a0];
+  const feedBack = [1, -2 * Math.cos(w0) / a0, (1 - alpha / a) / a0];
+  const exactDelayMs = frequency => {
+    const omega = 2 * Math.PI * frequency / sampleRate;
+    const ratio = coefficients => {
+      let real = 0;
+      let imag = 0;
+      let rampedReal = 0;
+      let rampedImag = 0;
+      for (let index = 0; index < coefficients.length; index += 1) {
+        real += coefficients[index] * Math.cos(-omega * index);
+        imag += coefficients[index] * Math.sin(-omega * index);
+        rampedReal += coefficients[index] * index * Math.cos(-omega * index);
+        rampedImag += coefficients[index] * index * Math.sin(-omega * index);
+      }
+      return (rampedReal * real + rampedImag * imag) / (real * real + imag * imag);
+    };
+    return (ratio(feedForward) - ratio(feedBack)) / sampleRate * 1000;
+  };
+  const impulseOfLength = length => {
+    const impulse = new Float32Array(length);
+    let firstInput = 0;
+    let secondInput = 0;
+    let firstOutput = 0;
+    let secondOutput = 0;
+    for (let index = 0; index < length; index += 1) {
+      const input = index === 0 ? 1 : 0;
+      const output = feedForward[0] * input + feedForward[1] * firstInput +
+        feedForward[2] * secondInput - feedBack[1] * firstOutput - feedBack[2] * secondOutput;
+      secondInput = firstInput;
+      firstInput = input;
+      secondOutput = firstOutput;
+      firstOutput = output;
+      impulse[index] = output;
+    }
+    return impulse;
+  };
+  for (const length of [8192, 32768, 131072]) {
+    const response = deriveFrequencyResponse(impulseOfLength(length), sampleRate, {
+      fftSize: length
+    });
+    for (const frequency of [200, 900, 1000, 1100, 5000]) {
+      const index = nearestIndex(response.frequencies, frequency);
+      const expected = exactDelayMs(response.frequencies[index]);
+      assert.ok(
+        Math.abs(response.minimumGroupDelayMs[index] - expected) < 1e-3,
+        `min group delay at ${response.frequencies[index]} Hz with length ${length}: ` +
+        `${response.minimumGroupDelayMs[index]} vs ${expected}`
+      );
+      // The filter is minimum phase, so none of its delay may leak into the excess curve.
+      assert.ok(Math.abs(response.excessGroupDelayMs[index]) < 1e-3);
+    }
+  }
 });
 
 test('analysis result derives common-grid Before and After responses', () => {

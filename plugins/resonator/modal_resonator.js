@@ -409,6 +409,66 @@ class ModalResonatorPlugin extends PluginBase {
         }
     }
 
+    // Ids of one resonator control row. Shared by createUI() and _syncUI() so the
+    // two can never drift apart.
+    _resonatorRowIds(resonatorIndex, param) {
+        return {
+            slider: `${this.id}-${this.name}-res${resonatorIndex}-${param}-slider`,
+            input: `${this.id}-${this.name}-res${resonatorIndex}-${param}-input`
+        };
+    }
+
+    // The resonator rows, the enable checkboxes, the selected tab and the mix
+    // control are written only while createUI() builds them and by their own event
+    // handlers, so the model is pushed back into them here.
+    _syncUI() {
+        if (typeof document === 'undefined') return;
+        const isLogParam = param => param === 'fr' || param === 'lp' || param === 'hp';
+        // Tested per element, so one control being held still lets every other row track.
+        const heldByUser = el => this.isHeldByUser(el);
+
+        for (let i = 0; i < this.rs.length; i++) {
+            const resonator = this.rs[i];
+            if (!resonator) continue;
+
+            const enableCheckbox = document.getElementById(`${this.id}-${this.name}-res${i}-enable`);
+            if (enableCheckbox) enableCheckbox.checked = resonator.en;
+
+            for (const param of ['fr', 'dc', 'lp', 'hp', 'gn']) {
+                const value = resonator[param];
+                if (!Number.isFinite(value)) continue;
+                const ids = this._resonatorRowIds(i, param);
+                const slider = document.getElementById(ids.slider);
+                const input = document.getElementById(ids.input);
+                if (slider && !heldByUser(slider)) {
+                    slider.value = value;
+                    window.uiManager?.refreshRangeFillStyling?.(slider);
+                }
+                // The number field of a log row shows Hz while the slider holds the log value.
+                if (input && !heldByUser(input)) input.value = isLogParam(param) ? Math.round(Math.exp(value)) : value;
+            }
+        }
+
+        // Selected resonator tab and its content pane
+        const pluginUI = document.getElementById(this.id);
+        if (pluginUI) {
+            pluginUI.querySelectorAll('.modal-resonator-tab').forEach((el, i) => {
+                el.classList.toggle('active', i === this.sr);
+            });
+            pluginUI.querySelectorAll('.modal-resonator-content').forEach(el => {
+                el.classList.toggle('active', Number(el.dataset.index) === this.sr);
+            });
+        }
+
+        const mixSlider = document.getElementById(`${this.id}-${this.name}-mix-slider`);
+        const mixValue = document.getElementById(`${this.id}-${this.name}-mix-value`);
+        if (mixSlider && !heldByUser(mixSlider)) {
+            mixSlider.value = this.mx;
+            window.uiManager?.refreshRangeFillStyling?.(mixSlider);
+        }
+        if (mixValue && !heldByUser(mixValue)) mixValue.value = this.mx;
+    }
+
     createUI() {
         const container = document.createElement('div');
         container.className = 'plugin-parameter-ui';
@@ -431,8 +491,7 @@ class ModalResonatorPlugin extends PluginBase {
             row.className = 'parameter-row';
 
             // Generate unique ID
-            const sliderId = `${this.id}-${this.name}-res${resonatorIndex}-${param}-slider`;
-            const inputId = `${this.id}-${this.name}-res${resonatorIndex}-${param}-input`;
+            const { slider: sliderId, input: inputId } = this._resonatorRowIds(resonatorIndex, param);
 
             const labelEl = document.createElement('label');
             labelEl.textContent = label;
@@ -622,6 +681,10 @@ class ModalResonatorPlugin extends PluginBase {
         mixRow.appendChild(mixSlider);
         mixRow.appendChild(mixValue);
         container.appendChild(mixRow);
+
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the parts of the UI this plugin builds by hand are refreshed here.
+        this.registerUIRefresh(() => this._syncUI());
 
         return container;
     }

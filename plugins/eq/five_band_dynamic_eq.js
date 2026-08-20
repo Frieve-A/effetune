@@ -1171,7 +1171,10 @@ class FiveBandDynamicEQ extends PluginBase {
                     const slider = pane.querySelector(`#${this.instanceId}-band${bandIndex}-${name.replace(/[() ]/g, '')}-slider`);
                     const numberInput = pane.querySelector(`#${this.instanceId}-band${bandIndex}-${name.replace(/[() ]/g, '')}-input`);
                     
-                    if (slider) slider.value = sliderValue;
+                    if (slider) {
+                        slider.value = sliderValue;
+                        window.uiManager?.refreshRangeFillStyling?.(slider);
+                    }
                     if (numberInput) numberInput.value = displayValue;
                 };
                 

@@ -477,7 +477,7 @@ class OscillatorPlugin extends PluginBase {
         // Use helper for Volume Control
         const volRow = this.createParameterControl(
             'Volume', -96, 0, 0.1, this.vl,
-            (value) => this.setVolume(value), 'dB'
+            (value) => this.setVolume(value), 'dB', 'vl'
         );
 
         // Panning Control
@@ -489,7 +489,8 @@ class OscillatorPlugin extends PluginBase {
         
         const panRadioGroup = document.createElement('div');
         panRadioGroup.className = 'radio-group';
-        
+        const panRadios = [];
+
         ['Center', 'Left', 'Right'].forEach((label, index) => {
             const value = index === 1 ? -1 : index === 2 ? 1 : 0;
             const radioId = `${this.id}-${this.name}-panning-${label.toLowerCase()}`;
@@ -501,7 +502,8 @@ class OscillatorPlugin extends PluginBase {
             radio.checked = this.pn === value;
             radio.autocomplete = "off";
             radio.addEventListener('change', () => this.setPanning(value));
-            
+            panRadios.push({ radio, value });
+
             const radioLabel = document.createElement('label');
             radioLabel.htmlFor = radioId;
             radioLabel.appendChild(radio);
@@ -705,6 +707,35 @@ class OscillatorPlugin extends PluginBase {
         container.appendChild(modeRow);
         container.appendChild(intervalRow);
         container.appendChild(widthRow);
+
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the parts of the UI this plugin builds by hand are refreshed here.
+        // Volume is left out: it comes from createParameterControl with a modelKey.
+        this.registerUIRefresh(() => {
+            // Tested per element, so one control being held still lets the others track.
+            const heldByUser = el => this.isHeldByUser(el);
+            if (!heldByUser(freqSlider)) {
+                freqSlider.value = this.mapFrequencyToSlider(this.fr);
+                window.uiManager?.refreshRangeFillStyling?.(freqSlider);
+            }
+            if (!heldByUser(freqValue)) freqValue.value = this.fr;
+            for (const { radio, value } of panRadios) {
+                radio.checked = this.pn === value;
+            }
+            if (!heldByUser(waveSelect)) waveSelect.value = this.wf;
+            if (!heldByUser(intervalSlider)) {
+                intervalSlider.value = this.mapIntervalToSlider(this.it);
+                window.uiManager?.refreshRangeFillStyling?.(intervalSlider);
+            }
+            if (!heldByUser(intervalValue)) intervalValue.value = this.it;
+            if (!heldByUser(widthSlider)) {
+                widthSlider.value = this.mapWidthToSlider(this.wd);
+                window.uiManager?.refreshRangeFillStyling?.(widthSlider);
+            }
+            if (!heldByUser(widthValue)) widthValue.value = this.wd;
+            // Covers the mode radios and every disabled state.
+            updateControlStates();
+        });
 
         return container;
     }

@@ -217,6 +217,11 @@ export function applySerializedState(plugin, state) {
             plugin.updateParameters();
         }
     }
+
+    // Push the restored model back into a live plugin's UI. Writing .value/.checked
+    // from script dispatches no input/change event, so this cannot feed back into
+    // the model (see plugins/plugin-base.js syncUIControls()).
+    plugin.syncUIControls?.();
 }
 
 /**

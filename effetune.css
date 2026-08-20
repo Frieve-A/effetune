@@ -82,6 +82,35 @@ input[type="radio"],
 input[type="checkbox"] {
     vertical-align: middle;
     margin: 0px 5px 0px 3px;
+    /* Stay above the hit-area strip below where the two overlap. */
+    position: relative;
+    z-index: 1;
+}
+
+/* A radio or checkbox sits a few pixels away from the label it belongs to, and
+   that gap used to swallow clicks. Each label extends its hit area back across
+   the gap with an out-of-flow strip, so the layout is untouched while the whole
+   widget-plus-label run stays clickable. */
+input[type="radio"] + label,
+input[type="checkbox"] + label {
+    position: relative;
+}
+
+input[type="radio"] + label::before,
+input[type="checkbox"] + label::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 100%;
+    /* Covers the 10px .parameter-row flex gap plus the widget's 5px margin. */
+    width: 15px;
+}
+
+/* .radio-group adds a flex gap on top of the widget's own margin. */
+.radio-group > input[type="radio"] + label::before,
+.radio-group > input[type="checkbox"] + label::before {
+    width: 25px;
 }
 
 .radio-group {

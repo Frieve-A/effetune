@@ -37,7 +37,7 @@ Bandwidth Extender ऐसे audio के लिए है जिसमें �
 - **Harmonic Amount** (0-200%, default 100%) केवल harmonic continuation को नियंत्रित करता है: 0% इसे हटाता है, 100% इसका reference level है और 200% noise या dry signal बदले बिना इसे दोगुना करता है।
 - **Noise Amount** (0-200%, default 100%) केवल shaped noise को नियंत्रित करता है: 0% इसे हटाता है, 100% इसका reference level है और 200% harmonics या dry signal बदले बिना इसे दोगुना करता है।
 - **Cutoff** दोनों channels में समान, तीव्र और लगातार spectral गिरावट खोजने वाले **Auto** या **Manual** को चुनता है। Manual में generated band अपने आप playback की उपलब्ध frequency range के भीतर रहता है।
-- **Manual Cutoff** (6000-20000 Hz) Manual mode में generation शुरू होने की frequency तय करता है।
+- **Manual Cutoff** (6000-24000 Hz) Manual mode में generation शुरू होने की frequency तय करता है।
 
 Bandwidth Extender लगभग 21 ms की latency जोड़ता है। यदि वह मौजूदा sample rate, channel setting या device पर नहीं चल सकता, तो plugin panel bypass message दिखाता है और sound नहीं बदलता। supported setting चुनें या plugin को disable करें।
 
@@ -563,8 +563,9 @@ Circuit parameters बदलने से level में बड़ा उछा
 
 ### HUD पढ़ना
 
-- बिंदु हाल की operating positions दिखाते हैं। उनका फैलाव जितना अधिक होगा, संगीत उस stage को उतना अधिक drive कर रहा है।
-- Line में दोनों driver stages, Push-Pull में output के दोनों पक्ष और SE Triode में बायाँ तथा दायाँ channel दिखते हैं।
+- बिंदु हाल की operating positions दिखाते हैं। उनका फैलाव जितना अधिक होगा, संगीत उस stage को उतना अधिक drive कर रहा है। हर panel में दोनों channel एक साथ दिखते हैं — नीला बायाँ और नारंगी दायाँ।
+- ग्राफ़ के ऊपर दिया **Graph** चुनता है कि कौन-सी tubes देखनी हैं। **Stage 1 / Stage 2** driver के दोनों stages दिखाता है, **Push / Pull** push-pull output जोड़ी की दोनों tubes, और **SE Triode** single-ended output tube। केवल वही stages चुने जा सकते हैं जो मौजूदा circuit वास्तव में इस्तेमाल करता है, इसलिए driver वाले power stage में आप दोनों के बीच बदलकर उनकी तुलना कर सकते हैं।
+- जब कोई भी tube काम नहीं कर रही हो — यानी **Driver Type** को Bypass पर रखा गया Line, या effect बंद हो — तब प्रदर्शन खाली रहता है और status में **No tube stage is active** दिखता है।
 - **Speaker Output** और **Speaker Real Power** दिखाते हैं कि power stage और speaker load कितनी तीव्रता से चल रहे हैं।
 - **Transformer Flux** आउटपुट ट्रांसफ़ॉर्मर के flux linkage का परिमाण Wb में दिखाता है। निचली फ़्रीक्वेंसी इस पाठ्यांक को जितना ऊपर धकेलती हैं, ट्रांसफ़ॉर्मर स्वयं उतना ही अधिक विरूपण जोड़ता है। SE Triode में यह पाठ्यांक gap वाले कोर के स्थिर bias फ्लक्स को भी समेटे रहता है, इसलिए सिग्नल न होने पर भी यह शून्य से ऊपर बना रहता है।
 - Graph के नीचे status बताता है कि effect active है या bypass में, और automatic output reduction भी दिखाता है।

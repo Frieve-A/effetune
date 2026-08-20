@@ -336,6 +336,7 @@
 | EQ | Comb Filter | يضيف لونًا طوريًا أو أجوف أو معدنيًا | [تفاصيل](plugins/eq.md#comb-filter) |
 | EQ | Earphone Cable Sim | يساعد على التحقق من صغر تغيرات الاستجابة الترددية الناتجة عادةً عن كابلات سماعات الأذن العادية | [تفاصيل](plugins/eq.md#earphone-cable-sim) |
 | EQ | Group Delay EQ | يضبط تأخير كل نطاق ترددي دون تغيير طابع الصوت | [تفاصيل](plugins/eq.md#group-delay-eq) |
+| EQ | Group Delay PEQ | تحكم بارامتري بخمسة نطاقات في التأخير عند كل تردد دون تغيير طابع الصوت | [تفاصيل](plugins/eq.md#group-delay-peq) |
 | EQ | Hi Pass Filter | يزيل الترددات المنخفضة غير المرغوبة بدقة | [تفاصيل](plugins/eq.md#hi-pass-filter) |
 | EQ | Lo Pass Filter | يزيل الترددات العالية غير المرغوبة بدقة | [تفاصيل](plugins/eq.md#lo-pass-filter) |
 | EQ | Loudness Equalizer | يصحح توازن الترددات عند الاستماع بمستوى منخفض | [تفاصيل](plugins/eq.md#loudness-equalizer) |
@@ -352,6 +353,7 @@
 | Lo-Fi | G.726 Simulator | يحاكي دورة ترميز وفك ترميز صوتي وفق ITU-T G.726 مع وصلة راديو اختيارية ذات أخطاء | [تفاصيل](plugins/lofi.md#g726-simulator) |
 | Lo-Fi | GSM-FR Simulator | يحاكي دورة ترميز وفك ترميز صوتي وفق GSM-FR بمعدل 13 kbit/s عبر وصلة راديو مع إخفاء فقد الإطارات | [تفاصيل](plugins/lofi.md#gsm-fr-simulator) |
 | Lo-Fi | Hum Generator | يضيف طنينًا كهربائيًا 50/60 Hz قابلًا للتحكم لأجواء vintage/lo-fi | [تفاصيل](plugins/lofi.md#hum-generator) |
+| Lo-Fi | MD Simulator | يحاكي دورة ترميز وفك ترميز ATRAC من حقبة MiniDisc | [تفاصيل](plugins/lofi.md#md-simulator) |
 | Lo-Fi | MP3 Codec Simulator | يحاكي دورة ترميز وفك ترميز MPEG Layer III نظيفة بمعدل بت منخفض | [تفاصيل](plugins/lofi.md#mp3-codec-simulator) |
 | Lo-Fi | Noise Blender | يضيف نسيج ضوضاء خلفية قابلًا للضبط لأجواء lo-fi | [تفاصيل](plugins/lofi.md#noise-blender) |
 | Lo-Fi | SBC Codec Simulator | يعيد إنشاء دورة ترميز وفك ترميز لـ Bluetooth A2DP SBC مع فقد رزم اختياري في الوصلة وإخفائه | [تفاصيل](plugins/lofi.md#sbc-codec-simulator) |

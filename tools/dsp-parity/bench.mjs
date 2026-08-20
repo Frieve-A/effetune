@@ -622,7 +622,7 @@ export async function runBenchmarks({
                 simdPath: selectedSimdPath,
                 artifactSet,
                 allocations,
-                onProcess: measurementIndex >= warmup
+                onProcess: quantumStats && measurementIndex >= warmup
                   ? observation => {
                       quantumTiming.observe(observation);
                       quantumTrials[measurementIndex - warmup].observe(observation);

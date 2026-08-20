@@ -285,20 +285,30 @@ std::vector<float> stereoReference(std::uint32_t frames, double sample_rate,
 
 enum class DetectorCorpus { LowPass, Notch, Dark };
 
-std::vector<float> detectorCorpus(std::uint32_t frames, DetectorCorpus corpus) {
-  constexpr double sample_rate = 48000.0;
-  constexpr double bin_hz = sample_rate / 1024.0;
+// transition_hz > 0 models a real anti-alias slope: the comb fades to -40 dB across the
+// transition and keeps that residual floor above it instead of stopping outright.
+std::vector<float> detectorCorpus(std::uint32_t frames, DetectorCorpus corpus,
+                                  double sample_rate = 48000.0, double low_pass_hz = 13600.0,
+                                  double transition_hz = 0.0) {
+  constexpr double bin_hz = 48000.0 / 1024.0;
+  const std::uint32_t last_bin = static_cast<std::uint32_t>(sample_rate * 0.48 / bin_hz);
   std::vector<float> audio(frames, 0.0F);
-  for (std::uint32_t bin = 20u; bin <= 440u; bin += 4u) {
+  for (std::uint32_t bin = 20u; bin <= last_bin; bin += 4u) {
     const double frequency = static_cast<double>(bin) * bin_hz;
-    if (corpus == DetectorCorpus::LowPass && frequency >= 13600.0) {
-      continue;
+    double low_pass_taper = 1.0;
+    if (corpus == DetectorCorpus::LowPass && frequency >= low_pass_hz) {
+      if (transition_hz <= 0.0) {
+        continue;
+      }
+      const double excess = (frequency - low_pass_hz) / transition_hz;
+      low_pass_taper = std::pow(10.0, -2.0 * (excess < 1.0 ? excess : 1.0));
     }
     if (corpus == DetectorCorpus::Notch && frequency >= 13000.0 && frequency <= 14800.0) {
       continue;
     }
     const double amplitude =
-        corpus == DetectorCorpus::Dark ? 0.015 * std::exp(-frequency / 4500.0) : 0.012;
+        low_pass_taper *
+        (corpus == DetectorCorpus::Dark ? 0.015 * std::exp(-frequency / 4500.0) : 0.012);
     const double initial_phase = 2.0 * kPi * static_cast<double>((bin * 37u) % 101u) / 101.0;
     for (std::uint32_t frame = 0u; frame < frames; ++frame) {
       const double phase = 2.0 * kPi * frequency * static_cast<double>(frame) / sample_rate;
@@ -713,6 +723,46 @@ void testAutoDetectorHighSideVeto() {
   check(dark_generated < 1.0e-10, "Auto remains inactive for naturally dark full-band content");
 }
 
+void testAutoDetectorEngagesAtHighBoundaries() {
+  constexpr std::uint32_t frames = 24007u;
+  constexpr double sample_rate = 96000.0;
+  constexpr std::uint32_t analysis_start = 10000u;
+  constexpr std::uint32_t analysis_count = 12000u;
+  struct Boundary {
+    double hz;
+    double transition_hz;
+  };
+  constexpr std::array<Boundary, 5u> boundaries{Boundary{20000.0, 0.0}, Boundary{22050.0, 0.0},
+                                                Boundary{24000.0, 0.0}, Boundary{20000.0, 1500.0},
+                                                Boundary{22050.0, 1500.0}};
+  for (const Boundary &boundary : boundaries) {
+    const std::vector<float> input = detectorCorpus(frames, DetectorCorpus::LowPass, sample_rate,
+                                                    boundary.hz, boundary.transition_hz);
+    KernelHarness wet_harness(static_cast<float>(sample_rate), 1u);
+    KernelHarness dry_harness(static_cast<float>(sample_rate), 1u);
+    const std::vector<float> wet =
+        render(wet_harness, params(100.0F, 100.0F, 0.0F, 16000.0F), input, 1u, frames, 127u);
+    const std::vector<float> dry =
+        render(dry_harness, params(0.0F, 0.0F, 0.0F, 16000.0F), input, 1u, frames, 127u);
+    const std::vector<float> generated = difference(wet, dry);
+    const double top_hz = boundary.hz + boundary.transition_hz;
+    const double source_band =
+        averageBandPower(dry, sample_rate, boundary.hz - 3000.0, boundary.hz - 1000.0,
+                         analysis_start, analysis_count);
+    const double generated_band = averageBandPower(generated, sample_rate, top_hz + 1000.0,
+                                                   top_hz + 6000.0, analysis_start, analysis_count);
+    check(generated_band > source_band * 1.0e-4,
+          "Auto engages for source boundaries at and above 20 kHz, brick wall or sloped");
+    if (boundary.transition_hz > 0.0) {
+      const double shoulder_band =
+          averageBandPower(generated, sample_rate, boundary.hz + boundary.transition_hz * 0.5,
+                           top_hz, analysis_start, analysis_count);
+      check(shoulder_band > generated_band * 0.25,
+            "Auto starts generation inside the roll-off shoulder, not above it");
+    }
+  }
+}
+
 void testNoiseEnvelopeAndCutoffContinuity() {
   constexpr std::uint32_t frames = 24003u;
   constexpr std::uint32_t analysis_start = 7000u;
@@ -802,6 +852,7 @@ int main() {
   testStereoHarmonicSpatialRelationships();
   testStereoNoiseSpatialRelationships();
   testAutoDetectorHighSideVeto();
+  testAutoDetectorEngagesAtHighBoundaries();
   testNoiseEnvelopeAndCutoffContinuity();
   testSampleRateDependentCeilingAndUltrasonicTaper();
   return failures == 0 ? 0 : 1;

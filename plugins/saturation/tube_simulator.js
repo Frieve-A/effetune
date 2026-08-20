@@ -626,7 +626,17 @@ function deriveTubeSimulatorPrivateCircuit(circuitFields) {
     });
 }
 const TUBE_SIMULATOR_TRAJECTORY_FRAMES = 96;
-const TUBE_SIMULATOR_VISIBLE_TRAJECTORY_FRAMES = 6;
+// Operating points are kept on screen for half a second and faded out with a 220 ms time constant,
+// the same persistence the Phase Select EQ phase map uses. One telemetry frame contributes a single
+// dot per trace, so the six newest frames alone showed too little of the excursion to read the shape
+// of the loop; ageing the older ones out instead of dropping them keeps the newest point the
+// brightest, so the present operating point still stands out against its own trail.
+const TUBE_SIMULATOR_TRAJECTORY_HISTORY_MS = 500;
+const TUBE_SIMULATOR_TRAJECTORY_FADE_MS = 220;
+// Below this the dot is indistinguishable from the panel background, so it is skipped rather than
+// filled: at the 60 Hz telemetry rate the window holds thirty frames per trace and the tail of the
+// exponential is pure overdraw.
+const TUBE_SIMULATOR_TRAJECTORY_MINIMUM_OPACITY = 0.02;
 const TUBE_SIMULATOR_HUD_CURVE_POINTS = 96;
 const TUBE_SIMULATOR_HUD_COLORS = Object.freeze({
     background: '#1a1a1a',
@@ -638,6 +648,16 @@ const TUBE_SIMULATOR_HUD_COLORS = Object.freeze({
     left: '#69c8ff',
     right: '#ffb347'
 });
+// Operating-point groups the graph can show, in signal-chain order. Only one is on screen at a
+// time: the panels within a group share an axis and are worth comparing against each other, while
+// the driver and the output valves work at voltages an order of magnitude apart. Push / Pull and
+// SE Triode are decided by Output Circuit, so at most two of the three are ever selectable.
+const TUBE_SIMULATOR_HUD_VIEWS = Object.freeze([
+    Object.freeze({ id: 'driver', label: 'Stage 1 / Stage 2' }),
+    Object.freeze({ id: 'pushPull', label: 'Push / Pull' }),
+    Object.freeze({ id: 'singleEnded', label: 'SE Triode' })
+]);
+const TUBE_SIMULATOR_NO_STAGE_MESSAGE = 'No tube stage is active.';
 const TUBE_SIMULATOR_TUBE_ROWS = Object.freeze([
     Object.freeze({
         mu: 100, ka: 0.0010637222, alpha: 1.45, v0: -0.5866, sc: 0.15, vs: 25,
@@ -684,6 +704,25 @@ function evaluateTubeSimulatorHudPlateCurrent(profile, vgk, vak) {
         : (z < -32 ? Math.exp(z) : Math.log1p(Math.exp(z)));
     const amplitude = profile.ka * Math.pow(profile.sc * softplus, profile.alpha);
     return amplitude * (1 - Math.exp(-vak / profile.vs));
+}
+
+function tubeSimulatorHudTicks(minimum, maximum, count) {
+    return Array.from({ length: count }, (_, index) =>
+        minimum + (maximum - minimum) * index / (count - 1));
+}
+
+// One plate curve per grid voltage the profile lists, sampled across the whole supply voltage.
+function tubeSimulatorHudPlateCurves(profile, plateVoltage) {
+    return profile.vgkSteps.map(vgk => {
+        const xValues = new Float32Array(TUBE_SIMULATOR_HUD_CURVE_POINTS);
+        const yValues = new Float32Array(TUBE_SIMULATOR_HUD_CURVE_POINTS);
+        for (let index = 0; index < TUBE_SIMULATOR_HUD_CURVE_POINTS; index++) {
+            const vak = plateVoltage * index / (TUBE_SIMULATOR_HUD_CURVE_POINTS - 1);
+            xValues[index] = vak;
+            yValues[index] = evaluateTubeSimulatorHudPlateCurrent(profile, vgk, vak);
+        }
+        return { vgk, xValues, yValues };
+    });
 }
 
 function solveTubeSimulatorSeHudQuiescent(profile, bPlusSource, cathodeResistance) {
@@ -5981,20 +6020,29 @@ class TubeSimulatorPlugin extends PluginBase {
         this.lastTelemetryAt = 0;
         this.trajectoryIndex = 0;
         this.trajectoryCount = 0;
-        this.trajectories = {
-            stage1LeftX: new Float32Array(TUBE_SIMULATOR_TRAJECTORY_FRAMES),
-            stage1LeftY: new Float32Array(TUBE_SIMULATOR_TRAJECTORY_FRAMES),
-            stage1RightX: new Float32Array(TUBE_SIMULATOR_TRAJECTORY_FRAMES),
-            stage1RightY: new Float32Array(TUBE_SIMULATOR_TRAJECTORY_FRAMES),
-            stage2LeftX: new Float32Array(TUBE_SIMULATOR_TRAJECTORY_FRAMES),
-            stage2LeftY: new Float32Array(TUBE_SIMULATOR_TRAJECTORY_FRAMES),
-            stage2RightX: new Float32Array(TUBE_SIMULATOR_TRAJECTORY_FRAMES),
-            stage2RightY: new Float32Array(TUBE_SIMULATOR_TRAJECTORY_FRAMES)
-        };
+        // One ring per valve position - the two driver stages and the two output-tube sides - each
+        // holding the left and right channel as an (x, y) pair. Every telemetry frame writes all
+        // four, whatever the graph is showing, so switching the view shows a filled trail at once
+        // instead of starting from an empty ring. A position the current circuit does not have is
+        // simply never drawn.
+        this.trajectories = Object.fromEntries(
+            ['stage1', 'stage2', 'push', 'pull'].flatMap(position =>
+                ['LeftX', 'LeftY', 'RightX', 'RightY'].map(component => [
+                    `${position}${component}`,
+                    new Float32Array(TUBE_SIMULATOR_TRAJECTORY_FRAMES)
+                ])));
+        // Arrival time of each ring slot, in the same clock the HUD draws against. Float64 because
+        // performance.now() past the first few hours of an uptime no longer survives a float32.
+        // Held outside this.trajectories so the fill(0) over its traces keeps meaning "no signal".
+        this.trajectoryTimes = new Float64Array(TUBE_SIMULATOR_TRAJECTORY_FRAMES);
         this.hudAxes = null;
         this.hudCharacteristics = null;
+        this.hudViewAxes = null;
         this.hudAxesRevision = 0;
         this.hudVisible = true;
+        // Operating-point group on screen, or null when the circuit has no valve to show.
+        this.hudView = null;
+        this.hudViewRow = null;
         // Set while the Output Safety Trim control is held, so telemetry cannot repaint it.
         this._safetyTrimFocused = false;
         // Reduction, in dB and unquantised, that has already been folded into the stored trim.
@@ -6028,6 +6076,7 @@ class TubeSimulatorPlugin extends PluginBase {
         this._dspTelemetryUnsubscribe = null;
         this._boundDspTubeTelemetry = frame => this.handleDspTubeTelemetry(frame);
 
+        this._syncHudView();
         this._recalculateHudAxes();
         this.registerProcessor(TUBE_SIMULATOR_REFERENCE_PROCESSOR);
     }
@@ -6333,6 +6382,46 @@ class TubeSimulatorPlugin extends PluginBase {
         if (number) number.value = value;
     }
 
+    _createHudViewControl() {
+        const row = this.createRadioGroup(
+            'Graph',
+            TUBE_SIMULATOR_HUD_VIEWS.map(view => ({ value: view.id, label: view.label })),
+            this.hudView,
+            value => this._selectHudView(value)
+        );
+        row.classList?.add('tube-simulator-hud-view');
+        this.hudViewRow = row;
+        this._syncHudViewControl();
+        return row;
+    }
+
+    _selectHudView(view) {
+        if (view === this.hudView || !this._hudViewAvailable(view)) return;
+        this.hudView = view;
+        this._applyHudViewAxes();
+        this._syncHudViewControl();
+        this._refreshHudState();
+    }
+
+    // The row states which operating points the current circuit has: a group that is not in the
+    // signal path cannot be selected, and none can be while the effect is bypassed.
+    _syncHudViewControl() {
+        const row = this.hudViewRow;
+        if (!row?.querySelectorAll) return;
+        const active = this._activeHudView();
+        for (const input of row.querySelectorAll('input[type="radio"]')) {
+            input.checked = input.value === this.hudView;
+            input.disabled = active === null || !this._hudViewAvailable(input.value);
+        }
+        const label = TUBE_SIMULATOR_HUD_VIEWS.find(view => view.id === active)?.label;
+        this.hudCanvas?.setAttribute?.(
+            'aria-label',
+            label
+                ? `${label} plate curves, load lines, and operating-point trajectories for the left and right channels`
+                : TUBE_SIMULATOR_NO_STAGE_MESSAGE
+        );
+    }
+
     _syncPowerSectionVisibility() {
         for (const row of this._powerRows || []) {
             if (row) row.hidden = this.os === 'Line';
@@ -6431,6 +6520,9 @@ class TubeSimulatorPlugin extends PluginBase {
             this.enabled = params.enabled !== false;
         }
 
+        // Output Circuit and Driver Type lead the signature, so a change that moves the selection
+        // to another group always reaches the axis rebuild below.
+        this._syncHudView();
         if (previousAxisSignature !== this._hudAxisSignature()) {
             this._recalculateHudAxes();
             this._clearTrajectories();
@@ -6438,12 +6530,14 @@ class TubeSimulatorPlugin extends PluginBase {
         this.updateParameters();
         this._syncPresetControl();
         this._syncControlsFromState();
+        this._syncHudViewControl();
         this._updateHudValues();
         this._refreshHudState();
     }
 
     setEnabled(enabled) {
         super.setEnabled(enabled);
+        this._syncHudViewControl();
         this._refreshHudState();
     }
 
@@ -6592,159 +6686,179 @@ class TubeSimulatorPlugin extends PluginBase {
         this._refreshHudState();
     }
 
+    // True when the current circuit really runs the valves of that group. The driver is skipped
+    // when Driver Type is Bypass, and the output groups belong to their own Output Circuit.
+    _hudViewAvailable(view) {
+        if (view === 'driver') return this.tp !== 'Bypass';
+        if (view === 'pushPull') return this.os === 'Power';
+        if (view === 'singleEnded') return this.os === 'SingleEnded';
+        return false;
+    }
+
+    _availableHudViews() {
+        return TUBE_SIMULATOR_HUD_VIEWS
+            .filter(view => this._hudViewAvailable(view.id))
+            .map(view => view.id);
+    }
+
+    // Keeps the selection on a group the circuit actually has. When a setting drops the selected
+    // one, the last available group in chain order takes over: that is the output stage the change
+    // moved to, and it falls back to the driver only when there is no output valve left to show.
+    _syncHudView() {
+        const available = this._availableHudViews();
+        if (available.includes(this.hudView)) return;
+        this.hudView = available.length === 0 ? null : available[available.length - 1];
+    }
+
+    // Group being drawn, or null when nothing is: a bypassed effect runs no valve at all, so the
+    // trail last left on screen would no longer stand for anything.
+    _activeHudView() {
+        return this.enabled === false ? null : this.hudView;
+    }
+
     _hudAxisSignature() {
-        if (this.os === 'Power') {
-            return `${this.os}:${this.pt}:${this.pb}:${this.st}:${this.zp}:${this.sl}`;
+        const parts = [this.os, this.tp];
+        for (const view of this._availableHudViews()) {
+            if (view === 'driver') {
+                parts.push(`${this.tp}:${this.bi}:${this.pv}:${this.sz}:${this.su}`);
+            } else if (view === 'pushPull') {
+                parts.push(`${this.pt}:${this.pb}:${this.st}:${this.zp}:${this.sl}`);
+            } else {
+                parts.push(`${this.sd}:${this.sb}:${this.sr}:${this.sp}:${this.sl}:${this.rl}`);
+            }
         }
-        if (this.os === 'SingleEnded') {
-            return `${this.os}:${this.sd}:${this.sb}:${this.sr}:${this.sp}:${this.sl}:${this.rl}`;
-        }
-        return `${this.os}:${this.tp}:${this.bi}:${this.pv}:${this.sz}:${this.su}`;
+        return parts.join('|');
     }
 
     _recalculateHudAxes() {
-        const makeTicks = (minimum, maximum, count) =>
-            Array.from({ length: count }, (_, index) =>
-                minimum + (maximum - minimum) * index / (count - 1));
-        if (this.os === 'Power') {
-            const primaryImpedanceOhm = Number(this.zp) * 1000;
-            const loadLineCurrent = 2 * this.pb / primaryImpedanceOhm;
-            this.hudAxes = {
+        this.hudViewAxes = {
+            driver: this._hudViewAvailable('driver') ? this._driverHudAxes() : null,
+            pushPull: this._hudViewAvailable('pushPull') ? this._pushPullHudAxes() : null,
+            singleEnded: this._hudViewAvailable('singleEnded') ? this._singleEndedHudAxes() : null
+        };
+        this._applyHudViewAxes();
+        this.hudAxesRevision++;
+    }
+
+    // Points the drawing state at the selected group. Every group has its own supply voltage and
+    // load line, so the axes travel with the selection rather than with the circuit.
+    _applyHudViewAxes() {
+        const selected = this.hudView ? this.hudViewAxes?.[this.hudView] : null;
+        this.hudAxes = selected?.axes ?? null;
+        this.hudCharacteristics = selected?.characteristics ?? null;
+    }
+
+    _driverHudAxes() {
+        const profile = TUBE_SIMULATOR_HUD_PROFILES[this.tp];
+        const plateScale = this.pv / 250;
+        const loadLineCurrent = this.pv / profile.plateResistance;
+        const currentMaximum = Math.max(profile.iaMax * plateScale, loadLineCurrent * 1.1);
+        return {
+            axes: {
+                xMin: 0,
+                xMax: this.pv,
+                yMin: 0,
+                yMax: currentMaximum,
+                xTicks: tubeSimulatorHudTicks(0, this.pv, 5),
+                yTicks: tubeSimulatorHudTicks(0, currentMaximum, 5)
+            },
+            characteristics: {
+                plateCurves: tubeSimulatorHudPlateCurves(profile, this.pv),
+                loadLine: {
+                    xValues: new Float32Array([0, this.pv]),
+                    yValues: new Float32Array([loadLineCurrent, 0])
+                }
+            }
+        };
+    }
+
+    _pushPullHudAxes() {
+        const primaryImpedanceOhm = Number(this.zp) * 1000;
+        const loadLineCurrent = 2 * this.pb / primaryImpedanceOhm;
+        return {
+            axes: {
                 xMin: 0,
                 xMax: this.pb,
                 yMin: 0,
                 yMax: loadLineCurrent * 1.25,
-                xTicks: makeTicks(0, this.pb, 5),
-                yTicks: makeTicks(0, loadLineCurrent * 1.25, 5)
-            };
-            this.hudCharacteristics = {
+                xTicks: tubeSimulatorHudTicks(0, this.pb, 5),
+                yTicks: tubeSimulatorHudTicks(0, loadLineCurrent * 1.25, 5)
+            },
+            characteristics: {
                 plateCurves: [],
                 loadLine: {
                     xValues: new Float32Array([0, this.pb]),
                     yValues: new Float32Array([loadLineCurrent, 0])
                 }
-            };
-            this.hudAxesRevision++;
-            return;
-        }
-        if (this.os === 'SingleEnded') {
-            const profile = TUBE_SIMULATOR_SE_HUD_PROFILES[this.sd] ||
-                TUBE_SIMULATOR_SE_HUD_PROFILES['300B'];
-            const primaryImpedanceOhm = tubeSimulatorEffectivePrimaryImpedanceOhm(
-                Number(this.sp) * 1000,
-                Number(this.sl),
-                this.rl
-            );
-            const quiescent = solveTubeSimulatorSeHudQuiescent(profile, this.sb, this.sr);
-            const loadLineTop = quiescent.currentA +
-                quiescent.plateCathodeV / primaryImpedanceOhm;
-            const loadLineEnd = Math.min(
-                this.sb,
-                quiescent.plateCathodeV + quiescent.currentA * primaryImpedanceOhm
-            );
-            const loadLineEndCurrent = quiescent.currentA +
-                (quiescent.plateCathodeV - loadLineEnd) / primaryImpedanceOhm;
-            const currentMaximum = Math.max(profile.iaMax, loadLineTop * 1.1);
-            this.hudAxes = {
+            }
+        };
+    }
+
+    _singleEndedHudAxes() {
+        const profile = TUBE_SIMULATOR_SE_HUD_PROFILES[this.sd];
+        const primaryImpedanceOhm = tubeSimulatorEffectivePrimaryImpedanceOhm(
+            Number(this.sp) * 1000,
+            Number(this.sl),
+            this.rl
+        );
+        const quiescent = solveTubeSimulatorSeHudQuiescent(profile, this.sb, this.sr);
+        const loadLineTop = quiescent.currentA +
+            quiescent.plateCathodeV / primaryImpedanceOhm;
+        const loadLineEnd = Math.min(
+            this.sb,
+            quiescent.plateCathodeV + quiescent.currentA * primaryImpedanceOhm
+        );
+        const loadLineEndCurrent = quiescent.currentA +
+            (quiescent.plateCathodeV - loadLineEnd) / primaryImpedanceOhm;
+        const currentMaximum = Math.max(profile.iaMax, loadLineTop * 1.1);
+        return {
+            axes: {
                 xMin: 0,
                 xMax: this.sb,
                 yMin: 0,
                 yMax: currentMaximum,
-                xTicks: makeTicks(0, this.sb, 5),
-                yTicks: makeTicks(0, currentMaximum, 5)
-            };
-            this.hudCharacteristics = {
-                plateCurves: profile.vgkSteps.map(vgk => {
-                    const xValues = new Float32Array(TUBE_SIMULATOR_HUD_CURVE_POINTS);
-                    const yValues = new Float32Array(TUBE_SIMULATOR_HUD_CURVE_POINTS);
-                    for (let index = 0; index < TUBE_SIMULATOR_HUD_CURVE_POINTS; index++) {
-                        const vak = this.sb * index /
-                            (TUBE_SIMULATOR_HUD_CURVE_POINTS - 1);
-                        xValues[index] = vak;
-                        yValues[index] = evaluateTubeSimulatorHudPlateCurrent(
-                            profile, vgk, vak);
-                    }
-                    return { vgk, xValues, yValues };
-                }),
+                xTicks: tubeSimulatorHudTicks(0, this.sb, 5),
+                yTicks: tubeSimulatorHudTicks(0, currentMaximum, 5)
+            },
+            characteristics: {
+                plateCurves: tubeSimulatorHudPlateCurves(profile, this.sb),
                 loadLine: {
                     xValues: new Float32Array([0, loadLineEnd]),
-                    yValues: new Float32Array([
-                        loadLineTop, loadLineEndCurrent
-                    ])
+                    yValues: new Float32Array([loadLineTop, loadLineEndCurrent])
                 }
-            };
-            this.hudAxesRevision++;
-            return;
-        }
-        const profile = TUBE_SIMULATOR_HUD_PROFILES[this.tp] ||
-            TUBE_SIMULATOR_HUD_PROFILES['12AX7'];
-        const plateScale = this.pv / 250;
-        const loadLineCurrent = this.pv / profile.plateResistance;
-        const currentMaximum = Math.max(profile.iaMax * plateScale, loadLineCurrent * 1.1);
-        this.hudAxes = {
-            xMin: 0,
-            xMax: this.pv,
-            yMin: 0,
-            yMax: currentMaximum,
-            xTicks: makeTicks(0, this.pv, 5),
-            yTicks: makeTicks(0, currentMaximum, 5)
-        };
-        this.hudCharacteristics = {
-            plateCurves: profile.vgkSteps.map(vgk => {
-                const xValues = new Float32Array(TUBE_SIMULATOR_HUD_CURVE_POINTS);
-                const yValues = new Float32Array(TUBE_SIMULATOR_HUD_CURVE_POINTS);
-                for (let index = 0; index < TUBE_SIMULATOR_HUD_CURVE_POINTS; index++) {
-                    const vak = this.pv * index / (TUBE_SIMULATOR_HUD_CURVE_POINTS - 1);
-                    xValues[index] = vak;
-                    yValues[index] = evaluateTubeSimulatorHudPlateCurrent(profile, vgk, vak);
-                }
-                return { vgk, xValues, yValues };
-            }),
-            loadLine: {
-                xValues: new Float32Array([0, this.pv]),
-                yValues: new Float32Array([loadLineCurrent, 0])
             }
         };
-        this.hudAxesRevision++;
     }
 
     _clearTrajectories() {
         this.trajectoryIndex = 0;
         this.trajectoryCount = 0;
         for (const values of Object.values(this.trajectories)) values.fill(0);
+        this.trajectoryTimes.fill(0);
     }
 
-    _appendTrajectory(telemetry) {
+    _appendTrajectory(telemetry, now = performance.now()) {
         const index = this.trajectoryIndex;
+        this.trajectoryTimes[index] = now;
         const traces = this.trajectories;
-        if (this.os === 'Power') {
-            traces.stage1LeftX[index] = telemetry.left.powerPlatePushV;
-            traces.stage1LeftY[index] = telemetry.left.powerIaPushA;
-            traces.stage1RightX[index] = telemetry.right.powerPlatePushV;
-            traces.stage1RightY[index] = telemetry.right.powerIaPushA;
-            traces.stage2LeftX[index] = telemetry.left.powerPlatePullV;
-            traces.stage2LeftY[index] = telemetry.left.powerIaPullA;
-            traces.stage2RightX[index] = telemetry.right.powerPlatePullV;
-            traces.stage2RightY[index] = telemetry.right.powerIaPullA;
-        } else if (this.os === 'SingleEnded') {
-            traces.stage1LeftX[index] = telemetry.left.powerPlatePushV;
-            traces.stage1LeftY[index] = telemetry.left.powerIaPushA;
-            traces.stage1RightX[index] = telemetry.left.powerPlatePushV;
-            traces.stage1RightY[index] = telemetry.left.powerIaPushA;
-            traces.stage2LeftX[index] = telemetry.right.powerPlatePushV;
-            traces.stage2LeftY[index] = telemetry.right.powerIaPushA;
-            traces.stage2RightX[index] = telemetry.right.powerPlatePushV;
-            traces.stage2RightY[index] = telemetry.right.powerIaPushA;
-        } else {
-            traces.stage1LeftX[index] = telemetry.left.vak1;
-            traces.stage1LeftY[index] = telemetry.left.ia1;
-            traces.stage1RightX[index] = telemetry.right.vak1;
-            traces.stage1RightY[index] = telemetry.right.ia1;
-            traces.stage2LeftX[index] = telemetry.left.vak2;
-            traces.stage2LeftY[index] = telemetry.left.ia2;
-            traces.stage2RightX[index] = telemetry.right.vak2;
-            traces.stage2RightY[index] = telemetry.right.ia2;
-        }
+        const left = telemetry.left;
+        const right = telemetry.right;
+        traces.stage1LeftX[index] = left.vak1;
+        traces.stage1LeftY[index] = left.ia1;
+        traces.stage1RightX[index] = right.vak1;
+        traces.stage1RightY[index] = right.ia1;
+        traces.stage2LeftX[index] = left.vak2;
+        traces.stage2LeftY[index] = left.ia2;
+        traces.stage2RightX[index] = right.vak2;
+        traces.stage2RightY[index] = right.ia2;
+        traces.pushLeftX[index] = left.powerPlatePushV;
+        traces.pushLeftY[index] = left.powerIaPushA;
+        traces.pushRightX[index] = right.powerPlatePushV;
+        traces.pushRightY[index] = right.powerIaPushA;
+        traces.pullLeftX[index] = left.powerPlatePullV;
+        traces.pullLeftY[index] = left.powerIaPullA;
+        traces.pullRightX[index] = right.powerPlatePullV;
+        traces.pullRightY[index] = right.powerIaPullA;
         this.trajectoryIndex = (index + 1) % TUBE_SIMULATOR_TRAJECTORY_FRAMES;
         this.trajectoryCount = Math.min(
             this.trajectoryCount + 1,
@@ -6866,12 +6980,25 @@ class TubeSimulatorPlugin extends PluginBase {
         // saturation figures of 1.5-2.2 Wb-turns, so a second integer column is needed and the
         // sign column carries no information; the push-pull reading swings about zero towards a
         // saturation flux of 2.9-6.8 Wb-turns depending on the selected profile.
+        //
+        // Three fraction digits: every other telemetry readout on this HUD - everything
+        // _formatStereo and _formatStereoFixed render - prints two, and those are volt- and
+        // watt-scale quantities (the two cathode biases, the LTP balance, both supplies, the
+        // speaker volts and the speaker watts) whose ranges top out between a few units and a
+        // few hundred, so two digits there resolve a part in a thousand or better over most of
+        // their travel. The sag readouts take the same two digits without that guarantee, since
+        // they collapse to a few hundred millivolts on some Power branches as the note above
+        // records. The flux reading is a two-orders-of-magnitude smaller number - 0.43 Wb-turns
+        // at the quiet end of the gapped-core standing bias - where two digits would quantise the
+        // display to about 2 % of the reading. One extra digit restores the same relative
+        // resolution the voltage readouts get; the six digits this used to print were far below
+        // anything the animation rate lets a reader follow.
         if (this.hudValues.transformerFlux) {
             this.hudValues.transformerFlux.textContent = this._formatStereoFixed(
                 Math.abs(left.transformerFluxWb),
                 Math.abs(right.transformerFluxWb),
                 'Wb',
-                6,
+                3,
                 2
             );
         }
@@ -6888,13 +7015,16 @@ class TubeSimulatorPlugin extends PluginBase {
             this.hudTelemetryRevision === this.latestTelemetryRevision) {
             return;
         }
-        this._appendTrajectory(this.latestTelemetry);
+        // Stamped with the arrival time rather than with now: a frame first applied when the HUD
+        // becomes visible again is as old as its telemetry, and has to fade from there instead of
+        // re-entering the trail at full brightness.
+        this._appendTrajectory(this.latestTelemetry, this.lastTelemetryAt || performance.now());
         this._updateHudValues();
         this.hudTelemetryRevision = this.latestTelemetryRevision;
     }
 
     _hudStatusText() {
-        if (this.enabled === false) return 'Tube Simulator is disabled.';
+        if (this.enabled === false) return TUBE_SIMULATOR_NO_STAGE_MESSAGE;
         if (!this._sectionEnabled || !this._powerUiEnabled) return 'Tube Simulator display is paused.';
         if (!this.executionStateReceived || this.executionState.state === 'pending') {
             return 'Loading Tube Simulator processing…';
@@ -6927,6 +7057,9 @@ class TubeSimulatorPlugin extends PluginBase {
         const safety = reduction < 0
             ? `Output safety reduction: ${(-reduction).toFixed(1)} dB applied automatically. It is never restored on its own; move Output Safety Trim to clear it.`
             : 'Output safety reduction: 0.0 dB.';
+        // Line with the driver bypassed leaves no valve in the circuit at all, so there is no
+        // operating point to plot and nothing the graph could stand for.
+        if (this.hudView === null) return `${TUBE_SIMULATOR_NO_STAGE_MESSAGE} ${safety}`;
         return this.latestTelemetry
             ? `Tube Simulator is active. ${safety}`
             : `Tube Simulator is active. Waiting for measurements… ${safety}`;
@@ -6975,10 +7108,28 @@ class TubeSimulatorPlugin extends PluginBase {
         this.animationFrameId = null;
     }
 
+    // Panels of the selected group, left to right. Push-pull shows the two sides of the output
+    // pair; every other group shows the valves in chain order, each panel carrying both channels.
+    _hudPanels() {
+        const traces = this.trajectories;
+        const panel = (title, position) => ({
+            title,
+            leftX: traces[`${position}LeftX`],
+            leftY: traces[`${position}LeftY`],
+            rightX: traces[`${position}RightX`],
+            rightY: traces[`${position}RightY`]
+        });
+        const view = this._activeHudView();
+        if (view === 'driver') return [panel('Stage 1', 'stage1'), panel('Stage 2', 'stage2')];
+        if (view === 'pushPull') return [panel('Push', 'push'), panel('Pull', 'pull')];
+        if (view === 'singleEnded') return [panel('Output', 'push')];
+        return [];
+    }
+
     _drawHud() {
         const canvas = this.hudCanvas;
         const context = canvas?.getContext?.('2d');
-        if (!context || !this.hudAxes) return;
+        if (!context) return;
         const width = canvas.width || canvas.clientWidth || 720;
         const height = canvas.height || canvas.clientHeight || 300;
         const rect = canvas.getBoundingClientRect?.();
@@ -6990,49 +7141,44 @@ class TubeSimulatorPlugin extends PluginBase {
         context.fillStyle = TUBE_SIMULATOR_HUD_COLORS.background;
         context.fillRect(0, 0, width, height);
 
+        const panels = this._hudPanels();
+        if (panels.length === 0 || !this.hudAxes) return;
         const gap = (narrow ? 12 : 20) * dpr;
+        // The right margin holds the half of the last x tick label that sits outside the panel:
+        // the labels are centred on their tick, and the rightmost one is on the panel edge. Three
+        // digits of the tick font are about 20 device pixels wide, so half of that plus a hair
+        // keeps the highest plate voltage off the edge of the canvas.
         const margin = {
             left: (narrow ? 48 : 58) * dpr,
-            right: 8 * dpr,
+            right: (narrow ? 16 : 18) * dpr,
             top: (narrow ? 24 : 26) * dpr,
             bottom: (narrow ? 44 : 48) * dpr
         };
-        const panelWidth = (width - margin.left - margin.right - gap) / 2;
+        const panelWidth =
+            (width - margin.left - margin.right - gap * (panels.length - 1)) / panels.length;
         const panelHeight = height - margin.top - margin.bottom;
         if (panelWidth <= 0 || panelHeight <= 0) return;
-        const firstTitle = this.os === 'Power'
-            ? 'Push'
-            : (this.os === 'SingleEnded' ? 'Left Output' : 'Stage 1');
-        const secondTitle = this.os === 'Power'
-            ? 'Pull'
-            : (this.os === 'SingleEnded' ? 'Right Output' : 'Stage 2');
-        this._drawOperatingPointPanel(context, {
-            x: margin.left,
-            y: margin.top,
-            width: panelWidth,
-            height: panelHeight,
-            dpr,
-            narrow,
-            showYLabels: true,
-            title: firstTitle,
-            leftX: this.trajectories.stage1LeftX,
-            leftY: this.trajectories.stage1LeftY,
-            rightX: this.trajectories.stage1RightX,
-            rightY: this.trajectories.stage1RightY
+        // One clock reading for the whole frame: both panels have to age their trails by the same
+        // amount, or the two halves of a push-pull pair fade out of step with each other.
+        const now = performance.now();
+        panels.forEach((panel, index) => {
+            this._drawOperatingPointPanel(context, {
+                ...panel,
+                x: margin.left + index * (panelWidth + gap),
+                y: margin.top,
+                width: panelWidth,
+                height: panelHeight,
+                dpr,
+                narrow,
+                now,
+                showYLabels: index === 0
+            });
         });
-        this._drawOperatingPointPanel(context, {
-            x: margin.left + panelWidth + gap,
-            y: margin.top,
-            width: panelWidth,
-            height: panelHeight,
+        this._drawChannelLegend(context, {
+            x: width - margin.right,
+            y: margin.top - 5 * dpr,
             dpr,
-            narrow,
-            showYLabels: false,
-            title: secondTitle,
-            leftX: this.trajectories.stage2LeftX,
-            leftY: this.trajectories.stage2LeftY,
-            rightX: this.trajectories.stage2RightX,
-            rightY: this.trajectories.stage2RightY
+            narrow
         });
 
         context.fillStyle = TUBE_SIMULATOR_HUD_COLORS.axes;
@@ -7045,6 +7191,23 @@ class TubeSimulatorPlugin extends PluginBase {
         context.rotate(-Math.PI / 2);
         context.fillText('Ia (mA)', 0, 0);
         context.restore();
+    }
+
+    /**
+     * Names the two trace colours once for the whole graph, on the title row and right-aligned to
+     * the last panel. Every panel overlays both channels, so without it the colours are unlabelled;
+     * each word is drawn in its own colour, which is the legend itself - no swatches to align.
+     */
+    _drawChannelLegend(context, legend) {
+        const font = `600 ${(legend.narrow ? 12 : 13) * legend.dpr}px Arial`;
+        context.font = font;
+        context.textAlign = 'right';
+        context.textBaseline = 'bottom';
+        context.fillStyle = TUBE_SIMULATOR_HUD_COLORS.right;
+        context.fillText('Right', legend.x, legend.y);
+        const rightWidth = context.measureText('Right').width;
+        context.fillStyle = TUBE_SIMULATOR_HUD_COLORS.left;
+        context.fillText('Left', legend.x - rightWidth - 8 * legend.dpr, legend.y);
     }
 
     _drawOperatingPointPanel(context, panel) {
@@ -7107,7 +7270,8 @@ class TubeSimulatorPlugin extends PluginBase {
             mapY,
             TUBE_SIMULATOR_HUD_COLORS.left,
             panel.dpr,
-            panel.narrow
+            panel.narrow,
+            panel.now
         );
         this._drawTrajectory(
             context,
@@ -7117,7 +7281,8 @@ class TubeSimulatorPlugin extends PluginBase {
             mapY,
             TUBE_SIMULATOR_HUD_COLORS.right,
             panel.dpr,
-            panel.narrow
+            panel.narrow,
+            panel.now
         );
         context.restore();
     }
@@ -7149,34 +7314,40 @@ class TubeSimulatorPlugin extends PluginBase {
         context.setLineDash?.([]);
     }
 
-    _drawTrajectory(context, xValues, yValues, mapX, mapY, color, dpr = 1, narrow = false) {
+    _drawTrajectory(context, xValues, yValues, mapX, mapY, color, dpr = 1, narrow = false,
+        now = performance.now()) {
         if (this.trajectoryCount === 0) return;
-        const visibleCount = Math.min(
-            this.trajectoryCount,
-            TUBE_SIMULATOR_VISIBLE_TRAJECTORY_FRAMES
-        );
-        const first = (this.trajectoryIndex - visibleCount +
+        const first = (this.trajectoryIndex - this.trajectoryCount +
             TUBE_SIMULATOR_TRAJECTORY_FRAMES) % TUBE_SIMULATOR_TRAJECTORY_FRAMES;
         // Points, not a polyline. The samples are telemetry frames, not a continuous curve, so
         // joining them drew segments through operating points the valve never passed through -
-        // and across the whole plot whenever the ring wrapped. Every point goes into one path and
-        // is filled once, the way Stereo Meter plots its samples.
+        // and across the whole plot whenever the ring wrapped.
         // Twice the size Stereo Meter uses: it plots a dense cloud of audio samples, while these
         // are sparse telemetry frames that were hard to see at one device pixel.
         const size = (narrow ? 4 : 2) * dpr;
         const offset = size * 0.5;
-        context.beginPath();
-        for (let index = 0; index < visibleCount; index++) {
+        context.fillStyle = color;
+        // Oldest first, so the newest point is filled last and sits on top of its own trail. Each
+        // age gets its own alpha, so one path per point rather than one for the whole window.
+        for (let index = 0; index < this.trajectoryCount; index++) {
             const ringIndex = (first + index) % TUBE_SIMULATOR_TRAJECTORY_FRAMES;
+            const age = now - this.trajectoryTimes[ringIndex];
+            // A negative age is a clock that ran backwards, not a future sample; treat it as fresh
+            // rather than letting Math.exp hand back an opacity above one.
+            if (age > TUBE_SIMULATOR_TRAJECTORY_HISTORY_MS) continue;
+            const opacity = age > 0 ? Math.exp(-age / TUBE_SIMULATOR_TRAJECTORY_FADE_MS) : 1;
+            if (opacity < TUBE_SIMULATOR_TRAJECTORY_MINIMUM_OPACITY) continue;
+            context.globalAlpha = opacity;
+            context.beginPath();
             context.rect(
                 mapX(xValues[ringIndex]) - offset,
                 mapY(yValues[ringIndex]) - offset,
                 size,
                 size
             );
+            context.fill();
         }
-        context.fillStyle = color;
-        context.fill();
+        context.globalAlpha = 1;
     }
 
     _createPresetControl() {
@@ -7318,10 +7489,13 @@ class TubeSimulatorPlugin extends PluginBase {
         const contents = document.createElement('div');
         contents.className = 'tube-simulator-tab-contents';
 
-        const linear = (key, label, min, max, step, unit) => {
+        // `modelKey` defaults to the parameter key so PluginBase keeps the row in step with the
+        // model; pass null for a row that is deliberately drawn from something other than the
+        // stored value and maintains itself.
+        const linear = (key, label, min, max, step, unit, modelKey = key) => {
             const row = this.createParameterControl(
                 label, min, max, step, this[key],
-                value => this._commitParameter(key, value), unit
+                value => this._commitParameter(key, value), unit, modelKey
             );
             this._controls[key] = { kind: 'linear', row, min, max, step };
             return row;
@@ -7329,7 +7503,7 @@ class TubeSimulatorPlugin extends PluginBase {
         const logarithmic = (key, label, min, max, step, unit) => {
             const row = this.createLogarithmicParameterControl(
                 label, min, max, step, this[key],
-                value => this._commitParameter(key, value), unit
+                value => this._commitParameter(key, value), unit, key
             );
             this._controls[key] = { kind: 'log', row, min, max, step };
             return row;
@@ -7337,7 +7511,7 @@ class TubeSimulatorPlugin extends PluginBase {
         const enumeration = (key, label, options) => {
             const row = this.createRadioGroup(
                 label, options, this[key],
-                value => this._commitParameter(key, value)
+                value => this._commitParameter(key, value), key
             );
             this._controls[key] = { kind: 'enum', row };
             return row;
@@ -7345,7 +7519,7 @@ class TubeSimulatorPlugin extends PluginBase {
         const checkbox = (key, label) => {
             const row = this.createCheckboxControl(
                 label, this[key],
-                value => this._commitParameter(key, value)
+                value => this._commitParameter(key, value), key
             );
             this._controls[key] = { kind: 'checkbox', row };
             return row;
@@ -7416,7 +7590,11 @@ class TubeSimulatorPlugin extends PluginBase {
                 content.appendChild(linear('og', 'Output Trim', -48, 48, 0.1, 'dB'));
                 content.appendChild(
                     this._prepareSafetyTrimRow(
-                        linear('sg', 'Output Safety Trim', -96, 0, 0.1, 'dB')));
+                        // Left unregistered on purpose: this row shows the effective trim rather
+                        // than the stored sg, and _syncSafetyTrimControl()/_syncControlsFromState()
+                        // already keep it painted. A generic sync would write the raw setting over
+                        // the attenuation actually in force.
+                        linear('sg', 'Output Safety Trim', -96, 0, 0.1, 'dB', null)));
                 content.appendChild(checkbox('ag', 'Auto Gain Reduction'));
                 content.appendChild(linear('mx', 'Wet/Dry Mix', 0, 100, 1, '%'));
             } }
@@ -7472,6 +7650,7 @@ class TubeSimulatorPlugin extends PluginBase {
         this._powerRows = [];
         this._ppRows = [];
         this._seRows = [];
+        this.hudViewRow = null;
 
         this.hudGraph?.dispose?.();
         this.hudGraph = this.createResponsiveGraph({
@@ -7487,10 +7666,6 @@ class TubeSimulatorPlugin extends PluginBase {
         });
         this.hudCanvas = this.hudGraph.canvas;
         this.hudCanvas.setAttribute('role', 'img');
-        this.hudCanvas.setAttribute(
-            'aria-label',
-            'Tube plate curves, load lines, and operating-point trajectories for the left and right channels'
-        );
         const values = document.createElement('div');
         values.className = 'tube-simulator-values';
         const addValue = (key, label) => {
@@ -7532,6 +7707,7 @@ class TubeSimulatorPlugin extends PluginBase {
         // the app: parameter controls on top and the graph panel underneath.
         container.appendChild(this._createPresetControl());
         container.appendChild(this._createTabbedControls(instanceId));
+        container.appendChild(this._createHudViewControl());
         container.appendChild(this.hudGraph.container);
         container.appendChild(values);
         container.appendChild(status);
@@ -7563,6 +7739,7 @@ class TubeSimulatorPlugin extends PluginBase {
         this.hudGraph = null;
         this.hudCanvas = null;
         this.hudStatus = null;
+        this.hudViewRow = null;
         this._disposePresetList();
         this.presetControl = null;
         this._controls = {};

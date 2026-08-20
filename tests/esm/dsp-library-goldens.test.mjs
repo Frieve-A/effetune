@@ -18,10 +18,10 @@ import {
 } from '../../tools/verify-dsp-library-goldens.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const GOLDEN_CASE_COUNT = 848;
-const EFFECT_COUNT = 90;
-const WORKLET_GOLDEN_CASE_COUNT = 91;
-const NON_IDENTITY_EFFECT_COUNT = 85;
+const GOLDEN_CASE_COUNT = 871;
+const EFFECT_COUNT = 92;
+const WORKLET_GOLDEN_CASE_COUNT = 93;
+const NON_IDENTITY_EFFECT_COUNT = 87;
 
 test('JavaScript modulation cross-field stream state is canonical', async t => {
   const stageRoot = await stageJsPackage(repoRoot);
@@ -401,9 +401,17 @@ test('frozen DSP library acceptance inventory stays complete', async () => {
   const inventory = summarizeInventory(cases);
   assert.equal(inventory.effects, EFFECT_COUNT);
   assert.equal(inventory.total, GOLDEN_CASE_COUNT);
-  assert.equal(inventory.assetCases, 21);
-  assert.equal(inventory.eventCases, 146);
-  assert.equal(inventory.eventCount, 494);
+  assert.equal(inventory.assetCases, 24);
+  // Tube Simulator's power-6l6gc-pentode, power-kt88-distributed and minimum-drive-12ax7 used to
+  // reach their configuration with a mid-stream event, but each of those events changes a
+  // reset-class parameter, and the fade and warmup that follows outlasts the frames left in the
+  // capture: the first two never emitted a sample of Power-path audio (their goldens were
+  // byte-identical), and the third never emitted a sample of its 12AX7 minimum-drive circuit.
+  // They now carry their circuit in constructor parameters like power-only-el84-pentode, which
+  // costs three event cases and three events. MD Simulator adds two event cases and seven
+  // events for its recording-mode switches.
+  assert.equal(inventory.eventCases, 145);
+  assert.equal(inventory.eventCount, 498);
   assert.deepEqual(inventory.sampleRates, [
     32000,
     44100,

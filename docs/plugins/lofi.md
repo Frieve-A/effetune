@@ -19,6 +19,7 @@ A collection of plugins that add vintage character and nostalgic qualities to yo
 - [G.726 Simulator](#g726-simulator) - Simulates an ITU-T G.726 speech-codec encode/decode round trip with an optional noisy radio link
 - [GSM-FR Simulator](#gsm-fr-simulator) - Simulates a 13 kbit/s GSM-FR speech-codec encode/decode round trip over a radio link with frame erasure concealment
 - [Hum Generator](#hum-generator) - Adds controllable electrical hum ambience for vintage/lo-fi listening
+- [MD Simulator](#md-simulator) - Simulates a MiniDisc-era ATRAC encode and decode round trip
 - [MP3 Codec Simulator](#mp3-codec-simulator) - Simulates a clean low-bitrate MPEG Layer III encode/decode round trip
 - [Noise Blender](#noise-blender) - Adds atmospheric background texture
 - [SBC Codec Simulator](#sbc-codec-simulator) - Simulates a Bluetooth A2DP SBC encode/decode round trip with optional link packet loss and concealment
@@ -541,6 +542,28 @@ Adds a controllable 50/60 Hz electrical hum layer for a vintage, lo-fi listening
    - Frequency: 40 Hz, Type: Dirty, Harmonics: 80%
    - Tone: 15.0 kHz, Instability: 6.0%, Level: -36 dB
    - Perfect for: A stronger, more audible hum texture
+
+## MD Simulator
+
+MD Simulator passes the selected channels through a real-time, simplified ATRAC analysis, finite-bit spectral quantization, and synthesis path modeled on the MiniDisc format's family of codecs. Use it to hear how a clean ATRAC round trip changes transients, high-frequency detail, and tonal textures at the three recording modes a MiniDisc deck actually offered.
+
+Mode selects one of the three real MD operating points: SP (292 kbps) uses ATRAC1, the codec of the original standard-play MiniDisc. LP2 (132 kbps) and LP4 (66 kbps) use ATRAC3, MDLP's double- and quadruple-length recording modes; LP4 also applies joint stereo coding. Lower rates leave less bit budget for the analysis filterbank and make transient smear, high-frequency "birdies"/swishing, and low-bit-allocation noise more apparent.
+
+If the plugin reports that the effect is unavailable, try another sample rate or channel mode. The input remains unchanged until the effect becomes available.
+
+### Sound Enhancement Guide
+
+- **Representative MD listening:** Start with SP, Output at 0 dB, and Mix at 100%. This is the codec most MD recordings actually used and gives the cleanest comparison point.
+- **Hear long-play compression:** Switch the same passage through LP2 and then LP4. Cymbals, dense percussion, and wide stereo mixes reveal progressively coarser high-frequency detail and, in LP4, a thinner, more unstable top end from the halved bit budget and joint stereo coding.
+- **Expose transient behavior:** Use sharp transient sources (castanets, plucked strings, piano attacks) to hear the pre-echo smear typical of ATRAC's transient detection.
+- **Blend the effect:** Reduce Mix when you want some MD character without replacing the whole signal. The dry path is latency-aligned with the decoded path.
+- **Match levels before comparing:** Adjust Output only to compensate for perceived or measured loudness differences. It does not change the codec's bit allocation.
+
+### Parameters
+
+- **Mode** — Selects `SP (292 kbps)`, `LP2 (132 kbps)`, or `LP4 (66 kbps)`. SP uses ATRAC1; LP2 and LP4 use ATRAC3, with LP4 adding joint stereo coding. Lower bitrates leave fewer bits for spectral quantization and make codec artifacts more pronounced.
+- **Output** — Adjusts the decoded output level from -24.0 to +12.0 dB. Use it for level matching; it does not alter the codec state or bit allocation.
+- **Mix** — Blends the latency-aligned original with the decoded result from 0% to 100%.
 
 ## MP3 Codec Simulator
 

@@ -270,23 +270,23 @@ class HarmonicDistortionPlugin extends PluginBase {
         // Use base helper to create parameter rows
         container.appendChild(this.createParameterControl(
             '2nd Harm', -30, 30, 0.1, this.h2,
-            this.setH2.bind(this), '%'
+            this.setH2.bind(this), '%', 'h2'
         ));
         container.appendChild(this.createParameterControl(
             '3rd Harm', -30, 30, 0.1, this.h3,
-            this.setH3.bind(this), '%'
+            this.setH3.bind(this), '%', 'h3'
         ));
         container.appendChild(this.createParameterControl(
             '4th Harm', -30, 30, 0.1, this.h4,
-            this.setH4.bind(this), '%'
+            this.setH4.bind(this), '%', 'h4'
         ));
         container.appendChild(this.createParameterControl(
             '5th Harm', -30, 30, 0.1, this.h5,
-            this.setH5.bind(this), '%'
+            this.setH5.bind(this), '%', 'h5'
         ));
         container.appendChild(this.createParameterControl(
             'Sensitivity', 0.1, 2.0, 0.01, this.sn,
-            this.setSn.bind(this), 'x'
+            this.setSn.bind(this), 'x', 'sn'
         ));
 
         // Graph container for canvas and labels - keep original

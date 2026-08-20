@@ -299,6 +299,7 @@ class PhaserPlugin extends PluginBase {
         } else if (range) {
             range.value = String(value);
         }
+        if (range) window.uiManager?.refreshRangeFillStyling?.(range);
         for (const radio of row.querySelectorAll('input[type="radio"]')) {
             radio.checked = radio.value === value;
         }
@@ -336,25 +337,25 @@ class PhaserPlugin extends PluginBase {
         container.className = 'phaser-plugin-ui plugin-parameter-ui';
         this._uiControls = {};
         this._uiControls.style = this.createSelectControl('Style', [...Object.keys(PHASER_STYLES), 'Custom'], this.style,
-            value => this.applyStyle(value));
+            value => this.applyStyle(value), 'style');
         this._uiControls.md = this.createRadioGroup('Mode', PHASER_MODES, this.md,
-            value => this.setParameters({ md: value }));
+            value => this.setParameters({ md: value }), 'md');
         this._uiControls.rt = this.createLogarithmicParameterControl('Rate', 0.05, 10, 0.01, this.rt,
-            value => this.setParameters({ rt: value }), 'Hz');
+            value => this.setParameters({ rt: value }), 'Hz', 'rt');
         this._uiControls.cf = this.createLogarithmicParameterControl('Center Frequency', 80, 8000, 1, this.cf,
-            value => this.setParameters({ cf: value }), 'Hz');
+            value => this.setParameters({ cf: value }), 'Hz', 'cf');
         this._uiControls.rg = this.createParameterControl('Range', 0, 6, 0.1, this.rg,
-            value => this.setParameters({ rg: value }), 'octaves');
+            value => this.setParameters({ rg: value }), 'octaves', 'rg');
         this._uiControls.st = this.createParameterControl('Stages', 2, 12, 2, this.st,
-            value => this.setParameters({ st: value }));
+            value => this.setParameters({ st: value }), '', 'st');
         this._uiControls.fb = this.createParameterControl('Feedback', -90, 90, 1, this.fb,
-            value => this.setParameters({ fb: value }), '%');
+            value => this.setParameters({ fb: value }), '%', 'fb');
         this._uiControls.sp = this.createParameterControl('Stereo Phase', 0, 180, 1, this.sp,
-            value => this.setParameters({ sp: value }), 'degrees');
+            value => this.setParameters({ sp: value }), 'degrees', 'sp');
         this._uiControls.dr = this.createRadioGroup('Direction', PHASER_DIRECTIONS, this.dr,
-            value => this.setParameters({ dr: value }));
+            value => this.setParameters({ dr: value }), 'dr');
         this._uiControls.mx = this.createParameterControl('Mix', 0, 100, 1, this.mx,
-            value => this.setParameters({ mx: value }), '%');
+            value => this.setParameters({ mx: value }), '%', 'mx');
         for (const key of ['style', 'md', 'rt', 'cf', 'rg', 'st', 'fb', 'sp', 'dr', 'mx']) {
             container.appendChild(this._uiControls[key]);
         }

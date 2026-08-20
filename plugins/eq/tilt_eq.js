@@ -321,7 +321,7 @@ return data; // Return the modified buffer
             this.setSlope(value);
             this.drawGraph(canvas); // Update graph
         };
-        controlsContainer.appendChild(this.createParameterControl('Slope', -12.0, 12.0, 0.1, this.sl, slopeSetter, 'dB/oct'));
+        controlsContainer.appendChild(this.createParameterControl('Slope', -12.0, 12.0, 0.1, this.sl, slopeSetter, 'dB/oct', 'sl'));
 
         // Reset button - Keep original structure and class, append to graphContainer
         const resetButton = document.createElement('button');
@@ -352,6 +352,21 @@ return data; // Return the modified buffer
 
         // Initial graph draw
         this.drawGraph(canvas);
+
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the parts of the UI this plugin builds by hand are refreshed here.
+        // The slope row carries a modelKey and follows on its own; the manual pivot
+        // slider, its Hz readout and the response curve do not.
+        this.registerUIRefresh(() => {
+            pivotLogSlider.value = this.f0;
+            window.uiManager?.refreshRangeFillStyling?.(pivotLogSlider);
+            // The Hz box only commits on change/Enter, so a half-typed entry lives
+            // in the DOM and nowhere else; overwriting it mid-edit would discard it.
+            if (!this.isHeldByUser(pivotHzInput)) {
+                pivotHzInput.value = Math.round(Math.exp(this.f0));
+            }
+            this.drawGraph(canvas);
+        });
 
         return container;
     }

@@ -539,7 +539,7 @@ class GroupDelayEqPlugin extends PluginBase {
             this._t('groupDelayEq.parameter.taps', 'Taps'),
             GroupDelayEqPlugin.TAPS_CHOICES.map(value => ({ value: String(value), label: String(value) })),
             String(this.tp),
-            value => this.setParameters({ tp: Number(value) })
+            value => this.setParameters({ tp: Number(value) }), 'tp'
         ));
         container.appendChild(this.createSelectControl(
             this._t('groupDelayEq.parameter.latency', 'Latency'),
@@ -548,7 +548,7 @@ class GroupDelayEqPlugin extends PluginBase {
                 label: `${value} samples`
             })),
             this.lt,
-            value => this.setParameters({ lt: value })
+            value => this.setParameters({ lt: value }), 'lt'
         ));
 
         const slidersContainer = document.createElement('div');
@@ -709,6 +709,7 @@ class GroupDelayEqPlugin extends PluginBase {
                 slider.min = -limit;
                 slider.max = limit;
                 slider.value = this['d' + band];
+                window.uiManager?.refreshRangeFillStyling?.(slider);
             }
             if (this._valueDisplays[band]) this._valueDisplays[band].textContent = this._formatDelay(band);
             if (this._angleDisplays[band]) this._angleDisplays[band].textContent = this._formatAngle(band);

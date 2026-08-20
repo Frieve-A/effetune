@@ -218,7 +218,8 @@ class OscilloscopePlugin extends PluginBase {
           this.clearBuffer();
           this.updateParameters();
         },
-        'ms'
+        // The widget is in ms while the model holds seconds.
+        'ms', 'displayTime', (value) => value * 1000
       ));
   
       // --- Trigger Mode Control (Auto/Normal) ---
@@ -229,6 +230,7 @@ class OscilloscopePlugin extends PluginBase {
       tmLabel.textContent = 'Trigger Mode:';
 
       const modes = ['Auto', 'Normal'];
+      const modeRadioInputs = [];
       const modeRadios = modes.map(mode => {
         const label = document.createElement('label');
         label.className = 'radio-label';
@@ -254,6 +256,7 @@ class OscilloscopePlugin extends PluginBase {
   
         label.appendChild(radio);
         label.appendChild(document.createTextNode(mode));
+        modeRadioInputs.push({ radio, mode });
         return label;
       });
       tmRow.appendChild(tmLabel);
@@ -268,7 +271,7 @@ class OscilloscopePlugin extends PluginBase {
           this.setTriggerLevel(value);
           this.updateParameters();
         },
-        ''
+        '', 'triggerLevel'
       ));
   
       // --- Trigger Edge Control (Rising/Falling) ---
@@ -279,6 +282,7 @@ class OscilloscopePlugin extends PluginBase {
       teLabel.textContent = 'Trigger Edge:';
 
       const edges = ['Rising', 'Falling'];
+      const edgeRadioInputs = [];
       const edgeRadios = edges.map(edge => {
         const label = document.createElement('label');
         label.className = 'radio-label';
@@ -304,6 +308,7 @@ class OscilloscopePlugin extends PluginBase {
   
         label.appendChild(radio);
         label.appendChild(document.createTextNode(edge));
+        edgeRadioInputs.push({ radio, edge });
         return label;
       });
       teRow.appendChild(teLabel);
@@ -318,7 +323,8 @@ class OscilloscopePlugin extends PluginBase {
           this.setHoldoff(value / 1000);
           this.updateParameters();
         },
-        'ms'
+        // The widget is in ms while the model holds seconds.
+        'ms', 'holdoff', (value) => value * 1000
       ));
   
       // --- Display Level Control (dB) ---
@@ -329,7 +335,7 @@ class OscilloscopePlugin extends PluginBase {
           this.setDisplayLevel(value);
           this.updateParameters();
         },
-        'dB'
+        'dB', 'displayLevel'
       ));
 
       // --- Vertical Offset Control ---
@@ -340,7 +346,7 @@ class OscilloscopePlugin extends PluginBase {
           this.setVerticalOffset(value);
           this.updateParameters();
         },
-        ''
+        '', 'verticalOffset'
       ));
   
       container.appendChild(parametersGrid);
@@ -369,6 +375,18 @@ class OscilloscopePlugin extends PluginBase {
         this.observer = new IntersectionObserver(this.handleIntersect.bind(this));
       }
       this.observer.observe(this.canvas);
+
+      // Automation playback and preset recall change the model without touching the
+      // DOM, so the hand-built radio groups are refreshed here. The sliders above are
+      // covered by their modelKey.
+      this.registerUIRefresh(() => {
+        for (const { radio, mode } of modeRadioInputs) {
+          radio.checked = (mode === this.triggerMode);
+        }
+        for (const { radio, edge } of edgeRadioInputs) {
+          radio.checked = (edge === this.triggerEdge);
+        }
+      });
 
       return container;
     }

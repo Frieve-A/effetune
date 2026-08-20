@@ -37,7 +37,7 @@ function executeNpmSnippet(name, args = []) {
   }
 }
 
-test('published JavaScript and five self-supplied IR examples run unchanged', () => {
+test('published JavaScript and six self-supplied IR examples run unchanged', () => {
   executeNpmSnippet('javascript-start.mjs');
   executeNpmSnippet('asset-required-examples.mjs');
 });

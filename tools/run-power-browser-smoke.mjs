@@ -858,7 +858,8 @@ async function loadSmokeSpecs() {
     g726ResumeSpec,
     sbcResumeSpec,
     gsmResumeSpec,
-    mp3ResumeSpec
+    mp3ResumeSpec,
+    mdResumeSpec
   ] = await Promise.all([
     import('../tests/browser/power-policy-smoke.spec.mjs'),
     import('../tests/browser/cue-region-smoke.spec.mjs'),
@@ -866,7 +867,8 @@ async function loadSmokeSpecs() {
     import('../tests/browser/g726-resume-wasm-smoke.spec.mjs'),
     import('../tests/browser/bluetooth-sbc-resume-wasm-smoke.spec.mjs'),
     import('../tests/browser/gsm-full-rate-resume-wasm-smoke.spec.mjs'),
-    import('../tests/browser/mp3-resume-wasm-smoke.spec.mjs')
+    import('../tests/browser/mp3-resume-wasm-smoke.spec.mjs'),
+    import('../tests/browser/md-simulator-resume-wasm-smoke.spec.mjs')
   ]);
   if (typeof powerSpec.runPowerPolicyBrowserSmoke !== 'function') {
     throw new TypeError('power-policy-smoke.spec.mjs must export runPowerPolicyBrowserSmoke().');
@@ -901,6 +903,12 @@ async function loadSmokeSpecs() {
       'mp3-resume-wasm-smoke.spec.mjs must export runMp3ResumeWasmBrowserSmoke().'
     );
   }
+  if (typeof mdResumeSpec.runMdSimulatorResumeWasmBrowserSmoke !== 'function') {
+    throw new TypeError(
+      'md-simulator-resume-wasm-smoke.spec.mjs must export ' +
+      'runMdSimulatorResumeWasmBrowserSmoke().'
+    );
+  }
   return [
     powerSpec.runPowerPolicyBrowserSmoke,
     cueRegionSpec.runCueRegionBrowserSmoke,
@@ -908,7 +916,8 @@ async function loadSmokeSpecs() {
     g726ResumeSpec.runG726ResumeWasmBrowserSmoke,
     sbcResumeSpec.runBluetoothSbcResumeWasmBrowserSmoke,
     gsmResumeSpec.runGsmFullRateResumeWasmBrowserSmoke,
-    mp3ResumeSpec.runMp3ResumeWasmBrowserSmoke
+    mp3ResumeSpec.runMp3ResumeWasmBrowserSmoke,
+    mdResumeSpec.runMdSimulatorResumeWasmBrowserSmoke
   ];
 }
 

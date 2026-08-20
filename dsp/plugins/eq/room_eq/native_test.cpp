@@ -16,6 +16,7 @@ namespace {
 constexpr std::uint32_t kHeaderBytes = 32u;
 constexpr std::uint32_t kMagic = 0x31415445u;
 constexpr std::uint32_t kMono = 1u;
+constexpr std::uint32_t kIndependent = 2u;
 constexpr std::uint32_t kReplacementDryReady = 1u << 16u;
 
 constexpr std::uint32_t payloadByteSize(std::uint32_t frames) noexcept {
@@ -51,6 +52,25 @@ std::vector<std::uint8_t> makePayload(std::uint32_t frames, std::uint32_t sample
   writeU32(payload.data() + 16u, kMono);
   const std::size_t offset = kHeaderBytes + static_cast<std::size_t>(tap) * sizeof(float);
   std::memcpy(payload.data() + offset, &gain, sizeof(gain));
+  return payload;
+}
+
+std::vector<std::uint8_t> makeIndependentPayload(std::uint32_t channels, std::uint32_t frames,
+                                                 std::uint32_t sampleRate, std::uint32_t tap,
+                                                 const std::vector<float> &gains) {
+  std::vector<std::uint8_t> payload(
+      kHeaderBytes + static_cast<std::size_t>(channels) * frames * sizeof(float), 0u);
+  writeU32(payload.data(), kMagic);
+  writeU32(payload.data() + 4u, channels);
+  writeU32(payload.data() + 8u, frames);
+  writeU32(payload.data() + 12u, sampleRate);
+  writeU32(payload.data() + 16u, kIndependent);
+  for (std::uint32_t channel = 0u; channel < channels; ++channel) {
+    const std::size_t offset =
+        kHeaderBytes + (static_cast<std::size_t>(channel) * frames + tap) * sizeof(float);
+    const float gain = gains[channel];
+    std::memcpy(payload.data() + offset, &gain, sizeof(gain));
+  }
   return payload;
 }
 
@@ -98,6 +118,15 @@ struct Harness final {
                                      std::uint32_t headBlock = 128u) const noexcept {
     return {1u, frames, kMono, headBlock,           1u,
             0u, 0u,     2u,    16u * 1024u * 1024u, payloadByteSize(frames)};
+  }
+
+  effetune::AssetBeginInfo independentInfo(std::uint32_t channels, std::uint32_t frames,
+                                           std::uint32_t headBlock,
+                                           std::uint32_t processingChannels) const noexcept {
+    const auto byteSize = static_cast<std::uint32_t>(
+        kHeaderBytes + static_cast<std::size_t>(channels) * frames * sizeof(float));
+    return {channels, frames, kIndependent,       headBlock,           1u,
+            0u,       0u,     processingChannels, 16u * 1024u * 1024u, byteSize};
   }
 
   bool beginAndCommit(std::vector<std::uint8_t> payload, std::uint32_t headBlock = 128u) noexcept {
@@ -341,6 +370,39 @@ void testFailedReplacementFallsBackToAlignedDry() {
   checkUnityBlock(audio);
 }
 
+void testIndependentTopologyUsesPerChannelIrs() {
+  Harness harness;
+  harness.stage(parameters());
+  const auto payload = makeIndependentPayload(2u, 257u, 48000u, 0u, {0.25F, 0.75F});
+  std::uint8_t *staging = harness.kernel->beginAsset(0u, harness.independentInfo(2u, 257u, 0u, 2u));
+  ROOM_EQ_CHECK(staging != nullptr);
+  if (staging == nullptr)
+    return;
+  std::memcpy(staging, payload.data(), payload.size());
+  ROOM_EQ_CHECK(harness.kernel->commitAsset(0u, static_cast<std::uint32_t>(payload.size()),
+                                            ET_ASSET_F32_MULTICH) == ET_OK);
+  harness.prepareToActive();
+
+  std::array<float, 256> audio{};
+  for (std::uint32_t block = 0u; block < 6u; ++block) {
+    audio.fill(1.0F);
+    harness.kernel->process(audio.data(), 2u, 128u, {0.0});
+  }
+  ROOM_EQ_CHECK(std::fabs(audio[127] - 0.25F) < 0.0003F);
+  ROOM_EQ_CHECK(std::fabs(audio[255] - 0.75F) < 0.0003F);
+}
+
+void testRejectsTopologyChannelMismatch() {
+  Harness harness;
+  harness.stage(parameters());
+  ROOM_EQ_CHECK(harness.kernel->beginAsset(0u, harness.independentInfo(1u, 257u, 0u, 2u)) ==
+                nullptr);
+  auto monoInfo = harness.assetInfo(257u, 0u);
+  monoInfo.channels = 2u;
+  monoInfo.byteSize = kHeaderBytes + 2u * 257u * static_cast<std::uint32_t>(sizeof(float));
+  ROOM_EQ_CHECK(harness.kernel->beginAsset(0u, monoInfo) == nullptr);
+}
+
 void testRejectsAssetsBeyondMaximumTapCount() {
   Harness harness;
   constexpr std::uint32_t frames = 131073u;
@@ -359,6 +421,8 @@ int main() {
   testContinuousInputDuringInitialAndReplacementPreparation();
   testNonUnityReplacementUsesSharedMonoIr();
   testFailedReplacementFallsBackToAlignedDry();
+  testIndependentTopologyUsesPerChannelIrs();
+  testRejectsTopologyChannelMismatch();
   testRejectsAssetsBeyondMaximumTapCount();
   return failures == 0 ? 0 : 1;
 }

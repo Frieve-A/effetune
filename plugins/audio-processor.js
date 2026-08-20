@@ -1155,6 +1155,7 @@ const FIR_CONVOLVER_PLUGIN_TYPES = new Set([
     'FIRCrossoverPlugin',
     'FiveBandFIRPEQPlugin',
     'GroupDelayEqPlugin',
+    'GroupDelayPEQPlugin',
     'RoomEqPlugin'
 ]);
 const ET_DSP_MAX_CHANNELS = 8;

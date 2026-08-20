@@ -340,6 +340,7 @@ PC용 Chromium 브라우저에서는 선택한 음악 폴더에 대한 접근 �
 | EQ | Comb Filter | 위상감, 빈 공간감, 금속성 색채를 추가 | [세부 정보](plugins/eq.md#comb-filter) |
 | EQ | Earphone Cable Sim | 일반적인 이어폰 케이블 차이로 생기는 주파수 응답 변화가 대개 얼마나 작은지 확인 | [세부 정보](plugins/eq.md#earphone-cable-sim) |
 | EQ | Group Delay EQ | 음색을 바꾸지 않고 대역별 지연을 조정 | [세부 정보](plugins/eq.md#group-delay-eq) |
+| EQ | Group Delay PEQ | 음색을 바꾸지 않고 주파수별 지연을 5개 파라메트릭 대역으로 조정 | [세부 정보](plugins/eq.md#group-delay-peq) |
 | EQ | Hi Pass Filter | 불필요한 저주파를 정밀하게 제거 | [세부 정보](plugins/eq.md#hi-pass-filter) |
 | EQ | Lo Pass Filter | 불필요한 고주파를 정밀하게 제거 | [세부 정보](plugins/eq.md#lo-pass-filter) |
 | EQ | Loudness Equalizer | 낮은 볼륨 청취를 위한 주파수 밸런스 보정 | [세부 정보](plugins/eq.md#loudness-equalizer) |
@@ -356,6 +357,7 @@ PC용 Chromium 브라우저에서는 선택한 음악 폴더에 대한 접근 �
 | Lo-Fi | G.726 Simulator | ITU-T G.726 음성 코덱 인코딩/디코딩 왕복 처리를 선택적 무선 오류와 함께 시뮬레이션 | [세부 정보](plugins/lofi.md#g726-simulator) |
 | Lo-Fi | GSM-FR Simulator | 13 kbit/s GSM-FR 음성 코덱 인코딩/디코딩 왕복 처리를 프레임 소실 은닉이 있는 무선 구간과 함께 시뮬레이션 | [세부 정보](plugins/lofi.md#gsm-fr-simulator) |
 | Lo-Fi | Hum Generator | 빈티지/로파이 청취 분위기를 위한 조절 가능한 50/60 Hz 전원 험 추가 | [세부 정보](plugins/lofi.md#hum-generator) |
+| Lo-Fi | MD Simulator | MiniDisc 시대의 ATRAC 인코딩/디코딩 왕복 처리를 재현 | [세부 정보](plugins/lofi.md#md-simulator) |
 | Lo-Fi | MP3 Codec Simulator | 저비트레이트 MPEG Layer III의 깨끗한 인코딩/디코딩 왕복 처리 시뮬레이션 | [세부 정보](plugins/lofi.md#mp3-codec-simulator) |
 | Lo-Fi | Noise Blender | 로파이 분위기를 위한 조절 가능한 배경 노이즈 질감 추가 | [세부 정보](plugins/lofi.md#noise-blender) |
 | Lo-Fi | SBC Codec Simulator | Bluetooth A2DP SBC 인코딩/디코딩 왕복 처리를 선택적 패킷 소실 및 은닉과 함께 재현 | [세부 정보](plugins/lofi.md#sbc-codec-simulator) |

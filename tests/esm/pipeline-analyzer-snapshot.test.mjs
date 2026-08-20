@@ -95,6 +95,7 @@ test('requirements metadata accepts every type and derives required WASM from pr
         'FIRCrossoverPlugin',
         'FiveBandFIRPEQPlugin',
         'GroupDelayEqPlugin',
+        'GroupDelayPEQPlugin',
         'MultibandBalancePlugin',
         'MultibandCompressorPlugin',
         'MultibandSaturationPlugin',
@@ -313,6 +314,7 @@ test('offline asset requirements are frozen and union slot zero only when requir
         'FIRCrossoverPlugin',
         'FiveBandFIRPEQPlugin',
         'GroupDelayEqPlugin',
+        'GroupDelayPEQPlugin',
         'RoomEqPlugin',
         'IRReverbPlugin'
     ];
@@ -350,7 +352,7 @@ test('offline asset requirements are frozen and union slot zero only when requir
         waitForAssets: async (entry, slots) => {
             waits.push({ id: entry.id, slots: [...slots] });
             for (const id of required.keys()) required.set(id, false);
-            entries.find(candidate => candidate.id === 5).offlineDspAssetRequired = false;
+            entries.find(candidate => candidate.id === 6).offlineDspAssetRequired = false;
             return {
                 ready: true,
                 assets: new Map(slots.map(slot => [slot, {
@@ -375,7 +377,7 @@ test('offline asset requirements are frozen and union slot zero only when requir
         result.snapshot.assets.map(asset => [asset.pluginId, asset.slot]),
         types.flatMap((_, index) => [[index + 1, 0], [index + 11, 2]])
     );
-    assert.deepEqual(result.snapshot.requiredWasmPluginIds, [1, 2, 3, 4, 5]);
+    assert.deepEqual(result.snapshot.requiredWasmPluginIds, [1, 2, 3, 4, 5, 6]);
     assert.deepEqual(result.snapshot.dsp.enabledTypes, types);
     for (let index = 0; index < types.length; index += 1) {
         const requiredEntry = entries[index * 2];

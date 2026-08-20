@@ -543,17 +543,17 @@ class DattorroPlateReverbPlugin extends PluginBase {
         const container = document.createElement('div');
         container.className = 'plugin-parameter-ui';
 
-        container.appendChild(this.createParameterControl('Pre Delay', 0.0, 100.0, 0.1, this.pd, (value) => this.setParameters({ pd: value }), 'ms'));
-        container.appendChild(this.createParameterControl('Bandwidth', 0.0, 1.0, 0.001, this.bw, (value) => this.setParameters({ bw: value })));
-        container.appendChild(this.createParameterControl('Input Diff 1', 0.0, 1.0, 0.01, this.id1, (value) => this.setParameters({ id1: value })));
-        container.appendChild(this.createParameterControl('Input Diff 2', 0.0, 1.0, 0.01, this.id2, (value) => this.setParameters({ id2: value })));
-        container.appendChild(this.createParameterControl('Decay', 0.0, 1.0, 0.01, this.dc, (value) => this.setParameters({ dc: value })));
-        container.appendChild(this.createParameterControl('Decay Diff 1', 0.0, 1.0, 0.01, this.dd1, (value) => this.setParameters({ dd1: value })));
-        container.appendChild(this.createParameterControl('Damping', 0.0, 1.0, 0.001, this.dp, (value) => this.setParameters({ dp: value })));
-        container.appendChild(this.createParameterControl('Mod Depth', 0.0, 16.0, 0.1, this.md, (value) => this.setParameters({ md: value }), 'samples'));
-        container.appendChild(this.createParameterControl('Mod Rate', 0.0, 10.0, 0.1, this.mr, (value) => this.setParameters({ mr: value }), 'Hz'));
-        container.appendChild(this.createParameterControl('Wet Mix', 0, 100, 1, this.wm, (value) => this.setParameters({ wm: value }), '%'));
-        container.appendChild(this.createParameterControl('Dry Mix', 0, 100, 1, this.dm, (value) => this.setParameters({ dm: value }), '%'));
+        container.appendChild(this.createParameterControl('Pre Delay', 0.0, 100.0, 0.1, this.pd, (value) => this.setParameters({ pd: value }), 'ms', 'pd'));
+        container.appendChild(this.createParameterControl('Bandwidth', 0.0, 1.0, 0.001, this.bw, (value) => this.setParameters({ bw: value }), '', 'bw'));
+        container.appendChild(this.createParameterControl('Input Diff 1', 0.0, 1.0, 0.01, this.id1, (value) => this.setParameters({ id1: value }), '', 'id1'));
+        container.appendChild(this.createParameterControl('Input Diff 2', 0.0, 1.0, 0.01, this.id2, (value) => this.setParameters({ id2: value }), '', 'id2'));
+        container.appendChild(this.createParameterControl('Decay', 0.0, 1.0, 0.01, this.dc, (value) => this.setParameters({ dc: value }), '', 'dc'));
+        container.appendChild(this.createParameterControl('Decay Diff 1', 0.0, 1.0, 0.01, this.dd1, (value) => this.setParameters({ dd1: value }), '', 'dd1'));
+        container.appendChild(this.createParameterControl('Damping', 0.0, 1.0, 0.001, this.dp, (value) => this.setParameters({ dp: value }), '', 'dp'));
+        container.appendChild(this.createParameterControl('Mod Depth', 0.0, 16.0, 0.1, this.md, (value) => this.setParameters({ md: value }), 'samples', 'md'));
+        container.appendChild(this.createParameterControl('Mod Rate', 0.0, 10.0, 0.1, this.mr, (value) => this.setParameters({ mr: value }), 'Hz', 'mr'));
+        container.appendChild(this.createParameterControl('Wet Mix', 0, 100, 1, this.wm, (value) => this.setParameters({ wm: value }), '%', 'wm'));
+        container.appendChild(this.createParameterControl('Dry Mix', 0, 100, 1, this.dm, (value) => this.setParameters({ dm: value }), '%', 'dm'));
 
         return container;
     }

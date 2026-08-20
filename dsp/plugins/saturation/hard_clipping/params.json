@@ -11,6 +11,7 @@
       "kind": "float",
       "min": -60,
       "max": 0,
+      "step": 0.1,
       "default": -18,
       "unit": "dB",
       "automation": true

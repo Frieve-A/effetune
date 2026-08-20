@@ -1009,7 +1009,7 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
       // BER Exponent Control
       container.appendChild(this.createParameterControl(
         'Bit Error Rate', -12, -2, 0.2, this.be,
-        (value) => this.setBERExponent(value), '10^x'
+        (value) => this.setBERExponent(value), '10^x', 'be'
       ));
       
       const modeOrder = ["1", "2A", "2B", "3A", "3B", "4", "5A", "5B", "5C", "6A", "6B", "8", "9", "10", "10A"];
@@ -1020,7 +1020,7 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
           label: this.MODE_DEFINITIONS[modeId].name
         })),
         this.md,
-        value => this.setMode(value)
+        value => this.setMode(value), 'md'
       ));
 
       container.appendChild(this.createRadioGroup(
@@ -1030,10 +1030,10 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
           label: `${fsValue}`
         })),
         this.rf,
-        value => this.setReferenceFsKHz(value)
+        value => this.setReferenceFsKHz(value), 'rf'
       ));
       // Wet Mix
-      container.appendChild(this.createParameterControl('Wet Mix', 0, 100, 1, this.wt, (val) => this.setWetMix(val), '%'));
+      container.appendChild(this.createParameterControl('Wet Mix', 0, 100, 1, this.wt, (val) => this.setWetMix(val), '%', 'wt'));
       
       return container;
     }

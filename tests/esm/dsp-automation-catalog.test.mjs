@@ -52,9 +52,9 @@ test('production schemas expose exactly the planned A/B population', async () =>
     .filter(([, parameters]) => parameters.length === 0)
     .map(([type]) => type);
 
-  assert.equal(entries.length, 92);
-  assert.equal(entries.filter(([, parameters]) => parameters.length !== 0).length, 79);
-  assert.equal(entries.reduce((count, [, parameters]) => count + parameters.length, 0), 622);
+  assert.equal(entries.length, 94);
+  assert.equal(entries.filter(([, parameters]) => parameters.length !== 0).length, 80);
+  assert.equal(entries.reduce((count, [, parameters]) => count + parameters.length, 0), 624);
   for (const effect of specs) {
     const expectedLeaves = [];
     let packedOffset = 0;
@@ -86,13 +86,14 @@ test('production schemas expose exactly the planned A/B population', async () =>
   }
   assert.equal(
     createHash('sha256').update(JSON.stringify(catalog.effects)).digest('hex'),
-    '4f52541cbee6e61c6e3f5977e98fa49135ec7a3717f69a8ee071527532a2576f'
+    'e9580832cf085291063e1fdb6819c91101a718341db0c737cbd3a2b6fefaf9fe'
   );
   assert.deepEqual(privateEffects, [
     'FIRCrossoverPlugin', 'FiveBandFIRPEQPlugin', 'GroupDelayEqPlugin',
-    'LevelMeterPlugin', 'MatrixPlugin', 'MutePlugin', 'OscilloscopePlugin',
-    'PhaseSelectEqPlugin', 'PitchShifterHQPlugin', 'PolarityInversionPlugin',
-    'SpectrogramPlugin', 'SpectrumAnalyzerPlugin', 'StereoMeterPlugin'
+    'GroupDelayPEQPlugin', 'LevelMeterPlugin', 'MatrixPlugin', 'MutePlugin',
+    'OscilloscopePlugin', 'PhaseSelectEqPlugin', 'PitchShifterHQPlugin',
+    'PolarityInversionPlugin', 'SpectrogramPlugin', 'SpectrumAnalyzerPlugin',
+    'StereoMeterPlugin'
   ]);
   assert.deepEqual(Object.fromEntries(specs.flatMap(effect => effect.fields
     .filter(field => field.automation && field.publicName !== field.name)
@@ -191,12 +192,12 @@ test('minimal opt-in derives identity, display, layout, and array access metadat
     { name: 'privateGain', key: 'pg', kind: 'float', min: 0, max: 1, default: 0 },
     {
       name: 'bandGain', key: 'bg', arrayKey: 'bands', kind: 'int', count: 2,
-      min: -12, max: 12, default: [-3, 6], unit: 'dB', automation: true
+      min: -12, max: 12, step: 1, default: [-3, 6], unit: 'dB', automation: true
     },
     {
       name: 'attackTime', publicName: 'attackMilliseconds', key: 'at',
       objectArrayKey: 'stages', memberKey: 'attack',
-      kind: 'float', count: 2, min: 0.1, max: 100, default: [1, 10],
+      kind: 'float', count: 2, min: 0.1, max: 100, step: 0.1, default: [1, 10],
       unit: 'ms', automation: { normalization: 'log' }
     }
   ]);
@@ -231,21 +232,24 @@ test('minimal opt-in derives identity, display, layout, and array access metadat
 test('generated JavaScript normalizes continuous and stepped parameter kinds', async () => {
   const probe = spec('AutomationNormalizationProbe', [
     {
-      name: 'linear', key: 'ln', kind: 'float', min: -1, max: 1, default: 0,
-      automation: true
+      name: 'linear', key: 'ln', kind: 'float', min: -1, max: 1, step: 0.01,
+      default: 0, automation: true
     },
     {
       name: 'logarithmic', key: 'lg', kind: 'float', min: 20, max: 20000,
-      default: 200, automation: { normalization: 'log' }
+      step: 1, default: 200, automation: { normalization: 'log' }
     },
     {
-      name: 'integer', key: 'in', kind: 'int', min: 1, max: 5, default: 3,
+      name: 'integer', key: 'in', kind: 'int', min: 1, max: 5, step: 1,
+      default: 3, automation: true
+    },
+    {
+      name: 'enabled', key: 'ok', kind: 'bool', step: 1, default: false,
       automation: true
     },
-    { name: 'enabled', key: 'ok', kind: 'bool', default: false, automation: true },
     {
       name: 'mode', key: 'md', kind: 'enum', values: ['low', 'mid', 'high'],
-      default: 'mid', automation: true
+      step: 1, default: 'mid', automation: true
     }
   ]);
   const generated = await generatedModule([probe]);
@@ -270,9 +274,9 @@ test('generated JavaScript normalizes continuous and stepped parameter kinds', a
   assert.equal(denormalize(descriptors.get('md'), 0.4), 'mid');
   assert.doesNotMatch(cpp, /\b(?:false|true|low|mid|high)f\b/);
   assert.match(cpp,
-    /AutomationParameterDescriptor\{"ok".*AutomationParameterKind::Bool.*0\.0f, 1\.0f, 0\.0f, 0\.0f, 1u/);
+    /AutomationParameterDescriptor\{"ok".*AutomationParameterKind::Bool.*0\.0f, 1\.0f, 1\.0f, 0\.0f, 0\.0f, 1u/);
   assert.match(cpp,
-    /AutomationParameterDescriptor\{"md".*AutomationParameterKind::Enum.*0\.0f, 2\.0f, 1\.0f, 1\.0f, 2u/);
+    /AutomationParameterDescriptor\{"md".*AutomationParameterKind::Enum.*0\.0f, 2\.0f, 1\.0f, 1\.0f, 1\.0f, 2u/);
 });
 
 test('overlay transforms expose public domains and round-trip packed values', async () => {
@@ -353,7 +357,7 @@ test('overlay transforms expose public domains and round-trip packed values', as
 test('native catalog carries the exact enum table generated from the field schema', () => {
   const probe = spec('AutomationEnumProbe', [{
     name: 'mode', key: 'md', kind: 'enum', values: ['low', 'mid', 'high'],
-    default: 'mid', automation: true
+    step: 1, default: 'mid', automation: true
   }]);
   const cpp = [...generateOutputs([probe])]
     .find(([file]) => file.endsWith('AutomationCatalog.h'))[1];
@@ -364,7 +368,7 @@ test('native catalog carries the exact enum table generated from the field schem
 
 test('automation validation accepts only the minimal opt-in schema', () => {
   const base = {
-    name: 'gain', key: 'gn', kind: 'float', min: 0, max: 1, default: 0.5
+    name: 'gain', key: 'gn', kind: 'float', min: 0, max: 1, step: 0.01, default: 0.5
   };
   assert.throws(
     () => spec('FalseAutomation', [{ ...base, automation: false }]),
@@ -386,7 +390,7 @@ test('automation validation accepts only the minimal opt-in schema', () => {
   );
   assert.throws(
     () => spec('IntegerLog', [{
-      name: 'steps', key: 'st', kind: 'int', min: 1, max: 5, default: 3,
+      name: 'steps', key: 'st', kind: 'int', min: 1, max: 5, step: 1, default: 3,
       automation: { normalization: 'log' }
     }]),
     /requires float kind/
@@ -407,8 +411,8 @@ test('automation metadata does not change layout and released contracts stay sta
   ]);
   const publicSpec = spec('StableAutomationProbe', [
     {
-      name: 'gain', key: 'gn', kind: 'float', min: -1, max: 1, default: 0,
-      automation: true
+      name: 'gain', key: 'gn', kind: 'float', min: -1, max: 1, step: 0.01,
+      default: 0, automation: true
     }
   ]);
   assert.equal(privateSpec.hash, publicSpec.hash);
@@ -416,12 +420,12 @@ test('automation metadata does not change layout and released contracts stay sta
   const released = buildAutomationCatalog([publicSpec]);
   const withAddition = buildAutomationCatalog([spec('StableAutomationProbe', [
     {
-      name: 'gain', key: 'gn', kind: 'float', min: -1, max: 1, default: 0,
-      automation: true
+      name: 'gain', key: 'gn', kind: 'float', min: -1, max: 1, step: 0.01,
+      default: 0, automation: true
     },
     {
-      name: 'mix', key: 'mx', kind: 'float', min: 0, max: 1, default: 1,
-      automation: true
+      name: 'mix', key: 'mx', kind: 'float', min: 0, max: 1, step: 0.01,
+      default: 1, automation: true
     }
   ])]);
   assert.equal(validateAutomationCompatibility(released, withAddition), true);
@@ -430,7 +434,7 @@ test('automation metadata does not change layout and released contracts stay sta
     /removed or renamed/
   );
   const changedRange = buildAutomationCatalog([spec('StableAutomationProbe', [{
-    name: 'gain', key: 'gn', kind: 'float', min: -2, max: 1, default: 0,
+    name: 'gain', key: 'gn', kind: 'float', min: -2, max: 1, step: 0.01, default: 0,
     automation: true
   }])]);
   assert.throws(
@@ -439,14 +443,14 @@ test('automation metadata does not change layout and released contracts stay sta
   );
   const renamedPublicField = buildAutomationCatalog([spec('StableAutomationProbe', [{
     name: 'gain', publicName: 'inputGain', key: 'gn', kind: 'float', min: -1, max: 1,
-    default: 0, automation: true
+    step: 0.01, default: 0, automation: true
   }])]);
   assert.throws(
     () => validateAutomationCompatibility(released, renamedPublicField),
     /removed or renamed/
   );
   const renamedPackedKey = buildAutomationCatalog([spec('StableAutomationProbe', [{
-    name: 'gain', key: 'ig', kind: 'float', min: -1, max: 1, default: 0,
+    name: 'gain', key: 'ig', kind: 'float', min: -1, max: 1, step: 0.01, default: 0,
     automation: true
   }])]);
   assert.throws(
@@ -454,7 +458,7 @@ test('automation metadata does not change layout and released contracts stay sta
     /changed key/
   );
   const changedUnit = buildAutomationCatalog([spec('StableAutomationProbe', [{
-    name: 'gain', key: 'gn', kind: 'float', min: -1, max: 1, default: 0,
+    name: 'gain', key: 'gn', kind: 'float', min: -1, max: 1, step: 0.01, default: 0,
     unit: 'dB', automation: true
   }])]);
   assert.throws(

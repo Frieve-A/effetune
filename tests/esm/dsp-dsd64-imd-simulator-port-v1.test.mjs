@@ -139,7 +139,7 @@ test('DSD64 schema, parity cases, registry, and allocation contract stay frozen'
   assert.equal(goldens.length, 8);
   assert.ok(goldens.every(item =>
     item.metadata.jsEngineHash ===
-      '3c2f69aa5508d3c81a8b88c958c3df431cd50ec63ef9c13c91c9fdf3c595fd2d'
+      '53ea4ddfa9287bc79f3cdc4c0fb4357003a44f821c13475e882b506ff0697d54'
   ));
   assert.match(registry, /EFFETUNE_PLUGIN\(DSD64IMDSimulatorPlugin, lofi\/dsd64_imd_simulator\)/);
   assert.match(cmake, /effetune_dsp_dsd64_imd_simulator_tests/);

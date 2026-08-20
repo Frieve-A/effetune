@@ -907,7 +907,7 @@ test('measurement settings are bounded, persisted, and invalidate without graph-
     assert.deepEqual(controller.state.measurementSettings, {
         signalType: 'impulse',
         levelDb: -60,
-        sequenceLength: 65535,
+        sequenceLength: 65536,
         stabilizationPeriods: 32,
         averagingPeriods: 1
     });

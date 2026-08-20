@@ -373,14 +373,52 @@ function directSpectrum(analysis, sampleRate, directWindowMs, synthesisFrequenci
     return result;
 }
 
+// Single definition of the impulse-preview display window (plan section 5 Phase 5
+// item 4 / section 7): the largest of 5 ms, the Direct Window and -- only while
+// the reverb correction is requested -- the Reverb Window capped at 50 ms, so the
+// cancelled reverberant tail is visible. The user-facing Reverb Window (rw) is the
+// term, matching the documented rule; the data-clamped effective window is a
+// diagnostic, not a display contract. With rv = 0 the third term is 0 and the
+// length stays exactly as before.
+// The Consensus average only synthesizes samples it is asked for, so it must
+// synthesize this far as well or the tail of every multi-point preview is zero-fill
+// (see alignedAverageAnalysis). It must NOT, however, size the analysis this rule
+// feeds -- that is dspWindowSamples' job.
+function previewWindowSamples(config) {
+    const previewDurationMs = Math.max(
+        5,
+        config.directWindowMs,
+        config.reverbAmount > 0 ? Math.min(config.reverbWindowMs, 50) : 0
+    );
+    return Math.max(2, Math.round(config.sampleRate * previewDurationMs / 1000));
+}
+
+// Companion rule to previewWindowSamples, and deliberately a separate function:
+// this is the DSP window of the Consensus average -- the length every correction
+// path is derived from (the FFT size and therefore the bin grid of every spectrum,
+// the LFE's available-window budget, the phase/group-delay previews). It depends
+// only on the correction parameters, never on what the display happens to show, so
+// widening the display window cannot move a shipped sample. Never merge the two
+// back into one value: a display rule that reaches the FFT size retunes the whole
+// phase path at every nextPowerOfTwo boundary it crosses.
+function dspWindowSamples(config) {
+    return Math.max(2, Math.round(
+        config.sampleRate * Math.max(5, config.directWindowMs) / 1000
+    ));
+}
+
 function alignedAverageAnalysis(analyses, config) {
     if (analyses.length === 1) return analyses[0];
     const prerollSamples = Math.max(1, Math.round(config.sampleRate * 0.005));
-    const previewSamples = Math.max(2, Math.round(
-        config.sampleRate * Math.max(5, config.directWindowMs) / 1000
-    ));
-    const postrollSamples = config.taps / 2 + previewSamples;
-    const samples = new Float32Array(prerollSamples + postrollSamples);
+    // Two lengths over one synthesized buffer. `dspLength` is what the analysis
+    // sees (`samples`, `fftSize`); `displayLength` additionally covers the preview
+    // window and is exposed only as `previewSamples`, which only
+    // createImpulseResponsePreview reads. Both views start at index 0 of the same
+    // buffer, so the DSP view is bit-identical to a buffer synthesized at
+    // `dspLength` alone.
+    const dspLength = prerollSamples + config.taps / 2 + dspWindowSamples(config);
+    const displayLength = prerollSamples + config.taps / 2 + previewWindowSamples(config);
+    const samples = new Float32Array(dspLength > displayLength ? dspLength : displayLength);
     for (let index = 0; index < samples.length; index += 1) {
         const relativeIndex = index - prerollSamples;
         let sum = 0;
@@ -394,9 +432,10 @@ function alignedAverageAnalysis(analyses, config) {
         if (count) samples[index] = sum / count;
     }
     return {
-        samples,
+        samples: samples.subarray(0, dspLength),
+        previewSamples: samples.subarray(0, displayLength),
         onsetIndex: prerollSamples,
-        fftSize: nextPowerOfTwo(samples.length),
+        fftSize: nextPowerOfTwo(dspLength),
         directCache: new Map()
     };
 }
@@ -490,6 +529,25 @@ function phaseCorrectionLowFrequency(config) {
     return Math.max(1000 / config.directWindowMs, config.phaseLowFrequency);
 }
 
+// Derived config for the extended-window (reverb) phase-analysis path. The C_ext
+// pipeline reuses directSpectrum/directPhaseAnalysis with this config, so the window
+// length, the smoothing width and the analysis band all shift together and their
+// cache keys stay distinct from the direct-window path. `reverbWindowEffectiveMs`
+// must already carry the fully clamped value (config terms plus available window).
+function reverbPhaseConfig(config) {
+    return {
+        ...config,
+        directWindowMs: config.reverbWindowEffectiveMs,
+        smoothing: config.reverbSmoothing,
+        phaseSmoothing: config.reverbSmoothing,
+        highFrequency: Math.min(config.reverbMaxFrequency, config.highFrequency),
+        phaseLowFrequency: null,
+        // Route the residual regridding through the cell-averaging variant (see
+        // smoothReverbSynthesisValues); the direct-window path stays point-sampled.
+        reverbResidualAggregation: true
+    };
+}
+
 export function softLimitBoost(decibels, maximum) {
     const kneeStart = maximum - 1;
     if (decibels <= kneeStart) return decibels;
@@ -522,6 +580,60 @@ function smoothSynthesisValues(values, frequencies, config) {
         values.subarray(1),
         smoothingFrequencies
     );
+    const smoothedPoints = smoothFrequencyResponse(
+        Array.from(smoothingFrequencies, (frequency, index) => [
+            frequency,
+            smoothingValues[index]
+        ]),
+        config.smoothing
+    );
+    return interpolateValues(
+        smoothingFrequencies,
+        smoothedPoints.map(point => point[1]),
+        frequencies
+    );
+}
+
+// Reverb-path variant of smoothSynthesisValues: the transfer onto the fixed
+// 0.01-octave smoothing grid aggregates each grid cell by the mean of the linear-grid
+// values that fall inside it instead of point-sampling a single value. Above the log
+// grid's resolution limit the comb-structured reverb residual would otherwise alias
+// into pseudo-ripple; averaging inside the cell is equivalent to a strong smoothing
+// and therefore harmless. Cells narrower than the linear grid spacing keep the same
+// point interpolation the direct-window path uses.
+function smoothReverbSynthesisValues(values, frequencies, config) {
+    const smoothingFrequencies = createLogFrequencyGrid(
+        Math.max(20, frequencies[1] || 20),
+        Math.min(config.sampleRate * 0.48, frequencies[frequencies.length - 1]),
+        0.01
+    );
+    const sourceFrequencies = frequencies.subarray(1);
+    const sourceValues = values.subarray(1);
+    const smoothingValues = interpolateValues(
+        sourceFrequencies,
+        sourceValues,
+        smoothingFrequencies
+    );
+    let cursor = 0;
+    for (let index = 0; index < smoothingFrequencies.length; index += 1) {
+        const lower = index === 0
+            ? smoothingFrequencies[index]
+            : Math.sqrt(smoothingFrequencies[index - 1] * smoothingFrequencies[index]);
+        const upper = index === smoothingFrequencies.length - 1
+            ? smoothingFrequencies[index]
+            : Math.sqrt(smoothingFrequencies[index] * smoothingFrequencies[index + 1]);
+        while (cursor < sourceFrequencies.length && sourceFrequencies[cursor] < lower) {
+            cursor += 1;
+        }
+        let sum = 0;
+        let count = 0;
+        for (let source = cursor; source < sourceFrequencies.length &&
+            sourceFrequencies[source] <= upper; source += 1) {
+            sum += sourceValues[source];
+            count += 1;
+        }
+        if (count > 0) smoothingValues[index] = sum / count;
+    }
     const smoothedPoints = smoothFrequencyResponse(
         Array.from(smoothingFrequencies, (frequency, index) => [
             frequency,
@@ -657,7 +769,7 @@ function frequencyDependentLowPhaseAnalysis(direct, frequencies, config, fftSize
         config.lowFrequency,
         high,
         config.directWindowMs,
-        config.smoothing,
+        config.phaseSmoothing,
         config.taps,
         config.sampleRate,
         config.highFrequency,
@@ -679,7 +791,9 @@ function frequencyDependentLowPhaseAnalysis(direct, frequencies, config, fftSize
         2 * Math.PI * frequencies[spectrum.anchor] * onsetDelay;
     const totalResidual = Float64Array.from(frequencies, (frequency, index) =>
         hybridTotal[index] + 2 * Math.PI * frequency * onsetDelay - totalAnchorPhase);
-    const smoothedTotalResidual = smoothSynthesisValues(totalResidual, frequencies, config);
+    const lowResidualSmoothingConfig = { ...config, smoothing: config.phaseSmoothing };
+    const smoothedTotalResidual =
+        smoothSynthesisValues(totalResidual, frequencies, lowResidualSmoothingConfig);
     const hybridWrappedExcess = Float64Array.from(
         spectrum.phase,
         (phase, index) => phase - measuredMinimumPhase[index]
@@ -689,7 +803,8 @@ function frequencyDependentLowPhaseAnalysis(direct, frequencies, config, fftSize
         2 * Math.PI * frequencies[spectrum.anchor] * onsetDelay;
     const residual = Float64Array.from(frequencies, (frequency, index) =>
         hybridExcess[index] + 2 * Math.PI * frequency * onsetDelay - anchorPhase);
-    const smoothedResidual = smoothSynthesisValues(residual, frequencies, config);
+    const smoothedResidual =
+        smoothSynthesisValues(residual, frequencies, lowResidualSmoothingConfig);
 
     const intervalDelays = new Float64Array(spectrum.anchor + 1);
     const hybridIntervalDelays = new Float64Array(spectrum.anchor + 1);
@@ -778,14 +893,20 @@ function lowPhaseDftWork(directs, frequencies, config, high) {
 function directPhaseAnalysis(direct, frequencies, config, fftSize) {
     const low = phaseCorrectionLowFrequency(config);
     const high = Math.min(config.highFrequency, config.sampleRate * 0.45);
+    // The reverb path reaches this cache through the same `direct` object whenever
+    // its effective window equals a direct-window design's dw (analysis.directCache
+    // is keyed on the window alone), and reverbPhaseConfig can make every other key
+    // term collide as well. reverbResidualAggregation selects the residual regridding
+    // below, so it belongs in the identity or the two paths hand each other results.
     const cacheKey = [
         'analysis',
         low,
         high,
         config.directWindowMs,
-        config.smoothing,
+        config.phaseSmoothing,
         config.sampleRate,
-        fftSize
+        fftSize,
+        config.reverbResidualAggregation ? 1 : 0
     ].join(':');
     const cached = direct.phaseCorrectionCache?.get(cacheKey);
     if (cached) return cached;
@@ -831,7 +952,13 @@ function directPhaseAnalysis(direct, frequencies, config, fftSize) {
     const intercept = count === 0 ? 0 : (sumY - slope * sumX) / count;
     const residual = Float64Array.from(frequencies, (frequency, index) =>
         excess[index] - (intercept + slope * 2 * Math.PI * frequency));
-    const smoothedResidual = smoothSynthesisValues(residual, frequencies, config);
+    // The direct-phase residual is smoothed with the phase smoothing (ps). The
+    // reverb path arrives here with smoothing === phaseSmoothing === rs via
+    // reverbPhaseConfig, so both paths read the same resolved width.
+    const residualSmoothingConfig = { ...config, smoothing: config.phaseSmoothing };
+    const smoothedResidual = config.reverbResidualAggregation
+        ? smoothReverbSynthesisValues(residual, frequencies, residualSmoothingConfig)
+        : smoothSynthesisValues(residual, frequencies, residualSmoothingConfig);
     const intervalDelays = new Float64Array(frequencies.length);
     const limit = config.directWindowMs / 1000;
     for (let index = 1; index < frequencies.length; index += 1) {
@@ -862,14 +989,17 @@ function directPhaseAnalysis(direct, frequencies, config, fftSize) {
 function directPhaseCorrection(direct, frequencies, config, fftSize) {
     const analysis = directPhaseAnalysis(direct, frequencies, config, fftSize);
     const { first, low, high } = analysis;
+    // Same identity rule as the 'analysis' entry above: this value is derived from
+    // the analysis result, so it inherits the aggregation flag's influence.
     const cacheKey = [
         'correction',
         low,
         high,
         config.directWindowMs,
-        config.smoothing,
+        config.phaseSmoothing,
         config.sampleRate,
-        fftSize
+        fftSize,
+        config.reverbResidualAggregation ? 1 : 0
     ].join(':');
     const cached = direct.phaseCorrectionCache?.get(cacheKey);
     if (cached) return cached;
@@ -904,7 +1034,8 @@ function consensusLowPhaseCorrection(
     alignmentGroupDelayPerAmount,
     frequencies,
     config,
-    fftSize
+    fftSize,
+    reverbTargetDelays = null
 ) {
     if (!config.lowFrequencyPhaseExtension) {
         return { phase: null, reason: 'notRequested' };
@@ -1003,7 +1134,7 @@ function consensusLowPhaseCorrection(
             frequencies,
             {
                 ...config,
-                smoothing: config.smoothing < 1 / 3 ? 1 / 3 : config.smoothing
+                smoothing: config.phaseSmoothing < 1 / 3 ? 1 / 3 : config.phaseSmoothing
             }
         );
     }
@@ -1014,9 +1145,15 @@ function consensusLowPhaseCorrection(
         const blend = targetAnalysis.fixedBlend[index];
         const deltaOmega = 2 * Math.PI * (frequencies[index] - frequencies[index - 1]);
         const midpoint = Math.sqrt(frequencies[index] * frequencies[index - 1]);
+        // Reverb incrementalization (plan section 3.4): the adopted reverb
+        // correction rv*s*delta already removes part of the measured low-band
+        // excess delay, so the LFE targets only the remaining residual --
+        // without this subtraction the two paths double-estimate the same
+        // excess delay and over-correct by the shared amount.
         const targetDelay = (
             smoothedCommonDelays[index] - alignmentGroupDelayPerAmount
-        ) * (1 - blend) + upperBoundaryDelay * blend;
+        ) * (1 - blend) + upperBoundaryDelay * blend -
+            (reverbTargetDelays ? reverbTargetDelays[index] : 0);
         const gatedTargetDelay = targetDelay * lowPhaseCorrectionGate(
             midpoint,
             config.lowFrequency
@@ -1102,6 +1239,60 @@ function consensusDirectPhaseCorrection(directs, frequencies, config, fftSize) {
     return consensus;
 }
 
+// Extended-window (reverb) inter-point synthesis: combines the per-point clamped
+// interval delays tau_ext,i into a reliability-weighted circular mean plus an
+// agreement A_ext. The mean's angle scale is the synthesis-grid delta-omega, which
+// is single-valued because |tau| <= rw_eff/1000 and rw_eff <= taps/(2*rate)*1000
+// bound |theta| by pi/2. The agreement is evaluated on the reverb-smoothing scale
+// delta-omega_rs = 2*pi*f*(2^rs - 1) instead, so its sensitivity tracks the
+// structure that survives smoothing rather than the taps count. A single point
+// passes through with A_ext = 1, mirroring consensusDirectPhaseCorrection.
+function reverbExtendedConsensus(directs, frequencies, config, fftSize) {
+    const analyses = directs.map(direct =>
+        directPhaseAnalysis(direct, frequencies, config, fftSize));
+    const { first, low, high } = analyses[0];
+    const intervalDelays = new Float64Array(frequencies.length);
+    const agreement = new Float64Array(frequencies.length);
+    let agreementMinimum = 1;
+    if (analyses.length === 1) {
+        intervalDelays.set(analyses[0].intervalDelays);
+        agreement.fill(1);
+        return { intervalDelays, agreement, agreementMinimum, first, low, high };
+    }
+    const upper = Math.min(high * 2 ** (1 / 3), config.sampleRate * 0.48);
+    const deltaOmega = 2 * Math.PI * (frequencies[1] - frequencies[0]);
+    const smoothingScale = 2 * Math.PI * (2 ** config.reverbSmoothing - 1);
+    for (let index = Math.max(1, first); index < frequencies.length &&
+        frequencies[index] <= upper; index += 1) {
+        let real = 0;
+        let imaginary = 0;
+        let agreementReal = 0;
+        let agreementImaginary = 0;
+        let weightSum = 0;
+        for (let point = 0; point < directs.length; point += 1) {
+            const reliability = directs[point].magnitude[index] / analyses[point].floor;
+            const weight = reliability < 1 ? reliability * reliability : 1;
+            const delay = analyses[point].intervalDelays[index];
+            const theta = delay * deltaOmega;
+            real += Math.cos(theta) * weight;
+            imaginary += Math.sin(theta) * weight;
+            const agreementTheta = delay * smoothingScale * frequencies[index];
+            agreementReal += Math.cos(agreementTheta) * weight;
+            agreementImaginary += Math.sin(agreementTheta) * weight;
+            weightSum += weight;
+        }
+        if (weightSum > 0) {
+            intervalDelays[index] = Math.atan2(imaginary, real) / deltaOmega;
+            agreement[index] = Math.hypot(agreementReal, agreementImaginary) / weightSum;
+            if (index > first && frequencies[index] <= high &&
+                agreement[index] < agreementMinimum) {
+                agreementMinimum = agreement[index];
+            }
+        }
+    }
+    return { intervalDelays, agreement, agreementMinimum, first, low, high };
+}
+
 function predictedDirectResponse(direct, correctionMagnitudes, correctionPhase, fftSize) {
     const real = new Float64Array(fftSize / 2 + 1);
     const imaginary = new Float64Array(real.length);
@@ -1167,7 +1358,8 @@ function correctionTimingAlignment(
     referencePhase,
     correctionPhase,
     config,
-    fftSize
+    fftSize,
+    searchWindowMs = null
 ) {
     const energyRadius = Math.max(1, Math.round(config.sampleRate * 0.000125));
     const weights = new Float64Array(energyRadius * 2 + 1);
@@ -1191,7 +1383,11 @@ function correctionTimingAlignment(
         fftSize
     );
     const tapHeadroom = config.taps / 2 - 1;
-    const windowLimit = Math.round(config.sampleRate * config.directWindowMs / 1000);
+    // The reverb-correction path widens the dominant-peak search to its effective
+    // window; the default (null) keeps the direct-window limit bit-identical.
+    const windowLimit = Math.round(
+        config.sampleRate * (searchWindowMs ?? config.directWindowMs) / 1000
+    );
     const searchRadius = Math.min(tapHeadroom, windowLimit);
     const correctedPosition = dominantEnergyPosition(
         correctedResponse,
@@ -1476,11 +1672,17 @@ function lowPhaseDoesNotWorsen(
         candidateScore.p95 <= baselineScore.p95 + p95Tolerance;
 }
 
-function synthesizeFilter(correctionDb, gridFrequencies, config, phaseSource) {
+function synthesizeFilter(
+    correctionDb,
+    gridFrequencies,
+    config,
+    phaseSource,
+    baseOnlyCorrectionDb = correctionDb
+) {
     const plan = getSynthesisPlan(gridFrequencies, config);
     const { fftSize, binFrequencies } = plan;
     const interpolated = interpolateWithPlan(correctionDb, plan);
-    const magnitudes = Float64Array.from(interpolated, dbToGain);
+    let magnitudes = Float64Array.from(interpolated, dbToGain);
     let phase = new Float64Array(magnitudes.length);
     let fullReferencePhase = null;
     let unalignedFullPhase = null;
@@ -1488,6 +1690,8 @@ function synthesizeFilter(correctionDb, gridFrequencies, config, phaseSource) {
     let lowCorrection = null;
     let lowGuard = null;
     let lowCoverageLimited = false;
+    let reverbGuardDiagnostic = null;
+    let reverbBaselineRender = null;
     let lowPhaseDiagnostic = {
         state: 'disabled',
         scale: 0,
@@ -1512,20 +1716,174 @@ function synthesizeFilter(correctionDb, gridFrequencies, config, phaseSource) {
                 fftSize
             )
             : null;
-        for (let bin = 0; bin < phase.length; bin += 1) {
-            phase[bin] -= (correction?.[bin] || 0) * config.phaseCorrectionAmount;
+        const reverb = phaseSource?.reverb || null;
+        let reverbPhase = null;
+        if (reverb) {
+            // Interval-delay-domain difference between the extended-window consensus
+            // and the direct-window correction: tau_delta = A_ext * W * (tau_ext -
+            // tau_dir), re-integrated as delta[i] = delta[i-1] - tau_delta * dOmega.
+            // W comes from the same effective band arguments as the C_ext analysis
+            // (its low/high), so out-of-band tau_ext values never leak in. Bins at or
+            // below `first` stay zero and accumulation starts at first + 1, matching
+            // directPhaseCorrection; above the upper flank W = 0 leaves a constant
+            // plateau (a uniform rotation). A_ext and W act on interval delays only,
+            // never on the integrated phase.
+            const deltaOmega = 2 * Math.PI * (binFrequencies[1] - binFrequencies[0]);
+            reverbPhase = new Float64Array(phase.length);
+            for (let bin = reverb.first + 1; bin < reverbPhase.length; bin += 1) {
+                const weight = correctionWeight(
+                    binFrequencies[bin],
+                    reverb.low,
+                    reverb.high,
+                    config.sampleRate * 0.48
+                );
+                let intervalDelay = 0;
+                if (weight > 0) {
+                    const directDelay = correction
+                        ? -(correction[bin] - correction[bin - 1]) / deltaOmega
+                        : 0;
+                    intervalDelay = reverb.agreement[bin] * weight *
+                        (reverb.intervalDelays[bin] - directDelay);
+                }
+                reverbPhase[bin] = reverbPhase[bin - 1] - intervalDelay * deltaOmega;
+            }
         }
-        unalignedFullPhase = Float64Array.from(phase);
-        fullTimingAlignment = phaseSource?.timing && config.phaseCorrectionAmount > 0
-            ? correctionTimingAlignment(
-                phaseSource.timing,
-                magnitudes,
-                fullReferencePhase,
-                phase,
-                config,
-                fftSize
-            )
-            : 0;
+        let reverbTargetDelays = null;
+        if (reverbPhase) {
+            // Staged degradation guard (plan section 3.6, fixed order).
+            // Step 1: the rv=0 guard baseline synthesizes from the baseOnly
+            // (fine-free) amplitude with correctionTimingAlignment recomputed
+            // natively from the rv=0 phase -- identical to the true rv=0 design
+            // and therefore to the all-fail final product. Sharing the
+            // candidate-side alignment instead would push the baseline's compact
+            // impulse into the 5% edge window and inflate baselineEdge,
+            // loosening the relative edgeLimit exactly when the guard must fire.
+            const baseMagnitudes = baseOnlyCorrectionDb === correctionDb
+                ? magnitudes
+                : Float64Array.from(
+                    interpolateWithPlan(baseOnlyCorrectionDb, plan),
+                    dbToGain
+                );
+            const baseReferencePhase = baseMagnitudes === magnitudes
+                ? fullReferencePhase
+                : Float64Array.from(minimumPhaseForMagnitude(baseMagnitudes, fftSize));
+            const basePhase = Float64Array.from(baseReferencePhase);
+            for (let bin = 0; bin < basePhase.length; bin += 1) {
+                basePhase[bin] -= (correction?.[bin] || 0) * config.phaseCorrectionAmount;
+            }
+            const baseUnalignedPhase = Float64Array.from(basePhase);
+            const baseAlignment = phaseSource?.timing && config.phaseCorrectionAmount > 0
+                ? correctionTimingAlignment(
+                    phaseSource.timing,
+                    baseMagnitudes,
+                    baseReferencePhase,
+                    basePhase,
+                    config,
+                    fftSize,
+                    null
+                )
+                : 0;
+            for (let bin = 0; bin < basePhase.length; bin += 1) {
+                basePhase[bin] += 2 * Math.PI * binFrequencies[bin] * baseAlignment -
+                    2 * Math.PI * bin / fftSize * (config.taps / 2);
+            }
+            const reverbBaseline = renderSynthesis(baseMagnitudes, basePhase, config, plan);
+            // Step 2: rv scale ladder [1, 0.5, 0.25], LFE-free and phase-only
+            // (the fine amplitude stays intact under 'reduced'; a fine-driven
+            // edge excess fails every scale and converges to 'disabled', which
+            // stops the fine as well). The timing alignment is computed once at
+            // s=1 and reused for every ladder candidate, matching the LFE loop.
+            const buildCandidatePhase = scale => {
+                const candidate = new Float64Array(phase.length);
+                for (let bin = 0; bin < candidate.length; bin += 1) {
+                    candidate[bin] = fullReferencePhase[bin] -
+                        ((correction?.[bin] || 0) * config.phaseCorrectionAmount +
+                            reverbPhase[bin] * config.reverbAmount * scale);
+                }
+                return candidate;
+            };
+            const fullScalePhase = buildCandidatePhase(1);
+            fullTimingAlignment = phaseSource?.timing
+                ? correctionTimingAlignment(
+                    phaseSource.timing,
+                    magnitudes,
+                    fullReferencePhase,
+                    fullScalePhase,
+                    config,
+                    fftSize,
+                    Math.max(config.directWindowMs, reverb.effectiveWindowMs)
+                )
+                : 0;
+            let adoptedScale = 0;
+            for (const scale of LOW_PHASE_SCALE_STEPS) {
+                const candidatePhase = scale === 1
+                    ? fullScalePhase
+                    : buildCandidatePhase(scale);
+                const alignedPhase = Float64Array.from(candidatePhase);
+                for (let bin = 0; bin < alignedPhase.length; bin += 1) {
+                    alignedPhase[bin] +=
+                        2 * Math.PI * binFrequencies[bin] * fullTimingAlignment -
+                        2 * Math.PI * bin / fftSize * (config.taps / 2);
+                }
+                const candidate = renderSynthesis(magnitudes, alignedPhase, config, plan);
+                if (lowPhaseSynthesisIsSafe(candidate, reverbBaseline)) {
+                    adoptedScale = scale;
+                    reverbBaselineRender = candidate;
+                    unalignedFullPhase = candidatePhase;
+                    break;
+                }
+            }
+            if (reverbBaselineRender) {
+                reverbGuardDiagnostic = {
+                    state: adoptedScale === 1 ? 'applied' : 'reduced',
+                    scale: adoptedScale,
+                    reason: adoptedScale === 1 ? null : 'firEnergy'
+                };
+                if (config.phaseCorrectionAmount > 0) {
+                    // LFE incrementalization input (plan section 3.4): the
+                    // interval delay implied by the adopted rv*s*delta, per unit
+                    // phaseCorrectionAmount (the same "/pr then *pr" cancel
+                    // structure as alignmentGroupDelayPerAmount).
+                    const deltaOmega = 2 * Math.PI *
+                        (binFrequencies[1] - binFrequencies[0]);
+                    const delayFactor = config.reverbAmount * adoptedScale /
+                        config.phaseCorrectionAmount;
+                    reverbTargetDelays = new Float64Array(phase.length);
+                    for (let bin = 1; bin < reverbTargetDelays.length; bin += 1) {
+                        reverbTargetDelays[bin] = -(
+                            reverbPhase[bin] - reverbPhase[bin - 1]
+                        ) / deltaOmega * delayFactor;
+                    }
+                }
+            } else {
+                // All scales failed: ship the guard baseline itself with no
+                // re-render -- 'disabled' stops the phase delta and the fine
+                // amplitude both, bit-identical to the true rv=0 design. The
+                // LFE loop below then runs on this natively aligned baseline.
+                reverbGuardDiagnostic = { state: 'disabled', scale: 0, reason: 'firEnergy' };
+                reverbBaselineRender = reverbBaseline;
+                magnitudes = baseMagnitudes;
+                fullReferencePhase = baseReferencePhase;
+                unalignedFullPhase = baseUnalignedPhase;
+                fullTimingAlignment = baseAlignment;
+            }
+        } else {
+            for (let bin = 0; bin < phase.length; bin += 1) {
+                phase[bin] -= (correction?.[bin] || 0) * config.phaseCorrectionAmount;
+            }
+            unalignedFullPhase = Float64Array.from(phase);
+            fullTimingAlignment = phaseSource?.timing && config.phaseCorrectionAmount > 0
+                ? correctionTimingAlignment(
+                    phaseSource.timing,
+                    magnitudes,
+                    fullReferencePhase,
+                    phase,
+                    config,
+                    fftSize,
+                    null
+                )
+                : 0;
+        }
         const lowResult = config.phaseCorrectionAmount > 0 && phaseSource?.candidates?.length
             ? consensusLowPhaseCorrection(
                 phaseSource.timing,
@@ -1534,19 +1892,24 @@ function synthesizeFilter(correctionDb, gridFrequencies, config, phaseSource) {
                 fullTimingAlignment / config.phaseCorrectionAmount,
                 binFrequencies,
                 config,
-                fftSize
+                fftSize,
+                reverbTargetDelays
             )
             : null;
         lowCorrection = lowResult?.phase || null;
         lowGuard = lowResult?.guard || null;
         lowCoverageLimited = lowResult?.coverageLimited === true;
         if (lowResult?.reason) lowPhaseDiagnostic.reason = lowResult.reason;
-        for (let bin = 0; bin < phase.length; bin += 1) {
-            phase[bin] += 2 * Math.PI * binFrequencies[bin] * fullTimingAlignment -
-                2 * Math.PI * bin / fftSize * (config.taps / 2);
+        if (!reverbBaselineRender) {
+            for (let bin = 0; bin < phase.length; bin += 1) {
+                phase[bin] += 2 * Math.PI * binFrequencies[bin] * fullTimingAlignment -
+                    2 * Math.PI * bin / fftSize * (config.taps / 2);
+            }
         }
     }
-    const baseline = renderSynthesis(magnitudes, phase, config, plan);
+    const baseline = reverbBaselineRender ||
+        renderSynthesis(magnitudes, phase, config, plan);
+    baseline.reverbGuard = reverbGuardDiagnostic;
     if (!lowCorrection || config.phaseCorrectionAmount === 0) {
         baseline.lowPhaseDiagnostic = lowPhaseDiagnostic;
         return baseline;
@@ -1590,6 +1953,7 @@ function synthesizeFilter(correctionDb, gridFrequencies, config, phaseSource) {
                         ? 'insufficientData'
                         : null
             };
+            candidate.reverbGuard = reverbGuardDiagnostic;
             return candidate;
         }
         if (!groupDelaySafe) reductionReason = 'groupDelay';
@@ -1781,10 +2145,12 @@ function createPhasePreviews(analysis, taps, config, frequencies) {
 
 function createImpulseResponsePreview(analysis, taps, config) {
     const previewPrerollMs = 2;
-    const previewDurationMs = Math.max(5, config.directWindowMs);
-    const sampleCount = Math.max(2, Math.round(
-        config.sampleRate * previewDurationMs / 1000
-    ));
+    // Display window: see previewWindowSamples. The Consensus average synthesizes
+    // this far as `previewSamples`, a display-only view that is longer than the
+    // `samples` every analysis path reads; the single-point path has no such view
+    // and reads the raw measurement.
+    const sampleCount = previewWindowSamples(config);
+    const source = analysis.previewSamples || analysis.samples;
     const prerollSamples = Math.max(1, Math.round(
         config.sampleRate * previewPrerollMs / 1000
     ));
@@ -1798,7 +2164,7 @@ function createImpulseResponsePreview(analysis, taps, config) {
     const correctedStart = analysis.onsetIndex - prerollSamples;
     const inputStart = correctedStart - (taps.length - 1);
     for (let index = 0; index < input.length; index += 1) {
-        input[index] = analysis.samples[inputStart + index] || 0;
+        input[index] = source[inputStart + index] || 0;
     }
     const paddedTaps = new Float64Array(fftSize);
     paddedTaps.set(taps);
@@ -1848,15 +2214,20 @@ function normalizeConfig(config) {
     const taps = [8192, 16384, 32768, 65536, 131072].includes(config.taps) ? config.taps : 32768;
     const requestedReferencePoint = Number(config.referencePoint);
     const requestedPhaseLowFrequency = Number(config.phaseLowFrequency);
+    const requestedPhaseSmoothing = Number(config.phaseSmoothing);
+    const sampleRate = Math.round(config.sampleRate || 48000);
+    const directWindowMs = Math.max(1, Math.min(50, config.directWindowMs ?? 6));
+    const reverbWindowMs = Math.max(20, Math.min(1000, config.reverbWindowMs ?? 300));
+    const smoothing = Math.max(0.02, Math.min(1, config.smoothing ?? 0.17));
     return {
         ...config,
         phase,
         taps,
-        sampleRate: Math.round(config.sampleRate || 48000),
-        smoothing: Math.max(0.02, Math.min(1, config.smoothing ?? 0.17)),
+        sampleRate,
+        smoothing,
         lowFrequency: Math.max(20, config.lowFrequency ?? 20),
         highFrequency: Math.min(20000, config.highFrequency ?? 16000),
-        directWindowMs: Math.max(1, Math.min(50, config.directWindowMs ?? 6)),
+        directWindowMs,
         lowFrequencyPhaseExtension: config.lowFrequencyPhaseExtension === true,
         phaseLowFrequency: config.phaseLowFrequency === null ||
             config.phaseLowFrequency === undefined ||
@@ -1866,6 +2237,25 @@ function normalizeConfig(config) {
         maxBoostDb: Math.max(0, Math.min(18, config.maxBoostDb ?? 6)),
         correctionAmount: Math.max(0, Math.min(1, config.correctionAmount ?? 1)),
         phaseCorrectionAmount: Math.max(0, Math.min(1, config.phaseCorrectionAmount ?? 1)),
+        reverbAmount: Math.max(0, Math.min(1, config.reverbAmount ?? 0)),
+        reverbWindowMs,
+        reverbMaxFrequency: Math.max(20, Math.min(20000, config.reverbMaxFrequency ?? 250)),
+        reverbSmoothing: Math.max(0.02, Math.min(1, config.reverbSmoothing ?? 0.05)),
+        // Auto (null) resolves to the amplitude smoothing so the default stays
+        // numerically identical to the pre-split behaviour (plan section 3.9).
+        phaseSmoothing: config.phaseSmoothing === null ||
+            config.phaseSmoothing === undefined ||
+            !Number.isFinite(requestedPhaseSmoothing)
+            ? smoothing
+            : Math.max(0.02, Math.min(1, requestedPhaseSmoothing)),
+        // Effective reverb analysis window from the two config-derived terms only:
+        // the requested window (never shorter than the direct window) and the taps
+        // budget taps/(2*rate). The data-dependent available-window term is applied
+        // in designRoomEq where the impulse analyses are known.
+        reverbWindowEffectiveMs: Math.min(
+            Math.max(directWindowMs, reverbWindowMs),
+            taps / (2 * sampleRate) * 1000
+        ),
         referencePoint: Number.isSafeInteger(requestedReferencePoint) &&
             requestedReferencePoint >= 0
             ? requestedReferencePoint
@@ -1887,6 +2277,11 @@ function designCacheKey(config, sources) {
         maxBoostDb: config.maxBoostDb,
         correctionAmount: config.correctionAmount,
         phaseCorrectionAmount: config.phaseCorrectionAmount,
+        reverbAmount: config.reverbAmount,
+        reverbWindowMs: config.reverbWindowMs,
+        reverbMaxFrequency: config.reverbMaxFrequency,
+        reverbSmoothing: config.reverbSmoothing,
+        phaseSmoothing: config.phaseSmoothing,
         referencePoint: config.referencePoint,
         eqBands: (config.eqBands || []).map(band => [
             Boolean(band.enabled),
@@ -1928,6 +2323,7 @@ function cloneDesignResult(result) {
             measuredDb: Float32Array.from(preview.measuredDb),
             targetDb: Float32Array.from(preview.targetDb),
             predictedDb: Float32Array.from(preview.predictedDb),
+            predictedBaseDb: Float32Array.from(preview.predictedBaseDb),
             baseCorrectionDb: Float32Array.from(preview.baseCorrectionDb),
             phaseResponse: preview.phaseResponse ? {
                 before: Float32Array.from(preview.phaseResponse.before),
@@ -1956,6 +2352,8 @@ function cloneDesignResult(result) {
         qualityWarnings: [...result.qualityWarnings],
         diagnostics: {
             lowFrequencyPhaseExtension: result.diagnostics.lowFrequencyPhaseExtension
+                .map(value => ({ ...value })),
+            reverbCorrection: result.diagnostics.reverbCorrection
                 .map(value => ({ ...value }))
         },
         supportsFullPhase: result.supportsFullPhase,
@@ -1964,6 +2362,20 @@ function cloneDesignResult(result) {
             ...result.config,
             eqBands: (result.config.eqBands || []).map(band => ({ ...band }))
         }
+    };
+}
+
+// Diagnostic for channels where the reverb correction cannot run at all (no
+// impulse-response phase source). Every state carries effectiveWindowMs so the
+// implicit taps-budget clamp stays visible.
+function reverbUnavailableDiagnostic(config, effectiveWindowMs) {
+    return {
+        state: config.reverbAmount === 0
+            ? 'notRequested'
+            : config.phase !== 'full'
+                ? 'fullPhaseRequired'
+                : 'impulseResponseRequired',
+        effectiveWindowMs
     };
 }
 
@@ -1978,6 +2390,7 @@ export function designRoomEq(request) {
     const channels = [];
     const previews = [];
     const lowPhaseDiagnostics = [];
+    const reverbDiagnostics = [];
     const qualityWarnings = [];
     let supportsFullPhase = true;
     for (let channelIndex = 0; channelIndex < (request.sources || []).length; channelIndex += 1) {
@@ -1992,6 +2405,9 @@ export function designRoomEq(request) {
                     ? 'impulseResponseRequired'
                     : 'notRequested'
             });
+            reverbDiagnostics.push(
+                reverbUnavailableDiagnostic(config, config.reverbWindowEffectiveMs)
+            );
             continue;
         }
         const impulses = Array.isArray(source.impulses) ? source.impulses.filter(value => value?.data) : [];
@@ -1999,6 +2415,7 @@ export function designRoomEq(request) {
         let displayMeasuredDb;
         let referenceAnalysis = null;
         let phaseSource = null;
+        let reverbDiagnostic = null;
         if (impulses.length) {
             const analyses = impulses.map(impulse => analyzeImpulse(
                 impulse,
@@ -2032,6 +2449,19 @@ export function designRoomEq(request) {
             for (let bin = 0; bin <= config.taps; bin += 1) {
                 synthesisFrequencies[bin] = bin * config.sampleRate / (config.taps * 2);
             }
+            // rw_eff finalization: clamp the config-derived effective window by each
+            // candidate point's analyzable length after the onset (directSpectrum
+            // silently truncates its window otherwise). Evaluation order below is
+            // fixed: rw_eff clamp -> windowBudget -> emptyBand.
+            const reverbCandidateAnalyses = consensus ? analyses : [referenceAnalysis];
+            let reverbWindowEffectiveMs = config.reverbWindowEffectiveMs;
+            for (const analysis of reverbCandidateAnalyses) {
+                const availableMs = (analysis.samples.length - analysis.onsetIndex) /
+                    config.sampleRate * 1000;
+                if (availableMs < reverbWindowEffectiveMs) {
+                    reverbWindowEffectiveMs = availableMs;
+                }
+            }
             if (config.phase === 'full') {
                 const timing = directSpectrum(
                     referenceAnalysis,
@@ -2048,6 +2478,60 @@ export function designRoomEq(request) {
                             config.directWindowMs,
                             synthesisFrequencies
                         ))
+                };
+                if (config.reverbAmount === 0) {
+                    reverbDiagnostic = {
+                        state: 'notRequested',
+                        effectiveWindowMs: reverbWindowEffectiveMs
+                    };
+                } else if (reverbWindowEffectiveMs <= config.directWindowMs) {
+                    reverbDiagnostic = {
+                        state: 'disabled',
+                        reason: 'windowBudget',
+                        effectiveWindowMs: reverbWindowEffectiveMs
+                    };
+                } else if (Math.max(config.lowFrequency, 3000 / reverbWindowEffectiveMs) >=
+                    Math.min(
+                        config.reverbMaxFrequency,
+                        config.highFrequency,
+                        config.sampleRate * 0.45
+                    )) {
+                    reverbDiagnostic = {
+                        state: 'disabled',
+                        reason: 'emptyBand',
+                        effectiveWindowMs: reverbWindowEffectiveMs
+                    };
+                } else {
+                    const reverbConfig = reverbPhaseConfig({
+                        ...config,
+                        reverbWindowEffectiveMs
+                    });
+                    const reverbConsensus = reverbExtendedConsensus(
+                        reverbCandidateAnalyses.map(analysis => directSpectrum(
+                            analysis,
+                            config.sampleRate,
+                            reverbWindowEffectiveMs,
+                            synthesisFrequencies
+                        )),
+                        synthesisFrequencies,
+                        reverbConfig,
+                        config.taps * 2
+                    );
+                    phaseSource.reverb = {
+                        ...reverbConsensus,
+                        effectiveWindowMs: reverbWindowEffectiveMs
+                    };
+                    reverbDiagnostic = {
+                        state: 'applied',
+                        scale: 1,
+                        agreementMinimum: reverbConsensus.agreementMinimum,
+                        effectiveWindowMs: reverbWindowEffectiveMs
+                    };
+                }
+            } else {
+                reverbDiagnostic = {
+                    state: config.reverbAmount === 0 ? 'notRequested' : 'fullPhaseRequired',
+                    effectiveWindowMs: reverbWindowEffectiveMs
                 };
             }
         } else {
@@ -2090,24 +2574,139 @@ export function designRoomEq(request) {
             ]),
             config.smoothing
         );
+        // Fine amplitude structure (plan section 3.5): when the extended-window
+        // consensus is available (phase full, rv > 0, rw_eff > dw, non-empty band),
+        // blend a reverb-smoothed (rs) correction toward the base (sm) correction
+        // inside the reverb amplitude band. W_amp shifts the correctionWeight
+        // arguments inward by 2^(1/3) so both flank ends land exactly on the band
+        // boundaries (low_W, high_W) and the rv term stays strictly zero outside
+        // the current amplitude-correction band. The shifted band can be empty
+        // even when the phase band is not, and correctionWeight is not
+        // identically zero for crossed arguments (its lower flank ignores the
+        // high argument), so that configuration must skip the fine path through
+        // this explicit branch. With correctionAmount 0 the amplitude correction
+        // is fully disabled, so the fine path is skipped as well.
+        let fineBlend = null;
+        let fineCorrectionDb = null;
+        if (phaseSource?.reverb && config.correctionAmount > 0) {
+            const reverb = phaseSource.reverb;
+            const fineLow = reverb.low * 2 ** (1 / 3);
+            const fineHigh = Math.min(config.reverbMaxFrequency, effectiveHigh) /
+                2 ** (1 / 3);
+            if (fineLow < fineHigh) {
+                const smoothedFine = smoothFrequencyResponse(
+                    frequencies.map((frequency, index) => [
+                        frequency,
+                        frequency > config.lowFrequency && frequency < effectiveHigh
+                            ? softLimitBoost(
+                                levelDb - unsmoothedMeasuredDb[index],
+                                config.maxBoostDb
+                            )
+                            : 0
+                    ]),
+                    config.reverbSmoothing
+                );
+                // A_ext lives on the synthesis linear grid; consume it here by
+                // linear interpolation only. Recomputing the inter-point
+                // consensus on this grid is forbidden (CPU budget assumption).
+                const binWidth = config.sampleRate / (config.taps * 2);
+                fineBlend = new Float64Array(frequencies.length);
+                fineCorrectionDb = new Float64Array(frequencies.length);
+                for (let index = 0; index < frequencies.length; index += 1) {
+                    const weight = correctionWeight(
+                        frequencies[index],
+                        fineLow,
+                        fineHigh,
+                        config.sampleRate * 0.48
+                    );
+                    if (weight === 0) continue;
+                    const position = frequencies[index] / binWidth;
+                    const lowerBin = Math.min(Math.floor(position), config.taps - 1);
+                    const fraction = position - lowerBin;
+                    const agreement = reverb.agreement[lowerBin] * (1 - fraction) +
+                        reverb.agreement[lowerBin + 1] * fraction;
+                    fineBlend[index] = config.reverbAmount * agreement * weight;
+                    fineCorrectionDb[index] = smoothedFine[index][1];
+                }
+            }
+        }
         const correctionDb = new Float64Array(frequencies.length);
         const baseCorrectionDb = new Float64Array(frequencies.length);
+        // Fine-free amplitude twins (plan section 3.6 dataflow): the rv=0 guard
+        // baseline and the all-fail final product synthesize from the baseOnly
+        // side, so it is built alongside whenever the fine path is active.
+        const baseOnlyCorrectionDb = fineBlend
+            ? new Float64Array(frequencies.length)
+            : correctionDb;
+        const baseOnlyBaseCorrectionDb = fineBlend
+            ? new Float64Array(frequencies.length)
+            : baseCorrectionDb;
         const targetDb = new Float64Array(frequencies.length);
-        const predictedDb = new Float64Array(frequencies.length);
         for (let index = 0; index < frequencies.length; index += 1) {
-            baseCorrectionDb[index] =
-                smoothedAutomaticCorrection[index][1] * config.correctionAmount;
+            let automaticDb = smoothedAutomaticCorrection[index][1];
+            if (fineBlend) {
+                baseOnlyBaseCorrectionDb[index] = automaticDb * config.correctionAmount;
+                baseOnlyCorrectionDb[index] =
+                    baseOnlyBaseCorrectionDb[index] + eqDb[index];
+                automaticDb += fineBlend[index] *
+                    (fineCorrectionDb[index] - automaticDb);
+            }
+            baseCorrectionDb[index] = automaticDb * config.correctionAmount;
             correctionDb[index] = baseCorrectionDb[index] + eqDb[index];
             targetDb[index] = levelDb + eqDb[index];
-            predictedDb[index] = measuredDb[index] + correctionDb[index];
         }
-        const synthesis = synthesizeFilter(correctionDb, frequencies, config, phaseSource);
+        const synthesis = synthesizeFilter(
+            correctionDb,
+            frequencies,
+            config,
+            phaseSource,
+            baseOnlyCorrectionDb
+        );
+        if (synthesis.reverbGuard && reverbDiagnostic?.state === 'applied') {
+            reverbDiagnostic = {
+                ...reverbDiagnostic,
+                state: synthesis.reverbGuard.state,
+                scale: synthesis.reverbGuard.scale
+            };
+            if (synthesis.reverbGuard.reason) {
+                reverbDiagnostic.reason = synthesis.reverbGuard.reason;
+            }
+        }
+        // When the guard disables the reverb correction, the shipped filter is
+        // the baseOnly baseline, so the preview curves are rebuilt from the
+        // baseOnly side to match the shipped fine-free reality (plan section 3.6).
+        const shipsBaseOnly = synthesis.reverbGuard?.state === 'disabled';
+        const previewCorrectionDb = shipsBaseOnly ? baseOnlyCorrectionDb : correctionDb;
+        const previewBaseCorrectionDb = shipsBaseOnly
+            ? baseOnlyBaseCorrectionDb
+            : baseCorrectionDb;
+        // The correction is derived from the smoothed measurement, so adding it back to
+        // that same smoothed curve cancels both smoothing passes and always predicts a
+        // perfect result. Predict against the unsmoothed response and smooth once for
+        // display instead, so peaks and dips narrower than the smoothing width stay
+        // visible and the curve agrees with what Pipeline Analyzer measures.
+        const predictResponse = appliedDb => Float64Array.from(
+            smoothFrequencyResponse(
+                frequencies.map((frequency, index) => [
+                    frequency,
+                    displayMeasuredDb[index] + appliedDb[index]
+                ]),
+                config.smoothing
+            ),
+            point => point[1]
+        );
+        const predictedDb = predictResponse(previewCorrectionDb);
+        // Without the Additional EQ folded in, so the editor can redraw the corrected
+        // curve while bands are being dragged and before the redesign lands.
+        const predictedBaseDb = predictResponse(previewBaseCorrectionDb);
         if (synthesis.verification.maximumMagnitudeErrorDb > 0.5 ||
             synthesis.verification.maximumPhaseErrorRadians > 0.05) {
             qualityWarnings.push(QUALITY_WARNING_FILTER_ACCURACY);
         }
         channels.push(synthesis.taps);
         lowPhaseDiagnostics.push(synthesis.lowPhaseDiagnostic);
+        reverbDiagnostics.push(reverbDiagnostic ||
+            reverbUnavailableDiagnostic(config, config.reverbWindowEffectiveMs));
         const phasePreviews = referenceAnalysis
             ? createPhasePreviews(referenceAnalysis, synthesis.taps, config, frequencies)
             : null;
@@ -2118,7 +2717,8 @@ export function designRoomEq(request) {
             measuredDb: Float32Array.from(displaySmoothed),
             targetDb: Float32Array.from(targetDb),
             predictedDb: Float32Array.from(predictedDb),
-            baseCorrectionDb: Float32Array.from(baseCorrectionDb),
+            predictedBaseDb: Float32Array.from(predictedBaseDb),
+            baseCorrectionDb: Float32Array.from(previewBaseCorrectionDb),
             phaseResponse: phasePreviews?.phase || null,
             groupDelayResponse: phasePreviews?.groupDelay || null,
             impulseResponse: referenceAnalysis
@@ -2134,7 +2734,8 @@ export function designRoomEq(request) {
         previews,
         qualityWarnings,
         diagnostics: {
-            lowFrequencyPhaseExtension: lowPhaseDiagnostics
+            lowFrequencyPhaseExtension: lowPhaseDiagnostics,
+            reverbCorrection: reverbDiagnostics
         },
         supportsFullPhase,
         latencyInfo: {

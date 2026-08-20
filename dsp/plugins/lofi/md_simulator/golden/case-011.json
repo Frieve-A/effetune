@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "MDSimulatorPlugin",
+  "id": "lp2-transient-44k",
+  "stimulus": "imp",
+  "sampleRate": 44100,
+  "channels": 2,
+  "frameCount": 4609,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 10,
+  "seed": "0xeffe7a54",
+  "params": {
+    "md": "LP2 (132 kbps)",
+    "og": 0,
+    "mx": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "rel": 0.00002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:bc61dd9f5c24cc4c094b65e83889f51252a62fd8451038f791fda3bb2f67cd04",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type MDSimulatorPlugin --promote-production-native",
+  "outputFloats": 9218,
+  "byteLength": 36872,
+  "binary": "case-011.f32"
+}

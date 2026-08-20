@@ -22,7 +22,7 @@ const ports = [
     hash: 0x243848fc,
     floatCount: 4,
     caseCount: 10,
-    jsEngineHash: '04e2b28188e605e1bcd64e31d8392328a8260d1c91b5eaacc8ba666b2e0dfde6'
+    jsEngineHash: 'cb59f65daa4632b3715a9fcb21783d6b012ce4840b5eb8e6486cd56deb3a830b'
   },
   {
     directory: 'spatial/stereo_blend',
@@ -30,7 +30,7 @@ const ports = [
     hash: 0x26a82e4d,
     floatCount: 1,
     caseCount: 10,
-    jsEngineHash: 'f5c53791c8cdc3c948f85f5c1699bd72e8d95b3dc60b03153e262b9cb86f3068'
+    jsEngineHash: '5f0b1661707b86bdced1d72d40da4e991ac22b29a622e09f428bf1b48d3413bf'
   },
   {
     directory: 'saturation/hard_clipping',
@@ -38,7 +38,7 @@ const ports = [
     hash: 0x31e6082d,
     floatCount: 2,
     caseCount: 11,
-    jsEngineHash: '55f308a296a34df38fcaa789965eb236e017ee0722e3d57aa09a68657e4b21e7'
+    jsEngineHash: 'cb2b2253fe4adade7ad3add16f07ab519464813a4bbb1b115d34765ab6a708d6'
   },
   {
     directory: 'saturation/saturation',
@@ -46,7 +46,7 @@ const ports = [
     hash: 0x42759ad3,
     floatCount: 4,
     caseCount: 12,
-    jsEngineHash: '0a169ddc13bf9e5e7d378617f6e4f62eb75d3cdef475115c6d654aeaa5829fde'
+    jsEngineHash: 'e093082180982e1fe3cb6e9bf5a23b5139a0d395b04f05d57222cf9df4658e87'
   }
 ];
 

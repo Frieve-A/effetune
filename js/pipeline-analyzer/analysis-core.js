@@ -209,24 +209,6 @@ export function alignToQuantum(samples) {
     return Math.ceil(samples / ANALYSIS_QUANTUM_SIZE) * ANALYSIS_QUANTUM_SIZE;
 }
 
-export function captureSchedule(sampleRate, reportedLatency = 0) {
-    if (!Number.isSafeInteger(sampleRate) || sampleRate <= 0) {
-        throw new TypeError('Sample rate must be a positive integer');
-    }
-    if (!Number.isSafeInteger(reportedLatency) || reportedLatency < 0) {
-        throw new TypeError('Reported latency must be a non-negative safe integer');
-    }
-    const initial = alignToQuantum(reportedLatency + sampleRate * 2);
-    const maximum = alignToQuantum(reportedLatency + sampleRate * 8);
-    const lengths = [initial];
-    let seconds = 4;
-    while (lengths[lengths.length - 1] < maximum) {
-        lengths.push(Math.min(maximum, alignToQuantum(reportedLatency + sampleRate * seconds)));
-        seconds *= 2;
-    }
-    return lengths;
-}
-
 export function isRouteTailSettled(samples, windowSamples = ANALYSIS_TAIL_WINDOW_SAMPLES) {
     assertFloatArray(samples, 'Route impulse response');
     if (!Number.isSafeInteger(windowSamples) || windowSamples < 1) {
@@ -413,7 +395,13 @@ function logarithmicBinIndices(fftSize, sampleRate, maximumPoints) {
     return result;
 }
 
-function minimumPhaseForMagnitude(magnitudes, fftSize, magnitudeFloor) {
+/**
+ * Exact minimum-phase group delay, in samples, derived from the magnitude alone.
+ * The causal cepstrum gives phase(w) = -sum(cepstrum[n] * sin(w n)), so the phase
+ * derivative -dphase/dw is sum(n * cepstrum[n] * cos(w n)): one more real transform,
+ * with no finite difference across bins.
+ */
+function minimumPhaseGroupDelaySamples(magnitudes, fftSize, magnitudeFloor) {
     const logMagnitude = new Float64Array(magnitudes.length);
     const floor = magnitudeFloor > 0 ? magnitudeFloor : Number.MIN_VALUE;
     for (let bin = 0; bin < magnitudes.length; bin += 1) {
@@ -423,7 +411,32 @@ function minimumPhaseForMagnitude(magnitudes, fftSize, magnitudeFloor) {
     const cepstrum = fft.inverseRealTransform(logMagnitude);
     for (let index = 1; index < fftSize / 2; index += 1) cepstrum[index] *= 2;
     for (let index = fftSize / 2 + 1; index < fftSize; index += 1) cepstrum[index] = 0;
-    return fft.realTransform(cepstrum).imag;
+    const rampedCepstrum = new Float64Array(fftSize);
+    for (let index = 0; index < fftSize; index += 1) rampedCepstrum[index] = cepstrum[index] * index;
+    return fft.realTransform(rampedCepstrum).real;
+}
+
+/**
+ * Exact group delay of the transformed sequence, in samples, evaluated bin by bin.
+ * With H(w) = sum(h[n] e^-jwn) and Hr(w) = sum(n h[n] e^-jwn), the phase derivative
+ * -dphase/dw is exactly Re{Hr(w) conj(H(w))} / |H(w)|^2. Because each bin is evaluated on
+ * its own, the estimator has no bandwidth of its own and the curve no longer changes when
+ * the measurement sequence length changes.
+ */
+function groupDelaySamples(impulse, fftSize, real, imag, valid) {
+    const ramped = new Float64Array(fftSize);
+    for (let index = 0; index < impulse.length; index += 1) ramped[index] = impulse[index] * index;
+    const rampedSpectrum = new FFT(fftSize).realTransform(ramped);
+    const delaySamples = new Float64Array(real.length);
+    delaySamples.fill(Number.NaN);
+    for (let bin = 0; bin < delaySamples.length; bin += 1) {
+        if (!valid[bin]) continue;
+        const power = real[bin] * real[bin] + imag[bin] * imag[bin];
+        if (!(power > 0)) continue;
+        delaySamples[bin] = (rampedSpectrum.real[bin] * real[bin] +
+            rampedSpectrum.imag[bin] * imag[bin]) / power;
+    }
+    return delaySamples;
 }
 
 function unwrapValidPhase(wrapped, valid) {
@@ -451,17 +464,6 @@ function unwrapValidPhase(wrapped, valid) {
     return unwrapped;
 }
 
-function groupDelayForPhase(unwrapped, valid, radiansPerBin) {
-    const groupDelayMs = new Float64Array(unwrapped.length);
-    groupDelayMs.fill(Number.NaN);
-    for (let index = 1; index + 1 < unwrapped.length; index += 1) {
-        if (!valid[index - 1] || !valid[index] || !valid[index + 1]) continue;
-        groupDelayMs[index] = -(unwrapped[index + 1] - unwrapped[index - 1]) /
-            (2 * radiansPerBin) * 1000;
-    }
-    return groupDelayMs;
-}
-
 export function deriveFrequencyResponse(impulse, sampleRate, options = {}) {
     assertFloatArray(impulse, 'Impulse response');
     if (impulse.length === 0) throw new TypeError('Impulse response must not be empty');
@@ -483,6 +485,21 @@ export function deriveFrequencyResponse(impulse, sampleRate, options = {}) {
     if (!Number.isSafeInteger(timeOriginSamples)) {
         throw new TypeError('Response time origin must be an integer sample offset');
     }
+    // Magnitude and validity are unaffected by the time-origin rotation, so they are
+    // resolved first and the exact group delay is taken from the unrotated spectrum.
+    const magnitude = new Float64Array(real.length);
+    let peak = 0;
+    for (let index = 0; index < real.length; index += 1) {
+        const value = Math.hypot(real[index], imag[index]);
+        magnitude[index] = value;
+        if (value > peak) peak = value;
+    }
+    const magnitudeFloor = peak * MAGNITUDE_FLOOR_AMPLITUDE;
+    const valid = new Uint8Array(real.length);
+    for (let index = 0; index < real.length; index += 1) {
+        if (magnitude[index] > magnitudeFloor) valid[index] = 1;
+    }
+    const totalDelaySamples = groupDelaySamples(impulse, fftSize, real, imag, valid);
     if (timeOriginSamples !== 0) {
         for (let index = 0; index < real.length; index += 1) {
             const angle = -2 * Math.PI * index * timeOriginSamples / fftSize;
@@ -494,34 +511,13 @@ export function deriveFrequencyResponse(impulse, sampleRate, options = {}) {
             imag[index] = sourceReal * sine + sourceImag * cosine;
         }
     }
-    const magnitude = new Float64Array(real.length);
-    let peak = 0;
-    for (let index = 0; index < real.length; index += 1) {
-        const value = Math.hypot(real[index], imag[index]);
-        magnitude[index] = value;
-        if (value > peak) peak = value;
-    }
-    const magnitudeFloor = peak * MAGNITUDE_FLOOR_AMPLITUDE;
     const wrapped = new Float64Array(real.length);
-    const valid = new Uint8Array(real.length);
     for (let index = 0; index < real.length; index += 1) {
-        if (!(magnitude[index] > magnitudeFloor)) continue;
-        valid[index] = 1;
-        wrapped[index] = Math.atan2(imag[index], real[index]);
+        if (valid[index]) wrapped[index] = Math.atan2(imag[index], real[index]);
     }
     const unwrapped = unwrapValidPhase(wrapped, valid);
-    const minimumPhase = minimumPhaseForMagnitude(magnitude, fftSize, magnitudeFloor);
-    const minimumUnwrapped = unwrapValidPhase(minimumPhase, valid);
-    const excessUnwrapped = new Float64Array(real.length);
-    for (let index = 0; index < excessUnwrapped.length; index += 1) {
-        excessUnwrapped[index] = valid[index]
-            ? unwrapped[index] - minimumUnwrapped[index]
-            : Number.NaN;
-    }
-    const radiansPerBin = 2 * Math.PI * sampleRate / fftSize;
-    const groupDelayMs = groupDelayForPhase(unwrapped, valid, radiansPerBin);
-    const minimumGroupDelayMs = groupDelayForPhase(minimumUnwrapped, valid, radiansPerBin);
-    const excessGroupDelayMs = groupDelayForPhase(excessUnwrapped, valid, radiansPerBin);
+    const minimumDelaySamples = minimumPhaseGroupDelaySamples(magnitude, fftSize, magnitudeFloor);
+    const samplesToMs = 1000 / sampleRate;
     const maximumPoints = Number.isSafeInteger(options.maximumPoints) && options.maximumPoints >= 2
         ? options.maximumPoints
         : 2048;
@@ -544,9 +540,11 @@ export function deriveFrequencyResponse(impulse, sampleRate, options = {}) {
         if (valid[bin]) {
             validity[point] = 1;
             phaseDegrees[point] = wrapDegrees(unwrapped[bin] * 180 / Math.PI);
-            groupDelayReduced[point] = groupDelayMs[bin];
-            minimumGroupDelayReduced[point] = minimumGroupDelayMs[bin];
-            excessGroupDelayReduced[point] = excessGroupDelayMs[bin];
+            const total = totalDelaySamples[bin] + timeOriginSamples;
+            const minimum = minimumDelaySamples[bin];
+            groupDelayReduced[point] = total * samplesToMs;
+            minimumGroupDelayReduced[point] = minimum * samplesToMs;
+            excessGroupDelayReduced[point] = (total - minimum) * samplesToMs;
         } else {
             phaseDegrees[point] = Number.NaN;
             groupDelayReduced[point] = Number.NaN;

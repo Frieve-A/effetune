@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "MDSimulatorPlugin",
+  "id": "lp4-mono-176k",
+  "stimulus": "sq50",
+  "sampleRate": 176400,
+  "channels": 1,
+  "frameCount": 6145,
+  "blockSize": 255,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 17,
+  "seed": "0xeffe7a4f",
+  "params": {
+    "md": "LP4 (66 kbps)",
+    "og": 0,
+    "mx": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "rel": 0.00002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:bc61dd9f5c24cc4c094b65e83889f51252a62fd8451038f791fda3bb2f67cd04",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type MDSimulatorPlugin --promote-production-native",
+  "outputFloats": 6145,
+  "byteLength": 24580,
+  "binary": "case-018.f32"
+}

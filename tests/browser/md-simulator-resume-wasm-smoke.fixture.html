@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>EffeTune MD Simulator resume WASM smoke</title>
+</head>
+<body>
+  <main>MD Simulator resume WASM smoke fixture ready</main>
+  <script type="module">
+    import { runCodecResumeWasmSmoke } from '/tests/browser/codec-resume-wasm-smoke.harness.mjs';
+    import {
+      MDSimulatorPlugin_PARAMS_HASH,
+      packMDSimulatorPluginParams
+    } from '/js/audio/dsp-params.generated.js';
+
+    // SP keeps the 44.1 kHz resampler history, the partially filled sound-unit FIFO, the QMF
+    // delay lines and the queued decoded output populated, which is exactly the state that must
+    // not leak across a suspend/resume cycle.
+    //
+    // The assertions stay behavioural: routing, reset-on-resume exactness, state divergence and
+    // finiteness. They never pin wet audio content.
+    function run() {
+      return runCodecResumeWasmSmoke({
+        pluginType: 'MDSimulatorPlugin',
+        label: 'MD Simulator',
+        parameters: { md: 'SP (292 kbps)', og: 0, mx: 100 },
+        pack: packMDSimulatorPluginParams,
+        paramsHash: MDSimulatorPlugin_PARAMS_HASH,
+        floatCount: 3
+      });
+    }
+
+    window.__mdSimulatorResumeWasmSmoke = { run };
+  </script>
+</body>
+</html>

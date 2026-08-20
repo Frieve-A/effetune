@@ -31,7 +31,7 @@ awaited `setParam()` or `reset()` calls update it before returning.
 
 The docs overlay explicitly marks types that can intentionally produce non-zero output
 from zero input at an active setting and sample rate. The candidate-package gate runs
-all 90 catalog types exactly once, using the same canonical assets as the public asset
+all 92 catalog types exactly once, using the same canonical assets as the public asset
 examples where required. It requires the overlay, public catalog, and frozen
 `source-generation-v0.1.json` member sets to match exactly, and treats a peak above
 `1e-7` as generated output. Those effect pages carry a warning; the absence of that

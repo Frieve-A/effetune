@@ -18,13 +18,13 @@ Ouvrez **Réglages de mesure** pour modifier les options suivantes :
 
 - **Signal** utilise **MLS** par défaut. **TSP** est un autre signal de test périodique, tandis que **Impulsion unitaire** capture directement la réponse temporelle. Ces méthodes peuvent mesurer différemment le pipeline avec des effets non linéaires ou variables dans le temps.
 - **Niveau** règle la crête du signal de test et vaut -12 dBFS par défaut. Les effets linéaires donnent normalement la même réponse normalisée à tous les niveaux ; les effets non linéaires ou dépendants du niveau peuvent changer.
-- **Longueur de séquence** détermine la durée de réponse que MLS ou TSP peut mesurer sans chevauchement. Une valeur plus longue demande davantage de temps et de mémoire. Augmentez-la pour les delays, reverbs et autres effets à longue traîne, surtout si l'analyseur le recommande.
+- **Longueur de séquence** détermine la durée de réponse mesurable proprement : pour MLS et TSP il s'agit de la période du signal de test, et pour Impulsion unitaire du nombre d'échantillons capturés après l'impulsion. Une valeur plus longue demande davantage de temps et de mémoire. Augmentez-la pour les delays, reverbs et autres effets à longue traîne, surtout si l'analyseur le recommande.
 - **Périodes de stabilisation** vaut 12 par défaut et laisse le pipeline se stabiliser avant la capture. Augmentez-la si un effet lent n'a pas encore atteint un état stable.
 - **Moyennes** vaut 2 par défaut. Augmentez-la pour réduire les variations lorsque le graphique est instable ; la mesure prendra plus de temps.
 
-Les détails indiquent si la longueur actuelle suffit, la longueur et la stabilisation recommandées, ainsi que la durée totale de la mesure. Ces recommandations sont indicatives ; appliquez-les lorsqu'elles correspondent aux effets mesurés.
+Les détails indiquent si la longueur actuelle suffit, la longueur et la stabilisation recommandées, ainsi que la durée totale de la mesure. Avec Impulsion unitaire, ils indiquent la longueur de capture en échantillons et en secondes à la fréquence d'échantillonnage actuelle. Ces recommandations sont indicatives ; appliquez-les lorsqu'elles correspondent aux effets mesurés.
 
-Longueur de séquence, Périodes de stabilisation et Moyennes sont désactivées uniquement avec Impulsion unitaire. Changer Frequency, Phase, Min Group Delay, Excess Group Delay ou Impulse ne fait que modifier le graphique affiché, sans relancer la mesure.
+Périodes de stabilisation et Moyennes sont désactivées uniquement avec Impulsion unitaire. MLS utilise des longueurs de 2^n-1 échantillons, tandis que TSP et Impulsion unitaire utilisent des longueurs de 2^n échantillons ; le changement de signal conserve la longueur la plus proche. Changer Frequency, Phase, Min Group Delay, Excess Group Delay ou Impulse ne fait que modifier le graphique affiché, sans relancer la mesure.
 
 ## Lecture et méthode
 
@@ -32,6 +32,6 @@ Choisissez la vue avec les boutons **Graph** placés hors du graphique. **Freque
 
 Chaque mesure capture le pipeline actif, ses réglages et son routage actuels, ainsi que les réponses de haut-parleur sélectionnées. Les graphiques montrent les réponses en fréquence, phase, retard de groupe minimal, retard de groupe excédentaire et impulsion ; **Après** compense la latence indiquée par le pipeline.
 
-MLS et TSP conviennent aux mesures générales. Si un delay, une reverb ou une autre traîne dépasse la fenêtre choisie, la réponse peut se chevaucher ; augmentez la **Longueur de séquence**. **Impulsion unitaire** enregistre directement la réponse pendant une durée limitée et peut donc couper une traîne exceptionnellement longue.
+MLS et TSP conviennent aux mesures générales. Si un delay, une reverb ou une autre traîne dépasse la fenêtre choisie, la réponse peut se chevaucher ; augmentez la **Longueur de séquence**. **Impulsion unitaire** enregistre exactement la **Longueur de séquence** d'échantillons choisie : une traîne plus longue que cette fenêtre est coupée ; augmentez la longueur si la traîne sonne encore à la fin de la capture.
 
 Les effets non linéaires, variables dans le temps, aléatoires, bruyants ou générateurs de son peuvent produire des résultats différents selon le niveau ou d'une mesure à l'autre. Considérez ces graphiques comme des instantanés des réglages choisis, et non comme des caractéristiques fixes.

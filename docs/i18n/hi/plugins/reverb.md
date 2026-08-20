@@ -276,7 +276,7 @@ IR Reverb इम्पोर्ट की गई impulse response (IR) के �
 ### पैरामीटर
 
 - **Channel Mode**: **Auto** एक-channel IR के लिए Mono, stereo channel selection वाले चार-channel IR के लिए True Stereo, IR और selected channels की संख्या समान होने पर Independent, और बाकी मामलों में Diagonal Matrix चुनता है; लागू mode menu के दाईं ओर दिखता है। Mono, Independent, True Stereo (LL/LR/RL/RR paths) या बिना crossfeed वाला Diagonal Matrix स्पष्ट रूप से भी चुना जा सकता है।
-- **Latency**: Zero या 128/256/512/1024 samples। बड़ी value processing pressure घटाती है लेकिन wet path देर से आता है; Zero के लिए Full चाहिए।
+- **Latency**: Zero या 128/256/512/1024 samples। बड़ी value processing pressure घटाती है लेकिन पूरा effect output देर से आता है; direct signal भी उतना ही देर से आता है ताकि वह reverb के साथ संरेखित रहे, और यह देरी pipeline भरपाई कर देता है; Zero के लिए Full चाहिए।
 - **Convolution Rate**: Auto, Full, Half या Quarter। Auto में लागू rate menu के दाईं ओर दिखता है। कम rate CPU load और wet bandwidth दोनों घटाता है; Quarter के लिए कम से कम 176.4 kHz चाहिए।
 - **Wet Level**: convolved signal का level -96 से +12 dB। सामान्य insert उपयोग के लिए default -15 dB है। send/return setup में इसे 0 dB रखें और reverb की मात्रा send level से नियंत्रित करें।
 - **Dry**: मूल signal को enable करता है और default रूप से on रहता है। इसे off करने पर **Dry Level** का मान सुरक्षित रखते हुए dry signal पूरी तरह हट जाता है।

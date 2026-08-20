@@ -372,13 +372,13 @@ class TransientShaperPlugin extends PluginBase {
         const container = document.createElement('div');
         container.className = 'transient-shaper-plugin-ui plugin-parameter-ui';
 
-        container.appendChild(this.createParameterControl('Fast Attack', 0.1, 10.0, 0.1, this.fa, this.setFa.bind(this), 'ms'));
-        container.appendChild(this.createParameterControl('Fast Release', 1, 200, 1, this.fr, this.setFr.bind(this), 'ms'));
-        container.appendChild(this.createParameterControl('Slow Attack', 1, 100, 1, this.sa, this.setSa.bind(this), 'ms'));
-        container.appendChild(this.createParameterControl('Slow Release', 50, 1000, 5, this.sr, this.setSr.bind(this), 'ms'));
-        container.appendChild(this.createParameterControl('Transient Gain', -24, 24, 0.1, this.gt, this.setGt.bind(this), 'dB'));
-        container.appendChild(this.createParameterControl('Sustain Gain', -24, 24, 0.1, this.gs, this.setGs.bind(this), 'dB'));
-        container.appendChild(this.createParameterControl('Smoothing', 0.1, 20.0, 0.1, this.sm, this.setSm.bind(this), 'ms'));
+        container.appendChild(this.createParameterControl('Fast Attack', 0.1, 10.0, 0.1, this.fa, this.setFa.bind(this), 'ms', 'fa'));
+        container.appendChild(this.createParameterControl('Fast Release', 1, 200, 1, this.fr, this.setFr.bind(this), 'ms', 'fr'));
+        container.appendChild(this.createParameterControl('Slow Attack', 1, 100, 1, this.sa, this.setSa.bind(this), 'ms', 'sa'));
+        container.appendChild(this.createParameterControl('Slow Release', 50, 1000, 5, this.sr, this.setSr.bind(this), 'ms', 'sr'));
+        container.appendChild(this.createParameterControl('Transient Gain', -24, 24, 0.1, this.gt, this.setGt.bind(this), 'dB', 'gt'));
+        container.appendChild(this.createParameterControl('Sustain Gain', -24, 24, 0.1, this.gs, this.setGs.bind(this), 'dB', 'gs'));
+        container.appendChild(this.createParameterControl('Smoothing', 0.1, 20.0, 0.1, this.sm, this.setSm.bind(this), 'ms', 'sm'));
 
         const { container: graphContainer, canvas, dispose } = this.createResponsiveGraph({
             maxWidth: 2048,

@@ -225,8 +225,9 @@ test('normalizes each impulse by its full peak and uses the selected fixed time 
     assert.deepEqual(before.points.map(point => point.yValue), [0, 1, -0.5]);
     assert.deepEqual(after.points.map(point => point.yValue), [0, -1, 0.5]);
     assert.deepEqual(result.views.impulse.yTicks.map(tick => tick.label), ['', '0.5', '0', '-0.5', '']);
-    assert.equal(result.views.impulse.xTicks[0].label, '-2.00 ms');
-    assert.equal(result.views.impulse.xTicks.at(-1).label, '1.00 ms');
+    assert.deepEqual(result.views.impulse.xTicks.map(tick => tick.label),
+        ['-1.5', '-1.0', '-0.5', '0.0', '0.5 ms']);
+    assert.ok(Math.abs(result.views.impulse.xTicks[3].position - 2 / 3) < 1e-12);
     assert.equal(result.displayReference.before.impulseDivisor, 2);
     assert.equal(result.displayReference.after.impulseDivisor, 4);
 });

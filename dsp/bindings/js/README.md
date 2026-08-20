@@ -3,8 +3,8 @@
 <!-- BEGIN DSP-LIBRARY-JAVASCRIPT-SUMMARY -->
 EffeTune DSP provides the same MIT-licensed C++ audio kernels used by EffeTune
 as a self-contained WebAssembly package for Node.js and evergreen browsers.
-Version 0.5.0 exposes all 90 catalog types through the generic Chain and
-`createEffect` APIs and 90 generated named convenience classes,
+Version 0.5.0 exposes all 92 catalog types through the generic Chain and
+`createEffect` APIs and 92 generated named convenience classes,
 decoded analyzer telemetry, versioned semantic presets, deterministic seeds, and an AudioWorklet wrapper.
 <!-- END DSP-LIBRARY-JAVASCRIPT-SUMMARY -->
 
@@ -139,8 +139,9 @@ seed, and DSP state from stream creation.
 assets to be staged again. Open a new stream after changing
 `IRReverb.channelMode`, `latency`, or `convolutionRate`;
 `FIRCrossover.bandCount`, `latencyMode`, or `filterDelaySamples`; or
-`latencyMode` / `filterDelaySamples` on `FiveBandFIRPEQ`, `GroupDelayEQ`, or
-`RoomEQ`. The same restriction applies to `EffeTuneNode.setParam()`.
+`latencyMode` / `filterDelaySamples` on `FiveBandFIRPEQ`, `GroupDelayEQ`,
+`GroupDelayPEQ`, or `RoomEQ`. The same restriction applies to
+`EffeTuneNode.setParam()`.
 
 Canonical presets use semantic long parameter names:
 
@@ -167,16 +168,17 @@ Move or copy the desired effects into one serial path in the app and export it
 again, or reproduce the branching in the host around separate Chains.
 Unsupported fields produce a validation error.
 
-FIR Crossover, Five Band FIR PEQ, Group Delay EQ, IR Reverb, and Room EQ
-require an `assets.impulseResponse` reference and an `assetResolver`. The four
-FIR filter effects use prepared coefficient impulses at the processing sample
-rate. Use the public `encodeEta1({ channels, sampleRate, topology, paths })`
+FIR Crossover, Five Band FIR PEQ, Group Delay EQ, Group Delay PEQ, IR Reverb,
+and Room EQ require an `assets.impulseResponse` reference and an
+`assetResolver`. The five FIR filter effects use prepared coefficient impulses
+at the processing sample rate. Use the public
+`encodeEta1({ channels, sampleRate, topology, paths })`
 helper to encode raw planar float32 arrays for a resolver. Bundle manifests
 verify exact byte length and SHA-256 before accepting an ETA1 payload. The
 complete payload and convolution footprint must fit the 32 MiB kernel cap.
 
 `EFFECT_CATALOG` and `getEffectCatalog()` expose the machine-readable semantic
-catalog for all 90 root classes and their `create<Type>()` factories. The
+catalog for all 92 root classes and their `create<Type>()` factories. The
 catalog contains channel choices, parameters, required assets, telemetry, and
 latency declarations, but no private implementation mapping.
 

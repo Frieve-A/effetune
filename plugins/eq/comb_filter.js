@@ -186,7 +186,7 @@ class CombFilterPlugin extends PluginBase {
                 this.setFundamentalFreq(value);
                 this.drawGraph(canvas);
             },
-            'Hz'
+            'Hz', 'ff'
         );
 
         // Create Comb Type radio buttons
@@ -246,7 +246,7 @@ class CombFilterPlugin extends PluginBase {
             (value) => {
                 this.setFeedbackGain(value);
                 this.drawGraph(canvas);
-            }
+            }, '', 'fg'
         );
 
         // Create Dry-Wet Mix row
@@ -255,7 +255,7 @@ class CombFilterPlugin extends PluginBase {
                 this.setDryWetMix(value);
                 this.drawGraph(canvas);
             },
-            '%'
+            '%', 'dw'
         );
 
         container.appendChild(freqRow);
@@ -265,6 +265,17 @@ class CombFilterPlugin extends PluginBase {
         container.appendChild(graphContainer);
         this.canvas = canvas; // Store canvas reference for redrawing
         this.drawGraph(canvas);
+
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the parts of the UI this plugin builds by hand are refreshed here.
+        // The three parameter rows carry modelKeys and follow on their own; the comb
+        // type radios and the response curve do not.
+        this.registerUIRefresh(() => {
+            feedbackRadio.checked = this.ct === "fb";
+            feedforwardRadio.checked = this.ct === "ff";
+            this.drawGraph(canvas);
+        });
+
         return container;
     }
 

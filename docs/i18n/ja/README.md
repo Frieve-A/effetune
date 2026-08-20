@@ -345,6 +345,7 @@ PCのChromium系ブラウザでは、選択した音楽フォルダへのアク�
 | EQ        | Comb Filter | フェイザー風、空洞感、金属的な色づきを追加 | [詳細](plugins/eq.md#comb-filter) |
 | EQ        | Earphone Cable Sim | 通常範囲のイヤホンケーブル差による周波数特性変化の小ささを確認 | [詳細](plugins/eq.md#earphone-cable-sim) |
 | EQ        | Group Delay EQ | 音色を変えずに帯域ごとの遅延を調整 | [詳細](plugins/eq.md#group-delay-eq) |
+| EQ        | Group Delay PEQ | 音色を変えずに周波数ごとの遅延を5バンドのパラメトリック操作で調整 | [詳細](plugins/eq.md#group-delay-peq) |
 | EQ        | Hi Pass Filter | 不要な低域を精密に除去 | [詳細](plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | 不要な高域を精密に除去 | [詳細](plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | 低音量リスニング向けの周波数バランス補正 | [詳細](plugins/eq.md#loudness-equalizer) |
@@ -361,6 +362,7 @@ PCのChromium系ブラウザでは、選択した音楽フォルダへのアク�
 | Lo-Fi     | G.726 Simulator | ITU-T G.726音声コーデックのエンコード/デコード往復を、任意のノイズのある無線区間付きで再現 | [詳細](plugins/lofi.md#g726-simulator) |
 | Lo-Fi     | GSM-FR Simulator | 13 kbit/s GSM-FR音声コーデックのエンコード/デコード往復を、フレーム消失の隠蔽を伴う無線区間付きで再現 | [詳細](plugins/lofi.md#gsm-fr-simulator) |
 | Lo-Fi     | Hum Generator | ビンテージ/ローファイ風の50/60 Hz電源ハムの雰囲気を調整して追加 | [詳細](plugins/lofi.md#hum-generator) |
+| Lo-Fi     | MD Simulator | MiniDisc時代のATRACエンコード/デコード往復を再現 | [詳細](plugins/lofi.md#md-simulator) |
 | Lo-Fi     | MP3 Codec Simulator | 低ビットレートMPEG Layer IIIのクリーンなエンコード/デコード往復を再現 | [詳細](plugins/lofi.md#mp3-codec-simulator) |
 | Lo-Fi     | Noise Blender | ローファイな雰囲気のための背景ノイズ質感を調整して追加 | [詳細](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | SBC Codec Simulator | Bluetooth A2DP SBCのエンコード/デコード往復を、任意のパケット消失と隠蔽付きで再現 | [詳細](plugins/lofi.md#sbc-codec-simulator) |

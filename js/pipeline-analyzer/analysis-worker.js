@@ -1,10 +1,10 @@
 import {
     ANALYSIS_QUANTUM_SIZE,
     ANALYSIS_TAIL_WINDOW_SAMPLES,
+    alignToQuantum,
     areRouteTailsSettled,
     buildAnalysisResult,
     calculatePeriodResidualDb,
-    captureSchedule,
     periodicResidualNeedsWarning,
     recoverMlsImpulseResponse,
     recoverTspImpulseResponse
@@ -408,49 +408,35 @@ function buildMeasurementMetadata(settings, sampleRate, diagnostics = {}) {
     });
 }
 
-function measureImpulse(host, snapshot, settings, reportedLatency, post, token) {
+function measureImpulse(host, snapshot, settings, post, token) {
     const amplitude = levelDbToAmplitude(settings.levelDb);
-    const schedule = captureSchedule(snapshot.sampleRate, reportedLatency);
-    const maximumLength = schedule[schedule.length - 1];
-    const captured = snapshot.outputChannels.map(() => new Float32Array(maximumLength));
+    const captureLength = alignToQuantum(settings.sequenceLength);
+    const captured = snapshot.outputChannels.map(() => new Float32Array(captureLength));
     let capturedLength = 0;
-    let settled = false;
-    let scheduleIndex = 0;
-    postProgress(post, token, 'measuring', 0, schedule[scheduleIndex]);
+    postProgress(post, token, 'measuring', 0, captureLength);
 
-    while (scheduleIndex < schedule.length) {
-        const targetLength = schedule[scheduleIndex];
-        while (capturedLength < targetLength) {
-            const input = Array.from(
-                { length: snapshot.channelCount },
-                () => new Float32Array(ANALYSIS_QUANTUM_SIZE)
-            );
-            if (capturedLength === 0) input.at(snapshot.inputChannel).fill(amplitude, 0, 1);
-            const output = host.processBlock(input);
-            assertFiniteSelectedOutput(output, snapshot.outputChannels);
-            for (let route = 0; route < snapshot.outputChannels.length; route += 1) {
-                const routeOutput = output[snapshot.outputChannels[route]];
-                for (let frame = 0; frame < routeOutput.length; frame += 1) {
-                    captured[route][capturedLength + frame] = routeOutput[frame] / amplitude;
-                }
-            }
-            capturedLength += ANALYSIS_QUANTUM_SIZE;
-            if ((capturedLength / ANALYSIS_QUANTUM_SIZE) % 128 === 0 ||
-                capturedLength === targetLength) {
-                postProgress(post, token, 'measuring', capturedLength, targetLength);
+    while (capturedLength < captureLength) {
+        const input = Array.from(
+            { length: snapshot.channelCount },
+            () => new Float32Array(ANALYSIS_QUANTUM_SIZE)
+        );
+        if (capturedLength === 0) input.at(snapshot.inputChannel).fill(amplitude, 0, 1);
+        const output = host.processBlock(input);
+        assertFiniteSelectedOutput(output, snapshot.outputChannels);
+        for (let route = 0; route < snapshot.outputChannels.length; route += 1) {
+            const routeOutput = output[snapshot.outputChannels[route]];
+            for (let frame = 0; frame < routeOutput.length; frame += 1) {
+                captured[route][capturedLength + frame] = routeOutput[frame] / amplitude;
             }
         }
-        const views = captured.map(route => route.subarray(0, capturedLength));
-        settled = areRouteTailsSettled(views);
-        if (settled) break;
-        scheduleIndex += 1;
-        if (scheduleIndex < schedule.length) {
-            postProgress(post, token, 'measuring', capturedLength, schedule[scheduleIndex]);
+        capturedLength += ANALYSIS_QUANTUM_SIZE;
+        if ((capturedLength / ANALYSIS_QUANTUM_SIZE) % 128 === 0 || capturedLength === captureLength) {
+            postProgress(post, token, 'measuring', capturedLength, captureLength);
         }
     }
     return {
-        pipelineResponses: captured.map(route => route.slice(0, capturedLength)),
-        truncated: !settled,
+        pipelineResponses: captured,
+        truncated: !areRouteTailsSettled(captured),
         measurement: buildMeasurementMetadata(settings, snapshot.sampleRate),
         warnings: []
     };
@@ -626,7 +612,7 @@ export async function runAnalysisRequest(request, post = () => {}) {
     const reportedLatency = await queryReportedLatency(host);
     const settings = normalizeMeasurementSettings(snapshot.measurementSettings);
     const measured = settings.signalType === 'impulse'
-        ? measureImpulse(host, snapshot, settings, reportedLatency, post, token)
+        ? measureImpulse(host, snapshot, settings, post, token)
         : measurePeriodic(host, snapshot, settings, reportedLatency, post, token);
 
     return buildAnalysisResult({

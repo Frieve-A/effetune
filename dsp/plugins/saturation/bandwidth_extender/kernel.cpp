@@ -17,9 +17,10 @@ constexpr double kPi = 3.1415926535897932384626433832795;
 constexpr double kCeilingHz = 40000.0;
 constexpr double kUpperTransitionMaximumHz = 1000.0;
 constexpr double kEnvelopeReferenceHz = 500.0;
-constexpr double kEnvelopeTargetGain = 3.6;
+constexpr double kEnvelopeTargetGain = 1.8;
 constexpr double kDetectionMinimumHz = 10000.0;
-constexpr double kDetectionMaximumHz = 20000.0;
+constexpr double kCliffReferenceHz = 2000.0;
+constexpr double kShoulderRecoveryPower = 0.5;
 constexpr double kPhaseAdvanceQuantization = 10000.0;
 constexpr std::uint32_t kMaximumHarmonic = 5u;
 constexpr std::array<double, kMaximumHarmonic + 1u> kHarmonicGains{0.0,  0.0,  0.28,
@@ -286,12 +287,20 @@ private:
     synthesize(channel_count, requested_cutoff, ceiling, active);
   }
 
+  [[nodiscard]] double windowAverage(std::uint32_t top, std::uint32_t width) const noexcept {
+    double sum = 0.0;
+    for (std::uint32_t offset = 1u; offset <= width; ++offset) {
+      sum += shared_power_[top - offset];
+    }
+    return sum / static_cast<double>(width);
+  }
+
   void updateDetector() noexcept {
     const double bin_hz = sample_rate_ / static_cast<double>(fft_size_);
+    const double detector_ceiling_hz =
+        kCeilingHz < sample_rate_ * 0.46 ? kCeilingHz : sample_rate_ * 0.46;
     std::uint32_t first = static_cast<std::uint32_t>(std::ceil(kDetectionMinimumHz / bin_hz));
-    const double upper_hz =
-        kDetectionMaximumHz < sample_rate_ * 0.46 ? kDetectionMaximumHz : sample_rate_ * 0.46;
-    std::uint32_t last = static_cast<std::uint32_t>(upper_hz / bin_hz);
+    std::uint32_t last = static_cast<std::uint32_t>(detector_ceiling_hz / bin_hz);
     const std::uint32_t half_window_raw = static_cast<std::uint32_t>(500.0 / bin_hz);
     const std::uint32_t half_window = half_window_raw < 4u ? 4u : half_window_raw;
     if (first < half_window + 1u) {
@@ -300,14 +309,18 @@ private:
     if (last + half_window >= bin_count_) {
       last = bin_count_ - half_window - 1u;
     }
-    const double detector_ceiling_hz =
-        kCeilingHz < sample_rate_ * 0.46 ? kCeilingHz : sample_rate_ * 0.46;
     std::uint32_t detector_ceiling_bin = static_cast<std::uint32_t>(detector_ceiling_hz / bin_hz);
     if (detector_ceiling_bin >= bin_count_) {
       detector_ceiling_bin = bin_count_ - 1u;
     }
+    const std::uint32_t cliff_reference_width_raw =
+        static_cast<std::uint32_t>(kCliffReferenceHz / bin_hz);
+    const std::uint32_t cliff_reference_width =
+        cliff_reference_width_raw < 8u ? 8u : cliff_reference_width_raw;
 
     double best_ratio = 1.0;
+    double best_cliff = 1.0;
+    double best_reference = 0.0;
     std::uint32_t best_bin = 0u;
     for (std::uint32_t candidate = first; candidate <= last; ++candidate) {
       double below = 0.0;
@@ -341,8 +354,9 @@ private:
           ++high_side_occupied;
         }
       }
+      double average_high_side = 0.0;
       if (high_side_count != 0u) {
-        const double average_high_side = high_side / static_cast<double>(high_side_count);
+        average_high_side = high_side / static_cast<double>(high_side_count);
         if (average_high_side > average_below * 0.02 ||
             high_side_occupied * 10u >= high_side_count) {
           continue;
@@ -353,12 +367,32 @@ private:
       if (ratio > best_ratio) {
         best_ratio = ratio;
         best_bin = candidate;
+        const std::uint32_t reference_start =
+            candidate > cliff_reference_width ? candidate - cliff_reference_width : 1u;
+        double reference = 0.0;
+        for (std::uint32_t bin = reference_start; bin < candidate; ++bin) {
+          reference += shared_power_[bin];
+        }
+        best_reference = reference / static_cast<double>(candidate - reference_start);
+        const double floor_power = high_side_count != 0u ? average_high_side : average_above;
+        best_cliff = best_reference / (floor_power + best_reference * 1.0e-8 + 1.0e-20);
+      }
+    }
+
+    if (best_bin != 0u) {
+      const double recovery_target = best_reference * kShoulderRecoveryPower;
+      std::uint32_t descent_limit = first + half_window;
+      if (best_bin > cliff_reference_width && best_bin - cliff_reference_width > descent_limit) {
+        descent_limit = best_bin - cliff_reference_width;
+      }
+      while (best_bin > descent_limit && windowAverage(best_bin, half_window) < recovery_target) {
+        --best_bin;
       }
     }
 
     double target_confidence = 0.0;
     if (best_bin != 0u) {
-      const double cliff_db = 10.0 * std::log10(best_ratio);
+      const double cliff_db = 10.0 * std::log10(best_cliff);
       target_confidence = clamp01((cliff_db - 18.0) / 18.0);
     }
     const double confidence_rate = target_confidence > detector_confidence_ ? 0.25 : 0.05;

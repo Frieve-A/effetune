@@ -1966,7 +1966,7 @@ class IRReverbPlugin extends PluginBase {
             { value: 'indep', label: this._t('irReverb.option.independent', 'Independent') },
             { value: 'true', label: this._t('irReverb.option.trueStereo', 'True Stereo') },
             { value: 'multi', label: this._t('irReverb.option.diagonalMatrix', 'Diagonal Matrix') }
-        ], this.cm, value => this.setParameters({ cm: value }));
+        ], this.cm, value => this.setParameters({ cm: value }), 'cm');
         this._channelModeSelect = channelModeRow.querySelector('select');
         const resolvedMode = document.createElement('span');
         resolvedMode.className = 'ir-reverb-mode-note';
@@ -1981,13 +1981,13 @@ class IRReverbPlugin extends PluginBase {
                 value: String(value),
                 label: this._t('irReverb.option.samples', '{count} samples', { count: value })
             }))
-        ], this.lt, value => this.setParameters({ lt: value })));
+        ], this.lt, value => this.setParameters({ lt: value }), 'lt'));
         const convolutionRateRow = this.createSelectControl(this._t('irReverb.parameter.convolutionRate', 'Convolution Rate'), [
             { value: 'auto', label: this._t('irReverb.option.auto', 'Auto') },
             { value: 'full', label: this._t('irReverb.option.full', 'Full') },
             { value: 'half', label: this._t('irReverb.option.half', 'Half') },
             { value: 'quarter', label: this._t('irReverb.option.quarter', 'Quarter') }
-        ], this.cr, value => this.setParameters({ cr: value }));
+        ], this.cr, value => this.setParameters({ cr: value }), 'cr');
         this._convolutionRateSelect = convolutionRateRow.querySelector('select');
         const resolvedRate = document.createElement('span');
         resolvedRate.className = 'ir-reverb-mode-note';
@@ -1996,14 +1996,14 @@ class IRReverbPlugin extends PluginBase {
         this._resolvedRateElement = resolvedRate;
         appendAssetControl('cr', convolutionRateRow);
         this._updateResolvedModeDisplay();
-        container.appendChild(this.createParameterControl(this._t('irReverb.parameter.wet', 'Wet Level'), -96, 12, 0.1, this.dw, value => this.setParameters({ dw: value }), 'dB'));
-        container.appendChild(this.createCheckboxControl(this._t('irReverb.parameter.dryEnabled', 'Dry'), this.de, value => this.setParameters({ de: value })));
-        container.appendChild(this.createParameterControl(this._t('irReverb.parameter.dry', 'Dry Level'), -96, 12, 0.1, this.dl, value => this.setParameters({ dl: value }), 'dB'));
-        container.appendChild(this.createParameterControl(this._t('irReverb.parameter.preDelay', 'Pre Delay'), 0, 500, 0.1, this.pd, value => this.setParameters({ pd: value }), 'ms'));
-        appendAssetControl('dc', this.createCheckboxControl(this._t('irReverb.parameter.directCut', 'Direct Cut'), this.dc, value => this.setParameters({ dc: value })));
-        appendAssetControl('co', this.createParameterControl(this._t('irReverb.parameter.cutOffset', 'Cut Offset'), -20, 50, 0.1, this.co, value => this.setParameters({ co: value }), 'ms'));
-        appendAssetControl('dt', this.createParameterControl(this._t('irReverb.parameter.decay', 'Decay'), 10, 400, 1, this.dt, value => this.setParameters({ dt: value }), '%'));
-        appendAssetControl('tr', this.createParameterControl(this._t('irReverb.parameter.trim', 'Trim'), 1, 100, 1, this.tr, value => this.setParameters({ tr: value }), '%'));
+        container.appendChild(this.createParameterControl(this._t('irReverb.parameter.wet', 'Wet Level'), -96, 12, 0.1, this.dw, value => this.setParameters({ dw: value }), 'dB', 'dw'));
+        container.appendChild(this.createCheckboxControl(this._t('irReverb.parameter.dryEnabled', 'Dry'), this.de, value => this.setParameters({ de: value }), 'de'));
+        container.appendChild(this.createParameterControl(this._t('irReverb.parameter.dry', 'Dry Level'), -96, 12, 0.1, this.dl, value => this.setParameters({ dl: value }), 'dB', 'dl'));
+        container.appendChild(this.createParameterControl(this._t('irReverb.parameter.preDelay', 'Pre Delay'), 0, 500, 0.1, this.pd, value => this.setParameters({ pd: value }), 'ms', 'pd'));
+        appendAssetControl('dc', this.createCheckboxControl(this._t('irReverb.parameter.directCut', 'Direct Cut'), this.dc, value => this.setParameters({ dc: value }), 'dc'));
+        appendAssetControl('co', this.createParameterControl(this._t('irReverb.parameter.cutOffset', 'Cut Offset'), -20, 50, 0.1, this.co, value => this.setParameters({ co: value }), 'ms', 'co'));
+        appendAssetControl('dt', this.createParameterControl(this._t('irReverb.parameter.decay', 'Decay'), 10, 400, 1, this.dt, value => this.setParameters({ dt: value }), '%', 'dt'));
+        appendAssetControl('tr', this.createParameterControl(this._t('irReverb.parameter.trim', 'Trim'), 1, 100, 1, this.tr, value => this.setParameters({ tr: value }), '%', 'tr'));
 
         return container;
     }

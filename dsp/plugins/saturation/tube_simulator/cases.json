@@ -51,17 +51,12 @@
       "id": "minimum-drive-12ax7",
       "stimulus": "sin1k",
       "frames": 1024,
-      "events": [
-        {
-          "frame": 128,
-          "params": {
-            "dr": -48,
-            "tp": "12AX7",
-            "og": 0,
-            "iv": 1
-          }
-        }
-      ]
+      "params": {
+        "dr": -48,
+        "tp": "12AX7",
+        "og": 0,
+        "iv": 1
+      }
     },
     {
       "id": "lower-range-corners",
@@ -115,51 +110,41 @@
       "id": "power-6l6gc-pentode",
       "stimulus": "sin1k",
       "frames": 2048,
-      "events": [
-        {
-          "frame": 128,
-          "params": {
-            "dr": -48,
-            "tp": "12AX7",
-            "og": 0,
-            "iv": 2.828,
-            "nf": 3,
-            "os": "Power",
-            "pt": "6L6GC",
-            "pb": 391.454,
-            "kr": 483.871,
-            "st": "0",
-            "zp": "6.6",
-            "sl": "8",
-            "rl": 8
-          }
-        }
-      ]
+      "params": {
+        "dr": -48,
+        "tp": "12AX7",
+        "og": 0,
+        "iv": 2.828,
+        "nf": 3,
+        "os": "Power",
+        "pt": "6L6GC",
+        "pb": 391.454,
+        "kr": 483.871,
+        "st": "0",
+        "zp": "6.6",
+        "sl": "8",
+        "rl": 8
+      }
     },
     {
       "id": "power-kt88-distributed",
       "stimulus": "sin1k",
       "frames": 2048,
-      "events": [
-        {
-          "frame": 128,
-          "params": {
-            "dr": -48,
-            "tp": "12AX7",
-            "og": 0,
-            "iv": 2.828,
-            "nf": 4,
-            "os": "Power",
-            "pt": "KT88",
-            "pb": 379.29,
-            "kr": 400,
-            "st": "43",
-            "zp": "6.0",
-            "sl": "8",
-            "rl": 8
-          }
-        }
-      ]
+      "params": {
+        "dr": -48,
+        "tp": "12AX7",
+        "og": 0,
+        "iv": 2.828,
+        "nf": 4,
+        "os": "Power",
+        "pt": "KT88",
+        "pb": 379.29,
+        "kr": 400,
+        "st": "43",
+        "zp": "6.0",
+        "sl": "8",
+        "rl": 8
+      }
     },
     {
       "id": "power-only-el84-pentode",

@@ -2358,6 +2358,53 @@
       "sourceGenerating": false
     },
     {
+      "type": "GroupDelayPEQ",
+      "parameters": [
+        {
+          "name": "latencyMode",
+          "type": "string",
+          "count": 1,
+          "default": "128",
+          "values": [
+            "0",
+            "128",
+            "256",
+            "512",
+            "1024"
+          ]
+        },
+        {
+          "name": "filterDelaySamples",
+          "type": "integer",
+          "count": 1,
+          "default": 8192,
+          "minimum": 0,
+          "maximum": 65536
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "dynamic",
+        "dependsOn": [
+          "latencyMode",
+          "filterDelaySamples",
+          "impulseResponse"
+        ]
+      },
+      "assets": [
+        {
+          "name": "impulseResponse",
+          "kind": "impulseResponse",
+          "required": true
+        }
+      ],
+      "displayName": "Group Delay PEQ",
+      "category": "eq",
+      "summary": "Applies an externally prepared FIR response for five-band parametric group-delay adjustment.",
+      "sourceGenerating": false
+    },
+    {
       "type": "HiPassFilter",
       "parameters": [
         {
@@ -3724,6 +3771,63 @@
       "category": "lo-fi",
       "summary": "Adds power-line hum and harmonics at controlled levels.",
       "sourceGenerating": true
+    },
+    {
+      "type": "MDSimulator",
+      "parameters": [
+        {
+          "name": "mode",
+          "type": "string",
+          "count": 1,
+          "default": "SP (292 kbps)",
+          "values": [
+            "SP (292 kbps)",
+            "LP2 (132 kbps)",
+            "LP4 (66 kbps)"
+          ]
+        },
+        {
+          "name": "outputGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 12
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": false,
+      "sampleRates": [
+        44100,
+        48000,
+        88200,
+        96000,
+        176400,
+        192000,
+        352800,
+        384000
+      ],
+      "telemetry": [],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      },
+      "assets": [],
+      "displayName": "MD Simulator",
+      "category": "lo-fi",
+      "summary": "Models MiniDisc ATRAC encode and decode artifacts across the SP, LP2, and LP4 recording modes.",
+      "sourceGenerating": false
     },
     {
       "type": "MP3CodecSimulator",
@@ -7259,7 +7363,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "1f7621279e4fd1cae842bda2498e76f8afbdd2c05990b246732947b520818d62",
-    "privateLayoutSha256": "e63194ca2bd43f224ade8e5b387a89f68678c9e8c838f4a8faca600a61521c84"
+    "publicCatalogSha256": "db9bb0c63e12783b16d525de112deaa87886403f6e4202eee7655e83a8756659",
+    "privateLayoutSha256": "3c7c8ff05b4ffafc24aa90422245c024a9d146f5a010d157a719a4c521d5dab3"
   }
 }

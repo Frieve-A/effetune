@@ -8,7 +8,7 @@
   "fields": [
     { "name": "latencyMode", "key": "lt", "kind": "enum", "values": ["0", "128", "256", "512", "1024"], "default": "128" },
     { "name": "filterDelaySamples", "key": "fd", "kind": "int", "min": 0, "max": 65536, "default": 16384 },
-    { "name": "channelDelay", "key": "dy", "kind": "int", "min": 0, "max": 3840, "default": 0, "automation": true },
-    { "name": "outputGain", "key": "gn", "kind": "float", "min": -12, "max": 12, "default": 0, "unit": "dB", "automation": true }
+    { "name": "channelDelay", "key": "dy", "kind": "int", "min": 0, "max": 3840, "step": 1, "default": 0, "automation": true },
+    { "name": "outputGain", "key": "gn", "kind": "float", "min": -12, "max": 12, "step": 0.1, "default": 0, "unit": "dB", "automation": true }
   ]
 }

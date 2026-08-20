@@ -160,6 +160,7 @@ test('worklet rejects asset reconfiguration before posting a native command', as
       ['FIRCrossover', ['bandCount', 'latencyMode', 'filterDelaySamples']],
       ['FiveBandFIRPEQ', ['latencyMode', 'filterDelaySamples']],
       ['GroupDelayEQ', ['latencyMode', 'filterDelaySamples']],
+      ['GroupDelayPEQ', ['latencyMode', 'filterDelaySamples']],
       ['IRReverb', ['channelMode', 'latency', 'convolutionRate']],
       ['RoomEQ', ['latencyMode', 'filterDelaySamples']]
     ];

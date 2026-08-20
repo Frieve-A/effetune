@@ -339,19 +339,19 @@ class FrequencyShifterPlugin extends PluginBase {
         this._uiControls = {};
         this._uiControls.style = this.createSelectControl(
             'Style', ['Custom', ...Object.keys(FrequencyShifterPlugin.factoryStyles)],
-            this.style, this.setStyle.bind(this));
+            this.style, this.setStyle.bind(this), 'style');
         this._uiControls.md = this.createSelectControl(
-            'Mode', ['Shift', 'Ring Mod', 'Barber-pole'], this.md, this.setMd.bind(this));
-        this._uiControls.sh = this.createParameterControl('Shift', -5000, 5000, 0.1, this.sh, this.setSh.bind(this), 'Hz');
+            'Mode', ['Shift', 'Ring Mod', 'Barber-pole'], this.md, this.setMd.bind(this), 'md');
+        this._uiControls.sh = this.createParameterControl('Shift', -5000, 5000, 0.1, this.sh, this.setSh.bind(this), 'Hz', 'sh');
         this._uiControls.cf = this.createLogarithmicParameterControl(
-            'Carrier Frequency', 0.1, 10000, 0.1, this.cf, this.setCf.bind(this), 'Hz');
-        this._uiControls.mn = this.createParameterControl('Minimum Shift', 0, 5000, 0.1, this.mn, this.setMn.bind(this), 'Hz');
-        this._uiControls.mx = this.createParameterControl('Maximum Shift', 0, 5000, 0.1, this.mx, this.setMx.bind(this), 'Hz');
+            'Carrier Frequency', 0.1, 10000, 0.1, this.cf, this.setCf.bind(this), 'Hz', 'cf');
+        this._uiControls.mn = this.createParameterControl('Minimum Shift', 0, 5000, 0.1, this.mn, this.setMn.bind(this), 'Hz', 'mn');
+        this._uiControls.mx = this.createParameterControl('Maximum Shift', 0, 5000, 0.1, this.mx, this.setMx.bind(this), 'Hz', 'mx');
         this._uiControls.rt = this.createLogarithmicParameterControl(
-            'Rate', 0.01, 2, 0.01, this.rt, this.setRt.bind(this), 'Hz');
-        this._uiControls.dr = this.createSelectControl('Direction', ['Up', 'Down'], this.dr, this.setDr.bind(this));
-        this._uiControls.sp = this.createParameterControl('Stereo Phase', 0, 180, 1, this.sp, this.setSp.bind(this), 'degrees');
-        this._uiControls.mix = this.createParameterControl('Mix', 0, 100, 1, this.mix, this.setMix.bind(this), '%');
+            'Rate', 0.01, 2, 0.01, this.rt, this.setRt.bind(this), 'Hz', 'rt');
+        this._uiControls.dr = this.createSelectControl('Direction', ['Up', 'Down'], this.dr, this.setDr.bind(this), 'dr');
+        this._uiControls.sp = this.createParameterControl('Stereo Phase', 0, 180, 1, this.sp, this.setSp.bind(this), 'degrees', 'sp');
+        this._uiControls.mix = this.createParameterControl('Mix', 0, 100, 1, this.mix, this.setMix.bind(this), '%', 'mix');
         for (const key of ['style', 'md', 'sh', 'cf', 'mn', 'mx', 'rt', 'dr', 'sp', 'mix']) {
             container.appendChild(this._uiControls[key]);
         }
@@ -413,6 +413,7 @@ class FrequencyShifterPlugin extends PluginBase {
         } else {
             range.value = String(value);
         }
+        window.uiManager?.refreshRangeFillStyling?.(range);
     }
 
     _syncUI() {

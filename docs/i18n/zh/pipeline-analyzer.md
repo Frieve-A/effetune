@@ -18,13 +18,13 @@ Pipeline Analyzer 可在不改变实际听到的音频的情况下，测量当�
 
 - **Signal** 默认使用 **MLS**。**TSP** 是另一种周期性测试信号，**Unit Impulse** 则直接捕获时域响应。对于非线性或随时间变化的效果器，不同信号测得的 pipeline 结果可能不同。
 - **Level** 设置测试信号峰值，默认值为 `-12 dBFS`。线性效果器通常在不同电平下得到相同的归一化响应；非线性或与电平相关的效果器则可能不同。
-- **Sequence Length** 决定 MLS 或 TSP 能在不发生重叠的情况下测量多长的响应。数值越大，所需时间和内存越多。对于 delay、reverb 或其他尾音较长的效果器，尤其是 Analyzer 建议使用更长数值时，请增大该值。
+- **Sequence Length** 决定能够干净测量的响应长度：对 MLS 和 TSP 而言是测试信号的周期，对 Unit Impulse 而言是冲激之后捕获的采样数。数值越大，所需时间和内存越多。对于 delay、reverb 或其他尾音较长的效果器，尤其是 Analyzer 建议使用更长数值时，请增大该值。
 - **Stabilization Periods** 默认值为 12，用于在捕获前让 pipeline 稳定下来。如果变化缓慢的效果器尚未达到稳定状态，请增大该值。
 - **Averages** 默认值为 2。图表不稳定时，增大该值可减小每次测量之间的差异，但测量时间也会变长。
 
-详细信息会显示当前长度是否足够、建议长度和稳定时间，以及测量总时长。建议值仅供参考，请在适合所测效果器时采用。
+详细信息会显示当前长度是否足够、建议长度和稳定时间，以及测量总时长。选择 Unit Impulse 时会按当前采样率显示捕获长度的采样数和秒数。建议值仅供参考，请在适合所测效果器时采用。
 
-仅在选择 Unit Impulse 时，Sequence Length、Stabilization Periods 和 Averages 会被禁用。切换 Frequency、Phase、Min Group Delay、Excess Group Delay 或 Impulse 只会改变图表显示，不会重新测量。
+仅在选择 Unit Impulse 时，Stabilization Periods 和 Averages 会被禁用。MLS 使用 2^n-1 采样的长度，TSP 和 Unit Impulse 使用 2^n 采样的长度；切换信号时会保留最接近的长度。切换 Frequency、Phase、Min Group Delay、Excess Group Delay 或 Impulse 只会改变图表显示，不会重新测量。
 
 ## 图表的读法
 
@@ -41,6 +41,6 @@ Pipeline Analyzer 可在不改变实际听到的音频的情况下，测量当�
 
 每次测量都会捕获当前 pipeline、其设置和路由，以及所选的扬声器响应。图表显示由此得到的频率、相位、最小群延迟、超额群延迟和脉冲响应；**After** 会补偿 pipeline 报告的延迟。
 
-MLS 和 TSP 适合一般的响应测量。如果 delay、reverb 或振铃超出所选测量窗口，结果可能发生重叠；请增大 **Sequence Length**。**Unit Impulse** 会在有限时间内直接记录响应，因此特别长的尾音可能被截断。
+MLS 和 TSP 适合一般的响应测量。如果 delay、reverb 或振铃超出所选测量窗口，结果可能发生重叠；请增大 **Sequence Length**。**Unit Impulse** 只记录所选 **Sequence Length** 的采样数，因此超出该窗口的尾音会被截断；如果捕获结束时仍有振铃，请增大该值。
 
 非线性、时变、随机、含噪声或会自行产生声音的效果器，在不同电平下或不同测量之间可能得到不同结果。请将图表视为所选设置的快照，而不是固定不变的特性。

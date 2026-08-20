@@ -9,6 +9,7 @@ const FREQUENCY_MAX_HZ = 40000;
 const FREQUENCY_TICKS_HZ = Object.freeze([20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]);
 const FREQUENCY_MAGNITUDE_RANGE_DB = Object.freeze({ minimum: -20, maximum: 20 });
 const FREQUENCY_MAGNITUDE_TICKS_DB = Object.freeze([18, 12, 6, 0, -6, -12, -18]);
+const IMPULSE_TIME_TICK_INTERVALS_MS = Object.freeze([0.5, 1, 5, 10]);
 export const MAGNITUDE_DISPLAY_FLOOR_DB = -120;
 const DEFAULT_DISPLAY_SETTINGS = Object.freeze({ smoothingOct: 0.17, impulseRangeMs: 6 });
 
@@ -74,6 +75,20 @@ function linearTicks(minimum, maximum, formatter) {
         const value = maximum - fraction * span;
         return { position: fraction, label: formatter(value) };
     });
+}
+
+function impulseTimeTicks(startMs, endMs) {
+    const spanMs = endMs - startMs;
+    const interval = IMPULSE_TIME_TICK_INTERVALS_MS.find(value => spanMs / value <= 10) ||
+        IMPULSE_TIME_TICK_INTERVALS_MS[IMPULSE_TIME_TICK_INTERVALS_MS.length - 1];
+    const digits = interval < 1 ? 1 : 0;
+    const ticks = [];
+    for (let index = Math.floor(startMs / interval) + 1; index * interval < endMs; index += 1) {
+        const time = index * interval;
+        ticks.push({ position: (time - startMs) / spanMs, label: time.toFixed(digits) });
+    }
+    if (ticks.length) ticks[ticks.length - 1].label += ' ms';
+    return ticks;
 }
 
 function frequencyAxis() {
@@ -426,11 +441,7 @@ export function adaptPipelineAnalysisResult(result, provenance = {}) {
         impulse: {
             xLabel: 'Time (ms)',
             yLabel: 'Amplitude',
-            xTicks: Array.from({ length: 5 }, (_, index) => {
-                const position = index / 4;
-                const value = timeRange.minimum + position * (timeRange.maximum - timeRange.minimum);
-                return { position, label: `${formatNumber(value, 2)} ms` };
-            }),
+            xTicks: impulseTimeTicks(timeRange.minimum, timeRange.maximum),
             yTicks: [
                 { position: 0, label: '' },
                 { position: 0.25, label: '0.5' },

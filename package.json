@@ -53,7 +53,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "cross-env": "^10.1.0",
-    "electron": "^43.3.0",
+    "electron": "^43.4.1",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
     "eslint": "^10.7.0",
@@ -263,6 +263,6 @@
     "npmRebuild": false
   },
   "dependencies": {
-    "music-metadata": "^11.14.0"
+    "music-metadata": "^11.15.0"
   }
 }

@@ -159,6 +159,9 @@
           "$ref": "#/$defs/GroupDelayEQ"
         },
         {
+          "$ref": "#/$defs/GroupDelayPEQ"
+        },
+        {
           "$ref": "#/$defs/HiPassFilter"
         },
         {
@@ -208,6 +211,9 @@
         },
         {
           "$ref": "#/$defs/HumGenerator"
+        },
+        {
+          "$ref": "#/$defs/MDSimulator"
         },
         {
           "$ref": "#/$defs/MP3CodecSimulator"
@@ -3138,6 +3144,67 @@
         }
       }
     },
+    "GroupDelayPEQ": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters",
+        "assets"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "GroupDelayPEQ"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "latencyMode": {
+              "type": "string",
+              "enum": [
+                "0",
+                "128",
+                "256",
+                "512",
+                "1024"
+              ],
+              "default": "128"
+            },
+            "filterDelaySamples": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65536,
+              "default": 8192
+            }
+          }
+        },
+        "assets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "impulseResponse"
+          ],
+          "properties": {
+            "impulseResponse": {
+              "$ref": "#/$defs/assetReference"
+            }
+          }
+        }
+      }
+    },
     "HiPassFilter": {
       "type": "object",
       "additionalProperties": false,
@@ -4494,6 +4561,60 @@
               "maximum": 0,
               "x-effetune-unit": "dB",
               "default": -40
+            }
+          }
+        }
+      }
+    },
+    "MDSimulator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "MDSimulator"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "SP (292 kbps)",
+                "LP2 (132 kbps)",
+                "LP4 (66 kbps)"
+              ],
+              "default": "SP (292 kbps)"
+            },
+            "outputGain": {
+              "type": "number",
+              "minimum": -24,
+              "maximum": 12,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "mix": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
             }
           }
         }

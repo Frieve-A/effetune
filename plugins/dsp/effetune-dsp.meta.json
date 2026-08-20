@@ -1,11 +1,11 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:4f51e5faa5f1abe277cb748f1591bd1ce9f6174ac053896fad90e4c1d9f21c54",
+  "sourceDigest": "sha256:0b95dc16db110d274a825f59b322daa8600b969fdc4061bc1f6a4e8806f3d59e",
   "emsdkVersion": "6.0.2",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:521552b7a91de43ed414e0b0ff756915a3afa14f4a145e3affe59be507997aaa",
+    "digest": "sha256:752cb6471ba4a347f9969e54a3cd29911a9581c96ae43ea04c6477dd6a1830e2",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
@@ -35,7 +35,7 @@
       {
         "id": "dsp/core/engine.cpp",
         "kind": "file",
-        "sha256": "sha256:be4717516d9fb48de4a4fb68f5338a490ac4a060c571a22237514f311c2c1126"
+        "sha256": "sha256:45cf7bd7e67de88f6edb3bbac09d87cd5b75974becaea435f7546f9374e693b3"
       },
       {
         "id": "dsp/core/engine.h",
@@ -115,7 +115,7 @@
       {
         "id": "dsp/plugins/lofi/g726_adpcm_simulator/params.json",
         "kind": "file",
-        "sha256": "sha256:a1222e7a5af1dbe1ed1ecd621d432ce85b872433ec1ff85267f61a5f930a57d1"
+        "sha256": "sha256:d7ecbfdc5d087b12319c3501e685021b148cd0e21e4f87b36463cbffbabbc879"
       },
       {
         "id": "dsp/registry.inc#G726ADPCMSimulatorPlugin-entry",
@@ -160,7 +160,7 @@
       {
         "id": "tools/dsp-parity/runners.mjs",
         "kind": "file",
-        "sha256": "sha256:6e4858b264bab359378f7781b5dde6cb2c4680f6fdcd559fa464beabff3995b8"
+        "sha256": "sha256:d3c309effafa0edf5ca3216fc4e013a96bafb9de235219a90bde9eff9a9bec42"
       },
       {
         "id": "tools/dsp-parity/stimuli.mjs",
@@ -623,6 +623,19 @@
       ]
     },
     {
+      "name": "GroupDelayPEQPlugin",
+      "hash": 2941825417,
+      "byteCapacity": 0,
+      "assets": [
+        {
+          "slot": 0,
+          "format": "ET_ASSET_F32_MULTICH",
+          "capacity": "32 MiB convolution cap",
+          "byteCapacity": 33554432
+        }
+      ]
+    },
+    {
       "name": "HiPassFilterPlugin",
       "hash": 299011831,
       "byteCapacity": 0,
@@ -728,6 +741,12 @@
     {
       "name": "HumGeneratorPlugin",
       "hash": 2503317040,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
+      "name": "MDSimulatorPlugin",
+      "hash": 2124600068,
       "byteCapacity": 0,
       "assets": []
     },
@@ -980,7 +999,7 @@
     }
   ],
   "sizes": {
-    "baseline": 1038618,
-    "simd": 1137751
+    "baseline": 1092570,
+    "simd": 1203319
   }
 }

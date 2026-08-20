@@ -346,41 +346,48 @@ class LoudnessEqualizerPlugin extends PluginBase {
         // Create parameter rows using createParameterControl
         container.appendChild(this.createParameterControl(
             'Average SPL', 60.0, 96.0, 0.1, this.sp,
-            createOnChangeHandler(v => this.setParameters({ sp: v })), 'dB'
+            createOnChangeHandler(v => this.setParameters({ sp: v })), 'dB', 'sp'
         ));
         container.appendChild(this.createParameterControl(
             'Relative Volume', -30.0, 12.0, 0.1, this.rv,
-            createOnChangeHandler(v => this.setParameters({ rv: v })), 'dB'
+            createOnChangeHandler(v => this.setParameters({ rv: v })), 'dB', 'rv'
         ));
         container.appendChild(this.createParameterControl(
             'Low Freq', 100, 300, 1, this.lf,
-            createOnChangeHandler(v => this.setParameters({ lf: v })), 'Hz'
+            createOnChangeHandler(v => this.setParameters({ lf: v })), 'Hz', 'lf'
         ));
         container.appendChild(this.createParameterControl(
             'Low Gain', 0.0, 15.0, 0.1, this.lg,
-            createOnChangeHandler(v => this.setParameters({ lg: v })), 'dB'
+            createOnChangeHandler(v => this.setParameters({ lg: v })), 'dB', 'lg'
         ));
         container.appendChild(this.createParameterControl(
             'Low Q', 0.5, 1.0, 0.01, this.lq,
-            createOnChangeHandler(v => this.setParameters({ lq: v }))
+            createOnChangeHandler(v => this.setParameters({ lq: v })), '', 'lq'
         ));
         container.appendChild(this.createParameterControl(
             'High Freq', 3000, 6000, 10, this.hf,
-            createOnChangeHandler(v => this.setParameters({ hf: v })), 'Hz'
+            createOnChangeHandler(v => this.setParameters({ hf: v })), 'Hz', 'hf'
         ));
         container.appendChild(this.createParameterControl(
             'High Gain', 0.0, 15.0, 0.1, this.hg,
-            createOnChangeHandler(v => this.setParameters({ hg: v })), 'dB'
+            createOnChangeHandler(v => this.setParameters({ hg: v })), 'dB', 'hg'
         ));
         container.appendChild(this.createParameterControl(
             'High Q', 0.5, 1.0, 0.01, this.hq,
-            createOnChangeHandler(v => this.setParameters({ hq: v }))
+            createOnChangeHandler(v => this.setParameters({ hq: v })), '', 'hq'
         ));
 
         // Add graph container
         container.appendChild(graphContainer);
 
         this.drawGraph(canvas); // Initial draw
+
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the parts of the UI this plugin builds by hand are refreshed here.
+        // Every parameter row carries a modelKey and follows on its own; the response
+        // curve does not.
+        this.registerUIRefresh(() => this.drawGraph(canvas));
+
         return container;
     }
 

@@ -1,6 +1,6 @@
 {
   "type": "IRReverbPlugin",
-  "parityReference": "native-ir-direct-double-v2",
+  "parityReference": "native-ir-direct-double-v3",
   "tolerance": { "abs": 0.0002, "policy": "per-sample" },
   "assets": [
     { "slot": 0, "format": "ET_ASSET_F32_MULTICH", "capacity": "32 MiB convolution cap" }
@@ -9,9 +9,9 @@
     { "name": "channelMode", "key": "cm", "kind": "enum", "values": ["auto", "mono", "indep", "true", "multi"], "default": "auto" },
     { "name": "latency", "key": "lt", "kind": "enum", "values": ["0", "128", "256", "512", "1024"], "default": "128" },
     { "name": "convRate", "key": "cr", "kind": "enum", "values": ["auto", "full", "half", "quarter"], "default": "auto" },
-    { "name": "wetLevel", "key": "dw", "kind": "float", "min": -96, "max": 12, "default": -15, "unit": "dB", "automation": true },
+    { "name": "wetLevel", "key": "dw", "kind": "float", "min": -96, "max": 12, "step": 0.1, "default": -15, "unit": "dB", "automation": true },
     { "name": "dryEnabled", "key": "de", "kind": "bool", "default": true },
-    { "name": "dryLevel", "key": "dl", "kind": "float", "min": -96, "max": 12, "default": 0, "unit": "dB", "automation": true },
-    { "name": "preDelay", "key": "pd", "kind": "float", "min": 0, "max": 500, "default": 0, "unit": "ms", "automation": true }
+    { "name": "dryLevel", "key": "dl", "kind": "float", "min": -96, "max": 12, "step": 0.1, "default": 0, "unit": "dB", "automation": true },
+    { "name": "preDelay", "key": "pd", "kind": "float", "min": 0, "max": 500, "step": 0.1, "default": 0, "unit": "ms", "automation": true }
   ]
 }

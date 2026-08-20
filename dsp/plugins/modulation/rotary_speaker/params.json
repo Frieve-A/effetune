@@ -3,13 +3,13 @@
   "tolerance": { "abs": 0.0001, "policy": "per-sample" },
   "fields": [
     { "name": "speedState", "key": "ss", "kind": "enum", "default": "Slow", "values": ["Stop", "Slow", "Fast"] },
-    { "name": "speed", "key": "sp", "kind": "float", "min": 25, "max": 200, "default": 100, "unit": "%", "automation": true },
-    { "name": "acceleration", "key": "ac", "kind": "float", "min": 0.1, "max": 10, "default": 2.2, "unit": "s", "automation": true },
-    { "name": "crossover", "key": "xo", "kind": "float", "min": 200, "max": 2000, "default": 800, "unit": "Hz", "automation": { "normalization": "log" } },
-    { "name": "rotorBalance", "key": "rb", "kind": "float", "min": -100, "max": 100, "default": 0, "unit": "%", "automation": true },
-    { "name": "stereoWidth", "key": "sw", "kind": "float", "min": 0, "max": 100, "default": 75, "unit": "%", "automation": true },
-    { "name": "dopplerDepth", "key": "dd", "kind": "float", "min": 0, "max": 100, "default": 45, "unit": "%", "automation": true },
-    { "name": "amplitudeDepth", "key": "ad", "kind": "float", "min": 0, "max": 100, "default": 55, "unit": "%", "automation": true },
-    { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "default": 70, "unit": "%", "automation": true }
+    { "name": "speed", "key": "sp", "kind": "float", "min": 25, "max": 200, "step": 1, "default": 100, "unit": "%", "automation": true },
+    { "name": "acceleration", "key": "ac", "kind": "float", "min": 0.1, "max": 10, "step": 0.1, "default": 2.2, "unit": "s", "automation": true },
+    { "name": "crossover", "key": "xo", "kind": "float", "min": 200, "max": 2000, "step": 1, "default": 800, "unit": "Hz", "automation": { "normalization": "log" } },
+    { "name": "rotorBalance", "key": "rb", "kind": "float", "min": -100, "max": 100, "step": 1, "default": 0, "unit": "%", "automation": true },
+    { "name": "stereoWidth", "key": "sw", "kind": "float", "min": 0, "max": 100, "step": 1, "default": 75, "unit": "%", "automation": true },
+    { "name": "dopplerDepth", "key": "dd", "kind": "float", "min": 0, "max": 100, "step": 1, "default": 45, "unit": "%", "automation": true },
+    { "name": "amplitudeDepth", "key": "ad", "kind": "float", "min": 0, "max": 100, "step": 1, "default": 55, "unit": "%", "automation": true },
+    { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "step": 1, "default": 70, "unit": "%", "automation": true }
   ]
 }

@@ -232,6 +232,17 @@ def resolve_topology(asset: AssetData, processing_channels: int, requested: str)
     return topology
 
 
+def resolve_room_eq_topology(asset: AssetData, processing_channels: int) -> str:
+    """Resolve the shared or per-channel filter layout supported by Room EQ."""
+    topology = resolve_topology(asset, processing_channels, "automatic")
+    if topology not in ("mono", "independent"):
+        raise AssetError(
+            "RoomEQ requires either one shared filter channel or one filter channel "
+            "per processing channel"
+        )
+    return topology
+
+
 def resolve_rate_divider(asset_rate: int, processing_rate: float, requested: str) -> int:
     requested_divider = {"full": 1, "half": 2, "quarter": 4}.get(requested)
     candidates = (requested_divider,) if requested_divider is not None else (1, 2, 4)

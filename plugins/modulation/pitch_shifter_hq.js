@@ -87,10 +87,10 @@ class PitchShifterHQPlugin extends PluginBase {
         container.className = 'pitch-shifter-hq-plugin-ui plugin-parameter-ui';
         container.appendChild(this.createParameterControl(
             'Pitch Shift', -6, 6, 1, this.ps,
-            value => this.setParameters({ ps: value }), 'semitones'));
+            value => this.setParameters({ ps: value }), 'semitones', 'ps'));
         container.appendChild(this.createParameterControl(
             'Fine Tune', -50, 50, 1, this.ft,
-            value => this.setParameters({ ft: value }), 'cents'));
+            value => this.setParameters({ ft: value }), 'cents', 'ft'));
         container.appendChild(this._createStatusElement());
         return container;
     }

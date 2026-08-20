@@ -397,8 +397,33 @@ class MultibandSaturationPlugin extends PluginBase {
             const freqNum = i + 1;
             const slider = document.getElementById(`${this.instanceId}-freq${freqNum}-slider`);
             const input = document.getElementById(`${this.instanceId}-freq${freqNum}-input`);
-            if (slider) slider.value = values[i];
+            if (slider) {
+                slider.value = values[i];
+                window.uiManager?.refreshRangeFillStyling?.(slider);
+            }
             if (input) input.value = values[i];
+        }
+    }
+
+    // Rows remembered by createBandControl(). Their values live in this.bands[i],
+    // which the modelKey sync of PluginBase cannot address, so they are pushed
+    // back into the DOM here.
+    _syncBandControls() {
+        if (!Array.isArray(this._bandControlRows)) return;
+        // Tested per element, so one control being held still lets every other band track.
+        const heldByUser = el => this.isHeldByUser(el);
+        for (const entry of this._bandControlRows) {
+            const band = this.bands[entry.bandIndex];
+            if (!band) continue;
+            const value = band[entry.key];
+            if (!Number.isFinite(value)) continue;
+            const slider = entry.row.querySelector('input[type="range"]');
+            const input = entry.row.querySelector('input[type="number"]');
+            if (slider && !heldByUser(slider)) {
+                slider.value = value;
+                window.uiManager?.refreshRangeFillStyling?.(slider);
+            }
+            if (input && !heldByUser(input)) input.value = value;
         }
     }
 
@@ -611,6 +636,8 @@ class MultibandSaturationPlugin extends PluginBase {
         container.setAttribute('data-instance-id', this.instanceId);
         this.graphDisposers?.forEach(dispose => dispose());
         this.graphDisposers = [];
+        // Rebuilt from scratch on every createUI() so no stale rows are kept.
+        this._bandControlRows = [];
 
         // Frequency sliders UI
         const freqContainer = document.createElement('div');
@@ -715,7 +742,7 @@ class MultibandSaturationPlugin extends PluginBase {
             const band = this.bands[i];
             
             // Create a wrapped version of createParameterControl that uses the bandIdPrefix
-            const createBandControl = (label, min, max, step, value, setter, unit = '') => {
+            const createBandControl = (label, min, max, step, value, setter, unit = '', key = null) => {
                 // Temporarily store the original ID
                 const originalId = this.id;
                 
@@ -727,25 +754,33 @@ class MultibandSaturationPlugin extends PluginBase {
                 
                 // Restore the original ID
                 this.id = originalId;
-                
+
+                // The value behind this row lives in this.bands[i], which a modelKey
+                // cannot address, so the row is remembered for _syncBandControls().
+                if (key) this._bandControlRows.push({ bandIndex: i, key, row: control });
+
                 return control;
             };
             
             content.appendChild(createBandControl('Drive', 0, 10, 0.1, band.dr,
                  (v) => this.setDr(v), // Use bound setter directly
-                 '' // No unit for Drive
+                 '', // No unit for Drive
+                 'dr'
             ));
             content.appendChild(createBandControl('Bias', -0.3, 0.3, 0.01, band.bs,
                 (v) => this.setBs(v),
-                '' // No unit for Bias
+                '', // No unit for Bias
+                'bs'
             ));
             content.appendChild(createBandControl('Mix', 0, 100, 1, band.mx,
                 (v) => this.setMx(v),
-                '%'
+                '%',
+                'mx'
             ));
             content.appendChild(createBandControl('Gain', -18, 18, 0.1, band.gn,
                 (v) => this.setGn(v),
-                'dB'
+                'dB',
+                'gn'
             ));
             
             bandContents.appendChild(content);
@@ -805,6 +840,10 @@ class MultibandSaturationPlugin extends PluginBase {
         setTimeout(() => {
             this.updateTransferGraphs();
         }, 0);
+
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the parts of the UI this plugin builds by hand are refreshed here.
+        this.registerUIRefresh(() => this._syncBandControls());
 
         return container;
     }

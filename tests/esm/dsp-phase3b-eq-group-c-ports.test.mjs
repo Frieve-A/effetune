@@ -29,7 +29,7 @@ const ports = [
     ],
     caseCount: 13,
     identityCase: 'slopes-off-identity',
-    jsEngineHash: 'c9d7f66e6c7d0af66412028ab3d5476dba6c187c13f283122073f5e85b245c3b',
+    jsEngineHash: 'a7db921c6bcc16b92f391c56e87a114c49ba57c033ae2fd55f8e1bc6faeb5c83',
     activeParams: { hf: 180, hs: -42, lf: 12000, ls: -30 }
   },
   {
@@ -48,7 +48,7 @@ const ports = [
     ],
     caseCount: 8,
     identityCase: 'reference-level-identity',
-    jsEngineHash: '34931197beb49dc0b89f09ff9b3065d2b9abcc3a3b61143a5cd96618be168bda',
+    jsEngineHash: 'e5e23e2ab1da53622b8cc0c9aff99c1e46167df2f4227cfe8b075f9324c89a2c',
     activeParams: { sp: 60, rv: -12, lg: 12, lf: 220, lq: 0.7, hq: 0.8, hg: 9, hf: 5000 }
   },
   {
@@ -63,7 +63,7 @@ const ports = [
     ],
     caseCount: 8,
     identityCase: 'dry-output-warms-state',
-    jsEngineHash: '7f5d42832dcfb3f0524e0d3db98138015ecd9f5352e1f3148a5d55a9bc5f145b',
+    jsEngineHash: '8f3ddee8add896f14b8d462704d893c0447b3b59dda35fb43b5c968c4ca1c578',
     activeParams: { ff: 4000, fg: 0.8, dw: 100, ct: 'fb' }
   }
 ];

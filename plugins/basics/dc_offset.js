@@ -52,7 +52,7 @@ class DCOffsetPlugin extends PluginBase {
         // Use helper to create DC offset control
         const offsetControl = this.createParameterControl(
             'Offset', -1, 1, 0.01, this.of, 
-            (value) => this.setOf(value)
+            (value) => this.setOf(value), '', 'of'
         );
         container.appendChild(offsetControl);
 

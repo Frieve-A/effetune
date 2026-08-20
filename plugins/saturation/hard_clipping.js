@@ -293,7 +293,7 @@ class HardClippingPlugin extends PluginBase {
         // Use base helper for Threshold control
         const thresholdRow = this.createParameterControl(
             'Threshold', -60, 0, 0.1, this.th,
-            this.setTh.bind(this), 'dB'
+            this.setTh.bind(this), 'dB', 'th'
         );
         container.appendChild(thresholdRow);
 
@@ -351,6 +351,15 @@ class HardClippingPlugin extends PluginBase {
         this.updateTransferGraph(); // Initial draw
         graphContainer.appendChild(canvas);
         container.appendChild(graphContainer);
+
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the controls this plugin builds by hand are refreshed here.
+        // The transfer graph already follows through setParameters().
+        this.registerUIRefresh(() => {
+            modeGroup.querySelectorAll('input[type="radio"]').forEach(radio => {
+                radio.checked = this.md === radio.value;
+            });
+        });
 
         return container;
     }

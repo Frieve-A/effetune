@@ -347,7 +347,7 @@ class HumGeneratorPlugin extends PluginBase {
         // Frequency control
         container.appendChild(this.createParameterControl(
             'Frequency', 10.0, 120.0, 0.1, this.fr,
-            (value) => this.setParameters({ fr: value }), 'Hz'
+            (value) => this.setParameters({ fr: value }), 'Hz', 'fr'
         ));
 
         // Type selection (radio buttons)
@@ -389,26 +389,34 @@ class HumGeneratorPlugin extends PluginBase {
         // Harmonics control
         container.appendChild(this.createParameterControl(
             'Harmonics', 0, 100, 1, this.hm,
-            (value) => this.setParameters({ hm: value }), '%'
+            (value) => this.setParameters({ hm: value }), '%', 'hm'
         ));
 
         // Tone control
         container.appendChild(this.createParameterControl(
             'Tone', 1.0, 20.0, 0.1, this.tn,
-            (value) => this.setParameters({ tn: value }), 'kHz'
+            (value) => this.setParameters({ tn: value }), 'kHz', 'tn'
         ));
 
         // Instability control
         container.appendChild(this.createParameterControl(
             'Instability', 0.0, 10.0, 0.1, this.in,
-            (value) => this.setParameters({ in: value }), '%'
+            (value) => this.setParameters({ in: value }), '%', 'in'
         ));
 
         // Level control
         container.appendChild(this.createParameterControl(
             'Level', -80.0, 0.0, 0.1, this.lv,
-            (value) => this.setParameters({ lv: value }), 'dB'
+            (value) => this.setParameters({ lv: value }), 'dB', 'lv'
         ));
+
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the controls this plugin builds by hand are refreshed here.
+        this.registerUIRefresh(() => {
+            typeGroup.querySelectorAll('input[type="radio"]').forEach(radio => {
+                radio.checked = this.tp === radio.value;
+            });
+        });
 
         return container;
     }

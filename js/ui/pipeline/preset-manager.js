@@ -3,10 +3,6 @@
  * Manages preset UI and storage (localStorage for web, file system for Electron)
  */
 import { getSerializablePluginStateShort, applySerializedState } from '../../utils/serialization-utils.js';
-import {
-    appendExternalAssetWarningSnapshot,
-    captureExternalAssetWarning
-} from './external-asset-info.js';
 export class PresetManager {
     /**
      * Create a new PresetManager instance
@@ -426,8 +422,7 @@ export class PresetManager {
         const pluginsData = pipeline.map(plugin =>
             getSerializablePluginStateShort(plugin)
         );
-        const externalAssetWarning = captureExternalAssetWarning(pipeline);
-        
+
         try {
             await this.enqueuePresetMutation(async () => {
                 const presets = await this.getPresets();
@@ -456,10 +451,10 @@ export class PresetManager {
             }
             
             if (window.uiManager) {
-                window.uiManager.showTransientMessage(appendExternalAssetWarningSnapshot(
+                window.uiManager.showTransientMessage(
                     window.uiManager.t('success.presetSaved', { name }),
-                    externalAssetWarning
-                ), false, {}, 3000);
+                    false, {}, 3000
+                );
             }
         } catch (error) {
             console.error('Failed to save preset:', error);

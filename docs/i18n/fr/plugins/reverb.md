@@ -276,7 +276,7 @@ IR Reverb convolue le signal avec une réponse impulsionnelle (IR) importée afi
 ### Paramètres
 
 - **Channel Mode** : **Auto** choisit Mono pour une IR à un canal, True Stereo pour une IR à quatre canaux avec une sélection stéréo, Independent lorsque les nombres de canaux correspondent, et Diagonal Matrix dans les autres cas ; le mode retenu apparaît à droite du menu. Vous pouvez aussi choisir explicitement Mono, Independent, True Stereo (trajets LL/LR/RL/RR) ou Diagonal Matrix sans diaphonie.
-- **Latency** : Zero ou 128/256/512/1024 échantillons. Une valeur élevée allège le traitement mais retarde le signal wet ; Zero impose Full.
+- **Latency** : Zero ou 128/256/512/1024 échantillons. Une valeur élevée allège le traitement mais retarde toute la sortie de l'effet ; le signal direct est retardé d'autant pour rester aligné sur la réverbération, et la chaîne compense ce retard ; Zero impose Full.
 - **Convolution Rate** : Auto, Full, Half ou Quarter. Avec Auto, le taux retenu apparaît à droite du menu. Un taux réduit diminue la charge et la bande passante wet ; Quarter exige au moins 176,4 kHz.
 - **Wet Level** : niveau du signal convolué, de -96 à +12 dB. La valeur par défaut est de -15 dB pour une utilisation courante en insert ; en départ/retour, réglez-la sur 0 dB et dosez la réverbération avec le niveau de départ.
 - **Dry** : active le signal d'origine. Cette option est activée par défaut ; désactivez-la pour supprimer complètement le signal direct tout en conservant la valeur de **Dry Level**.

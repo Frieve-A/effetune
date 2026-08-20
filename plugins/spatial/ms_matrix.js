@@ -143,23 +143,23 @@ class MSMatrixPlugin extends PluginBase {
             'Mode',
             [{ label: 'Encode', value: '0' }, { label: 'Decode', value: '1' }],
             String(this.md),
-            value => this.setMode(parseInt(value, 10))
+            value => this.setMode(parseInt(value, 10)), 'md'
         ));
 
         container.appendChild(this.createParameterControl(
             'Mid Gain', -18, 18, 0.1, this.mg,
-            v => this.setMidGain(v), 'dB'
+            v => this.setMidGain(v), 'dB', 'mg'
         ));
 
         container.appendChild(this.createParameterControl(
             'Side Gain', -18, 18, 0.1, this.sg,
-            v => this.setSideGain(v), 'dB'
+            v => this.setSideGain(v), 'dB', 'sg'
         ));
 
         container.appendChild(this.createCheckboxControl(
             'Swap L/R',
             this.sw === 1,
-            checked => this.setSwap(checked ? 1 : 0)
+            checked => this.setSwap(checked ? 1 : 0), 'sw'
         ));
 
         return container;

@@ -12,22 +12,22 @@
   "caseIndex": 8,
   "seed": "0xeffe7a56",
   "params": {
-    "dr": -30,
-    "tp": "12AU7",
+    "dr": -48,
+    "tp": "12AX7",
     "bi": 0,
     "pv": 250,
     "sz": 10,
     "su": 10,
-    "og": 39,
+    "og": 0,
     "mx": 100,
     "iv": 2.828,
-    "nf": 0,
-    "os": "Line",
-    "pt": "EL84",
-    "pb": 320,
-    "kr": 270,
+    "nf": 3,
+    "os": "Power",
+    "pt": "6L6GC",
+    "pb": 391.454,
+    "kr": 483.871,
     "st": "0",
-    "zp": "8.0",
+    "zp": "6.6",
     "sl": "8",
     "rl": 8,
     "sg": 0,
@@ -38,31 +38,12 @@
     "sp": "3.5",
     "fr": true
   },
-  "events": [
-    {
-      "frame": 128,
-      "params": {
-        "dr": -48,
-        "tp": "12AX7",
-        "og": 0,
-        "iv": 2.828,
-        "nf": 3,
-        "os": "Power",
-        "pt": "6L6GC",
-        "pb": 391.454,
-        "kr": 483.871,
-        "st": "0",
-        "zp": "6.6",
-        "sl": "8",
-        "rl": 8
-      }
-    }
-  ],
+  "events": [],
   "tolerance": {
     "abs": 0.00001,
     "policy": "per-sample"
   },
-  "jsEngineHash": "498782abfacaec3e4440014e0259085dbc48e6ad3d5add45726f25264da1ed58",
+  "jsEngineHash": "cd71e391ae506136512d9f63354418ed05843b08a560b90541990e4649fd36a2",
   "outputFloats": 4096,
   "byteLength": 16384,
   "binary": "case-009.f32"

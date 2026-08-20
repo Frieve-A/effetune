@@ -30,6 +30,12 @@ constexpr std::uint32_t kPathRecordBytes = 12u;
 constexpr std::uint32_t kMaximumPaths = 8u;
 constexpr std::uint32_t kFadeFrames = 128u;
 constexpr std::uint32_t kMaximumChannels = 8u;
+constexpr std::uint32_t kMaximumHeadBlock = 1024u;
+constexpr std::uint32_t kMaximumRateDivider = 4u;
+// Largest latency the kernel can report, and therefore the deepest dry alignment delay.
+constexpr std::uint32_t kMaximumDryDelay =
+    kMaximumHeadBlock * kMaximumRateDivider +
+    2u * static_cast<std::uint32_t>(dsp::Halfband2x::kLatency) * (kMaximumRateDivider - 1u);
 constexpr std::uint64_t kConvolverImplBytesUpperBound = 512u;
 constexpr std::uint64_t kConvolverStageBytesUpperBound = 512u;
 constexpr std::uint64_t kPffftSetupFixedBytesUpperBound = 136u;
@@ -121,12 +127,14 @@ public:
     const double maximum_delay = std::ceil(static_cast<double>(sample_rate_) * 0.5);
     pre_delay_length_ = maximum_delay < 1.0 ? 1u : static_cast<std::uint32_t>(maximum_delay) + 1u;
     wet_fifo_capacity_ = max_frames_ * 4u + 8u;
+    dry_delay_length_ = kMaximumDryDelay + 1u;
     if (!full_rate_audio_.allocate(static_cast<std::size_t>(max_channels_) * max_frames_) ||
         !decimators_.allocate(static_cast<std::size_t>(max_channels_) * 2u) ||
         !interpolators_.allocate(static_cast<std::size_t>(max_channels_) * 2u) ||
         !pre_delay_.allocate(static_cast<std::size_t>(max_channels_) * pre_delay_length_) ||
         !pre_delay_positions_.allocate(max_channels_) ||
-        !wet_fifo_.allocate(static_cast<std::size_t>(max_channels_) * wet_fifo_capacity_)) {
+        !wet_fifo_.allocate(static_cast<std::size_t>(max_channels_) * wet_fifo_capacity_) ||
+        !dry_delay_.allocate(static_cast<std::size_t>(max_channels_) * dry_delay_length_)) {
       releaseFixedStorage();
       max_channels_ = 0u;
       max_frames_ = 0u;
@@ -135,6 +143,7 @@ public:
     prepared_ = true;
     clearAsset(kAssetSlot);
     resetRuntimeState();
+    clearDryDelay();
   }
 
   [[nodiscard]] bool preparedSuccessfully() const noexcept override { return prepared_; }
@@ -152,6 +161,7 @@ public:
   void reset() noexcept override {
     convolver_.reset();
     resetRuntimeState();
+    clearDryDelay();
     wet_fade_out_remaining_ = 0u;
     wet_fade_in_remaining_ = 0u;
     last_wet_.fill(0.0F);
@@ -169,6 +179,7 @@ public:
     }
 
     const MixParameters mix = currentMixParameters();
+    updateDryDelayTarget();
     if (asset_state_ == ET_ASSET_STATE_PREPARING) {
       if (rate_divider_ == 1u) {
         processFullRate(audio, channel_count, frame_count, mix,
@@ -341,6 +352,67 @@ private:
     pre_delay_.release();
     pre_delay_positions_.release();
     wet_fifo_.release();
+    dry_delay_.release();
+  }
+
+  void clearDryDelay() noexcept {
+    std::fill(dry_delay_.begin(), dry_delay_.end(), 0.0F);
+    dry_delay_position_ = 0u;
+    dry_delay_samples_ = 0u;
+    dry_delay_previous_ = 0u;
+    dry_delay_fade_remaining_ = 0u;
+    dry_delay_initialized_ = false;
+  }
+
+  // The wet path leaves the convolver delayed by the reported latency, so the dry path is held
+  // back by the same amount to keep the original signal aligned with it.
+  void updateDryDelayTarget() noexcept {
+    const std::uint32_t latency = latencySamples();
+    const std::uint32_t target = latency > kMaximumDryDelay ? kMaximumDryDelay : latency;
+    if (!dry_delay_initialized_) {
+      dry_delay_initialized_ = true;
+      dry_delay_samples_ = target;
+      dry_delay_previous_ = target;
+      dry_delay_fade_remaining_ = 0u;
+      return;
+    }
+    if (target == dry_delay_samples_)
+      return;
+    dry_delay_previous_ = dry_delay_samples_;
+    dry_delay_samples_ = target;
+    dry_delay_fade_remaining_ = kFadeFrames;
+  }
+
+  [[nodiscard]] float dryTap(std::uint32_t channel, std::uint32_t delay) const noexcept {
+    const std::uint32_t read = dry_delay_position_ >= delay
+                                   ? dry_delay_position_ - delay
+                                   : dry_delay_position_ + dry_delay_length_ - delay;
+    return dry_delay_[static_cast<std::size_t>(channel) * dry_delay_length_ + read];
+  }
+
+  // Stores one input frame and publishes the aligned dry frame, crossfading whenever the
+  // reported latency changed so that loading or clearing an impulse response stays click-free.
+  void advanceDryFrame(const float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
+                       std::uint32_t frame) noexcept {
+    for (std::uint32_t channel = 0u; channel < max_channels_; ++channel) {
+      dry_delay_[static_cast<std::size_t>(channel) * dry_delay_length_ + dry_delay_position_] =
+          channel < channel_count ? audio[static_cast<std::size_t>(channel) * frame_count + frame]
+                                  : 0.0F;
+    }
+    if (dry_delay_fade_remaining_ == 0u) {
+      for (std::uint32_t channel = 0u; channel < channel_count; ++channel)
+        dry_frame_[channel] = dryTap(channel, dry_delay_samples_);
+    } else {
+      const float fade = 1.0F - static_cast<float>(dry_delay_fade_remaining_) / kFadeFrames;
+      for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+        const float previous = dryTap(channel, dry_delay_previous_);
+        dry_frame_[channel] = previous + (dryTap(channel, dry_delay_samples_) - previous) * fade;
+      }
+      --dry_delay_fade_remaining_;
+    }
+    ++dry_delay_position_;
+    if (dry_delay_position_ == dry_delay_length_)
+      dry_delay_position_ = 0u;
   }
 
   [[nodiscard]] MixParameters currentMixParameters() noexcept {
@@ -623,13 +695,13 @@ private:
 
   void applyDryOnly(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
                     const MixParameters &mix) noexcept {
-    const std::size_t samples = static_cast<std::size_t>(channel_count) * frame_count;
-    if (mix.dryGain == 0.0F) {
-      std::memset(audio, 0, samples * sizeof(float));
-      return;
+    for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      advanceDryFrame(audio, channel_count, frame_count, frame);
+      for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+        audio[static_cast<std::size_t>(channel) * frame_count + frame] =
+            dry_frame_[channel] * mix.dryGain;
+      }
     }
-    for (std::size_t index = 0u; index < samples; ++index)
-      audio[index] *= mix.dryGain;
   }
 
   void applyDryWithWetFadeOut(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -649,9 +721,10 @@ private:
     const float fade = wet_fade_out_remaining_ == 0u
                            ? 0.0F
                            : static_cast<float>(wet_fade_out_remaining_) / kFadeFrames;
+    advanceDryFrame(audio, channel_count, frame_count, frame);
     for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
       const std::size_t index = static_cast<std::size_t>(channel) * frame_count + frame;
-      const float dry = audio[index] * mix.dryGain;
+      const float dry = dry_frame_[channel] * mix.dryGain;
       audio[index] = dry + last_wet_[channel] * fade * mix.wetGain;
     }
     if (wet_fade_out_remaining_ != 0u) {
@@ -667,13 +740,14 @@ private:
                               ? 1.0F
                               : 1.0F - static_cast<float>(wet_fade_in_remaining_) / kFadeFrames;
     const double pre_delay = pre_delay_ramp_.value(0u);
+    advanceDryFrame(audio, channel_count, frame_count, frame);
     for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
       const std::size_t index = static_cast<std::size_t>(channel) * frame_count + frame;
       float wet = wet_frame_[channel];
       if (wet_fade_in_remaining_ != 0u)
         wet *= fade_in;
       wet = applyPreDelay(channel, wet, pre_delay);
-      audio[index] = audio[index] * mix.dryGain + wet * mix.wetGain;
+      audio[index] = dry_frame_[channel] * mix.dryGain + wet * mix.wetGain;
       last_wet_[channel] = wet;
     }
     if (wet_fade_in_remaining_ != 0u)
@@ -720,6 +794,12 @@ private:
   std::uint32_t pre_delay_length_ = 1u;
   DelayRamp pre_delay_ramp_;
   bool pre_delay_initialized_ = false;
+  std::uint32_t dry_delay_length_ = 1u;
+  std::uint32_t dry_delay_position_ = 0u;
+  std::uint32_t dry_delay_samples_ = 0u;
+  std::uint32_t dry_delay_previous_ = 0u;
+  std::uint32_t dry_delay_fade_remaining_ = 0u;
+  bool dry_delay_initialized_ = false;
   std::uint32_t wet_fifo_capacity_ = 1u;
   std::uint32_t wet_fifo_read_ = 0u;
   std::uint32_t wet_fifo_write_ = 0u;
@@ -741,6 +821,8 @@ private:
   IRStorage<float> pre_delay_;
   IRStorage<std::uint32_t> pre_delay_positions_;
   IRStorage<float> wet_fifo_;
+  IRStorage<float> dry_delay_;
+  std::array<float, kMaximumChannels> dry_frame_{};
   std::array<float, kMaximumChannels> conv_frame_{};
   std::array<float, kMaximumChannels> wet_frame_{};
   std::array<float, kMaximumChannels> last_wet_{};

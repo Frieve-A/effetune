@@ -210,7 +210,8 @@ class StereoMeterPlugin extends PluginBase {
       'Window', 10, 1000, 1,
       (this.windowTime * 1000).toFixed(0),
       (value) => this.setWindowTime(value / 1000),
-      'ms'
+      'ms',
+      'windowTime', (value) => value * 1000 // Widget is shown in ms, the model stores seconds
     ));
 
     // Create the graph container and canvas.

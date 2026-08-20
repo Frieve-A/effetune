@@ -457,7 +457,8 @@ bool runDirectReference(const std::string &type, const Control &control,
   const bool fir_crossover = type == "FIRCrossoverPlugin";
   // Both kernels convolve one mono impulse response into every channel and report the head
   // block plus the filter delay as latency, so they share one reference path.
-  const bool mono_fir = type == "FiveBandFIRPEQPlugin" || type == "GroupDelayEqPlugin";
+  const bool mono_fir = type == "FiveBandFIRPEQPlugin" || type == "GroupDelayEqPlugin" ||
+                        type == "GroupDelayPEQPlugin";
   if (!room_eq && !ir_reverb && !mono_fir && !fir_crossover) {
     std::fputs("Direct reference is not available for this kernel\n", stderr);
     return false;
@@ -480,8 +481,10 @@ bool runDirectReference(const std::string &type, const Control &control,
                                asset.begin.inputCount <= path_count;
   const std::size_t expected_params = room_eq ? 4u : ir_reverb ? 7u : mono_fir ? 2u : 3u;
   const bool valid_room_eq_asset =
-      !room_eq || (asset.begin.topology == kTopologyMono && divider == 1u && ir_channels == 1u &&
-                   asset.begin.processingChannels == control.channels &&
+      !room_eq || (((asset.begin.topology == kTopologyMono && ir_channels == 1u) ||
+                    (asset.begin.topology == kTopologyIndependent &&
+                     ir_channels == asset.begin.processingChannels)) &&
+                   divider == 1u && asset.begin.processingChannels == control.channels &&
                    asset.begin.pathCount == 0u && asset.begin.inputCount == 0u);
   const bool valid_mono_fir_asset =
       !mono_fir || (asset.begin.topology == kTopologyMono && divider == 1u && ir_channels == 1u &&
@@ -677,13 +680,19 @@ bool runDirectReference(const std::string &type, const Control &control,
       static_cast<double>(control.initialParams[6u]) * control.sampleRate * 0.001;
   const std::uint32_t delay =
       requested_delay > 0.0 ? static_cast<std::uint32_t>(requested_delay) : 0u;
+  // The dry path is held back by the reported latency so it stays aligned with the wet path.
+  const std::uint32_t dry_delay =
+      asset.begin.headBlock * divider +
+      (divider == 1u
+           ? 0u
+           : 2u * static_cast<std::uint32_t>(effetune::dsp::Halfband2x::kLatency) * (divider - 1u));
   output.assign(input.size(), 0.0F);
   for (std::uint32_t channel = 0u; channel < control.channels; ++channel) {
     const std::size_t channel_offset = static_cast<std::size_t>(channel) * control.frames;
     for (std::uint32_t frame = 0u; frame < control.frames; ++frame) {
       const float delayed_wet = frame >= delay ? wet[channel_offset + frame - delay] : 0.0F;
-      output[channel_offset + frame] =
-          input[channel_offset + frame] * dry_gain + delayed_wet * wet_gain;
+      const float dry = frame >= dry_delay ? input[channel_offset + frame - dry_delay] : 0.0F;
+      output[channel_offset + frame] = dry * dry_gain + delayed_wet * wet_gain;
     }
   }
   return true;

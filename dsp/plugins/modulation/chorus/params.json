@@ -3,12 +3,12 @@
   "tolerance": { "abs": 0.00003, "policy": "per-sample" },
   "fields": [
     { "name": "mode", "key": "md", "kind": "enum", "values": ["Chorus", "Stereo Chorus", "Ensemble", "Flanger", "Vibrato"], "default": "Chorus" },
-    { "name": "rate", "key": "rt", "kind": "float", "min": 0.05, "max": 10, "default": 0.8, "unit": "Hz", "automation": { "normalization": "log" } },
-    { "name": "delay", "key": "dl", "kind": "float", "min": 0.5, "max": 30, "default": 12, "unit": "ms", "automation": true },
-    { "name": "depth", "key": "dp", "kind": "float", "min": 0, "max": 20, "default": 3, "unit": "ms", "automation": true },
+    { "name": "rate", "key": "rt", "kind": "float", "min": 0.05, "max": 10, "step": 0.01, "default": 0.8, "unit": "Hz", "automation": { "normalization": "log" } },
+    { "name": "delay", "key": "dl", "kind": "float", "min": 0.5, "max": 30, "step": 0.1, "default": 12, "unit": "ms", "automation": true },
+    { "name": "depth", "key": "dp", "kind": "float", "min": 0, "max": 20, "step": 0.1, "default": 3, "unit": "ms", "automation": true },
     { "name": "voices", "key": "vc", "kind": "int", "min": 1, "max": 6, "default": 3 },
-    { "name": "stereoSpread", "key": "ss", "kind": "float", "min": 0, "max": 100, "default": 60, "unit": "%", "automation": true },
-    { "name": "feedback", "key": "fb", "kind": "float", "min": -75, "max": 75, "default": 0, "unit": "%", "automation": true },
-    { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "default": 45, "unit": "%", "automation": true }
+    { "name": "stereoSpread", "key": "ss", "kind": "float", "min": 0, "max": 100, "step": 1, "default": 60, "unit": "%", "automation": true },
+    { "name": "feedback", "key": "fb", "kind": "float", "min": -75, "max": 75, "step": 1, "default": 0, "unit": "%", "automation": true },
+    { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "step": 1, "default": 45, "unit": "%", "automation": true }
   ]
 }

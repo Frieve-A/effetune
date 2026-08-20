@@ -362,25 +362,28 @@ class SubSynthPlugin extends PluginBase {
     };
 
     // Create parameter rows using base helper
-    const subLevelRow = this.createParameterControl("Sub Level", 0, 200, 1, this.sl, v => this.setSl(v), '%');
+    const subLevelRow = this.createParameterControl("Sub Level", 0, 200, 1, this.sl, v => this.setSl(v), '%', 'sl');
     const subLpfRow = this.createParameterControl("Sub LPF", 5, 400, 1, this.slf, v => {
       this.setSlf(v);
       if (this.canvas) this.drawGraph(this.canvas);
-    }, 'Hz');
-    subLpfRow.appendChild(createSlopeSelect(this.sls, v => this.setSls(v), "sublpfslope"));
+    }, 'Hz', 'slf');
+    const subLpfSlopeSelect = createSlopeSelect(this.sls, v => this.setSls(v), "sublpfslope");
+    subLpfRow.appendChild(subLpfSlopeSelect);
 
     const subHpfRow = this.createParameterControl("Sub HPF", 5, 400, 1, this.shf, v => {
       this.setShf(v);
       if (this.canvas) this.drawGraph(this.canvas);
-    }, 'Hz');
-    subHpfRow.appendChild(createSlopeSelect(this.shs, v => this.setShs(v), "subhpfslope"));
+    }, 'Hz', 'shf');
+    const subHpfSlopeSelect = createSlopeSelect(this.shs, v => this.setShs(v), "subhpfslope");
+    subHpfRow.appendChild(subHpfSlopeSelect);
 
-    const dryLevelRow = this.createParameterControl("Dry Level", 0, 200, 1, this.dl, v => this.setDl(v), '%');
+    const dryLevelRow = this.createParameterControl("Dry Level", 0, 200, 1, this.dl, v => this.setDl(v), '%', 'dl');
     const dryHpfRow = this.createParameterControl("Dry HPF", 5, 400, 1, this.dhf, v => {
       this.setDhf(v);
       if (this.canvas) this.drawGraph(this.canvas);
-    }, 'Hz');
-    dryHpfRow.appendChild(createSlopeSelect(this.dhs, v => this.setDhs(v), "dryhpfslope"));
+    }, 'Hz', 'dhf');
+    const dryHpfSlopeSelect = createSlopeSelect(this.dhs, v => this.setDhs(v), "dryhpfslope");
+    dryHpfRow.appendChild(dryHpfSlopeSelect);
 
     const { container: graphContainer, canvas, dispose } = this.createResponsiveGraph({
       maxWidth: 600,
@@ -406,6 +409,18 @@ class SubSynthPlugin extends PluginBase {
       super.updateParameters();
       if (this.canvas) this.drawGraph(this.canvas);
     };
+
+    // Automation playback and preset recall change the model without touching the
+    // DOM, so the parts of the UI this plugin builds by hand are refreshed here.
+    // The level and frequency rows are left out: they come from
+    // createParameterControl with a modelKey.
+    this.registerUIRefresh(() => {
+      // Tested per element, so one select being held still lets the others track.
+      const heldByUser = el => this.isHeldByUser(el);
+      if (!heldByUser(subLpfSlopeSelect)) subLpfSlopeSelect.value = this.sls;
+      if (!heldByUser(subHpfSlopeSelect)) subHpfSlopeSelect.value = this.shs;
+      if (!heldByUser(dryHpfSlopeSelect)) dryHpfSlopeSelect.value = this.dhs;
+    });
 
     this.drawGraph(canvas); // Initial draw
     return container;

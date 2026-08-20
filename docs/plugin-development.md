@@ -75,7 +75,7 @@ class MyPlugin extends PluginBase {
         const container = document.createElement('div');
         container.appendChild(this.createParameterControl(
             'Gain', -18, 18, 0.1, this.gn,
-            value => this.setParameters({ gn: value }), 'dB'
+            value => this.setParameters({ gn: value }), 'dB', 'gn'
         ));
         return container;
     }
@@ -138,12 +138,19 @@ redeclare host-owned `type`, `enabled`, bus, or channel-routing fields in the sc
       "kind": "float",
       "min": -18,
       "max": 18,
+      "step": 0.1,
       "default": 0,
       "unit": "dB"
     }
   ]
 }
 ```
+
+`step` is the display granularity: it decides how many decimals the value is printed
+with, in EffeTune and in a host readout alike. It is required and must be positive on
+every field that declares `automation`. Express it in the unit the parameter is
+*published* in — that is, after any public transform declared in
+`dsp/bindings/common/effects-v1.overlay.json` — not in the packed unit.
 
 Supported numeric kinds include `float`, `int`, `bool`, and declared enums. Repeated
 structured UI data uses an object-array field instead of handwritten packing logic. For
@@ -347,6 +354,13 @@ Do not post messages or allocate payloads from `process()`.
 
 - Prefer `PluginBase` helpers: `createParameterControl()`, `createSelectControl()`,
   `createCheckboxControl()`, `createRadioGroup()`, and `createGraphContainer()`.
+- Pass the plugin property name the value came from as the helper's `modelKey` argument
+  so the control follows changes made outside the UI (host automation, preset recall);
+  add a `toDisplay` transform when the widget unit differs from the stored unit. A
+  control created without `modelKey` is silently not synchronized.
+- Register hand-built DOM with `registerUIRefresh(() => ...)` so it follows the same
+  changes, and call `isHeldByUser(element)` before writing to any element the user may
+  be editing. Purely derived output such as canvases needs no check.
 - Give inputs stable IDs and names containing the plugin instance ID, associate labels
   with `htmlFor`, and set `autocomplete="off"`.
 - Validate with `parseFiniteNumber()` and `isAllowedEnum()` or equivalent explicit checks.

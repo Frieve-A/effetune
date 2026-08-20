@@ -19,6 +19,7 @@ Uma coleção de plugins que adicionam caráter vintage e qualidades nostálgica
 - [G.726 Simulator](#g726-simulator) - Simula uma conversão de codificação e descodificação de voz ITU-T G.726 com uma ligação rádio ruidosa opcional
 - [GSM-FR Simulator](#gsm-fr-simulator) - Simula uma conversão de codificação e descodificação de voz GSM-FR a 13 kbit/s por ligação rádio com ocultação de perdas de trama
 - [Hum Generator](#hum-generator) - Adiciona ambiência controlável de hum elétrico para escuta vintage/lo-fi
+- [MD Simulator](#md-simulator) - Simula uma conversão de codificação e descodificação ATRAC da era MiniDisc
 - [MP3 Codec Simulator](#mp3-codec-simulator) - Simula uma conversão limpa de MPEG Layer III em baixo bitrate
 - [Noise Blender](#noise-blender) - Adiciona textura atmosférica de fundo
 - [SBC Codec Simulator](#sbc-codec-simulator) - Reproduz uma conversão Bluetooth A2DP SBC com perda de pacotes da ligação e ocultação opcionais
@@ -537,6 +538,28 @@ Adiciona uma camada controlável de hum elétrico de 50/60 Hz para uma escuta vi
    - Frequency: 40 Hz, Type: Dirty, Harmonics: 80%
    - Tone: 15.0 kHz, Instability: 6.0%, Level: -36 dB
    - Perfeito para: Uma textura de hum mais forte e audível
+
+## MD Simulator
+
+O MD Simulator processa os canais selecionados através de uma análise ATRAC simplificada em tempo real, quantização espectral de bits finitos e um percurso de síntese modelado na família de codecs ATRAC do formato MiniDisc. Use-o para ouvir como uma conversão ATRAC limpa altera transientes, detalhe de altas frequências e texturas tonais nos três modos de gravação que um leitor MD realmente oferecia.
+
+Mode seleciona um dos três pontos de funcionamento reais do MD: SP (292 kbps) usa o ATRAC1, o codec do MiniDisc standard-play original. LP2 (132 kbps) e LP4 (66 kbps) usam o ATRAC3, os modos de gravação de duração dupla e quádrupla do MDLP; o LP4 também aplica codificação estéreo conjunta (joint stereo). Taxas inferiores deixam menos bits disponíveis para o banco de filtros de análise e tornam mais evidentes o esbatimento de transientes, os "birdies"/assobios em alta frequência e o ruído de baixa atribuição de bits.
+
+Se o plugin indicar que o efeito não está disponível, experimente outra frequência de amostragem ou outro modo de canais. Até lá, a entrada permanece inalterada.
+
+### Guia de melhoria do som
+
+- **Audição representativa de MD:** comece com SP, Output a 0 dB e Mix a 100%. É o codec efetivamente usado na maioria das gravações MD e oferece o ponto de comparação mais limpo.
+- **Ouvir a compressão do modo longo:** alterne a mesma passagem entre LP2 e depois LP4. Pratos, percussão densa e misturas estéreo amplas revelam um detalhe de agudos progressivamente mais grosseiro e, no LP4, um topo mais fino e instável devido à redução para metade do orçamento de bits e à codificação estéreo conjunta.
+- **Expor o comportamento transiente:** use fontes com transientes marcados (castanholas, cordas dedilhadas, ataques de piano) para ouvir o esbatimento de pré-eco típico da deteção de transientes do ATRAC.
+- **Misturar o efeito:** reduza Mix quando quiser algum carácter MD sem substituir todo o sinal. O percurso seco está alinhado em latência com o percurso descodificado.
+- **Igualar níveis antes de comparar:** ajuste Output apenas para compensar diferenças de volume percebidas ou medidas; não altera a atribuição de bits do codec.
+
+### Parâmetros
+
+- **Mode** — Seleciona `SP (292 kbps)`, `LP2 (132 kbps)` ou `LP4 (66 kbps)`. O SP usa ATRAC1; o LP2 e o LP4 usam ATRAC3, com o LP4 a acrescentar codificação estéreo conjunta. Taxas inferiores deixam menos bits para a quantização espectral e tornam os artefactos do codec mais evidentes.
+- **Output** — Ajusta o nível de saída descodificado de -24,0 a +12,0 dB. Use-o para igualar níveis; não altera o estado do codec nem a atribuição de bits.
+- **Mix** — Mistura de 0% a 100% o original alinhado em latência com o resultado descodificado.
 
 ## MP3 Codec Simulator
 

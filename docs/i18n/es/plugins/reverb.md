@@ -276,7 +276,7 @@ IR Reverb convoluciona la señal con una respuesta al impulso (IR) importada par
 ### Parámetros
 
 - **Channel Mode**: **Auto** selecciona Mono para una IR de un canal, True Stereo para una IR de cuatro canales con selección estéreo, Independent cuando coinciden las cantidades de canales y Diagonal Matrix en los demás casos; el modo resultante aparece a la derecha del menú. También permite elegir explícitamente Mono, Independent, True Stereo (rutas LL/LR/RL/RR) o Diagonal Matrix sin cruce entre canales.
-- **Latency**: Zero o 128/256/512/1024 muestras. Los valores altos reducen la presión de proceso pero retrasan la señal wet; Zero requiere Full.
+- **Latency**: Zero o 128/256/512/1024 muestras. Los valores altos reducen la presión de proceso pero retrasan toda la salida del efecto; la señal directa se retrasa lo mismo para mantenerse alineada con la reverberación, y la cadena compensa ese retardo; Zero requiere Full.
 - **Convolution Rate**: Auto, Full, Half o Quarter. Con Auto, la tasa resultante aparece a la derecha del menú. Las tasas reducidas disminuyen la carga y el ancho de banda wet; Quarter requiere al menos 176,4 kHz.
 - **Wet Level**: nivel de la señal convolucionada, de -96 a +12 dB. El valor predeterminado es -15 dB para un uso normal como inserto; en una configuración de envío/retorno, ajústalo a 0 dB y controla la cantidad de reverberación con el nivel de envío.
 - **Dry**: activa la señal original. Está activado de forma predeterminada; desactívalo para eliminar por completo la señal directa sin perder el valor de **Dry Level**.

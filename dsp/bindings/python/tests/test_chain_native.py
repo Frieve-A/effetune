@@ -426,6 +426,29 @@ class NativeChainTests(unittest.TestCase):
         ) as stream:
             self.assertEqual(latency, stream.latency_samples)
 
+    def test_room_eq_accepts_one_filter_per_processing_channel(self) -> None:
+        filters = effetune.AssetData(
+            np.array([[1.0], [0.5]], dtype=np.float32),
+            48_000,
+            topology="independent",
+        )
+        chain = effetune.Chain(
+            [
+                effetune.RoomEQ(
+                    latency_mode="128",
+                    filter_delay_samples=0,
+                    assets={"impulseResponse": "room-filters"},
+                )
+            ]
+        )
+
+        self.assertEqual(
+            chain.latency_samples(
+                48_000, channels=2, asset_resolver=lambda _: filters
+            ),
+            128,
+        )
+
     def test_stream_parameter_events_are_frame_relative_ordered_and_persistent(self) -> None:
         source = np.zeros((1, 12), dtype=np.float32)
         chain = effetune.Chain([effetune.DCOffset(id="offset", offset=0)])
@@ -1002,7 +1025,7 @@ class NativeChainTests(unittest.TestCase):
             topology="automatic",
         )
         source_four_channels = np.vstack((source, source))
-        self.assertEqual(len(EFFECT_METADATA["effects"]), 90)
+        self.assertEqual(len(EFFECT_METADATA["effects"]), 92)
         for metadata in EFFECT_METADATA["effects"]:
             effect_type = metadata["type"]
             definition = metadata["parameters"][0] if metadata["parameters"] else None

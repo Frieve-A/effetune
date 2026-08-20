@@ -1347,7 +1347,11 @@ class VinylSimulatorPlugin extends PluginBase {
         }
     }
 
-    _createZeroAwareLogControl(label, max, value, setter, unit) {
+    // `modelKey` is optional and behaves exactly as it does on the PluginBase
+    // helpers: naming the plugin property this control reads makes the control
+    // follow changes pushed from outside the UI (host automation, preset
+    // recall). Omitting it leaves the control unsynchronised, as before.
+    _createZeroAwareLogControl(label, max, value, setter, unit, modelKey = null) {
         const row = document.createElement('div');
         row.className = 'parameter-row';
         const slug = label.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -1394,6 +1398,18 @@ class VinylSimulatorPlugin extends PluginBase {
             setter(next);
             sync(next);
         });
+
+        // The same sync() that produced the initial render is reused here, so the
+        // inbound path cannot drift from the mapping the constructor uses. A
+        // slider being dragged or a number box being typed into is left alone,
+        // matching how syncUIControls() treats the helper-built controls.
+        if (modelKey) {
+            this.registerUIRefresh(() => {
+                if (this.isHeldByUser(slider) || this.isHeldByUser(number)) return;
+                sync(this[modelKey]);
+                window.uiManager?.refreshRangeFillStyling?.(slider);
+            });
+        }
 
         row.appendChild(labelEl);
         row.appendChild(slider);
@@ -1442,39 +1458,39 @@ class VinylSimulatorPlugin extends PluginBase {
         const definitions = [
             {
                 id: 'cutting', label: 'Cutting', create: content => {
-                    content.appendChild(this.createParameterControl('Cut Level', -20, 20, 0.1, this.lv, v => this.setParameters({ lv: v }), 'dB'));
-                    content.appendChild(this.createParameterControl('HF Cutoff', 6000, 24000, 100, this.hf, v => this.setParameters({ hf: v }), 'Hz'));
-                    content.appendChild(this.createParameterControl('Bass Mono Below', 50, 1000, 1, this.mb, v => this.setParameters({ mb: v }), 'Hz'));
-                    content.appendChild(this.createParameterControl('Side Mix', 0, 100, 1, this.sm, v => this.setParameters({ sm: v }), '%'));
+                    content.appendChild(this.createParameterControl('Cut Level', -20, 20, 0.1, this.lv, v => this.setParameters({ lv: v }), 'dB', 'lv'));
+                    content.appendChild(this.createParameterControl('HF Cutoff', 6000, 24000, 100, this.hf, v => this.setParameters({ hf: v }), 'Hz', 'hf'));
+                    content.appendChild(this.createParameterControl('Bass Mono Below', 50, 1000, 1, this.mb, v => this.setParameters({ mb: v }), 'Hz', 'mb'));
+                    content.appendChild(this.createParameterControl('Side Mix', 0, 100, 1, this.sm, v => this.setParameters({ sm: v }), '%', 'sm'));
                 }
             },
             {
                 id: 'record', label: 'Record', create: content => {
-                    content.appendChild(this.createRadioGroup('Speed', ['33⅓', '45', '78'], this.rp, v => this.setParameters({ rp: v })));
-                    content.appendChild(this.createParameterControl('Radius', 60, 146, 1, this.rd, v => this.setParameters({ rd: v }), 'mm'));
-                    content.appendChild(this.createLogarithmicParameterControl('Roughness', 0.1, 100, 0.01, this.rg, v => this.setParameters({ rg: v }), 'nm'));
-                    content.appendChild(this._createZeroAwareLogControl('Dust', 10000, this.dr, v => this.setParameters({ dr: v }), '/s'));
-                    content.appendChild(this._createZeroAwareLogControl('Static', 10000, this.st, v => this.setParameters({ st: v }), '/s'));
-                    content.appendChild(this._createZeroAwareLogControl('Scratch', 1000, this.sc, v => this.setParameters({ sc: v }), '/s'));
+                    content.appendChild(this.createRadioGroup('Speed', ['33⅓', '45', '78'], this.rp, v => this.setParameters({ rp: v }), 'rp'));
+                    content.appendChild(this.createParameterControl('Radius', 60, 146, 1, this.rd, v => this.setParameters({ rd: v }), 'mm', 'rd'));
+                    content.appendChild(this.createLogarithmicParameterControl('Roughness', 0.1, 100, 0.01, this.rg, v => this.setParameters({ rg: v }), 'nm', 'rg'));
+                    content.appendChild(this._createZeroAwareLogControl('Dust', 10000, this.dr, v => this.setParameters({ dr: v }), '/s', 'dr'));
+                    content.appendChild(this._createZeroAwareLogControl('Static', 10000, this.st, v => this.setParameters({ st: v }), '/s', 'st'));
+                    content.appendChild(this._createZeroAwareLogControl('Scratch', 1000, this.sc, v => this.setParameters({ sc: v }), '/s', 'sc'));
                 }
             },
             {
                 id: 'stylus', label: 'Stylus', create: content => {
-                    content.appendChild(this.createRadioGroup('Shape', ['Spherical', 'Elliptical'], this.sh, v => this.setParameters({ sh: v })));
-                    content.appendChild(this.createParameterControl('Side Radius', 5, 25, 0.1, this.rs, v => this.setParameters({ rs: v }), 'µm'));
-                    this.scanRadiusRow = this.createParameterControl('Scan Radius', 2, 25, 0.1, this.rc, v => this.setParameters({ rc: v }), 'µm');
+                    content.appendChild(this.createRadioGroup('Shape', ['Spherical', 'Elliptical'], this.sh, v => this.setParameters({ sh: v }), 'sh'));
+                    content.appendChild(this.createParameterControl('Side Radius', 5, 25, 0.1, this.rs, v => this.setParameters({ rs: v }), 'µm', 'rs'));
+                    this.scanRadiusRow = this.createParameterControl('Scan Radius', 2, 25, 0.1, this.rc, v => this.setParameters({ rc: v }), 'µm', 'rc');
                     content.appendChild(this.scanRadiusRow);
-                    content.appendChild(this.createParameterControl('Tracking Force', 0.5, 5, 0.1, this.tf, v => this.setParameters({ tf: v }), 'g'));
-                    content.appendChild(this.createParameterControl('Tip Mass', 0.1, 1.5, 0.01, this.tm, v => this.setParameters({ tm: v }), 'mg'));
-                    content.appendChild(this.createParameterControl('Compliance', 5, 35, 0.1, this.cm, v => this.setParameters({ cm: v }), 'cu'));
-                    content.appendChild(this.createParameterControl('Damping', 0.05, 1, 0.01, this.dz, v => this.setParameters({ dz: v }), 'ζ'));
+                    content.appendChild(this.createParameterControl('Tracking Force', 0.5, 5, 0.1, this.tf, v => this.setParameters({ tf: v }), 'g', 'tf'));
+                    content.appendChild(this.createParameterControl('Tip Mass', 0.1, 1.5, 0.01, this.tm, v => this.setParameters({ tm: v }), 'mg', 'tm'));
+                    content.appendChild(this.createParameterControl('Compliance', 5, 35, 0.1, this.cm, v => this.setParameters({ cm: v }), 'cu', 'cm'));
+                    content.appendChild(this.createParameterControl('Damping', 0.05, 1, 0.01, this.dz, v => this.setParameters({ dz: v }), 'ζ', 'dz'));
                 }
             },
             {
                 id: 'output', label: 'Output', create: content => {
-                    content.appendChild(this.createRadioGroup('Quality', ['Eco', 'Standard', 'High', 'Ultra'], this.ql, v => this.setParameters({ ql: v })));
-                    content.appendChild(this.createParameterControl('Output Gain', -24, 24, 0.1, this.og, v => this.setParameters({ og: v }), 'dB'));
-                    content.appendChild(this.createParameterControl('Mix', 0, 100, 1, this.mx, v => this.setParameters({ mx: v }), '%'));
+                    content.appendChild(this.createRadioGroup('Quality', ['Eco', 'Standard', 'High', 'Ultra'], this.ql, v => this.setParameters({ ql: v }), 'ql'));
+                    content.appendChild(this.createParameterControl('Output Gain', -24, 24, 0.1, this.og, v => this.setParameters({ og: v }), 'dB', 'og'));
+                    content.appendChild(this.createParameterControl('Mix', 0, 100, 1, this.mx, v => this.setParameters({ mx: v }), '%', 'mx'));
                 }
             }
         ];

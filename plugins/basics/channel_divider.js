@@ -751,6 +751,35 @@ class ChannelDividerPlugin extends PluginBase {
     setControlOpacityAndDisabled(this.freq2Slider, this.bc >= 3);
     setControlOpacityAndDisabled(this.freq3Slider, this.bc >= 4);
 
+    // Automation playback and preset recall change the model without touching the
+    // DOM, so the values of the controls this plugin builds by hand are pushed
+    // back from the model here. This runs on the inbound path from setParameters,
+    // which is what makes the "handled by setParameters" notes true for the
+    // controls and not only for the graph. Assigning `value`/`checked` from script
+    // dispatches no input/change event, so the setters are never re-entered.
+    // This method also runs on the forward path (a user edit calls setParameters),
+    // so a control the user is holding is left alone rather than fought over.
+    const heldByUser = el => this.isHeldByUser(el);
+    const applyFreqRow = (row, freq, slope) => {
+      const rangeInput = row.querySelector('input[type="range"]');
+      const numberInput = row.querySelector('input[type="number"]');
+      const slopeSelect = row.querySelector("select");
+      if (rangeInput && !heldByUser(rangeInput)) {
+        rangeInput.value = this.logToLinear(freq, 10, 40000);
+        window.uiManager?.refreshRangeFillStyling?.(rangeInput);
+      }
+      if (numberInput && !heldByUser(numberInput)) numberInput.value = freq;
+      if (slopeSelect && !heldByUser(slopeSelect)) slopeSelect.value = slope;
+    };
+    applyFreqRow(this.freq1Slider, this.f1, this.s1);
+    applyFreqRow(this.freq2Slider, this.f2, this.s2);
+    applyFreqRow(this.freq3Slider, this.f3, this.s3);
+    if (this.bandRadios) {
+      this.bandRadios.forEach(radio => {
+        if (!heldByUser(radio)) radio.checked = this.bc === parseInt(radio.value);
+      });
+    }
+
     // No direct call to drawGraph() here, it's handled by setParameters or initial setup
   }
 

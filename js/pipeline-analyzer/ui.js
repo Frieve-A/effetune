@@ -7,10 +7,6 @@ const MAX_OUTPUT_SLOTS = 4;
 const NARROW_LAYOUT_QUERY = '(max-width: 1180px)';
 const DEFAULT_GRAPH_SIZE = Object.freeze({ width: 1024, height: 480 });
 const SIGNAL_TYPES = Object.freeze(['mls', 'tsp', 'impulse']);
-const SEQUENCE_LENGTHS = Object.freeze([
-    ...PIPELINE_ANALYZER_MLS_LENGTHS,
-    ...PIPELINE_ANALYZER_TSP_LENGTHS
-]);
 const GRAPH_VIEWS = Object.freeze([
     'frequency',
     'phase',
@@ -156,21 +152,24 @@ function normalizeDisplaySettings(settings = {}) {
     };
 }
 
+// MLS needs its 2^n-1 periods; TSP and Unit Impulse both work on power-of-two lengths.
+function sequenceLengthsForSignal(signalType) {
+    return signalType === 'mls'
+        ? PIPELINE_ANALYZER_MLS_LENGTHS
+        : PIPELINE_ANALYZER_TSP_LENGTHS;
+}
+
 function normalizeMeasurementSettings(settings = {}) {
     const signalType = SIGNAL_TYPES.includes(settings.signalType)
         ? settings.signalType
         : DEFAULT_MEASUREMENT_SETTINGS.signalType;
-    const allowedLengths = signalType === 'tsp'
-        ? PIPELINE_ANALYZER_TSP_LENGTHS
-        : signalType === 'mls'
-            ? PIPELINE_ANALYZER_MLS_LENGTHS
-            : SEQUENCE_LENGTHS;
+    const allowedLengths = sequenceLengthsForSignal(signalType);
     return {
         signalType,
         levelDb: clampInteger(settings.levelDb, -60, 0, DEFAULT_MEASUREMENT_SETTINGS.levelDb),
         sequenceLength: allowedLengths.includes(settings.sequenceLength)
             ? settings.sequenceLength
-            : signalType === 'tsp' ? 65536 : DEFAULT_MEASUREMENT_SETTINGS.sequenceLength,
+            : signalType === 'mls' ? DEFAULT_MEASUREMENT_SETTINGS.sequenceLength : 65536,
         stabilizationPeriods: clampInteger(
             settings.stabilizationPeriods,
             1,
@@ -187,19 +186,14 @@ function normalizeMeasurementSettings(settings = {}) {
 }
 
 function sequenceLengthForSignal(sequenceLength, signalType) {
-    if (signalType === 'tsp') {
-        if (PIPELINE_ANALYZER_TSP_LENGTHS.includes(sequenceLength)) return sequenceLength;
-        if (PIPELINE_ANALYZER_MLS_LENGTHS.includes(sequenceLength)) return sequenceLength + 1;
-        return 65536;
-    }
     if (signalType === 'mls') {
         if (PIPELINE_ANALYZER_MLS_LENGTHS.includes(sequenceLength)) return sequenceLength;
         if (PIPELINE_ANALYZER_TSP_LENGTHS.includes(sequenceLength)) return sequenceLength - 1;
         return DEFAULT_MEASUREMENT_SETTINGS.sequenceLength;
     }
-    return SEQUENCE_LENGTHS.includes(sequenceLength)
-        ? sequenceLength
-        : DEFAULT_MEASUREMENT_SETTINGS.sequenceLength;
+    if (PIPELINE_ANALYZER_TSP_LENGTHS.includes(sequenceLength)) return sequenceLength;
+    if (PIPELINE_ANALYZER_MLS_LENGTHS.includes(sequenceLength)) return sequenceLength + 1;
+    return 65536;
 }
 
 function normalizeOutput(output = {}, fallbackChannel = 0) {
@@ -914,35 +908,27 @@ export class PipelineAnalyzerUI {
         const settings = this.configuration.measurementSettings;
         this.signalSelect.value = settings.signalType;
         this.levelInput.value = String(settings.levelDb);
-        const sequenceLengths = settings.signalType === 'tsp' ||
-            (settings.signalType === 'impulse' && PIPELINE_ANALYZER_TSP_LENGTHS.includes(settings.sequenceLength))
-            ? PIPELINE_ANALYZER_TSP_LENGTHS
-            : PIPELINE_ANALYZER_MLS_LENGTHS;
-        this.sequenceSelect.replaceChildren(...sequenceLengths.map(length =>
+        this.sequenceSelect.replaceChildren(...sequenceLengthsForSignal(settings.signalType).map(length =>
             this.createOption(length, String(length))
         ));
         this.sequenceSelect.value = String(settings.sequenceLength);
         this.stabilizationInput.value = String(settings.stabilizationPeriods);
         this.averagingInput.value = String(settings.averagingPeriods);
         const impulse = settings.signalType === 'impulse';
-        for (const control of [this.sequenceSelect, this.stabilizationInput, this.averagingInput]) {
+        this.sequenceSelect.disabled = false;
+        this.sequenceSelect.setAttribute('aria-disabled', 'false');
+        for (const control of [this.stabilizationInput, this.averagingInput]) {
             control.disabled = impulse;
             control.setAttribute('aria-disabled', String(impulse));
         }
 
         this.measurementTiming.replaceChildren();
         if (impulse) {
-            const resultSettings = this.result?.measurementSettings;
-            const currentResult = resultSettings && Object.keys(DEFAULT_MEASUREMENT_SETTINGS)
-                .every(key => resultSettings[key] === settings[key]);
-            const captureLength = currentResult ? Number(this.result?.captureLength) : Number.NaN;
-            const resultSampleRate = Number(this.result?.sampleRate);
-            if (Number.isFinite(resultSampleRate) && resultSampleRate > 0 &&
-                Number.isFinite(captureLength) && captureLength >= 0) {
+            if (this.audioFormat) {
                 const row = createElement(this.document, 'div');
                 row.textContent = this.t('impulseCapture', undefined, {
-                    samples: captureLength,
-                    seconds: formatSeconds(captureLength / resultSampleRate)
+                    samples: settings.sequenceLength,
+                    seconds: formatSeconds(settings.sequenceLength / this.audioFormat.sampleRate)
                 });
                 this.measurementTiming.appendChild(row);
             }

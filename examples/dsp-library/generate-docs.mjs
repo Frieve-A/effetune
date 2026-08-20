@@ -1262,11 +1262,11 @@ one serial path in the app and export it again, or reproduce the branching in th
 around separate Chains.
 
 App presets containing \`FIR Crossover\`, \`5Band FIR PEQ\`, \`Group Delay EQ\`,
-\`Room EQ\`, or \`IR Reverb\` cannot be imported in v0.1: the library drives these five
-effects from a caller-supplied precomputed impulse-response asset instead of the app's
-filter-design parameters, so those parameters have no conversion and the importer
-rejects the node with an \`EffectError\` naming the effect. Construct such an effect
-directly and supply its asset.
+\`Group Delay PEQ\`, \`Room EQ\`, or \`IR Reverb\` cannot be imported in v0.1: the library
+drives these six effects from a caller-supplied precomputed impulse-response asset
+instead of the app's filter-design parameters, so those parameters have no conversion
+and the importer rejects the node with an \`EffectError\` naming the effect. Construct
+such an effect directly and supply its asset.
 
 ## Visual editor to code
 
@@ -1316,7 +1316,7 @@ An open stream or AudioWorklet accepts only values the native parameter commit c
 apply immediately. Open a new stream after changing \`IRReverb.channelMode\`,
 \`latency\`, or \`convolutionRate\`; \`FIRCrossover.bandCount\`, \`latencyMode\`, or
 \`filterDelaySamples\`; or \`latencyMode\` / \`filterDelaySamples\` on
-\`FiveBandFIRPEQ\`, \`GroupDelayEQ\`, or \`RoomEQ\`. Live updates to those
+\`FiveBandFIRPEQ\`, \`GroupDelayEQ\`, \`GroupDelayPEQ\`, or \`RoomEQ\`. Live updates to those
 asset-configuration parameters raise \`ValidationError\` before processing or posting
 a Worklet command.
 
@@ -1340,11 +1340,11 @@ Passing a non-contiguous view directly raises \`ValidationError\` with the same 
   add('assets-and-bundles', `
 ## Asset-required effects
 
-\`FIRCrossover\`, \`FiveBandFIRPEQ\`, \`GroupDelayEQ\`, \`IRReverb\`, and \`RoomEQ\`
-require \`assets.impulseResponse\`. FIR filter effects require prepared coefficients at
-the processing rate; IR Reverb accepts supported convolution topologies. The resolver
-returns Python \`AssetData\` or deterministic ETA1 bytes/\`{bytes, format}\` in
-JavaScript. It never relies on repository fixtures.
+\`FIRCrossover\`, \`FiveBandFIRPEQ\`, \`GroupDelayEQ\`, \`GroupDelayPEQ\`, \`IRReverb\`, and
+\`RoomEQ\` require \`assets.impulseResponse\`. FIR filter effects require prepared
+coefficients at the processing rate; IR Reverb accepts supported convolution
+topologies. The resolver returns Python \`AssetData\` or deterministic ETA1
+bytes/\`{bytes, format}\` in JavaScript. It never relies on repository fixtures.
 
 The examples below run each effect with two distinct caller-owned IRs and require
 finite, non-zero, different output. FIR Crossover uses two coefficient channels,
@@ -1370,7 +1370,7 @@ effetune render input.wav convolved.wav --preset cli-bundle --subtype FLOAT`)}
 For WAV output, omitting \`--subtype\` keeps SoundFile's PCM_16 default; use
 \`--subtype FLOAT\` when the rendered samples must remain 32-bit floating point.
 
-Python \`AssetData\` examples for all five types:
+Python \`AssetData\` examples for all six types:
 
 ${codeBlock('python', assetPythonSnippet)}
 
@@ -1378,7 +1378,7 @@ Use the public \`encodeEta1()\` helper to encode deterministic JavaScript IR dat
 
 ${codeBlock('js', assetFixtureSnippet)}
 
-Then run the JavaScript resolver examples for all five types:
+Then run the JavaScript resolver examples for all six types:
 
 ${codeBlock('js', assetJavascriptSnippet)}
 `);

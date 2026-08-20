@@ -336,6 +336,7 @@ PC पर Chromium ब्राउज़र चुने हुए संगी�
 | EQ        | Comb Filter | फेज़िंग जैसी, खोखली या metallic coloration जोड़ता है | [विवरण](plugins/eq.md#comb-filter) |
 | EQ        | Earphone Cable Sim | सामान्य ईयरफोन केबल से होने वाले आवृत्ति-प्रतिक्रिया बदलाव आम तौर पर कितने छोटे रहते हैं, यह जांचने में मदद करता है | [विवरण](plugins/eq.md#earphone-cable-sim) |
 | EQ        | Group Delay EQ | Tone बदले बिना हर frequency band की delay समायोजित करता है | [विवरण](plugins/eq.md#group-delay-eq) |
+| EQ        | Group Delay PEQ | Tone बदले बिना हर frequency की delay को पाँच parametric bands से नियंत्रित करता है | [विवरण](plugins/eq.md#group-delay-peq) |
 | EQ        | Hi Pass Filter | unwanted low frequencies को precision से हटाता है | [विवरण](plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | unwanted high frequencies को precision से हटाता है | [विवरण](plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | low-volume listening के लिए frequency balance correction | [विवरण](plugins/eq.md#loudness-equalizer) |
@@ -352,6 +353,7 @@ PC पर Chromium ब्राउज़र चुने हुए संगी�
 | Lo-Fi     | G.726 Simulator | ITU-T G.726 speech codec encode/decode round trip का अनुकरण वैकल्पिक noisy radio link के साथ करता है | [विवरण](plugins/lofi.md#g726-simulator) |
 | Lo-Fi     | GSM-FR Simulator | 13 kbit/s GSM-FR speech codec encode/decode round trip का अनुकरण radio link पर frame erasure concealment के साथ करता है | [विवरण](plugins/lofi.md#gsm-fr-simulator) |
 | Lo-Fi     | Hum Generator | vintage/lo-fi listening के लिए adjustable 50/60 Hz electrical hum ambience जोड़ता है | [विवरण](plugins/lofi.md#hum-generator) |
+| Lo-Fi     | MD Simulator | MiniDisc युग के ATRAC encode/decode round trip का अनुकरण करता है | [विवरण](plugins/lofi.md#md-simulator) |
 | Lo-Fi     | MP3 Codec Simulator | कम bitrate पर साफ़ MPEG Layer III encode/decode round trip का अनुकरण करता है | [विवरण](plugins/lofi.md#mp3-codec-simulator) |
 | Lo-Fi     | Noise Blender | lo-fi ambience के लिए adjustable background noise texture जोड़ता है | [विवरण](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | SBC Codec Simulator | Bluetooth A2DP SBC का encode/decode round trip वैकल्पिक link packet loss और concealment के साथ पुनः बनाता है | [विवरण](plugins/lofi.md#sbc-codec-simulator) |

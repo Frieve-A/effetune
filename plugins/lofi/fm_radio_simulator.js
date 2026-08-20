@@ -1203,30 +1203,30 @@ class FMRadioSimulatorPlugin extends PluginBase {
         const controls = document.createElement('div');
         controls.className = 'plugin-parameter-ui';
         controls.appendChild(this.createCheckboxControl('Radio', this.rd,
-            v => this.setParameters({ rd: v })));
+            v => this.setParameters({ rd: v }), 'rd'));
         controls.appendChild(this.createRadioGroup('Emphasis',
             [{ value: '50', label: '50 µs' }, { value: '75', label: '75 µs' }],
-            this.em, v => this.setParameters({ em: v })));
+            this.em, v => this.setParameters({ em: v }), 'em'));
         controls.appendChild(this.createParameterControl('Processing', 0, 18, 0.1, this.pr,
-            v => this.setParameters({ pr: v }), 'dB'));
+            v => this.setParameters({ pr: v }), 'dB', 'pr'));
         controls.appendChild(this.createParameterControl('Signal', 0, 70, 0.1, this.st,
-            v => this.setParameters({ st: v }), 'dBµV'));
+            v => this.setParameters({ st: v }), 'dBµV', 'st'));
         controls.appendChild(this.createParameterControl('Tuning', -200, 200, 0.1, this.tn,
-            v => this.setParameters({ tn: v }), 'kHz'));
+            v => this.setParameters({ tn: v }), 'kHz', 'tn'));
         controls.appendChild(this.createParameterControl('IF Band', 80, 240, 1, this.bw,
-            v => this.setParameters({ bw: v }), 'kHz'));
+            v => this.setParameters({ bw: v }), 'kHz', 'bw'));
         controls.appendChild(this.createParameterControl('Multipath', 0, 100, 1, this.mp,
-            v => this.setParameters({ mp: v }), '%'));
+            v => this.setParameters({ mp: v }), '%', 'mp'));
         controls.appendChild(this.createLogarithmicParameterControl('Path Delay', 0.5, 50, 0.01,
-            this.dl, v => this.setParameters({ dl: v }), 'µs'));
+            this.dl, v => this.setParameters({ dl: v }), 'µs', 'dl'));
         controls.appendChild(this.createParameterControl('Fading', 0, 20, 0.1, this.fd,
-            v => this.setParameters({ fd: v }), 'Hz'));
+            v => this.setParameters({ fd: v }), 'Hz', 'fd'));
         controls.appendChild(this.createRadioGroup('Stereo', ['Auto', 'Stereo', 'Mono'],
-            this.sm, v => this.setParameters({ sm: v })));
+            this.sm, v => this.setParameters({ sm: v }), 'sm'));
         controls.appendChild(this.createParameterControl('Output', -24, 24, 0.1, this.og,
-            v => this.setParameters({ og: v }), 'dB'));
+            v => this.setParameters({ og: v }), 'dB', 'og'));
         controls.appendChild(this.createParameterControl('Mix', 0, 100, 1, this.mx,
-            v => this.setParameters({ mx: v }), '%'));
+            v => this.setParameters({ mx: v }), '%', 'mx'));
         container.appendChild(controls);
 
         const graph = this.createResponsiveGraph({

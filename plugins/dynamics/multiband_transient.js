@@ -615,8 +615,33 @@ class MultibandTransientPlugin extends PluginBase {
             const freqNum = i + 1;
             const slider = document.getElementById(`${this.instanceId}-freq${freqNum}-slider`);
             const input = document.getElementById(`${this.instanceId}-freq${freqNum}-input`);
-            if (slider) slider.value = values[i];
+            if (slider) {
+                slider.value = values[i];
+                window.uiManager?.refreshRangeFillStyling?.(slider);
+            }
             if (input) input.value = values[i];
+        }
+    }
+
+    // Rows remembered by createBandControl(). Their values live in this.bands[i],
+    // which the modelKey sync of PluginBase cannot address, so they are pushed
+    // back into the DOM here.
+    _syncBandControls() {
+        if (!Array.isArray(this._bandControlRows)) return;
+        // Tested per element, so one control being held still lets every other band track.
+        const heldByUser = el => this.isHeldByUser(el);
+        for (const entry of this._bandControlRows) {
+            const band = this.bands[entry.bandIndex];
+            if (!band) continue;
+            const value = band[entry.key];
+            if (!Number.isFinite(value)) continue;
+            const slider = entry.row.querySelector('input[type="range"]');
+            const input = entry.row.querySelector('input[type="number"]');
+            if (slider && !heldByUser(slider)) {
+                slider.value = value;
+                window.uiManager?.refreshRangeFillStyling?.(slider);
+            }
+            if (input && !heldByUser(input)) input.value = value;
         }
     }
 
@@ -859,6 +884,8 @@ class MultibandTransientPlugin extends PluginBase {
 
     createUI() {
         this.disposeGraphResizeObservers();
+        // Rebuilt from scratch on every createUI() so no stale rows are kept.
+        this._bandControlRows = [];
         const container = document.createElement('div');
         this.instanceId = `mbt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         container.className = 'mbt-container';
@@ -966,7 +993,7 @@ class MultibandTransientPlugin extends PluginBase {
             const band = this.bands[i];
             
             // Create a wrapped version of createParameterControl that uses the bandIdPrefix
-            const createBandControl = (label, min, max, step, value, setter, unit = '') => {
+            const createBandControl = (label, min, max, step, value, setter, unit = '', key = null) => {
                 // Temporarily store the original ID
                 const originalId = this.id;
                 
@@ -978,18 +1005,22 @@ class MultibandTransientPlugin extends PluginBase {
                 
                 // Restore the original ID
                 this.id = originalId;
-                
+
+                // The value behind this row lives in this.bands[i], which a modelKey
+                // cannot address, so the row is remembered for _syncBandControls().
+                if (key) this._bandControlRows.push({ bandIndex: i, key, row: control });
+
                 return control;
             };
             
             // Add transient shaper controls (from transient_shaper.js)
-            content.appendChild(createBandControl('Fast Attack', 0.1, 10.0, 0.1, band.fa, this.setFa.bind(this), 'ms'));
-            content.appendChild(createBandControl('Fast Release', 1, 200, 1, band.fr, this.setFr.bind(this), 'ms'));
-            content.appendChild(createBandControl('Slow Attack', 1, 100, 1, band.sa, this.setSa.bind(this), 'ms'));
-            content.appendChild(createBandControl('Slow Release', 50, 1000, 5, band.sr, this.setSr.bind(this), 'ms'));
-            content.appendChild(createBandControl('Transient Gain', -24, 24, 0.1, band.gt, this.setGt.bind(this), 'dB'));
-            content.appendChild(createBandControl('Sustain Gain', -24, 24, 0.1, band.gs, this.setGs.bind(this), 'dB'));
-            content.appendChild(createBandControl('Smoothing', 0.1, 20.0, 0.1, band.sm, this.setSm.bind(this), 'ms'));
+            content.appendChild(createBandControl('Fast Attack', 0.1, 10.0, 0.1, band.fa, this.setFa.bind(this), 'ms', 'fa'));
+            content.appendChild(createBandControl('Fast Release', 1, 200, 1, band.fr, this.setFr.bind(this), 'ms', 'fr'));
+            content.appendChild(createBandControl('Slow Attack', 1, 100, 1, band.sa, this.setSa.bind(this), 'ms', 'sa'));
+            content.appendChild(createBandControl('Slow Release', 50, 1000, 5, band.sr, this.setSr.bind(this), 'ms', 'sr'));
+            content.appendChild(createBandControl('Transient Gain', -24, 24, 0.1, band.gt, this.setGt.bind(this), 'dB', 'gt'));
+            content.appendChild(createBandControl('Sustain Gain', -24, 24, 0.1, band.gs, this.setGs.bind(this), 'dB', 'gs'));
+            content.appendChild(createBandControl('Smoothing', 0.1, 20.0, 0.1, band.sm, this.setSm.bind(this), 'ms', 'sm'));
             
             bandContents.appendChild(content);
         }
@@ -1052,6 +1083,10 @@ class MultibandTransientPlugin extends PluginBase {
             this.observer = new IntersectionObserver(this.handleIntersect.bind(this));
         }
         this.canvases.forEach(canvas => this.observer.observe(canvas));
+
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the parts of the UI this plugin builds by hand are refreshed here.
+        this.registerUIRefresh(() => this._syncBandControls());
 
         return container;
     }

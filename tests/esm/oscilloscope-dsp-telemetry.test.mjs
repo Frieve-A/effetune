@@ -93,10 +93,20 @@ function loadOscilloscope({ hub = null } = {}) {
       this.enabled = true;
       this.id = null;
       this._sectionEnabled = true;
+      // UI-follow seam: hooks are kept so a test can run them on demand.
+      this.uiRefreshHooks = [];
     }
 
     registerProcessor(processor) {
       this.processorString = processor;
+    }
+
+    registerUIRefresh(fn) {
+      this.uiRefreshHooks.push(fn);
+    }
+
+    isGraphPointerActive() {
+      return false;
     }
 
     _setupMessageHandler() {

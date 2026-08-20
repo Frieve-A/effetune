@@ -983,8 +983,54 @@ class MultibandCompressorPlugin extends PluginBase {
       const freqNum = i + 1;
       const slider = document.getElementById(`${this.id}-${this.name}-freq${freqNum}-slider`);
       const number = document.getElementById(`${this.id}-${this.name}-freq${freqNum}-number`);
-      if (slider) slider.value = values[i];
+      if (slider) {
+        slider.value = values[i];
+        window.uiManager?.refreshRangeFillStyling?.(slider);
+      }
       if (number) number.value = values[i];
+    }
+  }
+
+  // Element ids of one band control row. Shared by createUI() and
+  // _syncBandControls() so the two can never drift apart.
+  _bandControlIds(bandIndex, label) {
+    // Create a parameter name from the label (e.g., "Threshold (dB):" -> "thresholddb")
+    // Include more of the label to ensure uniqueness
+    const paramName = label.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return {
+      slider: `${this.id}-${this.name}-band${bandIndex+1}-${paramName}-slider`,
+      number: `${this.id}-${this.name}-band${bandIndex+1}-${paramName}-number`
+    };
+  }
+
+  // The per-band rows are hand-built and their values live in this.bands[i],
+  // which the modelKey sync of PluginBase cannot address, so they are pushed
+  // back into the DOM here.
+  _syncBandControls() {
+    if (typeof document === 'undefined') return;
+    const controls = [
+      ['Threshold (dB):', 't'],
+      ['Ratio:', 'r'],
+      ['Attack (ms):', 'a'],
+      ['Release (ms):', 'rl'],
+      ['Knee (dB):', 'k'],
+      ['Gain (dB):', 'g']
+    ];
+    // Tested per element, so one control being held still lets every other band track.
+    const heldByUser = el => this.isHeldByUser(el);
+    for (let i = 0; i < this.bands.length; i++) {
+      const band = this.bands[i];
+      if (!band) continue;
+      for (const [label, key] of controls) {
+        const ids = this._bandControlIds(i, label);
+        const slider = document.getElementById(ids.slider);
+        const number = document.getElementById(ids.number);
+        if (slider && !heldByUser(slider)) {
+          slider.value = band[key];
+          window.uiManager?.refreshRangeFillStyling?.(slider);
+        }
+        if (number && !heldByUser(number)) number.value = band[key];
+      }
     }
   }
 
@@ -1347,13 +1393,8 @@ class MultibandCompressorPlugin extends PluginBase {
         const row = document.createElement('div');
         row.className = 'parameter-row';
         
-        // Create a parameter name from the label (e.g., "Threshold (dB):" -> "thresholddb")
-        // Include more of the label to ensure uniqueness
-        const paramName = label.toLowerCase().replace(/[^a-z0-9]/g, '');
-        
-        const sliderId = `${this.id}-${this.name}-band${bandIndex+1}-${paramName}-slider`;
-        const numberId = `${this.id}-${this.name}-band${bandIndex+1}-${paramName}-number`;
-        
+        const { slider: sliderId, number: numberId } = this._bandControlIds(bandIndex, label);
+
         const labelEl = document.createElement('label');
         labelEl.textContent = label;
         labelEl.htmlFor = sliderId;
@@ -1473,6 +1514,10 @@ class MultibandCompressorPlugin extends PluginBase {
 
     this.updateTransferGraphs();
     this.startAnimation();
+
+    // Automation playback and preset recall change the model without touching the
+    // DOM, so the parts of the UI this plugin builds by hand are refreshed here.
+    this.registerUIRefresh(() => this._syncBandControls());
 
     return container;
   }

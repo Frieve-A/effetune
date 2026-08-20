@@ -199,6 +199,7 @@ class AutoPanPlugin extends PluginBase {
         } else {
             range.value = String(value);
         }
+        window.uiManager?.refreshRangeFillStyling?.(range);
     }
 
     _syncUI() {
@@ -215,19 +216,19 @@ class AutoPanPlugin extends PluginBase {
         this._uiControls = {};
         this._uiControls.style = this.createSelectControl(
             'Style', ['Custom', ...Object.keys(this.constructor.factoryStyles)], this.styleName,
-            value => value !== 'Custom' && this.applyStyle(value));
+            value => value !== 'Custom' && this.applyStyle(value), 'styleName');
         this._uiControls.rt = this.createLogarithmicParameterControl(
-            'Rate', 0.05, 20, 0.01, this.rt, this.setRt.bind(this), 'Hz');
+            'Rate', 0.05, 20, 0.01, this.rt, this.setRt.bind(this), 'Hz', 'rt');
         this._uiControls.dp = this.createParameterControl(
-            'Depth', 0, 100, 1, this.dp, this.setDp.bind(this), '%');
+            'Depth', 0, 100, 1, this.dp, this.setDp.bind(this), '%', 'dp');
         this._uiControls.ct = this.createParameterControl(
-            'Center', -100, 100, 1, this.ct, this.setCt.bind(this), '%');
+            'Center', -100, 100, 1, this.ct, this.setCt.bind(this), '%', 'ct');
         this._uiControls.wd = this.createParameterControl(
-            'Width', 0, 100, 1, this.wd, this.setWd.bind(this), '%');
+            'Width', 0, 100, 1, this.wd, this.setWd.bind(this), '%', 'wd');
         this._uiControls.wf = this.createSelectControl(
-            'Waveform', ['Sine', 'Triangle'], this.wf, this.setWf.bind(this));
+            'Waveform', ['Sine', 'Triangle'], this.wf, this.setWf.bind(this), 'wf');
         this._uiControls.ph = this.createParameterControl(
-            'Phase', 0, 360, 1, this.ph, this.setPh.bind(this), 'deg');
+            'Phase', 0, 360, 1, this.ph, this.setPh.bind(this), 'deg', 'ph');
         for (const key of ['style', 'rt', 'dp', 'ct', 'wd', 'wf', 'ph']) {
             container.appendChild(this._uiControls[key]);
         }

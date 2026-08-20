@@ -7,7 +7,7 @@ permalink: /dsp/effects/
 ---
 # Effects
 
-Browse all 90 semantic types registered in the v1 binding catalog. The list remains readable without JavaScript.
+Browse all 92 semantic types registered in the v1 binding catalog. The list remains readable without JavaScript.
 
 <label for="effect-filter">Filter effects</label>
 <input id="effect-filter" type="search" placeholder="Name, type, category, seeded, or asset" data-dsp-effect-filter>
@@ -62,6 +62,7 @@ Browse all 90 semantic types registered in the v1 binding catalog. The list rema
 - [5Band FIR PEQ](/dsp/effects/five-band-firpeq/) (`FiveBandFIRPEQ`) — Applies an externally prepared FIR response for five-band equalization. <span data-effect-tags="eq seeded asset"></span>
 - [5Band PEQ](/dsp/effects/five-band-peq/) (`FiveBandPEQ`) — Provides five configurable parametric equalizer bands. <span data-effect-tags="eq  "></span>
 - [Group Delay EQ](/dsp/effects/group-delay-eq/) (`GroupDelayEQ`) — Applies an externally prepared FIR response to adjust group delay. <span data-effect-tags="eq seeded asset"></span>
+- [Group Delay PEQ](/dsp/effects/group-delay-peq/) (`GroupDelayPEQ`) — Applies an externally prepared FIR response for five-band parametric group-delay adjustment. <span data-effect-tags="eq seeded asset"></span>
 - [Hi Pass Filter](/dsp/effects/hi-pass-filter/) (`HiPassFilter`) — Attenuates frequencies below a configurable cutoff. <span data-effect-tags="eq  "></span>
 - [Lo Pass Filter](/dsp/effects/lo-pass-filter/) (`LoPassFilter`) — Attenuates frequencies above a configurable cutoff. <span data-effect-tags="eq  "></span>
 - [Loudness Equalizer](/dsp/effects/loudness-equalizer/) (`LoudnessEqualizer`) — Applies level-dependent frequency compensation based on equal-loudness behavior. <span data-effect-tags="eq  "></span>
@@ -82,6 +83,7 @@ Browse all 90 semantic types registered in the v1 binding catalog. The list rema
 - [G.726 Simulator](/dsp/effects/g726-adpcm-simulator/) (`G726ADPCMSimulator`) — Models G.726 ADPCM speech coding from 16 to 40 kbit/s with seeded radio bit errors. <span data-effect-tags="lo-fi seeded "></span>
 - [GSM-FR Simulator](/dsp/effects/gsm-full-rate-simulator/) (`GSMFullRateSimulator`) — Models GSM full-rate speech coding with repeated transcoding and seeded carrier interference. <span data-effect-tags="lo-fi seeded "></span>
 - [Hum Generator](/dsp/effects/hum-generator/) (`HumGenerator`) — Adds power-line hum and harmonics at controlled levels. <span data-effect-tags="lo-fi  "></span>
+- [MD Simulator](/dsp/effects/md-simulator/) (`MDSimulator`) — Models MiniDisc ATRAC encode and decode artifacts across the SP, LP2, and LP4 recording modes. <span data-effect-tags="lo-fi  "></span>
 - [MP3 Codec Simulator](/dsp/effects/mp3-codec-simulator/) (`MP3CodecSimulator`) — Models MP3 perceptual audio coding artifacts across bitrates, stereo modes, and reservoir use. <span data-effect-tags="lo-fi  "></span>
 - [Noise Blender](/dsp/effects/noise-blender/) (`NoiseBlender`) — Adds a configurable blend of generated noise colors. <span data-effect-tags="lo-fi seeded "></span>
 - [Simple Jitter](/dsp/effects/simple-jitter/) (`SimpleJitter`) — Applies deterministic seeded sampling-time jitter. <span data-effect-tags="lo-fi seeded "></span>

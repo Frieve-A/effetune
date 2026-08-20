@@ -396,15 +396,26 @@ class HiPassFilterPlugin extends PluginBase {
         this.setFreq(value);
         this.drawGraph(canvas); // Use the canvas created above
       },
-      'Hz'
+      'Hz', 'fr'
     );
     // Append the slope selector to the row created by the helper
     // Pass the canvas reference to the slope selector helper
-    freqRow.appendChild(createSlopeSelect(this.sl, v => this.setSlope(v), "HPF", canvas));
+    const slopeSelect = createSlopeSelect(this.sl, v => this.setSlope(v), "HPF", canvas);
+    freqRow.appendChild(slopeSelect);
 
     container.appendChild(freqRow);
     container.appendChild(graphContainer);
     this.drawGraph(canvas); // Initial draw
+
+    // Automation playback and preset recall change the model without touching the
+    // DOM, so the parts of the UI this plugin builds by hand are refreshed here.
+    // The frequency row carries a modelKey and follows on its own; the slope
+    // select and the response curve do not.
+    this.registerUIRefresh(() => {
+      if (!this.isHeldByUser(slopeSelect)) slopeSelect.value = this.sl;
+      this.drawGraph(canvas);
+    });
+
     return container;
   }
 

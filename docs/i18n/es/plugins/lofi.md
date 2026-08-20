@@ -19,6 +19,7 @@ Una colección de plugins que agregan carácter vintage y cualidades nostálgica
 - [G.726 Simulator](#g726-simulator) - Simula una conversión de codificación y decodificación de voz ITU-T G.726 con un enlace de radio ruidoso opcional
 - [GSM-FR Simulator](#gsm-fr-simulator) - Simula una conversión de codificación y decodificación de voz GSM-FR a 13 kbit/s por enlace de radio con ocultación de pérdidas de trama
 - [Hum Generator](#hum-generator) - Añade una atmósfera ajustable de zumbido eléctrico para escucha vintage/lo-fi
+- [MD Simulator](#md-simulator) - Simula una conversión de codificación y decodificación ATRAC de la era MiniDisc
 - [MP3 Codec Simulator](#mp3-codec-simulator) - Simula una conversión limpia de MPEG Layer III a baja tasa
 - [Noise Blender](#noise-blender) - Agrega textura atmosférica de fondo
 - [SBC Codec Simulator](#sbc-codec-simulator) - Reproduce una conversión Bluetooth A2DP SBC con pérdida de paquetes del enlace y ocultación opcionales
@@ -520,6 +521,28 @@ Añade una capa ajustable de zumbido eléctrico de 50/60 Hz para un ánimo de es
    - Frequency: 40 Hz, Type: Dirty, Harmonics: 80%
    - Tone: 15.0 kHz, Instability: 6.0%, Level: -36 dB
    - Perfecto para: Una textura de zumbido más fuerte y audible
+
+## MD Simulator
+
+MD Simulator procesa los canales seleccionados mediante un análisis ATRAC simplificado en tiempo real, cuantización espectral con un presupuesto de bits limitado y síntesis, modelando la familia de códecs ATRAC que usaba el MiniDisc. Permite escuchar cómo una conversión ATRAC limpia modifica los transitorios, el detalle en agudos y la textura de los tonos sostenidos en los tres modos de grabación que realmente ofrecía una pletina MD.
+
+Mode selecciona uno de los tres puntos de funcionamiento reales del MD: SP (292 kbps) usa ATRAC1, el códec de la grabación estándar del MiniDisc original. LP2 (132 kbps) y LP4 (66 kbps) usan ATRAC3, correspondientes a los modos de grabación de doble y cuádruple duración de MDLP; LP4 añade además codificación estéreo conjunta (joint stereo). Cuanto más baja es la tasa, menos presupuesto de bits queda para el banco de filtros de análisis, y el desdibujado de transitorios, el ruido agudo tipo «birdies»/silbido y el ruido por asignación de bits baja se vuelven más evidentes.
+
+Si el plugin indica que el efecto no está disponible, pruebe otra frecuencia de muestreo u otro modo de canales. La entrada permanece sin cambios hasta que el efecto esté disponible.
+
+### Guía de mejora del sonido
+
+- **Escucha representativa de MD:** Empiece con SP, Output a 0 dB y Mix al 100%. Es el códec que usó la mayoría de las grabaciones MD reales y ofrece el punto de comparación más limpio.
+- **Escuchar la compresión de larga duración:** Pase el mismo fragmento por LP2 y luego por LP4. Los platillos, la percusión densa y las mezclas estéreo amplias revelan un detalle en agudos progresivamente más tosco y, en LP4, un agudo más delgado e inestable por el presupuesto de bits reducido a la mitad y la codificación conjunta.
+- **Comprobar el comportamiento de los transitorios:** Use fuentes con transitorios marcados (castañuelas, cuerdas pulsadas, ataques de piano) para oír el desdibujado por pre-eco típico de la detección de transitorios de ATRAC.
+- **Mezclar el efecto:** Reduzca Mix cuando quiera algo del carácter MD sin sustituir toda la señal. La ruta seca está alineada en latencia con la ruta decodificada.
+- **Igualar niveles antes de comparar:** Ajuste Output solo para compensar diferencias de volumen percibidas o medidas. No cambia la asignación de bits del códec.
+
+### Parámetros
+
+- **Mode** — Selecciona `SP (292 kbps)`, `LP2 (132 kbps)` o `LP4 (66 kbps)`. SP usa ATRAC1; LP2 y LP4 usan ATRAC3, y LP4 añade además codificación estéreo conjunta. Las tasas de bits más bajas dejan menos bits para la cuantización espectral y hacen más pronunciados los artefactos del códec.
+- **Output** — Ajusta el nivel de salida decodificado entre -24.0 y +12.0 dB. Sirve para igualar niveles; no altera el estado del códec ni la asignación de bits.
+- **Mix** — Mezcla entre 0% y 100% la señal original, alineada en latencia, con el resultado decodificado.
 
 ## MP3 Codec Simulator
 

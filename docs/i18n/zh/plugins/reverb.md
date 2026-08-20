@@ -234,7 +234,7 @@ IR Reverb 将信号与导入的脉冲响应（IR）进行卷积，再现房间�
 ### 参数
 
 - **Channel Mode**：**Auto**会将单通道IR设为Mono，将立体声选择下的四通道IR设为True Stereo，在IR通道数与所选通道数一致时设为Independent，其余情况设为Diagonal Matrix；实际采用的模式会显示在菜单右侧。也可明确选择Mono、Independent、True Stereo（LL/LR/RL/RR路径）或无串扰的Diagonal Matrix。
-- **Latency**：Zero或128/256/512/1024 samples。数值越高处理压力越低，但wet路径延迟越大；Zero要求Full。
+- **Latency**：Zero或128/256/512/1024 samples。数值越高处理压力越低，但整个效果输出的延迟越大；原始信号也会延迟同样的量以与混响对齐，该延迟由管线补偿；Zero要求Full。
 - **Convolution Rate**：Auto、Full、Half或Quarter。选择Auto时，实际采用的rate会显示在菜单右侧。较低rate可降低负载与wet带宽；Quarter要求至少176.4 kHz。
 - **Wet Level**：卷积信号电平，范围-96～+12 dB。默认值为-15 dB，适合一般的insert用法；在send/return配置中，请设为0 dB，并通过send level控制混响量。
 - **Dry**：启用原声，默认开启。关闭后会完全移除原声，同时保留 **Dry Level** 的设定值。

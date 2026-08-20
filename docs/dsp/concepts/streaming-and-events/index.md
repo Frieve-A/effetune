@@ -36,7 +36,7 @@ An open stream or AudioWorklet accepts only values the native parameter commit c
 apply immediately. Open a new stream after changing `IRReverb.channelMode`,
 `latency`, or `convolutionRate`; `FIRCrossover.bandCount`, `latencyMode`, or
 `filterDelaySamples`; or `latencyMode` / `filterDelaySamples` on
-`FiveBandFIRPEQ`, `GroupDelayEQ`, or `RoomEQ`. Live updates to those
+`FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, or `RoomEQ`. Live updates to those
 asset-configuration parameters raise `ValidationError` before processing or posting
 a Worklet command.
 

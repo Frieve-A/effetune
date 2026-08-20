@@ -18,13 +18,13 @@ Abra **Measurement settings** para ajustar:
 
 - **Signal** usa **MLS** por padrão. **TSP** é um sinal de teste periódico alternativo, enquanto **Unit Impulse** captura diretamente a resposta no tempo. Os sinais podem medir o pipeline de formas diferentes quando os efeitos são não lineares ou variam com o tempo.
 - **Level** define o pico do sinal de teste e tem o padrão de `-12 dBFS`. Efeitos lineares normalmente apresentam a mesma resposta normalizada em qualquer nível; efeitos não lineares ou dependentes do nível podem produzir outro resultado.
-- **Sequence Length** determina por quanto tempo MLS ou TSP consegue medir uma resposta sem sobreposição. Valores maiores exigem mais tempo e memória. Aumente-o para delay, reverb ou outros efeitos com cauda longa, principalmente quando o analisador recomendar um valor maior.
+- **Sequence Length** determina por quanto tempo uma resposta pode ser medida sem sobreposição: para MLS e TSP é o período do sinal de teste e, para Unit Impulse, é o número de amostras capturadas após o impulso. Valores maiores exigem mais tempo e memória. Aumente-o para delay, reverb ou outros efeitos com cauda longa, principalmente quando o analisador recomendar um valor maior.
 - **Stabilization Periods** tem o padrão de 12 e dá tempo para o pipeline se estabilizar antes da captura. Aumente-o se efeitos lentos ainda não tiverem alcançado um estado estável.
 - **Averages** tem o padrão de 2. Aumente-o para reduzir a variação entre medições quando o gráfico estiver instável; a medição levará mais tempo.
 
-Os detalhes mostram se o comprimento atual é suficiente, o comprimento e o tempo de estabilização recomendados e o tempo total da medição. As recomendações servem de orientação; aplique-as quando forem adequadas aos efeitos medidos.
+Os detalhes mostram se o comprimento atual é suficiente, o comprimento e o tempo de estabilização recomendados e o tempo total da medição. Com Unit Impulse eles mostram o comprimento da captura em amostras e segundos na taxa de amostragem atual. As recomendações servem de orientação; aplique-as quando forem adequadas aos efeitos medidos.
 
-Sequence Length, Stabilization Periods e Averages ficam desativados somente com Unit Impulse. Alternar entre Frequency, Phase, Min Group Delay, Excess Group Delay e Impulse muda apenas o gráfico, sem refazer a medição.
+Stabilization Periods e Averages ficam desativados somente com Unit Impulse. MLS usa comprimentos de 2^n-1 amostras, enquanto TSP e Unit Impulse usam comprimentos de 2^n amostras; ao trocar de sinal, o comprimento mais próximo é mantido. Alternar entre Frequency, Phase, Min Group Delay, Excess Group Delay e Impulse muda apenas o gráfico, sem refazer a medição.
 
 ## Leitura dos gráficos
 
@@ -41,6 +41,6 @@ O gráfico sempre mostra **Before** e **After**. Mova o ponteiro para ler as dua
 
 Cada medição captura o pipeline ativo, suas configurações e seu roteamento, além das respostas de alto-falante selecionadas. Os gráficos mostram as respostas resultantes de frequência, fase, atraso de grupo mínimo, atraso de grupo excedente e impulso; **After** compensa a latência informada pelo pipeline.
 
-MLS e TSP são adequados à medição geral de resposta. Se delay, reverb ou ressonância ultrapassar a janela de medição, o resultado pode se sobrepor; aumente **Sequence Length**. **Unit Impulse** registra diretamente a resposta por um período limitado, portanto caudas muito longas podem ser cortadas.
+MLS e TSP são adequados à medição geral de resposta. Se delay, reverb ou ressonância ultrapassar a janela de medição, o resultado pode se sobrepor; aumente **Sequence Length**. **Unit Impulse** registra exatamente o **Sequence Length** de amostras selecionado, portanto caudas mais longas que essa janela são cortadas; aumente o valor quando a cauda ainda estiver soando no fim da captura.
 
 Efeitos não lineares, variáveis no tempo, aleatórios, ruidosos ou que geram som podem produzir resultados diferentes em outros níveis ou entre medições. Interprete os gráficos como um retrato das configurações escolhidas, não como características fixas.

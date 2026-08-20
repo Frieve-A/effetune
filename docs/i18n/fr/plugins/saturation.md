@@ -37,7 +37,7 @@ La bande générée comprend deux composantes réglables séparément : une cont
 - **Harmonic Amount** (0-200 %, 100 % par défaut) règle uniquement la continuation harmonique : 0 % la supprime, 100 % est son niveau de référence et 200 % la double sans modifier le bruit ni la voie sèche.
 - **Noise Amount** (0-200 %, 100 % par défaut) règle uniquement le bruit façonné : 0 % le supprime, 100 % est son niveau de référence et 200 % le double sans modifier les harmoniques ni la voie sèche.
 - **Cutoff** choisit **Auto**, qui recherche une chute spectrale abrupte et persistante commune aux deux canaux, ou **Manual**. En Manual, la bande générée reste automatiquement dans la plage disponible à la lecture.
-- **Manual Cutoff** (6000-20000 Hz) fixe le début de la génération en mode Manual.
+- **Manual Cutoff** (6000-24000 Hz) fixe le début de la génération en mode Manual.
 
 Bandwidth Extender ajoute environ 21 ms de latence. S'il ne peut pas fonctionner avec la fréquence d'échantillonnage, la configuration des canaux ou l'appareil actuels, son panneau indique qu'il est contourné et le son reste inchangé. Utilisez un réglage compatible ou désactivez le plugin.
 
@@ -567,8 +567,9 @@ La modification des paramètres du circuit peut provoquer un saut important de n
 
 ### Lecture du HUD
 
-- Les points représentent les positions de fonctionnement récentes. Plus ils sont dispersés, plus la musique sollicite fortement l’étage concerné.
-- En mode Line, les panneaux montrent les deux étages du driver. Push-Pull montre les deux côtés de sortie et SE Triode les canaux gauche et droit.
+- Les points représentent les positions de fonctionnement récentes. Plus ils sont dispersés, plus la musique sollicite fortement l’étage concerné. Chaque panneau superpose les deux canaux : le bleu pour la gauche, l’orange pour la droite.
+- **Graph**, au-dessus de l’affichage, choisit les lampes à observer. **Stage 1 / Stage 2** montre les deux étages du driver, **Push / Pull** les deux lampes de la paire de sortie push-pull et **SE Triode** la lampe de sortie single-ended. Seuls les étages réellement utilisés par le circuit actuel sont sélectionnables : sur un étage de puissance précédé d’un driver, vous pouvez donc passer de l’un à l’autre et les comparer.
+- Quand aucune lampe ne fonctionne — Line avec **Driver Type** sur Bypass, ou l’effet désactivé — l’affichage reste vide et l’état indique **No tube stage is active**.
 - **Speaker Output** et **Speaker Real Power** indiquent à quel point l’étage de puissance et la charge du haut-parleur sont sollicités.
 - **Transformer Flux** affiche l’amplitude du flux totalisé du transformateur de sortie, en Wb. Plus les graves poussent cette valeur vers le haut, plus le transformateur ajoute lui-même de la distorsion. En SE Triode, la valeur inclut le flux de polarisation permanent du noyau à entrefer et reste donc supérieure à zéro même en l’absence de signal.
 - L’état sous le graphique indique si l’effet est actif ou en bypass et affiche toute réduction automatique du niveau de sortie.

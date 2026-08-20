@@ -27,14 +27,13 @@ export function normalizeMeasurementSettings(value = {}) {
     const levelDb = Number.isInteger(value.levelDb) && value.levelDb >= -60 && value.levelDb <= 0
         ? value.levelDb
         : -12;
-    const allowedLengths = signalType === 'tsp'
-        ? PIPELINE_ANALYZER_TSP_LENGTHS
-        : signalType === 'mls'
-            ? PIPELINE_ANALYZER_MLS_LENGTHS
-            : [...PIPELINE_ANALYZER_MLS_LENGTHS, ...PIPELINE_ANALYZER_TSP_LENGTHS];
+    // TSP and Unit Impulse share the power-of-two lengths; MLS needs its 2^n-1 periods.
+    const allowedLengths = signalType === 'mls'
+        ? PIPELINE_ANALYZER_MLS_LENGTHS
+        : PIPELINE_ANALYZER_TSP_LENGTHS;
     const sequenceLength = allowedLengths.includes(value.sequenceLength)
         ? value.sequenceLength
-        : signalType === 'tsp' ? 65536 : 65535;
+        : signalType === 'mls' ? 65535 : 65536;
     const stabilizationPeriods = Number.isInteger(value.stabilizationPeriods) &&
         value.stabilizationPeriods >= 1 && value.stabilizationPeriods <= 32
         ? value.stabilizationPeriods

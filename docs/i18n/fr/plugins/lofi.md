@@ -19,6 +19,7 @@ Une collection de plugins qui ajoutent du caractère vintage et des qualités no
 - [G.726 Simulator](#g726-simulator) - Simule un aller-retour d’encodage/décodage vocal ITU-T G.726 avec une liaison radio bruitée facultative
 - [GSM-FR Simulator](#gsm-fr-simulator) - Simule un aller-retour d’encodage/décodage vocal GSM-FR à 13 kbit/s sur liaison radio avec masquage des pertes de trames
 - [Hum Generator](#hum-generator) - Ajoute une ambiance de ronflement électrique contrôlable pour une écoute vintage/lo-fi
+- [MD Simulator](#md-simulator) - Simule un aller-retour d'encodage/décodage ATRAC de l'ère MiniDisc
 - [MP3 Codec Simulator](#mp3-codec-simulator) - Simule un aller-retour propre MPEG Layer III à faible débit
 - [Noise Blender](#noise-blender) - Ajoute une texture atmosphérique en arrière-plan
 - [SBC Codec Simulator](#sbc-codec-simulator) - Reproduit un aller-retour Bluetooth A2DP SBC avec pertes de paquets et masquage facultatifs
@@ -519,6 +520,28 @@ Ajoute une couche contrôlable de ronflement électrique 50/60 Hz pour une ambia
    - Frequency : 40 Hz, Type : Dirty, Harmonics : 80%
    - Tone : 15.0 kHz, Instability : 6.0%, Level : -36 dB
    - Parfait pour : Texture lo-fi plus évidente
+
+## MD Simulator
+
+MD Simulator fait passer les canaux sélectionnés par une analyse ATRAC simplifiée en temps réel, une quantification spectrale à budget de bits limité, puis une synthèse, modélisant la famille de codecs ATRAC utilisée par le MiniDisc. Il permet d'entendre comment un aller-retour ATRAC propre modifie les transitoires, les détails aigus et la texture des sons tenus, dans les trois modes d'enregistrement réellement proposés par une platine MD.
+
+Mode sélectionne l'un des trois points de fonctionnement réels du MD : SP (292 kbps) utilise ATRAC1, le codec du MiniDisc d'origine en mode d'enregistrement standard. LP2 (132 kbps) et LP4 (66 kbps) utilisent ATRAC3, correspondant aux modes d'enregistrement longue durée x2 et x4 de MDLP ; LP4 applique en plus un codage stéréo conjoint (joint stereo). Plus le débit est bas, moins le banc de filtres d'analyse dispose de budget de bits, ce qui rend plus perceptibles l'étalement des transitoires, le bruit aigu de type « birdies »/sifflement et le bruit d'allocation de bits faible.
+
+Si le plugin indique que l'effet est indisponible, essayez une autre fréquence d'échantillonnage ou un autre mode de canaux. Le signal d'entrée reste inchangé tant que l'effet n'est pas disponible.
+
+### Guide d'amélioration sonore
+
+- **Écoute MD représentative :** Commencez avec SP, Output à 0 dB et Mix à 100 %. C'est le codec utilisé par la plupart des enregistrements MD réels, et il offre le point de comparaison le plus propre.
+- **Entendre la compression des modes longue durée :** Faites passer le même passage par LP2 puis par LP4. Les cymbales, les percussions denses et les mixages stéréo larges révèlent des détails aigus de plus en plus grossiers et, en LP4, un haut du spectre plus fin et plus instable dû au budget de bits divisé par deux et au codage conjoint.
+- **Observer le comportement transitoire :** Utilisez des sources à transitoires marqués (castagnettes, cordes pincées, attaques de piano) pour entendre l'étalement par pré-écho typique de la détection de transitoires d'ATRAC.
+- **Mélanger l'effet :** Réduisez Mix lorsque vous souhaitez un peu de caractère MD sans remplacer tout le signal. La voie sèche est alignée en latence sur la voie décodée.
+- **Égaliser les niveaux avant comparaison :** Utilisez uniquement Output pour compenser les différences de volume perçues ou mesurées. Il ne modifie pas l'allocation de bits du codec.
+
+### Paramètres
+
+- **Mode** — Sélectionne `SP (292 kbps)`, `LP2 (132 kbps)` ou `LP4 (66 kbps)`. SP utilise ATRAC1 ; LP2 et LP4 utilisent ATRAC3, LP4 ajoutant un codage stéréo conjoint. Des débits plus faibles laissent moins de bits pour la quantification spectrale et accentuent les artefacts du codec.
+- **Output** — Règle le niveau de sortie décodé de -24.0 à +12.0 dB. Sert à égaliser les niveaux ; ne modifie ni l'état du codec ni l'allocation de bits.
+- **Mix** — Mélange de 0 à 100 % le signal original aligné en latence avec le résultat décodé.
 
 ## MP3 Codec Simulator
 

@@ -37,7 +37,7 @@ La banda generada consta de dos componentes ajustables por separado: una continu
 - **Harmonic Amount** (0-200%, predeterminado: 100%) controla solo la continuación armónica: 0% la elimina, 100% es su nivel de referencia y 200% la duplica sin alterar el ruido ni la señal seca.
 - **Noise Amount** (0-200%, predeterminado: 100%) controla solo el ruido conformado: 0% lo elimina, 100% es su nivel de referencia y 200% lo duplica sin alterar los armónicos ni la señal seca.
 - **Cutoff** elige **Auto**, que busca una caída espectral pronunciada y persistente común a ambos canales, o **Manual**. En Manual, la banda generada se limita automáticamente al rango disponible durante la reproducción.
-- **Manual Cutoff** (6000-20000 Hz) fija el inicio de la generación en modo Manual.
+- **Manual Cutoff** (6000-24000 Hz) fija el inicio de la generación en modo Manual.
 
 Bandwidth Extender añade unos 21 ms de latencia. Si no puede funcionar con la frecuencia de muestreo, la configuración de canales o el dispositivo actuales, el panel muestra un mensaje de bypass y el audio no cambia. Usa una configuración compatible o desactiva el plugin.
 
@@ -563,8 +563,9 @@ Cambiar parámetros del circuito puede causar un salto de nivel importante. Con 
 
 ### Cómo Leer el HUD
 
-- Los puntos muestran posiciones de funcionamiento recientes. Cuanto más se extienden, más intensamente está excitando la música esa etapa.
-- En Line, los paneles muestran las dos etapas del driver. Push-Pull muestra los dos lados de salida y SE Triode muestra los canales izquierdo y derecho.
+- Los puntos muestran posiciones de funcionamiento recientes. Cuanto más se extienden, más intensamente está excitando la música esa etapa. Cada panel superpone los dos canales: el azul es el izquierdo y el naranja, el derecho.
+- **Graph**, encima de la pantalla, elige qué válvulas observar. **Stage 1 / Stage 2** muestra las dos etapas del driver, **Push / Pull** las dos válvulas del par de salida push-pull y **SE Triode** la válvula de salida single-ended. Solo se pueden seleccionar las etapas que el circuito actual utiliza realmente, así que en una etapa de potencia con driver puedes alternar entre ambas y compararlas.
+- Cuando no hay ninguna válvula funcionando, es decir, en Line con **Driver Type** en Bypass o con el efecto apagado, la pantalla queda vacía y el estado indica **No tube stage is active**.
 - **Speaker Output** y **Speaker Real Power** indican cuánto se están excitando la etapa de potencia y la carga del altavoz.
 - **Transformer Flux** muestra la magnitud del flujo concatenado del transformador de salida en Wb. Cuanto más empujan los graves esta lectura hacia arriba, más distorsión añade el propio transformador. En SE Triode la lectura incluye el flujo de polarización permanente del núcleo con entrehierro, así que se mantiene por encima de cero incluso sin señal.
 - El estado bajo el gráfico indica si el efecto está activo o en bypass y muestra cualquier reducción automática de salida.

@@ -37,6 +37,10 @@ class MP3CodecSimulatorPlugin extends PluginBase {
         this.executionState = { state: 'pending', reason: null };
         this._statusElement = null;
         this.bitrateSelect = null;
+        // Codec rate the Bitrate <option> list was last built for. Rebuilding the
+        // list is only correct when this no longer matches `cr`; see
+        // _syncBitrateOptions().
+        this._lastSyncedCodecRate = null;
         this.registerProcessor(MP3_CODEC_SIMULATOR_PASS_THROUGH_PROCESSOR);
     }
 
@@ -124,18 +128,32 @@ class MP3CodecSimulatorPlugin extends PluginBase {
         return values.map(value => ({ value, label: `${value} kbit/s` }));
     }
 
+    // Which bitrates exist depends on the codec rate, so the <option> list has to
+    // be rebuilt whenever `cr` changes. Two things make that rebuild delicate now
+    // that this runs on the sync path as well as on user edits:
+    //   - replaceChildren() discards the elements a dropdown the user has opened
+    //     is showing, so a select the user is holding is left untouched and the
+    //     rebuild is retried on a later sync once it is released.
+    //   - the sync path fires once per animation frame, so the list is rebuilt
+    //     only when the codec rate actually differs from the one it was built
+    //     for. Setting `value` on an unchanged list is free and stays
+    //     unconditional, which keeps the behaviour on the user-edit path.
     _syncBitrateOptions() {
         if (!this.bitrateSelect) return;
+        if (this.isHeldByUser(this.bitrateSelect)) return;
         const values = this.cr === '22.05 kHz (MPEG-2)'
             ? MP3_CODEC_SIMULATOR_MPEG2_BITRATES
             : MP3_CODEC_SIMULATOR_MPEG1_BITRATES;
         const current = this.br;
-        this.bitrateSelect.replaceChildren();
-        for (const value of values) {
-            const option = document.createElement('option');
-            option.value = value;
-            option.textContent = `${value} kbit/s`;
-            this.bitrateSelect.appendChild(option);
+        if (this._lastSyncedCodecRate !== this.cr) {
+            this.bitrateSelect.replaceChildren();
+            for (const value of values) {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = `${value} kbit/s`;
+                this.bitrateSelect.appendChild(option);
+            }
+            this._lastSyncedCodecRate = this.cr;
         }
         this.bitrateSelect.value = values.includes(current) ? current : '160';
     }
@@ -145,20 +163,23 @@ class MP3CodecSimulatorPlugin extends PluginBase {
         container.className = 'mp3-codec-simulator-plugin-ui plugin-parameter-ui';
         container.appendChild(this.createSelectControl('Codec Rate',
             ['22.05 kHz (MPEG-2)', '44.1 kHz (MPEG-1)'], this.cr,
-            value => this.setParameters({ cr: value })));
+            value => this.setParameters({ cr: value }), 'cr'));
         const bitrateRow = this.createSelectControl('Bitrate',
             this.constructor._bitrateOptions(this.cr === '22.05 kHz (MPEG-2)'
                 ? MP3_CODEC_SIMULATOR_MPEG2_BITRATES
                 : MP3_CODEC_SIMULATOR_MPEG1_BITRATES),
-            this.br, value => this.setParameters({ br: value }));
+            this.br, value => this.setParameters({ br: value }), 'br');
         // createSelectControl returns the row only, so keep the select element
         // reference that _syncBitrateOptions() rebuilds on codec-rate changes.
         this.bitrateSelect = bitrateRow.querySelector('select');
+        // A fresh select carries none of the previous one's options, so the
+        // last-synced codec rate is cleared to force this first sync to build them.
+        this._lastSyncedCodecRate = null;
         this._syncBitrateOptions();
         container.appendChild(bitrateRow);
         container.appendChild(this.createRadioGroup('Stereo Mode',
             ['Joint Stereo', 'Stereo'], this.sm,
-            value => this.setParameters({ sm: value })));
+            value => this.setParameters({ sm: value }), 'sm'));
 
         const reservoirRow = document.createElement('div');
         reservoirRow.className = 'parameter-row';
@@ -178,10 +199,24 @@ class MP3CodecSimulatorPlugin extends PluginBase {
         container.appendChild(reservoirRow);
 
         container.appendChild(this.createParameterControl(
-            'Output', -24, 12, 0.1, this.og, value => this.setParameters({ og: value }), 'dB'));
+            'Output', -24, 12, 0.1, this.og, value => this.setParameters({ og: value }), 'dB', 'og'));
         container.appendChild(this.createParameterControl(
-            'Mix', 0, 100, 1, this.mx, value => this.setParameters({ mx: value }), '%'));
+            'Mix', 0, 100, 1, this.mx, value => this.setParameters({ mx: value }), '%', 'mx'));
         container.appendChild(this._createStatusElement());
+
+        // Automation playback and preset recall change the model without touching the
+        // DOM, so the controls this plugin builds by hand are refreshed here.
+        this.registerUIRefresh(() => {
+            reservoir.checked = this.rv;
+            // Codec Rate now follows the model on its own, so the Bitrate list that
+            // codec rate governs has to follow it: without this a recalled preset
+            // that switches MPEG-1 to MPEG-2 would leave bitrates on offer that
+            // setParameters() then rejects. Runs after the helper-built controls,
+            // so it also repairs the `br` select when the list it was applied to
+            // was still the old one.
+            this._syncBitrateOptions();
+        });
+
         return container;
     }
 }

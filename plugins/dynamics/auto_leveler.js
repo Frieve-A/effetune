@@ -603,13 +603,13 @@ class AutoLevelerPlugin extends PluginBase {
         container.className = 'plugin-parameter-ui';
 
         // Create parameter rows
-        container.appendChild(this.createParameterControl('Target LUFS', -36, 0, 0.1, this.tg, (value) => this.setParameters({ tg: value }), 'dB'));
-        container.appendChild(this.createParameterControl('Time Window', 1000, 10000, 10, this.tw, (value) => this.setParameters({ tw: value }), 'ms'));
-        container.appendChild(this.createParameterControl('Max Gain', 0, 12, 0.1, this.mg, (value) => this.setParameters({ mg: value }), 'dB'));
-        container.appendChild(this.createParameterControl('Min Gain', -36, 0, 0.1, this.ng, (value) => this.setParameters({ ng: value }), 'dB'));
-        container.appendChild(this.createParameterControl('Attack Time', 1, 1000, 1, this.at, (value) => this.setParameters({ at: value }), 'ms'));
-        container.appendChild(this.createParameterControl('Release Time', 10, 10000, 10, this.rt, (value) => this.setParameters({ rt: value }), 'ms'));
-        container.appendChild(this.createParameterControl('Noise Gate', -96, -24, 1, this.gt, (value) => this.setParameters({ gt: value }), 'dB'));
+        container.appendChild(this.createParameterControl('Target LUFS', -36, 0, 0.1, this.tg, (value) => this.setParameters({ tg: value }), 'dB', 'tg'));
+        container.appendChild(this.createParameterControl('Time Window', 1000, 10000, 10, this.tw, (value) => this.setParameters({ tw: value }), 'ms', 'tw'));
+        container.appendChild(this.createParameterControl('Max Gain', 0, 12, 0.1, this.mg, (value) => this.setParameters({ mg: value }), 'dB', 'mg'));
+        container.appendChild(this.createParameterControl('Min Gain', -36, 0, 0.1, this.ng, (value) => this.setParameters({ ng: value }), 'dB', 'ng'));
+        container.appendChild(this.createParameterControl('Attack Time', 1, 1000, 1, this.at, (value) => this.setParameters({ at: value }), 'ms', 'at'));
+        container.appendChild(this.createParameterControl('Release Time', 10, 10000, 10, this.rt, (value) => this.setParameters({ rt: value }), 'ms', 'rt'));
+        container.appendChild(this.createParameterControl('Noise Gate', -96, -24, 1, this.gt, (value) => this.setParameters({ gt: value }), 'dB', 'gt'));
 
         const { container: graphContainer, canvas, dispose } = this.createResponsiveGraph({
             maxWidth: 2048,

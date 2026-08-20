@@ -11,6 +11,7 @@ const RESET_FADE_WARMUP = Object.freeze({
     FIRCrossoverPlugin: 128,
     FiveBandFIRPEQPlugin: 128,
     GroupDelayEqPlugin: 128,
+    GroupDelayPEQPlugin: 128,
     MultibandBalancePlugin: 128,
     MultibandCompressorPlugin: 128,
     MultibandExpanderPlugin: (_parameters, sampleRate) => Math.ceil(sampleRate * 0.005),

@@ -52,10 +52,20 @@ async function loadOscillator() {
       this.name = name;
       this.enabled = true;
       this.updateCount = 0;
+      // UI-follow seam: hooks are kept so a test can run them on demand.
+      this.uiRefreshHooks = [];
     }
 
     registerProcessor(processor) {
       this.processor = processor;
+    }
+
+    registerUIRefresh(fn) {
+      this.uiRefreshHooks.push(fn);
+    }
+
+    isGraphPointerActive() {
+      return false;
     }
 
     updateParameters() {

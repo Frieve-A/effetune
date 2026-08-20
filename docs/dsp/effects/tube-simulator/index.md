@@ -160,8 +160,9 @@ Changing circuit parameters can cause a large level jump. With **Auto Gain Reduc
 
 ### How to Read the HUD
 
-- The dots show recent operating points. A wider spread means the music is driving that stage harder.
-- In Line mode, the panels show the two driver stages. Push-Pull mode shows the two output sides, and SE Triode shows the left and right channels.
+- The dots show recent operating points. A wider spread means the music is driving that stage harder. Each panel carries both channels: blue is left and orange is right.
+- **Graph** above the display chooses which valves to watch. **Stage 1 / Stage 2** shows the two driver stages, **Push / Pull** the two sides of the push-pull output pair, and **SE Triode** the single-ended output valve. Only the groups the current circuit actually uses can be selected, so with a driver in front of a power stage you can switch between the two and compare them.
+- When no valve is running at all — Line with **Driver Type** set to Bypass, or the effect switched off — the display stays empty and the status reads **No tube stage is active**.
 - **Speaker Output** and **Speaker Real Power** show how strongly the modeled power stage and speaker load are being driven.
 - **Transformer Flux** shows the magnitude of the output transformer's flux linkage in Wb. The harder low frequencies push this reading upward, the more distortion the transformer itself is adding. In SE Triode the reading includes the standing bias flux of the gapped core, so it stays above zero even with no signal.
 - The status below the graph shows whether the effect is active or bypassed and displays any automatic output reduction.

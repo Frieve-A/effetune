@@ -76,8 +76,9 @@ class StereoBalancePlugin extends PluginBase {
 
         // Use helper to create balance control
         const balanceControl = this.createParameterControl(
-            'Balance', -100, 100, 1, this.bl * 100, 
-            (value) => this.setBl(value / 100), '%' // Divide by 100 in setter
+            'Balance', -100, 100, 1, this.bl * 100,
+            (value) => this.setBl(value / 100), '%', // Divide by 100 in setter
+            'bl', (value) => value * 100 // Widget is a -100..100 view of the -1..1 model
         );
         container.appendChild(balanceControl);
         

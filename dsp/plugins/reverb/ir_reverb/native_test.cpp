@@ -583,30 +583,85 @@ void compare(const std::vector<float> &actual, const std::vector<float> &expecte
   IR_CHECK(maximum <= tolerance);
 }
 
-void expectDryOnly(Harness &harness, std::vector<float> &audio, std::uint32_t frameCount,
-                   float dryLevel, float dryEnabled = 1.0F) {
+// Mirrors the kernel's dry alignment: the dry path is held back by the reported latency and
+// crossfades over one fade window whenever that latency changes.
+struct DryAlignment {
+  static constexpr std::uint32_t kFadeFrames = 128u;
+  std::vector<std::vector<float>> history;
+  std::uint32_t delay = 0u;
+  std::uint32_t previous = 0u;
+  std::uint32_t fadeRemaining = 0u;
+  bool initialized = false;
+
+  explicit DryAlignment(std::uint32_t channelCount) : history(channelCount) {}
+
+  void retarget(std::uint32_t target) noexcept {
+    if (!initialized) {
+      initialized = true;
+      delay = target;
+      previous = target;
+      fadeRemaining = 0u;
+      return;
+    }
+    if (target == delay)
+      return;
+    previous = delay;
+    delay = target;
+    fadeRemaining = kFadeFrames;
+  }
+
+  [[nodiscard]] float tap(std::uint32_t channel, std::uint32_t samples) const noexcept {
+    const std::size_t size = history[channel].size();
+    return size > samples ? history[channel][size - 1u - samples] : 0.0F;
+  }
+
+  void advance(const std::vector<float> &input, std::uint32_t frameCount, std::uint32_t frame,
+               std::vector<float> &dry) {
+    const std::uint32_t channels = static_cast<std::uint32_t>(history.size());
+    for (std::uint32_t channel = 0u; channel < channels; ++channel)
+      history[channel].push_back(input[static_cast<std::size_t>(channel) * frameCount + frame]);
+    const float fade =
+        fadeRemaining == 0u ? 1.0F : 1.0F - static_cast<float>(fadeRemaining) / kFadeFrames;
+    for (std::uint32_t channel = 0u; channel < channels; ++channel) {
+      const float current = tap(channel, delay);
+      const float earlier = tap(channel, previous);
+      dry[channel] = fadeRemaining == 0u ? current : earlier + (current - earlier) * fade;
+    }
+    if (fadeRemaining != 0u)
+      --fadeRemaining;
+  }
+};
+
+void expectDryOnly(Harness &harness, DryAlignment &alignment, std::vector<float> &audio,
+                   std::uint32_t frameCount, float dryLevel, float dryEnabled = 1.0F) {
   harness.stageParams(params(0.0F, dryLevel, dryEnabled));
   const std::vector<float> input = audio;
   const float dryGain =
       dryEnabled == 0.0F || dryLevel <= -96.0F ? 0.0F : std::pow(10.0F, dryLevel * 0.05F);
+  alignment.retarget(harness.kernel->latencySamples());
   const std::uint32_t allocationBefore = effetune::allocation_guard::violationCount();
   {
     effetune::allocation_guard::Scope guard;
     harness.kernel->process(audio.data(), harness.channels, frameCount, {0.0});
   }
   IR_CHECK(effetune::allocation_guard::violationCount() == allocationBefore);
-  for (std::size_t index = 0u; index < audio.size(); ++index) {
-    const float expected = input[index] * dryGain;
-    IR_CHECK(std::abs(audio[index] - expected) < 1.0e-6F);
+  std::vector<float> dry(harness.channels);
+  for (std::uint32_t frame = 0u; frame < frameCount; ++frame) {
+    alignment.advance(input, frameCount, frame, dry);
+    for (std::uint32_t channel = 0u; channel < harness.channels; ++channel) {
+      const std::size_t index = static_cast<std::size_t>(channel) * frameCount + frame;
+      IR_CHECK(std::abs(audio[index] - dry[channel] * dryGain) < 1.0e-6F);
+    }
   }
 }
 
-void expectWetFadeOut(Harness &harness, std::vector<float> &audio, std::uint32_t frameCount,
-                      float dryLevel, const std::vector<float> &lastWet) {
+void expectWetFadeOut(Harness &harness, DryAlignment &alignment, std::vector<float> &audio,
+                      std::uint32_t frameCount, float dryLevel, const std::vector<float> &lastWet) {
   constexpr std::uint32_t fadeFrames = 128u;
   harness.stageParams(params(0.0F, dryLevel));
   const std::vector<float> input = audio;
   const float dryGain = dryLevel <= -96.0F ? 0.0F : std::pow(10.0F, dryLevel * 0.05F);
+  alignment.retarget(harness.kernel->latencySamples());
   const std::uint32_t allocationBefore = effetune::allocation_guard::violationCount();
   {
     effetune::allocation_guard::Scope guard;
@@ -614,13 +669,15 @@ void expectWetFadeOut(Harness &harness, std::vector<float> &audio, std::uint32_t
   }
   IR_CHECK(effetune::allocation_guard::violationCount() == allocationBefore);
   IR_CHECK(lastWet.size() == harness.channels);
-  for (std::uint32_t channel = 0u; channel < harness.channels; ++channel) {
-    for (std::uint32_t frame = 0u; frame < frameCount; ++frame) {
+  std::vector<float> dry(harness.channels);
+  for (std::uint32_t frame = 0u; frame < frameCount; ++frame) {
+    alignment.advance(input, frameCount, frame, dry);
+    const float fade =
+        frame < fadeFrames ? static_cast<float>(fadeFrames - frame) / fadeFrames : 0.0F;
+    for (std::uint32_t channel = 0u; channel < harness.channels; ++channel) {
       const std::size_t index = static_cast<std::size_t>(channel) * frameCount + frame;
-      const float fade =
-          frame < fadeFrames ? static_cast<float>(fadeFrames - frame) / fadeFrames : 0.0F;
-      const float dry = input[index] * dryGain;
-      IR_CHECK(std::abs(audio[index] - (dry + lastWet[channel] * fade)) < 2.0e-6F);
+      const float expected = dry[channel] * dryGain + lastWet[channel] * fade;
+      IR_CHECK(std::abs(audio[index] - expected) < 2.0e-6F);
     }
   }
 }
@@ -630,17 +687,18 @@ void testDryOnlyUntilMatchingAssetIsActive() {
   constexpr float dryLevel = -6.0F;
 
   Harness freshStereo;
+  DryAlignment freshAlignment(freshStereo.channels);
   IR_CHECK((freshStereo.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_NONE);
   std::vector<float> freshAudio(2u * frames);
   for (std::size_t index = 0u; index < freshAudio.size(); ++index)
     freshAudio[index] = static_cast<float>(index + 1u) / 512.0F;
-  expectDryOnly(freshStereo, freshAudio, frames, -96.0F);
+  expectDryOnly(freshStereo, freshAlignment, freshAudio, frames, -96.0F);
   for (std::size_t index = 0u; index < freshAudio.size(); ++index)
     freshAudio[index] = static_cast<float>(index + 1u) / 512.0F;
-  expectDryOnly(freshStereo, freshAudio, frames, dryLevel);
+  expectDryOnly(freshStereo, freshAlignment, freshAudio, frames, dryLevel);
   for (std::size_t index = 0u; index < freshAudio.size(); ++index)
     freshAudio[index] = static_cast<float>(index + 1u) / 512.0F;
-  expectDryOnly(freshStereo, freshAudio, frames, 0.0F, 0.0F);
+  expectDryOnly(freshStereo, freshAlignment, freshAudio, frames, 0.0F, 0.0F);
 
   Harness multichannel(48000.0F, 8u);
   IR_CHECK(multichannel.stageAsset(makeIr(8u, 1u), 8u, kIndependent, 0u, 1u));
@@ -653,6 +711,14 @@ void testDryOnlyUntilMatchingAssetIsActive() {
     }
   }
   multichannel.stageParams(params());
+  DryAlignment multichannelAlignment(multichannel.channels);
+  multichannelAlignment.retarget(multichannel.kernel->latencySamples());
+  {
+    const std::vector<float> tracked = wetAudio;
+    std::vector<float> dry(multichannel.channels);
+    for (std::uint32_t frame = 0u; frame < frames; ++frame)
+      multichannelAlignment.advance(tracked, frames, frame, dry);
+  }
   multichannel.kernel->process(wetAudio.data(), 8u, frames, {0.0});
   std::vector<float> previousWet(8u);
   for (std::uint32_t channel = 0u; channel < 8u; ++channel)
@@ -666,17 +732,19 @@ void testDryOnlyUntilMatchingAssetIsActive() {
     std::vector<float> preparingAudio(8u * frames);
     for (std::size_t index = 0u; index < preparingAudio.size(); ++index)
       preparingAudio[index] = static_cast<float>((index % 17u) + 1u) / 32.0F;
-    if (preparationCalls == 0u)
-      expectWetFadeOut(multichannel, preparingAudio, frames, dryLevel, previousWet);
-    else
-      expectDryOnly(multichannel, preparingAudio, frames, dryLevel);
+    if (preparationCalls == 0u) {
+      expectWetFadeOut(multichannel, multichannelAlignment, preparingAudio, frames, dryLevel,
+                       previousWet);
+    } else {
+      expectDryOnly(multichannel, multichannelAlignment, preparingAudio, frames, dryLevel);
+    }
     ++preparationCalls;
   }
   IR_CHECK((multichannel.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_ACTIVE);
   IR_CHECK(preparationCalls < 32u);
 
   std::vector<float> mismatchedAudio(8u * frames, 0.375F);
-  expectDryOnly(multichannel, mismatchedAudio, frames, dryLevel);
+  expectDryOnly(multichannel, multichannelAlignment, mismatchedAudio, frames, dryLevel);
 
   const std::vector<float> allIr = makeIr(8u, 600u);
   const std::vector<std::uint8_t> allPayload = makePayload(allIr, 8u, 600u, 48000u, kIndependent);
@@ -694,7 +762,7 @@ void testDryOnlyUntilMatchingAssetIsActive() {
   IR_CHECK(multichannel.kernel->beginAsset(0u, allInfo) != nullptr);
   IR_CHECK((multichannel.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_STAGED);
   std::vector<float> stagedAudio(8u * frames, -0.25F);
-  expectDryOnly(multichannel, stagedAudio, frames, dryLevel);
+  expectDryOnly(multichannel, multichannelAlignment, stagedAudio, frames, dryLevel);
 }
 
 void testPreparationWarmsFromLiveInputWithoutInterruptingDryOutput() {
@@ -711,6 +779,10 @@ void testPreparationWarmsFromLiveInputWithoutInterruptingDryOutput() {
       IR_CHECK(live.stageAsset(ir, 1u, kMono, headBlock, divider));
       IR_CHECK(silent.stageAsset(ir, 1u, kMono, headBlock, divider));
 
+      // The dry path is aligned to the reported latency, so it opens after that priming window
+      // and then carries the live input unchanged for the rest of the preparation.
+      const std::uint32_t latency = live.kernel->latencySamples();
+      std::uint32_t processedFrames = 0u;
       std::uint32_t preparationCalls = 0u;
       while ((live.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_PREPARING &&
              preparationCalls < 2000u) {
@@ -719,14 +791,20 @@ void testPreparationWarmsFromLiveInputWithoutInterruptingDryOutput() {
         live.kernel->process(liveAudio.data(), 2u, frames, {0.0});
         silent.kernel->process(silentAudio.data(), 2u, frames, {0.0});
         if ((live.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_PREPARING) {
-          IR_CHECK(std::all_of(liveAudio.begin(), liveAudio.end(),
-                               [](float sample) { return std::abs(sample - 0.25F) < 1.0e-6F; }));
+          for (std::uint32_t channel = 0u; channel < 2u; ++channel) {
+            for (std::uint32_t frame = 0u; frame < frames; ++frame) {
+              const float expected = processedFrames + frame >= latency ? 0.25F : 0.0F;
+              IR_CHECK(std::abs(liveAudio[static_cast<std::size_t>(channel) * frames + frame] -
+                                expected) < 1.0e-6F);
+            }
+          }
         } else {
           IR_CHECK(std::all_of(liveAudio.begin(), liveAudio.end(),
                                [](float sample) { return std::isfinite(sample); }));
         }
         IR_CHECK(std::all_of(silentAudio.begin(), silentAudio.end(),
                              [](float sample) { return sample == 0.0F; }));
+        processedFrames += frames;
         ++preparationCalls;
       }
       IR_CHECK((live.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_ACTIVE);
@@ -793,7 +871,7 @@ void testPreparationAndActivationAreBlockSizeIndependent() {
 void testReplacementAndClearWetFadeOut() {
   constexpr std::uint32_t frames = 128u;
   const std::vector<float> lastWet = {0.75F, -0.5F};
-  const auto seedActiveTail = [&](Harness &harness) {
+  const auto seedActiveTail = [&](Harness &harness, DryAlignment &alignment) {
     IR_CHECK(harness.stageAsset({1.0F}, 1u, kMono, 0u, 1u));
     harness.prepareToActive();
     harness.stageParams(params());
@@ -802,6 +880,10 @@ void testReplacementAndClearWetFadeOut() {
       std::fill_n(audio.data() + static_cast<std::size_t>(channel) * frames, frames,
                   lastWet[channel]);
     }
+    alignment.retarget(harness.kernel->latencySamples());
+    std::vector<float> dry(2u);
+    for (std::uint32_t frame = 0u; frame < frames; ++frame)
+      alignment.advance(audio, frames, frame, dry);
     const std::uint32_t allocationBefore = effetune::allocation_guard::violationCount();
     {
       effetune::allocation_guard::Scope guard;
@@ -815,27 +897,29 @@ void testReplacementAndClearWetFadeOut() {
   };
 
   Harness replacement;
-  seedActiveTail(replacement);
+  DryAlignment replacementAlignment(replacement.channels);
+  seedActiveTail(replacement, replacementAlignment);
   IR_CHECK(replacement.stageAsset({0.0F}, 1u, kMono, 0u, 1u));
   IR_CHECK((replacement.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_PREPARING);
   std::vector<float> replacementAudio(2u * frames, 0.375F);
-  expectWetFadeOut(replacement, replacementAudio, frames, -96.0F, lastWet);
+  expectWetFadeOut(replacement, replacementAlignment, replacementAudio, frames, -96.0F, lastWet);
   if ((replacement.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_PREPARING) {
     std::vector<float> warmingAudio(2u * frames, 0.25F);
-    expectDryOnly(replacement, warmingAudio, frames, -96.0F);
+    expectDryOnly(replacement, replacementAlignment, warmingAudio, frames, -96.0F);
   }
   IR_CHECK((replacement.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_ACTIVE);
   std::vector<float> silentIrAudio(2u * frames, 0.25F);
-  expectDryOnly(replacement, silentIrAudio, frames, -6.0F);
+  expectDryOnly(replacement, replacementAlignment, silentIrAudio, frames, -6.0F);
 
   Harness cleared;
-  seedActiveTail(cleared);
+  DryAlignment clearedAlignment(cleared.channels);
+  seedActiveTail(cleared, clearedAlignment);
   cleared.kernel->clearAsset(0u);
   IR_CHECK((cleared.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_NONE);
   std::vector<float> clearAudio(2u * frames, -0.25F);
-  expectWetFadeOut(cleared, clearAudio, frames, -6.0F, lastWet);
+  expectWetFadeOut(cleared, clearedAlignment, clearAudio, frames, -6.0F, lastWet);
   std::vector<float> afterClear(2u * frames, 0.5F);
-  expectDryOnly(cleared, afterClear, frames, -6.0F);
+  expectDryOnly(cleared, clearedAlignment, afterClear, frames, -6.0F);
 }
 
 void testDirectReferenceMatrix() {
@@ -1010,6 +1094,28 @@ void testLatencyModesAndReset() {
     IR_CHECK(harness.kernel->latencySamples() == expected);
   }
 
+  // The reported latency must describe how far the original signal is delayed, so a silent
+  // impulse response has to reproduce the input at exactly that offset.
+  const std::vector<float> silentIr(3000u, 0.0F);
+  for (const std::uint32_t divider : {1u, 2u, 4u}) {
+    Harness aligned(48000.0F * static_cast<float>(divider));
+    IR_CHECK(aligned.stageAsset(silentIr, 1u, kMono, 128u, divider));
+    aligned.prepareToActive();
+    aligned.stageParams(params(0.0F, 0.0F));
+    const std::uint32_t latency = aligned.kernel->latencySamples();
+    std::vector<float> impulse(2u * 6000u, 0.0F);
+    impulse[0u] = 1.0F;
+    impulse[6000u] = 1.0F;
+    const std::vector<float> output = render(aligned, impulse, 6000u);
+    for (std::uint32_t channel = 0u; channel < 2u; ++channel) {
+      for (std::uint32_t frame = 0u; frame < 6000u; ++frame) {
+        const float expected = frame == latency ? 1.0F : 0.0F;
+        IR_CHECK(std::abs(output[static_cast<std::size_t>(channel) * 6000u + frame] - expected) <
+                 1.0e-6F);
+      }
+    }
+  }
+
   Harness resetHarness;
   IR_CHECK(resetHarness.stageAsset(ir, 1u, kMono, 128u, 1u));
   resetHarness.prepareToActive();
@@ -1036,7 +1142,9 @@ void testPredelayAndDryMix() {
   harness.kernel->reset();
   harness.stageParams(params(10.0F, 0.0F));
   const std::vector<float> mixed = render(harness, input, 512u);
-  IR_CHECK(std::abs(mixed[0u] - 1.0F) < 1.0e-6F);
+  // The dry impulse lands at the reported latency and the wet one a further pre-delay later.
+  IR_CHECK(mixed[0u] == 0.0F);
+  IR_CHECK(std::abs(mixed[128u] - 1.0F) < 1.0e-6F);
   IR_CHECK(std::abs(mixed[138u] - 1.0F) < 2.0e-4F);
 }
 

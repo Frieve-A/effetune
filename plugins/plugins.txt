@@ -54,6 +54,7 @@ eq/band_pass_filter: Band Pass Filter | EQ | BandPassFilterPlugin | css
 eq/comb_filter: Comb Filter | EQ | CombFilterPlugin | css
 eq/earphone_cable_sim: Earphone Cable Sim | EQ | EarphoneCableSimPlugin | css
 eq/group_delay_eq: Group Delay EQ | EQ | GroupDelayEqPlugin | css
+eq/group_delay_peq: Group Delay PEQ | EQ | GroupDelayPEQPlugin | css
 eq/hi_pass_filter: Hi Pass Filter | EQ | HiPassFilterPlugin | css
 eq/lo_pass_filter: Lo Pass Filter | EQ | LoPassFilterPlugin | css
 eq/loudness_equalizer: Loudness Equalizer | EQ | LoudnessEqualizerPlugin | css
@@ -70,6 +71,7 @@ lofi/fm_radio_simulator: FM Radio Simulator | Lo-Fi | FMRadioSimulatorPlugin | c
 lofi/g726_adpcm_simulator: G.726 Simulator | Lo-Fi | G726ADPCMSimulatorPlugin
 lofi/gsm_full_rate_simulator: GSM-FR Simulator | Lo-Fi | GSMFullRateSimulatorPlugin
 lofi/hum_generator: Hum Generator | Lo-Fi | HumGeneratorPlugin
+lofi/md_simulator: MD Simulator | Lo-Fi | MDSimulatorPlugin
 lofi/mp3_codec_simulator: MP3 Codec Simulator | Lo-Fi | MP3CodecSimulatorPlugin
 lofi/noise_blender: Noise Blender | Lo-Fi | NoiseBlenderPlugin
 lofi/bluetooth_sbc_simulator: SBC Codec Simulator | Lo-Fi | BluetoothSBCSimulatorPlugin

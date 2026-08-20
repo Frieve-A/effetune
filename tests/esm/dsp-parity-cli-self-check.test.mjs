@@ -50,20 +50,20 @@ import {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-test('IR direct parity reference uses its v2 identity and pinned source hash', async () => {
+test('IR direct parity reference uses its v3 identity and pinned source hash', async () => {
   const pluginRoot = path.join(repoRoot, 'dsp', 'plugins', 'reverb', 'ir_reverb');
   const schema = JSON.parse(await fs.readFile(path.join(pluginRoot, 'params.json'), 'utf8'));
   const index = JSON.parse(await fs.readFile(
     path.join(pluginRoot, 'golden', 'index.json'),
     'utf8'
   ));
-  const referenceEngine = 'native-ir-direct-double-v2';
+  const referenceEngine = 'native-ir-direct-double-v3';
   const referenceHash =
-    '415b6a5d0923bf1040813d5920d9e8a6b730ba5df73ec4256af84c309b13568a';
+    '774ded205afffa4abe9af33a297fd97a7065cb439183a44cdad3007e4a7a6ff1';
 
   assert.equal(schema.parityReference, referenceEngine);
   assert.equal(isNativeDirectReferenceEngine(referenceEngine), true);
-  assert.equal(isNativeDirectReferenceEngine('native-ir-direct-double-v1'), false);
+  assert.equal(isNativeDirectReferenceEngine('native-ir-direct-double-v2'), false);
   assert.equal(pinnedNativeDirectReferenceHash(referenceEngine), referenceHash);
   for (const fileName of index.cases) {
     const metadata = JSON.parse(await fs.readFile(

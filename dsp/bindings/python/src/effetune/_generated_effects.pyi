@@ -519,6 +519,19 @@ class GroupDelayEQ(Effect):
         assets: IRReverbAssets,
     ) -> None: ...
 
+class GroupDelayPEQ(Effect):
+    effect_type: Literal["GroupDelayPEQ"]
+    def __init__(
+        self,
+        *,
+        latency_mode: Literal["0", "128", "256", "512", "1024"] = ...,
+        filter_delay_samples: int = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+        assets: IRReverbAssets,
+    ) -> None: ...
+
 class HiPassFilter(Effect):
     effect_type: Literal["HiPassFilter"]
     def __init__(
@@ -796,6 +809,19 @@ class HumGenerator(Effect):
         tone: float = ...,
         instability: float = ...,
         level: float = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
+class MDSimulator(Effect):
+    effect_type: Literal["MDSimulator"]
+    def __init__(
+        self,
+        *,
+        mode: Literal["SP (292 kbps)", "LP2 (132 kbps)", "LP4 (66 kbps)"] = ...,
+        output_gain: float = ...,
+        mix: float = ...,
         id: str | None = ...,
         enabled: bool = ...,
         channel: EffectChannel = ...,

@@ -621,6 +621,39 @@ class GraphDocumentTests(unittest.TestCase):
 
 
 class GraphRuntimeTests(unittest.TestCase):
+    @unittest.skipUnless(
+        importlib.util.find_spec("effetune._native") is not None,
+        "native extension is not installed",
+    )
+    def test_room_eq_accepts_one_filter_per_processing_channel(self) -> None:
+        graph = effetune.Graph(
+            {
+                "version": 1,
+                "input": {"id": "input"},
+                "output": {"id": "output"},
+                "nodes": [
+                    effetune.RoomEQ(
+                        id="room",
+                        latency_mode="128",
+                        filter_delay_samples=0,
+                        assets={"impulseResponse": "room-filters"},
+                    ).to_dict()
+                ],
+                "edges": [
+                    {"id": "in", "source": "input", "destination": "room"},
+                    {"id": "out", "source": "room", "destination": "output"},
+                ],
+            },
+            asset_resolver=lambda _reference: effetune.AssetData(
+                np.array([[1.0], [0.5]], dtype=np.float32),
+                48_000,
+                topology="independent",
+            ),
+        )
+
+        with graph.stream(48_000, channels=2, block_size=64) as stream:
+            self.assertEqual(stream.latency_samples, 128)
+
     def test_stream_channel_errors_identify_the_original_node(self) -> None:
         cases = [
             ("right in mono", "right", 1, "z-right"),

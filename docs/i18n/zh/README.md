@@ -335,6 +335,7 @@ PC 上的 Chromium 浏览器可以在不同会话间保留对所选音乐文件�
 | EQ        | Comb Filter | 添加相位感、中空感或金属感染色 | [详情](plugins/eq.md#comb-filter) |
 | EQ        | Earphone Cable Sim | 用于确认普通耳机线差异造成的频率响应变化通常很小 | [详情](plugins/eq.md#earphone-cable-sim) |
 | EQ        | Group Delay EQ | 在不改变音色的前提下调整各频段的延迟 | [详情](plugins/eq.md#group-delay-eq) |
+| EQ        | Group Delay PEQ | 在不改变音色的前提下用五个参量频段调整各频率的延迟 | [详情](plugins/eq.md#group-delay-peq) |
 | EQ        | Hi Pass Filter | 精确去除不需要的低频 | [详情](plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | 精确去除不需要的高频 | [详情](plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | 针对低音量聆听的频率平衡校正 | [详情](plugins/eq.md#loudness-equalizer) |
@@ -351,6 +352,7 @@ PC 上的 Chromium 浏览器可以在不同会话间保留对所选音乐文件�
 | Lo-Fi     | G.726 Simulator | 模拟 ITU-T G.726 语音编解码往返处理，并可选叠加有误码的无线链路 | [详情](plugins/lofi.md#g726-simulator) |
 | Lo-Fi     | GSM-FR Simulator | 模拟 13 kbit/s GSM-FR 语音编解码往返处理，含帧丢失隐藏的无线链路 | [详情](plugins/lofi.md#gsm-fr-simulator) |
 | Lo-Fi     | Hum Generator | 加入可控的 50/60 Hz 电气嗡声氛围，适合复古/lo-fi 聆听 | [详情](plugins/lofi.md#hum-generator) |
+| Lo-Fi     | MD Simulator | 重现 MiniDisc 时代的 ATRAC 编码与解码往返处理 | [详情](plugins/lofi.md#md-simulator) |
 | Lo-Fi     | MP3 Codec Simulator | 模拟低码率 MPEG Layer III 的纯净编码/解码往返处理 | [详情](plugins/lofi.md#mp3-codec-simulator) |
 | Lo-Fi     | Noise Blender | 加入可调背景噪声质感，营造 lo-fi 氛围 | [详情](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | SBC Codec Simulator | 再现 Bluetooth A2DP SBC 编码/解码往返处理，并可选叠加链路丢包与隐藏处理 | [详情](plugins/lofi.md#sbc-codec-simulator) |

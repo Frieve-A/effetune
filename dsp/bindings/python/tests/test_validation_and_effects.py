@@ -28,12 +28,13 @@ class ValidationAndEffectsTests(unittest.TestCase):
             effetune._generated_effects.create_effect("NotAnEffect")
 
     def test_generated_catalog_imports_and_constructs_all_approved_classes(self) -> None:
-        self.assertEqual(len(EFFECT_CLASSES), 90)
-        self.assertEqual(len(EFFECT_METADATA["effects"]), 90)
+        self.assertEqual(len(EFFECT_CLASSES), 92)
+        self.assertEqual(len(EFFECT_METADATA["effects"]), 92)
         asset_effects = {
             "FIRCrossover",
             "FiveBandFIRPEQ",
             "GroupDelayEQ",
+            "GroupDelayPEQ",
             "IRReverb",
             "RoomEQ",
         }

@@ -98,9 +98,9 @@ bool Engine::graphRequiresActiveAsset(const InstanceSlot &slot) const noexcept {
   if (slot.kernel->assetCapacity(0u) == 0u) {
     return false;
   }
-  constexpr std::array<const char *, 5> required_types{"FIRCrossoverPlugin", "FiveBandFIRPEQPlugin",
-                                                       "GroupDelayEqPlugin", "IRReverbPlugin",
-                                                       "RoomEqPlugin"};
+  constexpr std::array<const char *, 6> required_types{"FIRCrossoverPlugin", "FiveBandFIRPEQPlugin",
+                                                       "GroupDelayEqPlugin", "GroupDelayPEQPlugin",
+                                                       "IRReverbPlugin",     "RoomEqPlugin"};
   for (const char *type_name : required_types) {
     if (std::strcmp(slot.descriptor->typeName, type_name) == 0) {
       return true;

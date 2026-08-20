@@ -17,6 +17,7 @@ for effect_type in (
     "FIRCrossover",
     "FiveBandFIRPEQ",
     "GroupDelayEQ",
+    "GroupDelayPEQ",
     "IRReverb",
     "RoomEQ",
 ):

@@ -750,12 +750,12 @@ class ExpanderPlugin extends PluginBase {
         container.className = 'expander-plugin-ui plugin-parameter-ui';
 
         // Use inherited createParameterControl
-        container.appendChild(this.createParameterControl('Threshold', -60, 0, 1, this.th, this.setTh.bind(this), 'dB'));
-        container.appendChild(this.createLogarithmicParameterControl('Ratio', 0.05, 20, 0.01, this.rt, this.setRt.bind(this), '1:')); // Logarithmic scale for ratio
-        container.appendChild(this.createParameterControl('Attack', 0.1, 100, 0.1, this.at, this.setAt.bind(this), 'ms'));
-        container.appendChild(this.createParameterControl('Release', 1, 1000, 1, this.rl, this.setRl.bind(this), 'ms'));
-        container.appendChild(this.createParameterControl('Knee', 0, 12, 1, this.kn, this.setKn.bind(this), 'dB'));
-        container.appendChild(this.createParameterControl('Gain', -12, 12, 0.1, this.gn, this.setGn.bind(this), 'dB'));
+        container.appendChild(this.createParameterControl('Threshold', -60, 0, 1, this.th, this.setTh.bind(this), 'dB', 'th'));
+        container.appendChild(this.createLogarithmicParameterControl('Ratio', 0.05, 20, 0.01, this.rt, this.setRt.bind(this), '1:', 'rt')); // Logarithmic scale for ratio
+        container.appendChild(this.createParameterControl('Attack', 0.1, 100, 0.1, this.at, this.setAt.bind(this), 'ms', 'at'));
+        container.appendChild(this.createParameterControl('Release', 1, 1000, 1, this.rl, this.setRl.bind(this), 'ms', 'rl'));
+        container.appendChild(this.createParameterControl('Knee', 0, 12, 1, this.kn, this.setKn.bind(this), 'dB', 'kn'));
+        container.appendChild(this.createParameterControl('Gain', -12, 12, 0.1, this.gn, this.setGn.bind(this), 'dB', 'gn'));
 
         const canvas = document.createElement('canvas');
         // Set canvas buffer size for high-resolution display.

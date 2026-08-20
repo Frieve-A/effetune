@@ -4,6 +4,7 @@ export const ASSET_EFFECT_TYPES = Object.freeze([
   'FIRCrossover',
   'FiveBandFIRPEQ',
   'GroupDelayEQ',
+  'GroupDelayPEQ',
   'RoomEQ',
   'IRReverb'
 ]);

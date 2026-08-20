@@ -655,8 +655,7 @@ test('savePreset and deletePreset persist web and Electron presets with UI feedb
     assert.deepEqual(Object.keys(saved).sort(), ['Old', 'Saved']);
     assert.equal(saved.Saved.plugins[0].nm, 'Cleanup');
     assert.ok(calls.some(call => call[0] === 'refreshPresetsIfVisible'));
-    assert.ok(calls.some(call => call[0] === 'showTransientMessage' &&
-      /success\.presetSaved.*external IR data \(Measured Hall\)/.test(call[1])));
+    assert.ok(calls.some(call => call[0] === 'showTransientMessage' && call[1] === 'success.presetSaved'));
 
     windowRef.uiManager = createUiManager(calls, { pluginListManager: null });
     await manager.savePreset('SavedNoRefresh');
@@ -720,7 +719,7 @@ test('savePreset and deletePreset persist web and Electron presets with UI feedb
   });
 });
 
-test('save success warning stays bound to the preset written before file completion', async () => {
+test('save writes the pipeline captured before file completion', async () => {
   let releaseSave;
   let saveStarted;
   let writtenPreset;
@@ -766,8 +765,7 @@ test('save success warning stays bound to the preset written before file complet
 
     assert.equal(writtenPreset.Snapshot.plugins[0].nm, 'Cleanup');
     const success = calls.find(call => call[0] === 'showTransientMessage' && String(call[1]).includes('success.presetSaved'));
-    assert.match(success[1], /external IR data \(Saved Hall\)/);
-    assert.doesNotMatch(success[1], /Later Hall/);
+    assert.equal(success[1], 'success.presetSaved');
   });
 });
 
@@ -893,8 +891,7 @@ test('concurrent preset saves serialize read-modify-write and preserve invocatio
     assert.equal(persisted.Latest.plugins[0].nm, 'Latest');
     const messages = calls.filter(call => call[0] === 'showTransientMessage');
     assert.equal(messages.filter(call => String(call[1]).includes('success.presetSaved')).length, 1);
-    assert.match(messages[0][1], /Latest Hall/);
-    assert.doesNotMatch(messages[0][1], /First Hall/);
+    assert.equal(messages[0][1], 'success.presetSaved');
   });
 });
 

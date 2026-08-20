@@ -338,6 +338,11 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
     INCLUDE_DIRS core generated/cpp
     WRAP_MALLOC)
   et_add_dsp_test(
+    effetune_dsp_md_simulator_tests
+    SOURCES plugins/lofi/md_simulator/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
     effetune_dsp_five_band_dynamic_eq_tests
     SOURCES plugins/eq/five_band_dynamic_eq/native_test.cpp
     INCLUDE_DIRS core generated/cpp
@@ -451,6 +456,11 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
   et_add_dsp_test(
     effetune_dsp_group_delay_eq_tests
     SOURCES plugins/eq/group_delay_eq/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_group_delay_peq_tests
+    SOURCES plugins/eq/group_delay_peq/native_test.cpp
     INCLUDE_DIRS core generated/cpp
     WRAP_MALLOC)
   et_add_dsp_test(

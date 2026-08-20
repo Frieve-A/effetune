@@ -336,6 +336,7 @@ Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/
 | EQ        | Comb Filter | Adiciona coloração faseada, oca ou metálica | [Detalhes](plugins/eq.md#comb-filter) |
 | EQ        | Earphone Cable Sim | Ajuda a verificar como as mudanças de resposta em frequência causadas por cabos comuns de fones de ouvido costumam ser pequenas | [Detalhes](plugins/eq.md#earphone-cable-sim) |
 | EQ        | Group Delay EQ | Ajusta o atraso de cada banda de frequência sem alterar o timbre | [Detalhes](plugins/eq.md#group-delay-eq) |
+| EQ        | Group Delay PEQ | Controle paramétrico de cinco bandas do atraso por frequência sem alterar o timbre | [Detalhes](plugins/eq.md#group-delay-peq) |
 | EQ        | Hi Pass Filter | Remove frequências baixas indesejadas com precisão | [Detalhes](plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | Remove frequências altas indesejadas com precisão | [Detalhes](plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | Correção de balanço de frequência para audição em baixo volume | [Detalhes](plugins/eq.md#loudness-equalizer) |
@@ -352,6 +353,7 @@ Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/
 | Lo-Fi     | G.726 Simulator | Simula uma conversão de codificação e descodificação de voz ITU-T G.726 com uma ligação rádio ruidosa opcional | [Detalhes](plugins/lofi.md#g726-simulator) |
 | Lo-Fi     | GSM-FR Simulator | Simula uma conversão de codificação e descodificação de voz GSM-FR a 13 kbit/s por ligação rádio com ocultação de perdas de trama | [Detalhes](plugins/lofi.md#gsm-fr-simulator) |
 | Lo-Fi     | Hum Generator | Adiciona ambiência controlável de hum elétrico de 50/60 Hz para escuta vintage/lo-fi | [Detalhes](plugins/lofi.md#hum-generator) |
+| Lo-Fi     | MD Simulator | Simula uma conversão de codificação e descodificação ATRAC da era MiniDisc | [Detalhes](plugins/lofi.md#md-simulator) |
 | Lo-Fi     | MP3 Codec Simulator | Simula uma conversão limpa de codificação e decodificação MPEG Layer III em baixo bitrate | [Detalhes](plugins/lofi.md#mp3-codec-simulator) |
 | Lo-Fi     | Noise Blender | Adiciona textura ajustável de ruído de fundo para ambiência lo-fi | [Detalhes](plugins/lofi.md#noise-blender) |
 | Lo-Fi     | SBC Codec Simulator | Reproduz uma conversão de codificação e decodificação Bluetooth A2DP SBC com perda de pacotes da ligação e ocultação opcionais | [Detalhes](plugins/lofi.md#sbc-codec-simulator) |

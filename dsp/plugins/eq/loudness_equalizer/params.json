@@ -11,6 +11,7 @@
       "kind": "float",
       "min": 60,
       "max": 96,
+      "step": 0.1,
       "default": 65,
       "unit": "dB",
       "automation": true
@@ -21,6 +22,7 @@
       "kind": "float",
       "min": -30,
       "max": 12,
+      "step": 0.1,
       "default": 0,
       "unit": "dB",
       "automation": true
@@ -31,6 +33,7 @@
       "kind": "float",
       "min": 0,
       "max": 15,
+      "step": 0.1,
       "default": 10,
       "unit": "dB",
       "automation": true
@@ -41,6 +44,7 @@
       "kind": "int",
       "min": 100,
       "max": 300,
+      "step": 1,
       "default": 180,
       "unit": "Hz",
       "automation": true
@@ -51,6 +55,7 @@
       "kind": "float",
       "min": 0.5,
       "max": 1,
+      "step": 0.01,
       "default": 0.6,
       "automation": true
     },
@@ -60,6 +65,7 @@
       "kind": "float",
       "min": 0.5,
       "max": 1,
+      "step": 0.01,
       "default": 0.6,
       "automation": true
     },
@@ -69,6 +75,7 @@
       "kind": "float",
       "min": 0,
       "max": 15,
+      "step": 0.1,
       "default": 0,
       "unit": "dB",
       "automation": true
@@ -79,6 +86,7 @@
       "kind": "int",
       "min": 3000,
       "max": 6000,
+      "step": 10,
       "default": 4000,
       "unit": "Hz",
       "automation": true

@@ -184,6 +184,7 @@ class CliTests(unittest.TestCase):
                 "FIRCrossover",
                 "FiveBandFIRPEQ",
                 "GroupDelayEQ",
+                "GroupDelayPEQ",
                 "IRReverb",
                 "RoomEQ",
             )

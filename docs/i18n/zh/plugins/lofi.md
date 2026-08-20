@@ -19,6 +19,7 @@ lang: zh
 - [G.726 Simulator](#g726-simulator) - 模拟 ITU-T G.726 语音编解码往返处理，并可选叠加有误码的无线链路
 - [GSM-FR Simulator](#gsm-fr-simulator) - 模拟 13 kbit/s GSM-FR 语音编解码往返处理，含帧丢失隐藏的无线链路
 - [Hum Generator](#hum-generator) - 为复古/lo-fi 聆听加入可控的电气嗡声氛围
+- [MD Simulator](#md-simulator) - 重现 MiniDisc 时代的 ATRAC 编码与解码往返处理
 - [MP3 Codec Simulator](#mp3-codec-simulator) - 模拟低码率 MPEG Layer III 的纯净编码/解码往返处理
 - [Noise Blender](#noise-blender) - 添加氛围背景纹理
 - [SBC Codec Simulator](#sbc-codec-simulator) - 再现 Bluetooth A2DP SBC 编码/解码往返处理，并可选叠加链路丢包与隐藏处理
@@ -537,6 +538,28 @@ G.726 Simulator 会让所选单声道或立体声对经过真实的 8 kHz ITU-T 
    - Frequency: 40 Hz, Type: Dirty, Harmonics: 80%
    - Tone: 15.0 kHz, Instability: 6.0%, Level: -36 dB
    - 完美适合: 更强、更容易听出的嗡声质感
+
+## MD Simulator
+
+MD Simulator 会让所选声道经过实时简化的 ATRAC 分析、有限比特频谱量化和合成处理，该处理基于 MiniDisc 格式所用的 ATRAC 系列编解码器建模。可用它聆听纯净的 ATRAC 往返处理在 MD 机实际提供的三种录音模式下，如何改变瞬态、高频细节和音色质感。
+
+Mode 用于选择三种真实 MD 工作模式之一：SP(292 kbps)使用 ATRAC1，即原始标准播放 MiniDisc 所用的编解码器。LP2(132 kbps)和 LP4(66 kbps)使用 ATRAC3，分别对应 MDLP 的双倍与四倍时长录音模式；LP4 还会应用联合立体声编码。比特率越低，分析滤波器组可用的比特预算越少，瞬态涂抹、高频“啾啾声”/嘶嘶声以及低比特分配噪声就越明显。
+
+如果插件提示此效果不可用，请尝试其他采样率或声道模式。在效果可用前，输入音频会保持不变。
+
+### 音效调节指南
+
+- **代表性的 MD 聆听体验：** 从 SP、Output 0 dB 和 Mix 100% 开始。这是大多数 MD 录音实际使用的编解码器，能提供最干净的比较基准。
+- **聆听长时间模式的压缩感：** 将同一段音频依次切换到 LP2 再到 LP4。镲片、密集打击乐和宽立体声混音会显示出逐渐变粗糙的高频细节，而 LP4 由于比特预算减半和联合立体声编码，还会呈现更单薄、更不稳定的高频。
+- **显露瞬态特性：** 使用响板、拨弦乐器或钢琴起音等尖锐瞬态素材，可以听到 ATRAC 瞬态检测特有的预回声涂抹。
+- **混合效果：** 若希望在不完全替换信号的情况下加入 MD 特有的质感，可降低 Mix。干声路径已与解码路径对齐延迟。
+- **比较前匹配电平：** 仅使用 Output 补偿听感或测量到的响度差异，它不会改变编解码器的比特分配。
+
+### 参数
+
+- **Mode** — 在 `SP (292 kbps)`、`LP2 (132 kbps)`、`LP4 (66 kbps)` 之间选择。SP 使用 ATRAC1；LP2 和 LP4 使用 ATRAC3，LP4 还会加入联合立体声编码。比特率越低，可用于频谱量化的比特越少，编解码器的失真也越明显。
+- **Output** — 在 -24.0 至 +12.0 dB 之间调整解码输出电平，用于匹配电平，不会改变编解码器状态或比特分配。
+- **Mix** — 在 0% 至 100% 之间混合延迟对齐的原始信号与解码结果。
 
 ## MP3 Codec Simulator
 

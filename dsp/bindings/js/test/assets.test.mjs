@@ -6,9 +6,11 @@ import test from 'node:test';
 import {
   AssetError,
   IRReverb,
+  RoomEQ,
   createChain,
   encodeEta1
 } from '../dist/index.js';
+import { prepareConvolutionAsset } from '../dist/assets.js';
 import {
   buildIrAssetPayload,
   IR_ASSET_TOPOLOGY
@@ -41,6 +43,44 @@ test('encodeEta1 emits bounded canonical planar payloads', () => {
   assert.equal(view.getFloat32(60, true), 0.5);
   assert.equal(view.getFloat32(64, true), -1);
   assert.equal(view.getFloat32(68, true), -0.5);
+});
+
+test('RoomEQ accepts one filter channel per processing channel', () => {
+  const bytes = new Uint8Array(encodeEta1({
+    channels: [Float32Array.of(1), Float32Array.of(0.5)],
+    sampleRate: 48000,
+    topology: 'independent'
+  }));
+  const effect = new RoomEQ({
+    id: 'room',
+    latencyMode: '128',
+    filterDelaySamples: 0,
+    assets: { impulseResponse: 'room-filters' }
+  }).toJSON();
+  const resolvedAssets = new Map([
+    [effect.id, {
+      impulseResponse: {
+        bytes,
+        format: {
+          channels: 2,
+          frames: 1,
+          sampleRate: 48000,
+          topology: IR_ASSET_TOPOLOGY.independent,
+          paths: [],
+          sampleOffset: 32
+        },
+        reference: 'room-filters'
+      }
+    }]
+  ]);
+
+  const prepared = prepareConvolutionAsset(effect, resolvedAssets, {
+    sampleRate: 48000,
+    engineChannels: 2
+  });
+  assert.equal(prepared.beginInfo.topology, IR_ASSET_TOPOLOGY.independent);
+  assert.equal(prepared.beginInfo.channels, 2);
+  assert.equal(prepared.beginInfo.processingChannels, 2);
 });
 
 test('encodeEta1 rejects invalid public payload shapes with AssetError', () => {

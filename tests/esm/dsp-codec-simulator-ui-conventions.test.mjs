@@ -13,7 +13,7 @@ const pluginBaseSource = await fs.readFile(
   'utf8'
 );
 
-// The four Lo-Fi codec simulators are WASM-only and declare supportedChannelModes,
+// The five Lo-Fi codec simulators are WASM-only and declare supportedChannelModes,
 // so the engine silently passes audio through whenever it cannot run them. Each
 // one must therefore surface the bypass reason in its own UI.
 const CODEC_SIMULATORS = [
@@ -32,6 +32,10 @@ const CODEC_SIMULATORS = [
   {
     file: path.join('plugins', 'lofi', 'g726_adpcm_simulator.js'),
     globalName: 'G726ADPCMSimulatorPlugin'
+  },
+  {
+    file: path.join('plugins', 'lofi', 'md_simulator.js'),
+    globalName: 'MDSimulatorPlugin'
   }
 ];
 

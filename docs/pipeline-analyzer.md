@@ -18,13 +18,13 @@ Open **Measurement settings** for these controls:
 
 - **Signal** uses **MLS** by default. **TSP** is an alternative periodic test signal, while **Unit Impulse** directly captures the time response. Each can measure the pipeline differently when effects are nonlinear or change over time.
 - **Level** sets the test-signal peak and defaults to `-12 dBFS`. Linear effects normally give the same normalized response at every level; nonlinear and level-dependent effects can give a different result.
-- **Sequence Length** controls how long a response MLS or TSP can measure cleanly. Longer settings take more time and memory. Increase it for delay, reverb, or other long-ringing effects, especially when the analyzer recommends a longer value.
+- **Sequence Length** controls how long a response can be measured cleanly: for MLS and TSP it is the period of the test signal, and for Unit Impulse it is the number of samples captured after the impulse. Longer settings take more time and memory. Increase it for delay, reverb, or other long-ringing effects, especially when the analyzer recommends a longer value.
 - **Stabilization Periods** defaults to 12 and lets the pipeline settle before capture. Increase it when slow-moving effects have not reached a steady state.
 - **Averages** defaults to 2. Increase it to reduce run-to-run variation when the graph is unstable; measurements will take longer.
 
-The details show whether the current length is sufficient, the recommended length and stabilization time, and the total measurement time. Recommendations are guidance; apply them when they match the effects you are measuring.
+The details show whether the current length is sufficient, the recommended length and stabilization time, and the total measurement time. For Unit Impulse they show the capture length in samples and seconds at the current sample rate. Recommendations are guidance; apply them when they match the effects you are measuring.
 
-Sequence Length, Stabilization Periods, and Averages are disabled only for Unit Impulse. Changing Frequency, Phase, Min Group Delay, Excess Group Delay, or Impulse only changes the displayed graph and does not remeasure.
+Stabilization Periods and Averages are disabled only for Unit Impulse. MLS uses lengths of 2^n-1 samples, while TSP and Unit Impulse use lengths of 2^n samples; switching signals keeps the nearest matching length. Changing Frequency, Phase, Min Group Delay, Excess Group Delay, or Impulse only changes the displayed graph and does not remeasure.
 
 ## Reading the graphs
 
@@ -41,6 +41,6 @@ The graph always shows **Before** and **After**. Move the pointer across the gra
 
 Each measurement captures the active pipeline, its current settings and routing, and any selected speaker responses. The graphs show the resulting frequency, phase, minimum-group-delay, excess-group-delay, and impulse responses; **After** compensates for latency reported by the pipeline.
 
-MLS and TSP are best for general response measurement. If delay, reverb, or ringing extends beyond the selected measurement window, the result can overlap itself; increase **Sequence Length**. **Unit Impulse** directly records the response for a limited time, so exceptionally long tails can be cut off.
+MLS and TSP are best for general response measurement. If delay, reverb, or ringing extends beyond the selected measurement window, the result can overlap itself; increase **Sequence Length**. **Unit Impulse** records exactly the selected **Sequence Length** of samples, so tails longer than that window are cut off; increase the length when a tail is still ringing at the end of the capture.
 
 Nonlinear, time-varying, random, noisy, and source-generating effects can produce different results at different levels or between runs. Treat these graphs as snapshots of the selected settings rather than fixed characteristics.

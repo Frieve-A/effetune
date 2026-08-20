@@ -22,8 +22,8 @@ _REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 class GoldenComparatorTests(unittest.TestCase):
     def test_frozen_inventory_uses_all_generated_indexes(self) -> None:
         cases = _RUNNER.discover_cases(_REPOSITORY_ROOT)
-        self.assertEqual(len(cases), 848)
-        self.assertEqual(len({case["publicType"] for case in cases}), 90)
+        self.assertEqual(len(cases), 871)
+        self.assertEqual(len({case["publicType"] for case in cases}), 92)
 
     def test_public_pattern_metadata_identifies_only_binding_invalid_case(
         self,

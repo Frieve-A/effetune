@@ -381,7 +381,7 @@ uiTest('keeps both display controls mounted, enables only relevant settings, and
   assert.deepEqual(ui.getConfiguration().displaySettings, { smoothingOct: 0.31, impulseRangeMs: 50 });
 });
 
-uiTest('Unit Impulse disables only periodic controls and preserves their values', () => {
+uiTest('Unit Impulse keeps its own capture length and disables only periodic controls', () => {
   const fixture = createFixture();
   const changes = [];
   const ui = new PipelineAnalyzerUI({
@@ -394,29 +394,26 @@ uiTest('Unit Impulse disables only periodic controls and preserves their values'
   ui.sequenceSelect.dispatch('change');
   ui.signalSelect.value = 'impulse';
   ui.signalSelect.dispatch('change');
-  assert.equal(ui.sequenceSelect.disabled, true);
+  assert.equal(ui.sequenceSelect.disabled, false);
+  assert.deepEqual(ui.sequenceSelect.children.map(option => Number(option.value)),
+    [32768, 65536, 131072, 262144, 524288]);
   assert.equal(ui.stabilizationInput.disabled, true);
   assert.equal(ui.averagingInput.disabled, true);
   assert.equal(ui.levelInput.disabled, false);
-  assert.equal(ui.getConfiguration().measurementSettings.sequenceLength, 131071);
-  assert.equal(ui.measurementTiming.children.length, 0);
-  const impulseSettings = { ...ui.getConfiguration().measurementSettings };
-  ui.setResult({
-    sampleRate: 48000,
-    captureLength: 24000,
-    measurementSettings: impulseSettings,
-    measurement: { signalType: 'impulse' },
-    views: { frequency: { curves: [] } }
-  });
+  assert.equal(ui.getConfiguration().measurementSettings.sequenceLength, 131072);
   assert.equal(ui.measurementTiming.children.length, 1);
-  assert.match(ui.measurementTiming.children[0].textContent, /24000 samples \(0\.500 s\)/);
+  assert.match(ui.measurementTiming.children[0].textContent, /131072 samples \(2\.73 s\)/);
   assert.doesNotMatch(ui.measurementTiming.textContent, /support|stabilization|recommended/i);
   setFormat(ui, 2, 96000);
-  assert.match(ui.measurementTiming.children[0].textContent, /24000 samples \(0\.500 s\)/);
+  assert.match(ui.measurementTiming.children[0].textContent, /131072 samples \(1\.37 s\)/);
+  ui.sequenceSelect.value = '32768';
+  ui.sequenceSelect.dispatch('change');
+  assert.equal(changes.at(-1).measurementSettings.sequenceLength, 32768);
+  assert.match(ui.measurementTiming.children[0].textContent, /32768 samples \(0\.341 s\)/);
   ui.signalSelect.value = 'mls';
   ui.signalSelect.dispatch('change');
   assert.equal(ui.sequenceSelect.disabled, false);
-  assert.equal(ui.sequenceSelect.value, '131071');
+  assert.equal(ui.sequenceSelect.value, '32767');
   assert.equal(changes.at(-1).measurementSettings.signalType, 'mls');
 });
 
@@ -438,7 +435,7 @@ uiTest('TSP uses matching power-of-two lengths and periodic controls', () => {
   ui.signalSelect.value = 'impulse';
   ui.signalSelect.dispatch('change');
   assert.equal(ui.sequenceSelect.value, '131072');
-  assert.equal(ui.sequenceSelect.disabled, true);
+  assert.equal(ui.sequenceSelect.disabled, false);
   ui.signalSelect.value = 'mls';
   ui.signalSelect.dispatch('change');
   assert.equal(ui.sequenceSelect.value, '131071');

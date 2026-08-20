@@ -2502,6 +2502,45 @@
         }
       ]
     },
+    "GroupDelayPEQ": {
+      "internalType": "GroupDelayPEQPlugin",
+      "layoutHash": 2941825417,
+      "floatCount": 2,
+      "packedParameters": [
+        {
+          "publicName": "latencyMode",
+          "field": "latencyMode",
+          "keys": [
+            "lt"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "filterDelaySamples",
+          "field": "filterDelaySamples",
+          "keys": [
+            "fd"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": [
+        {
+          "publicName": "impulseResponse",
+          "slot": 0,
+          "format": "ET_ASSET_F32_MULTICH",
+          "capacity": "32 MiB convolution cap"
+        }
+      ]
+    },
     "HiPassFilter": {
       "internalType": "HiPassFilterPlugin",
       "layoutHash": 299011831,
@@ -3979,6 +4018,50 @@
             "lv"
           ],
           "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "MDSimulator": {
+      "internalType": "MDSimulatorPlugin",
+      "layoutHash": 2124600068,
+      "floatCount": 3,
+      "packedParameters": [
+        {
+          "publicName": "mode",
+          "field": "mode",
+          "keys": [
+            "md"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outputGain",
+          "field": "outputGain",
+          "keys": [
+            "og"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mx"
+          ],
+          "offset": 2,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -8142,6 +8225,7 @@
     "dsp/plugins/eq/five_band_fir_peq/params.json": "dsp/plugins/eq/five_band_fir_peq/golden/index.json",
     "dsp/plugins/eq/five_band_peq/params.json": "dsp/plugins/eq/five_band_peq/golden/index.json",
     "dsp/plugins/eq/group_delay_eq/params.json": "dsp/plugins/eq/group_delay_eq/golden/index.json",
+    "dsp/plugins/eq/group_delay_peq/params.json": "dsp/plugins/eq/group_delay_peq/golden/index.json",
     "dsp/plugins/eq/hi_pass_filter/params.json": "dsp/plugins/eq/hi_pass_filter/golden/index.json",
     "dsp/plugins/eq/lo_pass_filter/params.json": "dsp/plugins/eq/lo_pass_filter/golden/index.json",
     "dsp/plugins/eq/loudness_equalizer/params.json": "dsp/plugins/eq/loudness_equalizer/golden/index.json",
@@ -8159,6 +8243,7 @@
     "dsp/plugins/lofi/g726_adpcm_simulator/params.json": "dsp/plugins/lofi/g726_adpcm_simulator/golden/index.json",
     "dsp/plugins/lofi/gsm_full_rate_simulator/params.json": "dsp/plugins/lofi/gsm_full_rate_simulator/golden/index.json",
     "dsp/plugins/lofi/hum_generator/params.json": "dsp/plugins/lofi/hum_generator/golden/index.json",
+    "dsp/plugins/lofi/md_simulator/params.json": "dsp/plugins/lofi/md_simulator/golden/index.json",
     "dsp/plugins/lofi/mp3_codec_simulator/params.json": "dsp/plugins/lofi/mp3_codec_simulator/golden/index.json",
     "dsp/plugins/lofi/noise_blender/params.json": "dsp/plugins/lofi/noise_blender/golden/index.json",
     "dsp/plugins/lofi/simple_jitter/params.json": "dsp/plugins/lofi/simple_jitter/golden/index.json",
@@ -8198,5 +8283,5 @@
     "dsp/plugins/spatial/phase_select_eq/params.json": "dsp/plugins/spatial/phase_select_eq/golden/index.json",
     "dsp/plugins/spatial/stereo_blend/params.json": "dsp/plugins/spatial/stereo_blend/golden/index.json"
   },
-  "contractDigest": "e63194ca2bd43f224ade8e5b387a89f68678c9e8c838f4a8faca600a61521c84"
+  "contractDigest": "3c7c8ff05b4ffafc24aa90422245c024a9d146f5a010d157a719a4c521d5dab3"
 }
