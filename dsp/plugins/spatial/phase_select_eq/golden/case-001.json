@@ -23,7 +23,12 @@
         "pl": 0,
         "ph": 30,
         "oph": 45,
-        "gn": 100
+        "gn": 100,
+        "so": false,
+        "obl": -100,
+        "bl": -100,
+        "bh": 100,
+        "obh": 100
       },
       {
         "en": false,
@@ -35,7 +40,12 @@
         "pl": 0,
         "ph": 30,
         "oph": 45,
-        "gn": 100
+        "gn": 100,
+        "so": false,
+        "obl": -100,
+        "bl": -100,
+        "bh": 100,
+        "obh": 100
       },
       {
         "en": false,
@@ -47,7 +57,12 @@
         "pl": 0,
         "ph": 30,
         "oph": 45,
-        "gn": 100
+        "gn": 100,
+        "so": false,
+        "obl": -100,
+        "bl": -100,
+        "bh": 100,
+        "obh": 100
       },
       {
         "en": false,
@@ -59,7 +74,12 @@
         "pl": 0,
         "ph": 30,
         "oph": 45,
-        "gn": 100
+        "gn": 100,
+        "so": false,
+        "obl": -100,
+        "bl": -100,
+        "bh": 100,
+        "obh": 100
       },
       {
         "en": false,
@@ -71,7 +91,12 @@
         "pl": 0,
         "ph": 30,
         "oph": 45,
-        "gn": 100
+        "gn": 100,
+        "so": false,
+        "obl": -100,
+        "bl": -100,
+        "bh": 100,
+        "obh": 100
       }
     ]
   },
@@ -81,7 +106,7 @@
     "policy": "per-sample"
   },
   "referenceEngine": "production-native-promoted-v1",
-  "referenceHash": "sha256:9ba7a535d1f8111862793e1273116148327ada15d856574c269bd2f53cce2bb3",
+  "referenceHash": "sha256:e107f89d6a59612785eb35967d764852d15386df2ad85bb6cc8e5037aa72e1d4",
   "generationCommand": "node tools/dsp-parity/generate.mjs --type PhaseSelectEqPlugin --promote-production-native",
   "outputFloats": 24578,
   "byteLength": 98312,

@@ -87,6 +87,11 @@ test('route tail settlement is independent for quiet and loud outputs', () => {
   assert.equal(isRouteTailSettled(settled), true);
   assert.equal(isRouteTailSettled(quietUnsettled), false);
   assert.equal(areRouteTailsSettled([settled, quietUnsettled]), false);
+  assert.equal(isRouteTailSettled(quietUnsettled, 16384, 2e-7), true);
+  assert.throws(
+    () => isRouteTailSettled(quietUnsettled, 16384, -1),
+    /noise floor/
+  );
   quietUnsettled[quietUnsettled.length - 1] = 0;
   assert.equal(areRouteTailsSettled([settled, quietUnsettled]), true);
 });
@@ -148,6 +153,7 @@ test('frequency response preserves gain, polarity, integer delay, phase, and gro
   impulse[delaySamples] = -2;
   const response = deriveFrequencyResponse(impulse, sampleRate, { maximumPoints: 512 });
   const index = nearestIndex(response.frequencies, 1000);
+  const smoothingIndex = nearestIndex(response.smoothing.frequencies, 1000);
   assert.ok(Math.abs(response.magnitudeDb[index] - 20 * Math.log10(2)) < 1e-4);
   assert.equal(response.valid[index], 1);
   assert.ok(Math.abs(response.groupDelayMs[index] - delaySamples / sampleRate * 1000) < 1e-4);
@@ -159,9 +165,43 @@ test('frequency response preserves gain, polarity, integer delay, phase, and gro
     response.minimumGroupDelayMs[index] + response.excessGroupDelayMs[index] -
     response.groupDelayMs[index]
   ) < 1e-4);
+  assert.ok(response.smoothing.frequencies.length > 500);
+  assert.ok(Math.abs(
+    response.smoothing.groupDelayMs[smoothingIndex] - delaySamples / sampleRate * 1000
+  ) < 1e-4);
+  assert.ok(Math.abs(
+    response.smoothing.minimumGroupDelayMs[smoothingIndex] +
+    response.smoothing.excessGroupDelayMs[smoothingIndex] -
+    response.smoothing.groupDelayMs[smoothingIndex]
+  ) < 1e-4);
+  const smoothingExpectedPhase = 180 - 360 *
+    response.smoothing.frequencies[smoothingIndex] * delaySamples / sampleRate;
+  assert.ok(Math.abs(
+    response.smoothing.unwrappedPhaseDegrees[smoothingIndex] - smoothingExpectedPhase
+  ) < 0.01);
   const expectedPhase = 180 - 360 * response.frequencies[index] * delaySamples / sampleRate;
   const wrappedExpected = ((expectedPhase + 180) % 360 + 360) % 360 - 180;
   assert.ok(Math.abs(response.phaseDegrees[index] - wrappedExpected) < 1e-3);
+});
+
+test('continuous phase integration remains correct beyond adjacent-bin unwrap limits', () => {
+  const sampleRate = 96000;
+  const fftSize = 65536;
+  const delaySamples = 40001;
+  const impulse = new Float32Array(fftSize);
+  impulse[delaySamples] = 1;
+  const response = deriveFrequencyResponse(impulse, sampleRate, {
+    fftSize,
+    maximumPoints: 512
+  });
+  const index = nearestIndex(response.smoothing.frequencies, 20);
+  const frequency = response.smoothing.frequencies[index];
+  const actual = ((response.smoothing.unwrappedPhaseDegrees[index] + 180) % 360 + 360) % 360 - 180;
+  const expectedPhase = -360 * frequency * delaySamples / sampleRate;
+  const expected = ((expectedPhase + 180) % 360 + 360) % 360 - 180;
+
+  assert.ok(delaySamples > fftSize / 2);
+  assert.ok(Math.abs(actual - expected) < 0.01, `${actual}° vs ${expected}°`);
 });
 
 test('minimum-phase response stays in Min Group Delay instead of Excess Group Delay', () => {

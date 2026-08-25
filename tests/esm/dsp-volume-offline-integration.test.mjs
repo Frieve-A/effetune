@@ -4,6 +4,7 @@ import test from 'node:test';
 
 import { OfflineProcessor } from '../../js/audio/offline-processor.js';
 import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
+import { DENORMAL_NOISE_AMPLITUDE } from '../../dsp/bindings/js/src/denormal-noise.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 const META_URL = new URL('../../plugins/dsp/effetune-dsp.meta.json', import.meta.url);
@@ -136,7 +137,13 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
     assert.deepEqual(wasm.warnings, []);
     assert.equal(wasm.channels.length, js.channels.length);
     for (let channel = 0; channel < wasm.channels.length; channel++) {
-      assert.deepEqual(wasm.channels[channel], js.channels[channel]);
+      for (let frame = 0; frame < wasm.channels[channel].length; frame++) {
+        assert.ok(
+          Math.abs(wasm.channels[channel][frame] - js.channels[channel][frame]) <=
+            DENORMAL_NOISE_AMPLITUDE,
+          'WASM output may differ only by the inaudible denormal carrier'
+        );
+      }
     }
   });
 }

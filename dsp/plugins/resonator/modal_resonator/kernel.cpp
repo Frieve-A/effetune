@@ -1,5 +1,6 @@
 #include "effetune/kernel.h"
 #include "ModalResonatorPluginParams.h"
+#include "effetune/dsp/denormal_noise.h"
 
 #include "modal_resonator_common.h"
 
@@ -85,6 +86,7 @@ public:
     active_channels_ = 0u;
     automation_initialized_ = false;
     automation_ramp_remaining_ = 0u;
+    denormal_noise_.reset();
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -184,6 +186,7 @@ public:
                                      modal_resonator::kResonatorCount +
                                  resonator];
           const float input = audio[audio_offset + frame];
+          const double noise = denormal_noise_.sample(frame);
           const std::uint32_t delay_floor = static_cast<std::uint32_t>(config.delay_samples);
           const double fraction = config.delay_samples - static_cast<double>(delay_floor);
           const std::uint32_t read_position = position >= delay_floor
@@ -195,17 +198,18 @@ public:
                                  fraction * (static_cast<double>(delay[older_position]) -
                                              static_cast<double>(delay[read_position]));
           delay[position] =
-              static_cast<float>(static_cast<double>(input) + delayed * config.feedback);
+              static_cast<float>(static_cast<double>(input) + noise + delayed * config.feedback);
 
           const double delayed_double = delayed;
           const double after_high_pass =
               config.high_pass_alpha *
-              (state.high_pass_y_previous + delayed_double - state.high_pass_x_previous);
+                  (state.high_pass_y_previous + delayed_double - state.high_pass_x_previous) +
+              noise;
           state.high_pass_x_previous = delayed_double;
           state.high_pass_y_previous = after_high_pass;
           const double after_low_pass =
               state.low_pass_y_previous +
-              (1.0 - config.low_pass_alpha) * (after_high_pass - state.low_pass_y_previous);
+              (1.0 - config.low_pass_alpha) * (after_high_pass - state.low_pass_y_previous) + noise;
           state.low_pass_y_previous = after_low_pass;
           const double output = after_low_pass * config.gain;
           accumulation_[frame] =
@@ -226,6 +230,7 @@ public:
                                                              wet_trajectory_[trajectory_frame]);
       }
     }
+    denormal_noise_.advance(frame_count);
   }
 
 private:
@@ -283,6 +288,7 @@ private:
   std::uint32_t automation_ramp_frames_ = 240u;
   std::uint32_t automation_ramp_remaining_ = 0u;
   bool automation_initialized_ = false;
+  dsp::NyquistDenormalNoise denormal_noise_;
 };
 
 static_assert(sizeof(ModalResonatorKernel) <= 8192u);

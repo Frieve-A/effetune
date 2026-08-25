@@ -240,6 +240,13 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
     WRAP_MALLOC
     TEST_NAME effetune_dsp_parity_runner_help
     TEST_ARGS --help)
+  et_add_dsp_test(
+    effetune_dsp_pffft_incremental_tests
+    SOURCES test/pffft_incremental_test.cpp
+    INCLUDE_DIRS include)
+  set_property(
+    TARGET effetune_dsp_pffft_incremental_tests
+    PROPERTY LINK_LIBRARIES pffft)
   et_add_dsp_test(effetune_dsp_biquad_tests SOURCES test/biquad_test.cpp)
   et_add_dsp_test(effetune_dsp_halfband_tests SOURCES test/halfband_test.cpp)
   et_add_dsp_test(

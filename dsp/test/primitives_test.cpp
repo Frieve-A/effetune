@@ -1,10 +1,12 @@
 #include "effetune/dsp/delay_line.h"
+#include "effetune/dsp/denormal_noise.h"
 #include "effetune/dsp/math.h"
 #include "effetune/dsp/smoothing.h"
 #include "effetune/dsp/xorshift_rng.h"
 
 #include <cmath>
 #include <cstdio>
+#include <limits>
 
 namespace {
 
@@ -100,6 +102,34 @@ void testMath() {
   PRIMITIVE_CHECK(effetune::dsp::clamp_value(5, 1, 4) == 4);
 }
 
+void testDenormalNoise() {
+  using DenormalNoise = effetune::dsp::NyquistDenormalNoise;
+  effetune::dsp::NyquistDenormalNoise noise;
+  PRIMITIVE_CHECK(noise.sample(0u) == DenormalNoise::kAmplitude);
+  PRIMITIVE_CHECK(noise.sample(1u) == -DenormalNoise::kAmplitude);
+  PRIMITIVE_CHECK(noise.sample(0u) + noise.sample(1u) == 0.0);
+  noise.advance(127u);
+  PRIMITIVE_CHECK(noise.sample(0u) == -DenormalNoise::kAmplitude);
+  noise.advance(129u);
+  PRIMITIVE_CHECK(noise.sample(0u) == DenormalNoise::kAmplitude);
+  noise.reset();
+  PRIMITIVE_CHECK(noise.sample(0u) == DenormalNoise::kAmplitude);
+
+  PRIMITIVE_CHECK(static_cast<float>(DenormalNoise::kAmplitude) >=
+                  std::numeric_limits<float>::min());
+  double positive_sum = 0.0;
+  double negative_sum = 0.0;
+  for (std::uint32_t plugin = 0u; plugin < DenormalNoise::kMaximumPluginCount; ++plugin) {
+    for (std::uint32_t site = 0u; site < DenormalNoise::kMaximumCoherentSitesPerPlugin; ++site) {
+      positive_sum += noise.sample(0u);
+      negative_sum += noise.sample(1u);
+    }
+  }
+  PRIMITIVE_CHECK(positive_sum <= DenormalNoise::kMaximumOutputNoiseAmplitude);
+  PRIMITIVE_CHECK(negative_sum >= -DenormalNoise::kMaximumOutputNoiseAmplitude);
+  PRIMITIVE_CHECK(positive_sum + negative_sum == 0.0);
+}
+
 } // namespace
 
 int main() {
@@ -107,6 +137,7 @@ int main() {
   testSmoothing();
   testRng();
   testMath();
+  testDenormalNoise();
 
   if (failures != 0) {
     std::fprintf(stderr, "%d primitive test check(s) failed\n", failures);

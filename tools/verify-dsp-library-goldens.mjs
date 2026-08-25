@@ -15,9 +15,9 @@ const DEFAULT_SUMMARY = path.join(
   'dsp-library-goldens-summary.json'
 );
 const EXPECTED_BACKENDS = Object.freeze({
-  'python-native': 871,
-  'javascript-baseline': 871,
-  'javascript-simd': 871
+  'python-native': 874,
+  'javascript-baseline': 874,
+  'javascript-simd': 874
 });
 const EXPECTED_WORKLET_GOLDEN = Object.freeze({
   'chromium-audioworklet-baseline': 93,
@@ -1401,7 +1401,7 @@ async function resolvePython(repoRoot, explicit) {
     ? [
         path.join(
           repoRoot,
-          '.tmp',
+          'tmp',
           'phase1-python',
           'release-smoke-cp312',
           'Scripts',
@@ -1434,9 +1434,9 @@ export async function runAcceptance(options = {}) {
     status: 'failed'
   };
   if (inventorySummary.effects !== 92 ||
-      inventorySummary.total !== 871 ||
+      inventorySummary.total !== 874 ||
       inventorySummary.assetCases !== 24 ||
-      inventorySummary.eventCases !== 145) {
+      inventorySummary.eventCases !== 146) {
     throw new Error(
       `Frozen inventory mismatch: ${JSON.stringify(inventorySummary)}`
     );

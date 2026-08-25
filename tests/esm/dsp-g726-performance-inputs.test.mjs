@@ -204,7 +204,7 @@ test('G.726 resolved build authority records a host-independent toolchain identi
 
   const windowsHost = fixtureBuildAuthority(
     path.join(root, 'windows'),
-    `${posix(repoRoot)}/dsp/.emsdk/upstream/emscripten/em++.exe`
+    `${posix(repoRoot)}/.emsdk/upstream/emscripten/em++.exe`
   );
   const linuxHost = fixtureBuildAuthority(
     path.join(root, 'linux'),

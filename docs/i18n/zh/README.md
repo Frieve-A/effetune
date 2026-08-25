@@ -391,7 +391,7 @@ PC 上的 Chromium 浏览器可以在不同会话间保留对所选音乐文件�
 | Spatial   | Crossfeed Filter | 用于自然立体声成像的耳机交叉馈送滤波器 | [详情](plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | 在立体声和 Mid/Side 之间转换，用于调整中央与氛围成分 | [详情](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5 频段频率相关立体声平衡控制 | [详情](plugins/spatial.md#multiband-balance) |
-| Spatial   | Phase Select EQ | 按 L/R 相位差选择并提升或衰减频率成分 | [详情](plugins/spatial.md#phase-select-eq) |
+| Spatial   | Phase Select EQ | 按 L/R 相位差和 Balance 选择并提升或衰减频率成分 | [详情](plugins/spatial.md#phase-select-eq) |
 | Spatial   | Stereo Blend | 从单声道到增强立体声控制声场宽度 | [详情](plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | 用于检查扬声器/耳机的测试音和噪声发生器 | [详情](plugins/others.md#oscillator) |
 | Control   | Section | 将效果分组，让整个区段可被旁路或恢复 | [详情](plugins/control.md) |

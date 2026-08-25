@@ -181,7 +181,7 @@ The commands perform these checks:
    processing.
 
 The native test and parity steps do not require emsdk; the warning check does.
-Build directories are created below `dsp/build/`.
+Build directories are created below the repository-root `out/dsp/` directory.
 
 ### ABI and Real-Time Memory
 

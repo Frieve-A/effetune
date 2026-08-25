@@ -388,7 +388,7 @@ EffeTune создан для аудиоэнтузиастов, которые х
 | Spatial   | Crossfeed Filter | Наушниковый crossfeed-фильтр для естественной стереокартины | [Подробнее](plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | Преобразует stereo и Mid/Side для настройки центра и пространства | [Подробнее](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5-полосное управление стереобалансом по частотам | [Подробнее](plugins/spatial.md#multiband-balance) |
-| Spatial   | Phase Select EQ | Усиливает или ослабляет частотные компоненты, выбранные по разности фаз L/R | [Подробнее](plugins/spatial.md#phase-select-eq) |
+| Spatial   | Phase Select EQ | Усиливает или ослабляет частотные компоненты, выбранные по разности фаз L/R и Balance | [Подробнее](plugins/spatial.md#phase-select-eq) |
 | Spatial   | Stereo Blend | Управляет шириной стерео от mono до расширенного stereo | [Подробнее](plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | Генератор тестовых тонов и шума для проверки колонок и наушников | [Подробнее](plugins/others.md#oscillator) |
 | Control   | Section | Группирует эффекты, чтобы всю секцию можно было bypass или restore | [Подробнее](plugins/control.md) |

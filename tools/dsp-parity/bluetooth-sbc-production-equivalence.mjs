@@ -23,8 +23,8 @@ function usage() {
     'Usage: node tools/dsp-parity/bluetooth-sbc-production-equivalence.mjs --snapshot-root <path> --evidence <file> --json <file> [options]',
     '  --evidence <file>            accepted formal performance evidence JSON',
     '  --artifacts-dir <path>       production artifact directory (default plugins/dsp)',
-    '  --baseline-build-dir <path>  baseline build directory (default dsp/build/wasm)',
-    '  --simd-build-dir <path>      SIMD build directory (default dsp/build/wasm-simd)',
+    '  --baseline-build-dir <path>  baseline build directory (default out/dsp/wasm)',
+    '  --simd-build-dir <path>      SIMD build directory (default out/dsp/wasm-simd)',
     '',
     'Confirms that the promoted Bluetooth SBC production ABI and Release WASM build',
     'match the accepted Phase 0 semantic and build contracts without re-running timing.'
@@ -191,8 +191,8 @@ export async function evaluateBluetoothSbcProductionEquivalence({
   snapshotRoot,
   evidencePath,
   artifactsDir = path.join(repoRoot, 'plugins', 'dsp'),
-  baselineBuildDir = path.join(repoRoot, 'dsp', 'build', 'wasm'),
-  simdBuildDir = path.join(repoRoot, 'dsp', 'build', 'wasm-simd')
+  baselineBuildDir = path.join(repoRoot, 'out', 'dsp', 'wasm'),
+  simdBuildDir = path.join(repoRoot, 'out', 'dsp', 'wasm-simd')
 }) {
   if (!evidencePath) throw new Error('evidencePath is required');
   const [
@@ -316,8 +316,8 @@ async function main(argv = process.argv.slice(2)) {
     snapshotRoot: path.resolve(String(args['snapshot-root'])),
     evidencePath: path.resolve(String(args.evidence)),
     artifactsDir: path.resolve(REPO_ROOT, String(args['artifacts-dir'] ?? 'plugins/dsp')),
-    baselineBuildDir: path.resolve(REPO_ROOT, String(args['baseline-build-dir'] ?? 'dsp/build/wasm')),
-    simdBuildDir: path.resolve(REPO_ROOT, String(args['simd-build-dir'] ?? 'dsp/build/wasm-simd'))
+    baselineBuildDir: path.resolve(REPO_ROOT, String(args['baseline-build-dir'] ?? 'out/dsp/wasm')),
+    simdBuildDir: path.resolve(REPO_ROOT, String(args['simd-build-dir'] ?? 'out/dsp/wasm-simd'))
   });
   const outputPath = path.resolve(REPO_ROOT, String(args.json));
   await fs.mkdir(path.dirname(outputPath), { recursive: true });

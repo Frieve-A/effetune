@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { AudioManager } from '../../js/audio-manager.js';
 import { SHIPPED_ENABLED_TYPES } from '../../js/audio/dsp-rollout.js';
+import { PipelineProcessor } from '../../js/audio/pipeline-processor.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 function createPort() {
@@ -176,6 +177,8 @@ class VolumePlugin {
     return { branch: this.branch };
   }
 }
+
+class SectionPlugin extends VolumePlugin {}
 
 class AssetVolumePlugin extends VolumePlugin {
   constructor(id, branch, options = {}) {
@@ -388,6 +391,13 @@ function createFakeAudioWorkletClass(createdWorklets) {
 
 function messageOf(port, type) {
   return port.messages.find(entry => entry.message.type === type);
+}
+
+function hasConnectionPath(source, target, visited = new Set()) {
+  if (source === target) return true;
+  if (!source || visited.has(source)) return false;
+  visited.add(source);
+  return (source.connections || []).some(node => hasConnectionPath(node, target, visited));
 }
 
 test('initializeAudioWorklet returns while optional DSP loading continues', async () => {
@@ -2224,6 +2234,164 @@ test('AudioManager keeps DBT teardown muted until the saved primary exact asset 
   });
 });
 
+test('AudioManager restores a disabled pipeline B asset to primary without waiting for ACTIVE', async () => {
+  const createdWorklets = [];
+  await withGlobals({
+    AudioWorkletNode: createFakeAudioWorkletClass(createdWorklets),
+    window: { location: { pathname: '/app/index.html', search: '' }, audioPreferences: { useWasmDsp: false } },
+    document: { hidden: false }
+  }, async () => {
+    const manager = createManager();
+    const main = createNode('main');
+    const { output } = configureParallelManager(manager, main);
+    const pluginB = new AssetVolumePlugin(2, 'B', {
+      configured: true,
+      assetSignature: 'ir-b|lt128|48000|2'
+    });
+    pluginB.enabled = false;
+    manager.pipelineB = [pluginB];
+
+    assert.equal(await manager.enableParallelPipelines('A'), true);
+    const auxiliary = createdWorklets[0];
+    assert.equal(pluginB.replays.some(replay => replay.workletNode === auxiliary), true);
+
+    manager.currentPipeline = 'B';
+    manager.pipeline = manager.pipelineB;
+    const replayCount = pluginB.replays.length;
+    const readinessChecks = [];
+    manager._waitForWasmAssetsActive = async (workletNode, expected) => {
+      readinessChecks.push({ workletNode, expected: [...expected] });
+      return expected.size === 0;
+    };
+    main.port.messages.length = 0;
+
+    assert.equal(await manager.disableParallelPipelines(), true);
+    assert.deepEqual(readinessChecks, [{ workletNode: main, expected: [] }]);
+    assert.equal(pluginB.replays.slice(replayCount).some(
+      replay => replay.workletNode === main
+    ), true);
+    assert.equal(main.port.messages.some(entry =>
+      entry.message.type === 'setPluginAsset' && entry.message.pluginId === pluginB.id
+    ), true);
+    assert.equal(hasConnectionPath(main, output), true);
+  });
+});
+
+test('AudioManager replays primary assets without an ACTIVE wait when DBT ends under master bypass', async () => {
+  const createdWorklets = [];
+  await withGlobals({
+    AudioWorkletNode: createFakeAudioWorkletClass(createdWorklets),
+    window: { location: { pathname: '/app/index.html', search: '' }, audioPreferences: { useWasmDsp: false } },
+    document: { hidden: false }
+  }, async () => {
+    const manager = createManager();
+    const main = createNode('main');
+    const { output } = configureParallelManager(manager, main);
+    const primary = new AssetVolumePlugin(1, 'A');
+    manager.pipelineA = [primary];
+    manager.pipeline = manager.pipelineA;
+    manager._waitForWasmAssetsActive = async (workletNode, expected) => {
+      const states = manager._wasmAssetStatesByNode.get(workletNode);
+      for (const key of expected) states.set(key, 3);
+      return true;
+    };
+
+    assert.equal(await manager.enableParallelPipelines('A'), true);
+    manager.masterBypass = true;
+    const replayCount = primary.replays.length;
+    const readinessChecks = [];
+    manager._waitForWasmAssetsActive = async (_workletNode, expected) => {
+      readinessChecks.push([...expected]);
+      return expected.size === 0;
+    };
+    manager.fadeOutOutput = () => {
+      output.gain.value = 0;
+      return ++manager._outputFadeToken;
+    };
+    manager.fadeInOutput = () => { output.gain.value = 1; };
+
+    assert.equal(await manager.disableParallelPipelines(), true);
+    assert.deepEqual(readinessChecks, [[]]);
+    assert.equal(primary.replays.length, replayCount + 1);
+    assert.equal(primary.replays.at(-1).workletNode, main);
+    assert.equal(main.port.messages.filter(entry =>
+      entry.message.type === 'updatePlugins'
+    ).at(-1).message.masterBypass, true);
+    assert.equal(main.port.messages.some(entry =>
+      entry.message.type === 'setPluginAsset' && entry.message.pluginId === primary.id
+    ), true);
+    assert.equal(hasConnectionPath(main, output), true);
+    assert.equal(output.gain.value, 1);
+  });
+});
+
+test('AudioManager re-adds and replays assets after master bypass clears a DBT pipeline', async () => {
+  const createdWorklets = [];
+  await withGlobals({
+    AudioWorkletNode: createFakeAudioWorkletClass(createdWorklets),
+    window: { location: { pathname: '/app/index.html', search: '' }, audioPreferences: { useWasmDsp: false } },
+    document: { hidden: false }
+  }, async () => {
+    const manager = createManager();
+    const main = createNode('main');
+    const { output } = configureParallelManager(manager, main);
+    const primary = new AssetVolumePlugin(1, 'A');
+    manager.pipelineA = [primary];
+    manager.pipeline = manager.pipelineA;
+    manager.ioManager.createFallbackSilentSource = () => createNode('silent-source');
+    manager.ioManager.connectAudioNodes = async () => {
+      main.connect(output);
+      return '';
+    };
+    manager.pipelineProcessor = new PipelineProcessor(
+      manager.contextManager,
+      manager.ioManager
+    );
+    manager.updateExposedProperties = () => {};
+    const readinessChecks = [];
+    manager._waitForWasmAssetsActive = async (workletNode, expected) => {
+      readinessChecks.push([...expected]);
+      const states = manager._wasmAssetStatesByNode.get(workletNode);
+      for (const key of expected) states.set(key, 3);
+      return true;
+    };
+    manager.fadeOutOutput = () => {
+      output.gain.value = 0;
+      return ++manager._outputFadeToken;
+    };
+    manager.fadeInOutput = () => { output.gain.value = 1; };
+
+    assert.equal(await manager.enableParallelPipelines('A'), true);
+    const replayCountBeforeBypass = primary.replays.length;
+    readinessChecks.length = 0;
+    main.port.messages.length = 0;
+
+    await manager.setMasterBypass(true);
+    assert.deepEqual(readinessChecks, [[]]);
+    assert.equal(primary.replays.length, replayCountBeforeBypass + 1);
+    assert.deepEqual([...manager._wasmAssetMembershipByNode.get(main).keys()], []);
+    assert.equal(manager._wasmAssetStatesByNode.get(main).has(`${primary.id}:0`), false);
+    assert.deepEqual(main.port.messages.filter(entry =>
+      entry.message.type === 'updatePlugins'
+    ).at(-1).message.plugins, []);
+    assert.equal(output.gain.value, 1);
+
+    const replayCountBeforeRestore = primary.replays.length;
+    main.port.messages.length = 0;
+    await manager.setMasterBypass(false);
+
+    assert.equal(manager._wasmAssetMembershipByNode.get(main).get(primary.id), primary);
+    assert.equal(primary.replays.length, replayCountBeforeRestore + 1);
+    const messageTypes = main.port.messages.map(entry => entry.message.type);
+    assert.ok(messageTypes.lastIndexOf('setPluginAsset') > messageTypes.lastIndexOf('updatePlugins'));
+    assert.equal(main.port.messages.some(entry =>
+      entry.message.type === 'setPluginAsset' && entry.message.pluginId === primary.id
+    ), true);
+    assert.equal(hasConnectionPath(main, output), true);
+    assert.equal(output.gain.value, 1);
+  });
+});
+
 test('AudioManager lets only the owning teardown restore output after deferred primary DSP failure', async () => {
   await withGlobals({ window: {} }, async () => {
     const cases = [
@@ -2805,6 +2973,117 @@ test('AudioManager replays pipeline B assets after its DBT config and waits for 
     assert.equal(await enabling, true);
     assert.equal(manager._parallelActive, true);
     await manager.disableParallelPipelines({ restorePrimaryDsp: false });
+  });
+});
+
+test('AudioManager keeps both DBT worklets renderable until enabled assets become active', async () => {
+  const createdWorklets = [];
+  await withGlobals({
+    AudioWorkletNode: createFakeAudioWorkletClass(createdWorklets),
+    window: { location: { pathname: '/app/index.html', search: '' }, audioPreferences: { useWasmDsp: false } },
+    document: { hidden: false }
+  }, async () => {
+    const manager = createManager();
+    const main = createNode('main');
+    const { output } = configureParallelManager(manager, main);
+    const pluginA = new AssetVolumePlugin(1, 'A');
+    const pluginB = new AssetVolumePlugin(2, 'B');
+    manager.pipelineA = [pluginA];
+    manager.pipelineB = [pluginB];
+    manager.pipeline = manager.pipelineA;
+
+    manager._waitForWasmAssetsActive = async (workletNode, expected) => {
+      const selector = workletNode.connections[0];
+      if (!hasConnectionPath(workletNode, output) || selector?.gain?.value !== 1) return false;
+      const states = manager._wasmAssetStatesByNode.get(workletNode);
+      for (const key of expected) states.set(key, 3);
+      return true;
+    };
+
+    assert.equal(await manager.enableParallelPipelines('A'), true);
+    assert.equal(manager._parallelActive, true);
+    assert.equal(pluginA.replays.length, 1);
+    assert.equal(pluginB.replays.length, 1);
+    assert.equal(hasConnectionPath(main, output), true);
+    assert.equal(hasConnectionPath(createdWorklets[0], output), true);
+    await manager.disableParallelPipelines({ restorePrimaryDsp: false });
+  });
+});
+
+test('AudioManager replays disabled DBT assets without including them in readiness', async () => {
+  const createdWorklets = [];
+  await withGlobals({
+    AudioWorkletNode: createFakeAudioWorkletClass(createdWorklets),
+    window: { location: { pathname: '/app/index.html', search: '' }, audioPreferences: { useWasmDsp: false } },
+    document: { hidden: false }
+  }, async () => {
+    const manager = createManager();
+    const main = createNode('main');
+    configureParallelManager(manager, main);
+    const pluginA = new AssetVolumePlugin(1, 'A', {
+      configured: true,
+      assetSignature: 'ir-a|lt128|48000|2'
+    });
+    const sectionB = new SectionPlugin(2, 'B section');
+    sectionB.enabled = false;
+    const pluginB = new AssetVolumePlugin(3, 'B', {
+      configured: true,
+      assetSignature: 'ir-b|lt128|48000|2'
+    });
+    pluginA.enabled = false;
+    manager.pipelineA = [pluginA];
+    manager.pipelineB = [sectionB, pluginB];
+    manager.pipeline = manager.pipelineA;
+    const expectedAssets = [];
+    manager._waitForWasmAssetsActive = async (_workletNode, expected) => {
+      expectedAssets.push([...expected]);
+      return expected.size === 0;
+    };
+
+    assert.equal(await manager.enableParallelPipelines('A'), true);
+    assert.equal(manager._parallelActive, true);
+    assert.deepEqual(expectedAssets, [[], []]);
+    assert.equal(manager._parallelBranchSnapshot.pipelineA.assetMaps.has(pluginA), false);
+    assert.equal(manager._parallelBranchSnapshot.pipelineB.assetMaps.has(pluginB), false);
+    assert.equal(pluginA.replays.length, 1);
+    assert.equal(pluginB.replays.length, 1);
+    assert.equal(main.port.messages.some(entry =>
+      entry.message.type === 'setPluginAsset' && entry.message.pluginId === pluginA.id
+    ), true);
+    assert.equal(createdWorklets[0].port.messages.some(entry =>
+      entry.message.type === 'setPluginAsset' && entry.message.pluginId === pluginB.id
+    ), true);
+    await manager.disableParallelPipelines({ restorePrimaryDsp: false });
+  });
+});
+
+test('AudioManager keeps UI enable as one updatePlugin without replaying retained assets', async () => {
+  await withGlobals({ window: {} }, async () => {
+    const manager = createManager();
+    const main = createNode('main');
+    const plugin = new AssetVolumePlugin(1, 'A');
+    plugin.enabled = false;
+    manager.workletNode = main;
+    manager.contextManager = { workletNode: main };
+    manager.pipelineA = [plugin];
+    manager.pipeline = manager.pipelineA;
+
+    assert.ok(manager._syncWasmAssetMembership(main, manager.pipeline, {
+      trackState: true
+    }) instanceof Set);
+    assert.equal(plugin.replays.length, 1);
+    main.port.messages.length = 0;
+
+    plugin.enabled = true;
+    const [pluginData] = manager._buildBlindPluginData(manager.pipeline);
+    const result = manager.commitPowerTopologyMutation({
+      type: 'updatePlugin',
+      plugin: pluginData
+    }, { reason: 'pipeline-plugin-update' });
+
+    assert.equal(result.postedNodeCount, 1);
+    assert.deepEqual(main.port.messages.map(entry => entry.message.type), ['updatePlugin']);
+    assert.equal(plugin.replays.length, 1);
   });
 });
 

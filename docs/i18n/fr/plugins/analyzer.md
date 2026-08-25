@@ -146,6 +146,7 @@ Un outil de visualisation fascinant qui vous permet de voir comment votre musiqu
   - Lorsqu'un seul côté domine, les points peuvent aussi se diriger vers les coins selon la polarité du signal
   - Les points verts dansent avec la musique actuelle
   - La ligne blanche trace les pics musicaux
+  - La ligne blanche des crêtes décroît à chaque échantillon audio, de sorte que son mouvement reste identique quelle que soit la taille des blocs de traitement
 - **Barre de corrélation LR** (côté gauche)
   - Montre la corrélation entre les canaux gauche et droit
   - Haut (+1.0) : les canaux sont presque identiques, avec un son qui se regroupe facilement au centre

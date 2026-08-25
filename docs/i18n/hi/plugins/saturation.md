@@ -39,7 +39,7 @@ Bandwidth Extender ऐसे audio के लिए है जिसमें �
 - **Cutoff** दोनों channels में समान, तीव्र और लगातार spectral गिरावट खोजने वाले **Auto** या **Manual** को चुनता है। Manual में generated band अपने आप playback की उपलब्ध frequency range के भीतर रहता है।
 - **Manual Cutoff** (6000-24000 Hz) Manual mode में generation शुरू होने की frequency तय करता है।
 
-Bandwidth Extender लगभग 21 ms की latency जोड़ता है। यदि वह मौजूदा sample rate, channel setting या device पर नहीं चल सकता, तो plugin panel bypass message दिखाता है और sound नहीं बदलता। supported setting चुनें या plugin को disable करें।
+Bandwidth Extender processing का एक अतिरिक्त hop शामिल करके लगभग 26.7-29.0 ms की latency जोड़ता है: 48 kHz पर 1,280 samples, 96 kHz पर 2,560 samples और 192 kHz पर 5,120 samples। यदि वह मौजूदा sample rate, channel setting या device पर नहीं चल सकता, तो plugin panel bypass message दिखाता है और sound नहीं बदलता। supported setting चुनें या plugin को disable करें।
 
 ## Dynamic Saturation
 

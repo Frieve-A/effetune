@@ -401,7 +401,7 @@ PCのChromium系ブラウザでは、選択した音楽フォルダへのアク�
 | Spatial   | Crossfeed Filter | 自然なステレオイメージのためのヘッドホン用クロスフィードフィルター | [詳細](plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | 中央と左右の響きを調整するため、ステレオとMid/Sideを相互変換 | [詳細](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5バンド周波数依存のステレオバランス制御 | [詳細](plugins/spatial.md#multiband-balance) |
-| Spatial   | Phase Select EQ | L/R位相差で選んだ周波数成分をブーストまたはカット | [詳細](plugins/spatial.md#phase-select-eq) |
+| Spatial   | Phase Select EQ | L/R位相差とBalanceで選んだ周波数成分をブーストまたはカット | [詳細](plugins/spatial.md#phase-select-eq) |
 | Spatial   | Stereo Blend | モノラルから拡張ステレオまでステレオ幅を制御 | [詳細](plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | スピーカーやヘッドホン確認用のテストトーン/ノイズジェネレーター | [詳細](plugins/others.md#oscillator) |
 | Control   | Section | 複数のエフェクトをグループ化し、セクション全体をバイパスまたは復帰 | [詳細](plugins/control.md) |

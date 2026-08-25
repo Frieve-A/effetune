@@ -1,10 +1,11 @@
 const PHASE_SELECT_EQ_TAP_MAP = 20;
-const PHASE_SELECT_EQ_TELEMETRY_VERSION = 1;
+const PHASE_SELECT_EQ_TELEMETRY_VERSION = 2;
 const PHASE_SELECT_EQ_BAND_COUNT = 5;
 const PHASE_SELECT_EQ_MIN_FREQUENCY = 20;
 const PHASE_SELECT_EQ_MAX_FREQUENCY = 40000;
 const PHASE_SELECT_EQ_MIN_CORE_HZ = 1;
 const PHASE_SELECT_EQ_MIN_CORE_DEGREES = 1;
+const PHASE_SELECT_EQ_MIN_CORE_BALANCE = 1;
 const PHASE_SELECT_EQ_MIN_CORE_CSS_PIXELS = 12;
 const PHASE_SELECT_EQ_ZERO_TRANSITION_HANDLE_OFFSET = 10;
 const PHASE_SELECT_EQ_FALLBACK_SAMPLE_RATE = 48000;
@@ -24,7 +25,12 @@ const PHASE_SELECT_EQ_DEFAULT_REGION = Object.freeze({
     pl: 0,
     ph: 30,
     oph: 45,
-    gn: 100
+    gn: 100,
+    so: false,
+    obl: -100,
+    bl: -100,
+    bh: 100,
+    obh: 100
 });
 
 function phaseSelectEqClamp(value, minimum, maximum) {
@@ -56,6 +62,8 @@ function phaseSelectEqCoreConstraints({
     return {
         minimumPhaseDegrees: Math.max(PHASE_SELECT_EQ_MIN_CORE_DEGREES,
             PHASE_SELECT_EQ_MIN_CORE_CSS_PIXELS / width * 360),
+        minimumBalance: Math.max(PHASE_SELECT_EQ_MIN_CORE_BALANCE,
+            PHASE_SELECT_EQ_MIN_CORE_CSS_PIXELS / width * 200),
         minimumFrequencyHz: Math.max(PHASE_SELECT_EQ_MIN_CORE_HZ,
             validSampleRate / validFftSize),
         minimumFrequencyRatio: 2 **
@@ -82,7 +90,12 @@ function phaseSelectEqNormalizeRegion(
         pl: phaseSelectEqClamp(phaseSelectEqFinite(input.pl, base.pl), 0, 180),
         ph: phaseSelectEqClamp(phaseSelectEqFinite(input.ph, base.ph), 0, 180),
         oph: phaseSelectEqClamp(phaseSelectEqFinite(input.oph, base.oph), 0, 180),
-        gn: phaseSelectEqClamp(phaseSelectEqFinite(input.gn, base.gn), 0, 200)
+        gn: phaseSelectEqClamp(phaseSelectEqFinite(input.gn, base.gn), 0, 200),
+        so: input.so === undefined ? base.so === true : input.so === true,
+        obl: phaseSelectEqClamp(phaseSelectEqFinite(input.obl, base.obl), -100, 100),
+        bl: phaseSelectEqClamp(phaseSelectEqFinite(input.bl, base.bl), -100, 100),
+        bh: phaseSelectEqClamp(phaseSelectEqFinite(input.bh, base.bh), -100, 100),
+        obh: phaseSelectEqClamp(phaseSelectEqFinite(input.obh, base.obh), -100, 100)
     };
 
     const minimumFrequencyHz = phaseSelectEqClamp(
@@ -110,6 +123,14 @@ function phaseSelectEqNormalizeRegion(
         region.pl + minimumPhaseDegrees, 180);
     region.opl = phaseSelectEqClamp(region.opl, 0, region.pl);
     region.oph = phaseSelectEqClamp(region.oph, region.ph, 180);
+
+    const minimumBalance = phaseSelectEqClamp(
+        phaseSelectEqFinite(constraints.minimumBalance, PHASE_SELECT_EQ_MIN_CORE_BALANCE),
+        PHASE_SELECT_EQ_MIN_CORE_BALANCE, 200);
+    region.bl = phaseSelectEqClamp(region.bl, -100, 100 - minimumBalance);
+    region.bh = phaseSelectEqClamp(region.bh, region.bl + minimumBalance, 100);
+    region.obl = phaseSelectEqClamp(region.obl, -100, region.bl);
+    region.obh = phaseSelectEqClamp(region.obh, region.bh, 100);
     return region;
 }
 
@@ -143,23 +164,130 @@ function phaseSelectEqAxisWeight(value, outerLow, coreLow, coreHigh, outerHigh) 
     return phaseSelectEqSmooth01((outerHigh - value) / (outerHigh - coreHigh));
 }
 
-function phaseSelectEqRegionWeight(region, frequency, absolutePhase) {
+function phaseSelectEqHiddenAxisConstraint(region, visibleAxis) {
+    const phase = visibleAxis === 'balance';
+    const constraint = phase
+        ? {
+            name: 'Phase', unit: '°', outerLow: region?.opl, coreLow: region?.pl,
+            coreHigh: region?.ph, outerHigh: region?.oph,
+            identity: [0, 0, 180, 180]
+        }
+        : {
+            name: 'Balance', unit: '%', outerLow: region?.obl, coreLow: region?.bl,
+            coreHigh: region?.bh, outerHigh: region?.obh,
+            identity: [-100, -100, 100, 100]
+        };
+    const boundaries = [constraint.outerLow, constraint.coreLow,
+        constraint.coreHigh, constraint.outerHigh];
+    const enabled = region?.en === true;
+    return {
+        ...constraint,
+        enabled,
+        limited: enabled && boundaries.some((value, index) => value !== constraint.identity[index])
+    };
+}
+
+function phaseSelectEqFormatBoundaryValue(value, fractionDigits = 2) {
+    const factor = fractionDigits === 1 ? 10 : 100;
+    const rounded = Math.round(value * factor) / factor;
+    return String(Object.is(rounded, -0) ? 0 : rounded);
+}
+
+function phaseSelectEqFormatConstraintValue(constraint, value) {
+    const formatted = phaseSelectEqFormatBoundaryValue(value);
+    const prefix = constraint.name === 'Balance' && Number(formatted) > 0 ? '+' : '';
+    return `${prefix}${formatted}`;
+}
+
+function phaseSelectEqConstraintLabel(constraint) {
+    if (!constraint.limited) return `${constraint.name} full range`;
+    const format = value => phaseSelectEqFormatConstraintValue(constraint, value);
+    let label = `${constraint.name} core ${format(constraint.coreLow)}–` +
+        `${format(constraint.coreHigh)}${constraint.unit}`;
+    if (constraint.outerLow !== constraint.coreLow ||
+        constraint.outerHigh !== constraint.coreHigh) {
+        label += `; transition ${format(constraint.outerLow)}–` +
+            `${format(constraint.outerHigh)}${constraint.unit}`;
+    }
+    return label;
+}
+
+function phaseSelectEqBalanceRatio(balance) {
+    const value = phaseSelectEqClamp(phaseSelectEqFinite(balance, 0), -100, 100);
+    const format = part => phaseSelectEqFormatBoundaryValue(part, 1);
+    const lower = Math.round((100 - Math.abs(value)) * 5) / 10;
+    const higher = 100 - lower;
+    const [left, right] = value < 0 ? [higher, lower] : [lower, higher];
+    return `${format(left)}:${format(right)}`;
+}
+
+function phaseSelectEqBandConstraintLabel(region, visibleAxis) {
+    const constraint = phaseSelectEqHiddenAxisConstraint(region, visibleAxis);
+    if (!constraint.enabled) return '';
+    const prefix = constraint.name === 'Phase' ? 'P' : 'B';
+    if (!constraint.limited) return `${prefix} full`;
+    const format = constraint.name === 'Phase'
+        ? value => `${phaseSelectEqFormatBoundaryValue(value)}°`
+        : phaseSelectEqBalanceRatio;
+    return `${prefix} ${format(constraint.outerLow)}›${format(constraint.coreLow)}–` +
+        `${format(constraint.coreHigh)}›${format(constraint.outerHigh)}`;
+}
+
+function phaseSelectEqAxisGrid(mode, width) {
+    if (mode === 'phase') {
+        if (width < 300) return [[-180, '-180°'], [0, '0°'], [180, '+180°']];
+        if (width < 560) {
+            return [[-180, '-180°'], [-90, '-90°'], [0, '0°'],
+                [90, '+90°'], [180, '+180°']];
+        }
+        return Array.from({ length: 9 }, (_, index) => {
+            const phase = -180 + index * 45;
+            return [phase, `${phase > 0 ? '+' : ''}${phase}°`];
+        });
+    }
+    if (width < 300) return [[-100, '100:0'], [0, '50:50'], [100, '0:100']];
+    if (width < 560) {
+        return [[-100, '100:0'], [-60, '80:20'], [0, '50:50'],
+            [60, '20:80'], [100, '0:100']];
+    }
+    return [
+        [-100, '100:0'], [-82, '91:9'], [-60, '80:20'], [-33, '67:33'],
+        [0, '50:50'], [33, '33:67'], [60, '20:80'], [82, '9:91'], [100, '0:100']
+    ];
+}
+
+function phaseSelectEqRegionWeight(region, frequency, absolutePhase, balance = 0) {
     if (!region?.en || frequency <= 0) return 0;
     const logFrequency = Math.log2(frequency);
     const frequencyWeight = phaseSelectEqAxisWeight(
         logFrequency, Math.log2(region.ofl), Math.log2(region.fl),
         Math.log2(region.fh), Math.log2(region.ofh));
     if (frequencyWeight === 0) return 0;
-    return frequencyWeight * phaseSelectEqAxisWeight(
+    const phaseWeight = phaseSelectEqAxisWeight(
         absolutePhase, region.opl, region.pl, region.ph, region.oph);
+    if (phaseWeight === 0) return 0;
+    return frequencyWeight * phaseWeight * phaseSelectEqAxisWeight(
+        balance, region.obl, region.bl, region.bh, region.obh);
 }
 
-function phaseSelectEqCompositeGain(regions, frequency, signedPhase) {
+// Solo replaces the usual product of Band gains: the output keeps only the union of the
+// soloed Band weights, so every Gain and every unsoloed Band is ignored while it is active.
+function phaseSelectEqCompositeGain(regions, frequency, signedPhase, balance = 0) {
     const absolutePhase = Math.abs(signedPhase);
+    let soloActive = false;
+    let soloWeight = 0;
+    for (const region of regions) {
+        if (region?.en && region.so) {
+            soloActive = true;
+            const weight = phaseSelectEqRegionWeight(region, frequency, absolutePhase, balance);
+            if (weight > soloWeight) soloWeight = weight;
+        }
+    }
+    if (soloActive) return soloWeight;
     let result = 1;
     for (const region of regions) {
         if (region?.en && region.gn !== 100) {
-            const weight = phaseSelectEqRegionWeight(region, frequency, absolutePhase);
+            const weight = phaseSelectEqRegionWeight(region, frequency, absolutePhase, balance);
             result *= 1 + (region.gn / 100 - 1) * weight;
         }
     }
@@ -175,13 +303,14 @@ class PhaseSelectEqPlugin extends PluginBase {
 
     constructor() {
         super('Phase Select EQ',
-            'Boosts or cuts frequency components selected by L/R phase difference');
+            'Boosts or cuts frequency components selected by L/R phase difference and balance');
         this.temporalCapability = 'reset-on-resume';
         this.regions = Array.from({ length: PHASE_SELECT_EQ_BAND_COUNT }, (_, index) => ({
             ...PHASE_SELECT_EQ_DEFAULT_REGION,
             en: index === 0
         }));
         this.selectedRegionIndex = 0;
+        this.xAxisMode = 'phase';
         this.sampleRate = PHASE_SELECT_EQ_FALLBACK_SAMPLE_RATE;
         this.fftSize = PHASE_SELECT_EQ_FALLBACK_FFT_SIZE;
         this.phaseMapFrames = [];
@@ -205,6 +334,9 @@ class PhaseSelectEqPlugin extends PluginBase {
         this._formInputs = new Map();
         this._regionTabs = [];
         this._bandEnableInputs = [];
+        this._soloInput = null;
+        this._axisControls = null;
+        this._hiddenAxisBadge = null;
         this._editor = null;
         this.registerProcessor(PHASE_SELECT_EQ_PASS_THROUGH_PROCESSOR);
     }
@@ -308,19 +440,21 @@ class PhaseSelectEqPlugin extends PluginBase {
         const fftSize = payload.getUint32(8, true);
         const frameMaximumDb = payload.getFloat32(12, true);
         if (!Number.isFinite(sampleRate) || sampleRate <= 0 || pointCount > 512 ||
-            payload.byteLength !== 16 + pointCount * 12 || fftSize < 2 ||
+            payload.byteLength !== 16 + pointCount * 16 || fftSize < 2 ||
             (fftSize & (fftSize - 1)) !== 0 || !Number.isFinite(frameMaximumDb)) return null;
         const maximumFrequency = Math.min(PHASE_SELECT_EQ_MAX_FREQUENCY, sampleRate * 0.49);
         const points = new Array(pointCount);
         for (let index = 0; index < pointCount; index++) {
-            const offset = 16 + index * 12;
+            const offset = 16 + index * 16;
             const frequency = payload.getFloat32(offset, true);
             const phase = payload.getFloat32(offset + 4, true);
-            const relativeLevelDb = payload.getFloat32(offset + 8, true);
+            const balance = payload.getFloat32(offset + 8, true);
+            const relativeLevelDb = payload.getFloat32(offset + 12, true);
             if (!Number.isFinite(frequency) || frequency < PHASE_SELECT_EQ_MIN_FREQUENCY ||
                 frequency > maximumFrequency || !Number.isFinite(phase) || phase < -180 ||
-                phase > 180 || !Number.isFinite(relativeLevelDb) || relativeLevelDb > 0) return null;
-            points[index] = { frequency, phase, relativeLevelDb };
+                phase > 180 || !Number.isFinite(balance) || balance < -100 || balance > 100 ||
+                !Number.isFinite(relativeLevelDb) || relativeLevelDb > 0) return null;
+            points[index] = { frequency, phase, balance, relativeLevelDb };
         }
         return { sampleRate, pointCount, flags, fftSize, frameMaximumDb, points };
     }
@@ -386,6 +520,34 @@ class PhaseSelectEqPlugin extends PluginBase {
             -180, 180);
     }
 
+    _balanceToX(balance) {
+        const plot = this._plotRect();
+        return plot.left + (balance + 100) / 200 * (plot.right - plot.left);
+    }
+
+    _xToBalance(x) {
+        const plot = this._plotRect();
+        return phaseSelectEqClamp((x - plot.left) / (plot.right - plot.left) * 200 - 100,
+            -100, 100);
+    }
+
+    _horizontalToX(value) {
+        return this.xAxisMode === 'balance'
+            ? this._balanceToX(value) : this._phaseToX(value);
+    }
+
+    _xToHorizontal(x) {
+        return this.xAxisMode === 'balance' ? this._xToBalance(x) : this._xToPhase(x);
+    }
+
+    _setXAxisMode(mode) {
+        if (mode !== 'phase' && mode !== 'balance') return false;
+        this.xAxisMode = mode;
+        this._refreshUi();
+        this.drawGraph();
+        return true;
+    }
+
     _frequencyToY(frequency) {
         const plot = this._plotRect();
         const minimum = Math.log2(PHASE_SELECT_EQ_MIN_FREQUENCY);
@@ -409,22 +571,30 @@ class PhaseSelectEqPlugin extends PluginBase {
     }
 
     _regionGeometry(region) {
-        const make = (low, high, frequencyLow, frequencyHigh) =>
-            phaseSelectEqDisplaySegments(low, high).map(segment => ({
+        const make = (low, high, frequencyLow, frequencyHigh) => {
+            const segments = this.xAxisMode === 'phase'
+                ? phaseSelectEqDisplaySegments(low, high)
+                : [{ low, high, joinedAtCenter: false, wrapped: false }];
+            return segments.map(segment => ({
                 ...segment,
-                left: this._phaseToX(segment.low),
-                right: this._phaseToX(segment.high),
+                left: this._horizontalToX(segment.low),
+                right: this._horizontalToX(segment.high),
                 top: this._frequencyToY(frequencyHigh),
                 bottom: this._frequencyToY(frequencyLow)
             }));
+        };
         return {
-            outer: make(region.opl, region.oph, region.ofl, region.ofh),
-            core: make(region.pl, region.ph, region.fl, region.fh)
+            outer: this.xAxisMode === 'phase'
+                ? make(region.opl, region.oph, region.ofl, region.ofh)
+                : make(region.obl, region.obh, region.ofl, region.ofh),
+            core: this.xAxisMode === 'phase'
+                ? make(region.pl, region.ph, region.fl, region.fh)
+                : make(region.bl, region.bh, region.fl, region.fh)
         };
     }
 
     _createNumberField(parent, key, label, min, max, step, valueGetter, setter, unit,
-        scale = 'linear') {
+        scale = 'linear', axisMode = null) {
         const row = document.createElement('div');
         row.className = 'parameter-row phase-select-eq-field';
         const id = `${this.id}-phase-select-eq-${key}`;
@@ -438,6 +608,7 @@ class PhaseSelectEqPlugin extends PluginBase {
         slider.max = scale === 'log' ? '1000' : String(max);
         slider.step = scale === 'log' ? '1' : String(step);
         slider.autocomplete = 'off';
+        slider.setAttribute('aria-label', `${label} slider`);
         const input = document.createElement('input');
         input.type = 'number';
         input.id = id;
@@ -452,7 +623,9 @@ class PhaseSelectEqPlugin extends PluginBase {
             ? min * ((max / min) ** (value / 1000))
             : value;
         slider.addEventListener('input', () => {
-            setter(fromSlider(Number(slider.value)));
+            const nextValue = fromSlider(Number(slider.value));
+            if (axisMode) this._setXAxisMode(axisMode);
+            setter(nextValue);
             const canonicalValue = valueGetter();
             input.value = Number.isFinite(canonicalValue)
                 ? String(Math.round(canonicalValue * 100) / 100) : '';
@@ -461,13 +634,17 @@ class PhaseSelectEqPlugin extends PluginBase {
         input.addEventListener('input', () => {
             const value = Number(input.value);
             if (Number.isFinite(value)) {
+                if (axisMode) this._setXAxisMode(axisMode);
                 setter(value);
                 slider.value = String(toSlider(valueGetter()));
             }
         });
         const commitAndReflect = () => {
             const value = Number(input.value);
-            if (Number.isFinite(value)) setter(value);
+            if (Number.isFinite(value)) {
+                if (axisMode) this._setXAxisMode(axisMode);
+                setter(value);
+            }
             const canonicalValue = valueGetter();
             input.value = Number.isFinite(canonicalValue)
                 ? String(Math.round(canonicalValue * 100) / 100)
@@ -478,7 +655,21 @@ class PhaseSelectEqPlugin extends PluginBase {
         row.append(labelElement, slider, input);
         parent.appendChild(row);
         this._formInputs.set(key, { input, slider, valueGetter, toSlider });
-        return input;
+        return row;
+    }
+
+    _appendSoloField(parent) {
+        const row = this.createCheckboxControl(
+            'Solo', this.regions[this.selectedRegionIndex].so,
+            value => this._setSelectedRegionValue('so', value)
+        );
+        row.className += ' phase-select-eq-solo-field';
+        const checkbox = Array.from(row.children).find(child =>
+            child?.tagName === 'INPUT' && child.type === 'checkbox');
+        checkbox.className = 'phase-select-eq-solo-checkbox';
+        parent.appendChild(row);
+        this._soloInput = checkbox;
+        return row;
     }
 
     _setSelectedRegionValue(key, value) {
@@ -487,7 +678,9 @@ class PhaseSelectEqPlugin extends PluginBase {
             fl: ['frequency', 'low'],
             fh: ['frequency', 'high'],
             pl: ['phase', 'low'],
-            ph: ['phase', 'high']
+            ph: ['phase', 'high'],
+            bl: ['balance', 'low'],
+            bh: ['balance', 'high']
         }[key];
         if (coreBoundary) {
             this._setSelectedCoreBoundary(coreBoundary[0], coreBoundary[1], value);
@@ -522,6 +715,26 @@ class PhaseSelectEqPlugin extends PluginBase {
                 const transitionRatio = original.ofh / original.fh;
                 region.fh = next;
                 region.ofh = next * transitionRatio;
+            }
+            return;
+        }
+
+        if (axis === 'balance') {
+            const minimumBalance = constraints.minimumBalance;
+            if (direction === 'low') {
+                const next = phaseSelectEqClamp(
+                    phaseSelectEqFinite(value, original.bl), -100,
+                    original.bh - minimumBalance);
+                const transition = original.bl - original.obl;
+                region.bl = next;
+                region.obl = next - transition;
+            } else {
+                const next = phaseSelectEqClamp(
+                    phaseSelectEqFinite(value, original.bh),
+                    original.bl + minimumBalance, 100);
+                const transition = original.obh - original.bh;
+                region.bh = next;
+                region.obh = next + transition;
             }
             return;
         }
@@ -581,6 +794,9 @@ class PhaseSelectEqPlugin extends PluginBase {
         this._formInputs.clear();
         this._regionTabs.length = 0;
         this._bandEnableInputs.length = 0;
+        this._soloInput = null;
+        this._axisControls = null;
+        this._hiddenAxisBadge = null;
         const container = document.createElement('div');
         container.className = 'phase-select-eq-plugin-ui plugin-parameter-ui';
 
@@ -620,14 +836,17 @@ class PhaseSelectEqPlugin extends PluginBase {
         const selected = () => this.regions[this.selectedRegionIndex];
         this._createNumberField(fields, 'gn', 'Gain', 0, 200, 1,
             () => selected().gn, value => this._setSelectedRegionValue('gn', value), '%');
+        this._appendSoloField(fields);
         this._createNumberField(fields, 'fl', 'Core Low Frequency', 20, 40000, 1,
             () => selected().fl, value => this._setSelectedRegionValue('fl', value), 'Hz', 'log');
         this._createNumberField(fields, 'fh', 'Core High Frequency', 20, 40000, 1,
             () => selected().fh, value => this._setSelectedRegionValue('fh', value), 'Hz', 'log');
         this._createNumberField(fields, 'pl', 'Core Low Phase', 0, 179, 1,
-            () => selected().pl, value => this._setSelectedRegionValue('pl', value), '°');
+            () => selected().pl, value => this._setSelectedRegionValue('pl', value), '°',
+            'linear', 'phase');
         this._createNumberField(fields, 'ph', 'Core High Phase', 1, 180, 1,
-            () => selected().ph, value => this._setSelectedRegionValue('ph', value), '°');
+            () => selected().ph, value => this._setSelectedRegionValue('ph', value), '°',
+            'linear', 'phase');
         this._createNumberField(fields, 'lowFrequencyTransition', 'Low Frequency Transition', 0, 10, 0.01,
             () => Math.log2(selected().fl / selected().ofl),
             value => this._setTransitionOctaves('low', value), 'oct');
@@ -636,12 +855,35 @@ class PhaseSelectEqPlugin extends PluginBase {
             value => this._setTransitionOctaves('high', value), 'oct');
         this._createNumberField(fields, 'lowPhaseTransition', 'Low Phase Transition', 0, 180, 1,
             () => selected().pl - selected().opl,
-            value => this._setPhaseTransition('low', value), '°');
+            value => this._setPhaseTransition('low', value), '°', 'linear', 'phase');
         this._createNumberField(fields, 'highPhaseTransition', 'High Phase Transition', 0, 180, 1,
             () => selected().oph - selected().ph,
-            value => this._setPhaseTransition('high', value), '°');
+            value => this._setPhaseTransition('high', value), '°', 'linear', 'phase');
+        this._createNumberField(fields, 'bl', 'Core Low Balance', -100, 100, 0.1,
+            () => selected().bl, value => this._setSelectedRegionValue('bl', value), '%',
+            'linear', 'balance');
+        this._createNumberField(fields, 'bh', 'Core High Balance', -100, 100, 0.1,
+            () => selected().bh, value => this._setSelectedRegionValue('bh', value), '%',
+            'linear', 'balance');
+        this._createNumberField(fields, 'obl', 'Outer Low Balance', -100, 100, 0.1,
+            () => selected().obl, value => this._setSelectedRegionValue('obl', value), '%',
+            'linear', 'balance');
+        this._createNumberField(fields, 'obh', 'Outer High Balance', -100, 100, 0.1,
+            () => selected().obh, value => this._setSelectedRegionValue('obh', value), '%',
+            'linear', 'balance');
         this._editor.appendChild(fields);
         container.appendChild(this._editor);
+
+        const axisControls = this.createRadioGroup('Graph', [
+            { value: 'phase', label: 'Phase' },
+            { value: 'balance', label: 'Balance' }
+        ], this.xAxisMode, value => this._setXAxisMode(value));
+        axisControls.className += ' phase-select-eq-axis-controls';
+        this._axisControls = axisControls;
+        this._hiddenAxisBadge = document.createElement('span');
+        this._hiddenAxisBadge.className = 'phase-select-eq-hidden-axis-badge';
+        axisControls.appendChild(this._hiddenAxisBadge);
+        container.appendChild(axisControls);
 
         const graph = this.createResponsiveGraph({
             maxWidth: 720,
@@ -657,8 +899,6 @@ class PhaseSelectEqPlugin extends PluginBase {
         });
         this.canvas = graph.canvas;
         this._graphDisposer = graph.dispose;
-        this.canvas.setAttribute('aria-label',
-            'Phase Select EQ frequency and left-right phase difference map');
         this.canvas.tabIndex = 0;
         this.canvas.style.touchAction = 'none';
         this._bindCanvasPointerEvents();
@@ -692,11 +932,22 @@ class PhaseSelectEqPlugin extends PluginBase {
             const selected = index === this.selectedRegionIndex;
             tab.setAttribute('aria-selected', String(selected));
             tab.classList.toggle('disabled', !this.regions[index].en);
+            // The editor only ever shows the selected Band, so every soloed Band is marked
+            // on its tab; the mark tracks the audible set, which ignores disabled Bands.
+            const soloed = this.regions[index].en && this.regions[index].so;
+            tab.classList.toggle('soloed', soloed);
+            tab.setAttribute('aria-label',
+                soloed ? `Band ${index + 1} (Solo)` : `Band ${index + 1}`);
             if (this._bandEnableInputs[index]) {
                 this._bandEnableInputs[index].checked = this.regions[index].en;
             }
         }
         const selected = this.regions[this.selectedRegionIndex];
+        if (this._soloInput) {
+            this._soloInput.checked = selected.so;
+            this._soloInput.setAttribute('aria-label',
+                `Solo Band ${this.selectedRegionIndex + 1}`);
+        }
         for (const { input, slider, valueGetter, toSlider } of this._formInputs.values()) {
             if (document.activeElement !== input) {
                 const value = valueGetter();
@@ -704,6 +955,19 @@ class PhaseSelectEqPlugin extends PluginBase {
             }
             const value = valueGetter();
             slider.value = Number.isFinite(value) ? String(toSlider(value)) : '';
+        }
+        for (const input of this._axisControls?.querySelectorAll('input[type="radio"]') || []) {
+            input.checked = input.value === this.xAxisMode;
+        }
+        if (this.canvas) {
+            this.canvas.setAttribute('aria-label', this.xAxisMode === 'phase'
+                ? 'Phase Select EQ frequency and left-right phase difference map'
+                : 'Phase Select EQ frequency and left-right balance map');
+        }
+        if (this._hiddenAxisBadge) {
+            const constraint = phaseSelectEqHiddenAxisConstraint(selected, this.xAxisMode);
+            this._hiddenAxisBadge.textContent = phaseSelectEqConstraintLabel(constraint);
+            this._hiddenAxisBadge.classList.toggle('limited', constraint.limited);
         }
     }
 
@@ -737,18 +1001,21 @@ class PhaseSelectEqPlugin extends PluginBase {
         const hit = this._hitTest(point.x, point.y);
         if (!hit) return;
         if (hit.index !== this.selectedRegionIndex) this.selectRegion(hit.index);
-        const signedPhase = this._xToPhase(point.x);
+        const horizontal = this._xToHorizontal(point.x);
         const originalRegion = { ...this.regions[hit.index] };
         const logicalPoint = hit.mode === 'handle'
             ? this._logicalHandlePoint(hit, originalRegion)
             : point;
-        const logicalPhase = this._xToPhase(logicalPoint.x);
+        const logicalHorizontal = this._xToHorizontal(logicalPoint.x);
         this._pointerState = {
             pointerId: event.pointerId,
             hit,
             startPoint: point,
-            startPhase: signedPhase,
-            side: hit.split ? 0 : (logicalPhase < 0 ? -1 : (logicalPhase > 0 ? 1 : 0)),
+            startHorizontal: horizontal,
+            side: this.xAxisMode === 'phase'
+                ? (hit.split ? 0
+                    : (logicalHorizontal < 0 ? -1 : (logicalHorizontal > 0 ? 1 : 0)))
+                : 1,
             startFrequency: this._yToFrequency(point.y),
             originalRegion,
             grabOffset: {
@@ -788,23 +1055,32 @@ class PhaseSelectEqPlugin extends PluginBase {
         const original = state.originalRegion;
         const region = { ...original };
         const grabOffset = state.grabOffset || { x: 0, y: 0 };
-        const currentPhase = this._xToPhase(point.x - grabOffset.x);
+        const currentHorizontal = this._xToHorizontal(point.x - grabOffset.x);
         const currentFrequency = this._yToFrequency(point.y - grabOffset.y);
         const mode = state.hit.mode;
 
         if (mode === 'move') {
-            if (state.side === 0 && Math.abs(point.x - state.startPoint.x) > 1) {
-                state.side = point.x >= state.startPoint.x ? 1 : -1;
+            if (this.xAxisMode === 'phase') {
+                if (state.side === 0 && Math.abs(point.x - state.startPoint.x) > 1) {
+                    state.side = point.x >= state.startPoint.x ? 1 : -1;
+                }
+                const side = state.side || 1;
+                const phaseDelta = side * (currentHorizontal - state.startHorizontal);
+                const fittedPhaseDelta = phaseSelectEqClamp(
+                    phaseDelta, -original.opl, 180 - original.oph);
+                region.opl += fittedPhaseDelta;
+                region.pl += fittedPhaseDelta;
+                region.ph += fittedPhaseDelta;
+                region.oph += fittedPhaseDelta;
+            } else {
+                const balanceDelta = phaseSelectEqClamp(
+                    currentHorizontal - state.startHorizontal,
+                    -100 - original.obl, 100 - original.obh);
+                region.obl += balanceDelta;
+                region.bl += balanceDelta;
+                region.bh += balanceDelta;
+                region.obh += balanceDelta;
             }
-            const side = state.side || 1;
-            const phaseDelta = side * (currentPhase - state.startPhase);
-            const phaseMinimumDelta = -original.opl;
-            const phaseMaximumDelta = 180 - original.oph;
-            const fittedPhaseDelta = phaseSelectEqClamp(phaseDelta, phaseMinimumDelta, phaseMaximumDelta);
-            region.opl += fittedPhaseDelta;
-            region.pl += fittedPhaseDelta;
-            region.ph += fittedPhaseDelta;
-            region.oph += fittedPhaseDelta;
             const ratio = currentFrequency / state.startFrequency;
             const fittedRatio = phaseSelectEqClamp(ratio,
                 PHASE_SELECT_EQ_MIN_FREQUENCY / original.ofl,
@@ -815,19 +1091,29 @@ class PhaseSelectEqPlugin extends PluginBase {
             region.ofh *= fittedRatio;
         } else {
             if (state.hit.phaseEdge) {
-                if (state.side === 0 && Math.abs(point.x - state.startPoint.x) > 1) {
-                    state.side = point.x >= state.startPoint.x ? 1 : -1;
-                }
-                const phaseOnOriginalSide = state.side < 0
-                    ? Math.min(currentPhase, 0)
-                    : (state.side > 0 ? Math.max(currentPhase, 0) : 0);
-                const absolutePhase = Math.abs(phaseOnOriginalSide);
-                if (state.hit.outer) {
-                    if (state.hit.phaseEdge === 'low') region.opl = absolutePhase;
-                    else region.oph = absolutePhase;
+                if (this.xAxisMode === 'phase') {
+                    if (state.side === 0 && Math.abs(point.x - state.startPoint.x) > 1) {
+                        state.side = point.x >= state.startPoint.x ? 1 : -1;
+                    }
+                    const phaseOnOriginalSide = state.side < 0
+                        ? Math.min(currentHorizontal, 0)
+                        : (state.side > 0 ? Math.max(currentHorizontal, 0) : 0);
+                    const absolutePhase = Math.abs(phaseOnOriginalSide);
+                    if (state.hit.outer) {
+                        if (state.hit.phaseEdge === 'low') region.opl = absolutePhase;
+                        else region.oph = absolutePhase;
+                    } else {
+                        this._applyCoreBoundary(
+                            region, original, 'phase', state.hit.phaseEdge, absolutePhase);
+                    }
                 } else {
-                    this._applyCoreBoundary(
-                        region, original, 'phase', state.hit.phaseEdge, absolutePhase);
+                    if (state.hit.outer) {
+                        if (state.hit.phaseEdge === 'low') region.obl = currentHorizontal;
+                        else region.obh = currentHorizontal;
+                    } else {
+                        this._applyCoreBoundary(
+                            region, original, 'balance', state.hit.phaseEdge, currentHorizontal);
+                    }
                 }
             }
             if (state.hit.frequencyEdge) {
@@ -876,8 +1162,10 @@ class PhaseSelectEqPlugin extends PluginBase {
         if (!hit) return '';
         if (hit.mode === 'move') return dragging ? 'grabbing' : 'grab';
         if (hit.phaseEdge && hit.frequencyEdge) {
-            const leftHalf = hit.x < this._phaseToX(0);
-            const leftEdge = leftHalf ? hit.phaseEdge === 'high' : hit.phaseEdge === 'low';
+            const leftEdge = this.xAxisMode === 'balance'
+                ? hit.phaseEdge === 'low'
+                : (hit.x < this._phaseToX(0)
+                    ? hit.phaseEdge === 'high' : hit.phaseEdge === 'low');
             const topEdge = hit.frequencyEdge === 'high';
             return leftEdge === topEdge ? 'nwse-resize' : 'nesw-resize';
         }
@@ -889,11 +1177,18 @@ class PhaseSelectEqPlugin extends PluginBase {
     _logicalHandlePoint(hit, region) {
         const point = { x: hit.x, y: hit.y };
         if (hit.phaseEdge) {
-            const key = hit.outer
-                ? (hit.phaseEdge === 'low' ? 'opl' : 'oph')
-                : (hit.phaseEdge === 'low' ? 'pl' : 'ph');
-            const side = hit.x < this._phaseToX(0) ? -1 : 1;
-            point.x = this._phaseToX(side * region[key]);
+            if (this.xAxisMode === 'balance') {
+                const key = hit.outer
+                    ? (hit.phaseEdge === 'low' ? 'obl' : 'obh')
+                    : (hit.phaseEdge === 'low' ? 'bl' : 'bh');
+                point.x = this._balanceToX(region[key]);
+            } else {
+                const key = hit.outer
+                    ? (hit.phaseEdge === 'low' ? 'opl' : 'oph')
+                    : (hit.phaseEdge === 'low' ? 'pl' : 'ph');
+                const side = hit.x < this._phaseToX(0) ? -1 : 1;
+                point.x = this._phaseToX(side * region[key]);
+            }
         }
         if (hit.frequencyEdge) {
             const key = hit.outer
@@ -910,6 +1205,49 @@ class PhaseSelectEqPlugin extends PluginBase {
         if (!region?.en) return [];
         const geometry = this._regionGeometry(region);
         const handles = [];
+        if (this.xAxisMode === 'balance') {
+            const core = geometry.core[0];
+            const outer = geometry.outer[0];
+            const coreCenterX = (core.left + core.right) * 0.5;
+            const coreCenterY = (core.top + core.bottom) * 0.5;
+            handles.push(
+                { x: coreCenterX, y: core.top, index, mode: 'handle', frequencyEdge: 'high' },
+                { x: coreCenterX, y: core.bottom, index, mode: 'handle', frequencyEdge: 'low' },
+                { x: core.left, y: coreCenterY, index, mode: 'handle', phaseEdge: 'low' },
+                { x: core.right, y: coreCenterY, index, mode: 'handle', phaseEdge: 'high' },
+                { x: core.left, y: core.top, index, mode: 'handle', phaseEdge: 'low', frequencyEdge: 'high' },
+                { x: core.right, y: core.top, index, mode: 'handle', phaseEdge: 'high', frequencyEdge: 'high' },
+                { x: core.left, y: core.bottom, index, mode: 'handle', phaseEdge: 'low', frequencyEdge: 'low' },
+                { x: core.right, y: core.bottom, index, mode: 'handle', phaseEdge: 'high', frequencyEdge: 'low' }
+            );
+            const outerCenterX = (outer.left + outer.right) * 0.5;
+            const outerCenterY = (outer.top + outer.bottom) * 0.5;
+            handles.push(
+                {
+                    x: outerCenterX,
+                    y: outer.top - (region.ofh === region.fh
+                        ? PHASE_SELECT_EQ_ZERO_TRANSITION_HANDLE_OFFSET : 0),
+                    index, mode: 'handle', outer: true, frequencyEdge: 'high'
+                },
+                {
+                    x: outerCenterX,
+                    y: outer.bottom + (region.ofl === region.fl
+                        ? PHASE_SELECT_EQ_ZERO_TRANSITION_HANDLE_OFFSET : 0),
+                    index, mode: 'handle', outer: true, frequencyEdge: 'low'
+                },
+                {
+                    x: outer.left - (region.obl === region.bl
+                        ? PHASE_SELECT_EQ_ZERO_TRANSITION_HANDLE_OFFSET : 0),
+                    y: outerCenterY, index, mode: 'handle', outer: true, phaseEdge: 'low'
+                },
+                {
+                    x: outer.right + (region.obh === region.bh
+                        ? PHASE_SELECT_EQ_ZERO_TRANSITION_HANDLE_OFFSET : 0),
+                    y: outerCenterY, index, mode: 'handle', outer: true, phaseEdge: 'high'
+                }
+            );
+            return handles;
+        }
         for (const rectangle of geometry.core) {
             const centerX = (rectangle.left + rectangle.right) * 0.5;
             const centerY = (rectangle.top + rectangle.bottom) * 0.5;
@@ -1040,6 +1378,48 @@ class PhaseSelectEqPlugin extends PluginBase {
         ctx.restore();
     }
 
+    _drawBandLabel(ctx, rectangle, index, color, plot) {
+        const number = String(index + 1);
+        const constraint = phaseSelectEqBandConstraintLabel(this.regions[index], this.xAxisMode);
+        ctx.save();
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.font = 'bold 11px Arial';
+        const measuredNumber = ctx.measureText?.(number)?.width;
+        const numberWidth = Number.isFinite(measuredNumber) ? measuredNumber : number.length * 7;
+        ctx.font = '10px Arial';
+        const measuredBadge = ctx.measureText?.(constraint)?.width;
+        const badgeTextWidth = Number.isFinite(measuredBadge) ? measuredBadge : constraint.length * 5.5;
+        const badgeWidth = Math.ceil(badgeTextWidth) + 8;
+        const groupWidth = numberWidth + 4 + badgeWidth;
+        const groupX = phaseSelectEqClamp(rectangle.left + 4,
+            plot.left + 2, Math.max(plot.left + 2, plot.right - groupWidth - 2));
+        const y = phaseSelectEqClamp(rectangle.top + 3,
+            plot.top + 2, Math.max(plot.top + 2, plot.bottom - 17));
+        ctx.font = 'bold 11px Arial';
+        ctx.fillStyle = color;
+        ctx.fillText(number, groupX, y + 1);
+        const badgeX = groupX + numberWidth + 4;
+        ctx.fillStyle = 'rgba(26, 26, 26, 0.88)';
+        ctx.fillRect(badgeX, y, badgeWidth, 15);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(badgeX, y, badgeWidth, 15);
+        ctx.font = '10px Arial';
+        ctx.fillStyle = color;
+        ctx.fillText(constraint, badgeX + 4, y + 2);
+        ctx.restore();
+    }
+
+    _hiddenAxisWeight(point) {
+        const region = this.regions[this.selectedRegionIndex];
+        const constraint = phaseSelectEqHiddenAxisConstraint(region, this.xAxisMode);
+        if (!constraint.enabled) return 1;
+        const value = constraint.name === 'Phase' ? Math.abs(point.phase) : point.balance;
+        return phaseSelectEqAxisWeight(value, constraint.outerLow, constraint.coreLow,
+            constraint.coreHigh, constraint.outerHigh);
+    }
+
     drawGraph() {
         if (!this.canvas) return;
         const context = this.canvas.getContext('2d');
@@ -1054,18 +1434,22 @@ class PhaseSelectEqPlugin extends PluginBase {
         const plot = this._plotRect();
 
         context.font = '12px Arial';
-        context.textAlign = 'center';
         context.textBaseline = 'bottom';
-        for (let phase = -135; phase <= 135; phase += 45) {
-            const x = this._phaseToX(phase);
+        const axisGrid = phaseSelectEqAxisGrid(this.xAxisMode, width);
+        for (let index = 0; index < axisGrid.length; index++) {
+            const [value, label] = axisGrid[index];
+            const x = this.xAxisMode === 'phase'
+                ? this._phaseToX(value) : this._balanceToX(value);
             context.strokeStyle = 'rgba(255, 255, 255, 0.18)';
-            context.lineWidth = phase === 0 ? 1.5 : 1;
+            context.lineWidth = value === 0 ? 1.5 : 1;
             context.beginPath();
             context.moveTo(x, plot.top);
             context.lineTo(x, plot.bottom);
             context.stroke();
             context.fillStyle = '#888';
-            context.fillText(`${phase > 0 ? '+' : ''}${phase}°`, x, plot.bottom - 25);
+            context.textAlign = index === 0 ? 'left'
+                : (index === axisGrid.length - 1 ? 'right' : 'center');
+            context.fillText(label, x, plot.bottom - 25);
         }
         const frequencies = [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]
             .filter(frequency => frequency < this._maximumDisplayFrequency());
@@ -1104,26 +1488,27 @@ class PhaseSelectEqPlugin extends PluginBase {
             for (const point of frame.points) {
                 if (point.relativeLevelDb < -72) continue;
                 const level = phaseSelectEqClamp((point.relativeLevelDb + 72) / 72, 0, 1);
-                context.globalAlpha = ageOpacity * (0.15 + 0.75 * level);
+                const hiddenAxisWeight = this._hiddenAxisWeight(point);
+                context.globalAlpha = ageOpacity * (0.15 + 0.75 * level) *
+                    (0.18 + 0.82 * hiddenAxisWeight);
                 context.fillStyle = '#ffffff';
                 context.beginPath();
-                context.arc(this._phaseToX(point.phase), this._frequencyToY(point.frequency),
+                const pointX = this.xAxisMode === 'phase'
+                    ? this._phaseToX(point.phase) : this._balanceToX(point.balance);
+                context.arc(pointX, this._frequencyToY(point.frequency),
                     0.6 + 1.1 * level, 0, Math.PI * 2);
                 context.fill();
             }
         }
         context.globalAlpha = 1;
 
-        context.font = 'bold 11px Arial';
-        context.textAlign = 'left';
-        context.textBaseline = 'top';
         for (let index = 0; index < this.regions.length; index++) {
             const region = this.regions[index];
             if (!region.en) continue;
             for (const rectangle of geometry[index].core) {
-                context.fillStyle = index === this.selectedRegionIndex
+                const color = index === this.selectedRegionIndex
                     ? PHASE_SELECT_EQ_ACTIVE_COLOR : PHASE_SELECT_EQ_INACTIVE_COLOR;
-                context.fillText(String(index + 1), rectangle.left + 4, rectangle.top + 4);
+                this._drawBandLabel(context, rectangle, index, color, plot);
             }
         }
 

@@ -645,7 +645,7 @@ function createOpenHomeControlHost({
     : 'effetune-openhome-sidecar';
   const basePath = app.isPackaged
     ? path.join(processRef.resourcesPath, 'openhome')
-    : path.join(app.getAppPath(), 'native', 'openhome-sidecar', 'build');
+    : path.join(app.getAppPath(), 'out', 'native', 'openhome-sidecar');
   const sidecar = new OpenHomeSidecarManager({
     sidecarPath: path.join(basePath, executableName)
   });

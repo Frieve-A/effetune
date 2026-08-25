@@ -1171,6 +1171,58 @@ test('audio preference IPC skips reload only for a verified renderer-managed sil
   });
 });
 
+test('audio preference IPC persists a verified output-device fallback without reload', async () => {
+  await withHarness({}, async ({ calls, ipcMain, moduleUnderTest, tempDir }) => {
+    moduleUnderTest.registerIpcHandlers();
+    const savePreferences = ipcMain.handlers.get('save-audio-preferences');
+    const explicitOutputPreferences = {
+      inputDeviceId: 'mic-1',
+      outputDeviceId: 'speaker-1',
+      outputDeviceLabel: 'Desk speakers',
+      sampleRate: 96000,
+      useInputWithPlayer: false,
+      lowLatencyOutput: false,
+      useWasmDsp: true,
+      outputChannels: 2,
+      latencyHint: 'interactive'
+    };
+    const defaultOutputPreferences = {
+      ...explicitOutputPreferences,
+      outputDeviceId: 'default',
+      outputDeviceLabel: ''
+    };
+    const preferencesPath = path.join(tempDir, 'audio-preferences.json');
+
+    fs.writeFileSync(preferencesPath, JSON.stringify(explicitOutputPreferences));
+    assert.deepEqual(await savePreferences({}, defaultOutputPreferences, {
+      applyInPlace: 'output-device-fallback'
+    }), { success: true });
+    assert.deepEqual(calls.filter(call => [
+      'webContents.send',
+      'setTimeout',
+      'window.reload'
+    ].includes(call[0])), []);
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(preferencesPath, 'utf8')),
+      defaultOutputPreferences
+    );
+
+    fs.writeFileSync(preferencesPath, JSON.stringify(explicitOutputPreferences));
+    calls.length = 0;
+    assert.deepEqual(await savePreferences({}, {
+      ...defaultOutputPreferences,
+      sampleRate: 48000
+    }, {
+      applyInPlace: 'output-device-fallback'
+    }), { success: true });
+    assert.equal(calls.some(call =>
+      call[0] === 'webContents.send' && call[1] === 'show-message'
+    ), true);
+    assert.equal(calls.some(call => call[0] === 'setTimeout' && call[1] === 3000), true);
+    assert.equal(calls.some(call => call[0] === 'window.reload'), true);
+  });
+});
+
 test('IPC handlers report menu click rejections and recover from IPC errors', async () => {
   await withHarness({ mainWindowOptions: { rejectJavaScript: true } }, async ({ electron, ipcMain, moduleUnderTest }) => {
     moduleUnderTest.registerIpcHandlers();

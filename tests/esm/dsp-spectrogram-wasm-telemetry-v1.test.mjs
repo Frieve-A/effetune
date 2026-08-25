@@ -5,6 +5,9 @@ import test from 'node:test';
 import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
 import { instantiateDsp } from '../../js/audio/dsp-wasm-loader.js';
 import { parseTelemetryPacket, TelemetryFrameType } from '../../js/audio/telemetry-hub.js';
+import { DENORMAL_NOISE_AMPLITUDE } from '../../dsp/bindings/js/src/denormal-noise.js';
+
+const DENORMAL_NOISE_OUTPUT_LIMIT = 10 ** (-288 / 20);
 
 function near(actual, expected, tolerance = 1e-6) {
   return Math.abs(actual - expected) <= tolerance;
@@ -26,6 +29,7 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
     try {
       assert.notEqual(binding.createEngine(), 0);
       assert.equal(binding.prepare(32000, 2, 128, 256 * 1024), 0);
+      assert.equal(binding.setTelemetryRate(60), 0);
       const instanceId = binding.createInstance('SpectrogramPlugin');
       assert.notEqual(instanceId, 0);
       assert.equal(binding.instanceSetTap(instanceId, 78), 0);
@@ -56,12 +60,20 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
           128,
           processed / 32000
         ), 0);
-        assert.equal(arena.combined[0], expectedFirst);
+        const expectedAudible = Math.abs(expectedFirst) <= DENORMAL_NOISE_OUTPUT_LIMIT
+          ? 0
+          : expectedFirst;
+        assert.ok(
+          Math.abs(arena.combined[0] - expectedAudible) <= DENORMAL_NOISE_AMPLITUDE,
+          'passthrough may canonicalize the noise floor and add only the denormal carrier'
+        );
         processed += 128;
       }
 
       let frames = readFrames(binding, packet);
-      assert.equal(frames.length, 5);
+      // The first staged column completes one hop after its trigger, so four columns are ready at
+      // the first 60 Hz telemetry tick.
+      assert.equal(frames.length, 4);
       for (let index = 0; index < frames.length; index++) {
         const frame = frames[index];
         assert.equal(frame.frameType, TelemetryFrameType.TAP_SPECTROGRAM_COL);
@@ -83,7 +95,7 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
         packer.pack({ dr: -144, pt: 14 }),
         packer.hash
       ), 0);
-      for (let block = 0; block < 66; block++) {
+      for (let block = 0; block < 133; block++) {
         arena.combined.fill(0, 0, 256);
         assert.equal(binding.instanceProcess(
           instanceId,

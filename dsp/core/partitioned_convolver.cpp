@@ -11,10 +11,26 @@ namespace effetune::dsp {
 namespace {
 
 constexpr std::uint32_t kDirectHead = 128u;
-constexpr std::uint32_t kLadderMaximum = 4096u;
+constexpr std::uint32_t kShortIrLadderMaximum = 512u;
+constexpr std::uint32_t kLongIrLadderMaximum = 1024u;
+constexpr std::uint32_t kShortIrMaximumFrames = 8192u;
 constexpr std::uint32_t kMaximumStages = 8u;
+constexpr std::uint32_t kSliceSamples = 16u;
+constexpr std::uint32_t kMaximumSchedulerSlots = 128u;
+constexpr std::uint32_t kExclusiveTransformBlock = 2048u;
+constexpr int kScheduledTransformWorkBudget = 256;
+constexpr int kScheduledMacWorkBudget = 256;
 constexpr std::size_t kPffftFactorCount = 25u;
 using Path = ConvolutionPath;
+
+std::uint32_t integerLog2(std::uint32_t value) noexcept {
+  std::uint32_t result = 0u;
+  while (value > 1u) {
+    value >>= 1u;
+    ++result;
+  }
+  return result;
+}
 
 std::size_t pffftSetupBytes(std::uint32_t fftSize) noexcept {
   // Keep memory reporting aligned with PFFFT's setup struct and real-transform
@@ -75,6 +91,10 @@ public:
     if (data_ != nullptr)
       std::memset(data_, 0, count_ * sizeof(float));
   }
+  void swap(AlignedFloats &other) noexcept {
+    std::swap(data_, other.data_);
+    std::swap(count_, other.count_);
+  }
   [[nodiscard]] float *data() noexcept { return data_; }
   [[nodiscard]] const float *data() const noexcept { return data_; }
   [[nodiscard]] std::size_t bytes() const noexcept { return count_ * sizeof(float); }
@@ -100,15 +120,31 @@ std::uint32_t nextPowerOfTwo(std::uint32_t value) noexcept {
 
 class PartitionStage {
 public:
+  // A scheduled job keeps the original transform and accumulation order while
+  // exposing independently resumable steps to the cross-stage scheduler.
+  enum class WorkPhase : std::uint8_t { forward, mac, inverse, done };
+
+  struct WorkCursor {
+    WorkPhase phase = WorkPhase::forward;
+    std::uint32_t index = 0u;
+    std::uint32_t substep = 0u;
+  };
+
+  struct WorkStep {
+    std::uint64_t weight = 0u;
+    bool exclusive = false;
+  };
+
   PartitionStage() = default;
   ~PartitionStage() { release(); }
   PartitionStage(const PartitionStage &) = delete;
   PartitionStage &operator=(const PartitionStage &) = delete;
 
   bool reserve(std::uint32_t blockSize, std::uint32_t offset, std::uint32_t segmentFrames,
-               std::uint32_t stageIndex, std::uint32_t irChannels,
-               const InternalConfig &config) noexcept {
+               std::uint32_t irChannels, const InternalConfig &config) noexcept {
     release();
+    transform_step_count_ = 1u;
+    mac_step_count_ = 1u;
     block_size_ = blockSize;
     fft_size_ = 2u * blockSize;
     offset_ = offset;
@@ -118,10 +154,9 @@ public:
     path_count_ = config.pathCount;
     ir_channels_ = irChannels;
     segment_frames_ = segmentFrames;
-    for (std::uint32_t index = 0u; index < path_count_; ++index)
-      paths_[index] = config.paths[index];
-    amortized_ = blockSize >= 256u && offset >= 2u * blockSize;
-    phase_seed_ = config.sliceOffset + offset / 128u + stageIndex * 5u;
+    updatePathTopology(config.paths.data());
+    amortized_ =
+        blockSize >= 2u * kSliceSamples && offset + config.latencySamples >= 2u * blockSize;
     setup_ = pffft_new_setup(static_cast<int>(fft_size_), PFFFT_REAL);
     if (setup_ == nullptr ||
         !input_blocks_.resize(static_cast<std::size_t>(inputs_) * block_size_) ||
@@ -134,6 +169,30 @@ public:
         !inverse_.resize(static_cast<std::size_t>(outputs_) * fft_size_)) {
       release();
       return false;
+    }
+    if (amortized_ && block_size_ >= kLongIrLadderMaximum) {
+      transform_state_ = pffft_new_ordered_real_forward(setup_);
+      mac_state_ = pffft_new_zconvolve_accumulate(setup_);
+      if (transform_state_ == nullptr || mac_state_ == nullptr ||
+          pffft_ordered_real_forward_set_work_budget(transform_state_,
+                                                     kScheduledTransformWorkBudget) == 0 ||
+          pffft_unordered_real_backward_begin(transform_state_, accumulators_.data(),
+                                              inverse_.data(), fft_work_.data()) == 0 ||
+          pffft_zconvolve_accumulate_begin(mac_state_, input_fdl_.data(), ir_spectra_.data(),
+                                           accumulators_.data(), 1.0F) == 0) {
+        release();
+        return false;
+      }
+      transform_step_count_ =
+          static_cast<std::uint32_t>(pffft_ordered_real_forward_step_count(transform_state_));
+      const std::uint32_t workCount =
+          static_cast<std::uint32_t>(pffft_zconvolve_accumulate_step_count(mac_state_));
+      mac_step_count_ = (workCount + static_cast<std::uint32_t>(kScheduledMacWorkBudget) - 1u) /
+                        static_cast<std::uint32_t>(kScheduledMacWorkBudget);
+      if (transform_step_count_ == 0u || mac_step_count_ == 0u) {
+        release();
+        return false;
+      }
     }
     reset();
     return true;
@@ -150,33 +209,27 @@ public:
     fdl_write_ = 0u;
     blocks_processed_ = 0u;
     job_active_ = false;
-    job_window_slice_ = 0u;
-    job_slice_samples_ = 0u;
+    job_cursor_ = {};
     job_mac_units_ = 0u;
   }
 
-  void push(const float *inputFrame, AlignedFloats &outputRing, std::uint32_t ringSize,
+  bool push(const float *inputFrame, AlignedFloats &outputRing, std::uint32_t ringSize,
             std::uint32_t latency) noexcept {
     for (std::uint32_t input = 0u; input < inputs_; ++input)
       input_blocks_[static_cast<std::size_t>(input) * block_size_ + fill_] = inputFrame[input];
     ++fill_;
-    if (job_active_) {
-      ++job_slice_samples_;
-      if (job_slice_samples_ == 128u) {
-        job_slice_samples_ = 0u;
-        ++job_window_slice_;
-        runScheduledSlice(outputRing, ringSize, latency);
-      }
-    }
+    bool immediateWork = false;
     if (fill_ == block_size_) {
       if (amortized_)
-        startScheduledBlock(outputRing, ringSize, latency);
+        immediateWork = startScheduledBlock(outputRing, ringSize, latency);
       else {
         renderBlock(outputRing, ringSize, latency);
         ++blocks_processed_;
+        immediateWork = true;
       }
       fill_ = 0u;
     }
+    return immediateWork;
   }
 
   [[nodiscard]] std::size_t memoryBytes() const noexcept {
@@ -186,12 +239,137 @@ public:
   }
   [[nodiscard]] std::uint32_t blockSize() const noexcept { return block_size_; }
   [[nodiscard]] std::uint32_t offset() const noexcept { return offset_; }
+  [[nodiscard]] bool amortized() const noexcept { return amortized_; }
+  [[nodiscard]] std::uint32_t periodSlots() const noexcept { return block_size_ / kSliceSamples; }
+
+  [[nodiscard]] WorkCursor initialWorkCursor() const noexcept { return {}; }
+
+  [[nodiscard]] WorkStep nextWorkStep(const WorkCursor &cursor) const noexcept {
+    const std::uint64_t fft = fft_size_;
+    const std::uint64_t transform =
+        fft * integerLog2(fft_size_) + 3u * static_cast<std::uint64_t>(block_size_);
+    switch (cursor.phase) {
+    case WorkPhase::forward:
+      return {(transform + transform_step_count_ - 1u) / transform_step_count_,
+              transform_step_count_ == 1u && block_size_ >= kExclusiveTransformBlock};
+    case WorkPhase::mac:
+      return {(2u * fft + mac_step_count_ - 1u) / mac_step_count_, false};
+    case WorkPhase::inverse:
+      return {(transform + transform_step_count_ - 1u) / transform_step_count_,
+              transform_step_count_ == 1u && block_size_ >= kExclusiveTransformBlock};
+    case WorkPhase::done:
+      return {};
+    }
+    return {};
+  }
+
+  void advanceWorkCursor(WorkCursor &cursor) const noexcept {
+    switch (cursor.phase) {
+    case WorkPhase::forward:
+      if (++cursor.substep == transform_step_count_) {
+        cursor.substep = 0u;
+        if (++cursor.index == inputs_) {
+          cursor.phase = WorkPhase::mac;
+          cursor.index = 0u;
+        }
+      }
+      break;
+    case WorkPhase::mac:
+      if (++cursor.substep == mac_step_count_) {
+        cursor.substep = 0u;
+        if (++cursor.index == path_count_ * partitions_) {
+          cursor.phase = WorkPhase::inverse;
+          cursor.index = 0u;
+        }
+      }
+      break;
+    case WorkPhase::inverse:
+      if (++cursor.substep == transform_step_count_) {
+        cursor.substep = 0u;
+        if (++cursor.index == outputs_) {
+          cursor.phase = WorkPhase::done;
+          cursor.index = 0u;
+        }
+      }
+      break;
+    case WorkPhase::done:
+      break;
+    }
+  }
+
+  [[nodiscard]] bool workComplete(const WorkCursor &cursor) const noexcept {
+    return cursor.phase == WorkPhase::done;
+  }
+
+  [[nodiscard]] std::uint64_t jobWorkWeight() const noexcept {
+    WorkCursor cursor = initialWorkCursor();
+    std::uint64_t total = 0u;
+    while (!workComplete(cursor)) {
+      total += nextWorkStep(cursor).weight;
+      advanceWorkCursor(cursor);
+    }
+    return total;
+  }
+
+  [[nodiscard]] std::uint32_t jobStepCount() const noexcept {
+    return (inputs_ + outputs_) * transform_step_count_ +
+           path_count_ * partitions_ * mac_step_count_;
+  }
+
+  [[nodiscard]] std::uint32_t jobExclusiveStepCount() const noexcept {
+    return transform_step_count_ != 1u || block_size_ < kExclusiveTransformBlock
+               ? 0u
+               : inputs_ + outputs_;
+  }
+
+  [[nodiscard]] std::uint64_t maximumStepWeight() const noexcept {
+    WorkCursor cursor = initialWorkCursor();
+    std::uint64_t maximum = 0u;
+    while (!workComplete(cursor)) {
+      const std::uint64_t weight = nextWorkStep(cursor).weight;
+      maximum = weight > maximum ? weight : maximum;
+      advanceWorkCursor(cursor);
+    }
+    return maximum;
+  }
+
+  void runScheduledStep(AlignedFloats &outputRing, std::uint32_t ringSize,
+                        std::uint32_t latency) noexcept {
+    if (!job_active_)
+      return;
+    switch (job_cursor_.phase) {
+    case WorkPhase::forward:
+      if (!runScheduledForwardStep(job_cursor_.index, job_cursor_.substep)) {
+        job_active_ = false;
+        return;
+      }
+      break;
+    case WorkPhase::mac:
+      if (!runScheduledMacStep(job_cursor_.index, job_cursor_.substep, job_fdl_write_)) {
+        job_active_ = false;
+        return;
+      }
+      break;
+    case WorkPhase::inverse:
+      if (!runScheduledInverseStep(outputRing, ringSize, latency, job_block_index_,
+                                   job_cursor_.index, job_cursor_.substep)) {
+        job_active_ = false;
+        return;
+      }
+      break;
+    case WorkPhase::done:
+      job_active_ = false;
+      return;
+    }
+    advanceWorkCursor(job_cursor_);
+    if (workComplete(job_cursor_))
+      job_active_ = false;
+  }
 
   bool updatePathsWithoutAllocation(const Path *paths, std::uint32_t pathCount) noexcept {
     if (paths == nullptr || pathCount != path_count_)
       return false;
-    for (std::uint32_t index = 0u; index < pathCount; ++index)
-      paths_[index] = paths[index];
+    updatePathTopology(paths);
     return true;
   }
 
@@ -236,6 +414,10 @@ public:
 
 private:
   void release() noexcept {
+    pffft_destroy_ordered_real_forward(transform_state_);
+    transform_state_ = nullptr;
+    pffft_destroy_zconvolve_accumulate(mac_state_);
+    mac_state_ = nullptr;
     if (setup_ != nullptr)
       pffft_destroy_setup(setup_);
     setup_ = nullptr;
@@ -250,60 +432,197 @@ private:
     inverse_.release();
   }
 
-  void forwardBlock(const AlignedFloats &blocks, std::uint32_t writeIndex) noexcept {
-    for (std::uint32_t input = 0u; input < inputs_; ++input) {
+  void updatePathTopology(const Path *paths) noexcept {
+    for (std::uint32_t index = 0u; index < path_count_; ++index) {
+      paths_[index] = paths[index];
+      path_starts_output_[index] = true;
+      for (std::uint32_t previous = 0u; previous < index; ++previous) {
+        if (paths_[previous].output == paths_[index].output) {
+          path_starts_output_[index] = false;
+          break;
+        }
+      }
+    }
+  }
+
+  [[nodiscard]] bool outputHasPath(std::uint32_t output) const noexcept {
+    for (std::uint32_t index = 0u; index < path_count_; ++index) {
+      if (paths_[index].output == output)
+        return true;
+    }
+    return false;
+  }
+
+  [[nodiscard]] static bool incrementalStepSucceeded(int result, std::uint32_t substep,
+                                                     std::uint32_t stepCount) noexcept {
+    if (result < 0)
+      return false;
+    return (result == 1) == (substep + 1u == stepCount);
+  }
+
+  [[nodiscard]] bool runScheduledForwardStep(std::uint32_t input, std::uint32_t substep) noexcept {
+    if (transform_step_count_ == 1u) {
+      forwardInput(job_blocks_, job_fdl_write_, input);
+      return true;
+    }
+    if (substep == 0u) {
       const std::size_t inputOffset = static_cast<std::size_t>(input) * block_size_;
       std::memcpy(fft_input_.data(), previous_blocks_.data() + inputOffset,
                   block_size_ * sizeof(float));
-      std::memcpy(fft_input_.data() + block_size_, blocks.data() + inputOffset,
+      std::memcpy(fft_input_.data() + block_size_, job_blocks_.data() + inputOffset,
                   block_size_ * sizeof(float));
-      float *spectrum = input_fdl_.data() +
-                        (static_cast<std::size_t>(input) * partitions_ + writeIndex) * fft_size_;
-      pffft_transform(setup_, fft_input_.data(), spectrum, fft_work_.data(), PFFFT_FORWARD);
-      std::memcpy(previous_blocks_.data() + inputOffset, blocks.data() + inputOffset,
+      std::memcpy(previous_blocks_.data() + inputOffset, job_blocks_.data() + inputOffset,
                   block_size_ * sizeof(float));
+      float *spectrum =
+          input_fdl_.data() +
+          (static_cast<std::size_t>(input) * partitions_ + job_fdl_write_) * fft_size_;
+      if (pffft_unordered_real_forward_begin(transform_state_, fft_input_.data(), spectrum,
+                                             fft_work_.data()) == 0)
+        return false;
     }
-    accumulators_.clear();
+    return incrementalStepSucceeded(pffft_ordered_real_forward_step(transform_state_), substep,
+                                    transform_step_count_);
+  }
+
+  [[nodiscard]] bool runScheduledMacStep(std::uint32_t unit, std::uint32_t substep,
+                                         std::uint32_t writeIndex) noexcept {
+    if (mac_step_count_ == 1u) {
+      accumulateUnit(unit, writeIndex);
+      return true;
+    }
+    const std::uint32_t pathIndex = unit / partitions_;
+    const std::uint32_t partition = unit % partitions_;
+    const Path &path = paths_[pathIndex];
+    float *accumulator = accumulators_.data() + static_cast<std::size_t>(path.output) * fft_size_;
+    const std::uint32_t fdlIndex =
+        writeIndex >= partition ? writeIndex - partition : writeIndex + partitions_ - partition;
+    const float *inputSpectrum =
+        input_fdl_.data() +
+        (static_cast<std::size_t>(path.input) * partitions_ + fdlIndex) * fft_size_;
+    const float *irSpectrum =
+        ir_spectra_.data() +
+        (static_cast<std::size_t>(path.irChannel) * partitions_ + partition) * fft_size_;
+    if (substep == 0u) {
+      const float scale = 1.0F / static_cast<float>(fft_size_);
+      const bool startsOutput = partition == 0u && path_starts_output_[pathIndex];
+      const int began = startsOutput
+                            ? pffft_zconvolve_no_accu_begin(mac_state_, inputSpectrum, irSpectrum,
+                                                            accumulator, scale)
+                            : pffft_zconvolve_accumulate_begin(mac_state_, inputSpectrum,
+                                                               irSpectrum, accumulator, scale);
+      if (began == 0)
+        return false;
+    }
+    const int result = pffft_zconvolve_accumulate_step(mac_state_, kScheduledMacWorkBudget);
+    if (result < 0)
+      return false;
+    return (result == 1) == (substep + 1u == mac_step_count_);
+  }
+
+  void commitInverseOutput(AlignedFloats &outputRing, std::uint32_t ringSize, std::uint32_t latency,
+                           std::uint64_t blockIndex, std::uint32_t output) noexcept {
+    const std::uint64_t outputStart =
+        blockIndex * static_cast<std::uint64_t>(block_size_) + offset_ + latency;
+    float *ring = outputRing.data() + static_cast<std::size_t>(output) * ringSize;
+    const float *source =
+        inverse_.data() + static_cast<std::size_t>(output) * fft_size_ + block_size_;
+    const std::uint32_t ringStart = static_cast<std::uint32_t>(outputStart) & (ringSize - 1u);
+    const std::uint32_t untilWrap = ringSize - ringStart;
+    const std::uint32_t firstFrames = block_size_ < untilWrap ? block_size_ : untilWrap;
+    for (std::uint32_t frame = 0u; frame < firstFrames; ++frame)
+      ring[ringStart + frame] += source[frame];
+    for (std::uint32_t frame = firstFrames; frame < block_size_; ++frame)
+      ring[frame - firstFrames] += source[frame];
+  }
+
+  [[nodiscard]] bool runScheduledInverseStep(AlignedFloats &outputRing, std::uint32_t ringSize,
+                                             std::uint32_t latency, std::uint64_t blockIndex,
+                                             std::uint32_t output, std::uint32_t substep) noexcept {
+    if (!outputHasPath(output))
+      return true;
+    if (transform_step_count_ == 1u) {
+      inverseOutput(outputRing, ringSize, latency, blockIndex, output);
+      return true;
+    }
+    if (substep == 0u) {
+      const float *accumulator =
+          accumulators_.data() + static_cast<std::size_t>(output) * fft_size_;
+      float *time = inverse_.data() + static_cast<std::size_t>(output) * fft_size_;
+      if (pffft_unordered_real_backward_begin(transform_state_, accumulator, time,
+                                              fft_work_.data()) == 0)
+        return false;
+    }
+    const int result = pffft_ordered_real_forward_step(transform_state_);
+    if (!incrementalStepSucceeded(result, substep, transform_step_count_))
+      return false;
+    if (result == 1)
+      commitInverseOutput(outputRing, ringSize, latency, blockIndex, output);
+    return true;
+  }
+
+  void forwardInput(const AlignedFloats &blocks, std::uint32_t writeIndex,
+                    std::uint32_t input) noexcept {
+    const std::size_t inputOffset = static_cast<std::size_t>(input) * block_size_;
+    std::memcpy(fft_input_.data(), previous_blocks_.data() + inputOffset,
+                block_size_ * sizeof(float));
+    std::memcpy(fft_input_.data() + block_size_, blocks.data() + inputOffset,
+                block_size_ * sizeof(float));
+    float *spectrum = input_fdl_.data() +
+                      (static_cast<std::size_t>(input) * partitions_ + writeIndex) * fft_size_;
+    pffft_transform(setup_, fft_input_.data(), spectrum, fft_work_.data(), PFFFT_FORWARD);
+    std::memcpy(previous_blocks_.data() + inputOffset, blocks.data() + inputOffset,
+                block_size_ * sizeof(float));
+  }
+
+  void forwardBlock(const AlignedFloats &blocks, std::uint32_t writeIndex) noexcept {
+    for (std::uint32_t input = 0u; input < inputs_; ++input)
+      forwardInput(blocks, writeIndex, input);
+  }
+
+  void accumulateUnit(std::uint32_t unit, std::uint32_t writeIndex) noexcept {
+    const std::uint32_t pathIndex = unit / partitions_;
+    const std::uint32_t partition = unit % partitions_;
+    const Path &path = paths_[pathIndex];
+    float *accumulator = accumulators_.data() + static_cast<std::size_t>(path.output) * fft_size_;
+    const std::uint32_t fdlIndex =
+        writeIndex >= partition ? writeIndex - partition : writeIndex + partitions_ - partition;
+    const float *inputSpectrum =
+        input_fdl_.data() +
+        (static_cast<std::size_t>(path.input) * partitions_ + fdlIndex) * fft_size_;
+    const float *irSpectrum =
+        ir_spectra_.data() +
+        (static_cast<std::size_t>(path.irChannel) * partitions_ + partition) * fft_size_;
+    const float scale = 1.0F / static_cast<float>(fft_size_);
+    if (partition == 0u && path_starts_output_[pathIndex]) {
+      pffft_zconvolve_no_accu(setup_, inputSpectrum, irSpectrum, accumulator, scale);
+    } else {
+      pffft_zconvolve_accumulate(setup_, inputSpectrum, irSpectrum, accumulator, scale);
+    }
   }
 
   void accumulateUntil(std::uint32_t targetUnit, std::uint32_t writeIndex) noexcept {
-    const float scale = 1.0F / static_cast<float>(fft_size_);
     const std::uint32_t totalUnits = path_count_ * partitions_;
     if (targetUnit > totalUnits)
       targetUnit = totalUnits;
     while (job_mac_units_ < targetUnit) {
-      const std::uint32_t pathIndex = job_mac_units_ / partitions_;
-      const std::uint32_t partition = job_mac_units_ % partitions_;
-      const Path &path = paths_[pathIndex];
-      float *accumulator = accumulators_.data() + static_cast<std::size_t>(path.output) * fft_size_;
-      const std::uint32_t fdlIndex =
-          writeIndex >= partition ? writeIndex - partition : writeIndex + partitions_ - partition;
-      const float *inputSpectrum =
-          input_fdl_.data() +
-          (static_cast<std::size_t>(path.input) * partitions_ + fdlIndex) * fft_size_;
-      const float *irSpectrum =
-          ir_spectra_.data() +
-          (static_cast<std::size_t>(path.irChannel) * partitions_ + partition) * fft_size_;
-      pffft_zconvolve_accumulate(setup_, inputSpectrum, irSpectrum, accumulator, scale);
+      accumulateUnit(job_mac_units_, writeIndex);
       ++job_mac_units_;
     }
   }
 
+  void inverseOutput(AlignedFloats &outputRing, std::uint32_t ringSize, std::uint32_t latency,
+                     std::uint64_t blockIndex, std::uint32_t output) noexcept {
+    const float *accumulator = accumulators_.data() + static_cast<std::size_t>(output) * fft_size_;
+    float *time = inverse_.data() + static_cast<std::size_t>(output) * fft_size_;
+    pffft_transform(setup_, accumulator, time, fft_work_.data(), PFFFT_BACKWARD);
+    commitInverseOutput(outputRing, ringSize, latency, blockIndex, output);
+  }
+
   void inverseBlock(AlignedFloats &outputRing, std::uint32_t ringSize, std::uint32_t latency,
                     std::uint64_t blockIndex) noexcept {
-    const std::uint64_t outputStart =
-        blockIndex * static_cast<std::uint64_t>(block_size_) + offset_ + latency;
     for (std::uint32_t output = 0u; output < outputs_; ++output) {
-      const float *accumulator =
-          accumulators_.data() + static_cast<std::size_t>(output) * fft_size_;
-      float *time = inverse_.data() + static_cast<std::size_t>(output) * fft_size_;
-      pffft_transform(setup_, accumulator, time, fft_work_.data(), PFFFT_BACKWARD);
-      for (std::uint32_t frame = 0u; frame < block_size_; ++frame) {
-        const std::uint32_t ringFrame =
-            static_cast<std::uint32_t>(outputStart + frame) & (ringSize - 1u);
-        outputRing[static_cast<std::size_t>(output) * ringSize + ringFrame] +=
-            time[block_size_ + frame];
-      }
+      if (outputHasPath(output))
+        inverseOutput(outputRing, ringSize, latency, blockIndex, output);
     }
   }
 
@@ -322,57 +641,22 @@ private:
       fdl_write_ = 0u;
   }
 
-  void startScheduledBlock(AlignedFloats &outputRing, std::uint32_t ringSize,
+  bool startScheduledBlock(AlignedFloats &outputRing, std::uint32_t ringSize,
                            std::uint32_t latency) noexcept {
-    if (job_active_)
-      return;
-    std::memcpy(job_blocks_.data(), input_blocks_.data(), input_blocks_.bytes());
+    bool recoveredDeadline = false;
+    while (job_active_) {
+      runScheduledStep(outputRing, ringSize, latency);
+      recoveredDeadline = true;
+    }
+    input_blocks_.swap(job_blocks_);
     job_active_ = true;
-    job_window_slice_ = 0u;
-    job_slice_samples_ = 0u;
+    job_cursor_ = initialWorkCursor();
     job_mac_units_ = 0u;
     job_fdl_write_ = fdl_write_;
     job_block_index_ = blocks_processed_;
     ++blocks_processed_;
     advanceFdlWrite();
-    const std::uint32_t slices = block_size_ / 128u;
-    const std::uint32_t totalUnits = path_count_ * partitions_;
-    if (slices <= 2u) {
-      job_forward_slice_ = 0u;
-    } else {
-      const std::uint32_t macSlices = totalUnits < slices - 2u ? totalUnits : slices - 2u;
-      const std::uint32_t maximumForwardSlice = slices - 2u - macSlices;
-      job_forward_slice_ =
-          maximumForwardSlice == 0u ? 0u : phase_seed_ % (maximumForwardSlice + 1u);
-    }
-    runScheduledSlice(outputRing, ringSize, latency);
-  }
-
-  void runScheduledSlice(AlignedFloats &outputRing, std::uint32_t ringSize,
-                         std::uint32_t latency) noexcept {
-    if (!job_active_)
-      return;
-    const std::uint32_t slices = block_size_ / 128u;
-    const std::uint32_t totalUnits = path_count_ * partitions_;
-    if (job_window_slice_ == job_forward_slice_)
-      forwardBlock(job_blocks_, job_fdl_write_);
-    if (slices == 2u) {
-      if (job_window_slice_ == 0u)
-        accumulateUntil((totalUnits + 1u) / 2u, job_fdl_write_);
-      else if (job_window_slice_ == 1u)
-        accumulateUntil(totalUnits, job_fdl_write_);
-    } else if (job_window_slice_ > job_forward_slice_ && job_window_slice_ < slices - 1u) {
-      const std::uint32_t availableSlices = slices - 2u - job_forward_slice_;
-      const std::uint32_t relativeSlice = job_window_slice_ - job_forward_slice_;
-      const std::uint32_t target = static_cast<std::uint32_t>(
-          static_cast<std::uint64_t>(totalUnits) * relativeSlice / availableSlices);
-      accumulateUntil(target, job_fdl_write_);
-    }
-    if (job_window_slice_ == slices - 1u) {
-      accumulateUntil(totalUnits, job_fdl_write_);
-      inverseBlock(outputRing, ringSize, latency, job_block_index_);
-      job_active_ = false;
-    }
+    return recoveredDeadline;
   }
 
   std::uint32_t block_size_ = 0u;
@@ -384,9 +668,11 @@ private:
   std::uint32_t path_count_ = 0u;
   std::uint32_t ir_channels_ = 0u;
   std::array<Path, ConvolverConfig::kMaximumPaths> paths_{};
+  std::array<bool, ConvolverConfig::kMaximumPaths> path_starts_output_{};
   bool amortized_ = false;
-  std::uint32_t phase_seed_ = 0u;
   PFFFT_Setup *setup_ = nullptr;
+  PFFFT_OrderedRealForward *transform_state_ = nullptr;
+  PFFFT_ZConvolveAccumulate *mac_state_ = nullptr;
   AlignedFloats input_blocks_;
   AlignedFloats job_blocks_;
   AlignedFloats previous_blocks_;
@@ -397,12 +683,12 @@ private:
   AlignedFloats accumulators_;
   AlignedFloats inverse_;
   std::uint32_t fill_ = 0u;
+  std::uint32_t transform_step_count_ = 1u;
+  std::uint32_t mac_step_count_ = 1u;
   std::uint32_t fdl_write_ = 0u;
   std::uint64_t blocks_processed_ = 0u;
   bool job_active_ = false;
-  std::uint32_t job_window_slice_ = 0u;
-  std::uint32_t job_slice_samples_ = 0u;
-  std::uint32_t job_forward_slice_ = 0u;
+  WorkCursor job_cursor_{};
   std::uint32_t job_mac_units_ = 0u;
   std::uint32_t job_fdl_write_ = 0u;
   std::uint64_t job_block_index_ = 0u;
@@ -455,7 +741,13 @@ public:
       releaseStorage();
       return false;
     }
-    if (!addLadder(headBlock, config.irFrames)) {
+    const std::uint32_t requestedLadderMaximum =
+        config.irFrames <= kShortIrMaximumFrames ? kShortIrLadderMaximum : kLongIrLadderMaximum;
+    const std::uint32_t minimumLadderMaximum = 2u * headBlock;
+    const std::uint32_t ladderMaximum = requestedLadderMaximum < minimumLadderMaximum
+                                            ? minimumLadderMaximum
+                                            : requestedLadderMaximum;
+    if (!addLadder(headBlock, ladderMaximum, config.irFrames) || !buildSchedule()) {
       releaseStorage();
       return false;
     }
@@ -528,7 +820,8 @@ public:
       }
     }
     if (prepared_stages_ == stage_count_) {
-      reset();
+      // reserve() already reset the runtime buffers, and preparation only writes IR spectra and
+      // transform scratch. Avoid clearing the complete long-IR working set in one audio callback.
       state_ = ConvolverPreparationState::warming;
     }
     return state_;
@@ -550,6 +843,9 @@ public:
     direct_position_ = 0u;
     timeline_ = 0u;
     stream_history_samples_ = 0u;
+    scheduler_samples_ = 0u;
+    scheduler_slot_ = 0u;
+    slot_has_immediate_work_ = false;
     non_finite_ = false;
   }
 
@@ -559,14 +855,14 @@ public:
     std::uint32_t processStart = 0u;
     if (state_ == ConvolverPreparationState::preparing) {
       while (processStart < frames && state_ == ConvolverPreparationState::preparing) {
-        const std::uint32_t untilSlice = 128u - preparation_samples_;
+        const std::uint32_t untilSlice = kSliceSamples - preparation_samples_;
         const std::uint32_t available = frames - processStart;
         const std::uint32_t consumed = available < untilSlice ? available : untilSlice;
         preparation_samples_ += consumed;
         processStart += consumed;
-        if (preparation_samples_ == 128u) {
+        if (preparation_samples_ == kSliceSamples) {
           preparation_samples_ = 0u;
-          // Keep activation timing independent of the CPU-load staggering phase.
+          // Match preparation pacing to the same 16-sample slots used by active processing.
           prepareSlice(1u);
         }
       }
@@ -586,8 +882,18 @@ public:
       for (std::uint32_t input = 0u; input < config_.inputs; ++input)
         input_frame_[input] = audio[static_cast<std::size_t>(input) * frames + frame];
 
-      for (std::uint32_t index = 0u; index < stage_count_; ++index)
-        stages_[index]->push(input_frame_.data(), output_ring_, ring_size_, latency_);
+      for (std::uint32_t index = 0u; index < stage_count_; ++index) {
+        slot_has_immediate_work_ =
+            stages_[index]->push(input_frame_.data(), output_ring_, ring_size_, latency_) ||
+            slot_has_immediate_work_;
+      }
+
+      ++scheduler_samples_;
+      if (scheduler_samples_ == kSliceSamples) {
+        scheduler_samples_ = 0u;
+        runScheduledSlot(slot_has_immediate_work_);
+        slot_has_immediate_work_ = false;
+      }
 
       const std::uint32_t ringFrame = static_cast<std::uint32_t>(timeline_) & (ring_size_ - 1u);
       for (std::uint32_t output = 0u; output < config_.outputs; ++output) {
@@ -623,13 +929,229 @@ public:
 
   [[nodiscard]] std::size_t memoryBytes() const noexcept {
     std::size_t bytes = sizeof(*this) + output_ring_.bytes() + direct_taps_.bytes() +
-                        direct_history_.bytes() + input_frame_.bytes();
+                        direct_history_.bytes() + input_frame_.bytes() + schedule_action_count_;
     for (std::uint32_t index = 0u; index < stage_count_; ++index)
       bytes += sizeof(PartitionStage) + stages_[index]->memoryBytes();
     return bytes;
   }
 
 private:
+  struct SimulatedJob {
+    PartitionStage *stage = nullptr;
+    PartitionStage::WorkCursor cursor{};
+    std::uint64_t totalWeight = 0u;
+    std::uint64_t remainingWeight = 0u;
+    std::uint32_t remainingExclusiveSteps = 0u;
+    std::uint32_t deadlineSlot = 0u;
+    std::uint32_t startSlot = 0u;
+    std::uint32_t stageIndex = 0u;
+  };
+
+  void resetSimulatedJob(SimulatedJob &job, std::uint32_t startSlot,
+                         std::uint32_t deadlineSlot) const noexcept {
+    job.cursor = job.stage->initialWorkCursor();
+    job.remainingWeight = job.totalWeight;
+    job.remainingExclusiveSteps = job.stage->jobExclusiveStepCount();
+    job.deadlineSlot = deadlineSlot;
+    job.startSlot = startSlot;
+  }
+
+  [[nodiscard]] std::uint32_t usableSlots(std::uint32_t begin,
+                                          std::uint32_t deadline) const noexcept {
+    std::uint32_t count = 0u;
+    for (std::uint32_t slot = begin; slot < deadline; ++slot) {
+      if (head_period_slots_ == 0u || slot % head_period_slots_ != head_period_slots_ - 1u)
+        ++count;
+    }
+    return count;
+  }
+
+  [[nodiscard]] bool simulateSchedule(std::uint64_t slotWeightLimit, bool record) noexcept {
+    std::array<SimulatedJob, kMaximumStages> jobs{};
+    std::uint32_t jobCount = 0u;
+    for (std::uint32_t stageIndex = 0u; stageIndex < stage_count_; ++stageIndex) {
+      PartitionStage *stage = stages_[stageIndex];
+      if (!stage->amortized())
+        continue;
+      SimulatedJob &job = jobs[jobCount++];
+      job.stage = stage;
+      job.stageIndex = stageIndex;
+      job.totalWeight = stage->jobWorkWeight();
+      resetSimulatedJob(job, 0u, stage->periodSlots() - 1u);
+    }
+
+    std::uint32_t actionCount = 0u;
+    if (record)
+      schedule_offsets_[0u] = 0u;
+    for (std::uint32_t slot = 0u; slot < scheduler_cycle_slots_; ++slot) {
+      for (std::uint32_t index = 0u; index < jobCount; ++index) {
+        SimulatedJob &job = jobs[index];
+        if (job.deadlineSlot != slot)
+          continue;
+        if (job.remainingWeight != 0u)
+          return false;
+        if (slot + 1u < scheduler_cycle_slots_)
+          resetSimulatedJob(job, slot + 1u, slot + job.stage->periodSlots());
+      }
+      const bool headSlot =
+          head_period_slots_ != 0u && slot % head_period_slots_ == head_period_slots_ - 1u;
+      if (headSlot) {
+        if (record)
+          schedule_offsets_[slot + 1u] = actionCount;
+        continue;
+      }
+
+      std::uint64_t usedWeight = 0u;
+      bool slotClosed = false;
+      while (!slotClosed) {
+        std::uint32_t selected = jobCount;
+        std::uint64_t selectedDeficit = 0u;
+        std::uint64_t selectedWeight = 1u;
+        bool selectedForced = false;
+        std::uint32_t selectedTie = 0u;
+        PartitionStage::WorkStep selectedStep{};
+        for (std::uint32_t index = 0u; index < jobCount; ++index) {
+          SimulatedJob &job = jobs[index];
+          if (job.remainingWeight == 0u || job.deadlineSlot <= slot)
+            continue;
+          const PartitionStage::WorkStep step = job.stage->nextWorkStep(job.cursor);
+          if (step.weight == 0u || step.weight > slotWeightLimit ||
+              step.weight > slotWeightLimit - usedWeight || (step.exclusive && usedWeight != 0u))
+            continue;
+          const std::uint32_t totalSlots = usableSlots(job.startSlot, job.deadlineSlot);
+          const std::uint32_t elapsedSlots = usableSlots(job.startSlot, slot + 1u);
+          if (totalSlots == 0u)
+            continue;
+          const std::uint64_t completedWeight = job.totalWeight - job.remainingWeight;
+          // Follow each job's ideal fluid progress, then break ties by deadline
+          // and the deterministic instance phase.
+          const std::uint64_t desiredWeight =
+              (job.totalWeight * elapsedSlots + totalSlots - 1u) / totalSlots;
+          const std::uint64_t deficit =
+              desiredWeight > completedWeight ? desiredWeight - completedWeight : 0u;
+          const std::uint32_t remainingSlots = usableSlots(slot, job.deadlineSlot);
+          const std::uint32_t leadSlots =
+              job.remainingExclusiveSteps != 0u && !step.exclusive ? 1u : 0u;
+          // A transform marked exclusive needs a clean slot. Reserve one
+          // preceding slot when ordered MAC work still blocks that transform.
+          const bool forced = job.remainingExclusiveSteps + leadSlots >= remainingSlots;
+          if (deficit == 0u && !forced)
+            continue;
+          const std::uint32_t tie =
+              (job.stageIndex + stage_count_ - ((config_.sliceOffset + slot) % stage_count_)) %
+              stage_count_;
+          bool better = selected == jobCount || (forced && !selectedForced);
+          if (!better && forced == selectedForced) {
+            const SimulatedJob &best = jobs[selected];
+            const std::uint64_t left = deficit * selectedWeight;
+            const std::uint64_t right = selectedDeficit * step.weight;
+            better =
+                left > right ||
+                (left == right && (job.deadlineSlot < best.deadlineSlot ||
+                                   (job.deadlineSlot == best.deadlineSlot && tie < selectedTie)));
+          }
+          if (!better)
+            continue;
+          selected = index;
+          selectedDeficit = deficit;
+          selectedWeight = step.weight;
+          selectedForced = forced;
+          selectedTie = tie;
+          selectedStep = step;
+        }
+        if (selected == jobCount)
+          break;
+
+        SimulatedJob &job = jobs[selected];
+        if (record) {
+          if (actionCount >= schedule_action_count_)
+            return false;
+          schedule_actions_[actionCount] = static_cast<std::uint8_t>(job.stageIndex);
+        }
+        ++actionCount;
+        usedWeight += selectedStep.weight;
+        job.remainingWeight -= selectedStep.weight;
+        if (selectedStep.exclusive)
+          --job.remainingExclusiveSteps;
+        job.stage->advanceWorkCursor(job.cursor);
+        slotClosed = selectedStep.exclusive || usedWeight == slotWeightLimit;
+      }
+      if (record)
+        schedule_offsets_[slot + 1u] = actionCount;
+    }
+    return actionCount == schedule_action_count_;
+  }
+
+  bool buildSchedule() noexcept {
+    head_period_slots_ = 0u;
+    scheduler_cycle_slots_ = 1u;
+    std::uint64_t totalWeight = 0u;
+    std::uint64_t maximumStepWeight = 0u;
+    std::uint32_t totalActions = 0u;
+    bool hasScheduledStage = false;
+    for (std::uint32_t index = 0u; index < stage_count_; ++index) {
+      const PartitionStage &stage = *stages_[index];
+      const std::uint32_t period = stage.periodSlots();
+      // Stage periods are powers of two, so the largest period is their common
+      // repeating cycle and no runtime least-common-multiple work is needed.
+      scheduler_cycle_slots_ = period > scheduler_cycle_slots_ ? period : scheduler_cycle_slots_;
+      if (!stage.amortized()) {
+        head_period_slots_ =
+            head_period_slots_ == 0u || period < head_period_slots_ ? period : head_period_slots_;
+        continue;
+      }
+      hasScheduledStage = true;
+    }
+    if (!hasScheduledStage) {
+      schedule_offsets_.fill(0u);
+      return true;
+    }
+    if (scheduler_cycle_slots_ > kMaximumSchedulerSlots)
+      return false;
+
+    for (std::uint32_t index = 0u; index < stage_count_; ++index) {
+      const PartitionStage &stage = *stages_[index];
+      if (!stage.amortized())
+        continue;
+      const std::uint32_t occurrences = scheduler_cycle_slots_ / stage.periodSlots();
+      totalWeight += stage.jobWorkWeight() * occurrences;
+      totalActions += stage.jobStepCount() * occurrences;
+      const std::uint64_t stageMaximum = stage.maximumStepWeight();
+      maximumStepWeight = stageMaximum > maximumStepWeight ? stageMaximum : maximumStepWeight;
+    }
+    schedule_actions_ = new (std::nothrow) std::uint8_t[totalActions];
+    if (schedule_actions_ == nullptr)
+      return false;
+    schedule_action_count_ = totalActions;
+    if (!simulateSchedule(totalWeight, false))
+      return false;
+
+    std::uint64_t low = maximumStepWeight;
+    std::uint64_t high = totalWeight;
+    while (low < high) {
+      const std::uint64_t middle = low + (high - low) / 2u;
+      if (simulateSchedule(middle, false))
+        high = middle;
+      else
+        low = middle + 1u;
+    }
+    return simulateSchedule(low, true);
+  }
+
+  void runScheduledSlot(bool immediateWork) noexcept {
+    if (!immediateWork && schedule_actions_ != nullptr) {
+      const std::uint32_t begin = schedule_offsets_[scheduler_slot_];
+      const std::uint32_t end = schedule_offsets_[scheduler_slot_ + 1u];
+      for (std::uint32_t action = begin; action < end; ++action) {
+        const std::uint32_t stageIndex = schedule_actions_[action];
+        stages_[stageIndex]->runScheduledStep(output_ring_, ring_size_, latency_);
+      }
+    }
+    ++scheduler_slot_;
+    if (scheduler_slot_ == scheduler_cycle_slots_)
+      scheduler_slot_ = 0u;
+  }
+
   [[nodiscard]] float renderDirect(std::uint32_t output) const noexcept {
     float value = 0.0F;
     for (std::uint32_t pathIndex = 0u; pathIndex < config_.pathCount; ++pathIndex) {
@@ -659,7 +1181,7 @@ private:
     const std::uint32_t clippedEnd = end < irFrames ? end : irFrames;
     PartitionStage *stage = new (std::nothrow) PartitionStage();
     if (stage == nullptr ||
-        !stage->reserve(block, offset, clippedEnd - offset, stage_count_, ir_channels_, config_)) {
+        !stage->reserve(block, offset, clippedEnd - offset, ir_channels_, config_)) {
       delete stage;
       return false;
     }
@@ -668,17 +1190,18 @@ private:
     return true;
   }
 
-  bool addLadder(std::uint32_t headBlock, std::uint32_t irFrames) noexcept {
+  bool addLadder(std::uint32_t headBlock, std::uint32_t ladderMaximum,
+                 std::uint32_t irFrames) noexcept {
     const std::uint32_t headOffset = latency_ == 0u ? kDirectHead : 0u;
     if (!addSegment(headBlock, headOffset, 4u * headBlock, irFrames))
       return false;
     std::uint32_t block = 2u * headBlock;
-    while (block < kLadderMaximum) {
+    while (block < ladderMaximum) {
       if (!addSegment(block, 2u * block, 4u * block, irFrames))
         return false;
       block *= 2u;
     }
-    return addSegment(kLadderMaximum, 2u * kLadderMaximum, irFrames, irFrames);
+    return addSegment(ladderMaximum, 2u * ladderMaximum, irFrames, irFrames);
   }
 
   void releaseStorage() noexcept {
@@ -691,6 +1214,11 @@ private:
     direct_history_.release();
     output_ring_.release();
     input_frame_.release();
+    delete[] schedule_actions_;
+    schedule_actions_ = nullptr;
+    schedule_action_count_ = 0u;
+    scheduler_cycle_slots_ = 1u;
+    head_period_slots_ = 0u;
     config_ = {};
     ir_channels_ = 0u;
     ir_frames_ = 0u;
@@ -702,6 +1230,9 @@ private:
     latency_ = 0u;
     direct_position_ = 0u;
     timeline_ = 0u;
+    scheduler_samples_ = 0u;
+    scheduler_slot_ = 0u;
+    slot_has_immediate_work_ = false;
     non_finite_ = false;
   }
 
@@ -712,6 +1243,14 @@ private:
   AlignedFloats direct_history_;
   AlignedFloats output_ring_;
   AlignedFloats input_frame_;
+  std::uint8_t *schedule_actions_ = nullptr;
+  std::uint32_t schedule_action_count_ = 0u;
+  std::array<std::uint32_t, kMaximumSchedulerSlots + 1u> schedule_offsets_{};
+  std::uint32_t scheduler_cycle_slots_ = 1u;
+  std::uint32_t head_period_slots_ = 0u;
+  std::uint32_t scheduler_samples_ = 0u;
+  std::uint32_t scheduler_slot_ = 0u;
+  bool slot_has_immediate_work_ = false;
   std::uint32_t direct_position_ = 0u;
   std::uint32_t ring_size_ = 1u;
   std::uint32_t latency_ = 0u;

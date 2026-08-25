@@ -10,6 +10,8 @@
 //
 // Regenerate the baked values (and the table below) with:
 //   node tests/tools/tube-simulator-lineamp/calibrate-listening-presets.mjs
+// Run this dedicated calibration regression with:
+//   npm run test:tube-calibration
 // The coarse grid pitch of the THD solver defaults to 2 dB and every output
 // record echoes the pitch it was solved with, so the command needs no flags.
 //
@@ -554,10 +556,10 @@ test('Tube Simulator selectable presets inherit every circuit value from their c
     }
   });
 
-test('Tube Simulator selectable presets reproduce their baked reference-sine THD', async () => {
+test('Tube Simulator presets retain calibrated THD and AC RMS level', async () => {
   const tables = readPluginPresetTables(repoRoot);
-  const presetsById = new Map(tables.groups.flatMap(group => group.presets)
-    .map(preset => [preset.id, preset]));
+  const presetsById = new Map(tables.groups.flatMap(group =>
+    group.presets.map(preset => [preset.id, { group: group.label, ...preset }])));
   const wasmBytes = fs.readFileSync(path.join(repoRoot, 'plugins', 'dsp', 'effetune-dsp.wasm'));
   const packer = DSP_PARAM_PACKERS.get('TubeSimulatorPlugin');
   assert.ok(packer, 'TubeSimulatorPlugin parameter packer is unavailable');
@@ -596,41 +598,14 @@ test('Tube Simulator selectable presets reproduce their baked reference-sine THD
           `${baked.id} has slid off its baked ${baked.thdPercent} % ceiling: ` +
           `measured ${measured.thdPercent.toFixed(4)} %`);
       }
+      assert.ok(Math.abs(measured.rmsGainDb) <= GAIN_TOLERANCE_DB,
+        `${preset.group}/${preset.id} RMS gain is ${measured.rmsGainDb.toFixed(4)} dB; ` +
+        `Output Trim must match it to 0 dB at -12 dBFS`);
     }
   } finally {
     binding.close();
   }
 });
-
-test('Tube Simulator selectable presets match AC RMS level with Output Trim',
-  async () => {
-    const tables = readPluginPresetTables(repoRoot);
-    const grouped = tables.groups.flatMap(group =>
-      group.presets.map(preset => ({ group: group.label, ...preset })));
-
-    const wasmBytes = fs.readFileSync(path.join(repoRoot, 'plugins', 'dsp', 'effetune-dsp.wasm'));
-    const packer = DSP_PARAM_PACKERS.get('TubeSimulatorPlugin');
-    assert.ok(packer, 'TubeSimulatorPlugin parameter packer is unavailable');
-
-    const binding = await instantiateDsp(wasmBytes);
-    try {
-      assert.notEqual(binding.createEngine(), 0);
-      assert.equal(binding.prepare(SAMPLE_RATE, 2, BLOCK_SIZE, TELEMETRY_BYTES), 0);
-      for (const preset of grouped) {
-        const measured = measureSteadyState(binding, packer, preset.params, {
-          amplitude: PRESET_REFERENCE_AMPLITUDE
-        });
-        assert.equal(measured.finite, true, `${preset.id} produced a non-finite output`);
-        assert.deepEqual(measured.runtimeEvent, NO_RUNTIME_FAULT,
-          `${preset.id} raised a runtime fault ${RUNTIME_FAULT_LEGEND}`);
-        assert.ok(Math.abs(measured.rmsGainDb) <= GAIN_TOLERANCE_DB,
-          `${preset.group}/${preset.id} RMS gain is ${measured.rmsGainDb.toFixed(4)} dB; ` +
-          `Output Trim must match it to 0 dB at -12 dBFS`);
-      }
-    } finally {
-      binding.close();
-    }
-  });
 
 test('Tube Simulator Power-only KT88 keeps its stable feedback and calibrated trim', () => {
   const tables = readPluginPresetTables(repoRoot);

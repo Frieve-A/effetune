@@ -149,6 +149,8 @@ struct KernelHarness {
     kernel->process(audio, channels, frames, {time_seconds});
   }
 
+  void reset() noexcept { kernel->reset(); }
+
   void telemetryTick() noexcept {
     effetune::TelemetryWriter writer(ring, tap_id, sequence);
     kernel->writeTelemetry(writer);
@@ -171,6 +173,76 @@ void checkFrameHeader(const std::uint8_t *frame, std::uint32_t tap_id, std::uint
   SPECTRUM_CHECK(readU32(frame + 8u) == sequence);
   SPECTRUM_CHECK(readU16(frame + 12u) == payload_bytes);
   SPECTRUM_CHECK(readU16(frame + 14u) == 0u);
+}
+
+template <class Sample>
+void processSamples(KernelHarness &harness, float sample_rate, std::uint32_t total_frames,
+                    const std::vector<std::uint32_t> &blocks, Sample sample) {
+  std::uint32_t maximum_block = 1u;
+  for (const std::uint32_t block : blocks) {
+    if (block > maximum_block) {
+      maximum_block = block;
+    }
+  }
+  std::vector<float> audio(maximum_block * 2u);
+  std::uint32_t processed = 0u;
+  std::uint32_t block_index = 0u;
+  while (processed < total_frames) {
+    const std::uint32_t requested = blocks[block_index % blocks.size()];
+    const std::uint32_t remaining = total_frames - processed;
+    const std::uint32_t block = requested < remaining ? requested : remaining;
+    for (std::uint32_t frame = 0u; frame < block; ++frame) {
+      const float value = sample(processed + frame);
+      audio[frame] = value;
+      audio[block + frame] = value;
+    }
+    const std::vector<float> original(audio.begin(), audio.begin() + block * 2u);
+    harness.process(audio.data(), 2u, block, static_cast<double>(processed) / sample_rate);
+    SPECTRUM_CHECK(std::memcmp(audio.data(), original.data(), sizeof(float) * block * 2u) == 0);
+    processed += block;
+    ++block_index;
+  }
+}
+
+std::vector<std::uint8_t> takePayload(KernelHarness &harness) {
+  harness.telemetryTick();
+  const std::uint32_t bytes = harness.read();
+  if (bytes < 16u) {
+    return {};
+  }
+  return {harness.output.begin() + 16u, harness.output.begin() + bytes};
+}
+
+std::vector<std::uint8_t> renderPayload(const std::vector<std::uint32_t> &blocks) {
+  constexpr float kSampleRate = 48000.0F;
+  constexpr std::uint32_t kFirstFrameCompletion = 1856u;
+  std::uint32_t maximum_block = 1u;
+  for (const std::uint32_t block : blocks) {
+    if (block > maximum_block) {
+      maximum_block = block;
+    }
+  }
+  KernelHarness harness(kSampleRate, maximum_block);
+  harness.setParams(-96.0F, 8.0F);
+  processSamples(harness, kSampleRate, kFirstFrameCompletion, blocks, [](std::uint32_t frame) {
+    return static_cast<float>(0.4 * std::sin(2.0 * kPi * 750.0 * frame / 48000.0));
+  });
+  return takePayload(harness);
+}
+
+std::vector<std::uint8_t> renderPointPayload(KernelHarness &harness, std::uint32_t points,
+                                             const std::vector<std::uint32_t> &blocks) {
+  constexpr float kSampleRate = 192000.0F;
+  constexpr std::uint32_t kRateLimitedInterval = 6400u;
+  const std::uint32_t fft_size = 1u << points;
+  const std::uint32_t fft_hop = fft_size >> 1u;
+  const std::uint32_t interval = fft_hop > kRateLimitedInterval ? fft_hop : kRateLimitedInterval;
+  const std::uint32_t first_trigger = fft_size < interval ? fft_size : interval;
+  harness.setParams(-144.0F, static_cast<float>(points));
+  processSamples(harness, kSampleRate, first_trigger + interval, blocks, [](std::uint32_t frame) {
+    return static_cast<float>(0.4 * std::sin(2.0 * kPi * 750.0 * frame / kSampleRate));
+  });
+  return takePayload(harness);
 }
 
 void testKnownOneKilohertzFrameAndVariableBlocks() {
@@ -197,6 +269,19 @@ void testKnownOneKilohertzFrameAndVariableBlocks() {
     processed += block;
   }
   SPECTRUM_CHECK(processed == kFftSize);
+
+  constexpr std::uint32_t kStagedCompletionFrames = 1056u;
+  std::uint32_t completion_processed = 0u;
+  while (completion_processed < kStagedCompletionFrames) {
+    const std::uint32_t remaining = kStagedCompletionFrames - completion_processed;
+    const std::uint32_t block = remaining < 97u ? remaining : 97u;
+    for (std::uint32_t index = 0u; index < block * 2u; ++index) {
+      audio[index] = 0.0F;
+    }
+    harness.process(audio.data(), 2u, block,
+                    static_cast<double>(kFftSize + completion_processed) / kSampleRate);
+    completion_processed += block;
+  }
 
   harness.telemetryTick();
   constexpr std::uint32_t kBinCount = (kFftSize >> 1u) + 1u;
@@ -228,7 +313,8 @@ void testKnownOneKilohertzFrameAndVariableBlocks() {
       audio[index] = 0.0F;
     }
     harness.process(audio.data(), 2u, block,
-                    static_cast<double>(kFftSize + silence_processed) / kSampleRate);
+                    static_cast<double>(kFftSize + kStagedCompletionFrames + silence_processed) /
+                        kSampleRate);
     silence_processed += block;
   }
   harness.telemetryTick();
@@ -248,8 +334,8 @@ void testMaximumPointPayloadContract() {
   std::vector<float> audio(2u * kBlockSize);
 
   std::uint32_t processed = 0u;
-  while (processed < kHopSize) {
-    const std::uint32_t remaining = kHopSize - processed;
+  while (processed < kHopSize * 2u) {
+    const std::uint32_t remaining = kHopSize * 2u - processed;
     const std::uint32_t block = remaining < kBlockSize ? remaining : kBlockSize;
     for (std::uint32_t frame = 0u; frame < block; ++frame) {
       const float sample = (processed + frame) % 2u == 0u ? 0.25F : -0.25F;
@@ -274,12 +360,112 @@ void testMaximumPointPayloadContract() {
   SPECTRUM_CHECK(std::isfinite(readF32(payload + 12u + 8190u * 4u + 8189u * 4u)));
 }
 
+void testFixedAndMixedBlockPayloadDeterminism() {
+  const std::vector<std::uint8_t> reference = renderPayload({1u});
+  SPECTRUM_CHECK(!reference.empty());
+  constexpr std::array<std::uint32_t, 7> kFixedFrames = {1u, 7u, 16u, 32u, 64u, 128u, 129u};
+  for (const std::uint32_t frames : kFixedFrames) {
+    SPECTRUM_CHECK(renderPayload({frames}) == reference);
+  }
+  SPECTRUM_CHECK(renderPayload({1u, 7u, 16u, 32u, 64u, 128u, 129u}) == reference);
+}
+
+void testResetAndPointChangeCancelActiveJobs() {
+  constexpr float kSampleRate = 48000.0F;
+  constexpr std::uint32_t kFirstFrameCompletion = 1856u;
+  const std::vector<std::uint32_t> mixed_blocks = {129u, 7u, 64u, 16u};
+  const std::vector<std::uint8_t> reference = renderPayload(mixed_blocks);
+
+  KernelHarness reset_harness(kSampleRate, 129u);
+  reset_harness.setParams(-96.0F, 8.0F);
+  processSamples(reset_harness, kSampleRate, 400u, {129u},
+                 [](std::uint32_t frame) { return frame % 3u == 0u ? 0.25F : -0.125F; });
+  reset_harness.reset();
+  processSamples(reset_harness, kSampleRate, kFirstFrameCompletion, mixed_blocks,
+                 [](std::uint32_t frame) {
+                   return static_cast<float>(0.4 * std::sin(2.0 * kPi * 750.0 * frame / 48000.0));
+                 });
+  SPECTRUM_CHECK(takePayload(reset_harness) == reference);
+
+  KernelHarness points_harness(kSampleRate, 129u);
+  points_harness.setParams(-144.0F, 14.0F);
+  processSamples(points_harness, kSampleRate, (1u << 13u) + 32u, {129u, 16u},
+                 [](std::uint32_t frame) { return frame % 2u == 0u ? 0.3F : -0.2F; });
+  points_harness.setParams(-96.0F, 8.0F);
+  processSamples(points_harness, kSampleRate, kFirstFrameCompletion, mixed_blocks,
+                 [](std::uint32_t frame) {
+                   return static_cast<float>(0.4 * std::sin(2.0 * kPi * 750.0 * frame / 48000.0));
+                 });
+  SPECTRUM_CHECK(takePayload(points_harness) == reference);
+}
+
+void testPreparedTwiddleTablesAcrossPointChangesAndReset() {
+  constexpr float kSampleRate = 192000.0F;
+  const std::vector<std::uint32_t> mixed_blocks = {1u, 7u, 16u, 32u, 64u, 128u, 129u};
+  KernelHarness harness(kSampleRate, 129u);
+
+  for (std::uint32_t points = 8u; points <= 14u; ++points) {
+    const std::vector<std::uint8_t> payload = renderPointPayload(harness, points, mixed_blocks);
+    const std::uint32_t source_bin_count = (1u << (points - 1u)) + 1u;
+    const std::uint32_t expected_bin_count = points == 14u ? 8190u : source_bin_count;
+    SPECTRUM_CHECK(payload.size() == 12u + expected_bin_count * 8u);
+    if (payload.size() == 12u + expected_bin_count * 8u) {
+      SPECTRUM_CHECK(readF32(payload.data()) == kSampleRate);
+      SPECTRUM_CHECK(readU32(payload.data() + 4u) == expected_bin_count);
+      SPECTRUM_CHECK(readU16(payload.data() + 8u) == points);
+    }
+
+    harness.reset();
+    SPECTRUM_CHECK(renderPointPayload(harness, points, mixed_blocks) == payload);
+  }
+}
+
+void testPublishedPayloadRemainsCoherentDuringStaging() {
+  constexpr float kSampleRate = 48000.0F;
+  constexpr std::uint32_t kFftSize = 256u;
+  constexpr std::uint32_t kAnalysisInterval = 1600u;
+  auto prepare_first_frame = [=](KernelHarness &target) {
+    processSamples(target, kSampleRate, kFftSize, {64u}, [](std::uint32_t frame) {
+      return static_cast<float>(0.4 * std::sin(2.0 * kPi * 750.0 * frame / 48000.0));
+    });
+    processSamples(target, kSampleRate, kAnalysisInterval, {64u},
+                   [](std::uint32_t) { return 0.0F; });
+  };
+
+  KernelHarness reference_harness(kSampleRate, 64u);
+  reference_harness.setParams(-96.0F, 8.0F);
+  prepare_first_frame(reference_harness);
+  const std::vector<std::uint8_t> reference = takePayload(reference_harness);
+
+  KernelHarness harness(kSampleRate, 64u);
+  harness.setParams(-96.0F, 8.0F);
+  prepare_first_frame(harness);
+  processSamples(harness, kSampleRate, 800u, {16u}, [](std::uint32_t) { return 0.0F; });
+  const std::vector<std::uint8_t> published_during_staging = takePayload(harness);
+  SPECTRUM_CHECK(published_during_staging == reference);
+
+  processSamples(harness, kSampleRate, 800u, {32u}, [](std::uint32_t) { return 0.0F; });
+  const std::vector<std::uint8_t> second = takePayload(harness);
+  SPECTRUM_CHECK(!second.empty());
+  SPECTRUM_CHECK(second != published_during_staging);
+}
+
+void testLatencyIsUnchanged() {
+  KernelHarness harness(192000.0F, 16u);
+  SPECTRUM_CHECK(harness.kernel != nullptr && harness.kernel->latencySamples() == 0u);
+}
+
 } // namespace
 
 int main() {
   testPffftRoundTripAndKnownBin();
   testKnownOneKilohertzFrameAndVariableBlocks();
   testMaximumPointPayloadContract();
+  testFixedAndMixedBlockPayloadDeterminism();
+  testResetAndPointChangeCancelActiveJobs();
+  testPreparedTwiddleTablesAcrossPointChangesAndReset();
+  testPublishedPayloadRemainsCoherentDuringStaging();
+  testLatencyIsUnchanged();
   if (failures != 0) {
     std::fprintf(stderr, "%d Spectrum Analyzer native check(s) failed\n", failures);
     return 1;

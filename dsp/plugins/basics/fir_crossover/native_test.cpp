@@ -159,6 +159,22 @@ void testMatrixRouting() {
   }
 }
 
+void testZeroLatencyActivationWaitsForCompleteWetBlock() {
+  Harness harness;
+  harness.stage({0.0F, 0.0F, 2.0F});
+  FIR_CROSSOVER_CHECK(harness.commit(makePayload(257u, {0.25F, 0.75F}), 2u, 0u));
+  FIR_CROSSOVER_CHECK(harness.kernel->latencySamples() == 0u);
+
+  std::array<float, 512> signal{};
+  signal.fill(1.0F);
+  harness.kernel->process(signal.data(), 4u, 128u, {0.0});
+  FIR_CROSSOVER_CHECK((harness.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_PREPARING);
+
+  signal.fill(1.0F);
+  harness.kernel->process(signal.data(), 4u, 128u, {0.0});
+  FIR_CROSSOVER_CHECK((harness.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_ACTIVE);
+}
+
 void testSafeReplacementMute() {
   Harness harness;
   std::array<float, 512> initial{};
@@ -211,6 +227,7 @@ void testMalformedMatrixIsRejected() {
 
 int main() {
   testMatrixRouting();
+  testZeroLatencyActivationWaitsForCompleteWetBlock();
   testSafeReplacementMute();
   testMalformedMatrixIsRejected();
   return failures == 0 ? 0 : 1;

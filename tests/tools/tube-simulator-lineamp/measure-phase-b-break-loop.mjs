@@ -5,12 +5,12 @@
 // dependency ./product-runtime.mjs is a 2026-08-16 reconstruction (the original is
 // unrecoverable), so re-measurements drive the CURRENT JS reference and are not
 // expected to reproduce the frozen phase-b-break-loop-v2.sha256 bit-exactly.
-// WARNING: running this script with no arguments OVERWRITES the frozen artifact.
-// The default output path is tests/fixtures/tube-simulator/lineamp-v1/
+// WARNING: running this script with no arguments OVERWRITES the local artifact.
+// The default output path is tmp/dev/tube-simulator-lineamp/lineamp-v1/
 // phase-b-break-loop-v2.json and a non---check run rewrites both it and its
 // .sha256, so the replacement is self-consistent and --check can no longer
 // detect it. That file is untracked (~6.9 MiB) and cannot be restored with git.
-// Always pass --output <tmp path> when re-measuring.
+// Pass --output to keep an additional measurement instead of replacing it.
 
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
@@ -30,9 +30,9 @@ const pluginSourcePath = path.join(
 );
 const defaultOutputPath = path.join(
   repoRoot,
-  'tests',
-  'fixtures',
-  'tube-simulator',
+  'tmp',
+  'dev',
+  'tube-simulator-lineamp',
   'lineamp-v1',
   'phase-b-break-loop-v2.json'
 );

@@ -39,7 +39,7 @@ La banda generada consta de dos componentes ajustables por separado: una continu
 - **Cutoff** elige **Auto**, que busca una caída espectral pronunciada y persistente común a ambos canales, o **Manual**. En Manual, la banda generada se limita automáticamente al rango disponible durante la reproducción.
 - **Manual Cutoff** (6000-24000 Hz) fija el inicio de la generación en modo Manual.
 
-Bandwidth Extender añade unos 21 ms de latencia. Si no puede funcionar con la frecuencia de muestreo, la configuración de canales o el dispositivo actuales, el panel muestra un mensaje de bypass y el audio no cambia. Usa una configuración compatible o desactiva el plugin.
+Bandwidth Extender añade unos 26,7-29,0 ms de latencia, incluido un salto adicional de procesamiento: 1.280 muestras a 48 kHz, 2.560 a 96 kHz o 5.120 a 192 kHz. Si no puede funcionar con la frecuencia de muestreo, la configuración de canales o el dispositivo actuales, el panel muestra un mensaje de bypass y el audio no cambia. Usa una configuración compatible o desactiva el plugin.
 
 ## Dynamic Saturation
 

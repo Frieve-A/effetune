@@ -178,7 +178,7 @@ function createStream(id = 'mic') {
 }
 
 function createWindow(calls, options = {}) {
-  const preferences = options.preferences ?? null;
+  let preferences = options.preferences ?? null;
   return {
     electronAPI: options.electronAPI ?? null,
     electronIntegration: options.electronIntegration ?? (options.electron ? {
@@ -188,6 +188,12 @@ function createWindow(calls, options = {}) {
         calls.push(['loadAudioPreferences']);
         if (options.loadPrefsReject) throw new Error('prefs failed');
         return preferences;
+      },
+      async saveAudioPreferences(nextPreferences, saveOptions) {
+        calls.push(['saveAudioPreferences', { ...nextPreferences }, { ...saveOptions }]);
+        preferences = nextPreferences;
+        this.audioPreferences = nextPreferences;
+        return options.savePrefsResult ?? true;
       }
     } : null),
     audioPreferences: options.audioPreferences,
@@ -563,6 +569,18 @@ test('audio output initialization handles direct context sink and media destinat
   });
 
   await withAudioIO({
+    context: { audioContext: { contextSetSinkId: true, contextSetSinkIdReject: true } },
+    window: {
+      electron: true,
+      electronAPI: { platform: 'linux' },
+      preferences: { outputDeviceId: 'default', outputChannels: 2 }
+    }
+  }, async ({ manager, calls }) => {
+    assert.equal(await manager.initAudioOutput(), '');
+    assert.equal(calls.some(call => call[0] === 'saveAudioPreferences'), false);
+  });
+
+  await withAudioIO({
     context: { audioContext: { contextSetSinkId: true } },
     window: {
       electron: true,
@@ -593,9 +611,16 @@ test('audio output initialization handles direct context sink and media destinat
     assert.equal(manager.audioContextSinkMode, true);
     assert.ok(calls.some(call => call[0] === 'setInterval'));
     assert.equal(windowRef.audioPreferences.outputDeviceId, 'default');
-    assert.equal(windowRef.electronIntegration.audioPreferences.outputDeviceId, 'ctx-device');
+    assert.equal(windowRef.electronIntegration.audioPreferences.outputDeviceId, 'default');
+    assert.deepEqual(
+      calls.find(call => call[0] === 'saveAudioPreferences')?.slice(1),
+      [
+        { outputDeviceId: 'default', outputChannels: 2, outputDeviceLabel: '' },
+        { applyInPlace: 'output-device-fallback' }
+      ]
+    );
     await intervals.values().next().value.callbackFn();
-    assert.ok(calls.some(call => call[0] === 'audioManager.reset'));
+    assert.equal(calls.some(call => call[0] === 'audioManager.reset'), false);
   });
 
   await withAudioIO({
@@ -713,6 +738,33 @@ test('audio output initialization handles saved and default audio-element paths'
     window: {
       electron: true,
       electronAPI: {},
+      preferences: { outputDeviceId: 'speaker', outputChannels: 2 }
+    },
+    audio: {
+      rejectSinkIds: new Map([['speaker', true]])
+    },
+    navigator: {
+      devices: [{ kind: 'audiooutput', deviceId: 'speaker', label: 'Speaker' }]
+    }
+  }, async ({ manager, calls, windowRef }) => {
+    assert.equal(await manager.initAudioOutput(), '');
+    assert.equal(manager.currentOutputDeviceId, 'default');
+    assert.equal(manager.destinationNode, null);
+    assert.notEqual(manager.defaultDestinationConnection, null);
+    assert.equal(windowRef.electronIntegration.audioPreferences.outputDeviceId, 'default');
+    assert.deepEqual(
+      calls.filter(call => call[0] === 'saveAudioPreferences').map(call => call.slice(1)),
+      [[
+        { outputDeviceId: 'default', outputChannels: 2, outputDeviceLabel: '' },
+        { applyInPlace: 'output-device-fallback' }
+      ]]
+    );
+  });
+
+  await withAudioIO({
+    window: {
+      electron: true,
+      electronAPI: {},
       preferences: { outputDeviceId: 'missing', outputChannels: 2 }
     },
     audio: {
@@ -721,9 +773,11 @@ test('audio output initialization handles saved and default audio-element paths'
     navigator: {
       enumerateReject: true
     }
-  }, async ({ manager }) => {
+  }, async ({ manager, calls, windowRef }) => {
     assert.equal(await manager.initAudioOutput(), '');
     assert.equal(manager.currentOutputDeviceId, 'default');
+    assert.equal(windowRef.electronIntegration.audioPreferences.outputDeviceId, 'default');
+    assert.equal(calls.filter(call => call[0] === 'saveAudioPreferences').length, 1);
   });
 
   await withAudioIO({
@@ -735,9 +789,20 @@ test('audio output initialization handles saved and default audio-element paths'
     audio: {
       noSinkId: true
     }
-  }, async ({ manager, calls }) => {
+  }, async ({ manager, calls, windowRef }) => {
     assert.equal(await manager.initAudioOutput(), '');
     assert.ok(calls.some(call => call[0] === 'console.warn' && String(call[1]).includes('not supported')));
+    assert.equal(manager.currentOutputDeviceId, 'default');
+    assert.equal(manager.destinationNode, null);
+    assert.notEqual(manager.defaultDestinationConnection, null);
+    assert.equal(windowRef.electronIntegration.audioPreferences.outputDeviceId, 'default');
+    assert.deepEqual(
+      calls.filter(call => call[0] === 'saveAudioPreferences').map(call => call.slice(1)),
+      [[
+        { outputDeviceId: 'default', outputChannels: 2, outputDeviceLabel: '' },
+        { applyInPlace: 'output-device-fallback' }
+      ]]
+    );
   });
 
   await withAudioIO({
@@ -818,9 +883,11 @@ test('audio output initialization handles audio-element fallback failures and ev
     navigator: {
       devices: [{ kind: 'audiooutput', deviceId: 'speaker' }]
     }
-  }, async ({ manager, calls }) => {
+  }, async ({ manager, calls, windowRef }) => {
     assert.equal(await manager.initAudioOutput(), '');
     assert.ok(calls.some(call => call[0] === 'console.warn' && String(call[1]).includes('Failed to play audio')));
+    assert.equal(calls.some(call => call[0] === 'saveAudioPreferences'), false);
+    assert.equal(windowRef.electronIntegration.audioPreferences.outputDeviceId, 'speaker');
   });
 
   await withAudioIO({
@@ -836,7 +903,14 @@ test('audio output initialization handles audio-element fallback failures and ev
     assert.equal(manager.destinationNode, null);
     assert.notEqual(manager.defaultDestinationConnection, null);
     assert.equal(windowRef.audioPreferences.outputDeviceId, 'default');
-    assert.equal(windowRef.electronIntegration.audioPreferences.outputDeviceId, 'speaker');
+    assert.equal(windowRef.electronIntegration.audioPreferences.outputDeviceId, 'default');
+    assert.deepEqual(
+      calls.filter(call => call[0] === 'saveAudioPreferences').map(call => call.slice(1)),
+      [[
+        { outputDeviceId: 'default', outputChannels: 2, outputDeviceLabel: '' },
+        { applyInPlace: 'output-device-fallback' }
+      ]]
+    );
   });
 
   await withAudioIO({

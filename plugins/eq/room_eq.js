@@ -6,7 +6,8 @@ const ROOM_EQ_ADDITIONAL_EQ_FILTER_TYPES = [
 ];
 const ROOM_EQ_PHASE_LOW_MIN = 20;
 const ROOM_EQ_PHASE_LOW_MAX = 20000;
-const ROOM_EQ_GROUP_DELAY_LIMITS_MS = [1, 2, 5, 10, 20, 50, 100, 200, 500];
+const ROOM_EQ_GROUP_DELAY_MINIMUM_LIMIT_MS = 1;
+const ROOM_EQ_EXCESS_GROUP_DELAY_DISPLAY_LIMIT_MS = 100;
 const ROOM_EQ_GRAPH_FREQUENCY_TICKS =
     [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
 const ROOM_EQ_RESPONSE_HIDDEN_CLASS = 'room-eq-response-hidden';
@@ -952,7 +953,7 @@ class RoomEqPlugin extends PluginBase {
         this._beforeLegendHover = null;
         this._responseHoverCleanup = null;
         this._pathPointCache = new WeakMap();
-        this._groupDelayAxisLimit = ROOM_EQ_GROUP_DELAY_LIMITS_MS[0];
+        this._groupDelayAxisLimit = ROOM_EQ_GROUP_DELAY_MINIMUM_LIMIT_MS;
         this._impulseTimeAxis = null;
         this._visibilityHandler = () => {
             if (!this._disposed && document.visibilityState === 'visible') {
@@ -2838,7 +2839,7 @@ class RoomEqPlugin extends PluginBase {
                 continue;
             }
             const x = this._additionalEqEditor.freqToX(frequency) * width / 100;
-            const y = boundGraphY((limit - value) / (2 * limit) * height, height);
+            const y = (limit - value) / (2 * limit) * height;
             const command = previousValue === null || (breakStep > 0 &&
                 Math.abs(value - previousValue) > breakStep) ? 'M' : 'L';
             path.push(`${command} ${x.toFixed(2)},${y.toFixed(2)}`);
@@ -2934,23 +2935,25 @@ class RoomEqPlugin extends PluginBase {
         this._applyBeforeLegendHover('phase', response);
     }
 
-    // Group delay spans differ by orders of magnitude between measurements, so the
-    // axis is scaled to a round limit that covers all but the sharpest excursions.
+    // Every finite value is included. Spectral zeros are represented by gaps before
+    // this stage, so a large remaining value is meaningful and must stay visible.
     _groupDelayLimit(curves) {
-        const magnitudes = [];
+        let maximum = 0;
         for (const values of curves) {
             for (const value of values) {
-                if (Number.isFinite(value)) magnitudes.push(value < 0 ? -value : value);
+                if (!Number.isFinite(value)) continue;
+                const magnitude = value < 0 ? -value : value;
+                if (magnitude > maximum) maximum = magnitude;
             }
         }
-        if (!magnitudes.length) return ROOM_EQ_GROUP_DELAY_LIMITS_MS[0];
-        magnitudes.sort((first, second) => first - second);
-        const bound = magnitudes[Math.min(
-            magnitudes.length - 1,
-            Math.floor(magnitudes.length * 0.95)
-        )];
-        return ROOM_EQ_GROUP_DELAY_LIMITS_MS.find(limit => limit >= bound) ||
-            ROOM_EQ_GROUP_DELAY_LIMITS_MS[ROOM_EQ_GROUP_DELAY_LIMITS_MS.length - 1];
+        if (maximum <= ROOM_EQ_GROUP_DELAY_MINIMUM_LIMIT_MS) {
+            return ROOM_EQ_GROUP_DELAY_MINIMUM_LIMIT_MS;
+        }
+        const padded = maximum * 1.05;
+        const power = 10 ** Math.floor(Math.log10(padded));
+        const normalized = padded / power;
+        const step = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+        return step * power;
     }
 
     _isGroupDelayView(view) {
@@ -2969,9 +2972,11 @@ class RoomEqPlugin extends PluginBase {
         const hasPreview = preview?.frequencies?.length > 1 &&
             preview.frequencies.length === groupDelayPreview?.before?.length &&
             groupDelayPreview.before.length === groupDelayPreview.after?.length;
-        const limit = hasPreview
-            ? this._groupDelayLimit([groupDelayPreview.before, groupDelayPreview.after])
-            : ROOM_EQ_GROUP_DELAY_LIMITS_MS[0];
+        const limit = this._responseView === 'excessGroupDelay'
+            ? ROOM_EQ_EXCESS_GROUP_DELAY_DISPLAY_LIMIT_MS
+            : hasPreview
+                ? this._groupDelayLimit([groupDelayPreview.before, groupDelayPreview.after])
+                : ROOM_EQ_GROUP_DELAY_MINIMUM_LIMIT_MS;
         this._groupDelayAxisLimit = limit;
         this._appendVerticalAxis(grid, width, height, limit,
             [limit, limit / 2, 0, -limit / 2, -limit],

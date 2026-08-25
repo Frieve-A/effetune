@@ -52,7 +52,7 @@
     "policy": "per-sample"
   },
   "referenceEngine": "production-native-promoted-v1",
-  "referenceHash": "sha256:7e6db1c3167a7ebcbee2cdb10d0a69077a5f18db2d1316d44134c81169310910",
+  "referenceHash": "sha256:41f07224902043d089f185138ee678ad6ba566dd82e8bbe776c342429e0ace42",
   "generationCommand": "node tools/dsp-parity/generate.mjs --type BandwidthExtenderPlugin --promote-production-native",
   "outputFloats": 24578,
   "byteLength": 98312,

@@ -146,6 +146,7 @@ Uma ferramenta fascinante de visualização que permite ver como sua música cri
   - Sons muito mais fortes de um lado podem aparecer perto dos cantos rotulados
   - Pontos verdes dançam com a música atual
   - Linha branca traça os picos musicais
+  - A linha branca de picos decai a cada amostra de áudio, mantendo o mesmo movimento independentemente do tamanho do bloco de processamento
 - **Correlation Bar** (lado esquerdo)
   - Mostra a correlação entre os canais esquerdo e direito
   - Topo (+1.0): Esquerda e direita são quase iguais, normalmente soando centralizadas

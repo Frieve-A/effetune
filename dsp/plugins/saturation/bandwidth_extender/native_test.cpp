@@ -132,6 +132,38 @@ std::vector<float> render(KernelHarness &harness, const Params &parameters,
   return output;
 }
 
+std::vector<float> renderWithBlockPattern(KernelHarness &harness, const Params &parameters,
+                                          const std::vector<float> &input, std::uint32_t channels,
+                                          std::uint32_t frames, const std::uint32_t *block_sizes,
+                                          std::size_t block_size_count) {
+  std::vector<float> output(input.size(), 0.0F);
+  harness.stage(parameters);
+  std::uint32_t start = 0u;
+  std::size_t pattern_index = 0u;
+  while (start < frames) {
+    const std::uint32_t requested = block_sizes[pattern_index % block_size_count];
+    const std::uint32_t remaining = frames - start;
+    const std::uint32_t count = remaining < requested ? remaining : requested;
+    std::vector<float> block(static_cast<std::size_t>(count) * channels);
+    for (std::uint32_t channel = 0u; channel < channels; ++channel) {
+      for (std::uint32_t frame = 0u; frame < count; ++frame) {
+        block[static_cast<std::size_t>(channel) * count + frame] =
+            input[static_cast<std::size_t>(channel) * frames + start + frame];
+      }
+    }
+    harness.process(block, channels, count);
+    for (std::uint32_t channel = 0u; channel < channels; ++channel) {
+      for (std::uint32_t frame = 0u; frame < count; ++frame) {
+        output[static_cast<std::size_t>(channel) * frames + start + frame] =
+            block[static_cast<std::size_t>(channel) * count + frame];
+      }
+    }
+    start += count;
+    ++pattern_index;
+  }
+  return output;
+}
+
 bool finite(const std::vector<float> &audio) noexcept {
   for (const float sample : audio) {
     if (!std::isfinite(sample)) {
@@ -371,10 +403,10 @@ void testLatencyBySampleRate() {
   KernelHarness rate_48(48000.0F, 2u);
   KernelHarness rate_96(96000.0F, 2u);
   KernelHarness rate_192(192000.0F, 2u);
-  check(rate_44.latency() == 1024u, "44.1 kHz latency is 1024 samples");
-  check(rate_48.latency() == 1024u, "48 kHz latency is 1024 samples");
-  check(rate_96.latency() == 2048u, "96 kHz latency is 2048 samples");
-  check(rate_192.latency() == 4096u, "192 kHz latency is 4096 samples");
+  check(rate_44.latency() == 1280u, "44.1 kHz latency is 1280 samples");
+  check(rate_48.latency() == 1280u, "48 kHz latency is 1280 samples");
+  check(rate_96.latency() == 2560u, "96 kHz latency is 2560 samples");
+  check(rate_192.latency() == 5120u, "192 kHz latency is 5120 samples");
 }
 
 void testAmountZeroIsDelayedDry() {
@@ -491,6 +523,94 @@ void testBlockIndependenceAndResetReplay() {
   KernelHarness dry(48000.0F, 2u);
   const std::vector<float> dry_output = render(dry, params(0.0F, 0.0F), input, 2u, frames, 127u);
   check(odd_output != dry_output, "both independent components generate high-band content");
+}
+
+void testVariableFrameDeterminism() {
+  constexpr std::uint32_t frames = 12289u;
+  constexpr std::array<std::uint32_t, 7u> required_frame_sizes{{1u, 7u, 16u, 32u, 64u, 128u, 129u}};
+  const std::vector<float> input = inputSignal(frames, 2u, 192000.0);
+  const Params settings = params(82.0F, 82.0F, 1.0F, 11000.0F);
+  KernelHarness reference_harness(192000.0F, 2u);
+  const std::vector<float> reference = render(reference_harness, settings, input, 2u, frames, 1u);
+  for (const std::uint32_t frame_size : required_frame_sizes) {
+    KernelHarness harness(192000.0F, 2u);
+    const std::vector<float> output = render(harness, settings, input, 2u, frames, frame_size);
+    check(output == reference, "output is bit-exact for every required host frame size");
+  }
+
+  KernelHarness mixed_harness(192000.0F, 2u);
+  const std::vector<float> mixed =
+      renderWithBlockPattern(mixed_harness, settings, input, 2u, frames,
+                             required_frame_sizes.data(), required_frame_sizes.size());
+  check(mixed == reference, "output is bit-exact when host frame sizes vary between calls");
+}
+
+void testResetAndChannelChangeCancelStagedJobs() {
+  constexpr std::uint32_t probe_frames = 6145u;
+  constexpr std::array<std::uint32_t, 6u> interrupted_slots{{0u, 1u, 17u, 31u, 47u, 63u}};
+  const Params settings = params(100.0F, 100.0F, 1.0F, 11000.0F);
+  const std::vector<float> probe = inputSignal(probe_frames, 2u, 192000.0);
+  KernelHarness reference(192000.0F, 2u);
+  const std::vector<float> expected = render(reference, settings, probe, 2u, probe_frames, 31u);
+
+  for (const std::uint32_t slot : interrupted_slots) {
+    KernelHarness interrupted(192000.0F, 2u);
+    const std::uint32_t prefix_frames = 4096u + slot * 16u + 8u;
+    const std::vector<float> prefix = inputSignal(prefix_frames, 2u, 192000.0);
+    static_cast<void>(render(interrupted, settings, prefix, 2u, prefix_frames, 31u));
+    interrupted.reset();
+    const std::vector<float> actual = render(interrupted, settings, probe, 2u, probe_frames, 127u);
+    check(actual == expected, "reset discards an in-flight staged synthesis job");
+  }
+
+  KernelHarness channel_changed(192000.0F, 2u);
+  constexpr std::uint32_t prefix_frames = 4597u;
+  const std::vector<float> stereo_prefix = inputSignal(prefix_frames, 2u, 192000.0);
+  static_cast<void>(render(channel_changed, settings, stereo_prefix, 2u, prefix_frames, 31u));
+  const std::vector<float> mono_probe = inputSignal(probe_frames, 1u, 192000.0);
+  const std::vector<float> after_change =
+      render(channel_changed, settings, mono_probe, 1u, probe_frames, 127u);
+  KernelHarness fresh_mono(192000.0F, 2u);
+  const std::vector<float> fresh = render(fresh_mono, settings, mono_probe, 1u, probe_frames, 127u);
+  check(after_change == fresh, "a channel-shape reset cancels the in-flight staged job");
+}
+
+std::vector<float> renderCutoffTransition(const std::vector<float> &input,
+                                          std::uint32_t change_frame) {
+  constexpr std::uint32_t frames = 7001u;
+  KernelHarness harness(48000.0F, 1u);
+  harness.stage(params(100.0F, 100.0F, 1.0F, 9000.0F));
+  std::vector<float> output(frames, 0.0F);
+  std::uint32_t offset = 0u;
+  while (offset < frames) {
+    if (offset == change_frame) {
+      harness.stage(params(100.0F, 100.0F, 1.0F, 16000.0F));
+    }
+    const std::uint32_t remaining = frames - offset;
+    std::uint32_t count = remaining < 31u ? remaining : 31u;
+    if (offset < change_frame && offset + count > change_frame) {
+      count = change_frame - offset;
+    }
+    std::vector<float> block(count);
+    for (std::uint32_t frame = 0u; frame < count; ++frame) {
+      block[frame] = input[offset + frame];
+    }
+    harness.process(block, 1u, count);
+    for (std::uint32_t frame = 0u; frame < count; ++frame) {
+      output[offset + frame] = block[frame];
+    }
+    offset += count;
+  }
+  return output;
+}
+
+void testParameterSnapshotDuringStagedJob() {
+  constexpr std::uint32_t frames = 7001u;
+  const std::vector<float> input = inputSignal(frames, 1u, 48000.0);
+  const std::vector<float> changed_early = renderCutoffTransition(input, 1024u + 32u);
+  const std::vector<float> changed_late = renderCutoffTransition(input, 1024u + 255u);
+  check(changed_early == changed_late,
+        "an in-flight staged job uses its latched cutoff parameters");
 }
 
 void testHarmonicForwardMappingAndPhaseContinuity() {
@@ -847,6 +967,9 @@ int main() {
   testIndependentAmountsScaleClampAndAdd();
   testSilenceAndFiniteOutput();
   testBlockIndependenceAndResetReplay();
+  testVariableFrameDeterminism();
+  testResetAndChannelChangeCancelStagedJobs();
+  testParameterSnapshotDuringStagedJob();
   testHarmonicForwardMappingAndPhaseContinuity();
   testHarmonicDonorSearchAcrossCutoffsAndRates();
   testStereoHarmonicSpatialRelationships();

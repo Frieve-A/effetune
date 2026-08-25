@@ -33,8 +33,8 @@ test('DSP demo output validation rejects dangerous paths before deletion', () =>
 
 test('DSP demo output validation accepts only owned repository roots or OS temp', () => {
   assert.doesNotThrow(() =>
-    validateBuildOutput(path.join(sourceRoot, 'dist'), {
-      repoOutputRoots: [path.join(sourceRoot, 'dist')]
+    validateBuildOutput(path.join(repoRoot, 'out', 'examples', 'dsp-library'), {
+      repoOutputRoots: [path.join(repoRoot, 'out', 'examples', 'dsp-library')]
     })
   );
   assert.doesNotThrow(() => validateBuildOutput(

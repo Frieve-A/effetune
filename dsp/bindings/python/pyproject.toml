@@ -7,7 +7,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "effetune"
-version = "0.5.0"
+version = "0.6.0"
 description = "Deterministic, host-neutral audio DSP for Python"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -35,7 +35,7 @@ Repository = "https://github.com/Frieve-A/effetune"
 Issues = "https://github.com/Frieve-A/effetune/issues"
 
 [tool.scikit-build]
-build-dir = "../../../.tmp/phase1-python/build/{wheel_tag}"
+build-dir = "../../../out/phase1-python/build/{wheel_tag}"
 wheel.packages = ["src/effetune"]
 # Official releases are wheel-only. Building this subproject as an sdist would
 # omit the DSP sources that intentionally remain rooted in the monorepo.

@@ -7,9 +7,9 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDirectory, '..', '..', '..');
 const responsePath = path.join(
   repoRoot,
-  'tests',
-  'fixtures',
-  'tube-simulator',
+  'tmp',
+  'dev',
+  'tube-simulator-lineamp',
   'lineamp-v1',
   'phase-b-break-loop-v2.json'
 );

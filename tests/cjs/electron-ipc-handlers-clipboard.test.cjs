@@ -36,7 +36,7 @@ function createElectronStub() {
   };
 }
 
-test('registerIpcHandlers wires native clipboard read and write handlers', () => {
+test('registerIpcHandlers wires native clipboard read and write handlers', async () => {
   const electron = createElectronStub();
 
   withModuleLoadStub({ electron }, () => {
@@ -44,7 +44,7 @@ test('registerIpcHandlers wires native clipboard read and write handlers', () =>
     registerIpcHandlers();
   });
 
-  assert.equal(electron.handlers.get('read-clipboard-text')(), 'initial');
-  assert.equal(electron.handlers.get('write-clipboard-text')({}, 'updated'), true);
+  assert.equal(await electron.handlers.get('read-clipboard-text')(), 'initial');
+  assert.equal(await electron.handlers.get('write-clipboard-text')({}, 'updated'), true);
   assert.equal(electron.clipboard.text, 'updated');
 });

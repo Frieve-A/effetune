@@ -1,5 +1,6 @@
 #include "effetune/kernel.h"
 #include "HardClippingPluginParams.h"
+#include "effetune/dsp/denormal_noise.h"
 
 #include <cmath>
 #include <cstddef>
@@ -34,6 +35,7 @@ public:
     }
     active_channel_count_ = 0u;
     updateThreshold();
+    denormal_noise_.reset();
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -106,12 +108,14 @@ public:
                                   static_cast<double>(oversampled_[index + 1u]) * 0.375 +
                                   static_cast<double>(oversampled_[index + 2u]) * 0.375 +
                                   static_cast<double>(oversampled_[index + 3u]) * 0.125;
-        const double filtered = kLowPassCoefficient * fir_output + kLowPassComplement * previous;
+        const double filtered = kLowPassCoefficient * fir_output + kLowPassComplement * previous +
+                                denormal_noise_.sample(frame);
         previous = filtered;
         audio[channel_offset + frame] = static_cast<float>(filtered);
       }
       low_pass_previous_[channel] = previous;
     }
+    denormal_noise_.advance(frame_count);
   }
 
 private:
@@ -126,6 +130,7 @@ private:
   std::vector<double> interpolation_previous_;
   double threshold_ = 1.0;
   std::uint32_t active_channel_count_ = 0u;
+  dsp::NyquistDenormalNoise denormal_noise_;
 };
 
 } // namespace effetune::plugins::saturation

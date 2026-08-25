@@ -5,6 +5,7 @@ import test from 'node:test';
 import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
 import { instantiateDsp } from '../../js/audio/dsp-wasm-loader.js';
 import { parseTelemetryPacket, TelemetryFrameType } from '../../js/audio/telemetry-hub.js';
+import { DENORMAL_NOISE_AMPLITUDE } from '../../dsp/bindings/js/src/denormal-noise.js';
 
 const LEFT = [-1, -0.5, 0, 0.5, 1, 0.75, 0.25, -0.25];
 const RIGHT = [1, 0.5, 0, -0.5, -1, 0.25, 0.75, -0.75];
@@ -70,9 +71,12 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
       assert.equal(frame.payload.getUint8(14), 0);
       assert.equal(frame.payload.getUint8(15), 0);
       for (let index = 0; index < LEFT.length; index++) {
-        assert.equal(
-          frame.payload.getFloat32(16 + index * 4, true),
-          (LEFT[index] + RIGHT[index]) * 0.5
+        assert.ok(
+          Math.abs(
+            frame.payload.getFloat32(16 + index * 4, true) -
+              (LEFT[index] + RIGHT[index]) * 0.5
+          ) <= DENORMAL_NOISE_AMPLITUDE,
+          'snapshot may contain only the inaudible denormal carrier'
         );
       }
     } finally {
@@ -135,8 +139,8 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
       assert.equal(frame.payload.getUint16(12, true), 512);
       assert.equal(frame.payload.getUint8(14), 1);
       assert.equal(frame.payload.getUint8(15), 0);
-      assert.equal(frame.payload.getFloat32(16, true), 0);
-      assert.equal(frame.payload.getFloat32(20, true), 0);
+      assert.ok(Math.abs(frame.payload.getFloat32(16, true)) <= DENORMAL_NOISE_AMPLITUDE);
+      assert.ok(Math.abs(frame.payload.getFloat32(20, true)) <= DENORMAL_NOISE_AMPLITUDE);
       assert.equal(frame.payload.getFloat32(24, true), 8);
       assert.equal(frame.payload.getFloat32(28, true), 8);
       assert.equal(frame.payload.getUint8(32), 0);

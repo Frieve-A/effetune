@@ -19,7 +19,8 @@ import { PowerDiagnostics } from './audio/power-diagnostics.js';
 import { AudioPowerState, mergePowerSavingSettings } from './audio/power-policy.js';
 import {
     analyzeTemporalCapabilities,
-    computeRuntimePipelineGraphBound
+    computeRuntimePipelineGraphBound,
+    getReachableEnabledPlugins
 } from './audio/power-topology.js';
 import { AudioActivationCoordinator } from './audio/audio-activation-coordinator.js';
 import {
@@ -1393,13 +1394,23 @@ export class AudioManager {
                         branchSnapshot.pipelineB.plugins,
                         { generation: barrier.generation, replayNew: false }
                     ) === null) return false;
+                    // Asset-backed DSP instances finish preparation from render
+                    // quanta. Establish both muted branches before replaying the
+                    // frozen assets so the readiness wait cannot deadlock on an
+                    // unrendered auxiliary worklet.
+                    if (!this._applyParallelRouting({
+                        pluginDataA: branchSnapshot.pipelineA.pluginData,
+                        pluginDataB: branchSnapshot.pipelineB.pluginData,
+                        preparingAssets: true
+                    })) return false;
                     const expectedA = this._replayPipelineWasmAssets(
                         workletA,
                         branchSnapshot.pipelineA.plugins,
                         {
                             generation: barrier.generation,
                             trackState: true,
-                            assetMaps: branchSnapshot.pipelineA.assetMaps
+                            assetMaps: branchSnapshot.pipelineA.assetMaps,
+                            assetReadinessPlugins: branchSnapshot.pipelineA.assetReadinessPlugins
                         }
                     );
                     const expectedB = this._replayPipelineWasmAssets(
@@ -1407,7 +1418,8 @@ export class AudioManager {
                         branchSnapshot.pipelineB.plugins,
                         {
                             generation: barrier.generation,
-                            assetMaps: branchSnapshot.pipelineB.assetMaps
+                            assetMaps: branchSnapshot.pipelineB.assetMaps,
+                            assetReadinessPlugins: branchSnapshot.pipelineB.assetReadinessPlugins
                         }
                     );
                     if (expectedA === null || expectedB === null) return false;
@@ -2332,7 +2344,10 @@ export class AudioManager {
         this.updateExposedProperties();
         const primaryWorklet = this._getPrimaryWorkletNode();
         if (primaryWorklet?.port) {
-            const replayed = this._syncWasmAssetMembership(primaryWorklet, this.pipeline, {
+            // PipelineProcessor publishes an empty config while master bypass is
+            // active, so membership must match the worklet's actual plugin set.
+            const workletPipeline = this.masterBypass ? [] : this.pipeline;
+            const replayed = this._syncWasmAssetMembership(primaryWorklet, workletPipeline, {
                 generation: this._audioGraphGeneration,
                 trackState: true
             });
@@ -2730,11 +2745,17 @@ export class AudioManager {
     }
 
     _setAudioProcessingOverloadMonitoring(enabled, delaySeconds = 0) {
+        // baseLatency is the render buffer the worklet may run late into before
+        // the output actually drops out, so it sizes the worklet's overrun credit.
+        const baseLatency = this.contextManager?.audioContext?.baseLatency;
         const message = {
             type: 'setAudioProcessingOverloadMonitoring',
             enabled: enabled === true,
             delaySeconds: Number.isFinite(delaySeconds) && delaySeconds > 0
                 ? delaySeconds
+                : 0,
+            headroomMs: Number.isFinite(baseLatency) && baseLatency > 0
+                ? baseLatency * 1000
                 : 0
         };
         for (const workletNode of this._getActiveDspWorklets()) {
@@ -3181,7 +3202,7 @@ export class AudioManager {
             { primaryWorklet }
         );
         const initial = evaluate();
-        if (initial.pendingSlots.length === 0) return Promise.resolve(initial);
+        if (initial.ready) return Promise.resolve(initial);
 
         return new Promise(resolve => {
             let settled = false;
@@ -3207,7 +3228,7 @@ export class AudioManager {
                     return;
                 }
                 const snapshot = evaluate();
-                if (snapshot.pendingSlots.length === 0) settle(snapshot);
+                if (snapshot.ready) settle(snapshot);
             };
             const subscribe = plugin?.addWasmAssetSnapshotChangeListener;
             unsubscribePlugin = typeof subscribe === 'function'
@@ -3266,6 +3287,11 @@ export class AudioManager {
             this._wasmAssetExpectedReplayEpochsByNode = new Map();
         }
         const plugins = Array.isArray(pipeline) ? pipeline : [];
+        const readinessPlugins = new Set(
+            Array.isArray(options.assetReadinessPlugins)
+                ? options.assetReadinessPlugins
+                : plugins
+        );
         const expected = new Set();
         for (const plugin of plugins) {
             if (!Number.isInteger(plugin?.id) || typeof plugin.getWasmAssets !== 'function') continue;
@@ -3273,7 +3299,7 @@ export class AudioManager {
             this._pruneWasmAssetStatesForPlugin(workletNode, plugin.id);
             for (const [slot, descriptor] of assets) {
                 const key = this._wasmAssetKey(plugin.id, slot);
-                expected.add(key);
+                if (readinessPlugins.has(plugin)) expected.add(key);
                 this._expectWasmAssetOperation(
                     workletNode,
                     plugin.id,
@@ -3751,6 +3777,8 @@ export class AudioManager {
 
     _createBlindBranchSnapshot(pipeline, pluginData = null) {
         const plugins = Array.isArray(pipeline) ? [...pipeline] : [];
+        const assetReadinessPlugins = getReachableEnabledPlugins(plugins);
+        const assetReadinessSet = new Set(assetReadinessPlugins);
         const committedPluginData = Array.isArray(pluginData)
             ? pluginData
             : this._buildBlindPluginData(plugins);
@@ -3759,6 +3787,7 @@ export class AudioManager {
             return {
                 plugin,
                 id: plugin?.id,
+                requiresAssetReadiness: assetReadinessSet.has(plugin),
                 externalSignature: this._externalAssetSignature(plugin),
                 configurationSignature: this._pluginConfigurationSignature(plugin),
                 lockedRevision: null,
@@ -3767,6 +3796,7 @@ export class AudioManager {
         });
         return {
             plugins,
+            assetReadinessPlugins,
             pluginData: committedPluginData,
             records,
             assetMaps: new Map(),
@@ -3793,7 +3823,7 @@ export class AudioManager {
         for (const branch of [snapshot.pipelineA, snapshot.pipelineB]) {
             for (const record of branch.records) {
                 const plugin = record.plugin;
-                if (!plugin || subscribed.has(plugin)) continue;
+                if (!record.requiresAssetReadiness || !plugin || subscribed.has(plugin)) continue;
                 subscribed.add(plugin);
                 const subscribe = typeof plugin.addWasmAssetSnapshotChangeListener === 'function'
                     ? plugin.addWasmAssetSnapshotChangeListener.bind(plugin)
@@ -3845,12 +3875,13 @@ export class AudioManager {
         for (let index = 0; index < current.length; index++) {
             const record = snapshot.records[index];
             if (current[index] !== record.plugin || current[index]?.id !== record.id ||
-                this._externalAssetSignature(record.plugin) !== record.externalSignature ||
                 this._pluginConfigurationSignature(record.plugin) !== record.configurationSignature) {
                 return false;
             }
-            if (record.lockedRevision !== null &&
-                (record.plugin?.getWasmAssetRevision?.() ?? 0) !== record.lockedRevision) {
+            if (record.requiresAssetReadiness &&
+                (this._externalAssetSignature(record.plugin) !== record.externalSignature ||
+                    record.lockedRevision !== null &&
+                    (record.plugin?.getWasmAssetRevision?.() ?? 0) !== record.lockedRevision)) {
                 return false;
             }
         }
@@ -3867,6 +3898,7 @@ export class AudioManager {
     _captureBlindBranchAssets(snapshot) {
         let pending = false;
         for (const record of snapshot.records) {
+            if (!record.requiresAssetReadiness) continue;
             const plugin = record.plugin;
             const info = plugin?.externalAssetInfo;
             if (info?.missing === true) return false;
@@ -3945,6 +3977,7 @@ export class AudioManager {
         };
         for (const branch of [snapshot.pipelineA, snapshot.pipelineB]) {
             for (const record of branch.records) {
+                if (!record.requiresAssetReadiness) continue;
                 request.unsubscribes.push(record.plugin?.addWasmAssetChangeListener?.(check) || (() => {}));
             }
         }
@@ -4005,11 +4038,11 @@ export class AudioManager {
                 : (this.pipelineB || []);
             const primaryAssetReadiness = this._waitForSignedExternalAssetsOnPrimary(
                 wA,
-                primaryPipeline,
+                getReachableEnabledPlugins(primaryPipeline),
                 assetDeadline
             );
             const branchAssetReadiness = this._waitForPendingExternalAssetDescriptors(
-                inactivePipeline,
+                getReachableEnabledPlugins(inactivePipeline),
                 assetDeadline
             );
             let primaryAssetsReady = primaryAssetReadiness;
@@ -4209,6 +4242,15 @@ export class AudioManager {
         try { tap.disconnect(); } catch (_) { /* ignore */ }
 
         try {
+            if (options.preparingAssets === true) {
+                // The master output is muted by _runDspOutputTransition while
+                // this preparation route is live. Unity gains keep both
+                // worklets renderable until every native asset becomes active.
+                selA.gain.value = 1;
+                selB.gain.value = 1;
+            } else if (!this._setBlindSelectionGains(this._parallelSelection, 0)) {
+                throw new Error('parallel-selection-failed');
+            }
             wA.connect(selA); selA.connect(out);
             wB.connect(selB); selB.connect(out);
             tap.connect(wB);
@@ -4259,7 +4301,9 @@ export class AudioManager {
         const wA = this.contextManager?.workletNode || this.workletNode;
         if (!wA) return false;
         const targets = [wA];
-        if (this._parallelActive && this._parallelInputTap) targets.push(this._parallelInputTap);
+        if ((this._parallelPreparing || this._parallelActive) && this._parallelInputTap) {
+            targets.push(this._parallelInputTap);
+        }
         const connectedTargets = [];
         for (const target of targets) {
             if (this._connectSourceOnce(node, target)) {
@@ -4316,8 +4360,12 @@ export class AudioManager {
      */
     setBlindSelection(which, fade = 0.03) {
         if (!this._parallelActive) return;
+        this._setBlindSelectionGains(which, fade);
+    }
+
+    _setBlindSelectionGains(which, fade = 0.03) {
         const ctx = this.contextManager?.audioContext;
-        if (!ctx || !this._parallelSelA || !this._parallelSelB) return;
+        if (!ctx || !this._parallelSelA || !this._parallelSelB) return false;
         const now = ctx.currentTime;
         const aTarget = which === 'A' ? 1 : 0;
         const ramp = (param, target) => {
@@ -4332,6 +4380,7 @@ export class AudioManager {
         ramp(this._parallelSelA.gain, aTarget);
         ramp(this._parallelSelB.gain, 1 - aTarget);
         this._parallelSelection = which;
+        return true;
     }
 
     /**
@@ -4363,6 +4412,9 @@ export class AudioManager {
         const primaryPipeline = Array.isArray(savedBranch?.plugins)
             ? [...savedBranch.plugins]
             : [...(Array.isArray(this.pipeline) ? this.pipeline : [])];
+        const primaryAssetReadinessPlugins = Array.isArray(savedBranch?.assetReadinessPlugins)
+            ? [...savedBranch.assetReadinessPlugins]
+            : getReachableEnabledPlugins(primaryPipeline);
         const primaryPluginData = Array.isArray(savedBranch?.pluginData)
             ? savedBranch.pluginData
             : this._buildBlindPluginData(primaryPipeline);
@@ -4448,7 +4500,10 @@ export class AudioManager {
             const expected = this._replayPipelineWasmAssets(wA, primaryPipeline, {
                 generation: this._audioGraphGeneration,
                 trackState: true,
-                assetMaps: primaryAssetMaps
+                assetMaps: primaryAssetMaps,
+                assetReadinessPlugins: primaryMasterBypass
+                    ? []
+                    : primaryAssetReadinessPlugins
             });
             if (expected === null) return false;
             const exact = this._captureWasmAssetExpectations(wA, expected);

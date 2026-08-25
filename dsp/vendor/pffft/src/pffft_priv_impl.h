@@ -466,167 +466,298 @@ static void radb3_ps(int ido, int l1, const v4sf *RESTRICT cc, v4sf *RESTRICT ch
   }
 } /* radb3 */
 
-static NEVER_INLINE(void) radf4_ps(int ido, int l1, const v4sf *RESTRICT cc, v4sf * RESTRICT ch,
-                                   const float * RESTRICT wa1, const float * RESTRICT wa2, const float * RESTRICT wa3)
-{
+static ALWAYS_INLINE(void)
+    radf4_ps_first(int ido, int l1ido, int k, const v4sf *RESTRICT cc, v4sf *RESTRICT ch) {
+  v4sf a0 = cc[k], a1 = cc[k + l1ido];
+  v4sf a2 = cc[k + 2 * l1ido], a3 = cc[k + 3 * l1ido];
+  v4sf tr1 = VADD(a1, a3);
+  v4sf tr2 = VADD(a0, a2);
+  ch[4 * k + 2 * ido - 1] = VSUB(a0, a2);
+  ch[4 * k + 2 * ido] = VSUB(a3, a1);
+  ch[4 * k] = VADD(tr1, tr2);
+  ch[4 * k + 4 * ido - 1] = VSUB(tr2, tr1);
+}
+
+static ALWAYS_INLINE(void)
+    radf4_ps_middle(int ido, int l1ido, int k, int i, const v4sf *RESTRICT cc, v4sf *RESTRICT ch,
+                    const float *RESTRICT wa1, const float *RESTRICT wa2,
+                    const float *RESTRICT wa3) {
+  const int ic = ido - i;
+  const v4sf *RESTRICT pc = cc + k + i - 1;
+  v4sf wr, wi, cr2, ci2, cr3, ci3, cr4, ci4;
+  v4sf tr1, ti1, tr2, ti2, tr3, ti3, tr4, ti4;
+
+  cr2 = pc[l1ido];
+  ci2 = pc[l1ido + 1];
+  wr = LD_PS1(wa1[i - 2]);
+  wi = LD_PS1(wa1[i - 1]);
+  VCPLXMULCONJ(cr2, ci2, wr, wi);
+
+  cr3 = pc[2 * l1ido];
+  ci3 = pc[2 * l1ido + 1];
+  wr = LD_PS1(wa2[i - 2]);
+  wi = LD_PS1(wa2[i - 1]);
+  VCPLXMULCONJ(cr3, ci3, wr, wi);
+
+  cr4 = pc[3 * l1ido];
+  ci4 = pc[3 * l1ido + 1];
+  wr = LD_PS1(wa3[i - 2]);
+  wi = LD_PS1(wa3[i - 1]);
+  VCPLXMULCONJ(cr4, ci4, wr, wi);
+
+  tr1 = VADD(cr2, cr4);
+  tr4 = VSUB(cr4, cr2);
+  tr2 = VADD(pc[0], cr3);
+  tr3 = VSUB(pc[0], cr3);
+  ch[i - 1 + 4 * k] = VADD(tr1, tr2);
+  ch[ic - 1 + 4 * k + 3 * ido] = VSUB(tr2, tr1);
+  ti1 = VADD(ci2, ci4);
+  ti4 = VSUB(ci2, ci4);
+  ch[i - 1 + 4 * k + 2 * ido] = VADD(ti4, tr3);
+  ch[ic - 1 + 4 * k + 1 * ido] = VSUB(tr3, ti4);
+  ti2 = VADD(pc[1], ci3);
+  ti3 = VSUB(pc[1], ci3);
+  ch[i + 4 * k] = VADD(ti1, ti2);
+  ch[ic + 4 * k + 3 * ido] = VSUB(ti1, ti2);
+  ch[i + 4 * k + 2 * ido] = VADD(tr4, ti3);
+  ch[ic + 4 * k + 1 * ido] = VSUB(tr4, ti3);
+}
+
+static ALWAYS_INLINE(void)
+    radf4_ps_last(int ido, int l1ido, int k, const v4sf *RESTRICT cc, v4sf *RESTRICT ch) {
   static const float minus_hsqt2 = (float)-0.7071067811865475;
-  int i, k, l1ido = l1*ido;
+  v4sf a = cc[ido - 1 + k + l1ido];
+  v4sf b = cc[ido - 1 + k + 3 * l1ido];
+  v4sf c = cc[ido - 1 + k];
+  v4sf d = cc[ido - 1 + k + 2 * l1ido];
+  v4sf ti1 = SVMUL(minus_hsqt2, VADD(a, b));
+  v4sf tr1 = SVMUL(minus_hsqt2, VSUB(b, a));
+  ch[ido - 1 + 4 * k] = VADD(tr1, c);
+  ch[ido - 1 + 4 * k + 2 * ido] = VSUB(c, tr1);
+  ch[4 * k + ido] = VSUB(ti1, d);
+  ch[4 * k + 3 * ido] = VADD(ti1, d);
+}
+
+static ALWAYS_INLINE(void)
+    radb4_ps_first(int ido, int l1ido, int k, const v4sf *RESTRICT cc, v4sf *RESTRICT ch) {
+  static const float two = 2.f;
+  v4sf a = cc[4 * k], b = cc[4 * k + 4 * ido - 1];
+  v4sf c = cc[4 * k + 2 * ido], d = cc[4 * k + 2 * ido - 1];
+  v4sf tr3 = SVMUL(two, d);
+  v4sf tr2 = VADD(a, b);
+  v4sf tr1 = VSUB(a, b);
+  v4sf tr4 = SVMUL(two, c);
+  ch[k] = VADD(tr2, tr3);
+  ch[k + 2 * l1ido] = VSUB(tr2, tr3);
+  ch[k + l1ido] = VSUB(tr1, tr4);
+  ch[k + 3 * l1ido] = VADD(tr1, tr4);
+}
+
+static ALWAYS_INLINE(void)
+    radb4_ps_middle(int ido, int l1ido, int k, int i, const v4sf *RESTRICT cc, v4sf *RESTRICT ch,
+                    const float *RESTRICT wa1, const float *RESTRICT wa2,
+                    const float *RESTRICT wa3) {
+  const v4sf *RESTRICT pc = cc - 1 + 4 * k;
+  v4sf *RESTRICT ph = ch + k + i - 1;
+  v4sf ci2, ci3, ci4, cr2, cr3, cr4, ti1, ti2, ti3, ti4;
+  v4sf tr1, tr2, tr3, tr4;
+
+  tr1 = VSUB(pc[i], pc[4 * ido - i]);
+  tr2 = VADD(pc[i], pc[4 * ido - i]);
+  ti4 = VSUB(pc[2 * ido + i], pc[2 * ido - i]);
+  tr3 = VADD(pc[2 * ido + i], pc[2 * ido - i]);
+  ph[0] = VADD(tr2, tr3);
+  cr3 = VSUB(tr2, tr3);
+
+  ti3 = VSUB(pc[2 * ido + i + 1], pc[2 * ido - i + 1]);
+  tr4 = VADD(pc[2 * ido + i + 1], pc[2 * ido - i + 1]);
+  cr2 = VSUB(tr1, tr4);
+  cr4 = VADD(tr1, tr4);
+
+  ti1 = VADD(pc[i + 1], pc[4 * ido - i + 1]);
+  ti2 = VSUB(pc[i + 1], pc[4 * ido - i + 1]);
+
+  ph[1] = VADD(ti2, ti3);
+  ci3 = VSUB(ti2, ti3);
+  ci2 = VADD(ti1, ti4);
+  ci4 = VSUB(ti1, ti4);
+  VCPLXMUL(cr2, ci2, LD_PS1(wa1[i - 2]), LD_PS1(wa1[i - 1]));
+  ph[l1ido] = cr2;
+  ph[l1ido + 1] = ci2;
+  VCPLXMUL(cr3, ci3, LD_PS1(wa2[i - 2]), LD_PS1(wa2[i - 1]));
+  ph[2 * l1ido] = cr3;
+  ph[2 * l1ido + 1] = ci3;
+  VCPLXMUL(cr4, ci4, LD_PS1(wa3[i - 2]), LD_PS1(wa3[i - 1]));
+  ph[3 * l1ido] = cr4;
+  ph[3 * l1ido + 1] = ci4;
+}
+
+static ALWAYS_INLINE(void)
+    radb4_ps_last(int ido, int l1ido, int k, const v4sf *RESTRICT cc, v4sf *RESTRICT ch) {
+  static const float minus_sqrt2 = (float)-1.414213562373095;
+  const int i0 = 4 * k + ido;
+  v4sf c = cc[i0 - 1], d = cc[i0 + 2 * ido - 1];
+  v4sf a = cc[i0], b = cc[i0 + 2 * ido];
+  v4sf tr1 = VSUB(c, d);
+  v4sf tr2 = VADD(c, d);
+  v4sf ti1 = VADD(b, a);
+  v4sf ti2 = VSUB(b, a);
+  ch[ido - 1 + k] = VADD(tr2, tr2);
+  ch[ido - 1 + k + l1ido] = SVMUL(minus_sqrt2, VSUB(ti1, tr1));
+  ch[ido - 1 + k + 2 * l1ido] = VADD(ti2, ti2);
+  ch[ido - 1 + k + 3 * l1ido] = SVMUL(minus_sqrt2, VADD(ti1, tr1));
+}
+
+static ALWAYS_INLINE(int) radf4_ps_work_count(int ido, int l1) {
+  const int middle_per_group = ido > 2 ? (ido - 2) / 2 : 0;
+  const int final_count = ido >= 2 && (ido & 1) == 0 ? l1 : 0;
+  return l1 + l1 * middle_per_group + final_count;
+}
+
+static ALWAYS_INLINE(int)
+    radf4_ps_range(int ido, int l1, const v4sf *RESTRICT cc, v4sf *RESTRICT ch,
+                   const float *RESTRICT wa1, const float *RESTRICT wa2, const float *RESTRICT wa3,
+                   int cursor, int work_budget) {
+  const int l1ido = l1 * ido;
+  const int middle_per_group = ido > 2 ? (ido - 2) / 2 : 0;
+  const int middle_count = l1 * middle_per_group;
+  const int final_count = ido >= 2 && (ido & 1) == 0 ? l1 : 0;
+  const int total_work = radf4_ps_work_count(ido, l1);
+  int end = cursor + work_budget;
+  int unit;
+  if (end > total_work)
+    end = total_work;
   {
-    const v4sf *RESTRICT cc_ = cc, * RESTRICT cc_end = cc + l1ido; 
-    v4sf * RESTRICT ch_ = ch;
-    while (cc < cc_end) {
-      /* this loop represents between 25% and 40% of total radf4_ps cost ! */
-      v4sf a0 = cc[0], a1 = cc[l1ido];
-      v4sf a2 = cc[2*l1ido], a3 = cc[3*l1ido];
-      v4sf tr1 = VADD(a1, a3);
-      v4sf tr2 = VADD(a0, a2);
-      ch[2*ido-1] = VSUB(a0, a2);
-      ch[2*ido  ] = VSUB(a3, a1);
-      ch[0      ] = VADD(tr1, tr2);
-      ch[4*ido-1] = VSUB(tr2, tr1);
-      cc += ido; ch += 4*ido;
+    const int phase_end = end < l1 ? end : l1;
+    for (unit = cursor; unit < phase_end; ++unit) {
+      const int k = unit * ido;
+      radf4_ps_first(ido, l1ido, k, cc, ch);
     }
-    cc = cc_; ch = ch_;
   }
-  if (ido < 2) return;
+  {
+    const int phase_begin = cursor > l1 ? cursor : l1;
+    const int phase_limit = l1 + middle_count;
+    const int phase_end = end < phase_limit ? end : phase_limit;
+    int local = phase_begin - l1;
+    const int local_end = phase_end - l1;
+    int group = middle_per_group > 0 ? local / middle_per_group : 0;
+    while (local < local_end) {
+      int group_end = (group + 1) * middle_per_group;
+      const int k = group * ido;
+      if (group_end > local_end)
+        group_end = local_end;
+      for (; local < group_end; ++local) {
+        const int i = 2 + 2 * (local - group * middle_per_group);
+        radf4_ps_middle(ido, l1ido, k, i, cc, ch, wa1, wa2, wa3);
+      }
+      ++group;
+    }
+  }
+  {
+    const int phase_begin = cursor > l1 + middle_count ? cursor : l1 + middle_count;
+    for (unit = phase_begin; unit < end; ++unit) {
+      const int k = (unit - l1 - middle_count) * ido;
+      radf4_ps_last(ido, l1ido, k, cc, ch);
+    }
+  }
+  return end;
+}
+
+static NEVER_INLINE(void)
+    radf4_ps(int ido, int l1, const v4sf *RESTRICT cc, v4sf *RESTRICT ch, const float *RESTRICT wa1,
+             const float *RESTRICT wa2, const float *RESTRICT wa3) {
+  const int l1ido = l1 * ido;
+  int i;
+  int k;
+  for (k = 0; k < l1ido; k += ido) {
+    radf4_ps_first(ido, l1ido, k, cc, ch);
+  }
+  if (ido < 2)
+    return;
   if (ido != 2) {
     for (k = 0; k < l1ido; k += ido) {
-      const v4sf * RESTRICT pc = (v4sf*)(cc + 1 + k);
-      for (i=2; i<ido; i += 2, pc += 2) {
-        int ic = ido - i;
-        v4sf wr, wi, cr2, ci2, cr3, ci3, cr4, ci4;
-        v4sf tr1, ti1, tr2, ti2, tr3, ti3, tr4, ti4;
-
-        cr2 = pc[1*l1ido+0];
-        ci2 = pc[1*l1ido+1];
-        wr=LD_PS1(wa1[i - 2]);
-        wi=LD_PS1(wa1[i - 1]);
-        VCPLXMULCONJ(cr2,ci2,wr,wi);
-
-        cr3 = pc[2*l1ido+0];
-        ci3 = pc[2*l1ido+1];
-        wr = LD_PS1(wa2[i-2]); 
-        wi = LD_PS1(wa2[i-1]);
-        VCPLXMULCONJ(cr3, ci3, wr, wi);
-
-        cr4 = pc[3*l1ido];
-        ci4 = pc[3*l1ido+1];
-        wr = LD_PS1(wa3[i-2]); 
-        wi = LD_PS1(wa3[i-1]);
-        VCPLXMULCONJ(cr4, ci4, wr, wi);
-
-        /* at this point, on SSE, five of "cr2 cr3 cr4 ci2 ci3 ci4" should be loaded in registers */
-
-        tr1 = VADD(cr2,cr4);
-        tr4 = VSUB(cr4,cr2); 
-        tr2 = VADD(pc[0],cr3);
-        tr3 = VSUB(pc[0],cr3);
-        ch[i - 1 + 4*k] = VADD(tr1,tr2);
-        ch[ic - 1 + 4*k + 3*ido] = VSUB(tr2,tr1); /* at this point tr1 and tr2 can be disposed */
-        ti1 = VADD(ci2,ci4);
-        ti4 = VSUB(ci2,ci4);
-        ch[i - 1 + 4*k + 2*ido] = VADD(ti4,tr3);
-        ch[ic - 1 + 4*k + 1*ido] = VSUB(tr3,ti4); /* dispose tr3, ti4 */
-        ti2 = VADD(pc[1],ci3);
-        ti3 = VSUB(pc[1],ci3);
-        ch[i + 4*k] = VADD(ti1, ti2);
-        ch[ic + 4*k + 3*ido] = VSUB(ti1, ti2);
-        ch[i + 4*k + 2*ido] = VADD(tr4, ti3);
-        ch[ic + 4*k + 1*ido] = VSUB(tr4, ti3);
+      for (i = 2; i < ido; i += 2) {
+        radf4_ps_middle(ido, l1ido, k, i, cc, ch, wa1, wa2, wa3);
       }
     }
-    if (ido % 2 == 1) return;
+    if ((ido & 1) != 0)
+      return;
   }
-  for (k=0; k<l1ido; k += ido) {
-    v4sf a = cc[ido-1 + k + l1ido], b = cc[ido-1 + k + 3*l1ido];
-    v4sf c = cc[ido-1 + k], d = cc[ido-1 + k + 2*l1ido];
-    v4sf ti1 = SVMUL(minus_hsqt2, VADD(a, b));
-    v4sf tr1 = SVMUL(minus_hsqt2, VSUB(b, a));
-    ch[ido-1 + 4*k] = VADD(tr1, c);
-    ch[ido-1 + 4*k + 2*ido] = VSUB(c, tr1);
-    ch[4*k + 1*ido] = VSUB(ti1, d); 
-    ch[4*k + 3*ido] = VADD(ti1, d); 
+  for (k = 0; k < l1ido; k += ido) {
+    radf4_ps_last(ido, l1ido, k, cc, ch);
   }
 } /* radf4 */
 
-
-static NEVER_INLINE(void) radb4_ps(int ido, int l1, const v4sf * RESTRICT cc, v4sf * RESTRICT ch,
-                                   const float * RESTRICT wa1, const float * RESTRICT wa2, const float *RESTRICT wa3)
-{
-  static const float minus_sqrt2 = (float)-1.414213562373095;
-  static const float two = 2.f;
-  int i, k, l1ido = l1*ido;
-  v4sf ci2, ci3, ci4, cr2, cr3, cr4, ti1, ti2, ti3, ti4, tr1, tr2, tr3, tr4;
+static ALWAYS_INLINE(int)
+    radb4_ps_range(int ido, int l1, const v4sf *RESTRICT cc, v4sf *RESTRICT ch,
+                   const float *RESTRICT wa1, const float *RESTRICT wa2, const float *RESTRICT wa3,
+                   int cursor, int work_budget) {
+  const int l1ido = l1 * ido;
+  const int middle_per_group = ido > 2 ? (ido - 2) / 2 : 0;
+  const int middle_count = l1 * middle_per_group;
+  const int total_work = radf4_ps_work_count(ido, l1);
+  int end = cursor + work_budget;
+  int unit;
+  if (end > total_work)
+    end = total_work;
   {
-    const v4sf *RESTRICT cc_ = cc, * RESTRICT ch_end = ch + l1ido; 
-    v4sf *ch_ = ch;
-    while (ch < ch_end) {
-      v4sf a = cc[0], b = cc[4*ido-1];
-      v4sf c = cc[2*ido], d = cc[2*ido-1];
-      tr3 = SVMUL(two,d);
-      tr2 = VADD(a,b);
-      tr1 = VSUB(a,b);
-      tr4 = SVMUL(two,c);
-      ch[0*l1ido] = VADD(tr2, tr3);
-      ch[2*l1ido] = VSUB(tr2, tr3);
-      ch[1*l1ido] = VSUB(tr1, tr4);
-      ch[3*l1ido] = VADD(tr1, tr4);
-      
-      cc += 4*ido; ch += ido;
+    const int phase_end = end < l1 ? end : l1;
+    for (unit = cursor; unit < phase_end; ++unit) {
+      const int k = unit * ido;
+      radb4_ps_first(ido, l1ido, k, cc, ch);
     }
-    cc = cc_; ch = ch_;
   }
-  if (ido < 2) return;
+  {
+    const int phase_begin = cursor > l1 ? cursor : l1;
+    const int phase_limit = l1 + middle_count;
+    const int phase_end = end < phase_limit ? end : phase_limit;
+    int local = phase_begin - l1;
+    const int local_end = phase_end - l1;
+    int group = middle_per_group > 0 ? local / middle_per_group : 0;
+    while (local < local_end) {
+      int group_end = (group + 1) * middle_per_group;
+      const int k = group * ido;
+      if (group_end > local_end)
+        group_end = local_end;
+      for (; local < group_end; ++local) {
+        const int i = 2 + 2 * (local - group * middle_per_group);
+        radb4_ps_middle(ido, l1ido, k, i, cc, ch, wa1, wa2, wa3);
+      }
+      ++group;
+    }
+  }
+  {
+    const int phase_begin = cursor > l1 + middle_count ? cursor : l1 + middle_count;
+    for (unit = phase_begin; unit < end; ++unit) {
+      const int k = (unit - l1 - middle_count) * ido;
+      radb4_ps_last(ido, l1ido, k, cc, ch);
+    }
+  }
+  return end;
+}
+
+static NEVER_INLINE(void)
+    radb4_ps(int ido, int l1, const v4sf *RESTRICT cc, v4sf *RESTRICT ch, const float *RESTRICT wa1,
+             const float *RESTRICT wa2, const float *RESTRICT wa3) {
+  const int l1ido = l1 * ido;
+  int i;
+  int k;
+  for (k = 0; k < l1ido; k += ido) {
+    radb4_ps_first(ido, l1ido, k, cc, ch);
+  }
+  if (ido < 2)
+    return;
   if (ido != 2) {
     for (k = 0; k < l1ido; k += ido) {
-      const v4sf * RESTRICT pc = (v4sf*)(cc - 1 + 4*k);
-      v4sf * RESTRICT ph = (v4sf*)(ch + k + 1);
       for (i = 2; i < ido; i += 2) {
-
-        tr1 = VSUB(pc[i], pc[4*ido - i]);
-        tr2 = VADD(pc[i], pc[4*ido - i]);
-        ti4 = VSUB(pc[2*ido + i], pc[2*ido - i]);
-        tr3 = VADD(pc[2*ido + i], pc[2*ido - i]);
-        ph[0] = VADD(tr2, tr3);
-        cr3 = VSUB(tr2, tr3);
-
-        ti3 = VSUB(pc[2*ido + i + 1], pc[2*ido - i + 1]);
-        tr4 = VADD(pc[2*ido + i + 1], pc[2*ido - i + 1]);
-        cr2 = VSUB(tr1, tr4);
-        cr4 = VADD(tr1, tr4);
-
-        ti1 = VADD(pc[i + 1], pc[4*ido - i + 1]);
-        ti2 = VSUB(pc[i + 1], pc[4*ido - i + 1]);
-
-        ph[1] = VADD(ti2, ti3); ph += l1ido;
-        ci3 = VSUB(ti2, ti3);
-        ci2 = VADD(ti1, ti4);
-        ci4 = VSUB(ti1, ti4);
-        VCPLXMUL(cr2, ci2, LD_PS1(wa1[i-2]), LD_PS1(wa1[i-1]));
-        ph[0] = cr2;
-        ph[1] = ci2; ph += l1ido;
-        VCPLXMUL(cr3, ci3, LD_PS1(wa2[i-2]), LD_PS1(wa2[i-1]));
-        ph[0] = cr3;
-        ph[1] = ci3; ph += l1ido;
-        VCPLXMUL(cr4, ci4, LD_PS1(wa3[i-2]), LD_PS1(wa3[i-1]));
-        ph[0] = cr4;
-        ph[1] = ci4; ph = ph - 3*l1ido + 2;
+        radb4_ps_middle(ido, l1ido, k, i, cc, ch, wa1, wa2, wa3);
       }
     }
-    if (ido % 2 == 1) return;
+    if ((ido & 1) != 0)
+      return;
   }
-  for (k=0; k < l1ido; k+=ido) {
-    int i0 = 4*k + ido;
-    v4sf c = cc[i0-1], d = cc[i0 + 2*ido-1];
-    v4sf a = cc[i0+0], b = cc[i0 + 2*ido+0];
-    tr1 = VSUB(c,d);
-    tr2 = VADD(c,d);
-    ti1 = VADD(b,a);
-    ti2 = VSUB(b,a);
-    ch[ido-1 + k + 0*l1ido] = VADD(tr2,tr2);
-    ch[ido-1 + k + 1*l1ido] = SVMUL(minus_sqrt2, VSUB(ti1, tr1));
-    ch[ido-1 + k + 2*l1ido] = VADD(ti2, ti2);
-    ch[ido-1 + k + 3*l1ido] = SVMUL(minus_sqrt2, VADD(ti1, tr1));
+  for (k = 0; k < l1ido; k += ido) {
+    radb4_ps_last(ido, l1ido, k, cc, ch);
   }
 } /* radb4 */
 
@@ -1058,6 +1189,516 @@ struct SETUP_STRUCT {
   float *e;       /* points into 'data', N/4*3 elements */
   float *twiddle; /* points into 'data', N/4 elements */
 };
+
+#if (SIMD_SZ == 4)
+static NEVER_INLINE(void) FUNC_REAL_FINALIZE(int Ncvec, const v4sf *in, v4sf *out, const v4sf *e);
+static NEVER_INLINE(void) FUNC_REAL_PREPROCESS(int Ncvec, const v4sf *in, v4sf *out, const v4sf *e);
+#endif
+
+#define PFFFT_INCREMENTAL_ORDERED_FORWARD 0
+#define PFFFT_INCREMENTAL_UNORDERED_FORWARD 1
+#define PFFFT_INCREMENTAL_UNORDERED_BACKWARD 2
+#define PFFFT_INCREMENTAL_DEFAULT_RADIX_WORK_BUDGET 256
+
+struct ORDERED_REAL_FORWARD_STATE {
+  SETUP_STRUCT *setup;
+  const v4sf *input;
+  v4sf *buffers[2];
+  v4sf *work1;
+  v4sf *work2;
+  v4sf *in;
+  v4sf *out;
+  int pass;
+  int l2;
+  int iw;
+  int result_buffer;
+  int phase;
+  int mode;
+  int initial_buffer;
+  int radix_cursor;
+  int radix_work_budget;
+};
+
+ORDERED_REAL_FORWARD_STATE *FUNC_NEW_ORDERED_REAL_FORWARD(SETUP_STRUCT *setup) {
+  ORDERED_REAL_FORWARD_STATE *state;
+  if (!setup || setup->transform != PFFFT_REAL)
+    return 0;
+  state = (ORDERED_REAL_FORWARD_STATE *)malloc(sizeof(ORDERED_REAL_FORWARD_STATE));
+  if (!state)
+    return 0;
+  memset(state, 0, sizeof(*state));
+  state->setup = setup;
+  state->radix_work_budget = PFFFT_INCREMENTAL_DEFAULT_RADIX_WORK_BUDGET;
+  return state;
+}
+
+void FUNC_DESTROY_ORDERED_REAL_FORWARD(ORDERED_REAL_FORWARD_STATE *state) { free(state); }
+
+static int begin_incremental_real_transform(ORDERED_REAL_FORWARD_STATE *state, const float *input,
+                                            float *output, float *work, int mode) {
+  int ib;
+  int nf_odd;
+  if (!state || !state->setup || state->setup->transform != PFFFT_REAL || !input || !output ||
+      !work || input == output || input == work || output == work || !VALIGNED(input) ||
+      !VALIGNED(output) || !VALIGNED(work)) {
+    if (state)
+      state->phase = -1;
+    return 0;
+  }
+
+  state->input = (const v4sf *)input;
+  state->buffers[0] = (v4sf *)output;
+  state->buffers[1] = (v4sf *)work;
+  nf_odd = state->setup->ifac[1] & 1;
+  ib = (nf_odd ^ (mode == PFFFT_INCREMENTAL_ORDERED_FORWARD ? 1 : 0)) ? 1 : 0;
+  state->mode = mode;
+  state->initial_buffer = ib;
+  state->result_buffer = -1;
+  state->pass = 1;
+  state->radix_cursor = 0;
+  if (mode == PFFFT_INCREMENTAL_UNORDERED_BACKWARD) {
+#if (SIMD_SZ == 4)
+    state->phase = 4;
+#else
+    state->work1 = state->buffers[ib];
+    state->work2 = state->buffers[!ib];
+    state->in = (v4sf *)state->input;
+    state->out = state->in == state->work2 ? state->work1 : state->work2;
+    state->l2 = 1;
+    state->iw = 0;
+    state->phase = 5;
+#endif
+    return 1;
+  }
+#if (SIMD_SZ == 4)
+  ib = !ib;
+#endif
+  state->work1 = state->buffers[ib];
+  state->work2 = state->buffers[!ib];
+  state->in = (v4sf *)state->input;
+  state->out = state->in == state->work2 ? state->work1 : state->work2;
+  state->l2 = state->setup->Ncvec * 2;
+  state->iw = state->l2 - 1;
+  state->phase = 0;
+  return 1;
+}
+
+int FUNC_BEGIN_ORDERED_REAL_FORWARD(ORDERED_REAL_FORWARD_STATE *state, const float *input,
+                                    float *output, float *work) {
+  return begin_incremental_real_transform(state, input, output, work,
+                                          PFFFT_INCREMENTAL_ORDERED_FORWARD);
+}
+
+int FUNC_BEGIN_UNORDERED_REAL_FORWARD(ORDERED_REAL_FORWARD_STATE *state, const float *input,
+                                      float *output, float *work) {
+  return begin_incremental_real_transform(state, input, output, work,
+                                          PFFFT_INCREMENTAL_UNORDERED_FORWARD);
+}
+
+int FUNC_BEGIN_UNORDERED_REAL_BACKWARD(ORDERED_REAL_FORWARD_STATE *state, const float *input,
+                                       float *output, float *work) {
+  return begin_incremental_real_transform(state, input, output, work,
+                                          PFFFT_INCREMENTAL_UNORDERED_BACKWARD);
+}
+
+int FUNC_SET_ORDERED_REAL_FORWARD_WORK_BUDGET(ORDERED_REAL_FORWARD_STATE *state, int work_budget) {
+  if (!state || work_budget <= 0)
+    return 0;
+  state->radix_work_budget = work_budget;
+  return 1;
+}
+
+int FUNC_ORDERED_REAL_FORWARD_STEP_COUNT(const ORDERED_REAL_FORWARD_STATE *state) {
+  const SETUP_STRUCT *setup;
+  int count = 0;
+  int pass;
+  int level;
+  if (!state || !state->setup)
+    return 0;
+  setup = state->setup;
+  if (state->mode == PFFFT_INCREMENTAL_UNORDERED_BACKWARD) {
+    int l1 = 1;
+    for (pass = 1; pass <= setup->ifac[1]; ++pass) {
+      const int ip = setup->ifac[pass + 1];
+      const int l2 = ip * l1;
+      const int ido = (setup->Ncvec * 2) / l2;
+      if (ip == 4) {
+        const int work = radf4_ps_work_count(ido, l1);
+        count += (work + state->radix_work_budget - 1) / state->radix_work_budget;
+      } else {
+        ++count;
+      }
+      l1 = l2;
+    }
+#if (SIMD_SZ == 4)
+    ++count;
+#endif
+    return count;
+  }
+  level = setup->Ncvec * 2;
+  for (pass = 1; pass <= setup->ifac[1]; ++pass) {
+    const int ip = setup->ifac[setup->ifac[1] - pass + 2];
+    const int l1 = level / ip;
+    const int ido = (setup->Ncvec * 2) / level;
+    if (ip == 4) {
+      const int work = radf4_ps_work_count(ido, l1);
+      count += (work + state->radix_work_budget - 1) / state->radix_work_budget;
+    } else {
+      ++count;
+    }
+    level = l1;
+  }
+#if (SIMD_SZ == 4)
+  count += state->mode == PFFFT_INCREMENTAL_ORDERED_FORWARD ? 2 : 1;
+#else
+  if (state->mode == PFFFT_INCREMENTAL_ORDERED_FORWARD)
+    ++count;
+#endif
+  return count;
+}
+
+int FUNC_STEP_ORDERED_REAL_FORWARD(ORDERED_REAL_FORWARD_STATE *state) {
+  SETUP_STRUCT *setup;
+  if (!state || state->phase < 0)
+    return -1;
+  if (state->phase == 3)
+    return 1;
+  setup = state->setup;
+
+#if (SIMD_SZ == 4)
+  if (state->phase == 4) {
+    const int ib = state->initial_buffer;
+    FUNC_REAL_PREPROCESS(setup->Ncvec, state->input, state->buffers[ib], (v4sf *)setup->e);
+    state->work1 = state->buffers[0];
+    state->work2 = state->buffers[1];
+    state->in = state->buffers[ib];
+    state->out = state->in == state->work2 ? state->work1 : state->work2;
+    state->l2 = 1;
+    state->iw = 0;
+    state->phase = 5;
+    return 0;
+  }
+#endif
+
+  if (state->phase == 5) {
+    const int nf = setup->ifac[1];
+    const int ip = setup->ifac[state->pass + 1];
+    const int l1 = state->l2;
+    const int l2 = ip * l1;
+    const int ido = (setup->Ncvec * 2) / l2;
+    switch (ip) {
+    case 5: {
+      const int ix2 = state->iw + ido;
+      const int ix3 = ix2 + ido;
+      const int ix4 = ix3 + ido;
+      radb5_ps(ido, l1, state->in, state->out, &setup->twiddle[state->iw], &setup->twiddle[ix2],
+               &setup->twiddle[ix3], &setup->twiddle[ix4]);
+    } break;
+    case 4: {
+      const int ix2 = state->iw + ido;
+      const int ix3 = ix2 + ido;
+      const int work_count = radf4_ps_work_count(ido, l1);
+      state->radix_cursor = radb4_ps_range(
+          ido, l1, state->in, state->out, &setup->twiddle[state->iw], &setup->twiddle[ix2],
+          &setup->twiddle[ix3], state->radix_cursor, state->radix_work_budget);
+      if (state->radix_cursor < work_count)
+        return 0;
+      state->radix_cursor = 0;
+    } break;
+    case 3: {
+      const int ix2 = state->iw + ido;
+      radb3_ps(ido, l1, state->in, state->out, &setup->twiddle[state->iw], &setup->twiddle[ix2]);
+    } break;
+    case 2:
+      radb2_ps(ido, l1, state->in, state->out, &setup->twiddle[state->iw]);
+      break;
+    default:
+      state->phase = -1;
+      return -1;
+    }
+    state->l2 = l2;
+    state->iw += (ip - 1) * ido;
+    if (state->out == state->work2) {
+      state->out = state->work1;
+      state->in = state->work2;
+    } else {
+      state->out = state->work2;
+      state->in = state->work1;
+    }
+    ++state->pass;
+    if (state->pass > nf) {
+      if (state->in != state->buffers[0]) {
+        state->phase = -1;
+        return -1;
+      }
+      state->phase = 3;
+      return 1;
+    }
+    return 0;
+  }
+
+  if (state->phase == 0) {
+    const int nf = setup->ifac[1];
+    const int kh = nf - state->pass;
+    const int ip = setup->ifac[kh + 2];
+    const int l1 = state->l2 / ip;
+    const int ido = (setup->Ncvec * 2) / state->l2;
+    if (state->radix_cursor == 0)
+      state->iw -= (ip - 1) * ido;
+    switch (ip) {
+    case 5: {
+      const int ix2 = state->iw + ido;
+      const int ix3 = ix2 + ido;
+      const int ix4 = ix3 + ido;
+      radf5_ps(ido, l1, state->in, state->out, &setup->twiddle[state->iw], &setup->twiddle[ix2],
+               &setup->twiddle[ix3], &setup->twiddle[ix4]);
+    } break;
+    case 4: {
+      const int ix2 = state->iw + ido;
+      const int ix3 = ix2 + ido;
+      const int work_count = radf4_ps_work_count(ido, l1);
+      state->radix_cursor = radf4_ps_range(
+          ido, l1, state->in, state->out, &setup->twiddle[state->iw], &setup->twiddle[ix2],
+          &setup->twiddle[ix3], state->radix_cursor, state->radix_work_budget);
+      if (state->radix_cursor < work_count)
+        return 0;
+      state->radix_cursor = 0;
+    } break;
+    case 3: {
+      const int ix2 = state->iw + ido;
+      radf3_ps(ido, l1, state->in, state->out, &setup->twiddle[state->iw], &setup->twiddle[ix2]);
+    } break;
+    case 2:
+      radf2_ps(ido, l1, state->in, state->out, &setup->twiddle[state->iw]);
+      break;
+    default:
+      state->phase = -1;
+      return -1;
+    }
+    state->l2 = l1;
+    if (state->out == state->work2) {
+      state->out = state->work1;
+      state->in = state->work2;
+    } else {
+      state->out = state->work2;
+      state->in = state->work1;
+    }
+    ++state->pass;
+    if (state->pass > nf) {
+      state->result_buffer = state->in == state->buffers[0] ? 0 : 1;
+#if (SIMD_SZ == 4)
+      state->phase = 1;
+#else
+      if (state->mode == PFFFT_INCREMENTAL_ORDERED_FORWARD) {
+        state->phase = 2;
+      } else if (state->result_buffer == 0) {
+        state->phase = 3;
+        return 1;
+      } else {
+        state->phase = -1;
+        return -1;
+      }
+#endif
+    }
+    return 0;
+  }
+
+#if (SIMD_SZ == 4)
+  if (state->phase == 1) {
+    const int ib = state->result_buffer;
+    FUNC_REAL_FINALIZE(setup->Ncvec, state->buffers[ib], state->buffers[!ib], (v4sf *)setup->e);
+    if (state->mode == PFFFT_INCREMENTAL_ORDERED_FORWARD) {
+      state->phase = 2;
+      return 0;
+    }
+    if (state->buffers[!ib] != state->buffers[0]) {
+      state->phase = -1;
+      return -1;
+    }
+    state->phase = 3;
+    return 1;
+  }
+#endif
+
+#if (SIMD_SZ == 4)
+  FUNC_ZREORDER(setup, (float *)state->buffers[!state->result_buffer],
+                (float *)state->buffers[state->result_buffer], PFFFT_FORWARD);
+  if (state->buffers[state->result_buffer] != state->buffers[0]) {
+#else
+  FUNC_ZREORDER(setup, (float *)state->buffers[state->result_buffer],
+                (float *)state->buffers[!state->result_buffer], PFFFT_FORWARD);
+  if (state->buffers[!state->result_buffer] != state->buffers[0]) {
+#endif
+    state->phase = -1;
+    return -1;
+  }
+  state->phase = 3;
+  return 1;
+}
+
+struct ZCONVOLVE_ACCUMULATE_STATE {
+  SETUP_STRUCT *setup;
+  const v4sf *a;
+  const v4sf *b;
+  v4sf *ab;
+  float scaling;
+  float ar0;
+  float ai0;
+  float br0;
+  float bi0;
+  float abr0;
+  float abi0;
+  int cursor;
+  int work_count;
+  int phase;
+  int accumulate;
+};
+
+ZCONVOLVE_ACCUMULATE_STATE *FUNC_NEW_ZCONVOLVE_ACCUMULATE(SETUP_STRUCT *setup) {
+  ZCONVOLVE_ACCUMULATE_STATE *state;
+  if (!setup || setup->transform != PFFFT_REAL)
+    return 0;
+  state = (ZCONVOLVE_ACCUMULATE_STATE *)malloc(sizeof(ZCONVOLVE_ACCUMULATE_STATE));
+  if (!state)
+    return 0;
+  memset(state, 0, sizeof(*state));
+  state->setup = setup;
+  return state;
+}
+
+void FUNC_DESTROY_ZCONVOLVE_ACCUMULATE(ZCONVOLVE_ACCUMULATE_STATE *state) { free(state); }
+
+static int begin_incremental_zconvolve(ZCONVOLVE_ACCUMULATE_STATE *state, const float *a,
+                                       const float *b, float *ab, float scaling, int accumulate) {
+  if (!state || !state->setup || state->setup->transform != PFFFT_REAL || !a || !b || !ab ||
+      !VALIGNED(a) || !VALIGNED(b) || !VALIGNED(ab)) {
+    if (state)
+      state->phase = -1;
+    return 0;
+  }
+  state->a = (const v4sf *)a;
+  state->b = (const v4sf *)b;
+  state->ab = (v4sf *)ab;
+  state->scaling = scaling;
+  state->accumulate = accumulate;
+  state->cursor = 0;
+#if (SIMD_SZ == 4)
+  state->work_count = state->setup->Ncvec / 2;
+  state->ar0 = ((const v4sf_union *)state->a)[0].f[0];
+  state->ai0 = ((const v4sf_union *)state->a)[1].f[0];
+  state->br0 = ((const v4sf_union *)state->b)[0].f[0];
+  state->bi0 = ((const v4sf_union *)state->b)[1].f[0];
+  state->abr0 = ((const v4sf_union *)state->ab)[0].f[0];
+  state->abi0 = ((const v4sf_union *)state->ab)[1].f[0];
+#else
+  state->work_count = (state->setup->N - 2) / 2;
+#endif
+  state->phase = 0;
+  return 1;
+}
+
+int FUNC_BEGIN_ZCONVOLVE_ACCUMULATE(ZCONVOLVE_ACCUMULATE_STATE *state, const float *a,
+                                    const float *b, float *ab, float scaling) {
+  return begin_incremental_zconvolve(state, a, b, ab, scaling, 1);
+}
+
+int FUNC_BEGIN_ZCONVOLVE_NO_ACCU(ZCONVOLVE_ACCUMULATE_STATE *state, const float *a, const float *b,
+                                 float *ab, float scaling) {
+  return begin_incremental_zconvolve(state, a, b, ab, scaling, 0);
+}
+
+int FUNC_ZCONVOLVE_ACCUMULATE_STEP_COUNT(const ZCONVOLVE_ACCUMULATE_STATE *state) {
+  return state && state->setup ? state->work_count : 0;
+}
+
+int FUNC_STEP_ZCONVOLVE_ACCUMULATE(ZCONVOLVE_ACCUMULATE_STATE *state, int work_budget) {
+  int end;
+  if (!state || state->phase < 0 || work_budget <= 0)
+    return -1;
+  if (state->phase == 1)
+    return 1;
+#if (SIMD_SZ != 4)
+  if (state->cursor == 0) {
+    float *ab = (float *)state->ab;
+    const float *a = (const float *)state->a;
+    const float *b = (const float *)state->b;
+    const int last = state->setup->N - 1;
+    if (state->accumulate) {
+      ab[0] += a[0] * b[0] * state->scaling;
+      ab[last] += a[last] * b[last] * state->scaling;
+    } else {
+      ab[0] = a[0] * b[0] * state->scaling;
+      ab[last] = a[last] * b[last] * state->scaling;
+    }
+  }
+#endif
+  end = state->cursor + work_budget;
+  if (end > state->work_count)
+    end = state->work_count;
+#if (SIMD_SZ == 4)
+  {
+    const v4sf vscal = LD_PS1(state->scaling);
+    int unit;
+    for (unit = state->cursor; unit < end; ++unit) {
+      const int i = unit * 2;
+      v4sf ar = state->a[2 * i + 0];
+      v4sf ai = state->a[2 * i + 1];
+      v4sf br = state->b[2 * i + 0];
+      v4sf bi = state->b[2 * i + 1];
+      VCPLXMUL(ar, ai, br, bi);
+      state->ab[2 * i + 0] =
+          state->accumulate ? VMADD(ar, vscal, state->ab[2 * i + 0]) : VMUL(ar, vscal);
+      state->ab[2 * i + 1] =
+          state->accumulate ? VMADD(ai, vscal, state->ab[2 * i + 1]) : VMUL(ai, vscal);
+      ar = state->a[2 * i + 2];
+      ai = state->a[2 * i + 3];
+      br = state->b[2 * i + 2];
+      bi = state->b[2 * i + 3];
+      VCPLXMUL(ar, ai, br, bi);
+      state->ab[2 * i + 2] =
+          state->accumulate ? VMADD(ar, vscal, state->ab[2 * i + 2]) : VMUL(ar, vscal);
+      state->ab[2 * i + 3] =
+          state->accumulate ? VMADD(ai, vscal, state->ab[2 * i + 3]) : VMUL(ai, vscal);
+    }
+  }
+#else
+  {
+    const float *a = (const float *)state->a + 1;
+    const float *b = (const float *)state->b + 1;
+    float *ab = (float *)state->ab + 1;
+    int unit;
+    for (unit = state->cursor; unit < end; ++unit) {
+      const int index = unit * 2;
+      float ar = a[index];
+      float ai = a[index + 1];
+      const float br = b[index];
+      const float bi = b[index + 1];
+      VCPLXMUL(ar, ai, br, bi);
+      if (state->accumulate) {
+        ab[index] += ar * state->scaling;
+        ab[index + 1] += ai * state->scaling;
+      } else {
+        ab[index] = ar * state->scaling;
+        ab[index + 1] = ai * state->scaling;
+      }
+    }
+  }
+#endif
+  state->cursor = end;
+  if (state->cursor != state->work_count)
+    return 0;
+#if (SIMD_SZ == 4)
+  if (state->accumulate) {
+    ((v4sf_union *)state->ab)[0].f[0] = state->abr0 + state->ar0 * state->br0 * state->scaling;
+    ((v4sf_union *)state->ab)[1].f[0] = state->abi0 + state->ai0 * state->bi0 * state->scaling;
+  } else {
+    ((v4sf_union *)state->ab)[0].f[0] = state->ar0 * state->br0 * state->scaling;
+    ((v4sf_union *)state->ab)[1].f[0] = state->ai0 * state->bi0 * state->scaling;
+  }
+#endif
+  state->phase = 1;
+  return 1;
+}
 
 SETUP_STRUCT *FUNC_NEW_SETUP(int N, pffft_transform_t transform) {
   SETUP_STRUCT *s = 0;
@@ -1795,8 +2436,8 @@ void pffft_zconvolve_no_accu_nosimd(SETUP_STRUCT *s, const float *a, const float
 
   if (s->transform == PFFFT_REAL) {
     /* take care of the fftpack ordering */
-    ab[0] += a[0]*b[0]*scaling;
-    ab[NcvecMulTwo-1] += a[NcvecMulTwo-1]*b[NcvecMulTwo-1]*scaling;
+    ab[0] = a[0]*b[0]*scaling;
+    ab[NcvecMulTwo-1] = a[NcvecMulTwo-1]*b[NcvecMulTwo-1]*scaling;
     ++ab; ++a; ++b; NcvecMulTwo -= 2;
   }
   for (k=0; k < NcvecMulTwo; k += 2) {

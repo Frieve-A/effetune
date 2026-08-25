@@ -104,6 +104,8 @@ extern "C" {
      read-only data.
   */
   typedef struct PFFFT_Setup PFFFT_Setup;
+  typedef struct PFFFT_OrderedRealForward PFFFT_OrderedRealForward;
+  typedef struct PFFFT_ZConvolveAccumulate PFFFT_ZConvolveAccumulate;
 
 #ifndef PFFFT_COMMON_ENUMS
 #define PFFFT_COMMON_ENUMS
@@ -166,6 +168,47 @@ extern "C" {
      input and output may alias.
   */
   PFFFT_EXPORT void pffft_transform_ordered(PFFFT_Setup *setup, const float *input, float *output, float *work, pffft_direction_t direction);
+
+  /*
+     Incremental form of an ordered real forward transform. The setup and all
+     buffers must
+   * outlive the state, and input/output/work must not alias.
+     Construction may allocate; begin
+   * and step never allocate. Each step runs
+     a bounded range of one existing FFTPACK pass, a
+   * finalization pass, or a
+     reorder pass and returns 1 when the output is complete, 0 while
+   * work
+     remains, or -1 after invalid input. The optional per-state work budget
+     must be
+   * configured before begin; the default is 256 radix work items.
+  */
+  PFFFT_EXPORT PFFFT_OrderedRealForward *pffft_new_ordered_real_forward(PFFFT_Setup *setup);
+  PFFFT_EXPORT void pffft_destroy_ordered_real_forward(PFFFT_OrderedRealForward *state);
+  PFFFT_EXPORT int pffft_ordered_real_forward_begin(PFFFT_OrderedRealForward *state,
+                                                    const float *input, float *output, float *work);
+  PFFFT_EXPORT int pffft_unordered_real_forward_begin(PFFFT_OrderedRealForward *state,
+                                                      const float *input, float *output,
+                                                      float *work);
+  PFFFT_EXPORT int pffft_unordered_real_backward_begin(PFFFT_OrderedRealForward *state,
+                                                       const float *input, float *output,
+                                                       float *work);
+  PFFFT_EXPORT int pffft_ordered_real_forward_set_work_budget(PFFFT_OrderedRealForward *state,
+                                                              int work_budget);
+  PFFFT_EXPORT int pffft_ordered_real_forward_step_count(const PFFFT_OrderedRealForward *state);
+  PFFFT_EXPORT int pffft_ordered_real_forward_step(PFFFT_OrderedRealForward *state);
+
+  /* Incremental unordered convolution for partitioned real transforms. */
+  PFFFT_EXPORT PFFFT_ZConvolveAccumulate *pffft_new_zconvolve_accumulate(PFFFT_Setup *setup);
+  PFFFT_EXPORT void pffft_destroy_zconvolve_accumulate(PFFFT_ZConvolveAccumulate *state);
+  PFFFT_EXPORT int pffft_zconvolve_accumulate_begin(PFFFT_ZConvolveAccumulate *state,
+                                                    const float *a, const float *b, float *ab,
+                                                    float scaling);
+  PFFFT_EXPORT int pffft_zconvolve_no_accu_begin(PFFFT_ZConvolveAccumulate *state, const float *a,
+                                                 const float *b, float *ab, float scaling);
+  PFFFT_EXPORT int pffft_zconvolve_accumulate_step_count(const PFFFT_ZConvolveAccumulate *state);
+  PFFFT_EXPORT int pffft_zconvolve_accumulate_step(PFFFT_ZConvolveAccumulate *state,
+                                                   int work_budget);
 
   /* 
      call pffft_zreorder(.., PFFFT_FORWARD) after pffft_transform(...,

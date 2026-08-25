@@ -1127,9 +1127,9 @@ export function packPhaserPluginParams(params = {}) {
   return packed;
 }
 
-export const PhaseSelectEqPlugin_PARAMS_HASH = 0xf7dba1f9;
+export const PhaseSelectEqPlugin_PARAMS_HASH = 0x51c6d77a;
 export function packPhaseSelectEqPluginParams(params = {}) {
-  const packed = new Float32Array(50);
+  const packed = new Float32Array(75);
   packed[0] = ((Array.isArray(params["regions"]) ? params["regions"][0]?.["en"] : params["en0"]) === true || (Array.isArray(params["regions"]) ? params["regions"][0]?.["en"] : params["en0"]) === 1 ? 1 : (Array.isArray(params["regions"]) ? params["regions"][0]?.["en"] : params["en0"]) === false || (Array.isArray(params["regions"]) ? params["regions"][0]?.["en"] : params["en0"]) === 0 ? 0 : 1);
   packed[1] = ((Array.isArray(params["regions"]) ? params["regions"][1]?.["en"] : params["en1"]) === true || (Array.isArray(params["regions"]) ? params["regions"][1]?.["en"] : params["en1"]) === 1 ? 1 : (Array.isArray(params["regions"]) ? params["regions"][1]?.["en"] : params["en1"]) === false || (Array.isArray(params["regions"]) ? params["regions"][1]?.["en"] : params["en1"]) === 0 ? 0 : 0);
   packed[2] = ((Array.isArray(params["regions"]) ? params["regions"][2]?.["en"] : params["en2"]) === true || (Array.isArray(params["regions"]) ? params["regions"][2]?.["en"] : params["en2"]) === 1 ? 1 : (Array.isArray(params["regions"]) ? params["regions"][2]?.["en"] : params["en2"]) === false || (Array.isArray(params["regions"]) ? params["regions"][2]?.["en"] : params["en2"]) === 0 ? 0 : 0);
@@ -1180,6 +1180,31 @@ export function packPhaseSelectEqPluginParams(params = {}) {
   packed[47] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][2]?.["gn"] : params["gn2"]); if (!(typeof value === 'number' && Number.isFinite(value))) return 100; if (value < 0) return 0; if (value > 200) return 200; return value; })();
   packed[48] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][3]?.["gn"] : params["gn3"]); if (!(typeof value === 'number' && Number.isFinite(value))) return 100; if (value < 0) return 0; if (value > 200) return 200; return value; })();
   packed[49] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][4]?.["gn"] : params["gn4"]); if (!(typeof value === 'number' && Number.isFinite(value))) return 100; if (value < 0) return 0; if (value > 200) return 200; return value; })();
+  packed[50] = ((Array.isArray(params["regions"]) ? params["regions"][0]?.["so"] : params["so0"]) === true || (Array.isArray(params["regions"]) ? params["regions"][0]?.["so"] : params["so0"]) === 1 ? 1 : (Array.isArray(params["regions"]) ? params["regions"][0]?.["so"] : params["so0"]) === false || (Array.isArray(params["regions"]) ? params["regions"][0]?.["so"] : params["so0"]) === 0 ? 0 : 0);
+  packed[51] = ((Array.isArray(params["regions"]) ? params["regions"][1]?.["so"] : params["so1"]) === true || (Array.isArray(params["regions"]) ? params["regions"][1]?.["so"] : params["so1"]) === 1 ? 1 : (Array.isArray(params["regions"]) ? params["regions"][1]?.["so"] : params["so1"]) === false || (Array.isArray(params["regions"]) ? params["regions"][1]?.["so"] : params["so1"]) === 0 ? 0 : 0);
+  packed[52] = ((Array.isArray(params["regions"]) ? params["regions"][2]?.["so"] : params["so2"]) === true || (Array.isArray(params["regions"]) ? params["regions"][2]?.["so"] : params["so2"]) === 1 ? 1 : (Array.isArray(params["regions"]) ? params["regions"][2]?.["so"] : params["so2"]) === false || (Array.isArray(params["regions"]) ? params["regions"][2]?.["so"] : params["so2"]) === 0 ? 0 : 0);
+  packed[53] = ((Array.isArray(params["regions"]) ? params["regions"][3]?.["so"] : params["so3"]) === true || (Array.isArray(params["regions"]) ? params["regions"][3]?.["so"] : params["so3"]) === 1 ? 1 : (Array.isArray(params["regions"]) ? params["regions"][3]?.["so"] : params["so3"]) === false || (Array.isArray(params["regions"]) ? params["regions"][3]?.["so"] : params["so3"]) === 0 ? 0 : 0);
+  packed[54] = ((Array.isArray(params["regions"]) ? params["regions"][4]?.["so"] : params["so4"]) === true || (Array.isArray(params["regions"]) ? params["regions"][4]?.["so"] : params["so4"]) === 1 ? 1 : (Array.isArray(params["regions"]) ? params["regions"][4]?.["so"] : params["so4"]) === false || (Array.isArray(params["regions"]) ? params["regions"][4]?.["so"] : params["so4"]) === 0 ? 0 : 0);
+  packed[55] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][0]?.["obl"] : params["obl0"]); if (!(typeof value === 'number' && Number.isFinite(value))) return -100; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[56] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][1]?.["obl"] : params["obl1"]); if (!(typeof value === 'number' && Number.isFinite(value))) return -100; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[57] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][2]?.["obl"] : params["obl2"]); if (!(typeof value === 'number' && Number.isFinite(value))) return -100; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[58] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][3]?.["obl"] : params["obl3"]); if (!(typeof value === 'number' && Number.isFinite(value))) return -100; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[59] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][4]?.["obl"] : params["obl4"]); if (!(typeof value === 'number' && Number.isFinite(value))) return -100; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[60] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][0]?.["bl"] : params["bl0"]); if (!(typeof value === 'number' && Number.isFinite(value))) return -100; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[61] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][1]?.["bl"] : params["bl1"]); if (!(typeof value === 'number' && Number.isFinite(value))) return -100; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[62] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][2]?.["bl"] : params["bl2"]); if (!(typeof value === 'number' && Number.isFinite(value))) return -100; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[63] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][3]?.["bl"] : params["bl3"]); if (!(typeof value === 'number' && Number.isFinite(value))) return -100; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[64] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][4]?.["bl"] : params["bl4"]); if (!(typeof value === 'number' && Number.isFinite(value))) return -100; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[65] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][0]?.["bh"] : params["bh0"]); if (!(typeof value === 'number' && Number.isFinite(value))) return 100; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[66] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][1]?.["bh"] : params["bh1"]); if (!(typeof value === 'number' && Number.isFinite(value))) return 100; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[67] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][2]?.["bh"] : params["bh2"]); if (!(typeof value === 'number' && Number.isFinite(value))) return 100; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[68] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][3]?.["bh"] : params["bh3"]); if (!(typeof value === 'number' && Number.isFinite(value))) return 100; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[69] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][4]?.["bh"] : params["bh4"]); if (!(typeof value === 'number' && Number.isFinite(value))) return 100; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[70] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][0]?.["obh"] : params["obh0"]); if (!(typeof value === 'number' && Number.isFinite(value))) return 100; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[71] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][1]?.["obh"] : params["obh1"]); if (!(typeof value === 'number' && Number.isFinite(value))) return 100; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[72] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][2]?.["obh"] : params["obh2"]); if (!(typeof value === 'number' && Number.isFinite(value))) return 100; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[73] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][3]?.["obh"] : params["obh3"]); if (!(typeof value === 'number' && Number.isFinite(value))) return 100; if (value < -100) return -100; if (value > 100) return 100; return value; })();
+  packed[74] = (() => { const value = (Array.isArray(params["regions"]) ? params["regions"][4]?.["obh"] : params["obh4"]); if (!(typeof value === 'number' && Number.isFinite(value))) return 100; if (value < -100) return -100; if (value > 100) return 100; return value; })();
   return packed;
 }
 
@@ -1580,7 +1605,7 @@ export const DSP_PARAM_LAYOUTS = Object.freeze({
   OscillatorPlugin: Object.freeze({ hash: OscillatorPlugin_PARAMS_HASH, floatCount: 7 }),
   OscilloscopePlugin: Object.freeze({ hash: OscilloscopePlugin_PARAMS_HASH, floatCount: 7 }),
   PhaserPlugin: Object.freeze({ hash: PhaserPlugin_PARAMS_HASH, floatCount: 9 }),
-  PhaseSelectEqPlugin: Object.freeze({ hash: PhaseSelectEqPlugin_PARAMS_HASH, floatCount: 50 }),
+  PhaseSelectEqPlugin: Object.freeze({ hash: PhaseSelectEqPlugin_PARAMS_HASH, floatCount: 75 }),
   PitchShifterHQPlugin: Object.freeze({ hash: PitchShifterHQPlugin_PARAMS_HASH, floatCount: 2 }),
   PitchShifterPlugin: Object.freeze({ hash: PitchShifterPlugin_PARAMS_HASH, floatCount: 4 }),
   PolarityInversionPlugin: Object.freeze({ hash: PolarityInversionPlugin_PARAMS_HASH, floatCount: 0 }),
@@ -1677,7 +1702,7 @@ export const DSP_PARAM_PACKERS = new Map([
   ["OscillatorPlugin", Object.freeze({ pack: packOscillatorPluginParams, hash: OscillatorPlugin_PARAMS_HASH, floatCount: 7 })],
   ["OscilloscopePlugin", Object.freeze({ pack: packOscilloscopePluginParams, hash: OscilloscopePlugin_PARAMS_HASH, floatCount: 7 })],
   ["PhaserPlugin", Object.freeze({ pack: packPhaserPluginParams, hash: PhaserPlugin_PARAMS_HASH, floatCount: 9 })],
-  ["PhaseSelectEqPlugin", Object.freeze({ pack: packPhaseSelectEqPluginParams, hash: PhaseSelectEqPlugin_PARAMS_HASH, floatCount: 50 })],
+  ["PhaseSelectEqPlugin", Object.freeze({ pack: packPhaseSelectEqPluginParams, hash: PhaseSelectEqPlugin_PARAMS_HASH, floatCount: 75 })],
   ["PitchShifterHQPlugin", Object.freeze({ pack: packPitchShifterHQPluginParams, hash: PitchShifterHQPlugin_PARAMS_HASH, floatCount: 2 })],
   ["PitchShifterPlugin", Object.freeze({ pack: packPitchShifterPluginParams, hash: PitchShifterPlugin_PARAMS_HASH, floatCount: 4 })],
   ["PolarityInversionPlugin", Object.freeze({ pack: packPolarityInversionPluginParams, hash: PolarityInversionPlugin_PARAMS_HASH, floatCount: 0 })],

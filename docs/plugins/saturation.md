@@ -43,7 +43,7 @@ The generated band has two independently adjustable parts: input-related harmoni
   - **Manual** uses the Manual Cutoff value. The generated band is automatically kept within the frequency range available for playback.
 - **Manual Cutoff** (6000-24000 Hz) - Sets the start of generation in Manual mode. Match the measured source boundary instead of lowering it simply to make the effect more obvious.
 
-Bandwidth Extender adds about 21 ms of delay. If it cannot run with the current sample rate, channel setting, or device, the plugin reports that it is bypassed and the audio remains unchanged. Use a supported setting or disable the plugin.
+Bandwidth Extender adds about 26.7–29.0 ms of delay, including one extra processing hop: 1,280 samples at 48 kHz, 2,560 samples at 96 kHz, or 5,120 samples at 192 kHz. If it cannot run with the current sample rate, channel setting, or device, the plugin reports that it is bypassed and the audio remains unchanged. Use a supported setting or disable the plugin.
 
 ## Dynamic Saturation
 

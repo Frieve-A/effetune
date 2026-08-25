@@ -22,9 +22,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '..', '..', '..');
 const fixtureRoot = path.join(
   repoRoot,
-  'tests',
-  'fixtures',
-  'tube-simulator',
+  'tmp',
+  'dev',
+  'tube-simulator-lineamp',
   'lineamp-v1'
 );
 const generatedRoot = path.join(fixtureRoot, 'generated');

@@ -17,14 +17,19 @@ namespace effetune::plugins::lofi {
 namespace {
 
 constexpr std::uint32_t kSubbands = 8u;
+constexpr std::uint32_t kMinimumBlocks = 4u;
 constexpr std::uint32_t kMaximumBlocks = 16u;
 constexpr std::uint32_t kMaximumCodecFrameSamples = kSubbands * kMaximumBlocks;
 constexpr std::uint32_t kAnalysisLength = 80u;
 constexpr std::uint32_t kSynthesisLength = 160u;
-constexpr std::uint32_t kRawOutputCapacity = 4096u;
 constexpr std::uint32_t kDelayCapacity = 8192u;
 constexpr std::uint32_t kMaximumRateFactor = 8u;
+constexpr std::uint32_t kRawOutputCapacity = kSubbands * kMaximumRateFactor;
 constexpr std::uint32_t kMaximumResamplerStages = 3u;
+constexpr std::uint32_t kMaximumQueuedFrames = kMaximumBlocks / kMinimumBlocks;
+// Four complete minimum-length frames can wait for the fixed maximum-frame deadline. The extra
+// slot remains the active capture frame, so capture never aliases a queued frame.
+constexpr std::uint32_t kRuntimeFrameSlots = kMaximumQueuedFrames + 1u;
 constexpr std::uint32_t kTargetLatencyCodecSamples = 320u;
 constexpr std::uint32_t kPqmfDelayCodecSamples = 72u;
 
@@ -62,6 +67,24 @@ enum class ChannelMode : std::uint8_t {
   kJointStereo = 0u,
   kStereo = 1u,
   kDualChannel = 2u,
+};
+
+struct RuntimeFrame {
+  std::array<std::array<std::array<double, kSubbands>, kMaximumBlocks>, 2> samples{};
+  std::array<std::array<std::array<double, kSubbands>, kMaximumBlocks>, 2> joint_samples{};
+  std::array<std::array<double, kSubbands>, 2> peaks{};
+  std::array<std::array<double, kSubbands>, 2> joint_peaks{};
+  std::array<std::array<std::uint8_t, kSubbands>, 2> scale_factors{};
+  std::array<std::array<std::uint8_t, kSubbands>, 2> bits{};
+  std::array<bool, kSubbands> join{};
+  std::uint64_t output_start_frame = 0u;
+  std::uint32_t blocks = kMaximumBlocks;
+  std::uint32_t channels = 2u;
+  std::uint32_t bitpool = 35u;
+  std::uint32_t output_block = 0u;
+  ChannelMode mode = ChannelMode::kJointStereo;
+  double loss_ratio = 0.0;
+  bool lost = false;
 };
 
 #if !defined(__EMSCRIPTEN__)
@@ -206,6 +229,7 @@ public:
     output_resamplers_.resize(2u * kMaximumResamplerStages);
     codec_input_.assign(2u, {});
     subband_samples_.assign(2u, {});
+    runtime_frames_.assign(kRuntimeFrameSlots, {});
     codewords_.assign(kMaximumBlocks, {});
     last_good_subbands_.assign(kMaximumBlocks, {});
     raw_output_.assign(2u * kRawOutputCapacity, 0.0);
@@ -240,10 +264,16 @@ public:
       sample = 0.0;
     }
     codec_input_count_ = 0u;
+    runtime_frame_head_ = 0u;
+    runtime_frame_count_ = 0u;
     raw_output_read_ = 0u;
     raw_output_write_ = 0u;
     raw_output_count_ = 0u;
+    maximum_runtime_frame_count_ = 0u;
+    maximum_raw_output_count_ = 0u;
+    raw_output_drop_count_ = 0u;
     delay_position_ = 0u;
+    host_frame_sequence_ = 0u;
     active_channels_ = 0u;
     active_blocks_ = 16u;
     active_bitpool_ = 35u;
@@ -303,19 +333,30 @@ public:
 
       std::array<double, 2> codec_sample{};
       if (resampleInput(input, codec_channels, codec_sample)) {
+        RuntimeFrame &runtime_frame = captureRuntimeFrame();
         if (codec_input_count_ == 0u) {
-          captureFrameParameters();
+          beginRuntimeFrame(runtime_frame, codec_channels);
         }
         for (std::uint32_t channel = 0u; channel < codec_channels; ++channel) {
           codec_input_[channel][codec_input_count_] =
               static_cast<double>(roundCodecPcm(codec_sample[channel]));
         }
         ++codec_input_count_;
-        if (codec_input_count_ == active_blocks_ * kSubbands) {
-          encodeDecodeFrame(codec_channels);
+        if (codec_input_count_ % kSubbands == 0u) {
+          const std::uint32_t block = codec_input_count_ / kSubbands - 1u;
+          for (std::uint32_t channel = 0u; channel < codec_channels; ++channel) {
+            analyze(channel, &codec_input_[channel][block * kSubbands],
+                    runtime_frame.samples[channel][block].data());
+          }
+          accumulateRuntimeBlock(runtime_frame, block);
+        }
+        if (codec_input_count_ == runtime_frame.blocks * kSubbands) {
+          finishRuntimeFrame(runtime_frame);
           codec_input_count_ = 0u;
         }
       }
+
+      advanceRuntimeFrames();
 
       std::array<double, 2> raw_wet{};
       popRawOutput(codec_channels, raw_wet);
@@ -329,10 +370,26 @@ public:
         audio[channel * frame_count + frame] = static_cast<float>(output);
       }
       delay_position_ = (delay_position_ + 1u) % kDelayCapacity;
+      ++host_frame_sequence_;
     }
   }
 
 #if !defined(__EMSCRIPTEN__)
+  [[nodiscard]] std::uint32_t runtimeTestStat(std::uint32_t index) const noexcept {
+    switch (index) {
+    case 0u:
+      return maximum_runtime_frame_count_;
+    case 1u:
+      return maximum_raw_output_count_;
+    case 2u:
+      return raw_output_drop_count_;
+    case 3u:
+      return runtime_frame_count_;
+    default:
+      return 0u;
+    }
+  }
+
   [[nodiscard]] bool encodeTestFrame(const test::BluetoothSbcPcm &input,
                                      test::BluetoothSbcChannelMode channel_mode,
                                      std::uint32_t blocks, std::uint32_t bitpool,
@@ -607,6 +664,78 @@ private:
     return output_ready;
   }
 
+  [[nodiscard]] RuntimeFrame &captureRuntimeFrame() noexcept {
+    return runtime_frames_[(runtime_frame_head_ + runtime_frame_count_) % kRuntimeFrameSlots];
+  }
+
+  void beginRuntimeFrame(RuntimeFrame &frame, std::uint32_t channels) noexcept {
+    captureFrameParameters();
+    frame.peaks = {};
+    frame.joint_peaks = {};
+    frame.join.fill(false);
+    frame.blocks = active_blocks_;
+    frame.channels = channels;
+    frame.bitpool = active_bitpool_;
+    frame.output_block = 0u;
+    frame.mode = active_mode_;
+    frame.loss_ratio = active_loss_ratio_;
+    frame.lost = false;
+  }
+
+  void accumulateRuntimeBlock(RuntimeFrame &frame, std::uint32_t block) noexcept {
+    for (std::uint32_t channel = 0u; channel < frame.channels; ++channel) {
+      for (std::uint32_t subband = 0u; subband < kSubbands; ++subband) {
+        const double sample = frame.samples[channel][block][subband];
+        const double magnitude = sample < 0.0 ? -sample : sample;
+        if (magnitude > frame.peaks[channel][subband]) {
+          frame.peaks[channel][subband] = magnitude;
+        }
+      }
+    }
+    if (frame.channels != 2u || frame.mode != ChannelMode::kJointStereo) {
+      return;
+    }
+    // Retain each joint candidate while its block is analyzed. Frame completion then only folds
+    // the accumulated peaks into scale fields instead of revisiting every block.
+    for (std::uint32_t subband = 0u; subband + 1u < kSubbands; ++subband) {
+      const double left = frame.samples[0][block][subband];
+      const double right = frame.samples[1][block][subband];
+      const double sum = (left + right) * 0.5;
+      const double difference = (left - right) * 0.5;
+      frame.joint_samples[0][block][subband] = sum;
+      frame.joint_samples[1][block][subband] = difference;
+      const double sum_magnitude = sum < 0.0 ? -sum : sum;
+      const double difference_magnitude = difference < 0.0 ? -difference : difference;
+      if (sum_magnitude > frame.joint_peaks[0][subband]) {
+        frame.joint_peaks[0][subband] = sum_magnitude;
+      }
+      if (difference_magnitude > frame.joint_peaks[1][subband]) {
+        frame.joint_peaks[1][subband] = difference_magnitude;
+      }
+    }
+  }
+
+  void finishRuntimeFrame(RuntimeFrame &frame) noexcept {
+    if (frame.loss_ratio == 0.0) {
+      link_bad_ = false;
+    } else {
+      frame.lost = updateLinkState(frame.blocks, frame.loss_ratio);
+    }
+    if (!frame.lost) {
+      prepareRuntimeFields(frame);
+    }
+    const std::uint32_t frame_samples = frame.blocks * kSubbands;
+    // Every frame begins playback one maximum-size frame after its first input sample. Short
+    // frames therefore queue naturally, while all block sizes keep the same declared latency.
+    frame.output_start_frame =
+        host_frame_sequence_ +
+        static_cast<std::uint64_t>(kMaximumCodecFrameSamples - frame_samples) * rate_factor_;
+    ++runtime_frame_count_;
+    if (runtime_frame_count_ > maximum_runtime_frame_count_) {
+      maximum_runtime_frame_count_ = runtime_frame_count_;
+    }
+  }
+
   void captureFrameParameters() noexcept {
     std::uint32_t bitpool = static_cast<std::uint32_t>(params_.bitpool);
     if (bitpool < 2u) {
@@ -634,18 +763,10 @@ private:
       loss_ratio = kMaximumLossRatio;
     }
     active_loss_ratio_ = loss_ratio;
-    if (active_loss_ratio_ == 0.0) {
-      // A clean link retires the outage state itself, but not the concealment history: a real sink
-      // always holds the frame it decoded last, so re-enabling packet loss must conceal with the
-      // live stream. The history keeps tracking every received frame, so it can never go stale.
-      link_bad_ = false;
-      concealment_gain_ = 1.0;
-    }
-    updateWetDelay();
   }
 
   void updateWetDelay() noexcept {
-    const std::uint32_t frame_samples = active_blocks_ * kSubbands * rate_factor_;
+    const std::uint32_t frame_samples = kMaximumCodecFrameSamples * rate_factor_;
     const std::uint32_t resampler_delay =
         2u * static_cast<std::uint32_t>(dsp::Halfband2x::kLatency) * (rate_factor_ - 1u);
     const std::uint32_t stream_delay = kPqmfDelayCodecSamples * rate_factor_ + resampler_delay;
@@ -711,6 +832,16 @@ private:
     }
   }
 
+  [[nodiscard]] std::uint8_t scaleFactorFromPeak(double peak) const noexcept {
+    std::uint8_t scale = 0u;
+    double limit = 2.0;
+    while (scale < 15u && peak >= limit) {
+      ++scale;
+      limit *= 2.0;
+    }
+    return scale;
+  }
+
   [[nodiscard]] std::uint8_t scaleFactor(const double *samples,
                                          std::uint32_t stride) const noexcept {
     double peak = 0.0;
@@ -721,13 +852,32 @@ private:
         peak = magnitude;
       }
     }
-    std::uint8_t scale = 0u;
-    double limit = 2.0;
-    while (scale < 15u && peak >= limit) {
-      ++scale;
-      limit *= 2.0;
+    return scaleFactorFromPeak(peak);
+  }
+
+  void prepareRuntimeFields(RuntimeFrame &frame) noexcept {
+    for (std::uint32_t channel = 0u; channel < frame.channels; ++channel) {
+      for (std::uint32_t subband = 0u; subband < kSubbands; ++subband) {
+        frame.scale_factors[channel][subband] = scaleFactorFromPeak(frame.peaks[channel][subband]);
+      }
     }
-    return scale;
+    if (frame.channels == 2u && frame.mode == ChannelMode::kJointStereo) {
+      for (std::uint32_t subband = 0u; subband + 1u < kSubbands; ++subband) {
+        const std::uint8_t sum_scale = scaleFactorFromPeak(frame.joint_peaks[0][subband]);
+        const std::uint8_t difference_scale = scaleFactorFromPeak(frame.joint_peaks[1][subband]);
+        if (static_cast<std::uint32_t>(frame.scale_factors[0][subband]) +
+                frame.scale_factors[1][subband] >
+            static_cast<std::uint32_t>(sum_scale) + difference_scale) {
+          frame.join[subband] = true;
+          frame.scale_factors[0][subband] = sum_scale;
+          frame.scale_factors[1][subband] = difference_scale;
+        }
+      }
+    }
+    scale_factor_fields_ = frame.scale_factors;
+    join_ = frame.join;
+    allocateBits(frame.channels);
+    frame.bits = bits_;
   }
 
   void prepareJointAndScaleFactors(std::uint32_t channels) noexcept {
@@ -942,69 +1092,77 @@ private:
     }
   }
 
-  void quantizeLogicalFields(std::uint32_t channels) noexcept {
-    for (std::uint32_t block = 0u; block < active_blocks_; ++block) {
-      for (std::uint32_t channel = 0u; channel < channels; ++channel) {
-        for (std::uint32_t subband = 0u; subband < kSubbands; ++subband) {
-          const std::uint32_t bit_count = bits_[channel][subband];
-          if (bit_count == 0u) {
-            codewords_[block][channel][subband] = 0u;
-            continue;
-          }
-          const std::uint32_t levels = (1u << bit_count) - 1u;
-          const double scale = std::ldexp(1.0, scale_factor_fields_[channel][subband] + 1u);
-          double normalized = subband_samples_[channel][block][subband] / scale;
-          if (normalized < -1.0) {
-            normalized = -1.0;
-          } else if (normalized > 1.0) {
-            normalized = 1.0;
-          }
-          double code = std::floor((normalized + 1.0) * static_cast<double>(levels) * 0.5);
-          if (code < 0.0) {
-            code = 0.0;
-          } else if (code > static_cast<double>(levels)) {
-            code = static_cast<double>(levels);
-          }
-          codewords_[block][channel][subband] = static_cast<std::uint16_t>(code);
+  void quantizeBlock(std::uint32_t block, std::uint32_t channels) noexcept {
+    for (std::uint32_t channel = 0u; channel < channels; ++channel) {
+      for (std::uint32_t subband = 0u; subband < kSubbands; ++subband) {
+        const std::uint32_t bit_count = bits_[channel][subband];
+        if (bit_count == 0u) {
+          codewords_[block][channel][subband] = 0u;
+          continue;
         }
+        const std::uint32_t levels = (1u << bit_count) - 1u;
+        const double scale = std::ldexp(1.0, scale_factor_fields_[channel][subband] + 1u);
+        double normalized = subband_samples_[channel][block][subband] / scale;
+        if (normalized < -1.0) {
+          normalized = -1.0;
+        } else if (normalized > 1.0) {
+          normalized = 1.0;
+        }
+        double code = std::floor((normalized + 1.0) * static_cast<double>(levels) * 0.5);
+        if (code < 0.0) {
+          code = 0.0;
+        } else if (code > static_cast<double>(levels)) {
+          code = static_cast<double>(levels);
+        }
+        codewords_[block][channel][subband] = static_cast<std::uint16_t>(code);
       }
     }
   }
 
+  void quantizeLogicalFields(std::uint32_t channels) noexcept {
+    for (std::uint32_t block = 0u; block < active_blocks_; ++block) {
+      quantizeBlock(block, channels);
+    }
+  }
+
+  void decodeBlock(std::uint32_t block, std::uint32_t channels, ChannelMode mode) noexcept {
+    std::array<std::array<double, kSubbands>, 2> decoded{};
+    for (std::uint32_t channel = 0u; channel < channels; ++channel) {
+      for (std::uint32_t subband = 0u; subband < kSubbands; ++subband) {
+        const std::uint32_t bit_count = bits_[channel][subband];
+        if (bit_count == 0u) {
+          decoded[channel][subband] = 0.0;
+          continue;
+        }
+        const std::uint32_t levels = (1u << bit_count) - 1u;
+        const double scale = std::ldexp(1.0, scale_factor_fields_[channel][subband] + 1u);
+        decoded[channel][subband] =
+            scale * ((static_cast<double>(codewords_[block][channel][subband]) * 2.0 + 1.0) /
+                         static_cast<double>(levels) -
+                     1.0);
+      }
+    }
+    if (channels == 2u && mode == ChannelMode::kJointStereo) {
+      for (std::uint32_t subband = 0u; subband + 1u < kSubbands; ++subband) {
+        if (!join_[subband]) {
+          continue;
+        }
+        const double sum = decoded[0][subband];
+        const double difference = decoded[1][subband];
+        decoded[0][subband] = sum + difference;
+        decoded[1][subband] = sum - difference;
+      }
+    }
+    // The sink retains the frame it decoded last regardless of the current link quality, so the
+    // history is refreshed unconditionally. Otherwise the first loss after a clean stretch would
+    // find an empty history and conceal with hard silence instead of the audio just heard.
+    last_good_subbands_[block] = decoded;
+    emitDecodedBlock(decoded, channels);
+  }
+
   void decodeLogicalFields(std::uint32_t channels) noexcept {
     for (std::uint32_t block = 0u; block < active_blocks_; ++block) {
-      std::array<std::array<double, kSubbands>, 2> decoded{};
-      for (std::uint32_t channel = 0u; channel < channels; ++channel) {
-        for (std::uint32_t subband = 0u; subband < kSubbands; ++subband) {
-          const std::uint32_t bit_count = bits_[channel][subband];
-          if (bit_count == 0u) {
-            decoded[channel][subband] = 0.0;
-            continue;
-          }
-          const std::uint32_t levels = (1u << bit_count) - 1u;
-          const double scale = std::ldexp(1.0, scale_factor_fields_[channel][subband] + 1u);
-          decoded[channel][subband] =
-              scale * ((static_cast<double>(codewords_[block][channel][subband]) * 2.0 + 1.0) /
-                           static_cast<double>(levels) -
-                       1.0);
-        }
-      }
-      if (channels == 2u && active_mode_ == ChannelMode::kJointStereo) {
-        for (std::uint32_t subband = 0u; subband + 1u < kSubbands; ++subband) {
-          if (!join_[subband]) {
-            continue;
-          }
-          const double sum = decoded[0][subband];
-          const double difference = decoded[1][subband];
-          decoded[0][subband] = sum + difference;
-          decoded[1][subband] = sum - difference;
-        }
-      }
-      // The sink retains the frame it decoded last regardless of the current link quality, so the
-      // history is refreshed unconditionally. Otherwise the first loss after a clean stretch would
-      // find an empty history and conceal with hard silence instead of the audio just heard.
-      last_good_subbands_[block] = decoded;
-      emitDecodedBlock(decoded, channels);
+      decodeBlock(block, channels, active_mode_);
     }
     last_good_blocks_ = active_blocks_;
     concealment_gain_ = 1.0;
@@ -1025,8 +1183,8 @@ private:
     }
   }
 
-  [[nodiscard]] const LinkProfile &linkProfile() const noexcept {
-    const std::uint32_t index = active_blocks_ / 4u - 1u;
+  [[nodiscard]] const LinkProfile &linkProfile(std::uint32_t blocks) const noexcept {
+    const std::uint32_t index = blocks / 4u - 1u;
     return kLinkProfiles[index < kLinkProfiles.size() ? index : kLinkProfiles.size() - 1u];
   }
 
@@ -1036,17 +1194,15 @@ private:
   // The good run that precedes a burst has mean (1 - entry) / entry frames, so the long-run loss
   // ratio is r = B / (B + (1 - entry) / entry); solving for the entry probability gives
   // entry = r / (B * (1 - r) + r).
-  [[nodiscard]] bool updateLinkState() noexcept {
-    const LinkProfile &profile = linkProfile();
+  [[nodiscard]] bool updateLinkState(std::uint32_t blocks, double loss_ratio) noexcept {
+    const LinkProfile &profile = linkProfile(blocks);
     if (link_bad_) {
       if (random_.nextFloat01() < profile.recovery_probability) {
         link_bad_ = false;
       }
       return true;
     }
-    const double entry =
-        active_loss_ratio_ /
-        (profile.mean_burst_frames * (1.0 - active_loss_ratio_) + active_loss_ratio_);
+    const double entry = loss_ratio / (profile.mean_burst_frames * (1.0 - loss_ratio) + loss_ratio);
     if (random_.nextFloat01() < entry) {
       link_bad_ = true;
       return true;
@@ -1058,43 +1214,97 @@ private:
   // across the frame, so a sustained outage fades into silence instead of looping audibly. The
   // per-frame decay comes from the link profile, so the fade takes the same wall-clock time at
   // every block count.
-  void concealFrame(std::uint32_t channels) noexcept {
-    const double decay = linkProfile().concealment_frame_decay;
-    for (std::uint32_t block = 0u; block < active_blocks_; ++block) {
-      std::array<std::array<double, kSubbands>, 2> decoded{};
-      if (last_good_blocks_ != 0u) {
-        const double progress =
-            static_cast<double>(block + 1u) / static_cast<double>(active_blocks_);
-        const double gain = concealment_gain_ * (1.0 + (decay - 1.0) * progress);
-        const auto &source = last_good_subbands_[block % last_good_blocks_];
-        for (std::uint32_t channel = 0u; channel < channels; ++channel) {
-          for (std::uint32_t subband = 0u; subband < kSubbands; ++subband) {
-            decoded[channel][subband] = source[channel][subband] * gain;
-          }
+  void concealBlock(std::uint32_t block, std::uint32_t blocks, std::uint32_t channels,
+                    double decay) noexcept {
+    std::array<std::array<double, kSubbands>, 2> decoded{};
+    if (last_good_blocks_ != 0u) {
+      const double progress = static_cast<double>(block + 1u) / static_cast<double>(blocks);
+      const double gain = concealment_gain_ * (1.0 + (decay - 1.0) * progress);
+      const auto &source = last_good_subbands_[block % last_good_blocks_];
+      for (std::uint32_t channel = 0u; channel < channels; ++channel) {
+        for (std::uint32_t subband = 0u; subband < kSubbands; ++subband) {
+          decoded[channel][subband] = source[channel][subband] * gain;
         }
       }
-      emitDecodedBlock(decoded, channels);
     }
-    concealment_gain_ *= decay;
+    emitDecodedBlock(decoded, channels);
   }
 
-  void encodeDecodeFrame(std::uint32_t channels) noexcept {
-    // The transmitter always analyses the frame, so the PQMF analysis state advances even when the
-    // sink never receives the packet.
-    for (std::uint32_t block = 0u; block < active_blocks_; ++block) {
-      for (std::uint32_t channel = 0u; channel < channels; ++channel) {
-        analyze(channel, &codec_input_[channel][block * kSubbands],
-                subband_samples_[channel][block].data());
+  void emitRuntimeBlock(RuntimeFrame &frame) noexcept {
+    std::array<std::array<double, kSubbands>, 2> decoded{};
+    for (std::uint32_t channel = 0u; channel < frame.channels; ++channel) {
+      for (std::uint32_t subband = 0u; subband < kSubbands; ++subband) {
+        const std::uint32_t bit_count = frame.bits[channel][subband];
+        if (bit_count == 0u) {
+          continue;
+        }
+        const std::uint32_t levels = (1u << bit_count) - 1u;
+        const double scale = std::ldexp(1.0, frame.scale_factors[channel][subband] + 1u);
+        const double source = frame.join[subband]
+                                  ? frame.joint_samples[channel][frame.output_block][subband]
+                                  : frame.samples[channel][frame.output_block][subband];
+        double normalized = source / scale;
+        if (normalized < -1.0) {
+          normalized = -1.0;
+        } else if (normalized > 1.0) {
+          normalized = 1.0;
+        }
+        double code = std::floor((normalized + 1.0) * static_cast<double>(levels) * 0.5);
+        if (code < 0.0) {
+          code = 0.0;
+        } else if (code > static_cast<double>(levels)) {
+          code = static_cast<double>(levels);
+        }
+        const auto codeword = static_cast<std::uint16_t>(code);
+        decoded[channel][subband] =
+            scale *
+            ((static_cast<double>(codeword) * 2.0 + 1.0) / static_cast<double>(levels) - 1.0);
       }
     }
-    if (active_loss_ratio_ > 0.0 && updateLinkState()) {
-      concealFrame(channels);
+    if (frame.channels == 2u && frame.mode == ChannelMode::kJointStereo) {
+      for (std::uint32_t subband = 0u; subband + 1u < kSubbands; ++subband) {
+        if (!frame.join[subband]) {
+          continue;
+        }
+        const double sum = decoded[0][subband];
+        const double difference = decoded[1][subband];
+        decoded[0][subband] = sum + difference;
+        decoded[1][subband] = sum - difference;
+      }
+    }
+    last_good_subbands_[frame.output_block] = decoded;
+    emitDecodedBlock(decoded, frame.channels);
+  }
+
+  void advanceRuntimeFrames() noexcept {
+    if (runtime_frame_count_ == 0u) {
       return;
     }
-    prepareJointAndScaleFactors(channels);
-    allocateBits(channels);
-    quantizeLogicalFields(channels);
-    decodeLogicalFields(channels);
+    RuntimeFrame &frame = runtime_frames_[runtime_frame_head_];
+    const std::uint64_t output_frame =
+        frame.output_start_frame +
+        static_cast<std::uint64_t>(frame.output_block) * kSubbands * rate_factor_;
+    if (host_frame_sequence_ < output_frame) {
+      return;
+    }
+    if (frame.lost) {
+      concealBlock(frame.output_block, frame.blocks, frame.channels,
+                   linkProfile(frame.blocks).concealment_frame_decay);
+    } else {
+      emitRuntimeBlock(frame);
+    }
+    ++frame.output_block;
+    if (frame.output_block != frame.blocks) {
+      return;
+    }
+    if (frame.lost) {
+      concealment_gain_ *= linkProfile(frame.blocks).concealment_frame_decay;
+    } else {
+      last_good_blocks_ = frame.blocks;
+      concealment_gain_ = 1.0;
+    }
+    runtime_frame_head_ = (runtime_frame_head_ + 1u) % kRuntimeFrameSlots;
+    --runtime_frame_count_;
   }
 
   void pushInterpolatedFrame(const std::array<double, 2> &samples,
@@ -1137,8 +1347,12 @@ private:
     raw_output_write_ = (raw_output_write_ + 1u) % kRawOutputCapacity;
     if (raw_output_count_ < kRawOutputCapacity) {
       ++raw_output_count_;
+      if (raw_output_count_ > maximum_raw_output_count_) {
+        maximum_raw_output_count_ = raw_output_count_;
+      }
     } else {
       raw_output_read_ = (raw_output_read_ + 1u) % kRawOutputCapacity;
+      ++raw_output_drop_count_;
     }
   }
 
@@ -1173,15 +1387,21 @@ private:
   std::uint32_t active_blocks_ = 16u;
   std::uint32_t active_bitpool_ = 35u;
   std::uint32_t codec_input_count_ = 0u;
+  std::uint32_t runtime_frame_head_ = 0u;
+  std::uint32_t runtime_frame_count_ = 0u;
   std::uint32_t raw_output_read_ = 0u;
   std::uint32_t raw_output_write_ = 0u;
   std::uint32_t raw_output_count_ = 0u;
+  std::uint32_t maximum_runtime_frame_count_ = 0u;
+  std::uint32_t maximum_raw_output_count_ = 0u;
+  std::uint32_t raw_output_drop_count_ = 0u;
   std::uint32_t delay_position_ = 0u;
   std::uint32_t latency_samples_ = 0u;
   std::uint32_t wet_delay_samples_ = 0u;
   std::uint32_t last_good_blocks_ = 0u;
   std::uint32_t selected_seed_low_ = static_cast<std::uint32_t>(dsp::XorShiftRng::kFallbackSeed);
   std::uint32_t selected_seed_high_ = 0u;
+  std::uint64_t host_frame_sequence_ = 0u;
   bool supported_ = false;
   ChannelMode active_mode_ = ChannelMode::kJointStereo;
   bool initialized_controls_ = false;
@@ -1200,6 +1420,7 @@ private:
   std::vector<dsp::Halfband2x> output_resamplers_;
   std::vector<std::array<double, kMaximumCodecFrameSamples>> codec_input_;
   std::vector<std::array<std::array<double, kSubbands>, kMaximumBlocks>> subband_samples_;
+  std::vector<RuntimeFrame> runtime_frames_;
   std::array<std::array<std::uint8_t, kSubbands>, 2> scale_factor_fields_{};
   std::array<std::array<std::uint8_t, kSubbands>, 2> bits_{};
   std::vector<std::array<std::array<std::uint16_t, kSubbands>, 2>> codewords_;
@@ -1228,6 +1449,14 @@ bool test::encodeBluetoothSbcTestFrame(const test::BluetoothSbcPcm &input,
   kernel.prepare({48000.0F, 2u, kMaximumCodecFrameSamples});
   return kernel.preparedSuccessfully() &&
          kernel.encodeTestFrame(input, channel_mode, blocks, bitpool, output);
+}
+
+extern "C" std::uint32_t et_test_bluetooth_sbc_runtime_stat(PluginKernel *kernel,
+                                                            std::uint32_t index) noexcept {
+  if (kernel == nullptr) {
+    return 0u;
+  }
+  return static_cast<BluetoothSBCSimulatorKernel *>(kernel)->runtimeTestStat(index);
 }
 #endif
 

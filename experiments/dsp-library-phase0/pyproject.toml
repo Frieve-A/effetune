@@ -13,5 +13,5 @@ requires-python = ">=3.10"
 dependencies = ["numpy>=1.26"]
 
 [tool.scikit-build]
-build-dir = "../../.tmp/dsp-library-phase0/build/{wheel_tag}"
+build-dir = "../../out/dsp-library-phase0/build/{wheel_tag}"
 wheel.packages = ["python/effetune_phase0"]

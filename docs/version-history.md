@@ -6,10 +6,12 @@ lang: en
 
 # Version History
 
-### Version 2.6.0 (TBD, 2026)
+### Version 2.6.0 (Aug 25, 2026)
 - Added Group Delay PEQ and MD Simulator effects
 - Improved Tube Simulator with an output transformer magnetics model and a selectable operating-point graph
 - Improved Room EQ with reverberation correction and per-channel measurement assignment
+- Improved Phase Select EQ with left/right Balance selection alongside frequency and phase
+- Improved playback stability when using effects that utilize FFT
 - Various minor improvements
 
 ### Version 2.5.0 (Aug 14, 2026)

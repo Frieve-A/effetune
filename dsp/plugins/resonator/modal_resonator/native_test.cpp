@@ -240,8 +240,8 @@ void testParameterChangesPreserveDelayAndFilterState() {
   MODAL_CHECK(actual != expected);
   MODAL_CHECK(
       std::any_of(actual.begin(), actual.end(), [](float sample) { return sample != 0.0F; }));
-  MODAL_CHECK(
-      std::all_of(expected.begin(), expected.end(), [](float sample) { return sample == 0.0F; }));
+  MODAL_CHECK(std::all_of(expected.begin(), expected.end(),
+                          [](float sample) { return std::fabs(sample) <= 1.0e-12F; }));
 }
 
 void testBlockSizeChangesPreserveState() {

@@ -21,7 +21,7 @@
     "policy": "per-sample"
   },
   "referenceEngine": "production-native-promoted-v1",
-  "referenceHash": "sha256:d8dd3cd4c50dbb39a8b6dba336f59b3793a1d104dec1cbb70f17e69a32ff25d4",
+  "referenceHash": "sha256:41f07224902043d089f185138ee678ad6ba566dd82e8bbe776c342429e0ace42",
   "generationCommand": "node tools/dsp-parity/generate.mjs --type PitchShifterHQPlugin --promote-production-native",
   "outputFloats": 14338,
   "byteLength": 57352,

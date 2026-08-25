@@ -11,8 +11,15 @@
 #include <cstring>
 #include <initializer_list>
 #include <span>
+#include <thread>
 #include <type_traits>
 #include <vector>
+
+#if !defined(__EMSCRIPTEN__) &&                                                                    \
+    (defined(_M_IX86) || defined(_M_X64) || defined(__i386__) || defined(__x86_64__))
+#include <xmmintrin.h>
+#define ET_TEST_HAS_X86_MXCSR 1
+#endif
 
 namespace effetune::test {
 namespace {
@@ -37,6 +44,65 @@ void testAllocationGuardScope() {
     ET_CHECK(allocation_guard::active() == ((et_build_flags() & ET_BUILD_DEBUG) != 0u));
   }
   ET_CHECK(!allocation_guard::active());
+}
+
+void testAudioThreadEnablesDenormalFlush() {
+#if defined(ET_TEST_HAS_X86_MXCSR)
+  Engine engine;
+  ET_CHECK(engine.prepare(48000.0F, 2u, 128u, 0u) == ET_OK);
+  const et_instance instance = engine.createInstance("TestGainPlugin");
+  ET_CHECK(instance != 0u);
+  const float gain = 1.0F;
+  ET_CHECK(engine.setInstanceParams(instance, &gain, 1u, kTestHash, 0u) == ET_OK);
+  std::array<std::uint8_t, 20> pipeline{};
+  pipeline[0] = 1u;
+  pipeline[4] = 1u;
+  pipeline[8] = static_cast<std::uint8_t>(instance);
+  pipeline[9] = static_cast<std::uint8_t>(instance >> 8u);
+  pipeline[10] = static_cast<std::uint8_t>(instance >> 16u);
+  pipeline[11] = static_cast<std::uint8_t>(instance >> 24u);
+  pipeline[12] = 1u;
+  pipeline[15] = static_cast<std::uint8_t>(-2);
+  pipeline[16] = 1u;
+  ET_CHECK(engine.configurePipeline(pipeline.data(), static_cast<std::uint32_t>(pipeline.size())) ==
+           ET_OK);
+
+  const auto entryEnablesFlush = [&](auto process, et_status expectedStatus) {
+    bool enabled = false;
+    std::thread audioThread([&]() {
+      constexpr unsigned int kFlushToZero = 1u << 15u;
+      constexpr unsigned int kDenormalsAreZero = 1u << 6u;
+      const unsigned int original = _mm_getcsr();
+      const unsigned int sentinel = (original & ~(kFlushToZero | kDenormalsAreZero)) | (1u << 13u);
+      _mm_setcsr(sentinel);
+      const et_status status = process();
+      const unsigned int configured = _mm_getcsr();
+      enabled =
+          status == expectedStatus &&
+          (configured & (kFlushToZero | kDenormalsAreZero)) == (kFlushToZero | kDenormalsAreZero) &&
+          (configured & (1u << 13u)) != 0u;
+      _mm_setcsr(original);
+    });
+    audioThread.join();
+    return enabled;
+  };
+
+  std::array<float, 8> instanceAudio{};
+  ET_CHECK(entryEnablesFlush(
+      [&]() { return engine.processInstance(instance, instanceAudio.data(), 2u, 4u, 0.0); },
+      ET_OK));
+  ET_CHECK(entryEnablesFlush([&]() { return engine.processPipeline(2u, 4u, 0.0, 0u); }, ET_OK));
+  ET_CHECK(entryEnablesFlush([&]() { return engine.processGraph(2u, 4u, 0.0); }, ET_ERR_STATE));
+  ET_CHECK(entryEnablesFlush(
+      [&]() -> et_status {
+        if (engine.processInstance(instance, instanceAudio.data(), 2u, 4u, 0.0) != ET_OK ||
+            engine.processPipeline(2u, 4u, 0.0, 0u) != ET_OK) {
+          return ET_ERR_ARGS;
+        }
+        return engine.processGraph(2u, 4u, 0.0);
+      },
+      ET_ERR_STATE));
+#endif
 }
 
 void testNothrowStorageContract() {
@@ -513,6 +579,7 @@ void testAssetLifecycle() {
 
 void runAbiTests() {
   testAllocationGuardScope();
+  testAudioThreadEnablesDenormalFlush();
   testNothrowStorageContract();
   testDiscoveryAndLifecycle();
   testPipelineValidationAndRouting();

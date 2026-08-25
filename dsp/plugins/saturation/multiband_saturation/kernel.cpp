@@ -1,5 +1,6 @@
 #include "effetune/kernel.h"
 #include "MultibandSaturationPluginParams.h"
+#include "effetune/dsp/denormal_noise.h"
 #include "effetune/dsp/linkwitz_riley.h"
 
 #include <algorithm>
@@ -76,6 +77,7 @@ public:
     fade_length_ = 0u;
     controls_initialized_ = false;
     control_ramp_remaining_ = 0u;
+    denormal_noise_.reset();
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -166,6 +168,7 @@ public:
       fade_present_ = false;
     }
     advanceControls(frame_count);
+    denormal_noise_.advance(frame_count);
   }
 
 private:
@@ -225,12 +228,11 @@ private:
     return highpass_states_[static_cast<std::size_t>(crossover) * max_channels_ + channel];
   }
 
-  static void filterBlock(const float *input, float *output,
-                          const dsp::BiquadCoefficients &coefficients,
-                          dsp::LinkwitzRiley24State &state, std::uint32_t frame_count) noexcept {
+  void filterBlock(const float *input, float *output, const dsp::BiquadCoefficients &coefficients,
+                   dsp::LinkwitzRiley24State &state, std::uint32_t frame_count) noexcept {
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-      output[frame] = static_cast<float>(dsp::processLinkwitzRiley24Sample(
-          static_cast<double>(input[frame]), coefficients, state));
+      output[frame] = static_cast<float>(dsp::processLinkwitzRiley24SampleWithDenormalNoise(
+          static_cast<double>(input[frame]), coefficients, state, denormal_noise_.sample(frame)));
     }
   }
 
@@ -263,6 +265,7 @@ private:
   std::array<double, 12u> control_steps_{};
   std::uint32_t ramp_frames_ = 240u;
   std::uint32_t control_ramp_remaining_ = 0u;
+  dsp::NyquistDenormalNoise denormal_noise_;
 };
 
 static_assert(sizeof(MultibandSaturationKernel) <= 8192u);

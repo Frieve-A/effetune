@@ -13,7 +13,7 @@ lang: hi
 - [Crossfeed Filter](#crossfeed-filter) - प्राकृतिक स्टीरियो इमेज के लिए हेडफोन क्रॉसफीड फ़िल्टर
 - [MS Matrix](#ms-matrix) - advanced stereo adjustment chains के लिए stereo को Mid/Side में और वापस stereo में बदलता है
 - [Multiband Balance](#multiband-balance) - 5-बैंड आवृत्ति-आधारित स्टीरियो संतुलन नियंत्रण
-- [Phase Select EQ](#phase-select-eq) - L/R phase difference से चुने गए frequency components को boost या cut करता है
+- [Phase Select EQ](#phase-select-eq) - L/R phase difference और Balance से चुने गए frequency components को boost या cut करता है
 - [Stereo Blend](#stereo-blend) - polarity-swapped stereo से mono और enhanced stereo तक stereo width नियंत्रित करता है
 
 ## Crossfeed Filter
@@ -241,26 +241,32 @@ MS Matrix normal stereo audio को Mid/Side format में बदलता �
 
 ## Phase Select EQ
 
-Phase Select EQ बाएँ और दाएँ चैनल के बीच absolute phase difference के आधार पर stereo signal के खास frequency components को boost या cut करता है। यह दोनों channel spectra पर एक जैसा positive gain लगाता है, इसलिए phase difference को घुमाता, सुधारता या नया phase difference बनाता नहीं है। जब कोई ध्वनि किसी खास frequency और stereo phase क्षेत्र में हो और केवल frequency पर आधारित सामान्य EQ उसे अलग न कर पाए, तब इसका उपयोग करें।
+Phase Select EQ frequency, absolute L/R phase difference और L/R level balance के आधार पर stereo components को boost या cut करता है। केवल वे components process होते हैं जो तीनों ranges में आते हैं। यह दोनों spectra पर एक जैसा positive gain लगाता है, इसलिए phase difference नहीं बदलता। समान frequencies पर centered sound को wide या एक ओर panned sound से सामान्य EQ अलग न कर पाए, तब इसका उपयोग करें।
 
 पाँच स्वतंत्र Bands हमेशा उपलब्ध रहते हैं। हर Band में **Core** होता है, जहाँ Gain पूरी तरह लागू होता है, और **Transition**, जहाँ multiplier धीरे-धीरे 100% पर लौटता है। overlap होने वाले Bands के Gains गुणा होते हैं; उदाहरण के लिए 150% और 50% मिलकर 75% देते हैं। कई boosts signal को 0 dBFS से ऊपर ले जा सकते हैं, इसलिए पर्याप्त headroom रखें और bypass से तुलना करें।
 
 Phase Select EQ द्वारा बताई गई processing latency, FFT size और Hop size का योग है। 48 kHz पर यह 4,096 + 1,024 = 5,120 samples, यानी लगभग 106.7 ms होती है (44.1 kHz पर लगभग 116.1 ms)। पूरी chain की delay ऐप के **Total Delay** में देखी जा सकती है। यह latency real-time monitoring और audio/video synchronization को प्रभावित कर सकती है।
 
-### Phase map को कैसे पढ़ें
+### Selection map को कैसे पढ़ें
 
 - vertical axis logarithmic frequency दिखाता है: कम frequencies नीचे और अधिक frequencies ऊपर होती हैं।
-- horizontal axis signed L/R phase difference दिखाता है: बीच में 0° in-phase है, जबकि किनारों पर -180° और +180° एक ही opposite-phase बिंदु हैं।
+- **Phase** और **Balance** options horizontal axis बदलते हैं; Phase या Balance control edit करने पर संबंधित view अपने-आप खुलता है। Phase view में 0° बीच में है, जबकि -180° और +180° एक ही opposite-phase point हैं। selection **absolute** difference का उपयोग करता है, इसलिए frame 0° के दोनों ओर mirror होता है और +60° तथा -60° को एक जैसा process करता है। Balance view में 50:50 बीच में, बायाँ सिरा केवल left channel और दायाँ सिरा केवल right channel है। Balance का सूत्र `(right amplitude - left amplitude) / (left amplitude + right amplitude) × 100%` है; negative values left और positive values right को favor करती हैं। frame एक rectangle है, mirrored pair नहीं।
 - हर dot हाल में मापे गए input component को दिखाता है। मजबूत components बड़े और चमकीले दिखते हैं; पुराने dots धीरे-धीरे मिटते हैं।
 - मापे गए components सफेद dots के रूप में दिखते हैं। केवल enabled Bands के frames दिखते हैं; edit हो रहा Band चमकीला हरा और अन्य enabled Bands हल्के हरे होते हैं। Core के ऊपर-बाएँ का अंक Band number बताता है।
+- हर Core number के पास छोटा badge उस Band की hidden-axis selection की चारों सीमाएँ दिखाता है। उदाहरण के लिए `P 20°›40°–80°›100°` का अर्थ Phase outer low › Core low–high › outer high है। Balance में यही क्रम left:right ratio के रूप में दिखता है, जैसे `B 100:0›80:20–70:30›0:100`। `P full` या `B full` का अर्थ है कि वह Band hidden axis को सीमित नहीं करता।
 - selection phase difference के **absolute value** पर आधारित है। इसलिए एक logical region 0° के दोनों ओर mirror होता है और +60° तथा -60° को एक जैसा process करता है। L/R बदलने पर dots mirror होते हैं, पर processing target नहीं बदलता।
 - स्पष्ट सीमा वाला अंदरूनी भाग Core और हल्का बाहरी भाग Transition है। 0° को शामिल करने वाला region बीच में जुड़ता है; 180° तक पहुँचने वाला region map के दोनों किनारों से जारी रहता है।
+- Graph options के पास badge hidden axis की Core range और जरूरत होने पर Transition range दिखाता है। selected Band जिस dot को hidden axis पर reject करता है वह dim दिखता है। केवल left channel में मौजूद component Balance -100% और Phase -180° पर, जबकि केवल right channel वाला component Balance +100% और Phase +180° पर दिखता है।
+
+Balance grid left:right ratio दिखाता है। Balance 0%, ±17%, ±33%, ±60%, ±82% और ±100% क्रमशः 50:50 और किसी भी दिशा में लगभग 59:41, 67:33, 80:20, 91:9 तथा 100:0 के बराबर हैं। L/R level difference लगभग 0, ±3, ±6, ±12 और ±20 dB है; ±100% का अर्थ केवल एक channel में signal है।
 
 ### ध्वनि सुधार गाइड
 
 1. **बहुत फैले हुए high frequencies की तीक्ष्णता कम करें**: Band को लगभग 4–12 kHz और 90–180° पर रखें। 70–90% और चौड़े transitions से शुरू करें।
 2. **केंद्रित vocals को अधिक presence दें**: Band को लगभग 1–4 kHz और 0–30° पर रखें। 110–125% से शुरू करें।
 3. **फैले हुए low-mid ambience को नियंत्रित करें**: Band को लगभग 150–600 Hz और 60–150° पर रखें। 80–90% से शुरू करें और transitions चौड़े करें।
+4. **hard-panned instrument कम करें**: Balance में left के लिए -100% से -70% या right के लिए +70% से +100% चुनें और frequency range सीमित करें। एक-channel points -180° या +180° को शामिल करने के लिए Phase Core को 150–180° रखें; यदि selection केवल Balance से करनी हो तो पूरा 0–180° Phase Core चुनें। 70–90% Gain से शुरू करें।
+5. **centered source बढ़ाएँ**: Balance -17% से +17% और Phase 0–30° चुनें, frequency range सीमित करें और 105–120% Gain से शुरू करें।
 
 ये phase ranges सामान्य रुझान हैं, sound sources की तय positions नहीं। recording में dots जहाँ वास्तव में दिखाई दें वहाँ देखकर छोटे बदलाव करें, फिर headphones और speakers दोनों पर परिणाम जाँचें।
 
@@ -268,12 +274,14 @@ Phase Select EQ द्वारा बताई गई processing latency, FFT s
 
 - **Band 1-5 / checkbox** (Off/On): edit करने के लिए Band चुनता है और settings बदले बिना उसे चालू या बंद करता है।
 - **Gain** (0% से 200%): Core के भीतर level multiplier तय करता है। 100% level नहीं बदलता, 0% selected component हटाता है और 200% amplitude दोगुना करता है।
+- **Solo** (Off/On): Solo चालू किए गए Band जिस हिस्से को चुनते हैं, केवल वही सुनाई देता है। किसी भी चालू Band पर Solo On रहते हुए Gain लागू नहीं होता और उन Band के बाहर की हर चीज़ म्यूट हो जाती है; किनारों पर Transition का वही smooth fade बना रहता है। एक साथ कई Band पर Solo चालू करने पर उनके चुने हुए क्षेत्रों का संयोजन सुनाई देता है। सभी Solo बंद करते ही सामान्य processing लौट आती है।
 - **Core Low Frequency / Core High Frequency** (20 Hz से 40 kHz, current sample rate की सीमा के अनुसार): 100% processed frequency range तय करते हैं।
 - **Core Low Phase / Core High Phase** (0° से 180°): 100% processed absolute L/R phase-difference range तय करते हैं।
+- **Outer Low Balance / Core Low Balance / Core High Balance / Outer High Balance** (-100% से +100%): Balance की चारों boundaries सीधे तय करते हैं। Core pair पूरी तरह processed L/R amplitude-balance range तय करता है; Outer pair वह जगह तय करता है जहाँ Transition में processing शून्य हो जाती है। negative values left और positive values right चुनती हैं।
 - **Low Frequency Transition / High Frequency Transition**: frequency Core के नीचे और ऊपर effect के fade की दूरी तय करते हैं।
 - **Low Phase Transition / High Phase Transition**: 0° और 180° की ओर effect के fade की दूरी तय करते हैं।
 
-Map handles वही values बदलते हैं जो numeric controls बदलते हैं: Core के अंदर drag करके उसे ले जाएँ, edges या corners drag करके उसका आकार बदलें, और outer-edge handles से हर Transition अलग-अलग बदलें। जब Core में 0° शामिल हो, center line पर split handle से उसे दो symmetric हिस्सों में बाँट सकते हैं। सभी values precise या keyboard editing के लिए labeled numeric inputs में भी उपलब्ध रहती हैं।
+Map handles, sliders और numeric inputs वही values बदलते हैं। mouse या touch से selected Band के outer frame के अंदर drag करके पूरा Band ले जाएँ, Core के edges या corners drag करके उसका आकार बदलें, और outer-edge handles से हर Transition अलग-अलग बदलें। low-phase handle center पर रुकता है: Core Low Phase 0° पर और Low Phase Transition अपनी maximum width पर रुकता है। Core Low Phase ठीक 0° हो तो center handle शुरू में किसी भी तरफ जा सकता है; पहली movement के बाद drag समाप्त होने तक उसी तरफ lock रहता है।
 
 ## Stereo Blend
 

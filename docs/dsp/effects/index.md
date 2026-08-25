@@ -134,7 +134,7 @@ Browse all 92 semantic types registered in the v1 binding catalog. The list rema
 - [Crossfeed Filter](/dsp/effects/crossfeed-filter/) (`CrossfeedFilter`) — Feeds a filtered portion of each stereo channel into the opposite channel. <span data-effect-tags="spatial  "></span>
 - [MS Matrix](/dsp/effects/ms-matrix/) (`MSMatrix`) — Encodes, decodes, or adjusts mid-side stereo components. <span data-effect-tags="spatial  "></span>
 - [Multiband Balance](/dsp/effects/multiband-balance/) (`MultibandBalance`) — Adjusts left-right balance independently across frequency bands. <span data-effect-tags="spatial  "></span>
-- [Phase Select EQ](/dsp/effects/phase-select-eq/) (`PhaseSelectEQ`) — Applies gain only where the stereo phase difference falls within configured frequency-and-phase regions. <span data-effect-tags="spatial  "></span>
+- [Phase Select EQ](/dsp/effects/phase-select-eq/) (`PhaseSelectEQ`) — Applies gain only where frequency, absolute stereo phase difference, and left/right Balance fall within configured regions. <span data-effect-tags="spatial  "></span>
 - [Stereo Blend](/dsp/effects/stereo-blend/) (`StereoBlend`) — Blends stereo channels to adjust width and channel separation. <span data-effect-tags="spatial  "></span>
 
 ## Others

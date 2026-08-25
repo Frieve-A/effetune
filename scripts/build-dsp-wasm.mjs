@@ -15,7 +15,7 @@ import {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dspRoot = path.join(repoRoot, 'dsp');
-const buildRoot = path.join(dspRoot, 'build');
+const buildRoot = path.join(repoRoot, 'out', 'dsp');
 const artifactsRoot = path.join(repoRoot, 'plugins', 'dsp');
 const generator = path.join(repoRoot, 'scripts', 'gen-dsp-params.mjs');
 const g726PerformanceInputsSource = path.join(
@@ -87,7 +87,7 @@ function copyIfChanged(source, destination) {
 function resetBuildDirectory(directory) {
   const relative = path.relative(buildRoot, directory);
   if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) {
-    fail(`refusing to reset build directory outside dsp/build: ${directory}`);
+    fail(`refusing to reset build directory outside out/dsp: ${directory}`);
   }
   fs.rmSync(directory, {
     recursive: true,
@@ -256,7 +256,7 @@ export function emscriptenExecutableName(name, windows = isWindows) {
 
 function emsdkPaths() {
   const pinned = fs.readFileSync(path.join(dspRoot, 'EMSDK_VERSION'), 'utf8').trim();
-  const root = path.resolve(process.env.EMSDK || path.join(dspRoot, '.emsdk'));
+  const root = path.resolve(process.env.EMSDK || path.join(repoRoot, '.emsdk'));
   const emscripten = path.join(root, 'upstream', 'emscripten');
   const findCommand = name => {
     const candidate = path.join(emscripten, emscriptenExecutableName(name));

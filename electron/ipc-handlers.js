@@ -191,6 +191,21 @@ function audioPipelineConfigurationEqual(left, right) {
 
 function canPersistAudioPreferencesWithoutReload(previousPreferences, nextPreferences, options) {
   const applyInPlace = options?.applyInPlace;
+  if (applyInPlace === 'output-device-fallback') {
+    const previousOutputDeviceId = previousPreferences?.outputDeviceId;
+    if (!previousOutputDeviceId || previousOutputDeviceId === 'default' ||
+        nextPreferences?.outputDeviceId !== 'default' ||
+        (nextPreferences.outputDeviceLabel ?? '') !== '') {
+      return false;
+    }
+    const ignoredKeys = new Set(['outputDeviceId', 'outputDeviceLabel']);
+    const keys = new Set([
+      ...Object.keys(previousPreferences || {}),
+      ...Object.keys(nextPreferences || {})
+    ]);
+    return [...keys].every(key => ignoredKeys.has(key) ||
+      Object.is(previousPreferences?.[key], nextPreferences?.[key]));
+  }
   if (!audioPipelineConfigurationEqual(previousPreferences, nextPreferences)) return false;
   if (applyInPlace === 'silent-input') {
     return nextPreferences?.inputDeviceId === NO_AUDIO_INPUT_DEVICE_ID &&

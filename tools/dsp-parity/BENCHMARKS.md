@@ -1123,7 +1123,7 @@ but does not allow it with JS/native in the same invocation, so each point used 
 commands (with the effect-specific parameters below):
 
 ```text
-node tools/dsp-parity/bench.mjs --type <type> --modes js,native --sample-rates <rate> --channels <channels> --block-size 128 --duration 0.25 --warmup 1 --repetitions 3 --native-runner dsp/build/fix6-rotary-msvc/Release/effetune-dsp-parity-runner.exe --params '<params>'
+node tools/dsp-parity/bench.mjs --type <type> --modes js,native --sample-rates <rate> --channels <channels> --block-size 128 --duration 0.25 --warmup 1 --repetitions 3 --native-runner out/dsp/fix6-rotary-msvc/Release/effetune-dsp-parity-runner.exe --params '<params>'
 node tools/dsp-parity/bench.mjs --type <type> --modes wasm,simd --sample-rates <rate> --channels <channels> --block-size 128 --duration 0.25 --warmup 1 --repetitions 3 --quantum-stats --params '<params>'
 ```
 

@@ -8202,6 +8202,93 @@
                 100,
                 100
               ]
+            },
+            "regionSolo": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "boolean"
+              },
+              "default": [
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            "outerBalanceLow": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": -100,
+                "maximum": 100,
+                "x-effetune-unit": "%"
+              },
+              "default": [
+                -100,
+                -100,
+                -100,
+                -100,
+                -100
+              ]
+            },
+            "coreBalanceLow": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": -100,
+                "maximum": 100,
+                "x-effetune-unit": "%"
+              },
+              "default": [
+                -100,
+                -100,
+                -100,
+                -100,
+                -100
+              ]
+            },
+            "coreBalanceHigh": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": -100,
+                "maximum": 100,
+                "x-effetune-unit": "%"
+              },
+              "default": [
+                100,
+                100,
+                100,
+                100,
+                100
+              ]
+            },
+            "outerBalanceHigh": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": -100,
+                "maximum": 100,
+                "x-effetune-unit": "%"
+              },
+              "default": [
+                100,
+                100,
+                100,
+                100,
+                100
+              ]
             }
           }
         }

@@ -1,6 +1,7 @@
 #ifndef EFFETUNE_PLUGINS_DYNAMICS_MULTIBAND_COMMON_H
 #define EFFETUNE_PLUGINS_DYNAMICS_MULTIBAND_COMMON_H
 
+#include "effetune/dsp/denormal_noise.h"
 #include "effetune/dsp/linkwitz_riley.h"
 #include "effetune/kernel.h"
 
@@ -43,6 +44,7 @@ public:
     frequencies_.fill(0.0F);
     channel_count_ = 0u;
     configured_ = false;
+    denormal_noise_.reset();
   }
 
   [[nodiscard]] CrossoverChange
@@ -100,6 +102,7 @@ public:
       filterBlock(highpass1_.data(), band(channel, 4u), coefficients_[3u].highpass,
                   highpassState(3u, channel), frame_count);
     }
+    denormal_noise_.advance(frame_count);
   }
 
   [[nodiscard]] float *band(std::uint32_t channel, std::uint32_t band_index) noexcept {
@@ -121,8 +124,8 @@ private:
   void filterBlock(const float *input, float *output, const dsp::BiquadCoefficients &coefficients,
                    dsp::LinkwitzRiley24State &state, std::uint32_t frame_count) noexcept {
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-      output[frame] = static_cast<float>(dsp::processLinkwitzRiley24Sample(
-          static_cast<double>(input[frame]), coefficients, state));
+      output[frame] = static_cast<float>(dsp::processLinkwitzRiley24SampleWithDenormalNoise(
+          static_cast<double>(input[frame]), coefficients, state, denormal_noise_.sample(frame)));
     }
     if (state_storage_ == dsp::LinkwitzRileyStateStorage::Float32) {
       dsp::quantizeLinkwitzRiley24StateToFloat(state);
@@ -152,6 +155,7 @@ private:
   std::uint32_t max_frames_ = 0u;
   std::uint32_t channel_count_ = 0u;
   dsp::LinkwitzRileyStateStorage state_storage_ = dsp::LinkwitzRileyStateStorage::Float32;
+  dsp::NyquistDenormalNoise denormal_noise_;
   bool configured_ = false;
 };
 

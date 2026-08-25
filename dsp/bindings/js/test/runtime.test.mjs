@@ -34,6 +34,7 @@ import {
   isBundleDocument
 } from '../dist/index.js';
 import { loadDspArtifact } from '../dist/artifacts.js';
+import { DENORMAL_NOISE_AMPLITUDE } from '../dist/denormal-noise.js';
 import {
   _EFFECT_IMPLEMENTATION,
   createEffect
@@ -42,6 +43,19 @@ import { normalizeChainDocument, packEffect } from '../dist/semantics.js';
 
 function constantAudio(channels, frames, value = 1) {
   return Array.from({ length: channels }, () => new Float32Array(frames).fill(value));
+}
+
+function assertDenormalProtectedAudio(actual, expected, frameOrigin = 0) {
+  assert.equal(actual.length, expected.length);
+  for (let channel = 0; channel < expected.length; channel++) {
+    assert.equal(actual[channel].length, expected[channel].length);
+    for (let frame = 0; frame < expected[channel].length; frame++) {
+      const noise = ((frameOrigin + frame) & 1) === 0
+        ? DENORMAL_NOISE_AMPLITUDE
+        : -DENORMAL_NOISE_AMPLITUDE;
+      assert.equal(actual[channel][frame], Math.fround(expected[channel][frame] + noise));
+    }
+  }
 }
 
 function planarChannels(data, channels, frames) {
@@ -793,7 +807,7 @@ test('all five analyzer telemetry decoders expose semantic observations', async 
       const unsubscribe = stream.subscribe(callback);
       try {
         const output = await stream.process(input);
-        assert.deepEqual(output, input);
+        assertDenormalProtectedAudio(output, input);
         assert.ok(received.length > 0);
         const frame = received.at(-1);
         assert.equal(frame.kind, analyzer.kind);
@@ -829,7 +843,7 @@ test('offline analyzer processing accepts a semantic telemetry callback', async 
       blockSize: 128,
       onTelemetry: frame => received.push(frame)
     });
-    assert.deepEqual(output, input);
+    assertDenormalProtectedAudio(output, input);
     assert.ok(received.some(frame =>
       frame.kind === 'level' &&
       frame.effectType === 'LevelMeter' &&

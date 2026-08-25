@@ -158,7 +158,7 @@ export function defaultMp3ProductionDiagnosticPath(repoRoot) {
   const executable = process.platform === 'win32'
     ? 'effetune_dsp_mp3_codec_simulator_tests.exe'
     : 'effetune_dsp_mp3_codec_simulator_tests';
-  return path.join(repoRoot, 'dsp', 'build', 'native', executable);
+  return path.join(repoRoot, 'out', 'dsp', 'native', executable);
 }
 
 function parseProductionDiagnosticBytes(bytes) {

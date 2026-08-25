@@ -515,7 +515,8 @@ private:
 
   void updatePreparationState() noexcept {
     if (asset_state_ == ET_ASSET_STATE_PREPARING &&
-        convolver_.state() == dsp::ConvolverPreparationState::active) {
+        convolver_.state() == dsp::ConvolverPreparationState::active &&
+        wet_fade_out_remaining_ == 0u) {
       asset_state_ = ET_ASSET_STATE_ACTIVE;
       wet_fade_in_remaining_ = kFadeFrames;
     }

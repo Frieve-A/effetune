@@ -40,8 +40,8 @@
 // both start from the same fresh state, so reset() here re-reads the checkpoint
 // and throws instead of returning a session that measures residue.
 //
-// Provenance warning: the manifests under
-// tests/fixtures/tube-simulator/lineamp-v1/manifests/ record this path with
+// Provenance warning: the local manifests under
+// tmp/dev/tube-simulator-lineamp/lineamp-v1/manifests/ record this path with
 // sha256 e278300b05177aa6a84ce34e7cc9b923410aa6932f8b561dec291824fa548db4. That
 // is the ORIGINAL file's hash. This file is the 2026-08-16 reconstruction and is
 // a different artifact; its hash will never match the manifest entry, and the

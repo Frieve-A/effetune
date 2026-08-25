@@ -1,11 +1,11 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:0b95dc16db110d274a825f59b322daa8600b969fdc4061bc1f6a4e8806f3d59e",
+  "sourceDigest": "sha256:fc497a5272aca1a66a7629a03ee8470bcf712d75c3f11cdb50beeac49da4125a",
   "emsdkVersion": "6.0.2",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:752cb6471ba4a347f9969e54a3cd29911a9581c96ae43ea04c6477dd6a1830e2",
+    "digest": "sha256:0dab4b4c5ba1de2a9998e5f2e8bee1b3d31b654b1029fa1be0c677ef6aa295d1",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
@@ -35,7 +35,7 @@
       {
         "id": "dsp/core/engine.cpp",
         "kind": "file",
-        "sha256": "sha256:45cf7bd7e67de88f6edb3bbac09d87cd5b75974becaea435f7546f9374e693b3"
+        "sha256": "sha256:2d492ff232ddc0d6b64843dba7a08d3f2834c9bb4b0ee923d9a93e2b71c29ec2"
       },
       {
         "id": "dsp/core/engine.h",
@@ -160,7 +160,7 @@
       {
         "id": "tools/dsp-parity/runners.mjs",
         "kind": "file",
-        "sha256": "sha256:d3c309effafa0edf5ca3216fc4e013a96bafb9de235219a90bde9eff9a9bec42"
+        "sha256": "sha256:fe1da8063d168c1b9f142a6217a097230bbf8783bd1d8f4bcb8ac807d78d862f"
       },
       {
         "id": "tools/dsp-parity/stimuli.mjs",
@@ -987,7 +987,7 @@
     },
     {
       "name": "PhaseSelectEqPlugin",
-      "hash": 4158366201,
+      "hash": 1371985786,
       "byteCapacity": 0,
       "assets": []
     },
@@ -999,7 +999,7 @@
     }
   ],
   "sizes": {
-    "baseline": 1092570,
-    "simd": 1203319
+    "baseline": 1167544,
+    "simd": 1286159
   }
 }

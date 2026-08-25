@@ -10,7 +10,7 @@ const repoRoot = path.resolve(sourceRoot, '..', '..');
 const packageRoot = path.join(repoRoot, 'dsp', 'bindings', 'js');
 const packageDist = path.join(packageRoot, 'dist');
 const schemaRoot = path.join(repoRoot, 'dsp', 'bindings', 'schema');
-const demoOutputRoot = path.join(sourceRoot, 'dist');
+const demoOutputRoot = path.join(repoRoot, 'out', 'examples', 'dsp-library');
 const siteOutputRoot = path.join(repoRoot, '_site', 'dsp');
 const demoManifestFormat = 'effetune-dsp-demo-build-v1';
 const demoSourceFiles = Object.freeze(['index.html', 'app.js', 'styles.css']);
@@ -126,7 +126,7 @@ function buildDemo(outputRoot) {
 
 function parseOutput(args) {
   const index = args.indexOf('--output');
-  if (index === -1) return path.join(sourceRoot, 'dist');
+  if (index === -1) return demoOutputRoot;
   if (!args[index + 1]) throw new Error('--output requires a directory.');
   return path.resolve(process.cwd(), args[index + 1]);
 }

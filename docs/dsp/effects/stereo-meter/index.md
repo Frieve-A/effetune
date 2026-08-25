@@ -43,6 +43,7 @@ A fascinating visualization tool that lets you see how your music creates a sens
   - Sounds that are much stronger on one side can appear toward the labeled corners
   - Green dots dance with the current music
   - White line traces the musical peaks
+  - The white peak line decays with every audio sample, so its movement stays consistent regardless of the audio processing block size
 - **Correlation Bar** (Left side)
   - Shows left/right channel correlation
   - Top (+1.0): Left and right are nearly the same, often sounding centered

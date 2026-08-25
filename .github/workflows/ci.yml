@@ -348,13 +348,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sidecar="native/openhome-sidecar/build/linux-x64/effetune-openhome-sidecar"
+          sidecar="out/native/openhome-sidecar/linux-x64/effetune-openhome-sidecar"
           dependencies="$(readelf -d "$sidecar")"
           grep -F 'Shared library: [libnl-3.so.' <<<"$dependencies"
           grep -F 'Shared library: [libnl-genl-3.so.' <<<"$dependencies"
           grep -F 'Library runpath: [$ORIGIN]' <<<"$dependencies"
-          ldd "$sidecar" | grep -F "$PWD/native/openhome-sidecar/build/linux-x64/libnl-3.so."
-          ldd "$sidecar" | grep -F "$PWD/native/openhome-sidecar/build/linux-x64/libnl-genl-3.so."
+          ldd "$sidecar" | grep -F "$PWD/out/native/openhome-sidecar/linux-x64/libnl-3.so."
+          ldd "$sidecar" | grep -F "$PWD/out/native/openhome-sidecar/linux-x64/libnl-genl-3.so."
 
   codeql-javascript:
     name: CodeQL JavaScript

@@ -29,7 +29,7 @@ node examples/dsp-library/build.mjs
 ```
 
 The deterministic standalone output is written to
-`examples/dsp-library/dist`. The demo itself has no server process or runtime
+`out/examples/dsp-library`. The demo itself has no server process or runtime
 dependency. Browser security rules generally prevent AudioWorklet/WASM module
 loading directly from `file:` URLs.
 

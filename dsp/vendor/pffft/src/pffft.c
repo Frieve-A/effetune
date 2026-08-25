@@ -67,11 +67,12 @@
 #  define COMPILER_GCC
 #endif
 
-#include <stdlib.h>
+#include <assert.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <math.h>
-#include <assert.h>
+#include <stdlib.h>
+#include <string.h>
 
 #if defined(COMPILER_GCC)
 #  define ALWAYS_INLINE(return_type) inline return_type __attribute__ ((always_inline))
@@ -124,6 +125,22 @@
 #define FUNC_REAL_FINALIZE_4X4     pffft_real_finalize_4x4
 #define FUNC_REAL_FINALIZE         pffft_real_finalize
 #define FUNC_TRANSFORM_INTERNAL    pffft_transform_internal
+#define ORDERED_REAL_FORWARD_STATE PFFFT_OrderedRealForward
+#define FUNC_NEW_ORDERED_REAL_FORWARD pffft_new_ordered_real_forward
+#define FUNC_DESTROY_ORDERED_REAL_FORWARD pffft_destroy_ordered_real_forward
+#define FUNC_BEGIN_ORDERED_REAL_FORWARD pffft_ordered_real_forward_begin
+#define FUNC_BEGIN_UNORDERED_REAL_FORWARD pffft_unordered_real_forward_begin
+#define FUNC_BEGIN_UNORDERED_REAL_BACKWARD pffft_unordered_real_backward_begin
+#define FUNC_SET_ORDERED_REAL_FORWARD_WORK_BUDGET pffft_ordered_real_forward_set_work_budget
+#define FUNC_ORDERED_REAL_FORWARD_STEP_COUNT pffft_ordered_real_forward_step_count
+#define FUNC_STEP_ORDERED_REAL_FORWARD pffft_ordered_real_forward_step
+#define ZCONVOLVE_ACCUMULATE_STATE PFFFT_ZConvolveAccumulate
+#define FUNC_NEW_ZCONVOLVE_ACCUMULATE pffft_new_zconvolve_accumulate
+#define FUNC_DESTROY_ZCONVOLVE_ACCUMULATE pffft_destroy_zconvolve_accumulate
+#define FUNC_BEGIN_ZCONVOLVE_ACCUMULATE pffft_zconvolve_accumulate_begin
+#define FUNC_BEGIN_ZCONVOLVE_NO_ACCU pffft_zconvolve_no_accu_begin
+#define FUNC_ZCONVOLVE_ACCUMULATE_STEP_COUNT pffft_zconvolve_accumulate_step_count
+#define FUNC_STEP_ZCONVOLVE_ACCUMULATE pffft_zconvolve_accumulate_step
 
 #define FUNC_COS  cosf
 #define FUNC_SIN  sinf

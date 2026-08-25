@@ -5,6 +5,7 @@ import test from 'node:test';
 import { OfflineProcessor } from '../../js/audio/offline-processor.js';
 import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
 import { instantiateDsp } from '../../js/audio/dsp-wasm-loader.js';
+import { DENORMAL_NOISE_AMPLITUDE } from '../../dsp/bindings/js/src/denormal-noise.js';
 import {
   IR_ASSET_FORMAT_TAG,
   IR_ASSET_TOPOLOGY,
@@ -190,7 +191,11 @@ async function renderDirect(bytes, asset, input, { warmup, parameters = PARAMETE
           BLOCK_SIZE,
           warmupBlocks * BLOCK_SIZE / SAMPLE_RATE
         ), 0);
-        assert.ok(silence.every(sample => sample === 0), 'asset warm-up must stay silent');
+        assert.ok(
+          silence.every(sample => Number.isFinite(sample) &&
+            Math.abs(sample) <= DENORMAL_NOISE_AMPLITUDE),
+          'asset warm-up may contain only the inaudible denormal carrier'
+        );
         warmupBlocks++;
       }
       assert.equal(binding.instanceAssetState(instanceId, 0) & 0xff, 3);

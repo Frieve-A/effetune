@@ -10,6 +10,7 @@ import { SHIPPED_ENABLED_TYPES } from '../../js/audio/dsp-rollout.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const processorPath = path.join(repoRoot, 'plugins', 'audio-processor.js');
+const DENORMAL_NOISE_AMPLITUDE = 1e-19;
 
 async function flushAsyncWork() {
   for (let index = 0; index < 6; index++) await Promise.resolve();
@@ -557,8 +558,11 @@ function processRoutedImpulse(processor, latency) {
   for (let frame = 0; frame < latency; frame++) {
     const quantum = Math.floor(frame / 128);
     const offset = frame % 128;
-    assert.equal(rendered[quantum][0][offset], 0);
-    assert.equal(rendered[quantum][1][offset], 0);
+    const expectedNoise = Math.fround(
+      (frame & 1) === 0 ? DENORMAL_NOISE_AMPLITUDE : -DENORMAL_NOISE_AMPLITUDE
+    );
+    assert.equal(rendered[quantum][0][offset], expectedNoise);
+    assert.equal(rendered[quantum][1][offset], expectedNoise);
   }
   const quantum = Math.floor(latency / 128);
   const offset = latency % 128;
@@ -580,6 +584,50 @@ function messagesOf(posts, type) {
   return posts.filter(entry => entry.message.type === type);
 }
 
+test('JavaScript fallback rebases denormal noise before Dynamic Saturation', async () => {
+  const harness = await createWorkletHarness();
+  await harness.send({
+    type: 'registerProcessor',
+    pluginType: 'VolumePlugin',
+    processor: `
+      const gain = 10 ** ((parameters.vl ?? 0) / 20);
+      for (let sample = 0; sample < data.length; sample++) data[sample] *= gain;
+      return data;
+    `
+  });
+  await harness.send({
+    type: 'registerProcessor',
+    pluginType: 'DynamicSaturationPlugin',
+    processor: `
+      context.inputWasExactlySilent = data.every(sample => sample === 0);
+      return data;
+    `
+  });
+  for (const volumeCount of [1, 4]) {
+    await harness.send({
+      type: 'updatePlugins',
+      plugins: [
+        ...Array.from({ length: volumeCount }, (_, index) => pluginConfig({
+          id: 7 + index,
+          parameters: { enabled: true, vl: volumeCount === 1 ? 0 : 24 }
+        })),
+        pluginConfig({ id: 20, type: 'DynamicSaturationPlugin' })
+      ],
+      masterBypass: false
+    });
+
+    const output = processBlock(harness.processor, 0);
+    assert.equal(harness.processor.pluginContexts.get(20).inputWasExactlySilent, true);
+    for (const channel of output) {
+      for (let frame = 0; frame < channel.length; frame++) {
+        assert.equal(channel[frame], Math.fround(
+          (frame & 1) === 0 ? DENORMAL_NOISE_AMPLITUDE : -DENORMAL_NOISE_AMPLITUDE
+        ));
+      }
+    }
+  }
+});
+
 test('worklet reports one-second average pipeline CPU usage against the render budget',
   async () => {
   const elapsedValues = Array.from({ length: 375 }, (_, index) => index === 374 ? 4 : 1);
@@ -599,18 +647,21 @@ test('worklet reports one-second average pipeline CPU usage against the render b
   assert.equal(harness.processor.pipelineCpuElapsedMs, 0);
 });
 
-test('worklet reports sustained effect-processing deadline overruns but ignores pipeline bypass', async () => {
-  const nowValues = [
-    0, 0,
-    10, 10, 10,
-    20, 20, 24, 24,
-    30, 30, 34, 34,
-    40, 40, 41, 41,
-    50, 50, 56, 56
-  ];
+test('worklet drains a deadline credit before reporting effect-processing overruns', async () => {
+  // 128 frames at 48 kHz is a 2.667 ms budget and the default credit is the
+  // 10 ms render headroom, so a 10 ms quantum drains 7.33 ms of it and the
+  // second overrun is the one that reports.
+  let now = 0;
+  let quantumMs = 10;
   const harness = await createWorkletHarness({
-    performanceNow: () => nowValues.shift() ?? 56
+    performanceNow: () => {
+      const value = now;
+      now += quantumMs;
+      return value;
+    }
   });
+  const overloadStates = () =>
+    messagesOf(harness.posts, 'audioProcessingOverload').map(entry => entry.message.active);
   await registerFallback(harness);
   await harness.send({
     type: 'setAudioProcessingOverloadMonitoring',
@@ -624,7 +675,7 @@ test('worklet reports sustained effect-processing deadline overruns but ignores 
     masterBypass: true
   });
   processBlock(harness.processor);
-  assert.deepEqual(messagesOf(harness.posts, 'audioProcessingOverload'), []);
+  assert.deepEqual(overloadStates(), []);
 
   await harness.send({
     type: 'updatePlugins',
@@ -632,7 +683,7 @@ test('worklet reports sustained effect-processing deadline overruns but ignores 
     masterBypass: false
   });
   processBlock(harness.processor);
-  assert.deepEqual(messagesOf(harness.posts, 'audioProcessingOverload'), []);
+  assert.deepEqual(overloadStates(), []);
 
   await harness.send({
     type: 'updatePlugins',
@@ -640,35 +691,113 @@ test('worklet reports sustained effect-processing deadline overruns but ignores 
     masterBypass: false
   });
   processBlock(harness.processor);
-  assert.deepEqual(messagesOf(harness.posts, 'audioProcessingOverload'), []);
+  assert.deepEqual(overloadStates(), []);
 
   processBlock(harness.processor);
-  assert.deepEqual(
-    messagesOf(harness.posts, 'audioProcessingOverload').map(entry => entry.message.active),
-    [true]
-  );
+  assert.deepEqual(overloadStates(), [true]);
 
+  // Back inside the budget the credit refills, and recovery is reported only
+  // once the full headroom is back.
+  quantumMs = 0;
+  for (let quantum = 0; quantum < 5; quantum++) processBlock(harness.processor);
+  assert.deepEqual(overloadStates(), [true]);
   processBlock(harness.processor);
-  assert.deepEqual(
-    messagesOf(harness.posts, 'audioProcessingOverload').map(entry => entry.message.active),
-    [true, false]
-  );
+  assert.deepEqual(overloadStates(), [true, false]);
 
+  quantumMs = 10;
   processBlock(harness.processor);
-  assert.deepEqual(
-    messagesOf(harness.posts, 'audioProcessingOverload').map(entry => entry.message.active),
-    [true, false, true]
-  );
+  processBlock(harness.processor);
+  assert.deepEqual(overloadStates(), [true, false, true]);
 
   await harness.send({
     type: 'updatePlugins',
     plugins: [enabledPlugin],
     masterBypass: true
   });
-  assert.deepEqual(
-    messagesOf(harness.posts, 'audioProcessingOverload').map(entry => entry.message.active),
-    [true, false, true, false]
-  );
+  assert.deepEqual(overloadStates(), [true, false, true, false]);
+});
+
+test('worklet sizes the overrun credit from the reported output headroom', async () => {
+  let now = 0;
+  const harness = await createWorkletHarness({
+    performanceNow: () => {
+      const value = now;
+      now += 10;
+      return value;
+    }
+  });
+  const overloadStates = () =>
+    messagesOf(harness.posts, 'audioProcessingOverload').map(entry => entry.message.active);
+  await registerFallback(harness);
+  // A 'playback' context reports a 20 ms render buffer, so it tolerates one
+  // more 10 ms quantum than the 10 ms default before the credit runs out.
+  await harness.send({
+    type: 'setAudioProcessingOverloadMonitoring',
+    enabled: true,
+    headroomMs: 20
+  });
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [pluginConfig()],
+    masterBypass: false
+  });
+
+  processBlock(harness.processor);
+  processBlock(harness.processor);
+  assert.deepEqual(overloadStates(), []);
+
+  processBlock(harness.processor);
+  assert.deepEqual(overloadStates(), [true]);
+
+  // Out-of-range figures fall back to the default headroom.
+  await harness.send({
+    type: 'setAudioProcessingOverloadMonitoring',
+    enabled: true,
+    headroomMs: 500
+  });
+  assert.equal(harness.processor.processingOverloadHeadroomMs, 20);
+  await harness.send({
+    type: 'setAudioProcessingOverloadMonitoring',
+    enabled: true,
+    headroomMs: 1
+  });
+  assert.equal(harness.processor.processingOverloadHeadroomMs, 8);
+  await harness.send({
+    type: 'setAudioProcessingOverloadMonitoring',
+    enabled: true
+  });
+  assert.equal(harness.processor.processingOverloadHeadroomMs, 10);
+});
+
+test('worklet keeps quiet when clock quantisation pushes single quanta past the budget', async () => {
+  // The worklet clock only has 1 ms granularity, so a pipeline that really
+  // takes 2.4 ms -- 90 % of the 2.667 ms budget -- measures as a mix of 2 ms
+  // and 3 ms and puts individual quanta, consecutive ones included, past the
+  // deadline. Five entries keep the pattern coprime with the four clock reads
+  // per block, so every block sees a different one.
+  const measuredMs = [3, 3, 2, 2, 2];
+  let now = 0;
+  let index = 0;
+  const harness = await createWorkletHarness({
+    performanceNow: () => {
+      const value = now;
+      now += measuredMs[index++ % measuredMs.length];
+      return value;
+    }
+  });
+  await registerFallback(harness);
+  await harness.send({
+    type: 'setAudioProcessingOverloadMonitoring',
+    enabled: true
+  });
+  await harness.send({
+    type: 'updatePlugins',
+    plugins: [pluginConfig()],
+    masterBypass: false
+  });
+
+  for (let quantum = 0; quantum < 500; quantum++) processBlock(harness.processor);
+  assert.deepEqual(messagesOf(harness.posts, 'audioProcessingOverload'), []);
 });
 
 test('worklet defers overload monitoring until the output fade has finished', async () => {
@@ -696,6 +825,10 @@ test('worklet defers overload monitoring until the output fade has finished', as
     delaySeconds: 2 * 128 / 48000
   });
   processBlock(harness.processor);
+  processBlock(harness.processor);
+  assert.deepEqual(messagesOf(harness.posts, 'audioProcessingOverload'), []);
+
+  // Monitoring starts here, so the credit still absorbs the first 10 ms quantum.
   processBlock(harness.processor);
   assert.deepEqual(messagesOf(harness.posts, 'audioProcessingOverload'), []);
 
@@ -4684,7 +4817,8 @@ test('master bypass measures final dry output instead of an internal generator',
 
   const output = processBlock(harness.processor, 0);
   assert.equal(output[0][0], 0);
-  assert.equal(harness.processor.powerPolicy.outputPowerEwma, 0);
+  assert.ok(harness.processor.powerPolicy.outputPowerEwma > 0);
+  assert.ok(harness.processor.powerPolicy.outputPowerEwma <= 1e-30);
   assert.equal(harness.processor.powerPolicy.state, 'monitoring');
 });
 
@@ -5036,6 +5170,7 @@ test('power detector uses channel maxima and wakes immediately for nonfinite or 
     new Float64Array(harness.processor.powerPolicy.inputDcX.length),
     new Float64Array(harness.processor.powerPolicy.inputDcY.length),
     2,
+    0,
     detector
   );
   assert.ok(detector[0] > 10 ** (-80 / 10));

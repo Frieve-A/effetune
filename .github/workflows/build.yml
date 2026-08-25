@@ -112,7 +112,7 @@ jobs:
             test "${stored_mode}" = "-rwxr-xr-x"
           )
           if [[ '${{ inputs.openhome_source_bundle }}' == 'true' ]]; then
-            runtime_root="native/openhome-sidecar/build/linux-x64"
+            runtime_root="out/native/openhome-sidecar/linux-x64"
             test -f "${runtime_root}/libnl-runtime-manifest.json"
             test -d "${runtime_root}/libnl-source"
             (

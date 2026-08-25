@@ -392,7 +392,7 @@ Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/
 | Spatial   | Crossfeed Filter | Filtro de crossfeed para fones de ouvido para imagem estéreo natural | [Detalhes](plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | Converte entre estéreo e Mid/Side para ajustes de centro e ambiência | [Detalhes](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | Controle de balanço estéreo dependente de frequência de 5 bandas | [Detalhes](plugins/spatial.md#multiband-balance) |
-| Spatial   | Phase Select EQ | Realça ou atenua componentes de frequência conforme a diferença de fase L/R | [Detalhes](plugins/spatial.md#phase-select-eq) |
+| Spatial   | Phase Select EQ | Realça ou atenua componentes de frequência conforme a diferença de fase L/R e Balance | [Detalhes](plugins/spatial.md#phase-select-eq) |
 | Spatial   | Stereo Blend | Controla a largura estéreo, de mono a estéreo ampliado | [Detalhes](plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | Gerador de tons de teste e ruído para verificar alto-falantes/fones | [Detalhes](plugins/others.md#oscillator) |
 | Control   | Section | Agrupa efeitos para que uma seção inteira possa ser colocada em bypass ou restaurada | [Detalhes](plugins/control.md) |

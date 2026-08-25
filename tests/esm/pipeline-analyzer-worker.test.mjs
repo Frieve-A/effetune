@@ -135,7 +135,11 @@ test('analysis worker measures a selected input/output through the shared JS pro
   assert.equal(result.before.impulse[0], 1);
   assert.equal(result.before.impulse.subarray(1).every(value => value === 0), true);
   assert.equal(result.after.impulse[0], 2);
-  assert.equal(result.after.impulse.subarray(1).every(value => value === 0), true);
+  const afterTail = result.after.impulse.subarray(1);
+  const denormalNoiseLimit = 10 ** (-288 / 20);
+  const normalizedRouteLimit = 2 * denormalNoiseLimit / (10 ** (IMPULSE_SETTINGS.levelDb / 20));
+  assert.equal(afterTail.every(value => Math.abs(value) <= normalizedRouteLimit), true);
+  assert.equal(afterTail.every((value, index) => value * (index % 2 === 0 ? -1 : 1) > 0), true);
   assert.ok(progress.some(message => message.phase === 'preparing'));
   assert.ok(progress.some(message => message.phase === 'measuring'));
 });

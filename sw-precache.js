@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.5.0-8719db01c5f10c80";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.6.0-f049be8b8931f234";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./effetune-library.css",
   "./effetune-mobile.css",
@@ -153,6 +153,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/room-eq/design-core.js",
   "./js/room-eq/design-worker.js",
   "./js/room-eq/designer.js",
+  "./js/room-eq/group-delay-analysis.js",
   "./js/room-eq/wasm-fft.js",
   "./js/script-loader.js",
   "./js/ui-manager.js",

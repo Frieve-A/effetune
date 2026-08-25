@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 
 import { adaptPipelineAnalysisResult } from '../../js/pipeline-analyzer/result-adapter.js';
+import { createLogFrequencyGrid } from '../../js/utils/measurement-dsp/smoothing.js';
 
 function spectrum(magnitudeOffset = 0) {
     return {
@@ -204,6 +205,111 @@ test('smooths finite frequency runs without crossing gaps or re-zeroing group de
     assert.notEqual(minimumGroupDelay[4].yValue, 0);
     assert.notEqual(excessGroupDelay[1].yValue, 7);
     assert.notEqual(excessGroupDelay[4].yValue, 0);
+});
+
+test('group-delay smoothing is independent of the reduced spectrum point density', () => {
+    const sampleRate = 96000;
+    const fftSize = 524288;
+    const maximumPoints = 2048;
+    const minimumBin = Math.ceil(20 * fftSize / sampleRate);
+    const maximumBin = Math.floor(20000 * fftSize / sampleRate);
+    const reducedBins = [];
+    for (let point = 0; point < maximumPoints; point += 1) {
+        const fraction = point / (maximumPoints - 1);
+        const bin = Math.round(Math.exp(
+            Math.log(minimumBin) + fraction * (Math.log(maximumBin) - Math.log(minimumBin))
+        ));
+        if (reducedBins.at(-1) !== bin) reducedBins.push(bin);
+    }
+    const reducedFrequencies = reducedBins.map(bin => bin * sampleRate / fftSize);
+    const uniformFrequencies = createLogFrequencyGrid(20, 20000, 0.01);
+    const delayAt = frequency => 100 * Math.exp(
+        -0.5 * (Math.log2(frequency / 50) / 0.08) ** 2
+    );
+    const response = frequencies => ({
+        frequencies: Float32Array.from(frequencies),
+        magnitudeDb: Float32Array.from(frequencies, () => 0),
+        phaseDegrees: Float32Array.from(frequencies, () => 0),
+        groupDelayMs: Float32Array.from(frequencies, delayAt),
+        minimumGroupDelayMs: Float32Array.from(frequencies, () => 0),
+        excessGroupDelayMs: Float32Array.from(frequencies, delayAt),
+        valid: Uint8Array.from(frequencies, () => 1)
+    });
+    const adapt = frequencies => adaptPipelineAnalysisResult({
+        sampleRate,
+        before: {
+            impulse: new Float32Array([1]),
+            spectrum: response(frequencies),
+            timeOriginSamples: 0
+        },
+        after: {
+            impulse: new Float32Array([1]),
+            spectrum: response(frequencies),
+            timeOriginSamples: 0
+        }
+    }, { displaySettings: { smoothingOct: 0.3 } });
+    const reduced = adapt(reducedFrequencies).views.excessGroupDelay.curves[0].points;
+    const uniform = adapt(uniformFrequencies).views.excessGroupDelay.curves[0].points;
+    const reducedPoint = reduced.reduce((nearest, point) =>
+        Math.abs(point.xValue - 86) < Math.abs(nearest.xValue - 86) ? point : nearest);
+    let upper = uniform.findIndex(point => point.xValue >= reducedPoint.xValue);
+    if (upper < 1) upper = 1;
+    const lowerPoint = uniform[upper - 1];
+    const upperPoint = uniform[upper];
+    const fraction = Math.log(reducedPoint.xValue / lowerPoint.xValue) /
+        Math.log(upperPoint.xValue / lowerPoint.xValue);
+    const uniformValue = lowerPoint.yValue +
+        fraction * (upperPoint.yValue - lowerPoint.yValue);
+
+    assert.ok(Math.abs(reducedPoint.yValue - uniformValue) < 0.01,
+        `${reducedPoint.yValue} ms vs ${uniformValue} ms`);
+});
+
+test('smooths unwrapped phase before restoring the displayed phase range', () => {
+    const responseSpectrum = spectrum();
+    responseSpectrum.smoothing = {
+        frequencies: new Float32Array([100, 200, 400]),
+        magnitudeDb: new Float32Array([0, 0, 0]),
+        unwrappedPhaseDegrees: new Float32Array([170, 190, 210]),
+        groupDelayMs: new Float32Array([0, 0, 0]),
+        minimumGroupDelayMs: new Float32Array([0, 0, 0]),
+        excessGroupDelayMs: new Float32Array([0, 0, 0]),
+        valid: new Uint8Array([1, 1, 1])
+    };
+    const result = adaptPipelineAnalysisResult({
+        sampleRate: 48000,
+        before: { impulse: new Float32Array([1]), spectrum: responseSpectrum, timeOriginSamples: 0 },
+        after: { impulse: new Float32Array([1]), spectrum: responseSpectrum, timeOriginSamples: 0 }
+    }, { displaySettings: { smoothingOct: 0.3 } });
+
+    const phase = result.views.phase.curves[0].points;
+    assert.equal(phase[1].xValue, 200);
+    assert.ok(Math.abs(phase[1].yValue + 170) < 1e-6);
+});
+
+test('caps only the Excess Group Delay display axis while preserving hover values', () => {
+    const responseSpectrum = {
+        frequencies: new Float32Array([20, 1000, 20000]),
+        magnitudeDb: new Float32Array([0, 0, 0]),
+        phaseDegrees: new Float32Array([0, 0, 0]),
+        groupDelayMs: new Float32Array([500, 0, -500]),
+        minimumGroupDelayMs: new Float32Array([250, 0, -250]),
+        excessGroupDelayMs: new Float32Array([500, 0, -500]),
+        valid: new Uint8Array([1, 1, 1])
+    };
+    const result = adaptPipelineAnalysisResult({
+        sampleRate: 48000,
+        before: { impulse: new Float32Array([1]), spectrum: responseSpectrum, timeOriginSamples: 0 },
+        after: { impulse: new Float32Array([1]), spectrum: responseSpectrum, timeOriginSamples: 0 }
+    }, { displaySettings: { smoothingOct: 0.02 } });
+
+    const excess = result.views.excessGroupDelay;
+    assert.deepEqual(excess.yTicks.map(tick => tick.label),
+        ['100 ms', '50.0 ms', '0.00 ms', '-50.0 ms', '-100 ms']);
+    assert.equal(excess.curves[0].points[0].y, -2);
+    assert.equal(excess.curves[0].points[2].y, 3);
+    assert.equal(excess.curves[0].points[0].yValue, 500);
+    assert.equal(result.views.minimumGroupDelay.yTicks[0].label, '500 ms');
 });
 
 test('normalizes each impulse by its full peak and uses the selected fixed time window', () => {

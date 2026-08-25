@@ -1,16 +1,18 @@
 #include "PitchShifterHQPluginParams.h"
 #include "allocation_guard.h"
+#include "effetune/dsp/fft_stages.h"
 #include "effetune/kernel.h"
 
 #include <pffft.h>
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
-#include <ctime>
+#include <functional>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -20,8 +22,8 @@ extern "C" const effetune::KernelDescriptor *et_kernel_descriptor_PitchShifterHQ
 namespace {
 
 constexpr double kPi = 3.1415926535897932384626433832795;
-constexpr std::uint32_t kMaximumFrames = 128u;
-constexpr std::size_t kKernelStorageBytes = 16384u;
+constexpr std::uint32_t kMaximumFrames = 129u;
+constexpr std::size_t kKernelStorageBytes = 8192u;
 using Params = effetune::generated::PitchShifterHQPluginParams;
 
 int failures = 0;
@@ -125,6 +127,33 @@ std::vector<float> render(KernelHarness &harness, const Params &active,
       }
     }
     offset += count;
+  }
+  return output;
+}
+
+template <std::size_t Size>
+std::vector<float> renderMixed(KernelHarness &harness, const Params &active,
+                               const std::vector<float> &input, std::uint32_t channels,
+                               std::uint32_t frames,
+                               const std::array<std::uint32_t, Size> &block_sizes) {
+  harness.stage(active);
+  std::vector<float> output(input.size(), 0.0F);
+  std::uint32_t offset = 0u;
+  std::size_t block_index = 0u;
+  while (offset < frames) {
+    const std::uint32_t count = std::min(block_sizes[block_index % Size], frames - offset);
+    std::vector<float> block(static_cast<std::size_t>(channels) * count);
+    for (std::uint32_t channel = 0u; channel < channels; ++channel) {
+      std::copy_n(input.begin() + static_cast<std::size_t>(channel) * frames + offset, count,
+                  block.begin() + static_cast<std::size_t>(channel) * count);
+    }
+    harness.process(block, channels, count);
+    for (std::uint32_t channel = 0u; channel < channels; ++channel) {
+      std::copy_n(block.begin() + static_cast<std::size_t>(channel) * count, count,
+                  output.begin() + static_cast<std::size_t>(channel) * frames + offset);
+    }
+    offset += count;
+    ++block_index;
   }
   return output;
 }
@@ -287,7 +316,9 @@ double highBandHopModulation(const std::vector<float> &audio, std::uint32_t star
   pffft_aligned_free(input);
   pffft_aligned_free(spectrum);
   pffft_aligned_free(work);
-  pffft_destroy_setup(setup);
+  if (setup != nullptr) {
+    pffft_destroy_setup(setup);
+  }
 
   double mean = 0.0;
   for (double energy : energies) {
@@ -319,6 +350,102 @@ double dominantFrequency(const std::vector<float> &audio, std::uint32_t frames, 
     }
   }
   return best_frequency;
+}
+
+void testFftStageRoundTrip() {
+  constexpr std::uint32_t fft_size = 16384u;
+  constexpr std::uint32_t packed_size = fft_size / 2u;
+  constexpr std::uint32_t subsequence_length = fft_size / 8u;
+  constexpr std::uint32_t child_length = subsequence_length / 2u;
+  PFFFT_Setup *setup = pffft_new_setup(static_cast<int>(subsequence_length), PFFFT_COMPLEX);
+  PFFFT_Setup *child_setup = pffft_new_setup(static_cast<int>(child_length), PFFFT_COMPLEX);
+  float *subsequences = static_cast<float *>(pffft_aligned_malloc(fft_size * sizeof(float)));
+  float *packed = static_cast<float *>(pffft_aligned_malloc(fft_size * sizeof(float)));
+  float *spectrum = static_cast<float *>(pffft_aligned_malloc(fft_size * sizeof(float)));
+  float *work = static_cast<float *>(pffft_aligned_malloc(fft_size * sizeof(float)));
+  float *twiddles = static_cast<float *>(pffft_aligned_malloc(2u * fft_size * sizeof(float)));
+  const bool allocated = setup != nullptr && child_setup != nullptr && subsequences != nullptr &&
+                         packed != nullptr && spectrum != nullptr && work != nullptr &&
+                         twiddles != nullptr;
+  check(allocated, "FFT stage round-trip buffers allocate");
+  if (allocated) {
+    std::vector<float> input = noise(fft_size, 1u);
+    std::vector<float> window(fft_size, 1.0F);
+    effetune::dsp::fft_stages::prepareTwiddles(twiddles, fft_size);
+    effetune::dsp::fft_stages::packWindowed(input.data(), 0u, fft_size, 0u, window.data(),
+                                            subsequences, fft_size, 0u, packed_size);
+    for (std::uint32_t subsequence = 0u; subsequence < 4u; ++subsequence) {
+      float *data = subsequences + 2u * subsequence * subsequence_length;
+      pffft_transform_ordered(setup, data, data, work, PFFFT_FORWARD);
+    }
+    effetune::dsp::fft_stages::combineForward(subsequences, packed, twiddles, fft_size, 0u,
+                                              packed_size);
+    effetune::dsp::fft_stages::splitForward(packed, spectrum, twiddles, fft_size, 0u, packed_size);
+    effetune::dsp::fft_stages::mergeInverse(spectrum, packed, twiddles, fft_size, 0u, packed_size);
+    for (std::uint32_t subsequence = 0u; subsequence < 4u; ++subsequence) {
+      effetune::dsp::fft_stages::separateInverse(packed, subsequences, twiddles, fft_size,
+                                                 subsequence, 0u, subsequence_length);
+    }
+    for (std::uint32_t subsequence = 0u; subsequence < 4u; ++subsequence) {
+      float *data = subsequences + 2u * subsequence * subsequence_length;
+      pffft_transform_ordered(setup, data, data, work, PFFFT_BACKWARD);
+    }
+    double maximum_error = 0.0;
+    const double normalization = 1.0 / static_cast<double>(fft_size);
+    for (std::uint32_t index = 0u; index < fft_size; ++index) {
+      const double actual = static_cast<double>(effetune::dsp::fft_stages::unpackSample(
+                                subsequences, fft_size, index)) *
+                            normalization;
+      const double error = std::abs(actual - static_cast<double>(input[index]));
+      if (error > maximum_error) {
+        maximum_error = error;
+      }
+    }
+    if (maximum_error > 1.0e-5) {
+      std::fprintf(stderr, "FFT stage round-trip max abs: %.9g\n", maximum_error);
+    }
+    check(maximum_error <= 1.0e-5, "FFT stages round-trip within 1e-5 max abs");
+
+    const std::vector<float> complex_input = noise(2u * subsequence_length, 1u);
+    effetune::dsp::fft_stages::packComplexRadix<2u>(complex_input.data(), subsequences,
+                                                    subsequence_length, 0u, subsequence_length);
+    for (std::uint32_t child = 0u; child < 2u; ++child) {
+      float *data = subsequences + 2u * child * child_length;
+      pffft_transform_ordered(child_setup, data, data, work, PFFFT_FORWARD);
+    }
+    effetune::dsp::fft_stages::combineComplexForwardRadix2(
+        subsequences, packed, twiddles, subsequence_length, fft_size, 0u, subsequence_length);
+    for (std::uint32_t child = 0u; child < 2u; ++child) {
+      effetune::dsp::fft_stages::separateComplexInverseRadix2(
+          packed, spectrum, twiddles, subsequence_length, fft_size, child, 0u, child_length);
+    }
+    for (std::uint32_t child = 0u; child < 2u; ++child) {
+      float *data = spectrum + 2u * child * child_length;
+      pffft_transform_ordered(child_setup, data, data, work, PFFFT_BACKWARD);
+    }
+    effetune::dsp::fft_stages::unpackComplexRadix<2u>(spectrum, packed, subsequence_length, 0u,
+                                                      subsequence_length);
+    maximum_error = 0.0;
+    const double complex_normalization = 1.0 / static_cast<double>(subsequence_length);
+    for (std::uint32_t index = 0u; index < 2u * subsequence_length; ++index) {
+      const double actual = static_cast<double>(packed[index]) * complex_normalization;
+      const double error = std::abs(actual - static_cast<double>(complex_input[index]));
+      if (error > maximum_error) {
+        maximum_error = error;
+      }
+    }
+    if (maximum_error > 1.0e-5) {
+      std::fprintf(stderr, "Radix-2 FFT stage round-trip max abs: %.9g\n", maximum_error);
+    }
+    check(maximum_error <= 1.0e-5, "radix-2 FFT stages round-trip within 1e-5 max abs");
+  }
+  pffft_destroy_setup(setup);
+  pffft_destroy_setup(child_setup);
+  pffft_aligned_free(subsequences);
+  pffft_aligned_free(packed);
+  pffft_aligned_free(spectrum);
+  pffft_aligned_free(work);
+  pffft_aligned_free(twiddles);
 }
 
 void testLatencyAndUnity() {
@@ -449,18 +576,24 @@ void testStereoComplexRatio() {
 
 void testChannelsBlocksAndReset() {
   constexpr std::uint32_t frames = 24576u;
+  constexpr std::array<std::uint32_t, 7u> mixed_blocks{{129u, 1u, 32u, 7u, 128u, 16u, 64u}};
   for (std::uint32_t channels = 1u; channels <= 8u; ++channels) {
     const std::vector<float> input = noise(frames, channels);
     KernelHarness reference(96000.0F, channels);
     const std::vector<float> reference_output =
         render(reference, params(-3.0F, 17.0F), input, channels, frames, 1u);
-    for (std::uint32_t block_size : {31u, 127u, 128u}) {
+    for (std::uint32_t block_size : {1u, 7u, 16u, 32u, 64u, 128u, 129u}) {
       KernelHarness blocked(96000.0F, channels);
       const std::vector<float> blocked_output =
           render(blocked, params(-3.0F, 17.0F), input, channels, frames, block_size);
       check(blocked_output == reference_output,
             "processing is independent of host block boundaries");
     }
+    KernelHarness mixed(96000.0F, channels);
+    const std::vector<float> mixed_output =
+        renderMixed(mixed, params(-3.0F, 17.0F), input, channels, frames, mixed_blocks);
+    check(mixed_output == reference_output,
+          "processing is independent of changing host block boundaries");
     check(finite(reference_output), "all supported channel shapes remain finite");
     reference.reset();
     const std::vector<float> replay =
@@ -472,14 +605,14 @@ void testChannelsBlocksAndReset() {
 void testResetDuringStagedWork() {
   constexpr std::uint32_t channels = 8u;
   constexpr std::uint32_t hop_size = 1024u;
-  constexpr std::uint32_t slot_size = 32u;
+  constexpr std::uint32_t slot_size = 16u;
   constexpr std::uint32_t probe_frames = 12288u;
   const Params active = params(5.0F, -23.0F);
   const std::vector<float> probe = noise(probe_frames, channels);
   KernelHarness reference(48000.0F, channels);
   const std::vector<float> expected = render(reference, active, probe, channels, probe_frames, 31u);
 
-  for (std::uint32_t slot = 0u; slot < 32u; ++slot) {
+  for (std::uint32_t slot = 0u; slot < hop_size / slot_size; ++slot) {
     const std::uint32_t prefix_frames = hop_size + slot * slot_size + slot_size / 2u;
     KernelHarness interrupted(48000.0F, channels);
     const std::vector<float> prefix = noise(prefix_frames, channels);
@@ -489,6 +622,22 @@ void testResetDuringStagedWork() {
         render(interrupted, active, probe, channels, probe_frames, 127u);
     check(actual == expected, "reset discards every staged analysis and synthesis slot");
   }
+}
+
+void testChannelChangeCancelsStagedWork() {
+  constexpr std::uint32_t prefix_frames = 1024u + 23u * 16u + 8u;
+  constexpr std::uint32_t probe_frames = 12288u;
+  const Params active = params(5.0F, -23.0F);
+  const std::vector<float> probe = noise(probe_frames, 1u);
+
+  KernelHarness reference(48000.0F, 2u);
+  const std::vector<float> expected = render(reference, active, probe, 1u, probe_frames, 127u);
+
+  KernelHarness changed(48000.0F, 2u);
+  const std::vector<float> prefix = noise(prefix_frames, 2u);
+  static_cast<void>(render(changed, active, prefix, 2u, prefix_frames, 31u));
+  const std::vector<float> actual = render(changed, active, probe, 1u, probe_frames, 127u);
+  check(actual == expected, "a channel-count change cancels an in-flight staged job");
 }
 
 std::vector<float> renderParameterTransition(const std::vector<float> &input,
@@ -731,22 +880,75 @@ void testReleaseHandoffContinuity() {
         "stable-release handoff preserves identical stereo channels");
 }
 
-int runBenchmark() {
+int runBenchmark(std::uint32_t block_size) {
   constexpr float sample_rate = 192000.0F;
-  constexpr std::uint32_t channels = 8u;
-  constexpr std::uint32_t block_size = 128u;
+  constexpr std::uint32_t channels = 2u;
   constexpr std::uint32_t seconds = 3u;
   KernelHarness harness(sample_rate, channels, block_size);
   harness.stage(params(6.0F, 50.0F));
-  std::vector<float> block(static_cast<std::size_t>(channels) * block_size, 0.1F);
+  std::vector<float> block(static_cast<std::size_t>(channels) * block_size);
+  std::array<std::uint32_t, channels> noise_state{{0x31415926u, 0x27182818u}};
+  std::uint64_t frame_cursor = 0u;
   const std::uint32_t blocks = seconds * static_cast<std::uint32_t>(sample_rate) / block_size;
-  const std::clock_t started = std::clock();
+  std::vector<double> elapsed_microseconds;
+  elapsed_microseconds.reserve(blocks);
+  std::array<double, 256u> phase_sum{};
+  std::array<double, 256u> phase_maximum{};
+  std::array<std::uint32_t, 256u> phase_count{};
   for (std::uint32_t index = 0u; index < blocks; ++index) {
+    for (std::uint32_t channel = 0u; channel < channels; ++channel) {
+      for (std::uint32_t frame = 0u; frame < block_size; ++frame) {
+        noise_state[channel] = noise_state[channel] * 1664525u + 1013904223u;
+        const double random = static_cast<double>(noise_state[channel]) / 4294967296.0 * 2.0 - 1.0;
+        const double time = static_cast<double>(frame_cursor + frame) / sample_rate;
+        block[static_cast<std::size_t>(channel) * block_size + frame] =
+            static_cast<float>(0.2 * random + 0.04 * std::sin(2.0 * kPi * 997.0 * time) +
+                               0.04 * std::sin(2.0 * kPi * 7919.0 * time));
+      }
+    }
+    const auto started = std::chrono::steady_clock::now();
     harness.process(block, channels, block_size);
+    const auto finished = std::chrono::steady_clock::now();
+    const double elapsed = std::chrono::duration<double, std::micro>(finished - started).count();
+    elapsed_microseconds.push_back(elapsed);
+    if (block_size == 16u && index >= 256u) {
+      const std::uint32_t phase = index & 255u;
+      phase_sum[phase] += elapsed;
+      ++phase_count[phase];
+      if (elapsed > phase_maximum[phase]) {
+        phase_maximum[phase] = elapsed;
+      }
+    }
+    frame_cursor += block_size;
   }
-  const double elapsed = static_cast<double>(std::clock() - started) / CLOCKS_PER_SEC;
-  std::printf("Pitch Shifter HQ native RT benchmark: %.2fx realtime (%u Hz, %u ch)\n",
-              static_cast<double>(seconds) / elapsed, static_cast<unsigned>(sample_rate), channels);
+  std::sort(elapsed_microseconds.begin(), elapsed_microseconds.end());
+  double sum = 0.0;
+  for (double elapsed : elapsed_microseconds) {
+    sum += elapsed;
+  }
+  const auto percentile = [&elapsed_microseconds](double fraction) {
+    const std::size_t index =
+        static_cast<std::size_t>(fraction * static_cast<double>(elapsed_microseconds.size() - 1u));
+    return elapsed_microseconds[index];
+  };
+  std::printf("Pitch Shifter HQ %u-frame benchmark: mean %.3f us, median %.3f us, p95 %.3f us, "
+              "p99.9 %.3f us, max %.3f us (%u Hz, %u ch)\n",
+              block_size, sum / static_cast<double>(elapsed_microseconds.size()), percentile(0.5),
+              percentile(0.95), percentile(0.999), elapsed_microseconds.back(),
+              static_cast<unsigned>(sample_rate), channels);
+  if (block_size == 16u) {
+    std::array<std::pair<double, std::uint32_t>, 256u> phase_ranking{};
+    for (std::uint32_t phase = 0u; phase < phase_ranking.size(); ++phase) {
+      phase_ranking[phase] = {phase_sum[phase] / static_cast<double>(phase_count[phase]), phase};
+    }
+    std::sort(phase_ranking.begin(), phase_ranking.end(), std::greater<>());
+    std::printf("Highest slot-phase means:");
+    for (std::size_t rank = 0u; rank < 8u; ++rank) {
+      const std::uint32_t phase = phase_ranking[rank].second;
+      std::printf(" %u=%.3f/%.3f", phase, phase_ranking[rank].first, phase_maximum[phase]);
+    }
+    std::printf(" us (mean/max)\n");
+  }
   return failures == 0 ? 0 : 1;
 }
 
@@ -754,15 +956,20 @@ int runBenchmark() {
 
 int main(int argc, char **argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--benchmark") {
-    return runBenchmark();
+    return runBenchmark(16u);
   }
-  check(argc == 1, "usage: native_test [--benchmark]");
+  if (argc == 2 && std::string_view(argv[1]) == "--benchmark-128") {
+    return runBenchmark(128u);
+  }
+  check(argc == 1, "usage: native_test [--benchmark|--benchmark-128]");
+  testFftStageRoundTrip();
   testLatencyAndUnity();
   testPitchAndFineTune();
   testAliasAndPeakZero();
   testStereoComplexRatio();
   testChannelsBlocksAndReset();
   testResetDuringStagedWork();
+  testChannelChangeCancelsStagedWork();
   testParameterTransitionLatch();
   testTransitionsSweepSplitAndMerge();
   testPeakRotationAcrossBinCrossings();

@@ -273,6 +273,28 @@ export class AudioIOManager {
         return effectivePreferences;
     }
 
+    async _persistElectronDefaultOutputPreference(preferences) {
+        const effectivePreferences = this._applyDefaultOutputPreference(preferences);
+        const savePreferences = window.electronIntegration?.saveAudioPreferences;
+        if (!this._isElectronEnvironment() || preferences?.outputDeviceId === 'default' ||
+            typeof savePreferences !== 'function') {
+            return effectivePreferences;
+        }
+        try {
+            const saved = await savePreferences.call(
+                window.electronIntegration,
+                effectivePreferences,
+                { applyInPlace: 'output-device-fallback' }
+            );
+            if (saved !== true) {
+                console.warn('[audioCtxSink] Failed to save the default output fallback.');
+            }
+        } catch (error) {
+            console.warn('[audioCtxSink] Failed to save the default output fallback:', error);
+        }
+        return effectivePreferences;
+    }
+
     _connectOutputGainToDefaultDestination() {
         const destination = this.contextManager?.audioContext?.destination;
         if (!this.outputGainNode || !destination) {
@@ -641,7 +663,7 @@ export class AudioIOManager {
                         await this._setSinkIdWithTimeout(this.contextManager.audioContext, preferences.outputDeviceId, 3000);
                     } catch (e) {
                         console.warn('[audioCtxSink] setSinkId failed:', e.message);
-                        this._applyDefaultOutputPreference(preferences);
+                        await this._persistElectronDefaultOutputPreference(preferences);
                         if (isElectron) {
                             this.audioContextSinkMode = true;
                         }
@@ -687,6 +709,7 @@ export class AudioIOManager {
                             typeof this.audioElement.setSinkId === 'function';
                         
                         if (hasSinkIdSupport) {
+                            let savedOutputDeviceRejected = false;
                             try {
                                 // Get available devices - this doesn't require microphone permission
                                 let outputDevice = null;
@@ -707,8 +730,13 @@ export class AudioIOManager {
                                 }
                                 
                                 if (outputDevice) {
-                                    await this.audioElement.setSinkId(preferences.outputDeviceId);
-                                    this.currentOutputDeviceId = preferences.outputDeviceId;
+                                    try {
+                                        await this.audioElement.setSinkId(preferences.outputDeviceId);
+                                        this.currentOutputDeviceId = preferences.outputDeviceId;
+                                    } catch (savedSinkError) {
+                                        savedOutputDeviceRejected = true;
+                                        throw savedSinkError;
+                                    }
                                 } else {
                                     // Try to use the saved device ID directly even if we couldn't verify it
                                     try {
@@ -717,8 +745,13 @@ export class AudioIOManager {
                                     } catch (directSinkError) {
                                         console.warn('Failed to set audio output to saved device, using default:', directSinkError);
                                         // Fall back to default device
-                                        await this.audioElement.setSinkId('default');
-                                        this._applyDefaultOutputPreference(preferences);
+                                        try {
+                                            await this.audioElement.setSinkId('default');
+                                        } catch (defaultSinkError) {
+                                            savedOutputDeviceRejected = true;
+                                            throw defaultSinkError;
+                                        }
+                                        await this._persistElectronDefaultOutputPreference(preferences);
                                     }
                                 }
                                 
@@ -739,6 +772,9 @@ export class AudioIOManager {
                                 }
                             } catch (sinkError) {
                                 console.warn('Failed to set audio output device:', sinkError);
+                                if (hasExplicitOutputDevice && savedOutputDeviceRejected) {
+                                    await this._persistElectronDefaultOutputPreference(preferences);
+                                }
                                 this._routeToDefaultOutput(preferences);
                                 
                                 // Still try to use the audio element as a fallback
@@ -748,6 +784,9 @@ export class AudioIOManager {
                             }
                         } else {
                             console.warn('Audio Output Devices API not supported in this browser');
+                            if (hasExplicitOutputDevice) {
+                                await this._persistElectronDefaultOutputPreference(preferences);
+                            }
                             this._routeToDefaultOutput(preferences);
                             
                             // Still try to use the audio element as a fallback

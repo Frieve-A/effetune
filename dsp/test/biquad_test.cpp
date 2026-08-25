@@ -13,6 +13,7 @@ using effetune::dsp::BiquadCoefficients;
 using effetune::dsp::BiquadDf1State;
 using effetune::dsp::BiquadTdf2State;
 using effetune::dsp::processBiquadDf1Sample;
+using effetune::dsp::processBiquadDf1SampleWithDenormalNoise;
 using effetune::dsp::processBiquadTdf2Sample;
 using effetune::dsp::quantizeBiquadStatesToFloatAtBlockBoundary;
 using effetune::dsp::quantizeBiquadStateToFloat;
@@ -82,6 +83,18 @@ void testReferenceImpulseResponse() {
     BIQUAD_CHECK(near(tdf2_output, kReferenceImpulseResponse[index]));
     BIQUAD_CHECK(near(df1_output, tdf2_output));
   }
+}
+
+void testDf1DenormalNoisePersistence() {
+  const BiquadCoefficients recursive{0.0, 0.0, 0.0, -0.5, 0.0};
+  BiquadDf1State state{};
+  const double first = processBiquadDf1SampleWithDenormalNoise(0.0, recursive, state, 1.0e-15);
+  BIQUAD_CHECK(first == 1.0e-15);
+  BIQUAD_CHECK(state.y1 == first);
+  const double second = processBiquadDf1SampleWithDenormalNoise(0.0, recursive, state, -1.0e-15);
+  BIQUAD_CHECK(second == -0.5e-15);
+  BIQUAD_CHECK(state.y2 == first);
+  BIQUAD_CHECK(state.y1 == second);
 }
 
 void testReset() {
@@ -203,6 +216,7 @@ void testTdf2ChannelStateSeparation() {
 int main() {
   testIdentity();
   testReferenceImpulseResponse();
+  testDf1DenormalNoisePersistence();
   testReset();
   testBlockBoundaryFloatQuantization();
   testFiniteBehavior();

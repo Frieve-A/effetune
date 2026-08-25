@@ -6,6 +6,7 @@
 #include "effetune/kernel.h"
 #include "FMRadioSimulatorPluginParams.h"
 #include "binary_io.h"
+#include "effetune/dsp/denormal_noise.h"
 #include "effetune/dsp/xorshift_rng.h"
 #include "peak_controller.h"
 
@@ -158,14 +159,19 @@ struct BiquadF32 final {
   void reset() noexcept {
     s1 = 0.0F;
     s2 = 0.0F;
+    denormal_noise.reset();
   }
 
   float process(float input) noexcept {
-    const float output = coefficients.b0 * input + s1;
+    const float noise = static_cast<float>(denormal_noise.sample(0u));
+    denormal_noise.advance(1u);
+    const float output = coefficients.b0 * input + s1 + noise;
     s1 = coefficients.b1 * input - coefficients.a1 * output + s2;
     s2 = coefficients.b2 * input - coefficients.a2 * output;
     return output;
   }
+
+  dsp::NyquistDenormalNoise denormal_noise;
 };
 
 template <std::size_t Sections> struct BiquadCascade final {

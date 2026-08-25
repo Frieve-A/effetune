@@ -18,7 +18,7 @@ import {
 } from '../../tools/verify-dsp-library-goldens.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const GOLDEN_CASE_COUNT = 871;
+const GOLDEN_CASE_COUNT = 874;
 const EFFECT_COUNT = 92;
 const WORKLET_GOLDEN_CASE_COUNT = 93;
 const NON_IDENTITY_EFFECT_COUNT = 87;
@@ -306,6 +306,32 @@ test('wheel acceptance omits per-wheel summaries while candidate acceptance reta
   }
 });
 
+test('DSP library local output paths separate reusable builds from temporary environments', async () => {
+  const [pythonProject, phase0Project, phase0Readme, goldenTool] = await Promise.all([
+    fs.readFile(path.join(repoRoot, 'dsp', 'bindings', 'python', 'pyproject.toml'), 'utf8'),
+    fs.readFile(path.join(repoRoot, 'experiments', 'dsp-library-phase0', 'pyproject.toml'), 'utf8'),
+    fs.readFile(path.join(repoRoot, 'experiments', 'dsp-library-phase0', 'README.md'), 'utf8'),
+    fs.readFile(path.join(repoRoot, 'tools', 'verify-dsp-library-goldens.mjs'), 'utf8')
+  ]);
+  assert.match(
+    pythonProject,
+    /build-dir = "\.\.\/\.\.\/\.\.\/out\/phase1-python\/build\/\{wheel_tag\}"/
+  );
+  assert.match(
+    phase0Project,
+    /build-dir = "\.\.\/\.\.\/out\/dsp-library-phase0\/build\/\{wheel_tag\}"/
+  );
+  assert.match(phase0Readme, /`tmp\/dsp-library-phase0` directory/);
+  assert.match(phase0Readme, /`out\/dsp-library-phase0\/build\/\{wheel_tag\}`/);
+  assert.match(phase0Readme, /python -m venv tmp\\dsp-library-phase0\\venv/);
+  assert.doesNotMatch(phase0Readme, /\.tmp\\dsp-library-phase0/);
+  assert.match(
+    goldenTool,
+    /repoRoot,\s*'tmp',\s*'phase1-python',\s*'release-smoke-cp312'/
+  );
+  assert.doesNotMatch(goldenTool, /'\.tmp',\s*'phase1-python'/);
+});
+
 test('golden discovery reads only the generated frozen index paths', async t => {
   const temporary = await fs.realpath(await fs.mkdtemp(
     path.join(os.tmpdir(), 'effetune-frozen-goldens-')
@@ -409,9 +435,10 @@ test('frozen DSP library acceptance inventory stays complete', async () => {
   // byte-identical), and the third never emitted a sample of its 12AX7 minimum-drive circuit.
   // They now carry their circuit in constructor parameters like power-only-el84-pentode, which
   // costs three event cases and three events. MD Simulator adds two event cases and seven
-  // events for its recording-mode switches.
-  assert.equal(inventory.eventCases, 145);
-  assert.equal(inventory.eventCount, 498);
+  // events for its recording-mode switches. Phase Select EQ Balance selection adds three
+  // cases, including one event case with two boundary changes.
+  assert.equal(inventory.eventCases, 146);
+  assert.equal(inventory.eventCount, 500);
   assert.deepEqual(inventory.sampleRates, [
     32000,
     44100,

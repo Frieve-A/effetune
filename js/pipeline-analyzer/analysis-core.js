@@ -1,5 +1,6 @@
 import FFT from '../utils/measurement-dsp/fft.js';
 import { resampleWindowedSinc } from '../utils/measurement-dsp/resample.js';
+import { createLogFrequencyGrid } from '../utils/measurement-dsp/smoothing.js';
 
 export const ANALYSIS_QUANTUM_SIZE = 128;
 export const ANALYSIS_TAIL_WINDOW_SAMPLES = 16384;
@@ -10,6 +11,7 @@ const TAIL_RELATIVE_AMPLITUDE = 10 ** (ANALYSIS_TAIL_RELATIVE_DB / 20);
 const MAGNITUDE_FLOOR_AMPLITUDE = 10 ** (ANALYSIS_MAGNITUDE_FLOOR_DB / 20);
 const DIRECT_CONVOLUTION_LIMIT = 262144;
 const PERIODIC_RESIDUAL_WARNING_DB = -60;
+const DISPLAY_SMOOTHING_GRID_SPACING_OCTAVES = 0.01;
 
 function assertFloatArray(value, label) {
     if (!(value instanceof Float32Array) && !(value instanceof Float64Array)) {
@@ -209,10 +211,17 @@ export function alignToQuantum(samples) {
     return Math.ceil(samples / ANALYSIS_QUANTUM_SIZE) * ANALYSIS_QUANTUM_SIZE;
 }
 
-export function isRouteTailSettled(samples, windowSamples = ANALYSIS_TAIL_WINDOW_SAMPLES) {
+export function isRouteTailSettled(
+    samples,
+    windowSamples = ANALYSIS_TAIL_WINDOW_SAMPLES,
+    absoluteNoiseFloor = 0
+) {
     assertFloatArray(samples, 'Route impulse response');
     if (!Number.isSafeInteger(windowSamples) || windowSamples < 1) {
         throw new TypeError('Tail window must be a positive safe integer');
+    }
+    if (!Number.isFinite(absoluteNoiseFloor) || absoluteNoiseFloor < 0) {
+        throw new TypeError('Absolute noise floor must be finite and non-negative');
     }
     let peak = 0;
     for (let index = 0; index < samples.length; index += 1) {
@@ -222,7 +231,10 @@ export function isRouteTailSettled(samples, windowSamples = ANALYSIS_TAIL_WINDOW
         if (magnitude > peak) peak = magnitude;
     }
     if (peak === 0) return true;
-    const threshold = peak * TAIL_RELATIVE_AMPLITUDE;
+    const relativeThreshold = peak * TAIL_RELATIVE_AMPLITUDE;
+    const threshold = relativeThreshold > absoluteNoiseFloor
+        ? relativeThreshold
+        : absoluteNoiseFloor;
     const first = samples.length > windowSamples ? samples.length - windowSamples : 0;
     for (let index = first; index < samples.length; index += 1) {
         const value = samples[index];
@@ -231,11 +243,16 @@ export function isRouteTailSettled(samples, windowSamples = ANALYSIS_TAIL_WINDOW
     return true;
 }
 
-export function areRouteTailsSettled(routes, windowSamples = ANALYSIS_TAIL_WINDOW_SAMPLES) {
+export function areRouteTailsSettled(
+    routes,
+    windowSamples = ANALYSIS_TAIL_WINDOW_SAMPLES,
+    absoluteNoiseFloor = 0
+) {
     if (!Array.isArray(routes) || routes.length === 0) {
         throw new TypeError('At least one route is required');
     }
-    return routes.every(route => isRouteTailSettled(route, windowSamples));
+    return routes.every(route =>
+        isRouteTailSettled(route, windowSamples, absoluteNoiseFloor));
 }
 
 function validateSpeakerResponse(response, targetSampleRate) {
@@ -439,29 +456,123 @@ function groupDelaySamples(impulse, fftSize, real, imag, valid) {
     return delaySamples;
 }
 
-function unwrapValidPhase(wrapped, valid) {
-    const unwrapped = new Float64Array(wrapped.length);
-    let previousPhase = 0;
-    let previousValid = false;
-    for (let index = 0; index < wrapped.length; index += 1) {
-        if (!valid[index]) {
-            unwrapped[index] = Number.NaN;
-            previousValid = false;
+function integratePhaseFromGroupDelay(
+    wrapped,
+    delaySamples,
+    valid,
+    fftSize,
+    sampleRate,
+    timeOriginSamples
+) {
+    const phase = new Float64Array(wrapped.length);
+    phase.fill(Number.NaN);
+    const referenceBin = 1000 * fftSize / sampleRate;
+    const deltaOmega = 2 * Math.PI / fftSize;
+    let first = 0;
+    while (first < phase.length) {
+        while (first < phase.length && !valid[first]) first += 1;
+        if (first >= phase.length) break;
+        let last = first;
+        while (last + 1 < phase.length && valid[last + 1]) last += 1;
+        const anchor = Math.max(first, Math.min(last, Math.round(referenceBin)));
+        phase[anchor] = wrapped[anchor];
+        for (let bin = anchor + 1; bin <= last; bin += 1) {
+            const previousDelay = delaySamples[bin - 1] + timeOriginSamples;
+            const currentDelay = delaySamples[bin] + timeOriginSamples;
+            phase[bin] = phase[bin - 1] -
+                0.5 * (previousDelay + currentDelay) * deltaOmega;
+        }
+        for (let bin = anchor - 1; bin >= first; bin -= 1) {
+            const currentDelay = delaySamples[bin] + timeOriginSamples;
+            const nextDelay = delaySamples[bin + 1] + timeOriginSamples;
+            phase[bin] = phase[bin + 1] +
+                0.5 * (currentDelay + nextDelay) * deltaOmega;
+        }
+        first = last + 1;
+    }
+    return phase;
+}
+
+function createSmoothingSpectrum(
+    sampleRate,
+    fftSize,
+    magnitude,
+    totalDelaySamples,
+    minimumDelaySamples,
+    unwrappedPhase,
+    valid,
+    timeOriginSamples
+) {
+    const maximumFrequency = sampleRate / 2 < 20000 ? sampleRate / 2 : 20000;
+    const minimumFrequency = maximumFrequency < 20 ? maximumFrequency : 20;
+    const grid = createLogFrequencyGrid(
+        minimumFrequency,
+        maximumFrequency,
+        DISPLAY_SMOOTHING_GRID_SPACING_OCTAVES
+    );
+    const frequencies = Float32Array.from(grid);
+    const magnitudeDb = new Float32Array(grid.length);
+    const unwrappedPhaseDegrees = new Float32Array(grid.length);
+    const groupDelayMs = new Float32Array(grid.length);
+    const minimumGroupDelayMs = new Float32Array(grid.length);
+    const excessGroupDelayMs = new Float32Array(grid.length);
+    const validity = new Uint8Array(grid.length);
+    const samplesToMs = 1000 / sampleRate;
+    for (let index = 0; index < grid.length; index += 1) {
+        const position = grid[index] * fftSize / sampleRate;
+        const lower = Math.min(magnitude.length - 1, Math.floor(position));
+        const upper = Math.min(magnitude.length - 1, lower + 1);
+        const fraction = upper === lower ? 0 : position - lower;
+        const exactLower = Math.abs(fraction) < 1e-10;
+        const lowerValid = valid[lower] !== 0;
+        const upperValid = exactLower || valid[upper] !== 0;
+        if (!lowerValid || !upperValid) {
+            magnitudeDb[index] = Number.NaN;
+            unwrappedPhaseDegrees[index] = Number.NaN;
+            groupDelayMs[index] = Number.NaN;
+            minimumGroupDelayMs[index] = Number.NaN;
+            excessGroupDelayMs[index] = Number.NaN;
             continue;
         }
-        const phase = wrapped[index];
-        if (!previousValid) {
-            unwrapped[index] = phase;
-        } else {
-            let delta = phase - previousPhase;
-            while (delta > Math.PI) delta -= 2 * Math.PI;
-            while (delta < -Math.PI) delta += 2 * Math.PI;
-            unwrapped[index] = unwrapped[index - 1] + delta;
-        }
-        previousPhase = phase;
-        previousValid = true;
+        const lowerMagnitudeDb = magnitude[lower] > 0
+            ? 20 * Math.log10(magnitude[lower])
+            : Number.NEGATIVE_INFINITY;
+        const upperMagnitudeDb = magnitude[upper] > 0
+            ? 20 * Math.log10(magnitude[upper])
+            : Number.NEGATIVE_INFINITY;
+        const total = (exactLower
+            ? totalDelaySamples[lower]
+            : totalDelaySamples[lower] + fraction * (
+                totalDelaySamples[upper] - totalDelaySamples[lower]
+            )) + timeOriginSamples;
+        const minimum = exactLower
+            ? minimumDelaySamples[lower]
+            : minimumDelaySamples[lower] + fraction * (
+                minimumDelaySamples[upper] - minimumDelaySamples[lower]
+            );
+        const phase = exactLower
+            ? unwrappedPhase[lower]
+            : unwrappedPhase[lower] + fraction * (
+                unwrappedPhase[upper] - unwrappedPhase[lower]
+            );
+        validity[index] = 1;
+        magnitudeDb[index] = exactLower
+            ? lowerMagnitudeDb
+            : lowerMagnitudeDb + fraction * (upperMagnitudeDb - lowerMagnitudeDb);
+        unwrappedPhaseDegrees[index] = phase * 180 / Math.PI;
+        groupDelayMs[index] = total * samplesToMs;
+        minimumGroupDelayMs[index] = minimum * samplesToMs;
+        excessGroupDelayMs[index] = (total - minimum) * samplesToMs;
     }
-    return unwrapped;
+    return {
+        frequencies,
+        magnitudeDb,
+        unwrappedPhaseDegrees,
+        groupDelayMs,
+        minimumGroupDelayMs,
+        excessGroupDelayMs,
+        valid: validity
+    };
 }
 
 export function deriveFrequencyResponse(impulse, sampleRate, options = {}) {
@@ -515,13 +626,30 @@ export function deriveFrequencyResponse(impulse, sampleRate, options = {}) {
     for (let index = 0; index < real.length; index += 1) {
         if (valid[index]) wrapped[index] = Math.atan2(imag[index], real[index]);
     }
-    const unwrapped = unwrapValidPhase(wrapped, valid);
+    const continuousPhase = integratePhaseFromGroupDelay(
+        wrapped,
+        totalDelaySamples,
+        valid,
+        fftSize,
+        sampleRate,
+        timeOriginSamples
+    );
     const minimumDelaySamples = minimumPhaseGroupDelaySamples(magnitude, fftSize, magnitudeFloor);
     const samplesToMs = 1000 / sampleRate;
     const maximumPoints = Number.isSafeInteger(options.maximumPoints) && options.maximumPoints >= 2
         ? options.maximumPoints
         : 2048;
     const bins = logarithmicBinIndices(fftSize, sampleRate, maximumPoints);
+    const smoothingSpectrum = createSmoothingSpectrum(
+        sampleRate,
+        fftSize,
+        magnitude,
+        totalDelaySamples,
+        minimumDelaySamples,
+        continuousPhase,
+        valid,
+        timeOriginSamples
+    );
     const frequencies = new Float32Array(bins.length);
     const realReduced = new Float32Array(bins.length);
     const imagReduced = new Float32Array(bins.length);
@@ -539,7 +667,7 @@ export function deriveFrequencyResponse(impulse, sampleRate, options = {}) {
         magnitudeDb[point] = magnitude[bin] > 0 ? 20 * Math.log10(magnitude[bin]) : -Infinity;
         if (valid[bin]) {
             validity[point] = 1;
-            phaseDegrees[point] = wrapDegrees(unwrapped[bin] * 180 / Math.PI);
+            phaseDegrees[point] = wrapDegrees(wrapped[bin] * 180 / Math.PI);
             const total = totalDelaySamples[bin] + timeOriginSamples;
             const minimum = minimumDelaySamples[bin];
             groupDelayReduced[point] = total * samplesToMs;
@@ -563,6 +691,7 @@ export function deriveFrequencyResponse(impulse, sampleRate, options = {}) {
         minimumGroupDelayMs: minimumGroupDelayReduced,
         excessGroupDelayMs: excessGroupDelayReduced,
         valid: validity,
+        smoothing: smoothingSpectrum,
         magnitudeFloorDb: ANALYSIS_MAGNITUDE_FLOOR_DB
     };
 }

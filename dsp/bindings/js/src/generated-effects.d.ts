@@ -1582,6 +1582,11 @@ export interface PhaseSelectEQOptions extends CommonEffectOptions {
   readonly corePhaseHigh?: readonly [number, number, number, number, number];
   readonly outerPhaseHigh?: readonly [number, number, number, number, number];
   readonly gain?: readonly [number, number, number, number, number];
+  readonly regionSolo?: readonly [boolean, boolean, boolean, boolean, boolean];
+  readonly outerBalanceLow?: readonly [number, number, number, number, number];
+  readonly coreBalanceLow?: readonly [number, number, number, number, number];
+  readonly coreBalanceHigh?: readonly [number, number, number, number, number];
+  readonly outerBalanceHigh?: readonly [number, number, number, number, number];
   readonly assets?: never;
 }
 

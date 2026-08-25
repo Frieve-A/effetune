@@ -1,16 +1,16 @@
 ---
 layout: dsp
 title: "Bibliothèque DSP EffeTune"
-description: "Cette page est un point d’entrée concis. La documentation complète de v0.5.0 est tenue à jour en anglais."
+description: "Cette page est un point d’entrée concis. La documentation complète de v0.6.0 est tenue à jour en anglais."
 lang: fr
 permalink: /dsp/fr/
 ---
 
 # Bibliothèque DSP EffeTune
 
-Cette page est un point d’entrée concis. La documentation complète de v0.5.0 est tenue à jour en anglais.
+Cette page est un point d’entrée concis. La documentation complète de v0.6.0 est tenue à jour en anglais.
 
-Documentation version: **0.5.0**
+Documentation version: **0.6.0**
 
 - [Documentation anglaise complète](/dsp/)
 - [Démo en direct](/dsp/demo/)

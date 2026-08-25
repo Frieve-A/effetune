@@ -26,6 +26,7 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
     try {
       assert.notEqual(binding.createEngine(), 0);
       assert.equal(binding.prepare(32000, 2, 128, 256 * 1024), 0);
+      assert.equal(binding.setTelemetryRate(60), 0);
       const instanceId = binding.createInstance('SpectrumAnalyzerPlugin');
       assert.notEqual(instanceId, 0);
       assert.equal(binding.instanceSetTap(instanceId, 77), 0);
@@ -39,7 +40,9 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
       const arena = binding.getArenaViews();
       const packet = new ArrayBuffer(256 * 1024);
       let processed = 0;
-      for (let block = 0; block < 5; block++) {
+      // The analysis result is published after its staged interval, then reaches the host on the
+      // next 60 Hz telemetry tick.
+      for (let block = 0; block < 13; block++) {
         for (let frame = 0; frame < 128; frame++) {
           const sample = Math.sin(2 * Math.PI * 1000 * (processed + frame) / 32000);
           arena.combined[frame] = sample;
@@ -71,7 +74,7 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
 
       assert.equal(binding.instanceSetParams(instanceId, packer.pack({ dr: -144, pt: 14 }),
         packer.hash), 0);
-      for (let block = 0; block < 66; block++) {
+      for (let block = 0; block < 133; block++) {
         arena.combined.fill(0, 0, 256);
         assert.equal(binding.instanceProcess(
           instanceId,

@@ -12,6 +12,11 @@
     { "name": "corePhaseLow", "key": "pl", "objectArrayKey": "regions", "memberKey": "pl", "kind": "float", "count": 5, "min": 0, "max": 180, "default": [0, 0, 0, 0, 0], "unit": "degree" },
     { "name": "corePhaseHigh", "key": "ph", "objectArrayKey": "regions", "memberKey": "ph", "kind": "float", "count": 5, "min": 0, "max": 180, "default": [30, 30, 30, 30, 30], "unit": "degree" },
     { "name": "outerPhaseHigh", "key": "oph", "objectArrayKey": "regions", "memberKey": "oph", "kind": "float", "count": 5, "min": 0, "max": 180, "default": [45, 45, 45, 45, 45], "unit": "degree" },
-    { "name": "gain", "key": "gn", "objectArrayKey": "regions", "memberKey": "gn", "kind": "float", "count": 5, "min": 0, "max": 200, "default": [100, 100, 100, 100, 100], "unit": "%" }
+    { "name": "gain", "key": "gn", "objectArrayKey": "regions", "memberKey": "gn", "kind": "float", "count": 5, "min": 0, "max": 200, "default": [100, 100, 100, 100, 100], "unit": "%" },
+    { "name": "solo", "key": "so", "objectArrayKey": "regions", "memberKey": "so", "kind": "bool", "count": 5, "default": [false, false, false, false, false] },
+    { "name": "outerBalanceLow", "key": "obl", "objectArrayKey": "regions", "memberKey": "obl", "kind": "float", "count": 5, "min": -100, "max": 100, "default": [-100, -100, -100, -100, -100], "unit": "%" },
+    { "name": "coreBalanceLow", "key": "bl", "objectArrayKey": "regions", "memberKey": "bl", "kind": "float", "count": 5, "min": -100, "max": 100, "default": [-100, -100, -100, -100, -100], "unit": "%" },
+    { "name": "coreBalanceHigh", "key": "bh", "objectArrayKey": "regions", "memberKey": "bh", "kind": "float", "count": 5, "min": -100, "max": 100, "default": [100, 100, 100, 100, 100], "unit": "%" },
+    { "name": "outerBalanceHigh", "key": "obh", "objectArrayKey": "regions", "memberKey": "obh", "kind": "float", "count": 5, "min": -100, "max": 100, "default": [100, 100, 100, 100, 100], "unit": "%" }
   ]
 }

@@ -17,10 +17,15 @@ struct PhaseSelectEqPluginParams {
   float corePhaseHigh[5];
   float outerPhaseHigh[5];
   float gain[5];
-  static constexpr std::uint32_t kHash = 0xf7dba1f9u;
-  static constexpr std::uint32_t kFloatCount = 50u;
+  float solo[5];
+  float outerBalanceLow[5];
+  float coreBalanceLow[5];
+  float coreBalanceHigh[5];
+  float outerBalanceHigh[5];
+  static constexpr std::uint32_t kHash = 0x51c6d77au;
+  static constexpr std::uint32_t kFloatCount = 75u;
 };
-static_assert(50u == 0u || sizeof(PhaseSelectEqPluginParams) == sizeof(float) * 50u);
+static_assert(75u == 0u || sizeof(PhaseSelectEqPluginParams) == sizeof(float) * 75u);
 
 } // namespace effetune::generated
 

@@ -123,7 +123,7 @@ function curvePath(points, bounds) {
             continue;
         }
         const x = bounds.left + Math.min(1, Math.max(0, point.x)) * bounds.width;
-        const y = bounds.top + Math.min(1, Math.max(0, point.y)) * bounds.height;
+        const y = bounds.top + point.y * bounds.height;
         path += `${drawing ? 'L' : 'M'}${x.toFixed(2)} ${y.toFixed(2)}`;
         drawing = true;
     }
@@ -836,7 +836,7 @@ export class PipelineAnalyzerUI {
         if (!this.displayControl) return;
         const view = this.configuration.graphView;
         const enabled = {
-            smoothingOct: view === 'frequency' ||
+            smoothingOct: view === 'frequency' || view === 'phase' ||
                 view === 'minimumGroupDelay' || view === 'excessGroupDelay',
             impulseRangeMs: view === 'impulse'
         };

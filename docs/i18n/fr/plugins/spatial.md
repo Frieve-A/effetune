@@ -13,7 +13,7 @@ Une collection de plugins qui améliorent le rendu de votre musique dans vos cas
 - [Crossfeed Filter](#crossfeed-filter) - Filtre de crossfeed pour casques pour une image stéréo naturelle
 - [MS Matrix](#ms-matrix) - Convertit entre stéréo gauche/droite et format Mid/Side
 - [Multiband Balance](#multiband-balance) - Contrôle de balance stéréo dépendant de la fréquence à 5 bandes
-- [Phase Select EQ](#phase-select-eq) - Accentue ou atténue les composantes fréquentielles selon la différence de phase G/D
+- [Phase Select EQ](#phase-select-eq) - Accentue ou atténue les composantes fréquentielles selon la différence de phase G/D et Balance
 - [Stereo Blend](#stereo-blend) - Contrôle la largeur stéréo de mono à stéréo élargie ou inversion de side
 
 ## Crossfeed Filter
@@ -241,26 +241,32 @@ N'oubliez pas : Le Multiband Balance est un outil puissant qui nécessite un aju
 
 ## Phase Select EQ
 
-Phase Select EQ accentue ou atténue des composantes fréquentielles d'un signal stéréo selon la valeur absolue de la différence de phase entre les canaux gauche et droit. Il applique le même gain positif aux deux spectres : il ne fait donc pas tourner la phase, ne la corrige pas et ne crée pas de nouvelle différence de phase. Utilisez-le lorsqu'un son occupe une zone précise de fréquence et de phase stéréo qu'un égaliseur uniquement fréquentiel ne peut pas isoler.
+Phase Select EQ accentue ou atténue les composantes stéréo sélectionnées par la fréquence, la différence de phase absolue et l'équilibre de niveau gauche/droite. Les trois conditions doivent être réunies. Il applique le même gain positif aux deux spectres et ne modifie donc pas leur différence de phase. Utilisez-le pour séparer un son centré d'un son plus large ou décalé d'un côté aux mêmes fréquences.
 
 Cinq Bands indépendants sont toujours disponibles. Chaque Band possède un **Core**, où le Gain est appliqué intégralement, et une **Transition**, où le multiplicateur revient progressivement à 100 %. Les Gains des Bands superposés se multiplient : par exemple, 150 % et 50 % donnent 75 %. Plusieurs accentuations peuvent dépasser 0 dBFS ; conservez donc une marge suffisante et comparez avec le bypass.
 
 La latence de traitement annoncée par Phase Select EQ est égale à la taille de la FFT plus la taille du pas (hop). À 48 kHz, cela représente 4 096 + 1 024 = 5 120 échantillons, soit environ 106,7 ms (environ 116,1 ms à 44,1 kHz). Vous pouvez vérifier le délai cumulé de la chaîne dans l'indication **Total Delay** de l'application. Cette latence peut affecter l'écoute de contrôle en temps réel et la synchronisation audio/vidéo.
 
-### Lecture de la carte de phase
+### Lecture de la carte de sélection
 
 - L'axe vertical représente la fréquence sur une échelle logarithmique : graves en bas, aigus en haut.
-- L'axe horizontal affiche la différence de phase G/D signée : 0° au centre signifie en phase, tandis que -180° et +180° aux extrémités correspondent au même point en opposition de phase.
+- Les options **Phase** et **Balance** choisissent l'axe horizontal ; modifier un réglage Phase ou Balance ouvre automatiquement la vue correspondante. En vue Phase, 0° est au centre, tandis que -180° et +180° représentent le même point en opposition de phase. Comme la sélection utilise la différence **absolue**, le cadre est symétrique autour de 0° et traite +60° comme -60°. En vue Balance, 50:50 est au centre, le bord gauche correspond au canal gauche seul et le bord droit au canal droit seul. Balance vaut `(amplitude droite - amplitude gauche) / (amplitude gauche + amplitude droite) × 100%` : les valeurs négatives favorisent la gauche et les positives la droite. Le cadre est un rectangle unique, pas une image miroir.
 - Chaque point représente une composante d'entrée mesurée récemment. Les composantes fortes sont plus grandes et plus lumineuses ; les anciennes s'estompent.
 - Les composantes mesurées sont représentées par des points blancs. Seuls les cadres des Bands activés sont tracés : le Band en cours d'édition est vert vif, les autres vert clair. Le numéro en haut à gauche identifie le Band.
+- Le badge court à côté de chaque numéro de Core indique toute la sélection de ce Band sur l'axe masqué. Par exemple, `P 20°›40°–80°›100°` signifie limite extérieure basse › Core bas–haut › limite extérieure haute pour Phase. Pour Balance, le même ordre est affiché en rapports gauche:droite, par exemple `B 100:0›80:20–70:30›0:100`. `P full` ou `B full` signifie que ce Band ne limite pas l'axe masqué.
 - La sélection utilise la valeur **absolue** de la différence de phase. Une région logique est donc symétrique autour de 0° et traite +60° et -60° de la même façon. Inverser G/D reflète les points sans changer les composantes traitées.
 - La zone intérieure délimitée est le Core et la zone extérieure plus claire la Transition. Une région comprenant 0° se rejoint au centre ; une région atteignant 180° se prolonge d'un bord de la carte à l'autre.
+- Le badge près des options Graph affiche la plage Core de l'axe masqué et, si nécessaire, sa plage Transition. Les points rejetés par le Band sélectionné sur cet axe sont assombris. Une composante présente uniquement à gauche apparaît à -100% en Balance et -180° en Phase ; uniquement à droite, à +100% et +180°.
+
+La grille Balance affiche des rapports gauche:droite. Les valeurs Balance 0%, ±17%, ±33%, ±60%, ±82% et ±100% correspondent à 50:50 puis, vers l'un ou l'autre côté, à environ 59:41, 67:33, 80:20, 91:9 et 100:0. Les écarts de niveau G/D sont d'environ 0, ±3, ±6, ±12 et ±20 dB ; ±100% signifie qu'un seul canal contient le signal.
 
 ### Guide d'amélioration sonore
 
 1. **Adoucir des aigus très larges** : réglez un Band vers 4–12 kHz et 90–180°. Commencez entre 70 et 90 % avec des transitions larges.
 2. **Donner de la présence à une voix centrée** : réglez un Band vers 1–4 kHz et 0–30°. Commencez entre 110 et 125 %.
 3. **Maîtriser une ambiance diffuse dans le bas-médium** : réglez un Band vers 150–600 Hz et 60–150°. Commencez entre 80 et 90 %, puis élargissez les transitions fréquentielles.
+4. **Atténuer un instrument fortement panoramiqué** : en vue Balance, sélectionnez -100% à -70% à gauche ou +70% à +100% à droite et limitez la fréquence. Réglez le Phase Core sur 150–180° afin d'inclure les points unilatéraux à -180° ou +180° ; si vous voulez que Balance soit le seul critère, utilisez tout le Phase Core de 0–180°. Commencez avec un Gain de 70 à 90%.
+5. **Accentuer une source centrée** : sélectionnez Balance de -17% à +17% et Phase de 0 à 30°, limitez la fréquence et commencez avec un Gain de 105 à 120%.
 
 Ces plages de phase indiquent des tendances courantes, pas des positions fixes de sources sonores. Observez l'emplacement réel des points dans l'enregistrement, effectuez de petits réglages et vérifiez le résultat au casque comme sur enceintes.
 
@@ -268,12 +274,14 @@ Ces plages de phase indiquent des tendances courantes, pas des positions fixes d
 
 - **Band 1-5 / case à cocher** (Off/On) : Sélectionne un Band à modifier et l'active ou le désactive sans changer ses réglages.
 - **Gain** (0 % à 200 %) : Définit le multiplicateur de niveau dans le Core. 100 % ne change pas le niveau, 0 % supprime la composante sélectionnée et 200 % double son amplitude.
+- **Solo** (Off/On) : Permet d'écouter uniquement ce que sélectionnent les Band en Solo. Tant qu'un Band actif a Solo sur On, Gain n'est pas appliqué et tout ce qui se trouve hors de ces Band est coupé, avec le même fondu progressif du Transition sur les bords. Mettre plusieurs Band en Solo laisse entendre la combinaison de leurs zones. Désactiver tous les Solo rétablit le traitement normal.
 - **Core Low Frequency / Core High Frequency** (20 Hz à 40 kHz, selon la limite de la fréquence d'échantillonnage) : Définissent la plage de fréquences traitée à 100 %.
 - **Core Low Phase / Core High Phase** (0° à 180°) : Définissent la plage absolue de différence de phase G/D traitée à 100 %.
+- **Outer Low Balance / Core Low Balance / Core High Balance / Outer High Balance** (-100% à +100%) : Définissent directement les quatre limites de Balance. La paire Core fixe la plage d'équilibre gauche/droite traitée à 100% ; la paire Outer fixe l'endroit où la Transition n'applique plus aucun traitement. Les valeurs négatives favorisent la gauche et les positives la droite.
 - **Low Frequency Transition / High Frequency Transition** : Définissent l'étendue du fondu sous et au-dessus du Core fréquentiel.
 - **Low Phase Transition / High Phase Transition** : Définissent l'étendue du fondu vers 0° et 180°.
 
-Les poignées de la carte modifient les mêmes valeurs que les champs numériques : faites glisser l'intérieur du Core pour le déplacer, ses bords ou ses angles pour le redimensionner, et les poignées extérieures pour régler chaque Transition séparément. Lorsqu'un Core comprend 0°, utilisez la poignée de séparation sur l'axe central pour former deux parties symétriques. Tous les réglages restent accessibles par des champs numériques étiquetés pour une saisie précise ou au clavier.
+Les poignées de la carte, les curseurs et les champs numériques modifient les mêmes valeurs. À la souris ou au toucher, faites glisser l'intérieur du cadre extérieur du Band sélectionné pour déplacer tout le Band, les bords ou les coins du Core pour le redimensionner, et les poignées du bord extérieur pour régler chaque Transition séparément. Une poignée de phase basse s'arrête au centre : Core Low Phase s'arrête à 0° et Low Phase Transition à sa largeur maximale. Si Core Low Phase vaut exactement 0°, la poignée centrale peut d'abord partir d'un côté ou de l'autre ; après le premier mouvement, elle reste verrouillée de ce côté jusqu'à la fin du glissement.
 
 ## Stereo Blend
 

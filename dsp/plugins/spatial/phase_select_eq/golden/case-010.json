@@ -5,7 +5,7 @@
   "stimulus": "noise",
   "sampleRate": 48000,
   "channels": 8,
-  "frameCount": 12801,
+  "frameCount": 6017,
   "blockSize": 128,
   "channelMode": "all8",
   "channel": null,
@@ -33,9 +33,9 @@
     "policy": "per-sample"
   },
   "referenceEngine": "production-native-promoted-v1",
-  "referenceHash": "sha256:9ba7a535d1f8111862793e1273116148327ada15d856574c269bd2f53cce2bb3",
+  "referenceHash": "sha256:e107f89d6a59612785eb35967d764852d15386df2ad85bb6cc8e5037aa72e1d4",
   "generationCommand": "node tools/dsp-parity/generate.mjs --type PhaseSelectEqPlugin --promote-production-native",
-  "outputFloats": 102408,
-  "byteLength": 409632,
+  "outputFloats": 48136,
+  "byteLength": 192544,
   "binary": "case-010.f32"
 }

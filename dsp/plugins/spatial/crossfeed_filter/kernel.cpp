@@ -1,5 +1,6 @@
 #include "effetune/kernel.h"
 #include "CrossfeedFilterPluginParams.h"
+#include "effetune/dsp/denormal_noise.h"
 
 #include <algorithm>
 #include <cmath>
@@ -33,6 +34,7 @@ public:
     low_pass_left_ = 0.0;
     low_pass_right_ = 0.0;
     delay_initialized_ = false;
+    denormal_noise_.reset();
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -76,8 +78,11 @@ public:
       const double delayed_right = readDelay(delay_right_, delay_position_, current_delay);
       delay_position_ = (delay_position_ + 1u) % size;
 
-      low_pass_left_ = low_pass_input * delayed_left + low_pass_coefficient * low_pass_left_;
-      low_pass_right_ = low_pass_input * delayed_right + low_pass_coefficient * low_pass_right_;
+      const double noise = denormal_noise_.sample(frame);
+      low_pass_left_ =
+          low_pass_input * delayed_left + low_pass_coefficient * low_pass_left_ + noise;
+      low_pass_right_ =
+          low_pass_input * delayed_right + low_pass_coefficient * low_pass_right_ + noise;
       const double left_output =
           (static_cast<double>(left_input) + low_pass_right_ * level_gain) * normalize_gain;
       const double right_output =
@@ -86,6 +91,7 @@ public:
       right[frame] = static_cast<float>(right_output);
     }
     delay_.advance(frame_count);
+    denormal_noise_.advance(frame_count);
   }
 
 private:
@@ -141,6 +147,7 @@ private:
   double low_pass_right_ = 0.0;
   bool delay_initialized_ = false;
   DelayRamp delay_;
+  dsp::NyquistDenormalNoise denormal_noise_;
 };
 
 } // namespace effetune::plugins::spatial

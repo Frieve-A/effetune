@@ -79,6 +79,14 @@ inline void resetLinkwitzRiley24State(
   return processBiquadDf1Sample(stage1, coefficients, state.stage2);
 }
 
+[[nodiscard]] inline double
+processLinkwitzRiley24SampleWithDenormalNoise(double input, const BiquadCoefficients &coefficients,
+                                              LinkwitzRiley24State &state, double noise) noexcept {
+  const double stage1 =
+      processBiquadDf1SampleWithDenormalNoise(input, coefficients, state.stage1, noise);
+  return processBiquadDf1SampleWithDenormalNoise(stage1, coefficients, state.stage2, noise);
+}
+
 inline void quantizeLinkwitzRiley24StateToFloat(LinkwitzRiley24State &state) noexcept {
   quantizeBiquadStateToFloat(state.stage1);
   quantizeBiquadStateToFloat(state.stage2);

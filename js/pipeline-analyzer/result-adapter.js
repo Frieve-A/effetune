@@ -1,4 +1,8 @@
-import { smoothFrequencyResponse } from '../utils/measurement-dsp/smoothing.js';
+import {
+    createLogFrequencyGrid,
+    interpolateLogResponse,
+    smoothFrequencyResponse
+} from '../utils/measurement-dsp/smoothing.js';
 
 const BEFORE_COLOR = '#b0b0b0';
 const BEFORE_IMPULSE_COLOR = '#888888';
@@ -12,6 +16,8 @@ const FREQUENCY_MAGNITUDE_TICKS_DB = Object.freeze([18, 12, 6, 0, -6, -12, -18])
 const IMPULSE_TIME_TICK_INTERVALS_MS = Object.freeze([0.5, 1, 5, 10]);
 export const MAGNITUDE_DISPLAY_FLOOR_DB = -120;
 const DEFAULT_DISPLAY_SETTINGS = Object.freeze({ smoothingOct: 0.17, impulseRangeMs: 6 });
+const SMOOTHING_GRID_SPACING_OCTAVES = 0.01;
+const EXCESS_GROUP_DELAY_MAXIMUM_DISPLAY_MS = 100;
 
 function normalizedDisplaySettings(settings = {}) {
     const smoothing = Number(settings.smoothingOct);
@@ -43,6 +49,12 @@ function formatNumber(value, digits = 1) {
     if (magnitude >= 100) return value.toFixed(0);
     if (magnitude >= 10) return value.toFixed(Math.min(digits, 1));
     return value.toFixed(digits);
+}
+
+function wrapDegrees(value) {
+    let wrapped = (value + 180) % 360;
+    if (wrapped < 0) wrapped += 360;
+    return wrapped - 180;
 }
 
 function niceCeiling(value) {
@@ -129,6 +141,19 @@ function frequencyNormalizationDb(frequencies, magnitudes, sampleRate) {
     return Number.isFinite(offsetDb) ? offsetDb : 0;
 }
 
+function hasUniformLogSpacing(points) {
+    if (points.length < 3) return true;
+    const first = Math.log2(points[0].frequency);
+    const spacing = (Math.log2(points.at(-1).frequency) - first) / (points.length - 1);
+    if (!(Number.isFinite(spacing) && spacing > 0)) return false;
+    const tolerance = spacing * 0.001;
+    for (let index = 1; index < points.length - 1; index += 1) {
+        const expected = first + index * spacing;
+        if (Math.abs(Math.log2(points[index].frequency) - expected) > tolerance) return false;
+    }
+    return true;
+}
+
 function smoothFiniteRuns(frequencies, values, validity, smoothingOct) {
     const smoothed = Array.from(values || [], value => value);
     let first = 0;
@@ -143,9 +168,24 @@ function smoothFiniteRuns(frequencies, values, validity, smoothingOct) {
             for (let index = first; index < last; index += 1) {
                 run.push({ frequency: frequencies[index], magnitude: smoothed[index] });
             }
-            const filtered = smoothFrequencyResponse(run, smoothingOct);
+            const needsUniformGrid = run.length >= 16 && !hasUniformLogSpacing(run);
+            const smoothingFrequencies = needsUniformGrid
+                ? createLogFrequencyGrid(
+                    run[0].frequency,
+                    run.at(-1).frequency,
+                    SMOOTHING_GRID_SPACING_OCTAVES
+                )
+                : [];
+            const uniformRun = smoothingFrequencies.length >= 3
+                ? interpolateLogResponse(run, smoothingFrequencies)
+                : run;
+            const filtered = smoothFrequencyResponse(uniformRun, smoothingOct);
+            const displayRun = uniformRun === run
+                ? filtered
+                : interpolateLogResponse(filtered, run.map(point => point.frequency));
             for (let index = first; index < last; index += 1) {
-                smoothed[index] = filtered[index - first].magnitude;
+                const point = displayRun[index - first];
+                smoothed[index] = Array.isArray(point) ? point[1] : point.magnitude;
             }
         }
         first = last + 1;
@@ -171,12 +211,14 @@ function symmetricRange(curves, valueForCurve, minimumLimit) {
     return { minimum: -limit, maximum: limit };
 }
 
-function yPosition(value, range) {
+function yPosition(value, range, clampToRange = true) {
     if (!Number.isFinite(value)) return Number.NaN;
-    const clamped = value < range.minimum
-        ? range.minimum
-        : value > range.maximum ? range.maximum : value;
-    return (range.maximum - clamped) / (range.maximum - range.minimum || 1);
+    const displayValue = clampToRange
+        ? value < range.minimum
+            ? range.minimum
+            : value > range.maximum ? range.maximum : value
+        : value;
+    return (range.maximum - displayValue) / (range.maximum - range.minimum || 1);
 }
 
 function spectrumPoints(
@@ -187,7 +229,8 @@ function spectrumPoints(
     unit,
     digits,
     validOnly,
-    displayValue = value => value
+    displayValue = value => value,
+    clampToRange = true
 ) {
     const frequencies = curve.spectrum?.frequencies;
     const validity = curve.spectrum?.valid;
@@ -212,7 +255,7 @@ function spectrumPoints(
         }
         result.push({
             x: xAxis.position(frequency),
-            y: yPosition(value, range),
+            y: yPosition(value, range, clampToRange),
             xValue: frequency,
             yValue: value,
             xLabel: formatFrequency(frequency),
@@ -333,32 +376,56 @@ export function adaptPipelineAnalysisResult(result, provenance = {}) {
     const xAxis = frequencyAxis();
     const frequencyRange = FREQUENCY_MAGNITUDE_RANGE_DB;
     const frequencySources = styledSources(BEFORE_COLOR, AFTER_COLOR).map(curve => {
+        const spectrum = curve.spectrum?.smoothing || curve.spectrum;
         const magnitudeDb = smoothFiniteRuns(
-            curve.spectrum?.frequencies,
-            curve.spectrum?.magnitudeDb,
+            spectrum?.frequencies,
+            spectrum?.magnitudeDb,
             null,
             displaySettings.smoothingOct
         );
         return {
             ...curve,
+            spectrum,
             displayMagnitudeDb: magnitudeDb,
             frequencyNormalizationDb: frequencyNormalizationDb(
-                curve.spectrum?.frequencies,
+                spectrum?.frequencies,
                 magnitudeDb,
                 sampleRate
             )
         };
     });
     const phaseRange = { minimum: -180, maximum: 180 };
-    const delaySources = property => styledSources(BEFORE_COLOR, AFTER_COLOR).map(curve => ({
-        ...curve,
-        displayGroupDelayMs: smoothFiniteRuns(
-            curve.spectrum?.frequencies,
-            curve.spectrum?.[property] ?? curve.spectrum?.groupDelayMs,
-            curve.spectrum?.valid,
+    const phaseSources = styledSources(BEFORE_COLOR, AFTER_COLOR).map(curve => {
+        const smoothingSpectrum = curve.spectrum?.smoothing;
+        if (!smoothingSpectrum?.unwrappedPhaseDegrees) {
+            return { ...curve, displayPhaseDegrees: curve.spectrum?.phaseDegrees };
+        }
+        const smoothed = smoothFiniteRuns(
+            smoothingSpectrum.frequencies,
+            smoothingSpectrum.unwrappedPhaseDegrees,
+            smoothingSpectrum.valid,
             displaySettings.smoothingOct
-        )
-    }));
+        );
+        return {
+            ...curve,
+            spectrum: smoothingSpectrum,
+            displayPhaseDegrees: smoothed.map(value =>
+                Number.isFinite(value) ? wrapDegrees(value) : Number.NaN)
+        };
+    });
+    const delaySources = property => styledSources(BEFORE_COLOR, AFTER_COLOR).map(curve => {
+        const spectrum = curve.spectrum?.smoothing || curve.spectrum;
+        return {
+            ...curve,
+            spectrum,
+            displayGroupDelayMs: smoothFiniteRuns(
+                spectrum?.frequencies,
+                spectrum?.[property] ?? spectrum?.groupDelayMs,
+                spectrum?.valid,
+                displaySettings.smoothingOct
+            )
+        };
+    });
     const minimumDelaySources = delaySources('minimumGroupDelayMs');
     const excessDelaySources = delaySources('excessGroupDelayMs');
     const minimumDelayRange = symmetricRange(
@@ -366,18 +433,23 @@ export function adaptPipelineAnalysisResult(result, provenance = {}) {
         curve => curve.displayGroupDelayMs,
         1
     );
-    const excessDelayRange = symmetricRange(
+    const automaticExcessDelayRange = symmetricRange(
         excessDelaySources,
         curve => curve.displayGroupDelayMs,
         1
     );
+    const excessDelayLimit = automaticExcessDelayRange.maximum >
+        EXCESS_GROUP_DELAY_MAXIMUM_DISPLAY_MS
+        ? EXCESS_GROUP_DELAY_MAXIMUM_DISPLAY_MS
+        : automaticExcessDelayRange.maximum;
+    const excessDelayRange = { minimum: -excessDelayLimit, maximum: excessDelayLimit };
     const timeRange = { minimum: -2, maximum: displaySettings.impulseRangeMs };
     const impulseSources = styledSources(BEFORE_IMPULSE_COLOR, AFTER_COLOR, 1).map(curve => ({
         ...curve,
         impulseDivisor: impulseDivisor(curve.impulse)
     }));
 
-    const groupDelayView = (label, curves, range) => ({
+    const groupDelayView = (label, curves, range, clampToRange = true) => ({
         xLabel: 'Frequency (Hz)',
         yLabel: label,
         xTicks: xAxis.ticks,
@@ -389,7 +461,9 @@ export function adaptPipelineAnalysisResult(result, provenance = {}) {
             range,
             'ms',
             2,
-            true
+            true,
+            value => value,
+            clampToRange
         ))
     });
 
@@ -418,9 +492,9 @@ export function adaptPipelineAnalysisResult(result, provenance = {}) {
             yLabel: 'Phase (°)',
             xTicks: xAxis.ticks,
             yTicks: linearTicks(-180, 180, value => `${formatNumber(value, 0)}°`),
-            curves: viewCurves(styledSources(BEFORE_COLOR, AFTER_COLOR), curve => spectrumPoints(
+            curves: viewCurves(phaseSources, curve => spectrumPoints(
                 curve,
-                curve.spectrum?.phaseDegrees,
+                curve.displayPhaseDegrees,
                 xAxis,
                 phaseRange,
                 '°',
@@ -436,7 +510,8 @@ export function adaptPipelineAnalysisResult(result, provenance = {}) {
         excessGroupDelay: groupDelayView(
             'Excess group delay (ms)',
             excessDelaySources,
-            excessDelayRange
+            excessDelayRange,
+            false
         ),
         impulse: {
             xLabel: 'Time (ms)',

@@ -1567,13 +1567,21 @@ test('fades output with scheduled ramps and immediate fallbacks', async () => {
     assert.deepEqual(monitoringMessages(), [{
       type: 'setAudioProcessingOverloadMonitoring',
       enabled: true,
-      delaySeconds: 0.1
+      delaySeconds: 0.1,
+      headroomMs: 0
     }]);
+
+    // A context that reports a render buffer forwards it as the overrun credit.
+    manager.contextManager.audioContext.baseLatency = 0.01;
+    manager.fadeInOutput(0.1);
+    assert.equal(monitoringMessages().at(-1).headroomMs, 10);
+    delete manager.contextManager.audioContext.baseLatency;
+
     const firstToken = manager.fadeOutOutput(0.2);
     const secondToken = manager.fadeOutOutput(0.2);
     assert.deepEqual(
       monitoringMessages().map(message => message.enabled),
-      [true, false, false]
+      [true, true, false, false]
     );
     const fadeInRamps = () => calls.filter(call => call[0] === 'param.ramp' && call[2] === 1).length;
     const fadeInCount = fadeInRamps();
@@ -1582,13 +1590,13 @@ test('fades output with scheduled ramps and immediate fallbacks', async () => {
     assert.equal(fadeInRamps(), fadeInCount);
     assert.deepEqual(
       monitoringMessages().map(message => message.enabled),
-      [true, false, false]
+      [true, true, false, false]
     );
     assert.equal(manager.fadeInOutputForToken(secondToken, 0.1), true);
     assert.equal(fadeInRamps(), fadeInCount + 1);
     assert.deepEqual(
       monitoringMessages().map(message => message.enabled),
-      [true, false, false, true]
+      [true, true, false, false, true]
     );
     assert.equal(calls.some(call => call[0] === 'param.ramp' && call[2] === 1), true);
     assert.equal(calls.some(call => call[0] === 'param.ramp' && call[2] === 0), true);
@@ -1618,7 +1626,8 @@ test('fades output with scheduled ramps and immediate fallbacks', async () => {
       {
         type: 'setAudioProcessingOverloadMonitoring',
         enabled: true,
-        delaySeconds: 0
+        delaySeconds: 0,
+        headroomMs: 0
       }
     );
     manager.fadeOutOutput();
@@ -1919,5 +1928,52 @@ test('sets pipeline, master bypass, offline processing, encoding, and event faca
 
   await withAudioManager({ throwOfflineProcess: true }, async ({ manager }) => {
     await assert.rejects(() => manager.processAudioFile({ name: 'bad.wav' }), /offline failed/);
+  });
+});
+
+test('waits for a transiently missing active WASM asset until it becomes ready', async () => {
+  await withAudioManager({ autoRunTimers: false }, async ({ fakes, manager }) => {
+    const primaryWorklet = fakes.workletNode;
+    const pluginId = 7;
+    const slot = 0;
+    const key = manager._wasmAssetKey(pluginId, slot);
+    let notifyAssetChange = () => {};
+    const descriptor = { operationRevision: 2, payload: new ArrayBuffer(4) };
+    const plugin = {
+      id: pluginId,
+      getWasmAssets: () => new Map([[slot, descriptor]]),
+      getWasmAssetRevisionDescriptor: (_slot, revision) =>
+        revision === descriptor.operationRevision ? descriptor : null,
+      getWasmAssetLastRejection: () => null,
+      addWasmAssetSnapshotChangeListener(listener) {
+        notifyAssetChange = listener;
+        return () => { notifyAssetChange = () => {}; };
+      }
+    };
+    manager._wasmAssetMembershipByNode.set(
+      primaryWorklet,
+      new Map([[pluginId, plugin]])
+    );
+    manager._wasmAssetStatesByNode.set(primaryWorklet, new Map([[key, 0]]));
+    manager._wasmAssetExpectedRevisionsByNode.set(primaryWorklet, new Map([[key, 1]]));
+    manager._wasmAssetExpectedReplayEpochsByNode.set(primaryWorklet, new Map([[key, 0]]));
+
+    let settled = false;
+    const waiting = manager.waitForEffectiveActiveWasmAssets(plugin, [slot], {
+      primaryWorklet,
+      timeoutMs: 1000
+    }).then(result => {
+      settled = true;
+      return result;
+    });
+    await flushMicrotasks();
+    assert.equal(settled, false);
+
+    manager._wasmAssetStatesByNode.get(primaryWorklet).set(key, 3);
+    manager._wasmAssetExpectedRevisionsByNode.get(primaryWorklet).set(key, 2);
+    notifyAssetChange();
+    const result = await waiting;
+    assert.equal(result.ready, true);
+    assert.equal(result.assets.get(slot), descriptor);
   });
 });

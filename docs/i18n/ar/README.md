@@ -392,7 +392,7 @@
 | Spatial | Crossfeed Filter | مرشح crossfeed لسماعات الرأس للحصول على صورة ستيريو طبيعية | [تفاصيل](plugins/spatial.md#crossfeed-filter) |
 | Spatial | MS Matrix | يحول بين الستيريو وMid/Side لضبط المركز والأجواء | [تفاصيل](plugins/spatial.md#ms-matrix) |
 | Spatial | Multiband Balance | تحكم خماسي النطاق في توازن الستيريو حسب التردد | [تفاصيل](plugins/spatial.md#multiband-balance) |
-| Spatial | Phase Select EQ | يعزز أو يخفض مكونات التردد المحددة حسب فرق الطور بين L/R | [تفاصيل](plugins/spatial.md#phase-select-eq) |
+| Spatial | Phase Select EQ | يعزز أو يخفض مكونات التردد المحددة حسب فرق الطور بين L/R وBalance | [تفاصيل](plugins/spatial.md#phase-select-eq) |
 | Spatial | Stereo Blend | يتحكم في عرض الستيريو من mono إلى ستيريو معزز | [تفاصيل](plugins/spatial.md#stereo-blend) |
 | Others | Oscillator | مولد نغمات وضوضاء اختبار لفحص السماعات أو سماعات الرأس | [تفاصيل](plugins/others.md#oscillator) |
 | Control | Section | يجمع التأثيرات بحيث يمكن تجاوز قسم كامل أو إعادته | [تفاصيل](plugins/control.md) |

@@ -392,7 +392,7 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | Spatial   | Crossfeed Filter | Filtro de alimentación cruzada para auriculares para imagen estéreo natural | [Detalles](plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | Convierte entre estéreo y Mid/Side para ajustar centro y ambiente | [Detalles](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | Control de balance estéreo dependiente de frecuencia de 5 bandas | [Detalles](plugins/spatial.md#multiband-balance) |
-| Spatial   | Phase Select EQ | Realza o atenúa componentes de frecuencia según la diferencia de fase L/R | [Detalles](plugins/spatial.md#phase-select-eq) |
+| Spatial   | Phase Select EQ | Realza o atenúa componentes de frecuencia según la diferencia de fase L/R y Balance | [Detalles](plugins/spatial.md#phase-select-eq) |
 | Spatial   | Stereo Blend | Controla la anchura estéreo desde polaridad lateral invertida, pasando por mono, hasta estéreo ampliado | [Detalles](plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | Generador de tonos de prueba y ruido para comprobar altavoces/auriculares | [Detalles](plugins/others.md#oscillator) |
 | Control   | Section | Agrupa efectos para poder omitir o restaurar una sección completa | [Detalles](plugins/control.md) |

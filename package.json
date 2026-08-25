@@ -1,6 +1,6 @@
 {
   "name": "effetune",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "private": true,
   "description": "Desktop Audio Effect Processor",
   "main": "electron/main.js",
@@ -28,6 +28,7 @@
     "check:install-scripts": "node scripts/check-install-scripts.mjs",
     "lint": "eslint electron js plugins features scripts tools tests --max-warnings=0",
     "test": "npm --prefix dsp/bindings/js run build && node tools/run-tests.mjs",
+    "test:tube-calibration": "node --test tests/esm/dsp-tube-simulator-listening-presets-v1.test.mjs",
     "test:library-scale:quick": "node tests/scale/library-scale-generation.mjs --size 10000",
     "test:library-scale:million": "node tests/scale/library-scale-generation.mjs --preset million",
     "test:library-scale:boundary": "node tests/scale/library-scale-generation.mjs --preset boundary",
@@ -53,10 +54,10 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "cross-env": "^10.1.0",
-    "electron": "^43.4.1",
+    "electron": "^44.0.0",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
-    "eslint": "^10.7.0",
+    "eslint": "^10.9.1",
     "eslint-plugin-electron": "^7.0.0",
     "eslint-plugin-unused-imports": "^4.4.1",
     "globals": "^17.11.0",
@@ -166,7 +167,7 @@
     "win": {
       "extraResources": [
         {
-          "from": "native/openhome-sidecar/build/win32-x64/effetune-openhome-sidecar.exe",
+          "from": "out/native/openhome-sidecar/win32-x64/effetune-openhome-sidecar.exe",
           "to": "openhome/effetune-openhome-sidecar.exe"
         },
         {
@@ -206,7 +207,7 @@
     "mac": {
       "extraResources": [
         {
-          "from": "native/openhome-sidecar/build/darwin-${arch}/effetune-openhome-sidecar",
+          "from": "out/native/openhome-sidecar/darwin-${arch}/effetune-openhome-sidecar",
           "to": "openhome/effetune-openhome-sidecar"
         },
         {
@@ -223,18 +224,18 @@
     "linux": {
       "extraResources": [
         {
-          "from": "native/openhome-sidecar/build/linux-${arch}/effetune-openhome-sidecar",
+          "from": "out/native/openhome-sidecar/linux-${arch}/effetune-openhome-sidecar",
           "to": "openhome/effetune-openhome-sidecar"
         },
         {
-          "from": "native/openhome-sidecar/build/linux-${arch}",
+          "from": "out/native/openhome-sidecar/linux-${arch}",
           "to": "openhome",
           "filter": [
             "libnl*-3.so*"
           ]
         },
         {
-          "from": "native/openhome-sidecar/build/linux-${arch}/libnl-runtime-manifest.json",
+          "from": "out/native/openhome-sidecar/linux-${arch}/libnl-runtime-manifest.json",
           "to": "openhome/libnl-runtime-manifest.json"
         },
         {

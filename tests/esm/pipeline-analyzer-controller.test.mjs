@@ -710,7 +710,7 @@ test('a synchronous postMessage failure releases the exact Worker', async () => 
     controller.dispose();
 });
 
-test('execution failures preserve the accepted result and log developer diagnostics once', () => {
+test('execution failures hide the stale graph and log developer diagnostics once', () => {
     const ui = new FakeUi();
     const diagnostics = [];
     const controller = new PipelineAnalyzerController({
@@ -727,11 +727,11 @@ test('execution failures preserve the accepted result and log developer diagnost
     ui.setMeasuring(true);
 
     controller._reportRunError(new PipelineSnapshotError('non-finite-output'));
-    assert.equal(ui.resultOptions.stale, true);
-    assert.ok(ui.results.at(-1) === acceptedResult, 'accepted result must remain visible');
-    assert.equal(ui.results.length, 1, 'terminal failure must not replace the accepted result');
+    assert.equal(ui.results.at(-1), null, 'a failed run must not leave an old graph visible');
+    assert.ok(controller.lastAcceptedResult === acceptedResult,
+        'the accepted result must remain available for a later retry');
     assert.equal(ui.measuringStates.at(-1), false);
-    assert.equal(controller.lastAcceptedStale, false);
+    assert.equal(controller.lastAcceptedStale, true);
     assert.equal(diagnostics.length, 1);
     assert.equal(diagnostics[0][1].code, 'non-finite-output');
 
@@ -740,9 +740,80 @@ test('execution failures preserve the accepted result and log developer diagnost
     assert.equal(ui.measuringStates.at(-1), true, 'a new invalidation must restore busy state');
     controller._clearDebounce();
     controller._reportRunError(new PipelineSnapshotError('speaker-ir-missing'));
+    assert.equal(ui.results.at(-1), null);
     assert.equal(ui.measuringStates.at(-1), false);
     assert.equal(diagnostics.length, 2);
     assert.equal(diagnostics[1][1].code, 'speaker-ir-missing');
+    controller.dispose();
+});
+
+test('display changes cannot revive a failed graph before a new analysis starts', () => {
+    const ui = new FakeUi();
+    let pendingReadapt = null;
+    const controller = new PipelineAnalyzerController({
+        audioManager: new FakeAudioManager(),
+        workletSync: { preparePluginData: () => ({}) },
+        ui,
+        storage: null,
+        consoleRef: { error() {} },
+        setDisplayReadaptTimeout: callback => {
+            pendingReadapt = callback;
+            return 1;
+        },
+        clearDisplayReadaptTimeout: () => {
+            pendingReadapt = null;
+        },
+        resultAdapter: (raw, provenance) => ({
+            ...raw,
+            displaySettings: { ...provenance.displaySettings },
+            views: {}
+        })
+    });
+    controller.active = true;
+    controller.runGeneration = 1;
+    const accept = marker => {
+        const worker = new FakeWorker();
+        const token = {
+            activationEpoch: controller.activationEpoch,
+            runGeneration: controller.runGeneration
+        };
+        controller.activeWorker = worker;
+        controller._handleWorkerMessage(worker, token, builtSnapshot(), {
+            data: {
+                type: 'result',
+                activationEpoch: token.activationEpoch,
+                runGeneration: token.runGeneration,
+                result: { marker }
+            }
+        });
+    };
+
+    accept('first');
+    assert.equal(ui.results.at(-1).marker, 'first');
+    controller._reportRunError(new PipelineSnapshotError('worker-failed'));
+    assert.equal(ui.results.at(-1), null);
+
+    controller.setConfiguration({
+        displaySettings: { smoothingOct: 0.31, impulseRangeMs: 6 }
+    }, { displayCommit: false });
+    assert.equal(typeof pendingReadapt, 'function');
+    pendingReadapt();
+    pendingReadapt = null;
+    assert.equal(ui.results.at(-1), null, 'live smoothing must keep the failed graph hidden');
+
+    controller.setConfiguration({
+        displaySettings: { smoothingOct: 0.31, impulseRangeMs: 12 }
+    });
+    assert.equal(ui.results.at(-1), null, 'committed display changes must keep it hidden');
+
+    controller.invalidate('retry', { immediate: true });
+    assert.equal(ui.results.at(-1).marker, 'first',
+        'a new analysis must restore the stale graph while measuring');
+    assert.equal(ui.resultOptions.stale, true);
+    controller._clearDebounce();
+    accept('second');
+    assert.equal(ui.results.at(-1).marker, 'second');
+    assert.equal(ui.resultOptions.stale, false);
     controller.dispose();
 });
 
@@ -1139,7 +1210,7 @@ test('a run freezes current active DSP instances as optional WASM preferences', 
     controller.dispose();
 });
 
-test('measurement refresh failures preserve the accepted result and log once', async () => {
+test('measurement refresh failures hide the stale graph and log once', async () => {
     const ui = new FakeUi();
     const diagnostics = [];
     const controller = new PipelineAnalyzerController({
@@ -1156,7 +1227,8 @@ test('measurement refresh failures preserve the accepted result and log once', a
     controller.lastAcceptedResult = Object.freeze({ views: {} });
     assert.equal(await controller.refreshMeasurements(), false);
     assert.equal(ui.measuringStates.at(-1), false);
-    assert.equal(controller.lastAcceptedStale, false);
+    assert.equal(ui.results.at(-1), null);
+    assert.equal(controller.lastAcceptedStale, true);
     assert.equal(diagnostics.length, 1);
     assert.equal(diagnostics[0][1].code, 'measurement-refresh-failed');
     controller.dispose();

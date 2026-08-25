@@ -8,7 +8,8 @@ __pycache__/
 # Build output
 dist/
 dist-locked-backup-*/
-out/
+/out/
+/.emsdk/
 _site/
 .jekyll-cache/
 .jekyll-metadata
@@ -31,6 +32,8 @@ _site/
 !/tests/esm/dsp-bandwidth-extender-port-v1.test.mjs
 !/tests/esm/dsp-bluetooth-sbc-audioworklet-gate.test.mjs
 !/tests/esm/dsp-codec-simulator-ui-conventions.test.mjs
+!/tests/esm/dsp-cmake-security-contract.test.mjs
+!/tests/esm/dsp-denormal-protection.test.mjs
 !/tests/esm/dsp-bluetooth-sbc-production-equivalence.test.mjs
 !/tests/esm/dsp-bluetooth-sbc-simulator-port-v1.test.mjs
 !/tests/esm/dsp-bluetooth-sbc-thread-cpu-gate.test.mjs
@@ -50,6 +53,7 @@ _site/
 !/tests/esm/dsp-tube-simulator-wasm-telemetry-v1.test.mjs
 !/tests/esm/group-delay-peq-design.test.mjs
 !/tests/esm/group-delay-peq-plugin.test.mjs
+!/tests/esm/room-eq-group-delay-analysis.test.mjs
 !/tests/esm/media-session-anchor.test.mjs
 !/tests/esm/modulation-frequency-shifter.test.mjs
 !/tests/esm/modulation-plugin-host-contracts.test.mjs
@@ -64,6 +68,7 @@ _site/
 !/tests/esm/pipeline-analyzer-host.test.mjs
 !/tests/esm/pipeline-analyzer-result-adapter.test.mjs
 !/tests/esm/pipeline-analyzer-snapshot.test.mjs
+!/tests/esm/pipeline-analyzer-tsp.test.mjs
 !/tests/esm/pipeline-analyzer-ui.test.mjs
 !/tests/esm/pipeline-analyzer-worker.test.mjs
 !/tests/esm/plugin-execution-capabilities.test.mjs

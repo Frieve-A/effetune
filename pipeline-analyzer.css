@@ -183,7 +183,7 @@ body:not(.layout-mobile) .pipeline-analyzer-header {
     display: grid;
     gap: 6px;
     min-height: 64px;
-    margin: 2px 0;
+    margin: 6px 0 2px;
 }
 
 .pipeline-analyzer-display-control {
@@ -368,6 +368,9 @@ body:not(.layout-mobile) .pipeline-analyzer-header {
 }
 
 .pipeline-analyzer-view-switcher {
+    align-items: center;
+    column-gap: 20px;
+    row-gap: 2px;
     margin: 2px 0;
 }
 

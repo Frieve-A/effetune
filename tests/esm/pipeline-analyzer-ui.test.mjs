@@ -41,7 +41,11 @@ uiTest('places one accessible Analyzer button directly after Share with dedicate
   assert.match(analyzerCss, /\.pipeline-analyzer-curve\s*\{[^}]*stroke-width:\s*1;[^}]*pointer-events:\s*none;[^}]*vector-effect:\s*non-scaling-stroke;/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-curve\.is-highlighted\s*\{[^}]*stroke-width:\s*3\.5;[^}]*opacity:\s*1;/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-curve\.is-hidden\s*\{[^}]*display:\s*none;/s);
-  assert.match(analyzerCss, /\.pipeline-analyzer-display-controls\s*\{[^}]*display:\s*grid;[^}]*min-height:\s*64px;/s);
+  assert.match(analyzerCss, /\.pipeline-analyzer-display-controls\s*\{[^}]*display:\s*grid;[^}]*min-height:\s*64px;[^}]*margin:\s*6px 0 2px;/s);
+  assert.match(analyzerCss, /\.pipeline-analyzer-view-switcher\s*\{[^}]*column-gap:\s*20px;[^}]*row-gap:\s*2px;/s);
+  assert.match(uiSource, /const y = bounds\.top \+ point\.y \* bounds\.height;/);
+  assert.doesNotMatch(uiSource,
+    /const y = bounds\.top \+ Math\.min\(1, Math\.max\(0, point\.y\)\) \* bounds\.height;/);
   assert.match(analyzerCss, /\.pipeline-analyzer-display-control\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:[^;]+;[^}]*gap:\s*10px;/s);
   assert.doesNotMatch(analyzerCss, /\.pipeline-analyzer-display-control\s*\{[^}]*font-size:\s*12px;/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-display-control input\[type='range'\]\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*120px;/s);
@@ -337,8 +341,12 @@ uiTest('keeps both display controls mounted, enables only relevant settings, and
   ui.viewInputs.get('phase').input.checked = true;
   ui.viewInputs.get('phase').input.dispatch('change');
   assert.deepEqual(ui.displayControl.children, [smoothing.row, impulse.row]);
-  assert.equal(smoothing.range.disabled, true);
+  assert.equal(smoothing.range.disabled, false);
   assert.equal(impulse.range.disabled, true);
+  smoothing.range.dispatch('input');
+  assert.equal(changes.at(-1).configuration.graphView, 'phase');
+  assert.equal(changes.at(-1).configuration.displaySettings.smoothingOct, 0.31);
+  assert.equal(changes.at(-1).meta.displayCommit, false);
   ui.viewInputs.get('minimumGroupDelay').input.checked = true;
   ui.viewInputs.get('minimumGroupDelay').input.dispatch('change');
   assert.equal(smoothing.range.disabled, false);

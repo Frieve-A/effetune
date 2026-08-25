@@ -28,12 +28,13 @@ test('release versions support the established two-component tag convention', ()
   assert.equal(normalizeReleaseVersion({ tag_name: 'v1.64' }), '1.64.0');
 });
 
-test('release identity is version 2.5.0', () => {
+test('release metadata uses the package version consistently', () => {
   const packageJson = JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
   const packageLock = JSON.parse(fs.readFileSync(new URL('../../package-lock.json', import.meta.url), 'utf8'));
   const history = fs.readFileSync(new URL('../../docs/version-history.md', import.meta.url), 'utf8');
-  assert.equal(packageJson.version, '2.5.0');
-  assert.equal(packageLock.version, '2.5.0');
-  assert.equal(packageLock.packages[''].version, '2.5.0');
-  assert.match(history, /^### Version 2\.5\.0 \(Aug 14, 2026\)$/m);
+  assert.equal(packageLock.version, packageJson.version);
+  assert.equal(packageLock.packages[''].version, packageJson.version);
+  const historyVersionHeading = history.match(/^### Version ([^ (\r\n]+) \(/m);
+  assert.ok(historyVersionHeading, 'Version History must contain a version heading');
+  assert.equal(historyVersionHeading[1], packageJson.version);
 });

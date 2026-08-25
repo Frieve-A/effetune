@@ -1,5 +1,6 @@
 #include "effetune/kernel.h"
 #include "MultibandTransientPluginParams.h"
+#include "effetune/dsp/denormal_noise.h"
 #include "effetune/dsp/linkwitz_riley.h"
 
 #include "../multiband_telemetry.h"
@@ -49,6 +50,7 @@ public:
     fade_length_ = 0u;
     configured_ = false;
     has_measurement_ = false;
+    denormal_noise_.reset();
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -80,6 +82,7 @@ public:
     shapeBands(channel_count, frame_count);
     sumBands(audio, channel_count, frame_count);
     applyFade(audio, channel_count, frame_count);
+    denormal_noise_.advance(frame_count);
     has_measurement_ = true;
   }
 
@@ -238,8 +241,8 @@ private:
   void filterBlock(const float *input, float *output, const dsp::BiquadCoefficients &coefficients,
                    dsp::LinkwitzRiley24State &state, std::uint32_t frame_count) noexcept {
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-      output[frame] = static_cast<float>(dsp::processLinkwitzRiley24Sample(
-          static_cast<double>(input[frame]), coefficients, state));
+      output[frame] = static_cast<float>(dsp::processLinkwitzRiley24SampleWithDenormalNoise(
+          static_cast<double>(input[frame]), coefficients, state, denormal_noise_.sample(frame)));
     }
   }
 
@@ -274,6 +277,7 @@ private:
   std::uint32_t channel_count_ = 0u;
   std::uint32_t fade_counter_ = 0u;
   std::uint32_t fade_length_ = 0u;
+  dsp::NyquistDenormalNoise denormal_noise_;
   bool configured_ = false;
   bool has_measurement_ = false;
 };

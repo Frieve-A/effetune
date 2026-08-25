@@ -1,7 +1,6 @@
 .phase-select-eq-plugin-ui {
     display: flex;
     flex-direction: column;
-    gap: 20px;
     width: 100%;
 }
 
@@ -47,6 +46,15 @@
     box-shadow: var(--et-focus-ring);
 }
 
+/* Only one Band editor exists, so a Band soloed from another tab would otherwise be
+   invisible. The outline is kept off the focus ring's box-shadow, and the underline gives
+   the same cue without relying on colour. */
+.phase-select-eq-region-tab.soloed {
+    outline: 2px solid var(--et-accent);
+    outline-offset: -2px;
+    text-decoration: underline;
+}
+
 .phase-select-eq-band-checkbox {
     margin: 0;
 }
@@ -55,24 +63,60 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-    margin-top: -20px;
     padding: 10px;
     border-radius: 0 0 4px 4px;
     background: #2d2d2d;
 }
 
 .phase-select-eq-fields {
+    --phase-select-eq-field-columns: minmax(145px, auto) minmax(80px, 1fr) 80px;
     display: grid;
     grid-template-columns: repeat(2, minmax(260px, 1fr));
     gap: 4px 15px;
 }
 
-.phase-select-eq-field {
+.phase-select-eq-plugin-ui .parameter-row.phase-select-eq-field {
     display: grid;
-    grid-template-columns: minmax(145px, auto) minmax(80px, 1fr) 80px;
+    grid-template-columns: var(--phase-select-eq-field-columns);
     align-items: center;
     gap: 8px;
     min-width: 0;
+}
+
+.phase-select-eq-plugin-ui .parameter-row.phase-select-eq-solo-field {
+    display: grid;
+    grid-template-columns: var(--phase-select-eq-field-columns);
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.phase-select-eq-plugin-ui .phase-select-eq-solo-checkbox {
+    grid-column: 2;
+    justify-self: start;
+    margin: 0;
+}
+
+.phase-select-eq-plugin-ui .parameter-row.phase-select-eq-axis-controls {
+    margin-top: 14px;
+    margin-bottom: 0;
+}
+
+.phase-select-eq-plugin-ui .phase-select-eq-axis-controls + .phase-select-eq-map {
+    margin-top: 2px;
+}
+
+.phase-select-eq-hidden-axis-badge {
+    padding: 3px 7px;
+    border: 1px solid #555;
+    border-radius: 999px;
+    color: var(--et-text-secondary);
+    font-size: 0.8em;
+}
+
+.phase-select-eq-hidden-axis-badge.limited {
+    border-color: #b38b00;
+    color: #ffd65a;
 }
 
 .phase-select-eq-field label {
@@ -80,12 +124,12 @@
     line-height: 1.25;
 }
 
-.phase-select-eq-field input[type="range"] {
+.phase-select-eq-plugin-ui .parameter-row.phase-select-eq-field input[type="range"] {
     width: 100%;
     min-width: 80px;
 }
 
-.phase-select-eq-field input[type="number"] {
+.phase-select-eq-plugin-ui .parameter-row.phase-select-eq-field input[type="number"] {
     box-sizing: border-box;
     width: 80px;
 }
@@ -127,14 +171,50 @@ body.layout-mobile .phase-select-eq-fields {
     grid-template-columns: 1fr;
 }
 
-body.layout-mobile .phase-select-eq-field {
-    grid-template-columns: minmax(130px, auto) minmax(70px, 1fr)
-        var(--et-mobile-field-min-width);
+body.layout-mobile .phase-select-eq-plugin-ui .parameter-row.phase-select-eq-solo-field {
+    grid-template-columns: minmax(0, 1fr);
 }
 
-body.layout-mobile .phase-select-eq-field input[type="number"] {
+body.layout-mobile .phase-select-eq-plugin-ui .parameter-row.phase-select-eq-solo-field > label {
+    grid-row: 1;
+    grid-column: 1 / -1;
+}
+
+body.layout-mobile .phase-select-eq-plugin-ui .phase-select-eq-solo-checkbox {
+    grid-row: 2;
+    grid-column: 1;
+    justify-self: start;
+}
+
+body.layout-mobile .phase-select-eq-plugin-ui .parameter-row.phase-select-eq-field {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+}
+
+body.layout-mobile .phase-select-eq-plugin-ui .parameter-row.phase-select-eq-field > label {
+    grid-row: 1;
+    grid-column: 1 / -1;
+}
+
+body.layout-mobile .phase-select-eq-plugin-ui .parameter-row.phase-select-eq-field input[type="range"] {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    min-width: 0;
+}
+
+body.layout-mobile .phase-select-eq-plugin-ui .parameter-row.phase-select-eq-field input[type="number"] {
+    grid-row: 3;
+    grid-column: 1;
     width: var(--et-mobile-field-min-width);
     min-width: var(--et-mobile-field-min-width);
     min-height: var(--et-mobile-control-height);
     font-size: 16px;
+}
+
+body.layout-mobile .phase-select-eq-hidden-axis-badge {
+    box-sizing: border-box;
+    flex: 1 0 100%;
+    min-width: 0;
+    text-align: center;
+    white-space: normal;
 }

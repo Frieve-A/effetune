@@ -69,6 +69,14 @@ struct BiquadTdf2State final {
   return output;
 }
 
+[[nodiscard]] inline double
+processBiquadDf1SampleWithDenormalNoise(double input, const BiquadCoefficients &coefficients,
+                                        BiquadDf1State &state, double noise) noexcept {
+  const double output = processBiquadDf1Sample(input, coefficients, state) + noise;
+  state.y1 = output;
+  return output;
+}
+
 [[nodiscard]] inline double processBiquadTdf2Sample(double input,
                                                     const BiquadCoefficients &coefficients,
                                                     BiquadTdf2State &state) noexcept {

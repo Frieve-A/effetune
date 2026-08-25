@@ -24,7 +24,7 @@ export const CANONICAL_FIELD_ORDER = Object.freeze([
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDirectory, '..', '..', '..');
 const defaultOutputDirectory = path.join(
-  repoRoot, 'tests', 'fixtures', 'tube-simulator', 'lineamp-v1', 'manifests'
+  repoRoot, 'tmp', 'dev', 'tube-simulator-lineamp', 'lineamp-v1', 'manifests'
 );
 
 export const SUPPORTED_SAMPLE_RATES = Object.freeze([

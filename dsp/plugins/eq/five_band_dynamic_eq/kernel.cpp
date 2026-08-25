@@ -1,6 +1,7 @@
 #include "effetune/kernel.h"
 #include "FiveBandDynamicEQParams.h"
 #include "binary_io.h"
+#include "effetune/dsp/denormal_noise.h"
 
 #include <algorithm>
 #include <array>
@@ -262,6 +263,7 @@ public:
     latest_gains_.fill(0.0F);
     active_channels_ = 0u;
     has_measurement_ = false;
+    denormal_noise_.reset();
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -327,6 +329,7 @@ public:
         mono_sample += static_cast<double>(sample);
       }
       mono_sample /= static_cast<double>(channel_count);
+      const double noise = denormal_noise_.sample(frame);
       for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
         processed[channel] = current[channel];
       }
@@ -341,10 +344,12 @@ public:
         const BiquadCoefficients sidechain =
             calculateCoefficients(FilterType::BandPass, band.sidechain_frequency.value(frame),
                                   band.sidechain_q.value(frame), 0.0, sample_rate_);
-        const double sidechain_output = sidechain.b0 * mono_sample + band.mono_sidechain_w1;
-        band.mono_sidechain_w1 =
-            sidechain.b1 * mono_sample - sidechain.a1 * sidechain_output + band.mono_sidechain_w2;
-        band.mono_sidechain_w2 = sidechain.b2 * mono_sample - sidechain.a2 * sidechain_output;
+        const double sidechain_input = mono_sample;
+        const double sidechain_output =
+            sidechain.b0 * sidechain_input + band.mono_sidechain_w1 + noise;
+        band.mono_sidechain_w1 = sidechain.b1 * sidechain_input - sidechain.a1 * sidechain_output +
+                                 band.mono_sidechain_w2;
+        band.mono_sidechain_w2 = sidechain.b2 * sidechain_input - sidechain.a2 * sidechain_output;
 
         const double level_db = band.level_detector.processLevel(sidechain_output);
         const double delta_db = level_db - block_band.threshold;
@@ -385,7 +390,7 @@ public:
           }
           const BiquadCoefficients &coefficients = state.last_coefficients;
           const double input = static_cast<double>(current[channel]);
-          const double output = coefficients.b0 * input + state.w1;
+          const double output = coefficients.b0 * input + state.w1 + noise;
           state.w1 = coefficients.b1 * input - coefficients.a1 * output + state.w2;
           state.w2 = coefficients.b2 * input - coefficients.a2 * output;
           processed[channel] = static_cast<float>(output);
@@ -405,6 +410,7 @@ public:
       band.sidechain_frequency.advance(frame_count);
       band.sidechain_q.advance(frame_count);
     }
+    denormal_noise_.advance(frame_count);
     has_measurement_ = true;
   }
 
@@ -445,6 +451,7 @@ private:
   std::uint32_t max_frames_ = 0u;
   std::uint32_t active_channels_ = 0u;
   bool has_measurement_ = false;
+  dsp::NyquistDenormalNoise denormal_noise_;
 };
 
 static_assert(sizeof(FiveBandDynamicEQKernel) <= 8192u);

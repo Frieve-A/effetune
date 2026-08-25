@@ -13,7 +13,7 @@ function createIpcMain() {
   };
 }
 
-test('registerClipboardIpcHandlers registers native clipboard read and write handlers', () => {
+test('registerClipboardIpcHandlers registers native clipboard read and write handlers', async () => {
   const ipcMain = createIpcMain();
   const writes = [];
   const clipboard = {
@@ -23,40 +23,40 @@ test('registerClipboardIpcHandlers registers native clipboard read and write han
 
   registerClipboardIpcHandlers(ipcMain, clipboard);
 
-  assert.equal(ipcMain.handlers.get('read-clipboard-text')(), 'shared preset');
-  assert.equal(ipcMain.handlers.get('write-clipboard-text')({}, 'copied preset'), true);
-  assert.equal(ipcMain.handlers.get('write-clipboard-text')({}, null), true);
+  assert.equal(await ipcMain.handlers.get('read-clipboard-text')(), 'shared preset');
+  assert.equal(await ipcMain.handlers.get('write-clipboard-text')({}, 'copied preset'), true);
+  assert.equal(await ipcMain.handlers.get('write-clipboard-text')({}, null), true);
   assert.deepEqual(writes, ['copied preset', '']);
 });
 
-test('read clipboard handler logs and returns an empty string when native read fails', () => {
+test('read clipboard handler logs and returns an empty string when native read rejects', async () => {
   const ipcMain = createIpcMain();
   const errors = [];
   const failure = new Error('clipboard unavailable');
 
   registerClipboardIpcHandlers(
     ipcMain,
-    { readText: () => { throw failure; }, writeText: () => {} },
+    { readText: () => Promise.reject(failure), writeText: () => Promise.resolve() },
     { error: (...args) => errors.push(args) }
   );
 
-  assert.equal(ipcMain.handlers.get('read-clipboard-text')(), '');
+  assert.equal(await ipcMain.handlers.get('read-clipboard-text')(), '');
   assert.equal(errors.length, 1);
   assert.equal(errors[0][1], failure);
 });
 
-test('write clipboard handler logs and returns false when native write fails', () => {
+test('write clipboard handler logs and returns false when native write rejects', async () => {
   const ipcMain = createIpcMain();
   const errors = [];
   const failure = new Error('write denied');
 
   registerClipboardIpcHandlers(
     ipcMain,
-    { readText: () => '', writeText: () => { throw failure; } },
+    { readText: () => Promise.resolve(''), writeText: () => Promise.reject(failure) },
     { error: (...args) => errors.push(args) }
   );
 
-  assert.equal(ipcMain.handlers.get('write-clipboard-text')({}, 'preset'), false);
+  assert.equal(await ipcMain.handlers.get('write-clipboard-text')({}, 'preset'), false);
   assert.equal(errors.length, 1);
   assert.equal(errors[0][1], failure);
 });

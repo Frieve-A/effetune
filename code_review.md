@@ -62,8 +62,8 @@ Use this checklist when reviewing changes in this repository. Lead with concrete
 - For C++ changes, also run the CodeQL manual build in a Linux/GCC environment when available; an MSVC build does not cover GCC `-Werror` diagnostics:
 
   ```bash
-  cmake -S dsp -B dsp/build/codeql -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
-  cmake --build dsp/build/codeql --parallel
+  cmake -S dsp -B out/dsp/codeql -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+  cmake --build out/dsp/codeql --parallel
   ```
 
   If the environment is unavailable, note the residual CI risk and confirm the GitHub Actions result before treating the publish workflow as successful.

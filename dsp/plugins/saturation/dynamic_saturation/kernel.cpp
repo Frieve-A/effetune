@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace effetune::plugins::saturation {
@@ -109,8 +110,8 @@ public:
         const double cone_delta = (nonlinear_position - position) * cone_mix;
         audio[offset + frame] = static_cast<float>((input + cone_delta) * output_gain);
       }
-      positions_[channel] = static_cast<float>(position);
-      velocities_[channel] = static_cast<float>(velocity);
+      positions_[channel] = flushSubnormalState(static_cast<float>(position));
+      velocities_[channel] = flushSubnormalState(static_cast<float>(velocity));
     }
 
     distortion_drive_.advance(frame_count);
@@ -121,6 +122,11 @@ public:
   }
 
 private:
+  [[nodiscard]] static float flushSubnormalState(float value) noexcept {
+    constexpr float minimum_normal = std::numeric_limits<float>::min();
+    return std::isfinite(value) && value > -minimum_normal && value < minimum_normal ? 0.0F : value;
+  }
+
   struct LinearRamp {
     double current = 0.0;
     double target = 0.0;

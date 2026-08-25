@@ -41,11 +41,11 @@ ConvolverConfig makeConfig(std::uint32_t irFrames, std::uint32_t sliceOffset = 0
   return config;
 }
 
-std::vector<float> makeSparseIr(std::uint32_t frames) {
+std::vector<float> makeSparseIr(std::uint32_t frames, std::uint32_t channels = 2u) {
   constexpr std::uint32_t taps[] = {0u,    43u,   127u,   128u,   511u,   1023u,  2047u, 4095u,
                                     8191u, 8192u, 16383u, 19999u, 32767u, 65535u, 69999u};
-  std::vector<float> ir(2u * frames, 0.0F);
-  for (std::uint32_t channel = 0u; channel < 2u; ++channel) {
+  std::vector<float> ir(static_cast<std::size_t>(channels) * frames, 0.0F);
+  for (std::uint32_t channel = 0u; channel < channels; ++channel) {
     for (std::size_t index = 0u; index < std::size(taps); ++index) {
       if (taps[index] >= frames)
         continue;
@@ -99,25 +99,28 @@ std::vector<float> directReference(const ConvolverConfig &config, const std::vec
   return output;
 }
 
-std::vector<float> render(PartitionedConvolver &convolver, const std::vector<float> &input,
-                          std::uint32_t frames) {
-  constexpr std::uint32_t blockPattern[] = {1u, 63u, 128u, 511u, 17u, 255u};
+std::vector<float> renderWithPattern(PartitionedConvolver &convolver,
+                                     const std::vector<float> &input, std::uint32_t frames,
+                                     const std::uint32_t *blockPattern,
+                                     std::size_t blockPatternSize, std::uint32_t inputChannels = 2u,
+                                     std::uint32_t processingChannels = 2u) {
   constexpr std::uint32_t maximumBlock = 511u;
-  std::vector<float> output(input.size(), 0.0F);
-  std::vector<float> block(2u * maximumBlock, 0.0F);
+  std::vector<float> output(static_cast<std::size_t>(processingChannels) * frames, 0.0F);
+  std::vector<float> block(static_cast<std::size_t>(processingChannels) * maximumBlock, 0.0F);
   std::size_t patternIndex = 0u;
   for (std::uint32_t offset = 0u; offset < frames; ++patternIndex) {
-    const std::uint32_t requested = blockPattern[patternIndex % std::size(blockPattern)];
+    const std::uint32_t requested = blockPattern[patternIndex % blockPatternSize];
     const std::uint32_t count = frames - offset < requested ? frames - offset : requested;
-    for (std::uint32_t channel = 0u; channel < 2u; ++channel) {
+    std::fill(block.begin(), block.end(), 0.0F);
+    for (std::uint32_t channel = 0u; channel < inputChannels; ++channel) {
       std::copy_n(input.data() + static_cast<std::size_t>(channel) * frames + offset, count,
                   block.data() + static_cast<std::size_t>(channel) * count);
     }
     {
       effetune::allocation_guard::Scope guard;
-      convolver.process(block.data(), 2u, count);
+      convolver.process(block.data(), processingChannels, count);
     }
-    for (std::uint32_t channel = 0u; channel < 2u; ++channel) {
+    for (std::uint32_t channel = 0u; channel < processingChannels; ++channel) {
       std::copy_n(block.data() + static_cast<std::size_t>(channel) * count, count,
                   output.data() + static_cast<std::size_t>(channel) * frames + offset);
     }
@@ -126,7 +129,14 @@ std::vector<float> render(PartitionedConvolver &convolver, const std::vector<flo
   return output;
 }
 
-void prepareToActive(PartitionedConvolver &convolver, std::uint32_t budget) {
+std::vector<float> render(PartitionedConvolver &convolver, const std::vector<float> &input,
+                          std::uint32_t frames) {
+  constexpr std::uint32_t blockPattern[] = {1u, 63u, 128u, 511u, 17u, 255u};
+  return renderWithPattern(convolver, input, frames, blockPattern, std::size(blockPattern));
+}
+
+void prepareToActive(PartitionedConvolver &convolver, std::uint32_t budget,
+                     std::uint32_t channels = 2u) {
   std::uint32_t slices = 0u;
   while (convolver.state() == ConvolverPreparationState::preparing && slices < 100000u) {
     effetune::allocation_guard::Scope guard;
@@ -134,11 +144,11 @@ void prepareToActive(PartitionedConvolver &convolver, std::uint32_t budget) {
     ++slices;
   }
   CONVOLVER_CHECK(convolver.state() == ConvolverPreparationState::warming);
-  std::vector<float> silence(2u * 128u, 0.0F);
+  std::vector<float> silence(static_cast<std::size_t>(channels) * 128u, 0.0F);
   std::uint32_t warmingBlocks = 0u;
   while (convolver.state() == ConvolverPreparationState::warming && warmingBlocks < 100u) {
     effetune::allocation_guard::Scope guard;
-    convolver.process(silence.data(), 2u, 128u);
+    convolver.process(silence.data(), channels, 128u);
     ++warmingBlocks;
   }
   CONVOLVER_CHECK(convolver.state() == ConvolverPreparationState::active);
@@ -200,6 +210,39 @@ void testIncrementalPreparationAndAllocationGuard() {
   CONVOLVER_CHECK(convolver.state() == ConvolverPreparationState::empty);
 }
 
+void testLargeTrueStereoPreparationDeadline() {
+  constexpr std::uint32_t irFrames = 262144u;
+  constexpr std::uint32_t hostBlocks = 750u;
+  constexpr std::uint32_t reducedFramesPerHostBlock = 32u;
+  ConvolverConfig config;
+  config.latencySamples = 128u;
+  config.inputs = 2u;
+  config.outputs = 2u;
+  config.irChannels = 4u;
+  config.irFrames = irFrames;
+  config.pathCount = 4u;
+  config.paths[0u] = {0u, 0u, 0u};
+  config.paths[1u] = {0u, 1u, 1u};
+  config.paths[2u] = {1u, 0u, 2u};
+  config.paths[3u] = {1u, 1u, 3u};
+
+  const std::vector<float> ir = makeSparseIr(irFrames, config.irChannels);
+  PartitionedConvolver convolver;
+  CONVOLVER_CHECK(convolver.reserve(config));
+  CONVOLVER_CHECK(convolver.commit(ir.data(), config.irChannels, irFrames));
+  std::array<float, 2u * reducedFramesPerHostBlock> silence{};
+  std::uint32_t block = 0u;
+  const std::uint32_t allocationBefore = effetune::allocation_guard::violationCount();
+  while (convolver.state() != ConvolverPreparationState::active && block < hostBlocks) {
+    effetune::allocation_guard::Scope guard;
+    convolver.process(silence.data(), config.outputs, reducedFramesPerHostBlock);
+    ++block;
+  }
+  CONVOLVER_CHECK(convolver.state() == ConvolverPreparationState::active);
+  CONVOLVER_CHECK(block < hostBlocks);
+  CONVOLVER_CHECK(effetune::allocation_guard::violationCount() == allocationBefore);
+}
+
 void testReferenceParityAndReset() {
   constexpr std::uint32_t irFrames = 20000u;
   constexpr std::uint32_t renderFrames = 30000u;
@@ -225,6 +268,106 @@ void testReferenceParityAndReset() {
     const double error = std::abs(static_cast<double>(reference[index]) - first[index]);
     maximumError = error > maximumError ? error : maximumError;
     CONVOLVER_CHECK(std::isfinite(first[index]));
+  }
+  CONVOLVER_CHECK(maximumError <= 2.0e-4);
+}
+
+void testBlockBoundaryIndependenceAtSliceGranularity() {
+  constexpr std::uint32_t irFrames = 10000u;
+  constexpr std::uint32_t renderFrames = 12000u;
+  constexpr std::uint32_t boundarySizes[] = {1u, 7u, 16u, 32u, 64u, 128u, 129u};
+  const std::vector<float> ir = makeSparseIr(irFrames);
+  const std::vector<float> input = makeSparseInput(renderFrames);
+  PartitionedConvolver convolver;
+  CONVOLVER_CHECK(convolver.reserve(makeConfig(irFrames)));
+  CONVOLVER_CHECK(convolver.commit(ir.data(), 2u, irFrames));
+  prepareToActive(convolver, 3u);
+  convolver.reset();
+
+  constexpr std::uint32_t canonicalBlock = 128u;
+  const std::vector<float> canonical =
+      renderWithPattern(convolver, input, renderFrames, &canonicalBlock, 1u);
+  for (const std::uint32_t boundarySize : boundarySizes) {
+    convolver.reset();
+    CONVOLVER_CHECK(renderWithPattern(convolver, input, renderFrames, &boundarySize, 1u) ==
+                    canonical);
+  }
+}
+
+void testEightOutputLongIrMixedFramesAndReset() {
+  constexpr std::uint32_t irFrames = 32768u;
+  constexpr std::uint32_t renderFrames = 40000u;
+  constexpr std::uint32_t mixedBlocks[] = {1u, 7u, 16u, 32u, 64u, 128u, 129u};
+  ConvolverConfig config;
+  config.latencySamples = 128u;
+  config.inputs = 2u;
+  config.outputs = 8u;
+  config.irChannels = 4u;
+  config.irFrames = irFrames;
+  config.pathCount = 8u;
+  for (std::uint32_t output = 0u; output < config.outputs; ++output)
+    config.paths[output] = {output & 1u, output, output >> 1u};
+
+  const std::vector<float> ir = makeSparseIr(irFrames, config.irChannels);
+  const std::vector<float> input = makeSparseInput(renderFrames);
+  const std::vector<float> reference = directReference(config, ir, input, renderFrames);
+  PartitionedConvolver convolver;
+  CONVOLVER_CHECK(convolver.reserve(config));
+  CONVOLVER_CHECK(convolver.commit(ir.data(), config.irChannels, irFrames));
+  prepareToActive(convolver, 8u, config.outputs);
+
+  constexpr std::uint32_t canonicalBlock = 16u;
+  convolver.reset();
+  const std::uint32_t allocationBefore = effetune::allocation_guard::violationCount();
+  const std::vector<float> canonical = renderWithPattern(
+      convolver, input, renderFrames, &canonicalBlock, 1u, config.inputs, config.outputs);
+  {
+    effetune::allocation_guard::Scope guard;
+    convolver.reset();
+  }
+  const std::vector<float> mixed =
+      renderWithPattern(convolver, input, renderFrames, mixedBlocks, std::size(mixedBlocks),
+                        config.inputs, config.outputs);
+  CONVOLVER_CHECK(canonical == mixed);
+  CONVOLVER_CHECK(effetune::allocation_guard::violationCount() == allocationBefore);
+
+  double maximumError = 0.0;
+  for (std::size_t index = 0u; index < reference.size(); ++index) {
+    const double error = std::abs(static_cast<double>(reference[index]) - canonical[index]);
+    maximumError = error > maximumError ? error : maximumError;
+    CONVOLVER_CHECK(std::isfinite(canonical[index]));
+  }
+  CONVOLVER_CHECK(maximumError <= 2.0e-4);
+}
+
+void testMultiplePathsPerOutputPreserveAccumulation() {
+  constexpr std::uint32_t irFrames = 10000u;
+  constexpr std::uint32_t renderFrames = 14000u;
+  constexpr std::uint32_t mixedBlocks[] = {129u, 7u, 32u, 1u, 64u, 16u, 128u};
+  ConvolverConfig config = makeConfig(irFrames);
+  config.pathCount = 4u;
+  config.paths[0u] = {0u, 0u, 0u};
+  config.paths[1u] = {0u, 1u, 1u};
+  config.paths[2u] = {1u, 0u, 1u};
+  config.paths[3u] = {1u, 1u, 0u};
+
+  const std::vector<float> ir = makeSparseIr(irFrames);
+  const std::vector<float> input = makeSparseInput(renderFrames);
+  const std::vector<float> reference = directReference(config, ir, input, renderFrames);
+  PartitionedConvolver convolver;
+  CONVOLVER_CHECK(convolver.reserve(config));
+  CONVOLVER_CHECK(convolver.commit(ir.data(), config.irChannels, irFrames));
+  prepareToActive(convolver, 4u);
+  convolver.reset();
+
+  const std::uint32_t allocationBefore = effetune::allocation_guard::violationCount();
+  const std::vector<float> output =
+      renderWithPattern(convolver, input, renderFrames, mixedBlocks, std::size(mixedBlocks));
+  CONVOLVER_CHECK(effetune::allocation_guard::violationCount() == allocationBefore);
+  double maximumError = 0.0;
+  for (std::size_t index = 0u; index < reference.size(); ++index) {
+    const double error = std::abs(static_cast<double>(reference[index]) - output[index]);
+    maximumError = error > maximumError ? error : maximumError;
   }
   CONVOLVER_CHECK(maximumError <= 2.0e-4);
 }
@@ -288,38 +431,36 @@ void testPreparationPhaseStaggerPreservesActivationTiming() {
   CONVOLVER_CHECK(inPhase.commit(ir.data(), 1u, irFrames));
   CONVOLVER_CHECK(staggered.commit(ir.data(), 1u, irFrames));
 
-  // The first ten partitions cover the 256..2048 stages. Both cursors now point at
-  // the two final 4096-sample partitions, whose preparation FFT size is 8192.
-  CONVOLVER_CHECK(inPhase.prepareSlice(10u) == ConvolverPreparationState::preparing);
-  CONVOLVER_CHECK(staggered.prepareSlice(10u) == ConvolverPreparationState::preparing);
-  std::vector<float> block(128u, 1.0F);
+  CONVOLVER_CHECK(inPhase.prepareSlice(1u) == ConvolverPreparationState::preparing);
+  CONVOLVER_CHECK(staggered.prepareSlice(1u) == ConvolverPreparationState::preparing);
+  std::vector<float> inPhaseBlock(128u, 0.0F);
+  std::vector<float> staggeredBlock(128u, 0.0F);
   const std::uint32_t allocationBefore = effetune::allocation_guard::violationCount();
-  {
+  std::uint32_t preparationQuanta = 0u;
+  while ((inPhase.state() == ConvolverPreparationState::preparing ||
+          staggered.state() == ConvolverPreparationState::preparing) &&
+         preparationQuanta < 1000u) {
     effetune::allocation_guard::Scope guard;
-    inPhase.process(block.data(), 1u, 128u);
-    staggered.process(block.data(), 1u, 128u);
+    inPhase.process(inPhaseBlock.data(), 1u, 128u);
+    staggered.process(staggeredBlock.data(), 1u, 128u);
+    ++preparationQuanta;
+    CONVOLVER_CHECK(inPhase.state() == staggered.state());
   }
-  CONVOLVER_CHECK(inPhase.state() == ConvolverPreparationState::preparing);
-  CONVOLVER_CHECK(staggered.state() == ConvolverPreparationState::preparing);
-  CONVOLVER_CHECK(
-      std::all_of(block.begin(), block.end(), [](float sample) { return sample == 0.0F; }));
-
-  std::fill(block.begin(), block.end(), 1.0F);
-  {
-    effetune::allocation_guard::Scope guard;
-    inPhase.process(block.data(), 1u, 128u);
-    staggered.process(block.data(), 1u, 128u);
-  }
+  CONVOLVER_CHECK(preparationQuanta > 0u && preparationQuanta < 1000u);
   CONVOLVER_CHECK(inPhase.state() == ConvolverPreparationState::warming);
   CONVOLVER_CHECK(staggered.state() == ConvolverPreparationState::warming);
-  CONVOLVER_CHECK(
-      std::all_of(block.begin(), block.end(), [](float sample) { return sample == 0.0F; }));
-  for (std::uint32_t blockIndex = 0u; blockIndex < 3u; ++blockIndex) {
-    std::fill(block.begin(), block.end(), 1.0F);
+
+  std::uint32_t warmingQuanta = 0u;
+  while ((inPhase.state() != ConvolverPreparationState::active ||
+          staggered.state() != ConvolverPreparationState::active) &&
+         warmingQuanta < 1000u) {
     effetune::allocation_guard::Scope guard;
-    inPhase.process(block.data(), 1u, 128u);
-    staggered.process(block.data(), 1u, 128u);
+    inPhase.process(inPhaseBlock.data(), 1u, 128u);
+    staggered.process(staggeredBlock.data(), 1u, 128u);
+    ++warmingQuanta;
+    CONVOLVER_CHECK(inPhase.state() == staggered.state());
   }
+  CONVOLVER_CHECK(warmingQuanta > 0u && warmingQuanta < 1000u);
   CONVOLVER_CHECK(inPhase.state() == ConvolverPreparationState::active);
   CONVOLVER_CHECK(staggered.state() == ConvolverPreparationState::active);
   CONVOLVER_CHECK(effetune::allocation_guard::violationCount() == allocationBefore);
@@ -381,7 +522,11 @@ void testMemoryAccountingScalesWithIrCapacity() {
 
 int main() {
   testIncrementalPreparationAndAllocationGuard();
+  testLargeTrueStereoPreparationDeadline();
   testReferenceParityAndReset();
+  testBlockBoundaryIndependenceAtSliceGranularity();
+  testEightOutputLongIrMixedFramesAndReset();
+  testMultiplePathsPerOutputPreserveAccumulation();
   testReservedPathUpdateWithoutAllocation();
   testPreparationPhaseStaggerPreservesActivationTiming();
   testStaggeredInstances();

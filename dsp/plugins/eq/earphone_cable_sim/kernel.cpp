@@ -1,6 +1,7 @@
 #include "effetune/kernel.h"
 #include "EarphoneCableSimPluginParams.h"
 #include "effetune/dsp/biquad.h"
+#include "effetune/dsp/denormal_noise.h"
 
 #include <array>
 #include <cmath>
@@ -275,6 +276,7 @@ public:
     initialized_ = false;
     old_available_ = false;
     rebuild_pending_ = false;
+    denormal_noise_.reset();
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -309,14 +311,15 @@ public:
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
       const bool fading = fade_ < 1.0 && old_available_;
       const double blend = fade_ < 1.0 ? fade_ : 1.0;
+      const double noise = denormal_noise_.sample(frame);
       for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
         const std::uint32_t audio_index = channel * frame_count + frame;
         const double input = audio[audio_index];
         const double active = processCascade(input, channel, active_coefficients_, active_states_,
-                                             active_section_count_);
+                                             active_section_count_, noise);
         if (fading) {
-          const double old =
-              processCascade(input, channel, old_coefficients_, old_states_, old_section_count_);
+          const double old = processCascade(input, channel, old_coefficients_, old_states_,
+                                            old_section_count_, noise);
           audio[audio_index] = static_cast<float>(old + (active - old) * blend);
         } else {
           audio[audio_index] = static_cast<float>(active);
@@ -337,6 +340,7 @@ public:
         }
       }
     }
+    denormal_noise_.advance(frame_count);
   }
 
 private:
@@ -351,11 +355,11 @@ private:
 
   static double processCascade(double input, std::uint32_t channel,
                                const Coefficients &coefficients, States &states,
-                               std::size_t section_count) noexcept {
+                               std::size_t section_count, double noise) noexcept {
     double value = input;
     for (std::size_t section = 0u; section < section_count; ++section) {
-      value = dsp::processBiquadDf1Sample(value, coefficients[section],
-                                          states[section * kMaxChannels + channel]);
+      value = dsp::processBiquadDf1SampleWithDenormalNoise(
+          value, coefficients[section], states[section * kMaxChannels + channel], noise);
     }
     return value;
   }
@@ -485,6 +489,7 @@ private:
   bool initialized_ = false;
   bool old_available_ = false;
   bool rebuild_pending_ = false;
+  dsp::NyquistDenormalNoise denormal_noise_;
 };
 
 static_assert(sizeof(EarphoneCableSimKernel) <= 8192u);

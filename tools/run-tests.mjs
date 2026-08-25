@@ -145,12 +145,22 @@ const performanceTestSet = new Set(performanceTests);
 // can exhaust memory. The file requires an explicit isolated-run opt-in.
 const isolatedTests = ['tests/esm/pipeline-analyzer-ui.test.mjs'];
 const isolatedTestSet = new Set(isolatedTests);
+// Preset calibration re-renders every shipped Tube Simulator preset after a long
+// settling interval. Keep that release-time audit available through
+// `npm run test:tube-calibration`, but do not put it on the default test/verify path.
+const presetCalibrationTests = [
+  'tests/esm/dsp-tube-simulator-listening-presets-v1.test.mjs'
+];
+const presetCalibrationTestSet = new Set(presetCalibrationTests);
 const automationContractTests = [
   'tools/dsp-parity/automation-mixed.test.mjs',
   'dsp/plugins/reverb/ir_reverb/automation_test.mjs'
 ];
 const esmTests = collectTestFiles(path.join(repoRoot, 'tests/esm'), '.test.mjs')
-  .filter(file => !performanceTestSet.has(file) && !isolatedTestSet.has(file));
+  .filter(file =>
+    !performanceTestSet.has(file) &&
+    !isolatedTestSet.has(file) &&
+    !presetCalibrationTestSet.has(file));
 const cjsCoverageIncludes = collectCoverageIncludeArgs(path.join(repoRoot, 'electron'), {
   exclude: ['electron/main.js']
 });
@@ -175,7 +185,13 @@ if (cjsTests.length === 0 && esmTests.length === 0) {
   process.exit(1);
 }
 
-const allTests = [...cjsTests, ...esmTests, ...automationContractTests, ...performanceTests];
+const allTests = [
+  ...cjsTests,
+  ...esmTests,
+  ...presetCalibrationTests,
+  ...automationContractTests,
+  ...performanceTests
+];
 checkTestTitles(allTests);
 checkTestSourceHygiene(allTests);
 

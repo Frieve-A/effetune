@@ -126,23 +126,27 @@ test('Spectrogram kernel and renderer freeze bounded v1 column behavior', async 
     fs.readFile(rendererPath, 'utf8')
   ]);
   assert.match(kernel, /pffft_new_setup/);
-  assert.match(kernel, /pffft_transform_ordered/);
+  assert.match(kernel, /PffftOrderedRealForward/);
+  assert.match(kernel, /kSlotSamples = 16u/);
+  assert.match(kernel, /kMaximumSlots = \(kMaximumFftSize >> 1u\) \/ kSlotSamples/);
   assert.match(kernel, /kPayloadBytes = kPayloadHeaderBytes \+ kCellCount/);
   assert.match(kernel, /kPendingColumnCapacity = 128u/);
-  assert.match(kernel, /static_cast<float>\(frame_time\)/);
+  assert.match(kernel, /static_cast<float>\(job_frame_time_\)/);
   assert.match(kernel, /void prepareDisplayFrequencies\(\) noexcept/);
+  assert.match(kernel, /new \(std::nothrow\) StageSchedule/);
+  assert.match(kernel, /static_assert\(sizeof\(SpectrogramKernel\) <= 8192u\)/);
+  assert.match(kernel, /published_columns_\[pending_write_column_\]\.swap\(staging_column_\)/);
   assert.doesNotMatch(kernel, /std::(?:fabs|max|min)\s*\(/);
 
   const processBody = /void process\([\s\S]*?\n  }\n\n  void writeTelemetry/.exec(kernel)?.[0];
   assert.ok(processBody);
   assert.doesNotMatch(processBody, /(?:resize|new_setup|aligned_malloc|\bnew\b)/);
-  const analysisBody = /void analyze\([\s\S]*?\n  }\n\n  void enqueueColumn/.exec(kernel)?.[0];
-  assert.ok(analysisBody);
-  assert.doesNotMatch(analysisBody, /(?:resize|new_setup|aligned_malloc|\bnew\b)/);
-  const enqueueBody = /void enqueueColumn\([\s\S]*?\n  }\n\n  std::array/.exec(kernel)?.[0];
-  assert.ok(enqueueBody);
-  assert.doesNotMatch(enqueueBody, /(?:resize|new_setup|aligned_malloc|\bnew\b)/);
-  assert.doesNotMatch(enqueueBody, /std::pow/);
+  const stagedBody = /void packAnalysis\([\s\S]*?\n  void startStagedJob/.exec(kernel)?.[0];
+  assert.ok(stagedBody);
+  assert.doesNotMatch(stagedBody, /(?:resize|new_setup|aligned_malloc|\bnew\b)/);
+  const columnBody = /void buildColumn\([\s\S]*?\n  }\n\n  void commitColumn/.exec(kernel)?.[0];
+  assert.ok(columnBody);
+  assert.doesNotMatch(columnBody, /std::pow/);
 
   assert.match(renderer, /SPECTROGRAM_PAYLOAD_BYTES = 268/);
   assert.match(renderer, /new Uint8Array\(\s*SPECTROGRAM_CELL_COUNT \* SPECTROGRAM_HISTORY_WIDTH/);

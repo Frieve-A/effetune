@@ -1,5 +1,8 @@
 #include "effetune/kernel.h"
 #include "PitchShifterHQPluginParams.h"
+#include "effetune/dsp/fft_stages.h"
+#include "effetune/dsp/pffft_incremental.h"
+#include "effetune/dsp/stage_scheduler.h"
 
 #include <pffft.h>
 
@@ -8,6 +11,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
+#include <new>
 #include <utility>
 #include <vector>
 
@@ -27,10 +32,49 @@ constexpr std::uint32_t kStablePeakAttackFrames = 3u;
 constexpr std::uint32_t kFixedRegionBins = 8u;
 constexpr std::uint8_t kReleaseHandoffFrames = 2u;
 constexpr double kRatioSmoothingSeconds = 0.03;
-constexpr std::uint32_t kAnalysisSlots = 8u;
-constexpr std::uint32_t kSynthesisSlots = 8u;
-constexpr std::uint32_t kPeakSlot = 16u;
-constexpr std::uint32_t kLogicalSlots = 32u;
+constexpr std::uint32_t kSlotSamples = 16u;
+constexpr std::uint32_t kMaximumSlots = 256u;
+constexpr int kForwardWorkBudget = 256;
+constexpr std::uint32_t kMinimumLinearPassChunks = 2u;
+constexpr std::uint32_t kStageCapacity = 3072u;
+constexpr std::uint32_t kTransformSubsequences = 4u;
+constexpr std::uint32_t kLargeTransformChildren = 2u;
+
+enum class StageKind : std::uint8_t {
+  PackAnalysis,
+  BeginForward,
+  ForwardStep,
+  ForwardSubtransform,
+  CombineForwardSubtransform,
+  CombineForward,
+  SplitForward,
+  AccumulatePower,
+  BeginPeakSearch,
+  FindMaximumPower,
+  BeginPeakScan,
+  FindPeaks,
+  BeginAnalysisState,
+  UpdateFixedAnchorRotations,
+  InterpolatePeaks,
+  BeginPeakRegions,
+  ScanPeakRegions,
+  FinishPeakRegions,
+  BeginPeakMatching,
+  MatchPeaksMutual,
+  MatchPeaksRemaining,
+  UpdatePeakValues,
+  CopyPeakValues,
+  FinishPeakState,
+  BuildSpectrum,
+  PrepareSpectrum,
+  SplatBins,
+  FinishSpectrum,
+  MergeInverse,
+  SeparateInverse,
+  SeparateInverseSubtransform,
+  InverseSubtransform,
+  OverlapAdd,
+};
 
 std::uint32_t fftSizeForSampleRate(double sample_rate) noexcept {
   const auto rounded = static_cast<std::uint32_t>(std::llround(sample_rate));
@@ -120,6 +164,8 @@ double clampPeakOffset(double offset) noexcept {
 } // namespace
 
 class PitchShifterHQKernel final : public PluginKernel {
+  using StageSchedule = ::effetune::dsp::StageSchedule<kStageCapacity, kMaximumSlots>;
+
   EFFETUNE_PARAMS(generated::PitchShifterHQPluginParams)
 
 public:
@@ -137,18 +183,37 @@ public:
     }
     hop_size_ = fft_size_ / 4u;
     stage_span_ = hop_size_;
-    stage_slot_samples_ = stage_span_ / kLogicalSlots;
+    slot_count_ = stage_span_ / kSlotSamples;
+    if (slot_count_ == 0u || slot_count_ > kMaximumSlots) {
+      return;
+    }
     timeline_size_ = fft_size_ + stage_span_;
     bin_count_ = fft_size_ / 2u + 1u;
+    subtransform_children_ = fft_size_ >= 16384u ? kLargeTransformChildren : 1u;
 
-    setup_ = pffft_new_setup(static_cast<int>(fft_size_), PFFFT_REAL);
+    if (stage_schedule_ == nullptr) {
+      stage_schedule_.reset(new (std::nothrow) StageSchedule());
+    }
+    if (identity_stage_schedule_ == nullptr) {
+      identity_stage_schedule_.reset(new (std::nothrow) StageSchedule());
+    }
+    real_setup_ = pffft_new_setup(static_cast<int>(fft_size_), PFFFT_REAL);
+    if (real_setup_ != nullptr) {
+      forward_transform_.reset(new (std::nothrow)::effetune::dsp::PffftOrderedRealForward(
+          real_setup_, kForwardWorkBudget));
+    }
+    subtransform_setup_ =
+        pffft_new_setup(static_cast<int>(fft_size_ / (8u * subtransform_children_)), PFFFT_COMPLEX);
     const std::size_t timeline_samples = static_cast<std::size_t>(max_channels_) * timeline_size_;
     const std::size_t spectrum_samples = static_cast<std::size_t>(max_channels_) * fft_size_;
-    prepared_ = setup_ != nullptr && input_ring_.allocate(timeline_samples) &&
-                dry_ring_.allocate(timeline_samples) && output_ring_.allocate(timeline_samples) &&
-                spectra_.allocate(spectrum_samples) && window_.allocate(fft_size_) &&
-                fft_input_.allocate(fft_size_) && fft_work_.allocate(fft_size_) &&
-                inverse_output_.allocate(fft_size_) && synthesis_spectrum_.allocate(fft_size_);
+    prepared_ = stage_schedule_ != nullptr && identity_stage_schedule_ != nullptr &&
+                real_setup_ != nullptr && forward_transform_ != nullptr &&
+                forward_transform_->valid() && subtransform_setup_ != nullptr &&
+                input_ring_.allocate(timeline_samples) && dry_ring_.allocate(timeline_samples) &&
+                output_ring_.allocate(timeline_samples) && spectra_.allocate(spectrum_samples) &&
+                window_.allocate(fft_size_) && fft_input_.allocate(fft_size_) &&
+                fft_work_.allocate(fft_size_) && fft_stage_.allocate(fft_size_) &&
+                synthesis_spectrum_.allocate(fft_size_) && twiddles_.allocate(2u * fft_size_);
     if (!prepared_) {
       return;
     }
@@ -179,6 +244,7 @@ public:
       const double phase = 2.0 * kPi * static_cast<double>(index) / static_cast<double>(fft_size_);
       window_[index] = static_cast<float>(std::sqrt(0.5 - 0.5 * std::cos(phase)));
     }
+    ::effetune::dsp::fft_stages::prepareTwiddles(twiddles_.data(), fft_size_);
     ratio_smoothing_coefficient_ =
         1.0 - std::exp(-static_cast<double>(hop_size_) / (kRatioSmoothingSeconds * sample_rate_));
     reset();
@@ -197,7 +263,7 @@ public:
     spectra_.clear();
     fft_input_.clear();
     fft_work_.clear();
-    inverse_output_.clear();
+    fft_stage_.clear();
     synthesis_spectrum_.clear();
     std::fill(shared_power_.begin(), shared_power_.end(), 0.0);
     resetRotations();
@@ -210,10 +276,29 @@ public:
     job_slot_ = 0u;
     job_channel_count_ = 0u;
     job_peak_count_ = 0u;
+    job_region_peak_index_ = 0u;
+    job_region_valley_ = 0u;
+    job_splat_peak_index_ = 0u;
+    job_splat_active_anchor_ = 0u;
     job_pitch_shift_ = 0.0F;
     job_fine_tune_ = 0.0F;
     job_target_ratio_ = 1.0;
+    job_maximum_power_ = 0.0;
+    job_peak_floor_ = kPeakFloor;
+    job_fixed_step_real_ = 1.0;
+    job_fixed_step_imaginary_ = 0.0;
+    job_fixed_rotation_real_ = 1.0;
+    job_fixed_rotation_imaginary_ = 0.0;
+    job_region_minimum_ = 0.0;
+    job_splat_handoff_weight_ = 0.0;
+    job_splat_peak_shift_bins_ = 0.0;
+    job_splat_peak_rotation_angle_ = 0.0;
+    job_splat_shift_bins_ = 0.0;
+    job_splat_compensated_rotation_real_ = 1.0;
+    job_splat_compensated_rotation_imaginary_ = 0.0;
     job_identity_ = true;
+    job_uses_identity_schedule_ = true;
+    job_splat_stable_ = false;
     job_active_ = false;
     current_channel_count_ = 0u;
     smoothed_ratio_ = 1.0;
@@ -226,10 +311,15 @@ public:
         frame_count == 0u || frame_count > max_frames_) {
       return;
     }
-    if (current_channel_count_ != 0u && current_channel_count_ != channel_count) {
-      reset();
+    if (current_channel_count_ != channel_count) {
+      if (current_channel_count_ != 0u) {
+        reset();
+      }
+      if (!buildStageSchedules(channel_count)) {
+        return;
+      }
+      current_channel_count_ = channel_count;
     }
-    current_channel_count_ = channel_count;
 
     const double target_ratio = requestedRatio();
     const bool target_unity = target_ratio == 1.0;
@@ -279,9 +369,14 @@ public:
 
 private:
   void releaseSetup() noexcept {
-    if (setup_ != nullptr) {
-      pffft_destroy_setup(setup_);
-      setup_ = nullptr;
+    forward_transform_.reset();
+    if (real_setup_ != nullptr) {
+      pffft_destroy_setup(real_setup_);
+      real_setup_ = nullptr;
+    }
+    if (subtransform_setup_ != nullptr) {
+      pffft_destroy_setup(subtransform_setup_);
+      subtransform_setup_ = nullptr;
     }
     prepared_ = false;
   }
@@ -322,70 +417,121 @@ private:
               0.0);
     previous_peak_count_ = 0u;
     translation_phase_per_bin_ = 0.0;
+    rotations_reset_ = true;
   }
 
-  void analyzeChannel(std::uint32_t channel) noexcept {
+  void packAnalysis(std::uint32_t channel, std::uint32_t begin, std::uint32_t end) noexcept {
     const std::size_t input_offset = static_cast<std::size_t>(channel) * timeline_size_;
-    const std::size_t spectrum_offset = static_cast<std::size_t>(channel) * fft_size_;
-    for (std::uint32_t index = 0u; index < fft_size_; ++index) {
-      const std::uint32_t source_index = job_frame_origin_ + index < timeline_size_
-                                             ? job_frame_origin_ + index
-                                             : job_frame_origin_ + index - timeline_size_;
-      fft_input_[index] = input_ring_[input_offset + source_index] * window_[index];
-    }
-    float *spectrum = spectra_.data() + spectrum_offset;
-    pffft_transform_ordered(setup_, fft_input_.data(), spectrum, fft_work_.data(), PFFFT_FORWARD);
-    shared_power_[0u] += static_cast<double>(spectrum[0u]) * spectrum[0u];
-    shared_power_[bin_count_ - 1u] += static_cast<double>(spectrum[1u]) * spectrum[1u];
-    for (std::uint32_t bin = 1u; bin + 1u < bin_count_; ++bin) {
-      const double real = static_cast<double>(spectrum[2u * bin]);
-      const double imaginary = static_cast<double>(spectrum[2u * bin + 1u]);
-      shared_power_[bin] += real * real + imaginary * imaginary;
+    for (std::uint32_t index = begin; index < end; ++index) {
+      const std::uint32_t source = job_frame_origin_ + index < timeline_size_
+                                       ? job_frame_origin_ + index
+                                       : job_frame_origin_ + index - timeline_size_;
+      fft_input_[index] = input_ring_[input_offset + source] * window_[index];
     }
   }
 
-  [[nodiscard]] std::uint32_t findPeaks() noexcept {
-    double maximum_power = 0.0;
-    for (double power : shared_power_) {
-      if (power > maximum_power) {
-        maximum_power = power;
+  void beginForward(std::uint32_t channel) noexcept {
+    static_cast<void>(forward_transform_->begin(
+        fft_input_.data(), spectra_.data() + static_cast<std::size_t>(channel) * fft_size_,
+        fft_work_.data()));
+  }
+
+  void transformForwardSubsequence(std::uint32_t packed_subsequence) noexcept {
+    const std::uint32_t child_length = fft_size_ / (8u * subtransform_children_);
+    float *subsequences = subtransform_children_ == 1u ? fft_input_.data() : fft_stage_.data();
+    float *data = subsequences + 2u * packed_subsequence * child_length;
+    pffft_transform_ordered(subtransform_setup_, data, data, fft_work_.data(), PFFFT_FORWARD);
+  }
+
+  void combineForwardSubtransform(std::uint32_t subsequence, std::uint32_t begin,
+                                  std::uint32_t end) noexcept {
+    const std::uint32_t subsequence_length = fft_size_ / 8u;
+    const std::uint32_t child_length = subsequence_length / subtransform_children_;
+    const float *children =
+        fft_stage_.data() + 2u * subsequence * subtransform_children_ * child_length;
+    float *spectrum = fft_input_.data() + 2u * subsequence * subsequence_length;
+    if (subtransform_children_ == 2u) {
+      ::effetune::dsp::fft_stages::combineComplexForwardRadix2(
+          children, spectrum, twiddles_.data(), subsequence_length, fft_size_, begin, end);
+    } else {
+      ::effetune::dsp::fft_stages::combineComplexForward(children, spectrum, twiddles_.data(),
+                                                         subsequence_length, fft_size_, begin, end);
+    }
+  }
+
+  void combineForward(std::uint32_t begin, std::uint32_t end) noexcept {
+    ::effetune::dsp::fft_stages::combineForward(fft_input_.data(), fft_stage_.data(),
+                                                twiddles_.data(), fft_size_, begin, end);
+  }
+
+  void splitForward(std::uint32_t channel, std::uint32_t begin, std::uint32_t end) noexcept {
+    float *spectrum = spectra_.data() + static_cast<std::size_t>(channel) * fft_size_;
+    ::effetune::dsp::fft_stages::splitForward(fft_stage_.data(), spectrum, twiddles_.data(),
+                                              fft_size_, begin, end);
+  }
+
+  void accumulatePower(std::uint32_t channel, std::uint32_t begin, std::uint32_t end) noexcept {
+    if (job_identity_) {
+      return;
+    }
+    const float *spectrum = spectra_.data() + static_cast<std::size_t>(channel) * fft_size_;
+    for (std::uint32_t bin = begin; bin < end; ++bin) {
+      if (bin == 0u) {
+        shared_power_[0u] += static_cast<double>(spectrum[0u]) * spectrum[0u];
+      } else if (bin + 1u == bin_count_) {
+        shared_power_[bin] += static_cast<double>(spectrum[1u]) * spectrum[1u];
+      } else {
+        const double real = static_cast<double>(spectrum[2u * bin]);
+        const double imaginary = static_cast<double>(spectrum[2u * bin + 1u]);
+        shared_power_[bin] += real * real + imaginary * imaginary;
       }
     }
-    const double relative_floor = maximum_power * kPeakRelativeFloor;
+  }
+
+  void findMaximumPower(std::uint32_t begin, std::uint32_t end) noexcept {
+    if (job_identity_) {
+      return;
+    }
+    for (std::uint32_t bin = begin; bin < end; ++bin) {
+      if (shared_power_[bin] > job_maximum_power_) {
+        job_maximum_power_ = shared_power_[bin];
+      }
+    }
+  }
+
+  void beginPeakScan() noexcept {
+    if (job_identity_) {
+      job_peak_count_ = 0u;
+      return;
+    }
+    const double relative_floor = job_maximum_power_ * kPeakRelativeFloor;
     const double peak_floor = relative_floor > kPeakFloor ? relative_floor : kPeakFloor;
-    std::uint32_t count = 0u;
-    for (std::uint32_t bin = 2u; bin + 2u < bin_count_; ++bin) {
+    job_peak_floor_ = peak_floor;
+    job_peak_count_ = 0u;
+  }
+
+  void findPeaks(std::uint32_t begin, std::uint32_t end) noexcept {
+    if (job_identity_) {
+      return;
+    }
+    for (std::uint32_t bin = begin; bin < end; ++bin) {
       const double power = shared_power_[bin];
       const double far_neighbor = shared_power_[bin - 2u] > shared_power_[bin + 2u]
                                       ? shared_power_[bin - 2u]
                                       : shared_power_[bin + 2u];
-      if (power > peak_floor && power * kPeakTieRatio >= shared_power_[bin - 1u] &&
+      if (power > job_peak_floor_ && power * kPeakTieRatio >= shared_power_[bin - 1u] &&
           power * kPeakTieRatio >= shared_power_[bin + 1u] &&
           power > far_neighbor * kPeakProminenceRatio) {
-        if (count > 0u && peak_indices_[count - 1u] + 1u == bin) {
-          const std::uint32_t previous = peak_indices_[count - 1u];
+        if (job_peak_count_ > 0u && peak_indices_[job_peak_count_ - 1u] + 1u == bin) {
+          const std::uint32_t previous = peak_indices_[job_peak_count_ - 1u];
           if (power > shared_power_[previous] * kPeakTieRatio) {
-            peak_indices_[count - 1u] = bin;
+            peak_indices_[job_peak_count_ - 1u] = bin;
           }
         } else {
-          peak_indices_[count++] = bin;
+          peak_indices_[job_peak_count_++] = bin;
         }
       }
     }
-    return count;
-  }
-
-  [[nodiscard]] std::uint32_t valleyBetween(std::uint32_t left_peak,
-                                            std::uint32_t right_peak) const noexcept {
-    std::uint32_t valley = left_peak;
-    double minimum = shared_power_[left_peak];
-    for (std::uint32_t bin = left_peak + 1u; bin < right_peak; ++bin) {
-      if (shared_power_[bin] < minimum) {
-        minimum = shared_power_[bin];
-        valley = bin;
-      }
-    }
-    return valley;
   }
 
   [[nodiscard]] double interpolatedPeakBin(std::uint32_t peak) const noexcept {
@@ -417,7 +563,7 @@ private:
     }
   }
 
-  void updateFixedAnchorRotations(double ratio) noexcept {
+  void beginFixedAnchorRotations(double ratio) noexcept {
     const double phase_increment =
         2.0 * kPi * (ratio - 1.0) * static_cast<double>(hop_size_) / static_cast<double>(fft_size_);
     translation_phase_per_bin_ =
@@ -425,18 +571,29 @@ private:
     const double first_angle =
         translation_phase_per_bin_ * static_cast<double>(kFixedRegionBins / 2u);
     const double step_angle = translation_phase_per_bin_ * static_cast<double>(kFixedRegionBins);
-    const double step_real = std::cos(step_angle);
-    const double step_imaginary = std::sin(step_angle);
-    double rotation_real = std::cos(first_angle);
-    double rotation_imaginary = std::sin(first_angle);
-    for (std::size_t index = 0u; index < fixed_anchor_rotation_real_.size(); ++index) {
-      fixed_anchor_rotation_real_[index] = rotation_real;
-      fixed_anchor_rotation_imaginary_[index] = rotation_imaginary;
-      const double next_real = rotation_real * step_real - rotation_imaginary * step_imaginary;
-      rotation_imaginary = rotation_real * step_imaginary + rotation_imaginary * step_real;
-      rotation_real = next_real;
+    job_fixed_step_real_ = std::cos(step_angle);
+    job_fixed_step_imaginary_ = std::sin(step_angle);
+    job_fixed_rotation_real_ = std::cos(first_angle);
+    job_fixed_rotation_imaginary_ = std::sin(first_angle);
+  }
+
+  void updateFixedAnchorRotations(std::uint32_t begin, std::uint32_t end) noexcept {
+    if (job_identity_ || begin >= fixed_anchor_rotation_real_.size()) {
+      return;
+    }
+    if (end > fixed_anchor_rotation_real_.size()) {
+      end = static_cast<std::uint32_t>(fixed_anchor_rotation_real_.size());
+    }
+    for (std::uint32_t index = begin; index < end; ++index) {
+      fixed_anchor_rotation_real_[index] = job_fixed_rotation_real_;
+      fixed_anchor_rotation_imaginary_[index] = job_fixed_rotation_imaginary_;
+      const double next_real = job_fixed_rotation_real_ * job_fixed_step_real_ -
+                               job_fixed_rotation_imaginary_ * job_fixed_step_imaginary_;
+      job_fixed_rotation_imaginary_ = job_fixed_rotation_real_ * job_fixed_step_imaginary_ +
+                                      job_fixed_rotation_imaginary_ * job_fixed_step_real_;
+      job_fixed_rotation_real_ = next_real;
       if ((index & 31u) == 31u) {
-        normalizeRotation(rotation_real, rotation_imaginary);
+        normalizeRotation(job_fixed_rotation_real_, job_fixed_rotation_imaginary_);
       }
     }
   }
@@ -480,21 +637,41 @@ private:
     return best;
   }
 
-  void matchPeaks(std::uint32_t peak_count) noexcept {
-    std::fill(peak_match_indices_.begin(), peak_match_indices_.begin() + peak_count,
+  void beginPeakMatching() noexcept {
+    if (job_identity_) {
+      return;
+    }
+    std::fill(peak_match_indices_.begin(), peak_match_indices_.begin() + job_peak_count_,
               previous_peak_count_);
     std::fill(previous_peak_matched_.begin(), previous_peak_matched_.begin() + previous_peak_count_,
               static_cast<std::uint8_t>(0));
+  }
 
-    for (std::uint32_t index = 0u; index < peak_count; ++index) {
+  void matchPeaksMutual(std::uint32_t begin, std::uint32_t end) noexcept {
+    if (job_identity_ || begin >= job_peak_count_) {
+      return;
+    }
+    if (end > job_peak_count_) {
+      end = job_peak_count_;
+    }
+    for (std::uint32_t index = begin; index < end; ++index) {
       const std::uint32_t previous = nearestPreviousPeak(peak_bins_[index], false);
       if (previous < previous_peak_count_ && previous_peak_matched_[previous] == 0u &&
-          nearestCurrentPeak(previous_peak_bins_[previous], peak_count) == index) {
+          nearestCurrentPeak(previous_peak_bins_[previous], job_peak_count_) == index) {
         peak_match_indices_[index] = previous;
         previous_peak_matched_[previous] = 1u;
       }
     }
-    for (std::uint32_t index = 0u; index < peak_count; ++index) {
+  }
+
+  void matchPeaksRemaining(std::uint32_t begin, std::uint32_t end) noexcept {
+    if (job_identity_ || begin >= job_peak_count_) {
+      return;
+    }
+    if (end > job_peak_count_) {
+      end = job_peak_count_;
+    }
+    for (std::uint32_t index = begin; index < end; ++index) {
       if (peak_match_indices_[index] < previous_peak_count_) {
         continue;
       }
@@ -506,17 +683,63 @@ private:
     }
   }
 
-  void updatePeakState(std::uint32_t peak_count, double ratio) noexcept {
-    updateFixedAnchorRotations(ratio);
-    for (std::uint32_t index = 0u; index < peak_count; ++index) {
-      peak_bins_[index] = interpolatedPeakBin(peak_indices_[index]);
-      peak_region_ends_[index] =
-          index + 1u < peak_count ? valleyBetween(peak_indices_[index], peak_indices_[index + 1u])
-                                  : bin_count_ - 2u;
+  void interpolatePeaks(std::uint32_t begin, std::uint32_t end) noexcept {
+    if (job_identity_ || begin >= job_peak_count_) {
+      return;
     }
-    matchPeaks(peak_count);
+    if (end > job_peak_count_) {
+      end = job_peak_count_;
+    }
+    for (std::uint32_t index = begin; index < end; ++index) {
+      peak_bins_[index] = interpolatedPeakBin(peak_indices_[index]);
+    }
+  }
 
-    for (std::uint32_t index = 0u; index < peak_count; ++index) {
+  void beginPeakRegions() noexcept {
+    job_region_peak_index_ = 0u;
+    if (!job_identity_ && job_peak_count_ != 0u) {
+      job_region_valley_ = peak_indices_[0u];
+      job_region_minimum_ = shared_power_[job_region_valley_];
+    }
+  }
+
+  void scanPeakRegions(std::uint32_t begin, std::uint32_t end) noexcept {
+    if (job_identity_ || job_peak_count_ < 2u) {
+      return;
+    }
+    for (std::uint32_t bin = begin; bin < end; ++bin) {
+      if (job_region_peak_index_ + 1u >= job_peak_count_) {
+        break;
+      }
+      const std::uint32_t next_peak = peak_indices_[job_region_peak_index_ + 1u];
+      if (bin >= next_peak) {
+        peak_region_ends_[job_region_peak_index_] = job_region_valley_;
+        ++job_region_peak_index_;
+        job_region_valley_ = peak_indices_[job_region_peak_index_];
+        job_region_minimum_ = shared_power_[job_region_valley_];
+        continue;
+      }
+      if (bin > peak_indices_[job_region_peak_index_] && shared_power_[bin] < job_region_minimum_) {
+        job_region_minimum_ = shared_power_[bin];
+        job_region_valley_ = bin;
+      }
+    }
+  }
+
+  void finishPeakRegions() noexcept {
+    if (!job_identity_ && job_peak_count_ != 0u) {
+      peak_region_ends_[job_peak_count_ - 1u] = bin_count_ - 2u;
+    }
+  }
+
+  void updatePeakValues(std::uint32_t begin, std::uint32_t end) noexcept {
+    if (job_identity_ || begin >= job_peak_count_) {
+      return;
+    }
+    if (end > job_peak_count_) {
+      end = job_peak_count_;
+    }
+    for (std::uint32_t index = begin; index < end; ++index) {
       const std::uint32_t peak = peak_indices_[index];
       const std::uint32_t match = peak_match_indices_[index];
       const bool prominent = peakProminence(peak) >= kStablePeakProminence;
@@ -541,7 +764,7 @@ private:
       const std::uint32_t anchor_index = peak / kFixedRegionBins;
       double rotation_real = fixed_anchor_rotation_real_[anchor_index];
       double rotation_imaginary = fixed_anchor_rotation_imaginary_[anchor_index];
-      const double shift_bins = (ratio - 1.0) * peak_bins_[index];
+      const double shift_bins = (smoothed_ratio_ - 1.0) * peak_bins_[index];
       if ((stable && was_stable) || handoff_frames > 0u) {
         const double angle = 2.0 * kPi * shift_bins * static_cast<double>(hop_size_) /
                              static_cast<double>(fft_size_);
@@ -560,8 +783,16 @@ private:
       peak_is_stable_[index] = stable ? static_cast<std::uint8_t>(1) : static_cast<std::uint8_t>(0);
       peak_handoff_frames_[index] = handoff_frames;
     }
+  }
 
-    for (std::uint32_t index = 0u; index < peak_count; ++index) {
+  void copyPeakValues(std::uint32_t begin, std::uint32_t end) noexcept {
+    if (job_identity_ || begin >= job_peak_count_) {
+      return;
+    }
+    if (end > job_peak_count_) {
+      end = job_peak_count_;
+    }
+    for (std::uint32_t index = begin; index < end; ++index) {
       previous_peak_bins_[index] = peak_bins_[index];
       previous_peak_rotation_real_[index] = peak_rotation_real_[index];
       previous_peak_rotation_imaginary_[index] = peak_rotation_imaginary_[index];
@@ -569,7 +800,12 @@ private:
       previous_peak_is_stable_[index] = peak_is_stable_[index];
       previous_peak_handoff_frames_[index] = peak_handoff_frames_[index];
     }
-    previous_peak_count_ = peak_count;
+  }
+
+  void finishPeakState() noexcept {
+    if (!job_identity_) {
+      previous_peak_count_ = job_peak_count_;
+    }
   }
 
   static void addOrderedBin(float *spectrum, std::uint32_t bin, std::uint32_t nyquist_bin,
@@ -614,95 +850,177 @@ private:
     return candidate < bin_count_ - 1u ? candidate : bin_count_ - 2u;
   }
 
-  void synthesizeChannel(std::uint32_t channel, std::uint32_t peak_count, bool identity) noexcept {
-    std::memset(synthesis_spectrum_.data(), 0, static_cast<std::size_t>(fft_size_) * sizeof(float));
+  void buildSpectrum(std::uint32_t channel, std::uint32_t begin, std::uint32_t end) noexcept {
     const float *source = spectra_.data() + static_cast<std::size_t>(channel) * fft_size_;
-    if (identity || peak_count == 0u) {
-      std::memcpy(synthesis_spectrum_.data(), source,
-                  static_cast<std::size_t>(fft_size_) * sizeof(float));
+    const std::size_t count = static_cast<std::size_t>(end - begin) * sizeof(float);
+    if (job_identity_) {
+      std::memcpy(synthesis_spectrum_.data() + begin, source + begin, count);
     } else {
+      std::memset(synthesis_spectrum_.data() + begin, 0, count);
+    }
+  }
+
+  void prepareSpectrum(std::uint32_t channel) noexcept {
+    if (!job_identity_) {
+      const float *source = spectra_.data() + static_cast<std::size_t>(channel) * fft_size_;
       synthesis_spectrum_[0u] = source[0u];
-      std::uint32_t region_start = 1u;
-      for (std::uint32_t peak_index = 0u; peak_index < peak_count; ++peak_index) {
-        const std::uint32_t region_end = peak_region_ends_[peak_index];
-        const bool stable = peak_is_stable_[peak_index] != 0u;
-        const double handoff_weight = static_cast<double>(peak_handoff_frames_[peak_index]) /
-                                      static_cast<double>(kReleaseHandoffFrames + 1u);
-        const double peak_shift_bins = peak_shift_bins_[peak_index];
-        const double peak_rotation_angle =
-            handoff_weight > 0.0
-                ? std::atan2(peak_rotation_imaginary_[peak_index], peak_rotation_real_[peak_index])
-                : 0.0;
-        std::uint32_t active_anchor =
-            static_cast<std::uint32_t>(fixed_anchor_rotation_real_.size());
-        double shift_bins = peak_shift_bins;
-        double compensated_rotation_real = 1.0;
-        double compensated_rotation_imaginary = 0.0;
-        for (std::uint32_t source_bin = region_start; source_bin <= region_end; ++source_bin) {
-          const std::uint32_t anchor_index = source_bin / kFixedRegionBins;
-          if ((stable && source_bin == region_start) ||
-              (!stable && anchor_index != active_anchor)) {
-            active_anchor = anchor_index;
-            double rotation_real = peak_rotation_real_[peak_index];
-            double rotation_imaginary = peak_rotation_imaginary_[peak_index];
-            if (!stable) {
-              const std::uint32_t anchor_bin = fixedAnchorBin(source_bin);
-              const double fixed_shift_bins =
-                  (smoothed_ratio_ - 1.0) * static_cast<double>(anchor_bin);
-              shift_bins = fixed_shift_bins + handoff_weight * (peak_shift_bins - fixed_shift_bins);
-              rotation_real = fixed_anchor_rotation_real_[anchor_index];
-              rotation_imaginary = fixed_anchor_rotation_imaginary_[anchor_index];
-              if (handoff_weight > 0.0) {
-                const double fixed_angle = std::atan2(rotation_imaginary, rotation_real);
-                const double interpolated_angle =
-                    fixed_angle +
-                    handoff_weight * std::remainder(peak_rotation_angle - fixed_angle, 2.0 * kPi);
-                rotation_real = std::cos(interpolated_angle);
-                rotation_imaginary = std::sin(interpolated_angle);
-              }
-            }
-            // This centered-window correction is frame-local and must not enter phase state.
-            const double fractional_shift = shift_bins - std::floor(shift_bins);
-            const double compensation_angle = kPi * fractional_shift;
-            const double compensation_real = std::cos(compensation_angle);
-            const double compensation_imaginary = std::sin(compensation_angle);
-            compensated_rotation_real =
-                compensation_real * rotation_real - compensation_imaginary * rotation_imaginary;
-            compensated_rotation_imaginary =
-                compensation_real * rotation_imaginary + compensation_imaginary * rotation_real;
-          }
-          const double source_real = static_cast<double>(source[2u * source_bin]);
-          const double source_imaginary = static_cast<double>(source[2u * source_bin + 1u]);
-          const double rotated_real = source_real * compensated_rotation_real -
-                                      source_imaginary * compensated_rotation_imaginary;
-          const double rotated_imaginary = source_real * compensated_rotation_imaginary +
-                                           source_imaginary * compensated_rotation_real;
-          splat(synthesis_spectrum_.data(), static_cast<double>(source_bin) + shift_bins,
-                rotated_real, rotated_imaginary);
-        }
-        region_start = region_end + 1u;
+      job_splat_peak_index_ = 0u;
+      job_splat_active_anchor_ = static_cast<std::uint32_t>(fixed_anchor_rotation_real_.size());
+    }
+  }
+
+  void splatBins(std::uint32_t channel, std::uint32_t begin, std::uint32_t end) noexcept {
+    if (job_identity_ || job_peak_count_ == 0u || begin >= bin_count_ - 1u) {
+      return;
+    }
+    if (begin < 1u) {
+      begin = 1u;
+    }
+    if (end > bin_count_ - 1u) {
+      end = bin_count_ - 1u;
+    }
+    const float *source = spectra_.data() + static_cast<std::size_t>(channel) * fft_size_;
+    for (std::uint32_t source_bin = begin; source_bin < end; ++source_bin) {
+      while (job_splat_peak_index_ + 1u < job_peak_count_ &&
+             source_bin > peak_region_ends_[job_splat_peak_index_]) {
+        ++job_splat_peak_index_;
       }
+      const std::uint32_t region_start =
+          job_splat_peak_index_ == 0u ? 1u : peak_region_ends_[job_splat_peak_index_ - 1u] + 1u;
+      if (source_bin == region_start) {
+        job_splat_stable_ = peak_is_stable_[job_splat_peak_index_] != 0u;
+        job_splat_handoff_weight_ =
+            static_cast<double>(peak_handoff_frames_[job_splat_peak_index_]) /
+            static_cast<double>(kReleaseHandoffFrames + 1u);
+        job_splat_peak_shift_bins_ = peak_shift_bins_[job_splat_peak_index_];
+        job_splat_peak_rotation_angle_ =
+            job_splat_handoff_weight_ > 0.0
+                ? std::atan2(peak_rotation_imaginary_[job_splat_peak_index_],
+                             peak_rotation_real_[job_splat_peak_index_])
+                : 0.0;
+        job_splat_active_anchor_ = static_cast<std::uint32_t>(fixed_anchor_rotation_real_.size());
+        job_splat_shift_bins_ = job_splat_peak_shift_bins_;
+        job_splat_compensated_rotation_real_ = 1.0;
+        job_splat_compensated_rotation_imaginary_ = 0.0;
+      }
+
+      const std::uint32_t anchor_index = source_bin / kFixedRegionBins;
+      if ((job_splat_stable_ && source_bin == region_start) ||
+          (!job_splat_stable_ && anchor_index != job_splat_active_anchor_)) {
+        job_splat_active_anchor_ = anchor_index;
+        double rotation_real = peak_rotation_real_[job_splat_peak_index_];
+        double rotation_imaginary = peak_rotation_imaginary_[job_splat_peak_index_];
+        if (!job_splat_stable_) {
+          const std::uint32_t anchor_bin = fixedAnchorBin(source_bin);
+          const double fixed_shift_bins = (smoothed_ratio_ - 1.0) * static_cast<double>(anchor_bin);
+          job_splat_shift_bins_ =
+              fixed_shift_bins +
+              job_splat_handoff_weight_ * (job_splat_peak_shift_bins_ - fixed_shift_bins);
+          rotation_real = fixed_anchor_rotation_real_[anchor_index];
+          rotation_imaginary = fixed_anchor_rotation_imaginary_[anchor_index];
+          if (job_splat_handoff_weight_ > 0.0) {
+            const double fixed_angle = std::atan2(rotation_imaginary, rotation_real);
+            const double interpolated_angle =
+                fixed_angle +
+                job_splat_handoff_weight_ *
+                    std::remainder(job_splat_peak_rotation_angle_ - fixed_angle, 2.0 * kPi);
+            rotation_real = std::cos(interpolated_angle);
+            rotation_imaginary = std::sin(interpolated_angle);
+          }
+        }
+        // This centered-window correction is frame-local and must not enter phase state.
+        const double fractional_shift = job_splat_shift_bins_ - std::floor(job_splat_shift_bins_);
+        const double compensation_angle = kPi * fractional_shift;
+        const double compensation_real = std::cos(compensation_angle);
+        const double compensation_imaginary = std::sin(compensation_angle);
+        job_splat_compensated_rotation_real_ =
+            compensation_real * rotation_real - compensation_imaginary * rotation_imaginary;
+        job_splat_compensated_rotation_imaginary_ =
+            compensation_real * rotation_imaginary + compensation_imaginary * rotation_real;
+      }
+      const double source_real = static_cast<double>(source[2u * source_bin]);
+      const double source_imaginary = static_cast<double>(source[2u * source_bin + 1u]);
+      const double rotated_real = source_real * job_splat_compensated_rotation_real_ -
+                                  source_imaginary * job_splat_compensated_rotation_imaginary_;
+      const double rotated_imaginary = source_real * job_splat_compensated_rotation_imaginary_ +
+                                       source_imaginary * job_splat_compensated_rotation_real_;
+      splat(synthesis_spectrum_.data(), static_cast<double>(source_bin) + job_splat_shift_bins_,
+            rotated_real, rotated_imaginary);
+    }
+  }
+
+  void finishSpectrum() noexcept {
+    if (!job_identity_) {
       synthesis_spectrum_[1u] = 0.0F;
     }
+  }
 
-    pffft_transform_ordered(setup_, synthesis_spectrum_.data(), inverse_output_.data(),
-                            fft_work_.data(), PFFFT_BACKWARD);
+  void mergeInverse(std::uint32_t begin, std::uint32_t end) noexcept {
+    ::effetune::dsp::fft_stages::mergeInverse(synthesis_spectrum_.data(), fft_stage_.data(),
+                                              twiddles_.data(), fft_size_, begin, end);
+  }
+
+  void separateInverse(std::uint32_t subsequence, std::uint32_t begin, std::uint32_t end) noexcept {
+    ::effetune::dsp::fft_stages::separateInverse(
+        fft_stage_.data(), fft_input_.data(), twiddles_.data(), fft_size_, subsequence, begin, end);
+  }
+
+  void separateInverseSubtransform(std::uint32_t packed_subsequence, std::uint32_t begin,
+                                   std::uint32_t end) noexcept {
+    const std::uint32_t subsequence = packed_subsequence / subtransform_children_;
+    const std::uint32_t child = packed_subsequence % subtransform_children_;
+    const std::uint32_t subsequence_length = fft_size_ / 8u;
+    const float *spectrum = fft_input_.data() + 2u * subsequence * subsequence_length;
+    const std::uint32_t child_length = subsequence_length / subtransform_children_;
+    float *children =
+        synthesis_spectrum_.data() + 2u * subsequence * subtransform_children_ * child_length;
+    if (subtransform_children_ == 2u) {
+      ::effetune::dsp::fft_stages::separateComplexInverseRadix2(
+          spectrum, children, twiddles_.data(), subsequence_length, fft_size_, child, begin, end);
+    } else {
+      ::effetune::dsp::fft_stages::separateComplexInverse(
+          spectrum, children, twiddles_.data(), subsequence_length, fft_size_, child, begin, end);
+    }
+  }
+
+  void transformInverseSubsequence(std::uint32_t packed_subsequence) noexcept {
+    const std::uint32_t child_length = fft_size_ / (8u * subtransform_children_);
+    float *subsequences =
+        subtransform_children_ == 1u ? fft_input_.data() : synthesis_spectrum_.data();
+    float *data = subsequences + 2u * packed_subsequence * child_length;
+    pffft_transform_ordered(subtransform_setup_, data, data, fft_work_.data(), PFFFT_BACKWARD);
+  }
+
+  void overlapAdd(std::uint32_t channel, std::uint32_t begin, std::uint32_t end) noexcept {
     const double normalization = 1.0 / (2.0 * static_cast<double>(fft_size_));
     const std::size_t channel_offset = static_cast<std::size_t>(channel) * timeline_size_;
-    for (std::uint32_t index = 0u; index < fft_size_; ++index) {
-      const std::uint32_t output_index = job_output_origin_ + index < timeline_size_
-                                             ? job_output_origin_ + index
-                                             : job_output_origin_ + index - timeline_size_;
-      const double sample = static_cast<double>(inverse_output_[index]) *
-                            static_cast<double>(window_[index]) * normalization;
-      if (std::isfinite(sample)) {
-        output_ring_[channel_offset + output_index] += static_cast<float>(sample);
+    const std::uint32_t child_length = fft_size_ / (8u * subtransform_children_);
+    const float *subsequences =
+        subtransform_children_ == 1u ? fft_input_.data() : synthesis_spectrum_.data();
+    for (std::uint32_t base = begin; base < end; base += 8u) {
+      const std::uint32_t subsequence_index = base / 8u;
+      const std::uint32_t child = subsequence_index % subtransform_children_;
+      const std::uint32_t child_index = subsequence_index / subtransform_children_;
+      for (std::uint32_t subsequence = 0u; subsequence < kTransformSubsequences; ++subsequence) {
+        const std::uint32_t sample_index = base + 2u * subsequence;
+        const std::uint32_t source_index =
+            2u * ((subsequence * subtransform_children_ + child) * child_length + child_index);
+        for (std::uint32_t component = 0u; component < 2u; ++component) {
+          const std::uint32_t index = sample_index + component;
+          const std::uint32_t output_index = job_output_origin_ + index < timeline_size_
+                                                 ? job_output_origin_ + index
+                                                 : job_output_origin_ + index - timeline_size_;
+          const double sample = static_cast<double>(subsequences[source_index + component]) *
+                                static_cast<double>(window_[index]) * normalization;
+          if (std::isfinite(sample)) {
+            output_ring_[channel_offset + output_index] += static_cast<float>(sample);
+          }
+        }
       }
     }
   }
 
-  void finishStagedAnalysis() noexcept {
-    job_peak_count_ = findPeaks();
+  void beginAnalysisState() noexcept {
     const bool target_unity = job_target_ratio_ == 1.0;
     if (target_unity) {
       smoothed_ratio_ = 1.0;
@@ -711,53 +1029,298 @@ private:
     }
     job_identity_ = target_unity || smoothed_ratio_ == 1.0 || job_peak_count_ == 0u;
     if (job_identity_) {
-      resetRotations();
+      if (!rotations_reset_) {
+        resetRotations();
+      }
     } else {
-      updatePeakState(job_peak_count_, smoothed_ratio_);
+      rotations_reset_ = false;
+      beginFixedAnchorRotations(smoothed_ratio_);
     }
   }
 
-  [[nodiscard]] static bool channelForSlot(std::uint32_t slot, std::uint32_t channel_count,
-                                           std::uint32_t &channel) noexcept {
-    const std::uint32_t before = slot * channel_count / kMaximumChannels;
-    const std::uint32_t after = (slot + 1u) * channel_count / kMaximumChannels;
-    if (after == before) {
-      return false;
-    }
-    channel = after - 1u;
-    return true;
+  void addStage(StageKind kind, std::uint32_t channel, std::uint32_t begin, std::uint32_t end,
+                std::uint32_t weight) noexcept {
+    building_stage_schedule_->addStage(static_cast<std::uint8_t>(kind), channel, begin, end,
+                                       weight);
   }
 
-  void runStagedSlot(std::uint32_t slot) noexcept {
-    std::uint32_t channel = 0u;
-    if (slot < kPeakSlot && (slot & 1u) == 0u) {
-      const std::uint32_t analysis_slot = slot / 2u;
-      if (analysis_slot < kAnalysisSlots &&
-          channelForSlot(analysis_slot, job_channel_count_, channel)) {
-        analyzeChannel(channel);
-      }
-      return;
+  void addLinearStages(StageKind kind, std::uint32_t channel, std::uint32_t begin,
+                       std::uint32_t end, std::uint32_t chunk_count, std::uint32_t stage_weight,
+                       std::uint32_t item_stride = 1u) noexcept {
+    const std::uint32_t item_count = (end - begin) / item_stride;
+    for (std::uint32_t chunk = 0u; chunk < chunk_count; ++chunk) {
+      const std::uint32_t chunk_begin =
+          begin +
+          static_cast<std::uint32_t>(static_cast<std::uint64_t>(item_count) * chunk / chunk_count) *
+              item_stride;
+      const std::uint32_t chunk_end =
+          begin + static_cast<std::uint32_t>(static_cast<std::uint64_t>(item_count) * (chunk + 1u) /
+                                             chunk_count) *
+                      item_stride;
+      addStage(kind, channel, chunk_begin, chunk_end, stage_weight);
     }
-    if (slot == kPeakSlot) {
-      finishStagedAnalysis();
-      return;
+  }
+
+  void addPeakStages(StageKind kind, std::uint32_t chunk_count,
+                     std::uint32_t stage_weight) noexcept {
+    for (std::uint32_t chunk = 0u; chunk < chunk_count; ++chunk) {
+      addStage(kind, chunk_count, chunk, chunk + 1u, stage_weight);
     }
-    if (slot > kPeakSlot && (slot & 1u) != 0u) {
-      const std::uint32_t synthesis_slot = (slot - kPeakSlot - 1u) / 2u;
-      if (synthesis_slot < kSynthesisSlots &&
-          channelForSlot(synthesis_slot, job_channel_count_, channel)) {
-        synthesizeChannel(channel, job_peak_count_, job_identity_);
+  }
+
+  void peakStageRange(const ::effetune::dsp::SchedulerStage &stage, std::uint32_t &begin,
+                      std::uint32_t &end) const noexcept {
+    begin = static_cast<std::uint32_t>(static_cast<std::uint64_t>(job_peak_count_) * stage.begin /
+                                       stage.channel);
+    end = static_cast<std::uint32_t>(static_cast<std::uint64_t>(job_peak_count_) * stage.end /
+                                     stage.channel);
+  }
+
+  [[nodiscard]] std::uint32_t workSlotCount(std::uint32_t channel_count) const noexcept {
+    const std::uint32_t reference_channels = channel_count < 2u ? channel_count : 2u;
+    return slot_count_ * reference_channels / channel_count;
+  }
+
+  [[nodiscard]] bool buildStageSchedule(std::uint32_t channel_count, StageSchedule &schedule,
+                                        bool identity) noexcept {
+    building_stage_schedule_ = &schedule;
+    schedule.clear();
+    const std::uint32_t work_slots = workSlotCount(channel_count);
+    const std::uint32_t linear_candidate = (work_slots + 31u) / 32u;
+    const std::uint32_t linear_chunks =
+        linear_candidate < kMinimumLinearPassChunks ? kMinimumLinearPassChunks : linear_candidate;
+    const std::uint32_t peak_candidate = (work_slots + 3u) / 4u;
+    const std::uint32_t peak_chunks = peak_candidate < 8u ? 8u : peak_candidate;
+    const std::uint32_t splat_candidate = (work_slots + 3u) / 4u;
+    const std::uint32_t splat_chunks = splat_candidate < 8u ? 8u : splat_candidate;
+    const std::uint32_t output_candidate = (work_slots + 15u) / 16u;
+    const std::uint32_t output_chunks =
+        output_candidate < kMinimumLinearPassChunks ? kMinimumLinearPassChunks : output_candidate;
+    const std::uint32_t split_candidate = (work_slots + 7u) / 8u;
+    const std::uint32_t split_chunks =
+        split_candidate < kMinimumLinearPassChunks ? kMinimumLinearPassChunks : split_candidate;
+    const std::uint32_t packed_size = fft_size_ / 2u;
+    const std::uint32_t subsequence_length = fft_size_ / 8u;
+    const std::uint32_t child_length = fft_size_ / (8u * subtransform_children_);
+    constexpr std::uint32_t transform_weight = 8u;
+    for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+      addLinearStages(StageKind::PackAnalysis, channel, 0u, fft_size_, output_chunks, 1u);
+      addStage(StageKind::BeginForward, channel, 0u, 0u, 1u);
+      for (int step = 0; step < forward_transform_->stepCount(); ++step) {
+        addStage(StageKind::ForwardStep, channel, 0u, 0u, transform_weight);
       }
+      if (!identity) {
+        addLinearStages(StageKind::AccumulatePower, channel, 0u, bin_count_, output_chunks, 1u);
+      }
+    }
+
+    if (identity) {
+      addStage(StageKind::BeginAnalysisState, 0u, 0u, 0u, 1u);
+    } else {
+      addStage(StageKind::BeginPeakSearch, 0u, 0u, 0u, 1u);
+      addLinearStages(StageKind::FindMaximumPower, 0u, 0u, bin_count_, linear_chunks, 1u);
+      addStage(StageKind::BeginPeakScan, 0u, 0u, 0u, 1u);
+      addLinearStages(StageKind::FindPeaks, 0u, 2u, bin_count_ - 2u, split_chunks, 2u);
+      addStage(StageKind::BeginAnalysisState, 0u, 0u, 0u, 1u);
+      addLinearStages(StageKind::UpdateFixedAnchorRotations, 0u, 0u,
+                      static_cast<std::uint32_t>(fixed_anchor_rotation_real_.size()), linear_chunks,
+                      1u);
+      addPeakStages(StageKind::InterpolatePeaks, peak_chunks, 1u);
+      addStage(StageKind::BeginPeakRegions, 0u, 0u, 0u, 1u);
+      addLinearStages(StageKind::ScanPeakRegions, 0u, 0u, bin_count_, peak_chunks, 1u);
+      addStage(StageKind::FinishPeakRegions, 0u, 0u, 0u, 1u);
+      addStage(StageKind::BeginPeakMatching, 0u, 0u, 0u, 1u);
+      addPeakStages(StageKind::MatchPeaksMutual, peak_chunks, 3u);
+      addPeakStages(StageKind::MatchPeaksRemaining, peak_chunks, 1u);
+      addPeakStages(StageKind::UpdatePeakValues, peak_chunks, 2u);
+      addPeakStages(StageKind::CopyPeakValues, linear_chunks, 1u);
+      addStage(StageKind::FinishPeakState, 0u, 0u, 0u, 1u);
+    }
+
+    for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+      addLinearStages(StageKind::BuildSpectrum, channel, 0u, fft_size_, linear_chunks, 1u);
+      if (!identity) {
+        addStage(StageKind::PrepareSpectrum, channel, 0u, 0u, 1u);
+        addLinearStages(StageKind::SplatBins, channel, 1u, bin_count_ - 1u, splat_chunks, 8u);
+        addStage(StageKind::FinishSpectrum, channel, 0u, 0u, 1u);
+      }
+      addLinearStages(StageKind::MergeInverse, channel, 0u, packed_size, output_chunks, 2u);
+      for (std::uint32_t subsequence = 0u; subsequence < kTransformSubsequences; ++subsequence) {
+        addLinearStages(StageKind::SeparateInverse, subsequence, 0u, subsequence_length,
+                        linear_chunks, 2u);
+      }
+      for (std::uint32_t subsequence = 0u; subsequence < kTransformSubsequences; ++subsequence) {
+        for (std::uint32_t child = 0u; child < subtransform_children_; ++child) {
+          const std::uint32_t packed_subsequence = subsequence * subtransform_children_ + child;
+          if (subtransform_children_ > 1u) {
+            addStage(StageKind::SeparateInverseSubtransform, packed_subsequence, 0u, child_length,
+                     2u);
+          }
+        }
+        for (std::uint32_t child = 0u; child < subtransform_children_; ++child) {
+          addStage(StageKind::InverseSubtransform, subsequence * subtransform_children_ + child, 0u,
+                   0u, 2u * transform_weight);
+        }
+      }
+      addLinearStages(StageKind::OverlapAdd, channel, 0u, fft_size_, output_chunks, 6u, 8u);
+    }
+    const bool partitioned = schedule.partition(slot_count_);
+    building_stage_schedule_ = nullptr;
+    return partitioned;
+  }
+
+  [[nodiscard]] bool buildStageSchedules(std::uint32_t channel_count) noexcept {
+    return buildStageSchedule(channel_count, *stage_schedule_, false) &&
+           buildStageSchedule(channel_count, *identity_stage_schedule_, true);
+  }
+
+  void runStage(const ::effetune::dsp::SchedulerStage &stage) noexcept {
+    switch (static_cast<StageKind>(stage.kind)) {
+    case StageKind::PackAnalysis:
+      packAnalysis(stage.channel, stage.begin, stage.end);
+      break;
+    case StageKind::BeginForward:
+      beginForward(stage.channel);
+      break;
+    case StageKind::ForwardStep:
+      static_cast<void>(forward_transform_->step());
+      break;
+    case StageKind::ForwardSubtransform:
+      transformForwardSubsequence(stage.channel);
+      break;
+    case StageKind::CombineForwardSubtransform:
+      combineForwardSubtransform(stage.channel, stage.begin, stage.end);
+      break;
+    case StageKind::CombineForward:
+      combineForward(stage.begin, stage.end);
+      break;
+    case StageKind::SplitForward:
+      splitForward(stage.channel, stage.begin, stage.end);
+      break;
+    case StageKind::AccumulatePower:
+      accumulatePower(stage.channel, stage.begin, stage.end);
+      break;
+    case StageKind::BeginPeakSearch:
+      job_maximum_power_ = 0.0;
+      break;
+    case StageKind::FindMaximumPower:
+      findMaximumPower(stage.begin, stage.end);
+      break;
+    case StageKind::BeginPeakScan:
+      beginPeakScan();
+      break;
+    case StageKind::FindPeaks:
+      findPeaks(stage.begin, stage.end);
+      break;
+    case StageKind::BeginAnalysisState:
+      beginAnalysisState();
+      break;
+    case StageKind::UpdateFixedAnchorRotations:
+      updateFixedAnchorRotations(stage.begin, stage.end);
+      break;
+    case StageKind::InterpolatePeaks: {
+      std::uint32_t begin = 0u;
+      std::uint32_t end = 0u;
+      peakStageRange(stage, begin, end);
+      interpolatePeaks(begin, end);
+      break;
+    }
+    case StageKind::BeginPeakRegions:
+      beginPeakRegions();
+      break;
+    case StageKind::ScanPeakRegions:
+      scanPeakRegions(stage.begin, stage.end);
+      break;
+    case StageKind::FinishPeakRegions:
+      finishPeakRegions();
+      break;
+    case StageKind::BeginPeakMatching:
+      beginPeakMatching();
+      break;
+    case StageKind::MatchPeaksMutual: {
+      std::uint32_t begin = 0u;
+      std::uint32_t end = 0u;
+      peakStageRange(stage, begin, end);
+      matchPeaksMutual(begin, end);
+      break;
+    }
+    case StageKind::MatchPeaksRemaining: {
+      std::uint32_t begin = 0u;
+      std::uint32_t end = 0u;
+      peakStageRange(stage, begin, end);
+      matchPeaksRemaining(begin, end);
+      break;
+    }
+    case StageKind::UpdatePeakValues: {
+      std::uint32_t begin = 0u;
+      std::uint32_t end = 0u;
+      peakStageRange(stage, begin, end);
+      updatePeakValues(begin, end);
+      break;
+    }
+    case StageKind::CopyPeakValues: {
+      std::uint32_t begin = 0u;
+      std::uint32_t end = 0u;
+      peakStageRange(stage, begin, end);
+      copyPeakValues(begin, end);
+      break;
+    }
+    case StageKind::FinishPeakState:
+      finishPeakState();
+      break;
+    case StageKind::BuildSpectrum:
+      buildSpectrum(stage.channel, stage.begin, stage.end);
+      break;
+    case StageKind::PrepareSpectrum:
+      prepareSpectrum(stage.channel);
+      break;
+    case StageKind::SplatBins:
+      splatBins(stage.channel, stage.begin, stage.end);
+      break;
+    case StageKind::FinishSpectrum:
+      finishSpectrum();
+      break;
+    case StageKind::MergeInverse:
+      mergeInverse(stage.begin, stage.end);
+      break;
+    case StageKind::SeparateInverse:
+      separateInverse(stage.channel, stage.begin, stage.end);
+      break;
+    case StageKind::SeparateInverseSubtransform:
+      separateInverseSubtransform(stage.channel, stage.begin, stage.end);
+      break;
+    case StageKind::InverseSubtransform:
+      transformInverseSubsequence(stage.channel);
+      break;
+    case StageKind::OverlapAdd:
+      overlapAdd(stage.channel, stage.begin, stage.end);
+      break;
     }
   }
 
   void advanceStagedJob() noexcept {
-    while (job_active_ && job_slot_ < kLogicalSlots &&
+    const StageSchedule &schedule =
+        job_uses_identity_schedule_ ? *identity_stage_schedule_ : *stage_schedule_;
+    while (job_active_ && job_slot_ < slot_count_ &&
            absolute_sample_ - job_start_sample_ >=
-               static_cast<std::uint64_t>(job_slot_ + 1u) * stage_slot_samples_) {
-      runStagedSlot(job_slot_);
+               static_cast<std::uint64_t>(job_slot_ + 1u) * kSlotSamples) {
+      const std::uint32_t end = schedule.slotEnd(job_slot_);
+      std::uint32_t index = schedule.slotBegin(job_slot_);
+      while (index < end) {
+        ::effetune::dsp::SchedulerStage stage = schedule.stage(index++);
+        while (index < end) {
+          const auto &next = schedule.stage(index);
+          if (stage.begin == stage.end || next.kind != stage.kind ||
+              next.channel != stage.channel || next.begin != stage.end) {
+            break;
+          }
+          stage.end = next.end;
+          ++index;
+        }
+        runStage(stage);
+      }
       ++job_slot_;
-      if (job_slot_ == kLogicalSlots) {
+      if (job_slot_ == slot_count_) {
         job_active_ = false;
       }
     }
@@ -777,12 +1340,17 @@ private:
     job_pitch_shift_ = params_.pitchShift;
     job_fine_tune_ = params_.fineTune;
     job_target_ratio_ = ratioFor(job_pitch_shift_, job_fine_tune_);
-    job_identity_ = true;
-    std::fill(shared_power_.begin(), shared_power_.end(), 0.0);
+    job_identity_ = job_target_ratio_ == 1.0;
+    job_uses_identity_schedule_ = job_identity_;
+    if (!job_identity_) {
+      std::fill(shared_power_.begin(), shared_power_.end(), 0.0);
+    }
     job_active_ = true;
   }
 
-  PFFFT_Setup *setup_ = nullptr;
+  PFFFT_Setup *real_setup_ = nullptr;
+  PFFFT_Setup *subtransform_setup_ = nullptr;
+  std::unique_ptr<::effetune::dsp::PffftOrderedRealForward> forward_transform_;
   double sample_rate_ = 0.0;
   double ratio_smoothing_coefficient_ = 1.0;
   double smoothed_ratio_ = 1.0;
@@ -792,7 +1360,8 @@ private:
   std::uint32_t fft_size_ = 0u;
   std::uint32_t hop_size_ = 0u;
   std::uint32_t stage_span_ = 0u;
-  std::uint32_t stage_slot_samples_ = 0u;
+  std::uint32_t slot_count_ = 0u;
+  std::uint32_t subtransform_children_ = 0u;
   std::uint32_t timeline_size_ = 0u;
   std::uint32_t bin_count_ = 0u;
   std::uint32_t timeline_position_ = 0u;
@@ -806,10 +1375,30 @@ private:
   std::uint32_t job_channel_count_ = 0u;
   std::uint32_t job_peak_count_ = 0u;
   std::uint32_t previous_peak_count_ = 0u;
+  std::uint32_t job_region_peak_index_ = 0u;
+  std::uint32_t job_region_valley_ = 0u;
+  std::uint32_t job_splat_peak_index_ = 0u;
+  std::uint32_t job_splat_active_anchor_ = 0u;
   float job_pitch_shift_ = 0.0F;
   float job_fine_tune_ = 0.0F;
   double job_target_ratio_ = 1.0;
+  double job_maximum_power_ = 0.0;
+  double job_peak_floor_ = kPeakFloor;
+  double job_fixed_step_real_ = 1.0;
+  double job_fixed_step_imaginary_ = 0.0;
+  double job_fixed_rotation_real_ = 1.0;
+  double job_fixed_rotation_imaginary_ = 0.0;
+  double job_region_minimum_ = 0.0;
+  double job_splat_handoff_weight_ = 0.0;
+  double job_splat_peak_shift_bins_ = 0.0;
+  double job_splat_peak_rotation_angle_ = 0.0;
+  double job_splat_shift_bins_ = 0.0;
+  double job_splat_compensated_rotation_real_ = 1.0;
+  double job_splat_compensated_rotation_imaginary_ = 0.0;
   bool job_identity_ = true;
+  bool job_uses_identity_schedule_ = true;
+  bool rotations_reset_ = true;
+  bool job_splat_stable_ = false;
   bool job_active_ = false;
   bool prepared_ = false;
   double translation_phase_per_bin_ = 0.0;
@@ -820,8 +1409,9 @@ private:
   AlignedFloatBuffer window_;
   AlignedFloatBuffer fft_input_;
   AlignedFloatBuffer fft_work_;
-  AlignedFloatBuffer inverse_output_;
+  AlignedFloatBuffer fft_stage_;
   AlignedFloatBuffer synthesis_spectrum_;
+  AlignedFloatBuffer twiddles_;
   std::vector<double> shared_power_;
   std::vector<std::uint32_t> peak_indices_;
   std::vector<std::uint32_t> peak_region_ends_;
@@ -842,7 +1432,12 @@ private:
   std::vector<std::uint8_t> previous_peak_matched_;
   std::vector<double> fixed_anchor_rotation_real_;
   std::vector<double> fixed_anchor_rotation_imaginary_;
+  std::unique_ptr<StageSchedule> stage_schedule_;
+  std::unique_ptr<StageSchedule> identity_stage_schedule_;
+  StageSchedule *building_stage_schedule_ = nullptr;
 };
+
+static_assert(sizeof(PitchShifterHQKernel) <= 8192u);
 
 } // namespace effetune::plugins::modulation
 

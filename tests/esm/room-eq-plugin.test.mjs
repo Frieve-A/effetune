@@ -970,6 +970,10 @@ test('Room EQ group delay graph plots both curves on a rounded millisecond axis'
                 minimum: {
                     before: new Float32Array([7, 3, 0, -1]),
                     after: new Float32Array([2, 1, 0, -0.5])
+                },
+                excess: {
+                    before: new Float32Array([500, 50, 0, -500]),
+                    after: new Float32Array([250, 25, 0, -250])
                 }
             }
         }]
@@ -988,7 +992,21 @@ test('Room EQ group delay graph plots both curves on a rounded millisecond axis'
     // 0 ms sits on the middle grid line, so the 1 kHz reference is centered.
     assert.match(response.children[0].attributes.d, / \d+\.\d{2},100\.00 L/);
     assert.equal(plugin._groupDelayLimit([new Float32Array([0.4, -0.2])]), 1);
-    assert.equal(plugin._groupDelayLimit([new Float32Array([900, -900])]), 500);
+    assert.equal(plugin._groupDelayLimit([new Float32Array([900, -900])]), 1000);
+    assert.equal(plugin._groupDelayLimit([
+        new Float32Array([...new Array(99).fill(1), 401])
+    ]), 500);
+
+    plugin._responseView = 'excessGroupDelay';
+    plugin._drawGroupDelayResponse();
+    const excessLabels = grid.children
+        .filter(child => child.attributes.x === '2')
+        .map(child => child.textContent);
+    assert.deepEqual(excessLabels, ['100 ms', '50 ms', '0 ms', '-50 ms', '-100 ms']);
+    assert.match(response.children[0].attributes.d, /,-400\.00/);
+    assert.match(response.children[0].attributes.d, /,600\.00/);
+    assert.equal(plugin._formatHoverValue('excessGroupDelay', -400, 200), '500.00 ms');
+    assert.equal(plugin._formatHoverValue('excessGroupDelay', 600, 200), '-500.00 ms');
     plugin.cleanup();
 });
 

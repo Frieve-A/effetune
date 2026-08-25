@@ -24,6 +24,16 @@ Open a GitHub issue with:
 - Write all code comments in English. Keep the code simple and consistent with the surrounding style (the project follows KISS and DRY as defaults, and ESLint plus `clang-format` for C++ under `dsp/` enforce formatting).
 - Never include anything under `tmp/` — that directory is permanently local-only.
 
+## New Files
+
+Every new file placed in the normal tracked tree must be one of the following:
+
+- production code reachable from the shipped product,
+- a test or fixture that remains necessary on an ongoing basis, or
+- build, generation, or verification code needed for future maintenance.
+
+One-off experiments, measurements, design-validation studies, migration scaffolding, and tests that only exercise those belong under `tmp/dev/` and must never be tracked or added to an ignore whitelist. New code that is not yet connected to production must not be treated as commit-ready until that connection lands; being referenced by tests alone is not a reason to track a file.
+
 ## Generated Artifacts: Leave Them to the Maintainer
 
 Several files in the tree are build outputs that change with nearly every commit to `main`:

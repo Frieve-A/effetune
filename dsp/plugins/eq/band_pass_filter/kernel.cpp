@@ -1,6 +1,7 @@
 #include "effetune/kernel.h"
 #include "BandPassFilterPluginParams.h"
 #include "effetune/dsp/biquad.h"
+#include "effetune/dsp/denormal_noise.h"
 
 #include <algorithm>
 #include <array>
@@ -120,6 +121,7 @@ public:
     active_bank_ = 0u;
     fade_frame_ = 0u;
     fade_frames_ = 0u;
+    denormal_noise_.reset();
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -153,6 +155,7 @@ public:
 
     if (fade_frames_ == 0u) {
       applyChain(active_bank_, audio, channel_count, frame_count);
+      denormal_noise_.advance(frame_count);
       return;
     }
 
@@ -182,6 +185,7 @@ public:
       fade_frame_ = 0u;
       fade_frames_ = 0u;
     }
+    denormal_noise_.advance(frame_count);
   }
 
 private:
@@ -245,8 +249,9 @@ private:
         State &state = bank.states[section * max_channels_ + channel];
         const std::uint32_t offset = channel * frame_count;
         for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-          const double output = dsp::processBiquadDf1Sample(
-              static_cast<double>(audio[offset + frame]), bank.coefficients[section], state);
+          const double output = dsp::processBiquadDf1SampleWithDenormalNoise(
+              static_cast<double>(audio[offset + frame]), bank.coefficients[section], state,
+              denormal_noise_.sample(frame));
           audio[offset + frame] = static_cast<float>(output);
         }
       }
@@ -262,6 +267,7 @@ private:
   std::uint32_t fade_frames_ = 0u;
   std::vector<float> active_scratch_;
   std::vector<float> target_scratch_;
+  dsp::NyquistDenormalNoise denormal_noise_;
 };
 
 } // namespace effetune::plugins::eq

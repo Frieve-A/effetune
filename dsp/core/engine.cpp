@@ -5,10 +5,20 @@
 #include "allocation_guard.h"
 #include "registry.h"
 
+#if defined(__EMSCRIPTEN__)
+#include "effetune/dsp/denormal_noise.h"
+#endif
+
 #include <cmath>
 #include <cstring>
 #include <limits>
 #include <utility>
+
+#if !defined(__EMSCRIPTEN__) &&                                                                    \
+    (defined(_M_IX86) || defined(_M_X64) || defined(__i386__) || defined(__x86_64__))
+#include <xmmintrin.h>
+#define ET_HAS_X86_MXCSR 1
+#endif
 
 namespace effetune {
 namespace {
@@ -18,6 +28,66 @@ constexpr std::uint32_t kDescriptorNodeBytes = 12;
 constexpr std::uint32_t kIrDryEnabledIndex = 4u;
 constexpr std::uint32_t kIrDryLevelIndex = 5u;
 constexpr float kIrDrySilenceDb = -96.0F;
+
+void enableDenormalFlushForCurrentThread() noexcept {
+#if defined(ET_HAS_X86_MXCSR)
+  thread_local bool enabled = false;
+  if (!enabled) {
+    constexpr unsigned int kFlushToZero = 1u << 15u;
+    constexpr unsigned int kDenormalsAreZero = 1u << 6u;
+    _mm_setcsr(_mm_getcsr() | kFlushToZero | kDenormalsAreZero);
+    enabled = true;
+  }
+#endif
+}
+
+#if defined(__EMSCRIPTEN__)
+void addDenormalNoise(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
+                      double time_seconds, float sample_rate) noexcept {
+  const auto frame_origin =
+      static_cast<std::uint64_t>(std::llround(time_seconds * static_cast<double>(sample_rate)));
+  const float first =
+      static_cast<float>(((frame_origin & 1u) == 0u) ? dsp::NyquistDenormalNoise::kAmplitude
+                                                     : -dsp::NyquistDenormalNoise::kAmplitude);
+  for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+    const std::uint32_t offset = channel * frame_count;
+    float noise = first;
+    for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      audio[offset + frame] += noise;
+      noise = -noise;
+    }
+  }
+}
+
+void prepareDenormalProtectedInput(float *audio, std::uint32_t channel_count,
+                                   std::uint32_t frame_count, double time_seconds,
+                                   float sample_rate, bool add_noise) noexcept {
+  const auto frame_origin =
+      static_cast<std::uint64_t>(std::llround(time_seconds * static_cast<double>(sample_rate)));
+  const float first =
+      static_cast<float>(((frame_origin & 1u) == 0u) ? dsp::NyquistDenormalNoise::kAmplitude
+                                                     : -dsp::NyquistDenormalNoise::kAmplitude);
+  const float limit = static_cast<float>(dsp::NyquistDenormalNoise::kMaximumOutputNoiseAmplitude);
+  for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+    const std::uint32_t offset = channel * frame_count;
+    float noise = first;
+    for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      const std::uint32_t sample = offset + frame;
+      const float input = audio[sample];
+      const float canonical = (input >= -limit && input <= limit) ? 0.0F : input;
+      audio[sample] = add_noise ? canonical + noise : canonical;
+      noise = -noise;
+    }
+  }
+}
+
+bool requiresPostKernelDenormalNoise(const KernelDescriptor &descriptor) noexcept {
+  // Its explicit cone integrator has an intentionally exact-silent equilibrium, while a
+  // Nyquist input can excite the worst-case mechanical settings. Injecting at the output
+  // preserves that equilibrium and still protects every downstream kernel.
+  return std::strcmp(descriptor.typeName, "DynamicSaturationPlugin") == 0;
+}
+#endif
 
 bool isGraphMutableType(const KernelDescriptor &descriptor) noexcept {
   return std::strcmp(descriptor.typeName, "VolumePlugin") == 0 ||
@@ -481,12 +551,23 @@ void Engine::maybeWriteTelemetry(InstanceSlot &slot, std::uint32_t frame_count) 
 void Engine::processSlot(InstanceSlot &slot, float *audio, std::uint32_t channel_count,
                          std::uint32_t frame_count, double time_seconds) noexcept {
   slot.kernel->applyPendingParameters();
+#if defined(__EMSCRIPTEN__)
+  const bool add_noise_after = requiresPostKernelDenormalNoise(*slot.descriptor);
+  prepareDenormalProtectedInput(audio, channel_count, frame_count, time_seconds, sample_rate_,
+                                !add_noise_after);
+#endif
   slot.kernel->process(audio, channel_count, frame_count, {time_seconds});
+#if defined(__EMSCRIPTEN__)
+  if (add_noise_after) {
+    addDenormalNoise(audio, channel_count, frame_count, time_seconds, sample_rate_);
+  }
+#endif
   maybeWriteTelemetry(slot, frame_count);
 }
 
 et_status Engine::processInstance(et_instance instance, float *audio, std::uint32_t channel_count,
                                   std::uint32_t frame_count, double time_seconds) noexcept {
+  enableDenormalFlushForCurrentThread();
   const et_status validation = validateProcessArgs(audio, channel_count, frame_count, time_seconds);
   if (validation != ET_OK) {
     return validation;
@@ -710,6 +791,7 @@ et_status Engine::configurePipeline(const std::uint8_t *descriptor,
 
 et_status Engine::processPipeline(std::uint32_t channel_count, std::uint32_t frame_count,
                                   double time_seconds, std::uint32_t master_bypass) noexcept {
+  enableDenormalFlushForCurrentThread();
   float *main_bus = arena_.combined();
   const et_status validation =
       validateProcessArgs(main_bus, channel_count, frame_count, time_seconds);
@@ -914,6 +996,7 @@ et_status Engine::setGraphInstanceParams(et_instance instance, const float *pack
 
 et_status Engine::processGraph(std::uint32_t channel_count, std::uint32_t frame_count,
                                double time_seconds) noexcept {
+  enableDenormalFlushForCurrentThread();
   float *main_bus = arena_.combined();
   const et_status validation =
       validateProcessArgs(main_bus, channel_count, frame_count, time_seconds);

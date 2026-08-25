@@ -84,7 +84,7 @@ function requireInside(parent, candidate) {
 }
 
 function runtimeRootForArchitecture(architecture = process.arch) {
-  return join(repositoryRoot, 'native', 'openhome-sidecar', 'build', `linux-${architecture}`);
+  return join(repositoryRoot, 'out', 'native', 'openhome-sidecar', `linux-${architecture}`);
 }
 
 function readOrigins(runtimeRoot) {

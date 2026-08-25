@@ -35,7 +35,7 @@ Stabilization Periods와 Averages는 Unit Impulse에서만 비활성화됩니다
 - **Excess Group Delay**는 최소 위상 부분을 제거하고 남은 지연을 표시하므로 순수 지연과 그 밖의 비최소 위상 타이밍을 구분하기 쉽습니다.
 - **Impulse**는 시간에 따른 응답을 표시합니다.
 
-그래프에는 항상 **Before**와 **After**가 표시됩니다. 포인터를 그래프 위로 움직이면 같은 주파수나 시간에서 두 곡선의 값을 읽을 수 있고, **Before** 위에 올리면 비교하기 쉽도록 **After**가 잠시 숨겨집니다. 레이아웃이 움직이지 않도록 **Smoothing (oct)**와 **Impulse Range (ms)**는 모든 그래프에서 계속 표시됩니다. Smoothing은 Frequency와 두 Group Delay 그래프에서, Impulse Range는 Impulse에서 사용할 수 있으며 선택한 그래프와 관계없는 항목은 비활성화됩니다. 각 주파수 곡선은 개별적으로 0 dB를 기준으로 맞추고, 각 임펄스는 전체 응답의 자체 피크를 기준으로 표시하며 범위는 -2 ms부터 선택한 Impulse Range까지입니다.
+그래프에는 항상 **Before**와 **After**가 표시됩니다. 포인터를 그래프 위로 움직이면 같은 주파수나 시간에서 두 곡선의 값을 읽을 수 있고, **Before** 위에 올리면 비교하기 쉽도록 **After**가 잠시 숨겨집니다. 레이아웃이 움직이지 않도록 **Smoothing (oct)**와 **Impulse Range (ms)**는 모든 그래프에서 계속 표시됩니다. Smoothing은 Frequency, Phase와 두 Group Delay 그래프에서, Impulse Range는 Impulse에서 사용할 수 있습니다. Excess Group Delay 그래프는 보기 쉽도록 ±100 ms로 제한되지만, 포인터 판독값에는 이 범위를 벗어난 원래 값이 계속 표시됩니다. 선택한 그래프와 관계없는 항목은 비활성화됩니다. 각 주파수 곡선은 개별적으로 0 dB를 기준으로 맞추고, 각 임펄스는 전체 응답의 자체 피크를 기준으로 표시하며 범위는 -2 ms부터 선택한 Impulse Range까지입니다.
 
 ## 측정 방식
 

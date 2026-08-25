@@ -1,5 +1,6 @@
 #include "effetune/kernel.h"
 #include "SubSynthPluginParams.h"
+#include "effetune/dsp/denormal_noise.h"
 
 #include <algorithm>
 #include <array>
@@ -97,19 +98,19 @@ SecondOrderCoefficients secondOrderHighpass(double frequency, double sample_rate
 }
 
 double processFirstOrder(double input, FilterState &state,
-                         const FirstOrderCoefficients &coefficients) noexcept {
+                         const FirstOrderCoefficients &coefficients, double noise) noexcept {
   const double output =
-      coefficients.b0 * input + coefficients.b1 * state.x1 - coefficients.a1 * state.y1;
+      coefficients.b0 * input + coefficients.b1 * state.x1 - coefficients.a1 * state.y1 + noise;
   state.x1 = input;
   state.y1 = output;
   return output;
 }
 
 double processSecondOrder(double input, FilterState &state,
-                          const SecondOrderCoefficients &coefficients) noexcept {
+                          const SecondOrderCoefficients &coefficients, double noise) noexcept {
   const double output = coefficients.b0 * input + coefficients.b1 * state.x1 +
                         coefficients.b2 * state.x2 - coefficients.a1 * state.y1 -
-                        coefficients.a2 * state.y2;
+                        coefficients.a2 * state.y2 + noise;
   state.x2 = state.x1;
   state.x1 = input;
   state.y2 = state.y1;
@@ -141,6 +142,7 @@ public:
     dry_highpass_layout_ = {};
     controls_initialized_ = false;
     ramp_remaining_ = 0u;
+    denormal_noise_.reset();
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -200,24 +202,26 @@ public:
             interpolate(second_current_[2], second_steps_[2], position);
         const double sub_gain = levels_[0] + level_steps_[0] * position;
         const double dry_gain = levels_[1] + level_steps_[1] * position;
+        const double noise = denormal_noise_.sample(frame);
         double dry = static_cast<double>(audio[offset + frame]);
         double sub = dry >= 0.0 ? dry : -dry;
         if (sub_lowpass.total() != 0u) {
           sub = processChain(sub, channel, sub_lowpass, sub_lowpass_states_, sub_lowpass_first,
-                             sub_lowpass_second);
+                             sub_lowpass_second, noise);
         }
         if (sub_highpass.total() != 0u) {
           sub = processChain(sub, channel, sub_highpass, sub_highpass_states_, sub_highpass_first,
-                             sub_highpass_second);
+                             sub_highpass_second, noise);
         }
         if (dry_highpass.total() != 0u) {
           dry = processChain(dry, channel, dry_highpass, dry_highpass_states_, dry_highpass_first,
-                             dry_highpass_second);
+                             dry_highpass_second, noise);
         }
-        audio[offset + frame] = static_cast<float>(dry * dry_gain + sub * sub_gain);
+        audio[offset + frame] = static_cast<float>(dry * dry_gain + sub * sub_gain + noise);
       }
     }
     advanceControls(frame_count);
+    denormal_noise_.advance(frame_count);
   }
 
 private:
@@ -317,16 +321,16 @@ private:
 
   double processChain(double sample, std::uint32_t channel, const StageLayout &layout,
                       std::vector<FilterState> &states, const FirstOrderCoefficients &first,
-                      const SecondOrderCoefficients &second) noexcept {
+                      const SecondOrderCoefficients &second, double noise) noexcept {
     std::uint32_t stage_index = 0u;
     if (layout.order1 != 0u) {
       FilterState &state = states[static_cast<std::size_t>(stage_index) * max_channels_ + channel];
-      sample = processFirstOrder(sample, state, first);
+      sample = processFirstOrder(sample, state, first, noise);
       ++stage_index;
     }
     for (std::uint32_t stage = 0u; stage < layout.order2; ++stage) {
       FilterState &state = states[static_cast<std::size_t>(stage_index) * max_channels_ + channel];
-      sample = processSecondOrder(sample, state, second);
+      sample = processSecondOrder(sample, state, second, noise);
       ++stage_index;
     }
     return sample;
@@ -360,6 +364,7 @@ private:
   std::vector<FilterState> sub_lowpass_states_;
   std::vector<FilterState> sub_highpass_states_;
   std::vector<FilterState> dry_highpass_states_;
+  dsp::NyquistDenormalNoise denormal_noise_;
 };
 
 } // namespace effetune::plugins::saturation

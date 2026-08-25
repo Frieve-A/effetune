@@ -400,7 +400,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Spatial   | Crossfeed Filter | Headphone crossfeed filter for natural stereo imaging | [Details](docs/plugins/spatial.md#crossfeed-filter) |
 | Spatial   | MS Matrix | Converts between stereo and Mid/Side for center/ambience adjustments | [Details](docs/plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5-band frequency-dependent stereo balance control | [Details](docs/plugins/spatial.md#multiband-balance) |
-| Spatial   | Phase Select EQ | Boosts or cuts frequency components selected by L/R phase difference | [Details](docs/plugins/spatial.md#phase-select-eq) |
+| Spatial   | Phase Select EQ | Boosts or cuts frequency components selected by L/R phase difference and Balance | [Details](docs/plugins/spatial.md#phase-select-eq) |
 | Spatial   | Stereo Blend | Controls stereo width from mono to enhanced stereo | [Details](docs/plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | Test tone and noise generator for checking speakers/headphones | [Details](docs/plugins/others.md#oscillator) |
 | Control   | Section | Groups effects so a whole section can be bypassed or restored | [Details](docs/plugins/control.md) |

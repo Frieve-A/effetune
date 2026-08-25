@@ -1,6 +1,7 @@
 #include "effetune/kernel.h"
 #include "AutoLevelerPluginParams.h"
 #include "effetune/dsp/biquad.h"
+#include "effetune/dsp/denormal_noise.h"
 
 #include "group_b_telemetry.h"
 
@@ -93,6 +94,7 @@ public:
     latest_output_lufs_ = -144.0F;
     initialized_ = false;
     has_measurement_ = false;
+    denormal_noise_.reset();
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -125,12 +127,14 @@ public:
       }
       const float *channel_audio = audio + channel * frame_count;
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-        weighted_buffer_[frame] = static_cast<float>(dsp::processBiquadDf1Sample(
-            static_cast<double>(channel_audio[frame]), pre_filter_, pre_states_[channel]));
+        weighted_buffer_[frame] = static_cast<float>(dsp::processBiquadDf1SampleWithDenormalNoise(
+            static_cast<double>(channel_audio[frame]), pre_filter_, pre_states_[channel],
+            denormal_noise_.sample(frame)));
       }
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-        weighted_buffer_[frame] = static_cast<float>(dsp::processBiquadDf1Sample(
-            static_cast<double>(weighted_buffer_[frame]), shelf_filter_, shelf_states_[channel]));
+        weighted_buffer_[frame] = static_cast<float>(dsp::processBiquadDf1SampleWithDenormalNoise(
+            static_cast<double>(weighted_buffer_[frame]), shelf_filter_, shelf_states_[channel],
+            denormal_noise_.sample(frame)));
       }
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
         const double weighted = static_cast<double>(weighted_buffer_[frame]);
@@ -185,6 +189,7 @@ public:
       }
     }
     current_gain_ = gain;
+    denormal_noise_.advance(frame_count);
 
     double input_lufs = -144.0;
     if (current_lufs_linear > 0.0) {
@@ -262,6 +267,7 @@ private:
   float latest_output_lufs_ = -144.0F;
   bool initialized_ = false;
   bool has_measurement_ = false;
+  dsp::NyquistDenormalNoise denormal_noise_;
 };
 
 static_assert(sizeof(AutoLevelerKernel) <= 8192u);

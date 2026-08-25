@@ -13,7 +13,7 @@ import {
 
 export function defaultNativeRunnerPath(repoRoot = DEFAULT_REPO_ROOT) {
   const executable = process.platform === 'win32' ? 'effetune-dsp-parity-runner.exe' : 'effetune-dsp-parity-runner';
-  return path.join(repoRoot, 'dsp', 'build', 'native', executable);
+  return path.join(repoRoot, 'out', 'dsp', 'native', executable);
 }
 
 export function defaultWasmPath(variant = 'baseline', repoRoot = DEFAULT_REPO_ROOT) {

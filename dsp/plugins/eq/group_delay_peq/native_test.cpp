@@ -15,6 +15,7 @@ constexpr std::uint32_t kHeaderBytes = 32u;
 constexpr std::uint32_t kMagic = 0x31415445u;
 constexpr std::uint32_t kMono = 1u;
 constexpr std::uint32_t kReplacementDryReady = 1u << 16u;
+constexpr float kLatencyMode0 = 0.0F;
 constexpr float kLatencyMode128 = 1.0F;
 constexpr float kReplacementDryLatencyMode = -1.0F;
 
@@ -152,6 +153,22 @@ void testAssetValidation() {
   }
 }
 
+void testZeroLatencyActivationWaitsForCompleteWetBlock() {
+  Harness harness;
+  harness.stage({kLatencyMode0, 0.0F});
+  GROUP_DELAY_CHECK(harness.commit(makePayload(257u), 0u));
+  GROUP_DELAY_CHECK(harness.kernel->latencySamples() == 0u);
+
+  std::array<float, 256> signal{};
+  signal.fill(1.0F);
+  harness.kernel->process(signal.data(), 2u, 128u, {0.0});
+  GROUP_DELAY_CHECK((harness.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_PREPARING);
+
+  signal.fill(1.0F);
+  harness.kernel->process(signal.data(), 2u, 128u, {0.0});
+  GROUP_DELAY_CHECK((harness.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_ACTIVE);
+}
+
 // The replacement handshake fades to dry and reports readiness before a new filter is staged.
 void testReplacementHandshake() {
   Harness harness;
@@ -179,6 +196,7 @@ void testReplacementHandshake() {
 int main() {
   testBypassAndLatency();
   testAssetValidation();
+  testZeroLatencyActivationWaitsForCompleteWetBlock();
   testReplacementHandshake();
   return failures == 0 ? 0 : 1;
 }

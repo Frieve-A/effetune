@@ -371,7 +371,12 @@
           "corePhaseLow": [0, 35, 0, 0, 0],
           "corePhaseHigh": [20, 80, 30, 30, 30],
           "outerPhaseHigh": [30, 95, 45, 45, 45],
-          "gain": [130, 60, 100, 100, 100]
+          "gain": [130, 60, 100, 100, 100],
+          "regionSolo": [false, false, false, false, false],
+          "outerBalanceLow": [-100, -100, -100, -100, -100],
+          "coreBalanceLow": [-100, -100, -100, -100, -100],
+          "coreBalanceHigh": [100, 100, 100, 100, 100],
+          "outerBalanceHigh": [100, 100, 100, 100, 100]
         }
       },
       {

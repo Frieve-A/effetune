@@ -97,7 +97,7 @@
       "stimulus": "noise",
       "channels": 8,
       "channelMode": "all8",
-      "frames": 12801,
+      "frames": 6017,
       "blockSize": 128,
       "params": { "regions": [
         { "en": true, "ofl": 20, "fl": 20, "fh": 20000, "ofh": 22000,
@@ -110,7 +110,7 @@
       "sampleRate": 192000,
       "channels": 2,
       "channelMode": "stereo",
-      "frames": 40963,
+      "frames": 24577,
       "blockSize": 127,
       "params": { "regions": [
         { "en": true, "ofl": 1000, "fl": 2000, "fh": 24000, "ofh": 40000,
@@ -134,6 +134,51 @@
         { "frame": 17003, "params": { "regions": [
           { "en": true, "ofl": 80, "fl": 100, "fh": 10000, "ofh": 12000,
             "opl": 0, "pl": 0, "ph": 180, "oph": 180, "gn": 100 }
+        ] } }
+      ]
+    },
+    {
+      "id": "balance-core-only",
+      "stimulus": "noise",
+      "frames": 8193,
+      "params": { "regions": [
+        { "en": true, "ofl": 20, "fl": 20, "fh": 20000, "ofh": 22000,
+          "opl": 0, "pl": 0, "ph": 180, "oph": 180, "gn": 160,
+          "obl": -100, "bl": -60, "bh": -40, "obh": 100 }
+      ] }
+    },
+    {
+      "id": "balance-and-phase",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "frames": 12289,
+      "blockSize": 97,
+      "params": { "regions": [
+        { "en": true, "ofl": 100, "fl": 400, "fh": 8000, "ofh": 16000,
+          "opl": 20, "pl": 60, "ph": 120, "oph": 160, "gn": 50,
+          "obl": 10, "bl": 30, "bh": 60, "obh": 80 }
+      ] }
+    },
+    {
+      "id": "balance-events-latch",
+      "stimulus": "noise",
+      "frames": 22529,
+      "blockSize": 127,
+      "params": { "regions": [
+        { "en": true, "ofl": 80, "fl": 100, "fh": 10000, "ofh": 12000,
+          "opl": 0, "pl": 0, "ph": 180, "oph": 180, "gn": 150,
+          "obl": -100, "bl": -80, "bh": -40, "obh": -20 }
+      ] },
+      "events": [
+        { "frame": 9001, "params": { "regions": [
+          { "en": true, "ofl": 80, "fl": 100, "fh": 10000, "ofh": 12000,
+            "opl": 0, "pl": 0, "ph": 180, "oph": 180, "gn": 50,
+            "obl": 20, "bl": 40, "bh": 80, "obh": 100 }
+        ] } },
+        { "frame": 17003, "params": { "regions": [
+          { "en": true, "ofl": 80, "fl": 100, "fh": 10000, "ofh": 12000,
+            "opl": 0, "pl": 0, "ph": 180, "oph": 180, "gn": 100,
+            "obl": -100, "bl": -100, "bh": 100, "obh": 100 }
         ] } }
       ]
     }

@@ -372,13 +372,13 @@ npm run build:mac:arm64
 
 The producer downloads revisions pinned in
 `native/openhome-sidecar/dependencies.lock.json`, verifies every archive's
-SHA-256 hash, and reuses the ignored `native/openhome-sidecar/cache/` directory.
+SHA-256 hash, and reuses the ignored `tmp/cache/openhome-sidecar/` directory.
 It runs CTest and a stdio handshake smoke, then writes one of:
 
-- `native/openhome-sidecar/build/win32-x64/effetune-openhome-sidecar.exe`
-- `native/openhome-sidecar/build/darwin-x64/effetune-openhome-sidecar`
-- `native/openhome-sidecar/build/darwin-arm64/effetune-openhome-sidecar`
-- `native/openhome-sidecar/build/linux-x64/effetune-openhome-sidecar`
+- `out/native/openhome-sidecar/win32-x64/effetune-openhome-sidecar.exe`
+- `out/native/openhome-sidecar/darwin-x64/effetune-openhome-sidecar`
+- `out/native/openhome-sidecar/darwin-arm64/effetune-openhome-sidecar`
+- `out/native/openhome-sidecar/linux-x64/effetune-openhome-sidecar`
 
 Linux builds dynamically link libnl. The producer copies the exact libnl and
 libnl-genl shared objects resolved by the build host's loader beside the

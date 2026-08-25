@@ -22,8 +22,8 @@ pip install effetune
 npm install @effetune/dsp
 ```
 
-These docs describe v0.5.0. Pin that exact version when reproducibility matters,
-for example `pip install effetune==0.5.0` or `npm install @effetune/dsp@0.5.0`.
+These docs describe v0.6.0. Pin that exact version when reproducibility matters,
+for example `pip install effetune==0.6.0` or `npm install @effetune/dsp@0.6.0`.
 
 **Why does my Python array fail?** Use finite C-contiguous planar `float32` shaped
 `(channels, frames)`.

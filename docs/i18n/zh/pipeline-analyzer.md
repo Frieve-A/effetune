@@ -35,7 +35,7 @@ Pipeline Analyzer 可在不改变实际听到的音频的情况下，测量当�
 - **Excess Group Delay** 显示去除最小相位部分后剩余的延迟，便于区分纯延迟和其他非最小相位时序。
 - **Impulse** 显示随时间变化的响应。
 
-图表始终显示 **Before** 和 **After**。移动指针可读取同一频率或时刻的两个数值；指向 **Before** 时会暂时隐藏 **After**，以便清楚比较。为避免布局移动，**Smoothing (oct)** 和 **Impulse Range (ms)** 会一直显示在所有图表中。Smoothing 在 Frequency 和两个 Group Delay 图表中可用；Impulse Range 在 Impulse 中可用。与当前图表无关的控件会被禁用。每条频率曲线分别以 0 dB 为基准；每条脉冲按自身完整响应的峰值缩放，并从 -2 ms 显示到所选的 Impulse Range。
+图表始终显示 **Before** 和 **After**。移动指针可读取同一频率或时刻的两个数值；指向 **Before** 时会暂时隐藏 **After**，以便清楚比较。为避免布局移动，**Smoothing (oct)** 和 **Impulse Range (ms)** 会一直显示在所有图表中。Smoothing 在 Frequency、Phase 和两个 Group Delay 图表中可用；Impulse Range 在 Impulse 中可用。为便于查看，Excess Group Delay 图表的显示范围限制为 ±100 ms，但指针读数仍会显示超出该范围的原始值。与当前图表无关的控件会被禁用。每条频率曲线分别以 0 dB 为基准；每条脉冲按自身完整响应的峰值缩放，并从 -2 ms 显示到所选的 Impulse Range。
 
 ## 测量方法
 

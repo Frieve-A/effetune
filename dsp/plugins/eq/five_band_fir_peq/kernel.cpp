@@ -95,14 +95,17 @@ public:
       const dsp::ConvolverPreparationState stateBefore = convolver_.state();
       const std::uint64_t historyBefore = stream_history_samples_;
       convolver_.process(wet_audio_.data(), channelCount, frameCount);
-      if (stateBefore == dsp::ConvolverPreparationState::warming ||
-          stateBefore == dsp::ConvolverPreparationState::active) {
+      const bool convolverWasWarmingOrActive =
+          stateBefore == dsp::ConvolverPreparationState::warming ||
+          stateBefore == dsp::ConvolverPreparationState::active;
+      if (convolverWasWarmingOrActive) {
         const std::uint64_t maximum = static_cast<std::uint64_t>(-1);
         stream_history_samples_ = stream_history_samples_ > maximum - frameCount
                                       ? maximum
                                       : stream_history_samples_ + frameCount;
       }
       assetReadyForBlock = asset_state_ == ET_ASSET_STATE_PREPARING &&
+                           convolverWasWarmingOrActive &&
                            convolver_.state() == dsp::ConvolverPreparationState::active &&
                            historyBefore >= resident_latency_;
     } else {

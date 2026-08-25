@@ -40,17 +40,18 @@ implemented by the design artifacts.
 
 ## Focused verification
 
-From the repository root, use an isolated environment and keep all build
-outputs under the ignored `.tmp/dsp-library-phase0` directory:
+From the repository root, use an isolated environment. Keep the virtual
+environment under the ignored `tmp/dsp-library-phase0` directory; scikit-build
+writes its reusable build tree to `out/dsp-library-phase0/build/{wheel_tag}`:
 
 ```powershell
-python -m venv .tmp\dsp-library-phase0\venv
-.\.tmp\dsp-library-phase0\venv\Scripts\python.exe -m pip install --upgrade pip
-.\.tmp\dsp-library-phase0\venv\Scripts\python.exe -m pip install `
+python -m venv tmp\dsp-library-phase0\venv
+.\tmp\dsp-library-phase0\venv\Scripts\python.exe -m pip install --upgrade pip
+.\tmp\dsp-library-phase0\venv\Scripts\python.exe -m pip install `
   numpy nanobind scikit-build-core
-.\.tmp\dsp-library-phase0\venv\Scripts\python.exe -m pip install `
+.\tmp\dsp-library-phase0\venv\Scripts\python.exe -m pip install `
   --no-build-isolation -e experiments\dsp-library-phase0
-.\.tmp\dsp-library-phase0\venv\Scripts\python.exe `
+.\tmp\dsp-library-phase0\venv\Scripts\python.exe `
   experiments\dsp-library-phase0\verify_python.py
 node experiments\dsp-library-phase0\verify_browser.mjs
 ```

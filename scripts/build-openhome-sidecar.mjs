@@ -20,7 +20,7 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(scriptDirectory, '..');
 
 export const openHomeSidecarBuildContract = Object.freeze({
-  output: 'native/openhome-sidecar/build/win32-x64/effetune-openhome-sidecar.exe',
+  output: 'out/native/openhome-sidecar/win32-x64/effetune-openhome-sidecar.exe',
   producer: 'scripts/build-openhome-sidecar.mjs',
   inputs: Object.freeze([
     'native/openhome-sidecar/CMakeLists.txt',
@@ -36,9 +36,9 @@ export const openHomeSidecarBuildContract = Object.freeze({
 });
 
 const sidecarRoot = join(repositoryRoot, 'native', 'openhome-sidecar');
-const cacheRoot = join(sidecarRoot, 'cache');
+const cacheRoot = join(repositoryRoot, 'tmp', 'cache', 'openhome-sidecar');
 const sourceRoot = join(cacheRoot, 'src');
-const buildRoot = join(sidecarRoot, 'build');
+const buildRoot = join(repositoryRoot, 'out', 'native', 'openhome-sidecar');
 const cmakeBuildRoot = join(buildRoot, 'cmake');
 const lockPath = join(sidecarRoot, 'dependencies.lock.json');
 

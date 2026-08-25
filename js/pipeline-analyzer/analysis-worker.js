@@ -20,6 +20,8 @@ import { generateTspSequence } from './tsp.js';
 
 const PREPARATION_TIMEOUT_MS = 10000;
 const WORKLET_PROCESSOR_URL = new URL('../../plugins/audio-processor.js', import.meta.url).href;
+const DENORMAL_NOISE_OUTPUT_LIMIT_DB = -288;
+const DENORMAL_NOISE_OUTPUT_LIMIT = 10 ** (DENORMAL_NOISE_OUTPUT_LIMIT_DB / 20);
 
 let capturedProcessorClass = null;
 let activePortFactory = null;
@@ -436,7 +438,11 @@ function measureImpulse(host, snapshot, settings, post, token) {
     }
     return {
         pipelineResponses: captured,
-        truncated: !areRouteTailsSettled(captured),
+        truncated: !areRouteTailsSettled(
+            captured,
+            ANALYSIS_TAIL_WINDOW_SAMPLES,
+            DENORMAL_NOISE_OUTPUT_LIMIT / amplitude
+        ),
         measurement: buildMeasurementMetadata(settings, snapshot.sampleRate),
         warnings: []
     };

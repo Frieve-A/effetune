@@ -1,6 +1,7 @@
 #include "effetune/kernel.h"
 #include "LoudnessEqualizerPluginParams.h"
 #include "effetune/dsp/biquad.h"
+#include "effetune/dsp/denormal_noise.h"
 
 #include <algorithm>
 #include <cmath>
@@ -99,6 +100,7 @@ public:
     for (LoudnessState &state : states_) {
       state.reset();
     }
+    denormal_noise_.reset();
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -133,13 +135,16 @@ public:
         const Coefficients low = interpolate(low_shelf_, low_step_, position);
         const Coefficients high = interpolate(high_shelf_, high_step_, position);
         const double volume = volume_gain_ + volume_step_ * position;
-        const double low_output =
-            dsp::processBiquadDf1Sample(static_cast<double>(audio[offset + frame]), low, state.low);
-        const double high_output = dsp::processBiquadDf1Sample(low_output, high, state.high);
+        const double noise = denormal_noise_.sample(frame);
+        const double low_output = dsp::processBiquadDf1SampleWithDenormalNoise(
+            static_cast<double>(audio[offset + frame]), low, state.low, noise);
+        const double high_output =
+            dsp::processBiquadDf1SampleWithDenormalNoise(low_output, high, state.high, noise);
         audio[offset + frame] = static_cast<float>(high_output * volume);
       }
     }
     advanceTargets(frame_count);
+    denormal_noise_.advance(frame_count);
   }
 
 private:
@@ -247,6 +252,7 @@ private:
   std::uint32_t ramp_frames_ = 240u;
   std::uint32_t ramp_remaining_ = 0u;
   std::vector<LoudnessState> states_;
+  dsp::NyquistDenormalNoise denormal_noise_;
 };
 
 } // namespace effetune::plugins::eq

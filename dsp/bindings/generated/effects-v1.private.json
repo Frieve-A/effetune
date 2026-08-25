@@ -8002,8 +8002,8 @@
     },
     "PhaseSelectEQ": {
       "internalType": "PhaseSelectEqPlugin",
-      "layoutHash": 4158366201,
-      "floatCount": 50,
+      "layoutHash": 1371985786,
+      "floatCount": 75,
       "packedParameters": [
         {
           "publicName": "regionEnabled",
@@ -8164,6 +8164,86 @@
           "transform": {
             "kind": "identity"
           }
+        },
+        {
+          "publicName": "regionSolo",
+          "field": "solo",
+          "keys": [
+            "so0",
+            "so1",
+            "so2",
+            "so3",
+            "so4"
+          ],
+          "offset": 50,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outerBalanceLow",
+          "field": "outerBalanceLow",
+          "keys": [
+            "obl0",
+            "obl1",
+            "obl2",
+            "obl3",
+            "obl4"
+          ],
+          "offset": 55,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "coreBalanceLow",
+          "field": "coreBalanceLow",
+          "keys": [
+            "bl0",
+            "bl1",
+            "bl2",
+            "bl3",
+            "bl4"
+          ],
+          "offset": 60,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "coreBalanceHigh",
+          "field": "coreBalanceHigh",
+          "keys": [
+            "bh0",
+            "bh1",
+            "bh2",
+            "bh3",
+            "bh4"
+          ],
+          "offset": 65,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outerBalanceHigh",
+          "field": "outerBalanceHigh",
+          "keys": [
+            "obh0",
+            "obh1",
+            "obh2",
+            "obh3",
+            "obh4"
+          ],
+          "offset": 70,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
         }
       ],
       "assets": []
@@ -8283,5 +8363,5 @@
     "dsp/plugins/spatial/phase_select_eq/params.json": "dsp/plugins/spatial/phase_select_eq/golden/index.json",
     "dsp/plugins/spatial/stereo_blend/params.json": "dsp/plugins/spatial/stereo_blend/golden/index.json"
   },
-  "contractDigest": "3c7c8ff05b4ffafc24aa90422245c024a9d146f5a010d157a719a4c521d5dab3"
+  "contractDigest": "10371b5016b454f9e056d84f4a43d050e01a6b40ba0d9eb8dd3939f4fba2550c"
 }

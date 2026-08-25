@@ -1174,8 +1174,26 @@ const ET_DSP_PIPELINE_VERSION = 1;
 const ET_DSP_PIPELINE_HEADER_BYTES = 8;
 const ET_DSP_PIPELINE_NODE_BYTES = 12;
 const ET_DSP_PIPELINE_MAX_NODES = 128;
-const AUDIO_PROCESSING_OVERLOAD_CONFIRM_QUANTA = 2;
 const AUDIO_PROCESSING_OVERLOAD_HEARTBEAT_SECONDS = 1;
+// Render headroom, in milliseconds, that the output buffer absorbs before a
+// late quantum turns into an audible dropout. The deadline credit tracks that
+// headroom, so a single quantum is never judged on its own: the wall clock here
+// is coarse -- AudioWorkletGlobalScope does not expose performance, so
+// audioProcessingClockNow() falls back to Date.now() with 1 ms granularity,
+// the same order as one quantum budget (0.67 ms at 192 kHz, 1.33 ms at 96 kHz)
+// -- and only accumulating the surplus/deficit averages that rounding out.
+// The main thread reports the real figure from AudioContext.baseLatency; this
+// is the fallback for when it is unavailable.
+const AUDIO_PROCESSING_OVERLOAD_DEFAULT_HEADROOM_MS = 10;
+// Below ~8 ms the 1 ms clock granularity starts to dominate the credit, and
+// above ~20 ms the warning would trail the dropout it is meant to announce.
+const AUDIO_PROCESSING_OVERLOAD_MIN_HEADROOM_MS = 8;
+const AUDIO_PROCESSING_OVERLOAD_MAX_HEADROOM_MS = 20;
+// WebAssembly has no FTZ/DAZ control register. This inaudible Nyquist component keeps floating
+// point DSP state far above the subnormal range without biasing DC or the power-policy threshold.
+const ET_DENORMAL_NOISE_AMPLITUDE = 1e-19;
+const ET_DENORMAL_NOISE_POWER = ET_DENORMAL_NOISE_AMPLITUDE * ET_DENORMAL_NOISE_AMPLITUDE;
+const ET_DENORMAL_NOISE_OUTPUT_LIMIT = 10 ** (-288 / 20);
 
 class WorkletSampleDelayLine {
     constructor(channelCount, maximumDelaySamples) {
@@ -1264,11 +1282,10 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.reportedMissingProcessors = new Set();
         this.reportedInvalidChannels = new Set();
         this.masterBypass = false;
-        this.processingDeadlineSequence = 0;
         this.processingOverloadMonitoringEnabled = false;
         this.processingOverloadMonitoringStartFrame = Number.POSITIVE_INFINITY;
-        this.processingOverloadLastSequence = -1;
-        this.processingOverloadConsecutiveQuanta = 0;
+        this.processingOverloadHeadroomMs = AUDIO_PROCESSING_OVERLOAD_DEFAULT_HEADROOM_MS;
+        this.processingOverloadCreditMs = AUDIO_PROCESSING_OVERLOAD_DEFAULT_HEADROOM_MS;
         this.processingOverloadActive = false;
         this.processingOverloadLastReportFrame = Number.NEGATIVE_INFINITY;
         this.pipelineCpuFrames = 0;
@@ -1452,7 +1469,8 @@ class PluginProcessor extends AudioWorkletProcessor {
                 case 'setAudioProcessingOverloadMonitoring':
                     this.setAudioProcessingOverloadMonitoring(
                         data.enabled === true,
-                        data.delaySeconds
+                        data.delaySeconds,
+                        data.headroomMs
                     );
                     break;
                 case 'updateAudioConfig':
@@ -1790,7 +1808,6 @@ class PluginProcessor extends AudioWorkletProcessor {
             }
             this.pluginContexts.clear();
             this.currentFrame = 0;
-            this.processingDeadlineSequence = 0;
             this.clearAudioProcessingOverload();
             this.audioLevelMonitoring.lastInputActiveTime = 0;
             this.audioLevelMonitoring.lastOutputActiveTime = 0;
@@ -4067,7 +4084,39 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
     }
 
-    _measurePowerWithDcBlock(channels, previousX, previousY, blockSize, result) {
+    _addDenormalNoise(audio, channelCount, frameCount, frameOrigin) {
+        const first = (frameOrigin & 1) === 0
+            ? ET_DENORMAL_NOISE_AMPLITUDE
+            : -ET_DENORMAL_NOISE_AMPLITUDE;
+        for (let channel = 0; channel < channelCount; channel++) {
+            const offset = channel * frameCount;
+            let noise = first;
+            for (let frame = 0; frame < frameCount; frame++) {
+                audio[offset + frame] += noise;
+                noise = -noise;
+            }
+        }
+    }
+
+    _prepareDenormalProtectedInput(audio, channelCount, frameCount, frameOrigin, addNoise) {
+        const first = (frameOrigin & 1) === 0
+            ? ET_DENORMAL_NOISE_AMPLITUDE
+            : -ET_DENORMAL_NOISE_AMPLITUDE;
+        for (let channel = 0; channel < channelCount; channel++) {
+            const offset = channel * frameCount;
+            let noise = first;
+            for (let frame = 0; frame < frameCount; frame++) {
+                const sample = offset + frame;
+                const input = audio[sample];
+                const canonical = input >= -ET_DENORMAL_NOISE_OUTPUT_LIMIT &&
+                    input <= ET_DENORMAL_NOISE_OUTPUT_LIMIT ? 0 : input;
+                audio[sample] = addNoise ? canonical + noise : canonical;
+                noise = -noise;
+            }
+        }
+    }
+
+    _measurePowerWithDcBlock(channels, previousX, previousY, blockSize, frameOrigin, result) {
         const power = this.powerPolicy;
         const channelCount = channels.length < previousX.length ? channels.length : previousX.length;
         let maximumChannelPower = 0;
@@ -4081,20 +4130,26 @@ class PluginProcessor extends AudioWorkletProcessor {
             let yPrev = previousY[channel];
             let channelSumSquares = 0;
             const frames = channelData.length < blockSize ? channelData.length : blockSize;
+            let noise = (frameOrigin & 1) === 0
+                ? ET_DENORMAL_NOISE_AMPLITUDE
+                : -ET_DENORMAL_NOISE_AMPLITUDE;
             for (let frame = 0; frame < frames; frame++) {
                 const x = channelData[frame];
                 if (!Number.isFinite(x)) nonFiniteSeen = true;
                 const finiteX = Number.isFinite(x) ? x : 0;
-                let y = finiteX - xPrev + r * yPrev;
+                const detectorX = finiteX + noise;
+                let y = detectorX - xPrev + r * yPrev;
                 if (!Number.isFinite(y)) {
                     nonFiniteSeen = true;
                     y = 0;
                 }
-                xPrev = finiteX;
+                xPrev = detectorX;
                 yPrev = y;
                 const square = y * y;
                 channelSumSquares += square;
-                if (square > maximumPeakPower) maximumPeakPower = square;
+                const rawSquare = finiteX * finiteX;
+                if (rawSquare > maximumPeakPower) maximumPeakPower = rawSquare;
+                noise = -noise;
             }
             previousX[channel] = xPrev;
             previousY[channel] = yPrev;
@@ -4173,8 +4228,14 @@ class PluginProcessor extends AudioWorkletProcessor {
         const alpha = power.ewmaAlpha;
         const inputFinite = Number.isFinite(inputPower);
         const outputFinite = Number.isFinite(outputPower);
-        if (inputFinite) power.inputPowerEwma += alpha * (inputPower - power.inputPowerEwma);
-        if (outputFinite) power.outputPowerEwma += alpha * (outputPower - power.outputPowerEwma);
+        if (inputFinite) {
+            const detectorPower = inputPower + ET_DENORMAL_NOISE_POWER;
+            power.inputPowerEwma += alpha * (detectorPower - power.inputPowerEwma);
+        }
+        if (outputFinite) {
+            const detectorPower = outputPower + ET_DENORMAL_NOISE_POWER;
+            power.outputPowerEwma += alpha * (detectorPower - power.outputPowerEwma);
+        }
         const inputActive = !inputFinite || power.inputPowerEwma > power.silenceThresholdPower;
         const outputActive = !outputFinite || power.outputPowerEwma > power.silenceThresholdPower;
 
@@ -4273,6 +4334,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             power.outputDcX,
             power.outputDcY,
             blockSize,
+            this.currentFrame - blockSize,
             power.outputDetectorResult
         );
         const safeOutputPower = power.outputDetectorResult[2] === 1
@@ -4282,15 +4344,20 @@ class PluginProcessor extends AudioWorkletProcessor {
     }
 
     clearAudioProcessingOverload() {
-        this.processingOverloadConsecutiveQuanta = 0;
-        this.processingOverloadLastSequence = -1;
+        this.processingOverloadCreditMs = this.processingOverloadHeadroomMs;
         if (!this.processingOverloadActive) return;
         this.processingOverloadActive = false;
         this.port.postMessage({ type: 'audioProcessingOverload', active: false });
     }
 
-    setAudioProcessingOverloadMonitoring(enabled, delaySeconds = 0) {
+    setAudioProcessingOverloadMonitoring(enabled, delaySeconds = 0, headroomMs = 0) {
         this.processingOverloadMonitoringEnabled = enabled;
+        this.processingOverloadHeadroomMs = Number.isFinite(headroomMs) && headroomMs > 0
+            ? Math.min(
+                AUDIO_PROCESSING_OVERLOAD_MAX_HEADROOM_MS,
+                Math.max(AUDIO_PROCESSING_OVERLOAD_MIN_HEADROOM_MS, headroomMs)
+            )
+            : AUDIO_PROCESSING_OVERLOAD_DEFAULT_HEADROOM_MS;
         this.processingOverloadMonitoringStartFrame = enabled
             ? this.currentFrame + Math.ceil(
                 globalThis.sampleRate * (
@@ -4336,7 +4403,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.pipelineCpuElapsedMs = 0;
     }
 
-    finishAudioProcessingDeadline(startedAt, sequence, blockSize, processedPlugin) {
+    finishAudioProcessingDeadline(startedAt, blockSize, processedPlugin) {
         if (!this.isAudioProcessingOverloadMonitoringActive() ||
             !processedPlugin || this.masterBypass ||
             !Number.isFinite(startedAt)) {
@@ -4346,22 +4413,27 @@ class PluginProcessor extends AudioWorkletProcessor {
 
         const elapsedMs = this.audioProcessingClockNow() - startedAt;
         const quantumMs = blockSize * 1000 / globalThis.sampleRate;
-        if (!Number.isFinite(elapsedMs) || elapsedMs <= quantumMs) {
-            this.clearAudioProcessingOverload();
+        if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return;
+
+        // Leaky bucket: a quantum finishing early refills the buffer headroom it
+        // borrows from, a quantum running long drains it. Both ends are clamped
+        // so recovery after a long stall stays bounded.
+        const headroomMs = this.processingOverloadHeadroomMs;
+        const creditMs = Math.min(
+            headroomMs,
+            Math.max(-headroomMs, this.processingOverloadCreditMs + quantumMs - elapsedMs)
+        );
+        this.processingOverloadCreditMs = creditMs;
+
+        if (creditMs >= headroomMs) {
+            // Headroom fully restored: the pipeline is comfortably in budget.
+            if (this.processingOverloadActive) {
+                this.processingOverloadActive = false;
+                this.port.postMessage({ type: 'audioProcessingOverload', active: false });
+            }
             return;
         }
-
-        if (this.processingOverloadLastSequence === sequence - 1) {
-            this.processingOverloadConsecutiveQuanta++;
-        } else {
-            this.processingOverloadConsecutiveQuanta = 1;
-        }
-        this.processingOverloadLastSequence = sequence;
-
-        const confirmed = this.processingOverloadConsecutiveQuanta >=
-                AUDIO_PROCESSING_OVERLOAD_CONFIRM_QUANTA ||
-            elapsedMs >= quantumMs * 2;
-        if (!confirmed) return;
+        if (creditMs > 0) return;
 
         const heartbeatFrames = globalThis.sampleRate *
             AUDIO_PROCESSING_OVERLOAD_HEARTBEAT_SECONDS;
@@ -4385,7 +4457,6 @@ class PluginProcessor extends AudioWorkletProcessor {
 
     // Optimized pipeline processing method
     processPipeline(inputs, outputs, parameters) {
-        const processingDeadlineSequence = ++this.processingDeadlineSequence;
         this.flushDeferredDspAssetStages();
         this.pollDspAssetStates();
         const input = inputs[0];
@@ -4442,6 +4513,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 power.inputDcX,
                 power.inputDcY,
                 blockSize,
+                currentFrame,
                 power.inputDetectorResult
             );
             const inputDetectorNonFinite = power.inputDetectorResult[2] === 1;
@@ -4699,7 +4771,6 @@ class PluginProcessor extends AudioWorkletProcessor {
             }
             this.finishAudioProcessingDeadline(
                 audioProcessingStartedAt,
-                processingDeadlineSequence,
                 blockSize,
                 this.dspPipelinePluginCount > 0
             );
@@ -4720,7 +4791,6 @@ class PluginProcessor extends AudioWorkletProcessor {
             this.clearAudioProcessingOverload();
             return true;
         }
-
 
         // --- 8. Bus Buffer Management ---
         const busBuffers = this.busBuffers; // Local reference
@@ -5024,7 +5094,26 @@ class PluginProcessor extends AudioWorkletProcessor {
                     sampleRate
                 };
                 try {
+                    const addNoiseAfter = plugin.type === 'DynamicSaturationPlugin';
+                    // Rebase the carrier at every stage so upstream gain cannot promote it into
+                    // the audible signal path. Dynamic Saturation receives canonical silence and
+                    // gets its carrier after the kernel to preserve its exact-silent equilibrium.
+                    this._prepareDenormalProtectedInput(
+                        processingBuffer,
+                        numProcessingChannels,
+                        blockSize,
+                        currentFrame,
+                        !addNoiseAfter
+                    );
                     result = processor.call(context, context, processingBuffer, processingParams, time);
+                    if (addNoiseAfter) {
+                        this._addDenormalNoise(
+                            result instanceof Float32Array ? result : processingBuffer,
+                            numProcessingChannels,
+                            blockSize,
+                            currentFrame
+                        );
+                    }
                     pluginContexts.set(plugin.id, context);
                 } catch(e) {
                     console.error(`Error executing plugin ${plugin.id} (${plugin.type}):`, e);
@@ -5242,7 +5331,6 @@ class PluginProcessor extends AudioWorkletProcessor {
 
         this.finishAudioProcessingDeadline(
             audioProcessingStartedAt,
-            processingDeadlineSequence,
             blockSize,
             processedPlugin
         );

@@ -36,6 +36,7 @@ class DynamicSaturationPlugin extends PluginBase {
             const dt_half = 0.5 * dt;
         
             const invSpkMass = 1.0 / spkMass;
+            const floatMinNormal = 1.1754943508222875e-38;
 
             const controlTargets = [dstDrive, dstBias, dstMix, coneMix, outGain];
             if (!context.controlCurrent) {
@@ -116,8 +117,12 @@ class DynamicSaturationPlugin extends PluginBase {
         
                     data[dataIndex] = outputSample;
                 }
-                xpos[ch] = x;
-                vel[ch] = v;
+                const storedX = Math.fround(x);
+                const storedV = Math.fround(v);
+                xpos[ch] = Number.isFinite(storedX) &&
+                    storedX > -floatMinNormal && storedX < floatMinNormal ? 0 : storedX;
+                vel[ch] = Number.isFinite(storedV) &&
+                    storedV > -floatMinNormal && storedV < floatMinNormal ? 0 : storedV;
             }
 
             context.controlCurrent = context.controlCurrent.map((value, index) => {

@@ -47,7 +47,7 @@
     "policy": "per-sample"
   },
   "referenceEngine": "production-native-promoted-v1",
-  "referenceHash": "sha256:3bf861962b615ffd8cbfa6e2cb55f1a63b75e3b5904b7077c01d94f2036f6938",
+  "referenceHash": "sha256:41f07224902043d089f185138ee678ad6ba566dd82e8bbe776c342429e0ace42",
   "generationCommand": "node tools/dsp-parity/generate.mjs --type BluetoothSBCSimulatorPlugin --promote-production-native",
   "outputFloats": 24578,
   "byteLength": 98312,

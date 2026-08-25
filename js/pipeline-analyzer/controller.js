@@ -243,6 +243,7 @@ export class PipelineAnalyzerController {
         this.lastAcceptedProvenance = null;
         this.lastAcceptedMetadata = null;
         this.lastAcceptedStale = false;
+        this.resultHiddenAfterFailure = false;
         this.audioDisposers = [];
         this.pluginDisposers = [];
         this.initialized = false;
@@ -348,7 +349,7 @@ export class PipelineAnalyzerController {
         this.refreshAudioFormat();
         this.ui?.setMeasurementStoreAvailable?.(false);
         this.ui?.setMeasurements?.([]);
-        if (this.lastAcceptedResult) {
+        if (this.lastAcceptedResult && !this.resultHiddenAfterFailure) {
             this.lastAcceptedStale = true;
             this.ui?.setResult?.(this.lastAcceptedResult, { stale: true });
         }
@@ -391,6 +392,7 @@ export class PipelineAnalyzerController {
         this._clearDebounce();
         this._terminateActiveWorker();
         this.ui?.setMeasuring?.(true);
+        this.resultHiddenAfterFailure = false;
         if (this.lastAcceptedResult) {
             this.lastAcceptedStale = true;
             this.ui?.setResult?.(this.lastAcceptedResult, { stale: true });
@@ -781,6 +783,7 @@ export class PipelineAnalyzerController {
         this.lastAcceptedMetadata = metadata;
         this.lastAcceptedResult = accepted;
         this.lastAcceptedStale = false;
+        this.resultHiddenAfterFailure = false;
         this.ui?.setResult?.(accepted, { stale: false });
     }
 
@@ -807,7 +810,9 @@ export class PipelineAnalyzerController {
             details,
             error
         });
-        this.lastAcceptedStale = false;
+        this.lastAcceptedStale = this.lastAcceptedResult !== null;
+        this.resultHiddenAfterFailure = true;
+        this.ui?.setResult?.(null);
         this.ui?.setMeasuring?.(false);
     }
 
@@ -825,7 +830,9 @@ export class PipelineAnalyzerController {
                 ...adapted,
                 ...this.lastAcceptedMetadata
             });
-            this.ui?.setResult?.(this.lastAcceptedResult, { stale: this.lastAcceptedStale });
+            if (!this.resultHiddenAfterFailure) {
+                this.ui?.setResult?.(this.lastAcceptedResult, { stale: this.lastAcceptedStale });
+            }
         } catch (error) {
             this.consoleRef?.error?.('[Pipeline Analyzer] Result presentation could not be updated:', error);
         }

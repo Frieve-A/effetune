@@ -5,20 +5,24 @@ import {
     smoothFrequencyResponse
 } from '../utils/measurement-dsp/smoothing.js';
 import { resampleWindowedSinc } from '../utils/measurement-dsp/resample.js';
+import {
+    analyzeRoomEqGroupDelay,
+    averageRoomEqGroupDelay,
+    combineRoomEqGroupDelay,
+    integrateRoomEqGroupDelayPhase,
+    smoothRoomEqGroupDelay
+} from './group-delay-analysis.js';
 
 const MIN_MAGNITUDE = 1e-8;
 const IMPULSE_PREVIEW_MAX_FREQUENCY = 20000;
-const GROUP_DELAY_REFERENCE_FREQUENCY = 1000;
 const QUALITY_WARNING_FILTER_ACCURACY = 'filterAccuracy';
 const QUALITY_WARNING_IMPULSE_RESPONSE_REQUIRED = 'impulseResponseRequired';
-const LOW_PHASE_DFT_WORK_BUDGET = 8_000_000;
 const LOW_PHASE_SCALE_STEPS = [1, 0.5, 0.25];
+const LOW_PHASE_SCALE_SEARCH_STEPS = 16;
+const LOW_PHASE_SCALE_REFINEMENT_STEPS = 8;
 const MAX_LOW_PHASE_EDGE_ENERGY_RATIO = 0.002;
 const LOW_PHASE_SUBSONIC_CLOSURE_HZ = 20;
-const LOW_PHASE_INACTIVE_RMS_TOLERANCE = 0.00025;
-const LOW_PHASE_INACTIVE_P95_TOLERANCE = 0.00075;
 const LOW_PHASE_ACTIVE_ABSOLUTE_TOLERANCE = 0.0001;
-const LOW_PHASE_ACTIVE_P95_ABSOLUTE_TOLERANCE = 0.00075;
 const LOW_PHASE_ACTIVE_RELATIVE_TOLERANCE = 0.02;
 const analysisCache = new Map();
 const synthesisPlanCache = new Map();
@@ -396,21 +400,28 @@ function directSpectrum(
     sampleRate,
     directWindowMs,
     synthesisFrequencies,
-    includeFullMagnitude
+    includeFullMagnitude,
+    taperMs = directWindowMs
 ) {
     const cacheKey = `${directWindowMs}:${synthesisFrequencies.length}:` +
-        `${includeFullMagnitude ? 1 : 0}`;
+        `${includeFullMagnitude ? 1 : 0}:${taperMs}`;
     const cached = analysis.directCache.get(cacheKey);
     if (cached) return cached;
     const input = new Float64Array(analysis.fftSize);
     const start = Math.max(0, analysis.onsetIndex - Math.round(sampleRate * 0.001));
     const end = Math.min(analysis.samples.length,
         analysis.onsetIndex + Math.max(1, Math.round(sampleRate * directWindowMs / 1000)));
-    const fadeLength = Math.max(1, end - analysis.onsetIndex);
+    // The user-facing window remains fully represented except for a terminal
+    // taper that closes the truncated response without fading the whole interval.
+    const fadeLength = Math.max(1, Math.min(
+        end - analysis.onsetIndex,
+        Math.round(sampleRate * taperMs / 1000)
+    ));
+    const fadeStart = end - fadeLength;
     for (let index = start; index < end; index += 1) {
         let gain = 1;
-        if (index >= analysis.onsetIndex) {
-            const phase = (index - analysis.onsetIndex) / fadeLength;
+        if (index >= fadeStart) {
+            const phase = (index - fadeStart) / fadeLength;
             gain = 0.5 + 0.5 * Math.cos(Math.PI * phase);
         }
         input[index] = analysis.samples[index] * gain;
@@ -418,27 +429,67 @@ function directSpectrum(
     const spectrum = realTransform(input);
     const sourceFrequencies = new Float64Array(spectrum.real.length);
     const magnitude = new Float64Array(spectrum.real.length);
-    const phase = new Float64Array(spectrum.real.length);
     for (let bin = 0; bin < spectrum.real.length; bin += 1) {
         sourceFrequencies[bin] = bin * sampleRate / analysis.fftSize;
         magnitude[bin] = Math.hypot(spectrum.real[bin], spectrum.imag[bin]);
-        phase[bin] = Math.atan2(spectrum.imag[bin], spectrum.real[bin]);
     }
     const sourceFrequencyRange = sourceFrequencies.subarray(1);
     const interpolationPlan = createInterpolationPlan(
         sourceFrequencyRange,
         synthesisFrequencies
     );
+    const delayAnalysis = analyzeRoomEqGroupDelay(
+        input,
+        analysis.onsetIndex,
+        sampleRate,
+        synthesisFrequencies,
+        { minimumFftSize: analysis.fftSize, spectrum }
+    );
+    const alignedWrappedPhase = new Float64Array(synthesisFrequencies.length);
+    for (let index = 0; index < synthesisFrequencies.length; index += 1) {
+        const frequency = synthesisFrequencies[index];
+        const position = frequency * analysis.fftSize / sampleRate;
+        const lower = Math.min(spectrum.real.length - 1, Math.floor(position));
+        const upper = Math.min(spectrum.real.length - 1, lower + 1);
+        const fraction = upper === lower ? 0 : position - lower;
+        const real = spectrum.real[lower] +
+            fraction * (spectrum.real[upper] - spectrum.real[lower]);
+        const imaginary = spectrum.imag[lower] +
+            fraction * (spectrum.imag[upper] - spectrum.imag[lower]);
+        alignedWrappedPhase[index] = Math.atan2(imaginary, real) +
+            2 * Math.PI * frequency * analysis.onsetIndex / sampleRate;
+    }
+    const totalGroupDelaySeconds = Float64Array.from(
+        delayAnalysis.totalMs,
+        value => value / 1000
+    );
     const result = {
         magnitude: interpolateWithPlan(magnitude.subarray(1), interpolationPlan),
         fullMagnitude: includeFullMagnitude
             ? interpolateWithPlan(magnitudeSpectrum(analysis).subarray(1), interpolationPlan)
             : null,
-        phase: interpolateWithPlan(unwrapPhase(phase).subarray(1), interpolationPlan),
+        phase: integrateRoomEqGroupDelayPhase(
+            synthesisFrequencies,
+            totalGroupDelaySeconds,
+            delayAnalysis.valid,
+            alignedWrappedPhase
+        ),
+        totalGroupDelaySeconds,
+        minimumGroupDelaySeconds: Float64Array.from(
+            delayAnalysis.minimumMs,
+            value => value / 1000
+        ),
+        excessGroupDelaySeconds: Float64Array.from(
+            delayAnalysis.excessMs,
+            value => value / 1000
+        ),
+        groupDelayValid: delayAnalysis.valid,
         phaseCorrectionCache: new Map(),
         lowPhaseCorrectionCache: new Map(),
         samples: analysis.samples,
         onsetIndex: analysis.onsetIndex,
+        groupDelaySamples: analysis.groupDelaySamples,
+        groupDelayOnsetIndex: analysis.groupDelayOnsetIndex,
         sampleRate
     };
     analysis.directCache.set(cacheKey, result);
@@ -504,9 +555,32 @@ function alignedAverageAnalysis(analyses, config) {
         }
         if (count) samples[index] = sum / count;
     }
+    const groupDelayOnsetIndex = analyses.reduce(
+        (maximum, analysis) => analysis.onsetIndex > maximum ? analysis.onsetIndex : maximum,
+        0
+    );
+    const groupDelayPostLength = analyses.reduce((maximum, analysis) => {
+        const length = analysis.samples.length - analysis.onsetIndex;
+        return length > maximum ? length : maximum;
+    }, 1);
+    const groupDelaySamples = new Float32Array(groupDelayOnsetIndex + groupDelayPostLength);
+    for (let index = 0; index < groupDelaySamples.length; index += 1) {
+        const relativeIndex = index - groupDelayOnsetIndex;
+        let sum = 0;
+        let count = 0;
+        for (const analysis of analyses) {
+            const sourceIndex = analysis.onsetIndex + relativeIndex;
+            if (sourceIndex < 0 || sourceIndex >= analysis.samples.length) continue;
+            sum += analysis.samples[sourceIndex];
+            count += 1;
+        }
+        if (count) groupDelaySamples[index] = sum / count;
+    }
     return {
         samples: samples.subarray(0, dspLength),
         previewSamples: samples.subarray(0, displayLength),
+        groupDelaySamples,
+        groupDelayOnsetIndex,
         onsetIndex: prerollSamples,
         fftSize: nextPowerOfTwo(dspLength),
         directCache: new Map()
@@ -615,10 +689,33 @@ function reverbPhaseConfig(config) {
         phaseSmoothing: config.reverbSmoothing,
         highFrequency: Math.min(config.reverbMaxFrequency, config.highFrequency),
         phaseLowFrequency: null,
+        preserveAbsoluteGroupDelay: true,
         // Route the residual regridding through the cell-averaging variant (see
         // smoothReverbSynthesisValues); the direct-window path stays point-sampled.
         reverbResidualAggregation: true
     };
+}
+
+function reverbWindowTaperMs(config) {
+    // One cycle at the lowest analyzed frequency is enough to close the selected
+    // interval smoothly while retaining the rest of Reverb Window at full weight.
+    const lowestAnalyzedFrequency = Math.max(
+        config.lowFrequency,
+        3000 / config.reverbWindowEffectiveMs
+    );
+    return Math.min(
+        config.reverbWindowEffectiveMs,
+        1000 / lowestAnalyzedFrequency
+    );
+}
+
+function directWindowTaperMs(config) {
+    // Apply the same flat-top interpretation to Direct Window. Phase Low defines
+    // the longest cycle that this fixed window is expected to resolve.
+    return Math.min(
+        config.directWindowMs,
+        1000 / phaseCorrectionLowFrequency(config)
+    );
 }
 
 export function softLimitBoost(decibels, maximum) {
@@ -665,6 +762,49 @@ function smoothSynthesisValues(values, frequencies, config) {
         smoothedPoints.map(point => point[1]),
         frequencies
     );
+}
+
+function smoothSynthesisGroupDelayRuns(values, valid, frequencies, config) {
+    const output = new Float64Array(values.length);
+    output.fill(Number.NaN);
+    let first = 0;
+    while (first < values.length) {
+        while (first < values.length && !(valid[first] && Number.isFinite(values[first]))) {
+            first += 1;
+        }
+        let last = first;
+        while (last < values.length && valid[last] && Number.isFinite(values[last])) last += 1;
+        if (last > first) {
+            const runFrequencies = frequencies.subarray(first, last);
+            const runValues = values.subarray(first, last);
+            const low = Math.max(20, runFrequencies[0]);
+            const high = runFrequencies[runFrequencies.length - 1];
+            if (high > low && runFrequencies.length > 1) {
+                const smoothingFrequencies = createLogFrequencyGrid(low, high, 0.01);
+                const smoothingValues = interpolateValues(
+                    runFrequencies,
+                    runValues,
+                    smoothingFrequencies
+                );
+                const smoothed = smoothFrequencyResponse(
+                    Array.from(smoothingFrequencies, (frequency, index) => [
+                        frequency,
+                        smoothingValues[index]
+                    ]),
+                    config.phaseSmoothing
+                );
+                output.set(interpolateValues(
+                    smoothingFrequencies,
+                    smoothed.map(point => point[1]),
+                    runFrequencies
+                ), first);
+            } else {
+                output.set(runValues, first);
+            }
+        }
+        first = last + 1;
+    }
+    return output;
 }
 
 // Reverb-path variant of smoothSynthesisValues: the transfer onto the fixed
@@ -728,12 +868,49 @@ function lowPhaseClosureWeight(frequency, low) {
     return 0.5 - 0.5 * Math.cos(Math.PI * position);
 }
 
-function lowPhaseCorrectionGate(frequency, low) {
-    if (frequency <= low) return 0;
-    const upper = low * 2 ** (1 / 3);
-    if (frequency >= upper) return 1;
-    const position = Math.log2(frequency / low) * 3;
-    return 0.5 - 0.5 * Math.cos(Math.PI * position);
+function lowPhaseWindowAnalysis(direct, frequencies, requestedWindow, requestedTaper) {
+    const onset = direct.onsetIndex;
+    const sampleRate = direct.sampleRate;
+    const preroll = Math.round(sampleRate * 0.001);
+    const start = onset > preroll ? onset - preroll : 0;
+    const requestedSamples = Math.max(1, Math.floor(requestedWindow * sampleRate));
+    const end = Math.min(direct.samples.length, onset + requestedSamples);
+    if (end <= start) return null;
+    const fadeSamples = Math.max(1, Math.min(
+        end - onset,
+        Math.floor(requestedTaper * sampleRate)
+    ));
+    const fadeStart = end - fadeSamples;
+    const input = new Float64Array(end - start);
+    for (let sampleIndex = start; sampleIndex < end; sampleIndex += 1) {
+        let gain = 1;
+        if (sampleIndex >= fadeStart) {
+            const position = (sampleIndex - fadeStart) / fadeSamples;
+            gain = 0.5 + 0.5 * Math.cos(Math.PI * position);
+        }
+        input[sampleIndex - start] = direct.samples[sampleIndex] * gain;
+    }
+    return analyzeRoomEqGroupDelay(
+        input,
+        onset - start,
+        sampleRate,
+        frequencies
+    );
+}
+
+function lowPhaseWindowMagnitude(analysis, frequency, sampleRate) {
+    const position = frequency * analysis.fftSize / sampleRate;
+    const last = analysis.spectrum.real.length - 1;
+    const lower = Math.min(last, Math.floor(position));
+    const upper = lower < last ? lower + 1 : lower;
+    const fraction = upper === lower ? 0 : position - lower;
+    const real = analysis.spectrum.real[lower] + fraction * (
+        analysis.spectrum.real[upper] - analysis.spectrum.real[lower]
+    );
+    const imaginary = analysis.spectrum.imag[lower] + fraction * (
+        analysis.spectrum.imag[upper] - analysis.spectrum.imag[lower]
+    );
+    return Math.hypot(real, imaginary);
 }
 
 function frequencyDependentLowSpectrum(
@@ -764,54 +941,68 @@ function frequencyDependentLowSpectrum(
     if (anchor >= frequencies.length || anchor <= first) return null;
 
     const magnitude = Float64Array.from(direct.magnitude);
-    const wrappedPhase = Float64Array.from(direct.phase);
+    const excessDelaySeconds = Float64Array.from(direct.excessGroupDelaySeconds);
+    const valid = Uint8Array.from(direct.groupDelayValid);
     const coverage = new Float64Array(frequencies.length);
-    coverage[anchor] = 1;
-    const onset = direct.onsetIndex;
+    const windowSeconds = new Float64Array(frequencies.length);
     const sampleRate = direct.sampleRate;
-    const start = onset - Math.round(sampleRate * 0.001) > 0
-        ? onset - Math.round(sampleRate * 0.001)
-        : 0;
-    const availableWindow = (direct.samples.length - onset) / sampleRate;
+    const availableWindow = (direct.samples.length - direct.onsetIndex) / sampleRate;
     const directWindow = config.directWindowMs / 1000;
+    const directTaper = directWindowTaperMs(config) / 1000;
+    const octaveSpan = Math.log2(high / low);
+    const analyses = [];
+    for (let octave = 0; octave <= Math.ceil(octaveSpan); octave += 1) {
+        analyses.push(lowPhaseWindowAnalysis(
+            direct,
+            frequencies,
+            directWindow * 2 ** octave,
+            directTaper * 2 ** octave
+        ));
+    }
+    if (analyses.some(analysis => analysis === null)) return null;
     let coverageLimited = false;
 
-    for (let index = first; index < anchor; index += 1) {
+    for (let index = first; index <= anchor; index += 1) {
         const frequency = frequencies[index];
         const requestedWindow = directWindow * high / frequency;
-        const windowLimited = requestedWindow > availableWindow;
-        let window = requestedWindow;
-        if (window > availableWindow) window = availableWindow;
-        if (window <= 0) continue;
-        const fadeSamples = Math.max(1, Math.floor(window * sampleRate));
-        const end = Math.min(direct.samples.length, onset + fadeSamples);
-        let real = 0;
-        let imaginary = 0;
-        const omega = 2 * Math.PI * frequency / sampleRate;
-        for (let sampleIndex = start; sampleIndex < end; sampleIndex += 1) {
-            let gain = 1;
-            if (sampleIndex >= onset) {
-                const position = (sampleIndex - onset) / fadeSamples;
-                gain = 0.5 + 0.5 * Math.cos(Math.PI * position);
-            }
-            const sample = direct.samples[sampleIndex] * gain;
-            const phase = omega * sampleIndex;
-            real += sample * Math.cos(phase);
-            imaginary -= sample * Math.sin(phase);
+        windowSeconds[index] = Math.min(requestedWindow, availableWindow);
+        let octavePosition = Math.log2(high / frequency);
+        if (octavePosition < 0) octavePosition = 0;
+        const lowerOctave = Math.min(analyses.length - 1, Math.floor(octavePosition));
+        const upperOctave = Math.min(analyses.length - 1, lowerOctave + 1);
+        const fraction = upperOctave === lowerOctave
+            ? 0
+            : octavePosition - lowerOctave;
+        const lowerAnalysis = analyses[lowerOctave];
+        const upperAnalysis = analyses[upperOctave];
+        if (!lowerAnalysis.valid[index] || !upperAnalysis.valid[index]) {
+            excessDelaySeconds[index] = Number.NaN;
+            valid[index] = 0;
+        } else {
+            excessDelaySeconds[index] = (
+                lowerAnalysis.excessMs[index] * (1 - fraction) +
+                upperAnalysis.excessMs[index] * fraction
+            ) / 1000;
+            magnitude[index] =
+                lowPhaseWindowMagnitude(lowerAnalysis, frequency, sampleRate) *
+                    (1 - fraction) +
+                lowPhaseWindowMagnitude(upperAnalysis, frequency, sampleRate) * fraction;
+            valid[index] = 1;
         }
-        magnitude[index] = Math.hypot(real, imaginary);
-        wrappedPhase[index] = Math.atan2(imaginary, real);
-        coverage[index] = window < requestedWindow ? window / requestedWindow : 1;
-        if (windowLimited) coverageLimited = true;
+        coverage[index] = requestedWindow > availableWindow
+            ? availableWindow / requestedWindow
+            : 1;
+        if (requestedWindow > availableWindow) coverageLimited = true;
     }
 
-    const phase = unwrapPhaseAround(wrappedPhase, anchor);
     const result = {
         first,
         anchor,
         magnitude,
-        phase,
+        excessDelaySeconds,
+        valid,
         coverage,
+        windowSeconds,
         coverageLimited
     };
     direct.lowPhaseCorrectionCache?.set(cacheKey, result);
@@ -853,47 +1044,27 @@ function frequencyDependentLowPhaseAnalysis(direct, frequencies, config, fftSize
 
     const fixed = directPhaseAnalysis(direct, frequencies, config, fftSize);
     const floor = fixed.floor;
-    const physicalMagnitude = Float64Array.from(
-        direct.fullMagnitude || spectrum.magnitude,
-        magnitude => magnitude > floor ? magnitude : floor
+    const fullDelaySamples = direct.groupDelaySamples || direct.samples;
+    const fullDelayOnset = direct.groupDelayOnsetIndex ?? direct.onsetIndex;
+    const smoothedExcessDelays = smoothSynthesisGroupDelayRuns(
+        spectrum.excessDelaySeconds,
+        spectrum.valid,
+        frequencies,
+        config
     );
-    const measuredMinimumPhase = minimumPhaseForMagnitude(physicalMagnitude, fftSize);
-    const hybridTotal = unwrapPhaseAround(spectrum.phase, spectrum.anchor);
-    const onsetDelay = direct.onsetIndex / direct.sampleRate;
-    const totalAnchorPhase = hybridTotal[spectrum.anchor] +
-        2 * Math.PI * frequencies[spectrum.anchor] * onsetDelay;
-    const totalResidual = Float64Array.from(frequencies, (frequency, index) =>
-        hybridTotal[index] + 2 * Math.PI * frequency * onsetDelay - totalAnchorPhase);
-    const lowResidualSmoothingConfig = { ...config, smoothing: config.phaseSmoothing };
-    const smoothedTotalResidual =
-        smoothSynthesisValues(totalResidual, frequencies, lowResidualSmoothingConfig);
-    const hybridWrappedExcess = Float64Array.from(
-        spectrum.phase,
-        (phase, index) => phase - measuredMinimumPhase[index]
-    );
-    const hybridExcess = unwrapPhaseAround(hybridWrappedExcess, spectrum.anchor);
-    const anchorPhase = hybridExcess[spectrum.anchor] +
-        2 * Math.PI * frequencies[spectrum.anchor] * onsetDelay;
-    const residual = Float64Array.from(frequencies, (frequency, index) =>
-        hybridExcess[index] + 2 * Math.PI * frequency * onsetDelay - anchorPhase);
-    const smoothedResidual =
-        smoothSynthesisValues(residual, frequencies, lowResidualSmoothingConfig);
 
     const intervalDelays = new Float64Array(spectrum.anchor + 1);
     const hybridIntervalDelays = new Float64Array(spectrum.anchor + 1);
-    const totalIntervalDelays = new Float64Array(spectrum.anchor + 1);
     const fixedBlend = new Float64Array(spectrum.anchor + 1);
     const reliability = new Float64Array(spectrum.anchor + 1);
     const blendStart = high / 2 ** (1 / 3);
     for (let index = spectrum.first + 1; index <= spectrum.anchor; index += 1) {
-        const deltaOmega = 2 * Math.PI * (frequencies[index] - frequencies[index - 1]);
-        const hybridDelay = deltaOmega === 0
-            ? 0
-            : -(smoothedResidual[index] - smoothedResidual[index - 1]) / deltaOmega;
-        const totalDelay = deltaOmega === 0
-            ? 0
-            : -(smoothedTotalResidual[index] - smoothedTotalResidual[index - 1]) /
-                deltaOmega;
+        const validDelay = spectrum.valid[index] &&
+            Number.isFinite(smoothedExcessDelays[index]);
+        let hybridDelay = validDelay
+            ? smoothedExcessDelays[index]
+            : 0;
+        if (hybridDelay < 0) hybridDelay = 0;
         const midpoint = Math.sqrt(frequencies[index - 1] * frequencies[index]);
         let blend = 0;
         if (midpoint > blendStart) {
@@ -902,7 +1073,6 @@ function frequencyDependentLowPhaseAnalysis(direct, frequencies, config, fftSize
             blend = 0.5 - 0.5 * Math.cos(Math.PI * position);
         }
         hybridIntervalDelays[index] = hybridDelay;
-        totalIntervalDelays[index] = totalDelay;
         fixedBlend[index] = blend;
         intervalDelays[index] = hybridDelay * (1 - blend) +
             fixed.intervalDelays[index] * blend;
@@ -916,16 +1086,20 @@ function frequencyDependentLowPhaseAnalysis(direct, frequencies, config, fftSize
         const timeReliability = spectrum.coverage[index - 1] < spectrum.coverage[index]
             ? spectrum.coverage[index - 1]
             : spectrum.coverage[index];
-        reliability[index] = magnitudeReliability * timeReliability;
+        reliability[index] = validDelay
+            ? magnitudeReliability * timeReliability
+            : 0;
     }
     const result = {
         first: spectrum.first,
         anchor: spectrum.anchor,
         intervalDelays,
         hybridIntervalDelays,
-        totalIntervalDelays,
+        fullDelaySamples,
+        fullDelayOnset,
         fixedBlend,
         reliability,
+        windowSeconds: spectrum.windowSeconds,
         magnitude: spectrum.magnitude,
         floor,
         coverageLimited: spectrum.coverageLimited
@@ -937,30 +1111,6 @@ function frequencyDependentLowPhaseAnalysis(direct, frequencies, config, fftSize
         );
     }
     return result;
-}
-
-function lowPhaseDftWork(directs, frequencies, config, high) {
-    const directWindow = config.directWindowMs / 1000;
-    let work = 0;
-    for (const direct of directs) {
-        if (!direct.samples || !Number.isSafeInteger(direct.onsetIndex)) continue;
-        const preroll = direct.onsetIndex - Math.max(
-            0,
-            direct.onsetIndex - Math.round(direct.sampleRate * 0.001)
-        );
-        const sourceWindow = (direct.samples.length - direct.onsetIndex) /
-            direct.sampleRate;
-        for (const frequency of frequencies) {
-            if (frequency < config.lowFrequency) continue;
-            if (frequency >= high) break;
-            let window = directWindow * high / frequency;
-            if (window > sourceWindow) window = sourceWindow;
-            if (window <= 0) continue;
-            work += preroll + Math.max(1, Math.floor(window * direct.sampleRate));
-            if (work > LOW_PHASE_DFT_WORK_BUDGET) return work;
-        }
-    }
-    return work;
 }
 
 function directPhaseAnalysis(direct, frequencies, config, fftSize) {
@@ -979,7 +1129,8 @@ function directPhaseAnalysis(direct, frequencies, config, fftSize) {
         config.phaseSmoothing,
         config.sampleRate,
         fftSize,
-        config.reverbResidualAggregation ? 1 : 0
+        config.reverbResidualAggregation ? 1 : 0,
+        config.preserveAbsoluteGroupDelay ? 1 : 0
     ].join(':');
     const cached = direct.phaseCorrectionCache?.get(cacheKey);
     if (cached) return cached;
@@ -996,64 +1147,43 @@ function directPhaseAnalysis(direct, frequencies, config, fftSize) {
         ? inBandMagnitudes[Math.floor(inBandMagnitudes.length / 2)]
         : 1;
     const floor = Math.max(MIN_MAGNITUDE, median * 0.01);
-    const regularizedMagnitude = new Float64Array(direct.magnitude.length);
-    for (let index = 0; index < regularizedMagnitude.length; index += 1) {
-        const magnitude = direct.magnitude[index];
-        regularizedMagnitude[index] = magnitude > floor ? magnitude : floor;
-    }
-    const directMinimumPhase = minimumPhaseForMagnitude(regularizedMagnitude, fftSize);
-    const rawExcess = new Float64Array(frequencies.length);
-    for (let index = 0; index < rawExcess.length; index += 1) {
-        rawExcess[index] = direct.phase[index] - directMinimumPhase[index];
-    }
-    const excess = unwrapPhaseFrom(rawExcess, first);
-    let count = 0;
-    let sumX = 0;
-    let sumY = 0;
-    let sumXX = 0;
-    let sumXY = 0;
+    const valid = new Uint8Array(frequencies.length);
+    const excessDelays = new Float64Array(frequencies.length);
+    excessDelays.fill(Number.NaN);
+    let delaySum = 0;
+    let delayWeight = 0;
     for (let index = 0; index < frequencies.length; index += 1) {
+        if (!direct.groupDelayValid?.[index] || direct.magnitude[index] <= floor ||
+            !Number.isFinite(direct.excessGroupDelaySeconds?.[index])) continue;
+        valid[index] = 1;
+        excessDelays[index] = direct.excessGroupDelaySeconds[index];
         if (frequencies[index] < low || frequencies[index] > high) continue;
-        const omega = 2 * Math.PI * frequencies[index];
-        count += 1;
-        sumX += omega;
-        sumY += excess[index];
-        sumXX += omega * omega;
-        sumXY += omega * excess[index];
+        const weight = index === 0 ? 1 : frequencies[index] - frequencies[index - 1];
+        delaySum += excessDelays[index] * weight;
+        delayWeight += weight;
     }
-    const denominator = count * sumXX - sumX * sumX;
-    const slope = denominator === 0 ? 0 : (count * sumXY - sumX * sumY) / denominator;
-    const intercept = count === 0 ? 0 : (sumY - slope * sumX) / count;
-    const residual = new Float64Array(frequencies.length);
-    for (let index = 0; index < residual.length; index += 1) {
-        residual[index] = excess[index] -
-            (intercept + slope * 2 * Math.PI * frequencies[index]);
-    }
-    // The direct-phase residual is smoothed with the phase smoothing (ps). The
-    // reverb path arrives here with smoothing === phaseSmoothing === rs via
-    // reverbPhaseConfig, so both paths read the same resolved width.
-    const residualSmoothingConfig = { ...config, smoothing: config.phaseSmoothing };
-    const smoothedResidual = config.reverbResidualAggregation
-        ? smoothReverbSynthesisValues(residual, frequencies, residualSmoothingConfig)
-        : smoothSynthesisValues(residual, frequencies, residualSmoothingConfig);
+    const referenceDelay = config.preserveAbsoluteGroupDelay
+        ? 0
+        : delayWeight > 0 ? delaySum / delayWeight : 0;
+    const smoothedDelays = smoothSynthesisGroupDelayRuns(
+        excessDelays,
+        valid,
+        frequencies,
+        config
+    );
     const intervalDelays = new Float64Array(frequencies.length);
-    const limit = config.directWindowMs / 1000;
     for (let index = 1; index < frequencies.length; index += 1) {
-        const deltaOmega = 2 * Math.PI * (frequencies[index] - frequencies[index - 1]);
-        let delay = deltaOmega === 0
-            ? 0
-            : -(smoothedResidual[index] - smoothedResidual[index - 1]) / deltaOmega;
-        if (delay > limit) delay = limit;
-        else if (delay < -limit) delay = -limit;
-        intervalDelays[index] = delay;
+        if (valid[index] && Number.isFinite(smoothedDelays[index])) {
+            intervalDelays[index] = smoothedDelays[index] - referenceDelay;
+        }
     }
     const result = {
         first,
         low,
         high,
         floor,
-        slope,
-        intercept,
+        referenceDelay,
+        valid,
         intervalDelays
     };
     direct.phaseCorrectionCache?.set(cacheKey, result);
@@ -1076,7 +1206,8 @@ function directPhaseCorrection(direct, frequencies, config, fftSize) {
         config.phaseSmoothing,
         config.sampleRate,
         fftSize,
-        config.reverbResidualAggregation ? 1 : 0
+        config.reverbResidualAggregation ? 1 : 0,
+        config.preserveAbsoluteGroupDelay ? 1 : 0
     ].join(':');
     const cached = direct.phaseCorrectionCache?.get(cacheKey);
     if (cached) return cached;
@@ -1112,7 +1243,7 @@ function consensusLowPhaseCorrection(
     frequencies,
     config,
     fftSize,
-    reverbTargetDelays = null
+    reverbTarget = null
 ) {
     if (!config.lowFrequencyPhaseExtension) {
         return { phase: null, reason: 'notRequested' };
@@ -1122,10 +1253,6 @@ function consensusLowPhaseCorrection(
         config.highFrequency,
         config.sampleRate * 0.45
     );
-    const workSources = directs.includes(target) ? directs : [target, ...directs];
-    if (lowPhaseDftWork(workSources, frequencies, config, high) > LOW_PHASE_DFT_WORK_BUDGET) {
-        return { phase: null, reason: 'dftWorkBudget' };
-    }
     const targetAnalysis = frequencyDependentLowPhaseAnalysis(
         target,
         frequencies,
@@ -1155,65 +1282,19 @@ function consensusLowPhaseCorrection(
         index += 1) {
         let commonDelay = targetAnalysis.hybridIntervalDelays[index];
         if (pointAnalyses.length > 1) {
-            const estimates = [];
             let weightedDelay = 0;
-            let weightedDelaySquared = 0;
             let weightSum = 0;
             for (const analysis of pointAnalyses) {
                 if (!analysis) continue;
                 const weight = analysis.reliability[index];
                 const delay = analysis.hybridIntervalDelays[index];
                 if (weight <= 0) continue;
-                estimates.push({ delay, weight });
                 weightedDelay += delay * weight;
-                weightedDelaySquared += delay * delay * weight;
                 weightSum += weight;
             }
-            estimates.sort((left, right) => left.delay - right.delay);
-            let cumulativeWeight = 0;
-            commonDelay = 0;
-            for (let estimateIndex = 0; estimateIndex < estimates.length; estimateIndex += 1) {
-                const estimate = estimates[estimateIndex];
-                cumulativeWeight += estimate.weight;
-                const halfWeight = weightSum / 2;
-                const halfTolerance = Number.EPSILON * Math.max(1, weightSum) * 8;
-                if (Math.abs(cumulativeWeight - halfWeight) <= halfTolerance &&
-                    estimateIndex + 1 < estimates.length) {
-                    commonDelay = (estimate.delay + estimates[estimateIndex + 1].delay) / 2;
-                    break;
-                }
-                if (cumulativeWeight > halfWeight) {
-                    commonDelay = estimate.delay;
-                    break;
-                }
-            }
-            if (weightedDelaySquared > 0 && weightSum > 0) {
-                commonDelay *= weightedDelay * weightedDelay /
-                    (weightedDelaySquared * weightSum);
-            }
+            if (weightSum > 0) commonDelay = weightedDelay / weightSum;
         }
         commonDelays[index] = commonDelay;
-    }
-    let smoothedCommonDelays = commonDelays;
-    if (pointAnalyses.length > 1) {
-        const smoothingInput = Float64Array.from(commonDelays);
-        smoothingInput.fill(
-            commonDelays[targetAnalysis.first + 1],
-            0,
-            targetAnalysis.first + 1
-        );
-        smoothingInput.fill(
-            commonDelays[targetAnalysis.anchor],
-            targetAnalysis.anchor + 1
-        );
-        smoothedCommonDelays = smoothSynthesisValues(
-            smoothingInput,
-            frequencies,
-            {
-                ...config,
-                smoothing: config.phaseSmoothing < 1 / 3 ? 1 / 3 : config.phaseSmoothing
-            }
-        );
     }
     const phase = new Float64Array(frequencies.length);
     for (let index = targetAnalysis.anchor;
@@ -1221,21 +1302,22 @@ function consensusLowPhaseCorrection(
         index -= 1) {
         const blend = targetAnalysis.fixedBlend[index];
         const deltaOmega = 2 * Math.PI * (frequencies[index] - frequencies[index - 1]);
-        const midpoint = Math.sqrt(frequencies[index] * frequencies[index - 1]);
-        // Reverb incrementalization (plan section 3.4): the adopted reverb
-        // correction rv*s*delta already removes part of the measured low-band
-        // excess delay, so the LFE targets only the remaining residual --
-        // without this subtraction the two paths double-estimate the same
-        // excess delay and over-correct by the shared amount.
-        const targetDelay = (
-            smoothedCommonDelays[index] - alignmentGroupDelayPerAmount
-        ) * (1 - blend) + upperBoundaryDelay * blend -
-            (reverbTargetDelays ? reverbTargetDelays[index] : 0);
-        const gatedTargetDelay = targetDelay * lowPhaseCorrectionGate(
-            midpoint,
-            config.lowFrequency
-        );
-        phase[index - 1] = phase[index] + gatedTargetDelay * deltaOmega;
+        const lowTargetDelay = (
+            commonDelays[index] - alignmentGroupDelayPerAmount
+        ) * (1 - blend) + upperBoundaryDelay * blend;
+        let targetDelay = lowTargetDelay;
+        if (reverbTarget) {
+            const lowWindowSeconds = targetAnalysis.windowSeconds[index];
+            // The longer analysis window owns the target at this frequency. When
+            // Reverb Window is longer, blend LFE toward that target instead of
+            // cancelling the reverb term back to the shorter octave window.
+            if (reverbTarget.windowSeconds >= lowWindowSeconds) {
+                targetDelay *= 1 - reverbTarget.amountPerPhaseAmount;
+            } else {
+                targetDelay -= reverbTarget.delays[index];
+            }
+        }
+        phase[index - 1] = phase[index] + targetDelay * deltaOmega;
     }
     let activeLast = targetAnalysis.first;
     for (let index = targetAnalysis.first + 1;
@@ -1244,19 +1326,15 @@ function consensusLowPhaseCorrection(
         activeLast = index;
     }
     let activeFirst = targetAnalysis.first + 1;
-    const lowGateEnd = config.lowFrequency * 2 ** (1 / 3);
-    while (activeFirst <= activeLast &&
-        Math.sqrt(frequencies[activeFirst - 1] * frequencies[activeFirst]) < lowGateEnd) {
-        activeFirst += 1;
-    }
     return {
         phase,
         reason: null,
         guard: {
             first: targetAnalysis.first,
-            activeFirst,
-            activeLast,
-            referenceTotalDelays: targetAnalysis.totalIntervalDelays
+            activeLow: frequencies[activeFirst - 1],
+            activeHigh: frequencies[activeLast],
+            referenceFullSamples: targetAnalysis.fullDelaySamples,
+            referenceFullOnset: targetAnalysis.fullDelayOnset
         },
         coverageLimited: targetAnalysis.coverageLimited ||
             pointAnalyses.some(analysis => analysis?.coverageLimited === true)
@@ -1267,63 +1345,52 @@ function consensusDirectPhaseCorrection(directs, frequencies, config, fftSize) {
     if (directs.length === 1) {
         return directPhaseCorrection(directs[0], frequencies, config, fftSize);
     }
-    const corrections = directs.map(direct =>
-        directPhaseCorrection(direct, frequencies, config, fftSize));
+    const analyses = directs.map(direct =>
+        directPhaseAnalysis(direct, frequencies, config, fftSize));
     const low = phaseCorrectionLowFrequency(config);
     const high = Math.min(config.highFrequency, config.sampleRate * 0.45);
-    const upper = Math.min(high * 2 ** (1 / 3), config.sampleRate * 0.48);
     let first = 0;
     while (first < frequencies.length && frequencies[first] < low) first += 1;
 
-    const magnitudeFloors = directs.map(direct => {
-        const magnitudes = [];
-        for (let index = first; index < frequencies.length &&
-            frequencies[index] <= high; index += 1) {
-            magnitudes.push(direct.magnitude[index]);
+    // Average the smoothed interval delays, then integrate once. Circularly
+    // averaging already integrated phase and multiplying that phase by agreement
+    // creates branch-sensitive single-bin jumps when points disagree.
+    const phase = new Float64Array(frequencies.length);
+    for (let index = first + 1; index < frequencies.length; index += 1) {
+        if (frequencies[index] > high) {
+            phase[index] = phase[index - 1];
+            continue;
         }
-        magnitudes.sort((left, right) => left - right);
-        const median = magnitudes.length
-            ? magnitudes[Math.floor(magnitudes.length / 2)]
-            : 1;
-        return Math.max(MIN_MAGNITUDE, median * 0.01);
-    });
-    const wrappedPhase = new Float64Array(frequencies.length);
-    const agreement = new Float64Array(frequencies.length);
-    for (let index = first; index < frequencies.length &&
-        frequencies[index] <= upper; index += 1) {
-        let real = 0;
-        let imaginary = 0;
+        let weightedDelay = 0;
         let weightSum = 0;
         for (let point = 0; point < directs.length; point += 1) {
-            const reliability = directs[point].magnitude[index] / magnitudeFloors[point];
+            const delay = analyses[point].intervalDelays[index];
+            if (!analyses[point].valid[index] || !Number.isFinite(delay)) continue;
+            const reliability = directs[point].magnitude[index] / analyses[point].floor;
             const weight = reliability < 1 ? reliability * reliability : 1;
-            const phase = corrections[point][index];
-            real += Math.cos(phase) * weight;
-            imaginary += Math.sin(phase) * weight;
+            weightedDelay += delay * weight;
             weightSum += weight;
         }
-        if (weightSum > 0) {
-            wrappedPhase[index] = Math.atan2(imaginary, real);
-            agreement[index] = Math.hypot(real, imaginary) / weightSum;
-        }
+        const intervalDelay = weightSum > 0 ? weightedDelay / weightSum : 0;
+        const deltaOmega = 2 * Math.PI * (frequencies[index] - frequencies[index - 1]);
+        phase[index] = phase[index - 1] - intervalDelay * deltaOmega;
     }
-    const unwrappedPhase = unwrapPhaseFrom(wrappedPhase, first);
-    const consensus = new Float64Array(frequencies.length);
-    for (let index = first; index < consensus.length &&
-        frequencies[index] <= upper; index += 1) {
-        consensus[index] = unwrappedPhase[index] * agreement[index];
+    for (let index = 0; index < phase.length; index += 1) {
+        phase[index] *= correctionWeight(
+            frequencies[index],
+            low,
+            high,
+            config.sampleRate * 0.48
+        );
     }
-    return consensus;
+    return phase;
 }
 
-// Extended-window (reverb) inter-point synthesis: combines the per-point clamped
-// interval delays tau_ext,i into a reliability-weighted circular mean plus an
-// agreement A_ext. The mean's angle scale is the synthesis-grid delta-omega, which
-// is single-valued because |tau| <= rw_eff/1000 and rw_eff <= taps/(2*rate)*1000
-// bound |theta| by pi/2. The agreement is evaluated on the reverb-smoothing scale
-// delta-omega_rs = 2*pi*f*(2^rs - 1) instead, so its sensitivity tracks the
-// structure that survives smoothing rather than the taps count. A single point
-// passes through with A_ext = 1, mirroring consensusDirectPhaseCorrection.
+// Extended-window (reverb) inter-point synthesis averages the per-point smoothed
+// interval delays directly. This is the least-squares common correction and, when
+// all points have delay in the same direction, cannot become more conservative
+// than every point. Agreement remains available as a diagnostic, but must not
+// attenuate the common phase target toward zero.
 function reverbExtendedConsensus(directs, frequencies, config, fftSize) {
     const analyses = directs.map(direct =>
         directPhaseAnalysis(direct, frequencies, config, fftSize));
@@ -1337,29 +1404,27 @@ function reverbExtendedConsensus(directs, frequencies, config, fftSize) {
         return { intervalDelays, agreement, agreementMinimum, first, low, high };
     }
     const upper = Math.min(high * 2 ** (1 / 3), config.sampleRate * 0.48);
-    const deltaOmega = 2 * Math.PI * (frequencies[1] - frequencies[0]);
     const smoothingScale = 2 * Math.PI * (2 ** config.reverbSmoothing - 1);
     for (let index = Math.max(1, first); index < frequencies.length &&
         frequencies[index] <= upper; index += 1) {
-        let real = 0;
-        let imaginary = 0;
+        let weightedDelay = 0;
         let agreementReal = 0;
         let agreementImaginary = 0;
         let weightSum = 0;
         for (let point = 0; point < directs.length; point += 1) {
+            const delay = analyses[point].intervalDelays[index];
+            if (!analyses[point].valid[index] || !Number.isFinite(delay)) continue;
             const reliability = directs[point].magnitude[index] / analyses[point].floor;
             const weight = reliability < 1 ? reliability * reliability : 1;
-            const delay = analyses[point].intervalDelays[index];
-            const theta = delay * deltaOmega;
-            real += Math.cos(theta) * weight;
-            imaginary += Math.sin(theta) * weight;
+            if (weight <= 0) continue;
+            weightedDelay += delay * weight;
             const agreementTheta = delay * smoothingScale * frequencies[index];
             agreementReal += Math.cos(agreementTheta) * weight;
             agreementImaginary += Math.sin(agreementTheta) * weight;
             weightSum += weight;
         }
         if (weightSum > 0) {
-            intervalDelays[index] = Math.atan2(imaginary, real) / deltaOmega;
+            intervalDelays[index] = weightedDelay / weightSum;
             agreement[index] = Math.hypot(agreementReal, agreementImaginary) / weightSum;
             if (index > first && frequencies[index] <= high &&
                 agreement[index] < agreementMinimum) {
@@ -1648,151 +1713,79 @@ function lowPhaseCandidateSpectrum(
     return { magnitudes: candidateMagnitudes, phase: candidatePhase };
 }
 
-function lowPhaseRelativeDelays(candidate, baseline, frequencies) {
-    const candidateSpectrum = candidate.actualSpectrum;
-    const baselineSpectrum = baseline.actualSpectrum;
-    const wrapped = new Float64Array(frequencies.length);
-    let first = 1;
-    while (first < frequencies.length &&
-        frequencies[first] < LOW_PHASE_SUBSONIC_CLOSURE_HZ) {
-        first += 1;
+function createLowPhaseRmsReference(guard, frequencies, config) {
+    if (!guard.referenceFullSamples || !Number.isSafeInteger(guard.referenceFullOnset)) {
+        return null;
     }
-    for (let bin = first; bin < wrapped.length; bin += 1) {
-        const candidateReal = candidateSpectrum.real[bin];
-        const candidateImaginary = candidateSpectrum.imag[bin];
-        const baselineReal = baselineSpectrum.real[bin];
-        const baselineImaginary = baselineSpectrum.imag[bin];
-        wrapped[bin] = Math.atan2(
-            candidateImaginary * baselineReal - candidateReal * baselineImaginary,
-            candidateReal * baselineReal + candidateImaginary * baselineImaginary
-        );
-    }
-    const phase = unwrapPhaseFrom(wrapped, first);
-    const delays = new Float64Array(frequencies.length);
-    for (let bin = first + 1; bin < delays.length; bin += 1) {
-        const deltaOmega = 2 * Math.PI * (frequencies[bin] - frequencies[bin - 1]);
-        if (deltaOmega > 0) {
-            delays[bin] = -(phase[bin] - phase[bin - 1]) / deltaOmega;
-        }
-    }
-    return delays;
+    return analyzeRoomEqGroupDelay(
+        guard.referenceFullSamples,
+        guard.referenceFullOnset,
+        config.sampleRate,
+        frequencies
+    );
 }
 
-function lowPhaseActualFilterDelays(rendered, frequencies, config) {
-    const spectrum = rendered.actualSpectrum;
-    const wrapped = new Float64Array(frequencies.length);
-    const centerDelay = config.taps / (2 * config.sampleRate);
-    for (let bin = 1; bin < wrapped.length; bin += 1) {
-        wrapped[bin] = Math.atan2(spectrum.imag[bin], spectrum.real[bin]) +
-            2 * Math.PI * frequencies[bin] * centerDelay;
-    }
-    const phase = unwrapPhaseFrom(wrapped, 1);
-    const delays = new Float64Array(frequencies.length);
-    for (let bin = 2; bin < delays.length; bin += 1) {
-        const deltaOmega = 2 * Math.PI * (frequencies[bin] - frequencies[bin - 1]);
-        if (deltaOmega > 0) {
-            delays[bin] = -(phase[bin] - phase[bin - 1]) / deltaOmega;
+function lowPhaseResidualRms(rendered, reference, guard, frequencies, config) {
+    if (!reference) return 0;
+    const filter = analyzeRoomEqGroupDelay(
+        rendered.taps,
+        config.taps / 2,
+        config.sampleRate,
+        frequencies,
+        {
+            minimumFftSize: rendered.taps.length * 2,
+            spectrum: rendered.actualSpectrum
         }
-    }
-    return delays;
-}
-
-function lowPhaseDelayScore(delays, frequencies, first, last) {
-    if (last < first) return { rms: 0, p95: 0 };
-    const distribution = [];
+    );
+    const display = smoothRoomEqGroupDelay(
+        combineRoomEqGroupDelay(reference, filter),
+        frequencies,
+        config.smoothing
+    );
     let squared = 0;
     let weightSum = 0;
-    for (let index = first; index <= last; index += 1) {
+    for (let index = 1; index < frequencies.length; index += 1) {
+        if (frequencies[index] < guard.activeLow ||
+            frequencies[index] > guard.activeHigh ||
+            !display.valid[index] || !Number.isFinite(display.excess[index])) continue;
         const low = frequencies[index - 1];
         const high = frequencies[index];
         if (!(low > 0) || !(high > low)) continue;
         const weight = Math.log(high / low);
-        const magnitude = Math.abs(delays[index]);
-        distribution.push({ magnitude, weight });
+        const magnitude = Math.abs(display.excess[index]) / 1000;
         squared += magnitude * magnitude * weight;
         weightSum += weight;
     }
-    if (weightSum === 0) return { rms: 0, p95: 0 };
-    distribution.sort((left, right) => left.magnitude - right.magnitude);
-    const percentileWeight = weightSum * 0.95;
-    let cumulative = 0;
-    let p95 = distribution[distribution.length - 1].magnitude;
-    for (const entry of distribution) {
-        cumulative += entry.weight;
-        if (cumulative >= percentileWeight) {
-            p95 = entry.magnitude;
-            break;
-        }
-    }
-    return { rms: Math.sqrt(squared / weightSum), p95 };
+    return weightSum === 0 ? 0 : Math.sqrt(squared / weightSum);
 }
 
 function lowPhaseDoesNotWorsen(
     candidate,
-    baseline,
+    baselineScore,
+    reference,
     guard,
     frequencies,
     config
 ) {
-    const relativeDelays = lowPhaseRelativeDelays(candidate, baseline, frequencies);
-    let inactiveFirst = 1;
-    while (inactiveFirst < guard.first &&
-        frequencies[inactiveFirst - 1] < LOW_PHASE_SUBSONIC_CLOSURE_HZ) {
-        inactiveFirst += 1;
-    }
-    const inactive = lowPhaseDelayScore(
-        relativeDelays,
-        frequencies,
-        inactiveFirst,
-        guard.first - 1
-    );
-    if (inactive.rms > LOW_PHASE_INACTIVE_RMS_TOLERANCE ||
-        inactive.p95 > LOW_PHASE_INACTIVE_P95_TOLERANCE) {
-        return false;
-    }
-
-    const baselineFilterDelays = lowPhaseActualFilterDelays(
-        baseline,
+    const candidateScore = lowPhaseResidualRms(
+        candidate,
+        reference,
+        guard,
         frequencies,
         config
     );
-    const baselineResidual = new Float64Array(frequencies.length);
-    const candidateResidual = new Float64Array(frequencies.length);
-    for (let index = guard.activeFirst; index <= guard.activeLast; index += 1) {
-        baselineResidual[index] = guard.referenceTotalDelays[index] +
-            baselineFilterDelays[index];
-        candidateResidual[index] = baselineResidual[index] + relativeDelays[index];
-    }
-    const baselineScore = lowPhaseDelayScore(
-        baselineResidual,
-        frequencies,
-        guard.activeFirst,
-        guard.activeLast
-    );
-    const candidateScore = lowPhaseDelayScore(
-        candidateResidual,
-        frequencies,
-        guard.activeFirst,
-        guard.activeLast
-    );
     const rmsTolerance = Math.max(
         LOW_PHASE_ACTIVE_ABSOLUTE_TOLERANCE,
-        baselineScore.rms * LOW_PHASE_ACTIVE_RELATIVE_TOLERANCE
+        baselineScore * LOW_PHASE_ACTIVE_RELATIVE_TOLERANCE
     );
-    const p95Tolerance = Math.max(
-        LOW_PHASE_ACTIVE_P95_ABSOLUTE_TOLERANCE,
-        baselineScore.p95 * LOW_PHASE_ACTIVE_RELATIVE_TOLERANCE
-    );
-    return candidateScore.rms <= baselineScore.rms + rmsTolerance &&
-        candidateScore.p95 <= baselineScore.p95 + p95Tolerance;
+    return candidateScore <= baselineScore + rmsTolerance;
 }
 
 function synthesizeFilter(
     correctionDb,
     gridFrequencies,
     config,
-    phaseSource,
-    baseOnlyCorrectionDb = correctionDb
+    phaseSource
 ) {
     const plan = getSynthesisPlan(gridFrequencies, config);
     const { fftSize, binFrequencies } = plan;
@@ -1834,14 +1827,14 @@ function synthesizeFilter(
         let reverbPhase = null;
         if (reverb) {
             // Interval-delay-domain difference between the extended-window consensus
-            // and the direct-window correction: tau_delta = A_ext * W * (tau_ext -
-            // tau_dir), re-integrated as delta[i] = delta[i-1] - tau_delta * dOmega.
+            // and the direct-window correction: tau_delta = W * (tau_ext - tau_dir),
+            // re-integrated as delta[i] = delta[i-1] - tau_delta * dOmega.
             // W comes from the same effective band arguments as the C_ext analysis
             // (its low/high), so out-of-band tau_ext values never leak in. Bins at or
             // below `first` stay zero and accumulation starts at first + 1, matching
             // directPhaseCorrection; above the upper flank W = 0 leaves a constant
-            // plateau (a uniform rotation). A_ext and W act on interval delays only,
-            // never on the integrated phase.
+            // plateau (a uniform rotation). Agreement is diagnostic only; reducing
+            // the arithmetic-mean target by agreement would under-correct every point.
             const deltaOmega = 2 * Math.PI * (binFrequencies[1] - binFrequencies[0]);
             reverbPhase = new Float64Array(phase.length);
             for (let bin = reverb.first + 1; bin < reverbPhase.length; bin += 1) {
@@ -1856,28 +1849,21 @@ function synthesizeFilter(
                     const directDelay = correction
                         ? -(correction[bin] - correction[bin - 1]) / deltaOmega
                         : 0;
-                    intervalDelay = reverb.agreement[bin] * weight *
-                        (reverb.intervalDelays[bin] - directDelay);
+                    intervalDelay = weight * (reverb.intervalDelays[bin] - directDelay);
                 }
                 reverbPhase[bin] = reverbPhase[bin - 1] - intervalDelay * deltaOmega;
             }
         }
-        let reverbTargetDelays = null;
+        let reverbTarget = null;
         if (reverbPhase) {
             // Staged degradation guard (plan section 3.6, fixed order).
-            // Step 1: the rv=0 guard baseline synthesizes from the baseOnly
-            // (fine-free) amplitude with correctionTimingAlignment recomputed
-            // natively from the rv=0 phase -- identical to the true rv=0 design
-            // and therefore to the all-fail final product. Sharing the
+            // Step 1: the rv=0 guard baseline keeps the same magnitude target and
+            // recomputes correctionTimingAlignment from the rv=0 phase. Sharing the
             // candidate-side alignment instead would push the baseline's compact
             // impulse into the 5% edge window and inflate baselineEdge,
             // loosening the relative edgeLimit exactly when the guard must fire.
-            const baseMagnitudes = baseOnlyCorrectionDb === correctionDb
-                ? magnitudes
-                : interpolateGainsWithPlan(baseOnlyCorrectionDb, plan);
-            const baseReferencePhase = baseMagnitudes === magnitudes
-                ? fullReferencePhase
-                : minimumPhaseForMagnitude(baseMagnitudes, fftSize);
+            const baseMagnitudes = magnitudes;
+            const baseReferencePhase = fullReferencePhase;
             const basePhase = Float64Array.from(baseReferencePhase);
             for (let bin = 0; bin < basePhase.length; bin += 1) {
                 basePhase[bin] -= (correction?.[bin] || 0) * config.phaseCorrectionAmount;
@@ -1899,11 +1885,9 @@ function synthesizeFilter(
                     2 * Math.PI * bin / fftSize * (config.taps / 2);
             }
             const reverbBaseline = renderSynthesis(baseMagnitudes, basePhase, config, plan);
-            // Step 2: rv scale ladder [1, 0.5, 0.25], LFE-free and phase-only
-            // (the fine amplitude stays intact under 'reduced'; a fine-driven
-            // edge excess fails every scale and converges to 'disabled', which
-            // stops the fine as well). The timing alignment is computed once at
-            // s=1 and reused for every ladder candidate, matching the LFE loop.
+            // Step 2: rv scale ladder [1, 0.5, 0.25], LFE-free and phase-only.
+            // The timing alignment is computed once at s=1 and reused for every
+            // ladder candidate, matching the LFE loop.
             const buildCandidatePhase = scale => {
                 const candidate = new Float64Array(phase.length);
                 for (let bin = 0; bin < candidate.length; bin += 1) {
@@ -1959,18 +1943,22 @@ function synthesizeFilter(
                         (binFrequencies[1] - binFrequencies[0]);
                     const delayFactor = config.reverbAmount * adoptedScale /
                         config.phaseCorrectionAmount;
-                    reverbTargetDelays = new Float64Array(phase.length);
-                    for (let bin = 1; bin < reverbTargetDelays.length; bin += 1) {
-                        reverbTargetDelays[bin] = -(
+                    const delays = new Float64Array(phase.length);
+                    for (let bin = 1; bin < delays.length; bin += 1) {
+                        delays[bin] = -(
                             reverbPhase[bin] - reverbPhase[bin - 1]
                         ) / deltaOmega * delayFactor;
                     }
+                    reverbTarget = {
+                        delays,
+                        amountPerPhaseAmount: delayFactor,
+                        windowSeconds: reverb.effectiveWindowMs / 1000
+                    };
                 }
             } else {
                 // All scales failed: ship the guard baseline itself with no
-                // re-render -- 'disabled' stops the phase delta and the fine
-                // amplitude both, bit-identical to the true rv=0 design. The
-                // LFE loop below then runs on this natively aligned baseline.
+                // re-render. The LFE loop below then runs on this natively aligned
+                // phase-only rv=0 baseline.
                 reverbGuardDiagnostic = { state: 'disabled', scale: 0, reason: 'firEnergy' };
                 reverbBaselineRender = reverbBaseline;
                 magnitudes = baseMagnitudes;
@@ -2004,7 +1992,7 @@ function synthesizeFilter(
                 binFrequencies,
                 config,
                 fftSize,
-                reverbTargetDelays
+                reverbTarget
             )
             : null;
         lowCorrection = lowResult?.phase || null;
@@ -2025,8 +2013,20 @@ function synthesizeFilter(
         baseline.lowPhaseDiagnostic = lowPhaseDiagnostic;
         return baseline;
     }
+    const lowRmsReference = createLowPhaseRmsReference(
+        lowGuard,
+        gridFrequencies,
+        config
+    );
+    const baselineRms = lowPhaseResidualRms(
+        baseline,
+        lowRmsReference,
+        lowGuard,
+        gridFrequencies,
+        config
+    );
     let reductionReason = null;
-    for (const scale of LOW_PHASE_SCALE_STEPS) {
+    const evaluateScale = scale => {
         const candidateSpectrum = lowPhaseCandidateSpectrum(
             magnitudes,
             unalignedFullPhase,
@@ -2049,26 +2049,81 @@ function synthesizeFilter(
         const energySafe = lowPhaseSynthesisIsSafe(candidate, baseline);
         const groupDelaySafe = lowPhaseDoesNotWorsen(
             candidate,
-            baseline,
+            baselineRms,
+            lowRmsReference,
             lowGuard,
-            binFrequencies,
+            gridFrequencies,
             config
         );
-        if (energySafe && groupDelaySafe) {
-            candidate.lowPhaseDiagnostic = {
-                state: scale === 1 && !lowCoverageLimited ? 'applied' : 'reduced',
-                scale,
-                reason: scale < 1
-                    ? reductionReason || 'groupDelay'
-                    : lowCoverageLimited
-                        ? 'insufficientData'
-                        : null
-            };
-            candidate.reverbGuard = reverbGuardDiagnostic;
-            return candidate;
+        return {
+            scale,
+            candidate,
+            energySafe,
+            groupDelaySafe,
+            safe: energySafe && groupDelaySafe
+        };
+    };
+    const recordReductionReason = evaluation => {
+        if (!evaluation.groupDelaySafe && reductionReason === null) {
+            reductionReason = 'groupDelay';
+        } else if (!evaluation.energySafe && reductionReason === null) {
+            reductionReason = 'firEnergy';
         }
-        if (!groupDelaySafe) reductionReason = 'groupDelay';
-        else if (!energySafe && reductionReason === null) reductionReason = 'firEnergy';
+    };
+    let safeEvaluation = null;
+    let unsafeUpperScale = 1;
+    for (let step = 0; step < LOW_PHASE_SCALE_SEARCH_STEPS; step += 1) {
+        const scale = 1 - step / LOW_PHASE_SCALE_SEARCH_STEPS;
+        const evaluation = evaluateScale(scale);
+        if (evaluation.safe) {
+            safeEvaluation = evaluation;
+            break;
+        }
+        unsafeUpperScale = scale;
+        recordReductionReason(evaluation);
+    }
+    if (!safeEvaluation) {
+        safeEvaluation = {
+            scale: 0,
+            candidate: baseline,
+            energySafe: true,
+            groupDelaySafe: true,
+            safe: true
+        };
+    }
+    if (safeEvaluation?.scale === 1) {
+        safeEvaluation.candidate.lowPhaseDiagnostic = {
+            state: lowCoverageLimited ? 'reduced' : 'applied',
+            scale: 1,
+            reason: lowCoverageLimited ? 'insufficientData' : null
+        };
+        safeEvaluation.candidate.reverbGuard = reverbGuardDiagnostic;
+        return safeEvaluation.candidate;
+    }
+    if (safeEvaluation) {
+        // Keep the largest realizable LFE correction that improves the active-band
+        // RMS without concentrating unsafe energy at the FIR boundaries.
+        let lower = safeEvaluation.scale;
+        let upper = unsafeUpperScale;
+        for (let step = 0; step < LOW_PHASE_SCALE_REFINEMENT_STEPS; step += 1) {
+            const evaluation = evaluateScale((lower + upper) / 2);
+            if (evaluation.safe) {
+                lower = evaluation.scale;
+                safeEvaluation = evaluation;
+            } else {
+                upper = evaluation.scale;
+                recordReductionReason(evaluation);
+            }
+        }
+        if (safeEvaluation.scale > 0) {
+            safeEvaluation.candidate.lowPhaseDiagnostic = {
+                state: 'reduced',
+                scale: safeEvaluation.scale,
+                reason: reductionReason || 'groupDelay'
+            };
+            safeEvaluation.candidate.reverbGuard = reverbGuardDiagnostic;
+            return safeEvaluation.candidate;
+        }
     }
     baseline.lowPhaseDiagnostic = {
         state: 'disabled',
@@ -2157,46 +2212,14 @@ function wrapPhaseDegrees(radians) {
     return wrapped * 180 / Math.PI;
 }
 
-function interpolateOnGrid(values, frequencies, frequency) {
-    if (!frequencies.length) return 0;
-    let upper = 1;
-    while (upper < frequencies.length && frequencies[upper] < frequency) upper += 1;
-    if (upper >= frequencies.length) return values[values.length - 1];
-    const lowFrequency = frequencies[upper - 1];
-    const highFrequency = frequencies[upper];
-    const fraction = highFrequency > lowFrequency
-        ? (frequency - lowFrequency) / (highFrequency - lowFrequency)
-        : 0;
-    return values[upper - 1] + fraction * (values[upper] - values[upper - 1]);
-}
-
-// Group delay is the negative slope of the unwrapped phase, taken between adjacent
-// grid points so the curve carries no smoothing of its own. Smoothing is the single
-// configured pass, matching the measured magnitude display.
-function referencedGroupDelayMs(phaseRadians, frequencies, smoothing) {
-    const delays = frequencies.map((frequency, index) => {
-        const low = index > 0 ? index - 1 : index;
-        const high = index < frequencies.length - 1 ? index + 1 : index;
-        const span = frequencies[high] - frequencies[low];
-        return [
-            frequency,
-            span > 0
-                ? (phaseRadians[low] - phaseRadians[high]) * 1000 /
-                    (2 * Math.PI * span)
-                : 0
-        ];
-    });
-    const smoothed = smoothFrequencyResponse(delays, smoothing)
-        .map(point => point[1]);
-    const reference = interpolateOnGrid(
-        smoothed,
-        frequencies,
-        GROUP_DELAY_REFERENCE_FREQUENCY
-    );
-    return Float32Array.from(smoothed, value => value - reference);
-}
-
-function createPhasePreviews(analysis, taps, config, frequencies, actualSpectrum = null) {
+function createPhasePreviews(
+    analysis,
+    taps,
+    config,
+    frequencies,
+    actualSpectrum = null,
+    groupDelaySources = [analysis]
+) {
     const beforeComponents = phaseComponentsOnGrid(
         analysis.samples,
         analysis.onsetIndex,
@@ -2213,54 +2236,53 @@ function createPhasePreviews(analysis, taps, config, frequencies, actualSpectrum
         actualSpectrum
     );
     const afterRadians = new Float64Array(frequencies.length);
-    const afterMinimumRadians = new Float64Array(frequencies.length);
-    const beforeExcessRadians = new Float64Array(frequencies.length);
-    const afterExcessRadians = new Float64Array(frequencies.length);
     for (let index = 0; index < frequencies.length; index += 1) {
         const beforeTotal = beforeComponents.total[index];
-        const beforeMinimum = beforeComponents.minimum[index];
         const afterTotal = beforeTotal + filterComponents.total[index];
-        const afterMinimum = beforeMinimum + filterComponents.minimum[index];
         afterRadians[index] = afterTotal;
-        afterMinimumRadians[index] = afterMinimum;
-        beforeExcessRadians[index] = beforeTotal - beforeMinimum;
-        afterExcessRadians[index] = afterTotal - afterMinimum;
     }
+    const sourceDelays = groupDelaySources.map(source => analyzeRoomEqGroupDelay(
+        source.groupDelaySamples || source.samples,
+        source.groupDelayOnsetIndex ?? source.onsetIndex,
+        config.sampleRate,
+        frequencies
+    ));
+    const beforeDelay = sourceDelays.length === 1
+        ? sourceDelays[0]
+        : averageRoomEqGroupDelay(sourceDelays);
+    const filterDelayAnalysis = analyzeRoomEqGroupDelay(
+        taps,
+        filterDelay,
+        config.sampleRate,
+        frequencies,
+        { minimumFftSize: taps.length * 2, spectrum: actualSpectrum }
+    );
+    const afterDelay = combineRoomEqGroupDelay(beforeDelay, filterDelayAnalysis);
+    const beforeDisplay = smoothRoomEqGroupDelay(
+        beforeDelay,
+        frequencies,
+        config.smoothing
+    );
+    const afterDisplay = smoothRoomEqGroupDelay(
+        afterDelay,
+        frequencies,
+        config.smoothing
+    );
     return {
         phase: {
             before: Float32Array.from(beforeComponents.total, wrapPhaseDegrees),
             after: Float32Array.from(afterRadians, wrapPhaseDegrees)
         },
         groupDelay: {
-            before: referencedGroupDelayMs(
-                beforeComponents.total,
-                frequencies,
-                config.smoothing
-            ),
-            after: referencedGroupDelayMs(afterRadians, frequencies, config.smoothing),
+            before: beforeDisplay.total,
+            after: afterDisplay.total,
             minimum: {
-                before: referencedGroupDelayMs(
-                    beforeComponents.minimum,
-                    frequencies,
-                    config.smoothing
-                ),
-                after: referencedGroupDelayMs(
-                    afterMinimumRadians,
-                    frequencies,
-                    config.smoothing
-                )
+                before: beforeDisplay.minimum,
+                after: afterDisplay.minimum
             },
             excess: {
-                before: referencedGroupDelayMs(
-                    beforeExcessRadians,
-                    frequencies,
-                    config.smoothing
-                ),
-                after: referencedGroupDelayMs(
-                    afterExcessRadians,
-                    frequencies,
-                    config.smoothing
-                )
+                before: beforeDisplay.excess,
+                after: afterDisplay.excess
             }
         }
     };
@@ -2374,14 +2396,11 @@ function normalizeConfig(config) {
             !Number.isFinite(requestedPhaseSmoothing)
             ? smoothing
             : Math.max(0.02, Math.min(1, requestedPhaseSmoothing)),
-        // Effective reverb analysis window from the two config-derived terms only:
-        // the requested window (never shorter than the direct window) and the taps
-        // budget taps/(2*rate). The data-dependent available-window term is applied
-        // in designRoomEq where the impulse analyses are known.
-        reverbWindowEffectiveMs: Math.min(
-            Math.max(directWindowMs, reverbWindowMs),
-            taps / (2 * sampleRate) * 1000
-        ),
+        // The requested value controls observation, not correction advance. Actual
+        // FIR realizability is judged after synthesis; limiting analysis to the FIR
+        // half-length can discard a short modal delay carried by a longer decay.
+        // The data-dependent available-window term is applied in designRoomEq.
+        reverbWindowEffectiveMs: Math.max(directWindowMs, reverbWindowMs),
         referencePoint: Number.isSafeInteger(requestedReferencePoint) &&
             requestedReferencePoint >= 0
             ? requestedReferencePoint
@@ -2477,6 +2496,8 @@ function cloneDesignResult(result) {
         } : null),
         qualityWarnings: [...result.qualityWarnings],
         diagnostics: {
+            phaseCorrection: result.diagnostics.phaseCorrection
+                .map(value => ({ ...value })),
             lowFrequencyPhaseExtension: result.diagnostics.lowFrequencyPhaseExtension
                 .map(value => ({ ...value })),
             reverbCorrection: result.diagnostics.reverbCorrection
@@ -2493,7 +2514,7 @@ function cloneDesignResult(result) {
 
 // Diagnostic for channels where the reverb correction cannot run at all (no
 // impulse-response phase source). Every state carries effectiveWindowMs so the
-// implicit taps-budget clamp stays visible.
+// actually observed interval stays visible.
 function reverbUnavailableDiagnostic(config, effectiveWindowMs) {
     return {
         state: config.reverbAmount === 0
@@ -2515,6 +2536,7 @@ export function designRoomEq(request) {
     const eqDb = equalizerDb(config, frequencies);
     const channels = [];
     const previews = [];
+    const phaseDiagnostics = [];
     const lowPhaseDiagnostics = [];
     const reverbDiagnostics = [];
     const qualityWarnings = [];
@@ -2524,6 +2546,11 @@ export function designRoomEq(request) {
         if (!source?.measurement) {
             channels.push(unitImpulse(config));
             previews.push(null);
+            phaseDiagnostics.push({
+                state: 'disabled',
+                scale: 0,
+                reason: config.phase === 'full' ? 'impulseResponseRequired' : 'fullPhaseRequired'
+            });
             lowPhaseDiagnostics.push({
                 state: 'disabled',
                 scale: 0,
@@ -2540,6 +2567,7 @@ export function designRoomEq(request) {
         let measuredDb;
         let displayMeasuredDb;
         let referenceAnalysis = null;
+        let previewGroupDelaySources = null;
         let phaseSource = null;
         let reverbDiagnostic = null;
         if (impulses.length) {
@@ -2571,14 +2599,15 @@ export function designRoomEq(request) {
             referenceAnalysis = consensus
                 ? alignedAverageAnalysis(analyses, config)
                 : analyses[requestedPointIndex];
+            previewGroupDelaySources = consensus ? analyses : [referenceAnalysis];
             const synthesisFrequencies = new Float64Array(config.taps + 1);
             for (let bin = 0; bin <= config.taps; bin += 1) {
                 synthesisFrequencies[bin] = bin * config.sampleRate / (config.taps * 2);
             }
-            // rw_eff finalization: clamp the config-derived effective window by each
-            // candidate point's analyzable length after the onset (directSpectrum
-            // silently truncates its window otherwise). Evaluation order below is
-            // fixed: rw_eff clamp -> windowBudget -> emptyBand.
+            // Clamp the requested observation window by each candidate point's
+            // analyzable length after the onset. FIR realizability is checked only
+            // after phase synthesis; observation length and correction advance are
+            // independent constraints.
             const reverbCandidateAnalyses = consensus ? analyses : [referenceAnalysis];
             let reverbWindowEffectiveMs = config.reverbWindowEffectiveMs;
             for (const analysis of reverbCandidateAnalyses) {
@@ -2589,12 +2618,14 @@ export function designRoomEq(request) {
                 }
             }
             if (config.phase === 'full') {
+                const directTaperMs = directWindowTaperMs(config);
                 const timing = directSpectrum(
                     referenceAnalysis,
                     config.sampleRate,
                     config.directWindowMs,
                     synthesisFrequencies,
-                    config.lowFrequencyPhaseExtension
+                    config.lowFrequencyPhaseExtension,
+                    directTaperMs
                 );
                 phaseSource = {
                     timing,
@@ -2604,7 +2635,8 @@ export function designRoomEq(request) {
                             config.sampleRate,
                             config.directWindowMs,
                             synthesisFrequencies,
-                            config.lowFrequencyPhaseExtension
+                            config.lowFrequencyPhaseExtension,
+                            directTaperMs
                         ))
                 };
                 if (config.reverbAmount === 0) {
@@ -2634,13 +2666,15 @@ export function designRoomEq(request) {
                         ...config,
                         reverbWindowEffectiveMs
                     });
+                    const reverbTaperMs = reverbWindowTaperMs(reverbConfig);
                     const reverbConsensus = reverbExtendedConsensus(
                         reverbCandidateAnalyses.map(analysis => directSpectrum(
                             analysis,
                             config.sampleRate,
                             reverbWindowEffectiveMs,
                             synthesisFrequencies,
-                            config.lowFrequencyPhaseExtension
+                            config.lowFrequencyPhaseExtension,
+                            reverbTaperMs
                         )),
                         synthesisFrequencies,
                         reverbConfig,
@@ -2703,83 +2737,11 @@ export function designRoomEq(request) {
             ]),
             config.smoothing
         );
-        // Fine amplitude structure (plan section 3.5): when the extended-window
-        // consensus is available (phase full, rv > 0, rw_eff > dw, non-empty band),
-        // blend a reverb-smoothed (rs) correction toward the base (sm) correction
-        // inside the reverb amplitude band. W_amp shifts the correctionWeight
-        // arguments inward by 2^(1/3) so both flank ends land exactly on the band
-        // boundaries (low_W, high_W) and the rv term stays strictly zero outside
-        // the current amplitude-correction band. The shifted band can be empty
-        // even when the phase band is not, and correctionWeight is not
-        // identically zero for crossed arguments (its lower flank ignores the
-        // high argument), so that configuration must skip the fine path through
-        // this explicit branch. With correctionAmount 0 the amplitude correction
-        // is fully disabled, so the fine path is skipped as well.
-        let fineBlend = null;
-        let fineCorrectionDb = null;
-        if (phaseSource?.reverb && config.correctionAmount > 0) {
-            const reverb = phaseSource.reverb;
-            const fineLow = reverb.low * 2 ** (1 / 3);
-            const fineHigh = Math.min(config.reverbMaxFrequency, effectiveHigh) /
-                2 ** (1 / 3);
-            if (fineLow < fineHigh) {
-                const smoothedFine = smoothFrequencyResponse(
-                    frequencies.map((frequency, index) => [
-                        frequency,
-                        frequency > config.lowFrequency && frequency < effectiveHigh
-                            ? softLimitBoost(
-                                levelDb - unsmoothedMeasuredDb[index],
-                                config.maxBoostDb
-                            )
-                            : 0
-                    ]),
-                    config.reverbSmoothing
-                );
-                // A_ext lives on the synthesis linear grid; consume it here by
-                // linear interpolation only. Recomputing the inter-point
-                // consensus on this grid is forbidden (CPU budget assumption).
-                const binWidth = config.sampleRate / (config.taps * 2);
-                fineBlend = new Float64Array(frequencies.length);
-                fineCorrectionDb = new Float64Array(frequencies.length);
-                for (let index = 0; index < frequencies.length; index += 1) {
-                    const weight = correctionWeight(
-                        frequencies[index],
-                        fineLow,
-                        fineHigh,
-                        config.sampleRate * 0.48
-                    );
-                    if (weight === 0) continue;
-                    const position = frequencies[index] / binWidth;
-                    const lowerBin = Math.min(Math.floor(position), config.taps - 1);
-                    const fraction = position - lowerBin;
-                    const agreement = reverb.agreement[lowerBin] * (1 - fraction) +
-                        reverb.agreement[lowerBin + 1] * fraction;
-                    fineBlend[index] = config.reverbAmount * agreement * weight;
-                    fineCorrectionDb[index] = smoothedFine[index][1];
-                }
-            }
-        }
         const correctionDb = new Float64Array(frequencies.length);
         const baseCorrectionDb = new Float64Array(frequencies.length);
-        // Fine-free amplitude twins (plan section 3.6 dataflow): the rv=0 guard
-        // baseline and the all-fail final product synthesize from the baseOnly
-        // side, so it is built alongside whenever the fine path is active.
-        const baseOnlyCorrectionDb = fineBlend
-            ? new Float64Array(frequencies.length)
-            : correctionDb;
-        const baseOnlyBaseCorrectionDb = fineBlend
-            ? new Float64Array(frequencies.length)
-            : baseCorrectionDb;
         const targetDb = new Float64Array(frequencies.length);
         for (let index = 0; index < frequencies.length; index += 1) {
-            let automaticDb = smoothedAutomaticCorrection[index][1];
-            if (fineBlend) {
-                baseOnlyBaseCorrectionDb[index] = automaticDb * config.correctionAmount;
-                baseOnlyCorrectionDb[index] =
-                    baseOnlyBaseCorrectionDb[index] + eqDb[index];
-                automaticDb += fineBlend[index] *
-                    (fineCorrectionDb[index] - automaticDb);
-            }
+            const automaticDb = smoothedAutomaticCorrection[index][1];
             baseCorrectionDb[index] = automaticDb * config.correctionAmount;
             correctionDb[index] = baseCorrectionDb[index] + eqDb[index];
             targetDb[index] = levelDb + eqDb[index];
@@ -2788,8 +2750,7 @@ export function designRoomEq(request) {
             correctionDb,
             frequencies,
             config,
-            phaseSource,
-            baseOnlyCorrectionDb
+            phaseSource
         );
         if (synthesis.reverbGuard && reverbDiagnostic?.state === 'applied') {
             reverbDiagnostic = {
@@ -2801,14 +2762,6 @@ export function designRoomEq(request) {
                 reverbDiagnostic.reason = synthesis.reverbGuard.reason;
             }
         }
-        // When the guard disables the reverb correction, the shipped filter is
-        // the baseOnly baseline, so the preview curves are rebuilt from the
-        // baseOnly side to match the shipped fine-free reality (plan section 3.6).
-        const shipsBaseOnly = synthesis.reverbGuard?.state === 'disabled';
-        const previewCorrectionDb = shipsBaseOnly ? baseOnlyCorrectionDb : correctionDb;
-        const previewBaseCorrectionDb = shipsBaseOnly
-            ? baseOnlyBaseCorrectionDb
-            : baseCorrectionDb;
         // The correction is derived from the smoothed measurement, so adding it back to
         // that same smoothed curve cancels both smoothing passes and always predicts a
         // perfect result. Predict against the unsmoothed response and smooth once for
@@ -2824,10 +2777,10 @@ export function designRoomEq(request) {
             ),
             point => point[1]
         );
-        const predictedDb = predictResponse(previewCorrectionDb);
+        const predictedDb = predictResponse(correctionDb);
         // Without the Additional EQ folded in, so the editor can redraw the corrected
         // curve while bands are being dragged and before the redesign lands.
-        const predictedBaseDb = predictResponse(previewBaseCorrectionDb);
+        const predictedBaseDb = predictResponse(baseCorrectionDb);
         if (synthesis.verification.maximumMagnitudeErrorDb > 0.5 ||
             synthesis.verification.maximumPhaseErrorRadians > 0.05) {
             qualityWarnings.push(QUALITY_WARNING_FILTER_ACCURACY);
@@ -2842,9 +2795,55 @@ export function designRoomEq(request) {
                 synthesis.taps,
                 config,
                 frequencies,
-                synthesis.actualSpectrum
+                synthesis.actualSpectrum,
+                previewGroupDelaySources
             )
             : null;
+        const phaseDiagnostic = {
+            state: config.phase !== 'full' || config.phaseCorrectionAmount === 0
+                ? 'notRequested'
+                : referenceAnalysis ? 'applied' : 'disabled',
+            scale: config.phase === 'full' && config.phaseCorrectionAmount > 0 && referenceAnalysis
+                ? 1
+                : 0,
+            reason: config.phase !== 'full'
+                ? 'fullPhaseRequired'
+                : config.phaseCorrectionAmount === 0
+                    ? 'phaseCorrectionDisabled'
+                    : referenceAnalysis ? null : 'impulseResponseRequired'
+        };
+        if (phaseDiagnostic.state === 'applied' && phasePreviews?.groupDelay?.excess) {
+            let beforeMaximum = 0;
+            let afterMaximum = 0;
+            const beforeValues = phasePreviews.groupDelay.excess.before;
+            const afterValues = phasePreviews.groupDelay.excess.after;
+            let referenceIndex = -1;
+            let referenceDistance = Infinity;
+            for (let index = 0; index < frequencies.length; index += 1) {
+                if (!Number.isFinite(beforeValues[index]) || !Number.isFinite(afterValues[index])) continue;
+                const distance = Math.abs(Math.log(frequencies[index] / 1000));
+                if (distance < referenceDistance) {
+                    referenceIndex = index;
+                    referenceDistance = distance;
+                }
+            }
+            const beforeReference = referenceIndex >= 0 ? beforeValues[referenceIndex] : 0;
+            const afterReference = referenceIndex >= 0 ? afterValues[referenceIndex] : 0;
+            for (let index = 0; index < beforeValues.length; index += 1) {
+                const before = Math.abs(beforeValues[index] - beforeReference);
+                const after = Math.abs(afterValues[index] - afterReference);
+                if (Number.isFinite(before) && before > beforeMaximum) beforeMaximum = before;
+                if (Number.isFinite(after) && after > afterMaximum) afterMaximum = after;
+            }
+            const availableDelayMs = (config.taps / 2 - 1) / config.sampleRate * 1000;
+            if (beforeMaximum > availableDelayMs && afterMaximum > availableDelayMs) {
+                phaseDiagnostic.state = 'reduced';
+                phaseDiagnostic.scale = availableDelayMs / beforeMaximum;
+                phaseDiagnostic.reason = 'firWindow';
+                phaseDiagnostic.residualMaximumMs = afterMaximum;
+            }
+        }
+        phaseDiagnostics.push(phaseDiagnostic);
         previews.push({
             channel: channelIndex,
             referenceLevelDb: levelDb,
@@ -2853,7 +2852,7 @@ export function designRoomEq(request) {
             targetDb: Float32Array.from(targetDb),
             predictedDb: Float32Array.from(predictedDb),
             predictedBaseDb: Float32Array.from(predictedBaseDb),
-            baseCorrectionDb: Float32Array.from(previewBaseCorrectionDb),
+            baseCorrectionDb: Float32Array.from(baseCorrectionDb),
             phaseResponse: phasePreviews?.phase || null,
             groupDelayResponse: phasePreviews?.groupDelay || null,
             impulseResponse: referenceAnalysis
@@ -2874,6 +2873,7 @@ export function designRoomEq(request) {
         previews,
         qualityWarnings,
         diagnostics: {
+            phaseCorrection: phaseDiagnostics,
             lowFrequencyPhaseExtension: lowPhaseDiagnostics,
             reverbCorrection: reverbDiagnostics
         },

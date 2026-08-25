@@ -4,15 +4,19 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <numbers>
+#include <string_view>
 #include <vector>
 
 extern "C" const effetune::KernelDescriptor *
 et_kernel_descriptor_BluetoothSBCSimulatorPlugin() noexcept;
+extern "C" std::uint32_t et_test_bluetooth_sbc_runtime_stat(effetune::PluginKernel *kernel,
+                                                            std::uint32_t index) noexcept;
 
 namespace {
 
@@ -88,9 +92,22 @@ public:
           "process performs no allocation");
   }
 
+  [[nodiscard]] double processMicros(float *audio, std::uint32_t channels,
+                                     std::uint32_t frames) noexcept {
+    kernel_->applyPendingParameters();
+    const auto start = std::chrono::steady_clock::now();
+    kernel_->process(audio, channels, frames, {0.0});
+    const auto finish = std::chrono::steady_clock::now();
+    return std::chrono::duration<double, std::micro>(finish - start).count();
+  }
+
   void reset() noexcept { kernel_->reset(); }
 
   void seed(std::uint32_t low, std::uint32_t high) noexcept { kernel_->setRandomSeed(low, high); }
+
+  [[nodiscard]] std::uint32_t runtimeStat(std::uint32_t index) const noexcept {
+    return et_test_bluetooth_sbc_runtime_stat(kernel_, index);
+  }
 
 private:
   alignas(std::max_align_t) std::array<std::byte, kKernelStorageBytes> storage_{};
@@ -105,6 +122,59 @@ bool finite(const std::vector<float> &audio) noexcept {
     }
   }
   return true;
+}
+
+struct RuntimeStats {
+  std::uint32_t maximum_queued_frames = 0u;
+  std::uint32_t maximum_raw_output = 0u;
+  std::uint32_t raw_output_drops = 0u;
+};
+
+double profilePercentile(const std::vector<double> &sorted, double fraction) noexcept {
+  const double position = std::ceil(fraction * static_cast<double>(sorted.size())) - 1.0;
+  const std::size_t index = static_cast<std::size_t>(position > 0.0 ? position : 0.0);
+  return sorted[index < sorted.size() ? index : sorted.size() - 1u];
+}
+
+void profileUniformity() {
+  constexpr std::uint32_t kFrames = 16u;
+  constexpr std::uint32_t kMeasuredBlocks = 4096u;
+  for (const float sample_rate : {48000.0F, 96000.0F, 192000.0F}) {
+    KernelHarness harness(sample_rate, 2u);
+    Params params = defaultParams();
+    params.bitpool = 53.0F;
+    harness.stage(params);
+    std::array<float, 2u * kFrames> audio{};
+    std::uint32_t noise = 0x1729ac5du;
+    const auto fill = [&]() {
+      for (float &sample : audio) {
+        noise = noise * 1664525u + 1013904223u;
+        sample = static_cast<float>((static_cast<double>(noise) / 4294967296.0 - 0.5) * 0.5);
+      }
+    };
+    const std::uint32_t warmup_blocks = static_cast<std::uint32_t>(sample_rate) / kFrames;
+    for (std::uint32_t block = 0u; block < warmup_blocks; ++block) {
+      fill();
+      static_cast<void>(harness.processMicros(audio.data(), 2u, kFrames));
+    }
+    std::vector<double> samples;
+    samples.reserve(kMeasuredBlocks);
+    for (std::uint32_t block = 0u; block < kMeasuredBlocks; ++block) {
+      fill();
+      samples.push_back(harness.processMicros(audio.data(), 2u, kFrames));
+    }
+    std::sort(samples.begin(), samples.end());
+    const double median = profilePercentile(samples, 0.5);
+    const double p95 = profilePercentile(samples, 0.95);
+    const double maximum = samples.back();
+    const double g0_limit = 0.1 * 1.0e6 * kFrames / static_cast<double>(sample_rate);
+    const bool g0 = maximum <= g0_limit;
+    const bool g1 = p95 <= median * 1.5 && maximum <= median * 3.0;
+    std::printf("SBC profile %.0f Hz: median %.3f us, p95 %.3f us, max %.3f us, "
+                "G0 %s (%.3f us), G1 %s\n",
+                static_cast<double>(sample_rate), median, p95, maximum, g0 ? "PASS" : "FAIL",
+                g0_limit, g1 ? "PASS" : "FAIL");
+  }
 }
 
 std::vector<float> render(KernelHarness &harness, Params params, std::uint32_t channels,
@@ -130,6 +200,58 @@ std::vector<float> render(KernelHarness &harness, Params params, std::uint32_t c
       }
     }
     absolute += count;
+  }
+  return result;
+}
+
+std::vector<float> renderPartitioned(float sample_rate, Params params,
+                                     const std::vector<std::uint32_t> &partition,
+                                     std::uint32_t frames,
+                                     std::uint32_t block_transition_period = 0u,
+                                     RuntimeStats *stats = nullptr) {
+  KernelHarness harness(sample_rate, 2u);
+  harness.seed(0x2ec5a4d1u, 0x91b8f063u);
+  std::vector<float> result(2u * frames);
+  std::uint32_t absolute = 0u;
+  std::size_t partition_index = 0u;
+  while (absolute < frames) {
+    std::uint32_t count = partition[partition_index % partition.size()];
+    if (count > frames - absolute) {
+      count = frames - absolute;
+    }
+    if (block_transition_period != 0u) {
+      const std::uint32_t next_transition =
+          (absolute / block_transition_period + 1u) * block_transition_period;
+      if (count > next_transition - absolute) {
+        count = next_transition - absolute;
+      }
+    }
+    std::vector<float> block(2u * count);
+    for (std::uint32_t channel = 0u; channel < 2u; ++channel) {
+      for (std::uint32_t frame = 0u; frame < count; ++frame) {
+        const double phase = static_cast<double>(absolute + frame) * 0.071 + channel * 0.31;
+        block[channel * count + frame] =
+            static_cast<float>(0.57 * std::sin(phase) + 0.19 * std::cos(phase * 0.37));
+      }
+    }
+    Params active_params = params;
+    if (block_transition_period != 0u) {
+      active_params.blocks = (absolute / block_transition_period) % 2u == 0u ? 3.0F : 0.0F;
+    }
+    harness.stage(active_params);
+    harness.process(block.data(), 2u, count);
+    for (std::uint32_t channel = 0u; channel < 2u; ++channel) {
+      for (std::uint32_t frame = 0u; frame < count; ++frame) {
+        result[channel * frames + absolute + frame] = block[channel * count + frame];
+      }
+    }
+    absolute += count;
+    ++partition_index;
+  }
+  if (stats != nullptr) {
+    stats->maximum_queued_frames = harness.runtimeStat(0u);
+    stats->maximum_raw_output = harness.runtimeStat(1u);
+    stats->raw_output_drops = harness.runtimeStat(2u);
   }
   return result;
 }
@@ -222,6 +344,69 @@ void testWetProcessingAndReset() {
   check(energy > 0.01, "wet codec output is not silent");
 }
 
+void testProcessBoundaryIndependence() {
+  constexpr std::uint32_t kFrames = 8193u;
+  constexpr std::array<std::uint32_t, 7> kPartitionSizes = {{1u, 7u, 16u, 32u, 64u, 128u, 129u}};
+  const std::vector<std::uint32_t> reference_partition = {257u};
+  const std::vector<std::uint32_t> varying_partition(kPartitionSizes.begin(),
+                                                     kPartitionSizes.end());
+  for (const float sample_rate : {48000.0F, 96000.0F, 192000.0F}) {
+    for (const float packet_loss : {0.0F, 20.0F}) {
+      Params params = defaultParams();
+      params.bitpool = 53.0F;
+      params.packetLoss = packet_loss;
+      const std::vector<float> reference =
+          renderPartitioned(sample_rate, params, reference_partition, kFrames);
+      for (const std::uint32_t partition_size : kPartitionSizes) {
+        const std::vector<float> candidate =
+            renderPartitioned(sample_rate, params, {partition_size}, kFrames);
+        if (candidate != reference) {
+          std::fprintf(
+              stderr, "process partition changed output at %.0f Hz, packet loss %.0f, frames %u\n",
+              static_cast<double>(sample_rate), static_cast<double>(packet_loss), partition_size);
+        }
+        check(candidate == reference, "process boundaries leave output bit-exact");
+      }
+      const std::vector<float> varying =
+          renderPartitioned(sample_rate, params, varying_partition, kFrames);
+      check(varying == reference, "changing process boundaries leave output bit-exact");
+    }
+  }
+
+  for (const float sample_rate : {48000.0F, 96000.0F, 192000.0F}) {
+    const std::uint32_t factor = rateFactor(static_cast<std::uint32_t>(sample_rate));
+    const std::uint32_t transition_period = 313u * factor;
+    for (const float packet_loss : {0.0F, 20.0F}) {
+      Params changing_blocks = defaultParams();
+      changing_blocks.bitpool = 53.0F;
+      changing_blocks.packetLoss = packet_loss;
+      RuntimeStats reference_stats;
+      RuntimeStats fixed_stats;
+      RuntimeStats varying_stats;
+      const std::vector<float> transition_reference =
+          renderPartitioned(sample_rate, changing_blocks, reference_partition, kFrames,
+                            transition_period, &reference_stats);
+      const std::vector<float> transition_fixed = renderPartitioned(
+          sample_rate, changing_blocks, {16u}, kFrames, transition_period, &fixed_stats);
+      const std::vector<float> transition_varying =
+          renderPartitioned(sample_rate, changing_blocks, varying_partition, kFrames,
+                            transition_period, &varying_stats);
+      check(transition_fixed == transition_reference,
+            "repeated sixteen-to-four transitions stay exact with fixed process frames");
+      check(transition_varying == transition_reference,
+            "repeated sixteen-to-four transitions stay exact with mixed process frames");
+      for (const RuntimeStats stats : {reference_stats, fixed_stats, varying_stats}) {
+        check(stats.maximum_queued_frames <= 4u,
+              "the scheduled frame queue stays within its four-frame bound");
+        check(stats.maximum_raw_output <= 8u * factor,
+              "paced synthesis keeps the raw-output queue within one subband block");
+        check(stats.raw_output_drops == 0u,
+              "repeated block transitions never drop raw codec output");
+      }
+    }
+  }
+}
+
 void checkWetLatency(float sample_rate, float block_index, float mix) {
   KernelHarness harness(sample_rate, 2u);
   const std::uint32_t latency = harness.latency();
@@ -274,6 +459,62 @@ void testWetLatencyAlignment() {
       checkWetLatency(sample_rate, block_index, 100.0F);
     }
     checkWetLatency(sample_rate, 3.0F, 50.0F);
+  }
+}
+
+void testLatencyAcrossRepeatedBlockTransitions() {
+  constexpr std::array<std::uint32_t, 7> kPartitions = {{1u, 7u, 16u, 32u, 64u, 128u, 129u}};
+  for (const float sample_rate : {48000.0F, 96000.0F, 192000.0F}) {
+    KernelHarness harness(sample_rate, 2u);
+    const std::uint32_t factor = rateFactor(static_cast<std::uint32_t>(sample_rate));
+    const std::uint32_t transition_period = 313u * factor;
+    const std::uint32_t impulse_frame = 4099u * factor;
+    const std::uint32_t total_frames = impulse_frame + harness.latency() + 1024u * factor;
+    std::uint32_t absolute = 0u;
+    std::size_t partition_index = 0u;
+    std::uint32_t peak_frame = 0u;
+    double peak = 0.0;
+    while (absolute < total_frames) {
+      std::uint32_t frames = kPartitions[partition_index % kPartitions.size()];
+      if (frames > total_frames - absolute) {
+        frames = total_frames - absolute;
+      }
+      const std::uint32_t next_transition = (absolute / transition_period + 1u) * transition_period;
+      if (frames > next_transition - absolute) {
+        frames = next_transition - absolute;
+      }
+      std::vector<float> audio(2u * frames, 0.0F);
+      if (absolute <= impulse_frame && impulse_frame < absolute + frames) {
+        const std::uint32_t local = impulse_frame - absolute;
+        audio[local] = 1.0F;
+        audio[frames + local] = -1.0F;
+      }
+      Params params = defaultParams();
+      params.bitpool = 53.0F;
+      params.blocks = (absolute / transition_period) % 2u == 0u ? 3.0F : 0.0F;
+      harness.stage(params);
+      harness.process(audio.data(), 2u, frames);
+      for (std::uint32_t frame = 0u; frame < frames; ++frame) {
+        const double magnitude = std::abs(static_cast<double>(audio[frame]));
+        if (magnitude > peak) {
+          peak = magnitude;
+          peak_frame = absolute + frame;
+        }
+      }
+      absolute += frames;
+      ++partition_index;
+    }
+    const std::uint32_t expected = impulse_frame + harness.latency();
+    if (peak_frame != expected) {
+      std::fprintf(stderr, "transition impulse peak %u, expected %u at %.0f Hz (offset %+lld)\n",
+                   peak_frame, expected, static_cast<double>(sample_rate),
+                   static_cast<long long>(peak_frame) - static_cast<long long>(expected));
+    }
+    check(peak > 0.0, "the transition impulse response is not silent");
+    check(peak_frame == expected,
+          "repeated sixteen-to-four transitions preserve declared wet latency");
+    check(harness.runtimeStat(2u) == 0u,
+          "the latency transition stream never drops raw codec output");
   }
 }
 
@@ -839,10 +1080,16 @@ void testPacketLossReEnableConcealsWithLiveHistory() {
 
 } // namespace
 
-int main() {
+int main(int argc, char **argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--profile") {
+    profileUniformity();
+    return 0;
+  }
   testSupportedRatesAndDryLatency();
   testWetProcessingAndReset();
+  testProcessBoundaryIndependence();
   testWetLatencyAlignment();
+  testLatencyAcrossRepeatedBlockTransitions();
   testResamplerBandLimit();
   testMonoAndExtraChannels();
   testDualChannelAllocatesPerChannel();
