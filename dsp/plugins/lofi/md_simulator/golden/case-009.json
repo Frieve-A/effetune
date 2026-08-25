@@ -19,11 +19,10 @@
   "events": [],
   "tolerance": {
     "abs": 0.00002,
-    "rel": 0.00002,
     "policy": "per-sample"
   },
   "referenceEngine": "production-native-promoted-v1",
-  "referenceHash": "sha256:bc61dd9f5c24cc4c094b65e83889f51252a62fd8451038f791fda3bb2f67cd04",
+  "referenceHash": "sha256:cf397eda9929cb5b7489906605847616160f72dcd7c323b2f3dfa0b997dde855",
   "generationCommand": "node tools/dsp-parity/generate.mjs --type MDSimulatorPlugin --promote-production-native",
   "outputFloats": 40962,
   "byteLength": 163848,
