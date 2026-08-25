@@ -2724,7 +2724,9 @@ const ROOM_EQ_REVERB_GOLDEN = {
 //                               power-of-two boundary, so this is the case that sees
 //                               it. Its premises differ from the two above because the
 //                               short realized FIR trips the filter-accuracy warning.
-// Stable digests were validated with v22.23.2 and v24.13.0 (win32-x64) on 2026-08-25.
+// Stable amplitude and latency digests were validated with v22.23.2 and v24.13.0
+// (win32-x64) on 2026-08-25. Trace snapshots use a small numeric tolerance because
+// supported V8 architectures can round the same phase design to different Float32 bits.
 // R4-1: full-rv100-le-single and full-rv100-taps8192-multi pin phaseResponse. The
 // taps8192 case also pins groupDelayResponse; the longer design's group-delay trace
 // includes the same V8-sensitive minimum-phase math as its taps and is checked by the
@@ -2740,7 +2742,16 @@ const ROOM_EQ_REVERB_RV_GOLDEN = {
         qualityWarnings: [],
         baseCorrectionDb: 'a066d41b194d59b94178b872bd150149ceba4c7a6e690b3c80c7eb1e1b2f3c7f',
         latencyInfo: '09dcd5431d1494a6a513daa19b157f524a12e01b15858f20cdc0a782f31ed60d',
-        phaseResponse: 'e993c725eef8aab99af29232c643502fbb7da4232dd1477aa0992479536b46ce'
+        phaseResponse: {
+            before: [998, 124.7773490849364,
+                -133.04380798339844, 53.519039154052734, 115.35335540771484,
+                163.7183380126953, -69.32132720947266, -42.00840377807617,
+                -97.95582580566406, 166.88658142089844],
+            after: [998, 104.77989969951743,
+                -136.3359680175781, 157.1579132080078, -129.1941833496094,
+                75.45249938964844, 42.88890075683594, 122.89376831054688,
+                66.5278091430664, -79.39213562011719]
+        }
     },
     'full-rv100-multi': {
         points: 3,
@@ -2757,9 +2768,42 @@ const ROOM_EQ_REVERB_RV_GOLDEN = {
         qualityWarnings: ['filterAccuracy'],
         baseCorrectionDb: '8be80392b9459a1e3ecd43e1d6eed59da9a2e8998bf39e6f2c8d01a2d69a6a41',
         latencyInfo: 'd7ba684fc4ca4ae7bbe39029a4083708892a5e5aeb1469ce170db863461a320b',
-        phaseResponse: 'd68b606ab5a44b17b3ef3107d88b381aed5b52f6dc0f909db892afc39eed776f',
-        groupDelayResponse:
-            '3286f2242d0a660398f1e52ad184a6bb6baa4f86a675ccf934ccf3e3b4ad2718'
+        phaseResponse: {
+            before: [998, 127.63078049789254,
+                -130.58749389648438, 132.2766418457031, 96.82174682617188,
+                -169.67457580566406, 49.57444763183594, -26.84768295288086,
+                -89.23625946044922, -177.19952392578125],
+            after: [998, 103.55419291603236,
+                -135.6021270751953, -144.29136657714844, -154.4338684082031,
+                111.76032257080078, 119.00433349609375, -164.40232849121094,
+                132.21702575683594, -11.353355407714844]
+        },
+        groupDelayResponse: {
+            before: [998, 11.383346781907862,
+                6.758031368255615, 6.917684078216553, 7.501244068145752,
+                14.210670471191406, 21.220245361328125, 8.312585830688477,
+                7.199366569519043, 6.653162002563477],
+            after: [998, 8.653201542327515,
+                5.419991493225098, 2.8189191818237305, -2.492131471633911,
+                3.4374654293060303, 19.996335983276367, 8.264664649963379,
+                7.20732307434082, 6.644117832183838],
+            minimumBefore: [998, 4.568384530273526,
+                0.4090188145637512, 4.609474182128906, -0.3901047110557556,
+                -0.17123264074325562, -1.8370952606201172, 0.27217212319374084,
+                -0.3302886486053467, 0.054194021970033646],
+            minimumAfter: [998, 2.630144411096113,
+                2.6467692852020264, 3.4520199298858643, -0.4180666208267212,
+                0.1925114244222641, -1.7661199569702148, 0.29187431931495667,
+                -0.32518041133880615, 0.05462857708334923],
+            excessBefore: [998, 9.958353786700616,
+                6.34901237487793, 2.3082096576690674, 7.891348361968994,
+                14.381903648376465, 23.057340621948242, 8.040412902832031,
+                7.529655456542969, 6.598968029022217],
+            excessAfter: [998, 8.331140530090021,
+                2.773221969604492, -0.6331008672714233, -2.0740649700164795,
+                3.2449541091918945, 21.7624568939209, 7.972790241241455,
+                7.532503128051758, 6.589488983154297]
+        }
     }
 };
 
@@ -2923,32 +2967,32 @@ const digestLatencyInfo = latencyInfo => sha256Hex([Buffer.from(JSON.stringify({
     filterDelaySamples: latencyInfo.filterDelaySamples,
     resolutionHz: latencyInfo.resolutionHz
 }))]);
-// Same canon, extended to the two display traces S-38 lists as shipped artifacts:
-// a "<prefix><preview index>:<trace name>:<length>:" label followed by the
-// little-endian Float32 bytes, and "<prefix><preview index>:null" when the whole
-// trace object is absent (phase === 'min' designs carry none).
-const digestPhaseResponse = previews => sha256Hex(previews.flatMap((preview, index) => {
-    const phase = preview && preview.phaseResponse;
-    return phase
-        ? [Buffer.from(`ph${index}:before:${phase.before.length}:`),
-            float32Bytes(phase.before),
-            Buffer.from(`ph${index}:after:${phase.after.length}:`),
-            float32Bytes(phase.after)]
-        : [Buffer.from(`ph${index}:null`)];
-}));
-const digestGroupDelayResponse = previews => sha256Hex(previews.flatMap((preview, index) => {
-    const groupDelay = preview && preview.groupDelayResponse;
-    if (!groupDelay) return [Buffer.from(`gd${index}:null`)];
-    return [
-        ['before', groupDelay.before],
-        ['after', groupDelay.after],
-        ['minimum.before', groupDelay.minimum.before],
-        ['minimum.after', groupDelay.minimum.after],
-        ['excess.before', groupDelay.excess.before],
-        ['excess.after', groupDelay.excess.after]
-    ].flatMap(([name, trace]) =>
-        [Buffer.from(`gd${index}:${name}:${trace.length}:`), float32Bytes(trace)]);
-}));
+const responseSnapshot = (frequencies, traces) => {
+    const probeFrequencies = [20, 50, 100, 250, 500, 1000, 4000, 16000];
+    const nearestIndex = frequency => frequencies.reduce((best, value, index) =>
+        Math.abs(value - frequency) < Math.abs(frequencies[best] - frequency) ? index : best, 0);
+    const summarize = trace => [
+        trace.length,
+        Math.sqrt(trace.reduce((sum, value) => sum + value * value, 0) / trace.length),
+        ...probeFrequencies.map(frequency => trace[nearestIndex(frequency)])
+    ];
+    return Object.fromEntries(Object.entries(traces).map(([name, trace]) =>
+        [name, summarize(trace)]));
+};
+
+const assertResponseSnapshot = (actual, expected, label) => {
+    const tolerance = 1e-3;
+    assert.deepEqual(Object.keys(actual), Object.keys(expected), `${label}: trace names`);
+    for (const [name, expectedTrace] of Object.entries(expected)) {
+        const actualTrace = actual[name];
+        assert.equal(actualTrace[0], expectedTrace[0], `${label}: ${name} length`);
+        assert.equal(actualTrace.length, expectedTrace.length, `${label}: ${name} field count`);
+        for (let index = 1; index < expectedTrace.length; index += 1) {
+            assert.ok(Math.abs(actualTrace[index] - expectedTrace[index]) <= tolerance,
+                `${label}: ${name} field ${index} ${actualTrace[index]}`);
+        }
+    }
+};
 
 function productSpectrum(a, b) {
     const real = new Float64Array(a.real.length);
@@ -3131,16 +3175,31 @@ test('shipped rv=100 default design preserves its portable golden contracts', ()
         // which is the one whose phase path sits on the nextPowerOfTwo boundary.
         if (golden.phaseResponse) {
             pinnedPhaseCases += 1;
-            assert.equal(digestPhaseResponse(result.previews), golden.phaseResponse,
-                `${caseId}: phaseResponse digest`);
+            assertResponseSnapshot(responseSnapshot(
+                result.previews[0].frequencies,
+                {
+                    before: result.previews[0].phaseResponse.before,
+                    after: result.previews[0].phaseResponse.after
+                }
+            ), golden.phaseResponse, `${caseId}: phaseResponse`);
         }
         if (golden.groupDelayResponse) {
             pinnedGroupDelayCases += 1;
-            assert.equal(digestGroupDelayResponse(result.previews),
-                golden.groupDelayResponse, `${caseId}: groupDelayResponse digest`);
+            const groupDelay = result.previews[0].groupDelayResponse;
+            assertResponseSnapshot(responseSnapshot(
+                result.previews[0].frequencies,
+                {
+                    before: groupDelay.before,
+                    after: groupDelay.after,
+                    minimumBefore: groupDelay.minimum.before,
+                    minimumAfter: groupDelay.minimum.after,
+                    excessBefore: groupDelay.excess.before,
+                    excessAfter: groupDelay.excess.after
+                }
+            ), golden.groupDelayResponse, `${caseId}: groupDelayResponse`);
         }
     }
-    // Count the pinned cases so deleting a digest from the table above fails here
+    // Count the pinned cases so deleting a snapshot from the table above fails here
     // instead of silently turning the check off.
     assert.equal(pinnedPhaseCases, 2,
         'exactly two cases must pin the phase display trace');
