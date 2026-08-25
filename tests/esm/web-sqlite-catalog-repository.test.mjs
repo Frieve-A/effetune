@@ -14,6 +14,7 @@ import {
 } from '../../js/library/repository/web-sqlite-runtime.js';
 import { metadataParseEligibility } from '../../js/library/scan/metadata-parse-service.js';
 import { createConsoleHarness, withGlobals } from '../helpers/global-test-utils.mjs';
+import { removeSqliteTestDirectory } from '../helpers/sqlite-test-utils.mjs';
 
 test('Web SQLite repository maps OPFS, full, busy, and corruption failures to stable codes', async () => {
   for (const [failure, expectedCode] of [
@@ -437,9 +438,9 @@ test('Web startup rebuilds directory rows when generation and watermark diverge'
   const dbPath = path.join(directory, 'catalog.sqlite');
   let database = new DatabaseSync(dbPath);
   let open = true;
-  t.after(() => {
+  t.after(async () => {
     if (open) dispatchWebSqliteCommand('close', {});
-    fs.rmSync(directory, { recursive: true, force: true });
+    await removeSqliteTestDirectory(directory);
   });
   const options = {
     storageManager: { async estimate() { return { quota: 1024 * 1024 * 1024, usage: 0 }; } }
@@ -556,9 +557,9 @@ test('Web contexts stale atomically on folder tombstone, overflow, and retained 
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-web-context-stale-'));
   const database = new DatabaseSync(path.join(directory, 'catalog.sqlite'));
   let runtimeOpen = false;
-  t.after(() => {
+  t.after(async () => {
     if (runtimeOpen) dispatchWebSqliteCommand('close', {});
-    fs.rmSync(directory, { recursive: true, force: true });
+    await removeSqliteTestDirectory(directory);
   });
   await initializeWebSqliteRuntime(database, {
     storageManager: { async estimate() { return { quota: 1024 * 1024 * 1024, usage: 0 }; } }
@@ -672,9 +673,9 @@ test('Web SQLite deletion tombstones an offline folder', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-web-offline-folder-removal-'));
   const database = new DatabaseSync(path.join(directory, 'catalog.sqlite'));
   let runtimeOpen = false;
-  t.after(() => {
+  t.after(async () => {
     if (runtimeOpen) dispatchWebSqliteCommand('close', {});
-    fs.rmSync(directory, { recursive: true, force: true });
+    await removeSqliteTestDirectory(directory);
   });
   await initializeWebSqliteRuntime(database, {
     storageManager: { async estimate() { return { quota: 1024 * 1024 * 1024, usage: 0 }; } }
@@ -762,9 +763,9 @@ test('Web context snapshot size is not rescanned while its shadow row count is u
       return database.close();
     }
   };
-  t.after(() => {
+  t.after(async () => {
     if (runtimeOpen) dispatchWebSqliteCommand('close', {});
-    fs.rmSync(directory, { recursive: true, force: true });
+    await removeSqliteTestDirectory(directory);
   });
   await initializeWebSqliteRuntime(instrumentedDatabase, {
     storageManager: { async estimate() { return { quota: 1024 * 1024 * 1024, usage: 0 }; } }
@@ -918,9 +919,9 @@ test('Web playlist import resolves an absolute root path beyond the ambiguous ca
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-web-playlist-resolve-'));
   const database = new DatabaseSync(path.join(directory, 'catalog.sqlite'));
   let runtimeOpen = false;
-  t.after(() => {
+  t.after(async () => {
     if (runtimeOpen) dispatchWebSqliteCommand('close', {});
-    fs.rmSync(directory, { recursive: true, force: true });
+    await removeSqliteTestDirectory(directory);
   });
   await initializeWebSqliteRuntime(database, {
     storageManager: { async estimate() { return { quota: 1024 * 1024 * 1024, usage: 0 }; } }
@@ -1009,9 +1010,9 @@ test('Web playlist duplication reads and copies each visible source page', async
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-web-playlist-copy-'));
   const database = new DatabaseSync(path.join(directory, 'catalog.sqlite'));
   let runtimeOpen = false;
-  t.after(() => {
+  t.after(async () => {
     if (runtimeOpen) dispatchWebSqliteCommand('close', {});
-    fs.rmSync(directory, { recursive: true, force: true });
+    await removeSqliteTestDirectory(directory);
   });
   await initializeWebSqliteRuntime(database, {
     storageManager: { async estimate() { return { quota: 1024 * 1024 * 1024, usage: 0 }; } }
@@ -1417,9 +1418,9 @@ test('Web initialization recovers an interrupted CUE metadata claim for the next
     dispatchWebSqliteCommand('close', {});
     runtimeOpen = false;
   };
-  t.after(() => {
+  t.after(async () => {
     close();
-    fs.rmSync(directory, { recursive: true, force: true });
+    await removeSqliteTestDirectory(directory);
   });
 
   await initialize();
@@ -1632,9 +1633,9 @@ test('Web startup recovery finishes an eligible sweep before an immediate newer 
     dispatchWebSqliteCommand('close', {});
     runtimeOpen = false;
   };
-  t.after(() => {
+  t.after(async () => {
     close();
-    fs.rmSync(directory, { recursive: true, force: true });
+    await removeSqliteTestDirectory(directory);
   });
 
   await open();
@@ -1763,9 +1764,9 @@ async function openWebTestCatalog(t, prefix) {
     dispatchWebSqliteCommand('close', {});
     open = false;
   };
-  t.after(() => {
+  t.after(async () => {
     close();
-    fs.rmSync(directory, { recursive: true, force: true });
+    await removeSqliteTestDirectory(directory);
   });
   await initializeWebSqliteRuntime(database, {
     storageManager: { async estimate() { return { quota: 1024 * 1024 * 1024, usage: 0 }; } }

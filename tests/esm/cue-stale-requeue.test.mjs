@@ -9,6 +9,7 @@ import {
   dispatchWebSqliteCommand,
   initializeWebSqliteRuntime
 } from '../../js/library/repository/web-sqlite-runtime.js';
+import { removeSqliteTestDirectory } from '../helpers/sqlite-test-utils.mjs';
 
 function completion(claim, title) {
   return {
@@ -31,9 +32,9 @@ test('Web stale completion requeue never overwrites a newer active or completed 
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-web-cue-stale-'));
   const database = new DatabaseSync(path.join(directory, 'catalog.sqlite'));
   let runtimeOpen = false;
-  t.after(() => {
+  t.after(async () => {
     if (runtimeOpen) dispatchWebSqliteCommand('close', {});
-    fs.rmSync(directory, { recursive: true, force: true });
+    await removeSqliteTestDirectory(directory);
   });
   await initializeWebSqliteRuntime(database, {
     storageManager: { async estimate() { return { quota: 1024 * 1024 * 1024, usage: 0 }; } }

@@ -9,6 +9,7 @@ import {
   dispatchWebSqliteCommand,
   initializeWebSqliteRuntime
 } from '../../js/library/repository/web-sqlite-runtime.js';
+import { removeSqliteTestDirectory } from '../helpers/sqlite-test-utils.mjs';
 
 const RECENTLY_PLAYED_ID = 'system_recently_played';
 const FAVORITES_ID = 'system_favorites';
@@ -26,9 +27,9 @@ test('Web system playlists match the Electron lazy, bounded, and resurrection co
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-web-system-playlists-'));
   const database = new DatabaseSync(path.join(directory, 'catalog.sqlite'));
   let runtimeOpen = false;
-  t.after(() => {
+  t.after(async () => {
     if (runtimeOpen) dispatch('close');
-    fs.rmSync(directory, { recursive: true, force: true });
+    await removeSqliteTestDirectory(directory);
   });
   await initializeWebSqliteRuntime(database, {
     storageManager: { async estimate() { return { quota: 1024 * 1024 * 1024, usage: 0 }; } }
@@ -150,9 +151,9 @@ test('Web favorite track UIDs use stable keyset pages', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-web-favorite-pages-'));
   const database = new DatabaseSync(path.join(directory, 'catalog.sqlite'));
   let runtimeOpen = false;
-  t.after(() => {
+  t.after(async () => {
     if (runtimeOpen) dispatch('close');
-    fs.rmSync(directory, { recursive: true, force: true });
+    await removeSqliteTestDirectory(directory);
   });
   await initializeWebSqliteRuntime(database, {
     storageManager: { async estimate() { return { quota: 1024 * 1024 * 1024, usage: 0 }; } }

@@ -10,6 +10,7 @@ import {
   initializeWebSqliteRuntime
 } from '../../js/library/repository/web-sqlite-runtime.js';
 import { normalizeSearchText } from '../../js/library/search-normalizer.js';
+import { removeSqliteTestDirectory } from '../helpers/sqlite-test-utils.mjs';
 
 function insertCueTrack(database, { folderId = 'folder', trackUid, entryKey, title, startFrame }) {
   const relativePath = 'Album/Image.flac';
@@ -58,9 +59,9 @@ test('Web direct and durable playlist resolution keep plain and CUE candidates s
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-web-cue-playlist-'));
   const database = new DatabaseSync(path.join(directory, 'catalog.sqlite'));
   let runtimeOpen = false;
-  t.after(() => {
+  t.after(async () => {
     if (runtimeOpen) dispatchWebSqliteCommand('close', {});
-    fs.rmSync(directory, { recursive: true, force: true });
+    await removeSqliteTestDirectory(directory);
   });
   await initializeWebSqliteRuntime(database, {
     storageManager: { async estimate() { return { quota: 1024 * 1024 * 1024, usage: 0 }; } }

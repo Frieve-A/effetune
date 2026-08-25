@@ -2653,71 +2653,63 @@ function makeGoldenSource(pointCount) {
     };
 }
 
-// Room EQ reverb-correction golden digests (plan.md section 6.4).
+// Room EQ reverb-correction golden digests for the portable amplitude and latency
+// contracts (plan.md section 6.4).
 // Harvested from the pre-Phase-1 working tree with v22.23.2 (win32-x64) on 2026-08-19T00:37:54.792Z.
 // design-core.js sha256 at harvest: 5832ae8f17b4bff5ee3ad106ab1f1eb6ce116e3ee3fd1a293ee56490fcf277c4
-// Digest canon: channels: sha256 over concat of "ch<i>:<len>:" + little-endian Float32 bytes
-// per channel; baseCorrectionDb: same with "pv<i>:<len>:" per preview ("pv<i>:null" when
-// absent); latencyInfo: sha256 of JSON.stringify({filterDelaySamples, resolutionHz}).
+// Digest canon: baseCorrectionDb is sha256 over concat of "pv<i>:<len>:" and the
+// little-endian Float32 bytes per preview ("pv<i>:null" when absent); latencyInfo is
+// sha256 of JSON.stringify({filterDelaySamples, resolutionHz}). Exact FIR tap hashes
+// are intentionally excluded because supported V8 versions can differ in Math output.
 const ROOM_EQ_REVERB_GOLDEN = {
     'min-default-multi': {
-        channels: '36b05c2096df30b4b70878a5f12886c88f9f62ed6a4bf8e25802566c612ff52e',
         baseCorrectionDb: '8be80392b9459a1e3ecd43e1d6eed59da9a2e8998bf39e6f2c8d01a2d69a6a41',
         latencyInfo: 'a291b85d108d0fe374c49b11fba437d0470521c8e052e5c89197f2257ed3f8f1'
     },
     'min-default-single': {
-        channels: 'afc972284a18c5519ba3147372db4eabbe002e91d50a889b288961d687027943',
         baseCorrectionDb: 'a066d41b194d59b94178b872bd150149ceba4c7a6e690b3c80c7eb1e1b2f3c7f',
         latencyInfo: 'a291b85d108d0fe374c49b11fba437d0470521c8e052e5c89197f2257ed3f8f1'
     },
     'lin-default-multi': {
-        channels: '021403fd63e8352beb535fed0ce2d5c0989f126f89a941ec5160b452766aac4d',
         baseCorrectionDb: '8be80392b9459a1e3ecd43e1d6eed59da9a2e8998bf39e6f2c8d01a2d69a6a41',
         latencyInfo: '09dcd5431d1494a6a513daa19b157f524a12e01b15858f20cdc0a782f31ed60d'
     },
     'lin-default-single': {
-        channels: 'e62e0924f07253e0883d9e4182d7f3ec78fc4769eed192f7e9a697709237a43c',
         baseCorrectionDb: 'a066d41b194d59b94178b872bd150149ceba4c7a6e690b3c80c7eb1e1b2f3c7f',
         latencyInfo: '09dcd5431d1494a6a513daa19b157f524a12e01b15858f20cdc0a782f31ed60d'
     },
     'full-default-multi': {
-        channels: '5d6f44ecbfc966f60a80d8d870922519ccca399d97ec4c5c79aa6183e624d1d2',
         baseCorrectionDb: '8be80392b9459a1e3ecd43e1d6eed59da9a2e8998bf39e6f2c8d01a2d69a6a41',
         latencyInfo: '09dcd5431d1494a6a513daa19b157f524a12e01b15858f20cdc0a782f31ed60d'
     },
     'full-default-single': {
-        channels: '32ab5c084f7c323fc55db0f414ba3d03f71feb4e7a6228b2cf34af2f7118bf54',
         baseCorrectionDb: 'a066d41b194d59b94178b872bd150149ceba4c7a6e690b3c80c7eb1e1b2f3c7f',
         latencyInfo: '09dcd5431d1494a6a513daa19b157f524a12e01b15858f20cdc0a782f31ed60d'
     },
     'full-le-plfixed-multi': {
-        channels: 'a181f19b6acdde51d53dc0bd39dbdb01051589fdb13e51d79fcd08d812491d24',
         baseCorrectionDb: '8be80392b9459a1e3ecd43e1d6eed59da9a2e8998bf39e6f2c8d01a2d69a6a41',
         latencyInfo: '09dcd5431d1494a6a513daa19b157f524a12e01b15858f20cdc0a782f31ed60d'
     },
     'full-le-auto-single': {
-        channels: 'be9632caeee2c3dc4d9ac953e131d2dba96344f6b8da3db732ee14c4ddc51e7d',
         baseCorrectionDb: 'a066d41b194d59b94178b872bd150149ceba4c7a6e690b3c80c7eb1e1b2f3c7f',
         latencyInfo: '09dcd5431d1494a6a513daa19b157f524a12e01b15858f20cdc0a782f31ed60d'
     },
     'full-sm030-multi': {
-        channels: '7d40654727acf08ee5a93f6c894ec3461d8d139c9bfced2afdeedb1a46eadb11',
         baseCorrectionDb: '86a198ef8ed130513fca4b1e4a3f26e450b92431ffe5c4807b80e3d3410e94d1',
         latencyInfo: '09dcd5431d1494a6a513daa19b157f524a12e01b15858f20cdc0a782f31ed60d'
     },
     'full-pr0-multi': {
-        channels: '9f2dcc9771ae499a38e04dc74a3fc1a14c092851582c5209cbe0cbfaa12db168',
         baseCorrectionDb: '8be80392b9459a1e3ecd43e1d6eed59da9a2e8998bf39e6f2c8d01a2d69a6a41',
         latencyInfo: '09dcd5431d1494a6a513daa19b157f524a12e01b15858f20cdc0a782f31ed60d'
     }
 };
 
-// Room EQ golden digests for the SHIPPED rv > 0 output (plan.md section 6.4).
+// Room EQ portable golden digests for the SHIPPED rv > 0 output (plan.md section 6.4).
 // The matrix above deliberately carries no reverb config keys (S-26 bit-identity),
-// so before this block every rv > 0 channel and preview the plugin actually ships
-// was unpinned: any silent numeric drift in the reverb path was invisible to the
-// golden layer. These cases pin it at the shipped defaults (rf 250, rw 300,
-// rs 0.05, sm 0.17), including the LFE/reverb overlap path.
+// so these cases exercise the shipped defaults (rf 250, rw 300, rs 0.05, sm 0.17),
+// including the LFE/reverb overlap path. Stable artifacts are pinned exactly, while
+// FIR taps are compared to the matching rv=0 design in the same runtime. This avoids
+// treating supported V8 Math differences as product regressions.
 //   full-rv100-le-single      : 1 point, le = true -> LFE x reverb phase correction
 //   full-rv100-multi          : 3 points -> reliability-weighted delay consensus
 //   full-rv100-taps8192-multi : 3 points at the smallest taps the plugin offers.
@@ -2732,18 +2724,11 @@ const ROOM_EQ_REVERB_GOLDEN = {
 //                               power-of-two boundary, so this is the case that sees
 //                               it. Its premises differ from the two above because the
 //                               short realized FIR trips the filter-accuracy warning.
-// Harvested from THIS working tree with v22.23.2 (win32-x64) on 2026-08-19,
-// re-harvested in a second process to confirm cross-process determinism.
-// design-core.js sha256 at harvest:
-// 1cf84dd0b5acf99de590d9e4da37e1523ad19b3433bd845a15fc110f1c7e77bc
-// (full-rv100-taps8192-multi harvested 2026-08-19 after the R3-1 decoupling; the
-// two cases above re-harvested unchanged in the same run.)
-// Digest canon is identical to ROOM_EQ_REVERB_GOLDEN above.
-// R4-1: full-rv100-le-single and full-rv100-taps8192-multi additionally pin the two
-// display traces (phaseResponse, groupDelayResponse — see the digest helpers for the
-// canon). Harvested 2026-08-19 with v22.23.2 (win32-x64) in two separate processes,
-// design-core.js sha256
-// a2938fed558051390fb17b31ef70bab2100f562edd123145eca69837b9195643.
+// Stable digests were validated with v22.23.2 and v24.13.0 (win32-x64) on 2026-08-25.
+// R4-1: full-rv100-le-single and full-rv100-taps8192-multi pin phaseResponse. The
+// taps8192 case also pins groupDelayResponse; the longer design's group-delay trace
+// includes the same V8-sensitive minimum-phase math as its taps and is checked by the
+// portable decomposition and behavior tests below instead.
 // full-rv100-multi deliberately carries no trace digests: taps8192 is the multi-point
 // case whose phase path sits on the nextPowerOfTwo boundary, so it is the sensitive
 // one, and a second multi-point harvest would only add maintenance weight.
@@ -2753,19 +2738,15 @@ const ROOM_EQ_REVERB_RV_GOLDEN = {
         overrides: { phase: 'full', reverbAmount: 1, lowFrequencyPhaseExtension: true },
         effectiveWindowMs: 300,
         qualityWarnings: [],
-        channels: '26acfd682240f86905910505a693ff6965fc4263cc957ca7827408cc57bda6b4',
         baseCorrectionDb: 'a066d41b194d59b94178b872bd150149ceba4c7a6e690b3c80c7eb1e1b2f3c7f',
         latencyInfo: '09dcd5431d1494a6a513daa19b157f524a12e01b15858f20cdc0a782f31ed60d',
-        phaseResponse: 'e993c725eef8aab99af29232c643502fbb7da4232dd1477aa0992479536b46ce',
-        groupDelayResponse:
-            '0f219f506a920d28f2294d04c3ae0d16a8e3570b1a142cd2ffedf4343fe79744'
+        phaseResponse: 'e993c725eef8aab99af29232c643502fbb7da4232dd1477aa0992479536b46ce'
     },
     'full-rv100-multi': {
         points: 3,
         overrides: { phase: 'full', reverbAmount: 1 },
         effectiveWindowMs: 300,
         qualityWarnings: [],
-        channels: 'f175b1b0c149c08858806d5d76b4ccb64013ba65aa05c43d6fa142c2ea025272',
         baseCorrectionDb: '8be80392b9459a1e3ecd43e1d6eed59da9a2e8998bf39e6f2c8d01a2d69a6a41',
         latencyInfo: '09dcd5431d1494a6a513daa19b157f524a12e01b15858f20cdc0a782f31ed60d'
     },
@@ -2774,7 +2755,6 @@ const ROOM_EQ_REVERB_RV_GOLDEN = {
         overrides: { phase: 'full', taps: 8192, reverbAmount: 1 },
         effectiveWindowMs: 300,
         qualityWarnings: ['filterAccuracy'],
-        channels: 'ccfb07e2527456be859fc625758c043caf0c24cc79f8a433b741d510179535f1',
         baseCorrectionDb: '8be80392b9459a1e3ecd43e1d6eed59da9a2e8998bf39e6f2c8d01a2d69a6a41',
         latencyInfo: 'd7ba684fc4ca4ae7bbe39029a4083708892a5e5aeb1469ce170db863461a320b',
         phaseResponse: 'd68b606ab5a44b17b3ef3107d88b381aed5b52f6dc0f909db892afc39eed776f',
@@ -3105,12 +3085,13 @@ test('room eq reverb defaults preserve the legacy amplitude and latency contract
     }
 });
 
-test('shipped rv=100 default design matches its golden digests', () => {
-    // Plan.md §6.4: the rv > 0 product the plugin actually ships is pinned here.
-    // Each case also asserts the observables that make it the case it was harvested
-    // for, so a future change cannot keep the digests alive by silently turning the
-    // reverb (or LFE) path off.
-    let pinnedTraceCases = 0;
+test('shipped rv=100 default design preserves its portable golden contracts', () => {
+    // Plan.md §6.4: pin the stable rv > 0 artifacts and compare the V8-sensitive FIR
+    // against rv=0 in the same runtime. Each case also asserts the observables that
+    // make it the case it was harvested for, so the checks cannot pass by silently
+    // turning the reverb (or LFE) path off.
+    let pinnedPhaseCases = 0;
+    let pinnedGroupDelayCases = 0;
     for (const [caseId, golden] of Object.entries(ROOM_EQ_REVERB_RV_GOLDEN)) {
         const result = designReverbCase(golden.overrides, golden.points);
         const reverb = result.diagnostics.reverbCorrection[0];
@@ -3133,8 +3114,10 @@ test('shipped rv=100 default design matches its golden digests', () => {
                 `${caseId}: premise: the agreement diagnostic detects disagreement `
                 + `(${reverb.agreementMinimum})`);
         }
-        assert.equal(digestChannels(result.channels), golden.channels,
-            `${caseId}: channels digest`);
+        const withoutReverb = designReverbCase(
+            { ...golden.overrides, reverbAmount: 0 }, golden.points);
+        assert.notEqual(digestChannels(result.channels), digestChannels(withoutReverb.channels),
+            `${caseId}: reverb must alter the FIR taps`);
         assert.equal(digestBaseCorrection(result.previews), golden.baseCorrectionDb,
             `${caseId}: baseCorrectionDb digest`);
         assert.equal(digestLatencyInfo(result.latencyInfo), golden.latencyInfo,
@@ -3146,18 +3129,23 @@ test('shipped rv=100 default design matches its golden digests', () => {
         // from a different (shorter, rescaled) source with the suite still green.
         // Pinned on the single-point LFE case and on the taps = 8192 Consensus case,
         // which is the one whose phase path sits on the nextPowerOfTwo boundary.
-        if (golden.phaseResponse || golden.groupDelayResponse) {
-            pinnedTraceCases += 1;
+        if (golden.phaseResponse) {
+            pinnedPhaseCases += 1;
             assert.equal(digestPhaseResponse(result.previews), golden.phaseResponse,
                 `${caseId}: phaseResponse digest`);
+        }
+        if (golden.groupDelayResponse) {
+            pinnedGroupDelayCases += 1;
             assert.equal(digestGroupDelayResponse(result.previews),
                 golden.groupDelayResponse, `${caseId}: groupDelayResponse digest`);
         }
     }
     // Count the pinned cases so deleting a digest from the table above fails here
     // instead of silently turning the check off.
-    assert.equal(pinnedTraceCases, 2,
-        'exactly two cases must pin the phase/group-delay display traces');
+    assert.equal(pinnedPhaseCases, 2,
+        'exactly two cases must pin the phase display trace');
+    assert.equal(pinnedGroupDelayCases, 1,
+        'exactly one portable case must pin the group-delay display trace');
 });
 
 test('impulse response preview widens only for an active reverb window', () => {

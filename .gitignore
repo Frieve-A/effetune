@@ -99,6 +99,7 @@ _site/
 !/tests/helpers/global-test-utils.mjs
 !/tests/helpers/openhome-handshake-smoke-child.mjs
 !/tests/helpers/pipeline-analyzer-node-worker.mjs
+!/tests/helpers/sqlite-test-utils.mjs
 !/tests/fixtures/
 /tests/fixtures/*
 !/tests/fixtures/tube-simulator/
