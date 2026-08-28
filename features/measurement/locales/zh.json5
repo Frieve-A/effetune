@@ -25,14 +25,19 @@
 "label:audioOutput": "音频输出设备：", // Label for audio output device selection
 "help:audioOutput": "选择用于输出测量信号的音频设备。", // Help text for audio output
 "label:outputChannel": "输出通道：", // Label for output channel selection
-"help:outputChannel": "指定要测量的通道（左/右 扬声器或耳机等）。", // Help text for output channel
+"help:outputChannel": "选择一个或多个要测量的输出通道。选择“所有声道”会清除各个通道的选择。", // Help text for output channel
 "help:audioInput": "指定连接测量麦克风的音频输入设备。", // Help text for audio input
 "label:sampleRate": "采样频率：", // Label for sample rate selection
 "help:sampleRate": "指定测量时的采样频率。", // Help text for sample rate
 "label:sweepLength": "扫描长度（采样点）：", // Label for sweep length selection
 "help:sweepLength": "指定测量信号的采样长度。", // Help text for sweep length
-"label:sweepBandLimited": "限制扫描带宽",
-"help:sweepBandLimited": "启用时，TSP 和测试信号会限制在下方的频率范围内。禁用时，TSP 会在全部可用带宽内播放。",
+"title:advancedSettings": "高级设置",
+"label:sweepBandMode": "扫描带宽：",
+"option:sweepBandOff": "关闭",
+"option:sweepBandCommon": "所有声道共用",
+"option:sweepBandPerChannel": "按声道",
+"label:sweepBandChannel": "要配置的声道：",
+"help:sweepBandMode": "选择是否限制扫描和测试信号的带宽。按声道可为每个选定的输出声道设置单独的频率范围。",
 "label:sweepMinFreq": "扫描最低频率（Hz）：", // Label for sweep minimum frequency
 "help:sweepMinFreq": "扫描信号的最低频率（Hz）。可从 1 Hz 设置到所选采样频率的奈奎斯特频率以下。测试信号也会被限制在此频带。（默认：20 Hz）", // Help text for sweep min frequency
 "label:sweepMaxFreq": "扫描最高频率（Hz）：", // Label for sweep maximum frequency
@@ -130,6 +135,8 @@
 "error:measurementConfigUnavailable": "测量设置已不可用。请开始新的测量。",
 "error:measurementFailed": "无法完成测量。请检查音频设备并重新测量此点。",
 "error:measurementImportFailed": "测量文件无效。请选择由 EffeTune 导出的测量 JSON 文件。",
+"error:impulseResponseImportFailed": "无法导入 WAV 文件。请选择包含 1 至 8 个声道的有效脉冲响应 WAV 文件。",
+"error:impulseResponseImportTooLarge": "脉冲响应 WAV 文件过大。请选择更短或更小的脉冲响应。",
 "error:clipboardWriteFailed": "无法复制 PEQ 设置。请检查剪贴板访问权限后重试。",
 "error:correctionUpdateFailed": "无法更新校正。请检查设置后重试。",
 "error:measurementDisplayFailed": "无法更新测量结果显示。请重新选择该测量。",
@@ -186,5 +193,23 @@
 "option:averaging8": "8", // Option for 8 averaging
 "option:averaging10": "10", // Option for 10 averaging
 "option:averaging12": "12", // Option for 12 averaging
-"option:averaging16": "16" // Option for 16 averaging
+"option:averaging16": "16", // Option for 16 averaging
+"status:measuringChannel": "正在测量 {channel}（{current}/{total}）",
+"label:channelFilter": "通道：",
+"option:allChannelsAverage": "全部（平均）",
+"option:multiChannel": "多个通道",
+"message:irSavedChannels": "已保存 {count} 个通道的脉冲响应 ✓",
+"warning:signalTooLowChannels": "{channels} 的测量信号过低",
+"warning:signalTooHighChannels": "{channels} 的测量信号过高",
+"label:noiseChannel": "测试信号通道：",
+"label:noiseChannelMode": "通道模式：",
+"option:noiseModeManual": "手动",
+"option:noiseModeAuto": "自动轮换",
+"button:copyChannelPEQ": "复制各通道 PEQ 设置",
+"message:channelPeqCopied": "各通道 PEQ 设置已复制到剪贴板。",
+"button:redoChannel": "重新测量通道",
+"label:redoChannel": "通道：",
+"label:calibrationAssignMode": "校准分配：",
+"option:calibrationCommon": "共用",
+"option:calibrationPerChannel": "按通道"
 }

@@ -19,7 +19,7 @@
     "cv": 40,
     "dp": 0.03,
     "tr": 0.99,
-    "wg": 30
+    "wg": 26
   },
   "events": [
     {
@@ -49,7 +49,7 @@
     "abs": 0.0001,
     "policy": "per-sample"
   },
-  "jsEngineHash": "d686b049e0f4506302fae216bf2e6a96d15bc1adbbe7dd9c530c42215bfa81e5",
+  "jsEngineHash": "650226fd8b0a9757671f3589f78d2ac67dcedc4cbdb08757633d35e598fcd411",
   "outputFloats": 2602,
   "byteLength": 10408,
   "binary": "case-006.f32"

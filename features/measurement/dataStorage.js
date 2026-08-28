@@ -3,11 +3,19 @@
  * Manages saving/loading from IndexedDB and file export/import
  */
 
+import {
+    collectPointIrKeyIds,
+    collectStoredIrKeyIds,
+    isMultiChannelMeasurement
+} from './measurement-model.js';
+
 export class MeasurementImportError extends Error {
     constructor(kind, cause = null) {
         super(kind === 'storage'
             ? 'The imported measurement could not be saved.'
-            : 'The measurement file format is invalid.');
+            : kind === 'size'
+                ? 'The impulse-response WAV file is too large.'
+                : 'The measurement file format is invalid.');
         this.name = 'MeasurementImportError';
         this.kind = kind;
         this.cause = cause;
@@ -51,8 +59,27 @@ function metadataOnlyMeasurement(measurement) {
     delete metadata._deletedPointIds;
     delete metadata._originalPoints;
     delete metadata._editSnapshot;
-    for (const point of metadata.points || []) delete point.ir;
+    for (const point of metadata.points || []) {
+        delete point.ir;
+        for (const entry of point.channels || []) {
+            delete entry.ir;
+            delete entry.irId;
+        }
+    }
     return metadata;
+}
+
+const VALID_OUTPUT_CHANNELS = new Set(['left', 'right', '2', '3', '4', '5', '6', '7']);
+
+function hasValidCalibration(calibration) {
+    return calibration && typeof calibration === 'object' &&
+        typeof calibration.sourceMeasurementId === 'string' &&
+        Number.isSafeInteger(calibration.sourcePointId) &&
+        (calibration.sourceChannel === undefined || typeof calibration.sourceChannel === 'string') &&
+        typeof calibration.sourceMeasurementName === 'string' &&
+        typeof calibration.sourcePointName === 'string' &&
+        typeof calibration.sourceTimestamp === 'string' &&
+        Number.isFinite(calibration.sampleRate) && calibration.sampleRate > 0;
 }
 
 function hasValidImportedScalars(data) {
@@ -73,6 +100,22 @@ function hasValidImportedScalars(data) {
     if (data.sweepBandLimited !== undefined && typeof data.sweepBandLimited !== 'boolean') {
         return false;
     }
+    if (data.outputChannelCount !== undefined && ![2, 4, 6, 8].includes(data.outputChannelCount)) {
+        return false;
+    }
+    if (data.sweepBand !== undefined) {
+        const band = data.sweepBand;
+        const validRange = range => range && Number.isFinite(range.minFreq) &&
+            Number.isFinite(range.maxFreq) && range.minFreq > 0 && range.maxFreq > range.minFreq;
+        if (!band || !['off', 'common', 'perChannel'].includes(band.mode) ||
+            !validRange(band.common) || !Array.isArray(band.perChannel)) return false;
+        const channels = new Set();
+        for (const entry of band.perChannel) {
+            if (!validRange(entry) || !VALID_OUTPUT_CHANNELS.has(entry.channel) ||
+                channels.has(entry.channel)) return false;
+            channels.add(entry.channel);
+        }
+    }
     if (data.sampleRate !== undefined && data.sampleRate <= 0) return false;
     if (data.sweepLength !== undefined && (
         !['number', 'string'].includes(typeof data.sweepLength) ||
@@ -82,26 +125,75 @@ function hasValidImportedScalars(data) {
     if (data.averageFrequencyResponse !== undefined &&
         !isFrequencyResponse(data.averageFrequencyResponse)) return false;
     if (data.peqParameters !== undefined && !Array.isArray(data.peqParameters)) return false;
-    if (data.interfaceCalibration !== undefined) {
-        const calibration = data.interfaceCalibration;
-        if (!calibration || typeof calibration !== 'object' ||
-            typeof calibration.sourceMeasurementId !== 'string' ||
-            !Number.isSafeInteger(calibration.sourcePointId) ||
-            typeof calibration.sourceMeasurementName !== 'string' ||
-            typeof calibration.sourcePointName !== 'string' ||
-            typeof calibration.sourceTimestamp !== 'string' ||
-            !Number.isFinite(calibration.sampleRate) ||
-            calibration.sampleRate <= 0) {
+    if (data.interfaceCalibration !== undefined && !hasValidCalibration(data.interfaceCalibration)) {
+        return false;
+    }
+
+    const hasOutputChannels = data.outputChannels !== undefined;
+    if (!hasOutputChannels) {
+        if (data.interfaceCalibrations !== undefined) return false;
+        return data.points.every(point => point && typeof point === 'object' &&
+            !Array.isArray(point.channels) &&
+            (point.name === undefined || typeof point.name === 'string') &&
+            (point.timestamp === undefined || typeof point.timestamp === 'string') &&
+            (point.pointId === undefined || Number.isSafeInteger(point.pointId)) &&
+            (point.maxSignalLevel === undefined || Number.isFinite(point.maxSignalLevel)) &&
+            isFrequencyResponse(point.frequencyResponse));
+    }
+
+    if (!Array.isArray(data.outputChannels) || data.outputChannel !== 'multi' ||
+        data.outputChannels.length < 2 || new Set(data.outputChannels).size !== data.outputChannels.length ||
+        data.outputChannels.some(channel => !VALID_OUTPUT_CHANNELS.has(channel)) ||
+        !Array.isArray(data.channelResponses) ||
+        data.channelResponses.length !== data.outputChannels.length) {
+        return false;
+    }
+    const responseChannels = new Set();
+    for (const entry of data.channelResponses) {
+        if (!entry || !data.outputChannels.includes(entry.channel) ||
+            responseChannels.has(entry.channel) ||
+            !isFrequencyResponse(entry.averageFrequencyResponse) ||
+            (entry.maxSignalLevel !== undefined && !Number.isFinite(entry.maxSignalLevel))) {
             return false;
+        }
+        responseChannels.add(entry.channel);
+    }
+    if (data.interfaceCalibration !== undefined && data.interfaceCalibrations !== undefined) return false;
+    if (data.interfaceCalibrations !== undefined) {
+        if (!Array.isArray(data.interfaceCalibrations)) return false;
+        const calibrationChannels = new Set();
+        for (const calibration of data.interfaceCalibrations) {
+            if (!hasValidCalibration(calibration) ||
+                !data.outputChannels.includes(calibration.channel) ||
+                calibrationChannels.has(calibration.channel)) return false;
+            calibrationChannels.add(calibration.channel);
         }
     }
 
-    return data.points.every(point => point && typeof point === 'object' &&
-        (point.name === undefined || typeof point.name === 'string') &&
-        (point.timestamp === undefined || typeof point.timestamp === 'string') &&
-        (point.pointId === undefined || Number.isSafeInteger(point.pointId)) &&
-        (point.maxSignalLevel === undefined || Number.isFinite(point.maxSignalLevel)) &&
-        isFrequencyResponse(point.frequencyResponse));
+    const ids = new Set();
+    for (const point of data.points) {
+        if (!point || typeof point !== 'object' || !Number.isSafeInteger(point.pointId) ||
+            point.pointId < 0 || ids.has(point.pointId) ||
+            (point.name !== undefined && typeof point.name !== 'string') ||
+            (point.timestamp !== undefined && typeof point.timestamp !== 'string') ||
+            !Array.isArray(point.channels) || point.channels.length !== data.outputChannels.length) {
+            return false;
+        }
+        ids.add(point.pointId);
+        for (let index = 0; index < point.channels.length; index += 1) {
+            const entry = point.channels[index];
+            if (!entry || entry.channel !== data.outputChannels[index] ||
+                !isFrequencyResponse(entry.frequencyResponse) ||
+                (entry.maxSignalLevel !== undefined && !Number.isFinite(entry.maxSignalLevel))) {
+                return false;
+            }
+            if (entry.irId !== undefined) {
+                if (!Number.isSafeInteger(entry.irId) || entry.irId < 0 || ids.has(entry.irId)) return false;
+                ids.add(entry.irId);
+            }
+        }
+    }
+    return true;
 }
 
 export class DataStorage {
@@ -374,7 +466,10 @@ export class DataStorage {
                     
                     // Fallback to localStorage
                     try {
-                        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.measurements));
+                        localStorage.setItem(
+                            this.STORAGE_KEY,
+                            JSON.stringify(this.measurements.map(metadataOnlyMeasurement))
+                        );
                         console.log('Saved measurements to localStorage (fallback)');
                         resolve(true);
                     } catch (err) {
@@ -388,7 +483,10 @@ export class DataStorage {
             
             // Fallback to localStorage
             try {
-                localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.measurements));
+                localStorage.setItem(
+                    this.STORAGE_KEY,
+                    JSON.stringify(this.measurements.map(metadataOnlyMeasurement))
+                );
                 console.log('Saved measurements to localStorage (fallback)');
                 return true;
             } catch (err) {
@@ -398,7 +496,7 @@ export class DataStorage {
         }
     }
 
-    async putMeasurement(measurement, impulseResponses = []) {
+    async putMeasurement(measurement, impulseResponses = [], options = {}) {
         const records = Array.isArray(impulseResponses)
             ? impulseResponses
             : impulseResponses ? [impulseResponses] : [];
@@ -430,7 +528,9 @@ export class DataStorage {
             return true;
         } catch (error) {
             console.error('Error saving measurement record:', error);
-            if (this.indexedDbUnavailable) return this.saveMetadataFallback(measurement);
+            if (this.indexedDbUnavailable && options.requireImpulseResponses !== true) {
+                return this.saveMetadataFallback(measurement);
+            }
             return false;
         }
     }
@@ -445,7 +545,13 @@ export class DataStorage {
 
         try {
             localStorage.setItem(this.STORAGE_KEY, JSON.stringify(measurements));
-            for (const point of measurement.points || []) delete point.ir;
+            for (const point of measurement.points || []) {
+                delete point.ir;
+                for (const entry of point.channels || []) {
+                    delete entry.ir;
+                    delete entry.irId;
+                }
+            }
             for (const key of Object.keys(measurement)) delete measurement[key];
             Object.assign(measurement, metadataOnly);
             this.irPersistenceAvailable = false;
@@ -509,13 +615,17 @@ export class DataStorage {
         const points = measurement.points || [];
         const index = points.findIndex(point => point.pointId === pointId);
         if (index < 0) return false;
+        const deletedPoint = points[index];
         measurement.points = points.filter(point => point.pointId !== pointId);
         try {
             const db = await this.openDatabase();
             await new Promise((resolve, reject) => {
                 const transaction = db.transaction([this.STORE_NAME, this.IR_STORE], 'readwrite');
                 transaction.objectStore(this.STORE_NAME).put(measurement);
-                transaction.objectStore(this.IR_STORE).delete([measurementId, pointId]);
+                const irStore = transaction.objectStore(this.IR_STORE);
+                for (const irKey of collectPointIrKeyIds(deletedPoint)) {
+                    irStore.delete([measurementId, irKey]);
+                }
                 transaction.oncomplete = () => resolve();
                 transaction.onerror = event => reject(event.target.error);
                 transaction.onabort = event => reject(
@@ -696,7 +806,7 @@ export class DataStorage {
      * @param {Object} measurement - Measurement object
      * @returns {string} ID of the new or updated measurement
      */
-    async addMeasurement(measurement, impulseResponseRecords = []) {
+    async addMeasurement(measurement, impulseResponseRecords = [], options = {}) {
         // Ensure measurement has an ID and timestamp
         const measurementId = measurement.id || this.generateId();
         
@@ -716,7 +826,7 @@ export class DataStorage {
                 lastModified: new Date().toISOString()
             });
             
-            const saved = await this.putMeasurement(updatedMeasurement, impulseResponseRecords);
+            const saved = await this.putMeasurement(updatedMeasurement, impulseResponseRecords, options);
             if (!saved) {
                 throw new Error('The measurement could not be saved.');
             }
@@ -727,7 +837,7 @@ export class DataStorage {
                 measurement: updatedMeasurement
             });
         } else {
-            const saved = await this.putMeasurement(newMeasurement, impulseResponseRecords);
+            const saved = await this.putMeasurement(newMeasurement, impulseResponseRecords, options);
             if (!saved) {
                 throw new Error('The measurement could not be saved.');
             }
@@ -846,7 +956,7 @@ export class DataStorage {
      * @param {string} id - Measurement ID
      * @returns {string|null} JSON string or null if measurement not found
      */
-    async exportMeasurementToJSON(id, includeImpulseResponses = false) {
+    async exportMeasurementToJSON(id, includeImpulseResponses = true) {
         const measurement = this.getMeasurementById(id);
         if (!measurement) {
             return null;
@@ -861,9 +971,7 @@ export class DataStorage {
                 throw new MeasurementExportError(error);
             }
             const expectedPointIds = new Set(
-                (measurement.points || [])
-                    .filter(point => point.ir?.stored === true)
-                    .map(point => point.pointId)
+                (measurement.points || []).flatMap(collectStoredIrKeyIds)
             );
             const recordPointIds = new Set();
             let recordsComplete = records.length === expectedPointIds.size;
@@ -963,13 +1071,34 @@ export class DataStorage {
 
         const impulseResponses = Array.isArray(data.impulseResponses) ? data.impulseResponses : [];
         delete data.impulseResponses;
+        const multi = isMultiChannelMeasurement(data);
+        let nextPointId = Number.isSafeInteger(data.nextPointId) ? data.nextPointId : 0;
         for (const point of data.points) {
-            if (!Number.isSafeInteger(point.pointId)) point.pointId = data.nextPointId || 0;
-            data.nextPointId = Math.max(data.nextPointId || 0, point.pointId + 1);
+            if (!Number.isSafeInteger(point.pointId)) point.pointId = nextPointId;
+            nextPointId = Math.max(nextPointId, point.pointId + 1);
+            for (const entry of point.channels || []) {
+                if (Number.isSafeInteger(entry.irId)) nextPointId = Math.max(nextPointId, entry.irId + 1);
+            }
         }
+        data.nextPointId = nextPointId;
 
-        const pointsById = new Map(data.points.map(point => [point.pointId, point]));
-        for (const point of data.points) delete point.ir;
+        const pointsById = new Map();
+        const sweepLimitedById = new Map();
+        for (const point of data.points) {
+            if (multi) {
+                for (const entry of point.channels) {
+                    if (!Number.isSafeInteger(entry.irId)) continue;
+                    pointsById.set(entry.irId, { target: entry, channel: entry.channel });
+                    sweepLimitedById.set(entry.irId, entry.ir?.sweepLimited === true);
+                    delete entry.ir;
+                    delete entry.irId;
+                }
+            } else {
+                pointsById.set(point.pointId, { target: point, channel: null });
+                sweepLimitedById.set(point.pointId, point.ir?.sweepLimited === true);
+                delete point.ir;
+            }
+        }
         const decodedRecords = [];
         const decodedPointIds = new Set();
         for (const record of impulseResponses) {
@@ -984,20 +1113,23 @@ export class DataStorage {
             try {
                 const samples = this.decodeFloat32Array(record.data);
                 if (samples.length === 0 || record.onsetIndex >= samples.length) continue;
+                const target = pointsById.get(record.pointId);
                 const decodedRecord = {
                     ...record,
                     measurementId: data.id,
+                    ...(target.channel ? { channel: target.channel } : {}),
                     data: samples
                 };
                 decodedRecords.push(decodedRecord);
                 decodedPointIds.add(record.pointId);
-                const point = pointsById.get(record.pointId);
-                point.ir = {
+                if (target.channel) target.target.irId = record.pointId;
+                target.target.ir = {
                     stored: true,
                     length: samples.length,
                     sampleRate: record.sampleRate,
                     onsetIndex: record.onsetIndex,
-                    ...(Number.isFinite(record.peakDb) ? { peakDb: record.peakDb } : {})
+                    ...(Number.isFinite(record.peakDb) ? { peakDb: record.peakDb } : {}),
+                    ...(sweepLimitedById.get(record.pointId) ? { sweepLimited: true } : {})
                 };
             } catch (error) {
                 console.warn('Embedded impulse response was ignored:', error);

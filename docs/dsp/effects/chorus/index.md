@@ -48,7 +48,7 @@ Chorus adds moving delayed copies of the music. Its modes cover **Stereo Chorus*
 
 ### Parameters
 
-- **Style** — loads a complete factory setting for every parameter. Choices are **Classic Chorus** (Chorus), **Stereo Chorus** (Stereo Chorus), **Ensemble** (Ensemble), **Flanger** (Flanger), **Jet Flanger** (Flanger), and **Vibrato** (Vibrato). Changing an individual parameter switches Style to **Custom**.
+- **System Presets** — use **Classic Chorus**, **Stereo Chorus**, **Ensemble**, **Flanger**, **Jet Flanger**, or **Vibrato** to load a complete starting point. Adjust individual parameters afterwards to refine it.
 - **Mode** — selects Chorus, Stereo Chorus, Ensemble, Flanger, or Vibrato.
 - **Rate** (0.05–10 Hz) — sets modulation speed.
 - **Delay** (0.5–30 ms) — sets nominal wet-path delay.

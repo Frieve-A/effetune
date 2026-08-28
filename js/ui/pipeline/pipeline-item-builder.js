@@ -136,6 +136,10 @@ export class PipelineItemBuilder {
             actions.appendChild(routingBtn);
         }
 
+        if (!plugin.constructor?.hidePresetUI) {
+            actions.appendChild(this.createPresetButton(plugin));
+        }
+
         // Reset parameters button
         const resetBtn = this.createResetButton(plugin);
         actions.appendChild(resetBtn);
@@ -344,6 +348,21 @@ export class PipelineItemBuilder {
         return routingBtn;
     }
 
+    createPresetButton(plugin) {
+        const presetBtn = document.createElement('button');
+        presetBtn.className = 'preset-button';
+        presetBtn.title = window.uiManager
+            ? window.uiManager.t('ui.title.effectPresets')
+            : 'Effect Presets';
+        presetBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+        presetBtn.onclick = event => {
+            event.stopPropagation();
+            this.pipelineCore.handlePluginSelection(plugin, event);
+            this.pipelineCore.showPluginPresetDialog(plugin, presetBtn);
+        };
+        return presetBtn;
+    }
+
     /**
      * Create reset button for restoring plugin parameters to defaults
      * @param {Object} plugin - The plugin
@@ -375,34 +394,17 @@ export class PipelineItemBuilder {
 
         const defaultParameters = JSON.parse(JSON.stringify(plugin.defaultParameters || {}));
         const historyManager = this.pipelineManager && this.pipelineManager.historyManager;
-        const wasUndoRedoOperation = historyManager ? historyManager.isUndoRedoOperation : false;
-        const wasSuppressingHistory = plugin._suppressParameterHistory === true;
-
-        if (plugin.saveStateTimeout) {
-            clearTimeout(plugin.saveStateTimeout);
-            plugin.saveStateTimeout = null;
-        }
+        const applyDefaults = () => {
+            plugin.setParameters(defaultParameters);
+            this.pipelineCore.updateWorkletPlugin(plugin);
+            this.pipelineCore.updatePipelineUI(true);
+        };
 
         if (historyManager) {
-            historyManager.isUndoRedoOperation = true;
-        }
-        plugin._suppressParameterHistory = true;
-
-        try {
-            plugin.setParameters(defaultParameters);
-        } finally {
-            plugin._suppressParameterHistory = wasSuppressingHistory;
-            plugin.paramChangeStarted = false;
-            if (historyManager) {
-                historyManager.isUndoRedoOperation = wasUndoRedoOperation;
-            }
-        }
-
-        this.pipelineCore.updateWorkletPlugin(plugin);
-        this.pipelineCore.updatePipelineUI(true);
-
-        if (historyManager && !historyManager.isUndoRedoOperation) {
+            historyManager.withHistorySuppressed(applyDefaults);
             historyManager.saveState();
+        } else {
+            applyDefaults();
         }
     }
 
@@ -651,10 +653,6 @@ export class PipelineItemBuilder {
             plugin._pipelineUpdateParametersWrapped = true;
             plugin._pipelineOriginalUpdateParameters = originalUpdateParameters;
 
-            // Add lastSaveTime property to track when the state was last saved
-            plugin.lastSaveTime = 0;
-            plugin.paramChangeStarted = false;
-            
             plugin.updateParameters = function(...args) {
                 originalUpdateParameters.apply(this, args);
                 
@@ -673,43 +671,18 @@ export class PipelineItemBuilder {
                     }
                 }
                 
-                const now = Date.now();
-                const suppressHistory = this._suppressParameterHistory === true;
-                
-                // If this is the first parameter change or it's been more than 500ms since the last save
-                if (!suppressHistory && (!this.paramChangeStarted || (now - this.lastSaveTime > 500))) {
-                    // Save state immediately for the first parameter change
-                    if (this.audioManager && this.audioManager.pipelineManager) {
-                        // Skip saving during pipeline switching operations
-                        const historyManager = this.audioManager.pipelineManager.historyManager;
-                        if (!historyManager.isUndoRedoOperation) {
-                            historyManager.saveState();
-                            this.lastSaveTime = now;
-                            this.paramChangeStarted = true;
-                        }
-                    }
+                const pipelineManager = this.audioManager?.pipelineManager;
+                const historyManager = pipelineManager?.historyManager;
+                if (!historyManager || historyManager.isHistorySuppressed) return;
+
+                const operationToken = pipelineManager.uiEventHandler
+                    ?.getParameterOperationToken(this);
+                if (operationToken) {
+                    historyManager.saveState({ operationToken });
+                    return;
                 }
-                
-                // Reset the timer for parameter changes that happen in quick succession
-                if (this.saveStateTimeout) {
-                    clearTimeout(this.saveStateTimeout);
-                }
-                
-                // Set a timeout to mark the end of a parameter change session
-                // and save the final state
-                if (!suppressHistory) {
-                    this.saveStateTimeout = setTimeout(() => {
-                        // Save the final state at the end of parameter changes
-                        if (this.audioManager && this.audioManager.pipelineManager) {
-                            // Skip saving during pipeline switching operations
-                            const historyManager = this.audioManager.pipelineManager.historyManager;
-                            if (!historyManager.isUndoRedoOperation) {
-                                historyManager.saveState();
-                            }
-                        }
-                        this.paramChangeStarted = false;
-                    }, 500);
-                }
+
+                historyManager.saveStateAtomicallyIfChanged();
             }.bind(plugin);
         }
     }

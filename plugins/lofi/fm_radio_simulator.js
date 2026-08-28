@@ -1,3 +1,27 @@
+const FM_RADIO_SIMULATOR_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({
+        id: 'powerhouse-broadcast', label: 'Powerhouse Broadcast',
+        params: Object.freeze({
+            rd: true, em: '50', pr: 9, st: 60, tn: 0, bw: 230,
+            mp: 0, dl: 5, fd: 0, sm: 'Auto', og: 0, mx: 100
+        })
+    }),
+    Object.freeze({
+        id: 'distant-station', label: 'Distant Station',
+        params: Object.freeze({
+            rd: true, em: '50', pr: 0, st: 18, tn: 0, bw: 230,
+            mp: 10, dl: 5, fd: 1, sm: 'Auto', og: 0, mx: 100
+        })
+    }),
+    Object.freeze({
+        id: 'city-multipath', label: 'City Drive Multipath',
+        params: Object.freeze({
+            rd: true, em: '75', pr: 0, st: 45, tn: 0, bw: 230,
+            mp: 60, dl: 12, fd: 8, sm: 'Auto', og: 0, mx: 100
+        })
+    })
+]);
+
 // FM Radio Simulator: physical FM broadcast transmission -> propagation -> reception chain.
 // Runtime processing is WASM-only. This JS reference implementation is used offline
 // for parity/golden generation via the hidden `fr` parameter and mirrors the C++ kernel
@@ -910,6 +934,13 @@ const FM_RADIO_SIMULATOR_SPECTRUM_MAX_HZ = 60000;
 const FM_RADIO_SIMULATOR_SPECTRUM_FLOOR_DB = -100;
 
 class FMRadioSimulatorPlugin extends PluginBase {
+    static getSystemPresetGroups() {
+        return [{
+            label: '',
+            presets: FM_RADIO_SIMULATOR_SYSTEM_PRESETS.map(preset => ({ ...preset }))
+        }];
+    }
+
     constructor() {
         super('FM Radio Simulator', 'Physical FM broadcast transmission and reception simulation');
 

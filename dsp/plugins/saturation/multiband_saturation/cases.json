@@ -77,8 +77,11 @@
       "id": "crossover-events-reset-and-fade",
       "stimulus": "noise",
       "frames": 4301,
+      "params": { "f1": 1000, "f2": 200 },
       "events": [
         { "frame": 31, "params": { "f1": 400 } },
+        { "frame": 256, "params": { "f2": 200 } },
+        { "frame": 512, "params": { "f1": 20 } },
         { "frame": 1024, "params": { "f2": 12000 } },
         { "frame": 2049, "params": { "f1": 80, "f2": 600 } },
         { "frame": 3500, "params": { "f1": 1600, "f2": 18000 } }

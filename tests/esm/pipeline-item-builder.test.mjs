@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { HistoryManager } from '../../js/ui/pipeline/history-manager.js';
 import { PipelineItemBuilder } from '../../js/ui/pipeline/pipeline-item-builder.js';
+import { UIEventHandler } from '../../js/ui/pipeline/ui-event-handler.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
 class FakeClassList {
@@ -196,8 +198,6 @@ class TestPlugin {
       channel: options.channel ?? null,
       defaultParameters: options.defaultParameters ?? { gain: 1 },
       parameters: options.parameters ?? { gain: 0.5 },
-      saveStateTimeout: options.saveStateTimeout ?? null,
-      _suppressParameterHistory: options.suppressHistory ?? false,
       updateMarkers: options.updateMarkers,
       updateResponse: options.updateResponse,
       _setSectionEnabled: options.setSectionEnabled
@@ -229,6 +229,8 @@ class TestPlugin {
 }
 
 class SectionPlugin extends TestPlugin {
+  static hidePresetUI = true;
+
   constructor(options = {}) {
     super({ ...options, name: 'Section' });
     this.cm = options.cm ?? '';
@@ -238,9 +240,28 @@ class SectionPlugin extends TestPlugin {
 function createCore(options = {}) {
   const calls = [];
   const historyManager = options.noHistory ? null : {
-    isUndoRedoOperation: options.isUndoRedoOperation ?? false,
-    saveState() {
-      calls.push(['saveState']);
+    isHistorySuppressed: options.isHistorySuppressed ?? false,
+    beginOperation(token) {
+      calls.push(['beginOperation', token]);
+    },
+    endOperation(token) {
+      calls.push(['endOperation', token]);
+    },
+    withHistorySuppressed(callback) {
+      calls.push(['withHistorySuppressed']);
+      const previous = this.isHistorySuppressed;
+      this.isHistorySuppressed = true;
+      try {
+        return callback();
+      } finally {
+        this.isHistorySuppressed = previous;
+      }
+    },
+    saveState(options) {
+      calls.push(['saveState', options]);
+    },
+    saveStateAtomicallyIfChanged() {
+      calls.push(['saveStateAtomicallyIfChanged']);
     }
   };
   const pipelineManager = options.noPipelineManager ? null : {
@@ -248,6 +269,9 @@ function createCore(options = {}) {
     uiEventHandler: options.noDragHandler ? null : {
       setupDragEvents(handle, item, plugin) {
         calls.push(['setupDragEvents', handle.className, item.dataset.pluginId, plugin.name]);
+      },
+      getParameterOperationToken() {
+        return options.parameterOperationToken ?? null;
       }
     }
   };
@@ -281,6 +305,9 @@ function createCore(options = {}) {
     },
     showRoutingDialog(plugin, anchor) {
       calls.push(['showRoutingDialog', plugin.name, anchor.className]);
+    },
+    showPluginPresetDialog(plugin, anchor) {
+      calls.push(['showPluginPresetDialog', plugin.name, anchor.className]);
     },
     updateWorkletPlugin(plugin) {
       calls.push(['updateWorkletPlugin', plugin.name]);
@@ -391,6 +418,8 @@ test('creates pipeline items and exercises header controls for regular plugins',
     assert.equal(actions.parentNode, header);
     assert.equal(find(item, '.bus-info').parentNode, header);
     assert.equal(find(item, '.routing-button').parentNode, actions);
+    assert.equal(find(item, '.preset-button').parentNode, actions);
+    assert.ok(actions.children.indexOf(find(item, '.preset-button')) > actions.children.indexOf(find(item, '.routing-button')));
     assert.equal(find(item, '.delete-button').parentNode, actions);
 
     item.dispatch('click', { target: find(item, '.plugin-ui') });
@@ -409,7 +438,7 @@ test('creates pipeline items and exercises header controls for regular plugins',
 
     find(item, '.bus-info').onclick(createEvent(find(item, '.bus-info')));
     find(item, '.routing-button').onclick(createEvent(find(item, '.routing-button')));
-    plugin.saveStateTimeout = 1;
+    find(item, '.preset-button').onclick(createEvent(find(item, '.preset-button')));
     find(item, '.reset-effect-button').onclick(createEvent(find(item, '.reset-effect-button')));
     assert.deepEqual(plugin.parameters, { gain: 1 });
 
@@ -431,6 +460,7 @@ test('creates pipeline items and exercises header controls for regular plugins',
     ui.dispatch('mousedown', { target: ui });
 
     assert.ok(core.calls.some(call => call[0] === 'showRoutingDialog'));
+    assert.ok(core.calls.some(call => call[0] === 'showPluginPresetDialog'));
     assert.ok(core.calls.some(call => call[0] === 'showAIDialog'));
     assert.ok(core.calls.some(call => call[0] === 'deleteSelectedPlugins'));
     assert.ok(core.calls.filter(call => call[0] === 'saveState').length >= 1);
@@ -533,6 +563,7 @@ test('section items wire section-specific buttons, selection, and animation prop
     assert.equal(item.className, 'pipeline-item section');
     assert.equal(find(item, '.plugin-name').textContent, 'Intro Section');
     assert.equal(item.querySelector('.routing-button'), null);
+    assert.equal(item.querySelector('.preset-button'), null);
 
     item.dispatch('click', { target: item });
     find(item, '.bus-info').onclick(createEvent(find(item, '.bus-info')));
@@ -571,6 +602,7 @@ test('bus labels, fallback titles, reset guards, and movement boundaries handle 
     assert.equal(builder.createToggleButton(new TestPlugin()).title, 'Enable or disable effect');
     assert.equal(builder.createPluginName(new SectionPlugin()).textContent, 'Section');
     assert.equal(builder.createRoutingButton(new TestPlugin()).title, 'Configure bus routing');
+    assert.equal(builder.createPresetButton(new TestPlugin()).title, 'Effect Presets');
     assert.equal(builder.createResetButton(new TestPlugin()).title, 'Reset effect settings');
     assert.equal(builder.createMoveUpButton(new TestPlugin()).title, 'Move effect up');
     assert.equal(builder.createMoveDownButton(new TestPlugin()).title, 'Move effect down');
@@ -635,7 +667,7 @@ test('parameter update wrapping preserves the original worklet payload without a
         }
       }
     }
-  }, async ({ documentRef, timers, setNow, runTimers }) => {
+  }, async ({ documentRef }) => {
     const section = new SectionPlugin({ id: 40, cm: 'Old', withUpdateParameters: true });
     section.updateParameters = (...args) => {
       section.updateCalls = [...(section.updateCalls || []), args];
@@ -650,7 +682,8 @@ test('parameter update wrapping preserves the original worklet payload without a
       });
       window.uiManager.updateURL();
     };
-    const core = createCore({ pipeline: [section] });
+    const operationToken = {};
+    const core = createCore({ pipeline: [section], parameterOperationToken: operationToken });
     const builder = new PipelineItemBuilder(core);
     const originalUpdateParameters = section.updateParameters;
     const item = builder.createPipelineItem(section);
@@ -658,7 +691,6 @@ test('parameter update wrapping preserves the original worklet payload without a
 
     section.cm = 'New';
     section.parameters = { gain: 2 };
-    section.saveStateTimeout = 1;
     builder.setupParameterUpdateHandling(section);
     assert.equal(section._pipelineOriginalUpdateParameters, originalUpdateParameters);
     section.updateParameters('first');
@@ -667,22 +699,23 @@ test('parameter update wrapping preserves the original worklet payload without a
     assert.equal(window.workletMessages[0].plugin.parameters.gain, 2);
     assert.deepEqual(window.workletMessages[0].plugin.wasmParams, Float32Array.of(2));
     assert.equal(window.workletMessages[0].plugin.wasmParamsHash, 0x12345678);
-    assert.ok(core.calls.some(call => call[0] === 'saveState'));
-    assert.ok(timers.some(timer => timer.delay === 500));
+    assert.equal(core.calls.find(call => call[0] === 'saveState')[1].operationToken, operationToken);
 
-    setNow(1800);
     section.cm = '';
     section.updateParameters('later');
     assert.equal(find(item, '.plugin-name').textContent, 'Section');
-    runTimers();
-    assert.equal(section.paramChangeStarted, false);
+    const tokenSaves = core.calls.filter(call => call[0] === 'saveState');
+    assert.equal(tokenSaves.length, 2);
+    assert.ok(tokenSaves.every(call => call[1].operationToken === operationToken));
 
-    section._suppressParameterHistory = true;
+    core.pipelineManager.uiEventHandler.getParameterOperationToken = () => null;
+    section.updateParameters('programmatic');
+    assert.equal(core.calls.at(-1)[0], 'saveStateAtomicallyIfChanged');
+
+    core.pipelineManager.historyManager.isHistorySuppressed = true;
+    const suppressedCallCount = core.calls.length;
     section.updateParameters('suppressed');
-
-    core.pipelineManager.historyManager.isUndoRedoOperation = true;
-    section._suppressParameterHistory = false;
-    section.updateParameters('undo');
+    assert.equal(core.calls.length, suppressedCallCount);
 
     const alreadyWrapped = new TestPlugin({ withUpdateParameters: true });
     alreadyWrapped._pipelineUpdateParametersWrapped = true;
@@ -695,6 +728,138 @@ test('parameter update wrapping preserves the original worklet payload without a
     const builder = new PipelineItemBuilder(createCore({ pipeline: [section], noPipelineManager: true }));
     builder.setupParameterUpdateHandling(section);
     section.updateParameters();
+  });
+});
+
+test('an equal programmatic update from another plugin preserves the active UI operation', async () => {
+  await withBuilderGlobals({}, async () => {
+    const pluginA = new TestPlugin({ id: 42, name: 'Plugin A', withUpdateParameters: true });
+    const pluginB = new TestPlugin({ id: 43, name: 'Plugin B', withUpdateParameters: true });
+    pluginA.parameters = { gain: 0 };
+    pluginB.parameters = { gain: 0 };
+    const audioManager = {
+      pipelineA: [pluginA, pluginB],
+      pipelineB: null,
+      pipeline: [pluginA, pluginB],
+      currentPipeline: 'A',
+      pipelineManager: null
+    };
+    const operationToken = {};
+    const pipelineManager = {
+      audioManager,
+      historyManager: null,
+      uiEventHandler: {
+        getParameterOperationToken(plugin) {
+          return plugin === pluginA ? operationToken : null;
+        }
+      }
+    };
+    const core = {
+      audioManager,
+      pluginManager: {},
+      expandedPlugins: new Set(),
+      pipelineManager,
+      getSerializablePluginState(plugin) {
+        return { nm: plugin.name, gain: plugin.parameters.gain };
+      }
+    };
+    pipelineManager.core = core;
+    audioManager.pipelineManager = pipelineManager;
+    const historyManager = new HistoryManager(pipelineManager);
+    pipelineManager.historyManager = historyManager;
+    const builder = new PipelineItemBuilder(core);
+    builder.setupParameterUpdateHandling(pluginA);
+    builder.setupParameterUpdateHandling(pluginB);
+    historyManager.saveState();
+
+    historyManager.beginOperation(operationToken);
+    pluginA.parameters.gain = 1;
+    pluginA.updateParameters();
+    pluginB.updateParameters();
+    assert.equal(historyManager.activeOperationToken, operationToken);
+
+    pluginA.parameters.gain = 2;
+    pluginA.updateParameters();
+    historyManager.endOperation(operationToken);
+    assert.equal(historyManager.history.length, 2);
+    assert.equal(historyManager.history[1].pipelineA[0].gain, 2);
+
+    historyManager.loadStateFromHistory = () => {};
+    historyManager.historyIndex = 0;
+    historyManager.redo();
+    assert.equal(historyManager.history[historyManager.historyIndex].pipelineA[0].gain, 2);
+  });
+});
+
+test('a changed programmatic update rebases a continuing UI gesture before its final commit', async () => {
+  await withBuilderGlobals({}, async () => {
+    const pluginA = new TestPlugin({ id: 44, name: 'Plugin A', withUpdateParameters: true });
+    const pluginB = new TestPlugin({ id: 45, name: 'Plugin B', withUpdateParameters: true });
+    pluginA.parameters = { gain: 0 };
+    pluginB.parameters = { gain: 0 };
+    const audioManager = {
+      pipelineA: [pluginA, pluginB],
+      pipelineB: null,
+      pipeline: [pluginA, pluginB],
+      currentPipeline: 'A',
+      pipelineManager: null
+    };
+    const initialToken = {};
+    const uiEventHandler = Object.create(UIEventHandler.prototype);
+    const pipelineManager = { audioManager, historyManager: null, uiEventHandler };
+    const core = {
+      audioManager,
+      pluginManager: {},
+      expandedPlugins: new Set(),
+      pipelineManager,
+      getSerializablePluginState(plugin) {
+        return { nm: plugin.name, gain: plugin.parameters.gain };
+      }
+    };
+    pipelineManager.core = core;
+    audioManager.pipelineManager = pipelineManager;
+    const historyManager = new HistoryManager(pipelineManager);
+    pipelineManager.historyManager = historyManager;
+    Object.assign(uiEventHandler, {
+      historyManager,
+      parameterOperation: {
+        token: initialToken,
+        plugin: pluginA,
+        target: {},
+        mode: 'continuous',
+        pointerActive: true,
+        keyboardActive: false,
+        focusActive: false,
+        ending: false,
+        cleanupTimer: null
+      }
+    });
+    const builder = new PipelineItemBuilder(core);
+    builder.setupParameterUpdateHandling(pluginA);
+    builder.setupParameterUpdateHandling(pluginB);
+    historyManager.saveState();
+
+    historyManager.beginOperation(initialToken);
+    pluginA.parameters.gain = 1;
+    pluginA.updateParameters();
+    pluginB.parameters.gain = 1;
+    pluginB.updateParameters();
+    assert.equal(historyManager.isOperationActive(initialToken), false);
+
+    pluginA.parameters.gain = 2;
+    pluginA.updateParameters();
+    const rebasedToken = uiEventHandler.parameterOperation.token;
+    assert.notEqual(rebasedToken, initialToken);
+    assert.equal(historyManager.isOperationActive(rebasedToken), true);
+    historyManager.endOperation(rebasedToken);
+    assert.equal(historyManager.history.at(-1).pipelineA[0].gain, 2);
+    assert.equal(historyManager.history.at(-1).pipelineA[1].gain, 1);
+
+    historyManager.loadStateFromHistory = () => {};
+    historyManager.undo();
+    assert.equal(historyManager.history[historyManager.historyIndex].pipelineA[0].gain, 1);
+    historyManager.redo();
+    assert.equal(historyManager.history[historyManager.historyIndex].pipelineA[0].gain, 2);
   });
 });
 

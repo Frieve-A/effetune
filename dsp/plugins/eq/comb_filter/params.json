@@ -42,7 +42,9 @@
       "key": "ct",
       "kind": "enum",
       "values": ["fb", "ff"],
-      "default": "ff"
+      "step": 1,
+      "default": "ff",
+      "automation": true
     }
   ]
 }

@@ -24,6 +24,13 @@ extern "C" const effetune::KernelDescriptor *et_kernel_descriptor_IRReverbPlugin
 extern "C" bool et_ir_reverb_read_automation_trace(effetune::PluginKernel *kernel, double *current,
                                                    double *target, double *step,
                                                    std::uint32_t *remaining) noexcept;
+extern "C" effetune::PluginKernel *
+et_engine_instance_kernel_for_testing(effetune::Engine *engine, et_instance instance) noexcept;
+extern "C" bool
+et_ir_reverb_read_scheduler_trace(effetune::PluginKernel *kernel, std::uint64_t *callback_weights,
+                                  std::uint32_t callback_capacity, std::uint32_t *callback_count,
+                                  std::uint32_t *slice_offset, std::uint32_t *violation_count,
+                                  std::uint64_t *deadline_recovery_count) noexcept;
 
 namespace {
 
@@ -37,7 +44,7 @@ constexpr std::uint32_t kMatrix = 4u;
 constexpr std::uint32_t kPathRecordBytes = 12u;
 constexpr std::uint32_t kMaxFrames = 512u;
 constexpr std::size_t kAssetCapacity = 32u * 1024u * 1024u;
-constexpr std::size_t kConvolverImplUpperBound = 512u;
+constexpr std::size_t kConvolverImplUpperBound = 16u * 1024u;
 constexpr std::size_t kConvolverStageUpperBound = 512u;
 constexpr std::size_t kPffftSetupFixedUpperBound = 136u;
 int failures = 0;
@@ -1343,6 +1350,90 @@ void testInstancePhaseStaggerPreservesActivationAndOutput() {
   IR_CHECK(render(first, input, 5000u) == render(second, input, 5000u));
 }
 
+void testEngineInstanceSaltStaggersEqualSessionSeeds() {
+  constexpr std::uint32_t frames = 262144u;
+  constexpr std::uint32_t seedLow = 0x12345678u;
+  constexpr std::uint32_t seedHigh = 0x9abcdef0u;
+  const std::vector<float> ir = makeIr(2u, frames);
+  const std::vector<std::uint8_t> payload = makePayload(ir, 2u, frames, 48000u, kIndependent);
+  const std::uint32_t footprint =
+      static_cast<std::uint32_t>(hostFootprint(frames, 2u, kIndependent, 2u, 128u));
+  const effetune::AssetBeginInfo info{
+      2u, frames, kIndependent, 128u,      1u,
+      0u, 0u,     2u,           footprint, static_cast<std::uint32_t>(payload.size())};
+
+  effetune::Engine engine;
+  IR_CHECK(engine.prepare(48000.0F, 2u, kMaxFrames, 0u) == ET_OK);
+  const et_instance first = engine.createInstance("IRReverbPlugin");
+  const et_instance second = engine.createInstance("IRReverbPlugin");
+  IR_CHECK(first != 0u && second != 0u);
+  IR_CHECK(engine.setInstanceSeed(first, seedLow, seedHigh) == ET_OK);
+  IR_CHECK(engine.setInstanceSeed(second, seedLow, seedHigh) == ET_OK);
+  for (const et_instance instance : {first, second}) {
+    std::uint8_t *staging = engine.beginInstanceAsset(instance, 0u, info);
+    IR_CHECK(staging != nullptr);
+    if (staging == nullptr)
+      continue;
+    std::memcpy(staging, payload.data(), payload.size());
+    IR_CHECK(engine.commitInstanceAsset(instance, 0u, info.byteSize, ET_ASSET_F32_MULTICH) ==
+             ET_OK);
+  }
+
+  std::array<float, 2u * 128u> silence{};
+  std::uint32_t callbacks = 0u;
+  while (((engine.instanceAssetState(first, 0u) & 0xffu) == ET_ASSET_STATE_PREPARING ||
+          (engine.instanceAssetState(second, 0u) & 0xffu) == ET_ASSET_STATE_PREPARING) &&
+         callbacks < 750u) {
+    silence.fill(0.0F);
+    IR_CHECK(engine.processInstance(first, silence.data(), 2u, 128u, callbacks * 128.0 / 48000.0) ==
+             ET_OK);
+    silence.fill(0.0F);
+    IR_CHECK(engine.processInstance(second, silence.data(), 2u, 128u,
+                                    callbacks * 128.0 / 48000.0) == ET_OK);
+    ++callbacks;
+  }
+  IR_CHECK(callbacks < 750u);
+  IR_CHECK((engine.instanceAssetState(first, 0u) & 0xffu) == ET_ASSET_STATE_ACTIVE);
+  IR_CHECK((engine.instanceAssetState(second, 0u) & 0xffu) == ET_ASSET_STATE_ACTIVE);
+
+  constexpr std::uint32_t maximumCallbacks = 32u;
+  std::array<std::uint64_t, maximumCallbacks> firstWeights{};
+  std::array<std::uint64_t, maximumCallbacks> secondWeights{};
+  std::uint32_t firstCallbackCount = 0u;
+  std::uint32_t secondCallbackCount = 0u;
+  std::uint32_t firstOffset = 0u;
+  std::uint32_t secondOffset = 0u;
+  std::uint32_t firstViolations = 0u;
+  std::uint32_t secondViolations = 0u;
+  std::uint64_t firstRecovery = 0u;
+  std::uint64_t secondRecovery = 0u;
+  IR_CHECK(et_ir_reverb_read_scheduler_trace(
+      et_engine_instance_kernel_for_testing(&engine, first), firstWeights.data(), maximumCallbacks,
+      &firstCallbackCount, &firstOffset, &firstViolations, &firstRecovery));
+  IR_CHECK(et_ir_reverb_read_scheduler_trace(
+      et_engine_instance_kernel_for_testing(&engine, second), secondWeights.data(),
+      maximumCallbacks, &secondCallbackCount, &secondOffset, &secondViolations, &secondRecovery));
+  IR_CHECK(firstOffset != secondOffset);
+  IR_CHECK(firstCallbackCount == secondCallbackCount);
+  IR_CHECK(firstWeights != secondWeights);
+  IR_CHECK(firstViolations == 0u && secondViolations == 0u);
+  IR_CHECK(firstRecovery == 0u && secondRecovery == 0u);
+
+  std::uint64_t samePhaseMaximum = 0u;
+  std::uint64_t staggeredMaximum = 0u;
+  for (std::uint32_t callback = 0u; callback < firstCallbackCount; ++callback) {
+    samePhaseMaximum = std::max(samePhaseMaximum, 2u * firstWeights[callback]);
+    staggeredMaximum = std::max(staggeredMaximum, firstWeights[callback] + secondWeights[callback]);
+  }
+  IR_CHECK(staggeredMaximum < samePhaseMaximum);
+  IR_CHECK(engine.resetInstance(first) == ET_OK);
+  IR_CHECK(engine.resetInstance(second) == ET_OK);
+  std::printf("IR engine instance salt: callback work staggered %llu < same-phase %llu, "
+              "activation %u callbacks\n",
+              static_cast<unsigned long long>(staggeredMaximum),
+              static_cast<unsigned long long>(samePhaseMaximum), callbacks);
+}
+
 void testHostFootprintEstimatorGrid() {
   struct TopologyBudgetCase {
     std::uint32_t topology;
@@ -1463,6 +1554,7 @@ int main(int argc, char **argv) {
     testEngineRejectsFailedPrepareAndReusesSlot();
   }
   testInstancePhaseStaggerPreservesActivationAndOutput();
+  testEngineInstanceSaltStaggersEqualSessionSeeds();
   testHostFootprintEstimatorGrid();
   return failures == 0 ? 0 : 1;
 }

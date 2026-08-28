@@ -185,6 +185,63 @@ Build directories are created below the repository-root `out/dsp/` directory.
 
 ### ABI and Real-Time Memory
 
+#### Native pipeline latency updates
+
+Native hosts using `core/engine.h` can update compensation for an existing
+pipeline without rebuilding its topology or stopping processing. The C ABI and
+language bindings are unchanged. The Engine remains owned by one thread; these
+methods do not provide a mailbox or make other Engine operations thread-safe.
+
+1. On the Engine's owning audio thread, between blocks, stage parameters using
+   the existing instance API and call `capturePipelineLatencySnapshot(snapshot)`.
+   The fixed-size snapshot records the configured topology and the kernels'
+   latest reported latencies. Transfer its value to a control thread using the
+   host's synchronized handoff.
+2. Off the audio thread, call the static
+   `Engine::preparePipelineLatencyUpdate(snapshot, update)`. It reads only the
+   snapshot, calculates the plan and allocates compensation storage. It never
+   reads or modifies the live Engine. `update.plannedLatency()` is a proposed
+   value, not the applied latency.
+3. Transfer exclusive access to the prepared update to the audio thread. After
+   staging that block's parameters and before `processPipeline`, call
+   `applyPipelineLatencyUpdate(update)`. It verifies the Engine, configuration
+   revision and latest kernel latencies, then installs the compensation without
+   allocation, deallocation, locks or I/O. On success, read `pipelineLatency()`
+   on that thread and publish that applied value to the host.
+4. Transfer the update back to the control thread before reusing or destroying
+   it. After a successful application it can own retired buffers. Snapshots and
+   updates must not outlive their originating Engine. Never prepare, destroy or
+   access an update concurrently with its application.
+
+`ET_ERR_STATE` from capture means no pipeline is configured. Preparation returns
+`ET_ERR_OOM` when storage cannot be allocated; any failure makes that update
+unusable. Application returns `ET_ERR_STATE` for an unprepared, consumed, wrong
+Engine or stale update. All these failures leave the active compensation and
+its reported latency unchanged. Discard stale results on the control thread,
+capture the latest state and prepare again. A successful application consumes
+its update and invalidates other results captured against the previous plan.
+
+Parameter staging and compensation preparation are separate. Kernels can report
+staged latency before their next processing call; latency changes also may arise
+from asset activation during processing. While preparation is outstanding,
+processing continues using the existing compensation. `pipelineLatency()` still
+reports that applied plan, not a promise that newly changed kernels already
+align with it. The host must request another snapshot when a kernel changes,
+apply a matching result at a block boundary, and update its bypass delay and
+host notification only after that application succeeds. This API does not
+provide an atomic transaction covering parameter changes, host bypass and host
+notifications, or guarantee click-free retiming.
+
+Unchanged delays retain their history. Shorter delays reuse existing storage;
+longer delays copy all retained recent samples into prepared storage before
+swapping it in. History older than the previous capacity starts at zero. A
+merge changing which signal it delays clears only that channel's compensation
+history, since the old signal is not valid history for the new one. Output
+alignment retains history on channels even when their current delay is zero,
+once output delay storage exists. No effect state is reset and no processing
+block is replaced by silence or dry audio. The existing channel, bus, block-size,
+master-bypass and explicit reset contracts remain in effect.
+
 #### ABI Contract
 
 The C ABI in `include/effetune/abi.h` is the host ABI for the bundled
@@ -302,12 +359,13 @@ its eight comb lines receives a separate capacity derived from that line's base
 delay:
 
 ```text
-capacity[i] = ceil(sampleRate * (baseDelay[i] + 0.5) * 0.005)
+capacity[i] = ceil(sampleRate * baseDelay[i] * 1.03 * 5 * 0.001)
 ```
 
-The public maximum room size is 50 m. At that setting, the largest possible
-randomized base delay is multiplied by five. Channels share one line-capacity
-table and use fixed offsets into a single Float32 buffer.
+The public maximum room size is 50 m. The 1.03 factor covers the largest
+positive delay jitter, and the room-size scale can multiply that delay by five.
+Channels share one line-capacity table and use fixed offsets into a single
+Float32 buffer.
 
 Room-size changes select active lengths within the existing capacities. They
 do not reallocate memory, and neither does audio processing.
@@ -318,20 +376,21 @@ At 192 kHz and eight channels:
 
 | Storage | Float32 samples | Bytes |
 | --- | ---: | ---: |
-| Comb buffers | 2,104,320 | 8,417,280 |
-| Complete instance | 2,196,480 | 8,785,920 |
+| Comb buffers | 2,135,840 | 8,543,360 |
+| Complete instance | 2,228,008 | 8,912,032 |
 
-The complete instance includes the comb buffers, the fixed 50 ms pre-delay,
-and two 5 ms all-pass buffers per channel. Its total is about 8.38 MiB. Giving
-every comb line a uniform stride based on the longest line would waste more
-than 3 MiB at this shape.
+The complete instance includes the comb buffers, a pre-delay ring with
+`ceil(sampleRate * .05) + 1` samples, and two 5 ms all-pass buffers per
+channel. Its total is about 8.50 MiB. Giving every comb line a uniform stride
+based on the longest line would waste more than 3 MiB at this shape.
 
 **State behavior**
 
 - Sample-rate preparation recalculates line lengths.
-- Randomized delay values and the RNG position are retained, matching the
-  JavaScript processor.
-- An explicit reset returns the RNG to its selected seed.
+- Fixed delay-jitter table values are retained; this kernel has no random
+  generator or seed.
+- An explicit reset clears delay-line history and restores the fixed initial
+  state.
 
 ### Structured Parameters
 

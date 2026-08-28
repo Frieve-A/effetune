@@ -65,6 +65,7 @@ public:
   virtual void prepare(const PrepareInfo &info) = 0;
   [[nodiscard]] virtual bool preparedSuccessfully() const noexcept { return true; }
   virtual void reset() noexcept = 0;
+  virtual void setInstanceSalt(std::uint32_t) noexcept {}
   virtual void setRandomSeed(std::uint32_t, std::uint32_t) noexcept {}
   virtual void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
                        const ProcessInfo &info) noexcept = 0;

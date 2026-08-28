@@ -10,7 +10,9 @@ import {
   DEFAULT_GOLDEN_BUDGET_BYTES,
   readGoldenSet
 } from '../../tools/dsp-parity/golden-io.mjs';
+import { getCurrentJsEngineHash } from './js-engine-hash-helper.mjs';
 import { runParityCli } from '../../tools/dsp-parity/run.mjs';
+import { createReferenceSession } from '../../tools/dsp-parity/node-host.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const resonatorRoot = path.join(repoRoot, 'dsp', 'plugins', 'resonator');
@@ -28,13 +30,11 @@ const expectedCaseIds = [
 const ports = [
   {
     type: 'HornResonatorPlugin',
-    folder: 'horn_resonator',
-    jsEngineHash: '5e33cf748a2b2fb7bf1cc1adc7dbaa4865790f29f89e266d809c0f42a1d0edb8'
+    folder: 'horn_resonator'
   },
   {
     type: 'HornResonatorPlusPlugin',
-    folder: 'horn_resonator_plus',
-    jsEngineHash: 'd686b049e0f4506302fae216bf2e6a96d15bc1adbbe7dd9c530c42215bfa81e5'
+    folder: 'horn_resonator_plus'
   }
 ];
 
@@ -64,7 +64,7 @@ async function readPort(port) {
 }
 
 test('horn schemas and generated packers share the frozen eight-float ABI', async () => {
-  const expectedDefaults = Float32Array.from([600, 70, 3, 60, 40, 0.03, 0.99, 30]);
+  const expectedDefaults = Float32Array.from([600, 70, 3, 60, 40, 0.03, 0.99, 26]);
   for (const port of ports) {
     const { schema } = await readPort(port);
     assert.equal(schema.hash, 0xc0bf4f84);
@@ -85,6 +85,19 @@ test('horn schemas and generated packers share the frozen eight-float ABI', asyn
   }
 });
 
+test('horn enabled parameter controls processing without a duplicate en key', async () => {
+  for (const { type } of ports) {
+    const session = await createReferenceSession(type, { repoRoot });
+    assert.equal(Object.hasOwn(session.plugin.getParameters(), 'en'), false);
+    const input = new Float32Array(512);
+    input[0] = input[256] = 0.5;
+    const options = { sampleRate: 48000, frames: 256, channels: 2, blockSize: 128 };
+    assert.notDeepEqual(await session.process(input, options), input);
+    session.plugin.enabled = false;
+    assert.deepEqual(await session.process(input, options), input);
+  }
+});
+
 test('horn reviewed case matrices and JS goldens remain deterministic', async () => {
   for (const port of ports) {
     const loaded = await readPort(port);
@@ -99,9 +112,10 @@ test('horn reviewed case matrices and JS goldens remain deterministic', async ()
     const goldenRoot = path.join(loaded.root, 'golden');
     assert.ok(await directoryBytes(goldenRoot) <= DEFAULT_GOLDEN_BUDGET_BYTES);
     const goldens = await readGoldenSet(goldenRoot);
+    const jsEngineHash = await getCurrentJsEngineHash(port.type, repoRoot);
     assert.equal(goldens.length, 9);
     assert.ok(goldens.every(item => item.metadata.type === port.type));
-    assert.ok(goldens.every(item => item.metadata.jsEngineHash === port.jsEngineHash));
+    assert.ok(goldens.every(item => item.metadata.jsEngineHash === jsEngineHash));
     assert.ok(goldens.every(item => item.expected.every(Number.isFinite)));
 
     const result = await runParityCli([

@@ -54,6 +54,14 @@ _site/
 !/tests/esm/group-delay-peq-design.test.mjs
 !/tests/esm/group-delay-peq-plugin.test.mjs
 !/tests/esm/room-eq-group-delay-analysis.test.mjs
+!/tests/esm/measurement-multichannel-model.test.mjs
+!/tests/esm/measurement-channel-legend.test.mjs
+!/tests/esm/measurement-store-multichannel.test.mjs
+!/tests/esm/measurement-impulse-response-import.test.mjs
+!/tests/esm/plugin-preset-store.test.mjs
+!/tests/esm/plugin-preset-dialog.test.mjs
+!/tests/esm/plugin-system-presets.test.mjs
+!/tests/esm/js-engine-hash-helper.mjs
 !/tests/esm/media-session-anchor.test.mjs
 !/tests/esm/modulation-frequency-shifter.test.mjs
 !/tests/esm/modulation-plugin-host-contracts.test.mjs

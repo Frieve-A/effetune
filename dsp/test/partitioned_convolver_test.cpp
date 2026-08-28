@@ -14,6 +14,7 @@ namespace {
 using effetune::dsp::ConvolutionPath;
 using effetune::dsp::ConvolverConfig;
 using effetune::dsp::ConvolverPreparationState;
+using effetune::dsp::ConvolverScheduleTrace;
 using effetune::dsp::PartitionedConvolver;
 
 int failures = 0;
@@ -156,6 +157,121 @@ void prepareToActive(PartitionedConvolver &convolver, std::uint32_t budget,
   CONVOLVER_CHECK(warmingBlocks > 0u && warmingBlocks < 100u);
 }
 
+void checkScheduleTrace(const ConvolverScheduleTrace &trace) {
+  CONVOLVER_CHECK(trace.cycleSlots > 0u);
+  CONVOLVER_CHECK(trace.cycleSlots <= ConvolverScheduleTrace::kMaximumSlots);
+  CONVOLVER_CHECK(trace.callbackCount ==
+                  (trace.cycleSlots + ConvolverScheduleTrace::kSlotsPerCallback - 1u) /
+                      ConvolverScheduleTrace::kSlotsPerCallback);
+  CONVOLVER_CHECK(trace.immediateSlotViolationCount == 0u);
+  CONVOLVER_CHECK(trace.jobOrderViolationCount == 0u);
+  CONVOLVER_CHECK(trace.deadlineViolationCount == 0u);
+  CONVOLVER_CHECK(trace.deadlineRecoveryCount == 0u);
+  for (std::uint32_t slot = 0u; slot < trace.cycleSlots; ++slot)
+    CONVOLVER_CHECK(trace.slotWeights[slot] <= trace.slotWeightLimit);
+}
+
+bool scheduleTracesDiffer(const ConvolverScheduleTrace &first,
+                          const ConvolverScheduleTrace &second) {
+  if (first.cycleSlots != second.cycleSlots)
+    return true;
+  for (std::uint32_t slot = 0u; slot < first.cycleSlots; ++slot) {
+    if (first.slotWeights[slot] != second.slotWeights[slot] ||
+        first.slotActionCounts[slot] != second.slotActionCounts[slot]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::uint64_t maximumCombinedCallbackWeight(const ConvolverScheduleTrace &first,
+                                            const ConvolverScheduleTrace &second) {
+  const std::uint32_t callbacks =
+      first.callbackCount < second.callbackCount ? first.callbackCount : second.callbackCount;
+  std::uint64_t maximum = 0u;
+  for (std::uint32_t callback = 0u; callback < callbacks; ++callback) {
+    const std::uint64_t combined =
+        first.callbackWeights[callback] + second.callbackWeights[callback];
+    maximum = combined > maximum ? combined : maximum;
+  }
+  return maximum;
+}
+
+void testScheduleRephasingDistributesTwoInstanceCallbackWork() {
+  struct LadderCase {
+    std::uint32_t irFrames;
+    std::uint32_t cycleSlots;
+  };
+  constexpr LadderCase ladderCases[] = {{8192u, 32u},   {8193u, 64u},    {65535u, 64u},
+                                        {65536u, 128u}, {131071u, 128u}, {131072u, 256u}};
+  for (const LadderCase &ladderCase : ladderCases) {
+    PartitionedConvolver convolver;
+    CONVOLVER_CHECK(convolver.reserve(makeConfig(ladderCase.irFrames)));
+    const ConvolverScheduleTrace trace = convolver.scheduleTraceForTesting();
+    checkScheduleTrace(trace);
+    CONVOLVER_CHECK(trace.cycleSlots == ladderCase.cycleSlots);
+  }
+
+  ConvolverConfig multichannelConfig;
+  multichannelConfig.latencySamples = 128u;
+  multichannelConfig.inputs = 2u;
+  multichannelConfig.outputs = 8u;
+  multichannelConfig.irChannels = 4u;
+  multichannelConfig.irFrames = 131072u;
+  multichannelConfig.pathCount = 8u;
+  for (std::uint32_t output = 0u; output < multichannelConfig.outputs; ++output)
+    multichannelConfig.paths[output] = {output & 1u, output, output >> 1u};
+  PartitionedConvolver multichannel;
+  CONVOLVER_CHECK(multichannel.reserve(multichannelConfig));
+  const ConvolverScheduleTrace multichannelTrace = multichannel.scheduleTraceForTesting();
+  checkScheduleTrace(multichannelTrace);
+  CONVOLVER_CHECK(multichannelTrace.cycleSlots == 128u);
+
+  ConvolverConfig singleStageConfig;
+  singleStageConfig.latencySamples = 1024u;
+  singleStageConfig.inputs = 1u;
+  singleStageConfig.outputs = 1u;
+  singleStageConfig.irChannels = 1u;
+  singleStageConfig.irFrames = 5000u;
+  singleStageConfig.pathCount = 1u;
+  singleStageConfig.paths[0u] = {0u, 0u, 0u};
+  ConvolverConfig singleStageStaggeredConfig = singleStageConfig;
+  singleStageStaggeredConfig.sliceOffset = 1u;
+  PartitionedConvolver singleStageInPhase;
+  PartitionedConvolver singleStageStaggered;
+  CONVOLVER_CHECK(singleStageInPhase.reserve(singleStageConfig));
+  CONVOLVER_CHECK(singleStageStaggered.reserve(singleStageStaggeredConfig));
+  const ConvolverScheduleTrace singleStageInPhaseTrace =
+      singleStageInPhase.scheduleTraceForTesting();
+  const ConvolverScheduleTrace singleStageStaggeredTrace =
+      singleStageStaggered.scheduleTraceForTesting();
+  checkScheduleTrace(singleStageInPhaseTrace);
+  checkScheduleTrace(singleStageStaggeredTrace);
+  CONVOLVER_CHECK(scheduleTracesDiffer(singleStageInPhaseTrace, singleStageStaggeredTrace));
+
+  constexpr std::uint32_t irFrames = 262144u;
+  ConvolverConfig inPhaseConfig = makeConfig(irFrames, 0u);
+  ConvolverConfig staggeredConfig = makeConfig(irFrames, 1u);
+  PartitionedConvolver inPhase;
+  PartitionedConvolver staggered;
+  CONVOLVER_CHECK(inPhase.reserve(inPhaseConfig));
+  CONVOLVER_CHECK(staggered.reserve(staggeredConfig));
+  const ConvolverScheduleTrace inPhaseTrace = inPhase.scheduleTraceForTesting();
+  const ConvolverScheduleTrace staggeredTrace = staggered.scheduleTraceForTesting();
+  checkScheduleTrace(inPhaseTrace);
+  checkScheduleTrace(staggeredTrace);
+  CONVOLVER_CHECK(inPhaseTrace.cycleSlots == 256u);
+  CONVOLVER_CHECK(staggeredTrace.cycleSlots == 256u);
+  CONVOLVER_CHECK(scheduleTracesDiffer(inPhaseTrace, staggeredTrace));
+  const std::uint64_t staggeredMaximum =
+      maximumCombinedCallbackWeight(inPhaseTrace, staggeredTrace);
+  const std::uint64_t inPhaseMaximum = maximumCombinedCallbackWeight(inPhaseTrace, inPhaseTrace);
+  CONVOLVER_CHECK(staggeredMaximum < inPhaseMaximum);
+  std::printf("partitioned convolver: callback work rephased %llu < %llu\n",
+              static_cast<unsigned long long>(staggeredMaximum),
+              static_cast<unsigned long long>(inPhaseMaximum));
+}
+
 void testIncrementalPreparationAndAllocationGuard() {
   constexpr std::uint32_t irFrames = 70000u;
   const ConvolverConfig config = makeConfig(irFrames);
@@ -272,6 +388,40 @@ void testReferenceParityAndReset() {
   CONVOLVER_CHECK(maximumError <= 2.0e-4);
 }
 
+void testLongTailReferenceParityAndPathAccumulation() {
+  constexpr std::uint32_t irFrames = 140000u;
+  constexpr std::uint32_t renderFrames = 150000u;
+  constexpr std::uint32_t mixedBlocks[] = {129u, 7u, 32u, 1u, 64u, 16u, 128u};
+  ConvolverConfig config = makeConfig(irFrames);
+  config.pathCount = 4u;
+  config.paths[0u] = {0u, 0u, 0u};
+  config.paths[1u] = {0u, 1u, 1u};
+  config.paths[2u] = {1u, 0u, 1u};
+  config.paths[3u] = {1u, 1u, 0u};
+
+  std::vector<float> ir = makeSparseIr(irFrames);
+  ir[irFrames - 1u] = 0.125F;
+  ir[2u * irFrames - 1u] = -0.125F;
+  const std::vector<float> input = makeSparseInput(renderFrames);
+  const std::vector<float> reference = directReference(config, ir, input, renderFrames);
+  PartitionedConvolver convolver;
+  CONVOLVER_CHECK(convolver.reserve(config));
+  CONVOLVER_CHECK(convolver.commit(ir.data(), config.irChannels, irFrames));
+  prepareToActive(convolver, 4u);
+  convolver.reset();
+
+  const std::vector<float> output =
+      renderWithPattern(convolver, input, renderFrames, mixedBlocks, std::size(mixedBlocks));
+  double maximumError = 0.0;
+  for (std::size_t index = 0u; index < reference.size(); ++index) {
+    const double error = std::abs(static_cast<double>(reference[index]) - output[index]);
+    maximumError = error > maximumError ? error : maximumError;
+    CONVOLVER_CHECK(std::isfinite(output[index]));
+  }
+  CONVOLVER_CHECK(maximumError <= 2.0e-4);
+  CONVOLVER_CHECK(convolver.deadlineRecoveryCountForTesting() == 0u);
+}
+
 void testBlockBoundaryIndependenceAtSliceGranularity() {
   constexpr std::uint32_t irFrames = 10000u;
   constexpr std::uint32_t renderFrames = 12000u;
@@ -295,7 +445,7 @@ void testBlockBoundaryIndependenceAtSliceGranularity() {
 }
 
 void testEightOutputLongIrMixedFramesAndReset() {
-  constexpr std::uint32_t irFrames = 32768u;
+  constexpr std::uint32_t irFrames = 140000u;
   constexpr std::uint32_t renderFrames = 40000u;
   constexpr std::uint32_t mixedBlocks[] = {1u, 7u, 16u, 32u, 64u, 128u, 129u};
   ConvolverConfig config;
@@ -338,6 +488,7 @@ void testEightOutputLongIrMixedFramesAndReset() {
     CONVOLVER_CHECK(std::isfinite(canonical[index]));
   }
   CONVOLVER_CHECK(maximumError <= 2.0e-4);
+  CONVOLVER_CHECK(convolver.deadlineRecoveryCountForTesting() == 0u);
 }
 
 void testMultiplePathsPerOutputPreserveAccumulation() {
@@ -419,7 +570,7 @@ void testPreparationPhaseStaggerPreservesActivationTiming() {
   inPhaseConfig.pathCount = 1u;
   inPhaseConfig.paths[0u] = {0u, 0u, 0u};
   ConvolverConfig staggeredConfig = inPhaseConfig;
-  staggeredConfig.sliceOffset = 5u;
+  staggeredConfig.sliceOffset = 1u;
 
   std::vector<float> ir(irFrames, 0.0F);
   ir[0u] = 1.0F;
@@ -467,13 +618,13 @@ void testPreparationPhaseStaggerPreservesActivationTiming() {
 }
 
 void testStaggeredInstances() {
-  constexpr std::uint32_t irFrames = 20000u;
+  constexpr std::uint32_t irFrames = 140000u;
   constexpr std::uint32_t renderFrames = 30000u;
   const std::vector<float> ir = makeSparseIr(irFrames);
   PartitionedConvolver first;
   PartitionedConvolver second;
   CONVOLVER_CHECK(first.reserve(makeConfig(irFrames, 0u)));
-  CONVOLVER_CHECK(second.reserve(makeConfig(irFrames, 5u)));
+  CONVOLVER_CHECK(second.reserve(makeConfig(irFrames, 1u)));
   CONVOLVER_CHECK(first.commit(ir.data(), 2u, irFrames));
   CONVOLVER_CHECK(second.commit(ir.data(), 2u, irFrames));
 
@@ -504,6 +655,8 @@ void testStaggeredInstances() {
   const std::vector<float> firstOutput = render(first, input, renderFrames);
   const std::vector<float> secondOutput = render(second, input, renderFrames);
   CONVOLVER_CHECK(firstOutput == secondOutput);
+  CONVOLVER_CHECK(first.deadlineRecoveryCountForTesting() == 0u);
+  CONVOLVER_CHECK(second.deadlineRecoveryCountForTesting() == 0u);
   std::printf("partitioned convolver: two-instance preparation %.3f ms in %u quanta\n",
               preparationMilliseconds, quanta);
 }
@@ -521,9 +674,11 @@ void testMemoryAccountingScalesWithIrCapacity() {
 } // namespace
 
 int main() {
+  testScheduleRephasingDistributesTwoInstanceCallbackWork();
   testIncrementalPreparationAndAllocationGuard();
   testLargeTrueStereoPreparationDeadline();
   testReferenceParityAndReset();
+  testLongTailReferenceParityAndPathAccumulation();
   testBlockBoundaryIndependenceAtSliceGranularity();
   testEightOutputLongIrMixedFramesAndReset();
   testMultiplePathsPerOutputPreserveAccumulation();

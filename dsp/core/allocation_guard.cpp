@@ -15,7 +15,7 @@ namespace effetune::allocation_guard {
 namespace {
 
 #if defined(ET_ALLOCATION_GUARD)
-std::uint32_t process_depth = 0;
+thread_local std::uint32_t process_depth = 0;
 std::uint32_t violation_count = 0;
 bool abort_on_violation = true;
 std::int32_t nothrow_allocations_before_failure = -1;

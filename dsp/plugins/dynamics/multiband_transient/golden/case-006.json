@@ -12,8 +12,8 @@
   "caseIndex": 5,
   "seed": "0xeffe7a5b",
   "params": {
-    "f1": 200,
-    "f2": 4000,
+    "f1": 1000,
+    "f2": 200,
     "bands": [
       {
         "fa": 5,
@@ -49,6 +49,18 @@
       "frame": 31,
       "params": {
         "f1": 350
+      }
+    },
+    {
+      "frame": 63,
+      "params": {
+        "f2": 200
+      }
+    },
+    {
+      "frame": 95,
+      "params": {
+        "f1": 20
       }
     },
     {

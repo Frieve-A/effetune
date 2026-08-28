@@ -24,6 +24,14 @@ Un complemento que simula la resonancia de un horn-loaded speaker utilizando un 
 - Ambiente natural de altavoz horn: añade coloración de altavoz vintage para una escucha más rica.
 - Amortiguación suave de altas frecuencias: previene picos agudos para un tono relajado.
 
+### Presets del sistema
+
+Haz clic en **Preajustes de efecto** en el encabezado del efecto para comenzar con un carácter de bocina completo.
+
+- **Gramophone** - Bocina muy abierta con color de gramófono acústico antiguo.
+- **Vintage Theater** - Respuesta de una gran bocina de teatro que llega a frecuencias bajas.
+- **Megaphone** - Bocina cónica corta con medios directos y enfáticos.
+
 ### Parámetros
 
 - **Crossover (Hz)** - Establece la división de frecuencia entre la ruta de baja frecuencia (retrasada) y la ruta de alta frecuencia procesada por el modelo horn. (20–5000 Hz)
@@ -60,6 +68,14 @@ Se basa en el mismo modelo horn que [Horn Resonator](#horn-resonator), con un mo
 - Presencia más cálida: puede hacer que voces, metales y música acústica se sientan más vivos.
 - Comportamiento natural en altas frecuencias: el rango alto se acerca más al de un horn acústico o un altavoz horn que la versión estándar.
 
+### Presets del sistema
+
+Haz clic en **Preajustes de efecto** en el encabezado del efecto para probar los mismos tres caracteres de bocina con el modelo Plus más suave.
+
+- **Gramophone** - Bocina muy abierta con color de gramófono acústico antiguo.
+- **Vintage Theater** - Respuesta de una gran bocina de teatro que llega a frecuencias bajas.
+- **Megaphone** - Bocina cónica corta con medios directos y enfáticos.
+
 ### Mejoras Técnicas
 
 - **Filtro de reflexión de boca de 2º orden**: Modelado más suave de la reflexión dependiente de la frecuencia en la abertura de la boca.
@@ -81,6 +97,14 @@ Utiliza los mismos controles que [Horn Resonator](#horn-resonator). Elige Horn R
 ## Modal Resonator
 
 Un efecto que añade resonancias afinadas a tu música, de forma parecida a cómo los objetos físicos o las partes de un altavoz vibran en sus frecuencias naturales. Úsalo cuando quieras añadir brillo, cuerpo, color metálico o resonancia de tipo altavoz durante la escucha.
+
+### Preajustes del sistema
+
+Haz clic en **Preajustes de efecto** en la cabecera del efecto para cargar un patrón completo de resonancias.
+
+- **Wooden Body** - Modos de resonancia graves y más duraderos que aportan el carácter de una caja de madera.
+- **Metal Can** - Modos de resonancia más agudos que resuenan durante más tiempo, con carácter metálico.
+- **Plastic Enclosure** - Modos de resonancia más agudos y breves que aportan el carácter de una carcasa ligera.
 
 ### Guía de Experiencia Auditiva
 

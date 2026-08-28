@@ -28,7 +28,29 @@ struct ConvolverConfig {
 
 enum class ConvolverPreparationState { empty, reserved, preparing, warming, active, error };
 
+#if defined(ET_ENABLE_TEST_KERNEL)
+struct ConvolverScheduleTrace {
+  static constexpr std::uint32_t kMaximumSlots = 256u;
+  static constexpr std::uint32_t kSlotsPerCallback = 8u;
+  static constexpr std::uint32_t kMaximumCallbacks = kMaximumSlots / kSlotsPerCallback;
+
+  std::uint32_t cycleSlots = 0u;
+  std::uint32_t callbackCount = 0u;
+  std::uint64_t slotWeightLimit = 0u;
+  std::array<std::uint64_t, kMaximumSlots> slotWeights{};
+  std::array<std::uint32_t, kMaximumSlots> slotActionCounts{};
+  std::array<std::uint64_t, kMaximumCallbacks> callbackWeights{};
+  std::uint32_t immediateSlotViolationCount = 0u;
+  std::uint32_t jobOrderViolationCount = 0u;
+  std::uint32_t deadlineViolationCount = 0u;
+  std::uint64_t deadlineRecoveryCount = 0u;
+};
+#endif
+
 class PartitionedConvolver {
+private:
+  class Impl;
+
 public:
   PartitionedConvolver() noexcept;
   ~PartitionedConvolver();
@@ -48,9 +70,12 @@ public:
   [[nodiscard]] ConvolverPreparationState state() const noexcept;
   [[nodiscard]] std::uint32_t latencySamples() const noexcept;
   [[nodiscard]] std::size_t memoryBytes() const noexcept;
+#if defined(ET_ENABLE_TEST_KERNEL)
+  [[nodiscard]] std::uint64_t deadlineRecoveryCountForTesting() const noexcept;
+  [[nodiscard]] ConvolverScheduleTrace scheduleTraceForTesting() const noexcept;
+#endif
 
 private:
-  class Impl;
   Impl *impl_ = nullptr;
 };
 

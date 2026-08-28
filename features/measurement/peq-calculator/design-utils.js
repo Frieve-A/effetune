@@ -112,7 +112,7 @@ export function createDefaultBands(bandCount, lowFreq = 20, highFreq = 20000) {
 
   for (let i = 1; i <= bandCount; i++) {
     const logF = logLow + i * logStep;
-    const freq = Math.round(10**logF);
+    const freq = Math.max(lowFreq, Math.min(highFreq, Math.round(10**logF)));
     defaultBands.push({
       frequency: freq,
       gain: 0.0,
@@ -457,4 +457,4 @@ export function designPEQ(freq, magDb, bandCount, binsPerOct, lowFreq, highFreq,
       console.error("Exception in designPEQ:", error);
       return createDefaultBands(bandCount, lowFreq, highFreq); // Fallback on any exception
   }
-} 
+}

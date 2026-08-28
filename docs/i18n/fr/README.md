@@ -122,28 +122,22 @@ Les grandes collections sont chargées progressivement depuis le stockage ; la v
    - Pour les effets Section : Maj+clic sur le bouton × pour supprimer des sections entières  
 9. Cliquez sur le bouton de routage pour définir les canaux à traiter et les bus d'entrée et de sortie  
    - [Plus d'informations sur les fonctions de bus](bus-function.md)
-10. Pour régler précisément un curseur, maintenez la touche Maj enfoncée pendant que vous le faites glisser ; la valeur change alors d'une unité minimale à la fois
+10. Cliquez sur le bouton Préréglages d’effet de chaque effet pour enregistrer ou appliquer des réglages pour cet effet uniquement
+11. Pour régler précisément un curseur, maintenez la touche Maj enfoncée pendant que vous le faites glisser ; la valeur change alors d'une unité minimale à la fois
 
 ### Utilisation des préréglages
 
-1. Enregistrez votre chaîne d'effets :
-   - Configurez la chaîne d'effets et les paramètres souhaités
-   - Entrez un nom pour votre préréglage dans le champ de saisie
-   - Cliquez sur le bouton save pour enregistrer votre préréglage
+Cliquez sur le bouton **Préréglages de chaîne d’effets** dans l’en-tête de l’Effect Pipeline pour ouvrir la boîte de dialogue des presets.
 
-2. Charger un préréglage :
-   - Tapez ou sélectionnez un nom de préréglage dans la liste déroulante
-   - Le préréglage sera chargé automatiquement
-   - Tous les effets et leurs paramètres seront restaurés
+1. Chargez un preset en le sélectionnant dans la liste des presets enregistrés. La chaîne complète est restaurée, y compris l’ordre des effets, les réglages et les états ON/OFF.
+2. Enregistrez la chaîne actuelle en saisissant un nom puis en choisissant Enregistrer.
+3. Renommez un preset enregistré avec le bouton de renommage de sa ligne.
+4. Sélectionnez un ou plusieurs presets enregistrés, puis choisissez Supprimer la sélection et confirmez pour les retirer.
+5. Appuyez sur Ctrl+S (ou Cmd+S sous macOS) pour ouvrir la boîte de dialogue avec le nom du preset actuel prêt à être modifié.
 
-3. Supprimer un préréglage :
-   - Sélectionnez le préréglage que vous souhaitez supprimer
-   - Cliquez sur le bouton delete
-   - Confirmez la suppression lorsqu'on vous le demande
+Chaque effet possède également son propre bouton Préréglages d’effet. Il ouvre les préréglages système lorsque l’effet en fournit et permet d’enregistrer, renommer, charger ou supprimer vos réglages pour cet effet. Les préréglages d’effet ne modifient que les paramètres de cet effet ; ils ne modifient ni son état ON/OFF ni son routage.
 
-4. Informations sur le préréglage :
-   - Chaque préréglage stocke la configuration complète de votre chaîne d'effets
-   - Inclut l'ordre des effets, les paramètres et les états
+L’importation, l’exportation et le partage de fichiers `.effetune_preset` restent dédiés aux presets de chaîne d’effets complète.
 
 ### Utilisation de la fonction Section
 
@@ -255,6 +249,10 @@ Pour mesurer la réponse en fréquence de votre système audio et créer une cor
 3. Mesurez la réponse en fréquence de votre système à une ou plusieurs positions d'écoute.
 4. Générez une correction EQ paramétrique qui peut être importée directement dans EffeTune.
 5. Appliquez la correction pour obtenir une reproduction sonore plus précise et plus neutre.
+
+Pour un système multicanal, sélectionnez **Tous les canaux** pour mesurer toutes les sorties ensemble, ou les éléments individuels de **Canal de sortie** pour les mesurer un par un. Dans **Paramètres avancés**, choisissez **Désactivé**, **Identique pour tous les canaux** ou **Par canal** pour la bande passante du balayage. Avec **Par canal**, utilisez **Canal à configurer** pour régler la plage de fréquences de chaque canal de sortie sélectionné. Pendant le réglage du niveau, le **Mode de canal** démarre sur **Rotation automatique** ; choisissez un canal de signal de test ou **Manuel** si nécessaire.
+
+Si vous disposez déjà d’un fichier WAV de réponse impulsionnelle, choisissez **Importer** et sélectionnez-le. EffeTune enregistre chaque canal du WAV comme résultat de mesure, afin que vous puissiez le sélectionner dans Room EQ et dans toute autre fonction utilisant les mesures enregistrées.
 
 Pour retirer la réponse propre à l’interface audio, reliez directement sa sortie à son entrée et enregistrez cette boucle comme une mesure normale sans étalonnage, avec une réponse impulsionnelle. Lors de la mesure suivante, choisissez ce point dans **Étalonnage de l’interface audio**. Utilisez la même interface, les mêmes canaux d’entrée et de sortie, la même fréquence d’échantillonnage et les mêmes gains, sans modifier les gains après la mesure en boucle. Choisissez **Aucun (sans étalonnage)** pour effectuer une mesure sans cette correction.
 

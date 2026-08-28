@@ -11,8 +11,6 @@ Semantic type: `TubeSimulator` · Category: saturation
 
 Models vacuum-tube preamplifier and power-stage saturation with supply and speaker-load interaction.
 
-This type can intentionally generate output from zero input at an active setting. See [Processing model](/dsp/concepts/processing-model/#source-generating-effects).
-
 ## Contract
 
 - Seeded: **no**
@@ -70,7 +68,7 @@ Tube Simulator adds the changing harmonics, compression, and power-supply respon
 
 ### Panel Layout
 
-The controls are arranged in five tabs below **Preset**.
+The controls are arranged in five tabs.
 
 - **Input** - Input Volume, Input Reference, Source Z
 - **Driver** - Driver Type, Bias, Plate, Supply, Negative Feedback
@@ -78,17 +76,16 @@ The controls are arranged in five tabs below **Preset**.
 - **Transformer** - Screen Tap, Push-Pull Primary, SE Primary, Assumed Speaker Load, Actual Speaker Load
 - **Output** - Output Trim, Output Safety Trim, Auto Gain Reduction, Wet/Dry Mix
 
-The Power and Transformer tabs show only controls used by the selected Output Circuit. **Custom** appears after you change a circuit or tone parameter from a preset.
+The Power and Transformer tabs show only controls used by the selected Output Circuit.
 
 ### Choosing a Preset
 
-Tube Simulator starts with **EL84 Pentode @2%**; changing a circuit or tone parameter changes the preset name to **Custom**, while **Output Safety Trim** and **Auto Gain Reduction** are not used for preset matching and therefore do not change the preset name.
+Click the effect header's **Effect Presets** button to open the preset dialog. Choose a setting from System Presets in the Pre, Power, or Pre+Power group to apply it immediately. A preset that matches the current settings is highlighted; if none matches, no preset is highlighted. The initial settings match **EL84 Pentode @2%**. **Output Safety Trim** and **Auto Gain Reduction** are not used for matching, so changing them does not remove the highlight.
 
 The preset suffix is a practical guide to effect strength: **@0.01%** is very subtle, **@0.1%** adds light coloration, and **@1%** or **@2%** makes harmonics and compression more apparent. Presets also set Output Trim to make comparisons easier, but perceived loudness can still vary with the music. Match levels with Output Trim before deciding which sound you prefer.
 
 ### Parameters
 
-- **Preset** - Loads a Pre, Power, or Pre+Power setting
 - **Input Volume** (-96 to 0dB) - Reduces the level driving the selected signal path
   - 0dB is fully open; lower values reduce internal drive and increase headroom
 - **Driver Type** (12AX7, 12AT7, 12AU7, or Bypass) - Selects the two-stage driver tubes or removes that driver from the signal path

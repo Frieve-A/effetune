@@ -1,4 +1,35 @@
+const MODAL_RESONATOR_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({ id: 'wooden-body', label: 'Wooden Body', params: Object.freeze({ mx: 25, sr: 0, rs: Object.freeze([
+        Object.freeze({ en: true, fr: 5.19, dc: 30, lp: 5.53, hp: 4.14, gn: 0 }),
+        Object.freeze({ en: true, fr: 6.04, dc: 25, lp: 6.38, hp: 4.99, gn: -4 }),
+        Object.freeze({ en: true, fr: 6.75, dc: 18, lp: 7.09, hp: 5.70, gn: -8 }),
+        Object.freeze({ en: true, fr: 7.17, dc: 12, lp: 7.51, hp: 6.12, gn: -12 }),
+        Object.freeze({ en: true, fr: 7.86, dc: 8, lp: 8.20, hp: 6.81, gn: -16 })
+    ]) }) }),
+    Object.freeze({ id: 'metal-can', label: 'Metal Can', params: Object.freeze({ mx: 20, sr: 0, rs: Object.freeze([
+        Object.freeze({ en: true, fr: 7.00, dc: 40, lp: 7.34, hp: 5.95, gn: 0 }),
+        Object.freeze({ en: true, fr: 7.74, dc: 35, lp: 8.08, hp: 6.69, gn: -2 }),
+        Object.freeze({ en: true, fr: 8.22, dc: 30, lp: 8.56, hp: 7.17, gn: -4 }),
+        Object.freeze({ en: true, fr: 8.56, dc: 25, lp: 8.90, hp: 7.51, gn: -6 }),
+        Object.freeze({ en: true, fr: 8.96, dc: 20, lp: 9.30, hp: 7.91, gn: -8 })
+    ]) }) }),
+    Object.freeze({ id: 'plastic-enclosure', label: 'Plastic Enclosure', params: Object.freeze({ mx: 30, sr: 0, rs: Object.freeze([
+        Object.freeze({ en: true, fr: 5.77, dc: 10, lp: 6.11, hp: 4.72, gn: 0 }),
+        Object.freeze({ en: true, fr: 6.80, dc: 8, lp: 7.14, hp: 5.75, gn: -3 }),
+        Object.freeze({ en: true, fr: 7.55, dc: 6, lp: 7.89, hp: 6.50, gn: -6 }),
+        Object.freeze({ en: true, fr: 8.13, dc: 5, lp: 8.47, hp: 7.08, gn: -9 }),
+        Object.freeze({ en: true, fr: 8.63, dc: 4, lp: 8.97, hp: 7.58, gn: -12 })
+    ]) }) })
+]);
+
 class ModalResonatorPlugin extends PluginBase {
+    static getSystemPresetGroups() {
+        return [{ label: '', presets: MODAL_RESONATOR_SYSTEM_PRESETS.map(preset => ({ ...preset })) }];
+    }
+
+    static getPresetComparisonExcludedKeys() {
+        return ['sr'];
+    }
     constructor() {
         super('Modal Resonator', 'Frequency resonance effect with up to 5 resonators');
 

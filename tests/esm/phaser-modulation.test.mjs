@@ -147,10 +147,9 @@ test('Phaser validates enums, ranges, and even stage counts', async () => {
   assert.deepEqual({ md: plugin.md, rt: plugin.rt, cf: plugin.cf, rg: plugin.rg, st: plugin.st,
     fb: plugin.fb, sp: plugin.sp, dr: plugin.dr, mx: plugin.mx },
   { md: 'Classic', rt: 10, cf: 80, rg: 6, st: 8, fb: -90, sp: 180, dr: 'Up', mx: 0 });
-  assert.equal(plugin.style, 'Custom');
 });
 
-test('Phaser styles and barber Direction visibility use standard rows', async () => {
+test('Phaser system presets and barber Direction visibility use standard rows', async () => {
   const Plugin = await loadPlugin();
   const plugin = new Plugin();
   plugin.channel = 'R';
@@ -169,19 +168,19 @@ test('Phaser styles and barber Direction visibility use standard rows', async ()
   plugin.onChannelSelectionChanged();
   assert.equal(plugin._uiControls.sp.querySelector('input[type="range"]').disabled, false);
   assert.equal(plugin._uiControls.sp.querySelector('input[type="number"]').disabled, false);
-  plugin.applyStyle('Barber-pole Down');
+  plugin.setParameters(Plugin.getSystemPresetGroups()[0].presets
+    .find(preset => preset.id === 'barber-pole-down').params);
   assert.equal(plugin.md, 'Barber-pole');
   assert.equal(plugin.dr, 'Down');
-  assert.equal(plugin.style, 'Barber-pole Down');
   assert.equal(plugin._directionRow.hidden, false);
   assertControls(plugin, {
-    style: 'Barber-pole Down', md: 'Barber-pole', rt: 0.35, cf: 1000,
+    md: 'Barber-pole', rt: 0.35, cf: 1000,
     rg: 5, st: 8, fb: 30, sp: 60, dr: 'Down', mx: 55
   });
   plugin.setParameters({ md: 'Classic', rt: 20, cf: 1, rg: 9, st: 7, fb: -100,
     sp: 300, dr: 'Up', mx: -1 });
   assertControls(plugin, {
-    style: 'Custom', md: 'Classic', rt: 10, cf: 80, rg: 6,
+    md: 'Classic', rt: 10, cf: 80, rg: 6,
     st: 8, fb: -90, sp: 180, dr: 'Up', mx: 0
   });
   assert.deepEqual(Array.from(Plugin.searchAliases), ['Barber-pole Phaser', 'Barber Pole Phaser']);

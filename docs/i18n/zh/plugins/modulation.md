@@ -34,7 +34,7 @@ lang: zh
 
 ### 参数
 
-- **Style**：一次设置所有参数的完整出厂预设。可选**Auto Filter Sweep**（LFO）、**Stereo Filter Sweep**（LFO）、**Envelope Filter**（Envelope）、**Auto Wah**（Envelope）和**Reverse Auto Wah**（Envelope）。单独修改任一参数后会变为**Custom**。
+- **系统预设**: 选择**Auto Filter Sweep**、**Stereo Filter Sweep**、**Envelope Filter**、**Auto Wah**、**Reverse Auto Wah**之一，即可载入完整的初始设置，然后按需微调各个参数。
 - **Mode**：在周期性运动的LFO与跟随音量的Envelope之间切换。
 - **Filter Type**：选择Low-pass、Band-pass或High-pass。
 - **Minimum Frequency / Maximum Frequency**（20–20,000 Hz）：移动范围。若顺序相反会自动重排；若数值相同则保持固定。播放采样率较低时，可用上限也可能降低。
@@ -55,7 +55,7 @@ lang: zh
 
 ### 参数
 
-- **Style**：一次设置所有参数的完整出厂预设。可选**Gentle Auto Pan**、**Wide Auto Pan**和**Fast Auto Pan**。单独修改任一参数后会变为**Custom**。
+- **系统预设**: 选择**Gentle Auto Pan**、**Wide Auto Pan**、**Fast Auto Pan**之一，即可载入完整的初始设置，然后按需微调各个参数。
 - **Rate**（0.05–20 Hz）：移动速度。
 - **Depth**（0–100%）：相对于Center的移动量。0%时无变化。
 - **Center**（-100–100%）：将中心位置向左或向右移动。
@@ -76,7 +76,7 @@ lang: zh
 
 ### 参数
 
-- **Style**：一次设置所有参数的完整出厂预设。可选**Classic Chorus**（Chorus）、**Stereo Chorus**（Stereo Chorus）、**Ensemble**（Ensemble）、**Flanger**（Flanger）、**Jet Flanger**（Flanger）和**Vibrato**（Vibrato）。单独修改任一参数后会变为**Custom**。
+- **系统预设**: 选择**Classic Chorus**、**Stereo Chorus**、**Ensemble**、**Flanger**、**Jet Flanger**、**Vibrato**之一，即可载入完整的初始设置，然后按需微调各个参数。
 - **Mode**：选择Chorus、Stereo Chorus、Ensemble、Flanger或Vibrato。
 - **Rate**（0.05–10 Hz）：摇摆速度。
 - **Delay**（0.5–30 ms）：处理声的基准延迟。
@@ -128,7 +128,7 @@ lang: zh
 
 ### 参数
 
-- **Style**：一次设置所有参数的完整出厂预设。可选**Shift Up**（Shift）、**Shift Down**（Shift）、**Fine Detune**（Shift）、**Ring Modulator**（Ring Mod）、**Barber-pole Up**（Barber-pole）和**Barber-pole Down**（Barber-pole）。单独修改任一参数后会变为**Custom**。
+- **系统预设**: 选择**Shift Up**、**Shift Down**、**Fine Detune**、**Ring Modulator**、**Barber-pole Up**、**Barber-pole Down**之一，即可载入完整的初始设置，然后按需微调各个参数。
 - **Mode**：Shift、Ring Mod或Barber-pole。
 - **Shift**（-5,000–5,000 Hz）：Shift模式中的移动量。正值向上移动，负值向下移动。
 - **Carrier Frequency**（0.1–10,000 Hz）：Ring Mod的载波频率。
@@ -151,7 +151,7 @@ lang: zh
 
 ### 参数
 
-- **Style**：一次设置所有参数的完整出厂预设。可选**Classic Phaser**（Classic）、**Deep Phaser**（Classic）、**Stereo Phaser**（Classic）、**Barber-pole Up**（Barber-pole）和**Barber-pole Down**（Barber-pole）。单独修改任一参数后会变为**Custom**。
+- **系统预设**: 选择**Classic Phaser**、**Deep Phaser**、**Stereo Phaser**、**Barber-pole Up**、**Barber-pole Down**之一，即可载入完整的初始设置，然后按需微调各个参数。
 - **Mode**：Classic或Barber-pole。
 - **Rate**（0.05–10 Hz）：扫频速度。
 - **Center Frequency**（80–8,000 Hz）：对数扫频的中心。
@@ -217,7 +217,7 @@ Pitch Shifter HQ不保留共振峰。因此，移调幅度较大时，除了音�
 
 ### 参数
 
-- **Style**：一次设置所有参数的完整出厂预设。可选**Rotary Slow**（Slow）、**Rotary Fast**（Fast）、**Gentle Rotary**（Slow）、**Leslie Slow**（Slow）和**Leslie Fast**（Fast）。单独修改任一参数后会变为**Custom**。
+- **系统预设**: 选择**Rotary Slow**、**Rotary Fast**、**Gentle Rotary**、**Vintage Rotor Slow**、**Vintage Rotor Fast**之一，即可载入完整的初始设置，然后按需微调各个参数。
 - **Speed State**：Stop、Slow或Fast。切换过程中，转子会平滑加速或减速，声音不会中断。
 - **Speed**（25–200%）：号角与鼓轮的共同速度倍率。
 - **Acceleration**（0.1–10 s）：设置转子接近新转速的快慢。
@@ -320,6 +320,14 @@ Pitch Shifter HQ不保留共振峰。因此，移调幅度较大时，除了音�
 ## Wow Flutter
 
 为音乐加入类似唱片偏心、磁带走带不稳的细微音高摇摆。轻微使用可带来复古味道，较强设置会变成明显特殊效果。
+
+### 系统预设
+
+点击效果标题栏中的**效果预设**，即可比较完整的驱动机构运行设置。
+
+- **Warped Record** - 模拟唱片翘曲产生的大幅周期性晃动。
+- **Worn Cassette Motor** - 较快的颤动，并伴有不规则变化。
+- **Seasick Tape** - 大幅、缓慢的晃动，左右声道独立变化。
 
 ### 聆听体验指南
 - 黑胶唱片感：

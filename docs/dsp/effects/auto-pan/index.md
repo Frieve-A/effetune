@@ -45,7 +45,7 @@ Auto Pan moves the level of each stereo pair between left and right. If the audi
 
 ### Parameters
 
-- **Style** — loads a complete factory setting for every parameter. Choices are **Gentle Auto Pan**, **Wide Auto Pan**, and **Fast Auto Pan**. Changing an individual parameter switches Style to **Custom**.
+- **System Presets** — use **Gentle Auto Pan**, **Wide Auto Pan**, or **Fast Auto Pan** to load a complete starting point. Adjust individual parameters afterwards to refine it.
 - **Rate** (0.05–20 Hz) — sets movement speed.
 - **Depth** (0–100%) — sets how far level moves around the center; 0% is neutral.
 - **Center** (-100–100%) — shifts the midpoint left or right.

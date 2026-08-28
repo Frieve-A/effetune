@@ -52,6 +52,14 @@ An effect that adds subtle pitch variations to your music, similar to the natura
   - Adds movement and life to static sounds
   - Perfect for ambient and experimental listening
 
+### System Presets
+
+Click **Effect Presets** in the effect header to compare complete transport behaviors.
+
+- **Warped Record** - Deep, cyclic record warp.
+- **Worn Cassette Motor** - Faster flutter with irregular movement.
+- **Seasick Tape** - Extreme slow motion with independent stereo movement.
+
 ### Parameters
 - **Rate** - How fast the sound wavers (0.1 to 20 Hz)
   - Slower (0.1-2 Hz): Vinyl record-like movement

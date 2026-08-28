@@ -449,6 +449,62 @@ class NativeChainTests(unittest.TestCase):
             128,
         )
 
+    def test_multiband_stream_events_retain_ordered_crossovers(self) -> None:
+        frames = np.arange(512, dtype=np.float32)
+        source = np.vstack((np.sin(frames * 0.071), np.cos(frames * 0.053))).astype(
+            np.float32
+        ) * np.float32(0.3)
+        for effect_type in (
+            "MultibandCompressor", "MultibandExpander", "MultibandBalance",
+            "MultibandTransient", "MultibandSaturation",
+        ):
+            with self.subTest(effect=effect_type):
+                five_band = effect_type in (
+                    "MultibandCompressor", "MultibandExpander", "MultibandBalance"
+                )
+                high, low = (400, 100) if five_band else (1000, 200)
+                supplied = {"frequency1": high, "frequency2": low}
+                if five_band:
+                    supplied.update(frequency3=1500, frequency4=1000)
+                effective = {**supplied, "frequency2": high}
+                if five_band:
+                    effective["frequency4"] = 1500
+                chain = effetune.Chain.from_preset({
+                    "version": 1,
+                    "chain": [{"id": "mb", "type": effect_type, "parameters": supplied}],
+                })
+                reference = effetune.Chain.from_preset({
+                    "version": 1,
+                    "chain": [{"id": "mb", "type": effect_type, "parameters": effective}],
+                })
+                with chain.stream(48_000, channels=2, block_size=64) as stream, \
+                        reference.stream(48_000, channels=2, block_size=64) as expected:
+                    np.testing.assert_array_equal(stream.process(source), expected.process(source))
+                    steps = [
+                        ("frequency2", 1200 if five_band else 4000),
+                        ("frequency2", low),
+                        ("frequency1", 20),
+                        ("frequency2", 800 if five_band else 3000),
+                    ]
+                    if five_band:
+                        steps.extend((("frequency3", 500), ("frequency2", 100)))
+                    for name, value in steps:
+                        effective[name] = value
+                        for index in range(2, 5 if five_band else 3):
+                            key = f"frequency{index}"
+                            effective[key] = max(effective[key], effective[f"frequency{index - 1}"])
+                        actual = stream.process(source, events=[{
+                            "frame": 0, "effectId": "mb", "parameters": {name: value},
+                        }])
+                        reference_output = expected.process(source, events=[{
+                            "frame": 0, "effectId": "mb", "parameters": dict(effective),
+                        }])
+                        np.testing.assert_array_equal(actual, reference_output)
+                        self.assertEqual(
+                            stream._processing_parameters["mb"],
+                            expected._processing_parameters["mb"],
+                        )
+
     def test_stream_parameter_events_are_frame_relative_ordered_and_persistent(self) -> None:
         source = np.zeros((1, 12), dtype=np.float32)
         chain = effetune.Chain([effetune.DCOffset(id="offset", offset=0)])

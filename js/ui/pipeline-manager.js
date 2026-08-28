@@ -43,15 +43,6 @@ export class PipelineManager {
         this.pipelineList = this.core.pipelineList;
         this.pipelineEmpty = this.core.pipelineEmpty;
         
-        // Preset UI elements (for backward compatibility)
-        this.presetSelect = document.getElementById('presetSelect');
-        this.savePresetButton = document.getElementById('savePresetButton');
-        this.deletePresetButton = document.getElementById('deletePresetButton');
-        
-        // Save initial state after a short delay to ensure Volume and Level Meter are initialized
-        setTimeout(() => {
-            this.historyManager.saveState();
-        }, 1000);
     }
     
     /**

@@ -9,6 +9,10 @@ class MeasurementOutputError extends Error {
 }
 
 function getRequiredOutputChannelCount(channel) {
+    const token = String(channel);
+    if (!['left', 'right', '0', '1', '2', '3', '4', '5', '6', '7', 'all', 'both'].includes(token)) {
+        throw new MeasurementOutputError(`Unsupported measurement output channel: ${token}`);
+    }
     let channelIndex;
     if (channel === 'left' || channel === '0') {
         channelIndex = 0;
@@ -154,7 +158,8 @@ async function prepareMeasurementOutputRoute(
     audioContext,
     outputDeviceId,
     outputChannel,
-    dependencies = {}
+    dependencies = {},
+    explicitOutputChannels
 ) {
     if (!audioContext?.destination) {
         throw new MeasurementOutputError(
@@ -166,7 +171,15 @@ async function prepareMeasurementOutputRoute(
     const sinkId = hasExplicitDevice ? outputDeviceId : '';
     const canSelectContextSink = typeof audioContext.setSinkId === 'function';
     const currentSinkId = typeof audioContext.sinkId === 'string' ? audioContext.sinkId : null;
-    const requiredChannels = getRequiredOutputChannelCount(outputChannel);
+    const tokenRequiredChannels = getRequiredOutputChannelCount(outputChannel);
+    if (explicitOutputChannels !== undefined &&
+        (!SUPPORTED_OUTPUT_CHANNEL_COUNTS.includes(explicitOutputChannels) ||
+            explicitOutputChannels < tokenRequiredChannels)) {
+        throw new MeasurementOutputError(
+            `Invalid explicit measurement output width: ${explicitOutputChannels}`
+        );
+    }
+    const requiredChannels = explicitOutputChannels ?? tokenRequiredChannels;
 
     if (hasExplicitDevice && !canSelectContextSink) {
         if (requiredChannels !== 2) {
@@ -204,7 +217,7 @@ async function prepareMeasurementOutputRoute(
     // Measurement routing intentionally does not use EffeTune's playback channel
     // setting. A measurement may use a different device and channel layout, so its
     // layout is derived only from the selected measurement channel and device.
-    const outputChannels = getMeasurementOutputChannelCount(
+    const outputChannels = explicitOutputChannels ?? getMeasurementOutputChannelCount(
         outputChannel,
         audioContext.destination.maxChannelCount
     );

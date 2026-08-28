@@ -16,27 +16,52 @@ export class HistoryManager {
         this.history = [];
         this.historyIndex = -1;
         this.maxHistorySize = 100;
-        this.isUndoRedoOperation = false;
-        this.undoRedoTimeoutId = null;
-        this.specialSaveOverride = false;
+        this.historySuppressionDepth = 0;
+        this.activeOperationToken = null;
+        this.activeOperationOwnerIndex = -1;
+        this.activeOperationBaseState = null;
+        this.activeOperationRedo = null;
+        this.activeOperationShiftedStates = [];
     }
-    
-    /**
-     * Save current pipeline state to history
-     */
-    saveState() {
-        // Skip if this is an undo/redo operation
-        if (this.isUndoRedoOperation) {
-            // Special case: Preset loading needs to save state even with flag set
-            if (this.specialSaveOverride) {
-                this.specialSaveOverride = false;
-            } else {
-                return;
-            }
+
+    get isHistorySuppressed() {
+        return this.historySuppressionDepth > 0;
+    }
+
+    isOperationActive(token) {
+        return token !== null && token !== undefined && token === this.activeOperationToken;
+    }
+
+    beginOperation(token) {
+        if (token === null || token === undefined) return;
+        if (this.activeOperationToken === token) return;
+        this.endOperation();
+        this.activeOperationToken = token;
+        this.activeOperationBaseState = this.history[this.historyIndex] || null;
+        this.activeOperationRedo = this.history.slice(this.historyIndex + 1);
+    }
+
+    endOperation(token) {
+        if (token !== undefined && token !== this.activeOperationToken) return;
+        this.activeOperationToken = null;
+        this.activeOperationOwnerIndex = -1;
+        this.activeOperationBaseState = null;
+        this.activeOperationRedo = null;
+        this.activeOperationShiftedStates = [];
+    }
+
+    withHistorySuppressed(callback) {
+        this.endOperation();
+        this.historySuppressionDepth++;
+        try {
+            return callback();
+        } finally {
+            this.historySuppressionDepth--;
         }
-        
-        // Create a deep copy of the current pipeline state including A/B state
-        const state = {
+    }
+
+    createSnapshot() {
+        return {
             pipelineA: this.audioManager.pipelineA.map(plugin =>
                 this.pipelineManager.core.getSerializablePluginState(plugin, true, false, false)
             ),
@@ -45,28 +70,94 @@ export class HistoryManager {
             ) : null,
             currentPipeline: this.audioManager.currentPipeline
         };
-        
-        // If we're not at the end of the history, truncate it
+    }
+
+    statesEqual(left, right) {
+        return left === right || (left !== null && right !== null &&
+            JSON.stringify(left) === JSON.stringify(right));
+    }
+
+    appendState(state) {
         if (this.historyIndex < this.history.length - 1) {
             this.history = this.history.slice(0, this.historyIndex + 1);
         }
-        
-        // Add new state to history
         this.history.push(state);
         this.historyIndex = this.history.length - 1;
-        
-        // Limit history size
+
         if (this.history.length > this.maxHistorySize) {
-            this.history.shift();
+            const shiftedState = this.history.shift();
+            if (this.activeOperationToken !== null) {
+                this.activeOperationShiftedStates.push(shiftedState);
+            }
             this.historyIndex--;
+            if (this.activeOperationOwnerIndex >= 0) {
+                this.activeOperationOwnerIndex--;
+                if (this.activeOperationOwnerIndex < 0) this.endOperation();
+            }
         }
-        
+    }
+
+    /**
+     * Save current pipeline state to history
+     */
+    saveState({ operationToken } = {}) {
+        if (operationToken === undefined) {
+            this.endOperation();
+        } else if (operationToken !== this.activeOperationToken) {
+            return;
+        }
+        if (this.isHistorySuppressed) return;
+
+        const state = this.createSnapshot();
+        const activeState = this.history[this.historyIndex] || null;
+
+        if (operationToken !== undefined &&
+            this.statesEqual(state, this.activeOperationBaseState)) {
+            if (this.activeOperationOwnerIndex === this.historyIndex &&
+                this.activeOperationOwnerIndex >= 0) {
+                this.history.splice(this.activeOperationOwnerIndex, 1, ...this.activeOperationRedo);
+                this.historyIndex--;
+                if (this.activeOperationShiftedStates.length > 0) {
+                    this.history.unshift(...this.activeOperationShiftedStates);
+                    this.historyIndex += this.activeOperationShiftedStates.length;
+                    this.activeOperationShiftedStates = [];
+                }
+                this.activeOperationOwnerIndex = -1;
+            }
+            return;
+        }
+
+        if (this.statesEqual(state, activeState)) return;
+
+        if (operationToken !== undefined &&
+            this.activeOperationOwnerIndex === this.historyIndex &&
+            this.activeOperationOwnerIndex >= 0) {
+            this.history[this.activeOperationOwnerIndex] = state;
+            return;
+        }
+
+        this.appendState(state);
+        if (operationToken !== undefined && this.activeOperationToken === operationToken) {
+            this.activeOperationOwnerIndex = this.historyIndex;
+        }
+    }
+
+    saveStateAtomicallyIfChanged() {
+        if (this.isHistorySuppressed) return false;
+
+        const state = this.createSnapshot();
+        if (this.statesEqual(state, this.history[this.historyIndex] || null)) return false;
+
+        this.endOperation();
+        this.appendState(state);
+        return true;
     }
     
     /**
      * Undo the last operation
      */
     undo() {
+        this.endOperation();
         if (this.historyIndex <= 0) {
             return; // Nothing to undo
         }
@@ -79,6 +170,7 @@ export class HistoryManager {
      * Redo the last undone operation
      */
     redo() {
+        this.endOperation();
         if (this.historyIndex >= this.history.length - 1) {
             return; // Nothing to redo
         }
@@ -96,14 +188,7 @@ export class HistoryManager {
      * Load a state from history
      */
     loadStateFromHistory() {
-        this.isUndoRedoOperation = true;
-        
-        // Clear any existing undo/redo timeout
-        if (this.undoRedoTimeoutId) {
-            clearTimeout(this.undoRedoTimeoutId);
-        }
-        
-        try {
+        return this.withHistorySuppressed(() => {
             const state = this.history[this.historyIndex];
             if (!state) {
                 return;
@@ -212,14 +297,6 @@ export class HistoryManager {
             if (masterToggle) {
                 masterToggle.classList.remove('off');
             }
-            
-        } finally {
-            // Instead of immediate reset, use a timeout to keep the flag active
-            // This prevents saveState being called from updateParameters right after undo/redo
-            this.undoRedoTimeoutId = setTimeout(() => {
-                this.isUndoRedoOperation = false;
-                this.undoRedoTimeoutId = null;
-            }, 1000);
-        }
+        });
     }
 }

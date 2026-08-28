@@ -216,6 +216,86 @@ input[type="radio"] {
     margin-right: 5px;
 }
 
+.channel-checkbox-group,
+.channel-filter,
+.channel-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.channel-checkbox-group {
+    align-items: flex-start;
+    flex-direction: column;
+}
+
+.individual-channel-choices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.channel-checkbox-group label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0;
+    padding: 7px 10px;
+    background-color: #3c3c3c;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.radio-choice-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.radio-choice-group label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0;
+    padding: 7px 10px;
+    background-color: #3c3c3c;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.setting-label {
+    display: block;
+    margin-bottom: 8px;
+}
+
+.advanced-settings {
+    margin-top: 30px;
+}
+
+.advanced-settings > summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.sweep-band-inputs > .form-group:first-child {
+    margin-top: 16px;
+}
+
+#calibrationAssignmentControls,
+#perChannelCalibrationRows {
+    margin-top: 12px;
+}
+
+.per-channel-calibration-row {
+    display: grid;
+    grid-template-columns: minmax(55px, auto) 1fr;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+}
+
 .form-actions {
     margin-top: var(--content-padding);
     display: flex;
@@ -344,9 +424,38 @@ canvas {
 
 .measurement-actions {
     display: flex;
+    flex-direction: column;
     gap: 10px;
-    justify-content: flex-end;
     margin-top: var(--content-padding);
+}
+
+.measurement-actions-channel-redo,
+.measurement-actions-default,
+.measurement-actions-save {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.measurement-actions-default {
+    justify-content: space-between;
+}
+
+.measurement-actions .secondary-btn {
+    margin-left: 0;
+}
+
+.measurement-actions button,
+.measurement-actions label {
+    white-space: nowrap;
+}
+
+.measurement-actions select {
+    width: auto;
+    min-width: 7rem;
+    max-width: 12rem;
+    flex: 0 1 12rem;
 }
 
 /* Results Display */
@@ -392,6 +501,27 @@ canvas {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 10px;
     margin-bottom: var(--content-padding);
+}
+
+.channel-filter {
+    align-items: center;
+    margin: 0 0 var(--content-padding);
+}
+
+.channel-filter-label {
+    font-weight: 600;
+}
+
+.channel-filter-button,
+.channel-legend-item {
+    background-color: #3d3d3d;
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+}
+
+.channel-filter-button.selected {
+    border-color: var(--primary-color);
+    background-color: rgba(0, 122, 204, 0.2);
 }
 
 .point-item {
@@ -465,6 +595,23 @@ canvas {
     display: flex;
     align-items: center;
     gap: 5px;
+}
+
+.channel-legend {
+    justify-content: center;
+    margin-top: 8px;
+}
+
+.channel-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 9px;
+}
+
+.channel-legend-swatch {
+    width: 18px;
+    height: 3px;
 }
 
 .legend-line {
@@ -577,6 +724,24 @@ canvas {
 
 .export-section {
     margin-top: 30px;
+}
+
+.export-actions-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.export-actions-row button {
+    white-space: nowrap;
+}
+
+.export-actions-row .secondary-btn {
+    margin-left: 0;
+}
+
+.export-copy-help {
+    margin: 10px 0;
 }
 
 .impulse-response-section {

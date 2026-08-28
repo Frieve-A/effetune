@@ -5,7 +5,8 @@ import dataStorage, { MeasurementImportError } from '../../features/measurement/
 import audioUtils from '../../features/measurement/audio-utils/index.js';
 import uiManager, { UIManager } from '../../features/measurement/ui/ui-manager.js';
 import AudioProcessing, {
-    createSweepCapturePlan
+    createSweepCapturePlan,
+    SweepCancelledError
 } from '../../features/measurement/measurement-controller/audio-processing.js';
 import {
     default as measurementController,
@@ -13,6 +14,7 @@ import {
     MeasurementSetupError
 } from '../../features/measurement/measurement-controller/index.js';
 import LevelAdjustment from '../../features/measurement/measurement-controller/level-adjustment.js';
+import { createImpulseResponseMeasurement } from '../../features/measurement/impulse-response-import.js';
 
 const { default: SweepMeasurement } = await import(
     '../../features/measurement/measurement-controller/sweep-measurement.js'
@@ -23,6 +25,21 @@ function point(pointId, magnitude) {
         pointId,
         frequencyResponse: [[100, magnitude], [1000, magnitude + 1]],
         maxSignalLevel: -20 + pointId
+    };
+}
+
+function radioGroup(value, values = ['left', '2', 'auto', 'manual']) {
+    let selected = value;
+    const radios = values.map(option => ({
+        value: option,
+        get checked() { return selected === option; },
+        set checked(checked) { if (checked) selected = option; else if (selected === option) selected = null; }
+    }));
+    return {
+        querySelector: selector => selector?.includes('value=')
+            ? radios.find(radio => selector.includes(`"${radio.value}"`))
+            : radios.find(radio => radio.checked),
+        querySelectorAll: () => radios
     };
 }
 
@@ -43,6 +60,951 @@ function measurementConfig(interfaceCalibration = null) {
         ...(interfaceCalibration ? { interfaceCalibration } : {})
     };
 }
+
+function createSweepTestElements() {
+    const context = {
+        clearRect() {},
+        fillRect() {},
+        beginPath() {},
+        moveTo() {},
+        lineTo() {},
+        stroke() {},
+        fillText() {}
+    };
+    const canvas = { width: 640, height: 320, getContext: () => context };
+    return new Map([
+        ['levelGraph', canvas],
+        ['frequencyResponseGraph', canvas],
+        ['measurementActionsExplanation', { style: {} }],
+        ['redoBtn', { style: {} }],
+        ['saveAndContinueBtn', { style: {} }],
+        ['saveAndFinishBtn', { style: {} }],
+        ['redoChannelLabel', { hidden: true }],
+        ['redoChannelSelect', { hidden: true }],
+        ['redoChannelBtn', { hidden: true }],
+        ['sweepChannelProgress', { hidden: true, textContent: '' }]
+    ]);
+}
+
+test('automatic test-signal rotation is single-flight and removes stale async output', async t => {
+    const originals = {
+        document: globalThis.document,
+        setInterval: globalThis.setInterval,
+        clearInterval: globalThis.clearInterval,
+        isWhiteNoiseActive: audioUtils.isWhiteNoiseActive,
+        isWhiteNoisePending: audioUtils.isWhiteNoisePending,
+        whiteNoiseDesiredActive: audioUtils.whiteNoiseDesiredActive,
+        whiteNoiseOperationToken: audioUtils.whiteNoiseOperationToken,
+        whiteNoiseChannel: audioUtils.whiteNoiseChannel,
+        startWhiteNoise: audioUtils.startWhiteNoise,
+        stopWhiteNoise: audioUtils.stopWhiteNoise,
+        showNotification: uiManager.showNotification
+    };
+    t.after(() => {
+        globalThis.document = originals.document;
+        globalThis.setInterval = originals.setInterval;
+        globalThis.clearInterval = originals.clearInterval;
+        audioUtils.isWhiteNoiseActive = originals.isWhiteNoiseActive;
+        audioUtils.isWhiteNoisePending = originals.isWhiteNoisePending;
+        audioUtils.whiteNoiseDesiredActive = originals.whiteNoiseDesiredActive;
+        audioUtils.whiteNoiseOperationToken = originals.whiteNoiseOperationToken;
+        audioUtils.whiteNoiseChannel = originals.whiteNoiseChannel;
+        audioUtils.startWhiteNoise = originals.startWhiteNoise;
+        audioUtils.stopWhiteNoise = originals.stopWhiteNoise;
+        uiManager.showNotification = originals.showNotification;
+    });
+
+    let intervalCallback;
+    let intervalClears = 0;
+    let stopCalls = 0;
+    let resolveStart;
+    const starts = [];
+    const button = { textContent: '' };
+    const elements = {
+        noiseChannelMode: radioGroup('auto'),
+        noiseLevel: { value: '-12' },
+        noiseChannel: radioGroup('left'),
+        noiseToggleBtn: button
+    };
+    globalThis.document = { getElementById: id => elements[id] || null };
+    globalThis.setInterval = callback => {
+        intervalCallback = callback;
+        return 17;
+    };
+    globalThis.clearInterval = id => { if (id === 17) intervalClears += 1; };
+    audioUtils.isWhiteNoiseActive = true;
+    audioUtils.isWhiteNoisePending = false;
+    audioUtils.whiteNoiseDesiredActive = true;
+    audioUtils.whiteNoiseOperationToken = 0;
+    audioUtils.whiteNoiseChannel = 'left';
+    audioUtils.startWhiteNoise = async (_level, _device, channel, minFreq, maxFreq) => {
+        starts.push([channel, minFreq, maxFreq]);
+        audioUtils.whiteNoiseOperationToken += 1;
+        audioUtils.isWhiteNoisePending = true;
+        return new Promise(resolve => { resolveStart = resolve; });
+    };
+    audioUtils.stopWhiteNoise = () => { stopCalls += 1; };
+    const notifications = [];
+    uiManager.showNotification = (...args) => notifications.push(args);
+    const controller = {
+        ...LevelAdjustment,
+        measurementConfig: {
+            audioOutputId: 'output',
+            outputChannel: 'multi',
+            outputChannels: ['left', '2']
+        },
+        currentMeasurement: { sweepBand: {
+            mode: 'perChannel', common: { minFreq: 20, maxFreq: 20000 },
+            perChannel: [{ channel: '2', minFreq: 2000, maxFreq: 10000 }]
+        } },
+        currentNoiseChannel: 'left',
+        channelRotationEpoch: 0,
+        channelRotationTimer: null,
+        channelRotationTickInFlight: false
+    };
+
+    controller.startChannelRotation();
+    const firstTick = intervalCallback();
+    await Promise.resolve();
+    const overlappingTick = intervalCallback();
+    await overlappingTick;
+    assert.deepEqual(starts, [['2', 2000, 10000]]);
+
+    controller.stopChannelRotation();
+    resolveStart(true);
+    await firstTick;
+    assert.equal(stopCalls, 0);
+    assert.equal(controller.currentNoiseChannel, 'left');
+    assert.equal(audioUtils.isWhiteNoisePending, false);
+    assert.equal(audioUtils.whiteNoiseDesiredActive, true);
+    assert.ok(intervalClears >= 1);
+    assert.deepEqual(notifications, []);
+
+    audioUtils.startWhiteNoise = async () => {
+        audioUtils.whiteNoiseOperationToken += 1;
+        audioUtils.isWhiteNoisePending = false;
+        return false;
+    };
+    controller.startChannelRotation();
+    await intervalCallback();
+    assert.deepEqual(notifications.at(-1), [
+        'The test signal could not be played. Check the audio output and try again.',
+        'error'
+    ]);
+    assert.equal(audioUtils.isWhiteNoiseActive, true);
+    assert.equal(audioUtils.whiteNoiseChannel, 'left');
+    assert.equal(controller.currentNoiseChannel, 'left');
+    assert.equal(elements.noiseChannel.querySelector().value, 'left');
+    assert.equal(button.textContent, 'Stop test signal');
+    assert.equal(controller.channelRotationTimer, null);
+});
+
+test('a pending test-signal request exposes Stop and settles as user cancellation', async t => {
+    const originals = {
+        document: globalThis.document,
+        isWhiteNoiseActive: audioUtils.isWhiteNoiseActive,
+        isWhiteNoisePending: audioUtils.isWhiteNoisePending,
+        whiteNoiseDesiredActive: audioUtils.whiteNoiseDesiredActive,
+        whiteNoiseOperationToken: audioUtils.whiteNoiseOperationToken,
+        startWhiteNoise: audioUtils.startWhiteNoise,
+        stopWhiteNoise: audioUtils.stopWhiteNoise,
+        showNotification: uiManager.showNotification
+    };
+    t.after(() => {
+        globalThis.document = originals.document;
+        audioUtils.isWhiteNoiseActive = originals.isWhiteNoiseActive;
+        audioUtils.isWhiteNoisePending = originals.isWhiteNoisePending;
+        audioUtils.whiteNoiseDesiredActive = originals.whiteNoiseDesiredActive;
+        audioUtils.whiteNoiseOperationToken = originals.whiteNoiseOperationToken;
+        audioUtils.startWhiteNoise = originals.startWhiteNoise;
+        audioUtils.stopWhiteNoise = originals.stopWhiteNoise;
+        uiManager.showNotification = originals.showNotification;
+    });
+    const button = { textContent: '' };
+    const elements = {
+        noiseToggleBtn: button,
+        noiseLevel: { value: '-12' },
+        noiseChannel: radioGroup('left'),
+        levelWarning: { classList: { remove() {} } }
+    };
+    globalThis.document = { getElementById: id => elements[id] || null };
+    audioUtils.isWhiteNoiseActive = false;
+    audioUtils.isWhiteNoisePending = false;
+    audioUtils.whiteNoiseDesiredActive = false;
+    audioUtils.whiteNoiseOperationToken = 0;
+    let finishStart;
+    let startCalls = 0;
+    let stopCalls = 0;
+    audioUtils.startWhiteNoise = () => {
+        startCalls += 1;
+        audioUtils.whiteNoiseOperationToken += 1;
+        audioUtils.isWhiteNoisePending = true;
+        audioUtils.whiteNoiseDesiredActive = true;
+        return new Promise(resolve => { finishStart = resolve; });
+    };
+    audioUtils.stopWhiteNoise = () => {
+        stopCalls += 1;
+        audioUtils.whiteNoiseOperationToken += 1;
+        audioUtils.isWhiteNoiseActive = false;
+        audioUtils.isWhiteNoisePending = false;
+        audioUtils.whiteNoiseDesiredActive = false;
+    };
+    const notifications = [];
+    uiManager.showNotification = (...args) => notifications.push(args);
+    const controller = {
+        ...LevelAdjustment,
+        measurementConfig: {
+            audioOutputId: 'output',
+            outputChannel: 'left'
+        },
+        currentMeasurement: { sweepMinFreq: 20, sweepMaxFreq: 20000 },
+        channelRotationEpoch: 0,
+        channelRotationTimer: null
+    };
+
+    const starting = controller.toggleWhiteNoise();
+    assert.equal(button.textContent, 'Stop test signal');
+    assert.equal(await controller.toggleWhiteNoise(), false);
+    assert.equal(startCalls, 1);
+    assert.equal(stopCalls, 1);
+    assert.equal(button.textContent, 'Playback test signal for checking volume');
+
+    finishStart(false);
+    assert.equal(await starting, false);
+    assert.deepEqual(notifications, []);
+});
+
+test('latest channel-switch failure retains published noise and reports the failure', async t => {
+    const originals = {
+        document: globalThis.document,
+        isWhiteNoiseActive: audioUtils.isWhiteNoiseActive,
+        isWhiteNoisePending: audioUtils.isWhiteNoisePending,
+        whiteNoiseDesiredActive: audioUtils.whiteNoiseDesiredActive,
+        whiteNoiseOperationToken: audioUtils.whiteNoiseOperationToken,
+        whiteNoiseChannel: audioUtils.whiteNoiseChannel,
+        startWhiteNoise: audioUtils.startWhiteNoise,
+        cancelPendingWhiteNoiseStart: audioUtils.cancelPendingWhiteNoiseStart,
+        showNotification: uiManager.showNotification
+    };
+    t.after(() => {
+        globalThis.document = originals.document;
+        audioUtils.isWhiteNoiseActive = originals.isWhiteNoiseActive;
+        audioUtils.isWhiteNoisePending = originals.isWhiteNoisePending;
+        audioUtils.whiteNoiseDesiredActive = originals.whiteNoiseDesiredActive;
+        audioUtils.whiteNoiseOperationToken = originals.whiteNoiseOperationToken;
+        audioUtils.whiteNoiseChannel = originals.whiteNoiseChannel;
+        audioUtils.startWhiteNoise = originals.startWhiteNoise;
+        audioUtils.cancelPendingWhiteNoiseStart = originals.cancelPendingWhiteNoiseStart;
+        uiManager.showNotification = originals.showNotification;
+    });
+    const elements = {
+        noiseLevel: { value: '-12' },
+        noiseChannel: radioGroup('left'),
+        noiseToggleBtn: { textContent: '' }
+    };
+    globalThis.document = { getElementById: id => elements[id] || null };
+    audioUtils.isWhiteNoiseActive = true;
+    audioUtils.isWhiteNoisePending = false;
+    audioUtils.whiteNoiseDesiredActive = true;
+    audioUtils.whiteNoiseOperationToken = 0;
+    audioUtils.whiteNoiseChannel = 'left';
+    audioUtils.startWhiteNoise = async () => {
+        audioUtils.whiteNoiseOperationToken += 1;
+        return false;
+    };
+    audioUtils.cancelPendingWhiteNoiseStart = () => {
+        audioUtils.whiteNoiseOperationToken += 1;
+        audioUtils.isWhiteNoisePending = false;
+    };
+    const notifications = [];
+    uiManager.showNotification = (...args) => notifications.push(args);
+    const controller = {
+        ...LevelAdjustment,
+        measurementConfig: {
+            audioOutputId: 'output',
+            outputChannel: 'multi',
+            outputChannels: ['left', '2']
+        },
+        currentMeasurement: { sweepMinFreq: 20, sweepMaxFreq: 20000 },
+        currentNoiseChannel: 'left',
+        channelRotationEpoch: 0,
+        channelRotationTimer: null
+    };
+
+    assert.equal(await controller.setNoiseChannel('2'), false);
+    assert.deepEqual(notifications, [[
+        'The test signal could not be played. Check the audio output and try again.',
+        'error'
+    ]]);
+    assert.equal(audioUtils.isWhiteNoiseActive, true);
+    assert.equal(controller.currentNoiseChannel, 'left');
+    assert.equal(elements.noiseChannel.querySelector().value, 'left');
+    assert.equal(elements.noiseToggleBtn.textContent, 'Stop test signal');
+
+    notifications.length = 0;
+    let finishStaleStart;
+    audioUtils.startWhiteNoise = () => {
+        audioUtils.whiteNoiseOperationToken += 1;
+        return new Promise(resolve => { finishStaleStart = resolve; });
+    };
+    const staleSwitch = controller.setNoiseChannel('2');
+    audioUtils.whiteNoiseOperationToken += 1;
+    finishStaleStart(false);
+    assert.equal(await staleSwitch, false);
+    assert.deepEqual(notifications, []);
+    assert.equal(controller.currentNoiseChannel, 'left');
+});
+
+test('auto mode preserves initial pending start and rotates after publication', async t => {
+    const originals = {
+        document: globalThis.document,
+        setInterval: globalThis.setInterval,
+        clearInterval: globalThis.clearInterval,
+        isWhiteNoiseActive: audioUtils.isWhiteNoiseActive,
+        isWhiteNoisePending: audioUtils.isWhiteNoisePending,
+        whiteNoiseDesiredActive: audioUtils.whiteNoiseDesiredActive,
+        whiteNoiseOperationToken: audioUtils.whiteNoiseOperationToken,
+        whiteNoiseChannel: audioUtils.whiteNoiseChannel,
+        startWhiteNoise: audioUtils.startWhiteNoise,
+        cancelPendingWhiteNoiseStart: audioUtils.cancelPendingWhiteNoiseStart,
+        showNotification: uiManager.showNotification
+    };
+    t.after(() => {
+        globalThis.document = originals.document;
+        globalThis.setInterval = originals.setInterval;
+        globalThis.clearInterval = originals.clearInterval;
+        audioUtils.isWhiteNoiseActive = originals.isWhiteNoiseActive;
+        audioUtils.isWhiteNoisePending = originals.isWhiteNoisePending;
+        audioUtils.whiteNoiseDesiredActive = originals.whiteNoiseDesiredActive;
+        audioUtils.whiteNoiseOperationToken = originals.whiteNoiseOperationToken;
+        audioUtils.whiteNoiseChannel = originals.whiteNoiseChannel;
+        audioUtils.startWhiteNoise = originals.startWhiteNoise;
+        audioUtils.cancelPendingWhiteNoiseStart = originals.cancelPendingWhiteNoiseStart;
+        uiManager.showNotification = originals.showNotification;
+    });
+    const elements = {
+        noiseChannelMode: radioGroup('auto'),
+        noiseLevel: { value: '-12' },
+        noiseChannel: radioGroup('left'),
+        noiseToggleBtn: { textContent: '' }
+    };
+    globalThis.document = { getElementById: id => elements[id] || null };
+    let intervalStarts = 0;
+    globalThis.setInterval = () => {
+        intervalStarts += 1;
+        return 23;
+    };
+    globalThis.clearInterval = () => {};
+    audioUtils.isWhiteNoiseActive = false;
+    audioUtils.isWhiteNoisePending = false;
+    audioUtils.whiteNoiseDesiredActive = false;
+    audioUtils.whiteNoiseOperationToken = 0;
+    audioUtils.whiteNoiseChannel = null;
+    let finishStart;
+    audioUtils.startWhiteNoise = () => {
+        audioUtils.whiteNoiseOperationToken += 1;
+        audioUtils.isWhiteNoisePending = true;
+        audioUtils.whiteNoiseDesiredActive = true;
+        return new Promise(resolve => { finishStart = resolve; });
+    };
+    let pendingCancels = 0;
+    audioUtils.cancelPendingWhiteNoiseStart = () => { pendingCancels += 1; };
+    uiManager.showNotification = () => {};
+    const controller = {
+        ...LevelAdjustment,
+        measurementConfig: {
+            audioOutputId: 'output',
+            outputChannel: 'multi',
+            outputChannels: ['left', '2']
+        },
+        currentMeasurement: { sweepMinFreq: 20, sweepMaxFreq: 20000 },
+        currentNoiseChannel: 'left',
+        channelRotationEpoch: 0,
+        channelRotationTimer: null,
+        channelRotationTickInFlight: false
+    };
+
+    const starting = controller.toggleWhiteNoise();
+    controller.startChannelRotation();
+    assert.equal(pendingCancels, 0);
+    assert.equal(intervalStarts, 0);
+
+    audioUtils.isWhiteNoiseActive = true;
+    audioUtils.isWhiteNoisePending = false;
+    audioUtils.whiteNoiseChannel = 'left';
+    finishStart(true);
+    assert.equal(await starting, true);
+    assert.equal(pendingCancels, 0);
+    assert.equal(intervalStarts, 1);
+    assert.equal(controller.channelRotationTimer, 23);
+});
+
+test('measurement start invalidates pending auto noise before sweep output setup', async t => {
+    const originals = {
+        document: globalThis.document,
+        isWhiteNoiseActive: audioUtils.isWhiteNoiseActive,
+        isWhiteNoisePending: audioUtils.isWhiteNoisePending,
+        whiteNoiseDesiredActive: audioUtils.whiteNoiseDesiredActive,
+        stopWhiteNoise: audioUtils.stopWhiteNoise,
+        waitForWhiteNoiseRouteIdle: audioUtils.waitForWhiteNoiseRouteIdle,
+        showScreen: uiManager.showScreen
+    };
+    t.after(() => {
+        globalThis.document = originals.document;
+        audioUtils.isWhiteNoiseActive = originals.isWhiteNoiseActive;
+        audioUtils.isWhiteNoisePending = originals.isWhiteNoisePending;
+        audioUtils.whiteNoiseDesiredActive = originals.whiteNoiseDesiredActive;
+        audioUtils.stopWhiteNoise = originals.stopWhiteNoise;
+        audioUtils.waitForWhiteNoiseRouteIdle = originals.waitForWhiteNoiseRouteIdle;
+        uiManager.showScreen = originals.showScreen;
+    });
+    const elements = createSweepTestElements();
+    globalThis.document = { getElementById: id => elements.get(id) || null };
+    audioUtils.isWhiteNoiseActive = false;
+    audioUtils.isWhiteNoisePending = true;
+    audioUtils.whiteNoiseDesiredActive = true;
+    uiManager.showScreen = () => {};
+    const events = [];
+    audioUtils.stopWhiteNoise = () => {
+        events.push('stop-noise');
+        audioUtils.isWhiteNoisePending = false;
+        audioUtils.whiteNoiseDesiredActive = false;
+    };
+    let releaseRoute;
+    audioUtils.waitForWhiteNoiseRouteIdle = () => new Promise(resolve => {
+        releaseRoute = resolve;
+    });
+    const controller = {
+        ...SweepMeasurement,
+        stopLevelMeter() { events.push('stop-meter'); },
+        stopChannelRotation() { events.push('stop-rotation'); },
+        performSweepMeasurement() { events.push('perform-sweep'); }
+    };
+
+    const starting = controller.startSweepMeasurement();
+    assert.deepEqual(events, ['stop-meter', 'stop-rotation', 'stop-noise']);
+    assert.equal(audioUtils.isWhiteNoisePending, false);
+
+    releaseRoute();
+    await starting;
+    assert.deepEqual(events, [
+        'stop-meter',
+        'stop-rotation',
+        'stop-noise',
+        'perform-sweep'
+    ]);
+});
+
+test('redo controls follow running, single-channel, multi-channel, and redo states', async t => {
+    const originals = {
+        document: globalThis.document,
+        setInterval: globalThis.setInterval,
+        clearInterval: globalThis.clearInterval,
+        audioContext: audioUtils.audioContext,
+        microphone: audioUtils.microphone,
+        generateTSP: audioUtils.generateTSP,
+        showNotification: uiManager.showNotification
+    };
+    t.after(() => {
+        globalThis.document = originals.document;
+        globalThis.setInterval = originals.setInterval;
+        globalThis.clearInterval = originals.clearInterval;
+        audioUtils.audioContext = originals.audioContext;
+        audioUtils.microphone = originals.microphone;
+        audioUtils.generateTSP = originals.generateTSP;
+        uiManager.showNotification = originals.showNotification;
+    });
+
+    const elements = createSweepTestElements();
+    const redoControls = ['redoChannelLabel', 'redoChannelSelect', 'redoChannelBtn'];
+    globalThis.document = { getElementById: id => elements.get(id) || null };
+    globalThis.setInterval = () => 41;
+    globalThis.clearInterval = () => {};
+    audioUtils.audioContext = { state: 'running', sampleRate: 48000 };
+    audioUtils.microphone = {};
+    audioUtils.generateTSP = () => ({ length: 8 });
+    uiManager.showNotification = () => {};
+
+    let releaseFirstChannel;
+    let playCalls = 0;
+    const result = { frequencyResponse: [[100, 0]], maxSignalLevel: -20 };
+    const multiController = {
+        ...SweepMeasurement,
+        measurementConfig: {
+            ...measurementConfig(),
+            outputChannel: 'multi',
+            outputChannels: ['left', '2']
+        },
+        currentMeasurement: {
+            id: 'multi-controls',
+            points: [],
+            nextPointId: 0,
+            sweepMinFreq: 20,
+            sweepMaxFreq: 20000
+        },
+        updateLevelGraph() {},
+        drawLevelGraphGrid() {},
+        updateFrequencyResponseGraph() {},
+        playAndRecordSweep() {
+            playCalls += 1;
+            if (playCalls === 1) {
+                return new Promise(resolve => { releaseFirstChannel = () => resolve(result); });
+            }
+            return Promise.resolve(result);
+        }
+    };
+
+    const runningMeasurement = multiController.performSweepMeasurement();
+    assert.ok(redoControls.every(id => elements.get(id).hidden));
+    releaseFirstChannel();
+    await runningMeasurement;
+    assert.ok(redoControls.every(id => !elements.get(id).hidden));
+
+    const singleController = {
+        ...multiController,
+        measurementConfig: measurementConfig(),
+        currentMeasurement: {
+            id: 'single-controls',
+            points: [],
+            nextPointId: 0,
+            sweepMinFreq: 20,
+            sweepMaxFreq: 20000
+        },
+        playAndRecordSweep: async () => result
+    };
+    await singleController.performSweepMeasurement();
+    assert.ok(redoControls.every(id => elements.get(id).hidden));
+
+    let rejectRedo;
+    const redoPoint = {
+        pointId: 1,
+        channels: [
+            { channel: 'left', frequencyResponse: [[100, 0]], maxSignalLevel: -20 },
+            { channel: '2', frequencyResponse: [[100, 1]], maxSignalLevel: -19 }
+        ]
+    };
+    const redoController = {
+        ...multiController,
+        currentPoint: redoPoint,
+        currentImpulseResponses: [],
+        playAndRecordSweep: () => new Promise((_, reject) => { rejectRedo = reject; })
+    };
+    const redo = redoController.redoChannel('left');
+    assert.ok(redoControls.every(id => elements.get(id).hidden));
+    rejectRedo(new Error('Simulated redo failure'));
+    assert.equal(await redo, false);
+    assert.ok(redoControls.every(id => !elements.get(id).hidden));
+});
+
+test('active sweep cancellation rejects once and releases every sweep timer', t => {
+    const originalClearTimeout = globalThis.clearTimeout;
+    const originalClearInterval = globalThis.clearInterval;
+    t.after(() => {
+        globalThis.clearTimeout = originalClearTimeout;
+        globalThis.clearInterval = originalClearInterval;
+    });
+    const clearedTimeouts = [];
+    const clearedIntervals = [];
+    globalThis.clearTimeout = id => clearedTimeouts.push(id);
+    globalThis.clearInterval = id => clearedIntervals.push(id);
+    const rejected = [];
+    const operation = {
+        settled: false,
+        reject: error => rejected.push(error)
+    };
+    const controller = {
+        ...AudioProcessing,
+        activeSweepOperation: operation,
+        activeSweepElements: {
+            preRollTimer: 11,
+            playbackSafetyTimer: 12,
+            finishTimer: 13,
+            finalSafetyTimer: 14,
+            checkInterval: 15,
+            source: null,
+            gainNode: null,
+            recordNode: null,
+            analyzer: null,
+            audioElement: null,
+            mediaStreamDestination: null,
+            operation
+        }
+    };
+
+    controller.cancelActiveSweep();
+    controller.cancelActiveSweep();
+
+    assert.equal(rejected.length, 1);
+    assert.ok(rejected[0] instanceof SweepCancelledError);
+    assert.deepEqual(clearedTimeouts, [11, 12, 13, 14]);
+    assert.deepEqual(clearedIntervals, [15]);
+    assert.equal(controller.activeSweepOperation, null);
+});
+
+test('a cancelled sweep setup rejection preserves the newer sweep owner', async t => {
+    const originals = {
+        document: globalThis.document,
+        audioContext: audioUtils.audioContext,
+        microphone: audioUtils.microphone,
+        audioWorkletSupported: audioUtils.audioWorkletSupported,
+        createRecorderWorkletNode: audioUtils.createRecorderWorkletNode
+    };
+    t.after(() => {
+        globalThis.document = originals.document;
+        audioUtils.audioContext = originals.audioContext;
+        audioUtils.microphone = originals.microphone;
+        audioUtils.audioWorkletSupported = originals.audioWorkletSupported;
+        audioUtils.createRecorderWorkletNode = originals.createRecorderWorkletNode;
+    });
+    globalThis.document = {
+        getElementById: id => id === 'noiseLevel' ? { value: '-12' } : null
+    };
+    const analyzers = [];
+    const audioContext = {
+        state: 'running',
+        sampleRate: 8,
+        destination: {
+            maxChannelCount: 2,
+            channelCount: 2,
+            channelCountMode: 'max',
+            channelInterpretation: 'speakers'
+        },
+        createBuffer(channelCount, length) {
+            const channels = Array.from({ length: channelCount }, () => new Float32Array(length));
+            return { getChannelData: channel => channels[channel] };
+        },
+        createAnalyser() {
+            const analyzer = {
+                frequencyBinCount: 4,
+                disconnected: false,
+                disconnect() { this.disconnected = true; }
+            };
+            analyzers.push(analyzer);
+            return analyzer;
+        }
+    };
+    audioUtils.audioContext = audioContext;
+    audioUtils.microphone = {};
+    audioUtils.audioWorkletSupported = true;
+    const recorderRejectors = [];
+    audioUtils.createRecorderWorkletNode = () => new Promise((_, reject) => {
+        recorderRejectors.push(reject);
+    });
+    const controller = {
+        ...AudioProcessing,
+        measurementConfig: {
+            audioOutputId: null,
+            outputChannel: 'left',
+            averaging: 1
+        },
+        activeSweepOperation: null,
+        activeSweepElements: null,
+        recorderNode: null
+    };
+    const sweepBuffer = {
+        length: 8,
+        channels: [new Float32Array(8), new Float32Array(8)]
+    };
+
+    const earlier = controller.playAndRecordSweep(sweepBuffer, 'left');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(recorderRejectors.length, 1);
+    const earlierOperation = controller.activeSweepOperation;
+    controller.cancelActiveSweep();
+    await assert.rejects(earlier, SweepCancelledError);
+
+    const latest = controller.playAndRecordSweep(sweepBuffer, 'left');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(recorderRejectors.length, 2);
+    const latestOperation = controller.activeSweepOperation;
+    assert.notStrictEqual(latestOperation, earlierOperation);
+
+    recorderRejectors[0](new Error('Earlier setup failed after cancellation'));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.strictEqual(controller.activeSweepOperation, latestOperation);
+    assert.strictEqual(controller.activeSweepElements.operation, latestOperation);
+    assert.equal(analyzers[1].disconnected, false);
+
+    controller.cancelActiveSweep();
+    await assert.rejects(latest, SweepCancelledError);
+    recorderRejectors[1](new Error('Latest setup released after cancellation'));
+    await new Promise(resolve => setImmediate(resolve));
+});
+
+test('internal sweep errors reach the measurement failure path during cancellation state', async t => {
+    const originals = {
+        document: globalThis.document,
+        setInterval: globalThis.setInterval,
+        clearInterval: globalThis.clearInterval,
+        audioContext: audioUtils.audioContext,
+        microphone: audioUtils.microphone,
+        generateTSP: audioUtils.generateTSP,
+        showNotification: uiManager.showNotification
+    };
+    t.after(() => {
+        globalThis.document = originals.document;
+        globalThis.setInterval = originals.setInterval;
+        globalThis.clearInterval = originals.clearInterval;
+        audioUtils.audioContext = originals.audioContext;
+        audioUtils.microphone = originals.microphone;
+        audioUtils.generateTSP = originals.generateTSP;
+        uiManager.showNotification = originals.showNotification;
+    });
+    const elements = createSweepTestElements();
+    globalThis.document = { getElementById: id => elements.get(id) || null };
+    globalThis.setInterval = () => 51;
+    globalThis.clearInterval = () => {};
+    audioUtils.audioContext = { state: 'running', sampleRate: 48000 };
+    audioUtils.microphone = {};
+    audioUtils.generateTSP = () => ({ length: 8 });
+    const notifications = [];
+    uiManager.showNotification = (...args) => notifications.push(args);
+    const controller = {
+        ...SweepMeasurement,
+        measurementConfig: measurementConfig(),
+        currentMeasurement: {
+            points: [],
+            sweepMinFreq: 20,
+            sweepMaxFreq: 20000
+        },
+        sweepCancelRequested: false,
+        updateLevelGraph() {},
+        drawLevelGraphGrid() {},
+        playAndRecordSweep: () => new Promise((_, reject) => {
+            controller.sweepCancelRequested = true;
+            reject(new Error('Simulated internal failure'));
+        })
+    };
+
+    await controller.performSweepMeasurement();
+
+    assert.equal(notifications.length, 1);
+    assert.equal(notifications[0][1], 'error');
+});
+
+test('channel redo commits one replacement and preserves prior state for failure and cancellation', async t => {
+    const originals = {
+        document: globalThis.document,
+        audioContext: audioUtils.audioContext,
+        generateTSP: audioUtils.generateTSP,
+        showNotification: uiManager.showNotification
+    };
+    t.after(() => {
+        globalThis.document = originals.document;
+        audioUtils.audioContext = originals.audioContext;
+        audioUtils.generateTSP = originals.generateTSP;
+        uiManager.showNotification = originals.showNotification;
+    });
+    const elements = createSweepTestElements();
+    globalThis.document = { getElementById: id => elements.get(id) || null };
+    audioUtils.audioContext = { sampleRate: 48000 };
+    audioUtils.generateTSP = (_length, _sampleRate, _channel, minFreq, maxFreq) => {
+        assert.equal(minFreq, 40);
+        assert.equal(maxFreq, 400);
+        return { length: 8 };
+    };
+    const notifications = [];
+    uiManager.showNotification = (...args) => notifications.push(args);
+
+    function createRedoController(playAndRecordSweep) {
+        const currentPoint = {
+            pointId: 4,
+            name: 'Point 5',
+            channels: [
+                {
+                    channel: 'left',
+                    frequencyResponse: [[100, 0]],
+                    maxSignalLevel: -20,
+                    irId: 10,
+                    ir: { stored: true, length: 2, sampleRate: 48000, onsetIndex: 0 }
+                },
+                {
+                    channel: '2',
+                    frequencyResponse: [[100, 2]],
+                    maxSignalLevel: -18,
+                    irId: 11,
+                    ir: { stored: true, length: 2, sampleRate: 48000, onsetIndex: 0 }
+                }
+            ]
+        };
+        const currentImpulseResponses = [
+            { measurementId: 'redo', pointId: 10, channel: 'left', data: Float32Array.of(1) },
+            { measurementId: 'redo', pointId: 11, channel: '2', data: Float32Array.of(2) }
+        ];
+        return {
+            controller: {
+                ...SweepMeasurement,
+                measurementConfig: {
+                    ...measurementConfig(),
+                    outputChannel: 'multi',
+                    outputChannels: ['left', '2']
+                },
+                currentMeasurement: {
+                    id: 'redo',
+                    nextPointId: 12,
+                    sweepBand: { mode: 'perChannel', common: { minFreq: 20, maxFreq: 20000 },
+                        perChannel: [{ channel: 'left', minFreq: 40, maxFreq: 400 }] },
+                    sweepMinFreq: 20,
+                    sweepMaxFreq: 20000
+                },
+                currentPoint,
+                currentImpulseResponses,
+                playAndRecordSweep,
+                updateLevelGraph() {},
+                updateFrequencyResponseGraph() {}
+            },
+            currentPoint,
+            currentImpulseResponses
+        };
+    }
+
+    const replacement = {
+        frequencyResponse: [[100, 5]],
+        maxSignalLevel: -15,
+        irValid: true,
+        impulseResponse: Float32Array.of(0.5, 1),
+        sampleRate: 48000,
+        onsetIndex: 1,
+        prerollSamples: 2,
+        refScale: 0.5,
+        peakDb: -3,
+        sweepLimited: true
+    };
+    const success = createRedoController(async () => replacement);
+    const untouchedChannel = success.currentPoint.channels[1];
+    assert.equal(await success.controller.redoChannel('left'), true);
+    assert.strictEqual(success.controller.currentPoint.channels[1], untouchedChannel);
+    assert.deepEqual(success.controller.currentPoint.channels[0].frequencyResponse, [[100, 5]]);
+    assert.equal(success.controller.currentImpulseResponses.length, 2);
+    assert.deepEqual(
+        success.controller.currentImpulseResponses.find(record => record.channel === '2'),
+        success.currentImpulseResponses[1]
+    );
+
+    for (const error of [new Error('Simulated redo failure'), new SweepCancelledError()]) {
+        const scenario = createRedoController(async () => { throw error; });
+        const nextPointId = scenario.controller.currentMeasurement.nextPointId;
+        assert.equal(await scenario.controller.redoChannel('left'), false);
+        assert.strictEqual(scenario.controller.currentPoint, scenario.currentPoint);
+        assert.strictEqual(
+            scenario.controller.currentImpulseResponses,
+            scenario.currentImpulseResponses
+        );
+        assert.equal(scenario.controller.currentMeasurement.nextPointId, nextPointId);
+    }
+    const renderFailure = createRedoController(async () => replacement);
+    renderFailure.controller.updateFrequencyResponseGraph = () => {
+        throw new Error('Simulated graph failure');
+    };
+    assert.equal(await renderFailure.controller.redoChannel('left'), false);
+    assert.strictEqual(renderFailure.controller.currentPoint, renderFailure.currentPoint);
+    assert.strictEqual(
+        renderFailure.controller.currentImpulseResponses,
+        renderFailure.currentImpulseResponses
+    );
+    assert.equal(renderFailure.controller.currentMeasurement.nextPointId, 12);
+    assert.equal(notifications.length, 2);
+});
+
+test('per-channel sweeps resolve bands, reset the level graph and retain calibrations', async t => {
+    const originals = {
+        document: globalThis.document,
+        setInterval: globalThis.setInterval,
+        clearInterval: globalThis.clearInterval,
+        audioContext: audioUtils.audioContext,
+        microphone: audioUtils.microphone,
+        generateTSP: audioUtils.generateTSP,
+        stopWhiteNoise: audioUtils.stopWhiteNoise,
+        stopMicrophoneInput: audioUtils.stopMicrophoneInput
+    };
+    t.after(() => {
+        globalThis.document = originals.document;
+        globalThis.setInterval = originals.setInterval;
+        globalThis.clearInterval = originals.clearInterval;
+        audioUtils.audioContext = originals.audioContext;
+        audioUtils.microphone = originals.microphone;
+        audioUtils.generateTSP = originals.generateTSP;
+        audioUtils.stopWhiteNoise = originals.stopWhiteNoise;
+        audioUtils.stopMicrophoneInput = originals.stopMicrophoneInput;
+    });
+    const elements = createSweepTestElements();
+    globalThis.document = { getElementById: id => elements.get(id) || null };
+    globalThis.setInterval = () => 61;
+    globalThis.clearInterval = () => {};
+    audioUtils.audioContext = { state: 'running', sampleRate: 48000 };
+    audioUtils.microphone = {};
+    const leftCalibration = { data: Float32Array.of(1) };
+    const thirdCalibration = { data: Float32Array.of(3) };
+    const calibrationMap = new Map([
+        ['left', leftCalibration],
+        ['2', thirdCalibration]
+    ]);
+    const observed = [];
+    const bands = [];
+    const graphTimes = [];
+    let now = 10000;
+    t.mock.method(Date, 'now', () => now);
+    let controller;
+    audioUtils.generateTSP = (_length, _sampleRate, channel, minFreq, maxFreq) => {
+        observed.push(['generate', channel, controller.interfaceCalibrationImpulseResponse]);
+        bands.push([channel, minFreq, maxFreq]);
+        return { length: 8 };
+    };
+    controller = {
+        ...SweepMeasurement,
+        measurementConfig: {
+            ...measurementConfig(),
+            outputChannel: 'multi',
+            outputChannels: ['left', '2']
+        },
+        currentMeasurement: {
+            id: 'calibrated-multi',
+            points: [],
+            nextPointId: 0,
+            sweepBand: { mode: 'perChannel', common: { minFreq: 20, maxFreq: 20000 },
+                perChannel: [
+                    { channel: 'left', minFreq: 40, maxFreq: 400 },
+                    { channel: '2', minFreq: 2000, maxFreq: 10000 }
+                ] },
+            sweepMinFreq: 20,
+            sweepMaxFreq: 20000
+        },
+        interfaceCalibrationImpulseResponsesByChannel: calibrationMap,
+        interfaceCalibrationImpulseResponse: null,
+        updateLevelGraph() {
+            assert.deepEqual(this.levelGraphData, []);
+            graphTimes.push(this.startTime);
+            this.levelGraphData.push({ time: 0, level: -20 });
+        },
+        drawLevelGraphGrid() {},
+        updateFrequencyResponseGraph() {},
+        async playAndRecordSweep(_buffer, channel) {
+            observed.push(['play', channel, this.interfaceCalibrationImpulseResponse]);
+            now += 10000;
+            return { frequencyResponse: [[100, 0]], maxSignalLevel: -20 };
+        }
+    };
+
+    await controller.performSweepMeasurement();
+
+    assert.deepEqual(observed, [
+        ['generate', 'left', leftCalibration],
+        ['play', 'left', leftCalibration],
+        ['generate', '2', thirdCalibration],
+        ['play', '2', thirdCalibration]
+    ]);
+    assert.strictEqual(controller.interfaceCalibrationImpulseResponse, thirdCalibration);
+    assert.deepEqual(bands, [['left', 40, 400], ['2', 2000, 10000]]);
+    assert.deepEqual(graphTimes, [10000, 20000]);
+
+    audioUtils.stopWhiteNoise = () => {};
+    audioUtils.stopMicrophoneInput = () => {};
+    audioUtils.audioContext = null;
+    const cleanupController = new MeasurementController();
+    cleanupController.interfaceCalibrationImpulseResponsesByChannel = calibrationMap;
+    cleanupController.cleanup();
+    assert.strictEqual(cleanupController.interfaceCalibrationImpulseResponsesByChannel, calibrationMap);
+});
 
 function calibrationSource(overrides = {}) {
     return {
@@ -218,6 +1180,36 @@ test('calibrated measurement start is single-flight and snapshots valid source d
     assert.equal(controller.startMeasurementPromise, null);
 });
 
+test('imported stereo calibration resolves the selected channel IR and records its provenance', async t => {
+    const imported = createImpulseResponseMeasurement({
+        id: 'measurement-imported-stereo',
+        name: 'Imported loopback',
+        channels: [Float32Array.of(1, 0), Float32Array.of(0.25, 1)],
+        sampleRate: 48000,
+        timestamp: '2026-08-27T00:00:00.000Z'
+    });
+    const selected = imported.records.find(record => record.channel === 'right');
+    installMeasurementStartEnvironment(t, imported.measurement, selected);
+    const requestedIrKeys = [];
+    dataStorage.getImpulseResponse = async (_measurementId, irKey) => {
+        requestedIrKeys.push(irKey);
+        return imported.records.find(record => record.pointId === irKey) || null;
+    };
+    const controller = new MeasurementController();
+    controller.prepareForLevelAdjustment = async () => {};
+
+    const measurement = await controller.startNewMeasurement(measurementConfig({
+        sourceMeasurementId: imported.measurement.id,
+        sourcePointId: 0,
+        sourceChannel: 'right'
+    }));
+
+    assert.deepEqual(requestedIrKeys, [selected.pointId]);
+    assert.deepEqual(controller.interfaceCalibrationImpulseResponse.data, selected.data);
+    assert.equal(measurement.interfaceCalibration.sourcePointId, 0);
+    assert.equal(measurement.interfaceCalibration.sourceChannel, 'right');
+});
+
 test('uncalibrated start does not read calibration IR or add provenance', async t => {
     installMeasurementStartEnvironment(t, null, null);
     let impulseReads = 0;
@@ -239,7 +1231,7 @@ test('unlimited sweep records the full FFT bandwidth', async t => {
     const controller = new MeasurementController();
     controller.prepareForLevelAdjustment = async () => {};
     const config = measurementConfig();
-    config.sweepBandLimited = false;
+    config.sweepBand = { mode: 'off', common: { minFreq: 20, maxFreq: 20000 }, perChannel: [] };
 
     const measurement = await controller.startNewMeasurement(config);
     const fftLength = Number(config.sweepLength);
@@ -250,6 +1242,122 @@ test('unlimited sweep records the full FFT bandwidth', async t => {
         measurement.sweepMaxFreq,
         (fftLength / 2 - 1) * 48000 / fftLength
     );
+});
+
+test('channel calibration accepts matching bands and rejects an undersized common band', async t => {
+    const lowSource = calibrationSource({ id: 'low', outputChannel: 'left', sweepBand: {
+        mode: 'perChannel', common: { minFreq: 20, maxFreq: 20000 },
+        perChannel: [{ channel: 'left', minFreq: 40, maxFreq: 400 }]
+    } });
+    const highSource = calibrationSource({ id: 'high', sweepMinFreq: 2000, sweepMaxFreq: 10000 });
+    installMeasurementStartEnvironment(t, lowSource, calibrationImpulse());
+    dataStorage.getMeasurementById = id => id === 'low' ? lowSource : highSource;
+    const controller = new MeasurementController();
+    controller.prepareForLevelAdjustment = async () => {};
+    const config = { ...measurementConfig(), outputChannel: 'multi', outputChannels: ['left', '2'],
+        sweepBand: { mode: 'perChannel', common: { minFreq: 20, maxFreq: 20000 }, perChannel: [
+            { channel: 'left', minFreq: 40, maxFreq: 400 },
+            { channel: '2', minFreq: 2000, maxFreq: 10000 }
+        ] },
+        interfaceCalibrations: [
+            { channel: 'left', sourceMeasurementId: 'low', sourcePointId: 3 },
+            { channel: '2', sourceMeasurementId: 'high', sourcePointId: 3 }
+        ]
+    };
+    const measurement = await controller.startNewMeasurement(config);
+    assert.deepEqual(measurement.sweepBand, config.sweepBand);
+    assert.equal(measurement.sweepMinFreq, 40);
+    assert.equal(measurement.sweepMaxFreq, 10000);
+    assert.equal(measurement.interfaceCalibrations.length, 2);
+    delete config.interfaceCalibrations;
+    config.interfaceCalibration = { sourceMeasurementId: 'low', sourcePointId: 3 };
+    await assert.rejects(controller.startNewMeasurement(config),
+        error => error.code === 'interfaceCalibrationSweepRangeMismatch');
+});
+
+test('simultaneous stereo measurement keeps calibration and signals within connected outputs', async t => {
+    const sweepBand = { mode: 'perChannel', common: { minFreq: 20, maxFreq: 20000 }, perChannel: [
+        { channel: 'left', minFreq: 40, maxFreq: 200 },
+        { channel: 'right', minFreq: 200, maxFreq: 400 }
+    ] };
+    const source = calibrationSource({ outputChannel: 'all', outputChannelCount: 2, sweepBand });
+    installMeasurementStartEnvironment(t, source, calibrationImpulse());
+    const context = audioUtils.audioContext;
+    context.destination = { maxChannelCount: 8, channelCount: 2 };
+    context.sinkId = '';
+    context.setSinkId = async id => {
+        assert.equal(id, 'output-id');
+        context.sinkId = id;
+        context.destination.maxChannelCount = 2;
+    };
+    const controller = new MeasurementController();
+    controller.prepareForLevelAdjustment = async () => {};
+    const config = { ...measurementConfig({ sourceMeasurementId: source.id, sourcePointId: 3 }),
+        outputChannel: 'all', sweepBand };
+    const measurement = await controller.startNewMeasurement(config);
+    assert.equal(measurement.outputChannelCount, 2);
+    assert.equal(controller.measurementConfig.outputChannelCount, 2);
+    assert.equal(measurement.sweepMinFreq, 40);
+    assert.equal(measurement.sweepMaxFreq, 400);
+    const elements = createSweepTestElements();
+    elements.set('noiseLevel', { value: '-12' });
+    globalThis.document = { getElementById: id => elements.get(id) || null };
+    const checkSignal = (channel, minFreq, maxFreq, bands) => {
+        assert.equal(channel, 'all');
+        assert.equal(minFreq, 40);
+        assert.equal(maxFreq, 400);
+        assert.deepEqual(bands.map(band => band.channel), ['left', 'right']);
+    };
+    t.mock.method(audioUtils, 'generateTSP', (_length, _rate, channel, minFreq, maxFreq, _limited, bands) => {
+        checkSignal(channel, minFreq, maxFreq, bands);
+        return { length: 8 };
+    });
+    t.mock.method(audioUtils, 'startWhiteNoise', async (_level, _device, channel, minFreq, maxFreq, bands) => {
+        checkSignal(channel, minFreq, maxFreq, bands);
+        return true;
+    });
+    await controller.restartWhiteNoiseForChannel('all');
+    t.mock.method(controller, 'updateLevelGraph', () => {});
+    t.mock.method(controller, 'drawLevelGraphGrid', () => {});
+    t.mock.method(controller, 'updateFrequencyResponseGraph', () => {});
+    const previousMicrophone = audioUtils.microphone;
+    audioUtils.microphone = {};
+    t.after(() => { audioUtils.microphone = previousMicrophone; });
+    let sweeps = 0;
+    controller.playAndRecordSweep = async (_buffer, channel, width) => {
+        assert.equal(channel, 'all');
+        assert.equal(width, 2);
+        sweeps += 1;
+        return { frequencyResponse: [[100, 0]], maxSignalLevel: -20 };
+    };
+    await controller.performSweepMeasurement();
+    assert.equal(sweeps, 1);
+});
+
+test('stereo route probing releases temporary playback before calibration rejection', async t => {
+    const source = calibrationSource({ sweepMinFreq: 80 });
+    installMeasurementStartEnvironment(t, source, calibrationImpulse());
+    const previousAudio = globalThis.Audio;
+    t.after(() => { globalThis.Audio = previousAudio; });
+    let pauses = 0, disconnects = 0;
+    globalThis.Audio = class {
+        async setSinkId() {}
+        async play() {}
+        pause() { pauses += 1; }
+    };
+    audioUtils.audioContext.destination = { maxChannelCount: 8, channelCount: 2 };
+    audioUtils.audioContext.createMediaStreamDestination = () => ({
+        stream: {}, disconnect() { disconnects += 1; }
+    });
+    const controller = new MeasurementController();
+    const config = { ...measurementConfig({ sourceMeasurementId: source.id, sourcePointId: 3 }),
+        outputChannel: 'all', sweepBand: {
+            mode: 'perChannel', common: { minFreq: 40, maxFreq: 400 }, perChannel: []
+        } };
+    await assert.rejects(controller.startNewMeasurement(config),
+        error => error.code === 'interfaceCalibrationSweepRangeMismatch');
+    assert.equal(pauses, 1);
+    assert.equal(disconnects, 1);
 });
 
 test('calibration validation rejects corrected, missing, non-finite, mismatched, and narrow sources', async t => {
@@ -332,9 +1440,11 @@ test('level preparation failure cleans up, restores state, and releases start gu
     const previousConfig = { name: 'Previous config' };
     const previousMeasurement = { id: 'measurement-previous' };
     const previousCalibration = { data: Float32Array.from([1]) };
+    const previousCalibrationMap = new Map([['left', previousCalibration]]);
     controller.measurementConfig = previousConfig;
     controller.currentMeasurement = previousMeasurement;
     controller.interfaceCalibrationImpulseResponse = previousCalibration;
+    controller.interfaceCalibrationImpulseResponsesByChannel = previousCalibrationMap;
     let attempts = 0;
     let cleanupCalls = 0;
     controller.prepareForLevelAdjustment = async () => {
@@ -351,6 +1461,10 @@ test('level preparation failure cleans up, restores state, and releases start gu
     assert.strictEqual(controller.measurementConfig, previousConfig);
     assert.strictEqual(controller.currentMeasurement, previousMeasurement);
     assert.strictEqual(controller.interfaceCalibrationImpulseResponse, previousCalibration);
+    assert.strictEqual(
+        controller.interfaceCalibrationImpulseResponsesByChannel,
+        previousCalibrationMap
+    );
     assert.equal(controller.startMeasurementPromise, null);
     assert.equal(cleanupCalls, 1);
 
@@ -403,7 +1517,7 @@ test('calibrated deconvolution failures reject instead of exposing uncalibrated 
     }
 });
 
-test('configuration lists only uncalibrated points with stored IR metadata', async t => {
+test('configuration lists uncalibrated mono and imported multichannel IR candidates', async t => {
     const originals = {
         measurements: dataStorage.measurements,
         irPersistenceAvailable: dataStorage.irPersistenceAvailable,
@@ -437,8 +1551,16 @@ test('configuration lists only uncalibrated points with stored IR metadata', asy
         createElement: () => new FakeElement()
     };
     dataStorage.irPersistenceAvailable = true;
+    const imported = createImpulseResponseMeasurement({
+        id: 'measurement-imported-stereo',
+        name: 'Imported loopback',
+        channels: [Float32Array.of(1, 0), Float32Array.of(0.5, 1)],
+        sampleRate: 48000,
+        timestamp: '2026-08-27T00:00:00.000Z'
+    });
     dataStorage.measurements = [
         calibrationSource(),
+        imported.measurement,
         calibrationSource({
             id: 'measurement-corrected',
             interfaceCalibration: {
@@ -461,13 +1583,23 @@ test('configuration lists only uncalibrated points with stored IR metadata', asy
     manager.prepareConfigScreen();
     const select = elements.get('interfaceCalibration');
     assert.equal(select.disabled, false);
-    assert.equal(select.children.length, 2);
+    assert.equal(select.children.length, 4);
     assert.equal(select.children[0].value, '');
     assert.deepEqual(JSON.parse(select.children[1].value), [
         'measurement-calibration',
         3
     ]);
     assert.match(select.children[1].textContent, /Interface loopback/);
+    assert.deepEqual(JSON.parse(select.children[2].value), [
+        'measurement-imported-stereo',
+        0,
+        'left'
+    ]);
+    assert.deepEqual(JSON.parse(select.children[3].value), [
+        'measurement-imported-stereo',
+        0,
+        'right'
+    ]);
 
     dataStorage.irPersistenceAvailable = false;
     manager.prepareConfigScreen();
@@ -581,6 +1713,7 @@ test('back, select, start-new, and save-finish transitions have one cleanup boun
         globalThis.document = originals.document;
     });
     globalThis.document = {
+        getElementById: () => null,
         querySelectorAll: () => [],
         querySelector: () => null,
         body: { classList: { contains: () => false } }
@@ -630,6 +1763,160 @@ test('back, select, start-new, and save-finish transitions have one cleanup boun
     await assert.rejects(failingController.finishMeasurement(), /save failed/);
     assert.equal(manager.currentScreen, 'sweepMeasurementScreen');
     assert.equal(cleanupCalls, 3);
+});
+
+test('New Measurement restores automatic noise and common calibration modes', async t => {
+    const originals = {
+        window: globalThis.window,
+        document: globalThis.document,
+        stopChannelRotation: measurementController.stopChannelRotation
+    };
+    t.after(() => {
+        globalThis.window = originals.window;
+        globalThis.document = originals.document;
+        measurementController.stopChannelRotation = originals.stopChannelRotation;
+    });
+    const noiseMode = radioGroup('manual');
+    const calibrationMode = { value: 'perChannel' };
+    const commonCalibration = { hidden: true };
+    const perChannelRows = {
+        hidden: false,
+        childCount: 2,
+        replaceChildren() {
+            this.childCount = 0;
+            events.push('clear-calibration-rows');
+        }
+    };
+    const elements = {
+        noiseChannelMode: noiseMode,
+        calibrationAssignMode: calibrationMode,
+        interfaceCalibration: commonCalibration,
+        perChannelCalibrationRows: perChannelRows
+    };
+    globalThis.document = {
+        getElementById: id => elements[id] || null
+    };
+    const events = [];
+    measurementController.stopChannelRotation = () => events.push('stop-rotation');
+    globalThis.window = { app: {
+        initializeAudio: async () => { events.push('initialize-audio'); },
+        populateAudioDevices: async () => { events.push('populate-devices'); },
+        selectSavedAudioDevices: () => { events.push('select-devices'); }
+    } };
+    const manager = new UIManager();
+    manager.prepareConfigScreen = () => {
+        assert.equal(calibrationMode.value, 'common');
+        assert.equal(perChannelRows.childCount, 0);
+        assert.equal(perChannelRows.hidden, true);
+        assert.equal(commonCalibration.hidden, false);
+        events.push('prepare-config');
+    };
+
+    await manager.startNewMeasurement();
+
+    assert.equal(noiseMode.querySelector().value, 'auto');
+    assert.equal(calibrationMode.value, 'common');
+    assert.deepEqual(events, [
+        'clear-calibration-rows',
+        'stop-rotation',
+        'initialize-audio',
+        'populate-devices',
+        'prepare-config',
+        'select-devices'
+    ]);
+});
+
+test('empty channel responses follow the existing unavailable PEQ path', async t => {
+    const originals = {
+        document: globalThis.document,
+        window: globalThis.window,
+        getMeasurementById: dataStorage.getMeasurementById
+    };
+    t.after(() => {
+        globalThis.document = originals.document;
+        globalThis.window = originals.window;
+        dataStorage.getMeasurementById = originals.getMeasurementById;
+    });
+    const measurement = {
+        id: 'empty-channel-response',
+        outputChannel: 'multi',
+        outputChannels: ['left', '2'],
+        points: [],
+        channelResponses: [
+            { channel: 'left', averageFrequencyResponse: [[100, -1]] },
+            { channel: '2', averageFrequencyResponse: [[100, -2]] }
+        ]
+    };
+    dataStorage.getMeasurementById = () => measurement;
+    let peqControlReads = 0;
+    globalThis.document = {
+        getElementById: id => {
+            peqControlReads += 1;
+            return id === 'eqBandCount' ? { value: '3' } : null;
+        }
+    };
+    let clipboardWrites = 0;
+    globalThis.window = { electronAPI: {
+        writeClipboardText: async () => {
+            clipboardWrites += 1;
+            return true;
+        }
+    } };
+    const manager = new UIManager();
+    manager.selectedMeasurementId = measurement.id;
+    let effectCalculations = 0;
+    manager.correctionHandler.getTargetSettings = () => {
+        effectCalculations += 1;
+        return {};
+    };
+    manager.correctionHandler.calculatePEQParametersForResponse = async () => {
+        effectCalculations += 1;
+        return [];
+    };
+    const notifications = [];
+    manager.showNotification = (...args) => notifications.push(args);
+
+    assert.equal(await manager.copyChannelPEQToClipboard(), false);
+    assert.equal(effectCalculations, 0);
+    assert.equal(peqControlReads, 0);
+    assert.equal(clipboardWrites, 0);
+    assert.equal(notifications.length, 1);
+    assert.match(notifications[0][0], /No PEQ settings available/i);
+    assert.equal(notifications[0][1], 'error');
+
+    measurement.points.push({ pointId: 0 });
+    measurement.channelResponses = [
+        { channel: 'left', averageFrequencyResponse: [[100, -1]] },
+        { channel: '2', averageFrequencyResponse: [] }
+    ];
+    notifications.length = 0;
+
+    assert.equal(await manager.copyChannelPEQToClipboard(), false);
+    assert.equal(effectCalculations, 0);
+    assert.equal(peqControlReads, 0);
+    assert.equal(clipboardWrites, 0);
+    assert.equal(notifications.length, 1);
+    assert.match(notifications[0][0], /No PEQ settings available/i);
+    assert.equal(notifications[0][1], 'error');
+
+    measurement.channelResponses[1].averageFrequencyResponse = [[100, -2]];
+    manager.correctionHandler.getTargetSettings = () => ({ smoothing: 0.5 });
+    const solvedChannels = [];
+    manager.correctionHandler.calculatePEQParametersForResponse = async (response, settings, source, channel) => {
+        assert.strictEqual(source, measurement);
+        assert.strictEqual(response, measurement.channelResponses.find(entry => entry.channel === channel).averageFrequencyResponse);
+        solvedChannels.push(channel);
+        return [{ frequency: 100, gain: -1, Q: 1 }];
+    };
+    notifications.length = 0;
+
+    assert.equal(await manager.copyChannelPEQToClipboard(), true);
+    assert.deepEqual(solvedChannels, ['left', '2']);
+    assert.equal(peqControlReads, 1);
+    assert.equal(clipboardWrites, 1);
+    assert.equal(notifications.length, 1);
+    assert.match(notifications[0][0], /copied/i);
+    assert.equal(notifications[0][1], undefined);
 });
 
 test('next-point level preparation failure preserves the current point and sweep screen', async t => {
@@ -778,7 +2065,9 @@ test('corrected point deletion followed by Discard restores the complete snapsho
             id: 'measurement-edit',
             name: 'Corrected',
             timestamp: '2026-07-21T00:00:00.000Z',
-            points: [point(0, 1), point(1, 3)],
+            points: [point(0, 1), {
+                ...point(1, 3), frequencyResponse: [[100, 3], [200, 4], [300, 5], [400, 4], [500, 3]]
+            }],
             averageFrequencyResponse: [[100, 2], [1000, 3]],
             maxSignalLevel: -19.5,
             correctionLowFreq: 30,

@@ -27,7 +27,7 @@ Applies a horn-like resonant response to the input.
 | `curve` | `curve` | number / 1 | `40` | % | -100 … 100 |
 | `damping` | `damping` | number / 1 | `0.03` | dB/m | 0 … 10 |
 | `throatReflection` | `throat_reflection` | number / 1 | `0.99` | Not declared in catalog | 0 … 0.99 |
-| `waveguideGain` | `waveguide_gain` | number / 1 | `30` | dB | -36 … 36 |
+| `waveguideGain` | `waveguide_gain` | number / 1 | `26` | dB | -36 … 36 |
 
 
 
@@ -44,6 +44,14 @@ A plugin that simulates the resonance of a horn-loaded speaker using a digital w
 - Warm midrange boost: accents vocals and acoustic instruments without harshness.
 - Natural horn ambience: adds vintage speaker coloration for richer listening.
 - Smooth high-frequency damping: prevents sharp peaks for a relaxed tone.
+
+### System Presets
+
+Click **Effect Presets** in the effect header to start with a complete horn character.
+
+- **Gramophone** - A strongly flared horn with an old acoustic-record-player color.
+- **Vintage Theater** - A large, low-reaching theater-horn response.
+- **Megaphone** - A short conical horn with a direct, emphatic midrange.
 
 ### Parameters
 

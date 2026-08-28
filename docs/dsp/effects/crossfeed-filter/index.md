@@ -40,6 +40,14 @@ A headphone crossfeed filter that simulates the natural acoustic crosstalk that 
 - Low-pass filtering to mimic frequency-dependent crosstalk
 - Stereo-only processing (automatically bypassed for mono or other non-stereo signals)
 
+### System Presets
+
+Click **Effect Presets** in the effect header to choose a complete crossfeed amount for headphone listening.
+
+- **Subtle Blend** - A very light crossfeed that preserves most of the original width.
+- **Vintage Receiver** - A moderate crossfeed resembling a traditional headphone adapter.
+- **Living Room Speakers** - A strong speaker-like blend for recordings with very wide stereo separation.
+
 ### Parameters
 - **Level** (-60 dB to 0 dB): Controls the amount of crossfeed signal
   - Lower values (-20 dB to -6 dB): Subtle, natural crossfeed
@@ -51,25 +59,9 @@ A headphone crossfeed filter that simulates the natural acoustic crosstalk that 
   - Lower values (500-1000 Hz): More natural, frequency-dependent crosstalk
   - Higher values (1000-20000 Hz): Broader frequency response
 
-### Recommended Settings
+### Starting Points
 
-1. Natural Headphone Listening
-   - Level: -12 dB
-   - Delay: 0.3 ms
-   - LPF Freq: 700 Hz
-   - Effect: Subtle crossfeed for comfortable long-term listening
-
-2. Speaker Simulation
-   - Level: -6 dB
-   - Delay: 0.5 ms
-   - LPF Freq: 1000 Hz
-   - Effect: More pronounced speaker-like presentation
-
-3. Subtle Enhancement
-   - Level: -20 dB
-   - Delay: 0.2 ms
-   - LPF Freq: 500 Hz
-   - Effect: Very gentle crossfeed for sensitive listeners
+Use the **Subtle Blend**, **Vintage Receiver**, or **Living Room Speakers** system preset as a complete starting point. Then adjust Level first: lower values preserve more stereo width, while higher values make the speaker-like blend more obvious.
 
 ### Application Guide
 

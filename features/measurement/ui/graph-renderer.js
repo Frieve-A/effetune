@@ -6,8 +6,20 @@ import dataStorage from '../dataStorage.js';
 import audioUtils from '../audio-utils/index.js';
 import i18n from '../i18n.js';
 import {
-    normalizeResponseToZeroDb as normalizeFrequencyResponseToZeroDb
+    normalizeResponseToZeroDb as normalizeFrequencyResponseToZeroDb,
+    responseReferenceDb
 } from '../response-normalization.js';
+import { channelDisplayLabel } from '../audio-utils/channel-selection.js';
+import { channelColor } from '../channel-colors.js';
+import {
+    aggregateLevelWarnings,
+    resolveDisplayedChannelCurves,
+    resolveDisplayedResponse,
+    resolveResponseSweepBand,
+    resolveIrRecordKey,
+    resolveIrRecordTarget,
+    visibleChannelCurves
+} from '../measurement-model.js';
 import {
     clampImpulseView,
     createDefaultImpulseView,
@@ -29,6 +41,7 @@ class GraphRenderer {
         this.impulseResponseLoadGeneration = 0;
         this.impulseResponseDrag = null;
         this.impulseResponseGraphInitialized = false;
+        this.hoveredChannel = null;
     }
 
     /**
@@ -39,90 +52,95 @@ class GraphRenderer {
     updateResultsGraph(pointIndex, skipPEQUpdate = false) {
         try {
             const canvas = document.getElementById('resultsGraph');
-            if (!canvas) {
-                return;
-            }
+            if (!canvas) return;
             const ctx = canvas.getContext('2d');
-            
-            // Clear canvas before any early return so deleted points do not leave stale traces.
             ctx.fillStyle = '#1a1a1a';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             const measurement = dataStorage.getMeasurementById(this.uiManager.selectedMeasurementId);
             if (!measurement || !measurement.points || measurement.points.length === 0) {
+                this.updateChannelLegend(measurement, []);
                 return;
             }
-            
-            // Draw grid
             this.drawFrequencyGrid(ctx);
-            
-            // Get display options
             const showOriginal = document.getElementById('showOriginal').checked;
             const showCorrection = document.getElementById('showCorrection').checked;
             const showCorrected = document.getElementById('showCorrected').checked;
-            
-            // Get smoothing value
             const smoothing = parseFloat(document.getElementById('smoothing').value);
-            
-            // Get frequency response data
-            let frequencyResponse;
-            let maxSignalLevel;
-            
-            if (pointIndex !== 'all' && pointIndex !== undefined && pointIndex >= 0 && pointIndex < measurement.points.length) {
-                // Show specific point
-                frequencyResponse = measurement.points[pointIndex].frequencyResponse;
-                maxSignalLevel = measurement.points[pointIndex].maxSignalLevel;
-            } else {
-                // Show average
-                frequencyResponse = measurement.averageFrequencyResponse;
-                maxSignalLevel = measurement.maxSignalLevel;
-            }
-            
+            const selectedChannel = this.uiManager.measurementDisplay.selectedChannel || 'all';
+            const displayedPointIndex = pointIndex === undefined
+                ? this.uiManager.measurementDisplay.selectedPointIndex
+                : pointIndex;
+            const displayed = resolveDisplayedResponse(
+                measurement,
+                displayedPointIndex,
+                selectedChannel
+            );
+            const frequencyResponse = displayed?.frequencyResponse;
             if (!frequencyResponse || frequencyResponse.length === 0) {
+                this.updateChannelLegend(measurement, []);
                 return;
             }
-            
-            // Normalize to the median level inside the measured audible band
+
+            const band = resolveResponseSweepBand(measurement, selectedChannel);
             const normalizedFrequencyResponse = this.normalizeResponseToZeroDb(
                 [...frequencyResponse],
-                measurement.sweepMinFreq,
-                measurement.sweepMaxFreq
+                band.minFreq,
+                band.maxFreq
             );
-            
-            // Draw original frequency response with smoothing
+            const channelCurves = selectedChannel === 'all'
+                ? resolveDisplayedChannelCurves(measurement, displayedPointIndex) || []
+                : [];
+            const displayedCurves = visibleChannelCurves(channelCurves, this.hoveredChannel);
+            this.updateChannelLegend(measurement, channelCurves);
+
             if (showOriginal) {
-                try {
-                    // Apply smoothing to the normalized response
-                    const smoothedResponse = window.app.audioUtils.smoothFrequencyResponse(
-                        normalizedFrequencyResponse,
-                        smoothing
+                if (displayedCurves.length > 0) {
+                    const reference = responseReferenceDb(
+                        channelCurves[0].frequencyResponse,
+                        measurement.sweepMinFreq,
+                        measurement.sweepMaxFreq
                     );
-                    this.drawGraph(ctx, smoothedResponse, this.uiManager.graphColors.original);
-                } catch (error) {
-                    console.error("Error smoothing original response:", error);
-                    // Fallback: draw without smoothing
-                    this.drawGraph(ctx, normalizedFrequencyResponse, this.uiManager.graphColors.original);
+                    for (const curve of displayedCurves) {
+                        const normalized = normalizeFrequencyResponseToZeroDb(
+                            [...curve.frequencyResponse],
+                            measurement.sweepMinFreq,
+                            measurement.sweepMaxFreq,
+                            reference
+                        );
+                        let smoothed = normalized;
+                        try {
+                            smoothed = window.app.audioUtils.smoothFrequencyResponse(normalized, smoothing);
+                        } catch (error) {
+                            console.error('Error smoothing channel response:', error);
+                        }
+                        this.drawGraph(ctx, smoothed, channelColor(curve.channel, measurement.outputChannels));
+                    }
+                } else {
+                    let smoothed = normalizedFrequencyResponse;
+                    try {
+                        smoothed = window.app.audioUtils.smoothFrequencyResponse(
+                            normalizedFrequencyResponse,
+                            smoothing
+                        );
+                    } catch (error) {
+                        console.error('Error smoothing original response:', error);
+                    }
+                    this.drawGraph(ctx, smoothed, this.uiManager.graphColors.original);
                 }
             }
-            
-            // Only show correction/corrected response if we have PEQ parameters or are skipping updates
-            // This ensures we can still display the graph during slider dragging without recalculating
+
             if (measurement.peqParameters && measurement.peqParameters.length > 0) {
-                // Draw correction curve if available
                 if (showCorrection) {
                     try {
-                        // Get correction curve from PEQ parameters - this is independent of the selected measurement point
-                        const correctionCurve = this.uiManager.correctionHandler.generateCorrectionCurve(measurement.peqParameters, measurement.averageFrequencyResponse);
+                        const correctionCurve = this.uiManager.correctionHandler.generateCorrectionCurve(measurement.peqParameters, frequencyResponse);
                         this.drawGraph(ctx, correctionCurve, this.uiManager.graphColors.correction);
                     } catch (error) {
-                        console.error("Error generating correction curve:", error);
+                        console.error('Error generating correction curve:', error);
                     }
                 }
-                
-                // Draw corrected response if available
                 if (showCorrected) {
                     try {
-                        // Get the smoothed original response (same as what we display for "Original")
                         let smoothedOriginalResponse;
                         try {
                             smoothedOriginalResponse = window.app.audioUtils.smoothFrequencyResponse(
@@ -130,56 +148,91 @@ class GraphRenderer {
                                 smoothing
                             );
                         } catch (error) {
-                            // Fallback if smoothing fails
                             smoothedOriginalResponse = normalizedFrequencyResponse;
                         }
-                        
-                        // Generate correction curve using the current frequency response grid
                         const correctionCurve = this.uiManager.correctionHandler.generateCorrectionCurve(
-                            measurement.peqParameters, 
+                            measurement.peqParameters,
                             frequencyResponse
                         );
-                        
-                        // Combine smoothed original response with correction curve
                         const combinedResponse = smoothedOriginalResponse.map(([freq, db]) => {
-                            // Find the matching frequency in the correction curve
                             const correctionPoint = correctionCurve.find(point => point[0] === freq);
-                            if (correctionPoint) {
-                                return [freq, db + correctionPoint[1]];
-                            }
-                            return [freq, db];
+                            return correctionPoint ? [freq, db + correctionPoint[1]] : [freq, db];
                         });
-                        
-                        // Draw the corrected response
                         this.drawGraph(ctx, combinedResponse, this.uiManager.graphColors.corrected);
                     } catch (error) {
-                        console.error("Error calculating corrected response:", error);
+                        console.error('Error calculating corrected response:', error);
                     }
                 }
             }
-            
-            // Display warning message if signal level is too low
-            if (maxSignalLevel !== undefined && maxSignalLevel <= -36) {
-                // Show low signal level warning on graph
+
+            const warnings = channelCurves.length > 0
+                ? aggregateLevelWarnings(channelCurves)
+                : {
+                    low: displayed?.maxSignalLevel <= -36 ? [selectedChannel] : [],
+                    high: displayed?.maxSignalLevel > -1 ? [selectedChannel] : []
+                };
+            if (warnings.low.length > 0) {
                 ctx.font = '14px Arial';
                 ctx.fillStyle = '#ff3333';
                 ctx.textAlign = 'center';
-                ctx.fillText(i18n.t('warning:signalTooLow') || 'The measurement signal was too low to give accurate results', canvas.width / 2, 40);
+                const channels = warnings.low.map(channelDisplayLabel).join(', ');
+                const message = channelCurves.length > 0
+                    ? i18n.t('warning:signalTooLowChannels', { channels }) ||
+                        `The measurement signal was too low on ${channels}`
+                    : i18n.t('warning:signalTooLow') ||
+                        'The measurement signal was too low to give accurate results';
+                ctx.fillText(message, canvas.width / 2, 40);
             }
-            
-            // Display warning message if signal level is too high
-            if (maxSignalLevel !== undefined && maxSignalLevel > -1) {
-                // Show high signal level warning on graph
+            if (warnings.high.length > 0) {
                 ctx.font = '14px Arial';
                 ctx.fillStyle = '#ff3333';
                 ctx.textAlign = 'center';
-                ctx.fillText(i18n.t('warning:signalTooHigh') || 'The measurement signal was too high to give accurate results', canvas.width / 2, 40);
+                const channels = warnings.high.map(channelDisplayLabel).join(', ');
+                const message = channelCurves.length > 0
+                    ? i18n.t('warning:signalTooHighChannels', { channels }) ||
+                        `The measurement signal was too high on ${channels}`
+                    : i18n.t('warning:signalTooHigh') ||
+                        'The measurement signal was too high to give accurate results';
+                ctx.fillText(message, canvas.width / 2, warnings.low.length ? 60 : 40);
             }
-            
-            // Draw frequency marker lines directly on the canvas
             this.uiManager.correctionHandler.drawFrequencyMarkers(ctx);
         } catch (error) {
-            console.error("Error updating results graph:", error);
+            console.error('Error updating results graph:', error);
+        }
+    }
+
+    updateChannelLegend(measurement, curves) {
+        const legend = document.getElementById('resultsChannelLegend');
+        if (!legend) return;
+        const signature = Array.isArray(curves) ? curves.map(curve => curve.channel).join(',') : '';
+        legend.hidden = signature.length === 0;
+        if (legend.hidden) {
+            legend.replaceChildren();
+            legend.dataset.channels = '';
+            this.hoveredChannel = null;
+            return;
+        }
+        if (legend.dataset.channels === signature) return;
+        legend.replaceChildren();
+        legend.dataset.channels = signature;
+        for (const curve of curves) {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'channel-legend-item';
+            item.dataset.channel = curve.channel;
+            const swatch = document.createElement('span');
+            swatch.className = 'channel-legend-swatch';
+            swatch.style.backgroundColor = channelColor(curve.channel, measurement.outputChannels);
+            item.append(swatch, channelDisplayLabel(curve.channel));
+            item.addEventListener('mouseenter', () => {
+                this.hoveredChannel = curve.channel;
+                this.updateResultsGraph(this.uiManager.measurementDisplay.selectedPointIndex, true);
+            });
+            item.addEventListener('mouseleave', () => {
+                this.hoveredChannel = null;
+                this.updateResultsGraph(this.uiManager.measurementDisplay.selectedPointIndex, true);
+            });
+            legend.appendChild(item);
         }
     }
 
@@ -266,7 +319,7 @@ class GraphRenderer {
         this.impulseResponseGraphInitialized = true;
     }
 
-    async updateImpulseResponseGraph(pointIndex = 'all') {
+    async updateImpulseResponseGraph(pointIndex = 'all', channelToken = 'all') {
         const generation = ++this.impulseResponseLoadGeneration;
         const measurementId = this.uiManager.selectedMeasurementId;
         const measurement = dataStorage.getMeasurementById(measurementId);
@@ -274,19 +327,17 @@ class GraphRenderer {
         if (!section) return;
         section.hidden = true;
 
-        const point = pointIndex === 'all'
-            ? measurement?.points?.find(candidate => candidate.ir?.stored === true)
-            : measurement?.points?.[pointIndex];
-        if (!measurement || !Number.isSafeInteger(point?.pointId) ||
-            point.ir?.stored !== true) {
+        const target = resolveIrRecordKey(measurement, pointIndex, channelToken);
+        if (!measurement || !target) {
             this.clearImpulseResponseGraph();
             return;
         }
 
-        const record = await dataStorage.getImpulseResponse(measurementId, point.pointId);
+        const record = await dataStorage.getImpulseResponse(measurementId, target.irKey);
         if (generation !== this.impulseResponseLoadGeneration ||
             measurementId !== this.uiManager.selectedMeasurementId ||
-            pointIndex !== this.uiManager.measurementDisplay.selectedPointIndex) {
+            pointIndex !== this.uiManager.measurementDisplay.selectedPointIndex ||
+            channelToken !== (this.uiManager.measurementDisplay.selectedChannel || 'all')) {
             return;
         }
         if (!isValidImpulseResponse(record)) {
@@ -298,7 +349,11 @@ class GraphRenderer {
         this.impulseResponsePeak = findImpulsePeak(record.data);
         this.impulseResponseBounds = getImpulseTimeBounds(record);
         this.impulseResponseView = createDefaultImpulseView(record);
-        const pointName = point.name || `Point ${measurement.points.indexOf(point) + 1}`;
+        const point = measurement.points[target.pointIndex];
+        const basePointName = point.name || `Point ${target.pointIndex + 1}`;
+        const pointName = target.channel
+            ? `${basePointName} — ${channelDisplayLabel(target.channel)}`
+            : basePointName;
         const pointNameElement = document.getElementById('impulseResponsePointName');
         if (pointNameElement) pointNameElement.textContent = pointName;
         document.getElementById('impulseResponseGraph')?.setAttribute(
@@ -314,11 +369,12 @@ class GraphRenderer {
         if (!isValidImpulseResponse(record)) return;
 
         const measurement = dataStorage.getMeasurementById(this.uiManager.selectedMeasurementId);
-        const pointIndex = measurement?.points?.findIndex(point => point.pointId === record.pointId);
-        if (!measurement || !Number.isSafeInteger(pointIndex) || pointIndex < 0) return;
+        const target = resolveIrRecordTarget(measurement, record.pointId);
+        if (!measurement || !target) return;
 
-        const point = measurement.points[pointIndex];
-        const filenamePrefix = `${measurement.name}_${point.name || `Point ${pointIndex + 1}`}`
+        const point = measurement.points[target.pointIndex];
+        const channelSuffix = target.channel ? `_${target.channel}` : '';
+        const filenamePrefix = `${measurement.name}_${point.name || `Point ${target.pointIndex + 1}`}${channelSuffix}`
             .trim()
             .replace(/[<>:"/\\|?*]/g, '_')
             .replace(/\s+/g, '_')

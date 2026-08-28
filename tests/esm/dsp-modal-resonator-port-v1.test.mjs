@@ -8,6 +8,7 @@ import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
 import { validateParamSpec } from '../../scripts/gen-dsp-params.mjs';
 import { readGoldenSet } from '../../tools/dsp-parity/golden-io.mjs';
 import { runParityCli } from '../../tools/dsp-parity/run.mjs';
+import { getCurrentJsEngineHash } from './js-engine-hash-helper.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const pluginRoot = path.join(repoRoot, 'dsp', 'plugins', 'resonator', 'modal_resonator');
@@ -106,10 +107,10 @@ test('ModalResonatorPlugin object-array ABI, reviewed cases, and goldens stay fr
       .events.length, 2);
 
     const goldens = await readGoldenSet(path.join(pluginRoot, 'golden'));
+    const jsEngineHash = await getCurrentJsEngineHash('ModalResonatorPlugin', repoRoot);
     assert.equal(goldens.length, 8);
     assert.ok(goldens.every(item => item.metadata.type === 'ModalResonatorPlugin'));
-    assert.ok(goldens.every(item => item.metadata.jsEngineHash ===
-      '2a869ff0404c65c46583d6cc77d02affafd3b3b19a900bfd92ec654c9d300082'));
+    assert.ok(goldens.every(item => item.metadata.jsEngineHash === jsEngineHash));
     assert.ok(goldens.every(item => item.expected.every(Number.isFinite)));
 
     const result = await runParityCli([

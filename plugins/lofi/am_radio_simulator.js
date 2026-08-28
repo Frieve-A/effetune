@@ -1,3 +1,46 @@
+const AM_RADIO_SIMULATOR_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({
+        id: 'local-daytime', label: 'Local Daytime Station',
+        params: Object.freeze({
+            rd: true, tb: 10, pe: 50, md: 90, cp: 6, sm: 'Mono', sg: -5,
+            sk: 0, fd: 0.15, st: 0, in: -65, io: 9, tn: 0, bw: 16,
+            ag: 'Fast', dt: 50, hm: -70, hz: '50', sp: 'Table', og: 0, mx: 100
+        })
+    }),
+    Object.freeze({
+        id: 'pocket-transistor', label: 'Pocket Transistor',
+        params: Object.freeze({
+            rd: true, tb: 6, pe: 50, md: 90, cp: 10, sm: 'Mono', sg: -18,
+            sk: 1, fd: 0.15, st: 1, in: -65, io: 9, tn: 0, bw: 8,
+            ag: 'Fast', dt: 50, hm: -60, hz: '50', sp: 'Small', og: 0, mx: 100
+        })
+    }),
+    Object.freeze({
+        id: 'night-skywave', label: 'Night Skywave',
+        params: Object.freeze({
+            rd: true, tb: 6, pe: 50, md: 90, cp: 6, sm: 'Mono', sg: -30,
+            sk: 85, fd: 0.3, st: 5, in: -50, io: 9, tn: 0, bw: 8,
+            ag: 'Fast', dt: 50, hm: -70, hz: '50', sp: 'Table', og: 0, mx: 100
+        })
+    }),
+    Object.freeze({
+        id: 'summer-thunderstorm', label: 'Summer Thunderstorm',
+        params: Object.freeze({
+            rd: true, tb: 6, pe: 50, md: 90, cp: 6, sm: 'Mono', sg: -25,
+            sk: 60, fd: 0.2, st: 60, in: -45, io: 9, tn: 0, bw: 12,
+            ag: 'Fast', dt: 50, hm: -70, hz: '50', sp: 'Table', og: 0, mx: 100
+        })
+    }),
+    Object.freeze({
+        id: 'stereo-am-broadcast', label: 'Stereo AM Broadcast',
+        params: Object.freeze({
+            rd: true, tb: 6, pe: 50, md: 90, cp: 6, sm: 'C-QUAM', sg: -8,
+            sk: 0, fd: 0.15, st: 0, in: -65, io: 9, tn: 0, bw: 12,
+            ag: 'Fast', dt: 50, hm: -70, hz: '50', sp: 'Off', og: 0, mx: 100
+        })
+    })
+]);
+
 const AM_RADIO_SIMULATOR_TAP_STATUS = 17;
 const AM_RADIO_SIMULATOR_TELEMETRY_VERSION = 2;
 const AM_RADIO_SIMULATOR_TELEMETRY_V1_VERSION = 1;
@@ -1773,6 +1816,13 @@ const AM_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
 let amRadioSimulatorInstanceSerial = 0;
 
 class AMRadioSimulatorPlugin extends PluginBase {
+    static getSystemPresetGroups() {
+        return [{
+            label: '',
+            presets: AM_RADIO_SIMULATOR_SYSTEM_PRESETS.map(preset => ({ ...preset }))
+        }];
+    }
+
     constructor() {
         super('AM Radio Simulator', 'Physical AM transmission, propagation, receiver, and speaker simulation');
         this.rd = true;

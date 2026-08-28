@@ -14,7 +14,8 @@ const AUDIBLE_MAX_FREQUENCY = 20000;
 function normalizeResponseToZeroDb(
     response,
     measurementMinFrequency = AUDIBLE_MIN_FREQUENCY,
-    measurementMaxFrequency = AUDIBLE_MAX_FREQUENCY
+    measurementMaxFrequency = AUDIBLE_MAX_FREQUENCY,
+    suppliedReferenceDb
 ) {
     if (!response || response.length === 0) return response;
 
@@ -42,15 +43,30 @@ function normalizeResponseToZeroDb(
     if (magnitudes.length === 0) return response.map(point => [...point]);
 
     const middle = Math.floor(magnitudes.length / 2);
-    const referenceDb = magnitudes.length % 2 === 1
-        ? magnitudes[middle]
-        : (magnitudes[middle - 1] + magnitudes[middle]) / 2;
+    const referenceDb = Number.isFinite(suppliedReferenceDb)
+        ? suppliedReferenceDb
+        : magnitudes.length % 2 === 1
+            ? magnitudes[middle]
+            : (magnitudes[middle - 1] + magnitudes[middle]) / 2;
 
     return response.map(([frequency, db]) => [frequency, db - referenceDb]);
+}
+
+function responseReferenceDb(response, measurementMinFrequency, measurementMaxFrequency) {
+    const normalized = normalizeResponseToZeroDb(
+        response,
+        measurementMinFrequency,
+        measurementMaxFrequency
+    );
+    const source = response?.find((_, index) => Number.isFinite(normalized?.[index]?.[1]));
+    if (!source) return 0;
+    const index = response.indexOf(source);
+    return source[1] - normalized[index][1];
 }
 
 export {
     AUDIBLE_MAX_FREQUENCY,
     AUDIBLE_MIN_FREQUENCY,
-    normalizeResponseToZeroDb
+    normalizeResponseToZeroDb,
+    responseReferenceDb
 };

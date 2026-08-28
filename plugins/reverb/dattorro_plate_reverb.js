@@ -1,4 +1,14 @@
+const DATTORRO_PLATE_REVERB_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({ id: 'studio-plate', label: 'Studio Plate', params: Object.freeze({ pd: 5, bw: 0.9995, id1: 0.75, id2: 0.625, dc: 0.45, dd1: 0.70, dp: 0.001, md: 1.0, mr: 1.0, wm: 28, dm: 100 }) }),
+    Object.freeze({ id: 'vocal-plate', label: 'Vocal Plate', params: Object.freeze({ pd: 25, bw: 0.9995, id1: 0.75, id2: 0.625, dc: 0.60, dd1: 0.70, dp: 0.0005, md: 2.0, mr: 0.8, wm: 32, dm: 100 }) }),
+    Object.freeze({ id: 'dark-vintage-plate', label: 'Dark Vintage Plate', params: Object.freeze({ pd: 10, bw: 0.65, id1: 0.75, id2: 0.625, dc: 0.62, dd1: 0.70, dp: 0.010, md: 1.5, mr: 0.6, wm: 30, dm: 100 }) }),
+    Object.freeze({ id: 'long-wash', label: 'Long Wash', params: Object.freeze({ pd: 10, bw: 0.9995, id1: 0.75, id2: 0.625, dc: 0.85, dd1: 0.70, dp: 0.002, md: 3.0, mr: 1.2, wm: 40, dm: 100 }) })
+]);
+
 class DattorroPlateReverbPlugin extends PluginBase {
+    static getSystemPresetGroups() {
+        return [{ label: '', presets: DATTORRO_PLATE_REVERB_SYSTEM_PRESETS.map(preset => ({ ...preset })) }];
+    }
     constructor() {
         super('Dattorro Plate Reverb', 'Classic plate reverb based on Dattorro algorithm');
 

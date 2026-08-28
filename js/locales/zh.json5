@@ -3,6 +3,10 @@
   "error.invalidUrl": "无效的URL参数：{message}",
   "error.invalidPresetData": "预设数据无效",
   "error.failedToLoadPreset": "加载预设失败",
+  "error.failedToSavePreset": "保存预设失败",
+  "error.failedToDeletePreset": "删除预设失败",
+  "error.failedToSavePluginPreset": "保存预设失败",
+  "error.failedToDeletePluginPreset": "删除预设失败",
   "error.noPresetSelected": "未选择预设",
   "error.failedToCutSettings": "剪切设置到剪贴板失败",
   "error.failedToCopySettings": "复制设置到剪贴板失败",
@@ -68,6 +72,12 @@
   "ui.sleepMode": "休眠模式",
   "ui.whatsThisApp": "这是什么应用？",
   "ui.newVersionAvailable": "新 {version} 可用。",
+  "ui.pluginPresets.namePlaceholder": "预设名称",
+  "ui.pluginPresets.save": "保存",
+  "ui.pluginPresets.rename": "重命名",
+  "ui.pluginPresets.deleteSelected": "删除所选项目",
+  "ui.pluginPresets.noUserPresets": "没有已保存的预设",
+  "ui.pluginPresets.confirmDeleteSelected": "要删除所选预设吗？",
 
   // 当鼠标悬停在 UI 上时显示的提示
   "ui.title.openMusic": "打开音乐文件",
@@ -84,8 +94,8 @@
   "ui.title.cut": "剪切效果",
   "ui.title.copy": "复制效果",
   "ui.title.paste": "粘贴效果",
-  "ui.title.savePreset": "保存预设",
-  "ui.title.deletePreset": "删除预设",
+  "ui.title.effectPresets": "效果预设",
+  "ui.title.pipelinePresets": "效果链预设",
   "ui.title.sharePipeline": "共享处理链",
   "ui.title.decreaseColumns": "减少列数",
   "ui.title.increaseColumns": "增加列数",
@@ -112,7 +122,6 @@
   "ui.title.close": "关闭",
   "ui.title.expand": "点击展开",
   "ui.title.collapse": "点击收起",
-  "ui.title.presetSelect": "用户预设名称输入和加载\n按ESC键清除文本并显示全部项目",
   "ui.mobileNav.primary": "移动端主导航",
   "ui.mobileNav.player": "播放器",
   "ui.mobileNav.library": "音乐库",
@@ -448,7 +457,7 @@
   // 托盘菜单
   "trayMenuOpen": "打开",
   "trayMenuQuit": "退出",
-  "trayMenuPresets": "预设",
+  "trayMenuPresets": "效果链预设",
 
   // 外部资源与IR Reverb
   "externalAsset.warning": "此效果链引用了外部{kinds}数据。文件本身未包含在内，接收者必须导入相同文件。",

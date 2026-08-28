@@ -86,6 +86,16 @@ def _canonicalize_processing_parameters(
             canonical["maximumShift"],
             canonical["minimumShift"],
         )
+    elif effect_type in (
+        "MultibandCompressor", "MultibandExpander", "MultibandBalance",
+        "MultibandTransient", "MultibandSaturation",
+    ):
+        count = 2 if effect_type in (
+            "MultibandTransient", "MultibandSaturation"
+        ) else 4
+        for index in range(2, count + 1):
+            key = f"frequency{index}"
+            canonical[key] = max(canonical[key], canonical[f"frequency{index - 1}"])
     return canonical
 
 
@@ -317,7 +327,13 @@ class Stream:
             )
             initial_parameter_bytes: list[tuple[int, np.ndarray, int]] = []
             for index, effect in enabled:
-                packed, layout_hash, internal_type = pack_parameters(effect)
+                processing_parameters = _canonicalize_processing_parameters(
+                    effect.effect_type, effect.parameters
+                )
+                processing_effect = Effect(
+                    effect.effect_type, parameters=processing_parameters, assets=effect.assets
+                )
+                packed, layout_hash, internal_type = pack_parameters(processing_effect)
                 packed_bytes = pack_parameter_bytes(effect)
                 native_index = native.add_effect(
                     internal_type,
@@ -429,11 +445,7 @@ class Stream:
                         layout_hash,
                     )
                     self._current_parameters[effect.id] = dict(effect.parameters)
-                    self._processing_parameters[effect.id] = (
-                        _canonicalize_processing_parameters(
-                            effect.effect_type, effect.parameters
-                        )
-                    )
+                    self._processing_parameters[effect.id] = processing_parameters
             native.finish()
             for native_index, packed_bytes, layout_hash in initial_parameter_bytes:
                 native.set_effect_parameter_bytes(

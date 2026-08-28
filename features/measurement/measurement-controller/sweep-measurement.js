@@ -6,24 +6,76 @@ import audioUtils from '../audio-utils/index.js';
 import uiManager from '../ui/ui-manager.js';
 import dataStorage from '../dataStorage.js';
 import i18n from '../i18n.js';
+import {
+    channelDisplayLabel,
+    isMultiChannelSelection,
+    maxRequiredChannelCount,
+    selectionFromConfig
+} from '../audio-utils/channel-selection.js';
+import {
+    mergeChannelRedoResult,
+    recalculateAverages,
+    resolveSweepBand,
+    resolveOutputSweepBands
+} from '../measurement-model.js';
+import { SweepCancelledError } from './audio-processing.js';
+
+function setDisplay(id, display) {
+    const element = globalThis.document?.getElementById(id);
+    if (element) element.style.display = display;
+}
+
+function setRedoChannelControlsVisible(visible) {
+    for (const id of ['redoChannelLabel', 'redoChannelSelect', 'redoChannelBtn']) {
+        const element = globalThis.document?.getElementById(id);
+        if (element) element.hidden = !visible;
+    }
+}
+
+function measurementErrorMessage(controller) {
+    return controller.interfaceCalibrationImpulseResponse
+        ? i18n.t('error:interfaceCalibrationProcessingFailed') ||
+            'The calibrated measurement could not be completed. Check the setup and measure this point again.'
+        : i18n.t('error:measurementFailed') ||
+            'The measurement could not be completed. Check the audio devices and try this point again.';
+}
 
 const SweepMeasurement = {
+    startChannelLevelGraph() {
+        if (this.levelGraphInterval) clearInterval(this.levelGraphInterval);
+        this.levelGraphData = [];
+        this.startTime = Date.now();
+        this.updateLevelGraph();
+        this.levelGraphInterval = setInterval(() => this.updateLevelGraph(), 50);
+    },
+
+    generateChannelSweep(channel) {
+        const sampleRate = audioUtils.audioContext.sampleRate;
+        const length = Number(this.measurementConfig.sweepLength);
+        const config = this.currentMeasurement;
+        const band = resolveSweepBand(config, channel, sampleRate, length);
+        const outputBands = channel === 'all' && config.sweepBand?.mode === 'perChannel'
+            ? resolveOutputSweepBands(config, sampleRate, length) : undefined;
+        this.currentSweepBand = band;
+        return audioUtils.generateTSP(length, sampleRate, channel,
+            band.minFreq, band.maxFreq, band.bandLimited, outputBands);
+    },
+
     /**
      * Start the sweep measurement process
      */
-    startSweepMeasurement() {
+    async startSweepMeasurement() {
         // Stop level meter
         this.stopLevelMeter();
         
-        // Stop white noise if it's playing
-        if (audioUtils.isWhiteNoiseActive) {
-            audioUtils.stopWhiteNoise();
-        }
+        this.stopChannelRotation?.();
+        audioUtils.stopWhiteNoise();
         
         // Reset measurement variables
         this.currentSweepIndex = 0;
         this.sweepMeasurements = [];
         this.isRunningMeasurement = true;
+        this.sweepCancelRequested = false;
         
         // Show sweep measurement screen
         uiManager.showScreen('sweepMeasurementScreen');
@@ -43,8 +95,10 @@ const SweepMeasurement = {
         const freqCtx = freqCanvas.getContext('2d');
         freqCtx.clearRect(0, 0, freqCanvas.width, freqCanvas.height);
         
-        // Start the measurement
-        this.performSweepMeasurement();
+        // A cancelled test-signal route may still be settling. Wait for it before
+        // the sweep claims the shared output device and channel layout.
+        await audioUtils.waitForWhiteNoiseRouteIdle?.();
+        return this.performSweepMeasurement();
     },
 
     /**
@@ -57,16 +111,10 @@ const SweepMeasurement = {
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            // Initialize level graph data
-            this.levelGraphData = [];
-            this.startTime = Date.now();
-            this.levelGraphInterval = setInterval(() => this.updateLevelGraph(), 50);
-            
             // Hide measurement action buttons during the measurement
-            document.getElementById('measurementActionsExplanation').style.display = 'none';
-            document.getElementById('redoBtn').style.display = 'none';
-            document.getElementById('saveAndContinueBtn').style.display = 'none';
-            document.getElementById('saveAndFinishBtn').style.display = 'none';
+            for (const id of ['measurementActionsExplanation', 'redoBtn',
+                'saveAndContinueBtn', 'saveAndFinishBtn']) setDisplay(id, 'none');
+            setRedoChannelControlsVisible(false);
             
             // Check if audio context is initialized and running
             if (!audioUtils.audioContext || audioUtils.audioContext.state !== 'running') {
@@ -103,48 +151,59 @@ const SweepMeasurement = {
                 }
             }
             
-            // Generate sweep signal with proper channel configuration
-            // Convert legacy 'both' value to 'all' for backwards compatibility
-            let outputChannel = this.measurementConfig.outputChannel;
-            if (outputChannel === 'both') {
-                outputChannel = 'all';
-            }
-            
-            const sweepLength = parseInt(this.measurementConfig.sweepLength);
-            const sampleRate = audioUtils.audioContext.sampleRate;
-            const sweepMinFreq = this.currentMeasurement.sweepMinFreq;
-            const sweepMaxFreq = this.currentMeasurement.sweepMaxFreq;
-            const sweepBuffer = audioUtils.generateTSP(
-                sweepLength,
-                sampleRate,
-                outputChannel,
-                sweepMinFreq,
-                sweepMaxFreq,
-                this.currentMeasurement.sweepBandLimited !== false
-            );
-            
+            const selection = selectionFromConfig(this.measurementConfig);
+            const multiChannel = isMultiChannelSelection(selection);
+            const routeWidth = multiChannel ? maxRequiredChannelCount(selection)
+                : this.currentMeasurement.outputChannelCount;
             // Update the graph to show the entire measurement duration
             this.drawLevelGraphGrid(ctx, canvas.width, canvas.height);
-            
-            // Play sweep and record input - single call that handles multiple sweeps internally
-            const measurementResult = await this.playAndRecordSweep(sweepBuffer);
+
+            const results = [];
+            for (let index = 0; index < selection.length; index += 1) {
+                const outputChannel = selection[index];
+                if (this.sweepCancelRequested) throw new SweepCancelledError();
+                if (this.interfaceCalibrationImpulseResponsesByChannel) {
+                    this.interfaceCalibrationImpulseResponse =
+                        this.interfaceCalibrationImpulseResponsesByChannel.get(outputChannel) || null;
+                }
+                const progress = document.getElementById('sweepChannelProgress');
+                if (progress) {
+                    progress.hidden = !multiChannel;
+                    progress.textContent = multiChannel
+                        ? i18n.t('status:measuringChannel', {
+                            channel: channelDisplayLabel(outputChannel),
+                            current: index + 1,
+                            total: selection.length
+                        }) || `Measuring ${channelDisplayLabel(outputChannel)} (${index + 1}/${selection.length})`
+                        : '';
+                }
+                // Sweep generation and deconvolution share mutable inverse-filter state,
+                // so every channel must complete before the next one is generated.
+                const sweepBuffer = this.generateChannelSweep(outputChannel);
+                this.startChannelLevelGraph();
+                const measurementResult = await this.playAndRecordSweep(
+                    sweepBuffer, outputChannel, routeWidth
+                );
+                results.push({ channel: outputChannel, ...measurementResult });
+                this.updateFrequencyResponseGraph(
+                    multiChannel ? results : measurementResult.frequencyResponse,
+                    multiChannel ? undefined : measurementResult.maxSignalLevel
+                );
+            }
             
             // Stop level graph updates
             clearInterval(this.levelGraphInterval);
             
             // Update frequency response graph
-            this.updateFrequencyResponseGraph(measurementResult.frequencyResponse, measurementResult.maxSignalLevel);
-            
-            this.acceptMeasurementResult(measurementResult);
+            this.acceptMeasurementResult(multiChannel ? results : results[0]);
             
             // Measurement is complete
             this.isRunningMeasurement = false;
             
             // Show measurement action buttons after the measurement is complete
-            document.getElementById('measurementActionsExplanation').style.display = 'inline-block';
-            document.getElementById('redoBtn').style.display = 'inline-block';
-            document.getElementById('saveAndContinueBtn').style.display = 'inline-block';
-            document.getElementById('saveAndFinishBtn').style.display = 'inline-block';
+            for (const id of ['measurementActionsExplanation', 'redoBtn', 'saveAndContinueBtn',
+                'saveAndFinishBtn']) setDisplay(id, 'inline-block');
+            setRedoChannelControlsVisible(multiChannel);
             
         } catch (error) {
             console.error('Error performing sweep measurement:', error);
@@ -152,28 +211,63 @@ const SweepMeasurement = {
             if (this.levelGraphInterval) {
                 clearInterval(this.levelGraphInterval);
             }
-
+            if (error instanceof SweepCancelledError) return;
             if (this.interfaceCalibrationImpulseResponse) {
                 this.currentPoint = null;
                 this.currentImpulseResponse = null;
-                uiManager.showNotification(
-                    i18n.t('error:interfaceCalibrationProcessingFailed') ||
-                    'The calibrated measurement could not be completed. Check the setup and measure this point again.',
-                    'error'
-                );
-            } else {
-                uiManager.showNotification(
-                    i18n.t('error:measurementFailed') ||
-                        'The measurement could not be completed. Check the audio devices and try this point again.',
-                    'error'
-                );
+                this.currentImpulseResponses = null;
             }
+            uiManager.showNotification(measurementErrorMessage(this), 'error');
         }
     },
 
     acceptMeasurementResult(measurementResult) {
         const pointId = this.currentMeasurement.nextPointId || 0;
         this.currentMeasurement.nextPointId = pointId + 1;
+        if (Array.isArray(measurementResult)) {
+            const point = {
+                pointId,
+                name: `Point ${this.currentMeasurement.points.length + 1}`,
+                timestamp: new Date().toISOString(),
+                channels: []
+            };
+            this.currentImpulseResponses = [];
+            for (const result of measurementResult) {
+                const entry = {
+                    channel: result.channel,
+                    frequencyResponse: result.frequencyResponse,
+                    maxSignalLevel: result.maxSignalLevel
+                };
+                if (result.irValid && result.impulseResponse instanceof Float32Array) {
+                    const irId = this.currentMeasurement.nextPointId;
+                    this.currentMeasurement.nextPointId += 1;
+                    entry.irId = irId;
+                    entry.ir = {
+                        stored: true,
+                        length: result.impulseResponse.length,
+                        sampleRate: result.sampleRate,
+                        onsetIndex: result.onsetIndex,
+                        peakDb: result.peakDb,
+                        sweepLimited: result.sweepLimited
+                    };
+                    this.currentImpulseResponses.push({
+                        measurementId: this.currentMeasurement.id,
+                        pointId: irId,
+                        channel: result.channel,
+                        sampleRate: result.sampleRate,
+                        onsetIndex: result.onsetIndex,
+                        prerollSamples: result.prerollSamples,
+                        refScale: result.refScale,
+                        peakDb: result.peakDb,
+                        data: result.impulseResponse
+                    });
+                }
+                point.channels.push(entry);
+            }
+            this.currentImpulseResponse = null;
+            this.currentPoint = point;
+            return;
+        }
         const point = {
             pointId,
             name: `Point ${this.currentMeasurement.points.length + 1}`,
@@ -316,7 +410,9 @@ const SweepMeasurement = {
         try {
             const measurementId = await dataStorage.addMeasurement(
                 candidate,
-                this.currentImpulseResponse
+                isMultiChannelSelection(selectionFromConfig(this.measurementConfig))
+                    ? this.currentImpulseResponses
+                    : this.currentImpulseResponse
             );
             this.currentMeasurement = candidate;
             return measurementId;
@@ -357,6 +453,61 @@ const SweepMeasurement = {
         // Reset and start a new measurement for the same point
         this.resetForNextSweepMeasurement();
     },
+
+    async redoChannel(channelToken) {
+        if (!this.currentPoint?.channels?.some(entry => entry.channel === channelToken)) return false;
+        const selection = selectionFromConfig(this.measurementConfig);
+        const routeWidth = maxRequiredChannelCount(selection);
+        this.sweepCancelRequested = false;
+        for (const id of ['measurementActionsExplanation', 'redoBtn',
+            'saveAndContinueBtn', 'saveAndFinishBtn']) setDisplay(id, 'none');
+        setRedoChannelControlsVisible(false);
+        try {
+            if (this.interfaceCalibrationImpulseResponsesByChannel) {
+                this.interfaceCalibrationImpulseResponse =
+                    this.interfaceCalibrationImpulseResponsesByChannel.get(channelToken) || null;
+            }
+            const sweepBuffer = this.generateChannelSweep(channelToken);
+            this.startChannelLevelGraph();
+            const result = await this.playAndRecordSweep(sweepBuffer, channelToken, routeWidth);
+            let nextPointId = this.currentMeasurement.nextPointId;
+            const merged = mergeChannelRedoResult(
+                this.currentPoint,
+                this.currentImpulseResponses,
+                channelToken,
+                result,
+                () => {
+                    const id = nextPointId;
+                    nextPointId += 1;
+                    return id;
+                }
+            );
+            const records = merged.records.map(record => ({
+                ...record,
+                measurementId: this.currentMeasurement.id
+            }));
+            this.updateFrequencyResponseGraph(
+                merged.point.channels.map(entry => ({ ...entry })),
+                undefined
+            );
+            this.currentMeasurement.nextPointId = nextPointId;
+            this.currentPoint = merged.point;
+            this.currentImpulseResponses = records;
+            return true;
+        } catch (error) {
+            if (!(error instanceof SweepCancelledError)) {
+                console.error('Error redoing measurement channel:', error);
+                uiManager.showNotification(measurementErrorMessage(this), 'error');
+            }
+            return false;
+        } finally {
+            clearInterval(this.levelGraphInterval);
+            this.levelGraphInterval = null;
+            for (const id of ['measurementActionsExplanation', 'redoBtn', 'saveAndContinueBtn',
+                'saveAndFinishBtn']) setDisplay(id, 'inline-block');
+            setRedoChannelControlsVisible(true);
+        }
+    },
     
     /**
      * Reset state for the next measurement
@@ -380,6 +531,7 @@ const SweepMeasurement = {
         this.sweepMeasurements = [];
         this.currentPoint = null;
         this.currentImpulseResponse = null;
+        this.currentImpulseResponses = null;
 
         const canvas = document.getElementById('frequencyResponseGraph');
         const ctx = canvas.getContext('2d');
@@ -396,6 +548,7 @@ const SweepMeasurement = {
         this.sweepMeasurements = [];
         this.currentPoint = null;
         this.currentImpulseResponse = null;
+        this.currentImpulseResponses = null;
         
         // Clear graphs
         const canvas = document.getElementById('frequencyResponseGraph');
@@ -410,61 +563,7 @@ const SweepMeasurement = {
      * Calculate average frequency response from all measurement points
      */
     calculateAverageResponse(measurement = this.currentMeasurement) {
-        if (!measurement.points || measurement.points.length === 0) {
-            return;
-        }
-        
-        // Get all frequency responses
-        const responses = measurement.points.map(point => point.frequencyResponse);
-        
-        // All measurement points should have the same frequency grid since they are created
-        // with the same measurement process. We can directly average corresponding frequency points.
-        
-        // Use the first response's frequency grid as reference
-        const referenceResponse = responses[0];
-        const averageResponse = [];
-        
-        // For each frequency point in the reference response
-        for (let i = 0; i < referenceResponse.length; i++) {
-            const freq = referenceResponse[i][0]; // Frequency value
-            let sum = 0;
-            
-            // Sum the magnitude values from all responses at this frequency index
-            for (let j = 0; j < responses.length; j++) {
-                // Ensure the index exists in this response
-                if (i < responses[j].length) {
-                    // Verify we're averaging the same frequency point
-                    if (responses[j][i][0] === freq) {
-                        sum += responses[j][i][1]; // Add magnitude
-                    } else {
-                        console.warn(`Frequency mismatch at index ${i}: expected ${freq}, found ${responses[j][i][0]}`);
-                        // If different, use the value anyway as it's the corresponding index
-                        sum += responses[j][i][1];
-                    }
-                }
-            }
-            
-            // Calculate average magnitude for this frequency
-            const avgMagnitude = sum / responses.length;
-            
-            // Add to average response
-            averageResponse.push([freq, avgMagnitude]);
-        }
-        
-        // Calculate average maxSignalLevel across all points
-        let maxSignalLevelSum = 0;
-        measurement.points.forEach(point => {
-            if (point.maxSignalLevel !== undefined) {
-                maxSignalLevelSum += point.maxSignalLevel;
-            }
-        });
-        const avgMaxSignalLevel = measurement.points.length > 0
-            ? maxSignalLevelSum / measurement.points.length
-            : -100;
-        
-        // Set the average response and maxSignalLevel
-        measurement.averageFrequencyResponse = averageResponse;
-        measurement.maxSignalLevel = avgMaxSignalLevel;
+        recalculateAverages(measurement);
     }
 };
 

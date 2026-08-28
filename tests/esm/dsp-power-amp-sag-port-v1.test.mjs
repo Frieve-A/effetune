@@ -9,6 +9,7 @@ import { TelemetryFrameType } from '../../js/audio/telemetry-hub.js';
 import { validateParamSpec } from '../../scripts/gen-dsp-params.mjs';
 import { readGoldenSet } from '../../tools/dsp-parity/golden-io.mjs';
 import { runParityCli } from '../../tools/dsp-parity/run.mjs';
+import { getCurrentJsEngineHash } from './js-engine-hash-helper.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -127,9 +128,10 @@ test('Power Amp Sag descriptor, cases, and kernel freeze the v1 port contract', 
   assert.equal(TelemetryFrameType.TAP_POWER_AMP_SAG, 12);
 
   const goldens = await readGoldenSet(path.join(root, 'golden'));
+  const jsEngineHash = await getCurrentJsEngineHash('PowerAmpSagPlugin', repoRoot);
   assert.equal(goldens.length, 9);
   assert.ok(goldens.every(item =>
-    item.metadata.jsEngineHash === 'ec623a18823abcc934f9ad5e67a13e908bd3f99aa8c28bb0d974f3c637d7dc7f'
+    item.metadata.jsEngineHash === jsEngineHash
   ));
   const result = await runParityCli([
     '--root', repoRoot,

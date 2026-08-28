@@ -3,6 +3,10 @@
   "error.invalidUrl": "Invalid URL parameters: {message}",
   "error.invalidPresetData": "Invalid preset data",
   "error.failedToLoadPreset": "Failed to load preset",
+  "error.failedToSavePreset": "Failed to save preset",
+  "error.failedToDeletePreset": "Failed to delete preset",
+  "error.failedToSavePluginPreset": "Failed to save preset",
+  "error.failedToDeletePluginPreset": "Failed to delete preset",
   "error.noPresetSelected": "No preset selected",
   "error.failedToCutSettings": "Failed to cut settings to clipboard",
   "error.failedToCopySettings": "Failed to copy settings to clipboard",
@@ -68,6 +72,12 @@
   "ui.sleepMode": "Sleep Mode",
   "ui.whatsThisApp": "What's this app?",
   "ui.newVersionAvailable": "New {version} available.",
+  "ui.pluginPresets.namePlaceholder": "Preset name",
+  "ui.pluginPresets.save": "Save",
+  "ui.pluginPresets.rename": "Rename",
+  "ui.pluginPresets.deleteSelected": "Delete Selected",
+  "ui.pluginPresets.noUserPresets": "No saved presets",
+  "ui.pluginPresets.confirmDeleteSelected": "Delete the selected presets?",
 
   // Hints displayed when hovering over UI
   "ui.title.openMusic": "Open music files",
@@ -84,8 +94,8 @@
   "ui.title.cut": "Cut effects",
   "ui.title.copy": "Copy effects",
   "ui.title.paste": "Paste effects",
-  "ui.title.savePreset": "Save preset",
-  "ui.title.deletePreset": "Delete preset",
+  "ui.title.effectPresets": "Effect Presets",
+  "ui.title.pipelinePresets": "Pipeline Presets",
   "ui.title.sharePipeline": "Share pipeline",
   "ui.title.decreaseColumns": "Decrease columns",
   "ui.title.increaseColumns": "Increase columns",
@@ -113,7 +123,6 @@
   "ui.title.close": "Close",
   "ui.title.expand": "Click to expand",
   "ui.title.collapse": "Click to collapse",
-  "ui.title.presetSelect": "User preset name input and loading\nPress ESC to clear text and show all items",
   "ui.mobileNav.primary": "Primary mobile navigation",
   "ui.mobileNav.player": "Player",
   "ui.mobileNav.library": "Library",
@@ -510,7 +519,7 @@
   // Tray menu
   "trayMenuOpen": "Open",
   "trayMenuQuit": "Quit",
-  "trayMenuPresets": "Presets",
+  "trayMenuPresets": "Pipeline Presets",
 
   // External assets and IR Reverb
   "externalAsset.warning": "This pipeline references external {kinds} data. Recipients must import the same files; they are not included.",

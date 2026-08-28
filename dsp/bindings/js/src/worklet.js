@@ -8,6 +8,7 @@ import {
 } from './errors.js';
 import {
   normalizeChainDocument,
+  canonicalizeEffectForProcessing,
   channelRange,
   packEffect,
   setEffectParameter,
@@ -124,7 +125,11 @@ export class EffeTuneNode extends AudioWorkletNodeBase {
         })()
       : input;
     const { chain, manifest } = splitBundle(source);
-    const document = normalizeChainDocument(chain);
+    const normalized = normalizeChainDocument(chain);
+    const document = {
+      version: 1,
+      chain: normalized.chain.map(canonicalizeEffectForProcessing)
+    };
     const resolvedAssets = await resolveChainAssets(document, {
       assetResolver: options.assetResolver,
       manifest
@@ -359,7 +364,9 @@ export class EffeTuneNode extends AudioWorkletNodeBase {
       if (index < 0) throw new ValidationError(`Unknown effect id: ${effectId}`);
       const effects = [...this._document.chain];
       validateStreamParameterUpdate(effects[index], parameterName);
-      effects[index] = setEffectParameter(effects[index], parameterName, value);
+      effects[index] = canonicalizeEffectForProcessing(
+        setEffectParameter(effects[index], parameterName, value)
+      );
       if (effects[index].enabled) {
         const packed = packEffect(effects[index]);
         await this._command({

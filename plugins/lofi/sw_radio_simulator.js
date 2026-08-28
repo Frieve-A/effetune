@@ -1,3 +1,33 @@
+const SW_RADIO_SIMULATOR_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({
+        id: 'major-broadcaster', label: 'Major Broadcaster',
+        params: Object.freeze({
+            rd: true, tb: 4.5, pe: 50, md: 90, cp: 6, sg: -8, sk: 25,
+            fd: 0.3, ds: 1.4, st: 0.5, in: -70, io: 1, mo: 'AM', tn: 0,
+            bf: 0, bw: 8, de: 'Envelope', ag: 'Fast', dt: 50, hm: -80,
+            hz: '50', sp: 'Table', og: 0, mx: 100
+        })
+    }),
+    Object.freeze({
+        id: 'transoceanic-night', label: 'Transoceanic Night',
+        params: Object.freeze({
+            rd: true, tb: 4.5, pe: 50, md: 90, cp: 6, sg: -25, sk: 95,
+            fd: 1.5, ds: 3, st: 10, in: -45, io: 1, mo: 'AM', tn: 0,
+            bf: 0, bw: 4, de: 'Synchronous', ag: 'Fast', dt: 50, hm: -80,
+            hz: '50', sp: 'Small', og: 0, mx: 100
+        })
+    }),
+    Object.freeze({
+        id: 'stormy-49m-band', label: 'Stormy 49 m Band',
+        params: Object.freeze({
+            rd: true, tb: 4.5, pe: 50, md: 90, cp: 6, sg: -20, sk: 80,
+            fd: 3, ds: 5, st: 40, in: -40, io: 0.5, mo: 'AM', tn: 0,
+            bf: 0, bw: 5, de: 'Envelope', ag: 'Fast', dt: 50, hm: -80,
+            hz: '50', sp: 'Small', og: 0, mx: 100
+        })
+    })
+]);
+
 // SW (Shortwave) Radio Simulator.
 // Runtime processing is WASM-only. The JavaScript implementation below is the
 // frozen reference used to generate the golden vectors, gated behind the hidden `fr`
@@ -1480,6 +1510,13 @@ const SW_RADIO_SIMULATOR_REFERENCE_PROCESSOR = `
 let swRadioSimulatorInstanceSerial = 0;
 
 class SWRadioSimulatorPlugin extends PluginBase {
+    static getSystemPresetGroups() {
+        return [{
+            label: '',
+            presets: SW_RADIO_SIMULATOR_SYSTEM_PRESETS.map(preset => ({ ...preset }))
+        }];
+    }
+
     constructor() {
         super('SW Radio Simulator',
             'Physical shortwave transmission, ionospheric propagation, receiver, and speaker simulation');

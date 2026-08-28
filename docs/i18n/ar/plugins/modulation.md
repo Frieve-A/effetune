@@ -34,7 +34,7 @@ lang: ar
 
 ### المعلمات
 
-- **Style**: إعداد مصنع كامل لجميع المعلمات. الخيارات: **Auto Filter Sweep** ‏(LFO) و**Stereo Filter Sweep** ‏(LFO) و**Envelope Filter** ‏(Envelope) و**Auto Wah** ‏(Envelope) و**Reverse Auto Wah** ‏(Envelope). يؤدي تغيير معلمة منفردة إلى **Custom**.
+- **الإعدادات المسبقة للنظام**: استخدم **Auto Filter Sweep**، **Stereo Filter Sweep**، **Envelope Filter**، **Auto Wah** أو **Reverse Auto Wah** لتحميل إعداد متكامل كنقطة بداية، ثم اضبط المعلمات كلًّا على حدة لتحسينه.
 - **Mode**: يبدّل بين حركة LFO الدورية وEnvelope التي تتبع مستوى الصوت.
 - **Filter Type**: ‏Low-pass أو Band-pass أو High-pass.
 - **Minimum Frequency / Maximum Frequency** ‏(20–20,000 Hz): نطاق الحركة. تُرتب القيم المعكوسة تلقائيًا، وتثبت القيم المتساوية المرشح. أثناء المعالجة تُقيد بنطاق آمن دون تردد Nyquist.
@@ -55,7 +55,7 @@ lang: ar
 
 ### المعلمات
 
-- **Style**: إعداد مصنع كامل لجميع المعلمات. الخيارات **Gentle Auto Pan** و**Wide Auto Pan** و**Fast Auto Pan**. يؤدي تغيير معلمة منفردة إلى **Custom**.
+- **الإعدادات المسبقة للنظام**: استخدم **Gentle Auto Pan**، **Wide Auto Pan** أو **Fast Auto Pan** لتحميل إعداد متكامل كنقطة بداية، ثم اضبط المعلمات كلًّا على حدة لتحسينه.
 - **Rate** ‏(0.05–20 Hz): سرعة الحركة.
 - **Depth** ‏(0–100%): مقدار الحركة حول Center. عند 0% لا يحدث تغيير.
 - **Center** ‏(-100–100%): ينقل الموضع المركزي يسارًا أو يمينًا.
@@ -76,7 +76,7 @@ lang: ar
 
 ### المعلمات
 
-- **Style**: إعداد مصنع كامل لجميع المعلمات. الخيارات **Classic Chorus** ‏(Chorus) و**Stereo Chorus** ‏(Stereo Chorus) و**Ensemble** ‏(Ensemble) و**Flanger** ‏(Flanger) و**Jet Flanger** ‏(Flanger) و**Vibrato** ‏(Vibrato). يؤدي تغيير معلمة منفردة إلى **Custom**.
+- **الإعدادات المسبقة للنظام**: استخدم **Classic Chorus**، **Stereo Chorus**، **Ensemble**، **Flanger**، **Jet Flanger** أو **Vibrato** لتحميل إعداد متكامل كنقطة بداية، ثم اضبط المعلمات كلًّا على حدة لتحسينه.
 - **Mode**: ‏Chorus أو Stereo Chorus أو Ensemble أو Flanger أو Vibrato.
 - **Rate** ‏(0.05–10 Hz): سرعة التضمين.
 - **Delay** ‏(0.5–30 ms): التأخير الأساسي للصوت المعالج.
@@ -130,7 +130,7 @@ lang: ar
 
 ### المعلمات
 
-- **Style**: إعداد مصنع كامل لجميع المعلمات. الخيارات **Shift Up** ‏(Shift) و**Shift Down** ‏(Shift) و**Fine Detune** ‏(Shift) و**Ring Modulator** ‏(Ring Mod) و**Barber-pole Up** ‏(Barber-pole) و**Barber-pole Down** ‏(Barber-pole). يؤدي تغيير معلمة منفردة إلى **Custom**.
+- **الإعدادات المسبقة للنظام**: استخدم **Shift Up**، **Shift Down**، **Fine Detune**، **Ring Modulator**، **Barber-pole Up** أو **Barber-pole Down** لتحميل إعداد متكامل كنقطة بداية، ثم اضبط المعلمات كلًّا على حدة لتحسينه.
 - **Mode**: ‏Shift أو Ring Mod أو Barber-pole.
 - **Shift** ‏(-5,000–5,000 Hz): مقدار النقل في وضع Shift. القيم الموجبة تنقل إلى أعلى والسالبة إلى أسفل.
 - **Carrier Frequency** ‏(0.1–10,000 Hz): تردد حامل Ring Mod.
@@ -153,7 +153,7 @@ lang: ar
 
 ### المعلمات
 
-- **Style**: إعداد مصنع كامل لجميع المعلمات. الخيارات **Classic Phaser** ‏(Classic) و**Deep Phaser** ‏(Classic) و**Stereo Phaser** ‏(Classic) و**Barber-pole Up** ‏(Barber-pole) و**Barber-pole Down** ‏(Barber-pole). يؤدي تغيير معلمة منفردة إلى **Custom**.
+- **الإعدادات المسبقة للنظام**: استخدم **Classic Phaser**، **Deep Phaser**، **Stereo Phaser**، **Barber-pole Up** أو **Barber-pole Down** لتحميل إعداد متكامل كنقطة بداية، ثم اضبط المعلمات كلًّا على حدة لتحسينه.
 - **Mode**: ‏Classic أو Barber-pole.
 - **Rate** ‏(0.05–10 Hz): سرعة المسح.
 - **Center Frequency** ‏(80–8,000 Hz): مركز المسح اللوغاريتمي.
@@ -219,7 +219,7 @@ lang: ar
 
 ### المعلمات
 
-- **Style**: إعداد مصنع كامل لجميع المعلمات. الخيارات **Rotary Slow** ‏(Slow) و**Rotary Fast** ‏(Fast) و**Gentle Rotary** ‏(Slow) و**Leslie Slow** ‏(Slow) و**Leslie Fast** ‏(Fast). يؤدي تغيير معلمة منفردة إلى **Custom**.
+- **الإعدادات المسبقة للنظام**: استخدم **Rotary Slow**، **Rotary Fast**، **Gentle Rotary**، **Vintage Rotor Slow** أو **Vintage Rotor Fast** لتحميل إعداد متكامل كنقطة بداية، ثم اضبط المعلمات كلًّا على حدة لتحسينه.
 - **Speed State**: ‏Stop أو Slow أو Fast. تتسارع الدوارات أو تتباطأ بسلاسة أثناء التبديل من دون انقطاع الصوت.
 - **Speed** ‏(25–200%): مضاعف سرعة البوق والأسطوانة.
 - **Acceleration** ‏(0.1–10 s): يحدد مدى سرعة اقتراب الدوارات من السرعة الجديدة.
@@ -326,6 +326,14 @@ lang: ar
 ## Wow Flutter
 
 تأثير يُضيف اختلافات طفيفة في الطبقة الصوتية لموسيقاك، مشابه للصوت المتذبذب الطبيعي الذي قد تتذكره من سجلات الفينيل أو أشرطة الكاسيت. يخلق هذا تأثيراً دافئاً وحنينياً يجد الكثيرون أنه مريح وجذاب.
+
+### الإعدادات المسبقة للنظام
+
+انقر على **الإعدادات المسبقة للتأثير** في ترويسة التأثير لمقارنة إعدادات متكاملة لسلوك آلية الحركة.
+
+- **Warped Record** - تذبذب عميق ودوري ناتج عن التواء الأسطوانة.
+- **Worn Cassette Motor** - رفرفة أسرع مصحوبة بحركة غير منتظمة.
+- **Seasick Tape** - تذبذب بطيء وشديد، مع حركة مستقلة لكل قناة ستيريو.
 
 ### دليل تجربة الاستماع
 - تجربة سجل فينيل:

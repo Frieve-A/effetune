@@ -736,17 +736,8 @@ body.layout-mobile .preset-select {
     box-sizing: border-box;
 }
 
-body.layout-mobile .preset-dropdown-button {
-    width: var(--et-mobile-control-height);
-    height: calc(var(--et-mobile-control-height) - 2px);
-}
-
 body.layout-mobile .preset-clear-button {
     right: var(--et-mobile-control-height);
-}
-
-body.layout-mobile .preset-list-option {
-    min-height: var(--et-mobile-control-height);
 }
 
 body.layout-mobile select {
@@ -769,11 +760,6 @@ body.layout-mobile .pipeline-preset-controls {
     flex: 0 1 auto;
     width: max-content;
     max-width: 100%;
-    min-width: 0;
-}
-
-body.layout-mobile .pipeline-preset-controls .select-container {
-    flex: 1 1 180px;
     min-width: 0;
 }
 
@@ -809,6 +795,7 @@ body.layout-mobile .delete-button,
 body.layout-mobile .move-up-button,
 body.layout-mobile .move-down-button,
 body.layout-mobile .routing-button,
+body.layout-mobile .preset-button,
 body.layout-mobile .reset-effect-button,
 body.layout-mobile .undo-button,
 body.layout-mobile .redo-button,
@@ -899,6 +886,7 @@ body.layout-mobile .plugin-header-actions > .delete-button,
 body.layout-mobile .plugin-header-actions > .move-up-button,
 body.layout-mobile .plugin-header-actions > .move-down-button,
 body.layout-mobile .plugin-header-actions > .routing-button,
+body.layout-mobile .plugin-header-actions > .preset-button,
 body.layout-mobile .plugin-header-actions > .reset-effect-button {
     flex-basis: 40px;
     margin-right: 0;
@@ -1198,6 +1186,7 @@ body.layout-mobile .player-playlist-item {
 }
 
 body.layout-mobile .routing-dialog,
+body.layout-mobile .preset-dialog,
 body.layout-mobile .ai-dialog {
     position: fixed !important;
     left: 0 !important;

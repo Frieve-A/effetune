@@ -56,6 +56,14 @@ Tape Artifacts records the music onto a modeled analog reel-to-reel machine and 
 - **The transport is audible on sustained notes:** Wow/Flutter adds pitch drift and shimmer to piano, organ, strings, and other held sounds.
 - **A living background:** Hiss adds both a steady tape floor and noise that follows the music. Set it to the minimum when you want no added tape noise.
 
+### System Presets
+
+Click **Effect Presets** in the effect header to compare three reel-to-reel conditions.
+
+- **Pristine 30 ips Reel** - A fast master-tape transfer with very little hiss or pitch movement.
+- **Hobbyist Reel-to-Reel** - A slower home recorder with more hiss and transport movement.
+- **Tired Old Reel** - A worn low-speed tape with strong wobble, hiss, and a rougher top end.
+
 ### Parameters
 
 - **Speed** (7.5, 15, or 30 ips) - Selects tape speed. Start at 15 ips; choose 30 ips for the cleanest, most open sound or 7.5 ips for darker tone, stronger bass lift, and more movement.

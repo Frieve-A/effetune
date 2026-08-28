@@ -62,6 +62,14 @@ This effect requires an environment that supports its real-time processing. When
 - **Fringe reception:** near the FM threshold, clicks and sputter appear, the receiver blends to mono, and the program finally sinks into noise.
 - **Multipath color:** reflections add a harsh, hollow distortion whose character follows Path Delay; raising Fading turns it into the flutter of mobile reception.
 
+### System Presets
+
+Click **Effect Presets** in the effect header to try representative FM reception conditions.
+
+- **Powerhouse Broadcast** - A strong station with more broadcast processing.
+- **Distant Station** - Reception near the service-area edge, with hiss and early stereo degradation.
+- **City Drive Multipath** - Fast-changing reflections and multipath distortion for mobile listening.
+
 ### Parameters
 
 - **Radio** (on or off) - Switches the station's transmission on and off. With it off the carrier disappears entirely, so the receiver has nothing left to limit but its own noise floor and produces the full-scale hiss of an empty channel. Use it to hear the moment a station signs on or off the air. This is not the same as turning the effect off, which leaves the music untouched.

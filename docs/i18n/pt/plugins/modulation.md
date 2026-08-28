@@ -34,7 +34,7 @@ Move automaticamente um filtro ressonante. LFO repete uma varredura; Envelope ac
 
 ### Parâmetros
 
-- **Style**: Configuração de fábrica completa de todos os parâmetros. Opções: **Auto Filter Sweep** (LFO), **Stereo Filter Sweep** (LFO), **Envelope Filter** (Envelope), **Auto Wah** (Envelope) e **Reverse Auto Wah** (Envelope). Alterar um parâmetro individual muda para **Custom**.
+- **Predefinições do sistema**: Use **Auto Filter Sweep**, **Stereo Filter Sweep**, **Envelope Filter**, **Auto Wah** ou **Reverse Auto Wah** para carregar uma configuração inicial completa. Depois, ajuste os parâmetros individualmente para refiná-la.
 - **Mode**: Alterna entre o movimento periódico do LFO e o Envelope que acompanha o volume.
 - **Filter Type**: Low-pass, Band-pass ou High-pass.
 - **Minimum Frequency / Maximum Frequency** (20–20.000 Hz): Faixa de movimento. Valores invertidos são reordenados automaticamente; valores iguais fixam o filtro. O limite superior disponível pode ser menor em taxas de amostragem mais baixas.
@@ -55,7 +55,7 @@ Move o nível de cada par estéreo entre esquerda e direita. Se houver um canal 
 
 ### Parâmetros
 
-- **Style**: Configuração de fábrica completa de todos os parâmetros. Opções: **Gentle Auto Pan**, **Wide Auto Pan** e **Fast Auto Pan**. Alterar um parâmetro individual muda para **Custom**.
+- **Predefinições do sistema**: Use **Gentle Auto Pan**, **Wide Auto Pan** ou **Fast Auto Pan** para carregar uma configuração inicial completa. Depois, ajuste os parâmetros individualmente para refiná-la.
 - **Rate** (0,05–20 Hz): Velocidade do movimento.
 - **Depth** (0–100%): Movimento em torno de Center. Em 0%, não há mudança.
 - **Center** (-100–100%): Desloca a posição central para a esquerda ou direita.
@@ -76,7 +76,7 @@ Adiciona cópias da música com atrasos em movimento. Mode oferece Chorus, Stere
 
 ### Parâmetros
 
-- **Style**: Configuração de fábrica completa de todos os parâmetros. Opções: **Classic Chorus** (Chorus), **Stereo Chorus** (Stereo Chorus), **Ensemble** (Ensemble), **Flanger** (Flanger), **Jet Flanger** (Flanger) e **Vibrato** (Vibrato). Alterar um parâmetro individual muda para **Custom**.
+- **Predefinições do sistema**: Use **Classic Chorus**, **Stereo Chorus**, **Ensemble**, **Flanger**, **Jet Flanger** ou **Vibrato** para carregar uma configuração inicial completa. Depois, ajuste os parâmetros individualmente para refiná-la.
 - **Mode**: Chorus, Stereo Chorus, Ensemble, Flanger ou Vibrato.
 - **Rate** (0,05–10 Hz): Velocidade da modulação.
 - **Delay** (0,5–30 ms): Atraso-base do sinal processado.
@@ -130,7 +130,7 @@ Move cada componente de frequência por um número fixo de hertz, e não por um 
 
 ### Parâmetros
 
-- **Style**: Configuração de fábrica completa de todos os parâmetros. Opções: **Shift Up** (Shift), **Shift Down** (Shift), **Fine Detune** (Shift), **Ring Modulator** (Ring Mod), **Barber-pole Up** (Barber-pole) e **Barber-pole Down** (Barber-pole). Alterar um parâmetro individual muda para **Custom**.
+- **Predefinições do sistema**: Use **Shift Up**, **Shift Down**, **Fine Detune**, **Ring Modulator**, **Barber-pole Up** ou **Barber-pole Down** para carregar uma configuração inicial completa. Depois, ajuste os parâmetros individualmente para refiná-la.
 - **Mode**: Shift, Ring Mod ou Barber-pole.
 - **Shift** (-5.000–5.000 Hz): Deslocamento no modo Shift. Valores positivos deslocam para cima; negativos, para baixo.
 - **Carrier Frequency** (0,1–10.000 Hz): Frequência da portadora de Ring Mod.
@@ -153,7 +153,7 @@ Mistura o som original com cópias filtradas para criar picos e vales móveis. C
 
 ### Parâmetros
 
-- **Style**: Configuração de fábrica completa de todos os parâmetros. Opções: **Classic Phaser** (Classic), **Deep Phaser** (Classic), **Stereo Phaser** (Classic), **Barber-pole Up** (Barber-pole) e **Barber-pole Down** (Barber-pole). Alterar um parâmetro individual muda para **Custom**.
+- **Predefinições do sistema**: Use **Classic Phaser**, **Deep Phaser**, **Stereo Phaser**, **Barber-pole Up** ou **Barber-pole Down** para carregar uma configuração inicial completa. Depois, ajuste os parâmetros individualmente para refiná-la.
 - **Mode**: Classic ou Barber-pole.
 - **Rate** (0,05–10 Hz): Velocidade da varredura.
 - **Center Frequency** (80–8.000 Hz): Centro da varredura logarítmica.
@@ -219,7 +219,7 @@ Divide o som entre uma corneta de agudos e um tambor de graves e aplica velocida
 
 ### Parâmetros
 
-- **Style**: Configuração de fábrica completa de todos os parâmetros. Opções: **Rotary Slow** (Slow), **Rotary Fast** (Fast), **Gentle Rotary** (Slow), **Leslie Slow** (Slow) e **Leslie Fast** (Fast). Alterar um parâmetro individual muda para **Custom**.
+- **Predefinições do sistema**: Use **Rotary Slow**, **Rotary Fast**, **Gentle Rotary**, **Vintage Rotor Slow** ou **Vintage Rotor Fast** para carregar uma configuração inicial completa. Depois, ajuste os parâmetros individualmente para refiná-la.
 - **Speed State**: Stop, Slow ou Fast. Durante a mudança, os rotores aceleram ou desaceleram suavemente sem interromper o som.
 - **Speed** (25–200%): Multiplicador de velocidade da corneta e do tambor.
 - **Acceleration** (0,1–10 s): Define a rapidez com que os rotores se aproximam de uma nova velocidade.
@@ -326,6 +326,14 @@ Um efeito que adiciona variações rítmicas de volume à sua música, semelhant
 ## Wow Flutter
 
 Um efeito que adiciona sutis variações de pitch à sua música, semelhante ao som de oscilação natural que você pode lembrar dos discos de vinil ou fitas cassete. Isso cria uma sensação calorosa e nostálgica que muitas pessoas consideram agradável e relaxante.
+
+### Predefinições do sistema
+
+Clique em **Predefinições de efeito** no cabeçalho do efeito para comparar configurações completas do comportamento do mecanismo de transporte.
+
+- **Warped Record** - Uma oscilação profunda e periódica típica de um disco empenado.
+- **Worn Cassette Motor** - Um flutter mais rápido, com movimentos irregulares.
+- **Seasick Tape** - Uma oscilação lenta e extrema, com movimento independente em cada canal estéreo.
 
 ### Guia de Experiência Auditiva
 - Experiência com Disco de Vinil:

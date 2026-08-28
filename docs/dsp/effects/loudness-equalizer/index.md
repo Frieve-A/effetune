@@ -56,6 +56,14 @@ A specialized equalizer that links volume adjustment with frequency balance corr
   - High shelf for treble enhancement (3-6kHz)
   - Smooth transition between frequency ranges
 
+### System Presets
+
+Click **Effect Presets** in the effect header to start from a complete loudness-compensation curve.
+
+- **Late Night Listening** - Stronger compensation for a lower listening level.
+- **Quiet Background** - A moderate everyday compensation curve.
+- **Near Reference Level** - Minimal compensation around a higher reference level.
+
 ### Parameters
 - **Average SPL** - Estimated average listening level at 0dB Relative Volume (60dB to 96dB)
   - Set this manually to match the average SPL at your listening position

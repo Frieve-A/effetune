@@ -80,24 +80,20 @@ function render(plugin, data, parameters, context = {}) {
   return processor(data, parameters, context);
 }
 
-test('Auto Pan validates state, keeps Style application-only, and exposes immutable styles', async () => {
+test('Auto Pan validates state and exposes system presets', async () => {
   const Plugin = await loadPlugin('auto_pan.js', 'AutoPanPlugin');
   const plugin = new Plugin();
   assert.deepEqual(JSON.parse(JSON.stringify(plugin.getParameters())), {
     type: 'AutoPanPlugin', enabled: true, rt: 0.35, dp: 45, ct: 0, wd: 70, wf: 'Sine', ph: 0
   });
-  assert.equal('styleName' in plugin.getParameters(), false);
-  assert.equal(Object.isFrozen(Plugin.factoryStyles), true);
-  assert.equal(Object.isFrozen(Plugin.factoryStyles['Wide Auto Pan']), true);
+  const presets = Plugin.getSystemPresetGroups()[0].presets;
+  assert.equal(presets.length, 3);
   plugin.setParameters({ enabled: false });
-  assert.equal(plugin.styleName, 'Gentle Auto Pan');
 
   plugin.setParameters({ rt: 100, dp: -5, ct: 250, wd: 150, wf: 'invalid', ph: -10 });
   assert.deepEqual([plugin.rt, plugin.dp, plugin.ct, plugin.wd, plugin.wf, plugin.ph],
     [20, 0, 100, 100, 'Sine', 0]);
-  assert.equal(plugin.styleName, 'Custom');
-  plugin.applyStyle('Fast Auto Pan');
-  assert.equal(plugin.styleName, 'Fast Auto Pan');
+  plugin.setParameters(presets.find(preset => preset.id === 'fast-auto-pan').params);
   assert.equal(plugin.wf, 'Triangle');
   assert.equal(plugin.rt, 4);
 });
@@ -204,11 +200,10 @@ test('Auto Filter retains independent bounds and switches conditional standard r
   plugin.setParameters({ lf: 1200, hf: 1200 });
   assert.equal(plugin.lf, 1200);
   assert.equal(plugin.hf, 1200);
-  assert.equal('styleName' in plugin.getParameters(), false);
   assert.deepEqual(Array.from(Plugin.searchAliases), ['Envelope Filter', 'Auto Wah', 'Wah']);
-  plugin.applyStyle('Auto Filter Sweep');
+  const presets = Plugin.getSystemPresetGroups()[0].presets;
+  plugin.setParameters(presets.find(preset => preset.id === 'auto-filter-sweep').params);
   plugin.setParameters({ enabled: false });
-  assert.equal(plugin.styleName, 'Auto Filter Sweep');
 
   plugin.createUI();
   assert.equal(plugin._uiControls.rt.style.display, '');
@@ -218,8 +213,7 @@ test('Auto Filter retains independent bounds and switches conditional standard r
   assert.equal(plugin._uiControls.rt.style.display, 'none');
   assert.equal(plugin._uiControls.sn.style.display, '');
   assert.equal(plugin._uiControls.sp.querySelector('input[type="range"]').disabled, true);
-  plugin.applyStyle('Auto Wah');
-  assert.equal(plugin.styleName, 'Auto Wah');
+  plugin.setParameters(presets.find(preset => preset.id === 'auto-wah').params);
   assert.equal(plugin.ft, 'Band-pass');
 
   const singleChannel = new Plugin();

@@ -41,8 +41,11 @@
       "id": "crossover-transitions-reset-all-state",
       "stimulus": "noise",
       "frames": 1237,
+      "params": { "f1": 1000, "f2": 200 },
       "events": [
         { "frame": 31, "params": { "f1": 350 } },
+        { "frame": 63, "params": { "f2": 200 } },
+        { "frame": 95, "params": { "f1": 20 } },
         { "frame": 128, "params": { "f2": 6500 } },
         { "frame": 513, "params": { "f1": 80, "f2": 9000 } },
         { "frame": 1001, "params": { "f1": 1200, "f2": 14000 } }

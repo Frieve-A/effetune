@@ -34,7 +34,7 @@ lang: ko
 
 ### 파라미터
 
-- **Style**: 모든 파라미터를 한 번에 지정하는 완전한 팩토리 설정입니다. **Auto Filter Sweep**(LFO), **Stereo Filter Sweep**(LFO), **Envelope Filter**(Envelope), **Auto Wah**(Envelope), **Reverse Auto Wah**(Envelope) 중에서 선택할 수 있습니다. 개별 파라미터를 바꾸면 **Custom**으로 전환됩니다.
+- **시스템 프리셋**: **Auto Filter Sweep**, **Stereo Filter Sweep**, **Envelope Filter**, **Auto Wah** 또는 **Reverse Auto Wah** 중 하나를 선택하면 전체 시작 설정을 불러올 수 있습니다. 이후 개별 파라미터를 조정해 세부 설정을 다듬을 수 있습니다.
 - **Mode**: 주기적으로 움직이는 LFO와 음량을 따라가는 Envelope를 전환합니다.
 - **Filter Type**: Low-pass, Band-pass, High-pass 중에서 선택합니다.
 - **Minimum Frequency / Maximum Frequency**(20–20,000 Hz): 이동 범위입니다. 순서가 반대이면 자동으로 정렬되고, 값이 같으면 고정됩니다. 재생 샘플레이트가 낮으면 사용할 수 있는 상한도 낮아질 수 있습니다.
@@ -55,7 +55,7 @@ lang: ko
 
 ### 파라미터
 
-- **Style**: 모든 파라미터를 한 번에 지정하는 완전한 팩토리 설정입니다. **Gentle Auto Pan**, **Wide Auto Pan**, **Fast Auto Pan** 중에서 선택할 수 있습니다. 개별 파라미터를 바꾸면 **Custom**으로 전환됩니다.
+- **시스템 프리셋**: **Gentle Auto Pan**, **Wide Auto Pan** 또는 **Fast Auto Pan** 중 하나를 선택하면 전체 시작 설정을 불러올 수 있습니다. 이후 개별 파라미터를 조정해 세부 설정을 다듬을 수 있습니다.
 - **Rate**(0.05–20 Hz): 이동 속도입니다.
 - **Depth**(0–100%): Center를 기준으로 한 이동량입니다. 0%에서는 변화가 없습니다.
 - **Center**(-100–100%): 중심 위치를 왼쪽이나 오른쪽으로 옮깁니다.
@@ -76,7 +76,7 @@ lang: ko
 
 ### 파라미터
 
-- **Style**: 모든 파라미터를 한 번에 지정하는 완전한 팩토리 설정입니다. **Classic Chorus**(Chorus), **Stereo Chorus**(Stereo Chorus), **Ensemble**(Ensemble), **Flanger**(Flanger), **Jet Flanger**(Flanger), **Vibrato**(Vibrato) 중에서 선택할 수 있습니다. 개별 파라미터를 바꾸면 **Custom**으로 전환됩니다.
+- **시스템 프리셋**: **Classic Chorus**, **Stereo Chorus**, **Ensemble**, **Flanger**, **Jet Flanger** 또는 **Vibrato** 중 하나를 선택하면 전체 시작 설정을 불러올 수 있습니다. 이후 개별 파라미터를 조정해 세부 설정을 다듬을 수 있습니다.
 - **Mode**: Chorus, Stereo Chorus, Ensemble, Flanger, Vibrato 중에서 선택합니다.
 - **Rate**(0.05–10 Hz): 모듈레이션 속도입니다.
 - **Delay**(0.5–30 ms): wet 신호의 기준 지연입니다.
@@ -130,7 +130,7 @@ lang: ko
 
 ### 파라미터
 
-- **Style**: 모든 파라미터를 한 번에 지정하는 완전한 팩토리 설정입니다. **Shift Up**(Shift), **Shift Down**(Shift), **Fine Detune**(Shift), **Ring Modulator**(Ring Mod), **Barber-pole Up**(Barber-pole), **Barber-pole Down**(Barber-pole) 중에서 선택할 수 있습니다. 개별 파라미터를 바꾸면 **Custom**으로 전환됩니다.
+- **시스템 프리셋**: **Shift Up**, **Shift Down**, **Fine Detune**, **Ring Modulator**, **Barber-pole Up** 또는 **Barber-pole Down** 중 하나를 선택하면 전체 시작 설정을 불러올 수 있습니다. 이후 개별 파라미터를 조정해 세부 설정을 다듬을 수 있습니다.
 - **Mode**: Shift, Ring Mod, Barber-pole입니다.
 - **Shift**(-5,000–5,000 Hz): Shift 모드의 이동량입니다. 양수는 위로, 음수는 아래로 이동합니다.
 - **Carrier Frequency**(0.1–10,000 Hz): Ring Mod의 캐리어 주파수입니다.
@@ -153,7 +153,7 @@ lang: ko
 
 ### 파라미터
 
-- **Style**: 모든 파라미터를 한 번에 지정하는 완전한 팩토리 설정입니다. **Classic Phaser**(Classic), **Deep Phaser**(Classic), **Stereo Phaser**(Classic), **Barber-pole Up**(Barber-pole), **Barber-pole Down**(Barber-pole) 중에서 선택할 수 있습니다. 개별 파라미터를 바꾸면 **Custom**으로 전환됩니다.
+- **시스템 프리셋**: **Classic Phaser**, **Deep Phaser**, **Stereo Phaser**, **Barber-pole Up** 또는 **Barber-pole Down** 중 하나를 선택하면 전체 시작 설정을 불러올 수 있습니다. 이후 개별 파라미터를 조정해 세부 설정을 다듬을 수 있습니다.
 - **Mode**: Classic 또는 Barber-pole입니다.
 - **Rate**(0.05–10 Hz): 스윕 속도입니다.
 - **Center Frequency**(80–8,000 Hz): 로그 스윕의 중심입니다.
@@ -219,7 +219,7 @@ Pitch Shifter HQ는 포먼트를 보존하지 않습니다. 따라서 큰 폭으
 
 ### 파라미터
 
-- **Style**: 모든 파라미터를 한 번에 지정하는 완전한 팩토리 설정입니다. **Rotary Slow**(Slow), **Rotary Fast**(Fast), **Gentle Rotary**(Slow), **Leslie Slow**(Slow), **Leslie Fast**(Fast) 중에서 선택할 수 있습니다. 개별 파라미터를 바꾸면 **Custom**으로 전환됩니다.
+- **시스템 프리셋**: **Rotary Slow**, **Rotary Fast**, **Gentle Rotary**, **Vintage Rotor Slow** 또는 **Vintage Rotor Fast** 중 하나를 선택하면 전체 시작 설정을 불러올 수 있습니다. 이후 개별 파라미터를 조정해 세부 설정을 다듬을 수 있습니다.
 - **Speed State**: Stop, Slow, Fast입니다. 전환 중에도 소리가 끊기지 않도록 로터가 부드럽게 가속하거나 감속합니다.
 - **Speed**(25–200%): 혼과 드럼 모두의 속도 배율입니다.
 - **Acceleration**(0.1–10 s): 로터가 새로운 속도로 얼마나 빠르게 변화할지를 설정합니다.
@@ -326,6 +326,15 @@ Pitch Shifter HQ는 포먼트를 보존하지 않습니다. 따라서 큰 폭으
 ## Wow Flutter
 
 음악에 미묘한 피치 변화를 추가하는 이펙트로, 바이닐 레코드나 카세트 테이프에서 기억되는 자연스러운 진동 사운드와 유사합니다. 이는 많은 사람들이 기분 좋고 편안하게 느끼는 따뜻하고 향수를 불러일으키는 느낌을 만듭니다.
+
+### 시스템 프리셋
+
+효과 헤더의 **효과 프리셋**을 클릭하면 구동 장치의 동작을 포함한 전체 설정을 비교할 수 있습니다.
+
+- **Warped Record** - 휘어진 레코드처럼 깊고 주기적인 흔들림을 만듭니다.
+- **Worn Cassette Motor** - 불규칙한 움직임을 동반한 빠른 플러터를 만듭니다.
+- **Seasick Tape** - 좌우 스테레오 채널이 독립적으로 크고 느리게 흔들립니다.
+
   
 ### 청취 경험 가이드
 - 바이닐 레코드 체험:

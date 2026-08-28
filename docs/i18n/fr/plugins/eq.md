@@ -359,6 +359,14 @@ Un filtre en peigne qui ajoute un caractère phasé, creux, métallique ou réso
 
 Reproduit les petites variations de réponse en fréquence qui apparaissent lorsqu'un écouteur est alimenté par un amplificateur via la résistance et l'inductance réelles du câble, avec une impédance de sortie non nulle. Comme l'impédance d'un écouteur varie selon la fréquence (résonances du transducteur et inductance de la bobine mobile), l'impédance de la source et du câble provoque des changements de niveau propres à chaque écouteur. Le plugin sert aussi de vérification pratique : avec des câbles de construction et de qualité courantes, une impédance de sortie d'amplificateur courante et des écouteurs qui n'ont pas une impédance exceptionnellement basse ni d'autre comportement atypique, l'effet audible des différences entre câbles d'écouteurs ordinaires reste généralement négligeable. L'effet est le plus marqué avec des écouteurs à faible impédance présentant de grands pics d'impédance, et il reste habituellement discret avec les amplificateurs modernes à faible impédance de sortie.
 
+### Préréglages système
+
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour comparer des configurations complètes de source et de câble.
+
+- **High Impedance Source** - Une source à forte impédance de sortie alimentant un écouteur à faible impédance.
+- **Long Thin Cable** - Une résistance et une inductance du câble plus élevées.
+- **Vintage Portable Out** - Une sortie d’appareil portable à impédance plus élevée, associée à un écouteur de 32 Ω.
+
 ### Guide d'amélioration de l'écoute
 - Évaluer l'interaction avec l'impédance de source:
   - Augmentez Output Z pour simuler un amplificateur à tubes ou une sortie casque à haute impédance
@@ -543,6 +551,15 @@ Un filtre passe-bas de précision qui élimine les hautes fréquences indésirab
 - Grille de fréquences avec repères aux points de référence clés
 
 ## Loudness Equalizer
+
+### Préréglages système
+
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour partir d’une courbe complète de compensation de sonie.
+
+- **Late Night Listening** - Une compensation plus forte pour une écoute à faible volume.
+- **Quiet Background** - Une courbe de compensation modérée pour l’écoute courante.
+- **Near Reference Level** - Une compensation minimale à proximité d’un niveau de référence plus élevé.
+
 Un égaliseur spécialisé qui associe le réglage du volume à la correction de l'équilibre fréquentiel. Réglez Average SPL sur le niveau de pression acoustique moyen estimé lorsque Relative Volume vaut 0dB, puis utilisez Relative Volume pour les variations courantes du volume. La correction augmente automatiquement lorsque vous baissez le volume et diminue lorsque vous le montez.
 
 ### Guide d'Amélioration de l'Écoute

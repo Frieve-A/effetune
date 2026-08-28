@@ -26,6 +26,14 @@ Um filtro de crossfeed para fones de ouvido que simula a diafonia acústica natu
 - Filtragem passa-baixa para imitar a diafonia dependente de frequência
 - Processamento apenas estéreo (automaticamente contornado para sinais mono ou outros sinais não estéreo)
 
+### Predefinições do sistema
+
+Clique em **Predefinições de efeito** no cabeçalho do efeito para experimentar diretamente estas configurações completas.
+
+- **Subtle Blend** - Um crossfeed muito leve que preserva quase toda a largura original.
+- **Vintage Receiver** - Um crossfeed moderado, parecido com o de um adaptador de fones de ouvido tradicional.
+- **Living Room Speakers** - Uma mistura forte, semelhante à de alto-falantes, para gravações com separação estéreo muito ampla.
+
 ### Parâmetros
 - **Level** (-60 dB a 0 dB): Controla a quantidade de sinal de crossfeed
   - Valores mais baixos (-20 dB a -6 dB): Crossfeed sutil e natural

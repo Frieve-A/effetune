@@ -2,12 +2,12 @@
   "type": "TapeArtifactsPlugin",
   "tolerance": { "abs": 0.00001, "policy": "per-sample" },
   "fields": [
-    { "name": "speed", "key": "sp", "kind": "enum", "values": ["7.5", "15", "30"], "default": "15" },
-    { "name": "tape", "key": "tp", "kind": "enum", "values": ["Standard", "Master"], "default": "Standard" },
-    { "name": "bias", "key": "bs", "kind": "float", "min": -6, "max": 6, "default": 0, "unit": "dB" },
+    { "name": "speed", "key": "sp", "kind": "enum", "values": ["7.5", "15", "30"], "step": 1, "default": "15", "automation": true },
+    { "name": "tape", "key": "tp", "kind": "enum", "values": ["Standard", "Master"], "step": 1, "default": "Standard", "automation": true },
+    { "name": "bias", "key": "bs", "kind": "float", "min": -6, "max": 6, "step": 0.1, "default": 0, "unit": "dB", "automation": true },
     { "name": "recordLevel", "key": "rl", "kind": "float", "min": -12, "max": 18, "step": 0.1, "default": 6, "unit": "dB" , "automation": true},
     { "name": "wowFlutter", "key": "wf", "kind": "float", "min": 0, "max": 1, "step": 0.001, "default": 0.16, "unit": "%" , "automation": true},
-    { "name": "hiss", "key": "hs", "kind": "float", "min": -89, "max": -39, "default": -62.5, "unit": "dB re 320 nWb/m" },
+    { "name": "hiss", "key": "hs", "kind": "float", "min": -89, "max": -39, "step": 0.1, "default": -62.5, "unit": "dB re 320 nWb/m", "automation": true },
     { "name": "output", "key": "og", "kind": "float", "min": -24, "max": 24, "step": 0.1, "default": 0, "unit": "dB" , "automation": true},
     { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "step": 1, "default": 100, "unit": "%" , "automation": true}
   ]

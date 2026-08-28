@@ -34,7 +34,7 @@ Auto Filter moves a resonant filter automatically. **LFO** mode repeats a sweep,
 
 ### Parameters
 
-- **Style** — loads a complete factory setting for every parameter. Choices are **Auto Filter Sweep** (LFO), **Stereo Filter Sweep** (LFO), **Envelope Filter** (Envelope), **Auto Wah** (Envelope), and **Reverse Auto Wah** (Envelope). Changing an individual parameter switches Style to **Custom**.
+- **System Presets** — use **Auto Filter Sweep**, **Stereo Filter Sweep**, **Envelope Filter**, **Auto Wah**, or **Reverse Auto Wah** to load a complete starting point. Adjust individual parameters afterwards to refine it.
 - **Mode** — **LFO** sweeps periodically; **Envelope** follows signal level.
 - **Filter Type** — **Low-pass** retains frequencies below the moving cutoff, **Band-pass** emphasizes the region around it, and **High-pass** retains frequencies above it.
 - **Minimum Frequency / Maximum Frequency** (20–20,000 Hz) — set the sweep limits. If supplied in reverse order, EffeTune sorts them; equal values hold the filter stationary. The available upper limit can be lower at lower playback sample rates.
@@ -55,7 +55,7 @@ Auto Pan moves the level of each stereo pair between left and right. If the audi
 
 ### Parameters
 
-- **Style** — loads a complete factory setting for every parameter. Choices are **Gentle Auto Pan**, **Wide Auto Pan**, and **Fast Auto Pan**. Changing an individual parameter switches Style to **Custom**.
+- **System Presets** — use **Gentle Auto Pan**, **Wide Auto Pan**, or **Fast Auto Pan** to load a complete starting point. Adjust individual parameters afterwards to refine it.
 - **Rate** (0.05–20 Hz) — sets movement speed.
 - **Depth** (0–100%) — sets how far level moves around the center; 0% is neutral.
 - **Center** (-100–100%) — shifts the midpoint left or right.
@@ -76,7 +76,7 @@ Chorus adds moving delayed copies of the music. Its modes cover **Stereo Chorus*
 
 ### Parameters
 
-- **Style** — loads a complete factory setting for every parameter. Choices are **Classic Chorus** (Chorus), **Stereo Chorus** (Stereo Chorus), **Ensemble** (Ensemble), **Flanger** (Flanger), **Jet Flanger** (Flanger), and **Vibrato** (Vibrato). Changing an individual parameter switches Style to **Custom**.
+- **System Presets** — use **Classic Chorus**, **Stereo Chorus**, **Ensemble**, **Flanger**, **Jet Flanger**, or **Vibrato** to load a complete starting point. Adjust individual parameters afterwards to refine it.
 - **Mode** — selects Chorus, Stereo Chorus, Ensemble, Flanger, or Vibrato.
 - **Rate** (0.05–10 Hz) — sets modulation speed.
 - **Delay** (0.5–30 ms) — sets nominal wet-path delay.
@@ -132,7 +132,7 @@ Frequency Shifter moves every frequency component by a fixed number of hertz rat
 
 ### Parameters
 
-- **Style** — loads a complete factory setting for every parameter. Choices are **Shift Up** (Shift), **Shift Down** (Shift), **Fine Detune** (Shift), **Ring Modulator** (Ring Mod), **Barber-pole Up** (Barber-pole), and **Barber-pole Down** (Barber-pole). Changing an individual parameter switches Style to **Custom**.
+- **System Presets** — use **Shift Up**, **Shift Down**, **Fine Detune**, **Ring Modulator**, **Barber-pole Up**, or **Barber-pole Down** to load a complete starting point. Adjust individual parameters afterwards to refine it.
 - **Mode** — selects Shift, Ring Mod, or Barber-pole processing.
 - **Shift** (-5,000–5,000 Hz) — fixed signed translation in Shift mode; positive moves components upward and negative moves them downward.
 - **Carrier Frequency** (0.1–10,000 Hz) — multiplication frequency in Ring Mod mode.
@@ -156,7 +156,7 @@ Phaser mixes the original sound with filtered copies to create moving peaks and 
 
 ### Parameters
 
-- **Style** — loads a complete factory setting for every parameter. Choices are **Classic Phaser** (Classic), **Deep Phaser** (Classic), **Stereo Phaser** (Classic), **Barber-pole Up** (Barber-pole), and **Barber-pole Down** (Barber-pole). Changing an individual parameter switches Style to **Custom**.
+- **System Presets** — use **Classic Phaser**, **Deep Phaser**, **Stereo Phaser**, **Barber-pole Up**, or **Barber-pole Down** to load a complete starting point. Adjust individual parameters afterwards to refine it.
 - **Mode** — selects Classic or Barber-pole.
 - **Rate** (0.05–10 Hz) — sets sweep speed.
 - **Center Frequency** (80–8,000 Hz) — sets the geometric center of the sweep.
@@ -225,7 +225,7 @@ Rotary Speaker splits the sound between a high-frequency horn and low-frequency 
 
 ### Parameters
 
-- **Style** — loads a complete factory setting for every parameter. Choices are **Rotary Slow** (Slow), **Rotary Fast** (Fast), **Gentle Rotary** (Slow), **Leslie Slow** (Slow), and **Leslie Fast** (Fast). Changing an individual parameter switches Style to **Custom**.
+- **System Presets** — use **Rotary Slow**, **Rotary Fast**, **Gentle Rotary**, **Vintage Rotor Slow**, or **Vintage Rotor Fast** to load a complete starting point. Adjust individual parameters afterwards to refine it.
 - **Speed State** — **Stop**, **Slow**, or **Fast** target. During a change, the rotors accelerate or slow down smoothly without interrupting the sound.
 - **Speed** (25–200%) — scales both internal rotor rates while preserving their difference.
 - **Acceleration** (0.1–10 s) — sets how quickly the rotors approach a new speed.
@@ -346,6 +346,14 @@ An effect that adds subtle pitch variations to your music, similar to the natura
   - Creates dreamy, underwater-like effects
   - Adds movement and life to static sounds
   - Perfect for ambient and experimental listening
+
+### System Presets
+
+Click **Effect Presets** in the effect header to compare complete transport behaviors.
+
+- **Warped Record** - Deep, cyclic record warp.
+- **Worn Cassette Motor** - Faster flutter with irregular movement.
+- **Seasick Tape** - Extreme slow motion with independent stereo movement.
 
 ### Parameters
 - **Rate** - How fast the sound wavers (0.1 to 20 Hz)

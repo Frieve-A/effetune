@@ -6,6 +6,11 @@ lang: en
 
 # Version History
 
+### Version 2.7.0 (TBD, 2026)
+- Improved frequency response measurement to capture multiple output channels in a single measurement
+- Added per-effect presets with a preset button on each effect, including system presets for selected effects
+- Various minor improvements
+
 ### Version 2.6.0 (Aug 25, 2026)
 - Added Group Delay PEQ and MD Simulator effects
 - Improved Tube Simulator with an output transformer magnetics model and a selectable operating-point graph
@@ -227,7 +232,7 @@ lang: en
 - Various minor improvements
 
 ### Version 1.26 (Mar 11, 2025)
-- Localized UI dnpisplay
+- Localized UI display
 - Various minor improvements
 
 ### Version 1.25 (Mar 9, 2025)

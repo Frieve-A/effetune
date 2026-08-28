@@ -34,7 +34,7 @@ lang: ja
 
 ### パラメータ
 
-- **Style**: 全パラメータをまとめて設定する完全なファクトリー設定です。候補は**Auto Filter Sweep**（LFO）、**Stereo Filter Sweep**（LFO）、**Envelope Filter**（Envelope）、**Auto Wah**（Envelope）、**Reverse Auto Wah**（Envelope）です。個別のパラメータを変更すると**Custom**になります。
+- **システムプリセット**: **Auto Filter Sweep**、**Stereo Filter Sweep**、**Envelope Filter**、**Auto Wah**、**Reverse Auto Wah**のいずれかを選ぶと、設定全体を読み込めます。読み込み後に個別のパラメーターを調整できます。
 - **Mode**: 周期的に動くLFOと、音量に追従するEnvelopeを切り替えます。
 - **Filter Type**: Low-pass、Band-pass、High-passを選びます。
 - **Minimum Frequency / Maximum Frequency** (20〜20,000 Hz): 移動範囲です。逆順なら自動で並べ替え、同じ値なら固定されます。低い再生サンプルレートでは上限が下がる場合があります。
@@ -55,7 +55,7 @@ lang: ja
 
 ### パラメータ
 
-- **Style**: 全パラメータをまとめて設定する完全なファクトリー設定です。候補は**Gentle Auto Pan**、**Wide Auto Pan**、**Fast Auto Pan**です。個別のパラメータを変更すると**Custom**になります。
+- **システムプリセット**: **Gentle Auto Pan**、**Wide Auto Pan**、**Fast Auto Pan**のいずれかを選ぶと、設定全体を読み込めます。読み込み後に個別のパラメーターを調整できます。
 - **Rate** (0.05〜20 Hz): 移動速度。
 - **Depth** (0〜100%): Centerを基準にした移動量。0%は変化なしです。
 - **Center** (-100〜100%): 中心位置を左右へ移します。
@@ -76,7 +76,7 @@ lang: ja
 
 ### パラメータ
 
-- **Style**: 全パラメータをまとめて設定する完全なファクトリー設定です。候補は**Classic Chorus**（Chorus）、**Stereo Chorus**（Stereo Chorus）、**Ensemble**（Ensemble）、**Flanger**（Flanger）、**Jet Flanger**（Flanger）、**Vibrato**（Vibrato）です。個別のパラメータを変更すると**Custom**になります。
+- **システムプリセット**: **Classic Chorus**、**Stereo Chorus**、**Ensemble**、**Flanger**、**Jet Flanger**、**Vibrato**のいずれかを選ぶと、設定全体を読み込めます。読み込み後に個別のパラメーターを調整できます。
 - **Mode**: Chorus、Stereo Chorus、Ensemble、Flanger、Vibratoを選びます。
 - **Rate** (0.05〜10 Hz): 揺れの速度。
 - **Delay** (0.5〜30 ms): ウェット音の基準遅延。
@@ -130,7 +130,7 @@ lang: ja
 
 ### パラメータ
 
-- **Style**: 全パラメータをまとめて設定する完全なファクトリー設定です。候補は**Shift Up**（Shift）、**Shift Down**（Shift）、**Fine Detune**（Shift）、**Ring Modulator**（Ring Mod）、**Barber-pole Up**（Barber-pole）、**Barber-pole Down**（Barber-pole）です。個別のパラメータを変更すると**Custom**になります。
+- **システムプリセット**: **Shift Up**、**Shift Down**、**Fine Detune**、**Ring Modulator**、**Barber-pole Up**、**Barber-pole Down**のいずれかを選ぶと、設定全体を読み込めます。読み込み後に個別のパラメーターを調整できます。
 - **Mode**: Shift、Ring Mod、Barber-pole。
 - **Shift** (-5,000〜5,000 Hz): Shiftモードの移動量。正で上、負で下へ移動します。
 - **Carrier Frequency** (0.1〜10,000 Hz): Ring Modの搬送周波数。
@@ -153,7 +153,7 @@ lang: ja
 
 ### パラメータ
 
-- **Style**: 全パラメータをまとめて設定する完全なファクトリー設定です。候補は**Classic Phaser**（Classic）、**Deep Phaser**（Classic）、**Stereo Phaser**（Classic）、**Barber-pole Up**（Barber-pole）、**Barber-pole Down**（Barber-pole）です。個別のパラメータを変更すると**Custom**になります。
+- **システムプリセット**: **Classic Phaser**、**Deep Phaser**、**Stereo Phaser**、**Barber-pole Up**、**Barber-pole Down**のいずれかを選ぶと、設定全体を読み込めます。読み込み後に個別のパラメーターを調整できます。
 - **Mode**: ClassicまたはBarber-pole。
 - **Rate** (0.05〜10 Hz): スイープ速度。
 - **Center Frequency** (80〜8,000 Hz): 対数スイープの中心。
@@ -219,7 +219,7 @@ Pitch Shifter HQはフォルマントを維持しません。そのため、シ�
 
 ### パラメータ
 
-- **Style**: 全パラメータをまとめて設定する完全なファクトリー設定です。候補は**Rotary Slow**（Slow）、**Rotary Fast**（Fast）、**Gentle Rotary**（Slow）、**Leslie Slow**（Slow）、**Leslie Fast**（Fast）です。個別のパラメータを変更すると**Custom**になります。
+- **システムプリセット**: **Rotary Slow**、**Rotary Fast**、**Gentle Rotary**、**Vintage Rotor Slow**、**Vintage Rotor Fast**のいずれかを選ぶと、設定全体を読み込めます。読み込み後に個別のパラメーターを調整できます。
 - **Speed State**: Stop、Slow、Fast。切り替え中も音を途切れさせず、滑らかに加速または減速します。
 - **Speed** (25〜200%): ホーンとドラム双方の速度倍率。
 - **Acceleration** (0.1〜10 s): ローターが新しい速度に近づく速さ。
@@ -340,6 +340,14 @@ Pitch Shifter HQはフォルマントを維持しません。そのため、シ�
   - 夢のような、または水中のような効果を作る
   - 動きの少ない音に揺らぎと生命感を加える
   - アンビエントや実験的なリスニングに向いている
+
+### システムプリセット
+
+エフェクト見出しの**エフェクトプリセット**で、走行系の挙動を含む設定全体を比較できます。
+
+- **Warped Record** - 深く周期的なレコードの反り。
+- **Worn Cassette Motor** - 不規則な動きを伴う速めのフラッター。
+- **Seasick Tape** - 左右が独立して大きくゆっくり揺れる設定。
 
 ### パラメータ
 - **Rate** - 音が揺れる速さ (0.1 から 20 Hz)

@@ -26,6 +26,7 @@ export class PipelineRoutingDialog {
         // Create dialog
         const dialog = document.createElement('div');
         dialog.className = 'routing-dialog';
+        dialog.dataset.pluginId = plugin.id;
         
         // Create dialog header
         const header = this.createDialogHeader();

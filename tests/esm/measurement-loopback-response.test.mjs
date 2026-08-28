@@ -181,3 +181,54 @@ test('sweep processing rejects recordings without all requested complete periods
         currentMeasurement: { sweepMinFreq: 20, sweepMaxFreq: 20000 }
     }, new Float32Array(48000), 4096, 2, 48000), /enough complete sweep periods/);
 });
+
+test('different sweep bands retain equal loopback levels and calibrated gain differences', t => {
+    const previousState = {
+        initialized: audioUtils.initialized,
+        lastTspSignal: audioUtils.lastTspSignal,
+        lastInverseFilter: audioUtils.lastInverseFilter,
+        lastSweepFrequencyResponse: audioUtils.lastSweepFrequencyResponse,
+        lastDeconvolutionRefScale: audioUtils.lastDeconvolutionRefScale,
+        sweepMinFreq: audioUtils.sweepMinFreq,
+        sweepMaxFreq: audioUtils.sweepMaxFreq
+    };
+    t.after(() => Object.assign(audioUtils, previousState));
+    audioUtils.initialized = true;
+    const sampleRate = 48000, length = 131072;
+    function loopback(minFreq, maxFreq, gain, calibration = null) {
+        const sweep = audioUtils.generateTSP(length, sampleRate, 'left', minFreq, maxFreq, true);
+        const plan = createSweepCapturePlan(length, 1, sampleRate);
+        const recording = new Float32Array(sampleRate / 2 + plan.repeatCount * length);
+        const signal = Float32Array.from(sweep.left, value => value * gain);
+        for (let repeat = 0; repeat < plan.repeatCount; repeat++) {
+            recording.set(signal, sampleRate / 2 + repeat * length);
+        }
+        const processed = AudioProcessing.processRecordedBuffer.call({
+            interfaceCalibrationImpulseResponse: calibration,
+            currentMeasurement: { sweepMinFreq: minFreq, sweepMaxFreq: maxFreq }
+        }, recording, length, 1, sampleRate);
+        const response = audioUtils.calculateFrequencyResponseWithSmoothing(
+            processed.analysisImpulseResponse, sampleRate, true, 0.005);
+        const magnitudes = response.map(([, value]) => value).sort((a, b) => a - b);
+        const middle = Math.floor(magnitudes.length / 2);
+        const median = magnitudes.length % 2 ? magnitudes[middle]
+            : (magnitudes[middle - 1] + magnitudes[middle]) / 2;
+        return { processed, median };
+    }
+    const low = loopback(20, 80, 1);
+    const high = loopback(2000, 20000, 1);
+    const quiet = loopback(2000, 20000, 0.5);
+    const calibration = { data: high.processed.impulseResponse,
+        onsetIndex: high.processed.onsetIndex, refScale: high.processed.refScale,
+        sampleRate };
+    const calibrated = loopback(2000, 20000, 0.5, calibration);
+    const calibratedUnity = loopback(2000, 20000, 1, calibration);
+    assert.ok(Math.abs(low.median - high.median) < 0.001,
+        `low ${low.median} dB, high ${high.median} dB`);
+    assert.ok(Math.abs(quiet.median - high.median - 20 * Math.log10(0.5)) < 0.001);
+    assert.ok(Math.abs(calibrated.median - calibratedUnity.median - 20 * Math.log10(0.5)) < 0.001);
+    assert.equal(calibrated.processed.refScale, 1);
+    assert.ok(low.processed.refScale > 1);
+    t.diagnostic(JSON.stringify({ low: low.median, high: high.median,
+        quiet: quiet.median, calibrated: calibrated.median, calibratedUnity: calibratedUnity.median }));
+});

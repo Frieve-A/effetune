@@ -5,7 +5,7 @@
     { "name": "frequency", "publicName": "frequencies", "key": "f", "kind": "float", "count": 5, "min": 20, "max": 20000, "step": 1, "default": [100, 316, 1000, 3160, 10000], "unit": "Hz" , "automation": true},
     { "name": "gain", "publicName": "gains", "key": "g", "kind": "float", "count": 5, "min": -20, "max": 20, "step": 0.1, "default": 0, "unit": "dB" , "automation": true},
     { "name": "q", "publicName": "qValues", "key": "q", "kind": "float", "count": 5, "min": 0.1, "max": 10, "step": 0.01, "default": 1 , "automation": true},
-    { "name": "filterType", "key": "t", "kind": "enum", "count": 5, "values": ["pk", "lp", "hp", "ls", "hs", "bp", "no", "ap"], "default": "pk" },
-    { "name": "bandEnabled", "key": "e", "kind": "bool", "count": 5, "default": true }
+    { "name": "filterType", "key": "t", "kind": "enum", "count": 5, "values": ["pk", "lp", "hp", "ls", "hs", "bp", "no", "ap"], "step": 1, "default": "pk", "automation": true },
+    { "name": "bandEnabled", "key": "e", "kind": "bool", "count": 5, "step": 1, "default": true, "automation": true }
   ]
 }

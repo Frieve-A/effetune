@@ -118,26 +118,24 @@ function processorParameters(plugin, overrides = {}) {
   };
 }
 
-test('Frequency Shifter canonicalizes barber bounds atomically and keeps styles app-only', async () => {
+test('Frequency Shifter canonicalizes barber bounds atomically and exposes system presets', async () => {
   const Plugin = await loadPlugin();
   const plugin = new Plugin();
   plugin.createUI();
   plugin.setParameters({ mx: 30, mn: 900, md: 'Barber-pole', dr: 'Down' });
   assert.equal(plugin.mn, 30);
   assert.equal(plugin.mx, 900);
-  assert.equal(plugin.style, 'Custom');
-  assert.equal('style' in plugin.getParameters(), false);
   assertControls(plugin, {
-    style: 'Custom', md: 'Barber-pole', sh: 8, cf: 440, mn: 30,
+    md: 'Barber-pole', sh: 8, cf: 440, mn: 30,
     mx: 900, rt: 0.15, dr: 'Down', sp: 0, mix: 100
   });
 
-  plugin.setStyle('Ring Modulator');
-  assert.equal(plugin.style, 'Ring Modulator');
+  plugin.setParameters(Plugin.getSystemPresetGroups()[0].presets
+    .find(preset => preset.id === 'ring-modulator').params);
   assert.equal(plugin.md, 'Ring Mod');
   assert.equal(plugin.cf, 440);
   assertControls(plugin, {
-    style: 'Ring Modulator', md: 'Ring Mod', sh: 8, cf: 440, mn: 20,
+    md: 'Ring Mod', sh: 8, cf: 440, mn: 20,
     mx: 800, rt: 0.15, dr: 'Up', sp: 0, mix: 100
   });
   assert.deepEqual(Array.from(Plugin.searchAliases), [

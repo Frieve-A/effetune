@@ -1,18 +1,22 @@
+const ROTARY_SPEAKER_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({ id: 'rotary-slow', label: 'Rotary Slow', params: Object.freeze({ ss: 'Slow', sp: 100, ac: 2.2, xo: 800, rb: 0, sw: 75, dd: 45, ad: 55, mx: 70 }) }),
+    Object.freeze({ id: 'rotary-fast', label: 'Rotary Fast', params: Object.freeze({ ss: 'Fast', sp: 100, ac: 1.4, xo: 800, rb: 0, sw: 85, dd: 65, ad: 70, mx: 78 }) }),
+    Object.freeze({ id: 'gentle-rotary', label: 'Gentle Rotary', params: Object.freeze({ ss: 'Slow', sp: 75, ac: 3, xo: 900, rb: 0, sw: 45, dd: 25, ad: 30, mx: 55 }) }),
+    Object.freeze({ id: 'vintage-rotor-slow', label: 'Vintage Rotor Slow', params: Object.freeze({ ss: 'Slow', sp: 100, ac: 2.8, xo: 800, rb: -5, sw: 80, dd: 50, ad: 60, mx: 75 }) }),
+    Object.freeze({ id: 'vintage-rotor-fast', label: 'Vintage Rotor Fast', params: Object.freeze({ ss: 'Fast', sp: 100, ac: 1.8, xo: 800, rb: -5, sw: 90, dd: 70, ad: 75, mx: 82 }) })
+]);
+
 class RotarySpeakerPlugin extends PluginBase {
-    static searchAliases = Object.freeze(['Leslie', 'Rotary']);
+    static searchAliases = Object.freeze(['Rotary']);
     static executionCapabilities = Object.freeze({
         jsFallbackCapacity: Object.freeze({
             maxJsFallbackSampleChannels: 96000
         })
     });
 
-    static factoryStyles = Object.freeze({
-        'Rotary Slow': Object.freeze({ ss: 'Slow', sp: 100, ac: 2.2, xo: 800, rb: 0, sw: 75, dd: 45, ad: 55, mx: 70 }),
-        'Rotary Fast': Object.freeze({ ss: 'Fast', sp: 100, ac: 1.4, xo: 800, rb: 0, sw: 85, dd: 65, ad: 70, mx: 78 }),
-        'Gentle Rotary': Object.freeze({ ss: 'Slow', sp: 75, ac: 3, xo: 900, rb: 0, sw: 45, dd: 25, ad: 30, mx: 55 }),
-        'Leslie Slow': Object.freeze({ ss: 'Slow', sp: 100, ac: 2.8, xo: 800, rb: -5, sw: 80, dd: 50, ad: 60, mx: 75 }),
-        'Leslie Fast': Object.freeze({ ss: 'Fast', sp: 100, ac: 1.8, xo: 800, rb: -5, sw: 90, dd: 70, ad: 75, mx: 82 })
-    });
+    static getSystemPresetGroups() {
+        return [{ label: '', presets: ROTARY_SPEAKER_SYSTEM_PRESETS.map(preset => ({ ...preset })) }];
+    }
 
     constructor() {
         super('Rotary Speaker', 'Dual-rotor crossover, Doppler, amplitude, and stereo motion');
@@ -26,8 +30,6 @@ class RotarySpeakerPlugin extends PluginBase {
         this.dd = 45;
         this.ad = 55;
         this.mx = 70;
-        this.style = 'Rotary Slow';
-        this._applyingStyle = false;
         this._uiControls = null;
 
         this.registerProcessor(`
@@ -304,9 +306,6 @@ class RotarySpeakerPlugin extends PluginBase {
         const container = document.createElement('div');
         container.className = 'rotary-speaker-plugin-ui plugin-parameter-ui';
         this._uiControls = {};
-        this._uiControls.style = this.createSelectControl(
-            'Style', ['Custom', ...Object.keys(RotarySpeakerPlugin.factoryStyles)],
-            this.style, this.setStyle.bind(this), 'style');
         this._uiControls.ss = this.createSelectControl('Speed State', ['Stop', 'Slow', 'Fast'], this.ss, this.setSs.bind(this), 'ss');
         this._uiControls.sp = this.createParameterControl('Speed', 25, 200, 1, this.sp, this.setSp.bind(this), '%', 'sp');
         this._uiControls.ac = this.createParameterControl('Acceleration', 0.1, 10, 0.1, this.ac, this.setAc.bind(this), 's', 'ac');
@@ -316,7 +315,7 @@ class RotarySpeakerPlugin extends PluginBase {
         this._uiControls.dd = this.createParameterControl('Doppler Depth', 0, 100, 1, this.dd, this.setDd.bind(this), '%', 'dd');
         this._uiControls.ad = this.createParameterControl('Amplitude Depth', 0, 100, 1, this.ad, this.setAd.bind(this), '%', 'ad');
         this._uiControls.mx = this.createParameterControl('Mix', 0, 100, 1, this.mx, this.setMx.bind(this), '%', 'mx');
-        for (const key of ['style', 'ss', 'sp', 'ac', 'xo', 'rb', 'sw', 'dd', 'ad', 'mx']) {
+        for (const key of ['ss', 'sp', 'ac', 'xo', 'rb', 'sw', 'dd', 'ad', 'mx']) {
             container.appendChild(this._uiControls[key]);
         }
         this._syncUI();
@@ -351,7 +350,6 @@ class RotarySpeakerPlugin extends PluginBase {
 
     _syncUI() {
         if (!this._uiControls) return;
-        this._syncControl(this._uiControls.style, this.style);
         for (const key of ['ss', 'sp', 'ac', 'xo', 'rb', 'sw', 'dd', 'ad', 'mx']) {
             this._syncControl(this._uiControls[key], this[key]);
         }
@@ -369,10 +367,6 @@ class RotarySpeakerPlugin extends PluginBase {
         const nextDoppler = this.parseFiniteNumber(params.dd, 0, 100, this.dd);
         const nextAmplitude = this.parseFiniteNumber(params.ad, 0, 100, this.ad);
         const nextMix = this.parseFiniteNumber(params.mx, 0, 100, this.mx);
-        const controlledChange = nextState !== this.ss || nextSpeed !== this.sp ||
-            nextAcceleration !== this.ac || nextCrossover !== this.xo || nextBalance !== this.rb ||
-            nextWidth !== this.sw || nextDoppler !== this.dd || nextAmplitude !== this.ad ||
-            nextMix !== this.mx;
         this.ss = nextState;
         this.sp = nextSpeed;
         this.ac = nextAcceleration;
@@ -382,19 +376,8 @@ class RotarySpeakerPlugin extends PluginBase {
         this.dd = nextDoppler;
         this.ad = nextAmplitude;
         this.mx = nextMix;
-        if (controlledChange && !this._applyingStyle) this.style = 'Custom';
         this._syncUI();
         this.updateParameters();
-    }
-
-    setStyle(style) {
-        const preset = RotarySpeakerPlugin.factoryStyles[style];
-        if (!preset) return;
-        this._applyingStyle = true;
-        this.setParameters(preset);
-        this._applyingStyle = false;
-        this.style = style;
-        this._syncUI();
     }
 
     setSs(value) { this.setParameters({ ss: value }); }

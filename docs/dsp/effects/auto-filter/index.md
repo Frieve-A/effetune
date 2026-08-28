@@ -52,7 +52,7 @@ Auto Filter moves a resonant filter automatically. **LFO** mode repeats a sweep,
 
 ### Parameters
 
-- **Style** — loads a complete factory setting for every parameter. Choices are **Auto Filter Sweep** (LFO), **Stereo Filter Sweep** (LFO), **Envelope Filter** (Envelope), **Auto Wah** (Envelope), and **Reverse Auto Wah** (Envelope). Changing an individual parameter switches Style to **Custom**.
+- **System Presets** — use **Auto Filter Sweep**, **Stereo Filter Sweep**, **Envelope Filter**, **Auto Wah**, or **Reverse Auto Wah** to load a complete starting point. Adjust individual parameters afterwards to refine it.
 - **Mode** — **LFO** sweeps periodically; **Envelope** follows signal level.
 - **Filter Type** — **Low-pass** retains frequencies below the moving cutoff, **Band-pass** emphasizes the region around it, and **High-pass** retains frequencies above it.
 - **Minimum Frequency / Maximum Frequency** (20–20,000 Hz) — set the sweep limits. If supplied in reverse order, EffeTune sorts them; equal values hold the filter stationary. The available upper limit can be lower at lower playback sample rates.

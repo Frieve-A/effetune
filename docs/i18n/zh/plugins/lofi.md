@@ -51,6 +51,16 @@ AM Radio Simulator 让音乐经过一条完整建模的 AM 广播链路：发射
 - 评估无线电模型本身时，请从 Mix 100% 开始。只有在想有意保留部分原始立体声声像时才降低 Mix。
 
 
+### 系统预设
+
+点击效果标题中的 **效果预设**，即可直接试用以下完整设置。
+
+- **Local Daytime Station** - 清晰、宽带且几乎没有静电噪声的本地广播。
+- **Pocket Transistor** - 小扬声器收音机的声音，压缩和嗡声更强，带宽受限。
+- **Night Skywave** - 带有明显电离层衰落的微弱夜间信号。
+- **Summer Thunderstorm** - 被频繁大气静电噪声打断的衰落电台。
+- **Stereo AM Broadcast** - 不使用扬声器模拟、较为清晰的 C-QUAM 立体声广播。
+
 ### 参数
 
 #### Station
@@ -166,6 +176,16 @@ Cassette Artifacts 结合了盒式磁带的频率响应、磁带压缩、底噪�
 - **Tape Type** 会改变噪声和余量。Type I 噪声最大，Type II 较均衡，Type IV 能让明亮的峰值更干净。
 - **Noise Reduction** 可降低底噪。Dolby C 的效果强于 Dolby B，Off 则保留最原始的盒式磁带底噪。
 - 提高 **Wow/Flutter**、**Hiss** 或 **Dropouts** 可获得更旧损的声音。**Azimuth** 会柔化高频，并改变左右声道高频的时间关系。
+
+### 系统预设
+
+点击效果标题中的 **效果预设**，即可直接试用以下完整设置。
+
+- **Flagship Deck Metal** - 使用金属带和 Dolby C 的安静、稳定的参考级卡座。
+- **Hi-Fi Chrome** - 嘶声和音高波动都较轻的清晰 Type II 卡带。
+- **Pocket Cassette Player** - 带有噪声、抖晃和磁头失调的便携播放器声音。
+- **Worn Mixtape** - 有掉音、抖晃和更粗糙饱和感的重度使用卡带。
+- **Hot Deck Saturation** - 刻意强推录音电平而产生更强磁带压缩的卡带声音。
 
 ### 参数
 
@@ -371,6 +391,14 @@ FM Radio Simulator 让音乐通过一条建模的 FM 广播与接收链路：广
 - **弱信号嘶声:** 降低 Signal 时，明亮而空气感的嘶声首先出现在立体声中。把 Stereo 切到 Mono，同样的接收状况会明显安静许多——这正是真实调谐器上单声道更安静的原因。
 - **覆盖边缘接收:** 接近 FM 门限时出现咔嗒与噼啪声，接收机向单声道过渡，节目最终沉入噪声。
 - **多径音色:** 反射波带来粗糙而空洞的失真，其特征随 Path Delay 变化；调高 Fading 会把它变成移动接收特有的颤动。
+
+### 系统预设
+
+点击效果标题中的 **效果预设**，即可直接试用以下完整设置。
+
+- **Powerhouse Broadcast** - 广播处理更强的强信号电台。
+- **Distant Station** - 接近服务区边缘的接收，带有嘶声和初期立体声劣化。
+- **City Drive Multipath** - 用于移动收听的快速变化反射和多径失真。
 
 ### 参数
 
@@ -700,6 +728,14 @@ SW Radio Simulator 让音乐通过一条建模的短波链路：发射端处理�
 - **静音之后的一瞬偏响：** 音乐开始时——开始播放或一段静音之后——增益仍停在静音期间的全开状态，因此在 AGC 稳定之前的第一瞬会偏响，在 USB 与 LSB 下尤其明显。这与在安静频道上打开接收机时的表现一致，属于有意保留的行为。
 - **变瘦并出现缺口的衰落 (USB、LSB)：** 深度衰落不会产生 AM 包络检波那种水下般的失真，而是让唯一那个边带内部按频率不均匀地衰减，于是声音变瘦，其中一部分会缺失。
 
+### 系统预设
+
+点击效果标题中的 **效果预设**，即可直接试用以下完整设置。
+
+- **Major Broadcaster** - 通过桌面收音机接收的稳定、相对宽带的国际广播。
+- **Transoceanic Night** - 远距离信号的深度夜间衰落和同步检波。
+- **Stormy 49 m Band** - 快速衰落、静电噪声和附近电台干扰。
+
 ### 参数
 
 #### Station
@@ -802,6 +838,14 @@ Tape Artifacts 将音乐录制到模拟的开盘式磁带机上再播放。信�
 - **持续音能显出走带变化：**Wow/Flutter 会给钢琴、风琴、弦乐和其他持续音增加音高漂移与颤动。
 - **有生命力的背景：**Hiss 既增加持续的磁带底噪，也增加随音乐变化的噪声。不想添加磁带噪声时，请调到最低。
 
+### 系统预设
+
+点击效果标题中的 **效果预设**，即可直接试用以下完整设置。
+
+- **Pristine 30 ips Reel** - 嘶声和音高波动都极少的高速母带转录。
+- **Hobbyist Reel-to-Reel** - 嘶声和走带机构波动更多的低速家用录音机。
+- **Tired Old Reel** - 抖晃明显、嘶声较多且高频更粗糙的磨损低速磁带。
+
 ### 参数
 
 - **Speed**（7.5、15 或 30 ips）- 选择磁带速度。建议从 15 ips 开始；选择 30 ips 可获得最干净、最开阔的声音，选择 7.5 ips 则会更暗、低频隆起更强且晃动更多。
@@ -860,6 +904,14 @@ Tape Artifacts 将音乐录制到模拟的开盘式磁带机上再播放。信�
   - 为数字录音添加深度和特色
   - 完美适合创造舒适、亲密的聆听体验
 
+### 系统预设
+
+点击效果标题中的 **效果预设**，即可直接试用以下完整设置。
+
+- **Gentle Patina** - 为克制的老化盘面加入低电平唱片噪声。
+- **Thrift Store Copy** - 频繁的爆音、噼啪声和磨损，形成明显损坏的唱片。
+- **Rumbly Old Player** - 在普通盘面质感上加入类似唱盘的低频隆隆声。
+
 ### 参数
 - **Pops/min** - 控制每分钟大咔嗒声的频率 (0 到 120)
   - 0-20: 偶尔温和的爆音
@@ -889,15 +941,15 @@ Tape Artifacts 将音乐录制到模拟的开盘式磁带机上再播放。信�
   - 0%: 生成噪声保持原有声道分离
   - 30-60%: 真实的黑胶风格噪声串扰
   - 100%: 生成噪声在左右声道几乎相同
-- **Noise Profile** - 调整生成噪声的频响特性 (0.0 到 10.0)
-  - 0: 最暗、最温暖的噪声音色
-  - 5: 部分塑形的噪声音色
-  - 10: 平坦噪声音色 / 音色塑形旁路
+- **Noise Tone** - 调整生成噪声的频响特性 (0.0 到 10.0)
+  - 0：平坦的噪声音色
+  - 5：部分变暗的噪声音色
+  - 10：深色噪声音色
 - **Wear** - 缩放爆点、噼啪声和嘶声等表面磨损瑕疵 (0 到 200%)
   - 0-50%: 更干净的表面噪声
   - 50-100%: 正常表面磨损
   - 100-200%: 严重磨损的表面噪声
-  - Rumble、Crosstalk 和 Noise Profile 由各自参数单独控制
+  - Rumble、Crosstalk 和 Noise Tone 由各自参数单独控制
 - **React** - 噪音对输入信号的响应程度 (0 到 100%)
   - 0%: 静态噪音级别
   - 25-50%: 对音乐的适度响应
@@ -915,31 +967,31 @@ Tape Artifacts 将音乐录制到模拟的开盘式磁带机上再播放。信�
 
 1. 细微黑胶特色
    - Pops/min: 20, Pop Level: -48dB, Crackles/min: 200, Crackle Level: -48dB
-   - Hiss: -48dB, Rumble: -60dB, Crosstalk: 30%, Noise Profile: 5.0
+   - Hiss: -48dB, Rumble: -60dB, Crosstalk: 30%, Noise Tone: 5.0
    - Wear: 25%, React: 20%, React Mode: Velocity, Mix: 100%
    - 完美适合: 添加温和的黑胶表面质感
 
 2. 经典黑胶体验
    - Pops/min: 40, Pop Level: -36dB, Crackles/min: 400, Crackle Level: -36dB
-   - Hiss: -36dB, Rumble: -50dB, Crosstalk: 50%, Noise Profile: 4.0
+   - Hiss: -36dB, Rumble: -50dB, Crosstalk: 50%, Noise Tone: 6.0
    - Wear: 60%, React: 30%, React Mode: Velocity, Mix: 100%
    - 完美适合: 真实的黑胶聆听体验
 
 3. 严重磨损唱片
    - Pops/min: 80, Pop Level: -24dB, Crackles/min: 800, Crackle Level: -24dB
-   - Hiss: -30dB, Rumble: -40dB, Crosstalk: 70%, Noise Profile: 3.0
+   - Hiss: -30dB, Rumble: -40dB, Crosstalk: 70%, Noise Tone: 7.0
    - Wear: 120%, React: 50%, React Mode: Velocity, Mix: 100%
    - 完美适合: 严重老化唱片特色
 
 4. Lo-Fi氛围
    - Pops/min: 15, Pop Level: -54dB, Crackles/min: 150, Crackle Level: -54dB
-   - Hiss: -42dB, Rumble: -66dB, Crosstalk: 25%, Noise Profile: 6.0
+   - Hiss: -42dB, Rumble: -66dB, Crosstalk: 25%, Noise Tone: 4.0
    - Wear: 40%, React: 15%, React Mode: Amplitude, Mix: 100%
    - 完美适合: 背景氛围质感
 
 5. 动态黑胶
    - Pops/min: 60, Pop Level: -30dB, Crackles/min: 600, Crackle Level: -30dB
-   - Hiss: -39dB, Rumble: -45dB, Crosstalk: 60%, Noise Profile: 5.0
+   - Hiss: -39dB, Rumble: -45dB, Crosstalk: 60%, Noise Tone: 5.0
    - Wear: 80%, React: 75%, React Mode: Velocity, Mix: 100%
    - 完美适合: 对音乐产生戏剧性响应的噪音
 
@@ -961,6 +1013,16 @@ Vinyl Simulator 通过物理刻片与唱针播放模型直接改变音乐信号�
 - **老旧表面：** 先提高 Roughness，再加入 Dust、Static 和少量 Scratch；它们分别代表不同的物理现象。
 - **更明显的唱槽染色：** 谨慎提高 Cut Level、降低 HF Cutoff 或减小 Radius。观察 Tracking S/E 是否下降，以及 mistrack/skip 是否增加。
 - 本效果不产生 wow/flutter、偏心、翘曲或转盘隆隆声。需要时请在效果链中加入 **Wow Flutter**。
+
+### 系统预设
+
+点击效果标题中的 **效果预设**，即可直接试用以下完整设置。
+
+- **Audiophile Pressing** - 安静且经过细心维护的唱片盘面。
+- **Well-Worn Favorite** - 增加常被播放唱片的粗糙感、灰尘和静电。
+- **Flea Market 45** - 带球形唱针和明显盘面噪声的磨损 45 rpm 单曲唱片。
+- **78 rpm Shellac** - 粗糙、窄频带的老式虫胶唱片质感。
+- **End of Side** - 靠近唱片一面末尾的内圈位置及其循迹特性。
 
 ### 参数
 

@@ -21,6 +21,23 @@ import {
 } from '../../../js/utils/measurement-dsp/interface-calibration.js';
 
 const SWEEP_START_DELAY_SECONDS = 0.05;
+
+export class SweepCancelledError extends Error {
+    constructor() {
+        super('Measurement cancelled');
+        this.name = 'SweepCancelledError';
+    }
+}
+
+function clearSweepTimers(elements) {
+    if (!elements) return;
+    for (const key of ['preRollTimer', 'playbackSafetyTimer', 'finishTimer', 'finalSafetyTimer']) {
+        if (elements[key]) clearTimeout(elements[key]);
+        elements[key] = null;
+    }
+    if (elements.checkInterval) clearInterval(elements.checkInterval);
+    elements.checkInterval = null;
+}
 const MAX_PRACTICAL_PATH_LATENCY_SECONDS = 1;
 
 function createSweepCapturePlan(sweepLength, averagingCount, sampleRate) {
@@ -96,19 +113,43 @@ const AudioProcessing = {
      * @param {Object} sweepBuffer - Sweep signal buffer object with left and right channels
      * @returns {Object} Measurement result with impulse response and overload flag
      */
-    async playAndRecordSweep(sweepBuffer) {
+    async playAndRecordSweep(sweepBuffer, outputChannel = this.measurementConfig.outputChannel, explicitOutputChannels) {
         return new Promise(async (resolve, reject) => {
+            const operation = {
+                settled: false,
+                reject,
+                resolve
+            };
+            const settleResolve = value => {
+                if (operation.settled) return;
+                operation.settled = true;
+                if (this.activeSweepOperation === operation) this.activeSweepOperation = null;
+                resolve(value);
+            };
+            const settleReject = error => {
+                if (operation.settled) return;
+                operation.settled = true;
+                if (this.activeSweepOperation === operation) this.activeSweepOperation = null;
+                reject(error);
+            };
             try {
                 // Reset active elements before starting new sweep
-                this.activeSweepElements = {
+                const elements = {
                     source: null,
                     gainNode: null,
                     recordNode: null,
                     analyzer: null,
                     checkInterval: null,
+                    preRollTimer: null,
+                    playbackSafetyTimer: null,
+                    finishTimer: null,
+                    finalSafetyTimer: null,
                     audioElement: null,
-                    mediaStreamDestination: null
+                    mediaStreamDestination: null,
+                    operation
                 };
+                this.activeSweepElements = elements;
+                this.activeSweepOperation = operation;
 
                 const audioContext = audioUtils.audioContext;
                 if (!audioContext || audioContext.state !== 'running') {
@@ -143,11 +184,17 @@ const AudioProcessing = {
                 const outputRoute = await prepareMeasurementOutputRoute(
                     audioContext,
                     this.measurementConfig.audioOutputId,
-                    this.measurementConfig.outputChannel
+                    outputChannel,
+                    {},
+                    explicitOutputChannels
                 );
+                if (operation.settled || this.activeSweepOperation !== operation) {
+                    releaseMeasurementOutputRoute(outputRoute);
+                    return;
+                }
                 const outputChannels = outputRoute.outputChannels;
-                this.activeSweepElements.audioElement = outputRoute.audioElement;
-                this.activeSweepElements.mediaStreamDestination = outputRoute.mediaStreamDestination;
+                elements.audioElement = outputRoute.audioElement;
+                elements.mediaStreamDestination = outputRoute.mediaStreamDestination;
                 console.log(`Using ${outputChannels}-channel ${outputRoute.mode} measurement output`);
 
                 const combinedSweepBuffer = createRepeatedSweepAudioBuffer(
@@ -173,7 +220,7 @@ const AudioProcessing = {
                 const analyzerData = new Uint8Array(analyzer.frequencyBinCount);
                 
                 // Store analyzer in active elements
-                this.activeSweepElements.analyzer = analyzer;
+                elements.analyzer = analyzer;
                 
                 let recordNode;
                 let recordingStarted = false;
@@ -202,8 +249,8 @@ const AudioProcessing = {
                 // Check if AudioWorklet is supported
                 if (!audioUtils.audioWorkletSupported) {
                     console.error('AudioWorklet is not supported in this browser');
-                    this.stopSweepPlayback();
-                    reject(new Error('AudioWorklet not supported'));
+                    this.stopSweepPlayback(operation);
+                    settleReject(new Error('AudioWorklet not supported'));
                     return;
                 }
                 
@@ -214,6 +261,16 @@ const AudioProcessing = {
                     recordNode = await audioUtils.createRecorderWorkletNode(
                         null // Device and channel selection are handled by the shared input route.
                     );
+                    if (operation.settled || this.activeSweepOperation !== operation) {
+                        try {
+                            recordNode?.port?.postMessage({ command: 'stop' });
+                            recordNode?.disconnect();
+                        } catch (_) {
+                            // The abandoned recorder may already be disconnected.
+                        }
+                        releaseMeasurementOutputRoute(outputRoute);
+                        return;
+                    }
                     
                     if (!recordNode) {
                         throw new Error('Failed to create recorder worklet node');
@@ -222,7 +279,7 @@ const AudioProcessing = {
                     // Store in class variable for later cleanup
                     this.recorderNode = recordNode;
                     // Store in active elements
-                    this.activeSweepElements.recordNode = recordNode;
+                    elements.recordNode = recordNode;
                     
                     // Set up message handling
                     recordNode.port.onmessage = (event) => {
@@ -281,8 +338,8 @@ const AudioProcessing = {
                     
                 } catch (err) {
                     console.error('Failed to create AudioWorkletNode:', err);
-                    this.stopSweepPlayback();
-                    reject(err);
+                    this.stopSweepPlayback(operation);
+                    settleReject(err);
                     return;
                 }
                 
@@ -292,7 +349,8 @@ const AudioProcessing = {
                 let playbackEnded = false;
                 
                 // Start playback with pre-roll delay
-                setTimeout(() => {
+                elements.preRollTimer = setTimeout(() => {
+                    if (operation.settled || this.activeSweepOperation !== operation) return;
                     try {
                         // Make sure audio context is still running
                         if (audioContext.state !== 'running') {
@@ -319,8 +377,8 @@ const AudioProcessing = {
                         gainNode.connect(outputRoute.destination);
                         
                         // Store source and gain node in active elements
-                        this.activeSweepElements.source = source;
-                        this.activeSweepElements.gainNode = gainNode;
+                        elements.source = source;
+                        elements.gainNode = gainNode;
                         
                         // Track when playback starts
                         startTime = audioContext.currentTime;
@@ -337,7 +395,8 @@ const AudioProcessing = {
                         };
                         
                         // Safety timeout in case onended doesn't fire
-                        setTimeout(() => {
+                        elements.playbackSafetyTimer = setTimeout(() => {
+                            if (operation.settled || this.activeSweepOperation !== operation) return;
                             if (!playbackEnded) {
                                 playbackEnded = true;
                                 console.log(`Forcing playback end at ${audioContext.currentTime}, duration: ${audioContext.currentTime - startTime}s`);
@@ -365,17 +424,19 @@ const AudioProcessing = {
                         recordNode.port.postMessage({ command: 'stop' });
                         
                         // Small delay to ensure all audio data is received
-                        setTimeout(() => {
+                        elements.finishTimer = setTimeout(() => {
                             finishRecording();
                         }, 500);
                     }
                 }, 100);
                 
                 // Store interval in active elements
-                this.activeSweepElements.checkInterval = checkInterval;
+                elements.checkInterval = checkInterval;
                 
                 // Function to clean up and process the recording
                 const finishRecording = () => {
+                    if (operation.settled || this.activeSweepOperation !== operation) return;
+                    clearSweepTimers(elements);
                     // Clean up audio nodes
                     try {
                         if (recordNode && recordNode.port) {
@@ -385,11 +446,11 @@ const AudioProcessing = {
                         if (analyzer) {
                             analyzer.disconnect();
                         }
-                        self.cleanupSweepOutput();
+                        self.cleanupSweepOutput(operation);
                         // Clear active elements references
-                        self.activeSweepElements.recordNode = null;
-                        self.activeSweepElements.analyzer = null;
-                        self.activeSweepElements.checkInterval = null;
+                        elements.recordNode = null;
+                        elements.analyzer = null;
+                        elements.checkInterval = null;
                         self.recorderNode = null;
                     } catch (e) {
                         console.error("Error during cleanup:", e);
@@ -439,7 +500,7 @@ const AudioProcessing = {
                         finalBuffer = null;
 
                         // Resolve promise with processed data
-                        resolve(this.createSweepMeasurementResult(processed, {
+                        settleResolve(this.createSweepMeasurementResult(processed, {
                             frequencyResponse: frequencyResponse,
                             hasOverload: hasOverload,
                             maxSignalLevel: maxSignalLevel,
@@ -449,13 +510,14 @@ const AudioProcessing = {
                     } catch (error) {
                         finalBuffer = null;
                         console.error('Recorded sweep processing failed:', error);
-                        reject(error);
+                        settleReject(error);
                     }
                 };
                 
                 // Final safety timeout
-                setTimeout(() => {
-                    if (!playbackEnded || recordNode.connected) {
+                elements.finalSafetyTimer = setTimeout(() => {
+                    if (operation.settled || this.activeSweepOperation !== operation) return;
+                    if (!playbackEnded || recordingStarted) {
                         console.warn(`Recording timeout after ${2 * (prePostRollTime + totalPlaybackDuration)}s`);
                         
                         // Clean up
@@ -467,14 +529,14 @@ const AudioProcessing = {
                         } catch (e) {
                             console.error("Error during cleanup:", e);
                         }
-                        
-                        reject(new Error('Recording timeout'));
+                        this.stopSweepPlayback(operation);
+                        settleReject(new Error('Recording timeout'));
                     }
                 }, 2 * (prePostRollTime + totalPlaybackDuration) * 1000);
                 
             } catch (error) {
-                this.stopSweepPlayback();
-                reject(error);
+                this.stopSweepPlayback(operation);
+                settleReject(error);
             }
         });
     },
@@ -632,17 +694,18 @@ const AudioProcessing = {
                 const magnitude = sample < 0 ? -sample : sample;
                 if (magnitude > peak) peak = magnitude;
             }
+            const refScale = audioUtils.lastDeconvolutionRefScale || 1;
 
             if (calibrationRequired) {
                 const calibrated = applyInterfaceCalibration({
                     data: trimmed.data,
                     onsetIndex: trimmed.onsetIndex,
                     prerollSamples: trimmed.prerollSamples,
-                    refScale: audioUtils.lastDeconvolutionRefScale || 1
+                    refScale
                 }, this.interfaceCalibrationImpulseResponse, {
                     sampleRate,
-                    minFrequency: this.currentMeasurement.sweepMinFreq,
-                    maxFrequency: this.currentMeasurement.sweepMaxFreq,
+                    minFrequency: this.currentSweepBand?.minFreq ?? this.currentMeasurement.sweepMinFreq,
+                    maxFrequency: this.currentSweepBand?.maxFreq ?? this.currentMeasurement.sweepMaxFreq,
                     outputLength: trimmed.data.length,
                     prerollSamples: trimmed.prerollSamples
                 });
@@ -656,6 +719,9 @@ const AudioProcessing = {
                 };
             }
 
+            // The stored IR keeps its reference scale; frequency analysis uses
+            // unit-reference samples so changing the sweep band cannot add gain.
+            for (let index = 0; index < result.length; index++) result[index] /= refScale;
             console.timeEnd('processRecordedBuffer');
             return {
                 ...trimmed,
@@ -663,7 +729,7 @@ const AudioProcessing = {
                 impulseResponse: trimmed.data,
                 irValid: true,
                 peakDb: peak > 0 ? 20 * Math.log10(peak) : -Infinity,
-                refScale: audioUtils.lastDeconvolutionRefScale || 1
+                refScale
             };
             
         } catch (error) {
@@ -678,82 +744,100 @@ const AudioProcessing = {
         }
     },
     
-    cleanupSweepOutput() {
-        if (!this.activeSweepElements) return;
+    cleanupSweepOutput(operation) {
+        const elements = this.activeSweepElements;
+        if (!operation || this.activeSweepOperation !== operation ||
+            elements?.operation !== operation) return false;
 
-        if (this.activeSweepElements.source) {
+        if (elements.source) {
             try {
-                this.activeSweepElements.source.stop();
+                elements.source.stop();
             } catch (_) {
                 // The source may already have ended.
             }
             try {
-                this.activeSweepElements.source.disconnect();
+                elements.source.disconnect();
             } catch (error) {
                 console.warn('Error disconnecting sweep source:', error);
             }
-            this.activeSweepElements.source = null;
+            elements.source = null;
         }
 
-        if (this.activeSweepElements.gainNode) {
+        if (elements.gainNode) {
             try {
-                this.activeSweepElements.gainNode.disconnect();
+                elements.gainNode.disconnect();
             } catch (error) {
                 console.warn('Error disconnecting gain node:', error);
             }
-            this.activeSweepElements.gainNode = null;
+            elements.gainNode = null;
         }
 
         releaseMeasurementOutputRoute({
-            audioElement: this.activeSweepElements.audioElement,
-            mediaStreamDestination: this.activeSweepElements.mediaStreamDestination
+            audioElement: elements.audioElement,
+            mediaStreamDestination: elements.mediaStreamDestination
         });
-        this.activeSweepElements.audioElement = null;
-        this.activeSweepElements.mediaStreamDestination = null;
+        elements.audioElement = null;
+        elements.mediaStreamDestination = null;
+        return true;
     },
 
     /**
      * Stop active sweep playback
      * This is used to clean up active sweep playback when measurement is cancelled
      */
-    stopSweepPlayback() {
+    stopSweepPlayback(operation) {
+        const elements = this.activeSweepElements;
+        if (!operation || this.activeSweepOperation !== operation ||
+            elements?.operation !== operation) return false;
         console.log('Stopping active sweep playback');
         
         // Clean up active elements
-        if (this.activeSweepElements) {
-            this.cleanupSweepOutput();
+        if (elements) {
+            clearSweepTimers(elements);
+            this.cleanupSweepOutput(operation);
             
             // Clean up other elements
-            if (this.activeSweepElements.analyzer) {
+            if (elements.analyzer) {
                 try {
-                    this.activeSweepElements.analyzer.disconnect();
+                    elements.analyzer.disconnect();
                 } catch (e) {
                     console.warn('Error disconnecting analyzer:', e);
                 }
-                this.activeSweepElements.analyzer = null;
+                elements.analyzer = null;
             }
             
-            if (this.activeSweepElements.recordNode) {
-                const recordNode = this.activeSweepElements.recordNode;
+            if (elements.recordNode) {
+                const recordNode = elements.recordNode;
                 try {
                     recordNode.port.postMessage({ command: 'stop' });
                     recordNode.disconnect();
                 } catch (e) {
                     console.warn('Error stopping record node:', e);
                 }
-                this.activeSweepElements.recordNode = null;
+                elements.recordNode = null;
                 if (this.recorderNode === recordNode) {
                     this.recorderNode = null;
                 }
             }
             
-            if (this.activeSweepElements.checkInterval) {
-                clearInterval(this.activeSweepElements.checkInterval);
-                this.activeSweepElements.checkInterval = null;
+            if (elements.checkInterval) {
+                clearInterval(elements.checkInterval);
+                elements.checkInterval = null;
             }
             
             console.log('Sweep playback stopped successfully');
         }
+        return true;
+    },
+
+    cancelActiveSweep() {
+        const operation = this.activeSweepOperation;
+        if (operation && !operation.settled) {
+            operation.settled = true;
+            operation.reject(new SweepCancelledError());
+        }
+        this.stopSweepPlayback(operation);
+        if (this.activeSweepOperation === operation) this.activeSweepOperation = null;
     }
 };
 

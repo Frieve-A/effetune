@@ -1,7 +1,7 @@
 ---
 layout: dsp
 title: "Rotary Speaker — EffeTune DSP"
-description: "Creates Rotary Speaker motion, commonly known as a Leslie effect, by combining crossover-separated horn and drum amplitude and Doppler movement."
+description: "Creates rotary motion by varying the amplitudes of crossover-separated horn and drum paths and applying Doppler shifts."
 lang: en
 permalink: /dsp/effects/rotary-speaker/
 ---
@@ -9,7 +9,7 @@ permalink: /dsp/effects/rotary-speaker/
 
 Semantic type: `RotarySpeaker` · Category: modulation
 
-Creates Rotary Speaker motion, commonly known as a Leslie effect, by combining crossover-separated horn and drum amplitude and Doppler movement.
+Creates rotary motion by varying the amplitudes of crossover-separated horn and drum paths and applying Doppler shifts.
 
 ## Contract
 
@@ -49,7 +49,7 @@ Rotary Speaker splits the sound between a high-frequency horn and low-frequency 
 
 ### Parameters
 
-- **Style** — loads a complete factory setting for every parameter. Choices are **Rotary Slow** (Slow), **Rotary Fast** (Fast), **Gentle Rotary** (Slow), **Leslie Slow** (Slow), and **Leslie Fast** (Fast). Changing an individual parameter switches Style to **Custom**.
+- **System Presets** — use **Rotary Slow**, **Rotary Fast**, **Gentle Rotary**, **Vintage Rotor Slow**, or **Vintage Rotor Fast** to load a complete starting point. Adjust individual parameters afterwards to refine it.
 - **Speed State** — **Stop**, **Slow**, or **Fast** target. During a change, the rotors accelerate or slow down smoothly without interrupting the sound.
 - **Speed** (25–200%) — scales both internal rotor rates while preserving their difference.
 - **Acceleration** (0.1–10 s) — sets how quickly the rotors approach a new speed.

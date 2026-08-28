@@ -3,6 +3,16 @@
  * Manages preset UI and storage (localStorage for web, file system for Electron)
  */
 import { getSerializablePluginStateShort, applySerializedState } from '../../utils/serialization-utils.js';
+
+function setOwn(target, key, value) {
+    Object.defineProperty(target, key, {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value
+    });
+}
+
 export class PresetManager {
     /**
      * Create a new PresetManager instance
@@ -13,283 +23,38 @@ export class PresetManager {
         this.pipelineManager = pipelineManager;
         this.audioManager = pipelineManager.audioManager;
         
-        // Preset UI elements
-        this.presetSelect = document.getElementById('presetSelect');
-        this.presetSelectContainer = document.getElementById('presetSelectContainer');
-        this.presetList = document.getElementById('presetList');
-        this.presetDropdownButton = document.getElementById('presetDropdownButton');
-        this.presetClearButton = document.getElementById('presetClearButton');
-        this.savePresetButton = document.getElementById('savePresetButton');
-        this.deletePresetButton = document.getElementById('deletePresetButton');
-        this.presetNames = [];
-        this.visiblePresetNames = [];
-        this.activePresetIndex = -1;
+        this.pipelinePresetButton = document.getElementById('pipelinePresetButton');
+        this.currentPresetName = '';
         this.presetMutationAttemptRevision = 0;
         this.presetMutationQueue = Promise.resolve();
         
-        // Initialize preset management (async)
-        this.initPresetManagement().catch(error => {
-            console.error('Failed to initialize preset management:', error);
-        });
-    }
-    
-    /**
-     * Initialize preset management
-     */
-    async initPresetManagement() {
-        // Load presets from local storage or file
-        await this.loadPresetList();
-        
-        // Save preset button
-        this.savePresetButton.addEventListener('click', async () => {
-            const name = this.presetSelect.value.trim();
-            if (name) {
-                await this.savePreset(name);
-            }
-        });
-        
-        // Delete preset button
-        this.deletePresetButton.addEventListener('click', async () => {
-            const name = this.presetSelect.value.trim();
-            const presets = await this.getPresets();
-            if (name && presets[name] && confirm('Delete this preset?')) {
-                await this.deletePreset(name);
-            }
-        });
-        
-        // Preset selection change
-        this.presetSelect.addEventListener('change', async (e) => {
-            this.closePresetList();
-            this.updatePresetClearButton();
-            const name = e.target.value.trim();
-            const presets = await this.getLoadablePresets();
-            if (presets[name]) {
-                await this.loadPreset(name);
-                // loadPresetList is already called inside loadPreset method
-            }
-        });
-
-        this.presetSelect.addEventListener('input', () => {
-            this.updatePresetClearButton();
-            this.openPresetList(false);
-        });
-
-        this.presetSelect.addEventListener('keydown', (event) => {
-            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-                event.preventDefault();
-                if (!this.isPresetListOpen()) {
-                    this.openPresetList(true);
-                    return;
-                }
-                this.moveActivePreset(event.key === 'ArrowDown' ? 1 : -1);
-            } else if (event.key === 'Enter' && this.isPresetListOpen() && this.activePresetIndex >= 0) {
-                event.preventDefault();
-                this.selectPreset(this.visiblePresetNames[this.activePresetIndex]);
-            } else if (event.key === 'Escape' || event.key === 'Tab') {
-                this.closePresetList();
-            }
-        });
-
-        if (this.presetClearButton) {
-            this.presetClearButton.addEventListener('mousedown', (event) => {
-                event.preventDefault();
-            });
-            this.presetClearButton.addEventListener('click', () => {
-                this.presetSelect.value = '';
-                this.closePresetList();
-                this.updatePresetClearButton();
-                this.presetSelect.focus();
-            });
-        }
-
-        if (this.presetDropdownButton) {
-            this.presetDropdownButton.addEventListener('mousedown', (event) => {
-                event.preventDefault();
-            });
-            this.presetDropdownButton.addEventListener('click', () => {
-                if (this.isPresetListOpen()) {
-                    this.closePresetList();
-                } else {
-                    this.openPresetList(true);
-                }
-                this.presetSelect.focus();
-            });
-        }
-
-        document.addEventListener?.('pointerdown', (event) => {
-            if (!this.presetSelectContainer?.contains(event.target)) {
-                this.closePresetList();
-            }
-        });
-        window.addEventListener?.('resize', () => this.positionPresetList());
-        window.addEventListener?.('scroll', () => this.positionPresetList(), true);
+        this.pipelinePresetButton?.addEventListener('click', () => this.openPresetDialog());
     }
 
-    updatePresetClearButton() {
-        if (!this.presetClearButton) return;
-        this.presetClearButton.classList.toggle('visible', this.presetSelect.value.length > 0);
-    }
-
-    isPresetListOpen() {
-        return this.presetList?.classList.contains('show') ?? false;
-    }
-
-    openPresetList(showAll) {
-        if (!this.presetList) return;
-
-        const query = this.presetSelect.value.trim().toLowerCase();
-        const names = showAll || !query
-            ? this.presetNames
-            : this.presetNames.filter(name => name.toLowerCase().includes(query));
-        this.renderPresetOptions(names);
-        if (names.length === 0) {
-            this.closePresetList();
-            return;
-        }
-
-        const selectedIndex = names.indexOf(this.presetSelect.value.trim());
-        this.activePresetIndex = selectedIndex >= 0 ? selectedIndex : 0;
-        this.presetList.classList.add('show');
-        this.setPresetListExpanded(true);
-        this.updateActivePreset();
-        this.positionPresetList();
-    }
-
-    closePresetList() {
-        if (!this.presetList) return;
-        this.presetList.classList.remove('show');
-        this.activePresetIndex = -1;
-        this.setPresetListExpanded(false);
-        this.presetSelect.removeAttribute?.('aria-activedescendant');
-    }
-
-    setPresetListExpanded(expanded) {
-        const value = String(expanded);
-        this.presetSelect.setAttribute?.('aria-expanded', value);
-        this.presetDropdownButton?.setAttribute?.('aria-expanded', value);
-    }
-
-    renderPresetOptions(names) {
-        if (!this.presetList) return;
-
-        this.visiblePresetNames = [...names];
-        this.presetList.innerHTML = '';
-        names.forEach((name, index) => {
-            const option = document.createElement('button');
-            option.type = 'button';
-            option.id = `preset-option-${index}`;
-            option.className = 'preset-list-option';
-            option.value = name;
-            option.textContent = name;
-            option.setAttribute?.('role', 'option');
-            option.setAttribute?.('aria-selected', 'false');
-            option.addEventListener('mousedown', (event) => {
-                event.preventDefault();
-            });
-            option.addEventListener('click', () => {
-                this.selectPreset(name);
-            });
-            this.presetList.appendChild(option);
-        });
-    }
-
-    moveActivePreset(direction) {
-        if (this.visiblePresetNames.length === 0) return;
-        const count = this.visiblePresetNames.length;
-        this.activePresetIndex = (this.activePresetIndex + direction + count) % count;
-        this.updateActivePreset();
-    }
-
-    updateActivePreset() {
-        Array.from(this.presetList?.children ?? []).forEach((option, index) => {
-            const isActive = index === this.activePresetIndex;
-            option.classList.toggle('active', isActive);
-            option.setAttribute?.('aria-selected', String(isActive));
-            if (isActive) {
-                this.presetSelect.setAttribute?.('aria-activedescendant', option.id);
-                option.scrollIntoView?.({ block: 'nearest' });
-            }
-        });
-    }
-
-    async selectPreset(name) {
-        if (!name) return;
-        this.presetSelect.value = name;
-        this.updatePresetClearButton();
-        this.closePresetList();
-        this.presetSelect.focus();
-        await this.loadPreset(name);
-    }
-
-    positionPresetList() {
-        if (!this.isPresetListOpen() || !this.presetSelect.getBoundingClientRect) return;
-
-        const computedZoom = Number.parseFloat(
-            document.body ? window.getComputedStyle?.(document.body)?.zoom : ''
-        );
-        const inlineZoom = Number.parseFloat(document.body?.style?.zoom);
-        const bodyZoom = Number.isFinite(computedZoom) && computedZoom > 0
-            ? computedZoom
-            : (Number.isFinite(inlineZoom) && inlineZoom > 0 ? inlineZoom : 1);
-        const viewportHeight = (
-            window.innerHeight || document.documentElement?.clientHeight || 0
-        ) / bodyZoom;
-        const viewportWidth = (
-            window.innerWidth || document.documentElement?.clientWidth || 0
-        ) / bodyZoom;
-        if (viewportHeight <= 0 || viewportWidth <= 0) return;
-
-        const viewportMargin = 8;
-        const listGap = 4;
-        const renderedInputRect = this.presetSelect.getBoundingClientRect();
-        const inputRect = {
-            left: renderedInputRect.left / bodyZoom,
-            right: renderedInputRect.right / bodyZoom,
-            top: renderedInputRect.top / bodyZoom,
-            bottom: renderedInputRect.bottom / bodyZoom,
-            width: renderedInputRect.width / bodyZoom,
-            height: renderedInputRect.height / bodyZoom
+    openPresetDialog({ focusSaveName = false } = {}) {
+        const provider = {
+            getTitleKey: () => 'ui.title.pipelinePresets',
+            getSystemPresetGroups: () => null,
+            getActiveSystemPresetId: () => '',
+            getActiveUserPresetName: () => this.currentPresetName,
+            getPresetContext: () => this,
+            getDefaultSaveName: () => this.currentPresetName,
+            listUserPresetNames: async () => Object.keys(await this.getPresets()),
+            applyUserPreset: name => this.loadPreset(name),
+            saveUserPreset: name => this.savePreset(name),
+            renameUserPreset: (oldName, newName) => this.renamePreset(oldName, newName),
+            deleteUserPresets: names => this.deletePresets(names),
+            errorKeys: {
+                save: 'error.failedToSavePreset',
+                delete: 'error.failedToDeletePreset'
+            },
+            handlesErrors: true
         };
-        const availableBelow = Math.max(0, viewportHeight - inputRect.bottom - listGap - viewportMargin);
-        const availableAbove = Math.max(0, inputRect.top - listGap - viewportMargin);
-        const desiredHeight = this.presetList.scrollHeight;
-        const openAbove = desiredHeight > availableBelow && availableAbove > availableBelow;
-        const availableHeight = openAbove ? availableAbove : availableBelow;
-        const listHeight = Math.min(desiredHeight, availableHeight);
-        const listWidth = Math.min(inputRect.width, Math.max(0, viewportWidth - viewportMargin * 2));
-        const left = Math.min(
-            Math.max(inputRect.left, viewportMargin),
-            Math.max(viewportMargin, viewportWidth - viewportMargin - listWidth)
+        return this.pipelineManager.core.pluginPresetDialog.show(
+            provider,
+            this.pipelinePresetButton,
+            { focusSaveName }
         );
-
-        this.presetList.style.left = `${left}px`;
-        this.presetList.style.top = `${openAbove
-            ? Math.max(viewportMargin, inputRect.top - listGap - listHeight)
-            : inputRect.bottom + listGap}px`;
-        this.presetList.style.width = `${listWidth}px`;
-        this.presetList.style.maxHeight = `${availableHeight}px`;
-    }
-    
-    /**
-     * Load the preset list from storage
-     * @param {string} preserveValue - Optional value to preserve in the select
-     */
-    async loadPresetList(preserveValue = null) {
-        if (!this.presetList) return;
-        
-        // Get current value or use preserveValue if provided
-        const currentValue = preserveValue !== null ? preserveValue : this.presetSelect.value;
-        
-        // Get presets from local storage or file
-        const presets = await this.getLoadablePresets();
-        
-        // Add preset options (sorted alphabetically)
-        this.presetNames = Object.keys(presets).sort();
-        this.renderPresetOptions(this.presetNames);
-        
-        // Restore current value
-        this.presetSelect.value = currentValue;
-        this.updatePresetClearButton();
     }
     
     /**
@@ -415,7 +180,9 @@ export class PresetManager {
      * Save a preset
      * @param {string} name - The name of the preset
      */
-    async savePreset(name) {
+    async savePreset(name, { showSuccessMessage = true } = {}) {
+        if (typeof name !== 'string' || !name.trim()) return false;
+        name = name.trim();
         const attemptRevision = ++this.presetMutationAttemptRevision;
         const pipeline = [...this.audioManager.pipeline];
         // Create preset data with original format (plugins array)
@@ -426,41 +193,40 @@ export class PresetManager {
         try {
             await this.enqueuePresetMutation(async () => {
                 const presets = await this.getPresets();
-                presets[name] = { plugins: pluginsData };
+                setOwn(presets, name, { plugins: pluginsData });
                 await this.persistPresets(presets);
             });
 
-            if (attemptRevision !== this.presetMutationAttemptRevision) return;
-            
-            // Update UI
-            await this.loadPresetList(name);
-            if (attemptRevision !== this.presetMutationAttemptRevision) return;
+            this.currentPresetName = name;
+            if (attemptRevision !== this.presetMutationAttemptRevision) return true;
             
             // Update plugin list presets tab if it's visible
             if (window.uiManager && window.uiManager.pluginListManager) {
                 await window.uiManager.pluginListManager.refreshPresetsIfVisible();
-                if (attemptRevision !== this.presetMutationAttemptRevision) return;
+                if (attemptRevision !== this.presetMutationAttemptRevision) return true;
             }
             
             // Update tray menu with new preset list
             if (window.electronIntegration && window.electronIntegration.isElectron) {
                 const { updateTrayMenu } = await import('../../electron/menuIntegration.js');
-                if (attemptRevision !== this.presetMutationAttemptRevision) return;
+                if (attemptRevision !== this.presetMutationAttemptRevision) return true;
                 await updateTrayMenu(true);
-                if (attemptRevision !== this.presetMutationAttemptRevision) return;
+                if (attemptRevision !== this.presetMutationAttemptRevision) return true;
             }
             
-            if (window.uiManager) {
+            if (showSuccessMessage && window.uiManager) {
                 window.uiManager.showTransientMessage(
                     window.uiManager.t('success.presetSaved', { name }),
                     false, {}, 3000
                 );
             }
+            return true;
         } catch (error) {
             console.error('Failed to save preset:', error);
             if (attemptRevision === this.presetMutationAttemptRevision && window.uiManager) {
                 window.uiManager.showTransientMessage('error.failedToSavePreset', true, {}, 3000);
             }
+            return false;
         }
     }
     
@@ -471,6 +237,7 @@ export class PresetManager {
     async loadPreset(nameOrPreset) {
         let preset;
         let name;
+        let historyManager = null;
         
         
         // Check if nameOrPreset is a string (preset name) or an object (preset data)
@@ -484,7 +251,7 @@ export class PresetManager {
                 if (window.uiManager) {
                     window.uiManager.setError('error.invalidPresetData');
                 }
-                return;
+                return false;
             }
         } else if (typeof nameOrPreset === 'object' && nameOrPreset !== null) {
             // It's a preset object, use directly
@@ -494,16 +261,18 @@ export class PresetManager {
                 if (window.uiManager) {
                     window.uiManager.setError('error.invalidPresetData');
                 }
-                return;
+                return false;
             }
         } else {
             if (window.uiManager) {
                 window.uiManager.setError('error.invalidPresetData');
             }
-            return;
+            return false;
         }
         
         try {
+            historyManager = this.pipelineManager.historyManager;
+            historyManager.withHistorySuppressed(() => {
             // Store expanded state for non-current pipeline before clearing
             const currentPipeline = this.audioManager.currentPipeline;
             const nonCurrentPipeline = currentPipeline === 'A' ? this.audioManager.pipelineB : this.audioManager.pipelineA;
@@ -587,11 +356,6 @@ export class PresetManager {
             // Update worklet directly without rebuilding pipeline
             this.pipelineManager.core.updateWorkletPlugins();
             
-            // Update preset list to ensure all presets are available
-            // Pass the preset name to preserve it in the select
-            const presetNameToPreserve = typeof nameOrPreset === 'string' ? nameOrPreset : null;
-            await this.loadPresetList(presetNameToPreserve);
-            
             // Ensure master bypass is OFF after loading preset
             this.pipelineManager.core.enabled = true;
             this.audioManager.setMasterBypass(false);
@@ -599,56 +363,76 @@ export class PresetManager {
             if (masterToggle) {
                 masterToggle.classList.remove('off');
             }
-            
-            // Save state for undo/redo after loading preset
-            // Set isUndoRedoOperation flag to prevent multiple save states from plugin automatic updates
-            const historyManager = this.pipelineManager.historyManager;
-            
-            // Clear any existing timeout
-            if (historyManager.undoRedoTimeoutId) {
-                clearTimeout(historyManager.undoRedoTimeoutId);
-            }
-            
-            // Set the flag to true to prevent automatic updates from triggering saveState
-            historyManager.isUndoRedoOperation = true;
-            
-            // Set special override to allow one save despite the isUndoRedoOperation flag
-            historyManager.specialSaveOverride = true;
-            
-            // Save the current state
+            });
+
             historyManager.saveState();
-            
-            // Keep the flag true for a short period to prevent multiple saves
-            historyManager.undoRedoTimeoutId = setTimeout(() => {
-                historyManager.isUndoRedoOperation = false;
-                historyManager.undoRedoTimeoutId = null;
-            }, 1000);
             
             // Display message only when loading from preset combo box (string name)
             if (window.uiManager && typeof nameOrPreset === 'string') {
                 window.uiManager.showTransientMessage('success.presetLoaded', false, { name }, 3000);
             }
+            this.currentPresetName = typeof nameOrPreset === 'string' ? nameOrPreset : '';
+            return true;
         } catch (error) {
             // Failed to load preset
             if (window.uiManager) {
                 window.uiManager.setError('error.failedToLoadPreset');
             }
+            return false;
         }
     }
     
-    /**
-     * Delete a preset
-     * @param {string} name - The name of the preset to delete
-     */
-    async deletePreset(name) {
+    async refreshPresetConsumers(attemptRevision) {
+        if (window.uiManager?.pluginListManager) {
+            await window.uiManager.pluginListManager.refreshPresetsIfVisible();
+            if (attemptRevision !== this.presetMutationAttemptRevision) return false;
+        }
+        if (window.electronIntegration?.isElectron) {
+            const { updateTrayMenu } = await import('../../electron/menuIntegration.js');
+            if (attemptRevision !== this.presetMutationAttemptRevision) return false;
+            await updateTrayMenu(true);
+        }
+        return attemptRevision === this.presetMutationAttemptRevision;
+    }
+
+    async renamePreset(oldName, newName) {
         const attemptRevision = ++this.presetMutationAttemptRevision;
-        
+        try {
+            const renamed = await this.enqueuePresetMutation(async () => {
+                const presets = await this.getPresets();
+                if (!Object.hasOwn(presets, oldName)) return false;
+                setOwn(presets, newName, presets[oldName]);
+                if (oldName !== newName) delete presets[oldName];
+                await this.persistPresets(presets);
+                return true;
+            });
+            if (!renamed) throw new Error('Preset to rename was not found');
+            if (this.currentPresetName === oldName) this.currentPresetName = newName;
+            if (attemptRevision !== this.presetMutationAttemptRevision) return true;
+            return await this.refreshPresetConsumers(attemptRevision);
+        } catch (error) {
+            console.error('Failed to rename preset:', error);
+            if (attemptRevision === this.presetMutationAttemptRevision && window.uiManager) {
+                window.uiManager.showTransientMessage('error.failedToSavePreset', true, {}, 3000);
+            }
+            return false;
+        }
+    }
+
+    async deletePresets(names) {
+        const uniqueNames = [...new Set(Array.isArray(names) ? names.filter(name => typeof name === 'string') : [])];
+        const attemptRevision = ++this.presetMutationAttemptRevision;
         try {
             const deleted = await this.enqueuePresetMutation(async () => {
                 const presets = await this.getPresets();
-                if (!presets[name]) return false;
-
-                delete presets[name];
+                let changed = false;
+                for (const name of uniqueNames) {
+                    if (Object.hasOwn(presets, name)) {
+                        delete presets[name];
+                        changed = true;
+                    }
+                }
+                if (!changed) return false;
                 await this.persistPresets(presets);
                 return true;
             });
@@ -657,38 +441,32 @@ export class PresetManager {
                 if (attemptRevision === this.presetMutationAttemptRevision && window.uiManager) {
                     window.uiManager.setError('error.noPresetSelected');
                 }
-                return;
+                return false;
             }
-
-            if (attemptRevision !== this.presetMutationAttemptRevision) return;
-            
-            // Update UI
-            await this.loadPresetList('');
-            if (attemptRevision !== this.presetMutationAttemptRevision) return;
-            
-            // Update plugin list presets tab if it's visible
-            if (window.uiManager && window.uiManager.pluginListManager) {
-                await window.uiManager.pluginListManager.refreshPresetsIfVisible();
-                if (attemptRevision !== this.presetMutationAttemptRevision) return;
-            }
-            
-            // Update tray menu with new preset list
-            if (window.electronIntegration && window.electronIntegration.isElectron) {
-                const { updateTrayMenu } = await import('../../electron/menuIntegration.js');
-                if (attemptRevision !== this.presetMutationAttemptRevision) return;
-                await updateTrayMenu(true);
-                if (attemptRevision !== this.presetMutationAttemptRevision) return;
-            }
+            if (uniqueNames.includes(this.currentPresetName)) this.currentPresetName = '';
+            if (attemptRevision !== this.presetMutationAttemptRevision) return true;
+            if (!await this.refreshPresetConsumers(attemptRevision)) return true;
             
             if (window.uiManager) {
-                window.uiManager.showTransientMessage('success.presetDeleted', false, { name }, 3000);
+                window.uiManager.showTransientMessage(
+                    'success.presetDeleted',
+                    false,
+                    { name: uniqueNames.join(', ') },
+                    3000
+                );
             }
+            return true;
         } catch (error) {
             console.error('Failed to delete preset:', error);
             if (attemptRevision === this.presetMutationAttemptRevision && window.uiManager) {
                 window.uiManager.showTransientMessage('error.failedToDeletePreset', true, {}, 3000);
             }
+            return false;
         }
+    }
+
+    deletePreset(name) {
+        return this.deletePresets([name]);
     }
     
     /**
@@ -696,7 +474,7 @@ export class PresetManager {
      * @returns {Object} Current preset data
      */
     getCurrentPresetData() {
-        const presetName = this.presetSelect.value.trim() || 'My Preset';
+        const presetName = this.currentPresetName || 'My Preset';
         
         // Get current pipeline state in the original export format (pipeline array)
         const pipelineState = this.audioManager.pipeline.map(plugin =>

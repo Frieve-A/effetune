@@ -69,11 +69,7 @@ function createDocument(calls) {
   const elements = {
     pipelineList: new FakeElement('pipelineList', calls),
     pipelineEmpty: new FakeElement('pipelineEmpty', calls),
-    presetSelect: new FakeElement('presetSelect', calls),
-    presetClearButton: new FakeElement('presetClearButton', calls),
-    savePresetButton: new FakeElement('savePresetButton', calls),
-    deletePresetButton: new FakeElement('deletePresetButton', calls),
-    presetList: new FakeElement('presetList', calls),
+    pipelinePresetButton: new FakeElement('pipelinePresetButton', calls),
     decreaseColumnsButton: null,
     increaseColumnsButton: null,
     pipeline: new FakeElement('pipeline', calls)
@@ -239,7 +235,7 @@ function createDelegatingManager() {
   return { calls, manager };
 }
 
-test('constructor creates collaborators, compatibility properties, and initial history save', async () => {
+test('constructor creates collaborators and compatibility properties without a delayed history save', async () => {
   const calls = [];
   const audioManager = {
     pipeline: [],
@@ -268,24 +264,12 @@ test('constructor creates collaborators, compatibility properties, and initial h
     assert.equal(manager.enabled, true);
     assert.equal(manager.pipelineList, documentRef.elements.pipelineList);
     assert.equal(manager.pipelineEmpty, documentRef.elements.pipelineEmpty);
-    assert.equal(manager.presetSelect, documentRef.elements.presetSelect);
-    assert.equal(manager.savePresetButton, documentRef.elements.savePresetButton);
-    assert.equal(manager.deletePresetButton, documentRef.elements.deletePresetButton);
 
-    const timeoutSaveCalls = [];
-    manager.historyManager = {
-      saveState() {
-        timeoutSaveCalls.push('saved');
-      }
-    };
-    assert.equal(timeouts.length, 1);
-    timeouts[0]();
-    assert.deepEqual(timeoutSaveCalls, ['saved']);
+    assert.equal(timeouts.length, 0);
 
     assert.ok(calls.some(call => call[0] === 'documentAddEventListener' && call[1] === 'keydown'));
     assert.ok(calls.some(call => call[0] === 'documentAddEventListener' && call[1] === 'paste'));
     assert.ok(calls.some(call => call[0] === 'addEventListener' && call[1] === 'pipelineList' && call[2] === 'drop'));
-    assert.ok(calls.some(call => call[0] === 'appendChild' && call[1] === 'presetList'));
   });
 });
 

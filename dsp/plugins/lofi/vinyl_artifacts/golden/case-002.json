@@ -19,7 +19,7 @@
     "hs": 0,
     "rb": 0,
     "xt": 0,
-    "tn": 0,
+    "tn": 10,
     "wr": 200,
     "rt": 0,
     "rm": "Velocity",
@@ -30,7 +30,7 @@
     "abs": 0.00001,
     "policy": "per-sample"
   },
-  "jsEngineHash": "e616c05c534aa5fed97e838d9194e2cee7620c56ac1f1fb4d05b325a0b51621f",
+  "jsEngineHash": "fd5b4be06483d5258a5bd1b62246279b7e22f6e5443479de2c09bebc34c5df19",
   "outputFloats": 2049,
   "byteLength": 8196,
   "binary": "case-002.f32"

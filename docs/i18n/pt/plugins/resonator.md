@@ -24,6 +24,14 @@ Um plugin que simula a ressonância de um alto-falante com trompa usando um mode
 - Ambiente natural de trompa: adiciona coloração vintage de alto-falantes para uma experiência de audição mais rica.
 - Amortecimento suave de altas frequências: evita picos agudos para um timbre relaxado.
 
+### Predefinições do sistema
+
+Clique em **Predefinições de efeito** no cabeçalho do efeito para experimentar diretamente estas configurações completas.
+
+- **Gramophone** - Uma corneta bem aberta, com o colorido de um antigo gramofone acústico.
+- **Vintage Theater** - A resposta de uma grande corneta de cinema que alcança os graves.
+- **Megaphone** - Uma corneta cônica curta, com médios diretos e enfáticos.
+
 ### Parâmetros
 
 - **Crossover (Hz)** - Define o ponto de corte entre o caminho de baixa frequência (atrasado) e o caminho de alta frequência processado pelo modelo de corneta. (20–5000 Hz)
@@ -60,6 +68,14 @@ Ele é baseado no mesmo modelo de trompa do [Horn Resonator](#horn-resonator), c
 - Presença mais quente: pode deixar vocais, metais e música acústica mais vivos.
 - Comportamento natural nos agudos: a faixa alta fica mais próxima de uma corneta acústica ou alto-falante com corneta do que na versão padrão.
 
+### Predefinições do sistema
+
+Clique em **Predefinições de efeito** no cabeçalho do efeito para experimentar diretamente estas configurações completas.
+
+- **Gramophone** - Uma corneta bem aberta, com o colorido de um antigo gramofone acústico.
+- **Vintage Theater** - A resposta de uma grande corneta de cinema que alcança os graves.
+- **Megaphone** - Uma corneta cônica curta, com médios diretos e enfáticos.
+
 ### Melhorias Técnicas
 
 - **Filtro de reflexão de boca de 2ª ordem**: Modelagem mais suave da reflexão dependente de frequência na abertura da boca.
@@ -83,6 +99,14 @@ Use os mesmos controles que [Horn Resonator](#horn-resonator). Escolha Horn Reso
 ## Modal Resonator
 
 Um efeito que adiciona ressonâncias afinadas à música, de modo parecido com objetos físicos ou partes de alto-falantes vibrando em suas frequências naturais. Use quando quiser mais brilho, corpo, cor metálica ou ressonância de alto-falante durante a escuta.
+
+### Predefinições do sistema
+
+Clique em **Predefinições de efeito** no cabeçalho do efeito para carregar um padrão completo de ressonâncias.
+
+- **Wooden Body** - Modos de ressonância graves e mais duradouros, com o caráter de uma caixa de madeira.
+- **Metal Can** - Modos de ressonância mais agudos que soam por mais tempo, com caráter metálico.
+- **Plastic Enclosure** - Modos de ressonância mais agudos e curtos, com o caráter de uma caixa leve.
 
 ### Guia de Experiência de Audição
 

@@ -77,6 +77,14 @@ Global control:
 
 - **Mix (%)** - Balances the combined output of all enabled resonators against the original sound (0 to 100%).
 
+### System Presets
+
+Click **Effect Presets** in the effect header to load a complete resonance pattern.
+
+- **Wooden Body** - Low, longer-lived modes for a wooden enclosure character.
+- **Metal Can** - Higher, longer ringing modes with a metallic character.
+- **Plastic Enclosure** - Shorter, higher modes for a lightweight enclosure character.
+
 ### Recommended Settings for Listening Enhancement
 
 1. **Subtle Speaker Enhancement:**

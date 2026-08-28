@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { PEQCalculator, fitPEQ } from '../../features/measurement/peq-calculator/peq-calculator.js';
 
 import FFT from '../../js/utils/measurement-dsp/fft.js';
 import { detectOnset } from '../../js/utils/measurement-dsp/onset.js';
@@ -23,6 +24,27 @@ function referenceSmoothFrequencyResponse(frequencyResponse, sigma) {
         return [frequency, weighted / weightTotal];
     });
 }
+
+test('PEQ design supports a narrow high-frequency band and ignores out-of-band targets', () => {
+    const calculator = new PEQCalculator();
+    const response = Array.from({ length: 31 }, (_, index) => {
+        const frequency = 1500 + index * 10;
+        return [frequency, 6 * Math.exp(-(((frequency - 1650) / 35) ** 2))];
+    });
+    const parameters = calculator.calculatePEQParameters(response, 1500, 1800, 1, 96000, 24);
+    assert.ok(parameters.length > 0);
+    assert.ok(parameters.some(band => band.gain !== 0));
+    assert.ok(parameters.every(band => band.frequency >= 1500 && band.frequency <= 1800));
+    const extraTargets = [[1300, 100], ...response, [1900, -100], [5000, 100]];
+    assert.deepEqual(calculator.calculatePEQParameters(extraTargets, 1500, 1800, 1, 96000, 24), parameters);
+    assert.deepEqual(calculator.calculatePEQParameters(response.slice(0, 4), 1500, 1800), []);
+    assert.deepEqual(calculator.calculatePEQParameters(response, 1800, 1500), []);
+    const fitted = fitPEQ(response.map(([frequency]) => frequency), response.map(([, db]) => db),
+        [-3, 2, 1400, -3, 2, 1900], 1500, 1800, 96000);
+    for (const index of [2, 5]) {
+        assert.ok(fitted[index] >= 1500 - 1e-9 && fitted[index] <= 1800 + 1e-9);
+    }
+});
 
 function sineGainDb(sourceRate, targetRate, frequency) {
     const input = Float32Array.from({ length: Math.round(sourceRate * 0.125) }, (_, index) =>

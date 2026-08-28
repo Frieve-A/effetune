@@ -25,14 +25,19 @@
 "label:audioOutput": "Dispositivo de salida de audio:", // Label for audio output device selection
 "help:audioOutput": "Selecciona el dispositivo de audio que emite la señal de medición.", // Help text for audio output
 "label:outputChannel": "Canal de salida:", // Label for output channel selection
-"help:outputChannel": "Especifica el canal (altavoz izquierdo/derecho o auriculares, etc.) a medir.", // Help text for output channel
+"help:outputChannel": "Selecciona uno o varios canales de salida para medir. Al seleccionar Todos los canales se desmarcan los canales individuales.", // Help text for output channel
 "help:audioInput": "Especifica el dispositivo de entrada de audio al que está conectado el micrófono de medición.", // Help text for audio input
 "label:sampleRate": "Frecuencia de muestreo:", // Label for sample rate selection
 "help:sampleRate": "Especifica la frecuencia de muestreo al realizar mediciones.", // Help text for sample rate
 "label:sweepLength": "Longitud de barrido (muestras):", // Label for sweep length selection
 "help:sweepLength": "Especifica la longitud de la señal de medición en muestras.", // Help text for sweep length
-"label:sweepBandLimited": "Limitar el ancho de banda del barrido",
-"help:sweepBandLimited": "Cuando está activado, el TSP y la señal de prueba se limitan al rango de frecuencias indicado abajo. Cuando está desactivado, el TSP se reproduce en todo el ancho de banda disponible.",
+"title:advancedSettings": "Ajustes avanzados",
+"label:sweepBandMode": "Ancho de banda del barrido:",
+"option:sweepBandOff": "Desactivado",
+"option:sweepBandCommon": "El mismo para todos los canales",
+"option:sweepBandPerChannel": "Por canal",
+"label:sweepBandChannel": "Canal que se configurará:",
+"help:sweepBandMode": "Elige si quieres limitar el ancho de banda del barrido y la señal de prueba. Por canal permite ajustar un rango de frecuencias independiente para cada canal de salida seleccionado.",
 "label:sweepMinFreq": "Frecuencia mínima del barrido (Hz):", // Label for sweep minimum frequency
 "help:sweepMinFreq": "Frecuencia mínima de la señal de barrido en Hz. Configurable desde 1 Hz hasta justo por debajo de la frecuencia de Nyquist de la frecuencia de muestreo seleccionada. La señal de prueba también se limita a este rango. (Predeterminado: 20 Hz)", // Help text for sweep min frequency
 "label:sweepMaxFreq": "Frecuencia máxima del barrido (Hz):", // Label for sweep maximum frequency
@@ -130,6 +135,8 @@
 "error:measurementConfigUnavailable": "Los ajustes de medición ya no están disponibles. Inicia una medición nueva.",
 "error:measurementFailed": "No se pudo completar la medición. Comprueba los dispositivos de audio y vuelve a medir este punto.",
 "error:measurementImportFailed": "El archivo de medición no es válido. Elige un archivo JSON de medición exportado por EffeTune.",
+"error:impulseResponseImportFailed": "No se pudo importar el archivo WAV. Elige un archivo WAV de respuesta al impulso válido con entre 1 y 8 canales.",
+"error:impulseResponseImportTooLarge": "El archivo WAV de respuesta al impulso es demasiado grande. Elige una respuesta al impulso más corta o de menor tamaño.",
 "error:clipboardWriteFailed": "No se pudieron copiar los ajustes de PEQ. Comprueba el acceso al portapapeles e inténtalo de nuevo.",
 "error:correctionUpdateFailed": "No se pudo actualizar la corrección. Comprueba los ajustes e inténtalo de nuevo.",
 "error:measurementDisplayFailed": "No se pudo actualizar la vista de la medición. Selecciona de nuevo la medición.",
@@ -186,5 +193,23 @@
 "option:averaging8": "8", // Option for 8 averaging
 "option:averaging10": "10", // Option for 10 averaging
 "option:averaging12": "12", // Option for 12 averaging
-"option:averaging16": "16" // Option for 16 averaging
+"option:averaging16": "16", // Option for 16 averaging
+"status:measuringChannel": "Midiendo {channel} ({current}/{total})",
+"label:channelFilter": "Canal:",
+"option:allChannelsAverage": "Todos (promedio)",
+"option:multiChannel": "Varios canales",
+"message:irSavedChannels": "IR guardada para {count} canales ✓",
+"warning:signalTooLowChannels": "La señal de medición era demasiado baja en {channels}",
+"warning:signalTooHighChannels": "La señal de medición era demasiado alta en {channels}",
+"label:noiseChannel": "Canal de señal de prueba:",
+"label:noiseChannelMode": "Modo de canal:",
+"option:noiseModeManual": "Manual",
+"option:noiseModeAuto": "Rotación automática",
+"button:copyChannelPEQ": "Copiar ajustes PEQ por canal",
+"message:channelPeqCopied": "Los ajustes PEQ por canal se copiaron al portapapeles.",
+"button:redoChannel": "Repetir canal",
+"label:redoChannel": "Canal:",
+"label:calibrationAssignMode": "Asignación de calibración:",
+"option:calibrationCommon": "Común",
+"option:calibrationPerChannel": "Por canal"
 }

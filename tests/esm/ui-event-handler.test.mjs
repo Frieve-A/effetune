@@ -100,10 +100,15 @@ class FakeElement {
 
   _matchesSingle(selector) {
     if (!selector) return false;
+    const classWithPluginId = selector.match(/^\.([\w-]+)\[data-plugin-id\]$/);
+    if (classWithPluginId) {
+      return this.classList.contains(classWithPluginId[1]) && this.dataset.pluginId !== undefined;
+    }
     if (selector.startsWith('.')) return this.classList.contains(selector.slice(1));
     if (selector.startsWith('#')) return this.id === selector.slice(1);
     if (selector === 'input, textarea') return this.tagName === 'INPUT' || this.tagName === 'TEXTAREA';
-    if (selector === 'input[type="range"]') return this.tagName === 'INPUT' && this.type === 'range';
+    const inputType = selector.match(/^input\[type="([\w-]+)"\]$/);
+    if (inputType) return this.tagName === 'INPUT' && this.type === inputType[1];
     return this.tagName.toLowerCase() === selector.toLowerCase();
   }
 
@@ -206,6 +211,8 @@ function appendWithId(parent, tagName, id, className = '') {
 function createEvent(defaultTarget, options = {}) {
   return {
     key: options.key,
+    button: options.button,
+    isPrimary: options.isPrimary,
     ctrlKey: Boolean(options.ctrlKey),
     metaKey: Boolean(options.metaKey),
     shiftKey: Boolean(options.shiftKey),
@@ -325,13 +332,7 @@ function createHarness(options = {}) {
       handlePaste: text => calls.push(['handlePaste', text])
     },
     presetManager: {
-      presetSelect: {
-        value: 'Name',
-        focus: () => calls.push(['focusPreset']),
-        select: () => calls.push(['selectPreset']),
-        matches: () => true
-      },
-      savePreset: name => calls.push(['savePreset', name])
+      openPresetDialog: options => calls.push(['openPresetDialog', options])
     },
     fileProcessor,
     pluginListManager,
@@ -403,6 +404,8 @@ async function withUIEventGlobals(options, callback) {
     FileReader: options.FileReader ?? FakeFileReader,
     requestAnimationFrame: harness.raf.requestAnimationFrame,
     cancelAnimationFrame: harness.raf.cancelAnimationFrame,
+    ...(options.setTimeout && { setTimeout: options.setTimeout }),
+    ...(options.clearTimeout && { clearTimeout: options.clearTimeout }),
     console: {
       log: (...args) => harness.calls.push(['console.log', ...args]),
       warn: (...args) => harness.calls.push(['console.warn', ...args]),
@@ -436,6 +439,100 @@ test('constructor and keyboard/paste listeners handle missing and active documen
     const handler = createHandler(harness);
     assert.equal(handler.pipelineListElement, null);
     assert.ok(harness.calls.some(call => call[0] === 'console.error'));
+  });
+});
+
+test('delegated parameter boundaries keep one token through gestures and isolate discrete routing changes', async () => {
+  const timers = [];
+  const historyCalls = [];
+  const historyManager = {
+    activeToken: null,
+    isOperationActive(token) {
+      return token === this.activeToken;
+    },
+    beginOperation(token) {
+      this.activeToken = token;
+      historyCalls.push(['begin', token]);
+    },
+    endOperation(token) {
+      if (token !== this.activeToken) return;
+      historyCalls.push(['end', token]);
+      this.activeToken = null;
+    },
+    saveState(options) {
+      historyCalls.push(['save', options?.operationToken]);
+    }
+  };
+
+  await withUIEventGlobals({
+    historyManager,
+    setTimeout(callback, delay) {
+      timers.push({ callback, delay, cleared: false });
+      return timers.length;
+    },
+    clearTimeout(id) {
+      if (timers[id - 1]) timers[id - 1].cleared = true;
+    }
+  }, async harness => {
+    const handler = createHandler(harness);
+    const item = harness.documentRef.createElement('div');
+    item.className = 'pipeline-item';
+    item.dataset.pluginId = '1';
+    const canvas = harness.documentRef.createElement('canvas');
+    item.appendChild(canvas);
+    harness.pipelineList.appendChild(item);
+
+    harness.documentRef.dispatch('pointerdown', { target: canvas, button: 0, isPrimary: true });
+    const gestureToken = handler.getParameterOperationToken(harness.plugins[0]);
+    assert.ok(gestureToken);
+    historyManager.saveState({ operationToken: gestureToken });
+    historyManager.saveState({ operationToken: gestureToken });
+
+    const cleanup = timers.find(timer => timer.delay === 500 && !timer.cleared);
+    cleanup.callback();
+    assert.equal(handler.getParameterOperationToken(harness.plugins[0]), gestureToken);
+
+    historyManager.activeToken = null;
+    const rebasedGestureToken = handler.getParameterOperationToken(harness.plugins[0]);
+    assert.notEqual(rebasedGestureToken, gestureToken);
+    assert.equal(historyManager.activeToken, rebasedGestureToken);
+
+    harness.documentRef.dispatch('pointerup', { target: canvas });
+    historyManager.saveState({ operationToken: handler.getParameterOperationToken(harness.plugins[0]) });
+    assert.equal(historyCalls.some(call => call[0] === 'end' && call[1] === rebasedGestureToken), false);
+    await flushMicrotasks();
+    assert.ok(historyCalls.some(call => call[0] === 'end' && call[1] === rebasedGestureToken));
+
+    const dialog = harness.documentRef.createElement('div');
+    dialog.className = 'routing-dialog';
+    dialog.dataset.pluginId = '1';
+    const select = harness.documentRef.createElement('select');
+    dialog.appendChild(select);
+    harness.documentRef.body.appendChild(dialog);
+    harness.documentRef.dispatch('change', { target: select });
+    const routingToken = handler.getParameterOperationToken(harness.plugins[0]);
+    assert.ok(routingToken);
+    assert.notEqual(routingToken, gestureToken);
+    historyManager.saveState({ operationToken: routingToken });
+    await flushMicrotasks();
+    assert.ok(historyCalls.some(call => call[0] === 'end' && call[1] === routingToken));
+
+    harness.documentRef.dispatch('change', { target: select });
+    const nextRoutingToken = handler.getParameterOperationToken(harness.plugins[0]);
+    assert.notEqual(nextRoutingToken, routingToken);
+    await flushMicrotasks();
+
+    const range = harness.documentRef.createElement('input');
+    range.type = 'range';
+    item.appendChild(range);
+    harness.documentRef.dispatch('keydown', { target: range, key: 'ArrowRight' });
+    const keyboardToken = handler.getParameterOperationToken(harness.plugins[0]);
+    harness.documentRef.dispatch('input', { target: range });
+    historyManager.saveState({ operationToken: keyboardToken });
+    harness.documentRef.dispatch('keyup', { target: range, key: 'ArrowRight' });
+    historyManager.saveState({ operationToken: handler.getParameterOperationToken(harness.plugins[0]) });
+    await flushMicrotasks();
+    assert.ok(historyCalls.some(call => call[0] === 'end' && call[1] === keyboardToken));
   });
 });
 

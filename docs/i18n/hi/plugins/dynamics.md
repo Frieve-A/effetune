@@ -866,6 +866,14 @@ Multiband Transient processor आपके audio को तीन frequency band
 
 high load conditions में power amplifiers के voltage sag behavior को simulate करता है। demanding musical passages पर level को हल्का dip करके, और passage relax होते ही recover करके यह effect amplifier-like dynamic compression बनाता है।
 
+### सिस्टम प्रीसेट
+
+पावर सप्लाई के व्यवहार की पूरी सेटिंग से शुरुआत करने के लिए इफ़ेक्ट के शीर्षक में **इफ़ेक्ट प्रीसेट** पर क्लिक करें।
+
+- **Vintage Tube Sag** - पावर सप्लाई के वोल्टेज में गहरी गिरावट और धीमी रिकवरी।
+- **Modern Monoblocks** - हर चैनल की स्वतंत्र पावर सप्लाई से स्थिर प्रतिक्रिया।
+- **Pushed Combo** - साझा पावर सप्लाई के वोल्टेज में गहरी गिरावट और उसके बाद रिकवरी।
+
 ### श्रवण वृद्धि गाइड
 - विंटेज ऑडियो सिस्टम:
   - natural compression के साथ classic amplifier character recreate करता है

@@ -36,7 +36,7 @@ constexpr std::uint32_t kMaximumRateDivider = 4u;
 constexpr std::uint32_t kMaximumDryDelay =
     kMaximumHeadBlock * kMaximumRateDivider +
     2u * static_cast<std::uint32_t>(dsp::Halfband2x::kLatency) * (kMaximumRateDivider - 1u);
-constexpr std::uint64_t kConvolverImplBytesUpperBound = 512u;
+constexpr std::uint64_t kConvolverImplBytesUpperBound = 16u * 1024u;
 constexpr std::uint64_t kConvolverStageBytesUpperBound = 512u;
 constexpr std::uint64_t kPffftSetupFixedBytesUpperBound = 136u;
 
@@ -156,6 +156,12 @@ public:
     step = pre_delay_ramp_.step;
     remaining = pre_delay_ramp_.remaining;
   }
+
+  void readSchedulerTrace(dsp::ConvolverScheduleTrace &trace,
+                          std::uint32_t &sliceOffset) const noexcept {
+    trace = convolver_.scheduleTraceForTesting();
+    sliceOffset = slice_offset_;
+  }
 #endif
 
   void reset() noexcept override {
@@ -167,8 +173,16 @@ public:
     last_wet_.fill(0.0F);
   }
 
+  void setInstanceSalt(std::uint32_t salt) noexcept override {
+    has_instance_salt_ = true;
+    instance_salt_ = salt;
+    updateSliceOffset();
+  }
+
   void setRandomSeed(std::uint32_t seedLow, std::uint32_t seedHigh) noexcept override {
-    slice_offset_ = seedLow ^ (seedHigh << 16u | seedHigh >> 16u);
+    seed_low_ = seedLow;
+    seed_high_ = seedHigh;
+    updateSliceOffset();
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -789,6 +803,11 @@ private:
     }
   };
 
+  void updateSliceOffset() noexcept {
+    slice_offset_ =
+        has_instance_salt_ ? instance_salt_ : seed_low_ ^ (seed_high_ << 16u | seed_high_ >> 16u);
+  }
+
   float sample_rate_ = 0.0F;
   std::uint32_t max_channels_ = 0u;
   std::uint32_t max_frames_ = 0u;
@@ -807,6 +826,10 @@ private:
   std::uint32_t wet_fifo_size_ = 0u;
   std::uint32_t rate_divider_ = 1u;
   std::uint32_t processing_channels_ = 1u;
+  bool has_instance_salt_ = false;
+  std::uint32_t instance_salt_ = 0u;
+  std::uint32_t seed_low_ = 0u;
+  std::uint32_t seed_high_ = 0u;
   std::uint32_t slice_offset_ = 0u;
   std::uint32_t asset_state_ = ET_ASSET_STATE_NONE;
   std::uint32_t asset_reason_ = 0u;
@@ -843,6 +866,27 @@ extern "C" bool et_ir_reverb_read_automation_trace(effetune::PluginKernel *kerne
   }
   static_cast<effetune::plugins::reverb::IRReverbKernel *>(kernel)->readAutomationTrace(
       *current, *target, *step, *remaining);
+  return true;
+}
+
+extern "C" bool
+et_ir_reverb_read_scheduler_trace(effetune::PluginKernel *kernel, std::uint64_t *callback_weights,
+                                  std::uint32_t callback_capacity, std::uint32_t *callback_count,
+                                  std::uint32_t *slice_offset, std::uint32_t *violation_count,
+                                  std::uint64_t *deadline_recovery_count) noexcept {
+  if (kernel == nullptr || callback_weights == nullptr || callback_count == nullptr ||
+      slice_offset == nullptr || violation_count == nullptr || deadline_recovery_count == nullptr)
+    return false;
+  effetune::dsp::ConvolverScheduleTrace trace;
+  static_cast<effetune::plugins::reverb::IRReverbKernel *>(kernel)->readSchedulerTrace(
+      trace, *slice_offset);
+  if (callback_capacity < trace.callbackCount)
+    return false;
+  std::copy_n(trace.callbackWeights.begin(), trace.callbackCount, callback_weights);
+  *callback_count = trace.callbackCount;
+  *violation_count = trace.immediateSlotViolationCount + trace.jobOrderViolationCount +
+                     trace.deadlineViolationCount;
+  *deadline_recovery_count = trace.deadlineRecoveryCount;
   return true;
 }
 #endif

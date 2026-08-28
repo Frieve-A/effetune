@@ -122,28 +122,22 @@ Coleções grandes são carregadas do armazenamento em etapas; a velocidade de v
    - Para efeitos Section: Shift+clique no botão × para remover seções inteiras
 9. Clique no botão de roteamento para definir os canais a serem processados e os barramentos de entrada e saída  
    - [Mais sobre funções de bus](bus-function.md)
-10. Para ajustar um controle deslizante com precisão, mantenha a tecla Shift pressionada enquanto o arrasta; o valor muda uma unidade mínima de cada vez
+10. Clique no botão Predefinições de efeito de cada efeito para salvar ou aplicar configurações apenas desse efeito
+11. Para ajustar um controle deslizante com precisão, mantenha a tecla Shift pressionada enquanto o arrasta; o valor muda uma unidade mínima de cada vez
 
 ### Usando Presets
 
-1. Salve sua cadeia de efeitos:
-   - Configure sua cadeia de efeitos desejada e os parâmetros
-   - Digite um nome para seu preset no campo de entrada
-   - Clique no botão de salvar para armazenar seu preset
+Clique no botão **Predefinições de cadeia de efeitos** no cabeçalho do Effect Pipeline para abrir a caixa de diálogo de presets.
 
-2. Carregar um Preset:
-   - Digite ou selecione um nome de preset na lista suspensa
-   - O preset será carregado automaticamente
-   - Todos os efeitos e suas configurações serão restaurados
+1. Carregue um preset selecionando-o na lista de presets salvos. A cadeia completa é restaurada, incluindo ordem dos efeitos, configurações e estados ON/OFF.
+2. Salve a cadeia atual digitando um nome e escolhendo Salvar.
+3. Renomeie um preset salvo com o botão de renomear em sua linha.
+4. Selecione um ou mais presets salvos, escolha Excluir selecionados e confirme para removê-los.
+5. Pressione Ctrl+S (ou Cmd+S no macOS) para abrir a caixa de diálogo com o nome do preset atual pronto para edição.
 
-3. Excluir um Preset:
-   - Selecione o preset que deseja remover
-   - Clique no botão de excluir
-   - Confirme a exclusão quando solicitado
+Cada efeito também tem seu próprio botão Predefinições de efeito. Ele abre predefinições do sistema quando o efeito as fornece e permite salvar, renomear, carregar ou remover suas configurações desse efeito. As predefinições de efeito alteram apenas os parâmetros desse efeito; não alteram seu estado ON/OFF nem o roteamento.
 
-4. Informações do Preset:
-   - Cada preset armazena a configuração completa da sua cadeia de efeitos
-   - Inclui a ordem dos efeitos, os parâmetros e os estados
+Os recursos de importação, exportação e compartilhamento de arquivos `.effetune_preset` continuam sendo usados para presets da cadeia de efeitos completa.
 
 ### Usando a Funcionalidade Section
 
@@ -255,6 +249,10 @@ Para medir a resposta em frequência do seu sistema de áudio e criar uma corre�
 3. Meça a resposta em frequência do seu sistema em uma ou mais posições de escuta
 4. Gere uma correção de EQ paramétrico que pode ser importada diretamente no EffeTune
 5. Aplique a correção para obter uma reprodução sonora mais precisa e neutra
+
+Para um sistema multicanal, selecione **Todos os Canais** para medir todas as saídas juntas, ou itens individuais de **Canal de Saída** para medi-los um por vez. Em **Configurações avançadas**, escolha **Desativado**, **A mesma para todos os canais** ou **Por canal** para a largura de banda do sweep. Com **Por canal**, use **Canal a configurar** para definir a faixa de frequências de cada canal de saída selecionado. Durante o ajuste de nível, o **Modo de canal** começa em **Rotação automática**; selecione um canal de sinal de teste ou **Manual** quando necessário.
+
+Se você já tiver um arquivo WAV de resposta ao impulso, escolha **Importar** e selecione-o. O EffeTune salva cada canal do WAV como um resultado de medição, para que ele possa ser selecionado no Room EQ e em qualquer outro recurso que use medições salvas.
 
 Para remover a resposta da própria interface de áudio, conecte diretamente a saída à entrada e salve esse loopback como uma medição normal sem calibração, com uma resposta ao impulso. Na medição seguinte, escolha esse ponto em **Calibração da interface de áudio**. Use a mesma interface, os mesmos canais de entrada e saída, a mesma taxa de amostragem e os mesmos ganhos, sem alterar os ganhos após a medição de loopback. Escolha **Nenhuma (sem calibração)** para medir sem essa correção.
 

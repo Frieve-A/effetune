@@ -27,7 +27,7 @@ Applies an extended multi-mode horn-like resonant response.
 | `curve` | `curve` | number / 1 | `40` | % | -100 … 100 |
 | `damping` | `damping` | number / 1 | `0.03` | dB/m | 0 … 10 |
 | `throatReflection` | `throat_reflection` | number / 1 | `0.99` | Not declared in catalog | 0 … 0.99 |
-| `waveguideGain` | `waveguide_gain` | number / 1 | `30` | dB | -36 … 36 |
+| `waveguideGain` | `waveguide_gain` | number / 1 | `26` | dB | -36 … 36 |
 
 
 
@@ -46,6 +46,14 @@ It is based on the same horn model as [Horn Resonator](/dsp/effects/horn-resonat
 - Smoother horn color: adds horn-loaded speaker character with less sharp ringing.
 - Warmer presence: can make vocals, brass, and acoustic music feel more lively.
 - Natural high-frequency behavior: the upper range is closer to an acoustic horn or horn-loaded speaker than the standard version.
+
+### System Presets
+
+Click **Effect Presets** in the effect header to start with the same three complete horn characters, rendered by the smoother Plus model.
+
+- **Gramophone** - A strongly flared horn with an old acoustic-record-player color.
+- **Vintage Theater** - A large, low-reaching theater-horn response.
+- **Megaphone** - A short conical horn with a direct, emphatic midrange.
 
 ### Technical Enhancements
 

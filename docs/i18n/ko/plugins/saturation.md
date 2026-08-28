@@ -45,6 +45,14 @@ Bandwidth Extender는 추가 처리 hop 한 번을 포함해 약 26.7-29.0 ms의
 
 물리학 기반 이펙트로 다양한 조건에서 스피커 콘의 비선형 이동을 시뮬레이션합니다. 스피커의 기계적 동작을 모델링한 다음 그 이동에 새츄레이션을 적용하여, 음악에 역동적으로 응답하는 독특한 형태의 디스토션을 만들어냅니다.
 
+### 시스템 프리셋
+
+효과 헤더의 **효과 프리셋**을 클릭하면 콘의 움직임을 포함한 전체 설정을 비교할 수 있습니다.
+
+- **Subtle Cone Color** - 절제되고 거의 깨끗한 스피커 콘의 특성을 더합니다.
+- **Pushed Speaker** - 출력 레벨을 보정하면서 콘의 움직임과 새추레이션을 더 강하게 만듭니다.
+- **Ragged Cone** - 콘의 특성을 가장 강하게 드러내며 의도적으로 거친 소리를 냅니다.
+
 ### 청취 향상 가이드
 - **미묘한 향상:**
   - 부드러운 따뜻함과 약간 둥글어진 피크 느낌을 더함
@@ -505,7 +513,7 @@ Tube Simulator는 진공관 라인단과 파워 앰프 회로에서 생기는 �
 
 ### 패널 구성
 
-컨트롤은 **Preset** 아래의 다섯 탭에 나뉩니다.
+컨트롤은 다섯 탭에 나뉩니다.
 
 - **Input** - Input Volume, Input Reference, Source Z
 - **Driver** - Driver Type, Bias, Plate, Supply, Negative Feedback
@@ -513,17 +521,16 @@ Tube Simulator는 진공관 라인단과 파워 앰프 회로에서 생기는 �
 - **Transformer** - Screen Tap, Push-Pull Primary, SE Primary, Assumed Speaker Load, Actual Speaker Load
 - **Output** - Output Trim, Output Safety Trim, Auto Gain Reduction, Wet/Dry Mix
 
-Power와 Transformer 탭에는 선택한 Output Circuit에 쓰이는 컨트롤만 표시됩니다. 프리셋에서 회로나 음색 파라미터를 바꾸면 **Custom**으로 표시됩니다.
+Power와 Transformer 탭에는 선택한 Output Circuit에 쓰이는 컨트롤만 표시됩니다.
 
 ### 프리셋 선택
 
-Tube Simulator는 **EL84 Pentode @2%**로 시작하며, 회로나 음색 파라미터를 바꾸면 프리셋 이름이 **Custom**으로 표시되지만 **Output Safety Trim**과 **Auto Gain Reduction**은 프리셋 일치 판정에서 제외되므로 바꿔도 프리셋 이름은 변하지 않습니다.
+이펙트 헤더의 **효과 프리셋** 버튼을 클릭하면 프리셋 대화 상자가 열립니다. 시스템 프리셋의 Pre, Power 또는 Pre+Power 그룹에서 설정을 선택하면 즉시 적용됩니다. 현재 설정과 일치하는 프리셋은 강조 표시되며, 일치하는 것이 없으면 아무 프리셋도 강조되지 않습니다. 초기 설정은 **EL84 Pentode @2%**와 일치합니다. **Output Safety Trim**과 **Auto Gain Reduction**은 일치 판정에 쓰이지 않으므로 바꿔도 강조 표시는 유지됩니다.
 
 프리셋 이름 끝의 표기는 효과 강도의 실용적인 기준입니다. **@0.01%**는 매우 은은하고, **@0.1%**는 가벼운 색채를 더하며, **@1%**와 **@2%**는 배음과 압축이 더 뚜렷합니다. 프리셋은 비교하기 쉽도록 Output Trim도 설정하지만 음악에 따라 체감 음량은 달라질 수 있으므로, 음색을 판단하기 전에 Output Trim으로 음량을 맞추세요.
 
 ### 파라미터
 
-- **Preset** - Pre, Power 또는 Pre+Power 설정을 불러옵니다.
 - **Input Volume** (-96~0dB) - 선택한 회로를 구동하는 레벨을 낮춥니다. 낮출수록 압축과 왜곡이 줄고 여유가 늘어납니다.
 - **Driver Type** (12AX7, 12AT7, 12AU7, Bypass) - 2단 드라이버관을 선택하거나 드라이버를 건너뜁니다. 12AX7의 게인이 가장 높고, 12AT7은 중간, 12AU7은 게인이 가장 낮고 여유가 가장 큽니다.
 - **Bias** (-50~+50%) - 드라이버단의 바이어스점을 옮깁니다. 높이면 전류가 많은 쪽, 낮추면 전류가 적은 쪽으로 이동해 배음과 압축의 성향이 달라집니다.

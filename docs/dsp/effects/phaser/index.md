@@ -49,7 +49,7 @@ Phaser mixes the original sound with filtered copies to create moving peaks and 
 
 ### Parameters
 
-- **Style** — loads a complete factory setting for every parameter. Choices are **Classic Phaser** (Classic), **Deep Phaser** (Classic), **Stereo Phaser** (Classic), **Barber-pole Up** (Barber-pole), and **Barber-pole Down** (Barber-pole). Changing an individual parameter switches Style to **Custom**.
+- **System Presets** — use **Classic Phaser**, **Deep Phaser**, **Stereo Phaser**, **Barber-pole Up**, or **Barber-pole Down** to load a complete starting point. Adjust individual parameters afterwards to refine it.
 - **Mode** — selects Classic or Barber-pole.
 - **Rate** (0.05–10 Hz) — sets sweep speed.
 - **Center Frequency** (80–8,000 Hz) — sets the geometric center of the sweep.

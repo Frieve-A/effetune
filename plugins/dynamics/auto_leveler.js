@@ -53,7 +53,9 @@ class AutoLevelerPlugin extends PluginBase {
             }
 
             const windowSamplesRaw = Math.floor((parameters.tw / 1000) * SAMPLE_RATE);
-            const windowSamples = windowSamplesRaw > 0 ? windowSamplesRaw : 1;
+            const maximumWindowSamples = Math.floor(10 * SAMPLE_RATE) || 1;
+            const windowSamples = windowSamplesRaw < 1 ? 1 :
+                (windowSamplesRaw > maximumWindowSamples ? maximumWindowSamples : windowSamplesRaw);
 
             // Offset between the K-weighted power sum and the LUFS scale, ITU-R BS.1770-4 eq. (2).
             const LUFS_OFFSET = 0.691;
@@ -104,15 +106,15 @@ class AutoLevelerPlugin extends PluginBase {
             // Initialize or reset context state if needed
             if (!context.initialized ||
                 context.sampleRate !== SAMPLE_RATE ||
-                context.channelCount !== CHANNEL_COUNT ||
-                context.windowSamples !== windowSamples) {
-                context.buffer = new Float32Array(windowSamples);
+                context.channelCount !== CHANNEL_COUNT) {
+                context.buffer = new Float64Array(maximumWindowSamples);
                 context.bufferIndex = 0;
                 context.validSamples = 0;
                 context.sampleRate = SAMPLE_RATE;
                 context.channelCount = CHANNEL_COUNT;
-                context.windowSamples = windowSamples;
                 context.sum = 0;
+                context.cumulativeEnergy = 0;
+                context.previousCycleEnergy = 0;
                 context.currentGain = 1.0;
                 // Per-channel K-weighting state: BS.1770-4 weights every channel separately.
                 context.kcoefficients = designKWeighting(SAMPLE_RATE);
@@ -233,6 +235,8 @@ class AutoLevelerPlugin extends PluginBase {
                 context.resultBuffer = result;
             }
             let currentSum = context.sum;
+            let cumulativeEnergy = context.cumulativeEnergy;
+            let previousCycleEnergy = context.previousCycleEnergy;
             let bufferIndex = context.bufferIndex;
             let validSamples = context.validSamples;
             let currentGain = context.currentGain;
@@ -242,13 +246,23 @@ class AutoLevelerPlugin extends PluginBase {
             // affect the control signal.
             for (let i = 0; i < BLOCK_SIZE; i++) {
                 const weightedSquare = powerBuffer[i];
-                currentSum -= lufsBuffer[bufferIndex];
-                currentSum += weightedSquare;
-                lufsBuffer[bufferIndex] = weightedSquare;
+                cumulativeEnergy += weightedSquare;
+                if (validSamples < maximumWindowSamples) validSamples++;
+                const windowCount = validSamples < windowSamples ? validSamples : windowSamples;
+                // Store within-cycle prefixes, reading the old slot before overwriting it.
+                // This retains the full history for O(1) window changes without an ever-growing sum.
+                const previousIndex = bufferIndex - windowCount;
+                currentSum = previousIndex < 0 ?
+                    cumulativeEnergy + (previousCycleEnergy - lufsBuffer[previousIndex + maximumWindowSamples]) :
+                    cumulativeEnergy - lufsBuffer[previousIndex];
+                lufsBuffer[bufferIndex] = cumulativeEnergy;
                 bufferIndex++;
-                if (bufferIndex === windowSamples) bufferIndex = 0;
-                if (validSamples < windowSamples) validSamples++;
-                currentLufsLinear = currentSum > 0 ? currentSum / validSamples : 0;
+                if (bufferIndex === maximumWindowSamples) {
+                    bufferIndex = 0;
+                    previousCycleEnergy = cumulativeEnergy;
+                    cumulativeEnergy = 0;
+                }
+                currentLufsLinear = currentSum > 0 ? currentSum / windowCount : 0;
 
                 let targetGainLinear =
                     currentLufsLinear < noiseGateLinear || currentLufsLinear <= 0 ?
@@ -267,6 +281,8 @@ class AutoLevelerPlugin extends PluginBase {
             }
 
             context.sum = currentSum;
+            context.cumulativeEnergy = cumulativeEnergy;
+            context.previousCycleEnergy = previousCycleEnergy;
             context.bufferIndex = bufferIndex;
             context.validSamples = validSamples;
             context.currentGain = currentGain;

@@ -39,7 +39,7 @@ constexpr std::uint32_t kPathRecordBytes = 12u;
 constexpr std::uint32_t kTelemetryRingBytes = 256u * 1024u;
 constexpr float kTelemetryRateHz = 60.0F;
 constexpr std::size_t kAssetCapacity = 32u * 1024u * 1024u;
-constexpr std::size_t kConvolverImplUpperBound = 512u;
+constexpr std::size_t kConvolverImplUpperBound = 16u * 1024u;
 constexpr std::size_t kConvolverStageUpperBound = 512u;
 constexpr std::size_t kPffftSetupFixedUpperBound = 136u;
 

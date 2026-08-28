@@ -28,6 +28,7 @@
     "check:install-scripts": "node scripts/check-install-scripts.mjs",
     "lint": "eslint electron js plugins features scripts tools tests --max-warnings=0",
     "test": "npm --prefix dsp/bindings/js run build && node tools/run-tests.mjs",
+    "check:presets": "node tools/preset-render-check.mjs",
     "test:tube-calibration": "node --test tests/esm/dsp-tube-simulator-listening-presets-v1.test.mjs",
     "test:library-scale:quick": "node tests/scale/library-scale-generation.mjs --size 10000",
     "test:library-scale:million": "node tests/scale/library-scale-generation.mjs --preset million",

@@ -23,12 +23,10 @@ export function handlePipelineKeyboardShortcut(event, {
     core,
     clipboardManager,
     readTextFromClipboard = defaultReadTextFromClipboard,
-    uiManager = typeof window !== 'undefined' ? window.uiManager : null,
-    documentRef = typeof document !== 'undefined' ? document : null
+    uiManager = typeof window !== 'undefined' ? window.uiManager : null
 }) {
     const key = event.key ? event.key.toLowerCase() : '';
     const isCommandShortcut = event.ctrlKey || event.metaKey;
-    const presetSelect = pipelineManager.presetManager.presetSelect;
 
     if (isCommandShortcut && !event.shiftKey) {
         if (!isTextEditingTarget(event.target) || isRangeInput(event.target)) {
@@ -47,18 +45,7 @@ export function handlePipelineKeyboardShortcut(event, {
 
     if (key === 's' && isCommandShortcut) {
         stopShortcutEvent(event);
-        presetSelect.focus();
-        presetSelect.select();
-
-        const presetName = presetSelect.value.trim();
-        if (!event.shiftKey && presetName) {
-            pipelineManager.presetManager.savePreset(presetName);
-        }
-        return true;
-    }
-
-    if (event.key === 'Escape' && event.target === presetSelect) {
-        presetSelect.value = '';
+        pipelineManager.presetManager.openPresetDialog({ focusSaveName: true });
         return true;
     }
 
@@ -89,11 +76,6 @@ export function handlePipelineKeyboardShortcut(event, {
     }
 
     if (event.key === 'Escape') {
-        if (documentRef && documentRef.activeElement === presetSelect) {
-            presetSelect.value = '';
-            return true;
-        }
-
         core.selectedPlugins.clear();
         core.pipelineList.querySelectorAll('.pipeline-item').forEach(item => {
             item.classList.remove('selected');

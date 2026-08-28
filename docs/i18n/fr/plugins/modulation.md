@@ -34,7 +34,7 @@ Auto Filter anime automatiquement un filtre résonant. Le mode **LFO** répète 
 
 ### Paramètres
 
-- **Style** : Réglage d'usine complet de tous les paramètres. Choix : **Auto Filter Sweep** (LFO), **Stereo Filter Sweep** (LFO), **Envelope Filter** (Envelope), **Auto Wah** (Envelope) et **Reverse Auto Wah** (Envelope). La modification d'un paramètre le fait passer à **Custom**.
+- **Préréglages système**: Choisissez **Auto Filter Sweep**, **Stereo Filter Sweep**, **Envelope Filter**, **Auto Wah** ou **Reverse Auto Wah** pour charger un réglage de départ complet, puis affinez-le en ajustant les paramètres individuellement.
 - **Mode** : Alterne entre le mouvement périodique LFO et le suivi du volume Envelope.
 - **Filter Type** : Low-pass, Band-pass ou High-pass.
 - **Minimum Frequency / Maximum Frequency** (20–20 000 Hz) : Plage du mouvement. Les valeurs inversées sont automatiquement remises dans l'ordre ; des valeurs identiques fixent le filtre. Pendant le traitement, elles sont limitées à une plage sûre sous la fréquence de Nyquist.
@@ -55,7 +55,7 @@ Auto Pan déplace le niveau de chaque paire stéréo entre la gauche et la droit
 
 ### Paramètres
 
-- **Style** : Réglage d'usine complet de tous les paramètres. Choix : **Gentle Auto Pan**, **Wide Auto Pan** et **Fast Auto Pan**. La modification d'un paramètre le fait passer à **Custom**.
+- **Préréglages système**: Choisissez **Gentle Auto Pan**, **Wide Auto Pan** ou **Fast Auto Pan** pour charger un réglage de départ complet, puis affinez-le en ajustant les paramètres individuellement.
 - **Rate** (0,05–20 Hz) : Vitesse du mouvement.
 - **Depth** (0–100%) : Amplitude du mouvement autour de Center. À 0%, aucun changement.
 - **Center** (-100–100%) : Déplace la position centrale vers la gauche ou la droite.
@@ -76,7 +76,7 @@ Chorus ajoute des copies retardées et mobiles de la musique. Ses modes couvrent
 
 ### Paramètres
 
-- **Style** : Réglage d'usine complet de tous les paramètres. Choix : **Classic Chorus** (Chorus), **Stereo Chorus** (Stereo Chorus), **Ensemble** (Ensemble), **Flanger** (Flanger), **Jet Flanger** (Flanger) et **Vibrato** (Vibrato). La modification d'un paramètre le fait passer à **Custom**.
+- **Préréglages système**: Choisissez **Classic Chorus**, **Stereo Chorus**, **Ensemble**, **Flanger**, **Jet Flanger** ou **Vibrato** pour charger un réglage de départ complet, puis affinez-le en ajustant les paramètres individuellement.
 - **Mode** : Chorus, Stereo Chorus, Ensemble, Flanger ou Vibrato.
 - **Rate** (0,05–10 Hz) : Vitesse de modulation.
 - **Delay** (0,5–30 ms) : Retard de référence du signal traité.
@@ -130,7 +130,7 @@ Frequency Shifter déplace chaque composante fréquentielle d'un nombre fixe de 
 
 ### Paramètres
 
-- **Style** : Réglage d'usine complet de tous les paramètres. Choix : **Shift Up** (Shift), **Shift Down** (Shift), **Fine Detune** (Shift), **Ring Modulator** (Ring Mod), **Barber-pole Up** (Barber-pole) et **Barber-pole Down** (Barber-pole). La modification d'un paramètre le fait passer à **Custom**.
+- **Préréglages système**: Choisissez **Shift Up**, **Shift Down**, **Fine Detune**, **Ring Modulator**, **Barber-pole Up** ou **Barber-pole Down** pour charger un réglage de départ complet, puis affinez-le en ajustant les paramètres individuellement.
 - **Mode** : Shift, Ring Mod ou Barber-pole.
 - **Shift** (-5 000–5 000 Hz) : Décalage en mode Shift. Une valeur positive monte les fréquences ; une valeur négative les descend.
 - **Carrier Frequency** (0,1–10 000 Hz) : Fréquence de la porteuse de Ring Mod.
@@ -153,7 +153,7 @@ Phaser mélange le son d'origine à des copies filtrées pour créer des pics et
 
 ### Paramètres
 
-- **Style** : Réglage d'usine complet de tous les paramètres. Choix : **Classic Phaser** (Classic), **Deep Phaser** (Classic), **Stereo Phaser** (Classic), **Barber-pole Up** (Barber-pole) et **Barber-pole Down** (Barber-pole). La modification d'un paramètre le fait passer à **Custom**.
+- **Préréglages système**: Choisissez **Classic Phaser**, **Deep Phaser**, **Stereo Phaser**, **Barber-pole Up** ou **Barber-pole Down** pour charger un réglage de départ complet, puis affinez-le en ajustant les paramètres individuellement.
 - **Mode** : Classic ou Barber-pole.
 - **Rate** (0,05–10 Hz) : Vitesse du balayage.
 - **Center Frequency** (80–8 000 Hz) : Centre du balayage logarithmique.
@@ -219,7 +219,7 @@ Rotary Speaker sépare le son entre une trompe d'aigus et un tambour de graves, 
 
 ### Paramètres
 
-- **Style** : Réglage d'usine complet de tous les paramètres. Choix : **Rotary Slow** (Slow), **Rotary Fast** (Fast), **Gentle Rotary** (Slow), **Leslie Slow** (Slow) et **Leslie Fast** (Fast). La modification d'un paramètre le fait passer à **Custom**.
+- **Préréglages système**: Choisissez **Rotary Slow**, **Rotary Fast**, **Gentle Rotary**, **Vintage Rotor Slow** ou **Vintage Rotor Fast** pour charger un réglage de départ complet, puis affinez-le en ajustant les paramètres individuellement.
 - **Speed State** : Stop, Slow ou Fast. Pendant le changement, les rotors accélèrent ou ralentissent en douceur sans interrompre le son.
 - **Speed** (25–200%) : Multiplicateur de vitesse de la trompe et du tambour.
 - **Acceleration** (0,1–10 s) : Règle la vitesse à laquelle les rotors se rapprochent d'une nouvelle vitesse.
@@ -326,6 +326,14 @@ Un effet qui ajoute des variations rythmiques du volume à votre musique, simila
 ## Wow Flutter
 
 Un effet qui ajoute des variations subtiles de hauteur à votre musique, semblable au son ondulant naturel que vous vous rappelez peut-être des disques vinyles ou des cassettes. Cela crée une sensation chaleureuse et nostalgique que beaucoup trouvent agréable et relaxante.
+
+### Préréglages système
+
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour comparer des réglages complets du mécanisme d’entraînement.
+
+- **Warped Record** - Une oscillation profonde et périodique évoquant un disque voilé.
+- **Worn Cassette Motor** - Un flutter plus rapide, accompagné de mouvements irréguliers.
+- **Seasick Tape** - Une oscillation lente et extrême, indépendante sur les deux canaux stéréo.
 
 ### Guide de l'expérience d'écoute
 - Expérience de disque vinyle :

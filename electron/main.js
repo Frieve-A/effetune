@@ -1134,7 +1134,7 @@ function createSplashScreen() {
 let trayMenuLabels = {
   open: 'Open',
   quit: 'Quit',
-  presets: 'Presets'
+  presets: 'Pipeline Presets'
 };
 
 // Update tray menu template with translated labels

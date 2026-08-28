@@ -146,26 +146,13 @@ function createDocument(options = {}) {
     return element;
   };
 
-  const presetSelectContainer = make('presetSelectContainer');
-  const presetSelect = make('presetSelect', 'input', {
-    value: options.presetValue ?? '',
-    rect: options.presetRect
-  });
-  const presetClearButton = make('presetClearButton', 'button');
-  const presetDropdownButton = make('presetDropdownButton', 'button');
-  make('savePresetButton', 'button');
-  make('deletePresetButton', 'button');
-  const presetList = make('presetList', 'div', { scrollHeight: options.presetListHeight });
-  [presetSelect, presetClearButton, presetDropdownButton, presetList].forEach(element => {
-    if (element) presetSelectContainer?.appendChild(element);
-  });
+  make('pipelinePresetButton', 'button');
   const masterToggle = new FakeElement('button', { className: 'toggle-button master-toggle off' });
   const body = new FakeElement('body');
   body.style.zoom = options.bodyZoom ?? '';
 
   return {
     elements,
-    presetSelect,
     masterToggle,
     documentRef: {
       body,
@@ -239,9 +226,17 @@ function createPipelineManager(options = {}) {
     }
   };
   const historyManager = {
-    undoRedoTimeoutId: options.undoRedoTimeoutId ?? null,
-    isUndoRedoOperation: false,
-    specialSaveOverride: false,
+    historySuppressionDepth: 0,
+    get isHistorySuppressed() { return this.historySuppressionDepth > 0; },
+    withHistorySuppressed(callback) {
+      calls.push(['withHistorySuppressed']);
+      this.historySuppressionDepth++;
+      try {
+        return callback();
+      } finally {
+        this.historySuppressionDepth--;
+      }
+    },
     saveState() {
       calls.push(['saveState']);
     }
@@ -263,6 +258,11 @@ function createPipelineManager(options = {}) {
     },
     core: {
       enabled: false,
+      pluginPresetDialog: options.pluginPresetDialog ?? {
+        show(...args) {
+          calls.push(['showPresetDialog', ...args]);
+        }
+      },
       updatePipelineUI(force) {
         calls.push(['updatePipelineUI', force]);
       },
@@ -387,7 +387,7 @@ function createUiManager(calls, options = {}) {
   };
 }
 
-test('constructor initializes controls and handles listener combinations', async () => {
+test('constructor opens the shared dialog with the pipeline provider', async () => {
   await withPresetGlobals({
     storage: {
       effetune_presets: JSON.stringify({
@@ -395,157 +395,33 @@ test('constructor initializes controls and handles listener combinations', async
         Alpha: { plugins: [] }
       })
     }
-  }, async ({ dom }) => {
-    const manager = await createInitializedManager(createPipelineManager());
-    const datalist = dom.elements.get('presetList');
-    assert.deepEqual(datalist.children.map(option => option.value), ['Alpha', 'Zebra']);
-    assert.equal(manager.presetClearButton.classList.contains('visible'), false);
+  }, async ({ calls, dom, windowRef }) => {
+    windowRef.uiManager = createUiManager(calls);
+    const pipelineManager = createPipelineManager();
+    const manager = await createInitializedManager(pipelineManager);
+    manager.currentPresetName = 'Alpha';
+    await dom.elements.get('pipelinePresetButton').dispatchEvent('click');
+    const showCall = pipelineManager.calls.find(call => call[0] === 'showPresetDialog');
+    const provider = showCall[1];
+    assert.equal(showCall[2], dom.elements.get('pipelinePresetButton'));
+    assert.deepEqual(showCall[3], { focusSaveName: false });
+    assert.equal(provider.getTitleKey(), 'ui.title.pipelinePresets');
+    assert.equal(provider.getSystemPresetGroups(), null);
+    assert.equal(provider.getActiveSystemPresetId(), '');
+    assert.equal(provider.getActiveUserPresetName(), 'Alpha');
+    assert.equal(provider.getPresetContext(), manager);
+    assert.equal(provider.getDefaultSaveName(), 'Alpha');
+    assert.deepEqual((await provider.listUserPresetNames()).sort(), ['Alpha', 'Zebra']);
+    assert.equal(provider.handlesErrors, true);
 
-    const listenerCalls = [];
-    manager.savePreset = async name => listenerCalls.push(['savePreset', name]);
-    manager.deletePreset = async name => listenerCalls.push(['deletePreset', name]);
-    manager.getPresets = async () => ({ Old: { plugins: [] }, LoadMe: { plugins: [] } });
-    manager.loadPreset = async name => listenerCalls.push(['loadPreset', name]);
+    assert.equal(await provider.saveUserPreset('Dialog Save'), true);
+    assert.equal(
+      calls.some(call => call[0] === 'showTransientMessage' && call[1] === 'success.presetSaved'),
+      true
+    );
 
-    manager.presetSelect.value = '  Saved Name  ';
-    await manager.savePresetButton.dispatchEvent('click');
-    manager.presetSelect.value = '   ';
-    await manager.savePresetButton.dispatchEvent('click');
-    manager.presetSelect.value = 'Old';
-    await manager.deletePresetButton.dispatchEvent('click');
-    globalThis.confirm = () => false;
-    manager.presetSelect.value = 'Old';
-    await manager.deletePresetButton.dispatchEvent('click');
-    globalThis.confirm = () => true;
-    manager.presetSelect.value = '   ';
-    await manager.deletePresetButton.dispatchEvent('click');
-    manager.presetSelect.value = 'Missing';
-    await manager.deletePresetButton.dispatchEvent('click');
-    manager.presetSelect.value = 'LoadMe';
-    await manager.presetSelect.dispatchEvent('change', { target: manager.presetSelect });
-    manager.presetSelect.value = 'Absent';
-    await manager.presetSelect.dispatchEvent('change', { target: manager.presetSelect });
-    manager.presetSelect.value = 'x';
-    await manager.presetSelect.dispatchEvent('input');
-    assert.equal(manager.presetClearButton.classList.contains('visible'), true);
-    await manager.presetClearButton.dispatchEvent('click');
-    assert.equal(manager.presetSelect.value, '');
-    assert.equal(manager.presetSelect.focused, true);
-
-    assert.deepEqual(listenerCalls, [
-      ['savePreset', 'Saved Name'],
-      ['deletePreset', 'Old'],
-      ['loadPreset', 'LoadMe']
-    ]);
-  });
-
-  await withPresetGlobals({
-    documentOptions: { omitIds: ['presetClearButton'] }
-  }, async () => {
-    const manager = await createInitializedManager(createPipelineManager());
-    manager.updatePresetClearButton();
-  });
-
-  await withPresetGlobals({
-    documentOptions: { omitIds: ['savePresetButton'] }
-  }, async ({ calls }) => {
-    new PresetManager(createPipelineManager());
-    await flushMicrotasks();
-    await flushMicrotasks();
-    assert.ok(calls.some(call => call[0] === 'console.error' && call[1] === 'Failed to initialize preset management:'));
-  });
-});
-
-test('preset dropdown stays inside the viewport and selects from a scrollable list', async () => {
-  await withPresetGlobals({
-    documentOptions: {
-      viewportHeight: 300,
-      viewportWidth: 500,
-      presetListHeight: 600,
-      presetRect: {
-        left: 100,
-        right: 330,
-        top: 250,
-        bottom: 280,
-        width: 230,
-        height: 30
-      }
-    },
-    storage: {
-      effetune_presets: JSON.stringify({
-        Zeta: { plugins: [] },
-        Alpha: { plugins: [] },
-        Beta: { plugins: [] }
-      })
-    }
-  }, async ({ dom }) => {
-    const manager = await createInitializedManager(createPipelineManager());
-    const dropdown = dom.elements.get('presetDropdownButton');
-    const list = dom.elements.get('presetList');
-
-    await dropdown.dispatchEvent('click');
-    assert.equal(list.classList.contains('show'), true);
-    assert.equal(manager.presetSelect.getAttribute('aria-expanded'), 'true');
-    assert.equal(list.style.left, '100px');
-    assert.equal(list.style.top, '8px');
-    assert.equal(list.style.width, '230px');
-    assert.equal(list.style.maxHeight, '238px');
-
-    manager.presetSelect.rect = {
-      left: 100,
-      right: 330,
-      top: 20,
-      bottom: 50,
-      width: 230,
-      height: 30
-    };
-    manager.positionPresetList();
-    assert.equal(list.style.top, '54px');
-    assert.equal(list.style.maxHeight, '238px');
-
-    manager.presetSelect.value = 'ta';
-    await manager.presetSelect.dispatchEvent('input');
-    assert.deepEqual(manager.visiblePresetNames, ['Beta', 'Zeta']);
-
-    const loadCalls = [];
-    manager.loadPreset = async name => loadCalls.push(name);
-    await list.children[0].dispatchEvent('click');
-    assert.equal(manager.presetSelect.value, 'Beta');
-    assert.deepEqual(loadCalls, ['Beta']);
-    assert.equal(list.classList.contains('show'), false);
-    assert.equal(manager.presetSelect.getAttribute('aria-expanded'), 'false');
-  });
-});
-
-test('preset dropdown uses unzoomed CSS coordinates with body zoom', async () => {
-  await withPresetGlobals({
-    documentOptions: {
-      bodyZoom: '2',
-      viewportHeight: 300,
-      viewportWidth: 500,
-      presetListHeight: 120,
-      presetRect: {
-        left: 400,
-        right: 600,
-        top: 200,
-        bottom: 260,
-        width: 200,
-        height: 60
-      }
-    },
-    storage: {
-      effetune_presets: '{"Zoomed":{"plugins":[]}}'
-    }
-  }, async ({ dom }) => {
-    const manager = await createInitializedManager(createPipelineManager());
-    const list = dom.elements.get('presetList');
-
-    manager.openPresetList(true);
-
-    assert.equal(list.style.left, '142px');
-    assert.equal(list.style.top, '8px');
-    assert.equal(list.style.width, '100px');
-    assert.equal(list.style.maxHeight, '88px');
+    manager.openPresetDialog({ focusSaveName: true });
+    assert.deepEqual(pipelineManager.calls.at(-1)[3], { focusSaveName: true });
   });
 });
 
@@ -621,14 +497,12 @@ test('loadable preset filtering excludes malformed presets and unavailable plugi
         InvalidFormat: { name: 'Bad' }
       })
     }
-  }, async ({ calls, dom, windowRef }) => {
+  }, async ({ calls, windowRef }) => {
     windowRef.uiManager = createUiManager(calls);
     const pipelineManager = createPipelineManager();
     pipelineManager.pluginManager.isPluginAvailable = name => name !== 'UnavailablePlugin';
     const manager = await createInitializedManager(pipelineManager);
 
-    const datalist = dom.elements.get('presetList');
-    assert.deepEqual(datalist.children.map(option => option.value), ['Empty', 'LoadableNew', 'LoadableOld']);
     assert.deepEqual(Object.keys(await manager.getLoadablePresets()).sort(), ['Empty', 'LoadableNew', 'LoadableOld']);
 
     await manager.loadPreset('Unavailable');
@@ -651,6 +525,7 @@ test('savePreset and deletePreset persist web and Electron presets with UI feedb
     };
     const manager = await createInitializedManager(pipelineManager);
     await manager.savePreset('Saved');
+    assert.equal(manager.currentPresetName, 'Saved');
     const saved = JSON.parse(storage.get('effetune_presets'));
     assert.deepEqual(Object.keys(saved).sort(), ['Old', 'Saved']);
     assert.equal(saved.Saved.plugins[0].nm, 'Cleanup');
@@ -717,6 +592,126 @@ test('savePreset and deletePreset persist web and Electron presets with UI feedb
     assert.ok(savedFiles.some(entry => entry[0] === 'user/effetune_presets.json'));
     assert.ok(savedFiles.some(entry => entry[0] === 'tray'));
   });
+});
+
+test('renamePreset and deletePresets mutate once and maintain currentPresetName', async () => {
+  await withPresetGlobals({
+    storage: { effetune_presets: '{"First":{"plugins":[]},"Second":{"plugins":[]}}' }
+  }, async ({ calls, storage, windowRef }) => {
+    windowRef.uiManager = createUiManager(calls);
+    const manager = await createInitializedManager(createPipelineManager());
+    manager.currentPresetName = 'First';
+    let persistCount = 0;
+    let enqueueCount = 0;
+    const persistPresets = manager.persistPresets.bind(manager);
+    const enqueuePresetMutation = manager.enqueuePresetMutation.bind(manager);
+    manager.persistPresets = async presets => {
+      persistCount += 1;
+      return persistPresets(presets);
+    };
+    manager.enqueuePresetMutation = mutation => {
+      enqueueCount += 1;
+      return enqueuePresetMutation(mutation);
+    };
+
+    assert.equal(await manager.renamePreset('First', 'Renamed'), true);
+    assert.equal(manager.currentPresetName, 'Renamed');
+    assert.equal(persistCount, 1);
+    assert.equal(enqueueCount, 1);
+    assert.deepEqual(Object.keys(JSON.parse(storage.get('effetune_presets'))).sort(), ['Renamed', 'Second']);
+
+    assert.equal(await manager.deletePresets(['Renamed', 'Second']), true);
+    assert.equal(manager.currentPresetName, '');
+    assert.equal(persistCount, 2);
+    assert.equal(enqueueCount, 2);
+    assert.deepEqual(JSON.parse(storage.get('effetune_presets')), {});
+    const deletedMessages = calls.filter(call => call[0] === 'showTransientMessage' && call[1] === 'success.presetDeleted');
+    assert.equal(deletedMessages.length, 1);
+    assert.equal(deletedMessages[0][3].name, 'Renamed, Second');
+
+    assert.equal(await manager.renamePreset('Missing', 'Nope'), false);
+    assert.ok(calls.some(call => call[0] === 'showTransientMessage' && call[1] === 'error.failedToSavePreset'));
+  });
+
+  let trayUpdateCount = 0;
+  await withPresetGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      async getPath() { return 'user'; },
+      async joinPaths(...parts) { return parts.join('/'); },
+      async fileExists() { return true; },
+      async readFile() { return { success: true, content: '{"First":{"plugins":[]},"Second":{"plugins":[]}}' }; },
+      async saveFile() { return { success: true }; },
+      async getUserPresetsForTray() { return { success: true, presets: [] }; },
+      async updateTrayMenu() { trayUpdateCount += 1; return { success: true }; }
+    }
+  }, async ({ windowRef }) => {
+    windowRef.uiManager = createUiManager([]);
+    const manager = await createInitializedManager(createPipelineManager());
+    let enqueueCount = 0;
+    let persistCount = 0;
+    const enqueuePresetMutation = manager.enqueuePresetMutation.bind(manager);
+    const persistPresets = manager.persistPresets.bind(manager);
+    manager.enqueuePresetMutation = mutation => {
+      enqueueCount += 1;
+      return enqueuePresetMutation(mutation);
+    };
+    manager.persistPresets = presets => {
+      persistCount += 1;
+      return persistPresets(presets);
+    };
+
+    assert.equal(await manager.renamePreset('First', 'Renamed'), true);
+    assert.equal(enqueueCount, 1);
+    assert.equal(persistCount, 1);
+    assert.equal(trayUpdateCount, 1);
+  });
+});
+
+test('successful stale save and rename commits still apply currentPresetName transitions', async () => {
+  const scenarios = [
+    {
+      initialName: 'Original',
+      start(manager) { return manager.savePreset('Saved'); },
+      expectedName: 'Saved'
+    },
+    {
+      initialName: 'Original',
+      start(manager) { return manager.renamePreset('Original', 'Renamed'); },
+      expectedName: 'Renamed'
+    }
+  ];
+
+  for (const scenario of scenarios) {
+    await withPresetGlobals({
+      storage: { effetune_presets: '{"Original":{"plugins":[]}}' }
+    }, async ({ windowRef }) => {
+      windowRef.uiManager = createUiManager([]);
+      const manager = await createInitializedManager(createPipelineManager());
+      manager.currentPresetName = scenario.initialName;
+      const persistStarted = createDeferred();
+      const releasePersist = createDeferred();
+      const persistPresets = manager.persistPresets.bind(manager);
+      let persistCount = 0;
+      manager.persistPresets = async presets => {
+        persistCount += 1;
+        if (persistCount === 1) {
+          persistStarted.resolve();
+          await releasePersist.promise;
+        }
+        return persistPresets(presets);
+      };
+
+      const staleSuccess = scenario.start(manager);
+      await persistStarted.promise;
+      const latestFailure = manager.renamePreset('Missing', 'Unused');
+      releasePersist.resolve();
+
+      assert.equal(await staleSuccess, true);
+      assert.equal(await latestFailure, false);
+      assert.equal(manager.currentPresetName, scenario.expectedName);
+    });
+  }
 });
 
 test('save writes the pipeline captured before file completion', async () => {
@@ -1029,11 +1024,12 @@ test('loadPreset applies preset formats, restores state, and reports invalid dat
     }
   }, async ({ calls, dom, windowRef }) => {
     windowRef.uiManager = createUiManager(calls, { pluginListManager: null });
-    const pipelineManager = createPipelineManager({ undoRedoTimeoutId: 77 });
+    const pipelineManager = createPipelineManager();
     const manager = await createInitializedManager(pipelineManager);
     await manager.loadPreset('MissingPreset');
     await manager.loadPreset(null);
     await manager.loadPreset('NewFormat');
+    assert.equal(manager.currentPresetName, 'NewFormat');
 
     assert.deepEqual(pipelineManager.audioManager.pipeline.map(plugin => plugin.name), ['Alpha', 'Gamma']);
     assert.equal(pipelineManager.createdPlugins[0].enabled, false);
@@ -1044,7 +1040,7 @@ test('loadPreset applies preset formats, restores state, and reports invalid dat
     assert.equal(pipelineManager.core.enabled, true);
     assert.equal(dom.masterToggle.classList.contains('off'), false);
     assert.ok(pipelineManager.cleanupPlugin.calls.some(call => call[0] === 'cleanup'));
-    assert.ok(calls.some(call => call[0] === 'clearTimeout' && call[1] === 77));
+    assert.ok(pipelineManager.calls.some(call => call[0] === 'withHistorySuppressed'));
     assert.ok(calls.some(call => call[0] === 'showTransientMessage' && call[1] === 'success.presetLoaded'));
   });
 
@@ -1067,6 +1063,7 @@ test('loadPreset applies preset formats, restores state, and reports invalid dat
       ]
     });
     assert.deepEqual(pipelineManager.audioManager.pipeline.map(plugin => plugin.name), ['Beta']);
+    assert.equal(manager.currentPresetName, '');
     assert.equal(pipelineManager.createdPlugins[0].channel, 'R');
   });
 
@@ -1078,13 +1075,43 @@ test('loadPreset applies preset formats, restores state, and reports invalid dat
   });
 });
 
-test('loadPresetList and getCurrentPresetData handle empty DOM and export defaults', async () => {
-  await withPresetGlobals({
-    documentOptions: { omitIds: ['presetList'], presetValue: '  ' }
-  }, async () => {
+test('loadPreset suppresses reconstruction history before allowing one explicit save and restores on failure', async () => {
+  const serialized = JSON.stringify({ Named: { plugins: [{ nm: 'Alpha', en: true }] } });
+  await withPresetGlobals({ storage: { effetune_presets: serialized } }, async () => {
     const pipelineManager = createPipelineManager();
     const manager = await createInitializedManager(pipelineManager);
-    await manager.loadPresetList('Ignored');
+    const observations = [];
+    pipelineManager.core.updatePipelineUI = () => {
+      observations.push(['ui', pipelineManager.historyManager.isHistorySuppressed]);
+    };
+    pipelineManager.historyManager.saveState = () => {
+      observations.push(['save', pipelineManager.historyManager.isHistorySuppressed]);
+    };
+
+    assert.equal(await manager.loadPreset('Named'), true);
+    assert.deepEqual(observations, [
+      ['ui', true],
+      ['save', false]
+    ]);
+    assert.equal(pipelineManager.historyManager.isHistorySuppressed, false);
+  });
+
+  await withPresetGlobals({ storage: { effetune_presets: serialized } }, async () => {
+    const pipelineManager = createPipelineManager();
+    const manager = await createInitializedManager(pipelineManager);
+    pipelineManager.core.updatePipelineUI = () => {
+      throw new Error('rebuild failed');
+    };
+    assert.equal(await manager.loadPreset('Named'), false);
+    assert.equal(pipelineManager.historyManager.isHistorySuppressed, false);
+    assert.equal(pipelineManager.calls.filter(call => call[0] === 'saveState').length, 0);
+  });
+});
+
+test('getCurrentPresetData uses currentPresetName and an export fallback', async () => {
+  await withPresetGlobals({}, async () => {
+    const pipelineManager = createPipelineManager();
+    const manager = await createInitializedManager(pipelineManager);
     assert.deepEqual(manager.getCurrentPresetData(), {
       name: 'My Preset',
       pipeline: [
@@ -1093,7 +1120,7 @@ test('loadPresetList and getCurrentPresetData handle empty DOM and export defaul
       ],
       timestamp: 123456
     });
-    manager.presetSelect.value = 'Named';
+    manager.currentPresetName = 'Named';
     assert.equal(manager.getCurrentPresetData().name, 'Named');
   });
 });

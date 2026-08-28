@@ -3,6 +3,10 @@
   "error.invalidUrl": "Paramètres d'URL invalides : {message}",
   "error.invalidPresetData": "Données de préréglage invalides",
   "error.failedToLoadPreset": "Échec du chargement du préréglage",
+  "error.failedToSavePreset": "Échec de l’enregistrement du preset",
+  "error.failedToDeletePreset": "Échec de la suppression du preset",
+  "error.failedToSavePluginPreset": "Échec de l’enregistrement du preset",
+  "error.failedToDeletePluginPreset": "Échec de la suppression du preset",
   "error.noPresetSelected": "Aucun préréglage sélectionné",
   "error.failedToCutSettings": "Échec de la coupe des paramètres dans le presse-papiers",
   "error.failedToCopySettings": "Échec de la copie des paramètres dans le presse-papiers",
@@ -68,6 +72,12 @@
   "ui.sleepMode": "Mode veille",
   "ui.whatsThisApp": "Qu'est-ce que cette application ?",
   "ui.newVersionAvailable": "Nouvelle {version} disponible.",
+  "ui.pluginPresets.namePlaceholder": "Nom du preset",
+  "ui.pluginPresets.save": "Enregistrer",
+  "ui.pluginPresets.rename": "Renommer",
+  "ui.pluginPresets.deleteSelected": "Supprimer la sélection",
+  "ui.pluginPresets.noUserPresets": "Aucun preset enregistré",
+  "ui.pluginPresets.confirmDeleteSelected": "Supprimer les presets sélectionnés ?",
 
   // Infos-bulles affichées au survol de l'interface
   "ui.title.openMusic": "Ouvrir des fichiers musicaux",
@@ -84,8 +94,8 @@
   "ui.title.cut": "Couper les effets",
   "ui.title.copy": "Copier les effets",
   "ui.title.paste": "Coller les effets",
-  "ui.title.savePreset": "Enregistrer le preset",
-  "ui.title.deletePreset": "Supprimer le preset",
+  "ui.title.effectPresets": "Préréglages d’effet",
+  "ui.title.pipelinePresets": "Préréglages de chaîne d’effets",
   "ui.title.sharePipeline": "Partager la chaîne",
   "ui.title.decreaseColumns": "Réduire le nombre de colonnes",
   "ui.title.increaseColumns": "Augmenter le nombre de colonnes",
@@ -112,7 +122,6 @@
   "ui.title.close": "Fermer",
   "ui.title.expand": "Cliquer pour développer",
   "ui.title.collapse": "Cliquer pour réduire",
-  "ui.title.presetSelect": "Saisie et chargement du nom de preset utilisateur\nAppuyez sur ESC pour effacer le texte et afficher tous les éléments",
   "ui.mobileNav.primary": "Navigation mobile principale",
   "ui.mobileNav.player": "Lecteur",
   "ui.mobileNav.library": "Bibliothèque",
@@ -448,7 +457,7 @@
   // Menu de la barre d'état système
   "trayMenuOpen": "Ouvrir",
   "trayMenuQuit": "Quitter",
-  "trayMenuPresets": "Préréglages",
+  "trayMenuPresets": "Préréglages de chaîne d’effets",
 
   // Ressources externes et IR Reverb
   "externalAsset.warning": "Cette chaîne fait référence à des données {kinds} externes. Le destinataire doit importer les mêmes fichiers ; ils ne sont pas inclus.",

@@ -1,11 +1,11 @@
 {
   "formatVersion": 1,
   "type": "TubeSimulatorPlugin",
-  "id": "half-mix-wet-output",
-  "stimulus": "noise",
+  "id": "dry-output-gain-isolation",
+  "stimulus": "imp",
   "sampleRate": 96000,
   "channels": 2,
-  "frameCount": 1280,
+  "frameCount": 1152,
   "blockSize": 128,
   "channelMode": "stereo",
   "channel": null,
@@ -42,8 +42,8 @@
     {
       "frame": 128,
       "params": {
-        "og": 6,
-        "mx": 50
+        "og": 48,
+        "mx": 0
       }
     }
   ],
@@ -51,8 +51,8 @@
     "abs": 0.00001,
     "policy": "per-sample"
   },
-  "jsEngineHash": "cd71e391ae506136512d9f63354418ed05843b08a560b90541990e4649fd36a2",
-  "outputFloats": 2560,
-  "byteLength": 10240,
+  "jsEngineHash": "b7fbcbcf830b9f604cd1dbe81e2c22be3260cd2c9e70d850a048b54780a3e792",
+  "outputFloats": 2304,
+  "byteLength": 9216,
   "binary": "case-008.f32"
 }

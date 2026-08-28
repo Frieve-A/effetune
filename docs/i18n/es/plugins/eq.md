@@ -362,6 +362,14 @@ Un filtro peine que añade un carácter faseado, hueco, metálico o resonante al
 
 Reproduce las pequeñas variaciones de respuesta en frecuencia que aparecen cuando un auricular se alimenta desde un amplificador a través de la resistencia e inductancia reales del cable y de una impedancia de salida no nula. Como la impedancia del auricular cambia con la frecuencia (por las resonancias del transductor y la inductancia de la bobina móvil), la impedancia de la fuente y del cable produce cambios de nivel propios de cada auricular. También sirve como comprobación práctica: con cables de construcción y calidad normales, una impedancia de salida de amplificador común y auriculares que no tengan una impedancia inusualmente baja ni otras condiciones anómalas, el cambio audible entre cables normales para auriculares suele ser lo bastante pequeño como para resultar despreciable. El efecto es más fuerte con auriculares de baja impedancia que tienen grandes picos de impedancia, y normalmente es sutil con amplificadores modernos de baja impedancia de salida.
 
+### Preajustes del sistema
+
+Haz clic en **Preajustes de efecto** en la cabecera del efecto para comparar distintas combinaciones de fuente y cable con todos sus ajustes.
+
+- **High Impedance Source** - Una fuente con alta impedancia de salida que alimenta un auricular de baja impedancia.
+- **Long Thin Cable** - Mayor resistencia e inductancia del cable.
+- **Vintage Portable Out** - Una salida portátil de mayor impedancia y un auricular de 32 Ω.
+
 ### Guía de Mejora Auditiva
 - Evalúa la interacción de la impedancia de la fuente:
   - Sube Output Z para emular amplificadores de válvulas o salidas de auriculares de alta impedancia
@@ -548,6 +556,14 @@ Un filtro pasa-bajos de precisión que elimina las frecuencias altas no deseadas
 - Cuadrícula de frecuencia con marcadores en puntos de referencia clave
 
 ## Loudness Equalizer
+
+### Preajustes del sistema
+
+Haz clic en **Preajustes de efecto** en la cabecera del efecto para empezar con una curva completa de compensación de sonoridad.
+
+- **Late Night Listening** - Una compensación más intensa para niveles de escucha bajos.
+- **Quiet Background** - Una curva de compensación moderada para el uso cotidiano.
+- **Near Reference Level** - Una compensación mínima cerca de un nivel de referencia más alto.
 
 Un ecualizador especializado que vincula el ajuste de volumen con la corrección del balance de frecuencias. Configura Average SPL como el nivel medio estimado de presión sonora al usar 0dB en Relative Volume y utiliza Relative Volume para los cambios cotidianos de volumen. La corrección aumenta automáticamente al bajar el volumen y disminuye al subirlo.
 

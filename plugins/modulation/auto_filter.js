@@ -1,3 +1,11 @@
+const AUTO_FILTER_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({ id: 'auto-filter-sweep', label: 'Auto Filter Sweep', params: Object.freeze({ md: 'LFO', ft: 'Low-pass', lf: 200, hf: 4000, rs: 1.5, mx: 80, rt: 0.5, wf: 'Sine', sp: 0, sn: 24, at: 20, rl: 250, dr: 'Up' }) }),
+    Object.freeze({ id: 'stereo-filter-sweep', label: 'Stereo Filter Sweep', params: Object.freeze({ md: 'LFO', ft: 'Low-pass', lf: 160, hf: 6000, rs: 2, mx: 85, rt: 0.35, wf: 'Sine', sp: 120, sn: 24, at: 20, rl: 250, dr: 'Up' }) }),
+    Object.freeze({ id: 'envelope-filter', label: 'Envelope Filter', params: Object.freeze({ md: 'Envelope', ft: 'Low-pass', lf: 100, hf: 5000, rs: 1.2, mx: 85, rt: 0.5, wf: 'Sine', sp: 0, sn: 24, at: 18, rl: 300, dr: 'Up' }) }),
+    Object.freeze({ id: 'auto-wah', label: 'Auto Wah', params: Object.freeze({ md: 'Envelope', ft: 'Band-pass', lf: 180, hf: 2400, rs: 5, mx: 100, rt: 0.5, wf: 'Sine', sp: 0, sn: 30, at: 8, rl: 180, dr: 'Up' }) }),
+    Object.freeze({ id: 'reverse-auto-wah', label: 'Reverse Auto Wah', params: Object.freeze({ md: 'Envelope', ft: 'Band-pass', lf: 180, hf: 2800, rs: 4, mx: 100, rt: 0.5, wf: 'Sine', sp: 0, sn: 30, at: 12, rl: 350, dr: 'Down' }) })
+]);
+
 class AutoFilterPlugin extends PluginBase {
     static searchAliases = Object.freeze(['Envelope Filter', 'Auto Wah', 'Wah']);
     static executionCapabilities = Object.freeze({
@@ -6,21 +14,15 @@ class AutoFilterPlugin extends PluginBase {
         })
     });
 
-    static factoryStyles = Object.freeze({
-        'Auto Filter Sweep': Object.freeze({ md: 'LFO', ft: 'Low-pass', lf: 200, hf: 4000, rs: 1.5, mx: 80, rt: 0.5, wf: 'Sine', sp: 0, sn: 24, at: 20, rl: 250, dr: 'Up' }),
-        'Stereo Filter Sweep': Object.freeze({ md: 'LFO', ft: 'Low-pass', lf: 160, hf: 6000, rs: 2, mx: 85, rt: 0.35, wf: 'Sine', sp: 120, sn: 24, at: 20, rl: 250, dr: 'Up' }),
-        'Envelope Filter': Object.freeze({ md: 'Envelope', ft: 'Low-pass', lf: 100, hf: 5000, rs: 1.2, mx: 85, rt: 0.5, wf: 'Sine', sp: 0, sn: 24, at: 18, rl: 300, dr: 'Up' }),
-        'Auto Wah': Object.freeze({ md: 'Envelope', ft: 'Band-pass', lf: 180, hf: 2400, rs: 5, mx: 100, rt: 0.5, wf: 'Sine', sp: 0, sn: 30, at: 8, rl: 180, dr: 'Up' }),
-        'Reverse Auto Wah': Object.freeze({ md: 'Envelope', ft: 'Band-pass', lf: 180, hf: 2800, rs: 4, mx: 100, rt: 0.5, wf: 'Sine', sp: 0, sn: 30, at: 12, rl: 350, dr: 'Down' })
-    });
+    static getSystemPresetGroups() {
+        return [{ label: '', presets: AUTO_FILTER_SYSTEM_PRESETS.map(preset => ({ ...preset })) }];
+    }
 
     constructor() {
         super('Auto Filter', 'Sweeps a resonant filter with an LFO or the input envelope');
 
-        Object.assign(this, this.constructor.factoryStyles['Auto Filter Sweep']);
-        this.styleName = 'Auto Filter Sweep';
+        Object.assign(this, { md: 'LFO', ft: 'Low-pass', lf: 200, hf: 4000, rs: 1.5, mx: 80, rt: 0.5, wf: 'Sine', sp: 0, sn: 24, at: 20, rl: 250, dr: 'Up' });
         this._uiControls = null;
-        this._applyingStyleName = null;
 
         this.registerProcessor(`
             if (!parameters.enabled) return data;
@@ -293,22 +295,8 @@ class AutoFilterPlugin extends PluginBase {
         if (params.dr !== undefined && ['Up', 'Down'].includes(params.dr)) next.dr = params.dr;
 
         Object.assign(this, next);
-        if (this._applyingStyleName) {
-            this.styleName = this._applyingStyleName;
-        } else if (Object.keys(params).some(key =>
-            ['md', 'ft', 'lf', 'hf', 'rs', 'mx', 'rt', 'wf', 'sp', 'sn', 'at', 'rl', 'dr'].includes(key))) {
-            this.styleName = 'Custom';
-        }
         this._syncUI();
         this.updateParameters();
-    }
-
-    applyStyle(name) {
-        const style = this.constructor.factoryStyles[name];
-        if (!style) return;
-        this._applyingStyleName = name;
-        this.setParameters(style);
-        this._applyingStyleName = null;
     }
 
     _syncControl(row, value) {
@@ -335,7 +323,6 @@ class AutoFilterPlugin extends PluginBase {
 
     _syncUI() {
         if (!this._uiControls) return;
-        this._syncControl(this._uiControls.style, this.styleName);
         for (const key of ['md', 'ft', 'lf', 'hf', 'rs', 'mx', 'rt', 'wf', 'sp', 'sn', 'at', 'rl', 'dr']) {
             this._syncControl(this._uiControls[key], this[key]);
         }
@@ -362,9 +349,6 @@ class AutoFilterPlugin extends PluginBase {
         const container = document.createElement('div');
         container.className = 'auto-filter-plugin-ui plugin-parameter-ui';
         this._uiControls = {};
-        this._uiControls.style = this.createSelectControl(
-            'Style', ['Custom', ...Object.keys(this.constructor.factoryStyles)], this.styleName,
-            value => value !== 'Custom' && this.applyStyle(value), 'styleName');
         this._uiControls.md = this.createSelectControl('Mode', ['LFO', 'Envelope'], this.md, value => this.setParameters({ md: value }), 'md');
         this._uiControls.ft = this.createSelectControl('Filter Type', ['Low-pass', 'Band-pass', 'High-pass'], this.ft, value => this.setParameters({ ft: value }), 'ft');
         this._uiControls.lf = this.createLogarithmicParameterControl('Minimum Frequency', 20, 20000, 1, this.lf, value => this.setParameters({ lf: value }), 'Hz', 'lf');
@@ -378,7 +362,7 @@ class AutoFilterPlugin extends PluginBase {
         this._uiControls.at = this.createLogarithmicParameterControl('Attack', 1, 500, 1, this.at, value => this.setParameters({ at: value }), 'ms', 'at');
         this._uiControls.rl = this.createLogarithmicParameterControl('Release', 10, 2000, 1, this.rl, value => this.setParameters({ rl: value }), 'ms', 'rl');
         this._uiControls.dr = this.createSelectControl('Direction', ['Up', 'Down'], this.dr, value => this.setParameters({ dr: value }), 'dr');
-        for (const key of ['style', 'md', 'ft', 'lf', 'hf', 'rs', 'mx', 'rt', 'wf', 'sp', 'sn', 'at', 'rl', 'dr']) {
+        for (const key of ['md', 'ft', 'lf', 'hf', 'rs', 'mx', 'rt', 'wf', 'sp', 'sn', 'at', 'rl', 'dr']) {
             container.appendChild(this._uiControls[key]);
         }
         this._syncUI();

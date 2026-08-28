@@ -63,7 +63,7 @@ public:
         std::exp(-kTwoPi * static_cast<double>(params_.lowPassFrequency) /
                  static_cast<double>(sample_rate_));
     const double low_pass_input = 1.0 - low_pass_coefficient;
-    const double normalize_gain = 1.0 / (1.0 + level_gain);
+    const double normalize_gain = 1.0 / std::sqrt(1.0 + level_gain * level_gain);
     float *left = audio;
     float *right = audio + frame_count;
     const std::size_t size = delay_left_.size();

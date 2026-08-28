@@ -634,6 +634,68 @@ test('Graph asset resolution is deferred to effective streams and inherited from
   chain.close();
 });
 
+test('Graph keeps equal session seeds while assigning stable ordinals to two IR nodes', async () => {
+  const ir = new Float32Array(131072);
+  ir[0] = 1;
+  const payload = encodeEta1({
+    channels: [ir, ir],
+    sampleRate: 48000,
+    topology: 'independent'
+  });
+  const room = id => new IRReverb({
+    id,
+    assets: { impulseResponse: 'room-ir' },
+    channelMode: 'independent',
+    latency: 128,
+    convolutionRate: 'full',
+    dryEnabled: false,
+    dryLevel: -96
+  }).toJSON();
+  const graph = await createGraph({
+    version: 1,
+    input: { id: 'input' },
+    output: { id: 'output' },
+    nodes: [room('first-room'), room('second-room')],
+    edges: [
+      { id: 'first-in', source: 'input', destination: 'first-room' },
+      { id: 'first-out', source: 'first-room', destination: 'output' },
+      { id: 'second-in', source: 'input', destination: 'second-room' },
+      { id: 'second-out', source: 'second-room', destination: 'output' }
+    ]
+  }, {
+    variant: 'baseline',
+    assetResolver: () => payload
+  });
+  const open = () => graph.stream({
+    sampleRate: 48000,
+    channels: 2,
+    blockSize: 128,
+    seed: 0x12345678
+  });
+  const first = await open();
+  try {
+    assert.equal(first._session.seed, 0x12345678);
+    assert.deepEqual(
+      first._session.nodes.map(node => node.instanceId & 0xffff),
+      [1, 2]
+    );
+    first.reset();
+  } finally {
+    first.close();
+  }
+  const rebuilt = await open();
+  try {
+    assert.equal(rebuilt._session.seed, 0x12345678);
+    assert.deepEqual(
+      rebuilt._session.nodes.map(node => node.instanceId & 0xffff),
+      [1, 2]
+    );
+  } finally {
+    rebuilt.close();
+    graph.close();
+  }
+});
+
 test('Graph asset preparation failures name the node whose asset failed', async () => {
   const document = {
     version: 1,

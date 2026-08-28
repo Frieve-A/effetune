@@ -1214,9 +1214,9 @@ export class UIManager {
             masterToggle.title = this.t('ui.title.masterToggle');
         }
 
-        const presetSelect = document.getElementById('presetSelect');
-        if (presetSelect) {
-            presetSelect.title = this.t('ui.title.presetSelect');
+        const pipelinePresetButton = document.getElementById('pipelinePresetButton');
+        if (pipelinePresetButton) {
+            pipelinePresetButton.title = this.t('ui.title.pipelinePresets');
         }
 
         const undoButton = document.getElementById('undoButton');
@@ -1242,16 +1242,6 @@ export class UIManager {
         const pasteButton = document.getElementById('pasteButton');
         if (pasteButton) {
             pasteButton.title = this.t('ui.title.paste');
-        }
-
-        const savePresetButton = document.getElementById('savePresetButton');
-        if (savePresetButton) {
-            savePresetButton.title = this.t('ui.title.savePreset');
-        }
-
-        const deletePresetButton = document.getElementById('deletePresetButton');
-        if (deletePresetButton) {
-            deletePresetButton.title = this.t('ui.title.deletePreset');
         }
 
         if (shareButton) {
@@ -1449,11 +1439,7 @@ export class UIManager {
      * Initialize preset management by delegating to PipelineManager
      */
     initPresetManagement() {
-        // Get preset UI elements for reference
-        this.presetSelect = document.getElementById('presetSelect');
-        this.presetList = document.getElementById('presetList');
-        this.savePresetButton = document.getElementById('savePresetButton');
-        this.deletePresetButton = document.getElementById('deletePresetButton');
+        this.pipelinePresetButton = document.getElementById('pipelinePresetButton');
 
         // Delegate preset management to PipelineManager
         // PipelineManager already initializes these elements in its constructor
@@ -2192,10 +2178,6 @@ export class UIManager {
                 // Load the preset directly without affecting localStorage
                 this.pipelineManager.loadPreset(pipelineManagerPreset);
 
-                // Clear the preset combo box after loading from file
-                if (this.presetSelect) { // Added check
-                    this.presetSelect.value = '';
-                }
             } else if (preset.plugins && Array.isArray(preset.plugins)) {
                 // Old format with plugins array - can be passed directly
                 const presetName = preset.name || 'Imported Preset';
@@ -2209,10 +2191,6 @@ export class UIManager {
                 // Load the preset directly without affecting localStorage
                 this.pipelineManager.loadPreset(pipelineManagerPreset);
 
-                // Clear the preset combo box after loading from file
-                if (this.presetSelect) { // Added check
-                    this.presetSelect.value = '';
-                }
             } else {
                 this.setError('error.invalidPresetFormat', true);
             }

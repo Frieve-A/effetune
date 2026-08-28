@@ -870,6 +870,14 @@ Cada banda de frecuencia tiene controles independientes de modelado de transient
 
 Simula el comportamiento de caída de voltaje de amplificadores de potencia bajo cargas altas. Este efecto crea una compresión dinámica tipo amplificador al bajar suavemente el nivel en pasajes musicales exigentes y recuperarlo cuando el pasaje se relaja.
 
+### Preajustes del sistema
+
+Haz clic en **Preajustes de efecto** en la cabecera del efecto para empezar con un ajuste completo del comportamiento de la fuente de alimentación.
+
+- **Vintage Tube Sag** - Una caída pronunciada de la tensión de alimentación y una recuperación lenta.
+- **Modern Monoblocks** - Una respuesta estable con fuentes de alimentación independientes.
+- **Pushed Combo** - Una caída intensa de la tensión de la fuente compartida, seguida de su recuperación.
+
 ### Guía de Mejora de Escucha
 - Sistemas de Audio Vintage:
   - Recrea el carácter clásico del amplificador con compresión natural

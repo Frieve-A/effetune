@@ -21,7 +21,9 @@
       "key": "md",
       "kind": "enum",
       "values": ["both", "positive", "negative"],
-      "default": "both"
+      "step": 1,
+      "default": "both",
+      "automation": true
     }
   ]
 }

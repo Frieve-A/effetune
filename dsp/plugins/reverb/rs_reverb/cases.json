@@ -52,7 +52,7 @@
       ]
     },
     {
-      "id": "predelay-parameter-ignored",
+      "id": "predelay-parameter-active",
       "stimulus": "noise",
       "frames": 12001,
       "params": { "pd": 0, "rs": 2, "mx": 100 },

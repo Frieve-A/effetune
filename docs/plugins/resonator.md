@@ -24,6 +24,14 @@ A plugin that simulates the resonance of a horn-loaded speaker using a digital w
 - Natural horn ambience: adds vintage speaker coloration for richer listening.
 - Smooth high-frequency damping: prevents sharp peaks for a relaxed tone.
 
+### System Presets
+
+Click **Effect Presets** in the effect header to start with a complete horn character.
+
+- **Gramophone** - A strongly flared horn with an old acoustic-record-player color.
+- **Vintage Theater** - A large, low-reaching theater-horn response.
+- **Megaphone** - A short conical horn with a direct, emphatic midrange.
+
 ### Parameters
 
 - **Crossover (Hz)** - Sets the frequency split between the low-frequency path (delayed) and the high-frequency path processed by the horn model. (20–5000 Hz)
@@ -59,6 +67,14 @@ It is based on the same horn model as [Horn Resonator](#horn-resonator), with a 
 - Smoother horn color: adds horn-loaded speaker character with less sharp ringing.
 - Warmer presence: can make vocals, brass, and acoustic music feel more lively.
 - Natural high-frequency behavior: the upper range is closer to an acoustic horn or horn-loaded speaker than the standard version.
+
+### System Presets
+
+Click **Effect Presets** in the effect header to start with the same three complete horn characters, rendered by the smoother Plus model.
+
+- **Gramophone** - A strongly flared horn with an old acoustic-record-player color.
+- **Vintage Theater** - A large, low-reaching theater-horn response.
+- **Megaphone** - A short conical horn with a direct, emphatic midrange.
 
 ### Technical Enhancements
 
@@ -120,6 +136,14 @@ For each resonator:
 Global control:
 
 - **Mix (%)** - Balances the combined output of all enabled resonators against the original sound (0 to 100%).
+
+### System Presets
+
+Click **Effect Presets** in the effect header to load a complete resonance pattern.
+
+- **Wooden Body** - Low, longer-lived modes for a wooden enclosure character.
+- **Metal Can** - Higher, longer ringing modes with a metallic character.
+- **Plastic Enclosure** - Shorter, higher modes for a lightweight enclosure character.
 
 ### Recommended Settings for Listening Enhancement
 

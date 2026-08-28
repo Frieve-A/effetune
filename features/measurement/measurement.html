@@ -45,7 +45,7 @@
             <div class="new-measurement-btn-container">
                 <button id="newMeasurementBtn" class="primary-btn" data-i18n="button:newMeasurement">+ Start aNew Measurement</button>
                 <button id="importBtn" class="secondary-btn" data-i18n="button:import">Import</button>
-                <input type="file" id="importInput" accept=".json" style="display: none;">
+                <input type="file" id="importInput" accept=".json,.wav" style="display: none;">
             </div>
             <div class="measurement-history">
                 <h3 data-i18n="title:measurementHistory">Measurement History</h3>
@@ -91,64 +91,86 @@
                     <div class="explanation-text" data-i18n="help:audioOutput">Select the audio device that outputs the measurement signal.</div>
                     <div class="form-group">
                         <label for="outputChannel" data-i18n="label:outputChannel">Output Channel:</label>
-                        <select id="outputChannel" required>
-                            <option value="left" data-i18n="option:left">Left Channel</option>
-                            <option value="right" data-i18n="option:right">Right Channel</option>
-                            <option value="all" selected data-i18n="option:all">All Channels</option>
-                            <option value="2" data-i18n="option:ch3">Ch 3</option>
-                            <option value="3" data-i18n="option:ch4">Ch 4</option>
-                            <option value="4" data-i18n="option:ch5">Ch 5</option>
-                            <option value="5" data-i18n="option:ch6">Ch 6</option>
-                            <option value="6" data-i18n="option:ch7">Ch 7</option>
-                            <option value="7" data-i18n="option:ch8">Ch 8</option>
-                        </select>
+                        <div id="outputChannel" class="channel-checkbox-group">
+                            <label class="all-channels-choice"><input type="checkbox" value="all" checked><span data-i18n="option:all">All Channels</span></label>
+                            <div class="individual-channel-choices">
+                                <label><input type="checkbox" value="left"><span data-i18n="option:left">Left Channel</span></label>
+                                <label><input type="checkbox" value="right"><span data-i18n="option:right">Right Channel</span></label>
+                                <label><input type="checkbox" value="2"><span data-i18n="option:ch3">Ch 3</span></label>
+                                <label><input type="checkbox" value="3"><span data-i18n="option:ch4">Ch 4</span></label>
+                                <label><input type="checkbox" value="4"><span data-i18n="option:ch5">Ch 5</span></label>
+                                <label><input type="checkbox" value="5"><span data-i18n="option:ch6">Ch 6</span></label>
+                                <label><input type="checkbox" value="6"><span data-i18n="option:ch7">Ch 7</span></label>
+                                <label><input type="checkbox" value="7"><span data-i18n="option:ch8">Ch 8</span></label>
+                            </div>
+                        </div>
                     </div>
                     <div class="explanation-text" data-i18n="help:outputChannel">Specify the channel (left/right speaker or headphones, etc.) to measure.</div>
-                    <div class="form-group">
-                        <label for="sampleRate" data-i18n="label:sampleRate">Sampling Frequency:</label>
-                        <select id="sampleRate" required>
-                            <option value="44100" data-i18n="option:sampleRate44100">44.1 kHz</option>
-                            <option value="48000" selected data-i18n="option:sampleRate48000">48 kHz (Default)</option>
-                            <option value="88200" data-i18n="option:sampleRate88200">88.2 kHz</option>
-                            <option value="96000" data-i18n="option:sampleRate96000">96 kHz</option>
-                            <option value="176400" data-i18n="option:sampleRate176400">176.4 kHz</option>
-                            <option value="192000" data-i18n="option:sampleRate192000">192 kHz</option>
-                        </select>
-                    </div>
-                    <div class="explanation-text" data-i18n="help:sampleRate">Specify the sampling frequency when taking measurements.</div>
-                    <div class="form-group">
-                        <label for="sweepLength" data-i18n="label:sweepLength">Sweep Length (samples):</label>
-                        <select id="sweepLength" required>
-                            <option value="16384" data-i18n="option:sweepLength16384">16,384 (2¹⁴)</option>
-                            <option value="32768" data-i18n="option:sweepLength32768">32,768 (2¹⁵)</option>
-                            <option value="65536" data-i18n="option:sweepLength65536">65,536 (2¹⁶)</option>
-                            <option value="131072" selected data-i18n="option:sweepLength131072">131,072 (2¹⁷) - Default</option>
-                            <option value="262144" data-i18n="option:sweepLength262144">262,144 (2¹⁸)</option>
-                            <option value="524288" data-i18n="option:sweepLength524288">524,288 (2¹⁹)</option>
-                            <option value="1048576" data-i18n="option:sweepLength1048576">1,048,576 (2²⁰)</option>
-                        </select>
-                        <div class="explanation-text" data-i18n="help:sweepLength">Specifies the length of the measurement signal in samples.</div>
-                    </div>
-                    <div class="form-group">
-                        <label for="sweepBandLimited">
-                            <input type="checkbox" id="sweepBandLimited" checked>
-                            <span data-i18n="label:sweepBandLimited">Limit Sweep Bandwidth</span>
-                        </label>
-                        <div class="explanation-text" data-i18n="help:sweepBandLimited">When enabled, the TSP and test signal are limited to the frequency range below. When disabled, the TSP is played across the full available bandwidth.</div>
-                    </div>
-                    <div class="form-group">
-                        <label for="sweepMinFreq" data-i18n="label:sweepMinFreq">Sweep Minimum Frequency (Hz):</label>
-                        <input type="number" id="sweepMinFreq" required min="1" step="1" value="20">
-                        <div class="explanation-text" data-i18n="help:sweepMinFreq">The minimum frequency of the sweep signal in Hz. Range: 1 Hz to just below the Nyquist frequency of the selected sampling rate. (Default: 20 Hz)</div>
-                    </div>
-                    <div class="form-group">
-                        <label for="sweepMaxFreq" data-i18n="label:sweepMaxFreq">Sweep Maximum Frequency (Hz):</label>
-                        <input type="number" id="sweepMaxFreq" required min="1" step="1" value="20000">
-                        <div class="explanation-text" data-i18n="help:sweepMaxFreq">The maximum frequency of the sweep signal in Hz. Values above the Nyquist frequency of the selected sampling rate are automatically clamped. (Default: 20000 Hz)</div>
-                    </div>
-                    <div class="form-group">
-                        <label for="averaging" data-i18n="label:averaging">Synchronous Averaging:</label>
-                        <select id="averaging" required>
+                    <details id="advancedSettings" class="advanced-settings">
+                        <summary data-i18n="title:advancedSettings">Advanced Settings</summary>
+                        <div class="form-group">
+                            <label for="sampleRate" data-i18n="label:sampleRate">Sampling Frequency:</label>
+                            <select id="sampleRate" required>
+                                <option value="44100" data-i18n="option:sampleRate44100">44.1 kHz</option>
+                                <option value="48000" selected data-i18n="option:sampleRate48000">48 kHz (Default)</option>
+                                <option value="88200" data-i18n="option:sampleRate88200">88.2 kHz</option>
+                                <option value="96000" data-i18n="option:sampleRate96000">96 kHz</option>
+                                <option value="176400" data-i18n="option:sampleRate176400">176.4 kHz</option>
+                                <option value="192000" data-i18n="option:sampleRate192000">192 kHz</option>
+                            </select>
+                            <div class="explanation-text" data-i18n="help:sampleRate">Specify the sampling frequency when taking measurements.</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="sweepLength" data-i18n="label:sweepLength">Sweep Length (samples):</label>
+                            <select id="sweepLength" required>
+                                <option value="16384" data-i18n="option:sweepLength16384">16,384 (2¹⁴)</option>
+                                <option value="32768" data-i18n="option:sweepLength32768">32,768 (2¹⁵)</option>
+                                <option value="65536" data-i18n="option:sweepLength65536">65,536 (2¹⁶)</option>
+                                <option value="131072" selected data-i18n="option:sweepLength131072">131,072 (2¹⁷) - Default</option>
+                                <option value="262144" data-i18n="option:sweepLength262144">262,144 (2¹⁸)</option>
+                                <option value="524288" data-i18n="option:sweepLength524288">524,288 (2¹⁹)</option>
+                                <option value="1048576" data-i18n="option:sweepLength1048576">1,048,576 (2²⁰)</option>
+                            </select>
+                            <div class="explanation-text" data-i18n="help:sweepLength">Specifies the length of the measurement signal in samples.</div>
+                        </div>
+                        <div class="form-group">
+                            <span class="setting-label" data-i18n="label:sweepBandMode">Sweep Bandwidth:</span>
+                            <div id="sweepBandMode" class="radio-choice-group" role="radiogroup">
+                                <label><input type="radio" name="sweepBandMode" value="off"><span data-i18n="option:sweepBandOff">Off</span></label>
+                                <label><input type="radio" name="sweepBandMode" value="common" checked><span data-i18n="option:sweepBandCommon">All Channels</span></label>
+                                <label><input type="radio" name="sweepBandMode" value="perChannel"><span data-i18n="option:sweepBandPerChannel">Per Channel</span></label>
+                            </div>
+                            <div class="explanation-text" data-i18n="help:sweepBandMode">Choose whether to limit the sweep bandwidth, and whether the limit is shared by all output channels or set for each channel.</div>
+                        </div>
+                        <div id="sweepBandCommonInputs" class="sweep-band-inputs" hidden>
+                            <div class="form-group">
+                                <label for="sweepMinFreq" data-i18n="label:sweepMinFreq">Sweep Minimum Frequency (Hz):</label>
+                                <input type="number" id="sweepMinFreq" required min="1" step="1" value="20">
+                                <div class="explanation-text" data-i18n="help:sweepMinFreq">The minimum frequency of the sweep signal in Hz. Range: 1 Hz to just below the Nyquist frequency of the selected sampling rate. (Default: 20 Hz)</div>
+                            </div>
+                            <div class="form-group">
+                                <label for="sweepMaxFreq" data-i18n="label:sweepMaxFreq">Sweep Maximum Frequency (Hz):</label>
+                                <input type="number" id="sweepMaxFreq" required min="1" step="1" value="20000">
+                                <div class="explanation-text" data-i18n="help:sweepMaxFreq">The maximum frequency of the sweep signal in Hz. Values above the Nyquist frequency of the selected sampling rate are automatically clamped. (Default: 20000 Hz)</div>
+                            </div>
+                        </div>
+                        <div id="sweepBandChannelInputs" class="sweep-band-inputs" hidden>
+                            <div class="form-group">
+                                <span id="sweepBandChannelLabel" class="setting-label" data-i18n="label:sweepBandChannel">Output Channel:</span>
+                                <div id="sweepBandChannel" class="radio-choice-group" role="radiogroup" aria-labelledby="sweepBandChannelLabel"></div>
+                            </div>
+                            <div class="form-group">
+                                <label for="sweepBandChannelMinFreq" data-i18n="label:sweepMinFreq">Sweep Minimum Frequency (Hz):</label>
+                                <input type="number" id="sweepBandChannelMinFreq" required min="1" step="1" value="20">
+                            </div>
+                            <div class="form-group">
+                                <label for="sweepBandChannelMaxFreq" data-i18n="label:sweepMaxFreq">Sweep Maximum Frequency (Hz):</label>
+                                <input type="number" id="sweepBandChannelMaxFreq" required min="1" step="1" value="20000">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="averaging" data-i18n="label:averaging">Synchronous Averaging:</label>
+                            <select id="averaging" required>
                             <option value="1" data-i18n="option:averaging1">1</option>
                             <option value="2" data-i18n="option:averaging2">2</option>
                             <option value="3" data-i18n="option:averaging3">3</option>
@@ -160,16 +182,25 @@
                             <option value="10" data-i18n="option:averaging10">10</option>
                             <option value="12" data-i18n="option:averaging12">12</option>
                             <option value="16" data-i18n="option:averaging16">16</option>
-                        </select>
-                        <div class="explanation-text" data-i18n="help:averaging">Specify the number of times to repeat the measurement at the same measurement point for more accurate measurement.</div>
-                    </div>
-                    <div class="form-group">
-                        <label for="interfaceCalibration" data-i18n="label:interfaceCalibration">Audio Interface Calibration:</label>
-                        <select id="interfaceCalibration">
+                            </select>
+                            <div class="explanation-text" data-i18n="help:averaging">Specify the number of times to repeat the measurement at the same measurement point for more accurate measurement.</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="interfaceCalibration" data-i18n="label:interfaceCalibration">Audio Interface Calibration:</label>
+                            <select id="interfaceCalibration">
                             <option value="" data-i18n="option:noInterfaceCalibration">None (uncalibrated)</option>
-                        </select>
-                        <div id="interfaceCalibrationHelp" class="explanation-text" data-i18n="help:interfaceCalibration">Use a saved loopback measurement to remove the audio interface response. Keep the same interface, input/output channels, sampling rate, and input/output gains, and do not change the gains after the calibration measurement.</div>
-                    </div>
+                            </select>
+                            <div id="interfaceCalibrationHelp" class="explanation-text" data-i18n="help:interfaceCalibration">Use a saved loopback measurement to remove the audio interface response. Keep the same interface, input/output channels, sampling rate, and input/output gains, and do not change the gains after the calibration measurement.</div>
+                            <div id="calibrationAssignmentControls" hidden>
+                            <label for="calibrationAssignMode" data-i18n="label:calibrationAssignMode">Calibration Assignment:</label>
+                            <select id="calibrationAssignMode">
+                                <option value="common" data-i18n="option:calibrationCommon">Common</option>
+                                <option value="perChannel" data-i18n="option:calibrationPerChannel">Per Channel</option>
+                            </select>
+                                <div id="perChannelCalibrationRows"></div>
+                            </div>
+                        </div>
+                    </details>
                     <div class="form-actions">
                         <button type="submit" class="primary-btn" data-i18n="button:next">Next</button>
                     </div>
@@ -188,6 +219,15 @@
                         <input type="range" id="noiseLevel" min="-36" max="0" value="-6" step="1">
                     </div>
                     <div class="explanation-text" data-i18n="help:signalLevel">Adjust the level of the measurement signal that is played back for measurement.</div>
+                    <div id="noiseChannelControls" hidden>
+                        <span class="setting-label" data-i18n="label:noiseChannel">Test Signal Channel:</span>
+                        <div id="noiseChannel" class="radio-choice-group" role="radiogroup"></div>
+                        <span class="setting-label" data-i18n="label:noiseChannelMode">Channel Mode:</span>
+                        <div id="noiseChannelMode" class="radio-choice-group" role="radiogroup">
+                            <label><input type="radio" name="noiseChannelMode" value="manual"><span data-i18n="option:noiseModeManual">Manual</span></label>
+                            <label><input type="radio" name="noiseChannelMode" value="auto" checked><span data-i18n="option:noiseModeAuto">Auto</span></label>
+                        </div>
+                    </div>
                 </div>
                 <div class="level-meter-container">
                     <h3 data-i18n="title:inputLevel">Input Level</h3>
@@ -219,6 +259,7 @@
                 </div>
                 <div class="measurement-progress">
                     <h3 data-i18n="title:inputLevel">Input Level</h3>
+                    <div id="sweepChannelProgress" hidden></div>
                     <canvas id="levelGraph" width="800" height="200"></canvas>
                     <div class="explanation-text" data-i18n="help:measurement">The measurement signal for one extra measurement plus the number of measurements is reproduced.</div>
                 </div>
@@ -228,9 +269,18 @@
                     <div id="loading-spinner-measurement" class="loading-spinner"></div>
                 </div>
                 <div class="measurement-actions">
-                    <button id="redoBtn" class="secondary-btn" data-i18n="button:redo">Redo</button>
-                    <button id="saveAndContinueBtn" class="primary-btn" data-i18n="button:saveAndContinue">Save and Measure Another Point</button>
-                    <button id="saveAndFinishBtn" class="primary-btn" data-i18n="button:saveAndFinish">Save and Finish</button>
+                    <div class="measurement-actions-channel-redo">
+                        <label id="redoChannelLabel" for="redoChannelSelect" hidden data-i18n="label:redoChannel">Channel:</label>
+                        <select id="redoChannelSelect" hidden></select>
+                        <button id="redoChannelBtn" class="secondary-btn" hidden data-i18n="button:redoChannel">Redo Channel</button>
+                    </div>
+                    <div class="measurement-actions-default">
+                        <button id="redoBtn" class="secondary-btn" data-i18n="button:redo">Redo</button>
+                        <div class="measurement-actions-save">
+                            <button id="saveAndContinueBtn" class="primary-btn" data-i18n="button:saveAndContinue">Save and Measure Another Point</button>
+                            <button id="saveAndFinishBtn" class="primary-btn" data-i18n="button:saveAndFinish">Save and Finish</button>
+                        </div>
+                    </div>
                 </div>
                 <div id="measurementActionsExplanation" class="explanation-text" data-i18n="help:measurementActions">Click Redo to discard this measurement and measure again.
                     Click Save and Measure Another Point to save this measurement and measure another point to improve the correction accuracy (measurement starts immediately after clicking the button).
@@ -252,6 +302,7 @@
                     <div class="measurement-points">
                         <h3 data-i18n="title:measurementPoints">Measurement Points</h3>
                         <div id="pointsGrid" class="points-grid"></div>
+                        <div id="resultsChannelFilter" class="channel-filter" hidden></div>
                     </div>
                     <div class="frequency-response">
                         <h3 data-i18n="title:frequencyResponse">Frequency Response</h3>
@@ -264,6 +315,7 @@
                             <canvas id="resultsGraph" width="800" height="400"></canvas>
                             <div id="loading-spinner-results" class="loading-spinner"></div>
                         </div>
+                        <div id="resultsChannelLegend" class="channel-legend" hidden></div>
                         <div class="correction-controls">
                             <div class="control-row">
                                 <label for="smoothing" data-i18n="label:smoothing">Smoothing (σ):</label>
@@ -300,10 +352,15 @@
                         </div>
                     </div>
                     <div class="export-section">
-                        <button id="copyPEQBtn" class="primary-btn" data-i18n="button:copyPEQ">Copy EffeTune PEQ settings to clipboard</button>
-                        <button id="exportTxtBtn" class="secondary-btn" data-i18n="button:exportTxt">Export Correction Parameters (txt)</button>
-                        <button id="exportCSVBtn" class="secondary-btn" data-i18n="button:exportCSV">Export Correction Parameters (CSV)</button>
-                        <div class="explanation-text" data-i18n="help:exportOptions">The copied frequency correction settings can be pasted into EffeTune's Effect Pipeline by Ctrl+V.</div>
+                        <div class="export-actions-row">
+                            <button id="copyPEQBtn" class="primary-btn" data-i18n="button:copyPEQ">Copy EffeTune PEQ settings to clipboard</button>
+                            <button id="copyChannelPEQBtn" class="primary-btn" hidden data-i18n="button:copyChannelPEQ">Copy Channel PEQ Settings</button>
+                        </div>
+                        <div class="explanation-text export-copy-help" data-i18n="help:exportOptions">The copied frequency correction settings can be pasted into EffeTune's Effect Pipeline by Ctrl+V.</div>
+                        <div class="export-actions-row">
+                            <button id="exportTxtBtn" class="secondary-btn" data-i18n="button:exportTxt">Export Correction Parameters (txt)</button>
+                            <button id="exportCSVBtn" class="secondary-btn" data-i18n="button:exportCSV">Export Correction Parameters (CSV)</button>
+                        </div>
                         <div id="impulseResponseSection" class="impulse-response-section" hidden>
                             <h3 data-i18n="title:impulseResponse">Impulse Response</h3>
                             <div class="impulse-response-meta">
@@ -326,7 +383,7 @@
                             </div>
                         </div>
                         <label class="measurement-ir-export-option">
-                            <input id="includeImpulseResponses" type="checkbox">
+                            <input id="includeImpulseResponses" type="checkbox" checked>
                             <span data-i18n="label:includeImpulseResponses">Include impulse responses in measurement JSON exports</span>
                         </label>
                         <div class="explanation-text" data-i18n="help:includeImpulseResponses">Impulse responses can make the exported file tens of megabytes larger.</div>

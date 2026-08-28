@@ -5,6 +5,8 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
+import { MeasurementStore } from '../../js/measurement-store/client.js';
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const pluginSource = await fs.readFile(path.join(repoRoot, 'plugins', 'eq', 'room_eq.js'), 'utf8');
 const pluginCss = await fs.readFile(path.join(repoRoot, 'plugins', 'eq', 'room_eq.css'), 'utf8');
@@ -2326,6 +2328,81 @@ function measurementStoreStub(measurements, impulses = {}) {
     };
 }
 
+test('Room EQ resolves virtual multichannel measurements with matching reference point ids', async () => {
+    const measurement = {
+        id: 'measurement_virtual',
+        outputChannel: 'multi',
+        outputChannels: ['left', 'right'],
+        channelResponses: [
+            { channel: 'left', averageFrequencyResponse: [[1000, -2]] },
+            { channel: 'right', averageFrequencyResponse: [[1000, -3]] }
+        ],
+        points: [
+            {
+                pointId: 4,
+                channels: [
+                    { channel: 'left', frequencyResponse: [[1000, -2]], irId: 11, ir: { stored: true } },
+                    { channel: 'right', frequencyResponse: [[1000, -3]], irId: 12, ir: { stored: true } }
+                ]
+            },
+            {
+                pointId: 9,
+                channels: [
+                    { channel: 'left', frequencyResponse: [[1000, -1]], irId: 21, ir: { stored: true } },
+                    { channel: 'right', frequencyResponse: [[1000, -4]], irId: 22, ir: { stored: true } }
+                ]
+            }
+        ]
+    };
+    const impulses = [
+        [11, 'left', 0.1], [12, 'right', 0.2], [21, 'left', 0.3], [22, 'right', 0.4]
+    ].map(([pointId, channel, value]) => ({
+        measurementId: measurement.id,
+        pointId,
+        channel,
+        sampleRate: 48000,
+        onsetIndex: 0,
+        data: Float32Array.from([value])
+    }));
+    const request = result => {
+        const pending = {};
+        queueMicrotask(() => {
+            pending.result = structuredClone(result);
+            pending.onsuccess?.();
+        });
+        return pending;
+    };
+    const database = {
+        objectStoreNames: { contains: name => name === 'impulseResponses' || name === 'measurements' },
+        transaction: () => ({
+            objectStore: name => name === 'measurements'
+                ? { get: id => request(id === measurement.id ? measurement : null) }
+                : {
+                    indexNames: { contains: index => index === 'measurementId' },
+                    index: () => ({ getAll: id => request(id === measurement.id ? impulses : []) })
+                }
+        }),
+        close() {}
+    };
+    const store = new MeasurementStore(database);
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    plugin.channel = 'A';
+    plugin._outputChannelCount = 2;
+    plugin.channelMeasurementIds[0] = `${measurement.id}::ch=left`;
+    plugin.channelMeasurementIds[1] = `${measurement.id}::ch=right`;
+    plugin._getRuntime = async () => ({ selectedIrChannelCount: () => 2 });
+
+    const result = await plugin._sourcesFor(store);
+
+    assert.equal(result.supportsFullPhase, true);
+    assert.deepEqual(
+        Array.from(result.sources, source => source.impulses.map(impulse => impulse.pointId)),
+        [[4, 9], [4, 9]]
+    );
+    plugin.cleanup();
+});
+
 function channelElementStub(tagName) {
     return {
         tagName,
@@ -2556,6 +2633,55 @@ test('Room EQ round-trips an assigned channel measurement through its preset', (
         ['Left seat', '', '', 'Surround seat', '', '', '', '']);
     assert.equal(restored.measurementId, 'shared');
     plugin.cleanup();
+    restored.cleanup();
+});
+
+test('Room EQ serialized restoration clears omitted channel measurements without changing partial updates', () => {
+    const { Plugin } = loadPlugin();
+    const common = new Plugin();
+    common.setParameters({ ms: 'shared', mn: 'Shared seat' });
+    const serialized = common.getSerializableParameters();
+    delete serialized.enabled;
+    delete serialized.ib;
+    delete serialized.ob;
+    delete serialized.ch;
+    const restored = new Plugin();
+    restored.id = 41;
+    restored.setParameters({
+        enabled: false,
+        inputBus: 2,
+        outputBus: 3,
+        channel: 'R',
+        ms0: 'left',
+        mn0: 'Left seat',
+        ms3: 'surround',
+        mn3: 'Surround seat'
+    });
+
+    restored.setSerializedParameters(serialized);
+    assert.equal(restored.measurementId, 'shared');
+    assert.equal(restored.measurementName, 'Shared seat');
+    assert.deepEqual(Array.from(restored.channelMeasurementIds), Array(8).fill(''));
+    assert.deepEqual(Array.from(restored.channelMeasurementNames), Array(8).fill(''));
+    assert.deepEqual(
+        {
+            id: restored.id,
+            enabled: restored.enabled,
+            inputBus: restored.inputBus,
+            outputBus: restored.outputBus,
+            channel: restored.channel
+        },
+        { id: 41, enabled: false, inputBus: 2, outputBus: 3, channel: 'R' }
+    );
+
+    restored.setParameters({ ms0: 'replacement', mn0: 'Replacement seat' });
+    assert.deepEqual(Array.from(restored.channelMeasurementIds), [
+        'replacement', '', '', '', '', '', '', ''
+    ]);
+    assert.deepEqual(Array.from(restored.channelMeasurementNames), [
+        'Replacement seat', '', '', '', '', '', '', ''
+    ]);
+    common.cleanup();
     restored.cleanup();
 });
 

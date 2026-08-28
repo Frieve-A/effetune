@@ -16,7 +16,6 @@
     { "type": "Oscillator", "parameters": { "volume": -12 } },
     { "type": "SWRadioSimulator", "parameters": {} },
     { "type": "TapeArtifacts", "parameters": { "hiss": -45 } },
-    { "type": "TubeSimulator", "parameters": { "outputStage": "Line" } },
     {
       "type": "VinylArtifacts",
       "parameters": {

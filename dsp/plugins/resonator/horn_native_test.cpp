@@ -32,7 +32,7 @@ void check(bool condition, const char *expression, int line) noexcept {
 using AudioBuffer = std::array<float, kFrames * kMaxChannels>;
 using ParamBuffer = std::array<float, kParamCount>;
 
-ParamBuffer defaultParams(float waveguide_gain = 30.0F) noexcept {
+ParamBuffer defaultParams(float waveguide_gain = 26.0F) noexcept {
   return {600.0F, 70.0F, 3.0F, 60.0F, 40.0F, 0.03F, 0.99F, waveguide_gain};
 }
 

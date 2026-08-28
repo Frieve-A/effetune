@@ -63,6 +63,14 @@ Bandwidth Extenderでは、処理ホップ1回分を含めて約26.7～29.0 ms�
   - 共鳴的なスピーカーのような挙動を作成
   - 実験的なリスニング向けの、大胆で変化するキャラクターを作る
 
+### システムプリセット
+
+エフェクト見出しの**エフェクトプリセット**で、コーンの動きを含む設定全体を比較できます。
+
+- **Subtle Cone Color** - 控えめで、ほぼクリーンなスピーカーコーンのキャラクター。
+- **Pushed Speaker** - 出力補償を伴う、より強いコーンの動きとサチュレーション。
+- **Ragged Cone** - 意図的に粗さを出す、最も強いコーンのキャラクター。
+
 ### パラメータ
 - **Speaker Drive** (0.0-10.0) - オーディオ信号がコーンを動かす強さを制御
   - 低い値: わずかな動きと穏やかな効果
@@ -508,7 +516,7 @@ Tube Simulatorは、真空管のライン段とパワーアンプ回路による
 
 ### パネルの構成
 
-各コントロールは**Preset**の下にある5つのタブに分かれています。
+各コントロールは5つのタブに分かれています。
 
 - **Input** - Input Volume、Input Reference、Source Z
 - **Driver** - Driver Type、Bias、Plate、Supply、Negative Feedback
@@ -516,17 +524,16 @@ Tube Simulatorは、真空管のライン段とパワーアンプ回路による
 - **Transformer** - Screen Tap、Push-Pull Primary、SE Primary、Assumed Speaker Load、Actual Speaker Load
 - **Output** - Output Trim、Output Safety Trim、Auto Gain Reduction、Wet/Dry Mix
 
-PowerとTransformerタブには、選択したOutput Circuitで使うコントロールだけが表示されます。プリセットから回路や音色のパラメータを変えると**Custom**になります。
+PowerとTransformerタブには、選択したOutput Circuitで使うコントロールだけが表示されます。
 
 ### プリセットの選び方
 
-Tube Simulatorは**EL84 Pentode @2%**で起動し、回路や音色のパラメーターを変更するとプリセット名が**Custom**になりますが、**Output Safety Trim**と**Auto Gain Reduction**はプリセット照合の対象外なので、変更してもプリセット名は変わりません。
+エフェクトヘッダーの **エフェクトプリセット** ボタンをクリックすると、プリセットダイアログが開きます。システムプリセットのPre、Power、Pre+Powerグループから選ぶと、すぐに適用されます。現在の設定に一致するプリセットはハイライトされ、一致するものがなければどのプリセットもハイライトされません。初期設定は **EL84 Pentode @2%** に一致します。**Output Safety Trim** と **Auto Gain Reduction** は照合に使われないため、変更してもハイライトは外れません。
 
 プリセット名の末尾は効果の強さの目安です。**@0.01%**は非常に控えめ、**@0.1%**は軽い色付け、**@1%**や**@2%**は倍音と圧縮が分かりやすい設定です。プリセット間を比較するときは、音量差による印象の違いを避けるためOutput Trimで聴感上の音量をそろえてください。
 
 ### パラメータ
 
-- **Preset** - Pre、Power、Pre+Powerの設定を読み込む
 - **Input Volume** (-96〜0dB) - 選択した信号経路を駆動するレベルを下げる
   - 0dBが全開。値を下げるほど内部の駆動電圧が減り、ヘッドルームが広がる
 - **Driver Type** (12AX7、12AT7、12AU7、Bypass) - 2段ドライバーの真空管を選ぶか、そのドライバーを信号経路から外す

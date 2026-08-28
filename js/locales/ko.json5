@@ -3,6 +3,10 @@
   "error.invalidUrl": "잘못된 URL 매개변수: {message}",
   "error.invalidPresetData": "잘못된 프리셋 데이터",
   "error.failedToLoadPreset": "프리셋 로드 실패",
+  "error.failedToSavePreset": "프리셋을 저장하지 못했습니다",
+  "error.failedToDeletePreset": "프리셋을 삭제하지 못했습니다",
+  "error.failedToSavePluginPreset": "프리셋을 저장하지 못했습니다",
+  "error.failedToDeletePluginPreset": "프리셋을 삭제하지 못했습니다",
   "error.noPresetSelected": "선택된 프리셋이 없습니다",
   "error.failedToCutSettings": "설정을 클립보드로 잘라내기 실패",
   "error.failedToCopySettings": "설정을 클립보드로 복사 실패",
@@ -68,6 +72,12 @@
   "ui.sleepMode": "절전 모드",
   "ui.whatsThisApp": "이 앱은 무엇인가요?",
   "ui.newVersionAvailable": "새 {version}을 사용할 수 있습니다.",
+  "ui.pluginPresets.namePlaceholder": "프리셋 이름",
+  "ui.pluginPresets.save": "저장",
+  "ui.pluginPresets.rename": "이름 변경",
+  "ui.pluginPresets.deleteSelected": "선택 항목 삭제",
+  "ui.pluginPresets.noUserPresets": "저장된 프리셋이 없습니다",
+  "ui.pluginPresets.confirmDeleteSelected": "선택한 프리셋을 삭제할까요?",
 
   // Hints displayed when hovering over UI
   "ui.title.openMusic": "음악 파일 열기",
@@ -84,8 +94,8 @@
   "ui.title.cut": "이펙트 잘라내기",
   "ui.title.copy": "이펙트 복사",
   "ui.title.paste": "이펙트 붙여넣기",
-  "ui.title.savePreset": "프리셋 저장",
-  "ui.title.deletePreset": "프리셋 삭제",
+  "ui.title.effectPresets": "효과 프리셋",
+  "ui.title.pipelinePresets": "효과 체인 프리셋",
   "ui.title.sharePipeline": "파이프라인 공유",
   "ui.title.decreaseColumns": "열 축소",
   "ui.title.increaseColumns": "열 확대",
@@ -112,7 +122,6 @@
   "ui.title.close": "닫기",
   "ui.title.expand": "클릭하여 확장",
   "ui.title.collapse": "클릭하여 축소",
-  "ui.title.presetSelect": "사용자 프리셋 이름 입력 및 로드\nESC 키로 텍스트 지우고 전체 항목 표시",
   "ui.mobileNav.primary": "모바일 기본 내비게이션",
   "ui.mobileNav.player": "플레이어",
   "ui.mobileNav.library": "라이브러리",
@@ -448,7 +457,7 @@
   // 트레이 메뉴
   "trayMenuOpen": "열기",
   "trayMenuQuit": "종료",
-  "trayMenuPresets": "프리셋",
+  "trayMenuPresets": "효과 체인 프리셋",
 
   // 외부 에셋 및 IR Reverb
   "externalAsset.warning": "이 파이프라인은 외부 {kinds} 데이터를 참조합니다. 파일은 포함되지 않으므로 받는 사람도 같은 파일을 가져와야 합니다.",

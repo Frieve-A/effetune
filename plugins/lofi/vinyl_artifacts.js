@@ -1,4 +1,35 @@
+const VINYL_ARTIFACTS_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({
+        id: 'gentle-patina', label: 'Gentle Patina',
+        params: Object.freeze({
+            pp: 5, pl: -36, cm: 150, cl: -45, hs: -54, rb: -60,
+            xt: 40, tn: 5, wr: 50, rt: 25, rm: 'Velocity', mx: 100
+        })
+    }),
+    Object.freeze({
+        id: 'thrift-store-copy', label: 'Thrift Store Copy',
+        params: Object.freeze({
+            pp: 90, pl: -18, cm: 1600, cl: -24, hs: -36, rb: -42,
+            xt: 80, tn: 10, wr: 200, rt: 40, rm: 'Velocity', mx: 100
+        })
+    }),
+    Object.freeze({
+        id: 'rumbly-old-player', label: 'Rumbly Old Player',
+        params: Object.freeze({
+            pp: 20, pl: -24, cm: 500, cl: -33, hs: -42, rb: -40,
+            xt: 60, tn: 10, wr: 100, rt: 25, rm: 'Velocity', mx: 100
+        })
+    })
+]);
+
 class VinylArtifactsPlugin extends PluginBase {
+    static getSystemPresetGroups() {
+        return [{
+            label: '',
+            presets: VINYL_ARTIFACTS_SYSTEM_PRESETS.map(preset => ({ ...preset }))
+        }];
+    }
+
     constructor() {
         super('Vinyl Artifacts', 'Analog record noise physical simulation');
         
@@ -10,7 +41,7 @@ class VinylArtifactsPlugin extends PluginBase {
         this.hs = -42.0;
         this.rb = -50.0;
         this.xt = 60;
-        this.tn = 0.0;
+        this.tn = 10.0;
         this.wr = 100;
         this.rt = 25;
         this.rm = 'Velocity';
@@ -160,7 +191,7 @@ class VinylArtifactsPlugin extends PluginBase {
             const MIN_DB_LEVEL = -80.0;
             const invSampleRate = 1.0 / sampleRate;
             const reactAmount = rt / 100.0;
-            const profileRatio = tn / 10.0;
+            const profileRatio = 1 - tn / 10.0;
             const lowShelfDb = 20.0 * (1.0 - profileRatio); 
             const highShelfDb = -20.0 * (1.0 - profileRatio);
             
@@ -422,7 +453,7 @@ class VinylArtifactsPlugin extends PluginBase {
         c.appendChild(this.createParameterControl('Hiss', UNIFIED_DB_MIN, UNIFIED_DB_MAX, DB_STEP, this.hs, v => this.setParameters({ hs: v }), 'dB', 'hs'));
         c.appendChild(this.createParameterControl('Rumble', UNIFIED_DB_MIN, UNIFIED_DB_MAX, DB_STEP, this.rb, v => this.setParameters({ rb: v }), 'dB', 'rb'));
         c.appendChild(this.createParameterControl('Crosstalk', 0, 100, 1, this.xt, v => this.setParameters({ xt: v }), '%', 'xt'));
-        c.appendChild(this.createParameterControl('Noise Profile', 0, 10, 0.1, this.tn, v => this.setParameters({ tn: v }), '', 'tn'));
+        c.appendChild(this.createParameterControl('Noise Tone', 0, 10, 0.1, this.tn, v => this.setParameters({ tn: v }), '', 'tn'));
         c.appendChild(this.createParameterControl('Wear', 0, 200, 1, this.wr, v => this.setParameters({ wr: v }), '%', 'wr'));
         c.appendChild(this.createParameterControl('React', 0, 100, 1, this.rt, v => this.setParameters({ rt: v }), '%', 'rt'));
         const r = document.createElement('div'); r.className = 'parameter-row'; const l = document.createElement('label'); l.textContent = 'React Mode:'; r.appendChild(l);

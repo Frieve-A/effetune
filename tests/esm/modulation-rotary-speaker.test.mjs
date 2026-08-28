@@ -106,7 +106,7 @@ function processorParameters(plugin, overrides = {}) {
   };
 }
 
-test('Rotary Speaker validates its compact ABI and factory styles', async () => {
+test('Rotary Speaker validates its compact ABI and system presets', async () => {
   const Plugin = await loadPlugin();
   const plugin = new Plugin();
   plugin.createUI();
@@ -119,21 +119,19 @@ test('Rotary Speaker validates its compact ABI and factory styles', async () => 
   assert.equal(plugin.ac, 0.1);
   assert.equal(plugin.xo, 2000);
   assert.equal(plugin.rb, -100);
-  assert.equal(plugin.style, 'Custom');
-  assert.equal('style' in plugin.getParameters(), false);
   assertControls(plugin, {
-    style: 'Custom', ss: 'Fast', sp: 200, ac: 0.1, xo: 2000,
+    ss: 'Fast', sp: 200, ac: 0.1, xo: 2000,
     rb: -100, sw: 75, dd: 45, ad: 55, mx: 70
   });
 
-  plugin.setStyle('Leslie Slow');
-  assert.equal(plugin.style, 'Leslie Slow');
+  plugin.setParameters(Plugin.getSystemPresetGroups()[0].presets
+    .find(preset => preset.id === 'vintage-rotor-slow').params);
   assert.equal(plugin.ss, 'Slow');
   assertControls(plugin, {
-    style: 'Leslie Slow', ss: 'Slow', sp: 100, ac: 2.8, xo: 800,
+    ss: 'Slow', sp: 100, ac: 2.8, xo: 800,
     rb: -5, sw: 80, dd: 50, ad: 60, mx: 75
   });
-  assert.deepEqual(Array.from(Plugin.searchAliases), ['Leslie', 'Rotary']);
+  assert.deepEqual(Array.from(Plugin.searchAliases), ['Rotary']);
 });
 
 test('Rotary Speaker is bit-transparent at zero mix', async () => {

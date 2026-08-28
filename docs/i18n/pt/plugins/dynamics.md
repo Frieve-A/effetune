@@ -877,6 +877,14 @@ Cada banda de frequência tem controles independentes de moldagem de transientes
 
 Simula o comportamento de queda de tensão de amplificadores de potência sob condições de alta carga. Este efeito cria uma compressão dinâmica semelhante à de amplificador, reduzindo suavemente o nível em passagens musicais exigentes e se recuperando quando a passagem relaxa.
 
+### Predefinições do sistema
+
+Clique em **Predefinições de efeito** no cabeçalho do efeito para começar com uma configuração completa do comportamento da fonte de alimentação.
+
+- **Vintage Tube Sag** - Uma queda acentuada da tensão de alimentação e uma recuperação lenta.
+- **Modern Monoblocks** - Uma resposta estável com fontes de alimentação independentes.
+- **Pushed Combo** - Uma forte queda da tensão da fonte compartilhada, seguida de recuperação.
+
 ### Guia de Aprimoramento da Audição
 - Sistemas de Áudio Vintage:
   - Recria o caráter clássico do amplificador com compressão natural

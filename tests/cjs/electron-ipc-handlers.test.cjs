@@ -164,7 +164,7 @@ function createMenuState() {
 function createHarness(options = {}) {
   const calls = [];
   const ipcMain = createIpcMain();
-  const tempDir = createTempDir('effetune-ipc-handlers');
+  const tempDir = fs.realpathSync(createTempDir('effetune-ipc-handlers'));
   let mainWindow = Object.prototype.hasOwnProperty.call(options, 'mainWindow')
     ? options.mainWindow
     : createMainWindow(calls, options.mainWindowOptions);
@@ -596,13 +596,16 @@ test('save-file blocks settings-dir writes and Windows alias bypasses of the mir
     }
 
     const presetsPath = path.join(tempDir, 'effetune_presets.json');
+    const pluginPresetsPath = path.join(tempDir, 'effetune_plugin_presets.json');
     const playerStatePath = path.join(tempDir, 'player-state.json');
     const outsidePath = path.join(path.dirname(tempDir), `effetune-outside-${path.basename(tempDir)}.txt`);
 
     assert.deepEqual(await ipcMain.handlers.get('save-file')({}, presetsPath, '{}'), { success: true });
+    assert.deepEqual(await ipcMain.handlers.get('save-file')({}, pluginPresetsPath, '{}'), { success: true });
     assert.deepEqual(await ipcMain.handlers.get('save-file')({}, playerStatePath, '{}'), { success: true });
     assert.deepEqual(await ipcMain.handlers.get('save-file')({}, outsidePath, 'outside'), { success: true });
     assert.equal(saveFileWasCalledFor(presetsPath), true);
+    assert.equal(saveFileWasCalledFor(pluginPresetsPath), true);
     assert.equal(saveFileWasCalledFor(playerStatePath), true);
     assert.equal(saveFileWasCalledFor(outsidePath), true);
   });

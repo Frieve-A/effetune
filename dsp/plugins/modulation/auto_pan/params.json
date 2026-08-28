@@ -6,7 +6,7 @@
     { "name": "depth", "key": "dp", "kind": "float", "min": 0, "max": 100, "step": 1, "default": 45, "unit": "%", "automation": true },
     { "name": "center", "key": "ct", "kind": "float", "min": -100, "max": 100, "step": 1, "default": 0, "unit": "%", "automation": true },
     { "name": "width", "key": "wd", "kind": "float", "min": 0, "max": 100, "step": 1, "default": 70, "unit": "%", "automation": true },
-    { "name": "waveform", "key": "wf", "kind": "enum", "values": ["Sine", "Triangle"], "default": "Sine" },
+    { "name": "waveform", "key": "wf", "kind": "enum", "values": ["Sine", "Triangle"], "step": 1, "default": "Sine", "automation": true },
     { "name": "phase", "key": "ph", "kind": "float", "min": 0, "max": 360, "step": 1, "default": 0, "unit": "deg", "automation": true }
   ]
 }

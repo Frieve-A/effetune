@@ -101,7 +101,7 @@ Browse all 92 semantic types registered in the v1 binding catalog. The list rema
 - [Frequency Shifter](/dsp/effects/frequency-shifter/) (`FrequencyShifter`) — Provides Frequency Shifter, Ring Modulator, or Barber-pole Frequency Shifter processing with analytic-signal translation or direct multiplication. <span data-effect-tags="modulation  "></span>
 - [Phaser](/dsp/effects/phaser/) (`Phaser`) — Creates moving peaks and notches as a classic Phaser or Barber-pole Phaser with all-pass sweeps. <span data-effect-tags="modulation  "></span>
 - [Pitch Shifter](/dsp/effects/pitch-shifter/) (`PitchShifter`) — Shifts pitch while retaining the input duration. <span data-effect-tags="modulation  "></span>
-- [Rotary Speaker](/dsp/effects/rotary-speaker/) (`RotarySpeaker`) — Creates Rotary Speaker motion, commonly known as a Leslie effect, by combining crossover-separated horn and drum amplitude and Doppler movement. <span data-effect-tags="modulation  "></span>
+- [Rotary Speaker](/dsp/effects/rotary-speaker/) (`RotarySpeaker`) — Creates rotary motion by varying the amplitudes of crossover-separated horn and drum paths and applying Doppler shifts. <span data-effect-tags="modulation  "></span>
 - [Tremolo](/dsp/effects/tremolo/) (`Tremolo`) — Modulates amplitude periodically at a configurable rate and depth. <span data-effect-tags="modulation seeded "></span>
 - [Wow Flutter](/dsp/effects/wow-flutter/) (`WowFlutter`) — Applies slow and fast pitch variation associated with imperfect mechanical playback. <span data-effect-tags="modulation seeded "></span>
 
@@ -116,7 +116,7 @@ Browse all 92 semantic types registered in the v1 binding catalog. The list rema
 - [Dattorro Plate Reverb](/dsp/effects/dattorro-plate-reverb/) (`DattorroPlateReverb`) — Creates a plate-style reverberation using a Dattorro-inspired network. <span data-effect-tags="reverb  "></span>
 - [FDN Reverb](/dsp/effects/fdn-reverb/) (`FDNReverb`) — Creates reverberation with a feedback delay network. <span data-effect-tags="reverb seeded "></span>
 - [IR Reverb](/dsp/effects/ir-reverb/) (`IRReverb`) — Convolves audio with a caller-supplied impulse response. <span data-effect-tags="reverb seeded asset"></span>
-- [RS Reverb](/dsp/effects/rs-reverb/) (`RSReverb`) — Creates algorithmic reverberation with configurable room and decay behavior. <span data-effect-tags="reverb seeded "></span>
+- [RS Reverb](/dsp/effects/rs-reverb/) (`RSReverb`) — Creates algorithmic reverberation with configurable room and decay behavior. <span data-effect-tags="reverb  "></span>
 
 ## Saturation
 

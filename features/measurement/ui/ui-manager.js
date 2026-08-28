@@ -5,11 +5,16 @@
 import dataStorage, { MeasurementImportError } from '../dataStorage.js';
 import measurementController from '../measurement-controller/index.js';
 import audioUtils from '../audio-utils/index.js';
-import MeasurementDisplay from './measurement-display.js';
+import MeasurementDisplay, { hasDesignableChannelResponses } from './measurement-display.js';
 import GraphRenderer from './graph-renderer.js';
 import CorrectionHandler from './correction-handler.js';
 import DialogController from './dialog-controller.js';
 import i18n from '../i18n.js';
+import { copyTextToClipboard } from '../../../js/utils/clipboard-utils.js';
+import { copyPerChannelPEQClipboardPayload } from './peq-clipboard.js';
+import { importImpulseResponseWav } from '../impulse-response-import.js';
+import { channelDisplayLabel } from '../audio-utils/channel-selection.js';
+import { collectCalibrationIrCandidates } from '../measurement-model.js';
 
 const AUDIO_ACTIVE_SCREENS = new Set(['levelAdjustmentScreen', 'sweepMeasurementScreen']);
 
@@ -243,7 +248,7 @@ export class UIManager {
      * Clean up audio resources before navigation
      */
     cleanupAudioBeforeNavigation() {
-        if (measurementController.isRunningMeasurement) {
+        if (measurementController.isRunningMeasurement || measurementController.activeSweepOperation) {
             measurementController.cancelMeasurement();
         } else {
             measurementController.cleanup();
@@ -303,6 +308,20 @@ export class UIManager {
             return;
         }
 
+        const noiseChannelMode = document.getElementById('noiseChannelMode');
+        const autoNoiseChannelMode = noiseChannelMode?.querySelector('input[value="auto"]');
+        if (autoNoiseChannelMode) autoNoiseChannelMode.checked = true;
+        const calibrationAssignMode = document.getElementById('calibrationAssignMode');
+        if (calibrationAssignMode) calibrationAssignMode.value = 'common';
+        const perChannelCalibrationRows = document.getElementById('perChannelCalibrationRows');
+        if (perChannelCalibrationRows) {
+            perChannelCalibrationRows.replaceChildren();
+            perChannelCalibrationRows.hidden = true;
+        }
+        const commonCalibration = document.getElementById('interfaceCalibration');
+        if (commonCalibration) commonCalibration.hidden = false;
+        measurementController.stopChannelRotation();
+
         try {
             // Initialize audio context on first user gesture.
             await window.app.initializeAudio();
@@ -318,6 +337,44 @@ export class UIManager {
                     'The audio devices could not be prepared. Check browser permissions and try again.',
                 'error'
             );
+        }
+    }
+
+    async copyChannelPEQToClipboard() {
+        const measurement = dataStorage.getMeasurementById(this.selectedMeasurementId);
+        if (!hasDesignableChannelResponses(measurement)) {
+            this.showNotification(
+                i18n.t('error:noPEQSettings') || 'No PEQ settings available for this measurement',
+                'error'
+            );
+            return false;
+        }
+
+        try {
+            const settings = this.correctionHandler.getTargetSettings();
+            const perChannel = [];
+            for (const channel of measurement.outputChannels) {
+                const response = measurement.channelResponses.find(entry => entry.channel === channel);
+                perChannel.push({
+                    channel,
+                    peqParams: await this.correctionHandler.calculatePEQParametersForResponse(
+                        response.averageFrequencyResponse, settings, measurement, channel
+                    )
+                });
+            }
+            await copyPerChannelPEQClipboardPayload(
+                perChannel,
+                parseInt(document.getElementById('eqBandCount').value),
+                copyTextToClipboard
+            );
+            this.showNotification(i18n.t('message:channelPeqCopied') ||
+                'Channel PEQ settings copied to the clipboard.');
+            return true;
+        } catch (error) {
+            console.error('Could not copy channel PEQ settings:', error);
+            this.showNotification(i18n.t('error:clipboardWriteFailed') ||
+                'The PEQ settings could not be copied. Check clipboard access and try again.', 'error');
+            return false;
         }
     }
 
@@ -340,18 +397,18 @@ export class UIManager {
         if (dataStorage.irPersistenceAvailable !== false) {
             for (const measurement of dataStorage.getAllMeasurements()) {
                 if (measurement.interfaceCalibration !== undefined ||
+                    measurement.interfaceCalibrations !== undefined ||
                     typeof measurement.id !== 'string' ||
                     !Number.isFinite(measurement.sampleRate) ||
                     !Array.isArray(measurement.points)) {
                     continue;
                 }
-                for (let pointIndex = 0; pointIndex < measurement.points.length; pointIndex += 1) {
-                    const point = measurement.points[pointIndex];
-                    if (!Number.isSafeInteger(point?.pointId) || point.ir?.stored !== true) {
-                        continue;
-                    }
+                for (const candidate of collectCalibrationIrCandidates(measurement)) {
+                    const point = measurement.points[candidate.pointIndex];
                     const option = document.createElement('option');
-                    option.value = JSON.stringify([measurement.id, point.pointId]);
+                    option.value = JSON.stringify(candidate.channel === null
+                        ? [measurement.id, candidate.pointId]
+                        : [measurement.id, candidate.pointId, candidate.channel]);
                     const timestamp = new Date(measurement.timestamp);
                     const date = Number.isFinite(timestamp.getTime())
                         ? timestamp.toLocaleDateString()
@@ -359,7 +416,9 @@ export class UIManager {
                     const sampleRate = `${measurement.sampleRate / 1000} kHz`;
                     option.textContent = i18n.t('option:interfaceCalibrationPoint', {
                         measurement: measurement.name,
-                        point: point.name || `Point ${pointIndex + 1}`,
+                        point: `${point.name || `Point ${candidate.pointIndex + 1}`}${
+                            candidate.channel === null ? '' : ` (${channelDisplayLabel(candidate.channel)})`
+                        }`,
                         date,
                         sampleRate
                     }) || `${measurement.name} — ${point.name || `Point ${pointIndex + 1}`} (${date}, ${sampleRate})`;
@@ -370,6 +429,7 @@ export class UIManager {
         }
 
         calibrationSelect.disabled = candidateCount === 0;
+        globalThis.window?.app?.syncMultichannelControls?.();
         if (dataStorage.irPersistenceAvailable === false) {
             calibrationHelp.textContent = i18n.t('help:interfaceCalibrationUnavailable') ||
                 'Audio interface calibration is unavailable because impulse responses cannot be saved in this browser.';
@@ -392,23 +452,52 @@ export class UIManager {
      * Handle the import button click
      * @param {Event} event - Change event from the file input
      */
-    handleImport(event) {
+    async handleImport(event) {
         const file = event.target.files[0];
         if (!file) return;
-        
-        const reader = new FileReader();
-        reader.onload = e => this.importMeasurementText(e.target.result);
-        reader.onerror = () => {
-            console.error('Error reading measurement import file:', reader.error);
+        event.target.value = '';
+
+        if (/\.wav$/i.test(file.name) || file.type === 'audio/wav' || file.type === 'audio/x-wav') {
+            return this.importImpulseResponseFile(file);
+        }
+
+        try {
+            return await this.importMeasurementText(await file.text());
+        } catch (error) {
+            console.error('Error reading measurement import file:', error);
             this.showNotification(
                 i18n.t('error:measurementImportFailed') ||
                     'The measurement file could not be opened. Choose a valid measurement JSON file.',
                 'error'
             );
-        };
-        
-        reader.readAsText(file);
-        event.target.value = ''; // Reset file input
+            return null;
+        }
+    }
+
+    async importImpulseResponseFile(file) {
+        try {
+            const measurementId = await importImpulseResponseWav(file, dataStorage);
+            this.updateMeasurementList();
+            await this.selectMeasurement(measurementId);
+            return measurementId;
+        } catch (error) {
+            console.error('Error importing impulse response WAV:', error);
+            if (error instanceof MeasurementImportError && error.kind === 'storage') {
+                this.showNotification(i18n.t('message:saveFailed') ||
+                    'The measurement could not be saved. Check available storage and try again.', 'error');
+            } else if (error instanceof MeasurementImportError && error.kind === 'size') {
+                this.showNotification(i18n.t('error:impulseResponseImportTooLarge') ||
+                    'The impulse-response WAV file is too large. Select a shorter or smaller impulse response.',
+                    'error');
+            } else {
+                this.showNotification(
+                    i18n.t('error:impulseResponseImportFailed') ||
+                        'The WAV file could not be imported. Choose a valid impulse-response WAV file with 1 to 8 channels.',
+                    'error'
+                );
+            }
+            return null;
+        }
     }
 
     async importMeasurementText(jsonString) {

@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.6.0-aa6d2b8739380c12";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.6.0-0ac640ec5f9b1148";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./effetune-library.css",
   "./effetune-mobile.css",
@@ -194,6 +194,8 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/ui/pipeline/pipeline-section-handler.js",
   "./js/ui/pipeline/pipeline-selection-manager.js",
   "./js/ui/pipeline/pipeline-worklet-sync.js",
+  "./js/ui/pipeline/plugin-preset-dialog.js",
+  "./js/ui/pipeline/plugin-preset-store.js",
   "./js/ui/pipeline/preset-manager.js",
   "./js/ui/pipeline/ui-event-handler.js",
   "./js/ui/playback-selection-router.js",

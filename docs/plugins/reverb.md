@@ -35,6 +35,15 @@ Routing note: Dattorro Plate Reverb is a stereo plate model. When routed with mo
   - Prevents static, artificial-sounding tails
   - Creates a breathing, living space around your music
 
+### System Presets
+
+Click **Effect Presets** in the effect header to start with a complete plate setting.
+
+- **Studio Plate** - A short, bright plate for general listening.
+- **Vocal Plate** - Separates the original attack with a longer pre-delay.
+- **Dark Vintage Plate** - A darker, more strongly damped plate response.
+- **Long Wash** - A long, modulated ambient tail.
+
 ### Parameters
 - **Pre Delay** - Initial silence before reverb begins (0.0 to 100.0 ms control; use values below 100.0 ms for effective pre-delay)
   - 0-10ms: Immediate reverb, intimate feeling
@@ -139,7 +148,7 @@ The Dattorro Plate Reverb brings a classic plate-style ambience to your listenin
 
 FDN Reverb adds a dense, natural-sounding decay. Use it to give dry or close recordings a clearer sense of room size and distance.
 
-Routing note: FDN Reverb is a stereo reverb model with one shared feedback tank. When routed with more than two channels, each routed channel advances that shared tank in sequence rather than using independent per-channel tanks. Channel 1 receives the left wet signal, and channels 2+ receive the right wet signal.
+Routing note: FDN Reverb averages all routed input channels into one shared feedback tank. The tank advances once per sample, and its wet taps are distributed across the routed output channels.
 
 ### Listening Experience Guide
 - Natural Room Feel:
@@ -154,6 +163,15 @@ Routing note: FDN Reverb is a stereo reverb model with one shared feedback tank.
   - Adjustable from intimate rooms to grand concert halls
   - Fine control over the character and color of the space
   - Gentle modulation adds natural movement and life
+
+### System Presets
+
+Click **Effect Presets** in the effect header to apply a complete space rather than adjusting each control separately.
+
+- **Tight Room** - A short, contained room response.
+- **Warm Hall** - A longer, gently darkened hall for acoustic and orchestral music.
+- **Bright Plate** - A brighter, more animated short reverb with a plate-like character.
+- **Vast Cavern** - The largest and longest of the supplied spaces.
 
 ### Parameters
 - **Reverb Time** - How long the reverb effect lasts (0.20 to 10.00 s)
@@ -316,8 +334,17 @@ RS Reverb adds adjustable reflections and decay, making a dry recording sound as
   - Start with Room Size 25-40m, Reverb Time 3-6s, and Mix 40-60%
   - Raise Damping or lower High Damp if the tail is too bright
 
+### System Presets
+
+Click **Effect Presets** in the effect header to apply a complete room or hall setting.
+
+- **Small Room** - A short, close room ambience with 5 ms pre-delay and tighter bass decay.
+- **Jazz Club** - A moderate room with 15 ms pre-delay for intimate acoustic material.
+- **Concert Hall** - A larger, deeper space with 25 ms pre-delay and fuller bass decay.
+- **Cathedral** - A long, dark space with 40 ms pre-delay and the fullest bass decay.
+
 ### Parameters
-- **Pre-Delay** (0 to 50 ms) - Changing this control does not currently change the sound. Use Room Size, Reverb Time, and Mix to adjust the sense of space.
+- **Pre-Delay** (0 to 50 ms) - Delays the wet reflections before they enter the room model. Higher values keep the dry attack distinct for longer; they do not remove the room model's own delay.
 - **Room Size** - Sets how large the space feels (2.0 to 50.0 m)
   - Small (2-5m): Cozy room feeling
   - Medium (5-15m): Live room atmosphere

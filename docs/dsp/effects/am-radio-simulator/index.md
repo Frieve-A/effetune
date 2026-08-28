@@ -72,6 +72,16 @@ This effect requires an environment that supports its real-time processing. When
 - **Fade depth:** New instances use 1% Skywave for gentler level movement in Mono and a less pronounced nighttime fade. Raise Skywave to about 8% when you specifically want a deeper fade; larger values make the effect more extreme.
 - Start with Mix at 100% when judging the radio model. Lower it only when you intentionally want some of the original stereo image to remain.
 
+### System Presets
+
+Click **Effect Presets** in the effect header to try these complete radio settings.
+
+- **Local Daytime Station** - A clear, wide-band local broadcast with little static.
+- **Pocket Transistor** - A small-speaker radio with stronger compression, hum, and restricted bandwidth.
+- **Night Skywave** - A weak nighttime signal with pronounced ionospheric fading.
+- **Summer Thunderstorm** - A fading station interrupted by frequent atmospheric static.
+- **Stereo AM Broadcast** - A clearer C-QUAM stereo broadcast without speaker simulation.
+
 ### Parameters
 
 #### Station

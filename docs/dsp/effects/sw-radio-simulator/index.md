@@ -82,6 +82,14 @@ This effect requires an environment that supports its real-time processing. When
 - **Loud first moment after silence:** when the music starts — at the beginning of playback or after a gap — the gain is still wide open from the silence, so the first instant comes through loud before AGC settles, most obviously in USB and LSB. This is what a receiver switched on into a quiet channel does, and it is deliberately kept.
 - **Thin, dropping-out fades (USB, LSB):** a deep fade attenuates parts of the single sideband unevenly rather than producing the watery envelope-detector distortion of AM, so the sound goes thin and pieces of it drop out.
 
+### System Presets
+
+Click **Effect Presets** in the effect header to try complete shortwave reception scenes.
+
+- **Major Broadcaster** - A stable, relatively wide international broadcast through a tabletop radio.
+- **Transoceanic Night** - Deep nighttime fading and synchronous detection on a distant signal.
+- **Stormy 49 m Band** - Rapid fading, static, and a nearby interfering station.
+
 ### Parameters
 
 #### Station

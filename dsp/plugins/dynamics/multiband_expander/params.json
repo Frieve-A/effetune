@@ -2,9 +2,9 @@
   "type": "MultibandExpanderPlugin",
   "tolerance": { "abs": 0.00002, "policy": "per-sample" },
   "fields": [
-    { "name": "frequency1", "key": "f1", "kind": "float", "min": 20, "max": 500, "default": 100, "unit": "Hz" },
-    { "name": "frequency2", "key": "f2", "kind": "float", "min": 100, "max": 2000, "default": 500, "unit": "Hz" },
-    { "name": "frequency3", "key": "f3", "kind": "float", "min": 500, "max": 8000, "default": 2000, "unit": "Hz" },
+    { "name": "frequency1", "key": "f1", "kind": "float", "min": 20, "max": 500, "step": 1, "default": 100, "unit": "Hz", "automation": true },
+    { "name": "frequency2", "key": "f2", "kind": "float", "min": 100, "max": 2000, "step": 1, "default": 500, "unit": "Hz", "automation": true },
+    { "name": "frequency3", "key": "f3", "kind": "float", "min": 500, "max": 8000, "step": 1, "default": 2000, "unit": "Hz", "automation": true },
     { "name": "frequency4", "key": "f4", "kind": "float", "min": 1000, "max": 20000, "default": 8000, "unit": "Hz" },
     { "name": "threshold", "key": "t", "objectArrayKey": "bands", "memberKey": "t", "kind": "float", "count": 5, "min": -60, "max": 0, "step": 1, "default": [-30, -16, -24, -36, -48], "unit": "dB", "automation": true },
     { "name": "ratio", "key": "r", "objectArrayKey": "bands", "memberKey": "r", "kind": "float", "count": 5, "min": 0.05, "max": 20, "step": 0.01, "default": [1.2, 1.2, 1.2, 1.1, 1.1], "automation": true },

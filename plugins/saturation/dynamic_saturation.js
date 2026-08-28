@@ -1,4 +1,23 @@
+const DYNAMIC_SATURATION_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({
+        id: 'subtle-cone-color', label: 'Subtle Cone Color',
+        params: Object.freeze({ sd: 2, ss: 1.5, sp: 0.8, sm: 1, dd: 1.2, db: 0.1, dm: 60, cm: 10, og: 0 })
+    }),
+    Object.freeze({
+        id: 'pushed-speaker', label: 'Pushed Speaker',
+        params: Object.freeze({ sd: 5, ss: 3, sp: 1.5, sm: 1.5, dd: 2, db: 0.16, dm: 100, cm: 25, og: -0.6 })
+    }),
+    Object.freeze({
+        id: 'ragged-cone', label: 'Ragged Cone',
+        params: Object.freeze({ sd: 8, ss: 5, sp: 2.5, sm: 2, dd: 3, db: 0.3, dm: 100, cm: 35, og: -1.7 })
+    })
+]);
+
 class DynamicSaturationPlugin extends PluginBase {
+    static getSystemPresetGroups() {
+        return [{ label: '', presets: DYNAMIC_SATURATION_SYSTEM_PRESETS.map(preset => ({ ...preset })) }];
+    }
+
     constructor() {
         super('Dynamic Saturation', 'Simulates distortion caused by speaker cone movement');
 
@@ -35,7 +54,12 @@ class DynamicSaturationPlugin extends PluginBase {
             const dt = 48000 / sampleRate;
             const dt_half = 0.5 * dt;
         
-            const invSpkMass = 1.0 / spkMass;
+            // Trapezoidal integration keeps the damped cone stable at every sample rate.
+            const stiffnessStep = dt * spkStiff;
+            const dampingHalf = dt_half * spkDamp;
+            const stiffnessQuarter = dt_half * dt_half * spkStiff;
+            const inverseDenominator = 1 / (spkMass + dampingHalf + stiffnessQuarter);
+            const velocityCoefficient = spkMass - dampingHalf - stiffnessQuarter;
             const floatMinNormal = 1.1754943508222875e-38;
 
             const controlTargets = [dstDrive, dstBias, dstMix, coneMix, outGain];
@@ -85,17 +109,9 @@ class DynamicSaturationPlugin extends PluginBase {
                     const coneMixRatio = controlAt(3, i) * 0.01;
                     const gainLinear = 10**(controlAt(4, i) * 0.05);
         
-                    // Improved numerical integration with better stability
-                    const force = spkDrive * inputSample - spkStiff * x - spkDamp * v;
-                    const a = force * invSpkMass;
-                    
-                    // Use adaptive clamping based on current state
-                    const maxAccel = Math.abs(v) * 10 > 1000 ? Math.abs(v) * 10 : 1000;
-                    const aClamped = a < -maxAccel ? -maxAccel : (a > maxAccel ? maxAccel : a);
-                    
-                    // Semi-implicit Euler integration
-                    const vNew = v + aClamped * dt;
-                    const xNew = x + vNew * dt;
+                    const vNew = (velocityCoefficient * v - stiffnessStep * x +
+                        dt * spkDrive * inputSample) * inverseDenominator;
+                    const xNew = x + dt_half * (v + vNew);
                     
                     // Adaptive clamping for position and velocity
                     const maxPos = Math.abs(inputSample) * 2 > 10 ? Math.abs(inputSample) * 2 : 10;

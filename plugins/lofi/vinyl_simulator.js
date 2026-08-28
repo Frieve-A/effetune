@@ -1,3 +1,51 @@
+const VINYL_SIMULATOR_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({
+        id: 'audiophile-pressing', label: 'Audiophile Pressing',
+        params: Object.freeze({
+            lv: 0, hf: 16000, mb: 250, sm: 70, rp: '33⅓', rd: 120,
+            rg: 1, dr: 0.2, st: 0, sc: 0, sh: 'Elliptical', rs: 18,
+            rc: 8, tf: 2, tm: 0.4, cm: 15, dz: 0.25, ql: 'Standard',
+            og: 0, mx: 100
+        })
+    }),
+    Object.freeze({
+        id: 'well-worn-favorite', label: 'Well-Worn Favorite',
+        params: Object.freeze({
+            lv: 0, hf: 16000, mb: 250, sm: 70, rp: '33⅓', rd: 120,
+            rg: 40, dr: 100, st: 10, sc: 0.5, sh: 'Elliptical', rs: 18,
+            rc: 8, tf: 2, tm: 0.4, cm: 15, dz: 0.25, ql: 'Standard',
+            og: 0, mx: 100
+        })
+    }),
+    Object.freeze({
+        id: 'flea-market-45', label: 'Flea Market 45',
+        params: Object.freeze({
+            lv: 0, hf: 16000, mb: 250, sm: 70, rp: '45', rd: 75,
+            rg: 60, dr: 500, st: 50, sc: 2, sh: 'Spherical', rs: 18,
+            rc: 18, tf: 2, tm: 0.4, cm: 15, dz: 0.25, ql: 'Standard',
+            og: -3, mx: 100
+        })
+    }),
+    Object.freeze({
+        id: 'shellac-78', label: '78 rpm Shellac',
+        params: Object.freeze({
+            lv: 0, hf: 8000, mb: 250, sm: 70, rp: '78', rd: 120,
+            rg: 100, dr: 1000, st: 100, sc: 3, sh: 'Spherical', rs: 25,
+            rc: 25, tf: 4, tm: 0.4, cm: 15, dz: 0.25, ql: 'Standard',
+            og: -3, mx: 100
+        })
+    }),
+    Object.freeze({
+        id: 'end-of-side', label: 'End of Side',
+        params: Object.freeze({
+            lv: 0, hf: 16000, mb: 250, sm: 70, rp: '33⅓', rd: 63,
+            rg: 13.17, dr: 2, st: 0.08, sc: 0, sh: 'Elliptical', rs: 18,
+            rc: 8, tf: 2, tm: 0.4, cm: 15, dz: 0.25, ql: 'Standard',
+            og: 0, mx: 100
+        })
+    })
+]);
+
 const VINYL_SIMULATOR_TAP_PHYSICS = 15;
 const VINYL_SIMULATOR_TELEMETRY_VERSION = 1;
 const VINYL_SIMULATOR_TELEMETRY_BYTES = 48;
@@ -17,6 +65,8 @@ const VINYL_SIMULATOR_REFERENCE_PROCESSOR = `
     const REFERENCE_VELOCITY = 0.05;
     // The source model's discharge range was calibrated against program peaks at +12 dB.
     const STATIC_REFERENCE_GAIN = 0.251188643150958;
+    // Calibrate scratch displacement without changing event rates or spatial duration.
+    const SCRATCH_DISPLACEMENT_GAIN = 0.2;
     // An ESD edge is much faster than the audio rate. Its audible residual is limited here
     // by the longest RC decay in a standard 47 kOhm / 100-200 pF moving-magnet input.
     const PHONO_INPUT_RESISTANCE = 47e3;
@@ -866,6 +916,8 @@ const VINYL_SIMULATOR_REFERENCE_PROCESSOR = `
         particle.skew = (random01(state.dustRandom) - 0.5) * particle.width * 1.4;
         const absoluteSkew = particle.skew < 0 ? -particle.skew : particle.skew;
         particle.scratch_support = 4 * particle.width + absoluteSkew;
+        particle.gouge *= SCRATCH_DISPLACEMENT_GAIN;
+        particle.burr *= SCRATCH_DISPLACEMENT_GAIN;
         particle.height = particle.gouge > particle.burr ? particle.gouge : particle.burr;
         particle.amplitude = 0;
     }
@@ -1044,6 +1096,13 @@ let vinylSimulatorInstanceSerial = 0;
 const READING_JITTER_BAR_MAX_NS = 1000;
 
 class VinylSimulatorPlugin extends PluginBase {
+    static getSystemPresetGroups() {
+        return [{
+            label: '',
+            presets: VINYL_SIMULATOR_SYSTEM_PRESETS.map(preset => ({ ...preset }))
+        }];
+    }
+
     constructor() {
         super('Vinyl Simulator', 'Physical record cutting and stylus playback simulation');
 

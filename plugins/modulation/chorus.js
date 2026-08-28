@@ -1,13 +1,12 @@
 const CHORUS_MODES = Object.freeze(['Chorus', 'Stereo Chorus', 'Ensemble', 'Flanger', 'Vibrato']);
-const CHORUS_STYLES = Object.freeze({
-    'Classic Chorus': Object.freeze({ md: 'Chorus', rt: 0.8, dl: 12, dp: 3, vc: 3, ss: 60, fb: 0, mx: 45 }),
-    'Stereo Chorus': Object.freeze({ md: 'Stereo Chorus', rt: 0.65, dl: 15, dp: 4, vc: 2, ss: 80, fb: 0, mx: 50 }),
-    Ensemble: Object.freeze({ md: 'Ensemble', rt: 0.45, dl: 20, dp: 6, vc: 6, ss: 100, fb: 0, mx: 60 }),
-    Flanger: Object.freeze({ md: 'Flanger', rt: 0.35, dl: 2.5, dp: 2, vc: 1, ss: 35, fb: 45, mx: 50 }),
-    'Jet Flanger': Object.freeze({ md: 'Flanger', rt: 0.18, dl: 1.5, dp: 1.4, vc: 1, ss: 70, fb: -75, mx: 55 }),
-    Vibrato: Object.freeze({ md: 'Vibrato', rt: 4.5, dl: 8, dp: 5, vc: 1, ss: 50, fb: 0, mx: 100 })
-});
-
+const CHORUS_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({ id: 'classic-chorus', label: 'Classic Chorus', params: Object.freeze({ md: 'Chorus', rt: 0.8, dl: 12, dp: 3, vc: 3, ss: 60, fb: 0, mx: 45 }) }),
+    Object.freeze({ id: 'stereo-chorus', label: 'Stereo Chorus', params: Object.freeze({ md: 'Stereo Chorus', rt: 0.65, dl: 15, dp: 4, vc: 2, ss: 80, fb: 0, mx: 50 }) }),
+    Object.freeze({ id: 'ensemble', label: 'Ensemble', params: Object.freeze({ md: 'Ensemble', rt: 0.45, dl: 20, dp: 6, vc: 6, ss: 100, fb: 0, mx: 60 }) }),
+    Object.freeze({ id: 'flanger', label: 'Flanger', params: Object.freeze({ md: 'Flanger', rt: 0.35, dl: 2.5, dp: 2, vc: 1, ss: 35, fb: 45, mx: 50 }) }),
+    Object.freeze({ id: 'jet-flanger', label: 'Jet Flanger', params: Object.freeze({ md: 'Flanger', rt: 0.18, dl: 1.5, dp: 1.4, vc: 1, ss: 70, fb: -75, mx: 55 }) }),
+    Object.freeze({ id: 'vibrato', label: 'Vibrato', params: Object.freeze({ md: 'Vibrato', rt: 4.5, dl: 8, dp: 5, vc: 1, ss: 50, fb: 0, mx: 100 }) })
+]);
 class ChorusPlugin extends PluginBase {
     static searchAliases = Object.freeze(['Stereo Chorus', 'Ensemble', 'Flanger', 'Vibrato']);
     static executionCapabilities = Object.freeze({
@@ -15,7 +14,9 @@ class ChorusPlugin extends PluginBase {
             maxJsFallbackSampleChannels: 96000
         })
     });
-    static factoryStyles = CHORUS_STYLES;
+    static getSystemPresetGroups() {
+        return [{ label: '', presets: CHORUS_SYSTEM_PRESETS.map(preset => ({ ...preset })) }];
+    }
 
     constructor() {
         super('Chorus', 'Adds moving delayed voices for chorus, ensemble, flanging, or vibrato');
@@ -27,7 +28,6 @@ class ChorusPlugin extends PluginBase {
         this.ss = 60;
         this.fb = 0;
         this.mx = 45;
-        this.style = 'Classic Chorus';
         this._modeRows = {};
         this._uiControls = null;
         this.registerProcessor(`
@@ -235,25 +235,9 @@ class ChorusPlugin extends PluginBase {
         };
         next.dp = Math.min(next.dp, next.dl);
         Object.assign(this, next);
-        if (!params._styleApplication && Object.keys(params).some(key => ['md', 'rt', 'dl', 'dp', 'vc', 'ss', 'fb', 'mx'].includes(key))) {
-            this.style = 'Custom';
-        }
         this._syncVisibility();
         this._syncUI();
         this.updateParameters();
-    }
-
-    applyStyle(style) {
-        if (style === 'Custom') {
-            this.style = 'Custom';
-            this._syncUI();
-            return;
-        }
-        const values = CHORUS_STYLES[style];
-        if (!values) return;
-        this.setParameters({ ...values, _styleApplication: true });
-        this.style = style;
-        this._syncUI();
     }
 
     _syncControl(row, value) {
@@ -282,7 +266,6 @@ class ChorusPlugin extends PluginBase {
 
     _syncUI() {
         if (!this._uiControls) return;
-        this._syncControl(this._uiControls.style, this.style);
         for (const key of ['md', 'rt', 'dl', 'dp', 'vc', 'ss', 'fb', 'mx']) {
             this._syncControl(this._uiControls[key], this[key]);
         }
@@ -310,8 +293,6 @@ class ChorusPlugin extends PluginBase {
         const container = document.createElement('div');
         container.className = 'chorus-plugin-ui plugin-parameter-ui';
         this._uiControls = {};
-        this._uiControls.style = this.createSelectControl('Style', [...Object.keys(CHORUS_STYLES), 'Custom'], this.style,
-            value => this.applyStyle(value), 'style');
         this._uiControls.md = this.createRadioGroup('Mode', CHORUS_MODES, this.md,
             value => this.setParameters({ md: value }), 'md');
         this._uiControls.rt = this.createLogarithmicParameterControl('Rate', 0.05, 10, 0.01, this.rt,
@@ -328,7 +309,7 @@ class ChorusPlugin extends PluginBase {
             value => this.setParameters({ fb: value }), '%', 'fb');
         this._uiControls.mx = this.createParameterControl('Mix', 0, 100, 1, this.mx,
             value => this.setParameters({ mx: value }), '%', 'mx');
-        for (const key of ['style', 'md', 'rt', 'dl', 'dp', 'vc', 'ss', 'fb', 'mx']) {
+        for (const key of ['md', 'rt', 'dl', 'dp', 'vc', 'ss', 'fb', 'mx']) {
             container.appendChild(this._uiControls[key]);
         }
         this._modeRows.voices = this._uiControls.vc;

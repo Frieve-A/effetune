@@ -24,6 +24,14 @@ Un plugin qui simule la résonance d'un haut-parleur à pavillon (horn-loaded sp
 - Ambiance horn naturelle : ajoute une coloration vintage de haut-parleurs pour une écoute plus riche.
 - Amortissement doux des hautes fréquences : prévient les pics tranchants pour un timbre détendu.
 
+### Préréglages système
+
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essayer directement ces réglages complets.
+
+- **Gramophone** - Un pavillon très évasé, au caractère d'ancien gramophone acoustique.
+- **Vintage Theater** - La réponse d'un grand pavillon de cinéma qui descend dans le grave.
+- **Megaphone** - Un pavillon conique court, avec un médium direct et affirmé.
+
 ### Paramètres
 
 - **Crossover (Hz)** - Définit la fréquence de coupure entre le chemin basse fréquence (délayé) et le chemin haute fréquence traité par le horn model. (20–5000 Hz)
@@ -59,6 +67,14 @@ Il est basé sur le même modèle de pavillon que [Horn Resonator](#horn-resonat
 - Présence plus chaleureuse : peut rendre les voix, cuivres et musiques acoustiques plus vivants.
 - Comportement naturel des hautes fréquences : le haut du spectre se rapproche davantage d'un pavillon acoustique ou d'une enceinte à pavillon que la version standard.
 
+### Préréglages système
+
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essayer directement ces réglages complets.
+
+- **Gramophone** - Un pavillon très évasé, au caractère d'ancien gramophone acoustique.
+- **Vintage Theater** - La réponse d'un grand pavillon de cinéma qui descend dans le grave.
+- **Megaphone** - Un pavillon conique court, avec un médium direct et affirmé.
+
 ### Améliorations Techniques
 
 - **Filtre de réflexion de bouche de 2ème ordre** : Modélisation plus précise de la réflexion dépendante de la fréquence à l'ouverture de la bouche pour des caractéristiques de résonance plus douces
@@ -80,6 +96,14 @@ Utilisez les mêmes contrôles que [Horn Resonator](#horn-resonator). Choisissez
 ## Modal Resonator
 
 Un effet qui ajoute des résonances accordées à votre musique, comme lorsque des objets physiques ou des éléments de haut-parleur résonnent à leurs fréquences naturelles. Utilisez-le lorsque vous voulez ajouter du scintillement, du corps, une couleur métallique ou une résonance de type haut-parleur pendant l'écoute.
+
+### Préréglages système
+
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour charger un ensemble complet de résonances.
+
+- **Wooden Body** - Des modes de résonance graves et plus durables, évoquant une enceinte en bois.
+- **Metal Can** - Des modes de résonance plus aigus qui résonnent plus longtemps, avec un caractère métallique.
+- **Plastic Enclosure** - Des modes de résonance plus aigus et plus courts, évoquant un boîtier léger.
 
 ### Guide d'expérience d'écoute
 

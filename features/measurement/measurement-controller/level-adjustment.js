@@ -5,6 +5,26 @@
 import audioUtils from '../audio-utils/index.js';
 import uiManager from '../ui/ui-manager.js';
 import i18n from '../i18n.js';
+import { MeasurementOutputError } from '../audio-utils/output-routing.js';
+import {
+    isMultiChannelSelection,
+    nextRotationChannel,
+    selectionFromConfig
+} from '../audio-utils/channel-selection.js';
+import { resolveSweepBand, resolveOutputSweepBands } from '../measurement-model.js';
+
+const ROTATION_INTERVAL_MS = 3000;
+
+function checkedNoiseOption(id) {
+    return document.getElementById(id)?.querySelector('input:checked')?.value;
+}
+
+function testSignalErrorMessage(error) {
+    return error instanceof MeasurementOutputError
+        ? error.message
+        : i18n.t('error:testSignalFailed') ||
+            'The test signal could not be played. Check the audio output and try again.';
+}
 
 const LevelAdjustment = {
     /**
@@ -99,10 +119,12 @@ const LevelAdjustment = {
      */
     async toggleWhiteNoise() {
         try {
-            if (audioUtils.isWhiteNoiseActive) {
+            if (audioUtils.isWhiteNoiseActive || audioUtils.isWhiteNoisePending ||
+                audioUtils.whiteNoiseDesiredActive) {
                 console.log('Toggling white noise OFF');
+                this.stopChannelRotation();
                 audioUtils.stopWhiteNoise();
-                document.getElementById('noiseToggleBtn').textContent = i18n.t('button:playbackTestSignal') || 'Playback test signal for checking volume';
+                this.syncWhiteNoiseUi();
                 document.getElementById('levelWarning').classList.remove('warning-visible');
                 return false;
             } else {
@@ -117,38 +139,31 @@ const LevelAdjustment = {
                     return false;
                 }
                 
-                // Convert legacy 'both' value to 'all' for backwards compatibility
-                let outputChannel = this.measurementConfig.outputChannel;
-                if (outputChannel === 'both') {
-                    outputChannel = 'all';
-                }
+                const selection = selectionFromConfig(this.measurementConfig);
+                const multiChannel = isMultiChannelSelection(selection);
+                let outputChannel = multiChannel
+                    ? checkedNoiseOption('noiseChannel') || this.currentNoiseChannel || selection[0]
+                    : selection[0];
+                if (!selection.includes(outputChannel)) outputChannel = selection[0];
+                this.currentNoiseChannel = outputChannel;
                 
                 console.log(`Measurement config: ${JSON.stringify({
                     outputId: this.measurementConfig.audioOutputId,
                     outputChannel: outputChannel,
                 })}`);
                 
-                const noiseLevel = parseFloat(document.getElementById('noiseLevel').value);
-                console.log(`Starting white noise with level: ${noiseLevel}dB`);
+                const startOperation = this.restartWhiteNoiseForChannel(outputChannel);
+                const startToken = audioUtils.whiteNoiseOperationToken;
+                this.syncWhiteNoiseUi();
+                const result = await startOperation;
                 
-                // Use the band limits from the current measurement (already clamped to
-                // the usable [1, Nyquist - 1] range) so the test signal is band-limited
-                // to match the sweep configuration.
-                const bandMin = this.currentMeasurement ? this.currentMeasurement.sweepMinFreq : undefined;
-                const bandMax = this.currentMeasurement ? this.currentMeasurement.sweepMaxFreq : undefined;
-
-                const result = await audioUtils.startWhiteNoise(
-                    noiseLevel,
-                    this.measurementConfig.audioOutputId,
-                    outputChannel,
-                    bandMin,
-                    bandMax
-                );
-                
-                if (result) {
+                const active = this.syncWhiteNoiseUi();
+                if (result && active) {
                     console.log('White noise started successfully, updating button text');
-                    document.getElementById('noiseToggleBtn').textContent = i18n.t('button:stopTestSignal') || 'Stop test signal';
-                } else {
+                    if (multiChannel && (checkedNoiseOption('noiseChannelMode') || 'auto') === 'auto') {
+                        this.startChannelRotation();
+                    }
+                } else if (!active && startToken === audioUtils.whiteNoiseOperationToken) {
                     console.error('Failed to start white noise');
                     uiManager.showNotification(
                         i18n.t('error:testSignalFailed') ||
@@ -157,17 +172,136 @@ const LevelAdjustment = {
                     );
                 }
                 
-                return result;
+                return active;
             }
         } catch (error) {
             console.error('Error toggling white noise:', error);
-            uiManager.showNotification(
-                i18n.t('error:testSignalFailed') ||
-                    'The test signal could not be controlled. Check the audio output and try again.',
-                'error'
-            );
+            this.stopChannelRotation();
+            const active = this.syncWhiteNoiseUi();
+            if (!active) uiManager.showNotification(testSignalErrorMessage(error), 'error');
+            return active;
+        }
+    },
+
+    syncWhiteNoiseUi() {
+        const active = Boolean(audioUtils.isWhiteNoiseActive);
+        const desired = active || Boolean(audioUtils.isWhiteNoisePending) ||
+            Boolean(audioUtils.whiteNoiseDesiredActive);
+        const button = document.getElementById('noiseToggleBtn');
+        if (button) {
+            button.textContent = desired
+                ? i18n.t('button:stopTestSignal') || 'Stop test signal'
+                : i18n.t('button:playbackTestSignal') || 'Playback test signal for checking volume';
+        }
+        if (active && audioUtils.whiteNoiseChannel) {
+            this.updateNoiseChannelDisplay(audioUtils.whiteNoiseChannel);
+        }
+        return active;
+    },
+
+    updateNoiseChannelDisplay(channel) {
+        this.currentNoiseChannel = channel;
+        for (const radio of document.getElementById('noiseChannel')?.querySelectorAll('input[type="radio"]') || []) {
+            radio.checked = radio.value === channel;
+        }
+    },
+
+    async restartWhiteNoiseForChannel(channel) {
+        const noiseLevel = parseFloat(document.getElementById('noiseLevel').value);
+        const config = this.currentMeasurement || this.measurementConfig;
+        const sampleRate = audioUtils.audioContext?.sampleRate || Number(this.measurementConfig.sampleRate) || 48000;
+        const length = this.measurementConfig.sweepLength;
+        const band = resolveSweepBand(config, channel, sampleRate, length);
+        const outputBands = channel === 'all' && config.sweepBand?.mode === 'perChannel'
+            ? resolveOutputSweepBands(config, sampleRate, length) : undefined;
+        return audioUtils.startWhiteNoise(
+            noiseLevel,
+            this.measurementConfig.audioOutputId,
+            channel,
+            band.minFreq,
+            band.maxFreq,
+            outputBands
+        );
+    },
+
+    async setNoiseChannel(channel) {
+        this.currentNoiseChannel = channel;
+        this.updateNoiseChannelDisplay(channel);
+        if (!audioUtils.isWhiteNoiseActive && !audioUtils.isWhiteNoisePending &&
+            !audioUtils.whiteNoiseDesiredActive) return true;
+        let startToken = null;
+        try {
+            const operation = this.restartWhiteNoiseForChannel(channel);
+            startToken = audioUtils.whiteNoiseOperationToken;
+            const result = await operation;
+            const active = this.syncWhiteNoiseUi();
+            if (startToken !== audioUtils.whiteNoiseOperationToken) return false;
+            if (!result) throw new Error('Test signal could not be started');
+            return active;
+        } catch (error) {
+            if (startToken !== null && startToken !== audioUtils.whiteNoiseOperationToken) {
+                this.syncWhiteNoiseUi();
+                return false;
+            }
+            this.stopChannelRotation();
+            this.syncWhiteNoiseUi();
+            uiManager.showNotification(testSignalErrorMessage(error), 'error');
             return false;
         }
+    },
+
+    startChannelRotation() {
+        this.invalidateChannelRotationTimer();
+        const selection = selectionFromConfig(this.measurementConfig);
+        if (!audioUtils.isWhiteNoiseActive || !isMultiChannelSelection(selection) ||
+            (checkedNoiseOption('noiseChannelMode') || 'auto') !== 'auto') return;
+        const epoch = ++this.channelRotationEpoch;
+        this.channelRotationTimer = setInterval(async () => {
+            if (this.channelRotationTickInFlight || epoch !== this.channelRotationEpoch) return;
+            this.channelRotationTickInFlight = true;
+            try {
+                const next = nextRotationChannel(selection, this.currentNoiseChannel);
+                let result;
+                let startToken = null;
+                try {
+                    const operation = this.restartWhiteNoiseForChannel(next);
+                    startToken = audioUtils.whiteNoiseOperationToken;
+                    result = await operation;
+                } catch (error) {
+                    if (epoch !== this.channelRotationEpoch ||
+                        (startToken !== null && startToken !== audioUtils.whiteNoiseOperationToken)) {
+                        this.syncWhiteNoiseUi();
+                        return;
+                    }
+                    throw error;
+                }
+                if (epoch !== this.channelRotationEpoch ||
+                    startToken !== audioUtils.whiteNoiseOperationToken) {
+                    this.syncWhiteNoiseUi();
+                    return;
+                }
+                this.syncWhiteNoiseUi();
+                if (!result) throw new Error('Test signal could not be started');
+            } catch (error) {
+                this.stopChannelRotation();
+                this.syncWhiteNoiseUi();
+                uiManager.showNotification(testSignalErrorMessage(error), 'error');
+            } finally {
+                this.channelRotationTickInFlight = false;
+            }
+        }, ROTATION_INTERVAL_MS);
+    },
+
+    invalidateChannelRotationTimer() {
+        if (!Number.isSafeInteger(this.channelRotationEpoch)) this.channelRotationEpoch = 0;
+        this.channelRotationEpoch += 1;
+        if (this.channelRotationTimer) clearInterval(this.channelRotationTimer);
+        this.channelRotationTimer = null;
+    },
+
+    stopChannelRotation() {
+        this.invalidateChannelRotationTimer();
+        audioUtils.cancelPendingWhiteNoiseStart?.();
     },
     
     /**

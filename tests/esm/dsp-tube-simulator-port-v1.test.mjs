@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
@@ -275,20 +276,6 @@ function buildSliderRow(control, sliderValue, numberValue, wiring) {
   return row;
 }
 
-// Rewrites the Pre bank to an empty array so the "omit empty option
-// group" path in _createPresetControl stays exercised even though the shipped
-// bank is populated.
-const PRE_BANK_DECLARATION =
-  /const TUBE_SIMULATOR_PRE_PRESETS = Object\.freeze\(\[[\s\S]*?\r?\n\]\);/;
-
-function withEmptyPreBank(source) {
-  assert.match(source, PRE_BANK_DECLARATION);
-  return source.replace(
-    PRE_BANK_DECLARATION,
-    'const TUBE_SIMULATOR_PRE_PRESETS = Object.freeze([]);'
-  );
-}
-
 function readInjectedPhaseCReferenceTables(source) {
   const declaration = 'const TUBE_SIMULATOR_PHASE_C_REFERENCE_TABLES = Object.freeze(';
   const begin = source.indexOf(declaration);
@@ -555,18 +542,6 @@ function findByClass(root, className) {
     if (found) return found;
   }
   return null;
-}
-
-function presetUi(root, plugin) {
-  const row = findByClass(root, 'tube-simulator-preset-row');
-  const control = findByClass(row, 'tube-simulator-preset-control');
-  return {
-    row,
-    label: row.children[0],
-    select: control.querySelector('select'),
-    trigger: findByClass(control, 'tube-simulator-preset-trigger'),
-    list: plugin?.presetList || findByClass(control, 'tube-simulator-preset-list')
-  };
 }
 
 function tubeTelemetryFrame({
@@ -1205,23 +1180,20 @@ test('Tube Simulator creates Phase C controls, one responsive graph, and status'
 
   // Settings come first and the read-outs follow, the same order every other
   // plug-in in the app uses.
-  assert.equal(container.children.length, 6);
+  assert.equal(container.children.length, 5);
+  assert.equal(container.children[0].className, 'tube-simulator-panel');
+  assert.equal(container.children.some(child => child.className.includes('preset')), false);
   assert.equal(
-    container.children[0].className,
-    'parameter-row tube-simulator-preset-row'
-  );
-  assert.equal(container.children[1].className, 'tube-simulator-panel');
-  assert.equal(
-    container.children[2].className,
+    container.children[1].className,
     'parameter-row radio-group tube-simulator-hud-view'
   );
   assert.ok(findByClass(container, 'tube-simulator-hud'));
-  assert.equal(container.children[3].children.length, 1);
-  assert.equal(container.children[3].children[0].tagName, 'canvas');
-  assert.equal(container.children[4].className, 'tube-simulator-values');
-  assert.equal(container.children[4].children.length, 12);
+  assert.equal(container.children[2].children.length, 1);
+  assert.equal(container.children[2].children[0].tagName, 'canvas');
+  assert.equal(container.children[3].className, 'tube-simulator-values');
+  assert.equal(container.children[3].children.length, 12);
   assert.deepEqual(
-    container.children[4].children.map(item => item.children[0].textContent),
+    container.children[3].children.map(item => item.children[0].textContent),
     [
       'STAGE 1 BIAS',
       'STAGE 2 BIAS',
@@ -1237,10 +1209,10 @@ test('Tube Simulator creates Phase C controls, one responsive graph, and status'
       'TRANSFORMER FLUX'
     ]
   );
-  assert.equal(container.children[5].className, 'tube-simulator-status');
-  assert.equal(container.children[5].attributes.role, 'status');
-  assert.equal(container.children[5].attributes['aria-live'], 'polite');
-  assert.equal(container.children[5].attributes['aria-atomic'], 'true');
+  assert.equal(container.children[4].className, 'tube-simulator-status');
+  assert.equal(container.children[4].attributes.role, 'status');
+  assert.equal(container.children[4].attributes['aria-live'], 'polite');
+  assert.equal(container.children[4].attributes['aria-atomic'], 'true');
 });
 
 test('Tube Simulator keeps the HUD outside five accessible parameter tabs', async () => {
@@ -1293,213 +1265,33 @@ test('Tube Simulator keeps the HUD outside five accessible parameter tabs', asyn
   assert.equal('selectedTab' in plugin.getSerializableParameters(), false);
 });
 
-test('Tube Simulator Preset dropdown lists Custom first, then signal-path groups',
-  async () => {
-    const plugin = await createPlugin();
-    const container = plugin.createUI();
-    const { label: labelElement, select, trigger, list } = presetUi(container, plugin);
+test('Tube Simulator exposes the listening presets as system preset groups', async () => {
+  const plugin = await createPlugin();
+  const groups = plugin.constructor.getSystemPresetGroups();
+  const expectedGroups = readPluginPresetTables(repoRoot).groups;
 
-    assert.equal(labelElement.textContent, 'Preset:');
-    assert.equal(labelElement.htmlFor, trigger.id);
-    assert.equal(select.hidden, true);
-    assert.equal(select.attributes['aria-hidden'], 'true');
-    assert.equal(trigger.attributes['aria-haspopup'], 'listbox');
-    assert.equal(trigger.attributes['aria-controls'], list.id);
-    assert.equal(list.attributes.role, 'listbox');
-    assert.equal(plugin.__testHarness.document.body.contains(list), true);
-    assert.equal(select.children[0].tagName, 'option');
-    assert.equal(select.children[0].value, '');
-    assert.equal(select.children[0].textContent, 'Custom');
-    assert.deepEqual(
-      select.children.slice(1).map(group => ({
-        tagName: group.tagName,
-        label: group.label,
-        options: group.children.map(option => [option.value, option.textContent])
-      })),
-      [
-        {
-          tagName: 'optgroup',
-          label: 'Pre',
-          options: [
-            ['listening-line-12at7-thd0p01', 'Line 12AT7 @0.01%'],
-            ['listening-line-12at7-thd0p1', 'Line 12AT7 @0.1%'],
-            ['listening-line-12ax7-thd0p01', 'Line 12AX7 @0.01%'],
-            ['listening-line-12ax7-thd0p1', 'Line 12AX7 @0.1%'],
-            ['listening-line-12au7-open-loop-thd0p1', 'Line 12AU7 Open-Loop @0.1%'],
-            ['listening-line-12at7-thd1', 'Line 12AT7 @1%'],
-            ['listening-line-12ax7-thd1', 'Line 12AX7 @1%'],
-            ['listening-line-12au7-open-loop-thd1', 'Line 12AU7 Open-Loop @1%']
-          ]
-        },
-        {
-          tagName: 'optgroup',
-          label: 'Power',
-          options: [
-            ['power-only-el84-pentode-10w-thd0p1', 'EL84 Pentode 10 W @0.1%'],
-            ['power-only-el84-distributed-10w-thd0p1', 'EL84 Distributed 10 W @0.1%'],
-            ['power-only-el34-distributed-20-37w-thd0p1', 'EL34 Distributed 20–37 W @0.1%'],
-            ['power-only-6l6gc-pentode-thd0p1', '6L6GC Pentode @0.1%'],
-            ['power-only-kt88-distributed-thd0p1', 'KT88 Distributed @0.1%'],
-            ['power-only-se-300b-thd0p1', '300B SE @0.1%'],
-            ['power-only-se-300b-thd1', '300B SE @1%'],
-            ['power-only-se-2a3-thd0p1', '2A3 SE @0.1%'],
-            ['power-only-se-2a3-thd1', '2A3 SE @1%'],
-            ['power-only-el84-pentode-10w', 'EL84 Pentode 10 W @2%'],
-            ['power-only-el84-distributed-10w', 'EL84 Distributed 10 W @2%'],
-            ['power-only-el34-distributed-20-37w', 'EL34 Distributed 20–37 W @2%'],
-            ['power-only-6l6gc-pentode', '6L6GC Pentode @2%'],
-            ['power-only-kt88-distributed', 'KT88 Distributed @2%']
-          ]
-        },
-        {
-          tagName: 'optgroup',
-          label: 'Pre+Power',
-          options: [
-            ['listening-power-el84-distributed-thd0p1', 'EL84 Distributed @0.1%'],
-            ['listening-power-el34-distributed-thd0p1', 'EL34 Distributed @0.1%'],
-            ['listening-power-6l6gc-pentode-thd0p1', '6L6GC Pentode @0.1%'],
-            ['listening-power-kt88-distributed-thd0p1', 'KT88 Distributed @0.1%'],
-            ['listening-se-300b-thd0p1', '300B SE @0.1%'],
-            ['listening-se-2a3-thd0p1', '2A3 SE @0.1%'],
-            ['listening-power-el84-pentode-thd2', 'EL84 Pentode @2%'],
-            ['listening-power-el84-distributed-thd2', 'EL84 Distributed @2%'],
-            ['listening-power-el34-distributed-thd2', 'EL34 Distributed @2%'],
-            ['listening-power-6l6gc-pentode-thd2', '6L6GC Pentode @2%'],
-            ['listening-power-kt88-distributed-thd2', 'KT88 Distributed @2%'],
-            ['listening-se-300b-thd2', '300B SE @2%'],
-            ['listening-se-2a3-thd2', '2A3 SE @2%']
-          ]
-        }
-      ]
-    );
-    assert.deepEqual(
-      list.children
-        .filter(child => child.classList.contains('tube-simulator-preset-group'))
-        .map(group => group.textContent),
-      ['Pre', 'Power', 'Pre+Power']
-    );
-    assert.equal(
-      list.children.filter(child =>
-        child.classList.contains('tube-simulator-preset-option')).length,
-      36
-    );
-
-    const defaultPresetId = 'listening-power-el84-pentode-thd2';
-    assert.equal(select.value, defaultPresetId,
-      'a fresh Tube Simulator must open on the calibrated EL84 Pentode @2% preset');
-    assert.equal(trigger.textContent, 'EL84 Pentode @2%');
-    const explicitDefault = await createPlugin();
-    assert.equal(explicitDefault.applyCanonicalPreset(defaultPresetId), true);
-    assert.deepEqual(plugin.getSerializableParameters(), explicitDefault.getSerializableParameters(),
-      'fresh defaults and explicitly selecting EL84 Pentode @2% must be identical');
-
-    plugin.setParameters({ tp: '12AU7' });
-    assert.equal(select.value, '');
-    assert.equal(trigger.textContent, 'Custom');
-    assert.equal(plugin.tp, '12AU7');
-
-    // Custom is inert: re-selecting it must not touch any parameter.
-    const before = plugin.getSerializableParameters();
-    select.value = '';
-    select.dispatch('change');
-    assert.deepEqual(plugin.getSerializableParameters(), before);
-    assert.equal(select.value, '');
-
-    // Custom is display-only, so picking it from a state that DOES match a
-    // preset must leave the parameters alone and snap the dropdown back to the
-    // matching entry rather than parking on a label that contradicts the state.
-    plugin.applyCanonicalPreset('listening-line-12at7-thd1');
-    assert.equal(select.value, 'listening-line-12at7-thd1');
-    const matched = plugin.getSerializableParameters();
-    select.value = '';
-    select.dispatch('change');
-    assert.deepEqual(plugin.getSerializableParameters(), matched);
-    assert.equal(select.value, 'listening-line-12at7-thd1');
-
-    for (const legacyId of [
-      'listening-line-12au7-thd1',
-      'power-only-se-300b',
-      'power-only-se-2a3'
-    ]) {
-      assert.equal(plugin.applyCanonicalPreset(legacyId), true,
-        `${legacyId} must remain programmatically applicable for compatibility`);
-      assert.equal(select.value, '', `${legacyId} must remain hidden and display Custom`);
-    }
-
-    trigger.dispatch('click');
-    assert.equal(list.hidden, false);
-    assert.equal(trigger.attributes['aria-expanded'], 'true');
-    assert.equal(list.style.maxHeight, '316px');
-    plugin.__testHarness.document.dispatch('scroll', { type: 'scroll', target: list });
-    assert.equal(list.hidden, false, 'scrolling the preset list must not close it');
-    list.children.find(option =>
-      option.presetId === 'listening-power-el34-distributed-thd2').dispatch('click');
-    assert.equal(list.hidden, true);
-    assert.equal(trigger.attributes['aria-expanded'], 'false');
-    assert.equal(plugin.os, 'Power');
-    assert.equal(plugin.pt, 'EL34');
-    assert.equal(plugin.st, '43');
-    assert.equal(select.value, 'listening-power-el34-distributed-thd2');
-
-    // A calibrated entry is selectable exactly like a circuit entry, and the
-    // round-tripped select value proves all 21 fields landed on that preset.
-    select.value = 'listening-line-12ax7-thd1';
-    select.dispatch('change');
-    assert.equal(plugin.os, 'Line');
-    assert.equal(plugin.tp, '12AX7');
-    assert.equal(plugin.nf, 30);
-    assert.equal(select.value, 'listening-line-12ax7-thd1');
-
-    select.value = 'power-only-el84-pentode-10w';
-    select.dispatch('change');
-    assert.equal(plugin.os, 'Power');
-    assert.equal(plugin.tp, 'Bypass');
-    assert.equal(select.value, 'power-only-el84-pentode-10w');
-
-    plugin.cleanup();
-    assert.equal(plugin.presetControl, null);
-    assert.equal(plugin.presetList, null);
-    assert.equal(plugin.__testHarness.document.body.contains(list), false);
-  });
-
-test('Tube Simulator Preset dropdown omits an option group whose bank is empty', async () => {
-  const plugin = await createPlugin({ transformSource: withEmptyPreBank });
-  const container = plugin.createUI();
-  const { select, list } = presetUi(container, plugin);
-
-  assert.equal(select.children[0].value, '');
-  assert.deepEqual(
-    select.children.slice(1).map(group => group.label),
-    ['Power', 'Pre+Power']
-  );
-  assert.equal(
-    select.children.some(child => child.label === 'Pre'),
-    false
-  );
-  assert.deepEqual(
-    list.children
-      .filter(child => child.classList.contains('tube-simulator-preset-group'))
-      .map(group => group.textContent),
-    ['Power', 'Pre+Power']
-  );
-  plugin.cleanup();
+  assert.deepEqual(JSON.parse(JSON.stringify(groups)), expectedGroups);
+  assert.deepEqual([...groups].map(group => group.label), ['Pre', 'Power', 'Pre+Power']);
+  assert.equal(groups.flatMap(group => group.presets).length, 35);
+  const systemPresetIds = new Set(groups.flatMap(group => group.presets).map(preset => preset.id));
+  for (const preset of plugin.constructor.getCanonicalPresets()) {
+    assert.equal(systemPresetIds.has(preset.id), false, `${preset.id} leaked into system presets`);
+  }
 });
 
-test('Tube Simulator keeps legacy canonical IDs programmatically applicable but hidden', async () => {
+test('Tube Simulator system preset hooks retain canonical application behavior', async () => {
   const plugin = await createPlugin();
-  const container = plugin.createUI();
-  const { select } = presetUi(container, plugin);
-  const optionIds = select.children.slice(1)
-    .flatMap(group => group.children.map(option => option.value));
-  const canonical = plugin.constructor.getCanonicalPresets();
+  const presetId = 'listening-power-el34-distributed-thd2';
 
-  assert.equal(optionIds.length, 35);
-  assert.equal(canonical.length, 8);
-  for (const preset of canonical) {
-    assert.equal(optionIds.includes(preset.id), false, `${preset.id} leaked into the menu`);
-    assert.equal(plugin.applyCanonicalPreset(preset.id), true, `${preset.id} is no longer applicable`);
-    assert.equal(select.value, '', `${preset.id} should display as Custom`);
-  }
+  assert.equal(plugin.getActiveSystemPresetId(), 'listening-power-el84-pentode-thd2');
+  assert.equal(plugin.applySystemPreset(presetId), true);
+  assert.equal(plugin.getActiveSystemPresetId(), presetId);
+  assert.equal(plugin.os, 'Power');
+  assert.equal(plugin.pt, 'EL34');
+  assert.equal(plugin.st, '43');
+  assert.equal(plugin.rl, 8);
+  assert.equal(plugin.sg, 0);
+  assert.equal(plugin.applySystemPreset('missing-preset'), false);
 });
 
 test('Tube Simulator resynchronizes every control DOM node from parameter state', async () => {
@@ -1549,7 +1341,6 @@ test('Tube Simulator resynchronizes every control DOM node from parameter state'
   assert.deepEqual(readRow('os').checked, ['Line']);
   assert.deepEqual(readRow('tp').checked, ['12AU7']);
   assert.equal(readRow('dr').number, 0);
-  assert.equal(presetUi(container, plugin).select.value, '');
 });
 
 test('Tube Simulator keeps typed text in the number input that drove the setter', async () => {
@@ -1636,7 +1427,7 @@ test('Tube Simulator removes inactive output-circuit rows from the layout', asyn
   assert.equal(plugin.getSerializableParameters().sd, '300B');
 });
 
-test('Tube Simulator UI wiring pins the tab roles, preset dropdown, and tab sizing',
+test('Tube Simulator UI wiring pins the tab roles and tab sizing',
   async () => {
     const [source, css, appCss] = await Promise.all([
       fs.readFile(pluginSourcePath, 'utf8'),
@@ -1672,7 +1463,7 @@ test('Tube Simulator UI wiring pins the tab roles, preset dropdown, and tab sizi
       css,
       /\.tube-simulator-hud-view \+ \.tube-simulator-hud \{[^}]*margin-top: 2px;/s
     );
-    assert.match(css, /\.tube-simulator-preset-list \{[^}]*overflow-y: auto;/s);
+    assert.equal(css.includes(['tube', 'simulator', 'preset'].join('-')), false);
     assert.match(appCss, /::\-webkit-scrollbar-thumb \{/);
   });
 
@@ -2413,16 +2204,25 @@ test('Tube Simulator preset matching is documented in every language', async () 
   ];
   const tokens = [
     'EL84 Pentode @2%',
-    'Custom',
     'Output Safety Trim',
     'Auto Gain Reduction'
   ];
 
   for (const { language, file } of docs) {
+    const locale = readFileSync(
+      new URL(`../../js/locales/${language}.json5`, import.meta.url),
+      'utf8'
+    );
+    const effectPresets = locale.match(
+      /^\s*"ui\.title\.effectPresets":\s*"([^"]+)"/m
+    )?.[1];
+    assert.ok(effectPresets, `${language} is missing ui.title.effectPresets`);
     const section = tubeSimulatorSection(await fs.readFile(file, 'utf8'), file);
     const paragraph = section.split(/\r?\n\r?\n/)
       .find(candidate => candidate.includes('**EL84 Pentode @2%**'));
     assert.ok(paragraph, `${language} is missing the preset-matching paragraph`);
+    assert.ok(paragraph.includes(`**${effectPresets}**`),
+      `${language} preset-matching paragraph is missing "${effectPresets}"`);
     for (const token of tokens) {
       assert.ok(paragraph.includes(`**${token}**`),
         `${language} preset-matching paragraph is missing "${token}"`);

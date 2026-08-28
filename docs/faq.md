@@ -149,6 +149,11 @@ Import AutoEQ equalizer settings directly from the button in the top right.
 ### 5.2. Pasting measurement correction settings
 Copy the 5Band PEQ settings from the measurement page and paste into the **Effect Pipeline** view using **Ctrl+V** or the menu.
 
+### 5.3. Using a multichannel measurement with Room EQ
+On the measurement page, select the individual channels you want under **Output Channel** to measure them in one session. After saving, Room EQ lists a separate entry for each channel, such as `Measurement name [Ch 1]`, in **Measurement Ch 1**, **Measurement Ch 2**, and the other channel-specific lists. In each **Measurement Ch** list, select the entry that matches that output channel. Room EQ does not assign channels automatically.
+
+Use **Copy Channel PEQ Settings** when you want to paste a static frequency-response correction into the **Effect Pipeline**. Use Room EQ when you want impulse-response-based room correction for each channel.
+
 ---
 
 ## 6. Effect Operation Tips

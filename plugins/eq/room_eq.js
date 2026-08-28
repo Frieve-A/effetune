@@ -1114,6 +1114,19 @@ class RoomEqPlugin extends PluginBase {
         return serialized;
     }
 
+    setSerializedParameters(params) {
+        const restored = { ...params };
+        const channelIds = Array.isArray(params.ms) ? params.ms : null;
+        const channelNames = Array.isArray(params.mn) ? params.mn : null;
+        for (let index = 0; index < 8; index += 1) {
+            const idKey = `ms${index}`;
+            const nameKey = `mn${index}`;
+            restored[idKey] = params[idKey] ?? channelIds?.[index] ?? '';
+            restored[nameKey] = params[nameKey] ?? channelNames?.[index] ?? '';
+        }
+        super.setSerializedParameters(restored);
+    }
+
     setParameters(params = {}) {
         const previous = this._designSignature();
         const previousLatency = this.lt;

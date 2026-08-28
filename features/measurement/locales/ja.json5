@@ -26,13 +26,18 @@
   "label:audioOutput": "オーディオ出力デバイス：", // オーディオ出力デバイス選択のラベル
   "help:audioOutput": "測定信号を出力するオーディオデバイスを選択してください。", // オーディオ出力のヘルプ
   "label:outputChannel": "出力チャンネル：", // 出力チャンネル選択のラベル
-  "help:outputChannel": "測定に使用するチャネル（左/右スピーカーやヘッドホンなど）を指定してください。", // 出力チャンネルのヘルプ
+  "help:outputChannel": "測定する出力チャンネルを1つ以上選択してください。「全チャンネル」を選ぶと、個別のチャンネル選択は解除されます。", // 出力チャンネルのヘルプ
   "label:sampleRate": "サンプリング周波数：", // サンプリング周波数選択のラベル
   "help:sampleRate": "測定時のサンプリング周波数を指定してください。", // サンプリング周波数のヘルプ
   "label:sweepLength": "スイープ長（サンプル数）：", // スイープ長選択のラベル
   "help:sweepLength": "測定信号の長さをサンプル数で指定します。", // スイープ長のヘルプ
-  "label:sweepBandLimited": "スイープの帯域を制限",
-  "help:sweepBandLimited": "ONの場合、TSPとテスト信号を以下の周波数範囲に制限します。OFFの場合、TSPを利用可能な全帯域で再生します。",
+  "title:advancedSettings": "詳細設定",
+  "label:sweepBandMode": "スイープの帯域制限：",
+  "option:sweepBandOff": "Off",
+  "option:sweepBandCommon": "全チャンネル共通",
+  "option:sweepBandPerChannel": "チャンネル別",
+  "label:sweepBandChannel": "設定チャンネル：",
+  "help:sweepBandMode": "スイープとテスト信号の帯域を制限する方法を選びます。チャンネル別では、選択した各出力チャンネルに個別の周波数範囲を設定できます。",
   "label:sweepMinFreq": "スイープ最低周波数（Hz）：", // スイープ最低周波数のラベル
   "help:sweepMinFreq": "スイープ信号の最低周波数をHz単位で指定します。1Hzから選択したサンプリング周波数のナイキスト周波数直下まで設定可能です。テスト信号もこの帯域に制限されます。（デフォルト：20 Hz）", // スイープ最低周波数のヘルプ
   "label:sweepMaxFreq": "スイープ最高周波数（Hz）：", // スイープ最高周波数のラベル
@@ -130,6 +135,8 @@
   "error:measurementConfigUnavailable": "測定設定を利用できなくなりました。新しい測定を開始してください。",
   "error:measurementFailed": "測定を完了できませんでした。オーディオデバイスを確認して、この測定点をもう一度測定してください。",
   "error:measurementImportFailed": "測定ファイルが正しくありません。EffeTuneからエクスポートした測定JSONファイルを選択してください。",
+  "error:impulseResponseImportFailed": "WAVファイルをインポートできませんでした。1～8チャンネルの正しいインパルス応答WAVファイルを選択してください。",
+  "error:impulseResponseImportTooLarge": "インパルス応答WAVファイルが大きすぎます。より短い、または小さいインパルス応答を選択してください。",
   "error:clipboardWriteFailed": "PEQ設定をコピーできませんでした。クリップボードへのアクセスを確認して、もう一度お試しください。",
   "error:correctionUpdateFailed": "補正を更新できませんでした。設定を確認して、もう一度お試しください。",
   "error:measurementDisplayFailed": "測定結果の表示を更新できませんでした。測定をもう一度選択してください。",
@@ -186,5 +193,23 @@
   "option:averaging8": "8", // 8回平均化のオプション
   "option:averaging10": "10", // 10回平均化のオプション
   "option:averaging12": "12", // 12回平均化のオプション
-  "option:averaging16": "16" // 16回平均化のオプション
+  "option:averaging16": "16", // 16回平均化のオプション
+  "status:measuringChannel": "{channel}を測定中（{current}/{total}）",
+  "label:channelFilter": "チャンネル:",
+  "option:allChannelsAverage": "すべて（平均）",
+  "option:multiChannel": "複数チャンネル",
+  "message:irSavedChannels": "{count}チャンネルのIRを保存済み ✓",
+  "warning:signalTooLowChannels": "{channels}の測定信号が小さすぎます",
+  "warning:signalTooHighChannels": "{channels}の測定信号が大きすぎます",
+  "label:noiseChannel": "テスト信号チャンネル:",
+  "label:noiseChannelMode": "チャンネルモード:",
+  "option:noiseModeManual": "手動",
+  "option:noiseModeAuto": "自動切り替え",
+  "button:copyChannelPEQ": "チャンネル別PEQ設定をコピー",
+  "message:channelPeqCopied": "チャンネル別PEQ設定をクリップボードにコピーしました。",
+  "button:redoChannel": "このチャンネルを再測定",
+  "label:redoChannel": "チャンネル:",
+  "label:calibrationAssignMode": "較正の割り当て:",
+  "option:calibrationCommon": "共通",
+  "option:calibrationPerChannel": "チャンネル別"
 }

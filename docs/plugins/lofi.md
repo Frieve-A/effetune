@@ -50,6 +50,16 @@ This effect requires an environment that supports its real-time processing. When
 - **Fade depth:** New instances use 1% Skywave for gentler level movement in Mono and a less pronounced nighttime fade. Raise Skywave to about 8% when you specifically want a deeper fade; larger values make the effect more extreme.
 - Start with Mix at 100% when judging the radio model. Lower it only when you intentionally want some of the original stereo image to remain.
 
+### System Presets
+
+Click **Effect Presets** in the effect header to try these complete radio settings.
+
+- **Local Daytime Station** - A clear, wide-band local broadcast with little static.
+- **Pocket Transistor** - A small-speaker radio with stronger compression, hum, and restricted bandwidth.
+- **Night Skywave** - A weak nighttime signal with pronounced ionospheric fading.
+- **Summer Thunderstorm** - A fading station interrupted by frequent atmospheric static.
+- **Stereo AM Broadcast** - A clearer C-QUAM stereo broadcast without speaker simulation.
+
 ### Parameters
 
 #### Station
@@ -166,6 +176,16 @@ Cassette Artifacts combines cassette frequency response, tape compression, hiss,
 - **Tape Type** changes noise and headroom. Type I is the noisiest, Type II is balanced, and Type IV keeps bright peaks cleaner.
 - **Noise Reduction** lowers hiss. Dolby C is stronger than Dolby B, while Off gives the rawest cassette background.
 - Raise **Wow/Flutter**, **Hiss**, or **Dropouts** for a more worn sound. **Azimuth** darkens and shifts the high frequencies between channels.
+
+### System Presets
+
+Click **Effect Presets** in the effect header to switch between complete cassette-deck characters.
+
+- **Flagship Deck Metal** - A quiet, steady reference deck using metal tape and Dolby C.
+- **Hi-Fi Chrome** - A clean Type II cassette with restrained hiss and pitch movement.
+- **Pocket Cassette Player** - A portable-player sound with noise, wobble, and head misalignment.
+- **Worn Mixtape** - A heavily used tape with dropouts, wobble, and rougher saturation.
+- **Hot Deck Saturation** - A deliberately hard-driven cassette sound with stronger tape compression.
 
 ### Parameters
 
@@ -371,6 +391,14 @@ This effect requires an environment that supports its real-time processing. When
 - **Weak-signal hiss:** as Signal falls, a bright, airy hiss rises first in stereo. Switching Stereo to Mono makes the same reception noticeably quieter, for the same reason mono is quieter on a real tuner.
 - **Fringe reception:** near the FM threshold, clicks and sputter appear, the receiver blends to mono, and the program finally sinks into noise.
 - **Multipath color:** reflections add a harsh, hollow distortion whose character follows Path Delay; raising Fading turns it into the flutter of mobile reception.
+
+### System Presets
+
+Click **Effect Presets** in the effect header to try representative FM reception conditions.
+
+- **Powerhouse Broadcast** - A strong station with more broadcast processing.
+- **Distant Station** - Reception near the service-area edge, with hiss and early stereo degradation.
+- **City Drive Multipath** - Fast-changing reflections and multipath distortion for mobile listening.
 
 ### Parameters
 
@@ -708,6 +736,14 @@ This effect requires an environment that supports its real-time processing. When
 - **Loud first moment after silence:** when the music starts — at the beginning of playback or after a gap — the gain is still wide open from the silence, so the first instant comes through loud before AGC settles, most obviously in USB and LSB. This is what a receiver switched on into a quiet channel does, and it is deliberately kept.
 - **Thin, dropping-out fades (USB, LSB):** a deep fade attenuates parts of the single sideband unevenly rather than producing the watery envelope-detector distortion of AM, so the sound goes thin and pieces of it drop out.
 
+### System Presets
+
+Click **Effect Presets** in the effect header to try complete shortwave reception scenes.
+
+- **Major Broadcaster** - A stable, relatively wide international broadcast through a tabletop radio.
+- **Transoceanic Night** - Deep nighttime fading and synchronous detection on a distant signal.
+- **Stormy 49 m Band** - Rapid fading, static, and a nearby interfering station.
+
 ### Parameters
 
 #### Station
@@ -811,6 +847,14 @@ Tape Artifacts records the music onto a modeled analog reel-to-reel machine and 
 - **The transport is audible on sustained notes:** Wow/Flutter adds pitch drift and shimmer to piano, organ, strings, and other held sounds.
 - **A living background:** Hiss adds both a steady tape floor and noise that follows the music. Set it to the minimum when you want no added tape noise.
 
+### System Presets
+
+Click **Effect Presets** in the effect header to compare three reel-to-reel conditions.
+
+- **Pristine 30 ips Reel** - A fast master-tape transfer with very little hiss or pitch movement.
+- **Hobbyist Reel-to-Reel** - A slower home recorder with more hiss and transport movement.
+- **Tired Old Reel** - A worn low-speed tape with strong wobble, hiss, and a rougher top end.
+
 ### Parameters
 
 - **Speed** (7.5, 15, or 30 ips) - Selects tape speed. Start at 15 ips; choose 30 ips for the cleanest, most open sound or 7.5 ips for darker tone, stronger bass lift, and more movement.
@@ -869,6 +913,14 @@ An effect that adds vinyl-style playback artifacts such as pops, crackle, hiss, 
   - Adds depth and character to digital recordings
   - Perfect for creating cozy, intimate listening experiences
 
+### System Presets
+
+Click **Effect Presets** in the effect header to add a light patina, a damaged used-record surface, or extra low-frequency rumble.
+
+- **Gentle Patina** - Low-level record noise for a restrained aged surface.
+- **Thrift Store Copy** - Frequent pops, crackle, and wear for a clearly damaged record.
+- **Rumbly Old Player** - The normal surface character with added turntable-like low-frequency rumble.
+
 ### Parameters
 - **Pops/min** - Controls the frequency of large click noises per minute (0 to 120)
   - 0-20: Occasional gentle pops
@@ -898,15 +950,15 @@ An effect that adds vinyl-style playback artifacts such as pops, crackle, hiss, 
   - 0%: Generated noise keeps its original channel separation
   - 30-60%: Realistic vinyl-style noise bleed
   - 100%: Generated noise becomes nearly equal between left and right
-- **Noise Profile** - Adjusts the frequency response of the generated noise (0.0 to 10.0)
-  - 0: Darkest, warmest noise tone
-  - 5: Partially shaped noise tone
-  - 10: Flat noise tone / tone shaping bypassed
+- **Noise Tone** - Adjusts the frequency response of the generated noise (0.0 to 10.0)
+  - 0: Flat noise tone
+  - 5: Partly darkened noise tone
+  - 10: Darkest noise tone
 - **Wear** - Scales surface wear artifacts such as pops, crackles, and hiss (0 to 200%)
   - 0-50%: Cleaner surface noise
   - 50-100%: Normal surface wear
   - 100-200%: Heavily worn surface noise
-  - Rumble, Crosstalk, and Noise Profile are controlled separately
+  - Rumble, Crosstalk, and Noise Tone are controlled separately
 - **React** - How much the noise responds to the input signal (0 to 100%)
   - 0%: Static noise levels
   - 25-50%: Moderate response to music
@@ -924,31 +976,31 @@ An effect that adds vinyl-style playback artifacts such as pops, crackle, hiss, 
 
 1. Subtle Vinyl Character
    - Pops/min: 20, Pop Level: -48dB, Crackles/min: 200, Crackle Level: -48dB
-   - Hiss: -48dB, Rumble: -60dB, Crosstalk: 30%, Noise Profile: 5.0
+   - Hiss: -48dB, Rumble: -60dB, Crosstalk: 30%, Noise Tone: 5.0
    - Wear: 25%, React: 20%, React Mode: Velocity, Mix: 100%
    - Perfect for: Adding gentle vinyl surface texture
 
 2. Classic Vinyl Experience
    - Pops/min: 40, Pop Level: -36dB, Crackles/min: 400, Crackle Level: -36dB
-   - Hiss: -36dB, Rumble: -50dB, Crosstalk: 50%, Noise Profile: 4.0
+   - Hiss: -36dB, Rumble: -50dB, Crosstalk: 50%, Noise Tone: 6.0
    - Wear: 60%, React: 30%, React Mode: Velocity, Mix: 100%
    - Perfect for: Authentic vinyl listening experience
 
 3. Well-Worn Record
    - Pops/min: 80, Pop Level: -24dB, Crackles/min: 800, Crackle Level: -24dB
-   - Hiss: -30dB, Rumble: -40dB, Crosstalk: 70%, Noise Profile: 3.0
+   - Hiss: -30dB, Rumble: -40dB, Crosstalk: 70%, Noise Tone: 7.0
    - Wear: 120%, React: 50%, React Mode: Velocity, Mix: 100%
    - Perfect for: Heavily aged record character
 
 4. Lo-Fi Ambient
    - Pops/min: 15, Pop Level: -54dB, Crackles/min: 150, Crackle Level: -54dB
-   - Hiss: -42dB, Rumble: -66dB, Crosstalk: 25%, Noise Profile: 6.0
+   - Hiss: -42dB, Rumble: -66dB, Crosstalk: 25%, Noise Tone: 4.0
    - Wear: 40%, React: 15%, React Mode: Amplitude, Mix: 100%
    - Perfect for: Background ambient texture
 
 5. Dynamic Vinyl
    - Pops/min: 60, Pop Level: -30dB, Crackles/min: 600, Crackle Level: -30dB
-   - Hiss: -39dB, Rumble: -45dB, Crosstalk: 60%, Noise Profile: 5.0
+   - Hiss: -39dB, Rumble: -45dB, Crosstalk: 60%, Noise Tone: 5.0
    - Wear: 80%, React: 75%, React Mode: Velocity, Mix: 100%
    - Perfect for: Noise that responds dramatically to the music
 
@@ -970,6 +1022,16 @@ Vinyl Simulator transforms the music itself through a physical record-cutting an
 - **Aged or damaged surface:** Raise Roughness first, then add Dust, Static, and a small amount of Scratch. These controls represent different physical events, so increasing all of them at once can become overpowering.
 - **More obvious groove coloration:** Raise Cut Level carefully, lower HF Cutoff, or use a smaller Radius. Watch the HUD for falling Tracking S/E and rising mistrack or skip rates.
 - **Wow and flutter:** Vinyl Simulator does not add speed drift, eccentricity, warping, or turntable rumble. Add **Wow Flutter** elsewhere in the effect chain when you want those behaviors.
+
+### System Presets
+
+Click **Effect Presets** in the effect header to apply complete groove, stylus, and surface settings.
+
+- **Audiophile Pressing** - A quiet, carefully maintained record surface.
+- **Well-Worn Favorite** - More roughness, dust, and static from an often-played record.
+- **Flea Market 45** - A worn 45 rpm single with a spherical stylus and prominent surface noise.
+- **78 rpm Shellac** - A narrow-band, coarse old shellac record character.
+- **End of Side** - An inner-groove position with the tracing behavior of the end of a record side.
 
 ### Parameters
 

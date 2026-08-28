@@ -3,6 +3,10 @@
   "error.invalidUrl": "Parâmetros de URL inválidos: {message}",
   "error.invalidPresetData": "Dados de predefinição inválidos",
   "error.failedToLoadPreset": "Falha ao carregar predefinição",
+  "error.failedToSavePreset": "Falha ao salvar o preset",
+  "error.failedToDeletePreset": "Falha ao excluir o preset",
+  "error.failedToSavePluginPreset": "Falha ao salvar o preset",
+  "error.failedToDeletePluginPreset": "Falha ao excluir o preset",
   "error.noPresetSelected": "Nenhuma predefinição selecionada",
   "error.failedToCutSettings": "Falha ao recortar configurações para a área de transferência",
   "error.failedToCopySettings": "Falha ao copiar configurações para a área de transferência",
@@ -68,6 +72,12 @@
   "ui.sleepMode": "Modo de Suspensão",
   "ui.whatsThisApp": "O que é este aplicativo?",
   "ui.newVersionAvailable": "Nova {version} disponível.",
+  "ui.pluginPresets.namePlaceholder": "Nome do preset",
+  "ui.pluginPresets.save": "Salvar",
+  "ui.pluginPresets.rename": "Renomear",
+  "ui.pluginPresets.deleteSelected": "Excluir selecionados",
+  "ui.pluginPresets.noUserPresets": "Não há presets salvos",
+  "ui.pluginPresets.confirmDeleteSelected": "Excluir os presets selecionados?",
 
   // Hints displayed when hovering over UI
   "ui.title.openMusic": "Abrir arquivos de música",
@@ -84,8 +94,8 @@
   "ui.title.cut": "Cortar efeitos",
   "ui.title.copy": "Copiar efeitos",
   "ui.title.paste": "Colar efeitos",
-  "ui.title.savePreset": "Salvar preset",
-  "ui.title.deletePreset": "Excluir preset",
+  "ui.title.effectPresets": "Predefinições de efeito",
+  "ui.title.pipelinePresets": "Predefinições de cadeia de efeitos",
   "ui.title.sharePipeline": "Compartilhar pipeline",
   "ui.title.decreaseColumns": "Diminuir colunas",
   "ui.title.increaseColumns": "Aumentar colunas",
@@ -112,7 +122,6 @@
   "ui.title.close": "Fechar",
   "ui.title.expand": "Clique para expandir",
   "ui.title.collapse": "Clique para recolher",
-  "ui.title.presetSelect": "Entrada e carregamento de nome de preset do usuário\nPressione ESC para limpar texto e mostrar todos os itens",
   "ui.mobileNav.primary": "Navegação móvel principal",
   "ui.mobileNav.player": "Player",
   "ui.mobileNav.library": "Biblioteca",
@@ -448,7 +457,7 @@
   // Menu da bandeja
   "trayMenuOpen": "Abrir",
   "trayMenuQuit": "Sair",
-  "trayMenuPresets": "Predefinições",
+  "trayMenuPresets": "Predefinições de cadeia de efeitos",
 
   // Recursos externos e IR Reverb
   "externalAsset.warning": "Esta cadeia referencia dados {kinds} externos. O destinatário precisa importar os mesmos arquivos; eles não estão incluídos.",

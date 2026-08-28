@@ -6,6 +6,7 @@ import { performance } from 'node:perf_hooks';
 import { DEFAULT_REPO_ROOT, pathExists } from './cases.mjs';
 import { readFloat32File, writeFloat32File } from './golden-io.mjs';
 import { DEFAULT_NOISE_SEED } from './stimuli.mjs';
+import { canonicalizeProcessingParameters } from '../../dsp/bindings/js/src/effect.js';
 import {
   buildDspPipelineDescriptor,
   buildDspPipelineNodes
@@ -168,7 +169,22 @@ function fieldKeys(field) {
   return count === 1 ? [key] : Array.from({ length: count }, (_, index) => `${key}${index}`);
 }
 
+function canonicalizeMultibandParams(schema, params) {
+  if (!['MultibandCompressorPlugin', 'MultibandExpanderPlugin', 'MultibandBalancePlugin',
+    'MultibandTransientPlugin', 'MultibandSaturationPlugin'].includes(schema.type)) return params;
+  const fields = schema.fields.filter(field => /^frequency[1-4]$/.test(field.name));
+  const frequencies = Object.fromEntries(fields.map(field => [
+    field.name, params[field.key] ?? field.default
+  ]));
+  const canonical = canonicalizeProcessingParameters(schema.type.slice(0, -6), frequencies);
+  return {
+    ...params,
+    ...Object.fromEntries(fields.map(field => [field.key, canonical[field.name]]))
+  };
+}
+
 export function packParams(schema, params = {}) {
+  params = canonicalizeMultibandParams(schema, params);
   const packed = [];
   for (const field of schema.fields) {
     const keys = fieldKeys(field);
@@ -365,12 +381,14 @@ export function encodeNativeControl(schema, testCase) {
   const initial = packParams(schema, testCase.params ?? {});
   const initialBytes = packStructuredParams(schema, testCase.params ?? {});
   const events = [...(testCase.events ?? [])].sort((left, right) => left.frame - right.frame);
-  let currentParams = { ...(testCase.params ?? {}) };
+  let currentParams = canonicalizeMultibandParams(schema, { ...(testCase.params ?? {}) });
   const packedEvents = events.map(event => {
     if (!Number.isInteger(event.frame) || event.frame < 0 || event.frame >= testCase.frames) {
       throw new Error(`Native DSP parameter event has invalid frame ${event.frame}`);
     }
-    currentParams = { ...currentParams, ...(event.params ?? {}) };
+    currentParams = canonicalizeMultibandParams(schema, {
+      ...currentParams, ...(event.params ?? {})
+    });
     return {
       frame: event.frame,
       packed: packParams(schema, currentParams),
@@ -694,7 +712,7 @@ export async function runWasmCase({
         ));
       }
     };
-    let currentParams = { ...(testCase.params ?? {}) };
+    let currentParams = canonicalizeMultibandParams(schema, { ...(testCase.params ?? {}) });
     applyParams(currentParams);
     const asset = normalizeAsset(testCase.asset, testCase.sampleRate, testCase.channels);
     if (asset) {
@@ -788,7 +806,9 @@ export async function runWasmCase({
     onProcessBatchBoundary?.({ phase: 'start' });
     while (startFrame < testCase.frames) {
       while (eventIndex < events.length && events[eventIndex].frame === startFrame) {
-        currentParams = { ...currentParams, ...(events[eventIndex].params ?? {}) };
+        currentParams = canonicalizeMultibandParams(schema, {
+          ...currentParams, ...(events[eventIndex].params ?? {})
+        });
         applyParams(currentParams);
         eventIndex++;
       }
@@ -921,7 +941,8 @@ export async function runWasmPipelineCase({
       const type = plugin.definition?.type;
       const schema = schemas.get(type);
       const dspInstance = instanceHandles.get(plugin);
-      const parameters = currentParameters.get(plugin) ?? {};
+      const parameters = canonicalizeMultibandParams(schema, currentParameters.get(plugin) ?? {});
+      currentParameters.set(plugin, parameters);
       const packed = packParams(schema, parameters);
       let paramsPtr = 0;
       try {

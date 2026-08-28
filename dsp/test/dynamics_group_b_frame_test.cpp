@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <numbers>
+#include <vector>
 
 extern "C" const effetune::KernelDescriptor *et_kernel_descriptor_AutoLevelerPlugin() noexcept;
 extern "C" const effetune::KernelDescriptor *et_kernel_descriptor_BrickwallLimiterPlugin() noexcept;
@@ -144,6 +146,99 @@ void testAutoLevelerFrame() {
   DYNAMICS_B_CHECK(harness.read() == 0u);
 }
 
+void testAutoLevelerWindowAutomation() {
+  KernelHarness harness(et_kernel_descriptor_AutoLevelerPlugin(), 701u);
+  constexpr std::uint32_t frames = 128u;
+  constexpr std::uint32_t settled_frames = 3u * 48000u;
+  harness.kernel->prepare({48000.0F, 1u, frames});
+  std::array<float, 7u> params{-36.0F, 3000.0F, 0.0F, -36.0F, 1.0F, 5000.0F, -96.0F};
+  float settled_output_lufs = -144.0F;
+  for (std::uint32_t start = 0u; start < settled_frames + 64u * frames; start += frames) {
+    if (start >= settled_frames) {
+      params[1] = 3010.0F + 10.0F * static_cast<float>((start - settled_frames) / frames);
+    }
+    harness.stage(params);
+    harness.kernel->applyPendingParameters();
+    std::array<float, frames> audio{};
+    for (std::uint32_t frame = 0u; frame < frames; ++frame) {
+      audio[frame] = static_cast<float>(
+          0.5 * std::sin(2.0 * std::numbers::pi * 1000.0 * (start + frame) / 48000.0));
+    }
+    harness.kernel->process(audio.data(), 1u, frames, {0.0});
+    if (start + frames == settled_frames) {
+      harness.telemetryTick();
+      DYNAMICS_B_CHECK(harness.read() == 24u);
+      settled_output_lufs = readF32(harness.output.data() + 20u);
+    }
+    if (start >= settled_frames) {
+      for (float sample : audio) {
+        DYNAMICS_B_CHECK(std::abs(sample) < 0.025F);
+      }
+      harness.telemetryTick();
+      DYNAMICS_B_CHECK(harness.read() == 24u);
+      DYNAMICS_B_CHECK(std::abs(readF32(harness.output.data() + 20u) - settled_output_lufs) <
+                       0.01F);
+    }
+  }
+}
+
+void testAutoLevelerWindowHistory() {
+  KernelHarness harness(et_kernel_descriptor_AutoLevelerPlugin(), 701u);
+  constexpr std::uint32_t frames = 128u;
+  constexpr std::uint32_t sample_rate = 48000u;
+  constexpr std::uint32_t capacity = 10u * sample_rate;
+  constexpr std::uint32_t total_frames = 21u * sample_rate;
+  harness.kernel->prepare({48000.0F, 1u, frames});
+  std::array<float, 7u> params{-18.0F, 3000.0F, 12.0F, -36.0F, 1.0F, 10.0F, -96.0F};
+  constexpr std::array<float, 6u> windows{1000.0F, 10000.0F, 3010.0F, 7000.0F, 2000.0F, 9999.0F};
+  std::vector<double> powers(total_frames);
+  // Independent direct-form filters use the published BS.1770-4 tables at 48 kHz.
+  std::array<double, 4u> highpass_state{};
+  std::array<double, 4u> shelf_state{};
+  const auto filter = [](double input, std::array<double, 4u> &state,
+                         const std::array<double, 5u> &coefficients) {
+    const double output = coefficients[0] * input + coefficients[1] * state[0] +
+                          coefficients[2] * state[1] - coefficients[3] * state[2] -
+                          coefficients[4] * state[3];
+    state = {input, state[0], output, state[2]};
+    return static_cast<float>(output);
+  };
+  for (std::uint32_t start = 0u; start < total_frames; start += frames) {
+    params[1] = windows[(start / frames) % windows.size()];
+    harness.stage(params);
+    harness.kernel->applyPendingParameters();
+    std::array<float, frames> audio{};
+    for (std::uint32_t frame = 0u; frame < frames; ++frame) {
+      const std::uint32_t index = start + frame;
+      const double amplitude = 0.1 + 0.05 * ((index / sample_rate) % 7u);
+      audio[frame] = static_cast<float>(
+          amplitude * std::sin(2.0 * std::numbers::pi * 997.0 * index / sample_rate));
+      const float highpass = filter(audio[frame], highpass_state,
+                                    {1.0, -2.0, 1.0, -1.99004745483398, 0.99007225036621});
+      const double weighted = filter(highpass, shelf_state,
+                                     {1.53512485958697, -2.69169618940638, 1.19839281085285,
+                                      -1.69065929318241, 0.73248077421585});
+      powers[index] = weighted * weighted;
+    }
+    harness.kernel->process(audio.data(), 1u, frames, {0.0});
+    const std::uint32_t end = start + frames;
+    if ((start / frames) % 127u != 0u && start / capacity == end / capacity) {
+      continue;
+    }
+    const auto window_samples = static_cast<std::uint32_t>(
+        std::floor(static_cast<double>(params[1]) * 0.001 * sample_rate));
+    const std::uint32_t first = end < window_samples ? 0u : end - window_samples;
+    double sum = 0.0;
+    for (std::uint32_t index = first; index < end; ++index) {
+      sum += powers[index];
+    }
+    const double expected_lufs = 10.0 * std::log10(sum / (end - first)) - 0.691;
+    harness.telemetryTick();
+    DYNAMICS_B_CHECK(harness.read() == 24u);
+    DYNAMICS_B_CHECK(std::abs(readF32(harness.output.data() + 16u) - expected_lufs) < 1.0e-5);
+  }
+}
+
 void testTransientFrame() {
   KernelHarness harness(et_kernel_descriptor_TransientShaperPlugin(), 801u);
   harness.stage(std::array<float, 7u>{0.1F, 20.0F, 100.0F, 300.0F, 24.0F, 0.0F, 0.1F});
@@ -191,6 +286,8 @@ void testBrickwallFrameAndStagedLatency() {
 
 int main() {
   testAutoLevelerFrame();
+  testAutoLevelerWindowAutomation();
+  testAutoLevelerWindowHistory();
   testTransientFrame();
   testBrickwallFrameAndStagedLatency();
   if (failures != 0) {

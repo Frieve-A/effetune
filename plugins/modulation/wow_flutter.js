@@ -1,4 +1,13 @@
+const WOW_FLUTTER_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({ id: 'warped-record', label: 'Warped Record', params: Object.freeze({ rt: 0.6, dp: 18, rn: 4, rc: 2, rs: -6.0, cp: 0, cs: 100 }) }),
+    Object.freeze({ id: 'worn-cassette-motor', label: 'Worn Cassette Motor', params: Object.freeze({ rt: 3.0, dp: 3, rn: 14, rc: 8, rs: -6.0, cp: 0, cs: 100 }) }),
+    Object.freeze({ id: 'seasick-tape', label: 'Seasick Tape', params: Object.freeze({ rt: 0.3, dp: 30, rn: 25, rc: 3, rs: -4.0, cp: 30, cs: 80 }) })
+]);
+
 class WowFlutterPlugin extends PluginBase {
+    static getSystemPresetGroups() {
+        return [{ label: '', presets: WOW_FLUTTER_SYSTEM_PRESETS.map(preset => ({ ...preset })) }];
+    }
     constructor() {
         super('Wow Flutter', 'Time-based modulation effect');
 

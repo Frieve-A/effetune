@@ -64,9 +64,14 @@
       "id": "crossover-events-reset-and-fade",
       "stimulus": "noise",
       "frames": 4301,
+      "params": { "f1": 400, "f2": 100, "f3": 3200, "f4": 1000 },
       "events": [
         { "frame": 64, "params": { "f1": 240 } },
+        { "frame": 256, "params": { "f2": 100 } },
+        { "frame": 512, "params": { "f1": 20 } },
         { "frame": 1024, "params": { "f2": 1200, "f3": 4600 } },
+        { "frame": 1280, "params": { "f3": 500 } },
+        { "frame": 1536, "params": { "f2": 100 } },
         { "frame": 2048, "params": { "f1": 80, "f2": 600, "f3": 2400, "f4": 12000 } },
         { "frame": 3520, "params": { "f4": 9000 } }
       ]

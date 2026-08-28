@@ -6,6 +6,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -284,6 +285,35 @@ test('Linux sidecars package loader-resolved libnl beside an $ORIGIN-linked exec
   );
 });
 
+test('Linux provenance resolves package path aliases without accepting unrelated or ambiguous owners', t => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'effetune-libnl-owner-')));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const libraryDirectory = path.join(root, 'usr', 'lib');
+  const aliasDirectory = path.join(root, 'lib');
+  mkdirSync(libraryDirectory, { recursive: true });
+  symlinkSync(libraryDirectory, aliasDirectory, 'junction');
+  const library = path.join(libraryDirectory, 'libnl-3.so.200');
+  const alias = path.join(aliasDirectory, 'libnl-3.so.200');
+  const unrelated = path.join(root, 'libnl-3.so.200');
+  writeFileSync(library, 'library');
+  writeFileSync(unrelated, 'different library');
+  const owner = 'libnl-3-200:amd64';
+  assert.equal(parseDpkgSearch(`${owner}: ${library}`, library), owner);
+  assert.equal(parseDpkgSearch([
+    `${owner}: ${alias}`,
+    `${owner}: ${library}`,
+    `unrelated: ${unrelated}`,
+    `absent: ${path.join(root, 'missing')}`,
+  ].join('\n'), library), owner);
+  assert.throws(() => parseDpkgSearch(`unrelated: ${unrelated}`, library), /exactly one dpkg owner/);
+  assert.throws(() => parseDpkgSearch(
+    `${owner}: ${alias}\nother-package: ${library}`, library
+  ), /exactly one dpkg owner/);
+  assert.throws(() => parseDpkgSearch(
+    `${owner}, other-package: ${library}`, library
+  ), /exactly one dpkg owner/);
+});
+
 test('Linux release provenance binds packaged binaries to complete exact Debian source artifacts', () => {
   assert.deepEqual(
     parseDpkgRecord('libnl-3-200:amd64\t3.7.0-0.2build1\tamd64\tlibnl3\t3.7.0-0.2build1'),
@@ -294,13 +324,6 @@ test('Linux release provenance binds packaged binaries to complete exact Debian 
       sourcePackage: 'libnl3',
       sourceVersion: '3.7.0-0.2build1',
     }
-  );
-  assert.equal(
-    parseDpkgSearch(
-      'libnl-3-200:amd64: /usr/lib/x86_64-linux-gnu/libnl-3.so.200.26.0',
-      '/usr/lib/x86_64-linux-gnu/libnl-3.so.200.26.0'
-    ),
-    'libnl-3-200:amd64'
   );
   assert.deepEqual(parseDscChecksums(`Format: 3.0 (quilt)
 Checksums-Sha256:

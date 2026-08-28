@@ -34,7 +34,7 @@ Auto Filter resonant filter को अपने-आप चलाता है।
 
 ### पैरामीटर
 
-- **Style**: सभी parameters को एक साथ तय करने वाली पूरी factory setting। विकल्प **Auto Filter Sweep** (LFO), **Stereo Filter Sweep** (LFO), **Envelope Filter** (Envelope), **Auto Wah** (Envelope) और **Reverse Auto Wah** (Envelope) हैं। किसी parameter को अलग से बदलने पर यह **Custom** हो जाता है।
+- **सिस्टम प्रीसेट**: **Auto Filter Sweep**, **Stereo Filter Sweep**, **Envelope Filter**, **Auto Wah** या **Reverse Auto Wah** से पूरी शुरुआती सेटिंग लोड करें। उसके बाद अलग-अलग पैरामीटर समायोजित करके उसे अपनी ज़रूरत के अनुसार बदलें।
 - **Mode**: नियमित रूप से चलने वाले LFO और volume का अनुसरण करने वाले Envelope के बीच बदलता है।
 - **Filter Type**: Low-pass, Band-pass या High-pass।
 - **Minimum Frequency / Maximum Frequency** (20–20,000 Hz): गति की सीमा। उलटे क्रम को अपने-आप सही किया जाता है; समान मान filter को स्थिर रखते हैं। processing के दौरान सीमा Nyquist frequency से नीचे सुरक्षित क्षेत्र में रखी जाती है।
@@ -55,7 +55,7 @@ Auto Pan हर stereo pair का level बाएँ और दाएँ चल
 
 ### पैरामीटर
 
-- **Style**: सभी parameters की पूरी factory setting। विकल्प **Gentle Auto Pan**, **Wide Auto Pan** और **Fast Auto Pan** हैं। अलग parameter बदलने पर यह **Custom** हो जाता है।
+- **सिस्टम प्रीसेट**: **Gentle Auto Pan**, **Wide Auto Pan** या **Fast Auto Pan** से पूरी शुरुआती सेटिंग लोड करें। उसके बाद अलग-अलग पैरामीटर समायोजित करके उसे अपनी ज़रूरत के अनुसार बदलें।
 - **Rate** (0.05–20 Hz): गति।
 - **Depth** (0–100%): Center के आसपास चलने की मात्रा। 0% पर कोई बदलाव नहीं।
 - **Center** (-100–100%): मध्य स्थिति को बाएँ या दाएँ खिसकाता है।
@@ -76,7 +76,7 @@ Chorus संगीत की चलती हुई delayed copies जोड़
 
 ### पैरामीटर
 
-- **Style**: सभी parameters की पूरी factory setting। विकल्प **Classic Chorus** (Chorus), **Stereo Chorus** (Stereo Chorus), **Ensemble** (Ensemble), **Flanger** (Flanger), **Jet Flanger** (Flanger) और **Vibrato** (Vibrato) हैं। अलग parameter बदलने पर यह **Custom** हो जाता है।
+- **सिस्टम प्रीसेट**: **Classic Chorus**, **Stereo Chorus**, **Ensemble**, **Flanger**, **Jet Flanger** या **Vibrato** से पूरी शुरुआती सेटिंग लोड करें। उसके बाद अलग-अलग पैरामीटर समायोजित करके उसे अपनी ज़रूरत के अनुसार बदलें।
 - **Mode**: Chorus, Stereo Chorus, Ensemble, Flanger या Vibrato।
 - **Rate** (0.05–10 Hz): modulation की गति।
 - **Delay** (0.5–30 ms): wet signal का आधार delay।
@@ -133,7 +133,7 @@ Frequency Shifter हर frequency component को musical interval के ब�
 
 ### पैरामीटर
 
-- **Style**: सभी parameters की पूरी factory setting। विकल्प **Shift Up** (Shift), **Shift Down** (Shift), **Fine Detune** (Shift), **Ring Modulator** (Ring Mod), **Barber-pole Up** (Barber-pole) और **Barber-pole Down** (Barber-pole) हैं। अलग parameter बदलने पर यह **Custom** हो जाता है।
+- **सिस्टम प्रीसेट**: **Shift Up**, **Shift Down**, **Fine Detune**, **Ring Modulator**, **Barber-pole Up** या **Barber-pole Down** से पूरी शुरुआती सेटिंग लोड करें। उसके बाद अलग-अलग पैरामीटर समायोजित करके उसे अपनी ज़रूरत के अनुसार बदलें।
 - **Mode**: Shift, Ring Mod या Barber-pole।
 - **Shift** (-5,000–5,000 Hz): Shift mode की मात्रा। positive मान ऊपर और negative मान नीचे खिसकाते हैं।
 - **Carrier Frequency** (0.1–10,000 Hz): Ring Mod का carrier frequency।
@@ -156,7 +156,7 @@ Phaser original sound को filtered copies के साथ मिलाकर
 
 ### पैरामीटर
 
-- **Style**: सभी parameters की पूरी factory setting। विकल्प **Classic Phaser** (Classic), **Deep Phaser** (Classic), **Stereo Phaser** (Classic), **Barber-pole Up** (Barber-pole) और **Barber-pole Down** (Barber-pole) हैं। अलग parameter बदलने पर यह **Custom** हो जाता है।
+- **सिस्टम प्रीसेट**: **Classic Phaser**, **Deep Phaser**, **Stereo Phaser**, **Barber-pole Up** या **Barber-pole Down** से पूरी शुरुआती सेटिंग लोड करें। उसके बाद अलग-अलग पैरामीटर समायोजित करके उसे अपनी ज़रूरत के अनुसार बदलें।
 - **Mode**: Classic या Barber-pole।
 - **Rate** (0.05–10 Hz): sweep की गति।
 - **Center Frequency** (80–8,000 Hz): logarithmic sweep का केंद्र।
@@ -222,7 +222,7 @@ Rotary Speaker sound को high-frequency horn और low-frequency drum मे
 
 ### पैरामीटर
 
-- **Style**: सभी parameters की पूरी factory setting। विकल्प **Rotary Slow** (Slow), **Rotary Fast** (Fast), **Gentle Rotary** (Slow), **Leslie Slow** (Slow) और **Leslie Fast** (Fast) हैं। अलग parameter बदलने पर यह **Custom** हो जाता है।
+- **सिस्टम प्रीसेट**: **Rotary Slow**, **Rotary Fast**, **Gentle Rotary**, **Vintage Rotor Slow** या **Vintage Rotor Fast** से पूरी शुरुआती सेटिंग लोड करें। उसके बाद अलग-अलग पैरामीटर समायोजित करके उसे अपनी ज़रूरत के अनुसार बदलें।
 - **Speed State**: Stop, Slow या Fast। बदलते समय rotors sound को रोके बिना smoothly तेज़ या धीमे होते हैं।
 - **Speed** (25–200%): horn और drum दोनों की speed multiplier।
 - **Acceleration** (0.1–10 s): rotors नई speed की ओर कितनी तेज़ी से बढ़ते हैं।
@@ -328,6 +328,14 @@ Rotary Speaker sound को high-frequency horn और low-frequency drum मे
 ## Wow Flutter
 
 एक ऐसा प्रभाव जो आपके संगीत में सूक्ष्म पिच परिवर्तनों को जोड़ता है, जैसा कि आपको विनाइल रिकॉर्ड्स या कैसेट टेप्स से याद आ सकता है। यह एक गर्म, पुरानी यादों से भरपूर भावना पैदा करता है जिसे कई लोग सुखद और आरामदायक मानते हैं।
+
+### सिस्टम प्रीसेट
+
+टेप या रिकॉर्ड चलाने वाले तंत्र के व्यवहार की पूरी सेटिंग की तुलना करने के लिए इफ़ेक्ट के शीर्षक में **इफ़ेक्ट प्रीसेट** पर क्लिक करें।
+
+- **Warped Record** - मुड़े हुए रिकॉर्ड जैसा गहरा और नियमित उतार-चढ़ाव।
+- **Worn Cassette Motor** - अनियमित गति के साथ तेज़ फ़्लटर।
+- **Seasick Tape** - बहुत धीमा और गहरा उतार-चढ़ाव, जिसमें दोनों स्टीरियो चैनल स्वतंत्र रूप से बदलते हैं।
 
 ### सुनने का अनुभव गाइड
 - विनाइल रिकॉर्ड अनुभव:

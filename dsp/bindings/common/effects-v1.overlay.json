@@ -886,8 +886,7 @@
     },
     {
       "type": "RSReverb",
-      "internalType": "RSReverbPlugin",
-      "seeded": true
+      "internalType": "RSReverbPlugin"
     },
     {
       "type": "DynamicSaturation",
@@ -996,7 +995,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "3c5f527bbc305e612b94c8e56e7a9eb7bc42ed35574354bb2f60f42e5dfc96af",
+    "publicCatalogSha256": "0c80f74a326c27def4fd368f21b11acb25b3a75b8a3b798fae0f7faa3adb259d",
     "privateLayoutSha256": "10371b5016b454f9e056d84f4a43d050e01a6b40ba0d9eb8dd3939f4fba2550c"
   }
 }

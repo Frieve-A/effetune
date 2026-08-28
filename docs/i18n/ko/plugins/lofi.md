@@ -50,6 +50,16 @@ AM Radio Simulator는 송신 처리와 AM 변조, 지상파·전리층파 전파
 - **페이드 깊이:** 새 인스턴스는 Skywave 1%를 사용하므로 Mono에서 레벨 움직임이 차분하고 야간 페이드도 덜 두드러집니다. 확실히 더 깊은 페이드가 필요하면 Skywave를 약 8%로 높이세요. 그보다 큰 값에서는 효과가 더욱 강해집니다.
 - 라디오 모델 자체를 확인할 때는 Mix 100%에서 시작합니다. 원래 스테레오 이미지를 일부러 남기려는 경우에만 Mix를 낮추세요.
 
+### 시스템 프리셋
+
+이펙트 헤더의 **효과 프리셋**을 클릭하면 다음 완성된 설정을 바로 적용할 수 있습니다.
+
+- **Local Daytime Station** - 잡음이 거의 없는 선명하고 넓은 대역의 지역 방송입니다.
+- **Pocket Transistor** - 압축과 험이 더 강하고 대역폭이 제한된 작은 스피커 라디오 소리입니다.
+- **Night Skywave** - 전리층 페이딩이 뚜렷한 약한 야간 신호입니다.
+- **Summer Thunderstorm** - 잦은 대기 잡음에 끊기는 페이딩 방송입니다.
+- **Stereo AM Broadcast** - 스피커 시뮬레이션을 쓰지 않는 더 선명한 C-QUAM 스테레오 방송입니다.
+
 ### 파라미터
 
 #### Station
@@ -166,6 +176,16 @@ Cassette Artifacts는 카세트의 주파수 응답, 테이프 압축, 히스, �
 - **Tape Type**은 노이즈와 헤드룸을 바꿉니다. Type I은 노이즈가 가장 많고, Type II는 균형형이며, Type IV는 밝은 피크를 더 깨끗하게 유지합니다.
 - **Noise Reduction**은 히스를 줄입니다. Dolby C는 Dolby B보다 강하고, Off는 카세트의 거친 배경을 그대로 남깁니다.
 - 더 낡은 소리를 원하면 **Wow/Flutter**, **Hiss**, **Dropouts**를 올리세요. **Azimuth**는 고역을 부드럽게 하고 좌우 타이밍을 바꿉니다.
+
+### 시스템 프리셋
+
+이펙트 헤더의 **효과 프리셋**을 클릭하면 다음 완성된 설정을 바로 적용할 수 있습니다.
+
+- **Flagship Deck Metal** - 메탈 테이프와 Dolby C를 쓰는 조용하고 안정적인 레퍼런스 데크입니다.
+- **Hi-Fi Chrome** - 히스와 피치 변동을 억제한 깨끗한 Type II 카세트입니다.
+- **Pocket Cassette Player** - 노이즈, 흔들림, 헤드 정렬 불량이 있는 휴대용 플레이어 소리입니다.
+- **Worn Mixtape** - 드롭아웃, 흔들림, 더 거친 포화가 있는 많이 닳은 테이프입니다.
+- **Hot Deck Saturation** - 테이프 압축을 더 강하게 들려주도록 의도적으로 세게 녹음한 카세트 소리입니다.
 
 ### 파라미터
 
@@ -371,6 +391,14 @@ FM Radio Simulator는 방송용 오디오 처리와 프리엠퍼시스, 19 kHz �
 - **약전계 히스:** Signal을 낮추면 밝고 가벼운 히스가 먼저 스테레오에서 올라옵니다. Stereo를 Mono로 바꾸면 같은 수신 상태가 뚜렷하게 조용해집니다. 실제 튜너에서 모노 수신이 더 조용해지는 것과 같은 이유입니다.
 - **수신 한계 부근:** FM 임계값 근처에서는 클릭과 스퍼터가 나타나고, 수신기는 모노로 블렌드하며, 마침내 프로그램이 노이즈에 잠깁니다.
 - **멀티패스 음색:** 반사파는 Path Delay에 따라 변하는 거칠고 공허한 왜곡을 더합니다. Fading을 올리면 이동 수신 특유의 플러터가 됩니다.
+
+### 시스템 프리셋
+
+이펙트 헤더의 **효과 프리셋**을 클릭하면 다음 완성된 설정을 바로 적용할 수 있습니다.
+
+- **Powerhouse Broadcast** - 방송 처리가 더 강한 강전계 방송국입니다.
+- **Distant Station** - 히스와 초기 스테레오 열화가 나타나는 서비스 지역 끝의 수신입니다.
+- **City Drive Multipath** - 이동 청취에서 생기는 빠르게 변하는 반사와 다중 경로 왜곡입니다.
 
 ### 파라미터
 
@@ -704,6 +732,14 @@ SW Radio Simulator는 송신 처리와 AM 변조 또는 단측파대 변조, 깊
 - **무음 뒤 한순간 큰 소리:** 재생을 시작하거나 무음 뒤에 음악이 시작되면 무음 동안 게인이 활짝 열린 상태여서, AGC가 안정되기 전 첫 순간만 크게 울립니다. USB와 LSB에서 특히 두드러집니다. 조용한 채널에서 수신기 전원을 켰을 때와 같은 동작이며, 의도적으로 그대로 두었습니다.
 - **얇아지고 끊기는 페이드 (USB·LSB):** 깊은 페이드는 AM 포락선 검파의 물속 같은 왜곡 대신, 하나뿐인 측파대 안을 주파수마다 고르지 않게 감쇠시킵니다. 소리가 얇아지고 일부가 빠집니다.
 
+### 시스템 프리셋
+
+이펙트 헤더의 **효과 프리셋**을 클릭하면 다음 완성된 설정을 바로 적용할 수 있습니다.
+
+- **Major Broadcaster** - 탁상용 라디오로 듣는 안정적이고 비교적 넓은 대역의 국제 방송입니다.
+- **Transoceanic Night** - 먼 신호의 깊은 야간 페이딩과 동기 검파입니다.
+- **Stormy 49 m Band** - 빠른 페이딩, 대기 잡음, 인근 방송국 간섭이 있는 수신입니다.
+
 ### 파라미터
 
 #### Station
@@ -807,6 +843,14 @@ Tape Artifacts는 음악을 아날로그 오픈릴 테이프 머신을 거친 �
 - **긴 음에서 주행부가 들립니다:** Wow/Flutter는 피아노, 오르간, 현악기 같은 지속음에 피치 드리프트와 흔들림을 더합니다.
 - **살아 있는 배경:** Hiss는 일정한 테이프 노이즈와 음악에 연동되는 노이즈를 더합니다. 추가 테이프 노이즈가 필요 없으면 최솟값으로 내리세요.
 
+### 시스템 프리셋
+
+이펙트 헤더의 **효과 프리셋**을 클릭하면 다음 완성된 설정을 바로 적용할 수 있습니다.
+
+- **Pristine 30 ips Reel** - 히스와 피치 변동이 아주 적은 고속 마스터 테이프 전사입니다.
+- **Hobbyist Reel-to-Reel** - 히스와 주행부 움직임이 더 많은 저속 가정용 녹음기입니다.
+- **Tired Old Reel** - 심한 흔들림, 히스, 거친 고역을 지닌 닳은 저속 테이프입니다.
+
 ### 파라미터
 
 - **Speed** (7.5 / 15 / 30 ips) - 테이프 속도를 선택합니다. 15 ips에서 시작하세요. 가장 깨끗하고 개방적인 소리는 30 ips, 어두운 음색과 강한 저역 상승, 움직임은 7.5 ips를 선택합니다.
@@ -867,6 +911,14 @@ Tape Artifacts는 음악을 아날로그 오픈릴 테이프 머신을 거친 �
   - 디지털 녹음에 깊이와 캐릭터를 추가
   - 아늑하고 친밀한 리스닝 경험을 만드는 데 완벽
 
+### 시스템 프리셋
+
+이펙트 헤더의 **효과 프리셋**을 클릭하면 다음 완성된 설정을 바로 적용할 수 있습니다.
+
+- **Gentle Patina** - 절제된 오래된 표면을 위한 낮은 레벨의 레코드 노이즈입니다.
+- **Thrift Store Copy** - 잦은 팝, 크랙클, 마모로 분명히 손상된 레코드입니다.
+- **Rumbly Old Player** - 일반적인 표면 질감에 턴테이블 같은 저주파 럼블을 더합니다.
+
 ### 파라미터
 - **Pops/min** - 분당 큰 클릭 노이즈의 빈도를 제어 (0에서 120)
   - 0-20: 가끔 들리는 부드러운 팝
@@ -896,15 +948,15 @@ Tape Artifacts는 음악을 아날로그 오픈릴 테이프 머신을 거친 �
   - 0%: 생성된 노이즈가 원래 채널 분리를 유지
   - 30-60%: 현실적인 비닐풍 노이즈 블리드
   - 100%: 생성된 노이즈가 좌우에서 거의 같아짐
-- **Noise Profile** - 생성된 노이즈의 주파수 응답을 조정 (0.0에서 10.0)
-  - 0: 가장 어둡고 따뜻한 노이즈 톤
-  - 5: 일부 톤이 형성된 노이즈 톤
-  - 10: 평탄한 노이즈 톤 / 톤 쉐이핑 바이패스
+- **Noise Tone** - 생성된 노이즈의 주파수 응답을 조정 (0.0에서 10.0)
+  - 0: 평탄한 노이즈 톤
+  - 5: 일부 어두워진 노이즈 톤
+  - 10: 어두운 노이즈 톤
 - **Wear** - 팝, 크래클, 히스 같은 표면 마모 아티팩트를 스케일링 (0에서 200%)
   - 0-50%: 더 깨끗한 표면 노이즈
   - 50-100%: 일반적인 표면 마모
   - 100-200%: 심하게 마모된 표면 노이즈
-  - Rumble, Crosstalk, Noise Profile은 별도로 제어됩니다
+  - Rumble, Crosstalk, Noise Tone은 별도로 제어됩니다
 - **React** - 노이즈가 입력 신호에 반응하는 정도 (0에서 100%)
   - 0%: 정적인 노이즈 레벨
   - 25-50%: 음악에 중간 정도로 반응
@@ -922,31 +974,31 @@ Tape Artifacts는 음악을 아날로그 오픈릴 테이프 머신을 거친 �
 
 1. 미묘한 비닐 캐릭터
    - Pops/min: 20, Pop Level: -48dB, Crackles/min: 200, Crackle Level: -48dB
-   - Hiss: -48dB, Rumble: -60dB, Crosstalk: 30%, Noise Profile: 5.0
+   - Hiss: -48dB, Rumble: -60dB, Crosstalk: 30%, Noise Tone: 5.0
    - Wear: 25%, React: 20%, React Mode: Velocity, Mix: 100%
    - 완벽한 용도: 부드러운 비닐 표면 텍스처 추가
 
 2. 클래식 비닐 경험
    - Pops/min: 40, Pop Level: -36dB, Crackles/min: 400, Crackle Level: -36dB
-   - Hiss: -36dB, Rumble: -50dB, Crosstalk: 50%, Noise Profile: 4.0
+   - Hiss: -36dB, Rumble: -50dB, Crosstalk: 50%, Noise Tone: 6.0
    - Wear: 60%, React: 30%, React Mode: Velocity, Mix: 100%
    - 완벽한 용도: 진정한 비닐 리스닝 경험
 
 3. 잘 낡은 레코드
    - Pops/min: 80, Pop Level: -24dB, Crackles/min: 800, Crackle Level: -24dB
-   - Hiss: -30dB, Rumble: -40dB, Crosstalk: 70%, Noise Profile: 3.0
+   - Hiss: -30dB, Rumble: -40dB, Crosstalk: 70%, Noise Tone: 7.0
    - Wear: 120%, React: 50%, React Mode: Velocity, Mix: 100%
    - 완벽한 용도: 심하게 노화된 레코드 캐릭터
 
 4. 로파이 앰비언트
    - Pops/min: 15, Pop Level: -54dB, Crackles/min: 150, Crackle Level: -54dB
-   - Hiss: -42dB, Rumble: -66dB, Crosstalk: 25%, Noise Profile: 6.0
+   - Hiss: -42dB, Rumble: -66dB, Crosstalk: 25%, Noise Tone: 4.0
    - Wear: 40%, React: 15%, React Mode: Amplitude, Mix: 100%
    - 완벽한 용도: 배경 앰비언트 텍스처
 
 5. Dynamic Vinyl
    - Pops/min: 60, Pop Level: -30dB, Crackles/min: 600, Crackle Level: -30dB
-   - Hiss: -39dB, Rumble: -45dB, Crosstalk: 60%, Noise Profile: 5.0
+   - Hiss: -39dB, Rumble: -45dB, Crosstalk: 60%, Noise Tone: 5.0
    - Wear: 80%, React: 75%, React Mode: Velocity, Mix: 100%
    - 완벽한 용도: 음악에 극적으로 반응하는 노이즈
 
@@ -968,6 +1020,16 @@ Vinyl Simulator는 물리적인 레코드 커팅 및 재생 모델로 음악 신
 - **낡은 표면:** Roughness를 먼저 올린 뒤 Dust, Static, 소량의 Scratch를 추가하세요. 각 컨트롤은 서로 다른 물리 현상을 나타냅니다.
 - **더 뚜렷한 홈 착색:** Cut Level을 조심스럽게 올리거나 HF Cutoff 또는 Radius를 낮춥니다. Tracking S/E 저하와 mistrack/skip 증가를 확인하세요.
 - wow/flutter, 편심, 휨, 턴테이블 럼블은 포함하지 않습니다. 필요하면 체인에 **Wow Flutter**를 추가하세요.
+
+### 시스템 프리셋
+
+이펙트 헤더의 **효과 프리셋**을 클릭하면 다음 완성된 설정을 바로 적용할 수 있습니다.
+
+- **Audiophile Pressing** - 세심하게 관리된 조용한 레코드 표면입니다.
+- **Well-Worn Favorite** - 자주 재생한 레코드의 거침, 먼지, 정전기를 늘립니다.
+- **Flea Market 45** - 구면 스타일러스와 두드러진 표면 노이즈가 있는 닳은 45 rpm 싱글입니다.
+- **78 rpm Shellac** - 대역이 좁고 거친 오래된 셸락 레코드 특성입니다.
+- **End of Side** - 레코드 한 면 끝부분의 안쪽 홈 위치에서 나는 트래킹 특성입니다.
 
 ### 파라미터
 

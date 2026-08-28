@@ -3,6 +3,10 @@
   "error.invalidUrl": "Неверные параметры URL: {message}",
   "error.invalidPresetData": "Неверные данные предустановки",
   "error.failedToLoadPreset": "Не удалось загрузить предустановку",
+  "error.failedToSavePreset": "Не удалось сохранить пресет",
+  "error.failedToDeletePreset": "Не удалось удалить пресет",
+  "error.failedToSavePluginPreset": "Не удалось сохранить пресет",
+  "error.failedToDeletePluginPreset": "Не удалось удалить пресет",
   "error.noPresetSelected": "Предустановка не выбрана",
   "error.failedToCutSettings": "Не удалось вырезать настройки в буфер обмена",
   "error.failedToCopySettings": "Не удалось скопировать настройки в буфер обмена",
@@ -68,6 +72,12 @@
   "ui.sleepMode": "Режим сна",
   "ui.whatsThisApp": "Что это за приложение?",
   "ui.newVersionAvailable": "Доступна новая {version}.",
+  "ui.pluginPresets.namePlaceholder": "Название пресета",
+  "ui.pluginPresets.save": "Сохранить",
+  "ui.pluginPresets.rename": "Переименовать",
+  "ui.pluginPresets.deleteSelected": "Удалить выбранные",
+  "ui.pluginPresets.noUserPresets": "Нет сохранённых пресетов",
+  "ui.pluginPresets.confirmDeleteSelected": "Удалить выбранные пресеты?",
 
   // Hints displayed when hovering over UI
   "ui.title.openMusic": "Открыть музыкальные файлы",
@@ -84,8 +94,8 @@
   "ui.title.cut": "Вырезать эффекты",
   "ui.title.copy": "Копировать эффекты",
   "ui.title.paste": "Вставить эффекты",
-  "ui.title.savePreset": "Сохранить пресет",
-  "ui.title.deletePreset": "Удалить пресет",
+  "ui.title.effectPresets": "Пресеты эффекта",
+  "ui.title.pipelinePresets": "Пресеты цепочки эффектов",
   "ui.title.sharePipeline": "Поделиться цепочкой",
   "ui.title.decreaseColumns": "Уменьшить число колонок",
   "ui.title.increaseColumns": "Увеличить число колонок",
@@ -112,7 +122,6 @@
   "ui.title.close": "Закрыть",
   "ui.title.expand": "Щёлкните, чтобы развернуть",
   "ui.title.collapse": "Щёлкните, чтобы свернуть",
-  "ui.title.presetSelect": "Ввод и загрузка имени пользовательского пресета\nНажмите ESC для очистки текста и показа всех элементов",
   "ui.mobileNav.primary": "Основная мобильная навигация",
   "ui.mobileNav.player": "Плеер",
   "ui.mobileNav.library": "Библиотека",
@@ -448,7 +457,7 @@
   // Меню трея
   "trayMenuOpen": "Открыть",
   "trayMenuQuit": "Выйти",
-  "trayMenuPresets": "Пресеты",
+  "trayMenuPresets": "Пресеты цепочки эффектов",
 
   // Внешние ресурсы и IR Reverb
   "externalAsset.warning": "Эта цепочка ссылается на внешние данные {kinds}. Получатель должен импортировать те же файлы: они не включены.",

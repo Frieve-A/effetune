@@ -3,6 +3,10 @@
   "error.invalidUrl": "अमान्य URL पैरामीटर: {message}",
   "error.invalidPresetData": "अमान्य प्रीसेट डेटा",
   "error.failedToLoadPreset": "प्रीसेट लोड करने में विफल",
+  "error.failedToSavePreset": "प्रीसेट सहेजने में विफल",
+  "error.failedToDeletePreset": "प्रीसेट हटाने में विफल",
+  "error.failedToSavePluginPreset": "प्रीसेट सहेजने में विफल",
+  "error.failedToDeletePluginPreset": "प्रीसेट हटाने में विफल",
   "error.noPresetSelected": "कोई प्रीसेट चयनित नहीं",
   "error.failedToCutSettings": "क्लिपबोर्ड पर सेटिंग्स काटने में विफल",
   "error.failedToCopySettings": "क्लिपबोर्ड पर सेटिंग्स कॉपी करने में विफल",
@@ -68,6 +72,12 @@
   "ui.sleepMode": "स्लीप मोड",
   "ui.whatsThisApp": "यह एप्लिकेशन क्या है?",
   "ui.newVersionAvailable": "नया {version} उपलब्ध है।",
+  "ui.pluginPresets.namePlaceholder": "प्रीसेट नाम",
+  "ui.pluginPresets.save": "सहेजें",
+  "ui.pluginPresets.rename": "नाम बदलें",
+  "ui.pluginPresets.deleteSelected": "चुने हुए हटाएँ",
+  "ui.pluginPresets.noUserPresets": "कोई सहेजा हुआ प्रीसेट नहीं है",
+  "ui.pluginPresets.confirmDeleteSelected": "चुने हुए प्रीसेट हटाएँ?",
 
   // Hints displayed when hovering over UI
   "ui.title.openMusic": "संगीत फ़ाइलें खोलें",
@@ -84,8 +94,8 @@
   "ui.title.cut": "प्रभाव काटें",
   "ui.title.copy": "प्रभाव कॉपी करें",
   "ui.title.paste": "प्रभाव पेस्ट करें",
-  "ui.title.savePreset": "प्रीसेट सहेजें",
-  "ui.title.deletePreset": "प्रीसेट हटाएँ",
+  "ui.title.effectPresets": "इफ़ेक्ट प्रीसेट",
+  "ui.title.pipelinePresets": "इफ़ेक्ट चेन प्रीसेट",
   "ui.title.sharePipeline": "पाइपलाइन साझा करें",
   "ui.title.decreaseColumns": "कॉलम घटाएँ",
   "ui.title.increaseColumns": "कॉलम बढ़ाएँ",
@@ -112,7 +122,6 @@
   "ui.title.close": "बंद करें",
   "ui.title.expand": "विस्तार करने के लिए क्लिक करें",
   "ui.title.collapse": "संकुचित करने के लिए क्लिक करें",
-  "ui.title.presetSelect": "उपयोगकर्ता प्रीसेट नाम इनपुट और लोडिंग\nपाठ साफ़ करने और सभी आइटम दिखाने के लिए ESC दबाएं",
   "ui.mobileNav.primary": "मुख्य मोबाइल नेविगेशन",
   "ui.mobileNav.player": "प्लेयर",
   "ui.mobileNav.library": "लाइब्रेरी",
@@ -448,7 +457,7 @@
   // ट्रे मेनू
   "trayMenuOpen": "खोलें",
   "trayMenuQuit": "छोड़ें",
-  "trayMenuPresets": "प्रीसेट",
+  "trayMenuPresets": "इफ़ेक्ट चेन प्रीसेट",
 
   // External assets और IR Reverb
   "externalAsset.warning": "यह pipeline बाहरी {kinds} data को संदर्भित करती है। Files शामिल नहीं हैं; पाने वाले को वही files इम्पोर्ट करनी होंगी।",

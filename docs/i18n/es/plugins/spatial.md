@@ -26,6 +26,14 @@ Un filtro de crossfeed para auriculares que simula la diafonía acústica natura
 - Filtrado paso bajo para imitar la diafonía dependiente de frecuencia
 - Procesamiento solo estéreo (se bypassa automáticamente con señales mono u otras señales no estéreo)
 
+### Presets del sistema
+
+Haz clic en **Preajustes de efecto** en el encabezado del efecto para elegir una cantidad completa de crossfeed para auriculares.
+
+- **Subtle Blend** - Crossfeed muy ligero que conserva casi toda la anchura original.
+- **Vintage Receiver** - Crossfeed moderado parecido al de un adaptador de auriculares tradicional.
+- **Living Room Speakers** - Mezcla intensa similar a altavoces para grabaciones con separación estéreo muy amplia.
+
 ### Parámetros
 - **Level** (-60 dB a 0 dB): Controla la cantidad de señal de crossfeed
   - Valores más bajos (-20 dB a -6 dB): Crossfeed sutil y natural

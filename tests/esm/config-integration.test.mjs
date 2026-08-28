@@ -1430,6 +1430,34 @@ test('all locales include the Web power-saving settings copy', () => {
   ), true);
 });
 
+test('all locales include the preset dialog copy', () => {
+  const locales = ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh'];
+  const keys = [
+    'ui.title.effectPresets',
+    'ui.title.pipelinePresets',
+    'ui.pluginPresets.namePlaceholder',
+    'ui.pluginPresets.save',
+    'ui.pluginPresets.rename',
+    'ui.pluginPresets.deleteSelected',
+    'ui.pluginPresets.noUserPresets',
+    'ui.pluginPresets.confirmDeleteSelected',
+    'error.failedToSavePluginPreset',
+    'error.failedToDeletePluginPreset',
+    'error.failedToSavePreset',
+    'error.failedToDeletePreset'
+  ];
+
+  for (const locale of locales) {
+    const source = readFileSync(new URL(`../../js/locales/${locale}.json5`, import.meta.url), 'utf8');
+    for (const key of keys) {
+      assert.equal(source.includes(`"${key}":`), true, `${locale} is missing ${key}`);
+    }
+    for (const removedKey of ['ui.title.presetSelect', 'ui.title.savePreset', 'ui.title.deletePreset']) {
+      assert.equal(source.includes(`"${removedKey}":`), false, `${locale} still contains ${removedKey}`);
+    }
+  }
+});
+
 test('all locales include the OpenHome remote control settings copy', () => {
   const locales = ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh'];
   const keys = [

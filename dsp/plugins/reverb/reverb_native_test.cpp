@@ -2,6 +2,7 @@
 #include "effetune/kernel.h"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -206,6 +207,34 @@ void testFdnChannelState() noexcept {
   REVERB_CHECK(!equal(continued, restarted, kFrames * 2u));
 }
 
+void testFdnChannelIndependentTank() noexcept {
+  const auto *descriptor = et_kernel_descriptor_FDNReverbPlugin();
+  ParamBuffer params = fdnParams();
+  params[2] = 10.0F;
+  params[12] = 0.0F;
+  KernelHarness mono(descriptor);
+  mono.stage(params, 13u);
+  AudioBuffer expected = signal(1u, kFrames);
+  mono.process(expected, 1u, kFrames);
+  for (std::uint32_t channels : {2u, 8u}) {
+    KernelHarness multichannel(descriptor);
+    multichannel.stage(params, 13u);
+    AudioBuffer actual = signal(1u, kFrames);
+    for (std::uint32_t channel = 1u; channel < channels; ++channel) {
+      for (std::uint32_t frame = 0u; frame < kFrames; ++frame) {
+        actual[static_cast<std::size_t>(channel) * kFrames + frame] = actual[frame];
+      }
+    }
+    multichannel.process(actual, channels, kFrames);
+    for (std::uint32_t channel = 0u; channel < channels; ++channel) {
+      for (std::uint32_t frame = 0u; frame < kFrames; ++frame) {
+        REVERB_CHECK(actual[static_cast<std::size_t>(channel) * kFrames + frame] ==
+                     expected[frame]);
+      }
+    }
+  }
+}
+
 void testRsChannelReset() noexcept {
   const effetune::KernelDescriptor *descriptor = et_kernel_descriptor_RSReverbPlugin();
   KernelHarness changing(descriptor);
@@ -273,13 +302,20 @@ void testRsRoomResetAndPredelay() noexcept {
 
   KernelHarness zero_pre_delay(descriptor);
   zero_pre_delay.stage(rsParams(2.0F, 0.0F), 9u);
-  AudioBuffer zero_output = signal(1u, kFrames);
+  AudioBuffer zero_output(static_cast<std::size_t>(kFrames) * kMaxChannels, 0.0F);
+  zero_output[0] = 1.0F;
   zero_pre_delay.process(zero_output, 1u, kFrames);
   KernelHarness max_pre_delay(descriptor);
   max_pre_delay.stage(rsParams(2.0F, 50.0F), 9u);
-  AudioBuffer max_output = signal(1u, kFrames);
+  AudioBuffer max_output(static_cast<std::size_t>(kFrames) * kMaxChannels, 0.0F);
+  max_output[0] = 1.0F;
   max_pre_delay.process(max_output, 1u, kFrames);
-  REVERB_CHECK(equal(zero_output, max_output, kFrames));
+  REVERB_CHECK(!equal(zero_output, max_output, kFrames));
+  constexpr std::uint32_t delay_frames = 2400u;
+  for (std::uint32_t frame = 0u; frame < delay_frames; ++frame)
+    REVERB_CHECK(max_output[frame] == 0.0F);
+  for (std::uint32_t frame = delay_frames; frame < kFrames; ++frame)
+    REVERB_CHECK(max_output[frame] == zero_output[frame - delay_frames]);
 }
 
 void testFdnSampleRateRngTransition() noexcept {
@@ -341,20 +377,108 @@ void testRsSampleRateTransition() noexcept {
   transition.process(transition_audio, 1u, kFrames);
   reference.process(reference_audio, 1u, kFrames);
   REVERB_CHECK(equal(transition_audio, reference_audio, kFrames));
+
+  KernelHarness downward(descriptor, 192000.0F);
+  downward.stage(rsParams(2.0F, 50.0F), 9u);
+  AudioBuffer downward_audio = signal(1u, 1u, 0.5F);
+  downward.process(downward_audio, 1u, 1u);
+  downward.reprepare(48000.0F);
+  downward_audio = signal(1u, kFrames, 0.75F);
+  downward.process(downward_audio, 1u, kFrames);
+  for (std::uint32_t frame = 0u; frame < kFrames; ++frame)
+    REVERB_CHECK(std::isfinite(downward_audio[frame]));
+}
+
+void testRsDampedReverbTime() noexcept {
+  struct DecayCase {
+    float sample_rate;
+    float room_size;
+    float reverb_time;
+    float damping;
+    float high_damp;
+    float low_damp;
+  };
+  const std::array<DecayCase, 6u> cases{{
+      {48000.0F, 10.0F, 2.4F, 80.0F, 2000.0F, 200.0F},
+      {48000.0F, 10.0F, 6.0F, 80.0F, 2000.0F, 200.0F},
+      {44100.0F, 2.0F, 2.4F, 80.0F, 2000.0F, 200.0F},
+      {96000.0F, 10.0F, 2.4F, 100.0F, 1000.0F, 500.0F},
+      {192000.0F, 10.0F, 2.4F, 80.0F, 2000.0F, 200.0F},
+      {48000.0F, 10.0F, 2.4F, 0.0F, 2000.0F, 200.0F},
+  }};
+  for (const auto &test_case : cases) {
+    constexpr std::uint32_t channels = 2u;
+    constexpr std::uint32_t block_size = 128u;
+    KernelHarness harness(et_kernel_descriptor_RSReverbPlugin(), test_case.sample_rate, channels,
+                          block_size);
+    auto params = rsParams(test_case.room_size, 0.0F);
+    params[2] = test_case.reverb_time;
+    params[5] = test_case.damping;
+    params[6] = test_case.high_damp;
+    params[7] = test_case.low_damp;
+    harness.stage(params, 9u);
+    const auto frames = static_cast<std::uint32_t>(
+        std::ceil(static_cast<double>(test_case.sample_rate) * test_case.reverb_time * 2.0));
+    AudioBuffer output(static_cast<std::size_t>(frames) * channels);
+    AudioBuffer block(static_cast<std::size_t>(block_size) * channels);
+    for (std::uint32_t offset = 0u; offset < frames; offset += block_size) {
+      const auto count = frames - offset < block_size ? frames - offset : block_size;
+      for (std::uint32_t channel = 0u; channel < channels; ++channel) {
+        for (std::uint32_t frame = 0u; frame < count; ++frame) {
+          block[static_cast<std::size_t>(channel) * count + frame] =
+              offset == 0u && frame == 0u ? 1.0F : 0.0F;
+        }
+      }
+      harness.process(block, channels, count);
+      for (std::uint32_t channel = 0u; channel < channels; ++channel) {
+        for (std::uint32_t frame = 0u; frame < count; ++frame) {
+          output[static_cast<std::size_t>(channel) * frames + offset + frame] =
+              block[static_cast<std::size_t>(channel) * count + frame];
+        }
+      }
+    }
+
+    // Extrapolate RT60 from the -5 to -35 dB portion of the integrated impulse energy.
+    std::vector<double> energy(frames);
+    for (std::uint32_t channel = 0u; channel < channels; ++channel) {
+      double total = 0.0;
+      for (std::uint32_t frame = frames; frame-- > 0u;) {
+        const double sample = output[static_cast<std::size_t>(channel) * frames + frame];
+        energy[frame] = total += sample * sample;
+      }
+      REVERB_CHECK(total > 0.0 && std::isfinite(total));
+      const double start_energy = total * std::pow(10.0, -0.5);
+      const double end_energy = total * std::pow(10.0, -3.5);
+      std::uint32_t start = 0u;
+      std::uint32_t end = 0u;
+      while (start < frames && energy[start] > start_energy)
+        ++start;
+      while (end < frames && energy[end] > end_energy)
+        ++end;
+      REVERB_CHECK(end > start && end < frames);
+      const double measured = 2.0 * (static_cast<double>(end) - start) / test_case.sample_rate;
+      REVERB_CHECK(measured > test_case.reverb_time * 0.8);
+      REVERB_CHECK(measured < test_case.reverb_time * 1.2);
+    }
+  }
 }
 
 void testHighRateCapacity() noexcept {
   constexpr std::uint64_t kRsPayloadBudget = 9u * 1024u * 1024u;
   constexpr std::uint64_t kSampleRate = 192000u;
   constexpr std::uint64_t kChannels = 8u;
-  constexpr std::uint64_t pre_delay_samples = kSampleRate * 50u / 1000u;
+  constexpr std::uint64_t pre_delay_samples = kSampleRate * 50u / 1000u + 1u;
   constexpr std::uint64_t allpass_samples = kSampleRate * 5u / 1000u;
-  constexpr std::uint64_t comb_samples_per_channel = kSampleRate * 548u / 400u;
-  constexpr std::uint64_t rs_buffer_bytes =
+  std::uint64_t comb_samples_per_channel = 0u;
+  for (double delay : {19.0, 29.0, 41.0, 47.0, 23.0, 31.0, 37.0, 43.0}) {
+    comb_samples_per_channel += static_cast<std::uint64_t>(
+        std::ceil(static_cast<double>(kSampleRate) * (delay * 1.03 * 5.0 * 0.001)));
+  }
+  const std::uint64_t rs_buffer_bytes =
       (kChannels * pre_delay_samples + kChannels * comb_samples_per_channel +
        kChannels * 2u * allpass_samples) *
       sizeof(float);
-  REVERB_CHECK(rs_buffer_bytes == 8785920u);
+  REVERB_CHECK(rs_buffer_bytes == 8912032u);
   REVERB_CHECK(rs_buffer_bytes < kRsPayloadBudget);
 
   AudioBuffer audio = signal(8u, 128u);
@@ -389,11 +513,13 @@ int main() {
   testExplicitReset(rs, rsParams(), 9u);
   testDattorroChannelState();
   testFdnChannelState();
+  testFdnChannelIndependentTank();
   testRsChannelReset();
   testStatePreservingParameterChanges();
   testRsRoomResetAndPredelay();
   testFdnSampleRateRngTransition();
   testRsSampleRateTransition();
+  testRsDampedReverbTime();
   testHighRateCapacity();
   if (failures != 0) {
     std::fprintf(stderr, "Reverb native tests failed: %d\n", failures);

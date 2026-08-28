@@ -976,6 +976,23 @@ double peakMagnitude(const std::vector<float> &audio) noexcept {
   return peak;
 }
 
+void testFreshLineFeedbackSilence() {
+  KernelHarness harness(96000.0F);
+  Params params = makeParams();
+  params.inputVolume = -24.2637F;
+  params.tube = 0.0F;
+  params.outputTrim = 8.508F;
+  params.negativeFeedback = 30.0F;
+  harness.stage(params);
+  std::vector<float> silence(static_cast<std::size_t>(kMaximumFrames) * 2u, 0.0F);
+  harness.process(silence, kMaximumFrames);
+  check(finite(silence), "fresh Line feedback silence remains finite");
+  check(peakMagnitude(silence) < 1.0e-6,
+        "fresh Line feedback silence has no synthesized startup pulse");
+  check(harness.concrete().safetyReductionForTesting() == std::array<double, 3>{1.0, 1.0, 0.0},
+        "fresh Line feedback silence does not reduce output safety");
+}
+
 void testSafetyReductionEngagesAndNeverRecovers() {
   KernelHarness harness(kSafetySampleRate);
   harness.stageAndCommit(makeSafetyParams());
@@ -2907,6 +2924,7 @@ int main(int argc, char **argv) {
   testFirstParameterCommitResetsNonDefault12AX7();
   testNonAlignedPartitionInvariance();
   testSupportedRatePartitionInvariance();
+  testFreshLineFeedbackSilence();
   testSafetyReductionEngagesAndNeverRecovers();
   testSafetySinglePeakSetsTheReduction();
   testSafetyReductionSurvivesResetAndFaultRecovery();

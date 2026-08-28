@@ -1,33 +1,33 @@
 {
   "formatVersion": 1,
   "type": "TubeSimulatorPlugin",
-  "id": "power-6l6gc-pentode",
-  "stimulus": "sin1k",
+  "id": "half-mix-wet-output",
+  "stimulus": "noise",
   "sampleRate": 96000,
   "channels": 2,
-  "frameCount": 2048,
+  "frameCount": 1280,
   "blockSize": 128,
   "channelMode": "stereo",
   "channel": null,
   "caseIndex": 8,
   "seed": "0xeffe7a56",
   "params": {
-    "dr": -48,
-    "tp": "12AX7",
+    "dr": -30,
+    "tp": "12AU7",
     "bi": 0,
     "pv": 250,
     "sz": 10,
     "su": 10,
-    "og": 0,
+    "og": 39,
     "mx": 100,
     "iv": 2.828,
-    "nf": 3,
-    "os": "Power",
-    "pt": "6L6GC",
-    "pb": 391.454,
-    "kr": 483.871,
+    "nf": 0,
+    "os": "Line",
+    "pt": "EL84",
+    "pb": 320,
+    "kr": 270,
     "st": "0",
-    "zp": "6.6",
+    "zp": "8.0",
     "sl": "8",
     "rl": 8,
     "sg": 0,
@@ -38,13 +38,21 @@
     "sp": "3.5",
     "fr": true
   },
-  "events": [],
+  "events": [
+    {
+      "frame": 128,
+      "params": {
+        "og": 6,
+        "mx": 50
+      }
+    }
+  ],
   "tolerance": {
     "abs": 0.00001,
     "policy": "per-sample"
   },
-  "jsEngineHash": "cd71e391ae506136512d9f63354418ed05843b08a560b90541990e4649fd36a2",
-  "outputFloats": 4096,
-  "byteLength": 16384,
+  "jsEngineHash": "b7fbcbcf830b9f604cd1dbe81e2c22be3260cd2c9e70d850a048b54780a3e792",
+  "outputFloats": 2560,
+  "byteLength": 10240,
   "binary": "case-009.f32"
 }

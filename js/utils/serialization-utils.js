@@ -138,90 +138,86 @@ export function applySerializedState(plugin, state) {
         return null;
     };
     
-    // Handle both short and long format
-    if (state.nm !== undefined) {
-        // Short format (nm/en/ib/ob/ch)
-        plugin.name = state.nm;
-        
-        if (state.en !== undefined) {
-            plugin.setEnabled(state.en);
-        }
-        
-        if (state.ib !== undefined) {
-            plugin.inputBus = state.ib;
-        }
-        if (state.ob !== undefined) {
-            plugin.outputBus = state.ob;
-        }
-        
-        // Apply channel, normalizing for compatibility
-        plugin.channel = normalizeChannel(state.ch);
-        
-        // Extract parameters from state
-        const { nm, en, ib, ob, ch, ...params } = state;
-        
-        // Apply parameters
-        if (plugin.setSerializedParameters) {
-            plugin.setSerializedParameters(state);
-        } else if (plugin.setParameters) {
-            plugin.setParameters(params);
-        } else if (plugin.parameters) {
-            Object.assign(plugin.parameters, params);
-        }
-    } else if (state.name !== undefined) {
-        // Long format (name/enabled/parameters/inputBus/outputBus/channel)
-        plugin.name = state.name;
-        
-        if (state.enabled !== undefined) {
-            plugin.setEnabled(state.enabled);
-        }
-        
-        if (state.inputBus !== undefined) {
-            plugin.inputBus = state.inputBus;
-        }
-        if (state.outputBus !== undefined) {
-            plugin.outputBus = state.outputBus;
-        }
-        
-        // Apply channel, normalizing for compatibility
-        // Assuming channel is stored at the top level in long format as well
-        plugin.channel = normalizeChannel(state.channel);
-        
-        // Apply parameters
-        if (state.parameters) {
+    const format = state.nm !== undefined
+        ? 'short'
+        : (state.name !== undefined ? 'long' : null);
+    const applyState = () => {
+        // Handle both short and long format
+        if (format === 'short') {
+            // Short format (nm/en/ib/ob/ch)
+            plugin.name = state.nm;
+
+            if (state.en !== undefined) {
+                plugin.setEnabled(state.en);
+            }
+
+            if (state.ib !== undefined) {
+                plugin.inputBus = state.ib;
+            }
+            if (state.ob !== undefined) {
+                plugin.outputBus = state.ob;
+            }
+
+            // Apply channel, normalizing for compatibility
+            plugin.channel = normalizeChannel(state.ch);
+
+            // Extract parameters from state
+            const { nm, en, ib, ob, ch, ...params } = state;
+
+            // Apply parameters
             if (plugin.setSerializedParameters) {
-                plugin.setSerializedParameters(state.parameters);
+                plugin.setSerializedParameters(state);
             } else if (plugin.setParameters) {
-                plugin.setParameters(state.parameters);
+                plugin.setParameters(params);
             } else if (plugin.parameters) {
-                Object.assign(plugin.parameters, state.parameters);
+                Object.assign(plugin.parameters, params);
+            }
+        } else if (format === 'long') {
+            // Long format (name/enabled/parameters/inputBus/outputBus/channel)
+            plugin.name = state.name;
+
+            if (state.enabled !== undefined) {
+                plugin.setEnabled(state.enabled);
+            }
+
+            if (state.inputBus !== undefined) {
+                plugin.inputBus = state.inputBus;
+            }
+            if (state.outputBus !== undefined) {
+                plugin.outputBus = state.outputBus;
+            }
+
+            // Apply channel, normalizing for compatibility
+            // Assuming channel is stored at the top level in long format as well
+            plugin.channel = normalizeChannel(state.channel);
+
+            // Apply parameters
+            if (state.parameters) {
+                if (plugin.setSerializedParameters) {
+                    plugin.setSerializedParameters(state.parameters);
+                } else if (plugin.setParameters) {
+                    plugin.setParameters(state.parameters);
+                } else if (plugin.parameters) {
+                    Object.assign(plugin.parameters, state.parameters);
+                }
             }
         }
-    }
-    
-    // Update parameters if method exists
-    if (plugin.updateParameters) {
-        // Temporarily disable history saving during state restoration
-        const historyManager = plugin.audioManager?.pipelineManager?.historyManager;
-        if (historyManager) {
-            const wasUndoRedoOperation = historyManager.isUndoRedoOperation;
-            historyManager.isUndoRedoOperation = true;
-            
-            try {
-                plugin.updateParameters();
-            } finally {
-                // Restore original flag
-                historyManager.isUndoRedoOperation = wasUndoRedoOperation;
-            }
-        } else {
+
+        // Update parameters if method exists
+        if (plugin.updateParameters) {
             plugin.updateParameters();
         }
-    }
 
-    // Push the restored model back into a live plugin's UI. Writing .value/.checked
-    // from script dispatches no input/change event, so this cannot feed back into
-    // the model (see plugins/plugin-base.js syncUIControls()).
-    plugin.syncUIControls?.();
+        // Push the restored model back into a live plugin's UI. Writing .value/.checked
+        // from script dispatches no input/change event, so this cannot feed back into
+        // the model (see plugins/plugin-base.js syncUIControls()).
+        plugin.syncUIControls?.();
+    };
+
+    const historyManager = plugin.audioManager?.pipelineManager?.historyManager;
+    return historyManager
+        ? historyManager.withHistorySuppressed(applyState)
+        : applyState();
 }
 
 /**

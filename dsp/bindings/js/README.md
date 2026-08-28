@@ -182,11 +182,11 @@ catalog for all 92 root classes and their `create<Type>()` factories. The
 catalog contains channel choices, parameters, required assets, telemetry, and
 latency declarations, but no private implementation mapping.
 
-### Modulation Style recipes
+### Modulation system-preset recipes
 
-The application-only **Style** selector is not a DSP parameter or a second
-preset API. The following JSON-compatible objects are the equivalent public
-parameter dictionaries. Copy one into a named constructor, for example
+The application exposes these settings as system presets. The following
+JSON-compatible objects are their equivalent public parameter dictionaries.
+Copy one into a named constructor, for example
 `new Chorus(MODULATION_STYLES.Chorus.Flanger)`, or into a Chain effect's
 `parameters` object.
 
@@ -231,8 +231,8 @@ const MODULATION_STYLES = {
     "Rotary Slow": { speedState: "Slow", speed: 100, acceleration: 2.2, crossover: 800, rotorBalance: 0, stereoWidth: 75, dopplerDepth: 45, amplitudeDepth: 55, mix: 70 },
     "Rotary Fast": { speedState: "Fast", speed: 100, acceleration: 1.4, crossover: 800, rotorBalance: 0, stereoWidth: 85, dopplerDepth: 65, amplitudeDepth: 70, mix: 78 },
     "Gentle Rotary": { speedState: "Slow", speed: 75, acceleration: 3, crossover: 900, rotorBalance: 0, stereoWidth: 45, dopplerDepth: 25, amplitudeDepth: 30, mix: 55 },
-    "Leslie Slow": { speedState: "Slow", speed: 100, acceleration: 2.8, crossover: 800, rotorBalance: -5, stereoWidth: 80, dopplerDepth: 50, amplitudeDepth: 60, mix: 75 },
-    "Leslie Fast": { speedState: "Fast", speed: 100, acceleration: 1.8, crossover: 800, rotorBalance: -5, stereoWidth: 90, dopplerDepth: 70, amplitudeDepth: 75, mix: 82 }
+    "Vintage Rotor Slow": { speedState: "Slow", speed: 100, acceleration: 2.8, crossover: 800, rotorBalance: -5, stereoWidth: 80, dopplerDepth: 50, amplitudeDepth: 60, mix: 75 },
+    "Vintage Rotor Fast": { speedState: "Fast", speed: 100, acceleration: 1.8, crossover: 800, rotorBalance: -5, stereoWidth: 90, dopplerDepth: 70, amplitudeDepth: 75, mix: 82 }
   }
 };
 ```

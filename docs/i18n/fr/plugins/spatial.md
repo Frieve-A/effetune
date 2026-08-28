@@ -26,6 +26,14 @@ Un filtre de crossfeed pour casques qui simule la diaphonie acoustique naturelle
 - Filtrage passe-bas pour imiter la diaphonie dépendante de la fréquence
 - Traitement stéréo uniquement (automatiquement contourné pour les signaux mono ou non stéréo)
 
+### Préréglages système
+
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essayer directement ces réglages complets.
+
+- **Subtle Blend** - Un crossfeed très léger qui préserve l'essentiel de la largeur d'origine.
+- **Vintage Receiver** - Un crossfeed modéré rappelant un adaptateur de casque traditionnel.
+- **Living Room Speakers** - Un mélange fort, de type haut-parleurs, pour les enregistrements à séparation stéréo très large.
+
 ### Paramètres
 - **Level** (-60 dB à 0 dB) : Contrôle la quantité de signal de crossfeed
   - Valeurs plus basses (-20 dB à -6 dB) : Crossfeed subtil et naturel

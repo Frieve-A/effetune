@@ -22,8 +22,10 @@
       "kind": "int",
       "min": -96,
       "max": 0,
+      "step": 12,
       "default": -24,
-      "unit": "dB/oct"
+      "unit": "dB/oct",
+      "automation": true
     }
   ]
 }

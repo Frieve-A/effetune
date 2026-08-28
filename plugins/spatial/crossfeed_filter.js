@@ -1,4 +1,26 @@
+const CROSSFEED_FILTER_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({
+        id: 'subtle-blend', label: 'Subtle Blend',
+        params: Object.freeze({ lv: -20, dl: 0.2, lf: 500 })
+    }),
+    Object.freeze({
+        id: 'vintage-receiver', label: 'Vintage Receiver',
+        params: Object.freeze({ lv: -10, dl: 0.35, lf: 800 })
+    }),
+    Object.freeze({
+        id: 'living-room-speakers', label: 'Living Room Speakers',
+        params: Object.freeze({ lv: -4, dl: 0.5, lf: 1000 })
+    })
+]);
+
 class CrossfeedFilterPlugin extends PluginBase {
+    static getSystemPresetGroups() {
+        return [{
+            label: '',
+            presets: CROSSFEED_FILTER_SYSTEM_PRESETS.map(preset => ({ ...preset }))
+        }];
+    }
+
     constructor() {
         super('Crossfeed Filter', 'Headphone crossfeed filter for natural stereo imaging');
 
@@ -56,8 +78,8 @@ class CrossfeedFilterPlugin extends PluginBase {
             const lpfFreq = parameters.lf;
             const lpfCoeff = Math.exp(-2 * Math.PI * lpfFreq / sampleRate);
             
-            // Auto-level adjustment: Normalize to prevent clipping (New addition)
-            const normalizeGain = 1 / (1 + levelGain);
+            // Power normalization avoids attenuating the direct path as a coherent DC sum.
+            const normalizeGain = 1 / Math.sqrt(1 + levelGain * levelGain);
             
             // Process stereo channels
             const leftOffset = 0;
@@ -91,7 +113,7 @@ class CrossfeedFilterPlugin extends PluginBase {
                 let leftOutput = leftInput + context.lpfStateR * levelGain;
                 let rightOutput = rightInput + context.lpfStateL * levelGain;
                 
-                // Apply normalization (New addition)
+                // Apply broadband power normalization.
                 leftOutput *= normalizeGain;
                 rightOutput *= normalizeGain;
                 

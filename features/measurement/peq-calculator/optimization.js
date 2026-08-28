@@ -521,8 +521,8 @@ export function fitPEQ(freq, targetDb, initParams, lowFreq, highFreq, fs, option
   // Upper bound uses the looser (peak) cap; per-iteration sign-dependent clamping
   // tightens it to the dip cap when the band's gain is non-positive.
   const logQMax = LOG_Q_MAX_PEAK;
-  const fcLo = lowFreq * 0.9;
-  const fcHi = highFreq * 1.1;
+  const fcLo = lowFreq;
+  const fcHi = highFreq;
   const logFcMin = Math.log10(fcLo);
   const logFcMax = Math.log10(fcHi);
   const gainMin = -18;
@@ -708,4 +708,4 @@ export function fitPEQ(freq, targetDb, initParams, lowFreq, highFreq, fs, option
     );
   }
   return linearParams;
-} 
+}

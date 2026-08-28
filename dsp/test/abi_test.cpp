@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstring>
 #include <initializer_list>
+#include <latch>
 #include <span>
 #include <thread>
 #include <type_traits>
@@ -429,6 +430,182 @@ void testPipelineLatencyCompensation() {
   et_engine_destroy(engine);
 }
 
+void testDynamicPipelineLatency() {
+  constexpr std::uint32_t kFrames = 64u;
+  constexpr std::uint32_t kLimiterHash = 0xb531a24au;
+  Engine engine;
+  ET_CHECK(engine.prepare(48000.0F, 2u, kFrames, 0u) == ET_OK);
+  const et_instance left = engine.createInstance("BrickwallLimiterPlugin");
+  const et_instance right = engine.createInstance("BrickwallLimiterPlugin");
+  ET_CHECK(left != 0u && right != 0u);
+  const auto setLatency = [&](et_instance instance, float milliseconds) {
+    const std::array<float, 6> params{0.0F, 100.0F, milliseconds, 1.0F, 0.0F, 0.0F};
+    ET_CHECK(engine.setInstanceParams(instance, params.data(), 6u, kLimiterHash, 0u) == ET_OK);
+  };
+  const auto process = [&](bool impulse) {
+    std::fill_n(engine.combined(), kFrames * 2u, 0.0F);
+    if (impulse) {
+      engine.combined()[0] = 0.25F;
+      engine.combined()[kFrames] = 0.25F;
+    }
+    ET_CHECK(engine.processPipeline(2u, kFrames, 0.0, 0u) == ET_OK);
+  };
+  const auto checkImpulse = [&](std::uint32_t latency) {
+    for (std::uint32_t block = 0u; block < 16u; ++block) {
+      process(block == 0u);
+      for (std::uint32_t channel = 0u; channel < 2u; ++channel) {
+        for (std::uint32_t frame = 0u; frame < kFrames; ++frame) {
+          const float expected = block * kFrames + frame == latency ? 0.25F : 0.0F;
+          ET_CHECK(std::abs(engine.combined()[channel * kFrames + frame] - expected) < 1.0e-6F);
+        }
+      }
+    }
+    ET_CHECK(engine.pipelineLatency() == latency);
+  };
+  const auto updateLatency = [&](float milliseconds, std::uint32_t expected) {
+    const std::uint32_t previous = engine.pipelineLatency();
+    setLatency(left, milliseconds);
+    Engine::PipelineLatencySnapshot snapshot;
+    {
+      allocation_guard::Scope scope;
+      ET_CHECK(engine.capturePipelineLatencySnapshot(snapshot) == ET_OK);
+    }
+    Engine::PipelineLatencyUpdate update;
+    ET_CHECK(Engine::preparePipelineLatencyUpdate(snapshot, update) == ET_OK);
+    ET_CHECK(update.plannedLatency() == expected);
+    ET_CHECK(engine.pipelineLatency() == previous);
+    {
+      allocation_guard::Scope scope;
+      ET_CHECK(engine.applyPipelineLatencyUpdate(update) == ET_OK);
+      ET_CHECK(engine.applyPipelineLatencyUpdate(update) == ET_ERR_STATE);
+    }
+    ET_CHECK(engine.pipelineLatency() == expected);
+    // Allow the limiter's own control ramp to finish, without resets or reconfiguration.
+    for (std::uint32_t block = 0u; block < 16u; ++block) {
+      process(false);
+    }
+    checkImpulse(expected);
+  };
+
+  setLatency(left, 3.0F);
+  auto routing = pipelineDescriptor({{left, 0u, 0u, -2}});
+  ET_CHECK(engine.configurePipeline(routing.data(), static_cast<std::uint32_t>(routing.size())) ==
+           ET_OK);
+  checkImpulse(144u);
+  updateLatency(10.0F, 480u);
+  updateLatency(1.0F, 48u);
+
+  setLatency(left, 1.0F);
+  setLatency(right, 3.0F);
+  routing = pipelineDescriptor({{left, 0u, 0u, 0}, {right, 0u, 0u, 1}});
+  ET_CHECK(engine.configurePipeline(routing.data(), static_cast<std::uint32_t>(routing.size())) ==
+           ET_OK);
+  updateLatency(10.0F, 480u);
+  updateLatency(2.0F, 144u);
+
+  Engine::PipelineLatencySnapshot snapshot;
+  Engine::PipelineLatencyUpdate stale;
+  ET_CHECK(engine.capturePipelineLatencySnapshot(snapshot) == ET_OK);
+  ET_CHECK(Engine::preparePipelineLatencyUpdate(snapshot, stale) == ET_OK);
+  setLatency(left, 10.0F);
+  ET_CHECK(engine.applyPipelineLatencyUpdate(stale) == ET_ERR_STATE);
+  ET_CHECK(engine.pipelineLatency() == 144u);
+  updateLatency(10.0F, 480u);
+  ET_CHECK(engine.applyPipelineLatencyUpdate(stale) == ET_ERR_STATE);
+
+  ET_CHECK(engine.capturePipelineLatencySnapshot(snapshot) == ET_OK);
+  ET_CHECK(Engine::preparePipelineLatencyUpdate(snapshot, stale) == ET_OK);
+  ET_CHECK(engine.configurePipeline(routing.data(), static_cast<std::uint32_t>(routing.size())) ==
+           ET_OK);
+  ET_CHECK(engine.applyPipelineLatencyUpdate(stale) == ET_ERR_STATE);
+  ET_CHECK(engine.capturePipelineLatencySnapshot(snapshot) == ET_OK);
+  ET_CHECK(Engine::preparePipelineLatencyUpdate(snapshot, stale) == ET_OK);
+  Engine::PipelineLatencySnapshot invalid;
+  ET_CHECK(Engine::preparePipelineLatencyUpdate(invalid, stale) == ET_ERR_STATE);
+  ET_CHECK(engine.applyPipelineLatencyUpdate(stale) == ET_ERR_STATE);
+  ET_CHECK(engine.pipelineLatency() == 480u);
+
+  if ((et_build_flags() & ET_BUILD_DEBUG) != 0u) {
+    ET_CHECK(engine.capturePipelineLatencySnapshot(snapshot) == ET_OK);
+    for (std::int32_t failure = 0; failure < 2; ++failure) {
+      allocation_guard::failNothrowAllocationAfterForTesting(failure);
+      ET_CHECK(Engine::preparePipelineLatencyUpdate(snapshot, stale) == ET_ERR_OOM);
+      allocation_guard::failNothrowAllocationAfterForTesting(-1);
+      ET_CHECK(engine.applyPipelineLatencyUpdate(stale) == ET_ERR_STATE);
+      ET_CHECK(engine.pipelineLatency() == 480u);
+    }
+    checkImpulse(480u);
+  }
+
+  // Preparation must be allowed to allocate while the audio thread's guard is active.
+  ET_CHECK(engine.capturePipelineLatencySnapshot(snapshot) == ET_OK);
+  std::latch start_preparing(1);
+  std::latch prepared(1);
+  et_status prepare_status = ET_ERR_STATE;
+  std::thread control([&]() {
+    start_preparing.wait();
+    prepare_status = Engine::preparePipelineLatencyUpdate(snapshot, stale);
+    prepared.count_down();
+  });
+  {
+    allocation_guard::Scope scope;
+    start_preparing.count_down();
+    for (std::uint32_t block = 0u; block < 32u; ++block) {
+      process(false);
+    }
+    prepared.wait();
+  }
+  control.join();
+  ET_CHECK(prepare_status == ET_OK);
+  ET_CHECK(engine.applyPipelineLatencyUpdate(stale) == ET_OK);
+}
+
+void testDynamicLatencyHistory() {
+  constexpr std::uint32_t kFrames = 32u;
+  Engine engine;
+  ET_CHECK(engine.prepare(48000.0F, 2u, kFrames, 0u) == ET_OK);
+  const et_instance limiter = engine.createInstance("BrickwallLimiterPlugin");
+  const et_instance gain = engine.createInstance("TestGainPlugin");
+  const float unity = 1.0F;
+  ET_CHECK(engine.setInstanceParams(gain, &unity, 1u, kTestHash, 0u) == ET_OK);
+  const auto setLatency = [&](float milliseconds) {
+    const std::array<float, 6> params{0.0F, 100.0F, milliseconds, 1.0F, 0.0F, 0.0F};
+    ET_CHECK(engine.setInstanceParams(limiter, params.data(), 6u, 0xb531a24au, 0u) == ET_OK);
+  };
+  // Exercise both final channel alignment and a destination merge delay.
+  for (bool merge : {false, true}) {
+    for (float next_ms : {2.0F, 3.0F, 5.0F}) {
+      setLatency(3.0F);
+      const auto routing = merge ? pipelineDescriptor({{limiter, 1u, 0u, -2}})
+                                 : pipelineDescriptor({{limiter, 0u, 0u, 0}});
+      ET_CHECK(engine.configurePipeline(routing.data(),
+                                        static_cast<std::uint32_t>(routing.size())) == ET_OK);
+      std::fill_n(engine.combined(), kFrames * 2u, 0.0F);
+      engine.combined()[kFrames] = 0.25F;
+      ET_CHECK(engine.processPipeline(2u, kFrames, 0.0, 0u) == ET_OK);
+      setLatency(next_ms);
+      Engine::PipelineLatencySnapshot snapshot;
+      Engine::PipelineLatencyUpdate update;
+      ET_CHECK(engine.capturePipelineLatencySnapshot(snapshot) == ET_OK);
+      ET_CHECK(Engine::preparePipelineLatencyUpdate(snapshot, update) == ET_OK);
+      // Preparation does not freeze history: another full block is processed before apply.
+      std::fill_n(engine.combined(), kFrames * 2u, 0.0F);
+      ET_CHECK(engine.processPipeline(2u, kFrames, 0.0, 0u) == ET_OK);
+      ET_CHECK(engine.applyPipelineLatencyUpdate(update) == ET_OK);
+      const std::uint32_t expected_latency = static_cast<std::uint32_t>(next_ms * 48.0F);
+      ET_CHECK(engine.pipelineLatency() == expected_latency);
+      for (std::uint32_t block = 2u; block < 10u; ++block) {
+        std::fill_n(engine.combined(), kFrames * 2u, 0.0F);
+        ET_CHECK(engine.processPipeline(2u, kFrames, 0.0, 0u) == ET_OK);
+        for (std::uint32_t frame = 0u; frame < kFrames; ++frame) {
+          const float expected = block * kFrames + frame == expected_latency ? 0.25F : 0.0F;
+          ET_CHECK(engine.combined()[kFrames + frame] == expected);
+        }
+      }
+    }
+  }
+}
+
 void testPipelineDescriptorFuzz() {
   const et_engine engine = et_engine_create();
   ET_CHECK(et_engine_prepare(engine, 48000.0F, 4u, 128u, 256u) == ET_OK);
@@ -584,6 +761,8 @@ void runAbiTests() {
   testDiscoveryAndLifecycle();
   testPipelineValidationAndRouting();
   testPipelineLatencyCompensation();
+  testDynamicPipelineLatency();
+  testDynamicLatencyHistory();
   testPipelineDescriptorFuzz();
   testTelemetryCadence();
   testAssetLifecycle();

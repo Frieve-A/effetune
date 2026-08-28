@@ -58,11 +58,249 @@ export class UIEventHandler {
         this.lastClientY = 0;      // Last known Y coordinate
         this.prevClientX = -1;     // Previous X coordinate for change detection
         this.prevClientY = -1;     // Previous Y coordinate for change detection
+        this.parameterOperation = null;
 
+        this.setupParameterOperationEvents();
         this.setupPipelineDropZoneEvents();
         
         // Initialize keyboard events
         this.initKeyboardEvents();
+    }
+
+    resolveParameterPlugin(target) {
+        const container = target?.closest?.('.pipeline-item[data-plugin-id]') ||
+            target?.closest?.('.routing-dialog[data-plugin-id]');
+        const pluginId = container?.dataset?.pluginId;
+        if (pluginId === undefined) return null;
+        const pipelines = [
+            this.pipelineManager.audioManager?.pipelineA,
+            this.pipelineManager.audioManager?.pipelineB,
+            this.pipelineManager.audioManager?.pipeline
+        ];
+        for (const pipeline of pipelines) {
+            const plugin = pipeline?.find?.(candidate => String(candidate.id) === String(pluginId));
+            if (plugin) return plugin;
+        }
+        return null;
+    }
+
+    getParameterOperationToken(plugin) {
+        const operation = this.parameterOperation;
+        if (operation?.plugin !== plugin) return null;
+        if (this.historyManager.isOperationActive(operation.token)) return operation.token;
+
+        const gestureContinues = operation.mode === 'continuous' &&
+            (operation.pointerActive || operation.keyboardActive ||
+                operation.focusActive || operation.ending);
+        if (!gestureContinues) {
+            this.finishParameterOperation(operation.token);
+            return null;
+        }
+
+        const token = {};
+        operation.token = token;
+        this.historyManager.beginOperation(token);
+        this.armParameterOperationCleanup(token);
+        if (operation.ending) this.scheduleParameterOperationEnd(token, false);
+        return token;
+    }
+
+    startParameterOperation(plugin, target, mode, activity = {}) {
+        const current = this.parameterOperation;
+        if (current && current.plugin === plugin && current.target === target &&
+            current.mode === mode && !current.ending) {
+            Object.assign(current, activity);
+            this.armParameterOperationCleanup(current.token);
+            return current.token;
+        }
+
+        const token = {};
+        this.historyManager.beginOperation(token);
+        this.parameterOperation = {
+            token,
+            plugin,
+            target,
+            mode,
+            pointerActive: false,
+            keyboardActive: false,
+            focusActive: false,
+            ending: false,
+            cleanupTimer: null,
+            ...activity
+        };
+        this.armParameterOperationCleanup(token);
+        return token;
+    }
+
+    armParameterOperationCleanup(token) {
+        const operation = this.parameterOperation;
+        if (!operation || operation.token !== token) return;
+        if (operation.cleanupTimer) clearTimeout(operation.cleanupTimer);
+        operation.cleanupTimer = setTimeout(() => {
+            const current = this.parameterOperation;
+            if (!current || current.token !== token) return;
+            current.cleanupTimer = null;
+            if (current.pointerActive || current.keyboardActive || current.focusActive) return;
+            this.finishParameterOperation(token);
+        }, 500);
+    }
+
+    finishParameterOperation(token) {
+        const operation = this.parameterOperation;
+        if (!operation || operation.token !== token) return;
+        if (operation.cleanupTimer) clearTimeout(operation.cleanupTimer);
+        this.historyManager.endOperation(token);
+        this.parameterOperation = null;
+    }
+
+    scheduleParameterOperationEnd(token, force = false) {
+        const operation = this.parameterOperation;
+        if (!operation || operation.token !== token) return;
+        operation.ending = true;
+        const schedule = typeof queueMicrotask === 'function'
+            ? queueMicrotask
+            : callback => Promise.resolve().then(callback);
+        schedule(() => {
+            const current = this.parameterOperation;
+            if (!current || current.token !== token) return;
+            if (!force && (current.pointerActive || current.keyboardActive || current.focusActive)) {
+                current.ending = false;
+                return;
+            }
+            this.finishParameterOperation(token);
+        });
+    }
+
+    setupParameterOperationEvents() {
+        const isTextControl = target => target?.matches?.('input[type="number"], input[type="text"], textarea');
+        const isClickDiscrete = target => target?.matches?.('button, input[type="checkbox"], input[type="radio"]');
+        const isChangeDiscrete = target => target?.matches?.('select');
+
+        document.addEventListener('pointerdown', event => {
+            if (event.button !== undefined && event.button !== 0) return;
+            if (event.isPrimary === false || isClickDiscrete(event.target) || isChangeDiscrete(event.target)) return;
+            const plugin = this.resolveParameterPlugin(event.target);
+            if (!plugin) return;
+            this.startParameterOperation(plugin, event.target, 'continuous', { pointerActive: true });
+        }, true);
+
+        document.addEventListener('mousedown', event => {
+            if (event.button !== undefined && event.button !== 0) return;
+            if (this.parameterOperation?.pointerActive || isClickDiscrete(event.target) || isChangeDiscrete(event.target)) return;
+            const plugin = this.resolveParameterPlugin(event.target);
+            if (!plugin) return;
+            this.startParameterOperation(plugin, event.target, 'continuous', { pointerActive: true });
+        }, true);
+
+        document.addEventListener('touchstart', event => {
+            if (this.parameterOperation?.pointerActive || isClickDiscrete(event.target) || isChangeDiscrete(event.target)) return;
+            const plugin = this.resolveParameterPlugin(event.target);
+            if (!plugin) return;
+            this.startParameterOperation(plugin, event.target, 'continuous', { pointerActive: true });
+        }, true);
+
+        document.addEventListener('click', event => {
+            if (!isClickDiscrete(event.target)) return;
+            const plugin = this.resolveParameterPlugin(event.target);
+            if (!plugin) return;
+            const token = this.startParameterOperation(plugin, event.target, 'discrete');
+            this.scheduleParameterOperationEnd(token, true);
+        }, true);
+
+        document.addEventListener('focusin', event => {
+            if (!isTextControl(event.target)) return;
+            const plugin = this.resolveParameterPlugin(event.target);
+            if (!plugin) return;
+            this.startParameterOperation(plugin, event.target, 'continuous', { focusActive: true });
+        }, true);
+
+        document.addEventListener('input', event => {
+            if (isClickDiscrete(event.target) || isChangeDiscrete(event.target)) return;
+            const plugin = this.resolveParameterPlugin(event.target);
+            if (!plugin) return;
+            const token = this.getParameterOperationToken(plugin);
+            if (token) {
+                this.armParameterOperationCleanup(token);
+            } else {
+                this.startParameterOperation(plugin, event.target, 'continuous', {
+                    focusActive: isTextControl(event.target)
+                });
+            }
+        }, true);
+
+        document.addEventListener('change', event => {
+            const plugin = this.resolveParameterPlugin(event.target);
+            if (!plugin) return;
+            const current = this.parameterOperation;
+            if (current?.plugin === plugin && current.target === event.target && current.ending) return;
+
+            if (event.target?.matches?.('input[type="checkbox"], input[type="radio"]') &&
+                current?.plugin === plugin && current.target === event.target && current.mode === 'discrete') {
+                this.scheduleParameterOperationEnd(current.token, true);
+                return;
+            }
+
+            if (isChangeDiscrete(event.target)) {
+                const token = this.startParameterOperation(plugin, event.target, 'discrete');
+                this.scheduleParameterOperationEnd(token, true);
+                return;
+            }
+
+            if (current?.plugin === plugin && current.target === event.target &&
+                (current.pointerActive || current.keyboardActive)) return;
+            const token = current?.plugin === plugin && current.target === event.target
+                ? current.token
+                : this.startParameterOperation(plugin, event.target, 'continuous');
+            this.scheduleParameterOperationEnd(token, true);
+        }, true);
+
+        document.addEventListener('keydown', event => {
+            if (isClickDiscrete(event.target) || isChangeDiscrete(event.target)) return;
+            const plugin = this.resolveParameterPlugin(event.target);
+            if (!plugin) return;
+            const token = this.startParameterOperation(plugin, event.target, 'continuous', {
+                keyboardActive: true,
+                focusActive: isTextControl(event.target)
+            });
+            if (event.key === 'Enter' && isTextControl(event.target)) {
+                this.parameterOperation.keyboardActive = false;
+                this.parameterOperation.focusActive = false;
+                this.scheduleParameterOperationEnd(token, true);
+            }
+        }, true);
+
+        document.addEventListener('keyup', event => {
+            const current = this.parameterOperation;
+            if (!current || current.target !== event.target || !current.keyboardActive) return;
+            current.keyboardActive = false;
+            this.scheduleParameterOperationEnd(current.token, false);
+        }, true);
+
+        const finishPointer = () => {
+            const current = this.parameterOperation;
+            if (!current?.pointerActive) return;
+            current.pointerActive = false;
+            this.scheduleParameterOperationEnd(current.token, false);
+        };
+        for (const type of ['pointerup', 'pointercancel', 'mouseup', 'touchend', 'touchcancel']) {
+            document.addEventListener(type, finishPointer, true);
+        }
+
+        document.addEventListener('focusout', event => {
+            const current = this.parameterOperation;
+            if (!current || current.target !== event.target || !current.focusActive) return;
+            current.focusActive = false;
+            this.scheduleParameterOperationEnd(current.token, false);
+        }, true);
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && this.parameterOperation) {
+                this.finishParameterOperation(this.parameterOperation.token);
+            }
+        });
+        window.addEventListener?.('blur', () => {
+            if (this.parameterOperation) this.finishParameterOperation(this.parameterOperation.token);
+        });
     }
     
     /**

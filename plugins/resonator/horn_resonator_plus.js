@@ -1,11 +1,39 @@
 // plugins/resonator/horn_resonator_plus.js
 
+const HORN_RESONATOR_PLUS_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({
+        id: 'gramophone', label: 'Gramophone',
+        params: Object.freeze({
+            co: 450, ln: 90, th: 1.5, mo: 35, cv: 85, dp: 0.5, tr: 0.9, wg: 28
+        })
+    }),
+    Object.freeze({
+        id: 'vintage-theater', label: 'Vintage Theater',
+        params: Object.freeze({
+            co: 350, ln: 120, th: 5, mo: 150, cv: 30, dp: 0.05, tr: 0.99, wg: 30
+        })
+    }),
+    Object.freeze({
+        id: 'megaphone', label: 'Megaphone',
+        params: Object.freeze({
+            co: 700, ln: 40, th: 2, mo: 20, cv: 0, dp: 0.2, tr: 0.95, wg: 22
+        })
+    })
+]);
+
 /**
  * HornResonatorPlusPlugin simulates the acoustic resonance of a horn
  * using a digital waveguide model with frequency-dependent mouth reflection
  * and adjustable throat reflection.
  */
 class HornResonatorPlusPlugin extends PluginBase {
+    static getSystemPresetGroups() {
+        return [{
+            label: '',
+            presets: HORN_RESONATOR_PLUS_SYSTEM_PRESETS.map(preset => ({ ...preset }))
+        }];
+    }
+
     /**
      * Initializes the Horn Resonator plugin.
      */
@@ -19,7 +47,7 @@ class HornResonatorPlusPlugin extends PluginBase {
         this.cv = 40;   // Curve (%)
         this.dp = 0.03; // Damping loss (dB/meter)
         this.tr = 0.99; // Throat reflection coefficient
-        this.wg = 30.0; // Output signal gain (dB)
+        this.wg = 26.0; // Output signal gain (dB)
 
         // Physical constants
         const C = 343;   // Speed of sound in air (m/s)
@@ -36,7 +64,7 @@ class HornResonatorPlusPlugin extends PluginBase {
             const DC_OFFSET = 1e-25; // Small DC offset to stabilize filters
 
             // If the plugin is disabled, bypass processing.
-            if (!parameters.en) return data;
+            if (!parameters.enabled) return data;
 
             const sr  = parameters.sampleRate;
             const chs = parameters.channelCount;
@@ -418,7 +446,6 @@ class HornResonatorPlusPlugin extends PluginBase {
         return {
             type: this.constructor.name,
             enabled: this.enabled,
-            en: this.enabled,
             ln: this.ln, th: this.th, mo: this.mo,
             cv: this.cv,
             dp: this.dp, wg: this.wg,

@@ -13,10 +13,15 @@ namespace {
 constexpr std::uint32_t kDirectHead = 128u;
 constexpr std::uint32_t kShortIrLadderMaximum = 512u;
 constexpr std::uint32_t kLongIrLadderMaximum = 1024u;
+constexpr std::uint32_t kVeryLongIrLadderMaximum = 2048u;
+constexpr std::uint32_t kExtremelyLongIrLadderMaximum = 4096u;
 constexpr std::uint32_t kShortIrMaximumFrames = 8192u;
+constexpr std::uint32_t kLongIrMaximumFrames = 65535u;
+constexpr std::uint32_t kVeryLongIrMaximumFrames = 131071u;
+constexpr std::uint32_t kIncrementalMinimumBlock = 1024u;
 constexpr std::uint32_t kMaximumStages = 8u;
 constexpr std::uint32_t kSliceSamples = 16u;
-constexpr std::uint32_t kMaximumSchedulerSlots = 128u;
+constexpr std::uint32_t kMaximumSchedulerSlots = 256u;
 constexpr std::uint32_t kExclusiveTransformBlock = 2048u;
 constexpr int kScheduledTransformWorkBudget = 256;
 constexpr int kScheduledMacWorkBudget = 256;
@@ -170,7 +175,7 @@ public:
       release();
       return false;
     }
-    if (amortized_ && block_size_ >= kLongIrLadderMaximum) {
+    if (amortized_ && block_size_ >= kIncrementalMinimumBlock) {
       transform_state_ = pffft_new_ordered_real_forward(setup_);
       mac_state_ = pffft_new_zconvolve_accumulate(setup_);
       if (transform_state_ == nullptr || mac_state_ == nullptr ||
@@ -211,6 +216,9 @@ public:
     job_active_ = false;
     job_cursor_ = {};
     job_mac_units_ = 0u;
+#if defined(ET_ENABLE_TEST_KERNEL)
+    deadline_recovery_count_ = 0u;
+#endif
   }
 
   bool push(const float *inputFrame, AlignedFloats &outputRing, std::uint32_t ringSize,
@@ -241,6 +249,11 @@ public:
   [[nodiscard]] std::uint32_t offset() const noexcept { return offset_; }
   [[nodiscard]] bool amortized() const noexcept { return amortized_; }
   [[nodiscard]] std::uint32_t periodSlots() const noexcept { return block_size_ / kSliceSamples; }
+#if defined(ET_ENABLE_TEST_KERNEL)
+  [[nodiscard]] std::uint64_t deadlineRecoveryCount() const noexcept {
+    return deadline_recovery_count_;
+  }
+#endif
 
   [[nodiscard]] WorkCursor initialWorkCursor() const noexcept { return {}; }
 
@@ -261,6 +274,10 @@ public:
       return {};
     }
     return {};
+  }
+
+  [[nodiscard]] bool workStepCommitsOutput(const WorkCursor &cursor) const noexcept {
+    return cursor.phase == WorkPhase::inverse && cursor.substep + 1u == transform_step_count_;
   }
 
   void advanceWorkCursor(WorkCursor &cursor) const noexcept {
@@ -644,6 +661,10 @@ private:
   bool startScheduledBlock(AlignedFloats &outputRing, std::uint32_t ringSize,
                            std::uint32_t latency) noexcept {
     bool recoveredDeadline = false;
+#if defined(ET_ENABLE_TEST_KERNEL)
+    if (job_active_)
+      ++deadline_recovery_count_;
+#endif
     while (job_active_) {
       runScheduledStep(outputRing, ringSize, latency);
       recoveredDeadline = true;
@@ -692,6 +713,9 @@ private:
   std::uint32_t job_mac_units_ = 0u;
   std::uint32_t job_fdl_write_ = 0u;
   std::uint64_t job_block_index_ = 0u;
+#if defined(ET_ENABLE_TEST_KERNEL)
+  std::uint64_t deadline_recovery_count_ = 0u;
+#endif
   const float *staged_ir_ = nullptr;
   std::uint32_t staged_ir_channels_ = 0u;
   std::uint32_t staged_ir_frames_ = 0u;
@@ -741,8 +765,13 @@ public:
       releaseStorage();
       return false;
     }
-    const std::uint32_t requestedLadderMaximum =
-        config.irFrames <= kShortIrMaximumFrames ? kShortIrLadderMaximum : kLongIrLadderMaximum;
+    std::uint32_t requestedLadderMaximum =
+        config.irFrames <= kShortIrMaximumFrames  ? kShortIrLadderMaximum
+        : config.irFrames <= kLongIrMaximumFrames ? kLongIrLadderMaximum
+                                                  : kVeryLongIrLadderMaximum;
+    if (config.irFrames > kVeryLongIrMaximumFrames && config.inputs <= 2u && config.outputs <= 2u) {
+      requestedLadderMaximum = kExtremelyLongIrLadderMaximum;
+    }
     const std::uint32_t minimumLadderMaximum = 2u * headBlock;
     const std::uint32_t ladderMaximum = requestedLadderMaximum < minimumLadderMaximum
                                             ? minimumLadderMaximum
@@ -862,7 +891,6 @@ public:
         processStart += consumed;
         if (preparation_samples_ == kSliceSamples) {
           preparation_samples_ = 0u;
-          // Match preparation pacing to the same 16-sample slots used by active processing.
           prepareSlice(1u);
         }
       }
@@ -935,7 +963,90 @@ public:
     return bytes;
   }
 
+#if defined(ET_ENABLE_TEST_KERNEL)
+  [[nodiscard]] std::uint64_t deadlineRecoveryCountForTesting() const noexcept {
+    std::uint64_t count = 0u;
+    for (std::uint32_t index = 0u; index < stage_count_; ++index)
+      count += stages_[index]->deadlineRecoveryCount();
+    return count;
+  }
+
+  [[nodiscard]] ConvolverScheduleTrace scheduleTraceForTesting() const noexcept {
+    ConvolverScheduleTrace trace;
+    trace.cycleSlots = scheduler_cycle_slots_;
+    trace.callbackCount =
+        (scheduler_cycle_slots_ + ConvolverScheduleTrace::kSlotsPerCallback - 1u) /
+        ConvolverScheduleTrace::kSlotsPerCallback;
+    trace.slotWeightLimit = schedule_weight_limit_;
+    trace.deadlineRecoveryCount = deadlineRecoveryCountForTesting();
+
+    std::array<PartitionStage::WorkCursor, kMaximumStages> cursors{};
+    std::array<std::uint32_t, kMaximumStages> starts{};
+    std::array<std::uint32_t, kMaximumStages> deadlines{};
+    for (std::uint32_t stageIndex = 0u; stageIndex < stage_count_; ++stageIndex) {
+      const PartitionStage &stage = *stages_[stageIndex];
+      if (!stage.amortized())
+        continue;
+      cursors[stageIndex] = stage.initialWorkCursor();
+      deadlines[stageIndex] = stage.periodSlots() - 1u;
+    }
+
+    for (std::uint32_t slot = 0u; slot < scheduler_cycle_slots_; ++slot) {
+      for (std::uint32_t stageIndex = 0u; stageIndex < stage_count_; ++stageIndex) {
+        const PartitionStage &stage = *stages_[stageIndex];
+        if (!stage.amortized() || deadlines[stageIndex] != slot)
+          continue;
+        if (!stage.workComplete(cursors[stageIndex]))
+          ++trace.deadlineViolationCount;
+        if (slot + 1u < scheduler_cycle_slots_) {
+          cursors[stageIndex] = stage.initialWorkCursor();
+          starts[stageIndex] = slot + 1u;
+          deadlines[stageIndex] = slot + stage.periodSlots();
+        }
+      }
+
+      const std::uint32_t begin = schedule_offsets_[slot];
+      const std::uint32_t end = schedule_offsets_[slot + 1u];
+      trace.slotActionCounts[slot] = end - begin;
+      if (isImmediateSlot(slot) && begin != end)
+        trace.immediateSlotViolationCount += end - begin;
+      for (std::uint32_t action = begin; action < end; ++action) {
+        const std::uint32_t stageIndex = schedule_actions_[action];
+        if (stageIndex >= stage_count_ || !stages_[stageIndex]->amortized() ||
+            starts[stageIndex] > slot || deadlines[stageIndex] <= slot ||
+            stages_[stageIndex]->workComplete(cursors[stageIndex])) {
+          ++trace.jobOrderViolationCount;
+          continue;
+        }
+        const PartitionStage::WorkStep step =
+            stages_[stageIndex]->nextWorkStep(cursors[stageIndex]);
+        trace.slotWeights[slot] += step.weight;
+        stages_[stageIndex]->advanceWorkCursor(cursors[stageIndex]);
+      }
+      trace.callbackWeights[slot / ConvolverScheduleTrace::kSlotsPerCallback] +=
+          trace.slotWeights[slot];
+    }
+    return trace;
+  }
+#endif
+
 private:
+  static constexpr std::uint32_t kInvalidAction = static_cast<std::uint32_t>(-1);
+
+  struct ScheduledAction {
+    std::uint64_t weight = 0u;
+    std::uint32_t stageIndex = 0u;
+    std::uint32_t occurrence = 0u;
+    std::uint32_t ordinal = 0u;
+    std::uint32_t slot = 0u;
+    std::uint32_t startSlot = 0u;
+    std::uint32_t deadlineSlot = 0u;
+    std::uint32_t previousAction = kInvalidAction;
+    std::uint32_t nextAction = kInvalidAction;
+    bool exclusive = false;
+    bool commitsOutput = false;
+  };
+
   struct SimulatedJob {
     PartitionStage *stage = nullptr;
     PartitionStage::WorkCursor cursor{};
@@ -945,6 +1056,9 @@ private:
     std::uint32_t deadlineSlot = 0u;
     std::uint32_t startSlot = 0u;
     std::uint32_t stageIndex = 0u;
+    std::uint32_t occurrence = 0u;
+    std::uint32_t ordinal = 0u;
+    std::uint32_t lastAction = kInvalidAction;
   };
 
   void resetSimulatedJob(SimulatedJob &job, std::uint32_t startSlot,
@@ -954,6 +1068,8 @@ private:
     job.remainingExclusiveSteps = job.stage->jobExclusiveStepCount();
     job.deadlineSlot = deadlineSlot;
     job.startSlot = startSlot;
+    job.ordinal = 0u;
+    job.lastAction = kInvalidAction;
   }
 
   [[nodiscard]] std::uint32_t usableSlots(std::uint32_t begin,
@@ -966,7 +1082,8 @@ private:
     return count;
   }
 
-  [[nodiscard]] bool simulateSchedule(std::uint64_t slotWeightLimit, bool record) noexcept {
+  [[nodiscard]] bool simulateSchedule(std::uint64_t slotWeightLimit,
+                                      ScheduledAction *records = nullptr) noexcept {
     std::array<SimulatedJob, kMaximumStages> jobs{};
     std::uint32_t jobCount = 0u;
     for (std::uint32_t stageIndex = 0u; stageIndex < stage_count_; ++stageIndex) {
@@ -981,7 +1098,7 @@ private:
     }
 
     std::uint32_t actionCount = 0u;
-    if (record)
+    if (records != nullptr)
       schedule_offsets_[0u] = 0u;
     for (std::uint32_t slot = 0u; slot < scheduler_cycle_slots_; ++slot) {
       for (std::uint32_t index = 0u; index < jobCount; ++index) {
@@ -990,13 +1107,15 @@ private:
           continue;
         if (job.remainingWeight != 0u)
           return false;
-        if (slot + 1u < scheduler_cycle_slots_)
+        if (slot + 1u < scheduler_cycle_slots_) {
+          ++job.occurrence;
           resetSimulatedJob(job, slot + 1u, slot + job.stage->periodSlots());
+        }
       }
       const bool headSlot =
           head_period_slots_ != 0u && slot % head_period_slots_ == head_period_slots_ - 1u;
       if (headSlot) {
-        if (record)
+        if (records != nullptr)
           schedule_offsets_[slot + 1u] = actionCount;
         continue;
       }
@@ -1038,8 +1157,7 @@ private:
           if (deficit == 0u && !forced)
             continue;
           const std::uint32_t tie =
-              (job.stageIndex + stage_count_ - ((config_.sliceOffset + slot) % stage_count_)) %
-              stage_count_;
+              (job.stageIndex + stage_count_ - (slot % stage_count_)) % stage_count_;
           bool better = selected == jobCount || (forced && !selectedForced);
           if (!better && forced == selectedForced) {
             const SimulatedJob &best = jobs[selected];
@@ -1063,12 +1181,27 @@ private:
           break;
 
         SimulatedJob &job = jobs[selected];
-        if (record) {
+        if (records != nullptr) {
           if (actionCount >= schedule_action_count_)
             return false;
-          schedule_actions_[actionCount] = static_cast<std::uint8_t>(job.stageIndex);
+          ScheduledAction &action = records[actionCount];
+          action.weight = selectedStep.weight;
+          action.stageIndex = job.stageIndex;
+          action.occurrence = job.occurrence;
+          action.ordinal = job.ordinal;
+          action.slot = slot;
+          action.startSlot = job.startSlot;
+          action.deadlineSlot = job.deadlineSlot;
+          action.previousAction = job.lastAction;
+          action.nextAction = kInvalidAction;
+          action.exclusive = selectedStep.exclusive;
+          action.commitsOutput = job.stage->workStepCommitsOutput(job.cursor);
+          if (job.lastAction != kInvalidAction)
+            records[job.lastAction].nextAction = actionCount;
+          job.lastAction = actionCount;
         }
         ++actionCount;
+        ++job.ordinal;
         usedWeight += selectedStep.weight;
         job.remainingWeight -= selectedStep.weight;
         if (selectedStep.exclusive)
@@ -1076,10 +1209,154 @@ private:
         job.stage->advanceWorkCursor(job.cursor);
         slotClosed = selectedStep.exclusive || usedWeight == slotWeightLimit;
       }
-      if (record)
+      if (records != nullptr)
         schedule_offsets_[slot + 1u] = actionCount;
     }
     return actionCount == schedule_action_count_;
+  }
+
+  [[nodiscard]] bool isImmediateSlot(std::uint32_t slot) const noexcept {
+    return head_period_slots_ != 0u && slot % head_period_slots_ == head_period_slots_ - 1u;
+  }
+
+  [[nodiscard]] static std::uint8_t rotateRightOne(std::uint8_t value) noexcept {
+    return static_cast<std::uint8_t>((value >> 1u) | (value << 7u));
+  }
+
+  [[nodiscard]] bool moveScheduledAction(
+      ScheduledAction *records, std::uint32_t actionIndex, std::uint32_t targetSlot,
+      std::uint64_t slotWeightLimit, std::array<std::uint64_t, kMaximumSchedulerSlots> &slotWeights,
+      std::array<std::uint32_t, kMaximumSchedulerSlots> &slotActionCounts,
+      std::array<std::uint32_t, kMaximumSchedulerSlots> &slotExclusiveCounts) const noexcept {
+    ScheduledAction &action = records[actionIndex];
+    if (action.commitsOutput || targetSlot == action.slot || isImmediateSlot(targetSlot))
+      return false;
+    if (action.exclusive ? slotActionCounts[targetSlot] != 0u
+                         : slotExclusiveCounts[targetSlot] != 0u) {
+      return false;
+    }
+    if (action.weight > slotWeightLimit - slotWeights[targetSlot])
+      return false;
+
+    slotWeights[action.slot] -= action.weight;
+    --slotActionCounts[action.slot];
+    if (action.exclusive)
+      --slotExclusiveCounts[action.slot];
+    slotWeights[targetSlot] += action.weight;
+    ++slotActionCounts[targetSlot];
+    if (action.exclusive)
+      ++slotExclusiveCounts[targetSlot];
+    action.slot = targetSlot;
+    return true;
+  }
+
+  [[nodiscard]] bool validateScheduledActions(const ScheduledAction *records,
+                                              std::uint64_t slotWeightLimit) const noexcept {
+    std::array<std::uint64_t, kMaximumSchedulerSlots> slotWeights{};
+    std::array<std::uint32_t, kMaximumSchedulerSlots> slotActionCounts{};
+    std::array<std::uint32_t, kMaximumSchedulerSlots> slotExclusiveCounts{};
+    for (std::uint32_t index = 0u; index < schedule_action_count_; ++index) {
+      const ScheduledAction &action = records[index];
+      if (action.slot < action.startSlot || action.slot >= action.deadlineSlot ||
+          isImmediateSlot(action.slot)) {
+        return false;
+      }
+      if (action.previousAction != kInvalidAction &&
+          records[action.previousAction].slot > action.slot) {
+        return false;
+      }
+      if (action.nextAction != kInvalidAction && records[action.nextAction].slot < action.slot)
+        return false;
+      slotWeights[action.slot] += action.weight;
+      ++slotActionCounts[action.slot];
+      if (action.exclusive)
+        ++slotExclusiveCounts[action.slot];
+    }
+    for (std::uint32_t slot = 0u; slot < scheduler_cycle_slots_; ++slot) {
+      if (slotWeights[slot] > slotWeightLimit || slotExclusiveCounts[slot] > 1u ||
+          (slotExclusiveCounts[slot] != 0u && slotActionCounts[slot] != 1u)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool rephaseSchedule(ScheduledAction *records,
+                                     std::uint64_t slotWeightLimit) noexcept {
+    std::array<std::uint64_t, kMaximumSchedulerSlots> slotWeights{};
+    std::array<std::uint32_t, kMaximumSchedulerSlots> slotActionCounts{};
+    std::array<std::uint32_t, kMaximumSchedulerSlots> slotExclusiveCounts{};
+    for (std::uint32_t index = 0u; index < schedule_action_count_; ++index) {
+      const ScheduledAction &action = records[index];
+      slotWeights[action.slot] += action.weight;
+      ++slotActionCounts[action.slot];
+      if (action.exclusive)
+        ++slotExclusiveCounts[action.slot];
+    }
+
+    const std::uint32_t phase = rotateRightOne(static_cast<std::uint8_t>(config_.sliceOffset));
+    const std::uint32_t phasePosition = phase <= 128u ? phase : 256u - phase;
+    const auto bounds = [&](const ScheduledAction &action, std::uint32_t &earliest,
+                            std::uint32_t &latest) {
+      earliest = action.startSlot;
+      if (action.previousAction != kInvalidAction) {
+        const std::uint32_t previous = records[action.previousAction].slot;
+        earliest = previous > earliest ? previous : earliest;
+      }
+      latest = action.deadlineSlot - 1u;
+      if (action.nextAction != kInvalidAction) {
+        const std::uint32_t next = records[action.nextAction].slot;
+        latest = next < latest ? next : latest;
+      }
+    };
+
+    for (std::uint32_t index = 0u; index < schedule_action_count_; ++index) {
+      ScheduledAction &action = records[index];
+      std::uint32_t earliest = 0u;
+      std::uint32_t latest = 0u;
+      bounds(action, earliest, latest);
+      const std::uint32_t target =
+          earliest + static_cast<std::uint32_t>(static_cast<std::uint64_t>(latest - earliest) *
+                                                phasePosition / 128u);
+      if (target >= action.slot)
+        continue;
+      for (std::uint32_t slot = target; slot < action.slot; ++slot) {
+        if (moveScheduledAction(records, index, slot, slotWeightLimit, slotWeights,
+                                slotActionCounts, slotExclusiveCounts)) {
+          break;
+        }
+      }
+    }
+    for (std::uint32_t reverse = schedule_action_count_; reverse > 0u; --reverse) {
+      const std::uint32_t index = reverse - 1u;
+      ScheduledAction &action = records[index];
+      std::uint32_t earliest = 0u;
+      std::uint32_t latest = 0u;
+      bounds(action, earliest, latest);
+      const std::uint32_t target =
+          earliest + static_cast<std::uint32_t>(static_cast<std::uint64_t>(latest - earliest) *
+                                                phasePosition / 128u);
+      if (target <= action.slot)
+        continue;
+      for (std::uint32_t slot = target; slot > action.slot; --slot) {
+        if (moveScheduledAction(records, index, slot, slotWeightLimit, slotWeights,
+                                slotActionCounts, slotExclusiveCounts)) {
+          break;
+        }
+      }
+    }
+
+    std::uint32_t actionIndex = 0u;
+    schedule_offsets_[0u] = 0u;
+    for (std::uint32_t slot = 0u; slot < scheduler_cycle_slots_; ++slot) {
+      for (std::uint32_t index = 0u; index < schedule_action_count_; ++index) {
+        if (records[index].slot == slot)
+          schedule_actions_[actionIndex++] = static_cast<std::uint8_t>(records[index].stageIndex);
+      }
+      schedule_offsets_[slot + 1u] = actionIndex;
+    }
+    return actionIndex == schedule_action_count_ &&
+           validateScheduledActions(records, slotWeightLimit);
   }
 
   bool buildSchedule() noexcept {
@@ -1104,6 +1381,9 @@ private:
     }
     if (!hasScheduledStage) {
       schedule_offsets_.fill(0u);
+#if defined(ET_ENABLE_TEST_KERNEL)
+      schedule_weight_limit_ = 0u;
+#endif
       return true;
     }
     if (scheduler_cycle_slots_ > kMaximumSchedulerSlots)
@@ -1123,19 +1403,28 @@ private:
     if (schedule_actions_ == nullptr)
       return false;
     schedule_action_count_ = totalActions;
-    if (!simulateSchedule(totalWeight, false))
+    if (!simulateSchedule(totalWeight))
       return false;
 
     std::uint64_t low = maximumStepWeight;
     std::uint64_t high = totalWeight;
     while (low < high) {
       const std::uint64_t middle = low + (high - low) / 2u;
-      if (simulateSchedule(middle, false))
+      if (simulateSchedule(middle))
         high = middle;
       else
         low = middle + 1u;
     }
-    return simulateSchedule(low, true);
+    ScheduledAction *records = new (std::nothrow) ScheduledAction[totalActions];
+    if (records == nullptr)
+      return false;
+    const bool recorded = simulateSchedule(low, records);
+    const bool rephased = recorded && rephaseSchedule(records, low);
+    delete[] records;
+#if defined(ET_ENABLE_TEST_KERNEL)
+    schedule_weight_limit_ = low;
+#endif
+    return rephased;
   }
 
   void runScheduledSlot(bool immediateWork) noexcept {
@@ -1234,6 +1523,9 @@ private:
     scheduler_slot_ = 0u;
     slot_has_immediate_work_ = false;
     non_finite_ = false;
+#if defined(ET_ENABLE_TEST_KERNEL)
+    schedule_weight_limit_ = 0u;
+#endif
   }
 
   InternalConfig config_;
@@ -1251,6 +1543,9 @@ private:
   std::uint32_t scheduler_samples_ = 0u;
   std::uint32_t scheduler_slot_ = 0u;
   bool slot_has_immediate_work_ = false;
+#if defined(ET_ENABLE_TEST_KERNEL)
+  std::uint64_t schedule_weight_limit_ = 0u;
+#endif
   std::uint32_t direct_position_ = 0u;
   std::uint32_t ring_size_ = 1u;
   std::uint32_t latency_ = 0u;
@@ -1308,6 +1603,14 @@ void PartitionedConvolver::process(float *audio, std::uint32_t channels,
 std::size_t PartitionedConvolver::memoryBytes() const noexcept {
   return impl_ == nullptr ? 0u : impl_->memoryBytes();
 }
+#if defined(ET_ENABLE_TEST_KERNEL)
+std::uint64_t PartitionedConvolver::deadlineRecoveryCountForTesting() const noexcept {
+  return impl_ == nullptr ? 0u : impl_->deadlineRecoveryCountForTesting();
+}
+ConvolverScheduleTrace PartitionedConvolver::scheduleTraceForTesting() const noexcept {
+  return impl_ == nullptr ? ConvolverScheduleTrace{} : impl_->scheduleTraceForTesting();
+}
+#endif
 std::uint32_t PartitionedConvolver::latencySamples() const noexcept {
   return impl_ == nullptr ? 0u : impl_->latencySamples();
 }

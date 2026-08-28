@@ -54,6 +54,14 @@ A physics-based effect that simulates the nonlinear displacement of speaker cone
   - Creates resonant, speaker-like behaviors
   - Creates bold, evolving character for experimental listening
 
+### System Presets
+
+Click **Effect Presets** in the effect header to compare complete cone-motion settings.
+
+- **Subtle Cone Color** - A restrained, mostly clean speaker-cone character.
+- **Pushed Speaker** - Stronger cone motion and saturation with output compensation.
+- **Ragged Cone** - The most pronounced, deliberately rough cone character.
+
 ### Parameters
 - **Speaker Drive** (0.0-10.0) - Controls how strongly the audio signal moves the cone
   - Low values: Subtle movement and gentle effect

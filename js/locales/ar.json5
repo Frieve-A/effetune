@@ -3,6 +3,10 @@
   "error.invalidUrl": "معلمات URL غير صالحة: {message}",
   "error.invalidPresetData": "بيانات الإعداد المسبق غير صالحة",
   "error.failedToLoadPreset": "فشل تحميل الإعداد المسبق",
+  "error.failedToSavePreset": "تعذر حفظ الإعداد المسبق",
+  "error.failedToDeletePreset": "تعذر حذف الإعداد المسبق",
+  "error.failedToSavePluginPreset": "تعذر حفظ الإعداد المسبق",
+  "error.failedToDeletePluginPreset": "تعذر حذف الإعداد المسبق",
   "error.noPresetSelected": "لم يتم اختيار إعداد مسبق",
   "error.failedToCutSettings": "فشل قص الإعدادات إلى الحافظة",
   "error.failedToCopySettings": "فشل نسخ الإعدادات إلى الحافظة",
@@ -68,6 +72,12 @@
   "ui.sleepMode": "وضع السكون",
   "ui.whatsThisApp": "ما هذا التطبيق؟",
   "ui.newVersionAvailable": "الجديد {version} متاح.",
+  "ui.pluginPresets.namePlaceholder": "اسم الإعداد المسبق",
+  "ui.pluginPresets.save": "حفظ",
+  "ui.pluginPresets.rename": "إعادة تسمية",
+  "ui.pluginPresets.deleteSelected": "حذف المحدد",
+  "ui.pluginPresets.noUserPresets": "لا توجد إعدادات مسبقة محفوظة",
+  "ui.pluginPresets.confirmDeleteSelected": "هل تريد حذف الإعدادات المسبقة المحددة؟",
 
   // Hints displayed when hovering over UI
   "ui.title.openMusic": "فتح ملفات الموسيقى",
@@ -84,8 +94,8 @@
   "ui.title.cut": "قص المؤثرات",
   "ui.title.copy": "نسخ المؤثرات",
   "ui.title.paste": "لصق المؤثرات",
-  "ui.title.savePreset": "حفظ الإعداد المسبق",
-  "ui.title.deletePreset": "حذف الإعداد المسبق",
+  "ui.title.effectPresets": "الإعدادات المسبقة للتأثير",
+  "ui.title.pipelinePresets": "الإعدادات المسبقة لسلسلة التأثيرات",
   "ui.title.sharePipeline": "مشاركة خط المعالجة",
   "ui.title.decreaseColumns": "تقليل الأعمدة",
   "ui.title.increaseColumns": "زيادة الأعمدة",
@@ -112,7 +122,6 @@
   "ui.title.close": "إغلاق",
   "ui.title.expand": "اضغط للتوسيع",
   "ui.title.collapse": "اضغط للطي",
-  "ui.title.presetSelect": "إدخال وتحميل اسم إعداد المستخدم\nاضغط ESC لمسح النص وعرض جميع العناصر",
   "ui.mobileNav.primary": "التنقل الرئيسي على الهاتف",
   "ui.mobileNav.player": "المشغّل",
   "ui.mobileNav.library": "المكتبة",
@@ -448,7 +457,7 @@
   // قائمة علبة النظام
   "trayMenuOpen": "فتح",
   "trayMenuQuit": "خروج",
-  "trayMenuPresets": "الإعدادات المسبقة",
+  "trayMenuPresets": "الإعدادات المسبقة لسلسلة التأثيرات",
 
   // الأصول الخارجية وIR Reverb
   "externalAsset.warning": "تشير سلسلة التأثيرات إلى بيانات {kinds} خارجية. يجب على المستلم استيراد الملفات نفسها؛ فهي غير مضمنة.",

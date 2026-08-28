@@ -1,6 +1,8 @@
 import { DSP_PARAM_PACKERS } from './internal/dsp-params.generated.js';
 import { getEffectDefinition, getEffectImplementation } from './catalog.js';
-import { Effect, validateChannel, validateParameterValue } from './effect.js';
+import {
+  Effect, canonicalizeProcessingParameters, validateChannel, validateParameterValue
+} from './effect.js';
 import {
   AssetError,
   EffeTuneError,
@@ -231,6 +233,7 @@ function toInternalValue(transform, value) {
 }
 
 export function packEffect(effect) {
+  const parameters = canonicalizeProcessingParameters(effect.type, effect.parameters);
   const implementation = getEffectImplementation(effect.type);
   const packer = DSP_PARAM_PACKERS.get(implementation.internalType);
   if (!packer || (packer.hash >>> 0) !== (implementation.layoutHash >>> 0)) {
@@ -238,7 +241,7 @@ export function packEffect(effect) {
   }
   const internal = {};
   for (const mapping of implementation.packedParameters) {
-    const value = effect.parameters[mapping.publicName];
+    const value = parameters[mapping.publicName];
     if (mapping.count === 1) {
       internal[mapping.keys[0]] = toInternalValue(mapping.transform, value);
     } else {
@@ -249,7 +252,7 @@ export function packEffect(effect) {
   }
   const structured = implementation.structuredParameter;
   if (structured) {
-    internal[structured.key] = effect.parameters[structured.publicName];
+    internal[structured.key] = parameters[structured.publicName];
   }
   // The generated packer reports capacity limits with plain JavaScript errors.
   // Translating them here keeps every public entry point (process, stream, setParam)
@@ -302,18 +305,7 @@ export function setEffectParameter(effect, parameterName, value) {
 
 export function canonicalizeEffectForProcessing(effect) {
   const canonical = cloneEffect(effect);
-  const parameters = canonical.parameters;
-  if (effect.type === 'AutoFilter' &&
-      parameters.minimumFrequency > parameters.maximumFrequency) {
-    [parameters.minimumFrequency, parameters.maximumFrequency] =
-      [parameters.maximumFrequency, parameters.minimumFrequency];
-  } else if (effect.type === 'Chorus' && parameters.depth > parameters.delay) {
-    parameters.depth = parameters.delay;
-  } else if (effect.type === 'FrequencyShifter' &&
-      parameters.minimumShift > parameters.maximumShift) {
-    [parameters.minimumShift, parameters.maximumShift] =
-      [parameters.maximumShift, parameters.minimumShift];
-  }
+  canonical.parameters = canonicalizeProcessingParameters(effect.type, canonical.parameters);
   return canonical;
 }
 

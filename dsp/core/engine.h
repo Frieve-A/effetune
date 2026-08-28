@@ -64,6 +64,14 @@ public:
 
   et_status configurePipeline(const std::uint8_t *descriptor,
                               std::uint32_t descriptor_bytes) noexcept;
+  class PipelineLatencySnapshot;
+  class PipelineLatencyUpdate;
+  // Capture/apply run on the engine's owning thread between process calls. Preparation
+  // uses only the copied snapshot and may run concurrently on a non-audio thread.
+  et_status capturePipelineLatencySnapshot(PipelineLatencySnapshot &snapshot) const noexcept;
+  static et_status preparePipelineLatencyUpdate(const PipelineLatencySnapshot &snapshot,
+                                                PipelineLatencyUpdate &update) noexcept;
+  et_status applyPipelineLatencyUpdate(PipelineLatencyUpdate &update) noexcept;
   et_status processPipeline(std::uint32_t channel_count, std::uint32_t frame_count,
                             double time_seconds, std::uint32_t master_bypass) noexcept;
   [[nodiscard]] std::uint32_t pipelineLatency() const noexcept {
@@ -87,6 +95,9 @@ public:
   }
 
   [[nodiscard]] bool prepared() const noexcept { return prepared_; }
+#if defined(ET_ENABLE_TEST_KERNEL)
+  [[nodiscard]] PluginKernel *instanceKernelForTesting(et_instance instance) noexcept;
+#endif
   [[nodiscard]] float *combined() noexcept { return arena_.combined(); }
   [[nodiscard]] float *bus(std::uint32_t index) noexcept { return arena_.bus(index); }
   [[nodiscard]] float *scratch(std::uint32_t index) noexcept { return arena_.scratch(index); }
@@ -168,6 +179,7 @@ private:
   dsp::DelayLine pipeline_output_delay_line_;
   std::uint32_t pipeline_count_ = 0;
   std::uint32_t pipeline_latency_samples_ = 0;
+  std::uint64_t pipeline_revision_ = 0;
   float sample_rate_ = 0.0F;
   float telemetry_rate_hz_ = 60.0F;
   std::uint32_t max_channels_ = 0;
@@ -178,6 +190,36 @@ private:
   bool prepared_ = false;
   bool pipeline_configured_ = false;
   bool pipeline_delay_history_dirty_ = false;
+};
+
+// Fixed-size value for caller-owned, synchronized transfer to the preparation thread.
+class Engine::PipelineLatencySnapshot {
+  friend class Engine;
+  const Engine *owner_ = nullptr;
+  std::uint64_t revision_ = 0;
+  std::array<PipelineNode, kMaxPipelineNodes> nodes_{};
+  std::array<std::uint32_t, kMaxPipelineNodes> latencies_{};
+  std::uint32_t node_count_ = 0;
+  std::uint32_t channel_count_ = 0;
+};
+
+// Construct, prepare, reuse and destroy off the audio thread. A successful apply leaves
+// retired storage here; the caller must transfer ownership back before reclaiming it.
+class Engine::PipelineLatencyUpdate {
+public:
+  PipelineLatencyUpdate() = default;
+  PipelineLatencyUpdate(const PipelineLatencyUpdate &) = delete;
+  PipelineLatencyUpdate &operator=(const PipelineLatencyUpdate &) = delete;
+  [[nodiscard]] std::uint32_t plannedLatency() const noexcept { return latency_; }
+
+private:
+  friend class Engine;
+  PipelineLatencySnapshot snapshot_;
+  std::array<PipelineMergeCompensation, kMaxPipelineNodes> compensation_{};
+  std::array<std::uint32_t, 8> output_delays_{};
+  dsp::DelayLine output_delay_line_;
+  std::uint32_t latency_ = 0;
+  bool ready_ = false;
 };
 
 } // namespace effetune

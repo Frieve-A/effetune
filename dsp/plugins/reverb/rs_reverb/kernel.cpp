@@ -1,6 +1,5 @@
 #include "effetune/kernel.h"
 #include "RSReverbPluginParams.h"
-#include "effetune/dsp/xorshift_rng.h"
 
 #include <algorithm>
 #include <array>
@@ -15,8 +14,13 @@ namespace {
 constexpr std::uint32_t kCombCount = 8u;
 constexpr std::uint32_t kAllpassCount = 2u;
 constexpr double kTwoPi = 6.283185307179586;
+constexpr double kMaxDelayJitter = 1.03;
+constexpr double kMaxRoomScale = 5.0;
 constexpr std::array<double, kCombCount> kBaseDelaysMs = {19.0, 29.0, 41.0, 47.0,
                                                           23.0, 31.0, 37.0, 43.0};
+constexpr std::array<double, 16u> kDelayJitter = {1.0000, 0.9884, 1.0157, 0.9738, 1.0291, 0.9812,
+                                                  1.0043, 0.9926, 1.0198, 0.9701, 1.0114, 0.9855,
+                                                  1.0266, 0.9793, 1.0089, 0.9968};
 
 } // namespace
 
@@ -30,14 +34,15 @@ public:
     max_frames_ = info.maxFrames;
     ramp_frames_ = std::max(1u, static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005)));
 
-    const double pre_delay_raw = std::ceil(sample_rate_ * 0.05);
+    const double pre_delay_raw = std::ceil(sample_rate_ * 0.05) + 1.0;
     pre_delay_length_ = pre_delay_raw > 0.0 ? static_cast<std::uint32_t>(pre_delay_raw) : 1u;
     const double allpass_raw = std::ceil(sample_rate_ * 0.005);
     allpass_length_ = allpass_raw > 0.0 ? static_cast<std::uint32_t>(allpass_raw) : 1u;
     comb_channel_stride_ = 0u;
     for (std::uint32_t line = 0u; line < kCombCount; ++line) {
       comb_line_offsets_[line] = comb_channel_stride_;
-      const double maximum_delay_seconds = (kBaseDelaysMs[line] + 0.5) * 0.005;
+      const double maximum_delay_seconds =
+          kBaseDelaysMs[line] * kMaxDelayJitter * kMaxRoomScale * 0.001;
       const double comb_raw = std::ceil(sample_rate_ * maximum_delay_seconds);
       const std::uint32_t capacity = comb_raw > 0.0 ? static_cast<std::uint32_t>(comb_raw) : 1u;
       comb_line_capacities_[line] = capacity;
@@ -47,10 +52,16 @@ public:
     pre_delay_buffers_.resize(static_cast<std::size_t>(max_channels_) * pre_delay_length_);
     pre_delay_positions_.resize(max_channels_);
     const std::size_t comb_slots = static_cast<std::size_t>(max_channels_) * kCombCount;
+    comb_delays_ms_.resize(comb_slots);
+    active_comb_lengths_.resize(comb_slots, 1u);
+    feedback_gains_.resize(comb_slots);
+    target_feedback_gains_.resize(comb_slots);
+    feedback_steps_.resize(comb_slots);
+    feedback_targets_.resize(comb_slots);
     comb_buffers_.resize(static_cast<std::size_t>(max_channels_) * comb_channel_stride_);
     comb_positions_.resize(comb_slots);
-    comb_high_damp_states_.resize(comb_slots);
-    comb_low_damp_states_.resize(comb_slots);
+    comb_damp_states_1_.resize(comb_slots);
+    comb_damp_states_2_.resize(comb_slots);
     const std::size_t allpass_slots = static_cast<std::size_t>(max_channels_) * kAllpassCount;
     allpass_buffers_.resize(allpass_slots * allpass_length_);
     allpass_positions_.resize(allpass_slots);
@@ -58,30 +69,29 @@ public:
     channel_high_damp_states_.resize(max_channels_);
     channel_low_damp_states_.resize(max_channels_);
     clearHistories();
-    active_channel_count_ = 0u;
-    if (randomized_delays_ready_) {
-      updateActiveCombLengths();
-    } else {
-      active_comb_lengths_.fill(1u);
+    if (controls_initialized_) {
+      const double pre_delay_target =
+          std::clamp(static_cast<double>(params_.preDelay) * sample_rate_ * 0.001, 0.0,
+                     static_cast<double>(pre_delay_length_ - 1u));
+      current_controls_[5u] = pre_delay_target;
+      target_controls_[5u] = pre_delay_target;
+      control_steps_[5u] = 0.0;
     }
+    active_channel_count_ = 0u;
+    if (comb_delays_ready_)
+      configureCombDelays(configured_room_size_);
   }
 
   void reset() noexcept override {
     clearHistories();
-    randomized_delays_ms_.fill(0.0);
-    active_comb_lengths_.fill(1u);
+    std::fill(comb_delays_ms_.begin(), comb_delays_ms_.end(), 0.0);
+    std::fill(active_comb_lengths_.begin(), active_comb_lengths_.end(), 1u);
     active_channel_count_ = 0u;
     configured_room_size_ = 0.0F;
-    randomized_delays_ready_ = false;
+    comb_delays_ready_ = false;
     controls_initialized_ = false;
+    feedback_channel_count_ = 0u;
     ramp_remaining_ = 0u;
-    random_.seed(selected_seed_low_, selected_seed_high_);
-  }
-
-  void setRandomSeed(std::uint32_t seed_low, std::uint32_t seed_high) noexcept override {
-    selected_seed_low_ = seed_low;
-    selected_seed_high_ = seed_high;
-    random_.seed(seed_low, seed_high);
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -92,11 +102,10 @@ public:
     }
 
     const float room_size = params_.roomSize;
-    const bool needs_randomized_delays =
-        !randomized_delays_ready_ || configured_room_size_ != room_size;
-    if (needs_randomized_delays)
-      randomizeDelays(room_size);
-    if (active_channel_count_ != channel_count || needs_randomized_delays) {
+    const bool needs_comb_delays = !comb_delays_ready_ || configured_room_size_ != room_size;
+    if (needs_comb_delays)
+      configureCombDelays(room_size);
+    if (active_channel_count_ != channel_count || needs_comb_delays) {
       clearHistories();
       active_channel_count_ = channel_count;
     }
@@ -129,6 +138,10 @@ public:
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
         const double high_damp_coefficient = controlAt(0u, frame);
         const double low_damp_coefficient = controlAt(1u, frame);
+        // Unity-peak bandpass: preserve RT60 in the passband while damping both ends.
+        const double damping_pole_product = high_damp_coefficient * (1.0 - low_damp_coefficient);
+        const double damping_pole_sum = high_damp_coefficient + 1.0 - low_damp_coefficient;
+        const double damping_input_gain = 0.5 * (1.0 - damping_pole_product);
         const double damping_amount = controlAt(2u, frame);
         const double one_minus_damping = 1.0 - damping_amount;
         const double diffusion = controlAt(3u, frame);
@@ -140,8 +153,16 @@ public:
         const double wet_gain = wet_mix <= 0.5 ? 2.0 * wet_mix : 1.0;
         const std::size_t audio_index = channel_audio_offset + frame;
         const double input = static_cast<double>(audio[audio_index]);
-        const double delayed_input = static_cast<double>(pre_delay[pre_delay_position]);
         pre_delay[pre_delay_position] = static_cast<float>(input);
+        double read = static_cast<double>(pre_delay_position) - controlAt(5u, frame);
+        if (read < 0.0)
+          read += static_cast<double>(pre_delay_length_);
+        const auto first = static_cast<std::uint32_t>(std::floor(read));
+        const std::uint32_t next = first + 1u == pre_delay_length_ ? 0u : first + 1u;
+        const double fraction = read - static_cast<double>(first);
+        const double delayed_input = static_cast<double>(pre_delay[first]) +
+                                     fraction * (static_cast<double>(pre_delay[next]) -
+                                                 static_cast<double>(pre_delay[first]));
         ++pre_delay_position;
         if (pre_delay_position >= pre_delay_length_)
           pre_delay_position = 0u;
@@ -153,18 +174,18 @@ public:
                                static_cast<std::size_t>(channel) * comb_channel_stride_ +
                                comb_line_offsets_[line];
           std::uint32_t position = comb_positions_[comb_index];
-          const std::uint32_t length = active_comb_lengths_[line];
+          const std::uint32_t length = active_comb_lengths_[comb_index];
           const double delayed_sample = static_cast<double>(comb_buffer[position]);
-          double high_state = comb_high_damp_states_[comb_index];
-          double low_state = comb_low_damp_states_[comb_index];
-          high_state = delayed_sample + high_damp_coefficient * (high_state - delayed_sample);
-          low_state = high_state + low_damp_coefficient * (low_state - high_state);
-          comb_high_damp_states_[comb_index] = high_state;
-          comb_low_damp_states_[comb_index] = low_state;
+          // H(z) = (1-ab)/2 * (1-z^-2) / ((1-a*z^-1)(1-b*z^-1)).
+          const double scaled_input = damping_input_gain * delayed_sample;
+          const double bandpassed = scaled_input + comb_damp_states_1_[comb_index];
+          comb_damp_states_1_[comb_index] =
+              damping_pole_sum * bandpassed + comb_damp_states_2_[comb_index];
+          comb_damp_states_2_[comb_index] = -scaled_input - damping_pole_product * bandpassed;
           const double damped_sample =
-              delayed_sample * one_minus_damping + low_state * damping_amount;
+              delayed_sample * one_minus_damping + bandpassed * damping_amount;
           comb_buffer[position] =
-              static_cast<float>(delayed_input + damped_sample * feedbackAt(line, frame));
+              static_cast<float>(delayed_input + damped_sample * feedbackAt(comb_index, frame));
           ++position;
           if (position >= length)
             position = 0u;
@@ -195,9 +216,9 @@ public:
 
         if (damping_amount > 0.0) {
           channel_high_state = output + high_damp_coefficient * (channel_high_state - output);
-          channel_low_state = output + low_damp_coefficient * (channel_low_state - output);
+          channel_low_state += low_damp_coefficient * (output - channel_low_state);
           output = output * one_minus_damping +
-                   (channel_high_state * 0.5 + channel_low_state * 0.5) * damping_amount;
+                   (channel_high_state * 0.5 + (output - channel_low_state) * 0.5) * damping_amount;
         }
         audio[audio_index] = static_cast<float>(input * dry_gain + output * wet_gain);
       }
@@ -215,33 +236,40 @@ public:
 
 private:
   void retargetControls() noexcept {
-    const std::array<double, 5u> targets{
+    const std::array<double, 6u> targets{
         std::exp(-kTwoPi * static_cast<double>(params_.highDamp) / sample_rate_),
         1.0 - std::exp(-kTwoPi * static_cast<double>(params_.lowDamp) / sample_rate_),
-        static_cast<double>(params_.damping) * 0.01, static_cast<double>(params_.diffusion),
-        static_cast<double>(params_.mix) * 0.01};
-    std::array<double, kCombCount> feedback_targets{};
+        static_cast<double>(params_.damping) * 0.01,
+        static_cast<double>(params_.diffusion),
+        static_cast<double>(params_.mix) * 0.01,
+        std::clamp(static_cast<double>(params_.preDelay) * sample_rate_ * 0.001, 0.0,
+                   static_cast<double>(pre_delay_length_ - 1u))};
     const double inverse_reverb_time = 1.0 / static_cast<double>(params_.reverbTime);
-    for (std::uint32_t line = 0u; line < kCombCount; ++line) {
-      feedback_targets[line] = std::clamp(
-          std::pow(0.001, randomized_delays_ms_[line] * 0.001 * inverse_reverb_time), -0.99, 0.99);
+    for (std::size_t index = 0u; index < comb_delays_ms_.size(); ++index) {
+      feedback_targets_[index] = std::clamp(
+          std::pow(0.001, comb_delays_ms_[index] * 0.001 * inverse_reverb_time), -0.99, 0.99);
     }
     if (!controls_initialized_) {
       current_controls_ = target_controls_ = targets;
-      feedback_gains_ = target_feedback_gains_ = feedback_targets;
       controls_initialized_ = true;
-      return;
+      control_steps_.fill(0.0);
     }
-    if (targets == target_controls_ && feedback_targets == target_feedback_gains_)
+    if (feedback_channel_count_ != active_channel_count_) {
+      std::copy(feedback_targets_.begin(), feedback_targets_.end(), feedback_gains_.begin());
+      std::copy(feedback_targets_.begin(), feedback_targets_.end(), target_feedback_gains_.begin());
+      std::fill(feedback_steps_.begin(), feedback_steps_.end(), 0.0);
+      feedback_channel_count_ = active_channel_count_;
+    }
+    if (targets == target_controls_ && feedback_targets_ == target_feedback_gains_)
       return;
     target_controls_ = targets;
-    target_feedback_gains_ = feedback_targets;
+    std::copy(feedback_targets_.begin(), feedback_targets_.end(), target_feedback_gains_.begin());
     const double inverse = 1.0 / static_cast<double>(ramp_frames_);
     for (std::size_t index = 0u; index < targets.size(); ++index) {
       control_steps_[index] = (targets[index] - current_controls_[index]) * inverse;
     }
-    for (std::size_t index = 0u; index < feedback_targets.size(); ++index) {
-      feedback_steps_[index] = (feedback_targets[index] - feedback_gains_[index]) * inverse;
+    for (std::size_t index = 0u; index < feedback_targets_.size(); ++index) {
+      feedback_steps_[index] = (feedback_targets_[index] - feedback_gains_[index]) * inverse;
     }
     ramp_remaining_ = ramp_frames_;
   }
@@ -269,30 +297,36 @@ private:
     ramp_remaining_ -= advanced;
     if (ramp_remaining_ == 0u) {
       current_controls_ = target_controls_;
-      feedback_gains_ = target_feedback_gains_;
+      std::copy(target_feedback_gains_.begin(), target_feedback_gains_.end(),
+                feedback_gains_.begin());
     }
   }
 
-  void randomizeDelays(float room_size) noexcept {
-    const double room_scale = static_cast<double>(room_size) * 0.1;
-    for (std::uint32_t line = 0u; line < kCombCount; ++line) {
-      const double delay = (kBaseDelaysMs[line] + random_.nextFloat01() - 0.5) * room_scale;
-      randomized_delays_ms_[line] = delay;
+  void configureCombDelays(float room_size) noexcept {
+    const double room_scale = static_cast<double>(room_size) / 10.0;
+    for (std::uint32_t channel = 0u; channel < max_channels_; ++channel) {
+      for (std::uint32_t line = 0u; line < kCombCount; ++line) {
+        const std::size_t index = static_cast<std::size_t>(channel) * kCombCount + line;
+        comb_delays_ms_[index] = kBaseDelaysMs[line] *
+                                 kDelayJitter[(channel * 7u + line) % kDelayJitter.size()] *
+                                 room_scale;
+      }
     }
     updateActiveCombLengths();
     configured_room_size_ = room_size;
-    randomized_delays_ready_ = true;
+    comb_delays_ready_ = true;
   }
 
   void updateActiveCombLengths() noexcept {
-    for (std::uint32_t line = 0u; line < kCombCount; ++line) {
-      const double delay = randomized_delays_ms_[line];
+    for (std::size_t index = 0u; index < comb_delays_ms_.size(); ++index) {
+      const auto line = index % kCombCount;
+      const double delay = comb_delays_ms_[index];
       const double raw_length = std::ceil(delay * sample_rate_ * 0.001);
       std::uint32_t length = raw_length > 0.0 ? static_cast<std::uint32_t>(raw_length) : 1u;
       if (length > comb_line_capacities_[line]) {
         length = comb_line_capacities_[line];
       }
-      active_comb_lengths_[line] = length;
+      active_comb_lengths_[index] = length;
     }
   }
 
@@ -301,8 +335,8 @@ private:
     std::fill(pre_delay_positions_.begin(), pre_delay_positions_.end(), 0u);
     std::fill(comb_buffers_.begin(), comb_buffers_.end(), 0.0F);
     std::fill(comb_positions_.begin(), comb_positions_.end(), 0u);
-    std::fill(comb_high_damp_states_.begin(), comb_high_damp_states_.end(), 0.0);
-    std::fill(comb_low_damp_states_.begin(), comb_low_damp_states_.end(), 0.0);
+    std::fill(comb_damp_states_1_.begin(), comb_damp_states_1_.end(), 0.0);
+    std::fill(comb_damp_states_2_.begin(), comb_damp_states_2_.end(), 0.0);
     std::fill(allpass_buffers_.begin(), allpass_buffers_.end(), 0.0F);
     std::fill(allpass_positions_.begin(), allpass_positions_.end(), 0u);
     std::fill(allpass_last_outputs_.begin(), allpass_last_outputs_.end(), 0.0);
@@ -317,30 +351,29 @@ private:
   std::uint32_t allpass_length_ = 1u;
   std::uint32_t comb_channel_stride_ = 0u;
   std::uint32_t active_channel_count_ = 0u;
-  std::uint32_t selected_seed_low_ = static_cast<std::uint32_t>(dsp::XorShiftRng::kFallbackSeed);
-  std::uint32_t selected_seed_high_ = 0u;
+  std::uint32_t feedback_channel_count_ = 0u;
   float configured_room_size_ = 0.0F;
-  bool randomized_delays_ready_ = false;
+  bool comb_delays_ready_ = false;
   bool controls_initialized_ = false;
-  std::array<double, 5u> current_controls_{};
-  std::array<double, 5u> target_controls_{};
-  std::array<double, 5u> control_steps_{};
-  std::array<double, kCombCount> feedback_gains_{};
-  std::array<double, kCombCount> target_feedback_gains_{};
-  std::array<double, kCombCount> feedback_steps_{};
+  std::array<double, 6u> current_controls_{};
+  std::array<double, 6u> target_controls_{};
+  std::array<double, 6u> control_steps_{};
+  std::vector<double> feedback_gains_;
+  std::vector<double> target_feedback_gains_;
+  std::vector<double> feedback_steps_;
+  std::vector<double> feedback_targets_;
   std::uint32_t ramp_frames_ = 240u;
   std::uint32_t ramp_remaining_ = 0u;
-  dsp::XorShiftRng random_{};
-  std::array<double, kCombCount> randomized_delays_ms_{};
-  std::array<std::uint32_t, kCombCount> active_comb_lengths_{};
+  std::vector<double> comb_delays_ms_;
+  std::vector<std::uint32_t> active_comb_lengths_;
   std::array<std::uint32_t, kCombCount> comb_line_capacities_{};
   std::array<std::uint32_t, kCombCount> comb_line_offsets_{};
   std::vector<float> pre_delay_buffers_;
   std::vector<std::uint32_t> pre_delay_positions_;
   std::vector<float> comb_buffers_;
   std::vector<std::uint32_t> comb_positions_;
-  std::vector<double> comb_high_damp_states_;
-  std::vector<double> comb_low_damp_states_;
+  std::vector<double> comb_damp_states_1_;
+  std::vector<double> comb_damp_states_2_;
   std::vector<float> allpass_buffers_;
   std::vector<std::uint32_t> allpass_positions_;
   std::vector<double> allpass_last_outputs_;

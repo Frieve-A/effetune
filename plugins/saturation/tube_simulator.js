@@ -2794,6 +2794,11 @@ const TUBE_SIMULATOR_REFERENCE_PROCESSOR = `
             state.bypassDrive[channel] = 0;
         }
         state.controls.plateReference = state.fast[0].stage[1].plateVoltage;
+        if (state.parameters.outputStage === 0) {
+            for (let channel = 0; channel < K.channels; ++channel) {
+                state.feedback[channel].transport.fill(state.controls.plateReference);
+            }
+        }
     }
 
     function cancelFeedbackTransition(state) {
@@ -6056,12 +6061,6 @@ class TubeSimulatorPlugin extends PluginBase {
         this.hudCanvas = null;
         this.hudObserver = null;
         this.hudStatus = null;
-        this.presetControl = null;
-        this.presetTrigger = null;
-        this.presetList = null;
-        this._presetOptionButtons = [];
-        this._presetDocumentPointerDown = null;
-        this._presetViewportChange = null;
         this.selectedTab = 'input';
         this._controls = {};
         // Parameter key whose own control originated the setParameters() call
@@ -6090,6 +6089,17 @@ class TubeSimulatorPlugin extends PluginBase {
             id: preset.id,
             label: preset.label,
             params: { ...TUBE_SIMULATOR_DEFAULT_SE_PARAMETERS, ...preset.params }
+        }));
+    }
+
+    static getSystemPresetGroups() {
+        return TUBE_SIMULATOR_PRESET_GROUPS.map(group => ({
+            label: group.label,
+            presets: group.presets.map(preset => ({
+                id: preset.id,
+                label: preset.label,
+                params: preset.params
+            }))
         }));
     }
 
@@ -6126,6 +6136,10 @@ class TubeSimulatorPlugin extends PluginBase {
         return true;
     }
 
+    applySystemPreset(id) {
+        return this.applyCanonicalPreset(id);
+    }
+
     _matchingCanonicalPresetId() {
         // A preset also lands the actual load on its assumed load, so the match requires that
         // too; only the protection settings (sg, ag) stay outside the comparison.
@@ -6135,105 +6149,8 @@ class TubeSimulatorPlugin extends PluginBase {
             this.rl === Number(preset.params.sl))?.id || '';
     }
 
-    _syncPresetControl() {
-        // No preset match resolves to the inert "Custom" option (value '').
-        const select = this.presetControl;
-        if (!select) return;
-        select.value = this._matchingCanonicalPresetId();
-        const preset = TUBE_SIMULATOR_SELECTABLE_PRESETS.find(
-            candidate => candidate.id === select.value);
-        if (this.presetTrigger) {
-            this.presetTrigger.textContent = preset?.label || 'Custom';
-        }
-        for (const option of this._presetOptionButtons) {
-            const selected = option.presetId === select.value;
-            option.classList.toggle('selected', selected);
-            option.setAttribute('aria-selected', String(selected));
-        }
-    }
-
-    _setPresetListOpen(open, focusSelected = false) {
-        const list = this.presetList;
-        const trigger = this.presetTrigger;
-        if (!list || !trigger) return;
-        const shouldOpen = Boolean(open);
-        list.hidden = !shouldOpen;
-        trigger.setAttribute('aria-expanded', String(shouldOpen));
-        if (!shouldOpen) return;
-        this._positionPresetList();
-        if (focusSelected) {
-            const selected = this._presetOptionButtons.find(option =>
-                option.presetId === this.presetControl?.value) || this._presetOptionButtons[0];
-            selected?.focus?.();
-            selected?.scrollIntoView?.({ block: 'nearest' });
-        }
-    }
-
-    _positionPresetList() {
-        const list = this.presetList;
-        const trigger = this.presetTrigger;
-        if (!list || !trigger || list.hidden || !document.body?.contains(list)) return;
-        const rect = trigger.getBoundingClientRect();
-        const viewportWidth = window.innerWidth || document.documentElement?.clientWidth || 0;
-        const viewportHeight = window.innerHeight || document.documentElement?.clientHeight || 0;
-        if (!Number.isFinite(rect.left) || !Number.isFinite(rect.top) ||
-            !Number.isFinite(rect.bottom) || viewportWidth <= 0 || viewportHeight <= 0) return;
-
-        const gap = 4;
-        const availableBelow = viewportHeight - rect.bottom - gap;
-        const availableAbove = rect.top - gap;
-        const openAbove = availableBelow < 240 && availableAbove > availableBelow;
-        const maxHeight = Math.max(120, Math.min(480,
-            openAbove ? availableAbove : availableBelow));
-        const width = Math.min(Math.max(rect.width, 240), viewportWidth - gap * 2);
-        const left = Math.min(Math.max(gap, rect.left), viewportWidth - width - gap);
-
-        list.style.left = `${left}px`;
-        list.style.width = `${width}px`;
-        list.style.maxHeight = `${maxHeight}px`;
-        if (openAbove) {
-            list.style.top = 'auto';
-            list.style.bottom = `${viewportHeight - rect.top + gap}px`;
-        } else {
-            list.style.top = `${rect.bottom + gap}px`;
-            list.style.bottom = 'auto';
-        }
-    }
-
-    _handlePresetListKeydown(event) {
-        const options = this._presetOptionButtons;
-        if (event.key === 'Escape') {
-            event.preventDefault?.();
-            this._setPresetListOpen(false);
-            this.presetTrigger?.focus?.();
-            return;
-        }
-        const current = options.indexOf(event.target);
-        let next = -1;
-        if (event.key === 'ArrowDown') next = Math.min(options.length - 1, current + 1);
-        else if (event.key === 'ArrowUp') next = Math.max(0, current - 1);
-        else if (event.key === 'Home') next = 0;
-        else if (event.key === 'End') next = options.length - 1;
-        if (next < 0) return;
-        event.preventDefault?.();
-        options[next]?.focus?.();
-        options[next]?.scrollIntoView?.({ block: 'nearest' });
-    }
-
-    _disposePresetList() {
-        if (this._presetDocumentPointerDown) {
-            document.removeEventListener?.('pointerdown', this._presetDocumentPointerDown, true);
-        }
-        if (this._presetViewportChange) {
-            document.removeEventListener?.('scroll', this._presetViewportChange, true);
-            window.removeEventListener?.('resize', this._presetViewportChange);
-        }
-        this.presetList?.remove?.();
-        this.presetTrigger = null;
-        this.presetList = null;
-        this._presetOptionButtons = [];
-        this._presetDocumentPointerDown = null;
-        this._presetViewportChange = null;
+    getActiveSystemPresetId() {
+        return this._matchingCanonicalPresetId();
     }
 
     _logSliderPosition(minimum, maximum, value) {
@@ -6528,7 +6445,6 @@ class TubeSimulatorPlugin extends PluginBase {
             this._clearTrajectories();
         }
         this.updateParameters();
-        this._syncPresetControl();
         this._syncControlsFromState();
         this._syncHudViewControl();
         this._updateHudValues();
@@ -7350,136 +7266,6 @@ class TubeSimulatorPlugin extends PluginBase {
         context.globalAlpha = 1;
     }
 
-    _createPresetControl() {
-        this._disposePresetList();
-        this.presetControl = null;
-        const row = document.createElement('div');
-        row.className = 'parameter-row tube-simulator-preset-row';
-        const selectId = `${this.id}-${this.name}-preset-select`;
-        const triggerId = `${this.id}-${this.name}-preset-trigger`;
-        const listId = `${this.id}-${this.name}-preset-list`;
-
-        const labelElement = document.createElement('label');
-        labelElement.textContent = 'Preset:';
-        labelElement.htmlFor = triggerId;
-
-        const select = document.createElement('select');
-        select.id = selectId;
-        select.name = selectId;
-        select.autocomplete = 'off';
-        select.hidden = true;
-        select.tabIndex = -1;
-        select.setAttribute('aria-hidden', 'true');
-
-        const control = document.createElement('div');
-        control.className = 'tube-simulator-preset-control';
-        const trigger = document.createElement('button');
-        trigger.type = 'button';
-        trigger.id = triggerId;
-        trigger.className = 'tube-simulator-preset-trigger';
-        trigger.setAttribute('aria-haspopup', 'listbox');
-        trigger.setAttribute('aria-controls', listId);
-        trigger.setAttribute('aria-expanded', 'false');
-
-        const list = document.createElement('div');
-        list.id = listId;
-        list.className = 'tube-simulator-preset-list';
-        list.setAttribute('role', 'listbox');
-        list.setAttribute('aria-labelledby', triggerId);
-        list.hidden = true;
-
-        const selectPreset = id => {
-            select.value = id;
-            this._setPresetListOpen(false);
-            if (!id) this._syncPresetControl();
-            else this.applyCanonicalPreset(id);
-            trigger.focus?.();
-        };
-        const addListOption = (id, label, grouped = false) => {
-            const option = document.createElement('button');
-            option.type = 'button';
-            option.className = grouped
-                ? 'tube-simulator-preset-option grouped'
-                : 'tube-simulator-preset-option';
-            option.textContent = label;
-            option.presetId = id;
-            option.setAttribute('role', 'option');
-            option.setAttribute('aria-selected', 'false');
-            option.addEventListener('click', () => selectPreset(id));
-            option.addEventListener('keydown', event => this._handlePresetListKeydown(event));
-            list.appendChild(option);
-            this._presetOptionButtons.push(option);
-        };
-
-        const custom = document.createElement('option');
-        custom.value = '';
-        custom.textContent = 'Custom';
-        select.appendChild(custom);
-        addListOption('', 'Custom');
-
-        for (const group of TUBE_SIMULATOR_PRESET_GROUPS) {
-            const presets = group.presets || [];
-            if (presets.length === 0) continue;
-            const optionGroup = document.createElement('optgroup');
-            optionGroup.label = group.label;
-            const groupLabel = document.createElement('div');
-            groupLabel.className = 'tube-simulator-preset-group';
-            groupLabel.textContent = group.label;
-            list.appendChild(groupLabel);
-            for (const preset of presets) {
-                const option = document.createElement('option');
-                option.value = preset.id;
-                option.textContent = preset.label;
-                optionGroup.appendChild(option);
-                addListOption(preset.id, preset.label, true);
-            }
-            select.appendChild(optionGroup);
-        }
-
-        select.addEventListener('change', event => {
-            // "Custom" is a status-only option: selecting it changes no
-            // parameter, so the dropdown snaps straight back to whatever the
-            // current state actually matches instead of lying about it.
-            selectPreset(event.target.value);
-        });
-        trigger.addEventListener('click', () => {
-            this._setPresetListOpen(list.hidden);
-        });
-        trigger.addEventListener('keydown', event => {
-            if (event.key === 'Escape') {
-                event.preventDefault?.();
-                this._setPresetListOpen(false);
-            } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-                event.preventDefault?.();
-                this._setPresetListOpen(true, true);
-            }
-        });
-
-        this._presetDocumentPointerDown = event => {
-            if (trigger.contains(event.target) || list.contains(event.target)) return;
-            this._setPresetListOpen(false);
-        };
-        this._presetViewportChange = event => {
-            if (event?.type === 'scroll' && list.contains(event.target)) return;
-            this._setPresetListOpen(false);
-        };
-        document.addEventListener?.('pointerdown', this._presetDocumentPointerDown, true);
-        document.addEventListener?.('scroll', this._presetViewportChange, true);
-        window.addEventListener?.('resize', this._presetViewportChange);
-
-        row.appendChild(labelElement);
-        control.appendChild(select);
-        control.appendChild(trigger);
-        row.appendChild(control);
-        if (document.body) document.body.appendChild(list);
-        else control.appendChild(list);
-        this.presetControl = select;
-        this.presetTrigger = trigger;
-        this.presetList = list;
-        this._syncPresetControl();
-        return row;
-    }
-
     _createTabbedControls(instanceId) {
         const panel = document.createElement('div');
         panel.className = 'tube-simulator-panel';
@@ -7705,7 +7491,6 @@ class TubeSimulatorPlugin extends PluginBase {
 
         // Settings first, then the read-outs, matching every other plug-in in
         // the app: parameter controls on top and the graph panel underneath.
-        container.appendChild(this._createPresetControl());
         container.appendChild(this._createTabbedControls(instanceId));
         container.appendChild(this._createHudViewControl());
         container.appendChild(this.hudGraph.container);
@@ -7740,8 +7525,6 @@ class TubeSimulatorPlugin extends PluginBase {
         this.hudCanvas = null;
         this.hudStatus = null;
         this.hudViewRow = null;
-        this._disposePresetList();
-        this.presetControl = null;
         this._controls = {};
         this._powerRows = [];
         this._ppRows = [];

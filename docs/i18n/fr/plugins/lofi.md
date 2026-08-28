@@ -50,6 +50,16 @@ Cet effet nécessite un environnement compatible avec son traitement en temps r�
 - **Profondeur des évanouissements :** les nouvelles instances utilisent Skywave à 1 % pour des variations de niveau plus calmes en Mono et un évanouissement nocturne moins marqué. Montez Skywave à environ 8 % si vous recherchez un évanouissement nettement plus profond ; les valeurs supérieures accentuent encore l'effet.
 - Commencez avec Mix à 100 % pour évaluer le modèle radio. Réduisez-le uniquement si vous souhaitez conserver délibérément une partie de l'image stéréo d'origine.
 
+### Préréglages système
+
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essayer directement ces réglages complets.
+
+- **Local Daytime Station** - Une émission locale claire et large bande, avec peu de parasites.
+- **Pocket Transistor** - Le son d'une petite radio à haut-parleur, avec davantage de compression, de ronflement et une bande passante réduite.
+- **Night Skywave** - Un faible signal nocturne avec un évanouissement ionosphérique marqué.
+- **Summer Thunderstorm** - Une station dont le signal s'évanouit, interrompue par de fréquents parasites atmosphériques.
+- **Stereo AM Broadcast** - Une émission stéréo C-QUAM plus claire, sans simulation de haut-parleur.
+
 ### Paramètres
 
 #### Station
@@ -165,6 +175,16 @@ Cassette Artifacts combine la réponse en fréquence, la compression, le souffle
 - **Tape Type** change le bruit et la marge : Type I est le plus bruyant, Type II est équilibré et Type IV préserve mieux les crêtes brillantes.
 - **Noise Reduction** réduit le souffle. Dolby C agit davantage que Dolby B ; Off laisse le fond le plus brut.
 - Montez **Wow/Flutter**, **Hiss** ou **Dropouts** pour un son plus usé. **Azimuth** adoucit l'aigu et modifie sa relation entre les canaux.
+
+### Préréglages système
+
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essayer directement ces réglages complets.
+
+- **Flagship Deck Metal** - Une platine de référence silencieuse et stable utilisant une cassette métal et le Dolby C.
+- **Hi-Fi Chrome** - Une cassette Type II propre, avec peu de souffle et d'instabilité de hauteur.
+- **Pocket Cassette Player** - Un son de lecteur portable avec bruit, flottement et désalignement de tête.
+- **Worn Mixtape** - Une bande très usée avec pertes de signal, flottement et saturation plus rugueuse.
+- **Hot Deck Saturation** - Un son de cassette volontairement enregistré très fort, avec une compression de bande accrue.
 
 ### Paramètres
 
@@ -349,6 +369,14 @@ Cet effet nécessite un environnement prenant en charge son traitement en temps 
 - **Souffle de signal faible :** quand Signal baisse, un souffle brillant et aérien monte d'abord en stéréo. Passer Stereo sur Mono rend la même réception nettement plus silencieuse, pour la même raison que le mono est plus silencieux sur un vrai tuner.
 - **Réception en limite de zone :** près du seuil FM, clics et crachotements apparaissent, le récepteur fond vers le mono, et le programme finit par sombrer dans le bruit.
 - **Couleur des trajets multiples :** les réflexions ajoutent une distorsion âpre et creuse dont le caractère suit Path Delay ; augmenter Fading la transforme en flottement typique de la réception mobile.
+
+### Préréglages système
+
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essayer directement ces réglages complets.
+
+- **Powerhouse Broadcast** - Une station puissante avec un traitement de diffusion plus marqué.
+- **Distant Station** - Une réception à la limite de la zone de couverture, avec du souffle et une dégradation stéréo précoce.
+- **City Drive Multipath** - Des réflexions qui changent vite et une distorsion par trajets multiples pour l'écoute mobile.
 
 ### Paramètres
 
@@ -682,6 +710,14 @@ Cet effet nécessite un environnement prenant en charge son traitement en temps 
 - **Instant fort après un silence :** quand la musique démarre — au début de la lecture ou après un blanc — le gain est encore grand ouvert depuis le silence, si bien que le premier instant passe fort avant que l'AGC ne se stabilise, surtout en USB et LSB. C'est ce que fait un récepteur allumé sur un canal calme, et c'est conservé volontairement.
 - **Évanouissements maigres et troués (USB, LSB) :** un évanouissement profond atténue inégalement des parties de l'unique bande latérale au lieu de produire la distorsion aqueuse du détecteur d'enveloppe en AM : le son maigrit et des morceaux disparaissent.
 
+### Préréglages système
+
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essayer directement ces réglages complets.
+
+- **Major Broadcaster** - Une émission internationale stable et relativement large, reçue sur une radio de table.
+- **Transoceanic Night** - Un profond évanouissement nocturne et une détection synchrone sur un signal lointain.
+- **Stormy 49 m Band** - Un évanouissement rapide, des parasites atmosphériques et une station voisine qui brouille la réception.
+
 ### Paramètres
 
 #### Station
@@ -785,6 +821,14 @@ Tape Artifacts enregistre la musique sur un magnétophone à bobines analogique 
 - **Le défilement s'entend sur les notes tenues :** Wow/Flutter ajoute une dérive de hauteur et un scintillement au piano, à l'orgue, aux cordes et aux autres sons tenus.
 - **Un fond vivant :** Hiss ajoute à la fois un souffle de bande constant et un bruit qui suit la musique. Réglez-le au minimum si vous ne voulez aucun bruit ajouté.
 
+### Préréglages système
+
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essayer directement ces réglages complets.
+
+- **Pristine 30 ips Reel** - Un transfert de bande master rapide, avec très peu de souffle ou de mouvement de hauteur.
+- **Hobbyist Reel-to-Reel** - Un enregistreur domestique plus lent, avec davantage de souffle et de mouvements de transport.
+- **Tired Old Reel** - Une bande lente et usée, avec fort flottement, souffle et aigus plus rugueux.
+
 ### Paramètres
 
 - **Speed** (7.5, 15 ou 30 ips) - Choisit la vitesse. Commencez à 15 ips ; utilisez 30 ips pour le son le plus propre et ouvert, ou 7.5 ips pour un timbre plus sombre, une bosse de grave plus forte et davantage de mouvement.
@@ -843,6 +887,14 @@ Un effet qui ajoute des artefacts de lecture façon vinyle, comme pops, crépite
   - Ajoute de la profondeur et du caractère aux enregistrements numériques
   - Parfait pour créer des expériences d'écoute chaleureuses et intimes
 
+### Préréglages système
+
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essayer directement ces réglages complets.
+
+- **Gentle Patina** - Un faible bruit de disque pour une surface vieillie discrète.
+- **Thrift Store Copy** - Des pops, crépitements et traces d'usure fréquents pour un disque clairement abîmé.
+- **Rumbly Old Player** - Le caractère de surface habituel, avec un grondement supplémentaire dans le grave rappelant une platine.
+
 ### Paramètres
 - **Pops/min** - Contrôle la fréquence des gros bruits de clic par minute (0 à 120)
   - 0-20 : Pops doux occasionnels
@@ -872,15 +924,15 @@ Un effet qui ajoute des artefacts de lecture façon vinyle, comme pops, crépite
   - 0% : Le bruit généré garde sa séparation de canaux originale
   - 30-60% : Débordement de bruit réaliste façon vinyle
   - 100% : Le bruit généré devient presque identique entre gauche et droite
-- **Noise Profile** - Ajuste la réponse en fréquence du bruit généré (0.0 à 10.0)
-  - 0 : Tonalité de bruit la plus sombre et chaleureuse
-  - 5 : Tonalité de bruit partiellement façonnée
-  - 10 : Tonalité de bruit plate / modelage tonal contourné
+- **Noise Tone** - Ajuste la réponse en fréquence du bruit généré (0.0 à 10.0)
+  - 0 : Réponse en fréquence plate, sans coloration tonale du bruit
+  - 5 : Tonalité de bruit partiellement assombrie
+  - 10 : Tonalité de bruit la plus sombre et chaleureuse
 - **Wear** - Multiplie les artefacts d'usure de surface comme pops, crépitements et souffle (0 à 200%)
   - 0-50% : Bruit de surface plus propre
   - 50-100% : Usure de surface normale
   - 100-200% : Bruit de surface fortement usé
-  - Rumble, Crosstalk et Noise Profile sont contrôlés séparément
+  - Rumble, Crosstalk et Noise Tone sont contrôlés séparément
 - **React** - À quel point le bruit répond au signal d'entrée (0 à 100%)
   - 0% : Niveaux de bruit statiques
   - 25-50% : Réponse modérée à la musique
@@ -898,31 +950,31 @@ Un effet qui ajoute des artefacts de lecture façon vinyle, comme pops, crépite
 
 1. Caractère Vinyle Subtil
    - Pops/min : 20, Pop Level : -48dB, Crackles/min : 200, Crackle Level : -48dB
-   - Hiss : -48dB, Rumble : -60dB, Crosstalk : 30%, Noise Profile : 5.0
+   - Hiss : -48dB, Rumble : -60dB, Crosstalk : 30%, Noise Tone : 5.0
    - Wear : 25%, React : 20%, React Mode : Velocity, Mix : 100%
    - Parfait pour : Ajouter une texture vinyle douce
 
 2. Expérience Vinyle Classique
    - Pops/min : 40, Pop Level : -36dB, Crackles/min : 400, Crackle Level : -36dB
-   - Hiss : -36dB, Rumble : -50dB, Crosstalk : 50%, Noise Profile : 4.0
+   - Hiss : -36dB, Rumble : -50dB, Crosstalk : 50%, Noise Tone : 6.0
    - Wear : 60%, React : 30%, React Mode : Velocity, Mix : 100%
    - Parfait pour : Expérience d'écoute vinyle authentique
 
 3. Disque Très Usé
    - Pops/min : 80, Pop Level : -24dB, Crackles/min : 800, Crackle Level : -24dB
-   - Hiss : -30dB, Rumble : -40dB, Crosstalk : 70%, Noise Profile : 3.0
+   - Hiss : -30dB, Rumble : -40dB, Crosstalk : 70%, Noise Tone : 7.0
    - Wear : 120%, React : 50%, React Mode : Velocity, Mix : 100%
    - Parfait pour : Caractère de disque fortement vieilli
 
 4. Lo-Fi Ambiant
    - Pops/min : 15, Pop Level : -54dB, Crackles/min : 150, Crackle Level : -54dB
-   - Hiss : -42dB, Rumble : -66dB, Crosstalk : 25%, Noise Profile : 6.0
+   - Hiss : -42dB, Rumble : -66dB, Crosstalk : 25%, Noise Tone : 4.0
    - Wear : 40%, React : 15%, React Mode : Amplitude, Mix : 100%
    - Parfait pour : Texture ambiante d'arrière-plan
 
 5. Vinyle Dynamique
    - Pops/min : 60, Pop Level : -30dB, Crackles/min : 600, Crackle Level : -30dB
-   - Hiss : -39dB, Rumble : -45dB, Crosstalk : 60%, Noise Profile : 5.0
+   - Hiss : -39dB, Rumble : -45dB, Crosstalk : 60%, Noise Tone : 5.0
    - Wear : 80%, React : 75%, React Mode : Velocity, Mix : 100%
    - Parfait pour : Bruit qui répond de manière dramatique à la musique
 
@@ -944,6 +996,16 @@ Vinyl Simulator transforme la musique elle-même à l'aide d'un modèle physique
 - **Surface usée :** augmentez d'abord Roughness, puis Dust, Static et un peu de Scratch. Chaque réglage représente un phénomène physique différent.
 - **Coloration plus marquée :** augmentez Cut Level avec prudence, baissez HF Cutoff ou réduisez Radius. Surveillez la baisse de Tracking S/E et les événements mistrack/skip.
 - Vinyl Simulator ne produit ni wow/flutter, ni excentration, ni voile, ni rumble de platine. Ajoutez **Wow Flutter** dans la chaîne si nécessaire.
+
+### Préréglages système
+
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essayer directement ces réglages complets.
+
+- **Audiophile Pressing** - Une surface de disque silencieuse et soigneusement entretenue.
+- **Well-Worn Favorite** - Davantage de rugosité, de poussière et d'électricité statique d'un disque souvent écouté.
+- **Flea Market 45** - Un 45 tours usé, avec un stylet sphérique et un bruit de surface marqué.
+- **78 rpm Shellac** - Le caractère rude et étroit en bande d'un ancien disque en gomme-laque.
+- **End of Side** - Une position de sillon intérieur avec le comportement de lecture de la fin d'une face.
 
 ### Paramètres
 

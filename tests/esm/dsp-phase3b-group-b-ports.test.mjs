@@ -10,6 +10,7 @@ import {
   readGoldenSet
 } from '../../tools/dsp-parity/golden-io.mjs';
 import { runParityCli } from '../../tools/dsp-parity/run.mjs';
+import { createReferenceSession } from '../../tools/dsp-parity/node-host.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const ports = [
@@ -107,6 +108,19 @@ async function readPort(port) {
     kernel
   };
 }
+
+test('Crossfeed normalizes broadband power without coherent-DC attenuation', async () => {
+  const session = await createReferenceSession('CrossfeedFilterPlugin', {
+    repoRoot, params: { lv: 0, dl: 1, lf: 700 }
+  });
+  const input = new Float32Array(256);
+  input[0] = 0.5;
+  const output = await session.process(input, {
+    sampleRate: 48000, frames: 128, channels: 2, blockSize: 128
+  });
+  assert.ok(Math.abs(output[0] - 0.5 / Math.sqrt(2)) < 1e-7);
+  assert.ok(output.slice(128).some(value => Math.abs(value) > 0));
+});
 
 test('Phase 3b group B schemas and goldens stay frozen, current, and within budget', async () => {
   for (const port of ports) {

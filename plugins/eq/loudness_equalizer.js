@@ -1,4 +1,13 @@
+const LOUDNESS_EQUALIZER_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({ id: 'late-night-listening', label: 'Late Night Listening', params: Object.freeze({ sp: 63, rv: -12, lf: 200, lg: 12, lq: 0.6, hf: 4000, hg: 6, hq: 0.6 }) }),
+    Object.freeze({ id: 'quiet-background', label: 'Quiet Background', params: Object.freeze({ sp: 68, rv: -6, lf: 180, lg: 7, lq: 0.6, hf: 4000, hg: 3, hq: 0.6 }) }),
+    Object.freeze({ id: 'near-reference-level', label: 'Near Reference Level', params: Object.freeze({ sp: 80, rv: -2, lf: 180, lg: 2, lq: 0.6, hf: 4000, hg: 0, hq: 0.6 }) })
+]);
+
 class LoudnessEqualizerPlugin extends PluginBase {
+    static getSystemPresetGroups() {
+        return [{ label: '', presets: LOUDNESS_EQUALIZER_SYSTEM_PRESETS.map(preset => ({ ...preset })) }];
+    }
     constructor() {
         super('Loudness Equalizer', 'Small volume playback frequency balance correction');
 

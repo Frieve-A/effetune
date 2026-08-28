@@ -9,6 +9,7 @@ import {
 import { PipelineItemBuilder } from './pipeline-item-builder.js';
 import { PipelineSelectionManager } from './pipeline-selection-manager.js';
 import { PipelineRoutingDialog } from './pipeline-routing-dialog.js';
+import { PluginPresetDialog } from './plugin-preset-dialog.js';
 import { PipelineAIDialog } from './pipeline-ai-dialog.js';
 import { PipelineColumnManager } from './pipeline-column-manager.js';
 import { PipelineSectionHandler } from './pipeline-section-handler.js';
@@ -35,6 +36,7 @@ export class PipelineCore {
         this.itemBuilder = new PipelineItemBuilder(this);
         this.selectionManager = new PipelineSelectionManager(this);
         this.routingDialog = new PipelineRoutingDialog(this);
+        this.pluginPresetDialog = new PluginPresetDialog(this);
         this.aiDialog = new PipelineAIDialog(this);
         this.columnManager = new PipelineColumnManager(this);
         this.sectionHandler = new PipelineSectionHandler(this);
@@ -62,6 +64,7 @@ export class PipelineCore {
      * @param {boolean} forceRedraw - Whether to force a complete rebuild of the UI
      */
     updatePipelineUI(forceRedraw = false) {
+        this.pluginPresetDialog.closeIfPluginDetached();
         if (!this.pipelineList) {
             console.error("pipelineList element not found in PipelineCore");
             return;
@@ -246,6 +249,10 @@ export class PipelineCore {
      */
     showRoutingDialog(plugin, button) {
         this.routingDialog.showRoutingDialog(plugin, button);
+    }
+
+    showPluginPresetDialog(plugin, button) {
+        this.pluginPresetDialog.showPlugin(plugin, button);
     }
     
     /**

@@ -10,7 +10,8 @@ import {
 } from '../../features/measurement/audio-utils/output-routing.js';
 import {
   startWhiteNoise,
-  stopWhiteNoise
+  stopWhiteNoise,
+  generateTSP
 } from '../../features/measurement/audio-utils/signal-generation.js';
 import {
   createRepeatedSweepAudioBuffer
@@ -40,6 +41,47 @@ test('measurement output channel counts use only supported complete layouts', ()
   assert.equal(getMeasurementOutputChannelCount('all', 4), 4);
   assert.equal(getMeasurementOutputChannelCount('all', 6), 6);
   assert.equal(getMeasurementOutputChannelCount('all', 8), 8);
+});
+
+test('measurement routing rejects unknown channel tokens instead of silently routing them', async () => {
+  for (const token of ['multi', 'unknown', '-1']) {
+    assert.throws(() => getRequiredOutputChannelCount(token), MeasurementOutputError);
+    assert.throws(() => getMeasurementOutputChannelCount(token, 8), MeasurementOutputError);
+  }
+  const harness = { initialized: true };
+  assert.throws(() => generateTSP.call(harness, 8, 48000, 'multi'), MeasurementOutputError);
+  await assert.rejects(startWhiteNoise.call({}, -12, null, 'multi'), MeasurementOutputError);
+});
+
+test('an explicit multichannel width rejects an incompatible element route before playback', async () => {
+  let mediaDestinationCreated = false;
+  const audioContext = {
+    destination: createDestination(8),
+    createMediaStreamDestination() {
+      mediaDestinationCreated = true;
+    }
+  };
+  await assert.rejects(
+    prepareMeasurementOutputRoute(audioContext, 'speaker', 'left', {}, 6),
+    MeasurementOutputError
+  );
+  assert.equal(mediaDestinationCreated, false);
+});
+
+test('explicit width cannot bypass output channel validation', async () => {
+  const audioContext = { destination: createDestination(8) };
+  await assert.rejects(
+    prepareMeasurementOutputRoute(audioContext, null, 'multi', {}, 4),
+    /Unsupported measurement output channel/
+  );
+  await assert.rejects(
+    prepareMeasurementOutputRoute(audioContext, null, '4', {}, 4),
+    /Invalid explicit measurement output width/
+  );
+  await assert.rejects(
+    prepareMeasurementOutputRoute(audioContext, null, 'left', {}, 3),
+    /Invalid explicit measurement output width/
+  );
 });
 
 test('direct measurement output selects the requested device before configuring its layout', async () => {
@@ -408,6 +450,173 @@ test('stereo measurement ignores EffeTune main app four-channel output setting',
   } finally {
     globalThis.window = previousWindow;
   }
+});
+
+test('the latest white-noise start remains published when starts complete in reverse order', async t => {
+  const previousWindow = globalThis.window;
+  t.after(() => { globalThis.window = previousWindow; });
+
+  const readyResolvers = [];
+  const sources = [];
+  function createNode() {
+    return {
+      connect() {},
+      disconnect() { this.disconnected = true; }
+    };
+  }
+  const audioContext = {
+    sampleRate: 8,
+    state: 'running',
+    destination: createDestination(2),
+    createBuffer(channelCount, length) {
+      const channels = Array.from({ length: channelCount }, () => new Float32Array(length));
+      return { getChannelData: channel => channels[channel] };
+    },
+    createBufferSource() {
+      const source = {
+        ...createNode(),
+        start() { this.started = true; },
+        stop() { this.stopped = true; }
+      };
+      sources.push(source);
+      return source;
+    },
+    createGain() {
+      return { ...createNode(), gain: { value: 0 } };
+    },
+    createChannelMerger() {
+      return createNode();
+    }
+  };
+  const harness = {
+    audioContext,
+    isWhiteNoiseActive: false,
+    ensureAudioContextRunning() {
+      return new Promise(resolve => readyResolvers.push(resolve));
+    }
+  };
+  globalThis.window = { audioPreferences: { outputChannels: 2 } };
+
+  const firstStart = startWhiteNoise.call(harness, -12, null, 'left');
+  const secondStart = startWhiteNoise.call(harness, -12, null, 'right');
+  assert.equal(readyResolvers.length, 2);
+
+  readyResolvers[1](true);
+  assert.equal(await secondStart, true);
+  const publishedSource = harness.whiteNoiseNode;
+  assert.equal(harness.whiteNoiseChannel, 'right');
+  assert.equal(harness.isWhiteNoiseActive, true);
+
+  readyResolvers[0](true);
+  assert.equal(await firstStart, false);
+  assert.equal(harness.whiteNoiseNode, publishedSource);
+  assert.equal(harness.whiteNoiseChannel, 'right');
+  assert.equal(harness.isWhiteNoiseActive, true);
+  assert.equal(sources.length, 1);
+
+  stopWhiteNoise.call(harness);
+  assert.equal(publishedSource.stopped, true);
+
+  const stoppedWhilePending = startWhiteNoise.call(harness, -12, null, 'left');
+  stopWhiteNoise.call(harness);
+  readyResolvers[2](true);
+  assert.equal(await stoppedWhilePending, false);
+  assert.equal(harness.isWhiteNoiseActive, false);
+  assert.equal(harness.whiteNoiseNode, null);
+  assert.equal(sources.length, 1);
+});
+
+test('white-noise route ownership serializes device and layout publication', async t => {
+  const previousWindow = globalThis.window;
+  t.after(() => { globalThis.window = previousWindow; });
+  const destination = createDestination(8);
+  const sinkCalls = [];
+  const sinkResolvers = [];
+  const sources = [];
+  function createNode() {
+    return {
+      connect() {},
+      disconnect() { this.disconnected = true; }
+    };
+  }
+  const audioContext = {
+    sampleRate: 8,
+    state: 'running',
+    destination,
+    sinkId: '',
+    setSinkId(sinkId) {
+      sinkCalls.push(sinkId);
+      return new Promise(resolve => {
+        sinkResolvers.push(() => {
+          this.sinkId = sinkId;
+          resolve();
+        });
+      });
+    },
+    createBuffer(channelCount, length) {
+      const channels = Array.from({ length: channelCount }, () => new Float32Array(length));
+      return { getChannelData: channel => channels[channel] };
+    },
+    createBufferSource() {
+      const source = {
+        ...createNode(),
+        start() { this.started = true; },
+        stop() { this.stopped = true; }
+      };
+      sources.push(source);
+      return source;
+    },
+    createGain() {
+      return { ...createNode(), gain: { value: 0 } };
+    },
+    createChannelMerger(channelCount) {
+      return { ...createNode(), channelCount };
+    }
+  };
+  const harness = {
+    audioContext,
+    isWhiteNoiseActive: false,
+    ensureAudioContextRunning: async () => true
+  };
+  globalThis.window = { audioPreferences: { outputChannels: 8 } };
+
+  const earlier = startWhiteNoise.call(harness, -12, 'earlier-device', 'left');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(sinkCalls, ['earlier-device']);
+
+  const latest = startWhiteNoise.call(harness, -12, 'latest-device', '2');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(sinkCalls, ['earlier-device']);
+
+  sinkResolvers[0]();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(sinkCalls, ['earlier-device', 'latest-device']);
+  sinkResolvers[1]();
+
+  assert.equal(await earlier, false);
+  assert.equal(await latest, true);
+  assert.equal(audioContext.sinkId, 'latest-device');
+  assert.equal(destination.channelCount, 4);
+  assert.equal(harness.channelMerger.channelCount, 4);
+  assert.equal(harness.whiteNoiseChannel, '2');
+  assert.equal(sources.length, 1);
+  stopWhiteNoise.call(harness);
+
+  const cancelled = startWhiteNoise.call(harness, -12, 'cancelled-device', 'left');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(sinkCalls, [
+    'earlier-device',
+    'latest-device',
+    'cancelled-device'
+  ]);
+  stopWhiteNoise.call(harness);
+  sinkResolvers[2]();
+  assert.equal(await cancelled, false);
+  assert.equal(harness.isWhiteNoiseActive, false);
+  assert.equal(harness.isWhiteNoisePending, false);
+  assert.equal(harness.whiteNoiseDesiredActive, false);
+  assert.equal(harness.whiteNoiseNode, null);
+  assert.equal(sources.length, 1);
 });
 
 test('a Ch 3 sweep uses a complete 4-channel buffer with silence elsewhere', () => {

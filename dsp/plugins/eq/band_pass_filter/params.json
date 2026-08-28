@@ -33,8 +33,10 @@
       "kind": "int",
       "min": -48,
       "max": 0,
+      "step": 12,
       "default": -24,
-      "unit": "dB/oct"
+      "unit": "dB/oct",
+      "automation": true
     },
     {
       "name": "lowPassSlope",
@@ -42,8 +44,10 @@
       "kind": "int",
       "min": -48,
       "max": 0,
+      "step": 12,
       "default": -24,
-      "unit": "dB/oct"
+      "unit": "dB/oct",
+      "automation": true
     }
   ]
 }

@@ -5,9 +5,13 @@
 import audioUtils from '../audio-utils/index.js';
 import i18n from '../i18n.js';
 import {
-    normalizeResponseToZeroDb as normalizeFrequencyResponseToZeroDb
+    normalizeResponseToZeroDb as normalizeFrequencyResponseToZeroDb,
+    responseReferenceDb
 } from '../response-normalization.js';
 import { createGraphGeometry } from '../graph-geometry.js';
+import { channelColor } from '../channel-colors.js';
+import { aggregateLevelWarnings } from '../measurement-model.js';
+import { channelDisplayLabel } from '../audio-utils/channel-selection.js';
 
 const GraphUtils = {
     /**
@@ -192,7 +196,52 @@ const GraphUtils = {
         ctx.fillStyle = '#1a1a1a';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Draw graph
+        const curves = Array.isArray(frequencyResponse) &&
+            frequencyResponse.length > 0 && frequencyResponse[0]?.frequencyResponse
+            ? frequencyResponse
+            : null;
+        if (curves) {
+            const referenceDb = responseReferenceDb(
+                curves[0].frequencyResponse,
+                this.currentMeasurement?.sweepMinFreq,
+                this.currentMeasurement?.sweepMaxFreq
+            );
+            const outputChannels = curves.map(curve => curve.channel);
+            for (const curve of curves) {
+                this.drawFrequencyResponseGraph(
+                    ctx,
+                    curve.frequencyResponse,
+                    channelColor(curve.channel, outputChannels),
+                    referenceDb
+                );
+            }
+            const warnings = aggregateLevelWarnings(curves);
+            if (warnings.low.length || warnings.high.length) {
+                ctx.font = '14px Arial';
+                ctx.fillStyle = '#ff3333';
+                ctx.textAlign = 'center';
+                if (warnings.low.length) {
+                    const channels = warnings.low.map(channelDisplayLabel).join(', ');
+                    ctx.fillText(
+                        i18n.t('warning:signalTooLowChannels', { channels }) ||
+                            `The measurement signal was too low on ${channels}`,
+                        canvas.width / 2,
+                        40
+                    );
+                }
+                if (warnings.high.length) {
+                    const channels = warnings.high.map(channelDisplayLabel).join(', ');
+                    ctx.fillText(
+                        i18n.t('warning:signalTooHighChannels', { channels }) ||
+                            `The measurement signal was too high on ${channels}`,
+                        canvas.width / 2,
+                        warnings.low.length ? 60 : 40
+                    );
+                }
+            }
+            return;
+        }
+
         this.drawFrequencyResponseGraph(ctx, frequencyResponse, '#4e79a7');
         
         // Display warning message if signal level is too low
@@ -220,7 +269,7 @@ const GraphUtils = {
      * @param {Array} frequencyResponse - Frequency response data
      * @param {string} color - Line color
      */
-    drawFrequencyResponseGraph(ctx, frequencyResponse, color) {
+    drawFrequencyResponseGraph(ctx, frequencyResponse, color, referenceDb) {
         if (!frequencyResponse || frequencyResponse.length === 0) return;
         
         const width = ctx.canvas.width;
@@ -237,7 +286,8 @@ const GraphUtils = {
         const normalizedResponse = this.normalizeResponseToZeroDb(
             [...frequencyResponse],
             this.currentMeasurement?.sweepMinFreq,
-            this.currentMeasurement?.sweepMaxFreq
+            this.currentMeasurement?.sweepMaxFreq,
+            referenceDb
         );
         
         const {
@@ -349,11 +399,12 @@ const GraphUtils = {
      * @param {number} maxFrequency - Measured upper frequency limit
      * @returns {Array} Normalized frequency response
      */
-    normalizeResponseToZeroDb(response, minFrequency, maxFrequency) {
+    normalizeResponseToZeroDb(response, minFrequency, maxFrequency, referenceDb) {
         return normalizeFrequencyResponseToZeroDb(
             response,
             minFrequency,
-            maxFrequency
+            maxFrequency,
+            referenceDb
         );
     },
     

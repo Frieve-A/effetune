@@ -5,7 +5,7 @@
   "fields": [
     { "name": "harmonicAmount", "key": "ha", "kind": "float", "min": 0, "max": 200, "step": 1, "default": 100, "unit": "%", "automation": true },
     { "name": "noiseAmount", "key": "na", "kind": "float", "min": 0, "max": 200, "step": 1, "default": 100, "unit": "%", "automation": true },
-    { "name": "cutoffMode", "key": "cm", "kind": "enum", "values": ["Auto", "Manual"], "default": "Auto" },
-    { "name": "cutoffFrequency", "key": "cf", "kind": "float", "min": 6000, "max": 24000, "default": 16000, "unit": "Hz" }
+    { "name": "cutoffMode", "key": "cm", "kind": "enum", "values": ["Auto", "Manual"], "step": 1, "default": "Auto", "automation": true },
+    { "name": "cutoffFrequency", "key": "cf", "kind": "float", "min": 6000, "max": 24000, "step": 100, "default": 16000, "unit": "Hz", "automation": true }
   ]
 }

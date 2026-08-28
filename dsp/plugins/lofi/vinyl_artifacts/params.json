@@ -4,15 +4,15 @@
   "fields": [
     { "name": "popsPerMinute", "key": "pp", "kind": "int", "min": 0, "max": 120, "step": 1, "default": 20, "automation": true },
     { "name": "popLevel", "key": "pl", "kind": "float", "min": -80, "max": 0, "step": 0.1, "default": -24, "unit": "dB", "automation": true },
-    { "name": "cracklesPerMinute", "key": "cm", "kind": "int", "min": 0, "max": 2000, "step": 10, "default": 500, "automation": true },
+    { "name": "cracklesPerMinute", "key": "cm", "kind": "int", "min": 0, "max": 2000, "step": 1, "default": 500, "automation": true },
     { "name": "crackleLevel", "key": "cl", "kind": "float", "min": -80, "max": 0, "step": 0.1, "default": -33, "unit": "dB", "automation": true },
     { "name": "hissLevel", "key": "hs", "kind": "float", "min": -80, "max": 0, "step": 0.1, "default": -42, "unit": "dB", "automation": true },
     { "name": "rumbleLevel", "key": "rb", "kind": "float", "min": -80, "max": 0, "step": 0.1, "default": -50, "unit": "dB", "automation": true },
     { "name": "crosstalk", "key": "xt", "kind": "int", "min": 0, "max": 100, "step": 1, "default": 60, "unit": "%", "automation": true },
-    { "name": "noiseProfile", "key": "tn", "kind": "float", "min": 0, "max": 10, "step": 0.1, "default": 0, "automation": true },
+    { "name": "noiseProfile", "key": "tn", "kind": "float", "min": 0, "max": 10, "step": 0.1, "default": 10, "automation": true },
     { "name": "wear", "key": "wr", "kind": "int", "min": 0, "max": 200, "step": 1, "default": 100, "unit": "%", "automation": true },
     { "name": "react", "key": "rt", "kind": "int", "min": 0, "max": 100, "step": 1, "default": 25, "unit": "%", "automation": true },
-    { "name": "reactMode", "key": "rm", "kind": "enum", "values": ["Velocity", "Amplitude"], "default": "Velocity" },
+    { "name": "reactMode", "key": "rm", "kind": "enum", "values": ["Velocity", "Amplitude"], "step": 1, "default": "Velocity", "automation": true },
     { "name": "mix", "key": "mx", "kind": "int", "min": 0, "max": 100, "step": 1, "default": 100, "unit": "%", "automation": true }
   ]
 }

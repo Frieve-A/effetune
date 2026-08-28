@@ -130,28 +130,22 @@ Large collections load in stages from storage; scanning and loading speed depend
    - For Section effects: Shift+click the × button to remove entire sections
 9. Click the routing button to set the channels to be processed and the input and output busses
    - [More about bus functions](docs/bus-function.md)
-10. For fine slider adjustment, hold Shift while dragging; the value changes by one minimum step at a time
+10. Click an effect's Effect Presets button to save or apply settings for that effect only
+11. For fine slider adjustment, hold Shift while dragging; the value changes by one minimum step at a time
 
 ### Using Presets
 
-1. Save Your Effect Chain:
-   - Set up your desired effect chain and parameters
-   - Enter a name for your preset into the input field
-   - Click the save button to store it
+Click the **Pipeline Presets** button in the Effect Pipeline header to open the preset dialog.
 
-2. Load a Preset:
-   - Type or select a preset name from the dropdown list
-   - The preset will be loaded automatically
-   - All effects and their settings will be restored
+1. Load a preset by selecting it from the saved preset list. This restores the complete effect chain, including effect order, settings, and ON/OFF states.
+2. Save the current effect chain by entering a name and selecting **Save**.
+3. Rename a saved preset with its rename button.
+4. Select one or more saved presets, then choose **Delete Selected** and confirm to remove them.
+5. Press Ctrl+S (or Cmd+S on macOS) to open the dialog with the current preset name ready to edit.
 
-3. Delete a Preset:
-   - Select the preset you want to remove
-   - Click the delete button
-   - Confirm the deletion when prompted
+Each effect also has its own **Effect Presets** button. It opens system presets when the effect provides them and lets you save, rename, load, or remove your own settings for that effect. Effect presets change only that effect's parameters; they do not change its ON/OFF state or routing.
 
-4. Preset Information:
-   - Each preset stores your complete effect chain configuration
-   - Includes effect order, parameters, and states
+The existing `.effetune_preset` file import, export, and sharing features continue to use complete effect-chain presets.
 
 ### Using Section Features
 
@@ -263,6 +257,10 @@ To measure your audio system's frequency response and create a flat correction E
 3. Measure your system's frequency response at one or more listening positions
 4. Generate a parametric EQ correction that can be directly imported into EffeTune
 5. Apply the correction to achieve a more accurate, neutral sound reproduction
+
+For a multichannel system, select **All Channels** to measure all outputs together, or select individual **Output Channel** entries to measure them one at a time. Under **Advanced Settings**, choose **Off**, **Same for All Channels**, or **Per Channel** for sweep bandwidth. With **Per Channel**, use **Channel to Configure** to set each selected output channel's frequency range. During level adjustment, **Channel Mode** starts at **Automatic Rotation**; select a test-signal channel or **Manual** when needed.
+
+If you already have an impulse-response WAV file, choose **Import** and select it. EffeTune saves each WAV channel as a measurement result, so you can select it in Room EQ and anywhere else that uses saved measurements.
 
 To remove the audio interface's own response, connect its output directly to its input and save that loopback as a normal, uncalibrated measurement with an impulse response. For the next measurement, choose that saved point under **Audio Interface Calibration**. Use the same interface, input and output channels, sampling rate, and input/output gains, and do not change the gains after the loopback measurement. Choose **None (uncalibrated)** to measure without this correction.
 

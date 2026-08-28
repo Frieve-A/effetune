@@ -25,14 +25,19 @@
   "label:audioOutput": "Устройство для вывода аудио:", // Label for audio output device selection
   "help:audioOutput": "Выберите аудиоустройство, которое воспроизводит измерительный сигнал.", // Help text for audio output
   "label:outputChannel": "Выходной канал:", // Label for output channel selection
-  "help:outputChannel": "Укажите канал (левый/правый динамик или наушники и т. д.) для измерения.", // Help text for output channel
+  "help:outputChannel": "Выберите один или несколько выходных каналов для измерения. При выборе «Все каналы» отдельные каналы снимаются.", // Help text for output channel
   "help:audioInput": "Укажите устройство ввода аудио, к которому подключён измерительный микрофон.", // Help text for audio input
   "label:sampleRate": "Частота дискретизации:", // Label for sample rate selection
   "help:sampleRate": "Укажите частоту дискретизации при проведении измерений.", // Help text for sample rate
   "label:sweepLength": "Длина сигнала (сэмплы):", // Label for sweep length selection
   "help:sweepLength": "Указывает длину измерительного сигнала в сэмплах.", // Help text for sweep length
-  "label:sweepBandLimited": "Ограничить полосу свипа",
-  "help:sweepBandLimited": "Если включено, TSP и тестовый сигнал ограничиваются указанным ниже диапазоном частот. Если выключено, TSP воспроизводится во всей доступной полосе.",
+  "title:advancedSettings": "Расширенные настройки",
+  "label:sweepBandMode": "Полоса свипа:",
+  "option:sweepBandOff": "Выключено",
+  "option:sweepBandCommon": "Одинаково для всех каналов",
+  "option:sweepBandPerChannel": "По каналам",
+  "label:sweepBandChannel": "Настраиваемый канал:",
+  "help:sweepBandMode": "Выберите, нужно ли ограничивать полосу свипа и тестового сигнала. Режим По каналам позволяет задать отдельный диапазон частот для каждого выбранного выходного канала.",
   "label:sweepMinFreq": "Минимальная частота свипа (Гц):", // Label for sweep minimum frequency
   "help:sweepMinFreq": "Минимальная частота сигнала свипа в Гц. Можно установить от 1 Гц до значения чуть ниже частоты Найквиста выбранной частоты дискретизации. Тестовый сигнал также ограничивается этим диапазоном. (По умолчанию: 20 Гц)", // Help text for sweep min frequency
   "label:sweepMaxFreq": "Максимальная частота свипа (Гц):", // Label for sweep maximum frequency
@@ -130,6 +135,8 @@
   "error:measurementConfigUnavailable": "Настройки измерения больше недоступны. Начните новое измерение.",
   "error:measurementFailed": "Не удалось завершить измерение. Проверьте аудиоустройства и повторите измерение этой точки.",
   "error:measurementImportFailed": "Файл измерения недействителен. Выберите файл измерения JSON, экспортированный из EffeTune.",
+  "error:impulseResponseImportFailed": "Не удалось импортировать файл WAV. Выберите допустимый WAV-файл импульсной характеристики с числом каналов от 1 до 8.",
+  "error:impulseResponseImportTooLarge": "WAV-файл с импульсной характеристикой слишком большой. Выберите более короткую или меньшую по размеру импульсную характеристику.",
   "error:clipboardWriteFailed": "Не удалось скопировать настройки PEQ. Проверьте доступ к буферу обмена и повторите попытку.",
   "error:correctionUpdateFailed": "Не удалось обновить коррекцию. Проверьте настройки и повторите попытку.",
   "error:measurementDisplayFailed": "Не удалось обновить отображение измерения. Выберите измерение еще раз.",
@@ -186,5 +193,23 @@
   "option:averaging8": "8", // Option for 8 averaging
   "option:averaging10": "10", // Option for 10 averaging
   "option:averaging12": "12", // Option for 12 averaging
-  "option:averaging16": "16" // Option for 16 averaging
+  "option:averaging16": "16", // Option for 16 averaging
+  "status:measuringChannel": "Измерение {channel} ({current}/{total})",
+  "label:channelFilter": "Канал:",
+  "option:allChannelsAverage": "Все (среднее)",
+  "option:multiChannel": "Несколько каналов",
+  "message:irSavedChannels": "Импульсная характеристика сохранена для {count} каналов ✓",
+  "warning:signalTooLowChannels": "Сигнал измерения был слишком слабым на {channels}",
+  "warning:signalTooHighChannels": "Сигнал измерения был слишком сильным на {channels}",
+  "label:noiseChannel": "Канал тестового сигнала:",
+  "label:noiseChannelMode": "Режим каналов:",
+  "option:noiseModeManual": "Вручную",
+  "option:noiseModeAuto": "Автоматическое переключение",
+  "button:copyChannelPEQ": "Копировать настройки PEQ по каналам",
+  "message:channelPeqCopied": "Настройки PEQ по каналам скопированы в буфер обмена.",
+  "button:redoChannel": "Повторить канал",
+  "label:redoChannel": "Канал:",
+  "label:calibrationAssignMode": "Назначение калибровки:",
+  "option:calibrationCommon": "Общая",
+  "option:calibrationPerChannel": "По каналам"
 }

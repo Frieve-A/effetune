@@ -58,6 +58,15 @@ Routing note: Dattorro Plate Reverb is a stereo plate model. When routed with mo
   - Prevents static, artificial-sounding tails
   - Creates a breathing, living space around your music
 
+### System Presets
+
+Click **Effect Presets** in the effect header to start with a complete plate setting.
+
+- **Studio Plate** - A short, bright plate for general listening.
+- **Vocal Plate** - Separates the original attack with a longer pre-delay.
+- **Dark Vintage Plate** - A darker, more strongly damped plate response.
+- **Long Wash** - A long, modulated ambient tail.
+
 ### Parameters
 - **Pre Delay** - Initial silence before reverb begins (0.0 to 100.0 ms control; use values below 100.0 ms for effective pre-delay)
   - 0-10ms: Immediate reverb, intimate feeling

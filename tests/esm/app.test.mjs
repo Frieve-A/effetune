@@ -276,10 +276,6 @@ function createDependencies(calls, options = {}) {
       calls.push(['presetManager.getPresets']);
       return options.presets ?? { Startup: { name: 'Startup' } };
     },
-    async loadPresetList() {
-      calls.push(['presetManager.loadPresetList']);
-      if (options.loadPresetListReject) throw new Error('preset list failed');
-    },
     async loadPreset(name) {
       calls.push(['presetManager.loadPreset', name]);
       if (options.loadPresetReject) throw new Error('preset failed');
@@ -751,8 +747,6 @@ test('App initialize handles success, audio warnings, and initialization failure
       calls.findIndex(call => call[0] === 'audio.fadeInOutput'));
     assert.equal(calls.some(call => call[0] === 'ui.setError' && call[1] === 'error.microphoneAccessDenied'), true);
     assert.ok(calls.findIndex(call => call[0] === 'pluginManager.loadPlugins') <
-      calls.findIndex(call => call[0] === 'presetManager.loadPresetList'));
-    assert.ok(calls.findIndex(call => call[0] === 'presetManager.loadPresetList') <
       calls.findIndex(call => call[0] === 'ui.initPluginList'));
     assert.equal(calls.some(call => call[0] === 'ui.showLibraryView' && call[1]?.focusSearch === false), true);
     assert.equal(calls.some(call => call[0] === 'ui.setOpenHomeRemoteRuntimeReady'), false);
@@ -810,13 +804,6 @@ test('App initialize handles success, audio warnings, and initialization failure
     assert.equal(calls.some(call => call[0] === 'ui.setOpenHomeRemoteRuntimeReady'), false);
   });
 
-  await withAppModule({}, async ({ calls, mod }) => {
-    const deps = createDependencies(calls, { loadPresetListReject: true });
-    const app = new mod.App(deps);
-    await app.refreshPresetListAfterPluginLoad();
-    assert.equal(calls.some(call => call[0] === 'console.error' &&
-      call[1] === 'Failed to refresh preset list after plugin load:'), true);
-  });
 });
 
 test('initializeAudioWorklet honors first-launch and forced-skip guards', async () => {

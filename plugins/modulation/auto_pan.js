@@ -1,11 +1,15 @@
+const AUTO_PAN_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({ id: 'gentle-auto-pan', label: 'Gentle Auto Pan', params: Object.freeze({ rt: 0.35, dp: 45, ct: 0, wd: 70, wf: 'Sine', ph: 0 }) }),
+    Object.freeze({ id: 'wide-auto-pan', label: 'Wide Auto Pan', params: Object.freeze({ rt: 0.7, dp: 100, ct: 0, wd: 100, wf: 'Sine', ph: 0 }) }),
+    Object.freeze({ id: 'fast-auto-pan', label: 'Fast Auto Pan', params: Object.freeze({ rt: 4, dp: 85, ct: 0, wd: 100, wf: 'Triangle', ph: 0 }) })
+]);
+
 class AutoPanPlugin extends PluginBase {
     static searchAliases = Object.freeze([]);
 
-    static factoryStyles = Object.freeze({
-        'Gentle Auto Pan': Object.freeze({ rt: 0.35, dp: 45, ct: 0, wd: 70, wf: 'Sine', ph: 0 }),
-        'Wide Auto Pan': Object.freeze({ rt: 0.7, dp: 100, ct: 0, wd: 100, wf: 'Sine', ph: 0 }),
-        'Fast Auto Pan': Object.freeze({ rt: 4, dp: 85, ct: 0, wd: 100, wf: 'Triangle', ph: 0 })
-    });
+    static getSystemPresetGroups() {
+        return [{ label: '', presets: AUTO_PAN_SYSTEM_PRESETS.map(preset => ({ ...preset })) }];
+    }
 
     constructor() {
         super('Auto Pan', 'Moves sound rhythmically across each stereo pair');
@@ -16,9 +20,7 @@ class AutoPanPlugin extends PluginBase {
         this.wd = 70;
         this.wf = 'Sine';
         this.ph = 0;
-        this.styleName = 'Gentle Auto Pan';
         this._uiControls = null;
-        this._applyingStyleName = null;
 
         this.registerProcessor(`
             if (!parameters.enabled) return data;
@@ -156,11 +158,6 @@ class AutoPanPlugin extends PluginBase {
         if (params.ph !== undefined) next.ph = this.parseFiniteNumber(params.ph, 0, 360, next.ph);
 
         Object.assign(this, next);
-        if (this._applyingStyleName) {
-            this.styleName = this._applyingStyleName;
-        } else if (Object.keys(params).some(key => ['rt', 'dp', 'ct', 'wd', 'wf', 'ph'].includes(key))) {
-            this.styleName = 'Custom';
-        }
         this._syncUI();
         this.updateParameters();
     }
@@ -171,14 +168,6 @@ class AutoPanPlugin extends PluginBase {
     setWd(value) { this.setParameters({ wd: value }); }
     setWf(value) { this.setParameters({ wf: value }); }
     setPh(value) { this.setParameters({ ph: value }); }
-
-    applyStyle(name) {
-        const style = this.constructor.factoryStyles[name];
-        if (!style) return;
-        this._applyingStyleName = name;
-        this.setParameters(style);
-        this._applyingStyleName = null;
-    }
 
     _syncControl(row, value) {
         if (!row) return;
@@ -204,7 +193,6 @@ class AutoPanPlugin extends PluginBase {
 
     _syncUI() {
         if (!this._uiControls) return;
-        this._syncControl(this._uiControls.style, this.styleName);
         for (const key of ['rt', 'dp', 'ct', 'wd', 'wf', 'ph']) {
             this._syncControl(this._uiControls[key], this[key]);
         }
@@ -214,9 +202,6 @@ class AutoPanPlugin extends PluginBase {
         const container = document.createElement('div');
         container.className = 'auto-pan-plugin-ui plugin-parameter-ui';
         this._uiControls = {};
-        this._uiControls.style = this.createSelectControl(
-            'Style', ['Custom', ...Object.keys(this.constructor.factoryStyles)], this.styleName,
-            value => value !== 'Custom' && this.applyStyle(value), 'styleName');
         this._uiControls.rt = this.createLogarithmicParameterControl(
             'Rate', 0.05, 20, 0.01, this.rt, this.setRt.bind(this), 'Hz', 'rt');
         this._uiControls.dp = this.createParameterControl(
@@ -229,7 +214,7 @@ class AutoPanPlugin extends PluginBase {
             'Waveform', ['Sine', 'Triangle'], this.wf, this.setWf.bind(this), 'wf');
         this._uiControls.ph = this.createParameterControl(
             'Phase', 0, 360, 1, this.ph, this.setPh.bind(this), 'deg', 'ph');
-        for (const key of ['style', 'rt', 'dp', 'ct', 'wd', 'wf', 'ph']) {
+        for (const key of ['rt', 'dp', 'ct', 'wd', 'wf', 'ph']) {
             container.appendChild(this._uiControls[key]);
         }
         return container;

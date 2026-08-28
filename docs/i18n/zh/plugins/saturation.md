@@ -45,6 +45,14 @@ Bandwidth Extender 会增加约 26.7-29.0 ms 延迟，其中包括额外一个�
 
 一种基于物理原理的效果器，可以模拟不同条件下扬声器音圈的非线性位移。通过建模扬声器的机械行为，然后对该位移应用饱和处理，它创造了一种独特的失真形式，能够动态响应您的音乐。
 
+### 系统预设
+
+点击效果标题栏中的**效果预设**，即可比较完整的振膜运动设置。
+
+- **Subtle Cone Color** - 轻微、几乎不失真的扬声器振膜音色。
+- **Pushed Speaker** - 更强的振膜运动和饱和效果，并补偿输出电平。
+- **Ragged Cone** - 最强烈的振膜音色，刻意呈现粗糙感。
+
 ### 聆听增强指南
 - **微妙增强:**
   - 添加柔和的温暖感和轻微的圆化峰值行为
@@ -504,7 +512,7 @@ Tube Simulator 可加入电子管线路级和功率放大器电路随信号变�
 
 ### 面板布局
 
-各项控制位于 **Preset** 下方的五个标签页中。
+各项控制位于五个标签页中。
 
 - **Input** - Input Volume、Input Reference、Source Z
 - **Driver** - Driver Type、Bias、Plate、Supply、Negative Feedback
@@ -512,17 +520,16 @@ Tube Simulator 可加入电子管线路级和功率放大器电路随信号变�
 - **Transformer** - Screen Tap、Push-Pull Primary、SE Primary、Assumed Speaker Load、Actual Speaker Load
 - **Output** - Output Trim、Output Safety Trim、Auto Gain Reduction、Wet/Dry Mix
 
-Power 和 Transformer 标签页只显示当前 Output Circuit 会用到的控制项。从预设改动任何电路或音色参数后，界面会显示 **Custom**。
+Power 和 Transformer 标签页只显示当前 Output Circuit 会用到的控制项。
 
 ### 选择预设
 
-Tube Simulator启动时使用**EL84 Pentode @2%**；更改电路或音色参数后，预设名称会变为**Custom**，但**Output Safety Trim**和**Auto Gain Reduction**不参与预设匹配，因此调整它们不会改变预设名称。
+点击效果标题栏中的 **效果预设** 按钮可打开预设对话框。选择系统预设的 Pre、Power 或 Pre+Power 组中的设置即可立即应用。与当前设置匹配的预设会高亮；若没有匹配项，则不会高亮任何预设。初始设置与 **EL84 Pentode @2%** 匹配。**Output Safety Trim** 和 **Auto Gain Reduction** 不用于匹配，因此调整它们不会取消高亮。
 
 预设名称末尾可作为效果强度的实用参考：**@0.01%** 非常轻微，**@0.1%** 带来轻度染色，**@1%** 或 **@2%** 的谐波与压缩更明显。预设也会设置 Output Trim，方便相互比较，但不同音乐的主观响度仍可能不同；判断音色前，请先用 Output Trim 匹配音量。
 
 ### 参数
 
-- **Preset** - 载入 Pre、Power 或 Pre+Power 设置。
 - **Input Volume** (-96 至 0dB) - 降低进入所选电路的电平。数值越低，压缩和失真越少，余量越大。
 - **Driver Type** (12AX7、12AT7、12AU7、Bypass) - 选择两级驱动管，或绕过该驱动级。12AX7 电压增益最高，12AT7 居中，12AU7 增益最低、余量最大。
 - **Bias** (-50 至 +50%) - 移动驱动级的偏置工作点。提高会移向较大电流，降低则移向较小电流，从而改变谐波与压缩特性。

@@ -44,7 +44,7 @@ async function generatedModule(specs) {
   return import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 }
 
-test('production schemas expose exactly the planned A/B population', async () => {
+test('production schemas expose the audited automation population', async () => {
   const specs = loadParamSpecs();
   const catalog = buildAutomationCatalog(specs);
   const entries = Object.entries(catalog.effects);
@@ -53,8 +53,8 @@ test('production schemas expose exactly the planned A/B population', async () =>
     .map(([type]) => type);
 
   assert.equal(entries.length, 94);
-  assert.equal(entries.filter(([, parameters]) => parameters.length !== 0).length, 80);
-  assert.equal(entries.reduce((count, [, parameters]) => count + parameters.length, 0), 624);
+  assert.equal(entries.filter(([, parameters]) => parameters.length !== 0).length, 82);
+  assert.equal(entries.reduce((count, [, parameters]) => count + parameters.length, 0), 905);
   for (const effect of specs) {
     const expectedLeaves = [];
     let packedOffset = 0;
@@ -86,15 +86,59 @@ test('production schemas expose exactly the planned A/B population', async () =>
   }
   assert.equal(
     createHash('sha256').update(JSON.stringify(catalog.effects)).digest('hex'),
-    'e9580832cf085291063e1fdb6819c91101a718341db0c737cbd3a2b6fefaf9fe'
+    'e31eea1d887162a99bf0bac653a9adbb9b83f17dbb0d2fb74eca9688c9363f82'
   );
   assert.deepEqual(privateEffects, [
     'FIRCrossoverPlugin', 'FiveBandFIRPEQPlugin', 'GroupDelayEqPlugin',
     'GroupDelayPEQPlugin', 'LevelMeterPlugin', 'MatrixPlugin', 'MutePlugin',
-    'OscilloscopePlugin', 'PhaseSelectEqPlugin', 'PitchShifterHQPlugin',
-    'PolarityInversionPlugin', 'SpectrogramPlugin', 'SpectrumAnalyzerPlugin',
-    'StereoMeterPlugin'
+    'OscilloscopePlugin', 'PolarityInversionPlugin', 'SpectrogramPlugin',
+    'SpectrumAnalyzerPlugin', 'StereoMeterPlugin'
   ]);
+  const nonAutomatedByReason = {
+    analyzerOnly: {
+      OscilloscopePlugin: [
+        'displayTime', 'triggerMode', 'triggerLevel', 'triggerEdge', 'holdoff',
+        'displayLevel', 'verticalOffset'
+      ],
+      SpectrogramPlugin: ['dBRange', 'points'],
+      SpectrumAnalyzerPlugin: ['dBRange', 'points'],
+      StereoMeterPlugin: ['windowTime']
+    },
+    requiresAssetRestage: {
+      FIRCrossoverPlugin: ['latencyMode', 'filterDelaySamples', 'bandCount'],
+      FiveBandFIRPEQPlugin: ['latencyMode', 'filterDelaySamples'],
+      GroupDelayEqPlugin: ['latencyMode', 'filterDelaySamples'],
+      GroupDelayPEQPlugin: ['latencyMode', 'filterDelaySamples'],
+      IRReverbPlugin: ['channelMode', 'latency', 'convRate'],
+      RoomEqPlugin: ['latencyMode', 'filterDelaySamples']
+    },
+    changesCompensatedLatency: {
+      BrickwallLimiterPlugin: ['lookahead', 'oversampling']
+    },
+    violatesCoupledFrequencyOrder: {
+      MultibandBalancePlugin: ['frequency4'],
+      MultibandCompressorPlugin: ['frequency4'],
+      MultibandExpanderPlugin: ['frequency4']
+    },
+    coercesAnotherParameter: {
+      OscillatorPlugin: ['waveform']
+    },
+    reconfiguresTemporalState: {
+      PitchShifterPlugin: ['windowSize', 'crossfadeTime']
+    },
+    lacksDeterministicTransitionParity: {
+      VinylSimulatorPlugin: ['stylusShape']
+    },
+    uiOnly: {
+      MultiChannelPanelPlugin: ['link']
+    }
+  };
+  const expectedNonAutomated = Object.assign({}, ...Object.values(nonAutomatedByReason));
+  const actualNonAutomated = Object.fromEntries(specs.flatMap(effect => {
+    const fields = effect.fields.filter(field => !field.automation).map(field => field.name);
+    return fields.length === 0 ? [] : [[effect.type, fields]];
+  }));
+  assert.deepEqual(actualNonAutomated, expectedNonAutomated);
   assert.deepEqual(Object.fromEntries(specs.flatMap(effect => effect.fields
     .filter(field => field.automation && field.publicName !== field.name)
     .map(field => [`${effect.type}.${field.name}`, field.publicName]))), {
@@ -139,8 +183,13 @@ test('production schemas expose exactly the planned A/B population', async () =>
     'FrequencyShifterPlugin.carrierFrequency': [0.1, 10000],
     'FrequencyShifterPlugin.rate': [0.01, 2],
     'G726ADPCMSimulatorPlugin.radioBitErrorRate': [0.000001, 0.01],
+    'OscillatorPlugin.frequency': [20, 96000],
     'PhaserPlugin.centerFrequency': [80, 8000],
     'PhaserPlugin.rate': [0.05, 10],
+    'PhaseSelectEqPlugin.coreFrequencyHigh': [20, 40000],
+    'PhaseSelectEqPlugin.coreFrequencyLow': [20, 40000],
+    'PhaseSelectEqPlugin.outerFrequencyHigh': [20, 40000],
+    'PhaseSelectEqPlugin.outerFrequencyLow': [20, 40000],
     'RotarySpeakerPlugin.crossover': [200, 2000],
     'SimpleJitterPlugin.rmsJitterNanoseconds': [0.001, 10000000],
     'SWRadioSimulatorPlugin.delaySpread': [0.2, 8],
@@ -148,7 +197,10 @@ test('production schemas expose exactly the planned A/B population', async () =>
     'SWRadioSimulatorPlugin.fadingSpeed': [0.1, 10],
     'SWRadioSimulatorPlugin.interferenceOffset': [0.1, 10],
     'TiltEQPlugin.pivotFrequency': [Math.exp(3), Math.exp(9.9)],
+    'TubeSimulatorPlugin.actualSpeakerLoad': [2, 32],
     'TubeSimulatorPlugin.inputReference': [0.1, 300],
+    'TubeSimulatorPlugin.sourceZ': [0.6, 100],
+    'TubeSimulatorPlugin.supply': [0.1, 47],
     'VinylSimulatorPlugin.roughness': [0.1, 100]
   });
   assert.deepEqual(new Set(Object.keys(logarithmicFields)), new Set(logarithmicFieldNames));
@@ -166,17 +218,45 @@ test('production schemas expose exactly the planned A/B population', async () =>
     catalog.effects.BrickwallLimiterPlugin.map(parameter => parameter.key),
     ['th', 'rl', 'ig', 'sm']
   );
+  for (const type of [
+    'AMRadioSimulatorPlugin', 'FMRadioSimulatorPlugin', 'SWRadioSimulatorPlugin'
+  ]) {
+    assert.deepEqual(
+      catalog.effects[type].find(parameter => parameter.key === 'rd'),
+      {
+        key: 'rd',
+        publicName: 'radio',
+        element: 0,
+        field: 'rd',
+        containerKey: '',
+        memberKey: '',
+        packedOffset: 0,
+        kind: 'bool',
+        eligibility: 'stepped',
+        normalization: 'bool',
+        transform: 'identity',
+        transformReference: 1,
+        minimum: 0,
+        maximum: 1,
+        step: 1,
+        default: true,
+        packedDefault: 1,
+        stepCount: 1,
+        title: 'Radio',
+        shortTitle: 'Radio',
+        unit: '',
+        safetyFlags: 0
+      }
+    );
+  }
   assert.equal(catalog.effects.BrickwallLimiterPlugin.some(
     parameter => parameter.field === 'la' || parameter.field === 'os'
   ), false);
-  assert.equal(catalog.effects.TubeSimulatorPlugin.length, 5);
+  assert.equal(catalog.effects.TubeSimulatorPlugin.length, 24);
   assert.deepEqual(catalog.effects.VinylSimulatorPlugin.map(parameter => parameter.key), [
-    'lv', 'hf', 'mb', 'sm', 'rd', 'rg', 'dr', 'st', 'sc', 'rs', 'rc', 'tf', 'tm',
-    'cm', 'dz', 'og', 'mx'
+    'lv', 'hf', 'mb', 'sm', 'rp', 'rd', 'rg', 'dr', 'st', 'sc', 'rs', 'rc',
+    'tf', 'tm', 'cm', 'dz', 'ql', 'og', 'mx'
   ]);
-  assert.equal(catalog.effects.VinylSimulatorPlugin.some(
-    parameter => parameter.key === 'rp' || parameter.key === 'sh' || parameter.key === 'ql'
-  ), false);
   assert.equal(catalog.effects.SimpleJitterPlugin[0].field, 'rj');
   assert.equal(catalog.effects.SimpleJitterPlugin[0].unit, 'ns');
   assert.deepEqual(runGenerator({ check: true }).stale, []);
@@ -185,6 +265,34 @@ test('production schemas expose exactly the planned A/B population', async () =>
   assert.equal(Object.isFrozen(generated.DSP_AUTOMATION_CATALOG), true);
   assert.equal(Object.isFrozen(generated.DSP_AUTOMATION_CATALOG.DCOffsetPlugin), true);
   assert.equal(generated.DSP_AUTOMATION_CATALOG.VolumePlugin.length, 1);
+});
+
+test('legacy integer automation retains one-unit precision', async () => {
+  const specs = loadParamSpecs();
+  const catalog = buildAutomationCatalog(specs).effects;
+  const generated = await generatedModule(specs);
+  const cases = [
+    { type: 'LoudnessEqualizerPlugin', key: 'hf', stepCount: 3000, values: [3001, 3050] },
+    { type: 'RSReverbPlugin', key: 'hd', stepCount: 19000, values: [2001, 2050] },
+    { type: 'VinylArtifactsPlugin', key: 'cm', stepCount: 2000, values: [1, 50] }
+  ];
+
+  for (const expected of cases) {
+    const sourceDescriptor = catalog[expected.type]
+      .find(parameter => parameter.key === expected.key);
+    const descriptor = generated.DSP_AUTOMATION_CATALOG[expected.type]
+      .find(parameter => parameter.key === expected.key);
+    assert.ok(sourceDescriptor, `${expected.type}.${expected.key} must be public`);
+    assert.ok(descriptor, `${expected.type}.${expected.key} must be generated`);
+    assert.equal(sourceDescriptor.step, 1);
+    assert.equal(sourceDescriptor.stepCount, expected.stepCount);
+    assert.equal(descriptor.stepCount, expected.stepCount);
+    for (const value of expected.values) {
+      const normalized = generated.normalizeDSPAutomationValue(descriptor, value);
+      assert.equal(normalized, (value - descriptor.minimum) / expected.stepCount);
+      assert.equal(generated.denormalizeDSPAutomationValue(descriptor, normalized), value);
+    }
+  }
 });
 
 test('minimal opt-in derives identity, display, layout, and array access metadata', () => {
@@ -244,6 +352,14 @@ test('generated JavaScript normalizes continuous and stepped parameter kinds', a
       default: 3, automation: true
     },
     {
+      name: 'integerTwelve', key: 'it', kind: 'int', min: -96, max: 0, step: 12,
+      default: -24, automation: true
+    },
+    {
+      name: 'integerTwo', key: 'iw', kind: 'int', min: 2, max: 12, step: 2,
+      default: 6, automation: true
+    },
+    {
       name: 'enabled', key: 'ok', kind: 'bool', step: 1, default: false,
       automation: true
     },
@@ -266,8 +382,35 @@ test('generated JavaScript normalizes continuous and stepped parameter kinds', a
   assert.equal(denormalize(descriptors.get('ln'), 0.25), -0.5);
   assert.ok(Math.abs(normalize(descriptors.get('lg'), 200) - 1 / 3) < 1e-12);
   assert.ok(Math.abs(denormalize(descriptors.get('lg'), 2 / 3) - 2000) < 1e-9);
-  assert.equal(normalize(descriptors.get('in'), 4), 0.75);
-  assert.equal(denormalize(descriptors.get('in'), 0.7), 4);
+  const integer = descriptors.get('in');
+  assert.equal(integer.stepCount, 4);
+  assert.equal(normalize(integer, 1), 0);
+  assert.equal(normalize(integer, 3), 0.5);
+  assert.equal(normalize(integer, 5), 1);
+  assert.equal(denormalize(integer, 0), 1);
+  assert.equal(denormalize(integer, 0.5), 3);
+  assert.equal(denormalize(integer, 1), 5);
+  assert.equal(denormalize(integer, normalize(integer, 4)), 4);
+
+  const integerTwelve = descriptors.get('it');
+  assert.equal(integerTwelve.stepCount, 8);
+  assert.equal(normalize(integerTwelve, -96), 0);
+  assert.equal(normalize(integerTwelve, -48), 0.5);
+  assert.equal(normalize(integerTwelve, 0), 1);
+  assert.equal(denormalize(integerTwelve, 0), -96);
+  assert.equal(denormalize(integerTwelve, 0.5), -48);
+  assert.equal(denormalize(integerTwelve, 1), 0);
+  assert.equal(denormalize(integerTwelve, normalize(integerTwelve, -24)), -24);
+
+  const integerTwo = descriptors.get('iw');
+  assert.equal(integerTwo.stepCount, 5);
+  assert.equal(normalize(integerTwo, 2), 0);
+  assert.equal(normalize(integerTwo, 6), 0.4);
+  assert.equal(normalize(integerTwo, 12), 1);
+  assert.equal(denormalize(integerTwo, 0), 2);
+  assert.equal(denormalize(integerTwo, 0.5), 8);
+  assert.equal(denormalize(integerTwo, 1), 12);
+  assert.equal(denormalize(integerTwo, normalize(integerTwo, 6)), 6);
   assert.equal(normalize(descriptors.get('ok'), true), 1);
   assert.equal(denormalize(descriptors.get('ok'), 0.49), false);
   assert.equal(normalize(descriptors.get('md'), 'high'), 1);
@@ -394,6 +537,20 @@ test('automation validation accepts only the minimal opt-in schema', () => {
       automation: { normalization: 'log' }
     }]),
     /requires float kind/
+  );
+  assert.throws(
+    () => spec('UnevenIntegerSteps', [{
+      name: 'steps', key: 'st', kind: 'int', min: 0, max: 4, step: 3, default: 0,
+      automation: true
+    }]),
+    /step count must fit uint32/
+  );
+  assert.throws(
+    () => spec('MisalignedIntegerDefault', [{
+      name: 'steps', key: 'st', kind: 'int', min: 0, max: 4, step: 2, default: 3,
+      automation: true
+    }]),
+    /defaults must align to its step/
   );
   assert.throws(
     () => spec('EmptyUnit', [{ ...base, unit: '', automation: true }]),
@@ -593,8 +750,8 @@ test('AudioWorklet transition hot bodies do not create per-call helpers or destr
     ],
     [
       'plugins/reverb/rs_reverb.js',
-      'const rampFrames = Math.max(1, Math.ceil(sampleRate * 0.005));',
-      '// Precalculate values used in the inner loop'
+      'const rampFramesRaw = Math.ceil(sampleRate * 0.005);',
+      '// Process each channel'
     ]
   ];
   for (const [file, start, end] of transitionSetups) {

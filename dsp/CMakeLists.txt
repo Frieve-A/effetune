@@ -254,6 +254,8 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
     SOURCES test/partitioned_convolver_test.cpp
     INCLUDE_DIRS core
     WRAP_MALLOC)
+  target_compile_definitions(
+    effetune_dsp_partitioned_convolver_tests PRIVATE ET_ENABLE_TEST_KERNEL=1)
   et_add_dsp_test(
     effetune_dsp_phase3b_group_b_descriptor_tests
     SOURCES test/phase3b_group_b_descriptor_test.cpp)

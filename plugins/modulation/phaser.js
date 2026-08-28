@@ -1,13 +1,12 @@
 const PHASER_MODES = Object.freeze(['Classic', 'Barber-pole']);
 const PHASER_DIRECTIONS = Object.freeze(['Up', 'Down']);
-const PHASER_STYLES = Object.freeze({
-    'Classic Phaser': Object.freeze({ md: 'Classic', rt: 0.5, cf: 1000, rg: 3, st: 6, fb: 20, sp: 90, dr: 'Up', mx: 50 }),
-    'Deep Phaser': Object.freeze({ md: 'Classic', rt: 0.25, cf: 700, rg: 4.5, st: 12, fb: 55, sp: 30, dr: 'Up', mx: 55 }),
-    'Stereo Phaser': Object.freeze({ md: 'Classic', rt: 0.65, cf: 1200, rg: 3.5, st: 8, fb: 25, sp: 120, dr: 'Up', mx: 50 }),
-    'Barber-pole Up': Object.freeze({ md: 'Barber-pole', rt: 0.35, cf: 1000, rg: 5, st: 8, fb: 30, sp: 60, dr: 'Up', mx: 55 }),
-    'Barber-pole Down': Object.freeze({ md: 'Barber-pole', rt: 0.35, cf: 1000, rg: 5, st: 8, fb: 30, sp: 60, dr: 'Down', mx: 55 })
-});
-
+const PHASER_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({ id: 'classic-phaser', label: 'Classic Phaser', params: Object.freeze({ md: 'Classic', rt: 0.5, cf: 1000, rg: 3, st: 6, fb: 20, sp: 90, dr: 'Up', mx: 50 }) }),
+    Object.freeze({ id: 'deep-phaser', label: 'Deep Phaser', params: Object.freeze({ md: 'Classic', rt: 0.25, cf: 700, rg: 4.5, st: 12, fb: 55, sp: 30, dr: 'Up', mx: 55 }) }),
+    Object.freeze({ id: 'stereo-phaser', label: 'Stereo Phaser', params: Object.freeze({ md: 'Classic', rt: 0.65, cf: 1200, rg: 3.5, st: 8, fb: 25, sp: 120, dr: 'Up', mx: 50 }) }),
+    Object.freeze({ id: 'barber-pole-up', label: 'Barber-pole Up', params: Object.freeze({ md: 'Barber-pole', rt: 0.35, cf: 1000, rg: 5, st: 8, fb: 30, sp: 60, dr: 'Up', mx: 55 }) }),
+    Object.freeze({ id: 'barber-pole-down', label: 'Barber-pole Down', params: Object.freeze({ md: 'Barber-pole', rt: 0.35, cf: 1000, rg: 5, st: 8, fb: 30, sp: 60, dr: 'Down', mx: 55 }) })
+]);
 class PhaserPlugin extends PluginBase {
     static searchAliases = Object.freeze(['Barber-pole Phaser', 'Barber Pole Phaser']);
     static executionCapabilities = Object.freeze({
@@ -15,7 +14,9 @@ class PhaserPlugin extends PluginBase {
             maxJsFallbackSampleChannels: 96000
         })
     });
-    static factoryStyles = PHASER_STYLES;
+    static getSystemPresetGroups() {
+        return [{ label: '', presets: PHASER_SYSTEM_PRESETS.map(preset => ({ ...preset })) }];
+    }
 
     constructor() {
         super('Phaser', 'Creates moving peaks and notches with classic or continuous barber-pole sweeps');
@@ -28,7 +29,6 @@ class PhaserPlugin extends PluginBase {
         this.sp = 90;
         this.dr = 'Up';
         this.mx = 50;
-        this.style = 'Classic Phaser';
         this._directionRow = null;
         this._uiControls = null;
         this.registerProcessor(`
@@ -259,26 +259,9 @@ class PhaserPlugin extends PluginBase {
         this.sp = params.sp === undefined ? this.sp : this.parseFiniteNumber(params.sp, 0, 180, this.sp);
         this.dr = params.dr === undefined ? this.dr : this.isAllowedEnum(params.dr, PHASER_DIRECTIONS, this.dr);
         this.mx = params.mx === undefined ? this.mx : this.parseFiniteNumber(params.mx, 0, 100, this.mx);
-        if (!params._styleApplication && Object.keys(params).some(key =>
-            ['md', 'rt', 'cf', 'rg', 'st', 'fb', 'sp', 'dr', 'mx'].includes(key))) {
-            this.style = 'Custom';
-        }
         this._syncVisibility();
         this._syncUI();
         this.updateParameters();
-    }
-
-    applyStyle(style) {
-        if (style === 'Custom') {
-            this.style = 'Custom';
-            this._syncUI();
-            return;
-        }
-        const values = PHASER_STYLES[style];
-        if (!values) return;
-        this.setParameters({ ...values, _styleApplication: true });
-        this.style = style;
-        this._syncUI();
     }
 
     _syncControl(row, value) {
@@ -307,7 +290,6 @@ class PhaserPlugin extends PluginBase {
 
     _syncUI() {
         if (!this._uiControls) return;
-        this._syncControl(this._uiControls.style, this.style);
         for (const key of ['md', 'rt', 'cf', 'rg', 'st', 'fb', 'sp', 'dr', 'mx']) {
             this._syncControl(this._uiControls[key], this[key]);
         }
@@ -336,8 +318,6 @@ class PhaserPlugin extends PluginBase {
         const container = document.createElement('div');
         container.className = 'phaser-plugin-ui plugin-parameter-ui';
         this._uiControls = {};
-        this._uiControls.style = this.createSelectControl('Style', [...Object.keys(PHASER_STYLES), 'Custom'], this.style,
-            value => this.applyStyle(value), 'style');
         this._uiControls.md = this.createRadioGroup('Mode', PHASER_MODES, this.md,
             value => this.setParameters({ md: value }), 'md');
         this._uiControls.rt = this.createLogarithmicParameterControl('Rate', 0.05, 10, 0.01, this.rt,
@@ -356,7 +336,7 @@ class PhaserPlugin extends PluginBase {
             value => this.setParameters({ dr: value }), 'dr');
         this._uiControls.mx = this.createParameterControl('Mix', 0, 100, 1, this.mx,
             value => this.setParameters({ mx: value }), '%', 'mx');
-        for (const key of ['style', 'md', 'rt', 'cf', 'rg', 'st', 'fb', 'sp', 'dr', 'mx']) {
+        for (const key of ['md', 'rt', 'cf', 'rg', 'st', 'fb', 'sp', 'dr', 'mx']) {
             container.appendChild(this._uiControls[key]);
         }
         this._directionRow = this._uiControls.dr;

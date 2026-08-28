@@ -35,6 +35,15 @@ Note de routage : Dattorro Plate Reverb est un modèle de plaque stéréo. Lorsq
   - Empêche les queues statiques et artificielles
   - Crée un espace vivant et respirant autour de votre musique
 
+### Préréglages système
+
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour appliquer un réglage complet de réverbération à plaque.
+
+- **Studio Plate** - Une réverbération à plaque courte et brillante pour l’écoute courante.
+- **Vocal Plate** - Un pré-délai plus long sépare l’attaque du son original de la réverbération.
+- **Dark Vintage Plate** - Une réverbération à plaque plus sombre, avec un amortissement plus marqué des aigus.
+- **Long Wash** - Une longue traîne de réverbération ample et modulée.
+
 ### Paramètres
 - **Pre Delay** - Silence initial avant le début de la reverb (contrôle 0.0 à 100.0 ms ; utilisez des valeurs sous 100.0 ms pour un pre-delay effectif)
   - 0-10ms : Reverb immédiate, sensation intime
@@ -139,7 +148,7 @@ Le Dattorro Plate Reverb apporte une reverb à plaque classique à votre expéri
 
 FDN Reverb ajoute une décroissance dense et naturelle. Utilisez-la pour donner aux enregistrements secs ou proches une sensation plus nette de taille de pièce et de distance.
 
-Note de routage : FDN Reverb est un modèle de reverb stéréo avec un feedback tank partagé. Lorsqu'il est routé avec plus de deux canaux, chaque canal fait avancer ce tank partagé en séquence plutôt que d'utiliser des tanks indépendants par canal. Le canal 1 reçoit le left wet et les canaux 2+ reçoivent le right wet.
+Note de routage : FDN Reverb fait la moyenne de tous les canaux d’entrée routés dans un seul réservoir de rétroaction partagé. Le réservoir avance une fois par échantillon et ses prises wet sont réparties entre les canaux de sortie routés.
 
 ### Guide d'Expérience d'Écoute
 - Sensation de Pièce Naturelle :
@@ -154,6 +163,15 @@ Note de routage : FDN Reverb est un modèle de reverb stéréo avec un feedback 
   - Ajustable des pièces intimes aux grandes salles de concert
   - Contrôle fin du caractère et de la couleur de l'espace
   - La modulation douce ajoute mouvement naturel et vie
+
+### Préréglages système
+
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essayer directement ces réglages complets.
+
+- **Tight Room** - Une réponse de petite pièce courte et contenue.
+- **Warm Hall** - Une salle plus longue et légèrement assombrie pour la musique acoustique et orchestrale.
+- **Bright Plate** - Une réverbération courte, plus claire et plus animée, au caractère de plaque.
+- **Vast Cavern** - Le plus grand et le plus long des espaces proposés.
 
 ### Paramètres
 - **Reverb Time** - Durée de l'effet de reverb (0.20 à 10.00 s)
@@ -316,10 +334,17 @@ Un effet qui peut transporter votre musique dans différents espaces, des pièce
   - Parfait pour la musique ambiante et atmosphérique
   - Crée des paysages sonores captivants
 
+### Préréglages système
+
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essayer directement ces réglages complets.
+
+- **Small Room** - Ambiance de pièce courte et proche avec 5 ms de pré-délai.
+- **Jazz Club** - Pièce moyenne pour les sources acoustiques intimistes avec 15 ms de pré-délai.
+- **Concert Hall** - Salle de concert avec 25 ms de pré-délai et une décroissance des graves plus riche.
+- **Cathedral** - Espace réverbérant long et sombre avec 40 ms de pré-délai et la décroissance des graves la plus riche.
+
 ### Paramètres
-- **Pre-Delay** - Contrôle stocké et affiché (0 à 50 ms)
-  - Dans l'implémentation actuelle, cette valeur n'est pas utilisée par le traitement de reverb
-  - La modifier ne change pas la distance ni la profondeur ; utilisez Room Size, Reverb Time et Mix pour les changements d'espace audibles
+- **Pre-Delay** (0 à 50 ms) - Retarde les réflexions du signal réverbéré avant leur entrée dans le modèle de pièce. Des valeurs plus élevées préservent plus longtemps la netteté de l’attaque du son d’origine, sans supprimer le délai propre au modèle de pièce.
 - **Room Size** - Définit la taille ressentie de l'espace (2.0 à 50.0 m)
   - Petit (2-5m) : Sensation de pièce confortable
   - Moyen (5-15m) : Atmosphère de salle live
@@ -392,7 +417,6 @@ Un effet qui peut transporter votre musique dans différents espaces, des pièce
    - Réglez Density et Diffusion pour la texture
 
 3. Affinez l'Effet
-   - Utilisez Room Size et Reverb Time pour la profondeur ; la valeur du contrôle Pre-Delay n'est pas actuellement reflétée dans le traitement
    - Ajustez Mix pour l'équilibre final
    - Faites confiance à vos oreilles et ajustez selon vos goûts
 

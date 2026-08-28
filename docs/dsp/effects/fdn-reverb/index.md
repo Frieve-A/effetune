@@ -44,7 +44,7 @@ Creates reverberation with a feedback delay network.
 
 FDN Reverb adds a dense, natural-sounding decay. Use it to give dry or close recordings a clearer sense of room size and distance.
 
-Routing note: FDN Reverb is a stereo reverb model with one shared feedback tank. When routed with more than two channels, each routed channel advances that shared tank in sequence rather than using independent per-channel tanks. Channel 1 receives the left wet signal, and channels 2+ receive the right wet signal.
+Routing note: FDN Reverb averages all routed input channels into one shared feedback tank. The tank advances once per sample, and its wet taps are distributed across the routed output channels.
 
 ### Listening Experience Guide
 - Natural Room Feel:
@@ -59,6 +59,15 @@ Routing note: FDN Reverb is a stereo reverb model with one shared feedback tank.
   - Adjustable from intimate rooms to grand concert halls
   - Fine control over the character and color of the space
   - Gentle modulation adds natural movement and life
+
+### System Presets
+
+Click **Effect Presets** in the effect header to apply a complete space rather than adjusting each control separately.
+
+- **Tight Room** - A short, contained room response.
+- **Warm Hall** - A longer, gently darkened hall for acoustic and orchestral music.
+- **Bright Plate** - A brighter, more animated short reverb with a plate-like character.
+- **Vast Cavern** - The largest and longest of the supplied spaces.
 
 ### Parameters
 - **Reverb Time** - How long the reverb effect lasts (0.20 to 10.00 s)

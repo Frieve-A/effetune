@@ -4310,6 +4310,11 @@ private:
     }
     if (supported_rate_) {
       schedulePlateReference(fast_[0].stage[1].plateVoltage, true);
+      if (applied_parameters_.outputStage == 0) {
+        for (int channel = 0; channel < kChannels; ++channel) {
+          feedback_filter_[channel].transport.fill(controls_.plateReference);
+        }
+      }
     }
     std::fill(drive_gain_.begin(), drive_gain_.end(), 0.0);
     std::fill(output_gain_.begin(), output_gain_.end(), 0.0);
@@ -6429,6 +6434,11 @@ private:
       bypass_drive_[static_cast<std::size_t>(channel)] = 0.0;
     }
     schedulePlateReference(fast_[0].stage[1].plateVoltage, true);
+    if (applied_parameters_.outputStage == 0) {
+      for (int channel = 0; channel < kChannels; ++channel) {
+        feedback_filter_[channel].transport.fill(controls_.plateReference);
+      }
+    }
     std::fill(drive_gain_.begin(), drive_gain_.end(), controls_.drive);
     std::fill(output_gain_.begin(), output_gain_.end(), controls_.output);
     std::fill(wet_mix_.begin(), wet_mix_.end(), controls_.mix);

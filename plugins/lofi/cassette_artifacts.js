@@ -1,3 +1,41 @@
+const CASSETTE_ARTIFACTS_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({
+        id: 'flagship-deck-metal', label: 'Flagship Deck Metal',
+        params: Object.freeze({
+            dg: 'Reference', tp: 'Type IV', nr: 'Dolby C', bs: 0, rl: 6,
+            wf: 0.04, hs: -70, dp: 0, az: 0, dl: 0, og: 0, mx: 100
+        })
+    }),
+    Object.freeze({
+        id: 'hifi-chrome', label: 'Hi-Fi Chrome',
+        params: Object.freeze({
+            dg: 'Hi-Fi', tp: 'Type II', nr: 'Dolby B', bs: 0, rl: 8,
+            wf: 0.1, hs: -64, dp: 0.5, az: 1, dl: 0, og: 0, mx: 100
+        })
+    }),
+    Object.freeze({
+        id: 'pocket-cassette-player', label: 'Pocket Cassette Player',
+        params: Object.freeze({
+            dg: 'Portable', tp: 'Type I', nr: 'Off', bs: 0, rl: 12,
+            wf: 0.4, hs: -54, dp: 4, az: 4, dl: 0, og: 0, mx: 100
+        })
+    }),
+    Object.freeze({
+        id: 'worn-mixtape', label: 'Worn Mixtape',
+        params: Object.freeze({
+            dg: 'Consumer', tp: 'Type I', nr: 'Off', bs: -3, rl: 15,
+            wf: 0.65, hs: -50, dp: 12, az: -5, dl: 0, og: 0, mx: 100
+        })
+    }),
+    Object.freeze({
+        id: 'hot-deck-saturation', label: 'Hot Deck Saturation',
+        params: Object.freeze({
+            dg: 'Consumer', tp: 'Type II', nr: 'Off', bs: 1, rl: 18,
+            wf: 0.2, hs: -58, dp: 1, az: 1, dl: 0, og: 0, mx: 100
+        })
+    })
+]);
+
 // Cassette Artifacts — compact-cassette record / reproduce chain.
 //
 // W-3 STATUS: the fixed-speed LTI chain (wavelength losses, record/reproduce
@@ -2981,6 +3019,13 @@ function cassetteArtifactsNrQuietingDb(typeKey, nrMode, hissDb, dolbyLevelErrorD
 }
 
 class CassetteArtifactsPlugin extends PluginBase {
+    static getSystemPresetGroups() {
+        return [{
+            label: '',
+            presets: CASSETTE_ARTIFACTS_SYSTEM_PRESETS.map(preset => ({ ...preset }))
+        }];
+    }
+
     constructor() {
         super('Cassette Artifacts', 'Compact-cassette record and reproduce chain');
 

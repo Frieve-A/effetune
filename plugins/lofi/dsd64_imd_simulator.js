@@ -869,7 +869,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
 
             ctx.fillStyle = '#333';
             ctx.fillRect(labelW, y + barH * 0.15, trackW, barH * 0.6);
-            ctx.fillStyle = '#00ff00';
+            ctx.fillStyle = '#008000';
             ctx.fillRect(labelW, y + barH * 0.15, Math.max(0, w), barH * 0.6);
 
             ctx.fillStyle = '#ccc';

@@ -213,7 +213,7 @@ public:
 
     const double inverse_sample_rate = 1.0 / sample_rate_;
     const double react_amount = static_cast<double>(params_.react) / 100.0;
-    const double profile_ratio = static_cast<double>(params_.noiseProfile) / 10.0;
+    const double profile_ratio = 1.0 - static_cast<double>(params_.noiseProfile) / 10.0;
     const double low_shelf_db = 20.0 * (1.0 - profile_ratio);
     const double high_shelf_db = -20.0 * (1.0 - profile_ratio);
 

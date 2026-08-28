@@ -3,7 +3,7 @@
   "tolerance": { "abs": 0.00002, "policy": "per-sample" },
   "parityReference": "production-native-promoted-v1",
   "fields": [
-    { "name": "pitchShift", "key": "ps", "kind": "int", "min": -6, "max": 6, "default": 0, "unit": "semitones" },
-    { "name": "fineTune", "key": "ft", "kind": "int", "min": -50, "max": 50, "default": 0, "unit": "cents" }
+    { "name": "pitchShift", "key": "ps", "kind": "int", "min": -6, "max": 6, "step": 1, "default": 0, "unit": "semitones", "automation": true },
+    { "name": "fineTune", "key": "ft", "kind": "int", "min": -50, "max": 50, "step": 1, "default": 0, "unit": "cents", "automation": true }
   ]
 }

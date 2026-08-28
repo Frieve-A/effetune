@@ -888,6 +888,14 @@ Simulates the voltage sag behavior of power amplifiers under high load condition
   - Adds subtle compression movement to solo-focused recordings
   - Maintains natural dynamic flow
 
+### System Presets
+
+Click **Effect Presets** in the effect header to start with a complete power-supply behavior.
+
+- **Vintage Tube Sag** - Deep sag and slow recovery.
+- **Modern Monoblocks** - A stable independent-supply response.
+- **Pushed Combo** - A strong shared-supply dip and recovery.
+
 ### Parameters
 
 - **Sensitivity** (-18.0dB to +18.0dB)

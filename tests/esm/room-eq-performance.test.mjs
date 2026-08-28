@@ -307,7 +307,7 @@ test('Room EQ 8-channel independent IR assets stay inside the kernel capacity', 
         processingChannels: 8,
         headBlock: 128
     });
-    assert.equal(independent, 24025008);
+    assert.equal(independent, 24040880);
     assert.ok(independent < IR_KERNEL_ASSET_CAPACITY_BYTES,
         `8-channel independent commit needs ${independent} bytes`);
     assert.ok(estimateIrKernelCommitFootprint({

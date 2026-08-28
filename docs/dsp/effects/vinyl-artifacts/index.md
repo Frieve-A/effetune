@@ -29,7 +29,7 @@ This type can intentionally generate output from zero input at an active setting
 | `hissLevel` | `hiss_level` | number / 1 | `-42` | dB | -80 … 0 |
 | `rumbleLevel` | `rumble_level` | number / 1 | `-50` | dB | -80 … 0 |
 | `crosstalk` | `crosstalk` | integer / 1 | `60` | % | 0 … 100 |
-| `noiseProfile` | `noise_profile` | number / 1 | `0` | Not declared in catalog | 0 … 10 |
+| `noiseProfile` | `noise_profile` | number / 1 | `10` | Not declared in catalog | 0 … 10 |
 | `wear` | `wear` | integer / 1 | `100` | % | 0 … 200 |
 | `react` | `react` | integer / 1 | `25` | % | 0 … 100 |
 | `reactMode` | `react_mode` | string / 1 | `"Velocity"` | Not declared in catalog | `Velocity`, `Amplitude` |
@@ -58,6 +58,14 @@ An effect that adds vinyl-style playback artifacts such as pops, crackle, hiss, 
   - Creates rich, organic background texture
   - Adds depth and character to digital recordings
   - Perfect for creating cozy, intimate listening experiences
+
+### System Presets
+
+Click **Effect Presets** in the effect header to add a light patina, a damaged used-record surface, or extra low-frequency rumble.
+
+- **Gentle Patina** - Low-level record noise for a restrained aged surface.
+- **Thrift Store Copy** - Frequent pops, crackle, and wear for a clearly damaged record.
+- **Rumbly Old Player** - The normal surface character with added turntable-like low-frequency rumble.
 
 ### Parameters
 - **Pops/min** - Controls the frequency of large click noises per minute (0 to 120)
@@ -88,15 +96,15 @@ An effect that adds vinyl-style playback artifacts such as pops, crackle, hiss, 
   - 0%: Generated noise keeps its original channel separation
   - 30-60%: Realistic vinyl-style noise bleed
   - 100%: Generated noise becomes nearly equal between left and right
-- **Noise Profile** - Adjusts the frequency response of the generated noise (0.0 to 10.0)
-  - 0: Darkest, warmest noise tone
-  - 5: Partially shaped noise tone
-  - 10: Flat noise tone / tone shaping bypassed
+- **Noise Tone** - Adjusts the frequency response of the generated noise (0.0 to 10.0)
+  - 0: Flat noise tone
+  - 5: Partly darkened noise tone
+  - 10: Darkest noise tone
 - **Wear** - Scales surface wear artifacts such as pops, crackles, and hiss (0 to 200%)
   - 0-50%: Cleaner surface noise
   - 50-100%: Normal surface wear
   - 100-200%: Heavily worn surface noise
-  - Rumble, Crosstalk, and Noise Profile are controlled separately
+  - Rumble, Crosstalk, and Noise Tone are controlled separately
 - **React** - How much the noise responds to the input signal (0 to 100%)
   - 0%: Static noise levels
   - 25-50%: Moderate response to music
@@ -114,31 +122,31 @@ An effect that adds vinyl-style playback artifacts such as pops, crackle, hiss, 
 
 1. Subtle Vinyl Character
    - Pops/min: 20, Pop Level: -48dB, Crackles/min: 200, Crackle Level: -48dB
-   - Hiss: -48dB, Rumble: -60dB, Crosstalk: 30%, Noise Profile: 5.0
+   - Hiss: -48dB, Rumble: -60dB, Crosstalk: 30%, Noise Tone: 5.0
    - Wear: 25%, React: 20%, React Mode: Velocity, Mix: 100%
    - Perfect for: Adding gentle vinyl surface texture
 
 2. Classic Vinyl Experience
    - Pops/min: 40, Pop Level: -36dB, Crackles/min: 400, Crackle Level: -36dB
-   - Hiss: -36dB, Rumble: -50dB, Crosstalk: 50%, Noise Profile: 4.0
+   - Hiss: -36dB, Rumble: -50dB, Crosstalk: 50%, Noise Tone: 6.0
    - Wear: 60%, React: 30%, React Mode: Velocity, Mix: 100%
    - Perfect for: Authentic vinyl listening experience
 
 3. Well-Worn Record
    - Pops/min: 80, Pop Level: -24dB, Crackles/min: 800, Crackle Level: -24dB
-   - Hiss: -30dB, Rumble: -40dB, Crosstalk: 70%, Noise Profile: 3.0
+   - Hiss: -30dB, Rumble: -40dB, Crosstalk: 70%, Noise Tone: 7.0
    - Wear: 120%, React: 50%, React Mode: Velocity, Mix: 100%
    - Perfect for: Heavily aged record character
 
 4. Lo-Fi Ambient
    - Pops/min: 15, Pop Level: -54dB, Crackles/min: 150, Crackle Level: -54dB
-   - Hiss: -42dB, Rumble: -66dB, Crosstalk: 25%, Noise Profile: 6.0
+   - Hiss: -42dB, Rumble: -66dB, Crosstalk: 25%, Noise Tone: 4.0
    - Wear: 40%, React: 15%, React Mode: Amplitude, Mix: 100%
    - Perfect for: Background ambient texture
 
 5. Dynamic Vinyl
    - Pops/min: 60, Pop Level: -30dB, Crackles/min: 600, Crackle Level: -30dB
-   - Hiss: -39dB, Rumble: -45dB, Crosstalk: 60%, Noise Profile: 5.0
+   - Hiss: -39dB, Rumble: -45dB, Crosstalk: 60%, Noise Tone: 5.0
    - Wear: 80%, React: 75%, React Mode: Velocity, Mix: 100%
    - Perfect for: Noise that responds dramatically to the music
 

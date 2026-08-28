@@ -1,11 +1,11 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:c00f5411a8fe68c2139dd6a5903e1f480229387a9e7057bd6e246fc2676cddec",
+  "sourceDigest": "sha256:a9fac5065ac5d6899603d56b681b6cf82f67b6f40f11c488ad95958f3c5dc050",
   "emsdkVersion": "6.0.2",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:0dab4b4c5ba1de2a9998e5f2e8bee1b3d31b654b1029fa1be0c677ef6aa295d1",
+    "digest": "sha256:10a1145b0f8fa4afdad598b741fd3613930295be6ed58270862dddc3e23bdfda",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
@@ -15,7 +15,7 @@
       {
         "id": "dsp/core/allocation_guard.cpp",
         "kind": "file",
-        "sha256": "sha256:95462089e6f7069ef80bf82e1ef49c841f0afe1a796b4ddb9151198bb403d93f"
+        "sha256": "sha256:69dd284b57f2704580778028a33d05f683fa8d5674de22b4aa094c2254475049"
       },
       {
         "id": "dsp/core/allocation_guard.h",
@@ -35,12 +35,12 @@
       {
         "id": "dsp/core/engine.cpp",
         "kind": "file",
-        "sha256": "sha256:2d492ff232ddc0d6b64843dba7a08d3f2834c9bb4b0ee923d9a93e2b71c29ec2"
+        "sha256": "sha256:94a928e3e84ca5849d12f884646eb5e83b9511978ce1870181b3140a5ac2b073"
       },
       {
         "id": "dsp/core/engine.h",
         "kind": "file",
-        "sha256": "sha256:373b70d2e7f6925a79c13e067719b40b36539567d26bf6f3d8df575641e47239"
+        "sha256": "sha256:f1213bed83915c2a8143667a4cd255e89422eafce3d5809eb23c8783d98c4cdd"
       },
       {
         "id": "dsp/core/registry.cpp",
@@ -95,7 +95,7 @@
       {
         "id": "dsp/include/effetune/kernel.h",
         "kind": "file",
-        "sha256": "sha256:89f9d73a1ccd78c995487605ae285f4f522ccc126e64659d0d2fb2f8ae7ac29e"
+        "sha256": "sha256:077893c235793dd2a250404672bbee43f18e91fd0e24753b96fddc846dc853ff"
       },
       {
         "id": "dsp/include/effetune/telemetry.h",
@@ -115,7 +115,7 @@
       {
         "id": "dsp/plugins/lofi/g726_adpcm_simulator/params.json",
         "kind": "file",
-        "sha256": "sha256:d7ecbfdc5d087b12319c3501e685021b148cd0e21e4f87b36463cbffbabbc879"
+        "sha256": "sha256:128c5eb52ac4eecd786065ecc778005a88fef91fb8fb7ea49e74028415f2b5dc"
       },
       {
         "id": "dsp/registry.inc#G726ADPCMSimulatorPlugin-entry",
@@ -160,7 +160,7 @@
       {
         "id": "tools/dsp-parity/runners.mjs",
         "kind": "file",
-        "sha256": "sha256:fe1da8063d168c1b9f142a6217a097230bbf8783bd1d8f4bcb8ac807d78d862f"
+        "sha256": "sha256:5f35cbedaa93b5b6afbe27732e76b4bede0cc76319cc66949c0b8e313dc0e8ba"
       },
       {
         "id": "tools/dsp-parity/stimuli.mjs",
@@ -999,7 +999,7 @@
     }
   ],
   "sizes": {
-    "baseline": 1167544,
-    "simd": 1286159
+    "baseline": 1169092,
+    "simd": 1289631
   }
 }

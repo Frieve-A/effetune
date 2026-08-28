@@ -227,11 +227,11 @@ JavaScript `ChainStream.latencySamples` for the same chain and sample rate.
 `Chain.latency_samples(sample_rate, ...)` reports the same aggregate without
 opening a stream, which aligns offline `process()` output.
 
-### Modulation Style recipes
+### Modulation system-preset recipes
 
-The application-only **Style** selector is not a DSP parameter or a second
-preset API. The following dictionaries use the equivalent Python constructor
-parameter names. Copy one into a named constructor, for example
+The application exposes these settings as system presets. The following
+dictionaries use their equivalent Python constructor parameter names. Copy one
+into a named constructor, for example
 `Chorus(**MODULATION_STYLES["Chorus"]["Flanger"])`, or use it as the effect's
 recipe when building Chain JSON (where `to_dict()` emits semantic camel-case
 parameter names).
@@ -277,8 +277,8 @@ MODULATION_STYLES = {
         "Rotary Slow": {"speed_state": "Slow", "speed": 100, "acceleration": 2.2, "crossover": 800, "rotor_balance": 0, "stereo_width": 75, "doppler_depth": 45, "amplitude_depth": 55, "mix": 70},
         "Rotary Fast": {"speed_state": "Fast", "speed": 100, "acceleration": 1.4, "crossover": 800, "rotor_balance": 0, "stereo_width": 85, "doppler_depth": 65, "amplitude_depth": 70, "mix": 78},
         "Gentle Rotary": {"speed_state": "Slow", "speed": 75, "acceleration": 3, "crossover": 900, "rotor_balance": 0, "stereo_width": 45, "doppler_depth": 25, "amplitude_depth": 30, "mix": 55},
-        "Leslie Slow": {"speed_state": "Slow", "speed": 100, "acceleration": 2.8, "crossover": 800, "rotor_balance": -5, "stereo_width": 80, "doppler_depth": 50, "amplitude_depth": 60, "mix": 75},
-        "Leslie Fast": {"speed_state": "Fast", "speed": 100, "acceleration": 1.8, "crossover": 800, "rotor_balance": -5, "stereo_width": 90, "doppler_depth": 70, "amplitude_depth": 75, "mix": 82},
+        "Vintage Rotor Slow": {"speed_state": "Slow", "speed": 100, "acceleration": 2.8, "crossover": 800, "rotor_balance": -5, "stereo_width": 80, "doppler_depth": 50, "amplitude_depth": 60, "mix": 75},
+        "Vintage Rotor Fast": {"speed_state": "Fast", "speed": 100, "acceleration": 1.8, "crossover": 800, "rotor_balance": -5, "stereo_width": 90, "doppler_depth": 70, "amplitude_depth": 75, "mix": 82},
     },
 }
 ```

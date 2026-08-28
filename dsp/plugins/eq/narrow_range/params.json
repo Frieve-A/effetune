@@ -22,8 +22,10 @@
       "kind": "int",
       "min": -48,
       "max": 0,
+      "step": 6,
       "default": -24,
-      "unit": "dB/oct"
+      "unit": "dB/oct",
+      "automation": true
     },
     {
       "name": "lowPassFrequency",
@@ -42,8 +44,10 @@
       "kind": "int",
       "min": -48,
       "max": 0,
+      "step": 6,
       "default": -12,
-      "unit": "dB/oct"
+      "unit": "dB/oct",
+      "automation": true
     }
   ]
 }

@@ -11,6 +11,7 @@ import {
   readGoldenSet
 } from '../../tools/dsp-parity/golden-io.mjs';
 import { createReferenceSession } from '../../tools/dsp-parity/node-host.mjs';
+import { getCurrentJsEngineHash } from './js-engine-hash-helper.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const pluginDirectory = path.join(repoRoot, 'dsp', 'plugins', 'lofi', 'vinyl_artifacts');
@@ -70,7 +71,7 @@ test('Vinyl Artifacts schema and host packer freeze parameter order', async () =
   assert.equal(descriptor.floatCount, 12);
   assert.deepEqual(
     [...descriptor.pack({})],
-    [20, -24, 500, -33, -42, -50, 60, 0, 100, 25, 0, 100]
+    [20, -24, 500, -33, -42, -50, 60, 10, 100, 25, 0, 100]
   );
   assert.deepEqual(
     [...descriptor.pack({
@@ -79,6 +80,19 @@ test('Vinyl Artifacts schema and host packer freeze parameter order', async () =
     })],
     [120, 0, 2000, 0, 0, 0, 100, 10, 200, 100, 1, 0]
   );
+});
+
+test('Vinyl Artifacts Noise Tone starts dark and reaches a flat shelf at zero', async () => {
+  const session = await createReferenceSession('VinylArtifactsPlugin', { repoRoot });
+  assert.equal(session.plugin.tn, 10);
+  session.plugin.setParameters({ tn: 0 });
+  await session.process(new Float32Array(256), {
+    sampleRate: 96000, frames: 128, channels: 2, blockSize: 128
+  });
+  const state = session.inspectProcessorState();
+  const identity = { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 };
+  assert.deepEqual(state.lowShelfCoeffs, identity);
+  assert.deepEqual(state.highShelfCoeffs, identity);
 });
 
 test('Vinyl Artifacts goldens preserve seeded noise across parameter transitions', async () => {
@@ -100,11 +114,12 @@ test('Vinyl Artifacts goldens preserve seeded noise across parameter transitions
       'mix-zero-freezes-state'
     ])
   );
+  const jsEngineHash = await getCurrentJsEngineHash('VinylArtifactsPlugin', repoRoot);
   for (const golden of goldens) {
     assert.equal(golden.metadata.type, 'VinylArtifactsPlugin');
     assert.equal(
       golden.metadata.jsEngineHash,
-      'e616c05c534aa5fed97e838d9194e2cee7620c56ac1f1fb4d05b325a0b51621f'
+      jsEngineHash
     );
     assert.ok(golden.expected.every(Number.isFinite));
   }

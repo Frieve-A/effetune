@@ -152,6 +152,11 @@ Puede importar ajustes de ecualizador AutoEQ directamente desde el botón en la 
 ### 5.2. Pegado de ajustes de corrección de medición
 Copie los ajustes de 5Band PEQ desde la página de medición y péguelos en la vista **Effect Pipeline** usando **Ctrl+V** o el menú.
 
+### 5.3. Uso de una medición multicanal con Room EQ
+En la página de medición, seleccione los canales individuales que quiera en **Canal de salida** para medirlos en una sola sesión. Después de guardar, Room EQ muestra una entrada independiente para cada canal, como `Nombre de la medición [Ch 1]`, en las listas **Measurement Ch 1**, **Measurement Ch 2** y las demás listas específicas de canal. En cada lista **Measurement Ch**, seleccione la entrada que corresponda a ese canal de salida. Room EQ no asigna canales automáticamente.
+
+Use **Copiar ajustes PEQ por canal** cuando quiera pegar una corrección estática de la respuesta de frecuencia en **Effect Pipeline**. Use Room EQ cuando quiera una corrección de sala por canal basada en respuestas de impulso.
+
 ---
 
 ## 6. Consejos para la operación de efectos

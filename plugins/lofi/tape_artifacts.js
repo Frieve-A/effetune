@@ -1,3 +1,27 @@
+const TAPE_ARTIFACTS_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({
+        id: 'pristine-30-ips-reel', label: 'Pristine 30 ips Reel',
+        params: Object.freeze({
+            sp: '30', tp: 'Master', bs: 0, rl: 3, wf: 0.06,
+            hs: -72, og: 0, mx: 100
+        })
+    }),
+    Object.freeze({
+        id: 'hobbyist-reel-to-reel', label: 'Hobbyist Reel-to-Reel',
+        params: Object.freeze({
+            sp: '7.5', tp: 'Standard', bs: 0, rl: 9, wf: 0.3,
+            hs: -54, og: 0, mx: 100
+        })
+    }),
+    Object.freeze({
+        id: 'tired-old-reel', label: 'Tired Old Reel',
+        params: Object.freeze({
+            sp: '7.5', tp: 'Standard', bs: -4, rl: 9, wf: 0.7,
+            hs: -46, og: 0, mx: 100
+        })
+    })
+]);
+
 // Tape Artifacts — analogue reel-to-reel record / reproduce chain.
 //
 // Signal chain (host rate; only the saturation stage runs 2x oversampled):
@@ -1173,6 +1197,13 @@ const TAPE_ARTIFACTS_REFERENCE_PROCESSOR = `
 `;
 
 class TapeArtifactsPlugin extends PluginBase {
+    static getSystemPresetGroups() {
+        return [{
+            label: '',
+            presets: TAPE_ARTIFACTS_SYSTEM_PRESETS.map(preset => ({ ...preset }))
+        }];
+    }
+
     constructor() {
         super('Tape Artifacts', 'Reel-to-reel tape record and reproduce chain');
 

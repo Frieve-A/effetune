@@ -319,19 +319,77 @@ test('applySerializedState tolerates plugins without parameter or update hooks',
   assert.equal(longPlugin.name, 'NoLongParamHooks');
 });
 
-test('applySerializedState preserves and restores undo-redo guard around updates', () => {
-  const historyManager = { isUndoRedoOperation: false };
+test('applySerializedState restores scoped history suppression around updates', () => {
+  const historyManager = {
+    depth: 0,
+    get isHistorySuppressed() { return this.depth > 0; },
+    withHistorySuppressed(callback) {
+      this.depth++;
+      try {
+        return callback();
+      } finally {
+        this.depth--;
+      }
+    }
+  };
   const plugin = createPlugin({
     audioManager: { pipelineManager: { historyManager } },
     updateParameters() {
-      this.calls.push(['updateParameters', historyManager.isUndoRedoOperation]);
+      this.calls.push(['updateParameters', historyManager.isHistorySuppressed]);
       throw new Error('update failed');
     }
   });
 
   assert.throws(() => applySerializedState(plugin, { name: 'Throws', channel: null }), /update failed/);
-  assert.equal(historyManager.isUndoRedoOperation, false);
+  assert.equal(historyManager.isHistorySuppressed, false);
   assert.deepEqual(plugin.calls, [['updateParameters', true]]);
+});
+
+test('applySerializedState suppresses updates triggered inside state setters', () => {
+  const historyManager = {
+    depth: 0,
+    get isHistorySuppressed() { return this.depth > 0; },
+    withHistorySuppressed(callback) {
+      this.depth++;
+      try {
+        return callback();
+      } finally {
+        this.depth--;
+      }
+    }
+  };
+  const observations = [];
+  const plugin = createPlugin({
+    audioManager: { pipelineManager: { historyManager } },
+    setEnabled(value) {
+      observations.push(['setEnabled', historyManager.isHistorySuppressed]);
+      this.enabled = value;
+      this.updateParameters();
+    },
+    setParameters(params) {
+      observations.push(['setParameters', historyManager.isHistorySuppressed]);
+      this.parameters = { ...params };
+      this.updateParameters();
+    },
+    updateParameters() {
+      observations.push(['updateParameters', historyManager.isHistorySuppressed]);
+    },
+    syncUIControls() {
+      observations.push(['syncUIControls', historyManager.isHistorySuppressed]);
+    }
+  });
+
+  applySerializedState(plugin, { nm: 'Scoped', en: false, gain: -2 });
+
+  assert.deepEqual(observations, [
+    ['setEnabled', true],
+    ['updateParameters', true],
+    ['setParameters', true],
+    ['updateParameters', true],
+    ['updateParameters', true],
+    ['syncUIControls', true]
+  ]);
+  assert.equal(historyManager.isHistorySuppressed, false);
 });
 
 test('applySerializedState updates when audioManager lacks a pipeline manager', () => {

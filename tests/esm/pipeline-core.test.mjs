@@ -138,6 +138,7 @@ function createBareCore(options = {}) {
   };
   core.enabled = options.enabled ?? true;
   core.pluginManager = {};
+  core.pluginPresetDialog = { closeIfPluginDetached() {} };
   core.expandedPlugins = new Set();
   core.pipelineManager = {};
   core.pipelineList = options.pipelineList ?? createPipelineList();

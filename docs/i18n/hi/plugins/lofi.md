@@ -50,6 +50,16 @@ AM Radio Simulator संगीत को मॉडल की गई AM प्�
 - **Fading की गहराई:** नई instances में Skywave 1% रहता है, जिससे Mono में level का उतार-चढ़ाव शांत और रात वाला fade हल्का होता है। स्पष्ट रूप से गहरा fade चाहिए तो Skywave को करीब 8% करें; इससे ऊपर के मान प्रभाव को और तीखा बनाते हैं।
 - रेडियो मॉडल का आकलन करते समय Mix को 100% से शुरू करें। मूल स्टीरियो छवि का कुछ भाग जानबूझकर रखना हो तभी इसे घटाएं।
 
+### सिस्टम प्रीसेट
+
+इन तैयार सेटिंग्स को सीधे आज़माने के लिए इफ़ेक्ट हेडर में **इफ़ेक्ट प्रीसेट** पर क्लिक करें।
+
+- **Local Daytime Station** - बहुत कम स्टैटिक वाला साफ़ और चौड़े बैंड का स्थानीय प्रसारण।
+- **Pocket Transistor** - छोटे स्पीकर वाले रेडियो की ध्वनि, जिसमें संपीड़न और हम अधिक तथा आवृत्ति-पट्टी सीमित है।
+- **Night Skywave** - स्पष्ट आयनमंडलीय फेडिंग वाला कमजोर रात का सिग्नल।
+- **Summer Thunderstorm** - लगातार वायुमंडलीय स्टैटिक से बाधित होता फेडिंग स्टेशन।
+- **Stereo AM Broadcast** - स्पीकर सिमुलेशन रहित, अधिक साफ़ C-QUAM स्टीरियो प्रसारण।
+
 ### पैरामीटर
 
 #### Station
@@ -166,6 +176,16 @@ Cassette Artifacts cassette की आवृत्ति प्रतिक्�
 - **Tape Type** शोर और headroom बदलता है। Type I सबसे अधिक शोर वाला, Type II संतुलित और Type IV चमकीले peaks को अधिक साफ़ रखने वाला विकल्प है।
 - **Noise Reduction** hiss घटाता है। Dolby C, Dolby B से अधिक असरदार है; Off कच्ची cassette पृष्ठभूमि छोड़ता है।
 - अधिक घिसे हुए चरित्र के लिए **Wow/Flutter**, **Hiss** या **Dropouts** बढ़ाएं। **Azimuth** ऊंची आवृत्तियों को नरम करता है और channels के बीच timing बदलता है।
+
+### सिस्टम प्रीसेट
+
+इन तैयार सेटिंग्स को सीधे आज़माने के लिए इफ़ेक्ट हेडर में **इफ़ेक्ट प्रीसेट** पर क्लिक करें।
+
+- **Flagship Deck Metal** - मेटल टेप और Dolby C वाला शांत, स्थिर रेफ़रेंस डेक।
+- **Hi-Fi Chrome** - कम हिस और पिच-परिवर्तन वाला साफ़ Type II कैसेट।
+- **Pocket Cassette Player** - शोर, डगमगाहट और हेड के असंरेखण वाला पोर्टेबल प्लेयर का स्वर।
+- **Worn Mixtape** - ड्रॉपआउट, डगमगाहट और अधिक खुरदरे सैचुरेशन वाली बहुत इस्तेमाल की हुई टेप।
+- **Hot Deck Saturation** - अधिक टेप संपीड़न के लिए जानबूझकर बहुत ऊँचे स्तर पर रिकॉर्ड किया गया कैसेट स्वर।
 
 ### पैरामीटर
 
@@ -373,6 +393,14 @@ FM Radio Simulator संगीत को एक मॉडल की गई FM �
 - **कमज़ोर सिग्नल की हिस:** Signal घटाने पर चमकीली, हवादार हिस पहले स्टीरियो में उठती है। Stereo को Mono पर करने से वही रिसेप्शन स्पष्ट रूप से शांत हो जाता है — यही वह कारण है जिससे असली ट्यूनर पर मोनो शांत सुनाई देता है।
 - **कवरेज सीमा पर रिसेप्शन:** FM थ्रेशोल्ड के पास क्लिक और स्पटर प्रकट होते हैं, रिसीवर मोनो की ओर ब्लेंड करता है, और अंततः कार्यक्रम शोर में डूब जाता है।
 - **मल्टीपाथ का रंग:** परावर्तन एक कठोर, खोखली विकृति जोड़ते हैं जिसका चरित्र Path Delay के साथ बदलता है; Fading बढ़ाने पर यह चलती गाड़ी के रिसेप्शन जैसी फड़फड़ाहट बन जाती है।
+
+### सिस्टम प्रीसेट
+
+इन तैयार सेटिंग्स को सीधे आज़माने के लिए इफ़ेक्ट हेडर में **इफ़ेक्ट प्रीसेट** पर क्लिक करें।
+
+- **Powerhouse Broadcast** - अधिक गहन प्रसारण प्रसंस्करण वाला शक्तिशाली स्टेशन।
+- **Distant Station** - सेवा-क्षेत्र की सीमा पर मिलने वाला रिसेप्शन, जिसमें हिस और शुरुआती स्टीरियो गिरावट है।
+- **City Drive Multipath** - चलते समय सुनने के लिए तेज़ी से बदलते परावर्तन और मल्टीपाथ विरूपण।
 
 ### पैरामीटर
 
@@ -706,6 +734,14 @@ SW Radio Simulator संगीत को एक मॉडल की गई श�
 - **खामोशी के बाद पहला क्षण तेज:** जब संगीत शुरू होता है — playback की शुरुआत में या किसी अंतराल के बाद — तो खामोशी के दौरान gain पूरा खुला रह जाता है, इसलिए AGC के स्थिर होने से पहले पहला क्षण तेज सुनाई देता है; USB और LSB में यह सबसे स्पष्ट है। शांत चैनल पर चालू किए गए receiver में भी यही होता है, और इसे जानबूझकर वैसा ही रखा गया है।
 - **पतली और कटती fade (USB, LSB):** गहरी fade AM के envelope detector जैसी पानी-सी distortion बनाने के बजाय उस अकेले sideband के भीतर आवृत्ति के अनुसार असमान क्षीणन करती है, इसलिए ध्वनि पतली हो जाती है और उसके हिस्से गायब हो जाते हैं।
 
+### सिस्टम प्रीसेट
+
+इन तैयार सेटिंग्स को सीधे आज़माने के लिए इफ़ेक्ट हेडर में **इफ़ेक्ट प्रीसेट** पर क्लिक करें।
+
+- **Major Broadcaster** - टेबल रेडियो पर मिलने वाला स्थिर, अपेक्षाकृत चौड़े बैंड का अंतरराष्ट्रीय प्रसारण।
+- **Transoceanic Night** - दूर के सिग्नल पर गहरी रात की फेडिंग और समकालिक डिटेक्शन।
+- **Stormy 49 m Band** - तेज़ फेडिंग, स्टैटिक और पास के हस्तक्षेपकारी स्टेशन वाला रिसेप्शन।
+
 ### पैरामीटर
 
 #### Station
@@ -810,6 +846,14 @@ Tape Artifacts संगीत को analog reel-to-reel tape machine से �
 - **लंबे स्वरों पर transport सुनाई देता है:** Wow/Flutter piano, organ, strings और दूसरे sustained sounds में pitch drift और shimmer जोड़ता है।
 - **जीवंत पृष्ठभूमि:** Hiss स्थिर tape noise और संगीत के साथ बदलने वाला noise दोनों जोड़ता है। कोई अतिरिक्त tape noise नहीं चाहिए तो इसे न्यूनतम मान पर रखें।
 
+### सिस्टम प्रीसेट
+
+इन तैयार सेटिंग्स को सीधे आज़माने के लिए इफ़ेक्ट हेडर में **इफ़ेक्ट प्रीसेट** पर क्लिक करें।
+
+- **Pristine 30 ips Reel** - बहुत कम हिस या पिच-परिवर्तन वाली तेज़ मास्टर-टेप ट्रांसफर।
+- **Hobbyist Reel-to-Reel** - अधिक हिस और टेप-परिवहन की अस्थिरता वाला धीमा घरेलू रिकॉर्डर।
+- **Tired Old Reel** - तेज़ डगमगाहट, हिस और अधिक खुरदरे ऊपरी सुरों वाली घिसी धीमी टेप।
+
 ### पैरामीटर
 
 - **Speed** (7.5 / 15 / 30 ips) - tape speed चुनता है। 15 ips से शुरू करें; सबसे साफ़ और खुली ध्वनि के लिए 30 ips या गहरे tone, अधिक bass lift और movement के लिए 7.5 ips चुनें।
@@ -871,6 +915,14 @@ Controls के नीचे की पंक्ति चुनी गई Speed
   - डिजिटल रिकॉर्डिंग में गहराई और चरित्र जोड़ता है
   - आरामदायक, अंतरंग सुनने के अनुभव बनाने के लिए बिल्कुल सही
 
+### सिस्टम प्रीसेट
+
+इन तैयार सेटिंग्स को सीधे आज़माने के लिए इफ़ेक्ट हेडर में **इफ़ेक्ट प्रीसेट** पर क्लिक करें।
+
+- **Gentle Patina** - संयमित पुरानी सतह के लिए निम्न स्तर का रिकॉर्ड नॉइज़।
+- **Thrift Store Copy** - स्पष्ट रूप से क्षतिग्रस्त रिकॉर्ड के लिए बार-बार आने वाले पॉप, क्रैकल और घिसाव।
+- **Rumbly Old Player** - सामान्य सतही चरित्र में टर्नटेबल जैसा अतिरिक्त निम्न-आवृत्ति रम्बल।
+
 ### पैरामीटर
 - **Pops/min** - प्रति मिनट बड़े click noises की आवृत्ति नियंत्रित करता है (0 से 120)
   - 0-20: कभी-कभार gentle pops
@@ -900,15 +952,15 @@ Controls के नीचे की पंक्ति चुनी गई Speed
   - 0%: generated noise अपनी original channel separation रखता है
   - 30-60%: realistic vinyl-style noise bleed
   - 100%: generated noise left और right में लगभग समान हो जाता है
-- **Noise Profile** - generated noise की frequency response समायोजित करता है (0.0 से 10.0)
-  - 0: सबसे dark, warmest noise tone
-  - 5: आंशिक रूप से shaped noise tone
-  - 10: flat noise tone / tone shaping bypassed
+- **Noise Tone** - generated noise की frequency response समायोजित करता है (0.0 से 10.0)
+  - 0: flat noise tone
+  - 5: आंशिक रूप से dark noise tone
+  - 10: dark noise tone
 - **Wear** - pops, crackles और hiss जैसे surface wear artifacts को scale करता है (0 से 200%)
   - 0-50%: साफ surface noise
   - 50-100%: सामान्य surface wear
   - 100-200%: बहुत घिसी हुई surface noise
-  - Rumble, Crosstalk और Noise Profile अलग से नियंत्रित होते हैं
+  - Rumble, Crosstalk और Noise Tone अलग से नियंत्रित होते हैं
 - **React** - noise input signal पर कितनी प्रतिक्रिया देता है (0 से 100%)
   - 0%: static noise levels
   - 25-50%: संगीत पर मध्यम response
@@ -926,31 +978,31 @@ Controls के नीचे की पंक्ति चुनी गई Speed
 
 1. सूक्ष्म विनाइल चरित्र
    - Pops/min: 20, Pop Level: -48dB, Crackles/min: 200, Crackle Level: -48dB
-   - Hiss: -48dB, Rumble: -60dB, Crosstalk: 30%, Noise Profile: 5.0
+   - Hiss: -48dB, Rumble: -60dB, Crosstalk: 30%, Noise Tone: 5.0
    - Wear: 25%, React: 20%, React Mode: Velocity, Mix: 100%
    - इसके लिए बिल्कुल सही: gentle vinyl surface texture जोड़ना
 
 2. क्लासिक विनाइल अनुभव
    - Pops/min: 40, Pop Level: -36dB, Crackles/min: 400, Crackle Level: -36dB
-   - Hiss: -36dB, Rumble: -50dB, Crosstalk: 50%, Noise Profile: 4.0
+   - Hiss: -36dB, Rumble: -50dB, Crosstalk: 50%, Noise Tone: 6.0
    - Wear: 60%, React: 30%, React Mode: Velocity, Mix: 100%
    - इसके लिए बिल्कुल सही: प्रामाणिक विनाइल सुनने का अनुभव
 
 3. अच्छी तरह घिसा हुआ रिकॉर्ड
    - Pops/min: 80, Pop Level: -24dB, Crackles/min: 800, Crackle Level: -24dB
-   - Hiss: -30dB, Rumble: -40dB, Crosstalk: 70%, Noise Profile: 3.0
+   - Hiss: -30dB, Rumble: -40dB, Crosstalk: 70%, Noise Tone: 7.0
    - Wear: 120%, React: 50%, React Mode: Velocity, Mix: 100%
    - इसके लिए बिल्कुल सही: भारी उम्रदराज़ रिकॉर्ड चरित्र
 
 4. लो-फाई एंबिएंट
    - Pops/min: 15, Pop Level: -54dB, Crackles/min: 150, Crackle Level: -54dB
-   - Hiss: -42dB, Rumble: -66dB, Crosstalk: 25%, Noise Profile: 6.0
+   - Hiss: -42dB, Rumble: -66dB, Crosstalk: 25%, Noise Tone: 4.0
    - Wear: 40%, React: 15%, React Mode: Amplitude, Mix: 100%
    - इसके लिए बिल्कुल सही: पृष्ठभूमि परिवेशी बनावट
 
 5. डायनामिक विनाइल
    - Pops/min: 60, Pop Level: -30dB, Crackles/min: 600, Crackle Level: -30dB
-   - Hiss: -39dB, Rumble: -45dB, Crosstalk: 60%, Noise Profile: 5.0
+   - Hiss: -39dB, Rumble: -45dB, Crosstalk: 60%, Noise Tone: 5.0
    - Wear: 80%, React: 75%, React Mode: Velocity, Mix: 100%
    - इसके लिए बिल्कुल सही: music पर नाटकीय रूप से react करने वाला noise
 
@@ -972,6 +1024,16 @@ Vinyl Simulator भौतिक record-cutting और stylus-playback मॉड�
 - **पुरानी surface:** पहले Roughness बढ़ाएँ, फिर Dust, Static और थोड़ा Scratch जोड़ें; हर control अलग physical event दर्शाता है।
 - **अधिक स्पष्ट groove coloration:** Cut Level सावधानी से बढ़ाएँ, HF Cutoff या Radius घटाएँ। Tracking S/E की गिरावट और mistrack/skip की वृद्धि देखें।
 - इसमें wow/flutter, eccentricity, warping या turntable rumble नहीं हैं। जरूरत हो तो chain में **Wow Flutter** जोड़ें।
+
+### सिस्टम प्रीसेट
+
+इन तैयार सेटिंग्स को सीधे आज़माने के लिए इफ़ेक्ट हेडर में **इफ़ेक्ट प्रीसेट** पर क्लिक करें।
+
+- **Audiophile Pressing** - सावधानी से रखी गई शांत रिकॉर्ड सतह।
+- **Well-Worn Favorite** - बार-बार बजाए गए रिकॉर्ड की अधिक खुरदराहट, धूल और स्थैतिक बिजली।
+- **Flea Market 45** - गोलाकार स्टायलस और स्पष्ट सतही शोर वाला घिसा 45 rpm सिंगल।
+- **78 rpm Shellac** - पुराने शेलैक रिकॉर्ड का खुरदरा, संकीर्ण-बैंड चरित्र।
+- **End of Side** - रिकॉर्ड की एक साइड के अंत के पास वाली अंदरूनी ग्रूव स्थिति का ट्रैकिंग व्यवहार।
 
 ### Parameters
 

@@ -35,6 +35,15 @@ Nota de roteamento: Dattorro Plate Reverb é um modelo de placa estéreo. Quando
   - Previne caudas estáticas e artificiais
   - Cria um espaço vivo e respirante ao redor da sua música
 
+### Predefinições do sistema
+
+Clique em **Predefinições de efeito** no cabeçalho do efeito para aplicar uma configuração completa de reverberação de placa.
+
+- **Studio Plate** - Uma reverberação de placa curta e brilhante para a audição cotidiana.
+- **Vocal Plate** - Separa o ataque do som original da reverberação com um pré-atraso mais longo.
+- **Dark Vintage Plate** - Uma reverberação de placa mais escura, com maior amortecimento dos agudos.
+- **Long Wash** - Uma cauda de reverberação longa e envolvente, com modulação.
+
 ### Parâmetros
 - **Pre Delay** - Silêncio inicial antes do início do reverb (controle de 0.0 a 100.0 ms; use valores abaixo de 100.0 ms para pre-delay efetivo)
   - 0-10ms: Reverb imediato, sensação íntima
@@ -139,7 +148,7 @@ O Dattorro Plate Reverb traz uma ambiência clássica em estilo de placa para su
 
 O FDN Reverb acrescenta um decaimento denso e natural. Use-o para dar a gravações secas ou próximas uma noção mais clara de tamanho e distância do ambiente.
 
-Nota de roteamento: FDN Reverb é um modelo de reverb estéreo com um feedback tank compartilhado. Quando roteado com mais de dois canais, cada canal avança esse tank compartilhado em sequência em vez de usar tanks independentes por canal. O canal 1 recebe left wet e os canais 2+ recebem right wet.
+Nota de roteamento: o FDN Reverb faz a média de todos os canais de entrada roteados em um único tanque de feedback compartilhado. O tanque avança uma vez por amostra, e suas saídas wet são distribuídas pelos canais de saída roteados.
 
 ### Guia de Experiência de Audição
 - Sensação de Sala Natural:
@@ -154,6 +163,15 @@ Nota de roteamento: FDN Reverb é um modelo de reverb estéreo com um feedback t
   - Ajustável desde salas íntimas até grandes salas de concerto
   - Controle fino sobre o caráter e cor do espaço
   - Modulação suave adiciona movimento natural e vida
+
+### Predefinições do sistema
+
+Clique em **Predefinições de efeito** no cabeçalho do efeito para experimentar diretamente estas configurações completas.
+
+- **Tight Room** - Uma resposta de sala curta e contida.
+- **Warm Hall** - Um salão mais longo e levemente escurecido para música acústica e orquestral.
+- **Bright Plate** - Uma reverberação curta, mais brilhante e animada, com caráter de placa.
+- **Vast Cavern** - O maior e mais longo dos espaços fornecidos.
 
 ### Parâmetros
 - **Reverb Time** - Duração do efeito de reverb (0.20 a 10.00 s)
@@ -316,10 +334,17 @@ Um efeito que pode transportar sua música para diferentes espaços, desde salas
   - Perfeito para música ambiente e atmosférica
   - Cria paisagens sonoras envolventes
 
+### Predefinições do sistema
+
+Clique em **Predefinições de efeito** no cabeçalho do efeito para experimentar diretamente estas configurações completas.
+
+- **Small Room** - Ambiência de sala curta e próxima com 5 ms de pre-delay.
+- **Jazz Club** - Sala moderada para material acústico intimista com 15 ms de pre-delay.
+- **Concert Hall** - Sala de concertos com 25 ms de pre-delay e decaimento de graves mais rico.
+- **Cathedral** - Espaço reverberante longo e escuro com 40 ms de pre-delay e o decaimento de graves mais rico.
+
 ### Parâmetros
-- **Pre-Delay** - Controle armazenado e exibido (0 a 50 ms)
-  - Na implementação atual, este valor não é usado pelo processamento do reverb
-  - Alterá-lo não muda distância nem profundidade; use Room Size, Reverb Time e Mix para mudanças audíveis de espaço
+- **Pre-Delay** (0 a 50 ms) - Atrasa as reflexões do sinal reverberado antes de entrarem no modelo de sala. Valores mais altos mantêm o ataque do som original distinto por mais tempo, mas não eliminam o atraso do próprio modelo de sala.
 - **Room Size** - Define quão grande o espaço parece (2.0 a 50.0 m)
   - Pequeno (2-5m): Sensação de sala aconchegante
   - Médio (5-15m): Atmosfera de sala ao vivo
@@ -392,7 +417,6 @@ Um efeito que pode transportar sua música para diferentes espaços, desde salas
    - Configure Density e Diffusion para textura
 
 3. Ajuste Fino do Efeito
-   - Use Room Size e Reverb Time para profundidade; o valor do controle Pre-Delay não é refletido no processamento atualmente
    - Ajuste Mix para equilíbrio final
    - Confie em seus ouvidos e ajuste ao gosto
 

@@ -21,6 +21,8 @@ constexpr double kSqrtThree = 1.73205080756887729353;
 constexpr double kReferenceVelocity = 0.05;
 // The source model's discharge range was calibrated against program peaks at +12 dB.
 constexpr double kStaticReferenceGain = 0.251188643150958;
+// Calibrate scratch displacement without changing event rates or spatial duration.
+constexpr double kScratchDisplacementGain = 0.2;
 // An ESD edge is much faster than the audio rate. Its audible residual is limited here
 // by the longest RC decay in a standard 47 kOhm / 100-200 pF moving-magnet input.
 constexpr double kPhonoInputResistance = 47.0e3;
@@ -1341,6 +1343,8 @@ private:
     particle->skew = (dust_random_.nextFloat01() - 0.5) * particle->width * 1.4;
     const double absolute_skew = particle->skew < 0.0 ? -particle->skew : particle->skew;
     particle->scratch_support = 4.0 * particle->width + absolute_skew;
+    particle->gouge *= kScratchDisplacementGain;
+    particle->burr *= kScratchDisplacementGain;
     particle->height = particle->gouge > particle->burr ? particle->gouge : particle->burr;
     particle->amplitude = 0.0;
   }

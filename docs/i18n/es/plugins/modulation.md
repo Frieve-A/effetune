@@ -34,7 +34,7 @@ Auto Filter mueve automáticamente un filtro resonante. El modo **LFO** repite u
 
 ### Parámetros
 
-- **Style**: Ajuste de fábrica completo que define todos los parámetros. Las opciones son **Auto Filter Sweep** (LFO), **Stereo Filter Sweep** (LFO), **Envelope Filter** (Envelope), **Auto Wah** (Envelope) y **Reverse Auto Wah** (Envelope). Al modificar un parámetro individual, cambia a **Custom**.
+- **Presets del sistema**: Elige **Auto Filter Sweep**, **Stereo Filter Sweep**, **Envelope Filter**, **Auto Wah** o **Reverse Auto Wah** para cargar una configuración inicial completa. Después, ajusta los parámetros individualmente para afinarla.
 - **Mode**: Alterna entre LFO, que se mueve de forma periódica, y Envelope, que sigue el volumen.
 - **Filter Type**: Permite elegir Low-pass, Band-pass o High-pass.
 - **Minimum Frequency / Maximum Frequency** (20–20.000 Hz): Definen el intervalo de movimiento. Si están en orden inverso, se reordenan automáticamente; si son iguales, el filtro queda fijo. Durante el procesamiento se limitan a un margen seguro por debajo de la frecuencia de Nyquist.
@@ -55,7 +55,7 @@ Auto Pan mueve el nivel de cada par estéreo entre izquierda y derecha. Si queda
 
 ### Parámetros
 
-- **Style**: Ajuste de fábrica completo que define todos los parámetros. Las opciones son **Gentle Auto Pan**, **Wide Auto Pan** y **Fast Auto Pan**. Al modificar un parámetro individual, cambia a **Custom**.
+- **Presets del sistema**: Elige **Gentle Auto Pan**, **Wide Auto Pan** o **Fast Auto Pan** para cargar una configuración inicial completa. Después, ajusta los parámetros individualmente para afinarla.
 - **Rate** (0,05–20 Hz): Velocidad del movimiento.
 - **Depth** (0–100%): Cantidad de movimiento alrededor de Center. Al 0% no hay cambio.
 - **Center** (-100–100%): Desplaza la posición central hacia la izquierda o la derecha.
@@ -76,7 +76,7 @@ Chorus añade copias retardadas y móviles de la música. Sus modos incluyen **S
 
 ### Parámetros
 
-- **Style**: Ajuste de fábrica completo que define todos los parámetros. Las opciones son **Classic Chorus** (Chorus), **Stereo Chorus** (Stereo Chorus), **Ensemble** (Ensemble), **Flanger** (Flanger), **Jet Flanger** (Flanger) y **Vibrato** (Vibrato). Al modificar un parámetro individual, cambia a **Custom**.
+- **Presets del sistema**: Elige **Classic Chorus**, **Stereo Chorus**, **Ensemble**, **Flanger**, **Jet Flanger** o **Vibrato** para cargar una configuración inicial completa. Después, ajusta los parámetros individualmente para afinarla.
 - **Mode**: Permite elegir Chorus, Stereo Chorus, Ensemble, Flanger o Vibrato.
 - **Rate** (0,05–10 Hz): Velocidad de la modulación.
 - **Delay** (0,5–30 ms): Retardo de referencia de la señal procesada.
@@ -130,7 +130,7 @@ Frequency Shifter desplaza cada componente de frecuencia una cantidad fija de he
 
 ### Parámetros
 
-- **Style**: Ajuste de fábrica completo que define todos los parámetros. Las opciones son **Shift Up** (Shift), **Shift Down** (Shift), **Fine Detune** (Shift), **Ring Modulator** (Ring Mod), **Barber-pole Up** (Barber-pole) y **Barber-pole Down** (Barber-pole). Al modificar un parámetro individual, cambia a **Custom**.
+- **Presets del sistema**: Elige **Shift Up**, **Shift Down**, **Fine Detune**, **Ring Modulator**, **Barber-pole Up** o **Barber-pole Down** para cargar una configuración inicial completa. Después, ajusta los parámetros individualmente para afinarla.
 - **Mode**: Shift, Ring Mod o Barber-pole.
 - **Shift** (-5.000–5.000 Hz): Cantidad de desplazamiento en el modo Shift. Los valores positivos desplazan hacia arriba y los negativos hacia abajo.
 - **Carrier Frequency** (0,1–10.000 Hz): Frecuencia de la portadora de Ring Mod.
@@ -153,7 +153,7 @@ Phaser mezcla el sonido original con copias filtradas para crear picos y muescas
 
 ### Parámetros
 
-- **Style**: Ajuste de fábrica completo que define todos los parámetros. Las opciones son **Classic Phaser** (Classic), **Deep Phaser** (Classic), **Stereo Phaser** (Classic), **Barber-pole Up** (Barber-pole) y **Barber-pole Down** (Barber-pole). Al modificar un parámetro individual, cambia a **Custom**.
+- **Presets del sistema**: Elige **Classic Phaser**, **Deep Phaser**, **Stereo Phaser**, **Barber-pole Up** o **Barber-pole Down** para cargar una configuración inicial completa. Después, ajusta los parámetros individualmente para afinarla.
 - **Mode**: Classic o Barber-pole.
 - **Rate** (0,05–10 Hz): Velocidad del barrido.
 - **Center Frequency** (80–8.000 Hz): Centro del barrido logarítmico.
@@ -219,7 +219,7 @@ Rotary Speaker divide el sonido entre una bocina de agudos y un tambor de graves
 
 ### Parámetros
 
-- **Style**: Ajuste de fábrica completo que define todos los parámetros. Las opciones son **Rotary Slow** (Slow), **Rotary Fast** (Fast), **Gentle Rotary** (Slow), **Leslie Slow** (Slow) y **Leslie Fast** (Fast). Al modificar un parámetro individual, cambia a **Custom**.
+- **Presets del sistema**: Elige **Rotary Slow**, **Rotary Fast**, **Gentle Rotary**, **Vintage Rotor Slow** o **Vintage Rotor Fast** para cargar una configuración inicial completa. Después, ajusta los parámetros individualmente para afinarla.
 - **Speed State**: Stop, Slow o Fast. Durante el cambio, los rotores aceleran o desaceleran suavemente sin interrumpir el sonido.
 - **Speed** (25–200%): Multiplicador de velocidad tanto de la bocina como del tambor.
 - **Acceleration** (0,1–10 s): Determina la rapidez con la que los rotores se aproximan a una nueva velocidad.
@@ -326,6 +326,14 @@ Un efecto que añade variaciones rítmicas en el volumen a tu música, similar a
 ## Wow Flutter
 
 Un efecto que añade sutiles variaciones en el tono a tu música, similar al sonido de fluctuación natural que podrías recordar de los discos de vinilo o casetes. Esto crea una sensación cálida y nostálgica que muchas personas encuentran agradable y relajante.
+
+### Preajustes del sistema
+
+Haz clic en **Preajustes de efecto** en la cabecera del efecto para comparar distintos comportamientos del mecanismo de arrastre con todos sus ajustes.
+
+- **Warped Record** - Una oscilación profunda y periódica propia de un disco alabeado.
+- **Worn Cassette Motor** - Un flutter más rápido con movimiento irregular.
+- **Seasick Tape** - Una oscilación lenta y extrema, con movimiento independiente en cada canal estéreo.
 
 ### Guía de Experiencia Auditiva
 - Experiencia de Disco de Vinilo:

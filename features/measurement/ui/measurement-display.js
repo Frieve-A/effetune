@@ -4,11 +4,31 @@
 
 import dataStorage from '../dataStorage.js';
 import i18n from '../i18n.js';
+import { channelDisplayLabel, INDIVIDUAL_CHANNELS, selectionFromConfig } from '../audio-utils/channel-selection.js';
+import {
+    collectPointIrKeyIds,
+    collectStoredIrKeyIds,
+    isMultiChannelMeasurement,
+    recalculateAverages,
+    resolveResponseSweepBand
+} from '../measurement-model.js';
+
+export function hasDesignableChannelResponses(measurement) {
+    if (!isMultiChannelMeasurement(measurement) ||
+        !Array.isArray(measurement.points) || measurement.points.length === 0 ||
+        !Array.isArray(measurement.channelResponses)) return false;
+    return measurement.outputChannels.every(channel => {
+        const response = measurement.channelResponses.find(entry => entry?.channel === channel);
+        return Array.isArray(response?.averageFrequencyResponse) &&
+            response.averageFrequencyResponse.length > 0;
+    });
+}
 
 class MeasurementDisplay {
     constructor(uiManager) {
         this.uiManager = uiManager;
         this.selectedPointIndex = 'all';
+        this.selectedChannel = 'all';
     }
 
     /**
@@ -200,7 +220,10 @@ class MeasurementDisplay {
         
         // Prepare channel information
         const inputChannelText = this.formatChannelInfo(measurement.inputChannel);
-        const outputChannelText = this.formatOutputChannelInfo(measurement.outputChannel);
+        const outputChannelText = this.formatOutputChannelInfo(
+            measurement.outputChannel,
+            measurement.outputChannels
+        );
         
         // Prepare max signal level information
         const maxSignalLevel = measurement.maxSignalLevel !== undefined 
@@ -220,6 +243,26 @@ class MeasurementDisplay {
             ['Max Signal Level', maxSignalLevel],
             ['Measurement Points', String(measurement.points.length)]
         ];
+        const sweepBandLabel = i18n.t('label:sweepBandMode') || 'Sweep Bandwidth:';
+        const band = resolveResponseSweepBand(measurement);
+        const mode = measurement.sweepBand?.mode || (band.bandLimited ? 'common' : 'off');
+        const modeLabel = mode === 'perChannel'
+            ? i18n.t('option:sweepBandPerChannel') || 'Per Channel'
+            : mode === 'off' ? i18n.t('option:sweepBandOff') || 'Off'
+                : i18n.t('option:sweepBandCommon') || 'Same for All Channels';
+        const formatBand = range => `${Number(range.minFreq.toFixed(2)).toLocaleString()}–${Number(range.maxFreq.toFixed(2)).toLocaleString()} Hz`;
+        details.push([sweepBandLabel, mode === 'perChannel' ? modeLabel : `${modeLabel} (${formatBand(band)})`]);
+        if (mode === 'perChannel') {
+            const selectedChannels = selectionFromConfig(measurement);
+            const channels = selectedChannels.includes('all')
+                ? INDIVIDUAL_CHANNELS.slice(0, measurement.outputChannelCount || 2) : selectedChannels;
+            for (const channel of channels) {
+                details.push([
+                    `${sweepBandLabel} ${channelDisplayLabel(channel)}`,
+                    formatBand(resolveResponseSweepBand(measurement, channel))
+                ]);
+            }
+        }
         if (measurement.interfaceCalibration) {
             details.push([
                 i18n.t('label:appliedInterfaceCalibration') ||
@@ -227,6 +270,14 @@ class MeasurementDisplay {
                 `${measurement.interfaceCalibration.sourceMeasurementName} — ` +
                     measurement.interfaceCalibration.sourcePointName
             ]);
+        }
+        if (Array.isArray(measurement.interfaceCalibrations)) {
+            for (const calibration of measurement.interfaceCalibrations) {
+                details.push([
+                    `${i18n.t('label:appliedInterfaceCalibration') || 'Audio Interface Calibration'} (${channelDisplayLabel(calibration.channel)})`,
+                    `${calibration.sourceMeasurementName} — ${calibration.sourcePointName}`
+                ]);
+            }
         }
         const detailsElement = document.getElementById('measurementDetails');
         detailsElement.replaceChildren();
@@ -280,6 +331,8 @@ class MeasurementDisplay {
         
         document.getElementById('eqBandCount').value = eqBandCount;
         document.getElementById('eqBandCountValue').textContent = eqBandCount;
+
+        this.updateChannelFilter(measurement);
         
         // Ensure 'All' is selected by default
         this.selectPoint('all');
@@ -309,7 +362,13 @@ class MeasurementDisplay {
         return channelValue;
     }
 
-    formatOutputChannelInfo(channelValue) {
+    formatOutputChannelInfo(channelValue, outputChannels) {
+        if (Array.isArray(outputChannels) && outputChannels.length > 1) {
+            return outputChannels.map(channelDisplayLabel).join(', ');
+        }
+        if (channelValue === 'multi') {
+            return i18n.t('option:multiChannel') || 'Multiple Channels';
+        }
         if (channelValue === 'all' || channelValue === 'both') {
             return i18n.t('option:all') || 'All Channels';
         }
@@ -360,15 +419,22 @@ class MeasurementDisplay {
             
             const nameElement = document.createElement('div');
             nameElement.textContent = point.name || `Point ${index + 1}`;
-            if (point.ir?.stored) {
+            const storedIrKeys = collectStoredIrKeyIds(point);
+            const storedIr = point.ir?.stored ? point.ir : point.channels?.find(channel => channel.ir?.stored)?.ir;
+            if (storedIrKeys.length > 0 && storedIr) {
                 const irBadge = document.createElement('span');
                 irBadge.className = 'measurement-ir-badge';
-                irBadge.textContent = i18n.t('message:irSaved', {
-                    seconds: (point.ir.length / point.ir.sampleRate).toFixed(2),
-                    sampleRate: Math.round(point.ir.sampleRate / 100) / 10
-                }) || `IR saved ✓ (${(point.ir.length / point.ir.sampleRate).toFixed(2)} s @ ${Math.round(point.ir.sampleRate / 100) / 10} kHz)`;
+                const partialMultiIr = isMultiChannelMeasurement(measurement) &&
+                    storedIrKeys.length < measurement.outputChannels.length;
+                irBadge.textContent = partialMultiIr
+                    ? i18n.t('message:irSavedChannels', { count: storedIrKeys.length }) ||
+                        `IR saved for ${storedIrKeys.length} channels ✓`
+                    : i18n.t('message:irSaved', {
+                        seconds: (storedIr.length / storedIr.sampleRate).toFixed(2),
+                        sampleRate: Math.round(storedIr.sampleRate / 100) / 10
+                    }) || `IR saved ✓ (${(storedIr.length / storedIr.sampleRate).toFixed(2)} s @ ${Math.round(storedIr.sampleRate / 100) / 10} kHz)`;
                 nameElement.appendChild(irBadge);
-                if (point.ir.sweepLimited) {
+                if (point.ir?.sweepLimited || point.channels?.some(channel => channel.ir?.sweepLimited)) {
                     irBadge.title = i18n.t('help:sweepLimited') ||
                         'A longer sweep allows Room EQ to retain a longer impulse response.';
                 }
@@ -416,7 +482,57 @@ class MeasurementDisplay {
         
         // Update graph to show selected point or average
         this.uiManager.updateResultsGraph(index);
-        this.uiManager.graphRenderer.updateImpulseResponseGraph(index);
+        this.uiManager.graphRenderer.updateImpulseResponseGraph(index, this.selectedChannel);
+    }
+
+    updateChannelFilter(measurement) {
+        const filter = document.getElementById('resultsChannelFilter');
+        const copyButton = document.getElementById('copyChannelPEQBtn');
+        if (!filter) return;
+        filter.replaceChildren();
+        const isMultiChannel = isMultiChannelMeasurement(measurement);
+        filter.hidden = !isMultiChannel;
+        if (copyButton) copyButton.hidden = !hasDesignableChannelResponses(measurement);
+        this.selectedChannel = 'all';
+        delete measurement.peqParameters;
+        if (!isMultiChannel) return;
+
+        const label = document.createElement('span');
+        label.className = 'channel-filter-label';
+        label.textContent = i18n.t('label:channelFilter') || 'Channel:';
+        filter.appendChild(label);
+        const channels = ['all', ...measurement.outputChannels];
+        for (const channel of channels) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'channel-filter-button';
+            button.dataset.channel = channel;
+            button.textContent = channel === 'all'
+                ? i18n.t('option:allChannelsAverage') || 'All (Average)'
+                : channelDisplayLabel(channel);
+            button.classList.toggle('selected', channel === this.selectedChannel);
+            button.addEventListener('click', () => this.selectChannel(channel));
+            filter.appendChild(button);
+        }
+    }
+
+    selectChannel(channel) {
+        const measurement = dataStorage.getMeasurementById(this.uiManager.selectedMeasurementId);
+        if (!measurement) return;
+        const available = isMultiChannelMeasurement(measurement)
+            ? ['all', ...measurement.outputChannels]
+            : ['all'];
+        if (!available.includes(channel)) return;
+        if (channel === this.selectedChannel) return;
+        this.selectedChannel = channel;
+        ++this.uiManager.measurementStateGeneration;
+        delete measurement.peqParameters;
+        document.querySelectorAll('.channel-filter-button').forEach(button => {
+            button.classList.toggle('selected', button.dataset.channel === channel);
+        });
+        this.uiManager.updateResultsGraph(this.selectedPointIndex);
+        this.uiManager.graphRenderer.updateImpulseResponseGraph(this.selectedPointIndex, channel);
+        this.uiManager.correctionHandler.requestCorrectionUpdate();
     }
 
     /**
@@ -528,56 +644,7 @@ class MeasurementDisplay {
      * @param {Object} measurement - Measurement object to update
      */
     recalculateAverageResponse(measurement) {
-        const points = measurement.points || [];
-        const responses = points
-            .map(point => point.frequencyResponse)
-            .filter(response => Array.isArray(response) && response.length > 0);
-
-        if (responses.length === 0) {
-            measurement.averageFrequencyResponse = [];
-            delete measurement.maxSignalLevel;
-            return;
-        }
-
-        const referenceResponse = responses[0];
-        const averageResponse = [];
-
-        for (let i = 0; i < referenceResponse.length; i++) {
-            const freq = referenceResponse[i][0];
-            let sum = 0;
-            let count = 0;
-
-            for (let j = 0; j < responses.length; j++) {
-                if (i < responses[j].length) {
-                    if (responses[j][i][0] !== freq) {
-                        console.warn(`Frequency mismatch at index ${i}: expected ${freq}, found ${responses[j][i][0]}`);
-                    }
-                    sum += responses[j][i][1];
-                    count++;
-                }
-            }
-
-            if (count > 0) {
-                averageResponse.push([freq, sum / count]);
-            }
-        }
-
-        let maxSignalLevelSum = 0;
-        let maxSignalLevelCount = 0;
-
-        points.forEach(point => {
-            if (point.maxSignalLevel !== undefined) {
-                maxSignalLevelSum += point.maxSignalLevel;
-                maxSignalLevelCount++;
-            }
-        });
-
-        measurement.averageFrequencyResponse = averageResponse;
-        if (maxSignalLevelCount > 0) {
-            measurement.maxSignalLevel = maxSignalLevelSum / maxSignalLevelCount;
-        } else {
-            delete measurement.maxSignalLevel;
-        }
+        recalculateAverages(measurement);
     }
 
     /**
@@ -593,8 +660,7 @@ class MeasurementDisplay {
         // Snapshot the complete editable state so Discard can restore it as one unit.
         if (!measurement._editSnapshot) measurement._editSnapshot = structuredClone(measurement);
         if (!measurement._deletedPointIds) measurement._deletedPointIds = [];
-        const deletedPointId = measurement.points[index]?.pointId;
-        if (Number.isSafeInteger(deletedPointId)) measurement._deletedPointIds.push(deletedPointId);
+        measurement._deletedPointIds.push(...collectPointIrKeyIds(measurement.points[index]));
         const updatedPoints = [...measurement.points];
         updatedPoints.splice(index, 1);
         

@@ -3,11 +3,11 @@
   "parityReference": "production-native-promoted-v1",
   "tolerance": { "abs": 0.00002, "rel": 0.00002, "policy": "per-sample" },
   "fields": [
-    { "name": "bitpool", "key": "bp", "kind": "int", "min": 2, "max": 53, "default": 35 },
-    { "name": "channelMode", "key": "cm", "kind": "enum", "default": "Joint Stereo", "values": ["Joint Stereo", "Stereo", "Dual Channel"], "rejectInvalid": true },
-    { "name": "blocks", "key": "bl", "kind": "enum", "default": "16", "values": ["4", "8", "12", "16"], "rejectInvalid": true },
+    { "name": "bitpool", "key": "bp", "kind": "int", "min": 2, "max": 53, "step": 1, "default": 35, "automation": true },
+    { "name": "channelMode", "key": "cm", "kind": "enum", "step": 1, "default": "Joint Stereo", "values": ["Joint Stereo", "Stereo", "Dual Channel"], "rejectInvalid": true, "automation": true },
+    { "name": "blocks", "key": "bl", "kind": "enum", "step": 1, "default": "16", "values": ["4", "8", "12", "16"], "rejectInvalid": true, "automation": true },
     { "name": "outputGain", "key": "og", "kind": "float", "min": -24, "max": 12, "step": 0.1, "default": 0, "unit": "dB", "automation": true },
     { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "step": 1, "default": 100, "unit": "%", "automation": true },
-    { "name": "packetLoss", "key": "pl", "kind": "float", "min": 0, "max": 20, "default": 0, "unit": "%" }
+    { "name": "packetLoss", "key": "pl", "kind": "float", "min": 0, "max": 20, "step": 0.1, "default": 0, "unit": "%", "automation": true }
   ]
 }

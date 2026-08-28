@@ -1,4 +1,42 @@
+const FDN_REVERB_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({
+        id: 'tight-room', label: 'Tight Room',
+        params: Object.freeze({
+            rt: 0.45, dt: 8, pd: 5, bd: 14, ds: 4, hd: 7, lc: 120,
+            md: 2, mr: 0.5, df: 100, wm: 22, dm: 100, sw: 100
+        })
+    }),
+    Object.freeze({
+        id: 'warm-hall', label: 'Warm Hall',
+        params: Object.freeze({
+            rt: 2.6, dt: 8, pd: 35, bd: 42, ds: 16, hd: 5, lc: 80,
+            md: 3, mr: 0.3, df: 100, wm: 32, dm: 100, sw: 120
+        })
+    }),
+    Object.freeze({
+        id: 'bright-plate', label: 'Bright Plate',
+        params: Object.freeze({
+            rt: 1.6, dt: 8, pd: 10, bd: 12, ds: 2, hd: 1, lc: 250,
+            md: 6, mr: 1.2, df: 100, wm: 32, dm: 100, sw: 140
+        })
+    }),
+    Object.freeze({
+        id: 'vast-cavern', label: 'Vast Cavern',
+        params: Object.freeze({
+            rt: 10, dt: 8, pd: 60, bd: 58, ds: 24, hd: 3, lc: 60,
+            md: 5, mr: 0.2, df: 100, wm: 45, dm: 100, sw: 160
+        })
+    })
+]);
+
 class FDNReverbPlugin extends PluginBase {
+    static getSystemPresetGroups() {
+        return [{
+            label: '',
+            presets: FDN_REVERB_SYSTEM_PRESETS.map(preset => ({ ...preset }))
+        }];
+    }
+
     constructor() {
         super('FDN Reverb', 'Feedback Delay Network reverb with Hadamard matrix');
 
@@ -75,18 +113,11 @@ class FDNReverbPlugin extends PluginBase {
                 context.initialized = true;
             }
             
-            // --- Pre-delay buffer allocation on channel count or sample rate change ---
+            // The shared tank has one mono pre-delay, independent of channel count.
             if (!context.preDelayBuffer ||
-                context.preDelayBuffer.length !== channelCount ||
                 context.preDelaySampleRate !== sampleRate) {
                 const maxPreDelaySamples = Math.ceil(sampleRate * 0.1); // Max pre-delay is 100ms
-                context.preDelayBuffer = new Array(channelCount);
-                for (let ch = 0; ch < channelCount; ch++) {
-                    context.preDelayBuffer[ch] = {
-                        buffer: new Float32Array(maxPreDelaySamples).fill(0.0),
-                        pos: 0
-                    };
-                }
+                context.preDelayBuffer = { buffer: new Float32Array(maxPreDelaySamples), pos: 0 };
                 context.preDelaySampleRate = sampleRate;
                 context.preDelayCurrent = Math.min(maxPreDelaySamples - 1,
                     p_pd * sampleRate * 0.001);
@@ -96,7 +127,7 @@ class FDNReverbPlugin extends PluginBase {
             }
 
             // --- Per-block parameter calculations ---
-            const preDelayTarget = Math.min(context.preDelayBuffer[0].buffer.length - 1,
+            const preDelayTarget = Math.min(context.preDelayBuffer.buffer.length - 1,
                 p_pd * sampleRate * 0.001);
             if (preDelayTarget !== context.preDelayTarget) {
                 const frames = Math.max(1, Math.ceil(sampleRate * 0.005));
@@ -183,7 +214,9 @@ class FDNReverbPlugin extends PluginBase {
             const lpfStates = context.lpfStates;
             const hpfStates = context.hpfStates;
             const hadamardMatrix = context.hadamard;
-            const preDelayBuffers = context.preDelayBuffer;
+            const preDelayLine = context.preDelayBuffer;
+            const preDelayBuffer = preDelayLine.buffer;
+            const preDelayBufferLength = preDelayBuffer.length;
 
             // Allocate/resize FDN processing arrays in context if densityLines changed
             if (!context.fdnOutputs_block_cache || context.fdnOutputs_block_cache.length !== densityLines) {
@@ -193,12 +226,10 @@ class FDNReverbPlugin extends PluginBase {
             const fdnOutputs_currentSample = context.fdnOutputs_block_cache;
             const hadamardMixingOutput_currentSample = context.hadamardMixingOutput_block_cache;
 
-            // Preserve the original FDN behavior for every routed channel. Each
-            // channel advances the shared feedback tank once; channel 0 receives
-            // the left wet tap and channels 1+ receive the right wet tap.
+            // Advance the shared tank once per frame, then distribute its wet taps.
             // --- Main Sample Processing Loop (Hot Path) ---
             for (let i = 0; i < blockSize; i++) {
-                const elapsed = Math.min(i, context.preDelayRemaining);
+                const elapsed = i + 1 < context.preDelayRemaining ? i + 1 : context.preDelayRemaining;
                 const preDelaySamples = context.preDelayCurrent + context.preDelayStep * elapsed;
                 // Update LFO phases once per sample for all potential lines
                 for (let lineIdx = 0; lineIdx < 8; lineIdx++) {
@@ -208,129 +239,129 @@ class FDNReverbPlugin extends PluginBase {
                     }
                 }
 
+                let currentInputSample = 0;
                 for (let ch = 0; ch < channelCount; ch++) {
-                        const channelGlobalOffset = ch * blockSize + i;
-                        const currentInputSample = data[channelGlobalOffset];
+                    currentInputSample += data[ch * blockSize + i];
+                }
+                currentInputSample /= channelCount;
 
-                        // Pre-delay processing
-                        const preDelayLine = preDelayBuffers[ch];
-                        const preDelayBuffer = preDelayLine.buffer;
-                        const preDelayBufferLength = preDelayBuffer.length;
-                        let fdnTankInput;
+                // Pre-delay processing
+                let fdnTankInput;
 
-                        if (preDelaySamples > 0 && preDelayBufferLength > 0) {
-                            if (preDelaySamples < 1) {
-                                const previous = preDelayBuffer[
-                                    (preDelayLine.pos - 1 + preDelayBufferLength) % preDelayBufferLength];
-                                fdnTankInput = currentInputSample +
-                                    preDelaySamples * (previous - currentInputSample);
-                            } else {
-                                let read = preDelayLine.pos - preDelaySamples;
-                                while (read < 0) read += preDelayBufferLength;
-                                const first = Math.floor(read) % preDelayBufferLength;
-                                const second = first + 1 === preDelayBufferLength ? 0 : first + 1;
-                                const fraction = read - Math.floor(read);
-                                fdnTankInput = preDelayBuffer[first] +
-                                    fraction * (preDelayBuffer[second] - preDelayBuffer[first]);
-                            }
-                        } else {
-                            fdnTankInput = currentInputSample;
-                        }
-                        preDelayBuffer[preDelayLine.pos] = currentInputSample;
-                        preDelayLine.pos = (preDelayLine.pos + 1) % preDelayBufferLength;
+                if (preDelaySamples > 0 && preDelayBufferLength > 0) {
+                    if (preDelaySamples < 1) {
+                        const previous = preDelayBuffer[
+                            (preDelayLine.pos - 1 + preDelayBufferLength) % preDelayBufferLength];
+                        fdnTankInput = currentInputSample +
+                            preDelaySamples * (previous - currentInputSample);
+                    } else {
+                        let read = preDelayLine.pos - preDelaySamples;
+                        while (read < 0) read += preDelayBufferLength;
+                        const first = Math.floor(read) % preDelayBufferLength;
+                        const second = first + 1 === preDelayBufferLength ? 0 : first + 1;
+                        const fraction = read - Math.floor(read);
+                        fdnTankInput = preDelayBuffer[first] +
+                            fraction * (preDelayBuffer[second] - preDelayBuffer[first]);
+                    }
+                } else {
+                    fdnTankInput = currentInputSample;
+                }
+                preDelayBuffer[preDelayLine.pos] = currentInputSample;
+                preDelayLine.pos = (preDelayLine.pos + 1) % preDelayBufferLength;
 
-                        // FDN Read Stage: Read from delay lines with modulation
-                        for (let line = 0; line < densityLines; line++) {
-                            const delayLineBuffer = delayLines[line];
-                            const allocatedBufferLength = delayLineBuffer.length;
-                            const writePos = delayPositions[line];
+                // FDN Read Stage: Read from delay lines with modulation
+                for (let line = 0; line < densityLines; line++) {
+                    const delayLineBuffer = delayLines[line];
+                    const allocatedBufferLength = delayLineBuffer.length;
+                    const writePos = delayPositions[line];
 
-                            const lfoValue = Math.sin(lfoPhases[line] + lfoOffsets[line]);
-                            const modulatedDelay = unmodulatedDelayTimesSamples[line] * (1.0 + modDepthAsFraction * lfoValue);
+                    const lfoValue = Math.sin(lfoPhases[line] + lfoOffsets[line]);
+                    const modulatedDelay = unmodulatedDelayTimesSamples[line] * (1.0 + modDepthAsFraction * lfoValue);
 
-                            // Clamp delay time using ternary operators instead of Math.max/min
-                            const upperClampLimit = allocatedBufferLength - 1.00001;
-                            let clampedDelay = modulatedDelay < 0.0 ? 0.0 : modulatedDelay;
-                            clampedDelay = clampedDelay > upperClampLimit ? upperClampLimit : clampedDelay;
+                    // Clamp delay time using ternary operators instead of Math.max/min
+                    const upperClampLimit = allocatedBufferLength - 1.00001;
+                    let clampedDelay = modulatedDelay < 0.0 ? 0.0 : modulatedDelay;
+                    clampedDelay = clampedDelay > upperClampLimit ? upperClampLimit : clampedDelay;
 
-                            const readPosInt = clampedDelay | 0;
-                            const fraction = clampedDelay - readPosInt;
+                    const readPosInt = clampedDelay | 0;
+                    const fraction = clampedDelay - readPosInt;
 
-                            // Robust modulo for buffer wrap-around
-                            const idx0 = (writePos - 1 - readPosInt + allocatedBufferLength) % allocatedBufferLength;
-                            const idx1 = (writePos - 1 - (readPosInt + 1) + allocatedBufferLength) % allocatedBufferLength;
+                    // Robust modulo for buffer wrap-around
+                    const idx0 = (writePos - 1 - readPosInt + allocatedBufferLength) % allocatedBufferLength;
+                    const idx1 = (writePos - 1 - (readPosInt + 1) + allocatedBufferLength) % allocatedBufferLength;
 
-                            const sample0 = delayLineBuffer[idx0];
-                            const sample1 = delayLineBuffer[idx1];
-                            fdnOutputs_currentSample[line] = sample0 + (sample1 - sample0) * fraction; // Optimized lerp
-                        }
-
-                        // Hadamard Mixing Stage
-                        for (let row = 0; row < densityLines; row++) {
-                            let sum = 0.0;
-                            const hadamardRow = hadamardMatrix[row];
-                            for (let col = 0; col < densityLines; col++) {
-                                sum += hadamardRow[col] * fdnOutputs_currentSample[col];
-                            }
-                            hadamardMixingOutput_currentSample[row] = sum * invSqrtDensity;
-                        }
-
-                        // FDN Write Stage: Feedback, filtering, and writing to delay lines
-                        for (let line = 0; line < densityLines; line++) {
-                            const delayLineBuffer = delayLines[line];
-                            const allocatedBufferLength = delayLineBuffer.length;
-                            const writePos = delayPositions[line];
-
-                            // Apply diffusion and feedback
-                            const diffusedFeedback = hadamardMixingOutput_currentSample[line] * diffusionAmount;
-                            let signalToFilter = fdnTankInput + diffusedFeedback * feedbackGains[line];
-
-                            // HF Damp (LPF)
-                            if (lpfAlphaForHfDamp > 0.0) {
-                                lpfStates[line] = (1.0 - lpfAlphaForHfDamp) * signalToFilter + lpfAlphaForHfDamp * lpfStates[line];
-                                signalToFilter = lpfStates[line];
-                            }
-
-                            // Low Cut (HPF)
-                            if (apply_hpf) {
-                                const lpfComponentForHpf = (1.0 - hpfAlphaForLowCut) * signalToFilter + hpfAlphaForLowCut * hpfStates[line];
-                                signalToFilter = signalToFilter - lpfComponentForHpf;
-                                hpfStates[line] = lpfComponentForHpf;
-                            }
-
-                            delayLineBuffer[writePos] = signalToFilter;
-                            delayPositions[line] = (writePos + 1) % allocatedBufferLength; // Update position in cached array
-                        }
-
-                        // Output Tapping and Mixing
-                        let lTapSum = 0.0;
-                        let rTapSum = 0.0;
-                        for (let line = 0; line < densityLines; line++) {
-                            // Use bitwise AND for even/odd check, potentially faster
-                            if ((line & 1) === 0) {
-                                lTapSum += fdnOutputs_currentSample[line];
-                            } else {
-                                rTapSum += fdnOutputs_currentSample[line];
-                            }
-                        }
-
-                        const lTapWet = lTapSum * invSqrtLTapCount;
-                        const rTapWet = rTapSum * invSqrtRTapCount;
-                        const monoMixComponent = (lTapWet + rTapWet) * 0.5;
-                        let wetSignalForThisChannel;
-                        if (channelCount === 1) {
-                            wetSignalForThisChannel = monoMixComponent;
-                        } else {
-                            const temp_m_s_factor = stereoWidthParam * 0.5;
-                            const mixToStereoFactor = temp_m_s_factor < 0.0 ? 0.0 : (temp_m_s_factor > 1.0 ? 1.0 : temp_m_s_factor);
-                            wetSignalForThisChannel = ch === 0
-                                ? monoMixComponent * (1.0 - mixToStereoFactor) + lTapWet * mixToStereoFactor
-                                : monoMixComponent * (1.0 - mixToStereoFactor) + rTapWet * mixToStereoFactor;
-                        }
-
-                        data[channelGlobalOffset] = currentInputSample * dryMix + wetSignalForThisChannel * wetMix;
+                    const sample0 = delayLineBuffer[idx0];
+                    const sample1 = delayLineBuffer[idx1];
+                    fdnOutputs_currentSample[line] = sample0 + (sample1 - sample0) * fraction; // Optimized lerp
                 }
 
+                // Hadamard Mixing Stage
+                for (let row = 0; row < densityLines; row++) {
+                    let sum = 0.0;
+                    const hadamardRow = hadamardMatrix[row];
+                    for (let col = 0; col < densityLines; col++) {
+                        sum += hadamardRow[col] * fdnOutputs_currentSample[col];
+                    }
+                    hadamardMixingOutput_currentSample[row] = sum * invSqrtDensity;
+                }
+
+                // FDN Write Stage: Feedback, filtering, and writing to delay lines
+                for (let line = 0; line < densityLines; line++) {
+                    const delayLineBuffer = delayLines[line];
+                    const allocatedBufferLength = delayLineBuffer.length;
+                    const writePos = delayPositions[line];
+
+                    // Apply diffusion and feedback
+                    const diffusedFeedback = hadamardMixingOutput_currentSample[line] * diffusionAmount;
+                    let signalToFilter = fdnTankInput + diffusedFeedback * feedbackGains[line];
+
+                    // HF Damp (LPF)
+                    if (lpfAlphaForHfDamp > 0.0) {
+                        lpfStates[line] = (1.0 - lpfAlphaForHfDamp) * signalToFilter + lpfAlphaForHfDamp * lpfStates[line];
+                        signalToFilter = lpfStates[line];
+                    }
+
+                    // Low Cut (HPF)
+                    if (apply_hpf) {
+                        const lpfComponentForHpf = (1.0 - hpfAlphaForLowCut) * signalToFilter + hpfAlphaForLowCut * hpfStates[line];
+                        signalToFilter = signalToFilter - lpfComponentForHpf;
+                        hpfStates[line] = lpfComponentForHpf;
+                    }
+
+                    delayLineBuffer[writePos] = signalToFilter;
+                    delayPositions[line] = (writePos + 1) % allocatedBufferLength; // Update position in cached array
+                }
+
+                // Output Tapping and Mixing
+                let lTapSum = 0.0;
+                let rTapSum = 0.0;
+                for (let line = 0; line < densityLines; line++) {
+                    // Use bitwise AND for even/odd check, potentially faster
+                    if ((line & 1) === 0) {
+                        lTapSum += fdnOutputs_currentSample[line];
+                    } else {
+                        rTapSum += fdnOutputs_currentSample[line];
+                    }
+                }
+
+                const lTapWet = lTapSum * invSqrtLTapCount;
+                const rTapWet = rTapSum * invSqrtRTapCount;
+                const monoMixComponent = (lTapWet + rTapWet) * 0.5;
+                for (let ch = 0; ch < channelCount; ch++) {
+                    const channelGlobalOffset = ch * blockSize + i;
+                    let wetSignalForThisChannel;
+                    if (channelCount === 1) {
+                        wetSignalForThisChannel = monoMixComponent;
+                    } else {
+                        const temp_m_s_factor = stereoWidthParam * 0.5;
+                        const mixToStereoFactor = temp_m_s_factor < 0.0 ? 0.0 : (temp_m_s_factor > 1.0 ? 1.0 : temp_m_s_factor);
+                        wetSignalForThisChannel = ch === 0
+                            ? monoMixComponent * (1.0 - mixToStereoFactor) + lTapWet * mixToStereoFactor
+                            : monoMixComponent * (1.0 - mixToStereoFactor) + rTapWet * mixToStereoFactor;
+                    }
+
+                    data[channelGlobalOffset] = data[channelGlobalOffset] * dryMix + wetSignalForThisChannel * wetMix;
+                }
             }
             if (blockSize >= context.preDelayRemaining) {
                 context.preDelayCurrent = context.preDelayTarget;

@@ -41,7 +41,7 @@ public:
     const double speaker_drive = static_cast<double>(params_.speakerDrive);
     const double stiffness = static_cast<double>(params_.speakerStiffness);
     const double damping = static_cast<double>(params_.speakerDamping);
-    const double inverse_mass = 1.0 / static_cast<double>(params_.speakerMass);
+    const double mass = static_cast<double>(params_.speakerMass);
     prepareControlRamps();
     const bool controls_ramping = distortion_drive_.active() || distortion_bias_.active() ||
                                   distortion_mix_.active() || cone_mix_.active() ||
@@ -53,6 +53,13 @@ public:
     const double stable_output_gain = std::pow(10.0, output_gain_.current * 0.05);
     const double stable_bias_term = std::tanh(stable_distortion_drive * stable_bias);
     const double time_step = 48000.0 / sample_rate_;
+    // Trapezoidal integration keeps the damped cone stable at every sample rate.
+    const double half_step = 0.5 * time_step;
+    const double stiffness_step = time_step * stiffness;
+    const double damping_half = half_step * damping;
+    const double stiffness_quarter = half_step * half_step * stiffness;
+    const double inverse_denominator = 1.0 / (mass + damping_half + stiffness_quarter);
+    const double velocity_coefficient = mass - damping_half - stiffness_quarter;
 
     for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
       const std::uint32_t offset = channel * frame_count;
@@ -71,21 +78,10 @@ public:
         const double bias_term =
             controls_ramping ? std::tanh(distortion_drive * bias) : stable_bias_term;
         const double input = static_cast<double>(audio[offset + frame]);
-        const double force = speaker_drive * input - stiffness * position - damping * velocity;
-        const double acceleration = force * inverse_mass;
-
-        const double velocity_magnitude = velocity >= 0.0 ? velocity : -velocity;
-        const double scaled_velocity = velocity_magnitude * 10.0;
-        const double maximum_acceleration = scaled_velocity > 1000.0 ? scaled_velocity : 1000.0;
-        double clamped_acceleration = acceleration;
-        if (clamped_acceleration < -maximum_acceleration) {
-          clamped_acceleration = -maximum_acceleration;
-        } else if (clamped_acceleration > maximum_acceleration) {
-          clamped_acceleration = maximum_acceleration;
-        }
-
-        double new_velocity = velocity + clamped_acceleration * time_step;
-        double new_position = position + new_velocity * time_step;
+        double new_velocity = (velocity_coefficient * velocity - stiffness_step * position +
+                               time_step * speaker_drive * input) *
+                              inverse_denominator;
+        double new_position = position + half_step * (velocity + new_velocity);
         const double input_magnitude = input >= 0.0 ? input : -input;
         const double scaled_position = input_magnitude * 2.0;
         const double maximum_position = scaled_position > 10.0 ? scaled_position : 10.0;

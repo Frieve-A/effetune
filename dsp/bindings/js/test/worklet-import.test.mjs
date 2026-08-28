@@ -1,6 +1,64 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+test('multiband worklet parameters retain ordered crossovers after partial updates', async () => {
+  const priorNode = globalThis.AudioWorkletNode;
+  globalThis.AudioWorkletNode = class {
+    constructor() {
+      this.port = {
+        messages: [],
+        postMessage: message => {
+          this.port.messages.push(message);
+          if (message.type === 'initialize') {
+            queueMicrotask(() => this.port.onmessage?.({ data: { type: 'ready', latencySamples: 0 } }));
+          } else if (message.commandId) {
+            queueMicrotask(() => this.port.onmessage?.({ data: {
+              type: 'commandResult', commandId: message.commandId, ok: true
+            } }));
+          }
+        },
+        start() {}
+      };
+    }
+    disconnect() {}
+  };
+  try {
+    const { EffeTuneNode } = await import(`../dist/worklet.js?multiband=${Date.now()}`);
+    const { createEffect } = await import('../dist/generated-effects.js');
+    const context = { sampleRate: 48000, audioWorklet: { async addModule() {} } };
+    for (const type of ['MultibandCompressor', 'MultibandExpander', 'MultibandBalance',
+      'MultibandTransient', 'MultibandSaturation']) {
+      const fiveBand = ['MultibandCompressor', 'MultibandExpander', 'MultibandBalance'].includes(type);
+      const high = fiveBand ? 400 : 1000;
+      const low = fiveBand ? 100 : 200;
+      const node = await EffeTuneNode.create(context, [createEffect(type, {
+        id: 'mb', frequency1: high, frequency2: low,
+        ...(fiveBand ? { frequency3: 1500, frequency4: 1000 } : {})
+      })], { variant: 'baseline' });
+      try {
+        const initialized = node.port.messages[0].document.chain[0].parameters;
+        assert.equal(initialized.frequency2, high, `${type} initial crossover`);
+        if (fiveBand) assert.equal(initialized.frequency4, 1500);
+        await node.setParam('mb', 'frequency2', fiveBand ? 1200 : 4000);
+        await node.setParam('mb', 'frequency2', low);
+        assert.equal(node.port.messages.at(-1).values[1], high, `${type} crossing`);
+        await node.setParam('mb', 'frequency1', 20);
+        assert.equal(node.port.messages.at(-1).values[1], high, `${type} retained packed value`);
+        assert.equal(node._document.chain[0].parameters.frequency2, high);
+        await node.setParam('mb', 'frequency2', fiveBand ? 800 : 3000);
+        assert.equal(node.port.messages.at(-1).values[1], fiveBand ? 800 : 3000);
+        await node.reset();
+        assert.equal(node._document.chain[0].parameters.frequency2, high);
+      } finally {
+        node.close();
+      }
+    }
+  } finally {
+    if (priorNode === undefined) delete globalThis.AudioWorkletNode;
+    else globalThis.AudioWorkletNode = priorNode;
+  }
+});
+
 test('worklet entry imports without browser globals and exposes the wrapper', async () => {
   const module = await import('../dist/worklet.js');
   assert.equal(typeof module.EffeTuneNode.create, 'function');

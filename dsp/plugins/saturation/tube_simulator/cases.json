@@ -33,6 +33,27 @@
       "frames": 1024
     },
     {
+      "id": "line-feedback-initial-silence",
+      "stimulus": "silence",
+      "frames": 128,
+      "params": {
+        "dr": -24.2637,
+        "tp": "12AX7",
+        "bi": 0,
+        "pv": 250,
+        "sz": 10,
+        "su": 10,
+        "og": 8.508,
+        "mx": 100,
+        "iv": 2.828,
+        "nf": 30,
+        "os": "Line",
+        "rl": 8,
+        "sg": 0,
+        "ag": true
+      }
+    },
+    {
       "id": "default-impulse",
       "stimulus": "imp",
       "frames": 1152

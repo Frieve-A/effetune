@@ -13,7 +13,7 @@ Creates algorithmic reverberation with configurable room and decay behavior.
 
 ## Contract
 
-- Seeded: **yes**
+- Seeded: **no**
 - Catalog sample rates: **not declared; this does not mean unsupported**
 - Assets: **none**
 - Catalog-declared latency: **zero**
@@ -51,8 +51,17 @@ RS Reverb adds adjustable reflections and decay, making a dry recording sound as
   - Start with Room Size 25-40m, Reverb Time 3-6s, and Mix 40-60%
   - Raise Damping or lower High Damp if the tail is too bright
 
+### System Presets
+
+Click **Effect Presets** in the effect header to apply a complete room or hall setting.
+
+- **Small Room** - A short, close room ambience with 5 ms pre-delay and tighter bass decay.
+- **Jazz Club** - A moderate room with 15 ms pre-delay for intimate acoustic material.
+- **Concert Hall** - A larger, deeper space with 25 ms pre-delay and fuller bass decay.
+- **Cathedral** - A long, dark space with 40 ms pre-delay and the fullest bass decay.
+
 ### Parameters
-- **Pre-Delay** (0 to 50 ms) - Changing this control does not currently change the sound. Use Room Size, Reverb Time, and Mix to adjust the sense of space.
+- **Pre-Delay** (0 to 50 ms) - Delays the wet reflections before they enter the room model. Higher values keep the dry attack distinct for longer; they do not remove the room model's own delay.
 - **Room Size** - Sets how large the space feels (2.0 to 50.0 m)
   - Small (2-5m): Cozy room feeling
   - Medium (5-15m): Live room atmosphere

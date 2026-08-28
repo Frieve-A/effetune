@@ -86,6 +86,32 @@ export function validateParameterValue(effectType, definition, value) {
   return Array.isArray(value) ? Object.freeze([...value]) : value;
 }
 
+export function canonicalizeProcessingParameters(effectType, parameters) {
+  const canonical = { ...parameters };
+  if (effectType === 'AutoFilter' &&
+      canonical.minimumFrequency > canonical.maximumFrequency) {
+    [canonical.minimumFrequency, canonical.maximumFrequency] =
+      [canonical.maximumFrequency, canonical.minimumFrequency];
+  } else if (effectType === 'Chorus' && canonical.depth > canonical.delay) {
+    canonical.depth = canonical.delay;
+  } else if (effectType === 'FrequencyShifter' &&
+      canonical.minimumShift > canonical.maximumShift) {
+    [canonical.minimumShift, canonical.maximumShift] =
+      [canonical.maximumShift, canonical.minimumShift];
+  } else if (effectType === 'MultibandCompressor' || effectType === 'MultibandExpander' ||
+      effectType === 'MultibandBalance' || effectType === 'MultibandTransient' ||
+      effectType === 'MultibandSaturation') {
+    const count = effectType === 'MultibandTransient' || effectType === 'MultibandSaturation'
+      ? 2 : 4;
+    for (let index = 2; index <= count; index++) {
+      const key = `frequency${index}`;
+      const previous = canonical[`frequency${index - 1}`];
+      if (canonical[key] < previous) canonical[key] = previous;
+    }
+  }
+  return canonical;
+}
+
 function normalizeBaseAssets(effectType, assets) {
   const assetNames = ASSET_NAMES_BY_EFFECT.get(effectType);
   if (!assetNames) {

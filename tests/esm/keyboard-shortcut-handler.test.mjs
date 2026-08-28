@@ -40,12 +40,6 @@ function createEvent(options = {}) {
 
 function createContext(options = {}) {
   const calls = [];
-  const presetSelect = {
-    ...createTarget('input'),
-    value: options.presetValue ?? ' Preset Name ',
-    focus: () => calls.push(['focus']),
-    select: () => calls.push(['select'])
-  };
   const pipeline = [{ id: 'a' }, { id: 'b' }];
   const selectedPlugins = new Set([{ id: 'old' }]);
   const selectedItems = [
@@ -55,15 +49,13 @@ function createContext(options = {}) {
 
   const context = {
     calls,
-    presetSelect,
     historyManager: {
       undo: () => calls.push(['undo']),
       redo: () => calls.push(['redo'])
     },
     pipelineManager: {
       presetManager: {
-        presetSelect,
-        savePreset: name => calls.push(['savePreset', name])
+        openPresetDialog: dialogOptions => calls.push(['openPresetDialog', dialogOptions])
       },
       audioManager: { pipeline }
     },
@@ -141,37 +133,19 @@ test('Ctrl+Shift+Z is not consumed by undo handling', () => {
   assert.deepEqual(context.calls, []);
 });
 
-test('Ctrl+S focuses preset input and saves trimmed names', () => {
-  const context = createContext({ presetValue: '  Reference Preset  ' });
+test('Ctrl+S opens the preset dialog with the save name focused', () => {
+  const context = createContext();
   const event = createEvent({ key: 's', ctrlKey: true, target: createTarget('textarea') });
 
   assert.equal(callShortcut(event, context), true);
-  assert.deepEqual(context.calls, [
-    ['focus'],
-    ['select'],
-    ['savePreset', 'Reference Preset']
-  ]);
+  assert.deepEqual(context.calls, [['openPresetDialog', { focusSaveName: true }]]);
 });
 
-test('Ctrl+Shift+S and blank preset names focus without saving', () => {
-  const shiftContext = createContext({ presetValue: 'Named' });
+test('Ctrl+Shift+S uses the same preset dialog workflow', () => {
+  const shiftContext = createContext();
   const shiftEvent = createEvent({ key: 's', ctrlKey: true, shiftKey: true });
   assert.equal(callShortcut(shiftEvent, shiftContext), true);
-  assert.deepEqual(shiftContext.calls, [['focus'], ['select']]);
-
-  const blankContext = createContext({ presetValue: '   ' });
-  const blankEvent = createEvent({ key: 's', ctrlKey: true });
-  assert.equal(callShortcut(blankEvent, blankContext), true);
-  assert.deepEqual(blankContext.calls, [['focus'], ['select']]);
-});
-
-test('Escape clears preset text when the preset input is the event target', () => {
-  const context = createContext({ presetValue: 'to clear' });
-  const event = createEvent({ key: 'Escape', target: context.presetSelect });
-
-  assert.equal(callShortcut(event, context), true);
-  assert.equal(context.presetSelect.value, '');
-  assert.deepEqual(context.calls, []);
+  assert.deepEqual(shiftContext.calls, [['openPresetDialog', { focusSaveName: true }]]);
 });
 
 test('non-save shortcuts are ignored while typing in text inputs', () => {
@@ -211,16 +185,6 @@ test('Ctrl+X cuts and Meta+C copies selected plugins', () => {
   const copyEvent = createEvent({ key: 'c', metaKey: true });
   assert.equal(callShortcut(copyEvent, copyContext), true);
   assert.deepEqual(copyContext.calls, [['copySelectedPluginsToClipboard']]);
-});
-
-test('Escape clears active preset text before clearing pipeline selection', () => {
-  const context = createContext({ presetValue: 'active preset' });
-  context.documentRef.activeElement = context.presetSelect;
-  const event = createEvent({ key: 'Escape' });
-
-  assert.equal(callShortcut(event, context), true);
-  assert.equal(context.presetSelect.value, '');
-  assert.deepEqual(context.calls, []);
 });
 
 test('Escape clears selected plugins and selected item classes', () => {

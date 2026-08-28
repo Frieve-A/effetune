@@ -1,3 +1,12 @@
+const FREQUENCY_SHIFTER_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({ id: 'shift-up', label: 'Shift Up', params: Object.freeze({ md: 'Shift', sh: 8, cf: 440, mn: 20, mx: 800, rt: 0.15, dr: 'Up', sp: 0, mix: 100 }) }),
+    Object.freeze({ id: 'shift-down', label: 'Shift Down', params: Object.freeze({ md: 'Shift', sh: -8, cf: 440, mn: 20, mx: 800, rt: 0.15, dr: 'Down', sp: 0, mix: 100 }) }),
+    Object.freeze({ id: 'fine-detune', label: 'Fine Detune', params: Object.freeze({ md: 'Shift', sh: 2, cf: 440, mn: 20, mx: 800, rt: 0.15, dr: 'Up', sp: 90, mix: 55 }) }),
+    Object.freeze({ id: 'ring-modulator', label: 'Ring Modulator', params: Object.freeze({ md: 'Ring Mod', sh: 8, cf: 440, mn: 20, mx: 800, rt: 0.15, dr: 'Up', sp: 0, mix: 100 }) }),
+    Object.freeze({ id: 'barber-pole-up', label: 'Barber-pole Up', params: Object.freeze({ md: 'Barber-pole', sh: 8, cf: 440, mn: 20, mx: 900, rt: 0.12, dr: 'Up', sp: 90, mix: 85 }) }),
+    Object.freeze({ id: 'barber-pole-down', label: 'Barber-pole Down', params: Object.freeze({ md: 'Barber-pole', sh: -8, cf: 440, mn: 20, mx: 900, rt: 0.12, dr: 'Down', sp: 90, mix: 85 }) })
+]);
+
 class FrequencyShifterPlugin extends PluginBase {
     static searchAliases = Object.freeze([
         'Ring Modulator', 'Ring Mod', 'Barber-pole Frequency Shifter',
@@ -9,14 +18,9 @@ class FrequencyShifterPlugin extends PluginBase {
         })
     });
 
-    static factoryStyles = Object.freeze({
-        'Shift Up': Object.freeze({ md: 'Shift', sh: 8, cf: 440, mn: 20, mx: 800, rt: 0.15, dr: 'Up', sp: 0, mix: 100 }),
-        'Shift Down': Object.freeze({ md: 'Shift', sh: -8, cf: 440, mn: 20, mx: 800, rt: 0.15, dr: 'Down', sp: 0, mix: 100 }),
-        'Fine Detune': Object.freeze({ md: 'Shift', sh: 2, cf: 440, mn: 20, mx: 800, rt: 0.15, dr: 'Up', sp: 90, mix: 55 }),
-        'Ring Modulator': Object.freeze({ md: 'Ring Mod', sh: 8, cf: 440, mn: 20, mx: 800, rt: 0.15, dr: 'Up', sp: 0, mix: 100 }),
-        'Barber-pole Up': Object.freeze({ md: 'Barber-pole', sh: 8, cf: 440, mn: 20, mx: 900, rt: 0.12, dr: 'Up', sp: 90, mix: 85 }),
-        'Barber-pole Down': Object.freeze({ md: 'Barber-pole', sh: -8, cf: 440, mn: 20, mx: 900, rt: 0.12, dr: 'Down', sp: 90, mix: 85 })
-    });
+    static getSystemPresetGroups() {
+        return [{ label: '', presets: FREQUENCY_SHIFTER_SYSTEM_PRESETS.map(preset => ({ ...preset })) }];
+    }
 
     constructor() {
         super('Frequency Shifter', 'Frequency translation, ring modulation, and continuous barber-pole motion');
@@ -30,8 +34,6 @@ class FrequencyShifterPlugin extends PluginBase {
         this.dr = 'Up';
         this.sp = 0;
         this.mix = 100;
-        this.style = 'Shift Up';
-        this._applyingStyle = false;
         this._uiControls = null;
         this._modeRows = null;
 
@@ -337,9 +339,6 @@ class FrequencyShifterPlugin extends PluginBase {
         const container = document.createElement('div');
         container.className = 'frequency-shifter-plugin-ui plugin-parameter-ui';
         this._uiControls = {};
-        this._uiControls.style = this.createSelectControl(
-            'Style', ['Custom', ...Object.keys(FrequencyShifterPlugin.factoryStyles)],
-            this.style, this.setStyle.bind(this), 'style');
         this._uiControls.md = this.createSelectControl(
             'Mode', ['Shift', 'Ring Mod', 'Barber-pole'], this.md, this.setMd.bind(this), 'md');
         this._uiControls.sh = this.createParameterControl('Shift', -5000, 5000, 0.1, this.sh, this.setSh.bind(this), 'Hz', 'sh');
@@ -352,7 +351,7 @@ class FrequencyShifterPlugin extends PluginBase {
         this._uiControls.dr = this.createSelectControl('Direction', ['Up', 'Down'], this.dr, this.setDr.bind(this), 'dr');
         this._uiControls.sp = this.createParameterControl('Stereo Phase', 0, 180, 1, this.sp, this.setSp.bind(this), 'degrees', 'sp');
         this._uiControls.mix = this.createParameterControl('Mix', 0, 100, 1, this.mix, this.setMix.bind(this), '%', 'mix');
-        for (const key of ['style', 'md', 'sh', 'cf', 'mn', 'mx', 'rt', 'dr', 'sp', 'mix']) {
+        for (const key of ['md', 'sh', 'cf', 'mn', 'mx', 'rt', 'dr', 'sp', 'mix']) {
             container.appendChild(this._uiControls[key]);
         }
         this._modeRows = {
@@ -418,7 +417,6 @@ class FrequencyShifterPlugin extends PluginBase {
 
     _syncUI() {
         if (!this._uiControls) return;
-        this._syncControl(this._uiControls.style, this.style);
         for (const key of ['md', 'sh', 'cf', 'mn', 'mx', 'rt', 'dr', 'sp', 'mix']) {
             this._syncControl(this._uiControls[key], this[key]);
         }
@@ -443,10 +441,6 @@ class FrequencyShifterPlugin extends PluginBase {
         const nextDirection = directions.includes(params.dr) ? params.dr : this.dr;
         const nextStereoPhase = this.parseFiniteNumber(params.sp, 0, 180, this.sp);
         const nextMix = this.parseFiniteNumber(params.mix, 0, 100, this.mix);
-        const controlledChange = nextMode !== this.md || nextShift !== this.sh ||
-            nextCarrier !== this.cf || nextMinimum !== this.mn || nextMaximum !== this.mx ||
-            nextRate !== this.rt || nextDirection !== this.dr || nextStereoPhase !== this.sp ||
-            nextMix !== this.mix;
         this.md = nextMode;
         this.sh = nextShift;
         this.cf = nextCarrier;
@@ -456,20 +450,9 @@ class FrequencyShifterPlugin extends PluginBase {
         this.dr = nextDirection;
         this.sp = nextStereoPhase;
         this.mix = nextMix;
-        if (controlledChange && !this._applyingStyle) this.style = 'Custom';
         this._syncUI();
         this._updateModeRows();
         this.updateParameters();
-    }
-
-    setStyle(style) {
-        const preset = FrequencyShifterPlugin.factoryStyles[style];
-        if (!preset) return;
-        this._applyingStyle = true;
-        this.setParameters(preset);
-        this._applyingStyle = false;
-        this.style = style;
-        this._syncUI();
     }
 
     setMd(value) { this.setParameters({ md: value }); }

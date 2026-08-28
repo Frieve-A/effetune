@@ -25,14 +25,19 @@
   "label:audioOutput": "Audio Output Device:", // Label for audio output device selection
   "help:audioOutput": "Select the audio device that outputs the measurement signal.", // Help text for audio output
   "label:outputChannel": "Output Channel:", // Label for output channel selection
-  "help:outputChannel": "Specify the channel (left/right speaker or headphones, etc.) to measure.", // Help text for output channel
+  "help:outputChannel": "Select one or more output channels to measure. Selecting All Channels clears the individual channel selections.", // Help text for output channel
   "help:audioInput": "Specify the audio input device to which the measurement microphone is connected.", // Help text for audio input
   "label:sampleRate": "Sampling Frequency:", // Label for sample rate selection
   "help:sampleRate": "Specify the sampling frequency when taking measurements.", // Help text for sample rate
   "label:sweepLength": "Sweep Length (samples):", // Label for sweep length selection
   "help:sweepLength": "Specifies the length of the measurement signal in samples.", // Help text for sweep length
-  "label:sweepBandLimited": "Limit Sweep Bandwidth",
-  "help:sweepBandLimited": "When enabled, the TSP and test signal are limited to the frequency range below. When disabled, the TSP is played across the full available bandwidth.",
+  "title:advancedSettings": "Advanced Settings",
+  "label:sweepBandMode": "Sweep Bandwidth:",
+  "option:sweepBandOff": "Off",
+  "option:sweepBandCommon": "Same for All Channels",
+  "option:sweepBandPerChannel": "Per Channel",
+  "label:sweepBandChannel": "Channel to Configure:",
+  "help:sweepBandMode": "Choose whether to limit the sweep and test signal bandwidth. Per Channel lets you set a separate frequency range for each selected output channel.",
   "label:sweepMinFreq": "Sweep Minimum Frequency (Hz):", // Label for sweep minimum frequency
   "help:sweepMinFreq": "The minimum frequency of the sweep signal in Hz. Set from 1 Hz up to just below the Nyquist frequency of the selected sampling rate. The test signal is also band-limited to this range. (Default: 20 Hz)", // Help text for sweep min frequency
   "label:sweepMaxFreq": "Sweep Maximum Frequency (Hz):", // Label for sweep maximum frequency
@@ -130,6 +135,8 @@
   "error:measurementConfigUnavailable": "The measurement settings are no longer available. Start a new measurement.",
   "error:measurementFailed": "The measurement could not be completed. Check the audio devices and try this point again.",
   "error:measurementImportFailed": "The measurement file is not valid. Choose a measurement JSON file exported by EffeTune.",
+  "error:impulseResponseImportFailed": "The WAV file could not be imported. Choose a valid impulse-response WAV file with 1 to 8 channels.",
+  "error:impulseResponseImportTooLarge": "The impulse-response WAV file is too large. Select a shorter or smaller impulse response.",
   "error:clipboardWriteFailed": "The PEQ settings could not be copied. Check clipboard access and try again.",
   "error:correctionUpdateFailed": "The correction could not be updated. Check the settings and try again.",
   "error:measurementDisplayFailed": "The measurement display could not be updated. Try selecting the measurement again.",
@@ -186,5 +193,23 @@
   "option:averaging8": "8", // Option for 8 averaging
   "option:averaging10": "10", // Option for 10 averaging
   "option:averaging12": "12", // Option for 12 averaging
-  "option:averaging16": "16" // Option for 16 averaging
+  "option:averaging16": "16", // Option for 16 averaging
+  "status:measuringChannel": "Measuring {channel} ({current}/{total})",
+  "label:channelFilter": "Channel:",
+  "option:allChannelsAverage": "All (Average)",
+  "option:multiChannel": "Multiple Channels",
+  "message:irSavedChannels": "IR saved for {count} channels ✓",
+  "warning:signalTooLowChannels": "The measurement signal was too low on {channels}",
+  "warning:signalTooHighChannels": "The measurement signal was too high on {channels}",
+  "label:noiseChannel": "Test Signal Channel:",
+  "label:noiseChannelMode": "Channel Mode:",
+  "option:noiseModeManual": "Manual",
+  "option:noiseModeAuto": "Automatic Rotation",
+  "button:copyChannelPEQ": "Copy Channel PEQ Settings",
+  "message:channelPeqCopied": "Channel PEQ settings copied to the clipboard.",
+  "button:redoChannel": "Redo Channel",
+  "label:redoChannel": "Channel:",
+  "label:calibrationAssignMode": "Calibration Assignment:",
+  "option:calibrationCommon": "Common",
+  "option:calibrationPerChannel": "Per Channel"
 }

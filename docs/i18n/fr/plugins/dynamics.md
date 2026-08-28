@@ -870,6 +870,14 @@ Chaque bande de fréquence a des contrôles indépendants de mise en forme des t
 
 Simule le comportement d'affaissement de tension des amplificateurs de puissance sous des conditions de charge élevée. Cet effet crée une compression dynamique de type amplificateur en abaissant doucement le niveau lors des passages exigeants, puis en récupérant lorsque le passage se relâche.
 
+### Préréglages système
+
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour partir d’un réglage complet du comportement de l’alimentation.
+
+- **Vintage Tube Sag** - Une forte chute de tension de l’alimentation, suivie d’un rétablissement lent.
+- **Modern Monoblocks** - Une réponse stable avec des alimentations indépendantes.
+- **Pushed Combo** - Une chute marquée de la tension de l’alimentation partagée, suivie de son rétablissement.
+
 ### Guide d'Amélioration de l'Écoute
 - Systèmes Audio Vintage :
   - Recrée le caractère d'amplificateur classique avec compression naturelle

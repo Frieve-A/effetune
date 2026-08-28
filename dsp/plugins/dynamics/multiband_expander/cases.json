@@ -42,9 +42,14 @@
       "id": "crossover-transitions-preserve-envelope",
       "stimulus": "noise",
       "frames": 1237,
+      "params": { "f1": 400, "f2": 100, "f3": 3200, "f4": 1000 },
       "events": [
         { "frame": 31, "params": { "f1": 180 } },
+        { "frame": 63, "params": { "f2": 100 } },
+        { "frame": 95, "params": { "f1": 20 } },
         { "frame": 128, "params": { "f2": 900, "f3": 3200 } },
+        { "frame": 256, "params": { "f3": 500 } },
+        { "frame": 384, "params": { "f2": 100 } },
         { "frame": 513, "params": { "f1": 80, "f2": 600, "f3": 2400, "f4": 9000 } },
         { "frame": 1001, "params": { "f4": 12000 } }
       ]

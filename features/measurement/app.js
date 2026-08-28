@@ -14,11 +14,201 @@ import { startRendererWatchdogHeartbeat } from '../../js/electron-watchdog.js';
 import { copyTextToClipboard } from '../../js/utils/clipboard-utils.js';
 import { installRangePrecisionControl } from '../../js/ui/range-precision-controller.js';
 import { copyPEQClipboardPayload } from './ui/peq-clipboard.js';
+import {
+    channelDisplayLabel,
+    INDIVIDUAL_CHANNELS,
+    normalizeOutputChannelSelection,
+    resolveCheckboxToggle
+} from './audio-utils/channel-selection.js';
 
 let isAudioInitialized = false;
 let audioInitializationPromise = null;
 let configSubmissionPromise = null;
 let backFromSweepTransitionPromise = null;
+const sweepBandChannelValues = new Map();
+
+function getSweepBandEditorChannels(selection = getOutputChannelSelection()) {
+    return selection.includes('all') ? INDIVIDUAL_CHANNELS : selection;
+}
+
+function getOutputChannelSelection() {
+    return normalizeOutputChannelSelection(
+        [...document.querySelectorAll('#outputChannel input:checked')].map(input => input.value)
+    );
+}
+
+function applyOutputChannelSelection(selection) {
+    const selected = new Set(normalizeOutputChannelSelection(selection));
+    document.querySelectorAll('#outputChannel input[type="checkbox"]').forEach(input => {
+        input.checked = selected.has(input.value);
+    });
+    syncMultichannelControls([...selected]);
+}
+
+function syncMultichannelControls(selection = getOutputChannelSelection()) {
+    const multi = selection.length > 1;
+    const calibrationControls = document.getElementById('calibrationAssignmentControls');
+    if (calibrationControls) calibrationControls.hidden = !multi;
+    const noiseControls = document.getElementById('noiseChannelControls');
+    if (noiseControls) noiseControls.hidden = !multi;
+    for (const id of ['redoChannelSelect']) {
+        const select = document.getElementById(id);
+        if (!select) continue;
+        const current = select.value;
+        select.replaceChildren(...selection.map(channel => {
+            const option = document.createElement('option');
+            option.value = channel;
+            option.textContent = channelDisplayLabel(channel);
+            return option;
+        }));
+        select.value = selection.includes(current) ? current : selection[0];
+    }
+    syncNoiseChannelChoices(selection, multi);
+    syncSweepBandChannelChoices(selection);
+    rebuildPerChannelCalibrationRows(selection);
+}
+
+function syncNoiseChannelChoices(selection) {
+    const container = document.getElementById('noiseChannel');
+    if (!container) return;
+    const current = container.querySelector('input:checked')?.value;
+    const selectedChannel = selection.includes(current) ? current : selection[0];
+    container.replaceChildren(...selection.map(channel => {
+        const label = document.createElement('label');
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.name = 'noiseChannel';
+        input.value = channel;
+        input.checked = channel === selectedChannel;
+        const text = document.createElement('span');
+        text.textContent = channelDisplayLabel(channel);
+        label.append(input, text);
+        return label;
+    }));
+    measurementController.currentNoiseChannel = selectedChannel;
+}
+
+function sweepBandDefaultValues() {
+    return {
+        minFreq: Number(document.getElementById('sweepMinFreq')?.value) || 20,
+        maxFreq: Number(document.getElementById('sweepMaxFreq')?.value) || 20000
+    };
+}
+
+function saveSweepBandChannelEditor() {
+    const container = document.getElementById('sweepBandChannel');
+    const channel = container?.dataset.editingChannel;
+    if (!channel) return;
+    sweepBandChannelValues.set(channel, {
+        minFreq: Number(document.getElementById('sweepBandChannelMinFreq').value),
+        maxFreq: Number(document.getElementById('sweepBandChannelMaxFreq').value)
+    });
+}
+
+function loadSweepBandChannelEditor(channel) {
+    if (!channel) return;
+    const values = sweepBandChannelValues.get(channel) || sweepBandDefaultValues();
+    document.getElementById('sweepBandChannel').dataset.editingChannel = channel;
+    document.getElementById('sweepBandChannelMinFreq').value = values.minFreq;
+    document.getElementById('sweepBandChannelMaxFreq').value = values.maxFreq;
+}
+
+function syncSweepBandChannelChoices(selection = getOutputChannelSelection()) {
+    const container = document.getElementById('sweepBandChannel');
+    if (!container) return;
+    saveSweepBandChannelEditor();
+    const channels = getSweepBandEditorChannels(selection);
+    const current = container.querySelector('input:checked')?.value;
+    const selectedChannel = channels.includes(current) ? current : channels[0];
+    container.replaceChildren(...channels.map(channel => {
+        const label = document.createElement('label');
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.name = 'sweepBandChannel';
+        input.value = channel;
+        input.checked = channel === selectedChannel;
+        const text = document.createElement('span');
+        text.textContent = channelDisplayLabel(channel);
+        label.append(input, text);
+        return label;
+    }));
+    loadSweepBandChannelEditor(selectedChannel);
+}
+
+function getSweepBandMode() {
+    return document.querySelector('#sweepBandMode input:checked')?.value || 'common';
+}
+
+function getSweepBandConfiguration() {
+    saveSweepBandChannelEditor();
+    const common = {
+        minFreq: Number(document.getElementById('sweepMinFreq').value),
+        maxFreq: Number(document.getElementById('sweepMaxFreq').value)
+    };
+    return {
+        mode: getSweepBandMode(),
+        common,
+        perChannel: INDIVIDUAL_CHANNELS.map(channel => {
+            const values = sweepBandChannelValues.get(channel) || common;
+            return { channel, minFreq: values.minFreq, maxFreq: values.maxFreq };
+        })
+    };
+}
+
+function loadSweepBandConfiguration(sweepBand) {
+    if (!sweepBand) return;
+    const mode = ['off', 'common', 'perChannel'].includes(sweepBand.mode) ? sweepBand.mode : 'common';
+    const modeInput = document.querySelector(`#sweepBandMode input[value="${mode}"]`);
+    if (modeInput) modeInput.checked = true;
+    if (sweepBand.common) {
+        document.getElementById('sweepMinFreq').value = sweepBand.common.minFreq;
+        document.getElementById('sweepMaxFreq').value = sweepBand.common.maxFreq;
+    }
+    document.getElementById('sweepBandChannel').dataset.editingChannel = '';
+    sweepBandChannelValues.clear();
+    for (const values of sweepBand.perChannel || []) {
+        if (!INDIVIDUAL_CHANNELS.includes(values.channel)) continue;
+        sweepBandChannelValues.set(values.channel, {
+            minFreq: Number(values.minFreq),
+            maxFreq: Number(values.maxFreq)
+        });
+    }
+    syncSweepBandChannelChoices();
+}
+
+function rebuildPerChannelCalibrationRows(selection = getOutputChannelSelection()) {
+    const rows = document.getElementById('perChannelCalibrationRows');
+    const common = document.getElementById('interfaceCalibration');
+    if (!rows || !common) return;
+    const previous = new Map([...rows.querySelectorAll('select')].map(select => [select.dataset.channel, select.value]));
+    rows.replaceChildren();
+    for (const channel of selection) {
+        const row = document.createElement('label');
+        row.className = 'per-channel-calibration-row';
+        row.textContent = `${channelDisplayLabel(channel)}: `;
+        const select = common.cloneNode(true);
+        select.removeAttribute('id');
+        select.className = 'channel-calibration-select';
+        select.dataset.channel = channel;
+        select.value = previous.get(channel) || '';
+        row.appendChild(select);
+        rows.appendChild(row);
+    }
+    const perChannel = selection.length > 1 &&
+        document.getElementById('calibrationAssignMode')?.value === 'perChannel';
+    rows.hidden = !perChannel;
+    if (common) common.hidden = perChannel;
+}
+
+function parseCalibrationValue(value) {
+    if (!value) return null;
+    const [sourceMeasurementId, sourcePointId, sourceChannel] = JSON.parse(value);
+    return {
+        sourceMeasurementId,
+        sourcePointId,
+        ...(typeof sourceChannel === 'string' ? { sourceChannel } : {})
+    };
+}
 
 startRendererWatchdogHeartbeat('measurement-page');
 
@@ -110,12 +300,29 @@ function setupEventConnections() {
         e.preventDefault();
         if (configSubmissionPromise) return;
 
+        const outputChannels = getOutputChannelSelection();
         const calibrationSelect = document.getElementById('interfaceCalibration');
         let interfaceCalibration = null;
-        if (calibrationSelect?.value) {
+        let interfaceCalibrations = null;
+        const perChannelCalibration = outputChannels.length > 1 &&
+            document.getElementById('calibrationAssignMode')?.value === 'perChannel';
+        if (perChannelCalibration) {
             try {
-                const [sourceMeasurementId, sourcePointId] = JSON.parse(calibrationSelect.value);
-                interfaceCalibration = { sourceMeasurementId, sourcePointId };
+                interfaceCalibrations = [...document.querySelectorAll('.channel-calibration-select')]
+                    .map(select => {
+                        const calibration = parseCalibrationValue(select.value);
+                        return calibration ? { channel: select.dataset.channel, ...calibration } : null;
+                    })
+                    .filter(Boolean);
+            } catch (error) {
+                console.error('Invalid per-channel calibration selection:', error);
+                uiManager.showNotification(i18n.t('error:interfaceCalibrationUnavailable') ||
+                    'The selected calibration is no longer available. Choose another measurement point.', 'error');
+                return;
+            }
+        } else if (calibrationSelect?.value) {
+            try {
+                interfaceCalibration = parseCalibrationValue(calibrationSelect.value);
             } catch (error) {
                 console.error('Invalid interface calibration selection:', error);
                 uiManager.showNotification(
@@ -136,13 +343,13 @@ function setupEventConnections() {
             audioOutputId: document.getElementById('audioOutput').value,
             sampleRate: parseInt(document.getElementById('sampleRate').value),
             sweepLength: document.getElementById('sweepLength').value,
-            sweepBandLimited: document.getElementById('sweepBandLimited').checked,
-            sweepMinFreq: parseFloat(document.getElementById('sweepMinFreq').value),
-            sweepMaxFreq: parseFloat(document.getElementById('sweepMaxFreq').value),
+            sweepBand: getSweepBandConfiguration(),
             averaging: parseInt(document.getElementById('averaging').value),
             inputChannel: document.getElementById('inputChannel').value,
-            outputChannel: document.getElementById('outputChannel').value,
-            ...(interfaceCalibration ? { interfaceCalibration } : {})
+            outputChannel: outputChannels.length > 1 ? 'multi' : outputChannels[0],
+            ...(outputChannels.length > 1 ? { outputChannels } : {}),
+            ...(interfaceCalibration ? { interfaceCalibration } : {}),
+            ...(interfaceCalibrations?.length ? { interfaceCalibrations } : {})
         };
 
         // Validate form
@@ -155,12 +362,15 @@ function setupEventConnections() {
             return;
         }
 
-        // Validate sweep frequency range: 1 <= min < max <= Nyquist - 1
+        // Validate each configured sweep frequency range: 1 <= min < max <= Nyquist - 1.
         const nyquistLimit = Math.max(2, Math.floor(config.sampleRate / 2) - 1);
-        if (config.sweepBandLimited &&
-            (!isFinite(config.sweepMinFreq) || !isFinite(config.sweepMaxFreq) ||
-            config.sweepMinFreq < 1 || config.sweepMaxFreq > nyquistLimit ||
-            config.sweepMinFreq >= config.sweepMaxFreq)) {
+        const sweepRanges = config.sweepBand.mode === 'perChannel'
+            ? config.sweepBand.perChannel.filter(({ channel }) =>
+                getSweepBandEditorChannels(outputChannels).includes(channel))
+            : config.sweepBand.mode === 'common' ? [config.sweepBand.common] : [];
+        if (sweepRanges.some(({ minFreq, maxFreq }) =>
+            !Number.isFinite(minFreq) || !Number.isFinite(maxFreq) ||
+            minFreq < 1 || maxFreq > nyquistLimit || minFreq >= maxFreq)) {
             uiManager.showNotification(
                 i18n.t('error:invalidSweepRange', { max: nyquistLimit }) ||
                     `Set the sweep range between 1 Hz and ${nyquistLimit} Hz, with the lower value first.`,
@@ -219,6 +429,25 @@ function setupEventConnections() {
     // Redo button
     document.getElementById('redoBtn').addEventListener('click', () => {
         measurementController.redoMeasurement();
+    });
+    document.getElementById('redoChannelBtn').addEventListener('click', async () => {
+        await measurementController.redoChannel(document.getElementById('redoChannelSelect').value);
+    });
+    document.getElementById('noiseChannel').addEventListener('change', event => {
+        if (event.target.matches('input[type="radio"]')) {
+            measurementController.setNoiseChannel(event.target.value);
+        }
+    });
+    document.getElementById('noiseChannelMode').addEventListener('change', event => {
+        if (!event.target.matches('input[type="radio"]')) return;
+        if (event.target.value === 'auto') measurementController.startChannelRotation();
+        else {
+            measurementController.stopChannelRotation();
+            measurementController.syncWhiteNoiseUi();
+        }
+    });
+    document.getElementById('calibrationAssignMode').addEventListener('change', () => {
+        rebuildPerChannelCalibrationRows();
     });
     
     // Save and continue button
@@ -312,6 +541,16 @@ function setupEventConnections() {
         }
     });
 
+    document.getElementById('copyChannelPEQBtn').addEventListener('click', async event => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        try {
+            await uiManager.copyChannelPEQToClipboard();
+        } finally {
+            button.disabled = false;
+        }
+    });
+
 }
 
 /**
@@ -366,23 +605,36 @@ async function copyPEQToClipboard() {
     // Get the EQ band count
     const bandCount = parseInt(document.getElementById('eqBandCount').value);
     
-    await copyPEQClipboardPayload(measurement, bandCount, copyTextToClipboard);
+    await copyPEQClipboardPayload(
+        measurement,
+        bandCount,
+        copyTextToClipboard,
+        window.app.uiManager.measurementDisplay?.selectedChannel
+    );
 }
 
 /**
  * Save current form settings to localStorage
  */
-function saveUserSettings() {
+function saveUserSettings(event) {
+    if (event?.target?.matches?.('#outputChannel input[type="checkbox"]')) {
+        const target = event.target;
+        const current = getOutputChannelSelection();
+        const previous = target.checked
+            ? current.filter(channel => channel !== target.value)
+            : [...current, target.value];
+        applyOutputChannelSelection(resolveCheckboxToggle(previous, target.value, target.checked));
+    }
+    const outputChannels = getOutputChannelSelection();
     // Get current settings
     const settings = {
         // Measurement config settings
         sampleRate: document.getElementById('sampleRate').value,
         inputChannel: document.getElementById('inputChannel').value,
-        outputChannel: document.getElementById('outputChannel').value,
+        outputChannel: outputChannels.length > 1 ? 'multi' : outputChannels[0],
+        ...(outputChannels.length > 1 ? { outputChannels } : {}),
         sweepLength: document.getElementById('sweepLength').value,
-        sweepBandLimited: document.getElementById('sweepBandLimited').checked,
-        sweepMinFreq: document.getElementById('sweepMinFreq').value,
-        sweepMaxFreq: document.getElementById('sweepMaxFreq').value,
+        sweepBand: getSweepBandConfiguration(),
         averaging: document.getElementById('averaging').value,
     };
     
@@ -436,13 +688,18 @@ function loadUserSettings() {
         // Measurement config settings
         if (settings.sampleRate) document.getElementById('sampleRate').value = settings.sampleRate;
         if (settings.inputChannel) document.getElementById('inputChannel').value = settings.inputChannel;
-        if (settings.outputChannel) document.getElementById('outputChannel').value = settings.outputChannel;
+        applyOutputChannelSelection(settings.outputChannels || settings.outputChannel || 'all');
         if (settings.sweepLength) document.getElementById('sweepLength').value = settings.sweepLength;
-        if (typeof settings.sweepBandLimited === 'boolean') {
-            document.getElementById('sweepBandLimited').checked = settings.sweepBandLimited;
-        }
-        if (settings.sweepMinFreq) document.getElementById('sweepMinFreq').value = settings.sweepMinFreq;
-        if (settings.sweepMaxFreq) document.getElementById('sweepMaxFreq').value = settings.sweepMaxFreq;
+        const legacySweepBand = typeof settings.sweepBandLimited === 'boolean' ? {
+            mode: settings.sweepBandLimited ? 'common' : 'off',
+            common: {
+                minFreq: settings.sweepMinFreq,
+                maxFreq: settings.sweepMaxFreq
+            },
+            perChannel: []
+        } : null;
+        loadSweepBandConfiguration(Object.hasOwn(settings, 'sweepBand')
+            ? settings.sweepBand : legacySweepBand);
         if (settings.averaging) document.getElementById('averaging').value = settings.averaging;
     }
 }
@@ -545,7 +802,8 @@ window.app = {
     saveUserSettings,
     loadPEQSettings,
     savePEQSettings,
-    selectSavedAudioDevices
+    selectSavedAudioDevices,
+    syncMultichannelControls
 };
 
 /**
@@ -558,35 +816,55 @@ function updateSweepFreqLimits() {
     const nyquist = Math.floor(sampleRate / 2);
     const maxAllowed = Math.max(2, nyquist - 1);
 
-    const minInput = document.getElementById('sweepMinFreq');
-    const maxInput = document.getElementById('sweepMaxFreq');
-    if (!minInput || !maxInput) return;
-
-    minInput.max = String(maxAllowed - 1);
-    maxInput.max = String(maxAllowed);
-
-    const currentMin = parseFloat(minInput.value);
-    const currentMax = parseFloat(maxInput.value);
-
-    if (!isFinite(currentMax) || currentMax > maxAllowed) {
-        maxInput.value = maxAllowed;
+    saveSweepBandChannelEditor();
+    const inputPairs = [
+        ['sweepMinFreq', 'sweepMaxFreq'],
+        ['sweepBandChannelMinFreq', 'sweepBandChannelMaxFreq']
+    ];
+    for (const [minId, maxId] of inputPairs) {
+        const minInput = document.getElementById(minId);
+        const maxInput = document.getElementById(maxId);
+        if (!minInput || !maxInput) continue;
+        minInput.max = String(maxAllowed - 1);
+        maxInput.max = String(maxAllowed);
+        const currentMax = Number(maxInput.value);
+        const currentMin = Number(minInput.value);
+        maxInput.value = !Number.isFinite(currentMax) || currentMax > maxAllowed ? maxAllowed : currentMax;
+        minInput.value = !Number.isFinite(currentMin) || currentMin < 1
+            ? 1
+            : currentMin >= Number(maxInput.value) ? Math.max(1, Number(maxInput.value) - 1) : currentMin;
     }
-    if (!isFinite(currentMin) || currentMin < 1) {
-        minInput.value = 1;
-    } else if (currentMin >= parseFloat(maxInput.value)) {
-        minInput.value = Math.max(1, parseFloat(maxInput.value) - 1);
+    saveSweepBandChannelEditor();
+    const common = sweepBandDefaultValues();
+    for (const [channel, values] of sweepBandChannelValues) {
+        const maxFreq = !Number.isFinite(values.maxFreq) || values.maxFreq > maxAllowed
+            ? maxAllowed
+            : values.maxFreq;
+        const minFreq = !Number.isFinite(values.minFreq) || values.minFreq < 1
+            ? 1
+            : values.minFreq >= maxFreq ? Math.max(1, maxFreq - 1) : values.minFreq;
+        sweepBandChannelValues.set(channel, { minFreq, maxFreq });
     }
+    if (!sweepBandChannelValues.size) {
+        for (const channel of INDIVIDUAL_CHANNELS) {
+            sweepBandChannelValues.set(channel, { ...common });
+        }
+    }
+    loadSweepBandChannelEditor(document.querySelector('#sweepBandChannel input:checked')?.value);
 }
 
 function updateSweepBandLimitControls() {
-    const bandLimitedInput = document.getElementById('sweepBandLimited');
-    const minInput = document.getElementById('sweepMinFreq');
-    const maxInput = document.getElementById('sweepMaxFreq');
-    if (!bandLimitedInput || !minInput || !maxInput) return;
-
-    const disabled = !bandLimitedInput.checked;
-    minInput.disabled = disabled;
-    maxInput.disabled = disabled;
+    const mode = getSweepBandMode();
+    const common = document.getElementById('sweepBandCommonInputs');
+    const perChannel = document.getElementById('sweepBandChannelInputs');
+    if (common) common.hidden = mode !== 'common';
+    if (perChannel) perChannel.hidden = mode !== 'perChannel';
+    document.querySelectorAll('#sweepBandCommonInputs input').forEach(input => {
+        input.disabled = mode !== 'common';
+    });
+    document.querySelectorAll('#sweepBandChannelInputs input').forEach(input => {
+        input.disabled = mode !== 'perChannel';
+    });
 }
 
 // Initialize the application when DOM is ready
@@ -596,6 +874,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Load user settings when app starts
     loadUserSettings();
+    syncMultichannelControls();
 
     // Apply Nyquist limits to the sweep frequency inputs based on current sample rate
     updateSweepFreqLimits();
@@ -612,12 +891,22 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('inputChannel').addEventListener('change', saveUserSettings);
     document.getElementById('outputChannel').addEventListener('change', saveUserSettings);
     document.getElementById('sweepLength').addEventListener('change', saveUserSettings);
-    document.getElementById('sweepBandLimited').addEventListener('change', () => {
+    document.getElementById('sweepBandMode').addEventListener('change', () => {
         updateSweepBandLimitControls();
         saveUserSettings();
     });
     document.getElementById('sweepMinFreq').addEventListener('change', saveUserSettings);
     document.getElementById('sweepMaxFreq').addEventListener('change', saveUserSettings);
+    document.getElementById('sweepBandChannel').addEventListener('change', () => {
+        saveSweepBandChannelEditor();
+        loadSweepBandChannelEditor(document.querySelector('#sweepBandChannel input:checked')?.value);
+    });
+    for (const id of ['sweepBandChannelMinFreq', 'sweepBandChannelMaxFreq']) {
+        document.getElementById(id).addEventListener('change', () => {
+            saveSweepBandChannelEditor();
+            saveUserSettings();
+        });
+    }
     document.getElementById('averaging').addEventListener('change', saveUserSettings);
     document.getElementById('audioInput').addEventListener('change', saveUserSettings);
     document.getElementById('audioOutput').addEventListener('change', saveUserSettings);

@@ -1,4 +1,6 @@
 class SectionPlugin extends PluginBase {
+    static hidePresetUI = true;
+
     constructor() {
         super('Section', 'Group and control multiple effects together');
         this.cm = '';  // Default comment
@@ -66,4 +68,4 @@ class SectionPlugin extends PluginBase {
 }
 
 // Register the plugin
-window.SectionPlugin = SectionPlugin; 
+window.SectionPlugin = SectionPlugin;

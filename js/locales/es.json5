@@ -3,6 +3,10 @@
   "error.invalidUrl": "Parámetros de URL no válidos: {message}",
   "error.invalidPresetData": "Datos de preajuste no válidos",
   "error.failedToLoadPreset": "No se pudo cargar el preajuste",
+  "error.failedToSavePreset": "No se pudo guardar el preset",
+  "error.failedToDeletePreset": "No se pudo eliminar el preset",
+  "error.failedToSavePluginPreset": "No se pudo guardar el preset",
+  "error.failedToDeletePluginPreset": "No se pudo eliminar el preset",
   "error.noPresetSelected": "No se seleccionó ningún preajuste",
   "error.failedToCutSettings": "No se pudo cortar la configuración al portapapeles",
   "error.failedToCopySettings": "No se pudo copiar la configuración al portapapeles",
@@ -68,6 +72,12 @@
   "ui.sleepMode": "Modo de suspensión",
   "ui.whatsThisApp": "¿Qué es esta aplicación?",
   "ui.newVersionAvailable": "Nueva {version} disponible.",
+  "ui.pluginPresets.namePlaceholder": "Nombre del preset",
+  "ui.pluginPresets.save": "Guardar",
+  "ui.pluginPresets.rename": "Cambiar nombre",
+  "ui.pluginPresets.deleteSelected": "Eliminar seleccionados",
+  "ui.pluginPresets.noUserPresets": "No hay presets guardados",
+  "ui.pluginPresets.confirmDeleteSelected": "¿Eliminar los presets seleccionados?",
 
   // Hints displayed when hovering over UI
   "ui.title.openMusic": "Abrir archivos de música",
@@ -84,8 +94,8 @@
   "ui.title.cut": "Cortar efectos",
   "ui.title.copy": "Copiar efectos",
   "ui.title.paste": "Pegar efectos",
-  "ui.title.savePreset": "Guardar preset",
-  "ui.title.deletePreset": "Eliminar preset",
+  "ui.title.effectPresets": "Preajustes de efecto",
+  "ui.title.pipelinePresets": "Preajustes de cadena de efectos",
   "ui.title.sharePipeline": "Compartir pipeline",
   "ui.title.decreaseColumns": "Disminuir columnas",
   "ui.title.increaseColumns": "Aumentar columnas",
@@ -112,7 +122,6 @@
   "ui.title.close": "Cerrar",
   "ui.title.expand": "Haga clic para expandir",
   "ui.title.collapse": "Haga clic para contraer",
-  "ui.title.presetSelect": "Entrada y carga de nombre de preset de usuario\nPresione ESC para borrar texto y mostrar todos los elementos",
   "ui.mobileNav.primary": "Navegación móvil principal",
   "ui.mobileNav.player": "Reproductor",
   "ui.mobileNav.library": "Biblioteca",
@@ -448,7 +457,7 @@
   // Menú de la bandeja
   "trayMenuOpen": "Abrir",
   "trayMenuQuit": "Salir",
-  "trayMenuPresets": "Ajustes",
+  "trayMenuPresets": "Preajustes de cadena de efectos",
 
   // Recursos externos e IR Reverb
   "externalAsset.warning": "Esta cadena hace referencia a datos {kinds} externos. El destinatario debe importar los mismos archivos; no están incluidos.",

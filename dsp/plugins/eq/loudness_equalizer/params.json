@@ -86,7 +86,7 @@
       "kind": "int",
       "min": 3000,
       "max": 6000,
-      "step": 10,
+      "step": 1,
       "default": 4000,
       "unit": "Hz",
       "automation": true

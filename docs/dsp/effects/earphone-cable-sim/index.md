@@ -55,6 +55,14 @@ Reproduces the small frequency-response shifts that appear when an earphone is d
   - Use realistic Cable R and Cable L values, then compare with bypass to estimate how small ordinary cable differences are
   - If only extreme Output Z, Cable R, or very low Base Z settings make the change obvious, the same comparison suggests normal cables are unlikely to be audibly significant with that earphone and amplifier
 
+### System Presets
+
+Click **Effect Presets** in the effect header to compare complete source-and-cable cases.
+
+- **High Impedance Source** - A high-output-impedance source driving a low-impedance earphone.
+- **Long Thin Cable** - Increased cable resistance and inductance.
+- **Vintage Portable Out** - A higher-impedance portable output and 32 Ω earphone.
+
 ### Parameters
 - **Output Z (Ω)** - Amplifier output impedance (0 to 20). Values below 1Ω are typical of modern amplifiers; higher values make impedance-related coloration stronger.
 - **Cable R (Ω)** - Cable DC resistance (0 to 2). Higher values represent longer or thinner cables and add to the total series resistance.

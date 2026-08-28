@@ -208,9 +208,13 @@ function validateAutomation(raw, field, source) {
       fail(`field ${field.name} log automation requires min greater than zero`, source);
     }
   } else if (field.kind === 'int') {
-    const steps = field.max - field.min;
-    if (steps <= 0 || steps > 0xffffffff) {
+    const steps = (field.max - field.min) / field.step;
+    if (!Number.isSafeInteger(field.step) || !Number.isSafeInteger(steps) ||
+        steps <= 0 || steps > 0xffffffff) {
       fail(`field ${field.name} integer automation step count must fit uint32`, source);
+    }
+    if (field.defaults.some(value => (value - field.min) % field.step !== 0)) {
+      fail(`field ${field.name} integer automation defaults must align to its step`, source);
     }
   } else if (field.kind === 'enum' && field.values.length < 2) {
     fail(`field ${field.name} enum automation requires at least two values`, source);
@@ -429,6 +433,7 @@ export function validateParamSpec(raw, source = '<params.json>') {
       count,
       min: minimum,
       max: maximum,
+      step,
       values,
       defaults,
       keys,
@@ -602,7 +607,7 @@ function automationPublicDefault(field, index) {
 function automationStepCount(field) {
   if (field.kind === 'bool') return 1;
   if (field.kind === 'enum') return field.values.length - 1;
-  if (field.kind === 'int') return field.max - field.min;
+  if (field.kind === 'int') return (field.max - field.min) / field.step;
   return 0;
 }
 
@@ -931,7 +936,7 @@ function jsAutomationCatalog(specs) {
     "    case 'integer': {\n",
     "      const value = Number.isSafeInteger(plainValue) ? plainValue : descriptor.default;\n",
     '      return clampAutomationNormalized(\n',
-    '        (value - descriptor.minimum) / descriptor.stepCount\n',
+    '        (value - descriptor.minimum) / descriptor.step / descriptor.stepCount\n',
     '      );\n',
     '    }\n',
     "    case 'bool':\n",
@@ -956,7 +961,7 @@ function jsAutomationCatalog(specs) {
     '      return descriptor.minimum *\n',
     '        Math.pow(descriptor.maximum / descriptor.minimum, normalized);\n',
     "    case 'integer':\n",
-    '      return descriptor.minimum + Math.round(normalized * descriptor.stepCount);\n',
+    '      return descriptor.minimum + Math.round(normalized * descriptor.stepCount) * descriptor.step;\n',
     "    case 'bool':\n",
     '      return normalized >= 0.5;\n',
     "    case 'enum':\n",

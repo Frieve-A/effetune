@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -38,12 +39,18 @@ function run(command, args, options = {}) {
 }
 
 export function parseDpkgSearch(output, expectedPath) {
-  const suffix = `: ${expectedPath}`;
-  const owners = output.split(/\r?\n/)
-    .filter(line => line.endsWith(suffix))
-    .map(line => line.slice(0, -suffix.length));
-  assert.equal(owners.length, 1, `${expectedPath} must have exactly one dpkg owner`);
-  return owners[0];
+  const canonicalPath = realpathSync(expectedPath);
+  const owners = new Set();
+  for (const line of output.split(/\r?\n/)) {
+    const separator = line.indexOf(': ');
+    if (separator < 1) continue;
+    const registeredPath = line.slice(separator + 2);
+    if (existsSync(registeredPath) && realpathSync(registeredPath) === canonicalPath) {
+      for (const owner of line.slice(0, separator).split(', ')) owners.add(owner);
+    }
+  }
+  assert.equal(owners.size, 1, `${expectedPath} must have exactly one dpkg owner`);
+  return [...owners][0];
 }
 
 export function parseDpkgRecord(output) {
@@ -95,7 +102,7 @@ function readOrigins(runtimeRoot) {
 }
 
 function queryPackage(sourcePath) {
-  const search = run('dpkg-query', ['--search', sourcePath], { capture: true });
+  const search = run('dpkg-query', ['--search', `*/${basename(sourcePath)}`], { capture: true });
   const owner = parseDpkgSearch(search, sourcePath);
   const record = run('dpkg-query', [
     '--show',

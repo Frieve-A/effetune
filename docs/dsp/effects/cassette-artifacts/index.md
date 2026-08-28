@@ -60,6 +60,16 @@ Cassette Artifacts combines cassette frequency response, tape compression, hiss,
 - **Noise Reduction** lowers hiss. Dolby C is stronger than Dolby B, while Off gives the rawest cassette background.
 - Raise **Wow/Flutter**, **Hiss**, or **Dropouts** for a more worn sound. **Azimuth** darkens and shifts the high frequencies between channels.
 
+### System Presets
+
+Click **Effect Presets** in the effect header to switch between complete cassette-deck characters.
+
+- **Flagship Deck Metal** - A quiet, steady reference deck using metal tape and Dolby C.
+- **Hi-Fi Chrome** - A clean Type II cassette with restrained hiss and pitch movement.
+- **Pocket Cassette Player** - A portable-player sound with noise, wobble, and head misalignment.
+- **Worn Mixtape** - A heavily used tape with dropouts, wobble, and rougher saturation.
+- **Hot Deck Saturation** - A deliberately hard-driven cassette sound with stronger tape compression.
+
 ### Parameters
 
 Compact cassette speed is fixed, so there is no Speed control.

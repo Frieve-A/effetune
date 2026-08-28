@@ -14,6 +14,7 @@ const fileHandlers = require('./file-handlers');
 
 const SETTINGS_DIR_SAVE_FILE_ALLOWLIST = new Set([
   'effetune_presets.json',
+  'effetune_plugin_presets.json',
   'player-state.json',
   'effetune_dbt_tests.json'
 ]);

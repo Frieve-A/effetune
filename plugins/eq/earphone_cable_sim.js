@@ -1,4 +1,28 @@
+const EARPHONE_CABLE_SIM_SYSTEM_PRESETS = Object.freeze([
+  Object.freeze({ id: 'high-impedance-source', label: 'High Impedance Source', params: Object.freeze({
+    zo: 10.0, rc: 0.30, lc: 0.5, lv: 0.35, zb: 16,
+    rf0: 120, rq0: 2.0, rz0: 48, re0: true, rf1: 2000, rq1: 1.5, rz1: 36, re1: false,
+    rf2: 5000, rq2: 2.0, rz2: 64, re2: false, rf3: 9000, rq3: 3.0, rz3: 80, re3: false,
+    rf4: 60, rq4: 1.5, rz4: 64, re4: false
+  }) }),
+  Object.freeze({ id: 'long-thin-cable', label: 'Long Thin Cable', params: Object.freeze({
+    zo: 0.5, rc: 1.20, lc: 3.0, lv: 0.20, zb: 16,
+    rf0: 120, rq0: 2.0, rz0: 48, re0: true, rf1: 2000, rq1: 1.5, rz1: 36, re1: false,
+    rf2: 5000, rq2: 2.0, rz2: 64, re2: false, rf3: 9000, rq3: 3.0, rz3: 80, re3: false,
+    rf4: 60, rq4: 1.5, rz4: 64, re4: false
+  }) }),
+  Object.freeze({ id: 'vintage-portable-out', label: 'Vintage Portable Out', params: Object.freeze({
+    zo: 6.0, rc: 0.80, lc: 2.0, lv: 0.30, zb: 32,
+    rf0: 120, rq0: 2.0, rz0: 48, re0: true, rf1: 2000, rq1: 1.5, rz1: 36, re1: false,
+    rf2: 5000, rq2: 2.0, rz2: 64, re2: false, rf3: 9000, rq3: 3.0, rz3: 80, re3: false,
+    rf4: 60, rq4: 1.5, rz4: 64, re4: false
+  }) })
+]);
+
 class EarphoneCableSimPlugin extends PluginBase {
+  static getSystemPresetGroups() {
+    return [{ label: '', presets: EARPHONE_CABLE_SIM_SYSTEM_PRESETS.map(preset => ({ ...preset })) }];
+  }
   // Default resonance presets.
   // Slot 0 mirrors the Earphone Cable Impact Analyzer default (single dynamic-driver
   // fundamental resonance) and is the only one enabled by default.

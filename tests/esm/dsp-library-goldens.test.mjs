@@ -18,7 +18,7 @@ import {
 } from '../../tools/verify-dsp-library-goldens.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const GOLDEN_CASE_COUNT = 874;
+const GOLDEN_CASE_COUNT = 875;
 const EFFECT_COUNT = 92;
 const WORKLET_GOLDEN_CASE_COUNT = 93;
 const NON_IDENTITY_EFFECT_COUNT = 87;
@@ -437,8 +437,9 @@ test('frozen DSP library acceptance inventory stays complete', async () => {
   // costs three event cases and three events. MD Simulator adds two event cases and seven
   // events for its recording-mode switches. Phase Select EQ Balance selection adds three
   // cases, including one event case with two boundary changes.
+  // Multiband crossover normalization regression cases add sixteen parameter events.
   assert.equal(inventory.eventCases, 146);
-  assert.equal(inventory.eventCount, 500);
+  assert.equal(inventory.eventCount, 516);
   assert.deepEqual(inventory.sampleRates, [
     32000,
     44100,

@@ -5,7 +5,7 @@
     "channels": 2,
     "channelMode": "stereo",
     "frames": 4097,
-    "params": { "pp": 20, "pl": -24, "cm": 500, "cl": -33, "hs": -42, "rb": -50, "xt": 60, "tn": 0, "wr": 100, "rt": 25, "rm": "Velocity", "mx": 100 }
+    "params": { "pp": 20, "pl": -24, "cm": 500, "cl": -33, "hs": -42, "rb": -50, "xt": 60, "tn": 10, "wr": 100, "rt": 25, "rm": "Velocity", "mx": 100 }
   },
   "cases": [
     { "id": "default-seeded-noise", "stimulus": "noise" },

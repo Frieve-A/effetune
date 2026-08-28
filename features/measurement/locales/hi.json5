@@ -25,14 +25,19 @@
 "label:audioOutput": "ऑडियो आउटपुट डिवाइस:", // Label for audio output device selection
 "help:audioOutput": "उस ऑडियो डिवाइस का चयन करें जो माप संकेत आउटपुट करता है।", // Help text for audio output
 "label:outputChannel": "आउटपुट चैनल:", // Label for output channel selection
-"help:outputChannel": "माप के लिए चैनल (बायाँ/दायाँ स्पीकर या हेडफ़ोन आदि) निर्दिष्ट करें।", // Help text for output channel
+"help:outputChannel": "मापने के लिए एक या अधिक आउटपुट चैनल चुनें। सभी चैनल चुनने पर अलग-अलग चैनलों का चयन हट जाता है।", // Help text for output channel
 "help:audioInput": "उस ऑडियो इनपुट डिवाइस को निर्दिष्ट करें जिसमें माप माइक्रोफोन जुड़ा है।", // Help text for audio input
 "label:sampleRate": "नमूना आवृत्ति:", // Label for sample rate selection
 "help:sampleRate": "माप लेते समय नमूना आवृत्ति निर्दिष्ट करें।", // Help text for sample rate
 "label:sweepLength": "स्वीप लंबाई (नमूने):", // Label for sweep length selection
 "help:sweepLength": "माप संकेत की लंबाई नमूनों में निर्दिष्ट करता है।", // Help text for sweep length
-"label:sweepBandLimited": "स्वीप बैंडविड्थ सीमित करें",
-"help:sweepBandLimited": "चालू होने पर TSP और टेस्ट संकेत नीचे दी गई आवृत्ति सीमा तक सीमित रहते हैं। बंद होने पर TSP पूरे उपलब्ध बैंडविड्थ में चलाया जाता है।",
+"title:advancedSettings": "उन्नत सेटिंग्स",
+"label:sweepBandMode": "स्वीप बैंडविड्थ:",
+"option:sweepBandOff": "बंद",
+"option:sweepBandCommon": "सभी चैनलों के लिए समान",
+"option:sweepBandPerChannel": "प्रति चैनल",
+"label:sweepBandChannel": "कॉन्फ़िगर करने वाला चैनल:",
+"help:sweepBandMode": "चुनें कि स्वीप और टेस्ट संकेत की बैंडविड्थ सीमित करनी है या नहीं। प्रति चैनल से हर चुने हुए आउटपुट चैनल के लिए अलग आवृत्ति सीमा सेट की जा सकती है।",
 "label:sweepMinFreq": "न्यूनतम स्वीप आवृत्ति (Hz):", // Label for sweep minimum frequency
 "help:sweepMinFreq": "स्वीप संकेत की न्यूनतम आवृत्ति Hz में। चयनित सैंपलिंग दर की नाइक्विस्ट आवृत्ति से ठीक नीचे तक 1 Hz से सेट की जा सकती है। टेस्ट संकेत भी इसी रेंज तक सीमित होता है। (डिफ़ॉल्ट: 20 Hz)", // Help text for sweep min frequency
 "label:sweepMaxFreq": "अधिकतम स्वीप आवृत्ति (Hz):", // Label for sweep maximum frequency
@@ -130,6 +135,8 @@
 "error:measurementConfigUnavailable": "Measurement settings अब उपलब्ध नहीं हैं। नया measurement शुरू करें।",
 "error:measurementFailed": "Measurement पूरा नहीं हो सका। Audio devices जाँचें और इस point को फिर मापें।",
 "error:measurementImportFailed": "Measurement file मान्य नहीं है। EffeTune से export की गई measurement JSON file चुनें।",
+"error:impulseResponseImportFailed": "WAV file import नहीं हो सकी। 1 से 8 channel वाली मान्य impulse-response WAV file चुनें।",
+"error:impulseResponseImportTooLarge": "Impulse-response WAV file बहुत बड़ी है। छोटी या कम आकार की impulse response चुनें।",
 "error:clipboardWriteFailed": "PEQ settings copy नहीं हो सकीं। Clipboard access जाँचें और फिर प्रयास करें।",
 "error:correctionUpdateFailed": "Correction update नहीं हो सका। Settings जाँचें और फिर प्रयास करें।",
 "error:measurementDisplayFailed": "Measurement display update नहीं हो सका। Measurement को फिर से चुनें।",
@@ -186,5 +193,23 @@
 "option:averaging8": "8", // Option for 8 averaging
 "option:averaging10": "10", // Option for 10 averaging
 "option:averaging12": "12", // Option for 12 averaging
-"option:averaging16": "16" // Option for 16 averaging
+"option:averaging16": "16", // Option for 16 averaging
+"status:measuringChannel": "{channel} का माप जारी है ({current}/{total})",
+"label:channelFilter": "चैनल:",
+"option:allChannelsAverage": "सभी (औसत)",
+"option:multiChannel": "एकाधिक चैनल",
+"message:irSavedChannels": "{count} चैनलों के लिए IR सहेजा गया ✓",
+"warning:signalTooLowChannels": "{channels} पर माप संकेत बहुत कम था",
+"warning:signalTooHighChannels": "{channels} पर माप संकेत बहुत अधिक था",
+"label:noiseChannel": "परीक्षण संकेत चैनल:",
+"label:noiseChannelMode": "चैनल मोड:",
+"option:noiseModeManual": "मैन्युअल",
+"option:noiseModeAuto": "स्वचालित क्रम परिवर्तन",
+"button:copyChannelPEQ": "चैनल के अनुसार PEQ सेटिंग कॉपी करें",
+"message:channelPeqCopied": "चैनल के अनुसार PEQ सेटिंग क्लिपबोर्ड पर कॉपी हो गईं।",
+"button:redoChannel": "चैनल फिर मापें",
+"label:redoChannel": "चैनल:",
+"label:calibrationAssignMode": "कैलिब्रेशन असाइनमेंट:",
+"option:calibrationCommon": "साझा",
+"option:calibrationPerChannel": "प्रति चैनल"
 }

@@ -31,7 +31,7 @@ function createRuntime(options = {}) {
     enabled: false,
     getSerializablePluginState(plugin, includeRouting, includeInternal, includeRuntime) {
       calls.push(['getSerializablePluginState', plugin.name, includeRouting, includeInternal, includeRuntime]);
-      return plugin.serialized ?? { nm: plugin.name, en: plugin.enabled ?? true };
+      return structuredClone(plugin.serialized ?? { nm: plugin.name, en: plugin.enabled ?? true });
     },
     updatePipelineUI(force) {
       calls.push(['updatePipelineUI', force]);
@@ -133,7 +133,7 @@ async function withHistoryGlobals(calls, options, callback) {
   }, async () => callback(timers));
 }
 
-test('saveState captures dual-pipeline state and ignores invalid save attempts', () => {
+test('saveState skips equal snapshots, preserves redo on equal saves, and truncates it on changes', () => {
   const runtime = createRuntime({
     pipelineA: [
       createSourcePlugin('Alpha', {
@@ -157,27 +157,23 @@ test('saveState captures dual-pipeline state and ignores invalid save attempts',
     currentPipeline: 'B'
   }]);
 
-  manager.isUndoRedoOperation = true;
   manager.saveState();
   assert.equal(manager.history.length, 1);
 
-  manager.specialSaveOverride = true;
+  runtime.audioManager.pipelineA[0].serialized.gain = -2;
   manager.saveState();
-  assert.equal(manager.specialSaveOverride, false);
   assert.equal(manager.history.length, 2);
-
-  manager.isUndoRedoOperation = false;
-  manager.history = [{ id: 'old' }, { id: 'discarded' }];
   manager.historyIndex = 0;
+  runtime.audioManager.pipelineA[0].serialized.gain = -1;
   manager.saveState();
   assert.equal(manager.history.length, 2);
-  assert.equal(manager.history[0].id, 'old');
+  assert.equal(manager.historyIndex, 0);
 
-  manager.maxHistorySize = 2;
-  manager.historyIndex = manager.history.length - 1;
+  runtime.audioManager.pipelineA[0].serialized.gain = -3;
   manager.saveState();
   assert.equal(manager.history.length, 2);
   assert.equal(manager.historyIndex, 1);
+  assert.equal(manager.history[1].pipelineA[0].gain, -3);
 
   const singleRuntime = createRuntime({
     pipelineA: [createSourcePlugin('Solo')],
@@ -186,6 +182,135 @@ test('saveState captures dual-pipeline state and ignores invalid save attempts',
   const singleManager = new HistoryManager(singleRuntime.pipelineManager);
   singleManager.saveState();
   assert.deepEqual(singleManager.history[0].pipelineB, null);
+});
+
+test('operation tokens coalesce updates, preserve separate gestures, and remove net no-ops', () => {
+  const plugin = createSourcePlugin('Tone', { serialized: { nm: 'Tone', gain: 0 } });
+  const runtime = createRuntime({ pipelineA: [plugin] });
+  const manager = new HistoryManager(runtime.pipelineManager);
+  manager.saveState();
+
+  const firstToken = {};
+  manager.beginOperation(firstToken);
+  plugin.serialized.gain = 1;
+  manager.saveState({ operationToken: firstToken });
+  plugin.serialized.gain = 2;
+  manager.saveState({ operationToken: firstToken });
+  manager.endOperation(firstToken);
+  assert.equal(manager.history.length, 2);
+  assert.equal(manager.history[1].pipelineA[0].gain, 2);
+  manager.loadStateFromHistory = () => {};
+  manager.undo();
+  assert.equal(manager.historyIndex, 0);
+  manager.redo();
+  assert.equal(manager.historyIndex, 1);
+  assert.equal(manager.history[1].pipelineA[0].gain, 2);
+
+  const secondToken = {};
+  manager.beginOperation(secondToken);
+  plugin.serialized.gain = 3;
+  manager.saveState({ operationToken: secondToken });
+  manager.endOperation(secondToken);
+  assert.equal(manager.history.length, 3);
+
+  const noOpToken = {};
+  manager.beginOperation(noOpToken);
+  plugin.serialized.gain = 4;
+  manager.saveState({ operationToken: noOpToken });
+  plugin.serialized.gain = 3;
+  manager.saveState({ operationToken: noOpToken });
+  manager.endOperation(noOpToken);
+  assert.equal(manager.history.length, 3);
+  assert.equal(manager.historyIndex, 2);
+});
+
+test('atomic changed-only saves preserve an active operation for equal snapshots', () => {
+  const plugin = createSourcePlugin('Tone', { serialized: { nm: 'Tone', gain: 0 } });
+  const runtime = createRuntime({ pipelineA: [plugin] });
+  const manager = new HistoryManager(runtime.pipelineManager);
+  manager.saveState();
+  const token = {};
+  manager.beginOperation(token);
+
+  assert.equal(manager.isOperationActive(token), true);
+  assert.equal(manager.saveStateAtomicallyIfChanged(), false);
+  assert.equal(manager.activeOperationToken, token);
+  assert.equal(manager.history.length, 1);
+
+  plugin.serialized.gain = 1;
+  assert.equal(manager.saveStateAtomicallyIfChanged(), true);
+  assert.equal(manager.isOperationActive(token), false);
+  assert.equal(manager.activeOperationToken, null);
+  assert.equal(manager.history.length, 2);
+  assert.equal(manager.history[1].pipelineA[0].gain, 1);
+});
+
+test('token ownership remains at the tip when the history limit shifts', () => {
+  const plugin = createSourcePlugin('Tone', { serialized: { nm: 'Tone', gain: 0 } });
+  const runtime = createRuntime({ pipelineA: [plugin] });
+  const manager = new HistoryManager(runtime.pipelineManager);
+  manager.maxHistorySize = 3;
+  for (let gain = 0; gain < 3; gain++) {
+    plugin.serialized.gain = gain;
+    manager.saveState();
+  }
+
+  const token = {};
+  manager.beginOperation(token);
+  plugin.serialized.gain = 3;
+  manager.saveState({ operationToken: token });
+  plugin.serialized.gain = 4;
+  manager.saveState({ operationToken: token });
+  assert.equal(manager.history.length, 3);
+  assert.equal(manager.historyIndex, 2);
+  assert.equal(manager.activeOperationOwnerIndex, 2);
+  assert.equal(manager.history[2].pipelineA[0].gain, 4);
+});
+
+test('a net no-op restores the oldest entry shifted from a full history', () => {
+  const plugin = createSourcePlugin('Tone', { serialized: { nm: 'Tone', gain: 0 } });
+  const runtime = createRuntime({ pipelineA: [plugin] });
+  const manager = new HistoryManager(runtime.pipelineManager);
+  for (let gain = 0; gain < manager.maxHistorySize; gain++) {
+    plugin.serialized.gain = gain;
+    manager.saveState();
+  }
+  const historyBefore = structuredClone(manager.history);
+  const indexBefore = manager.historyIndex;
+
+  const token = {};
+  manager.beginOperation(token);
+  plugin.serialized.gain = 100;
+  manager.saveState({ operationToken: token });
+  assert.equal(manager.history[0].pipelineA[0].gain, 1);
+
+  plugin.serialized.gain = 99;
+  manager.saveState({ operationToken: token });
+  assert.deepEqual(manager.history, historyBefore);
+  assert.equal(manager.historyIndex, indexBefore);
+});
+
+test('scoped suppression is nested, closes active operations, and restores depth after errors', () => {
+  const runtime = createRuntime();
+  const manager = new HistoryManager(runtime.pipelineManager);
+  const token = {};
+  manager.beginOperation(token);
+
+  const value = manager.withHistorySuppressed(() =>
+    manager.withHistorySuppressed(() => {
+      assert.equal(manager.isHistorySuppressed, true);
+      manager.saveState();
+      return 42;
+    }));
+  assert.equal(value, 42);
+  assert.equal(manager.history.length, 0);
+  assert.equal(manager.activeOperationToken, null);
+  assert.equal(manager.isHistorySuppressed, false);
+
+  assert.throws(() => manager.withHistorySuppressed(() => {
+    throw new Error('apply failed');
+  }), /apply failed/);
+  assert.equal(manager.isHistorySuppressed, false);
 });
 
 test('undo and redo guard history boundaries and missing redo state', () => {
@@ -220,7 +345,7 @@ test('undo and redo guard history boundaries and missing redo state', () => {
   assert.deepEqual(calls, [['loadStateFromHistory'], ['loadStateFromHistory']]);
 });
 
-test('loadStateFromHistory restores dual pipeline state and resets undo guard', async () => {
+test('loadStateFromHistory restores dual pipeline state inside a synchronous suppression scope', async () => {
   const cleanupCalls = [];
   const runtime = createRuntime({
     pipelineA: [
@@ -235,7 +360,6 @@ test('loadStateFromHistory restores dual pipeline state and resets undo guard', 
     workletNode: {}
   });
   const manager = new HistoryManager(runtime.pipelineManager);
-  manager.undoRedoTimeoutId = 41;
   manager.history = [{
     pipelineA: [
       { nm: 'RestoredA', en: false, gain: -2 },
@@ -252,7 +376,7 @@ test('loadStateFromHistory restores dual pipeline state and resets undo guard', 
     return name.startsWith('Missing') ? null : createRestoredPlugin(name, runtime.calls);
   };
 
-  await withHistoryGlobals(runtime.calls, {}, async (timers) => {
+  await withHistoryGlobals(runtime.calls, {}, async () => {
     manager.loadStateFromHistory();
 
     assert.deepEqual(cleanupCalls, [
@@ -267,12 +391,7 @@ test('loadStateFromHistory restores dual pipeline state and resets undo guard', 
     assert.equal(runtime.audioManager.pipeline, runtime.audioManager.pipelineB);
     assert.equal(runtime.pipelineManager.expandedPlugins.size, 2);
     assert.equal(runtime.core.enabled, true);
-    assert.deepEqual(timers.cleared, [41]);
-    assert.equal(manager.isUndoRedoOperation, true);
-
-    timers.callbacks.at(-1)();
-    assert.equal(manager.isUndoRedoOperation, false);
-    assert.equal(manager.undoRedoTimeoutId, null);
+    assert.equal(manager.isHistorySuppressed, false);
   });
 
   assert.deepEqual(runtime.calls.filter(call => call[0] === 'dispatchEvent'), [
@@ -296,7 +415,7 @@ test('loadStateFromHistory handles null pipeline B and absent optional UI', asyn
   }];
   manager.historyIndex = 0;
 
-  await withHistoryGlobals(runtime.calls, { uiManager: false, masterToggle: false }, async (timers) => {
+  await withHistoryGlobals(runtime.calls, { uiManager: false, masterToggle: false }, async () => {
     manager.loadStateFromHistory();
 
     assert.equal(runtime.audioManager.pipelineB, null);
@@ -305,7 +424,6 @@ test('loadStateFromHistory handles null pipeline B and absent optional UI', asyn
     assert.equal(runtime.pipelineManager.expandedPlugins.size, 0);
     assert.equal(runtime.core.enabled, true);
 
-    timers.callbacks.at(-1)();
   });
 
   assert.equal(runtime.calls.some(call => call[0] === 'rebuildPipeline'), false);
@@ -337,7 +455,7 @@ test('loadStateFromHistory restores legacy single-pipeline states', async () => 
     return name === 'MissingLegacy' ? null : createRestoredPlugin(name, runtime.calls);
   };
 
-  await withHistoryGlobals(runtime.calls, {}, async (timers) => {
+  await withHistoryGlobals(runtime.calls, {}, async () => {
     manager.loadStateFromHistory();
 
     assert.deepEqual(cleanupCalls, [['cleanupSource', 'ExistingLegacy']]);
@@ -346,7 +464,6 @@ test('loadStateFromHistory restores legacy single-pipeline states', async () => 
     assert.equal(runtime.audioManager.pipeline[0].enabled, false);
     assert.equal(runtime.pipelineManager.expandedPlugins.size, 1);
 
-    timers.callbacks.at(-1)();
   });
 
   assert.ok(runtime.calls.some(call => call[0] === 'updatePipelineUI' && call[1] === true));
@@ -354,20 +471,16 @@ test('loadStateFromHistory restores legacy single-pipeline states', async () => 
   assert.ok(runtime.calls.some(call => call[0] === 'setMasterBypass' && call[1] === false));
 });
 
-test('loadStateFromHistory handles missing history entries through finally cleanup', async () => {
+test('loadStateFromHistory restores suppression after a missing history entry', async () => {
   const runtime = createRuntime();
   const manager = new HistoryManager(runtime.pipelineManager);
   manager.history = [];
   manager.historyIndex = 0;
 
-  await withHistoryGlobals(runtime.calls, {}, async (timers) => {
+  await withHistoryGlobals(runtime.calls, {}, async () => {
     manager.loadStateFromHistory();
 
-    assert.equal(manager.isUndoRedoOperation, true);
-    assert.equal(timers.callbacks.length, 1);
-    timers.callbacks[0]();
-    assert.equal(manager.isUndoRedoOperation, false);
-    assert.equal(manager.undoRedoTimeoutId, null);
+    assert.equal(manager.isHistorySuppressed, false);
   });
 
   assert.equal(runtime.calls.some(call => call[0] === 'updatePipelineUI'), false);

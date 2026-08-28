@@ -1,8 +1,8 @@
 {
   "formatVersion": 1,
   "type": "TubeSimulatorPlugin",
-  "id": "lower-range-corners",
-  "stimulus": "noise",
+  "id": "minimum-drive-12ax7",
+  "stimulus": "sin1k",
   "sampleRate": 96000,
   "channels": 2,
   "frameCount": 1024,
@@ -12,15 +12,15 @@
   "caseIndex": 5,
   "seed": "0xeffe7a5b",
   "params": {
-    "dr": -30,
-    "tp": "12AU7",
+    "dr": -48,
+    "tp": "12AX7",
     "bi": 0,
     "pv": 250,
     "sz": 10,
     "su": 10,
-    "og": 39,
+    "og": 0,
     "mx": 100,
-    "iv": 2.828,
+    "iv": 1,
     "nf": 0,
     "os": "Line",
     "pt": "EL84",
@@ -38,26 +38,12 @@
     "sp": "3.5",
     "fr": true
   },
-  "events": [
-    {
-      "frame": 128,
-      "params": {
-        "dr": -24,
-        "bi": -50,
-        "pv": 150,
-        "sz": 0.6,
-        "su": 0.1,
-        "og": -48,
-        "mx": 0,
-        "iv": 0.1
-      }
-    }
-  ],
+  "events": [],
   "tolerance": {
     "abs": 0.00001,
     "policy": "per-sample"
   },
-  "jsEngineHash": "cd71e391ae506136512d9f63354418ed05843b08a560b90541990e4649fd36a2",
+  "jsEngineHash": "b7fbcbcf830b9f604cd1dbe81e2c22be3260cd2c9e70d850a048b54780a3e792",
   "outputFloats": 2048,
   "byteLength": 8192,
   "binary": "case-006.f32"

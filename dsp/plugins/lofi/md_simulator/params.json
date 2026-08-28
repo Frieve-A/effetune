@@ -3,7 +3,7 @@
   "parityReference": "production-native-promoted-v1",
   "tolerance": { "abs": 0.00002, "policy": "per-sample" },
   "fields": [
-    { "name": "mode", "key": "md", "kind": "enum", "default": "SP (292 kbps)", "values": ["SP (292 kbps)", "LP2 (132 kbps)", "LP4 (66 kbps)"], "rejectInvalid": true },
+    { "name": "mode", "key": "md", "kind": "enum", "step": 1, "default": "SP (292 kbps)", "values": ["SP (292 kbps)", "LP2 (132 kbps)", "LP4 (66 kbps)"], "rejectInvalid": true, "automation": true },
     { "name": "outputGain", "key": "og", "kind": "float", "min": -24, "max": 12, "step": 0.1, "default": 0, "unit": "dB", "automation": true },
     { "name": "mix", "key": "mx", "kind": "float", "min": 0, "max": 100, "step": 1, "default": 100, "unit": "%", "automation": true }
   ]

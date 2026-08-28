@@ -82,13 +82,13 @@ public:
   void reset() noexcept override {
     std::fill(weighted_buffer_.begin(), weighted_buffer_.end(), 0.0F);
     std::fill(power_buffer_.begin(), power_buffer_.end(), 0.0);
-    std::fill(energy_buffer_.begin(), energy_buffer_.end(), 0.0F);
+    std::fill(energy_buffer_.begin(), energy_buffer_.end(), 0.0);
     resetChannelStates();
     buffer_index_ = 0u;
-    window_samples_ = 1u;
     valid_samples_ = 0u;
     active_channel_count_ = 0u;
-    sum_ = 0.0;
+    cumulative_energy_ = 0.0;
+    previous_cycle_energy_ = 0.0;
     current_gain_ = 1.0;
     latest_input_lufs_ = -144.0F;
     latest_output_lufs_ = -144.0F;
@@ -111,9 +111,8 @@ public:
     } else if (requested_window > maximum_window_samples_) {
       requested_window = maximum_window_samples_;
     }
-    if (!initialized_ || channel_count != active_channel_count_ ||
-        requested_window != window_samples_) {
-      initializeState(channel_count, requested_window);
+    if (!initialized_ || channel_count != active_channel_count_) {
+      initializeState(channel_count);
     }
 
     // K-weight every channel on its own and accumulate the BS.1770-4 eq. (2) power sum
@@ -160,17 +159,28 @@ public:
     double current_lufs_linear = 0.0;
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
       const double square = power_buffer_[frame];
-      sum_ -= static_cast<double>(energy_buffer_[buffer_index_]);
-      sum_ += square;
-      energy_buffer_[buffer_index_] = static_cast<float>(square);
-      ++buffer_index_;
-      if (buffer_index_ == window_samples_) {
-        buffer_index_ = 0u;
-      }
-      if (valid_samples_ < window_samples_) {
+      cumulative_energy_ += square;
+      if (valid_samples_ < maximum_window_samples_) {
         ++valid_samples_;
       }
-      current_lufs_linear = sum_ > 0.0 ? sum_ / static_cast<double>(valid_samples_) : 0.0;
+      const std::uint32_t window_count =
+          valid_samples_ < requested_window ? valid_samples_ : requested_window;
+      // Store within-cycle prefixes, reading the old slot before overwriting it.
+      // This retains the full history for O(1) window changes without an ever-growing sum.
+      const double sum =
+          buffer_index_ < window_count
+              ? cumulative_energy_ +
+                    (previous_cycle_energy_ -
+                     energy_buffer_[buffer_index_ + maximum_window_samples_ - window_count])
+              : cumulative_energy_ - energy_buffer_[buffer_index_ - window_count];
+      energy_buffer_[buffer_index_] = cumulative_energy_;
+      ++buffer_index_;
+      if (buffer_index_ == maximum_window_samples_) {
+        buffer_index_ = 0u;
+        previous_cycle_energy_ = cumulative_energy_;
+        cumulative_energy_ = 0.0;
+      }
+      current_lufs_linear = sum > 0.0 ? sum / static_cast<double>(window_count) : 0.0;
 
       double target_gain = current_lufs_linear < noise_gate_linear || current_lufs_linear <= 0.0
                                ? 1.0
@@ -228,17 +238,17 @@ private:
     }
   }
 
-  void initializeState(std::uint32_t channel_count, std::uint32_t requested_window) noexcept {
-    std::fill(energy_buffer_.begin(), energy_buffer_.begin() + requested_window, 0.0F);
+  void initializeState(std::uint32_t channel_count) noexcept {
+    std::fill(energy_buffer_.begin(), energy_buffer_.end(), 0.0);
     resetChannelStates();
     for (std::uint32_t channel = 0u; channel < channel_weights_.size(); ++channel) {
       channel_weights_[channel] = channelWeight(channel, channel_count);
     }
     buffer_index_ = 0u;
-    window_samples_ = requested_window;
     valid_samples_ = 0u;
     active_channel_count_ = channel_count;
-    sum_ = 0.0;
+    cumulative_energy_ = 0.0;
+    previous_cycle_energy_ = 0.0;
     current_gain_ = 1.0;
     latest_input_lufs_ = -144.0F;
     latest_output_lufs_ = -144.0F;
@@ -248,18 +258,18 @@ private:
 
   std::vector<float> weighted_buffer_;
   std::vector<double> power_buffer_;
-  std::vector<float> energy_buffer_;
+  std::vector<double> energy_buffer_;
   std::vector<dsp::BiquadDf1State> pre_states_;
   std::vector<dsp::BiquadDf1State> shelf_states_;
   std::vector<double> channel_weights_;
   dsp::BiquadCoefficients pre_filter_{};
   dsp::BiquadCoefficients shelf_filter_{};
   double sample_rate_ = 0.0;
-  double sum_ = 0.0;
+  double cumulative_energy_ = 0.0;
+  double previous_cycle_energy_ = 0.0;
   double current_gain_ = 1.0;
   std::uint32_t max_channels_ = 0u;
   std::uint32_t maximum_window_samples_ = 1u;
-  std::uint32_t window_samples_ = 1u;
   std::uint32_t buffer_index_ = 0u;
   std::uint32_t valid_samples_ = 0u;
   std::uint32_t active_channel_count_ = 0u;

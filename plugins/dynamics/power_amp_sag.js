@@ -2,7 +2,16 @@ const POWER_AMP_SAG_TAP_MEASUREMENTS = 12;
 const POWER_AMP_SAG_TELEMETRY_VERSION = 1;
 const POWER_AMP_SAG_TELEMETRY_PAYLOAD_BYTES = 8;
 
+const POWER_AMP_SAG_SYSTEM_PRESETS = Object.freeze([
+    Object.freeze({ id: 'vintage-tube-sag', label: 'Vintage Tube Sag', params: Object.freeze({ ss: 8.0, ps: 30, rs: 25, mb: false }) }),
+    Object.freeze({ id: 'modern-monoblocks', label: 'Modern Monoblocks', params: Object.freeze({ ss: 1.0, ps: 85, rs: 70, mb: true }) }),
+    Object.freeze({ id: 'pushed-combo', label: 'Pushed Combo', params: Object.freeze({ ss: 12.0, ps: 20, rs: 50, mb: false }) })
+]);
+
 class PowerAmpSagPlugin extends PluginBase {
+    static getSystemPresetGroups() {
+        return [{ label: '', presets: POWER_AMP_SAG_SYSTEM_PRESETS.map(preset => ({ ...preset })) }];
+    }
     constructor() {
         super('Power Amp Sag', 'Simulates power amp voltage sag under load');
         

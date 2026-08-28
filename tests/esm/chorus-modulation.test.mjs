@@ -150,7 +150,6 @@ test('Chorus validates one atomic snapshot and serializes canonical Depth', asyn
     { dl: 3, dp: 3, vc: 6, fb: -75 });
   plugin.setParameters({ dl: 10, dp: Number.NaN });
   assert.equal(plugin.dp, 3, 'invalid Depth keeps the previous canonical value');
-  assert.equal(plugin.style, 'Custom');
 
   const reversed = new Plugin();
   reversed.setParameters({ dl: 2, dp: 9 });
@@ -159,7 +158,7 @@ test('Chorus validates one atomic snapshot and serializes canonical Depth', asyn
   assert.deepEqual({ dl: reversed.dl, dp: reversed.dp }, { dl: canonical.dl, dp: canonical.dp });
 });
 
-test('Chorus styles use ordinary parameters and mode rows remain conditional', async () => {
+test('Chorus system presets use ordinary parameters and mode rows remain conditional', async () => {
   const Plugin = await loadPlugin();
   const plugin = new Plugin();
   const ui = plugin.createUI();
@@ -169,20 +168,21 @@ test('Chorus styles use ordinary parameters and mode rows remain conditional', a
   assert.deepEqual(plugin._uiControls.rt.querySelector('input[type="range"]').dataset, {
     rangeFineMin: '0.05', rangeFineMax: '10', rangeFineStep: '0.01'
   });
-  plugin.applyStyle('Jet Flanger');
-  assert.deepEqual({ md: plugin.md, dl: plugin.dl, dp: plugin.dp, fb: plugin.fb, style: plugin.style },
-    { md: 'Flanger', dl: 1.5, dp: 1.4, fb: -75, style: 'Jet Flanger' });
+  const presets = Plugin.getSystemPresetGroups()[0].presets;
+  plugin.setParameters(presets.find(preset => preset.id === 'jet-flanger').params);
+  assert.deepEqual({ md: plugin.md, dl: plugin.dl, dp: plugin.dp, fb: plugin.fb },
+    { md: 'Flanger', dl: 1.5, dp: 1.4, fb: -75 });
   assert.equal(plugin._modeRows.voices.hidden, true);
   assert.equal(plugin._modeRows.spread.hidden, false);
   assert.equal(plugin._modeRows.feedback.hidden, false);
   assert.equal(plugin._modeRows.mix.hidden, false);
   assertControls(plugin, {
-    style: 'Jet Flanger', md: 'Flanger', rt: 0.18, dl: 1.5, dp: 1.4,
+    md: 'Flanger', rt: 0.18, dl: 1.5, dp: 1.4,
     vc: 1, ss: 70, fb: -75, mx: 55
   });
   plugin.setParameters({ dl: 2, dp: 9 });
-  assertControls(plugin, { style: 'Custom', dl: 2, dp: 2 });
-  plugin.applyStyle('Vibrato');
+  assertControls(plugin, { dl: 2, dp: 2 });
+  plugin.setParameters(presets.find(preset => preset.id === 'vibrato').params);
   assert.equal(plugin._modeRows.mix.hidden, true);
   assert.deepEqual(Array.from(Plugin.searchAliases), ['Stereo Chorus', 'Ensemble', 'Flanger', 'Vibrato']);
 });

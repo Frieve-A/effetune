@@ -298,7 +298,7 @@ function seedDocument(document) {
     'pipelineEmpty', 'sampleRate', 'effectSearchButton', 'effectSearchInput',
     'effectSearchClearButton', 'availableEffectsTitle', 'tabSwitcher',
     'effectsTab', 'systemPresetsTab', 'userPresetsTab', 'pipeline',
-    'presetSelect', 'presetList', 'savePresetButton', 'deletePresetButton',
+    'pipelinePresetButton',
     'openMusicButton', 'undoButton', 'redoButton', 'cutButton', 'copyButton',
     'pasteButton', 'pipelineToggleButton', 'pipelineMenuButton', 'pipelineMenu',
     'copyAToBButton', 'copyBToAButton', 'doubleBlindTestButton',
@@ -1182,7 +1182,7 @@ test('shares URLs, opens music, manages presets, and creates audio players', asy
       assert.notEqual(replacement, player);
       assert.equal(calls.some(call => call[0] === 'AudioPlayer.close'), true);
 
-      assert.equal(document.getElementById('presetSelect').value, '');
+      assert.equal(manager.pipelineManager.presetManager.currentPresetName, '');
     });
 
     await withUIHarness({ isElectron: false }, async ({ calls, document, objectUrls, manager }) => {

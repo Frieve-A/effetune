@@ -7,10 +7,13 @@ import CorrectionHandler, {
   smoothingToBinsPerOct
 } from '../../features/measurement/ui/correction-handler.js';
 import {
+  buildPerChannelPEQClipboardPayload,
   buildPEQClipboardPayload,
   copyPEQClipboardPayload
 } from '../../features/measurement/ui/peq-clipboard.js';
 import { UIManager } from '../../features/measurement/ui/ui-manager.js';
+import dataStorage from '../../features/measurement/dataStorage.js';
+import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 const controllerModules = [
   '../../features/measurement/measurement-controller/index.js',
@@ -86,6 +89,95 @@ test('measurement implementation modules bypass cache-busted compatibility entri
 test('PEQ smoothing conversion preserves both slider boundaries', () => {
   assert.equal(smoothingToBinsPerOct(0.01), 3.21);
   assert.equal(smoothingToBinsPerOct(1), 24);
+});
+
+test('channel correction intersects the requested range with its measured band before smoothing and solving', async () => {
+  const measurement = {
+    sampleRate: 48000, outputChannels: ['left', '2'],
+    sweepBand: { mode: 'perChannel', common: { minFreq: 20, maxFreq: 20000 }, perChannel: [
+      { channel: 'left', minFreq: 40, maxFreq: 400 },
+      { channel: '2', minFreq: 1500, maxFreq: 1800 }
+    ] }
+  };
+  const response = [[20, 100], [1500, 0], [1550, 1], [1600, 2], [1650, 3], [1700, 2], [1750, 1], [1800, 0], [5000, -100]];
+  const smoothingInputs = [];
+  const calls = [];
+  const manager = new UIManager();
+  const handler = manager.correctionHandler;
+  handler.peqCalculator.calculatePEQParameters = (...args) => { calls.push(args); return []; };
+  await withGlobals({ window: { app: { audioUtils: {
+    smoothFrequencyResponse: input => { smoothingInputs.push(input); return input; }
+  } } } }, async () => {
+    const settings = { lowFreq: 1600, highFreq: 10000, smoothing: 0.3, eqBandCount: 3 };
+    await handler.calculatePEQParametersForResponse(response, settings, measurement, '2');
+    assert.deepEqual(calls[0].slice(1, 4), [1600, 1800, 3]);
+    assert.deepEqual(smoothingInputs[0].map(([frequency]) => frequency), [1600, 1650, 1700, 1750, 1800]);
+    assert.deepEqual(calls[0][0], smoothingInputs[0]);
+    assert.deepEqual(await handler.calculatePEQParametersForResponse(response,
+      { ...settings, highFreq: 1000 }, measurement, '2'), []);
+    assert.deepEqual(await handler.calculatePEQParametersForResponse(response.slice(0, 4),
+      settings, measurement, '2'), []);
+    assert.equal(calls.length, 1);
+  });
+});
+
+test('channel switching clears stale EQ and shares the selected correction with clipboard and file exports', async t => {
+  const measurement = {
+    id: 'channel-eq', name: 'Channel EQ', outputChannels: ['left', '2'],
+    averageFrequencyResponse: [[100, 1]],
+    channelResponses: [
+      { channel: 'left', averageFrequencyResponse: [[100, 2]] },
+      { channel: '2', averageFrequencyResponse: [[1500, 3]] }
+    ],
+    points: [{ channels: [{ channel: 'left', frequencyResponse: [[100, 7]] }] }],
+    peqParameters: [{ frequency: 200, gain: 1, Q: 1 }]
+  };
+  const originalGetMeasurement = dataStorage.getMeasurementById;
+  dataStorage.getMeasurementById = () => measurement;
+  t.after(() => { dataStorage.getMeasurementById = originalGetMeasurement; });
+  const manager = new UIManager();
+  manager.selectedMeasurementId = measurement.id;
+  const display = manager.measurementDisplay;
+  display.selectedPointIndex = 0;
+  display.selectedChannel = 'left';
+  manager.updateResultsGraph = () => {};
+  manager.graphRenderer.updateImpulseResponseGraph = () => {};
+  let requested = 0;
+  manager.correctionHandler.requestCorrectionUpdate = () => { requested += 1; };
+  const calculations = [];
+  manager.correctionHandler.calculatePEQParametersForResponse = (response, settings, source, channel) =>
+    new Promise(resolve => { calculations.push({ response, settings, source, channel, resolve }); });
+  const settings = { lowFreq: 20, highFreq: 20000, smoothing: 0.3, eqBandCount: 1 };
+  await withGlobals({ document: { querySelectorAll: () => [] } }, async () => {
+    const earlier = manager.correctionHandler.calculatePEQParameters(settings);
+    display.selectChannel('2');
+    assert.equal(measurement.peqParameters, undefined);
+    assert.equal(requested, 1);
+    const current = manager.correctionHandler.calculatePEQParameters(settings);
+    assert.equal(calculations[1].channel, '2');
+    assert.strictEqual(calculations[1].response, measurement.channelResponses[1].averageFrequencyResponse);
+    const selectedParameters = [{ frequency: 1600, gain: -3, Q: 1 }];
+    calculations[1].resolve(selectedParameters);
+    await current;
+    calculations[0].resolve([{ frequency: 100, gain: 8, Q: 1 }]);
+    await earlier;
+    assert.strictEqual(measurement.peqParameters, selectedParameters);
+    const payload = JSON.parse(buildPEQClipboardPayload(measurement, 1));
+    assert.equal(payload[0].f0, 1600);
+    const downloads = [];
+    manager.downloadFile = (...args) => downloads.push(args);
+    manager.exportCSV();
+    manager.exportTXT();
+    assert.equal(downloads[0][0], dataStorage.exportPEQtoCSV(selectedParameters));
+    assert.equal(downloads[1][0], dataStorage.exportPEQtoTXT(selectedParameters));
+
+    display.selectChannel('all');
+    const average = manager.correctionHandler.calculatePEQParameters(settings);
+    assert.strictEqual(calculations[2].response, measurement.averageFrequencyResponse);
+    calculations[2].resolve([{ frequency: 500, gain: -1, Q: 1 }]);
+    await average;
+    assert.equal(measurement.peqParameters[0].frequency, 500);
+  });
 });
 
 test('new measurement startup serializes audio initialization and device population', () => {
@@ -226,6 +318,79 @@ test('PEQ clipboard payload preserves band layout, order, channel, and formattin
     f3: 3160, g3: 0, q3: 1, t3: 'pk', e3: false,
     f4: 15000, g4: -7, q4: 0.5, t4: 'pk', e4: true
   }], null, 2));
+});
+
+test('channel PEQ clipboard payload creates one correctly routed effect per channel', () => {
+  const parameters = [
+    { frequency: 1000, gain: -2, Q: 1 },
+    { frequency: 100, gain: 1, Q: 0.7 },
+    { frequency: 10000, gain: -1, Q: 1.2 }
+  ];
+  const payload = buildPerChannelPEQClipboardPayload([
+    { channel: 'left', peqParams: parameters },
+    { channel: '2', peqParams: parameters.map(parameter => ({ ...parameter, gain: parameter.gain - 1 })) }
+  ], 3);
+  const effects = JSON.parse(payload);
+
+  assert.deepEqual(effects.map(effect => effect.ch), ['L', '3']);
+  assert.deepEqual(effects.map(effect => effect.nm), ['5Band PEQ', '5Band PEQ']);
+  assert.equal(payload, JSON.stringify(effects, null, 2));
+  assert.equal(JSON.parse(buildPEQClipboardPayload({
+    outputChannel: 'multi',
+    peqParameters: parameters
+  }, 3))[0].ch, undefined);
+});
+
+test('single PEQ copy follows the displayed measurement channel', async () => {
+  const eqBandCount = { value: '3' };
+  await withGlobals({
+    window: {
+      addEventListener() {},
+      electronAPI: {
+        async writeClipboardText(payload) {
+          this.payload = payload;
+          return true;
+        }
+      }
+    },
+    document: {
+      addEventListener() {},
+      getElementById: id => id === 'eqBandCount' ? eqBandCount : null
+    }
+  }, async () => {
+    await import(`../../features/measurement/app.js?peq-copy-channel=${Date.now()}`);
+    const storage = window.app.dataStorage;
+    const originalGetMeasurement = storage.getMeasurementById;
+    const manager = window.app.uiManager;
+    const originalMeasurementId = manager.selectedMeasurementId;
+    const originalChannel = manager.measurementDisplay.selectedChannel;
+    const parameters = [{ frequency: 1000, gain: -2, Q: 1 }];
+    try {
+      for (const { outputChannel, outputChannels, selectedChannel, expected } of [
+        { outputChannel: 'multi', outputChannels: ['left', '2'], selectedChannel: '2', expected: '3' },
+        { outputChannel: 'multi', outputChannels: ['left', '3'], selectedChannel: '3', expected: '4' },
+        { outputChannel: 'multi', outputChannels: ['left', '7'], selectedChannel: '7', expected: '8' },
+        { outputChannel: 'multi', outputChannels: ['left', 'right'], selectedChannel: 'right', expected: 'R' },
+        { outputChannel: 'multi', outputChannels: ['left', 'right'], selectedChannel: 'all', expected: undefined },
+        { outputChannel: '2', selectedChannel: 'all', expected: '3' },
+        { outputChannel: 'left', selectedChannel: 'all', expected: 'L' },
+        { outputChannel: 'right', selectedChannel: 'all', expected: 'R' }
+      ]) {
+        const measurement = {
+          id: `copy-${selectedChannel}`, outputChannel, outputChannels, peqParameters: parameters
+        };
+        storage.getMeasurementById = () => measurement;
+        manager.selectedMeasurementId = measurement.id;
+        manager.measurementDisplay.selectedChannel = selectedChannel;
+        await window.app.copyPEQToClipboard();
+        assert.equal(JSON.parse(window.electronAPI.payload)[0].ch, expected);
+      }
+    } finally {
+      storage.getMeasurementById = originalGetMeasurement;
+      manager.selectedMeasurementId = originalMeasurementId;
+      manager.measurementDisplay.selectedChannel = originalChannel;
+    }
+  });
 });
 
 test('PEQ clipboard completion follows the asynchronous write result', async () => {

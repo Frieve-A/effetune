@@ -6,6 +6,7 @@ import dataStorage from '../dataStorage.js';
 import { PEQCalculator } from '../peq-calculator/peq-calculator.js';
 import i18n from '../i18n.js';
 import { createGraphGeometry } from '../graph-geometry.js';
+import { resolveDisplayedResponse, resolveResponseSweepBand } from '../measurement-model.js';
 
 export function smoothingToBinsPerOct(smoothing) {
     return 3 + smoothing * 21;
@@ -26,7 +27,7 @@ class CorrectionHandler {
         if (expectedGeneration !== this.uiManager.measurementStateGeneration) return;
 
         const settings = this.getTargetSettings();
-        this.uiManager.updateResultsGraph('all');
+        this.uiManager.updateResultsGraph();
         this.updateFrequencyMarkers();
         await this.calculatePEQParameters(settings, expectedGeneration);
     }
@@ -344,37 +345,21 @@ class CorrectionHandler {
         if (!measurement) return [];
         if (expectedGeneration !== this.uiManager.measurementStateGeneration) return [];
         
-        // Get frequency response data
-        const responseData = measurement.averageFrequencyResponse;
-        if (!responseData || responseData.length === 0) return [];
+        // Correction uses the selected channel averaged across measurement points.
+        const channel = this.uiManager.measurementDisplay?.selectedChannel || 'all';
+        const responseData = resolveDisplayedResponse(measurement, 'all', channel)?.frequencyResponse;
         
-        // Normalize to the measured audible-band median before calculating PEQ parameters
-        const normalizedResponse = this.uiManager.graphRenderer.normalizeResponseToZeroDb(
+        const peqParameters = await this.calculatePEQParametersForResponse(
             responseData,
-            measurement.sweepMinFreq,
-            measurement.sweepMaxFreq
-        );
-        
-        // Apply smoothing to the normalized response before calculating PEQ parameters
-        const smoothedResponse = window.app.audioUtils.smoothFrequencyResponse(
-            normalizedResponse,
-            settings.smoothing
-        );
-        
-        // Calculate PEQ parameters
-        const binsPerOct = smoothingToBinsPerOct(settings.smoothing);
-        const peqParameters = await this.peqCalculator.calculatePEQParameters(
-            smoothedResponse,
-            settings.lowFreq,
-            settings.highFreq,
-            settings.eqBandCount,
-            undefined,
-            binsPerOct
+            settings,
+            measurement,
+            channel
         );
 
         if (expectedGeneration !== this.uiManager.measurementStateGeneration ||
             measurementId !== this.uiManager.selectedMeasurementId ||
-            measurement !== dataStorage.getMeasurementById(measurementId)) {
+            measurement !== dataStorage.getMeasurementById(measurementId) ||
+            channel !== (this.uiManager.measurementDisplay?.selectedChannel || 'all')) {
             return [];
         }
 
@@ -391,6 +376,41 @@ class CorrectionHandler {
         this.uiManager.updateResultsGraph();
         
         return peqParameters;
+    }
+
+    async calculatePEQParametersForResponse(responseData, settings, measurement = null, channel = 'all') {
+        if (!responseData?.length) return [];
+        const sourceMeasurement = measurement ||
+            dataStorage.getMeasurementById(this.uiManager.selectedMeasurementId);
+        const band = resolveResponseSweepBand(sourceMeasurement, channel);
+        const lowFreq = Math.max(settings.lowFreq, band.minFreq);
+        const highFreq = Math.min(settings.highFreq, band.maxFreq);
+        if (!(highFreq > lowFreq)) return [];
+        const measuredResponse = responseData.filter(([frequency, db]) =>
+            frequency >= band.minFreq && frequency <= band.maxFreq && Number.isFinite(db)
+        );
+        const normalizedResponse = this.uiManager.graphRenderer.normalizeResponseToZeroDb(
+            measuredResponse,
+            band.minFreq,
+            band.maxFreq
+        );
+        const correctionResponse = normalizedResponse.filter(([frequency]) =>
+            frequency >= lowFreq && frequency <= highFreq
+        );
+        if (correctionResponse.length < 5) return [];
+        const smoothedResponse = window.app.audioUtils.smoothFrequencyResponse(
+            correctionResponse,
+            settings.smoothing
+        );
+        const binsPerOct = smoothingToBinsPerOct(settings.smoothing);
+        return this.peqCalculator.calculatePEQParameters(
+            smoothedResponse,
+            lowFreq,
+            highFreq,
+            settings.eqBandCount,
+            undefined,
+            binsPerOct
+        );
     }
 }
 

@@ -9,6 +9,7 @@ import {
   DEFAULT_GOLDEN_BUDGET_BYTES,
   readGoldenSet
 } from '../../tools/dsp-parity/golden-io.mjs';
+import { getCurrentJsEngineHash } from './js-engine-hash-helper.mjs';
 import { createReferenceSession } from '../../tools/dsp-parity/node-host.mjs';
 import { generateStimulus } from '../../tools/dsp-parity/stimuli.mjs';
 
@@ -49,7 +50,6 @@ const ports = [
     ],
     caseCount: 9,
     goldenBytes: 161408,
-    jsEngineHash: 'aa75823c4c1df4363043d272f6134cc24d7ac6ed31ec793fae54281f9cdd7412',
     activeParams: { sd: 7, ss: 4, sp: 3, sm: 0.7, dd: 6, db: -0.2, dm: 73, cm: 81, og: -3 }
   },
   {
@@ -148,6 +148,9 @@ test('Saturation goldens are source-frozen, bounded, finite, and representative'
     assert.equal(await fileBytes(goldenDir), port.goldenBytes);
     assert.ok(port.goldenBytes <= DEFAULT_GOLDEN_BUDGET_BYTES);
     const goldens = await readGoldenSet(goldenDir);
+    const jsEngineHash = port.type === 'DynamicSaturationPlugin'
+      ? await getCurrentJsEngineHash(port.type, repoRoot)
+      : port.jsEngineHash;
     assert.equal(goldens.length, port.caseCount);
     assert.ok(goldens.some(item => item.metadata.sampleRate === 44100));
     assert.ok(goldens.some(item => item.metadata.sampleRate === 96000));
@@ -159,7 +162,7 @@ test('Saturation goldens are source-frozen, bounded, finite, and representative'
     assert.ok(goldens.some(item => item.metadata.events.length > 0));
     for (const golden of goldens) {
       assert.equal(golden.metadata.type, port.type);
-      assert.equal(golden.metadata.jsEngineHash, port.jsEngineHash);
+      assert.equal(golden.metadata.jsEngineHash, jsEngineHash);
       assert.equal(golden.expected.length,
         golden.metadata.frameCount * golden.metadata.channels);
       assert.ok(golden.expected.every(Number.isFinite));
@@ -185,6 +188,19 @@ test('Harmonic Distortion isolates every polynomial order and normalization extr
   }
   assert.ok(goldens.some(item => item.metadata.params.sn === 0.1));
   assert.ok(goldens.some(item => item.metadata.params.sn === 2));
+});
+
+test('Dynamic Saturation damped cone settles after an impulse at common sample rates', async () => {
+  for (const sampleRate of [44100, 48000, 96000, 192000]) {
+    const session = await createReferenceSession('DynamicSaturationPlugin', { repoRoot });
+    const frames = 4096;
+    const input = new Float32Array(frames * 2);
+    input[0] = input[frames] = 0.1;
+    const output = await session.process(input, { sampleRate, frames, channels: 2, blockSize: 128 });
+    assert.ok(output.every(Number.isFinite));
+    assert.ok(output.slice(frames - 128, frames).every(value => Math.abs(value) < 1e-6),
+      `the cone must decay instead of oscillating or reaching its clamp at ${sampleRate} Hz`);
+  }
 });
 
 test('Dynamic Saturation freezes Float32 state commits and extrema', async () => {

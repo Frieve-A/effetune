@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { validateParamSpec } from '../../scripts/gen-dsp-params.mjs';
 import { readGoldenSet } from '../../tools/dsp-parity/golden-io.mjs';
 import { runParityCli } from '../../tools/dsp-parity/run.mjs';
+import { getCurrentJsEngineHash } from './js-engine-hash-helper.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -41,9 +42,10 @@ test('Wow Flutter freezes seeded draw order, state precision, and golden parity'
   assert.doesNotMatch(kernel, /\b(?:malloc|calloc|realloc|free)\s*\(/);
 
   const goldens = await readGoldenSet(path.join(root, 'golden'));
+  const jsEngineHash = await getCurrentJsEngineHash('WowFlutterPlugin', repoRoot);
   assert.equal(goldens.length, 9);
   assert.ok(goldens.every(item =>
-    item.metadata.jsEngineHash === '79fa0ec323dac5c6bdc1a99afc5dec1829986acbb5745ac9ebde06323596b3d5'
+    item.metadata.jsEngineHash === jsEngineHash
   ));
   const result = await runParityCli([
     '--root', repoRoot,

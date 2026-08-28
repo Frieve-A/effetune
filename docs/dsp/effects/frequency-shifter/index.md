@@ -48,7 +48,7 @@ Frequency Shifter moves every frequency component by a fixed number of hertz rat
 
 ### Parameters
 
-- **Style** — loads a complete factory setting for every parameter. Choices are **Shift Up** (Shift), **Shift Down** (Shift), **Fine Detune** (Shift), **Ring Modulator** (Ring Mod), **Barber-pole Up** (Barber-pole), and **Barber-pole Down** (Barber-pole). Changing an individual parameter switches Style to **Custom**.
+- **System Presets** — use **Shift Up**, **Shift Down**, **Fine Detune**, **Ring Modulator**, **Barber-pole Up**, or **Barber-pole Down** to load a complete starting point. Adjust individual parameters afterwards to refine it.
 - **Mode** — selects Shift, Ring Mod, or Barber-pole processing.
 - **Shift** (-5,000–5,000 Hz) — fixed signed translation in Shift mode; positive moves components upward and negative moves them downward.
 - **Carrier Frequency** (0.1–10,000 Hz) — multiplication frequency in Ring Mod mode.

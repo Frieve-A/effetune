@@ -69,6 +69,16 @@ Vinyl Simulator transforms the music itself through a physical record-cutting an
 - **More obvious groove coloration:** Raise Cut Level carefully, lower HF Cutoff, or use a smaller Radius. Watch the HUD for falling Tracking S/E and rising mistrack or skip rates.
 - **Wow and flutter:** Vinyl Simulator does not add speed drift, eccentricity, warping, or turntable rumble. Add **Wow Flutter** elsewhere in the effect chain when you want those behaviors.
 
+### System Presets
+
+Click **Effect Presets** in the effect header to apply complete groove, stylus, and surface settings.
+
+- **Audiophile Pressing** - A quiet, carefully maintained record surface.
+- **Well-Worn Favorite** - More roughness, dust, and static from an often-played record.
+- **Flea Market 45** - A worn 45 rpm single with a spherical stylus and prominent surface noise.
+- **78 rpm Shellac** - A narrow-band, coarse old shellac record character.
+- **End of Side** - An inner-groove position with the tracing behavior of the end of a record side.
+
 ### Parameters
 
 #### Cutting

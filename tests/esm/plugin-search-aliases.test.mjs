@@ -34,7 +34,7 @@ const modulationPluginAliases = Object.freeze([
   }),
   Object.freeze({
     file: 'rotary_speaker.js', className: 'RotarySpeakerPlugin', name: 'Rotary Speaker',
-    aliases: Object.freeze(['Leslie', 'Rotary'])
+    aliases: Object.freeze(['Rotary'])
   })
 ]);
 

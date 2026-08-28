@@ -1,7 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
 
 import { loadConfiguredLanguage } from '../../features/measurement/i18n.js';
+
+test('measurement locales have the same translation keys as English', () => {
+  const localeDirectory = new URL('../../features/measurement/locales/', import.meta.url);
+  const localeFiles = readdirSync(localeDirectory).filter(file => file.endsWith('.json5'));
+  const parse = file => JSON.parse(
+    readFileSync(new URL(file, localeDirectory), 'utf8').replace(/\/\/.*$/gm, '')
+  );
+  const expectedKeys = Object.keys(parse('en.json5')).sort();
+
+  assert.equal(localeFiles.length, 10);
+  for (const file of localeFiles) {
+    assert.deepEqual(Object.keys(parse(file)).sort(), expectedKeys, file);
+  }
+});
 
 function replaceGlobal(name, value) {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);

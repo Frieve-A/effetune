@@ -161,7 +161,7 @@ function expectedFill(range) {
     (Number(range.max) - Number(range.min))) * 100}%`;
 }
 
-test('Style changes refresh linear and logarithmic slider fills across modulation plugins', () => {
+test('System preset application refreshes linear and logarithmic slider fills across modulation plugins', () => {
   const runtime = loadRuntime();
   const originalDocument = globalThis.document;
   globalThis.document = runtime.documentRef;
@@ -170,15 +170,15 @@ test('Style changes refresh linear and logarithmic slider fills across modulatio
 
   try {
     const scenarios = [
-      ['AutoPanPlugin', 'Fast Auto Pan', 'dp', 'rt'],
-      ['AutoFilterPlugin', 'Reverse Auto Wah', 'rs', 'lf'],
-      ['ChorusPlugin', 'Vibrato', 'mx', 'rt'],
-      ['FrequencyShifterPlugin', 'Barber-pole Down', 'mix', 'rt'],
-      ['PhaserPlugin', 'Deep Phaser', 'mx', 'cf'],
-      ['RotarySpeakerPlugin', 'Leslie Fast', 'mx', 'xo', { mx: 50, xo: 1200 }]
+      ['AutoPanPlugin', 'fast-auto-pan', 'dp', 'rt'],
+      ['AutoFilterPlugin', 'reverse-auto-wah', 'rs', 'lf'],
+      ['ChorusPlugin', 'vibrato', 'mx', 'rt'],
+      ['FrequencyShifterPlugin', 'barber-pole-down', 'mix', 'rt'],
+      ['PhaserPlugin', 'deep-phaser', 'mx', 'cf'],
+      ['RotarySpeakerPlugin', 'vintage-rotor-fast', 'mx', 'xo', { mx: 50, xo: 1200 }]
     ];
 
-    for (const [className, styleName, linearKey, logarithmicKey, initialParameters] of scenarios) {
+    for (const [className, presetId, linearKey, logarithmicKey, initialParameters] of scenarios) {
       const plugin = new runtime.window[className]();
       const container = plugin.createUI();
       runtime.documentRef.body.appendChild(container);
@@ -188,9 +188,10 @@ test('Style changes refresh linear and logarithmic slider fills across modulatio
         const range = plugin._uiControls[key].querySelector('input[type="range"]');
         return [key, range.style['--et-range-fill']];
       }));
-      const styleSelect = plugin._uiControls.style.querySelector('select');
-      styleSelect.value = styleName;
-      styleSelect.dispatch('change');
+      const preset = plugin.constructor.getSystemPresetGroups()[0].presets
+        .find(candidate => candidate.id === presetId);
+      plugin.setParameters(preset.params);
+      uiManager.refreshRangeFillStyling(container);
 
       for (const key of [linearKey, logarithmicKey]) {
         const range = plugin._uiControls[key].querySelector('input[type="range"]');

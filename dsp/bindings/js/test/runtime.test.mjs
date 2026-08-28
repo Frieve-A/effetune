@@ -367,6 +367,73 @@ test('modulation cross-field rules match across constructors, JSON, and partial 
   }
 });
 
+test('multiband streams retain ordered crossovers across partial updates', async t => {
+  const source = [
+    Float32Array.from({ length: 512 }, (_, index) => Math.sin(index * 0.071) * 0.4),
+    Float32Array.from({ length: 512 }, (_, index) => Math.cos(index * 0.053) * 0.3)
+  ];
+  for (const type of ['MultibandCompressor', 'MultibandExpander', 'MultibandBalance',
+    'MultibandTransient', 'MultibandSaturation']) {
+    await t.test(type, async () => {
+      const fiveBand = ['MultibandCompressor', 'MultibandExpander', 'MultibandBalance'].includes(type);
+      const high = fiveBand ? 400 : 1000;
+      const low = fiveBand ? 100 : 200;
+      const supplied = {
+        frequency1: high, frequency2: low,
+        ...(fiveBand ? { frequency3: 1500, frequency4: 1000 } : {})
+      };
+      const initial = {
+        ...supplied, frequency2: high,
+        ...(fiveBand ? { frequency4: 1500 } : {})
+      };
+      for (const surface of ['setParam', 'event']) {
+        const chain = await createChain([createEffect(type, { id: 'mb', ...supplied })],
+          { variant: 'baseline' });
+        const reference = await createChain([createEffect(type, { id: 'mb', ...initial })],
+          { variant: 'baseline' });
+        const stream = await chain.stream({ sampleRate: 48000, channels: 2, blockSize: 64 });
+        const expected = await reference.stream({ sampleRate: 48000, channels: 2, blockSize: 64 });
+        try {
+          assert.deepEqual(await stream.process(source), await expected.process(source));
+          let effective = { ...initial };
+          const steps = [
+            ['frequency2', fiveBand ? 1200 : 4000],
+            ['frequency2', low],
+            ['frequency1', 20],
+            ['frequency2', fiveBand ? 800 : 3000],
+            ...(fiveBand ? [['frequency3', 500], ['frequency2', 100]] : [])
+          ];
+          for (const [name, value] of steps) {
+            effective[name] = value;
+            for (let index = 2; index <= (fiveBand ? 4 : 2); index++) {
+              effective[`frequency${index}`] = Math.max(
+                effective[`frequency${index}`], effective[`frequency${index - 1}`]
+              );
+            }
+            const referenceOutput = await expected.process(source, {
+              events: [{ frame: 0, effectId: 'mb', parameters: effective }]
+            });
+            if (surface === 'setParam') stream.setParam('mb', name, value);
+            const actual = await stream.process(source, surface === 'event' ? {
+              events: [{ frame: 0, effectId: 'mb', parameters: { [name]: value } }]
+            } : {});
+            assert.deepEqual(actual, referenceOutput, `${surface}: ${name}=${value}`);
+            assert.deepEqual(stream.effects, expected.effects);
+          }
+          stream.reset();
+          expected.reset();
+          assert.deepEqual(stream.effects, expected.effects);
+        } finally {
+          stream.close();
+          expected.close();
+          chain.close();
+          reference.close();
+        }
+      }
+    });
+  }
+});
+
 test('Phaser stage choices are preserved and odd values are rejected across public surfaces', async () => {
   const stagesDefinition = EFFECT_METADATA.effects
     .find(effect => effect.type === 'Phaser').parameters
@@ -1071,6 +1138,59 @@ test('asset-backed streams keep assets for live updates and reject reconfigurati
     }
   } finally {
     stream.close();
+    chain.close();
+  }
+});
+
+test('Chain keeps equal session seeds while assigning stable ordinals to two IR instances', async () => {
+  const ir = new Float32Array(131072);
+  ir[0] = 1;
+  const payload = encodeEta1({
+    channels: [ir, ir],
+    sampleRate: 48000,
+    topology: 'independent'
+  });
+  const effects = ['first-room', 'second-room'].map(id => new IRReverb({
+    id,
+    assets: { impulseResponse: 'room-ir' },
+    channelMode: 'independent',
+    latency: 128,
+    convolutionRate: 'full'
+  }));
+  const chain = await createChain(effects, {
+    variant: 'baseline',
+    assetResolver: () => payload
+  });
+  const open = () => chain.stream({
+    sampleRate: 48000,
+    channels: 2,
+    blockSize: 128,
+    seed: 0x12345678
+  });
+  const first = await open();
+  try {
+    assert.equal(first._session.seed, 0x12345678);
+    assert.deepEqual(
+      first._session.nodes.map(node => node.instanceId & 0xffff),
+      [1, 2]
+    );
+    first.reset();
+    assert.deepEqual(
+      first._session.nodes.map(node => node.instanceId & 0xffff),
+      [1, 2]
+    );
+  } finally {
+    first.close();
+  }
+  const rebuilt = await open();
+  try {
+    assert.equal(rebuilt._session.seed, 0x12345678);
+    assert.deepEqual(
+      rebuilt._session.nodes.map(node => node.instanceId & 0xffff),
+      [1, 2]
+    );
+  } finally {
+    rebuilt.close();
     chain.close();
   }
 });

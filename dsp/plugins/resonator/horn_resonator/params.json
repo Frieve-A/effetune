@@ -3,12 +3,12 @@
   "tolerance": { "abs": 0.0001, "policy": "per-sample" },
   "fields": [
     { "name": "crossover", "key": "co", "kind": "float", "min": 20, "max": 5000, "step": 10, "default": 600, "unit": "Hz", "automation": true },
-    { "name": "length", "key": "ln", "kind": "float", "min": 20, "max": 120, "default": 70, "unit": "cm" },
-    { "name": "throatDiameter", "key": "th", "kind": "float", "min": 0.5, "max": 50, "default": 3, "unit": "cm" },
-    { "name": "mouthDiameter", "key": "mo", "kind": "float", "min": 5, "max": 200, "default": 60, "unit": "cm" },
-    { "name": "curve", "key": "cv", "kind": "float", "min": -100, "max": 100, "default": 40, "unit": "%" },
+    { "name": "length", "key": "ln", "kind": "float", "min": 20, "max": 120, "step": 1, "default": 70, "unit": "cm", "automation": true },
+    { "name": "throatDiameter", "key": "th", "kind": "float", "min": 0.5, "max": 50, "step": 0.1, "default": 3, "unit": "cm", "automation": true },
+    { "name": "mouthDiameter", "key": "mo", "kind": "float", "min": 5, "max": 200, "step": 0.5, "default": 60, "unit": "cm", "automation": true },
+    { "name": "curve", "key": "cv", "kind": "float", "min": -100, "max": 100, "step": 1, "default": 40, "unit": "%", "automation": true },
     { "name": "damping", "key": "dp", "kind": "float", "min": 0, "max": 10, "step": 0.01, "default": 0.03, "unit": "dB/m", "automation": true },
     { "name": "throatReflection", "key": "tr", "kind": "float", "min": 0, "max": 0.99, "step": 0.01, "default": 0.99, "automation": true },
-    { "name": "waveguideGain", "key": "wg", "kind": "float", "min": -36, "max": 36, "step": 0.1, "default": 30, "unit": "dB", "automation": true }
+    { "name": "waveguideGain", "key": "wg", "kind": "float", "min": -36, "max": 36, "step": 0.1, "default": 26, "unit": "dB", "automation": true }
   ]
 }

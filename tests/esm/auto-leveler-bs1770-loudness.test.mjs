@@ -126,7 +126,9 @@ function assertFallbackResultFullyOverwritten(result, expectedMeasurementKeys) {
 
 // Runs the real plugin processor over interleaved-by-channel blocks and returns both the
 // telemetry it reports and the audio it produced.
-function runProcessor(channels, { sampleRate = 48000, blockSize = 128, params = {} } = {}) {
+function runProcessor(channels, {
+  sampleRate = 48000, blockSize = 128, params = {}, paramsAtFrame, onBlock
+} = {}) {
   const plugin = new reference.PluginClass();
   plugin.id = 'auto-leveler-bs1770-test';
   plugin.setParameters({ ...DEFAULT_PARAMS, ...params });
@@ -136,6 +138,7 @@ function runProcessor(channels, { sampleRate = 48000, blockSize = 128, params = 
   const state = {};
   let measurements = null;
   for (let start = 0; start + blockSize <= frames; start += blockSize) {
+    if (paramsAtFrame) plugin.setParameters(paramsAtFrame(start));
     const block = new Float32Array(channelCount * blockSize);
     for (let channel = 0; channel < channelCount; channel++) {
       block.set(channels[channel].subarray(start, start + blockSize), channel * blockSize);
@@ -148,6 +151,7 @@ function runProcessor(channels, { sampleRate = 48000, blockSize = 128, params = 
       blockSize,
       sampleRate
     }, start / sampleRate);
+    onBlock?.(state, start, processed);
     if (processed.measurements) measurements = processed.measurements;
     for (let channel = 0; channel < channelCount; channel++) {
       outputs[channel].set(
@@ -357,6 +361,76 @@ test('the leveler settles on the requested LUFS target', () => {
       `produced ${produced} LUFS for target ${target}`
     );
   }
+});
+
+test('dense window automation preserves settled gain and K-weighting history', () => {
+  const sampleRate = 48000;
+  const settledFrames = 3 * sampleRate;
+  let history;
+  let filters;
+  let settledOutputLufs;
+  let automatedBlocks = 0;
+  runProcessor([tone(1000, 0.5, 3.2, sampleRate)], {
+    sampleRate,
+    params: { tg: -36, mg: 0, ng: -36, at: 1, rt: 5000 },
+    paramsAtFrame: start => ({ tw: start < settledFrames ? 3000 :
+      3010 + 10 * ((start - settledFrames) / 128) }),
+    onBlock: (state, start, processed) => {
+      if (start === 0) {
+        history = state.buffer;
+        filters = state.kfilters;
+      }
+      assert.strictEqual(state.buffer, history);
+      assert.strictEqual(state.kfilters, filters);
+      if (start < settledFrames) {
+        settledOutputLufs = processed.measurements.outputLufs;
+        return;
+      }
+      automatedBlocks++;
+      assert.ok(state.currentGain < 0.05, `gain reset at frame ${start}: ${state.currentGain}`);
+      assert.ok(processed.every(sample => Math.abs(sample) < 0.025));
+      assert.ok(Math.abs(processed.measurements.outputLufs - settledOutputLufs) < 0.01);
+    }
+  });
+  assert.ok(automatedBlocks > 50);
+});
+
+test('changing windows retain the direct energy sum through growth, shrinkage and ring wraps', () => {
+  const sampleRate = 48000;
+  const blockSize = 128;
+  const capacity = 10 * sampleRate;
+  const samples = tone(997, 0.5, 21, sampleRate);
+  // Different levels make a stale or incorrectly indexed history observable.
+  for (let i = 0; i < samples.length; i++) {
+    samples[i] *= 0.2 + 0.1 * (Math.floor(i / sampleRate) % 7);
+  }
+  const powers = new Float64Array(samples.length);
+  const windows = [1000, 10000, 3010, 7000, 2000, 9999];
+  let checks = 0;
+  runProcessor([samples], {
+    sampleRate,
+    blockSize,
+    paramsAtFrame: start => ({ tw: windows[(start / blockSize) % windows.length] }),
+    onBlock: (state, start) => {
+      const end = start + blockSize;
+      powers.set(state.powerBuffer, start);
+      assert.equal(state.validSamples, Math.min(end, capacity));
+      if ((start / blockSize) % 127 !== 0 &&
+          Math.floor(start / capacity) === Math.floor(end / capacity)) return;
+      const windowSamples = Math.floor(
+        (windows[(start / blockSize) % windows.length] / 1000) * sampleRate
+      );
+      const first = Math.max(0, end - windowSamples);
+      let directSum = 0;
+      for (let i = first; i < end; i++) directSum += powers[i];
+      assert.ok(Math.abs(state.sum - directSum) < 1e-8,
+        `frame ${end}: window sum ${state.sum}, direct sum ${directSum}`);
+      const expectedLufs = 10 * Math.log10(directSum / (end - first)) - LUFS_OFFSET;
+      assert.ok(Math.abs(state.lastLufs - expectedLufs) < 1e-9);
+      checks++;
+    }
+  });
+  assert.ok(checks > 60);
 });
 
 test('the noise gate threshold is on the LUFS scale', () => {

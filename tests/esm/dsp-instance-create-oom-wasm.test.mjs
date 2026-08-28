@@ -48,6 +48,28 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
         'destroying an instance must make its allocation reusable'
       );
       binding.destroyInstance(reusedInstance);
+
+      // Leave enough memory for exception handling, but not a delay-line buffer.
+      const reservations = [];
+      try {
+        for (const size of [1024 * 1024, 64 * 1024]) {
+          for (;;) {
+            const pointer = binding.exports.malloc(size) >>> 0;
+            if (pointer === 0) break;
+            reservations.push(pointer);
+          }
+        }
+        assert.equal(
+          binding.createInstance('TimeAlignmentPlugin'),
+          0,
+          'delay-line preparation failure must reject the instance'
+        );
+      } finally {
+        for (const pointer of reservations) binding.exports.free(pointer);
+      }
+      const timeAlignment = binding.createInstance('TimeAlignmentPlugin');
+      assert.notEqual(timeAlignment, 0, 'delay-line preparation must recover after memory is freed');
+      binding.destroyInstance(timeAlignment);
     } finally {
       binding.close();
     }

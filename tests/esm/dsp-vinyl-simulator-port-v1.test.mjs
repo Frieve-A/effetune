@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
 import { validateParamSpec } from '../../scripts/gen-dsp-params.mjs';
+import { createReferenceSession } from '../../tools/dsp-parity/node-host.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const pluginRoot = path.join(repoRoot, 'dsp', 'plugins', 'lofi', 'vinyl_simulator');
@@ -68,6 +69,23 @@ test('Vinyl Simulator bounds the seeded static-only reference peak', async () =>
   }
   assert.ok(peak > 0.05, `expected audible static events, got peak ${peak}`);
   assert.ok(peak < 0.12, `expected bounded static events, got peak ${peak}`);
+});
+
+test('Vinyl Simulator scratch displacement produces an audible bounded pop', async () => {
+  const session = await createReferenceSession('VinylSimulatorPlugin', {
+    repoRoot,
+    seed: 5417n,
+    params: {
+      fr: true, sc: 3, dr: 0, st: 0, rg: 0.1, rp: '78', tf: 4,
+      sh: 'Spherical', rs: 25, rc: 25, og: -3
+    }
+  });
+  const output = await session.process(new Float32Array(2048), {
+    sampleRate: 96000, frames: 1024, channels: 2, blockSize: 128
+  });
+  const peak = output.reduce((value, sample) => Math.max(value, Math.abs(sample)), 0);
+  assert.ok(peak > 0.1, `expected an audible seeded scratch, got ${peak}`);
+  assert.ok(peak < 1, `the calibrated scratch must not clip, got ${peak}`);
 });
 
 test('Vinyl Simulator kernel preserves fixed-capacity physical topology', async () => {

@@ -27,8 +27,10 @@ class PEQCalculator {
   calculatePEQParameters(fr, lowFreq = 20, highFreq = 20000, bandCount = 5, fs = 96000, binsPerOct = 6, options = {}) {
     this.fs = fs;
     // Clamp frequency limits to sensible values
-    this.lowFreq = Math.max(10, Math.min(lowFreq, 1000));
-    this.highFreq = Math.max(this.lowFreq * 2, Math.min(highFreq, fs / 2 * 0.95)); // Ensure highFreq > lowFreq and below Nyquist
+    this.lowFreq = Math.max(20, lowFreq);
+    this.highFreq = Math.min(highFreq, 20000, fs / 2 * 0.95);
+    if (!Number.isFinite(this.lowFreq) || !Number.isFinite(this.highFreq) ||
+        this.highFreq <= this.lowFreq) return [];
     // Clamp band count
     bandCount = Math.max(1, Math.min(15, bandCount));
     // Clamp binsPerOct
@@ -41,25 +43,17 @@ class PEQCalculator {
     };
 
     // --- 1. Pre-filter and de-mean the input data ---
-    // Filter data to be within slightly wider bounds than the target range
-    const data = fr.filter(([f]) => f >= this.lowFreq * 0.8 && f <= this.highFreq * 1.2);
+    // Only measured points inside the requested correction band are optimization targets.
+    const data = fr.filter(([f, m]) => f >= this.lowFreq && f <= this.highFreq && Number.isFinite(m));
     if (data.length < 5) {
         console.error("calculatePEQParameters: Not enough valid data points in the specified frequency range.");
-        return createDefaultBands(bandCount, this.lowFreq, this.highFreq);
+        return [];
     }
 
     const freq = data.map(([f]) => f);
     const magRaw = data.map(([,m]) => m);
 
-    // Calculate the mean magnitude within the specified frequency range [lowFreq, highFreq]
-    const relevantMags = data.filter(([f]) => f >= this.lowFreq && f <= this.highFreq).map(([,m]) => m);
-    let mean = 0;
-    if (relevantMags.length > 0) {
-        mean = relevantMags.reduce((s, d) => s + d, 0) / relevantMags.length;
-    } else {
-        // Fallback if no data in the exact range
-        mean = magRaw.reduce((s, d) => s + d, 0) / magRaw.length;
-    }
+    const mean = magRaw.reduce((sum, magnitude) => sum + magnitude, 0) / magRaw.length;
 
     // Normalize magnitude by subtracting the mean
     const magN = magRaw.map(d => d - mean);
@@ -75,7 +69,7 @@ class PEQCalculator {
         // Sign-dependent Q upper bound: peaks <= 1/6 oct (Q ≈ 8.65), dips <= 1/3 oct (Q ≈ 4.32)
         const qUpper = qMaxForGain(clampedGain);
         return {
-          frequency: Math.max(20, Math.min(20000, Math.round(b.frequency))),
+          frequency: Math.max(this.lowFreq, Math.min(this.highFreq, Math.round(b.frequency))),
           gain: clampedGain,
           Q: Math.max(0.1, Math.min(qUpper, +b.Q.toFixed(2))),
           type: 'peaking'

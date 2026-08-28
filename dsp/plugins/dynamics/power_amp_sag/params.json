@@ -5,6 +5,6 @@
     { "name": "sagSensitivity", "key": "ss", "kind": "float", "min": -18, "max": 18, "step": 0.1, "default": 3, "unit": "dB", "automation": true },
     { "name": "powerStability", "key": "ps", "kind": "int", "min": 0, "max": 100, "step": 1, "default": 50, "unit": "%", "automation": true },
     { "name": "recoverySpeed", "key": "rs", "kind": "int", "min": 0, "max": 100, "step": 1, "default": 40, "unit": "%", "automation": true },
-    { "name": "monoblock", "key": "mb", "kind": "bool", "default": false }
+    { "name": "monoblock", "key": "mb", "kind": "bool", "step": 1, "default": false, "automation": true }
   ]
 }

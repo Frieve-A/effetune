@@ -122,28 +122,22 @@ Las colecciones grandes se cargan por etapas desde el almacenamiento; la velocid
    - Para efectos Section: Shift+clic en el botón × para eliminar secciones completas
 9. Haga clic en el botón de enrutamiento para configurar los canales que se procesarán y los buses de entrada y salida  
    - [Más información sobre las funciones de los buses](bus-function.md)
-10. Para ajustar un control deslizante con precisión, mantenga pulsada la tecla Shift mientras lo arrastra; el valor cambiará de unidad mínima en unidad mínima
+10. Haz clic en el botón Preajustes de efecto de cada efecto para guardar o aplicar ajustes solo para ese efecto
+11. Para ajustar un control deslizante con precisión, mantenga pulsada la tecla Shift mientras lo arrastra; el valor cambiará de unidad mínima en unidad mínima
 
 ### Uso de Presets
 
-1. Guarda tu cadena de efectos:
-   - Configura la cadena de efectos y los parámetros deseados
-   - Ingresa un nombre para tu preset en el campo de entrada
-   - Haz clic en el botón de guardar para almacenar tu preset
+Haz clic en el botón **Preajustes de cadena de efectos** del encabezado de Effect Pipeline para abrir el cuadro de diálogo de presets.
 
-2. Cargar un Preset:
-   - Escribe o selecciona un nombre de preset de la lista desplegable
-   - El preset se cargará automáticamente
-   - Se restaurarán todos los efectos y sus configuraciones
+1. Carga un preset seleccionándolo en la lista de presets guardados. Se restaura la cadena completa, incluido el orden de los efectos, los ajustes y los estados ON/OFF.
+2. Guarda la cadena actual introduciendo un nombre y seleccionando Guardar.
+3. Cambia el nombre de un preset guardado con el botón de cambio de nombre de su fila.
+4. Selecciona uno o más presets guardados, elige Eliminar seleccionados y confirma para quitarlos.
+5. Pulsa Ctrl+S (o Cmd+S en macOS) para abrir el cuadro de diálogo con el nombre del preset actual listo para editar.
 
-3. Eliminar un Preset:
-   - Selecciona el preset que deseas eliminar
-   - Haz clic en el botón de eliminar
-   - Confirma la eliminación cuando se te solicite
+Cada efecto también tiene su propio botón Preajustes de efecto. Abre los preajustes del sistema cuando el efecto los proporciona y permite guardar, cambiar el nombre, cargar o eliminar tus ajustes para ese efecto. Los preajustes de efecto cambian solo los parámetros de ese efecto; no cambian su estado ON/OFF ni el enrutamiento.
 
-4. Información del Preset:
-   - Cada preset almacena la configuración completa de tu cadena de efectos
-   - Incluye el orden de los efectos, los parámetros y los estados
+La importación, exportación y uso compartido de archivos `.effetune_preset` sigue correspondiendo a presets de la cadena de efectos completa.
 
 ### Usando Secciones
 
@@ -255,6 +249,10 @@ Para medir la respuesta en frecuencia de tu sistema de audio y crear una correcc
 3. Mide la respuesta en frecuencia de tu sistema en una o varias posiciones de escucha
 4. Genera una corrección de EQ paramétrico que se puede importar directamente en EffeTune
 5. Aplica la corrección para lograr una reproducción más precisa y neutral
+
+Para un sistema multicanal, selecciona **Todos los canales** para medir todas las salidas juntas, o selecciona elementos individuales de **Canal de salida** para medirlos uno a uno. En **Ajustes avanzados**, elige **Desactivado**, **El mismo para todos los canales** o **Por canal** para el ancho de banda del barrido. Con **Por canal**, usa **Canal que se configurará** para ajustar el rango de frecuencias de cada canal de salida seleccionado. Durante el ajuste de nivel, **Modo de canal** empieza en **Rotación automática**; selecciona un canal de señal de prueba o **Manual** cuando sea necesario.
+
+Si ya tienes un archivo WAV de respuesta impulsional, elige **Importar** y selecciónalo. EffeTune guarda cada canal del WAV como un resultado de medición, para que puedas seleccionarlo en Room EQ y en cualquier otra función que use mediciones guardadas.
 
 Para eliminar la respuesta propia de la interfaz de audio, conecta directamente su salida a su entrada y guarda ese bucle como una medición normal sin calibrar que incluya una respuesta impulsional. En la siguiente medición, elige ese punto en **Calibración de la interfaz de audio**. Usa la misma interfaz, los mismos canales de entrada y salida, la misma frecuencia de muestreo y las mismas ganancias, y no cambies las ganancias después de la medición en bucle. Elige **Ninguna (sin calibrar)** para medir sin esta corrección.
 

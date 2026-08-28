@@ -232,6 +232,17 @@ test('IR-OFF export imports as metadata-only with no IR badge or binary availabi
     assert.equal(database.impulseResponses.size, 0);
 });
 
+test('measurement JSON export includes impulse responses by default', async () => {
+    const { storage } = createStorage();
+    storage.measurements = [exportableMeasurement()];
+    storage.getImpulseResponses = async () => [impulseRecord('measurement-source', 0, 0.75)];
+
+    const exported = JSON.parse(await storage.exportMeasurementToJSON('measurement-source'));
+
+    assert.equal(exported.impulseResponses.length, 1);
+    assert.equal(typeof exported.impulseResponses[0].data, 'string');
+});
+
 test('IR-ON export imports synchronized metadata and binary availability', async () => {
     const { storage: source } = createStorage();
     source.measurements = [exportableMeasurement()];
@@ -483,7 +494,7 @@ test('deprecated correctedResponse is removed at every storage boundary', async 
     assert.equal(database.measurements.get(legacy.id).correctedResponse, undefined);
 
     mutableStorage.measurements[0].correctedResponse = [[100, 123]];
-    const exported = JSON.parse(await mutableStorage.exportMeasurementToJSON(legacy.id));
+    const exported = JSON.parse(await mutableStorage.exportMeasurementToJSON(legacy.id, false));
     assert.equal(exported.correctedResponse, undefined);
 
     const importedId = await mutableStorage.importMeasurementFromJSON(JSON.stringify({
@@ -727,4 +738,114 @@ test('import QuotaExceeded transaction failure is typed and rolls back atomicall
     assert.deepEqual(storage.measurements, []);
     assert.equal(database.measurements.size, 0);
     assert.equal(database.impulseResponses.size, 0);
+});
+
+function multichannelRecord(id = 'measurement-multi') {
+    return {
+        id,
+        name: 'Multi',
+        outputChannel: 'multi',
+        outputChannels: ['left', '2'],
+        sampleRate: 48000,
+        sweepLength: 65536,
+        nextPointId: 3,
+        points: [{
+            pointId: 0,
+            name: 'Point 1',
+            channels: [
+                {
+                    channel: 'left',
+                    frequencyResponse: [[100, 1]],
+                    maxSignalLevel: -12,
+                    irId: 1,
+                    ir: { stored: true, length: 3, sampleRate: 48000, onsetIndex: 1, sweepLimited: true }
+                },
+                {
+                    channel: '2',
+                    frequencyResponse: [[100, 3]],
+                    maxSignalLevel: -10,
+                    irId: 2,
+                    ir: { stored: true, length: 3, sampleRate: 48000, onsetIndex: 1 }
+                }
+            ]
+        }],
+        channelResponses: [
+            { channel: 'left', averageFrequencyResponse: [[100, 1]], maxSignalLevel: -12 },
+            { channel: '2', averageFrequencyResponse: [[100, 3]], maxSignalLevel: -10 }
+        ],
+        averageFrequencyResponse: [[100, 2]],
+        maxSignalLevel: -11
+    };
+}
+
+test('multichannel export and import reconnect every IR and preserve sweep limits', async () => {
+    const { storage, database } = createStorage();
+    const measurement = multichannelRecord();
+    storage.measurements = [measurement];
+    const records = [
+        { ...impulseRecord(measurement.id, 1), channel: 'wrong' },
+        { ...impulseRecord(measurement.id, 2), channel: '2' }
+    ];
+    storage.getImpulseResponses = async () => records;
+    const exported = await storage.exportMeasurementToJSON(measurement.id, true);
+    let nextId = 0;
+    storage.generateId = () => `imported-${++nextId}`;
+    const importedId = await storage.importMeasurementFromJSON(exported);
+    const imported = storage.getMeasurementById(importedId);
+    assert.equal(imported.outputChannel, 'multi');
+    assert.deepEqual(imported.outputChannels, ['left', '2']);
+    assert.equal(imported.points[0].channels[0].irId, 1);
+    assert.equal(imported.points[0].channels[0].ir.sweepLimited, true);
+    assert.equal(imported.points[0].channels[1].ir.sweepLimited, undefined);
+    assert.equal(database.impulseResponses.get(JSON.stringify([importedId, 1])).channel, 'left');
+    assert.equal(database.impulseResponses.get(JSON.stringify([importedId, 2])).channel, '2');
+});
+
+test('multichannel import rejects inconsistent shapes and duplicate IDs', async () => {
+    const invalid = [
+        { ...multichannelRecord(), outputChannel: 'left' },
+        { ...multichannelRecord(), outputChannels: ['left', 'left'] },
+        (() => {
+            const value = multichannelRecord();
+            value.points[0].channels[1].irId = 1;
+            return value;
+        })(),
+        (() => {
+            const value = multichannelRecord();
+            delete value.channelResponses;
+            return value;
+        })(),
+        (() => {
+            const value = multichannelRecord();
+            value.points[0].channels[1].channel = '4';
+            return value;
+        })()
+    ];
+    for (const value of invalid) {
+        const { storage } = createStorage();
+        assert.equal(await storage.importMeasurementFromJSON(JSON.stringify(value)), null);
+    }
+});
+
+test('metadata fallback strips flat and multichannel IR metadata consistently', async () => {
+    const previousLocalStorage = globalThis.localStorage;
+    const writes = [];
+    globalThis.localStorage = {
+        setItem(key, value) { writes.push([key, JSON.parse(value)]); }
+    };
+    try {
+        const storage = new DataStorage();
+        storage.measurements = [
+            { id: 'flat', points: [{ pointId: 1, ir: { stored: true } }] },
+            multichannelRecord()
+        ];
+        storage.openDatabase = async () => { throw Object.assign(new Error('unavailable'), { name: 'SecurityError' }); };
+        assert.equal(await storage.saveMeasurements(), true);
+        const saved = writes.at(-1)[1];
+        assert.equal(saved[0].points[0].ir, undefined);
+        assert.equal(saved[1].points[0].channels[0].ir, undefined);
+        assert.equal(saved[1].points[0].channels[0].irId, undefined);
+    } finally {
+        globalThis.localStorage = previousLocalStorage;
+    }
 });

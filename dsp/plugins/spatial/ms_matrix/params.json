@@ -11,7 +11,9 @@
       "kind": "int",
       "min": 0,
       "max": 1,
-      "default": 0
+      "step": 1,
+      "default": 0,
+      "automation": true
     },
     {
       "name": "midGain",
@@ -41,7 +43,9 @@
       "kind": "int",
       "min": 0,
       "max": 1,
-      "default": 0
+      "step": 1,
+      "default": 0,
+      "automation": true
     }
   ]
 }

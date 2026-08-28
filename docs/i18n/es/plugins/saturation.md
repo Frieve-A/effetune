@@ -45,6 +45,14 @@ Bandwidth Extender añade unos 26,7-29,0 ms de latencia, incluido un salto adici
 
 Un efecto basado en la física que simula el desplazamiento no lineal de los conos de altavoces bajo diferentes condiciones. Al modelar el comportamiento mecánico de un altavoz y luego aplicar saturación a ese desplazamiento, crea una forma única de distorsión que responde dinámicamente a tu música.
 
+### Preajustes del sistema
+
+Haz clic en **Preajustes de efecto** en la cabecera del efecto para comparar ajustes completos del movimiento del cono.
+
+- **Subtle Cone Color** - Un carácter de cono de altavoz discreto y casi limpio.
+- **Pushed Speaker** - Mayor movimiento del cono y más saturación, con compensación del nivel de salida.
+- **Ragged Cone** - El carácter de cono más marcado, deliberadamente áspero.
+
 ### Guía de Mejora de Escucha
 - **Mejora Sutil:**
   - Añade calidez suave y un ligero redondeo de picos
@@ -504,7 +512,7 @@ Tube Simulator añade los armónicos, la compresión y la respuesta de alimentac
 
 ### Disposición del Panel
 
-Los controles se reparten en cinco pestañas bajo **Preset**.
+Los controles se reparten en cinco pestañas.
 
 - **Input** - Input Volume, Input Reference, Source Z
 - **Driver** - Driver Type, Bias, Plate, Supply, Negative Feedback
@@ -512,17 +520,16 @@ Los controles se reparten en cinco pestañas bajo **Preset**.
 - **Transformer** - Screen Tap, Push-Pull Primary, SE Primary, Assumed Speaker Load, Actual Speaker Load
 - **Output** - Output Trim, Output Safety Trim, Auto Gain Reduction, Wet/Dry Mix
 
-Las pestañas Power y Transformer muestran solo los controles que utiliza el Output Circuit seleccionado. **Custom** aparece al cambiar un parámetro de circuito o de tono con respecto a un preset.
+Las pestañas Power y Transformer muestran solo los controles que utiliza el Output Circuit seleccionado.
 
 ### Elegir un Preset
 
-Tube Simulator se inicia con **EL84 Pentode @2%**; al cambiar un parámetro de circuito o tono, el nombre del preset pasa a **Custom**, mientras que **Output Safety Trim** y **Auto Gain Reduction** no intervienen en la correspondencia del preset, por lo que modificarlos no cambia su nombre.
+Haz clic en el botón **Preajustes de efecto** del encabezado del efecto para abrir el cuadro de diálogo de presets. Elige un ajuste de Presets del sistema en el grupo Pre, Power o Pre+Power para aplicarlo de inmediato. Se resalta el preset que coincide con los ajustes actuales; si ninguno coincide, no se resalta ninguno. Los ajustes iniciales coinciden con **EL84 Pentode @2%**. **Output Safety Trim** y **Auto Gain Reduction** no se usan para la coincidencia, por lo que cambiarlos no quita el resaltado.
 
 El sufijo del preset sirve como guía práctica de intensidad: **@0.01%** es muy sutil, **@0.1%** añade una coloración ligera y **@1%** o **@2%** hacen más evidentes los armónicos y la compresión. Los presets también ajustan Output Trim para facilitar la comparación, pero el volumen percibido puede variar según la música. Iguala el nivel con Output Trim antes de decidir qué sonido prefieres.
 
 ### Parámetros
 
-- **Preset** - Carga un ajuste Pre, Power o Pre+Power.
 - **Input Volume** (-96 a 0dB) - Reduce el nivel que alimenta el circuito elegido. Los valores más bajos reducen la compresión y la distorsión y aumentan el margen.
 - **Driver Type** (12AX7, 12AT7, 12AU7 o Bypass) - Selecciona las válvulas del driver de dos etapas o lo retira de la ruta. 12AX7 ofrece la mayor ganancia, 12AT7 queda en medio y 12AU7 ofrece la menor ganancia y el mayor margen.
 - **Bias** (-50 a +50%) - Desplaza el punto de polarización del driver. Al subirlo, las etapas se mueven hacia una corriente mayor; al bajarlo, hacia una menor, lo que cambia los armónicos y la compresión.

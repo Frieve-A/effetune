@@ -12,6 +12,7 @@ import {
 import { createReferenceSession } from '../../tools/dsp-parity/node-host.mjs';
 import { runParityCli } from '../../tools/dsp-parity/run.mjs';
 import { generateStimulus } from '../../tools/dsp-parity/stimuli.mjs';
+import { getCurrentJsEngineHash } from './js-engine-hash-helper.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const pluginsRoot = path.join(repoRoot, 'dsp', 'plugins', 'eq');
@@ -48,7 +49,6 @@ const ports = [
     ],
     caseCount: 8,
     identityCase: 'reference-level-identity',
-    jsEngineHash: 'e5e23e2ab1da53622b8cc0c9aff99c1e46167df2f4227cfe8b075f9324c89a2c',
     activeParams: { sp: 60, rv: -12, lg: 12, lf: 220, lq: 0.7, hq: 0.8, hg: 9, hf: 5000 }
   },
   {
@@ -139,6 +139,9 @@ test('Phase 3b EQ group C goldens are source-frozen, bounded, and representative
     const goldenDir = path.join(pluginsRoot, port.directory, 'golden');
     assert.ok(await goldenBytes(goldenDir) <= DEFAULT_GOLDEN_BUDGET_BYTES);
     const goldens = await readGoldenSet(goldenDir);
+    const jsEngineHash = port.type === 'LoudnessEqualizerPlugin'
+      ? await getCurrentJsEngineHash(port.type, repoRoot)
+      : port.jsEngineHash;
     assert.equal(goldens.length, port.caseCount);
     assert.deepEqual(
       new Set(goldens.map(item => item.metadata.sampleRate)),
@@ -152,7 +155,7 @@ test('Phase 3b EQ group C goldens are source-frozen, bounded, and representative
 
     for (const golden of goldens) {
       assert.equal(golden.metadata.type, port.type);
-      assert.equal(golden.metadata.jsEngineHash, port.jsEngineHash);
+      assert.equal(golden.metadata.jsEngineHash, jsEngineHash);
       assert.equal(golden.expected.length,
         golden.metadata.frameCount * golden.metadata.channels);
       assert.ok(golden.expected.every(Number.isFinite));

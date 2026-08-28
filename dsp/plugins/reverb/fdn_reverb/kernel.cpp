@@ -42,8 +42,7 @@ public:
         pre_delay_ceiling < 1.0 ? 1u : static_cast<std::uint32_t>(pre_delay_ceiling);
     for (std::vector<float> &line : delay_lines_)
       line.resize(delay_line_length_);
-    pre_delay_.resize(static_cast<std::size_t>(max_channels_) * pre_delay_length_);
-    pre_delay_positions_.resize(max_channels_);
+    pre_delay_.resize(pre_delay_length_);
     clearRuntimeState();
   }
 
@@ -66,8 +65,6 @@ public:
     }
     if (!tank_initialized_)
       initializeTank();
-    if (active_channel_count_ != channel_count)
-      resetPreDelay(channel_count);
 
     std::uint32_t density = static_cast<std::uint32_t>(params_.density);
     if (density < 1u)
@@ -168,90 +165,92 @@ public:
         lfo_phases_[line] = phase;
       }
 
+      double input = 0.0;
+      for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+        input +=
+            static_cast<double>(audio[static_cast<std::size_t>(channel) * frame_count + frame]);
+      }
+      input /= static_cast<double>(channel_count);
+      float *pre_delay = pre_delay_.data();
+      std::uint32_t &pre_position = pre_delay_position_;
+      const double tank_input =
+          readPreDelay(input, pre_delay, pre_position, pre_delay_ramp_.value(frame));
+      pre_delay[pre_position] = static_cast<float>(input);
+      ++pre_position;
+      if (pre_position >= pre_delay_length_)
+        pre_position = 0u;
+
+      for (std::uint32_t line = 0u; line < density; ++line) {
+        const std::vector<float> &delay_line = delay_lines_[line];
+        const std::uint32_t write = delay_positions_[line];
+        const double lfo = std::sin(static_cast<double>(lfo_phases_[line]) +
+                                    static_cast<double>(lfo_offsets_[line]));
+        double modulated = static_cast<double>(delay_times[line]) * (1.0 + modulation_depth * lfo);
+        if (modulated < 0.0)
+          modulated = 0.0;
+        const double upper = static_cast<double>(delay_line_length_) - 1.00001;
+        if (modulated > upper)
+          modulated = upper;
+        const std::int32_t integer_delay = static_cast<std::int32_t>(modulated);
+        const double fraction = modulated - static_cast<double>(integer_delay);
+        const std::int64_t length = static_cast<std::int64_t>(delay_line_length_);
+        std::int64_t index0 = static_cast<std::int64_t>(write) - 1 - integer_delay;
+        std::int64_t index1 = index0 - 1;
+        if (index0 < 0)
+          index0 += length;
+        if (index1 < 0)
+          index1 += length;
+        const double sample0 = static_cast<double>(delay_line[static_cast<std::size_t>(index0)]);
+        const double sample1 = static_cast<double>(delay_line[static_cast<std::size_t>(index1)]);
+        fdn_outputs[line] = static_cast<float>(sample0 + (sample1 - sample0) * fraction);
+      }
+
+      for (std::uint32_t row = 0u; row < density; ++row) {
+        double sum = 0.0;
+        for (std::uint32_t column = 0u; column < density; ++column) {
+          sum += static_cast<double>(kHadamard[row][column]) *
+                 static_cast<double>(fdn_outputs[column]);
+        }
+        hadamard_outputs[row] = static_cast<float>(sum * inverse_sqrt_density);
+      }
+
+      for (std::uint32_t line = 0u; line < density; ++line) {
+        const std::uint32_t write = delay_positions_[line];
+        const double diffused = static_cast<double>(hadamard_outputs[line]) * diffusion;
+        double signal = tank_input + diffused * static_cast<double>(feedback_gains[line]);
+        if (lowpass_alpha > 0.0) {
+          lowpass_states_[line] =
+              static_cast<float>((1.0 - lowpass_alpha) * signal +
+                                 lowpass_alpha * static_cast<double>(lowpass_states_[line]));
+          signal = static_cast<double>(lowpass_states_[line]);
+        }
+        if (apply_highpass) {
+          const double low_component = (1.0 - highpass_alpha) * signal +
+                                       highpass_alpha * static_cast<double>(highpass_states_[line]);
+          signal -= low_component;
+          highpass_states_[line] = static_cast<float>(low_component);
+        }
+        delay_lines_[line][write] = static_cast<float>(signal);
+        std::uint32_t next = write + 1u;
+        if (next >= delay_line_length_)
+          next = 0u;
+        delay_positions_[line] = next;
+      }
+
+      double left_sum = 0.0;
+      double right_sum = 0.0;
+      for (std::uint32_t line = 0u; line < density; ++line) {
+        if ((line & 1u) == 0u) {
+          left_sum += static_cast<double>(fdn_outputs[line]);
+        } else {
+          right_sum += static_cast<double>(fdn_outputs[line]);
+        }
+      }
+      const double left_wet = left_sum * inverse_sqrt_left;
+      const double right_wet = right_sum * inverse_sqrt_right;
+      const double mono = (left_wet + right_wet) * 0.5;
       for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
         const std::size_t audio_index = static_cast<std::size_t>(channel) * frame_count + frame;
-        const double input = static_cast<double>(audio[audio_index]);
-        float *pre_delay =
-            pre_delay_.data() + static_cast<std::size_t>(channel) * pre_delay_length_;
-        std::uint32_t &pre_position = pre_delay_positions_[channel];
-        const double tank_input =
-            readPreDelay(input, pre_delay, pre_position, pre_delay_ramp_.value(frame));
-        pre_delay[pre_position] = static_cast<float>(input);
-        ++pre_position;
-        if (pre_position >= pre_delay_length_)
-          pre_position = 0u;
-
-        for (std::uint32_t line = 0u; line < density; ++line) {
-          const std::vector<float> &delay_line = delay_lines_[line];
-          const std::uint32_t write = delay_positions_[line];
-          const double lfo = std::sin(static_cast<double>(lfo_phases_[line]) +
-                                      static_cast<double>(lfo_offsets_[line]));
-          double modulated =
-              static_cast<double>(delay_times[line]) * (1.0 + modulation_depth * lfo);
-          if (modulated < 0.0)
-            modulated = 0.0;
-          const double upper = static_cast<double>(delay_line_length_) - 1.00001;
-          if (modulated > upper)
-            modulated = upper;
-          const std::int32_t integer_delay = static_cast<std::int32_t>(modulated);
-          const double fraction = modulated - static_cast<double>(integer_delay);
-          const std::int64_t length = static_cast<std::int64_t>(delay_line_length_);
-          std::int64_t index0 = static_cast<std::int64_t>(write) - 1 - integer_delay;
-          std::int64_t index1 = index0 - 1;
-          if (index0 < 0)
-            index0 += length;
-          if (index1 < 0)
-            index1 += length;
-          const double sample0 = static_cast<double>(delay_line[static_cast<std::size_t>(index0)]);
-          const double sample1 = static_cast<double>(delay_line[static_cast<std::size_t>(index1)]);
-          fdn_outputs[line] = static_cast<float>(sample0 + (sample1 - sample0) * fraction);
-        }
-
-        for (std::uint32_t row = 0u; row < density; ++row) {
-          double sum = 0.0;
-          for (std::uint32_t column = 0u; column < density; ++column) {
-            sum += static_cast<double>(kHadamard[row][column]) *
-                   static_cast<double>(fdn_outputs[column]);
-          }
-          hadamard_outputs[row] = static_cast<float>(sum * inverse_sqrt_density);
-        }
-
-        for (std::uint32_t line = 0u; line < density; ++line) {
-          const std::uint32_t write = delay_positions_[line];
-          const double diffused = static_cast<double>(hadamard_outputs[line]) * diffusion;
-          double signal = tank_input + diffused * static_cast<double>(feedback_gains[line]);
-          if (lowpass_alpha > 0.0) {
-            lowpass_states_[line] =
-                static_cast<float>((1.0 - lowpass_alpha) * signal +
-                                   lowpass_alpha * static_cast<double>(lowpass_states_[line]));
-            signal = static_cast<double>(lowpass_states_[line]);
-          }
-          if (apply_highpass) {
-            const double low_component =
-                (1.0 - highpass_alpha) * signal +
-                highpass_alpha * static_cast<double>(highpass_states_[line]);
-            signal -= low_component;
-            highpass_states_[line] = static_cast<float>(low_component);
-          }
-          delay_lines_[line][write] = static_cast<float>(signal);
-          std::uint32_t next = write + 1u;
-          if (next >= delay_line_length_)
-            next = 0u;
-          delay_positions_[line] = next;
-        }
-
-        double left_sum = 0.0;
-        double right_sum = 0.0;
-        for (std::uint32_t line = 0u; line < density; ++line) {
-          if ((line & 1u) == 0u) {
-            left_sum += static_cast<double>(fdn_outputs[line]);
-          } else {
-            right_sum += static_cast<double>(fdn_outputs[line]);
-          }
-        }
-        const double left_wet = left_sum * inverse_sqrt_left;
-        const double right_wet = right_sum * inverse_sqrt_right;
-        const double mono = (left_wet + right_wet) * 0.5;
         double wet = mono;
         if (channel_count != 1u) {
           double width = stereo_width * 0.5;
@@ -262,7 +261,8 @@ public:
           const double side = channel == 0u ? left_wet : right_wet;
           wet = mono * (1.0 - width) + side * width;
         }
-        audio[audio_index] = static_cast<float>(input * dry_mix + wet * wet_mix);
+        audio[audio_index] =
+            static_cast<float>(static_cast<double>(audio[audio_index]) * dry_mix + wet * wet_mix);
       }
     }
     pre_delay_ramp_.advance(frame_count);
@@ -334,14 +334,13 @@ private:
       std::fill(line.begin(), line.end(), 0.0F);
     }
     std::fill(pre_delay_.begin(), pre_delay_.end(), 0.0F);
-    std::fill(pre_delay_positions_.begin(), pre_delay_positions_.end(), 0u);
+    pre_delay_position_ = 0u;
     delay_positions_.fill(0u);
     lfo_phases_.fill(0.0F);
     lfo_offsets_.fill(0.0F);
     lowpass_states_.fill(0.0F);
     highpass_states_.fill(0.0F);
     random_delay_offsets_ms_.fill(0.0F);
-    active_channel_count_ = 0u;
     tank_initialized_ = false;
     pre_delay_initialized_ = false;
   }
@@ -363,18 +362,11 @@ private:
     tank_initialized_ = true;
   }
 
-  void resetPreDelay(std::uint32_t channel_count) noexcept {
-    std::fill(pre_delay_.begin(), pre_delay_.end(), 0.0F);
-    std::fill(pre_delay_positions_.begin(), pre_delay_positions_.end(), 0u);
-    active_channel_count_ = channel_count;
-  }
-
   double sample_rate_ = 0.0;
   std::uint32_t max_channels_ = 0u;
   std::uint32_t max_frames_ = 0u;
   std::uint32_t delay_line_length_ = 1u;
   std::uint32_t pre_delay_length_ = 1u;
-  std::uint32_t active_channel_count_ = 0u;
   std::uint32_t selected_seed_low_ = static_cast<std::uint32_t>(dsp::XorShiftRng::kFallbackSeed);
   std::uint32_t selected_seed_high_ = 0u;
   bool tank_initialized_ = false;
@@ -389,7 +381,7 @@ private:
   std::array<float, kLineCount> highpass_states_{};
   std::array<float, kLineCount> random_delay_offsets_ms_{};
   std::vector<float> pre_delay_;
-  std::vector<std::uint32_t> pre_delay_positions_;
+  std::uint32_t pre_delay_position_ = 0u;
 };
 
 static_assert(sizeof(FDNReverbKernel) <= 8192u);

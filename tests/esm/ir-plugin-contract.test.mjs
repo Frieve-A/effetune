@@ -230,7 +230,7 @@ test('IR footprint test detects drift from the kernel conservative admission con
     path.join(repoRoot, 'dsp', 'plugins', 'reverb', 'ir_reverb', 'native_test.cpp'),
     'utf8'
   );
-  assert.match(nativeTest, /kConvolverImplUpperBound = 512u/);
+  assert.match(nativeTest, /kConvolverImplUpperBound = 16u \* 1024u/);
   assert.match(nativeTest, /kConvolverStageUpperBound = 512u/);
   assert.match(nativeTest, /kPffftSetupFixedUpperBound = 136u/);
   assert.match(nativeTest, /hostFootprint\(maximum \+ 1u[\s\S]*>\s*kAssetCapacity/);

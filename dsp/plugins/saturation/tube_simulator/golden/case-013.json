@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "type": "TubeSimulatorPlugin",
-  "id": "se-300b-feedback-step",
+  "id": "power-only-300b",
   "stimulus": "sin1k",
   "sampleRate": 96000,
   "channels": 2,
@@ -12,8 +12,8 @@
   "caseIndex": 12,
   "seed": "0xeffe7a52",
   "params": {
-    "dr": -42,
-    "tp": "12AU7",
+    "dr": 0,
+    "tp": "Bypass",
     "bi": 0,
     "pv": 250,
     "sz": 10,
@@ -21,7 +21,7 @@
     "og": 0,
     "mx": 100,
     "iv": 2.828,
-    "nf": 0,
+    "nf": 3,
     "os": "SingleEnded",
     "pt": "EL84",
     "pb": 320,
@@ -38,19 +38,12 @@
     "sp": "3.5",
     "fr": true
   },
-  "events": [
-    {
-      "frame": 1024,
-      "params": {
-        "nf": 3
-      }
-    }
-  ],
+  "events": [],
   "tolerance": {
     "abs": 0.00001,
     "policy": "per-sample"
   },
-  "jsEngineHash": "cd71e391ae506136512d9f63354418ed05843b08a560b90541990e4649fd36a2",
+  "jsEngineHash": "b7fbcbcf830b9f604cd1dbe81e2c22be3260cd2c9e70d850a048b54780a3e792",
   "outputFloats": 24576,
   "byteLength": 98304,
   "binary": "case-013.f32"

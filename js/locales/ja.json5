@@ -3,6 +3,10 @@
   "error.invalidUrl": "無効なURLパラメータ: {message}",
   "error.invalidPresetData": "無効なプリセットデータ",
   "error.failedToLoadPreset": "プリセットの読み込みに失敗しました",
+  "error.failedToSavePreset": "プリセットの保存に失敗しました",
+  "error.failedToDeletePreset": "プリセットの削除に失敗しました",
+  "error.failedToSavePluginPreset": "プリセットの保存に失敗しました",
+  "error.failedToDeletePluginPreset": "プリセットの削除に失敗しました",
   "error.noPresetSelected": "プリセットが選択されていません",
   "error.failedToCutSettings": "クリップボードへの設定の切り取りに失敗しました",
   "error.failedToCopySettings": "クリップボードへの設定のコピーに失敗しました",
@@ -67,6 +71,12 @@
   "ui.sleepMode": "スリープモード",
   "ui.whatsThisApp": "何このアプリ？",
   "ui.newVersionAvailable": "新しい {version} が利用可能です。",
+  "ui.pluginPresets.namePlaceholder": "プリセット名",
+  "ui.pluginPresets.save": "保存",
+  "ui.pluginPresets.rename": "名前を変更",
+  "ui.pluginPresets.deleteSelected": "選択したプリセットを削除",
+  "ui.pluginPresets.noUserPresets": "保存したプリセットはありません",
+  "ui.pluginPresets.confirmDeleteSelected": "選択したプリセットを削除しますか？",
 
   // Hints displayed when hovering over UI
   "ui.title.openMusic": "音楽ファイルを開く",
@@ -83,8 +93,8 @@
   "ui.title.cut": "エフェクトを切り取り",
   "ui.title.copy": "エフェクトをコピー",
   "ui.title.paste": "エフェクトを貼り付け",
-  "ui.title.savePreset": "プリセットを保存",
-  "ui.title.deletePreset": "プリセットを削除",
+  "ui.title.effectPresets": "エフェクトプリセット",
+  "ui.title.pipelinePresets": "パイプラインプリセット",
   "ui.title.sharePipeline": "パイプラインを共有",
   "ui.title.decreaseColumns": "列を減らす",
   "ui.title.increaseColumns": "列を増やす",
@@ -112,7 +122,6 @@
   "ui.title.close": "閉じる",
   "ui.title.expand": "クリックで展開",
   "ui.title.collapse": "クリックで折りたたむ",
-  "ui.title.presetSelect": "ユーザプリセットの名前の入力・読み込み\nESCキーで文字列をクリアし全件表示",
   "ui.mobileNav.primary": "モバイル用メインナビゲーション",
   "ui.mobileNav.player": "プレーヤー",
   "ui.mobileNav.library": "ライブラリ",
@@ -509,7 +518,7 @@
   // トレイメニュー
   "trayMenuOpen": "開く",
   "trayMenuQuit": "終了",
-  "trayMenuPresets": "プリセット",
+  "trayMenuPresets": "パイプラインプリセット",
 
   // 外部アセットとIR Reverb
   "externalAsset.warning": "このパイプラインは外部の{kinds}データを参照しています。ファイル本体は含まれないため、受け取った側でも同じファイルを取り込む必要があります。",
