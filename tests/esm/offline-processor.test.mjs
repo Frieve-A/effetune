@@ -501,6 +501,11 @@ test('helper methods resolve routing, bus, parameter, cancellation, and section 
     assert.deepEqual(processor.getOfflineChannelRouting('56', 6).pairStartChannel, 4);
     assert.deepEqual(processor.getOfflineChannelRouting('78', 8).pairStartChannel, 6);
     assert.deepEqual(processor.getOfflineChannelRouting('3', 4).singleChannelIndex, 2);
+    for (const [channel, first] of [['910', 8], ['1112', 10], ['1314', 12], ['1516', 14]]) {
+      assert.equal(processor.getOfflineChannelRouting(channel, 16).pairStartChannel, first);
+      assert.equal(processor.getOfflineChannelRouting(channel, first + 1).processMode, 'skip');
+    }
+    assert.equal(processor.getOfflineChannelRouting('16', 16).singleChannelIndex, 15);
 
     for (const [channel, count] of [['A', 0], ['L', 0], ['R', 1], [null, 1], ['34', 2], ['56', 4], ['78', 6]]) {
       assert.equal(processor.getOfflineChannelRouting(channel, count).processMode, 'skip');
@@ -1078,8 +1083,8 @@ test('offline asset warmup uses the routed processing channel count', async () =
   });
 });
 
-test('offline required-asset preflight uses the decoded 4- and 8-channel render width', async () => {
-  for (const outputChannelCount of [4, 8]) {
+test('offline required-asset preflight uses the decoded 4-, 8-, and 16-channel render width', async () => {
+  for (const outputChannelCount of [4, 8, 16]) {
     await withOfflineGlobals({
       window: { audioPreferences: { outputChannels: outputChannelCount } }
     }, async ({ calls }) => {
@@ -2105,7 +2110,7 @@ test('offline rollout validates parameter hashes before creating an engine', asy
 test('offline preference and engine channel limits prevent WASM instantiation', async () => {
   const cases = [
     { window: { audioPreferences: { useWasmDsp: false } }, channels: 2 },
-    { window: { audioPreferences: { outputChannels: 9 } }, channels: 2 }
+    { window: { audioPreferences: { outputChannels: 17 } }, channels: 2 }
   ];
 
   for (const testCase of cases) {

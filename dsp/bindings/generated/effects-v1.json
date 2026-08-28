@@ -13,9 +13,21 @@
     "6",
     "7",
     "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
     "34",
     "56",
-    "78"
+    "78",
+    "910",
+    "1112",
+    "1314",
+    "1516"
   ],
   "effects": [
     {
@@ -340,7 +352,7 @@
           "count": 1,
           "default": "0011",
           "maximumLength": 3072,
-          "pattern": "^(?:p?[0-8][0-8])*$"
+          "pattern": "^(?:p?[0-9a-f][0-9a-f])*$"
         }
       ],
       "seeded": false,
@@ -356,8 +368,16 @@
         {
           "name": "mute",
           "type": "boolean",
-          "count": 8,
+          "count": 16,
           "default": [
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
             false,
             false,
             false,
@@ -371,8 +391,16 @@
         {
           "name": "solo",
           "type": "boolean",
-          "count": 8,
+          "count": 16,
           "default": [
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
             false,
             false,
             false,
@@ -386,8 +414,16 @@
         {
           "name": "volume",
           "type": "number",
-          "count": 8,
+          "count": 16,
           "default": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
             0,
             0,
             0,
@@ -404,8 +440,16 @@
         {
           "name": "delay",
           "type": "number",
-          "count": 8,
+          "count": 16,
           "default": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
             0,
             0,
             0,
@@ -422,8 +466,16 @@
         {
           "name": "link",
           "type": "boolean",
-          "count": 7,
+          "count": 15,
           "default": [
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
             false,
             false,
             false,
@@ -7067,7 +7119,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "0c80f74a326c27def4fd368f21b11acb25b3a75b8a3b798fae0f7faa3adb259d",
-    "privateLayoutSha256": "10371b5016b454f9e056d84f4a43d050e01a6b40ba0d9eb8dd3939f4fba2550c"
+    "publicCatalogSha256": "0f8926c820f825d87f212d7c7fbfa75044caf7aa912bef6a78cc85f820b899c0",
+    "privateLayoutSha256": "61121eb6aec4b52d5492795c2ac81bd4cecfa119b7bfc4e6956fd2b725690685"
   }
 }

@@ -4,7 +4,7 @@ export const IR_LIBRARY_MAX_ANALYSIS_BYTES = 4 * 1024 * 1024;
 export const IR_LIBRARY_MAX_CACHE_ENTRY_BYTES = 64 * 1024 * 1024;
 export const IR_LIBRARY_MAX_CACHE_INDEX_BYTES = 4 * 1024 * 1024;
 export const IR_LIBRARY_MAX_DECODED_PCM_BYTES = IR_LIBRARY_MAX_CACHE_ENTRY_BYTES;
-export const IR_LIBRARY_MAX_DECODED_PCM_CHANNELS = 8;
+export const IR_LIBRARY_MAX_DECODED_PCM_CHANNELS = 16;
 export const IR_LIBRARY_INDEX_TOO_LARGE_CODE = 'ir-library-index-too-large';
 
 const ANALYSIS_NAME_PATTERN = /^[a-f0-9]{24}(?:\.analysis|\.a[0-9]{9})$/;

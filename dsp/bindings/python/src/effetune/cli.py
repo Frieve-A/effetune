@@ -140,9 +140,9 @@ def _bundle_pack(args: argparse.Namespace) -> int:
                 channels = audio_file.channels
                 frames = audio_file.frames
                 sample_rate = audio_file.samplerate
-                if not 1 <= channels <= 8 or frames < 1 or sample_rate <= 0:
+                if not 1 <= channels <= 16 or frames < 1 or sample_rate <= 0:
                     raise AssetError(
-                        "impulse-response audio must have 1 to 8 channels, "
+                        "impulse-response audio must have 1 to 16 channels, "
                         "at least one frame, and a positive sample rate"
                     )
                 if 32 + channels * frames * 4 > MAX_ASSET_BYTES:

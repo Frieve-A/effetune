@@ -268,8 +268,14 @@ function semanticParameters(testCase, legacy) {
       const aggregate = prefixes.size === 1 ? legacy[arrayKey] : null;
       if (packed.count > 1 &&
           Array.isArray(aggregate) &&
-          aggregate.length === packed.count) {
-        values = aggregate.map(value => reverseTransform(packed.transform, value));
+          aggregate.length > 0 && aggregate.length <= packed.count) {
+        values = Array.from({ length: packed.count }, (_, index) =>
+          index < aggregate.length
+            ? reverseTransform(packed.transform, aggregate[index])
+            : Array.isArray(definition.default)
+              ? definition.default[index]
+              : definition.default
+        );
       } else if (packed.count > 1 && prefixes.size === 1) {
         const objectArray = Object.values(legacy).find(value =>
           Array.isArray(value) &&

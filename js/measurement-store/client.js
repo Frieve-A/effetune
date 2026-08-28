@@ -18,7 +18,7 @@ function channelLabel(channel) {
     if (channel === 'left') return 'Ch 1';
     if (channel === 'right') return 'Ch 2';
     const index = Number(channel);
-    return Number.isSafeInteger(index) && index >= 2 && index <= 7
+    return Number.isSafeInteger(index) && index >= 2 && index <= 15
         ? `Ch ${index + 1}`
         : String(channel);
 }

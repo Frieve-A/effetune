@@ -621,6 +621,71 @@ class GraphDocumentTests(unittest.TestCase):
 
 
 class GraphRuntimeTests(unittest.TestCase):
+    def test_sixteen_channel_snapshot_preserves_every_latency_vector(self) -> None:
+        nodes = []
+        edges = []
+        previous = "input"
+        for channel in range(16):
+            node_id = f"room-{channel}"
+            nodes.append(effetune.RoomEQ(
+                id=node_id, channel=str(channel + 1), latency_mode="128",
+                filter_delay_samples=channel + 1, assets={"impulseResponse": "impulse"},
+            ).to_dict())
+            edges.append({"id": f"in-{node_id}", "source": previous, "destination": node_id})
+            previous = node_id
+        compensation = list(range(15, -1, -1))
+        for aligned in (False, True):
+            graph_nodes = nodes + [effetune.Volume(id="align", channel="all").to_dict()] if aligned else nodes
+            graph_edges = edges + ([
+                {"id": "in-align", "source": previous, "destination": "align"},
+                {"id": "dry-align", "source": "input", "destination": "align"},
+                {"id": "out", "source": "align", "destination": "output"},
+            ] if aligned else [{"id": "out", "source": previous, "destination": "output"}])
+            graph = effetune.Graph({
+                "version": 1, "input": {"id": "input"}, "output": {"id": "output"},
+                "nodes": graph_nodes, "edges": graph_edges,
+            }, asset_resolver=lambda _: effetune.AssetData(
+                np.ones((1, 1), dtype=np.float32), 48000, topology="mono",
+            ))
+            with graph.stream(48000, channels=16) as stream:
+                snapshot = stream.compile_snapshot
+                if aligned:
+                    align = next(node for node in snapshot["nodes"] if node["id"] == "align")
+                    self.assertEqual(align["inputLatency"], list(range(129, 145)))
+                    self.assertEqual(align["outputLatency"], [144] * 16)
+                    self.assertEqual(align["preNodeCompensation"], compensation)
+                    dry = next(edge for edge in snapshot["edges"] if edge["id"] == "dry-align")
+                    self.assertEqual(dry["fanInCompensation"], list(range(129, 145)))
+                else:
+                    self.assertEqual(snapshot["outputLatency"], list(range(129, 145)))
+                    self.assertEqual(snapshot["outputCompensation"], compensation)
+                    last = next(node for node in snapshot["nodes"] if node["id"] == "room-15")
+                    self.assertEqual(last["outputLatency"], list(range(129, 145)))
+
+    def test_fir_crossover_accepts_even_buses_through_sixteen_channels(self) -> None:
+        effect = effetune.FIRCrossover(
+            id="split", band_count=2, latency_mode="128", assets={"impulseResponse": "filters"},
+        )
+        resolver = lambda _: effetune.AssetData(np.ones((2, 1), dtype=np.float32), 48000)
+        chain = effetune.Chain([effect], asset_resolver=resolver)
+        graph = effetune.Graph({
+            "version": 1, "input": {"id": "input"}, "output": {"id": "output"},
+            "nodes": [effect.to_dict()],
+            "edges": [
+                {"id": "in", "source": "input", "destination": "split"},
+                {"id": "out", "source": "split", "destination": "output"},
+            ],
+        }, asset_resolver=resolver)
+        for owner in (chain, graph):
+            for channels in (4, 6, 8, 10, 12, 14, 16):
+                with self.subTest(owner=type(owner).__name__, channels=channels):
+                    with owner.stream(48000, channels=channels) as stream:
+                        self.assertEqual(stream.latency_samples, 128)
+            for channels in (2, 3, 5, 15, 17):
+                with self.subTest(owner=type(owner).__name__, invalid_channels=channels):
+                    with self.assertRaises((effetune.AssetError, effetune.ValidationError)):
+                        owner.stream(48000, channels=channels)
+
     @unittest.skipUnless(
         importlib.util.find_spec("effetune._native") is not None,
         "native extension is not installed",

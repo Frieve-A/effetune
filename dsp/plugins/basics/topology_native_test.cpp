@@ -1,3 +1,4 @@
+#include "../../generated/cpp/MultiChannelPanelPluginParams.h"
 #include "effetune/kernel.h"
 
 #include <array>
@@ -120,8 +121,8 @@ void testDescriptorsAndChannelCountFrames() {
   TOPOLOGY_CHECK(matrix != nullptr && matrix->paramsHash == 0x07080f45u);
   TOPOLOGY_CHECK(matrix != nullptr && matrix->paramsFloatCount == 0u);
   TOPOLOGY_CHECK(matrix != nullptr && matrix->paramsByteCapacity == 3076u);
-  TOPOLOGY_CHECK(panel != nullptr && panel->paramsHash == 0xf9d33420u);
-  TOPOLOGY_CHECK(panel != nullptr && panel->paramsFloatCount == 39u);
+  TOPOLOGY_CHECK(panel != nullptr && panel->paramsHash == 0x9d3d18b9u);
+  TOPOLOGY_CHECK(panel != nullptr && panel->paramsFloatCount == 79u);
   TOPOLOGY_CHECK(panel != nullptr && panel->paramsByteCapacity == 0u);
 
   KernelHarness divider_harness(divider, 48000.0F, 8u, 16u);
@@ -188,7 +189,7 @@ void testChannelDividerOutOfRangeSlopeClampsToSectionCapacity() {
 void testMultiChannelLevelFrame() {
   const effetune::KernelDescriptor *descriptor = et_kernel_descriptor_MultiChannelPanelPlugin();
   KernelHarness harness(descriptor, 3000.0F, 8u, 10u);
-  std::array<float, 39> params{};
+  std::array<float, effetune::generated::MultiChannelPanelPluginParams::kFloatCount> params{};
   params[1] = 1.0F;
   TOPOLOGY_CHECK(harness.kernel->stageParameters(params.data(),
                                                  static_cast<std::uint32_t>(params.size()),

@@ -13,6 +13,7 @@
 #include <cstring>
 #include <fstream>
 #include <limits>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -700,7 +701,8 @@ bool runDirectReference(const std::string &type, const Control &control,
 
 bool runAssetCase(const Options &options, const Control &control, const std::vector<float> &input,
                   std::vector<float> &output) {
-  effetune::Engine engine;
+  auto engine_storage = std::make_unique<effetune::Engine>();
+  effetune::Engine &engine = *engine_storage;
   const std::uint32_t prepared_frames = control.blockSize < 32u ? 32u : control.blockSize;
   if (!checkStatus("Engine::prepare", engine.prepare(control.sampleRate, control.channels,
                                                      prepared_frames, kTelemetryBytes))) {

@@ -24,7 +24,7 @@ EffeTune is a real-time DSP application for audio enthusiasts available as both 
    1. HDMI + AV receiver
    2. Interfaces without multichannel drivers
    3. Channel delay & time alignment
-   4. 8ch limit and expansion
+   4. 16ch limit and expansion
 4. Frequently Asked Questions
 5. Frequency Response & Room Correction
 6. Effect Operation Tips
@@ -83,14 +83,14 @@ Your input and output devices may be looping back. Ensure EffeTune's output does
 | Other players report "CABLE Input in use" | Ensure no other application is using **CABLE Input**. |
 
 ### 2.5. Multichannel output mismatch
-EffeTune outputs channels in order 1→2→…→8. If Windows is configured for 4 channels, the rear channels may map to center/sub. **Workaround:** set the device to 7.1ch, output 8ch from EffeTune, and use channels 5 and 6 for rear audio.
+EffeTune outputs channels in numeric order, up to 16 channels. Match **Output Channels** to the layout configured for your device. For a 7.1ch setup, set both the device and EffeTune to 8ch and use the device's channel labels when routing rear audio. For a 16-channel setup, select 16 channels in both places and confirm the device's channel mapping.
 
 ---
 
 ## 3. Multichannel & Hardware Connections
 
 ### 3.1. HDMI + AV receiver
-Set your PC's HDMI output to 7.1ch and connect it to an AV receiver. EffeTune can send up to 8 channels through a single cable. Older receivers may degrade sound quality or remap channels unexpectedly.
+Set your PC's HDMI output to match the receiver's speaker layout and connect it to an AV receiver. EffeTune can send up to 16 channels through a single cable when the PC, receiver, and HDMI connection support them. Older receivers may degrade sound quality or remap channels unexpectedly.
 
 ### 3.2. Interfaces without multichannel drivers (e.g., MOTU M4)
 Out 1‑2 and Out 3‑4 appear as separate devices, preventing 4‑channel output. Workarounds:
@@ -100,8 +100,8 @@ Out 1‑2 and Out 3‑4 appear as separate devices, preventing 4‑channel outpu
 ### 3.3. Channel delay & time alignment
 Use **MultiChannel Panel** or **Time Alignment** to delay channels in 10 µs steps (minimum 1 sample). When matching front speakers to Bluetooth or wireless rear speakers with much greater measured latency, delay the front channels by 100‑400 ms; this is not a typical value for speaker-distance correction. Video sync must be adjusted on the player side.
 
-### 3.4. 8ch limit and expansion
-EffeTune currently supports up to 8 output channels.
+### 3.4. 16ch limit and expansion
+EffeTune currently supports up to 16 output channels.
 
 ---
 
@@ -111,7 +111,7 @@ EffeTune currently supports up to 8 output channels.
 | ------ | ------ |
 | Which devices can use the PWA version? | EffeTune works on major mobile and desktop environments, including Android phones and tablets, iPhone/iPad, Windows, macOS, Linux, and ChromeOS. Because the PWA runs in the browser rather than as a device-specific native app, installation steps, audio input/output device selection, and supported music file formats depend on the browser and OS. |
 | I can't install the PWA version | Use the **Install PWA version** button on the EffeTune site, or open the gear menu in the upper-right of the web app and choose **Install App**. If the install option does not appear, open the site in Chrome or Edge on Android or desktop. On iPhone/iPad, open it in Safari and add it to the Home Screen from the Share menu. In-app browsers, private browsing, and older browsers may not show an install option. |
-| Surround input (5.1ch etc.)? | The Web Audio API limits input to 2 channels. Output and effects support up to 8 channels. |
+| Surround input (5.1ch etc.)? | The Web Audio API limits input to 2 channels. Output and effects support up to 16 channels. |
 | Recommended effect chain length? | Use as many effects as your CPU allows without causing dropouts or high latency. |
 | How to get the best sound quality? | Set EffeTune's **Sample Rate** to 96 kHz, start with subtle effect settings, and monitor headroom with **Level Meter**. If playback drops out, first reduce demanding effects or the number of active effects, then lower the sample rate if needed. Add **Brickwall Limiter** if needed. |
 | Does it work with any source? | Yes. With a virtual audio device you can process streaming, local files, or physical equipment. |
@@ -158,8 +158,8 @@ Use **Copy Channel PEQ Settings** when you want to paste a static frequency-resp
 
 ## 6. Effect Operation Tips
 * Signal flow is top to bottom.
-* Use the **Matrix** effect for conversions like 2→4ch or 8→2ch (set **Channel = All** in bus routing).
-* Manage level, mute, and delay for up to 8 channels with **MultiChannel Panel**.
+* Use the **Matrix** effect for conversions like 2→4ch or 16→2ch (set **Channel = All** in bus routing).
+* Manage level, mute, and delay for up to 16 channels with **MultiChannel Panel**.
 * For a multichannel reverb send/return, use **Matrix** to copy the desired source channels to a spare bus, place **IR Reverb** on that bus with **Dry** off and **Wet Level** at 0 dB, then use Matrix gains as send levels. Route the wet bus back only to the intended output channels so the original dry path is not duplicated.
 
 ---

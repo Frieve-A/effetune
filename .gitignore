@@ -85,6 +85,7 @@ _site/
 !/tests/esm/space-key-guard.test.mjs
 !/tests/esm/tape-artifacts.test.mjs
 !/tests/esm/tracked-sources-are-self-contained.test.mjs
+!/tests/esm/channel-16ch-baseline.test.mjs
 !/tests/browser/
 /tests/browser/*
 !/tests/browser/g726-resume-wasm-smoke.fixture.html
@@ -108,6 +109,7 @@ _site/
 !/tests/helpers/openhome-handshake-smoke-child.mjs
 !/tests/helpers/pipeline-analyzer-node-worker.mjs
 !/tests/helpers/sqlite-test-utils.mjs
+!/tests/helpers/channel-16ch-baseline.mjs
 !/tests/fixtures/
 /tests/fixtures/*
 !/tests/fixtures/tube-simulator/
@@ -116,6 +118,7 @@ _site/
 !/tests/fixtures/tube-simulator/lineamp-v1/
 /tests/fixtures/tube-simulator/lineamp-v1/*
 !/tests/fixtures/tube-simulator/lineamp-v1/fir-coefficients-v1.json
+!/tests/fixtures/channel-16ch-baseline-v1/
 
 !/tests/tools/
 /tests/tools/*

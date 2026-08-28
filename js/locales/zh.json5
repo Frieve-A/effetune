@@ -570,6 +570,7 @@
   "roomEq.status.designing": "正在设计校正滤波器…",
   "roomEq.status.ready": "Room EQ滤波器已就绪。",
   "roomEq.status.details": "{samples}个采样 / {milliseconds} ms · {resolution} Hz · {asset}",
+  "roomEq.status.tapLimit": "处理9个或更多声道时，Taps上限为65536。",
   "roomEq.status.missing": "缺失",
   "roomEq.status.select": "请先分配已保存的测量。",
   "roomEq.error.design": "无法设计Room EQ滤波器。请减少Taps或重新选择测量。",

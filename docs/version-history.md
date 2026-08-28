@@ -7,8 +7,10 @@ lang: en
 # Version History
 
 ### Version 2.7.0 (TBD, 2026)
-- Improved frequency response measurement to capture multiple output channels in a single measurement
 - Added per-effect presets with a preset button on each effect, including system presets for selected effects
+- Improved frequency response measurement to capture multiple output channels in a single measurement
+- Expanded the maximum output-channel count from 8 to 16
+- Improved playback efficiency when using effects that utilize FFT
 - Various minor improvements
 
 ### Version 2.6.0 (Aug 25, 2026)

@@ -33,7 +33,7 @@ class ChorusPlugin extends PluginBase {
         this.registerProcessor(`
             if (!parameters.enabled) return data;
             const TWO_PI = 6.283185307179586;
-            const MAX_CHANNELS = 8;
+            const MAX_CHANNELS = 16;
             const MAX_VOICES = 6;
             const sampleRate = parameters.sampleRate;
             const blockSize = parameters.blockSize;
@@ -282,7 +282,7 @@ class ChorusPlugin extends PluginBase {
 
     _channelSelectionHasPair() {
         return this.channel === null || this.channel === 'A' ||
-            ['34', '56', '78'].includes(this.channel);
+            ['34', '56', '78', '910', '1112', '1314', '1516'].includes(this.channel);
     }
 
     onChannelSelectionChanged() {

@@ -110,13 +110,13 @@ def _effect_channels(channel: str, channels: int) -> int:
         if channels < 2:
             raise ValidationError("the right channel is unavailable in mono audio")
         return 1
-    if len(channel) == 1 and channel.isdigit():
+    if channel.isdigit() and 1 <= int(channel) <= 16:
         if int(channel) > channels:
             raise ValidationError(
                 f"channel {channel} is unavailable in {channels}-channel audio"
             )
         return 1
-    required = {"34": 4, "56": 6, "78": 8}.get(channel)
+    required = {"34": 4, "56": 6, "78": 8, "910": 10, "1112": 12, "1314": 14, "1516": 16}.get(channel)
     if required is not None:
         if channels < required:
             raise ValidationError(
@@ -281,8 +281,8 @@ class Stream:
     ) -> None:
         self.sample_rate = validate_sample_rate(sample_rate)
         self.channels = validate_positive_integer(channels, "channels")
-        if self.channels > 8:
-            raise ValidationError("channels must be at most 8")
+        if self.channels > 16:
+            raise ValidationError("channels must be at most 16")
         self.block_size = validate_block_size(block_size)
         self.seed = validate_seed(seed)
         if on_telemetry is not None and not callable(on_telemetry):
@@ -388,15 +388,15 @@ class Stream:
                             for path in asset.paths
                         )
                         if (
-                            effect_channels not in (4, 6, 8)
+                            (effect_channels < 4 or effect_channels > 16 or effect_channels % 2 != 0)
                             or asset.samples.shape[0] != band_count
                             or band_count * 2 > effect_channels
                             or asset.input_count != 2
                             or actual_paths != expected_paths
                         ):
                             raise AssetError(
-                                f"{effect.id or effect.effect_type} requires 4, 6, "
-                                "or 8 processing channels and one matrix filter "
+                                f"{effect.id or effect.effect_type} requires an even number of "
+                                "processing channels from 4 to 16 and one matrix filter "
                                 "channel per band"
                             )
                     elif effect.effect_type == "RoomEQ":

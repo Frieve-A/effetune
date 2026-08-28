@@ -6,7 +6,7 @@ Abra-o pelo botão de gráfico no cabeçalho do Effect Pipeline ou por **View > 
 
 ## Escolha de canais e respostas de alto-falante
 
-Escolha um canal de entrada. Uma saída aparece inicialmente; use **+ Add Output** para incluir até quatro canais distintos disponíveis no dispositivo atual. Excluir uma saída também remove a configuração de resposta correspondente. A última saída não pode ser excluída.
+Escolha um canal de entrada do pipeline ativo, que pode ter até 16 canais. Uma saída aparece inicialmente; use **+ Add Output** para incluir até quatro canais distintos disponíveis no dispositivo atual. Os quatro espaços de saída continuam sendo o limite do analisador mesmo com um pipeline de 16 canais. Excluir uma saída também remove a configuração de resposta correspondente. A última saída não pode ser excluída.
 
 Cada saída pode usar **No speaker IR** ou um ponto de medição salvo do tweeter, woofer ou outro componente conectado. Escolher uma medição sem escolher um ponto equivale a **No speaker IR**. Quando nenhuma saída usa uma IR de alto-falante, **Before** é o impulso unitário ideal: 1,0 em 0 ms e 0 no restante. Com IRs de alto-falante, **Before** é a soma com sinal das respostas alinhadas. **After** é a soma com sinal após processar cada saída pelo pipeline escolhido, permitindo analisar um FIR Crossover junto com seus componentes. Se uma resposta salva estiver ausente, ela continuará marcada como ausente até ser substituída ou removida.
 

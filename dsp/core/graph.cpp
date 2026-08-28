@@ -20,9 +20,9 @@ constexpr std::uint32_t kSnapshotMagic = 0x31535445u;
 constexpr std::uint32_t kDescriptorHeaderBytes = 32u;
 constexpr std::uint32_t kDescriptorNodeBytes = 24u;
 constexpr std::uint32_t kDescriptorEdgeBytes = 40u;
-constexpr std::uint32_t kSnapshotHeaderBytes = 128u;
-constexpr std::uint32_t kSnapshotNodeBytes = 128u;
-constexpr std::uint32_t kSnapshotEdgeBytes = 48u;
+constexpr std::uint32_t kSnapshotHeaderBytes = 192u;
+constexpr std::uint32_t kSnapshotNodeBytes = 224u;
+constexpr std::uint32_t kSnapshotEdgeBytes = 80u;
 constexpr std::uint32_t kNodeFlagEnabled = 1u << 0u;
 constexpr std::uint32_t kNodeFlagRequiresActiveAsset = 1u << 1u;
 constexpr std::uint32_t kNodeFlagUniformOutputLatency = 1u << 2u;
@@ -95,7 +95,8 @@ bool byteLess(const std::string &left, const std::string &right) noexcept {
       });
 }
 
-std::uint32_t maximum(const std::array<std::uint32_t, 8> &values, std::uint32_t channels) noexcept {
+std::uint32_t maximum(const std::array<std::uint32_t, 16> &values,
+                      std::uint32_t channels) noexcept {
   std::uint32_t result = 0u;
   for (std::uint32_t channel = 0u; channel < channels; ++channel) {
     result = values[channel] > result ? values[channel] : result;
@@ -227,10 +228,10 @@ et_status GraphPlan::parseDescriptor(Engine &engine, const std::uint8_t *descrip
     } else if (node.channelSpec == -1) {
       node.firstChannel = 0u;
       node.channelCount = 2u;
-    } else if (node.channelSpec >= 0 && node.channelSpec <= 7) {
+    } else if (node.channelSpec >= 0 && node.channelSpec <= 15) {
       node.firstChannel = static_cast<std::uint32_t>(node.channelSpec);
       node.channelCount = 1u;
-    } else if (node.channelSpec >= 16 && node.channelSpec <= 19) {
+    } else if (node.channelSpec >= 16 && node.channelSpec <= 23) {
       node.firstChannel = static_cast<std::uint32_t>(node.channelSpec - 16) * 2u;
       node.channelCount = 2u;
     } else {
@@ -535,7 +536,7 @@ et_status GraphPlan::buildLatencyAndStorage(Engine &engine) {
     node.inputLatency = {};
     for (std::uint32_t edge_index : node.incomingEdges) {
       const Edge &edge = edges_[edge_index];
-      const std::array<std::uint32_t, 8> *source_latency =
+      const std::array<std::uint32_t, 16> *source_latency =
           edge.source == kEndpoint ? nullptr : &nodes_[edge.source].outputLatency;
       for (std::uint32_t channel = 0u; channel < max_channels_; ++channel) {
         const std::uint32_t latency = source_latency == nullptr ? 0u : (*source_latency)[channel];
@@ -545,7 +546,7 @@ et_status GraphPlan::buildLatencyAndStorage(Engine &engine) {
     }
     for (std::uint32_t edge_index : node.incomingEdges) {
       Edge &edge = edges_[edge_index];
-      const std::array<std::uint32_t, 8> *source_latency =
+      const std::array<std::uint32_t, 16> *source_latency =
           edge.source == kEndpoint ? nullptr : &nodes_[edge.source].outputLatency;
       for (std::uint32_t channel = 0u; channel < max_channels_; ++channel) {
         const std::uint32_t latency = source_latency == nullptr ? 0u : (*source_latency)[channel];
@@ -578,7 +579,7 @@ et_status GraphPlan::buildLatencyAndStorage(Engine &engine) {
   output_latency_ = {};
   for (std::uint32_t edge_index : output_edges_) {
     const Edge &edge = edges_[edge_index];
-    const std::array<std::uint32_t, 8> *source_latency =
+    const std::array<std::uint32_t, 16> *source_latency =
         edge.source == kEndpoint ? nullptr : &nodes_[edge.source].outputLatency;
     for (std::uint32_t channel = 0u; channel < max_channels_; ++channel) {
       const std::uint32_t latency = source_latency == nullptr ? 0u : (*source_latency)[channel];
@@ -588,7 +589,7 @@ et_status GraphPlan::buildLatencyAndStorage(Engine &engine) {
   }
   for (std::uint32_t edge_index : output_edges_) {
     Edge &edge = edges_[edge_index];
-    const std::array<std::uint32_t, 8> *source_latency =
+    const std::array<std::uint32_t, 16> *source_latency =
         edge.source == kEndpoint ? nullptr : &nodes_[edge.source].outputLatency;
     for (std::uint32_t channel = 0u; channel < max_channels_; ++channel) {
       const std::uint32_t latency = source_latency == nullptr ? 0u : (*source_latency)[channel];
@@ -729,9 +730,9 @@ void GraphPlan::buildSnapshot() {
   writeU32(header + 52u, nodes_offset);
   writeU32(header + 56u, edges_offset);
   writeU32(header + 60u, static_cast<std::uint32_t>(total));
-  for (std::uint32_t channel = 0u; channel < 8u; ++channel) {
+  for (std::uint32_t channel = 0u; channel < 16u; ++channel) {
     writeU32(header + 64u + channel * 4u, output_latency_[channel]);
-    writeU32(header + 96u + channel * 4u, output_delays_[channel]);
+    writeU32(header + 128u + channel * 4u, output_delays_[channel]);
   }
   for (std::uint32_t index = 0u; index < schedule_.size(); ++index) {
     writeU32(header + schedule_offset + index * 4u, nodes_[schedule_[index]].originalIndex);
@@ -748,10 +749,10 @@ void GraphPlan::buildSnapshot() {
     writeU32(record + 16u, node.firstChannel);
     writeU32(record + 20u, node.channelCount);
     writeU32(record + 24u, node.kernelLatency);
-    for (std::uint32_t channel = 0u; channel < 8u; ++channel) {
+    for (std::uint32_t channel = 0u; channel < 16u; ++channel) {
       writeU32(record + 32u + channel * 4u, node.inputLatency[channel]);
-      writeU32(record + 64u + channel * 4u, node.outputLatency[channel]);
-      writeU32(record + 96u + channel * 4u, node.preDelay[channel]);
+      writeU32(record + 96u + channel * 4u, node.outputLatency[channel]);
+      writeU32(record + 160u + channel * 4u, node.preDelay[channel]);
     }
   }
   for (const Edge &edge : edges_) {
@@ -761,7 +762,7 @@ void GraphPlan::buildSnapshot() {
     writeU32(record, flags);
     writeU32(record + 4u, edge.source);
     writeU32(record + 8u, edge.destination);
-    for (std::uint32_t channel = 0u; channel < 8u; ++channel) {
+    for (std::uint32_t channel = 0u; channel < 16u; ++channel) {
       writeU32(record + 16u + channel * 4u, edge.compensation[channel]);
     }
   }

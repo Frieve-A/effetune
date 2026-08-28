@@ -24,10 +24,10 @@ lang: hi
 
 यह specialized tool आपके stereo signal को अलग frequency bands में बांटता है और हर band को अलग stereo output pair पर route करता है। multi-amplifier, multi-speaker या custom crossover playback setups के लिए उपयोगी है।
 
-इस effect का उपयोग करने के लिए desktop app इस्तेमाल करें, audio settings में output channels की संख्या band count के अनुसार 4, 6 या 8 सेट करें, और effect bus routing में channel को "All" पर सेट करें।
+इस effect का उपयोग करने के लिए desktop app इस्तेमाल करें, audio settings में output channels की संख्या 4 से 16 के बीच कोई even संख्या सेट करें, और effect bus routing में channel को "All" पर सेट करें।
 
 ### कब उपयोग करें
-- multi-channel audio outputs (4, 6 या 8 channels) इस्तेमाल करते समय
+- multi-channel audio outputs (4 से 16 तक even channels) इस्तेमाल करते समय
 - custom frequency-based channel routing बनाने के लिए
 - multi-amplifier या multi-speaker setups के लिए
 
@@ -36,7 +36,7 @@ lang: hi
   - 2 bands: Low/High split, 4 output channels चाहिए
   - 3 bands: Low/Mid/High split, 6 output channels चाहिए
   - 4 bands: Low/Mid-Low/Mid-High/High split, 8 output channels चाहिए
-  - चुनी गई output channel count कम होने पर higher band counts उपलब्ध नहीं होते
+  - Band Count अधिकतम चार bands तक सीमित है; अधिक output channels से अतिरिक्त bands नहीं जुड़ते
 
 - **Crossover Frequencies** - bands के बीच audio कहां split होगा, यह तय करती हैं
   - F1: पहला crossover point
@@ -52,7 +52,7 @@ lang: hi
 
 ### तकनीकी नोट्स
 - केवल पहले दो input channels process करता है
-- output channels 2 के multiple होने चाहिए (4, 6 या 8)
+- output channels 4 से 16 के बीच even संख्या होने चाहिए
 - हर band original stereo pair बनाए रखता है: 2-band mode में Low channels 1-2 और High channels 3-4 पर जाता है; 3-band mode channels 1-2, 3-4 और 5-6 इस्तेमाल करता है; 4-band mode channels 1-2, 3-4, 5-6 और 7-8 इस्तेमाल करता है
 - high-quality Linkwitz-Riley crossover filters इस्तेमाल करता है
 - आसान configuration के लिए visual frequency response graph देता है
@@ -75,7 +75,7 @@ lang: hi
 
 ## FIR Crossover
 
-FIR Crossover stereo input को दो, तीन या चार bands में बाँटकर हर band को अलग output pair में भेजता है। यह 4, 6 या 8 output channels वाले desktop systems के लिए है और केवल WASM DSP के साथ काम करता है।
+FIR Crossover stereo input को दो, तीन या चार bands में बाँटकर हर band को अलग output pair में भेजता है। यह 4 से 16 तक even output channels वाले desktop systems के लिए है और केवल WASM DSP के साथ काम करता है। Band Count अधिकतम चार bands तक सीमित है, इसलिए effect अधिकतम channels 1-8 का उपयोग करता है।
 
 FIR design पारंपरिक filters की resonance के बिना बहुत तीखी slopes देता है। Minimum Phase एक causal crossover construction इस्तेमाल करता है जो bands को फिर से जोड़ने की क्षमता बनाए रखता है; Linear Phase निश्चित latency के बदले symmetric phase response देता है।
 
@@ -113,7 +113,7 @@ FIR design पारंपरिक filters की resonance के बिना
 - stereo को mono में combine करने या किसी channel को दूसरे available output पर duplicate करने के लिए
 
 ### विशेषताएं
-- 8 channels तक के लिए flexible routing matrix
+- 16 channels तक के लिए flexible routing matrix
 - किसी भी input/output pair के बीच individual connection control
 - हर connection के लिए phase inversion options
 - सहज configuration के लिए visual matrix interface
@@ -134,16 +134,18 @@ FIR design पारंपरिक filters की resonance के बिना
 
 ## MultiChannel Panel
 
-कई audio channels को अलग-अलग manage करने वाला comprehensive control panel। यह plugin 8 channels तक volume, mute, solo और delay पर पूरा control देता है, और हर channel के लिए visual level meter दिखाता है।
+कई audio channels को अलग-अलग manage करने वाला comprehensive control panel। यह plugin 16 channels तक volume, mute, solo और delay पर पूरा control देता है, और हर channel के लिए visual level meter दिखाता है।
+
+नीचे छिपे चैनल देखने के लिए पैनल के अंदर स्क्रॉल करें।
 
 ### कब उपयोग करें
-- multi-channel audio (8 channels तक) के साथ काम करते समय
+- multi-channel audio (16 channels तक) के साथ काम करते समय
 - अलग channels के बीच custom volume balance बनाने के लिए
 - किसी खास channel पर individual delay लगाने की जरूरत हो
 - कई channels के levels एक साथ monitor करने के लिए
 
 ### विशेषताएं
-- 8 audio channels तक individual controls
+- 16 audio channels तक individual controls
 - दृश्य निगरानी के लिए peak hold वाले रीयल-टाइम level meters
 - grouped parameter changes के लिए channel linking
 

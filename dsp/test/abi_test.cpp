@@ -11,6 +11,7 @@
 #include <cstring>
 #include <initializer_list>
 #include <latch>
+#include <memory>
 #include <span>
 #include <thread>
 #include <type_traits>
@@ -49,7 +50,8 @@ void testAllocationGuardScope() {
 
 void testAudioThreadEnablesDenormalFlush() {
 #if defined(ET_TEST_HAS_X86_MXCSR)
-  Engine engine;
+  auto engine_storage = std::make_unique<Engine>();
+  Engine &engine = *engine_storage;
   ET_CHECK(engine.prepare(48000.0F, 2u, 128u, 0u) == ET_OK);
   const et_instance instance = engine.createInstance("TestGainPlugin");
   ET_CHECK(instance != 0u);
@@ -206,7 +208,8 @@ void testDiscoveryAndLifecycle() {
   ET_CHECK(et_kernel_name(et_kernel_count(), short_name, sizeof(short_name)) == ET_ERR_ARGS);
 
   ET_CHECK(et_engine_memory_required(48000.0F, 8u, 128u, 4096u) > 0u);
-  ET_CHECK(et_engine_memory_required(48000.0F, 9u, 128u, 4096u) == 0u);
+  ET_CHECK(et_engine_memory_required(48000.0F, 16u, 128u, 4096u) > 0u);
+  ET_CHECK(et_engine_memory_required(48000.0F, 17u, 128u, 4096u) == 0u);
   ET_CHECK(et_engine_memory_required(48000.0F, 2u, 31u, 4096u) == 0u);
 
   const et_engine engine = et_engine_create();
@@ -321,7 +324,7 @@ void testPipelineValidationAndRouting() {
   ET_CHECK(et_pipeline_process(engine, 4u, 4u, 0.0, 1u) == ET_OK);
   ET_CHECK(main_bus[0] == 3.0F && main_bus[15] == 3.0F);
 
-  auto bad_channel = descriptor(gain_instance, 0u, 0u, 20);
+  auto bad_channel = descriptor(gain_instance, 0u, 0u, 24);
   ET_CHECK(et_pipeline_configure(engine, bad_channel.data(),
                                  static_cast<std::uint32_t>(bad_channel.size())) == ET_ERR_DESC);
   auto bad_bus = descriptor(gain_instance, 0u, 5u, -2);
@@ -433,7 +436,8 @@ void testPipelineLatencyCompensation() {
 void testDynamicPipelineLatency() {
   constexpr std::uint32_t kFrames = 64u;
   constexpr std::uint32_t kLimiterHash = 0xb531a24au;
-  Engine engine;
+  auto engine_storage = std::make_unique<Engine>();
+  Engine &engine = *engine_storage;
   ET_CHECK(engine.prepare(48000.0F, 2u, kFrames, 0u) == ET_OK);
   const et_instance left = engine.createInstance("BrickwallLimiterPlugin");
   const et_instance right = engine.createInstance("BrickwallLimiterPlugin");
@@ -562,7 +566,8 @@ void testDynamicPipelineLatency() {
 
 void testDynamicLatencyHistory() {
   constexpr std::uint32_t kFrames = 32u;
-  Engine engine;
+  auto engine_storage = std::make_unique<Engine>();
+  Engine &engine = *engine_storage;
   ET_CHECK(engine.prepare(48000.0F, 2u, kFrames, 0u) == ET_OK);
   const et_instance limiter = engine.createInstance("BrickwallLimiterPlugin");
   const et_instance gain = engine.createInstance("TestGainPlugin");
@@ -648,7 +653,7 @@ void testPipelineDescriptorFuzz() {
       malformed[14] = static_cast<std::uint8_t>(5u + nextRandom() % 251u);
       break;
     case 6u:
-      malformed[15] = static_cast<std::uint8_t>(20u + nextRandom() % 108u);
+      malformed[15] = static_cast<std::uint8_t>(24u + nextRandom() % 104u);
       break;
     case 7u:
       malformed[16] = static_cast<std::uint8_t>(2u + nextRandom() % 254u);
@@ -700,7 +705,8 @@ void testAssetLifecycle() {
   ET_CHECK(et_kernel_asset_capacity(kernel_index, 1u) == 0u);
   ET_CHECK(et_kernel_asset_capacity(et_kernel_count(), 0u) == 0u);
 
-  Engine engine;
+  auto engine_storage = std::make_unique<Engine>();
+  Engine &engine = *engine_storage;
   ET_CHECK(engine.prepare(48000.0F, 2u, 128u, 0u) == ET_OK);
   const et_instance instance = engine.createInstance("TestGainPlugin");
   ET_CHECK(instance != 0u);

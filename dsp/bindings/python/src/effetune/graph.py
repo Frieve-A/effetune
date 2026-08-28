@@ -59,9 +59,9 @@ def _channel_spec(channel: str) -> int:
         return 0
     if channel in {"right", "2"}:
         return 1
-    if len(channel) == 1 and "3" <= channel <= "8":
+    if channel.isdigit() and 3 <= int(channel) <= 16:
         return int(channel) - 1
-    return {"34": 17, "56": 18, "78": 19}[channel]
+    return {"34": 17, "56": 18, "78": 19, "910": 20, "1112": 21, "1314": 22, "1516": 23}[channel]
 
 
 def _effective_node_ids(document: Mapping[str, Any]) -> set[str]:
@@ -187,7 +187,7 @@ def _vector(data: memoryview, offset: int, channels: int) -> list[int]:
 
 def _decode_snapshot(raw: bytes, document: Mapping[str, Any]) -> dict[str, Any]:
     data = memoryview(raw)
-    if len(data) < 128:
+    if len(data) < 192:
         raise EffeTuneRuntimeError("native DSP returned an invalid Graph compile snapshot")
     header = struct.unpack_from("<16I", data, 0)
     if header[0] != _SNAPSHOT_MAGIC or header[1] != 1:
@@ -199,9 +199,9 @@ def _decode_snapshot(raw: bytes, document: Mapping[str, Any]) -> dict[str, Any]:
         node_count != len(document["nodes"])
         or edge_count != len(document["edges"])
         or channels < 1
-        or channels > 8
-        or node_bytes != 128
-        or edge_bytes != 48
+        or channels > 16
+        or node_bytes != 224
+        or edge_bytes != 80
         or total_bytes != len(data)
     ):
         raise EffeTuneRuntimeError("native DSP returned an inconsistent Graph compile snapshot")
@@ -229,8 +229,8 @@ def _decode_snapshot(raw: bytes, document: Mapping[str, Any]) -> dict[str, Any]:
                 },
                 "kernelLatency": kernel_latency,
                 "inputLatency": _vector(data, offset + 32, channels),
-                "outputLatency": _vector(data, offset + 64, channels),
-                "preNodeCompensation": _vector(data, offset + 96, channels),
+                "outputLatency": _vector(data, offset + 96, channels),
+                "preNodeCompensation": _vector(data, offset + 160, channels),
             }
         )
     edges = []
@@ -254,7 +254,7 @@ def _decode_snapshot(raw: bytes, document: Mapping[str, Any]) -> dict[str, Any]:
         "nodes": nodes,
         "edges": edges,
         "outputLatency": _vector(data, 64, channels),
-        "outputCompensation": _vector(data, 96, channels),
+        "outputCompensation": _vector(data, 128, channels),
         "latencySamples": header[7],
         "capacity": {"bufferSlots": header[6], "workspaceBytes": header[8]},
     }
@@ -371,15 +371,15 @@ def _prepare_asset(native: Any, native_index: int, effect: Effect, asset: AssetD
             for path in asset.paths
         )
         if (
-            effect_channels not in (4, 6, 8)
+            (effect_channels < 4 or effect_channels > 16 or effect_channels % 2 != 0)
             or asset.samples.shape[0] != band_count
             or band_count * 2 > effect_channels
             or asset.input_count != 2
             or actual_paths != expected_paths
         ):
             raise AssetError(
-                f"{effect.id or effect.effect_type} requires 4, 6, or 8 "
-                "processing channels and one matrix filter channel per band"
+                f"{effect.id or effect.effect_type} requires an even number of processing channels from 4 to 16 "
+                "and one matrix filter channel per band"
             )
     elif effect.effect_type == "RoomEQ":
         topology = resolve_room_eq_topology(asset, effect_channels)
@@ -426,8 +426,8 @@ class GraphStream:
     ) -> None:
         self.sample_rate = validate_sample_rate(sample_rate)
         self.channels = validate_positive_integer(channels, "channels")
-        if self.channels > 8:
-            raise ValidationError("channels must be at most 8")
+        if self.channels > 16:
+            raise ValidationError("channels must be at most 16")
         self.block_size = validate_block_size(block_size)
         self.seed = validate_seed(seed)
         self._closed = False

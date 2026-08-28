@@ -13,6 +13,18 @@ from effetune.validation import pack_parameter_bytes, pack_parameters
 
 
 class ValidationAndEffectsTests(unittest.TestCase):
+    def test_sixteen_channel_single_and_pair_selections(self) -> None:
+        selections = [(str(index + 1), index, 1) for index in range(8, 16)]
+        selections += [("910", 8, 2), ("1112", 10, 2), ("1314", 12, 2), ("1516", 14, 2)]
+        for channel, start, count in selections:
+            with self.subTest(channel=channel):
+                output = effetune.Volume(volume=-6, channel=channel).process(
+                    np.ones((16, 8), dtype=np.float32), sample_rate=48000,
+                )
+                expected = np.ones((16, 8), dtype=np.float32)
+                expected[start:start + count] = 10 ** (-6 / 20)
+                np.testing.assert_allclose(output, expected, atol=1e-6, rtol=0)
+
     def test_runtime_version_matches_wheel_and_package_manifests(self) -> None:
         repository_root = Path(__file__).resolve().parents[4]
         npm_data = json.loads(
@@ -178,10 +190,10 @@ class ValidationAndEffectsTests(unittest.TestCase):
         ):
             effect.process(likely_interleaved, sample_rate=48_000)
 
-        true_nine_channel = np.zeros((9, 32), dtype=np.float32)
+        true_seventeen_channel = np.zeros((17, 32), dtype=np.float32)
         with self.assertRaises(effetune.ValidationError) as caught:
-            effect.process(true_nine_channel, sample_rate=48_000)
-        self.assertEqual(str(caught.exception), "audio supports at most 8 channels")
+            effect.process(true_seventeen_channel, sample_rate=48_000)
+        self.assertEqual(str(caught.exception), "audio supports at most 16 channels")
 
         planar = np.zeros((2, 256), dtype=np.float32)
         frame_slice = planar[:, 0:128]
@@ -292,8 +304,16 @@ class ValidationAndEffectsTests(unittest.TestCase):
                 self.assertEqual(
                     str(rejected.exception),
                     "Matrix.matrixRoutes has an invalid format; expected a string "
-                    "matching ^(?:p?[0-8][0-8])*$ (for example '0011')",
+                    "matching ^(?:p?[0-9a-f][0-9a-f])*$ (for example '0011')",
                 )
+        np.testing.assert_array_equal(
+            pack_parameter_bytes(effetune.Matrix(matrix_routes="abpff")),
+            np.array([1, 0, 2, 0, 10, 11, 0, 15, 15, 1], dtype=np.uint8),
+        )
+        dense_routes = "".join(f"{source:x}{destination:x}" for source in range(16) for destination in range(16))
+        dense_packed = pack_parameter_bytes(effetune.Matrix(matrix_routes=dense_routes))
+        np.testing.assert_array_equal(dense_packed[:4], np.array([1, 0, 0, 1], dtype=np.uint8))
+        self.assertEqual(len(dense_packed), 4 + 256 * 3)
         out_of_range = pack_parameter_bytes(effetune.Matrix(matrix_routes="88"))
         np.testing.assert_array_equal(
             out_of_range,

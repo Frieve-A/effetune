@@ -82,6 +82,19 @@ test('IR topology resolver combines routing selection, channel layout, and expli
   assert.equal(selectedIrChannelCount('A', 8), 8);
   assert.equal(selectedIrChannelCount('34', 4), 2);
   assert.equal(selectedIrChannelCount('78', 6), 0);
+  assert.equal(selectedIrChannelCount('A', 16), 16);
+  assert.equal(selectedIrChannelCount('A', 17), 0);
+  for (const [channel, required] of [['910', 10], ['1112', 12], ['1314', 14], ['1516', 16]]) {
+    assert.equal(selectedIrChannelCount(channel, required), 2);
+    assert.equal(selectedIrChannelCount(channel, required - 1), 0);
+  }
+  assert.equal(selectedIrChannelCount('16', 16), 1);
+  const sixteen = resolveIrProcessingConfig({
+    sampleRate: 96000, channelCount: 16, channel: 'A', channelMode: 'multi'
+  });
+  assert.equal(sixteen.valid, true);
+  assert.equal(sixteen.pathCount, 16);
+  assert.deepEqual(sixteen.paths[15], { inputSlot: 15, outputSlot: 15, irChannel: 15 });
 
   const explicitTrue = resolveIrProcessingConfig({
     sampleRate: 48000,

@@ -78,7 +78,7 @@ class GroupDelayEqPlugin extends PluginBase {
             window.audioManager?.outputChannelCount,
             window.uiManager?.audioManager?.outputChannelCount
         ];
-        return candidates.find(value => Number.isInteger(value) && value >= 1 && value <= 8) || 2;
+        return candidates.find(value => Number.isInteger(value) && value >= 1 && value <= 16) || 2;
     }
 
     _delays() {
@@ -120,7 +120,7 @@ class GroupDelayEqPlugin extends PluginBase {
             ? options.sampleRate
             : this._sampleRate;
         const outputChannelCount = Number.isInteger(options.outputChannelCount) &&
-            options.outputChannelCount >= 1 && options.outputChannelCount <= 8
+            options.outputChannelCount >= 1 && options.outputChannelCount <= 16
             ? options.outputChannelCount
             : this._outputChannelCount;
         if (options.commitSampleRate &&

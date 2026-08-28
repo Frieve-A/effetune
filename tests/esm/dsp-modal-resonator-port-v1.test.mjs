@@ -174,5 +174,5 @@ test('ModalResonatorPlugin kernel preserves JS state and numeric storage boundar
     assert.match(source, /context\.accum = new Float32Array/);
     assert.match(source, /if \(!cfg\.enabled\) continue/);
     assert.match(readme, /^#### Modal Resonator$/m);
-    assert.match(readme, /Five-resonator storage: 1,529,600 bytes/);
+    assert.match(readme, /Five-resonator storage: 3,059,200 bytes/);
   });

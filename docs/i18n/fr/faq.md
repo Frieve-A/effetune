@@ -24,7 +24,7 @@ EffeTune est une application DSP en temps réel pour les passionnés d'audio dis
    3.1. HDMI + récepteur AV
    3.2. Interfaces sans pilotes multicanaux
    3.3. Retard de canal et alignement temporel
-   3.4. Limite de 8 canaux et expansion
+   3.4. Limite de 16 canaux et expansion
 4. Questions fréquemment posées
 5. Réponse en fréquence et correction acoustique
 6. Conseils d'utilisation des effets
@@ -82,14 +82,14 @@ Vos périphériques d'entrée et de sortie peuvent être en bouclage. Assurez-vo
 | D'autres lecteurs signalent "CABLE Input en cours d'utilisation" | Assurez-vous qu'aucune autre application n'utilise **CABLE Input**. |
 
 ### 2.5. Discordance de sortie multicanal
-EffeTune produit les canaux dans l'ordre 1→2→…→8. Si Windows est configuré pour 4 canaux, les canaux arrière peuvent être mappés sur le centre/sub. **Solution de contournement :** configurez le périphérique en 7.1ch, sortez 8ch depuis EffeTune, et utilisez les canaux 5 et 6 pour l'audio arrière.
+EffeTune produit les canaux dans l'ordre numérique, jusqu'à 16 canaux. Faites correspondre **Canaux de sortie :** à la configuration du périphérique. Pour une installation 7.1ch, réglez le périphérique et EffeTune sur 8ch et utilisez les libellés de canaux du périphérique pour router les canaux arrière. Pour une installation à 16 canaux, sélectionnez 16 canaux aux deux endroits et vérifiez le mappage du périphérique.
 
 ---
 
 ## 3. Connexions multicanal et matérielles
 
 ### 3.1. HDMI + récepteur AV
-Configurez la sortie HDMI de votre PC en 7.1ch et connectez-la à un récepteur AV. EffeTune peut envoyer jusqu'à 8 canaux via un seul câble. Les récepteurs plus anciens peuvent dégrader la qualité sonore ou remapper les canaux de manière inattendue.
+Configurez la sortie HDMI du PC selon la disposition des haut-parleurs du récepteur et connectez-la à un récepteur AV. EffeTune peut envoyer jusqu'à 16 canaux par un seul câble lorsque le PC, le récepteur et la liaison HDMI les prennent en charge. Les récepteurs plus anciens peuvent dégrader la qualité sonore ou remapper les canaux de manière inattendue.
 
 ### 3.2. Interfaces sans pilotes multicanaux (ex. MOTU M4)
 Out 1‑2 et Out 3‑4 apparaissent comme des périphériques séparés, empêchant la sortie sur 4 canaux. Solutions de contournement :
@@ -99,8 +99,8 @@ Out 1‑2 et Out 3‑4 apparaissent comme des périphériques séparés, empêch
 ### 3.3. Retard de canal et alignement temporel
 Utilisez **MultiChannel Panel** ou **Time Alignment** pour retarder les canaux par pas de 10 µs (minimum 1 échantillon). Pour aligner les enceintes avant sur des enceintes arrière Bluetooth ou sans fil dont la latence mesurée est bien plus élevée, retardez les canaux avant de 100-400 ms ; ce n’est pas une valeur habituelle de correction de distance. La synchronisation vidéo doit être ajustée côté lecteur.
 
-### 3.4. Limite de 8 canaux et expansion
-EffeTune prend actuellement en charge jusqu’à 8 canaux de sortie.
+### 3.4. Limite de 16 canaux et expansion
+EffeTune prend actuellement en charge jusqu’à 16 canaux de sortie.
 
 ---
 
@@ -110,7 +110,7 @@ EffeTune prend actuellement en charge jusqu’à 8 canaux de sortie.
 | ------ | ------ |
 | Sur quels appareils la version PWA fonctionne-t-elle ? | Elle peut être utilisée sur les principaux environnements mobiles et de bureau : smartphones et tablettes Android, iPhone/iPad, Windows, macOS, Linux et ChromeOS. Comme il s'agit d'une PWA, elle s'exécute dans le navigateur plutôt que comme une application native propre à chaque appareil. En revanche, la méthode d'installation, la sélection des périphériques audio d'entrée/sortie et les formats musicaux pris en charge dépendent du navigateur et du système d'exploitation. |
 | Je n'arrive pas à installer la version PWA | Utilisez le bouton **Installer la version PWA** du site EffeTune, ou, dans la version web, ouvrez le menu **Paramètres** en forme d'engrenage en haut à droite et choisissez **Installer l'application**. Si l'option n'apparaît pas, ouvrez EffeTune avec Chrome, Edge ou un autre navigateur Chromium sur Android ou sur ordinateur. Sur iPhone/iPad, ouvrez le site dans Safari, puis ajoutez-le à l'écran d'accueil depuis le menu de partage. Les navigateurs intégrés aux applications, la navigation privée et les anciens navigateurs peuvent ne pas afficher l'option d'installation. |
-| Entrée surround (5.1ch, etc.) ? | L'API Web Audio limite l'entrée à 2 canaux. La sortie et les effets prennent en charge jusqu'à 8 canaux. |
+| Entrée surround (5.1ch, etc.) ? | L'API Web Audio limite l'entrée à 2 canaux. La sortie et les effets prennent en charge jusqu'à 16 canaux. |
 | Longueur recommandée de la chaîne d'effets ? | Utilisez autant d'effets que votre CPU permet sans causer de coupures ou de latence élevée. |
 | Comment obtenir la meilleure qualité sonore ? | Réglez la **Fréquence d'échantillonnage** d'EffeTune sur 96 kHz, commencez par des effets subtils et surveillez la marge avec **Level Meter**. En cas de coupures, réduisez d'abord les effets exigeants ou le nombre d'effets actifs, puis baissez la fréquence si nécessaire. Ajoutez **Brickwall Limiter** si besoin. |
 | Fonctionne-t-il avec n'importe quelle source ? | Oui. Avec un périphérique audio virtuel, vous pouvez traiter le streaming, les fichiers locaux ou l'équipement physique. |
@@ -161,8 +161,8 @@ Utilisez **Copier les réglages PEQ par canal** pour coller dans **Effect Pipeli
 
 ## 6. Conseils d'utilisation des effets
 * Le flux du signal va de haut en bas.
-* Utilisez l'effet **Matrix** pour les conversions comme 2→4ch ou 8→2ch (réglez **Channel = All** dans le routage de bus).
-* Gérez le niveau, la sourdine et le délai pour jusqu'à 8 canaux avec **MultiChannel Panel**.
+* Utilisez l'effet **Matrix** pour les conversions comme 2→4ch ou 16→2ch (réglez **Channel = All** dans le routage de bus).
+* Gérez le niveau, la sourdine et le délai pour jusqu'à 16 canaux avec **MultiChannel Panel**.
 
 ---
 

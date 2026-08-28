@@ -226,7 +226,7 @@ test('LevelMeter ignores malformed and version-mismatched telemetry frames', () 
   hub.emit({ ...makeLevelFrame().frame, frameType: 2 });
   hub.emit(makeLevelFrame({ trailingBytes: 4 }).frame);
   hub.emit(makeLevelFrame({ channelCount: 0, peaks: [], rms: [] }).frame);
-  hub.emit(makeLevelFrame({ channelCount: 9, peaks: new Array(9).fill(0) }).frame);
+  hub.emit(makeLevelFrame({ channelCount: 17, peaks: new Array(17).fill(0) }).frame);
   hub.emit(makeLevelFrame({ peaks: [Number.NaN] }).frame);
   hub.emit(makeLevelFrame({ clipFlags: 2 }).frame);
   hub.emit({ formatVersion: 1, payload: new Uint8Array(16) });
@@ -318,4 +318,15 @@ test('LevelMeter remains legacy-only when the telemetry hub is unavailable', () 
 
   assert.ok(Math.abs(plugin.lv[0] - (-6.020599913279624)) < 1e-9);
   assert.equal(plugin.ol, false);
+});
+
+test('LevelMeter accepts all 16 channels including the last clip bit', () => {
+  const hub = createHub();
+  const plugin = createSubscribedPlugin(loadLevelMeter({ hub }));
+  let received;
+  plugin.process = message => { received = message.measurements; };
+  hub.emit(makeLevelFrame({ peaks: Array(16).fill(0.5), clipFlags: 1 << 15 }).frame);
+  assert.equal(received.channels.length, 16);
+  assert.equal(received.channels[15].clipped, true);
+  assert.equal(received.channels[15].peak, 0.5);
 });

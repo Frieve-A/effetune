@@ -170,7 +170,7 @@ const variants = [
 ];
 
 for (const variant of variants) {
-  test(`WebAssembly benchmark ${variant.variant} artifact runs Matrix in one native pipeline call`, async () => {
+  for (const channelCount of [2, 16]) test(`WebAssembly benchmark ${variant.variant} artifact runs ${channelCount}-channel Matrix in one native pipeline call`, async () => {
     const calls = [];
     const warnings = [];
     const dependencies = {
@@ -202,6 +202,7 @@ for (const variant of variants) {
       dependencies
     });
     const plugin = new MatrixPlugin();
+    if (channelCount === 16) plugin.mx = 'effe';
     let session = null;
 
     try {
@@ -209,14 +210,15 @@ for (const variant of variants) {
       assert.equal(runtime.label, variant.label);
       assert.equal(runtime.supportsPlugin(plugin), true);
 
-      session = runtime.createPluginSession(plugin, { channelCount: CHANNEL_COUNT });
-      const input = new Float32Array(CHANNEL_COUNT * BLOCK_SIZE);
-      input.fill(0.25, 0, BLOCK_SIZE);
-      input.fill(-0.75, BLOCK_SIZE);
+      session = runtime.createPluginSession(plugin, { channelCount: channelCount });
+      const input = new Float32Array(channelCount * BLOCK_SIZE);
+      const first = (channelCount - 2) * BLOCK_SIZE;
+      input.fill(0.25, first, first + BLOCK_SIZE);
+      input.fill(-0.75, first + BLOCK_SIZE);
       const output = Float32Array.from(session.process(input, 0.125));
 
       assert.deepEqual(
-        [output[0], output[BLOCK_SIZE - 1], output[BLOCK_SIZE], output[output.length - 1]],
+        [output[first], output[first + BLOCK_SIZE - 1], output[first + BLOCK_SIZE], output[output.length - 1]],
         [-0.75, -0.75, 0.25, 0.25]
       );
       assert.equal(plugin.javascriptCalls, 0);
@@ -225,13 +227,13 @@ for (const variant of variants) {
       assert.ok(structuredParamsCall);
       assert.deepEqual(
         [...structuredParamsCall.args[1]],
-        [1, 0, 2, 0, 0, 1, 0, 1, 0, 0]
+        [1, 0, 2, 0, channelCount - 2, channelCount - 1, 0, channelCount - 1, channelCount - 2, 0]
       );
       assert.equal(structuredParamsCall.args[2], MATRIX_PARAMS_HASH);
 
       assert.deepEqual(
         findCall(calls, 'pipelineProcess').args,
-        [CHANNEL_COUNT, BLOCK_SIZE, 0.125, false]
+        [channelCount, BLOCK_SIZE, 0.125, false]
       );
 
       session.close();

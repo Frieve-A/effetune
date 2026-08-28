@@ -17,7 +17,7 @@ extern "C" const effetune::KernelDescriptor *et_kernel_descriptor_ModalResonator
 namespace {
 
 using Params = effetune::generated::ModalResonatorPluginParams;
-constexpr std::uint32_t kMaximumChannels = 8u;
+constexpr std::uint32_t kMaximumChannels = 16u;
 constexpr std::uint32_t kMaximumFrames = 128u;
 constexpr std::size_t kKernelStorageBytes = 8192u;
 int failures = 0;

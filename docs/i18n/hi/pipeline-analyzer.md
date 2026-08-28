@@ -6,7 +6,7 @@ Pipeline Analyzer सुनाई देने वाले ऑडियो क�
 
 ## चैनल और स्पीकर प्रतिक्रियाएँ
 
-एक input channel चुनें। शुरुआत में एक output होता है; मौजूदा audio device के अलग-अलग channels में से अधिकतम चार जोड़ने के लिए **+ आउटपुट जोड़ें** चुनें। Output हटाने पर उसकी speaker-response setting भी हटती है। अंतिम output को हटाया नहीं जा सकता।
+सक्रिय pipeline से एक input channel चुनें, जिसमें अधिकतम 16 channels हो सकते हैं। शुरुआत में एक output होता है; मौजूदा audio device के अलग-अलग channels में से अधिकतम चार जोड़ने के लिए **+ आउटपुट जोड़ें** चुनें। 16-channel pipeline में भी Analyzer की सीमा चार output slots ही रहती है। Output हटाने पर उसकी speaker-response setting भी हटती है। अंतिम output को हटाया नहीं जा सकता।
 
 हर output के लिए **स्पीकर IR नहीं**, या जुड़े tweeter, woofer या दूसरे speaker unit का saved measurement point चुन सकते हैं। Measurement चुनकर उसका point न चुनना **स्पीकर IR नहीं** के समान माना जाता है। किसी भी output में speaker IR न होने पर **पहले** आदर्श इकाई आवेग होता है: 0 ms पर 1.0 और बाकी हर समय 0। Speaker IR होने पर **पहले** समय-संरेखित responses का signed sum है और **बाद में** हर output को चुने गए pipeline से process करने के बाद का signed sum है। इससे FIR Crossover को speaker units के साथ जाँचा जा सकता है। कोई saved response न मिले तो वह बदलने या हटाने तक missing के रूप में साफ़ दिखाई देता है।
 

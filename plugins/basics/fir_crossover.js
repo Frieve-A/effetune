@@ -68,11 +68,12 @@ class FIRCrossoverPlugin extends PluginBase {
       window.audioManager?.outputChannelCount,
       window.uiManager?.audioManager?.outputChannelCount
     ];
-    return candidates.find(value => Number.isInteger(value) && value >= 1 && value <= 8) || 2;
+    return candidates.find(value => Number.isInteger(value) && value >= 1 && value <= 16) || 2;
   }
 
   _maximumBandCount(outputChannelCount = this._outputChannelCount) {
-    return [4, 6, 8].includes(outputChannelCount) ? outputChannelCount / 2 : 0;
+    return outputChannelCount >= 4 && outputChannelCount <= 16 && outputChannelCount % 2 === 0
+      ? Math.min(outputChannelCount / 2, 4) : 0;
   }
 
   _effectiveBandCount(outputChannelCount = this._outputChannelCount) {
@@ -95,7 +96,7 @@ class FIRCrossoverPlugin extends PluginBase {
       ? options.sampleRate
       : this._sampleRate;
     const outputChannelCount = Number.isInteger(options.outputChannelCount) &&
-      options.outputChannelCount >= 1 && options.outputChannelCount <= 8
+      options.outputChannelCount >= 1 && options.outputChannelCount <= 16
       ? options.outputChannelCount
       : this._outputChannelCount;
     if (options.commitSampleRate &&
@@ -246,7 +247,7 @@ class FIRCrossoverPlugin extends PluginBase {
     this.powerGainUpperBoundDb = 0;
     this.updateParameters();
     this._setStatus(
-      'FIR Crossover needs a 4, 6, or 8 channel output bus.',
+      'FIR Crossover needs an even number of output channels from 4 to 16.',
       'error'
     );
   }
@@ -400,7 +401,7 @@ class FIRCrossoverPlugin extends PluginBase {
       bc: this.bc
     };
     if (!operationCurrent()) throw this._offlineStaleError();
-    if (!snapshot.config.bandCount || ![4, 6, 8].includes(outputChannelCount)) {
+    if (!snapshot.config.bandCount || !this._maximumBandCount(outputChannelCount)) {
       return {
         parameters,
         assets: new Map(),
@@ -542,7 +543,7 @@ class FIRCrossoverPlugin extends PluginBase {
     if (!payload || typeof payload.getUint32 !== 'function' ||
       payload.byteLength !== FIR_CROSSOVER_CHANNEL_COUNT_BYTES) return null;
     const channels = payload.getUint32(0, true);
-    return channels >= 1 && channels <= 8 ? channels : null;
+    return channels >= 1 && channels <= 16 ? channels : null;
   }
 
   handleDspChannelCountTelemetry(frame) {
@@ -611,10 +612,10 @@ class FIRCrossoverPlugin extends PluginBase {
 
   _renderBusError() {
     if (!this._errorElement) return;
-    const invalid = ![4, 6, 8].includes(this._outputChannelCount);
+    const invalid = !this._maximumBandCount(this._outputChannelCount);
     this._errorElement.hidden = !invalid;
     this._errorElement.textContent = invalid
-      ? 'This effect needs a 4, 6, or 8 channel output bus.'
+      ? 'This effect needs an even number of output channels from 4 to 16.'
       : '';
   }
 

@@ -139,7 +139,7 @@ test('DSD64 schema, parity cases, registry, and allocation contract stay frozen'
   assert.equal(goldens.length, 8);
   assert.ok(goldens.every(item =>
     item.metadata.jsEngineHash ===
-      'ad3a1fd102d580b134456ee541cfc8fc3a128b7ee995302b0e6f36b0c9a7f765'
+      '35612332b6bdcfac76a53cc32f2387c20e74de179fda5738ec2d7a362a310bb0'
   ));
   assert.match(registry, /EFFETUNE_PLUGIN\(DSD64IMDSimulatorPlugin, lofi\/dsd64_imd_simulator\)/);
   assert.match(cmake, /effetune_dsp_dsd64_imd_simulator_tests/);
@@ -170,6 +170,7 @@ test('DSD64 telemetry uses reserved frame 11 and strictly parses the 32-byte pay
     sampleRate: 96000,
     meters: { add: -31.5, att: -42.25, cross: -53.75, tot: -29.125, out: -12.5 }
   });
+  assert.equal(plugin.parseDspImdTelemetryFrame(makeFrame({ channels: 16 })).channels, 16);
   const invalidRate = plugin.parseDspImdTelemetryFrame(
     makeFrame({ sampleRate: 48000, flags: 0 })
   );
@@ -183,7 +184,7 @@ test('DSD64 telemetry uses reserved frame 11 and strictly parses the 32-byte pay
     makeFrame({ formatVersion: 2 }),
     makeFrame({ byteLength: 31 }),
     makeFrame({ channels: 0 }),
-    makeFrame({ channels: 9 }),
+    makeFrame({ channels: 17 }),
     makeFrame({ sampleRate: Number.NaN }),
     makeFrame({ flags: 2 }),
     makeFrame({ sampleRate: 48000, flags: 1 }),

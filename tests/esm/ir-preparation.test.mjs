@@ -302,6 +302,18 @@ test('IR preparation bounds wet gain by every route entering the loudest output'
     }
   });
   assert.equal(matrix.analysis.l1GainUpperBound, 5);
+  const sixteenChannelMatrix = emitPreparedIr({
+    channels: Array.from({ length: 16 }, (_, channel) => new Float32Array([channel === 15 ? 4 : 1])),
+    sampleRate: 48000,
+    options: {
+      topology: IR_ASSET_TOPOLOGY.matrix,
+      paths: Array.from({ length: 16 }, (_, channel) => ({
+        inputSlot: channel, outputSlot: channel, irChannel: channel
+      }))
+    }
+  });
+  assert.equal(sixteenChannelMatrix.analysis.l1GainUpperBound, 4);
+
 });
 
 test('matrix emission writes the exact diagonal route table before samples', () => {

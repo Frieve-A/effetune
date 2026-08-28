@@ -14,7 +14,7 @@ test('measurement output channels use output-specific display labels', () => {
 
     assert.equal(display.formatOutputChannelInfo('all'), i18n.t('option:all') || 'All Channels');
     assert.equal(display.formatOutputChannelInfo('both'), i18n.t('option:all') || 'All Channels');
-    for (let channel = 0; channel < 8; channel++) {
+    for (let channel = 0; channel < 16; channel++) {
         assert.equal(display.formatOutputChannelInfo(String(channel)), `Ch ${channel + 1}`);
     }
     assert.equal(display.formatOutputChannelInfo('left'), 'Ch 1');

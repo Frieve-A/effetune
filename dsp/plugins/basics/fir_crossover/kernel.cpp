@@ -21,7 +21,7 @@ constexpr std::uint32_t kAssetHeaderBytes = 32u;
 constexpr std::uint32_t kMatrixPathBytes = 12u;
 constexpr std::uint32_t kAssetMagic = 0x31415445u;
 constexpr std::uint32_t kMatrixTopology = 4u;
-constexpr std::uint32_t kMaximumChannels = 8u;
+constexpr std::uint32_t kMaximumChannels = 16u;
 constexpr std::uint32_t kMaximumFilterDelay = 65536u;
 constexpr std::uint32_t kFadeFrames = 128u;
 constexpr std::uint32_t kDelayTransitionFrames = 256u;
@@ -317,8 +317,8 @@ public:
 private:
   bool validateBegin(std::uint32_t slot, const AssetBeginInfo &info) const noexcept {
     if (slot != kAssetSlot || !prepared_ || info.channels < 2u || info.channels > 4u ||
-        (info.processingChannels != 4u && info.processingChannels != 6u &&
-         info.processingChannels != 8u) ||
+        (info.processingChannels < 4u || info.processingChannels > 16u ||
+         (info.processingChannels & 1u) != 0u) ||
         info.processingChannels > max_channels_ || info.channels * 2u > info.processingChannels ||
         info.frames == 0u || info.frames > 131072u || info.topology != kMatrixTopology ||
         info.pathCount != info.channels * 2u || info.inputCount != 2u ||

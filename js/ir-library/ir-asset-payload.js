@@ -10,13 +10,13 @@ export const IR_ASSET_TOPOLOGY = Object.freeze({
   matrix: 4
 });
 
-const MAX_CHANNELS = 8;
-const MAX_MATRIX_PATHS = 8;
+const MAX_CHANNELS = 16;
+const MAX_MATRIX_PATHS = 16;
 const MATRIX_PATH_BYTES = 12;
 
 function validateChannels(channels) {
   if (!Array.isArray(channels) || channels.length < 1 || channels.length > MAX_CHANNELS) {
-    throw new TypeError('IR channels must contain between 1 and 8 Float32Array values');
+    throw new TypeError('IR channels must contain between 1 and 16 Float32Array values');
   }
   const frames = channels[0] instanceof Float32Array ? channels[0].length : 0;
   if (frames === 0) throw new TypeError('IR channels must not be empty');
@@ -42,7 +42,7 @@ function validateTopology(topology, paths, channelCount) {
     return [];
   }
   if (!Array.isArray(paths) || paths.length < 1 || paths.length > MAX_MATRIX_PATHS) {
-    throw new TypeError('Matrix topology requires between 1 and 8 paths');
+    throw new TypeError('Matrix topology requires between 1 and 16 paths');
   }
   return paths.map(path => {
     const inputSlot = path?.inputSlot;

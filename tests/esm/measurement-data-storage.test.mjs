@@ -232,6 +232,33 @@ test('IR-OFF export imports as metadata-only with no IR badge or binary availabi
     assert.equal(database.impulseResponses.size, 0);
 });
 
+test('measurement export and import preserve supported output widths through sixteen channels', async () => {
+    for (const outputChannelCount of [2, 4, 6, 8, 10, 12, 14, 16]) {
+        const { storage } = createStorage();
+        storage.generateId = () => `measurement-imported-${outputChannelCount}`;
+        assert.equal(await storage.importMeasurementFromJSON(JSON.stringify({
+            ...exportableMeasurement(), outputChannelCount
+        })), `measurement-imported-${outputChannelCount}`);
+    }
+
+    const { storage: source } = createStorage();
+    source.measurements = [{ ...exportableMeasurement(), outputChannelCount: 16 }];
+    const json = await source.exportMeasurementToJSON('measurement-source', false);
+    const { storage: target } = createStorage();
+    target.generateId = () => 'measurement-imported-16ch';
+    assert.equal(await target.importMeasurementFromJSON(json), 'measurement-imported-16ch');
+    assert.equal(target.getMeasurementById('measurement-imported-16ch').outputChannelCount, 16);
+});
+
+test('measurement import rejects odd and out-of-range output widths', async () => {
+    for (const outputChannelCount of [1, 3, 9, 17]) {
+        const { storage } = createStorage();
+        assert.equal(await storage.importMeasurementFromJSON(JSON.stringify({
+            ...exportableMeasurement(), outputChannelCount
+        })), null);
+    }
+});
+
 test('measurement JSON export includes impulse responses by default', async () => {
     const { storage } = createStorage();
     storage.measurements = [exportableMeasurement()];
@@ -825,6 +852,28 @@ test('multichannel import rejects inconsistent shapes and duplicate IDs', async 
         const { storage } = createStorage();
         assert.equal(await storage.importMeasurementFromJSON(JSON.stringify(value)), null);
     }
+});
+
+test('multichannel import accepts every Ch 1 through Ch 16 token and rejects Ch 17', async () => {
+    const channels = ['left', 'right', ...Array.from({ length: 14 }, (_, index) => String(index + 2))];
+    const record = multichannelRecord('measurement-import-16ch');
+    record.outputChannels = channels;
+    record.channelResponses = channels.map(channel => ({
+        channel, averageFrequencyResponse: [[100, 0]], maxSignalLevel: -12
+    }));
+    record.points[0].channels = channels.map(channel => ({
+        channel, frequencyResponse: [[100, 0]], maxSignalLevel: -12
+    }));
+
+    const { storage } = createStorage();
+    storage.generateId = () => 'measurement-imported-16ch';
+    assert.equal(await storage.importMeasurementFromJSON(JSON.stringify(record)), 'measurement-imported-16ch');
+
+    record.outputChannels[15] = '16';
+    record.channelResponses[15].channel = '16';
+    record.points[0].channels[15].channel = '16';
+    const rejected = createStorage();
+    assert.equal(await rejected.storage.importMeasurementFromJSON(JSON.stringify(record)), null);
 });
 
 test('metadata fallback strips flat and multichannel IR metadata consistently', async () => {

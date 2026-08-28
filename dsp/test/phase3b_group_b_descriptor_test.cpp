@@ -1,9 +1,11 @@
+#include "../core/engine.h"
 #include "effetune/kernel.h"
 
 #include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 
 extern "C" const effetune::KernelDescriptor *et_kernel_descriptor_FiveBandPEQPlugin() noexcept;
 extern "C" const effetune::KernelDescriptor *et_kernel_descriptor_FifteenBandPEQPlugin() noexcept;
@@ -32,14 +34,23 @@ int main() {
   }};
 
   int failures = 0;
+  auto engine_storage = std::make_unique<effetune::Engine>();
+  effetune::Engine &engine = *engine_storage;
+  if (engine.prepare(48000.0F, 16u, 128u, 0u) != ET_OK)
+    return 1;
   for (const ExpectedDescriptor &item : expected) {
     const effetune::KernelDescriptor *descriptor = item.read();
     if (descriptor == nullptr || std::strcmp(descriptor->typeName, item.type) != 0 ||
         descriptor->paramsHash != item.hash || descriptor->paramsFloatCount != item.floats ||
-        descriptor->objectSize > 8192u) {
+        descriptor->objectSize > effetune::Engine::kKernelStorageBytes) {
       ++failures;
     }
     if (descriptor != nullptr) {
+      const et_instance instance = engine.createInstance(item.type);
+      if (instance == 0u)
+        ++failures;
+      else
+        engine.destroyInstance(instance);
       std::printf("%s hash=0x%08x floats=%u object=%u\n", descriptor->typeName,
                   descriptor->paramsHash, descriptor->paramsFloatCount, descriptor->objectSize);
     }

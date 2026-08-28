@@ -39,9 +39,21 @@
         "6",
         "7",
         "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16",
         "34",
         "56",
-        "78"
+        "78",
+        "910",
+        "1112",
+        "1314",
+        "1516"
       ],
       "default": "all"
     },
@@ -780,7 +792,7 @@
             "matrixRoutes": {
               "type": "string",
               "maxLength": 3072,
-              "pattern": "^(?:p?[0-8][0-8])*$",
+              "pattern": "^(?:p?[0-9a-f][0-9a-f])*$",
               "default": "0011"
             }
           }
@@ -816,12 +828,20 @@
           "properties": {
             "mute": {
               "type": "array",
-              "minItems": 8,
-              "maxItems": 8,
+              "minItems": 16,
+              "maxItems": 16,
               "items": {
                 "type": "boolean"
               },
               "default": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
                 false,
                 false,
                 false,
@@ -834,12 +854,20 @@
             },
             "solo": {
               "type": "array",
-              "minItems": 8,
-              "maxItems": 8,
+              "minItems": 16,
+              "maxItems": 16,
               "items": {
                 "type": "boolean"
               },
               "default": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
                 false,
                 false,
                 false,
@@ -852,8 +880,8 @@
             },
             "volume": {
               "type": "array",
-              "minItems": 8,
-              "maxItems": 8,
+              "minItems": 16,
+              "maxItems": 16,
               "items": {
                 "type": "number",
                 "minimum": -20,
@@ -868,13 +896,21 @@
                 0,
                 0,
                 0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
                 0
               ]
             },
             "delay": {
               "type": "array",
-              "minItems": 8,
-              "maxItems": 8,
+              "minItems": 16,
+              "maxItems": 16,
               "items": {
                 "type": "number",
                 "minimum": 0,
@@ -889,17 +925,33 @@
                 0,
                 0,
                 0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
                 0
               ]
             },
             "link": {
               "type": "array",
-              "minItems": 7,
-              "maxItems": 7,
+              "minItems": 15,
+              "maxItems": 15,
               "items": {
                 "type": "boolean"
               },
               "default": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
                 false,
                 false,
                 false,

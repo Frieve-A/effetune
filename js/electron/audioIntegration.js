@@ -401,7 +401,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
     replaceOptions(outputSelect, outputDevices, audioPreferences?.outputDeviceId || 'default');
     replaceValueOptions(
       document.getElementById('output-channels'),
-      [2, 4, 6, 8],
+      [2, 4, 6, 8, 10, 12, 14, 16],
       audioPreferences?.outputChannels || 2,
       value => value === 2 ? t('dialog.audioConfig.outputChannels.stereoDefault') : String(value)
     );

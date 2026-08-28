@@ -116,7 +116,7 @@
             "channels": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 8
+              "maximum": 16
             },
             "frames": {
               "type": "integer",
@@ -142,12 +142,12 @@
             "pathCount": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 8
+              "maximum": 16
             },
             "paths": {
               "type": "array",
               "minItems": 1,
-              "maxItems": 8,
+              "maxItems": 16,
               "description": "Matrix routes. Distinct inputSlot values must be exactly 0..N-1, and N must not exceed the selected effect processing-channel count.",
               "items": {
                 "type": "object",
@@ -161,18 +161,18 @@
                   "inputSlot": {
                     "type": "integer",
                     "minimum": 0,
-                    "maximum": 7,
+                    "maximum": 15,
                     "description": "Zero-based matrix input; the set of input slots must be contiguous from 0."
                   },
                   "outputSlot": {
                     "type": "integer",
                     "minimum": 0,
-                    "maximum": 7
+                    "maximum": 15
                   },
                   "irChannel": {
                     "type": "integer",
                     "minimum": 0,
-                    "maximum": 7
+                    "maximum": 15
                   }
                 }
               }
@@ -198,7 +198,7 @@
                   "pathCount": {
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 8
+                    "maximum": 16
                   }
                 }
               },

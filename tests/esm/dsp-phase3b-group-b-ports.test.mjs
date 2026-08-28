@@ -221,7 +221,8 @@ test('Phase 3b group B kernels keep allocation and topology contracts explicit',
   assert.match(earphone, /mapRootsToZPlane/);
   assert.match(earphone, /old_states_/);
   assert.match(earphone, /std::round\(static_cast<double>\(sample_rate_\) \* 0\.02\)/);
-  assert.match(earphone, /static_assert\(sizeof\(EarphoneCableSimKernel\) <= 8192u\)/);
+  assert.match(earphone,
+    /static_assert\(sizeof\(EarphoneCableSimKernel\) <=\s+8192u \+ 2u \* \(kMaxChannels - 8u\) \* kMaxSections \* sizeof\(dsp::BiquadDf1State\)\);/);
 
   const crossfeed = loaded.get('CrossfeedFilterPlugin').kernel;
   assert.match(crossfeed, /channel_count != 2u/);

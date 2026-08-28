@@ -24,18 +24,22 @@ function topologyInputCount(topology, processingChannels, inputCount = 0) {
 }
 
 export function selectedIrChannelCount(channel, engineChannels) {
-  if (!Number.isInteger(engineChannels) || engineChannels < 1 || engineChannels > 8) return 0;
+  if (!Number.isInteger(engineChannels) || engineChannels < 1 || engineChannels > 16) return 0;
   if (channel === 'A') return engineChannels;
   if (channel === null || channel === undefined) return engineChannels >= 2 ? 2 : 1;
-  if (channel === 'L' || channel === 'R' || /^[1-8]$/.test(String(channel))) return 1;
+  if (channel === 'L' || channel === 'R' || /^([1-9]|1[0-6])$/.test(String(channel))) return 1;
   if (channel === '34') return engineChannels >= 4 ? 2 : 0;
   if (channel === '56') return engineChannels >= 6 ? 2 : 0;
   if (channel === '78') return engineChannels >= 8 ? 2 : 0;
+  if (channel === '910') return engineChannels >= 10 ? 2 : 0;
+  if (channel === '1112') return engineChannels >= 12 ? 2 : 0;
+  if (channel === '1314') return engineChannels >= 14 ? 2 : 0;
+  if (channel === '1516') return engineChannels >= 16 ? 2 : 0;
   return 0;
 }
 
 function diagonalPaths(channelCount, selectedChannels) {
-  const count = Math.min(channelCount, selectedChannels, 8);
+  const count = Math.min(channelCount, selectedChannels, 16);
   return Array.from({ length: count }, (_, index) => ({
     inputSlot: index,
     outputSlot: index,
@@ -102,7 +106,7 @@ export function estimateIrConvolverMemoryUpperBound({
 export function resolveIrProcessingConfig({
   sampleRate,
   channelCount,
-  engineChannels = 8,
+  engineChannels = 16,
   selectedChannels,
   channel,
   channelMode = 'auto',
@@ -112,7 +116,7 @@ export function resolveIrProcessingConfig({
   if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
     return { valid: false, message: 'The current audio sample rate is unavailable.' };
   }
-  if (!Number.isInteger(channelCount) || channelCount < 1 || channelCount > 8) {
+  if (!Number.isInteger(channelCount) || channelCount < 1 || channelCount > 16) {
     return { valid: false, message: 'This impulse response has an unsupported channel count.' };
   }
   const routedChannels = selectedChannels ?? selectedIrChannelCount(channel, engineChannels);

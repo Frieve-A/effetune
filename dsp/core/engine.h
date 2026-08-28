@@ -19,7 +19,7 @@ public:
   static constexpr std::uint32_t kMaxInstances =
       static_cast<std::uint32_t>(graph_contract::kMaxEffectiveInstances);
   static constexpr std::uint32_t kMaxPipelineNodes = 128;
-  static constexpr std::uint32_t kKernelStorageBytes = 8192;
+  static constexpr std::uint32_t kKernelStorageBytes = 16384;
   static constexpr std::uint32_t kPipelineDescriptorVersion = 1;
 
   Engine() = default;
@@ -142,8 +142,8 @@ private:
   enum class DelayTarget : std::uint8_t { None = 0, Destination = 1, Incoming = 2 };
 
   struct PipelineMergeCompensation {
-    std::array<DelayTarget, 8> targets{};
-    std::array<std::uint32_t, 8> delays{};
+    std::array<DelayTarget, 16> targets{};
+    std::array<std::uint32_t, 16> delays{};
     dsp::DelayLine delayLine;
   };
 
@@ -175,7 +175,7 @@ private:
   std::array<InstanceSlot, kMaxInstances> instances_{};
   std::array<PipelineNode, kMaxPipelineNodes> pipeline_{};
   std::array<PipelineMergeCompensation, kMaxPipelineNodes> pipeline_compensation_{};
-  std::array<std::uint32_t, 8> pipeline_output_delays_{};
+  std::array<std::uint32_t, 16> pipeline_output_delays_{};
   dsp::DelayLine pipeline_output_delay_line_;
   std::uint32_t pipeline_count_ = 0;
   std::uint32_t pipeline_latency_samples_ = 0;
@@ -216,7 +216,7 @@ private:
   friend class Engine;
   PipelineLatencySnapshot snapshot_;
   std::array<PipelineMergeCompensation, kMaxPipelineNodes> compensation_{};
-  std::array<std::uint32_t, 8> output_delays_{};
+  std::array<std::uint32_t, 16> output_delays_{};
   dsp::DelayLine output_delay_line_;
   std::uint32_t latency_ = 0;
   bool ready_ = false;

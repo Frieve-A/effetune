@@ -24,11 +24,11 @@ Un ensemble d'outils essentiels pour ajuster les aspects fondamentaux de la lect
 
 Un outil spécialisé qui sépare votre signal stéréo en bandes de fréquences distinctes et envoie chaque bande vers une paire de sorties stéréo séparée. Il est utile pour les systèmes multicanaux, les configurations multi-amplifiées et les essais de crossover personnalisés.
 
-Pour utiliser cet effet, vous devez passer par l'application de bureau, définir le nombre de canaux de sortie dans les paramètres audio à 4, 6 ou 8 selon le nombre de bandes, et régler le canal dans le routage du bus d'effet sur "All".
+Pour utiliser cet effet, utilisez l'application de bureau, réglez un nombre pair de canaux de sortie entre 4 et 16, puis réglez le canal dans le routage du bus d'effet sur "All". Band Count détermine les paires de sortie utilisées.
 
 ### Quand l'utiliser
 
-* Lors de l'utilisation de sorties audio multicanaux (4, 6 ou 8 canaux)
+* Lors de l'utilisation de sorties audio multicanaux avec un nombre pair de 4 à 16 canaux
 * Pour créer un routage de canaux personnalisé basé sur la fréquence
 * Pour des configurations multi-amplificateurs ou multi-haut-parleurs
 
@@ -39,7 +39,7 @@ Pour utiliser cet effet, vous devez passer par l'application de bureau, définir
   * 2 bandes : séparation Low/High, nécessite 4 canaux de sortie
   * 3 bandes : séparation Low/Mid/High, nécessite 6 canaux de sortie
   * 4 bandes : séparation Low/Mid-Low/Mid-High/High, nécessite 8 canaux de sortie
-  * Si le nombre de canaux de sortie est insuffisant, les nombres de bandes supérieurs ne sont pas disponibles
+  * Band Count reste limité à quatre bandes ; augmenter le nombre de canaux de sortie n'ajoute pas de bandes supplémentaires
 
 * **Crossover Frequencies** - Définit où l'audio est divisé entre les bandes
 
@@ -58,7 +58,7 @@ Pour utiliser cet effet, vous devez passer par l'application de bureau, définir
 ### Notes techniques
 
 * Ne traite que les deux premiers canaux d'entrée
-* Les canaux de sortie doivent être multiples de 2 (4, 6 ou 8)
+* Le nombre de canaux de sortie doit être un nombre pair compris entre 4 et 16
 * Chaque bande conserve la paire stéréo d'origine : en mode 2 bandes, Low sort sur les canaux 1-2 et High sur 3-4 ; en mode 3 bandes, Low/Mid/High utilisent 1-2, 3-4 et 5-6 ; en mode 4 bandes, Low/Mid-Low/Mid-High/High utilisent 1-2, 3-4, 5-6 et 7-8
 * Utilise des filtres crossover Linkwitz-Riley de haute qualité
 * Graphique de réponse en fréquence pour une configuration facilitée
@@ -84,7 +84,7 @@ Un utilitaire pour corriger un signal dont la forme d'onde est décalée par rap
 
 ## FIR Crossover
 
-FIR Crossover répartit une entrée stéréo en deux, trois ou quatre bandes et envoie chacune vers une paire de sorties distincte. Il est destiné aux systèmes de bureau disposant de 4, 6 ou 8 canaux de sortie et fonctionne uniquement avec WASM DSP.
+FIR Crossover répartit une entrée stéréo en deux, trois ou quatre bandes et envoie chacune vers une paire de sorties distincte. Il est destiné aux systèmes de bureau disposant d'un nombre pair de 4 à 16 canaux de sortie et fonctionne uniquement avec WASM DSP. Band Count reste limité à quatre bandes, donc l'effet utilise au plus les canaux 1-8.
 
 La conception FIR autorise des pentes très raides sans la résonance des filtres classiques. Minimum Phase utilise une construction causale qui préserve la recombinaison des bandes ; Linear Phase fournit une réponse de phase symétrique au prix d'une latence fixe.
 
@@ -123,7 +123,7 @@ Un outil de routage de canaux pour corriger des dispositions inhabituelles d'enc
 
 ### Fonctionnalités
 
-* Matrice de routage flexible jusqu'à 8 canaux
+* Matrice de routage flexible jusqu'à 16 canaux
 * Contrôle individuel des connexions entre chaque paire entrée/sortie
 * Options d'inversion de phase pour chaque connexion
 * Interface matricielle visuelle pour une configuration intuitive
@@ -146,18 +146,20 @@ Un outil de routage de canaux pour corriger des dispositions inhabituelles d'enc
 
 ## MultiChannel Panel
 
-Un panneau de contrôle complet pour gérer individuellement plusieurs canaux audio. Ce plugin offre un contrôle total sur le volume, la mise en sourdine, le solo et le délai pour jusqu'à 8 canaux, avec un indicateur de niveau visuel pour chaque canal.
+Un panneau de contrôle complet pour gérer individuellement plusieurs canaux audio. Ce plugin offre un contrôle total sur le volume, la mise en sourdine, le solo et le délai pour jusqu'à 16 canaux, avec un indicateur de niveau visuel pour chaque canal.
+
+Faites défiler le contenu du panneau pour accéder aux canaux situés sous la zone visible.
 
 ### Quand l'utiliser
 
-* Lors du travail avec de l'audio multicanal (jusqu'à 8 canaux)
+* Lors du travail avec de l'audio multicanal (jusqu'à 16 canaux)
 * Pour créer un équilibre de volume personnalisé entre différents canaux
 * Lorsque vous devez appliquer un délai individuel à des canaux spécifiques
 * Pour surveiller les niveaux sur plusieurs canaux simultanément
 
 ### Fonctionnalités
 
-* Contrôles individuels pour jusqu'à 8 canaux audio
+* Contrôles individuels pour jusqu'à 16 canaux audio
 * Indicateurs de niveau en temps réel avec maintien des crêtes pour une surveillance visuelle
 * Capacité de liaison des canaux pour des changements de paramètres groupés
 

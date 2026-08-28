@@ -61,7 +61,7 @@ public:
     }
     for (std::uint32_t route_index = 0u; route_index < route_count; ++route_index) {
       const std::uint8_t *source = packed + 4u + route_index * 3u;
-      if (source[0] > 8u || source[1] > 8u || source[2] > 1u)
+      if (source[0] > 15u || source[1] > 15u || source[2] > 1u)
         return ET_ERR_ARGS;
       staged_routes_[route_index] = {source[0], source[1], source[2]};
     }

@@ -1,3 +1,4 @@
+#include "../generated/cpp/RoomEqPluginParams.h"
 #include "allocation_guard.h"
 #include "effetune/abi.h"
 #include "engine.h"
@@ -9,6 +10,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -157,7 +159,7 @@ void testCapabilityAndIdentity() {
   GRAPH_CHECK(et_graph_process(engine, 2u, 128u, 0.0) == ET_OK);
   GRAPH_CHECK(audio[0] == 1.0F && audio[128] == -1.0F);
   const std::uint32_t snapshot_size = et_graph_snapshot_size(engine);
-  GRAPH_CHECK(snapshot_size == 128u);
+  GRAPH_CHECK(snapshot_size == 192u);
   std::vector<std::uint8_t> snapshot(snapshot_size);
   GRAPH_CHECK(et_graph_snapshot_copy(engine, snapshot.data(), snapshot_size) == ET_OK);
   GRAPH_CHECK(readU32(snapshot.data()) == 0x31535445u);
@@ -222,8 +224,8 @@ void testSerialDisabledAndControlMix() {
   GRAPH_CHECK((readU32(muted_solo_snapshot.data() + nodes_offset) & 2u) != 0u);
   const std::uint32_t edges_offset = readU32(muted_solo_snapshot.data() + 56u);
   GRAPH_CHECK((readU32(muted_solo_snapshot.data() + edges_offset) & 4u) != 0u);
-  GRAPH_CHECK((readU32(muted_solo_snapshot.data() + edges_offset + 48u) & 2u) != 0u);
-  GRAPH_CHECK((readU32(muted_solo_snapshot.data() + edges_offset + 96u) & 2u) != 0u);
+  GRAPH_CHECK((readU32(muted_solo_snapshot.data() + edges_offset + 80u) & 2u) != 0u);
+  GRAPH_CHECK((readU32(muted_solo_snapshot.data() + edges_offset + 160u) & 2u) != 0u);
   et_engine_destroy(engine);
 }
 
@@ -263,9 +265,9 @@ void testLatencyCompensationAndPreNodeAlignment() {
   std::vector<std::uint8_t> snapshot(snapshot_size);
   GRAPH_CHECK(et_graph_snapshot_copy(engine, snapshot.data(), snapshot_size) == ET_OK);
   const std::uint32_t nodes_offset = readU32(snapshot.data() + 52u);
-  const std::uint8_t *stereo_record = snapshot.data() + nodes_offset + 128u;
-  GRAPH_CHECK(readU32(stereo_record + 96u) == 0u);
-  GRAPH_CHECK(readU32(stereo_record + 100u) == latency);
+  const std::uint8_t *stereo_record = snapshot.data() + nodes_offset + 224u;
+  GRAPH_CHECK(readU32(stereo_record + 160u) == 0u);
+  GRAPH_CHECK(readU32(stereo_record + 164u) == latency);
   std::fill_n(audio, 256u, 0.0F);
   audio[0] = 1.0F;
   audio[128] = 1.0F;
@@ -275,6 +277,88 @@ void testLatencyCompensationAndPreNodeAlignment() {
   GRAPH_CHECK(audio[latency - 128u] == 1.0F);
   GRAPH_CHECK(audio[128u + latency - 128u] == 1.0F);
   et_engine_destroy(engine);
+}
+
+void testSixteenChannelLatencySnapshot() {
+  auto engine_storage = std::make_unique<effetune::Engine>();
+  effetune::Engine &engine = *engine_storage;
+  GRAPH_CHECK(engine.prepare(48000.0F, 16u, 128u, 0u) == ET_OK);
+  std::vector<NodeRecord> nodes;
+  std::vector<EdgeRecord> edges;
+  const auto append = [&](et_instance instance, const std::string &id, std::int32_t channel) {
+    const auto index = static_cast<std::uint32_t>(nodes.size());
+    nodes.push_back({instance, id, kEnabled | kUniformLatency, channel});
+    edges.push_back({index == 0u ? kEndpoint : index - 1u, index, "in-" + id, ""});
+  };
+  for (std::uint32_t channel = 0u; channel < 16u; ++channel) {
+    const et_instance room = engine.createInstance("RoomEqPlugin");
+    const std::array<float, 4> params{1.0F, static_cast<float>(channel + 1u), 0.0F, 0.0F};
+    GRAPH_CHECK(engine.setInstanceParams(room, params.data(), 4u,
+                                         effetune::generated::RoomEqPluginParams::kHash,
+                                         0u) == ET_OK);
+    auto *payload =
+        engine.beginInstanceAsset(room, 0u, {1u, 1u, 1u, 128u, 1u, 0u, 0u, 1u, 65536u, 36u});
+    GRAPH_CHECK(payload != nullptr);
+    if (payload == nullptr) {
+      return;
+    }
+    std::memset(payload, 0, 36u);
+    writeU32(payload, 0x31415445u);
+    writeU32(payload + 4u, 1u);
+    writeU32(payload + 8u, 1u);
+    writeU32(payload + 12u, 48000u);
+    writeU32(payload + 16u, 1u);
+    writeF32(payload + 32u, 1.0F);
+    GRAPH_CHECK(engine.commitInstanceAsset(room, 0u, 36u, ET_ASSET_F32_MULTICH) == ET_OK);
+    std::array<float, 128> silence{};
+    for (std::uint32_t calls = 0u;
+         (engine.instanceAssetState(room, 0u) & 0xffu) == ET_ASSET_STATE_PREPARING && calls < 64u;
+         ++calls) {
+      GRAPH_CHECK(engine.processInstance(room, silence.data(), 1u, 128u, 0.0) == ET_OK);
+    }
+    GRAPH_CHECK((engine.instanceAssetState(room, 0u) & 0xffu) == ET_ASSET_STATE_ACTIVE);
+    GRAPH_CHECK(engine.resetInstance(room) == ET_OK);
+    append(room, "room-" + std::to_string(channel), static_cast<std::int32_t>(channel));
+  }
+  edges.push_back({15u, kEndpoint, "out", ""});
+  const auto unaligned = descriptor(nodes, edges);
+  GRAPH_CHECK(engine.configureGraph(unaligned.data(),
+                                    static_cast<std::uint32_t>(unaligned.size())) == ET_OK);
+  std::vector<std::uint8_t> unaligned_snapshot(engine.graphSnapshotSize());
+  if (unaligned_snapshot.empty())
+    return;
+  GRAPH_CHECK(engine.copyGraphSnapshot(unaligned_snapshot.data(),
+                                       static_cast<std::uint32_t>(unaligned_snapshot.size())) ==
+              ET_OK);
+  for (std::uint32_t channel = 0u; channel < 16u; ++channel) {
+    GRAPH_CHECK(readU32(unaligned_snapshot.data() + 64u + channel * 4u) == 129u + channel);
+    GRAPH_CHECK(readU32(unaligned_snapshot.data() + 128u + channel * 4u) == 15u - channel);
+  }
+  edges.pop_back();
+  const et_instance volume = engine.createInstance("VolumePlugin");
+  const float unity = 0.0F;
+  GRAPH_CHECK(engine.setInstanceParams(volume, &unity, 1u, kVolumeHash, 0u) == ET_OK);
+  append(volume, "align", -2);
+  edges.push_back({kEndpoint, 16u, "dry-align", ""});
+  edges.push_back({16u, kEndpoint, "out", ""});
+  const auto graph = descriptor(nodes, edges);
+  GRAPH_CHECK(engine.configureGraph(graph.data(), static_cast<std::uint32_t>(graph.size())) ==
+              ET_OK);
+  std::vector<std::uint8_t> snapshot(engine.graphSnapshotSize());
+  if (snapshot.empty())
+    return;
+  GRAPH_CHECK(engine.copyGraphSnapshot(snapshot.data(),
+                                       static_cast<std::uint32_t>(snapshot.size())) == ET_OK);
+  const auto nodes_offset = readU32(snapshot.data() + 52u);
+  const auto edges_offset = readU32(snapshot.data() + 56u);
+  const auto *align = snapshot.data() + nodes_offset + 16u * 224u;
+  const auto *dry = snapshot.data() + edges_offset + 17u * 80u;
+  for (std::uint32_t channel = 0u; channel < 16u; ++channel) {
+    GRAPH_CHECK(readU32(align + 32u + channel * 4u) == 129u + channel);
+    GRAPH_CHECK(readU32(align + 96u + channel * 4u) == 144u);
+    GRAPH_CHECK(readU32(align + 160u + channel * 4u) == 15u - channel);
+    GRAPH_CHECK(readU32(dry + 16u + channel * 4u) == 129u + channel);
+  }
 }
 
 void testValidationPreparationAndWideGraph() {
@@ -506,7 +590,8 @@ void testWorkspaceCapacityBoundary() {
 }
 
 void testIrAuthoritativeLatencyAndOwnership() {
-  effetune::Engine engine;
+  auto engine_storage = std::make_unique<effetune::Engine>();
+  effetune::Engine &engine = *engine_storage;
   GRAPH_CHECK(engine.prepare(48000.0F, 2u, 128u, 0u) == ET_OK);
   const et_instance ir = engine.createInstance("IRReverbPlugin");
   GRAPH_CHECK(ir != 0u);
@@ -593,6 +678,7 @@ int main() {
   testCapabilityAndIdentity();
   testSerialDisabledAndControlMix();
   testLatencyCompensationAndPreNodeAlignment();
+  testSixteenChannelLatencySnapshot();
   testValidationPreparationAndWideGraph();
   testGraphOwnershipAndSafeUpdates();
   testUnicodeMixGroupAndEffectiveCapacity();

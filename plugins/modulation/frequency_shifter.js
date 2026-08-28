@@ -386,7 +386,7 @@ class FrequencyShifterPlugin extends PluginBase {
 
     _channelSelectionHasPair() {
         return this.channel === null || this.channel === 'A' ||
-            ['34', '56', '78'].includes(this.channel);
+            ['34', '56', '78', '910', '1112', '1314', '1516'].includes(this.channel);
     }
 
     onChannelSelectionChanged() {

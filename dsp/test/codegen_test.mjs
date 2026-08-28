@@ -78,7 +78,7 @@ assert.deepEqual([...matrixPacker.pack()], []);
 assert.deepEqual([...matrixPacker.packBytes()], [1, 0, 2, 0, 0, 0, 0, 1, 1, 0]);
 assert.deepEqual(
   [...matrixPacker.packBytes({ mx: 'p01p01p88p99x0p' })],
-  [1, 0, 3, 0, 0, 1, 1, 0, 1, 1, 8, 8, 1]
+  [1, 0, 4, 0, 0, 1, 1, 0, 1, 1, 8, 8, 1, 9, 9, 1]
 );
 assert.deepEqual(
   [...matrixPacker.packBytes({ mx: '0010' })],

@@ -109,7 +109,7 @@ std::uint32_t readU32(const std::uint8_t *input) noexcept {
 }
 
 bool validChannelSpec(std::int8_t spec) noexcept {
-  return spec == -2 || spec == -1 || (spec >= 0 && spec <= 7) || (spec >= 16 && spec <= 19);
+  return spec == -2 || spec == -1 || (spec >= 0 && spec <= 15) || (spec >= 16 && spec <= 23);
 }
 
 } // namespace
@@ -492,7 +492,7 @@ et_status Engine::setInstanceParamBytes(et_instance instance, const std::uint8_t
 std::uint8_t *Engine::beginInstanceAsset(et_instance instance, std::uint32_t asset_slot,
                                          const AssetBeginInfo &info) noexcept {
   InstanceSlot *slot = findInstance(instance);
-  if (slot == nullptr || slot->graphOwned || info.channels == 0u || info.channels > 8u ||
+  if (slot == nullptr || slot->graphOwned || info.channels == 0u || info.channels > 16u ||
       info.frames == 0u || info.byteSize == 0u ||
       info.byteSize > slot->kernel->assetCapacity(asset_slot) || info.topology > 4u ||
       info.processingChannels == 0u || info.processingChannels > max_channels_ ||
@@ -501,8 +501,8 @@ std::uint8_t *Engine::beginInstanceAsset(et_instance instance, std::uint32_t ass
       (info.headBlock != 0u && info.headBlock != 128u && info.headBlock != 256u &&
        info.headBlock != 512u && info.headBlock != 1024u) ||
       (info.rateDivider != 1u && info.rateDivider != 2u && info.rateDivider != 4u) ||
-      (info.topology == 4u && (info.pathCount == 0u || info.pathCount > 8u ||
-                               info.inputCount == 0u || info.inputCount > 8u)) ||
+      (info.topology == 4u && (info.pathCount == 0u || info.pathCount > 16u ||
+                               info.inputCount == 0u || info.inputCount > 16u)) ||
       (info.topology != 4u && (info.pathCount != 0u || info.inputCount != 0u))) {
     return nullptr;
   }
@@ -738,8 +738,8 @@ et_status Engine::preparePipelineLatencyUpdate(const PipelineLatencySnapshot &sn
     return ET_ERR_STATE;
   }
   const auto build_plan = [&]() -> et_status {
-    std::array<std::array<std::uint32_t, 8>, Arena::kBusCount> latency{};
-    std::array<std::array<bool, 8>, Arena::kBusCount> has_content{};
+    std::array<std::array<std::uint32_t, 16>, Arena::kBusCount> latency{};
+    std::array<std::array<bool, 16>, Arena::kBusCount> has_content{};
     auto &compensation = update.compensation_;
     auto &output_delays = update.output_delays_;
     auto &output_delay_line = update.output_delay_line_;

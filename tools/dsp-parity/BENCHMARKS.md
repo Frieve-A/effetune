@@ -1086,10 +1086,11 @@ specialisation was added for SSB either.
 ### Room EQ Maximum-Asset Admission Gate
 
 Measured on 2026-07-21 with Node v24.13.0 on a 13th Gen Intel Core i9-13900KF,
-Windows NT 10.0.26200.0. Both committed cases use 96 kHz, eight channels, a
+Windows NT 10.0.26200.0. Both historical committed cases use 96 kHz, 8 channels, a
 131,072-tap asymmetric independent-channel asset, and 128-frame processing blocks.
 The elapsed time includes artifact startup, asset admission and preparation, and the
 short parity render. Each golden case enforces a persistent 2,500 ms ceiling.
+The current 16-channel Room EQ limit is 65,536 taps; its gate is recorded below.
 
 Command:
 
@@ -1113,8 +1114,8 @@ Measured on 2026-08-12 with Node v24.13.0 on a 13th Gen Intel Core i9-13900KF,
 Windows NT 10.0.26200.0. The committed WASM artifacts use Emscripten 6.0.2 with
 `-O3 -flto`; the SIMD artifact also uses `-msimd128`. This was a bounded rollout
 review, not an exhaustive mode sweep: each effect used its representative most
-expensive mode at 48 kHz/two channels and the supported maximum of 192 kHz/eight
-channels, with 128-frame blocks, 0.25 seconds of audio, one warmup, and three measured
+expensive mode at 48 kHz/two channels and the then-supported maximum of 192 kHz/8
+channels (the current channel limit is 16), with 128-frame blocks, 0.25 seconds of audio, one warmup, and three measured
 repetitions. Native results use the Release runner and include process and temporary-file
 overhead.
 
@@ -1156,7 +1157,7 @@ rollout metric for these deliberately short runs.
 | Rotary Speaker | 48 kHz / 2 ch | 2.26x | 6.70x | 33.66x / 0.68% / 1.00% | 34.52x / 0.42% / 0.75% |
 | Rotary Speaker | 192 kHz / 8 ch | 0.14x | 4.76x | 3.32x / 5.78% / 7.25% | 3.30x / 5.84% / 6.75% |
 
-The 192 kHz/eight-channel Phaser WASM point was repeated separately with two seconds of
+The historical 192 kHz/8-channel Phaser WASM point was repeated separately with two seconds of
 audio because the mandatory one-second warmup dominated the initial 0.25-second
 end-to-end factor. The standalone baseline and SIMD confirmations produced the figures in
 the table with zero deadline misses. The worst accelerated result is therefore Phaser at
@@ -1165,7 +1166,7 @@ factor remains 1.60x. All six accelerated rollout paths have sufficient headroom
 effect-specific optimization or SIMD specialization is justified by this review.
 
 The JS reference is not a maximum-capacity performance path: worst-mode Phaser measures
-0.84x at the representative point, and at 192 kHz/eight channels only Auto Pan remains
+0.84x at the representative point, and at the historical 192 kHz/8-channel point only Auto Pan remains
 above realtime. This is a fallback limitation, not a reason to withhold the faster
 native/WASM rollout (doing so would select the slower path), but it should remain visible
 if a future release adds a real-time performance guarantee for DSP-off operation.
@@ -1176,7 +1177,7 @@ The Phaser JavaScript fallback was remeasured after moving finite-input validati
 of each all-pass stage. The representative Barber-pole worst mode used 12 stages and
 maximum rate, range, feedback, and stereo spread. At 48 kHz/two channels, the median
 improved from 0.54x to 4.34x realtime with two-second renders, two warmups, and three
-measured repetitions. A single two-second 192 kHz/eight-channel measurement after two
+measured repetitions. A single two-second historical 192 kHz/8-channel measurement after two
 warmups reached 0.17x realtime. The high-capacity point remains an accelerated-path use
 case, while the normal stereo fallback now has substantial realtime headroom.
 
@@ -1184,3 +1185,45 @@ case, while the normal stereo fallback now has substantial realtime headroom.
 node tools/dsp-parity/bench.mjs --type PhaserPlugin --modes js --sample-rates 48000 --channels 2 --block-size 128 --duration 2 --warmup 2 --repetitions 3 --params '{"md":"Barber-pole","rt":10,"cf":8000,"rg":6,"st":12,"fb":90,"sp":180,"dr":"Down","mx":100}'
 node tools/dsp-parity/bench.mjs --type PhaserPlugin --modes js --sample-rates 192000 --channels 8 --block-size 128 --duration 2 --warmup 2 --repetitions 1 --params '{"md":"Barber-pole","rt":10,"cf":8000,"rg":6,"st":12,"fb":90,"sp":180,"dr":"Down","mx":100}'
 ```
+
+### 16-Channel Expansion Gates
+
+Measured on 2026-08-28 with Node v24.13.0, a 13th Gen Intel Core i9-13900KF,
+and Windows 10.0.26200. The two standalone runs below had no concurrent DSP builds.
+The historical 8-channel modulation measurements above are unchanged; they do not
+claim 16-channel performance at 192 kHz. Current capacity is 16 channels, and this
+expansion's performance gate uses 96 kHz and 128-frame blocks.
+
+```text
+node --test tests/esm/room-eq-performance.test.mjs
+node --test tests/esm/effetune-benchmark.test.mjs tests/esm/effetune-benchmark-wasm-integration.test.mjs
+```
+
+Room EQ cold design uses three trials with distinct measured responses per channel,
+65,536 taps, and the baseline WASM FFT backend. The 8-channel calibration median
+was 437 ms of CPU time. Linear channel scaling and the established fourfold
+reference-host headroom yield `437 * 2 * 4 = 3496 ms`, rounded to a fixed 3500 ms
+16-channel budget. The measured 16-channel medians were 1281 and 1454 ms; the
+confirmation run's 8-channel median was 422 ms. Existing design budgets are unchanged.
+
+The SIMD convolution gate uses a shared 65,536-tap mono IR across 16 processing
+channels, 64 warmup blocks, and 640 measured blocks. Factors below are processing
+time divided by the audio quantum, so lower is better.
+
+| Latency | p95 realtime factor, runs 1 / 2 | p99 realtime factor, runs 1 / 2 | Gates |
+| --- | ---: | ---: | --- |
+| 0 | 0.335 / 0.344 | 0.377 / 0.401 | p95 < 1, p99 < 2 |
+| 128 | 0.191 / 0.149 | 0.288 / 0.184 | p95 < 1, p99 < 2 |
+
+Independent 16-channel assets require 25,831,440 bytes with latency 0 or 26,896,400
+bytes with latency 128 at 65,536 taps, within the unchanged 32 MiB kernel cap.
+At 131,072 taps they require 46,802,960 or 47,867,920 bytes. Room EQ therefore keeps
+the requested Taps value in the preset but limits the effective design to 65,536
+when processing more than 8 channels. Its serialized request, effective packed
+latency, staging footprint, and user-visible limit explanation have automated gates.
+
+The application benchmark integration runs a 16-channel Matrix on both baseline
+and SIMD artifacts and verifies the last pair's hex routes without JavaScript
+fallback. Worklet tests preserve the declared fallback capacity rule: at 16 channels,
+Auto Filter, Frequency Shifter, and Rotary Speaker bypass when their sample-channel
+capacity is exceeded. Those capability checks are not timing-budget relaxations.

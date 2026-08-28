@@ -9,9 +9,21 @@
     "6": "6",
     "7": "7",
     "8": "8",
+    "9": "9",
+    "10": "10",
+    "11": "11",
+    "12": "12",
+    "13": "13",
+    "14": "14",
+    "15": "15",
+    "16": "16",
     "34": "34",
     "56": "56",
     "78": "78",
+    "910": "910",
+    "1112": "1112",
+    "1314": "1314",
+    "1516": "1516",
     "all": "A",
     "stereo": null,
     "left": "L",
@@ -380,8 +392,8 @@
     },
     "MultiChannelPanel": {
       "internalType": "MultiChannelPanelPlugin",
-      "layoutHash": 4191368224,
-      "floatCount": 39,
+      "layoutHash": 2638026937,
+      "floatCount": 79,
       "packedParameters": [
         {
           "publicName": "mute",
@@ -394,10 +406,18 @@
             "m4",
             "m5",
             "m6",
-            "m7"
+            "m7",
+            "m8",
+            "m9",
+            "m10",
+            "m11",
+            "m12",
+            "m13",
+            "m14",
+            "m15"
           ],
           "offset": 0,
-          "count": 8,
+          "count": 16,
           "transform": {
             "kind": "identity"
           }
@@ -413,10 +433,18 @@
             "s4",
             "s5",
             "s6",
-            "s7"
+            "s7",
+            "s8",
+            "s9",
+            "s10",
+            "s11",
+            "s12",
+            "s13",
+            "s14",
+            "s15"
           ],
-          "offset": 8,
-          "count": 8,
+          "offset": 16,
+          "count": 16,
           "transform": {
             "kind": "identity"
           }
@@ -432,10 +460,18 @@
             "v4",
             "v5",
             "v6",
-            "v7"
+            "v7",
+            "v8",
+            "v9",
+            "v10",
+            "v11",
+            "v12",
+            "v13",
+            "v14",
+            "v15"
           ],
-          "offset": 16,
-          "count": 8,
+          "offset": 32,
+          "count": 16,
           "transform": {
             "kind": "identity"
           }
@@ -451,10 +487,18 @@
             "d4",
             "d5",
             "d6",
-            "d7"
+            "d7",
+            "d8",
+            "d9",
+            "d10",
+            "d11",
+            "d12",
+            "d13",
+            "d14",
+            "d15"
           ],
-          "offset": 24,
-          "count": 8,
+          "offset": 48,
+          "count": 16,
           "transform": {
             "kind": "identity"
           }
@@ -469,10 +513,18 @@
             "l3",
             "l4",
             "l5",
-            "l6"
+            "l6",
+            "l7",
+            "l8",
+            "l9",
+            "l10",
+            "l11",
+            "l12",
+            "l13",
+            "l14"
           ],
-          "offset": 32,
-          "count": 7,
+          "offset": 64,
+          "count": 15,
           "transform": {
             "kind": "identity"
           }
@@ -8363,5 +8415,5 @@
     "dsp/plugins/spatial/phase_select_eq/params.json": "dsp/plugins/spatial/phase_select_eq/golden/index.json",
     "dsp/plugins/spatial/stereo_blend/params.json": "dsp/plugins/spatial/stereo_blend/golden/index.json"
   },
-  "contractDigest": "10371b5016b454f9e056d84f4a43d050e01a6b40ba0d9eb8dd3939f4fba2550c"
+  "contractDigest": "61121eb6aec4b52d5492795c2ac81bd4cecfa119b7bfc4e6956fd2b725690685"
 }

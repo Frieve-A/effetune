@@ -108,7 +108,7 @@ class FiveBandFIRPEQPlugin extends PluginBase {
       ? options.sampleRate
       : this._sampleRate;
     const outputChannelCount = Number.isInteger(options.outputChannelCount) &&
-      options.outputChannelCount >= 1 && options.outputChannelCount <= 8
+      options.outputChannelCount >= 1 && options.outputChannelCount <= 16
       ? options.outputChannelCount
       : this._outputChannelCount;
     if (options.commitSampleRate &&

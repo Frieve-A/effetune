@@ -434,7 +434,7 @@ test('MP3 production-native promotion requires the independent decoder hard gate
 });
 
 async function createTwoPluginParityFixture(t) {
-  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-dsp-all-types-'));
+  const tempRoot = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-dsp-all-types-')));
   t.after(() => fs.rm(tempRoot, {
     recursive: true,
     force: true,
@@ -538,6 +538,25 @@ test('parity CLI discovers every DSP schema with a committed golden set when typ
   assert.equal(checked.results.every(result => result.comparison.pass), true);
   assert.equal(messages.some(message => message.includes('MutePlugin/mute-impulse')), true);
   assert.equal(messages.some(message => message.includes('VolumePlugin/volume-impulse')), true);
+});
+
+test('all-golden generation can preserve native-reference sets while advancing the JS guard', async t => {
+  const fixture = await createTwoPluginParityFixture(t);
+  const { tempRoot, volumeGoldenDir, volumeCasesPath } = fixture;
+  for (const type of ['MutePlugin', 'VolumePlugin']) {
+    await runGenerateCli(['--root', tempRoot, '--type', type], { log() {} });
+  }
+  const original = await snapshotTree(volumeGoldenDir);
+  const schemaPath = path.join(path.dirname(volumeCasesPath), 'params.json');
+  const schema = JSON.parse(await fs.readFile(schemaPath, 'utf8'));
+  for (const parityReference of ['production-native-promoted-v1', 'native-fir-crossover-direct-double-v1']) {
+    await fs.writeFile(schemaPath, JSON.stringify({ ...schema, parityReference }));
+    const result = await runGenerateCli(['--root', tempRoot, '--all', '--skip-native-referenced'], { log() {} });
+    assert.deepEqual(result.types, ['MutePlugin']);
+    assert.deepEqual(await snapshotTree(volumeGoldenDir), original);
+    const guard = JSON.parse(await fs.readFile(fixture.guardPath, 'utf8'));
+    assert.equal(guard.pluginBaseHash, result.pluginBaseHash);
+  }
 });
 
 test('shared plugin base guard advances only after complete all-golden generation', async t => {

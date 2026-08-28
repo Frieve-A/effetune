@@ -310,7 +310,7 @@ class Bundle:
         if (
             isinstance(fmt["channels"], bool)
             or not isinstance(fmt["channels"], int)
-            or not 1 <= fmt["channels"] <= 8
+            or not 1 <= fmt["channels"] <= 16
             or isinstance(fmt["frames"], bool)
             or not isinstance(fmt["frames"], int)
             or not 1 <= fmt["frames"] <= 8_388_600
@@ -329,10 +329,10 @@ class Bundle:
             paths = fmt.get("paths")
             if (
                 not isinstance(paths, list)
-                or not 1 <= len(paths) <= 8
+                or not 1 <= len(paths) <= 16
                 or path_count != len(paths)
             ):
-                raise AssetError("matrix bundle assets require 1 to 8 paths")
+                raise AssetError("matrix bundle assets require 1 to 16 paths")
             for path in paths:
                 if not isinstance(path, Mapping) or set(path) != {
                     "inputSlot",
@@ -341,8 +341,8 @@ class Bundle:
                 }:
                     raise AssetError("matrix bundle paths must contain exact path fields")
                 for name, maximum in (
-                    ("inputSlot", 7),
-                    ("outputSlot", 7),
+                    ("inputSlot", 15),
+                    ("outputSlot", 15),
                     ("irChannel", fmt["channels"] - 1),
                 ):
                     value = path[name]

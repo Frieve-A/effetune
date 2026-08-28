@@ -55,7 +55,7 @@ function validateNullableInteger(value) {
 }
 
 function validatePathSummary(value) {
-  return Array.isArray(value) && value.length <= 8 && value.every(path =>
+  return Array.isArray(value) && value.length <= 16 && value.every(path =>
     path && typeof path === 'object' &&
     Number.isSafeInteger(path.input) && path.input >= 0 &&
     Number.isSafeInteger(path.output) && path.output >= 0 &&
@@ -102,7 +102,7 @@ function safeInteger(value) {
 
 function normalizePathSummary(value) {
   if (!Array.isArray(value)) return [];
-  return value.slice(0, 8).map(path => ({
+  return value.slice(0, 16).map(path => ({
     input: safeInteger(path?.input),
     output: safeInteger(path?.output),
     irChannel: safeInteger(path?.irChannel)

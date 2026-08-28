@@ -234,8 +234,8 @@ export function packStructuredParams(schema, params = {}) {
     if (offset + 1 >= source.length) break;
     const inputText = source[offset];
     const outputText = source[offset + 1];
-    const input = inputText >= '0' && inputText <= '8' ? inputText.charCodeAt(0) - 48 : -1;
-    const output = outputText >= '0' && outputText <= '8' ? outputText.charCodeAt(0) - 48 : -1;
+    const input = /^[0-9a-f]$/.test(inputText) ? parseInt(inputText, 16) : -1;
+    const output = /^[0-9a-f]$/.test(outputText) ? parseInt(outputText, 16) : -1;
     if (input >= 0 && output >= 0) {
       if (routes.length >= descriptor.maxItems * 3) {
         throw new RangeError(`${schema.type} structured route capacity exceeded`);
@@ -290,8 +290,8 @@ function syntheticIrBytes(asset, sampleRate) {
   const paths = asset.topology === 4 ? asset.paths : [];
   if (asset.topology === 4 &&
       (!Array.isArray(paths) || paths.length !== asset.pathCount || paths.length < 1 ||
-       paths.length > 8)) {
-    throw new Error('Synthetic matrix IR asset paths must match pathCount in the range 1..8');
+       paths.length > 16)) {
+    throw new Error('Synthetic matrix IR asset paths must match pathCount in the range 1..16');
   }
   const pathTableBytes = paths.length * 12;
   const bytes = Buffer.alloc(32 + pathTableBytes + samples.byteLength);

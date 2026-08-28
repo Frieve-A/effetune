@@ -1097,7 +1097,7 @@ class ChannelDividerPlugin extends PluginBase {
       return null;
     }
     const channels = payload.getUint32(0, true);
-    return channels >= 1 && channels <= 8 ? channels : null;
+    return channels >= 1 && channels <= 16 ? channels : null;
   }
 
   handleDspChannelCountTelemetry(frame) {
@@ -1110,14 +1110,10 @@ class ChannelDividerPlugin extends PluginBase {
       let newMaxBands = 2; 
       let error = null;
 
-      if (channels < 4 || channels % 2 !== 0) {
-        error = "This effect only works in multichannel mode (4, 6, or 8 channels).";
-      } else if (channels === 4) {
-        newMaxBands = 2;
-      } else if (channels === 6) {
-        newMaxBands = 3;
-      } else if (channels === 8) {
-        newMaxBands = 4;
+      if (channels < 4 || channels > 16 || channels % 2 !== 0) {
+        error = "This effect needs an even number of output channels from 4 to 16.";
+      } else {
+        newMaxBands = Math.min(channels / 2, 4);
       }
       
       let uiNeedsUpdate = false;

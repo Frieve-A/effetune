@@ -89,7 +89,7 @@ class BluetoothSBCSimulatorPlugin extends PluginBase {
             ? options.sampleRate
             : this.hostSampleRate;
         const outputChannelCount = Number.isInteger(options.outputChannelCount) &&
-            options.outputChannelCount >= 1 && options.outputChannelCount <= 8
+            options.outputChannelCount >= 1 && options.outputChannelCount <= 16
             ? options.outputChannelCount
             : this.activeCodecChannels;
         const codecChannels = outputChannelCount === 1 ? 1 : 2;

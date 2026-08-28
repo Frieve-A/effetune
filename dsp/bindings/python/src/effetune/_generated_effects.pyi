@@ -3,7 +3,7 @@ from typing import Literal, TypeAlias, TypedDict
 
 from ._base import Effect
 
-EffectChannel: TypeAlias = Literal["all", "stereo", "left", "right", "1", "2", "3", "4", "5", "6", "7", "8", "34", "56", "78"]
+EffectChannel: TypeAlias = Literal["all", "stereo", "left", "right", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "34", "56", "78", "910", "1112", "1314", "1516"]
 
 class IRReverbAssets(TypedDict):
     impulseResponse: str
@@ -131,11 +131,11 @@ class MultiChannelPanel(Effect):
     def __init__(
         self,
         *,
-        mute: tuple[bool, bool, bool, bool, bool, bool, bool, bool] = ...,
-        solo: tuple[bool, bool, bool, bool, bool, bool, bool, bool] = ...,
-        volume: tuple[float, float, float, float, float, float, float, float] = ...,
-        delay: tuple[float, float, float, float, float, float, float, float] = ...,
-        link: tuple[bool, bool, bool, bool, bool, bool, bool] = ...,
+        mute: tuple[bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool] = ...,
+        solo: tuple[bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool] = ...,
+        volume: tuple[float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float] = ...,
+        delay: tuple[float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float] = ...,
+        link: tuple[bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool] = ...,
         id: str | None = ...,
         enabled: bool = ...,
         channel: EffectChannel = ...,

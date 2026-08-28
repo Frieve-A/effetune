@@ -14,7 +14,7 @@ constexpr std::uint32_t kSlabCount = Arena::kBusCount + Arena::kScratchCount;
 bool validConfiguration(float sample_rate, std::uint32_t max_channels,
                         std::uint32_t max_frames) noexcept {
   return std::isfinite(sample_rate) && sample_rate > 0.0F && max_channels > 0u &&
-         max_channels <= 8u && max_frames >= 32u;
+         max_channels <= 16u && max_frames >= 32u;
 }
 
 } // namespace

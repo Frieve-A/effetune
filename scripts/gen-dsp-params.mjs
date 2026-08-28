@@ -815,8 +815,8 @@ function jsStructuredPacker(spec) {
     `    if (offset + 1 >= source.length) break;\n` +
     `    const inputText = source[offset];\n` +
     `    const outputText = source[offset + 1];\n` +
-    `    const input = inputText >= '0' && inputText <= '8' ? inputText.charCodeAt(0) - 48 : -1;\n` +
-    `    const output = outputText >= '0' && outputText <= '8' ? outputText.charCodeAt(0) - 48 : -1;\n` +
+    `    const input = /^[0-9a-f]$/.test(inputText) ? parseInt(inputText, 16) : -1;\n` +
+    `    const output = /^[0-9a-f]$/.test(outputText) ? parseInt(outputText, 16) : -1;\n` +
     `    if (input >= 0 && output >= 0) {\n` +
     `      if (routes.length >= ${structured.maxItems * 3}) throw new RangeError('${spec.type} structured route capacity exceeded');\n` +
     `      routes.push(input, output, phase);\n` +

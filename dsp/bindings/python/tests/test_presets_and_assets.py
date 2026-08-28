@@ -363,6 +363,29 @@ class PresetAndAssetTests(unittest.TestCase):
             ):
                 effetune.Bundle(manifest, Path("."))
 
+    def test_matrix_assets_accept_sixteen_indices_and_reject_index_sixteen(self) -> None:
+        samples = np.ones((16, 1), dtype=np.float32)
+        paths = tuple(effetune.ConvolutionPath(index, index, index) for index in range(16))
+        asset = effetune.AssetData(
+            samples, 48_000, topology="matrix", paths=paths, input_count=16
+        )
+        self.assertEqual(resolve_topology(asset, 16, "matrix"), "matrix")
+        for field in range(3):
+            invalid_paths = [(index, index, index) for index in range(16)]
+            invalid_path = list(invalid_paths[-1])
+            invalid_path[field] = 16
+            invalid_paths[-1] = tuple(invalid_path)
+            with self.subTest(field=field):
+                with self.assertRaises(effetune.AssetError):
+                    effetune.AssetData(
+                        samples, 48_000, topology="matrix",
+                        paths=invalid_paths, input_count=16,
+                    )
+                payload = _eta1_payload(samples, topology="matrix", paths=invalid_paths)
+                entry = _asset_entry(payload, samples, topology="matrix", paths=invalid_paths)
+                with self.assertRaises(effetune.AssetError):
+                    effetune.Bundle(_bundle_manifest(entry), Path("."))
+
     def test_matrix_routes_follow_the_shared_input_contract(self) -> None:
         fixture = json.loads(
             (
@@ -521,6 +544,9 @@ class PresetAndAssetTests(unittest.TestCase):
             "1": "1",
             "34": "34",
         }
+        expected_from_javascript.update({channel: channel for channel in (
+            "9", "10", "11", "12", "13", "14", "15", "16", "910", "1112", "1314", "1516",
+        )})
         for legacy, expected in expected_from_javascript.items():
             with self.subTest(channel=legacy):
                 chain, _ = effetune.Chain.from_legacy_preset(
@@ -539,7 +565,7 @@ class PresetAndAssetTests(unittest.TestCase):
                 self.assertEqual(
                     chain.to_dict()["chain"][0]["channel"], expected
                 )
-        for rejected in ("LEFT", "Stereo", "9", "0", "12", 1, True):
+        for rejected in ("LEFT", "Stereo", "17", "0", "1718", 1, True):
             with self.subTest(channel=rejected):
                 with self.assertRaises(effetune.ValidationError):
                     effetune.Chain.from_legacy_preset(
@@ -1100,10 +1126,15 @@ class PresetAndAssetTests(unittest.TestCase):
                 np.arange(4, dtype=np.float32).reshape(2, 2),
                 ((0, 0, 0), (1, 1, 1)),
             ),
+            (
+                "matrix",
+                np.arange(32, dtype=np.float32).reshape(16, 2),
+                tuple((index, index, index) for index in range(16)),
+            ),
         )
         for topology, samples, paths in fixtures:
             with self.subTest(topology=topology), tempfile.TemporaryDirectory() as temporary:
-                root = Path(temporary)
+                root = Path(temporary).resolve()
                 payload = _eta1_payload(
                     samples, topology=topology, paths=paths
                 )
@@ -1120,7 +1151,7 @@ class PresetAndAssetTests(unittest.TestCase):
                 self.assertEqual(asset.topology, topology)
                 np.testing.assert_array_equal(asset.samples, samples)
                 if topology == "matrix":
-                    self.assertEqual(asset.input_count, 2)
+                    self.assertEqual(asset.input_count, len({path[0] for path in paths}))
                     self.assertEqual(
                         [
                             (path.input_slot, path.output_slot, path.ir_channel)

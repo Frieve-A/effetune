@@ -120,9 +120,9 @@ export function applySerializedState(plugin, state) {
         if (chValue === 'All') return 'A';
         if (chValue === '') return null;
         
-        // Handle individual channels (3-8) and stereo channel pairs
+        // Handle individual channels (3-16) and stereo channel pairs
         if (typeof chValue === 'string' &&
-            (/^[3-8]$/.test(chValue) || ['34', '56', '78'].includes(chValue))) {
+            (/^([3-9]|1[0-6])$/.test(chValue) || ['34', '56', '78', '910', '1112', '1314', '1516'].includes(chValue))) {
             return chValue;
         }
         

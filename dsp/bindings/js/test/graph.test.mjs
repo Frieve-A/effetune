@@ -26,6 +26,57 @@ const fixture = JSON.parse(await readFile(
   'utf8'
 ));
 
+test('sixteen-channel native snapshots preserve every latency vector', async () => {
+  const nodes = [];
+  const edges = [];
+  let previous = 'input';
+  for (let channel = 0; channel < 16; channel++) {
+    const id = `room-${channel}`;
+    nodes.push({
+      id, type: 'RoomEQ', channel: String(channel + 1),
+      parameters: { latencyMode: '128', filterDelaySamples: channel + 1 },
+      assets: { impulseResponse: 'impulse' }
+    });
+    edges.push({ id: `in-${id}`, source: previous, destination: id });
+    previous = id;
+  }
+  const range = start => Array.from({ length: 16 }, (_, channel) => start + channel);
+  const compensation = range(0).map(channel => 15 - channel);
+  for (const aligned of [false, true]) {
+    const graph = await createGraph({
+      version: 1, input: { id: 'input' }, output: { id: 'output' },
+      nodes: aligned ? [...nodes, { id: 'align', type: 'Volume', channel: 'all', parameters: { volume: 0 } }] : nodes,
+      edges: aligned ? [...edges,
+        { id: 'in-align', source: previous, destination: 'align' },
+        { id: 'dry-align', source: 'input', destination: 'align' },
+        { id: 'out', source: 'align', destination: 'output' }
+      ] : [...edges, { id: 'out', source: previous, destination: 'output' }]
+    }, {
+      variant: 'baseline',
+      assetResolver: () => encodeEta1({ channels: [Float32Array.of(1)], sampleRate: 48000, topology: 'mono' })
+    });
+    let stream;
+    try {
+      stream = await graph.stream({ sampleRate: 48000, channels: 16 });
+      const snapshot = stream.compileSnapshot;
+      if (aligned) {
+        const align = snapshot.nodes.find(node => node.id === 'align');
+        assert.deepEqual(align.inputLatency, range(129));
+        assert.deepEqual(align.outputLatency, Array(16).fill(144));
+        assert.deepEqual(align.preNodeCompensation, compensation);
+        assert.deepEqual(snapshot.edges.find(edge => edge.id === 'dry-align').fanInCompensation, range(129));
+      } else {
+        assert.deepEqual(snapshot.outputLatency, range(129));
+        assert.deepEqual(snapshot.outputCompensation, compensation);
+        assert.deepEqual(snapshot.nodes.find(node => node.id === 'room-15').outputLatency, range(129));
+      }
+    } finally {
+      stream?.close();
+      graph.close();
+    }
+  }
+});
+
 test('Graph v1 shared documents normalize and reject with stable diagnostics', () => {
   for (const entry of fixture.valid) {
     const document = normalizeGraphDocument(entry.document);

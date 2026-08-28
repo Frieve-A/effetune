@@ -32,6 +32,12 @@ test('semantic presets are strict and do not guess legacy formats', async () => 
 });
 
 test('explicit legacy import converts long and short parameters and channels', () => {
+  for (const channel of ['9', '10', '11', '12', '13', '14', '15', '16', '910', '1112', '1314', '1516']) {
+    const document = importLegacyPreset({
+      pipeline: [{ name: 'Volume', channel, parameters: { vl: 0 } }]
+    });
+    assert.equal(document.chain[0].channel, channel);
+  }
   const long = importLegacyPreset({
     name: 'Long',
     pipeline: [{

@@ -6,7 +6,7 @@ Ouvrez-le avec le bouton graphique de l’en-tête Effect Pipeline ou avec **Vie
 
 ## Canaux et réponses de haut-parleur
 
-Choisissez un canal d’entrée. Une sortie est affichée au départ ; **+ Ajouter une sortie** permet d’ajouter jusqu’à quatre canaux distincts disponibles sur le périphérique actuel. Supprimer une sortie efface aussi son réglage de réponse. La dernière sortie ne peut pas être supprimée.
+Choisissez un canal d’entrée du pipeline actif, qui peut comporter jusqu’à 16 canaux. Une sortie est affichée au départ ; **+ Ajouter une sortie** permet d’ajouter jusqu’à quatre canaux distincts disponibles sur le périphérique actuel. Les quatre emplacements de sortie restent la limite de l’analyseur même avec un pipeline à 16 canaux. Supprimer une sortie efface aussi son réglage de réponse. La dernière sortie ne peut pas être supprimée.
 
 Chaque sortie peut utiliser **Sans IR de haut-parleur** ou un point de mesure enregistré correspondant au tweeter, au woofer ou à une autre unité raccordée. Choisir une mesure sans sélectionner son point revient à choisir **Sans IR de haut-parleur**. Lorsqu’aucune sortie n’utilise d’IR de haut-parleur, **Avant** est l’impulsion unité idéale : 1,0 à 0 ms et 0 partout ailleurs. Avec des IR de haut-parleur, **Avant** est la somme signée des réponses alignées ; **Après** est la somme signée après traitement de chaque sortie par le pipeline choisi. Vous pouvez ainsi examiner un FIR Crossover avec ses haut-parleurs. Une réponse enregistrée manquante reste indiquée comme telle jusqu’à son remplacement ou sa suppression.
 

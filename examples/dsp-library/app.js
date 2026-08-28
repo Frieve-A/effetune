@@ -121,8 +121,8 @@ startButton.addEventListener('click', async () => {
     const buffer = sourceMode.value === 'local'
       ? await context.decodeAudioData(await file.arrayBuffer())
       : generatedBuffer(context);
-    if (buffer.numberOfChannels > 8) {
-      throw new RangeError('This demo supports audio files with up to eight channels.');
+    if (buffer.numberOfChannels > 16) {
+      throw new RangeError('This demo supports audio files with up to sixteen channels.');
     }
 
     const node = await EffeTuneNode.create(

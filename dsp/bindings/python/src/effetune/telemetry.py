@@ -107,7 +107,7 @@ def _decode_level(
     if len(payload) < 16:
         return None
     channel_count = struct.unpack_from("<I", payload)[0]
-    if not 1 <= channel_count <= 8 or len(payload) != 8 + channel_count * 8:
+    if not 1 <= channel_count <= 16 or len(payload) != 8 + channel_count * 8:
         return None
     clip_flags = struct.unpack_from("<I", payload, 4 + channel_count * 8)[0]
     if clip_flags & ~((1 << channel_count) - 1):

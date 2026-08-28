@@ -12,7 +12,7 @@ namespace effetune::plugins::eq {
 namespace {
 
 constexpr std::uint32_t kBands = 5u;
-constexpr std::uint32_t kMaxChannels = 8u;
+constexpr std::uint32_t kMaxChannels = 16u;
 
 } // namespace
 

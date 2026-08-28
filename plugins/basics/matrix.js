@@ -5,23 +5,23 @@ const MATRIX_CHANNEL_COUNT_BYTES = 4;
 class MatrixPlugin extends PluginBase {
     constructor() {
         super('Matrix', 'Routes and mixes audio channels with optional phase inversion');
-        
+
         // Initialize parameter - mx: Matrix Routing
         this.mx = "";
         this._dspTelemetryHub = null;
         this._dspTelemetryTapId = null;
         this._dspTelemetryUnsubscribe = null;
         this._boundDspChannelCountTelemetry = frame => this.handleDspChannelCountTelemetry(frame);
-        
+
         // Register processor function
         this.registerProcessor(`
             if (!parameters.enabled) return data;
-            const { 
+            const {
                 mx: matrixParam,
-                channelCount, 
-                blockSize 
+                channelCount,
+                blockSize
             } = parameters;
-            
+
             if (context.matrixParam !== matrixParam || context.channelCount !== channelCount) {
                 const routeCapacity = matrixParam.length > 0 ? matrixParam.length : 1;
                 if (!context.routeInputs || context.routeInputs.length < routeCapacity) {
@@ -45,8 +45,8 @@ class MatrixPlugin extends PluginBase {
                     if (i + 1 >= matrixParam.length) break;
 
                     // Parse input and output channel indices
-                    const inputCh = parseInt(matrixParam[i], 10);
-                    const outputCh = parseInt(matrixParam[i+1], 10);
+                    const inputCh = parseInt(matrixParam[i], 16);
+                    const outputCh = parseInt(matrixParam[i+1], 16);
 
                     // Validate channel indices
                     if (!isNaN(inputCh) && !isNaN(outputCh) &&
@@ -71,17 +71,17 @@ class MatrixPlugin extends PluginBase {
                 context.outputData = new Float32Array(dataLength);
             }
             const outputData = context.outputData;
-            
+
             // Initialize output buffer with zeros (don't copy input data)
             outputData.fill(0, 0, dataLength);
-            
+
             // Apply routing for each input/output mapping
             for (let routeIndex = 0; routeIndex < context.routeCount; routeIndex++) {
                 const input = context.routeInputs[routeIndex];
                 const output = context.routeOutputs[routeIndex];
                 const phaseInvert = context.routePhase[routeIndex] !== 0;
                 const phaseMultiplier = phaseInvert ? -1 : 1;
-                
+
                 // Mix input channel to output channel
                 for (let i = 0; i < blockSize; i++) {
                     const inputIndex = input * blockSize + i;
@@ -89,108 +89,109 @@ class MatrixPlugin extends PluginBase {
                     outputData[outputIndex] += data[inputIndex] * phaseMultiplier;
                 }
             }
-            
+
             // Copy mixed data back to the original buffer
             for (let i = 0; i < dataLength; i++) {
                 data[i] = outputData[i];
             }
-            
+
             data.measurements = { channels: channelCount };
             return data;
         `);
-        
+
         // Matrix state - tracks which input/output pairs are active and phase-inverted
         this.matrixState = this._createEmptyMatrixState();
-        
+
         // Initialize diagonal elements to ON by default
         for (let i = 0; i < 2; i++) {
             this.matrixState[i][i].active = true;
         }
-        
+
         // Initialize mx parameter with diagonal routing
         this.mx = this.generateRouting();
     }
 
     _createEmptyMatrixState() {
-        return Array(9).fill().map(() => Array(9).fill().map(() => ({
+        return Array(16).fill().map(() => Array(16).fill().map(() => ({
             active: false,
             phaseInvert: false
         })));
     }
-    
+
     // Parse routing string and update matrixState
     parseRouting(routingStr) {
         // Reset matrix state
         this.matrixState = this._createEmptyMatrixState();
 
         if (typeof routingStr !== 'string' || routingStr.length === 0) return;
-        
+
         let i = 0;
         while (i < routingStr.length) {
             let hasPhaseInvert = false;
-            
+
             // Check for phase inversion flag
             if (routingStr[i] === 'p') {
                 hasPhaseInvert = true;
                 i++;
             }
-            
+
             // Need at least 2 more characters for input/output
             if (i + 1 >= routingStr.length) break;
-            
+
             // Parse input and output channel indices
-            const inputCh = parseInt(routingStr[i], 10);
-            const outputCh = parseInt(routingStr[i+1], 10);
-            
+            const inputCh = (/^[0-9a-f]$/.test(routingStr[i]) ? parseInt(routingStr[i], 16) : NaN);
+            const outputCh = (/^[0-9a-f]$/.test(routingStr[i + 1]) ? parseInt(routingStr[i + 1], 16) : NaN);
+
             // Validate and update matrix state
-            if (!isNaN(inputCh) && !isNaN(outputCh) && 
-                inputCh >= 0 && inputCh < 9 && 
-                outputCh >= 0 && outputCh < 9) {
-                
+            if (!isNaN(inputCh) && !isNaN(outputCh) &&
+                inputCh >= 0 && inputCh < 16 &&
+                outputCh >= 0 && outputCh < 16) {
+
                 this.matrixState[inputCh][outputCh] = {
                     active: true,
                     phaseInvert: hasPhaseInvert
                 };
             }
-            
+
             i += 2;
         }
     }
-    
+
     // Generate routing string from matrixState
     generateRouting() {
         let routingStr = "";
-        
+
         for (let inputCh = 0; inputCh < this.matrixState.length; inputCh++) {
             for (let outputCh = 0; outputCh < this.matrixState[inputCh].length; outputCh++) {
                 const cell = this.matrixState[inputCh][outputCh];
-                
+
                 if (cell.active) {
                     if (cell.phaseInvert) {
                         routingStr += "p";
                     }
-                    routingStr += inputCh.toString() + outputCh.toString();
+                    routingStr += inputCh.toString(16) + outputCh.toString(16);
                 }
             }
         }
-        
+
         return routingStr;
     }
-    
+
     // Set parameters
     setParameters(params) {
         if (params.mx !== undefined) {
             this.mx = typeof params.mx === 'string' ? params.mx : this.mx;
             this.parseRouting(this.mx);
+            this._syncMatrixButtons();
         }
-        
+
         if (params.enabled !== undefined) {
             this.enabled = params.enabled;
         }
-        
+
         this.updateParameters();
     }
-    
+
     // Get parameters
     getParameters() {
         this.ensureDspTelemetrySubscription();
@@ -200,41 +201,53 @@ class MatrixPlugin extends PluginBase {
             enabled: this.enabled
         };
     }
-    
+
     // Toggle cell active state
     toggleCellActive(inputCh, outputCh) {
-        if (inputCh >= 0 && inputCh < 9 && outputCh >= 0 && outputCh < 9) {
+        if (inputCh >= 0 && inputCh < 16 && outputCh >= 0 && outputCh < 16) {
             this.matrixState[inputCh][outputCh].active = !this.matrixState[inputCh][outputCh].active;
-            
+
             // If cell becomes inactive, also disable phase inversion
             if (!this.matrixState[inputCh][outputCh].active) {
                 this.matrixState[inputCh][outputCh].phaseInvert = false;
             }
-            
+
             // Update routing parameter
             this.mx = this.generateRouting();
             this.updateParameters();
         }
     }
-    
+
     // Toggle cell phase inversion (only if active)
     toggleCellPhaseInvert(inputCh, outputCh) {
-        if (inputCh >= 0 && inputCh < 9 && outputCh >= 0 && outputCh < 9 && 
+        if (inputCh >= 0 && inputCh < 16 && outputCh >= 0 && outputCh < 16 &&
             this.matrixState[inputCh][outputCh].active) {
-            
+
             this.matrixState[inputCh][outputCh].phaseInvert = !this.matrixState[inputCh][outputCh].phaseInvert;
-            
+
             // Update routing parameter
             this.mx = this.generateRouting();
             this.updateParameters();
         }
     }
-    
+
     // Push the current matrixState back into the routing buttons. They are written
     // only when they are built and by their own click handlers, so an inbound `mx`
     // change would otherwise leave them showing the previous routing.
+    _displayChannelCount() {
+        let required = Math.max(this.getChannelCountForUI(),
+            this._actualChannelCount || 0);
+        for (let input = 0; input < this.matrixState.length; input++) {
+            for (let output = 0; output < this.matrixState[input].length; output++) {
+                if (this.matrixState[input][output].active) required = Math.max(required, input + 1, output + 1);
+            }
+        }
+        return required > 8 ? 16 : 8;
+    }
+
     _syncMatrixButtons() {
-        if (!Array.isArray(this.cellButtons)) return;
+        if (!this.tableWrapper) return;
+        if (this.cellButtons?.length !== this._displayChannelCount()) this._buildMatrixTable();
         for (let inputCh = 0; inputCh < this.cellButtons.length; inputCh++) {
             for (let outputCh = 0; outputCh < this.cellButtons[inputCh].length; outputCh++) {
                 const buttons = this.cellButtons[inputCh][outputCh];
@@ -252,84 +265,98 @@ class MatrixPlugin extends PluginBase {
         const container = document.createElement('div');
         container.className = 'matrix-plugin-ui plugin-parameter-ui';
 
-        // Rebuilt from scratch on every createUI() so no stale buttons are kept.
-        this.cellButtons = Array.from({ length: 8 }, () => new Array(8).fill(null));
-
         // Initialize matrix state from parameter if not already done
         if (this.mx && this.matrixState.every(row => row.every(cell => !cell.active))) {
             this.parseRouting(this.mx);
         }
-        
+
         // Create table element
         const tableWrapper = document.createElement('div');
         tableWrapper.className = 'matrix-table-wrapper';
+        this.tableWrapper = tableWrapper;
+        container.appendChild(tableWrapper);
+        this._buildMatrixTable();
+        this.registerUIRefresh(() => this._syncMatrixButtons());
+        return container;
+    }
 
+    _buildMatrixTable() {
+        const channelCount = this._displayChannelCount();
+        this.cellButtons = Array.from({ length: channelCount }, () => new Array(channelCount).fill(null));
         const table = document.createElement('table');
-        table.className = 'matrix-table';
+        table.className = channelCount === 16 ? 'matrix-table matrix-table-expanded' : 'matrix-table';
         this.table = table;
-        
+        const head = document.createElement('thead');
+        const body = document.createElement('tbody');
+        table.appendChild(head);
+        table.appendChild(body);
+
         // Create table header row (output channels)
         const headerRow = document.createElement('tr');
-        
+
         // Add empty corner cell
         const cornerCell = document.createElement('th');
         cornerCell.textContent = '';
+        cornerCell.className = 'matrix-sticky-header matrix-sticky-corner';
         headerRow.appendChild(cornerCell);
-        
+
         // Add "Output" label cell
         const outputLabelCell = document.createElement('th');
         outputLabelCell.textContent = 'Output';
-        outputLabelCell.colSpan = 8;
+        outputLabelCell.className = 'matrix-sticky-header';
+        outputLabelCell.colSpan = channelCount;
         headerRow.appendChild(outputLabelCell);
-        
-        table.appendChild(headerRow);
-        
+
+        head.appendChild(headerRow);
+
         // Create second header row with channel labels
         const channelHeaderRow = document.createElement('tr');
-        
+
         // Add "Input" label
         const inputLabelCell = document.createElement('th');
         inputLabelCell.textContent = 'Input';
+        inputLabelCell.className = 'matrix-sticky-channel-header matrix-sticky-corner';
         channelHeaderRow.appendChild(inputLabelCell);
-        
-        // Add channel labels (Ch 1-8)
-        const channelLabels = ['Ch 1', 'Ch 2', 'Ch 3', 'Ch 4', 'Ch 5', 'Ch 6', 'Ch 7', 'Ch 8'];
-        for (let i = 0; i < 8; i++) {
+
+        // Add channel labels for the visible grid.
+        for (let i = 0; i < channelCount; i++) {
             const th = document.createElement('th');
-            th.textContent = channelLabels[i];
+            th.textContent = `Ch ${i + 1}`;
+            th.className = 'matrix-sticky-channel-header';
             channelHeaderRow.appendChild(th);
         }
-        
-        table.appendChild(channelHeaderRow);
-        
+
+        head.appendChild(channelHeaderRow);
+
         // Create rows for each input channel
-        for (let inputCh = 0; inputCh < 8; inputCh++) {
+        for (let inputCh = 0; inputCh < channelCount; inputCh++) {
             const row = document.createElement('tr');
-            
+
             // Add row header (input channel label)
             const rowHeader = document.createElement('th');
-            rowHeader.textContent = channelLabels[inputCh];
+            rowHeader.textContent = `Ch ${inputCh + 1}`;
+            rowHeader.className = 'matrix-sticky-row';
             row.appendChild(rowHeader);
-            
+
             // Create cells for each output channel
-            for (let outputCh = 0; outputCh < 8; outputCh++) {
+            for (let outputCh = 0; outputCh < channelCount; outputCh++) {
                 const cell = document.createElement('td');
-                
+
                 const cellState = this.matrixState[inputCh][outputCh];
-                
+
                 // Create ON button
                 const onButton = document.createElement('button');
                 onButton.textContent = 'ON';
                 onButton.className = cellState.active ? 'matrix-button active' : 'matrix-button';
                 onButton.addEventListener('click', () => {
                     this.toggleCellActive(inputCh, outputCh);
-                    onButton.className = this.matrixState[inputCh][outputCh].active ? 
+                    onButton.className = this.matrixState[inputCh][outputCh].active ?
                         'matrix-button active' : 'matrix-button';
-                    phaseButton.className = this.matrixState[inputCh][outputCh].active && 
-                        this.matrixState[inputCh][outputCh].phaseInvert ? 
+                    phaseButton.className = this.matrixState[inputCh][outputCh].active &&
+                        this.matrixState[inputCh][outputCh].phaseInvert ?
                         'matrix-button phase-button active' : 'matrix-button phase-button';
                 });
-                
+
                 // Create phase inversion button
                 const phaseButton = document.createElement('button');
                 phaseButton.innerHTML = '&Oslash;';
@@ -338,31 +365,25 @@ class MatrixPlugin extends PluginBase {
                 phaseButton.addEventListener('click', () => {
                     if (this.matrixState[inputCh][outputCh].active) {
                         this.toggleCellPhaseInvert(inputCh, outputCh);
-                        phaseButton.className = this.matrixState[inputCh][outputCh].phaseInvert ? 
+                        phaseButton.className = this.matrixState[inputCh][outputCh].phaseInvert ?
                             'matrix-button phase-button active' : 'matrix-button phase-button';
                     }
                 });
-                
+
                 this.cellButtons[inputCh][outputCh] = { onButton, phaseButton };
 
                 cell.appendChild(onButton);
                 cell.appendChild(phaseButton);
                 row.appendChild(cell);
             }
-            
-            table.appendChild(row);
+
+            body.appendChild(row);
         }
-        
-        tableWrapper.appendChild(table);
-        container.appendChild(tableWrapper);
 
-        // Automation playback and preset recall change the model without touching the
-        // DOM, so the parts of the UI this plugin builds by hand are refreshed here.
-        this.registerUIRefresh(() => this._syncMatrixButtons());
-
-        return container;
+        this.tableWrapper.replaceChildren(table);
+        if (this._actualChannelCount) this.updateChannelAvailability(this._actualChannelCount);
     }
-    
+
     _setupMessageHandler() {
         super._setupMessageHandler();
         this.ensureDspTelemetrySubscription?.();
@@ -433,7 +454,7 @@ class MatrixPlugin extends PluginBase {
             return null;
         }
         const channels = payload.getUint32(0, true);
-        return channels >= 1 && channels <= 8 ? channels : null;
+        return channels >= 1 && channels <= 16 ? channels : null;
     }
 
     handleDspChannelCountTelemetry(frame) {
@@ -451,22 +472,27 @@ class MatrixPlugin extends PluginBase {
             this.updateChannelAvailability(actualChannelCount);
         }
     }
-    
+
     // Update channel availability based on actual channel count
     updateChannelAvailability(channelCount) {
+        this._actualChannelCount = channelCount;
+        channelCount = this.getChannelCountForUI(channelCount);
+        if (this.tableWrapper && this.cellButtons?.length !== this._displayChannelCount()) {
+            this._buildMatrixTable();
+        }
         const table = this.table;
         if (!table) return;
-        
+
         // Update rows (input channels)
         const rows = table.querySelectorAll('tr');
         for (let i = 2; i < rows.length; i++) { // Skip header rows
             const inputCh = i - 2;
             const row = rows[i];
-            
+
             if (inputCh >= channelCount) {
                 // Disable row for unavailable input channels
                 row.classList.add('disabled');
-                
+
                 // Also disable all cells in this row
                 const cells = row.querySelectorAll('td');
                 cells.forEach(cell => {
@@ -476,12 +502,12 @@ class MatrixPlugin extends PluginBase {
             } else {
                 row.classList.remove('disabled');
             }
-            
+
             // Update cells (output channels)
             const cells = row.querySelectorAll('td');
             cells.forEach((cell, cellIndex) => {
                 const outputCh = cellIndex;
-                
+
                 if (outputCh >= channelCount) {
                     // Disable cell for unavailable output channels
                     cell.classList.add('disabled');

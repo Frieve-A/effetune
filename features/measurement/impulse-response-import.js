@@ -18,7 +18,9 @@ const MAX_ANALYSIS_FFT_SIZE = 2 ** 18;
 const MIN_ANALYSIS_FFT_SIZE = 2 ** 14;
 const MIN_FREQUENCY = 20;
 const MAX_FREQUENCY = 20000;
-const OUTPUT_CHANNELS = ['left', 'right', '2', '3', '4', '5', '6', '7'];
+const OUTPUT_CHANNELS = [
+    'left', 'right', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'
+];
 
 function analysisFftSize(sampleCount) {
     const boundedLength = Math.min(sampleCount, MAX_ANALYSIS_FFT_SIZE);

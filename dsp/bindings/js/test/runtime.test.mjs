@@ -45,6 +45,25 @@ function constantAudio(channels, frames, value = 1) {
   return Array.from({ length: channels }, () => new Float32Array(frames).fill(value));
 }
 
+test('sixteen-channel single and pair selections reach only their intended channels', async () => {
+  const selections = [
+    ...Array.from({ length: 8 }, (_, index) => [String(index + 9), index + 8, 1]),
+    ['910', 8, 2], ['1112', 10, 2], ['1314', 12, 2], ['1516', 14, 2]
+  ];
+  for (const [channel, start, count] of selections) {
+    const chain = await createChain([new Volume({ volume: -6, channel })], { variant: 'baseline' });
+    try {
+      const output = await chain.process(constantAudio(16, 8), { sampleRate: 48000 });
+      for (let index = 0; index < 16; index++) {
+        const expected = index >= start && index < start + count ? Math.pow(10, -6 / 20) : 1;
+        assert.ok(Math.abs(output[index][0] - expected) < 1e-6, `${channel}: output ${index + 1}`);
+      }
+    } finally {
+      chain.close();
+    }
+  }
+});
+
 function assertDenormalProtectedAudio(actual, expected, frameOrigin = 0) {
   assert.equal(actual.length, expected.length);
   for (let channel = 0; channel < expected.length; channel++) {
@@ -137,7 +156,8 @@ test('generated effects import and the public catalog stays semantic', async () 
   assert.equal(EFFECT_CATALOG.effects.length, 92);
   assert.deepEqual(EFFECT_CATALOG.channels, [
     'all', 'stereo', 'left', 'right',
-    '1', '2', '3', '4', '5', '6', '7', '8', '34', '56', '78'
+    '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16',
+    '34', '56', '78', '910', '1112', '1314', '1516'
   ]);
   assert.ok(EFFECT_METADATA.effects.every(effect => !Object.hasOwn(effect, 'implementation')));
   const entry = await import('../dist/index.js');
@@ -526,7 +546,7 @@ test('Matrix routes require complete route grammar before native packing', async
   }
   const expectedMessage =
     "Matrix.matrixRoutes has an invalid format; expected a string matching " +
-    "^(?:p?[0-8][0-8])*$ (for example '0011').";
+    "^(?:p?[0-9a-f][0-9a-f])*$ (for example '0011').";
   for (const matrixRoutes of fixture.invalid) {
     const matrix = new Matrix({ matrixRoutes });
     assert.throws(

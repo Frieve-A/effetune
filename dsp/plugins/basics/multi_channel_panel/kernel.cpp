@@ -15,7 +15,7 @@ namespace {
 
 constexpr std::uint16_t kTapMultiChannelLevels = 10u;
 constexpr std::uint16_t kTelemetryVersion = 1u;
-constexpr std::uint32_t kMaximumChannels = 8u;
+constexpr std::uint32_t kMaximumChannels = 16u;
 constexpr std::uint32_t kPayloadHeaderBytes = 4u;
 constexpr std::uint32_t kPayloadRecordBytes = 8u;
 constexpr std::uint32_t kMaximumPayloadBytes =

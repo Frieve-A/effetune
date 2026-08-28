@@ -34,7 +34,7 @@ function common(node, kind, sequence, dropped) {
 function decodeLevel(payload, node, sequence, dropped) {
   if (payload.byteLength < 16) return null;
   const channelCount = payload.getUint32(0, true);
-  if (channelCount < 1 || channelCount > 8 || payload.byteLength !== 8 + channelCount * 8) {
+  if (channelCount < 1 || channelCount > 16 || payload.byteLength !== 8 + channelCount * 8) {
     return null;
   }
   const clipFlags = payload.getUint32(4 + channelCount * 8, true);

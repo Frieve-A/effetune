@@ -7,15 +7,15 @@
 namespace effetune::generated {
 
 struct MultiChannelPanelPluginParams {
-  float mute[8];
-  float solo[8];
-  float volume[8];
-  float delay[8];
-  float link[7];
-  static constexpr std::uint32_t kHash = 0xf9d33420u;
-  static constexpr std::uint32_t kFloatCount = 39u;
+  float mute[16];
+  float solo[16];
+  float volume[16];
+  float delay[16];
+  float link[15];
+  static constexpr std::uint32_t kHash = 0x9d3d18b9u;
+  static constexpr std::uint32_t kFloatCount = 79u;
 };
-static_assert(39u == 0u || sizeof(MultiChannelPanelPluginParams) == sizeof(float) * 39u);
+static_assert(79u == 0u || sizeof(MultiChannelPanelPluginParams) == sizeof(float) * 79u);
 
 } // namespace effetune::generated
 

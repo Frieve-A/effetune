@@ -6,7 +6,7 @@ Open it with the graph button in the Effect Pipeline header or **View > Pipeline
 
 ## Choosing channels and speaker responses
 
-Choose one input channel. One output is present initially; use **+ Add Output** to add up to four distinct channels supported by the current audio device. Delete removes that output and its speaker-response setting. The final output cannot be deleted.
+Choose one input channel from the active pipeline, which can have up to 16 channels. One output is present initially; use **+ Add Output** to add up to four distinct channels supported by the current audio device. The four output slots remain the analyzer's limit even with a 16-channel pipeline. Delete removes that output and its speaker-response setting. The final output cannot be deleted.
 
 Each output can use **No speaker IR**, or a saved measurement point for the connected tweeter, woofer, or other speaker unit. Choosing a measurement without choosing its point is treated as **No speaker IR**. When no output uses a speaker IR, **Before** is the ideal unit impulse: 1.0 at 0 ms and 0 elsewhere. With speaker IRs, **Before** is the signed sum of the aligned responses. **After** is the signed sum after the selected pipeline has processed every output, so a FIR Crossover can be checked together with its speaker units. A missing saved response stays identified as missing until you replace or clear it.
 

@@ -138,7 +138,7 @@ export class PipelineProcessor {
         const sampleRate = this.contextManager?.audioContext?.sampleRate ?? null;
         const destinationChannels = this.contextManager?.audioContext?.destination?.channelCount;
         const outputChannelCount = Number.isInteger(destinationChannels) &&
-            destinationChannels >= 1 && destinationChannels <= 8
+            destinationChannels >= 1 && destinationChannels <= 16
             ? destinationChannels
             : 2;
         return this.pipeline.map(plugin => {

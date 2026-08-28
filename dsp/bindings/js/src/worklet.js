@@ -43,8 +43,8 @@ function cloneDocument(document) {
 }
 
 function validateChannels(channels) {
-  if (!Number.isInteger(channels) || channels < 1 || channels > 8) {
-    throw new ValidationError('channels must be an integer from 1 to 8.');
+  if (!Number.isInteger(channels) || channels < 1 || channels > 16) {
+    throw new ValidationError('channels must be an integer from 1 to 16.');
   }
   return channels;
 }

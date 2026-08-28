@@ -219,7 +219,7 @@ test('Pitch Shifter kernel preallocates the full documented capacity', async () 
 
   const decision = await fs.readFile(path.join(repoRoot, 'dsp', 'README.md'), 'utf8');
   assert.match(decision, /^#### Pitch Shifter$/m);
-  assert.match(decision, /15,360,000 bytes/);
+  assert.match(decision, /30,720,000 bytes/);
   assert.match(decision, /256 MiB limit/);
   assert.match(decision, /Why this capacity is retained/);
 });

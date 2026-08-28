@@ -8,6 +8,7 @@ import {
     collectStoredIrKeyIds,
     isMultiChannelMeasurement
 } from './measurement-model.js';
+import { SUPPORTED_OUTPUT_CHANNEL_COUNTS } from './audio-utils/output-routing.js';
 
 export class MeasurementImportError extends Error {
     constructor(kind, cause = null) {
@@ -69,7 +70,9 @@ function metadataOnlyMeasurement(measurement) {
     return metadata;
 }
 
-const VALID_OUTPUT_CHANNELS = new Set(['left', 'right', '2', '3', '4', '5', '6', '7']);
+const VALID_OUTPUT_CHANNELS = new Set([
+    'left', 'right', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'
+]);
 
 function hasValidCalibration(calibration) {
     return calibration && typeof calibration === 'object' &&
@@ -100,7 +103,8 @@ function hasValidImportedScalars(data) {
     if (data.sweepBandLimited !== undefined && typeof data.sweepBandLimited !== 'boolean') {
         return false;
     }
-    if (data.outputChannelCount !== undefined && ![2, 4, 6, 8].includes(data.outputChannelCount)) {
+    if (data.outputChannelCount !== undefined &&
+        !SUPPORTED_OUTPUT_CHANNEL_COUNTS.includes(data.outputChannelCount)) {
         return false;
     }
     if (data.sweepBand !== undefined) {

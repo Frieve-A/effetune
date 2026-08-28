@@ -12,7 +12,7 @@ namespace effetune::plugins::eq {
 namespace {
 
 constexpr std::uint32_t kBands = 15u;
-constexpr std::uint32_t kMaxChannels = 8u;
+constexpr std::uint32_t kMaxChannels = 16u;
 constexpr double kPi = 3.141592653589793;
 constexpr double kTwoPi = 6.283185307179586;
 constexpr double kGainBypassThreshold = 0.01;

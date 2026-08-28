@@ -35,7 +35,7 @@ class PhaserPlugin extends PluginBase {
             if (!parameters.enabled) return data;
             const TWO_PI = 6.283185307179586;
             const PI = 3.141592653589793;
-            const MAX_CHANNELS = 8;
+            const MAX_CHANNELS = 16;
             const MAX_STAGES = 12;
             const BARBER_VOICES = 3;
             const sampleRate = parameters.sampleRate;
@@ -307,7 +307,7 @@ class PhaserPlugin extends PluginBase {
 
     _channelSelectionHasPair() {
         return this.channel === null || this.channel === 'A' ||
-            ['34', '56', '78'].includes(this.channel);
+            ['34', '56', '78', '910', '1112', '1314', '1516'].includes(this.channel);
     }
 
     onChannelSelectionChanged() {

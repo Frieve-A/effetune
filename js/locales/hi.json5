@@ -570,6 +570,7 @@
   "roomEq.status.designing": "Correction filters तैयार हो रहे हैं…",
   "roomEq.status.ready": "Room EQ filters तैयार हैं।",
   "roomEq.status.details": "{samples} samples / {milliseconds} ms · {resolution} Hz · {asset}",
+  "roomEq.status.tapLimit": "9 या अधिक चैनलों को प्रोसेस करते समय Taps की सीमा 65536 होती है।",
   "roomEq.status.missing": "उपलब्ध नहीं",
   "roomEq.status.select": "शुरू करने के लिए सेव की गई measurement assign करें।",
   "roomEq.error.design": "Room EQ filters तैयार नहीं हो सके। कम Taps चुनें या measurements फिर से चुनें।",

@@ -1,0 +1,67 @@
+{
+  "matrix": {
+    "mx": "0011",
+    "enabled": true
+  },
+  "channels": {
+    "L": { "mx": "0011", "nm": "Matrix", "en": true, "ch": "L" },
+    "R": { "mx": "0011", "nm": "Matrix", "en": true, "ch": "R" },
+    "A": { "mx": "0011", "nm": "Matrix", "en": true, "ch": "A" },
+    "3": { "mx": "0011", "nm": "Matrix", "en": true, "ch": "3" },
+    "4": { "mx": "0011", "nm": "Matrix", "en": true, "ch": "4" },
+    "8": { "mx": "0011", "nm": "Matrix", "en": true, "ch": "8" },
+    "34": { "mx": "0011", "nm": "Matrix", "en": true, "ch": "34" },
+    "56": { "mx": "0011", "nm": "Matrix", "en": true, "ch": "56" },
+    "78": { "mx": "0011", "nm": "Matrix", "en": true, "ch": "78" }
+  },
+  "multiChannelPanel": {
+    "m": [true, true, false, false, false, false, false, false],
+    "s": [false, false, false, false, false, false, false, false],
+    "v": [-1, -1, 1, 2, 3, 4, 5, 5],
+    "d": [0, 0, 2, 3, 4, 5, 6, 6],
+    "l": [true, false, false, false, false, false, true],
+    "enabled": true
+  },
+  "roomEq": {
+    "enabled": true,
+    "lt": "128",
+    "gn": 0,
+    "pm": "min",
+    "tp": 32768,
+    "sm": 0.17,
+    "fl": 20,
+    "fh": 16000,
+    "dw": 6,
+    "pa": true,
+    "pl": 500,
+    "le": false,
+    "mb": 6,
+    "cr": 100,
+    "pr": 100,
+    "rv": 0,
+    "rw": 300,
+    "rf": 250,
+    "rs": 0.05,
+    "pq": true,
+    "ps": 0.17,
+    "rp": 0,
+    "bs": [
+      { "frequency": 100, "gain": 0, "q": 1, "type": "pk", "enabled": true },
+      { "frequency": 316, "gain": 0, "q": 1, "type": "pk", "enabled": true },
+      { "frequency": 1000, "gain": 0, "q": 1, "type": "pk", "enabled": true },
+      { "frequency": 3160, "gain": 0, "q": 1, "type": "pk", "enabled": true },
+      { "frequency": 10000, "gain": 0, "q": 1, "type": "pk", "enabled": true }
+    ],
+    "ms": "",
+    "mn": "",
+    "ms0": "id0", "mn0": "name0",
+    "ms1": "id1", "mn1": "name1",
+    "ms2": "id2", "mn2": "name2",
+    "ms3": "id3", "mn3": "name3",
+    "ms4": "id4", "mn4": "name4",
+    "ms5": "id5", "mn5": "name5",
+    "ms6": "id6", "mn6": "name6",
+    "ms7": "id7", "mn7": "name7",
+    "dl": 0
+  }
+}

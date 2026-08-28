@@ -374,7 +374,7 @@ class MeasurementDisplay {
         }
         const channelIndex = Number.parseInt(channelValue, 10);
         if (String(channelIndex) === String(channelValue) &&
-            channelIndex >= 0 && channelIndex <= 7) {
+            channelIndex >= 0 && channelIndex <= 15) {
             return `Ch ${channelIndex + 1}`;
         }
         if (channelValue === 'left') return 'Ch 1';

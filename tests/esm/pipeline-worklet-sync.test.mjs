@@ -91,13 +91,13 @@ test('helper methods handle absent processors, non-array pipelines, sample rates
   assert.equal(contextRuntime.sync.getAudioOutputChannelCount(), 6);
 
   const fallbackRuntime = createRuntime({
-    audioContext: { sampleRate: 96000, destination: { channelCount: 4 } }
+    audioContext: { sampleRate: 96000, destination: { channelCount: 16 } }
   });
   const plugin = new TestPlugin(1, fallbackRuntime.calls, { parameters: { gain: -3 } });
   assert.equal(fallbackRuntime.sync.getAudioSampleRate(), 96000);
   assert.deepEqual(fallbackRuntime.sync.getPluginParameters(plugin), { gain: -3 });
   assert.deepEqual(fallbackRuntime.calls, [
-    ['getParameters', 1, { sampleRate: 96000, outputChannelCount: 4, commitSampleRate: true }]
+    ['getParameters', 1, { sampleRate: 96000, outputChannelCount: 16, commitSampleRate: true }]
   ]);
 });
 

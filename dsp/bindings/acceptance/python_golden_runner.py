@@ -228,11 +228,15 @@ def semantic_parameters(case: dict[str, Any], legacy: dict[str, Any]) -> dict[st
             if (
                 packed["count"] > 1
                 and isinstance(aggregate, list)
-                and len(aggregate) == packed["count"]
+                and 0 < len(aggregate) <= packed["count"]
             ):
                 values = [
-                    reverse_transform(packed["transform"], value)
-                    for value in aggregate
+                    reverse_transform(packed["transform"], aggregate[index])
+                    if index < len(aggregate)
+                    else definition["default"][index]
+                    if isinstance(definition["default"], list)
+                    else definition["default"]
+                    for index in range(packed["count"])
                 ]
             if values is None and packed["count"] > 1 and array_key:
                 object_array = next(

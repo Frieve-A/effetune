@@ -2,18 +2,29 @@
 }
 
 .matrix-table-wrapper {
+    --matrix-cell-padding: 6px;
+    --matrix-cell-border: 1px;
+    --matrix-button-box: 30px;
+    --matrix-button-margin: 2px;
+    --matrix-row-height: calc(var(--matrix-button-box) + 2 * var(--matrix-button-margin) + 2 * var(--matrix-cell-padding) + 2 * var(--matrix-cell-border));
+    --matrix-header-rows: 2;
+    --matrix-visible-rows: 8;
+    --matrix-title-height: 32px;
     width: 100%;
-    overflow-x: auto;
+    max-height: calc(var(--matrix-row-height) * (var(--matrix-header-rows) + var(--matrix-visible-rows)));
+    overflow: auto;
     -webkit-overflow-scrolling: touch;
 }
 
 .matrix-table {
-    border-collapse: collapse;
+    /* Paint borders with each sticky cell so scrolled content cannot show through. */
+    border-collapse: separate;
+    border-spacing: 0;
     width: 100%;
     table-layout: fixed;
 }
 
-/* On mobile the 9-column table cannot fit 375px; let it keep a usable width
+/* On mobile the channel columns plus row labels need a usable width;
    and scroll horizontally inside the wrapper instead of crushing the cells. */
 body.layout-mobile .matrix-table {
     table-layout: auto;
@@ -23,14 +34,63 @@ body.layout-mobile .matrix-table {
 
 body.layout-mobile .matrix-button {
     min-width: 40px;
-    min-height: 40px;
     font-size: 16px;
 }
 
+body.layout-mobile .matrix-table-wrapper {
+    --matrix-button-box: 40px;
+}
+
+.matrix-table-expanded {
+    min-width: 1640px;
+}
+
+body.layout-mobile .matrix-table-expanded {
+    min-width: 1660px;
+}
+
+.matrix-table .matrix-sticky-header {
+    position: sticky;
+    top: 0;
+    height: var(--matrix-title-height);
+    box-sizing: border-box;
+    z-index: 2;
+    background-color: #333;
+}
+
+.matrix-table .matrix-sticky-channel-header {
+    position: sticky;
+    top: var(--matrix-title-height);
+    z-index: 2;
+    background-color: #333;
+}
+
+.matrix-table .matrix-sticky-row {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background-color: #333;
+}
+
+.matrix-table .matrix-sticky-corner {
+    left: 0;
+    z-index: 3;
+}
+
 .matrix-table th, .matrix-table td {
-    border: 1px solid #444;
-    padding: 6px;
+    border: var(--matrix-cell-border) solid #444;
+    border-width: 0 var(--matrix-cell-border) var(--matrix-cell-border) 0;
+    padding: var(--matrix-cell-padding);
     text-align: center;
+}
+
+/* Draw each grid line once, including the outer edges of the sticky cells. */
+.matrix-table tr > :first-child {
+    border-left-width: var(--matrix-cell-border);
+}
+
+.matrix-table thead tr:first-child > th {
+    border-top-width: var(--matrix-cell-border);
 }
 
 .matrix-table th {
@@ -46,12 +106,13 @@ body.layout-mobile .matrix-button {
     border: 1px solid #606060;
     border-radius: 4px;
     background-color: #808080;
-    margin: 2px;
+    margin: var(--matrix-button-margin);
     padding: 4px 6px;
     color: white;
     border-radius: 3px;
     cursor: pointer;
     min-width: 30px;
+    min-height: var(--matrix-button-box);
 }
 
 .matrix-button.active {
@@ -73,4 +134,4 @@ body.layout-mobile .matrix-button {
 
 .matrix-table button:disabled {
     cursor: not-allowed;
-} 
+}

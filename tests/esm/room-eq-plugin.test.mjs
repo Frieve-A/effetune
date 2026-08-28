@@ -2592,14 +2592,14 @@ test('Room EQ omits every empty channel measurement key from its preset', () => 
     const { Plugin } = loadPlugin();
     const plugin = new Plugin();
     const serialized = plugin.getSerializableParameters();
-    assert.deepEqual(Object.keys(serialized).filter(key => /^(ms|mn)\d$/.test(key)), []);
+    assert.deepEqual(Object.keys(serialized).filter(key => /^(ms|mn)\d+$/.test(key)), []);
     assert.equal(serialized.ms, '');
     assert.equal(serialized.mn, '');
     assert.equal(serialized.dl, 0);
 
     plugin.setParameters({ ms: 'shared', mn: 'Listening seat', dl: 2 });
     assert.deepEqual(
-        Object.keys(plugin.getSerializableParameters()).filter(key => /^(ms|mn)\d$/.test(key)),
+        Object.keys(plugin.getSerializableParameters()).filter(key => /^(ms|mn)\d+$/.test(key)),
         []
     );
     plugin.cleanup();
@@ -2628,9 +2628,9 @@ test('Room EQ round-trips an assigned channel measurement through its preset', (
     const restored = new Plugin();
     restored.setSerializedParameters(serialized);
     assert.deepEqual(Array.from(restored.channelMeasurementIds),
-        ['left', '', '', 'surround', '', '', '', '']);
+        ['left', '', '', 'surround', ...Array(12).fill('')]);
     assert.deepEqual(Array.from(restored.channelMeasurementNames),
-        ['Left seat', '', '', 'Surround seat', '', '', '', '']);
+        ['Left seat', '', '', 'Surround seat', ...Array(12).fill('')]);
     assert.equal(restored.measurementId, 'shared');
     plugin.cleanup();
     restored.cleanup();
@@ -2661,8 +2661,8 @@ test('Room EQ serialized restoration clears omitted channel measurements without
     restored.setSerializedParameters(serialized);
     assert.equal(restored.measurementId, 'shared');
     assert.equal(restored.measurementName, 'Shared seat');
-    assert.deepEqual(Array.from(restored.channelMeasurementIds), Array(8).fill(''));
-    assert.deepEqual(Array.from(restored.channelMeasurementNames), Array(8).fill(''));
+    assert.deepEqual(Array.from(restored.channelMeasurementIds), Array(16).fill(''));
+    assert.deepEqual(Array.from(restored.channelMeasurementNames), Array(16).fill(''));
     assert.deepEqual(
         {
             id: restored.id,
@@ -2676,10 +2676,10 @@ test('Room EQ serialized restoration clears omitted channel measurements without
 
     restored.setParameters({ ms0: 'replacement', mn0: 'Replacement seat' });
     assert.deepEqual(Array.from(restored.channelMeasurementIds), [
-        'replacement', '', '', '', '', '', '', ''
+        'replacement', ...Array(15).fill('')
     ]);
     assert.deepEqual(Array.from(restored.channelMeasurementNames), [
-        'Replacement seat', '', '', '', '', '', '', ''
+        'Replacement seat', ...Array(15).fill('')
     ]);
     common.cleanup();
     restored.cleanup();
@@ -3006,7 +3006,7 @@ test('F-3: the empty per-channel default stays on the single-measurement mono pa
         plugin._getMeasurementStore = async () => twoSeatStore();
 
         const serialized = plugin.getSerializableParameters();
-        assert.deepEqual(Object.keys(serialized).filter(key => /^(ms|mn)\d$/.test(key)), []);
+        assert.deepEqual(Object.keys(serialized).filter(key => /^(ms|mn)\d+$/.test(key)), []);
 
         const sourceState = await plugin._sourcesFor(twoSeatStore());
         assert.equal(sourceState.sources.length, 1);
@@ -3259,7 +3259,7 @@ test('F-R3-1: the first channel-count resolve after staging restages the asset',
     assert.equal(plugin._irChannelCountCache, null);
     const stagedSignature = plugin.asset.descriptor.externalAssetSignature;
     assert.equal(plugin.externalAssetInfo.assetSignature, stagedSignature);
-    assert.equal(JSON.parse(stagedSignature)[2].length, 8);
+    assert.equal(JSON.parse(stagedSignature)[2].length, 16);
 
     // createUI() -> _renderChannelMeasurements() resolves the width for the first time.
     assert.equal(await plugin._resolveIrChannelCount(), 2);
@@ -3310,7 +3310,7 @@ test('F-R3-2: a resolve between staging and asset admission still restages', asy
     assert.equal(plugin._designPending, true);
     assert.notEqual(plugin._candidateAssetRevision, null);
     const stagedSignature = plugin.asset.descriptor.externalAssetSignature;
-    assert.equal(JSON.parse(stagedSignature)[2].length, 8);
+    assert.equal(JSON.parse(stagedSignature)[2].length, 16);
 
     // createUI() -> _renderChannelMeasurements() lands before status 3 arrives.
     assert.equal(await plugin._resolveIrChannelCount(), 2);

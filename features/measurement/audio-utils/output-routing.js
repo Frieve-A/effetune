@@ -1,4 +1,4 @@
-const SUPPORTED_OUTPUT_CHANNEL_COUNTS = Object.freeze([2, 4, 6, 8]);
+const SUPPORTED_OUTPUT_CHANNEL_COUNTS = Object.freeze([2, 4, 6, 8, 10, 12, 14, 16]);
 const SET_SINK_ID_TIMEOUT_MS = 3000;
 
 class MeasurementOutputError extends Error {
@@ -10,7 +10,7 @@ class MeasurementOutputError extends Error {
 
 function getRequiredOutputChannelCount(channel) {
     const token = String(channel);
-    if (!['left', 'right', '0', '1', '2', '3', '4', '5', '6', '7', 'all', 'both'].includes(token)) {
+    if (!['left', 'right', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', 'all', 'both'].includes(token)) {
         throw new MeasurementOutputError(`Unsupported measurement output channel: ${token}`);
     }
     let channelIndex;
@@ -25,10 +25,7 @@ function getRequiredOutputChannelCount(channel) {
     if (!Number.isInteger(channelIndex) || channelIndex < 0) {
         return 2;
     }
-    if (channelIndex < 2) return 2;
-    if (channelIndex < 4) return 4;
-    if (channelIndex < 6) return 6;
-    return 8;
+    return channelIndex < 2 ? 2 : 2 * Math.ceil((channelIndex + 1) / 2);
 }
 
 function getMeasurementOutputChannelCount(channel, maxChannelCount = 2) {

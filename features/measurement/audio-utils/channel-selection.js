@@ -3,7 +3,9 @@ import {
     MeasurementOutputError
 } from './output-routing.js';
 
-const INDIVIDUAL_CHANNELS = Object.freeze(['left', 'right', '2', '3', '4', '5', '6', '7']);
+const INDIVIDUAL_CHANNELS = Object.freeze([
+    'left', 'right', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'
+]);
 const CHANNEL_ORDER = new Map(INDIVIDUAL_CHANNELS.map((channel, index) => [channel, index]));
 
 function canonicalChannelToken(value) {

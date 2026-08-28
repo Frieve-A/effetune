@@ -320,8 +320,8 @@ export function validateStreamParameterUpdate(effect, parameterName) {
 
 export function channelRange(channel, channelCount) {
   validateChannel(channel);
-  if (!Number.isInteger(channelCount) || channelCount < 1 || channelCount > 8) {
-    throw new ValidationError('Audio must contain between 1 and 8 channels.');
+  if (!Number.isInteger(channelCount) || channelCount < 1 || channelCount > 16) {
+    throw new ValidationError('Audio must contain between 1 and 16 channels.');
   }
   if (channel === 'all') return { start: 0, count: channelCount };
   if (channel === 'stereo') return { start: 0, count: channelCount >= 2 ? 2 : 1 };
@@ -330,8 +330,9 @@ export function channelRange(channel, channelCount) {
     if (channelCount < 2) throw new ValidationError('The right channel is unavailable in mono audio.');
     return { start: 1, count: 1 };
   }
-  if (channel === '34' || channel === '56' || channel === '78') {
-    const start = Number(channel[0]) - 1;
+  const pairStart = { '34': 2, '56': 4, '78': 6, '910': 8, '1112': 10, '1314': 12, '1516': 14 }[channel];
+  if (pairStart !== undefined) {
+    const start = pairStart;
     if (channelCount < start + 2) {
       throw new ValidationError(`Channel pair ${channel} is unavailable in ${channelCount}-channel audio.`);
     }

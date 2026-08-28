@@ -24,7 +24,7 @@ Mixes input channels into output channels using an explicit routing matrix.
 
 ### Matrix route grammar
 
-`matrixRoutes` uses the complete grammar `(p?[0-8][0-8])*`. Two independent
+`matrixRoutes` uses the complete grammar `(p?[0-9a-f][0-9a-f])*`. Two independent
 limits apply: the string is at most 3,072 characters, and it may contain at
 most 1,024 routes. Exceeding either raises `ValidationError`; the route-count
 limit is enforced when the chain is prepared for processing, not when the
@@ -35,12 +35,12 @@ For example, `p01` sends input 0 to output 1 with polarity inverted.
 Without `p`, the route keeps its polarity.
 
 The empty string is valid and produces silence. Channel indices are zero-based.
-The grammar accepts the digits 0 through 8, but audio carries at most 8
-channels, so index `8` is never routable and index `n` is routable only when
+The grammar accepts lowercase hexadecimal digits `0` through `f`, representing
+indices 0 through 15. Audio carries at most 16 channels, and index `n` is routable only when
 the processing call has more than `n` channels. Any route whose input or
 output is unavailable is silently ignored. Routes targeting the
 same available output are summed, and an output with no surviving route stays
-silent. A string that does not match `^(?:p?[0-8][0-8])*$` raises
+silent. A string that does not match `^(?:p?[0-9a-f][0-9a-f])*$` raises
 `ValidationError`.
 
 `"0011"` is stereo passthrough, `"0110"` swaps left and right, and
@@ -61,7 +61,7 @@ A channel routing tool for fixing unusual speaker or headphone channel layouts, 
 - To combine stereo to mono or duplicate a channel to another available output
 
 ### Features
-- Flexible routing matrix for up to 8 channels
+- Flexible routing matrix for up to 16 channels
 - Individual connection control between any input/output pair
 - Phase inversion options for each connection
 - Visual matrix interface for intuitive configuration

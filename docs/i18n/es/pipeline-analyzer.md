@@ -6,7 +6,7 @@ Pipeline Analyzer mide la respuesta del Effect Pipeline activo sin modificar el 
 
 ## Canales y respuestas de altavoz
 
-Selecciona un canal de entrada. Al principio aparece una salida; usa **+ Añadir salida** para agregar hasta cuatro canales distintos disponibles en el dispositivo actual. Al eliminar una salida también se elimina su respuesta de altavoz. La última salida no se puede eliminar.
+Selecciona un canal de entrada del pipeline activo, que puede tener hasta 16 canales. Al principio aparece una salida; usa **+ Añadir salida** para agregar hasta cuatro canales distintos disponibles en el dispositivo actual. Los cuatro espacios de salida siguen siendo el límite del analizador incluso con un pipeline de 16 canales. Al eliminar una salida también se elimina su respuesta de altavoz. La última salida no se puede eliminar.
 
 Cada salida puede usar **Sin IR de altavoz** o un punto de medición guardado del tweeter, woofer u otra unidad conectada. Elegir una medición sin seleccionar un punto se considera **Sin IR de altavoz**. Cuando ninguna salida usa una IR de altavoz, **Antes** es el impulso unitario ideal: 1,0 a 0 ms y 0 en el resto. Con IR de altavoz, **Antes** es la suma con signo de las respuestas alineadas y **Después** es la suma con signo tras procesar cada salida con el pipeline elegido. Así puedes comprobar un FIR Crossover junto con sus altavoces. Una respuesta guardada que falte seguirá indicada como tal hasta que la sustituyas o la quites.
 

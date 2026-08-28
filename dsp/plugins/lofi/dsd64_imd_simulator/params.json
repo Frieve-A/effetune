@@ -1,6 +1,6 @@
 {
   "type": "DSD64IMDSimulatorPlugin",
-  "tolerance": { "abs": 0.00004, "policy": "per-sample" },
+  "tolerance": { "abs": 0.00002, "policy": "per-sample" },
   "fields": [
     { "name": "amount", "key": "am", "kind": "float", "min": -40, "max": 50, "step": 0.1, "default": 24, "unit": "dB", "automation": true },
     { "name": "dryWet", "key": "dw", "kind": "int", "min": 0, "max": 100, "step": 1, "default": 50, "unit": "%", "automation": true },

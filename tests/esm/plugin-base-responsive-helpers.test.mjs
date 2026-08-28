@@ -143,6 +143,38 @@ function createPlugin() {
   return plugin;
 }
 
+test('channel selector exposes only available individual channels and stereo pairs through sixteen', () => {
+  for (const channelCount of [2, 8, 9, 10, 16]) {
+    const { PluginBase } = loadPluginBase({ window: {
+      audioContext: { destination: { channelCount } }
+    } });
+    const plugin = new PluginBase('Channels', 'Channel selection');
+    const select = plugin.createChannelSelectControl().children[1];
+    const values = select.children.map(option => option.value);
+    assert.equal(values.includes('16'), channelCount === 16);
+    assert.equal(values.includes('910'), channelCount >= 10);
+    assert.equal(values.includes('1516'), channelCount === 16);
+    assert.equal(values.includes('9'), channelCount >= 9);
+    assert.deepEqual(values.slice(0, 4), ['', 'A', 'L', 'R']);
+  }
+});
+
+test('channel debug exposes sixteen UI choices on a stereo device without emulating audio', () => {
+  const window = {
+    audioContext: { destination: Object.freeze({ channelCount: 2 }) },
+    uiManager: { debugChannelCount: 16 }
+  };
+  const { PluginBase } = loadPluginBase({ window });
+  const plugin = new PluginBase('Channels', 'Channel selection');
+  const values = () => plugin.createChannelSelectControl().children[1].children.map(option => option.value);
+  // These options are for visual debugging; successful processing is not required.
+  assert.ok(values().includes('16'));
+  assert.ok(values().includes('1516'));
+  assert.equal(window.audioContext.destination.channelCount, 2);
+  window.uiManager.debugChannelCount = null;
+  assert.deepEqual(values(), ['', 'A', 'L', 'R']);
+});
+
 function loadModulationPlugin(sourcePath, exportName) {
   const { context } = loadPluginBase();
   const source = fs.readFileSync(new URL(sourcePath, import.meta.url), 'utf8');

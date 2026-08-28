@@ -135,7 +135,7 @@
 "error:measurementConfigUnavailable": "测量设置已不可用。请开始新的测量。",
 "error:measurementFailed": "无法完成测量。请检查音频设备并重新测量此点。",
 "error:measurementImportFailed": "测量文件无效。请选择由 EffeTune 导出的测量 JSON 文件。",
-"error:impulseResponseImportFailed": "无法导入 WAV 文件。请选择包含 1 至 8 个声道的有效脉冲响应 WAV 文件。",
+"error:impulseResponseImportFailed": "无法导入 WAV 文件。请选择包含 1 至 16 个声道的有效脉冲响应 WAV 文件。",
 "error:impulseResponseImportTooLarge": "脉冲响应 WAV 文件过大。请选择更短或更小的脉冲响应。",
 "error:clipboardWriteFailed": "无法复制 PEQ 设置。请检查剪贴板访问权限后重试。",
 "error:correctionUpdateFailed": "无法更新校正。请检查设置后重试。",
@@ -164,6 +164,14 @@
 "option:ch6": "声道 6", // Option for channel 6
 "option:ch7": "声道 7", // Option for channel 7
 "option:ch8": "声道 8", // Option for channel 8
+"option:ch9": "声道 9",
+"option:ch10": "声道 10",
+"option:ch11": "声道 11",
+"option:ch12": "声道 12",
+"option:ch13": "声道 13",
+"option:ch14": "声道 14",
+"option:ch15": "声道 15",
+"option:ch16": "声道 16",
 
 // Sample rate options
 "option:sampleRate44100": "44.1 kHz", // Option for 44.1 kHz sample rate

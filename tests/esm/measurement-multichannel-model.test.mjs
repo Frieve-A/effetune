@@ -44,7 +44,7 @@ test('sweep bands preserve channel settings, clamp actual sample rate and resolv
     { minFreq: 20, maxFreq: 15999, bandLimited: true });
   assert.deepEqual(resolveSweepBand(config, 'all', 32000, 65536),
     { minFreq: 20, maxFreq: 15999, bandLimited: true });
-  assert.equal(resolveOutputSweepBands(config, 32000, 65536).length, 8);
+  assert.equal(resolveOutputSweepBands(config, 32000, 65536).length, 16);
   assert.deepEqual(config, original);
   config.sweepBand.mode = 'common';
   assert.equal(resolveSweepBand(config, 'left', 48000, 1024).maxFreq, 20000);
@@ -123,11 +123,12 @@ test('channel routing helpers preserve canonical order and mappings', () => {
   assert.equal(maxRequiredChannelCount(['left', 'right']), 2);
   assert.equal(maxRequiredChannelCount(['left', '2']), 4);
   assert.equal(maxRequiredChannelCount(['4', '7']), 8);
+  assert.equal(maxRequiredChannelCount(['12', '15']), 16);
   assert.equal(nextRotationChannel(['left', '2', '4'], '2'), '4');
   assert.equal(nextRotationChannel(['left', '2', '4'], '4'), 'left');
   assert.equal(nextRotationChannel(['left', '2'], '7'), 'left');
-  assert.deepEqual(['left', 'right', '2', '3', '4', '5', '6', '7'].map(peqChannelTokenFor),
-    ['L', 'R', '3', '4', '5', '6', '7', '8']);
+  assert.deepEqual(['left', 'right', ...Array.from({ length: 14 }, (_, index) => String(index + 2))]
+    .map(peqChannelTokenFor), ['L', 'R', ...Array.from({ length: 14 }, (_, index) => String(index + 3))]);
   assert.throws(() => peqChannelTokenFor('all'));
 });
 

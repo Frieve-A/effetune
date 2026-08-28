@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
     buildPipelineAnalyzerSnapshot,
+    getAnalyzerAudioFormat,
     PipelineSnapshotError,
     StalePipelineAnalysisRunError
 } from '../../js/pipeline-analyzer/pipeline-snapshot.js';
@@ -75,6 +76,13 @@ const identityConfiguration = {
         { enabled: false, channel: 1, measurementId: null, pointId: null }
     ]
 };
+
+test('analyzer audio format accepts sixteen channels and rejects Ch 17', () => {
+    const sixteen = harness([], { channelCount: 16 }).audioManager;
+    const seventeen = harness([], { channelCount: 17 }).audioManager;
+    assert.deepEqual(getAnalyzerAudioFormat(sixteen), { sampleRate: 48000, channelCount: 16 });
+    assert.equal(getAnalyzerAudioFormat(seventeen), null);
+});
 
 test('requirements metadata accepts every type and derives required WASM from prepared data', () => {
     assert.deepEqual(getPipelineAnalysisRequirements(plugin('UnknownPlugin', 1)), {
@@ -452,14 +460,14 @@ test('missing processor source remains a hard failure for unknown plugin types',
     );
 });
 
-test('arbitrary four-of-eight output routing is preserved without remapping', async () => {
-    const { audioManager, workletSync } = harness([], { channelCount: 8 });
+test('arbitrary four-of-sixteen output routing is preserved without remapping', async () => {
+    const { audioManager, workletSync } = harness([], { channelCount: 16 });
     const result = await buildPipelineAnalyzerSnapshot({
         audioManager,
         workletSync,
         configuration: {
             inputChannel: 0,
-            slots: [0, 2, 4, 6].map(channel => ({
+            slots: [0, 5, 10, 15].map(channel => ({
                 enabled: true,
                 channel,
                 measurementId: null,
@@ -469,7 +477,7 @@ test('arbitrary four-of-eight output routing is preserved without remapping', as
         resolveRequirements: getPipelineAnalysisRequirements,
         isCurrent: () => true
     });
-    assert.deepEqual(result.snapshot.outputChannels, [0, 2, 4, 6]);
+    assert.deepEqual(result.snapshot.outputChannels, [0, 5, 10, 15]);
 });
 
 test('a measurement without a selected point uses the identity speaker response', async () => {

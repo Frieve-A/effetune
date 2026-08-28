@@ -29,8 +29,8 @@ function channelSpec(channel) {
   if (channel === 'stereo') return -1;
   if (channel === 'left' || channel === '1') return 0;
   if (channel === 'right' || channel === '2') return 1;
-  if (/^[3-8]$/.test(channel)) return Number(channel) - 1;
-  return { '34': 17, '56': 18, '78': 19 }[channel];
+  if (/^([3-9]|1[0-6])$/.test(channel)) return Number(channel) - 1;
+  return { '34': 17, '56': 18, '78': 19, '910': 20, '1112': 21, '1314': 22, '1516': 23 }[channel];
 }
 
 export function effectiveNodeIds(document) {
@@ -143,7 +143,7 @@ function optionalSlot(value) {
 }
 
 export function decodeGraphSnapshot(bytes, document) {
-  if (!(bytes instanceof Uint8Array) || bytes.byteLength < 128) {
+  if (!(bytes instanceof Uint8Array) || bytes.byteLength < 192) {
     throw new EffeTuneRuntimeError('DSP returned an invalid Graph compile snapshot.');
   }
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -161,7 +161,7 @@ export function decodeGraphSnapshot(bytes, document) {
   const edgesOffset = view.getUint32(56, true);
   const totalBytes = view.getUint32(60, true);
   if (nodeCount !== document.nodes.length || edgeCount !== document.edges.length ||
-      channels < 1 || channels > 8 || nodeBytes !== 128 || edgeBytes !== 48 ||
+      channels < 1 || channels > 16 || nodeBytes !== 224 || edgeBytes !== 80 ||
       totalBytes !== bytes.byteLength) {
     throw new EffeTuneRuntimeError('DSP returned an inconsistent Graph compile snapshot.');
   }
@@ -185,8 +185,8 @@ export function decodeGraphSnapshot(bytes, document) {
       },
       kernelLatency: view.getUint32(offset + 24, true),
       inputLatency: vector(view, offset + 32, channels),
-      outputLatency: vector(view, offset + 64, channels),
-      preNodeCompensation: vector(view, offset + 96, channels)
+      outputLatency: vector(view, offset + 96, channels),
+      preNodeCompensation: vector(view, offset + 160, channels)
     };
   });
   const edges = document.edges.map((edge, index) => {
@@ -209,7 +209,7 @@ export function decodeGraphSnapshot(bytes, document) {
     nodes,
     edges,
     outputLatency: vector(view, 64, channels),
-    outputCompensation: vector(view, 96, channels),
+    outputCompensation: vector(view, 128, channels),
     latencySamples: view.getUint32(28, true),
     capacity: {
       bufferSlots: view.getUint32(24, true),

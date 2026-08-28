@@ -35,7 +35,9 @@ class VolumePlugin {
 test('channel codec matches every host routing representation', () => {
   const cases = [
     [null, -1], [undefined, -1], ['A', -2], ['L', 0], ['R', 1],
-    ['1', 0], ['2', 1], ['3', 2], ['8', 7], ['34', 17], ['56', 18], ['78', 19]
+    ['1', 0], ['2', 1], ['3', 2], ['8', 7], ['34', 17], ['56', 18], ['78', 19],
+    ...Array.from({ length: 8 }, (_, index) => [String(index + 9), index + 8]),
+    ['910', 20], ['1112', 21], ['1314', 22], ['1516', 23]
   ];
   for (const [channel, encoded] of cases) {
     assert.equal(encodeDspChannelSpec(channel), encoded);
@@ -50,12 +52,14 @@ test('channel codec matches every host routing representation', () => {
   assert.equal(decodeDspChannelSpec(17), '34');
   assert.equal(decodeDspChannelSpec(18), '56');
   assert.equal(decodeDspChannelSpec(19), '78');
-  assert.equal(isValidEncodedChannelSpec(8), false);
+  assert.equal(isValidEncodedChannelSpec(24), false);
   assert.throws(() => encodeDspChannelSpec(''), DspPipelineDescriptorError);
   assert.throws(() => encodeDspChannelSpec('bad'), DspPipelineDescriptorError);
-  assert.throws(() => decodeDspChannelSpec(20), DspPipelineDescriptorError);
+  assert.throws(() => decodeDspChannelSpec(24), DspPipelineDescriptorError);
+  assert.throws(() => encodeDspChannelSpec('17'), DspPipelineDescriptorError);
+  assert.throws(() => encodeDspChannelSpec('1718'), DspPipelineDescriptorError);
 
-  for (const encoded of [-2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 16, 17, 18, 19]) {
+  for (const encoded of [-2, -1, ...Array.from({ length: 24 }, (_, index) => index)]) {
     const canonical = encoded === 16 ? -1 : encoded;
     assert.equal(encodeDspChannelSpec(decodeDspChannelSpec(encoded)), canonical);
   }
@@ -148,7 +152,7 @@ test('descriptor validation rejects values the native decoder cannot accept', ()
   assert.throws(() => encodeDspPipelineDescriptor([{ ...validNode, enabled: 'yes' }]), /boolean/);
   assert.throws(() => encodeDspPipelineDescriptor([{ ...validNode, inputBus: 5 }]), /input bus/);
   assert.throws(() => encodeDspPipelineDescriptor([{ ...validNode, outputBus: -1 }]), /output bus/);
-  assert.throws(() => encodeDspPipelineDescriptor([{ ...validNode, channelSpec: 8 }]), /channel specifier/);
+  assert.throws(() => encodeDspPipelineDescriptor([{ ...validNode, channelSpec: 24 }]), /channel specifier/);
   assert.throws(() => encodeDspPipelineDescriptor([{ ...validNode, sectionGate: 2 }]), /section gate/);
   assert.throws(() => encodeDspPipelineDescriptor([validNode, validNode]), /Duplicate/);
   assert.throws(
@@ -182,7 +186,7 @@ test('descriptor decoder rejects malformed headers, records, padding, and duplic
   assert.throws(() => decodeDspPipelineDescriptor(makeDescriptor().subarray(0, -1)), /length/);
   assert.throws(() => decodeDspPipelineDescriptor(mutate(bytes => { bytes[12] = 2; })), /enabled/);
   assert.throws(() => decodeDspPipelineDescriptor(mutate(bytes => { bytes[13] = 5; })), /input bus/);
-  assert.throws(() => decodeDspPipelineDescriptor(mutate(bytes => { bytes[15] = 8; })), /channel specifier/);
+  assert.throws(() => decodeDspPipelineDescriptor(mutate(bytes => { bytes[15] = 24; })), /channel specifier/);
   assert.throws(() => decodeDspPipelineDescriptor(mutate(bytes => { bytes[16] = 2; })), /section gate/);
   assert.throws(() => decodeDspPipelineDescriptor(mutate(bytes => { bytes[17] = 1; })), /padding/);
   assert.throws(() => decodeDspPipelineDescriptor(mutate((_bytes, view) => view.setUint32(8, 0, true))), /nonzero uint32/);

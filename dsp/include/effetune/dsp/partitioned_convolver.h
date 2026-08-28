@@ -14,7 +14,7 @@ struct ConvolutionPath {
 };
 
 struct ConvolverConfig {
-  static constexpr std::uint32_t kMaximumPaths = 8u;
+  static constexpr std::uint32_t kMaximumPaths = 16u;
 
   std::uint32_t latencySamples = 128u;
   std::uint32_t sliceOffset = 0u;

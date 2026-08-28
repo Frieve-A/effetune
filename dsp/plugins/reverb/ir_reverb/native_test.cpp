@@ -16,6 +16,7 @@
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -1070,11 +1071,11 @@ void testMalformedMatrixTables() {
                                    kMatrix,
                                    128u,
                                    1u,
-                                   9u,
+                                   17u,
                                    2u,
                                    2u,
                                    static_cast<std::uint32_t>(kAssetCapacity),
-                                   kHeaderBytes + 9u * kPathRecordBytes + 1200u * sizeof(float)};
+                                   kHeaderBytes + 17u * kPathRecordBytes + 1200u * sizeof(float)};
   IR_CHECK(beginHarness.kernel->beginAsset(0u, tooMany) == nullptr);
 }
 
@@ -1302,7 +1303,8 @@ void testPrepareAllocationFailuresAreRecoverable() {
 }
 
 void testEngineRejectsFailedPrepareAndReusesSlot() {
-  effetune::Engine engine;
+  auto engine_storage = std::make_unique<effetune::Engine>();
+  effetune::Engine &engine = *engine_storage;
   IR_CHECK(engine.prepare(48000.0F, 2u, kMaxFrames, 0u) == ET_OK);
   const et_instance retained = engine.createInstance("VolumePlugin");
   IR_CHECK(retained != 0u);
@@ -1362,7 +1364,8 @@ void testEngineInstanceSaltStaggersEqualSessionSeeds() {
       2u, frames, kIndependent, 128u,      1u,
       0u, 0u,     2u,           footprint, static_cast<std::uint32_t>(payload.size())};
 
-  effetune::Engine engine;
+  auto engine_storage = std::make_unique<effetune::Engine>();
+  effetune::Engine &engine = *engine_storage;
   IR_CHECK(engine.prepare(48000.0F, 2u, kMaxFrames, 0u) == ET_OK);
   const et_instance first = engine.createInstance("IRReverbPlugin");
   const et_instance second = engine.createInstance("IRReverbPlugin");

@@ -16,7 +16,7 @@ export const BENCHMARK_DSP_MODES = Object.freeze({
     WEBASSEMBLY: 'webassembly'
 });
 
-export const BENCHMARK_DSP_MAX_CHANNELS = 8;
+export const BENCHMARK_DSP_MAX_CHANNELS = 16;
 export const BENCHMARK_DSP_TELEMETRY_BYTES = 256 * 1024;
 export const BENCHMARK_DSP_TELEMETRY_RATE = 60;
 export const BENCHMARK_IR_REVERB_FRAMES = 256 * 1024;

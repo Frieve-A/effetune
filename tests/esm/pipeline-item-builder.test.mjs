@@ -592,12 +592,16 @@ test('bus labels, fallback titles, reset guards, and movement boundaries handle 
     const builder = new PipelineItemBuilder(core);
     const item = document.createElement('div');
     const header = document.createElement('div');
-    for (const channel of ['A', '34', '56', '78', '3', 'custom']) {
+    for (const channel of ['A', '34', '56', '78', '3', 'custom', '10', '16', '910', '1112', '1314', '1516']) {
       const plugin = new TestPlugin({ id: 20 + header.children.length, inputBus: null, outputBus: 0, channel });
       builder.addBusInfo(header, plugin, item);
     }
     builder.addBusInfo(header, new TestPlugin({ id: 30, inputBus: null, outputBus: null, channel: null }), item);
-    assert.equal(header.querySelectorAll('.bus-info').length, 6);
+    assert.equal(header.querySelectorAll('.bus-info').length, 12);
+    assert.deepEqual(header.querySelectorAll('.bus-info').slice(6).map(node => node.textContent), [
+      'Main→Bus 0 Ch 10', 'Main→Bus 0 Ch 16', 'Main→Bus 0 9+10',
+      'Main→Bus 0 11+12', 'Main→Bus 0 13+14', 'Main→Bus 0 15+16'
+    ]);
 
     assert.equal(builder.createToggleButton(new TestPlugin()).title, 'Enable or disable effect');
     assert.equal(builder.createPluginName(new SectionPlugin()).textContent, 'Section');

@@ -1103,6 +1103,14 @@ function workletChannelSelection(channel, outputChannelCount) {
             firstChannel = 6;
             requiredChannels = 2;
             break;
+        case '910':
+        case '1112':
+        case '1314':
+        case '1516':
+            mode = 'stereo-pair';
+            firstChannel = Number(channel.slice(0, channel.length / 2)) - 1;
+            requiredChannels = 2;
+            break;
         default: {
             const parsedChannel = parseInt(channel, 10);
             if (isNaN(parsedChannel) || parsedChannel <= 0) return null;
@@ -1158,7 +1166,7 @@ const FIR_CONVOLVER_PLUGIN_TYPES = new Set([
     'GroupDelayPEQPlugin',
     'RoomEqPlugin'
 ]);
-const ET_DSP_MAX_CHANNELS = 8;
+const ET_DSP_MAX_CHANNELS = 16;
 const ET_DSP_MAX_FRAMES = 128;
 const ET_DSP_ERR_ARGS = -1;
 const ET_DSP_TELEMETRY_BYTES = 256 * 1024;
@@ -1233,7 +1241,11 @@ function encodeWorkletDspChannelSpec(channel, outputChannelCount = 2) {
     if (channel === '34') return 17;
     if (channel === '56') return 18;
     if (channel === '78') return 19;
-    if (typeof channel === 'string' && /^[1-8]$/.test(channel)) return Number(channel) - 1;
+    if (channel === '910') return 20;
+    if (channel === '1112') return 21;
+    if (channel === '1314') return 22;
+    if (channel === '1516') return 23;
+    if (typeof channel === 'string' && /^([1-9]|1[0-6])$/.test(channel)) return Number(channel) - 1;
     throw new TypeError(`Unsupported DSP pipeline channel: ${String(channel)}`);
 }
 
@@ -2946,7 +2958,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         const footprintBytes = data.footprintBytes;
         const pathBytes = topology === 4 ? pathCount * 12 : 0;
         const expectedBytes = 32 + pathBytes + channels * frames * 4;
-        if (header.getUint32(0, true) !== 0x31415445 || channels === 0 || channels > 8 ||
+        if (header.getUint32(0, true) !== 0x31415445 || channels === 0 || channels > ET_DSP_MAX_CHANNELS ||
             frames === 0 || topology > 4 || expectedBytes !== payload.byteLength ||
             processingChannels === 0 || processingChannels > ET_DSP_MAX_CHANNELS ||
             !Number.isSafeInteger(footprintBytes) || footprintBytes < payload.byteLength ||
@@ -4704,7 +4716,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         let combinedBuffer;
         
         // Use pre-allocated buffer pool for better performance
-        if (outputChannelCount <= 8 && blockSize === 128) {
+        if (outputChannelCount <= ET_DSP_MAX_CHANNELS && blockSize === ET_DSP_MAX_FRAMES) {
             // Use pre-allocated buffer from pool
             combinedBuffer = this.bufferPool.combined;
             // Zero out only the portion we'll use
@@ -4831,7 +4843,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 let busBuffer;
                 
                 // Use pre-allocated buffer from pool if available
-                if (outputChannelCount <= 8 && blockSize === 128 && this.bufferPool.buses.has(busIndex)) {
+                if (outputChannelCount <= ET_DSP_MAX_CHANNELS && blockSize === ET_DSP_MAX_FRAMES && this.bufferPool.buses.has(busIndex)) {
                     busBuffer = this.bufferPool.buses.get(busIndex);
                     // Zero out only the portion we'll use
                     busBuffer.fill(0, 0, totalSize);
@@ -4964,7 +4976,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             if (processMode === 'all') {
                 if (requiresCopy) {
                     // Use Buffer Pool for all-channel processing when possible (Optimized)
-                    if (outputChannelCount <= 8 && blockSize === 128) {
+                    if (outputChannelCount <= ET_DSP_MAX_CHANNELS && blockSize === ET_DSP_MAX_FRAMES) {
                         // Use pre-allocated buffer from pool
                         tempBuffer = this.bufferPool.allChannels;
                         const totalSize = blockSize * outputChannelCount;
@@ -5145,7 +5157,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                  if (processMode === 'all') {
                      // Optimized: Use dedicated mixing buffer for better performance
                      // Avoid read/write overlap issues with separate mixing buffer
-                     if (outputChannelCount <= 8 && blockSize === 128) {
+                     if (outputChannelCount <= ET_DSP_MAX_CHANNELS && blockSize === ET_DSP_MAX_FRAMES) {
                          // Use dedicated pre-allocated mixing buffer from pool
                          const mixBuffer = this.bufferPool.mixing;
                          // Copy current output state to mixing buffer

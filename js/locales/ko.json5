@@ -570,6 +570,7 @@
   "roomEq.status.designing": "보정 필터 설계 중…",
   "roomEq.status.ready": "Room EQ 필터가 준비되었습니다.",
   "roomEq.status.details": "{samples} 샘플 / {milliseconds} ms · {resolution} Hz · {asset}",
+  "roomEq.status.tapLimit": "9개 이상의 채널을 처리할 때 Taps는 65536으로 제한됩니다.",
   "roomEq.status.missing": "없음",
   "roomEq.status.select": "시작하려면 저장된 측정을 지정하십시오.",
   "roomEq.error.design": "Room EQ 필터를 설계하지 못했습니다. Taps를 줄이거나 측정을 다시 선택하십시오.",

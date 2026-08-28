@@ -135,7 +135,7 @@
 "error:measurementConfigUnavailable": "Measurement settings अब उपलब्ध नहीं हैं। नया measurement शुरू करें।",
 "error:measurementFailed": "Measurement पूरा नहीं हो सका। Audio devices जाँचें और इस point को फिर मापें।",
 "error:measurementImportFailed": "Measurement file मान्य नहीं है। EffeTune से export की गई measurement JSON file चुनें।",
-"error:impulseResponseImportFailed": "WAV file import नहीं हो सकी। 1 से 8 channel वाली मान्य impulse-response WAV file चुनें।",
+"error:impulseResponseImportFailed": "WAV file import नहीं हो सकी। 1 से 16 channel वाली मान्य impulse-response WAV file चुनें।",
 "error:impulseResponseImportTooLarge": "Impulse-response WAV file बहुत बड़ी है। छोटी या कम आकार की impulse response चुनें।",
 "error:clipboardWriteFailed": "PEQ settings copy नहीं हो सकीं। Clipboard access जाँचें और फिर प्रयास करें।",
 "error:correctionUpdateFailed": "Correction update नहीं हो सका। Settings जाँचें और फिर प्रयास करें।",
@@ -164,6 +164,14 @@
 "option:ch6": "चैनल 6", // Option for channel 6
 "option:ch7": "चैनल 7", // Option for channel 7
 "option:ch8": "चैनल 8", // Option for channel 8
+"option:ch9": "चैनल 9",
+"option:ch10": "चैनल 10",
+"option:ch11": "चैनल 11",
+"option:ch12": "चैनल 12",
+"option:ch13": "चैनल 13",
+"option:ch14": "चैनल 14",
+"option:ch15": "चैनल 15",
+"option:ch16": "चैनल 16",
 
 // Sample rate options
 "option:sampleRate44100": "44.1 kHz", // Option for 44.1 kHz sample rate

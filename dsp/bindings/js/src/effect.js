@@ -2,8 +2,8 @@ import { AssetError, ValidationError } from './errors.js';
 
 export const EFFECT_CHANNELS = Object.freeze([
   'all', 'stereo', 'left', 'right',
-  '1', '2', '3', '4', '5', '6', '7', '8',
-  '34', '56', '78'
+  '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16',
+  '34', '56', '78', '910', '1112', '1314', '1516'
 ]);
 
 const COMMON_KEYS = new Set(['id', 'enabled', 'channel', 'assets', 'parameters']);

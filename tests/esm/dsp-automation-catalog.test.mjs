@@ -54,7 +54,7 @@ test('production schemas expose the audited automation population', async () => 
 
   assert.equal(entries.length, 94);
   assert.equal(entries.filter(([, parameters]) => parameters.length !== 0).length, 82);
-  assert.equal(entries.reduce((count, [, parameters]) => count + parameters.length, 0), 905);
+  assert.equal(entries.reduce((count, [, parameters]) => count + parameters.length, 0), 937);
   for (const effect of specs) {
     const expectedLeaves = [];
     let packedOffset = 0;
@@ -86,7 +86,7 @@ test('production schemas expose the audited automation population', async () => 
   }
   assert.equal(
     createHash('sha256').update(JSON.stringify(catalog.effects)).digest('hex'),
-    'e31eea1d887162a99bf0bac653a9adbb9b83f17dbb0d2fb74eca9688c9363f82'
+    '1bdae5e6ed5f47edbca90d9a01a3d0e8dc8fca5314cc0e0606a25e9d26837498'
   );
   assert.deepEqual(privateEffects, [
     'FIRCrossoverPlugin', 'FiveBandFIRPEQPlugin', 'GroupDelayEqPlugin',

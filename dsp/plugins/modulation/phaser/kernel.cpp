@@ -12,7 +12,7 @@ namespace {
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kTwoPi = 2.0 * kPi;
-constexpr std::uint32_t kMaximumChannels = 8u;
+constexpr std::uint32_t kMaximumChannels = 16u;
 constexpr std::uint32_t kMaximumStages = 12u;
 constexpr std::uint32_t kBarberVoices = 3u;
 

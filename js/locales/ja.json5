@@ -629,6 +629,7 @@
   "roomEq.status.designing": "補正フィルターを設計しています…",
   "roomEq.status.ready": "Room EQフィルターの準備ができました。",
   "roomEq.status.details": "{samples}サンプル / {milliseconds} ms · {resolution} Hz · {asset}",
+  "roomEq.status.tapLimit": "9チャンネル以上を処理する場合、Tapsは65536に制限されます。",
   "roomEq.status.missing": "見つかりません",
   "roomEq.status.select": "開始するには保存済みの測定を割り当ててください。",
   "roomEq.error.design": "Room EQフィルターを設計できませんでした。Tapsを減らすか、測定を選び直してください。",

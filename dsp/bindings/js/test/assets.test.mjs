@@ -5,9 +5,11 @@ import test from 'node:test';
 
 import {
   AssetError,
+  FIRCrossover,
   IRReverb,
   RoomEQ,
   createChain,
+  createGraph,
   encodeEta1
 } from '../dist/index.js';
 import { prepareConvolutionAsset } from '../dist/assets.js';
@@ -15,6 +17,33 @@ import {
   buildIrAssetPayload,
   IR_ASSET_TOPOLOGY
 } from '../dist/internal/ir-asset-payload.js';
+
+test('FIR Crossover accepts even buses through sixteen channels in Chain and Graph', async () => {
+  const payload = encodeEta1({ channels: [Float32Array.of(1), Float32Array.of(1)], sampleRate: 48000 });
+  const effect = new FIRCrossover({
+    id: 'split', bandCount: 2, latencyMode: '128', assets: { impulseResponse: 'filters' }
+  });
+  const chain = await createChain([effect], { variant: 'baseline', assetResolver: () => payload });
+  const graph = await createGraph({
+    version: 1, input: { id: 'input' }, output: { id: 'output' }, nodes: [effect.toJSON()],
+    edges: [{ id: 'in', source: 'input', destination: 'split' }, { id: 'out', source: 'split', destination: 'output' }]
+  }, { variant: 'baseline', assetResolver: () => payload });
+  try {
+    for (const owner of [chain, graph]) {
+      for (const channels of [4, 6, 8, 10, 12, 14, 16]) {
+        const stream = await owner.stream({ sampleRate: 48000, channels });
+        assert.equal(stream.latencySamples, 128);
+        stream.close();
+      }
+      for (const channels of [2, 3, 5, 15, 17]) {
+        await assert.rejects(owner.stream({ sampleRate: 48000, channels }));
+      }
+    }
+  } finally {
+    chain.close();
+    graph.close();
+  }
+});
 
 test('encodeEta1 emits bounded canonical planar payloads', () => {
   const payload = encodeEta1({
@@ -103,7 +132,7 @@ test('encodeEta1 rejects invalid public payload shapes with AssetError', () => {
       channels: [channel],
       sampleRate: 48000,
       topology: 'matrix',
-      paths: [{ inputSlot: 0, outputSlot: 8, irChannel: 0 }]
+      paths: [{ inputSlot: 0, outputSlot: 16, irChannel: 0 }]
     }
   ];
   for (const options of invalid) {
@@ -463,6 +492,35 @@ test('matrix topology requires exact bounded path records', async () => {
     createChain(bundle, { assetResolver: () => payload }),
     AssetError
   );
+});
+
+test('matrix assets accept all sixteen path indices and reject index sixteen', async () => {
+  const channels = Array.from({ length: 16 }, () => Float32Array.of(1));
+  const paths = channels.map((_, index) => ({
+    inputSlot: index, outputSlot: index, irChannel: index
+  }));
+  const payload = encodeEta1({ channels, sampleRate: 48000, topology: 'matrix', paths });
+  const bundle = bundleFor(payload);
+  bundle.chain.chain[0].parameters.channelMode = 'matrix';
+  bundle.assets[0].format = {
+    ...bundle.assets[0].format,
+    channels: 16, frames: 1, topology: 'matrix', pathCount: 16, paths
+  };
+  const chain = await createChain(bundle, { assetResolver: () => payload });
+  try {
+    await chain.prewarm({ sampleRate: 48000, channels: 16 });
+  } finally {
+    chain.close();
+  }
+  for (const field of ['inputSlot', 'outputSlot', 'irChannel']) {
+    const invalidPaths = paths.map(path => ({ ...path }));
+    invalidPaths[15][field] = 16;
+    assert.throws(() => encodeEta1({
+      channels, sampleRate: 48000, topology: 'matrix', paths: invalidPaths
+    }), AssetError);
+    bundle.assets[0].format.paths = invalidPaths;
+    await assert.rejects(createChain(bundle, { assetResolver: () => payload }), AssetError);
+  }
 });
 
 test('matrix input routes follow the shared contiguous and processing-channel contract', async () => {

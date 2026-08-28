@@ -53,6 +53,11 @@ function processConstant(host, value, channelCount = 2) {
   return host.processBlock(input);
 }
 
+test('analysis worker rejects channel counts beyond sixteen before loading a processor', async () => {
+  await assert.rejects(() => createPluginProcessorHost(SAMPLE_RATE, 17),
+    /between one and sixteen/);
+});
+
 function jsAnalysisRequest(processor, options = {}) {
   const type = options.type || 'AnalyzerBehaviorTestPlugin';
   return {

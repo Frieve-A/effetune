@@ -52,7 +52,7 @@ export function getAnalyzerAudioFormat(audioManager) {
     const sampleRate = context?.sampleRate;
     const channelCount = context?.destination?.channelCount;
     if (!(Number.isFinite(sampleRate) && sampleRate > 0) ||
-        !Number.isInteger(channelCount) || channelCount < 1 || channelCount > 8) {
+        !Number.isInteger(channelCount) || channelCount < 1 || channelCount > 16) {
         return null;
     }
     return Object.freeze({ sampleRate, channelCount });

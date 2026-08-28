@@ -111,7 +111,7 @@ test('Channel Divider consumes strict type-9 frames and retains processBuffer fa
     channelCountFrame(4, { version: 2 }),
     channelCountFrame(4, { bytes: 8 }),
     channelCountFrame(0),
-    channelCountFrame(9),
+    channelCountFrame(17),
     { frameType: 9, formatVersion: 1, payload: new Uint8Array(4) }
   ];
   for (const frame of invalidFrames) {
@@ -124,6 +124,13 @@ test('Channel Divider consumes strict type-9 frames and retains processBuffer fa
     measurements: { channels: 8 }
   });
   assert.equal(plugin.maxBands, 4);
+  for (const channels of [10, 12, 14, 16]) {
+    hub.emit(channelCountFrame(channels));
+    assert.equal(plugin.maxBands, 4);
+    assert.equal(plugin.errorState, null);
+  }
+  hub.emit(channelCountFrame(15));
+  assert.match(plugin.errorState, /even number of output channels/);
   assert.match(plugin.processorString, /data\.measurements = \{ channels: channelCount \}/);
   plugin.cleanup();
   assert.equal(hub.unsubscribeCalls, 1);
@@ -142,6 +149,8 @@ test('Matrix consumes strict type-9 frames and keeps route-message fallback', ()
   hub.emit(channelCountFrame(4));
   assert.deepEqual(channelCounts, [4]);
   assert.equal(plugin.parseDspChannelCountTelemetryFrame(channelCountFrame(8)), 8);
+  assert.equal(plugin.parseDspChannelCountTelemetryFrame(channelCountFrame(16)), 16);
+  assert.equal(plugin.parseDspChannelCountTelemetryFrame(channelCountFrame(17)), null);
   assert.equal(plugin.parseDspChannelCountTelemetryFrame(channelCountFrame(2, { bytes: 5 })), null);
   plugin.onMessage({
     type: 'processBuffer',

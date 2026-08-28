@@ -17,15 +17,15 @@ async function flushAsyncWork() {
 }
 
 function createArena() {
-  const combined = new Float32Array(8 * 128);
+  const combined = new Float32Array(16 * 128);
   const buses = new Map([[0, combined]]);
-  for (let bus = 1; bus <= 4; bus++) buses.set(bus, new Float32Array(8 * 128));
+  for (let bus = 1; bus <= 4; bus++) buses.set(bus, new Float32Array(16 * 128));
   return {
     combined,
     buses,
     scratch: {
-      allChannels: new Float32Array(8 * 128),
-      mixing: new Float32Array(8 * 128),
+      allChannels: new Float32Array(16 * 128),
+      mixing: new Float32Array(16 * 128),
       stereo: new Float32Array(2 * 128),
       mono: new Float32Array(128)
     }
@@ -39,15 +39,15 @@ function createWasmArena(memory) {
     floatOffset += length;
     return view;
   };
-  const combined = allocate(8 * 128);
+  const combined = allocate(16 * 128);
   const buses = new Map([[0, combined]]);
-  for (let bus = 1; bus <= 4; bus++) buses.set(bus, allocate(8 * 128));
+  for (let bus = 1; bus <= 4; bus++) buses.set(bus, allocate(16 * 128));
   return {
     combined,
     buses,
     scratch: {
-      allChannels: allocate(8 * 128),
-      mixing: allocate(8 * 128),
+      allChannels: allocate(16 * 128),
+      mixing: allocate(16 * 128),
       stereo: allocate(2 * 128),
       mono: allocate(128)
     }
@@ -861,7 +861,7 @@ test('worklet reconciles pre-module plugins, adopts every arena bus, and manages
   await harness.send({ type: 'dspModule', module: modulePayload, simd: true });
   assert.equal(harness.factories.length, 1);
   assert.equal(harness.factories[0].payload, modulePayload);
-  assert.deepEqual(harness.binding.calls.find(call => call[0] === 'prepare').slice(1), [48000, 8, 128, 256 * 1024]);
+  assert.deepEqual(harness.binding.calls.find(call => call[0] === 'prepare').slice(1), [48000, 16, 128, 256 * 1024]);
   assert.equal(harness.processor.dspLive, true);
   assert.equal(harness.processor.dspSimd, true);
   assert.equal(harness.processor.bufferPool.combined, harness.binding.arena.combined);
@@ -2334,13 +2334,17 @@ test('worklet applies the declared JavaScript fallback sample-channel capacity',
     { name: '48 kHz stereo is safe', sampleRate: 48000, outputChannels: 2, runs: true },
     { name: '96 kHz mono is the safe boundary', sampleRate: 96000, outputChannels: 1, runs: true },
     { name: '96 kHz eight-channel is bypassed', sampleRate: 96000, outputChannels: 8, runs: false },
+    { name: '96 kHz sixteen-channel is bypassed', sampleRate: 96000, outputChannels: 16, runs: false },
     { name: '192 kHz stereo is bypassed', sampleRate: 192000, outputChannels: 2, runs: false },
-    { name: '192 kHz eight-channel is bypassed', sampleRate: 192000, outputChannels: 8, runs: false }
+    { name: '192 kHz eight-channel is bypassed', sampleRate: 192000, outputChannels: 8, runs: false },
+    { name: '192 kHz sixteen-channel is bypassed', sampleRate: 192000, outputChannels: 16, runs: false },
+    ...['AutoFilterPlugin', 'RotarySpeakerPlugin'].map(type => ({ name: `${type} sixteen-channel is bypassed`, type, sampleRate: 96000, outputChannels: 16, runs: false }))
   ];
 
   for (const testCase of cases) {
     await t.test(testCase.name, async () => {
       const capacityPlugin = frequencyShifterPluginConfig({
+        ...(testCase.type ? { type: testCase.type } : {}),
         channel: 'A', wasmParams: undefined, wasmParamsHash: undefined
       });
       const harness = await createWorkletHarness(testCase);
@@ -6119,3 +6123,43 @@ test('terminal shipped enable types keep a later-added WASM-only plugin at wasmU
       state: 'bypassed', reason: 'wasmUnavailable'
     });
   });
+
+test('worklet accepts 16-channel asset headers and rejects 17 without replacing the asset', async () => {
+  const binding = createBinding({ capabilities: { abiVersion: 1, simd: false,
+    kernels: [{ name: 'VolumePlugin', hash: 0x1234, byteCapacity: 0, assetCapacity: 4096, kernelIndex: 0 }] } });
+  const harness = await createWorkletHarness({ binding, outputChannels: 16 });
+  await registerFallback(harness);
+  await harness.send({ type: 'updatePlugins', plugins: [pluginConfig()] });
+  await harness.send({ type: 'dspEnableTypes', types: ['VolumePlugin'] });
+  await harness.send({ type: 'dspModule', module: { compiled: true } });
+  for (const channels of [16, 17]) {
+    const payload = new ArrayBuffer(32 + channels * 4);
+    const header = new DataView(payload);
+    [0x31415445, channels, 1, 96000, 1].forEach((value, index) => header.setUint32(index * 4, value, true));
+    new Float32Array(payload, 32).fill(1);
+    await harness.send({ type: 'setPluginAsset', pluginId: 7, slot: 0, formatTag: 1,
+      headBlock: 0, rateDivider: 1, pathCount: 0, inputCount: 0, processingChannels: 16,
+      footprintBytes: payload.byteLength, payload });
+  }
+  assert.equal(binding.calls.filter(call => call[0] === 'instanceSetAsset').length, 1);
+});
+
+test('sixteen-channel hybrid routing reuses the preallocated buses and processing buffers', async () => {
+  const harness = await createWorkletHarness({ outputChannels: 16 });
+  await harness.send({ type: 'registerProcessor', pluginType: 'VolumePlugin', processor: `
+    context.buffer = data.buffer;
+    return data;
+  ` });
+  await harness.send({ type: 'updatePlugins', plugins: [
+    pluginConfig({ id: 7, channel: 'A', inputBus: 0, outputBus: 1, wasmParams: undefined }),
+    pluginConfig({ id: 8, channel: 'A', inputBus: 1, outputBus: 0, wasmParams: undefined })
+  ] });
+  const pool = harness.processor.bufferPool;
+  for (let block = 0; block < 3; block++) {
+    processBlock(harness.processor, 0.25, 16);
+    assert.equal(harness.processor.busBuffers.get(0), pool.combined);
+    assert.equal(harness.processor.busBuffers.get(1), pool.buses.get(1));
+    assert.equal(harness.processor.pluginContexts.get(7).buffer, pool.allChannels.buffer);
+    assert.equal(harness.processor.pluginContexts.get(8).buffer, pool.allChannels.buffer);
+  }
+});

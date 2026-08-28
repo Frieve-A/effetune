@@ -26,7 +26,7 @@ namespace {
 
 constexpr double kPi = 3.1415926535897932384626433832795;
 constexpr double kRadiansToDegrees = 180.0 / kPi;
-constexpr std::uint32_t kMaximumChannels = 8u;
+constexpr std::uint32_t kMaximumChannels = 16u;
 constexpr std::uint32_t kProcessedChannels = 2u;
 constexpr std::uint32_t kRegionCount = 5u;
 constexpr std::uint32_t kSlotSamples = 16u;

@@ -8,14 +8,14 @@ class MultiChannelPanelPlugin extends PluginBase {
         super('MultiChannel Panel', 'Control panel for multiple channels');
 
         // Maximum number of channels
-        this.MAX_CHANNELS = 8;
+        this.MAX_CHANNELS = 16;
 
         // Initialize channel parameters with defaults
-        this.m = Array(this.MAX_CHANNELS).fill(false); // m1-m8: Mute for each channel
-        this.s = Array(this.MAX_CHANNELS).fill(false); // s1-s8: Solo for each channel
-        this.v = Array(this.MAX_CHANNELS).fill(0.0);   // v1-v8: Volume for each channel (-20 to +10 dB)
-        this.d = Array(this.MAX_CHANNELS).fill(0.0);   // d1-d8: Delay for each channel (0-30ms)
-        this.l = Array(this.MAX_CHANNELS - 1).fill(false); // l1-l7: Link to next channel
+        this.m = Array(this.MAX_CHANNELS).fill(false); // m1-m16: Mute for each channel
+        this.s = Array(this.MAX_CHANNELS).fill(false); // s1-s16: Solo for each channel
+        this.v = Array(this.MAX_CHANNELS).fill(0.0);   // v1-v16: Volume for each channel (-20 to +10 dB)
+        this.d = Array(this.MAX_CHANNELS).fill(0.0);   // d1-d16: Delay for each channel (0-30ms)
+        this.l = Array(this.MAX_CHANNELS - 1).fill(false); // l1-l15: Link to next channel
 
         // Initialize level measurement arrays
         this.levels = Array(this.MAX_CHANNELS).fill(-96);
@@ -44,7 +44,7 @@ class MultiChannelPanelPlugin extends PluginBase {
 
             // Retrieve essential parameters for processing.
             const inputBufferChannelCount = parameters.channelCount; // Number of channels in the input buffer.
-            const numChannelsToProcess = Math.min(inputBufferChannelCount, 8); // Limit processing to a maximum of 8 channels.
+            const numChannelsToProcess = inputBufferChannelCount > 16 ? 16 : inputBufferChannelCount; // Process at most 16 channels.
             const blockSize = parameters.blockSize;       // The number of samples in each block per channel.
             const sampleRate = parameters.sampleRate;     // The sample rate of the audio context.
             const blocksPerWindow = Math.floor(sampleRate / 30 / blockSize); // Number of blocks in ~1/30 second
@@ -123,8 +123,8 @@ class MultiChannelPanelPlugin extends PluginBase {
                 // Get parameters for the current channel.
                 const isChannelMuteActive = muteStates[ch];
                 const isChannelSoloActive = soloStates[ch];
-                const channelVolumeDB = volumeLevelsDB[ch];
-                const channelDelayTimeMs = delayTimesMs[ch];
+                const channelVolumeDB = volumeLevelsDB[ch] ?? 0;
+                const channelDelayTimeMs = delayTimesMs[ch] ?? 0;
 
                 const targetGain = Math.pow(10, Math.fround(channelVolumeDB) / 20);
 
@@ -224,21 +224,46 @@ class MultiChannelPanelPlugin extends PluginBase {
     }
 
     // Get current parameters
+    _hasExtendedParameters() {
+        return [this.m, this.s, this.v, this.d].some(values => values.slice(8).some(Boolean)) ||
+            this.l.slice(7).some(Boolean);
+    }
+
+    _updateChannelVisibility() {
+        if (!this.channelContainers) return;
+        const expanded = this.getChannelCountForUI() > 8 ||
+            (this._actualChannelCount || 0) > 8 || this._hasExtendedParameters();
+        for (let channel = 8; channel < this.channelContainers.length; channel++) {
+            this.channelContainers[channel].hidden = !expanded;
+        }
+        if (this.linkButtons?.[7]) this.linkButtons[7].hidden = !expanded;
+    }
+
     getParameters() {
         this.ensureDspTelemetrySubscription();
+        const channels = this._hasExtendedParameters() ? 16 : 8;
         return {
             type: this.constructor.name,
-            m: this.m,      // Mute states
-            s: this.s,      // Solo states
-            v: this.v,      // Volume values
-            d: this.d,      // Delay values
-            l: this.l,      // Link states
+            m: this.m.slice(0, channels),      // Mute states
+            s: this.s.slice(0, channels),      // Solo states
+            v: this.v.slice(0, channels),      // Volume values
+            d: this.d.slice(0, channels),      // Delay values
+            l: this.l.slice(0, channels - 1),      // Link states
             enabled: this.enabled
         };
     }
 
     // Set parameters
     setParameters(params) {
+        // Aggregate arrays replace the whole field; omitted upper entries are defaults.
+        // Scalar edits and absent fields retain their existing state.
+        for (const key of ['m', 's', 'v', 'd', 'l']) {
+            if (Array.isArray(params[key])) {
+                const length = key === 'l' ? this.MAX_CHANNELS - 1 : this.MAX_CHANNELS;
+                this[key] = Array(length).fill(key === 'v' || key === 'd' ? 0 : false);
+            }
+        }
+
         // Update mute states
         for (let i = 0; i < this.MAX_CHANNELS; i++) {
             const muteParam = params[`m${i + 1}`] !== undefined ? params[`m${i + 1}`] : params.m?.[i];
@@ -306,6 +331,7 @@ class MultiChannelPanelPlugin extends PluginBase {
 
     // Update UI controls based on link status
     updateUIControls() {
+        this._updateChannelVisibility();
         if (!this.muteButtons || !this.soloButtons) return;
 
         // Update control states based on link
@@ -335,6 +361,7 @@ class MultiChannelPanelPlugin extends PluginBase {
     // setLink() only writes the volume/delay fields while a link is being
     // established, so nothing else refreshes these on the inbound path.
     _syncChannelControls() {
+        this._updateChannelVisibility();
         if (typeof document === 'undefined') return;
         // Tested per element, so one control being held still lets every other channel track.
         const heldByUser = el => this.isHeldByUser(el);
@@ -712,6 +739,8 @@ class MultiChannelPanelPlugin extends PluginBase {
 
         // Update level measurements
         const numChannels = Math.min(message.measurements.channels.length, this.MAX_CHANNELS);
+        this._actualChannelCount = numChannels;
+        this._updateChannelVisibility();
 
         for (let ch = 0; ch < numChannels; ch++) {
             const channelPeakRaw = message.measurements.channels[ch].peak; // Raw peak from processor
@@ -750,6 +779,7 @@ class MultiChannelPanelPlugin extends PluginBase {
         container.className = 'multichannel-panel-ui plugin-parameter-ui';
 
         // Store UI elements for updates
+        this.channelContainers = [];
         this.meterCanvases = [];
         this.meterContexts = [];
         this.linkButtons = [];
@@ -761,6 +791,7 @@ class MultiChannelPanelPlugin extends PluginBase {
             // Channel container
             const channelContainer = document.createElement('div');
             channelContainer.className = 'multichannel-panel-channel-container';
+            this.channelContainers.push(channelContainer);
 
             // Row 1: Channel name and level meter
             const row1 = document.createElement('div');
@@ -938,6 +969,8 @@ class MultiChannelPanelPlugin extends PluginBase {
             channelContainer.appendChild(row2);
             container.appendChild(channelContainer);
         }
+
+        this._updateChannelVisibility();
 
         // Start the animation loop for meters
         this.startAnimation();

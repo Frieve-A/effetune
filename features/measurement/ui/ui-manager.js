@@ -492,7 +492,7 @@ export class UIManager {
             } else {
                 this.showNotification(
                     i18n.t('error:impulseResponseImportFailed') ||
-                        'The WAV file could not be imported. Choose a valid impulse-response WAV file with 1 to 8 channels.',
+                        'The WAV file could not be imported. Choose a valid impulse-response WAV file with 1 to 16 channels.',
                     'error'
                 );
             }

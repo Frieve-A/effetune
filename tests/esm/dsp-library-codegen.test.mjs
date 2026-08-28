@@ -152,7 +152,7 @@ test('semantic transforms, discrete values, seed tags, and IR slot mapping are f
       count: 1,
       default: '0011',
       maximumLength: 3072,
-      pattern: '^(?:p?[0-8][0-8])*$'
+      pattern: '^(?:p?[0-9a-f][0-9a-f])*$'
     }
   );
 
@@ -341,7 +341,7 @@ test('public chain and bundle schemas exclude legacy representations', () => {
   );
   assert.equal(
     chain.$defs.Matrix.properties.parameters.properties.matrixRoutes.pattern,
-    '^(?:p?[0-8][0-8])*$'
+    '^(?:p?[0-9a-f][0-9a-f])*$'
   );
   assert.deepEqual(
     chain.$defs.Phaser.properties.parameters.properties.stages.enum,
@@ -372,14 +372,14 @@ test('public chain and bundle schemas exclude legacy representations', () => {
     ['unspecified', 'mono', 'independent', 'trueStereo', 'matrix']
   );
   assert.equal(format.properties.paths.minItems, 1);
-  assert.equal(format.properties.paths.maxItems, 8);
+  assert.equal(format.properties.paths.maxItems, 16);
   assert.deepEqual(
     format.properties.paths.items.required,
     ['inputSlot', 'outputSlot', 'irChannel']
   );
-  assert.equal(format.properties.paths.items.properties.inputSlot.maximum, 7);
-  assert.equal(format.properties.paths.items.properties.outputSlot.maximum, 7);
-  assert.equal(format.properties.paths.items.properties.irChannel.maximum, 7);
+  assert.equal(format.properties.paths.items.properties.inputSlot.maximum, 15);
+  assert.equal(format.properties.paths.items.properties.outputSlot.maximum, 15);
+  assert.equal(format.properties.paths.items.properties.irChannel.maximum, 15);
   assert.deepEqual(format.allOf[0].then.required, ['paths']);
   assert.equal(format.allOf[0].else.properties.pathCount.const, 0);
 });

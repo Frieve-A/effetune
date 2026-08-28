@@ -104,11 +104,15 @@ export class PipelineRoutingDialog {
             { text: 'Right', value: 'R' },  // Right channel only
             { text: '3+4', value: '34' },   // Channels 3 & 4 as stereo pair
             { text: '5+6', value: '56' },   // Channels 5 & 6 as stereo pair
-            { text: '7+8', value: '78' }    // Channels 7 & 8 as stereo pair
+            { text: '7+8', value: '78' },   // Channels 7 & 8 as stereo pair
+            { text: '9+10', value: '910' },
+            { text: '11+12', value: '1112' },
+            { text: '13+14', value: '1314' },
+            { text: '15+16', value: '1516' }
         ];
 
-        // Add individual channel options 3-8 based on output channel count
-        for (let i = 3; i <= 8; i++) {
+        // Routing can be prepared before the output device is active.
+        for (let i = 3; i <= 16; i++) {
             channelOptions.push({ text: `Ch ${i}`, value: String(i) });
         }
 
@@ -364,7 +368,10 @@ export class PipelineRoutingDialog {
                     channelText = '5+6';
                 } else if (plugin.channel === '78') {
                     channelText = '7+8';
-                } else if (plugin.channel >= '3' && plugin.channel <= '8') {
+                } else if (['910', '1112', '1314', '1516'].includes(plugin.channel)) {
+                    const first = Number(plugin.channel.slice(0, plugin.channel.length / 2));
+                    channelText = `${first}+${first + 1}`;
+                } else if (/^([3-9]|1[0-6])$/.test(plugin.channel)) {
                     channelText = `Ch ${plugin.channel}`;
                 } else {
                     channelText = plugin.channel;

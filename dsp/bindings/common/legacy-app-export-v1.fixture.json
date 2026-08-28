@@ -384,11 +384,11 @@
         "enabled": true,
         "channel": "stereo",
         "parameters": {
-          "mute": [false, true, false, false, false, false, false, false],
-          "solo": [false, false, true, false, false, false, false, false],
-          "volume": [0, -3, 1.5, 0, 0, 0, 0, 0],
-          "delay": [0, 1, 2, 0, 0, 0, 0, 0],
-          "link": [true, false, false, false, false, false, false]
+          "mute": [false, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false],
+          "solo": [false, false, true, false, false, false, false, false, false, false, false, false, false, false, false, false],
+          "volume": [0, -3, 1.5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          "delay": [0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          "link": [true, false, false, false, false, false, false, false, false, false, false, false, false, false, false]
         }
       },
       {

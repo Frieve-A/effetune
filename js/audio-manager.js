@@ -2968,7 +2968,7 @@ export class AudioManager {
 
     _getActualOutputChannelCount() {
         const value = this.contextManager?.audioContext?.destination?.channelCount;
-        return Number.isInteger(value) && value >= 1 && value <= 8 ? value : 2;
+        return Number.isInteger(value) && value >= 1 && value <= 16 ? value : 2;
     }
 
     /** Post the processor code for the given pipelines onto a worklet node. */

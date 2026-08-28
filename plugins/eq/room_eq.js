@@ -905,8 +905,8 @@ class RoomEqPlugin extends PluginBase {
         }));
         this.measurementId = '';
         this.measurementName = '';
-        this.channelMeasurementIds = ['', '', '', '', '', '', '', ''];
-        this.channelMeasurementNames = ['', '', '', '', '', '', '', ''];
+        this.channelMeasurementIds = Array(16).fill('');
+        this.channelMeasurementNames = Array(16).fill('');
         this.delayMs = 0;
         this.measurementResolved = false;
         this.temporalCapability = 'reset-on-resume';
@@ -1042,14 +1042,18 @@ class RoomEqPlugin extends PluginBase {
             window.audioManager?.outputChannelCount,
             window.uiManager?.audioManager?.outputChannelCount
         ];
-        return candidates.find(value => Number.isInteger(value) && value >= 1 && value <= 8) || 2;
+        return candidates.find(value => Number.isInteger(value) && value >= 1 && value <= 16) || 2;
     }
 
-    _packedParameters({ sampleRate = this._sampleRate } = {}) {
+    _effectiveTapCount(outputChannelCount = this._outputChannelCount) {
+        return this.channel === 'A' && outputChannelCount > 8 ? Math.min(this.tp, 65536) : this.tp;
+    }
+
+    _packedParameters({ sampleRate = this._sampleRate, outputChannelCount = this._outputChannelCount } = {}) {
         return {
             ...super.getParameters(),
             lt: this.lt,
-            fd: this.pm === 'min' ? 0 : this.tp / 2,
+            fd: this.pm === 'min' ? 0 : this._effectiveTapCount(outputChannelCount) / 2,
             gn: this.gn,
             dy: Math.round(this.delayMs * sampleRate / 1000)
         };
@@ -1060,7 +1064,7 @@ class RoomEqPlugin extends PluginBase {
             ? options.sampleRate
             : this._sampleRate;
         const outputChannelCount = Number.isInteger(options.outputChannelCount) &&
-            options.outputChannelCount >= 1 && options.outputChannelCount <= 8
+            options.outputChannelCount >= 1 && options.outputChannelCount <= 16
             ? options.outputChannelCount
             : this._outputChannelCount;
         if (options.commitSampleRate &&
@@ -1072,7 +1076,7 @@ class RoomEqPlugin extends PluginBase {
             this._scheduleDesign(0);
         }
         return {
-            ...this._packedParameters({ sampleRate }),
+            ...this._packedParameters({ sampleRate, outputChannelCount }),
             pm: this.pm,
             tp: this.tp,
             sm: this.sm,
@@ -1107,7 +1111,7 @@ class RoomEqPlugin extends PluginBase {
         delete serialized.fd;
         delete serialized.dy;
         serialized.dl = this.delayMs;
-        for (let index = 0; index < 8; index += 1) {
+        for (let index = 0; index < 16; index += 1) {
             if (!serialized[`ms${index}`]) delete serialized[`ms${index}`];
             if (!serialized[`mn${index}`]) delete serialized[`mn${index}`];
         }
@@ -1118,7 +1122,7 @@ class RoomEqPlugin extends PluginBase {
         const restored = { ...params };
         const channelIds = Array.isArray(params.ms) ? params.ms : null;
         const channelNames = Array.isArray(params.mn) ? params.mn : null;
-        for (let index = 0; index < 8; index += 1) {
+        for (let index = 0; index < 16; index += 1) {
             const idKey = `ms${index}`;
             const nameKey = `mn${index}`;
             restored[idKey] = params[idKey] ?? channelIds?.[index] ?? '';
@@ -1197,7 +1201,7 @@ class RoomEqPlugin extends PluginBase {
         }
         const channelIds = Array.isArray(params.ms) ? params.ms : null;
         const channelNames = Array.isArray(params.mn) ? params.mn : null;
-        for (let index = 0; index < 8; index += 1) {
+        for (let index = 0; index < 16; index += 1) {
             const id = params[`ms${index}`] ?? channelIds?.[index];
             if (typeof id === 'string') this.channelMeasurementIds[index] = id.slice(0, 160);
             const name = params[`mn${index}`] ?? channelNames?.[index];
@@ -1311,9 +1315,13 @@ class RoomEqPlugin extends PluginBase {
         if (channel === '34') return 3;
         if (channel === '56') return 5;
         if (channel === '78') return 7;
+        if (channel === '910') return 9;
+        if (channel === '1112') return 11;
+        if (channel === '1314') return 13;
+        if (channel === '1516') return 15;
         if (channel === 'L') return 1;
         if (channel === 'R') return 2;
-        if (/^[1-8]$/.test(String(channel))) return Number(channel);
+        if (/^([1-9]|1[0-6])$/.test(String(channel))) return Number(channel);
         return 1;
     }
 
@@ -1699,10 +1707,10 @@ class RoomEqPlugin extends PluginBase {
         return false;
     }
 
-    _designConfig(sampleRate = this._sampleRate) {
+    _designConfig(sampleRate = this._sampleRate, outputChannelCount = this._outputChannelCount) {
         return {
             sampleRate,
-            taps: this.tp,
+            taps: this._effectiveTapCount(outputChannelCount),
             phase: this.pm,
             smoothing: this.sm,
             lowFrequency: this.fl,
@@ -1863,7 +1871,7 @@ class RoomEqPlugin extends PluginBase {
                 ? runtime.IR_ASSET_TOPOLOGY.independent
                 : runtime.IR_ASSET_TOPOLOGY.mono;
             const footprintBytes = runtime.estimateIrKernelCommitFootprint({
-                frames: this.tp,
+                frames: this._effectiveTapCount(),
                 assetChannels,
                 topology,
                 processingChannels: channels,
@@ -1903,7 +1911,7 @@ class RoomEqPlugin extends PluginBase {
     _assetChannelCount(payload) {
         if (!(payload instanceof ArrayBuffer) || payload.byteLength < 32) return 1;
         const channels = new DataView(payload).getUint32(4, true);
-        return Math.min(8, Math.max(1, channels));
+        return Math.min(16, Math.max(1, channels));
     }
 
     _externalAssetSignature({
@@ -1916,7 +1924,7 @@ class RoomEqPlugin extends PluginBase {
     } = {}) {
         return JSON.stringify([
             1, this.measurementId, channelMeasurementIds,
-            this._designConfig(sampleRate), this.lt, this.channel, outputChannelCount
+            this._designConfig(sampleRate, outputChannelCount), this.lt, this.channel, outputChannelCount
         ]);
     }
 
@@ -2033,7 +2041,7 @@ class RoomEqPlugin extends PluginBase {
             generation: this._designGeneration,
             measurementId: this.measurementId,
             channelMeasurementIds: [...this.channelMeasurementIds],
-            config: this._designConfig(sampleRate),
+            config: this._designConfig(sampleRate, outputChannelCount),
             latency: this.lt,
             channel: this.channel,
             delayMs: this.delayMs,
@@ -2232,7 +2240,8 @@ class RoomEqPlugin extends PluginBase {
         if (this._disposed || !this._latencyElement) return;
         const hasFilter = Boolean(this._lastDesign) &&
             (Boolean(this.measurementId) || this._hasChannelMeasurements());
-        const samples = hasFilter ? Number(this.lt) + (this.pm === 'min' ? 0 : this.tp / 2) : 0;
+        const taps = this._effectiveTapCount();
+        const samples = hasFilter ? Number(this.lt) + (this.pm === 'min' ? 0 : taps / 2) : 0;
         const milliseconds = samples * 1000 / this._sampleRate;
         const assetLabels = ['bypass', 'staged', 'preparing', 'active', 'error'];
         this._latencyElement.textContent = this._t(
@@ -2241,10 +2250,14 @@ class RoomEqPlugin extends PluginBase {
             {
                 samples,
                 milliseconds: milliseconds.toFixed(1),
-                resolution: (this._sampleRate / this.tp).toFixed(1),
+                resolution: (this._sampleRate / taps).toFixed(1),
                 asset: assetLabels[this._assetState] || 'bypass'
             }
         );
+        if (taps !== this.tp) {
+            this._latencyElement.textContent += ' · ' + this._t('roomEq.status.tapLimit',
+                'Taps limited to 65536 when processing more than 8 channels.');
+        }
     }
 
     async _renderMeasurement() {

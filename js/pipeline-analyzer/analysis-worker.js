@@ -152,8 +152,8 @@ export class PluginProcessorHost {
 }
 
 export async function createPluginProcessorHost(sampleRate, channelCount) {
-    if (!Number.isInteger(channelCount) || channelCount < 1 || channelCount > 8) {
-        throw new TypeError('Analyzer channel count must be between one and eight');
+    if (!Number.isInteger(channelCount) || channelCount < 1 || channelCount > 16) {
+        throw new TypeError('Analyzer channel count must be between one and sixteen');
     }
     installWorkletGlobals(sampleRate);
     if (!capturedProcessorClass) await import(WORKLET_PROCESSOR_URL);
@@ -167,7 +167,7 @@ function validateSnapshot(snapshot) {
     if (!Number.isSafeInteger(sampleRate) || sampleRate <= 0) {
         throw new TypeError('Analyzer sample rate is invalid');
     }
-    if (!Number.isInteger(channelCount) || channelCount < 1 || channelCount > 8) {
+    if (!Number.isInteger(channelCount) || channelCount < 1 || channelCount > 16) {
         throw new TypeError('Analyzer channel count is invalid');
     }
     if (!Number.isInteger(inputChannel) || inputChannel < 0 || inputChannel >= channelCount) {

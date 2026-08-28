@@ -5,6 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 import { UIManager } from '../../js/ui-manager.js';
 import { AudioPlayer } from '../../js/ui/audio-player.js';
+import { getAnalyzerAudioFormat } from '../../js/pipeline-analyzer/pipeline-snapshot.js';
 import { encodePipelineState, decodePipelineState } from '../../js/utils/pipeline-state-codec.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
@@ -591,6 +592,31 @@ function patchManager(manager, calls) {
     handlePaste: text => calls.push(['clipboard.paste', text])
   };
 }
+
+test('Console channel debug previews UI on stereo hardware without promising working audio or analysis', async () => {
+  await withUIHarness({}, async ({ audioManager, calls, manager, window }) => {
+    // Only layout projection and the unchanged real format are contractual here.
+    // Preview-only channel selections need not play, process, or analyze correctly;
+    // do not extend this test into a requirement to emulate a multichannel device.
+    window.uiManager = manager;
+    const destination = Object.freeze(audioManager.audioContext.destination);
+    assert.equal(manager.debugChannelCount, null);
+
+    assert.equal(window.uiManager.setDebugChannelCount(16), 16);
+    assert.equal(manager.sampleRate.textContent, '48000 Hz 16ch');
+    assert.equal(manager.pipelineAnalyzerController.audioFormat.channelCount, 16);
+    assert.deepEqual(getAnalyzerAudioFormat(audioManager), { sampleRate: 48000, channelCount: 2 });
+    assert.equal(destination.channelCount, 2);
+    assert.ok(calls.some(call => call[0] === 'pipeline.updatePipelineUI' && call[1] === true));
+    assert.ok(calls.some(call => call[0] === 'console.warn' && call[1].includes('[UI debug]')));
+
+    assert.equal(window.uiManager.setDebugChannelCount(null), null);
+    assert.equal(manager.sampleRate.textContent, '48000 Hz');
+    assert.equal(manager.pipelineAnalyzerController.audioFormat.channelCount, 2);
+    assert.throws(() => manager.setDebugChannelCount(17), RangeError);
+    assert.equal(manager.debugChannelCount, null);
+  });
+});
 
 test('renders and updates pipeline delay and CPU usage meters', async () => {
   const html = fs.readFileSync(new URL('../../effetune.html', import.meta.url), 'utf8');

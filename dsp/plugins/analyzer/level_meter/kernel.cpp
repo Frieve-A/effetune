@@ -13,7 +13,7 @@ namespace {
 
 constexpr std::uint16_t kTapLevel = 1u;
 constexpr std::uint16_t kTelemetryVersion = 1u;
-constexpr std::uint32_t kMaxChannels = 8u;
+constexpr std::uint32_t kMaxChannels = 16u;
 constexpr std::uint32_t kWindowBins = 32u;
 constexpr double kWindowRateHz = 30.0;
 constexpr std::uint32_t kMaxPayloadBytes = 8u + kMaxChannels * 8u;

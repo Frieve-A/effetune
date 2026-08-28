@@ -570,6 +570,7 @@
   "roomEq.status.designing": "Расчёт фильтров коррекции…",
   "roomEq.status.ready": "Фильтры Room EQ готовы.",
   "roomEq.status.details": "{samples} отсчётов / {milliseconds} мс · {resolution} Гц · {asset}",
+  "roomEq.status.tapLimit": "При обработке 9 каналов и более значение Taps ограничено 65536.",
   "roomEq.status.missing": "Отсутствует",
   "roomEq.status.select": "Для начала назначьте сохранённое измерение.",
   "roomEq.error.design": "Не удалось рассчитать фильтры Room EQ. Уменьшите число taps или заново выберите измерение.",

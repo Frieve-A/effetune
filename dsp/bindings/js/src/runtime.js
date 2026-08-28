@@ -17,8 +17,8 @@ import {
 const PARAMETER_EVENT_KEYS = new Set(['frame', 'effectId', 'parameters']);
 
 function validateAudio(audio) {
-  if (!Array.isArray(audio) || audio.length < 1 || audio.length > 8) {
-    throw new ValidationError('Audio must be an array containing between 1 and 8 Float32Array channels.');
+  if (!Array.isArray(audio) || audio.length < 1 || audio.length > 16) {
+    throw new ValidationError('Audio must be an array containing between 1 and 16 Float32Array channels.');
   }
   const frames = audio[0] instanceof Float32Array ? audio[0].length : -1;
   for (const channel of audio) {
@@ -390,8 +390,8 @@ export class Chain {
   } = {}) {
     this._assertOpen();
     const rate = validateSampleRate(sampleRate);
-    if (!Number.isInteger(channels) || channels < 1 || channels > 8) {
-      throw new ValidationError('channels must be an integer from 1 to 8.');
+    if (!Number.isInteger(channels) || channels < 1 || channels > 16) {
+      throw new ValidationError('channels must be an integer from 1 to 16.');
     }
     const frames = validateBlockSize(blockSize);
     const normalizedSeed = validateSeed(seed);
@@ -434,8 +434,8 @@ export class Chain {
   } = {}) {
     this._assertOpen();
     const rate = validateSampleRate(sampleRate);
-    if (!Number.isInteger(channels) || channels < 1 || channels > 8) {
-      throw new ValidationError('channels must be an integer from 1 to 8.');
+    if (!Number.isInteger(channels) || channels < 1 || channels > 16) {
+      throw new ValidationError('channels must be an integer from 1 to 16.');
     }
     const framesPerBlock = validateBlockSize(blockSize);
     const normalizedSeed = validateSeed(seed);

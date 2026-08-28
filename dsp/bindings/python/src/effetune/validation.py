@@ -29,9 +29,21 @@ CHANNELS = frozenset(
         "6",
         "7",
         "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16",
         "34",
         "56",
         "78",
+        "910",
+        "1112",
+        "1314",
+        "1516",
     )
 )
 
@@ -131,14 +143,14 @@ def validate_audio(
         )
     if audio.shape[0] < 1 or audio.shape[1] < 1:
         raise ValidationError("audio must contain at least one channel and one frame")
-    if audio.shape[0] > 8:
-        if audio.shape[1] <= 8:
+    if audio.shape[0] > 16:
+        if audio.shape[1] <= 16:
             raise ValidationError(
-                "audio supports at most 8 channels; if this data is shaped "
+                "audio supports at most 16 channels; if this data is shaped "
                 "(frames, channels), use "
                 "np.ascontiguousarray(audio.T, dtype=np.float32)"
             )
-        raise ValidationError("audio supports at most 8 channels")
+        raise ValidationError("audio supports at most 16 channels")
     if channels is not None and audio.shape[0] != channels:
         raise ValidationError(f"audio must contain exactly {channels} channels")
     if maximum_frames is not None and audio.shape[1] > maximum_frames:
@@ -380,12 +392,12 @@ def pack_parameter_bytes(effect: Any) -> np.ndarray | None:
             break
         input_text = source[offset]
         output_text = source[offset + 1]
-        if "0" <= input_text <= "8" and "0" <= output_text <= "8":
+        if input_text in "0123456789abcdef" and output_text in "0123456789abcdef":
             if len(routes) >= int(structured["maxItems"]):
                 raise ValidationError(
                     f"{effect.effect_type}.{structured['publicName']} contains too many routes"
                 )
-            routes.append((ord(input_text) - 48, ord(output_text) - 48, phase))
+            routes.append((int(input_text, 16), int(output_text, 16), phase))
         offset += 2
 
     packed = np.empty(4 + len(routes) * 3, dtype=np.uint8)

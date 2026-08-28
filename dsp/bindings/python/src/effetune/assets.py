@@ -44,8 +44,8 @@ class AssetData:
             raise AssetError(
                 "impulse-response samples must be C-contiguous planar float32 data"
             )
-        if samples.shape[0] < 1 or samples.shape[0] > 8 or samples.shape[1] < 1:
-            raise AssetError("impulse-response shape must be (1..8 channels, frames)")
+        if samples.shape[0] < 1 or samples.shape[0] > 16 or samples.shape[1] < 1:
+            raise AssetError("impulse-response shape must be (1..16 channels, frames)")
         if samples.nbytes > MAX_ASSET_BYTES:
             raise AssetError("impulse-response sample data exceeds the 32 MiB asset limit")
         if not np.isfinite(samples).all():
@@ -65,14 +65,14 @@ class AssetData:
         paths = tuple(_coerce_path(path) for path in self.paths)
         object.__setattr__(self, "paths", paths)
         if self.topology == "matrix":
-            if not paths or len(paths) > 8:
-                raise AssetError("matrix topology requires between 1 and 8 convolution paths")
+            if not paths or len(paths) > 16:
+                raise AssetError("matrix topology requires between 1 and 16 convolution paths")
             if (
                 isinstance(self.input_count, bool)
                 or not isinstance(self.input_count, Integral)
-                or not 1 <= int(self.input_count) <= 8
+                or not 1 <= int(self.input_count) <= 16
             ):
-                raise AssetError("matrix topology requires input_count from 1 to 8")
+                raise AssetError("matrix topology requires input_count from 1 to 16")
             for path in paths:
                 if path.input_slot >= int(self.input_count):
                     raise AssetError("matrix path input_slot exceeds input_count")
@@ -116,8 +116,8 @@ def _coerce_path(value: Any) -> ConvolutionPath:
         ("output_slot", result.output_slot),
         ("ir_channel", result.ir_channel),
     ):
-        if isinstance(item, bool) or not isinstance(item, Integral) or not 0 <= int(item) <= 7:
-            raise AssetError(f"matrix path {name} must be an integer from 0 to 7")
+        if isinstance(item, bool) or not isinstance(item, Integral) or not 0 <= int(item) <= 15:
+            raise AssetError(f"matrix path {name} must be an integer from 0 to 15")
     return ConvolutionPath(
         int(result.input_slot), int(result.output_slot), int(result.ir_channel)
     )

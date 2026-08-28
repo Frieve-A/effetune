@@ -103,6 +103,20 @@ test('multichannel WAV PCM uses the existing virtual measurement channel contrac
   assert.deepEqual(measurement.channelResponses.map(entry => entry.channel), ['left', 'right']);
 });
 
+test('sixteen-channel WAV PCM preserves the Ch 1 through Ch 16 token contract', () => {
+  const { measurement, records } = createImpulseResponseMeasurement({
+    id: 'measurement-16ch-ir',
+    name: 'Sixteen channel room',
+    channels: Array.from({ length: 16 }, (_, index) => impulse(64, index + 1)),
+    sampleRate: 48000
+  });
+
+  assert.deepEqual(measurement.outputChannels,
+    ['left', 'right', ...Array.from({ length: 14 }, (_, index) => String(index + 2))]);
+  assert.equal(measurement.points[0].channels.at(-1).channel, '15');
+  assert.equal(records.at(-1).channel, '15');
+});
+
 test('WAV import decodes, stores measurement and IR records atomically, and preserves decoded rate', async () => {
   const calls = [];
   const storage = {

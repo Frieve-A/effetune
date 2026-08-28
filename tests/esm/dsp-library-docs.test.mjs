@@ -669,11 +669,11 @@ test('Generated docs distinguish semantic names from language-specific entry poi
   assert.match(legacy, /flattening it into Chain v1 would change the\s+acoustic result/);
   assert.match(legacy, /move or copy the desired effects into\s+one serial path/);
 
-  assert.match(matrix, /complete grammar `\(p\?\[0-8\]\[0-8\]\)\*`/);
+  assert.match(matrix, /complete grammar `\(p\?\[0-9a-f\]\[0-9a-f\]\)\*`/);
   assert.match(matrix, /`p01` sends input 0 to output 1 with\s+polarity inverted/);
   assert.match(matrix, /empty string is valid and produces silence/);
   assert.match(matrix, /Channel indices are zero-based/);
-  assert.match(matrix, /index `8` is never routable/);
+  assert.match(matrix, /lowercase hexadecimal digits `0` through `f`/);
   assert.match(matrix, /input or\s+output is unavailable is silently ignored/);
 });
 

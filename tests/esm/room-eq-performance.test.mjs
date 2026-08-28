@@ -86,12 +86,12 @@ function percentile(sorted, ratio) {
     return sorted[Math.ceil(sorted.length * ratio) - 1];
 }
 
-async function benchmarkConvolver(headBlock) {
+async function benchmarkConvolver(headBlock, channelCount = CHANNELS, tapCount = TAPS) {
     const binding = await instantiateDsp(await fs.readFile(simdArtifact));
     let instanceId = 0;
     try {
         assert.ok(binding.createEngine());
-        assert.equal(binding.prepare(SAMPLE_RATE, CHANNELS, BLOCK_FRAMES, 0), 0);
+        assert.equal(binding.prepare(SAMPLE_RATE, channelCount, BLOCK_FRAMES, 0), 0);
         instanceId = binding.createInstance('RoomEqPlugin');
         assert.ok(instanceId);
         assert.equal(binding.instanceSetParams(instanceId, packRoomEqPluginParams({
@@ -101,36 +101,36 @@ async function benchmarkConvolver(headBlock) {
             dy: 0
         }), RoomEqPlugin_PARAMS_HASH), 0);
 
-        const taps = new Float32Array(TAPS);
+        const taps = new Float32Array(tapCount);
         taps[0] = 0.5;
         taps[4095] = 0.25;
-        taps[TAPS - 1] = -0.125;
+        taps[tapCount - 1] = -0.125;
         const payload = buildIrAssetPayload({
             channels: [taps],
             sampleRate: SAMPLE_RATE,
             topology: IR_ASSET_TOPOLOGY.mono
         });
         const footprintBytes = estimateIrKernelCommitFootprint({
-            frames: TAPS,
+            frames: tapCount,
             assetChannels: 1,
             topology: IR_ASSET_TOPOLOGY.mono,
-            processingChannels: CHANNELS,
+            processingChannels: channelCount,
             headBlock
         });
         assert.equal(binding.instanceSetAsset(instanceId, 0, payload, {
             channels: 1,
-            frames: TAPS,
+            frames: tapCount,
             topology: IR_ASSET_TOPOLOGY.mono,
             headBlock,
             rateDivider: 1,
             pathCount: 0,
             inputCount: 0,
-            processingChannels: CHANNELS,
+            processingChannels: channelCount,
             footprintBytes
         }, 1), 0);
 
         let arena = binding.getArenaViews();
-        let audio = arena.scratch.allChannels.subarray(0, CHANNELS * BLOCK_FRAMES);
+        let audio = arena.scratch.allChannels.subarray(0, channelCount * BLOCK_FRAMES);
         let pointer = binding.pointerForArenaView(audio);
         for (let block = 0; (binding.instanceAssetState(instanceId, 0) & 0xff) === 2 &&
             block < 4096; block += 1) {
@@ -138,7 +138,7 @@ async function benchmarkConvolver(headBlock) {
             assert.equal(binding.instanceProcess(
                 instanceId,
                 pointer,
-                CHANNELS,
+                channelCount,
                 BLOCK_FRAMES,
                 block * BLOCK_FRAMES / SAMPLE_RATE
             ), 0);
@@ -146,17 +146,17 @@ async function benchmarkConvolver(headBlock) {
         assert.equal(binding.instanceAssetState(instanceId, 0) & 0xff, 3);
         assert.equal(binding.resetInstance(instanceId), 0);
         arena = binding.getArenaViews();
-        audio = arena.scratch.allChannels.subarray(0, CHANNELS * BLOCK_FRAMES);
+        audio = arena.scratch.allChannels.subarray(0, channelCount * BLOCK_FRAMES);
         pointer = binding.pointerForArenaView(audio);
         for (let block = 0; block < 64; block += 1) {
             audio.fill(0.01);
-            binding.instanceProcess(instanceId, pointer, CHANNELS, BLOCK_FRAMES, 0);
+            binding.instanceProcess(instanceId, pointer, channelCount, BLOCK_FRAMES, 0);
         }
         const durations = [];
         for (let block = 0; block < 640; block += 1) {
             audio.fill(0.01);
             const started = performance.now();
-            assert.equal(binding.instanceProcess(instanceId, pointer, CHANNELS, BLOCK_FRAMES, 0), 0);
+            assert.equal(binding.instanceProcess(instanceId, pointer, channelCount, BLOCK_FRAMES, 0), 0);
             durations.push(performance.now() - started);
         }
         durations.sort((left, right) => left - right);
@@ -317,4 +317,53 @@ test('Room EQ 8-channel independent IR assets stay inside the kernel capacity', 
         processingChannels: 8,
         headBlock: 0
     }) < IR_KERNEL_ASSET_CAPACITY_BYTES);
+});
+
+test('Room EQ 16-channel design and 65536-tap convolution stay inside release budgets', async () => {
+    const backend = new WasmRoomEqFftBackend(await instantiateDsp(await fs.readFile(baselineArtifact)));
+    setRoomEqFftBackend(backend);
+    try {
+        const designMedians = {};
+        for (const channels of [8, 16]) {
+            const sources = designSources(channels);
+            const samples = [];
+            for (let trial = 0; trial < 3; trial++) {
+                clearRoomEqAnalysisCache();
+                clearRoomEqDesignCache();
+                let result;
+                samples.push(cpuElapsed(() => { result = designRoomEq({ config: designConfig(65536), sources }); }));
+                assert.equal(result.channels.length, channels);
+                assert.ok(result.channels.every(channel => channel.length === 65536 && channel.every(Number.isFinite)));
+            }
+            samples.sort((a, b) => a - b);
+            designMedians[channels] = percentile(samples, 0.5);
+        }
+        // Node v24.13.0 on the Windows reference host measured an 8-channel
+        // cold median of 437 ms. Doubling for 16 channels with the established
+        // fourfold reference-host headroom gives 3496 ms, rounded to 3500 ms.
+        // The measured 16-channel median was 1281 ms; old budgets are unchanged.
+        assert.ok(designMedians[16] < 3500,
+            `16-channel cold-design median used ${designMedians[16].toFixed(1)} ms of CPU time`);
+        const latencyZero = await benchmarkConvolver(0, 16, 65536);
+        const latency128 = await benchmarkConvolver(128, 16, 65536);
+        for (const result of [latencyZero, latency128]) {
+            assert.ok(result.p95RealtimeFactor < 1, `16-channel p95 was ${result.p95RealtimeFactor.toFixed(2)}x real time`);
+            assert.ok(result.p99RealtimeFactor < 2, `16-channel p99 was ${result.p99RealtimeFactor.toFixed(2)}x real time`);
+        }
+        console.log('Room EQ 16-channel performance:', JSON.stringify({ designMedians, latencyZero, latency128 }));
+    } finally {
+        setRoomEqFftBackend(null);
+        backend.close();
+        clearRoomEqAnalysisCache();
+        clearRoomEqDesignCache();
+    }
+});
+
+test('Room EQ 16-channel independent IR fits at 65536 taps but not at 131072', () => {
+    for (const headBlock of [0, 128]) {
+        const footprint = frames => estimateIrKernelCommitFootprint({ frames, assetChannels: 16,
+            topology: IR_ASSET_TOPOLOGY.independent, processingChannels: 16, headBlock });
+        assert.ok(footprint(65536) < IR_KERNEL_ASSET_CAPACITY_BYTES);
+        assert.ok(footprint(131072) > IR_KERNEL_ASSET_CAPACITY_BYTES);
+    }
 });

@@ -4,7 +4,7 @@ import { buildDspPipelineDescriptor } from './dsp-pipeline-descriptor.js';
 import { getPluginExecutionCapabilities } from './plugin-execution-capabilities.js';
 
 const OFFLINE_BLOCK_SIZE = 128;
-const OFFLINE_MAX_WASM_CHANNELS = 8;
+const OFFLINE_MAX_WASM_CHANNELS = 16;
 // Match the live host's half-module asset budget for the 256 MiB WASM ceiling.
 const OFFLINE_DSP_ASSET_BUDGET_BYTES = 128 * 1024 * 1024;
 
@@ -1147,6 +1147,18 @@ export class OfflineProcessor {
                     routing.numProcessingChannels = 2;
                 }
                 break;
+            case '910':
+            case '1112':
+            case '1314':
+            case '1516': {
+                const pairStart = Number(channel.slice(0, channel.length / 2)) - 1;
+                if (outputChannelCount >= pairStart + 2) {
+                    routing.processMode = 'pair';
+                    routing.pairStartChannel = pairStart;
+                    routing.numProcessingChannels = 2;
+                }
+                break;
+            }
             default: {
                 const parsedChannel = parseInt(channel, 10);
                 if (!isNaN(parsedChannel) && parsedChannel > 0 && parsedChannel <= outputChannelCount) {

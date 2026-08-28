@@ -556,6 +556,10 @@ test('FIR Crossover validates channel-count telemetry and bus band limits', () =
   const { Plugin } = loadPlugin();
   const plugin = new Plugin();
   plugin._scheduleDesign = () => {};
+  for (const [channels, bands] of [[4, 2], [6, 3], [8, 4], [10, 4], [12, 4], [14, 4], [16, 4]]) {
+    assert.equal(plugin._maximumBandCount(channels), bands);
+  }
+  for (const channels of [2, 3, 15, 17, 18]) assert.equal(plugin._maximumBandCount(channels), 0);
   const payload = new DataView(new ArrayBuffer(4));
   payload.setUint32(0, 6, true);
   assert.equal(plugin.parseDspChannelCountTelemetryFrame({
@@ -563,6 +567,11 @@ test('FIR Crossover validates channel-count telemetry and bus band limits', () =
     formatVersion: 1,
     payload
   }), 6);
+  for (const channels of [16, 17]) {
+    payload.setUint32(0, channels, true);
+    assert.equal(plugin.parseDspChannelCountTelemetryFrame({ frameType: 9, formatVersion: 1, payload }),
+      channels === 16 ? 16 : null);
+  }
   plugin._applyOutputChannelCount(6);
   assert.equal(plugin.maxBands, 3);
   assert.equal(plugin._effectiveBandCount(), 2);
@@ -571,4 +580,22 @@ test('FIR Crossover validates channel-count telemetry and bus band limits', () =
     formatVersion: 2,
     payload
   }), null);
+});
+
+test('FIR Crossover prepares offline matrix assets for even output widths through sixteen', async () => {
+  const { Plugin } = loadPlugin({ channelCount: 16 });
+  const plugin = new Plugin();
+  plugin.bc = 4;
+  const payload = new ArrayBuffer(32);
+  plugin._getRuntime = async () => ({
+    IR_ASSET_TOPOLOGY: { matrix: 4 },
+    estimateIrKernelCommitFootprint: () => 1024,
+    createFIRCrossoverDesigner: () => ({ design: async () => ({ payload }), close() {} })
+  });
+  for (const outputChannelCount of [10, 12, 14, 16]) {
+    const state = await plugin.createOfflineDspState({ sampleRate: 96000, outputChannelCount });
+    assert.equal(state.offlineDspAssetRequired, true);
+    assert.equal(state.assets.get(0).processingChannels, outputChannelCount);
+    assert.equal(state.assets.get(0).pathCount, 8);
+  }
 });

@@ -85,6 +85,7 @@ export class UIManager {
     constructor(pluginManager, audioManager) {
         this.pluginManager = pluginManager;
         this.audioManager = audioManager;
+        this.debugChannelCount = null;
 
         // Set directly in UIManager to maintain original behavior
         this.expandedPlugins = new Set();
@@ -832,6 +833,27 @@ export class UIManager {
         }
     }
 
+    // Console-only layout preview: uiManager.setDebugChannelCount(16).
+    // This is not a virtual audio device. Playback, DSP, analysis, and other
+    // operations may fail or disagree with the UI; supporting them in this mode
+    // is explicitly out of scope. Do not add compatibility fixes for this mode.
+    // Keep the override in memory only; null or a page reload clears it.
+    setDebugChannelCount(channelCount = null) {
+        if (channelCount !== null &&
+            (!Number.isInteger(channelCount) || channelCount < 1 || channelCount > 16)) {
+            throw new RangeError('Use an integer from 1 to 16, or null to clear the UI preview.');
+        }
+        this.debugChannelCount = channelCount;
+        if (channelCount !== null) {
+            console.warn(`[UI debug] Previewing ${channelCount} channels without changing the audio device. ` +
+                'Playback, DSP, analysis, and other operations are not supported by this preview.');
+        }
+        this.pipelineManager.updatePipelineUI(true);
+        this.updateSampleRateDisplay();
+        this.pipelineAnalyzerController?.refreshAudioFormat();
+        return this.debugChannelCount;
+    }
+
     // Update the sleep mode display based on the sleep mode state
     updateSleepModeDisplay(isSleepMode, sampleRate) {
         if (!this.sampleRate) return;
@@ -839,7 +861,8 @@ export class UIManager {
         const sleepModeText = this.t('ui.sleepMode');
         
         // Get current channel count from audio context destination
-        const channelCount = this.audioManager.audioContext.destination.channelCount || 2;
+        const channelCount = this.debugChannelCount ??
+            (this.audioManager.audioContext.destination.channelCount || 2);
         const showChannelCount = channelCount > 2;
 
         if (isSleepMode) {
@@ -876,7 +899,8 @@ export class UIManager {
             const currentSampleRate = this.audioManager.audioContext.sampleRate;
             
             // Get current channel count from audio context destination
-            const channelCount = this.audioManager.audioContext.destination.channelCount || 2;
+            const channelCount = this.debugChannelCount ??
+                (this.audioManager.audioContext.destination.channelCount || 2);
 
             // Preserve sleep mode indicator if present
             const sleepModeText = this.t('ui.sleepMode');

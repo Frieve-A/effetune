@@ -11,7 +11,7 @@ extern "C" const effetune::KernelDescriptor *et_kernel_descriptor_MultibandBalan
 namespace {
 
 constexpr std::uint32_t kMaxFrames = 128u;
-constexpr std::uint32_t kMaxChannels = 8u;
+constexpr std::uint32_t kMaxChannels = 16u;
 constexpr std::uint32_t kParamCount = 9u;
 constexpr std::uint32_t kStorageBytes = 8192u;
 int failures = 0;

@@ -2066,6 +2066,12 @@ class PluginBase {
         return this.powerGainUpperBoundDb;
     }
 
+    // UI layout preview only. Never use this count to configure audio processing.
+    // See UIManager.setDebugChannelCount for the intentionally unsupported operations.
+    getChannelCountForUI(actualChannelCount = window.audioContext?.destination?.channelCount || 2) {
+        return window.uiManager?.debugChannelCount ?? actualChannelCount;
+    }
+
     // Create channel select control for plugin UI
     createChannelSelectControl() {
         const row = document.createElement('div');
@@ -2077,11 +2083,7 @@ class PluginBase {
         const select = document.createElement('select');
         select.id = `${this.id}-channel-select`;
         
-        // Get output channel count from audio context
-        let outputChannelCount = 2;
-        if (window.audioContext && window.audioContext.destination) {
-            outputChannelCount = window.audioContext.destination.channelCount || 2;
-        }
+        const outputChannelCount = this.getChannelCountForUI();
         
         // Add channel options
         const options = [
@@ -2102,8 +2104,12 @@ class PluginBase {
             options.push({ value: '78', text: '7+8' });
         }
         
+        for (let first = 9; first < 16 && first < outputChannelCount; first += 2) {
+            options.push({ value: `${first}${first + 1}`, text: `${first}+${first + 1}` });
+        }
+
         // Add individual channel options based on output channel count
-        for (let i = 3; i <= Math.min(outputChannelCount, 8); i++) {
+        for (let i = 3; i <= Math.min(outputChannelCount, 16); i++) {
             options.push({ value: String(i), text: `Ch ${i}` });
         }
         

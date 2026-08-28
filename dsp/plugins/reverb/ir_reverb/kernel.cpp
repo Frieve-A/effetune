@@ -27,9 +27,9 @@ constexpr std::uint32_t kTopologyIndependent = 2u;
 constexpr std::uint32_t kTopologyTrueStereo = 3u;
 constexpr std::uint32_t kTopologyMatrix = 4u;
 constexpr std::uint32_t kPathRecordBytes = 12u;
-constexpr std::uint32_t kMaximumPaths = 8u;
+constexpr std::uint32_t kMaximumPaths = 16u;
 constexpr std::uint32_t kFadeFrames = 128u;
-constexpr std::uint32_t kMaximumChannels = 8u;
+constexpr std::uint32_t kMaximumChannels = 16u;
 constexpr std::uint32_t kMaximumHeadBlock = 1024u;
 constexpr std::uint32_t kMaximumRateDivider = 4u;
 // Largest latency the kernel can report, and therefore the deepest dry alignment delay.

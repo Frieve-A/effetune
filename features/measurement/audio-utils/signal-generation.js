@@ -11,7 +11,7 @@ import {
 
 function validateSignalOutputChannel(channel) {
     const token = String(channel);
-    if (!['left', 'right', '0', '1', '2', '3', '4', '5', '6', '7', 'all', 'both'].includes(token)) {
+    if (!['left', 'right', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', 'all', 'both'].includes(token)) {
         throw new MeasurementOutputError(`Unsupported measurement output channel: ${token}`);
     }
 }
@@ -138,7 +138,7 @@ async function prepareSerializedWhiteNoiseOutputRoute(
  * Start white noise playback
  * @param {number} level - Noise level in dB (0 to -36)
  * @param {string} outputDeviceId - The output device ID, or null for default
- * @param {string} channel - The channel to output to ('left', 'right', 'all', or specific channel number '3'-'8')
+ * @param {string} channel - The channel to output to ('left', 'right', 'all', or specific channel number '3'-'16')
  * @param {number} minFreq - Lower band edge in Hz (default 1 = effectively unlimited)
  * @param {number} maxFreq - Upper band edge in Hz (default null = up to Nyquist)
  */
@@ -364,7 +364,7 @@ function setNoiseLevel(levelDb) {
  * Generate a Time-Stretched Pulse (TSP) signal and its inverse filter
  * @param {number} length - Signal length in samples
  * @param {number} sampleRate - Sample rate in Hz
- * @param {string} channel - Output channel ('left', 'right', 'all', or specific channel number '2'-'7')
+ * @param {string} channel - Output channel ('left', 'right', 'all', or specific zero-based channel number '2'-'15')
  * @param {number} minFreq - Lower frequency bound of the sweep in Hz (default 20)
  * @param {number} maxFreq - Upper frequency bound of the sweep in Hz (default 20000)
  * @param {boolean} bandLimited - Whether to limit the sweep to minFreq/maxFreq
@@ -514,7 +514,7 @@ function generateTSP(
     for (let i = 0; i < N; i++) inverseFilter[i] *= invNorm;
 
     // Get maximum number of channels this device might support
-    const MAX_CHANNELS = 8;
+    const MAX_CHANNELS = 16;
     
     // Create output buffers for all possible channels
     const channelBuffers = [];
@@ -542,7 +542,7 @@ function generateTSP(
         // Right channel only
         right.set(tspSignal);
     } else if (!isNaN(targetChannel) && targetChannel >= 2 && targetChannel < MAX_CHANNELS) {
-        // Specific channel (Ch 3-8)
+        // Specific channel (Ch 3-16)
         channelBuffers[targetChannel].set(tspSignal);
     } else if (channel === 'all') {
         // All channels

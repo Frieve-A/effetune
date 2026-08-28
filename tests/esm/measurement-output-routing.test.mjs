@@ -32,15 +32,24 @@ test('measurement output channel counts use only supported complete layouts', ()
   assert.equal(getRequiredOutputChannelCount('2'), 4);
   assert.equal(getRequiredOutputChannelCount('4'), 6);
   assert.equal(getRequiredOutputChannelCount('6'), 8);
+  assert.equal(getRequiredOutputChannelCount('8'), 10);
+  assert.equal(getRequiredOutputChannelCount('10'), 12);
+  assert.equal(getRequiredOutputChannelCount('12'), 14);
+  assert.equal(getRequiredOutputChannelCount('15'), 16);
   assert.equal(getRequiredOutputChannelCount('all'), 2);
   assert.equal(getMeasurementOutputChannelCount('left', 8), 2);
   assert.equal(getMeasurementOutputChannelCount('2', 8), 4);
   assert.equal(getMeasurementOutputChannelCount('4', 8), 6);
   assert.equal(getMeasurementOutputChannelCount('6', 8), 8);
+  assert.equal(getMeasurementOutputChannelCount('15', 16), 16);
   assert.equal(getMeasurementOutputChannelCount('all', 2), 2);
   assert.equal(getMeasurementOutputChannelCount('all', 4), 4);
   assert.equal(getMeasurementOutputChannelCount('all', 6), 6);
   assert.equal(getMeasurementOutputChannelCount('all', 8), 8);
+  assert.equal(getMeasurementOutputChannelCount('all', 10), 10);
+  assert.equal(getMeasurementOutputChannelCount('all', 12), 12);
+  assert.equal(getMeasurementOutputChannelCount('all', 14), 14);
+  assert.equal(getMeasurementOutputChannelCount('all', 16), 16);
 });
 
 test('measurement routing rejects unknown channel tokens instead of silently routing them', async () => {
@@ -659,4 +668,28 @@ test('a Ch 3 sweep uses a complete 4-channel buffer with silence elsewhere', () 
   assert.deepEqual([...buffer.channelData[1]], [0, 0, 0, 0, 0, 0]);
   assert.deepEqual([...buffer.channelData[2]], [0.25, -0.5, 0.75, 0.25, -0.5, 0.75]);
   assert.deepEqual([...buffer.channelData[3]], [0, 0, 0, 0, 0, 0]);
+});
+
+test('a Ch 16 sweep uses a complete 16-channel buffer with silence elsewhere', () => {
+  const created = [];
+  const audioContext = {
+    createBuffer(channelCount, length, sampleRate) {
+      const channelData = Array.from({ length: channelCount }, () => new Float32Array(length));
+      const buffer = { channelCount, length, sampleRate, channelData,
+        getChannelData(channel) { return channelData[channel]; } };
+      created.push(buffer);
+      return buffer;
+    }
+  };
+  const sweepChannels = Array.from({ length: 16 }, () => new Float32Array(2));
+  sweepChannels[15].set([0.25, -0.5]);
+
+  const buffer = createRepeatedSweepAudioBuffer(
+    audioContext, { length: 2, channels: sweepChannels }, 15, 16, 48000
+  );
+
+  assert.equal(created.length, 1);
+  assert.equal(buffer.channelCount, 16);
+  assert.ok(buffer.channelData[14].every(value => value === 0));
+  assert.ok(buffer.channelData[15].every((value, index) => value === [0.25, -0.5][index % 2]));
 });

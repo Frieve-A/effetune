@@ -197,7 +197,7 @@ test('selectors render options and update plugin routing values', async () => {
   await withRoutingGlobals(calls, {}, async () => {
     const channelContainer = handler.createChannelSelector(plugin);
     const channelSelect = channelContainer.children[1];
-    assert.equal(channelSelect.children.length, 13);
+    assert.equal(channelSelect.children.length, 25);
     assert.equal(channelSelect.children.some(option => option.value === 'A' && option.selected), true);
 
     channelSelect.value = '34';
@@ -466,7 +466,13 @@ test('updateBusInfo handles fallback insertion, fallback titles, channel labels,
     ['34', '3+4'],
     ['56', '5+6'],
     ['78', '7+8'],
+    ['910', '9+10'],
+    ['1112', '11+12'],
+    ['1314', '13+14'],
+    ['1516', '15+16'],
     ['3', 'Ch 3'],
+    ['10', 'Ch 10'],
+    ['16', 'Ch 16'],
     ['custom', 'custom']
   ];
 

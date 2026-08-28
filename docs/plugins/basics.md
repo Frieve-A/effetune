@@ -24,10 +24,10 @@ A collection of essential tools for adjusting the fundamental aspects of your mu
 
 A specialized tool that splits your stereo signal into separate frequency bands and routes each band to a different stereo output pair. It is useful for multi-amplifier, multi-speaker, or custom crossover playback setups.
 
-To use this effect, you need to use the desktop app, set the number of output channels in the audio settings to 4, 6, or 8 depending on the number of bands, and set the channel in the effect bus routing to "All."
+To use this effect, use the desktop app, set an even output-channel count from 4 to 16 in the audio settings, and set the channel in the effect bus routing to "All." The selected Band Count determines which output pairs the effect uses.
 
 ### When to Use
-- When using multi-channel audio outputs (4, 6, or 8 channels)
+- When using even multi-channel audio outputs from 4 to 16 channels
 - To create custom frequency-based channel routing
 - For multi-amplifier or multi-speaker setups
 
@@ -36,7 +36,7 @@ To use this effect, you need to use the desktop app, set the number of output ch
   - 2 bands: Low/High split, requiring 4 output channels
   - 3 bands: Low/Mid/High split, requiring 6 output channels
   - 4 bands: Low/Mid-Low/Mid-High/High split, requiring 8 output channels
-  - Higher band counts are unavailable when the selected output channel count is too low
+  - Band Count remains limited to four bands; higher output-channel counts do not add more bands
 
 - **Crossover Frequencies** - Define where audio splits between bands
   - F1: First crossover point
@@ -52,7 +52,7 @@ To use this effect, you need to use the desktop app, set the number of output ch
 
 ### Technical Notes
 - Processes first two input channels only
-- Output channels must be a multiple of 2 (4, 6, or 8)
+- Output channels must be an even number from 4 to 16
 - Each band keeps the original stereo pair: 2-band mode outputs Low to channels 1-2 and High to channels 3-4; 3-band mode uses channels 1-2, 3-4, and 5-6; 4-band mode uses channels 1-2, 3-4, 5-6, and 7-8
 - Uses high-quality Linkwitz-Riley crossover filters
 - Visual frequency response graph for easy configuration
@@ -77,7 +77,7 @@ A utility for correcting a signal whose waveform is shifted away from the zero l
 
 FIR Crossover splits stereo input into two, three, or four frequency bands and routes each band to its own stereo output pair. It is intended for multi-amplifier or multi-speaker playback systems that need sharper separation than Channel Divider provides. The FIR design supports very steep crossover targets without recursive-filter stability limits, and Linear Phase keeps the same fixed processing delay across the spectrum. The plugin requires the WASM DSP engine.
 
-To use it, run the desktop app with 4, 6, or 8 output channels and select **All** in the effect bus routing. Channels 1-2 are the stereo input; successive stereo output pairs receive the low-to-high bands.
+To use it, run the desktop app with an even output-channel count from 4 to 16 and select **All** in the effect bus routing. Channels 1-2 are the stereo input; successive stereo output pairs receive the low-to-high bands. Band Count remains limited to four bands, so the effect uses at most channels 1-8.
 
 ### Sound Enhancement Guide
 
@@ -103,7 +103,7 @@ To use it, run the desktop app with 4, 6, or 8 output channels and select **All*
 - The graph follows Channel Divider's display: it shows the intended response of every active output band from 10 Hz to 40 kHz on a -60 to +12 dB scale.
 - Each green curve corresponds to one stereo output pair, ordered from the lowest band to the highest band.
 - The status line reports total processing latency, FIR frequency resolution, and whether the filter asset is bypassed, staged, preparing, active, or in error.
-- A channel warning appears unless the plugin is running with 4, 6, or 8 output channels.
+- A channel warning appears unless the plugin is running with an even output-channel count from 4 to 16.
 
 ## Matrix
 
@@ -116,7 +116,7 @@ A channel routing tool for fixing unusual speaker or headphone channel layouts, 
 - To combine stereo to mono or duplicate a channel to another available output
 
 ### Features
-- Flexible routing matrix for up to 8 channels
+- Flexible routing matrix for up to 16 channels
 - Individual connection control between any input/output pair
 - Phase inversion options for each connection
 - Visual matrix interface for intuitive configuration
@@ -137,16 +137,18 @@ A channel routing tool for fixing unusual speaker or headphone channel layouts, 
 
 ## MultiChannel Panel
 
-A comprehensive control panel for managing multiple audio channels individually. This plugin provides complete control over volume, muting, soloing, and delay for up to 8 channels, with a visual level meter for each channel.
+A comprehensive control panel for managing multiple audio channels individually. This plugin provides complete control over volume, muting, soloing, and delay for up to 16 channels, with a visual level meter for each channel.
+
+Scroll within the panel to reach channels below the visible area.
 
 ### When to Use
-- When working with multi-channel audio (up to 8 channels)
+- When working with multi-channel audio (up to 16 channels)
 - To create custom volume balance between different channels
 - When you need to apply individual delay to specific channels
 - For monitoring levels across multiple channels simultaneously
 
 ### Features
-- Individual controls for up to 8 audio channels
+- Individual controls for up to 16 audio channels
 - Real-time level meters with peak hold for visual monitoring
 - Channel linking capability for grouped parameter changes
 

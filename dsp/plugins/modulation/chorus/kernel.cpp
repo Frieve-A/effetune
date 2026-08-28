@@ -11,7 +11,7 @@ namespace effetune::plugins::modulation {
 namespace {
 
 constexpr double kTwoPi = 6.2831853071795864769;
-constexpr std::uint32_t kMaximumChannels = 8u;
+constexpr std::uint32_t kMaximumChannels = 16u;
 constexpr std::uint32_t kMaximumVoices = 6u;
 
 double bounded(double value, double lower, double upper, double fallback) noexcept {

@@ -276,7 +276,10 @@ export class PipelineItemBuilder {
                     channelName = '5+6';
                 } else if (plugin.channel === '78') {
                     channelName = '7+8';
-                } else if (plugin.channel >= '3' && plugin.channel <= '8') {
+                } else if (['910', '1112', '1314', '1516'].includes(plugin.channel)) {
+                    const first = Number(plugin.channel.slice(0, plugin.channel.length / 2));
+                    channelName = `${first}+${first + 1}`;
+                } else if (/^([3-9]|1[0-6])$/.test(plugin.channel)) {
                     channelName = `Ch ${plugin.channel}`;
                 } else {
                     channelName = plugin.channel;

@@ -138,11 +138,11 @@ function inferEta1Format(bytes, reference) {
   const topology = header.getUint32(16, true);
   const pathCount = header.getUint32(20, true);
   if (header.getUint32(0, true) !== 0x31415445 ||
-      channels < 1 || channels > 8 ||
+      channels < 1 || channels > 16 ||
       frames < 1 || frames > 8388600 ||
       sampleRate < 1 ||
       topology > IR_ASSET_TOPOLOGY.matrix ||
-      pathCount > 8 ||
+      pathCount > 16 ||
       header.getUint32(24, true) !== 0 ||
       header.getUint32(28, true) !== 0) {
     throw new AssetError(`Asset ${reference} has an invalid ETA1 header.`);
@@ -232,8 +232,8 @@ async function resolverResult(resolver, reference, descriptor, effectId) {
 }
 
 function validatePaths(paths, channels) {
-  if (!Array.isArray(paths) || paths.length < 1 || paths.length > 8) {
-    throw new AssetError('Matrix impulse responses require between 1 and 8 paths.');
+  if (!Array.isArray(paths) || paths.length < 1 || paths.length > 16) {
+    throw new AssetError('Matrix impulse responses require between 1 and 16 paths.');
   }
   const normalized = paths.map(path => {
     if (!isRecord(path) ||
@@ -247,8 +247,8 @@ function validatePaths(paths, channels) {
     const outputSlot = path?.outputSlot;
     const irChannel = path?.irChannel;
     if (![inputSlot, outputSlot, irChannel].every(Number.isSafeInteger) ||
-        inputSlot < 0 || inputSlot > 7 ||
-        outputSlot < 0 || outputSlot > 7 ||
+        inputSlot < 0 || inputSlot > 15 ||
+        outputSlot < 0 || outputSlot > 15 ||
         irChannel < 0 || irChannel >= channels) {
       throw new AssetError('Matrix impulse-response paths contain an invalid channel or slot.');
     }
@@ -288,8 +288,8 @@ export function encodeEta1(options) {
     throw new AssetError('ETA1 encoding options must be an object.');
   }
   const { channels, sampleRate, topology = 'unspecified', paths } = options;
-  if (!Array.isArray(channels) || channels.length < 1 || channels.length > 8) {
-    throw new AssetError('ETA1 channels must contain between 1 and 8 Float32Array values.');
+  if (!Array.isArray(channels) || channels.length < 1 || channels.length > 16) {
+    throw new AssetError('ETA1 channels must contain between 1 and 16 Float32Array values.');
   }
   const frames = channels[0] instanceof Float32Array ? channels[0].length : 0;
   if (frames < 1) {
@@ -345,7 +345,7 @@ function normalizeFormatMetadata(format, byteLength, reference, options = {}) {
     throw new AssetError(`Asset ${reference} must use the ETA1 planar little-endian float32 format.`);
   }
   const { channels, frames, sampleRate } = format;
-  if (!Number.isInteger(channels) || channels < 1 || channels > 8 ||
+  if (!Number.isInteger(channels) || channels < 1 || channels > 16 ||
       !Number.isInteger(frames) || frames < 1 || frames > 8388600 ||
       !Number.isInteger(sampleRate) || sampleRate < 1 || sampleRate > 0xffffffff) {
     throw new AssetError(`Asset ${reference} has invalid channel, frame, or sample-rate metadata.`);
@@ -679,11 +679,11 @@ function prepareFirFilterAsset(effect, resolvedAssets, {
   let inputCount;
   if (effect.type === 'FIRCrossover') {
     const bandCount = effect.parameters.bandCount;
-    if (![4, 6, 8].includes(processingChannels) ||
+    if ((processingChannels < 4 || processingChannels > 16 || processingChannels % 2 !== 0) ||
         bandCount * 2 > processingChannels ||
         asset.format.channels !== bandCount) {
       throw new AssetError(
-        `${effect.id} requires 4, 6, or 8 processing channels and one filter channel per band.`
+        `${effect.id} requires an even number of processing channels from 4 to 16 and one filter channel per band.`
       );
     }
     topology = IR_ASSET_TOPOLOGY.matrix;

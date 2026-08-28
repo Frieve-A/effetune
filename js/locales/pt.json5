@@ -570,6 +570,7 @@
   "roomEq.status.designing": "Projetando filtros de correção…",
   "roomEq.status.ready": "Os filtros do Room EQ estão prontos.",
   "roomEq.status.details": "{samples} amostras / {milliseconds} ms · {resolution} Hz · {asset}",
+  "roomEq.status.tapLimit": "Ao processar 9 canais ou mais, Taps fica limitado a 65536.",
   "roomEq.status.missing": "Ausente",
   "roomEq.status.select": "Atribua uma medição salva para começar.",
   "roomEq.error.design": "Não foi possível projetar os filtros do Room EQ. Use menos taps ou selecione a medição novamente.",

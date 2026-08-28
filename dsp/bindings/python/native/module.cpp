@@ -172,9 +172,20 @@ std::int8_t channelSpec(const std::string &channel) {
   if (channel == "right") {
     return 1;
   }
-  if (channel.size() == 1u && channel[0] >= '1' && channel[0] <= '8') {
+  if (channel.size() == 1u && channel[0] >= '1' && channel[0] <= '9') {
     return static_cast<std::int8_t>(channel[0] - '1');
   }
+  if (channel.size() == 2u && channel[0] == '1' && channel[1] >= '0' && channel[1] <= '6') {
+    return static_cast<std::int8_t>(9 + channel[1] - '0');
+  }
+  if (channel == "910")
+    return 20;
+  if (channel == "1112")
+    return 21;
+  if (channel == "1314")
+    return 22;
+  if (channel == "1516")
+    return 23;
   if (channel == "34") {
     return 17;
   }
@@ -210,7 +221,7 @@ public:
         engine_(std::make_unique<effetune::Engine>()) {
     if (!std::isfinite(sample_rate) || sample_rate <= 0.0 ||
         sample_rate > static_cast<double>(std::numeric_limits<float>::max()) || channels == 0u ||
-        channels > 8u || block_size == 0u) {
+        channels > 16u || block_size == 0u) {
       throw std::invalid_argument("invalid native chain configuration");
     }
     checkStatus("DSP preparation", engine_->prepare(static_cast<float>(sample_rate), channels,
@@ -252,7 +263,7 @@ public:
              MatrixUint32 paths, std::uint32_t input_count, std::uint32_t processing_channels) {
     requireOpen();
     if (finished_ || node_index >= nodes_.size() || samples.shape(0) == 0u ||
-        samples.shape(0) > 8u || samples.shape(1) == 0u ||
+        samples.shape(0) > 16u || samples.shape(1) == 0u ||
         samples.shape(0) > std::numeric_limits<std::uint32_t>::max() ||
         samples.shape(1) > std::numeric_limits<std::uint32_t>::max() || paths.shape(1) != 3u ||
         paths.shape(0) > std::numeric_limits<std::uint32_t>::max()) {

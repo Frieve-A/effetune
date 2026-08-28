@@ -277,6 +277,26 @@ layouts, kramdown renderer, navigation data, and permalink handling instead of a
 development-only Markdown implementation. Web application assets still receive the
 development server's no-cache behavior.
 
+### Preview Multichannel UI Without Multichannel Hardware
+
+After the app has loaded, run this in the developer Console:
+
+```javascript
+uiManager.setDebugChannelCount(16);
+```
+
+This immediately refreshes the channel selectors, Matrix, Multi Channel Panel,
+Pipeline Analyzer controls, and channel-count label for layout inspection. It does
+not change the audio device, AudioContext, worklet, or DSP channel count. This is
+only a UI debug preview: playback, processing, analysis, and other operations may
+fail or disagree with the displayed channel count. Making those operations work
+in this mode is explicitly not a requirement; do not add compatibility fixes or
+tests requiring full functionality. Use it to inspect layouts, not to validate audio.
+
+Pass an integer from 1 to 16 to preview another count. Clear the override with
+`uiManager.setDebugChannelCount(null)` or reload the page. The override is not saved;
+ordinary plugin edits made during the preview still follow normal save behavior.
+
 ## Building the Application
 
 EffeTune can be built as a portable application or as an installer. The build process is configured in the `package.json` file under the `build` section.

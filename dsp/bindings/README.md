@@ -49,7 +49,8 @@ points must not re-export that symbol or the private JSON file.
 Only semantic long parameter names are accepted. Missing parameter values and
 the annotated `enabled` and `channel` defaults are materialized by a binding
 runtime. The canonical channels are `all`, `stereo`, `left`, `right`, individual
-channels `1` through `8`, and pairs `34`, `56`, and `78`. The package-internal
+channels `1` through `16`, and pairs `34`, `56`, `78`, `910`, `1112`, `1314`,
+and `1516`. The package-internal
 mapping preserves the existing engine representation where `stereo` is null,
 `all` is `A`, and left/right are `L`/`R`. Unknown values are rejected. Duplicate
 explicit effect IDs are rejected by the runtime. Existing application
@@ -69,8 +70,9 @@ payload by reference and SHA-256 digest. Each payload has a 32-byte
 little-endian header (`ETA1`, channels, frames, sample rate, topology, path
 count, and eight reserved bytes), optional 12-byte matrix path records, and
 planar float32 samples. Topology is one of `unspecified`, `mono`, `independent`,
-`trueStereo`, or `matrix`. Matrix topology requires 1 to 8
-`inputSlot`/`outputSlot`/`irChannel` paths; other topologies prohibit paths and
+`trueStereo`, or `matrix`. Matrix topology requires 1 to 16
+`inputSlot`/`outputSlot`/`irChannel` paths (with zero-based indices `0` through `15`);
+other topologies prohibit paths and
 require a zero path count. A ZIP container is neither required nor defined.
 Duplicate asset IDs, missing references, hash verification, cross-field path
 validation, and exact byte-size consistency are runtime responsibilities.

@@ -195,6 +195,10 @@ node tools/dsp-parity/generate.mjs --all
 node tools/dsp-parity/run.mjs --self-check
 ```
 
+Use `node tools/dsp-parity/generate.mjs --all --skip-native-referenced` when you need to
+refresh the shared JavaScript guard without regenerating native-referenced sets. Those
+`nativeDirect` and production-native-promoted sets use their own reference workflow.
+
 `--all` writes and reads back every golden set in a temporary directory on the same
 filesystem first. Only after every target and the shared guard are ready does it promote
 the complete result. A generation or promotion failure leaves the previously committed
@@ -261,7 +265,7 @@ EFFETUNE_PLUGIN(MyPlugin, example/my_plugin)
 
 - Allocate all worst-case buffers in `prepare()`. `process()` must not allocate, resize,
   lock, log, perform file I/O, or call into JavaScript.
-- Size for the ABI limits: up to eight channels, the prepared maximum block size, and the
+- Size for the ABI limits: up to sixteen channels, the prepared maximum block size, and the
   supported sample-rate range. If the legacy implementation overallocates, a smaller ring
   is acceptable only when it is mathematically equivalent and covered by wraparound tests.
 - Validate pointers and prepared bounds before indexing. Invalid process shapes return
@@ -290,7 +294,7 @@ depends on lifecycle transitions that the golden format cannot express cleanly:
 - Sample-rate, channel-count, or topology changes.
 - Parameters that must preserve state.
 - Disabled modes that freeze rather than advance state.
-- Maximum 192 kHz, eight-channel capacity.
+- Maximum 192 kHz, sixteen-channel capacity.
 - Latency changes and telemetry cadence.
 
 Wrap every direct `process()` call in `effetune::allocation_guard::Scope`. Register the

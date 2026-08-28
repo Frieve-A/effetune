@@ -127,7 +127,7 @@ _LEGACY_CHANNEL_ALIASES_V1 = {
     "stereo": "stereo",
 }
 
-_LEGACY_CHANNEL_NUMBERS_V1 = ("1", "2", "3", "4", "5", "6", "7", "8", "34", "56", "78")
+_LEGACY_CHANNEL_NUMBERS_V1 = ("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "34", "56", "78", "910", "1112", "1314", "1516")
 
 
 def _legacy_channel(value: Any) -> str:
@@ -254,7 +254,10 @@ def _expand_legacy_short_key_arrays_v1(
                 f"legacy {effect_label} contains unsupported or incomplete "
                 f"{item_label} settings"
             )
-        parameters[public_name] = values
+        # App presets retain eight channels when the extended channels are at their defaults.
+        original_count = 7 if legacy_name == "l" else 8
+        default_value = 0 if legacy_name in ("v", "d") else False
+        parameters[public_name] = values + [default_value] * 8 if len(values) == original_count else values
 
 
 def _prepare_legacy_parameters_v1(

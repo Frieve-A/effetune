@@ -16,7 +16,7 @@ extern "C" const effetune::KernelDescriptor *et_kernel_descriptor_RSReverbPlugin
 namespace {
 
 constexpr std::uint32_t kFrames = 4096u;
-constexpr std::uint32_t kMaxChannels = 8u;
+constexpr std::uint32_t kMaxChannels = 16u;
 constexpr std::uint32_t kStorageBytes = 16384u;
 constexpr std::uint32_t kMaxParamCount = 13u;
 constexpr std::uint32_t kSeedLow = 0x89abcdefu;
@@ -463,10 +463,8 @@ void testRsDampedReverbTime() noexcept {
   }
 }
 
-void testHighRateCapacity() noexcept {
-  constexpr std::uint64_t kRsPayloadBudget = 9u * 1024u * 1024u;
+std::uint64_t highRateRsBufferBytes(std::uint64_t channels) noexcept {
   constexpr std::uint64_t kSampleRate = 192000u;
-  constexpr std::uint64_t kChannels = 8u;
   constexpr std::uint64_t pre_delay_samples = kSampleRate * 50u / 1000u + 1u;
   constexpr std::uint64_t allpass_samples = kSampleRate * 5u / 1000u;
   std::uint64_t comb_samples_per_channel = 0u;
@@ -475,9 +473,26 @@ void testHighRateCapacity() noexcept {
         std::ceil(static_cast<double>(kSampleRate) * (delay * 1.03 * 5.0 * 0.001)));
   }
   const std::uint64_t rs_buffer_bytes =
-      (kChannels * pre_delay_samples + kChannels * comb_samples_per_channel +
-       kChannels * 2u * allpass_samples) *
+      (channels * pre_delay_samples + channels * comb_samples_per_channel +
+       channels * 2u * allpass_samples) *
       sizeof(float);
+  return rs_buffer_bytes;
+}
+
+void testHighRateCapacity16() noexcept {
+  constexpr std::uint64_t kRsPayloadBudget16 = 18u * 1024u * 1024u;
+  const std::uint64_t rs_buffer_bytes = highRateRsBufferBytes(16u);
+  REVERB_CHECK(rs_buffer_bytes == 17824064u);
+  REVERB_CHECK(rs_buffer_bytes < kRsPayloadBudget16);
+  AudioBuffer audio = signal(16u, 128u);
+  KernelHarness harness(et_kernel_descriptor_RSReverbPlugin(), 192000.0F, 16u, 128u);
+  harness.stage(rsParams(50.0F), 9u);
+  harness.process(audio, 16u, 128u);
+}
+
+void testHighRateCapacity() noexcept {
+  constexpr std::uint64_t kRsPayloadBudget = 9u * 1024u * 1024u;
+  const std::uint64_t rs_buffer_bytes = highRateRsBufferBytes(8u);
   REVERB_CHECK(rs_buffer_bytes == 8912032u);
   REVERB_CHECK(rs_buffer_bytes < kRsPayloadBudget);
 
@@ -521,6 +536,7 @@ int main() {
   testRsSampleRateTransition();
   testRsDampedReverbTime();
   testHighRateCapacity();
+  testHighRateCapacity16();
   if (failures != 0) {
     std::fprintf(stderr, "Reverb native tests failed: %d\n", failures);
     return 1;

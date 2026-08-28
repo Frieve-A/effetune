@@ -135,7 +135,7 @@
   "error:measurementConfigUnavailable": "測定設定を利用できなくなりました。新しい測定を開始してください。",
   "error:measurementFailed": "測定を完了できませんでした。オーディオデバイスを確認して、この測定点をもう一度測定してください。",
   "error:measurementImportFailed": "測定ファイルが正しくありません。EffeTuneからエクスポートした測定JSONファイルを選択してください。",
-  "error:impulseResponseImportFailed": "WAVファイルをインポートできませんでした。1～8チャンネルの正しいインパルス応答WAVファイルを選択してください。",
+  "error:impulseResponseImportFailed": "WAVファイルをインポートできませんでした。1～16チャンネルの正しいインパルス応答WAVファイルを選択してください。",
   "error:impulseResponseImportTooLarge": "インパルス応答WAVファイルが大きすぎます。より短い、または小さいインパルス応答を選択してください。",
   "error:clipboardWriteFailed": "PEQ設定をコピーできませんでした。クリップボードへのアクセスを確認して、もう一度お試しください。",
   "error:correctionUpdateFailed": "補正を更新できませんでした。設定を確認して、もう一度お試しください。",
@@ -164,6 +164,14 @@
   "option:ch6": "チャンネル 6", // チャンネル6のオプション
   "option:ch7": "チャンネル 7", // チャンネル7のオプション
   "option:ch8": "チャンネル 8", // チャンネル8のオプション
+  "option:ch9": "チャンネル 9",
+  "option:ch10": "チャンネル 10",
+  "option:ch11": "チャンネル 11",
+  "option:ch12": "チャンネル 12",
+  "option:ch13": "チャンネル 13",
+  "option:ch14": "チャンネル 14",
+  "option:ch15": "チャンネル 15",
+  "option:ch16": "チャンネル 16",
   
   // サンプルレートオプション
   "option:sampleRate44100": "44.1 kHz", // 44.1 kHzサンプルレートのオプション

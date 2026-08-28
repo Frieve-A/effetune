@@ -193,6 +193,29 @@ test('MeasurementStore exposes only channel entries for a multichannel measureme
     ]);
 });
 
+test('MeasurementStore labels the zero-based Ch 16 token as Ch 16', async () => {
+    const multi = multichannelMeasurement();
+    multi.outputChannels.push('15');
+    multi.channelResponses.push({ channel: '15', averageFrequencyResponse: [[100, -5]], maxSignalLevel: -18 });
+    for (const [index, point] of multi.points.entries()) {
+        point.channels.push({
+            channel: '15',
+            frequencyResponse: [[100, -5]],
+            maxSignalLevel: -18,
+            irId: 30 + index,
+            ir: { stored: true }
+        });
+    }
+    const database = new MeasurementDatabase([multi], [
+        impulseResponse(multi.id, 30, '15', 0.1),
+        impulseResponse(multi.id, 31, '15', 0.2)
+    ]);
+    const store = new MeasurementStore(database);
+    await store.refresh();
+
+    assert.equal(store.listMeasurements().at(-1).name, 'Listening seat [Ch 16]');
+});
+
 test('MeasurementStore flattens channel entries without exposing a multichannel parent', async () => {
     const { store, multi, single } = await createStore();
 

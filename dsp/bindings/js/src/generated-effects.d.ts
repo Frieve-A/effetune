@@ -3,7 +3,7 @@ import { Effect } from './effect.js';
 
 export type EffectType = "LevelMeter" | "Oscilloscope" | "Spectrogram" | "SpectrumAnalyzer" | "StereoMeter" | "ChannelDivider" | "DCOffset" | "FIRCrossover" | "Matrix" | "MultiChannelPanel" | "Mute" | "PolarityInversion" | "StereoBalance" | "Volume" | "Delay" | "TimeAlignment" | "AutoLeveler" | "BrickwallLimiter" | "Compressor" | "Expander" | "Gate" | "MultibandCompressor" | "MultibandExpander" | "MultibandTransient" | "PowerAmpSag" | "TransientShaper" | "BandPassFilter" | "CombFilter" | "EarphoneCableSim" | "FifteenBandGEQ" | "FifteenBandPEQ" | "FiveBandDynamicEQ" | "FiveBandFIRPEQ" | "FiveBandPEQ" | "GroupDelayEQ" | "GroupDelayPEQ" | "HiPassFilter" | "LoPassFilter" | "LoudnessEqualizer" | "NarrowRange" | "RoomEQ" | "TiltEQ" | "ToneControl" | "AMRadioSimulator" | "BitCrusher" | "BluetoothSBCSimulator" | "CassetteArtifacts" | "DigitalErrorEmulator" | "DSD64IMDSimulator" | "FMRadioSimulator" | "G726ADPCMSimulator" | "GSMFullRateSimulator" | "HumGenerator" | "MDSimulator" | "MP3CodecSimulator" | "NoiseBlender" | "SimpleJitter" | "SWRadioSimulator" | "TapeArtifacts" | "VinylArtifacts" | "VinylSimulator" | "AutoFilter" | "AutoPan" | "Chorus" | "DopplerDistortion" | "FrequencyShifter" | "Phaser" | "PitchShifter" | "RotarySpeaker" | "Tremolo" | "WowFlutter" | "Oscillator" | "HornResonator" | "HornResonatorPlus" | "ModalResonator" | "DattorroPlateReverb" | "FDNReverb" | "IRReverb" | "RSReverb" | "DynamicSaturation" | "Exciter" | "HardClipping" | "HarmonicDistortion" | "MultibandSaturation" | "Saturation" | "SubSynth" | "TubeSimulator" | "CrossfeedFilter" | "MSMatrix" | "MultibandBalance" | "PhaseSelectEQ" | "StereoBlend";
 type RequiredAssetEffectType = "FIRCrossover" | "FiveBandFIRPEQ" | "GroupDelayEQ" | "GroupDelayPEQ" | "RoomEQ" | "IRReverb";
-export type EffectChannel = "all" | "stereo" | "left" | "right" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "34" | "56" | "78";
+export type EffectChannel = "all" | "stereo" | "left" | "right" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15" | "16" | "34" | "56" | "78" | "910" | "1112" | "1314" | "1516";
 
 export interface CommonEffectOptions {
   readonly id?: string;
@@ -139,11 +139,11 @@ export declare class Matrix extends Effect {
 export declare function createMatrix(options?: MatrixOptions): Matrix;
 
 export interface MultiChannelPanelOptions extends CommonEffectOptions {
-  readonly mute?: readonly [boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean];
-  readonly solo?: readonly [boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean];
-  readonly volume?: readonly [number, number, number, number, number, number, number, number];
-  readonly delay?: readonly [number, number, number, number, number, number, number, number];
-  readonly link?: readonly [boolean, boolean, boolean, boolean, boolean, boolean, boolean];
+  readonly mute?: readonly [boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean];
+  readonly solo?: readonly [boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean];
+  readonly volume?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number];
+  readonly delay?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number];
+  readonly link?: readonly [boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean];
   readonly assets?: never;
 }
 

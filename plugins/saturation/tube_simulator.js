@@ -6947,7 +6947,7 @@ class TubeSimulatorPlugin extends PluginBase {
         }
         if (this.executionState.state !== 'active') {
             const unsupportedChannelModeMessage =
-                this.channel === null || ['34', '56', '78'].includes(this.channel)
+                this.channel === null || ['34', '56', '78', '910', '1112', '1314', '1516'].includes(this.channel)
                     ? 'Tube Simulator does not have enough output channels for the selected Stereo or channel pair. The effect is bypassed.'
                     : 'Tube Simulator supports Stereo and channel pairs only. Select Stereo or a channel pair. The effect is bypassed.';
             const messages = {

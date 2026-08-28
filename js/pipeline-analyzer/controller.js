@@ -481,7 +481,12 @@ export class PipelineAnalyzerController {
     }
 
     refreshAudioFormat() {
-        const format = getAnalyzerAudioFormat(this.audioManager);
+        const actualFormat = getAnalyzerAudioFormat(this.audioManager);
+        // Preview the controls only; snapshots still use the real audio format.
+        // Analysis with preview-only channels is intentionally unsupported.
+        const debugChannelCount = globalThis.window?.uiManager?.debugChannelCount;
+        const format = actualFormat && debugChannelCount != null
+            ? { ...actualFormat, channelCount: debugChannelCount } : actualFormat;
         const unchanged = this.audioFormat?.sampleRate === format?.sampleRate &&
             this.audioFormat?.channelCount === format?.channelCount;
         this.audioFormat = format;

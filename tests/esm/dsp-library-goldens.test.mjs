@@ -23,6 +23,25 @@ const EFFECT_COUNT = 92;
 const WORKLET_GOLDEN_CASE_COUNT = 93;
 const NON_IDENTITY_EFFECT_COUNT = 87;
 
+test('MCP acceptance preserves eight-channel aggregates and defaults only their extended slots', async () => {
+  const { cases } = await discoverFrozenGoldenCases(repoRoot);
+  const testCase = structuredClone(cases.find(entry =>
+    entry.publicType === 'MultiChannelPanel' && entry.metadata.id === 'four-channel-gain-and-mute'
+  ));
+  const members = { m: 'mute', s: 'solo', v: 'volume', d: 'delay', l: 'link' };
+  for (const key of Object.keys(members)) {
+    testCase.metadata.params[key] = testCase.metadata.params[key].slice(0, key === 'l' ? 7 : 8);
+  }
+  const [plan] = await chooseWorkletPlans([testCase]);
+  for (const [key, name] of Object.entries(members)) {
+    const supplied = testCase.metadata.params[key];
+    const defaults = testCase.definition.parameters.find(parameter => parameter.name === name).default;
+    assert.deepEqual(plan.document.chain[0].parameters[name], [
+      ...supplied, ...defaults.slice(supplied.length)
+    ], name);
+  }
+});
+
 test('JavaScript modulation cross-field stream state is canonical', async t => {
   const stageRoot = await stageJsPackage(repoRoot);
   t.after(() => fs.rm(stageRoot, { recursive: true, force: true }));

@@ -663,7 +663,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         const cross = payload.getFloat32(20, true);
         const tot = payload.getFloat32(24, true);
         const out = payload.getFloat32(28, true);
-        if (channels < 1 || channels > 8 || !Number.isFinite(sampleRate) || sampleRate <= 0 ||
+        if (channels < 1 || channels > 16 || !Number.isFinite(sampleRate) || sampleRate <= 0 ||
             (flags & ~DSD64_IMD_TELEMETRY_VALID) !== 0 ||
             !Number.isFinite(add) || !Number.isFinite(att) ||
             !Number.isFinite(cross) || !Number.isFinite(tot) || !Number.isFinite(out)) {

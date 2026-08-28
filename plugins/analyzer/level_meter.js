@@ -1,6 +1,6 @@
 const LEVEL_METER_TAP_LEVEL = 1;
 const LEVEL_METER_TELEMETRY_VERSION = 1;
-const LEVEL_METER_MAX_TELEMETRY_CHANNELS = 8;
+const LEVEL_METER_MAX_TELEMETRY_CHANNELS = 16;
 
 class LevelMeterPlugin extends PluginBase {
     constructor() {

@@ -30,7 +30,7 @@ class AutoPanPlugin extends PluginBase {
             const sampleRate = parameters.sampleRate;
             const blockSize = parameters.blockSize;
             const channelCount = parameters.channelCount;
-            if (!(sampleRate > 0) || blockSize <= 0 || channelCount <= 0 || channelCount > 8) return data;
+            if (!(sampleRate > 0) || blockSize <= 0 || channelCount <= 0 || channelCount > 16) return data;
 
             const rate = parameters.rt;
             const depth = parameters.dp * 0.01;

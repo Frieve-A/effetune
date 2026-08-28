@@ -20,7 +20,7 @@ namespace effetune::plugins::modulation {
 namespace {
 
 constexpr double kPi = 3.1415926535897932384626433832795;
-constexpr std::uint32_t kMaximumChannels = 8u;
+constexpr std::uint32_t kMaximumChannels = 16u;
 constexpr double kPeakFloor = 1.0e-12;
 constexpr double kPeakRelativeFloor = 1.0e-9;
 constexpr double kPeakInterpolationFloor = 1.0e-30;

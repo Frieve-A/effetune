@@ -38,10 +38,10 @@ Routes an input channel into selected output channels according to its semantic 
 
 A specialized tool that splits your stereo signal into separate frequency bands and routes each band to a different stereo output pair. It is useful for multi-amplifier, multi-speaker, or custom crossover playback setups.
 
-To use this effect, you need to use the desktop app, set the number of output channels in the audio settings to 4, 6, or 8 depending on the number of bands, and set the channel in the effect bus routing to "All."
+To use this effect, use the desktop app, set an even output-channel count from 4 to 16 in the audio settings, and set the channel in the effect bus routing to "All." The selected Band Count determines which output pairs the effect uses.
 
 ### When to Use
-- When using multi-channel audio outputs (4, 6, or 8 channels)
+- When using even multi-channel audio outputs from 4 to 16 channels
 - To create custom frequency-based channel routing
 - For multi-amplifier or multi-speaker setups
 
@@ -50,7 +50,7 @@ To use this effect, you need to use the desktop app, set the number of output ch
   - 2 bands: Low/High split, requiring 4 output channels
   - 3 bands: Low/Mid/High split, requiring 6 output channels
   - 4 bands: Low/Mid-Low/Mid-High/High split, requiring 8 output channels
-  - Higher band counts are unavailable when the selected output channel count is too low
+  - Band Count remains limited to four bands; higher output-channel counts do not add more bands
 
 - **Crossover Frequencies** - Define where audio splits between bands
   - F1: First crossover point
@@ -66,7 +66,7 @@ To use this effect, you need to use the desktop app, set the number of output ch
 
 ### Technical Notes
 - Processes first two input channels only
-- Output channels must be a multiple of 2 (4, 6, or 8)
+- Output channels must be an even number from 4 to 16
 - Each band keeps the original stereo pair: 2-band mode outputs Low to channels 1-2 and High to channels 3-4; 3-band mode uses channels 1-2, 3-4, and 5-6; 4-band mode uses channels 1-2, 3-4, 5-6, and 7-8
 - Uses high-quality Linkwitz-Riley crossover filters
 - Visual frequency response graph for easy configuration

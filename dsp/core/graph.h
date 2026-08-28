@@ -66,9 +66,9 @@ private:
     bool enabled = false;
     bool effective = false;
     bool dormant = false;
-    std::array<std::uint32_t, 8> inputLatency{};
-    std::array<std::uint32_t, 8> outputLatency{};
-    std::array<std::uint32_t, 8> preDelay{};
+    std::array<std::uint32_t, 16> inputLatency{};
+    std::array<std::uint32_t, 16> outputLatency{};
+    std::array<std::uint32_t, 16> preDelay{};
     std::vector<std::uint32_t> incomingEdges;
     dsp::DelayLine preDelayLine;
   };
@@ -84,7 +84,7 @@ private:
     std::uint32_t flags = 0u;
     bool active = false;
     bool dormant = false;
-    std::array<std::uint32_t, 8> compensation{};
+    std::array<std::uint32_t, 16> compensation{};
     dsp::DelayLine delayLine;
   };
 
@@ -110,8 +110,8 @@ private:
   std::vector<float> buffers_;
   std::vector<std::uint8_t> snapshot_;
   dsp::DelayLine output_delay_line_;
-  std::array<std::uint32_t, 8> output_latency_{};
-  std::array<std::uint32_t, 8> output_delays_{};
+  std::array<std::uint32_t, 16> output_latency_{};
+  std::array<std::uint32_t, 16> output_delays_{};
   et_graph_diagnostic diagnostic_{ET_OK, ET_GRAPH_DIAGNOSTIC_GRAPH, 0u, ET_GRAPH_PATH_NONE, 0u, 0u};
   std::uint32_t max_channels_ = 0u;
   std::uint32_t max_frames_ = 0u;

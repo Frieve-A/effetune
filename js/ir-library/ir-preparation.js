@@ -12,9 +12,9 @@ const TRIM_FADE_FRAMES = 2048;
 function validateRequest(request) {
   const channels = request?.channels;
   const sampleRate = request?.sampleRate;
-  if (!Array.isArray(channels) || channels.length < 1 || channels.length > 8 ||
+  if (!Array.isArray(channels) || channels.length < 1 || channels.length > 16 ||
       !(channels[0] instanceof Float32Array) || channels[0].length === 0) {
-    throw new TypeError('IR preparation requires 1 to 8 non-empty Float32Array channels');
+    throw new TypeError('IR preparation requires 1 to 16 non-empty Float32Array channels');
   }
   const frames = channels[0].length;
   for (const channel of channels) {
@@ -266,7 +266,7 @@ function routedL1GainUpperBound(channelBounds, topology, paths) {
     return left > right ? left : right;
   }
   if (topology === IR_ASSET_TOPOLOGY.matrix) {
-    const outputBounds = new Float64Array(8);
+    const outputBounds = new Float64Array(16);
     for (const path of paths || []) {
       outputBounds[path.outputSlot] += channelBounds[path.irChannel] || 0;
     }

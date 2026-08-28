@@ -23,11 +23,11 @@ This type has catalog telemetry metadata but no public observation API in v0.1. 
 
 | Semantic name | Python constructor keyword | Type / count | Default | Unit | Range or values |
 |---|---|---:|---|---|---|
-| `mute` | `mute` | boolean / 8 | `[false,false,false,false,false,false,false,false]` | Not declared in catalog | Not declared in catalog |
-| `solo` | `solo` | boolean / 8 | `[false,false,false,false,false,false,false,false]` | Not declared in catalog | Not declared in catalog |
-| `volume` | `volume` | number / 8 | `[0,0,0,0,0,0,0,0]` | dB | -20 … 10 |
-| `delay` | `delay` | number / 8 | `[0,0,0,0,0,0,0,0]` | ms | 0 … 30 |
-| `link` | `link` | boolean / 7 | `[false,false,false,false,false,false,false]` | Not declared in catalog | Not declared in catalog |
+| `mute` | `mute` | boolean / 16 | `[false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false]` | Not declared in catalog | Not declared in catalog |
+| `solo` | `solo` | boolean / 16 | `[false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false]` | Not declared in catalog | Not declared in catalog |
+| `volume` | `volume` | number / 16 | `[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]` | dB | -20 … 10 |
+| `delay` | `delay` | number / 16 | `[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]` | ms | 0 … 30 |
+| `link` | `link` | boolean / 15 | `[false,false,false,false,false,false,false,false,false,false,false,false,false,false,false]` | Not declared in catalog | Not declared in catalog |
 
 
 
@@ -37,16 +37,18 @@ This type has catalog telemetry metadata but no public observation API in v0.1. 
 
 ## MultiChannel Panel
 
-A comprehensive control panel for managing multiple audio channels individually. This plugin provides complete control over volume, muting, soloing, and delay for up to 8 channels, with a visual level meter for each channel.
+A comprehensive control panel for managing multiple audio channels individually. This plugin provides complete control over volume, muting, soloing, and delay for up to 16 channels, with a visual level meter for each channel.
+
+Scroll within the panel to reach channels below the visible area.
 
 ### When to Use
-- When working with multi-channel audio (up to 8 channels)
+- When working with multi-channel audio (up to 16 channels)
 - To create custom volume balance between different channels
 - When you need to apply individual delay to specific channels
 - For monitoring levels across multiple channels simultaneously
 
 ### Features
-- Individual controls for up to 8 audio channels
+- Individual controls for up to 16 audio channels
 - Real-time level meters with peak hold for visual monitoring
 - Channel linking capability for grouped parameter changes
 

@@ -519,28 +519,28 @@ test('WebAssembly mode rejects noneligible plugins without measuring JavaScript'
   runtime.close();
 });
 
-test('WebAssembly sessions route all eight channels through one 1024-sample pipeline call', async () => {
+test('WebAssembly sessions route all sixteen channels through one 2048-sample pipeline call', async () => {
   const harness = createWasmHarness();
   const pluginCalls = [];
   const plugin = new VolumePlugin(pluginCalls);
   const runtime = await createWasmRuntime(harness);
-  const session = runtime.createPluginSession(plugin, { channelCount: 8 });
+  const session = runtime.createPluginSession(plugin, { channelCount: 16 });
 
   const configureCall = harness.calls.find(call => call[0] === 'pipelineConfigure');
   const descriptor = decodeDspPipelineDescriptor(configureCall[1]);
   assert.equal(descriptor.nodes.length, 1);
   assert.equal(descriptor.nodes[0].channelSpec, -2);
 
-  const input = new Float32Array(8 * 128);
+  const input = new Float32Array(16 * 128);
   input[0] = 0.125;
-  input[1023] = -0.75;
+  input[2047] = -0.75;
   session.process(input, 0.5);
 
   const pipelineCall = harness.calls.find(call => call[0] === 'pipelineProcess');
-  assert.deepEqual(pipelineCall.slice(0, 5), ['pipelineProcess', 8, 128, 0.5, false]);
-  assert.equal(pipelineCall[5].length, 1024);
+  assert.deepEqual(pipelineCall.slice(0, 5), ['pipelineProcess', 16, 128, 0.5, false]);
+  assert.equal(pipelineCall[5].length, 2048);
   assert.equal(pipelineCall[5][0], 0.125);
-  assert.equal(pipelineCall[5][1023], -0.75);
+  assert.equal(pipelineCall[5][2047], -0.75);
   assert.equal(pluginCalls.some(call => call[0] === 'executeProcessor'), false);
 
   session.close();

@@ -139,7 +139,7 @@ class IRReverbPlugin extends PluginBase {
             ? optionSampleRate
             : this._sampleRate;
         const nextOutputChannels = Number.isInteger(optionOutputChannels) &&
-            optionOutputChannels >= 1 && optionOutputChannels <= 8
+            optionOutputChannels >= 1 && optionOutputChannels <= 16
             ? optionOutputChannels
             : this._outputChannelCount;
         const outputFormatChanged = options?.commitSampleRate &&
@@ -1441,7 +1441,7 @@ class IRReverbPlugin extends PluginBase {
             window.audioManager?.outputChannelCount,
             window.uiManager?.audioManager?.outputChannelCount
         ];
-        const value = candidates.find(candidate => Number.isInteger(candidate) && candidate >= 1 && candidate <= 8);
+        const value = candidates.find(candidate => Number.isInteger(candidate) && candidate >= 1 && candidate <= 16);
         return value || 2;
     }
 
@@ -1459,7 +1459,7 @@ class IRReverbPlugin extends PluginBase {
         }
         try {
             const audioBuffer = await context.decodeAudioData(bytes.slice(0));
-            if (audioBuffer.numberOfChannels < 1 || audioBuffer.numberOfChannels > 8 || audioBuffer.length < 1) {
+            if (audioBuffer.numberOfChannels < 1 || audioBuffer.numberOfChannels > 16 || audioBuffer.length < 1) {
                 throw new Error('Unsupported decoded channel layout');
             }
             const channels = [];

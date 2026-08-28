@@ -15,7 +15,7 @@ constexpr std::size_t kResonances = 5u;
 constexpr std::size_t kMaxPolynomialTerms = 12u;
 constexpr std::size_t kMaxRoots = kMaxPolynomialTerms - 1u;
 constexpr std::size_t kMaxSections = kMaxRoots;
-constexpr std::size_t kMaxChannels = 8u;
+constexpr std::size_t kMaxChannels = 16u;
 constexpr double kTwoPi = 6.283185307179586;
 
 struct ComplexValue final {
@@ -492,7 +492,8 @@ private:
   dsp::NyquistDenormalNoise denormal_noise_;
 };
 
-static_assert(sizeof(EarphoneCableSimKernel) <= 8192u);
+static_assert(sizeof(EarphoneCableSimKernel) <=
+              8192u + 2u * (kMaxChannels - 8u) * kMaxSections * sizeof(dsp::BiquadDf1State));
 
 } // namespace effetune::plugins::eq
 

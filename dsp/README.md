@@ -302,10 +302,10 @@ sized as `maxChannels * maxFrames`.
 
 **Maximum supported shape**
 
-At 192 kHz and eight channels, the per-channel allocations contain 3,840,000
-floats, or 15,360,000 bytes (15.36 MB, about 14.65 MiB). Including the small
+At 192 kHz and sixteen channels, the per-channel allocations contain 7,680,000
+floats, or 30,720,000 bytes (30.72 MB, about 29.30 MiB). Including the small
 final block and index arrays, one maximal instance is budgeted at roughly
-15.4 MiB of kernel heap.
+30.8 MiB of kernel heap.
 
 Kernel heap is additional to the engine arena and shares the WebAssembly
 module's 256 MiB limit. The combined allocation of all effect instances must
@@ -314,7 +314,7 @@ remain within that limit.
 **Why this capacity is retained**
 
 A smaller fixed allocation would either reject the documented combination of
-a 500 ms window, 192 kHz audio, and eight channels, or require an incompatible
+a 500 ms window, 192 kHz audio, and sixteen channels, or require an incompatible
 allocation during processing. Shape changes therefore clear only the active
 logical regions. Pitch and fine-tune changes retain the existing state.
 
@@ -338,11 +338,11 @@ and storage.
 
 **Maximum supported shape**
 
-At 192 kHz and eight channels:
+At 192 kHz and sixteen channels:
 
 - Ring length: 9,560 samples
-- Five-resonator storage: 1,529,600 bytes (about 1.46 MiB)
-- Literal two-second-ring storage avoided: 61,440,000 bytes
+- Five-resonator storage: 3,059,200 bytes (about 2.92 MiB)
+- Literal two-second-ring storage avoided: 122,880,000 bytes
 
 This keeps one maximal instance comfortably within the module's 256 MiB limit.
 The ring is allocated only during `prepare`; processing does not allocate.
@@ -372,16 +372,16 @@ do not reallocate memory, and neither does audio processing.
 
 **Maximum supported shape**
 
-At 192 kHz and eight channels:
+At 192 kHz and sixteen channels:
 
 | Storage | Float32 samples | Bytes |
 | --- | ---: | ---: |
-| Comb buffers | 2,135,840 | 8,543,360 |
-| Complete instance | 2,228,008 | 8,912,032 |
+| Comb buffers | 4,271,680 | 17,086,720 |
+| Complete instance | 4,456,016 | 17,824,064 |
 
 The complete instance includes the comb buffers, a pre-delay ring with
 `ceil(sampleRate * .05) + 1` samples, and two 5 ms all-pass buffers per
-channel. Its total is about 8.50 MiB. Giving every comb line a uniform stride
+channel. Its total is about 17.00 MiB. Giving every comb line a uniform stride
 based on the longest line would waste more than 3 MiB at this shape.
 
 **State behavior**
@@ -428,7 +428,7 @@ is 1; `TAP_SCOPE_SNAPSHOT` (type 3), `TAP_STEREO_FIELD` (type 6), and
   BrickwallLimiter.
 - **Type 7 — `TAP_LOUDNESS_LEVELS`.** Two float32 LUFS values.
 - **Type 8 — `TAP_TRANSIENT_GAIN`.** One signed float32 dB value.
-- **Type 9 — `TAP_CHANNEL_COUNT`.** One little-endian `u32` in the range 1-8.
+- **Type 9 — `TAP_CHANNEL_COUNT`.** One little-endian `u32` in the range 1-16.
 - **Type 10 — `TAP_MULTI_CHANNEL_LEVELS`.** A `u8` channel count, three zero
   bytes, then one eight-byte record per channel. Each record contains a
   nonnegative float32 raw window peak, a zero-or-one effective-mute byte, and

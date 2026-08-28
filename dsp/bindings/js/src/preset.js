@@ -58,7 +58,7 @@ function legacyChannel(value) {
     stereo: 'stereo'
   };
   const normalized = mapping[value] ?? value;
-  if (['1', '2', '3', '4', '5', '6', '7', '8', '34', '56', '78'].includes(normalized)) {
+  if (['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '34', '56', '78', '910', '1112', '1314', '1516'].includes(normalized)) {
     return normalized;
   }
   if (['all', 'stereo', 'left', 'right'].includes(normalized)) return normalized;
@@ -309,7 +309,11 @@ function expandLegacyShortKeyArraysV1(parameters, { effectLabel, itemLabel, memb
         `Legacy ${effectLabel} contains unsupported or incomplete ${itemLabel} settings.`
       );
     }
-    parameters[publicName] = values;
+    // App presets retain eight channels when the extended channels are at their defaults.
+    const originalCount = legacyName === 'l' ? 7 : 8;
+    const defaultValue = legacyName === 'v' || legacyName === 'd' ? 0 : false;
+    parameters[publicName] = values.length === originalCount
+      ? [...values, ...Array(8).fill(defaultValue)] : values;
   }
 }
 

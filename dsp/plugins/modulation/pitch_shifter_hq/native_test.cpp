@@ -37,7 +37,7 @@ void check(bool condition, const char *message) noexcept {
 
 class KernelHarness final {
 public:
-  explicit KernelHarness(float sample_rate = 48000.0F, std::uint32_t max_channels = 8u,
+  explicit KernelHarness(float sample_rate = 48000.0F, std::uint32_t max_channels = 16u,
                          std::uint32_t max_frames = kMaximumFrames) {
     descriptor_ = et_kernel_descriptor_PitchShifterHQPlugin();
     check(descriptor_ != nullptr, "descriptor exists");
@@ -577,7 +577,7 @@ void testStereoComplexRatio() {
 void testChannelsBlocksAndReset() {
   constexpr std::uint32_t frames = 24576u;
   constexpr std::array<std::uint32_t, 7u> mixed_blocks{{129u, 1u, 32u, 7u, 128u, 16u, 64u}};
-  for (std::uint32_t channels = 1u; channels <= 8u; ++channels) {
+  for (std::uint32_t channels = 1u; channels <= 16u; ++channels) {
     const std::vector<float> input = noise(frames, channels);
     KernelHarness reference(96000.0F, channels);
     const std::vector<float> reference_output =
@@ -603,7 +603,7 @@ void testChannelsBlocksAndReset() {
 }
 
 void testResetDuringStagedWork() {
-  constexpr std::uint32_t channels = 8u;
+  constexpr std::uint32_t channels = 16u;
   constexpr std::uint32_t hop_size = 1024u;
   constexpr std::uint32_t slot_size = 16u;
   constexpr std::uint32_t probe_frames = 12288u;

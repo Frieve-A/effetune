@@ -41,8 +41,8 @@ function requireBus(value, label) {
 
 export function isValidEncodedChannelSpec(value) {
     return value === -2 || value === -1 ||
-        (Number.isInteger(value) && value >= 0 && value <= 7) ||
-        (Number.isInteger(value) && value >= 16 && value <= 19);
+        (Number.isInteger(value) && value >= 0 && value <= 15) ||
+        (Number.isInteger(value) && value >= 16 && value <= 23);
 }
 
 export function encodeDspChannelSpec(channel) {
@@ -53,7 +53,11 @@ export function encodeDspChannelSpec(channel) {
     if (channel === '34') return 17;
     if (channel === '56') return 18;
     if (channel === '78') return 19;
-    if (typeof channel === 'string' && /^[1-8]$/.test(channel)) {
+    if (channel === '910') return 20;
+    if (channel === '1112') return 21;
+    if (channel === '1314') return 22;
+    if (channel === '1516') return 23;
+    if (typeof channel === 'string' && /^([1-9]|1[0-6])$/.test(channel)) {
         return Number(channel) - 1;
     }
     throw new DspPipelineDescriptorError(`Unsupported channel specifier: ${String(channel)}`);

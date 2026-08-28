@@ -727,7 +727,8 @@ test('showAudioConfigDialog selects every sample-rate and channel option correct
     { sampleRate: 88200, outputChannels: 6 },
     { sampleRate: 176400, outputChannels: 2 },
     { sampleRate: 352800, outputChannels: 4 },
-    { sampleRate: 384000, outputChannels: 8 }
+    { sampleRate: 384000, outputChannels: 8 },
+    { sampleRate: 48000, outputChannels: 16 }
   ];
 
   for (const preferences of cases) {

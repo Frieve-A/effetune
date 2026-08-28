@@ -570,6 +570,7 @@
   "roomEq.status.designing": "جارٍ تصميم مرشحات التصحيح…",
   "roomEq.status.ready": "مرشحات Room EQ جاهزة.",
   "roomEq.status.details": "{samples} عينة / {milliseconds} ms · {resolution} Hz · {asset}",
+  "roomEq.status.tapLimit": "عند معالجة 9 قنوات أو أكثر، يقتصر Taps على 65536.",
   "roomEq.status.missing": "مفقود",
   "roomEq.status.select": "عيّن قياسًا محفوظًا للبدء.",
   "roomEq.error.design": "تعذر تصميم مرشحات Room EQ. جرّب عددًا أقل من Taps أو أعد تحديد القياس.",

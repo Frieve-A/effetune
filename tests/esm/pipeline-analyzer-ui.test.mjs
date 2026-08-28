@@ -460,18 +460,21 @@ uiTest('adds distinct participating outputs to the device limit and never delete
     windowRef: fixture.windowRef,
     onConfigurationChange: configuration => changes.push(configuration)
   });
-  setFormat(ui, 3);
+  setFormat(ui, 16);
   assert.ok(ui.outputElements[0].deleteButton === null, 'the only Output must not have a delete button');
   ui.addOutputButton.dispatch('click');
   ui.addOutputButton.dispatch('click');
-  assert.deepEqual(ui.getConfiguration().outputs.map(output => output.channel), [0, 1, 2]);
+  ui.addOutputButton.dispatch('click');
+  assert.deepEqual(ui.getConfiguration().outputs.map(output => output.channel), [0, 1, 2, 3]);
   assert.equal(ui.addOutputButton.disabled, true);
   assert.equal(ui.outputElements.every(row => row.deleteButton), true);
   assert.equal(ui.outputElements[0].deleteButton.children[0].tagName, 'SVG');
   assert.equal(ui.outputElements[0].deleteButton.getAttribute('aria-label'), 'Delete Output 1');
   assert.equal(ui.outputElements[0].output.children[1].disabled, true);
   ui.outputElements[1].deleteButton.dispatch('click');
-  assert.deepEqual(ui.getConfiguration().outputs.map(output => output.channel), [0, 2]);
+  assert.deepEqual(ui.getConfiguration().outputs.map(output => output.channel), [0, 2, 3]);
+  ui.outputElements[1].deleteButton.dispatch('click');
+  assert.deepEqual(ui.getConfiguration().outputs.map(output => output.channel), [0, 3]);
   ui.outputElements[1].deleteButton.dispatch('click');
   assert.equal(ui.getConfiguration().outputs.length, 1);
   assert.ok(ui.outputElements[0].deleteButton === null, 'the surviving Output must not have a delete button');

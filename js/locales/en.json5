@@ -630,6 +630,7 @@
   "roomEq.status.designing": "Designing correction filters…",
   "roomEq.status.ready": "Room EQ filters are ready.",
   "roomEq.status.details": "{samples} samples / {milliseconds} ms · {resolution} Hz · {asset}",
+  "roomEq.status.tapLimit": "Taps limited to 65536 when processing more than 8 channels.",
   "roomEq.status.missing": "Missing",
   "roomEq.status.select": "Assign a saved measurement to begin.",
   "roomEq.error.design": "The Room EQ filters could not be designed. Try fewer taps or reselect the measurement.",

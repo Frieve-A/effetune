@@ -219,7 +219,7 @@ test('reverb kernels and native tests pin realtime lifecycle and capacity contra
   assert.match(nativeTest, /rs_buffer_bytes < kRsPayloadBudget/);
   assert.match(cmake, /effetune_dsp_reverb_tests/);
   assert.match(readme, /^#### RS Reverb$/m);
-  assert.match(readme, /\| Storage \| Float32 samples \| Bytes \|[\s\S]*\| Complete instance \| 2,228,008 \| 8,912,032 \|/);
+  assert.match(readme, /\| Storage \| Float32 samples \| Bytes \|[\s\S]*\| Complete instance \| 4,456,016 \| 17,824,064 \|/);
 });
 
 async function renderReverb(type, params, {

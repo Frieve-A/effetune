@@ -8,7 +8,8 @@ import {
   DEFAULT_REPO_ROOT,
   buildDefaultCaseMatrix,
   discoverCasePlan,
-  findPluginDefinition
+  findPluginDefinition,
+  readParamsSchema
 } from './cases.mjs';
 import {
   createGoldenArtifacts,
@@ -75,6 +76,7 @@ function usage() {
   return [
     'Usage: node tools/dsp-parity/generate.mjs (--type <PluginType> | --all) [options]',
     '  --all                  regenerate every existing golden set and update the shared base guard',
+    '  --skip-native-referenced  with --all, preserve native-reference sets and regenerate only JS references',
     '  --promote-production-native  explicitly use the production native kernel as the approved reference',
     '  --g726-vector-dir <path>      official Appendix II root required for G.726 promotion',
     '  --g726-conformance-runner <path>  G.726 native conformance test required for promotion',
@@ -755,6 +757,11 @@ export async function generateAllGoldens({
   try {
     await Promise.all([fs.mkdir(stagedRoot), fs.mkdir(backupRoot)]);
     for (const [index, target] of targets.entries()) {
+      if (args['skip-native-referenced'] === true) {
+        const schema = await readParamsSchema(target.schemaPath);
+        if (isNativeDirectReferenceEngine(schema.parityReference) ||
+            isProductionNativePromotedReferenceEngine(schema.parityReference)) continue;
+      }
       const number = String(index + 1).padStart(3, '0');
       const stagedOutput = path.join(stagedRoot, number);
       await fs.cp(target.goldenDir, stagedOutput, { recursive: true });

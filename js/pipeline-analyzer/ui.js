@@ -689,7 +689,7 @@ export class PipelineAnalyzerUI {
         const sampleRate = Number(format?.sampleRate);
         const channelCount = Number(format?.channelCount);
         this.audioFormat = Number.isFinite(sampleRate) && sampleRate > 0 &&
-            Number.isInteger(channelCount) && channelCount >= 1 && channelCount <= 8
+            Number.isInteger(channelCount) && channelCount >= 1 && channelCount <= 16
             ? Object.freeze({ sampleRate, channelCount })
             : null;
         this.renderControls();

@@ -51,9 +51,21 @@ export const EFFECT_CHANNELS = Object.freeze([
   '6',
   '7',
   '8',
+  '9',
+  '10',
+  '11',
+  '12',
+  '13',
+  '14',
+  '15',
+  '16',
   '34',
   '56',
-  '78'
+  '78',
+  '910',
+  '1112',
+  '1314',
+  '1516'
 ]);
 
 const channelImplementation = Object.freeze({
@@ -69,9 +81,21 @@ const channelImplementation = Object.freeze({
   '6': '6',
   '7': '7',
   '8': '8',
+  '9': '9',
+  '10': '10',
+  '11': '11',
+  '12': '12',
+  '13': '13',
+  '14': '14',
+  '15': '15',
+  '16': '16',
   '34': '34',
   '56': '56',
-  '78': '78'
+  '78': '78',
+  '910': '910',
+  '1112': '1112',
+  '1314': '1314',
+  '1516': '1516'
 });
 
 export const PUBLIC_EFFECT_TYPES = Object.freeze([
@@ -850,7 +874,7 @@ export function buildCatalog({
         count: 1,
         default: spec.structured.defaultValue,
         maximumLength: spec.structured.maxItems * 3,
-        pattern: '^(?:p?[0-8][0-8])*$'
+        pattern: '^(?:p?[0-9a-f][0-9a-f])*$'
       });
       structuredParameter = {
         publicName: spec.structured.name,
@@ -1375,7 +1399,7 @@ function bundleSchema() {
               channels: {
                 type: 'integer',
                 minimum: 1,
-                maximum: 8
+                maximum: 16
               },
               frames: {
                 type: 'integer',
@@ -1396,12 +1420,12 @@ function bundleSchema() {
               pathCount: {
                 type: 'integer',
                 minimum: 0,
-                maximum: 8
+                maximum: 16
               },
               paths: {
                 type: 'array',
                 minItems: 1,
-                maxItems: 8,
+                maxItems: 16,
                 description:
                   'Matrix routes. Distinct inputSlot values must be exactly 0..N-1, and N must not exceed the selected effect processing-channel count.',
                 items: {
@@ -1412,19 +1436,19 @@ function bundleSchema() {
                     inputSlot: {
                       type: 'integer',
                       minimum: 0,
-                      maximum: 7,
+                      maximum: 15,
                       description:
                         'Zero-based matrix input; the set of input slots must be contiguous from 0.'
                     },
                     outputSlot: {
                       type: 'integer',
                       minimum: 0,
-                      maximum: 7
+                      maximum: 15
                     },
                     irChannel: {
                       type: 'integer',
                       minimum: 0,
-                      maximum: 7
+                      maximum: 15
                     }
                   }
                 }
@@ -1446,7 +1470,7 @@ function bundleSchema() {
                     pathCount: {
                       type: 'integer',
                       minimum: 1,
-                      maximum: 8
+                      maximum: 16
                     }
                   }
                 },
