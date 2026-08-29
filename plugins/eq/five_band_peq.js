@@ -399,7 +399,7 @@ class FiveBandPEQPlugin extends PluginBase {
       const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       text.setAttribute('x', '2%'); text.setAttribute('y', `${y}%`);
       text.setAttribute('dominant-baseline', 'middle');
-      text.textContent = `${gain}dB`;
+      text.textContent = `${gain}`;
       gridSvg.appendChild(text);
     });
     graphContainer.appendChild(gridSvg);

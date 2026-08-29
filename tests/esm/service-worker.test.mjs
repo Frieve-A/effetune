@@ -131,6 +131,8 @@ function createPrecacheFixture(t) {
   }
   writeFixtureFile(root, 'package.json', JSON.stringify({ version: '9.9.9' }));
   writeFixtureFile(root, 'features/effetune-benchmark.js', 'export const benchmark = true;\n');
+  writeFixtureFile(root, 'features/effetune-benchmark-score.js', 'export const score = true;\n');
+  writeFixtureFile(root, 'features/benchmark-score-reference.js', 'export const reference = true;\n');
   writeFixtureFile(root, 'js/app.js', 'console.log("first");\n');
   writeFixtureFile(root, 'plugins/plugins.txt', 'plugins/test.js\n');
   writeFixtureFile(root, 'plugins/test.js', 'class TestPlugin {}\n');

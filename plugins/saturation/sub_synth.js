@@ -470,7 +470,7 @@ class SubSynthPlugin extends PluginBase {
         ctx.fillStyle = "#666";
         ctx.font = `${tickFont}px Arial`;
         ctx.textAlign = "right";
-        ctx.fillText(`${db}dB`, leftLabelX, y + 3 * dpr);
+        ctx.fillText(`${db}`, leftLabelX, y + 3 * dpr);
       }
     });
     ctx.fillStyle = "#fff";

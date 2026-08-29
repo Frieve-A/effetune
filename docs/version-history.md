@@ -6,11 +6,13 @@ lang: en
 
 # Version History
 
-### Version 2.7.0 (TBD, 2026)
+### Version 2.7.0 (Aug 29, 2026)
 - Added per-effect presets with a preset button on each effect, including system presets for selected effects
+- Added an optional spectrum overlay toggle to supported effect graphs.
 - Improved frequency response measurement to capture multiple output channels in a single measurement
 - Expanded the maximum output-channel count from 8 to 16
 - Improved playback efficiency when using effects that utilize FFT
+- Added an overall performance score to the benchmark page for comparing environments at a glance
 - Various minor improvements
 
 ### Version 2.6.0 (Aug 25, 2026)

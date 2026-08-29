@@ -138,7 +138,9 @@ function checkTestSourceHygiene(testFiles) {
 const cjsTests = collectTestFiles(path.join(repoRoot, 'tests/cjs'), '.test.cjs');
 const performanceTests = [
   'tests/esm/measurement-dsp-performance.test.mjs',
-  'tests/esm/room-eq-performance.test.mjs'
+  'tests/esm/room-eq-performance.test.mjs',
+  'tests/esm/spectrum-overlay-analyze.test.mjs',
+  'tests/esm/spectrum-overlay-worklet.test.mjs'
 ];
 const performanceTestSet = new Set(performanceTests);
 // This DOM stress test runs in its own process because the shared Node test process

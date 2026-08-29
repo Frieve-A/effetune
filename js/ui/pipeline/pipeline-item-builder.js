@@ -637,6 +637,7 @@ export class PipelineItemBuilder {
             plugin._disposeResponsiveGraphs();
         }
         ui.appendChild(plugin.createUI());
+        window.SpectrumOverlay?.attach(plugin, ui);
         return ui;
     }
 

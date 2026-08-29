@@ -9,6 +9,7 @@ import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
 import { TelemetryFrameType } from '../../js/audio/telemetry-hub.js';
 import { validateParamSpec } from '../../scripts/gen-dsp-params.mjs';
 import { readGoldenSet } from '../../tools/dsp-parity/golden-io.mjs';
+import { getCurrentJsEngineHash } from './js-engine-hash-helper.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const pluginRoot = path.join(repoRoot, 'dsp', 'plugins', 'eq', 'five_band_dynamic_eq');
@@ -167,11 +168,9 @@ test('FiveBandDynamicEQ object-array layout, cases, and goldens stay frozen', as
   assert.ok(cases.some(item => item.id.includes('pointer-orientation')));
 
   const goldens = await readGoldenSet(path.join(pluginRoot, 'golden'));
+  const jsEngineHash = await getCurrentJsEngineHash('FiveBandDynamicEQ', repoRoot);
   assert.equal(goldens.length, 8);
-  assert.ok(goldens.every(item =>
-    item.metadata.jsEngineHash ===
-      '8da621e7ca39599d8be2f4fe486bedace7fdeea84235c49c52a7875c1716a7ab'
-  ));
+  assert.ok(goldens.every(item => item.metadata.jsEngineHash === jsEngineHash));
   assert.match(kernel, /kGainThreshold = 1\.0e-4/);
   assert.match(kernel, /std::swap\(current, processed\)/);
   assert.match(nativeTest, /allocation_guard::Scope allocation_scope/);

@@ -441,7 +441,7 @@ class LoudnessEqualizerPlugin extends PluginBase {
             if (db > -6 && db < 18) {
                 ctx.fillStyle = '#666';
                 ctx.textAlign = 'right';
-                ctx.fillText(`${db}dB`, 48, y + 4);
+                ctx.fillText(`${db}`, 48, y + 4);
             }
         });
 

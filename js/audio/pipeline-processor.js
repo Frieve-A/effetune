@@ -106,7 +106,8 @@ export class PipelineProcessor {
         }
         
         // Update worklet with current pipeline state
-        if (this.pipeline.length === 0 || this.masterBypass) {
+        // Bypass changes processing, not membership or per-plugin worklet state.
+        if (this.pipeline.length === 0) {
             this.contextManager.workletNode.port.postMessage({
                 type: 'updatePlugins',
                 plugins: [],

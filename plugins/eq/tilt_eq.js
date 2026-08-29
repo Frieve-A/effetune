@@ -420,7 +420,7 @@ return data; // Return the modified buffer
             if (db !== -24 && db !== 24) {
                 ctx.fillStyle = '#666';
                 ctx.textAlign = 'right';
-                ctx.fillText(`${db}dB`, 48, y + 4);
+                ctx.fillText(`${db}`, 48, y + 4);
             }
         });
 

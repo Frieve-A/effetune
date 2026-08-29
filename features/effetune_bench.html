@@ -160,6 +160,31 @@
             color: #bdbdbd;
             font-size: 0.9em;
         }
+        .benchmark-score {
+            margin-top: 15px;
+            padding: 16px;
+            background: rgba(156, 39, 176, 0.08);
+            border: 1px solid #624469;
+            border-radius: 4px;
+        }
+        .benchmark-score-value {
+            margin: 8px 0;
+            color: #e2a4ec;
+            font: bold 44px monospace;
+        }
+        .benchmark-score-meta {
+            margin-top: 6px;
+            color: #bdbdbd;
+            font-size: 0.9em;
+        }
+        .benchmark-score-breakdown {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 20px;
+            margin-top: 12px;
+            color: #e0e0e0;
+            font: 12px monospace;
+        }
         .progress-container {
             width: 100%;
             height: 20px;
@@ -269,6 +294,7 @@
         <div style="display: flex; align-items: center; flex-wrap: wrap; margin-bottom: 15px;">
             <div style="margin-right: 15px; display: flex; align-items: center;">
                 <button id="run-benchmarks" class="benchmark-button" style="height: 35px;">Run Benchmarks</button>
+                <button id="run-score" class="benchmark-button" style="height: 35px;" disabled>Score Only</button>
                 <label for="sample-rate" style="margin-right: 8px;">Sampling Frequency:</label>
                 <select id="sample-rate" class="benchmark-select" style="padding: 8px; background-color: #2d2d2d; color: #fff; border: 1px solid #3d3d3d; border-radius: 4px; height: 35px;">
                     <option value="44100">44.1kHz</option>
@@ -293,6 +319,7 @@
             The initial engine follows the “Use WebAssembly audio processing” setting. WebAssembly automatically uses SIMD when supported.
         </div>
         <div id="benchmark-status">Click "Run Benchmarks" to start performance testing.</div>
+        <div id="benchmark-score" class="benchmark-score" aria-live="polite"></div>
         <div id="progress-container" class="progress-container">
             <div id="progress-bar" class="progress-bar"></div>
         </div>
@@ -312,6 +339,15 @@
             createRoomEqBenchmarkAssets,
             createDspBenchmarkRuntime
         } from './effetune-benchmark.js';
+        import {
+            BENCHMARK_SCORE_VERSION,
+            BENCHMARK_SCORE_PROTOCOL,
+            BENCHMARK_SCORE_EFFECTS,
+            median,
+            computeBenchmarkScore,
+            formatScore
+        } from './effetune-benchmark-score.js';
+        import { BENCHMARK_SCORE_REFERENCE } from './benchmark-score-reference.js';
 
         startRendererWatchdogHeartbeat('benchmark-page');
 
@@ -319,6 +355,106 @@
         const BUFFER_SIZE = 128;
         const CHANNEL_COUNT = 2;
         let benchmarkAudioPreferences = {};
+        let benchmarkRunning = false;
+        let scoreSimdAvailable = null;
+        let benchmarkScore = null;
+
+        function renderBenchmarkScore(value = '—', message = 'Run Benchmarks to measure the score.') {
+            const panel = document.getElementById('benchmark-score');
+            panel.replaceChildren();
+            const title = document.createElement('div');
+            title.textContent = 'EffeTune Score';
+            const scoreValue = document.createElement('div');
+            scoreValue.className = 'benchmark-score-value';
+            scoreValue.textContent = value;
+            const subtitle = document.createElement('div');
+            subtitle.className = 'benchmark-score-meta';
+            subtitle.textContent = message;
+            panel.append(title, scoreValue, subtitle);
+
+            if (benchmarkScore?.complete) {
+                const breakdown = document.createElement('div');
+                breakdown.className = 'benchmark-score-breakdown';
+                for (const { name } of BENCHMARK_SCORE_EFFECTS) {
+                    const effect = document.createElement('span');
+                    effect.textContent = `${name} ${benchmarkScore.measured[name].toFixed(1)}x ` +
+                        `(${benchmarkScore.ratios[name].toFixed(2)})`;
+                    breakdown.appendChild(effect);
+                }
+                panel.appendChild(breakdown);
+                panel.appendChild(createBenchmarkCopyButton(benchmarkScoreText));
+            }
+        }
+
+        function renderScoreUnavailable() {
+            benchmarkScore = null;
+            const message = document.createElement('div');
+            message.className = 'benchmark-score-meta';
+            message.textContent = 'EffeTune Score requires WebAssembly (SIMD) processing.';
+            document.getElementById('benchmark-score').replaceChildren(message);
+        }
+
+        function setBenchmarkRunning(running) {
+            benchmarkRunning = running;
+            const dspModeSelect = document.getElementById('dsp-mode');
+            document.getElementById('run-benchmarks').disabled = running;
+            document.getElementById('run-score').disabled = running ||
+                dspModeSelect.value === BENCHMARK_DSP_MODES.JAVASCRIPT || scoreSimdAvailable === false;
+            document.getElementById('sample-rate').disabled = running;
+            dspModeSelect.disabled = running;
+        }
+
+        function updateScoreAvailability() {
+            benchmarkScore = null;
+            if (document.getElementById('dsp-mode').value === BENCHMARK_DSP_MODES.JAVASCRIPT ||
+                scoreSimdAvailable === false) {
+                renderScoreUnavailable();
+            } else {
+                renderBenchmarkScore();
+            }
+            setBenchmarkRunning(benchmarkRunning);
+        }
+
+        function benchmarkScoreText() {
+            if (!benchmarkScore?.complete) return '';
+            const { sampleRate, channelCount, blockSize } = BENCHMARK_SCORE_PROTOCOL;
+            const rows = [
+                [`EffeTune Score ${BENCHMARK_SCORE_VERSION}`, formatScore(benchmarkScore.score)],
+                ['WebAssembly (SIMD)', `${sampleRate / 1000}kHz`, `${channelCount}ch`, `${blockSize} frames`],
+                ['Effect', 'Real-Time Factor(x)', 'Reference ratio'],
+                ...BENCHMARK_SCORE_EFFECTS.map(({ name }) => [
+                    name,
+                    benchmarkScore.measured[name].toFixed(1),
+                    benchmarkScore.ratios[name].toFixed(2)
+                ])
+            ];
+            return rows.map(row => row.join('\t')).join('\n') + '\n\n';
+        }
+
+        function createBenchmarkCopyButton(getText) {
+            const container = document.createElement('div');
+            container.style.textAlign = 'left';
+            const button = document.createElement('button');
+            button.className = 'copy-benchmark-result-button';
+            button.textContent = 'Copy the results to the clipboard';
+            const message = document.createElement('span');
+            message.className = 'copy-success';
+            message.textContent = 'The results were copied to the clipboard.';
+            container.append(button, message);
+            button.addEventListener('click', async () => {
+                try {
+                    if (!(await copyTextToClipboard(getText()))) {
+                        throw new Error('Clipboard copy failed');
+                    }
+                    message.classList.add('show');
+                    setTimeout(() => message.classList.remove('show'), 2000);
+                } catch (error) {
+                    console.error('Failed to copy benchmark results:', error);
+                    alert('The results could not be copied. Please select and copy them manually.');
+                }
+            });
+            return container;
+        }
 
         class TestPluginManager extends PluginManager {
             async loadPlugins() {
@@ -475,20 +611,154 @@
             };
         }
 
+        async function measureScoreRtf(runtime, plugin, audioBuffer) {
+            const { sampleRate, blockSize, channelCount, warmupSeconds, repetitionSeconds, repetitions } =
+                BENCHMARK_SCORE_PROTOCOL;
+            const totalBlocks = Math.floor(audioBuffer.length / (blockSize * channelCount));
+            const session = runtime.createPluginSession(plugin, { channelCount });
+            const measured = [];
+            let blockIndex = 0;
+
+            try {
+                session.prepareAssets();
+                for (let repetition = -1; repetition < repetitions; repetition++) {
+                    const duration = (repetition < 0 ? warmupSeconds : repetitionSeconds) * 1000;
+                    let processCount = 0;
+                    const startTime = performance.now();
+                    while (performance.now() - startTime < duration) {
+                        const blockOffset = (blockIndex % totalBlocks) * blockSize * channelCount;
+                        const inputData = audioBuffer.slice(blockOffset, blockOffset + blockSize * channelCount);
+                        const time = blockIndex * blockSize / sampleRate;
+                        session.process(inputData, time);
+                        processCount++;
+                        blockIndex++;
+                    }
+                    const elapsedTime = (performance.now() - startTime) / 1000;
+                    if (repetition >= 0) {
+                        const samplesPerSecond = Math.round((processCount * blockSize) / elapsedTime);
+                        measured.push(samplesPerSecond / sampleRate);
+                    }
+                }
+            } finally {
+                session.close();
+            }
+            return median(measured);
+        }
+
+        async function runScorePass({ dspMode, preference, manager }) {
+            benchmarkScore = null;
+            if (dspMode === BENCHMARK_DSP_MODES.JAVASCRIPT) {
+                renderScoreUnavailable();
+                return;
+            }
+
+            const benchmarkStatus = document.getElementById('benchmark-status');
+            benchmarkStatus.textContent = 'Preparing score measurement…';
+            renderBenchmarkScore('…', '');
+            let runtime = null;
+            try {
+                const { sampleRate, blockSize, channelCount, inputSeconds } = BENCHMARK_SCORE_PROTOCOL;
+                runtime = await createDspBenchmarkRuntime({
+                    mode: dspMode,
+                    sampleRate,
+                    blockSize,
+                    preference,
+                    location: window.location,
+                    basePath: '..'
+                });
+                if (runtime.variant !== 'simd') {
+                    scoreSimdAvailable = false;
+                    renderScoreUnavailable();
+                    benchmarkStatus.textContent = 'EffeTune Score requires WebAssembly (SIMD) processing.';
+                    return;
+                }
+                scoreSimdAvailable = true;
+                const audioBuffer = createRandomAudioBuffer(sampleRate, inputSeconds, channelCount);
+                const measured = {};
+                const failures = [];
+
+                for (const [index, effect] of BENCHMARK_SCORE_EFFECTS.entries()) {
+                    benchmarkStatus.textContent = `Measuring score (${index + 1}/${BENCHMARK_SCORE_EFFECTS.length})…`;
+                    renderBenchmarkScore('…', '');
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                    if (!manager.isPluginAvailable(effect.name) || !runtime.supportsPlugin(effect.className)) {
+                        failures.push(`${effect.name} is not available for WebAssembly processing.`);
+                        continue;
+                    }
+                    let plugin = null;
+                    try {
+                        plugin = manager.createPlugin(effect.name);
+                        if (effect.parameters) plugin.setParameters(effect.parameters);
+                        measured[effect.name] = await measureScoreRtf(runtime, plugin, audioBuffer);
+                    } catch (error) {
+                        console.error(`Score measurement failed for ${effect.name}:`, error);
+                        failures.push(`${effect.name} could not be measured. Try running the benchmark again.`);
+                    } finally {
+                        plugin?.cleanup();
+                    }
+                }
+
+                const result = computeBenchmarkScore(measured, BENCHMARK_SCORE_REFERENCE);
+                if (result.complete) {
+                    benchmarkScore = { ...result, measured };
+                    renderBenchmarkScore(formatScore(result.score),
+                        `Score ${BENCHMARK_SCORE_VERSION} · WebAssembly (SIMD) · ` +
+                        `${sampleRate / 1000}kHz / ${channelCount}ch / ${blockSize} frames`);
+                    benchmarkStatus.textContent = 'Score measurement completed!';
+                } else {
+                    const message = failures.join(' ') || 'The score could not be measured. Try running the benchmark again.';
+                    renderBenchmarkScore('N/A', message);
+                    benchmarkStatus.textContent = message;
+                }
+            } catch (error) {
+                console.error('Score measurement failed:', error);
+                benchmarkScore = null;
+                benchmarkStatus.textContent = 'The score could not be measured. Try reloading the page and running the benchmark again.';
+                renderBenchmarkScore('N/A', benchmarkStatus.textContent);
+            } finally {
+                runtime?.close();
+            }
+        }
+
+        async function runScoreOnly() {
+            if (document.getElementById('run-score').disabled) return;
+            const benchmarkStatus = document.getElementById('benchmark-status');
+            const dspMode = document.getElementById('dsp-mode').value;
+            setBenchmarkRunning(true);
+            benchmarkScore = null;
+            benchmarkStatus.textContent = 'Loading effects for score measurement…';
+            renderBenchmarkScore('…', '');
+            try {
+                const manager = new TestPluginManager();
+                await manager.loadPlugins();
+                await runScorePass({
+                    dspMode,
+                    preference: { ...benchmarkAudioPreferences, useWasmDsp: true },
+                    manager
+                });
+            } catch (error) {
+                console.error('Score benchmark error:', error);
+                benchmarkScore = null;
+                benchmarkStatus.textContent = 'The score could not be measured. Try reloading the page and running the benchmark again.';
+                renderBenchmarkScore('N/A', benchmarkStatus.textContent);
+            } finally {
+                setBenchmarkRunning(false);
+            }
+        }
+
         async function runBenchmarks() {
+            if (benchmarkRunning) return;
             const benchmarkStatus = document.getElementById('benchmark-status');
             const benchmarkTableContainer = document.getElementById('benchmark-table-container');
             const progressContainer = document.getElementById('progress-container');
             const progressBar = document.getElementById('progress-bar');
-            const runButton = document.getElementById('run-benchmarks');
             const sampleRateSelect = document.getElementById('sample-rate');
             const dspModeSelect = document.getElementById('dsp-mode');
 
             SAMPLE_RATE = parseInt(sampleRateSelect.value);
             const dspMode = dspModeSelect.value;
-            runButton.disabled = true;
-            sampleRateSelect.disabled = true;
-            dspModeSelect.disabled = true;
+            setBenchmarkRunning(true);
+            updateScoreAvailability();
             benchmarkStatus.textContent = 'Initializing benchmarks...';
             benchmarkTableContainer.innerHTML = '';
             let runtime = null;
@@ -500,6 +770,7 @@
                     ...benchmarkAudioPreferences,
                     useWasmDsp: dspMode === BENCHMARK_DSP_MODES.WEBASSEMBLY
                 };
+                await runScorePass({ dspMode, preference, manager });
                 runtime = await createDspBenchmarkRuntime({
                     mode: dspMode,
                     sampleRate: SAMPLE_RATE,
@@ -707,79 +978,52 @@
                 benchmarkTableContainer.appendChild(tableTitle);
                 benchmarkTableContainer.appendChild(table);
 
-                const copyButtonContainer = document.createElement('div');
-                copyButtonContainer.style.textAlign = 'left';
+                benchmarkTableContainer.appendChild(createBenchmarkCopyButton(() => {
+                    let tableText = benchmarkScoreText();
+                    const headerCells = table.querySelectorAll('thead th');
+                    const headers = Array.from(headerCells).map(cell => cell.textContent);
+                    tableText += headers.join('\t') + '\n';
 
-                const copyButton = document.createElement('button');
-                copyButton.className = 'copy-benchmark-result-button';
-                copyButton.innerHTML = `
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                    </svg>
-                    Copy the results to the clipboard
-                `;
-
-                const successMessage = document.createElement('span');
-                successMessage.className = 'copy-success';
-                successMessage.textContent = 'The result was copied to the clipboard.!';
-                copyButtonContainer.appendChild(copyButton);
-                copyButtonContainer.appendChild(successMessage);
-                benchmarkTableContainer.appendChild(copyButtonContainer);
-
-                copyButton.addEventListener('click', async () => {
-                    try {
-                        let tableText = '';
-                        const headerCells = table.querySelectorAll('thead th');
-                        const headers = Array.from(headerCells).map(cell => cell.textContent);
-                        tableText += headers.join('\t') + '\n';
-
-                        const rows = table.querySelectorAll('tbody tr');
-                        rows.forEach(row => {
-                            const cells = row.querySelectorAll('td');
-                            const rowData = Array.from(cells).map(cell => cell.textContent);
-                            tableText += rowData.join('\t') + '\n';
-                        });
-                        if (!(await copyTextToClipboard(tableText))) {
-                            throw new Error('Clipboard copy failed');
-                        }
-
-                        successMessage.classList.add('show');
-                        setTimeout(() => {
-                            successMessage.classList.remove('show');
-                        }, 2000);
-                    } catch (error) {
-                        console.error('Failed to copy table to clipboard:', error);
-                        alert('Failed to copy table to clipboard: ' + error.message);
-                    }
-                });
+                    const rows = table.querySelectorAll('tbody tr');
+                    rows.forEach(row => {
+                        const cells = row.querySelectorAll('td');
+                        const rowData = Array.from(cells).map(cell => cell.textContent);
+                        tableText += rowData.join('\t') + '\n';
+                    });
+                    return tableText;
+                }));
             } catch (error) {
-                benchmarkStatus.textContent = `Error during benchmarking: ${error.message}`;
+                benchmarkStatus.textContent = 'The benchmark could not be completed. Try reloading the page and running it again.';
+                if (!benchmarkScore && dspMode === BENCHMARK_DSP_MODES.WEBASSEMBLY && scoreSimdAvailable !== false) {
+                    renderBenchmarkScore('N/A', benchmarkStatus.textContent);
+                }
                 console.error('Benchmark error:', error);
             } finally {
-                runtime?.close();
-                runButton.disabled = false;
-                sampleRateSelect.disabled = false;
-                dspModeSelect.disabled = false;
-                progressContainer.style.display = 'none';
+                try {
+                    runtime?.close();
+                } finally {
+                    setBenchmarkRunning(false);
+                    progressContainer.style.display = 'none';
+                }
             }
         }
 
         window.addEventListener('load', async () => {
             const runButton = document.getElementById('run-benchmarks');
             runButton.addEventListener('click', runBenchmarks);
+            document.getElementById('run-score').addEventListener('click', runScoreOnly);
 
             const dspModeSelect = document.getElementById('dsp-mode');
-            runButton.disabled = true;
-            dspModeSelect.disabled = true;
+            dspModeSelect.addEventListener('change', updateScoreAvailability);
+            setBenchmarkRunning(true);
             try {
                 benchmarkAudioPreferences = await loadAudioPreferences(Boolean(window.electronAPI)) || {};
                 dspModeSelect.value = benchmarkAudioPreferences.useWasmDsp === false
                     ? BENCHMARK_DSP_MODES.JAVASCRIPT
                     : BENCHMARK_DSP_MODES.WEBASSEMBLY;
+                updateScoreAvailability();
             } finally {
-                runButton.disabled = false;
-                dspModeSelect.disabled = false;
+                setBenchmarkRunning(false);
             }
 
             const backButton = document.getElementById('back-button');

@@ -1355,6 +1355,9 @@ class PluginProcessor extends AudioWorkletProcessor {
         // Message control
         this.lastMessageTime = 0;
         this.messageQueue = new Map();
+        this.spectrumTapRoute = new Set();
+        this.spectrumTaps = new Set();
+        this.spectrumTapState = new Map();
         this.MESSAGE_INTERVAL = this.lowLatencyMode ? 8 : 16; // ms
 
         // Buffer management - blockSize will be updated in process
@@ -1467,6 +1470,27 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.port.onmessage = (event) => {
             const data = event.data;
             switch(data.type) {
+                case 'setSpectrumTapRoute': {
+                    const wasEmpty = this.spectrumTapRoute.size === 0;
+                    if (data.enabled) this.spectrumTapRoute.add(data.pluginId);
+                    else this.spectrumTapRoute.delete(data.pluginId);
+                    // Visibility changes must never rebuild latency compensation.
+                    if ((this.spectrumTapRoute.size === 0) !== wasEmpty) this.refreshDspPipeline();
+                    break;
+                }
+                case 'setSpectrumTap':
+                    if (data.enabled) {
+                        this.spectrumTaps.add(data.pluginId);
+                        if (!this.spectrumTapState.has(data.pluginId)) {
+                            this.spectrumTapState.set(data.pluginId, {
+                                buffer: new Float32Array(4096), position: 0
+                            });
+                        }
+                    } else {
+                        this.spectrumTaps.delete(data.pluginId);
+                        this.spectrumTapState.delete(data.pluginId);
+                    }
+                    break;
                 case 'updatePlugin':
                     this._invalidatePowerSkipForMutation();
                     this.updatePlugin(data.plugin);
@@ -3426,7 +3450,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             }
             this.adoptDspArena();
             this.dspPipelinePluginCount = nodes.length;
-            this.dspPipelineReady = true;
+            this.dspPipelineReady = this.spectrumTapRoute.size === 0;
             this.publishDspPipelineLatency(this.dspBinding.pipelineLatency(), true);
         } catch (error) {
             this.reportDspFailure('pipeline-configure', error?.message || String(error));
@@ -3928,6 +3952,12 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspPipelineReady = false;
         try {
             this.plugins = normalizedPlugins;
+            const activeIds = new Set(normalizedPlugins.map(plugin => plugin.id));
+            for (const ids of [this.spectrumTapRoute, this.spectrumTaps, this.spectrumTapState]) {
+                for (const id of ids.keys()) {
+                    if (!activeIds.has(id)) ids.delete(id);
+                }
+            }
             this.reconcileDspInstances();
         } finally {
             this.refreshDspPipeline();
@@ -4065,6 +4095,9 @@ class PluginProcessor extends AudioWorkletProcessor {
         try {
             this.plugins.splice(index, 1);
             this.pluginContexts.delete(pluginId);
+            this.spectrumTapRoute.delete(pluginId);
+            this.spectrumTaps.delete(pluginId);
+            this.spectrumTapState.delete(pluginId);
             this.dspAssetCache.delete(pluginId);
             this.dspAssetStates.delete(pluginId);
             this.dspAssetStateRevisions.delete(pluginId);
@@ -4864,6 +4897,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         const messageQueue = this.messageQueue; // Cache message queue
         const MESSAGE_INTERVAL = this.MESSAGE_INTERVAL; // Cache interval
         let processedPlugin = false;
+        const tapsActive = this.spectrumTaps.size !== 0;
 
         for (const plugin of plugins) {
             // Handle section start/end
@@ -5140,6 +5174,31 @@ class PluginProcessor extends AudioWorkletProcessor {
              const finalResultBuffer = (result instanceof Float32Array) ? result : processingBuffer;
 
              if (!finalResultBuffer) continue; // Skip if result is invalid
+
+             if (tapsActive && this.spectrumTaps.has(plugin.id)) {
+                 const state = this.spectrumTapState.get(plugin.id);
+                 const scale = 1 / numProcessingChannels;
+                 for (let frame = 0; frame < blockSize; frame++) {
+                     let sum = finalResultBuffer[frame];
+                     for (let channel = 1; channel < numProcessingChannels; channel++) {
+                         sum += finalResultBuffer[channel * blockSize + frame];
+                     }
+                     state.buffer[state.position] = sum * scale;
+                     state.position = (state.position + 1) & 4095;
+                     if ((state.position & 2047) === 0 &&
+                         !(this.powerPolicy.enabled && !this.powerPolicy.uiTelemetryEnabled)) {
+                         // Keep spectrum messages independent of plugin measurement throttling.
+                         port.postMessage({
+                             type: 'spectrumOverlay',
+                             spectrumPluginId: plugin.id,
+                             buffer: Float32Array.from(state.buffer),
+                             bufferPosition: state.position,
+                             sampleRate,
+                             time: currentTime
+                         });
+                     }
+                 }
+             }
 
              // --- 9e. Apply Result to Output Bus Buffer ---
              if (inputBus !== outputBus) {

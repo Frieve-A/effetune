@@ -7,6 +7,11 @@ lang: fr
 # Plugins d'Égaliseur
 Une collection de plugins qui vous permet d'ajuster différents aspects du son de votre musique, des basses profondes aux aigus nets. Ces outils vous aident à personnaliser votre expérience d'écoute en renforçant ou en atténuant certains éléments sonores.
 
+<!-- spectrum-overlay -->
+## Superposition du spectre
+
+Appuyez sur l’icône de spectre d’un graphique compatible pour superposer une fine ligne de spectre du son après son passage dans cet effet. Elle permet de voir comment chaque réglage modifie les graves, les médiums et les aigus pendant l’écoute. Lisez le niveau du spectre sur l’échelle dBFS à droite du graphique. Elle est distincte de l’échelle de gain du graphique : 0 dBFS est la référence numérique de pleine échelle et les valeurs plus basses correspondent à des niveaux plus faibles. L’analyse et le tracé du spectre ne sont effectués que lorsque l’affichage est visible.
+
 ## Liste des Plugins
 
 - [15Band GEQ](#15band-geq) - Réglage détaillé du son avec 15 contrôles précis

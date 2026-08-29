@@ -446,18 +446,39 @@ return data; // Return the modified buffer
         // ---------- grid ----------
         ctx.strokeStyle = '#444';
         ctx.lineWidth   = isMobileLayout ? 1 : 0.5;
+        ctx.fillStyle = '#666';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
     
         const freqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
         freqs.forEach(f => {
             const x = width * (Math.log10(f) - Math.log10(20)) / (Math.log10(20000) - Math.log10(20));
             ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+            if (f !== 20 && f !== 20000) {
+                ctx.fillText(f >= 1000 ? `${f / 1000}k` : f, x, height - 24);
+            }
         });
     
+        ctx.textAlign = 'right';
         const dBs = [-24, -18, -12, -6, 0, 6, 12, 18, 24];
         dBs.forEach(db => {
             const y = height * (1 - (db + 24) / 48);
             ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+            if (db !== -24 && db !== 24) {
+                ctx.fillText(`${db}`, 48, y + 4);
+            }
         });
+
+        // ---------- axis labels ----------
+        ctx.fillStyle = '#fff';
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Frequency (Hz)', width / 2, height - 5);
+        ctx.save();
+        ctx.translate(14, height / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText('Level (dB)', 0, 0);
+        ctx.restore();
     
         // ---------- response ----------
         ctx.beginPath();

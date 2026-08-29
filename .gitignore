@@ -25,6 +25,8 @@ _site/
 !/tests/esm/
 /tests/esm/*
 !/tests/esm/audio-session-type-controller.test.mjs
+!/tests/esm/benchmark-score.test.mjs
+!/tests/esm/benchmark-score-page.test.mjs
 !/tests/esm/auto-pan-auto-filter-effect-local.test.mjs
 !/tests/esm/cassette-artifacts.test.mjs
 !/tests/esm/chorus-modulation.test.mjs
@@ -51,6 +53,7 @@ _site/
 !/tests/esm/dsp-tube-simulator-port-v1.test.mjs
 !/tests/esm/dsp-tube-simulator-standard-v1-fixture.test.mjs
 !/tests/esm/dsp-tube-simulator-wasm-telemetry-v1.test.mjs
+!/tests/esm/fifteen-band-geq-graph.test.mjs
 !/tests/esm/group-delay-peq-design.test.mjs
 !/tests/esm/group-delay-peq-plugin.test.mjs
 !/tests/esm/room-eq-group-delay-analysis.test.mjs
@@ -83,6 +86,13 @@ _site/
 !/tests/esm/plugin-search-aliases.test.mjs
 !/tests/esm/plugin-ui-language.test.mjs
 !/tests/esm/space-key-guard.test.mjs
+!/tests/esm/spectrum-overlay-analyze.test.mjs
+!/tests/esm/spectrum-overlay-attach.test.mjs
+!/tests/esm/spectrum-overlay-browser.test.mjs
+!/tests/esm/spectrum-overlay-docs.test.mjs
+!/tests/esm/spectrum-overlay-module.test.mjs
+!/tests/esm/spectrum-overlay-registry.test.mjs
+!/tests/esm/spectrum-overlay-worklet.test.mjs
 !/tests/esm/tape-artifacts.test.mjs
 !/tests/esm/tracked-sources-are-self-contained.test.mjs
 !/tests/esm/channel-16ch-baseline.test.mjs
@@ -109,6 +119,7 @@ _site/
 !/tests/helpers/openhome-handshake-smoke-child.mjs
 !/tests/helpers/pipeline-analyzer-node-worker.mjs
 !/tests/helpers/sqlite-test-utils.mjs
+!/tests/helpers/spectrum-overlay-harness.mjs
 !/tests/helpers/channel-16ch-baseline.mjs
 !/tests/fixtures/
 /tests/fixtures/*

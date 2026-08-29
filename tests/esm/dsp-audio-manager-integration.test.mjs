@@ -2325,7 +2325,7 @@ test('AudioManager replays primary assets without an ACTIVE wait when DBT ends u
   });
 });
 
-test('AudioManager re-adds and replays assets after master bypass clears a DBT pipeline', async () => {
+test('AudioManager retains DBT assets across master bypass without replaying them on restore', async () => {
   const createdWorklets = [];
   await withGlobals({
     AudioWorkletNode: createFakeAudioWorkletClass(createdWorklets),
@@ -2369,11 +2369,11 @@ test('AudioManager re-adds and replays assets after master bypass clears a DBT p
     await manager.setMasterBypass(true);
     assert.deepEqual(readinessChecks, [[]]);
     assert.equal(primary.replays.length, replayCountBeforeBypass + 1);
-    assert.deepEqual([...manager._wasmAssetMembershipByNode.get(main).keys()], []);
-    assert.equal(manager._wasmAssetStatesByNode.get(main).has(`${primary.id}:0`), false);
-    assert.deepEqual(main.port.messages.filter(entry =>
+    assert.equal(manager._wasmAssetMembershipByNode.get(main).get(primary.id), primary);
+    assert.equal(manager._wasmAssetStatesByNode.get(main).has(`${primary.id}:0`), true);
+    assert.equal(main.port.messages.filter(entry =>
       entry.message.type === 'updatePlugins'
-    ).at(-1).message.plugins, []);
+    ).at(-1).message.plugins[0].id, primary.id);
     assert.equal(output.gain.value, 1);
 
     const replayCountBeforeRestore = primary.replays.length;
@@ -2381,12 +2381,13 @@ test('AudioManager re-adds and replays assets after master bypass clears a DBT p
     await manager.setMasterBypass(false);
 
     assert.equal(manager._wasmAssetMembershipByNode.get(main).get(primary.id), primary);
-    assert.equal(primary.replays.length, replayCountBeforeRestore + 1);
-    const messageTypes = main.port.messages.map(entry => entry.message.type);
-    assert.ok(messageTypes.lastIndexOf('setPluginAsset') > messageTypes.lastIndexOf('updatePlugins'));
+    assert.equal(primary.replays.length, replayCountBeforeRestore);
+    assert.equal(main.port.messages.filter(entry =>
+      entry.message.type === 'updatePlugins'
+    ).at(-1).message.plugins[0].id, primary.id);
     assert.equal(main.port.messages.some(entry =>
       entry.message.type === 'setPluginAsset' && entry.message.pluginId === primary.id
-    ), true);
+    ), false);
     assert.equal(hasConnectionPath(main, output), true);
     assert.equal(output.gain.value, 1);
   });

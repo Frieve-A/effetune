@@ -463,7 +463,7 @@ class LoPassFilterPlugin extends PluginBase {
       if (db > -60) {
         ctx.fillStyle = "#666";
         ctx.textAlign = "right";
-        ctx.fillText(`${db}dB`, 48, y + 4);
+        ctx.fillText(`${db}`, 48, y + 4);
       }
     });
 

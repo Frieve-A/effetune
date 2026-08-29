@@ -8,6 +8,11 @@ lang: es
 
 Una colección de herramientas esenciales para ajustar los aspectos fundamentales de la reproducción de tu música. Estos complementos te ayudan a controlar el volumen, el balance y otros aspectos básicos de tu experiencia de escucha.
 
+<!-- spectrum-overlay -->
+## Superposición de espectro
+
+Pulsa el icono de espectro de un gráfico compatible para superponer una tenue línea de espectro del sonido después de pasar por ese efecto. Úsalo para ver cómo cada ajuste cambia graves, medios y agudos mientras escuchas. Lee el nivel del espectro en la escala dBFS a la derecha del gráfico. Es distinta de la escala de ganancia del gráfico; 0 dBFS es la referencia digital de escala completa y los valores inferiores son más silenciosos. El análisis y el dibujo del espectro se realizan solo mientras la visualización está visible.
+
 ## Lista de complementos
 
 * [Channel Divider](#channel-divider) - Divide audio estéreo en bandas de frecuencia a través de pares de salida estéreo

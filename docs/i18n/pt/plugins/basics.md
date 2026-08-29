@@ -8,6 +8,11 @@ lang: pt
 
 Uma coleção de ferramentas essenciais para ajustar os aspectos fundamentais da reprodução da sua música. Esses plugins ajudam você a controlar o volume, o equilíbrio e outros aspectos básicos da sua experiência auditiva.
 
+<!-- spectrum-overlay -->
+## Sobreposição de espectro
+
+Pressione o ícone de espectro de um gráfico compatível para sobrepor uma linha de espectro discreta do som depois de passar por esse efeito. Use-o para ver como cada ajuste altera graves, médios e agudos enquanto escuta. Leia o nível do espectro na escala dBFS à direita do gráfico. Ela é separada da escala de ganho do gráfico; 0 dBFS é a referência digital de escala completa, e valores mais baixos são mais silenciosos. A análise e o desenho do espectro são feitos apenas enquanto a visualização está visível.
+
 ## Lista de Plugins
 
 * [Channel Divider](#channel-divider) - Divide áudio estéreo em bandas de frequência por pares de saída estéreo

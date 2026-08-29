@@ -30,7 +30,6 @@ const ports = [
     ],
     caseCount: 13,
     identityCase: 'slopes-off-identity',
-    jsEngineHash: 'a7db921c6bcc16b92f391c56e87a114c49ba57c033ae2fd55f8e1bc6faeb5c83',
     activeParams: { hf: 180, hs: -42, lf: 12000, ls: -30 }
   },
   {
@@ -63,7 +62,6 @@ const ports = [
     ],
     caseCount: 8,
     identityCase: 'dry-output-warms-state',
-    jsEngineHash: '8f3ddee8add896f14b8d462704d893c0447b3b59dda35fb43b5c968c4ca1c578',
     activeParams: { ff: 4000, fg: 0.8, dw: 100, ct: 'fb' }
   }
 ];
@@ -139,9 +137,7 @@ test('Phase 3b EQ group C goldens are source-frozen, bounded, and representative
     const goldenDir = path.join(pluginsRoot, port.directory, 'golden');
     assert.ok(await goldenBytes(goldenDir) <= DEFAULT_GOLDEN_BUDGET_BYTES);
     const goldens = await readGoldenSet(goldenDir);
-    const jsEngineHash = port.type === 'LoudnessEqualizerPlugin'
-      ? await getCurrentJsEngineHash(port.type, repoRoot)
-      : port.jsEngineHash;
+    const jsEngineHash = await getCurrentJsEngineHash(port.type, repoRoot);
     assert.equal(goldens.length, port.caseCount);
     assert.deepEqual(
       new Set(goldens.map(item => item.metadata.sampleRate)),

@@ -84,7 +84,6 @@ const ports = [
     ],
     caseCount: 11,
     goldenBytes: 169148,
-    jsEngineHash: '4317b325569eb5575740d9bd18a39f77fd5952564dff77300f1866f182d729a0',
     activeParams: { sl: 137, dl: 83, slf: 173, sls: -18, shf: 17, shs: -12, dhf: 43, dhs: -6 }
   }
 ];
@@ -148,9 +147,7 @@ test('Saturation goldens are source-frozen, bounded, finite, and representative'
     assert.equal(await fileBytes(goldenDir), port.goldenBytes);
     assert.ok(port.goldenBytes <= DEFAULT_GOLDEN_BUDGET_BYTES);
     const goldens = await readGoldenSet(goldenDir);
-    const jsEngineHash = port.type === 'DynamicSaturationPlugin'
-      ? await getCurrentJsEngineHash(port.type, repoRoot)
-      : port.jsEngineHash;
+    const jsEngineHash = port.jsEngineHash ?? await getCurrentJsEngineHash(port.type, repoRoot);
     assert.equal(goldens.length, port.caseCount);
     assert.ok(goldens.some(item => item.metadata.sampleRate === 44100));
     assert.ok(goldens.some(item => item.metadata.sampleRate === 96000));

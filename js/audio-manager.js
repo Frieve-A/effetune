@@ -2344,10 +2344,8 @@ export class AudioManager {
         this.updateExposedProperties();
         const primaryWorklet = this._getPrimaryWorkletNode();
         if (primaryWorklet?.port) {
-            // PipelineProcessor publishes an empty config while master bypass is
-            // active, so membership must match the worklet's actual plugin set.
-            const workletPipeline = this.masterBypass ? [] : this.pipeline;
-            const replayed = this._syncWasmAssetMembership(primaryWorklet, workletPipeline, {
+            // Bypass changes processing, not worklet or WASM asset membership.
+            const replayed = this._syncWasmAssetMembership(primaryWorklet, this.pipeline, {
                 generation: this._audioGraphGeneration,
                 trackState: true
             });

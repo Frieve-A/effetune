@@ -8,6 +8,11 @@ lang: es
 
 Una colección de plugins que agregan calidez y carácter a tu música. Estos efectos pueden hacer que la música digital suene más analógica y agregar una agradable riqueza al sonido, similar a cómo el equipo de audio vintage colorea el sonido.
 
+<!-- spectrum-overlay -->
+## Superposición de espectro
+
+Pulsa el icono de espectro de un gráfico compatible para superponer una tenue línea de espectro del sonido después de pasar por ese efecto. Úsalo para ver cómo cada ajuste cambia graves, medios y agudos mientras escuchas. Lee el nivel del espectro en la escala dBFS a la derecha del gráfico. Es distinta de la escala de ganancia del gráfico; 0 dBFS es la referencia digital de escala completa y los valores inferiores son más silenciosos. El análisis y el dibujo del espectro se realizan solo mientras la visualización está visible.
+
 ## Lista de Plugins
 
 - [Bandwidth Extender](#bandwidth-extender) - Genera agudos por encima de un corte detectado o especificado
@@ -571,6 +576,7 @@ Cambiar parámetros del circuito puede causar un salto de nivel importante. Con 
 ### Cómo Leer el HUD
 
 - Los puntos muestran posiciones de funcionamiento recientes. Cuanto más se extienden, más intensamente está excitando la música esa etapa. Cada panel superpone los dos canales: el azul es el izquierdo y el naranja, el derecho.
+- El nombre de la válvula representada en el gráfico aparece en la esquina superior izquierda.
 - **Graph**, encima de la pantalla, elige qué válvulas observar. **Stage 1 / Stage 2** muestra las dos etapas del driver, **Push / Pull** las dos válvulas del par de salida push-pull y **SE Triode** la válvula de salida single-ended. Solo se pueden seleccionar las etapas que el circuito actual utiliza realmente, así que en una etapa de potencia con driver puedes alternar entre ambas y compararlas.
 - Cuando no hay ninguna válvula funcionando, es decir, en Line con **Driver Type** en Bypass o con el efecto apagado, la pantalla queda vacía y el estado indica **No tube stage is active**.
 - **Speaker Output** y **Speaker Real Power** indican cuánto se están excitando la etapa de potencia y la carga del altavoz.

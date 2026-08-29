@@ -4,6 +4,7 @@ import test from 'node:test';
 import { AudioManager } from '../../js/audio-manager.js';
 import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
 import { MIC_DENIED_PREFIX } from '../../js/audio/audio-io-manager.js';
+import { PipelineWorkletSync } from '../../js/ui/pipeline/pipeline-worklet-sync.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
 function nodeName(node) {
@@ -865,6 +866,54 @@ test('registers processors, rebuilds pipelines, and posts audio configuration', 
         restorePrimaryDsp: true
       }]
     );
+  });
+});
+
+test('bypassed rebuild keeps coefficient asset updates routed after the standard restore', async () => {
+  await withAudioManager({}, async ({ calls, fakes, manager }) => {
+    const assets = new Map([[0, {
+      operationRevision: 1,
+      payload: new ArrayBuffer(4)
+    }]]);
+    let resolveTargets = () => [];
+    const plugin = createPlugin('AlphaPlugin', { id: 7, calls });
+    plugin.getWasmAssets = () => new Map(assets);
+    plugin.setWasmAssetTargetResolver = resolver => { resolveTargets = resolver; };
+    plugin.setWasmAssetOperationObserver = () => {};
+    plugin.replayWasmAssetsTo = () => [];
+    plugin.updateCoefficientAsset = () => {
+      const descriptor = {
+        operationRevision: 2,
+        payload: new ArrayBuffer(8)
+      };
+      assets.set(0, descriptor);
+      for (const target of resolveTargets()) {
+        target.port.postMessage({
+          type: 'setPluginAsset',
+          pluginId: plugin.id,
+          slot: 0,
+          operationRevision: descriptor.operationRevision,
+          payload: descriptor.payload
+        });
+      }
+    };
+    manager.pipelineA = [plugin];
+    manager.pipeline = manager.pipelineA;
+    manager.masterBypass = true;
+
+    assert.equal(await manager.rebuildPipeline(false), '');
+    const primary = fakes.workletNode;
+    assert.equal(manager._wasmAssetMembershipByNode.get(primary)?.get(plugin.id), plugin);
+
+    const sync = new PipelineWorkletSync({ audioManager: manager });
+    sync.updateMasterBypass(false);
+    calls.length = 0;
+    plugin.updateCoefficientAsset();
+    assert.deepEqual(calls.filter(call =>
+      call[0] === 'postMessage' && call[2]?.type === 'setPluginAsset'
+    ).map(call => [call[1], call[2].pluginId, call[2].operationRevision]), [
+      ['workletA', 7, 2]
+    ]);
   });
 });
 

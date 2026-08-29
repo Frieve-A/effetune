@@ -8,6 +8,11 @@ lang: fr
 
 Une collection de plugins qui ajoutent de la chaleur et du caractère à votre musique. Ces effets peuvent donner à la musique numérique un son plus analogique et ajouter une richesse agréable au son, similaire à la coloration sonore des équipements audio vintage.
 
+<!-- spectrum-overlay -->
+## Superposition du spectre
+
+Appuyez sur l’icône de spectre d’un graphique compatible pour superposer une fine ligne de spectre du son après son passage dans cet effet. Elle permet de voir comment chaque réglage modifie les graves, les médiums et les aigus pendant l’écoute. Lisez le niveau du spectre sur l’échelle dBFS à droite du graphique. Elle est distincte de l’échelle de gain du graphique : 0 dBFS est la référence numérique de pleine échelle et les valeurs plus basses correspondent à des niveaux plus faibles. L’analyse et le tracé du spectre ne sont effectués que lorsque l’affichage est visible.
+
 ## Liste des Plugins
 
 - [Bandwidth Extender](#bandwidth-extender) - Génère des aigus au-dessus d'une coupure détectée ou définie
@@ -575,6 +580,7 @@ La modification des paramètres du circuit peut provoquer un saut important de n
 ### Lecture du HUD
 
 - Les points représentent les positions de fonctionnement récentes. Plus ils sont dispersés, plus la musique sollicite fortement l’étage concerné. Chaque panneau superpose les deux canaux : le bleu pour la gauche, l’orange pour la droite.
+- Le nom de la lampe représentée sur le graphique apparaît en haut à gauche.
 - **Graph**, au-dessus de l’affichage, choisit les lampes à observer. **Stage 1 / Stage 2** montre les deux étages du driver, **Push / Pull** les deux lampes de la paire de sortie push-pull et **SE Triode** la lampe de sortie single-ended. Seuls les étages réellement utilisés par le circuit actuel sont sélectionnables : sur un étage de puissance précédé d’un driver, vous pouvez donc passer de l’un à l’autre et les comparer.
 - Quand aucune lampe ne fonctionne — Line avec **Driver Type** sur Bypass, ou l’effet désactivé — l’affichage reste vide et l’état indique **No tube stage is active**.
 - **Speaker Output** et **Speaker Real Power** indiquent à quel point l’étage de puissance et la charge du haut-parleur sont sollicités.

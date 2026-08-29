@@ -11,6 +11,8 @@ const explicit = [
   'effetune-library.css',
   'pipeline-analyzer.css',
   'features/effetune-benchmark.js',
+  'features/effetune-benchmark-score.js',
+  'features/benchmark-score-reference.js',
   'manifest.json',
   'package.json',
   'sw.js',

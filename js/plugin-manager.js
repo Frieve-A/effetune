@@ -62,8 +62,9 @@ export class PluginManager {
             const { categories, pluginDefinitions } = this.parsePluginsDefinition(pluginsText);
 
             // Collect all resource URLs
-            const jsUrls = [this.withDevelopmentCacheBuster('plugins/plugin-base.js', devCacheToken)];
-            const cssUrls = [];
+            const jsUrls = ['plugins/plugin-base.js', 'plugins/spectrum-overlay.js']
+                .map(url => this.withDevelopmentCacheBuster(url, devCacheToken));
+            const cssUrls = [this.withDevelopmentCacheBuster('plugins/spectrum-overlay.css', devCacheToken)];
             for (const {path, hasCSS} of pluginDefinitions.values()) {
                 jsUrls.push(this.withDevelopmentCacheBuster(`${path}.js`, devCacheToken));
                 if (hasCSS) cssUrls.push(this.withDevelopmentCacheBuster(`${path}.css`, devCacheToken));
@@ -128,6 +129,11 @@ export class PluginManager {
             } catch (error) {
                 console.error('Error loading base plugin file:', error);
                 // Continue with application
+            }
+            try {
+                await loadScriptWithProgress(jsUrls.shift());
+            } catch (error) {
+                console.error('Error loading spectrum overlay:', error);
             }
             
             // Load remaining JS files in parallel with error handling

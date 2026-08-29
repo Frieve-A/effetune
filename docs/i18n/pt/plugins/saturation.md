@@ -8,6 +8,11 @@ lang: pt
 
 Uma coleção de plugins que adicionam calor e caráter à sua música. Esses efeitos podem fazer a música digital soar mais analógica e adicionar uma riqueza agradável ao som, semelhante à forma como equipamentos de áudio vintage colorem o som.
 
+<!-- spectrum-overlay -->
+## Sobreposição de espectro
+
+Pressione o ícone de espectro de um gráfico compatível para sobrepor uma linha de espectro discreta do som depois de passar por esse efeito. Use-o para ver como cada ajuste altera graves, médios e agudos enquanto escuta. Leia o nível do espectro na escala dBFS à direita do gráfico. Ela é separada da escala de ganho do gráfico; 0 dBFS é a referência digital de escala completa, e valores mais baixos são mais silenciosos. A análise e o desenho do espectro são feitos apenas enquanto a visualização está visível.
+
 ## Lista de Plugins
 
 - [Bandwidth Extender](#bandwidth-extender) - Gera agudos acima de um corte detectado ou definido
@@ -571,6 +576,7 @@ Alterar parâmetros do circuito pode causar um grande salto de nível. Com **Aut
 ### Como Ler o HUD
 
 - Os pontos mostram posições de operação recentes. Quanto mais espalhados, mais intensamente a música está excitando aquele estágio. Cada painel sobrepõe os dois canais: o azul é o esquerdo e o laranja, o direito.
+- O nome da válvula representada no gráfico aparece no canto superior esquerdo.
 - O **Graph**, acima do gráfico, escolhe quais válvulas observar. **Stage 1 / Stage 2** mostra os dois estágios do driver, **Push / Pull** as duas válvulas do par de saída push-pull e **SE Triode** a válvula de saída single-ended. Só é possível selecionar os estágios que o circuito atual realmente usa, então em um estágio de potência com driver você pode alternar entre os dois e compará-los.
 - Quando nenhuma válvula está em operação — Line com **Driver Type** em Bypass, ou o efeito desligado — o gráfico fica vazio e o status mostra **No tube stage is active**.
 - **Speaker Output** e **Speaker Real Power** indicam o quanto o estágio de potência e a carga do alto-falante estão sendo excitados.

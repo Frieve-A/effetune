@@ -1722,8 +1722,22 @@ test('Tube Simulator graph selector offers the circuit\'s own stages and falls b
     // Tick labels are centred on their tick and the rightmost tick sits on the panel edge, so the
     // canvas has to keep room for the half that hangs outside it.
     const drawn = [];
-    canvas.context.fillText = (text, x) => {
-      drawn.push({ text, x, color: canvas.context.fillStyle });
+    canvas.context.fillText = (text, x, y) => {
+      drawn.push({ text, x, y, color: canvas.context.fillStyle,
+        align: canvas.context.textAlign, width: canvas.context.measureText(text).width });
+    };
+    const assertTubeName = expected => {
+      drawn.length = 0;
+      plugin._drawHud();
+      const left = drawn.find(entry => entry.text === 'Left');
+      const names = drawn.filter(entry => entry.y === left.y && entry.align === 'left');
+      assert.deepEqual(names.map(entry => entry.text), [expected]);
+      const name = names[0];
+      const title = drawn.find(entry => entry.text === titles()[0]);
+      assert.equal(name.x, title.x, 'the tube name aligns with the first panel');
+      assert.ok(name.y > 0 && name.y < title.y, 'the tube name sits above the panel titles');
+      assert.ok(name.x + name.width < left.x - left.width,
+        'the tube name must not overlap the channel legend');
     };
     plugin._drawHud();
     const rightmostTick = Math.max(...drawn
@@ -1745,17 +1759,30 @@ test('Tube Simulator graph selector offers the circuit\'s own stages and falls b
       canvas.width - legend[0].x >= 16,
       'the legend must clear the edge of the canvas'
     );
+    assertTubeName('EL84');
+    plugin.setParameters({ pt: '6L6GC' });
+    assertTubeName('6L6GC');
+    const originalSize = [canvas.width, canvas.height, plugin.hudCssWidth];
+    canvas.width = 640;
+    canvas.height = 400;
+    plugin.hudCssWidth = 320;
+    assertTubeName('6L6GC');
+    [canvas.width, canvas.height, plugin.hudCssWidth] = originalSize;
 
     plugin._selectHudView('driver');
     assert.deepEqual(options(), ['driver*', 'pushPull', 'singleEnded-']);
     assert.deepEqual(titles(), ['Stage 1', 'Stage 2']);
     assert.equal(plugin.hudAxes.xMax, plugin.pv);
+    assertTubeName('12AX7');
+    plugin.setParameters({ tp: '12AT7' });
+    assertTubeName('12AT7');
     plugin._selectHudView('singleEnded');
     assert.equal(plugin.hudView, 'driver', 'a group outside the circuit cannot be selected');
 
     // Bypassing the driver drops the selected group, so the most downstream one takes over.
     plugin.setParameters({ tp: 'Bypass' });
     assert.deepEqual(options(), ['driver-', 'pushPull*', 'singleEnded-']);
+    assertTubeName('6L6GC');
     plugin.setParameters({ os: 'SingleEnded' });
     assert.deepEqual(options(), ['driver-', 'pushPull-', 'singleEnded*']);
     // One valve, so one panel across the full width, carrying both channels like every other one.
@@ -1763,6 +1790,9 @@ test('Tube Simulator graph selector offers the circuit\'s own stages and falls b
     assert.equal(plugin._hudPanels()[0].leftX, plugin.trajectories.pushLeftX);
     assert.equal(plugin._hudPanels()[0].rightX, plugin.trajectories.pushRightX);
     assert.equal(plugin.hudAxes.xMax, plugin.sb);
+    assertTubeName('300B');
+    plugin.setParameters({ sd: '2A3' });
+    assertTubeName('2A3');
 
     // A selection that survives a settings change is kept, whatever else becomes available.
     plugin.setParameters({ tp: '12AU7' });

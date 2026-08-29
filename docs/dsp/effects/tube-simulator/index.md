@@ -158,6 +158,7 @@ Changing circuit parameters can cause a large level jump. With **Auto Gain Reduc
 ### How to Read the HUD
 
 - The dots show recent operating points. A wider spread means the music is driving that stage harder. Each panel carries both channels: blue is left and orange is right.
+- The tube name at the top left identifies the tube shown in the graph.
 - **Graph** above the display chooses which valves to watch. **Stage 1 / Stage 2** shows the two driver stages, **Push / Pull** the two sides of the push-pull output pair, and **SE Triode** the single-ended output valve. Only the groups the current circuit actually uses can be selected, so with a driver in front of a power stage you can switch between the two and compare them.
 - When no valve is running at all — Line with **Driver Type** set to Bypass, or the effect switched off — the display stays empty and the status reads **No tube stage is active**.
 - **Speaker Output** and **Speaker Real Power** show how strongly the modeled power stage and speaker load are being driven.

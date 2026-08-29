@@ -8,6 +8,11 @@ lang: en
 
 A collection of plugins that let you adjust different aspects of your music's sound, from deep bass to crisp highs. These tools help you personalize your listening experience by enhancing or reducing specific sound elements.
 
+<!-- spectrum-overlay -->
+## Spectrum Overlay
+
+Press the spectrum icon on a compatible graph to overlay a faint spectrum line for the sound after that effect. Use it to see how each adjustment changes bass, mids, and treble while listening. Read the spectrum level on the dBFS scale at the right of the graph. It is separate from the graph's gain scale; 0 dBFS is the full-scale digital reference, and lower values are quieter. Spectrum analysis and drawing run only while the display is visible.
+
 ## Plugin List
 
 - [15Band GEQ](#15band-geq) - Detailed sound adjustment with 15 precise controls

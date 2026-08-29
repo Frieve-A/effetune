@@ -592,7 +592,7 @@ class NarrowRangePlugin extends PluginBase {
       if (db > -30 && db < 6) {
         ctx.fillStyle = "#666";
         ctx.textAlign = "right";
-        ctx.fillText(`${db}dB`, 48, y + 4);
+        ctx.fillText(`${db}`, 48, y + 4);
       }
     });
     ctx.fillStyle = "#fff";

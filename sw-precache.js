@@ -1,9 +1,11 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.6.0-25f3bdf1440576eb";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.7.0-cd627977ed67081b";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./effetune-library.css",
   "./effetune-mobile.css",
   "./effetune.css",
   "./effetune.html",
+  "./features/benchmark-score-reference.js",
+  "./features/effetune-benchmark-score.js",
   "./features/effetune-benchmark.js",
   "./images/bus_function.png",
   "./images/favicon.ico",
@@ -385,6 +387,8 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./plugins/spatial/phase_select_eq.css",
   "./plugins/spatial/phase_select_eq.js",
   "./plugins/spatial/stereo_blend.js",
+  "./plugins/spectrum-overlay.css",
+  "./plugins/spectrum-overlay.js",
   "./presets/4ch/matrix.effetune_preset",
   "./presets/4ch/rear_reverb.effetune_preset",
   "./presets/amp_sim/tube_amp.effetune_preset",

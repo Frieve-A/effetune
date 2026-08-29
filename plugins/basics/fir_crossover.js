@@ -888,7 +888,7 @@ class FIRCrossoverPlugin extends PluginBase {
       if (decibels > decibelRange[0]) {
         context.fillStyle = '#666';
         context.textAlign = 'right';
-        context.fillText(`${decibels}dB`, leftLabelX, y + 3 * dpr);
+        context.fillText(`${decibels}`, leftLabelX, y + 3 * dpr);
       }
     }
 

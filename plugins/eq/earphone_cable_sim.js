@@ -768,7 +768,7 @@ class EarphoneCableSimPlugin extends PluginBase {
       const text = document.createElementNS(NS, 'text');
       text.setAttribute('x', '1%'); text.setAttribute('y', `${y}%`);
       text.setAttribute('dominant-baseline', 'middle');
-      text.textContent = `${gain > 0 ? '+' : ''}${Number.isInteger(gain) ? gain.toFixed(0) : gain.toFixed(1)}dB`;
+      text.textContent = `${gain > 0 ? '+' : ''}${Number.isInteger(gain) ? gain.toFixed(0) : gain.toFixed(1)}`;
       svg.appendChild(text);
     });
   }

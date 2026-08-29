@@ -8,6 +8,11 @@ lang: en
 
 A collection of plugins for harmonic shaping and bandwidth restoration. They can add warmth or distortion, or generate restrained high-frequency content where a recording has a clear bandwidth limit.
 
+<!-- spectrum-overlay -->
+## Spectrum Overlay
+
+Press the spectrum icon on a compatible graph to overlay a faint spectrum line for the sound after that effect. Use it to see how each adjustment changes bass, mids, and treble while listening. Read the spectrum level on the dBFS scale at the right of the graph. It is separate from the graph's gain scale; 0 dBFS is the full-scale digital reference, and lower values are quieter. Spectrum analysis and drawing run only while the display is visible.
+
 ## Plugin List
 
 - [Bandwidth Extender](#bandwidth-extender) - Generates high-frequency content above a detected or specified cutoff
@@ -606,6 +611,7 @@ Changing circuit parameters can cause a large level jump. With **Auto Gain Reduc
 ### How to Read the HUD
 
 - The dots show recent operating points. A wider spread means the music is driving that stage harder. Each panel carries both channels: blue is left and orange is right.
+- The tube name at the top left identifies the tube shown in the graph.
 - **Graph** above the display chooses which valves to watch. **Stage 1 / Stage 2** shows the two driver stages, **Push / Pull** the two sides of the push-pull output pair, and **SE Triode** the single-ended output valve. Only the groups the current circuit actually uses can be selected, so with a driver in front of a power stage you can switch between the two and compare them.
 - When no valve is running at all — Line with **Driver Type** set to Bypass, or the effect switched off — the display stays empty and the status reads **No tube stage is active**.
 - **Speaker Output** and **Speaker Real Power** show how strongly the modeled power stage and speaker load are being driven.

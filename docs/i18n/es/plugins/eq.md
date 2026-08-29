@@ -8,6 +8,11 @@ lang: es
 
 Una colección de plugins que te permiten ajustar diferentes aspectos del sonido de tu música, desde los graves profundos hasta los agudos nítidos. Estas herramientas te ayudan a personalizar tu experiencia auditiva al realzar o reducir elementos específicos del sonido.
 
+<!-- spectrum-overlay -->
+## Superposición de espectro
+
+Pulsa el icono de espectro de un gráfico compatible para superponer una tenue línea de espectro del sonido después de pasar por ese efecto. Úsalo para ver cómo cada ajuste cambia graves, medios y agudos mientras escuchas. Lee el nivel del espectro en la escala dBFS a la derecha del gráfico. Es distinta de la escala de ganancia del gráfico; 0 dBFS es la referencia digital de escala completa y los valores inferiores son más silenciosos. El análisis y el dibujo del espectro se realizan solo mientras la visualización está visible.
+
 ## Lista de Plugins
 
 - [15Band GEQ](#15band-geq) - Ajuste detallado del sonido con 15 controles precisos

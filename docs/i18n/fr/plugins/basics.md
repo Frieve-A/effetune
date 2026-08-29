@@ -8,6 +8,11 @@ lang: fr
 
 Un ensemble d'outils essentiels pour ajuster les aspects fondamentaux de la lecture de votre musique. Ces plugins vous aident à contrôler le volume, l'équilibre et d'autres aspects basiques de votre expérience d'écoute.
 
+<!-- spectrum-overlay -->
+## Superposition du spectre
+
+Appuyez sur l’icône de spectre d’un graphique compatible pour superposer une fine ligne de spectre du son après son passage dans cet effet. Elle permet de voir comment chaque réglage modifie les graves, les médiums et les aigus pendant l’écoute. Lisez le niveau du spectre sur l’échelle dBFS à droite du graphique. Elle est distincte de l’échelle de gain du graphique : 0 dBFS est la référence numérique de pleine échelle et les valeurs plus basses correspondent à des niveaux plus faibles. L’analyse et le tracé du spectre ne sont effectués que lorsque l’affichage est visible.
+
 ## Liste des plugins
 
 * [Channel Divider](#channel-divider) - Divise l'audio stéréo en bandes de fréquences et les répartit vers des paires de sorties stéréo

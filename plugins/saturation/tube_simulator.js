@@ -7067,7 +7067,7 @@ class TubeSimulatorPlugin extends PluginBase {
         const margin = {
             left: (narrow ? 48 : 58) * dpr,
             right: (narrow ? 16 : 18) * dpr,
-            top: (narrow ? 24 : 26) * dpr,
+            top: (narrow ? 44 : 46) * dpr,
             bottom: (narrow ? 44 : 48) * dpr
         };
         const panelWidth =
@@ -7090,9 +7090,10 @@ class TubeSimulatorPlugin extends PluginBase {
                 showYLabels: index === 0
             });
         });
-        this._drawChannelLegend(context, {
-            x: width - margin.right,
-            y: margin.top - 5 * dpr,
+        this._drawHudHeader(context, {
+            left: margin.left,
+            right: width - margin.right,
+            y: margin.top - 25 * dpr,
             dpr,
             narrow
         });
@@ -7109,21 +7110,21 @@ class TubeSimulatorPlugin extends PluginBase {
         context.restore();
     }
 
-    /**
-     * Names the two trace colours once for the whole graph, on the title row and right-aligned to
-     * the last panel. Every panel overlays both channels, so without it the colours are unlabelled;
-     * each word is drawn in its own colour, which is the legend itself - no swatches to align.
-     */
-    _drawChannelLegend(context, legend) {
-        const font = `600 ${(legend.narrow ? 12 : 13) * legend.dpr}px Arial`;
-        context.font = font;
-        context.textAlign = 'right';
+    // The header names the displayed tube and both channel colours above the panel titles.
+    _drawHudHeader(context, header) {
+        context.font = `600 ${(header.narrow ? 12 : 13) * header.dpr}px Arial`;
+        context.textAlign = 'left';
         context.textBaseline = 'bottom';
+        context.fillStyle = TUBE_SIMULATOR_HUD_COLORS.axes;
+        const tube = this.hudView === 'driver' ? this.tp
+            : this.hudView === 'pushPull' ? this.pt : this.sd;
+        context.fillText(tube, header.left, header.y);
+        context.textAlign = 'right';
         context.fillStyle = TUBE_SIMULATOR_HUD_COLORS.right;
-        context.fillText('Right', legend.x, legend.y);
+        context.fillText('Right', header.right, header.y);
         const rightWidth = context.measureText('Right').width;
         context.fillStyle = TUBE_SIMULATOR_HUD_COLORS.left;
-        context.fillText('Left', legend.x - rightWidth - 8 * legend.dpr, legend.y);
+        context.fillText('Left', header.right - rightWidth - 8 * header.dpr, header.y);
     }
 
     _drawOperatingPointPanel(context, panel) {

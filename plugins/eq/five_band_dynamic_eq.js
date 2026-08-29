@@ -1022,7 +1022,7 @@ class FiveBandDynamicEQ extends PluginBase {
 
             // Add gain labels on the left
             ctx.textAlign = 'right';
-            ctx.fillText(`${gain}dB`, 40 * dpr, y + 4 * dpr); // Adjust position for readability
+            ctx.fillText(`${gain}`, 40 * dpr, y + 4 * dpr); // Adjust position for readability
         });
 
         // --- Calculate Frequency Points for Curve Plotting ---

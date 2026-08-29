@@ -8,6 +8,11 @@ lang: en
 
 A collection of essential tools for adjusting the fundamental aspects of your music playback. These plugins help you control volume, balance, and other basic aspects of your listening experience.
 
+<!-- spectrum-overlay -->
+## Spectrum Overlay
+
+Press the spectrum icon on a compatible graph to overlay a faint spectrum line for the sound after that effect. Use it to see how each adjustment changes bass, mids, and treble while listening. Read the spectrum level on the dBFS scale at the right of the graph. It is separate from the graph's gain scale; 0 dBFS is the full-scale digital reference, and lower values are quieter. Spectrum analysis and drawing run only while the display is visible.
+
 ## Plugin List
 
 - [Channel Divider](#channel-divider) - Splits stereo audio into frequency bands across stereo output pairs

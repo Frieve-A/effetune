@@ -12,6 +12,7 @@ import {
 import { createReferenceSession } from '../../tools/dsp-parity/node-host.mjs';
 import { runParityCli } from '../../tools/dsp-parity/run.mjs';
 import { generateStimulus } from '../../tools/dsp-parity/stimuli.mjs';
+import { getCurrentJsEngineHash } from './js-engine-hash-helper.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const pluginsRoot = path.join(repoRoot, 'dsp', 'plugins', 'eq');
@@ -29,7 +30,6 @@ const ports = [
     ],
     caseCount: 9,
     identityCase: 'both-off-identity',
-    jsEngineHash: '81ed8a5b818adaa540bf5e1a4c964f717aac126e654d1d95d9e75f67c51b022c',
     activeParams: { hf: 180, lf: 12000, hs: -36, ls: -24 }
   },
   {
@@ -39,7 +39,6 @@ const ports = [
     fields: [['frequency', 'fr', 'float'], ['slope', 'sl', 'int']],
     caseCount: 9,
     identityCase: 'off-identity',
-    jsEngineHash: 'b83f4740a94078cfe002c0be527d70ebde9fa95cede364559472585fda86bc19',
     activeParams: { fr: 180, sl: -36 }
   },
   {
@@ -49,7 +48,6 @@ const ports = [
     fields: [['frequency', 'fr', 'float'], ['slope', 'sl', 'int']],
     caseCount: 9,
     identityCase: 'off-identity',
-    jsEngineHash: '6cb0fad03e31c27ae2a66649c0c1b0b0f27359af1ab94ed955ca15852610691e',
     activeParams: { fr: 12000, sl: -36 }
   },
   {
@@ -59,7 +57,6 @@ const ports = [
     fields: [['pivotExponent', 'f0', 'float'], ['slope', 'sl', 'float']],
     caseCount: 8,
     identityCase: 'zero-slope-identity',
-    jsEngineHash: '1cd280e948ad40bd2e07e65dd722519a8cb3bb9907dd47a4c6f3ea21bf74402b',
     activeParams: { f0: 6.5, sl: 8 }
   },
   {
@@ -73,7 +70,6 @@ const ports = [
     ],
     caseCount: 10,
     identityCase: 'flat-identity',
-    jsEngineHash: '6f848afb3bbef3ac570256bac2b8c14d9b366d2b56c400cd739b9ad5c4438f77',
     activeParams: { bs: 9, md: -6, tr: 12 }
   }
 ];
@@ -133,6 +129,7 @@ test('Phase 3b EQ group A goldens are source-frozen, bounded, and representative
     assert.ok(await goldenBytes(goldenDir) <= DEFAULT_GOLDEN_BUDGET_BYTES);
 
     const goldens = await readGoldenSet(goldenDir);
+    const jsEngineHash = await getCurrentJsEngineHash(port.type, repoRoot);
     assert.equal(goldens.length, port.caseCount);
     assert.deepEqual(
       new Set(goldens.map(item => item.metadata.sampleRate)),
@@ -145,7 +142,7 @@ test('Phase 3b EQ group A goldens are source-frozen, bounded, and representative
 
     for (const golden of goldens) {
       assert.equal(golden.metadata.type, port.type);
-      assert.equal(golden.metadata.jsEngineHash, port.jsEngineHash);
+      assert.equal(golden.metadata.jsEngineHash, jsEngineHash);
       assert.equal(golden.expected.length,
         golden.metadata.frameCount * golden.metadata.channels);
       assert.ok(golden.metadata.frameCount <= 259);

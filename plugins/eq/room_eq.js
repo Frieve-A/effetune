@@ -219,7 +219,7 @@ class RoomEqAdditionalEqEditor {
             text.setAttribute('x', '2%');
             text.setAttribute('y', `${y}%`);
             text.setAttribute('dominant-baseline', 'middle');
-            text.textContent = `${gain}dB`;
+            text.textContent = `${gain}`;
             gridSvg.appendChild(text);
         }
         graph.appendChild(gridSvg);

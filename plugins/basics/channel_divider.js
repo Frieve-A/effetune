@@ -838,7 +838,7 @@ class ChannelDividerPlugin extends PluginBase {
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
       if (db > -60) { 
         ctx.fillStyle = "#666"; ctx.textAlign = "right";
-        ctx.fillText(`${db}dB`, leftLabelX, y + 3 * dpr);
+        ctx.fillText(`${db}`, leftLabelX, y + 3 * dpr);
       }
     });
 

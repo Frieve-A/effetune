@@ -256,7 +256,7 @@ test('rebuildPipeline sends section-aware plugin data from the global pipeline',
   });
 });
 
-test('master bypass sends empty plugin data for non-empty pipelines', async () => {
+test('master bypass preserves plugin membership when rebuilding non-empty pipelines', async () => {
   await withProcessorGlobals({ window: {} }, async ({ calls }) => {
     const contextManager = {
       audioContext: { sampleRate: 48000 },
@@ -271,7 +271,15 @@ test('master bypass sends empty plugin data for non-empty pipelines', async () =
     assert.equal(await processor.rebuildPipeline(), '');
     assert.deepEqual(calls.find(call => call[0] === 'postMessage')?.[1], {
       type: 'updatePlugins',
-      plugins: [],
+      plugins: [{
+        id: 'gain-1',
+        type: 'TestPlugin',
+        enabled: true,
+        parameters: {},
+        inputBus: undefined,
+        outputBus: undefined,
+        channel: undefined
+      }],
       masterBypass: true
     });
   });

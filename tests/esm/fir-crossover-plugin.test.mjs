@@ -470,8 +470,8 @@ test('FIR Crossover graph follows Channel Divider axes and curve conventions', (
 
   assert.ok(labels.includes('Frequency (Hz)'));
   assert.ok(labels.includes('Level (dB)'));
-  assert.ok(labels.includes('-48dB'));
-  assert.ok(labels.includes('0dB'));
+  assert.ok(labels.includes('-48'));
+  assert.ok(labels.includes('0'));
   assert.equal(strokes.filter(stroke => stroke.color === '#00ff00').length, plugin.bc);
   assert.ok(strokes.filter(stroke => stroke.color === '#00ff00')
     .every(stroke => stroke.width === 1.5));
