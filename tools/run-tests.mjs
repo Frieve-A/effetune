@@ -136,6 +136,13 @@ function checkTestSourceHygiene(testFiles) {
 }
 
 const cjsTests = collectTestFiles(path.join(repoRoot, 'tests/cjs'), '.test.cjs');
+const allEsmTests = collectTestFiles(path.join(repoRoot, 'tests/esm'), '.test.mjs');
+const playwrightImportPattern = /(?:from\s+['"]playwright['"]|import\(\s*['"]playwright['"]\s*\))/;
+const browserTests = allEsmTests.filter(file => {
+  const source = fs.readFileSync(path.join(repoRoot, file), 'utf8');
+  return playwrightImportPattern.test(source);
+});
+const browserTestSet = new Set(browserTests);
 const performanceTests = [
   'tests/esm/measurement-dsp-performance.test.mjs',
   'tests/esm/room-eq-performance.test.mjs',
@@ -158,8 +165,9 @@ const automationContractTests = [
   'tools/dsp-parity/automation-mixed.test.mjs',
   'dsp/plugins/reverb/ir_reverb/automation_test.mjs'
 ];
-const esmTests = collectTestFiles(path.join(repoRoot, 'tests/esm'), '.test.mjs')
+const esmTests = allEsmTests
   .filter(file =>
+    !browserTestSet.has(file) &&
     !performanceTestSet.has(file) &&
     !isolatedTestSet.has(file) &&
     !presetCalibrationTestSet.has(file));
@@ -190,12 +198,33 @@ if (cjsTests.length === 0 && esmTests.length === 0) {
 const allTests = [
   ...cjsTests,
   ...esmTests,
+  ...browserTests,
   ...presetCalibrationTests,
   ...automationContractTests,
   ...performanceTests
 ];
 checkTestTitles(allTests);
 checkTestSourceHygiene(allTests);
+
+const misclassifiedBrowserTests = browserTests.filter(file => !file.endsWith('-browser.test.mjs'));
+if (misclassifiedBrowserTests.length > 0) {
+  console.error('Playwright tests must use the *-browser.test.mjs suffix:');
+  for (const testFile of misclassifiedBrowserTests) console.error(`- ${testFile}`);
+  process.exit(1);
+}
+
+if (process.argv.includes('--browser')) {
+  if (browserTests.length === 0) {
+    console.error('No browser test files found.');
+    process.exit(1);
+  }
+  runNodeTestPhase('Browser tests', [
+    '--test',
+    '--test-concurrency=1',
+    ...browserTests
+  ]);
+  process.exit(0);
+}
 
 if (cjsTests.length > 0) {
   runNodeTestPhase('CommonJS tests', [

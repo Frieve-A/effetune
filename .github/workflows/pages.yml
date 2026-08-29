@@ -48,6 +48,10 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
+      - name: Run browser integration tests
+        timeout-minutes: 3
+        run: npm run test:browser
+
       - name: Run mandatory power browser smoke
         timeout-minutes: 2
         run: npm run test:power-browser

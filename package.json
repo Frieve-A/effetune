@@ -19,6 +19,7 @@
     "test:dsp:parity": "npm --prefix dsp/bindings/js run build && node tools/dsp-parity/graph-v1.mjs && node tools/dsp-parity/run.mjs --wasm && node tools/dsp-parity/run.mjs --wasm --simd",
     "test:dsp:telemetry-soak": "node tools/dsp-parity/telemetry-soak.mjs",
     "bench:score-reference": "node tools/benchmark-score-reference.mjs",
+    "test:browser": "node tools/run-tests.mjs --browser",
     "test:power-browser": "node tools/run-power-browser-smoke.mjs",
     "smoke:dsp-package": "node tools/verify-dsp-package.mjs dist",
     "smoke:openhome-package": "node tools/verify-openhome-package.mjs dist",
