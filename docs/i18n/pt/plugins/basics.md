@@ -11,7 +11,7 @@ Uma coleção de ferramentas essenciais para ajustar os aspectos fundamentais da
 <!-- spectrum-overlay -->
 ## Sobreposição de espectro
 
-Pressione o ícone de espectro de um gráfico compatível para sobrepor uma linha de espectro discreta do som depois de passar por esse efeito. Use-o para ver como cada ajuste altera graves, médios e agudos enquanto escuta. Leia o nível do espectro na escala dBFS à direita do gráfico. Ela é separada da escala de ganho do gráfico; 0 dBFS é a referência digital de escala completa, e valores mais baixos são mais silenciosos. A análise e o desenho do espectro são feitos apenas enquanto a visualização está visível.
+Pressione o ícone de espectro de um gráfico compatível para alternar entre After, Before + After e Off. After mostra apenas o espectro processado como uma linha azul. Before + After preenche a mudança entre o espectro antes e depois do processamento: a cor quente marca as frequências cujo nível aumentou após o processamento, o azul marca aquelas cujo nível diminuiu e uma linha cinza indica o espectro After. As duas visualizações aplicam suavização de 1/12 de oitava para facilitar a leitura das tendências nas altas frequências. Use a comparação para ver como cada ajuste altera graves, médios e agudos enquanto escuta. Leia os níveis do espectro na escala dBFS à direita do gráfico. Ela é separada da escala de ganho do gráfico; 0 dBFS é a referência digital de escala completa, e valores mais baixos são mais silenciosos. Em After, apenas o espectro processado é coletado; em Off, a coleta e o desenho são interrompidos.
 
 ## Lista de Plugins
 

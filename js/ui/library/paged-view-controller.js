@@ -1,6 +1,6 @@
 import { LogicalSelection } from './logical-selection.js';
 
-const FIRST_PAGE_DEADLINES_MS = Object.freeze({ electron: 2_000, web: 3_000 });
+const FIRST_PAGE_INACTIVITY_TIMEOUT_MS = 30_000;
 const SATISFIED_PREFETCH_RESULT = Object.freeze({ accepted: true, prefetched: false });
 const SATISFIED_PREFETCH_PROMISE = Promise.resolve(SATISFIED_PREFETCH_RESULT);
 export const PAGED_LIBRARY_PAGE_LIMIT = 200;
@@ -19,7 +19,7 @@ export class PagedViewController {
   constructor({
     loadFirstPage,
     loadCount = null,
-    runtime = 'web',
+    inactivityTimeoutMs = FIRST_PAGE_INACTIVITY_TIMEOUT_MS,
     setTimeoutFn = (...args) => globalThis.setTimeout(...args),
     clearTimeoutFn = (...args) => globalThis.clearTimeout(...args),
     monotonicNow = () => globalThis.performance?.now?.() ?? Date.now(),
@@ -29,9 +29,12 @@ export class PagedViewController {
     if (typeof loadFirstPage !== 'function') {
       throw new TypeError('loadFirstPage must be a function');
     }
+    if (!Number.isFinite(inactivityTimeoutMs) || inactivityTimeoutMs <= 0) {
+      throw new RangeError('inactivityTimeoutMs must be a positive number');
+    }
     this.loadFirstPage = loadFirstPage;
     this.loadCount = typeof loadCount === 'function' ? loadCount : null;
-    this.deadlineMs = FIRST_PAGE_DEADLINES_MS[runtime] || FIRST_PAGE_DEADLINES_MS.web;
+    this.inactivityTimeoutMs = inactivityTimeoutMs;
     // Keep host functions unbound. Calling a captured Window timer as a method
     // of this controller throws "Illegal invocation" in Chromium/Electron.
     this.setTimeoutFn = (...args) => setTimeoutFn(...args);
@@ -78,41 +81,41 @@ export class PagedViewController {
       ariaRowCount: -1
     });
 
-    const acceptedAt = this.monotonicNow();
-    const deadlineAt = acceptedAt + this.deadlineMs;
+    let lastProgressAt = this.monotonicNow();
 
     const deadline = new Promise(resolve => {
       const reachDeadline = () => {
-        const remainingMs = deadlineAt - this.monotonicNow();
+        const remainingMs = lastProgressAt + this.inactivityTimeoutMs - this.monotonicNow();
         if (remainingMs > 0) {
           this.timer = this.setTimeoutFn(reachDeadline, remainingMs);
           return;
         }
-        resolve({ kind: 'timeout', completedAt: this.monotonicNow() });
+        resolve({ kind: 'timeout' });
       };
-      this.timer = this.setTimeoutFn(reachDeadline, this.deadlineMs);
+      this.timer = this.setTimeoutFn(reachDeadline, this.inactivityTimeoutMs);
     });
+    const reportProgress = () => {
+      if (this.isCurrent(queryGeneration, pageAttemptId)) lastProgressAt = this.monotonicNow();
+    };
     const request = Promise.resolve()
       .then(() => this.loadFirstPage({
         query: this.query,
         queryGeneration,
-        pageAttemptId
+        pageAttemptId,
+        reportProgress
       }))
       .then(
-        page => ({ kind: 'page', page, completedAt: this.monotonicNow() }),
-        error => ({ kind: 'error', error, completedAt: this.monotonicNow() })
+        page => ({ kind: 'page', page }),
+        error => ({ kind: 'error', error })
       );
-    let result = await Promise.race([request, deadline]);
+    const result = await Promise.race([request, deadline]);
 
     if (!this.isCurrent(queryGeneration, pageAttemptId)) {
       return { accepted: false, reason: 'stale-attempt' };
     }
     this.clearDeadline();
-    if (result.kind !== 'timeout' && !(result.completedAt < deadlineAt)) {
-      result = { kind: 'timeout', completedAt: result.completedAt };
-    }
     if (result.kind === 'timeout') {
-      this.commitTerminal('timedOut', new Error('The first library page timed out'));
+      this.commitTerminal('timedOut', new Error('The first library page stopped responding'));
       return { accepted: true, terminal: 'timedOut' };
     }
     if (result.kind === 'error') {
@@ -257,7 +260,6 @@ export function getMissingPagedManagerMethods(manager) {
 export class PagedLibraryViewController {
   constructor({
     manager,
-    runtime = 'web',
     pageLimit = PAGED_LIBRARY_PAGE_LIMIT,
     onStateChange = () => {},
     onCacheChange = () => {},
@@ -304,7 +306,6 @@ export class PagedLibraryViewController {
     this.prefetchWaiters = new Set();
     this.navigationRequestId = 0;
     this.firstPage = new PagedViewController({
-      runtime,
       setTimeoutFn,
       clearTimeoutFn,
       loadFirstPage: identity => this.loadFirstPage(identity),
@@ -353,11 +354,13 @@ export class PagedLibraryViewController {
       ? (this.staleSelectionDescriptor ?? this.markSelectionStale())
       : null;
     await this.releaseContext();
+    identity.reportProgress?.();
     this.staleSelectionDescriptor = staleSelection;
     if (!this.firstPage.isCurrent(identity.queryGeneration, identity.pageAttemptId)) {
       return { rows: [], totalCount: { pending: true } };
     }
     const contextToken = await this.manager.createContext(this.query);
+    identity.reportProgress?.();
     if (!this.firstPage.isCurrent(identity.queryGeneration, identity.pageAttemptId)) {
       await this.manager.releaseContext(contextToken);
       return { rows: [], totalCount: { pending: true } };
@@ -368,12 +371,14 @@ export class PagedLibraryViewController {
     this.selectionRejection = null;
     this.preserveStaleSelectionDuringStart = false;
     let page = normalizePageStart(await this.queryPage(null), 0);
+    identity.reportProgress?.();
     const needsInitialCount = this.query.endpoint === 'entities' || this.defaultSelectAllLimit !== null;
     if (needsInitialCount && !Number.isSafeInteger(page?.totalCount) &&
         typeof this.manager.getContextCount === 'function') {
       const attemptKey = `${identity.queryGeneration}:${identity.pageAttemptId}`;
       try {
         const totalCount = await this.loadCount(identity);
+        identity.reportProgress?.();
         if (!this.firstPage.isCurrent(identity.queryGeneration, identity.pageAttemptId)) {
           return { rows: [], totalCount: { pending: true } };
         }

@@ -7,11 +7,6 @@ on:
         description: Platform stage to verify
         required: true
         type: string
-      package_smoke:
-        description: Run the Windows Electron package smoke test
-        required: false
-        default: true
-        type: boolean
 
 permissions:
   contents: read
@@ -69,9 +64,3 @@ jobs:
         run: |
           npm run test:dsp -- --native-build-type=Release
           node tools/dsp-parity/run.mjs --native
-      - name: Package Electron application
-        if: inputs.package_smoke
-        run: npm run pack:win
-      - name: Verify packaged DSP artifacts
-        if: inputs.package_smoke
-        run: npm run smoke:dsp-package

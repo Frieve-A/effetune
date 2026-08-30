@@ -15,6 +15,7 @@ import {
   PowerConfigStore,
   SerializedMemoryPowerConfigBackend
 } from '../../js/electron/power-config-store.js';
+import { DEFAULT_OFFLINE_OUTPUT_SETTINGS } from '../../js/audio/offline-output-settings.js';
 import { createFakeDocument } from '../helpers/fake-dom.mjs';
 import {
   createConsoleHarness,
@@ -191,6 +192,7 @@ async function withWebConfigRuntime({
 
 test('loadConfig returns web settings outside Electron and empty objects on failed reads', async () => {
   assert.deepEqual(await loadConfig(false), {
+    offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS,
     powerSaving: {
       mode: 'balanced',
       silenceThresholdDb: -80,
@@ -205,6 +207,7 @@ test('loadConfig returns web settings outside Electron and empty objects on fail
     assert.deepEqual(await loadConfig(false), {
       language: 'ja',
       pipelineStartup: 'last',
+      offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS,
       powerSaving: {
         mode: 'balanced',
         silenceThresholdDb: -80,
@@ -215,7 +218,9 @@ test('loadConfig returns web settings outside Electron and empty objects on fail
 
   const missingConfig = createConfigHarness({ loadConfigResult: { success: true } });
   await withGlobals({ window: missingConfig.window }, async () => {
-    assert.deepEqual(await loadConfig(true), {});
+    assert.deepEqual(await loadConfig(true), {
+      offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS
+    });
   });
 
   const failed = createConfigHarness({ loadConfigResult: { success: false, config: { ignored: true } } });
@@ -238,7 +243,10 @@ test('loadConfig returns loaded config and saveConfig persists in Electron or lo
   });
 
   await withGlobals({ window: harness.window }, async () => {
-    assert.deepEqual(await loadConfig(true), { language: 'ja' });
+    assert.deepEqual(await loadConfig(true), {
+      language: 'ja',
+      offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS
+    });
     await saveConfig(true, { autoLaunch: true });
   });
   await withWebConfigRuntime({ windowObject: {}, localStorage }, async () => {
@@ -247,11 +255,16 @@ test('loadConfig returns loaded config and saveConfig persists in Electron or lo
 
   assert.deepEqual(harness.calls, [
     ['loadConfig'],
-    ['saveConfig', { language: 'ja', autoLaunch: true }]
+    ['saveConfig', {
+      language: 'ja',
+      offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS,
+      autoLaunch: true
+    }]
   ]);
   assert.deepEqual(JSON.parse(localStorage.snapshot().effetune_app_config), {
     language: 'en',
     pipelineStartup: 'default',
+    offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS,
     powerSaving: {
       mode: 'balanced',
       silenceThresholdDb: -80,
@@ -280,6 +293,7 @@ test('web power-saving storage preserves a complete nested object while generic 
     });
     assert.deepEqual(await loadWebAppConfig(), {
       language: 'ja',
+      offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS,
       powerSaving: {
         mode: 'maximum',
         silenceThresholdDb: -90,
@@ -306,6 +320,7 @@ test('web power-saving storage preserves a complete nested object while generic 
     assert.equal(await saveWebAppConfig({ powerSaving: { mode: 'continuous' } }), true);
     assert.deepEqual(await loadWebAppConfig(), {
       language: 'ja',
+      offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS,
       powerSaving: {
         mode: 'continuous',
         silenceThresholdDb: -80,
@@ -360,8 +375,11 @@ test('saveConfig publishes a durable Electron save that reports a non-fatal side
       assert.equal(await saveConfig(true, { autoLaunch: true }), true);
   });
 
-  assert.deepEqual(harness.window.appConfig, { autoLaunch: true });
-  assert.deepEqual(harness.window.electronIntegration.config, { autoLaunch: true });
+  assert.deepEqual(harness.window.appConfig, {
+    autoLaunch: true,
+    offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS
+  });
+  assert.deepEqual(harness.window.electronIntegration.config, harness.window.appConfig);
   assert.deepEqual(warnings, [[
     'Config was saved with a non-fatal side-effect failure:',
     'Failed to update the auto-launch setting: denied'
@@ -402,10 +420,22 @@ test('concurrent Electron config patches serialize and merge with the latest com
   });
 
   assert.deepEqual(harness.calls.filter(call => call[0] === 'saveConfig'), [
-    ['saveConfig', { language: 'en', autoLaunch: false }],
-    ['saveConfig', { language: 'ja', autoLaunch: false }]
+    ['saveConfig', {
+      language: 'en',
+      autoLaunch: false,
+      offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS
+    }],
+    ['saveConfig', {
+      language: 'ja',
+      autoLaunch: false,
+      offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS
+    }]
   ]);
-  assert.deepEqual(harness.window.appConfig, { language: 'ja', autoLaunch: false });
+  assert.deepEqual(harness.window.appConfig, {
+    language: 'ja',
+    autoLaunch: false,
+    offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS
+  });
   assert.deepEqual(harness.window.electronIntegration.config, harness.window.appConfig);
 });
 
@@ -435,10 +465,22 @@ test('a failed queued Electron config patch is not published or merged into its 
   });
 
   assert.deepEqual(harness.calls.filter(call => call[0] === 'saveConfig'), [
-    ['saveConfig', { language: 'en', autoLaunch: false }],
-    ['saveConfig', { language: 'ja', autoLaunch: true }]
+    ['saveConfig', {
+      language: 'en',
+      autoLaunch: false,
+      offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS
+    }],
+    ['saveConfig', {
+      language: 'ja',
+      autoLaunch: true,
+      offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS
+    }]
   ]);
-  assert.deepEqual(harness.window.appConfig, { language: 'ja', autoLaunch: true });
+  assert.deepEqual(harness.window.appConfig, {
+    language: 'ja',
+    autoLaunch: true,
+    offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS
+  });
   assert.deepEqual(harness.window.electronIntegration.config, harness.window.appConfig);
 });
 
@@ -551,7 +593,13 @@ test('Electron power rollback preserves previous settings when readback fails', 
   ]);
   assert.deepEqual(harness.window.appConfig, {
     language: 'en',
-    powerSaving: initialPowerSaving
+    powerSaving: initialPowerSaving,
+    offlineOutput: {
+      format: 'wav',
+      sampleRate: 96000,
+      wavSampleFormat: 'pcm24',
+      flacSampleFormat: 'pcm24'
+    }
   });
   assert.deepEqual(harness.window.electronIntegration.config, harness.window.appConfig);
 });
@@ -653,7 +701,8 @@ test('a later Electron save resynchronizes controls after an earlier queued save
     language: 'en',
     autoLaunch: true,
     startMinimized: true,
-    pipelineStartup: 'last'
+    pipelineStartup: 'last',
+    offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS
   });
 });
 
@@ -819,7 +868,8 @@ test('Web power-saving controls use the AudioManager facade and preserve hidden 
   const localStorage = createLocalStorage({
     effetune_app_config: JSON.stringify({
       language: 'en',
-      powerSaving: initialPowerSaving
+      powerSaving: initialPowerSaving,
+      offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS
     })
   });
   const initialStoredConfig = localStorage.snapshot().effetune_app_config;
@@ -1020,6 +1070,56 @@ test('Electron power-saving controls render, apply, and persist the full nested 
   });
 });
 
+test('offline output controls normalize dependent choices and persist one nested setting', async () => {
+  const harness = createConfigHarness({
+    config: {
+      language: 'en',
+      offlineOutput: {
+        format: 'wav',
+        sampleRate: 96000,
+        wavSampleFormat: 'pcm16',
+        flacSampleFormat: 'pcm24'
+      }
+    }
+  });
+
+  await withGlobals({ window: harness.window, document: harness.document }, async () => {
+    await showConfigDialog(true, {});
+    const format = harness.document.getElementById('offline-output-format');
+    const sampleRate = harness.document.getElementById('offline-output-sample-rate');
+    const quality = harness.document.getElementById('offline-output-quality');
+    const qualityRow = harness.document.getElementById('offline-output-quality-row');
+
+    assert.equal(format.value, 'wav');
+    assert.equal(sampleRate.value, '96000');
+    assert.equal(quality.value, 'pcm16');
+
+    format.value = 'flac';
+    await format.dispatchEvent('change');
+    assert.equal(sampleRate.value, '96000');
+    assert.equal(quality.disabled, false);
+    assert.equal(qualityRow.hidden, false);
+    assert.equal(quality.value, 'pcm24');
+
+    quality.value = 'pcm16';
+    await quality.dispatchEvent('change');
+    format.value = 'wav';
+    await format.dispatchEvent('change');
+    assert.equal(quality.value, 'pcm16');
+    format.value = 'flac';
+    await format.dispatchEvent('change');
+    assert.equal(quality.value, 'pcm16');
+
+    const saves = harness.calls.filter(call => call[0] === 'saveConfig');
+    assert.deepEqual(saves.at(-1)[1].offlineOutput, {
+      format: 'flac',
+      sampleRate: 96000,
+      wavSampleFormat: 'pcm16',
+      flacSampleFormat: 'pcm16'
+    });
+  });
+});
+
 test('showConfigDialog renders settings, saves changes, and closes from the button', async () => {
   const languageCalls = [];
   const harness = createConfigHarness({
@@ -1049,6 +1149,15 @@ test('showConfigDialog renders settings, saves changes, and closes from the butt
     assert.equal(harness.document.head.children.length, 1);
     assert.match(harness.document.body.children[0].innerHTML, /class="config-dialog-content"/);
     assert.match(harness.document.body.children[0].innerHTML, /class="config-dialog-column config-dialog-power-column"/);
+    const dialogMarkup = harness.document.body.children[0].innerHTML;
+    assert.ok(
+      dialogMarkup.indexOf('id="physical-control-section"') <
+      dialogMarkup.indexOf('id="power-saving-section"')
+    );
+    assert.doesNotMatch(
+      /<div class="dialog-buttons">[\s\S]*?controller-mapping-btn/.exec(dialogMarkup)?.[0] || '',
+      /controller-mapping-btn/
+    );
     assert.match(harness.document.head.children[0].textContent, /grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/);
     assert.match(harness.document.head.children[0].textContent, /body\.layout-mobile \.config-dialog-content/);
     assert.match(harness.document.head.children[0].textContent, /@media \(max-width: 700px\)/);
@@ -1062,6 +1171,10 @@ test('showConfigDialog renders settings, saves changes, and closes from the butt
     assert.equal(harness.document.getElementById('preset-select').value, 'Alpha');
     assert.equal(harness.document.getElementById('language-select').value, 'ja');
     assert.notEqual(harness.document.getElementById('power-saving-section'), null);
+    assert.equal(
+      harness.document.getElementById('physical-control-title').textContent,
+      'label:dialog.config.physicalControl'
+    );
     assert.equal(harness.document.getElementById('power-mode-balanced').checked, true);
 
     const autoLaunch = harness.document.getElementById('auto-launch');
@@ -1514,6 +1627,32 @@ test('all locales include matching IR Reverb, IR library, and external asset key
     assert.deepEqual([...entries.keys()].sort(), [...english.keys()].sort(), `${locale} IR key parity`);
     for (const [key, value] of entries) {
       assert.deepEqual(placeholderNames(value), placeholderNames(english.get(key)), `${locale} ${key} placeholders`);
+    }
+  }
+});
+
+test('all locales include matching offline output setting and error keys', () => {
+  const locales = ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh'];
+  const readEntries = locale => {
+    const source = readFileSync(new URL(`../../js/locales/${locale}.json5`, import.meta.url), 'utf8');
+    return new Map([...source.matchAll(
+      /^\s*"((?:dialog\.config\.offlineOutput|error\.offlineOutput)\.[^"]+)":\s*"([^"]*)"/gm
+    )].map(([, key, value]) => [key, value]));
+  };
+  const placeholderNames = value => [...value.matchAll(/\{([^}]+)\}/g)]
+    .map(match => match[1])
+    .sort();
+  const english = readEntries('en');
+  assert.equal(english.size, 17);
+  for (const locale of locales) {
+    const entries = readEntries(locale);
+    assert.deepEqual([...entries.keys()].sort(), [...english.keys()].sort(), `${locale} offline output key parity`);
+    for (const [key, value] of entries) {
+      assert.deepEqual(
+        placeholderNames(value),
+        placeholderNames(english.get(key)),
+        `${locale} ${key} placeholders`
+      );
     }
   }
 });

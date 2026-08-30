@@ -90,6 +90,7 @@ test('first page timeout releases busy state and allows retry', async () => {
   let now = 0;
   const controller = new PagedViewController({
     loadFirstPage: () => new Promise(() => {}),
+    inactivityTimeoutMs: 2_000,
     monotonicNow: () => now,
     setTimeoutFn: callback => {
       fireDeadline = callback;
@@ -100,31 +101,66 @@ test('first page timeout releases busy state and allows retry', async () => {
 
   const attempt = controller.start({ text: 'slow' });
   await Promise.resolve();
-  now = 3_000;
+  now = 2_000;
   fireDeadline();
   assert.deepEqual(await attempt, { accepted: true, terminal: 'timedOut' });
   assert.equal(controller.state.ariaBusy, false);
   assert.equal(controller.state.ariaRowCount, -1);
-  assert.match(controller.state.error.message, /timed out/);
+  assert.match(controller.state.error.message, /stopped responding/);
 });
 
-test('first page completion must be strictly before the injected monotonic deadline', async () => {
+test('first page completion must be strictly before the injected inactivity deadline', async () => {
   for (const [completedAt, terminal] of [[1_999, 'committed'], [2_000, 'timedOut'], [2_001, 'timedOut']]) {
     const page = createDeferred();
+    let fireDeadline;
     let now = 0;
     const controller = new PagedViewController({
-      runtime: 'electron',
       loadFirstPage: () => page.promise,
+      inactivityTimeoutMs: 2_000,
       monotonicNow: () => now,
-      setTimeoutFn: () => 1,
+      setTimeoutFn: callback => {
+        fireDeadline = callback;
+        return 1;
+      },
       clearTimeoutFn: () => {}
     });
     const attempt = controller.start({ text: '' });
     await Promise.resolve();
     now = completedAt;
+    if (completedAt >= 2_000) fireDeadline();
     page.resolve({ rows: [{ id: 'ready' }], totalCount: 1 });
     assert.equal((await attempt).terminal, terminal, `completion at ${completedAt} ms`);
   }
+});
+
+test('first page progress restarts the injected inactivity deadline', async () => {
+  const page = createDeferred();
+  let fireDeadline;
+  let reportProgress;
+  let now = 0;
+  const controller = new PagedViewController({
+    loadFirstPage: identity => {
+      reportProgress = identity.reportProgress;
+      return page.promise;
+    },
+    inactivityTimeoutMs: 2_000,
+    monotonicNow: () => now,
+    setTimeoutFn: callback => {
+      fireDeadline = callback;
+      return 1;
+    },
+    clearTimeoutFn: () => {}
+  });
+
+  const attempt = controller.start({ text: 'slow-progressing' });
+  await Promise.resolve();
+  now = 1_500;
+  reportProgress();
+  now = 2_000;
+  fireDeadline();
+  page.resolve({ rows: [{ id: 'ready' }], totalCount: 1 });
+
+  assert.equal((await attempt).terminal, 'committed');
 });
 
 test('row actions run only for the committed current attempt', async () => {

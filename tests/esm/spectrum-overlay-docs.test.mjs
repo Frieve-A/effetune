@@ -28,15 +28,18 @@ test('spectrum overlay guidance is present in every supported documentation cate
       1,
       `${relativePath} must contain exactly one spectrum-overlay anchor`
     );
+    assert.match(content, /1\/12/, `${relativePath} must describe spectrum smoothing`);
   }
 });
 
 test('version history records the spectrum overlay once in the current release section', async () => {
   const versionHistory = await readRepositoryFile('docs/version-history.md');
-  const currentSection = versionHistory.split(/^### Version 2\.7\.0\b.*$/m)[1]
-    ?.split(/^### Version 2\.6\.0\b.*$/m)[0];
-  const entry = '- Added an optional spectrum overlay toggle to supported effect graphs.';
+  const currentSection = versionHistory.split(/^### Version 2\.8\.0\b.*$/m)[1]
+    ?.split(/^### Version 2\.7\.0\b.*$/m)[0];
+  const entry = '- Added an optional three-state spectrum display to supported effect graphs, with After-only and signed Before + After comparison views.';
+  const smoothingEntry = '- Added 1/12-octave smoothing to the effect-graph spectrum display for clearer high-frequency trends.';
 
-  assert.ok(currentSection, 'Version 2.7.0 section must exist');
+  assert.ok(currentSection, 'Version 2.8.0 section must exist');
   assert.equal(currentSection.split(entry).length - 1, 1);
+  assert.equal(currentSection.split(smoothingEntry).length - 1, 1);
 });

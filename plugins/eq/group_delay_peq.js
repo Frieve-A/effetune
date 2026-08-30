@@ -746,12 +746,22 @@ class GroupDelayPEQPlugin extends PluginBase {
         const markerText = document.createElement('div');
         markerText.className = 'group-delay-peq-marker-text';
         marker.appendChild(markerText);
+        PeqMarkerWheel.bind(marker, {
+            getQ: () => this['q' + index],
+            minimumQ: GroupDelayPEQPlugin.Q_RANGE.minimum,
+            maximumQ: GroupDelayPEQPlugin.Q_RANGE.maximum,
+            setQ: q => {
+                this.setBand(index, { q });
+                this.setUIBandValues(index);
+            }
+        });
         const startDrag = (clientX, clientY) => {
             this.activeDragMarker = index;
             this.initialDragX = clientX;
             this.initialDragY = clientY;
             this.hasMoved = false;
             this._dragScaleExpansions = 0;
+            GraphDragAxisLock.begin(this, clientX, clientY);
             marker.classList.add('active');
         };
         marker.addEventListener('mousedown', event => {
@@ -1209,7 +1219,8 @@ class GroupDelayPEQPlugin extends PluginBase {
         const plot = this.getGraphPlotArea();
         let x = (event.clientX - plot.left) / plot.width;
         let y = (event.clientY - plot.top) / plot.height;
-        const overshootPx = Math.max(
+        const dragAxis = GraphDragAxisLock.resolve(this, event);
+        const overshootPx = dragAxis === 'x' ? 0 : Math.max(
             plot.top - event.clientY, event.clientY - (plot.top + plot.height)
         );
         x = Math.max(0, Math.min(1, x));
@@ -1219,7 +1230,10 @@ class GroupDelayPEQPlugin extends PluginBase {
             this.updateResponse();
         }
         const band = this.activeDragMarker;
-        this.setBand(band, { frequency: this.xToFreq(x * 100), delayMs: this.yToDelay(y * 100) });
+        this.setBand(band, {
+            frequency: dragAxis === 'y' ? this['f' + band] : this.xToFreq(x * 100),
+            delayMs: dragAxis === 'x' ? this['d' + band] : this.yToDelay(y * 100)
+        });
         this.setUIBandValues(band);
     }
 
@@ -1229,6 +1243,7 @@ class GroupDelayPEQPlugin extends PluginBase {
         this.activeDragMarker = null;
         this.hasMoved = false;
         this._dragScaleExpansions = 0;
+        GraphDragAxisLock.end(this);
         if (this.boundMouseMoveHandler) {
             document.removeEventListener('mousemove', this.boundMouseMoveHandler);
             document.removeEventListener('mouseup', this.boundMouseUpHandler);

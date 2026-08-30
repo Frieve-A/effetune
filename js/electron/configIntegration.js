@@ -19,6 +19,11 @@ import {
   mergePowerSavingSettings,
   normalizePowerSettings
 } from '../audio/power-policy.js';
+import {
+  OFFLINE_OUTPUT_FORMATS,
+  normalizeOfflineOutputSettings
+} from '../audio/offline-output-settings.js';
+import { closeStandardSelect, enableStandardSelects } from '../ui/standard-select.js';
 
 const electronConfigStates = new WeakMap();
 const fallbackElectronConfigState = {
@@ -31,6 +36,10 @@ function cloneElectronConfig(config) {
   if (config?.powerSaving && typeof config.powerSaving === 'object' &&
       !Array.isArray(config.powerSaving)) {
     cloned.powerSaving = { ...config.powerSaving };
+  }
+  if (config?.offlineOutput && typeof config.offlineOutput === 'object' &&
+      !Array.isArray(config.offlineOutput)) {
+    cloned.offlineOutput = { ...config.offlineOutput };
   }
   return cloned;
 }
@@ -63,6 +72,7 @@ export async function loadConfig(isElectron) {
     const result = await window.electronAPI.loadConfig();
     if (result.success) {
       const config = result.config || {};
+      config.offlineOutput = normalizeOfflineOutputSettings(config.offlineOutput);
       getElectronConfigState().snapshot = cloneElectronConfig(config);
       return config;
     }
@@ -120,6 +130,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
   config.libraryStartupView = normalizeMusicLibraryStartupView(config.libraryStartupView);
   let powerSavingSettings = normalizePowerSettings(config.powerSaving);
   config.powerSaving = { ...powerSavingSettings };
+  let offlineOutputSettings = normalizeOfflineOutputSettings(config.offlineOutput);
+  config.offlineOutput = { ...offlineOutputSettings };
   
   const pipelinePresetManager = window.pipelineManager && window.pipelineManager.presetManager;
   const presets = pipelinePresetManager
@@ -218,6 +230,30 @@ export async function showConfigDialog(isElectron, currentConfig) {
         </div>
       </div>`;
 
+  const physicalControlSection = `
+      <div class="device-section power-saving-section" id="physical-control-section">
+        <label class="section-label" id="physical-control-title"></label>
+        <button type="button" class="library-button" id="controller-mapping-btn"></button>
+      </div>`;
+
+  const offlineOutputSection = `
+      <div class="device-section power-saving-section offline-output-section" id="offline-output-section">
+        <label class="section-label" id="offline-output-title"></label>
+        <div class="offline-output-row">
+          <label for="offline-output-format" id="offline-output-format-label"></label>
+          <select id="offline-output-format" class="config-select"></select>
+        </div>
+        <div class="offline-output-row">
+          <label for="offline-output-sample-rate" id="offline-output-sample-rate-label"></label>
+          <select id="offline-output-sample-rate" class="config-select"></select>
+        </div>
+        <div class="offline-output-row" id="offline-output-quality-row">
+          <label for="offline-output-quality" id="offline-output-quality-label"></label>
+          <select id="offline-output-quality" class="config-select" aria-describedby="offline-output-help"></select>
+        </div>
+        <div class="offline-output-help" id="offline-output-help"></div>
+      </div>`;
+
   const dialogHTML = `
     <div class="config-dialog">
       <h2 id="config-title"></h2>
@@ -258,7 +294,9 @@ export async function showConfigDialog(isElectron, currentConfig) {
           </div>
         </div>
         <div class="config-dialog-column config-dialog-power-column">
+          ${physicalControlSection}
           ${powerSavingSection}
+          ${offlineOutputSection}
         </div>
       </div>
       <div class="dialog-buttons">
@@ -270,6 +308,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
   overlay.className = 'modal-overlay';
   overlay.innerHTML = dialogHTML;
   document.body.appendChild(overlay);
+  enableStandardSelects(overlay);
 
   const style = document.createElement('style');
   style.textContent = `
@@ -345,8 +384,24 @@ export async function showConfigDialog(isElectron, currentConfig) {
       line-height: 1.45;
     }
     .power-saving-warning[hidden],
-    .power-setting-row[hidden] {
+    .power-setting-row[hidden],
+    .offline-output-row[hidden] {
       display: none;
+    }
+    .offline-output-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(120px, 1fr);
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 9px;
+    }
+    .offline-output-row .config-select {
+      width: 100%;
+    }
+    .offline-output-help {
+      color: #bbb;
+      font-size: 12px;
+      line-height: 1.4;
     }
     .openhome-name-row {
       display: flex;
@@ -631,6 +686,43 @@ export async function showConfigDialog(isElectron, currentConfig) {
     }
   }
 
+  function renderOfflineOutputControls() {
+    offlineOutputSettings = normalizeOfflineOutputSettings(offlineOutputSettings);
+    config.offlineOutput = { ...offlineOutputSettings };
+    const definition = OFFLINE_OUTPUT_FORMATS[offlineOutputSettings.format];
+    const formatSelect = document.getElementById('offline-output-format');
+    const sampleRateSelect = document.getElementById('offline-output-sample-rate');
+    const qualityRow = document.getElementById('offline-output-quality-row');
+    const qualityLabel = document.getElementById('offline-output-quality-label');
+    const qualitySelect = document.getElementById('offline-output-quality');
+
+    replaceOptions(
+      formatSelect,
+      Object.keys(OFFLINE_OUTPUT_FORMATS),
+      offlineOutputSettings.format,
+      id => t(OFFLINE_OUTPUT_FORMATS[id].labelKey)
+    );
+    replaceOptions(
+      sampleRateSelect,
+      definition.sampleRates,
+      offlineOutputSettings.sampleRate,
+      rate => `${rate / 1000} kHz`
+    );
+
+    const hasQualitySelect = definition.qualityType !== null;
+    qualityRow.hidden = !hasQualitySelect;
+    qualitySelect.disabled = !hasQualitySelect;
+    if (hasQualitySelect) {
+      qualityLabel.textContent = t('dialog.config.offlineOutput.sampleFormat');
+      replaceOptions(
+        qualitySelect,
+        definition.qualityOptions.map(option => option.id),
+        offlineOutputSettings[definition.qualityType],
+        id => t(definition.qualityOptions.find(option => option.id === id).labelKey)
+      );
+    }
+  }
+
   let openHomeStatus = null;
   let openHomeStatusLoaded = false;
   let openHomeStatusReadFailed = false;
@@ -821,6 +913,12 @@ export async function showConfigDialog(isElectron, currentConfig) {
     document.getElementById('config-pipeline-default-label').textContent = t('dialog.config.pipeline.default');
     document.getElementById('config-pipeline-last-label').textContent = t('dialog.config.pipeline.last');
     document.getElementById('config-pipeline-preset-label').textContent = t('dialog.config.pipeline.preset');
+    const physicalControlTitle = document.getElementById('physical-control-title');
+    if (physicalControlTitle) physicalControlTitle.textContent = t('dialog.config.physicalControl');
+    document.getElementById('offline-output-title').textContent = t('dialog.config.offlineOutput.title');
+    document.getElementById('offline-output-format-label').textContent = t('dialog.config.offlineOutput.format');
+    document.getElementById('offline-output-sample-rate-label').textContent = t('dialog.config.offlineOutput.sampleRate');
+    document.getElementById('offline-output-help').textContent = t('dialog.config.offlineOutput.channelHelp');
     const powerSavingTitle = document.getElementById('power-saving-title');
     if (powerSavingTitle) powerSavingTitle.textContent = t('dialog.config.powerSaving.title');
     const continuousLabel = document.getElementById('power-mode-continuous-label');
@@ -843,19 +941,22 @@ export async function showConfigDialog(isElectron, currentConfig) {
     if (thresholdLabel) thresholdLabel.textContent = t('dialog.config.powerSaving.silenceThreshold');
     const delayLabel = document.getElementById('power-full-suspend-delay-label');
     if (delayLabel) delayLabel.textContent = t('dialog.config.powerSaving.fullSuspendDelay');
+    document.getElementById('controller-mapping-btn').textContent = t('midi.openSettings');
     document.getElementById('close-btn').textContent = t('dialog.config.close');
     renderLanguageOptions();
     renderLibraryStartupViewOptions();
     renderPresetOptions();
     renderPowerSettingOptions();
     syncPowerSettingControls();
+    renderOfflineOutputControls();
     renderOpenHomeStatus();
   }
 
   function publishElectronConfig(nextConfig) {
     const publishedConfig = {
       ...nextConfig,
-      powerSaving: { ...normalizePowerSettings(nextConfig.powerSaving) }
+      powerSaving: { ...normalizePowerSettings(nextConfig.powerSaving) },
+      offlineOutput: normalizeOfflineOutputSettings(nextConfig.offlineOutput)
     };
     publishElectronConfigSnapshot(publishedConfig);
   }
@@ -894,6 +995,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
       presetSelect.disabled = pipelineStartup !== 'preset';
     }
     renderLanguageOptions();
+    renderOfflineOutputControls();
   }
 
   let configSaveSequence = 0;
@@ -908,6 +1010,27 @@ export async function showConfigDialog(isElectron, currentConfig) {
     Object.assign(config, window.appConfig || partialConfig);
     if (saveSequence === configSaveSequence) syncConfigControls();
     return true;
+  }
+
+  async function applyOfflineOutputSettings(partialOfflineOutput) {
+    const previous = offlineOutputSettings;
+    offlineOutputSettings = normalizeOfflineOutputSettings({
+      ...offlineOutputSettings,
+      ...partialOfflineOutput
+    });
+    config.offlineOutput = { ...offlineOutputSettings };
+    renderOfflineOutputControls();
+    if (await save({ offlineOutput: { ...offlineOutputSettings } })) {
+      offlineOutputSettings = normalizeOfflineOutputSettings(
+        window.appConfig?.offlineOutput || offlineOutputSettings
+      );
+      renderOfflineOutputControls();
+      return true;
+    }
+    offlineOutputSettings = previous;
+    config.offlineOutput = { ...previous };
+    renderOfflineOutputControls();
+    return false;
   }
 
   let powerUpdateSequence = 0;
@@ -1029,6 +1152,17 @@ export async function showConfigDialog(isElectron, currentConfig) {
     const value = e.target.value === 'never' ? 'never' : Number(e.target.value);
     await applyPowerSettings({ fullSuspendDelaySeconds: value });
   });
+  document.getElementById('offline-output-format')?.addEventListener('change', async e => {
+    await applyOfflineOutputSettings({ format: e.target.value });
+  });
+  document.getElementById('offline-output-sample-rate')?.addEventListener('change', async e => {
+    await applyOfflineOutputSettings({ sampleRate: Number(e.target.value) });
+  });
+  document.getElementById('offline-output-quality')?.addEventListener('change', async e => {
+    const definition = OFFLINE_OUTPUT_FORMATS[offlineOutputSettings.format];
+    if (!definition.qualityType) return;
+    await applyOfflineOutputSettings({ [definition.qualityType]: e.target.value });
+  });
   [
     document.getElementById('startup-view-effects'),
     document.getElementById('startup-view-library')
@@ -1070,7 +1204,16 @@ export async function showConfigDialog(isElectron, currentConfig) {
       }
     });
   }
+  document.getElementById('controller-mapping-btn').addEventListener('click', async () => {
+    try {
+      await window.midiControllerManager?.openDialog?.();
+    } catch (error) {
+      console.error('Failed to open controller mapping settings:', error);
+      window.uiManager?.setError?.('Controller mapping settings could not be opened. Please try again.', true);
+    }
+  });
   function closeDialog() {
+    closeStandardSelect(document);
     removeOpenHomeStatusListener?.();
     removeOpenHomeStatusListener = null;
     document.body.removeChild(overlay);

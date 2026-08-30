@@ -182,8 +182,8 @@ export class PluginListManager {
         let suppressNextClick = false;
 
         // Mouse events
-        item.addEventListener('mousedown', () => {
-            if (isMobileLayout()) return;
+        item.addEventListener('mousedown', (e) => {
+            if (e.button !== 0 || isMobileLayout()) return;
             this.dragDropManager.dragMessage.style.display = 'block';
         });
 

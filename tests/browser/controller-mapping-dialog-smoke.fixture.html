@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Controller mapping dialog smoke</title>
+  <link rel="stylesheet" href="/effetune.css">
+  <link rel="stylesheet" href="/effetune-mobile.css">
+  <link rel="stylesheet" href="/effetune-library.css">
+</head>
+<body>
+  <main>Controller mapping dialog smoke fixture ready</main>
+  <script type="module">
+    import { MidiMappingDialog } from '/js/midi/midi-mapping-dialog.js';
+    import { MidiControllerManager } from '/js/midi/midi-controller-manager.js';
+    import { MidiMappingStore } from '/js/midi/midi-mapping-store.js';
+    import { McuProtocol } from '/js/midi/mcu-protocol.js';
+    import { ParamAdapter } from '/js/midi/param-adapter.js';
+    import { showConfigDialog } from '/js/electron/configIntegration.js';
+
+    class TestPlugin {}
+    class AlternatePlugin {}
+
+    const descriptor = {
+      key: 'gain', element: 0, title: 'Gain', unit: 'dB', containerKey: '', memberKey: '', field: 'gn',
+      kind: 'float', normalization: 'linear', minimum: -12, maximum: 12, step: 0.5, default: 0
+    };
+    const alternateDescriptor = {
+      key: 'frequency', element: 0, title: 'Frequency', unit: 'Hz', containerKey: '', memberKey: '', field: 'fr',
+      kind: 'float', normalization: 'log', minimum: 20, maximum: 20000, step: 10, default: 1000
+    };
+
+    function createManager() {
+      const listeners = new Set();
+      const store = {
+        mappings: Array.from({ length: 16 }, (_, index) => ({
+          id: `mapping-${index + 1}`,
+          device: 'Controller',
+          source: { kind: 'cc', channel: 0, number: index + 1, mode: 'abs' },
+          target: { type: 'TestPlugin', instance: 'first', param: 'gain', element: 0 },
+          map: { lo: -12, hi: 12, sensitivity: 1, dir: 1, buttonMode: 'toggle' }
+        })),
+        getDeviceProtocol() { return 'generic'; },
+        async addMapping(mapping) {
+          const saved = { ...mapping, id: `mapping-${this.mappings.length + 1}` };
+          this.mappings.push(saved);
+          listeners.forEach(listener => listener());
+          return saved;
+        },
+        async updateMapping(id, patch) {
+          const index = this.mappings.findIndex(mapping => mapping.id === id);
+          if (index < 0) return false;
+          const current = this.mappings[index];
+          this.mappings[index] = {
+            ...current,
+            ...patch,
+            source: { ...current.source, ...(patch.source || {}) },
+            target: { ...current.target, ...(patch.target || {}) },
+            map: { ...current.map, ...(patch.map || {}) }
+          };
+          await Promise.resolve();
+          listeners.forEach(listener => listener());
+          return true;
+        },
+        async removeMapping(id) {
+          this.mappings = this.mappings.filter(mapping => mapping.id !== id);
+          listeners.forEach(listener => listener());
+        }
+      };
+      return {
+        store,
+        adapter: new ParamAdapter({
+          catalog: { TestPlugin: [descriptor, alternateDescriptor], AlternatePlugin: [alternateDescriptor] }
+        }),
+        engine: { getTargetKind() { return 'float'; } },
+        async setDialogOpen() {},
+        cancelLearn() { this.learnActive = false; },
+        async startLearn(callback) {
+          this.learnActive = true;
+          this.learnCallback = result => {
+            this.learnActive = false;
+            callback(result);
+          };
+        },
+        onChange(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+        isSupported() { return false; },
+        listInputs() { return [{ name: 'Fixture Controller', connected: true }]; },
+        listGamepads() { return []; }
+      };
+    }
+
+    async function runNativeTimerAutomation(windowRef) {
+      class AMRadioSimulatorPlugin {
+        constructor() {
+          this.st = 0.3;
+          this.workletUpdates = 0;
+          this.uiUpdates = 0;
+        }
+
+        setParameters(parameters) { Object.assign(this, parameters); }
+
+        getSerializableParameters() { return { st: this.st }; }
+
+        syncUIControls() { this.uiUpdates++; }
+      }
+      const target = new AMRadioSimulatorPlugin();
+      let historySaves = 0;
+      windowRef.audioManager = { pipeline: [target] };
+      windowRef.uiManager = {
+        t: key => key,
+        urlReflectionEnabled: true,
+        isDoubleBlindActive: () => false
+      };
+      windowRef.pipelineManager = {
+        core: { updateWorkletPlugin(plugin) { plugin.workletUpdates++; } },
+        historyManager: {
+          withHistorySuppressed(callback) { return callback(); },
+          saveState() { historySaves++; }
+        }
+      };
+      const runtimePluginManager = {
+        ...windowRef.pluginManager,
+        pluginClasses: {
+          ...windowRef.pluginManager.pluginClasses,
+          AMRadioSimulatorPlugin
+        }
+      };
+      const adapter = new ParamAdapter();
+      const store = new MidiMappingStore({
+        pluginManager: runtimePluginManager,
+        adapter,
+        loadConfigFn: async () => ({ midiController: { version: 1, devices: [], mappings: [] } }),
+        saveConfigFn: async () => true
+      });
+      const runtimeManager = new MidiControllerManager({
+        windowRef,
+        store,
+        adapter,
+        localInputSources: {
+          syncSubscriptions() {}, startLearn() {}, cancelLearn() {}, dispose() {}
+        },
+        mcuProtocol: { startFeedbackPoller() {}, dispose() {} }
+      });
+      await runtimeManager.initialize({ midiController: { version: 1, devices: [], mappings: [] } });
+      runtimeManager.engine.randomFn = () => 0.9;
+      await store.addMapping({
+        id: 'am-native-timer',
+        device: '',
+        source: { kind: 'timer', schedule: 'interval', intervalMs: 1000 },
+        target: { type: 'AMRadioSimulatorPlugin', instance: 'first', param: 'st', element: 0 },
+        map: {
+          lo: 0, hi: 100, sensitivity: 1, dir: 1, buttonMode: 'toggle', behavior: 'randomWalk', amount: 0.1
+        }
+      });
+      const timerReservedBeforeTick = runtimeManager.automationScheduler.timerHandle !== null;
+      runtimeManager.engine.scheduleHistorySave();
+      const feedback = new McuProtocol({
+        engine: { resolveTargets: () => [] },
+        adapter: {},
+        store: {
+          mappings: [{
+            id: 'feedback', device: 'MCU', source: { kind: 'mcuButton', channel: 0, number: 42 },
+            target: { type: '_global', param: 'masterBypass', instance: 'first', element: 0 }
+          }],
+          getDeviceProtocol: () => 'mcu'
+        },
+        getOutput: () => ({ send() {} }),
+        windowRef
+      });
+      feedback.startFeedbackPoller();
+      const feedbackStarted = feedback.poller !== null;
+      feedback.stopFeedbackPoller();
+      await new Promise(resolve => setTimeout(resolve, 1100));
+      const result = {
+        timerReservedBeforeTick,
+        changedOnFirstTick: target.st === 0.2 || target.st === 0.4,
+        workletUpdates: target.workletUpdates,
+        uiUpdates: target.uiUpdates,
+        timerReservedAfterTick: runtimeManager.automationScheduler.timerHandle !== null,
+        historySaves,
+        feedbackStarted,
+        feedbackStopped: feedback.poller === null
+      };
+      runtimeManager.dispose();
+      return result;
+    }
+
+    async function run() {
+      const windowRef = window;
+      windowRef.uiManager = { t: key => key };
+      windowRef.audioManager = { pipeline: [{ constructor: { name: 'TestPlugin' } }] };
+      const pluginClasses = { Test: TestPlugin, Alternate: AlternatePlugin };
+      for (let index = 0; index < 24; index++) {
+        const pluginClass = class {};
+        Object.defineProperty(pluginClass, 'name', { value: `FixturePlugin${index}` });
+        pluginClasses[`Plugin ${index + 1}`] = pluginClass;
+      }
+      windowRef.pluginManager = { pluginClasses };
+      await showConfigDialog(false, {});
+      const languageSelect = document.getElementById('language-select');
+      const manager = createManager();
+      const dialog = new MidiMappingDialog({ manager, windowRef });
+      await dialog.open();
+      const learnedBefore = document.querySelectorAll('.midi-mapping-row').length;
+      const mappingBody = document.querySelector('.midi-mapping-content');
+      mappingBody.scrollTop = 0;
+      document.querySelector('.midi-add-automation').click();
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      let automationRow = document.querySelector('[data-mapping-id="mapping-17"]');
+      const bodyRectAfterAdd = mappingBody.getBoundingClientRect();
+      const rowRectAfterAdd = automationRow.getBoundingClientRect();
+      const automationParameter = automationRow.querySelector('.midi-target-parameter-field > .config-select');
+      const timerDetails = automationRow.querySelector('.midi-map-details').textContent;
+      const timerAutomation = {
+        added: Boolean(automationRow),
+        addedImmediately: document.querySelectorAll('.midi-mapping-row').length === learnedBefore + 1,
+        visibleAfterAdd: rowRectAfterAdd.top >= bodyRectAfterAdd.top - 1 &&
+          rowRectAfterAdd.bottom <= bodyRectAfterAdd.bottom + 1,
+        scrolledToEnd: Math.abs(
+          mappingBody.scrollHeight - mappingBody.clientHeight - mappingBody.scrollTop
+        ) <= 1,
+        deviceNameHidden: !automationRow.querySelector('.midi-source-label').textContent.includes('Controller'),
+        numericParametersOnly: JSON.stringify(Array.from(automationParameter.options, option => option.value)) ===
+          JSON.stringify(['gain:0', 'frequency:0']),
+        intervalVisible: timerDetails.includes('Interval (seconds)'),
+        actionVisible: timerDetails.includes('Action'),
+        amountVisible: timerDetails.includes('Amount (dB)'),
+        physicalControlsHidden: !timerDetails.includes('Sensitivity')
+      };
+      const automationType = automationRow.querySelector('.midi-target-type-field > .config-select');
+      const automationInstance = automationRow.querySelector('.midi-target-instance-field > .config-select');
+      automationInstance.value = 'last';
+      automationInstance.dispatchEvent(new Event('change', { bubbles: true }));
+      automationType.value = 'AlternatePlugin';
+      automationType.dispatchEvent(new Event('change', { bubbles: true }));
+      const immediateTypeRow = document.querySelector('[data-mapping-id="mapping-17"]');
+      const typeRenderedImmediately = immediateTypeRow !== automationRow &&
+        immediateTypeRow.querySelector('.midi-target-parameter-field > .config-select').value === 'frequency:0';
+      await new Promise(resolve => setTimeout(resolve, 0));
+      automationRow = document.querySelector('[data-mapping-id="mapping-17"]');
+      const alternateParameter = automationRow.querySelector('.midi-target-parameter-field > .config-select');
+      const alternateMapping = manager.store.mappings.at(-1);
+      const targetTypeChange = {
+        renderedImmediately: typeRenderedImmediately,
+        options: Array.from(alternateParameter.options, option => option.value),
+        selected: alternateParameter.value,
+        target: alternateMapping.target,
+        range: {
+          lo: alternateMapping.map.lo,
+          hi: alternateMapping.map.hi,
+          amount: alternateMapping.map.amount
+        }
+      };
+      const alternateType = automationRow.querySelector('.midi-target-type-field > .config-select');
+      alternateType.value = 'TestPlugin';
+      alternateType.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise(resolve => setTimeout(resolve, 0));
+      automationRow = document.querySelector('[data-mapping-id="mapping-17"]');
+      const parameterInstance = automationRow.querySelector('.midi-target-instance-field > .config-select');
+      const testParameter = automationRow.querySelector('.midi-target-parameter-field > .config-select');
+      parameterInstance.value = 'all';
+      parameterInstance.dispatchEvent(new Event('change', { bubbles: true }));
+      testParameter.value = 'frequency:0';
+      testParameter.dispatchEvent(new Event('change', { bubbles: true }));
+      const immediateParameterRow = document.querySelector('[data-mapping-id="mapping-17"]');
+      const parameterRenderedImmediately = immediateParameterRow !== automationRow &&
+        immediateParameterRow.querySelector('.midi-target-parameter-field > .config-select').value === 'frequency:0';
+      await new Promise(resolve => setTimeout(resolve, 0));
+      automationRow = document.querySelector('[data-mapping-id="mapping-17"]');
+      const parameterMapping = manager.store.mappings.at(-1);
+      const parameterChange = {
+        renderedImmediately: parameterRenderedImmediately,
+        selected: automationRow.querySelector('.midi-target-parameter-field > .config-select').value,
+        target: parameterMapping.target,
+        range: {
+          lo: parameterMapping.map.lo,
+          hi: parameterMapping.map.hi,
+          amount: parameterMapping.map.amount
+        }
+      };
+      let scheduleSelect = automationRow.querySelector('[aria-label="Schedule"]');
+      scheduleSelect.value = 'once';
+      scheduleSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise(resolve => setTimeout(resolve, 0));
+      automationRow = document.querySelector('[data-mapping-id="mapping-17"]');
+      const onceDetails = automationRow.querySelector('.midi-map-details');
+      const onceVisible = Boolean(
+        onceDetails.querySelector('input[type="date"]') &&
+        onceDetails.querySelector('input[type="time"]')?.step === '1'
+      );
+      const onceSummary = automationRow.querySelector('.midi-source-label').textContent;
+      const dateInput = onceDetails.querySelector('input[type="date"]');
+      dateInput.value = '2000-01-01';
+      dateInput.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise(resolve => setTimeout(resolve, 0));
+      automationRow = document.querySelector('[data-mapping-id="mapping-17"]');
+      const expiredVisible = automationRow.querySelector('.midi-map-details').textContent.includes('Expired');
+      const expiredDate = automationRow.querySelector('input[type="date"]');
+      expiredDate.value = '2999-12-31';
+      expiredDate.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise(resolve => setTimeout(resolve, 0));
+      automationRow = document.querySelector('[data-mapping-id="mapping-17"]');
+      const futureRearmed = !automationRow.querySelector('.midi-map-details').textContent.includes('Expired');
+
+      scheduleSelect = automationRow.querySelector('[aria-label="Schedule"]');
+      scheduleSelect.value = 'daily';
+      scheduleSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise(resolve => setTimeout(resolve, 0));
+      automationRow = document.querySelector('[data-mapping-id="mapping-17"]');
+      const dailyDetails = automationRow.querySelector('.midi-map-details');
+      const dailyVisible = Boolean(dailyDetails.querySelector('input[type="time"]')) &&
+        !dailyDetails.querySelector('input[type="date"]') &&
+        !dailyDetails.textContent.includes('Interval (seconds)');
+      const dailySummary = automationRow.querySelector('.midi-source-label').textContent;
+
+      scheduleSelect = automationRow.querySelector('[aria-label="Schedule"]');
+      scheduleSelect.value = 'interval';
+      scheduleSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise(resolve => setTimeout(resolve, 0));
+      automationRow = document.querySelector('[data-mapping-id="mapping-17"]');
+      const intervalInput = automationRow.querySelector('input[type="number"]');
+      const schedules = {
+        onceVisible,
+        onceSummary: onceSummary.startsWith('Timer: once on ') && onceSummary.includes(' at '),
+        expiredVisible,
+        futureRearmed,
+        dailyVisible,
+        dailySummary: dailySummary.startsWith('Timer: daily at '),
+        intervalRestored: intervalInput?.max === '2147483.647' && intervalInput?.min === '1'
+      };
+      const automationSource = automationRow.querySelector('[aria-label="Source"]');
+      automationSource.value = 'clock';
+      automationSource.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise(resolve => setTimeout(resolve, 0));
+      automationRow = document.querySelector('[data-mapping-id="mapping-17"]');
+      const clockDetails = automationRow.querySelector('.midi-map-details').textContent;
+      const clockAutomation = {
+        timePartVisible: clockDetails.includes('Time part'),
+        waveVisible: clockDetails.includes('Wave'),
+        intervalHidden: !clockDetails.includes('Interval (seconds)'),
+        actionHidden: !clockDetails.includes('Action'),
+        amountHidden: !clockDetails.includes('Amount (dB)')
+      };
+      document.querySelector('.midi-mapping-content .library-properties-head button:not(.midi-add-automation)').click();
+      manager.learnCallback({ device: '', source: { kind: 'key', keyCombo: 'K' } });
+      await new Promise(resolve => setTimeout(resolve, 0));
+      const dialogElement = document.querySelector('.midi-mapping-dialog');
+      const header = dialogElement.querySelector(':scope > .library-properties-head');
+      const body = dialogElement.querySelector(':scope > .library-properties-body');
+      const footer = dialogElement.querySelector(':scope > .library-properties-head:last-child');
+      const typeSelect = document.querySelector('.midi-target-type-field > .config-select');
+      const headerTop = header.getBoundingClientRect().top;
+      const footerTop = footer.getBoundingClientRect().top;
+      body.scrollTop = body.scrollHeight;
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      const rangeInput = document.querySelector('.midi-map-details input');
+      const learnButton = document.querySelector('.midi-mapping-content .library-properties-head button');
+      const closeButton = footer.querySelector('button');
+      const comparedStyleProperties = [
+        'appearance',
+        'fontFamily',
+        'fontSize',
+        'fontStyle',
+        'fontWeight',
+        'lineHeight',
+        'textAlign',
+        'colorScheme',
+        'color',
+        'backgroundImage',
+        'borderTopColor',
+        'borderTopStyle',
+        'borderTopWidth',
+        'borderRadius',
+        'paddingTop',
+        'paddingRight',
+        'paddingBottom',
+        'paddingLeft',
+        'minWidth'
+      ];
+      const languageStyle = getComputedStyle(languageSelect);
+      const typeStyle = getComputedStyle(typeSelect);
+      const computedStyleMatchesSettings = comparedStyleProperties.every(property =>
+        typeStyle[property] === languageStyle[property]
+      );
+      function hasCustomPickerRule(rules) {
+        for (const rule of rules) {
+          if (rule.selectorText?.includes('::picker') || rule.cssText.includes('appearance: base-select')) {
+            return true;
+          }
+          if (rule.cssRules && hasCustomPickerRule(rule.cssRules)) return true;
+        }
+        return false;
+      }
+      const customPickerRule = Array.from(document.styleSheets).some(sheet => hasCustomPickerRule(sheet.cssRules));
+      const nativeTimerAutomation = await runNativeTimerAutomation(windowRef);
+      return {
+        customStylesheet: Boolean(document.getElementById('midi-mapping-dialog-styles')),
+        standardDialog: dialogElement?.classList.contains('library-properties-dialog'),
+        dialog: Boolean(dialogElement),
+        learnActive: manager.learnActive,
+        learnedBefore,
+        mappingCount: manager.store.mappings.length,
+        renderedRows: document.querySelectorAll('.midi-mapping-row').length,
+        automation: { timer: timerAutomation, targetTypeChange, parameterChange, schedules, clock: clockAutomation },
+        nativeTimerAutomation,
+        realRange: {
+          min: rangeInput?.min,
+          max: rangeInput?.max,
+          step: rangeInput?.step,
+          value: rangeInput?.value
+        },
+        separateActions: learnButton?.parentElement !== closeButton?.parentElement,
+        scroll: {
+          body: body.scrollTop > 0,
+          dialog: dialogElement.scrollTop,
+          headerFixed: header.getBoundingClientRect().top === headerTop,
+          footerFixed: footer.getBoundingClientRect().top === footerTop,
+          footerPadded: getComputedStyle(footer).paddingTop === getComputedStyle(header).paddingTop &&
+            getComputedStyle(footer).paddingBottom === getComputedStyle(header).paddingBottom
+        },
+        dropdown: {
+          optionsComplete: typeSelect.options.length === Object.keys(pluginClasses).length + 1,
+          longOptionList: typeSelect.options.length > 20,
+          settingsClass: typeSelect.className === languageSelect.className && typeSelect.className === 'config-select',
+          standardSelectEnabled: typeSelect.dataset.standardSelect === 'true' &&
+            languageSelect.dataset.standardSelect === 'true',
+          computedStyleMatchesSettings,
+          nativeAppearance: typeStyle.appearance === languageStyle.appearance && typeStyle.appearance !== 'base-select',
+          fontMatchesSettings: typeStyle.font === languageStyle.font,
+          alignmentMatchesSettings: typeStyle.textAlign === languageStyle.textAlign,
+          colorSchemeMatchesSettings: typeStyle.colorScheme === languageStyle.colorScheme,
+          customPickerRule
+        }
+      };
+    }
+
+    window.__controllerMappingDialogSmoke = { run };
+  </script>
+</body>
+</html>

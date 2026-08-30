@@ -6,11 +6,18 @@ lang: en
 
 # Version History
 
+### Version 2.8.0 (TBD, 2026)
+- Added physical controller parameter mapping for MIDI, gamepads, and the keyboard.
+- Added an optional three-state spectrum display to supported effect graphs, with After-only and signed Before + After comparison views.
+- Added 1/12-octave smoothing to the effect-graph spectrum display for clearer high-frequency trends.
+- Added WAV and FLAC format, sample-rate, and quality options for processed audio files, including 16-bit and 24-bit FLAC.
+- Various minor improvements
+
 ### Version 2.7.0 (Aug 29, 2026)
 - Added per-effect presets with a preset button on each effect, including system presets for selected effects
-- Added an optional spectrum overlay toggle to supported effect graphs.
 - Improved frequency response measurement to capture multiple output channels in a single measurement
 - Expanded the maximum output-channel count from 8 to 16
+- Supported effect graphs can now show the spectrum of the processed sound
 - Improved playback efficiency when using effects that utilize FFT
 - Added an overall performance score to the benchmark page for comparing environments at a glance
 - Various minor improvements

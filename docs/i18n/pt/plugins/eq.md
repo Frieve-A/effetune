@@ -11,7 +11,9 @@ Uma coleção de plugins que permite ajustar diferentes aspectos do som da sua m
 <!-- spectrum-overlay -->
 ## Sobreposição de espectro
 
-Pressione o ícone de espectro de um gráfico compatível para sobrepor uma linha de espectro discreta do som depois de passar por esse efeito. Use-o para ver como cada ajuste altera graves, médios e agudos enquanto escuta. Leia o nível do espectro na escala dBFS à direita do gráfico. Ela é separada da escala de ganho do gráfico; 0 dBFS é a referência digital de escala completa, e valores mais baixos são mais silenciosos. A análise e o desenho do espectro são feitos apenas enquanto a visualização está visível.
+Pressione o ícone de espectro de um gráfico compatível para alternar entre After, Before + After e Off. After mostra apenas o espectro processado como uma linha azul. Before + After preenche a mudança entre o espectro antes e depois do processamento: a cor quente marca as frequências cujo nível aumentou após o processamento, o azul marca aquelas cujo nível diminuiu e uma linha cinza indica o espectro After. As duas visualizações aplicam suavização de 1/12 de oitava para facilitar a leitura das tendências nas altas frequências. Use a comparação para ver como cada ajuste altera graves, médios e agudos enquanto escuta. Leia os níveis do espectro na escala dBFS à direita do gráfico. Ela é separada da escala de ganho do gráfico; 0 dBFS é a referência digital de escala completa, e valores mais baixos são mais silenciosos. Em After, apenas o espectro processado é coletado; em Off, a coleta e o desenho são interrompidos.
+
+Nos gráficos de pontos arrastáveis do 5Band PEQ, 15Band PEQ, 5Band FIR PEQ, Group Delay PEQ e Additional EQ do Room EQ, arraste um ponto normalmente para alterar os dois eixos. Mantenha Shift pressionado enquanto arrasta para limitar o movimento a um eixo: comece a mover principalmente na horizontal para alterar apenas Frequency, ou principalmente na vertical para alterar apenas Level (Delay no Group Delay PEQ). Solte Shift para voltar ao movimento livre. Posicione o ponteiro sobre um ponto e role a roda para cima para aumentar Q ou para baixo para reduzi-lo.
 
 ## Lista de Plugins
 
@@ -659,7 +661,7 @@ O Room EQ cria filtros de correção FIR a partir de medições de resposta em f
 ### Guia de aprimoramento do som
 
 - Meça o grupo de caixas que deseja corrigir em várias posições próximas do microfone na área de audição e selecione essa medição no Room EQ. Vários pontos tornam a correção menos dependente de uma única posição exata.
-- Comece com **Phase: Minimum**, **Smoothing: 0.17 oct**, **Correction Low: 20 Hz**, **Correction High: 16000 Hz**, **Max Boost: 6 dB** e **Level Correction: 100%**. Compare usando o controle principal de ligar e desligar do plugin para confirmar um equilíbrio mais uniforme, sem deixar o som artificialmente magro ou brilhante.
+- Comece com **Phase: Minimum**, **Smoothing: 0.17 oct**, **Correction Low: 80 Hz**, **Correction High: 16000 Hz**, **Max Boost: 6 dB** e **Level Correction: 100%**. Compare usando o controle principal de ligar e desligar do plugin para confirmar um equilíbrio mais uniforme, sem deixar o som artificialmente magro ou brilhante.
 - Se o filtro tentar preencher vales estreitos que mudam com a posição do microfone, aumente Smoothing ou reduza Max Boost. Com Max Boost em 0 dB, os reforços automáticos são impedidos, mas os cortes continuam reduzindo os picos.
 - Se a correção total de nível parecer forte demais, reduza Level Correction. Como esse ajuste dimensiona proporcionalmente em dB cada valor da correção automática, em 50% uma correção de +6 dB passa a +3 dB e uma de -8 dB passa a -4 dB.
 - Mantenha Correction Low e Correction High dentro da faixa reproduzida com confiança pelas caixas e pelo microfone. Corrigir fora de uma faixa de medição confiável pode piorar o resultado.

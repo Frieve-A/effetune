@@ -12,6 +12,16 @@ on:
         required: false
         default: false
         type: boolean
+      source_verified:
+        description: Common source verification already completed by the caller
+        required: false
+        default: false
+        type: boolean
+      release_artifacts:
+        description: Use desktop-release artifact names
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -34,6 +44,10 @@ jobs:
 
       - name: Install dependencies
         run: npm ci --ignore-scripts
+
+      - name: Verify source and tests
+        if: inputs.source_verified != true
+        run: npm run verify
 
       - name: Install Linux OpenHome build dependencies
         shell: bash
@@ -125,7 +139,7 @@ jobs:
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: linux-artifacts
+          name: ${{ inputs.release_artifacts && 'linux-release-artifacts' || 'linux-artifacts' }}
           path: |
             dist/*-Linux-AppImage.zip
             dist/*-OpenHome-Linux-Source.zip
@@ -151,7 +165,19 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Verify source and tests
+        if: inputs.source_verified != true
         run: npm run verify
+
+      - name: Verify host-platform filesystem and Electron contracts
+        if: inputs.source_verified
+        run: >-
+          node --test --test-concurrency=1
+          tests/cjs/electron-ipc-handlers-mini-player.test.cjs
+          tests/cjs/electron-ipc-handlers.test.cjs
+          tests/cjs/electron-ir-library-ipc.test.cjs
+          tests/cjs/electron-library-catalog-scan-runtime.test.cjs
+          tests/cjs/electron-preload-clipboard.test.cjs
+          tests/esm/dev-server.test.mjs
 
       - name: Generate web assets
         run: npm run assets:web
@@ -174,7 +200,7 @@ jobs:
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: windows-artifacts
+          name: ${{ inputs.release_artifacts && 'windows-release-artifacts' || 'windows-artifacts' }}
           path: dist/**/*.exe
           if-no-files-found: error
 
@@ -205,7 +231,19 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Verify source and tests
+        if: inputs.source_verified != true
         run: npm run verify
+
+      - name: Verify host-platform filesystem and Electron contracts
+        if: inputs.source_verified
+        run: >-
+          node --test --test-concurrency=1
+          tests/cjs/electron-ipc-handlers-mini-player.test.cjs
+          tests/cjs/electron-ipc-handlers.test.cjs
+          tests/cjs/electron-ir-library-ipc.test.cjs
+          tests/cjs/electron-library-catalog-scan-runtime.test.cjs
+          tests/cjs/electron-preload-clipboard.test.cjs
+          tests/esm/dev-server.test.mjs
 
       - name: Generate web assets
         run: npm run assets:web
@@ -229,6 +267,6 @@ jobs:
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: macos-${{ matrix.arch }}-artifacts
+          name: ${{ inputs.release_artifacts && format('macos-{0}-release-artifacts', matrix.arch) || format('macos-{0}-artifacts', matrix.arch) }}
           path: dist/**/*.dmg
           if-no-files-found: error

@@ -1,6 +1,11 @@
 /**
  * FileProcessor - Handles audio file processing, progress UI, and download handling
  */
+import {
+    getOfflineOutputFormat,
+    snapshotOfflineOutputSettings
+} from '../../audio/offline-output-settings.js';
+
 const OFFLINE_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac'];
 const OFFLINE_AUDIO_ACCEPT = OFFLINE_AUDIO_EXTENSIONS.map(ext => `.${ext}`).join(',');
 const OFFLINE_AUDIO_EXTENSION_PATTERN = new RegExp(`\\.(${OFFLINE_AUDIO_EXTENSIONS.join('|')})$`, 'i');
@@ -27,6 +32,7 @@ export class FileProcessor {
 
         // Add a flag to track cancellation
         this.isCancelled = false;
+        this.processingPromise = null;
     }
 
     /**
@@ -108,6 +114,7 @@ export class FileProcessor {
         // Add click handler for file selection
         const selectFiles = dropArea.querySelector('.select-files');
         selectFiles.addEventListener('click', () => {
+            if (this.processingPromise) return;
             fileInput.click();
         });
 
@@ -138,7 +145,7 @@ export class FileProcessor {
      * @param {HTMLInputElement} fileInput - The file input element
      */
     setupFileInputHandlers(fileInput) {
-        fileInput.addEventListener('change', async (e) => {
+        fileInput.addEventListener('change', (e) => this._runSingleFlight(async () => {
             const files = Array.from(e.target.files).filter(isSupportedOfflineAudioFile);
             if (files.length === 0) {
                 window.uiManager.setError('Please select audio files', true);
@@ -161,7 +168,28 @@ export class FileProcessor {
                 this.hideProgress();
                 fileInput.value = '';
             }
-        });
+        }, () => {
+            fileInput.value = '';
+        }));
+    }
+
+    _runSingleFlight(operation, onBusy = null) {
+        if (this.processingPromise) {
+            onBusy?.();
+            return false;
+        }
+
+        const processingPromise = (async () => {
+            try {
+                return await operation();
+            } finally {
+                if (this.processingPromise === processingPromise) {
+                    this.processingPromise = null;
+                }
+            }
+        })();
+        this.processingPromise = processingPromise;
+        return processingPromise;
     }
 
     /**
@@ -190,6 +218,12 @@ export class FileProcessor {
         this.dropArea.addEventListener('dragenter', (e) => {
             // Skip in Electron environment
             if (window.electronIntegration && window.electronIntegration.isElectron) {
+                return;
+            }
+            if (this.processingPromise) {
+                if (e.dataTransfer?.types?.includes('Files')) e.preventDefault();
+                this.dropArea.classList.remove('drag-active');
+                document.body.classList.remove('drag-over');
                 return;
             }
 
@@ -234,6 +268,12 @@ export class FileProcessor {
         this.dropArea.addEventListener('dragover', (e) => {
             // Skip in Electron environment
             if (window.electronIntegration && window.electronIntegration.isElectron) {
+                return;
+            }
+            if (this.processingPromise) {
+                if (e.dataTransfer?.types?.includes('Files')) e.preventDefault();
+                this.dropArea.classList.remove('drag-active');
+                document.body.classList.remove('drag-over');
                 return;
             }
 
@@ -322,6 +362,12 @@ export class FileProcessor {
                 return;
             }
 
+            if (this.processingPromise && audioFiles.length > 0) {
+                e.stopPropagation();
+                this.dropArea.classList.remove('drag-active');
+                return;
+            }
+
             // Handle audio files
             if (audioFiles.length > 0) {
                 e.preventDefault();
@@ -368,12 +414,14 @@ export class FileProcessor {
         cancelButton.style.zIndex = '10000';
         cancelButton.style.pointerEvents = 'auto';
         cancelButton.style.cursor = 'pointer';
+        cancelButton.disabled = false;
 
         // Remove any existing click handlers
         cancelButton.removeEventListener('click', this._cancelHandler);
 
         // Create a new handler and store a reference to it
         this._cancelHandler = () => {
+            if (this.isCancelled) return;
 
             // Set both flags to ensure cancellation
             this.isCancelled = true;
@@ -385,9 +433,12 @@ export class FileProcessor {
                 }
             }
 
-            // Hide progress and show message
-            this.hideProgress();
-            this.setProgressText('Processing canceled');
+            cancelButton.disabled = true;
+            cancelButton.style.pointerEvents = 'none';
+            cancelButton.style.cursor = 'default';
+            this.setProgressText(window.uiManager && window.uiManager.t
+                ? window.uiManager.t('library.job.cancelling')
+                : 'Cancelling...');
         };
 
         // Add the click handler
@@ -430,8 +481,28 @@ export class FileProcessor {
      * @param {string} originalName - The original file name
      * @returns {string} The processed file name
      */
-    getProcessedFileName(originalName) {
-        return originalName.replace(/\.[^/.]+$/, '') + '_effetuned.wav';
+    getProcessedFileName(originalName, extension = 'wav') {
+        return originalName.replace(/\.[^/.]+$/, '') + `_effetuned.${extension}`;
+    }
+
+    _getOutputSettingsSnapshot() {
+        return snapshotOfflineOutputSettings(window.appConfig || {});
+    }
+
+    _validateEncodedOutput(output, outputSettings) {
+        const definition = getOfflineOutputFormat(outputSettings.format);
+        if (!output || !(output.blob instanceof Blob) || output.blob.size === 0 ||
+            output.format !== definition.id || output.extension !== definition.extension ||
+            output.mimeType !== definition.mimeType || output.blob.type !== definition.mimeType) {
+            console.error('Offline output metadata did not match the selected format', {
+                selectedFormat: definition.id,
+                output
+            });
+            const error = new Error('Offline output metadata mismatch');
+            error.userMessageKey = 'error.offlineOutput.invalidOutput';
+            throw error;
+        }
+        return output;
     }
 
     /**
@@ -492,7 +563,14 @@ export class FileProcessor {
                 : `${count} file(s) saved to selected folder`;
         }
 
-        msg.innerHTML = `<span class="download-icon">✓</span>${text}`;
+        const icon = document.createElement('span');
+        icon.className = 'download-icon';
+        icon.textContent = '✓';
+        const message = document.createElement('span');
+        message.className = 'download-text';
+        message.textContent = text;
+        msg.appendChild(icon);
+        msg.appendChild(message);
 
         const dropMessage = this.dropArea.querySelector('.drop-message');
         if (dropMessage) dropMessage.style.display = 'none';
@@ -506,14 +584,19 @@ export class FileProcessor {
      * Processes a single audio file and shows a download link
      * @param {File} file
      */
-    async _processSingleFile(file) {
-        const blob = await this.audioManager.processAudioFile(file, this._makeProgressCallback(0, 1));
-        if (blob) {
+    async _processSingleFile(file, outputSettings = this._getOutputSettingsSnapshot()) {
+        const output = await this.audioManager.processAudioFile(
+            file,
+            this._makeProgressCallback(0, 1),
+            outputSettings
+        );
+        if (output) {
+            this._validateEncodedOutput(output, outputSettings);
             this.progressBar.style.width = '100%';
             this.setProgressText(window.uiManager && window.uiManager.t
                 ? window.uiManager.t('status.processingComplete')
                 : 'Processing complete');
-            this.showDownloadLink(blob, file.name);
+            this.showDownloadLink(output, file.name);
         } else {
             this.setProgressText(window.uiManager && window.uiManager.t
                 ? window.uiManager.t('status.processingCanceled')
@@ -523,9 +606,27 @@ export class FileProcessor {
 
     _processingErrorMessage(error) {
         if (typeof error?.userMessageKey === 'string' && window.uiManager?.t) {
-            return window.uiManager.t(error.userMessageKey);
+            return error.userMessageValues
+                ? window.uiManager.t(error.userMessageKey, error.userMessageValues)
+                : window.uiManager.t(error.userMessageKey);
         }
-        return error?.message || 'Unable to process the audio file.';
+        console.error('Offline audio processing failed:', error);
+        return this._genericProcessingErrorMessage();
+    }
+
+    _genericProcessingErrorMessage() {
+        return window.uiManager?.t
+            ? window.uiManager.t('error.offlineOutput.invalidOutput')
+            : 'Unable to process the audio file.';
+    }
+
+    _reportOutputError(context, error) {
+        console.error(context, error);
+        if (typeof error?.userMessageKey === 'string') {
+            window.uiManager.setError(error.userMessageKey, true, error.userMessageValues);
+            return;
+        }
+        window.uiManager.setError('error.offlineOutput.invalidOutput', true);
     }
 
     /**
@@ -538,7 +639,7 @@ export class FileProcessor {
      * gesture context is still active (required by the File System Access API).
      * @param {File[]} files
      */
-    async _processMultipleFiles(files) {
+    async _processMultipleFiles(files, outputSettings = this._getOutputSettingsSnapshot()) {
         if (window.electronIntegration && window.electronIntegration.isElectron) {
             const result = await window.electronAPI.showOpenDialog({
                 title: window.uiManager && window.uiManager.t
@@ -548,7 +649,7 @@ export class FileProcessor {
             });
             if (result.canceled || !result.filePaths || result.filePaths.length === 0) return;
             this.showProgress();
-            await this._processFilesToElectronFolder(files, result.filePaths[0]);
+            await this._processFilesToElectronFolder(files, result.filePaths[0], outputSettings);
 
         } else if ('showDirectoryPicker' in window) {
             let dirHandle;
@@ -559,12 +660,12 @@ export class FileProcessor {
                 throw err;
             }
             this.showProgress();
-            await this._processFilesToFSADirectory(files, dirHandle);
+            await this._processFilesToFSADirectory(files, dirHandle, outputSettings);
 
         } else {
             // Fallback: accumulate in memory and bundle as ZIP
             this.showProgress();
-            await this._processFilesWithJSZip(files);
+            await this._processFilesWithJSZip(files, outputSettings);
         }
     }
 
@@ -574,29 +675,38 @@ export class FileProcessor {
      * @param {File[]} files
      * @param {string} folderPath
      */
-    async _processFilesToElectronFolder(files, folderPath) {
+    async _processFilesToElectronFolder(files, folderPath, outputSettings = this._getOutputSettingsSnapshot()) {
         const totalFiles = files.length;
         let savedCount = 0;
 
         for (let i = 0; i < totalFiles; i++) {
             if (this.isCancelled) break;
             try {
-                const blob = await this.audioManager.processAudioFile(files[i], this._makeProgressCallback(i, totalFiles));
-                if (!blob) {
+                const output = await this.audioManager.processAudioFile(
+                    files[i],
+                    this._makeProgressCallback(i, totalFiles),
+                    outputSettings
+                );
+                if (!output) {
                     this.setProgressText(window.uiManager && window.uiManager.t
                         ? window.uiManager.t('status.processingCanceled')
                         : 'Processing canceled');
                     return;
                 }
-                const processedName = this.getProcessedFileName(files[i].name);
+                this._validateEncodedOutput(output, outputSettings);
+                const processedName = this.getProcessedFileName(files[i].name, output.extension);
                 const filePath = await window.electronAPI.joinPaths(folderPath, processedName);
-                const base64data = await this._blobToBase64(blob);
+                const base64data = await this._blobToBase64(output.blob);
                 const saveResult = await window.electronAPI.saveFile(filePath, base64data);
                 if (saveResult.success) {
                     savedCount++;
                 } else {
+                    console.error('Failed to save processed audio file:', saveResult.error);
                     window.uiManager.setError('error.failedToProcessFile', true,
-                        { fileName: files[i].name, errorMessage: saveResult.error });
+                        {
+                            fileName: files[i].name,
+                            errorMessage: this._genericProcessingErrorMessage()
+                        });
                 }
             } catch (error) {
                 window.uiManager.setError('error.failedToProcessFile', true,
@@ -616,25 +726,37 @@ export class FileProcessor {
      * @param {File[]} files
      * @param {FileSystemDirectoryHandle} dirHandle
      */
-    async _processFilesToFSADirectory(files, dirHandle) {
+    async _processFilesToFSADirectory(files, dirHandle, outputSettings = this._getOutputSettingsSnapshot()) {
         const totalFiles = files.length;
         let savedCount = 0;
 
         for (let i = 0; i < totalFiles; i++) {
             if (this.isCancelled) break;
             try {
-                const blob = await this.audioManager.processAudioFile(files[i], this._makeProgressCallback(i, totalFiles));
-                if (!blob) {
+                const output = await this.audioManager.processAudioFile(
+                    files[i],
+                    this._makeProgressCallback(i, totalFiles),
+                    outputSettings
+                );
+                if (!output) {
                     this.setProgressText(window.uiManager && window.uiManager.t
                         ? window.uiManager.t('status.processingCanceled')
                         : 'Processing canceled');
                     return;
                 }
-                const processedName = this.getProcessedFileName(files[i].name);
+                this._validateEncodedOutput(output, outputSettings);
+                const processedName = this.getProcessedFileName(files[i].name, output.extension);
                 const fileHandle = await dirHandle.getFileHandle(processedName, { create: true });
                 const writable = await fileHandle.createWritable();
-                await writable.write(blob);
-                await writable.close();
+                try {
+                    await writable.write(output.blob);
+                    await writable.close();
+                } catch (error) {
+                    await writable.abort?.().catch(abortError => {
+                        console.warn('Failed to discard an incomplete offline output write:', abortError);
+                    });
+                    throw error;
+                }
                 savedCount++;
             } catch (error) {
                 window.uiManager.setError('error.failedToProcessFile', true,
@@ -653,21 +775,29 @@ export class FileProcessor {
      * Used when the File System Access API is not available.
      * @param {File[]} files
      */
-    async _processFilesWithJSZip(files) {
+    async _processFilesWithJSZip(files, outputSettings = this._getOutputSettingsSnapshot()) {
         const totalFiles = files.length;
         const processedFiles = [];
 
         for (let i = 0; i < totalFiles; i++) {
             if (this.isCancelled) break;
             try {
-                const blob = await this.audioManager.processAudioFile(files[i], this._makeProgressCallback(i, totalFiles));
-                if (!blob) {
+                const output = await this.audioManager.processAudioFile(
+                    files[i],
+                    this._makeProgressCallback(i, totalFiles),
+                    outputSettings
+                );
+                if (!output) {
                     this.setProgressText(window.uiManager && window.uiManager.t
                         ? window.uiManager.t('status.processingCanceled')
                         : 'Processing canceled');
                     return;
                 }
-                processedFiles.push({ blob, name: this.getProcessedFileName(files[i].name) });
+                this._validateEncodedOutput(output, outputSettings);
+                processedFiles.push({
+                    blob: output.blob,
+                    name: this.getProcessedFileName(files[i].name, output.extension)
+                });
             } catch (error) {
                 window.uiManager.setError('error.failedToProcessFile', true,
                     { fileName: files[i].name, errorMessage: this._processingErrorMessage(error) });
@@ -683,7 +813,13 @@ export class FileProcessor {
         const zip = new JSZip();
         processedFiles.forEach(({ blob, name }) => zip.file(name, blob));
         const zipBlob = await zip.generateAsync({ type: 'blob' });
-        this.showDownloadLink(zipBlob, 'processed_audio.zip', true);
+        if (this.isCancelled) return;
+        this.showDownloadLink({
+            blob: zipBlob,
+            extension: 'zip',
+            mimeType: 'application/zip',
+            format: 'zip'
+        }, 'processed_audio.zip', true);
     }
 
     /**
@@ -692,9 +828,18 @@ export class FileProcessor {
      * @param {string} originalName - The original file name
      * @param {boolean} isZip - Whether the blob is a zip file
      */
-    showDownloadLink(blob, originalName, isZip = false) {
+    showDownloadLink(output, originalName, isZip = false) {
+        if (output instanceof Blob) {
+            output = {
+                blob: output,
+                extension: isZip ? 'zip' : 'wav',
+                mimeType: output.type,
+                format: isZip ? 'zip' : 'wav'
+            };
+        }
+        const { blob, extension } = output;
         // Create filename based on type
-        const filename = isZip ? originalName : this.getProcessedFileName(originalName);
+        const filename = isZip ? originalName : this.getProcessedFileName(originalName, extension);
 
         // Clear previous download links
         this.downloadContainer.innerHTML = '';
@@ -721,15 +866,24 @@ export class FileProcessor {
             downloadLink.addEventListener('click', async (e) => {
                 e.preventDefault();
 
-                // Show save dialog
-                const result = await window.electronAPI.showSaveDialog({
-                    title: 'Save Processed Audio',
-                    defaultPath: filename,
-                    filters: [
-                        { name: isZip ? 'ZIP Archive' : 'WAV Audio', extensions: [isZip ? 'zip' : 'wav'] },
-                        { name: 'All Files', extensions: ['*'] }
-                    ]
-                });
+                let result;
+                try {
+                    // Show save dialog
+                    result = await window.electronAPI.showSaveDialog({
+                        title: 'Save Processed Audio',
+                        defaultPath: filename,
+                        filters: [
+                            {
+                                name: isZip ? 'ZIP Archive' : getOfflineOutputFormat(output.format).filterLabel,
+                                extensions: [isZip ? 'zip' : extension]
+                            },
+                            { name: 'All Files', extensions: ['*'] }
+                        ]
+                    });
+                } catch (error) {
+                    this._reportOutputError('Error opening processed audio save dialog:', error);
+                    return;
+                }
 
                 if (!result.canceled && result.filePath) {
                     try {
@@ -750,24 +904,24 @@ export class FileProcessor {
                                     window.uiManager.setError(`File saved successfully to ${result.filePath}`);
                                     setTimeout(() => window.uiManager.clearError(), 3000);
                                 } else {
-                                    window.uiManager.setError(`Failed to save file: ${saveResult.error}`, true);
+                                    this._reportOutputError(
+                                        'Failed to save processed audio file:',
+                                        saveResult.error
+                                    );
                                 }
                             } catch (error) {
-                                // Error saving file
-                                window.uiManager.setError(`Error saving file: ${error.message}`, true);
+                                this._reportOutputError('Error saving processed audio file:', error);
                             }
                         };
 
                         reader.onerror = (error) => {
-                            // Error reading file
-                            window.uiManager.setError(`Error reading file: ${error.message}`, true);
+                            this._reportOutputError('Error reading processed audio data:', error);
                         };
 
                         // Start reading the blob as data URL
                         reader.readAsDataURL(blob);
                     } catch (error) {
-                        // Error saving file
-                        window.uiManager.setError(`Error saving file: ${error.message}`, true);
+                        this._reportOutputError('Error preparing processed audio data:', error);
                     }
                 }
             });
@@ -808,37 +962,39 @@ export class FileProcessor {
 
     /**
      * Process dropped audio files
-     * @param {File[]} files - Array of audio files to process
+    * @param {File[]} files - Array of audio files to process
      */
     async processDroppedAudioFiles(files) {
-        try {
-            const audioFiles = Array.from(files || []).filter(isSupportedOfflineAudioFile);
-            if (audioFiles.length === 0) {
-                window.uiManager.setError('Please select audio files', true);
-                return;
+        return this._runSingleFlight(async () => {
+            try {
+                const audioFiles = Array.from(files || []).filter(isSupportedOfflineAudioFile);
+                if (audioFiles.length === 0) {
+                    window.uiManager.setError('Please select audio files', true);
+                    return;
+                }
+
+                if (audioFiles.length === 1) {
+                    this.showProgress();
+                    await this._processSingleFile(audioFiles[0]);
+                } else {
+                    // For multiple files, request output location BEFORE any async processing
+                    // to maintain user gesture context required by File System Access API
+                    await this._processMultipleFiles(audioFiles);
+                }
+            } catch (error) {
+                window.uiManager.setError('error.failedToProcessAudioFiles', true,
+                    { errorMessage: this._processingErrorMessage(error) });
+            } finally {
+                this.hideProgress();
+
+                // Ensure drag-active class is removed
+                this.dropArea.classList.remove('drag-active');
+
+                // Also remove drag-active class from any other elements
+                document.querySelectorAll('.drag-active').forEach(el => {
+                    el.classList.remove('drag-active');
+                });
             }
-
-            if (audioFiles.length === 1) {
-                this.showProgress();
-                await this._processSingleFile(audioFiles[0]);
-            } else {
-                // For multiple files, request output location BEFORE any async processing
-                // to maintain user gesture context required by File System Access API
-                await this._processMultipleFiles(audioFiles);
-            }
-        } catch (error) {
-            window.uiManager.setError('error.failedToProcessAudioFiles', true,
-                { errorMessage: this._processingErrorMessage(error) });
-        } finally {
-            this.hideProgress();
-
-            // Ensure drag-active class is removed
-            this.dropArea.classList.remove('drag-active');
-
-            // Also remove drag-active class from any other elements
-            document.querySelectorAll('.drag-active').forEach(el => {
-                el.classList.remove('drag-active');
-            });
-        }
+        });
     }
 }

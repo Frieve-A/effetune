@@ -31,6 +31,8 @@ export class Element {
     this.height = 150;
     this.drawCalls = [];
     this.drawTextStates = [];
+    this.fillStyles = [];
+    this.strokeStyles = [];
   }
   appendChild(child) { this.children.push(child); child.parentElement = this; return child; }
   remove() {
@@ -44,13 +46,23 @@ export class Element {
   getContext() {
     const calls = this.drawCalls;
     const textStates = this.drawTextStates;
+    const fillStyles = this.fillStyles;
+    const strokeStyles = this.strokeStyles;
     const stack = [];
     return {
       font: '10px sans-serif',
       textAlign: 'start',
       textBaseline: 'alphabetic',
-      ...Object.fromEntries(['clearRect', 'beginPath', 'moveTo', 'lineTo', 'closePath', 'fill', 'stroke']
+      ...Object.fromEntries(['clearRect', 'beginPath', 'moveTo', 'lineTo', 'closePath']
         .map(name => [name, (...args) => calls.push([name, ...args])])),
+      fill() {
+        calls.push(['fill']);
+        fillStyles.push(this.fillStyle);
+      },
+      stroke() {
+        calls.push(['stroke']);
+        strokeStyles.push(this.strokeStyle);
+      },
       save() {
         stack.push({ font: this.font, textAlign: this.textAlign, textBaseline: this.textBaseline });
         calls.push(['save']);

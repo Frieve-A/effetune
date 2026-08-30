@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { AudioEncoder } from '../../js/audio/audio-encoder.js';
 import { OfflineProcessor } from '../../js/audio/offline-processor.js';
 import { decodeDspPipelineDescriptor } from '../../js/audio/dsp-pipeline-descriptor.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
@@ -136,6 +137,10 @@ function createHarness(calls, options = {}) {
         calls.push(['decodeAudioData', arrayBuffer.byteLength]);
         if (options.decodeError) throw options.decodeError;
         return audioBuffer;
+      },
+      createBuffer(numberOfChannels, length, sampleRate) {
+        calls.push(['createAudioBuffer', numberOfChannels, length, sampleRate]);
+        return createMutableAudioBuffer(numberOfChannels, length, sampleRate);
       }
     },
     createOfflineContext(numberOfChannels, length, sampleRate) {
@@ -146,7 +151,7 @@ function createHarness(calls, options = {}) {
       return context;
     }
   };
-  const audioEncoder = {
+  const audioEncoder = options.audioEncoder ?? {
     encodeWAV(buffer) {
       calls.push(['encodeWAV', buffer.length, buffer.numberOfChannels]);
       const result = { encodedBuffer: buffer, index: encoded.length };
@@ -323,7 +328,9 @@ function createFakeDspBinding(calls, options = {}) {
     },
     pipelineConfigure(descriptor) {
       calls.push(['dspPipelineConfigure', [...descriptor]]);
-      const status = options.pipelineConfigureStatus ?? 0;
+      const status = typeof options.pipelineConfigureStatus === 'function'
+        ? options.pipelineConfigureStatus(descriptor)
+        : (options.pipelineConfigureStatus ?? 0);
       if (status === 0) descriptorNodes = decodeDspPipelineDescriptor(descriptor).nodes;
       return status;
     },
@@ -615,6 +622,170 @@ test('processAudioFile encodes directly when no enabled processing plugins exist
   });
 });
 
+test('processAudioFile widens no-effect WAV output and leaves added channels silent', async () => {
+  await withOfflineGlobals({
+    window: { audioPreferences: { outputChannels: 6 } }
+  }, async ({ calls }) => {
+    const audioBuffer = createAudioBuffer([[1, 2, 3], [10, 20, 30]], 48000);
+    const { processor, file } = createHarness(calls, { audioBuffer });
+
+    const result = await processor.processAudioFile(
+      file,
+      [createPlugin(calls, { id: 'disabled', enabled: false })],
+      null,
+      { format: 'wav', sampleRate: 48000, wavSampleFormat: 'pcm24' }
+    );
+
+    assert.equal(result.encodedBuffer.numberOfChannels, 6);
+    assert.deepEqual([...result.encodedBuffer.getChannelData(0)], [1, 2, 3]);
+    assert.deepEqual([...result.encodedBuffer.getChannelData(1)], [10, 20, 30]);
+    for (let channel = 2; channel < 6; channel++) {
+      assert.deepEqual([...result.encodedBuffer.getChannelData(channel)], [0, 0, 0]);
+    }
+    assert.deepEqual(calls.find(call => call[0] === 'createAudioBuffer'), [
+      'createAudioBuffer', 6, 3, 48000
+    ]);
+    assert.equal(calls.some(call => call[0] === 'createOfflineContext'), false);
+    assert.equal(calls.some(call => call[0] === 'executeProcessor'), false);
+  });
+});
+
+test('processAudioFile rejects preferred 16-channel FLAC before assets or rendering', async () => {
+  await withOfflineGlobals({
+    window: { audioPreferences: { outputChannels: 16 } }
+  }, async ({ calls }) => {
+    const { processor, file } = createHarness(calls, {
+      audioBuffer: createAudioBuffer([[1, 2], [10, 20]], 48000)
+    });
+    const plugin = createPlugin(calls, { id: 'asset-plugin' });
+    plugin.resolveOfflineDspAssetRequirement = async () => {
+      calls.push(['resolveOfflineDspAssetRequirement']);
+      return { required: true };
+    };
+
+    await assert.rejects(
+      processor.processAudioFile(
+        file,
+        [plugin],
+        null,
+        { format: 'flac', sampleRate: 48000 }
+      ),
+      error => error?.userMessageKey === 'error.offlineOutput.unsupportedChannels' &&
+        error.userMessageValues?.format === 'FLAC' && error.userMessageValues?.maxChannels === 8
+    );
+    assert.equal(calls.some(call => call[0] === 'createAudioBuffer'), false);
+    assert.equal(calls.some(call => call[0] === 'createOfflineContext'), false);
+    assert.equal(calls.some(call => call[0] === 'resolveOfflineDspAssetRequirement'), false);
+    assert.equal(calls.some(call => call[0] === 'executeProcessor'), false);
+    assert.equal(calls.some(call => call[0] === 'encodeWAV'), false);
+  });
+});
+
+test('processAudioFile aborts an active encoder and returns no partial output', async () => {
+  await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+    const encodingStarted = deferred();
+    const audioEncoder = {
+      async encode(_audioBuffer, _settings, { signal }) {
+        encodingStarted.resolve(signal);
+        await new Promise((_, reject) => {
+          signal.addEventListener('abort', () => {
+            const error = new Error('encoding canceled');
+            error.userMessageKey = 'status.processingCanceled';
+            reject(error);
+          }, { once: true });
+        });
+      }
+    };
+    const { processor, file } = createHarness(calls, { audioEncoder });
+
+    const processing = processor.processAudioFile(file, []);
+    const signal = await encodingStarted.promise;
+    processor.cancelProcessing();
+
+    assert.equal(await processing, null);
+    assert.equal(signal.aborted, true);
+    assert.equal(processor.isProcessing(), false);
+  });
+});
+
+test('processAudioFile rejects concurrent calls without replacing active operation state', async () => {
+  await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+    const arrayBufferStarted = deferred();
+    const releaseArrayBuffer = deferred();
+    const { processor, file, encoded } = createHarness(calls);
+    file.arrayBuffer = async () => {
+      calls.push(['arrayBuffer']);
+      arrayBufferStarted.resolve();
+      return releaseArrayBuffer.promise;
+    };
+
+    const firstProcessing = processor.processAudioFile(file, []);
+    await arrayBufferStarted.promise;
+    await assert.rejects(
+      processor.processAudioFile(file, []),
+      /Offline processing is already in progress/
+    );
+    assert.equal(processor.isProcessing(), true);
+
+    releaseArrayBuffer.resolve(new ArrayBuffer(8));
+    assert.equal(await firstProcessing, encoded[0]);
+    assert.equal(processor.isProcessing(), false);
+    assert.equal(calls.filter(call => call[0] === 'decodeAudioData').length, 1);
+    assert.equal(calls.filter(call => call[0] === 'encodeWAV').length, 1);
+  });
+});
+
+test('processAudioFile rejects unsupported FLAC channels before plugin rendering', async () => {
+  await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+    const audioBuffer = createGeneratedAudioBuffer(9, 4);
+    const { processor, file } = createHarness(calls, {
+      audioBuffer,
+      audioEncoder: new AudioEncoder()
+    });
+
+    await assert.rejects(
+      processor.processAudioFile(
+        file,
+        [createPlugin(calls, { id: 'enabled', parameters: { channel: 'A' } })],
+        null,
+        { format: 'flac', sampleRate: 48000 }
+      ),
+      error => error?.userMessageKey === 'error.offlineOutput.unsupportedChannels' &&
+        error.userMessageValues?.format === 'FLAC' && error.userMessageValues?.maxChannels === 8
+    );
+    assert.equal(calls.some(call => call[0] === 'createOfflineContext'), false);
+    assert.equal(calls.some(call => call[0] === 'executeProcessor'), false);
+    assert.equal(calls.some(call => call[0] === 'encodeWAV'), false);
+  });
+});
+
+test('processAudioFile rejects WAV oversized after resampling before allocating render buffers', async () => {
+  await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+    const audioBuffer = {
+      numberOfChannels: 2,
+      length: Math.floor((0xffffffff - 36) / (2 * 4 * 2)) + 1,
+      sampleRate: 48000,
+      getChannelData() {
+        throw new Error('WAV preflight must not read sample data');
+      }
+    };
+    const { processor, file } = createHarness(calls, { audioBuffer });
+
+    await assert.rejects(
+      processor.processAudioFile(
+        file,
+        [createPlugin(calls, { id: 'enabled', parameters: { channel: 'A' } })],
+        null,
+        { format: 'wav', sampleRate: 96000, wavSampleFormat: 'float32' }
+      ),
+      error => error?.userMessageKey === 'error.offlineOutput.invalidOutput'
+    );
+    assert.equal(calls.some(call => call[0] === 'createOfflineContext'), false);
+    assert.equal(calls.some(call => call[0] === 'createBuffer'), false);
+    assert.equal(calls.some(call => call[0] === 'executeProcessor'), false);
+  });
+});
+
 test('processAudioFile fails closed when its required-at-start plugin is disabled during decode',
   async () => {
     await withOfflineGlobals({ window: {} }, async ({ calls }) => {
@@ -820,7 +991,7 @@ test('processAudioFile keeps rendering after dynamic bus and plugin processing f
     ], value => progress.push(value));
 
     assert.equal(result.index, 0);
-    assert.deepEqual(progress, [100, 100]);
+    assert.deepEqual(progress, [90, 90, 100]);
     assert.ok(calls.some(call => call[0] === 'consoleError' && String(call[1]).includes('input bus 4')));
     assert.ok(calls.filter(call => call[0] === 'consoleError' && call[1] === 'Plugin processing error:').length >= 3);
   });
@@ -1035,7 +1206,7 @@ test('offline DSP sessions use target-specific plugin assets and parameter snaps
     assert.equal(calls.find(call => call[0] === 'createOfflineDspState')[2], true);
     assert.equal(offlineStateOptions.isCurrent(), false);
     assert.ok(calls.some(call => call[0] === 'dspSetAsset' && call[4] === 2));
-    assert.equal(calls.filter(call => call[0] === 'dspGetArenaViews').length, 3);
+    assert.equal(calls.filter(call => call[0] === 'dspGetArenaViews').length, 4);
     assert.equal(calls.filter(call => call[0] === 'dspPackParams').every(call => call[1] === 2), true);
   });
 });
@@ -1809,6 +1980,74 @@ test('pipeline configuration failure falls back to per-instance WASM processing'
   });
 });
 
+test('pipeline configuration refreshes a detached WASM arena before offline processing', async () => {
+  await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+    const memory = new WebAssembly.Memory({ initial: 1, maximum: 2 });
+    const floatCapacity = 8 * 128;
+    const runtime = createFakeDspRuntime(calls, {
+      typeName: 'RoomEqPlugin',
+      bindingOptions: {
+        getArenaViews() {
+          const buffer = memory.buffer;
+          const view = (byteOffset, length) => new Float32Array(buffer, byteOffset, length);
+          const combined = view(0, floatCapacity);
+          const buses = new Map([
+            [0, combined],
+            [1, view(4096, floatCapacity)],
+            [2, view(8192, floatCapacity)],
+            [3, view(12288, floatCapacity)],
+            [4, view(16384, floatCapacity)]
+          ]);
+          return {
+            combined,
+            buses,
+            scratch: {
+              allChannels: view(20480, floatCapacity),
+              mixing: view(24576, floatCapacity),
+              stereo: view(28672, 2 * 128),
+              mono: view(29696, 128)
+            }
+          };
+        },
+        pipelineConfigureStatus() {
+          const previousBuffer = memory.buffer;
+          memory.grow(1);
+          assert.equal(previousBuffer.byteLength, 0);
+          calls.push(['dspMemoryGrow']);
+          return 0;
+        }
+      }
+    });
+    const { processor, file } = createHarness(calls, {
+      audioBuffer: createAudioBuffer([[1, 2], [10, 20]]),
+      offlineProcessorOptions: runtime.dependencies
+    });
+    const plugin = createGainPlugin(calls, { id: 'room-eq-memory-grow', gain: 1 });
+    class RoomEqPlugin {}
+    Object.defineProperty(plugin, 'constructor', { value: RoomEqPlugin });
+    plugin.offlineDspAssetRequired = true;
+    plugin.offlineDspAssetErrorMessageKey = 'roomEq.error.design';
+    plugin.createOfflineDspState = async () => ({
+      assets: new Map([[0, {
+        payload: new ArrayBuffer(16),
+        footprintBytes: 16,
+        processingChannels: 2,
+        formatTag: 1
+      }]]),
+      offlineDspAssetRequired: true
+    });
+
+    const result = await processor.processAudioFile(file, [plugin]);
+
+    assert.deepEqual([...result.encodedBuffer.getChannelData(0)], [1, 2]);
+    assert.deepEqual([...result.encodedBuffer.getChannelData(1)], [10, 20]);
+    assert.ok(calls.some(call => call[0] === 'dspMemoryGrow'));
+    assert.equal(calls.filter(call => call[0] === 'dspGetArenaViews').length, 4);
+    assert.equal(calls.some(call => call[0] === 'executeProcessor'), false);
+    assert.equal(calls.some(call => call[0] === 'dspWarning'), false);
+  });
+});
+
 test('pipeline processing failure discards mutated arena audio and falls back to JavaScript', async () => {
   await withOfflineGlobals({ window: {} }, async ({ calls }) => {
     const runtime = createFakeDspRuntime(calls, {
@@ -2107,28 +2346,23 @@ test('offline rollout validates parameter hashes before creating an engine', asy
   });
 });
 
-test('offline preference and engine channel limits prevent WASM instantiation', async () => {
-  const cases = [
-    { window: { audioPreferences: { useWasmDsp: false } }, channels: 2 },
-    { window: { audioPreferences: { outputChannels: 17 } }, channels: 2 }
-  ];
-
-  for (const testCase of cases) {
-    await withOfflineGlobals({ window: testCase.window }, async ({ calls }) => {
-      const runtime = createFakeDspRuntime(calls);
-      const { processor, file } = createHarness(calls, {
-        audioBuffer: createGeneratedAudioBuffer(testCase.channels, 2),
-        offlineProcessorOptions: runtime.dependencies
-      });
-
-      await processor.processAudioFile(file, [
-        createGainPlugin(calls, { id: 'javascript-only', gain: 2 })
-      ]);
-
-      assert.equal(calls.some(call => call[0] === 'dspInstantiate'), false);
-      assert.ok(calls.some(call => call[0] === 'executeProcessor'));
+test('offline preference prevents WASM instantiation', async () => {
+  await withOfflineGlobals({
+    window: { audioPreferences: { useWasmDsp: false } }
+  }, async ({ calls }) => {
+    const runtime = createFakeDspRuntime(calls);
+    const { processor, file } = createHarness(calls, {
+      audioBuffer: createGeneratedAudioBuffer(2, 2),
+      offlineProcessorOptions: runtime.dependencies
     });
-  }
+
+    await processor.processAudioFile(file, [
+      createGainPlugin(calls, { id: 'javascript-only', gain: 2 })
+    ]);
+
+    assert.equal(calls.some(call => call[0] === 'dspInstantiate'), false);
+    assert.ok(calls.some(call => call[0] === 'executeProcessor'));
+  });
 });
 
 test('offline setup failures remain JavaScript-only and release partially prepared engines', async () => {

@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   BENCHMARK_DSP_MODES,
   BENCHMARK_IR_REVERB_FRAMES,
+  configureFirBenchmarkWorkload,
   createIrReverbBenchmarkAssets,
   createRoomEqBenchmarkAssets,
   createDspBenchmarkRuntime
@@ -94,6 +95,66 @@ class RoomEqPlugin {
       gn: 0,
       enabled: this.enabled
     };
+  }
+}
+
+class BenchmarkFirPlugin {
+  constructor(id, name) {
+    this.id = id;
+    this.name = name;
+    this.enabled = false;
+    this.lt = '128';
+    this.tp = name.startsWith('Group Delay') ? 16384 : 32768;
+    this.bc = 2;
+    this.pm = 'min';
+    this.f1 = 1000;
+    this.s1 = -24;
+    for (let band = 0; band < 5; band++) this[`g${band}`] = 0;
+    this.d2 = 0;
+    this.d8 = 0;
+  }
+
+  setEnabled(enabled) {
+    this.enabled = enabled;
+  }
+
+  setParameters() {
+    throw new Error('FIR benchmark must not schedule the plugin designer');
+  }
+
+  getParameters() {
+    return {
+      type: this.constructor.name,
+      lt: this.lt,
+      tp: this.tp,
+      bc: this.bc,
+      fd: this.name.startsWith('Group Delay') ? this.tp / 2 : 0,
+      enabled: this.enabled
+    };
+  }
+}
+
+class FIRCrossoverPlugin extends BenchmarkFirPlugin {
+  constructor() {
+    super(90, 'FIR Crossover');
+  }
+}
+
+class FiveBandFIRPEQPlugin extends BenchmarkFirPlugin {
+  constructor() {
+    super(91, '5Band FIR PEQ');
+  }
+}
+
+class GroupDelayEqPlugin extends BenchmarkFirPlugin {
+  constructor() {
+    super(92, 'Group Delay EQ');
+  }
+}
+
+class GroupDelayPEQPlugin extends BenchmarkFirPlugin {
+  constructor() {
+    super(93, 'Group Delay PEQ');
   }
 }
 
@@ -258,6 +319,106 @@ for (const variant of variants) {
       assert.deepEqual(warnings, []);
     } finally {
       session?.close();
+      runtime.close();
+    }
+  });
+
+  test(`WebAssembly benchmark ${variant.variant} artifact runs every FIR workload with an active convolution asset`, async () => {
+    const calls = [];
+    const warnings = [];
+    const dependencies = {
+      warning(message) {
+        warnings.push(message);
+      },
+      loadDspModule(options) {
+        return loadDspModule({
+          ...options,
+          basePath: '',
+          fetchImpl: fetchRepositoryAsset,
+          webAssembly: variant.webAssembly,
+          publishTarget: null,
+          cache: false
+        });
+      },
+      async instantiateDsp(moduleOrBytes, options) {
+        const binding = await instantiateDsp(moduleOrBytes, options);
+        return observeBinding(binding, calls);
+      }
+    };
+    const runtime = await createDspBenchmarkRuntime({
+      mode: BENCHMARK_DSP_MODES.WEBASSEMBLY,
+      sampleRate: SAMPLE_RATE,
+      blockSize: BLOCK_SIZE,
+      preference: { useWasmDsp: true },
+      location: '',
+      basePath: '',
+      dependencies
+    });
+    const plugins = [
+      new FIRCrossoverPlugin(),
+      new FiveBandFIRPEQPlugin(),
+      new GroupDelayEqPlugin(),
+      new GroupDelayPEQPlugin()
+    ];
+
+    try {
+      for (const plugin of plugins) {
+        const workload = configureFirBenchmarkWorkload({
+          plugin,
+          sampleRate: SAMPLE_RATE,
+          blockSize: BLOCK_SIZE,
+          usesWasm: true
+        });
+        const callStart = calls.length;
+        let session = null;
+        try {
+          assert.equal(runtime.supportsPlugin(plugin), true);
+          session = runtime.createPluginSession(plugin, {
+            channelCount: workload.channelCount,
+            assets: workload.assets
+          });
+          const preparationBlocks = session.prepareAssets();
+          assert.ok(preparationBlocks > 0);
+
+          let outputChanged = false;
+          const warmupBlocks = workload.warmupFrames / BLOCK_SIZE;
+          for (let block = 0; block < warmupBlocks; block++) {
+            const input = new Float32Array(workload.channelCount * BLOCK_SIZE);
+            for (let channel = 0; channel < Math.min(2, workload.channelCount); channel++) {
+              const offset = channel * BLOCK_SIZE;
+              for (let frame = 0; frame < BLOCK_SIZE; frame++) {
+                input[offset + frame] = Math.sin((block * BLOCK_SIZE + frame + channel * 17) * 0.013);
+              }
+            }
+            const output = Float32Array.from(session.process(
+              input,
+              block * BLOCK_SIZE / SAMPLE_RATE
+            ));
+            if (!outputChanged) {
+              outputChanged = output.some((sample, index) => Math.abs(sample - input[index]) > 1e-6);
+            }
+          }
+          assert.equal(outputChanged, true);
+
+          const sessionCalls = calls.slice(callStart);
+          const assetCall = sessionCalls.find(call => call.name === 'instanceSetAsset');
+          assert.ok(assetCall);
+          assert.equal(assetCall.args[1], 0);
+          assert.equal(assetCall.args[3].processingChannels, workload.channelCount);
+          assert.equal(
+            sessionCalls.filter(call => call.name === 'resetInstance').length,
+            1
+          );
+          assert.equal(
+            sessionCalls.filter(call => call.name === 'pipelineProcess').length,
+            preparationBlocks + warmupBlocks
+          );
+        } finally {
+          session?.close();
+        }
+      }
+      assert.deepEqual(warnings, []);
+    } finally {
       runtime.close();
     }
   });

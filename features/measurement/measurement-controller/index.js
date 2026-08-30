@@ -254,7 +254,7 @@ export class MeasurementController {
             averaging: configSnapshot.averaging,
             points: [],
             nextPointId: 0,
-            correctionLowFreq: 20,
+            correctionLowFreq: 80,
             correctionHighFreq: 20000,
             smoothing: 0.3,
             eqBandCount: 5

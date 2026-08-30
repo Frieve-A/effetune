@@ -998,7 +998,8 @@ test('updates audio, sleep, sample-rate, language, translations, and UI text', a
     };
     manager.pluginListManager.dragMessage = document.createElement('div');
     manager.updateUITexts();
-    assert.equal(manager.shareButton.textContent, 'Share');
+    assert.equal(manager.shareButton.textContent, '');
+    assert.equal(manager.shareButton['aria-label'], manager.t('ui.title.sharePipeline'));
     assert.equal(manager.pipelineEmpty.querySelector('.pipeline-empty-message').textContent, 'Drop here');
     assert.equal(manager.pipelineEmpty.querySelector('.mobile-effects-open-music'), null);
     assert.equal(calls.some(call => call[0] === 'doubleBlind.updateTexts'), true);

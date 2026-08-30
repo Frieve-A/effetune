@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { PluginManager } from '../../js/plugin-manager.js';
-import { BENCHMARK_DSP_MODES } from '../../features/effetune-benchmark.js';
+import {
+  BENCHMARK_DSP_MODES,
+  configureFirBenchmarkWorkload
+} from '../../features/effetune-benchmark.js';
 import * as scoreModule from '../../features/effetune-benchmark-score.js';
 import { createFakeDocument } from '../helpers/fake-dom.mjs';
 
@@ -61,6 +64,7 @@ function createHarness({ variant = 'simd', useWasmDsp = true, missing = null, fa
   const context = vm.createContext({
     ...scoreModule,
     BENCHMARK_DSP_MODES,
+    configureFirBenchmarkWorkload,
     BENCHMARK_SCORE_REFERENCE: {
       machine: '<reference PC>',
       effects: Object.fromEntries(BENCHMARK_SCORE_EFFECTS.map(({ name }) => [name, 1]))
@@ -81,11 +85,14 @@ function createHarness({ variant = 'simd', useWasmDsp = true, missing = null, fa
     performance: { now: () => (clock += 50) },
     createDspBenchmarkRuntime: async options => {
       calls.push(['runtime', options.sampleRate]);
+      const usesWasm = options.mode !== BENCHMARK_DSP_MODES.JAVASCRIPT;
       const runtime = {
         options,
-        variant,
-        label: variant === 'simd' ? 'WebAssembly (SIMD)' : 'WebAssembly (baseline)',
-        usesWasm: true,
+        variant: usesWasm ? variant : BENCHMARK_DSP_MODES.JAVASCRIPT,
+        label: usesWasm
+          ? (variant === 'simd' ? 'WebAssembly (SIMD)' : 'WebAssembly (baseline)')
+          : 'JavaScript',
+        usesWasm,
         sessions: [],
         closed: false,
         supportsPlugin: type => type !== missing,
@@ -136,6 +143,7 @@ test('score panel, imports and controls preserve the English-only page contract'
   assert.ok(html.indexOf('id="benchmark-score"') < html.indexOf('id="benchmark-table-container"'));
   assert.match(html, /from '\.\/effetune-benchmark-score\.js'/);
   assert.match(html, /from '\.\/benchmark-score-reference\.js'/);
+  assert.match(html, /configureFirBenchmarkWorkload/);
   assert.match(html, /id="run-score"[^>]*>Score Only<\/button>/);
   assert.match(html, /EffeTune Score/);
   assert.doesNotMatch(html, /100 = reference PC/);
@@ -264,7 +272,8 @@ test('full benchmarks close their fixed score runtime before creating the select
   assert.ok(h.runtimes.every(runtime => runtime.closed));
   const details = h.document.getElementById('benchmark-table-container');
   assert.equal(descendants(details).filter(element => element.tagName === 'TABLE').length, 1);
-  const copy = descendants(details).find(element => element.tagName === 'BUTTON');
+  const copy = descendants(details).find(element =>
+    element.className === 'copy-benchmark-result-button');
   await copy.dispatchEvent('click');
   assert.match(h.clipboard[0], /^EffeTune Score v1\t/);
   assert.ok(h.clipboard[0].includes('Category\tEffect\tImplementation\tSamples/sec'));
@@ -272,4 +281,80 @@ test('full benchmarks close their fixed score runtime before creating the select
   await h.document.getElementById('dsp-mode').dispatchEvent('change');
   await copy.dispatchEvent('click');
   assert.match(h.clipboard[1], /^Category\tEffect\tImplementation\tSamples\/sec/);
+});
+
+test('JavaScript detail benchmarks skip FIR effects that require convolution assets', async () => {
+  const h = createHarness({ useWasmDsp: false });
+  await h.events.load();
+  h.run(`
+    pluginClasses = Object.fromEntries([
+      'FIR Crossover',
+      '5Band FIR PEQ',
+      'Group Delay EQ',
+      'Group Delay PEQ'
+    ].map(name => [name, class {
+      constructor() { this.name = name; }
+      getParameters() { return {}; }
+    }]));
+  `);
+
+  await h.run('runBenchmarks()');
+
+  assert.equal(h.runtimes.length, 1);
+  assert.equal(h.runtimes[0].usesWasm, false);
+  assert.equal(h.runtimes[0].sessions.length, 0);
+  const details = h.document.getElementById('benchmark-table-container');
+  const rows = descendants(details).filter(element => element.tagName === 'TR').slice(1);
+  assert.equal(rows.length, 4);
+  for (const row of rows) {
+    assert.equal(row.children[3].textContent, 'N/A');
+    assert.match(row.children[6].textContent, /requires WebAssembly DSP/);
+  }
+});
+
+test('benchmark result headers sort every column and toggle ascending and descending order', async () => {
+  const h = createHarness();
+  const table = h.run(`createBenchmarkResultsTable([
+    {
+      category: 'Utility', name: 'Effect 10', implementation: 'JavaScript',
+      samplesPerSecond: 2000, speedupFactor: '2.0', skipped: false, note: 'Beta'
+    },
+    {
+      category: 'Equalizer', name: 'Effect 2', implementation: 'WebAssembly',
+      samplesPerSecond: 1000, speedupFactor: '4.0', skipped: false, note: 'Alpha'
+    },
+    {
+      category: 'Other', name: 'Unavailable', implementation: 'JavaScript',
+      samplesPerSecond: null, speedupFactor: null, skipped: true, note: ''
+    }
+  ])`);
+  const [thead, tbody] = table.children;
+  const headers = thead.children[0].children;
+  const buttons = headers.map(header => header.children[0]);
+  const firstColumn = () => tbody.children.map(row => row.children[0].textContent);
+
+  assert.equal(buttons.length, 7);
+  assert.ok(headers.every(header => header.getAttribute('aria-sort') === 'none'));
+
+  await buttons[0].dispatchEvent('click');
+  assert.deepEqual(firstColumn(), ['Equalizer', 'Other', 'Utility']);
+  assert.equal(headers[0].getAttribute('aria-sort'), 'ascending');
+  assert.match(buttons[0].children[1].innerHTML, /M12 19V5/);
+
+  await buttons[0].dispatchEvent('click');
+  assert.deepEqual(firstColumn(), ['Utility', 'Other', 'Equalizer']);
+  assert.equal(headers[0].getAttribute('aria-sort'), 'descending');
+  assert.match(buttons[0].children[1].innerHTML, /M12 5v14/);
+
+  for (const button of buttons.slice(1)) {
+    await button.dispatchEvent('click');
+  }
+  assert.equal(headers[6].getAttribute('aria-sort'), 'ascending');
+  assert.ok(headers.slice(0, 6).every(header => header.getAttribute('aria-sort') === 'none'));
+
+  await buttons[3].dispatchEvent('click');
+  assert.deepEqual(
+    tbody.children.map(row => row.children[3].textContent),
+    ['1,000', '2,000', 'N/A']
+  );
 });

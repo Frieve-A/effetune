@@ -2,6 +2,7 @@ import { instantiateDsp, loadDspModule } from './dsp-wasm-loader.js';
 import { getDspRolloutConfig } from './dsp-rollout.js';
 import { buildDspPipelineDescriptor } from './dsp-pipeline-descriptor.js';
 import { getPluginExecutionCapabilities } from './plugin-execution-capabilities.js';
+import { preflightOfflineOutput } from './audio-encoder.js';
 
 const OFFLINE_BLOCK_SIZE = 128;
 const OFFLINE_MAX_WASM_CHANNELS = 16;
@@ -25,6 +26,7 @@ export class OfflineProcessor {
         this.offlineWorkletNode = null;
         this.isOfflineProcessing = false;
         this.isCancelled = false;
+        this.encodingAbortController = null;
         this.dspDependencies = {
             loadDspModule: dspDependencies.loadDspModule || loadDspModule,
             instantiateDsp: dspDependencies.instantiateDsp || instantiateDsp,
@@ -39,11 +41,16 @@ export class OfflineProcessor {
      * @param {File} file - The audio file to process
      * @param {Array} pipeline - Array of plugin instances
      * @param {Function} progressCallback - Callback for progress updates
-     * @returns {Promise<Blob>} - Processed audio as a WAV blob
+     * @param {Object} outputSettings - Normalized offline output settings snapshot
+     * @returns {Promise<Object|null>} - Encoded output metadata, or null when canceled
      */
-    async processAudioFile(file, pipeline, progressCallback = null) {
+    async processAudioFile(file, pipeline, progressCallback = null, outputSettings = null) {
+        if (this.isOfflineProcessing) {
+            throw new Error('Offline processing is already in progress');
+        }
         this.isOfflineProcessing = true;
         this.isCancelled = false;
+        this.encodingAbortController = new AbortController();
         let requiredOfflineDspAssetPlugins = null;
         let processingError = null;
         let dspSession = null;
@@ -57,6 +64,11 @@ export class OfflineProcessor {
             // the section-aware plugin membership captured at render start.
             const { numberOfChannels, length: totalSamples, sampleRate } = audioBuffer;
             const outputChannelCount = this.getOfflineOutputChannelCount(numberOfChannels);
+            preflightOfflineOutput({
+                numberOfChannels: outputChannelCount,
+                length: totalSamples,
+                sampleRate
+            }, outputSettings);
             requiredOfflineDspAssetPlugins = this.captureRequiredOfflineDspAssetPlugins(
                 offlineDspAssetCandidates,
                 { sampleRate, outputChannelCount }
@@ -75,7 +87,18 @@ export class OfflineProcessor {
             
             if (!hasEnabledPlugins) {
                 this.ensureRequiredOfflineDspAssetsReady(requiredOfflineDspAssetPlugins, null);
-                return this.audioEncoder.encodeWAV(audioBuffer);
+                let outputBuffer = audioBuffer;
+                if (outputChannelCount !== numberOfChannels) {
+                    outputBuffer = this.contextManager.audioContext.createBuffer(
+                        outputChannelCount,
+                        totalSamples,
+                        sampleRate
+                    );
+                    for (let channel = 0; channel < numberOfChannels; channel++) {
+                        outputBuffer.getChannelData(channel).set(audioBuffer.getChannelData(channel));
+                    }
+                }
+                return await this.encodeOutput(outputBuffer, outputSettings, progressCallback);
             }
 
             // Define the actual output channel count - may be higher than the file's channel count
@@ -171,7 +194,7 @@ export class OfflineProcessor {
                 // Throttle progress updates (~60fps)
                 const currentTime = performance.now();
                 if (progressCallback && currentTime - lastProgressUpdate >= PROGRESS_UPDATE_INTERVAL) {
-                    const progress = Math.round(((offset + blockSize) / totalSamples) * 100);
+                    const progress = Math.round(((offset + blockSize) / totalSamples) * 90);
                     await new Promise(resolve =>
                         requestAnimationFrame(() => {
                             progressCallback(progress);
@@ -198,39 +221,60 @@ export class OfflineProcessor {
             sourceNode.buffer = processedBuffer;
             sourceNode.connect(this.offlineContext.destination);
 
-            let renderError = null;
+            let renderedBuffer;
             try {
                 sourceNode.start();
-                const renderedBuffer = await this.offlineContext.startRendering();
+                renderedBuffer = await this.offlineContext.startRendering();
                 if (!renderedBuffer || renderedBuffer.length === 0) {
                     throw new Error('Rendering produced empty buffer');
                 }
                 if (progressCallback) {
                     await new Promise(resolve =>
                         requestAnimationFrame(() => {
-                            progressCallback(100);
+                            progressCallback(90);
                             resolve();
                         })
                     );
                 }
-                return this.audioEncoder.encodeWAV(renderedBuffer);
             } catch (error) {
-                renderError = error;
+                throw new Error(`Processing failed: ${error.message}`);
             } finally {
                 this.cleanupOfflineResources(sourceNode);
             }
-
-            throw new Error(`Processing failed: ${renderError.message}`);
+            return await this.encodeOutput(renderedBuffer, outputSettings, progressCallback);
         } catch (error) {
             this.cleanupOfflineResources();
             processingError = error;
         } finally {
             this.destroyOfflineDspSession(dspSession);
             this.isOfflineProcessing = false;
+            this.encodingAbortController = null;
         }
 
+        if (this.isCancelled || processingError?.userMessageKey === 'status.processingCanceled') return null;
         if (processingError?.userMessageKey) throw processingError;
         throw new Error(`File processing error: ${processingError.message}`);
+    }
+
+    async encodeOutput(audioBuffer, outputSettings, progressCallback) {
+        if (this.isCancelled) return null;
+        if (typeof this.audioEncoder.encode !== 'function') {
+            const result = this.audioEncoder.encodeWAV(audioBuffer);
+            progressCallback?.(100);
+            return result;
+        }
+        const result = await this.audioEncoder.encode(audioBuffer, outputSettings, {
+            signal: this.encodingAbortController?.signal,
+            onProgress: ({ phase, progress }) => {
+                if (!progressCallback) return;
+                if (phase === 'resampling') {
+                    progressCallback(90 + Math.round((progress || 0) * 4));
+                } else if (phase === 'encoding') {
+                    progressCallback(progress === 1 ? 100 : 95);
+                }
+            }
+        });
+        return this.isCancelled ? null : result;
     }
 
     captureOfflineDspAssetCandidates(pipeline) {
@@ -632,7 +676,14 @@ export class OfflineProcessor {
                 omitInactive: true
             });
             if (!session.descriptorConfigured || !this.offlineDescriptorsEqual(descriptor, session.descriptorBytes)) {
-                const configureStatus = session.binding.pipelineConfigure(descriptor);
+                let configureStatus;
+                try {
+                    configureStatus = session.binding.pipelineConfigure(descriptor);
+                } finally {
+                    // Pipeline configuration may grow WASM memory. Adopt the new
+                    // arena object before touching views backed by the old buffer.
+                    session.arena = session.binding.getArenaViews();
+                }
                 if (configureStatus !== 0) {
                     session.descriptorEligible = false;
                     this.warnOfflineDspOnce(
@@ -1240,6 +1291,7 @@ export class OfflineProcessor {
      */
     cancelProcessing() {
         this.isCancelled = true;
+        this.encodingAbortController?.abort();
     }
     
     /**

@@ -10,6 +10,12 @@ function getPresetNameFromPath(filePath) {
     : fileName;
 }
 
+function reportAudioFileProcessingFailure(context, error = null) {
+  if (error === null) console.error(context);
+  else console.error(context, error);
+  window.uiManager?.setError?.('error.offlineOutput.invalidOutput', true);
+}
+
 /**
  * Open a preset file from the file system
  * @param {boolean} isElectron - Whether running in Electron environment
@@ -397,17 +403,13 @@ export function processAudioFiles(isElectron) {
       
       // Find the pipeline manager
       if (!window.uiManager || !window.uiManager.pipelineManager) {
-        console.error('Could not find pipeline manager');
-        if (window.uiManager) {
-          window.uiManager.setError('Failed to process audio files: Pipeline manager not found');
-        }
+        reportAudioFileProcessingFailure('Could not find pipeline manager');
         return;
       }
       
       const fileProcessor = window.uiManager.pipelineManager.fileProcessor;
       if (!fileProcessor || !fileProcessor.dropArea) {
-        console.error('Could not find drop area');
-        window.uiManager.setError('Failed to process audio files: Drop area not found');
+        reportAudioFileProcessingFailure('Could not find drop area');
         return;
       }
       
@@ -439,8 +441,7 @@ export function processAudioFiles(isElectron) {
           const blob = new Blob([bytes], { type: getAudioMimeType(fileName) });
           return new File([blob], fileName, { type: blob.type });
         } catch (error) {
-          console.error(`Error processing file ${filePath}:`, error);
-          window.uiManager.setError(`Error processing file ${filePath}: ${error.message}`);
+          reportAudioFileProcessingFailure(`Error processing file ${filePath}:`, error);
           return null;
         }
       })).then(files => {
@@ -448,28 +449,29 @@ export function processAudioFiles(isElectron) {
         const validFiles = files.filter(file => file);
         
         if (validFiles.length === 0) {
-          window.uiManager.setError('No valid audio files selected');
+          reportAudioFileProcessingFailure('No valid audio files were prepared');
           return;
         }
         
         // Process the files
         setTimeout(() => {
-          // Processing files with pipeline manager
-          window.uiManager.pipelineManager.processDroppedAudioFiles(validFiles);
+          try {
+            const processing = window.uiManager.pipelineManager.processDroppedAudioFiles(validFiles);
+            processing?.catch?.(error => {
+              reportAudioFileProcessingFailure('Error processing prepared audio files:', error);
+            });
+          } catch (error) {
+            reportAudioFileProcessingFailure('Error processing prepared audio files:', error);
+          }
         }, 300);
       }).catch(error => {
-        console.error('Error preparing files:', error);
-        window.uiManager.setError(`Error preparing files: ${error.message}`);
+        reportAudioFileProcessingFailure('Error preparing files:', error);
       });
     }).catch(error => {
-      console.error('Error showing open dialog:', error);
-      window.uiManager.setError(`Error showing open dialog: ${error.message}`);
+      reportAudioFileProcessingFailure('Error showing open dialog:', error);
     });
   } catch (error) {
-    console.error('Error processing audio files:', error);
-    if (window.uiManager) {
-      window.uiManager.setError(`Error processing audio files: ${error.message}`);
-    }
+    reportAudioFileProcessingFailure('Error processing audio files:', error);
   }
 }
 

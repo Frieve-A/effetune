@@ -859,7 +859,8 @@ async function loadSmokeSpecs() {
     sbcResumeSpec,
     gsmResumeSpec,
     mp3ResumeSpec,
-    mdResumeSpec
+    mdResumeSpec,
+    controllerMappingSpec
   ] = await Promise.all([
     import('../tests/browser/power-policy-smoke.spec.mjs'),
     import('../tests/browser/cue-region-smoke.spec.mjs'),
@@ -868,7 +869,8 @@ async function loadSmokeSpecs() {
     import('../tests/browser/bluetooth-sbc-resume-wasm-smoke.spec.mjs'),
     import('../tests/browser/gsm-full-rate-resume-wasm-smoke.spec.mjs'),
     import('../tests/browser/mp3-resume-wasm-smoke.spec.mjs'),
-    import('../tests/browser/md-simulator-resume-wasm-smoke.spec.mjs')
+    import('../tests/browser/md-simulator-resume-wasm-smoke.spec.mjs'),
+    import('../tests/browser/controller-mapping-dialog-smoke.spec.mjs')
   ]);
   if (typeof powerSpec.runPowerPolicyBrowserSmoke !== 'function') {
     throw new TypeError('power-policy-smoke.spec.mjs must export runPowerPolicyBrowserSmoke().');
@@ -909,6 +911,12 @@ async function loadSmokeSpecs() {
       'runMdSimulatorResumeWasmBrowserSmoke().'
     );
   }
+  if (typeof controllerMappingSpec.runControllerMappingDialogBrowserSmoke !== 'function') {
+    throw new TypeError(
+      'controller-mapping-dialog-smoke.spec.mjs must export ' +
+      'runControllerMappingDialogBrowserSmoke().'
+    );
+  }
   return [
     powerSpec.runPowerPolicyBrowserSmoke,
     cueRegionSpec.runCueRegionBrowserSmoke,
@@ -917,7 +925,8 @@ async function loadSmokeSpecs() {
     sbcResumeSpec.runBluetoothSbcResumeWasmBrowserSmoke,
     gsmResumeSpec.runGsmFullRateResumeWasmBrowserSmoke,
     mp3ResumeSpec.runMp3ResumeWasmBrowserSmoke,
-    mdResumeSpec.runMdSimulatorResumeWasmBrowserSmoke
+    mdResumeSpec.runMdSimulatorResumeWasmBrowserSmoke,
+    controllerMappingSpec.runControllerMappingDialogBrowserSmoke
   ];
 }
 

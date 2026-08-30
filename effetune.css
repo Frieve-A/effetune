@@ -376,7 +376,7 @@ input[type="checkbox"] + label::before {
 .tab-switcher {
     position: absolute;
     left: 0;
-    top: 5px;
+    top: 0;
     display: flex;
     gap: 5px;
 }
@@ -407,14 +407,14 @@ input[type="checkbox"] + label::before {
 .plugin-list-header h2 {
     position: absolute;
     left: 0;
-    top: 5px;
+    top: 0;
     margin: 0;
 }
 
 .effect-search-input {
     position: absolute;
     left: 0;
-    top: 4px;
+    top: 0;
     width: calc(100% - 34px);
     height: 26px;
     box-sizing: border-box;
@@ -430,7 +430,7 @@ input[type="checkbox"] + label::before {
 .search-button {
     position: absolute;
     right: 0;
-    top: 5px;
+    top: 0;
     padding: 4px 8px;
     background-color: #4d4d4d;
     border: 1px solid #5d5d5d;
@@ -857,15 +857,81 @@ body.layout-mobile #pipelineStats {
     color: #ffffff;
 }
 
+/* The app-owned listbox restores the standard EffeTune dropdown used by the
+   pipeline preset control before v2.7. Native select popups do not expose their
+   scrollbar parts to the application's shared scrollbar rules. */
+.standard-select-list {
+    position: fixed;
+    display: block;
+    box-sizing: border-box;
+    max-height: 480px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background-color: #373737;
+    border: 1px solid #565656;
+    border-radius: 4px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
+    z-index: 10000;
+}
+
+.standard-select-list[hidden] {
+    display: none;
+}
+
+.standard-select-option {
+    display: block;
+    width: 100%;
+    min-height: 30px;
+    padding: 6px 8px;
+    overflow: hidden;
+    border: 0;
+    background: transparent;
+    color: #ffffff;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.standard-select-option:hover,
+.standard-select-option.active {
+    background-color: #454545;
+}
+
+.standard-select-option[aria-selected="true"] {
+    background-color: var(--et-accent-pressed);
+}
+
+.standard-select-option:disabled {
+    color: var(--et-text-muted);
+    cursor: default;
+}
+
 .pipeline-header-right {
     display: flex;
     align-items: center;
     margin-left: auto;
-    gap: 10px 0px;
+    gap: 10px;
 }
 
-.pipeline-preset-controls {
-    display: contents;
+.pipeline-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.pipeline-header-right .undo-button,
+.pipeline-header-right .redo-button,
+.pipeline-header-right .cut-button,
+.pipeline-header-right .copy-button,
+.pipeline-header-right .paste-button,
+.pipeline-header-right .share-button,
+.pipeline-header-right .pipeline-analyzer-button,
+.pipeline-header-right .column-control-button {
+    margin-left: 0;
+    margin-right: 0;
 }
 
 /* Pipeline toggle and menu styles */
@@ -1304,6 +1370,37 @@ body.layout-mobile .plugin-parameter-ui .parameter-row:has(> input[type="number"
     display: block;
     max-width: 100%;
     height: auto;
+}
+
+.plugin-parameter-ui .graph-axis-titled::before,
+.plugin-parameter-ui .graph-axis-titled::after,
+.plugin-parameter-ui .spectrum-overlay-axis-title {
+    position: absolute;
+    z-index: 3;
+    color: #fff;
+    font: 14px/1 Arial, sans-serif;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.plugin-parameter-ui .graph-axis-titled::after {
+    content: attr(data-x-axis-title);
+    left: 50%;
+    bottom: 2px;
+    transform: translateX(-50%);
+}
+
+.plugin-parameter-ui .graph-axis-titled::before {
+    content: attr(data-y-axis-title);
+    left: 10px;
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(-90deg);
+}
+
+body.layout-mobile .plugin-parameter-ui .graph-axis-titled::before,
+body.layout-mobile .plugin-parameter-ui .graph-axis-titled::after,
+body.layout-mobile .plugin-parameter-ui .spectrum-overlay-axis-title {
+    font-size: 13px;
 }
 
 /* Error Display */
@@ -3524,7 +3621,11 @@ input[type="radio"]:disabled {
     box-shadow: 0 3px 10px rgba(255, 107, 107, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
 }
 
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-marker {
+.fifteen-band-peq-plugin-ui .fifteen-band-peq-marker,
+.five-band-peq-plugin-ui .five-band-peq-marker,
+.five-band-fir-peq-plugin-ui .five-band-fir-peq-marker,
+.room-eq-additional-eq-ui .room-eq-additional-eq-marker,
+.group-delay-peq-plugin-ui .group-delay-peq-marker {
     background: radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.38), transparent 26%), linear-gradient(180deg, #585d64, #41464d);
     border-color: #777e87;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.13);
@@ -3532,7 +3633,15 @@ input[type="radio"]:disabled {
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-marker:hover,
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-marker.active {
+.fifteen-band-peq-plugin-ui .fifteen-band-peq-marker.active,
+.five-band-peq-plugin-ui .five-band-peq-marker:hover,
+.five-band-peq-plugin-ui .five-band-peq-marker.active,
+.five-band-fir-peq-plugin-ui .five-band-fir-peq-marker:hover,
+.five-band-fir-peq-plugin-ui .five-band-fir-peq-marker.active,
+.room-eq-additional-eq-ui .room-eq-additional-eq-marker:hover,
+.room-eq-additional-eq-ui .room-eq-additional-eq-marker.active,
+.group-delay-peq-plugin-ui .group-delay-peq-marker:hover,
+.group-delay-peq-plugin-ui .group-delay-peq-marker.active {
     background: radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.46), transparent 28%), linear-gradient(180deg, var(--et-accent-hover), var(--et-accent-pressed));
     border-color: #aad8ff;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.38), 0 0 18px rgba(74, 158, 255, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.20);

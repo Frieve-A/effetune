@@ -1481,9 +1481,14 @@ class PluginProcessor extends AudioWorkletProcessor {
                 case 'setSpectrumTap':
                     if (data.enabled) {
                         this.spectrumTaps.add(data.pluginId);
-                        if (!this.spectrumTapState.has(data.pluginId)) {
+                        const mode = data.mode === 'compare' ? 'compare' : 'after';
+                        const state = this.spectrumTapState.get(data.pluginId);
+                        if (!state || state.mode !== mode) {
                             this.spectrumTapState.set(data.pluginId, {
-                                buffer: new Float32Array(4096), position: 0
+                                mode,
+                                inputBuffer: mode === 'compare' ? new Float32Array(4096) : null,
+                                outputBuffer: new Float32Array(4096),
+                                position: 0
                             });
                         }
                     } else {
@@ -5058,6 +5063,22 @@ class PluginProcessor extends AudioWorkletProcessor {
                  // Result will be written back from tempBuffer later
             }
 
+            const spectrumTap = tapsActive && this.spectrumTaps.has(plugin.id)
+                ? this.spectrumTapState.get(plugin.id)
+                : null;
+            if (spectrumTap?.inputBuffer) {
+                const scale = 1 / numProcessingChannels;
+                let position = spectrumTap.position;
+                for (let frame = 0; frame < blockSize; frame++) {
+                    let sum = processingBuffer[frame];
+                    for (let channel = 1; channel < numProcessingChannels; channel++) {
+                        sum += processingBuffer[channel * blockSize + frame];
+                    }
+                    spectrumTap.inputBuffer[position] = sum * scale;
+                    position = (position + 1) & 4095;
+                }
+            }
+
             // --- 9d. Execute Plugin Processor Function ---
             if (!executionBypassed) processedPlugin = true;
             let result = processingBuffer;
@@ -5175,27 +5196,35 @@ class PluginProcessor extends AudioWorkletProcessor {
 
              if (!finalResultBuffer) continue; // Skip if result is invalid
 
-             if (tapsActive && this.spectrumTaps.has(plugin.id)) {
-                 const state = this.spectrumTapState.get(plugin.id);
+             if (spectrumTap) {
                  const scale = 1 / numProcessingChannels;
                  for (let frame = 0; frame < blockSize; frame++) {
                      let sum = finalResultBuffer[frame];
                      for (let channel = 1; channel < numProcessingChannels; channel++) {
                          sum += finalResultBuffer[channel * blockSize + frame];
                      }
-                     state.buffer[state.position] = sum * scale;
-                     state.position = (state.position + 1) & 4095;
-                     if ((state.position & 2047) === 0 &&
+                     spectrumTap.outputBuffer[spectrumTap.position] = sum * scale;
+                     spectrumTap.position = (spectrumTap.position + 1) & 4095;
+                     if ((spectrumTap.position & 2047) === 0 &&
                          !(this.powerPolicy.enabled && !this.powerPolicy.uiTelemetryEnabled)) {
                          // Keep spectrum messages independent of plugin measurement throttling.
-                         port.postMessage({
+                         const outputBuffer = Float32Array.from(spectrumTap.outputBuffer);
+                         const message = {
                              type: 'spectrumOverlay',
                              spectrumPluginId: plugin.id,
-                             buffer: Float32Array.from(state.buffer),
-                             bufferPosition: state.position,
+                             mode: spectrumTap.mode,
+                             outputBuffer,
+                             bufferPosition: spectrumTap.position,
                              sampleRate,
                              time: currentTime
-                         });
+                         };
+                         const transfer = [outputBuffer.buffer];
+                         if (spectrumTap.inputBuffer) {
+                             const inputBuffer = Float32Array.from(spectrumTap.inputBuffer);
+                             message.inputBuffer = inputBuffer;
+                             transfer.unshift(inputBuffer.buffer);
+                         }
+                         port.postMessage(message, transfer);
                      }
                  }
              }

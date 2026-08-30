@@ -1,21 +1,62 @@
 // electron/file-utils.js
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+
+function openTemporarySaveFile(filePath) {
+  const directory = path.dirname(filePath);
+  const baseName = path.basename(filePath);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const temporaryPath = path.join(
+      directory,
+      `.${baseName}.${process.pid}.${crypto.randomUUID()}.tmp`
+    );
+    try {
+      return { descriptor: fs.openSync(temporaryPath, 'wx'), temporaryPath };
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+    }
+  }
+  throw new Error('Unable to create a temporary save file');
+}
 
 // Save file
 async function saveFile(filePath, content) {
+  let descriptor = null;
+  let temporaryPath = null;
   try {
     // Check if content is a base64 string (from binary file)
-    if (typeof content === 'string' && content.match(/^[A-Za-z0-9+/=]+$/)) {
-      // Convert base64 to buffer
-      const buffer = Buffer.from(content, 'base64');
-      fs.writeFileSync(filePath, buffer);
-    } else {
-      // Regular text content
-      fs.writeFileSync(filePath, content);
-    }
+    const data = typeof content === 'string' && content.match(/^[A-Za-z0-9+/=]+$/)
+      ? Buffer.from(content, 'base64')
+      : content;
+
+    const temporaryFile = openTemporarySaveFile(filePath);
+    descriptor = temporaryFile.descriptor;
+    temporaryPath = temporaryFile.temporaryPath;
+    fs.writeFileSync(descriptor, data);
+    fs.fsyncSync(descriptor);
+    fs.closeSync(descriptor);
+    descriptor = null;
+    fs.renameSync(temporaryPath, filePath);
+    temporaryPath = null;
     return { success: true };
   } catch (error) {
+    if (descriptor !== null) {
+      try {
+        fs.closeSync(descriptor);
+      } catch (closeError) {
+        console.warn('Failed to close temporary save file:', closeError);
+      }
+    }
+    if (temporaryPath !== null) {
+      try {
+        fs.unlinkSync(temporaryPath);
+      } catch (cleanupError) {
+        if (cleanupError.code !== 'ENOENT') {
+          console.warn('Failed to remove temporary save file:', cleanupError);
+        }
+      }
+    }
     console.error('Error saving file:', error);
     return { success: false, error: error.message };
   }

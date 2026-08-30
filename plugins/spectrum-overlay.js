@@ -4,10 +4,18 @@
     const DYNAMIC_RANGE_DB = -96;
     const POWER_FLOOR = 1e-24;
     const NUMERIC_FLOOR_DB = 10 * Math.log10(POWER_FLOOR);
-    const CORRECTION_AC = 10 * Math.log10(16);
-    const CORRECTION_DC = 10 * Math.log10(4);
+    const POWER_CORRECTION_AC = 16;
+    const POWER_CORRECTION_DC = 4;
+    const SMOOTHING_EDGE_RATIO = 2 ** (1 / 24);
+    const MODE_OFF = 'off';
+    const MODE_AFTER = 'after';
+    const MODE_COMPARE = 'compare';
+    const AFTER_STROKE = 'rgba(140,190,255,0.55)';
+    const COMPARE_STROKE = 'rgba(190,190,190,0.9)';
+    const POSITIVE_FILL = 'rgba(255,190,140,0.55)';
+    const NEGATIVE_FILL = AFTER_STROKE;
     const instances = new Map();
-    const sessionEnabled = new Map();
+    const sessionModes = new Map();
 
     const targets = new Map([
         ['BandPassFilterPlugin', ['band-pass-filter-graph', 10, 40000]],
@@ -69,6 +77,9 @@
             const cos = new Float32Array(FFT_SIZE);
             const sin = new Float32Array(FFT_SIZE);
             const reverse = new Uint16Array(FFT_SIZE);
+            const power = new Float64Array(FFT_SIZE >> 1);
+            const smoothingFirst = new Uint16Array(FFT_SIZE >> 1);
+            const smoothingEnd = new Uint16Array(FFT_SIZE >> 1);
             for (let i = 0; i < FFT_SIZE; i++) {
                 const angle = 2 * Math.PI / FFT_SIZE * i;
                 window[i] = 0.5 * (1 - Math.cos(angle));
@@ -79,9 +90,20 @@
                     reverse[i] = (reverse[i] << 1) | (bits & 1);
                 }
             }
-            fftWorkspace = { real, imag, window, cos, sin, reverse };
+            for (let i = 0; i < power.length; i++) {
+                smoothingFirst[i] = Math.ceil(i / SMOOTHING_EDGE_RATIO);
+                const end = Math.floor(i * SMOOTHING_EDGE_RATIO) + 1;
+                smoothingEnd[i] = end < power.length ? end : power.length;
+            }
+            fftWorkspace = {
+                real, imag, window, cos, sin, reverse,
+                power, smoothingFirst, smoothingEnd
+            };
         }
-        const { real, imag, window, cos, sin, reverse } = fftWorkspace;
+        const {
+            real, imag, window, cos, sin, reverse,
+            power, smoothingFirst, smoothingEnd
+        } = fftWorkspace;
         imag.fill(0);
         for (let i = 0; i < FFT_SIZE; i++) {
             real[reverse[i]] = buffer[(bufferPosition + i) & (FFT_SIZE - 1)] * window[i];
@@ -102,11 +124,24 @@
                 }
             }
         }
-        const spectrum = new Float32Array(FFT_SIZE >> 1);
+        for (let i = 0; i < power.length; i++) {
+            const correction = i === 0 ? POWER_CORRECTION_DC : POWER_CORRECTION_AC;
+            power[i] = (real[i] * real[i] + imag[i] * imag[i] + POWER_FLOOR) * correction;
+        }
+
+        // The precomputed bin bounds form a 1/12-octave-wide rectangular window.
+        // A moving sum keeps smoothing linear and avoids per-bin neighborhood scans during paint.
+        const spectrum = new Float32Array(power.length);
+        let first = 0;
+        let end = 0;
+        let sum = 0;
         for (let i = 0; i < spectrum.length; i++) {
-            const db = 10 * Math.log10(real[i] * real[i] + imag[i] * imag[i] + POWER_FLOOR) +
-                (i === 0 ? CORRECTION_DC : CORRECTION_AC);
-            spectrum[i] = db;
+            const targetEnd = smoothingEnd[i];
+            while (end < targetEnd) sum += power[end++];
+            const targetFirst = smoothingFirst[i];
+            while (first < targetFirst) sum -= power[first++];
+            const average = sum / (targetEnd - targetFirst);
+            spectrum[i] = 10 * Math.log10(average > POWER_FLOOR ? average : POWER_FLOOR);
         }
         return spectrum;
     }
@@ -117,6 +152,7 @@
             this.mount = mount;
             this.target = target;
             mount.style.setProperty('--spectrum-overlay-inset', `${target.inset}px`);
+            this.mode = MODE_OFF;
             this.enabled = false;
             this.visible = true;
             this.active = false;
@@ -125,8 +161,14 @@
             this.animationId = null;
             this.retryTimer = null;
             this.canvas = null;
+            this.axisTitle = null;
             this.pending = null;
+            this.inputLevels = null;
             this.levels = null;
+            this.differenceX = null;
+            this.differenceBeforeY = null;
+            this.differenceAfterY = null;
+            this.differenceValue = null;
             this.lastReceived = 0;
             this.lastFrame = 0;
             this.onMessage = event => this.onSpectrumMessage(event.data);
@@ -150,14 +192,22 @@
         }
 
         _updateButton() {
-            const label = this.enabled ? 'Hide spectrum' : 'Show spectrum';
-            this.button.setAttribute('aria-pressed', String(this.enabled));
+            const label = this.mode === MODE_OFF
+                ? 'Show After spectrum'
+                : this.mode === MODE_AFTER
+                    ? 'Show Before and After spectra'
+                    : 'Hide spectra';
+            const pressed = this.mode === MODE_COMPARE ? 'mixed' : String(this.enabled);
+            this.button.setAttribute('data-spectrum-mode', this.mode);
+            this.button.setAttribute('aria-pressed', pressed);
             this.button.setAttribute('aria-label', label);
             this.button.title = label;
         }
 
         _post(type, enabled) {
-            this.node?.port.postMessage({ type, pluginId: this.plugin.id, enabled });
+            const message = { type, pluginId: this.plugin.id, enabled };
+            if (type === 'setSpectrumTap' && enabled) message.mode = this.mode;
+            this.node?.port.postMessage(message);
         }
 
         _ensureNode() {
@@ -175,28 +225,43 @@
             }
         }
 
-        enable() {
-            if (this.disposed || this.enabled) return;
-            this.enabled = true;
-            sessionEnabled.set(this.plugin.id, true);
+        setMode(mode) {
+            if (this.disposed || ![MODE_OFF, MODE_AFTER, MODE_COMPARE].includes(mode) ||
+                this.mode === mode) return;
+            const wasEnabled = this.enabled;
+            const wasActive = this.active;
+            this.mode = mode;
+            this.enabled = mode !== MODE_OFF;
+            if (this.enabled) sessionModes.set(this.plugin.id, mode);
+            else sessionModes.delete(this.plugin.id);
             this._updateButton();
-            this._createCanvas();
-            this._sync();
+            this.pending = null;
+            this.inputLevels = null;
+            this.levels = null;
+            if (mode !== MODE_COMPARE) this._releaseDifferenceWorkspace();
+            if (this.enabled) {
+                if (!wasEnabled) this._createCanvas();
+                else if (wasActive) this._post('setSpectrumTap', true);
+                this._sync();
+            } else if (wasEnabled) {
+                this._sync();
+                this._post('setSpectrumTapRoute', false);
+                this._releaseDisplay();
+            }
+        }
+
+        enable() {
+            this.setMode(MODE_AFTER);
         }
 
         disable() {
-            if (this.disposed || !this.enabled) return;
-            this.enabled = false;
-            sessionEnabled.delete(this.plugin.id);
-            this._updateButton();
-            this._sync();
-            this._post('setSpectrumTapRoute', false);
-            this._releaseDisplay();
+            this.setMode(MODE_OFF);
         }
 
         toggle() {
-            if (this.enabled) this.disable();
-            else this.enable();
+            this.setMode(this.mode === MODE_OFF
+                ? MODE_AFTER
+                : this.mode === MODE_AFTER ? MODE_COMPARE : MODE_OFF);
         }
 
         _suspend() {
@@ -255,6 +320,13 @@
             canvas.setAttribute('aria-hidden', 'true');
             canvas.style.inset = `${this.target.inset}px`;
             this.mount.appendChild(canvas);
+            if (this.target.inset) {
+                const axisTitle = this.axisTitle = document.createElement('div');
+                axisTitle.className = 'spectrum-overlay-axis-title';
+                axisTitle.textContent = 'Level (dBFS)';
+                axisTitle.setAttribute('aria-hidden', 'true');
+                this.mount.appendChild(axisTitle);
+            }
             this.resizeObserver = new ResizeObserver(entries => {
                 if (this.disposed || !this.canvas) return;
                 const { width, height } = entries[0].contentRect;
@@ -276,15 +348,19 @@
 
         onSpectrumMessage(data) {
             if (!this.active || data.type !== 'spectrumOverlay' ||
-                data.spectrumPluginId !== this.plugin.id) return;
+                data.spectrumPluginId !== this.plugin.id ||
+                (data.mode && data.mode !== this.mode)) return;
             this.pending = data;
             this.lastReceived = performance.now();
         }
 
         _draw() {
             if (this.pending) {
-                const { buffer, bufferPosition, sampleRate } = this.pending;
-                this.levels = analyze(buffer, bufferPosition, sampleRate);
+                const { inputBuffer, outputBuffer, buffer, bufferPosition, sampleRate } = this.pending;
+                this.inputLevels = inputBuffer
+                    ? analyze(inputBuffer, bufferPosition, sampleRate)
+                    : null;
+                this.levels = analyze(outputBuffer || buffer, bufferPosition, sampleRate);
                 this.sampleRate = sampleRate;
                 this.pending = null;
             }
@@ -298,28 +374,44 @@
                 return;
             }
             if (performance.now() - this.lastReceived > 500) {
-                for (let i = 0; i < this.levels.length; i++) {
-                    const faded = this.levels[i] - 4;
-                    this.levels[i] = faded < NUMERIC_FLOOR_DB ? NUMERIC_FLOOR_DB : faded;
-                }
+                if (this.inputLevels) this._fade(this.inputLevels);
+                this._fade(this.levels);
             }
+            if (this.mode === MODE_COMPARE && this.inputLevels) {
+                this._drawDifference(ctx, this.inputLevels, this.levels);
+                this._drawSpectrum(ctx, this.levels, COMPARE_STROKE);
+            } else {
+                this._drawSpectrum(ctx, this.levels, AFTER_STROKE);
+            }
+            this._drawScale(ctx);
+        }
+
+        _fade(levels) {
+            for (let i = 0; i < levels.length; i++) {
+                const faded = levels[i] - 4;
+                levels[i] = faded < NUMERIC_FLOOR_DB ? NUMERIC_FLOOR_DB : faded;
+            }
+        }
+
+        _drawSpectrum(ctx, levels, strokeStyle) {
+            const { width, height } = this.canvas;
             const { minFreq, maxFreq } = this.target;
             const logMin = Math.log10(minFreq);
             const logRange = Math.log10(maxFreq) - logMin;
             ctx.beginPath();
             let started = false;
-            for (let i = 1; i < this.levels.length; i++) {
+            for (let i = 1; i < levels.length; i++) {
                 const frequency = i * this.sampleRate / FFT_SIZE;
                 if (frequency < minFreq) continue;
                 if (frequency > maxFreq) break;
                 const x = width * (Math.log10(frequency) - logMin) / logRange;
-                const level = this.levels[i] > 0 ? 0 : this.levels[i];
+                const level = levels[i] > 0 ? 0 : levels[i];
                 const y = height * level / DYNAMIC_RANGE_DB;
                 if (!started) {
                     let startLevel = level;
                     if (i > 1 && frequency > minFreq) {
                         const previousFrequency = (i - 1) * this.sampleRate / FFT_SIZE;
-                        const previousLevel = this.levels[i - 1] > 0 ? 0 : this.levels[i - 1];
+                        const previousLevel = levels[i - 1] > 0 ? 0 : levels[i - 1];
                         const fraction = (logMin - Math.log10(previousFrequency)) /
                             (Math.log10(frequency) - Math.log10(previousFrequency));
                         startLevel = previousLevel + (level - previousLevel) * fraction;
@@ -331,11 +423,122 @@
                 ctx.lineTo(x, y);
             }
             if (started) {
-                ctx.strokeStyle = 'rgba(140,190,255,0.55)';
+                ctx.strokeStyle = strokeStyle;
                 ctx.lineWidth = window.devicePixelRatio || 1;
                 ctx.stroke();
             }
-            this._drawScale(ctx);
+        }
+
+        _drawDifference(ctx, beforeLevels, afterLevels) {
+            const length = beforeLevels.length < afterLevels.length
+                ? beforeLevels.length : afterLevels.length;
+            if (length < 2) return;
+            const capacity = length + 1;
+            if (!this.differenceX || this.differenceX.length < capacity) {
+                this.differenceX = new Float32Array(capacity);
+                this.differenceBeforeY = new Float32Array(capacity);
+                this.differenceAfterY = new Float32Array(capacity);
+                this.differenceValue = new Float32Array(capacity);
+            }
+            const { width, height } = this.canvas;
+            const { minFreq, maxFreq } = this.target;
+            const logMin = Math.log10(minFreq);
+            const logRange = Math.log10(maxFreq) - logMin;
+            let count = 0;
+            for (let i = 1; i < length; i++) {
+                const frequency = i * this.sampleRate / FFT_SIZE;
+                if (frequency < minFreq) continue;
+                if (frequency > maxFreq) break;
+                const beforeLevel = beforeLevels[i] > 0 ? 0 : beforeLevels[i];
+                const afterLevel = afterLevels[i] > 0 ? 0 : afterLevels[i];
+                if (count === 0) {
+                    let startBefore = beforeLevel;
+                    let startAfter = afterLevel;
+                    if (i > 1 && frequency > minFreq) {
+                        const previousFrequency = (i - 1) * this.sampleRate / FFT_SIZE;
+                        const fraction = (logMin - Math.log10(previousFrequency)) /
+                            (Math.log10(frequency) - Math.log10(previousFrequency));
+                        const previousBefore = beforeLevels[i - 1] > 0 ? 0 : beforeLevels[i - 1];
+                        const previousAfter = afterLevels[i - 1] > 0 ? 0 : afterLevels[i - 1];
+                        startBefore = previousBefore + (beforeLevel - previousBefore) * fraction;
+                        startAfter = previousAfter + (afterLevel - previousAfter) * fraction;
+                    }
+                    this.differenceX[count] = 0;
+                    this.differenceBeforeY[count] = height * startBefore / DYNAMIC_RANGE_DB;
+                    this.differenceAfterY[count] = height * startAfter / DYNAMIC_RANGE_DB;
+                    this.differenceValue[count] = startAfter - startBefore;
+                    count++;
+                }
+                this.differenceX[count] = width * (Math.log10(frequency) - logMin) / logRange;
+                this.differenceBeforeY[count] = height * beforeLevel / DYNAMIC_RANGE_DB;
+                this.differenceAfterY[count] = height * afterLevel / DYNAMIC_RANGE_DB;
+                this.differenceValue[count] = afterLevel - beforeLevel;
+                count++;
+            }
+            if (count < 2) return;
+
+            let regionStart = 0;
+            let regionSign = this.differenceValue[0] > 0 ? 1 :
+                this.differenceValue[0] < 0 ? -1 : 0;
+            let startCrossX = NaN;
+            let startCrossY = NaN;
+            for (let i = 1; i < count; i++) {
+                const value = this.differenceValue[i];
+                const sign = value > 0 ? 1 : value < 0 ? -1 : 0;
+                if (sign === 0) continue;
+                if (regionSign === 0) {
+                    regionSign = sign;
+                    continue;
+                }
+                if (sign === regionSign) continue;
+                const previous = i - 1;
+                const previousValue = this.differenceValue[previous];
+                const fraction = previousValue === 0
+                    ? 0
+                    : previousValue / (previousValue - value);
+                const crossX = this.differenceX[previous] +
+                    (this.differenceX[i] - this.differenceX[previous]) * fraction;
+                const crossY = this.differenceAfterY[previous] +
+                    (this.differenceAfterY[i] - this.differenceAfterY[previous]) * fraction;
+                this._fillDifferenceRegion(
+                    ctx, regionStart, previous, regionSign,
+                    startCrossX, startCrossY, crossX, crossY
+                );
+                regionStart = i;
+                regionSign = sign;
+                startCrossX = crossX;
+                startCrossY = crossY;
+            }
+            if (regionSign !== 0) {
+                this._fillDifferenceRegion(
+                    ctx, regionStart, count - 1, regionSign,
+                    startCrossX, startCrossY, NaN, NaN
+                );
+            }
+        }
+
+        _fillDifferenceRegion(ctx, start, end, sign, startCrossX, startCrossY, endCrossX, endCrossY) {
+            ctx.beginPath();
+            if (Number.isFinite(startCrossX)) ctx.moveTo(startCrossX, startCrossY);
+            else ctx.moveTo(this.differenceX[start], this.differenceAfterY[start]);
+            for (let i = start; i <= end; i++) {
+                ctx.lineTo(this.differenceX[i], this.differenceAfterY[i]);
+            }
+            if (Number.isFinite(endCrossX)) ctx.lineTo(endCrossX, endCrossY);
+            for (let i = end; i >= start; i--) {
+                ctx.lineTo(this.differenceX[i], this.differenceBeforeY[i]);
+            }
+            if (Number.isFinite(startCrossX)) ctx.lineTo(startCrossX, startCrossY);
+            ctx.closePath();
+            ctx.fillStyle = sign > 0 ? POSITIVE_FILL : NEGATIVE_FILL;
+            ctx.fill();
+        }
+
+        _releaseDifferenceWorkspace() {
+            this.differenceX = null;
+            this.differenceBeforeY = null;
+            this.differenceAfterY = null;
+            this.differenceValue = null;
         }
 
         _drawScale(ctx) {
@@ -350,14 +553,16 @@
             for (let level = -24; level > DYNAMIC_RANGE_DB; level -= 24) {
                 ctx.fillText(String(level), width - (axisFontSize + 8) * dpr, height * level / DYNAMIC_RANGE_DB);
             }
-            ctx.font = `${axisFontSize * dpr}px Arial`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'alphabetic';
-            ctx.save();
-            ctx.translate(width - 4 * dpr, height / 2);
-            ctx.rotate(-Math.PI / 2);
-            ctx.fillText('Level (dBFS)', 0, 0);
-            ctx.restore();
+            if (!this.target.inset) {
+                ctx.font = `${axisFontSize * dpr}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'alphabetic';
+                ctx.save();
+                ctx.translate(width - 4 * dpr, height / 2);
+                ctx.rotate(-Math.PI / 2);
+                ctx.fillText('Level (dBFS)', 0, 0);
+                ctx.restore();
+            }
         }
 
         _releaseDisplay() {
@@ -371,8 +576,12 @@
             this.node = null;
             this.canvas?.remove();
             this.canvas = null;
+            this.axisTitle?.remove();
+            this.axisTitle = null;
             this.pending = null;
+            this.inputLevels = null;
             this.levels = null;
+            this._releaseDifferenceWorkspace();
             this.visible = true;
         }
 
@@ -414,7 +623,8 @@
             }
             const instance = new SpectrumOverlayInstance(plugin, mount, target);
             instances.set(plugin.id, instance);
-            if (sessionEnabled.get(plugin.id)) instance.enable();
+            const sessionMode = sessionModes.get(plugin.id);
+            if (sessionMode) instance.setMode(sessionMode);
             return instance;
         },
         detach(pluginId) {

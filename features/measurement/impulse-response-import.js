@@ -104,7 +104,7 @@ export function createImpulseResponseMeasurement({
         sweepMaxFreq,
         points: [],
         nextPointId: channels.length === 1 ? 1 : channels.length + 1,
-        correctionLowFreq: MIN_FREQUENCY,
+        correctionLowFreq: 80,
         correctionHighFreq: sweepMaxFreq,
         smoothing: 0.3,
         eqBandCount: 5,

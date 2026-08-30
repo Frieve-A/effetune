@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node scripts/dev-server.mjs",
     "start": "electron .",
-    "build:vendor": "node scripts/verify-sqlite-wasm-vendor.mjs && node scripts/build-music-metadata-vendor.mjs",
+    "build:vendor": "node scripts/verify-sqlite-wasm-vendor.mjs && node scripts/build-music-metadata-vendor.mjs && node scripts/build-offline-audio-encoders-vendor.mjs",
     "gen:dsp": "node scripts/gen-dsp-params.mjs",
     "build:dsp": "node scripts/build-dsp-wasm.mjs",
     "build:openhome-sidecar": "node scripts/build-openhome-sidecar.mjs",
@@ -267,6 +267,8 @@
     "npmRebuild": false
   },
   "dependencies": {
+    "@mediabunny/flac-encoder": "1.55.4",
+    "mediabunny": "1.55.4",
     "music-metadata": "^11.15.0"
   }
 }

@@ -21,12 +21,15 @@ uiTest('places one accessible Analyzer button directly after Share with dedicate
   const uiManagerSource = fs.readFileSync(new URL('../../js/ui-manager.js', import.meta.url), 'utf8');
 
   assert.equal(html.match(/id="pipelineAnalyzerButton"/g)?.length, 1);
-  assert.match(html, /id="shareButton"[^>]*>[^<]*<\/button>\s*<button[^>]*id="pipelineAnalyzerButton"[^>]*>.*?<\/button>/s);
+  assert.match(html, /id="shareButton"[^>]*aria-label="Share pipeline"[^>]*><svg[^>]*aria-hidden="true"/);
+  assert.match(html, /id="pipelinePresetButton"[\s\S]*?id="undoButton"[\s\S]*?id="redoButton"[\s\S]*?id="cutButton"[\s\S]*?id="copyButton"[\s\S]*?id="pasteButton"[\s\S]*?id="shareButton"[\s\S]*?id="pipelineAnalyzerButton"[\s\S]*?id="decreaseColumnsButton"[\s\S]*?id="increaseColumnsButton"/);
+  assert.equal(html.match(/class="pipeline-toolbar-group"/g)?.length, 6);
   assert.match(html, /id="pipelineAnalyzerButton"[^>]*aria-controls="pipelineAnalyzerPanel"[^>]*aria-expanded="false"[^>]*aria-pressed="false"/);
   assert.match(analyzerCss, /\.pipeline-analyzer-button\s*\{[^}]*margin-left:\s*5px;/s);
+  assert.match(analyzerCss, /\.pipeline-preset-button,\s*\.share-button,\s*\.pipeline-analyzer-button\s*\{[^}]*height:\s*24px;[^}]*padding:\s*4px 8px;/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-header\s*\{[^}]*padding:\s*20px 20px 10px;/s);
-  assert.match(analyzerCss, /body:not\(\.layout-mobile\) \.pipeline-header\s*\{[^}]*padding-top:\s*2px;/s);
-  assert.match(analyzerCss, /body:not\(\.layout-mobile\) \.pipeline-analyzer-header\s*\{[^}]*padding:\s*25px 20px 10px;/s);
+  assert.doesNotMatch(analyzerCss, /body:not\(\.layout-mobile\) \.pipeline-header\s*\{/);
+  assert.doesNotMatch(analyzerCss, /body:not\(\.layout-mobile\) \.pipeline-analyzer-header\s*\{/);
   assert.match(analyzerCss, /\.pipeline-analyzer-title\s*\{[^}]*font-size:\s*16px;[^}]*font-weight:\s*normal;/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-icon-button\s*\{[^}]*width:\s*24px;[^}]*height:\s*24px;/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-graph-shell\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*1024px;[^}]*aspect-ratio:\s*1024\s*\/\s*480;[^}]*min-height:\s*0;[^}]*margin:\s*10px auto;[^}]*border:\s*0;[^}]*border-radius:\s*0;[^}]*background:\s*#1a1a1a;/s);
@@ -211,8 +214,10 @@ class FakeElement {
 }
 
 function createFixture() {
+  const scrollCalls = [];
   const documentRef = {
     activeElement: null,
+    scrollingElement: { scrollWidth: 1800 },
     createElement: tagName => new FakeElement(documentRef, tagName),
     createElementNS: (_namespace, tagName) => new FakeElement(documentRef, tagName),
     getElementById: id => documentRef.body.querySelectorById(id),
@@ -247,6 +252,8 @@ function createFixture() {
   const windowRef = {
     ResizeObserver: FakeResizeObserver,
     matchMedia: () => ({ matches: narrow }),
+    requestAnimationFrame: callback => { callback(); return 1; },
+    scrollTo: options => scrollCalls.push(options),
     addEventListener: (type, listener) => windowListeners.set(type, listener),
     removeEventListener(type, listener) {
       if (windowListeners.get(type) === listener) windowListeners.delete(type);
@@ -254,10 +261,31 @@ function createFixture() {
   };
   return {
     documentRef, windowRef, main, pipeline, pipelineList, panel, button, windowListeners,
+    scrollCalls,
     setNarrow: value => { narrow = value; },
     observerDisconnected: () => observerDisconnected
   };
 }
+
+uiTest('scrolls to the right edge only when the Analyzer opens beside the desktop pipeline', () => {
+  const fixture = createFixture();
+  const ui = new PipelineAnalyzerUI({ documentRef: fixture.documentRef, windowRef: fixture.windowRef });
+
+  ui.setOpen(true);
+  assert.deepEqual(fixture.scrollCalls, [{ left: 1800, behavior: 'smooth' }]);
+
+  ui.setOpen(true);
+  assert.equal(fixture.scrollCalls.length, 1, 'an already-open Analyzer must not scroll again');
+
+  ui.setOpen(false);
+  ui.setOpen(true);
+  assert.equal(fixture.scrollCalls.length, 2, 'reopening the desktop Analyzer must reveal it again');
+
+  ui.setOpen(false);
+  fixture.setNarrow(true);
+  ui.setOpen(true);
+  assert.equal(fixture.scrollCalls.length, 2, 'the inline narrow layout must not scroll horizontally');
+});
 
 function setFormat(ui, channelCount = 2, sampleRate = 48000) {
   ui.setAudioFormat({ sampleRate, channelCount });

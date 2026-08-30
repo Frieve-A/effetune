@@ -550,7 +550,9 @@ class EarphoneCableSimPlugin extends PluginBase {
 
     // ---- Graph (grid + response SVG, modelled after 5Band PEQ) ----
     const graphContainer = document.createElement('div');
-    graphContainer.className = 'earphone-cable-sim-graph';
+    graphContainer.className = 'earphone-cable-sim-graph graph-axis-titled';
+    graphContainer.setAttribute('data-x-axis-title', 'Frequency (Hz)');
+    graphContainer.setAttribute('data-y-axis-title', 'Level (dB)');
 
     const gridSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     gridSvg.setAttribute('class', 'earphone-cable-sim-grid');

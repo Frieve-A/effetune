@@ -378,8 +378,8 @@ function installFakes(manager, calls, options = {}) {
     offlineWorkletNode: options.offlineWorkletNode ?? { id: 'offlineWorkletNode' },
     isOfflineProcessing: Boolean(options.isOfflineProcessing),
     isCancelled: Boolean(options.isCancelled),
-    async processAudioFile(file, pipeline, progressCallback) {
-      calls.push(['offline.processAudioFile', file, pipeline, progressCallback]);
+    async processAudioFile(file, pipeline, progressCallback, outputSettings) {
+      calls.push(['offline.processAudioFile', file, pipeline, progressCallback, outputSettings]);
       if (options.throwOfflineProcess) throw new Error('offline failed');
       return options.offlineResult ?? { type: 'audio/wav' };
     },
@@ -1960,8 +1960,17 @@ test('sets pipeline, master bypass, offline processing, encoding, and event faca
     await manager.setMasterBypass(true);
     assert.equal(calls.length, 0);
 
-    const processed = await manager.processAudioFile({ name: 'input.wav' }, progress => progress);
+    const outputSettings = { format: 'flac', sampleRate: 96000 };
+    const processed = await manager.processAudioFile(
+      { name: 'input.wav' },
+      progress => progress,
+      outputSettings
+    );
     assert.deepEqual(processed, { type: 'audio/wav' });
+    assert.equal(
+      calls.find(call => call[0] === 'offline.processAudioFile')[4],
+      outputSettings
+    );
     manager.cancelProcessing();
     assert.equal(manager.isCancelled, true);
     assert.deepEqual(manager.encodeWAV({ duration: 1 }), { wav: true, audioBuffer: { duration: 1 } });

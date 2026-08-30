@@ -11,7 +11,9 @@ A collection of plugins that let you adjust different aspects of your music's so
 <!-- spectrum-overlay -->
 ## Spectrum Overlay
 
-Press the spectrum icon on a compatible graph to overlay a faint spectrum line for the sound after that effect. Use it to see how each adjustment changes bass, mids, and treble while listening. Read the spectrum level on the dBFS scale at the right of the graph. It is separate from the graph's gain scale; 0 dBFS is the full-scale digital reference, and lower values are quieter. Spectrum analysis and drawing run only while the display is visible.
+Press the spectrum icon on a compatible graph to cycle through After, Before + After, and Off. After shows only the processed spectrum as a blue line. Before + After fills the change from the unprocessed spectrum to the processed spectrum: warm color marks frequencies whose level is higher after processing, blue marks frequencies whose level is lower, and a gray line marks the After spectrum. Both views use 1/12-octave smoothing to make high-frequency trends easier to read. Use the comparison to see how each adjustment changes bass, mids, and treble while listening. Read spectrum levels on the dBFS scale at the right of the graph. It is separate from the graph's gain scale; 0 dBFS is the full-scale digital reference, and lower values are quieter. Only the processed spectrum is collected in After mode; collection and drawing stop in Off.
+
+On the draggable point graphs in 5Band PEQ, 15Band PEQ, 5Band FIR PEQ, Group Delay PEQ, and Room EQ's Additional EQ, drag a point normally to change both axes. Hold Shift while dragging to lock the movement: start mostly sideways to change only Frequency, or mostly vertically to change only Level (Delay in Group Delay PEQ). Release Shift to return to free movement. Place the pointer over a point and scroll up to increase Q or down to decrease it.
 
 ## Plugin List
 
@@ -659,7 +661,7 @@ Room EQ creates FIR correction filters from frequency-response measurements save
 ### Sound Enhancement Guide
 
 - Measure the loudspeaker or channel group that you will route through one Room EQ instance from several nearby microphone positions, then select that saved measurement. Multiple points make the correction less dependent on one exact microphone position.
-- Start with **Phase: Minimum**, **Smoothing: 0.17 oct**, **Correction Low: 20 Hz**, **Correction High: 16000 Hz**, **Max Boost: 6 dB**, and **Level Correction: 100%**. Compare with the plugin's main on/off control to confirm that the result is more even without becoming unnaturally thin or bright.
+- Start with **Phase: Minimum**, **Smoothing: 0.17 oct**, **Correction Low: 80 Hz**, **Correction High: 16000 Hz**, **Max Boost: 6 dB**, and **Level Correction: 100%**. Compare with the plugin's main on/off control to confirm that the result is more even without becoming unnaturally thin or bright.
 - If the filter tries to fill narrow dips that change with microphone position, increase Smoothing or lower Max Boost. A value of 0 dB for Max Boost prevents automatic boosts while still allowing cuts to reduce peaks.
 - If full level correction sounds too strong, lower Level Correction. Because it scales each automatic correction value in dB, 50% changes a +6 dB correction to +3 dB and a -8 dB correction to -4 dB.
 - Limit Correction Low and Correction High to the range your loudspeaker and measurement microphone reproduce reliably. Correcting outside a trustworthy measurement range can make the result less accurate.

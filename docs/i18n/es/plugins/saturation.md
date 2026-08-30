@@ -11,7 +11,7 @@ Una colección de plugins que agregan calidez y carácter a tu música. Estos ef
 <!-- spectrum-overlay -->
 ## Superposición de espectro
 
-Pulsa el icono de espectro de un gráfico compatible para superponer una tenue línea de espectro del sonido después de pasar por ese efecto. Úsalo para ver cómo cada ajuste cambia graves, medios y agudos mientras escuchas. Lee el nivel del espectro en la escala dBFS a la derecha del gráfico. Es distinta de la escala de ganancia del gráfico; 0 dBFS es la referencia digital de escala completa y los valores inferiores son más silenciosos. El análisis y el dibujo del espectro se realizan solo mientras la visualización está visible.
+Pulsa el icono de espectro de un gráfico compatible para alternar entre After, Before + After y Off. After muestra solo el espectro procesado mediante una línea azul. Before + After rellena el cambio entre el espectro sin procesar y el procesado: el color cálido marca las frecuencias cuyo nivel aumenta tras el procesamiento, el azul marca las que disminuyen y una línea gris señala el espectro After. Ambas vistas aplican un suavizado de 1/12 de octava para que las tendencias de alta frecuencia sean más fáciles de leer. Usa la comparación para ver cómo cada ajuste cambia graves, medios y agudos mientras escuchas. Lee los niveles del espectro en la escala dBFS a la derecha del gráfico. Es distinta de la escala de ganancia del gráfico; 0 dBFS es la referencia digital de escala completa y los valores inferiores son más silenciosos. En After solo se recopila el espectro procesado; en Off se detienen la recopilación y el dibujo.
 
 ## Lista de Plugins
 

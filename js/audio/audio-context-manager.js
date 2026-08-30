@@ -620,19 +620,22 @@ export class AudioContextManager {
             // that CoreAudio hasn't finished initialising yet.  Use a timeout so that
             // a reconnect-triggered reset never freezes the app.  The HDMI retry
             // mechanism will restore audio once the device is ready.
+            // Issue a fresh attempt for every call. WebKit can leave a resume() made
+            // outside user activation pending, and reusing only that attempt would
+            // prevent a later user gesture from unlocking the context.
+            const resumeAttempt = this.audioContext.resume().catch(() => {});
             if (!this._resumePromise) {
-                const context = this.audioContext;
                 let timerId;
                 const operation = Promise.race([
-                    context.resume().finally(() => clearTimeout(timerId)),
+                    resumeAttempt.finally(() => clearTimeout(timerId)),
                     new Promise(resolve => { timerId = setTimeout(resolve, 10000); })
-                ]).catch(() => {});
+                ]);
                 const sharedPromise = operation.finally(() => {
                     if (this._resumePromise === sharedPromise) this._resumePromise = null;
                 });
                 this._resumePromise = sharedPromise;
             }
-            await this._resumePromise;
+            await Promise.race([this._resumePromise, resumeAttempt]);
             if (this.audioContext?.state !== 'running') {
                 console.warn('[AudioContext] resumeAudioContext: context not running after resume attempt, state:', this.audioContext?.state);
             } else {

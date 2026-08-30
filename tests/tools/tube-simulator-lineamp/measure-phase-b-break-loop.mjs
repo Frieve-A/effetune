@@ -1,12 +1,12 @@
 // Restored 2026-08-16 from git dangling blob 2a7ce5217db4d82868baea7a951373fa6899591f
-// (git fsck --lost-found; see tmp/dev/tube-magnetics-phase5-step0-report-20260816.md).
+// (git fsck --lost-found; see tmp/dev/tube-simulator/tube-magnetics-phase5-step0-report-20260816.md).
 // The original was isolated out of the tree on 2026-08-06 and the archived copy was
 // lost; only this comment header differs from the recovered bytes. Its runtime
 // dependency ./product-runtime.mjs is a 2026-08-16 reconstruction (the original is
 // unrecoverable), so re-measurements drive the CURRENT JS reference and are not
 // expected to reproduce the frozen phase-b-break-loop-v2.sha256 bit-exactly.
 // WARNING: running this script with no arguments OVERWRITES the local artifact.
-// The default output path is tmp/dev/tube-simulator-lineamp/lineamp-v1/
+// The default output path is tmp/dev/tube-simulator/tube-simulator-lineamp/lineamp-v1/
 // phase-b-break-loop-v2.json and a non---check run rewrites both it and its
 // .sha256, so the replacement is self-consistent and --check can no longer
 // detect it. That file is untracked (~6.9 MiB) and cannot be restored with git.

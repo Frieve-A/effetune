@@ -11,7 +11,7 @@ A collection of plugins for harmonic shaping and bandwidth restoration. They can
 <!-- spectrum-overlay -->
 ## Spectrum Overlay
 
-Press the spectrum icon on a compatible graph to overlay a faint spectrum line for the sound after that effect. Use it to see how each adjustment changes bass, mids, and treble while listening. Read the spectrum level on the dBFS scale at the right of the graph. It is separate from the graph's gain scale; 0 dBFS is the full-scale digital reference, and lower values are quieter. Spectrum analysis and drawing run only while the display is visible.
+Press the spectrum icon on a compatible graph to cycle through After, Before + After, and Off. After shows only the processed spectrum as a blue line. Before + After fills the change from the unprocessed spectrum to the processed spectrum: warm color marks frequencies whose level is higher after processing, blue marks frequencies whose level is lower, and a gray line marks the After spectrum. Both views use 1/12-octave smoothing to make high-frequency trends easier to read. Use the comparison to see how each adjustment changes bass, mids, and treble while listening. Read spectrum levels on the dBFS scale at the right of the graph. It is separate from the graph's gain scale; 0 dBFS is the full-scale digital reference, and lower values are quieter. Only the processed spectrum is collected in After mode; collection and drawing stop in Off.
 
 ## Plugin List
 

@@ -300,7 +300,7 @@ class MeasurementDisplay {
         // Determine values to use, prioritizing global settings over measurement-specific ones
         let lowFreq = (peqSettings && peqSettings.lowFreq) ? 
             this.uiManager.correctionHandler.logSliderToValue(peqSettings.lowFreq, 20, 1000) : 
-            (measurement.correctionLowFreq || 20);
+            (measurement.correctionLowFreq || 80);
             
         let highFreq = (peqSettings && peqSettings.highFreq) ? 
             this.uiManager.correctionHandler.logSliderToValue(peqSettings.highFreq, 1000, 20000) : 

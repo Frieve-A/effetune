@@ -20,6 +20,7 @@ import { copyTextToClipboard, readTextFromClipboard } from './utils/clipboard-ut
 import { LayoutModeManager } from './ui/layout-mode-manager.js';
 import { MobileMenu } from './ui/mobile-menu.js';
 import { MobileNav } from './ui/mobile-nav.js';
+import { MobileNumberKeypad } from './ui/mobile-number-keypad.js';
 import { LibraryManagerV2 } from './library/library-manager-v2.js';
 import { createWebCatalogRecoveryController } from './library/repository/catalog-client-factory.js';
 import { normalizeMusicLibraryStartupView } from './library/constants.js';
@@ -183,6 +184,13 @@ export class UIManager {
         this.stateManager = new StateManager(audioManager);
         this.mobileMenu = new MobileMenu(this);
         this.mobileNav = new MobileNav(this);
+        this.mobileNumberKeypad = new MobileNumberKeypad({
+            isEnabled: () => this.layoutMode.isMobile,
+            translate: (key, fallback) => {
+                const translated = this.t?.(key);
+                return translated && translated !== key ? translated : fallback;
+            }
+        });
         this.powerStateView = new PowerStateView({
             eventSource: this.audioManager,
             translate: (key, fallback) => {
@@ -198,6 +206,7 @@ export class UIManager {
             );
             this.pluginListManager.updatePositions();
             this.powerStateView?.refreshActions?.();
+            if (!this.layoutMode.isMobile) this.mobileNumberKeypad.cancel();
         });
 
         // Initialize UI elements
@@ -1177,11 +1186,9 @@ export class UIManager {
         this.renderLibraryRecoveryShell();
         this.libraryView?.updateUITexts?.();
         const shareButton = document.getElementById('shareButton');
-        if (shareButton) {
-            shareButton.textContent = this.t('ui.shareButton');
-        }
         this.stateManager?.updateLabels?.();
         this.mobileMenu?.updateLabels?.();
+        this.mobileNumberKeypad?.updateLabels?.();
         this.powerStateView?.redrawLanguage?.();
         if (this.doubleBlindTestButton) {
             this.doubleBlindTestButton.textContent = this.t('menu.doubleBlindTest');
@@ -1269,7 +1276,9 @@ export class UIManager {
         }
 
         if (shareButton) {
-            shareButton.title = this.t('ui.title.sharePipeline');
+            const title = this.t('ui.title.sharePipeline');
+            shareButton.title = title;
+            shareButton.setAttribute('aria-label', title);
         }
 
         const decreaseColumnsButton = document.getElementById('decreaseColumnsButton');

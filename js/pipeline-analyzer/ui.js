@@ -615,6 +615,7 @@ export class PipelineAnalyzerUI {
 
     setOpen(open, { notify = false } = {}) {
         if (!this.panel || !this.button) return;
+        const wasOpen = this.open;
         const returnFocus = !open && this.panel.contains(this.document.activeElement);
         this.open = Boolean(open);
         this.panel.hidden = !this.open;
@@ -622,9 +623,29 @@ export class PipelineAnalyzerUI {
         this.button.setAttribute('aria-expanded', String(this.open));
         this.button.setAttribute('aria-pressed', String(this.open));
         this.updateToggleText();
-        if (this.open) this.syncPlacement();
+        if (this.open) {
+            this.syncPlacement();
+            if (!wasOpen && !this.isNarrowLayout()) this.scrollToRightEdge();
+        }
         else if (returnFocus) this.button.focus({ preventScroll: true });
         if (notify) this.onOpenChange?.(this.open);
+    }
+
+    scrollToRightEdge() {
+        const scroll = () => {
+            if (!this.open || this.isNarrowLayout()) return;
+            const scrollingElement = this.document?.scrollingElement ||
+                this.document?.documentElement || this.document?.body;
+            this.window?.scrollTo?.({
+                left: Number(scrollingElement?.scrollWidth) || 0,
+                behavior: 'smooth'
+            });
+        };
+        if (typeof this.window?.requestAnimationFrame === 'function') {
+            this.window.requestAnimationFrame(scroll);
+        } else {
+            scroll();
+        }
     }
 
     setCollapsed(collapsed) {

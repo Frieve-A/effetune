@@ -33,6 +33,7 @@ Sem mitos audiófilos, apenas pura ciência.
 - Biblioteca de música para navegar por subpastas locais, metadados e playlists
 - Medição e correção de resposta em frequência para calibração do sistema
 - Processamento e saída multicanal
+- Teclado numérico móvel com ponto decimal, inversão de sinal e intervalo permitido para os parâmetros dos efeitos
 - Economia de energia nas versões Web/PWA e desktop, com tratamento configurável do silêncio e do tempo de retenção da entrada de áudio
 
 ## Guia de Configuração
@@ -122,6 +123,7 @@ Coleções grandes são carregadas do armazenamento em etapas; a velocidade de v
    - Para efeitos Section: Shift+clique no botão × para remover seções inteiras
 9. Clique no botão de roteamento para definir os canais a serem processados e os barramentos de entrada e saída  
    - [Mais sobre funções de bus](bus-function.md)
+   - [Controlar efeitos por MIDI, comando ou teclado](controller-mapping.md)
 10. Clique no botão Predefinições de efeito de cada efeito para salvar ou aplicar configurações apenas desse efeito
 11. Para ajustar um controle deslizante com precisão, mantenha a tecla Shift pressionada enquanto o arrasta; o valor muda uma unidade mínima de cada vez
 
@@ -213,14 +215,15 @@ Os recursos de importação, exportação e compartilhamento de arquivos `.effet
    - Uma área dedicada para soltar arquivos está sempre visível abaixo da área **Effect Pipeline**
    - Suporta um ou múltiplos arquivos de áudio
    - Os arquivos são processados usando as configurações da cadeia atual
-   - Todo o processamento é feito na taxa de amostragem da cadeia
+   - Os efeitos são processados na taxa de amostragem da cadeia; a conversão da saída é feita depois
 
 2. Status do Processamento:
    - A barra de progresso mostra o status atual do processamento
    - O tempo de processamento depende do tamanho do arquivo e da complexidade da cadeia de efeitos
 
 3. Opções de Download ou Salvamento:
-   - O arquivo processado é gerado no formato WAV
+   - Em **Settings > Config > Saída de arquivo offline**, escolha WAV ou FLAC, além da taxa de amostragem e da qualidade. No FLAC, escolha codificação sem perdas de 16 ou 24 bits. O valor inicial é WAV a 96 kHz com PCM de 24 bits
+   - Cada formato tem um limite de canais diferente. Se o arquivo ultrapassar o limite escolhido, o EffeTune para e mostra como resolver, sem mixar os canais automaticamente
    - Para vários arquivos, selecione uma pasta de saída antes do processamento; cada arquivo é salvo diretamente nessa pasta ao ser concluído
    - Em navegadores mais antigos sem suporte à seleção de pasta, vários arquivos são empacotados em um ZIP para download
 

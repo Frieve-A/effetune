@@ -16,6 +16,10 @@ import { getPluginExecutionCapabilities } from '../../js/audio/plugin-execution-
 
 const pluginUrl = new URL('../../plugins/eq/group_delay_peq.js', import.meta.url);
 const pluginSource = fs.readFileSync(pluginUrl, 'utf8');
+const graphPointInteractionSource = fs.readFileSync(
+    new URL('../../plugins/graph-point-interaction.js', import.meta.url),
+    'utf8'
+);
 const pluginCss = fs.readFileSync(
     new URL('../../plugins/eq/group_delay_peq.css', import.meta.url),
     'utf8'
@@ -226,7 +230,7 @@ function loadPlugin() {
         clearTimeout
     };
     vm.runInNewContext(
-        `${pluginSource}\nthis.Plugin = GroupDelayPEQPlugin;`,
+        `${graphPointInteractionSource}\n${pluginSource}\nthis.Plugin = GroupDelayPEQPlugin;`,
         context,
         { filename: pluginUrl.pathname }
     );
@@ -330,6 +334,25 @@ test('Group Delay PEQ starts flat and validates every band value', () => {
     assert.equal(plugin.tp, 32768);
     assert.equal(plugin.lt, '512');
     assert.equal(plugin._delayLimitMs(), 298.6);
+    plugin.cleanup();
+});
+
+test('Group Delay PEQ marker wheel updates Q and its controls', () => {
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    mountUI(plugin);
+    const marker = plugin.markers[0];
+    const qText = bandOf(plugin, 0).querySelector('.group-delay-peq-q-text');
+    let prevented = false;
+
+    marker.listeners.wheel[0]({
+        deltaY: -100,
+        preventDefault() { prevented = true; }
+    });
+
+    assert.equal(prevented, true);
+    assert.equal(plugin.q0, 0.74);
+    assert.equal(qText.value, '0.74');
     plugin.cleanup();
 });
 
@@ -949,6 +972,28 @@ test('Group Delay PEQ maps drag height to delay and widens rather than shrinks t
     assert.equal(plugin.activeDragMarker, null);
     assert.equal(plugin._scale.range, 5);
     assert.equal(plugin._scale.gridStep, 1);
+    plugin.cleanup();
+});
+
+test('Group Delay PEQ Shift-drag changes only frequency or delay', () => {
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    mountUI(plugin);
+    plugin._runtime = graphRuntime();
+    plugin.activeDragMarker = 0;
+    plugin.hasMoved = true;
+    plugin.setBand(0, { frequency: 1000, delayMs: 2 });
+
+    plugin._graphDragAxisLock = { startX: 512, startY: 240, axis: null };
+    plugin.handleDragMove({ clientX: 760, clientY: 270, shiftKey: true });
+    assert.notEqual(plugin.f0, 1000);
+    assert.equal(plugin.d0, 2);
+
+    plugin.setBand(0, { frequency: 1000, delayMs: 2 });
+    plugin._graphDragAxisLock = { startX: 512, startY: 240, axis: null };
+    plugin.handleDragMove({ clientX: 530, clientY: 80, shiftKey: true });
+    assert.equal(plugin.f0, 1000);
+    assert.notEqual(plugin.d0, 2);
     plugin.cleanup();
 });
 

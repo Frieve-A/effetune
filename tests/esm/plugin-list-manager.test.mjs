@@ -477,7 +477,7 @@ test('plugin item events add plugins at selected and appended positions', async 
     const item = manager.createPluginItem(plugin);
     dom.pluginList.appendChild(item);
 
-    await item.dispatchEvent('mousedown');
+    await item.dispatchEvent('mousedown', { button: 0 });
     assert.equal(manager.dragDropManager.dragMessage.style.display, 'block');
     await item.dispatchEvent('mouseenter');
     assert.equal(item.querySelector('.plugin-description').style.left, '150px');
@@ -569,7 +569,7 @@ test('plugin item events add plugins at selected and appended positions', async 
       }
     };
     manager.dragDropManager.dragMessage.style.display = 'none';
-    await item.dispatchEvent('mousedown');
+    await item.dispatchEvent('mousedown', { button: 0 });
     assert.equal(manager.dragDropManager.dragMessage.style.display, 'none');
     await item.dispatchEvent('pointerdown', {
       pointerId: 1,

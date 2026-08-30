@@ -17,6 +17,7 @@ import {
   setWebPowerSettingsApplyHandler,
   WebAppConfigRuntime
 } from '../../js/electron/webSettingsStorage.js';
+import { DEFAULT_OFFLINE_OUTPUT_SETTINGS } from '../../js/audio/offline-output-settings.js';
 import {
   createConsoleHarness,
   withGlobals
@@ -197,6 +198,7 @@ test('unavailable IndexedDB falls back to localStorage while audio preferences r
   console['warn'] = () => {};
   try {
     assert.deepEqual(await loadWebAppConfig(), {
+      offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS,
       powerSaving: {
         mode: 'balanced',
         silenceThresholdDb: -80,
@@ -438,6 +440,7 @@ test('an IndexedDB read failure repairs a stale mirror before the next localStor
       assert.deepEqual(await runtime.loadConfig(), {
         language: 'fr',
         startupView: 'library',
+        offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS,
         powerSaving: {
           mode: 'balanced',
           silenceThresholdDb: -80,
@@ -538,6 +541,7 @@ test('functional patches merge in one transaction and publish only after commit 
   assert.deepEqual(second.config, {
     language: 'fr',
     startupView: 'library',
+    offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS,
     powerSaving: {
       mode: 'balanced',
       silenceThresholdDb: -80,
@@ -910,4 +914,45 @@ test('AudioManager sends only the partial Web power patch through the runtime', 
     if (previousWindow === undefined) delete globalThis.window;
     else globalThis.window = previousWindow;
   }
+});
+
+test('Web config normalizes and round-trips offline output settings without mutating callers', async () => {
+  const { runtime, storage } = createRuntime();
+  const offlineOutput = {
+    format: 'mp3',
+    sampleRate: 96000,
+    wavSampleFormat: 'float32',
+    mp3BitrateKbps: 192,
+    m4aBitrateKbps: 320
+  };
+  await runtime.commitPatch({ offlineOutput });
+  offlineOutput.format = 'wav';
+
+  const loaded = await runtime.loadConfig();
+  assert.deepEqual(loaded.offlineOutput, {
+    format: 'wav',
+    sampleRate: 96000,
+    wavSampleFormat: 'pcm24',
+    flacSampleFormat: 'pcm24'
+  });
+  assert.deepEqual(
+    JSON.parse(storage.snapshot()[WEB_APP_CONFIG_KEY]).offlineOutput,
+    loaded.offlineOutput
+  );
+
+  const flacOutput = {
+    format: 'flac',
+    sampleRate: 48000,
+    wavSampleFormat: 'float32',
+    flacSampleFormat: 'pcm16'
+  };
+  await runtime.commitPatch({ offlineOutput: flacOutput });
+  flacOutput.flacSampleFormat = 'pcm24';
+  assert.deepEqual((await runtime.loadConfig()).offlineOutput, {
+    format: 'flac',
+    sampleRate: 48000,
+    wavSampleFormat: 'float32',
+    flacSampleFormat: 'pcm16'
+  });
+  await runtime.close();
 });

@@ -9,6 +9,10 @@ import { MeasurementStore } from '../../js/measurement-store/client.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const pluginSource = await fs.readFile(path.join(repoRoot, 'plugins', 'eq', 'room_eq.js'), 'utf8');
+const graphPointInteractionSource = await fs.readFile(
+    path.join(repoRoot, 'plugins', 'graph-point-interaction.js'),
+    'utf8'
+);
 const pluginCss = await fs.readFile(path.join(repoRoot, 'plugins', 'eq', 'room_eq.css'), 'utf8');
 
 function deferred() {
@@ -204,7 +208,11 @@ function loadPlugin() {
         globalThis: null
     });
     context.globalThis = context;
-    vm.runInContext(pluginSource, context, { filename: 'room_eq.js' });
+    vm.runInContext(
+        `${graphPointInteractionSource}\n${pluginSource}`,
+        context,
+        { filename: 'room_eq.js' }
+    );
     return { Plugin: window.RoomEqPlugin, context };
 }
 
@@ -820,6 +828,84 @@ test('Room EQ offers an external Graph radio row with separate group delay views
     );
     assert.match(pluginSource,
         /const container = this\._responseHoverContainer\(view\) \|\| editor\.responseSvg;/);
+});
+
+test('Room EQ defaults Correction Low to 80 Hz', () => {
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    assert.equal(plugin.fl, 80);
+    plugin.cleanup();
+});
+
+test('Room EQ Additional EQ Shift-drag changes only frequency or gain', () => {
+    const { Plugin, context } = loadPlugin();
+    const host = new Plugin();
+    const editor = context.window.RoomEqPlugin.createAdditionalEqEditor({
+        host,
+        id: 'room-eq-axis-lock',
+        bands: [{ frequency: 1000, gain: 4, q: 1, type: 'pk', enabled: true }]
+    });
+    editor.graphContainer = {
+        clientWidth: 1000,
+        clientHeight: 500,
+        getBoundingClientRect() {
+            return { left: 0, top: 0, width: this.clientWidth, height: this.clientHeight };
+        }
+    };
+    editor.activeDragMarker = 0;
+    editor.hasMoved = true;
+    editor.updateMarkers = () => {};
+    editor.updateResponse = () => {};
+    editor.setUIBandValues = () => {};
+
+    editor._graphDragAxisLock = { startX: 500, startY: 250, axis: null };
+    editor.handleDragMove({ clientX: 800, clientY: 300, shiftKey: true });
+    assert.notEqual(editor.f0, 1000);
+    assert.equal(editor.g0, 4);
+
+    editor.setBand(0, 1000, 4);
+    editor._graphDragAxisLock = { startX: 500, startY: 250, axis: null };
+    editor.handleDragMove({ clientX: 530, clientY: 80, shiftKey: true });
+    assert.equal(editor.f0, 1000);
+    assert.notEqual(editor.g0, 4);
+    editor.dispose();
+    host.cleanup();
+});
+
+test('Room EQ updates both axis titles for every response view', () => {
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    const attributes = {};
+    plugin._responseViewElements = {
+        graph: {
+            classList: { toggle() {} },
+            setAttribute(name, value) { attributes[name] = value; }
+        },
+        inputs: {},
+        hoverOverlay: { replaceChildren() {} },
+        cursorReadout: { textContent: '' },
+        legendItems: []
+    };
+    plugin._drawPhaseResponse = () => {};
+    plugin._drawGroupDelayResponse = () => {};
+    plugin._drawImpulseResponse = () => {};
+    plugin._additionalEqEditor = { updateMarkers() {}, updateResponse() {}, dispose() {} };
+
+    for (const [view, expected] of [
+        ['frequency', ['Frequency (Hz)', 'Level (dB)']],
+        ['phase', ['Frequency (Hz)', 'Phase (°)']],
+        ['minimumGroupDelay', ['Frequency (Hz)', 'Delay (ms)']],
+        ['excessGroupDelay', ['Frequency (Hz)', 'Delay (ms)']],
+        ['impulse', ['Time (ms)', 'Amplitude']]
+    ]) {
+        plugin._setResponseView(view);
+        assert.deepEqual(
+            [attributes['data-x-axis-title'], attributes['data-y-axis-title']],
+            expected,
+            view
+        );
+    }
+    plugin.cleanup();
 });
 
 test('Room EQ graph shows a color-matched legend in its upper-right corner', () => {

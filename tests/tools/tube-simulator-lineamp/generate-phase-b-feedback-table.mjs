@@ -1,5 +1,5 @@
 // Restored 2026-08-16 from git dangling blob 19b3374cf2f1421c9b5414dd6126b0613b7a90e1
-// (git fsck --lost-found; see tmp/dev/tube-magnetics-phase5-step0-report-20260816.md).
+// (git fsck --lost-found; see tmp/dev/tube-simulator/tube-magnetics-phase5-step0-report-20260816.md).
 // The original was isolated out of the tree on 2026-08-06 and the archived copy was
 // lost; only this comment header differs from the recovered bytes. Verified on
 // 2026-08-16 to reproduce all four current generated outputs byte-identically from

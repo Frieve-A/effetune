@@ -94,7 +94,7 @@ class RoomEqAdditionalEqEditor {
         sampleRate = 96000,
         bands = [],
         baseResponse = null,
-        correctionLowFrequency = 20,
+        correctionLowFrequency = 80,
         correctionHighFrequency = 20000,
         onChange
     } = {}) {
@@ -185,8 +185,10 @@ class RoomEqAdditionalEqEditor {
         graphContainer.style.margin = '10px auto';
 
         const graph = document.createElement('div');
-        graph.className = 'room-eq-additional-eq-graph';
+        graph.className = 'room-eq-additional-eq-graph graph-axis-titled';
         graph.id = `room-eq-additional-eq-graph-${this.id}`;
+        graph.setAttribute('data-x-axis-title', 'Frequency (Hz)');
+        graph.setAttribute('data-y-axis-title', 'Level (dB)');
 
         const gridSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         gridSvg.setAttribute('class', 'room-eq-additional-eq-grid');
@@ -246,6 +248,17 @@ class RoomEqAdditionalEqEditor {
             graph.appendChild(marker);
             markers.push(marker);
 
+            PeqMarkerWheel.bind(marker, {
+                getQ: () => this['q' + index],
+                maximumQ: () => ['ls', 'hs'].includes(this['t' + index]) ? 2 : 10,
+                setQ: q => {
+                    this.setBand(index, undefined, undefined, q);
+                    this.updateMarkers();
+                    this.updateResponse();
+                    this.setUIBandValues(index);
+                }
+            });
+
             const handleDragStart = (clientX, clientY) => {
                 this.activeDragMarker = index;
                 marker.classList.add('active');
@@ -256,6 +269,7 @@ class RoomEqAdditionalEqEditor {
                 this.initialDragX = clientX;
                 this.initialDragY = clientY;
                 this.hasMoved = false;
+                GraphDragAxisLock.begin(this, clientX, clientY);
             };
             let suppressTapUntil = 0;
             const now = () => (
@@ -268,6 +282,7 @@ class RoomEqAdditionalEqEditor {
                 onDragMove: event => this.handleDragMove({
                     clientX: event.clientX,
                     clientY: event.clientY,
+                    shiftKey: event.shiftKey,
                     targetContainer: graph,
                     targetBand: index
                 }),
@@ -825,7 +840,7 @@ class RoomEqAdditionalEqEditor {
         }
     }
 
-    handleDragMove({ clientX, clientY, targetContainer, targetBand }) {
+    handleDragMove({ clientX, clientY, shiftKey, targetContainer, targetBand }) {
         if (this.activeDragMarker === null) return;
         if (!this.hasMoved) {
             if (Math.abs(clientX - this.initialDragX) < 3 &&
@@ -835,10 +850,16 @@ class RoomEqAdditionalEqEditor {
         const plotArea = this.getGraphPlotArea(targetContainer || this.graphContainer);
         const x = Math.max(0, Math.min(1, (clientX - plotArea.left) / plotArea.width));
         const y = Math.max(0, Math.min(1, (clientY - plotArea.top) / plotArea.height));
-        this.setBand(targetBand ?? this.activeDragMarker, this.xToFreq(x * 100), this.yToGain(y * 100));
+        const band = targetBand ?? this.activeDragMarker;
+        const dragAxis = GraphDragAxisLock.resolve(this, { clientX, clientY, shiftKey });
+        this.setBand(
+            band,
+            dragAxis === 'y' ? this['f' + band] : this.xToFreq(x * 100),
+            dragAxis === 'x' ? this['g' + band] : this.yToGain(y * 100)
+        );
         this.updateMarkers();
         this.updateResponse();
-        this.setUIBandValues(targetBand ?? this.activeDragMarker);
+        this.setUIBandValues(band);
     }
 
     handleDragEnd() {
@@ -849,9 +870,11 @@ class RoomEqAdditionalEqEditor {
         )?.classList.remove('active');
         this.activeDragMarker = null;
         this.hasMoved = false;
+        GraphDragAxisLock.end(this);
     }
 
     dispose() {
+        GraphDragAxisLock.end(this);
         this.disconnectGraphResizeObserver();
         if (Array.isArray(this.boundEventListeners)) {
             for (const cleanup of this.boundEventListeners) cleanup();
@@ -879,7 +902,7 @@ class RoomEqPlugin extends PluginBase {
         this.tp = 32768;
         this.lt = '128';
         this.sm = 0.17;
-        this.fl = 20;
+        this.fl = 80;
         this.fh = 16000;
         this.dw = 6;
         this.pa = true;
@@ -2789,6 +2812,15 @@ class RoomEqPlugin extends PluginBase {
             'room-eq-impulse-view',
             this._responseView === 'impulse'
         );
+        const [xAxisTitle, yAxisTitle] = {
+            frequency: ['Frequency (Hz)', 'Level (dB)'],
+            phase: ['Frequency (Hz)', 'Phase (°)'],
+            minimumGroupDelay: ['Frequency (Hz)', 'Delay (ms)'],
+            excessGroupDelay: ['Frequency (Hz)', 'Delay (ms)'],
+            impulse: ['Time (ms)', 'Amplitude']
+        }[this._responseView];
+        elements.graph.setAttribute('data-x-axis-title', xAxisTitle);
+        elements.graph.setAttribute('data-y-axis-title', yAxisTitle);
         for (const [value, input] of Object.entries(elements.inputs)) {
             input.checked = value === this._responseView;
         }

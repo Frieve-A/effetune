@@ -1830,6 +1830,78 @@ test('Tube Simulator graph selector offers the circuit\'s own stages and falls b
     plugin.cleanup();
   });
 
+test('Tube Simulator control edits select the graph for the parameter section', async () => {
+  const plugin = await createPlugin();
+  plugin.createUI();
+  const edit = (label, value) => {
+    const control = plugin.controlDefinitions.find(candidate => candidate.label === label);
+    assert.ok(control, `${label} control is missing`);
+    control.setter(value);
+  };
+
+  // Every Driver-tab control selects the two driver stages.
+  for (const [label, value] of [
+    ['Driver Type', '12AX7'],
+    ['Bias', 10],
+    ['Plate', 260],
+    ['Supply', 11],
+    ['Negative Feedback', 4]
+  ]) {
+    plugin._selectHudView('pushPull');
+    edit(label, value);
+    assert.equal(plugin.hudView, 'driver', `${label} did not select the Driver graph`);
+  }
+
+  // Power and Transformer controls follow the active output topology.
+  for (const [label, value] of [
+    ['Output Circuit', 'Power'],
+    ['Power Tubes', 'EL34'],
+    ['Output B+', 350],
+    ['Cathode Resistor', 300],
+    ['Screen Tap', '20'],
+    ['Push-Pull Primary', '6.6'],
+    ['Assumed Speaker Load', '8'],
+    ['Actual Speaker Load', 8]
+  ]) {
+    plugin._selectHudView('driver');
+    edit(label, value);
+    assert.equal(plugin.hudView, 'pushPull', `${label} did not select the Push / Pull graph`);
+  }
+
+  edit('Output Circuit', 'SingleEnded');
+  assert.equal(plugin.hudView, 'singleEnded');
+  for (const [label, value] of [
+    ['SE Triode', '2A3'],
+    ['SE B+', 350],
+    ['SE Cathode Resistor', 900],
+    ['SE Primary', '5.0'],
+    ['Assumed Speaker Load', '15'],
+    ['Actual Speaker Load', 15]
+  ]) {
+    plugin._selectHudView('driver');
+    edit(label, value);
+    assert.equal(plugin.hudView, 'singleEnded', `${label} did not select the SE Triode graph`);
+  }
+
+  // Input and Output describe the whole signal path, so they leave the selected graph alone.
+  edit('Input Volume', -40);
+  edit('Output Trim', -8);
+  assert.equal(plugin.hudView, 'singleEnded');
+
+  // A topology with no output valves and a bypassed Driver cannot select a graph that is absent.
+  edit('Output Circuit', 'Line');
+  assert.equal(plugin.hudView, 'driver');
+  edit('Driver Type', 'Bypass');
+  assert.equal(plugin.hudView, null);
+
+  // Non-UI updates can span several sections and preserve an available manual selection.
+  plugin.setParameters({ os: 'Power', tp: '12AX7' });
+  plugin._selectHudView('driver');
+  plugin.setParameters({ pt: '6L6GC', pb: 400, st: '43' });
+  assert.equal(plugin.hudView, 'driver');
+  plugin.cleanup();
+});
+
 test('Tube Simulator HUD gates animation, keeps a 96-frame main-thread ring, and cleans up', async () => {
   const plugin = await createPlugin();
   // Driver-tube axes react to Bias, so this case runs on the line circuit.

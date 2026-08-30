@@ -543,6 +543,11 @@ class App {
 
             // Set up event listeners and finalize initialization
             this.setupEventListeners();
+
+            const { MidiControllerManager } = await import('./midi/midi-controller-manager.js');
+            this.midiControllerManager = new MidiControllerManager();
+            window.midiControllerManager = this.midiControllerManager;
+            await this.midiControllerManager.initialize(this.startupConfig || window.appConfig);
             
             // Display any errors
             this.handleErrors();

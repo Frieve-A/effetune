@@ -11,7 +11,9 @@ lang: zh
 <!-- spectrum-overlay -->
 ## 频谱叠加
 
-点击兼容图表中的频谱图标，即可在图表上叠加一条淡淡的、声音通过该效果后产生的频谱线。您可以在聆听时观察每项调节如何改变低频、中频和高频。从图表右侧的 dBFS 刻度读取频谱电平。它与图表的增益刻度不同；0 dBFS 是数字音频满刻度参考，较低的值表示更小的电平。仅在显示时进行频谱分析和绘制。
+每按一次兼容图表中的频谱图标，显示模式就会依次切换为 After、Before + After 和 Off。After 仅用蓝线显示处理后的频谱。Before + After 会填充处理前频谱到处理后频谱之间的变化区域：处理后电平升高的频率以暖色表示，降低的频率以蓝色表示，并在其上用灰线绘制 After 频谱。两种显示模式均采用 1/12 倍频程平滑处理，使高频趋势更容易辨认。聆听时使用此对比，可以观察每项调节如何改变低频、中频和高频。从图表右侧的 dBFS 刻度读取频谱电平。它与图表的增益刻度不同；0 dBFS 是数字音频满刻度参考，较低的值表示更小的电平。After 模式仅采集处理后的频谱；Off 模式会停止采集和绘制。
+
+在 5Band PEQ、15Band PEQ、5Band FIR PEQ、Group Delay PEQ 和 Room EQ 的 Additional EQ 中，可拖动点位的图表默认会同时改变两个轴的数值。拖动时按住 Shift 可将移动锁定到一个轴：开始时以横向移动为主，则只改变 Frequency；以纵向移动为主，则只改变 Level（在 Group Delay PEQ 中为 Delay）。松开 Shift 即可恢复自由移动。将鼠标指针移到点位上，向上滚动滚轮可增大 Q，向下滚动可减小 Q。
 
 ## 插件列表
 
@@ -659,7 +661,7 @@ Room EQ根据EffeTune保存的频率响应测量生成FIR校正滤波器。默�
 ### 声音改善指南
 
 - 在聆听区域内相邻的多个麦克风位置测量要校正的扬声器组，然后在Room EQ中选择该测量。使用多个测量点可降低校正对某一个精确位置的依赖。
-- 建议从 **Phase: Minimum**、**Smoothing: 0.17 oct**、**Correction Low: 20 Hz**、**Correction High: 16000 Hz**、**Max Boost: 6 dB** 和 **Level Correction: 100%** 开始。使用插件的主开关进行比较，确认频率平衡更均匀，同时没有变得不自然地单薄或明亮。
+- 建议从 **Phase: Minimum**、**Smoothing: 0.17 oct**、**Correction Low: 80 Hz**、**Correction High: 16000 Hz**、**Max Boost: 6 dB** 和 **Level Correction: 100%** 开始。使用插件的主开关进行比较，确认频率平衡更均匀，同时没有变得不自然地单薄或明亮。
 - 如果滤波器试图抬高随麦克风位置变化的狭窄凹陷，请增大Smoothing或减小Max Boost。将Max Boost设为0 dB会阻止自动提升，但仍允许通过衰减来压低峰值。
 - 如果完整的电平校正听起来过强，请降低Level Correction。它会按dB等比例缩放每个自动校正值，因此设为50%时，+6 dB校正会变为+3 dB，-8 dB校正会变为-4 dB。
 - 将Correction Low和Correction High限制在扬声器和测量麦克风都能可靠工作的范围内。校正超出可信测量范围的频段可能降低准确性。

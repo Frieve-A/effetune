@@ -657,6 +657,15 @@ const TUBE_SIMULATOR_HUD_VIEWS = Object.freeze([
     Object.freeze({ id: 'pushPull', label: 'Push / Pull' }),
     Object.freeze({ id: 'singleEnded', label: 'SE Triode' })
 ]);
+// A control interaction selects the graph for the section being adjusted. Input and Output stay
+// outside these lists because their controls describe levels around the whole circuit rather than
+// one valve group.
+const TUBE_SIMULATOR_DRIVER_HUD_PARAMETER_KEYS = Object.freeze([
+    'tp', 'bi', 'pv', 'su', 'nf'
+]);
+const TUBE_SIMULATOR_OUTPUT_HUD_PARAMETER_KEYS = Object.freeze([
+    'os', 'pt', 'pb', 'kr', 'sd', 'sb', 'sr', 'st', 'zp', 'sp', 'sl', 'rl'
+]);
 const TUBE_SIMULATOR_NO_STAGE_MESSAGE = 'No tube stage is active.';
 const TUBE_SIMULATOR_TUBE_ROWS = Object.freeze([
     Object.freeze({
@@ -6174,9 +6183,23 @@ class TubeSimulatorPlugin extends PluginBase {
         this._syncOriginKey = key;
         try {
             this.setParameters({ [key]: value });
+            this._selectHudViewForParameter(key);
         } finally {
             this._syncOriginKey = null;
         }
+    }
+
+    // Only direct control edits move the graph. Presets, saved-state restores, and external
+    // setParameters() calls can update many sections at once, so they retain the user's current
+    // graph whenever it remains available.
+    _selectHudViewForParameter(key) {
+        if (TUBE_SIMULATOR_DRIVER_HUD_PARAMETER_KEYS.includes(key)) {
+            this._selectHudView('driver');
+            return;
+        }
+        if (!TUBE_SIMULATOR_OUTPUT_HUD_PARAMETER_KEYS.includes(key)) return;
+        if (this.os === 'Power') this._selectHudView('pushPull');
+        else if (this.os === 'SingleEnded') this._selectHudView('singleEnded');
     }
 
     _syncControlsFromState() {

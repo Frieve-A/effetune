@@ -59,16 +59,19 @@ function jobBlock(workflow, jobName) {
   return lines.slice(start, nextJob < 0 ? lines.length : nextJob).join('\n');
 }
 
-test('Windows desktop packaging is limited to the explicit Electron path', () => {
+test('Windows desktop packaging is owned by the reusable Electron build', () => {
   const dspWindows = jobBlock(workflows.dsp, 'windows');
   const releaseWindows = jobBlock(workflows.release, 'windows');
-  assert.match(dspWindows, /^\s+if: inputs\.package_smoke$/m);
-  assert.match(dspWindows, /^\s+run: npm run pack:win$/m);
-  assert.match(dspWindows, /^\s+run: npm run smoke:dsp-package$/m);
+  const desktopWindows = jobBlock(workflows.desktopRelease, 'windows');
+  const buildWindows = jobBlock(workflows.build, 'build-windows');
+  assert.doesNotMatch(dspWindows, /pack:win|smoke:dsp-package|electron-builder/);
   assert.doesNotMatch(releaseWindows, /pack:win|smoke:dsp-package|electron-builder/);
-
-  const dspWindowsCaller = jobBlock(workflows.ci, 'dsp-windows');
-  assert.match(dspWindowsCaller, /package_smoke: \$\{\{ needs\.scope\.outputs\.electron == 'true' \}\}/);
+  assert.match(desktopWindows, /uses: \.\/\.github\/workflows\/build\.yml/);
+  assert.match(desktopWindows, /^\s+stage: windows$/m);
+  assert.match(desktopWindows, /^\s+source_verified: true$/m);
+  assert.match(buildWindows, /npx electron-builder --publish never/);
+  assert.match(buildWindows, /npm run smoke:dsp-package/);
+  assert.match(buildWindows, /npm run smoke:openhome-package/);
 
   const openHomeNative = jobBlock(workflows.ci, 'openhome-native');
   const install = openHomeNative.indexOf('run: npm ci --ignore-scripts');
@@ -230,18 +233,46 @@ test('desktop tag jobs build every platform package after exact-version prefligh
   assert.match(preflight, /expected="v\$\(node -p "require\('\.\/package\.json'\)\.version"\)"/);
   assert.match(preflight, /test "\$GITHUB_REF_NAME" = "\$expected"/);
   assert.match(preflight, /dsp-v\*/);
+  assert.match(preflight, /npm audit signatures/);
+  assert.equal(preflight.match(/npm run verify/g)?.length, 1);
 
   const windows = jobBlock(workflows.desktopRelease, 'windows');
   assert.match(windows, /^\s+needs: preflight$/m);
-  assert.match(windows, /npx electron-builder --win --publish never/);
+  assert.match(windows, /uses: \.\/\.github\/workflows\/build\.yml/);
+  assert.match(windows, /^\s+stage: windows$/m);
+  assert.match(windows, /^\s+source_verified: true$/m);
+  assert.match(windows, /^\s+release_artifacts: true$/m);
 
   const macos = jobBlock(workflows.desktopRelease, 'macos');
   assert.match(macos, /^\s+needs: preflight$/m);
-  assert.match(macos, /npx electron-builder --mac --\$\{\{ matrix\.arch \}\} --publish never/);
+  assert.match(macos, /uses: \.\/\.github\/workflows\/build\.yml/);
+  assert.match(macos, /^\s+stage: macos$/m);
+  assert.match(macos, /^\s+source_verified: true$/m);
+  assert.match(macos, /^\s+release_artifacts: true$/m);
 
   const linux = jobBlock(workflows.desktopRelease, 'linux');
   assert.match(linux, /^\s+needs: preflight$/m);
   assert.match(linux, /^\s+openhome_source_bundle: true$/m);
+  assert.match(linux, /^\s+source_verified: true$/m);
+  assert.match(linux, /^\s+release_artifacts: true$/m);
+
+  const buildWindows = jobBlock(workflows.build, 'build-windows');
+  const buildMacos = jobBlock(workflows.build, 'build-macos');
+  assert.match(buildWindows, /npx electron-builder --publish never/);
+  assert.match(buildMacos, /npx electron-builder --mac --\$\{\{ matrix\.arch \}\} --publish never/);
+  for (const build of [buildWindows, buildMacos]) {
+    assert.match(build, /^\s+if: inputs\.source_verified$/m);
+    for (const hostTest of [
+      'tests/cjs/electron-ipc-handlers-mini-player.test.cjs',
+      'tests/cjs/electron-ipc-handlers.test.cjs',
+      'tests/cjs/electron-ir-library-ipc.test.cjs',
+      'tests/cjs/electron-library-catalog-scan-runtime.test.cjs',
+      'tests/cjs/electron-preload-clipboard.test.cjs',
+      'tests/esm/dev-server.test.mjs',
+    ]) {
+      assert.match(build, new RegExp(hostTest.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    }
+  }
 });
 
 test('desktop package entrypoints clean before invoking the canonical OpenHome producer', () => {

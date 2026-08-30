@@ -204,7 +204,9 @@ async function setupDspPerInstanceHarness(tapEnabled) {
   await harness.send({ type: 'dspModule', module: { compiled: true } });
   // Keep the same per-instance path in both benchmark arms without enabling a tap.
   await harness.send({ type: 'setSpectrumTapRoute', pluginId: 99, enabled: true });
-  if (tapEnabled) await harness.send({ type: 'setSpectrumTap', pluginId: 7, enabled: true });
+  if (tapEnabled) {
+    await harness.send({ type: 'setSpectrumTap', pluginId: 7, enabled: true, mode: 'after' });
+  }
   assert.equal(harness.processor.dspPipelineReady, false);
   return harness;
 }
@@ -219,7 +221,7 @@ function processBlocks(harness, count) {
   return performance.now() - startedAt;
 }
 
-test('spectrum tap is idle until registered, captures post-plugin PCM, and bypasses measurement throttling', async () => {
+test('comparison spectrum tap captures input/output PCM and bypasses measurement throttling', async () => {
   const harness = await createHarness();
   await setupFallback(harness, `
     for (let index = 0; index < data.length; index++) data[index] *= 0.5;
@@ -232,7 +234,7 @@ test('spectrum tap is idle until registered, captures post-plugin PCM, and bypas
   assert.equal(spectrumMessages(harness).length, 0);
   assert.equal(harness.processor.spectrumTapState.size, 0);
 
-  await harness.send({ type: 'setSpectrumTap', pluginId: 7, enabled: true });
+  await harness.send({ type: 'setSpectrumTap', pluginId: 7, enabled: true, mode: 'compare' });
   harness.processor.lastMessageTime = Number.MAX_SAFE_INTEGER;
   harness.processor.messageQueue.clear();
   for (let block = 0; block < 32; block++) harness.process(sineBlock(block * BLOCK_SIZE), 1);
@@ -240,18 +242,60 @@ test('spectrum tap is idle until registered, captures post-plugin PCM, and bypas
   const messages = spectrumMessages(harness);
   assert.deepEqual(messages.map(({ message }) => message.bufferPosition), [2048, 0]);
   assert.equal(messages.every(({ message }) =>
-    message.spectrumPluginId === 7 && !('pluginId' in message)), true);
+    message.spectrumPluginId === 7 && !('pluginId' in message) &&
+    message.mode === 'compare' &&
+    message.inputBuffer instanceof Float32Array &&
+    message.outputBuffer instanceof Float32Array), true);
+  assert.equal(messages.every(({ message, transfer }) =>
+    transfer.length === 2 &&
+    transfer[0] === message.inputBuffer.buffer &&
+    transfer[1] === message.outputBuffer.buffer), true);
   assert.ok(harness.posts.some(({ message }) => message.type === 'processBuffer'));
   assert.equal(harness.processor.lastMessageTime, Number.MAX_SAFE_INTEGER);
   assert.equal(harness.processor.messageQueue.size, 1);
-  assert.ok(Math.abs(messages.at(-1).message.buffer[25] -
+  assert.ok(Math.abs(messages.at(-1).message.inputBuffer[25] -
+    Math.sin(2 * Math.PI * 1000 * 25 / 48000)) < 1e-6);
+  assert.ok(Math.abs(messages.at(-1).message.outputBuffer[25] -
     0.5 * Math.sin(2 * Math.PI * 1000 * 25 / 48000)) < 1e-6);
 
   const analyze = await loadAnalyzer();
-  const levels = analyze(messages.at(-1).message.buffer, messages.at(-1).message.bufferPosition, 48000);
+  const levels = analyze(messages.at(-1).message.outputBuffer, messages.at(-1).message.bufferPosition, 48000);
   let peak = 1;
   for (let index = 2; index < levels.length; index++) if (levels[index] > levels[peak]) peak = index;
   assert.ok(Math.abs(peak - Math.round(1000 * FFT_SIZE / 48000)) <= 1);
+});
+
+test('After mode omits Before capture and live mode changes reset only the required buffers', async () => {
+  const harness = await createHarness();
+  await setupFallback(harness);
+
+  await harness.send({ type: 'setSpectrumTap', pluginId: 7, enabled: true, mode: 'after' });
+  let state = harness.processor.spectrumTapState.get(7);
+  assert.equal(state.mode, 'after');
+  assert.equal(state.inputBuffer, null);
+  for (let block = 0; block < 16; block++) harness.process(sineBlock(block * BLOCK_SIZE));
+  let message = spectrumMessages(harness).at(-1);
+  assert.equal(message.message.mode, 'after');
+  assert.equal('inputBuffer' in message.message, false);
+  assert.equal(message.transfer.length, 1);
+  assert.equal(message.transfer[0], message.message.outputBuffer.buffer);
+
+  await harness.send({ type: 'setSpectrumTap', pluginId: 7, enabled: true, mode: 'compare' });
+  state = harness.processor.spectrumTapState.get(7);
+  assert.equal(state.mode, 'compare');
+  assert.ok(state.inputBuffer instanceof Float32Array);
+  assert.equal(state.position, 0);
+  for (let block = 0; block < 16; block++) harness.process(sineBlock(block * BLOCK_SIZE));
+  message = spectrumMessages(harness).at(-1);
+  assert.equal(message.message.mode, 'compare');
+  assert.ok(message.message.inputBuffer instanceof Float32Array);
+  assert.equal(message.transfer.length, 2);
+
+  await harness.send({ type: 'setSpectrumTap', pluginId: 7, enabled: true, mode: 'after' });
+  state = harness.processor.spectrumTapState.get(7);
+  assert.equal(state.mode, 'after');
+  assert.equal(state.inputBuffer, null);
+  assert.equal(state.position, 0);
 });
 
 test('route disables only the full DSP pipeline and visibility tap changes do not refresh it', async () => {
@@ -407,7 +451,7 @@ test('spectrum tap honors the existing UI telemetry gate and leaves audio sample
   assert.equal(spectrumMessages(tapped).length, 2);
 });
 
-test('spectrum tap adds at most 25 percent per-instance work and copies only spectrum frames', async t => {
+test('After-only spectrum tap adds at most 25 percent per-instance work and copies one spectrum', async t => {
   const blockCount = 5000;
   const expectedSpectrumFrames = Math.floor(blockCount * BLOCK_SIZE / (FFT_SIZE / 2));
   const untappedSamples = [];
@@ -439,11 +483,15 @@ test('spectrum tap adds at most 25 percent per-instance work and copies only spe
     `tap median ${tappedMedian.toFixed(2)}ms exceeds 125% of ${untappedMedian.toFixed(2)}ms`
   );
   const messages = spectrumMessages(lastTappedHarness);
-  assert.equal(lastTappedHarness.processor.spectrumTapState.get(7).buffer.byteLength,
+  const tapState = lastTappedHarness.processor.spectrumTapState.get(7);
+  assert.equal(tapState.inputBuffer, null);
+  assert.equal(tapState.outputBuffer.byteLength,
     FFT_SIZE * Float32Array.BYTES_PER_ELEMENT);
   assert.equal(messages.length, expectedSpectrumFrames);
+  assert.equal(messages.every(({ message, transfer }) =>
+    message.mode === 'after' && !('inputBuffer' in message) && transfer.length === 1), true);
   assert.equal(
-    messages.reduce((bytes, { message }) => bytes + message.buffer.byteLength, 0),
+    messages.reduce((bytes, { message }) => bytes + message.outputBuffer.byteLength, 0),
     expectedSpectrumFrames * FFT_SIZE * Float32Array.BYTES_PER_ELEMENT
   );
 

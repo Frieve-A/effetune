@@ -33,6 +33,7 @@ Aucun mythe audiophile, juste de la science pure.
 - Bibliothèque musicale pour parcourir les sous-dossiers locaux, les métadonnées et les listes de lecture
 - Mesure et correction de la réponse en fréquence pour calibrer votre système
 - Traitement et sortie multicanal
+- Pavé numérique mobile avec séparateur décimal, changement de signe et plage autorisée pour les paramètres des effets
 - Économie d’énergie dans les versions Web/PWA et de bureau, avec gestion configurable du silence et de la durée de conservation de l’entrée audio
 
 ## Guide de configuration
@@ -122,6 +123,7 @@ Les grandes collections sont chargées progressivement depuis le stockage ; la v
    - Pour les effets Section : Maj+clic sur le bouton × pour supprimer des sections entières  
 9. Cliquez sur le bouton de routage pour définir les canaux à traiter et les bus d'entrée et de sortie  
    - [Plus d'informations sur les fonctions de bus](bus-function.md)
+   - [Contrôler les effets par MIDI, manette ou clavier](controller-mapping.md)
 10. Cliquez sur le bouton Préréglages d’effet de chaque effet pour enregistrer ou appliquer des réglages pour cet effet uniquement
 11. Pour régler précisément un curseur, maintenez la touche Maj enfoncée pendant que vous le faites glisser ; la valeur change alors d'une unité minimale à la fois
 
@@ -213,14 +215,15 @@ L’importation, l’exportation et le partage de fichiers `.effetune_preset` re
    - Une zone de dépôt dédiée est toujours visible sous l'Effect Pipeline
    - Prend en charge un ou plusieurs fichiers audio
    - Les fichiers sont traités en utilisant les paramètres actuels de la Pipeline
-   - Tout le traitement est effectué à la fréquence d'échantillonnage de la Pipeline
+   - Les effets sont traités à la fréquence d’échantillonnage de la Pipeline ; la conversion de sortie a lieu ensuite
 
 2. État du traitement :
    - La barre de progression affiche l'état actuel du traitement
    - Le temps de traitement dépend de la taille du fichier et de la complexité de la chaîne d'effets
 
 3. Options de téléchargement ou de sauvegarde :
-   - Les fichiers traités sont exportés au format WAV
+   - Dans **Settings > Config > Sortie de fichier hors ligne**, choisissez WAV ou FLAC, ainsi que la fréquence d’échantillonnage et la qualité. Pour FLAC, choisissez un encodage sans perte sur 16 ou 24 bits. Le réglage initial est WAV 96 kHz en PCM 24 bits
+   - Chaque format a sa propre limite de canaux. Si un fichier dépasse celle du format choisi, EffeTune s’arrête et indique la marche à suivre sans effectuer de mixage automatique
    - Pour plusieurs fichiers, sélectionnez un dossier de sortie avant le traitement ; chaque fichier y est enregistré directement à la fin de son traitement
    - Sur les navigateurs anciens sans sélection de dossier, plusieurs fichiers sont regroupés dans un ZIP à télécharger
 

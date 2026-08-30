@@ -431,10 +431,14 @@ one DMG architecture per clean build.
 
 Desktop release packaging runs only in `Frieve-A/effetune` for an exact
 `v${package.version}` tag. A preflight job must succeed before any platform job
-runs. The Windows, macOS, and Linux jobs produce the same unsigned packages as
-the maintained platform build commands. Tags beginning with `dsp-v` belong to
-the separate DSP library release workflow and cannot start the desktop release
-workflow.
+runs. That preflight performs the full source verification once; the platform
+jobs retain only host-filesystem checks plus packaged DSP and OpenHome smoke
+checks. The Windows, macOS, and Linux jobs produce the same unsigned packages
+as the maintained platform build commands. Central CI verifies the app's DSP
+core on a desktop tag but leaves desktop package production to this release
+workflow, and it does not rebuild the separately released Python/npm DSP
+Library matrix. Tags beginning with `dsp-v` belong to the separate DSP library
+release workflow and cannot start the desktop release workflow.
 
 ## Build Output
 

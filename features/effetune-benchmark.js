@@ -1,4 +1,5 @@
 import { buildDspPipelineDescriptor } from '../js/audio/dsp-pipeline-descriptor.js';
+import { getPluginExecutionCapabilities } from '../js/audio/plugin-execution-capabilities.js';
 import { getDspRolloutConfig } from '../js/audio/dsp-rollout.js';
 import { instantiateDsp, loadDspModule } from '../js/audio/dsp-wasm-loader.js';
 import {
@@ -23,6 +24,64 @@ export const BENCHMARK_IR_REVERB_FRAMES = 256 * 1024;
 export const BENCHMARK_IR_REVERB_NOTE =
     'True Stereo; deterministic 4-channel IR, 256K samples/channel ' +
     '(IR load/preparation excluded from timing)';
+export const BANDWIDTH_EXTENDER_BENCHMARK_CUTOFF_HZ = 16000;
+export const BANDWIDTH_EXTENDER_BENCHMARK_NOTE =
+    'Manual 16 kHz cutoff; deterministic band-limited input; four FFT frames of warmup';
+
+const FIR_BENCHMARK_ASSET_SLOT = 0;
+const FIR_BENCHMARK_LATENCY = '128';
+const FIR_BENCHMARK_CROSSOVER_CHANNELS = 4;
+const FIR_BENCHMARK_TAIL_CYCLES = 4;
+const FIR_BENCHMARK_WORKLOADS = new Map([
+    ['FIR Crossover', Object.freeze({
+        channelCount: FIR_BENCHMARK_CROSSOVER_CHANNELS,
+        parameters: Object.freeze({
+            bc: 2,
+            f1: 2000,
+            s1: -96,
+            pm: 'min',
+            tp: 32768,
+            lt: FIR_BENCHMARK_LATENCY
+        }),
+        seed: 0x46495243,
+        note: '2 bands / 4ch; deterministic 32K-tap matrix FIR; tail-stage warmup'
+    })],
+    ['5Band FIR PEQ', Object.freeze({
+        channelCount: 2,
+        parameters: Object.freeze({
+            g0: 1,
+            g1: -1,
+            g2: 1,
+            g3: -1,
+            g4: 1,
+            pm: 'min',
+            tp: 32768,
+            lt: FIR_BENCHMARK_LATENCY
+        }),
+        seed: 0x35464952,
+        note: 'All 5 bands active; deterministic 32K-tap mono FIR; tail-stage warmup'
+    })],
+    ['Group Delay EQ', Object.freeze({
+        channelCount: 2,
+        parameters: Object.freeze({
+            d8: 1,
+            tp: 16384,
+            lt: FIR_BENCHMARK_LATENCY
+        }),
+        seed: 0x47444551,
+        note: '1 kHz band +1 ms; deterministic 16K-tap mono FIR; delay/tail-stage warmup'
+    })],
+    ['Group Delay PEQ', Object.freeze({
+        channelCount: 2,
+        parameters: Object.freeze({
+            d2: 1,
+            tp: 16384,
+            lt: FIR_BENCHMARK_LATENCY
+        }),
+        seed: 0x47445051,
+        note: '1 kHz band +1 ms; deterministic 16K-tap mono FIR; delay/tail-stage warmup'
+    })]
+]);
 
 const DSP_OK = 0;
 const DSP_ASSET_STATE_PREPARING = 2;
@@ -60,6 +119,278 @@ function requirePositiveInteger(value, label, maximum = Number.MAX_SAFE_INTEGER)
         throw new RangeError(`${label} must be an integer from 1 to ${maximum}`);
     }
     return value;
+}
+
+function bandwidthExtenderFftSize(sampleRate) {
+    if (sampleRate <= 50000) return 1024;
+    if (sampleRate <= 100000) return 2048;
+    return 4096;
+}
+
+function benchmarkFirHeadBlock(latency) {
+    const headBlock = Number(latency);
+    if (![0, 128, 256, 512, 1024].includes(headBlock)) {
+        throw new RangeError('FIR benchmark latency is invalid');
+    }
+    return headBlock;
+}
+
+function createDeterministicFirChannel(frames, seed, directFrame = 0, directGain = 1) {
+    if (!Number.isInteger(directFrame) || directFrame < 0 || directFrame >= frames) {
+        throw new RangeError('FIR benchmark direct frame is invalid');
+    }
+    const impulseResponse = new Float32Array(frames);
+    let state = seed >>> 0;
+    let envelope = 0.001;
+    for (let frame = 0; frame < impulseResponse.length; frame++) {
+        state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+        impulseResponse[frame] = ((state / 0x100000000) * 2 - 1) * envelope;
+        envelope *= 0.9998;
+    }
+    impulseResponse[directFrame] = directGain;
+    return impulseResponse;
+}
+
+function createBenchmarkFirAsset({
+    channels,
+    sampleRate,
+    topology,
+    paths,
+    processingChannels,
+    latency
+}) {
+    const headBlock = benchmarkFirHeadBlock(latency);
+    const pathCount = paths?.length ?? 0;
+    const inputCount = paths
+        ? new Set(paths.map(path => path.inputSlot)).size
+        : 0;
+    const payload = buildIrAssetPayload({ channels, sampleRate, topology, paths });
+    const footprintBytes = estimateIrKernelCommitFootprint({
+        frames: channels[0].length,
+        assetChannels: channels.length,
+        topology,
+        processingChannels,
+        headBlock,
+        pathCount,
+        inputCount
+    });
+    return new Map([[FIR_BENCHMARK_ASSET_SLOT, {
+        payload,
+        formatTag: IR_ASSET_FORMAT_TAG,
+        headBlock,
+        rateDivider: 1,
+        pathCount,
+        inputCount,
+        processingChannels,
+        footprintBytes
+    }]]);
+}
+
+export function createMonoFirBenchmarkAssets({
+    sampleRate,
+    channelCount = 2,
+    taps,
+    latency = FIR_BENCHMARK_LATENCY,
+    seed = 0x6d2b79f5,
+    directFrame = 0
+}) {
+    requirePositiveInteger(sampleRate, 'sampleRate');
+    const frames = requirePositiveInteger(taps, 'FIR benchmark taps', 131072);
+    const processingChannels = requirePositiveInteger(
+        channelCount,
+        'channelCount',
+        BENCHMARK_DSP_MAX_CHANNELS
+    );
+    return createBenchmarkFirAsset({
+        channels: [createDeterministicFirChannel(frames, seed, directFrame)],
+        sampleRate,
+        topology: IR_ASSET_TOPOLOGY.mono,
+        processingChannels,
+        latency
+    });
+}
+
+export function createFirCrossoverBenchmarkAssets({
+    sampleRate,
+    channelCount = FIR_BENCHMARK_CROSSOVER_CHANNELS,
+    bandCount = 2,
+    taps = 32768,
+    latency = FIR_BENCHMARK_LATENCY,
+    seed = 0x46495243
+}) {
+    requirePositiveInteger(sampleRate, 'sampleRate');
+    const frames = requirePositiveInteger(taps, 'FIR Crossover benchmark taps', 131072);
+    const bands = requirePositiveInteger(bandCount, 'FIR Crossover benchmark bands', 4);
+    const processingChannels = requirePositiveInteger(
+        channelCount,
+        'channelCount',
+        BENCHMARK_DSP_MAX_CHANNELS
+    );
+    if (processingChannels !== bands * 2) {
+        throw new RangeError('FIR Crossover benchmark requires two output channels per band');
+    }
+    const channels = Array.from({ length: bands }, (_, band) =>
+        createDeterministicFirChannel(frames, seed + band * 0x9e3779b9, 0, 1 / bands));
+    const paths = channels.flatMap((_, band) => [
+        { inputSlot: 0, outputSlot: band * 2, irChannel: band },
+        { inputSlot: 1, outputSlot: band * 2 + 1, irChannel: band }
+    ]);
+    return createBenchmarkFirAsset({
+        channels,
+        sampleRate,
+        topology: IR_ASSET_TOPOLOGY.matrix,
+        paths,
+        processingChannels,
+        latency
+    });
+}
+
+function firConvolverMaximumBlock(taps, processingChannels, headBlock) {
+    let maximum = taps <= 8192
+        ? 512
+        : taps <= 65535
+            ? 1024
+            : 2048;
+    if (taps > 131071 && processingChannels <= 2) maximum = 4096;
+    const latencyMinimum = 2 * (headBlock || 128);
+    return maximum < latencyMinimum ? latencyMinimum : maximum;
+}
+
+export function getFirBenchmarkWarmupFrames({
+    taps,
+    latency = FIR_BENCHMARK_LATENCY,
+    filterDelaySamples = 0,
+    processingChannels = 2,
+    blockSize = 128
+}) {
+    const frames = requirePositiveInteger(taps, 'FIR benchmark taps', 131072);
+    const channels = requirePositiveInteger(
+        processingChannels,
+        'processingChannels',
+        BENCHMARK_DSP_MAX_CHANNELS
+    );
+    const block = requirePositiveInteger(blockSize, 'blockSize');
+    if (!Number.isInteger(filterDelaySamples) || filterDelaySamples < 0 ||
+        filterDelaySamples >= frames) {
+        throw new RangeError('FIR benchmark filter delay is invalid');
+    }
+    const headBlock = benchmarkFirHeadBlock(latency);
+    const maximumBlock = firConvolverMaximumBlock(frames, channels, headBlock);
+    const warmupFrames = filterDelaySamples + FIR_BENCHMARK_TAIL_CYCLES * maximumBlock;
+    return Math.ceil(warmupFrames / block) * block;
+}
+
+function applyFixedBenchmarkParameters(plugin, parameters) {
+    for (const [key, value] of Object.entries(parameters)) {
+        if (!Object.hasOwn(plugin, key)) {
+            throw new TypeError(`FIR benchmark plugin does not expose parameter ${key}`);
+        }
+        plugin[key] = value;
+    }
+}
+
+export function configureFirBenchmarkWorkload({
+    plugin,
+    sampleRate,
+    blockSize = 128,
+    usesWasm = false
+}) {
+    const definition = FIR_BENCHMARK_WORKLOADS.get(plugin?.name);
+    if (!definition) return null;
+    requirePositiveInteger(sampleRate, 'sampleRate');
+    requirePositiveInteger(blockSize, 'blockSize');
+
+    const base = {
+        channelCount: definition.channelCount,
+        assets: new Map(),
+        warmupFrames: blockSize,
+        note: definition.note,
+        requiresWasmAssets: true
+    };
+    if (!usesWasm) return base;
+    if (typeof plugin.getParameters !== 'function') {
+        throw new TypeError('FIR benchmark plugin does not implement the parameter contract');
+    }
+
+    // The benchmark supplies the FIR asset itself. Calling setParameters() here would
+    // schedule a second asynchronous filter design and contaminate the timed run.
+    applyFixedBenchmarkParameters(plugin, definition.parameters);
+    const parameters = plugin.getParameters({
+        sampleRate,
+        outputChannelCount: definition.channelCount
+    });
+    const taps = requirePositiveInteger(parameters.tp, 'FIR benchmark taps', 131072);
+    const filterDelaySamples = Number(parameters.fd) || 0;
+    const assets = plugin.name === 'FIR Crossover'
+        ? createFirCrossoverBenchmarkAssets({
+            sampleRate,
+            channelCount: definition.channelCount,
+            bandCount: parameters.bc,
+            taps,
+            latency: parameters.lt,
+            seed: definition.seed
+        })
+        : createMonoFirBenchmarkAssets({
+            sampleRate,
+            channelCount: definition.channelCount,
+            taps,
+            latency: parameters.lt,
+            seed: definition.seed,
+            directFrame: filterDelaySamples
+        });
+    return {
+        ...base,
+        assets,
+        warmupFrames: getFirBenchmarkWarmupFrames({
+            taps,
+            latency: parameters.lt,
+            filterDelaySamples,
+            processingChannels: definition.channelCount,
+            blockSize
+        })
+    };
+}
+
+export function createBandwidthExtenderBenchmarkInput({
+    sampleRate,
+    duration,
+    channelCount = 2,
+    blockSize = 128
+}) {
+    requirePositiveInteger(sampleRate, 'sampleRate');
+    requirePositiveInteger(channelCount, 'channelCount', BENCHMARK_DSP_MAX_CHANNELS);
+    requirePositiveInteger(blockSize, 'blockSize');
+    if (!Number.isFinite(duration) || duration <= 0) {
+        throw new RangeError('duration must be a positive finite number');
+    }
+
+    const blockCount = Math.ceil(sampleRate * duration / blockSize);
+    const input = new Float32Array(blockCount * blockSize * channelCount);
+    const frequencies = [997, 4013, 7993, 12011, 14983];
+    for (let block = 0; block < blockCount; block++) {
+        const blockOffset = block * blockSize * channelCount;
+        for (let channel = 0; channel < channelCount; channel++) {
+            const channelOffset = blockOffset + channel * blockSize;
+            const phaseOffset = channel * 0.37;
+            for (let localFrame = 0; localFrame < blockSize; localFrame++) {
+                const frame = block * blockSize + localFrame;
+                const time = frame / sampleRate;
+                let sample = 0;
+                for (let tone = 0; tone < frequencies.length; tone++) {
+                    sample += Math.sin(
+                        2 * Math.PI * frequencies[tone] * time + phaseOffset * (tone + 1)
+                    );
+                }
+                input[channelOffset + localFrame] = sample * 0.12;
+            }
+        }
+    }
+    return input;
+}
+
+export function getBandwidthExtenderBenchmarkWarmupFrames(sampleRate) {
+    requirePositiveInteger(sampleRate, 'sampleRate');
+    return bandwidthExtenderFftSize(sampleRate) * 4;
 }
 
 function getPluginType(plugin) {
@@ -159,48 +490,13 @@ export function createRoomEqBenchmarkAssets({
     taps,
     latency = '128'
 }) {
-    const frames = requirePositiveInteger(taps, 'Room EQ benchmark taps', 131072);
-    const processingChannels = requirePositiveInteger(
-        channelCount,
-        'channelCount',
-        BENCHMARK_DSP_MAX_CHANNELS
-    );
-    const headBlock = Number(latency);
-    if (![0, 128, 256, 512, 1024].includes(headBlock)) {
-        throw new RangeError('Room EQ benchmark latency is invalid');
-    }
-
-    const impulseResponse = new Float32Array(frames);
-    let state = 0x6d2b79f5;
-    let envelope = 0.001;
-    for (let frame = 1; frame < impulseResponse.length; frame++) {
-        state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
-        impulseResponse[frame] = ((state / 0x100000000) * 2 - 1) * envelope;
-        envelope *= 0.9998;
-    }
-    impulseResponse[0] = 1;
-    const payload = buildIrAssetPayload({
-        channels: [impulseResponse],
+    return createMonoFirBenchmarkAssets({
         sampleRate,
-        topology: IR_ASSET_TOPOLOGY.mono
+        channelCount,
+        taps,
+        latency,
+        seed: 0x6d2b79f5
     });
-    const footprintBytes = estimateIrKernelCommitFootprint({
-        frames,
-        assetChannels: 1,
-        topology: IR_ASSET_TOPOLOGY.mono,
-        processingChannels,
-        headBlock
-    });
-    return new Map([[0, {
-        payload,
-        formatTag: IR_ASSET_FORMAT_TAG,
-        headBlock,
-        rateDivider: 1,
-        pathCount: 0,
-        inputCount: 0,
-        processingChannels,
-        footprintBytes
-    }]]);
 }
 
 class JavascriptBenchmarkSession {
@@ -243,8 +539,8 @@ class JavascriptBenchmarkRuntime {
         this.closed = false;
     }
 
-    supportsPlugin() {
-        return true;
+    supportsPlugin(plugin) {
+        return getPluginExecutionCapabilities(plugin)?.requiresWasm !== true;
     }
 
     createPluginSession(plugin, { channelCount, assets }) {

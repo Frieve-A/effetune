@@ -459,13 +459,13 @@ function createWindow() {
   // Allow renderer to access microphone via getUserMedia on file:// origin.
   // Without both handlers, Chromium falls back to its default content-settings
   // which deny media on file:// pages before the request handler is even called.
-  const MEDIA_PERMISSIONS = ['media', 'microphone'];
+  const GRANTED_PERMISSIONS = ['media', 'microphone', 'midi'];
   mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission) => {
-    if (MEDIA_PERMISSIONS.includes(permission)) return true;
+    if (GRANTED_PERMISSIONS.includes(permission)) return true;
     return false;
   });
   mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-    callback(MEDIA_PERMISSIONS.includes(permission));
+    callback(GRANTED_PERMISSIONS.includes(permission));
   });
 
   // Any full-page navigation replaces the renderer that is sending heartbeat

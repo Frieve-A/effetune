@@ -5,6 +5,10 @@ import vm from 'node:vm';
 
 const pluginUrl = new URL('../../plugins/eq/five_band_fir_peq.js', import.meta.url);
 const pluginSource = fs.readFileSync(pluginUrl, 'utf8');
+const graphPointInteractionSource = fs.readFileSync(
+  new URL('../../plugins/graph-point-interaction.js', import.meta.url),
+  'utf8'
+);
 const pluginCss = fs.readFileSync(
   new URL('../../plugins/eq/five_band_fir_peq.css', import.meta.url),
   'utf8'
@@ -101,7 +105,7 @@ function loadPlugin() {
     clearTimeout
   };
   vm.runInNewContext(
-    `${pluginSource}\nthis.Plugin = FiveBandFIRPEQPlugin;`,
+    `${graphPointInteractionSource}\n${pluginSource}\nthis.Plugin = FiveBandFIRPEQPlugin;`,
     context,
     { filename: pluginUrl.pathname }
   );
@@ -159,6 +163,38 @@ test('5Band FIR PEQ exposes FIR defaults, Q, and slope limits', () => {
   }
   plugin.setParameters({ t1: 'ap' });
   assert.equal(plugin.t1, 'no');
+  plugin.cleanup();
+});
+
+test('5Band FIR PEQ Shift-drag changes only frequency or gain', () => {
+  const { Plugin } = loadPlugin();
+  const plugin = new Plugin();
+  plugin.graphContainer = {
+    clientWidth: 1000,
+    clientHeight: 500,
+    getBoundingClientRect() {
+      return { left: 0, top: 0, width: this.clientWidth, height: this.clientHeight };
+    }
+  };
+  plugin.activeDragMarker = 0;
+  plugin.hasMoved = true;
+  plugin.f0 = 1000;
+  plugin.g0 = 4;
+  plugin.setUIBandValues = () => {};
+  let updatedBand = null;
+  plugin.setBand = (band, frequency, gain) => {
+    updatedBand = { band, frequency, gain };
+  };
+
+  plugin._graphDragAxisLock = { startX: 500, startY: 250, axis: null };
+  plugin.handleDragMove({ clientX: 800, clientY: 300, shiftKey: true });
+  assert.notEqual(updatedBand.frequency, 1000);
+  assert.equal(updatedBand.gain, 4);
+
+  plugin._graphDragAxisLock = { startX: 500, startY: 250, axis: null };
+  plugin.handleDragMove({ clientX: 530, clientY: 80, shiftKey: true });
+  assert.equal(updatedBand.frequency, 1000);
+  assert.notEqual(updatedBand.gain, 4);
   plugin.cleanup();
 });
 
@@ -426,6 +462,7 @@ test('5Band FIR PEQ source keeps phase, taps, latency, and narrow-Q UI choices v
   assert.match(pluginSource, /qSlider\.max = '100'/);
   assert.match(pluginSource, /five-band-fir-peq-q-slider/);
   assert.match(pluginSource, /qSlider\.addEventListener\('input'/);
+  assert.match(pluginSource, /PeqMarkerWheel\.bind\(marker,/);
   assert.match(pluginSource, /Slope \(dB\/oct\):/);
   assert.match(pluginSource, /slope\.min = '0\.1'/);
   assert.match(pluginSource, /five-band-fir-peq-slope-slider/);

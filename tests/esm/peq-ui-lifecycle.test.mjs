@@ -3,6 +3,21 @@ import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
+const graphPointInteractionSource = fs.readFileSync(
+  new URL('../../plugins/graph-point-interaction.js', import.meta.url),
+  'utf8'
+);
+
+function loadGraphPointInteractions() {
+  const context = { window: {} };
+  vm.runInNewContext(graphPointInteractionSource, context);
+  return context.window;
+}
+
+function loadGraphDragAxisLock() {
+  return loadGraphPointInteractions().GraphDragAxisLock;
+}
+
 function loadPeqClass(relativePath, className, calls, contextOverrides = {}) {
   const source = fs.readFileSync(new URL(relativePath, import.meta.url), 'utf8');
   class PluginBase {
@@ -42,7 +57,10 @@ function loadPeqClass(relativePath, className, calls, contextOverrides = {}) {
   };
   Object.assign(context, contextOverrides);
 
-  vm.runInNewContext(`${source}\nthis.LoadedClass = ${className};`, context);
+  vm.runInNewContext(
+    `${graphPointInteractionSource}\n${source}\nthis.LoadedClass = ${className};`,
+    context
+  );
   return context.LoadedClass;
 }
 
@@ -207,6 +225,41 @@ function assertPeqRedrawsOnResize(relativePath, className) {
   assert.ok(calls.some(call => call[0] === 'superCleanup'));
 }
 
+function assertPeqShiftAxisLock(relativePath, className) {
+  const calls = [];
+  const PluginClass = loadPeqClass(relativePath, className, calls);
+  const plugin = new PluginClass();
+  plugin.graphContainer = {
+    clientWidth: 1000,
+    clientHeight: 500,
+    getBoundingClientRect() {
+      return { left: 0, top: 0, width: this.clientWidth, height: this.clientHeight };
+    }
+  };
+  plugin.activeDragMarker = 0;
+  plugin.hasMoved = true;
+  plugin.f0 = 1000;
+  plugin.g0 = 4;
+  plugin.updateMarkers = () => {};
+  plugin.updateResponse = () => {};
+  plugin.setUIBandValues = () => {};
+  let updatedBand = null;
+  plugin.setBand = (bandIndex, frequency, gain) => {
+    updatedBand = { bandIndex, frequency, gain };
+  };
+
+  plugin._graphDragAxisLock = { startX: 500, startY: 250, axis: null };
+  plugin.handleDragMove({ clientX: 800, clientY: 300, shiftKey: true });
+  assert.equal(updatedBand.bandIndex, 0);
+  assert.notEqual(updatedBand.frequency, 1000);
+  assert.equal(updatedBand.gain, 4);
+
+  plugin._graphDragAxisLock = { startX: 500, startY: 250, axis: null };
+  plugin.handleDragMove({ clientX: 530, clientY: 80, shiftKey: true });
+  assert.equal(updatedBand.frequency, 1000);
+  assert.notEqual(updatedBand.gain, 4);
+}
+
 function assertResponseGraphRedrawsOnResize(relativePath, className) {
   const calls = [];
   let observer = null;
@@ -262,6 +315,91 @@ test('FiveBand PEQ keeps marker pointer listeners after a drag ends', () => {
   assertPointerListenersSurviveDragEnd('../../plugins/eq/five_band_peq.js', 'FiveBandPEQPlugin');
 });
 
+test('PEQ graph drag axis lock follows the initial dominant Shift direction', () => {
+  const GraphDragAxisLock = loadGraphDragAxisLock();
+  const owner = {};
+  GraphDragAxisLock.begin(owner, 100, 100);
+
+  assert.equal(GraphDragAxisLock.resolve(owner, {
+    clientX: 140, clientY: 110, shiftKey: true
+  }), 'x');
+  assert.equal(GraphDragAxisLock.resolve(owner, {
+    clientX: 110, clientY: 180, shiftKey: true
+  }), 'x');
+
+  assert.equal(GraphDragAxisLock.resolve(owner, { clientX: 110, clientY: 180 }), null);
+  assert.equal(GraphDragAxisLock.resolve(owner, {
+    clientX: 110, clientY: 180, shiftKey: true
+  }), null);
+  assert.equal(GraphDragAxisLock.resolve(owner, {
+    clientX: 110, clientY: 210, shiftKey: true
+  }), 'y');
+
+  assert.equal(GraphDragAxisLock.resolve(owner, {
+    clientX: 150, clientY: 185, shiftKey: false
+  }), null);
+  assert.equal(GraphDragAxisLock.resolve(owner, {
+    clientX: 160, clientY: 205, shiftKey: true
+  }), 'y');
+
+  assert.equal(GraphDragAxisLock.resolve(owner, {
+    clientX: 160, clientY: 205, shiftKey: false
+  }), null);
+  assert.equal(GraphDragAxisLock.resolve(owner, {
+    clientX: 190, clientY: 215, shiftKey: true
+  }), 'x');
+
+  GraphDragAxisLock.end(owner);
+  assert.equal(owner._graphDragAxisLock, null);
+});
+
+test('PEQ marker wheel changes Q proportionally and respects a dynamic limit', () => {
+  const { PeqMarkerWheel } = loadGraphPointInteractions();
+  let wheelHandler = null;
+  let listenerOptions = null;
+  let q = 1;
+  let maximumQ = 10;
+  const marker = {
+    addEventListener(type, handler, options) {
+      assert.equal(type, 'wheel');
+      wheelHandler = handler;
+      listenerOptions = options;
+    }
+  };
+  PeqMarkerWheel.bind(marker, {
+    getQ: () => q,
+    maximumQ: () => maximumQ,
+    setQ: value => { q = value; }
+  });
+
+  let prevented = false;
+  wheelHandler({ deltaY: -100, preventDefault: () => { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.equal(q, 1.06);
+  assert.equal(listenerOptions.passive, false);
+
+  wheelHandler({ deltaY: 100, preventDefault() {} });
+  assert.equal(q, 1);
+
+  q = 2;
+  maximumQ = 2;
+  wheelHandler({ deltaY: -100, preventDefault() {} });
+  assert.equal(q, 2);
+});
+
+test('all draggable PEQ point graphs bind Q adjustment to marker wheel events', () => {
+  for (const path of [
+    '../../plugins/eq/five_band_peq.js',
+    '../../plugins/eq/fifteen_band_peq.js',
+    '../../plugins/eq/five_band_fir_peq.js',
+    '../../plugins/eq/group_delay_peq.js',
+    '../../plugins/eq/room_eq.js'
+  ]) {
+    const source = fs.readFileSync(new URL(path, import.meta.url), 'utf8');
+    assert.match(source, /PeqMarkerWheel\.bind\(marker,/);
+  }
+});
+
 test('FifteenBand PEQ keeps marker pointer listeners after a drag ends', () => {
   assertPointerListenersSurviveDragEnd('../../plugins/eq/fifteen_band_peq.js', 'FifteenBandPEQPlugin');
 });
@@ -272,6 +410,14 @@ test('FiveBand PEQ aligns markers and drag with the inset SVG plot area', () => 
 
 test('FifteenBand PEQ aligns markers and drag with the inset SVG plot area', () => {
   assertPeqUsesInsetPlotArea('../../plugins/eq/fifteen_band_peq.js', 'FifteenBandPEQPlugin', 15, 'fifteen-band-peq');
+});
+
+test('FiveBand PEQ Shift-drag changes only frequency or gain', () => {
+  assertPeqShiftAxisLock('../../plugins/eq/five_band_peq.js', 'FiveBandPEQPlugin');
+});
+
+test('FifteenBand PEQ Shift-drag changes only frequency or gain', () => {
+  assertPeqShiftAxisLock('../../plugins/eq/fifteen_band_peq.js', 'FifteenBandPEQPlugin');
 });
 
 test('FifteenBand PEQ resolves mobile graph taps to the nearest band without toggling enable state', () => {

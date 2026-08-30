@@ -16,36 +16,85 @@ function getRule(css, selector) {
   return css.slice(blockStart + 1, blockEnd);
 }
 
-test('5Band PEQ keeps band parameter fields in the established right-side column', () => {
-  const css = readCss('../../plugins/eq/five_band_peq.css');
+test('inset SVG response graphs expose shared frequency and level axis titles', () => {
+  const appCss = readCss('../../effetune.css');
+  assert.match(
+    appCss,
+    /\.plugin-parameter-ui \.graph-axis-titled::after \{\s*content:\s*attr\(data-x-axis-title\);[\s\S]*bottom:\s*2px;/
+  );
+  assert.match(
+    appCss,
+    /\.plugin-parameter-ui \.graph-axis-titled::before \{\s*content:\s*attr\(data-y-axis-title\);[\s\S]*left:\s*10px;[\s\S]*rotate\(-90deg\);/
+  );
+  assert.match(
+    getRule(appCss, '.plugin-parameter-ui .graph-axis-titled::before'),
+    /color:\s*#fff;[\s\S]*font:\s*14px\/1 Arial, sans-serif;[\s\S]*pointer-events:\s*none;/
+  );
+  assert.match(
+    appCss,
+    /\.plugin-parameter-ui \.graph-axis-titled::after,\n\.plugin-parameter-ui \.spectrum-overlay-axis-title \{[\s\S]*font:\s*14px\/1 Arial, sans-serif;/
+  );
+  const overlayCss = readCss('../../plugins/spectrum-overlay.css');
+  assert.match(
+    getRule(overlayCss, '.plugin-parameter-ui .spectrum-overlay-axis-title'),
+    /right:\s*10px;[\s\S]*top:\s*50%;[\s\S]*translate\(50%, -50%\) rotate\(-90deg\);/
+  );
 
-  assert.match(
-    getRule(css, '.five-band-peq-plugin-ui .five-band-peq-type-label'),
-    /min-width:\s*78px;/
-  );
-  assert.match(
-    getRule(css, '.five-band-peq-plugin-ui .five-band-peq-freq-label'),
-    /flex:\s*1 1 auto;[\s\S]*min-width:\s*78px;/
-  );
-  assert.match(
+  for (const [path, graphVariable, graphClass] of [
+    ['../../plugins/eq/five_band_peq.js', 'graphContainer', 'five-band-peq-graph'],
+    ['../../plugins/eq/fifteen_band_peq.js', 'graphContainer', 'fifteen-band-peq-graph'],
+    ['../../plugins/eq/five_band_fir_peq.js', 'graphContainer', 'five-band-fir-peq-graph'],
+    ['../../plugins/eq/earphone_cable_sim.js', 'graphContainer', 'earphone-cable-sim-graph'],
+    ['../../plugins/eq/room_eq.js', 'graph', 'room-eq-additional-eq-graph']
+  ]) {
+    const source = readCss(path);
+    assert.match(
+      source,
+      new RegExp(`${graphVariable}\\.className = '${graphClass} graph-axis-titled';`),
+      `${graphClass} shared axis-title class`
+    );
+    assert.match(
+      source,
+      new RegExp(`${graphVariable}\\.setAttribute\\('data-x-axis-title', 'Frequency \\(Hz\\)'\\);`),
+      `${graphClass} frequency title`
+    );
+    assert.match(
+      source,
+      new RegExp(`${graphVariable}\\.setAttribute\\('data-y-axis-title', 'Level \\(dB\\)'\\);`),
+      `${graphClass} level title`
+    );
+  }
+});
+
+test('PEQ graph handles share the 15Band gradient and active colors', () => {
+  const css = readCss('../../effetune.css');
+  const normalRule = getRule(
     css,
-    /body:not\(\.layout-mobile\) \.five-band-peq-plugin-ui \.five-band-peq-filter-type,\nbody:not\(\.layout-mobile\) \.five-band-peq-plugin-ui \.five-band-peq-q-text,\nbody:not\(\.layout-mobile\) \.five-band-peq-plugin-ui \.five-band-peq-freq-text,\nbody:not\(\.layout-mobile\) \.five-band-peq-plugin-ui \.five-band-peq-gain-text \{/
+    '.fifteen-band-peq-plugin-ui .fifteen-band-peq-marker'
   );
-  assert.match(
-    getRule(css, 'body:not(.layout-mobile) .five-band-peq-plugin-ui .five-band-peq-filter-type'),
-    /box-sizing:\s*border-box;[\s\S]*flex:\s*0 0 90px;[\s\S]*width:\s*90px;[\s\S]*min-width:\s*90px;[\s\S]*max-width:\s*90px;/
-  );
-  assert.match(
+  const activeRule = getRule(
     css,
-    /\.five-band-peq-plugin-ui \.five-band-peq-freq-text,\n\.five-band-peq-plugin-ui \.five-band-peq-gain-text \{[\s\S]*?margin-left:\s*auto;/
+    '.fifteen-band-peq-plugin-ui .fifteen-band-peq-marker:hover'
+  );
+
+  for (const selector of [
+    '.five-band-peq-plugin-ui .five-band-peq-marker',
+    '.five-band-fir-peq-plugin-ui .five-band-fir-peq-marker',
+    '.room-eq-additional-eq-ui .room-eq-additional-eq-marker',
+    '.group-delay-peq-plugin-ui .group-delay-peq-marker'
+  ]) {
+    assert.ok(
+      css.indexOf(selector) < css.indexOf('{', css.indexOf('.fifteen-band-peq-plugin-ui .fifteen-band-peq-marker')),
+      `Missing shared handle selector: ${selector}`
+    );
+  }
+  assert.match(
+    normalRule,
+    /radial-gradient\([\s\S]*linear-gradient\(180deg,\s*#585d64,\s*#41464d\);[\s\S]*border-color:\s*#777e87;/
   );
   assert.match(
-    getRule(css, 'body.layout-mobile .five-band-peq-plugin-ui .five-band-peq-freq-label'),
-    /flex:\s*1 1 auto;[\s\S]*min-width:\s*78px;/
-  );
-  assert.match(
-    getRule(css, 'body.layout-mobile .five-band-peq-plugin-ui .five-band-peq-q-text'),
-    /flex:\s*0 0 40px;[\s\S]*width:\s*40px;[\s\S]*min-width:\s*40px;[\s\S]*max-width:\s*40px;/
+    activeRule,
+    /radial-gradient\([\s\S]*linear-gradient\(180deg,\s*var\(--et-accent-hover\),\s*var\(--et-accent-pressed\)\);[\s\S]*border-color:\s*#aad8ff;/
   );
 });
 

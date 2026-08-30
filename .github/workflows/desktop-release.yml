@@ -16,6 +16,11 @@ jobs:
     steps:
       - name: Check out Git repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
       - name: Verify repository and exact desktop version tag
         shell: bash
         run: |
@@ -27,6 +32,12 @@ jobs:
           case "$GITHUB_REF_NAME" in
             dsp-v*) echo "DSP tags are handled by dsp-library-release.yml." >&2; exit 1 ;;
           esac
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Verify dependency registry signatures
+        run: npm audit signatures
+      - name: Verify source and tests
+        run: npm run verify
 
   linux:
     name: Linux release package
@@ -35,86 +46,29 @@ jobs:
     with:
       stage: linux
       openhome_source_bundle: true
+      source_verified: true
+      release_artifacts: true
     permissions:
       contents: read
 
   windows:
     name: Windows release package
     needs: preflight
-    runs-on: windows-latest
-    steps:
-      - name: Check out Git repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
-      - name: Verify source and tests
-        run: npm run verify
-      - name: Generate web assets
-        run: npm run assets:web
-      - name: Build Windows packages
-        run: |
-          npm run clean
-          npm run build:openhome-sidecar -- --no-publish-development
-          npx electron-builder --win --publish never
-        env:
-          USE_HARD_LINKS: false
-      - name: Verify packaged artifacts
-        run: |
-          npm run smoke:dsp-package
-          npm run smoke:openhome-package
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: windows-release-artifacts
-          path: dist/**/*.exe
-          if-no-files-found: error
+    uses: ./.github/workflows/build.yml
+    with:
+      stage: windows
+      source_verified: true
+      release_artifacts: true
+    permissions:
+      contents: read
 
   macos:
-    name: macOS release package (${{ matrix.arch }})
+    name: macOS release packages
     needs: preflight
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15-intel
-            arch: x64
-          - runner: macos-15
-            arch: arm64
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - name: Check out Git repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
-      - name: Verify source and tests
-        run: npm run verify
-      - name: Generate web assets
-        run: npm run assets:web
-      - name: Build macOS package
-        shell: bash
-        run: |
-          npm run clean
-          npm run build:openhome-sidecar -- --arch ${{ matrix.arch }} --no-publish-development
-          npx electron-builder --mac --${{ matrix.arch }} --publish never
-        env:
-          USE_HARD_LINKS: false
-      - name: Verify packaged artifacts
-        run: |
-          npm run smoke:dsp-package
-          npm run smoke:openhome-package
-      - name: Upload macOS artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: macos-${{ matrix.arch }}-release-artifacts
-          path: dist/**/*.dmg
-          if-no-files-found: error
+    uses: ./.github/workflows/build.yml
+    with:
+      stage: macos
+      source_verified: true
+      release_artifacts: true
+    permissions:
+      contents: read

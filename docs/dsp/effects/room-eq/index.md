@@ -40,7 +40,7 @@ Room EQ creates FIR correction filters from frequency-response measurements save
 ### Sound Enhancement Guide
 
 - Measure the loudspeaker or channel group that you will route through one Room EQ instance from several nearby microphone positions, then select that saved measurement. Multiple points make the correction less dependent on one exact microphone position.
-- Start with **Phase: Minimum**, **Smoothing: 0.17 oct**, **Correction Low: 20 Hz**, **Correction High: 16000 Hz**, **Max Boost: 6 dB**, and **Level Correction: 100%**. Compare with the plugin's main on/off control to confirm that the result is more even without becoming unnaturally thin or bright.
+- Start with **Phase: Minimum**, **Smoothing: 0.17 oct**, **Correction Low: 80 Hz**, **Correction High: 16000 Hz**, **Max Boost: 6 dB**, and **Level Correction: 100%**. Compare with the plugin's main on/off control to confirm that the result is more even without becoming unnaturally thin or bright.
 - If the filter tries to fill narrow dips that change with microphone position, increase Smoothing or lower Max Boost. A value of 0 dB for Max Boost prevents automatic boosts while still allowing cuts to reduce peaks.
 - If full level correction sounds too strong, lower Level Correction. Because it scales each automatic correction value in dB, 50% changes a +6 dB correction to +3 dB and a -8 dB correction to -4 dB.
 - Limit Correction Low and Correction High to the range your loudspeaker and measurement microphone reproduce reliably. Correcting outside a trustworthy measurement range can make the result less accurate.

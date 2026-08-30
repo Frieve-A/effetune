@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
@@ -10,6 +11,7 @@ import {
   PowerConfigStore,
   SerializedMemoryPowerConfigBackend
 } from '../../js/electron/power-config-store.js';
+import { DEFAULT_OFFLINE_OUTPUT_SETTINGS } from '../../js/audio/offline-output-settings.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
 function createConsole(calls) {
@@ -19,6 +21,19 @@ function createConsole(calls) {
     error(...args) { calls.push(['console.error', ...args]); }
   };
 }
+
+test('Electron grants ordinary MIDI permission without granting SysEx', () => {
+  const source = readFileSync(new URL('../../electron/main.js', import.meta.url), 'utf8');
+  const allowlist = /const GRANTED_PERMISSIONS = \[([^\]]+)\]/.exec(source);
+  assert.ok(allowlist);
+  assert.deepEqual(
+    Array.from(allowlist[1].matchAll(/'([^']+)'/g), match => match[1]),
+    ['media', 'microphone', 'midi']
+  );
+  assert.match(source, /setPermissionCheckHandler\([\s\S]+GRANTED_PERMISSIONS\.includes\(permission\)/);
+  assert.match(source, /setPermissionRequestHandler\([\s\S]+GRANTED_PERMISSIONS\.includes\(permission\)/);
+  assert.doesNotMatch(allowlist[0], /midiSysex/);
+});
 
 function parseAttributes(source) {
   const attrs = {};
@@ -407,7 +422,8 @@ test('web environment delegates safely and detects Electron changes', async () =
         mode: 'balanced',
         silenceThresholdDb: -80,
         fullSuspendDelaySeconds: 300
-      }
+      },
+      offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS
     });
     await instance.saveConfig({ language: 'en' });
     assert.deepEqual(windowRef.appConfig, {
@@ -416,6 +432,7 @@ test('web environment delegates safely and detects Electron changes', async () =
         silenceThresholdDb: -80,
         fullSuspendDelaySeconds: 300
       },
+      offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS,
       language: 'en'
     });
     assert.equal(await instance.showConfigDialog(), undefined);
@@ -451,7 +468,11 @@ test('Electron save failures do not publish an unpersisted config', async () => 
     assert.deepEqual(windowRef.appConfig, initialConfig);
     assert.deepEqual(calls.filter(call => call[0] === 'saveConfig'), [[
       'saveConfig',
-      { language: 'ja', startupView: 'effects' }
+      {
+        language: 'ja',
+        startupView: 'effects',
+        offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS
+      }
     ]]);
   });
 });
@@ -474,7 +495,11 @@ test('Electron constructor loads preferences and config, then callbacks dispatch
     assert.equal(instance.isElectron, true);
     assert.deepEqual(instance.audioPreferences, { sampleRate: 44100, useInputWithPlayer: true });
     assert.deepEqual(windowRef.audioPreferences, { sampleRate: 44100, useInputWithPlayer: true });
-    assert.deepEqual(instance.config, { language: 'fr', autoLaunch: true });
+    assert.deepEqual(instance.config, {
+      language: 'fr',
+      autoLaunch: true,
+      offlineOutput: DEFAULT_OFFLINE_OUTPUT_SETTINGS
+    });
 
     for (const method of [
       'exportPreset',

@@ -6,6 +6,7 @@ import {
   PowerConfigStore,
   PowerConfigStoreError
 } from './power-config-store.js';
+import { normalizeOfflineOutputSettings } from '../audio/offline-output-settings.js';
 
 export const WEB_APP_CONFIG_KEY = 'effetune_app_config';
 export const WEB_AUDIO_PREFERENCES_KEY = 'effetune_audio_preferences';
@@ -40,6 +41,7 @@ function revisionsEqual(left, right) {
 function normalizeAppConfig(config) {
   const normalized = isPlainObject(config) ? cloneValue(config) : {};
   normalized.powerSaving = normalizePowerSettings(normalized.powerSaving);
+  normalized.offlineOutput = normalizeOfflineOutputSettings(normalized.offlineOutput);
   return normalized;
 }
 

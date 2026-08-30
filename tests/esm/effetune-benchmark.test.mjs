@@ -8,11 +8,19 @@ import {
   BENCHMARK_DSP_TELEMETRY_RATE,
   BENCHMARK_IR_REVERB_FRAMES,
   BENCHMARK_IR_REVERB_NOTE,
+  BANDWIDTH_EXTENDER_BENCHMARK_CUTOFF_HZ,
+  BANDWIDTH_EXTENDER_BENCHMARK_NOTE,
   DspBenchmarkPluginUnavailableError,
   DspBenchmarkUnavailableError,
+  configureFirBenchmarkWorkload,
+  createBandwidthExtenderBenchmarkInput,
+  createFirCrossoverBenchmarkAssets,
   createIrReverbBenchmarkAssets,
+  createMonoFirBenchmarkAssets,
   createRoomEqBenchmarkAssets,
-  createDspBenchmarkRuntime
+  createDspBenchmarkRuntime,
+  getBandwidthExtenderBenchmarkWarmupFrames,
+  getFirBenchmarkWarmupFrames
 } from '../../features/effetune-benchmark.js';
 import { decodeDspPipelineDescriptor } from '../../js/audio/dsp-pipeline-descriptor.js';
 import { IR_ASSET_FORMAT_TAG, IR_ASSET_TOPOLOGY } from '../../js/ir-library/ir-asset-payload.js';
@@ -268,6 +276,32 @@ test('JavaScript mode measures executeProcessor without initializing WebAssembly
   runtime.close();
 });
 
+test('Bandwidth Extender benchmark uses its active WASM workload contract', async () => {
+  class WasmOnlyPlugin {}
+  WasmOnlyPlugin.executionCapabilities = Object.freeze({ requiresWasm: true });
+
+  const runtime = await createDspBenchmarkRuntime({
+    mode: BENCHMARK_DSP_MODES.JAVASCRIPT,
+    sampleRate: 48000,
+    blockSize: 128
+  });
+  assert.equal(runtime.supportsPlugin(new WasmOnlyPlugin()), false);
+  assert.equal(BANDWIDTH_EXTENDER_BENCHMARK_CUTOFF_HZ, 16000);
+  assert.match(BANDWIDTH_EXTENDER_BENCHMARK_NOTE, /Manual 16 kHz cutoff/);
+  assert.equal(getBandwidthExtenderBenchmarkWarmupFrames(48000), 4096);
+  assert.equal(getBandwidthExtenderBenchmarkWarmupFrames(96000), 8192);
+  assert.equal(getBandwidthExtenderBenchmarkWarmupFrames(192000), 16384);
+
+  const options = { sampleRate: 48000, duration: 0.01, channelCount: 2, blockSize: 128 };
+  const first = createBandwidthExtenderBenchmarkInput(options);
+  const second = createBandwidthExtenderBenchmarkInput(options);
+  assert.deepEqual(first, second);
+  assert.equal(first.length, 512 * 2);
+  assert.equal(first.every(Number.isFinite), true);
+  assert.ok(first.some(sample => sample !== 0));
+  runtime.close();
+});
+
 test('IR Reverb benchmark assets contain a 256K-sample four-channel true-stereo IR', () => {
   const assets = createIrReverbBenchmarkAssets({
     sampleRate: 96000,
@@ -323,6 +357,159 @@ test('Room EQ benchmark assets contain a default-length deterministic mono IR', 
   assert.equal(asset.rateDivider, 1);
   assert.equal(asset.processingChannels, 2);
   assert.ok(asset.footprintBytes >= asset.payload.byteLength);
+});
+
+test('FIR benchmark workloads activate convolution assets and warm every tail stage', () => {
+  class FirBenchmarkPlugin {
+    constructor(name) {
+      this.name = name;
+      this.lt = '128';
+      this.tp = name.startsWith('Group Delay') ? 16384 : 32768;
+      this.bc = 2;
+      this.pm = 'min';
+      this.f1 = 1000;
+      this.s1 = -24;
+      for (let band = 0; band < 5; band++) this[`g${band}`] = 0;
+      this.d2 = 0;
+      this.d8 = 0;
+    }
+
+    setParameters() {
+      throw new Error('FIR benchmark must not schedule the plugin designer');
+    }
+
+    getParameters() {
+      return {
+        lt: this.lt,
+        tp: this.tp,
+        bc: this.bc,
+        pm: this.pm,
+        fd: this.name.startsWith('Group Delay') ? this.tp / 2 : 0
+      };
+    }
+  }
+
+  const cases = [
+    {
+      name: 'FIR Crossover',
+      channels: 4,
+      assetChannels: 2,
+      topology: IR_ASSET_TOPOLOGY.matrix,
+      taps: 32768,
+      warmupFrames: 4096,
+      activeParameter: ['s1', -96]
+    },
+    {
+      name: '5Band FIR PEQ',
+      channels: 2,
+      assetChannels: 1,
+      topology: IR_ASSET_TOPOLOGY.mono,
+      taps: 32768,
+      warmupFrames: 4096,
+      activeParameter: ['g1', -1]
+    },
+    {
+      name: 'Group Delay EQ',
+      channels: 2,
+      assetChannels: 1,
+      topology: IR_ASSET_TOPOLOGY.mono,
+      taps: 16384,
+      warmupFrames: 12288,
+      activeParameter: ['d8', 1]
+    },
+    {
+      name: 'Group Delay PEQ',
+      channels: 2,
+      assetChannels: 1,
+      topology: IR_ASSET_TOPOLOGY.mono,
+      taps: 16384,
+      warmupFrames: 12288,
+      activeParameter: ['d2', 1]
+    }
+  ];
+
+  for (const benchmarkCase of cases) {
+    const plugin = new FirBenchmarkPlugin(benchmarkCase.name);
+    const workload = configureFirBenchmarkWorkload({
+      plugin,
+      sampleRate: 96000,
+      blockSize: 128,
+      usesWasm: true
+    });
+    const asset = workload.assets.get(0);
+    const view = new DataView(asset.payload);
+    const [parameter, value] = benchmarkCase.activeParameter;
+
+    assert.equal(workload.requiresWasmAssets, true);
+    assert.equal(workload.channelCount, benchmarkCase.channels);
+    assert.equal(workload.warmupFrames, benchmarkCase.warmupFrames);
+    assert.match(workload.note, /FIR/);
+    assert.equal(plugin[parameter], value);
+    assert.equal(view.getUint32(4, true), benchmarkCase.assetChannels);
+    assert.equal(view.getUint32(8, true), benchmarkCase.taps);
+    assert.equal(view.getUint32(12, true), 96000);
+    assert.equal(view.getUint32(16, true), benchmarkCase.topology);
+    assert.equal(asset.processingChannels, benchmarkCase.channels);
+    assert.equal(asset.headBlock, 128);
+    assert.equal(asset.rateDivider, 1);
+    assert.ok(asset.footprintBytes >= asset.payload.byteLength);
+
+    if (benchmarkCase.topology === IR_ASSET_TOPOLOGY.matrix) {
+      assert.equal(view.getUint32(20, true), 4);
+      assert.equal(asset.pathCount, 4);
+      assert.equal(asset.inputCount, 2);
+      assert.deepEqual(
+        [view.getUint32(32, true), view.getUint32(36, true), view.getUint32(40, true)],
+        [0, 0, 0]
+      );
+      assert.deepEqual(
+        [view.getUint32(68, true), view.getUint32(72, true), view.getUint32(76, true)],
+        [1, 3, 1]
+      );
+    } else {
+      const directFrame = benchmarkCase.name.startsWith('Group Delay')
+        ? benchmarkCase.taps / 2
+        : 0;
+      assert.equal(view.getFloat32(32 + directFrame * Float32Array.BYTES_PER_ELEMENT, true), 1);
+      assert.notEqual(
+        view.getFloat32(
+          32 + (benchmarkCase.taps - 1) * Float32Array.BYTES_PER_ELEMENT,
+          true
+        ),
+        0
+      );
+    }
+  }
+
+  const javascriptPlugin = new FirBenchmarkPlugin('5Band FIR PEQ');
+  const javascriptWorkload = configureFirBenchmarkWorkload({
+    plugin: javascriptPlugin,
+    sampleRate: 96000,
+    usesWasm: false
+  });
+  assert.equal(javascriptWorkload.requiresWasmAssets, true);
+  assert.equal(javascriptWorkload.assets.size, 0);
+  assert.equal(javascriptPlugin.g1, 0);
+  assert.equal(configureFirBenchmarkWorkload({
+    plugin: new FirBenchmarkPlugin('Volume'),
+    sampleRate: 96000,
+    usesWasm: true
+  }), null);
+
+  assert.equal(getFirBenchmarkWarmupFrames({
+    taps: 131072,
+    processingChannels: 2
+  }), 16384);
+  assert.throws(() => createFirCrossoverBenchmarkAssets({
+    sampleRate: 96000,
+    channelCount: 2,
+    bandCount: 2
+  }), /two output channels per band/);
+  assert.throws(() => createMonoFirBenchmarkAssets({
+    sampleRate: 96000,
+    taps: 16384,
+    directFrame: 16384
+  }), /direct frame/);
 });
 
 test('WebAssembly mode honors the user setting and dsp=off before loading an artifact', async () => {

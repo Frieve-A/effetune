@@ -465,7 +465,9 @@ class FifteenBandPEQPlugin extends PluginBase {
 
     // EQ response graph
     const graphContainer = document.createElement('div');
-    graphContainer.className = 'fifteen-band-peq-graph';
+    graphContainer.className = 'fifteen-band-peq-graph graph-axis-titled';
+    graphContainer.setAttribute('data-x-axis-title', 'Frequency (Hz)');
+    graphContainer.setAttribute('data-y-axis-title', 'Level (dB)');
     
     // Create Import button in the top right corner
     const importButtonContainer = document.createElement('div');
@@ -583,6 +585,16 @@ class FifteenBandPEQPlugin extends PluginBase {
       
       graphContainer.appendChild(marker);
       markers.push(marker);
+
+      PeqMarkerWheel.bind(marker, {
+        getQ: () => this['q' + i],
+        maximumQ: () => ['ls', 'hs'].includes(this['t' + i]) ? 2 : 10,
+        setQ: q => {
+          this.setBand(i, undefined, undefined, q);
+          this.updateMarkers();
+          this.updateResponse();
+        }
+      });
       
       // Improved drag and drop implementation with simplification
       const handleDragStart = (clientX, clientY) => {
@@ -601,6 +613,7 @@ class FifteenBandPEQPlugin extends PluginBase {
         this.initialDragX = clientX;
         this.initialDragY = clientY;
         this.hasMoved = false;
+        GraphDragAxisLock.begin(this, clientX, clientY);
       };
       let suppressTapUntil = 0;
       const now = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
@@ -610,6 +623,7 @@ class FifteenBandPEQPlugin extends PluginBase {
         onDragMove: (e) => this.handleDragMove({
           clientX: e.clientX,
           clientY: e.clientY,
+          shiftKey: e.shiftKey,
           targetContainer: graphContainer,
           targetBand: this.activeDragMarker
         }),
@@ -1199,8 +1213,13 @@ class FifteenBandPEQPlugin extends PluginBase {
     
     const freq = this.xToFreq(x * 100);
     const gain = this.yToGain(y * 100);
-    
-    this.setBand(bandIndex, freq, gain);
+    const dragAxis = GraphDragAxisLock.resolve(this, e);
+
+    this.setBand(
+      bandIndex,
+      dragAxis === 'y' ? this['f' + bandIndex] : freq,
+      dragAxis === 'x' ? this['g' + bandIndex] : gain
+    );
     this.updateMarkers();
     this.updateResponse();
     
@@ -1220,6 +1239,7 @@ class FifteenBandPEQPlugin extends PluginBase {
     
     this.activeDragMarker = null;
     this.hasMoved = false; // Reset movement state
+    GraphDragAxisLock.end(this);
     
     if (this.boundMouseMoveHandler) {
       document.removeEventListener('mousemove', this.boundMouseMoveHandler);

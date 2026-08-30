@@ -4707,9 +4707,10 @@ export class AudioManager {
      * Process an audio file offline
      * @param {File} file - The audio file to process
      * @param {Function} progressCallback - Callback for progress updates
-     * @returns {Promise<Blob>} - Processed audio as a WAV blob
+     * @param {Object} outputSettings - Offline output settings snapshot
+     * @returns {Promise<Object|null>} - Encoded output metadata, or null when canceled
      */
-    async processAudioFile(file, progressCallback = null) {
+    async processAudioFile(file, progressCallback = null, outputSettings = null) {
         const releasePowerLease = this.powerPolicyController?.started
             ? this.powerPolicyController.acquireLease('offline-processing', {
                 mode: 'hold-current',
@@ -4717,7 +4718,12 @@ export class AudioManager {
             })
             : null;
         try {
-            return await this.offlineProcessor.processAudioFile(file, this.pipeline, progressCallback);
+            return await this.offlineProcessor.processAudioFile(
+                file,
+                this.pipeline,
+                progressCallback,
+                outputSettings
+            );
         } finally {
             this.updateExposedProperties();
             releasePowerLease?.();

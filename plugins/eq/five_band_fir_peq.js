@@ -586,7 +586,9 @@ class FiveBandFIRPEQPlugin extends PluginBase {
     container.appendChild(settings);
 
     const graphContainer = document.createElement('div');
-    graphContainer.className = 'five-band-fir-peq-graph';
+    graphContainer.className = 'five-band-fir-peq-graph graph-axis-titled';
+    graphContainer.setAttribute('data-x-axis-title', 'Frequency (Hz)');
+    graphContainer.setAttribute('data-y-axis-title', 'Level (dB)');
     const gridSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     gridSvg.setAttribute('class', 'five-band-fir-peq-grid');
     gridSvg.setAttribute('width', '100%');
@@ -660,11 +662,20 @@ class FiveBandFIRPEQPlugin extends PluginBase {
       const markerText = document.createElement('div');
       markerText.className = 'five-band-fir-peq-marker-text';
       marker.appendChild(markerText);
+      PeqMarkerWheel.bind(marker, {
+        getQ: () => this[`q${index}`],
+        maximumQ: 100,
+        setQ: q => {
+          this.setBand(index, undefined, undefined, q);
+          this.setUIBandValues(index);
+        }
+      });
       const startDrag = (clientX, clientY) => {
         this.activeDragMarker = index;
         this.initialDragX = clientX;
         this.initialDragY = clientY;
         this.hasMoved = false;
+        GraphDragAxisLock.begin(this, clientX, clientY);
         marker.classList.add('active');
       };
       marker.addEventListener('mousedown', event => {
@@ -1223,7 +1234,12 @@ class FiveBandFIRPEQPlugin extends PluginBase {
     x = Math.max(0, Math.min(1, x));
     y = Math.max(0, Math.min(1, y));
     const band = this.activeDragMarker;
-    this.setBand(band, this.xToFreq(x * 100), this.yToGain(y * 100));
+    const dragAxis = GraphDragAxisLock.resolve(this, event);
+    this.setBand(
+      band,
+      dragAxis === 'y' ? this['f' + band] : this.xToFreq(x * 100),
+      dragAxis === 'x' ? this['g' + band] : this.yToGain(y * 100)
+    );
     this.setUIBandValues(band);
   }
 
@@ -1232,6 +1248,7 @@ class FiveBandFIRPEQPlugin extends PluginBase {
     this.markers?.[this.activeDragMarker]?.classList.remove('active');
     this.activeDragMarker = null;
     this.hasMoved = false;
+    GraphDragAxisLock.end(this);
     if (this.boundMouseMoveHandler) {
       document.removeEventListener('mousemove', this.boundMouseMoveHandler);
       document.removeEventListener('mouseup', this.boundMouseUpHandler);

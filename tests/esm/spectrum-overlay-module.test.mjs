@@ -14,7 +14,9 @@ test('overlay is dormant until enabled and releases all work when disabled', () 
   assert.equal(h.posts.length + h.frames.size + h.timers.size + h.resizes.size + h.intersections.size, 0);
   instance.toggle();
   assert.deepEqual(commands(h), [['setSpectrumTapRoute', true], ['setSpectrumTap', true]]);
-  assert.equal(instance.button.getAttribute('aria-label'), 'Hide spectrum');
+  assert.equal(h.posts.at(-1).mode, 'after');
+  assert.equal(instance.button.getAttribute('data-spectrum-mode'), 'after');
+  assert.equal(instance.button.getAttribute('aria-label'), 'Show Before and After spectra');
   assert.equal(instance.button.getAttribute('aria-pressed'), 'true');
   assert.equal(instance.canvas.parentElement, mount);
   assert.equal([...h.intersections][0].element, mount);
@@ -22,9 +24,18 @@ test('overlay is dormant until enabled and releases all work when disabled', () 
   assert.equal(instance.canvas.width, 1000);
   assert.equal(instance.canvas.height, 500);
   instance.toggle();
+  assert.deepEqual(commands(h).at(-1), ['setSpectrumTap', true]);
+  assert.equal(h.posts.at(-1).mode, 'compare');
+  assert.equal(instance.button.getAttribute('data-spectrum-mode'), 'compare');
+  assert.equal(instance.button.getAttribute('aria-label'), 'Hide spectra');
+  assert.equal(instance.button.getAttribute('aria-pressed'), 'mixed');
+  assert.equal(instance.canvas.parentElement, mount);
+  instance.toggle();
   assert.deepEqual(commands(h).slice(-2), [['setSpectrumTap', false], ['setSpectrumTapRoute', false]]);
   assert.equal(instance.canvas, null);
-  assert.equal(instance.button.getAttribute('aria-label'), 'Show spectrum');
+  assert.equal(instance.button.getAttribute('data-spectrum-mode'), 'off');
+  assert.equal(instance.button.getAttribute('aria-label'), 'Show After spectrum');
+  assert.equal(instance.button.getAttribute('aria-pressed'), 'false');
   assert.equal(h.frames.size + h.timers.size + h.resizes.size + h.intersections.size + h.window.workletNode.listeners.size, 0);
   const css = fs.readFileSync(new URL('../../plugins/spectrum-overlay.css', import.meta.url), 'utf8');
   assert.match(css, /pointer-events:\s*none/);
@@ -35,13 +46,14 @@ test('detached reattachment and IO suspension preserve intent and never release 
   const h = createOverlayHarness();
   let { instance } = h.attach();
   instance.enable();
+  instance.toggle();
   h.posts.length = 0;
   const old = instance;
   ({ instance } = h.attach());
   assert.equal(old.disposed, true);
   h.intersect(false);
   assert.equal(instance.active, false);
-  assert.equal(instance.button.getAttribute('aria-pressed'), 'true');
+  assert.equal(instance.button.getAttribute('aria-pressed'), 'mixed');
   h.intersect(true);
   assert.equal(instance.active, true);
   assert.deepEqual(commands(h).filter(([type]) => type === 'setSpectrumTapRoute'), [['setSpectrumTapRoute', true]]);
@@ -119,7 +131,7 @@ test('node replacement replays intent and effective tap on frames and while susp
   }
 });
 
-test('toggle isolates pointer events and latest spectrum is analyzed only on frames then fades', () => {
+test('After and comparison modes analyze only their requested spectra and comparison paints signed change', () => {
   const h = createOverlayHarness();
   const { instance } = h.attach();
   let stopped = 0;
@@ -128,15 +140,61 @@ test('toggle isolates pointer events and latest spectrum is analyzed only on fra
   instance.enable();
   instance.onSpectrumMessage({ type: 'spectrumOverlay', pluginId: 7, buffer: new Float32Array(4096) });
   assert.equal(instance.pending, null);
-  const message = { type: 'spectrumOverlay', spectrumPluginId: 7, buffer: new Float32Array(4096).fill(1), bufferPosition: 0, sampleRate: 48000 };
+  instance.onSpectrumMessage({
+    type: 'spectrumOverlay',
+    spectrumPluginId: 7,
+    mode: 'after',
+    outputBuffer: new Float32Array(4096).fill(0.5),
+    bufferPosition: 0,
+    sampleRate: 48000
+  });
+  h.frame();
+  assert.equal(instance.inputLevels, null);
+  assert.ok(instance.levels[0] < -6 && instance.levels[0] > -6.03);
+  assert.deepEqual(instance.canvas.fillStyles, []);
+  assert.equal(instance.canvas.strokeStyles.at(-1), 'rgba(140,190,255,0.55)');
+
+  instance.toggle();
+  const message = {
+    type: 'spectrumOverlay',
+    spectrumPluginId: 7,
+    mode: 'compare',
+    inputBuffer: new Float32Array(4096).fill(1),
+    outputBuffer: new Float32Array(4096).fill(0.5),
+    bufferPosition: 0,
+    sampleRate: 48000
+  };
   instance.onSpectrumMessage(message);
   assert.equal(instance.levels, null);
   h.frame();
-  assert.ok(instance.levels[0] > -0.01);
+  assert.ok(instance.inputLevels[0] > -0.01);
+  assert.ok(instance.levels[0] < -6 && instance.levels[0] > -6.03);
+  assert.equal(instance.canvas.fillStyles.at(-1), 'rgba(140,190,255,0.55)');
+  assert.equal(instance.canvas.strokeStyles.at(-1), 'rgba(190,190,190,0.9)');
+
+  instance.canvas.drawCalls.length = 0;
+  instance.canvas.fillStyles.length = 0;
+  instance.canvas.strokeStyles.length = 0;
+  instance.inputLevels.fill(-48);
+  instance.levels.fill(-36);
+  instance.levels.fill(-60, 20);
+  instance._draw();
+  assert.deepEqual(instance.canvas.fillStyles, [
+    'rgba(255,190,140,0.55)',
+    'rgba(140,190,255,0.55)'
+  ]);
+  assert.deepEqual(instance.canvas.strokeStyles, ['rgba(190,190,190,0.9)']);
+  assert.deepEqual(
+    instance.canvas.drawCalls.filter(([method]) => method === 'fill' || method === 'stroke')
+      .map(([method]) => method),
+    ['fill', 'fill', 'stroke']
+  );
   h.advance(600);
   for (let i = 0; i < 26; i++) h.frame();
   assert.ok(Number.isFinite(instance.levels[0]));
   assert.ok(instance.levels[0] < -96);
+  assert.ok(Number.isFinite(instance.inputLevels[0]));
+  assert.ok(instance.inputLevels[0] < -96);
   assert.equal(instance.pending, null);
   instance.dispose();
 });
@@ -147,6 +205,10 @@ test('Room EQ stops the effective tap outside the frequency view and keeps user 
   const { instance, mount } = h.attach();
   assert.equal(mount.style['--spectrum-overlay-inset'], '20px');
   instance.enable();
+  assert.equal(instance.axisTitle.parentElement, mount);
+  assert.equal(instance.axisTitle.className, 'spectrum-overlay-axis-title');
+  assert.equal(instance.axisTitle.textContent, 'Level (dBFS)');
+  assert.equal(instance.axisTitle.getAttribute('aria-hidden'), 'true');
   h.plugin.runnable = false;
   h.advance(250);
   assert.equal(instance.active, false);
@@ -161,6 +223,7 @@ test('Room EQ stops the effective tap outside the frequency view and keeps user 
   assert.equal(instance.active, true);
   assert.equal(h.posts.filter(message => message.type === 'setSpectrumTapRoute').length, 1);
   instance.disable();
+  assert.equal(instance.axisTitle, null);
   instance.enable();
   instance.dispose();
   assert.equal(mount.style['--spectrum-overlay-inset'], undefined);

@@ -62,6 +62,48 @@
             background: linear-gradient(180deg, #3d3d3d, #333333);
             color: #fff;
             box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+            padding: 0;
+        }
+        .benchmark-sort-button {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            width: 100%;
+            min-width: 0;
+            min-height: 36px;
+            padding: 8px;
+            color: inherit;
+            font: inherit;
+            text-align: left;
+            background: transparent;
+            border: 0;
+            cursor: pointer;
+        }
+        .benchmark-sort-button:hover,
+        .benchmark-sort-button.active {
+            color: #f0b5fa;
+        }
+        .benchmark-sort-button:focus-visible {
+            outline: 2px solid #d68be4;
+            outline-offset: -2px;
+        }
+        .benchmark-sort-label {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .benchmark-sort-indicator {
+            display: inline-flex;
+            flex: 0 0 14px;
+            align-items: center;
+            justify-content: center;
+            width: 14px;
+            height: 14px;
+            color: #d68be4;
+        }
+        .benchmark-sort-indicator svg {
+            width: 12px;
+            height: 12px;
         }
         .benchmark-table tr:nth-child(even) {
             background-color: rgba(255, 255, 255, 0.025);
@@ -335,9 +377,14 @@
         import {
             BENCHMARK_DSP_MODES,
             BENCHMARK_IR_REVERB_NOTE,
+            BANDWIDTH_EXTENDER_BENCHMARK_CUTOFF_HZ,
+            BANDWIDTH_EXTENDER_BENCHMARK_NOTE,
+            configureFirBenchmarkWorkload,
+            createBandwidthExtenderBenchmarkInput,
             createIrReverbBenchmarkAssets,
             createRoomEqBenchmarkAssets,
-            createDspBenchmarkRuntime
+            createDspBenchmarkRuntime,
+            getBandwidthExtenderBenchmarkWarmupFrames
         } from './effetune-benchmark.js';
         import {
             BENCHMARK_SCORE_VERSION,
@@ -358,6 +405,41 @@
         let benchmarkRunning = false;
         let scoreSimdAvailable = null;
         let benchmarkScore = null;
+        const BENCHMARK_SORT_ICONS = Object.freeze({
+            asc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>',
+            desc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg>'
+        });
+        const BENCHMARK_TABLE_COLUMNS = Object.freeze([
+            Object.freeze({ key: 'category', label: 'Category', type: 'text', value: result => result.category }),
+            Object.freeze({ key: 'name', label: 'Effect', type: 'text', value: result => result.name }),
+            Object.freeze({ key: 'implementation', label: 'Implementation', type: 'text', value: result => result.implementation }),
+            Object.freeze({
+                key: 'samplesPerSecond',
+                label: 'Samples/sec',
+                type: 'number',
+                value: result => result.skipped ? null : result.samplesPerSecond,
+                format: value => value === null ? 'N/A' : value.toLocaleString()
+            }),
+            Object.freeze({
+                key: 'speedupFactor',
+                label: 'Real-Time Factor(x)',
+                type: 'number',
+                value: result => result.skipped ? null : Number.parseFloat(result.speedupFactor),
+                format: (value, result) => value === null ? 'N/A' : result.speedupFactor
+            }),
+            Object.freeze({
+                key: 'cpuUsage',
+                label: 'CPU usage (%)',
+                type: 'number',
+                value: result => result.skipped ? null : 100 / Number.parseFloat(result.speedupFactor),
+                format: value => value === null ? 'N/A' : value.toFixed(1)
+            }),
+            Object.freeze({ key: 'note', label: 'Note', type: 'text', value: result => result.note || '' })
+        ]);
+        const benchmarkTableCollator = new Intl.Collator(undefined, {
+            numeric: true,
+            sensitivity: 'base'
+        });
 
         function renderBenchmarkScore(value = '—', message = 'Run Benchmarks to measure the score.') {
             const panel = document.getElementById('benchmark-score');
@@ -454,6 +536,101 @@
                 }
             });
             return container;
+        }
+
+        function isMissingBenchmarkValue(value, type) {
+            return value === null || value === undefined ||
+                (type === 'number' && !Number.isFinite(value));
+        }
+
+        function compareBenchmarkRows(left, right, column, direction) {
+            const leftValue = column.value(left.result);
+            const rightValue = column.value(right.result);
+            const leftMissing = isMissingBenchmarkValue(leftValue, column.type);
+            const rightMissing = isMissingBenchmarkValue(rightValue, column.type);
+            if (leftMissing || rightMissing) {
+                if (leftMissing !== rightMissing) return leftMissing ? 1 : -1;
+                return left.originalIndex - right.originalIndex;
+            }
+            const comparison = column.type === 'number'
+                ? leftValue - rightValue
+                : benchmarkTableCollator.compare(String(leftValue), String(rightValue));
+            return comparison === 0
+                ? left.originalIndex - right.originalIndex
+                : comparison * (direction === 'desc' ? -1 : 1);
+        }
+
+        function renderBenchmarkRows(tbody, rows) {
+            tbody.replaceChildren();
+            rows.forEach(({ result }) => {
+                const row = document.createElement('tr');
+                BENCHMARK_TABLE_COLUMNS.forEach(column => {
+                    const value = column.value(result);
+                    const cell = document.createElement('td');
+                    cell.textContent = column.format
+                        ? column.format(value, result)
+                        : String(value ?? '');
+                    row.appendChild(cell);
+                });
+                tbody.appendChild(row);
+            });
+        }
+
+        function updateBenchmarkSortHeaders(headers, sortState) {
+            headers.forEach(({ column, cell, button, indicator }) => {
+                const active = sortState.key === column.key;
+                const direction = sortState.direction === 'desc' ? 'desc' : 'asc';
+                const nextDirection = active && direction === 'asc' ? 'descending' : 'ascending';
+                cell.setAttribute('aria-sort', active
+                    ? (direction === 'desc' ? 'descending' : 'ascending')
+                    : 'none');
+                button.className = `benchmark-sort-button${active ? ' active' : ''}`;
+                button.setAttribute('aria-label', active
+                    ? `${column.label}, sorted ${direction === 'desc' ? 'descending' : 'ascending'}. Sort ${nextDirection}`
+                    : `Sort ${column.label} ascending`);
+                indicator.innerHTML = active ? BENCHMARK_SORT_ICONS[direction] : '';
+            });
+        }
+
+        function createBenchmarkResultsTable(results) {
+            const originalRows = results.map((result, originalIndex) => ({ result, originalIndex }));
+            const sortState = { key: null, direction: 'asc' };
+            const table = document.createElement('table');
+            table.className = 'benchmark-table';
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+            const tbody = document.createElement('tbody');
+            const headers = BENCHMARK_TABLE_COLUMNS.map(column => {
+                const cell = document.createElement('th');
+                cell.setAttribute('scope', 'col');
+                const button = document.createElement('button');
+                button.type = 'button';
+                const label = document.createElement('span');
+                label.className = 'benchmark-sort-label';
+                label.textContent = column.label;
+                const indicator = document.createElement('span');
+                indicator.className = 'benchmark-sort-indicator';
+                indicator.setAttribute('aria-hidden', 'true');
+                button.append(label, indicator);
+                button.addEventListener('click', () => {
+                    sortState.direction = sortState.key === column.key && sortState.direction === 'asc'
+                        ? 'desc'
+                        : 'asc';
+                    sortState.key = column.key;
+                    const sortedRows = [...originalRows].sort((left, right) =>
+                        compareBenchmarkRows(left, right, column, sortState.direction));
+                    renderBenchmarkRows(tbody, sortedRows);
+                    updateBenchmarkSortHeaders(headers, sortState);
+                });
+                cell.appendChild(button);
+                headerRow.appendChild(cell);
+                return { column, cell, button, indicator };
+            });
+            thead.appendChild(headerRow);
+            table.append(thead, tbody);
+            renderBenchmarkRows(tbody, originalRows);
+            updateBenchmarkSortHeaders(headers, sortState);
+            return table;
         }
 
         class TestPluginManager extends PluginManager {
@@ -568,7 +745,8 @@
             sampleRate,
             blockSize,
             channelCount,
-            assets = new Map()
+            assets = new Map(),
+            warmupFrames = blockSize
         ) {
             const totalBlocks = Math.floor(audioBuffer.length / (blockSize * channelCount));
             let processCount = 0;
@@ -579,9 +757,13 @@
 
             try {
                 session.prepareAssets();
-                const warmupInput = audioBuffer.slice(0, blockSize * channelCount);
-                session.process(warmupInput, 0);
-                blockIndex++;
+                const warmupBlocks = Math.ceil(warmupFrames / blockSize);
+                for (let warmupBlock = 0; warmupBlock < warmupBlocks; warmupBlock++) {
+                    const blockOffset = (blockIndex % totalBlocks) * blockSize * channelCount;
+                    const warmupInput = audioBuffer.slice(blockOffset, blockOffset + blockSize * channelCount);
+                    session.process(warmupInput, blockIndex * blockSize / sampleRate);
+                    blockIndex++;
+                }
 
                 const startTime = performance.now();
                 while (performance.now() - startTime < duration) {
@@ -799,7 +981,29 @@
                     let note = '';
                     let channelCount = CHANNEL_COUNT;
                     let assets = new Map();
-                    if (name === 'Channel Divider') {
+                    let pluginAudioBuffer = audioBuffer;
+                    let warmupFrames = BUFFER_SIZE;
+                    let requiresWasmAssets = false;
+                    const firWorkload = configureFirBenchmarkWorkload({
+                        plugin,
+                        sampleRate: SAMPLE_RATE,
+                        blockSize: BUFFER_SIZE,
+                        usesWasm: runtime.usesWasm
+                    });
+                    if (firWorkload) {
+                        channelCount = firWorkload.channelCount;
+                        assets = firWorkload.assets;
+                        warmupFrames = firWorkload.warmupFrames;
+                        note = firWorkload.note;
+                        requiresWasmAssets = firWorkload.requiresWasmAssets;
+                        if (runtime.usesWasm && channelCount !== CHANNEL_COUNT) {
+                            pluginAudioBuffer = createRandomAudioBuffer(
+                                SAMPLE_RATE,
+                                BUFFER_DURATION,
+                                channelCount
+                            );
+                        }
+                    } else if (name === 'Channel Divider') {
                         plugin.setParameters({ bc: 4 });
                         channelCount = 8;
                         note = '8ch mode';
@@ -842,6 +1046,7 @@
                         plugin.setParameters({ sl: 1 });
                         note = 'Slope + 1db/oct';
                     } else if (name === 'IR Reverb') {
+                        requiresWasmAssets = true;
                         plugin.setParameters({ cm: 'true' });
                         note = BENCHMARK_IR_REVERB_NOTE;
                         if (runtime.usesWasm) {
@@ -857,6 +1062,7 @@
                             });
                         }
                     } else if (name === 'Room EQ') {
+                        requiresWasmAssets = true;
                         const parameters = plugin.getParameters({
                             sampleRate: SAMPLE_RATE,
                             outputChannelCount: channelCount
@@ -871,20 +1077,33 @@
                                 latency: parameters.lt
                             });
                         }
+                    } else if (name === 'Bandwidth Extender') {
+                        plugin.setParameters({
+                            cm: 'Manual',
+                            cf: BANDWIDTH_EXTENDER_BENCHMARK_CUTOFF_HZ
+                        });
+                        pluginAudioBuffer = createBandwidthExtenderBenchmarkInput({
+                            sampleRate: SAMPLE_RATE,
+                            duration: BUFFER_DURATION,
+                            channelCount,
+                            blockSize: BUFFER_SIZE
+                        });
+                        warmupFrames = getBandwidthExtenderBenchmarkWarmupFrames(SAMPLE_RATE);
+                        note = BANDWIDTH_EXTENDER_BENCHMARK_NOTE;
                     }
 
                     let result;
-                    const requiresWasmAssets = name === 'IR Reverb' || name === 'Room EQ';
                     if (runtime.supportsPlugin(plugin) &&
                         (!requiresWasmAssets || runtime.usesWasm)) {
                         result = await benchmarkPlugin(
                             runtime,
                             plugin,
-                            audioBuffer,
+                            pluginAudioBuffer,
                             SAMPLE_RATE,
                             BUFFER_SIZE,
                             channelCount,
-                            assets
+                            assets,
+                            warmupFrames
                         );
                     } else {
                         result = {
@@ -895,7 +1114,9 @@
                             speedupFactor: null,
                             skipped: true
                         };
-                        const reason = requiresWasmAssets && !runtime.usesWasm
+                        const reason = plugin.constructor.executionCapabilities?.requiresWasm && !runtime.usesWasm
+                            ? 'requires WebAssembly DSP'
+                            : requiresWasmAssets && !runtime.usesWasm
                             ? 'requires WebAssembly DSP'
                             : 'WebAssembly DSP is not enabled for this plugin';
                         note = note ? `${note}; ${reason}` : reason;
@@ -915,61 +1136,7 @@
                 benchmarkStatus.textContent = `Benchmark completed with ${runtime.label}!`;
                 progressContainer.style.display = 'none';
 
-                const table = document.createElement('table');
-                table.className = 'benchmark-table';
-
-                const thead = document.createElement('thead');
-                const headerRow = document.createElement('tr');
-                ['Category', 'Effect', 'Implementation', 'Samples/sec', 'Real-Time Factor(x)', 'CPU usage (%)', 'Note'].forEach(text => {
-                    const th = document.createElement('th');
-                    th.textContent = text;
-                    headerRow.appendChild(th);
-                });
-                thead.appendChild(headerRow);
-                table.appendChild(thead);
-
-                const tbody = document.createElement('tbody');
-                results.forEach(result => {
-                    const row = document.createElement('tr');
-
-                    const categoryCell = document.createElement('td');
-                    categoryCell.textContent = result.category;
-                    row.appendChild(categoryCell);
-
-                    const nameCell = document.createElement('td');
-                    nameCell.textContent = result.name;
-                    row.appendChild(nameCell);
-
-                    const implementationCell = document.createElement('td');
-                    implementationCell.textContent = result.implementation;
-                    row.appendChild(implementationCell);
-
-                    const samplesPerSecondCell = document.createElement('td');
-                    samplesPerSecondCell.textContent = result.skipped
-                        ? 'N/A'
-                        : result.samplesPerSecond.toLocaleString();
-                    row.appendChild(samplesPerSecondCell);
-
-                    const speedupCell = document.createElement('td');
-                    speedupCell.textContent = result.skipped ? 'N/A' : result.speedupFactor;
-                    row.appendChild(speedupCell);
-
-                    const cpuUsageCell = document.createElement('td');
-                    if (result.skipped) {
-                        cpuUsageCell.textContent = 'N/A';
-                    } else {
-                        const cpuUsage = (1 / parseFloat(result.speedupFactor)) * 100;
-                        cpuUsageCell.textContent = cpuUsage.toFixed(1);
-                    }
-                    row.appendChild(cpuUsageCell);
-
-                    const noteCell = document.createElement('td');
-                    noteCell.textContent = result.note;
-                    row.appendChild(noteCell);
-
-                    tbody.appendChild(row);
-                });
-                table.appendChild(tbody);
+                const table = createBenchmarkResultsTable(results);
 
                 benchmarkTableContainer.innerHTML = '';
                 const tableTitle = document.createElement('h3');
@@ -980,9 +1147,7 @@
 
                 benchmarkTableContainer.appendChild(createBenchmarkCopyButton(() => {
                     let tableText = benchmarkScoreText();
-                    const headerCells = table.querySelectorAll('thead th');
-                    const headers = Array.from(headerCells).map(cell => cell.textContent);
-                    tableText += headers.join('\t') + '\n';
+                    tableText += BENCHMARK_TABLE_COLUMNS.map(column => column.label).join('\t') + '\n';
 
                     const rows = table.querySelectorAll('tbody tr');
                     rows.forEach(row => {

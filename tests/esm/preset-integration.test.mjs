@@ -609,7 +609,11 @@ test('processAudioFiles validates dialog and pipeline prerequisites', async () =
   }, async ({ calls }) => {
     processAudioFiles(true);
     await flushPromises();
-    assert.ok(calls.some(call => call[0] === 'setError' && String(call[1]).includes('Pipeline manager not found')));
+    assert.ok(calls.some(call =>
+      call[0] === 'setError' && call[1] === 'error.offlineOutput.invalidOutput'));
+    assert.equal(JSON.stringify(calls.filter(call => call[0] === 'setError')).includes(
+      'Pipeline manager not found'
+    ), false);
   });
 
   await withPresetGlobals({
@@ -618,7 +622,11 @@ test('processAudioFiles validates dialog and pipeline prerequisites', async () =
   }, async ({ calls }) => {
     processAudioFiles(true);
     await flushPromises();
-    assert.ok(calls.some(call => call[0] === 'setError' && String(call[1]).includes('Drop area not found')));
+    assert.ok(calls.some(call =>
+      call[0] === 'setError' && call[1] === 'error.offlineOutput.invalidOutput'));
+    assert.equal(JSON.stringify(calls.filter(call => call[0] === 'setError')).includes(
+      'Drop area not found'
+    ), false);
   });
 });
 
@@ -638,9 +646,12 @@ test('processAudioFiles converts valid files, handles invalid files, and reports
   await withPresetGlobals({
     uiOptions: { pipelineManager },
     electronOptions: {
-      openDialogResult: { canceled: false, filePaths: ['C:\\Audio\\a.wav', 'bad.mp3'] },
+      openDialogResult: {
+        canceled: false,
+        filePaths: ['C:\\Audio\\a.wav', 'C:\\Secret\\bad.mp3']
+      },
       readFileBytesImpl(filePath) {
-        if (filePath === 'bad.mp3') throw new Error('bad file');
+        if (filePath.endsWith('bad.mp3')) throw new Error('bad file');
         return Buffer.from('abc');
       }
     }
@@ -651,7 +662,13 @@ test('processAudioFiles converts valid files, handles invalid files, and reports
     processAudioFiles(true);
     await flushPromises();
     assert.deepEqual(calls.find(call => call[0] === 'scrollTo'), ['scrollTo', { top: 220, behavior: 'smooth' }]);
-    assert.ok(calls.some(call => call[0] === 'setError' && String(call[1]).includes('bad file')));
+    assert.ok(calls.some(call =>
+      call[0] === 'setError' && call[1] === 'error.offlineOutput.invalidOutput'));
+    const userReports = JSON.stringify(calls.filter(call => call[0] === 'setError'));
+    assert.equal(userReports.includes('C:\\Secret'), false);
+    assert.equal(userReports.includes('bad file'), false);
+    assert.ok(calls.some(call => call[0] === 'consoleError' &&
+      String(call[1]).includes('C:\\Secret\\bad.mp3') && String(call[2]).includes('bad file')));
     timeouts[0]();
     assert.deepEqual(calls.find(call => call[0] === 'processDroppedAudioFiles'), [
       'processDroppedAudioFiles',
@@ -668,7 +685,37 @@ test('processAudioFiles converts valid files, handles invalid files, and reports
   }, async ({ calls }) => {
     processAudioFiles(true);
     await flushPromises();
-    assert.ok(calls.some(call => call[0] === 'setError' && call[1] === 'No valid audio files selected'));
+    assert.ok(calls.some(call =>
+      call[0] === 'setError' && call[1] === 'error.offlineOutput.invalidOutput'));
+    assert.equal(JSON.stringify(calls.filter(call => call[0] === 'setError')).includes(
+      'unreadable'
+    ), false);
+  });
+
+  await withPresetGlobals({
+    uiOptions: {
+      pipelineManager: {
+        fileProcessor: { dropArea },
+        processDroppedAudioFiles() {
+          return NativePromise.reject(new Error('C:\\private\\pipeline STACK_TOKEN'));
+        }
+      }
+    },
+    electronOptions: {
+      openDialogResult: { canceled: false, filePaths: ['C:\\Audio\\ready.wav'] }
+    }
+  }, async ({ calls, timeouts }) => {
+    processAudioFiles(true);
+    await flushPromises();
+    timeouts[0]();
+    await flushPromises();
+    assert.ok(calls.some(call =>
+      call[0] === 'setError' && call[1] === 'error.offlineOutput.invalidOutput'));
+    const userReports = JSON.stringify(calls.filter(call => call[0] === 'setError'));
+    assert.equal(userReports.includes('C:\\private'), false);
+    assert.equal(userReports.includes('STACK_TOKEN'), false);
+    assert.ok(calls.some(call => call[0] === 'consoleError' &&
+      String(call[2]).includes('STACK_TOKEN')));
   });
 
   await withPresetGlobals({
@@ -677,14 +724,26 @@ test('processAudioFiles converts valid files, handles invalid files, and reports
   }, async ({ calls }) => {
     processAudioFiles(true);
     await flushPromises();
-    assert.ok(calls.some(call => call[0] === 'setError' && String(call[1]).includes('dialog rejected')));
+    assert.ok(calls.some(call =>
+      call[0] === 'setError' && call[1] === 'error.offlineOutput.invalidOutput'));
+    assert.equal(JSON.stringify(calls.filter(call => call[0] === 'setError')).includes(
+      'dialog rejected'
+    ), false);
+    assert.ok(calls.some(call => call[0] === 'consoleError' &&
+      String(call[2]).includes('dialog rejected')));
   });
 
   await withPresetGlobals({
     electronOptions: { showOpenDialogThrows: new Error('sync dialog failure') }
   }, async ({ calls }) => {
     processAudioFiles(true);
-    assert.ok(calls.some(call => call[0] === 'setError' && String(call[1]).includes('sync dialog failure')));
+    assert.ok(calls.some(call =>
+      call[0] === 'setError' && call[1] === 'error.offlineOutput.invalidOutput'));
+    assert.equal(JSON.stringify(calls.filter(call => call[0] === 'setError')).includes(
+      'sync dialog failure'
+    ), false);
+    assert.ok(calls.some(call => call[0] === 'consoleError' &&
+      String(call[2]).includes('sync dialog failure')));
   });
 
   await withPresetGlobals({
@@ -700,7 +759,13 @@ test('processAudioFiles converts valid files, handles invalid files, and reports
   }, async ({ calls }) => {
     processAudioFiles(true);
     await flushPromises();
-    assert.ok(calls.some(call => call[0] === 'setError' && String(call[1]).includes('prepare failed')));
+    assert.ok(calls.some(call =>
+      call[0] === 'setError' && call[1] === 'error.offlineOutput.invalidOutput'));
+    assert.equal(JSON.stringify(calls.filter(call => call[0] === 'setError')).includes(
+      'prepare failed'
+    ), false);
+    assert.ok(calls.some(call => call[0] === 'consoleError' &&
+      String(call[2]).includes('prepare failed')));
   });
 });
 

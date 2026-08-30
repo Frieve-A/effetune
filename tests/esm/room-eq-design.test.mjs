@@ -2534,7 +2534,7 @@ test('design worker preserves low-phase fallback diagnostics across postMessage'
 // Room EQ reverb correction (Phase 1) — plan.md §5 Phase 1 gates.
 //
 // Fixture helpers below carry the same arithmetic as the Phase 0 golden harvest
-// (tmp/dev/room-eq-reverb-correction-impl-20260819/golden-fixture-source.mjs);
+// (tmp/dev/room-eq/room-eq-reverb-correction-impl-20260819/golden-fixture-source.mjs);
 // tests must never import from tmp/ at runtime (tracked-depends-on-ignored trap).
 // The only structural difference is that the per-point descriptor lookup is split
 // out of makeFixtureImpulseData, so §6.2 can render off-position points that are

@@ -160,3 +160,36 @@ test('ordinary name and category search behavior is unchanged', () => {
   assert.equal(autoFilter.style.display, '');
   assert.equal(tremolo.style.display, '');
 });
+
+test('effect drag guidance is shown only for the primary mouse button', () => {
+  const previousWindow = globalThis.window;
+  const listeners = new Map();
+  const item = {
+    addEventListener(type, listener) { listeners.set(type, listener); },
+    querySelector() { return null; },
+    matches() { return false; }
+  };
+  const dragMessage = { style: { display: 'none' } };
+  const manager = Object.assign(Object.create(PluginListManager.prototype), {
+    dragDropManager: {
+      dragMessage,
+      setupPluginItemDragEvents() {}
+    }
+  });
+
+  globalThis.window = { uiManager: { layoutMode: { isMobile: false } } };
+  try {
+    manager.setupPluginItemEvents(item, { name: 'Test Effect' });
+
+    listeners.get('mousedown')({ button: 2 });
+    assert.equal(dragMessage.style.display, 'none');
+
+    listeners.get('mousedown')({ button: 1 });
+    assert.equal(dragMessage.style.display, 'none');
+
+    listeners.get('mousedown')({ button: 0 });
+    assert.equal(dragMessage.style.display, 'block');
+  } finally {
+    globalThis.window = previousWindow;
+  }
+});

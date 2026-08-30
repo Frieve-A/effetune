@@ -4,6 +4,16 @@ import test from 'node:test';
 import { FileProcessor } from '../../js/ui/pipeline/file-processor.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 class FakeClassList {
   constructor(element) {
     this.element = element;
@@ -210,11 +220,10 @@ function createFile(name, options = {}) {
 }
 
 function createBlob(size = 1024, options = {}) {
-  return {
-    size,
-    base64: options.base64 ?? 'd2F2ZGF0YQ==',
-    failRead: options.failRead ?? false
-  };
+  const blob = new Blob([new Uint8Array(size)], { type: options.type ?? 'audio/wav' });
+  blob.base64 = options.base64 ?? 'd2F2ZGF0YQ==';
+  blob.failRead = options.failRead ?? false;
+  return blob;
 }
 
 function createDataTransfer(files) {
@@ -258,7 +267,10 @@ class FakeJSZip {
   async generateAsync(options) {
     FakeJSZip.lastOptions = options;
     FakeJSZip.lastFiles = this.files;
-    return createBlob(4096, { base64: 'emlw' });
+    if (FakeJSZip.generateAsyncOverride) {
+      return FakeJSZip.generateAsyncOverride(options);
+    }
+    return createBlob(4096, { base64: 'emlw', type: 'application/zip' });
   }
 }
 
@@ -279,15 +291,36 @@ function createUIManager(calls) {
 
 function createProcessorHarness(options = {}) {
   const calls = [];
+  const processedSettings = [];
   const processed = options.processed ?? new Map();
   const audioManager = {
     isCancelled: false,
-    async processAudioFile(file, progress) {
+    async processAudioFile(file, progress, outputSettings) {
       calls.push(['processAudioFile', file.name]);
+      processedSettings.push(outputSettings);
       progress?.(options.progressPercent ?? 50);
-      const outcome = processed.has(file.name) ? processed.get(file.name) : createBlob(options.blobSize ?? 2048);
+      if (options.processAudioFile) {
+        return options.processAudioFile(file, progress, outputSettings);
+      }
+      const mimeTypes = {
+        wav: 'audio/wav',
+        flac: 'audio/flac'
+      };
+      const outcome = processed.has(file.name)
+        ? processed.get(file.name)
+        : createBlob(options.blobSize ?? 2048, {
+            type: mimeTypes[outputSettings?.format ?? 'wav']
+          });
       if (outcome instanceof Error) throw outcome;
-      return outcome;
+      if (!outcome) return outcome;
+      return {
+        blob: outcome,
+        format: outputSettings?.format ?? 'wav',
+        extension: outputSettings?.format ?? 'wav',
+        mimeType: outcome.type || 'audio/wav',
+        sampleRate: outputSettings?.sampleRate ?? 96000,
+        numberOfChannels: 2
+      };
     },
     cancelProcessing: options.noCancelProcessing ? undefined : () => calls.push(['cancelProcessing'])
   };
@@ -305,7 +338,15 @@ function createProcessorHarness(options = {}) {
   const pipelineElement = document.createElement('div');
   processor.createFileDropArea(pipelineElement);
   processor.setupFileDropHandlers();
-  return { processor, pipelineManager, audioManager, calls, pipelineElement, insertionIndicator };
+  return {
+    processor,
+    pipelineManager,
+    audioManager,
+    calls,
+    processedSettings,
+    pipelineElement,
+    insertionIndicator
+  };
 }
 
 async function withFileProcessorGlobals(options, callback) {
@@ -319,6 +360,7 @@ async function withFileProcessorGlobals(options, callback) {
     uiManager: options.uiManager === false ? null : createUIManager(calls),
     electronIntegration: options.electronIntegration,
     electronAPI,
+    appConfig: options.appConfig,
     JSZip: FakeJSZip,
     open(...args) {
       calls.push(['window.open', ...args]);
@@ -331,6 +373,15 @@ async function withFileProcessorGlobals(options, callback) {
   await withGlobals({
     document: documentRef,
     window: windowRef,
+    console: {
+      ...console,
+      error(...args) {
+        calls.push(['consoleError', ...args]);
+      },
+      warn(...args) {
+        calls.push(['consoleWarn', ...args]);
+      }
+    },
     FileReader: options.FileReader ?? FakeFileReader,
     JSZip: FakeJSZip,
     URL: {
@@ -478,7 +529,9 @@ test('progress, cancellation, names, base64, and single-file processing update s
     await processor.progressContainer.querySelector('.cancel-button').dispatch('click');
     assert.equal(processor.isCancelled, true);
     assert.ok(harnessCalls.some(call => call[0] === 'cancelProcessing'));
-    assert.equal(processor.progressText.textContent, 'Processing canceled');
+    assert.equal(processor.progressText.textContent, 'library.job.cancelling');
+    assert.equal(processor.progressContainer.style.display, 'block');
+    assert.equal(processor.progressContainer.querySelector('.cancel-button').disabled, true);
 
     const fallback = createProcessorHarness({ noCancelProcessing: true });
     fallback.processor.showProgress();
@@ -509,8 +562,85 @@ test('progress, cancellation, names, base64, and single-file processing update s
   });
 });
 
+test('cancel visibly remains busy, refuses immediate input, and allows retry after settlement', async () => {
+  const firstStarted = deferred();
+  const releaseFirst = deferred();
+  let attempt = 0;
+  await withFileProcessorGlobals({}, async () => {
+    const { processor, calls } = createProcessorHarness({
+      async processAudioFile() {
+        attempt++;
+        if (attempt === 1) {
+          firstStarted.resolve();
+          await releaseFirst.promise;
+          return null;
+        }
+        const blob = createBlob(1024);
+        return {
+          blob,
+          format: 'wav',
+          extension: 'wav',
+          mimeType: 'audio/wav',
+          sampleRate: 96000,
+          numberOfChannels: 2
+        };
+      }
+    });
+
+    const firstProcessing = processor.processDroppedAudioFiles([createFile('first.wav')]);
+    await firstStarted.promise;
+    const cancelButton = processor.progressContainer.querySelector('.cancel-button');
+    await cancelButton.dispatch('click');
+    await cancelButton.dispatch('click');
+    assert.equal(processor.progressContainer.style.display, 'block');
+    assert.equal(processor.dropArea.querySelector('.drop-message').style.display, 'none');
+    assert.equal(cancelButton.disabled, true);
+    assert.equal(cancelButton.style.pointerEvents, 'none');
+    assert.equal(calls.filter(call => call[0] === 'cancelProcessing').length, 1);
+
+    const immediateRetry = processor.processDroppedAudioFiles([createFile('retry.wav')]);
+    assert.equal(await immediateRetry, false);
+    await flushMicrotasks();
+    assert.deepEqual(calls.filter(call => call[0] === 'processAudioFile').map(call => call[1]), [
+      'first.wav'
+    ]);
+
+    const fileInput = document.body.querySelector('input');
+    fileInput.files = [createFile('input-retry.wav')];
+    fileInput.value = 'C:\\fakepath\\input-retry.wav';
+    await fileInput.dispatch('change', { target: fileInput });
+    assert.equal(fileInput.value, '');
+    assert.equal(processor.progressContainer.style.display, 'block');
+
+    fileInput.clicked = false;
+    await processor.dropArea.querySelector('.select-files').dispatch('click');
+    assert.equal(fileInput.clicked, false);
+
+    document.body.classList.add('drag-over');
+    const busyDrag = createEvent(processor.dropArea, {
+      dataTransfer: createDataTransfer([createFile('drop-retry.wav')])
+    });
+    await processor.dropArea.dispatch('dragover', busyDrag);
+    assert.equal(busyDrag.prevented, true);
+    assert.equal(processor.dropArea.classList.contains('drag-active'), false);
+    assert.equal(document.body.classList.contains('drag-over'), false);
+
+    releaseFirst.resolve();
+    await firstProcessing;
+    assert.equal(processor.progressContainer.style.display, 'none');
+    await processor.processDroppedAudioFiles([createFile('after-settle.wav')]);
+    assert.deepEqual(calls.filter(call => call[0] === 'processAudioFile').map(call => call[1]), [
+      'first.wav',
+      'after-settle.wav'
+    ]);
+  });
+});
+
 test('multiple-file processing handles Electron, FSA, cancellation, errors, and ZIP fallback', async () => {
+  let abortedFsaWrites = 0;
+  const electronFolderPaths = [];
   await withFileProcessorGlobals({
+    appConfig: { offlineOutput: { format: 'flac', sampleRate: 96000 } },
     electronIntegration: { isElectron: true },
     electronAPI: {
       async showOpenDialog() {
@@ -520,19 +650,28 @@ test('multiple-file processing handles Electron, FSA, cancellation, errors, and 
         return `${folder}/${name}`;
       },
       async saveFile(path, base64) {
+        electronFolderPaths.push(path);
         return path.includes('bad') ? { success: false, error: 'save failed' } : { success: true, base64 };
       }
     }
   }, async ({ calls }) => {
     const { processor } = createProcessorHarness({
       processed: new Map([
-        ['bad.wav', createBlob()],
+        ['bad.wav', createBlob(1024, { type: 'audio/flac' })],
         ['throw.wav', new Error('render failed')]
       ])
     });
     await processor._processMultipleFiles([createFile('ok.wav'), createFile('bad.wav'), createFile('throw.wav')]);
-    assert.ok(processor.downloadContainer.querySelector('.download-link').innerHTML.includes('filesSavedToFolder'));
+    assert.ok(processor.downloadContainer.querySelector('.download-text').textContent.includes('filesSavedToFolder'));
     assert.ok(calls.some(call => call[0] === 'setError' && call[1] === 'error.failedToProcessFile'));
+    assert.ok(electronFolderPaths.includes('C:/out/ok_effetuned.flac'));
+    const userReports = JSON.stringify(calls.filter(call => call[0] === 'setError'));
+    assert.equal(userReports.includes('save failed'), false);
+    assert.equal(userReports.includes('render failed'), false);
+    assert.ok(calls.some(call => call[0] === 'consoleError' &&
+      String(call[2]).includes('save failed')));
+    assert.ok(calls.some(call => call[0] === 'consoleError' &&
+      String(call[2]).includes('render failed')));
 
     const canceled = createProcessorHarness({ processed: new Map([['cancel.wav', null]]) });
     await canceled.processor._processFilesToElectronFolder([createFile('cancel.wav')], 'C:/out');
@@ -541,9 +680,12 @@ test('multiple-file processing handles Electron, FSA, cancellation, errors, and 
     await canceled.processor._processFilesToElectronFolder([createFile('skip.wav')], 'C:/out');
   });
 
+  const fsaNames = [];
   await withFileProcessorGlobals({
+    appConfig: { offlineOutput: { format: 'flac', sampleRate: 96000 } },
     showDirectoryPicker: async () => ({
       async getFileHandle(name) {
+        fsaNames.push(name);
         return {
           async createWritable() {
             return {
@@ -551,7 +693,10 @@ test('multiple-file processing handles Electron, FSA, cancellation, errors, and 
                 if (name.includes('bad')) throw new Error('write failed');
                 assert.ok(blob.size > 0);
               },
-              async close() {}
+              async close() {},
+              async abort() {
+                abortedFsaWrites++;
+              }
             };
           }
         };
@@ -560,8 +705,10 @@ test('multiple-file processing handles Electron, FSA, cancellation, errors, and 
   }, async ({ calls }) => {
     const { processor } = createProcessorHarness();
     await processor._processMultipleFiles([createFile('ok.wav'), createFile('bad.wav')]);
-    assert.ok(processor.downloadContainer.querySelector('.download-link').innerHTML.includes('filesSaved'));
+    assert.ok(processor.downloadContainer.querySelector('.download-text').textContent.includes('filesSaved'));
     assert.ok(calls.some(call => call[0] === 'setError'));
+    assert.equal(abortedFsaWrites, 1);
+    assert.ok(fsaNames.includes('ok_effetuned.flac'));
 
     const canceled = createProcessorHarness({ processed: new Map([['cancel.wav', null]]) });
     await canceled.processor._processFilesToFSADirectory([createFile('cancel.wav')], {
@@ -621,6 +768,25 @@ test('multiple-file processing handles Electron, FSA, cancellation, errors, and 
   });
 });
 
+test('saved-folder messages keep Electron paths as text instead of markup', async () => {
+  await withFileProcessorGlobals({}, async ({ calls }) => {
+    const { processor } = createProcessorHarness();
+    const folderPath = 'C:/output</span><img src=x onerror="window.pwned=true">';
+
+    processor._showSavedMessage(2, folderPath);
+
+    const message = processor.downloadContainer.querySelector('.download-link');
+    assert.equal(message.children.length, 2);
+    assert.equal(message.children[0].className, 'download-icon');
+    assert.equal(message.children[0].textContent, '✓');
+    assert.ok(message.children[1].textContent.includes('</span><img src=x onerror='));
+    assert.equal(calls.find(call => call[0] === 't' &&
+      call[1] === 'status.filesSavedToFolder')[2].folder, folderPath);
+    assert.equal(message.querySelector('img'), null);
+    assert.deepEqual(message.children[1].attributes, {});
+  });
+});
+
 test('download links support web and Electron save flows', async () => {
   await withFileProcessorGlobals({}, async ({ createdUrls, revokedUrls, runTimeouts }) => {
     const { processor } = createProcessorHarness();
@@ -636,9 +802,9 @@ test('download links support web and Electron save flows', async () => {
   await withFileProcessorGlobals({ uiManager: false }, async () => {
     const { processor } = createProcessorHarness();
     processor._showSavedMessage(2, 'C:/out');
-    assert.ok(processor.downloadContainer.querySelector('.download-link').innerHTML.includes('2 file(s) saved to C:/out'));
+    assert.ok(processor.downloadContainer.querySelector('.download-text').textContent.includes('2 file(s) saved to C:/out'));
     processor._showSavedMessage(1, null);
-    assert.ok(processor.downloadContainer.querySelector('.download-link').innerHTML.includes('1 file(s) saved to selected folder'));
+    assert.ok(processor.downloadContainer.querySelector('.download-text').textContent.includes('1 file(s) saved to selected folder'));
     processor.showDownloadLink(createBlob(1024), 'archive.zip', true);
     const link = processor.downloadContainer.querySelector('a');
     assert.equal(link.download, 'archive.zip');
@@ -667,6 +833,18 @@ test('download links support web and Electron save flows', async () => {
     assert.ok(calls.some(call => call[0] === 'setError' && String(call[1]).includes('File saved successfully')));
     runTimeouts();
     assert.ok(calls.some(call => call[0] === 'clearError'));
+
+    processor.showDownloadLink({
+      blob: createBlob(2048, { type: 'audio/flac' }),
+      format: 'flac',
+      extension: 'flac',
+      mimeType: 'audio/flac'
+    }, 'album.wav');
+    await processor.downloadContainer.querySelector('a').dispatch('click');
+    await flushMicrotasks();
+    const flacDialog = saveCalls.filter(call => call[0] === 'showSaveDialog').at(-1)[1];
+    assert.equal(flacDialog.defaultPath, 'album_effetuned.flac');
+    assert.deepEqual(flacDialog.filters[0], { name: 'FLAC Audio', extensions: ['flac'] });
   });
 
   await withFileProcessorGlobals({
@@ -684,7 +862,12 @@ test('download links support web and Electron save flows', async () => {
     processor.showDownloadLink(createBlob(1024), 'song.wav');
     await processor.downloadContainer.querySelector('a').dispatch('click');
     await flushMicrotasks();
-    assert.ok(calls.some(call => call[0] === 'setError' && String(call[1]).includes('Failed to save file')));
+    assert.ok(calls.some(call =>
+      call[0] === 'setError' && call[1] === 'error.offlineOutput.invalidOutput'));
+    assert.equal(calls.filter(call => call[0] === 'setError').some(call =>
+      JSON.stringify(call).includes('disk full')), false);
+    assert.ok(calls.some(call =>
+      call[0] === 'consoleError' && String(call[2]).includes('disk full')));
   });
 
   await withFileProcessorGlobals({
@@ -701,7 +884,10 @@ test('download links support web and Electron save flows', async () => {
     const { processor } = createProcessorHarness();
     processor.showDownloadLink(createBlob(1024, { failRead: true }), 'song.wav');
     await processor.downloadContainer.querySelector('a').dispatch('click');
-    assert.ok(calls.some(call => call[0] === 'setError' && String(call[1]).includes('Error reading file')));
+    assert.ok(calls.some(call =>
+      call[0] === 'setError' && call[1] === 'error.offlineOutput.invalidOutput'));
+    assert.equal(calls.filter(call => call[0] === 'setError').some(call =>
+      JSON.stringify(call).includes('read failed')), false);
   });
 
   await withFileProcessorGlobals({
@@ -719,7 +905,29 @@ test('download links support web and Electron save flows', async () => {
     processor.showDownloadLink(createBlob(1024), 'song.wav', true);
     await processor.downloadContainer.querySelector('a').dispatch('click');
     await flushMicrotasks();
-    assert.ok(calls.some(call => call[0] === 'setError' && String(call[1]).includes('Error saving file')));
+    assert.ok(calls.some(call =>
+      call[0] === 'setError' && call[1] === 'error.offlineOutput.invalidOutput'));
+    assert.equal(calls.filter(call => call[0] === 'setError').some(call =>
+      JSON.stringify(call).includes('save exploded')), false);
+  });
+
+  await withFileProcessorGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      async showSaveDialog() {
+        throw new Error('C:\\private\\dialog-state STACK_TOKEN');
+      }
+    }
+  }, async ({ calls }) => {
+    const { processor } = createProcessorHarness();
+    processor.showDownloadLink(createBlob(1024), 'song.wav');
+    await processor.downloadContainer.querySelector('a').dispatch('click');
+    assert.ok(calls.some(call =>
+      call[0] === 'setError' && call[1] === 'error.offlineOutput.invalidOutput'));
+    assert.equal(calls.filter(call => call[0] === 'setError').some(call => {
+      const value = JSON.stringify(call);
+      return value.includes('C:\\private') || value.includes('STACK_TOKEN');
+    }), false);
   });
 
   await withFileProcessorGlobals({
@@ -754,10 +962,19 @@ test('processDroppedAudioFiles filters input, reports errors, cleans classes, an
     assert.equal(stray.classList.contains('drag-active'), false);
 
     const failing = createProcessorHarness({
-      processed: new Map([['fail.wav', new Error('process failed')]])
+      processed: new Map([[
+        'fail.wav',
+        new Error('C:\\private\\audio.wav STACK_TOKEN')
+      ]])
     });
     await failing.processor.processDroppedAudioFiles([createFile('fail.wav')]);
     assert.ok(calls.some(call => call[0] === 'setError' && call[1] === 'error.failedToProcessAudioFiles'));
+    assert.equal(calls.filter(call => call[0] === 'setError').some(call => {
+      const value = JSON.stringify(call);
+      return value.includes('C:\\private') || value.includes('STACK_TOKEN');
+    }), false);
+    assert.ok(calls.some(call =>
+      call[0] === 'consoleError' && String(call[2]).includes('STACK_TOKEN')));
   });
 
   await withFileProcessorGlobals({}, async ({ calls }) => {
@@ -886,7 +1103,10 @@ test('untranslated UI and defensive file handling recover from fallbacks and cat
     const { processor } = createProcessorHarness();
     processor.showDownloadLink(createBlob(1024), 'song.wav');
     await processor.downloadContainer.querySelector('a').dispatch('click');
-    assert.ok(calls.some(call => call[0] === 'setError' && String(call[1]).includes('Error saving file')));
+    assert.ok(calls.some(call =>
+      call[0] === 'setError' && call[1] === 'error.offlineOutput.invalidOutput'));
+    assert.equal(calls.filter(call => call[0] === 'setError').some(call =>
+      JSON.stringify(call).includes('reader exploded')), false);
   });
 
   await withFileProcessorGlobals({}, async () => {
@@ -894,4 +1114,55 @@ test('untranslated UI and defensive file handling recover from fallbacks and cat
     await processor.processDroppedAudioFiles([{}, createFile('ok.wav')]);
     assert.equal(processor.downloadContainer.style.display, 'block');
   });
+});
+
+test('batch output uses one format snapshot for ZIP names and encoder calls', async () => {
+  const appConfig = {
+    offlineOutput: {
+      format: 'flac',
+      sampleRate: 48000,
+      wavSampleFormat: 'float32',
+      flacSampleFormat: 'pcm16'
+    }
+  };
+  await withFileProcessorGlobals({ appConfig }, async () => {
+    const { processor, processedSettings } = createProcessorHarness();
+    processor.showProgress();
+    await processor._processFilesWithJSZip([
+      createFile('first.wav'),
+      createFile('without-extension')
+    ]);
+
+    assert.deepEqual(FakeJSZip.lastFiles.map(([name]) => name), [
+      'first_effetuned.flac',
+      'without-extension_effetuned.flac'
+    ]);
+    assert.equal(processedSettings.length, 2);
+    assert.equal(processedSettings[0], processedSettings[1]);
+    assert.equal(processedSettings[0].format, 'flac');
+    assert.equal(processedSettings[0].wavSampleFormat, 'float32');
+    assert.equal(processedSettings[0].flacSampleFormat, 'pcm16');
+    assert.equal(Object.isFrozen(processedSettings[0]), true);
+  });
+});
+
+test('canceled ZIP generation does not publish a download link', async () => {
+  const generated = deferred();
+  FakeJSZip.generateAsyncOverride = () => generated.promise;
+  try {
+    await withFileProcessorGlobals({}, async () => {
+      const { processor } = createProcessorHarness();
+      processor.showProgress();
+      const processing = processor._processFilesWithJSZip([createFile('first.wav')]);
+      await flushMicrotasks();
+      processor.isCancelled = true;
+      generated.resolve(createBlob(4096, { type: 'application/zip' }));
+      await processing;
+
+      assert.equal(processor.downloadContainer.querySelector('a'), null);
+      assert.equal(processor.downloadContainer.style.display, 'none');
+    });
+  } finally {
+    FakeJSZip.generateAsyncOverride = undefined;
+  }
 });

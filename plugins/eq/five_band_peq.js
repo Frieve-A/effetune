@@ -368,8 +368,10 @@ class FiveBandPEQPlugin extends PluginBase {
     container.id = `five-band-peq-container-${this.id}`;
 
     const graphContainer = document.createElement('div');
-    graphContainer.className = 'five-band-peq-graph';
+    graphContainer.className = 'five-band-peq-graph graph-axis-titled';
     graphContainer.id = `five-band-peq-graph-${this.id}`;
+    graphContainer.setAttribute('data-x-axis-title', 'Frequency (Hz)');
+    graphContainer.setAttribute('data-y-axis-title', 'Level (dB)');
 
     const gridSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     gridSvg.setAttribute('class', 'five-band-peq-grid');
@@ -424,6 +426,17 @@ class FiveBandPEQPlugin extends PluginBase {
       marker.appendChild(markerText); 
       graphContainer.appendChild(marker);
       markers.push(marker);
+
+      PeqMarkerWheel.bind(marker, {
+        getQ: () => this['q' + i],
+        maximumQ: () => ['ls', 'hs'].includes(this['t' + i]) ? 2 : 10,
+        setQ: q => {
+          this.setBand(i, undefined, undefined, q);
+          this.updateMarkers();
+          this.updateResponse();
+          this.setUIBandValues(i);
+        }
+      });
       
       // Improved drag and drop implementation with simplification
       const handleDragStart = (clientX, clientY) => {
@@ -436,6 +449,7 @@ class FiveBandPEQPlugin extends PluginBase {
         this.initialDragX = clientX;
         this.initialDragY = clientY;
         this.hasMoved = false;
+        GraphDragAxisLock.begin(this, clientX, clientY);
       };
       let suppressTapUntil = 0;
       const now = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
@@ -445,6 +459,7 @@ class FiveBandPEQPlugin extends PluginBase {
         onDragMove: (e) => this.handleDragMove({
           clientX: e.clientX,
           clientY: e.clientY,
+          shiftKey: e.shiftKey,
           targetContainer: graphContainer,
           targetBand: i
         }),
@@ -694,6 +709,7 @@ class FiveBandPEQPlugin extends PluginBase {
         qText.max = maxQ;
         qSlider.value = parseFloat(this['q' + bandIndex]).toFixed(2);
         qText.value = parseFloat(this['q' + bandIndex]).toFixed(2);
+        window.uiManager?.refreshRangeFillStyling?.(qSlider);
     }
   }
 
@@ -921,8 +937,13 @@ class FiveBandPEQPlugin extends PluginBase {
     
     const freq = this.xToFreq(x * 100);
     const gain = this.yToGain(y * 100);
-    
-    this.setBand(bandIndex, freq, gain);
+    const dragAxis = GraphDragAxisLock.resolve(this, e);
+
+    this.setBand(
+      bandIndex,
+      dragAxis === 'y' ? this['f' + bandIndex] : freq,
+      dragAxis === 'x' ? this['g' + bandIndex] : gain
+    );
     this.updateMarkers();
     this.updateResponse();
     
@@ -949,6 +970,7 @@ class FiveBandPEQPlugin extends PluginBase {
     
     this.activeDragMarker = null;
     this.hasMoved = false; // Reset movement state
+    GraphDragAxisLock.end(this);
     
     if (this.boundMouseMoveHandler) {
       document.removeEventListener('mousemove', this.boundMouseMoveHandler);

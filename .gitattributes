@@ -17,6 +17,9 @@
 # Preserve the verified upstream SQLite Emscripten output byte-for-byte.
 js/vendor/sqlite/sqlite3.mjs whitespace=-trailing-space
 
+# Preserve the generated offline encoder bundle's embedded FLAC data byte-for-byte.
+js/vendor/offline-audio-encoders.mjs whitespace=-trailing-space,-space-before-tab
+
 # Binary files should not be modified
 *.png binary
 *.jpg binary

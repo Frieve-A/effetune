@@ -901,33 +901,48 @@ test('resumeAudioContext resumes suspended contexts and warns when they stay sus
   });
 });
 
-test('interrupted AudioContexts share one gesture resume attempt', async () => {
+test('interrupted AudioContexts retry resume while an earlier attempt is pending', async () => {
   const documentRef = createDocumentTarget();
   await withAudioGlobals({ document: documentRef }, async ({ calls }) => {
-    let finishResume;
+    let finishFirstResume;
+    let dispatchingGesture = false;
+    let resumeCount = 0;
+    const resumeDispatchStates = [];
     const manager = new AudioContextManager();
     manager.audioContext = {
       state: 'interrupted',
       resume() {
         calls.push(['resumeInterrupted']);
-        return new Promise(resolve => {
-          finishResume = () => {
-            this.state = 'running';
-            resolve();
-          };
-        });
+        resumeDispatchStates.push(dispatchingGesture);
+        resumeCount++;
+        if (resumeCount === 1) {
+          return new Promise(resolve => {
+            finishFirstResume = resolve;
+          });
+        }
+        this.state = 'running';
+        return Promise.resolve();
       }
     };
 
     manager.resumeOnUserGesture();
     assert.equal(documentRef.listenerCount('pointerup'), 1);
     const first = manager.resumeAudioContext();
-    const second = manager.resumeAudioContext();
-    assert.equal(calls.filter(call => call[0] === 'resumeInterrupted').length, 1);
-    finishResume();
-    await Promise.all([first, second]);
+    assert.deepEqual(resumeDispatchStates, [false]);
+
+    dispatchingGesture = true;
+    documentRef.dispatchEvent('pointerup');
+    dispatchingGesture = false;
+    assert.equal(calls.filter(call => call[0] === 'resumeInterrupted').length, 2);
+    assert.deepEqual(resumeDispatchStates, [false, true]);
+    await flushMicrotasks();
     assert.equal(manager.audioContext.state, 'running');
     assert.equal(documentRef.listenerCount('pointerup'), 0);
+    assert.equal(documentRef.listenerCount('touchend'), 0);
+    assert.equal(documentRef.listenerCount('keydown'), 0);
+
+    finishFirstResume();
+    await first;
   });
 });
 

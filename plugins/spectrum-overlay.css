@@ -21,12 +21,22 @@ body.layout-mobile .plugin-parameter-ui canvas.spectrum-overlay-canvas {
     height: calc(100% - 2 * var(--spectrum-overlay-inset, 0px)) !important;
 }
 
+.plugin-parameter-ui .spectrum-overlay-axis-title {
+    right: 10px;
+    top: 50%;
+    color: rgba(140, 190, 255, 0.8);
+    transform: translate(50%, -50%) rotate(-90deg);
+}
+
 .room-eq-phase-view > canvas.spectrum-overlay-canvas,
 .room-eq-phase-view > .spectrum-overlay-toggle,
+.room-eq-phase-view > .spectrum-overlay-axis-title,
 .room-eq-group-delay-view > canvas.spectrum-overlay-canvas,
 .room-eq-group-delay-view > .spectrum-overlay-toggle,
+.room-eq-group-delay-view > .spectrum-overlay-axis-title,
 .room-eq-impulse-view > canvas.spectrum-overlay-canvas,
-.room-eq-impulse-view > .spectrum-overlay-toggle {
+.room-eq-impulse-view > .spectrum-overlay-toggle,
+.room-eq-impulse-view > .spectrum-overlay-axis-title {
     display: none;
 }
 
@@ -67,7 +77,8 @@ body.layout-mobile .plugin-parameter-ui canvas.spectrum-overlay-canvas {
     opacity: 1;
 }
 
-.spectrum-overlay-toggle[aria-pressed="true"] {
+.spectrum-overlay-toggle[aria-pressed="true"],
+.spectrum-overlay-toggle[aria-pressed="mixed"] {
     border-color: #7cb0ff;
     color: #9ecbff;
 }

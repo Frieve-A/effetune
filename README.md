@@ -37,6 +37,7 @@ No audiophile myths, Just pure science.
 - Frequency response measurement and correction for system calibration
 - Multi-channel processing and output
 - Mobile-friendly web layout for phone and tablet use
+- Mobile numeric keypad with decimal-point, sign, and range controls for effect parameters
 - Web app settings and audio configuration saved in the browser
 - Installable web app with offline app-shell support
 - Power saving for Web/PWA and desktop apps, with configurable silence handling and audio-input retention
@@ -130,6 +131,7 @@ Large collections load in stages from storage; scanning and loading speed depend
    - For Section effects: Shift+click the × button to remove entire sections
 9. Click the routing button to set the channels to be processed and the input and output busses
    - [More about bus functions](docs/bus-function.md)
+   - [Control effect parameters with MIDI, gamepads, or the keyboard](docs/controller-mapping.md)
 10. Click an effect's Effect Presets button to save or apply settings for that effect only
 11. For fine slider adjustment, hold Shift while dragging; the value changes by one minimum step at a time
 
@@ -221,14 +223,15 @@ The existing `.effetune_preset` file import, export, and sharing features contin
    - A dedicated drop area is always visible below the Effect Pipeline
    - Supports single or multiple audio files
    - Files are processed using the current Pipeline settings
-   - All processing is done at the Pipeline's sample rate
+   - Effects are processed at the Pipeline's sample rate; any output sample-rate conversion happens afterward
 
 2. Processing Status:
    - Progress bar shows current processing status
    - Processing time depends on file size and effect chain complexity
 
 3. Download or Save Options:
-   - The processed file is output in WAV format
+   - In **Settings > Config > Offline file output**, choose WAV or FLAC, plus its sample rate and quality. For FLAC, choose 16-bit or 24-bit lossless encoding. The default is WAV at 96 kHz with 24-bit PCM
+   - Formats have different channel limits. EffeTune stops with guidance instead of automatically downmixing a file that exceeds the selected format's limit
    - For multiple files, select an output folder before processing begins; each file is saved directly to that folder as it completes
    - On older browsers without folder selection support, multiple files are packaged into a ZIP file for download
 
