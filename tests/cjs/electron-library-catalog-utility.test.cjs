@@ -301,19 +301,19 @@ test('artwork pool isolates worker crashes and replaces the failed slot', async 
   await pool.close();
 });
 
-test('desktop bootstrap starts the scan, artwork, and operation runtime in utilityProcess', async () => {
+test('desktop bootstrap starts the scan, artwork, and operation runtime lazily in utilityProcess', async () => {
   const mainSource = await fs.readFile(path.join(__dirname, '../../electron/main.js'), 'utf8');
   const utilitySource = await fs.readFile(path.join(__dirname, '../../electron/library-catalog-utility.cjs'), 'utf8');
   assert.match(mainSource, /utilityProcess\.fork\(modulePath/);
   assert.match(mainSource, /LibraryCatalogUtilityHost\.open/);
   assert.match(mainSource, /imageAdapter: nativeImage/);
   assert.match(mainSource, /new LibraryCatalogRecovery/);
-  assert.match(mainSource, /void libraryCatalogRecovery\.initialize\(\)\.catch/);
-  assert.doesNotMatch(mainSource, /await libraryCatalogRecovery\.initialize\(\)/);
+  assert.doesNotMatch(mainSource, /libraryCatalogRecovery\.initialize\(\)/);
+  assert.match(mainSource, /require\('\.\/library-catalog-utility-host\.cjs'\)/);
   assert.ok(
-    mainSource.indexOf('ipcHandlers.registerIpcHandlers()') <
-      mainSource.indexOf('void libraryCatalogRecovery.initialize().catch'),
-    'core IPC must be ready before optional catalog initialization starts'
+    mainSource.indexOf("async function openLibraryCatalogServices") <
+      mainSource.indexOf("require('./library-catalog-utility-host.cjs')"),
+    'the catalog utility must not be loaded before the Library is requested'
   );
   assert.match(mainSource, /registerLibraryCatalogRecoveryIpc/);
   assert.doesNotMatch(mainSource, /The music library catalog could not be opened/);

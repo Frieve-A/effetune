@@ -30,7 +30,7 @@ export class StateManager {
       playbackMode: 'audioElement', // 'audioElement' or 'bufferSource'
       repeatMode: 'OFF', // 'OFF', 'ALL', 'ONE'
       shuffleMode: false,
-      seamlessMode: true,
+      seamlessMode: audioPlayer?.gaplessPlayback !== false,
       
       // Transition state
       isTransitioning: false,
@@ -146,7 +146,7 @@ export class StateManager {
     }
     
     // Validate playback mode
-    if (!['audioElement', 'bufferSource'].includes(this.state.playbackMode)) {
+    if (!['audioElement', 'bufferSource', 'rollingPcm'].includes(this.state.playbackMode)) {
       console.warn('[StateManager] Invalid playback mode:', this.state.playbackMode);
       this.state.playbackMode = 'audioElement';
     }
@@ -158,7 +158,7 @@ export class StateManager {
   logStateChange(oldState, newState, source, timestamp) {
     const change = {
       timestamp,
-      source,
+      source: summarizeHistoryValue(source),
       changes: {}
     };
     
@@ -166,8 +166,8 @@ export class StateManager {
     for (const [key, newValue] of Object.entries(newState)) {
       if (oldState[key] !== newValue) {
         change.changes[key] = {
-          from: oldState[key],
-          to: newValue
+          from: summarizeHistoryValue(oldState[key]),
+          to: summarizeHistoryValue(newValue)
         };
       }
     }
@@ -497,6 +497,34 @@ export class StateManager {
       )
     };
   }
+}
+
+function summarizeHistoryValue(value) {
+  if (value === null || value === undefined || typeof value === 'boolean' ||
+      typeof value === 'number') return value ?? null;
+  if (typeof value === 'string') return value.slice(0, 160);
+  if (typeof value === 'bigint') return `${value}n`;
+  if (value instanceof ArrayBuffer) return `ArrayBuffer(${value.byteLength} bytes)`;
+  if (ArrayBuffer.isView(value)) {
+    return `${value.constructor?.name ?? 'TypedArray'}(${value.byteLength} bytes)`;
+  }
+  if (typeof Blob === 'function' && value instanceof Blob) {
+    return `${value.constructor?.name ?? 'Blob'}(${value.size} bytes${value.type
+      ? `, ${value.type.slice(0, 80)}`
+      : ''})`;
+  }
+  if (Array.isArray(value)) return `Array(${value.length})`;
+  if (typeof value === 'object') {
+    const audioBufferSummary = Number.isSafeInteger(value.length) &&
+      Number.isSafeInteger(value.numberOfChannels) && Number.isFinite(value.sampleRate)
+      ? `AudioBuffer(${value.numberOfChannels}ch, ${value.length} frames, ${value.sampleRate}Hz)`
+      : null;
+    if (audioBufferSummary) return audioBufferSummary;
+    const type = value.constructor?.name ?? 'Object';
+    const keys = Object.keys(value).slice(0, 8).join(',');
+    return `${type}(${keys}${Object.keys(value).length > 8 ? ',…' : ''})`.slice(0, 160);
+  }
+  return String(value).slice(0, 160);
 }
 
 function normalizeQueueWindow(queueWindow, totalCount) {

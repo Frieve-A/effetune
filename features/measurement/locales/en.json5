@@ -100,6 +100,8 @@
   "button:exportCSV": "Export Correction Parameters (CSV)", // Button to export CSV
   "help:exportOptions": "The copied frequency correction settings can be pasted into EffeTune's Effect Pipeline by Ctrl+V.", // Help text for export options
   "title:measurementDetails": "Measurement Details", // Title for measurement details section
+  "label:onset": "Onset", // Absolute onset of the stored impulse response, per measurement point
+  "label:onsetEarliest": "earliest", // Marks the channel that arrives first among simultaneously measured channels
   
   // Dialogs
   "button:confirm": "Confirm", // Confirm button in dialog

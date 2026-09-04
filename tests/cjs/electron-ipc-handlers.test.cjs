@@ -460,7 +460,6 @@ test('registers core handlers and delegates file, config, update, path, and URL 
       assert.equal(handlers.has(channel), false);
     }
     assert.equal(listeners.has('files-dropped'), false);
-    assert.equal(handlers.get('get-first-launch-flag')(), true);
     assert.deepEqual(handlers.get('get-window-visibility')(), { hidden: false });
     moduleUnderTest.setMainWindow(createMainWindow(calls, { minimized: true }));
     assert.deepEqual(handlers.get('get-window-visibility')(), { hidden: true });
@@ -489,7 +488,19 @@ test('registers core handlers and delegates file, config, update, path, and URL 
     assert.equal(fs.existsSync(path.join(tempDir, 'audio-preferences.json')), true);
     assert.deepEqual(await handlers.get('load-audio-preferences')(), {
       success: true,
-      preferences: { outputDeviceId: 'speaker1' }
+      preferences: {
+        inputDeviceId: 'default',
+        outputDeviceId: 'speaker1',
+        inputDeviceLabel: '',
+        outputDeviceLabel: '',
+        sampleRate: 96000,
+        useInputWithPlayer: false,
+        lowLatencyOutput: false,
+        useWasmDsp: true,
+        gaplessPlayback: true,
+        outputChannels: 2,
+        latencyHint: 'interactive'
+      }
     });
 
     assert.deepEqual(await handlers.get('save-config')({}, { autoLaunch: true }), { success: true });
@@ -832,6 +843,7 @@ test('IPC handlers manage stable-ID menu state, tray presets, and default menu c
     assert.equal(defaultMenu.template[2].submenu[7].accelerator, 'CommandOrControl+L');
     assert.equal(defaultMenu.template[2].submenu[8].type, 'checkbox');
     assert.equal(defaultMenu.template[2].submenu[8].checked, false);
+    assert.equal(defaultMenu.getMenuItemById('settings.audioDevices').label, 'Audio Configuration...');
     clickMenu(defaultMenu);
     await Promise.resolve();
 
@@ -1146,7 +1158,12 @@ test('audio preference IPC skips reload only for a verified renderer-managed sil
     ].includes(call[0])), []);
     assert.deepEqual(
       JSON.parse(fs.readFileSync(path.join(tempDir, 'audio-preferences.json'), 'utf8')),
-      silentPreferences
+      {
+        ...silentPreferences,
+        inputDeviceLabel: '',
+        outputDeviceLabel: '',
+        gaplessPlayback: true
+      }
     );
 
     calls.length = 0;
@@ -1207,7 +1224,11 @@ test('audio preference IPC persists a verified output-device fallback without re
     ].includes(call[0])), []);
     assert.deepEqual(
       JSON.parse(fs.readFileSync(preferencesPath, 'utf8')),
-      defaultOutputPreferences
+      {
+        ...defaultOutputPreferences,
+        inputDeviceLabel: '',
+        gaplessPlayback: true
+      }
     );
 
     fs.writeFileSync(preferencesPath, JSON.stringify(explicitOutputPreferences));

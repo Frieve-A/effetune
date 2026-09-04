@@ -36,6 +36,10 @@ function importResult(imported, failed, unsupportedCount) {
   };
 }
 
+function reportProgress(options, progress) {
+  options.onProgress?.(progress);
+}
+
 function relativeDirectory(file) {
   const known = directoryKeys.get(file);
   if (known !== undefined) return known;
@@ -104,19 +108,29 @@ async function readFileBytes(file) {
   return bytes;
 }
 
-export async function enumerateIrDirectory(directoryHandle) {
+export async function enumerateIrDirectory(directoryHandle, options = {}) {
   const files = [];
+  let scannedCount = 0;
+  reportProgress(options, { phase: 'scanning', scannedCount, supportedCount: files.length });
   async function visit(directory, depth, segments) {
-    if (depth > 32 || files.length >= MAX_FOLDER_FILES) return;
+    if (depth > 32 || files.length >= MAX_FOLDER_FILES || options.isCurrent?.() === false) return;
     for await (const [name, handle] of directory.entries()) {
-      if (files.length >= MAX_FOLDER_FILES) return;
+      if (files.length >= MAX_FOLDER_FILES || options.isCurrent?.() === false) return;
       if (handle.kind === 'directory') await visit(handle, depth + 1, [...segments, name]);
       else if (handle.kind === 'file') {
         const file = await handle.getFile();
+        if (options.isCurrent?.() === false) return;
+        scannedCount += 1;
         if (isSupportedIrFileName(file.name)) {
           directoryKeys.set(file, segments.join('/'));
           files.push(file);
         }
+        reportProgress(options, {
+          phase: 'scanning',
+          scannedCount,
+          supportedCount: files.length,
+          currentFile: file.name
+        });
       }
     }
   }
@@ -175,12 +189,39 @@ export class IrLibraryService {
       if (supported.length !== 2 || pairs.length !== 1 || singles.length || unmatched.length) {
         throw new Error('The two files must have matching names ending in L/R or Left/Right.');
       }
+      reportProgress(options, {
+        phase: 'importing',
+        completedCount: 0,
+        totalCount: 1,
+        importedCount: 0,
+        failedCount: 0,
+        currentFiles: pairs[0].map(file => file.name)
+      });
       try {
-        return importResult([await this.#importPair(pairs[0], options)], [], unsupportedCount);
+        const entry = await this.#importPair(pairs[0], options);
+        reportProgress(options, {
+          phase: 'importing',
+          completedCount: 1,
+          totalCount: 1,
+          importedCount: 1,
+          failedCount: 0,
+          entry
+        });
+        return importResult([entry], [], unsupportedCount);
       } catch (error) {
+        if (options.isCurrent?.() === false) {
+          return importResult([], [], unsupportedCount);
+        }
         const code = importFailureCode(error);
         if (!code) throw error;
         this.onDiagnostic(error);
+        reportProgress(options, {
+          phase: 'importing',
+          completedCount: 1,
+          totalCount: 1,
+          importedCount: 0,
+          failedCount: 1
+        });
         return importResult([], [{ code }], unsupportedCount);
       }
     }
@@ -188,29 +229,69 @@ export class IrLibraryService {
     const failed = [];
     singles.push(...unmatched.flat());
     singles.sort(compareFiles);
+    const totalCount = pairs.length + singles.length;
+    let completedCount = 0;
+    const progress = currentFiles => reportProgress(options, {
+      phase: 'importing',
+      completedCount,
+      totalCount,
+      importedCount: imported.length,
+      failedCount: failed.length,
+      ...(currentFiles?.length && { currentFiles })
+    });
+    progress();
     for (const pair of pairs) {
       if (options.isCurrent?.() === false) break;
+      progress(pair.map(file => file.name));
       try {
-        imported.push(await this.#importPair(pair, options));
+        const entry = await this.#importPair(pair, options);
+        imported.push(entry);
+        completedCount += 1;
+        reportProgress(options, {
+          phase: 'importing',
+          completedCount,
+          totalCount,
+          importedCount: imported.length,
+          failedCount: failed.length,
+          entry
+        });
       } catch (error) {
+        if (options.isCurrent?.() === false) break;
         this.onDiagnostic(error);
         failed.push({ files: pair.map(file => file.name), code: importFailureCode(error) });
+        completedCount += 1;
+        progress();
       }
     }
     for (const file of singles) {
       if (options.isCurrent?.() === false) break;
+      progress([file.name]);
       try {
-        imported.push(await this.#importSingle(file, options));
+        const entry = await this.#importSingle(file, options);
+        imported.push(entry);
+        completedCount += 1;
+        reportProgress(options, {
+          phase: 'importing',
+          completedCount,
+          totalCount,
+          importedCount: imported.length,
+          failedCount: failed.length,
+          entry
+        });
       } catch (error) {
+        if (options.isCurrent?.() === false) break;
         this.onDiagnostic(error);
         failed.push({ files: [file.name], code: importFailureCode(error) });
+        completedCount += 1;
+        progress();
       }
     }
     return importResult(imported, failed, unsupportedCount);
   }
 
   async importDirectory(directoryHandle, options = {}) {
-    return this.importFiles(await enumerateIrDirectory(directoryHandle), options);
+    const files = await enumerateIrDirectory(directoryHandle, options);
+    return this.importFiles(files, options);
   }
 
   async resolveDecodedPcm(irId, targetSampleRate, adapters) {

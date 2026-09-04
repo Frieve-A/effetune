@@ -1,0 +1,30 @@
+{
+  "formatVersion": 1,
+  "type": "HumRemoverPlugin",
+  "id": "fixed-50-square",
+  "stimulus": "sq50",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 8192,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "fm": "50 Hz",
+    "hc": 8,
+    "sp": 50
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:89daebfc231441f5814dda3a0aeb010bbfa925a00ff6d62c39ec59c7e80a313f",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type HumRemoverPlugin --promote-production-native",
+  "outputFloats": 16384,
+  "byteLength": 65536,
+  "binary": "case-001.f32"
+}

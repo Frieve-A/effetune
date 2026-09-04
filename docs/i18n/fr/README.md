@@ -49,6 +49,10 @@ Avant d'utiliser EffeTune, vous devez configurer votre routage audio. Voici comm
    - Ou faites glisser le fichier musical dans la fenêtre
 - Pour une utilisation limitée au lecteur, sélectionnez Aucun (lecteur de fichiers musicaux uniquement) comme périphérique d'entrée dans Configuration audio afin de ne pas utiliser d'entrée audio en direct
 
+### Lecture sans interruption
+
+**Lecture sans interruption** est activée par défaut et peut être modifiée dans **Configuration audio**. Lorsqu’elle est activée, les morceaux locaux compatibles s’enchaînent sans silence ; la prise en charge dépend du format du fichier et du navigateur ou de l’application utilisés. Les formats non pris en charge et certains environnements mobiles passent automatiquement à un mode de secours économe en mémoire, si bien qu’un bref silence peut tout de même se produire. La désactiver privilégie une consommation de mémoire réduite et la stabilité, avec un bref silence possible entre les morceaux. Ce changement n’interrompt pas le morceau en cours.
+
 ### Configuration des services de streaming
 
 Pour traiter l'audio des services de streaming (Spotify, YouTube Music, etc.) :
@@ -377,6 +381,10 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 | Resonator | Horn Resonator | Simulation de résonance de cornet avec dimensions personnalisables | [Détails](plugins/resonator.md#horn-resonator) |
 | Resonator | Horn Resonator Plus | Résonance de pavillon plus douce pour une couleur d'écoute naturelle | [Détails](plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | Effet de résonance fréquentielle avec jusqu'à 5 résonateurs | [Détails](plugins/resonator.md#modal-resonator) |
+| Restoration | Click Remover | Répare clics, crépitements, pops et brèves coupures | [Détails](plugins/restoration.md#click-remover) |
+| Restoration | Clip Restorer | Restaure les crêtes aplaties par un écrêtage dur | [Détails](plugins/restoration.md#clip-restorer) |
+| Restoration | Hum Remover | Supprime le ronflement électrique constant et ses harmoniques | [Détails](plugins/restoration.md#hum-remover) |
+| Restoration | Noise Reduction | Atténue le bruit de fond constant sans abîmer la musique | [Détails](plugins/restoration.md#noise-reduction) |
 | Reverb    | Dattorro Plate Reverb | Reverb à plaque classique basé sur l'algorithme Dattorro | [Détails](plugins/reverb.md#dattorro-plate-reverb) |
 | Reverb    | FDN Reverb | Réverbération à réseau de délais avec rétroaction produisant des textures riches et denses | [Détails](plugins/reverb.md#fdn-reverb) |
 | Reverb    | IR Reverb | Réverbération à convolution avec des réponses impulsionnelles de salles et d'équipements | [Détails](plugins/reverb.md#ir-reverb) |
@@ -391,6 +399,7 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 | Saturation| Sub Synth | Mélange un signal de basse fréquence filtré pour renforcer les graves | [Détails](plugins/saturation.md#sub-synth) |
 | Saturation| Tube Simulator | Modélise des étages ligne à lampes et des amplificateurs de puissance push-pull ou à triode single-ended 300B/2A3 | [Détails](plugins/saturation.md#tube-simulator) |
 | Spatial   | Crossfeed Filter | Filtre de crossfeed pour casques pour imagerie stéréo naturelle | [Détails](plugins/spatial.md#crossfeed-filter) |
+| Spatial   | Crosstalk Cancellation | Utilise des mesures près des oreilles pour réduire la diaphonie entre enceintes stéréo | [Détails](plugins/spatial.md#crosstalk-cancellation) |
 | Spatial   | MS Matrix | Convertit entre stéréo et Mid/Side pour ajuster centre et ambiance | [Détails](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | Contrôle de l'équilibre stéréo dépendant de la fréquence sur 5 bandes | [Détails](plugins/spatial.md#multiband-balance) |
 | Spatial   | Phase Select EQ | Accentue ou atténue les composantes fréquentielles selon la différence de phase G/D et Balance | [Détails](plugins/spatial.md#phase-select-eq) |

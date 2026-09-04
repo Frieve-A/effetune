@@ -1,6 +1,6 @@
 {
   "name": "@effetune/dsp",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "EffeTune's deterministic WebAssembly audio effects for JavaScript and AudioWorklet",
   "type": "module",
   "license": "MIT",

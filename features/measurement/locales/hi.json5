@@ -100,6 +100,8 @@
 "button:exportCSV": "सुधार पैरामीटर निर्यात करें (CSV)", // Button to export CSV
 "help:exportOptions": "कॉपी की गई फ्रीक्वेंसी सुधार सेटिंग्स को Ctrl+V द्वारा EffeTune के इफेक्ट पाइपलाइन में चिपकाया जा सकता है।", // Help text for export options
 "title:measurementDetails": "माप विवरण", // Title for measurement details section
+"label:onset": "ऑनसेट",
+"label:onsetEarliest": "सबसे पहले",
 
 // Dialogs
 "button:confirm": "पुष्टि करें", // Confirm button in dialog

@@ -110,19 +110,37 @@ test('audio preferences load and save honor Electron and Web storage availabilit
   assert.equal(await saveAudioPreferences(false, { sampleRate: 44100 }), false);
 
   const localStorage = createLocalStorage({
-    effetune_audio_preferences: JSON.stringify({ sampleRate: 88200, outputChannels: 4 })
+    effetune_audio_preferences: JSON.stringify({
+      sampleRate: 88200,
+      outputChannels: 4,
+      useWasmDsp: false,
+      gaplessPlayback: false
+    })
   });
   await withGlobals({ window: { localStorage } }, async () => {
-    assert.deepEqual(await loadAudioPreferences(false), { sampleRate: 88200, outputChannels: 4 });
-    assert.equal(await saveAudioPreferences(false, { latencyHint: 'balanced' }), true);
+    const loadedPreferences = await loadAudioPreferences(false);
+    assert.equal(loadedPreferences.sampleRate, 88200);
+    assert.equal(loadedPreferences.outputChannels, 4);
+    assert.equal(loadedPreferences.useWasmDsp, false);
+    assert.equal(loadedPreferences.gaplessPlayback, false);
+    assert.equal(await saveAudioPreferences(false, { gaplessPlayback: true }), true);
+    assert.deepEqual(await loadAudioPreferences(false), {
+      ...loadedPreferences,
+      gaplessPlayback: true
+    });
   });
-  assert.deepEqual(JSON.parse(localStorage.snapshot().effetune_audio_preferences), {
-    latencyHint: 'balanced'
-  });
+  const savedWebPreferences = JSON.parse(localStorage.snapshot().effetune_audio_preferences);
+  assert.equal(savedWebPreferences.sampleRate, 88200);
+  assert.equal(savedWebPreferences.outputChannels, 4);
+  assert.equal(savedWebPreferences.useWasmDsp, false);
+  assert.equal(savedWebPreferences.gaplessPlayback, true);
 
   const loaded = createAudioHarness({ preferences: { outputChannels: 4 } });
   await withGlobals({ window: loaded.window }, async () => {
-    assert.deepEqual(await loadAudioPreferences(true), { outputChannels: 4 });
+    const preferences = await loadAudioPreferences(true);
+    assert.equal(preferences.outputChannels, 4);
+    assert.equal(preferences.sampleRate, 96000);
+    assert.equal(preferences.gaplessPlayback, true);
   });
 
   const emptyLoadResults = [
@@ -258,7 +276,7 @@ test('getAudioDevices falls back through browser and default devices', async () 
   });
 });
 
-test('showAudioConfigDialog opens outside Electron and reports missing UI manager', async () => {
+test('showAudioConfigDialog opens without reporting configuration progress and handles a missing UI manager', async () => {
   const document = createFakeDocument();
   const nonElectron = createAudioHarness();
   await withGlobals({ window: nonElectron.window, document }, async () => {
@@ -268,6 +286,7 @@ test('showAudioConfigDialog opens outside Electron and reports missing UI manage
   });
   assert.equal(document.body.children.length, 1);
   assert.equal(document.getElementById('output-device').disabled, true);
+  assert.deepEqual(nonElectron.uiCalls, []);
 
   const noUi = createAudioHarness({
     uiManager: null,
@@ -280,7 +299,7 @@ test('showAudioConfigDialog opens outside Electron and reports missing UI manage
       });
     });
   });
-  assert.equal(noUi.window.listenerCount('beforeunload'), 1);
+  assert.equal(noUi.window.listenerCount('beforeunload'), 0);
 });
 
 test('showAudioConfigDialog disables unsupported Web output selection and resets through audioManager', async () => {
@@ -540,7 +559,7 @@ test('showAudioConfigDialog can be cancelled and closed with Escape', async () =
     assert.equal(cancelDocument.body.children.length, 0);
     assert.equal(cancelDocument.head.children.length, 0);
     assert.equal(cancelDocument.listenerCount('keydown'), 0);
-    assert.deepEqual(cancelHarness.uiCalls.at(-1), ['clearError']);
+    assert.deepEqual(cancelHarness.uiCalls, []);
   });
 
   const escapeHarness = createAudioHarness();
@@ -559,6 +578,69 @@ test('showAudioConfigDialog can be cancelled and closed with Escape', async () =
     assert.equal(prevented, true);
     assert.equal(escapeDocument.body.children.length, 0);
   });
+});
+
+test('showAudioConfigDialog applies with Enter without stealing control key handling', async () => {
+  const applyCalls = [];
+  const preferences = {
+    inputDeviceId: 'mic1',
+    outputDeviceId: 'out1',
+    inputDeviceLabel: 'Mic One',
+    outputDeviceLabel: 'Out One',
+    sampleRate: 96000,
+    useInputWithPlayer: false,
+    lowLatencyOutput: false,
+    useWasmDsp: true,
+    gaplessPlayback: true,
+    outputChannels: 2,
+    latencyHint: 'interactive'
+  };
+  const harness = createAudioHarness({
+    window: {
+      audioManager: {
+        async applyGaplessPlaybackPreference(nextPreferences) {
+          applyCalls.push(nextPreferences);
+          return '';
+        }
+      }
+    }
+  });
+  const document = createFakeDocument();
+  await withGlobals({ window: harness.window, document, navigator: {} }, async () => {
+    await withMutedConsole('log', async () => {
+      await showAudioConfigDialog(true, preferences);
+    });
+    document.getElementById('gapless-playback').checked = false;
+    let controlPrevented = false;
+    await document.dispatchEvent('keydown', {
+      key: 'Enter',
+      target: document.getElementById('sample-rate'),
+      preventDefault() {
+        controlPrevented = true;
+      }
+    });
+    assert.equal(controlPrevented, false);
+    assert.equal(applyCalls.length, 0);
+
+    await document.dispatchEvent('keydown', {
+      key: 'Enter',
+      target: document.getElementById('cancel-button')
+    });
+    assert.equal(applyCalls.length, 0);
+
+    let prevented = false;
+    await document.dispatchEvent('keydown', {
+      key: 'Enter',
+      target: document.body,
+      preventDefault() {
+        prevented = true;
+      }
+    });
+    await flushMicrotasks();
+    assert.equal(prevented, true);
+  });
+  assert.equal(applyCalls.length, 1);
+  assert.equal(applyCalls[0].gaplessPlayback, false);
 });
 
 test('showAudioConfigDialog applies preferences through audioManager and callback', async () => {
@@ -634,6 +716,7 @@ test('showAudioConfigDialog applies preferences through audioManager and callbac
     useInputWithPlayer: false,
     lowLatencyOutput: false,
     useWasmDsp: true,
+    gaplessPlayback: true,
     outputChannels: 6,
     latencyHint: 'balanced'
   });
@@ -643,6 +726,227 @@ test('showAudioConfigDialog applies preferences through audioManager and callbac
   assert.equal(document.body.children.length, 1);
   assert.equal(document.head.children.length, 0);
   assert.equal(harness.window.listenerCount('beforeunload'), 0);
+});
+
+test('showAudioConfigDialog applies only Gapless Playback without resetting audio', async () => {
+  const applyCalls = [];
+  const resetCalls = [];
+  const preferences = {
+    inputDeviceId: 'mic1',
+    outputDeviceId: 'out1',
+    inputDeviceLabel: 'Mic One',
+    outputDeviceLabel: 'Out One',
+    sampleRate: 96000,
+    useInputWithPlayer: false,
+    lowLatencyOutput: false,
+    useWasmDsp: true,
+    gaplessPlayback: true,
+    outputChannels: 2,
+    latencyHint: 'interactive'
+  };
+  const harness = createAudioHarness({
+    window: {
+      audioManager: {
+        async applyGaplessPlaybackPreference(nextPreferences) {
+          applyCalls.push(nextPreferences);
+          return '';
+        },
+        async reset(nextPreferences) {
+          resetCalls.push(nextPreferences);
+          return '';
+        }
+      }
+    }
+  });
+  const document = createFakeDocument();
+  await withGlobals({ window: harness.window, document, navigator: {} }, async () => {
+    await withMutedConsole('log', async () => {
+      await showAudioConfigDialog(true, preferences);
+      const gaplessCheckbox = document.getElementById('gapless-playback');
+      assert.ok(gaplessCheckbox);
+      // Owner decision (2026-09-04): the Gapless Playback checkbox carries only
+      // its label. No help/warning text is rendered below it and nothing is
+      // wired through aria-describedby.
+      assert.ok(!document.getElementById('gapless-playback-help'));
+      assert.ok(!gaplessCheckbox.getAttribute('aria-describedby'));
+      const dialogHTML = document.body.children[0].innerHTML;
+      assert.doesNotMatch(dialogHTML, /gapless-playback-help/);
+      assert.doesNotMatch(dialogHTML, /gaplessPlaybackHelp/);
+      gaplessCheckbox.checked = false;
+      await document.getElementById('apply-button').dispatchEvent('click');
+      await flushMicrotasks();
+    });
+  });
+  assert.equal(applyCalls.length, 1);
+  assert.equal(applyCalls[0].gaplessPlayback, false);
+  assert.equal(resetCalls.length, 0);
+  assert.equal(harness.calls.some(call => call[0] === 'saveAudioPreferences'), false);
+});
+
+test('showAudioConfigDialog treats refreshed device labels as a Gapless-only change', async () => {
+  const applyCalls = [];
+  const resetCalls = [];
+  const preferences = {
+    inputDeviceId: NO_AUDIO_INPUT_DEVICE_ID,
+    outputDeviceId: 'out1',
+    inputDeviceLabel: 'None (music file player only)',
+    outputDeviceLabel: 'Out One',
+    sampleRate: 96000,
+    useInputWithPlayer: false,
+    lowLatencyOutput: false,
+    useWasmDsp: true,
+    gaplessPlayback: true,
+    outputChannels: 2,
+    latencyHint: 'interactive'
+  };
+  const harness = createAudioHarness({
+    deviceResult: {
+      success: true,
+      devices: [
+        { deviceId: 'mic1', kind: 'audioinput', label: 'Mic One' },
+        { deviceId: 'out1', kind: 'audiooutput', label: 'Out One (renamed)' }
+      ]
+    },
+    window: {
+      audioManager: {
+        async applyGaplessPlaybackPreference(nextPreferences) {
+          applyCalls.push(nextPreferences);
+          return '';
+        },
+        async reset(nextPreferences) {
+          resetCalls.push(nextPreferences);
+          return '';
+        }
+      }
+    }
+  });
+  const document = createFakeDocument();
+  await withGlobals({ window: harness.window, document, navigator: {} }, async () => {
+    await withMutedConsole('log', async () => {
+      await showAudioConfigDialog(true, preferences);
+      document.getElementById('gapless-playback').checked = false;
+      await document.getElementById('apply-button').dispatchEvent('click');
+      await flushMicrotasks();
+    });
+  });
+  assert.equal(applyCalls.length, 1);
+  assert.equal(applyCalls[0].gaplessPlayback, false);
+  assert.equal(applyCalls[0].inputDeviceLabel, 'label:dialog.audioConfig.inputDevice.none');
+  assert.equal(applyCalls[0].outputDeviceLabel, 'Out One (renamed)');
+  assert.equal(resetCalls.length, 0);
+  assert.equal(harness.calls.some(call => call[0] === 'saveAudioPreferences'), false);
+});
+
+test('showAudioConfigDialog persists only the Gapless field when no AudioManager exists', async () => {
+  const preferences = {
+    inputDeviceId: 'mic1',
+    outputDeviceId: 'out1',
+    inputDeviceLabel: 'Mic One',
+    outputDeviceLabel: 'Out One',
+    sampleRate: 96000,
+    useInputWithPlayer: false,
+    lowLatencyOutput: false,
+    useWasmDsp: true,
+    gaplessPlayback: true,
+    outputChannels: 2,
+    latencyHint: 'interactive'
+  };
+  const harness = createAudioHarness({ window: { electronIntegration: {} } });
+  const document = createFakeDocument();
+  await withGlobals({ window: harness.window, document, navigator: {} }, async () => {
+    await withMutedConsole('log', async () => {
+      await showAudioConfigDialog(true, preferences);
+      document.getElementById('gapless-playback').checked = false;
+      await document.getElementById('apply-button').dispatchEvent('click');
+      await flushMicrotasks();
+    });
+  });
+  const saves = harness.calls.filter(call => call[0] === 'saveAudioPreferences');
+  assert.deepEqual(saves, [[
+    'saveAudioPreferences',
+    { gaplessPlayback: false },
+    { applyInPlace: 'gapless-playback' }
+  ]]);
+  assert.equal(harness.window.audioPreferences.gaplessPlayback, false);
+  assert.equal(harness.window.audioPreferences.sampleRate, 96000);
+  assert.equal(harness.window.electronIntegration.audioPreferences.gaplessPlayback, false);
+  assert.equal(document.body.children.length, 0);
+});
+
+test('showAudioConfigDialog reports the Gapless guidance when the field cannot be stored', async () => {
+  const preferences = {
+    inputDeviceId: 'mic1',
+    outputDeviceId: 'out1',
+    inputDeviceLabel: 'Mic One',
+    outputDeviceLabel: 'Out One',
+    sampleRate: 96000,
+    useInputWithPlayer: false,
+    lowLatencyOutput: false,
+    useWasmDsp: true,
+    gaplessPlayback: true,
+    outputChannels: 2,
+    latencyHint: 'interactive'
+  };
+  const harness = createAudioHarness({
+    window: { electronIntegration: { audioPreferences: preferences } },
+    saveResult: { success: false, error: 'Gapless Playback must be saved without other audio preference changes' }
+  });
+  const document = createFakeDocument();
+  await withGlobals({ window: harness.window, document, navigator: {} }, async () => {
+    await withMutedConsole('log', async () => {
+      await showAudioConfigDialog(true, preferences);
+      document.getElementById('gapless-playback').checked = false;
+      await document.getElementById('apply-button').dispatchEvent('click');
+      await flushMicrotasks();
+    });
+  });
+  assert.deepEqual(harness.uiCalls, [[
+    'setError',
+    'Audio Error: Gapless Playback could not be changed. Please apply the audio settings again.',
+    true
+  ]]);
+  assert.equal(harness.window.electronIntegration.audioPreferences, preferences);
+  assert.equal(preferences.gaplessPlayback, true);
+  assert.equal(document.body.children.length, 1);
+});
+
+test('showAudioConfigDialog applies first-use Gapless Playback without resetting audio', async () => {
+  const applyCalls = [];
+  const resetCalls = [];
+  const harness = createAudioHarness({
+    deviceResult: {
+      success: true,
+      devices: [
+        { deviceId: 'default', kind: 'audioinput', label: '' },
+        { deviceId: 'default', kind: 'audiooutput', label: '' }
+      ]
+    },
+    window: {
+      audioManager: {
+        async applyGaplessPlaybackPreference(nextPreferences) {
+          applyCalls.push(nextPreferences);
+          return '';
+        },
+        async reset(nextPreferences) {
+          resetCalls.push(nextPreferences);
+          return '';
+        }
+      }
+    }
+  });
+  const document = createFakeDocument();
+  await withGlobals({ window: harness.window, document, navigator: {} }, async () => {
+    await withMutedConsole('log', async () => {
+      await showAudioConfigDialog(true, null);
+      document.getElementById('gapless-playback').checked = false;
+      await document.getElementById('apply-button').dispatchEvent('click');
+      await flushMicrotasks();
+    });
+  });
+  assert.equal(applyCalls.length, 1);
+  assert.equal(applyCalls[0].gaplessPlayback, false);
+  assert.equal(resetCalls.length, 0);
+  assert.equal(harness.calls.some(call => call[0] === 'saveAudioPreferences'), false);
 });
 
 test('showAudioConfigDialog includes and saves the no-input player option', async () => {

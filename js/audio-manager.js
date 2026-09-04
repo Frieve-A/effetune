@@ -4,7 +4,6 @@ import {
     MIC_DENIED_PREFIX
 } from './audio/audio-io-manager.js';
 import { PipelineProcessor } from './audio/pipeline-processor.js';
-import { OfflineProcessor } from './audio/offline-processor.js';
 import { AudioEncoder } from './audio/audio-encoder.js';
 import { EventManager } from './audio/event-manager.js';
 import { loadDspModule } from './audio/dsp-wasm-loader.js';
@@ -25,16 +24,18 @@ import {
 import { AudioActivationCoordinator } from './audio/audio-activation-coordinator.js';
 import {
     loadWebAudioPreferences,
+    mergeWebAudioPreferences,
     saveWebAudioPreferences,
     saveWebPowerSavingSettings,
     setWebPowerSettingsApplyHandler
 } from './electron/webSettingsStorage.js';
+import { isGaplessPlaybackOnlyChange } from './electron/audio-preference-store.js';
 import { NO_AUDIO_INPUT_DEVICE_ID } from './audio/audio-device-constants.js';
 import { getSerializablePluginStateShort, applySerializedState } from './utils/serialization-utils.js';
 
 const PIPELINE_SWITCH_FADE_SECONDS = 0.04;
 const PIPELINE_SWITCH_SILENCE_SECONDS = 0.05;
-const DSP_MODULE_LOAD_TIMEOUT_MS = 1000;
+const DSP_STARTUP_WAIT_TIMEOUT_MS = 1000;
 const DSP_MODULE_READY_TIMEOUT_MS = 1000;
 const DSP_BYTES_READY_TIMEOUT_MS = 3000;
 const JS_FALLBACK_SAMPLE_CHANNEL_BUDGET = 96000;
@@ -113,7 +114,8 @@ export class AudioManager {
             () => this.registerPipelineProcessors(),
             node => this.connectSourceToPipeline(node)
         );
-        this.offlineProcessor = new OfflineProcessor(this.contextManager, this.audioEncoder);
+        this.offlineProcessor = null;
+        this.offlineProcessorPromise = null;
         this.eventManager = new EventManager(this);
         this.telemetryHub = new TelemetryHub();
         window.dspTelemetryHub = this.telemetryHub;
@@ -184,7 +186,6 @@ export class AudioManager {
         this._pendingResetPrefs = null;
         this.isCancelled = false;
         this._skipAudioInitDuringSampleRateChange = false;
-        this.isFirstLaunch = false;
         this._pipelineSwitchSeq = 0;
         this.powerDiagnostics = new PowerDiagnostics();
         this.powerPolicyController = new PowerPolicyController(this, {
@@ -540,24 +541,17 @@ export class AudioManager {
      */
     async initializeAudioWorklet() {
         try {
-            // WASM is optional. Bound its load so startup can fall back to the
-            // JavaScript path instead of waiting indefinitely.
-            let dspLoadTimer = null;
-            const dspModulePromise = Promise.race([
-                Promise.resolve().then(() => this.loadDspForWorklet()),
-                new Promise(resolve => {
-                    dspLoadTimer = setTimeout(() => resolve(null), DSP_MODULE_LOAD_TIMEOUT_MS);
-                })
-            ])
+            // WASM is optional. Start loading it alongside the worklet without
+            // discarding a valid result merely because a cold load takes longer
+            // than the startup wait budget.
+            const dspModulePromise = Promise.resolve()
+                .then(() => this.loadDspForWorklet())
                 .catch(error => {
                     console.warn(
                         `[dsp-wasm] Load failed: ${error?.message || String(error)}; ` +
                         'continuing with JavaScript DSP.'
                     );
                     return null;
-                })
-                .finally(() => {
-                    if (dspLoadTimer !== null) clearTimeout(dspLoadTimer);
                 });
             // Load AudioWorklet and create worklet node
             const workletResult = await this.contextManager.loadAudioWorklet();
@@ -726,13 +720,14 @@ export class AudioManager {
             id: ++this._dspModuleLoadRequestSequence,
             primaryWorklet,
             primaryEpoch,
+            muteOutput: options.muteOutput !== false,
+            startupWaitReleased: false,
             settled: false,
             promise: null
         };
         const loadPromise = options.loadPromise ?? Promise.resolve().then(() => this.loadDspForWorklet());
         const failureLabel = options.failureLabel || 'Preference reload failed';
         const startupFailureLabel = options.startupFailureLabel || 'Worklet startup failed';
-        const muteOutput = options.muteOutput !== false;
         const completion = Promise.resolve(loadPromise).then(async info => {
             if (!this._isDspModuleLoadRequestCurrent(request)) return false;
             if (!info) {
@@ -744,9 +739,14 @@ export class AudioManager {
                 const workletNodes = [...this._getActiveDspWorklets()];
                 if (workletNodes.length === 0) return false;
                 const targetTypes = this.getEnabledDspTypes();
-                const results = await Promise.all(workletNodes.map(workletNode =>
-                    this._reinitializeDspWorklet(workletNode, targetTypes, { muteOutput })
-                ));
+                const results = await Promise.all(workletNodes.map(workletNode => {
+                    const activation = this._reinitializeDspWorklet(workletNode, targetTypes, {
+                        muteOutput: request.muteOutput
+                    });
+                    const activationRequest = this._pendingDspActivationRequests.get(workletNode);
+                    if (activationRequest) activationRequest.loadRequest = request;
+                    return activation;
+                }));
                 return results.every(Boolean);
             } catch (error) {
                 console.warn(
@@ -775,9 +775,48 @@ export class AudioManager {
     }
 
     async waitForDspActivationBeforeOutput() {
-        const pending = this._dspModuleLoadPromise;
-        if (!pending) return false;
-        return (await pending) === true;
+        const request = this._dspModuleLoadRequest;
+        const pending = request?.promise;
+        if (!pending || request.startupWaitReleased) return false;
+
+        let timer = null;
+        const outcome = await Promise.race([
+            pending.then(result => ({ settled: true, result })),
+            new Promise(resolve => {
+                timer = setTimeout(
+                    () => resolve({ settled: false, result: false }),
+                    DSP_STARTUP_WAIT_TIMEOUT_MS
+                );
+            })
+        ]);
+        if (timer !== null) clearTimeout(timer);
+        if (outcome.settled) return outcome.result === true;
+        if (!this._isDspModuleLoadRequestCurrent(request)) return false;
+
+        // Startup may now publish the JavaScript path. Any later WASM
+        // activation must therefore use the normal protected output fade.
+        request.startupWaitReleased = true;
+        request.muteOutput = true;
+        const acknowledgedWorklets = [];
+        for (const [workletNode, activationRequest] of this._pendingDspActivationRequests) {
+            if (activationRequest.loadRequest === request) {
+                activationRequest.muteOutput = true;
+                if (this._dspReadyFallbacks.get(workletNode)?.acknowledged) {
+                    acknowledgedWorklets.push(workletNode);
+                }
+            }
+        }
+        // Once the worklet has acknowledged that initialization is running,
+        // release only the startup waiter. A later dspReady remains valid and
+        // publishes WASM through the normal protected transition.
+        for (const workletNode of acknowledgedWorklets) {
+            this._releaseDspActivationWait(workletNode);
+        }
+        if (!this.dspModuleInfo) this._completeParallelDspWithoutModule();
+        console.info(
+            '[dsp-wasm] Startup wait elapsed; using JavaScript DSP while WASM initialization continues.'
+        );
+        return false;
     }
 
     _invalidateDspModuleLoadRequest() {
@@ -854,13 +893,17 @@ export class AudioManager {
             targetTypes: [...targetTypes],
             muteOutput,
             beforeUnmute,
+            loadRequest: null,
             timer: null,
             resolve,
             promise
         };
         request.timer = setTimeout(() => {
             if (this._pendingDspActivationRequests.get(workletNode) !== request) return;
-            this._handleDspReadyTimeout(workletNode);
+            console.info(
+                '[dsp-wasm] Initialization remains pending; keeping JavaScript DSP active while it continues.'
+            );
+            this._releaseDspActivationWait(workletNode);
         }, DSP_MODULE_READY_TIMEOUT_MS + DSP_BYTES_READY_TIMEOUT_MS);
         this._pendingDspActivationRequests.set(workletNode, request);
         return promise;
@@ -1643,13 +1686,18 @@ export class AudioManager {
         );
     }
 
-    postDspModuleToWorklet(workletNode) {
+    postDspModuleToWorklet(workletNode, token = null) {
         if (!workletNode?.port || !this.dspModuleInfo) return false;
         const info = this.dspModuleInfo;
         let modulePosted = false;
         if (info.module && info.moduleCloneable !== false) {
             try {
-                workletNode.port.postMessage({ type: 'dspModule', module: info.module, simd: info.simd });
+                workletNode.port.postMessage({
+                    type: 'dspModule',
+                    module: info.module,
+                    simd: info.simd,
+                    token
+                });
                 modulePosted = true;
             } catch (error) {
                 if (error?.name !== 'DataCloneError') throw error;
@@ -1661,7 +1709,8 @@ export class AudioManager {
             workletNode.port.postMessage({
                 type: 'dspModule',
                 bytes: info.bytes.slice(0),
-                simd: info.simd
+                simd: info.simd,
+                token
             });
         }
         // Keep the freshly initialized engine inactive until the main thread
@@ -1676,14 +1725,14 @@ export class AudioManager {
         if (!(this._dspCapabilitiesByNode instanceof Map)) {
             this._dspCapabilitiesByNode = new Map();
         }
-        this._nextDspReadyToken(workletNode);
+        const token = this._nextDspReadyToken(workletNode);
         this._dspCapabilitiesByNode.delete(workletNode);
         if (workletNode === this._getPrimaryWorkletNode()) {
             this.dspCapabilities = null;
             window.dspCapabilities = undefined;
         }
-        const posted = this.postDspModuleToWorklet(workletNode);
-        if (posted) this.armDspReadyFallback(workletNode);
+        const posted = this.postDspModuleToWorklet(workletNode, token);
+        if (posted) this.armDspReadyFallback(workletNode, token);
         return posted;
     }
 
@@ -1697,35 +1746,24 @@ export class AudioManager {
             const state = this._dspReadyFallbacks.get(node);
             if (!state) continue;
             if (state.moduleTimer !== null) clearTimeout(state.moduleTimer);
-            if (state.failureTimer !== null) clearTimeout(state.failureTimer);
             this._dspReadyFallbacks.delete(node);
         }
     }
 
-    armDspReadyFallback(workletNode) {
+    armDspReadyFallback(workletNode, token = null) {
         this.clearDspReadyFallback(workletNode);
         const info = this.dspModuleInfo;
         if (!workletNode?.port || !info || !(info.bytes instanceof ArrayBuffer)) return;
 
-        const state = { info, moduleTimer: null, failureTimer: null };
+        const state = { info, token, acknowledged: false, moduleTimer: null };
         this._dspReadyFallbacks.set(workletNode, state);
-        const scheduleBytesFailure = () => {
-            state.failureTimer = setTimeout(() => {
-                state.failureTimer = null;
-                if (this._dspReadyFallbacks.get(workletNode) !== state ||
-                    this._dspCapabilitiesByNode?.has(workletNode)) return;
-                this._dspReadyFallbacks.delete(workletNode);
-                console.warn('[dsp-wasm] Worklet did not acknowledge the bytes payload; continuing with JavaScript DSP.');
-                this._handleDspReadyTimeout(workletNode);
-            }, DSP_BYTES_READY_TIMEOUT_MS);
-        };
         if (!info.module || info.moduleCloneable === false) {
-            scheduleBytesFailure();
             return;
         }
         state.moduleTimer = setTimeout(() => {
             state.moduleTimer = null;
             if (this._dspReadyFallbacks.get(workletNode) !== state ||
+                state.acknowledged ||
                 this._dspCapabilitiesByNode?.has(workletNode) || this.dspModuleInfo !== info) {
                 return;
             }
@@ -1735,7 +1773,8 @@ export class AudioManager {
                 workletNode.port.postMessage({
                     type: 'dspModule',
                     bytes: info.bytes.slice(0),
-                    simd: info.simd
+                    simd: info.simd,
+                    token
                 });
                 workletNode.port.postMessage({ type: 'dspEnableTypes', types: [] });
             } catch (error) {
@@ -1743,13 +1782,14 @@ export class AudioManager {
                 console.warn(`[dsp-wasm] Worklet bytes retry failed: ${error?.message || String(error)}`);
                 return;
             }
-            scheduleBytesFailure();
         }, DSP_MODULE_READY_TIMEOUT_MS);
     }
 
-    _handleDspReadyTimeout(workletNode) {
+    _releaseDspActivationWait(workletNode) {
+        this.clearDspReadyFallback(workletNode);
         this._completeDspActivationRequest(workletNode, false);
-        this.dspModuleInfo = null;
+        // Releasing a waiter does not invalidate the module or its generation.
+        // A late dspReady can still transition safely from JavaScript.
         const barrier = this._parallelDspBarrier;
         if (!barrier || barrier.settled || !this._isParallelDspBarrierCurrent(barrier) ||
             !barrier.workletNodes.has(workletNode)) return;
@@ -2126,6 +2166,22 @@ export class AudioManager {
             const validated = { ...data, validated: true };
             plugin.onMessage?.(validated);
             this.dispatchEvent('tubeSimulatorCircuitFault', validated);
+        } else if (data.type === 'dspInitializing') {
+            const state = this._dspReadyFallbacks?.get(workletNode);
+            const token = this._dspReadyTokens?.get(workletNode) || 0;
+            if (!state || (Number.isInteger(data.token) && data.token !== token) ||
+                (Number.isInteger(state.token) && Number.isInteger(data.token) &&
+                    state.token !== data.token)) return;
+            state.acknowledged = true;
+            if (state.moduleTimer !== null) {
+                clearTimeout(state.moduleTimer);
+                state.moduleTimer = null;
+            }
+            const activationRequest = this._pendingDspActivationRequests?.get(workletNode);
+            if (activationRequest?.token === token &&
+                activationRequest.loadRequest?.startupWaitReleased) {
+                this._releaseDspActivationWait(workletNode);
+            }
         } else if (data.type === 'dspReady') {
             this.clearDspReadyFallback(workletNode);
             if (!this.dspModuleInfo) {
@@ -2217,13 +2273,11 @@ export class AudioManager {
         this.stream = this.ioManager.inputStream || this.ioManager.stream;
         this.sourceNode = this.ioManager.sourceNode;
         this.workletNode = this.contextManager.workletNode;
-        this.offlineContext = this.offlineProcessor.offlineContext;
-        this.offlineWorkletNode = this.offlineProcessor.offlineWorkletNode;
-        this.isOfflineProcessing = this.offlineProcessor.isOfflineProcessing;
-        this.isCancelled = this.offlineProcessor.isCancelled;
+        this.offlineContext = this.offlineProcessor?.offlineContext || null;
+        this.offlineWorkletNode = this.offlineProcessor?.offlineWorkletNode || null;
+        this.isOfflineProcessing = this.offlineProcessor?.isOfflineProcessing === true;
+        this.isCancelled = this.offlineProcessor?.isCancelled === true;
         this._skipAudioInitDuringSampleRateChange = this.contextManager.getSkipAudioInitDuringSampleRateChange();
-        this.isFirstLaunch = this.contextManager.isFirstLaunch;
-        
         // Update global references
         window.audioManager = this;
         window.pipeline = this.pipeline;
@@ -2552,6 +2606,36 @@ export class AudioManager {
         return saveWebAudioPreferences(preferences);
     }
 
+    async applyGaplessPlaybackPreference(preferences) {
+        // Compare against the same source as the Audio Configuration dialog (the
+        // live mirror first) so a runtime-only mirror override, such as the
+        // default-output fallback, never blocks a Gapless-only change.
+        const previousPreferences = window.electronIntegration?.audioPreferences ||
+            window.audioPreferences ||
+            (window.electronAPI ? null : loadWebAudioPreferences()) || {};
+        if (!isGaplessPlaybackOnlyChange(previousPreferences, preferences)) {
+            console.warn('[AudioManager] Gapless Playback was requested together with other audio preference changes.');
+            return 'Audio Error: Gapless Playback could not be changed. Please apply the audio settings again.';
+        }
+        const nextPreferences = mergeWebAudioPreferences(previousPreferences, preferences);
+        // Persist only the playback field so a session-only mirror override
+        // never reaches the stored preferences and never triggers a reload.
+        const gaplessPatch = { gaplessPlayback: nextPreferences.gaplessPlayback };
+        if (!await this._persistInPlaceAudioPreferences(gaplessPatch, 'gapless-playback')) {
+            return 'Audio Error: Gapless Playback could not be changed. Please apply the audio settings again.';
+        }
+        this._setAudioPreferencesMirror(nextPreferences);
+        const player = window.uiManager?.audioPlayer;
+        if (typeof player?.applyGaplessPlaybackPreference === 'function') {
+            try {
+                await player.applyGaplessPlaybackPreference(nextPreferences.gaplessPlayback);
+            } catch (error) {
+                console.error('[AudioManager] Failed to clean up the previous gapless plan:', error);
+            }
+        }
+        return '';
+    }
+
     async _applySilentInputInPlace(preferences, previousPreferences) {
         if (!await this._persistInPlaceAudioPreferences(preferences, 'silent-input')) {
             return 'Audio Error: Failed to save audio preferences.';
@@ -2588,6 +2672,14 @@ export class AudioManager {
             ? window.electronIntegration?.audioPreferences || window.audioPreferences
             : loadWebAudioPreferences() || window.electronIntegration?.audioPreferences) ||
             { inputDeviceId: 'default' };
+        // The Gapless-only decision uses the same source as the Audio
+        // Configuration dialog (the live mirror first); the stored preferences
+        // above remain the rollback target for the in-place input switch.
+        const mirrorPreferences = window.electronIntegration?.audioPreferences ||
+            window.audioPreferences || previousPreferences;
+        if (audioPreferences && isGaplessPlaybackOnlyChange(mirrorPreferences, audioPreferences)) {
+            return this.applyGaplessPlaybackPreference(audioPreferences);
+        }
         if (audioPreferences &&
             this._canApplySilentInputInPlace(previousPreferences, audioPreferences)) {
             const result = await this._applySilentInputInPlace(
@@ -4208,11 +4300,7 @@ export class AudioManager {
         if (!node || !target) return false;
         try { node.disconnect(target); } catch (_) { /* not connected */ }
         try {
-            if (window.originalConnectMethod && this.contextManager?.isFirstLaunch) {
-                window.originalConnectMethod.call(node, target);
-            } else {
-                node.connect(target);
-            }
+            node.connect(target);
             return true;
         } catch (_) {
             return false;
@@ -4711,6 +4799,7 @@ export class AudioManager {
      * @returns {Promise<Object|null>} - Encoded output metadata, or null when canceled
      */
     async processAudioFile(file, progressCallback = null, outputSettings = null) {
+        const offlineProcessor = await this._ensureOfflineProcessor();
         const releasePowerLease = this.powerPolicyController?.started
             ? this.powerPolicyController.acquireLease('offline-processing', {
                 mode: 'hold-current',
@@ -4718,7 +4807,7 @@ export class AudioManager {
             })
             : null;
         try {
-            return await this.offlineProcessor.processAudioFile(
+            return await offlineProcessor.processAudioFile(
                 file,
                 this.pipeline,
                 progressCallback,
@@ -4734,8 +4823,28 @@ export class AudioManager {
      * Cancel the current offline audio processing operation.
      */
     cancelProcessing() {
-        this.offlineProcessor.cancelProcessing();
+        this.offlineProcessor?.cancelProcessing();
         this.updateExposedProperties();
+    }
+
+    async _ensureOfflineProcessor() {
+        if (this.offlineProcessor) return this.offlineProcessor;
+        if (!this.offlineProcessorPromise) {
+            const pending = import('./audio/offline-processor.js')
+                .then(({ OfflineProcessor }) => {
+                    const processor = new OfflineProcessor(this.contextManager, this.audioEncoder);
+                    this.offlineProcessor = processor;
+                    return processor;
+                });
+            const retryable = pending.catch(error => {
+                if (this.offlineProcessorPromise === retryable) {
+                    this.offlineProcessorPromise = null;
+                }
+                throw error;
+            });
+            this.offlineProcessorPromise = retryable;
+        }
+        return this.offlineProcessorPromise;
     }
     
     /**

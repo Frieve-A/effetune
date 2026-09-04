@@ -25,8 +25,10 @@ uiTest('places one accessible Analyzer button directly after Share with dedicate
   assert.match(html, /id="pipelinePresetButton"[\s\S]*?id="undoButton"[\s\S]*?id="redoButton"[\s\S]*?id="cutButton"[\s\S]*?id="copyButton"[\s\S]*?id="pasteButton"[\s\S]*?id="shareButton"[\s\S]*?id="pipelineAnalyzerButton"[\s\S]*?id="decreaseColumnsButton"[\s\S]*?id="increaseColumnsButton"/);
   assert.equal(html.match(/class="pipeline-toolbar-group"/g)?.length, 6);
   assert.match(html, /id="pipelineAnalyzerButton"[^>]*aria-controls="pipelineAnalyzerPanel"[^>]*aria-expanded="false"[^>]*aria-pressed="false"/);
-  assert.match(analyzerCss, /\.pipeline-analyzer-button\s*\{[^}]*margin-left:\s*5px;/s);
-  assert.match(analyzerCss, /\.pipeline-preset-button,\s*\.share-button,\s*\.pipeline-analyzer-button\s*\{[^}]*height:\s*24px;[^}]*padding:\s*4px 8px;/s);
+  // The analyzer stylesheet loads lazily, so always-visible toolbar chrome is styled in effetune.css.
+  assert.match(sharedCss, /\.pipeline-analyzer-button\s*\{[^}]*margin-left:\s*5px;/s);
+  assert.match(sharedCss, /\.pipeline-preset-button,\s*\.share-button,\s*\.pipeline-analyzer-button\s*\{[^}]*height:\s*24px;[^}]*padding:\s*4px 8px;/s);
+  assert.doesNotMatch(analyzerCss, /\.pipeline-preset-button/);
   assert.match(analyzerCss, /\.pipeline-analyzer-header\s*\{[^}]*padding:\s*20px 20px 10px;/s);
   assert.doesNotMatch(analyzerCss, /body:not\(\.layout-mobile\) \.pipeline-header\s*\{/);
   assert.doesNotMatch(analyzerCss, /body:not\(\.layout-mobile\) \.pipeline-analyzer-header\s*\{/);

@@ -170,7 +170,7 @@ test('constructor recognizes Electron integration and user agent detection paths
   });
 });
 
-test('settings gear toggles the Electron menu and audio item opens the dialog with translated and fallback status text', async () => {
+test('settings gear toggles the Electron menu and audio item opens the dialog without changing status text', async () => {
   await withStateGlobals({
     electronIntegration: {
       isElectronEnvironment: () => true,
@@ -186,7 +186,7 @@ test('settings gear toggles the Electron menu and audio item opens the dialog wi
 
     manager.audioConfigSettingsButton.click();
     assert.equal(manager.settingsMenu.classList.contains('show'), false);
-    assert.equal(documentRef.elements.get('errorDisplay').textContent, 'Configuring audio devices...');
+    assert.equal(documentRef.elements.get('errorDisplay').textContent, '');
     assert.deepEqual(calls.filter(call => call[0] === 'showAudioConfigDialog'), [['showAudioConfigDialog']]);
   });
 
@@ -197,7 +197,7 @@ test('settings gear toggles the Electron menu and audio item opens the dialog wi
     },
     uiManager: {
       t(key) {
-        return key === 'status.configuringAudio' ? 'Translated configuring' : key;
+        return key;
       }
     }
   }, async ({ calls, documentRef, windowRef }) => {
@@ -210,7 +210,7 @@ test('settings gear toggles the Electron menu and audio item opens the dialog wi
 
     manager.audioConfigSettingsButton.click();
     assert.equal(manager.settingsMenu.classList.contains('show'), false);
-    assert.equal(documentRef.elements.get('errorDisplay').textContent, 'Translated configuring');
+    assert.equal(documentRef.elements.get('errorDisplay').textContent, '');
     assert.deepEqual(calls.filter(call => call[0] === 'showAudioConfigDialog'), [['showAudioConfigDialog']]);
   });
 
@@ -229,7 +229,7 @@ test('settings gear toggles the Electron menu and audio item opens the dialog wi
 
     manager.audioConfigSettingsButton.click();
     assert.equal(manager.settingsMenu.classList.contains('show'), false);
-    assert.equal(documentRef.elements.get('errorDisplay').textContent, 'Configuring audio devices...');
+    assert.equal(documentRef.elements.get('errorDisplay').textContent, '');
     assert.deepEqual(calls.filter(call => call[0] === 'showAudioConfigDialog'), [['showAudioConfigDialog']]);
   });
 });
@@ -326,7 +326,7 @@ test('settings menu opens Web audio config when integration is available', async
     },
     uiManager: {
       t(key) {
-        return key === 'status.configuringAudio' ? 'Translated configuring' : key;
+        return key;
       }
     }
   }, async ({ calls, documentRef, windowRef }) => {
@@ -336,7 +336,7 @@ test('settings menu opens Web audio config when integration is available', async
     assert.deepEqual(calls.filter(call => call[0] === 'showAudioConfigDialog'), []);
     manager.audioConfigSettingsButton.click();
 
-    assert.equal(documentRef.elements.get('errorDisplay').textContent, 'Translated configuring');
+    assert.equal(documentRef.elements.get('errorDisplay').textContent, '');
     assert.deepEqual(calls.filter(call => call[0] === 'showAudioConfigDialog'), [['showAudioConfigDialog']]);
     assert.deepEqual(calls.filter(call => call[0] === 'reload'), []);
   });

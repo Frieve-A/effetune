@@ -100,6 +100,8 @@
   "button:exportCSV": "Экспорт параметров коррекции (CSV)", // Button to export CSV
   "help:exportOptions": "Скопированные настройки коррекции частоты можно вставить в Effect Pipeline EffeTune с помощью Ctrl+V.", // Help text for export options
   "title:measurementDetails": "Детали измерения", // Title for measurement details section
+  "label:onset": "Начало отклика",
+  "label:onsetEarliest": "раньше всех",
 
   // Dialogs
   "button:confirm": "Подтвердить", // Confirm button in dialog

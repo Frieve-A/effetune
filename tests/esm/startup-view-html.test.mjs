@@ -36,6 +36,7 @@ function runEarlyStartupViewScript({
 } = {}) {
   const classes = new Set();
   const calls = [];
+  const stylesheets = [];
   const windowRef = {
     location: { search },
     localStorage: {
@@ -57,23 +58,41 @@ function runEarlyStartupViewScript({
             classes.add(className);
           }
         }
+      },
+      head: {
+        appendChild(element) {
+          stylesheets.push(element.href);
+          return element;
+        }
+      },
+      createElement(tagName) {
+        return { tagName, rel: '', href: '' };
       }
     },
     URLSearchParams,
     JSON
   });
 
-  return { calls, classes };
+  return { calls, classes, stylesheets };
 }
 
 test('effetune.html applies the Web library startup class before the app module loads', () => {
   const webLibrary = runEarlyStartupViewScript();
   assert.equal(webLibrary.classes.has('view-library'), true);
   assert.deepEqual(webLibrary.calls, [['getItem', 'effetune_app_config']]);
+  // Without the library stylesheet the class cannot hide the effect pipeline.
+  assert.deepEqual(webLibrary.stylesheets, ['effetune-library.css']);
+
+  assert.deepEqual(runEarlyStartupViewScript({ config: { startupView: 'effects' } }).stylesheets, []);
 
   assert.equal(runEarlyStartupViewScript({ config: { startupView: 'effects' } }).classes.has('view-library'), false);
   assert.equal(runEarlyStartupViewScript({ search: '?p=shared' }).classes.has('view-library'), false);
   assert.equal(runEarlyStartupViewScript({ search: '?dbt=shared' }).classes.has('view-library'), false);
+  // app.js keeps the effect pipeline for a transient restore, so hiding it here
+  // would leave neither view on screen.
+  assert.equal(runEarlyStartupViewScript({
+    search: '?mode=compact&restorePipeline=transient'
+  }).classes.has('view-library'), false);
 
   const electronRun = runEarlyStartupViewScript({ electron: true });
   assert.equal(electronRun.classes.has('view-library'), false);

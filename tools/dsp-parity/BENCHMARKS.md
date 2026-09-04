@@ -1227,3 +1227,50 @@ and SIMD artifacts and verifies the last pair's hex routes without JavaScript
 fallback. Worklet tests preserve the declared fallback capacity rule: at 16 channels,
 Auto Filter, Frequency Shifter, and Rotary Speaker bypass when their sample-channel
 capacity is exceeded. Those capability checks are not timing-budget relaxations.
+
+### Noise Reduction
+
+Measured on 2026-08-31 on Windows with the production Emscripten scalar and SIMD
+artifacts generated after the final scheduler cost-model recalibration. Each point
+used 10 seconds of audio, 128-frame blocks, five warmups, and 20 measured repetitions.
+Quantum percentages and deadline misses are lower-is-better; the `p99 / average`
+ratio checks that work is distributed evenly over the buffer.
+
+```text
+node tools/dsp-parity/bench.mjs --type NoiseReductionPlugin --modes wasm,simd --sample-rates 96000,192000 --channels 2,16 --block-size 128 --quantum-stats --json tmp/dev/noise-reduction-plan-20260830/bench-quantum-stats-r1-final-model.json
+```
+
+| Sample rate / channels | Variant | Realtime | Median | Average | p99 | p99 / average | Max | Misses | SIMD gate |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 96 kHz / 2 ch | WASM | 55.98x | 0.1786 s | 1.64% | 3.25% | 1.984 | 43.09% | 0 | Reference |
+| 96 kHz / 2 ch | WASM SIMD | 72.53x | 0.1379 s | 1.27% | 2.50% | 1.970 | 20.05% | 0 | **Fail: max ≥ 12%** |
+| 96 kHz / 16 ch | WASM | 13.15x | 0.7602 s | 6.73% | 10.50% | 1.559 | 75.23% | 0 | Reference |
+| 96 kHz / 16 ch | WASM SIMD | 21.94x | 0.4557 s | 3.96% | 6.50% | 1.641 | 44.35% | 0 | Pass |
+| 192 kHz / 2 ch | WASM | 27.99x | 0.3572 s | 3.31% | 6.50% | 1.962 | 68.26% | 0 | Reference |
+| 192 kHz / 2 ch | WASM SIMD | 35.73x | 0.2798 s | 2.62% | 6.50% | 2.482 | 80.19% | 0 | Reference |
+| 192 kHz / 16 ch | WASM | 6.36x | 1.5714 s | 13.98% | 22.75% | 1.627 | 145.56% | 1 | Reference |
+| 192 kHz / 16 ch | WASM SIMD | 10.28x | 0.9728 s | 8.54% | 21.25% | 2.487 | 86.70% | 0 | Pass |
+
+The formal matrix passes every target SIMD average, p99, distribution-ratio, deadline,
+and required SIMD-advantage check. The 96 kHz / 16-channel and 192 kHz / 16-channel
+SIMD maximum checks also pass. The matrix is nevertheless **not an accepted all-green
+CPU result** because the 96 kHz / 2-channel SIMD maximum is 20.05%, above its strict
+12% limit. The same formal process recorded a 43.09% scalar-WASM maximum in that cell,
+which indicated isolated operating-system jitter but did not waive the SIMD limit.
+
+Section 6.7 allowed one paired control and one Noise Reduction remeasurement for that
+cell, with no result selection or further retries:
+
+```text
+node tools/dsp-parity/bench.mjs --type VolumePlugin --modes simd --sample-rates 96000 --channels 2 --block-size 128 --quantum-stats --json tmp/dev/noise-reduction-plan-20260830/bench-volume-96k2-r1-final-control.json
+node tools/dsp-parity/bench.mjs --type NoiseReductionPlugin --modes simd --sample-rates 96000 --channels 2 --block-size 128 --quantum-stats --json tmp/dev/noise-reduction-plan-20260830/bench-noise-96k2-r1-final-recheck.json
+```
+
+The Volume control measured 1306.27x realtime, 0.0077 s median, 0.02% average,
+0.25% p99, 23.89% maximum, and zero misses. The sole Noise Reduction remeasurement
+measured 72.09x realtime, 0.1387 s median, 1.29% average, 2.75% p99, a 2.137
+distribution ratio, 44.81% maximum, and zero misses. The lightweight control confirms
+that the environment produced isolated wall-clock spikes, but the Noise Reduction
+maximum still failed its unchanged 12% hard limit on the only permitted remeasurement.
+The final cost model remains frozen; no threshold, measurement-tool, or golden-policy
+change and no additional retry is permitted.

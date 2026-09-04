@@ -10,6 +10,19 @@ import { normalizeOfflineOutputSettings } from '../audio/offline-output-settings
 
 export const WEB_APP_CONFIG_KEY = 'effetune_app_config';
 export const WEB_AUDIO_PREFERENCES_KEY = 'effetune_audio_preferences';
+export const WEB_AUDIO_PREFERENCE_DEFAULTS = Object.freeze({
+  inputDeviceId: 'default',
+  outputDeviceId: 'default',
+  inputDeviceLabel: '',
+  outputDeviceLabel: '',
+  sampleRate: 96000,
+  useInputWithPlayer: false,
+  lowLatencyOutput: false,
+  useWasmDsp: true,
+  gaplessPlayback: true,
+  outputChannels: 2,
+  latencyHint: 'interactive'
+});
 
 let defaultRuntime = null;
 let runtimeOverride = undefined;
@@ -496,10 +509,32 @@ export async function saveWebPowerSavingSettings(partialPowerSaving, options = {
 }
 
 export function loadWebAudioPreferences() {
-  return readObject(getLocalStorage(), WEB_AUDIO_PREFERENCES_KEY, null);
+  const preferences = readObject(getLocalStorage(), WEB_AUDIO_PREFERENCES_KEY, null);
+  return preferences ? normalizeWebAudioPreferences(preferences) : null;
+}
+
+export function normalizeWebAudioPreferences(preferences) {
+  if (!isPlainObject(preferences)) return null;
+  const normalized = { ...preferences };
+  for (const [key, fallback] of Object.entries(WEB_AUDIO_PREFERENCE_DEFAULTS)) {
+    normalized[key] = normalized[key] ?? fallback;
+  }
+  return normalized;
+}
+
+export function mergeWebAudioPreferences(previousPreferences, nextPreferences) {
+  if (!isPlainObject(nextPreferences)) return null;
+  return normalizeWebAudioPreferences({
+    ...(isPlainObject(previousPreferences) ? previousPreferences : {}),
+    ...nextPreferences
+  });
 }
 
 export function saveWebAudioPreferences(preferences) {
   if (!isPlainObject(preferences)) return false;
-  return writeObject(getLocalStorage(), WEB_AUDIO_PREFERENCES_KEY, { ...preferences });
+  return writeObject(
+    getLocalStorage(),
+    WEB_AUDIO_PREFERENCES_KEY,
+    mergeWebAudioPreferences(loadWebAudioPreferences(), preferences)
+  );
 }

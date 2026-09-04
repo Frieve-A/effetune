@@ -100,6 +100,8 @@
 "button:exportCSV": "Exportar parámetros de corrección (CSV)", // Button to export CSV
 "help:exportOptions": "Los ajustes de corrección de frecuencia copiados se pueden pegar en el Pipeline de Efectos de EffeTune con Ctrl+V.", // Help text for export options
 "title:measurementDetails": "Detalles de la medición", // Title for measurement details section
+"label:onset": "Inicio de la respuesta",
+"label:onsetEarliest": "más temprano",
 
 // Dialogs
 "button:confirm": "Confirmar", // Confirm button in dialog

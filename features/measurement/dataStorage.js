@@ -201,7 +201,7 @@ function hasValidImportedScalars(data) {
 }
 
 export class DataStorage {
-    constructor() {
+    constructor(options = {}) {
         this.STORAGE_KEY = 'frequency_response_measurements';
         this.DO_NOT_WARN_KEY = 'do_not_warn_on_delete';
         this.USER_SETTINGS_KEY = 'user_settings';
@@ -216,7 +216,17 @@ export class DataStorage {
         this.loaded = false;
         this.irPersistenceAvailable = true;
         this.indexedDbUnavailable = false;
-        
+
+        // Desktop app: every saved measurement is mirrored as a JSON file in
+        // application data through the main process (see measurement-backup-ipc).
+        this.backupBridge = options.backupBridge !== undefined
+            ? options.backupBridge
+            : (globalThis.window?.electronAPI?.measurementBackupV1 ?? null);
+        this.backupDelayMs = Number.isFinite(options.backupDelayMs) ? options.backupDelayMs : 1500;
+        this.backupTimers = new Map();
+        this.backupWrites = new Map();
+        this.installBackupFlushListeners();
+
         // Event names for data changes
         this.EVENTS = {
             MEASUREMENT_ADDED: 'measurement-added',
@@ -257,6 +267,7 @@ export class DataStorage {
             console.error('Error removing orphan impulse responses:', error);
         }
         this.loaded = true;
+        this.scheduleBackupBackfill();
     }
 
     /**
@@ -462,6 +473,7 @@ export class DataStorage {
                 }
                 
                 transaction.oncomplete = () => {
+                    for (const measurement of this.measurements) this.scheduleBackup(measurement.id);
                     resolve(true);
                 };
                 
@@ -529,6 +541,7 @@ export class DataStorage {
                 transaction.onabort = event => reject(event.target.error || new Error('Measurement save was cancelled'));
             });
             if (records.length) await this.requestPersistentStorage();
+            this.scheduleBackup(storedMeasurement.id);
             return true;
         } catch (error) {
             console.error('Error saving measurement record:', error);
@@ -559,6 +572,7 @@ export class DataStorage {
             for (const key of Object.keys(measurement)) delete measurement[key];
             Object.assign(measurement, metadataOnly);
             this.irPersistenceAvailable = false;
+            this.scheduleBackup(metadataOnly.id);
             return true;
         } catch (error) {
             console.error('Failed to save measurement metadata to localStorage:', error);
@@ -579,6 +593,7 @@ export class DataStorage {
             transaction.onerror = event => reject(event.target.error);
         });
         await this.requestPersistentStorage();
+        this.scheduleBackup(record.measurementId);
         return true;
     }
 
@@ -636,6 +651,7 @@ export class DataStorage {
                     event.target.error || new Error('Point deletion was cancelled')
                 );
             });
+            this.scheduleBackup(measurementId);
             return true;
         } catch (error) {
             console.error('Error deleting measurement point:', error);
@@ -933,6 +949,8 @@ export class DataStorage {
                 }
             }
             
+            void this.removeBackup(id);
+
             // Notify UI of deleted measurement
             if (deletedMeasurement) {
                 this.dispatchEvent(this.EVENTS.MEASUREMENT_DELETED, {
@@ -944,6 +962,144 @@ export class DataStorage {
             return true;
         }
         return false;
+    }
+
+    // ---- Automatic JSON backups (desktop app) ----
+
+    hasMeasurementBackups() {
+        return Boolean(this.backupBridge);
+    }
+
+    /**
+     * A measurement saved just before the window goes away would otherwise
+     * lose its debounced backup, so the queued writes are started as soon as
+     * the page is torn down. The main process finishes a write it has already
+     * received even when this window is gone.
+     */
+    installBackupFlushListeners() {
+        if (!this.hasMeasurementBackups()) return;
+        const target = globalThis.window;
+        if (typeof target?.addEventListener !== 'function') return;
+        const flush = () => {
+            // Individual write failures are already reported by runBackup().
+            this.flushBackups().catch(() => {});
+        };
+        target.addEventListener('beforeunload', flush);
+        target.addEventListener('pagehide', flush);
+    }
+
+    /**
+     * Queue a backup of one measurement. Rapid successive saves of the same
+     * measurement collapse into a single file write.
+     */
+    scheduleBackup(id) {
+        if (!this.backupBridge || typeof id !== 'string' || !id) return;
+        const existing = this.backupTimers.get(id);
+        if (existing) clearTimeout(existing);
+        const timer = setTimeout(() => {
+            this.backupTimers.delete(id);
+            this.runBackup(id);
+        }, this.backupDelayMs);
+        timer.unref?.();
+        this.backupTimers.set(id, timer);
+    }
+
+    runBackup(id, options = {}) {
+        const pending = this.writeBackup(id, options)
+            .catch(error => {
+                console.warn('Measurement backup failed:', error);
+                return false;
+            })
+            .finally(() => {
+                if (this.backupWrites.get(id) === pending) this.backupWrites.delete(id);
+            });
+        this.backupWrites.set(id, pending);
+        return pending;
+    }
+
+    /**
+     * Write one measurement as export-format JSON through the backup bridge.
+     * A backup normally carries the impulse responses. When they cannot be
+     * read consistently the existing backup is kept rather than replaced by
+     * a metadata-only file, unless no impulse responses can be stored at all
+     * or the caller allows it (initial backfill).
+     */
+    async writeBackup(id, { allowMetadataOnly = false } = {}) {
+        if (!this.backupBridge || !this.getMeasurementById(id)) return false;
+        let json;
+        try {
+            json = await this.exportMeasurementToJSON(id, true);
+        } catch (error) {
+            if (!(error instanceof MeasurementExportError)) throw error;
+            const metadataOnly = allowMetadataOnly || !this.irPersistenceAvailable || this.indexedDbUnavailable;
+            if (!metadataOnly) {
+                console.warn('Measurement backup skipped; impulse responses are not readable:', id);
+                return false;
+            }
+            json = await this.exportMeasurementToJSON(id, false);
+        }
+        if (!json) return false;
+        const response = await this.backupBridge.write({ id, json });
+        if (response?.ok !== true) throw new Error(`Measurement backup write refused: ${response?.code || 'unknown'}`);
+        return true;
+    }
+
+    async removeBackup(id) {
+        if (!this.backupBridge || typeof id !== 'string' || !id) return false;
+        const timer = this.backupTimers.get(id);
+        if (timer) {
+            clearTimeout(timer);
+            this.backupTimers.delete(id);
+        }
+        try {
+            await this.backupWrites.get(id);
+            const response = await this.backupBridge.remove({ id });
+            if (response?.ok !== true) throw new Error(`Measurement backup removal refused: ${response?.code || 'unknown'}`);
+            return true;
+        } catch (error) {
+            console.warn('Measurement backup removal failed:', error);
+            return false;
+        }
+    }
+
+    /** Run every queued backup now and wait for all in-flight writes. */
+    async flushBackups() {
+        for (const [id, timer] of [...this.backupTimers]) {
+            clearTimeout(timer);
+            this.backupTimers.delete(id);
+            this.runBackup(id);
+        }
+        await Promise.all([...this.backupWrites.values()]);
+    }
+
+    scheduleBackupBackfill() {
+        if (!this.backupBridge) return;
+        const timer = setTimeout(() => {
+            this.backfillBackups().catch(error => {
+                console.warn('Measurement backup backfill failed:', error);
+            });
+        }, this.backupDelayMs);
+        timer.unref?.();
+    }
+
+    /**
+     * Back up every loaded measurement that has no backup file yet. Runs once
+     * after startup so measurements saved before backups existed are covered.
+     * @returns {number} Count of backups written
+     */
+    async backfillBackups() {
+        if (!this.backupBridge) return 0;
+        const response = await this.backupBridge.list({});
+        if (response?.ok !== true || !Array.isArray(response.data)) {
+            throw new Error(`Measurement backup listing refused: ${response?.code || 'unknown'}`);
+        }
+        const existing = new Set(response.data);
+        let written = 0;
+        for (const measurement of [...this.measurements]) {
+            if (existing.has(measurement.id)) continue;
+            if (await this.runBackup(measurement.id, { allowMetadataOnly: true })) written += 1;
+        }
+        return written;
     }
 
     /**
@@ -1132,6 +1288,9 @@ export class DataStorage {
                     length: samples.length,
                     sampleRate: record.sampleRate,
                     onsetIndex: record.onsetIndex,
+                    ...(Number.isSafeInteger(record.trimStartSamples)
+                        ? { trimStartSamples: record.trimStartSamples }
+                        : {}),
                     ...(Number.isFinite(record.peakDb) ? { peakDb: record.peakDb } : {}),
                     ...(sweepLimitedById.get(record.pointId) ? { sweepLimited: true } : {})
                 };

@@ -11,51 +11,6 @@ export function registerPipelineStateCloseHandler(getPipelineStateForSave, elect
     }
 }
 
-export function createFirstLaunchPromise(electronAPI = getDefaultWindow().electronAPI) {
-    if (electronAPI && electronAPI.isFirstLaunch) {
-        try {
-            return Promise.resolve(electronAPI.isFirstLaunch()).catch(() => false);
-        } catch (error) {
-            return Promise.resolve(false);
-        }
-    }
-
-    return Promise.resolve(false);
-}
-
-export function applyFirstLaunchStatus(isFirstLaunch, style, windowRef = getDefaultWindow()) {
-    if (!isFirstLaunch) {
-        if (style && style.parentNode) {
-            style.parentNode.removeChild(style);
-        }
-    } else if (style) {
-        style.id = 'first-launch-style';
-    }
-
-    windowRef.isFirstLaunchConfirmed = isFirstLaunch;
-    windowRef.isFirstLaunch = isFirstLaunch;
-}
-
-export function applyFirstLaunchError(error, style, {
-    windowRef = getDefaultWindow(),
-    logger = console
-} = {}) {
-    logger.error('Error checking launch status:', error);
-    if (style && style.parentNode) {
-        style.parentNode.removeChild(style);
-    }
-    windowRef.isFirstLaunchConfirmed = false;
-    windowRef.isFirstLaunch = false;
-}
-
-export function handleFirstLaunchPromise(promise, style, options = {}) {
-    return promise.then(isFirstLaunch => {
-        applyFirstLaunchStatus(isFirstLaunch, style, options.windowRef);
-    }).catch(error => {
-        applyFirstLaunchError(error, style, options);
-    });
-}
-
 export function registerTrayPresetListener({
     electronAPI = getDefaultWindow().electronAPI,
     electronBridge = getDefaultWindow().electronIntegration,

@@ -12,12 +12,17 @@ import { createMediaSessionAnchor } from './audio-player/media-session-anchor.js
 import { OpenHomePlaybackAdapter } from './audio-player/openhome-playback-adapter.js';
 import { WakeLockManager } from '../utils/wake-lock-manager.js';
 import { createRecentlyPlayedTracker } from '../library/playlists/recently-played-tracker.js';
+import { normalizeGaplessPlayback } from './audio-player/rolling-pcm-policy.js';
 
 export class AudioPlayer {
   constructor(audioManager) {
     this.audioManager = audioManager;
     this._audioContext = audioManager.audioContext ?? null;
     this.audioElement = null;
+    const initialPreferences = typeof window !== 'undefined'
+      ? (window.audioPreferences || window.electronIntegration?.audioPreferences)
+      : null;
+    this.gaplessPlayback = normalizeGaplessPlayback(initialPreferences);
     
     // Initialize centralized state manager first
     this.stateManager = new StateManager(this);
@@ -79,6 +84,17 @@ export class AudioPlayer {
 
   set audioContext(audioContext) {
     this._audioContext = audioContext ?? null;
+  }
+
+  async applyGaplessPlaybackPreference(enabled) {
+    const normalized = enabled !== false;
+    // Calling the context operation first synchronously invalidates any
+    // prepared next generation before the preference reaches other player state.
+    const cleanup = this.contextManager.applyGaplessPlaybackPreference(normalized);
+    this.gaplessPlayback = normalized;
+    this.stateManager.updateState({ seamlessMode: this.gaplessPlayback }, 'gapless_preference_change');
+    this.playbackManager.seamlessMode = this.gaplessPlayback;
+    return cleanup;
   }
 
   activateOpenHomePlaybackAdapter() {

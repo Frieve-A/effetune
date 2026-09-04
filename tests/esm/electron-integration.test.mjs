@@ -461,6 +461,7 @@ test('Electron save failures do not publish an unpersisted config', async () => 
 
   await withIntegrationGlobals({ electronAPI, calls }, async ({ instance, windowRef }) => {
     windowRef.electronIntegration = instance;
+    await instance.loadConfig();
     const initialConfig = { ...instance.config };
 
     assert.equal(await instance.saveConfig({ language: 'ja' }), false);
@@ -477,7 +478,7 @@ test('Electron save failures do not publish an unpersisted config', async () => 
   });
 });
 
-test('Electron constructor loads preferences and config, then callbacks dispatch current methods', async () => {
+test('Electron constructor defers preferences and config while callbacks dispatch current methods', async () => {
   const calls = [];
   const uiManager = createUIManager(calls);
   const electronAPI = createElectronAPI(calls, {
@@ -493,8 +494,39 @@ test('Electron constructor loads preferences and config, then callbacks dispatch
   }, async ({ instance, windowRef }) => {
     windowRef.electronIntegration = instance;
     assert.equal(instance.isElectron, true);
-    assert.deepEqual(instance.audioPreferences, { sampleRate: 44100, useInputWithPlayer: true });
-    assert.deepEqual(windowRef.audioPreferences, { sampleRate: 44100, useInputWithPlayer: true });
+    assert.equal(instance.audioPreferences, null);
+    assert.equal(instance.config, null);
+    assert.equal(calls.some(call => call[0] === 'loadAudioPreferences'), false);
+    assert.equal(calls.some(call => call[0] === 'loadConfig'), false);
+
+    await instance.loadAudioPreferences();
+    await instance.loadConfig();
+    assert.deepEqual(instance.audioPreferences, {
+      inputDeviceId: 'default',
+      outputDeviceId: 'default',
+      inputDeviceLabel: '',
+      outputDeviceLabel: '',
+      sampleRate: 44100,
+      useInputWithPlayer: true,
+      lowLatencyOutput: false,
+      useWasmDsp: true,
+      gaplessPlayback: true,
+      outputChannels: 2,
+      latencyHint: 'interactive'
+    });
+    assert.deepEqual(windowRef.audioPreferences, {
+      inputDeviceId: 'default',
+      outputDeviceId: 'default',
+      inputDeviceLabel: '',
+      outputDeviceLabel: '',
+      sampleRate: 44100,
+      useInputWithPlayer: true,
+      lowLatencyOutput: false,
+      useWasmDsp: true,
+      gaplessPlayback: true,
+      outputChannels: 2,
+      latencyHint: 'interactive'
+    });
     assert.deepEqual(instance.config, {
       language: 'fr',
       autoLaunch: true,
@@ -555,6 +587,7 @@ test('Electron constructor loads preferences and config, then callbacks dispatch
     electronAPI.handlers.ipc['request-tray-menu-update']();
     electronAPI.handlers.showAboutDialog({ version: '3.0.0' });
     electronAPI.handlers.ipc['start-double-blind-test']();
+    await flushMicrotasks();
     windowRef.uiManager = {};
     electronAPI.handlers.ipc['start-double-blind-test']();
 

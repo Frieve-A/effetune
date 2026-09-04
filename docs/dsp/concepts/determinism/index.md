@@ -226,5 +226,5 @@ print(json.dumps(result, sort_keys=True))
 ```
 
 ```console
-python research-experiment.py --wheel /path/to/effetune-0.7.0.whl
+python research-experiment.py --wheel /path/to/effetune-0.8.0.whl
 ```

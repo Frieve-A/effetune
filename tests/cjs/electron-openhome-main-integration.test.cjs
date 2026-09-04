@@ -17,6 +17,21 @@ test('Electron bootstrap keeps OpenHome off by default and gates it on renderer 
   assert.match(source, /mainWindow\.on\('closed'[\s\S]*openHomeControlHost\?\.setRendererUnavailable\(\)/);
 });
 
+test('Electron 44 preserves disabled features while enabling explicitly permitted basic Web MIDI', () => {
+  const source = fs.readFileSync(path.join(repoRoot, 'electron', 'main.js'), 'utf8');
+
+  assert.match(
+    source,
+    /process\.versions\.electron\?\.startsWith\('44\.'\)[\s\S]*getSwitchValue\('disable-features'\)[\s\S]*\.split\(','\)[\s\S]*disabledFeatures\.includes\('BlockMidiByDefault'\)[\s\S]*disabledFeatures\.push\('BlockMidiByDefault'\)[\s\S]*appendSwitch\('disable-features',\s*disabledFeatures\.join\(','\)\)/
+  );
+  assert.ok(
+    source.indexOf("getSwitchValue('disable-features')") < source.indexOf('app.whenReady()')
+  );
+  assert.match(source, /GRANTED_PERMISSIONS\s*=\s*\[[^\]]*'midi'[^\]]*\]/);
+  assert.match(source, /setPermissionCheckHandler\([\s\S]*GRANTED_PERMISSIONS\.includes\(permission\)/);
+  assert.match(source, /setPermissionRequestHandler\([\s\S]*GRANTED_PERMISSIONS\.includes\(permission\)/);
+});
+
 test('Electron shutdown awaits OpenHome and catalog cleanup through one idempotent promise', () => {
   const source = fs.readFileSync(path.join(repoRoot, 'electron', 'main.js'), 'utf8');
 

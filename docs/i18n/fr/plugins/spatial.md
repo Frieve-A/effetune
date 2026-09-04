@@ -1,6 +1,6 @@
 ---
 title: "Plugins Spatial - EffeTune"
-description: "Plugins audio spatiaux incluant Crossfeed Filter, MS Matrix, Multiband Balance, Phase Select EQ et Stereo Blend."
+description: "Plugins audio spatiaux incluant Crossfeed Filter, Crosstalk Cancellation, MS Matrix, Multiband Balance, Phase Select EQ et Stereo Blend."
 lang: fr
 ---
 
@@ -11,6 +11,7 @@ Une collection de plugins qui améliorent le rendu de votre musique dans vos cas
 ## Liste des Plugins
 
 - [Crossfeed Filter](#crossfeed-filter) - Filtre de crossfeed pour casques pour une image stéréo naturelle
+- [Crosstalk Cancellation](#crosstalk-cancellation) - Réduit la diaphonie entre enceintes stéréo grâce à des mesures près des oreilles
 - [MS Matrix](#ms-matrix) - Convertit entre stéréo gauche/droite et format Mid/Side
 - [Multiband Balance](#multiband-balance) - Contrôle de balance stéréo dépendant de la fréquence à 5 bandes
 - [Phase Select EQ](#phase-select-eq) - Accentue ou atténue les composantes fréquentielles selon la différence de phase G/D et Balance
@@ -101,6 +102,37 @@ Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essa
    - Testez avec différents styles musicaux
 
 Rappel : Le Crossfeed Filter est conçu pour rendre l'écoute au casque plus naturelle et confortable. Commencez par des réglages conservateurs et ajustez progressivement pour trouver l'équilibre optimal pour vos préférences d'écoute et votre matériel musical.
+
+## Crosstalk Cancellation
+
+Crosstalk Cancellation emploie des réponses mesurées près de vos oreilles pour réduire le son de chaque enceinte stéréo qui atteint l'autre oreille. Utilisez-le avec deux enceintes, depuis une position mesurée, pour une image plus précise, proche du binaural. Il ne convient ni au casque ni au mono.
+
+[Crossfeed Filter](#crossfeed-filter) ajoute une légère diaphonie de type enceintes au casque ; Crosstalk Cancellation réduit la diaphonie mesurée à l'écoute sur enceintes.
+
+### Mesurer et affecter
+
+1. Placez le microphone à l'oreille gauche et mesurez avec les sorties gauche et droite sélectionnées. Affectez le canal gauche à **LL: L Speaker → Left Ear** et le droit à **RL: R Speaker → Left Ear**.
+2. Recommencez à l'oreille droite : canal gauche vers **LR: L Speaker → Right Ear**, canal droit vers **RR: R Speaker → Right Ear**.
+3. Employez des mesures à point unique prises avec la même installation, et un canal différent dans chaque emplacement.
+
+Commencez avec **Taps** 4096, **Regularization** 50%, **Max Gain** 12 dB, **Freq Low** 200 Hz, **Freq High** 6000 Hz, **Direct Window** 8 ms, **Strength** 70%, **Output Gain** 0 dB et **Latency** 128 samples. Comparez au bypass depuis la position mesurée.
+
+### Paramètres
+
+- **Taps** (1024–16384) : longueur du filtre. Plus de taps peut améliorer l'annulation, mais augmente calcul et délai ; augmentez-les d'abord si la queue semble tronquée.
+- **Regularization** (0–100%) : limite les corrections agressives. Augmentez-la si le son devient instable quand vous bougez ; baissez-la seulement pour davantage d'annulation à la position mesurée.
+- **Max Gain** (0–24 dB) : plafonne le boost du filtre. Une valeur basse est plus douce et garde de la marge ; une valeur haute peut annuler davantage mais est moins robuste.
+- **Freq Low** (20–2000 Hz) / **Freq High** (1000–20000 Hz) : bande de correction ; le reste passe tel quel. Commencez à 200–6000 Hz et resserrez-la si le mouvement de tête est trop sensible.
+- **Direct Window** (2–50 ms) : durée du son direct mesuré. Plus courte, elle réduit les réflexions mais peut relever la limite grave effective ; plus longue, elle garde plus de graves et de salle.
+- **Strength** (0–100%) : mélange de 0% sans correction retardée à 100% de correction. Partez de 70% et baissez si cela devient artificiel hors position.
+- **Output Gain** (-24–+24 dB) : niveau final ; gardez 0 dB au début puis baissez pour conserver de la marge.
+- **Latency** (0/128/256/512/1024 samples) : délai de bloc ; une valeur haute facilite le traitement, une basse aide le monitoring.
+
+### État et latence
+
+L'état initial est **Assign all four measurements to begin.** ; pendant la conception il indique l'avancement et, prêt, le gain maximal. Un avertissement de queue conseille d'augmenter **Taps** ou **Regularization**. Si **Direct Window** a relevé la fréquence basse effective, la fenêtre est trop courte.
+
+Resélectionnez une mesure introuvable. Si les filtres ne peuvent être préparés, essayez moins de **Taps** ou plus de **Latency**. Avant quatre mesures adéquates et des filtres prêts, le son passe sans changement ni latence ajoutée. Ensuite, le délai total est **Latency** plus le délai modélisé, compensé par l'application ; vérifiez **Total Delay** pour le monitoring ou la vidéo. Il n'y a ni graphe ni autre visualisation.
 
 ## MS Matrix
 

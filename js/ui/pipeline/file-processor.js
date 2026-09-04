@@ -5,6 +5,7 @@ import {
     getOfflineOutputFormat,
     snapshotOfflineOutputSettings
 } from '../../audio/offline-output-settings.js';
+import { loadClassicScript } from '../../utils/classic-script-loader.js';
 
 const OFFLINE_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac'];
 const OFFLINE_AUDIO_ACCEPT = OFFLINE_AUDIO_EXTENSIONS.map(ext => `.${ext}`).join(',');
@@ -810,7 +811,14 @@ export class FileProcessor {
         this.setProgressText(window.uiManager && window.uiManager.t
             ? window.uiManager.t('status.creatingZipFile')
             : 'Creating zip file...');
-        const zip = new JSZip();
+        const JSZipClass = window.JSZip || await loadClassicScript(
+            'js/vendor/jszip-3.10.1.min.js',
+            { globalName: 'JSZip' }
+        );
+        if (typeof JSZipClass !== 'function') {
+            throw new Error('ZIP support is unavailable');
+        }
+        const zip = new JSZipClass();
         processedFiles.forEach(({ blob, name }) => zip.file(name, blob));
         const zipBlob = await zip.generateAsync({ type: 'blob' });
         if (this.isCancelled) return;

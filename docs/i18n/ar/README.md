@@ -49,6 +49,10 @@
    - أو اسحب ملف الموسيقى إلى النافذة
 - لاستخدام المشغل فقط، اختر لا شيء (مشغل ملفات الموسيقى فقط) كجهاز إدخال في إعدادات الصوت حتى لا يتم استخدام إدخال صوت مباشر
 
+### تشغيل بلا فواصل
+
+يكون **تشغيل بلا فواصل** مفعّلًا افتراضيًا، ويمكن تغييره من **إعدادات الصوت**. عند تفعيله، تُشغَّل المقاطع المحلية المتوافقة بلا فاصل، مع العلم أن الدعم يقتصر على تنسيقات الملفات وبيئات المتصفح أو التطبيق المتوافقة. تستخدم التنسيقات غير المدعومة وبعض بيئات الهاتف تلقائيًا وضعًا بديلًا آمنًا ومحدود الذاكرة، لذلك قد يظهر فاصل قصير رغم ذلك. عند تعطيله، تكون الأولوية لاستهلاك أقل للذاكرة وللاستقرار، وقد يظهر فاصل قصير معتاد بين المقاطع. لا يؤدي تغيير هذا الإعداد إلى قطع المقطع الجاري.
+
 ### إعداد خدمة البث
 
 لمعالجة الصوت من خدمات البث (Spotify، YouTube Music، إلخ):
@@ -377,6 +381,10 @@
 | Resonator | Horn Resonator | يحاكي رنين القرن بأبعاد قابلة للتخصيص | [تفاصيل](plugins/resonator.md#horn-resonator) |
 | Resonator | Horn Resonator Plus | رنين horn-speaker أكثر سلاسة للون استماع طبيعي | [تفاصيل](plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | تأثير رنين ترددي مع ما يصل إلى 5 رنانات | [تفاصيل](plugins/resonator.md#modal-resonator) |
+| Restoration | Click Remover | يصلح النقرات والفرقعة والانقطاعات القصيرة | [تفاصيل](plugins/restoration.md#click-remover) |
+| Restoration | Clip Restorer | يستعيد القمم التي سطّحها القص القاسي | [تفاصيل](plugins/restoration.md#clip-restorer) |
+| Restoration | Hum Remover | يزيل الطنين الكهربائي الثابت وتوافقياته | [تفاصيل](plugins/restoration.md#hum-remover) |
+| Restoration | Noise Reduction | يقلل ضوضاء الخلفية المستمرة مع الحفاظ على الموسيقى | [تفاصيل](plugins/restoration.md#noise-reduction) |
 | Reverb | Dattorro Plate Reverb | صدى plate كلاسيكي مبني على خوارزمية Dattorro | [تفاصيل](plugins/reverb.md#dattorro-plate-reverb) |
 | Reverb | FDN Reverb | صدى Feedback Delay Network بنسيج صدى غني وكثيف | [تفاصيل](plugins/reverb.md#fdn-reverb) |
 | Reverb | IR Reverb | صدى التفاف يستخدم استجابات نبضية مستوردة للغرف والمعدات | [تفاصيل](plugins/reverb.md#ir-reverb) |
@@ -391,6 +399,7 @@
 | Saturation | Sub Synth | يمزج إشارة منخفضة التردد ومرشحة لتعزيز الجهير | [تفاصيل](plugins/saturation.md#sub-synth) |
 | Saturation | Tube Simulator | يحاكي مراحل الخط الصمامية ومضخمات القدرة بالدفع والسحب أو أحادية الطرف بصمامات ثلاثية 300B/2A3 | [تفاصيل](plugins/saturation.md#tube-simulator) |
 | Spatial | Crossfeed Filter | مرشح crossfeed لسماعات الرأس للحصول على صورة ستيريو طبيعية | [تفاصيل](plugins/spatial.md#crossfeed-filter) |
+| Spatial | Crosstalk Cancellation | يستخدم قياسات عند الأذن لتقليل التداخل بين السماعات الستيريو | [تفاصيل](plugins/spatial.md#crosstalk-cancellation) |
 | Spatial | MS Matrix | يحول بين الستيريو وMid/Side لضبط المركز والأجواء | [تفاصيل](plugins/spatial.md#ms-matrix) |
 | Spatial | Multiband Balance | تحكم خماسي النطاق في توازن الستيريو حسب التردد | [تفاصيل](plugins/spatial.md#multiband-balance) |
 | Spatial | Phase Select EQ | يعزز أو يخفض مكونات التردد المحددة حسب فرق الطور بين L/R وBalance | [تفاصيل](plugins/spatial.md#phase-select-eq) |

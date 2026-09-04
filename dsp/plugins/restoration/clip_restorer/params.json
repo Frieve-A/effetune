@@ -1,0 +1,9 @@
+{
+  "type": "ClipRestorerPlugin",
+  "tolerance": { "abs": 0.000002, "policy": "per-sample" },
+  "parityReference": "production-native-promoted-v1",
+  "fields": [
+    { "name": "threshold", "key": "th", "kind": "float", "min": -18, "max": 0, "step": 0.01, "default": -0.1, "unit": "dB", "automation": true },
+    { "name": "outputGain", "key": "og", "kind": "float", "min": -12, "max": 0, "step": 0.1, "default": -3, "unit": "dB", "automation": true }
+  ]
+}

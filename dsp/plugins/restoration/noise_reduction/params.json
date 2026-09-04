@@ -1,0 +1,12 @@
+{
+  "type": "NoiseReductionPlugin",
+  "parityReference": "production-native-promoted-v1",
+  "tolerance": { "abs": 0.00002, "policy": "per-sample" },
+  "fields": [
+    { "name": "reduction",   "key": "rd",  "kind": "float", "min": 0,   "max": 24,  "step": 0.5, "default": 12,  "unit": "dB", "automation": true },
+    { "name": "sensitivity", "key": "sn",  "kind": "float", "min": -12, "max": 12,  "step": 0.5, "default": 0,   "unit": "dB", "automation": true },
+    { "name": "smoothing",   "key": "sm",  "kind": "float", "min": 0,   "max": 100, "step": 1,   "default": 50,  "unit": "%",  "automation": true },
+    { "name": "trebleCare",  "key": "hf",  "kind": "float", "min": 0,   "max": 100, "step": 1,   "default": 50,  "unit": "%",  "automation": true },
+    { "name": "mix",         "key": "mix", "kind": "float", "min": 0,   "max": 100, "step": 1,   "default": 100, "unit": "%",  "automation": true }
+  ]
+}

@@ -270,7 +270,7 @@ IR Reverb 将信号与导入的脉冲响应（IR）进行卷积，再现房间�
 
 Mono应用单个IR，Independent保持通道独立，True Stereo使用LL/LR/RL/RR四条路径，Diagonal Matrix只连接对应编号的输入与输出。在Auto模式下，立体声选择中的所有四通道IR都会按该顺序解释；对于Quad或其他四通道布局，请明确选择Independent或Diagonal Matrix。导入True Stereo文件对时，请同时选择名称末尾匹配的`L`/`R`或`Left`/`Right`文件。
 
-导入的IR文件保存在 **Impulse Response Library** 中，可按原始文件名搜索、加载或删除。内容为WAV音频的`.irs`扩展名文件无需重命名即可导入。Web版会将文件保存在浏览器内；清除站点数据或浏览器自动释放存储空间时，这些文件可能丢失。桌面版会将其保存在应用数据中。请另行备份需要的IR。
+导入的IR文件保存在**脉冲响应库**中，可按原始文件名搜索、加载或删除。要一次删除多个项目，请勾选相应复选框，或按 **Ctrl+A**（macOS 上为 **Command+A**）选择当前显示的所有项目，然后选择**删除所选项**。内容为WAV音频的`.irs`扩展名文件无需重命名即可导入。Web版会将文件保存在浏览器内；清除站点数据或浏览器自动释放存储空间时，这些文件可能丢失。桌面版会将其保存在应用数据中。请另行备份需要的IR。
 
 共享URL和preset可识别IR，但不包含其音频数据。如果IR不可用，就不会产生wet声音；请重新导入或选择该IR，也可以改用其他IR。原声按 **Dry** 和 **Dry Level** 设置播放。可从[OpenAIR](https://www.openair.hosted.york.ac.uk/)、[EchoThief](https://www.echothief.com/downloads/)和[Freesound](https://freesound.org/)查找素材，但应在EffeTune之外逐项核对并保存许可证（如CC0、CC BY、CC BY-NC）、作者、来源、署名要求和商业使用许可；EffeTune不会保存或验证这些信息。
 

@@ -219,7 +219,9 @@ test('unavailable IndexedDB falls back to localStorage while audio preferences r
     assert.equal(loadWebAudioPreferences(), null);
     assert.equal(saveWebAudioPreferences(null), false);
     assert.equal(saveWebAudioPreferences({ sampleRate: 48000 }), true);
-    assert.deepEqual(loadWebAudioPreferences(), { sampleRate: 48000 });
+    assert.equal(loadWebAudioPreferences().sampleRate, 48000);
+    assert.equal(loadWebAudioPreferences().gaplessPlayback, true);
+    assert.equal(loadWebAudioPreferences().useWasmDsp, true);
     assert.equal(JSON.parse(storage.snapshot()[WEB_AUDIO_PREFERENCES_KEY]).sampleRate, 48000);
 
     globalThis.window = {

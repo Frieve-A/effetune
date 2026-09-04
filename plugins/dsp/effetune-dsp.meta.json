@@ -1,6 +1,6 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:df1bbb523b8c25f3733a6a948c648f3cf627b7e73d576b911c409900e81fbea5",
+  "sourceDigest": "sha256:b34375d4b792be35b9568443f4d02e82f53416c147d6d0ee194cd381929025ca",
   "emsdkVersion": "6.0.2",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
@@ -883,6 +883,30 @@
       "assets": []
     },
     {
+      "name": "ClickRemoverPlugin",
+      "hash": 3247969793,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
+      "name": "ClipRestorerPlugin",
+      "hash": 2130397206,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
+      "name": "HumRemoverPlugin",
+      "hash": 901971837,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
+      "name": "NoiseReductionPlugin",
+      "hash": 2163822210,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
       "name": "DattorroPlateReverbPlugin",
       "hash": 582778991,
       "byteCapacity": 0,
@@ -974,6 +998,19 @@
       "assets": []
     },
     {
+      "name": "CrosstalkCancellationPlugin",
+      "hash": 1033639474,
+      "byteCapacity": 0,
+      "assets": [
+        {
+          "slot": 0,
+          "format": "ET_ASSET_F32_MULTICH",
+          "capacity": "32 MiB convolution cap",
+          "byteCapacity": 33554432
+        }
+      ]
+    },
+    {
       "name": "MSMatrixPlugin",
       "hash": 607668476,
       "byteCapacity": 0,
@@ -999,7 +1036,7 @@
     }
   ],
   "sizes": {
-    "baseline": 1170211,
-    "simd": 1291175
+    "baseline": 1219384,
+    "simd": 1344281
   }
 }

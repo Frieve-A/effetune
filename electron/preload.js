@@ -115,6 +115,13 @@ const irLibraryV1 = Object.freeze({
   listCache: request => ipcRenderer.invoke('ir-library-v1:cache-list', request)
 });
 
+const measurementBackupV1 = Object.freeze({
+  apiVersion: 1,
+  write: request => ipcRenderer.invoke('measurement-backup-v1:write', request),
+  remove: request => ipcRenderer.invoke('measurement-backup-v1:remove', request),
+  list: request => ipcRenderer.invoke('measurement-backup-v1:list', request)
+});
+
 const libraryServiceV1 = Object.freeze({
   apiVersion: 1,
   start: (request) => ipcRenderer.invoke('library-service-v1:start', request),
@@ -173,6 +180,7 @@ function withoutOpenHomeOwnedConfig(config) {
 const libraryRecoveryV1 = Object.freeze({
   apiVersion: 1,
   getState: () => ipcRenderer.invoke('library-recovery-v1:get-state', {}),
+  initialize: () => ipcRenderer.invoke('library-recovery-v1:initialize', {}),
   resetCatalog: ({ confirmed = false } = {}) => ipcRenderer.invoke(
     'library-recovery-v1:reset-catalog',
     { confirmed: confirmed === true }
@@ -260,6 +268,9 @@ contextBridge.exposeInMainWorld(
     // Versioned IR storage exposes generated logical names only; native paths stay in the main process.
     irLibraryV1,
 
+    // Measurement JSON backups are mirrored into application data by the main process.
+    measurementBackupV1,
+
     // Catalog startup and recovery remain available even when the catalog utility cannot open.
     libraryRecoveryV1,
 
@@ -282,18 +293,7 @@ contextBridge.exposeInMainWorld(
       : ipcRenderer.invoke('save-audio-preferences', preferences, options),
     loadAudioPreferences: () => ipcRenderer.invoke('load-audio-preferences'),
     getWindowVisibility: () => ipcRenderer.invoke('get-window-visibility'),
-    // First launch flag for audio workaround - use IPC instead of window property
-    isFirstLaunch: () => {
-      // Return a Promise that resolves to a boolean
-      return ipcRenderer.invoke('get-first-launch-flag')
-        .then(result => {
-          return Boolean(result);
-        })
-        .catch(error => {
-          return false;
-        });
-    },
-    
+
     // Listen for events from main process
     onExportPreset: (callback) => {
       return addNoArgIpcListener('export-preset', callback);

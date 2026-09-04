@@ -604,7 +604,7 @@ test('Console channel debug previews UI on stereo hardware without promising wor
 
     assert.equal(window.uiManager.setDebugChannelCount(16), 16);
     assert.equal(manager.sampleRate.textContent, '48000 Hz 16ch');
-    assert.equal(manager.pipelineAnalyzerController.audioFormat.channelCount, 16);
+    assert.equal(manager.pipelineAnalyzerController, null);
     assert.deepEqual(getAnalyzerAudioFormat(audioManager), { sampleRate: 48000, channelCount: 2 });
     assert.equal(destination.channelCount, 2);
     assert.ok(calls.some(call => call[0] === 'pipeline.updatePipelineUI' && call[1] === true));
@@ -612,7 +612,7 @@ test('Console channel debug previews UI on stereo hardware without promising wor
 
     assert.equal(window.uiManager.setDebugChannelCount(null), null);
     assert.equal(manager.sampleRate.textContent, '48000 Hz');
-    assert.equal(manager.pipelineAnalyzerController.audioFormat.channelCount, 2);
+    assert.equal(manager.pipelineAnalyzerController, null);
     assert.throws(() => manager.setDebugChannelCount(17), RangeError);
     assert.equal(manager.debugChannelCount, null);
   });
@@ -720,6 +720,44 @@ test('Pipeline Analyzer host owns absolute open state and disposes the Electron 
   }
 });
 
+test('Music Library catalog initialization is deferred until the library is requested', async () => {
+  let initializeCalls = 0;
+  let stateListener = null;
+  const recoveryApi = {
+    onStateChange(listener) {
+      stateListener = listener;
+      return () => {
+        stateListener = null;
+      };
+    },
+    async initialize() {
+      initializeCalls += 1;
+      return {
+        apiVersion: 1,
+        status: 'available',
+        available: true,
+        canReset: false
+      };
+    }
+  };
+
+  await withUIHarness({
+    isElectron: true,
+    electronAPI: { libraryRecoveryV1: recoveryApi }
+  }, async ({ manager }) => {
+    assert.equal(typeof stateListener, 'function');
+    assert.equal(initializeCalls, 0);
+
+    const firstState = await manager.ensureLibraryRecoveryReady();
+    assert.equal(initializeCalls, 1);
+    assert.equal(firstState.available, true);
+
+    const secondState = await manager.ensureLibraryRecoveryReady();
+    assert.equal(initializeCalls, 1);
+    assert.equal(secondState.available, true);
+  });
+});
+
 test('constructs, delegates manager methods, translates errors, parses and serializes URL state', async () => {
   const validState = encodePipelineState([
     { nm: 'Gain', en: false, ib: 1, ob: 2, ch: 'R', amount: 5 },
@@ -782,8 +820,8 @@ test('constructs, delegates manager methods, translates errors, parses and seria
     const encoded = manager.getPipelineState();
     assert.equal(decodePipelineState(encoded)[0].nm, 'Gain');
     assert.equal(manager.isDoubleBlindActive(), false);
-    const dbt = manager.getDoubleBlindTest();
-    assert.equal(manager.getDoubleBlindTest(), dbt);
+    const dbt = await manager.getDoubleBlindTest();
+    assert.equal(await manager.getDoubleBlindTest(), dbt);
     dbt.isActive = () => true;
     dbt._updateStartAvailability = () => calls.push(['doubleBlind.updateStartAvailability']);
     assert.equal(manager.isDoubleBlindActive(), true);
@@ -1202,10 +1240,10 @@ test('shares URLs, opens music, manages presets, and creates audio players', asy
       manager.pipelineManager.loadPreset = () => { throw new Error('load failed'); };
       manager.loadPreset({ plugins: [] });
 
-      const player = manager.createAudioPlayer(['a.wav']);
-      assert.equal(manager.createAudioPlayer(['b.wav']), player);
+      const player = await manager.createAudioPlayer(['a.wav']);
+      assert.equal(await manager.createAudioPlayer(['b.wav']), player);
       assert.equal(calls.some(call => call[0] === 'AudioPlayer.loadFiles'), true);
-      const replacement = manager.createAudioPlayer(['c.wav'], true);
+      const replacement = await manager.createAudioPlayer(['c.wav'], true);
       assert.notEqual(replacement, player);
       assert.equal(calls.some(call => call[0] === 'AudioPlayer.close'), true);
 
@@ -1283,15 +1321,13 @@ test('saved OpenHome enablement waits for runtime readiness before creating its 
     assert.equal(manager.audioPlayer, null);
     assert.equal(enabledCalls.some(call => call[0] === 'openHome.rendererReady'), false);
 
-    const player = manager.setOpenHomeRemoteRuntimeReady();
-    await flushMicrotasks();
+    const player = await manager.setOpenHomeRemoteRuntimeReady();
     assert.ok(player);
     assert.equal(player.ui.container, null);
     assert.equal(manager.openHomeRendererPlayer, player);
     assert.equal(enabledCalls.filter(call => call[0] === 'openHome.rendererReady').length, 1);
 
-    manager.setOpenHomeRemoteControlEnabled(false);
-    await flushMicrotasks();
+    await manager.setOpenHomeRemoteControlEnabled(false);
     assert.equal(manager.audioPlayer, null);
     assert.equal(enabledCalls.filter(call => call[0] === 'openHome.rendererUnavailable').length, 1);
   });
@@ -1301,7 +1337,7 @@ test('saved OpenHome enablement waits for runtime readiness before creating its 
     appConfig: { openHomeRemoteControl: false },
     electronAPI: { openHomeV1: createOpenHomeBridge(disabledCalls) }
   }, async ({ manager }) => {
-    manager.setOpenHomeRemoteRuntimeReady();
+    await manager.setOpenHomeRemoteRuntimeReady();
     assert.equal(manager.audioPlayer, null);
     assert.equal(disabledCalls.some(call => call[0] === 'openHome.rendererReady'), false);
   });
@@ -1315,22 +1351,20 @@ test('enabling OpenHome before runtime readiness defers and then reuses one rend
   }, async ({ manager }) => {
     assert.equal(manager.audioPlayer, null);
 
-    assert.equal(manager.setOpenHomeRemoteControlEnabled(true), null);
+    assert.equal(await manager.setOpenHomeRemoteControlEnabled(true), null);
     assert.equal(bridgeCalls.some(call => call[0] === 'openHome.rendererReady'), false);
 
-    const earlyPlayer = manager.createAudioPlayer([], false);
+    const earlyPlayer = await manager.createAudioPlayer([], false);
     assert.equal(bridgeCalls.some(call => call[0] === 'openHome.rendererReady'), false);
 
-    const player = manager.setOpenHomeRemoteRuntimeReady();
-    await flushMicrotasks();
+    const player = await manager.setOpenHomeRemoteRuntimeReady();
     assert.ok(player);
     assert.equal(player, earlyPlayer);
     assert.equal(manager.audioPlayer, player);
-    assert.equal(manager.setOpenHomeRemoteControlEnabled(true), player);
+    assert.equal(await manager.setOpenHomeRemoteControlEnabled(true), player);
     assert.equal(bridgeCalls.filter(call => call[0] === 'openHome.rendererReady').length, 1);
 
-    manager.setOpenHomeRemoteControlEnabled(false);
-    await flushMicrotasks();
+    await manager.setOpenHomeRemoteControlEnabled(false);
     assert.equal(manager.audioPlayer, null);
     assert.equal(bridgeCalls.filter(call => call[0] === 'openHome.rendererUnavailable').length, 1);
   });
@@ -1342,15 +1376,13 @@ test('enabling OpenHome after runtime readiness creates its renderer immediately
     appConfig: { openHomeRemoteControl: false },
     electronAPI: { openHomeV1: createOpenHomeBridge(bridgeCalls) }
   }, async ({ manager }) => {
-    assert.equal(manager.setOpenHomeRemoteRuntimeReady(), null);
-    const player = manager.setOpenHomeRemoteControlEnabled(true);
-    await flushMicrotasks();
+    assert.equal(await manager.setOpenHomeRemoteRuntimeReady(), null);
+    const player = await manager.setOpenHomeRemoteControlEnabled(true);
     assert.ok(player);
     assert.equal(manager.audioPlayer, player);
     assert.equal(bridgeCalls.filter(call => call[0] === 'openHome.rendererReady').length, 1);
 
-    manager.setOpenHomeRemoteControlEnabled(false);
-    await flushMicrotasks();
+    await manager.setOpenHomeRemoteControlEnabled(false);
   });
 });
 
@@ -1360,8 +1392,7 @@ test('closing the player UI keeps the OpenHome renderer alive until the feature 
     appConfig: { openHomeRemoteControl: true },
     electronAPI: { openHomeV1: createOpenHomeBridge(bridgeCalls) }
   }, async ({ calls, manager }) => {
-    const player = manager.setOpenHomeRemoteRuntimeReady();
-    await flushMicrotasks();
+    const player = await manager.setOpenHomeRemoteRuntimeReady();
     player.ui.container = { id: 'player-ui' };
     player.ui.removeUI = () => {
       calls.push(['AudioPlayerUI.removeUI']);
@@ -1379,8 +1410,7 @@ test('closing the player UI keeps the OpenHome renderer alive until the feature 
     assert.equal(calls.some(call => call[0] === 'AudioPlayerUI.removeUI'), true);
     assert.equal(bridgeCalls.some(call => call[0] === 'openHome.rendererUnavailable'), false);
 
-    manager.setOpenHomeRemoteControlEnabled(false);
-    await flushMicrotasks();
+    await manager.setOpenHomeRemoteControlEnabled(false);
     assert.equal(manager.audioPlayer, null);
     assert.equal(bridgeCalls.filter(call => call[0] === 'openHome.rendererUnavailable').length, 1);
   });

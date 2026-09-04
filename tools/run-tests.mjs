@@ -138,11 +138,31 @@ function checkTestSourceHygiene(testFiles) {
 const cjsTests = collectTestFiles(path.join(repoRoot, 'tests/cjs'), '.test.cjs');
 const allEsmTests = collectTestFiles(path.join(repoRoot, 'tests/esm'), '.test.mjs');
 const playwrightImportPattern = /(?:from\s+['"]playwright['"]|import\(\s*['"]playwright['"]\s*\))/;
-const browserTests = allEsmTests.filter(file => {
-  const source = fs.readFileSync(path.join(repoRoot, file), 'utf8');
-  return playwrightImportPattern.test(source);
-});
+const playwrightElectronImportPattern =
+  /import\s*\{[^}]*\b_electron\b[^}]*\}\s*from\s+['"]playwright['"]/;
+const esmTestSources = new Map(allEsmTests.map(file =>
+  [file, fs.readFileSync(path.join(repoRoot, file), 'utf8')]));
+const browserTests = allEsmTests.filter(file => playwrightImportPattern.test(esmTestSources.get(file)));
 const browserTestSet = new Set(browserTests);
+// Tests that launch Electron through Playwright need the Electron runtime and a
+// display, which the ubuntu `test:browser` CI jobs do not provide. They run on
+// the Windows build job through `npm run test:rolling-pcm:electron` so the
+// Round 2 continuity (cell A) and process-memory (cell B) evidence stays on one runner.
+const electronTests = browserTests.filter(file =>
+  playwrightElectronImportPattern.test(esmTestSources.get(file)));
+const electronTestSet = new Set(electronTests);
+// The accelerated rolling soak runs for about a minute; keep it on its own
+// script (`npm run test:rolling-pcm:endurance`) instead of the browser gate.
+const enduranceTests = ['tests/esm/rolling-pcm-endurance-browser.test.mjs'];
+const missingEnduranceTests = enduranceTests.filter(file => !allEsmTests.includes(file));
+if (missingEnduranceTests.length > 0) {
+  console.error('Endurance test files listed in tools/run-tests.mjs were not found:');
+  for (const testFile of missingEnduranceTests) console.error(`- ${testFile}`);
+  process.exit(1);
+}
+const enduranceTestSet = new Set(enduranceTests);
+const ordinaryBrowserTests = browserTests.filter(file =>
+  !electronTestSet.has(file) && !enduranceTestSet.has(file));
 const performanceTests = [
   'tests/esm/measurement-dsp-performance.test.mjs',
   'tests/esm/room-eq-performance.test.mjs',
@@ -177,11 +197,15 @@ const cjsCoverageIncludes = collectCoverageIncludeArgs(path.join(repoRoot, 'elec
 const esmCoverageIncludes = collectCoverageIncludeArgs(path.join(repoRoot, 'js'), {
   // The Worker entry/runtime and its OPFS SQLite repository/OO1 bridge execute
   // only in a browser Worker; their contracts belong to browser verification.
+  // The rolling PCM decoder Worker entry is partially exercised from Node by the
+  // protocol test, but its Worker runtime contract is covered by the browser and
+  // Electron tests and the Node portion cannot reach the 90% thresholds.
   exclude: [
     'js/library/repository/sqlite-oo1-adapter.js',
     'js/library/repository/web-catalog-repository.js',
     'js/library/repository/web-catalog-worker.js',
-    'js/library/repository/web-sqlite-runtime.js'
+    'js/library/repository/web-sqlite-runtime.js',
+    'js/ui/audio-player/rolling-pcm-worker-entry.js'
   ]
 });
 const coverageThresholdArgs = [
@@ -214,14 +238,27 @@ if (misclassifiedBrowserTests.length > 0) {
 }
 
 if (process.argv.includes('--browser')) {
-  if (browserTests.length === 0) {
+  if (ordinaryBrowserTests.length === 0) {
     console.error('No browser test files found.');
     process.exit(1);
   }
   runNodeTestPhase('Browser tests', [
     '--test',
     '--test-concurrency=1',
-    ...browserTests
+    ...ordinaryBrowserTests
+  ]);
+  process.exit(0);
+}
+
+if (process.argv.includes('--electron')) {
+  if (electronTests.length === 0) {
+    console.error('No Electron test files found.');
+    process.exit(1);
+  }
+  runNodeTestPhase('Electron tests', [
+    '--test',
+    '--test-concurrency=1',
+    ...electronTests
   ]);
   process.exit(0);
 }

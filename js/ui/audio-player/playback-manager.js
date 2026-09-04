@@ -20,7 +20,7 @@ export class PlaybackManager {
     
     // Additional properties for seamless playback
     this.transitionInProgress = false;
-    this.seamlessMode = true; // Enable seamless mode by default
+    this.seamlessMode = audioPlayer?.gaplessPlayback !== false;
     this.keydownHandler = null;
     this.failedTrackSkipState = null;
     this.playRequestToken = 0;
@@ -1561,6 +1561,9 @@ export class PlaybackManager {
     if (state.playbackMode === 'bufferSource') {
       return contextManager.hasCurrentBuffer?.() === true;
     }
+    if (state.playbackMode === 'rollingPcm') {
+      return contextManager.hasCurrentRollingPlayback?.() === true;
+    }
     if (state.playbackMode !== 'audioElement') return false;
 
     const audioElement = this.audioPlayer.audioElement;
@@ -1697,10 +1700,13 @@ export class PlaybackManager {
     const state = this.audioPlayer.stateManager?.getStateSnapshot();
     const shuffleMode = state?.shuffleMode || false;
     const repeatMode = state?.repeatMode || 'OFF';
+    const isRollingPcmPlayback = state?.playbackMode === 'rollingPcm';
     
     if (!options.forceQueueMove && this.audioPlayer.contextManager &&
-        this.audioPlayer.contextManager.isUsingBufferPlayback()) {
-      const currentTime = this.audioPlayer.contextManager.getCurrentBufferTime();
+        (this.audioPlayer.contextManager.isUsingBufferPlayback() || isRollingPcmPlayback)) {
+      const currentTime = isRollingPcmPlayback
+        ? (this.audioPlayer.contextManager.getCurrentPlaybackTime?.() ?? 0)
+        : this.audioPlayer.contextManager.getCurrentBufferTime();
       if (currentTime > 3) {
         const currentTrack = this.getTrack(currentIndex);
         if (currentTrack) {
@@ -1730,7 +1736,8 @@ export class PlaybackManager {
           newIndex = this.playlist.length - 1;
         } else {
           if (options.forceQueueMove) return false;
-          if (this.audioPlayer.contextManager && this.audioPlayer.contextManager.isUsingBufferPlayback()) {
+          if (this.audioPlayer.contextManager &&
+              (this.audioPlayer.contextManager.isUsingBufferPlayback() || isRollingPcmPlayback)) {
             const currentTrack = this.getTrack(currentIndex);
             if (currentTrack) {
               await this.audioPlayer.contextManager.seamlessTransition(
@@ -1753,7 +1760,8 @@ export class PlaybackManager {
           newIndex = this.playlist.length - 1;
         } else {
           if (options.forceQueueMove) return false;
-          if (this.audioPlayer.contextManager && this.audioPlayer.contextManager.isUsingBufferPlayback()) {
+          if (this.audioPlayer.contextManager &&
+              (this.audioPlayer.contextManager.isUsingBufferPlayback() || isRollingPcmPlayback)) {
             const currentTrack = this.getTrack(currentIndex);
             if (currentTrack) {
               await this.audioPlayer.contextManager.seamlessTransition(
@@ -1838,7 +1846,9 @@ export class PlaybackManager {
     const shuffleMode = state?.shuffleMode || false;
     
     if (repeatMode === 'ONE' && !userInitiated && !ignoreRepeatOne) {
-      if (this.audioPlayer.contextManager && this.audioPlayer.contextManager.isUsingBufferPlayback()) {
+      if (this.audioPlayer.contextManager &&
+          (this.audioPlayer.contextManager.isUsingBufferPlayback() ||
+            state?.playbackMode === 'rollingPcm')) {
         const currentIndex = this.audioPlayer.stateManager.getCurrentTrackIndex();
         const currentTrack = this.getTrack(currentIndex);
         if (currentTrack) {

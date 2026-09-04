@@ -5,7 +5,20 @@ import { PowerPolicyController } from '../../js/audio/power-policy-controller.js
 import { AudioManager } from '../../js/audio-manager.js';
 import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
 import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
+import { PCM16_STEREO_44100_TO_96000_PROFILE } from '../../js/ui/audio-player/rolling-pcm-core.js';
+import {
+  DEFAULT_ROLLING_PCM_PROFILE_ID,
+  PRODUCTION_ROLLING_ENABLED_MATRIX,
+  PRODUCTION_ROLLING_POLICY_MODE,
+  PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORD,
+  RollingPcmAdmissionLedger,
+  RollingPolicyMode
+} from '../../js/ui/audio-player/rolling-pcm-policy.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
+
+const NATIVE_FRAGMENT_CANDIDATE_MATRIX = Object.freeze([
+  PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORD.cell
+]);
 
 class FakeFile {
   constructor(name, buffer = new Uint8Array([1, 2, 3]).buffer) {
@@ -78,6 +91,30 @@ function createRiffInfoWaveBytes(tags) {
     createChunkBytes('fmt ', fmt),
     createChunkBytes('data', new Uint8Array(0)),
     createChunkBytes('LIST', infoPayload)
+  ];
+  const riffSize = 4 + chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  return concatBytes([asciiBytes('RIFF'), uint32Le(riffSize), asciiBytes('WAVE'), ...chunks]);
+}
+
+function createPcmWaveBytes({
+  sampleRate = 48000,
+  channelCount = 2,
+  bitsPerSample = 16,
+  frameCount = sampleRate,
+  formatTag = 1,
+  blockAlign = channelCount * (bitsPerSample / 8)
+} = {}) {
+  const fmt = new Uint8Array(16);
+  const view = new DataView(fmt.buffer);
+  view.setUint16(0, formatTag, true);
+  view.setUint16(2, channelCount, true);
+  view.setUint32(4, sampleRate, true);
+  view.setUint32(8, sampleRate * blockAlign, true);
+  view.setUint16(12, blockAlign, true);
+  view.setUint16(14, bitsPerSample, true);
+  const chunks = [
+    createChunkBytes('fmt ', fmt),
+    createChunkBytes('data', new Uint8Array(frameCount * blockAlign))
   ];
   const riffSize = 4 + chunks.reduce((sum, chunk) => sum + chunk.length, 0);
   return concatBytes([asciiBytes('RIFF'), uint32Le(riffSize), asciiBytes('WAVE'), ...chunks]);
@@ -193,6 +230,7 @@ function createAudioContext(calls, options = {}) {
   return {
     currentTime: options.currentTime ?? 10,
     sampleRate: 48000,
+    state: options.state ?? 'running',
     createGain() {
       calls.push(['audioContext.createGain']);
       if (options.createGainThrows) throw new Error('createGain failed');
@@ -244,8 +282,16 @@ async function withAudioContextGlobals(options = {}, callback) {
   const globals = {
     Audio: FakeAudioElement,
     File: FakeFile,
-    document: options.document ?? { addEventListener() {}, removeEventListener() {} },
+    OfflineAudioContext: options.OfflineAudioContext,
+    webkitOfflineAudioContext: options.webkitOfflineAudioContext,
+    document: options.document ?? {
+      visibilityState: 'visible',
+      addEventListener() {},
+      removeEventListener() {}
+    },
     MediaError: { MEDIA_ERR_SRC_NOT_SUPPORTED: 4 },
+    Worker: options.Worker,
+    AudioDecoder: options.AudioDecoder,
     MediaMetadata: class {
       constructor(metadata) {
         this.metadata = metadata;
@@ -408,6 +454,7 @@ function createHarness(options = {}) {
   const audioPlayer = {
     audioContext,
     audioElement: options.audioElement ?? null,
+    gaplessPlayback: true,
     stateManager,
     playbackManager,
     ui: options.noUi ? null : { trackNameDisplay: { textContent: '' } },
@@ -419,6 +466,7 @@ function createHarness(options = {}) {
     }
   };
   const manager = new AudioContextManager(audioPlayer, audioManager);
+  manager.rollingPolicyMode = RollingPolicyMode.LEGACY_BASELINE;
   return { audioContext, audioManager, audioPlayer, calls, manager, playlist, state };
 }
 
@@ -724,6 +772,1445 @@ test('core graph connections and source management preserve playback wiring', as
   });
 });
 
+test('rolling backend is selected only through the shared matrix and adapter inventory', async () => {
+  const uiErrors = [];
+  await withAudioContextGlobals({
+    Worker: class {},
+    AudioDecoder: class {},
+    uiManager: {
+      setError(...args) { uiErrors.push(args); }
+    }
+  }, async ({ calls }) => {
+    const track = {
+      name: 'Long.wav',
+      file: new Blob([new Uint8Array([1])], { type: 'audio/wav' }),
+      durationSec: 600,
+      sampleRate: 48000,
+      channelCount: 2
+    };
+    const harness = createHarness({ calls, playlist: [track] });
+    const { manager, state } = harness;
+    const sourceNode = createNode(calls, 'rollingBus');
+    const operations = [];
+    const transport = {
+      sourceNode,
+      prepared: false,
+      failed: false,
+      disposed: false,
+      playing: false,
+      positionFrame: 0,
+      currentTime: 0,
+      metadata: null,
+      async prepare() {
+        this.prepared = true;
+        this.metadata = {
+          durationSec: 600,
+          sampleRate: 48000,
+          channelCount: 2,
+          totalFrames: 28800000,
+          containerMimeType: 'audio/wav',
+          codec: 'pcm-s16',
+          decoderConfigCodec: 'pcm-s16',
+          decoderConfigVerified: true
+        };
+        operations.push('prepare');
+        return this.metadata;
+      },
+      promoteReservation() { return true; },
+      activate({ when = 0, frame = this.positionFrame } = {}) {
+        this.playing = true;
+        this.anchorContextTime = when;
+        this.anchorFrame = frame;
+        operations.push('play');
+        return true;
+      },
+      async pause() {
+        this.playing = false;
+        this.currentTime = 1;
+        operations.push('pause');
+      },
+      async seek(frame, { resume = this.playing } = {}) {
+        this.playing = resume;
+        this.positionFrame = frame;
+        this.currentTime = frame / 48000;
+        operations.push(['seek', frame]);
+        return true;
+      },
+      async stop() {
+        this.playing = false;
+        this.positionFrame = 0;
+        this.currentTime = 0;
+        operations.push('stop');
+      },
+      async dispose() {
+        this.playing = false;
+        this.prepared = false;
+        this.disposed = true;
+        operations.push('dispose');
+      }
+    };
+    manager.rollingPolicyMode = RollingPolicyMode.LIMITED_ROLLING;
+    manager.rollingEnabledMatrix = [{
+      host: 'unknown',
+      format: 'wav',
+      sampleRate: 48000,
+      channelCount: 2,
+      lifecycle: 'foreground',
+      containerMimeType: 'audio/wav',
+      codec: 'pcm-s16',
+      decoderConfigCodec: 'pcm-s16',
+      profileId: DEFAULT_ROLLING_PCM_PROFILE_ID,
+      enabled: true
+    }];
+    manager.createRollingPcmTransport = () => transport;
+    manager.loadMetadata = () => {};
+    manager.prepareNextTrackBufferWithRepeatMode = () => {};
+
+    assert.equal(await manager.loadTrack(track, 0), true);
+    assert.equal(state.playbackMode, 'rollingPcm');
+    assert.equal(manager.currentBuffer, null);
+    assert.equal(manager.rollingTransport, transport);
+    assert.deepEqual(operations, ['prepare']);
+    assert.equal(calls.some(call => call[0] === 'audioContext.decodeAudioData'), false);
+    assert.equal(manager.getPlaybackBackendAdapter('rollingPcm').play, 'playRollingPcm');
+
+    assert.equal(await manager.play(), true);
+    const failedNextTransport = {
+      sourceNode: createNode(calls, 'failedNextRollingBus'),
+      async dispose() { operations.push('failed-next-dispose'); }
+    };
+    const failedNext = { rollingTransport: failedNextTransport };
+    manager.nextBuffer = failedNext;
+    manager.nextRollingTransport = failedNext;
+    manager.handleRollingTransportFailure(failedNextTransport, { reason: 'next-decoder-failed' });
+    await flushMicrotasks();
+    assert.equal(manager.rollingTransport, transport);
+    assert.equal(manager.nextRollingTransport, null);
+    assert.equal(state.isPlaying, true);
+    assert.equal(operations.includes('failed-next-dispose'), true);
+
+    const automaticMovePlan = {};
+    const nextTransport = {
+      prepared: true,
+      failed: false,
+      disposed: false,
+      playing: true,
+      sourceNode: createNode(calls, 'nextRollingBus'),
+      metadata: transport.metadata,
+      async seek(frame, { resume }) {
+        this.playing = resume;
+        operations.push(['next-seek', frame]);
+        return true;
+      },
+      activate({ when }) {
+        this.playing = true;
+        operations.push(['next-activate', when]);
+        return true;
+      },
+      canPromoteReservation() { return true; },
+      promoteReservation() { return true; },
+      async dispose() { operations.push('next-dispose'); }
+    };
+    const preparedNext = {
+      rollingTransport: nextTransport,
+      transport: nextTransport,
+      automaticMovePlan
+    };
+    manager.audioPlayer.playbackManager.isPlannedAutomaticMoveCurrent =
+      plan => plan === automaticMovePlan;
+    manager.nextBuffer = preparedNext;
+    manager.nextRollingTransport = preparedNext;
+    manager.scheduledRollingTransition = {
+      current: transport,
+      transport: nextTransport,
+      prepared: preparedNext,
+      plan: automaticMovePlan,
+      boundaryTime: 610
+    };
+    await manager.pause();
+    assert.equal(manager.scheduledRollingTransition, null);
+    assert.equal(manager.nextRollingTransport, null);
+    assert.deepEqual(operations.slice(-2), ['next-dispose', 'pause']);
+    assert.equal(await manager.play(), true);
+    await manager.seek(2);
+    await manager.stop();
+    assert.equal(operations.filter(operation => Array.isArray(operation) &&
+      operation[0] === 'next-seek').length, 0);
+    assert.equal(operations.filter(operation => Array.isArray(operation) &&
+      operation[0] === 'next-activate').length, 0);
+    assert.equal(operations.some(operation => Array.isArray(operation) &&
+      operation[0] === 'seek' && operation[1] === 96000), true);
+    assert.equal(operations.includes('dispose'), true);
+    assert.equal(operations.includes('next-dispose'), true);
+    assert.equal(manager.hasCurrentRollingPlayback(), false);
+    assert.equal(manager.rollingTransport, null);
+
+    let explicitReloads = 0;
+    manager.loadTrack = async () => {
+      explicitReloads++;
+      state.playbackMode = 'audioElement';
+      return true;
+    };
+    manager.playAudioElement = async () => true;
+    assert.equal(await manager.play(), true);
+    assert.equal(explicitReloads, 1);
+
+    const failureTransport = {
+      ...transport,
+      sourceNode: createNode(calls, 'failedCurrentRollingBus'),
+      prepared: true,
+      failed: false,
+      disposed: false,
+      async dispose() {
+        this.prepared = false;
+        this.disposed = true;
+        operations.push('failure-dispose');
+      }
+    };
+    manager.rollingTransport = failureTransport;
+    state.playbackMode = 'rollingPcm';
+    state.isPlaying = true;
+    state.isStopped = false;
+    manager.handleRollingTransportFailure(failureTransport, new Error('decoder stalled'));
+    await flushMicrotasks();
+    assert.equal(manager.rollingLegacyFallbackLock, true);
+    assert.equal(manager.rollingFallbackLockTrack, track);
+    assert.equal(manager.rollingTransport, null);
+    assert.equal(state.isStopped, true);
+    assert.deepEqual(uiErrors, [['error.playbackCommandFailed', true]]);
+    assert.equal(operations.filter(operation => operation === 'failure-dispose').length, 1);
+    assert.equal(
+      manager.createPlaybackDecisionRecord(
+        track,
+        manager.createPlaybackSourceDescriptor(track)
+      ).decision.mode,
+      'media'
+    );
+  });
+});
+
+test('repeat and shuffle refresh waits for old rolling-next cleanup before readmission', async () => {
+  const harness = createHarness({
+    isPlaying: true,
+    isStopped: false,
+    playbackMode: 'rollingPcm'
+  });
+  const { manager } = harness;
+  let finishCleanup;
+  const cleanup = new Promise(resolve => { finishCleanup = resolve; });
+  const oldNext = {
+    sourceNode: createNode(harness.calls, 'old-next-rolling-bus'),
+    dispose: () => cleanup
+  };
+  const prepared = { rollingTransport: oldNext, transport: oldNext };
+  manager.nextBuffer = prepared;
+  manager.nextRollingTransport = prepared;
+  let preparationCount = 0;
+  manager.prepareNextTrackBufferWithRepeatMode = () => { preparationCount++; };
+
+  assert.equal(manager.refreshActiveRegionTransportPlan(), true);
+  assert.equal(manager.nextRollingTransport, null);
+  assert.equal(preparationCount, 0);
+  finishCleanup();
+  await manager.waitForRollingCleanupBarrier();
+  await flushMicrotasks();
+  assert.equal(preparationCount, 1);
+});
+
+test('Gapless OFF preserves rolling CUE ownership and retires only the prepared next transport',
+  async () => {
+    let workerConstructions = 0;
+    await withAudioContextGlobals({
+      Worker: class {
+        constructor() { workerConstructions++; }
+      },
+      navigator: {
+        userAgent: 'Mozilla/5.0 Chrome/152.0.0.0 Electron/44.0.0'
+      },
+      electronIntegration: {
+        isElectron: true,
+        audioPreferences: { useInputWithPlayer: false }
+      },
+      electronAPI: {
+        async readFileBytes() {
+          throw new Error('Gapless OFF must not create a rolling candidate');
+        }
+      }
+    }, async ({ calls }) => {
+      const currentTrack = {
+        name: 'Extensionless CUE display',
+        fileName: 'album.wav',
+        sourceFileName: 'album.wav',
+        path: 'C:\\SyntheticCatalog\\album.wav',
+        sourceKind: 'electron-file',
+        byteLength: 352844,
+        startFrame: 750,
+        endFrame: 1500,
+        durationSec: 10,
+        physicalSourceKey: 'synthetic-album'
+      };
+      const nextTrack = {
+        name: 'Extensionless next display',
+        fileName: 'next.wav',
+        sourceFileName: 'next.wav',
+        path: 'C:\\SyntheticCatalog\\next.wav',
+        sourceKind: 'electron-file',
+        byteLength: 352844
+      };
+      const connectedSources = new Set();
+      const harness = createHarness({
+        calls,
+        playlist: [currentTrack, nextTrack],
+        currentTrack,
+        currentTrackIndex: 0,
+        isPlaying: true,
+        isPaused: false,
+        isStopped: false,
+        playbackMode: 'rollingPcm',
+        audioManager: {
+          isSourceConnectedToPipeline(source) {
+            return connectedSources.has(source);
+          },
+          connectSourceToPipeline(source) {
+            connectedSources.add(source);
+            calls.push(['connectSourceToPipeline', source?.name]);
+            return true;
+          },
+          disconnectSourceFromPipeline(source) {
+            connectedSources.delete(source);
+            calls.push(['disconnectSourceFromPipeline', source?.name]);
+          }
+        }
+      });
+      const { audioContext, audioManager, audioPlayer, manager, state } = harness;
+      audioContext.sampleRate = 96000;
+      manager.rollingPolicyMode = PRODUCTION_ROLLING_POLICY_MODE;
+      manager.rollingEnabledMatrix = PRODUCTION_ROLLING_ENABLED_MATRIX;
+      const canonicalInput = manager.originalSourceNode;
+      audioManager.ioManager.inputSourceNode = canonicalInput;
+      const currentBus = createNode(calls, 'gapless-off-current');
+      const nextBus = createNode(calls, 'gapless-off-next');
+      const currentTransport = {
+        sourceNode: currentBus,
+        prepared: true,
+        failed: false,
+        disposed: false,
+        playing: true,
+        positionFrame: 96000,
+        currentTime: 1,
+        metadata: { sampleRate: 96000, totalFrames: 192000 },
+        async dispose() { this.disposed = true; }
+      };
+      let nextDisposeCount = 0;
+      const nextTransport = {
+        sourceNode: nextBus,
+        prepared: true,
+        failed: false,
+        disposed: false,
+        async dispose() {
+          nextDisposeCount++;
+          this.prepared = false;
+          this.disposed = true;
+        }
+      };
+      manager.rollingTransport = currentTransport;
+      manager.rollingTransports.add(currentTransport);
+      manager.rollingTransports.add(nextTransport);
+      manager.setManagedSourceNode(currentBus);
+      connectedSources.add(currentBus);
+      manager.activeSourceGeneration = 11;
+      manager.sourceGenerationSequence = 11;
+      const activeRegion = manager.setValidatedActiveRegion(currentTrack, 11);
+      const currentDecision = Object.freeze({ committedMode: 'rolling' });
+      manager.currentPlaybackDecision = currentDecision;
+      const preparedNext = {
+        rollingTransport: nextTransport,
+        transport: nextTransport,
+        track: nextTrack
+      };
+      manager.nextBuffer = preparedNext;
+      manager.nextRollingTransport = preparedNext;
+      let transportCreations = 0;
+      manager.createRollingPcmTransport = () => {
+        transportCreations++;
+        throw new Error('Gapless OFF must not create a rolling transport');
+      };
+      let nextPreparations = 0;
+      manager.prepareNextTrackBufferWithRepeatMode = () => { nextPreparations++; };
+      const before = {
+        track: state.currentTrack,
+        index: state.currentTrackIndex,
+        isPlaying: state.isPlaying,
+        playbackMode: state.playbackMode,
+        frame: currentTransport.positionFrame,
+        context: audioPlayer.audioContext,
+        worklet: audioManager.workletNode,
+        managedSource: audioManager.sourceNode,
+        ioSource: audioManager.ioManager.sourceNode,
+        canonicalInput: audioManager.ioManager.inputSourceNode,
+        originalSource: manager.originalSourceNode,
+        activeRegion: manager.activeRegion,
+        currentDecision: manager.currentPlaybackDecision,
+        power: manager.getPowerSourceStatus()
+      };
+
+      await manager.applyGaplessPlaybackPreference(false);
+
+      const fallbackRecord = manager.createPlaybackDecisionRecord(
+        nextTrack,
+        manager.createPlaybackSourceDescriptor(nextTrack)
+      );
+      assert.equal(audioPlayer.gaplessPlayback, false);
+      assert.equal(manager.rollingTransport, currentTransport);
+      assert.equal(currentTransport.disposed, false);
+      assert.equal(currentTransport.playing, true);
+      assert.equal(currentTransport.positionFrame, before.frame);
+      assert.equal(state.currentTrack, before.track);
+      assert.equal(state.currentTrackIndex, before.index);
+      assert.equal(state.isPlaying, before.isPlaying);
+      assert.equal(state.playbackMode, before.playbackMode);
+      assert.equal(audioPlayer.audioContext, before.context);
+      assert.equal(audioManager.workletNode, before.worklet);
+      assert.equal(audioManager.sourceNode, before.managedSource);
+      assert.equal(audioManager.ioManager.sourceNode, before.ioSource);
+      assert.equal(audioManager.ioManager.inputSourceNode, before.canonicalInput);
+      assert.equal(manager.originalSourceNode, before.originalSource);
+      assert.equal(manager.activeRegion, before.activeRegion);
+      assert.equal(manager.activeRegion, activeRegion);
+      assert.deepEqual(manager.activeRegion.region, {
+        startFrame: 750,
+        endFrame: 1500,
+        durationSec: 10
+      });
+      assert.equal(manager.currentPlaybackDecision, before.currentDecision);
+      assert.deepEqual(manager.getPowerSourceStatus(), before.power);
+      assert.equal(manager.nextBuffer, null);
+      assert.equal(manager.nextRollingTransport, null);
+      assert.equal(nextDisposeCount, 1);
+      assert.equal(nextTransport.disposed, true);
+      assert.equal(manager.rollingTransports.has(nextTransport), false);
+      assert.equal(manager.rollingTransports.has(currentTransport), true);
+      assert.equal(transportCreations, 0);
+      assert.equal(workerConstructions, 0);
+      assert.equal(nextPreparations, 0);
+      assert.equal(fallbackRecord.decision.mode, 'media');
+      assert.equal(fallbackRecord.decision.reason, 'gapless-disabled-media');
+    });
+  });
+
+test('playback decisions reuse one canonical snapshot only for the same physical source', () => {
+  const harness = createHarness();
+  const bytes = new Uint8Array([1, 2, 3]);
+  const track = { name: 'same.wav', data: bytes, durationSec: 1, sampleRate: 48000, channelCount: 2 };
+  const first = harness.manager.createPlaybackDecisionRecord(
+    track,
+    harness.manager.createPlaybackSourceDescriptor(track)
+  );
+  const rebuiltTrack = { ...track, data: new Uint8Array(bytes.buffer) };
+  const rebuilt = harness.manager.createPlaybackDecisionRecord(
+    rebuiltTrack,
+    harness.manager.createPlaybackSourceDescriptor(rebuiltTrack)
+  );
+  const distinctTrack = { ...track, data: new Uint8Array([1, 2, 3]) };
+  const distinct = harness.manager.createPlaybackDecisionRecord(
+    distinctTrack,
+    harness.manager.createPlaybackSourceDescriptor(distinctTrack)
+  );
+  assert.equal(rebuilt.sourceSnapshot, first.sourceSnapshot);
+  assert.notEqual(distinct.sourceSnapshot, first.sourceSnapshot);
+  assert.notEqual(distinct.sourceSnapshot.canonicalIdentity,
+    first.sourceSnapshot.canonicalIdentity);
+});
+
+test('rolling boundary scheduling requires promotion headroom before activating next', () => {
+  const harness = createHarness({
+    isPlaying: true,
+    isStopped: false,
+    playbackMode: 'rollingPcm'
+  });
+  const plan = {};
+  const current = {
+    playing: true,
+    failed: false,
+    disposed: false,
+    anchorContextTime: 0,
+    anchorFrame: 0,
+    metadata: { totalFrames: 480000, sampleRate: 48000 }
+  };
+  let activations = 0;
+  const next = {
+    prepared: true,
+    failed: false,
+    disposed: false,
+    sourceNode: createNode(harness.calls, 'no-promotion-headroom-next'),
+    metadata: { channelCount: 2 },
+    canPromoteReservation: () => false,
+    activate() { activations++; return true; }
+  };
+  harness.manager.rollingTransport = current;
+  harness.manager.audioPlayer.playbackManager.isPlannedAutomaticMoveCurrent = value => value === plan;
+  assert.equal(harness.manager.schedulePreparedRollingTransition({
+    rollingTransport: next,
+    automaticMovePlan: plan
+  }), false);
+  assert.equal(activations, 0);
+  assert.equal(harness.manager.scheduledRollingTransition, null);
+});
+
+test('structured rolling next fallback reads and decodes once after current cleanup',
+  { timeout: 2000 }, async () => {
+  await withAudioContextGlobals({ Worker: class {}, AudioDecoder: class {} }, async ({ calls }) => {
+    const currentTrack = { name: 'Current.wav', path: '/current.wav' };
+    const nextFile = new FakeFile('Next.flac');
+    let fallbackSourceReads = 0;
+    nextFile.arrayBuffer = async () => {
+      fallbackSourceReads++;
+      return nextFile._buffer;
+    };
+    const nextTrack = {
+      name: 'Next.flac',
+      file: nextFile,
+      durationSec: 1,
+      sampleRate: 48000,
+      channelCount: 2
+    };
+    const harness = createHarness({
+      calls,
+      playlist: [currentTrack, nextTrack],
+      currentTrack,
+      currentTrackIndex: 0,
+      isPlaying: true,
+      isStopped: false,
+      playbackMode: 'rollingPcm',
+      audioContextOptions: {
+        decodedBuffer: {
+          duration: 1,
+          length: 48000,
+          numberOfChannels: 2,
+          sampleRate: 48000
+        }
+      }
+    });
+    const { manager } = harness;
+    const plan = { nextTrack, nextOrdinal: 1 };
+    manager.audioPlayer.playbackManager.isPlannedAutomaticMoveCurrent = value => value === plan;
+    manager.rollingPolicyMode = RollingPolicyMode.LIMITED_ROLLING;
+    manager.rollingEnabledMatrix = [{
+      host: 'unknown',
+      format: 'flac',
+      sampleRate: 48000,
+      channelCount: 2,
+      lifecycle: 'foreground',
+      containerMimeType: 'audio/flac',
+      codec: 'flac',
+      decoderConfigCodec: 'flac',
+      profileId: DEFAULT_ROLLING_PCM_PROFILE_ID,
+      enabled: true
+    }];
+    let nextDisposeCount = 0;
+    const nextTransport = {
+      failed: false,
+      disposed: false,
+      async prepare() {
+        const error = new Error('partial-decode-unsupported');
+        error.code = 'partial-decode-unsupported';
+        error.partialDecodeFailure = Object.freeze({
+          reason: 'partial-decode-unsupported',
+          format: 'flac',
+          sourceByteLength: nextFile.size,
+          decodedPcmBytes: 48000 * 2 * Float32Array.BYTES_PER_ELEMENT,
+          verified: true
+        });
+        throw error;
+      },
+      async dispose() {
+        this.disposed = true;
+        nextDisposeCount++;
+      }
+    };
+    manager.createRollingPcmTransport = (role, preparationOwner) => {
+      assert.equal(role, 'next');
+      nextTransport.preparationOwner = preparationOwner;
+      manager.rollingTransports.add(nextTransport);
+      return nextTransport;
+    };
+
+    await manager.prepareNextTrackBufferForTrack(nextTrack, 1, plan);
+    assert.equal(nextDisposeCount, 1);
+    assert.equal(manager.nextBuffer?.decisionRecord.committedMode, 'buffer');
+    assert.equal(
+      manager.nextBuffer?.decisionRecord.deferRollingFallbackUntilBoundary,
+      true
+    );
+    assert.equal(fallbackSourceReads, 0);
+    assert.equal(calls.some(call => call[0] === 'audioContext.decodeAudioData'), false);
+
+    let finishCurrentCleanup;
+    let currentReservationHeld = true;
+    const currentCleanup = new Promise(resolve => { finishCurrentCleanup = resolve; });
+    const currentTransport = {
+      dispose: () => currentCleanup.then(() => { currentReservationHeld = false; })
+    };
+    manager.rollingTransport = currentTransport;
+    manager.rollingTransports.add(currentTransport);
+    let fallbackTransitions = 0;
+    let finishFallbackTransition;
+    const fallbackTransition = new Promise(resolve => { finishFallbackTransition = resolve; });
+    manager.transitionPreparedAutomaticMove = async prepared => {
+      assert.equal(currentReservationHeld, false);
+      const fallback = await manager.prepareTrackTransitionRequest(
+        prepared.track,
+        prepared.targetIndex,
+        () => false,
+        prepared,
+        prepared.automaticMovePlan
+      );
+      assert.equal(fallback.decisionRecord.committedMode, 'buffer');
+      assert.ok(fallback.buffer);
+      fallbackTransitions++;
+      finishFallbackTransition();
+      return true;
+    };
+
+    manager.handleRollingTrackEnded(currentTransport);
+    await flushMicrotasks();
+    assert.equal(manager.rollingTransport, null);
+    assert.equal(currentReservationHeld, true);
+    assert.equal(fallbackTransitions, 0);
+    assert.equal(fallbackSourceReads, 0);
+    assert.equal(calls.some(call => call[0] === 'audioContext.decodeAudioData'), false);
+
+    finishCurrentCleanup();
+    await manager.waitForRollingCleanupBarrier();
+    await fallbackTransition;
+    assert.equal(currentReservationHeld, false);
+    assert.equal(fallbackTransitions, 1);
+    assert.equal(fallbackSourceReads, 1);
+    assert.equal(
+      calls.filter(call => call[0] === 'audioContext.decodeAudioData').length,
+      1
+    );
+    manager.handleRollingTrackEnded(currentTransport);
+    assert.equal(fallbackTransitions, 1);
+  });
+});
+
+test('rolling seek invalidates next immediately and waits for its manager cleanup barrier', async () => {
+  const harness = createHarness({
+    isPlaying: true,
+    isStopped: false,
+    playbackMode: 'rollingPcm'
+  });
+  let finishCleanup;
+  const cleanup = new Promise(resolve => { finishCleanup = resolve; });
+  let seekCalls = 0;
+  const current = {
+    metadata: { durationSec: 10, sampleRate: 48000, channelCount: 2 },
+    failed: false,
+    disposed: false,
+    activate() { return true; },
+    async seek() { seekCalls++; return true; }
+  };
+  const oldNext = {
+    sourceNode: createNode(harness.calls, 'seek-old-next'),
+    dispose: () => cleanup
+  };
+  const prepared = { rollingTransport: oldNext, transport: oldNext };
+  harness.manager.rollingTransport = current;
+  harness.manager.nextBuffer = prepared;
+  harness.manager.nextRollingTransport = prepared;
+  harness.manager.prepareNextTrackBufferWithRepeatMode = () => {};
+
+  const seeking = harness.manager.seek(2);
+  await flushMicrotasks();
+  assert.equal(harness.manager.nextRollingTransport, null);
+  assert.equal(seekCalls, 0);
+  finishCleanup();
+  await seeking;
+  assert.equal(seekCalls, 1);
+  assert.equal(harness.state.currentTrackPosition, 2);
+});
+
+test('only the latest rolling seek token may publish its position', async () => {
+  const harness = createHarness({
+    isPlaying: true,
+    isStopped: false,
+    playbackMode: 'rollingPcm'
+  });
+  const completions = [];
+  const transport = {
+    metadata: { durationSec: 10, sampleRate: 48000, channelCount: 2 },
+    failed: false,
+    disposed: false,
+    activate() { return true; },
+    seek() {
+      return new Promise(resolve => completions.push(resolve));
+    }
+  };
+  harness.manager.rollingTransport = transport;
+  harness.manager.prepareNextTrackBufferWithRepeatMode = () => {};
+
+  const first = harness.manager.seek(1);
+  await flushMicrotasks();
+  const second = harness.manager.seek(2);
+  await flushMicrotasks();
+  assert.equal(completions.length, 2);
+  completions[1](true);
+  await second;
+  assert.equal(harness.state.currentTrackPosition, 2);
+  completions[0](true);
+  await first;
+  assert.equal(harness.state.currentTrackPosition, 2);
+});
+
+function createStagedSeekFixture(options = {}) {
+  const calls = [];
+  let releaseActivation;
+  const activationGate = new Promise(resolve => { releaseActivation = resolve; });
+  const activations = [];
+  const seeks = [];
+  const freshness = [];
+  const harness = createHarness({
+    calls,
+    currentTrack: { name: 'Rolling', path: '/rolling.wav' },
+    currentTrackPosition: 1,
+    currentTrackDuration: 10,
+    isPlaying: options.isPlaying ?? false,
+    isPaused: options.isPlaying !== true,
+    isStopped: false,
+    playbackMode: 'rollingPcm',
+    audioManager: {
+      isStagedAudioActivationEnabled: () => true,
+      stageAudioActivation: async () => ({ generation: 1 }),
+      isSourceConnectedToPipeline: () => true,
+      async activateStagedAudioCandidate(stage, callbacks) {
+        const candidate = callbacks.acquire(stage);
+        await activationGate;
+        const current = callbacks.isCandidateCurrent(candidate, stage);
+        freshness.push(current);
+        if (!current) return { activated: false };
+        callbacks.commit(candidate, stage);
+        return { activated: true };
+      }
+    }
+  });
+  const transport = {
+    sourceNode: createNode(calls, 'staged-seek-source'),
+    metadata: { durationSec: 10, sampleRate: 48000, channelCount: 2, totalFrames: 480000 },
+    prepared: true,
+    failed: false,
+    disposed: false,
+    playing: options.isPlaying === true,
+    positionFrame: 48000,
+    anchorFrame: 48000,
+    anchorContextTime: 10,
+    pendingSeek: null,
+    get currentTime() { return this.positionFrame / 48000; },
+    activate({ when = harness.audioContext.currentTime, frame = this.positionFrame } = {}) {
+      activations.push(frame);
+      if (this.playing) return true;
+      this.positionFrame = frame;
+      this.anchorFrame = frame;
+      this.anchorContextTime = when;
+      this.playing = true;
+      return true;
+    },
+    seek(frame, { resume }) {
+      assert.equal(resume, false);
+      this.pendingSeek = { candidate: {} };
+      return new Promise(resolve => seeks.push(() => {
+        // Adoption always lands paused at the target; resume is the owner's call.
+        this.pendingSeek = null;
+        this.playing = false;
+        this.positionFrame = frame;
+        resolve({ adoptedFrame: frame });
+      }));
+    }
+  };
+  const nextActivations = [];
+  const next = {
+    sourceNode: createNode(calls, 'staged-seek-next'),
+    metadata: { durationSec: 10, sampleRate: 48000, channelCount: 2, totalFrames: 480000 },
+    prepared: true,
+    failed: false,
+    disposed: false,
+    canPromoteReservation: () => true,
+    activate({ when, frame }) {
+      nextActivations.push({ when, frame });
+      return true;
+    }
+  };
+  const plan = { id: 'staged-seek-next-plan' };
+  const prepared = { rollingTransport: next, automaticMovePlan: plan };
+  const preparations = [];
+  harness.audioPlayer.playbackManager.isPlannedAutomaticMoveCurrent = value => value === plan;
+  harness.manager.rollingTransport = transport;
+  harness.manager.prepareNextTrackBufferWithRepeatMode = () => { preparations.push(prepared); };
+  // Mirrors the tail of the production preparation: a healthy prepared next is
+  // held whenever scheduling declines, only a failed next is discarded.
+  const completePreparation = () => {
+    harness.manager.nextBuffer = prepared;
+    harness.manager.nextRollingTransport = prepared;
+    const scheduled = harness.manager.schedulePreparedRollingTransition(prepared);
+    if (!scheduled && next.failed) harness.manager.clearNextTrackBuffer();
+    return scheduled;
+  };
+  return {
+    activations, completePreparation, freshness, harness, next, nextActivations,
+    preparations, releaseActivation, seeks, transport
+  };
+}
+
+test('a forward seek adopted during staged rolling Play commits at the adopted frame', async () => {
+  await withAudioContextGlobals({}, async () => {
+    const fixture = createStagedSeekFixture();
+    const { harness, transport } = fixture;
+
+    const playing = harness.manager.play();
+    await flushMicrotasks();
+    const seeking = harness.manager.seek(5);
+    await flushMicrotasks();
+    assert.equal(fixture.seeks.length, 1);
+    fixture.seeks[0]();
+    await seeking;
+    // Adopted while still paused: the pending Play owns the resume.
+    assert.deepEqual(fixture.activations, []);
+    assert.equal(harness.state.currentTrackPosition, 5);
+    assert.equal(harness.state.isPlaying, false);
+
+    fixture.releaseActivation();
+    assert.equal(await playing, true);
+    assert.deepEqual(fixture.freshness, [true]);
+    assert.deepEqual(fixture.activations, [240000]);
+    assert.equal(transport.playing, true);
+    assert.equal(transport.positionFrame, 240000);
+    assert.equal(harness.state.currentTrackPosition, 5);
+    assert.equal(harness.state.isPlaying, true);
+    assert.equal(harness.state.isPaused, false);
+  });
+});
+
+test('a backward seek adopted during staged rolling Play keeps both intents at the adopted frame', async () => {
+  await withAudioContextGlobals({}, async () => {
+    const fixture = createStagedSeekFixture({ isPlaying: true });
+    const { harness, transport } = fixture;
+    transport.positionFrame = 96000;
+
+    const playing = harness.manager.play();
+    await flushMicrotasks();
+    const seeking = harness.manager.seek(0.5);
+    await flushMicrotasks();
+    assert.equal(fixture.seeks.length, 1);
+    fixture.seeks[0]();
+    await seeking;
+    // The owner state was playing, so the seek resumes at the adopted frame itself.
+    assert.deepEqual(fixture.activations, [24000]);
+    assert.equal(transport.playing, true);
+    assert.equal(harness.state.currentTrackPosition, 0.5);
+    assert.equal(harness.state.isPlaying, true);
+
+    fixture.releaseActivation();
+    assert.equal(await playing, true);
+    assert.deepEqual(fixture.freshness, [true]);
+    // The staged Play commits at the adopted frame, never at its pre-seek anchor.
+    assert.deepEqual(fixture.activations, [24000, 24000]);
+    assert.equal(transport.positionFrame, 24000);
+    assert.equal(harness.state.currentTrackPosition, 0.5);
+    assert.equal(harness.state.isPlaying, true);
+  });
+});
+
+test('a seek that completes after a later Play committed keeps playback at the adopted frame', async () => {
+  await withAudioContextGlobals({}, async () => {
+    const fixture = createStagedSeekFixture();
+    const { harness, transport } = fixture;
+
+    const seeking = harness.manager.seek(5);
+    await flushMicrotasks();
+    assert.equal(fixture.seeks.length, 1);
+    const playing = harness.manager.play();
+    await flushMicrotasks();
+    fixture.releaseActivation();
+    assert.equal(await playing, true);
+    assert.deepEqual(fixture.freshness, [true]);
+    assert.deepEqual(fixture.activations, [48000]);
+    assert.equal(harness.state.isPlaying, true);
+    assert.equal(harness.state.currentTrackPosition, 1);
+
+    fixture.seeks[0]();
+    await seeking;
+    assert.deepEqual(fixture.activations, [48000, 240000]);
+    assert.equal(transport.playing, true);
+    assert.equal(transport.positionFrame, 240000);
+    assert.equal(harness.state.currentTrackPosition, 5);
+    assert.equal(harness.state.isPlaying, true);
+    assert.equal(harness.state.isPaused, false);
+  });
+});
+
+test('next-track preparation completing during an in-flight seek is reserved once from the adopted anchor', async () => {
+  await withAudioContextGlobals({}, async () => {
+    const fixture = createStagedSeekFixture();
+    const { harness, transport } = fixture;
+
+    const seeking = harness.manager.seek(5);
+    await flushMicrotasks();
+    assert.equal(fixture.seeks.length, 1);
+    const playing = harness.manager.play();
+    await flushMicrotasks();
+    fixture.releaseActivation();
+    assert.equal(await playing, true);
+    assert.deepEqual(fixture.activations, [48000]);
+    assert.equal(fixture.preparations.length, 1);
+
+    // The preparation lands while the seek candidate is still private: the
+    // pre-seek anchor must not reserve the boundary, and the next stays held.
+    assert.equal(fixture.completePreparation(), false);
+    assert.deepEqual(fixture.nextActivations, []);
+    assert.equal(harness.manager.scheduledRollingTransition, null);
+    assert.equal(harness.manager.nextBuffer?.rollingTransport, fixture.next);
+
+    fixture.seeks[0]();
+    await seeking;
+    assert.deepEqual(fixture.activations, [48000, 240000]);
+    assert.equal(transport.anchorContextTime, 10);
+    assert.equal(transport.anchorFrame, 240000);
+    const expectedBoundary = 10 + (480000 - 240000) / 48000;
+    assert.deepEqual(fixture.nextActivations, [{ when: expectedBoundary, frame: 0 }]);
+    assert.equal(harness.manager.scheduledRollingTransition?.transport, fixture.next);
+    assert.equal(harness.manager.scheduledRollingTransition?.boundaryTime, expectedBoundary);
+
+    // Re-arming with the reservation already in place keeps it as it is and
+    // does not take player source ownership again.
+    const ownershipGains = () => harness.calls.filter(call => call[0] === 'audioContext.createGain').length;
+    const gainsBefore = ownershipGains();
+    assert.equal(harness.manager.rearmPreparedAutomaticMove(), true);
+    assert.deepEqual(fixture.nextActivations, [{ when: expectedBoundary, frame: 0 }]);
+    assert.equal(ownershipGains(), gainsBefore);
+  });
+});
+
+test('next-track preparation completing before the transport raises pendingSeek is still held until adoption', async () => {
+  await withAudioContextGlobals({}, async () => {
+    const fixture = createStagedSeekFixture();
+    const { harness, transport } = fixture;
+    // Mirrors the transport cleanup barrier: the seek call is accepted but
+    // waits before it raises pendingSeek, so the transport looks idle.
+    let releaseBarrier;
+    const barrier = new Promise(resolve => { releaseBarrier = resolve; });
+    const originalSeek = transport.seek;
+    transport.seek = async function (frame, options) {
+      await barrier;
+      return originalSeek.call(this, frame, options);
+    };
+
+    const seeking = harness.manager.seek(5);
+    await flushMicrotasks();
+    assert.equal(fixture.seeks.length, 0);
+    assert.equal(transport.pendingSeek, null);
+    const playing = harness.manager.play();
+    await flushMicrotasks();
+    fixture.releaseActivation();
+    assert.equal(await playing, true);
+    assert.deepEqual(fixture.activations, [48000]);
+    assert.equal(fixture.preparations.length, 1);
+
+    // The preparation lands while the manager's seek is still waiting for the
+    // transport: the pre-seek anchor must not reserve the boundary.
+    assert.equal(fixture.completePreparation(), false);
+    assert.deepEqual(fixture.nextActivations, []);
+    assert.equal(harness.manager.scheduledRollingTransition, null);
+    assert.equal(harness.manager.nextBuffer?.rollingTransport, fixture.next);
+
+    releaseBarrier();
+    await flushMicrotasks();
+    assert.equal(fixture.seeks.length, 1);
+    fixture.seeks[0]();
+    await seeking;
+    assert.deepEqual(fixture.activations, [48000, 240000]);
+    assert.equal(transport.anchorFrame, 240000);
+    const expectedBoundary = 10 + (480000 - 240000) / 48000;
+    assert.deepEqual(fixture.nextActivations, [{ when: expectedBoundary, frame: 0 }]);
+    assert.equal(harness.manager.scheduledRollingTransition?.transport, fixture.next);
+    assert.equal(harness.manager.rollingSeekInFlight, null);
+  });
+});
+
+test('a failed seek re-arms the held next from the anchor the transport keeps playing from', async () => {
+  await withAudioContextGlobals({}, async () => {
+    const fixture = createStagedSeekFixture();
+    const { harness, transport } = fixture;
+    let failSeek;
+    transport.seek = (frame, { resume }) => {
+      assert.equal(resume, false);
+      transport.pendingSeek = { candidate: {} };
+      return new Promise(resolve => {
+        failSeek = () => {
+          transport.pendingSeek = null;
+          resolve(false);
+        };
+      });
+    };
+
+    const seeking = harness.manager.seek(5);
+    await flushMicrotasks();
+    assert.equal(typeof failSeek, 'function');
+    const playing = harness.manager.play();
+    await flushMicrotasks();
+    fixture.releaseActivation();
+    assert.equal(await playing, true);
+    assert.deepEqual(fixture.activations, [48000]);
+    assert.equal(fixture.completePreparation(), false);
+    assert.deepEqual(fixture.nextActivations, []);
+
+    failSeek();
+    await seeking;
+    // No re-anchoring happened: the current transport still plays from the
+    // pre-seek anchor, and the held next is reserved once from that anchor.
+    assert.deepEqual(fixture.activations, [48000]);
+    assert.equal(transport.anchorFrame, 48000);
+    const expectedBoundary = 10 + (480000 - 48000) / 48000;
+    assert.deepEqual(fixture.nextActivations, [{ when: expectedBoundary, frame: 0 }]);
+    assert.equal(harness.manager.scheduledRollingTransition?.transport, fixture.next);
+    assert.equal(harness.state.isPlaying, true);
+    assert.equal(harness.state.currentTrackPosition, 1);
+    assert.equal(harness.manager.rollingSeekInFlight, null);
+  });
+});
+
+test('manual load cancels a delayed seek candidate and waits for reservation release', async () => {
+  await withAudioContextGlobals({}, async () => {
+    const oldTrack = { name: 'Old', path: '/old.wav' };
+    const nextTrack = { name: 'Next', path: '/next.wav' };
+    const harness = createHarness({
+      playlist: [oldTrack, nextTrack],
+      currentTrack: oldTrack,
+      currentTrackIndex: 0,
+      currentTrackPosition: 3,
+      isPlaying: true,
+      isStopped: false,
+      playbackMode: 'rollingPcm'
+    });
+    let finishCleanup;
+    const cleanup = new Promise(resolve => { finishCleanup = resolve; });
+    const seekCandidate = {
+      reservationHeld: true,
+      disposed: false,
+      dispose() {
+        this.disposed = true;
+        return cleanup.then(() => { this.reservationHeld = false; });
+      }
+    };
+    const current = {
+      currentTime: 3,
+      pendingSeek: { candidate: seekCandidate },
+      supersedePendingSeek() {
+        const candidate = this.pendingSeek?.candidate;
+        this.pendingSeek = null;
+        return candidate?.dispose() ?? Promise.resolve();
+      }
+    };
+    harness.manager.rollingTransport = current;
+    let prepareCount = 0;
+    harness.manager.prepareTrackTransitionRequest = async () => {
+      prepareCount++;
+      return { playableTrack: nextTrack };
+    };
+    harness.manager.activatePreparedTrackLoad = async () => false;
+
+    const loading = harness.manager.loadTrack(nextTrack, 1);
+    await flushMicrotasks();
+    assert.equal(current.pendingSeek, null);
+    assert.equal(seekCandidate.disposed, true);
+    assert.equal(seekCandidate.reservationHeld, true);
+    assert.equal(prepareCount, 0);
+    assert.equal(harness.manager.rollingTransport, current);
+    assert.equal(harness.state.currentTrack, oldTrack);
+
+    finishCleanup();
+    assert.equal(await loading, false);
+    assert.equal(seekCandidate.reservationHeld, false);
+    assert.equal(prepareCount, 1);
+    assert.equal(harness.manager.rollingTransport, current);
+  });
+});
+
+test('manual transition cancels a delayed seek before replacement admission', async () => {
+  await withAudioContextGlobals({}, async () => {
+    const oldTrack = { name: 'Old', path: '/old.wav' };
+    const nextTrack = { name: 'Next', path: '/next.wav' };
+    const harness = createHarness({
+      playlist: [oldTrack, nextTrack],
+      currentTrack: oldTrack,
+      currentTrackIndex: 0,
+      currentTrackPosition: 3,
+      isPlaying: true,
+      isStopped: false,
+      playbackMode: 'rollingPcm'
+    });
+    let finishCleanup;
+    const cleanup = new Promise(resolve => { finishCleanup = resolve; });
+    const seekCandidate = {
+      reservationHeld: true,
+      dispose: () => cleanup.then(() => { seekCandidate.reservationHeld = false; })
+    };
+    const current = {
+      currentTime: 3,
+      pendingSeek: { candidate: seekCandidate },
+      supersedePendingSeek() {
+        const candidate = this.pendingSeek?.candidate;
+        this.pendingSeek = null;
+        return candidate?.dispose() ?? Promise.resolve();
+      }
+    };
+    harness.manager.rollingTransport = current;
+    let prepareCount = 0;
+    harness.manager.prepareTrackTransitionRequest = async () => {
+      prepareCount++;
+      return { playableTrack: nextTrack };
+    };
+    harness.manager.activatePreparedTrackTransition = async () => false;
+
+    const transitioning = harness.manager.transitionToNextTrack(nextTrack, 1, true);
+    await flushMicrotasks();
+    assert.equal(current.pendingSeek, null);
+    assert.equal(prepareCount, 0);
+    assert.equal(harness.manager.rollingTransport, current);
+    assert.equal(harness.state.currentTrack, oldTrack);
+
+    finishCleanup();
+    assert.equal(await transitioning, false);
+    assert.equal(seekCandidate.reservationHeld, false);
+    assert.equal(prepareCount, 1);
+    assert.equal(harness.manager.rollingTransport, current);
+  });
+});
+
+test('audio graph replacement waits for delayed seek cleanup before readmission', async () => {
+  await withAudioContextGlobals({}, async () => {
+    const track = { name: 'Current', path: '/current.wav' };
+    const harness = createHarness({
+      playlist: [track],
+      currentTrack: track,
+      currentTrackIndex: 0,
+      currentTrackPosition: 3,
+      isPlaying: true,
+      isStopped: false,
+      playbackMode: 'rollingPcm'
+    });
+    let finishCleanup;
+    const cleanup = new Promise(resolve => { finishCleanup = resolve; });
+    const seekCandidate = {
+      reservationHeld: true,
+      dispose: () => cleanup.then(() => { seekCandidate.reservationHeld = false; })
+    };
+    const current = {
+      currentTime: 3,
+      pendingSeek: { candidate: seekCandidate },
+      supersedePendingSeek() {
+        const candidate = this.pendingSeek?.candidate;
+        this.pendingSeek = null;
+        return candidate?.dispose() ?? Promise.resolve();
+      }
+    };
+    harness.manager.rollingTransport = current;
+    let admissionCount = 0;
+    harness.manager.preparePlaybackDecisionRecord = () => {
+      admissionCount++;
+      return null;
+    };
+
+    const rebuilding = harness.manager.handleAudioGraphRebuilt();
+    await flushMicrotasks();
+    assert.equal(current.pendingSeek, null);
+    assert.equal(admissionCount, 0);
+    assert.equal(harness.manager.rollingTransport, current);
+
+    finishCleanup();
+    await rebuilding;
+    assert.equal(seekCandidate.reservationHeld, false);
+    assert.equal(admissionCount, 1);
+  });
+});
+
+test('next invalidation owns and disposes a rolling transport before prepare publishes aliases', async () => {
+  await withAudioContextGlobals({ Worker: class {}, AudioDecoder: class {} }, async () => {
+    const track = {
+      name: 'pending.wav',
+      file: new Blob([new Uint8Array([1])], { type: 'audio/wav' }),
+      durationSec: 600,
+      sampleRate: 48000,
+      channelCount: 2
+    };
+    const harness = createHarness({ playlist: [track] });
+    harness.manager.rollingPolicyMode = RollingPolicyMode.LIMITED_ROLLING;
+    harness.manager.rollingEnabledMatrix = [{
+      host: 'unknown',
+      format: 'wav',
+      sampleRate: 48000,
+      channelCount: 2,
+      lifecycle: 'foreground',
+      containerMimeType: 'audio/wav',
+      codec: 'pcm-s16',
+      decoderConfigCodec: 'pcm-s16',
+      profileId: DEFAULT_ROLLING_PCM_PROFILE_ID,
+      enabled: true
+    }];
+    let resolvePrepare;
+    let disposeCount = 0;
+    let pendingTransport = null;
+    harness.manager.createRollingPcmTransport = (role, preparationOwner) => {
+      pendingTransport = {
+        reservationRole: role,
+        preparationOwner,
+        failed: false,
+        disposed: false,
+        prepare: () => new Promise(resolve => { resolvePrepare = resolve; }),
+        async dispose() { this.disposed = true; disposeCount++; }
+      };
+      harness.manager.rollingTransports.add(pendingTransport);
+      return pendingTransport;
+    };
+
+    const preparing = harness.manager.prepareNextTrackBufferForTrack(track, 0);
+    await flushMicrotasks();
+    assert.ok(pendingTransport?.preparationOwner);
+    const cleanup = harness.manager.clearNextTrackBuffer();
+    await cleanup;
+    assert.equal(disposeCount, 1);
+    resolvePrepare({
+      durationSec: 600,
+      sampleRate: 48000,
+      channelCount: 2,
+      totalFrames: 28800000,
+      containerMimeType: 'audio/wav',
+      codec: 'pcm-s16',
+      decoderConfigCodec: 'pcm-s16',
+      decoderConfigVerified: true
+    });
+    await preparing;
+    assert.equal(harness.manager.nextBuffer, null);
+    assert.equal(harness.manager.nextRollingTransport, null);
+    assert.equal(disposeCount, 1);
+  });
+});
+
+test('Stop waits for prepared rolling-next cleanup after stopping a non-rolling backend', async () => {
+  await withAudioContextGlobals({}, async () => {
+  const harness = createHarness({
+    isPlaying: true,
+    isStopped: false,
+    playbackMode: 'bufferSource'
+  });
+  harness.manager.currentBufferSource = createNode(harness.calls, 'stop-current-buffer');
+  let finishCleanup;
+  const cleanup = new Promise(resolve => { finishCleanup = resolve; });
+  const rollingNext = {
+    sourceNode: createNode(harness.calls, 'stop-rolling-next'),
+    dispose: () => cleanup
+  };
+  const prepared = { rollingTransport: rollingNext, transport: rollingNext };
+  harness.manager.nextBuffer = prepared;
+  harness.manager.nextRollingTransport = prepared;
+
+  let settled = false;
+  const stopping = harness.manager.stop().then(() => { settled = true; });
+  await flushMicrotasks();
+  assert.equal(harness.state.isStopped, true);
+  assert.equal(harness.manager.nextRollingTransport, null);
+  assert.equal(settled, false);
+
+  finishCleanup();
+  await stopping;
+  assert.equal(settled, true);
+  });
+});
+
+test('Stop terminally disposes an unaliased registered rolling preparation on a buffer backend', async () => {
+  await withAudioContextGlobals({}, async () => {
+    const harness = createHarness({
+      isPlaying: true,
+      isStopped: false,
+      playbackMode: 'bufferSource'
+    });
+    harness.manager.currentBufferSource = createNode(harness.calls, 'stop-buffer-source');
+    let finishCleanup;
+    const cleanup = new Promise(resolve => { finishCleanup = resolve; });
+    let disposeCount = 0;
+    const pending = {
+      preparationOwner: { token: 1 },
+      sourceNode: createNode(harness.calls, 'unaliased-rolling-prepare'),
+      dispose() { disposeCount++; return cleanup; }
+    };
+    harness.manager.rollingTransports.add(pending);
+
+    let settled = false;
+    const stopping = harness.manager.stop().then(() => { settled = true; });
+    await flushMicrotasks();
+    assert.equal(disposeCount, 1);
+    assert.equal(settled, false);
+    finishCleanup();
+    await stopping;
+    assert.equal(settled, true);
+    assert.equal(harness.manager.rollingTransports.size, 0);
+  });
+});
+
+test('Gapless OFF to ON coalesces cleanup and admits only the latest request', async () => {
+  const harness = createHarness({
+    isPlaying: true,
+    isStopped: false,
+    playbackMode: 'rollingPcm'
+  });
+  let finishCleanup;
+  const cleanup = new Promise(resolve => { finishCleanup = resolve; });
+  const oldNext = {
+    sourceNode: createNode(harness.calls, 'gapless-old-next'),
+    dispose: () => cleanup
+  };
+  const prepared = { rollingTransport: oldNext, transport: oldNext };
+  harness.manager.nextBuffer = prepared;
+  harness.manager.nextRollingTransport = prepared;
+  let preparationCount = 0;
+  harness.manager.prepareNextTrackBufferWithRepeatMode = () => { preparationCount++; };
+
+  const disabled = harness.manager.applyGaplessPlaybackPreference(false);
+  const enabled = harness.manager.applyGaplessPlaybackPreference(true);
+  await flushMicrotasks();
+  assert.equal(preparationCount, 0);
+  finishCleanup();
+  await Promise.all([disabled, enabled]);
+  assert.equal(preparationCount, 1);
+});
+
+test('manual load awaits rolling cleanup and latest false activation settles loading state', async () => {
+  await withAudioContextGlobals({}, async () => {
+  const oldTrack = { name: 'Old', path: '/old.wav' };
+  const nextTrack = { name: 'Next', path: '/next.wav' };
+  const harness = createHarness({
+    playlist: [oldTrack, nextTrack],
+    currentTrack: oldTrack,
+    currentTrackIndex: 0,
+    currentTrackPosition: 3,
+    isPlaying: true,
+    isStopped: false
+  });
+  let finishCleanup;
+  const cleanup = new Promise(resolve => { finishCleanup = resolve; });
+  const oldNext = {
+    sourceNode: createNode(harness.calls, 'manual-load-old-next'),
+    dispose: () => cleanup
+  };
+  const prepared = { rollingTransport: oldNext, transport: oldNext };
+  harness.manager.nextBuffer = prepared;
+  harness.manager.nextRollingTransport = prepared;
+  let prepareCount = 0;
+  harness.manager.prepareTrackTransitionRequest = async () => {
+    prepareCount++;
+    return { playableTrack: nextTrack };
+  };
+  harness.manager.activatePreparedTrackLoad = async () => false;
+
+  const loading = harness.manager.loadTrack(nextTrack, 1);
+  await flushMicrotasks();
+  assert.equal(prepareCount, 0);
+  finishCleanup();
+  assert.equal(await loading, false);
+  assert.equal(prepareCount, 1);
+  assert.equal(harness.state.currentTrack, oldTrack);
+  assert.equal(harness.state.currentTrackPosition, 3);
+  assert.equal(harness.state.isPlaying, true);
+  assert.equal(harness.state.isTransitioning, false);
+  assert.equal(harness.state.transitionType, null);
+  });
+});
+
+test('staged activation cannot turn a rejected commit into success', async () => {
+  await withAudioContextGlobals({}, async () => {
+  const oldTrack = { name: 'Old', path: '/old.wav' };
+  const nextTrack = { name: 'Next', path: '/next.wav' };
+  const harness = createHarness({
+    playlist: [oldTrack, nextTrack],
+    currentTrack: oldTrack,
+    currentTrackIndex: 0,
+    isPlaying: true,
+    isStopped: false,
+    audioManager: {
+      isStagedAudioActivationEnabled: () => true,
+      stageAudioActivation: async () => ({ generation: 1 }),
+      isSourceConnectedToPipeline: () => true,
+      async activateStagedAudioCandidate(stage, callbacks) {
+        const candidate = callbacks.acquire(stage);
+        assert.equal(callbacks.isCandidateCurrent(candidate, stage), true);
+        try { callbacks.commit(candidate, stage); } catch (_) { /* coordinator reports stale success */ }
+        return { activated: true };
+      }
+    }
+  });
+  harness.manager.prepareTrackTransitionRequest = async () => ({
+    track: nextTrack,
+    playableTrack: nextTrack,
+    descriptor: {},
+    decisionRecord: { committedMode: 'buffer' },
+    buffer: { duration: 5, numberOfChannels: 2 },
+    targetIndex: 1
+  });
+  harness.manager.commitPreparedTrackCandidate = () => false;
+
+  assert.equal(await harness.manager.transitionToNextTrack(nextTrack, 1), false);
+  assert.equal(harness.state.currentTrack, oldTrack);
+  assert.equal(harness.state.isTransitioning, false);
+  });
+});
+
+test('staged rolling freshness rejects a transport that became unprepared', async () => {
+  await withAudioContextGlobals({}, async () => {
+  const oldTrack = { name: 'Old', path: '/old.wav' };
+  const nextTrack = { name: 'Rolling', path: '/rolling.wav' };
+  let freshness = null;
+  const harness = createHarness({
+    playlist: [oldTrack, nextTrack],
+    currentTrack: oldTrack,
+    currentTrackIndex: 0,
+    isPlaying: true,
+    isStopped: false,
+    audioManager: {
+      isStagedAudioActivationEnabled: () => true,
+      stageAudioActivation: async () => ({ generation: 1 }),
+      isSourceConnectedToPipeline: () => true,
+      async activateStagedAudioCandidate(stage, callbacks) {
+        const candidate = callbacks.acquire(stage);
+        candidate.transport.prepared = false;
+        freshness = callbacks.isCandidateCurrent(candidate, stage);
+        await callbacks.cleanup(candidate, stage);
+        return { activated: false };
+      }
+    }
+  });
+  const transport = {
+    sourceNode: createNode(harness.calls, 'staged-rolling-source'),
+    metadata: { durationSec: 5, sampleRate: 48000, channelCount: 2 },
+    prepared: true,
+    failed: false,
+    disposed: false,
+    async dispose() { this.disposed = true; }
+  };
+  harness.manager.prepareTrackTransitionRequest = async () => ({
+    track: nextTrack,
+    playableTrack: nextTrack,
+    descriptor: {},
+    decisionRecord: { committedMode: 'rolling', rollingTransport: transport },
+    rollingTransport: transport,
+    targetIndex: 1
+  });
+
+  assert.equal(await harness.manager.transitionToNextTrack(nextTrack, 1), false);
+  assert.equal(freshness, false);
+  assert.equal(harness.state.currentTrack, oldTrack);
+  assert.equal(harness.state.isTransitioning, false);
+  });
+});
+
 test('known mono playback is routed only to front left and right for every output layout', async () => {
   await withAudioContextGlobals({}, async ({ calls }) => {
     for (const outputChannels of [2, 4, 6, 8]) {
@@ -911,6 +2398,188 @@ test('buffer source lifecycle and graph rebuilds keep playback recoverable', asy
     const reboundElement = fallback.audioPlayer.audioElement;
     reboundElement.dispatch('loadedmetadata');
     assert.equal(reboundElement.currentTime, 12);
+  });
+});
+
+test('structured fallback decode authority is consumed once and graph rebuild reuses its buffer', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const file = new FakeFile('exception.flac', new Uint8Array(1024).buffer);
+    let sourceReads = 0;
+    file.arrayBuffer = async () => {
+      sourceReads += 1;
+      return file._buffer;
+    };
+    const track = {
+      name: 'exception.flac',
+      file,
+      durationSec: 1,
+      sampleRate: 48000,
+      channelCount: 2
+    };
+    const harness = createHarness({
+      calls,
+      playlist: [track],
+      currentTrack: track,
+      currentTrackIndex: 0,
+      isPaused: true,
+      isStopped: false,
+      playbackMode: 'bufferSource',
+      audioContextOptions: {
+        decodedBuffer: {
+          duration: 1,
+          length: 48000,
+          numberOfChannels: 2,
+          sampleRate: 48000
+        }
+      }
+    });
+    const descriptor = harness.manager.createPlaybackSourceDescriptor(track);
+    const baseRecord = harness.manager.createPlaybackDecisionRecord(track, descriptor);
+    const error = Object.assign(new Error('partial-decode-unsupported'), {
+      code: 'partial-decode-unsupported',
+      partialDecodeFailure: Object.freeze({
+        reason: 'partial-decode-unsupported',
+        format: 'flac',
+        sourceByteLength: file.size,
+        decodedPcmBytes: 48000 * 2 * Float32Array.BYTES_PER_ELEMENT,
+        verified: true
+      })
+    });
+    const decisionRecord = harness.manager.createPartialDecodeFallbackRecord(
+      baseRecord,
+      error,
+      'candidate',
+      { sourceGeneration: 73 }
+    );
+    assert.equal(decisionRecord.committedMode, 'buffer');
+    const admittedBuffer = await harness.manager.prepareTrackBuffer(
+      track,
+      null,
+      true,
+      descriptor,
+      decisionRecord
+    );
+    assert.equal(sourceReads, 1);
+    assert.equal(calls.filter(call => call[0] === 'audioContext.decodeAudioData').length, 1);
+    assert.equal(harness.manager.rollingReservationLedger.totalReservedBytes(),
+      48000 * 2 * Float32Array.BYTES_PER_ELEMENT);
+
+    harness.manager.currentBuffer = admittedBuffer;
+    harness.manager.currentPlaybackDecision = decisionRecord;
+    harness.manager.currentBufferSource = createNode(calls, 'old-fallback-source');
+    harness.state.currentTrack = track;
+    harness.state.currentTrackIndex = 0;
+    harness.state.playbackMode = 'bufferSource';
+    await harness.manager.handleAudioGraphRebuilt();
+
+    assert.equal(harness.manager.currentBuffer, admittedBuffer);
+    assert.equal(sourceReads, 1);
+    assert.equal(calls.filter(call => call[0] === 'audioContext.decodeAudioData').length, 1);
+    assert.equal(calls.some(call => call[0] === 'disconnectSourceFromPipeline' &&
+      call[1] === 'old-fallback-source'), true);
+    await assert.rejects(
+      harness.manager.prepareTrackBuffer(track, null, true, descriptor, decisionRecord),
+      candidateError => candidateError?.code === 'partial-decode-authority-consumed'
+    );
+    assert.equal(sourceReads, 1);
+    assert.equal(harness.manager.rollingReservationLedger.totalReservedBytes(),
+      48000 * 2 * Float32Array.BYTES_PER_ELEMENT);
+  });
+});
+
+test('structured fallback reserves aggregate bytes before read and releases admitted PCM on cleanup', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const createAdmission = (manager, track, generation) => {
+      const descriptor = manager.createPlaybackSourceDescriptor(track);
+      const record = manager.createPlaybackDecisionRecord(track, descriptor);
+      return {
+        descriptor,
+        record: manager.createPartialDecodeFallbackRecord(
+          record,
+          Object.assign(new Error('partial-decode-unsupported'), {
+            code: 'partial-decode-unsupported',
+            partialDecodeFailure: Object.freeze({
+              reason: 'partial-decode-unsupported',
+              format: 'flac',
+              sourceByteLength: track.file.size,
+              decodedPcmBytes: 48000 * 2 * Float32Array.BYTES_PER_ELEMENT,
+              verified: true
+            })
+          }),
+          'candidate',
+          { sourceGeneration: generation }
+        )
+      };
+    };
+    const rejectedFile = new FakeFile('aggregate-rejected.flac', new Uint8Array(1024).buffer);
+    let rejectedReads = 0;
+    rejectedFile.arrayBuffer = async () => {
+      rejectedReads += 1;
+      return rejectedFile._buffer;
+    };
+    const rejectedTrack = {
+      name: rejectedFile.name,
+      file: rejectedFile,
+      durationSec: 1,
+      sampleRate: 48000,
+      channelCount: 2
+    };
+    const audioContextOptions = {
+      decodedBuffer: {
+        duration: 1,
+        length: 48000,
+        numberOfChannels: 2,
+        sampleRate: 48000
+      }
+    };
+    const rejectedHarness = createHarness({ calls, audioContextOptions });
+    const rejectedAdmission = createAdmission(rejectedHarness.manager, rejectedTrack, 81);
+    const admittedBytes = rejectedFile.size + (48000 * 2 * Float32Array.BYTES_PER_ELEMENT);
+    rejectedHarness.manager.rollingReservationLedger = new RollingPcmAdmissionLedger({
+      aggregateByteCap: admittedBytes - 1
+    });
+
+    await assert.rejects(
+      rejectedHarness.manager.prepareTrackBuffer(
+        rejectedTrack,
+        null,
+        true,
+        rejectedAdmission.descriptor,
+        rejectedAdmission.record
+      ),
+      error => error?.code === 'partial-decode-aggregate-budget'
+    );
+    assert.equal(rejectedReads, 0);
+    assert.equal(calls.filter(call => call[0] === 'audioContext.decodeAudioData').length, 0);
+    assert.equal(rejectedHarness.manager.rollingReservationLedger.totalReservedBytes(), 0);
+
+    const admittedFile = new FakeFile('aggregate-admitted.flac', new Uint8Array(1024).buffer);
+    const admittedTrack = {
+      name: admittedFile.name,
+      file: admittedFile,
+      durationSec: 1,
+      sampleRate: 48000,
+      channelCount: 2
+    };
+    const admittedHarness = createHarness({ calls, audioContextOptions });
+    const admission = createAdmission(admittedHarness.manager, admittedTrack, 82);
+    const buffer = await admittedHarness.manager.prepareTrackBuffer(
+      admittedTrack,
+      null,
+      true,
+      admission.descriptor,
+      admission.record
+    );
+    const pcmBytes = 48000 * 2 * Float32Array.BYTES_PER_ELEMENT;
+    assert.equal(admittedHarness.manager.rollingReservationLedger.totalReservedBytes(), pcmBytes);
+    admittedHarness.manager.cleanupPreparedTransitionCandidate({
+      mode: 'bufferSource',
+      buffer,
+      source: createNode(calls, 'aggregate-admitted-source'),
+      committed: false,
+      cleaned: false
+    });
+    assert.equal(admittedHarness.manager.rollingReservationLedger.totalReservedBytes(), 0);
   });
 });
 
@@ -4164,6 +5833,756 @@ test('automatic buffer handoff schedules one transparent source at the current e
     assert.equal(harness.audioManager.sourceNode, scheduled.source);
     assert.equal(harness.audioManager.ioManager.sourceNode, scheduled.source);
     assert.equal(calls.some(call => call[0] === 'audioContext.createGain'), false);
+  });
+});
+
+test('injected rolling records stay on partial transports without full decode', async () => {
+  let fullBufferCalls = 0;
+  let liveDecodeCalls = 0;
+  await withAudioContextGlobals({
+    Worker: class {},
+    AudioDecoder: class {}
+  }, async ({ calls }) => {
+    const tracks = ['wav', 'flac'].map(format => ({
+      name: `injected.${format}`,
+      file: new Blob([new Uint8Array([format === 'wav' ? 1 : 2])], {
+        type: format === 'wav' ? 'audio/wav' : 'audio/flac'
+      }),
+      durationSec: 200,
+      sampleRate: 48000,
+      channelCount: 2
+    }));
+    const harness = createHarness({ calls, playlist: tracks });
+    harness.manager.rollingPolicyMode = RollingPolicyMode.LIMITED_ROLLING;
+    harness.manager.rollingEnabledMatrix = ['wav', 'flac'].map(format => ({
+      host: 'unknown',
+      format,
+      sampleRate: 48000,
+      channelCount: 2,
+      lifecycle: 'foreground',
+      containerMimeType: format === 'wav' ? 'audio/wav' : 'audio/flac',
+      codec: format === 'wav' ? 'pcm-s16' : 'flac',
+      decoderConfigCodec: format === 'wav' ? 'pcm-s16' : 'flac',
+      profileId: DEFAULT_ROLLING_PCM_PROFILE_ID,
+      enabled: true
+    }));
+    harness.audioContext.decodeAudioData = () => { liveDecodeCalls++; };
+    harness.manager.prepareTrackBuffer = async () => {
+      fullBufferCalls++;
+      return { duration: 1, length: 48000, numberOfChannels: 2, sampleRate: 48000 };
+    };
+    const preparedFormats = [];
+    harness.manager.createRollingPcmTransport = () => ({
+      sourceNode: createNode(calls, 'short-rolling-bus'),
+      prepared: true,
+      failed: false,
+      disposed: false,
+      async prepare(source) {
+        const format = source.format;
+        preparedFormats.push(format);
+        return {
+          durationSec: 200,
+          sourceSampleRate: 48000,
+          outputSampleRate: 48000,
+          sampleRate: 48000,
+          channelCount: 2,
+          totalFrames: 9_600_000,
+          containerMimeType: format === 'wav' ? 'audio/wav' : 'audio/flac',
+          codec: format === 'wav' ? 'pcm-s16' : 'flac',
+          decoderConfigCodec: format === 'wav' ? 'pcm-s16' : 'flac',
+          decoderConfigVerified: true
+        };
+      },
+      async dispose() {}
+    });
+
+    const prepared = [];
+    for (let index = 0; index < tracks.length; index += 1) {
+      prepared.push(await harness.manager.prepareTrackTransitionRequest(
+        tracks[index], index, () => false, null, null
+      ));
+    }
+
+    assert.deepEqual(prepared.map(item => ({
+      committedMode: item.decisionRecord.committedMode,
+      decisionMode: item.decisionRecord.decision.mode
+    })), [
+      { committedMode: 'rolling', decisionMode: 'rolling' },
+      { committedMode: 'rolling', decisionMode: 'rolling' }
+    ]);
+    assert.deepEqual(preparedFormats, ['wav', 'flac']);
+    assert.deepEqual({ fullBufferCalls, liveDecodeCalls }, {
+      fullBufferCalls: 0,
+      liveDecodeCalls: 0
+    });
+  });
+});
+
+test('catalog WAV pair prepares cross-rate rolling handoff without full decode', async () => {
+  const paths = [
+    'C:\\SyntheticCatalog\\catalog-one.wav',
+    'C:\\SyntheticCatalog\\catalog-two.wav'
+  ];
+  const sourceBytes = [
+    createPcmWaveBytes({ sampleRate: 44100, frameCount: 441 }),
+    createPcmWaveBytes({ sampleRate: 44100, frameCount: 882 })
+  ];
+  const pathReads = [];
+  const transferredSources = [];
+  let liveDecodeCalls = 0;
+  let fullBufferCalls = 0;
+  let offlineDecodeCalls = 0;
+  const activations = [];
+  await withAudioContextGlobals({
+    Worker: class {},
+    AudioDecoder: class {},
+    navigator: {
+      userAgent: 'Mozilla/5.0 Chrome/152.0.0.0 Electron/44.0.0'
+    },
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      async readFileBytes(filePath, expectedByteLength) {
+        const index = paths.indexOf(filePath);
+        assert.notEqual(index, -1);
+        assert.equal(expectedByteLength, sourceBytes[index].byteLength);
+        pathReads.push([filePath, expectedByteLength]);
+        const source = sourceBytes[index].buffer.slice(0);
+        transferredSources[index] = source;
+        return source;
+      }
+    },
+    OfflineAudioContext: class {
+      decodeAudioData() { offlineDecodeCalls++; }
+    }
+  }, async ({ calls }) => {
+    const tracks = paths.map((path, index) => ({
+      name: `Catalog display ${index + 1}`,
+      title: `Catalog title ${index + 1}`,
+      fileName: `catalog-${index + 1}.wav`,
+      sourceFileName: `catalog-${index + 1}.wav`,
+      path,
+      sourceKind: 'electron-file',
+      byteLength: sourceBytes[index].byteLength
+    }));
+    const harness = createHarness({
+      calls,
+      playlist: tracks,
+      currentTrackIndex: 0,
+      isPlaying: true,
+      isStopped: false,
+      playbackMode: 'rollingPcm'
+    });
+    harness.audioContext.sampleRate = 96000;
+    harness.audioContext.currentTime = 10;
+    const { entries } = installMaterializedPlaybackManager(harness, tracks);
+    entries.forEach((entry, index) => Object.assign(entry, {
+      title: tracks[index].title,
+      fileName: tracks[index].fileName,
+      sourceFileName: tracks[index].sourceFileName
+    }));
+    harness.manager.rollingPolicyMode = RollingPolicyMode.LIMITED_ROLLING;
+    harness.manager.rollingEnabledMatrix = NATIVE_FRAGMENT_CANDIDATE_MATRIX;
+    harness.manager.loadMetadata = () => {};
+    harness.audioContext.decodeAudioData = () => { liveDecodeCalls++; };
+    harness.manager.prepareTrackBuffer = async () => {
+      fullBufferCalls++;
+      return { duration: 1, length: 96000, numberOfChannels: 2, sampleRate: 96000 };
+    };
+    let transportIndex = 0;
+    const transports = [];
+    harness.manager.createRollingPcmTransport = (
+      _reservationRole,
+      _preparationOwner,
+      sourceReacquirer
+    ) => {
+      const index = transportIndex++;
+      const sourceFrames = index === 0 ? 441 : 882;
+      const totalFrames = index === 0 ? 960 : 1920;
+      const transport = {
+        sourceNode: createNode(calls, `catalog-rolling-${index}`),
+        prepared: true,
+        failed: false,
+        disposed: false,
+        playing: false,
+        positionFrame: 0,
+        metadata: null,
+        async prepare(source, options) {
+          assert.equal(source.mediaSource, paths[index]);
+          assert.equal(options.sourceOverride, undefined);
+          const reacquired = await sourceReacquirer(source);
+          assert.equal(reacquired, transferredSources[index]);
+          assert.equal(options.outputSampleRate, 96000);
+          assert.equal(
+            options.decoderProfile,
+            PCM16_STEREO_44100_TO_96000_PROFILE.codec
+          );
+          assert.equal(
+            options.resamplerProfile,
+            PCM16_STEREO_44100_TO_96000_PROFILE.id
+          );
+          this.metadata = {
+            durationSec: totalFrames / 96000,
+            sourceSampleRate: 44100,
+            outputSampleRate: 96000,
+            sampleRate: 96000,
+            sourceTotalFrames: sourceFrames,
+            sourceByteLength: sourceBytes[index].byteLength,
+            dataOffset: 44,
+            dataByteLength: sourceFrames * 4,
+            bitsPerSample: 16,
+            blockAlign: 4,
+            totalFrames,
+            channelCount: 2,
+            containerMimeType: 'audio/wav',
+            codec: 'pcm-s16',
+            decoderConfigCodec: 'pcm-s16',
+            decoderConfigVerified: true,
+            decoderProfile: PCM16_STEREO_44100_TO_96000_PROFILE.codec,
+            resamplerProfile: PCM16_STEREO_44100_TO_96000_PROFILE.id
+          };
+          return this.metadata;
+        },
+        canPromoteReservation() { return true; },
+        promoteReservation() { return true; },
+        activate({ when, frame }) {
+          this.playing = true;
+          this.anchorContextTime = when;
+          this.anchorFrame = frame;
+          activations.push({ index, when, frame });
+          return true;
+        },
+        async dispose() { this.disposed = true; }
+      };
+      transports.push(transport);
+      return transport;
+    };
+
+    const currentPrepared = await harness.manager.prepareTrackTransitionRequest(
+      entries[0],
+      0,
+      () => false,
+      null,
+      null
+    );
+    assert.equal(currentPrepared.decisionRecord.committedMode, 'rolling');
+    assert.equal(currentPrepared.decisionRecord.decision.mode, 'rolling');
+    assert.equal(currentPrepared.decisionRecord.sourceSnapshot.bytes, null);
+    harness.manager.currentPlaybackDecision = currentPrepared.decisionRecord;
+    harness.manager.rollingTransport = transports[0];
+    transports[0].playing = true;
+    transports[0].anchorContextTime = 10;
+    transports[0].anchorFrame = 0;
+    Object.assign(harness.state, {
+      currentTrack: entries[0],
+      currentTrackIndex: 0,
+      isPlaying: true,
+      isPaused: false,
+      isStopped: false,
+      playbackMode: 'rollingPcm'
+    });
+
+    await harness.manager.prepareNextTrackBufferWithRepeatMode();
+
+    const scheduled = harness.manager.scheduledRollingTransition;
+    assert.ok(scheduled);
+    assert.equal(scheduled.prepared.decisionRecord.committedMode, 'rolling');
+    assert.equal(scheduled.prepared.decisionRecord.sourceSnapshot.bytes, null);
+    assert.equal(transports.length, 2);
+    const expectedBoundary = 10 + (960 / 96000);
+    assert.equal(scheduled.boundaryTime, expectedBoundary);
+    assert.deepEqual(activations, [{ index: 1, when: expectedBoundary, frame: 0 }]);
+    assert.deepEqual({
+      pathReads,
+      fullBufferCalls,
+      liveDecodeCalls,
+      offlineDecodeCalls,
+      audioElements: FakeAudioElement.instances.length
+    }, {
+      pathReads: paths.map((path, index) => [path, sourceBytes[index].byteLength]),
+      fullBufferCalls: 0,
+      liveDecodeCalls: 0,
+      offlineDecodeCalls: 0,
+      audioElements: 0
+    });
+
+    assert.equal(harness.manager.commitScheduledRollingTransition(transports[0]), true);
+
+    assert.equal(harness.state.currentTrackIndex, 1);
+    assert.equal(harness.manager.rollingTransport, transports[1]);
+    assert.equal(
+      calls.filter(call => call[0] === 'state.updateState' &&
+        call[2] === 'PlaybackManager planned automatic move').length,
+      1
+    );
+  });
+});
+
+test('native rolling candidate is discarded when lifecycle changes before READY commit', async () => {
+  const visibility = { visibilityState: 'visible', addEventListener() {}, removeEventListener() {} };
+  const bytes = createPcmWaveBytes({ sampleRate: 44100, frameCount: 441 });
+  let pathReads = 0;
+  let disposeCalls = 0;
+  await withAudioContextGlobals({
+    document: visibility,
+    Worker: class {},
+    AudioDecoder: class {},
+    navigator: { userAgent: 'Mozilla/5.0 Chrome/152.0.0.0 Electron/44.0.0' },
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      async readFileBytes() {
+        pathReads += 1;
+        return bytes.buffer.slice(0);
+      }
+    }
+  }, async () => {
+    const track = {
+      name: 'Lifecycle display',
+      fileName: 'lifecycle.wav',
+      sourceFileName: 'lifecycle.wav',
+      path: 'C:\\SyntheticCatalog\\lifecycle.wav',
+      sourceKind: 'electron-file',
+      byteLength: bytes.byteLength
+    };
+    const harness = createHarness({ playlist: [track] });
+    harness.audioContext.sampleRate = 96000;
+    harness.manager.rollingPolicyMode = RollingPolicyMode.LIMITED_ROLLING;
+    harness.manager.rollingEnabledMatrix = NATIVE_FRAGMENT_CANDIDATE_MATRIX;
+    harness.manager.createRollingPcmTransport = (_role, _owner, sourceReacquirer) => ({
+      prepared: true,
+      failed: false,
+      disposed: false,
+      async prepare(snapshot) {
+        await sourceReacquirer(snapshot);
+        visibility.visibilityState = 'hidden';
+        return {
+          durationSec: 960 / 96000,
+          sourceSampleRate: 44100,
+          outputSampleRate: 96000,
+          sampleRate: 96000,
+          channelCount: 2,
+          sourceTotalFrames: 441,
+          sourceByteLength: bytes.byteLength,
+          dataOffset: 44,
+          dataByteLength: 441 * 4,
+          bitsPerSample: 16,
+          blockAlign: 4,
+          totalFrames: 960,
+          containerMimeType: 'audio/wav',
+          codec: 'pcm-s16',
+          decoderConfigCodec: 'pcm-s16',
+          decoderConfigVerified: true,
+          decoderProfile: PCM16_STEREO_44100_TO_96000_PROFILE.codec,
+          resamplerProfile: PCM16_STEREO_44100_TO_96000_PROFILE.id
+        };
+      },
+      async dispose() { this.disposed = true; disposeCalls += 1; }
+    });
+    const playable = track;
+    const descriptor = harness.manager.createPlaybackSourceDescriptor(playable);
+    const record = harness.manager.createPlaybackDecisionRecord(playable, descriptor);
+    const prepared = await harness.manager.prepareRollingPlaybackDecisionRecord(record);
+
+    assert.equal(prepared.committedMode, 'media');
+    assert.equal(prepared.decision.reason, 'rolling-capability-changed');
+    assert.equal(pathReads, 1);
+    assert.equal(disposeCalls, 1);
+  });
+});
+
+test('native rolling preflight rejects CUE, hidden, and suspended sources before path read', async () => {
+  const visibility = { visibilityState: 'visible', addEventListener() {}, removeEventListener() {} };
+  const bytes = createPcmWaveBytes({ sampleRate: 44100, frameCount: 441 });
+  let pathReads = 0;
+  let workerAttempts = 0;
+  let fullDecodeCalls = 0;
+  await withAudioContextGlobals({
+    document: visibility,
+    Worker: class {},
+    navigator: { userAgent: 'Mozilla/5.0 Chrome/152.0.0.0 Electron/44.0.0' },
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      async readFileBytes() {
+        pathReads += 1;
+        return bytes.buffer.slice(0);
+      }
+    }
+  }, async () => {
+    const createTrack = suffix => ({
+      name: `${suffix} display`,
+      fileName: `${suffix}.wav`,
+      sourceFileName: `${suffix}.wav`,
+      path: `C:\\SyntheticCatalog\\${suffix}.wav`,
+      sourceKind: 'electron-file',
+      byteLength: bytes.byteLength
+    });
+    const tracks = [
+      { ...createTrack('cue'), startFrame: 100, endFrame: 300 },
+      createTrack('hidden'),
+      createTrack('suspended')
+    ];
+    for (const [index, track] of tracks.entries()) {
+      visibility.visibilityState = index === 1 ? 'hidden' : 'visible';
+      const harness = createHarness({ playlist: [track] });
+      harness.audioContext.sampleRate = 96000;
+      harness.audioContext.state = index === 2 ? 'suspended' : 'running';
+      harness.audioContext.decodeAudioData = () => { fullDecodeCalls += 1; };
+      harness.manager.rollingPolicyMode = RollingPolicyMode.LIMITED_ROLLING;
+      harness.manager.rollingEnabledMatrix = NATIVE_FRAGMENT_CANDIDATE_MATRIX;
+      harness.manager.createRollingPcmTransport = () => {
+        workerAttempts += 1;
+        throw new Error('ineligible source must not create a transport');
+      };
+      const descriptor = harness.manager.createPlaybackSourceDescriptor(track);
+      const record = await harness.manager.preparePlaybackDecisionRecord(track, descriptor);
+      assert.equal(record.committedMode, 'media');
+      if (index === 0) {
+        assert.equal(record.sourceSnapshot.hasPlaybackRegion, true);
+        assert.equal(record.playableTrack.startFrame, 100);
+        assert.equal(record.playableTrack.endFrame, 300);
+      }
+    }
+    assert.deepEqual({ pathReads, workerAttempts, fullDecodeCalls }, {
+      pathReads: 0,
+      workerAttempts: 0,
+      fullDecodeCalls: 0
+    });
+  });
+});
+
+test('Gapless OFF during delayed native READY disposes the candidate without rolling commit', async () => {
+  const bytes = createPcmWaveBytes({ sampleRate: 44100, frameCount: 441 });
+  let pathReads = 0;
+  let disposeCalls = 0;
+  let resolveReady;
+  await withAudioContextGlobals({
+    Worker: class {},
+    navigator: { userAgent: 'Mozilla/5.0 Chrome/152.0.0.0 Electron/44.0.0' },
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      async readFileBytes() {
+        pathReads += 1;
+        return bytes.buffer.slice(0);
+      }
+    }
+  }, async () => {
+    const track = {
+      name: 'Gapless race display',
+      fileName: 'gapless-race.wav',
+      sourceFileName: 'gapless-race.wav',
+      path: 'C:\\SyntheticCatalog\\gapless-race.wav',
+      sourceKind: 'electron-file',
+      byteLength: bytes.byteLength
+    };
+    const harness = createHarness({ playlist: [track] });
+    harness.audioContext.sampleRate = 96000;
+    harness.manager.rollingPolicyMode = RollingPolicyMode.LIMITED_ROLLING;
+    harness.manager.rollingEnabledMatrix = NATIVE_FRAGMENT_CANDIDATE_MATRIX;
+    harness.manager.createRollingPcmTransport = (_role, _owner, sourceReacquirer) => ({
+      prepared: true,
+      failed: false,
+      disposed: false,
+      async prepare(snapshot) {
+        await sourceReacquirer(snapshot);
+        await new Promise(resolve => { resolveReady = resolve; });
+        return {
+          durationSec: 960 / 96000,
+          sourceSampleRate: 44100,
+          outputSampleRate: 96000,
+          sampleRate: 96000,
+          channelCount: 2,
+          sourceTotalFrames: 441,
+          sourceByteLength: bytes.byteLength,
+          dataOffset: 44,
+          dataByteLength: 441 * 4,
+          bitsPerSample: 16,
+          blockAlign: 4,
+          totalFrames: 960,
+          containerMimeType: 'audio/wav',
+          codec: 'pcm-s16',
+          decoderConfigCodec: 'pcm-s16',
+          decoderConfigVerified: true,
+          decoderProfile: PCM16_STEREO_44100_TO_96000_PROFILE.codec,
+          resamplerProfile: PCM16_STEREO_44100_TO_96000_PROFILE.id
+        };
+      },
+      async dispose() { this.disposed = true; disposeCalls += 1; }
+    });
+    const descriptor = harness.manager.createPlaybackSourceDescriptor(track);
+    const record = harness.manager.createPlaybackDecisionRecord(track, descriptor);
+    const pending = harness.manager.prepareRollingPlaybackDecisionRecord(record);
+    await flushMicrotasks();
+    assert.equal(typeof resolveReady, 'function');
+    harness.audioPlayer.gaplessPlayback = false;
+    resolveReady();
+    const prepared = await pending;
+
+    assert.equal(prepared.committedMode, 'media');
+    assert.equal(prepared.decision.reason, 'gapless-disabled-media');
+    assert.equal(prepared.rollingTransport, null);
+    assert.equal(pathReads, 1);
+    assert.equal(disposeCalls, 1);
+  });
+});
+
+test('resource-safe WAV admission rejects ambiguous byte readers without decoding', async () => {
+  const wavBytes = createPcmWaveBytes({ frameCount: 480 });
+  let boundedElectronReads = 0;
+  let decodeCalls = 0;
+  await withAudioContextGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      async readFileBytes() {
+        boundedElectronReads += 1;
+        return wavBytes.buffer;
+      }
+    },
+    OfflineAudioContext: class {
+      decodeAudioData(_arrayBuffer, resolve) {
+        decodeCalls += 1;
+        resolve({
+          duration: 0.01,
+          length: 480,
+          numberOfChannels: 2,
+          sampleRate: 48000
+        });
+      }
+    }
+  }, async () => {
+    const harness = createHarness();
+    harness.manager.rollingPolicyMode = RollingPolicyMode.RESOURCE_SAFE_LEGACY;
+    harness.audioContext.decodeAudioData = () => {
+      throw new Error('ambiguous WAV must not decode on the live context');
+    };
+    const file = new Blob([wavBytes], { type: 'audio/wav' });
+    Object.defineProperty(file, 'name', { value: 'ambiguous-file.wav' });
+    let fileCustomReads = 0;
+    const fileTrack = {
+      name: 'ambiguous-file.wav',
+      file,
+      bytes: wavBytes.buffer,
+      async readBytes() {
+        fileCustomReads += 1;
+        return wavBytes.buffer;
+      }
+    };
+    let electronCustomReads = 0;
+    const electronTrack = {
+      name: 'ambiguous-electron.wav',
+      path: 'C:\\SyntheticCatalog\\ambiguous-electron.wav',
+      sourceKind: 'electron-file',
+      byteLength: wavBytes.byteLength,
+      async readBytes() {
+        electronCustomReads += 1;
+        return wavBytes.buffer;
+      }
+    };
+
+    const filePrepared = await harness.manager.prepareTrackTransitionRequest(
+      fileTrack,
+      0,
+      () => false,
+      null,
+      null
+    );
+    const electronPrepared = await harness.manager.prepareTrackTransitionRequest(
+      electronTrack,
+      1,
+      () => false,
+      null,
+      null
+    );
+
+    assert.deepEqual({
+      fileMode: filePrepared.decisionRecord.committedMode,
+      electronMode: electronPrepared.decisionRecord.committedMode,
+      fileCustomReads,
+      electronCustomReads,
+      boundedElectronReads,
+      decodeCalls
+    }, {
+      fileMode: 'media',
+      electronMode: 'media',
+      fileCustomReads: 0,
+      electronCustomReads: 0,
+      boundedElectronReads: 0,
+      decodeCalls: 0
+    });
+  });
+});
+
+test('only structured exceptional partial-decode rejection permits one bounded full decode', async () => {
+  await withAudioContextGlobals({ Worker: class {}, AudioDecoder: class {} }, async ({ calls }) => {
+    const fullDecodeCalls = new Map();
+    const attempts = [];
+    const harness = createHarness({ calls });
+    harness.manager.rollingPolicyMode = RollingPolicyMode.LIMITED_ROLLING;
+    harness.manager.rollingEnabledMatrix = ['wav', 'mp3', 'flac'].map(format => ({
+      host: 'unknown',
+      format,
+      sourceSampleRate: 48000,
+      outputSampleRate: 48000,
+      sampleRate: 48000,
+      channelCount: 2,
+      lifecycle: 'foreground',
+      containerMimeType: format === 'wav'
+        ? 'audio/wav'
+        : format === 'mp3' ? 'audio/mpeg' : 'audio/flac',
+      codec: format === 'wav' ? 'pcm-s16' : format,
+      decoderConfigCodec: format === 'wav' ? 'pcm-s16' : format,
+      profileId: DEFAULT_ROLLING_PCM_PROFILE_ID,
+      enabled: true
+    }));
+    harness.manager.prepareTrackBuffer = async track => {
+      fullDecodeCalls.set(track.name, (fullDecodeCalls.get(track.name) ?? 0) + 1);
+      return { duration: 1, length: 48000, numberOfChannels: 2, sampleRate: 48000 };
+    };
+    harness.manager.createRollingPcmTransport = () => ({
+      failed: false,
+      disposed: false,
+      async prepare(source) {
+        attempts.push(source.format);
+        const track = harness.playlist.find(item => item.file === source.mediaSource);
+        assert.ok(track);
+        const reason = track.partialDecodeFailureReason;
+        const error = new Error(reason);
+        error.code = reason;
+        error.partialDecodeFailure = Object.freeze({
+          reason,
+          format: source.format,
+          sourceByteLength: track.file.size,
+          decodedPcmBytes: track.verifiedDecodedPcmBytes,
+          verified: true
+        });
+        throw error;
+      },
+      async dispose() { this.disposed = true; }
+    });
+
+    const cases = [
+      {
+        name: 'bounded-exception.flac',
+        format: 'flac',
+        reason: 'partial-decode-unsupported',
+        verifiedDecodedPcmBytes: 8 * 1024 * 1024,
+        expectedMode: 'buffer',
+        expectedFullDecodes: 1
+      },
+      {
+        name: 'over-cap-exception.flac',
+        format: 'flac',
+        reason: 'partial-decode-unsupported',
+        verifiedDecodedPcmBytes: (128 * 1024 * 1024) + 4,
+        expectedMode: 'media',
+        expectedFullDecodes: 0
+      },
+      ...['wav', 'mp3'].flatMap(format => [
+        'partial-decode-unsupported',
+        'rolling-memory-budget',
+        'rolling-admission-rejected',
+        'rolling-transient-budget',
+        'rolling-decode-failed'
+      ].map(reason => ({
+        name: `${reason}.${format}`,
+        format,
+        reason,
+        verifiedDecodedPcmBytes: 8 * 1024 * 1024,
+        expectedMode: 'media',
+        expectedFullDecodes: 0
+      })))
+    ];
+    harness.playlist.splice(0, harness.playlist.length, ...cases.map(item => ({
+      name: item.name,
+      file: new FakeFile(item.name, new Uint8Array(1024).buffer),
+      durationSec: 1,
+      sampleRate: 48000,
+      channelCount: 2,
+      partialDecodeFailureReason: item.reason,
+      verifiedDecodedPcmBytes: item.verifiedDecodedPcmBytes
+    })));
+
+    const results = [];
+    for (let index = 0; index < cases.length; index += 1) {
+      const track = harness.playlist[index];
+      const prepared = await harness.manager.prepareTrackTransitionRequest(
+        track, index, () => false, null, null
+      );
+      results.push({
+        name: track.name,
+        committedMode: prepared.decisionRecord.committedMode,
+        fullDecodeCalls: fullDecodeCalls.get(track.name) ?? 0
+      });
+    }
+
+    assert.deepEqual(results, cases.map(item => ({
+      name: item.name,
+      committedMode: item.expectedMode,
+      fullDecodeCalls: item.expectedFullDecodes
+    })));
+    assert.deepEqual(attempts, cases
+      .filter(item => item.format !== 'mp3')
+      .map(item => item.format));
+    assert.equal(FakeAudioElement.instances.length, 0);
+  });
+});
+
+test('resource-safe ordinary PCM WAVE fallback does not inspect full-track bytes', async () => {
+  await withAudioContextGlobals({}, async () => {
+    const harness = createHarness();
+    harness.manager.rollingPolicyMode = RollingPolicyMode.RESOURCE_SAFE_LEGACY;
+    let decodeCalls = 0;
+    harness.audioContext.decodeAudioData = () => { decodeCalls += 1; };
+
+    const malformedFile = new FakeFile('malformed.wav', new Uint8Array([1, 2, 3]).buffer);
+    let malformedReads = 0;
+    malformedFile.arrayBuffer = async () => {
+      malformedReads += 1;
+      return malformedFile._buffer;
+    };
+    const malformedDescriptor = harness.manager.createPlaybackSourceDescriptor({
+      name: malformedFile.name,
+      file: malformedFile
+    });
+    const malformed = await harness.manager.preparePlaybackDecisionRecord(
+      { name: malformedFile.name, file: malformedFile },
+      malformedDescriptor
+    );
+
+    const falseExtensionFile = new FakeFile('false.mp3', createPcmWaveBytes().buffer);
+    let falseExtensionReads = 0;
+    falseExtensionFile.arrayBuffer = async () => {
+      falseExtensionReads += 1;
+      return falseExtensionFile._buffer;
+    };
+    const falseExtensionTrack = { name: falseExtensionFile.name, file: falseExtensionFile };
+    const falseExtension = await harness.manager.preparePlaybackDecisionRecord(
+      falseExtensionTrack,
+      harness.manager.createPlaybackSourceDescriptor(falseExtensionTrack)
+    );
+
+    const overCapFile = new FakeFile('over-cap.wav', createPcmWaveBytes({
+      sampleRate: 8000,
+      channelCount: 1,
+      bitsPerSample: 8,
+      frameCount: 33_554_433
+    }).buffer);
+    let overCapReads = 0;
+    overCapFile.arrayBuffer = async () => {
+      overCapReads += 1;
+      return overCapFile._buffer;
+    };
+    const overCapTrack = { name: overCapFile.name, file: overCapFile };
+    const overCap = await harness.manager.preparePlaybackDecisionRecord(
+      overCapTrack,
+      harness.manager.createPlaybackSourceDescriptor(overCapTrack)
+    );
+
+    assert.equal(malformed.committedMode, 'media');
+    assert.equal(falseExtension.committedMode, 'media');
+    assert.equal(overCap.committedMode, 'media');
+    assert.equal(malformedReads, 0);
+    assert.equal(falseExtensionReads, 0);
+    assert.equal(overCapReads, 0);
+    assert.equal(decodeCalls, 0);
   });
 });
 

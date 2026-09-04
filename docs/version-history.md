@@ -6,11 +6,13 @@ lang: en
 
 # Version History
 
-### Version 2.8.0 (TBD, 2026)
-- Added physical controller parameter mapping for MIDI, gamepads, and the keyboard.
-- Added an optional three-state spectrum display to supported effect graphs, with After-only and signed Before + After comparison views.
-- Added 1/12-octave smoothing to the effect-graph spectrum display for clearer high-frequency trends.
-- Added WAV and FLAC format, sample-rate, and quality options for processed audio files, including 16-bit and 24-bit FLAC.
+### Version 2.8.0 (Sep 5, 2026)
+- Added Crosstalk Cancellation, Click Remover, Clip Restorer, Hum Remover and Noise Reduction effects
+- Added physical controller parameter mapping for MIDI, gamepads, and the keyboard
+- Added an optional three-state spectrum display to supported effect graphs, with After-only and signed Before + After comparison views
+- Added WAV and FLAC format, sample-rate, and quality options for processed audio files, including 16-bit and 24-bit FLAC
+- Added a Gapless Playback setting to Audio Configuration and reduced music player memory use during gapless playback
+- The desktop app now keeps the Impulse Response Library in its application data folder and mirrors every saved measurement as a JSON backup there
 - Various minor improvements
 
 ### Version 2.7.0 (Aug 29, 2026)

@@ -38,7 +38,7 @@
   },
   "performanceBudgetMs": 2500,
   "referenceEngine": "native-five-band-fir-peq-direct-double-v1",
-  "referenceHash": "a28b2b7c18aaecb4139243fcd3b7f568fe123470bf5c9a7f9c580367a57842dc",
+  "referenceHash": "d5498167d824d3f58b107a2586d05bcb8b82ac85a777eadd70a59dca0599d85b",
   "outputFloats": 6144,
   "byteLength": 24576,
   "binary": "case-002.f32"

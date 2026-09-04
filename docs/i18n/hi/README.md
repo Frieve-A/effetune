@@ -49,6 +49,10 @@ EffeTune का उपयोग करने से पहले ऑडियो
    - या संगीत फ़ाइल को विंडो में ड्रैग करें
 - केवल संगीत फ़ाइल प्लेयर के लिए, ऑडियो विन्यास में इनपुट डिवाइस के रूप में कोई नहीं (केवल संगीत फ़ाइल प्लेयर) चुनें ताकि लाइव ऑडियो इनपुट का उपयोग न हो
 
+### बिना अंतराल प्लेबैक
+
+**बिना अंतराल प्लेबैक** डिफ़ॉल्ट रूप से चालू रहता है और इसे **ऑडियो विन्यास** में बदला जा सकता है। चालू होने पर मौजूदा फ़ाइल फ़ॉर्मैट और ब्राउज़र या ऐप परिवेश में समर्थित स्थानीय ट्रैक बिना अंतराल के चलते हैं; इसका समर्थन सीमित है। असमर्थित फ़ॉर्मैट और कुछ मोबाइल परिवेश अपने-आप सीमित मेमोरी वाले सुरक्षित विकल्प पर चले जाते हैं, इसलिए ट्रैक के बीच छोटा अंतराल फिर भी आ सकता है। इसे बंद करने पर कम मेमोरी उपयोग और स्थिरता को प्राथमिकता मिलती है और ट्रैक के बीच सामान्य छोटा अंतराल आ सकता है। यह सेटिंग बदलने से चल रहा ट्रैक बाधित नहीं होता।
+
 ### स्ट्रीमिंग सेवा सेटअप
 
 स्ट्रीमिंग सेवाओं (Spotify, YouTube Music आदि) से ऑडियो प्रोसेस करने के लिए:
@@ -377,6 +381,10 @@ PC पर Chromium ब्राउज़र चुने हुए संगी�
 | Resonator | Horn Resonator | customizable dimensions वाला horn resonance simulation | [विवरण](plugins/resonator.md#horn-resonator) |
 | Resonator | Horn Resonator Plus | natural listening color के लिए smoother horn-speaker resonance | [विवरण](plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | 5 resonators तक वाला frequency resonance effect | [विवरण](plugins/resonator.md#modal-resonator) |
+| Restoration | Click Remover | छोटे क्लिक, क्रैकल, पॉप और ड्रॉपआउट ठीक करता है | [विवरण](plugins/restoration.md#click-remover) |
+| Restoration | Clip Restorer | hard clipping से चपटे हुए पीक को बहाल करता है | [विवरण](plugins/restoration.md#clip-restorer) |
+| Restoration | Hum Remover | स्थिर इलेक्ट्रिकल हम और उसके harmonics हटाता है | [विवरण](plugins/restoration.md#hum-remover) |
+| Restoration | Noise Reduction | संगीत को बनाए रखते हुए लगातार पृष्ठभूमि शोर कम करता है | [विवरण](plugins/restoration.md#noise-reduction) |
 | Reverb    | Dattorro Plate Reverb | Dattorro algorithm आधारित classic plate reverb | [विवरण](plugins/reverb.md#dattorro-plate-reverb) |
 | Reverb    | FDN Reverb | rich, dense reverb textures वाला Feedback Delay Network reverb | [विवरण](plugins/reverb.md#fdn-reverb) |
 | Reverb    | IR Reverb | इम्पोर्ट की गई room और equipment impulse responses वाला convolution reverb | [विवरण](plugins/reverb.md#ir-reverb) |
@@ -391,6 +399,7 @@ PC पर Chromium ब्राउज़र चुने हुए संगी�
 | Saturation| Sub Synth | bass enhancement के लिए filtered low-frequency signal मिलाता है | [विवरण](plugins/saturation.md#sub-synth) |
 | Saturation| Tube Simulator | tube line stages और push-pull या 300B/2A3 single-ended triode power amplifiers को मॉडल करता है | [विवरण](plugins/saturation.md#tube-simulator) |
 | Spatial   | Crossfeed Filter | natural stereo imaging के लिए headphone crossfeed filter | [विवरण](plugins/spatial.md#crossfeed-filter) |
+| Spatial   | Crosstalk Cancellation | कान के पास की माप से स्टीरियो स्पीकरों के बीच क्रॉसटॉक घटाता है | [विवरण](plugins/spatial.md#crosstalk-cancellation) |
 | Spatial   | MS Matrix | center/ambience adjustments के लिए stereo और Mid/Side के बीच convert करता है | [विवरण](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5-band frequency-dependent stereo balance control | [विवरण](plugins/spatial.md#multiband-balance) |
 | Spatial   | Phase Select EQ | L/R phase difference और Balance से चुने गए frequency components को boost या cut करता है | [विवरण](plugins/spatial.md#phase-select-eq) |

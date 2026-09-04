@@ -21,19 +21,13 @@ const configModule = require('./config');
 const windowState = require('./window-state');
 const ipcHandlers = require('./ipc-handlers');
 const fileHandlers = require('./file-handlers');
-const {
-  registerLibraryCatalogIpc,
-  registerLibraryCatalogControlIpc
-} = require('./library-catalog-host.cjs');
-const { LibraryCatalogUtilityHost } = require('./library-catalog-utility-host.cjs');
-const { createLibraryDialogTranslator } = require('./library-dialog-localization.cjs');
+const { queueAutoRestart } = require('./relaunch');
+const { armQuitDeadline, QUIT_DEADLINE_DEFAULT_TIMEOUT_SECONDS } = require('./quit-deadline.cjs');
+const { createInstanceRegistry } = require('./instance-registry.cjs');
 const {
   LibraryCatalogRecovery,
   registerLibraryCatalogRecoveryIpc
 } = require('./library-catalog-recovery.cjs');
-const {
-  registerLibraryServiceIpc
-} = require('./library-service-coordinator.cjs');
 const {
   createOpenHomeControlHost,
   registerOpenHomeIpc
@@ -57,6 +51,38 @@ function isSupportedPlaybackAudioPath(filePath) {
 let tray = null;
 let isAppQuitting = false;
 let appServicesShutdownReady = false;
+let instanceRegistry = null;
+let quitProtectionArmed = false;
+// A predecessor that is still shutting down gets the quit deadline plus a
+// small margin before this process opens its own storage.
+const PREDECESSOR_WAIT_MS = (QUIT_DEADLINE_DEFAULT_TIMEOUT_SECONDS + 5) * 1000;
+
+// Records this process as quitting and arms the external quit deadline so a
+// shutdown blocked inside Chromium or a third-party driver can never leave a
+// zombie holding the browser storage lock files.
+function armQuitProtection() {
+  if (quitProtectionArmed) return;
+  quitProtectionArmed = true;
+  try {
+    instanceRegistry?.markQuitting();
+  } catch (error) {
+    console.error('Instance registry update failed:', error?.code || error?.name || 'unknown');
+  }
+  armQuitDeadline({ timeoutSeconds: QUIT_DEADLINE_DEFAULT_TIMEOUT_SECONDS });
+}
+
+async function waitForPredecessorShutdown() {
+  try {
+    instanceRegistry = createInstanceRegistry({ userDataPath: fileHandlers.getUserDataPath() });
+    const result = await instanceRegistry.waitForQuittingPredecessors({ timeoutMs: PREDECESSOR_WAIT_MS });
+    if (result.waitedMs > 0) {
+      console.log(`[instances] waited ${result.waitedMs}ms for a quitting predecessor`);
+    }
+    instanceRegistry.register();
+  } catch (error) {
+    console.error('Instance registry unavailable:', error?.code || error?.name || 'unknown');
+  }
+}
 let libraryServiceCoordinator = null;
 let disposeLibraryServiceIpc = null;
 let libraryCatalogScanRuntime = null;
@@ -89,6 +115,19 @@ async function closeLibraryCatalogServices() {
 }
 
 async function openLibraryCatalogServices({ catalogDirectory, catalogPath }) {
+  const [catalogHost, utilityHostModule, dialogLocalization, serviceCoordinator] = [
+    require('./library-catalog-host.cjs'),
+    require('./library-catalog-utility-host.cjs'),
+    require('./library-dialog-localization.cjs'),
+    require('./library-service-coordinator.cjs')
+  ];
+  const {
+    registerLibraryCatalogIpc,
+    registerLibraryCatalogControlIpc
+  } = catalogHost;
+  const { LibraryCatalogUtilityHost } = utilityHostModule;
+  const { createLibraryDialogTranslator } = dialogLocalization;
+  const { registerLibraryServiceIpc } = serviceCoordinator;
   fs.mkdirSync(catalogDirectory, { recursive: true });
   const utilityHost = await LibraryCatalogUtilityHost.open({
     dialog,
@@ -190,7 +229,7 @@ async function closeApplicationServices() {
 }
 
 // When true, mainWindow.show() is deferred from its ready-to-show handler to
-// the splash flow's post-reload did-finish-load — so the main UI is never
+// the splash flow's post-warm-up did-finish-load — so the main UI is never
 // visible behind the splash.  Set only when a splash is going to be shown.
 let pendingMainWindowShow = false;
 
@@ -201,26 +240,26 @@ let pendingMainWindowShow = false;
 // the last-resort safety net behind the in-renderer timeouts.
 const WATCHDOG_PING_INTERVAL_MS = 2000;
 const WATCHDOG_THRESHOLD_MS = 15000;
-// If app.exit() repeatedly throws (deterministic invalid-lifecycle state),
+// If app.quit() repeatedly throws (deterministic invalid-lifecycle state),
 // fall back to a hard process.exit(1) after this many attempts so the
 // watchdog cannot become an infinite log-spam loop.
-const WATCHDOG_MAX_EXIT_ATTEMPTS = 5;
+const WATCHDOG_MAX_QUIT_ATTEMPTS = 5;
 let lastRendererPing = 0;
 let watchdogIntervalId = null;
 let watchdogArmed = false;
 let watchdogArmedBeforeSystemSuspend = false;
 let watchdogSystemSuspended = false;
 // Set true once app.relaunch() has been registered, so a subsequent watchdog
-// tick (e.g., after app.exit() throws) does not queue a second relaunch.
+// tick (e.g., after app.quit() throws) does not queue a second relaunch.
 let watchdogRelaunchQueued = false;
-// Counts consecutive failed app.exit() attempts to bound the retry loop.
-let watchdogExitAttempts = 0;
+// Counts consecutive failed app.quit() attempts to bound the retry loop.
+let watchdogQuitAttempts = 0;
 
 function armRendererWatchdog(reason = 'renderer') {
   if (watchdogSystemSuspended) return;
   lastRendererPing = Date.now();
   watchdogRelaunchQueued = false;
-  watchdogExitAttempts = 0;
+  watchdogQuitAttempts = 0;
   if (!watchdogArmed) {
     watchdogArmed = true;
     console.log(`[watchdog] armed (${reason})`);
@@ -234,7 +273,7 @@ function disarmRendererWatchdog(reason = 'navigation') {
   watchdogArmed = false;
   lastRendererPing = 0;
   watchdogRelaunchQueued = false;
-  watchdogExitAttempts = 0;
+  watchdogQuitAttempts = 0;
 }
 
 function rendererPingReceived() {
@@ -254,31 +293,30 @@ function startWatchdog() {
 
     console.error(`[watchdog] Renderer unresponsive for ${elapsed}ms — forcing relaunch`);
     // Note: a queued relaunch cannot be cancelled if the renderer happens to
-    // recover between app.relaunch() and app.exit() taking effect — the
+    // recover between app.relaunch() and app.quit() taking effect — the
     // relaunch will still happen.  This is an accepted trade-off for a
     // last-resort safety net (Electron has no cancelRelaunch() API).
     try {
       // Step 1: register the relaunch (idempotent only against our own guard
       // — Electron's app.relaunch() queues per-call and we don't want stacks).
       if (!watchdogRelaunchQueued) {
-        app.relaunch({ args: [...process.argv.slice(1), constants.AUTO_RESTART_FLAG] });
+        queueAutoRestart(app);
         watchdogRelaunchQueued = true;
       }
-      // Step 2: terminate the current process.  app.exit() returns
-      // synchronously to JS but actual termination happens after the event
-      // loop unwinds, so the line below normally runs.  We clear the interval
-      // here so the watchdog does not fire again before exit takes effect.
-      app.exit(0);
+      // Step 2: use the normal quit lifecycle so Chromium storage and app
+      // services release their files before the replacement process starts.
+      // The window close path has its own bounded fallback for a frozen renderer.
+      app.quit();
       clearInterval(watchdogIntervalId);
       watchdogIntervalId = null;
     } catch (e) {
-      // relaunch() or exit() threw (rare; usually invalid lifecycle state).
-      watchdogExitAttempts++;
+      // relaunch() or quit() threw (rare; usually invalid lifecycle state).
+      watchdogQuitAttempts++;
       console.error(
-        `[watchdog] relaunch/exit failed (attempt ${watchdogExitAttempts}/${WATCHDOG_MAX_EXIT_ATTEMPTS}), will retry on next tick:`,
+        `[watchdog] relaunch/quit failed (attempt ${watchdogQuitAttempts}/${WATCHDOG_MAX_QUIT_ATTEMPTS}), will retry on next tick:`,
         e
       );
-      if (watchdogExitAttempts >= WATCHDOG_MAX_EXIT_ATTEMPTS) {
+      if (watchdogQuitAttempts >= WATCHDOG_MAX_QUIT_ATTEMPTS) {
         // Hard fallback: bypass Electron's lifecycle entirely so we don't
         // spin-loop forever logging.  Pipeline state was already saved before
         // this watchdog fired (or the renderer was unresponsive — best effort).
@@ -369,6 +407,23 @@ if (process.platform === 'darwin') {
   app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
 }
 
+// Chromium 152 requires a child-process capability in addition to the Web MIDI
+// permission granted below, but Electron 44 does not propagate its basic MIDI
+// grant to that capability. Without this compatibility switch, even non-SysEx
+// requestMIDIAccess() calls always fail with NotAllowedError. EffeTune blocks
+// renderer navigation and requests only non-SysEx MIDI, so this restores the
+// trusted-renderer access intended by the explicit session permission below.
+if (process.versions.electron?.startsWith('44.')) {
+  const disabledFeatures = app.commandLine.getSwitchValue('disable-features')
+    .split(',')
+    .map(feature => feature.trim())
+    .filter(Boolean);
+  if (!disabledFeatures.includes('BlockMidiByDefault')) {
+    disabledFeatures.push('BlockMidiByDefault');
+    app.commandLine.appendSwitch('disable-features', disabledFeatures.join(','));
+  }
+}
+
 // OpenHome transport commands arrive over IPC and therefore cannot carry a
 // Chromium transient user activation. Allow the desktop audio player to honor
 // those explicit remote playback commands.
@@ -380,7 +435,7 @@ function setupFileLogging() {
 }
 
 // Bring mainWindow into its persisted display state (maximized or normal).
-// Used by both the initial ready-to-show path and the post-splash-reload
+// Used by both the initial ready-to-show path and the post-splash
 // did-finish-load path, so they cannot drift out of sync.
 function showMainWindowInRestoredState(mainWindow) {
   if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isMinimized()) return;
@@ -520,16 +575,20 @@ function createWindow() {
       // ShowWindow(SW_MAXIMIZE), which makes the (until then hidden) window
       // visible as a side effect — defeating the splash defer.  So the
       // maximize+show pair has to be co-deferred when a splash is pending,
-      // and re-applied in the post-reload did-finish-load handler.
+      // and re-applied after the application document loads.
       showMainWindowInRestoredState(mainWindow);
     }
   });
   
-  // Load the app's HTML file
-  mainWindow.loadFile('effetune.html');
+  // The sacrificial startup renderer only opens and drives the audio output.
+  // It deliberately avoids parsing the application UI and its assets.
+  mainWindow.loadFile(constants.getIsFirstLaunch() ? 'startup-audio.html' : 'effetune.html');
 
   // Combined event handler for page load
   mainWindow.webContents.on('did-finish-load', () => {
+    // The audio warm-up document has no application UI or command handlers.
+    // Defer all renderer setup until the real application document is loaded.
+    if (constants.getIsFirstLaunch()) return;
      
     // 1. Disable Electron's built-in zoom functionality
     mainWindow.webContents.setZoomFactor(1.0);
@@ -556,11 +615,6 @@ function createWindow() {
       
       // Set first launch flag for audio workaround
       window.isFirstLaunch = ${constants.getIsFirstLaunch()};
-      
-      // Get user data path to check if we're in portable mode
-      const userDataPath = '${fileHandlers.getUserDataPath()}';
-      const standardUserDataPath = '${app.getPath('userData')}';
-      const isPortableMode = userDataPath !== standardUserDataPath;
       
       // Set pipeline state loaded flag based on commandLinePresetFile and portable mode
       // If commandLinePresetFile is set, don't load previous pipeline state
@@ -794,6 +848,14 @@ function createWindow() {
     // Prevent the window from closing immediately
     event.preventDefault();
 
+    // The sacrificial audio-only warm-up document has no application state
+    // and no listener for 'request-pipeline-state-for-close', so waiting on
+    // it would always burn the full timeout. Close it immediately instead.
+    if (constants.getIsFirstLaunch()) {
+      finalizeClose();
+      return;
+    }
+
     // Request the renderer process to send pipeline state
     if (mainWindow && mainWindow.webContents) {
       // Set a timeout to ensure the app closes even if renderer doesn't respond
@@ -954,8 +1016,7 @@ function createSplashScreen() {
     show: false,
     webPreferences: {
       nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
+      contextIsolation: true
     }
   });
   
@@ -1079,12 +1140,23 @@ function createSplashScreen() {
     splashWindow.show();
   });
   
-  // Workaround for audio issues: reload the window after 3 seconds
+  // Keep the audio-only renderer active for the legacy warm-up interval.
   setTimeout(() => {
+    // A quit started during the warm-up keeps the main window alive while
+    // before-quit awaits the service shutdown, so bail out instead of loading
+    // and showing the application document in the middle of that teardown.
+    if (isAppQuitting) return;
+
+    // The warm-up window has elapsed, regardless of whether the main window
+    // survived it. This flag gates which document createWindow() loads next
+    // (see the loadFile call above), so it must not stay stuck on true just
+    // because the window that started the warm-up was closed in the meantime
+    // — otherwise a later activate/createWindow would keep re-opening the
+    // sacrificial audio-only document forever.
+    constants.setIsFirstLaunch(false);
+
     const mainWindow = constants.getMainWindow();
     if (mainWindow) {
-      constants.setIsFirstLaunch(false);
-      
       // Set flag to indicate this is a splash screen reload
       constants.setIsSplashReload(true);
       
@@ -1094,14 +1166,14 @@ function createSplashScreen() {
       // Save command line music files before reload
       constants.setSavedCommandLineMusicFiles([...process.argv]);
       
-      // Close splash window and reload main window
+      // Close the visual splash before loading the application document.
       if (splashWindow && !splashWindow.isDestroyed()) {
         splashWindow.close();
         splashWindow = null;
       }
 
       // If the maximize+show pair was deferred to hide the UI behind the
-      // splash, apply it once the reloaded content has finished loading.
+      // splash, apply it once the application document has finished loading.
       if (pendingMainWindowShow) {
         mainWindow.webContents.once('did-finish-load', () => {
           pendingMainWindowShow = false;
@@ -1109,10 +1181,10 @@ function createSplashScreen() {
         });
       }
 
-      // Reload the main window
-      mainWindow.reload();
+      // Replace the audio-only renderer with the application document.
+      mainWindow.loadFile('effetune.html');
       
-      // Check for updates after reload if enabled in config
+      // Check for updates after the application document loads if enabled in config
       setTimeout(() => {
         const cfg = constants.getAppConfig();
         if (cfg && cfg.checkForUpdatesOnStartup !== false) {
@@ -1281,8 +1353,9 @@ async function initializeApp() {
     constants.setStartupPreset(cfg.startupPreset);
   }
 
-  // Register recovery before creating the renderer, but initialize the optional
-  // catalog only after the core window and IPC are ready.
+  // Register the lightweight recovery endpoint before creating the renderer.
+  // The catalog modules and utility process are opened only when the renderer
+  // first requests the Music Library.
   libraryCatalogRecovery = new LibraryCatalogRecovery({
     userDataPath,
     dialog,
@@ -1313,11 +1386,21 @@ async function initializeApp() {
     getMainWindow: () => constants.getMainWindow()
   });
 
+  // Every normal launch uses a sacrificial audio-only renderer. Auto-restarts
+  // skip it so their startup-grace clock is not reset by a second navigation.
+  const useStartupAudioWarmup = !process.argv.includes(constants.AUTO_RESTART_FLAG);
+  if (!useStartupAudioWarmup) {
+    constants.setIsFirstLaunch(false);
+  } else if (!constants.getAppConfig().startMinimized) {
+    pendingMainWindowShow = true;
+  }
+
+  // The audio-only document is intentionally tiny and can invoke its preference
+  // bridge immediately, so its IPC handlers must exist before navigation starts.
+  ipcHandlers.registerIpcHandlers();
+
   // Create the main window
   createWindow();
-  
-  // Register IPC handlers
-  ipcHandlers.registerIpcHandlers();
   
   // Register IPC handler for renderer-ready-for-music-files event
   ipcMain.on('renderer-ready-for-music-files', async (event) => {
@@ -1343,27 +1426,11 @@ async function initializeApp() {
     }
   });
 
-  void libraryCatalogRecovery.initialize().catch(error => {
-    console.error(
-      'Music library catalog initialization diagnostic:',
-      String(error?.code || error?.name || 'catalogUnavailable').slice(0, 128)
-    );
-    void libraryCatalogRecovery?.markUnavailable(error);
-  });
-  
-  // Show splash + 3s reload on every normal launch (Windows workaround for
+  // Run the splash + 3s audio warm-up on every normal launch (Windows workaround for
   // audio instability at startup).  Skip only on auto-restart (watchdog or
-  // HDMI-recovery IPC), since the reload would reset the renderer's
+  // HDMI-recovery IPC), since another navigation would reset the renderer's
   // startup-grace clock and could mask the recovery.
-  if (process.argv.includes(constants.AUTO_RESTART_FLAG)) {
-    constants.setIsFirstLaunch(false);
-  } else {
-    // Defer mainWindow.show() to after the splash's 3s reload so the user
-    // never sees the main UI behind the splash.  Skip the defer when starting
-    // minimized — the ready-to-show handler hides/minimizes the window itself.
-    if (!constants.getAppConfig().startMinimized) {
-      pendingMainWindowShow = true;
-    }
+  if (useStartupAudioWarmup) {
     createSplashScreen();
   }
 }
@@ -1483,6 +1550,7 @@ app.setAsDefaultProtocolClient('effetune');
 // Main entry point
 app.whenReady().then(async () => {
   try {
+    await waitForPredecessorShutdown();
     await initializeApp();
   } catch (error) {
     console.error('Failed to initialize EffeTune:', error?.code || error?.name || 'unknown');
@@ -1512,6 +1580,7 @@ app.whenReady().then(async () => {
 app.on('before-quit', (event) => {
   isAppQuitting = true;
   stopWatchdog();
+  armQuitProtection();
   if (!appServicesShutdownReady && (libraryCatalogRecovery || openHomeControlHost)) {
     event.preventDefault();
     closeApplicationServices()

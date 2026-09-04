@@ -309,6 +309,10 @@ test('preload exposes catalog recovery independently from the catalog API', asyn
     channel: 'library-recovery-v1:get-state',
     args: [{}]
   });
+  assert.deepEqual(await recovery.initialize(), {
+    channel: 'library-recovery-v1:initialize',
+    args: [{}]
+  });
   assert.deepEqual(await recovery.resetCatalog({ confirmed: true }), {
     channel: 'library-recovery-v1:reset-catalog',
     args: [{ confirmed: true }]
@@ -436,13 +440,4 @@ test('preload exposes listener registration wrappers', () => {
     }],
     ['onIPC', ['a', 'b']]
   ]);
-});
-
-test('preload isFirstLaunch normalizes fulfilled and rejected IPC results', async () => {
-  const harness = createPreloadHarness();
-  loadPreload(harness);
-
-  assert.equal(await harness.exposed.electronAPI.isFirstLaunch(), true);
-  harness.rejectInvokeChannels.add('get-first-launch-flag');
-  assert.equal(await harness.exposed.electronAPI.isFirstLaunch(), false);
 });

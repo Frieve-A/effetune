@@ -40,6 +40,31 @@ function clearSweepTimers(elements) {
 }
 const MAX_PRACTICAL_PATH_LATENCY_SECONDS = 1;
 
+function scheduledPlaybackFrameForTime(time, sampleRate) {
+    return Math.round(time * sampleRate);
+}
+
+function trimStartOffsetSamples(preRollSamples, analysisStartSamples, timing) {
+    if (!Number.isSafeInteger(timing?.scheduledPlaybackFrame) ||
+        !Number.isSafeInteger(timing?.captureStartFrame)) {
+        return 0;
+    }
+    const assumedOffset = preRollSamples + analysisStartSamples;
+    const measuredOffset = timing.scheduledPlaybackFrame - timing.captureStartFrame;
+    return assumedOffset - measuredOffset;
+}
+
+function outputTimeReferenceForRoute(route, timing = null) {
+    if (route?.mode === 'media-element') return 'media-element';
+    if (route?.mode !== 'direct' ||
+        !Number.isSafeInteger(timing?.scheduledPlaybackFrame) ||
+        !Number.isSafeInteger(timing?.captureStartFrame) ||
+        timing.scheduledPlaybackFrame < 0 || timing.captureStartFrame < 0) {
+        return 'unknown';
+    }
+    return 'audio-context';
+}
+
 function createSweepCapturePlan(sweepLength, averagingCount, sampleRate) {
     const guardSamples = Math.ceil(
         (SWEEP_START_DELAY_SECONDS + MAX_PRACTICAL_PATH_LATENCY_SECONDS) * sampleRate
@@ -89,6 +114,8 @@ const AudioProcessing = {
             irValid: processed.irValid,
             onsetIndex: processed.onsetIndex,
             prerollSamples: processed.prerollSamples,
+            trimStartSamples: processed.trimStartSamples,
+            outputTimeReference: processed.outputTimeReference,
             sweepLimited: processed.sweepLimited,
             peakDb: processed.peakDb,
             refScale: processed.refScale
@@ -225,6 +252,8 @@ const AudioProcessing = {
                 let recordNode;
                 let recordingStarted = false;
                 let recordIndex = 0;
+                let captureStartFrame = null;
+                let scheduledPlaybackFrame = null;
                 let hasOverload = false;
                 let maxSignalLevel = -100; // Variable to track maximum signal level
                 
@@ -286,6 +315,8 @@ const AudioProcessing = {
                         if (event.data.status === 'started') {
                             recordingStarted = true;
                             console.log('Recording started');
+                        } else if (event.data.status === 'capture-frame') {
+                            captureStartFrame = event.data.startFrame;
                         } else if (event.data.buffer) {
                             // Received audio data from worklet
                             const incomingBuffer = event.data.buffer;
@@ -382,11 +413,16 @@ const AudioProcessing = {
                         
                         // Track when playback starts
                         startTime = audioContext.currentTime;
+                        const scheduledPlaybackTime = startTime + SWEEP_START_DELAY_SECONDS;
+                        scheduledPlaybackFrame = scheduledPlaybackFrameForTime(
+                            scheduledPlaybackTime,
+                            sampleRate
+                        );
                         playbackStarted = true;
                         console.log(`Playback started at ${startTime}`);
                         
                         // Schedule playback start slightly in the future for better stability
-                        source.start(audioContext.currentTime + SWEEP_START_DELAY_SECONDS);
+                        source.start(scheduledPlaybackTime);
                         
                         // Track when playback ends
                         source.onended = () => {
@@ -477,7 +513,12 @@ const AudioProcessing = {
                             finalBuffer,
                             sweepBuffer.length,
                             averagingCount,
-                            sampleRate
+                            sampleRate,
+                            {
+                                outputRoute,
+                                scheduledPlaybackFrame,
+                                captureStartFrame
+                            }
                         );
                         const processedBuffer = processed.analysisImpulseResponse;
 
@@ -549,7 +590,7 @@ const AudioProcessing = {
      * @param {number} sampleRate - Sample rate in Hz
      * @returns {Object} Processed and trimmed impulse response
      */
-    processRecordedBuffer(recordBuffer, sweepLength, averagingCount, sampleRate) {
+    processRecordedBuffer(recordBuffer, sweepLength, averagingCount, sampleRate, timing = null) {
         console.time('processRecordedBuffer');
         const calibrationRequired = Boolean(this.interfaceCalibrationImpulseResponse);
         
@@ -582,6 +623,12 @@ const AudioProcessing = {
                 averagingCount,
                 sampleRate
             );
+            const trimOffset = trimStartOffsetSamples(
+                preRollSamples,
+                capturePlan.analysisStartSamples,
+                timing
+            );
+            const outputTimeReference = outputTimeReferenceForRoute(timing?.outputRoute, timing);
             
             // Extract complete steady-state periods for circular deconvolution.
             // Guard periods cover the scheduled start and practical device-path
@@ -688,7 +735,23 @@ const AudioProcessing = {
             }
             
             const onsetIndex = detectOnset(result, sampleRate);
-            const trimmed = trimMeasurementImpulseResponse(result, sampleRate, sweepLength, onsetIndex);
+            const trimmed = trimMeasurementImpulseResponse(
+                result,
+                sampleRate,
+                sweepLength,
+                onsetIndex,
+                trimOffset
+            );
+            // The analysis window starts a whole guard period after the pre-roll,
+            // and that guard is not part of the path latency, so remove it from the
+            // anchor. The anchor turns negative when the capture leads the pre-roll.
+            // Without an audio-context time reference the capture offset is unknown,
+            // so no anchor exists: drop it rather than store a meaningless one.
+            if (outputTimeReference === 'audio-context') {
+                trimmed.trimStartSamples -= capturePlan.analysisStartSamples;
+            } else {
+                trimmed.trimStartSamples = null;
+            }
             let peak = 0;
             for (const sample of trimmed.data) {
                 const magnitude = sample < 0 ? -sample : sample;
@@ -715,7 +778,8 @@ const AudioProcessing = {
                     ...calibrated,
                     analysisImpulseResponse: calibrated.data,
                     impulseResponse: calibrated.data,
-                    irValid: true
+                    irValid: true,
+                    outputTimeReference
                 };
             }
 
@@ -728,6 +792,7 @@ const AudioProcessing = {
                 analysisImpulseResponse: result,
                 impulseResponse: trimmed.data,
                 irValid: true,
+                outputTimeReference,
                 peakDb: peak > 0 ? 20 * Math.log10(peak) : -Infinity,
                 refScale
             };
@@ -842,4 +907,10 @@ const AudioProcessing = {
 };
 
 export default AudioProcessing;
-export { createRepeatedSweepAudioBuffer, createSweepCapturePlan };
+export {
+    createRepeatedSweepAudioBuffer,
+    createSweepCapturePlan,
+    scheduledPlaybackFrameForTime,
+    trimStartOffsetSamples,
+    outputTimeReferenceForRoute
+};

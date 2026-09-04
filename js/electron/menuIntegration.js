@@ -99,7 +99,8 @@ export async function updateApplicationMenu(isElectron) {
       'view.musicLibrary': { label: t('menu.view.musicLibrary') },
       'view.pipelineAnalyzer': {
         label: t('menu.view.pipelineAnalyzer'),
-        checked: window.uiManager.pipelineAnalyzerController?.state?.open === true
+        checked: (window.uiManager.isPipelineAnalyzerOpen?.() ??
+          window.uiManager.pipelineAnalyzerController?.state?.open) === true
       },
       'toggle-fullscreen': { label: t('menu.view.toggleFullscreen') },
       'view.miniPlayer': { label: t('menu.view.miniPlayer') },

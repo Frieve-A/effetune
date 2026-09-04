@@ -89,13 +89,16 @@ list(
   "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/gsm_full_rate_simulator/codec.cpp")
 
 if(NOT EMSCRIPTEN)
-  # JS golden parity requires separate multiply-add rounding in these kernels.
+  # Golden parity requires separate multiply-add rounding in these kernels.
   set_property(
     SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/dynamics/auto_leveler/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/bluetooth_sbc_simulator/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/cassette_artifacts/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/tape_artifacts/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/vinyl_artifacts/kernel.cpp"
+           "${CMAKE_CURRENT_SOURCE_DIR}/plugins/restoration/click_remover/kernel.cpp"
+           "${CMAKE_CURRENT_SOURCE_DIR}/plugins/restoration/clip_restorer/kernel.cpp"
+           "${CMAKE_CURRENT_SOURCE_DIR}/plugins/restoration/noise_reduction/kernel.cpp"
     APPEND
     PROPERTY COMPILE_OPTIONS
              "$<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-ffp-contract=off>")
@@ -247,6 +250,8 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
   set_property(
     TARGET effetune_dsp_pffft_incremental_tests
     PROPERTY LINK_LIBRARIES pffft)
+  et_add_dsp_test(
+    effetune_dsp_ar_interpolator_tests SOURCES test/ar_interpolator_test.cpp)
   et_add_dsp_test(effetune_dsp_biquad_tests SOURCES test/biquad_test.cpp)
   et_add_dsp_test(effetune_dsp_halfband_tests SOURCES test/halfband_test.cpp)
   et_add_dsp_test(
@@ -443,6 +448,26 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
     INCLUDE_DIRS core generated/cpp
     WRAP_MALLOC)
   et_add_dsp_test(
+    effetune_dsp_click_remover_tests
+    SOURCES plugins/restoration/click_remover/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_clip_restorer_tests
+    SOURCES plugins/restoration/clip_restorer/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_hum_remover_tests
+    SOURCES plugins/restoration/hum_remover/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_noise_reduction_tests
+    SOURCES plugins/restoration/noise_reduction/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
     effetune_dsp_reverb_tests
     SOURCES plugins/reverb/reverb_native_test.cpp
     INCLUDE_DIRS core
@@ -530,6 +555,11 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
     effetune_dsp_multiband_balance_tests
     SOURCES plugins/spatial/multiband_balance/native_test.cpp
     INCLUDE_DIRS core
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_crosstalk_cancellation_tests
+    SOURCES plugins/spatial/crosstalk_cancellation/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
     WRAP_MALLOC)
   et_add_dsp_test(
     effetune_dsp_phase_select_eq_tests

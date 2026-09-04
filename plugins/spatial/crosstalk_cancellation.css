@@ -1,0 +1,104 @@
+.crosstalk-cancellation-ui {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+}
+
+.crosstalk-cancellation-measurements,
+.crosstalk-cancellation-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(260px, 1fr));
+    gap: 8px 16px;
+    padding: 12px;
+    border-radius: 4px;
+    background: #2d2d2d;
+}
+
+.crosstalk-cancellation-section-title,
+.crosstalk-cancellation-refresh {
+    grid-column: 1 / -1;
+}
+
+.crosstalk-cancellation-section-title {
+    color: var(--et-text-primary);
+    font-weight: 600;
+}
+
+.crosstalk-cancellation-measurement-grid {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(260px, 1fr));
+    gap: 8px 16px;
+}
+
+.crosstalk-cancellation-measurement-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid #3d3d3d;
+    border-radius: 4px;
+    min-width: 0;
+}
+
+.crosstalk-cancellation-group-title {
+    color: var(--et-text-primary);
+    font-weight: 600;
+}
+
+.crosstalk-cancellation-ui .crosstalk-cancellation-measurement {
+    display: grid;
+    grid-template-columns: minmax(170px, auto) minmax(120px, 1fr);
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.crosstalk-cancellation-ui .crosstalk-cancellation-measurement > label {
+    white-space: nowrap;
+}
+
+.crosstalk-cancellation-ui .crosstalk-cancellation-measurement select {
+    min-width: 0;
+    width: 100%;
+}
+
+.crosstalk-cancellation-refresh {
+    justify-self: start;
+}
+
+.crosstalk-cancellation-status-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 0.6em;
+    margin: 2px 0;
+}
+
+.crosstalk-cancellation-status,
+.crosstalk-cancellation-details {
+    color: #bbb;
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+
+.crosstalk-cancellation-status[data-state='error'],
+.crosstalk-cancellation-status[data-state='warning'] {
+    color: #ff9f43;
+}
+
+body.layout-mobile .crosstalk-cancellation-measurements,
+body.layout-mobile .crosstalk-cancellation-controls,
+body.layout-mobile .crosstalk-cancellation-measurement-grid {
+    grid-template-columns: 1fr;
+}
+
+body.layout-mobile .crosstalk-cancellation-measurement {
+    grid-template-columns: 1fr;
+}
+
+body.layout-mobile .crosstalk-cancellation-measurement select,
+body.layout-mobile .crosstalk-cancellation-refresh {
+    min-height: var(--et-mobile-control-height);
+    font-size: 16px;
+}

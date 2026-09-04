@@ -1,0 +1,49 @@
+{
+  "formatVersion": 1,
+  "type": "ClickRemoverPlugin",
+  "id": "parameter-transitions-preserve-latency",
+  "stimulus": "sweep",
+  "sampleRate": 192000,
+  "channels": 2,
+  "frameCount": 8192,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "sn": 50,
+    "ml": 1
+  },
+  "events": [
+    {
+      "frame": 2201,
+      "params": {
+        "sn": 100
+      }
+    },
+    {
+      "frame": 4703,
+      "params": {
+        "ml": 2
+      }
+    },
+    {
+      "frame": 7109,
+      "params": {
+        "sn": 0,
+        "ml": 0.1
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.000002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:2e70a40ea64315eebf05dd36bcd73c1df8fe787c33c66442ef75490b4f616079",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type ClickRemoverPlugin --promote-production-native",
+  "outputFloats": 16384,
+  "byteLength": 65536,
+  "binary": "case-008.f32"
+}

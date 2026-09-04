@@ -29,7 +29,13 @@ export function detectOnset(samples, sampleRate = 48000) {
     return detectOnsetFromEnergies(energies, sampleRate).onsetFrame;
 }
 
-export function trimMeasurementImpulseResponse(samples, sampleRate, sweepLength, onsetIndex) {
+export function trimMeasurementImpulseResponse(
+    samples,
+    sampleRate,
+    sweepLength,
+    onsetIndex,
+    trimStartOffsetSamples = 0
+) {
     const prerollSamples = Math.min(4096, Math.max(0, sweepLength - 1));
     const start = Math.max(0, onsetIndex - prerollSamples);
     const storedOnset = onsetIndex - start;
@@ -44,6 +50,7 @@ export function trimMeasurementImpulseResponse(samples, sampleRate, sweepLength,
         data: Float32Array.from(samples.subarray(start, start + length)),
         onsetIndex: storedOnset,
         prerollSamples: storedOnset,
+        trimStartSamples: start + trimStartOffsetSamples,
         sweepLimited: length === sweepLength - prerollSamples
     };
 }

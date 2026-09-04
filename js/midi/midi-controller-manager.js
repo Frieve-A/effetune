@@ -53,6 +53,19 @@ function portList(portMap, registry) {
   return portEntries(portMap, registry).map(({ port, ...entry }) => entry);
 }
 
+// requestMIDIAccess() can hang for the whole session when a MIDI driver
+// blocks the browser's MIDI service (some software synthesizers raise modal
+// dialogs from their driver). The request is therefore bounded so the rest of
+// the controller mapping runtime keeps working without it.
+const DEFAULT_MIDI_ACCESS_TIMEOUT_MS = 15000;
+const MIDI_ACCESS_TIMED_OUT = Symbol('midi-access-timed-out');
+
+function createMidiStallError(timeoutMs) {
+  const error = new Error(`MIDI access request did not complete within ${timeoutMs} ms`);
+  error.name = 'TimeoutError';
+  return error;
+}
+
 export class MidiControllerManager {
   constructor({
     windowRef = globalThis.window,
@@ -62,7 +75,8 @@ export class MidiControllerManager {
     engine,
     localInputSources,
     mcuProtocol,
-    automationScheduler
+    automationScheduler,
+    midiAccessTimeoutMs = DEFAULT_MIDI_ACCESS_TIMEOUT_MS
   } = {}) {
     this.window = windowRef;
     this.navigator = navigatorRef;
@@ -93,6 +107,9 @@ export class MidiControllerManager {
     this.midiAccess = null;
     this.midiAccessError = null;
     this.midiRequest = null;
+    this.midiAccessTimer = null;
+    this.midiAccessStalled = false;
+    this.midiAccessTimeoutMs = midiAccessTimeoutMs;
     this.midiStateListening = false;
     this.inputPortSlots = createPortSlotRegistry();
     this.outputPortSlots = createPortSlotRegistry();
@@ -184,24 +201,57 @@ export class MidiControllerManager {
     if (this.disposed) return null;
     if (!this.isSupported() || this.midiAccess) return this.midiAccess;
     if (this.midiRequest) return this.midiRequest;
-    this.midiRequest = this.navigator.requestMIDIAccess({ sysex: false })
-      .then(access => {
+    // A MIDI request that never settles means the browser's MIDI service is
+    // stuck inside a driver. Asking again would only queue behind it, so MIDI
+    // stays off for the rest of the session; other input kinds keep working.
+    if (this.midiAccessStalled) return null;
+    let request;
+    try {
+      request = Promise.resolve(this.navigator.requestMIDIAccess({ sysex: false }));
+    } catch (error) {
+      request = Promise.reject(error);
+    }
+    const outcome = request.then(access => ({ access }), error => ({ error }));
+    const timedOut = new Promise(resolve => {
+      this.midiAccessTimer = setTimeout(() => resolve(MIDI_ACCESS_TIMED_OUT), this.midiAccessTimeoutMs);
+      this.midiAccessTimer?.unref?.();
+    });
+    this.midiRequest = Promise.race([outcome, timedOut])
+      .then(result => {
+        clearTimeout(this.midiAccessTimer);
+        this.midiAccessTimer = null;
         if (this.disposed) return null;
-        this.midiAccess = access;
+        if (result === MIDI_ACCESS_TIMED_OUT) {
+          this.midiAccessStalled = true;
+          this.midiAccessError = createMidiStallError(this.midiAccessTimeoutMs);
+          console.warn('MIDI access did not respond in time. MIDI stays off for this session; other controller mappings remain active.');
+          outcome.then(late => this.adoptLateMidiAccess(late));
+          return null;
+        }
+        if (result.error) {
+          this.midiAccessError = result.error;
+          console.warn('MIDI access is unavailable. Controller mappings remain saved.');
+          return null;
+        }
+        this.midiAccess = result.access;
         this.midiAccessError = null;
-        return access;
-      })
-      .catch(error => {
-        if (this.disposed) return null;
-        this.midiAccessError = error;
-        console.warn('MIDI access is unavailable. Controller mappings remain saved.');
-        return null;
+        return result.access;
       })
       .finally(() => {
         this.midiRequest = null;
         if (!this.disposed) this.emitChange();
       });
     return this.midiRequest;
+  }
+
+  // A request that finally settles after its deadline is still honoured, so a
+  // slow but healthy driver ends up connected instead of silently ignored.
+  adoptLateMidiAccess(result) {
+    if (this.disposed || this.midiAccess || this.midiRequest || !result?.access) return;
+    this.midiAccess = result.access;
+    this.midiAccessError = null;
+    this.midiAccessStalled = false;
+    void this.syncRuntime();
   }
 
   bindInputs() {
@@ -366,6 +416,10 @@ export class MidiControllerManager {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    if (this.midiAccessTimer) {
+      clearTimeout(this.midiAccessTimer);
+      this.midiAccessTimer = null;
+    }
     this.cancelLearn();
     this.unsubscribeStore?.();
     this.automationScheduler.dispose();

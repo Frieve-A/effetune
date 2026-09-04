@@ -898,3 +898,222 @@ test('metadata fallback strips flat and multichannel IR metadata consistently', 
         globalThis.localStorage = previousLocalStorage;
     }
 });
+
+function createBackupBridge() {
+    const files = new Map();
+    const log = [];
+    return {
+        files,
+        log,
+        bridge: {
+            async write({ id, json }) {
+                log.push(['write', id]);
+                files.set(id, json);
+                return { ok: true, data: true };
+            },
+            async remove({ id }) {
+                log.push(['remove', id]);
+                files.delete(id);
+                return { ok: true, data: true };
+            },
+            async list() {
+                log.push(['list']);
+                return { ok: true, data: [...files.keys()] };
+            }
+        }
+    };
+}
+
+function createBackedUpStorage(bridge, database = new AtomicDatabase()) {
+    const storage = new DataStorage({ backupBridge: bridge, backupDelayMs: 0 });
+    storage.openDatabase = async () => database;
+    storage.dispatchEvent = () => {};
+    storage.requestPersistentStorage = async () => {};
+    storage.getStorageEstimate = async () => null;
+    return { storage, database };
+}
+
+function captureWarnings(t) {
+    const mocked = t.mock.method(console, 'warn', () => {});
+    return {
+        warnings: { get length() { return mocked.mock.callCount(); } },
+        restore: () => mocked.mock.restore()
+    };
+}
+
+const settle = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+test('measurement storage without a backup bridge never schedules backups', async () => {
+    const { storage } = createStorage();
+    assert.equal(storage.hasMeasurementBackups(), false);
+    storage.measurements = [exportableMeasurement()];
+    storage.scheduleBackup('measurement-source');
+    storage.scheduleBackupBackfill();
+    assert.equal(storage.backupTimers.size, 0);
+    assert.equal(await storage.writeBackup('measurement-source'), false);
+    assert.equal(await storage.removeBackup('measurement-source'), false);
+    assert.equal(await storage.backfillBackups(), 0);
+});
+
+test('desktop measurement saves mirror a full JSON backup and deletions remove it', async () => {
+    const backup = createBackupBridge();
+    const { storage } = createBackedUpStorage(backup.bridge);
+    assert.equal(storage.hasMeasurementBackups(), true);
+    storage.generateId = () => 'measurement-backed';
+
+    const measurement = exportableMeasurement();
+    delete measurement.id;
+    const id = await storage.addMeasurement(measurement, [impulseRecord('measurement-backed', 0, 0.5)]);
+    assert.equal(id, 'measurement-backed');
+    assert.equal(storage.backupTimers.size, 1);
+    storage.getImpulseResponses = async () => [impulseRecord('measurement-backed', 0, 0.5)];
+    await storage.flushBackups();
+    assert.equal(storage.backupTimers.size, 0);
+    assert.equal(storage.backupWrites.size, 0);
+
+    const stored = JSON.parse(backup.files.get('measurement-backed'));
+    assert.equal(stored.name, 'Source');
+    assert.equal(stored.impulseResponses.length, 1);
+    assert.equal(typeof stored.impulseResponses[0].data, 'string');
+
+    const { storage: restored, database: restoredDatabase } = createStorage();
+    restored.generateId = () => 'measurement-restored';
+    assert.equal(await restored.importMeasurementFromJSON(backup.files.get('measurement-backed')), 'measurement-restored');
+    assert.equal(restoredDatabase.impulseResponses.get(JSON.stringify(['measurement-restored', 0])).data[1], 0.5);
+
+    const originalKeyRange = globalThis.IDBKeyRange;
+    globalThis.IDBKeyRange = { bound: (lower, upper) => ({ lower, upper }) };
+    try {
+        assert.equal(await storage.deleteMeasurement('measurement-backed'), true);
+    } finally {
+        globalThis.IDBKeyRange = originalKeyRange;
+    }
+    await settle(5);
+    assert.equal(backup.files.has('measurement-backed'), false);
+    assert.deepEqual(backup.log, [['write', 'measurement-backed'], ['remove', 'measurement-backed']]);
+});
+
+test('repeated measurement saves collapse into one backup write and a pending backup is cancelled by removal', async () => {
+    const backup = createBackupBridge();
+    const { storage } = createBackedUpStorage(backup.bridge);
+    storage.measurements = [exportableMeasurement()];
+    storage.getImpulseResponses = async () => [impulseRecord('measurement-source', 0, 0.75)];
+
+    storage.scheduleBackup('measurement-source');
+    storage.scheduleBackup('measurement-source');
+    storage.scheduleBackup('');
+    assert.equal(storage.backupTimers.size, 1);
+    await storage.flushBackups();
+    assert.deepEqual(backup.log, [['write', 'measurement-source']]);
+
+    storage.scheduleBackup('measurement-source');
+    assert.equal(await storage.removeBackup('measurement-source'), true);
+    assert.equal(storage.backupTimers.size, 0);
+    await settle(5);
+    assert.deepEqual(backup.log, [['write', 'measurement-source'], ['remove', 'measurement-source']]);
+});
+
+test('measurement backup keeps the previous full backup when impulse responses cannot be read', async t => {
+    const backup = createBackupBridge();
+    const { storage } = createBackedUpStorage(backup.bridge);
+    storage.measurements = [exportableMeasurement()];
+    storage.getImpulseResponses = async () => [impulseRecord('measurement-source', 0, 0.75)];
+    assert.equal(await storage.writeBackup('measurement-source'), true);
+    const full = backup.files.get('measurement-source');
+
+    storage.getImpulseResponses = async () => { throw new Error('Simulated IR read failure'); };
+    const { warnings, restore } = captureWarnings(t);
+    try {
+        assert.equal(await storage.writeBackup('measurement-source'), false);
+        assert.equal(backup.files.get('measurement-source'), full);
+        assert.equal(warnings.length, 1);
+
+        assert.equal(await storage.writeBackup('measurement-source', { allowMetadataOnly: true }), true);
+        assert.equal(JSON.parse(backup.files.get('measurement-source')).impulseResponses, undefined);
+
+        storage.irPersistenceAvailable = false;
+        backup.files.delete('measurement-source');
+        assert.equal(await storage.runBackup('measurement-source'), true);
+        assert.equal(JSON.parse(backup.files.get('measurement-source')).impulseResponses, undefined);
+
+        storage.exportMeasurementToJSON = async () => { throw new TypeError('unexpected'); };
+        assert.equal(await storage.runBackup('measurement-source'), false);
+        assert.equal(warnings.length, 2);
+        assert.equal(await storage.writeBackup('measurement-missing'), false);
+    } finally {
+        restore();
+    }
+});
+
+test('measurement backup reports refused bridge writes, removals and listings', async t => {
+    const refusing = {
+        async write() { return { ok: false, code: 'storage-failed' }; },
+        async remove() { return { ok: false, code: 'storage-failed' }; },
+        async list() { return { ok: false, code: 'storage-failed' }; }
+    };
+    const { storage } = createBackedUpStorage(refusing);
+    storage.measurements = [exportableMeasurement()];
+    storage.getImpulseResponses = async () => [impulseRecord('measurement-source', 0, 0.75)];
+    const { warnings, restore } = captureWarnings(t);
+    try {
+        await assert.rejects(storage.writeBackup('measurement-source'), /refused: storage-failed/);
+        assert.equal(await storage.runBackup('measurement-source'), false);
+        assert.equal(await storage.removeBackup('measurement-source'), false);
+        await assert.rejects(storage.backfillBackups(), /refused: storage-failed/);
+        assert.equal(warnings.length, 2);
+    } finally {
+        restore();
+    }
+});
+
+test('measurement backup backfill writes only measurements without a backup file', async () => {
+    const backup = createBackupBridge();
+    backup.files.set('measurement-existing', '{"name":"kept"}');
+    const { storage } = createBackedUpStorage(backup.bridge);
+    storage.measurements = [
+        exportableMeasurement(),
+        { ...exportableMeasurement(), id: 'measurement-existing', name: 'Existing' },
+        { ...exportableMeasurement(), id: 'measurement-unreadable', name: 'Unreadable' }
+    ];
+    storage.getImpulseResponses = async measurementId => {
+        if (measurementId === 'measurement-unreadable') return [];
+        return [impulseRecord(measurementId, 0, 0.75)];
+    };
+
+    assert.equal(await storage.backfillBackups(), 2);
+    assert.equal(backup.files.get('measurement-existing'), '{"name":"kept"}');
+    assert.equal(JSON.parse(backup.files.get('measurement-source')).impulseResponses.length, 1);
+    assert.equal(JSON.parse(backup.files.get('measurement-unreadable')).impulseResponses, undefined);
+    assert.deepEqual(backup.log.map(entry => entry[0]), ['list', 'write', 'write']);
+});
+
+test('measurement storage schedules a backup backfill once loading has finished', async t => {
+    const backup = createBackupBridge();
+    const { storage } = createBackedUpStorage(backup.bridge);
+    storage.loadMeasurements = async () => {
+        storage.measurements = [exportableMeasurement()];
+        return storage.measurements;
+    };
+    storage.removeOrphanImpulseResponses = async () => {};
+    storage.getImpulseResponses = async () => [impulseRecord('measurement-source', 0, 0.75)];
+
+    await storage.initialize();
+    assert.equal(storage.loaded, true);
+    await settle(10);
+    assert.equal(backup.files.has('measurement-source'), true);
+    assert.deepEqual(backup.log, [['list'], ['write', 'measurement-source']]);
+
+    const failing = createBackedUpStorage({
+        async write() { return { ok: true, data: true }; },
+        async remove() { return { ok: true, data: true }; },
+        async list() { throw new Error('listing exploded'); }
+    }).storage;
+    const { warnings, restore } = captureWarnings(t);
+    try {
+        failing.scheduleBackupBackfill();
+        await settle(10);
+        assert.equal(warnings.length, 1);
+    } finally {
+        restore();
+    }
+});

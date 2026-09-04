@@ -59,6 +59,30 @@ test('catalog initialization failure degrades only the Library with a sanitized 
   assert.doesNotMatch(JSON.stringify(state), /SQLITE|music-library-v3|corrupt/i);
 });
 
+test('catalog initialization is idempotent after the first open', async t => {
+  const userDataPath = await createTemporaryUserData(t);
+  let opens = 0;
+  let finishOpen;
+  const recovery = new LibraryCatalogRecovery({
+    userDataPath,
+    openCatalog: () => {
+      opens += 1;
+      return new Promise(resolve => { finishOpen = resolve; });
+    },
+    closeCatalog: async () => {}
+  });
+
+  const first = recovery.initialize();
+  const concurrent = recovery.initialize();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(opens, 1);
+  finishOpen();
+  assert.equal((await first).status, 'available');
+  assert.equal((await concurrent).status, 'available');
+  assert.equal((await recovery.initialize()).status, 'available');
+  assert.equal(opens, 1);
+});
+
 test('an initial utility failure leaves the Library unavailable to recovery', async t => {
   const userDataPath = await createTemporaryUserData(t);
   const children = [];
@@ -248,6 +272,7 @@ test('catalog recovery IPC authenticates the main renderer and relays public sta
   const mainWindow = { webContents, isDestroyed: () => false };
   const recovery = new EventEmitter();
   recovery.getState = () => ({ apiVersion: 1, status: 'unavailable', available: false, canReset: true, message: 'Unavailable' });
+  recovery.initialize = async () => recovery.getState();
   recovery.resetCatalog = async request => {
     assert.deepEqual(request, { confirmed: true });
     return { reset: false, canceled: true, recovered: false, state: recovery.getState() };
@@ -264,6 +289,10 @@ test('catalog recovery IPC authenticates the main renderer and relays public sta
 
   assert.deepEqual(
     handlers.get(LIBRARY_CATALOG_RECOVERY_CHANNELS.getState)({ sender: webContents }, {}),
+    recovery.getState()
+  );
+  assert.deepEqual(
+    await handlers.get(LIBRARY_CATALOG_RECOVERY_CHANNELS.initialize)({ sender: webContents }, {}),
     recovery.getState()
   );
   assert.throws(
@@ -290,6 +319,7 @@ test('catalog recovery IPC authenticates the main renderer and relays public sta
   dispose();
   assert.deepEqual(removed.sort(), [
     LIBRARY_CATALOG_RECOVERY_CHANNELS.getState,
+    LIBRARY_CATALOG_RECOVERY_CHANNELS.initialize,
     LIBRARY_CATALOG_RECOVERY_CHANNELS.resetCatalog
   ].sort());
 });

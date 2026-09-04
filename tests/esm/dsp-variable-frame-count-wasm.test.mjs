@@ -23,6 +23,7 @@ const SEED_LOW = 0x89abcdef;
 const SEED_HIGH = 0x01234567;
 const SEED = (BigInt(SEED_HIGH) << 32n) | BigInt(SEED_LOW);
 const WASM_ARTIFACTS = ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm'];
+const NOISE_REDUCTION_BLOCK_COUNT = 400;
 const KERNEL_TOLERANCES = readKernelTolerances();
 const STRICT_INVARIANCE_CASES = [
   {
@@ -263,6 +264,84 @@ for (const artifact of WASM_ARTIFACTS) {
 
       assert.deepEqual(invarianceFailures, []);
       assert.equal(binding.memoryGrowthViolation, false);
+    } finally {
+      binding.close();
+    }
+  });
+}
+
+for (const artifact of WASM_ARTIFACTS) {
+  test(`Noise Reduction processes two channels after sixteen-channel prepare in ${artifact}`, async () => {
+    const bytes = fs.readFileSync(new URL(`../../plugins/dsp/${artifact}`, import.meta.url));
+    const binding = await instantiateDsp(bytes);
+    try {
+      assert.notEqual(binding.createEngine(), 0);
+      assert.equal(binding.prepare(SAMPLE_RATE, 16, MAX_FRAME_COUNT, 4096), 0);
+
+      const instanceId = binding.createInstance('NoiseReductionPlugin');
+      assert.notEqual(instanceId, 0);
+      try {
+        stageParameters(binding, 'NoiseReductionPlugin', instanceId, { rd: 0, mix: 100 });
+        configurePipeline(binding, 'NoiseReductionPlugin', instanceId);
+        const latency = binding.pipelineLatency();
+        const totalFrames = NOISE_REDUCTION_BLOCK_COUNT * MAX_FRAME_COUNT;
+        assert.ok(latency > 0 && latency < totalFrames, `${artifact} Noise Reduction latency`);
+
+        const arena = binding.getArenaViews();
+        const input = new Float32Array(CHANNEL_COUNT * totalFrames);
+        const output = new Float32Array(CHANNEL_COUNT * totalFrames);
+        for (let block = 0; block < NOISE_REDUCTION_BLOCK_COUNT; block++) {
+          const processedFrames = block * MAX_FRAME_COUNT;
+          fillInput(arena.combined, MAX_FRAME_COUNT, processedFrames);
+          for (let channel = 0; channel < CHANNEL_COUNT; channel++) {
+            const blockOffset = channel * MAX_FRAME_COUNT;
+            const sequenceOffset = channel * totalFrames + processedFrames;
+            input.set(
+              arena.combined.subarray(blockOffset, blockOffset + MAX_FRAME_COUNT),
+              sequenceOffset
+            );
+          }
+          assert.equal(
+            binding.pipelineProcess(
+              CHANNEL_COUNT, MAX_FRAME_COUNT, processedFrames / SAMPLE_RATE, false
+            ),
+            0,
+            `${artifact} Noise Reduction pipeline block ${block}`
+          );
+          for (let channel = 0; channel < CHANNEL_COUNT; channel++) {
+            const blockOffset = channel * MAX_FRAME_COUNT;
+            const sequenceOffset = channel * totalFrames + processedFrames;
+            output.set(
+              arena.combined.subarray(blockOffset, blockOffset + MAX_FRAME_COUNT),
+              sequenceOffset
+            );
+          }
+        }
+
+        const tolerance = KERNEL_TOLERANCES.get('NoiseReductionPlugin').abs;
+        let energy = 0;
+        let maximumError = 0;
+        for (let channel = 0; channel < CHANNEL_COUNT; channel++) {
+          const channelOffset = channel * totalFrames;
+          for (let frame = latency; frame < totalFrames; frame++) {
+            const sample = output[channelOffset + frame];
+            assert.ok(Number.isFinite(sample), `${artifact} Noise Reduction finite output`);
+            energy += sample * sample;
+            const error = Math.abs(
+              sample - input[channelOffset + frame - latency]
+            );
+            if (error > maximumError) maximumError = error;
+          }
+        }
+        assert.ok(energy > 0, `${artifact} Noise Reduction nonzero output`);
+        assert.ok(
+          maximumError <= tolerance,
+          `${artifact} Noise Reduction pure delay error ${maximumError}`
+        );
+        assert.equal(binding.memoryGrowthViolation, false);
+      } finally {
+        binding.destroyInstance(instanceId);
+      }
     } finally {
       binding.close();
     }

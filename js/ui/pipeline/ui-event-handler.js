@@ -533,7 +533,11 @@ export class UIEventHandler {
                     else if (musicFiles.length > 0) {
                         if (window.uiManager) {
                             // Pass the File objects directly to preserve original file names
-                            window.uiManager.createAudioPlayer(musicFiles, false);
+                            void Promise.resolve(window.uiManager.createAudioPlayer(musicFiles, false))
+                                .catch(error => {
+                                    console.error('Failed to open dropped music files:', error);
+                                    window.uiManager?.setError?.('error.musicSelectionUnavailable', true);
+                                });
                         }
                     }
                     

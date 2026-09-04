@@ -47,6 +47,8 @@ class Element {
 
   setAttribute(name, value) { this.attributes[name] = String(value); }
 
+  removeAttribute(name) { delete this.attributes[name]; }
+
   addEventListener(type, listener) {
     const listeners = this.listeners.get(type) || [];
     listeners.push(listener);
@@ -94,6 +96,12 @@ const byClass = (root, className) => flatten(root).filter(element => element.cla
 const buttons = root => flatten(root).filter(element => element.tagName === 'BUTTON');
 const button = (root, text) => buttons(root).find(element => element.textContent === text);
 const rowName = row => flatten(row).find(element => element.tagName === 'STRONG')?.textContent;
+const deferred = () => {
+  let resolve;
+  const promise = new Promise(complete => { resolve = complete; });
+  return { promise, resolve };
+};
+const nextTurn = () => new Promise(resolve => setImmediate(resolve));
 
 test('IR library modal executes filename filtering, sorting, actions, previews, and cleanup', async () => {
   const previousDocument = globalThis.document;
@@ -234,6 +242,151 @@ test('IR library modal executes filename filtering, sorting, actions, previews, 
   }
 });
 
+test('IR library modal selects multiple entries and deletes them in one confirmed operation', async () => {
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const body = new Element('body');
+  const confirmations = [false, true];
+  const confirmationMessages = [];
+  const deleteCalls = [];
+  const diagnostics = [];
+  const restoreConsole = replaceGlobal('console', createConsoleHarness({
+    error: (...args) => diagnostics.push(args)
+  }));
+  const entries = [
+    {
+      irId: 'aaaaaaaaaaaaaaaaaaaaaaaa', fileLabel: 'Alpha.wav', importedAt: '2026-01-01T00:00:00Z',
+      channels: 2, topology: 'independent', frames: 48000, sampleRate: 48000
+    },
+    {
+      irId: 'bbbbbbbbbbbbbbbbbbbbbbbb', fileLabel: 'Bravo.wav', importedAt: '2026-03-01T00:00:00Z',
+      channels: 1, topology: 'mono', frames: 24000, sampleRate: 48000
+    },
+    {
+      irId: 'cccccccccccccccccccccccc', fileLabel: 'Charlie.wav', importedAt: '2026-02-01T00:00:00Z',
+      channels: 4, topology: 'true-stereo', frames: 96000, sampleRate: 48000
+    }
+  ];
+  globalThis.document = { body, createElement: tagName => new Element(tagName) };
+  globalThis.window = {
+    confirm(message) {
+      confirmationMessages.push(message);
+      return confirmations.shift();
+    }
+  };
+  const service = {
+    list({ query = '', sort = 'filename' } = {}) {
+      return entries.filter(entry => !query || entry.fileLabel.toLowerCase().includes(query.toLowerCase()))
+        .sort(sort === 'recent'
+          ? (left, right) => right.importedAt.localeCompare(left.importedAt)
+          : (left, right) => left.fileLabel.localeCompare(right.fileLabel));
+    },
+    async readAnalysis() { return null; },
+    async delete(id, options) {
+      const inUse = options.isInUse(id);
+      deleteCalls.push([id, inUse]);
+      if (inUse) return { removed: false, reason: 'in-use' };
+      if (id === 'cccccccccccccccccccccccc') throw new Error('raw bulk delete diagnostic');
+      const index = entries.findIndex(entry => entry.irId === id);
+      entries.splice(index, 1);
+      return { removed: true, reason: null };
+    }
+  };
+  const inUsePlugin = {
+    externalAssetInfo: {
+      missing: false,
+      kind: 'IR',
+      ids: ['bbbbbbbbbbbbbbbbbbbbbbbb'],
+      protectedIds: [],
+      names: ['Bravo.wav']
+    }
+  };
+
+  try {
+    const modal = openIrLibraryBrowser({
+      service,
+      audioManager: { pipelineA: [inUsePlugin], pipelineB: [], pipeline: [] }
+    });
+    await modal.render();
+    const deleteSelected = button(modal.element, 'Delete selected');
+    const selectionCount = byClass(modal.element, 'ir-library-selection-count')[0];
+    assert.equal(deleteSelected.disabled, true);
+    assert.equal(selectionCount.textContent, '0 selected');
+
+    const select = async name => {
+      const row = byClass(modal.element, 'ir-library-entry').find(item => rowName(item) === name);
+      const checkbox = byClass(row, 'ir-library-entry-selection')[0];
+      assert.equal(checkbox.attributes['aria-label'], `Select ${name}`);
+      checkbox.checked = true;
+      await checkbox.dispatch('change');
+    };
+    await select('Alpha.wav');
+    await select('Bravo.wav');
+    assert.equal(selectionCount.textContent, '2 selected');
+
+    const sort = flatten(modal.element).find(element => element.tagName === 'SELECT');
+    sort.value = 'recent';
+    await sort.dispatch('change');
+    assert.equal(byClass(modal.element, 'ir-library-entry-selection')
+      .filter(checkbox => checkbox.checked).length, 2);
+
+    const search = flatten(modal.element).find(element => element.type === 'search');
+    search.value = 'alpha';
+    await search.dispatch('input');
+    assert.equal(selectionCount.textContent, '0 selected');
+    assert.equal(byClass(modal.element, 'ir-library-entry-selection')[0].checked, false);
+
+    let selectAllPrevented = 0;
+    const selectAll = (target = modal.element) => modal.element.dispatch('keydown', {
+      key: 'a',
+      ctrlKey: true,
+      target,
+      preventDefault() { selectAllPrevented += 1; }
+    });
+    await selectAll(search);
+    assert.equal(selectAllPrevented, 0);
+    assert.equal(selectionCount.textContent, '0 selected');
+    await selectAll();
+    assert.equal(selectionCount.textContent, '1 selected');
+
+    search.value = '';
+    await search.dispatch('input');
+    await selectAll();
+    assert.equal(selectAllPrevented, 2);
+    assert.equal(byClass(modal.element, 'ir-library-entry-selection')
+      .every(checkbox => checkbox.checked), true);
+    assert.equal(deleteSelected.disabled, false);
+    assert.equal(selectionCount.textContent, '3 selected');
+
+    await deleteSelected.click();
+    assert.deepEqual(deleteCalls, []);
+    assert.equal(selectionCount.textContent, '3 selected');
+
+    await deleteSelected.click();
+    assert.deepEqual(deleteCalls, [
+      ['bbbbbbbbbbbbbbbbbbbbbbbb', true],
+      ['cccccccccccccccccccccccc', false],
+      ['aaaaaaaaaaaaaaaaaaaaaaaa', false]
+    ]);
+    assert.match(confirmationMessages[0], /3 selected impulse responses/);
+    assert.equal(byClass(modal.element, 'ir-library-status')[0].textContent,
+      '1 deleted, 1 in use, 1 failed.');
+    assert.doesNotMatch(byClass(modal.element, 'ir-library-status')[0].textContent,
+      /raw bulk delete diagnostic/);
+    assert.deepEqual(byClass(modal.element, 'ir-library-entry').map(rowName),
+      ['Bravo.wav', 'Charlie.wav']);
+    assert.equal(byClass(modal.element, 'ir-library-entry-selection')
+      .every(checkbox => checkbox.checked === false), true);
+    assert.equal(selectionCount.textContent, '0 selected');
+    assert.equal(deleteSelected.disabled, true);
+    assert.equal(diagnostics.length, 1);
+  } finally {
+    restoreConsole();
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
 test('IR library modal refreshes the visible entries immediately after file and folder imports', async () => {
   const previousDocument = globalThis.document;
   const previousWindow = globalThis.window;
@@ -279,6 +432,254 @@ test('IR library modal refreshes the visible entries immediately after file and 
     await button(modal.element, 'Import folder…').click();
     assert.deepEqual(byClass(modal.element, 'ir-library-entry').map(rowName), ['File Hall', 'Folder Room']);
   } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test('IR library modal shows per-item progress and adds each completed import to the visible list', async () => {
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const body = new Element('body');
+  const entries = [];
+  const firstReady = deferred();
+  const secondReady = deferred();
+  const createEntry = (irId, fileLabel) => ({
+    irId,
+    fileLabel,
+    importedAt: '2026-07-20T00:00:00Z',
+    channels: 2,
+    topology: 'independent',
+    frames: 48000,
+    sampleRate: 48000
+  });
+  const firstEntry = createEntry('aaaaaaaaaaaaaaaaaaaaaaaa', 'First Hall.wav');
+  const secondEntry = createEntry('bbbbbbbbbbbbbbbbbbbbbbbb', 'Second Hall.wav');
+  globalThis.document = { body, createElement: tagName => new Element(tagName) };
+  globalThis.window = {};
+  const service = {
+    list() { return [...entries]; },
+    async readAnalysis() { return null; },
+    async importFiles(files, options) {
+      options.onProgress({
+        phase: 'importing', completedCount: 0, totalCount: 2,
+        importedCount: 0, failedCount: 0, currentFiles: [files[0].name]
+      });
+      await firstReady.promise;
+      entries.push(firstEntry);
+      options.onProgress({
+        phase: 'importing', completedCount: 1, totalCount: 2,
+        importedCount: 1, failedCount: 0, entry: firstEntry
+      });
+      options.onProgress({
+        phase: 'importing', completedCount: 1, totalCount: 2,
+        importedCount: 1, failedCount: 0, currentFiles: [files[1].name]
+      });
+      await secondReady.promise;
+      entries.push(secondEntry);
+      options.onProgress({
+        phase: 'importing', completedCount: 2, totalCount: 2,
+        importedCount: 2, failedCount: 0, entry: secondEntry
+      });
+      return {
+        imported: [firstEntry, secondEntry], failedCount: 0,
+        unsupportedCount: 0, failureCodes: []
+      };
+    }
+  };
+
+  try {
+    const modal = openIrLibraryBrowser({ service });
+    await modal.render();
+    const fileInput = flatten(modal.element).find(element =>
+      element.tagName === 'INPUT' && element.type === 'file' && !element.webkitdirectory);
+    fileInput.files = [{ name: 'First Hall.wav' }, { name: 'Second Hall.wav' }];
+    const importing = fileInput.dispatch('change');
+    await nextTurn();
+
+    const progressRegion = byClass(modal.element, 'ir-library-import-progress')[0];
+    const progress = byClass(modal.element, 'ir-library-progress')[0];
+    const status = byClass(modal.element, 'ir-library-status')[0];
+    assert.equal(progressRegion.hidden, false);
+    assert.equal(progress.max, 2);
+    assert.equal(progress.value, 0);
+    assert.match(status.textContent, /First Hall\.wav.*0 of 2/);
+
+    firstReady.resolve();
+    await nextTurn();
+    assert.deepEqual(byClass(modal.element, 'ir-library-entry').map(rowName), ['First Hall.wav']);
+    assert.equal(progress.value, 1);
+    assert.match(status.textContent, /Second Hall\.wav.*1 of 2/);
+    assert.equal(button(modal.element, 'Load').disabled, true);
+    assert.equal(button(modal.element, 'Delete').disabled, true);
+
+    secondReady.resolve();
+    await importing;
+    assert.deepEqual(byClass(modal.element, 'ir-library-entry').map(rowName),
+      ['First Hall.wav', 'Second Hall.wav']);
+    assert.equal(progressRegion.hidden, true);
+    assert.equal(status.textContent, '2 imported, 0 failed, 0 unsupported.');
+    assert.equal(button(modal.element, 'Load').disabled, false);
+    assert.equal(button(modal.element, 'Delete').disabled, false);
+  } finally {
+    firstReady.resolve();
+    secondReady.resolve();
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test('IR library modal shows live folder scanning progress before imports begin', async () => {
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const body = new Element('body');
+  const scanStarted = deferred();
+  const finishScan = deferred();
+  globalThis.document = { body, createElement: tagName => new Element(tagName) };
+  globalThis.window = { async showDirectoryPicker() { return {}; } };
+  const service = {
+    list() { return []; },
+    async readAnalysis() { return null; },
+    async importDirectory(directory, options) {
+      options.onProgress({ phase: 'scanning', scannedCount: 12, supportedCount: 4 });
+      scanStarted.resolve();
+      await finishScan.promise;
+      return { imported: [], failedCount: 0, unsupportedCount: 0, failureCodes: [] };
+    }
+  };
+
+  try {
+    const modal = openIrLibraryBrowser({ service });
+    const importing = button(modal.element, 'Import folder…').click();
+    await scanStarted.promise;
+    assert.equal(byClass(modal.element, 'ir-library-import-progress')[0].hidden, false);
+    assert.equal(byClass(modal.element, 'ir-library-dialog')[0].attributes['aria-busy'], 'true');
+    assert.equal(byClass(modal.element, 'ir-library-progress')[0].attributes.value, undefined);
+    assert.match(byClass(modal.element, 'ir-library-status')[0].textContent,
+      /12 files checked, 4 supported/);
+
+    finishScan.resolve();
+    await importing;
+    assert.equal(byClass(modal.element, 'ir-library-import-progress')[0].hidden, true);
+  } finally {
+    finishScan.resolve();
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test('IR library modal confirms before a new folder selection stops the current import', async () => {
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const body = new Element('body');
+  const importStarted = deferred();
+  const finishImport = deferred();
+  const confirmations = [false, true];
+  const confirmationMessages = [];
+  let importOptions;
+  globalThis.document = { body, createElement: tagName => new Element(tagName) };
+  globalThis.window = {
+    electronAPI: {},
+    confirm(message) {
+      confirmationMessages.push(message);
+      return confirmations.shift();
+    }
+  };
+  const service = {
+    list() { return []; },
+    async readAnalysis() { return null; },
+    async importFiles(files, options) {
+      importOptions = options;
+      options.onProgress({
+        phase: 'importing', completedCount: 0, totalCount: files.length,
+        importedCount: 0, failedCount: 0, currentFiles: [files[0].name]
+      });
+      importStarted.resolve();
+      await finishImport.promise;
+      return {
+        imported: [], failedCount: 0, unsupportedCount: 0,
+        failureCodes: []
+      };
+    }
+  };
+
+  try {
+    const modal = openIrLibraryBrowser({ service });
+    const fileInputs = flatten(modal.element).filter(element =>
+      element.tagName === 'INPUT' && element.type === 'file');
+    const fileInput = fileInputs.find(element => !element.webkitdirectory);
+    const folderInput = fileInputs.find(element => element.webkitdirectory);
+    fileInput.files = [{ name: 'Current.wav' }];
+    const importing = fileInput.dispatch('change');
+    await importStarted.promise;
+
+    await button(modal.element, 'Import folder…').click();
+    assert.equal(folderInput.clickCount, 0);
+    assert.equal(importOptions.isCurrent(), true);
+
+    await button(modal.element, 'Import folder…').click();
+    assert.equal(folderInput.clickCount, 1);
+    assert.equal(importOptions.isCurrent(), false);
+    assert.equal(confirmationMessages.length, 2);
+    assert.match(confirmationMessages[0], /already imported.*remain/i);
+
+    finishImport.resolve();
+    await importing;
+    assert.equal(byClass(modal.element, 'ir-library-status')[0].textContent,
+      'Import stopped. 0 imported, 0 failed.');
+  } finally {
+    finishImport.resolve();
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test('IR library modal waits for a confirmed in-progress import to stop before closing', async () => {
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const body = new Element('body');
+  const importStarted = deferred();
+  const finishImport = deferred();
+  const confirmations = [false, true];
+  let importOptions;
+  globalThis.document = { body, createElement: tagName => new Element(tagName) };
+  globalThis.window = { confirm() { return confirmations.shift(); } };
+  const service = {
+    list() { return []; },
+    async readAnalysis() { return null; },
+    async importFiles(files, options) {
+      importOptions = options;
+      importStarted.resolve();
+      await finishImport.promise;
+      return {
+        imported: [], failedCount: 0, unsupportedCount: 0,
+        failureCodes: []
+      };
+    }
+  };
+
+  try {
+    const modal = openIrLibraryBrowser({ service });
+    const fileInput = flatten(modal.element).find(element =>
+      element.tagName === 'INPUT' && element.type === 'file' && !element.webkitdirectory);
+    fileInput.files = [{ name: 'Slow.wav' }];
+    const importing = fileInput.dispatch('change');
+    await importStarted.promise;
+
+    await button(modal.element, 'Close').click();
+    assert.equal(body.children.includes(modal.element), true);
+    assert.equal(importOptions.isCurrent(), true);
+
+    const closing = button(modal.element, 'Close').click();
+    await nextTurn();
+    assert.equal(importOptions.isCurrent(), false);
+    assert.equal(body.children.includes(modal.element), true);
+
+    finishImport.resolve();
+    await Promise.all([importing, closing]);
+    assert.equal(body.children.includes(modal.element), false);
+  } finally {
+    finishImport.resolve();
     globalThis.document = previousDocument;
     globalThis.window = previousWindow;
   }

@@ -164,6 +164,9 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
       - name: Verify source and tests
         if: inputs.source_verified != true
         run: npm run verify
@@ -182,6 +185,12 @@ jobs:
       - name: Generate web assets
         run: npm run assets:web
 
+      - name: Install Electron runtime for rolling PCM Electron tests
+        run: npx install-electron
+
+      - name: Run rolling PCM Electron tests
+        run: npm run test:rolling-pcm:electron
+
       - name: Build
         run: |
           npm run clean
@@ -196,6 +205,9 @@ jobs:
 
       - name: Verify packaged OpenHome artifacts
         run: npm run smoke:openhome-package
+
+      - name: Run rolling PCM distribution smoke
+        run: npm run smoke:rolling-pcm-distribution
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "ClipRestorerPlugin",
+  "id": "alternating-full-scale-no-plateau",
+  "stimulus": "fs",
+  "sampleRate": 44100,
+  "channels": 2,
+  "frameCount": 4096,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "th": -6,
+    "og": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:67052fa3642675c5e8d23f0b7676ad9d06331039a4655f8af85a653daec0491b",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type ClipRestorerPlugin --promote-production-native",
+  "outputFloats": 8192,
+  "byteLength": 32768,
+  "binary": "case-003.f32"
+}

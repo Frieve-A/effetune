@@ -51,8 +51,6 @@ export class AudioIOManager {
         this.destinationNode = null;
         this.audioElement = null;
         this.defaultDestinationConnection = null;
-        // Output-side first-launch mute node. Input silence has separate owners.
-        this.silenceNode = null;
         this.silentInputBufferSource = null;
         this.silentInputGainNode = null;
         // GainNode inserted between worklet and the final destination (audioContext
@@ -514,11 +512,7 @@ export class AudioIOManager {
     }
 
     _connectInternalNode(sourceNode, targetNode) {
-        if (window.originalConnectMethod && this.contextManager?.isFirstLaunch) {
-            window.originalConnectMethod.call(sourceNode, targetNode);
-        } else {
-            sourceNode.connect(targetNode);
-        }
+        sourceNode.connect(targetNode);
     }
 
     createSilentSourceFallback() {
@@ -876,60 +870,6 @@ export class AudioIOManager {
                 }
             }
             
-            // If this is the first launch, set up a processor to mute audio output
-            if (this.contextManager.isFirstLaunch && window.electronIntegration && window.electronIntegration.isElectron) {
-                // Create a script processor node to zero-fill audio output
-                const bufferSize = 4096;
-                // Handle vendor prefixes for ScriptProcessorNode (deprecated but still used)
-                let silenceNode;
-                if (typeof this.contextManager.audioContext.createScriptProcessor === 'function') {
-                    silenceNode = this.contextManager.audioContext.createScriptProcessor(bufferSize, 2, 2);
-                } else if (typeof this.contextManager.audioContext.createJavaScriptNode === 'function') {
-                    // Older browsers used createJavaScriptNode
-                    silenceNode = this.contextManager.audioContext.createJavaScriptNode(bufferSize, 2, 2);
-                } else {
-                    console.warn('ScriptProcessorNode is not supported in this browser');
-                    // Skip silence node creation and continue with normal audio output
-                    return '';
-                }
-                
-                silenceNode.onaudioprocess = (e) => {
-                    // Get output buffer
-                    const outputL = e.outputBuffer.getChannelData(0);
-                    const outputR = e.outputBuffer.getChannelData(1);
-                    
-                    // Fill with zeros (silence)
-                    for (let i = 0; i < outputL.length; i++) {
-                        outputL[i] = 0;
-                        outputR[i] = 0;
-                    }
-                };
-                
-                // Insert the silence node between worklet and destination
-                try {
-                    if (!this.contextManager.workletNode) {
-                        console.warn('AudioWorklet is not ready; deferring first-launch silence routing');
-                        this.silenceNode = silenceNode;
-                        return '';
-                    }
-                    // Only disconnect if connected
-                    if (this.destinationNode) {
-                        this.contextManager.workletNode.disconnect(this.destinationNode);
-                    }
-                    this.contextManager.workletNode.connect(silenceNode);
-                    silenceNode.connect(this.destinationNode);
-                } catch (error) {
-                    console.warn('Error connecting silence node:', error);
-                    // Fall back to direct connection if there's an error
-                    if (this.destinationNode) {
-                        this.contextManager.workletNode.connect(this.destinationNode);
-                    }
-                }
-                
-                // Store reference to remove on cleanup
-                this.silenceNode = silenceNode;
-            }
-            
             // Start polling fallback for HDMI reconnection (macOS devicechange unreliable)
             if (window.electronIntegration?.isElectronEnvironment?.() && this.audioElement) {
                 // If the audio element ended up on a different device than preferred (fallback after
@@ -979,9 +919,6 @@ export class AudioIOManager {
                     if (connectSource(this.sourceNode) !== true) {
                         throw new Error('Pipeline source connection failed');
                     }
-                } else if (window.originalConnectMethod && this.contextManager.isFirstLaunch) {
-                    // Use the original method to avoid the first-launch output-mute override.
-                    window.originalConnectMethod.call(this.sourceNode, this.contextManager.workletNode);
                 } else {
                     this.sourceNode.connect(this.contextManager.workletNode);
                 }
@@ -1456,16 +1393,6 @@ export class AudioIOManager {
                 console.warn('Error disconnecting output gain node:', error);
             }
             this.outputGainNode = null;
-        }
-
-        // Disconnect silence node if it exists
-        if (this.silenceNode && this.contextManager.audioContext) {
-            try {
-                this.silenceNode.disconnect();
-                this.silenceNode = null;
-            } catch (error) {
-                console.warn('Error disconnecting silence node:', error);
-            }
         }
 
         // Stop canonical input without affecting already-cleared output fields.

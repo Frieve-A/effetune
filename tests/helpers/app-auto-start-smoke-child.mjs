@@ -349,7 +349,7 @@ assert.equal(electronTarget.closeCallback instanceof Function, true);
 assert.equal(electronTarget.ipc.has('load-preset-from-tray'), true);
 electronTarget.closeCallback();
 
-assert.equal(calls.some(call => call[0] === 'isFirstLaunch'), true);
+assert.equal(calls.some(call => call[0] === 'isFirstLaunch'), false);
 assert.equal(calls.some(call => call[0] === 'onRequestPipelineStateForClose'), true);
 assert.equal(calls.some(call => call[0] === 'armRendererWatchdog' && call[1] === 'main-page'), true);
 assert.equal(calls.some(call => call[0] === 'rendererPing'), true);

@@ -1,0 +1,75 @@
+{
+  "defaults": {
+    "sampleRate": 96000,
+    "blockSize": 127,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 8192,
+    "params": { "fm": "Auto", "hc": 8, "sp": 50 }
+  },
+  "cases": [
+    {
+      "id": "fixed-50-square",
+      "stimulus": "sq50",
+      "frames": 8192,
+      "params": { "fm": "50 Hz", "hc": 8, "sp": 50 }
+    },
+    {
+      "id": "auto-square-fast-48k",
+      "stimulus": "sq50",
+      "sampleRate": 48000,
+      "blockSize": 63,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 8192,
+      "params": { "fm": "Auto", "hc": 16, "sp": 100 }
+    },
+    { "id": "silence-floor", "stimulus": "silence", "frames": 8192 },
+    {
+      "id": "sine-44k1-single-frame",
+      "stimulus": "sin1k",
+      "sampleRate": 44100,
+      "blockSize": 1,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 4096
+    },
+    {
+      "id": "sweep-192k",
+      "stimulus": "sweep",
+      "sampleRate": 192000,
+      "blockSize": 113,
+      "frames": 8192,
+      "params": { "fm": "50 Hz", "hc": 4, "sp": 50 },
+      "events": [
+        { "frame": 4096, "params": { "fm": "60 Hz", "hc": 64, "sp": 0 } }
+      ]
+    },
+    {
+      "id": "impulse-96k",
+      "stimulus": "imp",
+      "sampleRate": 96000,
+      "blockSize": 63,
+      "frames": 4096
+    },
+    {
+      "id": "noise-stereo-48k",
+      "stimulus": "noise",
+      "sampleRate": 48000,
+      "blockSize": 127,
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 2048,
+      "params": { "fm": "60 Hz", "hc": 1, "sp": 100 }
+    },
+    {
+      "id": "full-scale-alternating",
+      "stimulus": "fs",
+      "sampleRate": 44100,
+      "blockSize": 113,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 4096
+    }
+  ]
+}

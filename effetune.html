@@ -71,8 +71,6 @@
 
     <link rel="stylesheet" href="effetune.css">
     <link rel="stylesheet" href="effetune-mobile.css">
-    <link rel="stylesheet" href="effetune-library.css">
-    <link rel="stylesheet" href="pipeline-analyzer.css">
     <link rel="icon" href="images/favicon.ico" type="image/x-icon">
     <link rel="icon" href="images/icon_192x192.png" type="image/png" sizes="192x192">
     <link rel="apple-touch-icon" sizes="180x180" href="images/icon_180x180.png">
@@ -132,7 +130,11 @@
 
             try {
                 var params = new URLSearchParams(window.location.search || '');
-                if (params.has('p') || params.has('dbt')) {
+                // Keep these conditions in sync with hasExplicitStartupViewRequest()
+                // in js/app.js: a URL that asks for a specific pipeline overrides the
+                // startup view preference, and app.js will not open the library.
+                if (params.has('p') || params.has('dbt') ||
+                    params.get('restorePipeline') === 'transient') {
                     return;
                 }
 
@@ -140,6 +142,11 @@
                 var config = rawConfig ? JSON.parse(rawConfig) : null;
                 if (config && config.startupView === 'library') {
                     document.body.classList.add('view-library');
+                    // The class hides the effect pipeline only once this sheet is present.
+                    var librarySheet = document.createElement('link');
+                    librarySheet.rel = 'stylesheet';
+                    librarySheet.href = 'effetune-library.css';
+                    document.head.appendChild(librarySheet);
                 }
             } catch (error) {
                 // Startup view is optional; invalid or unavailable storage falls back to Effect Pipeline.
@@ -252,9 +259,7 @@
         <aside class="pipeline-analyzer-panel" id="pipelineAnalyzerPanel" hidden></aside>
     </div>
 
-    <script src="js/vendor/jszip-3.10.1.min.js"></script>
-    <script src="js/vendor/jsmediatags-3.9.5.min.js"></script>
-    <script type="module" src="js/app.js"></script>
+    <script type="module" src="js/startup.js"></script>
     <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
         EffeTune version <span id="app-version"></span> (C) Frieve 2025, 2026
     </div>

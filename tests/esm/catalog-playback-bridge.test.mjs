@@ -659,3 +659,52 @@ test('Save Queue rejects more than 256 distinct source segments', async () => {
     error => error.code === 'sequenceSegmentLimitExceeded'
   );
 });
+
+test('a missing session transport is reported without creating an audio player', () => {
+  let created = 0;
+  const bridge = new CatalogPlaybackBridge({
+    uiManager: {
+      audioPlayer: null,
+      createAudioPlayer() {
+        created += 1;
+        return Promise.resolve({ playbackManager: {} });
+      }
+    },
+    service: { async start() { throw new Error('must not start'); } },
+    sequenceClient: sequenceClient()
+  });
+
+  assert.equal(bridge.canUndoPlaybackSession(), false);
+  assert.equal(created, 0);
+});
+
+test('Library Play awaits the audio player that loads on demand', async () => {
+  const calls = [];
+  const player = {
+    playbackManager: {},
+    resumeAudioContextInGesture() {
+      calls.push('resume');
+      return Promise.resolve(true);
+    }
+  };
+  const bridge = new CatalogPlaybackBridge({
+    uiManager: {
+      audioPlayer: null,
+      async createAudioPlayer() {
+        calls.push('create');
+        return player;
+      }
+    },
+    service: {
+      async start() {
+        calls.push('start');
+        return { kind: 'unavailable' };
+      }
+    },
+    sequenceClient: sequenceClient()
+  });
+
+  await bridge.start(playbackRequest());
+  assert.deepEqual(calls, ['create', 'resume', 'start']);
+  assert.equal(player.libraryOperationService, bridge);
+});

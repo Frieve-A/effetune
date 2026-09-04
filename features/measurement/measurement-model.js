@@ -315,6 +315,7 @@ function impulseMetadata(result) {
         length: result.impulseResponse.length,
         sampleRate: result.sampleRate,
         onsetIndex: result.onsetIndex,
+        trimStartSamples: result.trimStartSamples,
         peakDb: result.peakDb,
         sweepLimited: result.sweepLimited
     };
@@ -344,6 +345,8 @@ export function mergeChannelRedoResult(point, records, channelToken, result, all
             sampleRate: result.sampleRate,
             onsetIndex: result.onsetIndex,
             prerollSamples: result.prerollSamples,
+            trimStartSamples: result.trimStartSamples,
+            outputTimeReference: result.outputTimeReference,
             refScale: result.refScale,
             peakDb: result.peakDb,
             data: result.impulseResponse

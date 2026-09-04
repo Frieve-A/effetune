@@ -3,28 +3,13 @@
  * Provides desktop-specific functionality when running in Electron
  */
 
-// Import modules
-import { updateApplicationMenu, updateTrayMenu } from './electron/menuIntegration.js';
-import { 
-  loadAudioPreferences, 
-  saveAudioPreferences, 
-  getAudioDevices, 
-  showAudioConfigDialog 
-} from './electron/audioIntegration.js';
-import { 
-  openPresetFile, 
-  exportPreset, 
-  importPreset, 
-  openMusicFile, 
-  processAudioFiles, 
-  getAudioMimeType 
-} from './electron/presetIntegration.js';
+import { getAudioMimeType } from './audio/audio-mime.js';
 import {
-  loadConfig,
-  saveConfig,
-  showConfigDialog
-} from './electron/configIntegration.js';
-import { createUpdateNotification } from './update-notification.js';
+  loadAudioPreferences,
+  mergeWebAudioPreferences,
+  saveAudioPreferences
+} from './electron/audio-preference-store.js';
+import { loadConfig, saveConfig } from './electron/config-store.js';
 
 export class ElectronIntegration {
   constructor() {
@@ -39,8 +24,6 @@ export class ElectronIntegration {
     if (this.isElectron) {
       // Initialize event listeners
       this.initEventListeners();
-      this.loadAudioPreferences();
-      this.loadConfig();
       this.patchDocumentationLinks();
     }
   }
@@ -58,14 +41,16 @@ export class ElectronIntegration {
    * This method is called when translations are loaded
    */
   updateApplicationMenu() {
-    return updateApplicationMenu(this.isElectron);
+    return import('./electron/menuIntegration.js')
+      .then(module => module.updateApplicationMenu(this.isElectron));
   }
 
   /**
    * Update the tray menu with translated labels
    */
   updateTrayMenu() {
-    return updateTrayMenu(this.isElectron);
+    return import('./electron/menuIntegration.js')
+      .then(module => module.updateTrayMenu(this.isElectron));
   }
 
   /**
@@ -194,7 +179,11 @@ export class ElectronIntegration {
             // Debug logs removed for release
             // Store the files in a global variable for debugging
             window._debugCommandLineMusicFiles = filePaths;
-            window.uiManager.createAudioPlayer(filePaths, false);
+            void Promise.resolve(window.uiManager.createAudioPlayer(filePaths, false))
+              .catch(error => {
+                console.error('Failed to open command-line music files:', error);
+                window.uiManager?.setError?.('error.musicSelectionUnavailable', true);
+              });
           }
         } else {
           // If the app is not yet initialized or in first launch, store file paths for later use
@@ -271,7 +260,9 @@ export class ElectronIntegration {
     // Listen for Double Blind Test launch request from the application menu
     window.electronAPI.onIPC('start-double-blind-test', () => {
       if (window.uiManager && window.uiManager.getDoubleBlindTest) {
-        window.uiManager.getDoubleBlindTest().enterFresh();
+        void Promise.resolve(window.uiManager.getDoubleBlindTest())
+          .then(doubleBlindTest => doubleBlindTest.enterFresh())
+          .catch(error => console.error('Failed to open Double Blind Test:', error));
       }
     });
 
@@ -283,6 +274,7 @@ export class ElectronIntegration {
    * @param {string} filePath - Path to the preset file
    */
   async openPresetFile(filePath) {
+    const { openPresetFile } = await import('./electron/presetIntegration.js');
     return openPresetFile(this.isElectron, filePath);
   }
 
@@ -304,13 +296,18 @@ export class ElectronIntegration {
    * @param {Object} preferences - Audio device preferences
    */
   async saveAudioPreferences(preferences, options = {}) {
-    // Update global audio preferences reference
-    if (preferences) {
-      this.audioPreferences = preferences;
-      // Make sure to update the global reference for AudioWorklet context
-      window.audioPreferences = preferences;
+    const effectivePreferences = preferences
+      ? mergeWebAudioPreferences(this.audioPreferences, preferences)
+      : preferences;
+    // Persist only the requested fields: the stored preferences are merged by
+    // the store itself, so session-only mirror overrides are never written.
+    const saved = await saveAudioPreferences(this.isElectron, preferences, options);
+    if (!saved) return false;
+    if (effectivePreferences) {
+      this.audioPreferences = effectivePreferences;
+      window.audioPreferences = effectivePreferences;
     }
-    return saveAudioPreferences(this.isElectron, preferences, options);
+    return true;
   }
 
   /**
@@ -318,6 +315,7 @@ export class ElectronIntegration {
    * @returns {Promise<Array>} List of audio devices
    */
   async getAudioDevices() {
+    const { getAudioDevices } = await import('./electron/audioIntegration.js');
     return getAudioDevices(this.isElectron);
   }
 
@@ -327,6 +325,7 @@ export class ElectronIntegration {
    */
   async showAudioConfigDialog(callback) {
     const preferences = this.audioPreferences || await this.loadAudioPreferences();
+    const { showAudioConfigDialog } = await import('./electron/audioIntegration.js');
     return showAudioConfigDialog(this.isElectron, preferences, callback);
   }
 
@@ -334,6 +333,7 @@ export class ElectronIntegration {
    * Export current preset to a file
    */
   async exportPreset() {
+    const { exportPreset } = await import('./electron/presetIntegration.js');
     return exportPreset(this.isElectron);
   }
 
@@ -341,6 +341,7 @@ export class ElectronIntegration {
    * Import preset from a file
    */
   async importPreset() {
+    const { importPreset } = await import('./electron/presetIntegration.js');
     return importPreset(this.isElectron);
   }
 
@@ -349,6 +350,7 @@ export class ElectronIntegration {
    * This function is called when the user selects "Open music file..." from the File menu
    */
   async openMusicFile() {
+    const { openMusicFile } = await import('./electron/presetIntegration.js');
     return openMusicFile(this.isElectron);
   }
 
@@ -357,7 +359,13 @@ export class ElectronIntegration {
    * This function is called when the user selects "Process Audio Files with Effects" from the File menu
    */
   processAudioFiles() {
-    return processAudioFiles(this.isElectron);
+    if (!this.isElectron) return;
+    void import('./electron/presetIntegration.js')
+      .then(module => module.processAudioFiles(true))
+      .catch(error => {
+        console.error('Failed to open offline audio processing:', error);
+        window.uiManager?.setError?.('error.offlineOutput.invalidOutput', true);
+      });
   }
   
   /**
@@ -425,6 +433,7 @@ export class ElectronIntegration {
 
       if (availableUpdate) {
         const updateSlot = document.getElementById('about-update-link');
+        const { createUpdateNotification } = await import('./update-notification.js');
         const updateSurface = createUpdateNotification(availableUpdate, {
           documentRef: document,
           windowRef: window
@@ -593,6 +602,7 @@ export class ElectronIntegration {
   async showConfigDialog() {
     // Load the latest config before showing the dialog
     await this.loadConfig();
+    const { showConfigDialog } = await import('./electron/configIntegration.js');
     return showConfigDialog(this.isElectron, this.config);
   }
 }

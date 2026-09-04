@@ -11,18 +11,12 @@ export class AudioContextManager {
         this.workletNode = null;
         this.realtimeOutputKeepaliveNode = null;
         this._realtimeOutputKeepaliveContext = null;
-        this.silenceGain = null;
-        this.isFirstLaunch = false;
         this._skipAudioInitDuringSampleRateChange = false;
         this._resumeGestureHandler = null;
         this._resumePromise = null;
         this.powerStateDelegate = null;
         this._intentionalPowerSuspend = false;
         
-        // Initialize global variable if not already set
-        if (typeof window.originalConnectMethod === 'undefined') {
-            window.originalConnectMethod = null;
-        }
     }
 
     setPowerStateDelegate(delegate) {
@@ -108,25 +102,6 @@ export class AudioContextManager {
      */
     async initAudioContext(audioPreferences = null) {
         try {
-            // Check if this is the first launch
-            if (window.electronAPI && window.electronAPI.isFirstLaunch) {
-                try {
-                    const firstLaunchPromise = window.electronAPI.isFirstLaunch();
-                    if (firstLaunchPromise && typeof firstLaunchPromise.then === 'function') {
-                        this.isFirstLaunch = await firstLaunchPromise;
-                    } else {
-                        this.isFirstLaunch = false;
-                    }
-                } catch (error) {
-                    this.isFirstLaunch = false;
-                }
-            } else if (window.isFirstLaunchConfirmed !== undefined) {
-                this.isFirstLaunch = window.isFirstLaunchConfirmed;
-            } else {
-                // For web version, default to false
-                this.isFirstLaunch = false;
-            }
-            
             // Create audio context if not exists
             if (!this.audioContext) {
                 // Enhanced browser compatibility for AudioContext
@@ -269,32 +244,6 @@ export class AudioContextManager {
                     }
                 }
                 
-                // If this is the first launch, create a gain node with zero gain to ensure silence
-                if (this.isFirstLaunch) {
-                    // Create a gain node with zero gain
-                    const silenceGain = this.audioContext.createGain();
-                    silenceGain.gain.value = 0;
-                    this.silenceGain = silenceGain;
-                    
-                    // Store original connect method
-                    window.originalConnectMethod = AudioNode.prototype.connect;
-                    
-                    // Override connect method to force all connections through the silence gain
-                    // Handle all possible overloads of the connect method
-                    AudioNode.prototype.connect = function(destination, outputIndex, inputIndex) {
-                        // Connect to silence gain instead, preserving all arguments
-                        if (arguments.length === 1) {
-                            return window.originalConnectMethod.call(this, silenceGain);
-                        } else if (arguments.length === 2) {
-                            return window.originalConnectMethod.call(this, silenceGain, outputIndex);
-                        } else {
-                            return window.originalConnectMethod.call(this, silenceGain, outputIndex, inputIndex);
-                        }
-                    };
-                    
-                    // Connect silence gain to destination
-                    window.originalConnectMethod.call(silenceGain, this.audioContext.destination);
-                }
             }
             
             // Note: AudioWorklet loading is now deferred to loadAudioWorklet method
@@ -305,21 +254,6 @@ export class AudioContextManager {
             console.error('Audio context initialization error:', error);
             return `Audio Error: ${error.message}`;
         }
-    }
-
-    async _addAudioWorkletModule(moduleUrl) {
-        let addModuleTimerId;
-        await Promise.race([
-            this.audioContext.audioWorklet
-                .addModule(moduleUrl)
-                .finally(() => clearTimeout(addModuleTimerId)),
-            new Promise((_, reject) => {
-                addModuleTimerId = setTimeout(
-                    () => reject(new Error('audioWorklet.addModule timed out after 5000ms')),
-                    5000
-                );
-            })
-        ]);
     }
 
     async _addAudioWorkletModuleFromBlob(moduleUrl) {
@@ -338,7 +272,7 @@ export class AudioContextManager {
         const source = await response.text();
         const blobUrl = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
         try {
-            await this._addAudioWorkletModule(blobUrl);
+            await this.audioContext.audioWorklet.addModule(blobUrl);
         } finally {
             if (typeof URL.revokeObjectURL === 'function') {
                 URL.revokeObjectURL(blobUrl);
@@ -366,9 +300,11 @@ export class AudioContextManager {
                 try {
                     const moduleUrl = `${basePath}/plugins/audio-processor.js`;
                     try {
-                        // addModule can hang on macOS audio-system flux; apply a 5 s timeout
-                        // so the recovery path does not stall here.
-                        await this._addAudioWorkletModule(moduleUrl);
+                        // addModule performs asynchronous fetch, parse, and worklet
+                        // registration. A cold but valid load must be allowed to finish;
+                        // racing it with a timeout leaves the registration running while
+                        // incorrectly starting the failure fallback in parallel.
+                        await this.audioContext.audioWorklet.addModule(moduleUrl);
                     } catch (moduleError) {
                         if (moduleError.message?.includes('already')) {
                             throw moduleError;
@@ -379,8 +315,7 @@ export class AudioContextManager {
                         try {
                             await this._addAudioWorkletModuleFromBlob(moduleUrl);
                         } catch (fallbackError) {
-                            if (fallbackError.message?.includes('not available') ||
-                                moduleError.message?.includes('timed out')) {
+                            if (fallbackError.message?.includes('not available')) {
                                 throw moduleError;
                             }
                             throw fallbackError;
@@ -545,27 +480,6 @@ export class AudioContextManager {
         this._resumePromise = null;
         this.setRealtimeOutputKeepaliveEnabled(false);
 
-        // Restore original connect method if it was overridden
-        if (window.originalConnectMethod) {
-            try {
-                // Restore original connect method
-                AudioNode.prototype.connect = window.originalConnectMethod;
-                window.originalConnectMethod = null;
-            } catch (error) {
-                console.warn('Error restoring original connect method:', error);
-            }
-        }
-        
-        // Disconnect silence gain if it exists
-        if (this.silenceGain) {
-            try {
-                this.silenceGain.disconnect();
-                this.silenceGain = null;
-            } catch (error) {
-                console.warn('Error disconnecting silence gain:', error);
-            }
-        }
-        
         // Close audio context and clear global reference
         if (this.audioContext) {
             // Detach handler before close to prevent spurious 'closed' state trigger

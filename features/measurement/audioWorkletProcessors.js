@@ -10,6 +10,7 @@ class RecorderProcessor extends AudioWorkletProcessor {
         // Buffer to store recorded audio
         this.recordBuffer = [];
         this.isRecording = false;
+        this.captureStartFrame = null;
         this.maxRecordLength = 0; // Set to > 0 to limit recording length
         this.bufferThreshold = 4096; // Send data in chunks to prevent memory issues
         
@@ -21,6 +22,7 @@ class RecorderProcessor extends AudioWorkletProcessor {
         if (data.command === 'start') {
             this.recordBuffer = [];
             this.isRecording = true;
+            this.captureStartFrame = null;
             this.maxRecordLength = data.maxLength || 0;
             this.port.postMessage({ status: 'started' });
         } else if (data.command === 'stop') {
@@ -54,6 +56,13 @@ class RecorderProcessor extends AudioWorkletProcessor {
             
             // Add to recording buffer
             if (sample.length > 0) {
+                if (this.captureStartFrame === null) {
+                    this.captureStartFrame = currentFrame;
+                    this.port.postMessage({
+                        status: 'capture-frame',
+                        startFrame: this.captureStartFrame
+                    });
+                }
                 this.recordBuffer.push(sample);
                 
                 // Send data in chunks to prevent memory issues

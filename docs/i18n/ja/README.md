@@ -52,6 +52,10 @@ EffeTuneを使う前に、オーディオルーティングの設定が必要で
    - または音楽ファイルをウィンドウにドラッグする
 - 音楽ファイルプレーヤーだけで使う場合は、オーディオ設定の入力デバイスで「なし（音楽ファイルプレーヤー専用）」を選ぶと、ライブ入力を使わずに再生できます
 
+### ギャップレス再生
+
+**ギャップレス再生**は初期状態でオンになっており、**オーディオ設定**で切り替えられます。オンでは、現在のファイル形式とブラウザまたはアプリの環境で対応しているローカル曲を、曲間なく再生します。対応範囲は限定されており、未対応の形式や一部のモバイル環境では、メモリ使用量を抑えた安全な再生方式へ自動的に切り替わるため、曲間に短い無音が入ることがあります。オフにするとメモリ使用量と安定性が優先され、通常の短い曲間が入ることがあります。設定を切り替えても、再生中の曲は中断されません。
+
 ### ストリーミングサービスのセットアップ
 
 ストリーミングサービス（Spotify、YouTube Musicなど）からオーディオを処理するには:
@@ -386,6 +390,10 @@ Effect Pipelineヘッダーの **パイプラインプリセット** ボタン�
 | Resonator | Horn Resonator | カスタマイズ可能な寸法でのホーン共振シミュレーション | [詳細](plugins/resonator.md#horn-resonator) |
 | Resonator | Horn Resonator Plus | より滑らかなホーンスピーカー共振で自然なリスニング向けの色づきを追加 | [詳細](plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | 最大5つのレゾネーターを備えた周波数共振効果 | [詳細](plugins/resonator.md#modal-resonator) |
+| Restoration | Click Remover | 短いクリック、パチパチ音、ポップノイズ、音切れを修復 | [詳細](plugins/restoration.md#click-remover) |
+| Restoration | Clip Restorer | ハードクリップで平らになったピークを復元 | [詳細](plugins/restoration.md#clip-restorer) |
+| Restoration | Hum Remover | 一定した電気的ハムとその倍音を抑制 | [詳細](plugins/restoration.md#hum-remover) |
+| Restoration | Noise Reduction | 音楽を保ちながら、一定して続く背景ノイズを抑制 | [詳細](plugins/restoration.md#noise-reduction) |
 | Reverb    | Dattorro Plate Reverb | Dattorroアルゴリズムに基づくクラシックなプレートリバーブ | [詳細](plugins/reverb.md#dattorro-plate-reverb) |
 | Reverb    | FDN Reverb | リッチで密度の高いリバーブテクスチャを生成するフィードバック・ディレイ・ネットワーク・リバーブ | [詳細](plugins/reverb.md#fdn-reverb) |
 | Reverb    | IR Reverb | 取り込んだ部屋や機器のインパルス応答を使うコンボリューションリバーブ | [詳細](plugins/reverb.md#ir-reverb) |
@@ -400,6 +408,7 @@ Effect Pipelineヘッダーの **パイプラインプリセット** ボタン�
 | Saturation| Sub Synth | ベース強化のため、フィルター処理した低周波信号をミックス | [詳細](plugins/saturation.md#sub-synth) |
 | Saturation| Tube Simulator | 真空管ライン段と、プッシュプルまたはシングルエンド三極管（300B/2A3）のパワーアンプをモデル化 | [詳細](plugins/saturation.md#tube-simulator) |
 | Spatial   | Crossfeed Filter | 自然なステレオイメージのためのヘッドホン用クロスフィードフィルター | [詳細](plugins/spatial.md#crossfeed-filter) |
+| Spatial   | Crosstalk Cancellation | 耳元の測定値を使ってステレオスピーカー間のクロストークを低減 | [詳細](plugins/spatial.md#crosstalk-cancellation) |
 | Spatial   | MS Matrix | 中央と左右の響きを調整するため、ステレオとMid/Sideを相互変換 | [詳細](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5バンド周波数依存のステレオバランス制御 | [詳細](plugins/spatial.md#multiband-balance) |
 | Spatial   | Phase Select EQ | L/R位相差とBalanceで選んだ周波数成分をブーストまたはカット | [詳細](plugins/spatial.md#phase-select-eq) |

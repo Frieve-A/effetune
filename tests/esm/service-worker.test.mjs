@@ -371,7 +371,7 @@ test('service worker naturally activates without claiming existing clients', asy
 test('the app shell starts directly without a service-worker coherence handoff', () => {
   const html = fs.readFileSync(new URL('../../effetune.html', import.meta.url), 'utf8');
   assert.doesNotMatch(html, /build-coherence|effetune-build-id|update ready/i);
-  assert.match(html, /<script src="js\/vendor\/jszip-3\.10\.1\.min\.js"><\/script>/);
-  assert.match(html, /<script src="js\/vendor\/jsmediatags-3\.9\.5\.min\.js"><\/script>/);
-  assert.match(html, /<script type="module" src="js\/app\.js"><\/script>/);
+  assert.doesNotMatch(html, /<script[^>]+src="js\/vendor\/(?:jszip|jsmediatags)/);
+  assert.doesNotMatch(html, /<script[^>]+src="js\/app\.js"/);
+  assert.match(html, /<script type="module" src="js\/startup\.js"><\/script>/);
 });

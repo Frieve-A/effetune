@@ -49,6 +49,10 @@ EffeTune создан для аудиоэнтузиастов, которые х
    - Или перетащите музыкальный файл в окно
 - Если нужен только проигрыватель файлов, выберите Нет (только проигрыватель музыкальных файлов) в качестве входного устройства в настройках аудио, чтобы не использовать живой аудиовход
 
+### Воспроизведение без пауз
+
+**Воспроизведение без пауз** включено по умолчанию; изменить эту настройку можно в разделе **Настройки аудио**. Когда она включена, совместимые локальные композиции воспроизводятся без пауз. Поддержка зависит от формата файла и текущего браузера или приложения. Для неподдерживаемых форматов и некоторых мобильных сред автоматически используется безопасный режим с ограниченным потреблением памяти, поэтому короткая пауза всё же возможна. При выключении приоритет отдаётся меньшему расходу памяти и стабильности, а между композициями может появиться короткая пауза. Изменение настройки не прерывает текущую композицию.
+
 ### Настройка потокового сервиса
 
 Для обработки аудио из потоковых сервисов (Spotify, YouTube Music и т.д.):
@@ -373,6 +377,10 @@ EffeTune создан для аудиоэнтузиастов, которые х
 | Resonator | Horn Resonator | Симуляция резонанса рупора с настраиваемыми размерами | [Подробнее](plugins/resonator.md#horn-resonator) |
 | Resonator | Horn Resonator Plus | Более мягкий резонанс рупорной акустики для естественной окраски при прослушивании | [Подробнее](plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | Частотный резонанс с поддержкой до 5 резонаторов | [Подробнее](plugins/resonator.md#modal-resonator) |
+| Restoration | Click Remover | Исправляет короткие щелчки, треск, хлопки и провалы | [Подробнее](plugins/restoration.md#click-remover) |
+| Restoration | Clip Restorer | Восстанавливает пики, сглаженные жёстким клиппированием | [Подробнее](plugins/restoration.md#clip-restorer) |
+| Restoration | Hum Remover | Удаляет постоянный электрический гул и его гармоники | [Подробнее](plugins/restoration.md#hum-remover) |
+| Restoration | Noise Reduction | Уменьшает постоянный фоновый шум, сохраняя музыку | [Подробнее](plugins/restoration.md#noise-reduction) |
 | Reverb    | Dattorro Plate Reverb | Классический plate reverb на основе алгоритма Dattorro | [Подробнее](plugins/reverb.md#dattorro-plate-reverb) |
 | Reverb    | FDN Reverb | Feedback Delay Network reverb с насыщенными плотными реверберационными текстурами | [Подробнее](plugins/reverb.md#fdn-reverb) |
 | Reverb    | IR Reverb | Свёрточная реверберация с импортированными импульсными характеристиками помещений и оборудования | [Подробнее](plugins/reverb.md#ir-reverb) |
@@ -387,6 +395,7 @@ EffeTune создан для аудиоэнтузиастов, которые х
 | Saturation| Sub Synth | Подмешивает фильтрованный низкочастотный сигнал для усиления баса | [Подробнее](plugins/saturation.md#sub-synth) |
 | Saturation| Tube Simulator | Моделирует ламповые линейные каскады и двухтактные либо однотактные триодные усилители мощности на 300B/2A3 | [Подробнее](plugins/saturation.md#tube-simulator) |
 | Spatial   | Crossfeed Filter | Наушниковый crossfeed-фильтр для естественной стереокартины | [Подробнее](plugins/spatial.md#crossfeed-filter) |
+| Spatial   | Crosstalk Cancellation | Использует измерения у ушей, чтобы уменьшить перекрёстные помехи между стереоколонками | [Подробнее](plugins/spatial.md#crosstalk-cancellation) |
 | Spatial   | MS Matrix | Преобразует stereo и Mid/Side для настройки центра и пространства | [Подробнее](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5-полосное управление стереобалансом по частотам | [Подробнее](plugins/spatial.md#multiband-balance) |
 | Spatial   | Phase Select EQ | Усиливает или ослабляет частотные компоненты, выбранные по разности фаз L/R и Balance | [Подробнее](plugins/spatial.md#phase-select-eq) |

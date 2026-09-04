@@ -49,6 +49,10 @@ EffeTune 专为希望提升音乐聆听体验的音频爱好者而设计。无�
    - 或将音乐文件拖入窗口
 - 如果只使用音乐文件播放器，请在“音频设置”的输入设备中选择“无（仅音乐文件播放器）”，这样无需使用实时音频输入
 
+### 无间隙播放
+
+**无间隙播放**默认开启，可在**音频设置**中更改。开启后，当前文件格式以及浏览器或应用环境支持的本地曲目会无间隙衔接；支持范围有限。不受支持的格式和部分移动环境会自动改用限制内存占用的安全回退方式，因此曲目之间仍可能出现短暂停顿。关闭后会优先降低内存占用并提高稳定性，曲目之间可能出现通常的短暂停顿。切换此设置不会中断当前正在播放的曲目。
+
 ### 流媒体服务设置
 
 处理流媒体服务（如 Spotify、YouTube Music 等）的音频：
@@ -376,6 +380,10 @@ PC 上的 Chromium 浏览器可以在不同会话间保留对所选音乐文件�
 | Resonator | Horn Resonator | 具有可自定义尺寸的号角共鸣模拟 | [详情](plugins/resonator.md#horn-resonator) |
 | Resonator | Horn Resonator Plus | 更平滑的号角扬声器共鸣，带来自然的聆听色彩 | [详情](plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | 支持最多5个谐振器的频率共鸣效果 | [详情](plugins/resonator.md#modal-resonator) |
+| Restoration | Click Remover | 修复短促的咔嗒声、噼啪声、爆音和短暂断音 | [详情](plugins/restoration.md#click-remover) |
+| Restoration | Clip Restorer | 修复因硬削波而变平的峰值 | [详情](plugins/restoration.md#clip-restorer) |
+| Restoration | Hum Remover | 去除持续的电源嗡声及其谐波 | [详情](plugins/restoration.md#hum-remover) |
+| Restoration | Noise Reduction | 在保留音乐的同时降低持续的背景噪声 | [详情](plugins/restoration.md#noise-reduction) |
 | Reverb    | Dattorro Plate Reverb | 基于Dattorro算法的经典板式混响 | [详情](plugins/reverb.md#dattorro-plate-reverb) |
 | Reverb    | FDN Reverb | 反馈延迟网络混响，产生丰富密集的混响纹理 | [详情](plugins/reverb.md#fdn-reverb) |
 | Reverb    | IR Reverb | 使用导入房间和设备脉冲响应的卷积混响 | [详情](plugins/reverb.md#ir-reverb) |
@@ -390,6 +398,7 @@ PC 上的 Chromium 浏览器可以在不同会话间保留对所选音乐文件�
 | Saturation| Sub Synth | 混入经过滤波的低频信号以增强低音 | [详情](plugins/saturation.md#sub-synth) |
 | Saturation| Tube Simulator | 模拟电子管线路级以及推挽或 300B/2A3 单端三极管功率放大器 | [详情](plugins/saturation.md#tube-simulator) |
 | Spatial   | Crossfeed Filter | 用于自然立体声成像的耳机交叉馈送滤波器 | [详情](plugins/spatial.md#crossfeed-filter) |
+| Spatial   | Crosstalk Cancellation | 使用耳边测量值减少立体声音箱之间的串扰 | [详情](plugins/spatial.md#crosstalk-cancellation) |
 | Spatial   | MS Matrix | 在立体声和 Mid/Side 之间转换，用于调整中央与氛围成分 | [详情](plugins/spatial.md#ms-matrix) |
 | Spatial   | Multiband Balance | 5 频段频率相关立体声平衡控制 | [详情](plugins/spatial.md#multiband-balance) |
 | Spatial   | Phase Select EQ | 按 L/R 相位差和 Balance 选择并提升或衰减频率成分 | [详情](plugins/spatial.md#phase-select-eq) |

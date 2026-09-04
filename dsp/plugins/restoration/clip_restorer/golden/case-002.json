@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "type": "ClipRestorerPlugin",
+  "id": "low-threshold-noise-mono-192k",
+  "stimulus": "noise",
+  "sampleRate": 192000,
+  "channels": 1,
+  "frameCount": 2048,
+  "blockSize": 1,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "th": -18,
+    "og": -3
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:67052fa3642675c5e8d23f0b7676ad9d06331039a4655f8af85a653daec0491b",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type ClipRestorerPlugin --promote-production-native",
+  "outputFloats": 2048,
+  "byteLength": 8192,
+  "binary": "case-002.f32"
+}

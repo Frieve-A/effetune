@@ -1,6 +1,6 @@
 ---
 title: "स्पैशियल प्लगइन - EffeTune"
-description: "Crossfeed Filter, MS Matrix, Multiband Balance, Phase Select EQ और Stereo Blend सहित spatial audio प्लगइन।"
+description: "Crossfeed Filter, Crosstalk Cancellation, MS Matrix, Multiband Balance, Phase Select EQ और Stereo Blend सहित spatial audio प्लगइन।"
 lang: hi
 ---
 
@@ -11,6 +11,7 @@ lang: hi
 ## प्लगइन सूची
 
 - [Crossfeed Filter](#crossfeed-filter) - प्राकृतिक स्टीरियो इमेज के लिए हेडफोन क्रॉसफीड फ़िल्टर
+- [Crosstalk Cancellation](#crosstalk-cancellation) - कान के पास की माप से स्टीरियो स्पीकरों के बीच क्रॉसटॉक घटाता है
 - [MS Matrix](#ms-matrix) - advanced stereo adjustment chains के लिए stereo को Mid/Side में और वापस stereo में बदलता है
 - [Multiband Balance](#multiband-balance) - 5-बैंड आवृत्ति-आधारित स्टीरियो संतुलन नियंत्रण
 - [Phase Select EQ](#phase-select-eq) - L/R phase difference और Balance से चुने गए frequency components को boost या cut करता है
@@ -101,6 +102,37 @@ lang: hi
    - विभिन्न संगीत शैलियों के साथ परीक्षण करें
 
 याद रखें: Crossfeed Filter को हेडफोन सुनने को अधिक प्राकृतिक और आरामदायक बनाने के लिए डिज़ाइन किया गया है। रूढ़िवादी सेटिंग्स से शुरू करें और अपनी सुनने की प्राथमिकताओं और संगीत सामग्री के लिए इष्टतम संतुलन खोजने के लिए धीरे-धीरे समायोजित करें।
+
+## Crosstalk Cancellation
+
+Crosstalk Cancellation आपके कानों के पास मापी गई response का उपयोग करके हर stereo speaker की वह ध्वनि घटाता है जो दूसरे कान तक पहुँचती है। इसे दो stereo speakers के साथ, एक मापी गई listening position पर अधिक स्पष्ट, binaural-जैसी stereo image के लिए उपयोग करें। यह headphones या mono playback के लिए नहीं है।
+
+[Crossfeed Filter](#crossfeed-filter) headphones के लिए speaker-जैसा थोड़ा crosstalk जोड़ता है; Crosstalk Cancellation speakers पर सुनते समय मापे गए crosstalk को घटाता है।
+
+### मापें और असाइन करें
+
+1. माइक्रोफ़ोन को बाएँ कान की स्थिति पर रखकर left और right speaker outputs के साथ मापें। उसका left channel **LL: L Speaker → Left Ear** और right channel **RL: R Speaker → Left Ear** को दें।
+2. माइक्रोफ़ोन को दाएँ कान पर ले जाकर दोहराएँ: left channel **LR: L Speaker → Right Ear**, right channel **RR: R Speaker → Right Ear** को दें।
+3. उसी speaker/listening setup में बनी single-point measurements लें और हर slot में अलग measurement channel दें।
+
+**Taps** 4096, **Regularization** 50%, **Max Gain** 12 dB, **Freq Low** 200 Hz, **Freq High** 6000 Hz, **Direct Window** 8 ms, **Strength** 70%, **Output Gain** 0 dB और **Latency** 128 samples से शुरू करें। मापी गई स्थिति पर बैठकर bypass से तुलना करें और छोटे बदलाव करें।
+
+### पैरामीटर
+
+- **Taps** (1024–16384): filter length। अधिक taps cancellation सुधार सकते हैं, पर processing और modeled delay बढ़ाते हैं; tail कटने की चेतावनी हो तो पहले इन्हें बढ़ाएँ।
+- **Regularization** (0–100%): aggressive correction सीमित करता है। हल्के movement पर आवाज unstable/colored हो तो बढ़ाएँ; मापी गई जगह पर अधिक cancellation चाहिए तभी घटाएँ।
+- **Max Gain** (0–24 dB): correction filter का boost limit। कम value नरम और headroom-सुरक्षित है; अधिक value cancellation बढ़ा सकती है पर कम robust होती है।
+- **Freq Low** (20–2000 Hz) / **Freq High** (1000–20000 Hz): correction band; बाहर audio pass होता है। 200–6000 Hz से शुरू करें, सिर की movement के प्रति बहुत sensitive हो तो band संकरा करें।
+- **Direct Window** (2–50 ms): मापे गए direct sound की अवधि। छोटा window reflections घटाता है पर effective low-frequency limit बढ़ा सकता है; लंबा window अधिक bass और room sound रखता है।
+- **Strength** (0–100%): 0% delayed uncorrected sound से 100% full correction तक blend करता है। 70% से शुरू करें; position के बाहर कृत्रिम लगे तो घटाएँ।
+- **Output Gain** (-24–+24 dB): final level। पहले 0 dB रखें, headroom के लिए जरूरत हो तो घटाएँ।
+- **Latency** (0/128/256/512/1024 samples): processing-block delay। अधिक values processing आसान करती हैं, कम values monitoring delay घटाती हैं।
+
+### स्थिति और लेटेंसी
+
+शुरुआत में **Assign all four measurements to begin.** दिखता है; design के समय progress और ready होने पर maximum filter gain दिखता है। tail warning का अर्थ **Taps** या **Regularization** बढ़ाना है। **Direct Window** द्वारा effective low frequency बढ़ने की चेतावनी का अर्थ है कि window बहुत छोटा है।
+
+न मिलने वाली measurement फिर चुनें। filters तैयार न हों तो कम **Taps** या अधिक **Latency** आज़माएँ। चार उपयुक्त measurements और ready filters होने तक audio बिना बदलाव और बिना added latency के pass होता है। बाद में कुल delay **Latency** और modeled delay का योग है, जिसे app compensate करता है; monitoring या video sync के लिए **Total Delay** देखें। कोई graph या अन्य visualization नहीं है।
 
 ## MS Matrix
 

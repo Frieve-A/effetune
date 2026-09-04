@@ -733,15 +733,47 @@ class IRReverbPlugin extends PluginBase {
     async _getLibraryService() {
         if (window.irLibraryService) return window.irLibraryService;
         if (!this._libraryServicePromise) {
+            const unsubscribe = this._watchLibraryMigration();
             const pending = import('../../js/ir-library/service.js')
                 .then(module => module.getDefaultIrLibraryService());
             const retryable = pending.catch(error => {
                 if (this._libraryServicePromise === retryable) this._libraryServicePromise = null;
                 throw error;
-            });
+            }).finally(() => unsubscribe.then(stop => stop()));
             this._libraryServicePromise = retryable;
         }
         return this._libraryServicePromise;
+    }
+
+    // Desktop only: the first open after an update may copy the legacy IR
+    // library into application data. Report that in the status line so a
+    // long copy does not look like a hang.
+    _watchLibraryMigration() {
+        if (!window.electronAPI?.irLibraryV1) return Promise.resolve(() => {});
+        let stopped = false;
+        const subscription = import('../../js/ir-library/ir-library-factory.js')
+            .then(({ subscribeIrLibraryMigrationProgress }) => {
+                if (stopped) return () => {};
+                return subscribeIrLibraryMigrationProgress(progress => this._showMigrationProgress(progress));
+            })
+            .catch(() => () => {});
+        return subscription.then(stop => () => {
+            stopped = true;
+            stop();
+        });
+    }
+
+    _showMigrationProgress(progress) {
+        if (this._statusState !== 'preparing') return;
+        if (progress.phase === 'done') {
+            this._setStatus(this._t('irReverb.status.preparing', 'Preparing the impulse response…'), 'preparing');
+            return;
+        }
+        this._setStatus(this._t('irReverb.status.migrating',
+            'Moving the impulse response library to application data… {completed}/{total}', {
+                completed: progress.completedCount,
+                total: progress.totalCount
+            }), 'preparing');
     }
 
     _trackAssetResolution(promise, generation = this._generation) {

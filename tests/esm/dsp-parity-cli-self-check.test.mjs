@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runBenchCli } from '../../tools/dsp-parity/bench.mjs';
+import { isAcceptanceComplete } from '../../tools/verify-dsp-library-goldens.mjs';
 import {
   generateAllGoldens,
   productionNativeRunnerHash,
@@ -261,6 +262,51 @@ test('G.726 production-native promotion requires the official conformance gate i
   assert.doesNotThrow(() => requireG726PromotionConformance('VolumePlugin', repoRoot, {
     'promote-production-native': true
   }));
+});
+
+test('release acceptance completion follows the requested backend set', () => {
+  const stateContracts = names => Object.fromEntries(names.map(name => [name, true]));
+  const backend = (name, total, expectedValidationRejections, contracts) => ({
+    backend: name,
+    counts: {
+      total,
+      passed: total,
+      failed: 0,
+      unexecuted: 0,
+      expectedValidationRejections
+    },
+    stateContracts: contracts
+  });
+  const python = backend('python-native', 875, 1, stateContracts([
+    'sameSeed', 'differentSeed', 'reset', 'closeIdempotent', 'closedRejects',
+    'modulationCrossField', 'frequencyShifterLatency'
+  ]));
+  const javascriptContracts = stateContracts([
+    'sameSeed', 'differentSeed', 'closeIdempotent', 'closedRejects',
+    'statefulStream', 'modulationCrossField', 'frequencyShifterLatency'
+  ]);
+  const javascript = [
+    backend('javascript-baseline', 875, 1, javascriptContracts),
+    backend('javascript-simd', 875, 1, javascriptContracts)
+  ];
+  const worklets = (prefix, total, expectedValidationRejections) => ({
+    status: 'completed',
+    variants: ['baseline', 'simd'].map(variant =>
+      backend(`${prefix}-${variant}`, total, expectedValidationRejections, null)
+    )
+  });
+  const full = {
+    backends: [python, ...javascript],
+    workletGolden: worklets('chromium-audioworklet', 93, 1),
+    workletNonIdentity: worklets('chromium-audioworklet-nonidentity', 87, 0)
+  };
+
+  assert.equal(isAcceptanceComplete(full), true);
+  assert.equal(isAcceptanceComplete({ backends: [python] }, { skipJs: true }), true);
+  assert.equal(isAcceptanceComplete({ backends: [] }, {
+    skipPython: true,
+    skipJs: true
+  }), false);
 });
 
 test('GSM-FR production-native promotion requires Phase 0, ETSI, and independent gates', async () => {

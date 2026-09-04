@@ -24,6 +24,22 @@ export function hasDesignableChannelResponses(measurement) {
     });
 }
 
+/**
+ * Absolute onset of a stored impulse response, measured from the scheduled
+ * playback frame. trimStartSamples anchors the trimmed data to that reference,
+ * so the sum is the round-trip path latency and is comparable across channels
+ * and across measurements. The anchor is negative when the trimmed data starts
+ * before the scheduled playback frame.
+ * @param {Object} ir - Impulse response metadata from the measurement record
+ * @returns {number|null} Onset in milliseconds, or null when unavailable
+ */
+function absoluteOnsetMilliseconds(ir) {
+    if (!Number.isFinite(ir?.sampleRate) || ir.sampleRate <= 0) return null;
+    if (!Number.isSafeInteger(ir.onsetIndex) || ir.onsetIndex < 0) return null;
+    if (!Number.isSafeInteger(ir.trimStartSamples)) return null;
+    return (ir.trimStartSamples + ir.onsetIndex) * 1000 / ir.sampleRate;
+}
+
 class MeasurementDisplay {
     constructor(uiManager) {
         this.uiManager = uiManager;
@@ -214,6 +230,69 @@ class MeasurementDisplay {
         document.getElementById('resultTitle').textContent = measurement.name;
         
         // Format details
+        this.renderMeasurementDetailRows(this.buildMeasurementDetailRows(measurement));
+
+        // Display measurement points
+        this.displayMeasurementPoints(measurement);
+
+        // Load global PEQ settings if available
+        const peqSettings = dataStorage.loadPEQSettings();
+
+        // Determine values to use, prioritizing global settings over measurement-specific ones
+        let lowFreq = (peqSettings && peqSettings.lowFreq) ?
+            this.uiManager.correctionHandler.logSliderToValue(peqSettings.lowFreq, 20, 1000) :
+            (measurement.correctionLowFreq || 80);
+
+        let highFreq = (peqSettings && peqSettings.highFreq) ?
+            this.uiManager.correctionHandler.logSliderToValue(peqSettings.highFreq, 1000, 20000) :
+            (measurement.correctionHighFreq || 20000);
+
+        let smoothing = (peqSettings && peqSettings.smoothing) ?
+            parseFloat(peqSettings.smoothing) :
+            (measurement.smoothing || 0.3);
+
+        let eqBandCount = (peqSettings && peqSettings.eqBandCount) ?
+            parseInt(peqSettings.eqBandCount) :
+            (measurement.eqBandCount || 5);
+
+        // Ensure smoothing value stays within the valid range
+        smoothing = Math.max(0.01, Math.min(1.00, smoothing));
+
+        // Set PEQ control values
+        document.getElementById('targetLowFreqSlider').value =
+            this.uiManager.correctionHandler.valueToLogSlider(lowFreq, 20, 1000);
+        document.getElementById('targetLowFreqValue').textContent = Math.round(lowFreq);
+
+        document.getElementById('targetHighFreqSlider').value =
+            this.uiManager.correctionHandler.valueToLogSlider(highFreq, 1000, 20000);
+        document.getElementById('targetHighFreqValue').textContent = Math.round(highFreq);
+
+        document.getElementById('smoothing').value = smoothing;
+        document.getElementById('smoothingValue').textContent = smoothing.toFixed(2);
+
+        document.getElementById('eqBandCount').value = eqBandCount;
+        document.getElementById('eqBandCountValue').textContent = eqBandCount;
+
+        this.updateChannelFilter(measurement);
+
+        // Ensure 'All' is selected by default
+        this.selectPoint('all');
+
+        // Update frequency markers
+        this.uiManager.correctionHandler.updateFrequencyMarkers();
+
+        // If not skipGraphUpdate, calculate and draw initial correction
+        if (!skipGraphUpdate) {
+            this.uiManager.correctionHandler.requestCorrectionUpdate();
+        }
+    }
+
+    /**
+     * Build the label/value rows shown in the measurement details table
+     * @param {Object} measurement - Measurement record
+     * @returns {Array<[string, string]>} Detail rows
+     */
+    buildMeasurementDetailRows(measurement) {
         const dateTime = new Date(measurement.timestamp);
         const dateString = dateTime.toLocaleDateString();
         const timeString = dateTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -279,9 +358,19 @@ class MeasurementDisplay {
                 ]);
             }
         }
+        details.push(...this.buildOnsetDetailRows(measurement));
+        return details;
+    }
+
+    /**
+     * Render label/value rows into the measurement details table
+     * @param {Array<[string, string]>} rows - Detail rows
+     */
+    renderMeasurementDetailRows(rows) {
         const detailsElement = document.getElementById('measurementDetails');
+        if (!detailsElement) return;
         detailsElement.replaceChildren();
-        for (const [label, value] of details) {
+        for (const [label, value] of rows) {
             const row = document.createElement('tr');
             const heading = document.createElement('th');
             const cell = document.createElement('td');
@@ -290,62 +379,51 @@ class MeasurementDisplay {
             row.append(heading, cell);
             detailsElement.appendChild(row);
         }
-        
-        // Display measurement points
-        this.displayMeasurementPoints(measurement);
-        
-        // Load global PEQ settings if available
-        const peqSettings = dataStorage.loadPEQSettings();
-        
-        // Determine values to use, prioritizing global settings over measurement-specific ones
-        let lowFreq = (peqSettings && peqSettings.lowFreq) ? 
-            this.uiManager.correctionHandler.logSliderToValue(peqSettings.lowFreq, 20, 1000) : 
-            (measurement.correctionLowFreq || 80);
-            
-        let highFreq = (peqSettings && peqSettings.highFreq) ? 
-            this.uiManager.correctionHandler.logSliderToValue(peqSettings.highFreq, 1000, 20000) : 
-            (measurement.correctionHighFreq || 20000);
-            
-        let smoothing = (peqSettings && peqSettings.smoothing) ? 
-            parseFloat(peqSettings.smoothing) : 
-            (measurement.smoothing || 0.3);
-            
-        let eqBandCount = (peqSettings && peqSettings.eqBandCount) ? 
-            parseInt(peqSettings.eqBandCount) : 
-            (measurement.eqBandCount || 5);
-        
-        // Ensure smoothing value stays within the valid range
-        smoothing = Math.max(0.01, Math.min(1.00, smoothing));
-        
-        // Set PEQ control values
-        document.getElementById('targetLowFreqSlider').value = 
-            this.uiManager.correctionHandler.valueToLogSlider(lowFreq, 20, 1000);
-        document.getElementById('targetLowFreqValue').textContent = Math.round(lowFreq);
-        
-        document.getElementById('targetHighFreqSlider').value = 
-            this.uiManager.correctionHandler.valueToLogSlider(highFreq, 1000, 20000);
-        document.getElementById('targetHighFreqValue').textContent = Math.round(highFreq);
-        
-        document.getElementById('smoothing').value = smoothing;
-        document.getElementById('smoothingValue').textContent = smoothing.toFixed(2);
-        
-        document.getElementById('eqBandCount').value = eqBandCount;
-        document.getElementById('eqBandCountValue').textContent = eqBandCount;
-
-        this.updateChannelFilter(measurement);
-        
-        // Ensure 'All' is selected by default
-        this.selectPoint('all');
-        
-        // Update frequency markers
-        this.uiManager.correctionHandler.updateFrequencyMarkers();
-        
-        // If not skipGraphUpdate, calculate and draw initial correction
-        if (!skipGraphUpdate) {
-            this.uiManager.correctionHandler.requestCorrectionUpdate();
-        }
     }
-    
+        
+    /**
+     * Build the onset rows of the measurement details table
+     * @param {Object} measurement - Measurement record
+     * @returns {Array<[string, string]>} Onset rows, one per point that has one
+     */
+    buildOnsetDetailRows(measurement) {
+        const label = i18n.t('label:onset') || 'Onset';
+        const earliestLabel = i18n.t('label:onsetEarliest') || 'earliest';
+        const rows = [];
+        (measurement.points || []).forEach((point, index) => {
+            const stored = Array.isArray(point.channels)
+                ? point.channels
+                    .filter(entry => entry?.ir?.stored === true)
+                    .map(entry => ({ channel: entry.channel, ir: entry.ir }))
+                : point.ir?.stored === true
+                    ? [{ channel: null, ir: point.ir }]
+                    : [];
+            // A measurement without a usable anchor has no onset to report, so it
+            // contributes no row rather than a placeholder.
+            const entries = stored
+                .map(entry => ({ channel: entry.channel, onsetMs: absoluteOnsetMilliseconds(entry.ir) }))
+                .filter(entry => entry.onsetMs !== null);
+            if (entries.length === 0) return;
+            // With several channels the useful figure is which one arrives first
+            // and by how much the others trail it, so annotate every channel.
+            const earliest = entries.length > 1
+                ? Math.min(...entries.map(entry => entry.onsetMs)) : null;
+            const texts = entries.map(entry => {
+                let text;
+                if (earliest === null) {
+                    text = `${entry.onsetMs.toFixed(3)} ms`;
+                } else if (entry.onsetMs === earliest) {
+                    text = `${entry.onsetMs.toFixed(3)} ms (${earliestLabel})`;
+                } else {
+                    text = `${entry.onsetMs.toFixed(3)} ms (+${(entry.onsetMs - earliest).toFixed(3)} ms)`;
+                }
+                return entry.channel ? `${channelDisplayLabel(entry.channel)}: ${text}` : text;
+            });
+            rows.push([`${label} (${point.name || `Point ${index + 1}`})`, texts.join(' / ')]);
+        });
+        return rows;
+    }
+
     /**
      * Format channel information for display
      * @param {string} channelValue - Channel value from the measurement

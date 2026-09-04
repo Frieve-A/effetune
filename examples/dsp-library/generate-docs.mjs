@@ -12,6 +12,9 @@ const bindingCatalogPath = path.join(
 const graphContractPath = path.join(
   repoRoot, 'dsp', 'bindings', 'generated', 'graph-v1.contract.json'
 );
+const privateCatalogPath = path.join(
+  repoRoot, 'dsp', 'bindings', 'generated', 'effects-v1.private.json'
+);
 const outputRoot = path.join(repoRoot, 'docs', 'dsp');
 const safeSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const manifestSegmentPattern = /^[A-Za-z0-9._-]+$/;
@@ -261,6 +264,38 @@ function codeBlock(language, source) {
   return `\`\`\`${language}\n${source.trimEnd()}\n\`\`\``;
 }
 
+const nativeDirectDoublePattern = /-direct-double-v[0-9]+$/;
+
+// Counted from the frozen golden sources so that the published verification page
+// follows the inventory instead of a hand-maintained literal.
+function frozenReferenceOrigin() {
+  const privateCatalog = readJson(privateCatalogPath);
+  const sources = Object.keys(privateCatalog.frozenGoldenIndexes ?? {});
+  if (sources.length === 0) {
+    fail('The private catalog must map every effect to a frozen golden index.');
+  }
+  const counts = {
+    javascriptDerived: 0,
+    nativeDirectDouble: 0,
+    productionNativePromoted: 0
+  };
+  for (const source of sources) {
+    const schema = readJson(resolveUnderRoot(
+      repoRoot, source, `Frozen golden source ${source}`
+    ));
+    const reference = schema.parityReference ?? null;
+    if (reference === null) counts.javascriptDerived++;
+    else if (reference === 'production-native-promoted-v1') {
+      counts.productionNativePromoted++;
+    } else if (nativeDirectDoublePattern.test(reference)) {
+      counts.nativeDirectDouble++;
+    } else {
+      fail(`Unknown frozen golden parity reference: ${reference}`);
+    }
+  }
+  return counts;
+}
+
 function loadSources() {
   const catalog = readJson(bindingCatalogPath);
   const graphContract = readJson(graphContractPath);
@@ -353,6 +388,12 @@ function loadSources() {
       (dsd.minimumSampleRate !== 88200 || dsd.effectiveDelaySamples !== 63)) {
     fail('DSD64IMDSimulator binding metadata is not docs-ready.');
   }
+  const referenceOrigin = frozenReferenceOrigin();
+  const referenceOriginTotal = Object.values(referenceOrigin)
+    .reduce((total, count) => total + count, 0);
+  if (referenceOriginTotal !== types.length) {
+    fail('The frozen golden reference origin does not cover every catalog effect.');
+  }
   return {
     catalog,
     graphContract,
@@ -361,7 +402,8 @@ function loadSources() {
     routes,
     locales,
     npmPackage,
-    convenienceExports
+    convenienceExports,
+    referenceOrigin
   };
 }
 
@@ -946,7 +988,9 @@ function landingPage(catalog, version, convenienceExports) {
 }
 
 function staticPages(sources) {
-  const { catalog, convenienceExports, graphContract, npmPackage, routes } = sources;
+  const {
+    catalog, convenienceExports, graphContract, npmPackage, referenceOrigin, routes
+  } = sources;
   const version = npmPackage.version;
   const pythonSnippet = read(path.join(docsDataRoot, 'snippets', 'python-start.py'));
   const javascriptSnippet = read(path.join(
@@ -2359,8 +2403,8 @@ R128, true peak, and dynamics gain-reduction observations are not part of this A
 `);
 
   add('verification', `
-The frozen wrapper reference origin is 80 JavaScript-derived effect suites, 5 native
-direct-double suites, and 5 production-native-promoted suites. Maintainers run:
+The frozen wrapper reference origin is ${referenceOrigin.javascriptDerived} JavaScript-derived effect suites,
+${referenceOrigin.nativeDirectDouble} native direct-double suites, and ${referenceOrigin.productionNativePromoted} production-native-promoted suites. Maintainers run:
 
 ${codeBlock('console', 'node tools/verify-dsp-library-goldens.mjs')}
 

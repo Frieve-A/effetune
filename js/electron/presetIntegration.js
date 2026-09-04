@@ -2,6 +2,9 @@
  * Preset and file integration module for EffeTune
  * Provides preset and file handling functionality when running in Electron
  */
+import { getAudioMimeType } from '../audio/audio-mime.js';
+
+export { getAudioMimeType };
 
 function getPresetNameFromPath(filePath) {
   const fileName = filePath.split(/[\\/]/).pop() || filePath;
@@ -366,7 +369,7 @@ export async function openMusicFile(isElectron) {
     }
     const tracks = result.kind === 'cue' ? result.tracks : result.descriptors;
     if (!Array.isArray(tracks) || tracks.length === 0) return;
-    window.uiManager?.createAudioPlayer?.(tracks, false);
+    await window.uiManager?.createAudioPlayer?.(tracks, false);
   } catch (error) {
     console.error('Open Music diagnostic:', error);
     window.uiManager?.setError?.('error.musicSelectionUnavailable', true);
@@ -473,25 +476,4 @@ export function processAudioFiles(isElectron) {
   } catch (error) {
     reportAudioFileProcessingFailure('Error processing audio files:', error);
   }
-}
-
-/**
- * Get MIME type for audio file based on extension
- * @param {string} fileName - File name with extension
- * @returns {string} MIME type
- */
-export function getAudioMimeType(fileName) {
-  const extension = fileName.split('.').pop().toLowerCase();
-  const mimeTypes = {
-    'mp3': 'audio/mpeg',
-    'wav': 'audio/wav',
-    'ogg': 'audio/ogg',
-    'flac': 'audio/flac',
-    'opus': 'audio/opus',
-    'm4a': 'audio/mp4',
-    'aac': 'audio/aac',
-    'webm': 'audio/webm'
-  };
-  
-  return mimeTypes[extension] || 'audio/mpeg'; // Default to audio/mpeg
 }

@@ -1,6 +1,6 @@
 ---
 title: "空間オーディオプラグイン - EffeTune"
-description: "Crossfeed Filter、MS Matrix、Multiband Balance、Phase Select EQ、Stereo Blendなどの空間オーディオプラグイン。"
+description: "Crossfeed Filter、Crosstalk Cancellation、MS Matrix、Multiband Balance、Phase Select EQ、Stereo Blendなどの空間オーディオプラグイン。"
 lang: ja
 ---
 
@@ -11,6 +11,7 @@ lang: ja
 ## プラグイン一覧
 
 - [Crossfeed Filter](#crossfeed-filter) - ヘッドホン用クロスフィードフィルターで自然なステレオイメージを実現
+- [Crosstalk Cancellation](#crosstalk-cancellation) - 耳元の測定値でステレオスピーカー間のクロストークを低減
 - [MS Matrix](#ms-matrix) - 高度なステレオ調整チェーン向けに、ステレオをMid/Sideへ変換し、また戻します
 - [Multiband Balance](#multiband-balance) - 5バンドの周波数依存ステレオバランス制御
 - [Phase Select EQ](#phase-select-eq) - L/R位相差とBalanceで選んだ周波数成分をブーストまたはカット
@@ -101,6 +102,39 @@ lang: ja
    - 様々な音楽スタイルでテスト
 
 注意: Crossfeed Filterは、ヘッドホンリスニングをより自然で快適にするために設計されています。控えめな設定から始めて、リスニングの好みと音楽素材に最適なバランスを見つけるために徐々に調整してください。
+
+## Crosstalk Cancellation
+
+Crosstalk Cancellationは、耳元で測定した応答を使い、各ステレオスピーカーの音が反対側の耳へ届く成分を低減します。測定した1か所で2本のステレオスピーカーを聴くときに、より明瞭でバイノーラルに近い定位を得るための機能です。ヘッドホンやモノラル再生には使用しません。
+
+[Crossfeed Filter](#crossfeed-filter) はヘッドホン用にスピーカーらしいクロストークを少し**加える**のに対し、Crosstalk Cancellationはスピーカー再生で測定済みのクロストークを**減らします**。
+
+### 測定と割り当て
+
+1. マイクを左耳位置に置き、左・右スピーカー出力を選んで1回測定します。測定の左チャンネルを **LL: L Speaker → Left Ear**、右チャンネルを **RL: R Speaker → Left Ear** に割り当てます。
+2. マイクを右耳位置へ移して同じ2出力測定を行います。左チャンネルを **LR: L Speaker → Right Ear**、右チャンネルを **RR: R Speaker → Right Ear** に割り当てます。
+3. 同じスピーカー配置・聴取位置で作成した単一ポイント測定を使い、各スロットには異なる測定チャンネルを指定します。
+
+まずは **Taps** 4096、**Regularization** 50%、**Max Gain** 12 dB、**Freq Low** 200 Hz、**Freq High** 6000 Hz、**Direct Window** 8 ms、**Strength** 70%、**Output Gain** 0 dB、**Latency** 128 samplesの既定値から始めます。測定位置に座ってバイパスと比較し、少しずつ調整してください。
+
+### パラメーター
+
+- **Taps** (1024～16384): フィルターの長さです。増やすとキャンセルの精度を高められますが、処理量とモデル化遅延も増えます。テール切れの警告が出たら、まず増やします。
+- **Regularization** (0～100%): 不安定になりやすい補正を抑えます。少し頭を動かしただけで音色が不自然になるときは上げ、測定位置でのキャンセルを強めたいときだけ下げます。
+- **Max Gain** (0～24 dB): 補正フィルターの最大ブーストです。低い値は穏やかでヘッドルームを保ち、高い値はキャンセルを強めますが、結果が敏感になることがあります。
+- **Freq Low** (20～2000 Hz) / **Freq High** (1000～20000 Hz): 主な補正帯域です。帯域外は通過します。まず200 Hz～6000 Hzを使い、頭の動きに敏感すぎる場合は帯域を狭めます。
+- **Direct Window** (2～50 ms): 測定の直接音を使う長さです。短くすると部屋の反射を減らせますが、実効低域限界が上がる場合があります。長くすると低域情報は増えますが、反射も含みやすくなります。
+- **Strength** (0～100%): 0%の遅延された未補正音から、100%の完全補正までを混ぜます。70%から始め、測定位置の外で不自然なら下げます。
+- **Output Gain** (-24～+24 dB): 補正後の最終レベルです。最初は0 dBにし、ヘッドルームが必要なら下げます。
+- **Latency** (0 / 128 / 256 / 512 / 1024 samples): 処理ブロックの遅延です。高い値は処理に余裕を与え、低い値はモニタリング遅延を抑えます。
+
+### ステータスと遅延
+
+最初は **Assign all four measurements to begin.** と表示されます。設計中は進行状況、準備完了時は最大フィルターゲインが表示されます。テール警告は **Taps** または **Regularization** を上げる目安です。**Direct Window** が実効低域を上げたという警告は、選んだ窓が短すぎて指定した低域を使えないことを示します。
+
+割り当てた測定が見つからない場合は選び直します。フィルターを準備できない場合は **Taps** を減らすか **Latency** を上げてください。4つの適切な測定が割り当てられ、フィルターの準備が完了するまでは音をそのまま通し、処理遅延も加わりません。
+
+準備完了後の総遅延は、選んだ **Latency** とフィルターのモデル化遅延の合計です。アプリの通常のパイプライン遅延補償が適用されます。リアルタイムモニタリングや映像同期では **Total Delay** を確認してください。Crosstalk Cancellationにはグラフなどの可視化はありません。
 
 ## MS Matrix
 

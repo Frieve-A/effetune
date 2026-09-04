@@ -6,6 +6,7 @@ const path = require('path');
 
 const {
   IR_LIBRARY_CHANNELS,
+  IR_LIBRARY_MIGRATION_MARKER_NAME,
   IR_LIBRARY_SIZE_LIMITS,
   registerIrLibraryIpc
 } = require('../../electron/ir-library-ipc.js');
@@ -348,4 +349,30 @@ test('IR IPC reports an oversized library index without reading or exposing its 
   assert.equal(payloadReads, 0);
   assert.equal(harness.diagnostics.length, 1);
   assert.ok(!harness.diagnostics[0].flat().join(' ').includes(harness.tempRoot));
+});
+
+test('IR IPC stores the legacy migration marker without listing it as library content', async t => {
+  const harness = createHarness();
+  t.after(() => removeTempRoot(harness.tempRoot));
+  const write = harness.handlers.get(IR_LIBRARY_CHANNELS.writeAtomic);
+  const read = harness.handlers.get(IR_LIBRARY_CHANNELS.read);
+  const exists = harness.handlers.get(IR_LIBRARY_CHANNELS.exists);
+  const list = harness.handlers.get(IR_LIBRARY_CHANNELS.list);
+  const markerText = '{"version":1,"status":"empty"}';
+  const markerBytes = new TextEncoder().encode(markerText);
+
+  assert.deepEqual(await exists({}, { name: IR_LIBRARY_MIGRATION_MARKER_NAME }), { ok: true, data: false });
+  assert.deepEqual(await write({}, { name: IR_LIBRARY_MIGRATION_MARKER_NAME, bytes: markerBytes }), { ok: true, data: true });
+  assert.deepEqual(await exists({}, { name: IR_LIBRARY_MIGRATION_MARKER_NAME }), { ok: true, data: true });
+  const readBack = await read({}, { name: IR_LIBRARY_MIGRATION_MARKER_NAME });
+  assert.equal(readBack.ok, true);
+  assert.equal(new TextDecoder().decode(readBack.data), markerText);
+  assert.deepEqual(await write({}, { name: 'index.json', bytes: new TextEncoder().encode('[]') }), { ok: true, data: true });
+  assert.deepEqual(await list({}, {}), { ok: true, data: ['index.json'] });
+  assert.deepEqual(
+    await write({}, { name: IR_LIBRARY_MIGRATION_MARKER_NAME, bytes: new Uint8Array(IR_LIBRARY_SIZE_LIMITS.marker + 1) }),
+    { ok: false, code: 'storage-failed' }
+  );
+  const kept = await read({}, { name: IR_LIBRARY_MIGRATION_MARKER_NAME });
+  assert.equal(new TextDecoder().decode(kept.data), markerText);
 });

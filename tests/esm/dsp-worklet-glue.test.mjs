@@ -858,7 +858,7 @@ test('worklet reconciles pre-module plugins, adopts every arena bus, and manages
   assert.equal(harness.binding.calls.some(call => call[0] === 'createInstance'), false);
 
   const modulePayload = { compiled: true };
-  await harness.send({ type: 'dspModule', module: modulePayload, simd: true });
+  await harness.send({ type: 'dspModule', module: modulePayload, simd: true, token: 7 });
   assert.equal(harness.factories.length, 1);
   assert.equal(harness.factories[0].payload, modulePayload);
   assert.deepEqual(harness.binding.calls.find(call => call[0] === 'prepare').slice(1), [48000, 16, 128, 256 * 1024]);
@@ -870,6 +870,7 @@ test('worklet reconciles pre-module plugins, adopts every arena bus, and manages
   }
   assert.deepEqual(harness.binding.calls.find(call => call[0] === 'instanceSetTap').slice(2), [7]);
   assert.deepEqual(harness.binding.calls.find(call => call[0] === 'instanceSetParams').slice(2), [[1], 0x1234]);
+  assert.deepEqual(messagesOf(harness.posts, 'dspInitializing').map(entry => entry.message.token), [7]);
   assert.equal(messagesOf(harness.posts, 'dspReady').length, 1);
 
   const wasmOutput = processBlock(harness.processor);

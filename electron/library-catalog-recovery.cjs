@@ -8,6 +8,7 @@ const LIBRARY_CATALOG_RECOVERY_API_VERSION = 1;
 const LIBRARY_CATALOG_DIRECTORY_NAME = 'music-library-v3';
 const LIBRARY_CATALOG_RECOVERY_CHANNELS = Object.freeze({
   getState: 'library-recovery-v1:get-state',
+  initialize: 'library-recovery-v1:initialize',
   resetCatalog: 'library-recovery-v1:reset-catalog',
   state: 'library-recovery-v1:state'
 });
@@ -51,6 +52,9 @@ class LibraryCatalogRecovery extends EventEmitter {
   }
 
   initialize() {
+    if (this.closed || this.status !== 'initializing') {
+      return Promise.resolve(this.getState());
+    }
     return this.runExclusive(async () => {
       await this.openOrDegrade('initializing');
       return this.getState();
@@ -192,7 +196,8 @@ class LibraryCatalogRecovery extends EventEmitter {
 
 function registerLibraryCatalogRecoveryIpc({ ipcMain, recovery, getMainWindow }) {
   if (!ipcMain || typeof ipcMain.handle !== 'function' || typeof ipcMain.removeHandler !== 'function' ||
-      !recovery || typeof recovery.getState !== 'function' || typeof recovery.resetCatalog !== 'function' ||
+      !recovery || typeof recovery.getState !== 'function' || typeof recovery.initialize !== 'function' ||
+      typeof recovery.resetCatalog !== 'function' ||
       typeof getMainWindow !== 'function') {
     throw new TypeError('Catalog recovery IPC dependencies are invalid');
   }
@@ -201,6 +206,11 @@ function registerLibraryCatalogRecoveryIpc({ ipcMain, recovery, getMainWindow })
       assertAuthorizedSender(event, getMainWindow);
       assertEmptyRequest(request);
       return recovery.getState();
+    },
+    [LIBRARY_CATALOG_RECOVERY_CHANNELS.initialize]: (event, request) => {
+      assertAuthorizedSender(event, getMainWindow);
+      assertEmptyRequest(request);
+      return recovery.initialize();
     },
     [LIBRARY_CATALOG_RECOVERY_CHANNELS.resetCatalog]: (event, request) => {
       assertAuthorizedSender(event, getMainWindow);

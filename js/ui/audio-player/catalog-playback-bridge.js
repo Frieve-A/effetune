@@ -40,7 +40,9 @@ export class CatalogPlaybackBridge {
     this.#assertOpen();
     const destination = PLAYBACK_DESTINATIONS[request?.operationKind];
     if (!destination) return this.service.start(request);
-    const player = this.#getPlayer();
+    // Keep the synchronous path when a player already exists: the gesture-scoped audio resume
+    // below must still run inside the user gesture. Only creating a player has to be awaited.
+    const player = this.#getExistingPlayer() ?? await this.#getPlayer();
     if (request.operationKind === 'play') player.resumeAudioContextInGesture?.();
     const finishPlaybackPending = request.operationKind === 'play'
       ? player.stateManager?.beginPlaybackPending?.(3) ?? null
@@ -156,11 +158,11 @@ export class CatalogPlaybackBridge {
   }
 
   canUndoPlaybackSession() {
-    return this.#getPlayer().playbackManager.canUndoSessionTransport?.() === true;
+    return this.#getExistingPlayer()?.playbackManager.canUndoSessionTransport?.() === true;
   }
 
   undoPlaybackSession() {
-    return this.#getPlayer().playbackManager.undoSessionTransport?.() ??
+    return this.#getExistingPlayer()?.playbackManager.undoSessionTransport?.() ??
       Promise.resolve({ kind: 'notAvailable' });
   }
 
@@ -240,11 +242,21 @@ export class CatalogPlaybackBridge {
     this.operations.clear();
   }
 
-  #getPlayer() {
-    const player = this.uiManager.audioPlayer ?? this.uiManager.createAudioPlayer?.([], false);
+  async #getPlayer() {
+    // createAudioPlayer() loads the player module on demand, so it resolves asynchronously.
+    const player = this.uiManager.audioPlayer ?? await this.uiManager.createAudioPlayer?.([], false);
     if (!player?.playbackManager) {
       throw playbackBridgeError('audioPlayerUnavailable', 'Audio Player is unavailable');
     }
+    player.libraryOperationService = this;
+    return player;
+  }
+
+  // Session transport queries run while the Music Library renders, which can happen before any
+  // audio player exists. There is no session to undo in that case, so never create one here.
+  #getExistingPlayer() {
+    const player = this.uiManager.audioPlayer;
+    if (!player?.playbackManager) return null;
     player.libraryOperationService = this;
     return player;
   }
@@ -303,7 +315,7 @@ export class CatalogPlaybackBridge {
     } catch (error) {
       this.#reportError(error);
     } finally {
-      await this.#getPlayer().playbackManager.finishBulkPlayTerminal?.(
+      await (await this.#getPlayer()).playbackManager.finishBulkPlayTerminal?.(
         operation.operationId,
         { succeeded }
       );
@@ -342,7 +354,7 @@ export class CatalogPlaybackBridge {
       resolveSource: request => this.#resolveSequenceEntrySource(request)
     });
     const currentOrdinal = sequence.toTransportOrdinal(result.firstOrdinal);
-    return this.#getPlayer().playbackManager.commitCatalogDestination({
+    return (await this.#getPlayer()).playbackManager.commitCatalogDestination({
       operationId,
       operationKind,
       sequence,

@@ -3,49 +3,16 @@
  * Provides audio device functionality in Electron and browser builds
  */
 import {
-  loadWebAudioPreferences,
-  saveWebAudioPreferences
+  mergeWebAudioPreferences,
+  normalizeWebAudioPreferences
 } from './webSettingsStorage.js';
+import {
+  isGaplessPlaybackOnlyChange,
+  loadAudioPreferences,
+  saveAudioPreferences
+} from './audio-preference-store.js';
 import { NO_AUDIO_INPUT_DEVICE_ID } from '../audio/audio-device-constants.js';
-
-/**
- * Load saved audio preferences
- * @param {boolean} isElectron - Whether running in Electron environment
- * @returns {Promise<Object|null>} Audio preferences or null if not available
- */
-export async function loadAudioPreferences(isElectron) {
-  if (!isElectron) return loadWebAudioPreferences();
-  
-  try {
-    const result = await window.electronAPI.loadAudioPreferences();
-    if (result.success && result.preferences) {
-      return result.preferences;
-    }
-    return null;
-  } catch (error) {
-    console.error('Failed to load audio preferences:', error);
-    return null;
-  }
-}
-
-/**
- * Save audio preferences
- * @param {boolean} isElectron - Whether running in Electron environment
- * @param {Object} preferences - Audio device preferences
- * @param {Object} options - Persistence behavior for renderer-managed changes
- * @returns {Promise<boolean>} Success status
- */
-export async function saveAudioPreferences(isElectron, preferences, options = {}) {
-  if (!isElectron) return saveWebAudioPreferences(preferences);
-  
-  try {
-    const result = await window.electronAPI.saveAudioPreferences(preferences, options);
-    return result.success;
-  } catch (error) {
-    console.error('Failed to save audio preferences:', error);
-    return false;
-  }
-}
+export { isGaplessPlaybackOnlyChange, loadAudioPreferences, saveAudioPreferences };
 
 /**
  * Get available audio devices
@@ -202,11 +169,8 @@ function replaceValueOptions(select, values, selectedValue, labelForValue) {
  */
 export async function showAudioConfigDialog(isElectron, audioPreferences, callback) {
   try {
-    // Show "Configuring audio devices..." message
-    if (window.uiManager) {
-      window.uiManager.setError('status.configuringAudio');
-    }
-    
+    audioPreferences = normalizeWebAudioPreferences(audioPreferences || {});
+
     // Get available audio devices
     const devices = await getAudioDevices(isElectron);
     
@@ -233,15 +197,6 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
 
     // Get current sample rate preference or default to 96000
     const currentSampleRate = audioPreferences?.sampleRate || 96000;
-    
-    // Add window close event listener to clear error message
-    const clearErrorOnClose = () => {
-      if (window.uiManager) {
-        window.uiManager.clearError();
-      }
-      window.removeEventListener('beforeunload', clearErrorOnClose);
-    };
-    window.addEventListener('beforeunload', clearErrorOnClose);
     
     // Get translation function from UIManager
     if (!window.uiManager) {
@@ -285,6 +240,10 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
           <div class="checkbox-container">
             <input type="checkbox" id="use-wasm-dsp" ${audioPreferences?.useWasmDsp !== false ? 'checked' : ''}>
             <label for="use-wasm-dsp">${t('dialog.audioConfig.useWasmDsp')}</label>
+          </div>
+          <div class="checkbox-container">
+            <input type="checkbox" id="gapless-playback" ${audioPreferences?.gaplessPlayback !== false ? 'checked' : ''}>
+            <label for="gapless-playback">${t('dialog.audioConfig.gaplessPlayback')}</label>
           </div>
         </div>
         <div class="device-section">
@@ -439,6 +398,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
     }
     
     let dialogClosed = false;
+    let applyInProgress = false;
     function closeDialog() {
       if (dialogClosed) return;
       dialogClosed = true;
@@ -449,13 +409,21 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         styleElement.parentNode.removeChild(styleElement);
       }
       document.removeEventListener('keydown', handleKeydown);
-      clearErrorOnClose();
     }
 
     function handleKeydown(e) {
       if (e.key === 'Escape') {
         e.preventDefault();
         closeDialog();
+        return;
+      }
+      const targetTagName = e.target?.tagName?.toUpperCase();
+      if (e.key === 'Enter' && !e.isComposing &&
+          !e.altKey && !e.ctrlKey && !e.metaKey &&
+          !e.target?.isContentEditable &&
+          !['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'].includes(targetTagName)) {
+        e.preventDefault();
+        void applyPreferences();
       }
     }
 
@@ -464,7 +432,10 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
     document.addEventListener('keydown', handleKeydown);
     
     // Apply button
-    applyButton.addEventListener('click', async () => {
+    async function applyPreferences() {
+      if (dialogClosed || applyInProgress) return;
+      applyInProgress = true;
+      try {
       // Get selected values
       const inputDeviceSelect = document.getElementById('input-device');
       const outputDeviceSelect = document.getElementById('output-device');
@@ -473,6 +444,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       const outputChannelsSelect = document.getElementById('output-channels');
       const lowLatencyOutputCheckbox = document.getElementById('low-latency-output');
       const useWasmDspCheckbox = document.getElementById('use-wasm-dsp');
+      const gaplessPlaybackCheckbox = document.getElementById('gapless-playback');
       const latencySelect = document.getElementById('latency');
       
       const inputDevice = inputDeviceOptions.find(d => d.deviceId === inputDeviceSelect.value);
@@ -518,10 +490,48 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         useInputWithPlayer: useInputWithPlayer,
         lowLatencyOutput: lowLatencyOutput,
         useWasmDsp: useWasmDsp,
+        gaplessPlayback: gaplessPlaybackCheckbox.checked,
         outputChannels: outputChannels,
         latencyHint: selectedLatency
       };
       
+      const effectivePreferences = mergeWebAudioPreferences(audioPreferences, preferences);
+      const gaplessOnlyChange = isGaplessPlaybackOnlyChange(audioPreferences, effectivePreferences);
+      if (gaplessOnlyChange && typeof window.audioManager?.applyGaplessPlaybackPreference === 'function') {
+        closeDialog();
+        let applyResult = '';
+        try {
+          applyResult = await window.audioManager.applyGaplessPlaybackPreference(effectivePreferences);
+        } catch (error) {
+          console.error('Failed to apply Gapless Playback preference:', error);
+          applyResult = 'Audio Error: Failed to save audio preferences.';
+        }
+        if (applyResult && window.uiManager) window.uiManager.setError(applyResult, true);
+        if (!applyResult) callback?.(effectivePreferences);
+        return;
+      }
+      if (gaplessOnlyChange) {
+        // Persist only the playback field so the stored preferences never
+        // absorb session-only runtime overrides or refreshed device labels.
+        const saved = await saveAudioPreferences(isElectron, {
+          gaplessPlayback: effectivePreferences.gaplessPlayback
+        }, {
+          applyInPlace: 'gapless-playback'
+        });
+        if (!saved) {
+          window.uiManager?.setError?.(
+            'Audio Error: Gapless Playback could not be changed. Please apply the audio settings again.',
+            true
+          );
+          return;
+        }
+        window.audioPreferences = effectivePreferences;
+        if (window.electronIntegration) window.electronIntegration.audioPreferences = effectivePreferences;
+        closeDialog();
+        callback?.(effectivePreferences);
+        return;
+      }
+
       const applyThroughAudioManager = !isElectron ||
         canApplySilentInputWithoutReload(audioPreferences, preferences);
       if (applyThroughAudioManager &&
@@ -543,12 +553,14 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         return;
       }
 
-      // Electron applies the new preferences after the Web path has completed
-      // its local, atomic source replacement.
-      window.audioPreferences = preferences;
-
       // Save and close
-      await saveAudioPreferences(isElectron, preferences);
+      const saved = await saveAudioPreferences(isElectron, preferences);
+      if (!saved) {
+        window.uiManager?.setError?.('Audio Error: Failed to save audio preferences.', true);
+        return;
+      }
+      window.audioPreferences = preferences;
+      if (window.electronIntegration) window.electronIntegration.audioPreferences = preferences;
 
       // Update AudioWorklet with the new channel configuration
       if (isElectron && window.audioManager && window.audioManager.updateAudioConfig) {
@@ -596,7 +608,11 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         console.log('Waiting for main process to reload the window...');
         // The main process will reload after 3 seconds
       }, 1500);
-    });
+      } finally {
+        applyInProgress = false;
+      }
+    }
+    applyButton.addEventListener('click', applyPreferences);
   } catch (error) {
     console.error('Failed to show audio config dialog:', error);
   }

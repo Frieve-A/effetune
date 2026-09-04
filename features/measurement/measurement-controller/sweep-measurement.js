@@ -247,6 +247,7 @@ const SweepMeasurement = {
                         length: result.impulseResponse.length,
                         sampleRate: result.sampleRate,
                         onsetIndex: result.onsetIndex,
+                        trimStartSamples: result.trimStartSamples,
                         peakDb: result.peakDb,
                         sweepLimited: result.sweepLimited
                     };
@@ -257,6 +258,8 @@ const SweepMeasurement = {
                         sampleRate: result.sampleRate,
                         onsetIndex: result.onsetIndex,
                         prerollSamples: result.prerollSamples,
+                        trimStartSamples: result.trimStartSamples,
+                        outputTimeReference: result.outputTimeReference,
                         refScale: result.refScale,
                         peakDb: result.peakDb,
                         data: result.impulseResponse
@@ -283,6 +286,7 @@ const SweepMeasurement = {
                 length: measurementResult.impulseResponse.length,
                 sampleRate: measurementResult.sampleRate,
                 onsetIndex: measurementResult.onsetIndex,
+                trimStartSamples: measurementResult.trimStartSamples,
                 peakDb: measurementResult.peakDb,
                 sweepLimited: measurementResult.sweepLimited
             };
@@ -292,6 +296,8 @@ const SweepMeasurement = {
                 sampleRate: measurementResult.sampleRate,
                 onsetIndex: measurementResult.onsetIndex,
                 prerollSamples: measurementResult.prerollSamples,
+                trimStartSamples: measurementResult.trimStartSamples,
+                outputTimeReference: measurementResult.outputTimeReference,
                 refScale: measurementResult.refScale,
                 peakDb: measurementResult.peakDb,
                 data: measurementResult.impulseResponse

@@ -100,6 +100,8 @@
   "button:exportCSV": "تصدير معلمات التصحيح (CSV)",
   "help:exportOptions": "يمكن لصق إعدادات تصحيح التردد المنسوخة في خط أنابيب التأثير في EffeTune عبر Ctrl+V.",
   "title:measurementDetails": "تفاصيل القياس",
+  "label:onset": "بداية النبضة",
+  "label:onsetEarliest": "الأسرع",
   
   // Dialogs
   "button:confirm": "تأكيد",

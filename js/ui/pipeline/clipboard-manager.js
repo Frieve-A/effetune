@@ -102,7 +102,7 @@ export class ClipboardManager {
                         if (window.uiManager.isDoubleBlindActive && window.uiManager.isDoubleBlindActive()) {
                             return; // ignore paste while the test is open
                         }
-                        const dbt = window.uiManager.getDoubleBlindTest();
+                        const dbt = await window.uiManager.getDoubleBlindTest();
                         if (dbt.restoreFromShare(dbtParam)) {
                             return;
                         }

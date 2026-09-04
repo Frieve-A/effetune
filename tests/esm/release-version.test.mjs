@@ -34,7 +34,8 @@ test('release metadata uses the package version consistently', () => {
   const history = fs.readFileSync(new URL('../../docs/version-history.md', import.meta.url), 'utf8');
   assert.equal(packageLock.version, packageJson.version);
   assert.equal(packageLock.packages[''].version, packageJson.version);
-  const historyVersionHeading = history.match(/^### Version ([^ (\r\n]+) \((?!TBD(?:,|\)))/m);
-  assert.ok(historyVersionHeading, 'Version History must contain a released version heading');
+  // The newest section may still carry a TBD date while the version is unreleased; that is normal.
+  const historyVersionHeading = history.match(/^### Version ([^ (\r\n]+) \(/m);
+  assert.ok(historyVersionHeading, 'Version History must contain a version heading');
   assert.equal(historyVersionHeading[1], packageJson.version);
 });

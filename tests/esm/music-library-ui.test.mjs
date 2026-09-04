@@ -4,6 +4,7 @@ import test from 'node:test';
 import { UIManager } from '../../js/ui-manager.js';
 import { LibraryManagerV2 } from '../../js/library/library-manager-v2.js';
 import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
+import { CatalogPlaybackBridge } from '../../js/ui/audio-player/catalog-playback-bridge.js';
 import {
   LibraryView,
   WEB_PLAYLIST_BLOB_EXPORT_MAX_BYTES
@@ -711,6 +712,7 @@ test('library selection actions use the connected catalog playback bridge', asyn
   const manager = Object.assign(Object.create(UIManager.prototype), {
     libraryManager,
     libraryPlaybackBridge: null,
+    libraryFeatureModules: { CatalogPlaybackBridge },
     audioPlayer
   });
 

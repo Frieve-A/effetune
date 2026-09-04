@@ -17,10 +17,6 @@ const allowed = new Map([
   [
     'electron-winstaller',
     'Reached only through the Squirrel.Windows target of electron-builder, which this project never packages.'
-  ],
-  [
-    'fsevents',
-    'Optional macOS file-watching accelerator. Watchers fall back to polling when its native build is skipped.'
   ]
 ]);
 

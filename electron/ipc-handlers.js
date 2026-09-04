@@ -7,7 +7,14 @@ const config = require('./config');
 const windowState = require('./window-state');
 const { registerClipboardIpcHandlers } = require('./clipboard-ipc');
 const { registerIrLibraryIpc } = require('./ir-library-ipc');
+const { registerMeasurementBackupIpc } = require('./measurement-backup-ipc.cjs');
 const { readFileBytes } = require('./bounded-file-reader');
+const { queueAutoRestart } = require('./relaunch');
+const {
+  canPersistAudioPreferencesWithoutReload,
+  mergeAudioPreferences,
+  normalizeAudioPreferences
+} = require('./audio-preferences-policy.cjs');
 
 // Import file handlers
 const fileHandlers = require('./file-handlers');
@@ -21,15 +28,6 @@ const SETTINGS_DIR_SAVE_FILE_ALLOWLIST = new Set([
 const SETTINGS_DIR_SAVE_FILE_DENIAL = 'Writing to the EffeTune settings folder is not allowed: library-folders.json and other settings files are managed by the application';
 const ATOMIC_FILE_WRITE_MAX_CHARS = 64 * 1024;
 const NO_AUDIO_INPUT_DEVICE_ID = '__effetune_no_audio_input__';
-const AUDIO_PIPELINE_DEFAULTS = Object.freeze({
-  outputDeviceId: 'default',
-  sampleRate: 96000,
-  useInputWithPlayer: false,
-  lowLatencyOutput: false,
-  useWasmDsp: true,
-  outputChannels: 2,
-  latencyHint: 'interactive'
-});
 const FULL_SCREEN_EXIT_TIMEOUT_MS = 3000;
 const atomicFileWrites = new Map();
 let isMiniMode = false;
@@ -182,41 +180,6 @@ async function enterMiniPlayerMode(alwaysOnTop) {
     windowState.resumeSave();
   }
   windowState.saveWindowState();
-}
-
-function audioPipelineConfigurationEqual(left, right) {
-  if (!left || !right) return false;
-  return Object.entries(AUDIO_PIPELINE_DEFAULTS).every(([key, fallback]) =>
-    Object.is(left[key] ?? fallback, right[key] ?? fallback));
-}
-
-function canPersistAudioPreferencesWithoutReload(previousPreferences, nextPreferences, options) {
-  const applyInPlace = options?.applyInPlace;
-  if (applyInPlace === 'output-device-fallback') {
-    const previousOutputDeviceId = previousPreferences?.outputDeviceId;
-    if (!previousOutputDeviceId || previousOutputDeviceId === 'default' ||
-        nextPreferences?.outputDeviceId !== 'default' ||
-        (nextPreferences.outputDeviceLabel ?? '') !== '') {
-      return false;
-    }
-    const ignoredKeys = new Set(['outputDeviceId', 'outputDeviceLabel']);
-    const keys = new Set([
-      ...Object.keys(previousPreferences || {}),
-      ...Object.keys(nextPreferences || {})
-    ]);
-    return [...keys].every(key => ignoredKeys.has(key) ||
-      Object.is(previousPreferences?.[key], nextPreferences?.[key]));
-  }
-  if (!audioPipelineConfigurationEqual(previousPreferences, nextPreferences)) return false;
-  if (applyInPlace === 'silent-input') {
-    return nextPreferences?.inputDeviceId === NO_AUDIO_INPUT_DEVICE_ID &&
-      previousPreferences?.inputDeviceId !== NO_AUDIO_INPUT_DEVICE_ID;
-  }
-  if (applyInPlace === 'silent-input-rollback') {
-    return previousPreferences?.inputDeviceId === NO_AUDIO_INPUT_DEVICE_ID &&
-      nextPreferences?.inputDeviceId !== NO_AUDIO_INPUT_DEVICE_ID;
-  }
-  return false;
 }
 
 function normalizePathForComparison(filePath) {
@@ -532,7 +495,7 @@ function createApplicationMenuTemplate(menuState = {}) {
           click: () => sendToRenderer('config-app')
         }),
         item('settings.audioDevices', {
-          label: 'Audio Devices...',
+          label: 'Audio Configuration...',
           click: () => sendToRenderer('config-audio')
         }),
         item('settings.performanceBenchmark', {
@@ -603,6 +566,7 @@ function createMenu(menuState = {}) {
 // Register all IPC handlers
 function registerIpcHandlers() {
   registerIrLibraryIpc({ ipcMain, getUserDataPath: fileHandlers.getUserDataPath });
+  registerMeasurementBackupIpc({ ipcMain, getUserDataPath: fileHandlers.getUserDataPath });
   ipcMain.handle('set-mini-player-mode', async (event, options = {}) => {
     if (options?.enabled === true) {
       await enterMiniPlayerMode(options.alwaysOnTop === true);
@@ -621,11 +585,6 @@ function registerIpcHandlers() {
     mainWin.setAlwaysOnTop(enabled);
     windowState.setMiniPlayerAlwaysOnTop(enabled);
     return { success: true, enabled };
-  });
-
-  // Get first launch flag
-  ipcMain.handle('get-first-launch-flag', () => {
-    return constants.getIsFirstLaunch();
   });
 
   ipcMain.handle('get-window-visibility', () => {
@@ -844,7 +803,7 @@ function registerIpcHandlers() {
     try {
       const userDataPath = fileHandlers.getUserDataPath();
       const prefsPath = path.join(userDataPath, 'audio-preferences.json');
-      let previousPreferences = { inputDeviceId: 'default' };
+      let previousPreferences = {};
       if (fs.existsSync(prefsPath)) {
         try {
           previousPreferences = JSON.parse(fs.readFileSync(prefsPath, 'utf8'));
@@ -852,18 +811,36 @@ function registerIpcHandlers() {
           console.warn('Replacing unreadable audio preferences:', error);
         }
       }
+      let nextPreferences = mergeAudioPreferences(previousPreferences, preferences);
       const persistWithoutReload = canPersistAudioPreferencesWithoutReload(
         previousPreferences,
-        preferences,
-        options
+        nextPreferences,
+        options,
+        NO_AUDIO_INPUT_DEVICE_ID
       );
-      
+      if (options?.applyInPlace === 'gapless-playback') {
+        // A Gapless Playback change is applied in place by the renderer and
+        // must never schedule a reload. When the request would change anything
+        // else, leave the stored preferences untouched and report the failure;
+        // otherwise store only the playback field so refreshed device labels
+        // or session-only renderer state never reach the file.
+        if (!persistWithoutReload) {
+          return {
+            success: false,
+            error: 'Gapless Playback must be saved without other audio preference changes'
+          };
+        }
+        nextPreferences = mergeAudioPreferences(previousPreferences, {
+          gaplessPlayback: nextPreferences.gaplessPlayback
+        });
+      }
+
       // Ensure the directory exists
       if (!fs.existsSync(userDataPath)) {
         fs.mkdirSync(userDataPath, { recursive: true });
       }
       
-      fs.writeFileSync(prefsPath, JSON.stringify(preferences, null, 2));
+      fs.writeFileSync(prefsPath, JSON.stringify(nextPreferences, null, 2));
       
       // Show message that audio settings are saved and the application will reload shortly
       const mainWin = constants.getMainWindow();
@@ -893,7 +870,7 @@ function registerIpcHandlers() {
       
       if (fs.existsSync(prefsPath)) {
         const content = fs.readFileSync(prefsPath, 'utf8');
-        const preferences = JSON.parse(content);
+        const preferences = normalizeAudioPreferences(JSON.parse(content));
         return { success: true, preferences };
       }
       
@@ -1106,8 +1083,8 @@ function registerIpcHandlers() {
   // Re-throw on failure so the renderer can fall back to window.location.reload().
   ipcMain.handle('relaunch-app', () => {
     try {
-      app.relaunch({ args: [...process.argv.slice(1), constants.AUTO_RESTART_FLAG] });
-      app.exit(0);
+      queueAutoRestart(app);
+      app.quit();
     } catch (error) {
       console.error('[relaunch-app] Failed to relaunch app:', error);
       throw error;

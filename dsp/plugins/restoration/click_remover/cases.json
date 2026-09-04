@@ -1,0 +1,31 @@
+{
+  "defaults": {
+    "sampleRate": 96000,
+    "blockSize": 127,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 4096,
+    "params": { "sn": 50, "ml": 1 }
+  },
+  "cases": [
+    { "id": "isolated-impulses", "stimulus": "imp", "frames": 2048 },
+    { "id": "sensitive-impulses-mono-44k1", "stimulus": "imp", "sampleRate": 44100, "blockSize": 63, "channels": 1, "channelMode": "mono", "frames": 2048, "params": { "sn": 100, "ml": 2 } },
+    { "id": "step-degenerate-ar", "stimulus": "step", "sampleRate": 48000, "blockSize": 113, "frames": 4096 },
+    { "id": "silent-degenerate-ar", "stimulus": "silence", "sampleRate": 192000, "blockSize": 1, "channels": 1, "channelMode": "mono", "frames": 4096 },
+    { "id": "clean-sine", "stimulus": "sin1k", "frames": 4096 },
+    { "id": "noise-passthrough", "stimulus": "noise", "sampleRate": 48000, "blockSize": 63, "channels": 1, "channelMode": "mono", "frames": 4096 },
+    { "id": "alternating-full-scale", "stimulus": "fs", "sampleRate": 44100, "blockSize": 1, "frames": 4096 },
+    {
+      "id": "parameter-transitions-preserve-latency",
+      "stimulus": "sweep",
+      "sampleRate": 192000,
+      "blockSize": 127,
+      "frames": 8192,
+      "events": [
+        { "frame": 2201, "params": { "sn": 100 } },
+        { "frame": 4703, "params": { "ml": 2 } },
+        { "frame": 7109, "params": { "sn": 0, "ml": 0.1 } }
+      ]
+    }
+  ]
+}

@@ -187,11 +187,26 @@ function validateSnapshot(snapshot) {
     )) {
         throw new TypeError('Analyzer measurement settings are invalid');
     }
+    const expectedBypassPluginIds = snapshot.expectedWasmBypassPluginIds ?? [];
+    const expectedBypassReasons = snapshot.expectedWasmBypassReasons ?? [];
+    if (!Array.isArray(expectedBypassPluginIds) || !Array.isArray(expectedBypassReasons) ||
+        expectedBypassReasons.length !== expectedBypassPluginIds.length ||
+        expectedBypassReasons.some(entry => !entry || typeof entry.reason !== 'string' ||
+            !expectedBypassPluginIds.includes(entry.pluginId))) {
+        throw new TypeError('Analyzer expected WASM bypass reasons are invalid');
+    }
     const warmupSamples = snapshot.warmupSamples ?? 0;
     if (!Number.isSafeInteger(warmupSamples) || warmupSamples < 0 ||
         warmupSamples % ANALYSIS_QUANTUM_SIZE !== 0) {
         throw new TypeError('Analyzer warm-up must be a whole number of processing quanta');
     }
+}
+
+// Warning codes are the kebab-case spelling of the execution capability reason
+// (unsupportedSampleRate -> unsupported-sample-rate), so no bypass is reported under
+// another reason's code.
+function executionBypassWarningCode(reason) {
+    return reason.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`);
 }
 
 async function prepareProcessor(host, snapshot) {
@@ -238,6 +253,11 @@ async function prepareProcessor(host, snapshot) {
     for (const asset of assets) host.send({ type: 'setPluginAsset', ...asset });
 
     const requiredWasmPluginIds = new Set(snapshot.requiredWasmPluginIds || []);
+    // The snapshot announces the reason each WASM plugin is expected to bypass with, so the
+    // accepted reasons come from that single source instead of a hard-coded assumption.
+    const expectedWasmBypassReasons = new Map(
+        (snapshot.expectedWasmBypassReasons || []).map(entry => [entry.pluginId, entry.reason])
+    );
     const preferredWasmPluginIds = new Set(snapshot.preferredWasmPluginIds || []);
     if (requiredWasmPluginIds.size > 0 && !dsp) {
         throw new AnalysisWorkerError(
@@ -252,6 +272,12 @@ async function prepareProcessor(host, snapshot) {
                 message?.type === 'dspExecutionState' && message.pluginId === pluginId
             );
             if (state?.state !== 'active') return false;
+        }
+        for (const [pluginId, reason] of expectedWasmBypassReasons) {
+            const state = latestMessage(host.messages, message =>
+                message?.type === 'dspExecutionState' && message.pluginId === pluginId
+            );
+            if (state?.state !== 'bypassed' || state.reason !== reason) return false;
         }
         for (const key of requiredAssets) {
             const state = latestMessage(host.messages, message =>
@@ -277,6 +303,12 @@ async function prepareProcessor(host, snapshot) {
                 );
                 return `${pluginId}:${state?.state || 'missing'}:${state?.reason || ''}`;
             });
+            for (const pluginId of expectedWasmBypassReasons.keys()) {
+                const state = latestMessage(host.messages, message =>
+                    message?.type === 'dspExecutionState' && message.pluginId === pluginId
+                );
+                execution.push(`${pluginId}:${state?.state || 'missing'}:${state?.reason || ''}`);
+            }
             const assetStates = [...requiredAssets].map(key => {
                 const state = latestMessage(host.messages, message =>
                     message?.type === 'assetState' &&
@@ -296,6 +328,11 @@ async function prepareProcessor(host, snapshot) {
         const failed = latestMessage(host.messages, message =>
             (message?.type === 'dspExecutionState' && requiredWasmPluginIds.has(message.pluginId) &&
                 message.state === 'bypassed') ||
+            (message?.type === 'dspExecutionState' &&
+                expectedWasmBypassReasons.has(message.pluginId) &&
+                message.state !== 'pending' &&
+                (message.state !== 'bypassed' ||
+                    message.reason !== expectedWasmBypassReasons.get(message.pluginId))) ||
             (message?.type === 'assetLoadRejected' &&
                 requiredAssets.has(messageKey(message.pluginId, message.slot)))
         );
@@ -307,6 +344,12 @@ async function prepareProcessor(host, snapshot) {
         }
     }
     const warnings = [];
+    for (const [pluginId, reason] of expectedWasmBypassReasons) {
+        warnings.push({
+            code: executionBypassWarningCode(reason),
+            details: { pluginId, reason }
+        });
+    }
     for (const pluginId of preferredWasmPluginIds) {
         const state = latestMessage(host.messages, message =>
             message?.type === 'dspExecutionState' && message.pluginId === pluginId

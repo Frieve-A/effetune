@@ -14,6 +14,9 @@ const RIFF_INFO_TAG_IDS = new Set([
 ]);
 
 const MAX_RIFF_SCAN_CHUNKS = 8192;
+const MIN_PCM_WAVE_SAMPLE_RATE = 8000;
+const MAX_PCM_WAVE_SAMPLE_RATE = 768000;
+const PCM_WAVE_BIT_DEPTHS = new Set([8, 16, 24, 32]);
 const MAX_RIFF_INFO_LIST_BYTES = 1024 * 1024;
 const MAX_RIFF_INFO_VALUE_BYTES = 64 * 1024;
 
@@ -88,6 +91,120 @@ export function parseRiffInfoTagsFromBytes(data) {
   return tags;
 }
 
+/**
+ * Strictly parses an ordinary integer-PCM RIFF/WAVE source.
+ *
+ * This intentionally excludes RF64, WAVE_FORMAT_EXTENSIBLE, compressed/float
+ * formats, multiple data chunks, and files whose declared RIFF/chunk extents do
+ * not exactly match the supplied source bytes.
+ *
+ * @param {ArrayBuffer|ArrayBufferView} data
+ * @returns {{
+ *   channelCount: number,
+ *   sampleRate: number,
+ *   bitsPerSample: number,
+ *   blockAlign: number,
+ *   byteRate: number,
+ *   sourceByteLength: number,
+ *   dataOffset: number,
+ *   dataByteLength: number,
+ *   sourceFrames: number
+ * }|null}
+ */
+export function parsePcmWaveFormatFromBytes(data) {
+  const bytes = normalizeBytes(data);
+  if (!bytes || bytes.length < 12) return null;
+  if (readAscii(bytes, 0, 4) !== 'RIFF' || readAscii(bytes, 8, 12) !== 'WAVE') {
+    return null;
+  }
+
+  const riffSize = readUint32LE(bytes, 4);
+  if (riffSize === null || riffSize === 0xffffffff || riffSize + 8 !== bytes.length) {
+    return null;
+  }
+
+  let format = null;
+  let dataChunk = null;
+  let offset = 12;
+  let chunksScanned = 0;
+  while (offset < bytes.length) {
+    if (chunksScanned >= MAX_RIFF_SCAN_CHUNKS || offset + 8 > bytes.length) {
+      return null;
+    }
+
+    const chunkId = readAscii(bytes, offset, offset + 4);
+    const chunkSize = readUint32LE(bytes, offset + 4);
+    if (chunkId === null || chunkSize === null || chunkSize === 0xffffffff) {
+      return null;
+    }
+
+    const dataOffset = offset + 8;
+    const nextOffset = dataOffset + chunkSize + (chunkSize & 1);
+    if (!Number.isSafeInteger(nextOffset) || nextOffset <= offset || nextOffset > bytes.length) {
+      return null;
+    }
+
+    if (chunkId === 'fmt ') {
+      if (format || chunkSize !== 16) return null;
+
+      const formatTag = readUint16LE(bytes, dataOffset);
+      const channelCount = readUint16LE(bytes, dataOffset + 2);
+      const sampleRate = readUint32LE(bytes, dataOffset + 4);
+      const byteRate = readUint32LE(bytes, dataOffset + 8);
+      const blockAlign = readUint16LE(bytes, dataOffset + 12);
+      const bitsPerSample = readUint16LE(bytes, dataOffset + 14);
+      if (
+        formatTag !== 1 ||
+        (channelCount !== 1 && channelCount !== 2) ||
+        !PCM_WAVE_BIT_DEPTHS.has(bitsPerSample) ||
+        sampleRate === null ||
+        sampleRate < MIN_PCM_WAVE_SAMPLE_RATE ||
+        sampleRate > MAX_PCM_WAVE_SAMPLE_RATE
+      ) {
+        return null;
+      }
+
+      const expectedBlockAlign = channelCount * (bitsPerSample / 8);
+      const expectedByteRate = sampleRate * expectedBlockAlign;
+      if (blockAlign !== expectedBlockAlign || byteRate !== expectedByteRate) {
+        return null;
+      }
+
+      format = {
+        channelCount,
+        sampleRate,
+        bitsPerSample,
+        blockAlign,
+        byteRate
+      };
+    } else if (chunkId === 'data') {
+      if (!format || dataChunk) return null;
+      dataChunk = {
+        dataOffset,
+        dataByteLength: chunkSize
+      };
+    }
+
+    offset = nextOffset;
+    chunksScanned += 1;
+  }
+
+  if (offset !== bytes.length || !format || !dataChunk || dataChunk.dataByteLength === 0) {
+    return null;
+  }
+  if (dataChunk.dataByteLength % format.blockAlign !== 0) return null;
+
+  const sourceFrames = dataChunk.dataByteLength / format.blockAlign;
+  if (!Number.isSafeInteger(sourceFrames) || sourceFrames <= 0) return null;
+
+  return Object.freeze({
+    ...format,
+    ...dataChunk,
+    sourceByteLength: bytes.length,
+    sourceFrames
+  });
+}
+
 function parseRiffInfoListBytes(listData) {
   if (readAscii(listData, 0, 4) !== 'INFO') return [];
   const tags = [];
@@ -150,4 +267,9 @@ function readUint32LE(bytes, offset) {
     (bytes[offset + 1] << 8) |
     (bytes[offset + 2] << 16) |
     (bytes[offset + 3] << 24)) >>> 0;
+}
+
+function readUint16LE(bytes, offset) {
+  if (offset < 0 || offset + 2 > bytes.length) return null;
+  return bytes[offset] | (bytes[offset + 1] << 8);
 }

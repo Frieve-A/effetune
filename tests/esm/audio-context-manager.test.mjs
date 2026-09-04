@@ -159,10 +159,10 @@ async function withAudioGlobals(options, callback) {
   return withGlobals(globals, async () => callback({ calls, AudioNodeClass }));
 }
 
-test('constructor initializes the original connect slot and exposes the skip flag', async () => {
+test('constructor exposes the sample-rate skip flag and preserves window state', async () => {
   await withAudioGlobals({ window: {} }, async () => {
     const manager = new AudioContextManager();
-    assert.equal(globalThis.window.originalConnectMethod, null);
+    assert.equal('originalConnectMethod' in globalThis.window, false);
     assert.equal(manager.getSkipAudioInitDuringSampleRateChange(), false);
     manager.setSkipAudioInitDuringSampleRateChange(true);
     assert.equal(manager.getSkipAudioInitDuringSampleRateChange(), true);
@@ -175,12 +175,11 @@ test('constructor initializes the original connect slot and exposes the skip fla
   });
 });
 
-test('initAudioContext applies Electron preferences, first-launch silence, and macOS relaunch handling', async () => {
+test('initAudioContext applies Electron preferences and handles macOS context states', async () => {
   await withAudioGlobals({
     window: {
       electronAPI: {
-        platform: 'darwin',
-        isFirstLaunch: () => Promise.resolve(true)
+        platform: 'darwin'
       },
       electronIntegration: {
         async loadAudioPreferences() {
@@ -204,7 +203,6 @@ test('initAudioContext applies Electron preferences, first-launch silence, and m
     const manager = new AudioContextManager();
     assert.equal(await manager.initAudioContext(), '');
 
-    assert.equal(manager.isFirstLaunch, true);
     assert.deepEqual(calls.find(call => call[0] === 'newAudioContext')?.[1], {
       sampleRate: 48000,
       latencyHint: 'balanced',
@@ -215,15 +213,7 @@ test('initAudioContext applies Electron preferences, first-launch silence, and m
     assert.equal(manager.audioContext.destination.channelCountMode, 'explicit');
     assert.deepEqual(manager._pendingAudioConfig, { outputChannels: 6 });
     assert.equal(globalThis.window.audioPreferences.outputChannels, 6);
-    assert.equal(manager.silenceGain.gain.value, 0);
-
-    const node = new AudioNodeClass('ordinary');
-    node.connect('speaker');
-    node.connect('speaker', 1);
-    node.connect('speaker', 1, 2);
-    const connectCalls = calls.filter(call => call[0] === 'audioNodeConnect' && call[1] === 'ordinary');
-    assert.equal(connectCalls.length, 3);
-    assert.equal(connectCalls.every(call => call[2][0] === manager.silenceGain), true);
+    assert.equal('silenceGain' in manager, false);
 
     manager.audioContext.state = 'suspended';
     manager.audioContext.onstatechange();
@@ -379,7 +369,7 @@ test('initAudioContext falls back for Web option rejection but not Electron', as
   });
 });
 
-test('initAudioContext handles launch detection and AudioContext compatibility fallbacks', async () => {
+test('initAudioContext handles AudioContext compatibility fallbacks', async () => {
   for (const contextName of ['AudioContext', 'webkitAudioContext', 'mozAudioContext', 'msAudioContext']) {
     await withAudioGlobals({ window: {} }, async ({ calls, AudioNodeClass }) => {
       globalThis.window[contextName] = createAudioContextClass(calls, AudioNodeClass);
@@ -391,34 +381,17 @@ test('initAudioContext handles launch detection and AudioContext compatibility f
 
   await withAudioGlobals({
     window: {
-      electronAPI: { isFirstLaunch: () => false },
+      electronAPI: {},
       electronIntegration: { loadAudioPreferences: async () => null }
     }
   }, async ({ calls, AudioNodeClass }) => {
     globalThis.window.AudioContext = createAudioContextClass(calls, AudioNodeClass);
     const manager = new AudioContextManager();
     assert.equal(await manager.initAudioContext(), '');
-    assert.equal(manager.isFirstLaunch, false);
     assert.deepEqual(calls.find(call => call[0] === 'newAudioContext')?.[1], {
       latencyHint: 'interactive'
     });
     assert.equal(manager.audioContext.destination.channelCount, 2);
-  });
-
-  await withAudioGlobals({
-    window: {
-      electronAPI: {
-        isFirstLaunch() {
-          throw new Error('first launch failed');
-        }
-      },
-      electronIntegration: { loadAudioPreferences: async () => ({}) }
-    }
-  }, async ({ calls, AudioNodeClass }) => {
-    globalThis.window.AudioContext = createAudioContextClass(calls, AudioNodeClass);
-    const manager = new AudioContextManager();
-    assert.equal(await manager.initAudioContext(), '');
-    assert.equal(manager.isFirstLaunch, false);
   });
 
   await withAudioGlobals({
@@ -443,17 +416,6 @@ test('initAudioContext handles launch detection and AudioContext compatibility f
     assert.deepEqual(manager._pendingAudioConfig, { outputChannels: 2 });
   });
 
-  await withAudioGlobals({
-    window: {
-      isFirstLaunchConfirmed: true
-    }
-  }, async ({ calls, AudioNodeClass }) => {
-    globalThis.window.AudioContext = createAudioContextClass(calls, AudioNodeClass);
-    const manager = new AudioContextManager();
-    assert.equal(await manager.initAudioContext(), '');
-    assert.equal(manager.isFirstLaunch, true);
-  });
-
   await withAudioGlobals({ window: {} }, async () => {
     const manager = new AudioContextManager();
     assert.equal(
@@ -462,7 +424,7 @@ test('initAudioContext handles launch detection and AudioContext compatibility f
     );
   });
 
-  await withAudioGlobals({ window: { isFirstLaunchConfirmed: true } }, async () => {
+  await withAudioGlobals({ window: {} }, async () => {
     const manager = new AudioContextManager();
     manager.audioContext = { existing: true };
     assert.equal(await manager.initAudioContext(), '');
@@ -628,7 +590,7 @@ test('loadAudioWorklet creates a configured worklet and applies pending audio co
   });
 });
 
-test('loadAudioWorklet ignores already-registered modules and reports unsupported or failed loads', async () => {
+test('loadAudioWorklet waits for delayed registration and reports actual module failures', async () => {
   await withAudioGlobals({
     AudioWorkletNode: null,
     window: {
@@ -682,21 +644,34 @@ test('loadAudioWorklet ignores already-registered modules and reports unsupporte
     assert.ok(calls.some(call => call[0] === 'consoleError' && String(call[1]).includes('Failed to load audio worklet')));
   });
 
-  await withAudioGlobals({ window: {}, runTimers: true }, async ({ calls }) => {
+  await withAudioGlobals({ window: {} }, async ({ calls }) => {
+    let finishModuleLoad;
+    globalThis.AudioWorkletNode = createAudioWorkletNodeClass(calls);
     const manager = new AudioContextManager();
     manager.audioContext = {
       destination: { channelCount: 2 },
       audioWorklet: {
         addModule() {
-          calls.push(['addModuleNeverSettles']);
-          return new Promise(() => {});
+          calls.push(['addModuleDelayed']);
+          return new Promise(resolve => {
+            finishModuleLoad = resolve;
+          });
         }
       }
     };
-    assert.equal(
-      await manager.loadAudioWorklet(),
-      'Audio Error: AudioWorklet failed to load: audioWorklet.addModule timed out after 5000ms'
-    );
+    const loadPromise = manager.loadAudioWorklet();
+    let loadSettled = false;
+    void loadPromise.finally(() => {
+      loadSettled = true;
+    });
+
+    await flushMicrotasks();
+    assert.equal(loadSettled, false);
+    assert.equal(calls.some(call => call[0] === 'setTimeout'), false);
+
+    finishModuleLoad();
+    assert.equal(await loadPromise, '');
+    assert.ok(calls.some(call => call[0] === 'newAudioWorkletNode'));
   });
 });
 
@@ -765,13 +740,9 @@ test('createOfflineContext supports modern, legacy, fallback, and error construc
   });
 });
 
-test('closeAudioContext restores globals, clears matching worklets, and logs cleanup warnings', async () => {
-  await withAudioGlobals({}, async ({ calls, AudioNodeClass }) => {
-    const originalConnect = AudioNodeClass.prototype.connect;
+test('closeAudioContext clears matching worklets and logs close warnings', async () => {
+  await withAudioGlobals({}, async ({ calls }) => {
     const manager = new AudioContextManager();
-    globalThis.window.originalConnectMethod = originalConnect;
-    AudioNodeClass.prototype.connect = function replacedConnect() {};
-    manager.silenceGain = new AudioNodeClass('silence');
     manager.audioContext = {
       onstatechange: () => {},
       close() {
@@ -785,18 +756,13 @@ test('closeAudioContext restores globals, clears matching worklets, and logs cle
 
     await manager.closeAudioContext();
 
-    assert.equal(AudioNodeClass.prototype.connect, originalConnect);
-    assert.equal(globalThis.window.originalConnectMethod, null);
-    assert.equal(manager.silenceGain, null);
     assert.equal(manager.audioContext, null);
     assert.equal(globalThis.window.audioContext, null);
     assert.equal(globalThis.window.workletNode, null);
   });
 
-  await withAudioGlobals({}, async ({ calls, AudioNodeClass }) => {
+  await withAudioGlobals({}, async ({ calls }) => {
     const manager = new AudioContextManager();
-    manager.silenceGain = new AudioNodeClass('silence');
-    manager.silenceGain.disconnectError = new Error('disconnect failed');
     manager.audioContext = {
       onstatechange: () => {},
       close() {
@@ -808,7 +774,6 @@ test('closeAudioContext restores globals, clears matching worklets, and logs cle
 
     await manager.closeAudioContext();
 
-    assert.ok(calls.some(call => call[0] === 'consoleWarn' && String(call[1]).includes('disconnecting silence gain')));
     assert.ok(calls.some(call => call[0] === 'consoleWarn' && String(call[1]).includes('close() failed')));
     assert.deepEqual(globalThis.window.workletNode, { id: 'global' });
   });
@@ -826,20 +791,12 @@ test('closeAudioContext restores globals, clears matching worklets, and logs cle
     assert.ok(calls.some(call => call[0] === 'consoleWarn' && String(call[1]).includes('timed out')));
   });
 
-  await withAudioGlobals({}, async ({ AudioNodeClass }) => {
+  await withAudioGlobals({}, async () => {
     const manager = new AudioContextManager();
     globalThis.window.workletNode = { id: 'global' };
     manager.workletNode = null;
     await manager.closeAudioContext();
     assert.equal(globalThis.window.workletNode, null);
-
-    globalThis.window.originalConnectMethod = () => {};
-    Object.defineProperty(AudioNodeClass.prototype, 'connect', {
-      value() {},
-      writable: false,
-      configurable: true
-    });
-    await manager.closeAudioContext();
   });
 });
 

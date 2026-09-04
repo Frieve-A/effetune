@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "CrosstalkCancellationPlugin",
+  "id": "no-asset-impulse-exact-bypass",
+  "stimulus": "imp",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 2048,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "lt": "0",
+    "fd": 0,
+    "st": 100,
+    "og": 12
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0002,
+    "policy": "per-sample"
+  },
+  "performanceBudgetMs": 2500,
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:3f810308d4fe58c2d0548e8c565d9ee6165ae6a429b387ef0d7070acf4f5586a",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type CrosstalkCancellationPlugin --promote-production-native",
+  "outputFloats": 4096,
+  "byteLength": 16384,
+  "binary": "case-001.f32"
+}

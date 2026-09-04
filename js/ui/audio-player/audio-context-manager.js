@@ -20,8 +20,62 @@ import {
   choosePlaybackMode,
   normalizePlaybackSourceDescriptor
 } from './playback-source-policy.js';
+import { PCM16_STEREO_44100_TO_96000_PROFILE } from './rolling-pcm-core.js';
+import { RollingPcmTransport } from './rolling-pcm-transport.js';
+import {
+  createCanonicalPlaybackSourceSnapshot,
+  detectRollingLifecycle,
+  detectRollingRuntime,
+  getCanonicalPlaybackSourceIdentity,
+  hasRollingMatrixCandidate,
+  normalizeGaplessPlayback,
+  FULL_BUFFER_PCM_BYTE_CAP,
+  PRODUCTION_ROLLING_ENABLED_MATRIX,
+  PRODUCTION_ROLLING_POLICY_MODE,
+  ROLLING_CANDIDATE_TRANSIENT_BYTE_CAP,
+  ROLLING_COMPRESSED_SOURCE_BYTE_CAP,
+  RollingPcmAdmissionLedger,
+  RollingPolicyMode,
+  selectPlaybackBackend
+} from './rolling-pcm-policy.js';
 
 const MEDIA_CANDIDATE_READY_TIMEOUT_MS = 15000;
+const FULL_DECODE_RESERVATION_PROFILE = Object.freeze({
+  compressedSourceByteCap: ROLLING_COMPRESSED_SOURCE_BYTE_CAP,
+  currentPcmByteCap: FULL_BUFFER_PCM_BYTE_CAP,
+  nextPcmByteCap: FULL_BUFFER_PCM_BYTE_CAP
+});
+const PLAYBACK_BACKEND_ADAPTERS = Object.freeze({
+  bufferSource: Object.freeze({
+    play: 'playBufferSource',
+    pause: 'pauseBufferSource',
+    stop: 'stopBufferSource',
+    seek: 'seekBufferSource',
+    getSource: manager => manager.currentBufferSource,
+    getTime: manager => manager.getCurrentBufferTime()
+  }),
+  rollingPcm: Object.freeze({
+    play: 'playRollingPcm',
+    pause: 'pauseRollingPcm',
+    stop: 'stopRollingPcm',
+    seek: 'seekRollingPcm',
+    getSource: manager => manager.rollingTransport?.sourceNode ?? null,
+    getTime: manager => manager.rollingTransport?.currentTime ?? 0
+  }),
+  audioElement: Object.freeze({
+    play: 'playAudioElement',
+    pause: 'pauseAudioElement',
+    stop: 'stopAudioElement',
+    seek: 'seekAudioElement',
+    getSource: manager => manager.mediaSource,
+    getTime: (manager, state) => mediaTimeToLogicalTime(
+      manager.getActivePlaybackRegion(),
+      Number.isFinite(manager.audioPlayer.audioElement?.currentTime)
+        ? manager.audioPlayer.audioElement.currentTime
+        : state?.currentTrackPosition
+    )
+  })
+});
 
 export class AudioContextManager {
   constructor(audioPlayer, audioManager) {
@@ -56,6 +110,8 @@ export class AudioContextManager {
     this.bufferStartTime = 0;
     this.bufferDuration = 0;
     this.sourceGenerationSequence = 0;
+    this.partialDecodeFallbackAuthorities = new WeakMap();
+    this.partialDecodeBufferReservations = new WeakMap();
     this.activeSourceGeneration = 0;
     this.mediaSourceGeneration = 0;
     this.pendingMediaActivation = null;
@@ -88,9 +144,39 @@ export class AudioContextManager {
     this.regionBoundaryTimer = null;
     this.regionBoundaryArmToken = 0;
     this.currentPlaybackDecision = null;
+    this.rollingTransport = null;
+    this.nextRollingTransport = null;
+    this.scheduledRollingTransition = null;
+    this.rollingLegacyFallbackLock = false;
+    this.rollingFallbackLockTrack = null;
+    this.rollingPolicyMode = PRODUCTION_ROLLING_POLICY_MODE;
+    this.rollingEnabledMatrix = PRODUCTION_ROLLING_ENABLED_MATRIX;
+    this.rollingReservationLedger = new RollingPcmAdmissionLedger();
+    this.rollingTransports = new Set();
+    this.rollingTransportCleanupPromises = new WeakMap();
+    this.canonicalRollingSourceSnapshots = new WeakMap();
+    this.rollingCleanupBarrier = Promise.resolve();
+    this.rollingCleanupPendingCount = 0;
+    this.rollingSeekRequestToken = 0;
+    // Transport whose seek is in flight, including the cleanup waits that run
+    // before the transport raises its own pendingSeek.
+    this.rollingSeekInFlight = null;
+    this.gaplessPreferenceOperationToken = 0;
   }
 
   // ===== CORE AUDIO METHODS =====
+
+  getPlaybackBackendAdapter(mode = this.getCurrentState()?.playbackMode) {
+    return PLAYBACK_BACKEND_ADAPTERS[mode] ?? PLAYBACK_BACKEND_ADAPTERS.audioElement;
+  }
+
+  dispatchPlaybackBackend(operation, ...args) {
+    const method = this.getPlaybackBackendAdapter()[operation];
+    if (typeof this[method] !== 'function') {
+      throw new Error(`Unsupported playback backend operation: ${operation}`);
+    }
+    return this[method](...args);
+  }
 
   /**
    * Ensure that a source reaches every active pipeline input.
@@ -306,9 +392,7 @@ export class AudioContextManager {
     const state = this.audioPlayer.stateManager?.getStateSnapshot?.() || null;
     const required = state?.isPlaying === true || state?.isTransitioning === true;
     if (!required) return { state: 'not-required', sourcePresent: false };
-    const source = state?.playbackMode === 'bufferSource'
-      ? this.currentBufferSource
-      : this.mediaSource;
+    const source = this.getPlaybackBackendAdapter(state?.playbackMode).getSource(this);
     if (!source) return { state: 'disconnected', sourcePresent: false };
     const connected = this.isPipelineSourceConnected(source);
     return {
@@ -561,12 +645,7 @@ export class AudioContextManager {
 
   getCurrentPlaybackTime() {
     const state = this.getCurrentState();
-    if (state?.playbackMode === 'bufferSource') return this.getCurrentBufferTime();
-    const mediaTime = this.audioPlayer.audioElement?.currentTime;
-    return mediaTimeToLogicalTime(
-      this.getActivePlaybackRegion(),
-      Number.isFinite(mediaTime) ? mediaTime : state?.currentTrackPosition
-    );
+    return this.getPlaybackBackendAdapter(state?.playbackMode).getTime(this, state);
   }
 
   async restartAudioElementPlayback() {
@@ -742,10 +821,19 @@ export class AudioContextManager {
     const activeRegion = this.activeRegion;
     if (!activeRegion) {
       const state = this.getCurrentState();
-      this.clearNextTrackBuffer();
-      if (state?.playbackMode === 'bufferSource' && state.isPlaying === true &&
-          state.isStopped !== true) {
-        this.prepareNextTrackBufferWithRepeatMode();
+      const cleanup = this.clearNextTrackBuffer();
+      const invalidationToken = this.nextBufferRequestToken;
+      if (this.isGaplessPlaybackEnabled() &&
+          ['bufferSource', 'rollingPcm', 'audioElement'].includes(state?.playbackMode) &&
+          state?.isPlaying === true && state.isStopped !== true) {
+        void cleanup.then(() => {
+          const currentState = this.getCurrentState();
+          if (this.nextBufferRequestToken !== invalidationToken ||
+              !this.isGaplessPlaybackEnabled() ||
+              !['bufferSource', 'rollingPcm', 'audioElement'].includes(currentState?.playbackMode) ||
+              currentState?.isPlaying !== true || currentState.isStopped === true) return;
+          void this.prepareNextTrackBufferWithRepeatMode();
+        });
         return true;
       }
       return false;
@@ -930,6 +1018,8 @@ export class AudioContextManager {
       } catch (e) {
         // Fall back to StateManager's last known position.
       }
+    } else if (state?.playbackMode === 'rollingPcm' && this.rollingTransport) {
+      position = this.rollingTransport.currentTime;
     } else if (state?.playbackMode === 'audioElement' && this.audioPlayer.audioElement) {
       const elementTime = this.audioPlayer.audioElement.currentTime;
       if (Number.isFinite(elementTime)) {
@@ -1035,6 +1125,12 @@ export class AudioContextManager {
       this.currentBufferSource = null;
     }
 
+    if (this.rollingTransport) {
+      const transport = this.rollingTransport;
+      this.rollingTransport = null;
+      void this.disposeRollingTransport(transport);
+    }
+
     if (this.mediaSource) {
       this.releasePipelineSource(this.mediaSource);
       this.mediaSource = null;
@@ -1124,6 +1220,7 @@ export class AudioContextManager {
     if (!newAudioContext) {
       return;
     }
+    this.supersedeRollingSeekCandidate();
 
     const state = this.getCurrentState();
     const currentTrack = this.getTrackForGraphRebind(state);
@@ -1132,6 +1229,7 @@ export class AudioContextManager {
     const wasStopped = !!state?.isStopped;
     const restorePosition = this.getPlaybackPositionForGraphRebind(state);
     const currentTrackIndex = state?.currentTrackIndex;
+    void this.disposeRollingPreparationsForOwner(this.activeGraphRebuildRequest);
     const graphRebuildGeneration = ++this.graphRebuildGeneration;
     const graphRebuildRequest = currentTrack ? {
       generation: graphRebuildGeneration,
@@ -1178,6 +1276,7 @@ export class AudioContextManager {
       this.detachAudioElementForGraphRebuild();
       this.revokeCurrentObjectURL();
       this.clearActiveRegion();
+      this.releasePartialDecodeBufferReservation(this.currentBuffer);
       this.currentBuffer = null;
       this.currentPlaybackDecision = null;
       this.updateState({
@@ -1200,6 +1299,7 @@ export class AudioContextManager {
 
     if (!currentTrack) {
       this.detachCurrentGraphNodesForRebind();
+      this.releasePartialDecodeBufferReservation(this.currentBuffer);
       this.currentBuffer = null;
       this.clearNextTrackBuffer();
       this.updateState({
@@ -1241,9 +1341,14 @@ export class AudioContextManager {
       rebuildTrack = playableTrack;
       if (isStale()) return;
       const descriptor = this.createPlaybackSourceDescriptor(playableTrack);
-      const policyDecision = choosePlaybackMode(descriptor);
+      if (this.hasPendingRollingCleanup()) await this.waitForRollingCleanupBarrier();
+      if (isStale()) return;
       const previousDecision = this.currentPlaybackDecision;
-      const decisionRecord = previousDecision?.mediaFallbackLocked === true &&
+      const reusableFallbackBuffer = previousDecision?.partialDecodeFallbackAdmission &&
+        samePlaybackEntry(previousDecision.playableTrack, currentTrack)
+        ? this.currentBuffer
+        : null;
+      let decisionRecord = previousDecision?.mediaFallbackLocked === true &&
           samePlaybackEntry(previousDecision.playableTrack, currentTrack)
         ? {
             ...previousDecision,
@@ -1252,12 +1357,86 @@ export class AudioContextManager {
             committedMode: 'media',
             mediaFallbackLocked: true
           }
-        : this.createPlaybackDecisionRecord(playableTrack, descriptor, policyDecision);
+        : reusableFallbackBuffer
+          ? {
+              ...previousDecision,
+              playableTrack,
+              descriptor,
+              committedMode: 'buffer',
+              rollingTransport: null
+            }
+          : this.preparePlaybackDecisionRecord(
+            playableTrack,
+            descriptor,
+            isStale,
+            'candidate',
+            graphRebuildRequest.position,
+            graphRebuildRequest
+          );
+      if (decisionRecord instanceof Promise) decisionRecord = await decisionRecord;
+      if (!decisionRecord || isStale()) return;
       rebuildDescriptor = descriptor;
       rebuildDecisionRecord = decisionRecord;
 
       if (decisionRecord.committedMode === 'unavailable') {
         throw new Error('Playback source is unavailable after audio graph rebuild');
+      }
+      if (decisionRecord.committedMode === 'rolling') {
+        const transport = decisionRecord.rollingTransport;
+        const adoptedFrame = transport.positionFrame;
+        if (!isStale() && !transport.failed && Number.isSafeInteger(adoptedFrame) &&
+            adoptedFrame >= 0 && adoptedFrame <= transport.metadata.totalFrames) {
+          const prepared = {
+            track: playableTrack,
+            playableTrack,
+            descriptor,
+            decisionRecord,
+            rollingTransport: transport,
+            targetIndex: graphRebuildRequest.trackIndex
+          };
+          const candidate = this.prepareRollingTransitionCandidate(
+            prepared,
+            ++this.sourceGenerationSequence
+          );
+          candidate.initialFrame = adoptedFrame;
+          const transportIntent = graphRebuildRequest.transportIntent;
+          if (this.commitPreparedTrackCandidate(
+            candidate,
+            prepared,
+            null,
+            isStale,
+            transportIntent.isPlaying
+          )) {
+            if (!transportIntent.isPlaying) {
+              this.clearBufferMonitoring();
+              this.maintainSilentSource();
+              this.updateState({
+                currentTrackPosition: transportIntent.isStopped
+                  ? 0
+                  : adoptedFrame / transport.metadata.sampleRate,
+                isPlaying: false,
+                isPaused: transportIntent.isPaused,
+                isStopped: transportIntent.isStopped,
+                isTransitioning: false,
+                transitionType: null
+              }, 'Audio graph rebuild settled latest rolling transport');
+            }
+            if (!transportIntent.isStopped) void this.prepareNextTrackBufferWithRepeatMode();
+            return;
+          }
+          this.cleanupPreparedTransitionCandidate(candidate);
+        } else await this.disposeRollingTransport(transport);
+        const fallback = decisionRecord.decision?.fallback;
+        if (!fallback || fallback.mode === 'unavailable') {
+          throw new Error('Rolling PCM candidate could not be prepared after audio graph rebuild');
+        }
+        decisionRecord = {
+          ...decisionRecord,
+          decision: fallback,
+          committedMode: fallback.mode,
+          rollingTransport: null
+        };
+        rebuildDecisionRecord = decisionRecord;
       }
       if (decisionRecord.committedMode === 'media') {
         const rebound = await this.rebindAudioElementAfterGraphRebuild(
@@ -1279,7 +1458,13 @@ export class AudioContextManager {
         return;
       }
 
-      const buffer = await this.prepareTrackBuffer(playableTrack, isStale, true, descriptor);
+      const buffer = reusableFallbackBuffer ?? await this.prepareTrackBuffer(
+        playableTrack,
+        isStale,
+        true,
+        descriptor,
+        decisionRecord
+      );
       if (!isGraphRebuildCurrent() || !buffer) return;
       const duration = Number.isFinite(buffer.duration) ? buffer.duration : 0;
       const transportIntent = graphRebuildRequest.transportIntent;
@@ -1522,6 +1707,26 @@ export class AudioContextManager {
     this.audioPlayer.stateManager.updateState(updates, logMessage);
   }
 
+  isGaplessPlaybackEnabled() {
+    return normalizeGaplessPlayback({ gaplessPlayback: this.audioPlayer?.gaplessPlayback });
+  }
+
+  async applyGaplessPlaybackPreference(enabled) {
+    const operationToken = ++this.gaplessPreferenceOperationToken;
+    this.audioPlayer.gaplessPlayback = enabled !== false;
+    // Invalidate the next generation before any asynchronous cleanup so an
+    // already prepared source can never become current after OFF is applied.
+    const cleanup = this.clearNextTrackBuffer();
+    await cleanup;
+    if (this.hasPendingRollingCleanup()) await this.waitForRollingCleanupBarrier();
+    const state = this.getCurrentState();
+    if (operationToken === this.gaplessPreferenceOperationToken &&
+        this.isGaplessPlaybackEnabled() && state?.isPlaying && !state?.isTransitioning) {
+      void this.prepareNextTrackBufferWithRepeatMode();
+    }
+    return true;
+  }
+
   getPlaylist() {
     return this.audioPlayer.playbackManager?.playlist || [];
   }
@@ -1580,8 +1785,12 @@ export class AudioContextManager {
   }
 
   beginLoadRequest(track, targetIndex = null) {
+    this.supersedeRollingSeekCandidate();
+    void this.disposeRollingPreparationsForOwner(this.activeGraphRebuildRequest);
+    this.activeGraphRebuildRequest = null;
     this.graphRebuildGeneration += 1;
     this.cancelPendingMediaCandidateReadiness();
+    void this.disposeRollingPreparationsForOwner(this.activeLoadRequest);
     const request = {
       token: ++this.loadRequestToken,
       track,
@@ -1605,10 +1814,14 @@ export class AudioContextManager {
   }
 
   beginTransitionRequest(track, targetIndex = null) {
+    this.supersedeRollingSeekCandidate();
+    void this.disposeRollingPreparationsForOwner(this.activeGraphRebuildRequest);
+    this.activeGraphRebuildRequest = null;
     this.graphRebuildGeneration += 1;
     this.cancelPendingMediaCandidateReadiness();
     this.clearRegionBoundaryTimer();
     this.cancelScheduledBufferTransition();
+    void this.disposeRollingPreparationsForOwner(this.activeTransitionRequest);
     const request = {
       token: ++this.transitionRequestToken,
       track,
@@ -1632,6 +1845,7 @@ export class AudioContextManager {
   }
 
   invalidatePendingTransitionRequests() {
+    void this.disposeRollingPreparationsForOwner(this.activeTransitionRequest);
     this.transitionRequestToken++;
     this.activeTransitionRequest = null;
   }
@@ -1677,6 +1891,8 @@ export class AudioContextManager {
 
   invalidateGraphRebuild(transportIntent = null) {
     if (transportIntent && this.setGraphRebuildTransportIntent(transportIntent)) return true;
+    void this.disposeRollingPreparationsForOwner(this.activeGraphRebuildRequest);
+    this.activeGraphRebuildRequest = null;
     this.graphRebuildGeneration += 1;
     return false;
   }
@@ -1685,7 +1901,9 @@ export class AudioContextManager {
     const preserveGraphRebuild = this.invalidateGraphRebuild(transportIntent);
     this.clearRegionBoundaryTimer();
     this.stopRequestToken++;
+    this.supersedeRollingSeekCandidate();
     this.loadRequestToken++;
+    void this.disposeRollingPreparationsForOwner(this.activeLoadRequest);
     this.activeLoadRequest = null;
     this.metadataRequestToken++;
     this.activeMetadataRequest = null;
@@ -1702,7 +1920,9 @@ export class AudioContextManager {
     const preserveGraphRebuild = this.invalidateGraphRebuild('pause');
     this.clearRegionBoundaryTimer();
     this.stopRequestToken++;
+    this.supersedeRollingSeekCandidate();
     this.loadRequestToken++;
+    void this.disposeRollingPreparationsForOwner(this.activeLoadRequest);
     this.activeLoadRequest = null;
     this.metadataRequestToken++;
     this.activeMetadataRequest = null;
@@ -1771,7 +1991,7 @@ export class AudioContextManager {
   }
 
   beginNextBufferRequest(track, targetIndex = null) {
-    this.cancelScheduledBufferTransition();
+    this.clearNextTrackBuffer();
     const request = {
       token: ++this.nextBufferRequestToken,
       track,
@@ -2482,6 +2702,12 @@ export class AudioContextManager {
       return false;
     }
 
+    if (state?.playbackMode === 'rollingPcm' && !this.rollingTransport && state.currentTrack) {
+      const loaded = await this.loadTrack(state.currentTrack, state.currentTrackIndex);
+      if (!loaded) return false;
+      return this.play(forcePlay, userInitiated);
+    }
+
     const stopToken = this.stopRequestToken;
     if (!await this.resumePlaybackAudioContext(userInitiated)) return false;
     if (this.stopRequestToken !== stopToken) {
@@ -2489,10 +2715,70 @@ export class AudioContextManager {
     }
     
     const currentState = this.getCurrentState();
-    if (currentState?.playbackMode === 'bufferSource') {
-      return this.playBufferSource(stopToken);
-    } else {
-      return this.playAudioElement(stopToken);
+    return this.dispatchPlaybackBackend('play', stopToken);
+  }
+
+  async playRollingPcm(stopToken = this.stopRequestToken) {
+    const transport = this.rollingTransport;
+    if (!transport?.prepared || transport.failed || transport.disposed) return false;
+    const sourceGeneration = this.activeSourceGeneration || ++this.sourceGenerationSequence;
+    if (this.activeSourceGeneration === 0) this.activeSourceGeneration = sourceGeneration;
+    let stage = null;
+    try {
+      stage = await this.stagePlaybackActivation(
+        'rolling-pcm',
+        sourceGeneration,
+        transport.currentTime
+      );
+      if (this.stopRequestToken !== stopToken || this.rollingTransport !== transport ||
+          this.activeSourceGeneration !== sourceGeneration ||
+          !this.ensurePipelineSourceConnected(transport.sourceNode)) return false;
+      const commit = () => {
+        // The anchor frame is read only here, after staging: a seek adopted
+        // meanwhile has already moved the transport position, and a seek still
+        // in flight re-anchors playback itself once it is adopted.
+        const frame = transport.positionFrame;
+        if (!this.setPrivatePipelineSourceMuted(transport.sourceNode, false) ||
+            !transport.activate({ when: this.audioPlayer.audioContext.currentTime, frame })) {
+          throw new Error('rolling-playback-activation-failed');
+        }
+        if (!this.getUseInputWithPlayer()) {
+          this.setManagedSourceNode(this.getPipelineSourceNode(transport.sourceNode));
+        }
+        this.updateState({
+          isPlaying: true,
+          isPaused: false,
+          isStopped: false,
+          currentTrackPosition: frame / transport.metadata.sampleRate
+        }, 'Rolling PCM playback started');
+        this.setupBufferMonitoring();
+        return true;
+      };
+      if (stage) {
+        const result = await this.audioManager.activateStagedAudioCandidate(stage, {
+          acquire: () => transport,
+          isCandidateCurrent: value => value === transport &&
+            this.rollingTransport === transport && this.stopRequestToken === stopToken &&
+            transport.prepared === true && !transport.failed && !transport.disposed &&
+            this.isPipelineSourceConnected(transport.sourceNode),
+          commit
+        });
+        const activated = result.activated === true;
+        if (activated) this.rearmPreparedAutomaticMove();
+        return activated;
+      }
+      const committed = commit();
+      if (committed) this.rearmPreparedAutomaticMove();
+      return committed;
+    } catch (error) {
+      if (this.stopRequestToken === stopToken) {
+        console.error('[AudioContextManager] Rolling PCM playback failed:', error);
+        this.updateState({ isPlaying: false, isPaused: true, isStopped: false },
+          'Rolling PCM playback failed');
+      }
+      return false;
+    } finally {
+      this.releasePlaybackActivationStage(stage);
     }
   }
   
@@ -2743,7 +3029,13 @@ export class AudioContextManager {
    * Pause current track
    */
   async pause() {
+    this.rollingSeekRequestToken++;
+    // The invalidated seek no longer holds the token, so it cannot release the
+    // marker itself; a stale marker would decline every later reservation on
+    // this transport.
+    this.rollingSeekInFlight = null;
     this.cancelScheduledBufferTransition();
+    this.resetScheduledRollingTransition();
     const graphRebuildRequest = this.getCurrentGraphRebuildRequest();
     if (graphRebuildRequest) {
       this.invalidatePendingPlaybackOperationsForPause();
@@ -2761,11 +3053,7 @@ export class AudioContextManager {
     const state = this.getCurrentState();
     if (state?.isTransitioning) {
       this.invalidatePendingPlaybackOperationsForPause();
-      if (state?.playbackMode === 'bufferSource') {
-        await this.pauseBufferSource();
-      } else {
-        await this.pauseAudioElement();
-      }
+      await this.dispatchPlaybackBackend('pause');
       this.updateState({
         isPlaying: false,
         isPaused: !state?.isStopped,
@@ -2778,11 +3066,7 @@ export class AudioContextManager {
 
     this.stopRequestToken++;
     
-    if (state?.playbackMode === 'bufferSource') {
-      await this.pauseBufferSource();
-    } else {
-      await this.pauseAudioElement();
-    }
+    await this.dispatchPlaybackBackend('pause');
   }
   
   /**
@@ -2813,6 +3097,21 @@ export class AudioContextManager {
       currentTrackPosition: currentPosition
     }, 'Buffer source paused');
   }
+
+  async pauseRollingPcm() {
+    const transport = this.rollingTransport;
+    if (!transport) return;
+    void this.supersedeRollingSeekCandidate();
+    await transport.pause();
+    this.clearBufferMonitoring();
+    this.maintainSilentSource();
+    this.updateState({
+      isPlaying: false,
+      isPaused: true,
+      isStopped: false,
+      currentTrackPosition: transport.currentTime
+    }, 'Rolling PCM playback paused');
+  }
   
   /**
    * Pause audio element
@@ -2838,6 +3137,11 @@ export class AudioContextManager {
     const graphRebuildRequest = this.getCurrentGraphRebuildRequest();
     this.invalidatePendingPlaybackOperationsForStop();
     if (graphRebuildRequest) {
+      const transport = this.rollingTransport;
+      this.rollingTransport = null;
+      if (transport) void this.disposeRollingTransport(transport);
+      await this.disposeAllRollingTransports();
+      if (this.hasPendingRollingCleanup()) await this.waitForRollingCleanupBarrier();
       this.updateState({
         currentTrackPosition: 0,
         isPlaying: false,
@@ -2849,12 +3153,9 @@ export class AudioContextManager {
       return;
     }
 
-    const state = this.getCurrentState();
-    if (state?.playbackMode === 'bufferSource') {
-      await this.stopBufferSource();
-    } else {
-      await this.stopAudioElement();
-    }
+    await this.dispatchPlaybackBackend('stop');
+    await this.disposeAllRollingTransports();
+    if (this.hasPendingRollingCleanup()) await this.waitForRollingCleanupBarrier();
   }
   
   /**
@@ -2878,6 +3179,26 @@ export class AudioContextManager {
       currentBufferSource: null,
       currentTrackPosition: 0
     }, 'Buffer source stopped');
+  }
+
+  async stopRollingPcm() {
+    const transport = this.rollingTransport;
+    this.rollingTransport = null;
+    if (transport) {
+      void this.disposeRollingTransport(transport);
+    }
+    await this.disposeAllRollingTransports();
+    await this.waitForRollingCleanupBarrier();
+    this.clearBufferMonitoring();
+    this.maintainSilentSource();
+    this.updateState({
+      isPlaying: false,
+      isPaused: false,
+      isStopped: true,
+      isTransitioning: false,
+      transitionType: null,
+      currentTrackPosition: 0
+    }, 'Rolling PCM playback stopped');
   }
   
   /**
@@ -2931,12 +3252,8 @@ export class AudioContextManager {
     if (state?.isTransitioning) {
       return;
     }
-    
-    if (state?.playbackMode === 'bufferSource') {
-      await this.seekBufferSource(time);
-    } else {
-      await this.seekAudioElement(time);
-    }
+
+    await this.dispatchPlaybackBackend('seek', time);
   }
   
   /**
@@ -3008,6 +3325,66 @@ export class AudioContextManager {
       }, 'Buffer source seek failed');
     }
   }
+
+  async seekRollingPcm(time) {
+    const transport = this.rollingTransport;
+    if (!transport?.metadata) return;
+    const requestToken = ++this.rollingSeekRequestToken;
+    // The seek is in flight from here on, not only while the transport holds
+    // its pendingSeek: the cleanup waits below run with pendingSeek still null,
+    // and a boundary reserved from the present anchor in that window would
+    // survive the re-anchoring. A replacing seek owns the marker once it has
+    // taken the token, so only the seek holding the current token releases it.
+    this.rollingSeekInFlight = transport;
+    const releaseInFlight = () => {
+      if (requestToken === this.rollingSeekRequestToken) this.rollingSeekInFlight = null;
+    };
+    const nextCleanup = this.clearNextTrackBuffer();
+    await nextCleanup;
+    if (this.hasPendingRollingCleanup()) await this.waitForRollingCleanupBarrier();
+    const latestState = this.getCurrentState();
+    if (requestToken !== this.rollingSeekRequestToken ||
+        this.rollingTransport !== transport || latestState?.playbackMode !== 'rollingPcm' ||
+        transport.failed || transport.disposed) {
+      releaseInFlight();
+      return;
+    }
+    const frame = Math.round(Math.max(0, Math.min(
+      time,
+      transport.metadata.durationSec
+    )) * transport.metadata.sampleRate);
+    // Resume is decided from the state that is current once the candidate is
+    // adopted, not from a snapshot taken before it: a Play that committed while
+    // the candidate was preparing must survive the adoption.
+    let seekResult = false;
+    try {
+      seekResult = await transport.seek(frame, { resume: false });
+    } finally {
+      releaseInFlight();
+    }
+    if (!seekResult) {
+      // The transport keeps playing from its previous anchor, so a next held
+      // while the seek was in flight still needs its boundary from that anchor.
+      if (requestToken === this.rollingSeekRequestToken && this.rollingTransport === transport &&
+          this.getCurrentState()?.isPlaying === true) {
+        this.rearmPreparedAutomaticMove();
+      }
+      return;
+    }
+    if (requestToken !== this.rollingSeekRequestToken || this.rollingTransport !== transport) return;
+    const adoptedFrame = Number.isSafeInteger(seekResult.adoptedFrame)
+      ? seekResult.adoptedFrame
+      : frame;
+    const resume = this.getCurrentState()?.isPlaying === true;
+    if (resume && !transport.activate({ frame: adoptedFrame })) return;
+    this.updateState({
+      currentTrackPosition: adoptedFrame / transport.metadata.sampleRate,
+      isPlaying: resume,
+      isPaused: !resume,
+      isStopped: false
+    }, 'Rolling PCM seek completed');
+    if (resume) this.rearmPreparedAutomaticMove();
+  }
   
   /**
    * Seek in audio element
@@ -3055,6 +3432,14 @@ export class AudioContextManager {
       return;
     }
     if (prepared?.automaticMovePlan) {
+      if (prepared.decisionRecord?.deferRollingFallbackUntilBoundary === true &&
+          state?.playbackMode === 'bufferSource') {
+        const endedSource = this.currentBufferSource;
+        this.currentBufferSource = null;
+        this.currentBuffer = null;
+        this.bufferDuration = 0;
+        if (endedSource) endedSource.buffer = null;
+      }
       if (this.audioPlayer.playbackManager?.isPlannedAutomaticMoveCurrent?.(
         prepared.automaticMovePlan
       ) === true) {
@@ -3097,6 +3482,14 @@ export class AudioContextManager {
     const state = this.getCurrentState();
     if (prepared?.automaticMovePlan &&
         playbackManager?.isPlannedAutomaticMoveCurrent?.(prepared.automaticMovePlan) === true) {
+      if (prepared.rollingTransport && state?.playbackMode === 'rollingPcm' &&
+          state.isPlaying === true && state.isPaused !== true && state.isStopped !== true) {
+        // A boundary already reserved for this next stays as it is; reserving
+        // it again would take player source ownership a second time without
+        // rolling the first acquisition back.
+        if (this.scheduledRollingTransition?.transport === prepared.rollingTransport) return true;
+        return this.schedulePreparedRollingTransition(prepared);
+      }
       if (prepared.buffer && state?.playbackMode === 'bufferSource' && state.isPlaying === true &&
           state.isPaused !== true && state.isStopped !== true) {
         return this.schedulePreparedBufferTransition(prepared);
@@ -3138,7 +3531,21 @@ export class AudioContextManager {
     this.bufferMonitoringInterval = setInterval(() => {
       const state = this.getCurrentState();
       
-      if (this.currentBuffer && this.audioPlayer.audioContext) {
+      if (state?.playbackMode === 'rollingPcm') {
+        const transport = this.rollingTransport;
+        if (!transport || transport.failed || transport.disposed) {
+          this.clearBufferMonitoring();
+          return;
+        }
+        if (state.isPlaying === true) {
+          const duration = transport.metadata?.durationSec ?? transport.currentTime;
+          const position = Math.max(0, Math.min(transport.currentTime, duration));
+          if (position !== state.currentTrackPosition) {
+            this.updateState({ currentTrackPosition: position },
+              'Rolling PCM monitoring position update');
+          }
+        }
+      } else if (this.currentBuffer && this.audioPlayer.audioContext) {
         if (this.currentBufferSource && state?.isPlaying) {
           const currentTime = this.audioPlayer.audioContext.currentTime;
           const elapsedTime = currentTime - this.bufferStartTime;
@@ -3183,6 +3590,11 @@ export class AudioContextManager {
    */
   async loadTrack(track, targetIndex = null, preparedRequest = null) {
     const trackIndex = this.getTrackIndexForPlaybackEntry(track, targetIndex);
+    if (this.rollingLegacyFallbackLock && this.rollingFallbackLockTrack &&
+        !this.playbackEntriesMatch(this.rollingFallbackLockTrack, track, trackIndex)) {
+      this.rollingLegacyFallbackLock = false;
+      this.rollingFallbackLockTrack = null;
+    }
     this.invalidateAutomaticMoveForManualCommand();
     const loadRequest = this.beginLoadRequest(track, trackIndex);
     const isStale = () => !this.isActiveLoadRequest(loadRequest);
@@ -3193,6 +3605,9 @@ export class AudioContextManager {
         transitionType: 'loading'
       }, 'Track loading started');
 
+      if (this.hasPendingRollingCleanup()) await this.waitForRollingCleanupBarrier();
+      if (isStale()) return false;
+
       const suppliedRequest = preparedRequest &&
         this.playbackEntriesMatch(preparedRequest.track, track, trackIndex)
         ? preparedRequest
@@ -3202,10 +3617,16 @@ export class AudioContextManager {
         trackIndex,
         isStale,
         suppliedRequest,
-        null
+        null,
+        loadRequest
       );
-      if (!prepared || isStale()) return false;
-      return await this.activatePreparedTrackLoad(prepared, loadRequest, isStale);
+      if (isStale()) return false;
+      if (!prepared) throw new Error('Track preparation did not produce an activatable candidate');
+      const activated = await this.activatePreparedTrackLoad(prepared, loadRequest, isStale);
+      if (activated === false && !isStale()) {
+        throw new Error('Prepared track load could not be activated');
+      }
+      return activated;
       
     } catch (error) {
       if (isStale()) return false;
@@ -3222,7 +3643,13 @@ export class AudioContextManager {
   /**
    * Prepare track buffer
    */
-  async prepareTrackBuffer(track, isStale = null, alreadyResolved = false, preparedDescriptor = null) {
+  async prepareTrackBuffer(
+    track,
+    isStale = null,
+    alreadyResolved = false,
+    preparedDescriptor = null,
+    decisionRecord = null
+  ) {
     const playableTrack = alreadyResolved ? track : await this.resolveTrackProvider(track);
     if (isStale?.() || !playableTrack) return null;
     const descriptor = preparedDescriptor ?? this.createPlaybackSourceDescriptor(playableTrack);
@@ -3234,20 +3661,96 @@ export class AudioContextManager {
         : 'playbackSourceMustStream';
       throw error;
     }
+    let fallbackReservationOwner = null;
     try {
+      const partialDecodeAdmission = decisionRecord?.partialDecodeFallbackAdmission ?? null;
+      if (partialDecodeAdmission &&
+          !this.consumePartialDecodeFallbackAuthority(decisionRecord)) {
+        const error = new Error('Partial decode fallback authority was already consumed');
+        error.code = 'partial-decode-authority-consumed';
+        throw error;
+      }
+      if (partialDecodeAdmission) {
+        fallbackReservationOwner = Object.freeze({
+          kind: 'partial-decode-fallback',
+          generation: partialDecodeAdmission.sourceGeneration
+        });
+        if (!this.rollingReservationLedger.reserve(
+          fallbackReservationOwner,
+          'candidate',
+          {
+            canonicalIdentity: decisionRecord.sourceSnapshot.canonicalIdentity,
+            canonicalCompressedBytes: partialDecodeAdmission.sourceByteLength,
+            workerCompressedBytes: 0,
+            pcmBytes: partialDecodeAdmission.decodedPcmBytes,
+            inFlightBytes: 0
+          },
+          FULL_DECODE_RESERVATION_PROFILE
+        )) {
+          const error = new Error('Partial decode fallback exceeds aggregate playback memory');
+          error.code = 'partial-decode-aggregate-budget';
+          throw error;
+        }
+      }
       const arrayBuffer = await this.loadTrackData(descriptor, isStale, true);
-      if (isStale?.() || !arrayBuffer) return null;
-
+      if (isStale?.() || !arrayBuffer) {
+        this.releasePartialDecodeFallbackReservation(fallbackReservationOwner);
+        return null;
+      }
       const audioBuffer = await new Promise((resolve, reject) => {
         this.audioPlayer.audioContext.decodeAudioData(arrayBuffer, resolve, reject);
       });
-      if (isStale?.()) return null;
+      if (isStale?.()) {
+        this.releasePartialDecodeFallbackReservation(fallbackReservationOwner);
+        return null;
+      }
+      if (partialDecodeAdmission) {
+        const decodedBytes = getAudioBufferPcmByteLength(audioBuffer);
+        if (decodedBytes === null || decodedBytes > partialDecodeAdmission.decodedPcmBytes ||
+            decodedBytes > FULL_BUFFER_PCM_BYTE_CAP) {
+          throw new Error('Decoded fallback exceeds its verified admission');
+        }
+        if (!this.rollingReservationLedger.transferSourceOwnership(
+          fallbackReservationOwner,
+          FULL_DECODE_RESERVATION_PROFILE
+        )) {
+          throw new Error('Partial decode fallback reservation transfer failed');
+        }
+        this.partialDecodeBufferReservations.set(audioBuffer, fallbackReservationOwner);
+      }
       
       return audioBuffer;
     } catch (error) {
+      this.releasePartialDecodeFallbackReservation(fallbackReservationOwner);
       console.error('[AudioContextManager] Buffer preparation failed for:', playableTrack?.name, error);
       throw error;
     }
+  }
+
+  consumePartialDecodeFallbackAuthority(decisionRecord) {
+    const identity = decisionRecord?.sourceSnapshot?.canonicalIdentity;
+    const generation = decisionRecord?.partialDecodeFallbackAdmission?.sourceGeneration;
+    if (!identity || typeof identity !== 'object' || !Number.isSafeInteger(generation)) return false;
+    let generations = this.partialDecodeFallbackAuthorities.get(identity);
+    if (!generations) {
+      generations = new Set();
+      this.partialDecodeFallbackAuthorities.set(identity, generations);
+    }
+    if (generations.has(generation)) return false;
+    generations.add(generation);
+    return true;
+  }
+
+  releasePartialDecodeFallbackReservation(owner) {
+    return owner ? this.rollingReservationLedger.release(owner) : false;
+  }
+
+  releasePartialDecodeBufferReservation(buffer, retainedBuffer = null) {
+    if (!buffer || buffer === retainedBuffer) return false;
+    const owner = this.partialDecodeBufferReservations.get(buffer);
+    if (!owner) return false;
+    this.partialDecodeBufferReservations.delete(buffer);
+    return this.releasePartialDecodeFallbackReservation(owner);
   }
   
   /**
@@ -3344,13 +3847,425 @@ export class AudioContextManager {
   }
 
   createPlaybackDecisionRecord(playableTrack, descriptor, decision = choosePlaybackMode(descriptor)) {
-    return {
+    const canonicalIdentity = getCanonicalPlaybackSourceIdentity(playableTrack);
+    const reusableSnapshot = canonicalIdentity
+      ? this.canonicalRollingSourceSnapshots.get(canonicalIdentity) ?? null
+      : null;
+    const snapshot = createCanonicalPlaybackSourceSnapshot(
       playableTrack,
       descriptor,
       decision,
-      committedMode: decision.mode,
-      mediaFallbackLocked: false
+      reusableSnapshot
+    );
+    if (canonicalIdentity && snapshot !== reusableSnapshot) {
+      this.canonicalRollingSourceSnapshots.set(canonicalIdentity, snapshot);
+    }
+    const metadata = getTrackPlaybackMetadata(playableTrack);
+    const policyMode = this.rollingLegacyFallbackLock
+      ? RollingPolicyMode.RESOURCE_SAFE_LEGACY
+      : this.rollingPolicyMode;
+    const selectedDecision = selectPlaybackBackend({
+      snapshot,
+      metadata,
+      audioContext: this.audioPlayer.audioContext,
+      gaplessPlayback: this.isGaplessPlaybackEnabled(),
+      policyMode,
+      enabledMatrix: this.rollingEnabledMatrix
+    });
+    return {
+      playableTrack,
+      descriptor,
+      sourceSnapshot: snapshot,
+      metadata,
+      decision: selectedDecision,
+      committedMode: selectedDecision.mode,
+      mediaFallbackLocked: false,
+      rollingTransport: null
     };
+  }
+
+  preparePlaybackDecisionRecord(
+    playableTrack,
+    descriptor,
+    isStale = null,
+    reservationRole = 'candidate',
+    rollingStartTimeSec = null,
+    preparationOwner = null
+  ) {
+    const record = this.createPlaybackDecisionRecord(
+      playableTrack,
+      descriptor,
+      choosePlaybackMode(descriptor)
+    );
+    if (!this.isGaplessPlaybackEnabled()) return record;
+    const preflightContext = this.audioPlayer.audioContext;
+    const preflightRuntime = detectRollingRuntime();
+    const preflightCapability = {
+      runtime: preflightRuntime,
+      host: preflightRuntime.host,
+      electronMajorVersion: preflightRuntime.electronMajorVersion,
+      chromiumMajorVersion: preflightRuntime.chromiumMajorVersion,
+      lifecycle: detectRollingLifecycle(preflightContext)
+    };
+    if (!this.rollingLegacyFallbackLock &&
+        this.rollingPolicyMode === RollingPolicyMode.LIMITED_ROLLING &&
+        record.sourceSnapshot.sourceKind !== 'bytes' &&
+        (hasRollingMatrixCandidate(
+          record.sourceSnapshot,
+          this.rollingEnabledMatrix,
+          preflightCapability
+        ) || this.getInjectedNativePcmWaveContract(record, preflightCapability))) {
+      return this.prepareRollingPlaybackDecisionRecord(
+        record,
+        isStale,
+        reservationRole,
+        rollingStartTimeSec,
+        preparationOwner
+      );
+    }
+    return record;
+  }
+
+  getInjectedNativePcmWaveContract(record, capability = {}) {
+    const profile = PCM16_STEREO_44100_TO_96000_PROFILE;
+    const runtime = capability.runtime ?? detectRollingRuntime();
+    const exactCapability = {
+      ...capability,
+      runtime,
+      host: capability.host ?? runtime.host,
+      electronMajorVersion: capability.electronMajorVersion ?? runtime.electronMajorVersion,
+      chromiumMajorVersion: capability.chromiumMajorVersion ?? runtime.chromiumMajorVersion,
+      lifecycle: capability.lifecycle ?? detectRollingLifecycle(this.audioPlayer.audioContext)
+    };
+    const track = record?.playableTrack;
+    const descriptor = record?.descriptor;
+    const snapshot = record?.sourceSnapshot;
+    const hasMediaOverride = Object.prototype.hasOwnProperty.call(track ?? {}, 'mediaSource');
+    const hasMaterializedBytes = isMaterializedPlaybackBytes(track?.bytes) ||
+      isMaterializedPlaybackBytes(track?.data) ||
+      isMaterializedPlaybackBytes(descriptor?.bytes);
+    if (!track || snapshot?.sourceKind !== 'other' ||
+        typeof track.path !== 'string' || !this.shouldUseElectronFileRead(track.path) ||
+        typeof track.provider === 'function' || track.file || hasMediaOverride ||
+        typeof track.readBytes === 'function' || hasMaterializedBytes ||
+        descriptor?.mediaSource !== track.path || snapshot.mediaSource !== track.path ||
+        hasPlaybackRegionDescriptor(descriptor) || !hasLocalPcmWaveFileNameHint(track) ||
+        !Number.isSafeInteger(snapshot.byteLength) || snapshot.byteLength <= 0 ||
+        snapshot.byteLength > ROLLING_COMPRESSED_SOURCE_BYTE_CAP ||
+        this.audioPlayer.audioContext?.sampleRate !== profile.outputSampleRate) {
+      return null;
+    }
+    const candidateSnapshot = snapshot.format === 'wav'
+      ? snapshot
+      : Object.freeze({ ...snapshot, format: 'wav' });
+    if (!hasRollingMatrixCandidate(
+      candidateSnapshot,
+      this.rollingEnabledMatrix,
+      exactCapability
+    )) return null;
+    const exactCell = this.rollingEnabledMatrix.some(cell =>
+      cell?.enabled === true && cell.format === 'wav' &&
+      cell.sourceSampleRate === profile.sourceSampleRate &&
+      cell.outputSampleRate === profile.outputSampleRate &&
+      cell.channelCount === profile.channelCount &&
+      cell.containerMimeType === 'audio/wav' && cell.codec === 'pcm-s16' &&
+      cell.decoderConfigCodec === 'pcm-s16' &&
+      cell.decoderProfile === profile.codec && cell.resamplerProfile === profile.id &&
+      hasRollingMatrixCandidate(candidateSnapshot, [cell], exactCapability));
+    return exactCell ? profile : null;
+  }
+
+  createPartialDecodeFallbackRecord(record, error, reservationRole, preparationOwner = null) {
+    const failure = error?.partialDecodeFailure;
+    const snapshot = record?.sourceSnapshot;
+    const sourceByteLength = failure?.sourceByteLength;
+    const decodedPcmBytes = failure?.decodedPcmBytes;
+    const format = failure?.format;
+    const transientBytes = checkedPlaybackByteSum(sourceByteLength, decodedPcmBytes);
+    if (error?.code !== 'partial-decode-unsupported' ||
+        failure?.reason !== 'partial-decode-unsupported' || failure.verified !== true ||
+        typeof format !== 'string' || format !== snapshot?.format ||
+        format === 'wav' || format === 'mp3' || snapshot?.sourceKind === 'bytes' ||
+        snapshot?.mediaSource === null || snapshot?.mediaSource === undefined ||
+        snapshot?.legacyDecision?.mode !== 'buffer' ||
+        !Number.isSafeInteger(sourceByteLength) || sourceByteLength <= 0 ||
+        sourceByteLength !== snapshot.byteLength ||
+        sourceByteLength > ROLLING_COMPRESSED_SOURCE_BYTE_CAP ||
+        !Number.isSafeInteger(decodedPcmBytes) || decodedPcmBytes <= 0 ||
+        decodedPcmBytes > FULL_BUFFER_PCM_BYTE_CAP || transientBytes === null ||
+        transientBytes > ROLLING_CANDIDATE_TRANSIENT_BYTE_CAP) {
+      return reservationRole === 'next'
+        ? { ...record, deferRollingFallbackUntilBoundary: true }
+        : record;
+    }
+    return {
+      ...record,
+      decision: Object.freeze({
+        mode: 'buffer',
+        allowMediaFallback: true,
+        reason: 'verified-partial-decode-unsupported'
+      }),
+      committedMode: 'buffer',
+      partialDecodeFallbackAdmission: Object.freeze({
+        sourceByteLength,
+        decodedPcmBytes,
+        format,
+        sourceGeneration: Number.isSafeInteger(preparationOwner?.sourceGeneration)
+          ? preparationOwner.sourceGeneration
+          : Number.isSafeInteger(preparationOwner?.token)
+            ? preparationOwner.token
+            : ++this.sourceGenerationSequence
+      }),
+      deferRollingFallbackUntilBoundary: reservationRole === 'next'
+    };
+  }
+
+  async prepareRollingPlaybackDecisionRecord(
+    record,
+    isStale = null,
+    reservationRole = 'candidate',
+    rollingStartTimeSec = null,
+    preparationOwner = null
+  ) {
+    let transport = null;
+    try {
+      if (this.hasPendingRollingCleanup()) await this.waitForRollingCleanupBarrier();
+      if (isStale?.()) return null;
+      const preparedContext = this.audioPlayer.audioContext;
+      const preparedRuntime = detectRollingRuntime();
+      const preparedLifecycle = detectRollingLifecycle(preparedContext);
+      const preparedCapability = {
+        runtime: preparedRuntime,
+        host: preparedRuntime.host,
+        electronMajorVersion: preparedRuntime.electronMajorVersion,
+        chromiumMajorVersion: preparedRuntime.chromiumMajorVersion,
+        lifecycle: preparedLifecycle
+      };
+      const nativeProfile = this.getInjectedNativePcmWaveContract(record, preparedCapability);
+      const sourceReacquirer = nativeProfile
+        ? (snapshot => this.reacquireCanonicalRollingPathSource(
+            record.sourceSnapshot,
+            record.playableTrack.path,
+            snapshot
+          ))
+        : null;
+      transport = this.createRollingPcmTransport(
+        reservationRole,
+        preparationOwner,
+        sourceReacquirer
+      );
+      const metadata = await transport.prepare(record.sourceSnapshot, {
+        startTimeSec: rollingStartTimeSec,
+        ...(nativeProfile ? {
+          outputSampleRate: nativeProfile.outputSampleRate,
+          decoderProfile: nativeProfile.codec,
+          resamplerProfile: nativeProfile.id
+        } : {})
+      });
+      if (isStale?.() || transport.failed || transport.disposed) {
+        await this.disposeRollingTransport(transport);
+        return null;
+      }
+      const committedContext = this.audioPlayer.audioContext;
+      const committedRuntime = detectRollingRuntime();
+      const committedLifecycle = detectRollingLifecycle(committedContext);
+      const committedGaplessPlayback = this.isGaplessPlaybackEnabled();
+      const capabilityStable = committedContext === preparedContext &&
+        committedRuntime.host === preparedRuntime.host &&
+        committedRuntime.electronMajorVersion === preparedRuntime.electronMajorVersion &&
+        committedRuntime.chromiumMajorVersion === preparedRuntime.chromiumMajorVersion &&
+        committedLifecycle === preparedLifecycle;
+      const decision = capabilityStable ? selectPlaybackBackend({
+        snapshot: record.sourceSnapshot,
+        metadata,
+        audioContext: committedContext,
+        gaplessPlayback: committedGaplessPlayback,
+        policyMode: this.rollingPolicyMode,
+        enabledMatrix: this.rollingEnabledMatrix,
+        capability: {
+          runtime: committedRuntime,
+          host: committedRuntime.host,
+          electronMajorVersion: committedRuntime.electronMajorVersion,
+          chromiumMajorVersion: committedRuntime.chromiumMajorVersion,
+          lifecycle: committedLifecycle
+        }
+      }) : Object.freeze({
+        mode: record.sourceSnapshot.mediaSource == null ? 'unavailable' : 'media',
+        allowMediaFallback: false,
+        reason: 'rolling-capability-changed'
+      });
+      if (decision.mode !== 'rolling') {
+        await this.disposeRollingTransport(transport);
+        return {
+          ...record,
+          metadata,
+          decision,
+          committedMode: decision.mode,
+          deferRollingFallbackUntilBoundary: reservationRole === 'next'
+        };
+      }
+      return {
+        ...record,
+        metadata,
+        decision,
+        committedMode: 'rolling',
+        rollingTransport: transport
+      };
+    } catch (error) {
+      await this.disposeRollingTransport(transport);
+      console.warn('[AudioContextManager] Rolling PCM candidate preparation failed:', error);
+      return this.createPartialDecodeFallbackRecord(
+        record,
+        error,
+        reservationRole,
+        preparationOwner
+      );
+    }
+  }
+
+  reacquireCanonicalRollingPathSource(expectedSnapshot, expectedPath, snapshot) {
+    if (snapshot !== expectedSnapshot ||
+        snapshot?.canonicalIdentity !== expectedSnapshot?.canonicalIdentity ||
+        snapshot?.byteLength !== expectedSnapshot?.byteLength ||
+        snapshot?.mediaSource !== expectedPath || typeof expectedPath !== 'string') {
+      throw new Error('Rolling PCM source identity no longer matches the candidate');
+    }
+    return this.loadElectronFileTrackData(expectedPath, expectedSnapshot.byteLength);
+  }
+
+  createRollingPcmTransport(
+    reservationRole = 'candidate',
+    preparationOwner = null,
+    sourceReacquirer = null
+  ) {
+    let transport = null;
+    transport = new RollingPcmTransport(this.audioPlayer.audioContext, {
+      reservationLedger: this.rollingReservationLedger,
+      reservationRole,
+      preparationOwner,
+      sourceReacquirer,
+      onEnded: () => this.handleRollingTrackEnded(transport),
+      onFailure: failure => this.handleRollingTransportFailure(transport, failure)
+    });
+    this.rollingTransports.add(transport);
+    return transport;
+  }
+
+  supersedeRollingSeekCandidate() {
+    this.rollingSeekRequestToken++;
+    this.rollingSeekInFlight = null;
+    const transport = this.rollingTransport;
+    if (!transport || typeof transport.supersedePendingSeek !== 'function') {
+      return Promise.resolve();
+    }
+    const hadPendingCandidate = transport.pendingSeek?.candidate != null;
+    const cleanup = transport.supersedePendingSeek();
+    return hadPendingCandidate ? this.trackRollingCleanup(cleanup) : Promise.resolve(cleanup);
+  }
+
+  releaseRollingPreparationOwnership(transport, preparationOwner = null) {
+    if (!transport || (preparationOwner && transport.preparationOwner !== preparationOwner)) {
+      return false;
+    }
+    transport.preparationOwner = null;
+    return true;
+  }
+
+  disposeRollingPreparationsForOwner(preparationOwner) {
+    if (!preparationOwner) return Promise.resolve();
+    const cleanups = [];
+    for (const transport of [...this.rollingTransports]) {
+      if (transport.preparationOwner === preparationOwner) {
+        cleanups.push(this.disposeRollingTransport(transport));
+      }
+    }
+    return cleanups.length > 0 ? Promise.all(cleanups).then(() => undefined) : Promise.resolve();
+  }
+
+  trackRollingCleanup(cleanup) {
+    const prior = this.hasPendingRollingCleanup() ? this.rollingCleanupBarrier : null;
+    const cleanupPromise = Promise.resolve(cleanup);
+    const tracked = prior
+      ? Promise.allSettled([prior, cleanupPromise]).then(() => undefined)
+      : cleanupPromise.then(() => undefined, () => undefined);
+    this.rollingCleanupPendingCount++;
+    tracked.then(() => { this.rollingCleanupPendingCount--; });
+    this.rollingCleanupBarrier = tracked;
+    return tracked;
+  }
+
+  hasPendingRollingCleanup() {
+    return this.rollingCleanupPendingCount > 0;
+  }
+
+  disposeRollingTransport(transport, { releaseSource = true } = {}) {
+    if (!transport) return Promise.resolve();
+    const existingCleanup = this.rollingTransportCleanupPromises.get(transport);
+    if (existingCleanup) return existingCleanup;
+    transport.preparationOwner = null;
+    if (releaseSource && transport.sourceNode) this.releasePipelineSource(transport.sourceNode);
+    this.rollingTransports.delete(transport);
+    const cleanup = Promise.resolve(transport.dispose?.());
+    const tracked = this.trackRollingCleanup(cleanup);
+    this.rollingTransportCleanupPromises.set(transport, tracked);
+    return tracked;
+  }
+
+  async disposeAllRollingTransports() {
+    const cleanups = [];
+    for (const transport of [...this.rollingTransports]) {
+      cleanups.push(this.disposeRollingTransport(transport));
+    }
+    await Promise.all(cleanups);
+  }
+
+  async waitForRollingCleanupBarrier() {
+    let barrier;
+    do {
+      barrier = this.rollingCleanupBarrier;
+      await barrier;
+    } while (barrier !== this.rollingCleanupBarrier);
+  }
+
+  handleRollingTrackEnded(transport) {
+    if (this.rollingTransport !== transport) return;
+    if (this.commitScheduledRollingTransition(transport)) return;
+    const deferred = this.nextBuffer;
+    if (deferred?.decisionRecord?.deferRollingFallbackUntilBoundary === true) {
+      this.rollingTransport = null;
+      void this.disposeRollingTransport(transport).then(() => {
+        if (this.nextBuffer === deferred) this.handleTrackEnded();
+      });
+      return;
+    }
+    this.handleTrackEnded();
+  }
+
+  handleRollingTransportFailure(transport, failure) {
+    const preparedNext = this.nextRollingTransport;
+    if (preparedNext?.rollingTransport === transport || preparedNext?.transport === transport ||
+        this.scheduledRollingTransition?.transport === transport) {
+      this.clearRollingNextAliases(transport);
+      void this.disposeRollingTransport(transport);
+      return;
+    }
+    if (this.rollingTransport !== transport) return;
+    this.rollingLegacyFallbackLock = true;
+    this.rollingFallbackLockTrack = this.getCurrentState()?.currentTrack ?? null;
+    this.invalidatePendingPlaybackOperationsForStop();
+    this.rollingTransport = null;
+    this.clearBufferMonitoring();
+    void this.disposeRollingTransport(transport);
+    this.maintainSilentSource();
+    this.updateState({
+      isPlaying: false,
+      isPaused: false,
+      isStopped: true,
+      isTransitioning: false,
+      transitionType: null
+    }, 'Rolling PCM playback failed');
+    console.error('[AudioContextManager] Rolling PCM transport failed:', failure);
+    window.uiManager?.setError?.('error.playbackCommandFailed', true);
   }
 
   createPlaybackRequestSnapshot(playableTrack, targetIndex = null) {
@@ -3460,7 +4375,7 @@ export class AudioContextManager {
   }
 
   /**
-   * Load an Electron local file path as ArrayBuffer for decodeAudioData.
+   * Load an Electron local file path into an owned, bounded ArrayBuffer.
    */
   async loadElectronFileTrackData(path, expectedByteLength = null) {
     if (typeof window.electronAPI?.readFileBytes !== 'function') {
@@ -3482,6 +4397,10 @@ export class AudioContextManager {
    * Prepare next track buffer considering repeat mode
    */
   async prepareNextTrackBufferWithRepeatMode() {
+    if (!this.isGaplessPlaybackEnabled()) {
+      this.clearNextTrackBuffer();
+      return;
+    }
     if (!this.audioPlayer.playbackManager) return;
     const playbackManager = this.audioPlayer.playbackManager;
     if (typeof playbackManager.preparePlannedAutomaticMove === 'function') {
@@ -3524,17 +4443,63 @@ export class AudioContextManager {
     
     try {
       const isStale = () => !this.isActiveNextBufferRequest(request);
+      if (this.hasPendingRollingCleanup()) await this.waitForRollingCleanupBarrier();
+      if (isStale()) return;
       const planSnapshot = automaticMovePlan?.preparedRequest ?? null;
       const playableTrack = planSnapshot?.playableTrack ?? (this.needsTrackProviderResolution(track)
         ? await this.resolveTrackProvider(track)
         : track);
       if (isStale()) return;
       const descriptor = planSnapshot?.descriptor ?? this.createPlaybackSourceDescriptor(playableTrack);
-      const decisionRecord = planSnapshot?.decisionRecord ?? this.createPlaybackDecisionRecord(
+      let decisionRecord = planSnapshot?.decisionRecord?.committedMode === 'rolling'
+        ? planSnapshot.decisionRecord
+        : this.preparePlaybackDecisionRecord(
+            playableTrack,
+            descriptor,
+            isStale,
+            'next',
+            null,
+            request
+          );
+      if (decisionRecord instanceof Promise) decisionRecord = await decisionRecord;
+      if (!decisionRecord || isStale()) return;
+      if (decisionRecord.deferRollingFallbackUntilBoundary === true) {
+        this.nextBuffer = {
+          buffer: null,
+          track,
           playableTrack,
           descriptor,
-          choosePlaybackMode(descriptor)
-        );
+          decisionRecord,
+          automaticMovePlan,
+          targetIndex: request.targetIndex,
+          requestToken: request.token
+        };
+        return;
+      }
+      if (decisionRecord.committedMode === 'rolling') {
+        if (decisionRecord.rollingTransport?.failed ||
+            decisionRecord.rollingTransport?.disposed) return;
+        this.releaseRollingPreparationOwnership(decisionRecord.rollingTransport, request);
+        const preparedRolling = {
+          buffer: null,
+          track,
+          playableTrack,
+          descriptor,
+          decisionRecord,
+          rollingTransport: decisionRecord.rollingTransport,
+          automaticMovePlan,
+          targetIndex: request.targetIndex,
+          requestToken: request.token
+        };
+        this.nextBuffer = preparedRolling;
+        this.nextRollingTransport = preparedRolling;
+        if (!this.schedulePreparedRollingTransition(preparedRolling)) {
+          // A healthy prepared next remains available for a non-gapless
+          // transition; only a failed transport is terminally cancelled here.
+          if (decisionRecord.rollingTransport.failed) this.clearNextTrackBuffer();
+        }
+        return;
+      }
       if (decisionRecord.committedMode !== 'buffer') {
         if (automaticMovePlan &&
             this.audioPlayer.playbackManager?.isPlannedAutomaticMoveCurrent?.(automaticMovePlan) === true) {
@@ -3553,7 +4518,13 @@ export class AudioContextManager {
       }
       let buffer;
       try {
-        buffer = await this.prepareTrackBuffer(playableTrack, isStale, true, descriptor);
+        buffer = await this.prepareTrackBuffer(
+          playableTrack,
+          isStale,
+          true,
+          descriptor,
+          decisionRecord
+        );
       } catch (error) {
         if (decisionRecord.decision.allowMediaFallback && this.isActiveNextBufferRequest(request)) {
           decisionRecord.committedMode = 'media';
@@ -3662,6 +4633,100 @@ export class AudioContextManager {
     }
   }
 
+  schedulePreparedRollingTransition(prepared) {
+    const plan = prepared?.automaticMovePlan;
+    const transport = prepared?.rollingTransport;
+    const current = this.rollingTransport;
+    const state = this.getCurrentState();
+    // A seek still in flight re-anchors the current transport once its
+    // candidate is adopted, so the present anchor cannot place the boundary.
+    // Declining keeps the prepared next held; the post-adoption rearm reserves
+    // the boundary exactly once from the adopted anchor. The manager marker
+    // covers the cleanup waits that precede the transport's own pendingSeek.
+    if (!plan || !transport?.prepared || transport.failed || transport.disposed ||
+        !current?.playing || current.failed || current.disposed || current.pendingSeek != null ||
+        this.rollingSeekInFlight === current ||
+        state?.playbackMode !== 'rollingPcm' || state?.isPlaying !== true ||
+        this.audioPlayer.playbackManager?.isPlannedAutomaticMoveCurrent?.(plan) !== true ||
+        typeof transport.canPromoteReservation !== 'function' ||
+        !transport.canPromoteReservation(current)) {
+      return false;
+    }
+    this.preparePlaybackSourceChannels(transport.sourceNode, transport.metadata.channelCount);
+    if (!this.privatePipelineSourceGates.has(transport.sourceNode) &&
+        !this.connectPrivatePipelineSource(transport.sourceNode)) return false;
+    const boundaryTime = current.anchorContextTime +
+      (current.metadata.totalFrames - current.anchorFrame) / current.metadata.sampleRate;
+    const ownership = this.preparePlayerSourceOwnership();
+    if (!ownership) return false;
+    if (!Number.isFinite(boundaryTime) || boundaryTime <= this.audioPlayer.audioContext.currentTime ||
+        transport.failed || !this.setPrivatePipelineSourceMuted(transport.sourceNode, false) ||
+        !this.ensurePipelineSourceConnected(transport.sourceNode) ||
+        !transport.activate({ when: boundaryTime, frame: 0 })) {
+      this.rollbackPlayerSourceOwnership(ownership);
+      return false;
+    }
+    this.scheduledRollingTransition = {
+      current,
+      transport,
+      prepared,
+      plan,
+      boundaryTime,
+      ownership
+    };
+    return true;
+  }
+
+  commitScheduledRollingTransition(current) {
+    const scheduled = this.scheduledRollingTransition;
+    if (!scheduled || scheduled.current !== current || current.failed || current.disposed ||
+        scheduled.transport.failed || scheduled.transport.disposed ||
+        this.audioPlayer.playbackManager?.isPlannedAutomaticMoveCurrent?.(scheduled.plan) !== true) {
+      if (scheduled?.transport && scheduled.transport !== this.rollingTransport) {
+        this.clearRollingNextAliases(scheduled.transport);
+        void this.disposeRollingTransport(scheduled.transport);
+      }
+      return false;
+    }
+    const { transport, prepared, plan, boundaryTime } = scheduled;
+    const ownership = scheduled.ownership;
+    if (!ownership) return false;
+    if (!transport.promoteReservation(current)) {
+      this.clearRollingNextAliases(transport);
+      void this.disposeRollingTransport(transport);
+      return false;
+    }
+    const managedSource = this.getPipelineSourceNode(transport.sourceNode);
+    this.commitPlayerSourceOwnership(managedSource, ownership);
+    scheduled.ownership = null;
+    this.clearRollingNextAliases(transport);
+    this.rollingTransport = transport;
+    this.currentPlaybackDecision = prepared.decisionRecord;
+    this.activeSourceGeneration = ++this.sourceGenerationSequence;
+    void this.disposeRollingTransport(current);
+    const statePatch = {
+      currentTrackDuration: transport.metadata.durationSec,
+      currentTrackPosition: 0,
+      playbackMode: 'rollingPcm',
+      currentBuffer: null,
+      isPlaying: true,
+      isPaused: false,
+      isStopped: false,
+      isTransitioning: false,
+      transitionType: null,
+      bufferStartTime: boundaryTime,
+      bufferDuration: transport.metadata.durationSec
+    };
+    if (!this.audioPlayer.playbackManager.commitPlannedAutomaticMove(plan, statePatch)) {
+      this.handleRollingTransportFailure(transport, { reason: 'promotion-plan-stale' });
+      return false;
+    }
+    this.setupBufferMonitoring();
+    this.loadMetadata(prepared.playableTrack, null, prepared.targetIndex);
+    void this.prepareNextTrackBufferWithRepeatMode();
+    return true;
+  }
+
   commitScheduledBufferTransitionForSource(source) {
     const scheduled = this.scheduledBufferTransition;
     if (!scheduled || scheduled.oldSource !== source) return false;
@@ -3729,6 +4794,14 @@ export class AudioContextManager {
     this.releasePipelineSource(scheduled.source, true);
     return true;
   }
+
+  resetScheduledRollingTransition() {
+    const scheduled = this.scheduledRollingTransition;
+    if (!scheduled) return false;
+    this.clearRollingNextAliases(scheduled.transport);
+    void this.disposeRollingTransport(scheduled.transport);
+    return true;
+  }
   
   /**
    * Get next track
@@ -3785,6 +4858,8 @@ export class AudioContextManager {
     }, 'Transition started');
     
     try {
+      if (this.hasPendingRollingCleanup()) await this.waitForRollingCleanupBarrier();
+      if (!this.isActiveTransitionRequest(transitionRequest)) return false;
       let preparedNextTrack = plan ? preparedRequest : null;
       if (plan && !preparedNextTrack) {
         preparedNextTrack = this.consumePreparedNextForTrack(nextTrack, nextTrackIndex);
@@ -3799,7 +4874,8 @@ export class AudioContextManager {
         nextTrackIndex,
         isStale,
         preparedNextTrack,
-        plan
+        plan,
+        transitionRequest
       );
       if (!prepared || isStale()) return false;
       const activated = await this.activatePreparedTrackTransition(
@@ -3833,15 +4909,31 @@ export class AudioContextManager {
     }
   }
 
-  async prepareTrackTransitionRequest(track, targetIndex, isStale, preparedRequest, plan) {
+  async prepareTrackTransitionRequest(
+    track,
+    targetIndex,
+    isStale,
+    preparedRequest,
+    plan,
+    preparationOwner = null
+  ) {
     const planSnapshot = plan?.preparedRequest ?? null;
     const playableTrack = preparedRequest?.playableTrack ?? planSnapshot?.playableTrack ??
       (this.needsTrackProviderResolution(track) ? await this.resolveTrackProvider(track) : track);
     if (isStale() || !playableTrack) return null;
     const descriptor = preparedRequest?.descriptor ?? planSnapshot?.descriptor ??
       this.createPlaybackSourceDescriptor(playableTrack);
-    const decisionRecord = preparedRequest?.decisionRecord ?? planSnapshot?.decisionRecord ??
-      this.createPlaybackDecisionRecord(playableTrack, descriptor, choosePlaybackMode(descriptor));
+    let decisionRecord = preparedRequest?.decisionRecord ?? planSnapshot?.decisionRecord ??
+      this.preparePlaybackDecisionRecord(
+        playableTrack,
+        descriptor,
+        isStale,
+        'candidate',
+        null,
+        preparationOwner
+      );
+    if (decisionRecord instanceof Promise) decisionRecord = await decisionRecord;
+    if (!decisionRecord || isStale()) return null;
     let buffer = preparedRequest?.buffer ?? null;
 
     if (decisionRecord.committedMode === 'unavailable') {
@@ -3849,7 +4941,13 @@ export class AudioContextManager {
     }
     if (decisionRecord.committedMode === 'buffer' && !buffer) {
       try {
-        buffer = await this.prepareTrackBuffer(playableTrack, isStale, true, descriptor);
+        buffer = await this.prepareTrackBuffer(
+          playableTrack,
+          isStale,
+          true,
+          descriptor,
+          decisionRecord
+        );
       } catch (error) {
         if (!decisionRecord.decision.allowMediaFallback || decisionRecord.mediaFallbackLocked === true) {
           throw error;
@@ -3865,6 +4963,7 @@ export class AudioContextManager {
       descriptor,
       decisionRecord,
       buffer,
+      rollingTransport: decisionRecord.rollingTransport,
       automaticMovePlan: plan,
       targetIndex
     };
@@ -3875,7 +4974,9 @@ export class AudioContextManager {
     try {
       candidate = prepared.decisionRecord.committedMode === 'buffer'
         ? this.prepareBufferTransitionCandidate(prepared, loadRequest.sourceGeneration)
-        : await this.prepareMediaTransitionCandidate(prepared, loadRequest.sourceGeneration, isStale);
+        : prepared.decisionRecord.committedMode === 'rolling'
+          ? this.prepareRollingTransitionCandidate(prepared, loadRequest.sourceGeneration)
+          : await this.prepareMediaTransitionCandidate(prepared, loadRequest.sourceGeneration, isStale);
       if (!candidate || isStale()) return false;
       return this.commitPreparedTrackCandidate(candidate, prepared, null, isStale, false);
     } finally {
@@ -3894,7 +4995,9 @@ export class AudioContextManager {
     try {
       candidate = prepared.decisionRecord.committedMode === 'buffer'
         ? this.prepareBufferTransitionCandidate(prepared, transitionRequest.sourceGeneration)
-        : await this.prepareMediaTransitionCandidate(
+        : prepared.decisionRecord.committedMode === 'rolling'
+          ? this.prepareRollingTransitionCandidate(prepared, transitionRequest.sourceGeneration)
+          : await this.prepareMediaTransitionCandidate(
             prepared,
             transitionRequest.sourceGeneration,
             isStale
@@ -3911,23 +5014,31 @@ export class AudioContextManager {
       if (candidate.mode === 'bufferSource') {
         candidate.startTime = this.audioPlayer.audioContext.currentTime;
         candidate.source.start(candidate.startTime);
-      } else {
+      } else if (candidate.mode === 'audioElement') {
         await candidate.element.play();
       }
       if (isStale() || candidate.ended === true || candidate.element?.error) return false;
 
-      const commit = () => this.commitPreparedTrackCandidate(candidate, prepared, plan, isStale, true);
+      const commit = () => {
+        if (!this.commitPreparedTrackCandidate(candidate, prepared, plan, isStale, true)) {
+          throw new Error('Prepared track candidate commit was rejected');
+        }
+        return true;
+      };
       if (stage) {
         const result = await this.audioManager.activateStagedAudioCandidate(stage, {
           acquire: () => candidate,
-          isCandidateCurrent: value => value === candidate && !isStale() &&
+          isCandidateCurrent: value => value === candidate && !candidate.cleaned && !isStale() &&
             candidate.ended !== true && candidate.element?.ended !== true &&
             !candidate.element?.error &&
+            (candidate.mode !== 'rollingPcm' ||
+              (candidate.transport?.prepared === true && !candidate.transport.failed &&
+                !candidate.transport.disposed)) &&
             this.isPipelineSourceConnected(candidate.source),
           commit,
           cleanup: () => this.cleanupPreparedTransitionCandidate(candidate)
         });
-        return result.activated === true;
+        return result.activated === true && candidate.committed === true;
       }
       return commit();
     } catch (error) {
@@ -3974,6 +5085,30 @@ export class AudioContextManager {
       source.onended = null;
       this.releasePipelineSource(source, true);
       throw new Error('private-buffer-candidate-connect-failed');
+    }
+    return candidate;
+  }
+
+  prepareRollingTransitionCandidate(prepared, sourceGeneration) {
+    const transport = prepared.rollingTransport ?? prepared.decisionRecord?.rollingTransport;
+    if (!transport?.sourceNode || !transport.metadata || !transport.prepared ||
+        transport.failed || transport.disposed) {
+      throw new Error('Prepared rolling PCM transport is unavailable');
+    }
+    const candidate = {
+      mode: 'rollingPcm',
+      backend: 'rolling-pcm',
+      source: transport.sourceNode,
+      transport,
+      metadata: transport.metadata,
+      sourceGeneration,
+      committed: false,
+      cleaned: false
+    };
+    this.preparePlaybackSourceChannels(candidate.source, candidate.metadata.channelCount);
+    if (!this.connectPrivatePipelineSource(candidate.source)) {
+      void this.disposeRollingTransport(transport);
+      throw new Error('private-rolling-candidate-connect-failed');
     }
     return candidate;
   }
@@ -4081,6 +5216,9 @@ export class AudioContextManager {
   }
 
   prepareMutedCandidateCommit(candidate, startPlayback) {
+    if (candidate.mode === 'rollingPcm' &&
+        (!candidate.transport?.prepared || candidate.transport.failed ||
+          candidate.transport.disposed)) return null;
     const ownership = this.preparePlayerSourceOwnership();
     if (!ownership) return null;
     if (!this.setPrivatePipelineSourceMuted(candidate.source, true) ||
@@ -4108,6 +5246,13 @@ export class AudioContextManager {
       this.releasePipelineSource(this.currentBufferSource, true);
     }
     this.currentBufferSource = null;
+    this.releasePartialDecodeBufferReservation(this.currentBuffer, candidate.buffer ?? null);
+
+    if (this.rollingTransport && this.rollingTransport !== candidate.transport) {
+      const previousRolling = this.rollingTransport;
+      this.rollingTransport = null;
+      void this.disposeRollingTransport(previousRolling);
+    }
 
     if (this.pendingMediaActivation) {
       this.pendingMediaActivation.invalid = true;
@@ -4129,7 +5274,10 @@ export class AudioContextManager {
 
   commitPreparedTrackCandidate(candidate, prepared, plan, isStale, startPlayback) {
     const playbackManager = this.audioPlayer.playbackManager;
-    if (isStale() || candidate.element?.error ||
+    if (isStale() || candidate.cleaned || candidate.element?.error ||
+        (candidate.mode === 'rollingPcm' &&
+          (!candidate.transport?.prepared || candidate.transport.failed ||
+            candidate.transport.disposed)) ||
         (plan && playbackManager?.isPlannedAutomaticMoveCurrent?.(plan) !== true)) {
       return false;
     }
@@ -4139,8 +5287,13 @@ export class AudioContextManager {
     const statePatch = {
       currentTrackDuration: candidate.mode === 'bufferSource'
         ? candidate.buffer.duration
-        : (candidate.region?.durationSec ?? mediaDuration),
-      currentTrackPosition: 0,
+        : candidate.mode === 'rollingPcm'
+          ? candidate.metadata.durationSec
+          : (candidate.region?.durationSec ?? mediaDuration),
+      currentTrackPosition: candidate.mode === 'rollingPcm' &&
+        Number.isSafeInteger(candidate.initialFrame)
+        ? candidate.initialFrame / candidate.metadata.sampleRate
+        : 0,
       playbackMode: candidate.mode,
       currentBuffer: candidate.mode === 'bufferSource' ? candidate.buffer : null,
       isPlaying: startPlayback,
@@ -4156,9 +5309,40 @@ export class AudioContextManager {
       return false;
     }
 
-    this.teardownCommittedBackendForTransition(candidate);
-    this.setPrivatePipelineSourceMuted(candidate.source, false);
-    this.commitPlayerSourceOwnership(preflight.managedSource, preflight.ownership);
+    let candidatePublished = false;
+    if (candidate.mode === 'rollingPcm') {
+      const previousRolling = this.rollingTransport;
+      if (startPlayback && !candidate.transport.activate({
+        when: this.audioPlayer.audioContext.currentTime,
+        frame: candidate.initialFrame ?? 0
+      })) {
+        this.rollbackPlayerSourceOwnership(preflight.ownership);
+        return false;
+      }
+      if (!this.setPrivatePipelineSourceMuted(candidate.source, false)) {
+        this.rollbackPlayerSourceOwnership(preflight.ownership);
+        return false;
+      }
+      candidatePublished = true;
+      if (!candidate.transport.promoteReservation(previousRolling)) {
+        this.setPrivatePipelineSourceMuted(candidate.source, true);
+        this.rollbackPlayerSourceOwnership(preflight.ownership);
+        return false;
+      }
+      this.clearRollingNextAliases(candidate.transport);
+    }
+
+    if (candidatePublished) {
+      this.commitPlayerSourceOwnership(preflight.managedSource, preflight.ownership);
+      this.teardownCommittedBackendForTransition(candidate);
+    } else {
+      this.teardownCommittedBackendForTransition(candidate);
+      if (!this.setPrivatePipelineSourceMuted(candidate.source, false)) {
+        this.rollbackPlayerSourceOwnership(preflight.ownership);
+        return false;
+      }
+      this.commitPlayerSourceOwnership(preflight.managedSource, preflight.ownership);
+    }
     this.currentPlaybackDecision = prepared.decisionRecord;
     this.activeSourceGeneration = candidate.sourceGeneration;
     if (candidate.mode === 'bufferSource') {
@@ -4174,6 +5358,14 @@ export class AudioContextManager {
         bufferStartTime: startPlayback ? candidate.startTime : 0,
         bufferDuration: candidate.buffer.duration
       });
+    } else if (candidate.mode === 'rollingPcm') {
+      this.currentBuffer = null;
+      this.bufferDuration = candidate.metadata.durationSec;
+      this.rollingTransport = candidate.transport;
+      Object.assign(statePatch, {
+        bufferStartTime: startPlayback ? this.audioPlayer.audioContext.currentTime : 0,
+        bufferDuration: candidate.metadata.durationSec
+      });
     } else {
       this.currentBuffer = null;
       this.bufferDuration = 0;
@@ -4187,7 +5379,7 @@ export class AudioContextManager {
     }
 
     if (plan && startPlayback) {
-      playbackManager.commitPlannedAutomaticMove(plan, statePatch);
+      if (!playbackManager.commitPlannedAutomaticMove(plan, statePatch)) return false;
     } else {
       this.updateState({
         currentTrack: track,
@@ -4201,6 +5393,13 @@ export class AudioContextManager {
     }
 
     candidate.committed = true;
+    if (candidate.mode === 'rollingPcm') {
+      this.releaseRollingPreparationOwnership(candidate.transport);
+    }
+    if (candidate.mode !== 'rollingPcm' && this.rollingLegacyFallbackLock) {
+      this.rollingLegacyFallbackLock = false;
+      this.rollingFallbackLockTrack = null;
+    }
     this.nextBuffer = null;
     this.activeNextBufferRequest = null;
     this.loadMetadata(track, null, prepared.targetIndex);
@@ -4211,6 +5410,9 @@ export class AudioContextManager {
         candidate.source.onended = null;
         this.releasePipelineSource(candidate.source, true);
       }
+      this.prepareNextTrackBufferWithRepeatMode();
+    } else if (candidate.mode === 'rollingPcm') {
+      if (startPlayback) this.setupBufferMonitoring();
       this.prepareNextTrackBufferWithRepeatMode();
     } else if (this.activeRegion) {
       this.prepareRegionTransportPlan(this.activeRegion);
@@ -4228,6 +5430,12 @@ export class AudioContextManager {
     if (candidate.mode === 'bufferSource') {
       candidate.source.onended = null;
       this.releasePipelineSource(candidate.source, true);
+      this.releasePartialDecodeBufferReservation(candidate.buffer, this.currentBuffer);
+      return;
+    }
+    if (candidate.mode === 'rollingPcm') {
+      if (candidate.transport === this.rollingTransport) return;
+      void this.disposeRollingTransport(candidate.transport);
       return;
     }
     try { candidate.element.pause(); } catch (_) { /* already paused */ }
@@ -4382,6 +5590,12 @@ export class AudioContextManager {
       }
       
       this.stopCurrentPlayback();
+
+      if (this.rollingTransport) {
+        const transport = this.rollingTransport;
+        this.rollingTransport = null;
+        void this.disposeRollingTransport(transport);
+      }
       
       if (this.mediaSource) {
         this.releasePipelineSource(this.mediaSource);
@@ -4496,6 +5710,10 @@ export class AudioContextManager {
   hasCurrentBuffer() {
     return this.currentBuffer !== null;
   }
+
+  hasCurrentRollingPlayback() {
+    return this.rollingTransport?.prepared === true && this.rollingTransport.failed !== true;
+  }
   
   /**
    * Get current buffer
@@ -4507,11 +5725,42 @@ export class AudioContextManager {
   /**
    * Clear next track buffer
    */
+  clearRollingNextAliases(transport) {
+    if (!transport) return false;
+    const nextTransport = this.nextRollingTransport?.rollingTransport ??
+      this.nextRollingTransport?.transport ?? null;
+    if (nextTransport === transport) this.nextRollingTransport = null;
+    const bufferedTransport = this.nextBuffer?.rollingTransport ??
+      this.nextBuffer?.transport ?? null;
+    if (bufferedTransport === transport) this.nextBuffer = null;
+    if (this.scheduledRollingTransition?.transport === transport) {
+      if (this.scheduledRollingTransition.ownership) {
+        this.rollbackPlayerSourceOwnership(this.scheduledRollingTransition.ownership);
+      }
+      this.scheduledRollingTransition = null;
+    }
+    return true;
+  }
+
   clearNextTrackBuffer() {
     this.cancelScheduledBufferTransition();
     this.nextBufferRequestToken++;
+    const preparationOwner = this.activeNextBufferRequest;
     this.activeNextBufferRequest = null;
+    const transport = this.nextRollingTransport?.rollingTransport ??
+      this.nextRollingTransport?.transport ??
+      this.nextBuffer?.rollingTransport ?? this.nextBuffer?.transport ??
+      this.scheduledRollingTransition?.transport ?? null;
+    const bufferedFallback = this.nextBuffer?.buffer ?? null;
     this.nextBuffer = null;
+    this.nextRollingTransport = null;
+    if (transport) this.clearRollingNextAliases(transport);
+    const cleanups = [this.disposeRollingPreparationsForOwner(preparationOwner)];
+    if (transport && transport !== this.rollingTransport) {
+      cleanups.push(this.disposeRollingTransport(transport));
+    }
+    this.releasePartialDecodeBufferReservation(bufferedFallback, this.currentBuffer);
+    return Promise.all(cleanups).then(() => undefined);
   }
 }
 
@@ -4555,6 +5804,48 @@ function isFileObject(value) {
   return typeof File !== 'undefined' && value instanceof File;
 }
 
+function isMaterializedPlaybackBytes(value) {
+  return value instanceof ArrayBuffer || ArrayBuffer.isView(value);
+}
+
+function hasLocalPcmWaveFileNameHint(track) {
+  const path = typeof track?.path === 'string' ? track.path : '';
+  const pathBaseName = path.split(/[\\/]/).pop() ?? '';
+  return [track?.sourceFileName, track?.fileName, pathBaseName]
+    .some(value => typeof value === 'string' && /\.wav$/i.test(value.trim()));
+}
+
+function getAudioBufferPcmByteLength(audioBuffer) {
+  if (!Number.isSafeInteger(audioBuffer?.length) || audioBuffer.length < 0 ||
+      !Number.isSafeInteger(audioBuffer?.numberOfChannels) ||
+      audioBuffer.numberOfChannels <= 0) return null;
+  return checkedPlaybackByteProduct(
+    audioBuffer.length,
+    audioBuffer.numberOfChannels,
+    Float32Array.BYTES_PER_ELEMENT
+  );
+}
+
+function checkedPlaybackByteSum(...values) {
+  let result = 0;
+  for (const value of values) {
+    if (!Number.isSafeInteger(value) || value < 0) return null;
+    if (value > Number.MAX_SAFE_INTEGER - result) return null;
+    result += value;
+  }
+  return Number.isSafeInteger(result) ? result : null;
+}
+
+function checkedPlaybackByteProduct(...values) {
+  let result = 1;
+  for (const value of values) {
+    if (!Number.isSafeInteger(value) || value < 0) return null;
+    if (result !== 0 && value > Math.floor(Number.MAX_SAFE_INTEGER / result)) return null;
+    result *= value;
+  }
+  return Number.isSafeInteger(result) ? result : null;
+}
+
 function isBlobObject(value) {
   if (!value || typeof value !== 'object') return false;
   if (typeof Blob !== 'undefined' && value instanceof Blob) return true;
@@ -4568,6 +5859,17 @@ function toOwnedArrayBuffer(value) {
     return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
   }
   throw new Error('Playback byte reader returned invalid data');
+}
+
+function getTrackPlaybackMetadata(track) {
+  const durationSec = track?.durationSec ?? track?.duration;
+  const sampleRate = track?.sampleRate;
+  const channelCount = track?.channelCount ?? track?.channels ?? track?.numberOfChannels;
+  return {
+    durationSec: Number.isFinite(durationSec) ? durationSec : null,
+    sampleRate: Number.isSafeInteger(sampleRate) ? sampleRate : null,
+    channelCount: Number.isSafeInteger(channelCount) ? channelCount : null
+  };
 }
 
 function samePlaybackEntry(left, right) {

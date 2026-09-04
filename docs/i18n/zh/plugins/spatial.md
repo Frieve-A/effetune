@@ -1,6 +1,6 @@
 ---
 title: "空间音频插件 - EffeTune"
-description: "用于耳机和扬声器聆听的空间处理插件，包括 Crossfeed Filter、MS Matrix、Multiband Balance、Phase Select EQ 和 Stereo Blend。"
+description: "用于耳机和扬声器聆听的空间处理插件，包括 Crossfeed Filter、Crosstalk Cancellation、MS Matrix、Multiband Balance、Phase Select EQ 和 Stereo Blend。"
 lang: zh
 ---
 
@@ -11,6 +11,7 @@ lang: zh
 ## 插件列表
 
 - [Crossfeed Filter](#crossfeed-filter) - 用于自然耳机声像的交叉馈送滤波器
+- [Crosstalk Cancellation](#crosstalk-cancellation) - 使用耳边测量值减少立体声音箱之间的串扰
 - [MS Matrix](#ms-matrix) - 在立体声与 Mid/Side 之间转换，用于高级立体声调整链
 - [Multiband Balance](#multiband-balance) - 5 频段频率相关立体声平衡控制
 - [Phase Select EQ](#phase-select-eq) - 按 L/R 相位差和 Balance 选择并提升或衰减频率成分
@@ -78,6 +79,37 @@ lang: zh
 3. 将 LPF Freq 设为 700 Hz
 4. 播放熟悉的人声或现场录音
 5. 微调 Level，直到声场更自然但不过度变窄
+
+## Crosstalk Cancellation
+
+Crosstalk Cancellation 使用耳边测得的响应，减少每只立体声音箱传到另一侧耳朵的声音。它适用于在一个已测量的位置通过两只立体声音箱聆听，希望获得更清晰、近似双耳声的定位时；不适用于耳机或单声道播放。
+
+[Crossfeed Filter](#crossfeed-filter) 为耳机聆听加入少量类似音箱的串扰；Crosstalk Cancellation 则为音箱聆听减少已经测得的串扰。
+
+### 测量和分配
+
+1. 将麦克风放在左耳位置，选择左右两个音箱输出进行一次测量。把其左声道分配给 **LL: L Speaker → Left Ear**，右声道分配给 **RL: R Speaker → Left Ear**。
+2. 将麦克风移到右耳位置，重复同样的双输出测量。把左声道分配给 **LR: L Speaker → Right Ear**，右声道分配给 **RR: R Speaker → Right Ear**。
+3. 使用同一音箱和聆听设置下的单点测量，并为每个槽位分配不同的测量声道。
+
+从默认值开始：**Taps** 4096、**Regularization** 50%、**Max Gain** 12 dB、**Freq Low** 200 Hz、**Freq High** 6000 Hz、**Direct Window** 8 ms、**Strength** 70%、**Output Gain** 0 dB、**Latency** 128 samples。在测量位置坐好，与旁路比较后再小幅调整。
+
+### 参数
+
+- **Taps** (1024–16384)：滤波器长度。更高可改善抵消，但增加处理量和建模延迟；若提示滤波器尾部可能被截断，先提高它。
+- **Regularization** (0–100%)：限制难以抵消处的激进校正。稍微移动头部就不自然时提高；仅在测量位置需要更强抵消时降低。
+- **Max Gain** (0–24 dB)：校正滤波器的最大提升。较低更温和且保留余量；较高可加强抵消但可能更敏感。
+- **Freq Low** (20–2000 Hz) / **Freq High** (1000–20000 Hz)：主校正频段，之外直通。先用200 Hz–6000 Hz；对头部移动太敏感时缩窄频段。
+- **Direct Window** (2–50 ms)：使用测量直接声的长度。短可减少房间反射但可能提高有效低频下限；长会保留更多低频也更易包含反射。
+- **Strength** (0–100%)：从0%的延迟未校正声音到100%的完全校正。先用70%，离开测量位置听起来不自然则降低。
+- **Output Gain** (-24–+24 dB)：校正后的最终音量。先保持0 dB，需要余量时降低。
+- **Latency** (0/128/256/512/1024 samples)：处理块延迟；较高给处理更多余量，较低适合在意监听延迟时。
+
+### 状态和延迟
+
+初始状态为 **Assign all four measurements to begin.**；设计时显示进行中，准备好时显示最大滤波器增益。尾部警告表示可提高 **Taps** 或 **Regularization**。若 **Direct Window** 提高了有效低频，说明所选窗口过短，无法使用请求的最低频率。
+
+找不到已分配的测量时请重新选择；无法准备滤波器时，尝试更少的 **Taps** 或更高的 **Latency**。在四个合适测量均已分配且滤波器就绪前，插件原样直通音频且不增加处理延迟。就绪后，总延迟为 **Latency** 加滤波器建模延迟，应用会进行正常的管线延迟补偿；实时监听或影音同步时查看 **Total Delay**。本效果没有图表或其他可视化。
 
 ## MS Matrix
 

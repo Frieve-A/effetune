@@ -1,6 +1,6 @@
 ---
 title: "공간 오디오 플러그인 - EffeTune"
-description: "Crossfeed Filter, MS Matrix, Multiband Balance, Phase Select EQ, Stereo Blend를 포함한 공간 오디오 플러그인입니다."
+description: "Crossfeed Filter, Crosstalk Cancellation, MS Matrix, Multiband Balance, Phase Select EQ, Stereo Blend를 포함한 공간 오디오 플러그인입니다."
 lang: ko
 ---
 
@@ -11,6 +11,7 @@ lang: ko
 ## 플러그인 목록
 
 - [Crossfeed Filter](#crossfeed-filter) - 자연스러운 스테레오 이미지를 위한 헤드폰 크로스피드 필터
+- [Crosstalk Cancellation](#crosstalk-cancellation) - 귀 위치 측정값으로 스테레오 스피커 사이의 크로스토크를 줄임
 - [MS Matrix](#ms-matrix) - 고급 스테레오 조정 체인을 위해 스테레오를 Mid/Side로 변환하고 다시 되돌림
 - [Multiband Balance](#multiband-balance) - 5밴드 주파수 의존 스테레오 밸런스 제어
 - [Phase Select EQ](#phase-select-eq) - L/R 위상차와 Balance로 선택한 주파수 성분을 부스트 또는 컷
@@ -101,6 +102,37 @@ lang: ko
    - 다양한 음악 스타일로 테스트
 
 기억하세요: Crossfeed Filter는 헤드폰 청취를 더 자연스럽고 편안하게 만들기 위해 설계되었습니다. 보수적인 설정으로 시작하고 청취 선호도와 음악 자료에 최적의 균형을 찾기 위해 점진적으로 조정하세요.
+
+## Crosstalk Cancellation
+
+Crosstalk Cancellation은 귀 근처에서 측정한 응답을 이용해 각 스테레오 스피커가 반대쪽 귀에 전달하는 소리를 줄입니다. 측정한 한 위치에서 두 스테레오 스피커를 들으며 더 또렷하고 바이노럴에 가까운 이미지를 원할 때 사용합니다. 헤드폰이나 모노 재생에는 맞지 않습니다.
+
+[Crossfeed Filter](#crossfeed-filter)는 헤드폰 청취에 스피커 같은 크로스토크를 조금 더하지만, Crosstalk Cancellation은 스피커 청취에서 측정된 크로스토크를 줄입니다.
+
+### 측정 및 할당
+
+1. 마이크를 왼쪽 귀 위치에 놓고 좌·우 스피커 출력을 선택해 측정합니다. 왼쪽 채널은 **LL: L Speaker → Left Ear**, 오른쪽 채널은 **RL: R Speaker → Left Ear**에 할당합니다.
+2. 마이크를 오른쪽 귀 위치로 옮겨 같은 측정을 하고, 왼쪽 채널은 **LR: L Speaker → Right Ear**, 오른쪽 채널은 **RR: R Speaker → Right Ear**에 할당합니다.
+3. 같은 설치에서 만든 단일 지점 측정을 사용하고 각 슬롯에는 서로 다른 측정 채널을 지정합니다.
+
+**Taps** 4096, **Regularization** 50%, **Max Gain** 12 dB, **Freq Low** 200 Hz, **Freq High** 6000 Hz, **Direct Window** 8 ms, **Strength** 70%, **Output Gain** 0 dB, **Latency** 128 samples의 기본값부터 시작하세요. 측정 위치에 앉아 바이패스와 비교하며 조금씩 바꿉니다.
+
+### 파라미터
+
+- **Taps** (1024–16384): 필터 길이입니다. 늘리면 상쇄가 좋아질 수 있지만 처리량과 지연이 늘어납니다. 꼬리가 잘릴 수 있다는 경고가 나오면 먼저 늘립니다.
+- **Regularization** (0–100%): 과도한 보정을 제한합니다. 조금 움직여도 불안정하거나 색이 변하면 올리고, 측정 위치에서 더 강한 상쇄가 필요할 때만 내립니다.
+- **Max Gain** (0–24 dB): 필터의 최대 부스트입니다. 낮으면 부드럽고 헤드룸을 남기며, 높으면 상쇄를 강화할 수 있지만 덜 견고할 수 있습니다.
+- **Freq Low** (20–2000 Hz) / **Freq High** (1000–20000 Hz): 보정 대역이며 밖은 통과합니다. 200–6000 Hz부터 시작하고 머리 움직임에 너무 민감하면 좁힙니다.
+- **Direct Window** (2–50 ms): 측정 직접음을 쓰는 길이입니다. 짧으면 반사를 줄이지만 유효 저역 한계가 올라갈 수 있고, 길면 저역과 반사가 함께 늘어납니다.
+- **Strength** (0–100%): 0%의 지연된 미보정음부터 100%의 전체 보정까지 섞습니다. 70%부터 시작해 위치 밖에서 부자연스러우면 낮춥니다.
+- **Output Gain** (-24–+24 dB): 최종 레벨입니다. 처음에는 0 dB로 두고 헤드룸이 필요하면 낮춥니다.
+- **Latency** (0/128/256/512/1024 samples): 처리 블록 지연입니다. 높으면 처리가 쉬워지고 낮으면 모니터링 지연이 줄어듭니다.
+
+### 상태 및 지연
+
+처음에는 **Assign all four measurements to begin.**가 표시됩니다. 설계 중에는 진행 상태를, 준비되면 최대 필터 게인을 표시합니다. 꼬리 경고는 **Taps** 또는 **Regularization**을 올리라는 뜻입니다. **Direct Window**가 유효 저주파를 올렸다는 경고는 창이 너무 짧다는 뜻입니다.
+
+측정을 찾을 수 없으면 다시 선택합니다. 필터를 준비할 수 없으면 **Taps**를 줄이거나 **Latency**를 올리세요. 네 개의 적절한 측정과 준비된 필터가 생기기 전까지는 오디오가 바뀌지 않고 추가 지연도 없습니다. 준비 후 총 지연은 **Latency**와 모델링 지연의 합이며 앱이 보상합니다. 실시간 모니터링이나 영상 동기화에는 **Total Delay**를 확인하세요. 그래프나 다른 시각화는 없습니다.
 
 ## MS Matrix
 

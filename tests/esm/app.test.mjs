@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 import * as appBootstrap from '../../js/app-bootstrap.js';
+import * as rendererStartup from '../../js/startup.js';
 import { resetWebAppConfigRuntimeForTests } from '../../js/electron/webSettingsStorage.js';
 
 let appModulePromise = null;
@@ -404,11 +405,6 @@ function createDependencies(calls, options = {}) {
 
 function createImportElectronAPI(importCalls, overrides = {}) {
   const target = {
-    async isFirstLaunch() {
-      importCalls.push(['isFirstLaunch']);
-      if (overrides.isFirstLaunchReject) throw new Error('first launch failed');
-      return overrides.isFirstLaunch ?? false;
-    },
     onRequestPipelineStateForClose(callback) {
       importCalls.push(['onRequestPipelineStateForClose', callback]);
     },
@@ -515,47 +511,33 @@ test('app module auto-start wires top-level bootstrap side effects', async () =>
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
-test('bootstrap helpers manage first-launch status and errors', async () => {
-  await withAppModule({}, async ({ calls, document, mod, window }) => {
-    assert.equal(await appBootstrap.createFirstLaunchPromise({
-      isFirstLaunch() {
-        calls.push(['isFirstLaunch.true']);
-        return true;
-      }
-    }), true);
-    assert.equal(await appBootstrap.createFirstLaunchPromise({
-      isFirstLaunch() {
-        throw new Error('sync launch failure');
-      }
-    }), false);
-    assert.equal(await appBootstrap.createFirstLaunchPromise({
-      async isFirstLaunch() {
-        throw new Error('async launch failure');
-      }
-    }), false);
-    assert.equal(await appBootstrap.createFirstLaunchPromise(null), false);
+test('renderer startup selects either the audio-only warm-up or the full application', async () => {
+  const calls = [];
+  const logger = { warn: (...args) => calls.push(['warn', ...args]) };
+  const warmupWindow = {
+    document: { documentElement: { dataset: { effetuneStartup: 'audio-warmup' } } }
+  };
+  assert.equal(await rendererStartup.startRenderer({
+    windowRef: warmupWindow,
+    logger,
+    warmUpAudioOutput: async () => calls.push(['warmup']),
+    loadApplication: async () => calls.push(['application'])
+  }), 'audio-warmup');
+  assert.deepEqual(calls, [['warmup']]);
+  assert.equal(warmupWindow.isFirstLaunchConfirmed, true);
 
-    const hiddenStyle = document.createElement('style');
-    document.head.appendChild(hiddenStyle);
-    appBootstrap.applyFirstLaunchStatus(false, hiddenStyle, window);
-    assert.equal(hiddenStyle.parentNode, null);
-
-    const firstLaunchStyle = document.createElement('style');
-    document.head.appendChild(firstLaunchStyle);
-    appBootstrap.applyFirstLaunchStatus(true, firstLaunchStyle, window);
-    assert.equal(firstLaunchStyle.id, 'first-launch-style');
-    assert.equal(window.isFirstLaunch, true);
-
-    const errorStyle = document.createElement('style');
-    document.head.appendChild(errorStyle);
-    appBootstrap.applyFirstLaunchError(new Error('first launch failed'), errorStyle, { windowRef: window });
-    assert.equal(errorStyle.parentNode, null);
-    assert.equal(window.isFirstLaunch, false);
-    await appBootstrap.handleFirstLaunchPromise(Promise.resolve(true), firstLaunchStyle, { windowRef: window });
-    assert.equal(window.isFirstLaunchConfirmed, true);
-    await appBootstrap.handleFirstLaunchPromise(Promise.reject(new Error('promise failed')), firstLaunchStyle, { windowRef: window });
-    assert.equal(window.isFirstLaunchConfirmed, false);
-  });
+  calls.length = 0;
+  const applicationWindow = {
+    document: { documentElement: { dataset: {} } }
+  };
+  assert.equal(await rendererStartup.startRenderer({
+    windowRef: applicationWindow,
+    logger,
+    warmUpAudioOutput: async () => calls.push(['warmup']),
+    loadApplication: async () => calls.push(['application'])
+  }), 'application');
+  assert.deepEqual(calls, [['application']]);
+  assert.equal(applicationWindow.isFirstLaunchConfirmed, false);
 });
 
 test('bootstrap helpers wire close-state and tray preset listeners', async () => {
@@ -731,7 +713,6 @@ test('App initialize handles success, audio warnings, and initialization failure
     }
   }, async ({ calls, mod, window }) => {
     window.electronIntegration = { isElectron: true, isElectronEnvironment: () => true };
-    mod.INITIALIZATION_CONFIG.AUDIOWORKLET_TO_PIPELINE_WAIT = 0;
     const deps = createDependencies(calls, {
       initAudioResult: 'Audio Error: no mic',
       workletResult: 'Audio Error: no worklet',
@@ -753,7 +734,6 @@ test('App initialize handles success, audio warnings, and initialization failure
   });
 
   await withAppModule({}, async ({ calls, mod }) => {
-    mod.INITIALIZATION_CONFIG.AUDIOWORKLET_TO_PIPELINE_WAIT = 0;
     const app = new mod.App(createDependencies(calls, {
       initAudioResult: 'Audio Error: Microphone access denied. Music file playback mode will still work.'
     }));
@@ -766,7 +746,6 @@ test('App initialize handles success, audio warnings, and initialization failure
   });
 
   await withAppModule({}, async ({ calls, mod }) => {
-    mod.INITIALIZATION_CONFIG.AUDIOWORKLET_TO_PIPELINE_WAIT = 0;
     const app = new mod.App(createDependencies(calls, {
       rebuildResult: 'Audio Error: graph unavailable'
     }));
@@ -786,7 +765,6 @@ test('App initialize handles success, audio warnings, and initialization failure
   });
 
   await withAppModule({}, async ({ calls, mod }) => {
-    mod.INITIALIZATION_CONFIG.AUDIOWORKLET_TO_PIPELINE_WAIT = 0;
     const deps = createDependencies(calls, { powerStartReject: true });
     const app = new mod.App(deps);
     await app.initialize();
@@ -795,7 +773,6 @@ test('App initialize handles success, audio warnings, and initialization failure
   });
 
   await withAppModule({}, async ({ calls, mod, timers }) => {
-    mod.INITIALIZATION_CONFIG.AUDIOWORKLET_TO_PIPELINE_WAIT = 0;
     const app = new mod.App(createDependencies(calls, { rebuildReject: true }));
     const initializePromise = app.initialize();
     await flushAndRunTimers(timers);
@@ -806,24 +783,23 @@ test('App initialize handles success, audio warnings, and initialization failure
 
 });
 
-test('initializeAudioWorklet honors first-launch and forced-skip guards', async () => {
+test('initializeAudioWorklet leaves splash handling to the audio-only document and honors forced skip', async () => {
   await withAppModule({}, async ({ calls, mod, window }) => {
     window.electronIntegration = { isElectron: true };
     const deps = createDependencies(calls);
     const app = new mod.App(deps);
     window.isFirstLaunch = true;
     await app.initializeAudioWorklet();
-    assert.equal(calls.some(call => call[0] === 'audio.initializeAudioWorklet'), false);
-    window.isFirstLaunch = false;
+    assert.equal(calls.filter(call => call[0] === 'audio.initializeAudioWorklet').length, 1);
     window.__FORCE_SKIP_PIPELINE_STATE_LOAD = true;
     await app.initializeAudioWorklet();
     window.__FORCE_SKIP_PIPELINE_STATE_LOAD = false;
     await app.initializeAudioWorklet();
-    assert.equal(calls.some(call => call[0] === 'audio.initializeAudioWorklet'), true);
+    assert.equal(calls.filter(call => call[0] === 'audio.initializeAudioWorklet').length, 2);
   });
 });
 
-test('startup view preference opens library unless URL or first-launch content takes priority', async () => {
+test('startup view preference opens library unless explicit URL content takes priority', async () => {
   await withAppModule({}, async ({ calls, mod, window }) => {
     window.electronIntegration = { isElectron: false };
     const app = new mod.App({
@@ -925,8 +901,8 @@ test('startup view preference opens library unless URL or first-launch content t
     const app = new mod.App(createDependencies(calls));
 
     await app.applyStartupViewPreference();
-    assert.equal(document.body.className.split(/\s+/).includes('view-library'), false);
-    assert.equal(calls.some(call => call[0] === 'ui.showLibraryView'), false);
+    assert.equal(document.body.className.split(/\s+/).includes('view-library'), true);
+    assert.equal(calls.some(call => call[0] === 'ui.showLibraryView'), true);
   });
 
   await withAppModule({}, async ({ calls, mod, window }) => {
@@ -934,22 +910,54 @@ test('startup view preference opens library unless URL or first-launch content t
     window.electronIntegration = { isElectron: false };
     const app = new mod.App({
       ...createDependencies(calls),
-      loadStartupConfig: async () => ({
-        startupView: 'library',
-        libraryStartupView: 'playlists',
-        pipelineStartup: 'default'
-      })
+      loadStartupConfig: async () => {
+        throw new Error('cached startup config should be reused');
+      }
     });
 
     await app.initializeAndBuildPipeline();
     await app.applyStartupViewPreference();
 
     assert.deepEqual(calls.filter(call => call[0] === 'ui.deferLibraryStartupView'), [
-      ['ui.deferLibraryStartupView', 'tracks'],
-      ['ui.deferLibraryStartupView', 'playlists']
+      ['ui.deferLibraryStartupView', 'tracks']
     ]);
     assert.equal(calls.some(call => call[0] === 'ui.showLibraryView' &&
-      call[1]?.initialView === 'playlists'), true);
+      call[1]?.initialView === 'tracks'), true);
+  });
+
+  await withAppModule({}, async ({ calls, mod, window }) => {
+    window.appConfig = { startupView: 'library', libraryStartupView: 'folders' };
+    window.electronIntegration = { isElectron: true, isElectronEnvironment: () => true };
+    const app = new mod.App(createDependencies(calls));
+    // UIManager.updateURL() reflects the built pipeline into the URL during startup;
+    // that must not be mistaken for an explicit shared-pipeline request.
+    window.location.search = '?p=W3sibm0iOiJWb2x1bWUifV0';
+
+    await app.applyStartupViewPreference();
+    assert.equal(calls.some(call => call[0] === 'ui.showLibraryView' &&
+      call[1]?.initialView === 'folders'), true);
+  });
+});
+
+test('initialize opens the configured library startup view before the pipeline UI renders', async () => {
+  await withAppModule({}, async ({ calls, mod, timers, window }) => {
+    window.appConfig = { startupView: 'library', libraryStartupView: 'folders' };
+    window.electronIntegration = { isElectron: true, isElectronEnvironment: () => true };
+    const app = new mod.App(createDependencies(calls));
+
+    const initializePromise = app.initialize();
+    await flushAndRunTimers(timers);
+    await initializePromise;
+
+    const names = calls.map(call => call[0]);
+    const libraryIndex = names.indexOf('ui.showLibraryView');
+    const pipelineIndex = names.indexOf('ui.updatePipelineUI');
+    assert.notEqual(libraryIndex, -1);
+    assert.notEqual(pipelineIndex, -1);
+    // The effect pipeline must never paint ahead of the configured startup view.
+    assert.equal(libraryIndex < pipelineIndex, true);
+    // The late await reuses the promise started at the top of initialize().
+    assert.equal(names.filter(name => name === 'ui.showLibraryView').length, 1);
   });
 });
 
@@ -1283,7 +1291,7 @@ test('event listeners, output-device changes, relaunch, and command-line music c
     app._lastHdmiReconnectResetTime = Date.now();
     await app._doMacosRelaunch();
 
-    app.processCommandLineArguments();
+    await app.processCommandLineArguments();
     await flushMicrotasks();
     await flushMicrotasks();
     await runTimers(timers);
@@ -1327,13 +1335,13 @@ test('app helpers handle startup guards and UI/event fallbacks', async () => {
 
     const deps = createDependencies(calls);
     const app = new mod.App(deps);
-    app.showUpdateNotification({ version: '2.0.0', url: 'https://example.test/release' });
+    await app.showUpdateNotification({ version: '2.0.0', url: 'https://example.test/release' });
     assert.equal(document.body.children.some(child => child.className === 'update-notification'), true);
     document.updateNotification = { className: 'update-notification' };
-    app.showUpdateNotification({ version: '2.0.1', url: 'https://example.test/release2' });
+    await app.showUpdateNotification({ version: '2.0.1', url: 'https://example.test/release2' });
     document.updateNotification = null;
     document.whatsThis = null;
-    app.showUpdateNotification({ version: '2.0.2', url: 'https://example.test/release3' });
+    await app.showUpdateNotification({ version: '2.0.2', url: 'https://example.test/release3' });
 
     deps.audioManager.audioContext = { sampleRate: 44100 };
     app.hasAudioError = true;
@@ -1356,7 +1364,6 @@ test('timeout initialization and output-device fallback paths keep startup recov
         return { outputDeviceId: 'gone', outputDeviceLabel: 'Gone' };
       }
     };
-    mod.INITIALIZATION_CONFIG.AUDIOWORKLET_TO_PIPELINE_WAIT = 1;
     const deps = createDependencies(calls, { currentSink: 'gone' });
     const app = new mod.App(deps);
     const initializePromise = app.initialize();
@@ -1401,6 +1408,7 @@ test('timeout initialization and output-device fallback paths keep startup recov
 test('initialization recovers from startup readiness and config failures', async () => {
   await withAppModule({
     document: { hidden: false },
+    appConfig: { startMinimized: true },
     electronAPI: {
       async loadConfig() {
         return { success: true, config: { startMinimized: true } };
@@ -1412,7 +1420,7 @@ test('initialization recovers from startup readiness and config failures', async
     }
   }, async ({ calls, mod, timers, window }) => {
     window.electronIntegration = { isElectron: true, isElectronEnvironment: () => false };
-    mod.INITIALIZATION_CONFIG.AUDIOWORKLET_TO_PIPELINE_WAIT = 0;
+    window.appConfig = { startMinimized: true };
     const app = new mod.App(createDependencies(calls));
     const initializePromise = app.initialize();
     const delays = await flushAndRunTimers(timers);
@@ -1430,20 +1438,19 @@ test('initialization recovers from startup readiness and config failures', async
     }
   }, async ({ calls, mod, window }) => {
     window.electronIntegration = { isElectron: true, isElectronEnvironment: () => false };
-    mod.INITIALIZATION_CONFIG.AUDIOWORKLET_TO_PIPELINE_WAIT = 0;
     const app = new mod.App(createDependencies(calls));
     await app.initialize();
     assert.equal(app.initialized, true);
   });
 });
 
-test('initializeAndBuildPipeline restores first-launch and URL state payloads', async () => {
+test('pipeline restoration ignores obsolete splash state and honors shared URL payloads', async () => {
   await withAppModule({}, async ({ calls, mod, window }) => {
     window.electronIntegration = { isElectron: true };
     window.isFirstLaunch = true;
     const app = new mod.App(createDependencies(calls));
-    assert.equal(await app.initializeAndBuildPipeline(), false);
-    assert.equal(calls.some(call => call[0] === 'audio.setCurrentPipeline'), false);
+    assert.equal(await app.initializeAndBuildPipeline(), true);
+    assert.equal(calls.some(call => call[0] === 'audio.setCurrentPipeline'), true);
   });
 
   await withAppModule({ forceSkip: true }, async ({ calls, mod, window }) => {
@@ -1735,7 +1742,10 @@ test('event listeners and update notifications stay recoverable', async () => {
     const deps = createDependencies(calls);
     const app = new mod.App(deps);
     app.setupEventListeners();
-    window.electronAPI.listeners.get('update-available')({ version: 'Version 2.1.0', url: 'https://example.test/update' });
+    await window.electronAPI.listeners.get('update-available')({
+      version: 'Version 2.1.0',
+      url: 'https://example.test/update'
+    });
     const notice = document.body.children.find(child => child.className === 'update-notification');
     assert.equal(notice.children[0].textContent, 'New Version 2.1.0 available.');
     window.electronAPI.openExternal = url => calls.push(['openExternal', url]);
@@ -1748,12 +1758,12 @@ test('event listeners and update notifications stay recoverable', async () => {
         return `Translated ${params.version}`;
       }
     };
-    app.showUpdateNotification({ version: '3.0.2', url: 'https://example.test/translated' });
+    await app.showUpdateNotification({ version: '3.0.2', url: 'https://example.test/translated' });
     const translatedNotice = document.body.children.filter(child => child.className === 'update-notification').at(-1);
     assert.equal(translatedNotice.children[0].textContent, 'Translated 3.0.2');
     window.electronAPI = null;
     document.updateNotification = null;
-    app.showUpdateNotification({ version: '3.0.1', url: 'https://example.test/web' });
+    await app.showUpdateNotification({ version: '3.0.1', url: 'https://example.test/web' });
     document.body.children.filter(child => child.className === 'update-notification').at(-1).children[0].click();
     assert.equal(calls.some(call => call[0] === 'window.open' && call[1] === 'https://example.test/web'), true);
 

@@ -350,6 +350,12 @@ The ring is allocated only during `prepare`; processing does not allocate.
 A defensive clamp maps an out-of-schema delay to the largest allocated delay,
 preventing malformed raw parameter blocks from indexing outside the ring.
 
+#### Noise Reduction
+
+Noise Reduction reserves approximately 6 MiB of working storage at 192 kHz and
+sixteen channels. This allocation is made during `prepare`; processing does not
+allocate memory.
+
 #### RS Reverb
 
 **Allocation model**

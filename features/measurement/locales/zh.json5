@@ -100,6 +100,8 @@
 "button:exportCSV": "导出校正参数（CSV）", // Button to export CSV
 "help:exportOptions": "复制的频率校正设置可通过 Ctrl+V 粘贴到 EffeTune 的效果管道中。", // Help text for export options
 "title:measurementDetails": "测量详情", // Title for measurement details section
+"label:onset": "起始点",
+"label:onsetEarliest": "最早",
 
 // Dialogs
 "button:confirm": "确认", // Confirm button in dialog

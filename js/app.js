@@ -5,15 +5,13 @@ import { electronIntegration } from './electron-integration.js';
 import { applySerializedState } from './utils/serialization-utils.js';
 import { startRendererWatchdogHeartbeat } from './electron-watchdog.js';
 import {
-    createFirstLaunchPromise,
-    handleFirstLaunchPromise,
     registerPipelineStateCloseHandler,
     startApplication
 } from './app-bootstrap.js';
 import { normalizeMusicLibraryStartupView } from './library/constants.js';
-import { createUpdateNotification } from './update-notification.js';
 import { MIC_DENIED_PREFIX } from './audio/audio-io-manager.js';
 import { installSpaceKeyGuard } from './utils/space-key-guard.js';
+import { loadStylesheet } from './utils/classic-script-loader.js';
 
 const TRANSIENT_PIPELINE_RESTORE_PARAM = 'restorePipeline';
 const TRANSIENT_PIPELINE_RESTORE_VALUE = 'transient';
@@ -150,54 +148,40 @@ async function loadPipelineState(forceLoad = false) {
 // This is now handled in electron-integration.js to avoid duplicate event handlers
 // The path will be stored in window.pendingPresetFilePath for later use
 
-// Add a style to hide the UI immediately during first launch
-// This will be removed after the splash screen is closed
-const tempStyle = document.createElement('style');
-tempStyle.id = 'temp-hide-style';
-tempStyle.textContent = `
-    body > * {
-        opacity: 0 !important;
-        visibility: hidden !important;
-    }
-    body {
-        background-color: #000 !important;
-    }
-`;
-document.head.appendChild(tempStyle);
+const isFirstLaunchPromise = Promise.resolve(false);
 
-// Check if this is the first launch (for audio workaround) - async
-
-// Initialize with a promise that will resolve with the first launch status
-let isFirstLaunchPromise = createFirstLaunchPromise();
-
-// Handle the first launch status when it resolves
-handleFirstLaunchPromise(isFirstLaunchPromise, tempStyle);
-
-// Configuration for initialization wait times (in milliseconds)
-const INITIALIZATION_CONFIG = {
-    // Wait time between AudioWorklet initialization and pipeline initialization/building
-    // Set to 0 to disable wait
-    AUDIOWORKLET_TO_PIPELINE_WAIT: 500
-};
-
-function isElectronStartupWindow(windowRef = window) {
-    return Boolean(
-        windowRef.electronIntegration?.isElectronEnvironment?.() ||
-        windowRef.electronIntegration?.isElectron
-    );
-}
+const LIBRARY_STYLESHEET = 'effetune-library.css';
 
 function getStartupDocument(windowRef = window) {
     return windowRef.document || (typeof document !== 'undefined' ? document : null);
 }
 
-function hasExplicitStartupViewRequest(windowRef = window) {
-    if (windowRef.isFirstLaunch === true && isElectronStartupWindow(windowRef)) {
-        return true;
-    }
+const initialStartupSearchByWindow = new WeakMap();
 
+// UIManager.updateURL() reflects the pipeline into location.search as `?p=<state>` while the
+// app starts up, so the live search string stops describing what the user actually requested.
+// Startup-view decisions must look at the search string the document was loaded with, which is
+// captured on first use (bootstrap and the App constructor both run before any reflection).
+function captureInitialStartupSearch(windowRef = window) {
+    if (!windowRef || typeof windowRef !== 'object') {
+        return '';
+    }
+    if (initialStartupSearchByWindow.has(windowRef)) {
+        return initialStartupSearchByWindow.get(windowRef);
+    }
+    let search = '';
     try {
-        const params = new URLSearchParams(windowRef.location?.search || '');
+        search = windowRef.location?.search || '';
+    } catch (error) {
+        search = '';
+    }
+    initialStartupSearchByWindow.set(windowRef, search);
+    return search;
+}
+
+function hasExplicitStartupViewRequest(windowRef = window) {
+    try {
+        const params = new URLSearchParams(captureInitialStartupSearch(windowRef));
         return params.has('p') ||
             params.has('dbt') ||
             params.get(TRANSIENT_PIPELINE_RESTORE_PARAM) === TRANSIENT_PIPELINE_RESTORE_VALUE;
@@ -292,9 +276,12 @@ function addDocumentBodyClass(documentRef, className) {
 }
 
 function applyInitialStartupViewClass(config, windowRef = window) {
-    if (shouldUseLibraryStartupView(config, windowRef)) {
-        addDocumentBodyClass(getStartupDocument(windowRef), 'view-library');
-    }
+    if (!shouldUseLibraryStartupView(config, windowRef)) return;
+    const documentRef = getStartupDocument(windowRef);
+    // The class only hides the effect pipeline once the Music Library sheet is present,
+    // so it has to be requested here rather than when the library modules load.
+    loadStylesheet(LIBRARY_STYLESHEET, { documentRef });
+    addDocumentBodyClass(documentRef, 'view-library');
 }
 
 class App {
@@ -302,6 +289,8 @@ class App {
         const PluginManagerClass = dependencies.PluginManagerClass || PluginManager;
         const AudioManagerClass = dependencies.AudioManagerClass || AudioManager;
         const UIManagerClass = dependencies.UIManagerClass || UIManager;
+        // Freeze the launch-time query string before the pipeline starts reflecting itself into it
+        captureInitialStartupSearch(window);
         this.startupConfig = dependencies.startupConfig || getCachedStartupConfig(window) || null;
 
         // Initialize core components
@@ -311,7 +300,7 @@ class App {
         // Initialize UI components
         this.uiManager = dependencies.uiManager || new UIManagerClass(this.pluginManager, this.audioManager);
         this.loadStartupConfig = dependencies.loadStartupConfig || (async () => {
-            const { loadConfig } = await import('./electron/configIntegration.js');
+            const { loadConfig } = await import('./electron/config-store.js');
             const isElectron = window.electronIntegration?.isElectronEnvironment?.() ||
                 window.electronIntegration?.isElectron ||
                 false;
@@ -319,19 +308,9 @@ class App {
         });
         this.loadPipelineState = dependencies.loadPipelineState || loadPipelineState;
 
-        if (shouldUseLibraryStartupView(this.startupConfig, window)) {
-            this.uiManager.deferLibraryStartupView?.(
-                normalizeMusicLibraryStartupView(this.startupConfig.libraryStartupView)
-            );
-        }
-        
         // Set pipeline manager reference in audio manager
         this.audioManager.pipelineManager = this.uiManager.pipelineManager;
         
-        // Pass first launch flag to audio manager for audio workaround
-        // Use a default value of false if window.isFirstLaunchConfirmed is not set
-        this.audioManager.isFirstLaunch = false;
-
         // Track whether preferred output device was absent on last devicechange scan
         // Used to detect absent→present transitions for HDMI reconnect recovery
         this._preferredDeviceWasAbsent = false;
@@ -347,6 +326,9 @@ class App {
         this._appStartTime = Date.now();
         this.startupWarningMessage = null;
         this.restoringTransientPipeline = false;
+        this.startupViewPreferencePromise = null;
+        this.midiControllerManager = null;
+        this.midiControllerManagerPromise = null;
 
         // Make managers globally accessible for preset functionality
         window.pluginManager = this.pluginManager;
@@ -445,9 +427,13 @@ class App {
         try {
             // Show loading spinner
             this.uiManager.showLoadingSpinner();
+
+            // Open the configured startup view before the effect pipeline can paint.
+            // The same promise is awaited once startup content has been handled.
+            void this.applyStartupViewPreference();
             
-            // Display app version first
-            await displayAppVersion();
+            // Version display is independent of the audio and pipeline startup path.
+            void displayAppVersion();
 
             // Load plugins (definitions only, not instances)
             await this.pluginManager.loadPlugins();
@@ -487,15 +473,9 @@ class App {
             let useTimeoutInsteadOfRAF = document.hidden; // Default: use timeout if window is hidden
             
             // For Electron: also use timeout if started minimized (minimized startup doesn't set document.hidden)
-            if (window.electronIntegration && window.electronIntegration.isElectron && window.electronAPI?.loadConfig) {
-                try {
-                    const configResult = await window.electronAPI.loadConfig();
-                    if (configResult.success && configResult.config?.startMinimized) {
-                        useTimeoutInsteadOfRAF = true;
-                    }
-                } catch (error) {
-                    // Ignore config load errors, fallback to document.hidden check
-                }
+            if (window.electronIntegration?.isElectron &&
+                (this.startupConfig || window.appConfig)?.startMinimized) {
+                useTimeoutInsteadOfRAF = true;
             }
             
             if (useTimeoutInsteadOfRAF) {
@@ -512,11 +492,6 @@ class App {
             
             // First initialize AudioWorklet (before creating plugins)
             const audioWorkletReady = await this.initializeAudioWorklet();
-            
-            // Optional wait after AudioWorklet initialization
-            if (INITIALIZATION_CONFIG.AUDIOWORKLET_TO_PIPELINE_WAIT > 0) {
-                await new Promise(resolve => setTimeout(resolve, INITIALIZATION_CONFIG.AUDIOWORKLET_TO_PIPELINE_WAIT));
-            }
             
             // Initialize pipeline state and build audio pipeline as a single operation
             // This ensures plugins are created with AudioWorklet already initialized
@@ -538,17 +513,12 @@ class App {
             }
 
             if (audioRuntimeReady && audioWorkletReady && audioGraphReady && powerRuntimeReady) {
-                this.uiManager.setOpenHomeRemoteRuntimeReady?.();
+                await this.uiManager.setOpenHomeRemoteRuntimeReady?.();
             }
 
             // Set up event listeners and finalize initialization
             this.setupEventListeners();
 
-            const { MidiControllerManager } = await import('./midi/midi-controller-manager.js');
-            this.midiControllerManager = new MidiControllerManager();
-            window.midiControllerManager = this.midiControllerManager;
-            await this.midiControllerManager.initialize(this.startupConfig || window.appConfig);
-            
             // Display any errors
             this.handleErrors();
 
@@ -566,13 +536,17 @@ class App {
             }
             
             // Process command line arguments after all initialization is complete
-            this.processCommandLineArguments();
+            await this.processCommandLineArguments();
 
             // Apply the configured initial view after startup content has been handled.
             await this.applyStartupViewPreference();
             
             // Set initialized flag to true
             this.initialized = true;
+
+            // Work that must not delay or block startup (device permission prompts,
+            // bulk storage migration) runs once the UI is idle.
+            this.scheduleDeferredStartupTasks();
             
         } catch (error) {
             console.error('Initialization error:', error);
@@ -583,18 +557,70 @@ class App {
         }
     }
 
+    scheduleDeferredStartupTasks() {
+        const run = () => this.runDeferredStartupTasks();
+        if (typeof window.requestIdleCallback === 'function') {
+            window.requestIdleCallback(run, { timeout: 5000 });
+        } else {
+            setTimeout(run, 1000);
+        }
+    }
+
+    runDeferredStartupTasks() {
+        // MIDI access can raise a system permission prompt or stall on a misbehaving
+        // driver, so it is requested after startup instead of during it.
+        const midiMappings = (this.startupConfig || window.appConfig)?.midiController?.mappings;
+        if (Array.isArray(midiMappings) && midiMappings.length > 0) {
+            this.ensureMidiControllerManager().catch(error => {
+                console.warn('MIDI controller startup failed:', error);
+            });
+        }
+
+        // Copy a legacy browser-storage IR library into application data in the
+        // background so the first IR Reverb use does not have to wait for it.
+        if (window.electronAPI?.irLibraryV1) {
+            import('./ir-library/ir-library-factory.js')
+                .then(({ ensureElectronIrLibraryMigration }) => ensureElectronIrLibraryMigration({
+                    onDiagnostic: error => console.warn('IR library migration diagnostic:', error)
+                }))
+                .then(result => {
+                    if (result?.status === 'migrated') {
+                        console.info(`IR library: moved ${result.migratedCount} item(s) to application data.`);
+                    }
+                })
+                .catch(error => {
+                    console.warn('IR library migration failed:', error);
+                });
+        }
+    }
+
+    async ensureMidiControllerManager() {
+        if (this.midiControllerManager) return this.midiControllerManager;
+        if (!this.midiControllerManagerPromise) {
+            const pending = import('./midi/midi-controller-manager.js')
+                .then(async ({ MidiControllerManager }) => {
+                    const manager = new MidiControllerManager();
+                    await manager.initialize(this.startupConfig || window.appConfig);
+                    this.midiControllerManager = manager;
+                    window.midiControllerManager = manager;
+                    return manager;
+                });
+            const retryable = pending.catch(error => {
+                if (this.midiControllerManagerPromise === retryable) {
+                    this.midiControllerManagerPromise = null;
+                }
+                throw error;
+            });
+            this.midiControllerManagerPromise = retryable;
+        }
+        return this.midiControllerManagerPromise;
+    }
+
     /**
      * Initialize AudioWorklet only (without pipeline)
      * @returns {Promise<boolean>} Whether the playback runtime is ready
      */
     async initializeAudioWorklet() {
-        // Skip if this is the first launch (during splash screen)
-        const isElectron = window.electronIntegration && window.electronIntegration.isElectron;
-        const isFirstLaunch = window.isFirstLaunch === true;
-        if (isFirstLaunch && isElectron) {
-            return false;
-        }
-        
         // Skip if force skip flag is set
         if (window.__FORCE_SKIP_PIPELINE_STATE_LOAD === true) {
             return false;
@@ -612,13 +638,14 @@ class App {
         return true;
     }
 
-    restoreDoubleBlindTestFromUrl() {
+    async restoreDoubleBlindTestFromUrl() {
         // If the page was opened from a Double Blind Test share URL, restore both
         // pipelines and enter the blind test mode automatically (web version).
         try {
             const dbtParam = new URLSearchParams(window.location.search).get('dbt');
             if (dbtParam && this.uiManager && this.uiManager.getDoubleBlindTest) {
-                this.uiManager.getDoubleBlindTest().restoreFromShare(dbtParam);
+                const doubleBlindTest = await this.uiManager.getDoubleBlindTest();
+                doubleBlindTest.restoreFromShare(dbtParam);
             }
         } catch (error) {
             console.warn('Failed to restore Double Blind Test from URL:', error);
@@ -634,7 +661,12 @@ class App {
         return hasExplicitStartupViewRequest(window);
     }
 
-    async applyStartupViewPreference() {
+    applyStartupViewPreference() {
+        this.startupViewPreferencePromise ??= this.openConfiguredStartupView();
+        return this.startupViewPreferencePromise;
+    }
+
+    async openConfiguredStartupView() {
         if (this.restoringTransientPipeline) {
             return;
         }
@@ -680,15 +712,6 @@ class App {
         const transientPipelineState = restoreTransientPipeline && !isElectron
             ? loadTransientPipelineState()
             : null;
-        
-        // Check if this is first launch (during splash screen)
-        const isFirstLaunch = window.isFirstLaunch === true;
-        
-        // If this is the first launch (during splash screen), don't initialize pipeline
-        // This prevents overwriting existing settings during splash screen
-        if (isFirstLaunch && isElectron) {
-            return false;
-        }
         
         // Try to load pipeline state from file if in Electron environment and no preset file was specified via command line
         // Check for the force skip flag first
@@ -811,7 +834,7 @@ class App {
             }
         }
         
-        let startupConfig = {};
+        let startupConfig = this.startupConfig || getCachedStartupConfig(window) || {};
         let webUrlState = null;
         if (!isElectron) {
             webUrlState = this.uiManager.parsePipelineState();
@@ -820,8 +843,10 @@ class App {
         // Check config settings for startup preset.
         if (window.electronIntegration) {
             try {
-                startupConfig = await this.loadStartupConfig() || {};
-                this.startupConfig = startupConfig;
+                if (!this.startupConfig) {
+                    startupConfig = await this.loadStartupConfig() || {};
+                    this.startupConfig = startupConfig;
+                }
 
                 if (!restoreTransientPipeline &&
                     !isElectron &&
@@ -844,7 +869,7 @@ class App {
                             }
 
                             const rebuildResult = await this.audioManager.rebuildPipeline(true);
-                            this.restoreDoubleBlindTestFromUrl();
+                            await this.restoreDoubleBlindTestFromUrl();
                             return isSuccessfulAudioGraphBuild(rebuildResult);
                         } catch (error) {
                             console.error('Error loading startup preset:', error);
@@ -1093,7 +1118,7 @@ class App {
             console.log('Audio pipeline rebuilt after error');
         }
 
-        this.restoreDoubleBlindTestFromUrl();
+        await this.restoreDoubleBlindTestFromUrl();
 
         if (window.pendingPresetName && window.pipelineManager && window.pipelineManager.presetManager) {
             await window.pipelineManager.presetManager.loadPreset(window.pendingPresetName);
@@ -1125,8 +1150,12 @@ class App {
 
         // Listen for update notifications from Electron
         if (window.electronAPI) {
-            window.electronAPI.onIPC('update-available', (updateInfo) => {
-                this.showUpdateNotification(updateInfo);
+            window.electronAPI.onIPC('update-available', async (updateInfo) => {
+                try {
+                    await this.showUpdateNotification(updateInfo);
+                } catch (error) {
+                    console.error('Failed to show update notification:', error);
+                }
             });
         }
 
@@ -1221,7 +1250,7 @@ class App {
     /**
      * Show update notification
      */
-    showUpdateNotification(updateInfo) {
+    async showUpdateNotification(updateInfo) {
         const whatsThisLink = document.querySelector('.whats-this');
         
         if (whatsThisLink) {
@@ -1231,6 +1260,7 @@ class App {
                 return; // Already showing update notification
             }
             
+            const { createUpdateNotification } = await import('./update-notification.js');
             const updateElement = createUpdateNotification(updateInfo, {
                 documentRef: document,
                 windowRef: window
@@ -1497,7 +1527,7 @@ class App {
      * Process command line arguments after all initialization is complete
      * This method handles both preset files and music files passed via command line
      */
-    processCommandLineArguments() {
+    async processCommandLineArguments() {
         // Check if running in Electron environment
         const isElectron = window.electronIntegration && window.electronIntegration.isElectron;
         if (!isElectron) return;
@@ -1532,7 +1562,7 @@ class App {
                 if (playbackDescriptors.length > 0) {
                     try {
                         window._commandLineMusicFilesNoInput = true;
-                        this.uiManager.createAudioPlayer(playbackDescriptors, false);
+                        await this.uiManager.createAudioPlayer(playbackDescriptors, false);
                         setTimeout(() => {
                             if (this.uiManager.audioPlayer) this.uiManager.audioPlayer.play();
                         }, 1000);
@@ -1604,7 +1634,7 @@ function autoStartApplication({
         AppClass,
         firstLaunchPromise,
         loadInitialConfigFn: async () => {
-            const { loadConfig } = await import('./electron/configIntegration.js');
+            const { loadConfig } = await import('./electron/config-store.js');
             const isElectron = windowRef.electronIntegration?.isElectronEnvironment?.() ||
                 windowRef.electronIntegration?.isElectron ||
                 false;
@@ -1625,7 +1655,6 @@ autoStartApplication();
 
 export {
     App,
-    INITIALIZATION_CONFIG,
     autoStartApplication,
     displayAppVersion,
     getPipelineStateForSave,

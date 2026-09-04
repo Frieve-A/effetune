@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "type": "NoiseReductionPlugin",
+  "id": "mono-192000-block128",
+  "stimulus": "imp",
+  "sampleRate": 192000,
+  "channels": 1,
+  "frameCount": 32768,
+  "blockSize": 128,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 10,
+  "seed": "0xeffe7a54",
+  "params": {
+    "rd": 12,
+    "sn": 0,
+    "sm": 50,
+    "hf": 50,
+    "mix": 100
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:94a49c3cf1af241805f6cdb872bcdbe1f6b6fdd91e3182dd787884ef5c5929eb",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type NoiseReductionPlugin --promote-production-native",
+  "outputFloats": 32768,
+  "byteLength": 131072,
+  "binary": "case-011.f32"
+}

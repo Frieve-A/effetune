@@ -217,17 +217,26 @@ function completeResults(results, expected, { stateContracts = false } = {}) {
   });
 }
 
-export function isAcceptanceComplete(summary) {
+export function isAcceptanceComplete(summary, { skipPython = false, skipJs = false } = {}) {
+  if (skipPython && skipJs) return false;
+  const expectedBackends = Object.fromEntries(
+    Object.entries(EXPECTED_BACKENDS).filter(([name]) =>
+      !(skipPython && name === 'python-native') &&
+      !(skipJs && name.startsWith('javascript-'))
+    )
+  );
   return summary !== null &&
     typeof summary === 'object' &&
-    completeResults(summary.backends, EXPECTED_BACKENDS, { stateContracts: true }) &&
-    summary.workletGolden?.status === 'completed' &&
-    completeResults(summary.workletGolden.variants, EXPECTED_WORKLET_GOLDEN) &&
-    summary.workletNonIdentity?.status === 'completed' &&
-    completeResults(
-      summary.workletNonIdentity.variants,
-      EXPECTED_WORKLET_NONIDENTITY
-    );
+    completeResults(summary.backends, expectedBackends, { stateContracts: true }) &&
+    (skipJs || (
+      summary.workletGolden?.status === 'completed' &&
+      completeResults(summary.workletGolden.variants, EXPECTED_WORKLET_GOLDEN) &&
+      summary.workletNonIdentity?.status === 'completed' &&
+      completeResults(
+        summary.workletNonIdentity.variants,
+        EXPECTED_WORKLET_NONIDENTITY
+      )
+    ));
 }
 
 function reverseTransform(rule, value) {
@@ -1491,7 +1500,10 @@ export async function runAcceptance(options = {}) {
     }
   }
 
-  const complete = isAcceptanceComplete(summary);
+  const complete = isAcceptanceComplete(summary, {
+    skipPython: options.skipPython,
+    skipJs: options.skipJs
+  });
   summary.status = options.inventoryOnly ? 'inventory-only' : complete ? 'passed' : 'failed';
   await fs.mkdir(path.dirname(summaryPath), { recursive: true });
   await fs.writeFile(summaryPath, `${JSON.stringify(summary, null, 2)}\n`);

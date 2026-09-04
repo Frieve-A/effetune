@@ -1,5 +1,9 @@
 import { getPipelineAnalyzerActiveSlotCount } from './slot-policy.js';
 import { normalizeMeasurementSettings } from './mls.js';
+import {
+    getPluginExecutionChannelMode,
+    getPluginExecutionUnsupportedReason
+} from '../audio/plugin-execution-capabilities.js';
 
 export class PipelineSnapshotError extends Error {
     constructor(code, details = {}) {
@@ -270,6 +274,8 @@ export async function buildPipelineAnalyzerSnapshot(options) {
     const executionEntries = [];
     const requiredWasmTypes = new Set();
     const requiredWasmPluginIds = [];
+    const expectedWasmBypassPluginIds = [];
+    const expectedWasmBypassReasons = [];
     const preferredIdSet = new Set(
         (Array.isArray(preferredWasmPluginIds) ? preferredWasmPluginIds : [])
             .filter(Number.isInteger)
@@ -293,13 +299,35 @@ export async function buildPipelineAnalyzerSnapshot(options) {
             entry.data = requireAnalyzerWasmExecution(entry.data);
         }
         const type = pluginType(entry.plugin, entry.data);
-        if (offlineDspAssetRequired || requirements.requiresWasm ||
-            entry.data?.executionCapabilities?.requiresWasm === true) {
+        const requiresWasm = offlineDspAssetRequired || requirements.requiresWasm ||
+            entry.data?.executionCapabilities?.requiresWasm === true;
+        const unsupportedReason = getPluginExecutionUnsupportedReason(
+            {
+                ...(entry.data?.executionCapabilities || {}),
+                requiresWasm
+            },
+            {
+                sampleRate: format.sampleRate,
+                channelMode: getPluginExecutionChannelMode(
+                    entry.data?.channel,
+                    format.channelCount
+                )
+            }
+        );
+        const expectsExecutionBypass = requiresWasm && unsupportedReason !== null;
+        if (expectsExecutionBypass) {
+            // Announce why the bypass is expected so the analysis accepts that exact reason.
+            expectedWasmBypassPluginIds.push(entry.data.id);
+            expectedWasmBypassReasons.push({
+                pluginId: entry.data.id,
+                reason: unsupportedReason
+            });
+        } else if (requiresWasm) {
             requiredWasmTypes.add(type);
             requiredWasmPluginIds.push(entry.data.id);
         }
-        const requiresWasm = requiredWasmPluginIds.includes(entry.data.id);
-        if (!requiresWasm && preferredIdSet.has(entry.data.id) &&
+        const requiresActiveWasm = requiredWasmPluginIds.includes(entry.data.id);
+        if (!requiresActiveWasm && !expectsExecutionBypass && preferredIdSet.has(entry.data.id) &&
             entry.data?.wasmParams instanceof Float32Array && enabledDspTypes.has(type)) {
             preferredWasmTypes.add(type);
             frozenPreferredWasmPluginIds.push(entry.data.id);
@@ -417,6 +445,8 @@ export async function buildPipelineAnalyzerSnapshot(options) {
             dsp: copyDspSnapshot(audioManager, requiredWasmTypes, preferredWasmTypes),
             assets,
             requiredWasmPluginIds,
+            expectedWasmBypassPluginIds,
+            expectedWasmBypassReasons,
             preferredWasmPluginIds: frozenPreferredWasmPluginIds,
             preferredWasmTypes: [...preferredWasmTypes],
             assetSupportSamples,

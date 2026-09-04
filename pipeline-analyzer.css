@@ -1,17 +1,3 @@
-.pipeline-analyzer-button {
-    margin-left: 5px;
-}
-
-.pipeline-preset-button,
-.share-button,
-.pipeline-analyzer-button {
-    height: 24px;
-    padding: 4px 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
 .pipeline-analyzer-panel {
     position: sticky;
     top: 20px;

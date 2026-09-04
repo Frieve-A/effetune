@@ -150,6 +150,12 @@ function createAudioPlayer(options = {}) {
       calls.push(['getCurrentBufferTime']);
       return options.bufferTime ?? 0;
     },
+    ...(Object.hasOwn(options, 'playbackTime') ? {
+      getCurrentPlaybackTime() {
+        calls.push(['getCurrentPlaybackTime']);
+        return options.playbackTime;
+      }
+    } : {}),
     hasCurrentBuffer() {
       calls.push(['hasCurrentBuffer']);
       return options.hasCurrentBuffer ?? false;
@@ -889,6 +895,64 @@ test('playPrevious restarts, wraps, falls back, and uses seamless transitions', 
     const manager = makeManager(audioPlayer);
     setPlaylist(manager);
     await manager.playPrevious();
+  });
+});
+
+test('rolling PCM restarts the current track through a same-track transition', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({
+      currentTrackIndex: 1,
+      playbackTime: 4,
+      audioElementCurrentTime: 5,
+      state: { playbackMode: 'rollingPcm' }
+    });
+    const manager = makeManager(audioPlayer);
+    setPlaylist(manager);
+
+    assert.equal(await manager.playPrevious(), true);
+    assert.deepEqual(
+      audioPlayer.calls.filter(call => call[0] === 'seamlessTransition'),
+      [['seamlessTransition', 'Two', 1]]
+    );
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'contextPlay'), false);
+    assert.equal(audioPlayer.audioElement.currentTime, 5);
+  });
+
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({
+      currentTrackIndex: 0,
+      audioElementCurrentTime: 5,
+      state: { playbackMode: 'rollingPcm' }
+    });
+    const manager = makeManager(audioPlayer);
+    setPlaylist(manager);
+
+    assert.equal(await manager.playPrevious(), true);
+    assert.deepEqual(
+      audioPlayer.calls.filter(call => call[0] === 'seamlessTransition'),
+      [['seamlessTransition', 'One', 0]]
+    );
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'contextPlay'), false);
+    assert.equal(audioPlayer.audioElement.currentTime, 5);
+  });
+
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({
+      currentTrackIndex: 0,
+      repeatMode: 'ONE',
+      audioElementCurrentTime: 5,
+      state: { playbackMode: 'rollingPcm' }
+    });
+    const manager = makeManager(audioPlayer);
+    setPlaylist(manager);
+
+    assert.equal(await manager.playNext(false), true);
+    assert.deepEqual(
+      audioPlayer.calls.filter(call => call[0] === 'seamlessTransition'),
+      [['seamlessTransition', 'One', 0]]
+    );
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'contextPlay'), false);
+    assert.equal(audioPlayer.audioElement.currentTime, 5);
   });
 });
 

@@ -797,6 +797,88 @@ test('initializes audio and worklet phases with success, warnings, messages, and
   });
 });
 
+test('keeps a cold WASM load valid after the startup wait and activates it when ready', async () => {
+  await withAudioManager({ autoRunTimers: false }, async ({ calls, manager, timers }) => {
+    let resolveModule;
+    const moduleInfo = {
+      module: { compiled: true },
+      bytes: new ArrayBuffer(8),
+      simd: false,
+      meta: {}
+    };
+    manager.loadDspForWorklet = () => new Promise(resolve => {
+      resolveModule = resolve;
+    });
+    manager.getEnabledDspTypes = () => ['AlphaPlugin'];
+    manager._runDspOutputTransition = async (nodes, apply) => apply();
+
+    assert.equal(await manager.initializeAudioWorklet(), '');
+    await flushMicrotasks();
+    const startupWait = manager.waitForDspActivationBeforeOutput();
+    await flushMicrotasks();
+    assert.ok(calls.some(call => call[0] === 'setTimeout' && call[1] === 1000));
+    timers.shift()();
+    assert.equal(await startupWait, false);
+
+    resolveModule(moduleInfo);
+    await flushMicrotasks();
+    const completion = manager._dspModuleLoadPromise;
+    const worklet = manager.contextManager.workletNode;
+    const token = manager._dspReadyTokens.get(worklet);
+    worklet.port.onmessage({ data: { type: 'dspInitializing', token } });
+    assert.equal(await completion, false);
+    assert.equal(manager.dspModuleInfo, moduleInfo);
+
+    worklet.port.onmessage({
+      data: {
+        type: 'dspReady',
+        abiVersion: 1,
+        kernels: [{ name: 'AlphaPlugin', hash: 1 }],
+        simd: false
+      }
+    });
+    await flushMicrotasks();
+    assert.equal(manager.dspCapabilities?.abiVersion, 1);
+    assert.ok(worklet.port.messages.some(message =>
+      message.type === 'dspEnableTypes' && message.types.includes('AlphaPlugin')
+    ));
+    assert.equal(calls.some(call =>
+      call[0] === 'console.warn' && String(call[1]).includes('initialization is still pending')
+    ), false);
+  });
+});
+
+test('releasing a slow worklet waiter does not invalidate a later WASM ready message', async () => {
+  await withAudioManager({ autoRunTimers: false }, async ({ manager, timers }) => {
+    const moduleInfo = {
+      module: { compiled: true },
+      bytes: new ArrayBuffer(8),
+      simd: true,
+      meta: {}
+    };
+    manager.dspModuleInfo = moduleInfo;
+    manager.getEnabledDspTypes = () => ['AlphaPlugin'];
+    manager._runDspOutputTransition = async (nodes, apply) => apply();
+    const worklet = manager.contextManager.workletNode;
+
+    const activation = manager._reinitializeDspWorklet(worklet, ['AlphaPlugin']);
+    assert.equal(timers.length, 2);
+    timers[1]();
+    assert.equal(await activation, false);
+    assert.equal(manager.dspModuleInfo, moduleInfo);
+
+    worklet.port.onmessage({
+      data: {
+        type: 'dspReady',
+        abiVersion: 1,
+        kernels: [{ name: 'AlphaPlugin', hash: 1 }],
+        simd: true
+      }
+    });
+    await flushMicrotasks();
+    assert.equal(manager.dspCapabilities?.simd, true);
+  });
+});
 
 test('registers processors, rebuilds pipelines, and posts audio configuration', async () => {
   await withAudioManager({}, async ({ calls, manager }) => {
@@ -1454,7 +1536,17 @@ test('Web and Electron input None switch locally only while pipeline configurati
     assert.equal(await manager.reset(silentWithEquivalentDefaults), '');
     assert.deepEqual(selection.requestedRevisions, [42]);
     assert.deepEqual(preferencesAtRequest, {
-      stored: silentWithEquivalentDefaults,
+      stored: {
+        ...silentWithEquivalentDefaults,
+        outputDeviceId: 'default',
+        sampleRate: 96000,
+        useInputWithPlayer: false,
+        lowLatencyOutput: false,
+        useWasmDsp: true,
+        gaplessPlayback: true,
+        outputChannels: 2,
+        latencyHint: 'interactive'
+      },
       window: silentWithEquivalentDefaults,
       integration: silentWithEquivalentDefaults
     });
@@ -1465,7 +1557,17 @@ test('Web and Electron input None switch locally only while pipeline configurati
     assert.equal(manager.ioManager.silentInputGainNode, selection.silentSource);
     assert.deepEqual(
       JSON.parse(storageValues.get('effetune_audio_preferences')),
-      silentWithEquivalentDefaults
+      {
+        ...silentWithEquivalentDefaults,
+        outputDeviceId: 'default',
+        sampleRate: 96000,
+        useInputWithPlayer: false,
+        lowLatencyOutput: false,
+        useWasmDsp: true,
+        gaplessPlayback: true,
+        outputChannels: 2,
+        latencyHint: 'interactive'
+      }
     );
     assert.equal(windowObject.audioPreferences, silentWithEquivalentDefaults);
     assert.equal(windowObject.electronIntegration.audioPreferences, silentWithEquivalentDefaults);
@@ -1521,7 +1623,18 @@ test('Web and Electron input None switch locally only while pipeline configurati
     assert.equal(calls.some(call => call[0] === 'manager._doReset'), false);
     assert.deepEqual(
       JSON.parse(storageValues.get('effetune_audio_preferences')),
-      silentFromDefault
+      {
+        ...silentFromDefault,
+        outputDeviceId: 'default',
+        outputDeviceLabel: '',
+        sampleRate: 96000,
+        useInputWithPlayer: false,
+        lowLatencyOutput: false,
+        useWasmDsp: true,
+        gaplessPlayback: true,
+        outputChannels: 2,
+        latencyHint: 'interactive'
+      }
     );
   });
 
@@ -1530,7 +1643,6 @@ test('Web and Electron input None switch locally only while pipeline configurati
     storedAudioPreferences: storedMicrophone
   }, async ({ calls, manager, storageValues, windowObject }) => {
     windowObject.audioPreferences = storedMicrophone;
-    const storedBefore = storageValues.get('effetune_audio_preferences');
     let storedAtRequest = null;
     const selection = installSilentInputSelection(manager, calls, {
       requestResult: false,
@@ -1549,11 +1661,48 @@ test('Web and Electron input None switch locally only while pipeline configurati
       /injected silent selection failure/
     );
     assert.deepEqual(selection.requestedRevisions, [11]);
-    assert.deepEqual(JSON.parse(storedAtRequest), silentWithEquivalentDefaults);
+    assert.deepEqual(JSON.parse(storedAtRequest), {
+      ...silentWithEquivalentDefaults,
+      outputDeviceId: 'default',
+      sampleRate: 96000,
+      useInputWithPlayer: false,
+      lowLatencyOutput: false,
+      useWasmDsp: true,
+      gaplessPlayback: true,
+      outputChannels: 2,
+      latencyHint: 'interactive'
+    });
     assert.equal(calls.some(call => call[0] === 'manager._doReset'), false);
-    assert.equal(storageValues.get('effetune_audio_preferences'), storedBefore);
-    assert.deepEqual(windowObject.audioPreferences, storedMicrophone);
-    assert.deepEqual(windowObject.electronIntegration.audioPreferences, storedMicrophone);
+    assert.equal(storageValues.get('effetune_audio_preferences'), JSON.stringify({
+      ...storedMicrophone,
+      sampleRate: 96000,
+      useInputWithPlayer: false,
+      lowLatencyOutput: false,
+      useWasmDsp: true,
+      gaplessPlayback: true,
+      outputChannels: 2,
+      latencyHint: 'interactive'
+    }));
+    assert.deepEqual(windowObject.audioPreferences, {
+      ...storedMicrophone,
+      sampleRate: 96000,
+      useInputWithPlayer: false,
+      lowLatencyOutput: false,
+      useWasmDsp: true,
+      gaplessPlayback: true,
+      outputChannels: 2,
+      latencyHint: 'interactive'
+    });
+    assert.deepEqual(windowObject.electronIntegration.audioPreferences, {
+      ...storedMicrophone,
+      sampleRate: 96000,
+      useInputWithPlayer: false,
+      lowLatencyOutput: false,
+      useWasmDsp: true,
+      gaplessPlayback: true,
+      outputChannels: 2,
+      latencyHint: 'interactive'
+    });
     assert.equal(manager.ioManager.inputSourceNode, selection.liveSource);
   });
 
@@ -1573,7 +1722,17 @@ test('Web and Electron input None switch locally only while pipeline configurati
     assert.deepEqual(selection.requestedRevisions, [11]);
     assert.deepEqual(
       JSON.parse(storageValues.get('effetune_audio_preferences')),
-      silentWithEquivalentDefaults
+      {
+        ...silentWithEquivalentDefaults,
+        outputDeviceId: 'default',
+        sampleRate: 96000,
+        useInputWithPlayer: false,
+        lowLatencyOutput: false,
+        useWasmDsp: true,
+        gaplessPlayback: true,
+        outputChannels: 2,
+        latencyHint: 'interactive'
+      }
     );
     assert.equal(windowObject.audioPreferences, silentWithEquivalentDefaults);
     assert.equal(manager.ioManager.inputSourceNode, null);
@@ -1812,19 +1971,6 @@ test('parallel routing rejects source connection failures and tolerates ramp ass
     manager.workletNode = createWorkletNode('fallbackWorklet', []);
     const source = new FakeNode('fallbackSource', []);
     assert.equal(manager.connectSourceToPipeline(source), true);
-  });
-
-  await withAudioManager({
-    isFirstLaunch: true,
-    originalConnectMethod(target) {
-      this.calls.push(['originalConnect', this.name, target.name]);
-      this.connections.push(target);
-    }
-  }, async ({ calls, manager }) => {
-    const source = new FakeNode('firstLaunchSource', calls);
-    assert.equal(manager.connectSourceToPipeline(source), true);
-    assert.equal(calls.some(call => call[0] === 'originalConnect' &&
-      call[1] === 'firstLaunchSource' && call[2] === 'workletA'), true);
   });
 
   await withAudioManager({}, async ({ manager }) => {

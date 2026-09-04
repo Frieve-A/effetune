@@ -3,7 +3,9 @@ import test from 'node:test';
 
 import {
   attachPluginExecutionCapabilities,
-  getPluginExecutionCapabilities
+  getPluginExecutionCapabilities,
+  getPluginExecutionChannelMode,
+  getPluginExecutionUnsupportedReason
 } from '../../js/audio/plugin-execution-capabilities.js';
 
 test('plugin execution capabilities prefer class declarations over compatibility metadata', () => {
@@ -46,4 +48,28 @@ test('plugin execution capabilities attach only declared runtime metadata', () =
     ordinaryPayload
   );
   assert.equal('executionCapabilities' in ordinaryPayload, false);
+});
+
+test('execution eligibility shares rate and channel-mode decisions', () => {
+  const capabilities = Object.freeze({
+    requiresWasm: true,
+    supportedSampleRates: Object.freeze([48000, 96000]),
+    supportedChannelModes: Object.freeze(['mono', 'stereo-pair'])
+  });
+  assert.equal(getPluginExecutionChannelMode(null, 1), 'mono');
+  assert.equal(getPluginExecutionChannelMode(null, 2), 'stereo-pair');
+  assert.equal(getPluginExecutionChannelMode('34', 3), null);
+  assert.equal(getPluginExecutionChannelMode('34', 4), 'stereo-pair');
+  assert.equal(getPluginExecutionUnsupportedReason(capabilities, {
+    sampleRate: 44100,
+    channelMode: 'stereo-pair'
+  }), 'unsupportedSampleRate');
+  assert.equal(getPluginExecutionUnsupportedReason(capabilities, {
+    sampleRate: 48000,
+    channelMode: 'all'
+  }), 'unsupportedChannelMode');
+  assert.equal(getPluginExecutionUnsupportedReason(capabilities, {
+    sampleRate: 96000,
+    channelMode: 'mono'
+  }), null);
 });

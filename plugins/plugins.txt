@@ -10,6 +10,7 @@ Lo-Fi: Lo-Fi audio effects
 Modulation: Modulation effects
 Others: Other audio tools and generators
 Resonator: Resonator effects
+Restoration: Audio restoration effects
 Reverb: Reverberation effects
 Saturation: Saturation and distortion effects
 Spatial: Spatial audio effects
@@ -95,6 +96,10 @@ others/oscillator: Oscillator | Others | OscillatorPlugin
 resonator/horn_resonator: Horn Resonator | Resonator | HornResonatorPlugin
 resonator/horn_resonator_plus: Horn Resonator Plus | Resonator | HornResonatorPlusPlugin
 resonator/modal_resonator: Modal Resonator | Resonator | ModalResonatorPlugin | css
+restoration/click_remover: Click Remover | Restoration | ClickRemoverPlugin
+restoration/clip_restorer: Clip Restorer | Restoration | ClipRestorerPlugin
+restoration/hum_remover: Hum Remover | Restoration | HumRemoverPlugin
+restoration/noise_reduction: Noise Reduction | Restoration | NoiseReductionPlugin
 reverb/dattorro_plate_reverb: Dattorro Plate Reverb | Reverb | DattorroPlateReverbPlugin
 reverb/fdn_reverb: FDN Reverb | Reverb | FDNReverbPlugin
 reverb/ir_reverb: IR Reverb | Reverb | IRReverbPlugin | css
@@ -109,6 +114,7 @@ saturation/saturation: Saturation | Saturation | SaturationPlugin | css
 saturation/sub_synth: Sub Synth | Saturation | SubSynthPlugin | css
 saturation/tube_simulator: Tube Simulator | Saturation | TubeSimulatorPlugin | css
 spatial/crossfeed_filter: Crossfeed Filter | Spatial | CrossfeedFilterPlugin
+spatial/crosstalk_cancellation: Crosstalk Cancellation | Spatial | CrosstalkCancellationPlugin | css
 spatial/ms_matrix: MS Matrix | Spatial | MSMatrixPlugin
 spatial/multiband_balance: Multiband Balance | Spatial | MultibandBalancePlugin | css
 spatial/phase_select_eq: Phase Select EQ | Spatial | PhaseSelectEqPlugin | css

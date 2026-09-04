@@ -125,6 +125,7 @@ export function createImpulseResponseMeasurement({
                 length: result.samples.length,
                 sampleRate,
                 onsetIndex: result.onsetIndex,
+                trimStartSamples: 0,
                 peakDb: result.peakDb
             }
         });
@@ -134,6 +135,8 @@ export function createImpulseResponseMeasurement({
             sampleRate,
             onsetIndex: result.onsetIndex,
             prerollSamples: result.onsetIndex,
+            trimStartSamples: 0,
+            outputTimeReference: 'file',
             refScale: 1,
             peakDb: result.peakDb,
             data: result.samples
@@ -154,6 +157,8 @@ export function createImpulseResponseMeasurement({
                     sampleRate,
                     onsetIndex: result.onsetIndex,
                     prerollSamples: result.onsetIndex,
+                    trimStartSamples: 0,
+                    outputTimeReference: 'file',
                     refScale: 1,
                     peakDb: result.peakDb,
                     data: result.samples
@@ -167,6 +172,7 @@ export function createImpulseResponseMeasurement({
                         length: result.samples.length,
                         sampleRate,
                         onsetIndex: result.onsetIndex,
+                        trimStartSamples: 0,
                         peakDb: result.peakDb
                     }
                 };

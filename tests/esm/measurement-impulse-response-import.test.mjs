@@ -76,6 +76,8 @@ test('mono WAV PCM becomes a normal measurement with one persisted impulse respo
   assert.equal(records[0].measurementId, measurement.id);
   assert.equal(records[0].pointId, measurement.points[0].pointId);
   assert.equal(records[0].data, samples);
+  assert.equal(records[0].trimStartSamples, 0);
+  assert.equal(records[0].outputTimeReference, 'file');
 });
 
 test('multichannel WAV PCM uses the existing virtual measurement channel contract', () => {
@@ -100,6 +102,8 @@ test('multichannel WAV PCM uses the existing virtual measurement channel contrac
     [1, 'left'],
     [2, 'right']
   ]);
+  assert.ok(records.every(record => record.trimStartSamples === 0));
+  assert.ok(records.every(record => record.outputTimeReference === 'file'));
   assert.deepEqual(measurement.channelResponses.map(entry => entry.channel), ['left', 'right']);
 });
 

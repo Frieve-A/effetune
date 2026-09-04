@@ -212,12 +212,16 @@ test('channel redo replaces only the selected channel and keeps IR IDs stable', 
     irValid: true,
     impulseResponse: new Float32Array([1, 0]),
     sampleRate: 48000,
-    onsetIndex: 0
+    onsetIndex: 0,
+    trimStartSamples: 512,
+    outputTimeReference: 'audio-context'
   }, () => { allocations += 1; return 99; });
   assert.equal(allocations, 0);
   assert.equal(result.point.channels[0].irId, 1);
   assert.equal(result.point.channels[1], oldPoint.channels[1]);
   assert.deepEqual(result.records.map(record => record.pointId).sort(), [1, 2]);
+  assert.equal(result.records.find(record => record.pointId === 1).trimStartSamples, 512);
+  assert.equal(result.records.find(record => record.pointId === 1).outputTimeReference, 'audio-context');
 });
 
 test('flat averages use defensive point-count semantics', () => {

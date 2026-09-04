@@ -447,6 +447,14 @@ export class MidiMappingDialog {
         'MIDI is not supported in this browser. Keyboard and gamepad mappings remain available.'
       )));
       list.appendChild(row);
+    } else if (this.manager.midiAccessError?.name === 'TimeoutError') {
+      const row = createElement(this.document, 'div');
+      row.appendChild(createElement(this.document, 'dt', '', ''));
+      row.appendChild(createElement(this.document, 'dd', 'midi-note', this.t(
+        'midi.driverStalled',
+        'The MIDI system did not respond. MIDI stays off until EffeTune is restarted; keyboard and gamepad mappings keep working.'
+      )));
+      list.appendChild(row);
     } else if (this.manager.midiAccessError) {
       const row = createElement(this.document, 'div');
       row.appendChild(createElement(this.document, 'dt', '', ''));

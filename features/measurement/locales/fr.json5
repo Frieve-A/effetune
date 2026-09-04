@@ -100,6 +100,8 @@
   "button:exportCSV": "Exporter les paramètres de correction (CSV)",
   "help:exportOptions": "Les paramètres de correction de fréquence copiés peuvent être collés dans le pipeline d'effets d'EffeTune avec Ctrl+V.",
   "title:measurementDetails": "Détails de la mesure",
+  "label:onset": "Début de la réponse",
+  "label:onsetEarliest": "le plus tôt",
 
   // Dialogs
   "button:confirm": "Confirmer",

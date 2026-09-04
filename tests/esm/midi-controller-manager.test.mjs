@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { MidiControllerManager } from '../../js/midi/midi-controller-manager.js';
 
-function harness(mappings, { requestMidiAccess } = {}) {
+function harness(mappings, { requestMidiAccess, midiAccessTimeoutMs } = {}) {
   let requests = 0;
   let stateAdds = 0;
   let stateRemoves = 0;
@@ -49,7 +49,7 @@ function harness(mappings, { requestMidiAccess } = {}) {
     }
   };
   const manager = new MidiControllerManager({
-    windowRef: {}, navigatorRef, store, localInputSources, engine, mcuProtocol, automationScheduler
+    windowRef: {}, navigatorRef, store, localInputSources, engine, mcuProtocol, automationScheduler, midiAccessTimeoutMs
   });
   return {
     manager,
@@ -343,4 +343,112 @@ test('Learn ignores MCU Note Off and Note On velocity-zero button releases', asy
   manager.onMidiMessage({ name: 'MCU' }, { data: [0x90, 42, 0] });
   assert.deepEqual(learned, []);
   manager.dispose();
+});
+
+const physicalCcMapping = {
+  id: 'cc', device: 'Input', source: { kind: 'cc', channel: 0, number: 1, mode: 'abs' }
+};
+const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+
+test('a MIDI request that never answers is abandoned after its deadline and MIDI stays off for the session', async t => {
+  t.mock.method(console, 'warn', () => {});
+  let resolvePermission;
+  const permission = new Promise(resolve => { resolvePermission = resolve; });
+  const { manager, access, input, requests, stateAdds } = harness([physicalCcMapping], {
+    requestMidiAccess: () => permission,
+    midiAccessTimeoutMs: 5
+  });
+  let changes = 0;
+  manager.onChange(() => { changes++; });
+
+  await manager.initialize({});
+  assert.equal(requests(), 1);
+  assert.equal(manager.midiAccess, null);
+  assert.equal(manager.midiAccessStalled, true);
+  assert.equal(manager.midiAccessError?.name, 'TimeoutError');
+  assert.equal(manager.midiAccessTimer, null);
+  assert.equal(manager.midiRequest, null);
+  assert.ok(changes >= 1);
+  assert.equal(console.warn.mock.callCount(), 1);
+
+  await manager.syncRuntime();
+  await manager.startLearn(() => {});
+  manager.cancelLearn();
+  assert.equal(requests(), 1);
+  assert.equal(manager.midiAccess, null);
+
+  resolvePermission(access);
+  await permission;
+  await tick();
+  assert.equal(manager.midiAccess, access);
+  assert.equal(manager.midiAccessError, null);
+  assert.equal(manager.midiAccessStalled, false);
+  assert.equal(stateAdds(), 1);
+  assert.equal(typeof input.onmidimessage, 'function');
+  assert.equal(requests(), 1);
+  manager.dispose();
+});
+
+test('a late MIDI answer is ignored once the manager is disposed or the answer is a failure', async t => {
+  t.mock.method(console, 'warn', () => {});
+  let rejectPermission;
+  const permission = new Promise((resolve, reject) => { rejectPermission = reject; });
+  const { manager, requests, stateAdds } = harness([physicalCcMapping], {
+    requestMidiAccess: () => permission,
+    midiAccessTimeoutMs: 5
+  });
+  await manager.initialize({});
+  assert.equal(manager.midiAccessStalled, true);
+  rejectPermission(new Error('NotAllowedError'));
+  await permission.catch(() => {});
+  await tick();
+  assert.equal(manager.midiAccess, null);
+  assert.equal(manager.midiAccessStalled, true);
+  assert.equal(manager.midiAccessError?.name, 'TimeoutError');
+  assert.equal(stateAdds(), 0);
+  assert.equal(requests(), 1);
+
+  manager.adoptLateMidiAccess({ access: { inputs: new Map(), outputs: new Map() } });
+  assert.equal(manager.midiAccess.inputs.size, 0);
+  manager.dispose();
+  manager.midiAccess = null;
+  manager.adoptLateMidiAccess({ access: { inputs: new Map(), outputs: new Map() } });
+  assert.equal(manager.midiAccess, null);
+});
+
+test('a rejected MIDI request reports its error, clears the deadline and may be retried later', async t => {
+  t.mock.method(console, 'warn', () => {});
+  let attempts = 0;
+  const { manager, access, requests } = harness([physicalCcMapping], {
+    requestMidiAccess: () => {
+      attempts++;
+      return attempts === 1 ? Promise.reject(new Error('NotAllowedError')) : Promise.resolve(access);
+    },
+    midiAccessTimeoutMs: 60000
+  });
+  await manager.initialize({});
+  assert.equal(requests(), 1);
+  assert.equal(manager.midiAccess, null);
+  assert.equal(manager.midiAccessError?.message, 'NotAllowedError');
+  assert.equal(manager.midiAccessStalled, false);
+  assert.equal(manager.midiAccessTimer, null);
+
+  await manager.syncRuntime();
+  assert.equal(requests(), 2);
+  assert.equal(manager.midiAccess, access);
+  assert.equal(manager.midiAccessError, null);
+  manager.dispose();
+});
+
+test('disposing the manager cancels a pending MIDI deadline', async () => {
+  const { manager, requests } = harness([physicalCcMapping], {
+    requestMidiAccess: () => new Promise(() => {}),
+    midiAccessTimeoutMs: 60000
+  });
+  void manager.initialize({});
+  await tick();
+  assert.equal(requests(), 1);
+  assert.notEqual(manager.midiAccessTimer, null);
+  manager.dispose();
+  assert.equal(manager.midiAccessTimer, null);
 });

@@ -1621,7 +1621,7 @@ test('all locales include matching IR Reverb, IR library, and external asset key
     .map(match => match[1])
     .sort();
   const english = readIrEntries('en');
-  assert.equal(english.size, 103);
+  assert.equal(english.size, 119);
   for (const locale of locales) {
     const entries = readIrEntries(locale);
     assert.deepEqual([...entries.keys()].sort(), [...english.keys()].sort(), `${locale} IR key parity`);

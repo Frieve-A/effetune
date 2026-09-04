@@ -1164,6 +1164,7 @@ const FIR_CONVOLVER_PLUGIN_TYPES = new Set([
     'FiveBandFIRPEQPlugin',
     'GroupDelayEqPlugin',
     'GroupDelayPEQPlugin',
+    'CrosstalkCancellationPlugin',
     'RoomEqPlugin'
 ]);
 const ET_DSP_MAX_CHANNELS = 16;
@@ -2409,6 +2410,10 @@ class PluginProcessor extends AudioWorkletProcessor {
 
     async initializeDsp(data) {
         const generation = ++this.dspInitGeneration;
+        this.port.postMessage({
+            type: 'dspInitializing',
+            ...(Number.isInteger(data?.token) ? { token: data.token } : {})
+        });
         ++this.dspExecutionGeneration;
         this.dspExecutionInitializing = true;
         this.dspExecutionRuntimeFallbacks.clear();

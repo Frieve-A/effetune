@@ -1,7 +1,7 @@
 import { instantiateDsp, loadDspModule } from './dsp-wasm-loader.js';
 import { getDspRolloutConfig } from './dsp-rollout.js';
 import { buildDspPipelineDescriptor } from './dsp-pipeline-descriptor.js';
-import { getPluginExecutionCapabilities } from './plugin-execution-capabilities.js';
+import { getPluginExecutionUnsupportedReason } from './plugin-execution-capabilities.js';
 import { preflightOfflineOutput } from './audio-encoder.js';
 
 const OFFLINE_BLOCK_SIZE = 128;
@@ -436,7 +436,10 @@ export class OfflineProcessor {
             for (const plugin of activePlugins) {
                 const typeName = plugin.constructor.name;
                 const packer = eligiblePackers.get(typeName);
-                if (!packer) continue;
+                const unsupportedReason = this.offlineExecutionUnsupportedReason(
+                    session, plugin, outputChannelCount, sampleRate
+                );
+                if (!packer || unsupportedReason) continue;
 
                 let offlineState = null;
                 const requirementResult = offlineDspAssetRequirements.get(plugin);
@@ -509,7 +512,7 @@ export class OfflineProcessor {
             // during playback.
             session.descriptorEligible = liveEntryCount === activePlugins.length &&
                 activePlugins.length > 0 &&
-                !activePlugins.some(plugin => this.hasUnsupportedOfflineChannelMode(
+                !activePlugins.some(plugin => this.offlineExecutionUnsupportedReason(
                     session, plugin, outputChannelCount, sampleRate
                 ));
             if (liveEntryCount === 0) {
@@ -520,6 +523,7 @@ export class OfflineProcessor {
         } catch (error) {
             this.warnOfflineDspOnce(session, 'setup', `offline setup failed: ${error?.message || String(error)}`);
             this.destroyOfflineDspSession(session);
+            if (error?.userMessageKey) throw error;
             return null;
         }
     }
@@ -810,9 +814,10 @@ export class OfflineProcessor {
                 }
                 continue;
             }
-            // A plugin whose declared channel modes exclude the resolved routing is
-            // bypassed during playback, so the export must pass it through too.
-            const channelModeUnsupported = !this.isOfflineChannelModeSupported(plugin, routing);
+            const executionUnsupported = getPluginExecutionUnsupportedReason(plugin, {
+                sampleRate,
+                channelMode: this.offlineChannelModeForRouting(routing)
+            }) !== null;
 
             try {
                 const inputBuffer = busBuffers.get(inputBus);
@@ -855,7 +860,7 @@ export class OfflineProcessor {
                     );
                 }
 
-                const wasmResult = channelModeUnsupported
+                const wasmResult = executionUnsupported
                     ? { processed: false, result: null }
                     : this.tryProcessOfflineDspInstance({
                         session,
@@ -870,7 +875,7 @@ export class OfflineProcessor {
                 let finalResultBuffer;
                 if (wasmResult.processed) {
                     finalResultBuffer = wasmResult.result;
-                } else if (channelModeUnsupported) {
+                } else if (executionUnsupported) {
                     finalResultBuffer = processingBuffer;
                 } else {
                     const hasExistingContext = pluginContexts.has(plugin.id);
@@ -1234,20 +1239,15 @@ export class OfflineProcessor {
         return routing?.processMode === 'pair' ? 'stereo-pair' : routing?.processMode;
     }
 
-    // Mirrors pluginExecutionUnsupportedReason()'s channel-mode branch in the
-    // worklet, so an exported file matches what playback produced.
-    isOfflineChannelModeSupported(plugin, routing) {
-        const modes = getPluginExecutionCapabilities(plugin)?.supportedChannelModes;
-        if (!Array.isArray(modes)) return true;
-        return modes.includes(this.offlineChannelModeForRouting(routing));
-    }
-
-    hasUnsupportedOfflineChannelMode(session, plugin, outputChannelCount, sampleRate) {
+    offlineExecutionUnsupportedReason(session, plugin, outputChannelCount, sampleRate) {
         const parameters = this.getOfflinePluginParameters(session, plugin, sampleRate);
         const channel = parameters.channel ?? plugin.channel ?? null;
         const routing = this.getOfflineChannelRouting(channel, outputChannelCount);
-        if (routing.processMode === 'skip') return false;
-        return !this.isOfflineChannelModeSupported(plugin, routing);
+        if (routing.processMode === 'skip') return null;
+        return getPluginExecutionUnsupportedReason(plugin, {
+            sampleRate,
+            channelMode: this.offlineChannelModeForRouting(routing)
+        });
     }
 
     applyOfflineRoutingResult(outputBuffer, finalResultBuffer, routing, inputBus, outputBus, blockSize, totalSize) {

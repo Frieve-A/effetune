@@ -14,7 +14,10 @@ const CHANNELS = Object.freeze({
   removeCache: 'ir-library-v1:cache-remove',
   listCache: 'ir-library-v1:cache-list'
 });
-const ALLOWED_NAME = /^(?:index\.json|[a-f0-9]{24}(?:\.(?:L|R))?\.[a-z0-9]{1,10})$/;
+// Written by the renderer once the legacy browser-storage library has been copied
+// into this directory; it is never listed as library content.
+const MIGRATION_MARKER_NAME = 'legacy-migration.json';
+const ALLOWED_NAME = /^(?:index\.json|legacy-migration\.json|[a-f0-9]{24}(?:\.(?:L|R))?\.[a-z0-9]{1,10})$/;
 const CACHE_NAME = /^(?:index\.json|[a-f0-9]{24}@[1-9][0-9]{3,5}(?:-[a-f0-9]{64})?\.f32)$/;
 const ANALYSIS_NAME = /^[a-f0-9]{24}(?:\.analysis|\.a[0-9]{9})$/;
 const INDEX_TOO_LARGE_CODE = 'ir-library-index-too-large';
@@ -22,6 +25,7 @@ const SIZE_LIMITS = Object.freeze({
   original: 64 * 1024 * 1024,
   index: 32 * 1024 * 1024,
   analysis: 4 * 1024 * 1024,
+  marker: 64 * 1024,
   cacheEntry: 64 * 1024 * 1024,
   cacheIndex: 4 * 1024 * 1024,
   listEntries: 100000
@@ -33,6 +37,7 @@ function comparable(value) {
 
 function maxLibraryBytes(name) {
   if (name === 'index.json') return SIZE_LIMITS.index;
+  if (name === MIGRATION_MARKER_NAME) return SIZE_LIMITS.marker;
   if (ANALYSIS_NAME.test(name)) return SIZE_LIMITS.analysis;
   return SIZE_LIMITS.original;
 }
@@ -221,7 +226,9 @@ function registerIrLibraryIpc({ ipcMain, getUserDataPath, logger = console }) {
       try {
         const rootPath = await getRootPath();
         const entries = await fs.promises.readdir(rootPath, { withFileTypes: true });
-        const data = entries.filter(entry => entry.isFile() && ALLOWED_NAME.test(entry.name)).map(entry => entry.name);
+        const data = entries
+          .filter(entry => entry.isFile() && entry.name !== MIGRATION_MARKER_NAME && ALLOWED_NAME.test(entry.name))
+          .map(entry => entry.name);
         if (data.length > SIZE_LIMITS.listEntries) throw new Error('tooManyFiles');
         return {
           ok: true,
@@ -305,4 +312,9 @@ function registerIrLibraryIpc({ ipcMain, getUserDataPath, logger = console }) {
   };
 }
 
-module.exports = { IR_LIBRARY_CHANNELS: CHANNELS, IR_LIBRARY_SIZE_LIMITS: SIZE_LIMITS, registerIrLibraryIpc };
+module.exports = {
+  IR_LIBRARY_CHANNELS: CHANNELS,
+  IR_LIBRARY_MIGRATION_MARKER_NAME: MIGRATION_MARKER_NAME,
+  IR_LIBRARY_SIZE_LIMITS: SIZE_LIMITS,
+  registerIrLibraryIpc
+};

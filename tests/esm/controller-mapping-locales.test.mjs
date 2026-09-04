@@ -9,6 +9,7 @@ const locales = ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh'];
 const buttonModeKeys = ['midi.buttonMode', 'midi.buttonMode.toggle', 'midi.buttonMode.momentary'];
 const configKeys = ['dialog.config.physicalControl', 'midi.openSettings'];
 const persistenceKeys = ['error.controllerMappingSaveFailed'];
+const availabilityKeys = ['midi.notSupported', 'midi.permissionDenied', 'midi.driverStalled'];
 const fieldLabelKeys = [
   'midi.target.type',
   'midi.target.instance',
@@ -60,6 +61,9 @@ test('controller button-mode labels exist in every locale and match localized gu
       assert.ok(localeValue(localeSource, key), `${locale} is missing ${key}`);
     }
     for (const key of persistenceKeys) {
+      assert.ok(localeValue(localeSource, key), `${locale} is missing ${key}`);
+    }
+    for (const key of availabilityKeys) {
       assert.ok(localeValue(localeSource, key), `${locale} is missing ${key}`);
     }
     for (const key of fieldLabelKeys) {

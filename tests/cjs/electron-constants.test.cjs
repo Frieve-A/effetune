@@ -2,10 +2,41 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const { loadFreshModule } = require('../helpers/cjs-module-utils.cjs');
+const {
+  buildAutoRestartArgs,
+  queueAutoRestart
+} = require('../../electron/relaunch');
 
 test('constants exposes the auto-restart flag', () => {
   const constants = loadFreshModule('../../electron/constants.js');
   assert.equal(constants.AUTO_RESTART_FLAG, '--from-auto-restart');
+});
+
+test('auto-restart arguments retain app arguments and contain one restart flag', () => {
+  const constants = loadFreshModule('../../electron/constants.js');
+  assert.deepEqual(
+    buildAutoRestartArgs([
+      'electron.exe',
+      '.',
+      constants.AUTO_RESTART_FLAG,
+      '--example',
+      constants.AUTO_RESTART_FLAG
+    ]),
+    ['.', '--example', constants.AUTO_RESTART_FLAG]
+  );
+});
+
+test('queueAutoRestart registers one normalized relaunch', () => {
+  const calls = [];
+  const app = {
+    relaunch(options) {
+      calls.push(options);
+    }
+  };
+
+  queueAutoRestart(app, ['EffeTune.exe', '--example']);
+
+  assert.deepEqual(calls, [{ args: ['--example', '--from-auto-restart'] }]);
 });
 
 test('constants stores independent window and launch state', () => {

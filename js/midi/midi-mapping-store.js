@@ -1,4 +1,4 @@
-import { loadConfig, saveConfig } from '../electron/configIntegration.js';
+import { loadConfig, saveConfig } from '../electron/config-store.js';
 import {
   canonicalizeAutomationAmount,
   canonicalizeTargetValue,

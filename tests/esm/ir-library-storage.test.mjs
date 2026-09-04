@@ -4,7 +4,13 @@ import { createHash, webcrypto } from 'node:crypto';
 
 import { decodeIrAnalysisSidecar, encodeIrAnalysisSidecar } from '../../js/ir-library/ir-analysis-sidecar.js';
 import { identifyPairedIr, identifySingleIr } from '../../js/ir-library/ir-library-id.js';
-import { openIrLibrary } from '../../js/ir-library/ir-library-factory.js';
+import {
+  IR_LIBRARY_MIGRATION_MARKER_NAME,
+  ensureElectronIrLibraryMigration,
+  openIrLibrary,
+  resetIrLibraryMigrationForTests,
+  subscribeIrLibraryMigrationProgress
+} from '../../js/ir-library/ir-library-factory.js';
 import { IR_LIBRARY_INDEX_NAME, IrLibraryStore } from '../../js/ir-library/ir-library-store.js';
 import {
   IR_LIBRARY_INDEX_TOO_LARGE_CODE,
@@ -12,7 +18,7 @@ import {
   IR_LIBRARY_MAX_INDEX_BYTES,
   IR_LIBRARY_MAX_ORIGINAL_BYTES
 } from '../../js/ir-library/ir-library-limits.js';
-import { OpfsIrLibraryBackend } from '../../js/ir-library/opfs-ir-library-backend.js';
+import { OpfsIrLibraryBackend, openOpfsIrLibraryBackend } from '../../js/ir-library/opfs-ir-library-backend.js';
 import { ElectronIrLibraryBackend } from '../../js/ir-library/electron-ir-library-backend.js';
 import { parseIrAudioHeader } from '../../js/ir-library/audio-header-metadata.js';
 import {
@@ -139,6 +145,48 @@ class MemoryBackend {
       .filter(([name]) => name !== 'index.json')
       .map(([name, bytes]) => ({ name, byteLength: bytes.byteLength }));
   }
+}
+
+function createMemoryElectronBridge(options = {}) {
+  const files = options.files || new Map();
+  const cacheFiles = options.cacheFiles || new Map();
+  const writes = [];
+  return {
+    files,
+    cacheFiles,
+    writes,
+    bridge: {
+      apiVersion: 1,
+      async read({ name }) { return { ok: true, data: files.get(name)?.slice() || null }; },
+      async exists({ name }) {
+        if (options.failExists) return { ok: false, code: 'storage-failed' };
+        return { ok: true, data: files.has(name) };
+      },
+      async writeAtomic({ name, bytes }) {
+        writes.push(name);
+        if (name === options.failName) return { ok: false, code: 'storage-failed' };
+        files.set(name, new Uint8Array(bytes).slice());
+        return { ok: true, data: true };
+      },
+      async remove({ name }) { files.delete(name); return { ok: true, data: true }; },
+      async list() { return { ok: true, data: [...files.keys()] }; },
+      async cleanupTemporary() { return { ok: true, data: true }; },
+      async readCache({ name }) { return { ok: true, data: cacheFiles.get(name)?.slice() || null }; },
+      async writeCacheAtomic({ name, bytes }) {
+        cacheFiles.set(name, new Uint8Array(bytes).slice());
+        return { ok: true, data: true };
+      },
+      async removeCache({ name }) { cacheFiles.delete(name); return { ok: true, data: true }; },
+      async listCache() {
+        return {
+          ok: true,
+          data: [...cacheFiles.entries()]
+            .filter(([name]) => name !== 'index.json')
+            .map(([name, bytes]) => ({ name, byteLength: bytes.byteLength }))
+        };
+      }
+    }
+  };
 }
 
 function notFoundError() {
@@ -564,31 +612,13 @@ test('analysis codec rejects malformed and oversized series and normalizes unbou
   });
 });
 
-test('Electron fallback exposes the same store API and byte-derived IDs as web storage', async () => {
-  const files = new Map();
-  const cacheFiles = new Map();
-  const bridge = {
-    apiVersion: 1,
-    async read({ name }) { return { ok: true, data: files.get(name)?.slice() || null }; },
-    async exists({ name }) { return { ok: true, data: files.has(name) }; },
-    async writeAtomic({ name, bytes }) { files.set(name, new Uint8Array(bytes).slice()); return { ok: true, data: true }; },
-    async remove({ name }) { files.delete(name); return { ok: true, data: true }; },
-    async list() { return { ok: true, data: [...files.keys()] }; },
-    async cleanupTemporary() { return { ok: true, data: true }; },
-    async readCache({ name }) { return { ok: true, data: cacheFiles.get(name)?.slice() || null }; },
-    async writeCacheAtomic({ name, bytes }) { cacheFiles.set(name, new Uint8Array(bytes).slice()); return { ok: true, data: true }; },
-    async removeCache({ name }) { cacheFiles.delete(name); return { ok: true, data: true }; },
-    async listCache() {
-      return {
-        ok: true,
-        data: [...cacheFiles.entries()].filter(([name]) => name !== 'index.json').map(([name, bytes]) => ({ name, byteLength: bytes.byteLength }))
-      };
-    }
-  };
+test('Electron native storage exposes the same store API and byte-derived IDs as web storage', async () => {
+  const native = createMemoryElectronBridge();
+  const origin = new FakeOpfsDirectory();
   const bytes = encode('portable identity');
   const store = await openIrLibrary({
-    storage: { async getDirectory() { throw new Error('OPFS unavailable'); } },
-    electronBridge: bridge,
+    storage: { async getDirectory() { return origin; } },
+    electronBridge: native.bridge,
     onDiagnostic() {}
   });
   const saved = await store.importSingle({ bytes, fileName: 'portable.wav' });
@@ -598,7 +628,185 @@ test('Electron fallback exposes the same store API and byte-derived IDs as web s
   assert.equal(new TextDecoder().decode(await store.readOriginal(saved.entry.irId)), 'portable identity');
 });
 
-test('browser persistence is requested once without blocking imports and never requested for Electron fallback', async () => {
+test('Electron migrates a populated OPFS library to native storage and then avoids OPFS', async () => {
+  const origin = new FakeOpfsDirectory();
+  const storage = { async getDirectory() { return origin; } };
+  const opfsBackend = await openOpfsIrLibraryBackend(storage);
+  const sourceStore = await new IrLibraryStore(opfsBackend, { onDiagnostic() {} }).open();
+  const bytes = wavBytes({ marker: 41 });
+  const saved = await sourceStore.importSingle({ bytes, fileName: 'Migrated.wav' });
+  const sourceNames = (await opfsBackend.list()).sort();
+  const native = createMemoryElectronBridge();
+  const diagnostics = [];
+
+  const migrated = await openIrLibrary({
+    storage,
+    electronBridge: native.bridge,
+    onDiagnostic: error => diagnostics.push(error)
+  });
+
+  assert.ok(migrated.backend instanceof ElectronIrLibraryBackend);
+  assert.deepEqual([...native.files.keys()].sort(), [...sourceNames, IR_LIBRARY_MIGRATION_MARKER_NAME].sort());
+  assert.deepEqual(native.writes.slice(-2), [IR_LIBRARY_INDEX_NAME, IR_LIBRARY_MIGRATION_MARKER_NAME]);
+  const marker = JSON.parse(new TextDecoder().decode(native.files.get(IR_LIBRARY_MIGRATION_MARKER_NAME)));
+  assert.equal(marker.status, 'migrated');
+  assert.equal(marker.migratedCount, sourceNames.length - 1);
+  assert.deepEqual((await opfsBackend.list()).sort(), sourceNames);
+  assert.deepEqual(await migrated.readOriginal(saved.entry.irId), bytes);
+  assert.equal(diagnostics.length, 0);
+
+  let opfsCalls = 0;
+  const reopened = await openIrLibrary({
+    storage: { async getDirectory() { opfsCalls += 1; throw new Error('must not open OPFS'); } },
+    electronBridge: native.bridge,
+    onDiagnostic: error => diagnostics.push(error)
+  });
+  assert.equal(opfsCalls, 0);
+  assert.deepEqual(await reopened.readOriginal(saved.entry.irId), bytes);
+  assert.equal(diagnostics.length, 0);
+});
+
+test('Electron records an empty legacy library once and never reopens OPFS in later sessions', async () => {
+  const native = createMemoryElectronBridge();
+  const diagnostics = [];
+  let opfsCalls = 0;
+
+  const first = await openIrLibrary({
+    storage: { async getDirectory() { opfsCalls += 1; return new FakeOpfsDirectory(); } },
+    electronBridge: native.bridge,
+    onDiagnostic: error => diagnostics.push(error)
+  });
+  assert.ok(first.backend instanceof ElectronIrLibraryBackend);
+  assert.equal(opfsCalls, 1);
+  const marker = JSON.parse(new TextDecoder().decode(native.files.get(IR_LIBRARY_MIGRATION_MARKER_NAME)));
+  assert.equal(marker.status, 'empty');
+  assert.equal(marker.migratedCount, 0);
+  assert.equal(native.files.has(IR_LIBRARY_INDEX_NAME), false);
+
+  resetIrLibraryMigrationForTests(native.bridge);
+  const second = await openIrLibrary({
+    storage: { async getDirectory() { opfsCalls += 1; throw new Error('must not open OPFS'); } },
+    electronBridge: native.bridge,
+    onDiagnostic: error => diagnostics.push(error)
+  });
+  assert.ok(second.backend instanceof ElectronIrLibraryBackend);
+  assert.equal(opfsCalls, 1);
+  assert.equal(diagnostics.length, 0);
+  assert.deepEqual(await ensureElectronIrLibraryMigration({ electronBridge: null }), { status: 'not-electron' });
+});
+
+test('Electron migration started in the background is shared with the first library open and reports progress', async () => {
+  const origin = new FakeOpfsDirectory();
+  const storage = { async getDirectory() { return origin; } };
+  const opfsBackend = await openOpfsIrLibraryBackend(storage);
+  const sourceStore = await new IrLibraryStore(opfsBackend, { onDiagnostic() {} }).open();
+  const bytes = wavBytes({ marker: 67 });
+  const saved = await sourceStore.importSingle({ bytes, fileName: 'Background.wav' });
+  const sourceNames = (await opfsBackend.list()).sort();
+  const native = createMemoryElectronBridge();
+  const progress = [];
+  const unsubscribe = subscribeIrLibraryMigrationProgress(event => progress.push(event));
+
+  const started = ensureElectronIrLibraryMigration({ storage, electronBridge: native.bridge, onDiagnostic() {} });
+  assert.equal(ensureElectronIrLibraryMigration({ storage, electronBridge: native.bridge, onDiagnostic() {} }), started);
+  const store = await openIrLibrary({ storage, electronBridge: native.bridge, onDiagnostic() {} });
+  const result = await started;
+  unsubscribe();
+
+  assert.equal(result.status, 'migrated');
+  assert.equal(result.migratedCount, sourceNames.length - 1);
+  assert.equal(result.migratedBytes, sourceNames.reduce((sum, name) => sum + native.files.get(name).byteLength, 0));
+  assert.equal(native.writes.filter(name => name === IR_LIBRARY_INDEX_NAME).length, 1);
+  assert.deepEqual(await store.readOriginal(saved.entry.irId), bytes);
+  assert.equal(progress[0].phase, 'copying');
+  assert.equal(progress[0].completedCount, 0);
+  assert.equal(progress[0].totalCount, sourceNames.length);
+  assert.deepEqual(progress.map(event => event.completedCount), [...Array(sourceNames.length + 1).keys()]);
+  assert.equal(progress.at(-1).phase, 'done');
+  assert.equal(progress.at(-1).totalCount, sourceNames.length);
+
+  resetIrLibraryMigrationForTests(native.bridge);
+  const silent = [];
+  const stop = subscribeIrLibraryMigrationProgress(event => silent.push(event));
+  assert.equal((await ensureElectronIrLibraryMigration({ storage, electronBridge: native.bridge, onDiagnostic() {} })).status, 'native');
+  stop();
+  assert.deepEqual(silent, []);
+});
+
+test('Electron leaves OPFS untouched and unavailable when native migration cannot commit', async () => {
+  const origin = new FakeOpfsDirectory();
+  const storage = { async getDirectory() { return origin; } };
+  const opfsBackend = await openOpfsIrLibraryBackend(storage);
+  const sourceStore = await new IrLibraryStore(opfsBackend, { onDiagnostic() {} }).open();
+  const bytes = wavBytes({ marker: 53 });
+  const saved = await sourceStore.importSingle({ bytes, fileName: 'Fallback.wav' });
+  const sourceNames = (await opfsBackend.list()).sort();
+  const native = createMemoryElectronBridge({ failName: IR_LIBRARY_INDEX_NAME });
+  const diagnostics = [];
+
+  await assert.rejects(
+    openIrLibrary({
+      storage,
+      electronBridge: native.bridge,
+      onDiagnostic: error => diagnostics.push(error)
+    }),
+    error => error?.code === 'ir-library-unavailable'
+  );
+
+  assert.deepEqual((await opfsBackend.list()).sort(), sourceNames);
+  assert.equal(native.files.has(IR_LIBRARY_INDEX_NAME), false);
+  assert.equal(native.files.has(IR_LIBRARY_MIGRATION_MARKER_NAME), false);
+  assert.equal(diagnostics.length, 1);
+
+  await assert.rejects(
+    openIrLibrary({
+      storage,
+      electronBridge: native.bridge,
+      onDiagnostic: error => diagnostics.push(error)
+    }),
+    error => error?.code === 'ir-library-unavailable'
+  );
+  assert.equal(native.writes.filter(name => name === IR_LIBRARY_INDEX_NAME).length, 2);
+  assert.equal(diagnostics.length, 2);
+});
+
+test('Electron never falls back to OPFS when native storage cannot be checked', async () => {
+  const native = createMemoryElectronBridge({ failExists: true });
+  let opfsCalls = 0;
+  const diagnostics = [];
+
+  await assert.rejects(
+    openIrLibrary({
+      storage: { async getDirectory() { opfsCalls += 1; return new FakeOpfsDirectory(); } },
+      electronBridge: native.bridge,
+      onDiagnostic: error => diagnostics.push(error)
+    }),
+    error => error?.code === 'ir-library-unavailable'
+  );
+
+  assert.equal(opfsCalls, 0);
+  assert.equal(native.writes.length, 0);
+  assert.equal(diagnostics.length, 1);
+});
+
+test('Electron opens the native library and skips migration when legacy OPFS cannot be checked', async () => {
+  const native = createMemoryElectronBridge();
+  const diagnostics = [];
+
+  const store = await openIrLibrary({
+    storage: { async getDirectory() { throw new Error('temporary OPFS failure'); } },
+    electronBridge: native.bridge,
+    onDiagnostic: error => diagnostics.push(error)
+  });
+
+  assert.equal(typeof store.list, 'function');
+  assert.deepEqual(await store.list(), []);
+  assert.equal(native.files.has(IR_LIBRARY_MIGRATION_MARKER_NAME), false);
+  assert.equal(native.writes.length, 0);
+  assert.equal(diagnostics.length, 1);
+});
+
+test('browser persistence is requested once without blocking imports and never requested for Electron native storage', async () => {
   let persistenceCalls = 0;
   let resolvePersistence;
   const persistencePromise = new Promise(resolve => { resolvePersistence = resolve; });
@@ -619,27 +827,14 @@ test('browser persistence is requested once without blocking imports and never r
   await Promise.resolve();
 
   let electronPersistenceCalls = 0;
-  const electronFiles = new Map();
-  const electronCacheFiles = new Map();
-  const electronBridge = {
-    apiVersion: 1,
-    async read({ name }) { return { ok: true, data: electronFiles.get(name) || null }; },
-    async exists({ name }) { return { ok: true, data: electronFiles.has(name) }; },
-    async writeAtomic({ name, bytes }) { electronFiles.set(name, new Uint8Array(bytes)); return { ok: true, data: true }; },
-    async remove({ name }) { electronFiles.delete(name); return { ok: true, data: true }; },
-    async list() { return { ok: true, data: [...electronFiles.keys()] }; },
-    async cleanupTemporary() { return { ok: true, data: true }; },
-    async readCache({ name }) { return { ok: true, data: electronCacheFiles.get(name) || null }; },
-    async writeCacheAtomic({ name, bytes }) { electronCacheFiles.set(name, new Uint8Array(bytes)); return { ok: true, data: true }; },
-    async removeCache({ name }) { electronCacheFiles.delete(name); return { ok: true, data: true }; },
-    async listCache() { return { ok: true, data: [] }; }
-  };
+  const native = createMemoryElectronBridge();
+  const electronOrigin = new FakeOpfsDirectory();
   const electronStore = await openIrLibrary({
     storage: {
-      async getDirectory() { throw new Error('OPFS unavailable'); },
+      async getDirectory() { return electronOrigin; },
       async persist() { electronPersistenceCalls += 1; return true; }
     },
-    electronBridge,
+    electronBridge: native.bridge,
     onDiagnostic() {}
   });
   await electronStore.importSingle({ bytes: encode('electron'), fileName: 'electron.wav' });
@@ -1198,6 +1393,67 @@ test('IR library batch pairing is deterministic and imports unmatched suffix can
   assert.deepEqual(await service.delete(pairId), { removed: true, reason: null });
 });
 
+test('IR library imports report each completed item and stop cleanly between items', async () => {
+  const backend = new MemoryBackend();
+  const diagnostics = [];
+  const store = await new IrLibraryStore(backend, { onDiagnostic() {} }).open();
+  const service = new IrLibraryService(store, { onDiagnostic: error => diagnostics.push(error) });
+  const progress = [];
+  let current = true;
+  const file = (name, marker) => ({
+    name,
+    async arrayBuffer() { return wavBytes({ marker }).buffer; }
+  });
+
+  const result = await service.importFiles([
+    file('Second.wav', 2),
+    file('First.wav', 1)
+  ], {
+    isCurrent: () => current,
+    onProgress(update) {
+      progress.push(update);
+      if (update.entry) current = false;
+    }
+  });
+
+  assert.equal(result.failedCount, 0);
+  assert.deepEqual(result.imported.map(entry => entry.fileLabel), ['First.wav']);
+  assert.deepEqual(store.list().map(entry => entry.originals[0].fileName), ['First.wav']);
+  assert.equal(diagnostics.length, 0);
+  assert.deepEqual(progress.map(update => ({
+    completed: update.completedCount,
+    total: update.totalCount,
+    currentFiles: update.currentFiles,
+    imported: update.importedCount,
+    entry: update.entry?.fileLabel
+  })), [
+    { completed: 0, total: 2, currentFiles: undefined, imported: 0, entry: undefined },
+    { completed: 0, total: 2, currentFiles: ['First.wav'], imported: 0, entry: undefined },
+    { completed: 1, total: 2, currentFiles: undefined, imported: 1, entry: 'First.wav' }
+  ]);
+});
+
+test('IR library cancellation during a file read is not reported as an import failure', async () => {
+  const backend = new MemoryBackend();
+  const diagnostics = [];
+  const store = await new IrLibraryStore(backend, { onDiagnostic() {} }).open();
+  const service = new IrLibraryService(store, { onDiagnostic: error => diagnostics.push(error) });
+  let current = true;
+
+  const result = await service.importFiles([{
+    name: 'Slow.wav',
+    async arrayBuffer() {
+      current = false;
+      return wavBytes().buffer;
+    }
+  }], { isCurrent: () => current });
+
+  assert.equal(result.failedCount, 0);
+  assert.deepEqual(result.imported, []);
+  assert.deepEqual(store.list(), []);
+  assert.equal(diagnostics.length, 0);
+});
+
 test('queued deletion rechecks current in-use state at the serialized mutation boundary', async () => {
   const backend = new MemoryBackend();
   const store = await new IrLibraryStore(backend, { onDiagnostic() {} }).open();
@@ -1285,7 +1541,17 @@ test('IR folder enumeration is recursive and returns only supported audio files'
       yield ['nested', nested];
     }
   };
-  assert.deepEqual((await enumerateIrDirectory(root)).map(file => file.name), ['top.flac', 'deep.wav']);
+  const progress = [];
+  const files = await enumerateIrDirectory(root, {
+    onProgress: update => progress.push(update)
+  });
+  assert.deepEqual(files.map(file => file.name), ['top.flac', 'deep.wav']);
+  assert.deepEqual(progress.map(update => [update.scannedCount, update.supportedCount]), [
+    [0, 0],
+    [1, 1],
+    [2, 2],
+    [3, 2]
+  ]);
 });
 
 test('folder import pairs suffix candidates only within the same relative directory', async () => {

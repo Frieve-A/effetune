@@ -53,6 +53,10 @@ EffeTune을 사용하기 전에 오디오 라우팅을 설정해야 합니다.
    - 또는 음악 파일을 창으로 드래그합니다
 - 음악 파일 플레이어만 사용할 때는 오디오 설정의 입력 장치에서 없음(음악 파일 플레이어 전용)을 선택하면 실시간 오디오 입력을 사용하지 않습니다
 
+### 갭리스 재생
+
+**갭리스 재생**은 기본적으로 켜져 있으며 **오디오 설정**에서 변경할 수 있습니다. 켜면 현재 파일 형식과 브라우저 또는 앱 환경에서 지원되는 로컬 곡을 끊김 없이 이어서 재생합니다. 지원 범위는 제한적이며, 지원되지 않는 형식과 일부 모바일 환경에서는 메모리 사용을 제한하는 안전한 대체 방식으로 자동 전환되므로 곡 사이에 짧은 공백이 생길 수 있습니다. 끄면 메모리 사용량과 안정성을 우선하며 곡 사이에 일반적인 짧은 공백이 생길 수 있습니다. 설정을 바꿔도 현재 재생 중인 곡은 중단되지 않습니다.
+
 ### 스트리밍 서비스 설정
 
 스트리밍 서비스(Spotify, YouTube Music 등)에서 오디오를 처리하려면:
@@ -384,6 +388,10 @@ Effect Pipeline 헤더의 **효과 체인 프리셋** 버튼을 클릭하면 프
 | Resonator | Horn Resonator | 조절 가능한 치수의 혼 공명 시뮬레이션 | [세부 정보](plugins/resonator.md#horn-resonator) |
 | Resonator | Horn Resonator Plus | 더 부드러운 혼 스피커 공명으로 자연스러운 청취 색채 추가 | [세부 정보](plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | 최대 5개의 레조네이터를 사용하는 주파수 공명 효과 | [세부 정보](plugins/resonator.md#modal-resonator) |
+| Restoration | Click Remover | 짧은 클릭, 크래클, 팝, 드롭아웃을 복원 | [세부 정보](plugins/restoration.md#click-remover) |
+| Restoration | Clip Restorer | 하드 클리핑으로 평평해진 피크를 복원 | [세부 정보](plugins/restoration.md#clip-restorer) |
+| Restoration | Hum Remover | 지속적인 전기 험과 그 고조파를 제거 | [세부 정보](plugins/restoration.md#hum-remover) |
+| Restoration | Noise Reduction | 음악을 유지하면서 지속적인 배경 노이즈를 줄임 | [세부 정보](plugins/restoration.md#noise-reduction) |
 | Reverb | Dattorro Plate Reverb | Dattorro 알고리즘 기반 클래식 플레이트 리버브 | [세부 정보](plugins/reverb.md#dattorro-plate-reverb) |
 | Reverb | FDN Reverb | 풍부하고 조밀한 리버브 질감을 만드는 Feedback Delay Network 리버브 | [세부 정보](plugins/reverb.md#fdn-reverb) |
 | Reverb | IR Reverb | 가져온 공간·장비 임펄스 응답을 사용하는 컨볼루션 리버브 | [세부 정보](plugins/reverb.md#ir-reverb) |
@@ -398,6 +406,7 @@ Effect Pipeline 헤더의 **효과 체인 프리셋** 버튼을 클릭하면 프
 | Saturation | Sub Synth | 저역 보강을 위해 필터 처리한 저주파 신호를 믹스 | [세부 정보](plugins/saturation.md#sub-synth) |
 | Saturation | Tube Simulator | 진공관 라인단과 푸시풀 또는 300B/2A3 싱글 엔디드 트라이오드 파워 앰프를 모델링 | [세부 정보](plugins/saturation.md#tube-simulator) |
 | Spatial | Crossfeed Filter | 자연스러운 스테레오 이미지를 위한 헤드폰 크로스피드 필터 | [세부 정보](plugins/spatial.md#crossfeed-filter) |
+| Spatial | Crosstalk Cancellation | 귀 위치 측정값으로 스테레오 스피커 사이의 크로스토크를 줄입니다 | [세부 정보](plugins/spatial.md#crosstalk-cancellation) |
 | Spatial | MS Matrix | 중앙과 주변감을 조정하기 위해 스테레오와 Mid/Side를 상호 변환 | [세부 정보](plugins/spatial.md#ms-matrix) |
 | Spatial | Multiband Balance | 5밴드 주파수 의존 스테레오 밸런스 제어 | [세부 정보](plugins/spatial.md#multiband-balance) |
 | Spatial | Phase Select EQ | L/R 위상차와 Balance로 선택한 주파수 성분을 부스트 또는 컷 | [세부 정보](plugins/spatial.md#phase-select-eq) |

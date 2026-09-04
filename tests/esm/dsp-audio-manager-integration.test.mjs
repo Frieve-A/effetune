@@ -491,7 +491,7 @@ test('AudioManager startup publishes terminal rollout-disabled state for DSP kil
     });
   });
 
-test('AudioManager startup timeout publishes terminal WASM-unavailable enable types', async () => {
+test('AudioManager startup wait publishes JavaScript while a valid WASM load continues', async () => {
   await withGlobals({
     window: {
       location: { pathname: '/app/index.html', search: '' },
@@ -501,9 +501,9 @@ test('AudioManager startup timeout publishes terminal WASM-unavailable enable ty
   }, async () => {
     const originalSetTimeout = globalThis.setTimeout;
     const originalClearTimeout = globalThis.clearTimeout;
-    let timeoutCallback = null;
+    let startupWaitCallback = null;
     globalThis.setTimeout = callback => {
-      timeoutCallback = callback;
+      startupWaitCallback = callback;
       return 1;
     };
     globalThis.clearTimeout = () => {};
@@ -519,18 +519,24 @@ test('AudioManager startup timeout publishes terminal WASM-unavailable enable ty
       };
       manager.updateExposedProperties = () => {};
       manager.registerPipelineProcessors = () => {};
-      manager.loadDspForWorklet = () => new Promise(() => {});
+      let resolveDspLoad;
+      manager.loadDspForWorklet = () => new Promise(resolve => {
+        resolveDspLoad = resolve;
+      });
+      const starts = [];
+      manager._reinitializeDspWorklet = async (workletNode, types, options) => {
+        starts.push({ workletNode, types, muteOutput: options.muteOutput });
+        return true;
+      };
 
       assert.equal(await manager.initializeAudioWorklet(), '');
       const pendingLoad = manager._dspModuleLoadPromise;
-      assert.equal(typeof timeoutCallback, 'function');
-      timeoutCallback();
-      assert.equal(await pendingLoad, false);
+      const startupWait = manager.waitForDspActivationBeforeOutput();
+      assert.equal(typeof startupWaitCallback, 'function');
+      startupWaitCallback();
+      assert.equal(await startupWait, false);
+      assert.equal(manager._dspModuleLoadPromise, pendingLoad);
       const terminalTypes = messageOf(node.port, 'dspEnableTypes').message.types;
-      // `dspEnableTypes` is terminal here: it is never re-sent from addPlugin.
-      // Sending only the current pipeline's WASM-only types would make any
-      // WASM-only plugin added afterwards report `rolloutDisabled` instead of
-      // the true `wasmUnavailable`, so the full shipped allow-list must go out.
       assert.deepEqual([...terminalTypes], [...SHIPPED_ENABLED_TYPES]);
       assert.ok(terminalTypes.includes('RoomEqPlugin'));
       for (const laterAddedType of [
@@ -548,6 +554,18 @@ test('AudioManager startup timeout publishes terminal WASM-unavailable enable ty
         node.port.messages.filter(entry => entry.message.type === 'dspEnableTypes').length,
         1
       );
+
+      const info = {
+        module: { compiled: true },
+        bytes: null,
+        simd: false,
+        meta: { kernels: [] },
+        paramPackers: new Map()
+      };
+      resolveDspLoad(info);
+      assert.equal(await pendingLoad, true);
+      assert.equal(manager.dspModuleInfo, info);
+      assert.deepEqual(starts, [{ workletNode: node, types: [], muteOutput: true }]);
     } finally {
       globalThis.setTimeout = originalSetTimeout;
       globalThis.clearTimeout = originalClearTimeout;
@@ -1628,7 +1646,7 @@ test('AudioManager ready fallback does not trust capabilities from a replaced wo
   });
 });
 
-test('AudioManager reuses bytes immediately after module delivery was unacknowledged', async () => {
+test('AudioManager keeps an unacknowledged bytes delivery pending without a false failure timer', async () => {
   await withGlobals({
     window: { location: { pathname: '/app/index.html', search: '' }, audioPreferences: {} },
     document: { hidden: false }
@@ -1659,7 +1677,8 @@ test('AudioManager reuses bytes immediately after module delivery was unacknowle
       assert.equal(moduleMessages.length, 1);
       assert.ok(moduleMessages[0].message.bytes instanceof ArrayBuffer);
       assert.equal(moduleMessages[0].message.module, undefined);
-      assert.equal(timeoutDelay, 3000);
+      assert.equal(timeoutDelay, null);
+      assert.equal(manager._dspReadyFallbacks.has(replacement), true);
     } finally {
       globalThis.setTimeout = originalSetTimeout;
       globalThis.clearTimeout = originalClearTimeout;
@@ -1915,7 +1934,7 @@ test('AudioManager publishes startup DSP readiness while the output is still pri
   });
 });
 
-test('AudioManager ignores DSP readiness that arrives after the startup fallback', async () => {
+test('AudioManager safely activates DSP readiness that arrives after the startup wait', async () => {
   await withGlobals({ window: {}, document: { hidden: false } }, async () => {
     const manager = createManager();
     const node = createNode('main');
@@ -1930,25 +1949,31 @@ test('AudioManager ignores DSP readiness that arrives after the startup fallback
       paramPackers: new Map()
     };
     manager.pipelineProcessor = { prepareSectionAwarePluginData: () => [] };
+    const fades = [];
     manager.fadeOutOutput = () => {
-      throw new Error('late startup readiness must not mute published output');
+      fades.push('out');
+      return 7;
     };
+    manager.fadeInOutputForToken = token => {
+      fades.push(['in', token]);
+      return true;
+    };
+    manager._waitForDspTransition = async () => {};
 
     const activation = manager._reinitializeDspWorklet(node, [], { muteOutput: false });
-    manager._handleDspReadyTimeout(node);
+    manager._releaseDspActivationWait(node);
     assert.equal(await activation, false);
-    const enableCount = node.port.messages.filter(entry => entry.message.type === 'dspEnableTypes').length;
 
     manager.handleWorkletMessage({
       data: { type: 'dspReady', abiVersion: 1, kernels: [], simd: false }
     }, node);
+    const transition = manager._dspReadyTransitionPromise;
+    assert.ok(transition);
+    assert.equal(await transition, true);
 
-    assert.equal(manager._dspReadyTransitionPromise, null);
-    assert.equal(messageOf(node.port, 'updatePlugins'), undefined);
-    assert.equal(
-      node.port.messages.filter(entry => entry.message.type === 'dspEnableTypes').length,
-      enableCount
-    );
+    assert.deepEqual(fades, ['out', ['in', 7]]);
+    assert.ok(messageOf(node.port, 'updatePlugins'));
+    assert.deepEqual(messageOf(node.port, 'dspEnableTypes').message.types, []);
   });
 });
 
@@ -2895,7 +2920,7 @@ test('AudioManager waits for parallel B readiness before symmetric routing and f
     } else if (mode === 'failure') {
       auxiliary.port.onmessage({ data: { type: 'dspFailed', stage: 'instance:2', error: 'create failed' } });
     } else {
-      manager._handleDspReadyTimeout(auxiliary);
+      manager._releaseDspActivationWait(auxiliary);
     }
     assert.equal(await enabling, true);
     assert.equal(manager._parallelActive, true);

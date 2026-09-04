@@ -1,0 +1,9 @@
+{
+  "type": "ClickRemoverPlugin",
+  "tolerance": { "abs": 0.000002, "policy": "per-sample" },
+  "parityReference": "production-native-promoted-v1",
+  "fields": [
+    { "name": "sensitivity", "key": "sn", "kind": "float", "min": 0, "max": 100, "step": 1, "default": 50, "unit": "%", "automation": true },
+    { "name": "maxRepairLength", "key": "ml", "kind": "float", "min": 0.1, "max": 2, "step": 0.1, "default": 1, "unit": "ms", "automation": true }
+  ]
+}

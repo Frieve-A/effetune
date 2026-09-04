@@ -211,7 +211,7 @@ bool parseControl(const std::vector<std::uint8_t> &bytes, Control &control) {
   const std::uint32_t event_count = readU32(bytes.data() + (structured ? 36u : 32u));
   const std::uint32_t asset_byte_count = asset_control ? readU32(bytes.data() + 76u) : 0u;
   if (!std::isfinite(control.sampleRate) || control.sampleRate <= 0.0F || control.frames == 0u ||
-      control.channels == 0u || control.channels > 8u || control.blockSize == 0u ||
+      control.channels == 0u || control.channels > 16u || control.blockSize == 0u ||
       param_count > 65536u || initial_byte_count > 4096u || event_count > control.frames ||
       (asset_control && (asset_byte_count == 0u || readU32(bytes.data() + 80u) != 0u))) {
     std::fputs("Invalid ETPC dimensions or length\n", stderr);

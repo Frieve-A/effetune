@@ -100,6 +100,8 @@
   "button:exportCSV": "補正パラメータをCSVでエクスポート", // CSVエクスポート
   "help:exportOptions": "コピーした設定はEffeTuneのエフェクトパイプラインにCtrl+Vで貼り付けられます。", // エクスポートオプションのヘルプ
   "title:measurementDetails": "測定詳細", // 測定詳細のタイトル
+  "label:onset": "オンセット", // 保存されたインパルス応答の絶対オンセット
+  "label:onsetEarliest": "最速", // 同時測定チャンネルのうち最も早く到達したもの
 
   // ダイアログ
   "button:confirm": "確定", // 確認ボタン

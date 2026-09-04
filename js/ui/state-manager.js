@@ -181,7 +181,6 @@ export class StateManager {
 
     openAudioConfig() {
         if (typeof window.electronIntegration?.showAudioConfigDialog === 'function') {
-            this.setError(this.translate('status.configuringAudio', 'Configuring audio devices...'));
             window.electronIntegration.showAudioConfigDialog();
             return;
         }

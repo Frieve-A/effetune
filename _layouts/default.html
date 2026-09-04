@@ -77,7 +77,7 @@
             </div>
             <div class="nav-section">
               <h2>{{ ui.plugin_categories }}</h2>
-              {% assign plugin_category_order = "analyzer|basics|delay|dynamics|eq|lofi|modulation|others|resonator|reverb|saturation|spatial|control" | split: "|" %}
+              {% assign plugin_category_order = "analyzer|basics|delay|dynamics|eq|lofi|modulation|others|resonator|restoration|reverb|saturation|spatial|control" | split: "|" %}
               {% for category_slug in plugin_category_order %}
                 {% assign plugin_page_path = plugin_source_prefix | append: category_slug | append: '.md' %}
                 {% assign nav_page = site.pages | where: "path", plugin_page_path | first %}

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 
 import {
   AudioActivationCoordinator,
-  canonicalizeActivationDescriptor
+  canonicalizeActivationDescriptor,
+  normalizeActivationIntentDescriptor
 } from '../../js/audio/audio-activation-coordinator.js';
 
 const flush = () => new Promise(resolve => setImmediate(resolve));
@@ -217,6 +218,47 @@ test('graph changes and non-full observations fail closed before publication', a
     renderSequence: 2
   }, harness.nodes[0]);
   assert.equal((await monitoring).activated, false);
+});
+
+test('every production player backend stages, including rolling-pcm track transitions', async () => {
+  const harness = createHarness({ nodes: [{ id: 'only' }] });
+  for (const backend of ['buffer-source', 'html-media', 'rolling-pcm']) {
+    const stage = await harness.coordinator.stageIntent({ ...playerIntent(6), backend });
+    assert.equal(stage.state, 'staged');
+    assert.equal(stage.descriptor.backend, backend);
+    assert.equal(stage.activationIdentity.backend, backend);
+  }
+  const rolling = normalizeActivationIntentDescriptor({ ...playerIntent(7), backend: 'rolling-pcm' });
+  assert.equal(rolling.backend, 'rolling-pcm');
+  assert.equal(rolling.resumeKind, 'player-only-play');
+  assert.equal(Object.isFrozen(rolling), true);
+});
+
+test('unknown or missing player backends are rejected before any stage is recorded', async () => {
+  const harness = createHarness({ nodes: [{ id: 'only' }] });
+  for (const backend of ['rollingPcm', 'media-element', 'buffer_source', '', undefined, null, 42]) {
+    await assert.rejects(
+      harness.coordinator.stageIntent({ ...playerIntent(8), backend }),
+      { name: 'TypeError', message: 'Unsupported activation backend' },
+      `backend ${String(backend)}`
+    );
+    assert.throws(
+      () => normalizeActivationIntentDescriptor({ ...playerIntent(8), backend }),
+      { name: 'TypeError', message: 'Unsupported activation backend' }
+    );
+  }
+  assert.equal(harness.coordinator.currentStage, null);
+  assert.equal(harness.coordinator.getActiveDescriptor(), null);
+
+  // Config intents never carry a player backend: whatever the caller passes is
+  // normalized to 'none' instead of being validated against the player list.
+  const config = normalizeActivationIntentDescriptor({
+    intentKind: 'config',
+    intentIdentity: { configIntentSequence: 1 },
+    backend: 'rolling-pcm'
+  });
+  assert.equal(config.backend, 'none');
+  assert.equal(config.resumeKind, 'none');
 });
 
 test('canonical descriptor serialization is stable across object key order', () => {

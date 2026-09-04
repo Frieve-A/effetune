@@ -763,3 +763,25 @@ test('target edits render from synchronous store state before persistence comple
   await secondType.listeners.get('change')({ target: secondType });
   assert.equal(rowFor('timer-2').children[1].children[0].children[0].children[0].value, 'TestPlugin');
 });
+
+test('dialog explains a stalled MIDI system differently from a denied permission', () => {
+  const renderNote = midiAccessError => {
+    const dialog = new MidiMappingDialog({
+      manager: {
+        adapter: new ParamAdapter({ catalog: {} }),
+        isSupported: () => true,
+        listInputs: () => [],
+        listGamepads: () => [],
+        midiAccessError,
+        store: { mappings: [], getDeviceProtocol: () => 'generic' }
+      },
+      windowRef: { document: { createElement() { return element(); } } }
+    });
+    const devices = dialog.renderDevices();
+    return devices.children[1].children[0]?.children[1]?.textContent ?? null;
+  };
+
+  assert.equal(renderNote(null), null);
+  assert.match(renderNote({ name: 'NotAllowedError' }), /MIDI access was not allowed/);
+  assert.match(renderNote({ name: 'TimeoutError' }), /The MIDI system did not respond/);
+});

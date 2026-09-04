@@ -95,7 +95,12 @@ async function render({ artifact, enabled, inputChannels, volumeDb }) {
   const warnings = [];
   const processor = createProcessor(input, {
     async getModuleInfo() {
-      return { bytes, meta, paramPackers: DSP_PARAM_PACKERS };
+      return {
+        bytes,
+        meta,
+        paramPackers: DSP_PARAM_PACKERS,
+        simd: artifact === 'effetune-dsp.simd.wasm'
+      };
     },
     warning(message) {
       warnings.push(message);

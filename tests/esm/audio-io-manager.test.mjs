@@ -409,43 +409,20 @@ test('audio input handles saved-device permission failures and non-permission fa
     assert.equal(manager.silentInputGainNode, runningSilentSource);
     assert.equal(manager.silentInputBufferSource.buffer.channels, 2);
     assert.equal(manager.silentInputBufferSource.loop, true);
-    assert.equal(manager.silenceNode, null);
     const startCount = calls.filter(call => call[0] === 'start' &&
       call[1] === 'bufferSource').length;
     assert.equal(manager.ensureSilentSourceFallback(), runningSilentSource);
     assert.equal(calls.filter(call => call[0] === 'start' &&
       call[1] === 'bufferSource').length, startCount);
 
-    const outputMuteNode = new FakeNode('outputSilence', calls);
-    manager.silenceNode = outputMuteNode;
     const replacementSilentInput = manager.createSilentSourceFallback();
     assert.notEqual(replacementSilentInput, runningSilentSource);
-    assert.equal(manager.silenceNode, outputMuteNode);
-    assert.equal(calls.some(call => call[0] === 'disconnect' &&
-      call[1] === 'outputSilence'), false);
 
     manager.contextManager.workletNode = new FakeNode('worklet', calls);
     manager.outputGainNode = new FakeNode('outputGain', calls);
     assert.equal(await manager.connectAudioNodes(), '');
     assert.ok(calls.some(call => call[0] === 'connect' && call[1] === 'gain' && call[2] === 'worklet'));
     assert.ok(calls.some(call => call[0] === 'connect' && call[1] === 'worklet' && call[2] === 'outputGain'));
-  });
-
-  await withAudioIO({
-    context: { isFirstLaunch: true },
-    window: {
-      audioPreferences: { inputDeviceId: NO_AUDIO_INPUT_DEVICE_ID },
-      originalConnectMethod(target) {
-        this.calls.push(['originalConnect', this.name, target.name]);
-        this.connections.push(target);
-      }
-    }
-  }, async ({ manager, calls }) => {
-    assert.equal(await manager.initAudioInput(), '');
-    assert.equal(calls.some(call => call[0] === 'originalConnect' &&
-      call[1] === 'bufferSource' && call[2] === 'gain'), true);
-    assert.equal(calls.some(call => call[0] === 'connect' &&
-      call[1] === 'bufferSource' && call[2] === 'gain'), false);
   });
 
   await withAudioIO({
@@ -1001,74 +978,6 @@ test('audio output initialization handles audio-element fallback failures and ev
   });
 });
 
-test('first-launch silence node handles processor variants and connection fallback', async () => {
-  await withAudioIO({
-    context: {
-      isFirstLaunch: true
-    },
-    window: {
-      electron: true,
-      preferences: null,
-      electronIntegration: {
-        isElectron: true,
-        isElectronEnvironment: () => false,
-        loadAudioPreferences: async () => null
-      }
-    }
-  }, async ({ manager }) => {
-    assert.equal(await manager.initAudioOutput(), '');
-    assert.equal(manager.silenceNode.name, 'scriptProcessor');
-    const left = new Float32Array([1, 1]);
-    const right = new Float32Array([1, 1]);
-    manager.silenceNode.onaudioprocess({
-      outputBuffer: {
-        getChannelData: index => index === 0 ? left : right
-      }
-    });
-    assert.deepEqual([...left, ...right], [0, 0, 0, 0]);
-  });
-
-  await withAudioIO({
-    context: {
-      isFirstLaunch: true,
-      audioContext: { javaScriptNode: true },
-      workletOptions: { failDisconnect: true }
-    },
-    window: {
-      electron: true,
-      preferences: null,
-      electronIntegration: {
-        isElectron: true,
-        isElectronEnvironment: () => false,
-        loadAudioPreferences: async () => null
-      }
-    }
-  }, async ({ manager, calls }) => {
-    assert.equal(await manager.initAudioOutput(), '');
-    assert.equal(manager.silenceNode.name, 'javaScriptNode');
-    assert.ok(calls.some(call => call[0] === 'console.warn' && String(call[1]).includes('Error connecting silence')));
-  });
-
-  await withAudioIO({
-    context: {
-      isFirstLaunch: true,
-      audioContext: { scriptProcessor: false }
-    },
-    window: {
-      electron: true,
-      preferences: null,
-      electronIntegration: {
-        isElectron: true,
-        isElectronEnvironment: () => false,
-        loadAudioPreferences: async () => null
-      }
-    }
-  }, async ({ manager }) => {
-    assert.equal(await manager.initAudioOutput(), '');
-    assert.equal(manager.silenceNode, null);
-  });
-});
-
 test('connectAudioNodes handles sink modes, web fallback, and error returns', async () => {
   await withAudioIO({
     window: {
@@ -1149,24 +1058,7 @@ test('connectAudioNodes handles sink modes, web fallback, and error returns', as
   });
 });
 
-test('connectAudioNodes handles original connect, sink-specific failures, and web reroute failures', async () => {
-  await withAudioIO({
-    context: { isFirstLaunch: true },
-    window: {
-      originalConnectMethod: function originalConnect(target) {
-        this.calls?.push?.(['unused', target]);
-      }
-    }
-  }, async ({ manager, contextManager, calls, windowRef }) => {
-    windowRef.originalConnectMethod = function originalConnect(target) {
-      calls.push(['originalConnect', this.name, target.name]);
-    };
-    manager.sourceNode = new FakeNode('source', calls);
-    manager.outputGainNode = contextManager.audioContext.createGain();
-    assert.equal(await manager.connectAudioNodes(), '');
-    assert.ok(calls.some(call => call[0] === 'originalConnect'));
-  });
-
+test('connectAudioNodes handles sink-specific failures and web reroute failures', async () => {
   await withAudioIO({
     window: { electron: true, electronAPI: {}, preferences: null }
   }, async ({ manager, contextManager }) => {

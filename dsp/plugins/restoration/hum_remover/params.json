@@ -1,0 +1,10 @@
+{
+  "type": "HumRemoverPlugin",
+  "tolerance": { "abs": 0.000002, "policy": "per-sample" },
+  "parityReference": "production-native-promoted-v1",
+  "fields": [
+    { "name": "frequency", "key": "fm", "kind": "enum", "values": ["Auto", "50 Hz", "60 Hz"], "step": 1, "default": "Auto", "automation": true },
+    { "name": "harmonics", "key": "hc", "kind": "int", "min": 1, "max": 64, "step": 1, "default": 8, "automation": true },
+    { "name": "trackingSpeed", "key": "sp", "kind": "float", "min": 0, "max": 100, "step": 1, "default": 50, "unit": "%", "automation": true }
+  ]
+}

@@ -1,7 +1,6 @@
 import { PluginListManager } from './ui/plugin-list-manager.js';
 import { PipelineManager } from './ui/pipeline-manager.js';
 import { StateManager } from './ui/state-manager.js';
-import { AudioPlayer } from './ui/audio-player.js';
 import {
     TRANSLATED_LANGUAGE_CODES,
     normalizeLanguagePreference,
@@ -15,29 +14,21 @@ import {
     encodePipelineState,
     decodePipelineState
 } from './utils/pipeline-state-codec.js';
-import { DoubleBlindTest } from './ui/double-blind-test/double-blind-test.js';
 import { copyTextToClipboard, readTextFromClipboard } from './utils/clipboard-utils.js';
 import { LayoutModeManager } from './ui/layout-mode-manager.js';
 import { MobileMenu } from './ui/mobile-menu.js';
 import { MobileNav } from './ui/mobile-nav.js';
 import { MobileNumberKeypad } from './ui/mobile-number-keypad.js';
-import { LibraryManagerV2 } from './library/library-manager-v2.js';
-import { createWebCatalogRecoveryController } from './library/repository/catalog-client-factory.js';
 import { normalizeMusicLibraryStartupView } from './library/constants.js';
-import { LibraryView } from './ui/library/library-view.js';
 import { PowerStateView } from './ui/power-state-view.js';
-import { CatalogPlaybackBridge } from './ui/audio-player/catalog-playback-bridge.js';
-import { resolveWebPlaybackSelection } from './ui/playback-selection-router.js';
-import { resolveWebCueSiblingFiles } from './ui/web-cue-source-resolver.js';
 import { installRangePrecisionControl } from './ui/range-precision-controller.js';
+import { loadClassicScript, loadStylesheet } from './utils/classic-script-loader.js';
 import {
     appendExternalAssetWarningSnapshot,
     captureExternalAssetWarning,
     collectUniquePipelinePlugins,
     formatMissingExternalAssetSummary
 } from './ui/pipeline/external-asset-info.js';
-import { PipelineAnalyzerController } from './pipeline-analyzer/controller.js';
-import { PipelineAnalyzerUI } from './pipeline-analyzer/ui.js';
 
 function usesIOSFilePicker(windowRef = window) {
     const navigatorRef = windowRef?.navigator || globalThis.navigator;
@@ -59,6 +50,105 @@ const WEB_MUSIC_PICKER_TYPES = [{
         'image/png': ['.png']
     }
 }];
+const PIPELINE_ANALYZER_STORAGE_KEY = 'effetune.pipelineAnalyzer.v1';
+
+let audioPlayerClassPromise = null;
+let libraryFeatureModulesPromise = null;
+let webPlaybackResolversPromise = null;
+let pipelineAnalyzerModulesPromise = null;
+let doubleBlindTestClassPromise = null;
+
+function loadAudioPlayerClass() {
+    if (!audioPlayerClassPromise) {
+        audioPlayerClassPromise = (async () => {
+            try {
+                await loadClassicScript('js/vendor/jsmediatags-3.9.5.min.js', {
+                    globalName: 'jsmediatags'
+                });
+            } catch (error) {
+                console.warn('Optional legacy metadata reader was not loaded:', error);
+            }
+            return (await import('./ui/audio-player.js')).AudioPlayer;
+        })().catch(error => {
+            audioPlayerClassPromise = null;
+            throw error;
+        });
+    }
+    return audioPlayerClassPromise;
+}
+
+function loadLibraryFeatureModules() {
+    if (!libraryFeatureModulesPromise) {
+        loadStylesheet('effetune-library.css');
+        libraryFeatureModulesPromise = Promise.all([
+            import('./library/library-manager-v2.js'),
+            import('./ui/library/library-view.js'),
+            import('./ui/audio-player/catalog-playback-bridge.js')
+        ]).then(([managerModule, viewModule, bridgeModule]) => ({
+            LibraryManager: managerModule.LibraryManagerV2,
+            LibraryView: viewModule.LibraryView,
+            CatalogPlaybackBridge: bridgeModule.CatalogPlaybackBridge
+        })).catch(error => {
+            libraryFeatureModulesPromise = null;
+            throw error;
+        });
+    }
+    return libraryFeatureModulesPromise;
+}
+
+function loadWebPlaybackResolvers() {
+    if (!webPlaybackResolversPromise) {
+        webPlaybackResolversPromise = Promise.all([
+            import('./ui/playback-selection-router.js'),
+            import('./ui/web-cue-source-resolver.js')
+        ]).then(([selectionModule, cueModule]) => ({
+            resolveSelection: selectionModule.resolveWebPlaybackSelection,
+            resolveCueSources: cueModule.resolveWebCueSiblingFiles
+        })).catch(error => {
+            webPlaybackResolversPromise = null;
+            throw error;
+        });
+    }
+    return webPlaybackResolversPromise;
+}
+
+function loadPipelineAnalyzerModules() {
+    if (!pipelineAnalyzerModulesPromise) {
+        loadStylesheet('pipeline-analyzer.css');
+        pipelineAnalyzerModulesPromise = Promise.all([
+            import('./pipeline-analyzer/controller.js'),
+            import('./pipeline-analyzer/ui.js')
+        ]).then(([controllerModule, uiModule]) => ({
+            PipelineAnalyzerController: controllerModule.PipelineAnalyzerController,
+            PipelineAnalyzerUI: uiModule.PipelineAnalyzerUI
+        })).catch(error => {
+            pipelineAnalyzerModulesPromise = null;
+            throw error;
+        });
+    }
+    return pipelineAnalyzerModulesPromise;
+}
+
+function loadDoubleBlindTestClass() {
+    if (!doubleBlindTestClassPromise) {
+        doubleBlindTestClassPromise = import('./ui/double-blind-test/double-blind-test.js')
+            .then(module => module.DoubleBlindTest)
+            .catch(error => {
+                doubleBlindTestClassPromise = null;
+                throw error;
+            });
+    }
+    return doubleBlindTestClassPromise;
+}
+
+function isPipelineAnalyzerStoredOpen() {
+    try {
+        const value = JSON.parse(globalThis.localStorage?.getItem?.(PIPELINE_ANALYZER_STORAGE_KEY) || 'null');
+        return value?.open === true;
+    } catch (_) {
+        return false;
+    }
+}
 
 function fileExtension(name) {
     const value = String(name ?? '');
@@ -108,14 +198,18 @@ export class UIManager {
         this.libraryManager = null;
         this.libraryView = null;
         this.libraryInitPromise = null;
+        this.libraryFeatureModules = null;
         this.libraryPlaybackBridge = null;
         this.libraryLifecycleCloseHandler = null;
-        this.libraryRecoveryApi = window.electronAPI?.libraryRecoveryV1 ||
-            createWebCatalogRecoveryController();
-        this.libraryRecoveryState = window.electronAPI?.libraryRecoveryV1
-            ? { apiVersion: 1, status: 'initializing', available: false, canReset: false }
-            : this.libraryRecoveryApi.getState();
+        this.libraryRecoveryApi = window.electronAPI?.libraryRecoveryV1 || null;
+        this.libraryRecoveryState = {
+            apiVersion: 1,
+            status: 'initializing',
+            available: false,
+            canReset: false
+        };
         this.libraryRecoveryReadyPromise = null;
+        this.libraryRecoveryInitializationPromise = null;
         this.libraryRecoveryStateQueue = Promise.resolve();
         this.libraryRecoveryStateRevision = 0;
         this.libraryRecoveryUnsubscribe = null;
@@ -123,11 +217,18 @@ export class UIManager {
         this.libraryRecoveryResetButton = null;
         this.pipelineAnalyzerMenuUnsubscribe = null;
         this.pipelineAnalyzerPageHideHandler = null;
+        this.pipelineAnalyzerUI = null;
+        this.pipelineAnalyzerController = null;
+        this.pipelineAnalyzerLoadPromise = null;
+        this.pipelineAnalyzerBootstrapButton = null;
+        this.pipelineAnalyzerBootstrapHandler = null;
+        this.pipelineAnalyzerDisposed = false;
         this.libraryRecoveryTitle = null;
         this.libraryRecoveryMessage = null;
         this.libraryDeferredStartupOptions = null;
         // Double Blind Test controller (created lazily) and URL-reflection gate
         this.doubleBlindTest = null;
+        this.doubleBlindTestPromise = null;
         this.urlReflectionEnabled = true;
         this._pipelineSwitching = false;
         this.externalAssetSummaryTimer = null;
@@ -168,18 +269,7 @@ export class UIManager {
         // Initialize managers
         this.pluginListManager = new PluginListManager(pluginManager);
         this.pipelineManager = new PipelineManager(audioManager, pluginManager, this.expandedPlugins, this.pluginListManager);
-        this.pipelineAnalyzerUI = new PipelineAnalyzerUI({
-            onOpenChange: open => this.setPipelineAnalyzerOpen(open),
-            onConfigurationChange: (configuration, meta) =>
-                this.pipelineAnalyzerController?.setConfiguration(configuration, meta),
-            onRefreshMeasurements: () => this.pipelineAnalyzerController?.refreshMeasurements()
-        });
-        this.pipelineAnalyzerController = new PipelineAnalyzerController({
-            audioManager,
-            workletSync: this.pipelineManager.core.workletSync,
-            ui: this.pipelineAnalyzerUI
-        });
-        this.pipelineAnalyzerController.initialize();
+        this.initPipelineAnalyzerBootstrap();
         this.initPipelineAnalyzerMenuIntegration();
         this.stateManager = new StateManager(audioManager);
         this.mobileMenu = new MobileMenu(this);
@@ -273,7 +363,7 @@ export class UIManager {
             return false;
         });
 
-        this.setOpenHomeRemoteControlEnabled(
+        void this.setOpenHomeRemoteControlEnabled(
             window.appConfig?.openHomeRemoteControl === true
         );
     }
@@ -633,13 +723,24 @@ export class UIManager {
 
     /**
      * Get (creating on first use) the Double Blind Test controller.
-     * @returns {DoubleBlindTest}
+     * @returns {Promise<Object>}
      */
-    getDoubleBlindTest() {
-        if (!this.doubleBlindTest) {
-            this.doubleBlindTest = new DoubleBlindTest(this);
+    async getDoubleBlindTest() {
+        if (this.doubleBlindTest) return this.doubleBlindTest;
+        if (!this.doubleBlindTestPromise) {
+            this.doubleBlindTestPromise = loadDoubleBlindTestClass()
+                .then(DoubleBlindTest => {
+                    if (!this.doubleBlindTest) {
+                        this.doubleBlindTest = new DoubleBlindTest(this);
+                    }
+                    return this.doubleBlindTest;
+                })
+                .catch(error => {
+                    this.doubleBlindTestPromise = null;
+                    throw error;
+                });
         }
-        return this.doubleBlindTest;
+        return this.doubleBlindTestPromise;
     }
 
     /** Is the Double Blind Test mode currently open? */
@@ -659,12 +760,73 @@ export class UIManager {
 
     setPipelineAnalyzerOpen(open) {
         const controller = this.pipelineAnalyzerController;
-        if (!controller) return false;
+        if (!controller) {
+            if (open !== true || this.pipelineAnalyzerDisposed) return false;
+            void this.ensurePipelineAnalyzer().then(loadedController => {
+                if (loadedController) this.setPipelineAnalyzerOpen(true);
+            });
+            return true;
+        }
         const wasOpen = controller.state?.open === true;
         controller.setOpen(open === true);
         const changed = (controller.state?.open === true) !== wasOpen;
         if (changed) this.refreshApplicationMenu();
         return changed;
+    }
+
+    initPipelineAnalyzerBootstrap() {
+        const button = document.getElementById('pipelineAnalyzerButton');
+        this.pipelineAnalyzerBootstrapButton = button;
+        this.pipelineAnalyzerBootstrapHandler = () => {
+            void this.ensurePipelineAnalyzer().then(controller => {
+                if (controller) this.setPipelineAnalyzerOpen(true);
+            });
+        };
+        button?.addEventListener('click', this.pipelineAnalyzerBootstrapHandler);
+        if (isPipelineAnalyzerStoredOpen()) {
+            void this.ensurePipelineAnalyzer();
+        }
+    }
+
+    ensurePipelineAnalyzer() {
+        if (this.pipelineAnalyzerController) return Promise.resolve(this.pipelineAnalyzerController);
+        if (this.pipelineAnalyzerDisposed) return Promise.resolve(null);
+        if (!this.pipelineAnalyzerLoadPromise) {
+            this.pipelineAnalyzerLoadPromise = loadPipelineAnalyzerModules()
+                .then(({ PipelineAnalyzerController, PipelineAnalyzerUI }) => {
+                    if (this.pipelineAnalyzerDisposed) return null;
+                    this.pipelineAnalyzerBootstrapButton?.removeEventListener(
+                        'click',
+                        this.pipelineAnalyzerBootstrapHandler
+                    );
+                    this.pipelineAnalyzerBootstrapHandler = null;
+                    this.pipelineAnalyzerUI = new PipelineAnalyzerUI({
+                        onOpenChange: open => this.setPipelineAnalyzerOpen(open),
+                        onConfigurationChange: (configuration, meta) =>
+                            this.pipelineAnalyzerController?.setConfiguration(configuration, meta),
+                        onRefreshMeasurements: () => this.pipelineAnalyzerController?.refreshMeasurements()
+                    });
+                    const controller = new PipelineAnalyzerController({
+                        audioManager: this.audioManager,
+                        workletSync: this.pipelineManager.core.workletSync,
+                        ui: this.pipelineAnalyzerUI
+                    });
+                    this.pipelineAnalyzerController = controller;
+                    controller.initialize();
+                    return controller;
+                })
+                .catch(error => {
+                    this.pipelineAnalyzerLoadPromise = null;
+                    console.error('Failed to initialize Pipeline Analyzer:', error);
+                    return null;
+                });
+        }
+        return this.pipelineAnalyzerLoadPromise;
+    }
+
+    isPipelineAnalyzerOpen() {
+        return this.pipelineAnalyzerController?.state?.open === true ||
+            (!this.pipelineAnalyzerController && isPipelineAnalyzerStoredOpen());
     }
 
     initPipelineAnalyzerMenuIntegration() {
@@ -683,6 +845,7 @@ export class UIManager {
     }
 
     disposePipelineAnalyzerIntegration() {
+        this.pipelineAnalyzerDisposed = true;
         const unsubscribe = this.pipelineAnalyzerMenuUnsubscribe;
         this.pipelineAnalyzerMenuUnsubscribe = null;
         if (typeof unsubscribe === 'function') {
@@ -696,6 +859,11 @@ export class UIManager {
             window.removeEventListener?.('pagehide', this.pipelineAnalyzerPageHideHandler);
             this.pipelineAnalyzerPageHideHandler = null;
         }
+        this.pipelineAnalyzerBootstrapButton?.removeEventListener(
+            'click',
+            this.pipelineAnalyzerBootstrapHandler
+        );
+        this.pipelineAnalyzerBootstrapHandler = null;
         const controller = this.pipelineAnalyzerController;
         this.pipelineAnalyzerController = null;
         this.pipelineAnalyzerUI = null;
@@ -1487,15 +1655,15 @@ export class UIManager {
         this.openMusicButton = document.getElementById('openMusicButton');
 
         if (this.openMusicButton) {
-            this.openMusicButton.addEventListener('click', () => {
+            this.openMusicButton.addEventListener('click', async () => {
                 // Check if running in Electron environment
                 const isElectron = window.electronIntegration && window.electronIntegration.isElectronEnvironment();
 
                 if (isElectron) {
                     // Use Electron's openMusicFile function
-                    window.electronIntegration.openMusicFile();
+                    await window.electronIntegration.openMusicFile();
                 } else {
-                    this.openWebMusicFilePicker({
+                    await this.openWebMusicFilePicker({
                         accept: WEB_MUSIC_FILE_ACCEPT,
                         onFiles: (files, fileHandles) => this.handleWebPlaybackFiles(files, fileHandles)
                     });
@@ -1513,7 +1681,7 @@ export class UIManager {
                 });
                 const files = await Promise.all(handles.map(handle => handle.getFile()));
                 if (files.length > 0) {
-                    onFiles(files, new Map(files.map((file, index) => [file, handles[index]])));
+                    await onFiles(files, new Map(files.map((file, index) => [file, handles[index]])));
                 } else {
                     onCancel?.();
                 }
@@ -1543,12 +1711,12 @@ export class UIManager {
             cleanup();
             onCancel?.();
         };
-        fileInput.addEventListener('change', event => {
+        fileInput.addEventListener('change', async event => {
             if (settled) return;
             settled = true;
             const files = Array.from(event.target.files ?? []);
             cleanup();
-            if (files.length > 0) onFiles(files, null);
+            if (files.length > 0) await onFiles(files, null);
             else onCancel?.();
         });
         fileInput.addEventListener('cancel', cancel);
@@ -1559,8 +1727,7 @@ export class UIManager {
 
     handleWebPlaybackFiles(files, fileHandles = null) {
         const gestureResume = this.beginPlaybackSelectionGestureResume();
-        void this.openWebPlaybackSelection(files, gestureResume, { fileHandles });
-        return true;
+        return this.openWebPlaybackSelection(files, gestureResume, { fileHandles });
     }
 
     beginPlaybackSelectionGestureResume() {
@@ -1584,11 +1751,17 @@ export class UIManager {
         const generation = ++this.playbackSelectionGeneration;
         this.playbackSelectionAbortController = controller;
         try {
-            const resolveSelection = this.playbackSelectionResolver ?? resolveWebPlaybackSelection;
             const cueFile = Array.from(files ?? []).find(file => fileExtension(file?.name) === 'cue');
             const cueFileHandle = cueFile ? fileHandles?.get?.(cueFile) : null;
+            let resolveSelection = this.playbackSelectionResolver;
+            let resolveCueSources = this.webCueSourceResolver;
+            if (!resolveSelection || (cueFileHandle && !resolveCueSources)) {
+                const resolvers = await loadWebPlaybackResolvers();
+                resolveSelection ||= resolvers.resolveSelection;
+                resolveCueSources ||= resolvers.resolveCueSources;
+            }
             const cueSourceProvider = cueFileHandle
-                ? request => (this.webCueSourceResolver ?? resolveWebCueSiblingFiles)({
+                ? request => resolveCueSources({
                     cueFileHandle,
                     ...request
                 })
@@ -1603,7 +1776,7 @@ export class UIManager {
             ]);
             if (generation !== this.playbackSelectionGeneration || controller.signal.aborted) return false;
 
-            const player = this.createAudioPlayer([], false);
+            const player = await this.createAudioPlayer([], false);
             if (resumeReady) {
                 await player.loadFiles(selection.tracks, false);
             } else {
@@ -1684,26 +1857,61 @@ export class UIManager {
 
     initLibraryRecovery() {
         const api = this.libraryRecoveryApi;
-        if (!api || typeof api.getState !== 'function') return;
+        if (!api) {
+            this.libraryRecoveryState = {
+                apiVersion: 1,
+                status: 'available',
+                available: true,
+                canReset: false
+            };
+            this.libraryRecoveryReadyPromise = Promise.resolve(this.libraryRecoveryState);
+            return this.libraryRecoveryReadyPromise;
+        }
 
+        if (!this.libraryRecoveryUnsubscribe && typeof api.onStateChange === 'function') {
+            this.libraryRecoveryUnsubscribe = api.onStateChange(state => {
+                this.libraryRecoveryStateRevision += 1;
+                this.queueLibraryRecoveryState(state);
+            });
+        }
+        this.libraryRecoveryReadyPromise = Promise.resolve(this.libraryRecoveryState);
+        return this.libraryRecoveryReadyPromise;
+    }
+
+    ensureLibraryRecoveryReady() {
+        const api = this.libraryRecoveryApi;
+        if (!api || this.libraryRecoveryState?.status !== 'initializing') {
+            return Promise.resolve(this.libraryRecoveryState);
+        }
+        if (!this.libraryRecoveryInitializationPromise) {
+            const initialize = typeof api.initialize === 'function'
+                ? () => api.initialize()
+                : () => api.getState?.();
+            this.libraryRecoveryInitializationPromise = Promise.resolve()
+                .then(initialize)
+                .then(state => state ? this.queueLibraryRecoveryState(state) : this.libraryRecoveryState)
+                .catch(error => {
+                    console.error('Failed to start the Music Library:', error);
+                    return this.libraryRecoveryState;
+                });
+        }
+        return this.libraryRecoveryInitializationPromise;
+    }
+
+    async ensureWebLibraryRecoveryController() {
+        if (this.libraryRecoveryApi || window.electronAPI) return this.libraryRecoveryApi;
+        const { createWebCatalogRecoveryController } = await import(
+            './library/repository/catalog-client-factory.js'
+        );
+        const api = createWebCatalogRecoveryController();
+        this.libraryRecoveryApi = api;
         if (typeof api.onStateChange === 'function') {
             this.libraryRecoveryUnsubscribe = api.onStateChange(state => {
                 this.libraryRecoveryStateRevision += 1;
                 this.queueLibraryRecoveryState(state);
             });
         }
-
-        const queryRevision = this.libraryRecoveryStateRevision;
-        this.libraryRecoveryReadyPromise = Promise.resolve()
-            .then(() => api.getState())
-            .then(state => {
-                if (queryRevision !== this.libraryRecoveryStateRevision) return this.libraryRecoveryState;
-                return this.queueLibraryRecoveryState(state);
-            })
-            .catch(error => {
-                console.error('Failed to read Music Library availability:', error);
-                return this.libraryRecoveryState;
-            });
+        return api;
     }
 
     deferLibraryStartupView(initialView) {
@@ -1815,6 +2023,9 @@ export class UIManager {
     }
 
     showLibraryRecoveryShell() {
+        // The shell is displayed without loading the library feature modules, so the
+        // stylesheet they normally pull in has to be requested here as well.
+        loadStylesheet('effetune-library.css');
         const root = this.ensureLibraryRecoveryShell();
         if (!root) return false;
         this.renderLibraryRecoveryShell();
@@ -1858,10 +2069,12 @@ export class UIManager {
         if (this.libraryManager && this.libraryView) {
             return this.libraryManager;
         }
-        if (!options.skipRecoveryWait) await this.libraryRecoveryReadyPromise;
+        if (!options.skipRecoveryWait) await this.ensureLibraryRecoveryReady();
         if (!this.libraryRecoveryState?.available) return null;
         if (!this.libraryInitPromise) {
             this.libraryInitPromise = (async () => {
+                this.libraryFeatureModules = await loadLibraryFeatureModules();
+                await this.ensureWebLibraryRecoveryController();
                 const manager = this.createLibraryManager();
                 this.libraryManager = manager;
                 window.libraryManager = manager;
@@ -1893,11 +2106,11 @@ export class UIManager {
     }
 
     createLibraryManager() {
-        return new LibraryManagerV2({ uiManager: this });
+        return new this.libraryFeatureModules.LibraryManager({ uiManager: this });
     }
 
     createLibraryView(manager) {
-        return new LibraryView({ manager, uiManager: this });
+        return new this.libraryFeatureModules.LibraryView({ manager, uiManager: this });
     }
 
     connectLibraryPlaybackBridge() {
@@ -1906,7 +2119,7 @@ export class UIManager {
         const sequenceClient = typeof service.readSequencePage === 'function'
             ? service
             : this.libraryManager.client;
-        this.libraryPlaybackBridge = new CatalogPlaybackBridge({
+        this.libraryPlaybackBridge = new this.libraryFeatureModules.CatalogPlaybackBridge({
             uiManager: this,
             service,
             sequenceClient,
@@ -2116,14 +2329,14 @@ export class UIManager {
         placeholder?.parentNode?.removeChild?.(placeholder);
     }
 
-    setOpenHomeRemoteControlEnabled(enabled) {
+    async setOpenHomeRemoteControlEnabled(enabled) {
         this.openHomeRemoteControlEnabled = enabled === true;
 
         if (this.openHomeRemoteControlEnabled) {
             if (!this.openHomeRemoteRuntimeReady || !window.electronAPI?.openHomeV1) {
                 return this.audioPlayer;
             }
-            const player = this.createAudioPlayer([], false);
+            const player = await this.createAudioPlayer([], false);
             player.activateOpenHomePlaybackAdapter?.();
             this.openHomeRendererPlayer = player;
             return player;
@@ -2137,7 +2350,7 @@ export class UIManager {
         return this.audioPlayer;
     }
 
-    setOpenHomeRemoteRuntimeReady() {
+    async setOpenHomeRemoteRuntimeReady() {
         this.openHomeRemoteRuntimeReady = true;
         if (!this.openHomeRemoteControlEnabled) return this.audioPlayer;
         return this.setOpenHomeRemoteControlEnabled(true);
@@ -2154,7 +2367,7 @@ export class UIManager {
      * @param {string[]} filePaths - Array of file paths to load
      * @param {boolean} replaceExisting - Whether to replace existing player or add to it
      */
-    createAudioPlayer(filePaths, replaceExisting = false) {
+    async createAudioPlayer(filePaths, replaceExisting = false) {
         // If we already have an audio player and we're not replacing it,
         // just load the new files into the existing player
         if (this.audioPlayer && !replaceExisting) {
@@ -2171,7 +2384,14 @@ export class UIManager {
             this.audioPlayer.close({ force: true });
         }
 
-        // Create new player
+        // Load the player only when playback or remote control actually needs it.
+        const AudioPlayer = await loadAudioPlayerClass();
+        if (this.audioPlayer && !replaceExisting) {
+            if (filePaths && filePaths.length > 0) {
+                this.audioPlayer.loadFiles(filePaths, false);
+            }
+            return this.audioPlayer;
+        }
         this.audioPlayer = new AudioPlayer(this.audioManager);
         if (this.openHomeRemoteControlEnabled && this.openHomeRemoteRuntimeReady) {
             this.audioPlayer.activateOpenHomePlaybackAdapter?.();
@@ -2327,12 +2547,13 @@ export class UIManager {
         }
 
         if (this.doubleBlindTestButton) {
-            this.doubleBlindTestButton.addEventListener('click', (e) => {
+            this.doubleBlindTestButton.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 this.hidePipelineMenu();
                 // The panel can always be opened; a saved test can be recalled
                 // from inside it even when Pipeline B is not currently set up.
-                this.getDoubleBlindTest().enterFresh();
+                const doubleBlindTest = await this.getDoubleBlindTest();
+                doubleBlindTest.enterFresh();
             });
         }
 

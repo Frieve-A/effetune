@@ -1,4 +1,5 @@
 const DEFAULT_FRESH_RENDER_TIMEOUT_MS = 1500;
+const PLAYER_ACTIVATION_BACKENDS = Object.freeze(['buffer-source', 'html-media', 'rolling-pcm']);
 
 function createActivationError(code, message) {
     const error = new Error(message);
@@ -51,7 +52,7 @@ function normalizeIntentDescriptor(input) {
         throw new TypeError('intentIdentity is required');
     }
     const backend = input.intentKind === 'player' ? input.backend : 'none';
-    if (!['buffer-source', 'html-media', 'none'].includes(backend)) {
+    if (backend !== 'none' && !PLAYER_ACTIVATION_BACKENDS.includes(backend)) {
         throw new TypeError('Unsupported activation backend');
     }
     return Object.freeze({
@@ -388,4 +389,12 @@ export class AudioActivationCoordinator {
 
 export function canonicalizeActivationDescriptor(value) {
     return canonicalize(value);
+}
+
+/**
+ * Pure descriptor validation shared with tests that stub the staged protocol:
+ * the same checks `stageIntent` applies, without touching coordinator state.
+ */
+export function normalizeActivationIntentDescriptor(input) {
+    return normalizeIntentDescriptor(input);
 }

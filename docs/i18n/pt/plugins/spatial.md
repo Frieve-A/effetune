@@ -1,6 +1,6 @@
 ---
 title: "Plugins de Áudio Espacial - EffeTune"
-description: "Plugins de áudio espacial, incluindo Crossfeed Filter, MS Matrix, Multiband Balance, Phase Select EQ e Stereo Blend."
+description: "Plugins de áudio espacial, incluindo Crossfeed Filter, Crosstalk Cancellation, MS Matrix, Multiband Balance, Phase Select EQ e Stereo Blend."
 lang: pt
 ---
 
@@ -11,6 +11,7 @@ Uma coleção de plugins que aprimoram como a música soa em seus fones de ouvid
 ## Lista de Plugins
 
 - [Crossfeed Filter](#crossfeed-filter) - Filtro de crossfeed para fones de ouvido para imagem estéreo natural
+- [Crosstalk Cancellation](#crosstalk-cancellation) - Reduz a diafonia entre alto-falantes estéreo com medições junto aos ouvidos
 - [MS Matrix](#ms-matrix) - Converte estéreo para Mid/Side e de volta para cadeias avançadas de ajuste estéreo
 - [Multiband Balance](#multiband-balance) - Controle de balanço estéreo dependente de frequência de 5 bandas
 - [Phase Select EQ](#phase-select-eq) - Realça ou atenua componentes de frequência conforme a diferença de fase L/R e Balance
@@ -101,6 +102,37 @@ Clique em **Predefinições de efeito** no cabeçalho do efeito para experimenta
    - Teste com vários estilos musicais
 
 Lembre-se: O Crossfeed Filter é projetado para tornar a audição com fones de ouvido mais natural e confortável. Comece com configurações conservadoras e ajuste gradualmente para encontrar o equilíbrio ideal para suas preferências de audição e material musical.
+
+## Crosstalk Cancellation
+
+Crosstalk Cancellation usa respostas medidas junto aos ouvidos para reduzir o som de cada alto-falante estéreo que chega ao ouvido oposto. Use-o com dois alto-falantes, em uma posição medida, para uma imagem mais definida e próxima de uma experiência binaural. Não é para fones de ouvido nem reprodução mono.
+
+[Crossfeed Filter](#crossfeed-filter) adiciona uma pequena diafonia de alto-falantes aos fones; Crosstalk Cancellation reduz a diafonia medida ao ouvir em alto-falantes.
+
+### Medir e atribuir
+
+1. Posicione o microfone no ouvido esquerdo e meça com as saídas esquerda e direita. Atribua o canal esquerdo a **LL: L Speaker → Left Ear** e o direito a **RL: R Speaker → Left Ear**.
+2. Repita no ouvido direito: canal esquerdo em **LR: L Speaker → Right Ear** e direito em **RR: R Speaker → Right Ear**.
+3. Use medições de um ponto, feitas com a mesma instalação, e um canal de medição diferente em cada campo.
+
+Comece com **Taps** 4096, **Regularization** 50%, **Max Gain** 12 dB, **Freq Low** 200 Hz, **Freq High** 6000 Hz, **Direct Window** 8 ms, **Strength** 70%, **Output Gain** 0 dB e **Latency** 128 samples. Compare com bypass sentado na posição medida.
+
+### Parâmetros
+
+- **Taps** (1024–16384): comprimento do filtro. Mais taps podem melhorar o cancelamento, mas aumentam processamento e atraso; aumente-os primeiro se houver aviso de cauda truncada.
+- **Regularization** (0–100%): limita correções agressivas. Aumente se o som ficar instável ao mover a cabeça; diminua apenas para mais cancelamento na posição medida.
+- **Max Gain** (0–24 dB): limita o reforço do filtro. Menor é mais suave e preserva margem; maior pode cancelar mais, mas é menos robusto.
+- **Freq Low** (20–2000 Hz) / **Freq High** (1000–20000 Hz): banda de correção; fora dela o áudio passa. Comece em 200–6000 Hz e estreite se o efeito for muito sensível ao movimento.
+- **Direct Window** (2–50 ms): duração do som direto medido. Menor reduz reflexões, mas pode elevar o limite grave efetivo; maior mantém mais graves e mais ambiente.
+- **Strength** (0–100%): mistura de 0% sem correção atrasada a 100% de correção. Comece em 70% e reduza se soar artificial fora da posição.
+- **Output Gain** (-24–+24 dB): nível final; mantenha 0 dB inicialmente e reduza para preservar margem.
+- **Latency** (0/128/256/512/1024 samples): atraso de bloco; valores maiores facilitam o processamento, menores ajudam o monitoramento.
+
+### Estado e latência
+
+O estado inicial é **Assign all four measurements to begin.**; durante o projeto mostra progresso e, pronto, o ganho máximo. O aviso de cauda sugere aumentar **Taps** ou **Regularization**. Se **Direct Window** elevou a frequência baixa efetiva, a janela é curta demais.
+
+Selecione novamente uma medição ausente. Se os filtros não puderem ser preparados, tente menos **Taps** ou maior **Latency**. Até quatro medições adequadas e filtros prontos, o áudio passa sem alteração nem latência adicional. Depois, o atraso total é **Latency** mais o atraso modelado, compensado pelo aplicativo; verifique **Total Delay** para monitoramento ou vídeo. Não há gráfico nem outra visualização.
 
 ## MS Matrix
 
