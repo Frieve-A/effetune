@@ -116,7 +116,12 @@ test('Phase 3a Tier-1 basics goldens are fresh, bounded, and shape-consistent', 
 
 test('Phase 3a Tier-1 basics goldens regenerate byte-for-byte', async t => {
   const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-phase3a-basics-'));
-  t.after(() => fs.rm(temporaryRoot, { recursive: true, force: true }));
+  t.after(() => fs.rm(temporaryRoot, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 50
+  }));
 
   for (const port of ports) {
     const committedDir = path.join(basicsRoot, port.directory, 'golden');

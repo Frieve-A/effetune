@@ -349,6 +349,17 @@ const physicalCcMapping = {
   id: 'cc', device: 'Input', source: { kind: 'cc', channel: 0, number: 1, mode: 'abs' }
 };
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+const withTimeoutGuard = async (promise, timeoutMs = 1000) => {
+  let timer;
+  const guard = new Promise((resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`Test did not finish within ${timeoutMs} ms`)), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, guard]);
+  } finally {
+    clearTimeout(timer);
+  }
+};
 
 test('a MIDI request that never answers is abandoned after its deadline and MIDI stays off for the session', async t => {
   t.mock.method(console, 'warn', () => {});
@@ -361,7 +372,7 @@ test('a MIDI request that never answers is abandoned after its deadline and MIDI
   let changes = 0;
   manager.onChange(() => { changes++; });
 
-  await manager.initialize({});
+  await withTimeoutGuard(manager.initialize({}));
   assert.equal(requests(), 1);
   assert.equal(manager.midiAccess, null);
   assert.equal(manager.midiAccessStalled, true);
@@ -397,7 +408,7 @@ test('a late MIDI answer is ignored once the manager is disposed or the answer i
     requestMidiAccess: () => permission,
     midiAccessTimeoutMs: 5
   });
-  await manager.initialize({});
+  await withTimeoutGuard(manager.initialize({}));
   assert.equal(manager.midiAccessStalled, true);
   rejectPermission(new Error('NotAllowedError'));
   await permission.catch(() => {});
@@ -426,7 +437,7 @@ test('a rejected MIDI request reports its error, clears the deadline and may be 
     },
     midiAccessTimeoutMs: 60000
   });
-  await manager.initialize({});
+  await withTimeoutGuard(manager.initialize({}));
   assert.equal(requests(), 1);
   assert.equal(manager.midiAccess, null);
   assert.equal(manager.midiAccessError?.message, 'NotAllowedError');
