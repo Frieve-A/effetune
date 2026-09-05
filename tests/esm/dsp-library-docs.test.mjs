@@ -91,6 +91,28 @@ test('DSP documentation outputs are deterministic and catalog-complete', () => {
   }
 });
 
+test('cross-language contract snippets use the generated catalog count', () => {
+  const count = bindingCatalog.effects.length;
+  const snippets = path.join(
+    repoRoot,
+    'examples',
+    'dsp-library',
+    'docs',
+    'snippets'
+  );
+  const python = fs.readFileSync(
+    path.join(snippets, 'cross-language-contract.py'),
+    'utf8'
+  );
+  const javascript = fs.readFileSync(
+    path.join(snippets, 'cross-language-contract.mjs'),
+    'utf8'
+  );
+
+  assert.ok(python.includes(`assert len(types) == ${count}`));
+  assert.ok(javascript.includes(`types.length, ${count})`));
+});
+
 test('DSP landing explains the cross-surface workflow without competitor framing', () => {
   const { sources } = runDocsGenerator({ check: true });
   const landing = fs.readFileSync(path.join(repoRoot, 'docs', 'dsp-library.md'), 'utf8');
