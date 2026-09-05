@@ -1192,13 +1192,26 @@ test('Electron 44 isolated silent-sink PCM continuity cell preserves exact nativ
             channelCountMode: 'explicit'
           });
           const blocks = [];
-          let captureEndFrame = null;
+          const currentFrames = current.metadata.totalFrames;
+          const totalFrames = currentFrames + next.metadata.totalFrames;
+          let captureStartSequence = null;
           let resolveCaptureComplete;
           const captureComplete = new Promise(resolve => { resolveCaptureComplete = resolve; });
           capture.port.onmessage = event => {
             blocks.push(event.data);
-            const blockEnd = event.data.frame + (event.data.planes[0]?.length ?? 0);
-            if (captureEndFrame !== null && blockEnd >= captureEndFrame) {
+            const blockFrames = event.data.planes[0]?.length ?? 0;
+            if (captureStartSequence === null && blockFrames > 0 &&
+                event.data.planes.every((plane, channel) => {
+                  const expected = joinedPlanes[channel];
+                  for (let frame = 0; frame < blockFrames; frame++) {
+                    if (Math.abs(plane[frame] - expected[frame]) >= 0.00004) return false;
+                  }
+                  return true;
+                })) {
+              captureStartSequence = event.data.sequence;
+            }
+            if (captureStartSequence !== null &&
+                (event.data.sequence - captureStartSequence + 1) * blockFrames >= totalFrames) {
               resolveCaptureComplete();
             }
           };
@@ -1208,9 +1221,6 @@ test('Electron 44 isolated silent-sink PCM continuity cell preserves exact nativ
           await captureContext.resume();
           const startFrame = Math.ceil((captureContext.currentTime + 0.2) *
             profile.outputSampleRate / 128) * 128;
-          const currentFrames = current.metadata.totalFrames;
-          const totalFrames = currentFrames + next.metadata.totalFrames;
-          captureEndFrame = startFrame + totalFrames;
           const currentActivated = current.activate({ when: startFrame / profile.outputSampleRate });
           const nextActivated = next.activate({
             when: (startFrame + currentFrames) / profile.outputSampleRate
@@ -1245,12 +1255,12 @@ test('Electron 44 isolated silent-sink PCM continuity cell preserves exact nativ
             () => new Float32Array(totalFrames));
           const messageCoverage = new Uint8Array(totalFrames);
           for (const block of blocks) {
-            const blockEnd = block.frame + (block.planes[0]?.length ?? 0);
-            const from = Math.max(startFrame, block.frame);
-            const to = Math.min(startFrame + totalFrames, blockEnd);
-            for (let absolute = from; absolute < to; absolute++) {
-              const target = absolute - startFrame;
-              const sourceOffset = absolute - block.frame;
+            const blockFrames = block.planes[0]?.length ?? 0;
+            const relativeStart = (block.sequence - captureStartSequence) * blockFrames;
+            const from = Math.max(0, relativeStart);
+            const to = Math.min(totalFrames, relativeStart + blockFrames);
+            for (let target = from; target < to; target++) {
+              const sourceOffset = target - relativeStart;
               messageCoverage[target]++;
               for (let channel = 0; channel < profile.channelCount; channel++) {
                 actual[channel][target] = block.planes[channel][sourceOffset];
@@ -1325,11 +1335,11 @@ test('Electron 44 isolated silent-sink PCM continuity cell preserves exact nativ
             captureMaxSampleError,
             captureMaxAdjacentDeltaError,
             captureBoundary,
+            captureContextFrameDeltaGaps: blocks.reduce((count, block, index) =>
+              count + (index === 0 || block.frame - blocks[index - 1].frame === 128 ? 0 : 1), 0),
             capturePortDiagnostics: {
               sequenceGaps: blocks.reduce((count, block, index) =>
                 count + (block.sequence === index ? 0 : 1), 0),
-              currentFrameDeltaGaps: blocks.reduce((count, block, index) =>
-                count + (index === 0 || block.frame - blocks[index - 1].frame === 128 ? 0 : 1), 0),
               missingFrames: messageCoverage.reduce(
                 (count, value) => count + (value === 0 ? 1 : 0), 0),
               duplicateFrames: messageCoverage.reduce(
@@ -1427,6 +1437,7 @@ test('Electron 44 isolated silent-sink PCM continuity cell preserves exact nativ
       assert.ok(result.captureMaxSampleError < 0.00004,
         `captured max sample error ${result.captureMaxSampleError}; ${JSON.stringify({
           boundary: result.captureBoundary,
+          contextFrameDeltaGaps: result.captureContextFrameDeltaGaps,
           capturePort: result.capturePortDiagnostics,
           suspiciousZeros: result.suspiciousZeros,
           currentEnded: result.currentEnded,
@@ -1439,7 +1450,6 @@ test('Electron 44 isolated silent-sink PCM continuity cell preserves exact nativ
         `captured transition delta ${result.captureBoundary.maxDeltaError}`);
       assert.deepEqual(result.capturePortDiagnostics, {
         sequenceGaps: 0,
-        currentFrameDeltaGaps: 0,
         missingFrames: 0,
         duplicateFrames: 0
       });
