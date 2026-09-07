@@ -429,6 +429,7 @@
   "dialog.config.startupView.effects": "Effect Pipeline (par défaut)",
   "dialog.config.startupView.library": "Bibliothèque musicale",
   "dialog.config.language": "Langue",
+  "dialog.config.theme": "Thème",
   "dialog.config.language.auto": "Automatique (navigateur)",
   "dialog.config.languageRestartNotice": "Si vous avez modifié le paramètre de langue, veuillez redémarrer l'application.",
   "dialog.config.openHome.title": "Télécommande OpenHome",
@@ -803,5 +804,7 @@
   "midi.source.key": "Touche {key}", "midi.source.gamepadButton": "Bouton de manette {number}", "midi.source.gamepadAxis": "Axe de manette {number} ({mode})", "midi.source.pitchbend": "Pitch bend ch {channel}", "midi.source.mcuFader": "Fader MCU {channel}", "midi.source.mcuVpot": "MCU V-Pot {number}", "midi.source.mcuButton": "Bouton MCU {number}", "midi.source.midi": "{kind} {number} ch {channel}",
   "midi.source.clock": "Horloge : {component}, {shape}", "midi.source.timer": "Minuteur : toutes les {seconds} s", "midi.automation.source": "Source", "midi.automation.source.timer": "Minuteur", "midi.automation.source.clock": "Horloge", "midi.clock.component": "Partie de l'heure", "midi.clock.component.hour": "Heure", "midi.clock.component.minute": "Minute", "midi.clock.component.second": "Seconde", "midi.clock.shape": "Onde", "midi.clock.shape.ramp": "Montante", "midi.clock.shape.sin": "Sinus", "midi.clock.shape.cos": "Cosinus", "midi.timer.interval": "Intervalle (secondes)", "midi.automation.behavior": "Action", "midi.behavior.direct": "Modifier de la quantité", "midi.behavior.random": "Valeur aléatoire dans la plage", "midi.behavior.randomWalk": "Pas aléatoire depuis la valeur actuelle", "midi.automation.amount": "Quantité",
   "midi.source.timer.interval": "Minuteur : toutes les {seconds} s", "midi.source.timer.once": "Minuteur : une fois le {date} à {time}", "midi.source.timer.daily": "Minuteur : tous les jours à {time}", "midi.timer.schedule": "Planification", "midi.timer.schedule.interval": "Intervalle", "midi.timer.schedule.once": "Une fois", "midi.timer.schedule.daily": "Tous les jours", "midi.timer.date": "Date", "midi.timer.time": "Heure", "midi.timer.expired": "Expiré",
+  "midi.device.connected": "Connecté",
+  "midi.device.disconnected": "Déconnecté",
   "midi.target.type": "Effet", "midi.target.instance": "Instance", "midi.target.parameter": "Paramètre", "midi.direction": "Sens", "midi.mode": "Mode", "midi.target.masterBypass": "Bypass général", "midi.target.abToggle": "Basculer A/B", "midi.target.enabled": "Activé", "midi.parameterNumber": "{title} {number}", "midi.map.minimum": "Min.", "midi.map.maximum": "Max.", "midi.map.sensitivity": "Sensibilité", "midi.direction.increase": "Augmenter (+)", "midi.direction.decrease": "Diminuer (−)", "midi.mode.abs": "Absolu", "midi.mode.rel": "Relatif", "midi.mode.rel2c": "Relatif (complément à deux)", "midi.mode.relBin": "Relatif (décalage binaire)", "midi.mode.relSign": "Relatif (signe et magnitude)", "midi.buttonMode": "Mode du bouton", "midi.buttonMode.toggle": "Bascule", "midi.buttonMode.momentary": "Momentané"
 }

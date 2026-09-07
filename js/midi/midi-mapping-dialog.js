@@ -6,6 +6,7 @@ import {
   isNumericTargetRange
 } from './param-adapter.js';
 import { MAX_TIMER_DELAY_MS } from './midi-mapping-store.js';
+import { loadStylesheet } from '../utils/classic-script-loader.js';
 import {
   closeStandardSelect,
   enableStandardSelect,
@@ -116,6 +117,7 @@ export class MidiMappingDialog {
 
   async open() {
     if (this.overlay) return this.overlay;
+    loadStylesheet('effetune-library.css', { documentRef: this.document });
     await this.manager.setDialogOpen(true);
     this.overlay = createElement(this.document, 'div', 'library-dialog-backdrop');
     const dialog = createElement(
@@ -467,7 +469,17 @@ export class MidiMappingDialog {
     for (const input of this.manager.listInputs()) {
       const deviceKey = input.key || input.name;
       const row = createElement(this.document, 'div', 'midi-device-row');
-      row.appendChild(createElement(this.document, 'dt', '', `${input.connected ? '●' : '○'} ${input.name}`));
+      const name = createElement(this.document, 'dt');
+      name.appendChild(createElement(this.document, 'span', '', input.name));
+      name.appendChild(createElement(
+        this.document,
+        'span',
+        `midi-device-status ${input.connected ? 'is-connected' : 'is-disconnected'}`,
+        input.connected
+          ? this.t('midi.device.connected', 'Connected')
+          : this.t('midi.device.disconnected', 'Disconnected')
+      ));
+      row.appendChild(name);
       const value = createElement(this.document, 'dd');
       const select = this.createSelect();
       for (const protocol of ['generic', 'mcu']) {

@@ -323,13 +323,13 @@ test('showRoutingDialog replaces existing dialogs and delayed outside clicks clo
     const inside = dialog.children[0];
     const outside = new FakeElement('div', documentRef, calls);
 
-    clickListener({ target: inside });
+    clickListener({ target: inside, composedPath: () => [inside, dialog] });
     assert.equal(dialog.removed, false);
 
-    clickListener({ target: button });
+    clickListener({ target: button, composedPath: () => [button] });
     assert.equal(dialog.removed, false);
 
-    clickListener({ target: outside });
+    clickListener({ target: outside, composedPath: () => [outside] });
     assert.equal(dialog.removed, true);
     assert.equal(documentRef.listeners.has('click'), false);
   });

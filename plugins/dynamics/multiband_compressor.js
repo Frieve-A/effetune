@@ -1151,10 +1151,10 @@ class MultibandCompressorPlugin extends PluginBase {
 
     // Cached constants for drawing
     const DB_POINTS = [-48, -36, -24, -12];
-    const GRID_COLOR = '#444';
-    const LABEL_COLOR = '#666';
-    const CURVE_COLOR = '#0f0';
-    const METER_COLOR = '#008000';
+    const GRID_COLOR = (window.ThemePalette?.get('graph-grid') ?? '');
+    const LABEL_COLOR = (window.ThemePalette?.get('graph-label') ?? '');
+    const CURVE_COLOR = (window.ThemePalette?.get('graph-trace') ?? '');
+    const METER_COLOR = (window.ThemePalette?.get('graph-trace-fill') ?? '');
 
     const graphContexts = canvases.map(canvas => ({
       ctx: canvas.getContext('2d'),
@@ -1218,7 +1218,7 @@ class MultibandCompressorPlugin extends PluginBase {
       });
 
       // Draw axis labels
-      ctx.fillStyle = '#fff';
+      ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
       ctx.font = `${axisFontSize}px Arial`;
       ctx.textAlign = 'center';
       ctx.fillText('in', width / 2, height - axisBottomOffset);
@@ -1466,7 +1466,7 @@ class MultibandCompressorPlugin extends PluginBase {
       // Set canvas buffer size for high-resolution display.
       // This size is intentionally larger than the display size (160x160px defined in CSS)
       // to ensure sharpness when scaled or on high-DPI screens.
-      canvas.style.backgroundColor = '#222';
+      canvas.style.backgroundColor = 'var(--et-graph-bg-deep)';
       const label = document.createElement('div');
       label.className = 'multiband-compressor-band-graph-label';
       label.textContent = `Band ${i + 1}`;

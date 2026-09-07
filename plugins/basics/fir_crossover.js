@@ -21,7 +21,9 @@ class FIRCrossoverPlugin extends PluginBase {
 
     this._sampleRate = this._getEngineSampleRate();
     this._outputChannelCount = this._getEngineChannelCount();
-    this.maxBands = this._maximumBandCount(this._outputChannelCount) || 2;
+    // Telemetry reports the width after Ch routing, independently of the engine output.
+    this._processingChannelCount = this._outputChannelCount;
+    this.maxBands = this._maximumBandCount() || 2;
     this._runtimePromise = null;
     this._designer = null;
     this._designTimer = null;
@@ -71,12 +73,12 @@ class FIRCrossoverPlugin extends PluginBase {
     return candidates.find(value => Number.isInteger(value) && value >= 1 && value <= 16) || 2;
   }
 
-  _maximumBandCount(outputChannelCount = this._outputChannelCount) {
+  _maximumBandCount(outputChannelCount = this._processingChannelCount) {
     return outputChannelCount >= 4 && outputChannelCount <= 16 && outputChannelCount % 2 === 0
       ? Math.min(outputChannelCount / 2, 4) : 0;
   }
 
-  _effectiveBandCount(outputChannelCount = this._outputChannelCount) {
+  _effectiveBandCount(outputChannelCount = this._processingChannelCount) {
     const maximum = this._maximumBandCount(outputChannelCount);
     return maximum ? Math.min(this.bc, maximum) : 0;
   }
@@ -103,7 +105,6 @@ class FIRCrossoverPlugin extends PluginBase {
       (sampleRate !== this._sampleRate || outputChannelCount !== this._outputChannelCount)) {
       this._sampleRate = sampleRate;
       this._outputChannelCount = outputChannelCount;
-      this._applyOutputChannelCount(outputChannelCount);
       this._scheduleDesign(0);
     }
     return {
@@ -179,13 +180,13 @@ class FIRCrossoverPlugin extends PluginBase {
   _designSignature() {
     return JSON.stringify([
       this.bc, this.f1, this.s1, this.f2, this.s2, this.f3, this.s3,
-      this.pm, this.tp, this._sampleRate, this._outputChannelCount
+      this.pm, this.tp, this._sampleRate, this._processingChannelCount
     ]);
   }
 
   _designConfig(
     sampleRate = this._sampleRate,
-    outputChannelCount = this._outputChannelCount
+    outputChannelCount = this._processingChannelCount
   ) {
     return {
       sampleRate,
@@ -298,7 +299,7 @@ class FIRCrossoverPlugin extends PluginBase {
         frames: this.tp,
         assetChannels: bandCount,
         topology: runtime.IR_ASSET_TOPOLOGY.matrix,
-        processingChannels: this._outputChannelCount,
+        processingChannels: this._processingChannelCount,
         headBlock: Number(this.lt),
         pathCount,
         inputCount: 2
@@ -310,7 +311,7 @@ class FIRCrossoverPlugin extends PluginBase {
         rateDivider: 1,
         pathCount,
         inputCount: 2,
-        processingChannels: this._outputChannelCount,
+        processingChannels: this._processingChannelCount,
         footprintBytes,
         externalAssetSignature: this._assetSignature()
       });
@@ -338,7 +339,7 @@ class FIRCrossoverPlugin extends PluginBase {
 
   _assetSignature({
     sampleRate = this._sampleRate,
-    outputChannelCount = this._outputChannelCount
+    outputChannelCount = this._processingChannelCount
   } = {}) {
     return JSON.stringify([
       1, this._designConfig(sampleRate, outputChannelCount), this.lt, outputChannelCount
@@ -549,19 +550,20 @@ class FIRCrossoverPlugin extends PluginBase {
   handleDspChannelCountTelemetry(frame) {
     const channels = this.parseDspChannelCountTelemetryFrame(frame);
     if (channels === null || !this.enabled || !this._sectionEnabled) return;
-    this._applyOutputChannelCount(channels);
+    this._applyProcessingChannelCount(channels);
   }
 
-  _applyOutputChannelCount(channels) {
-    const previous = this._outputChannelCount;
+  _applyProcessingChannelCount(channels) {
+    const previous = this._processingChannelCount;
     const previousBandCount = this.bc;
-    this._outputChannelCount = channels;
+    this._processingChannelCount = channels;
     const maximumBandCount = this._maximumBandCount(channels);
     this.maxBands = maximumBandCount || 2;
     if (maximumBandCount) this.bc = Math.min(this.bc, maximumBandCount);
+    if (previous === channels && previousBandCount === this.bc) return;
     this._renderBusError();
     this._syncControls();
-    if (previous !== channels || previousBandCount !== this.bc) this._scheduleDesign(0);
+    this._scheduleDesign(0);
   }
 
   onMessage(message) {
@@ -612,7 +614,7 @@ class FIRCrossoverPlugin extends PluginBase {
 
   _renderBusError() {
     if (!this._errorElement) return;
-    const invalid = !this._maximumBandCount(this._outputChannelCount);
+    const invalid = !this._maximumBandCount();
     this._errorElement.hidden = !invalid;
     this._errorElement.textContent = invalid
       ? 'This effect needs an even number of output channels from 4 to 16.'
@@ -685,7 +687,7 @@ class FIRCrossoverPlugin extends PluginBase {
       className: 'fir-crossover-graph',
       onResize: () => this.drawGraph()
     });
-    canvas.style.backgroundColor = '#222';
+    canvas.style.backgroundColor = 'var(--et-graph-bg-deep)';
     this.canvas = canvas;
     this._graphDispose?.();
     this._graphDispose = dispose;
@@ -784,7 +786,7 @@ class FIRCrossoverPlugin extends PluginBase {
     for (let index = 0; index < this._bandRadios.length; index += 1) {
       const value = index + 2;
       const radio = this._bandRadios[index];
-      radio.checked = value === this.bc;
+      if (!this.isHeldByUser(radio)) radio.checked = value === this.bc;
       radio.disabled = value > this.maxBands;
       radio.closest?.('label')?.classList.toggle('disabled', radio.disabled);
     }
@@ -794,10 +796,12 @@ class FIRCrossoverPlugin extends PluginBase {
       control.root.classList.toggle('disabled', !enabled);
       for (const input of control.root.querySelectorAll('input, select')) input.disabled = !enabled;
       const frequency = this[`f${index + 1}`];
-      control.number.value = String(frequency);
-      control.range.value = String(this._frequencyToSlider(frequency));
-      window.uiManager?.refreshRangeFillStyling?.(control.range);
-      control.slope.value = String(this[`s${index + 1}`]);
+      if (!this.isHeldByUser(control.number)) control.number.value = String(frequency);
+      if (!this.isHeldByUser(control.range)) {
+        control.range.value = String(this._frequencyToSlider(frequency));
+        window.uiManager?.refreshRangeFillStyling?.(control.range);
+      }
+      if (!this.isHeldByUser(control.slope)) control.slope.value = String(this[`s${index + 1}`]);
     }
   }
 
@@ -851,7 +855,7 @@ class FIRCrossoverPlugin extends PluginBase {
       document.body?.classList.contains('layout-mobile');
 
     context.clearRect(0, 0, width, height);
-    context.strokeStyle = '#444';
+    context.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
     context.lineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
     context.font = `${tickFont}px Arial`;
 
@@ -867,7 +871,7 @@ class FIRCrossoverPlugin extends PluginBase {
       context.lineTo(x, height);
       context.stroke();
       if (labeledFrequencies.includes(frequency)) {
-        context.fillStyle = '#666';
+        context.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         context.textAlign = 'center';
         context.fillText(
           frequency >= 1000 ? `${frequency / 1000}k` : frequency,
@@ -886,13 +890,13 @@ class FIRCrossoverPlugin extends PluginBase {
       context.lineTo(width, y);
       context.stroke();
       if (decibels > decibelRange[0]) {
-        context.fillStyle = '#666';
+        context.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         context.textAlign = 'right';
         context.fillText(`${decibels}`, leftLabelX, y + 3 * dpr);
       }
     }
 
-    context.fillStyle = '#fff';
+    context.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
     context.font = `${axisFont}px Arial`;
     context.textAlign = 'center';
     context.fillText('Frequency (Hz)', width / 2, axisBottomY);
@@ -902,7 +906,7 @@ class FIRCrossoverPlugin extends PluginBase {
     context.fillText('Level (dB)', 0, 0);
     context.restore();
 
-    context.strokeStyle = '#00ff00';
+    context.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
     context.lineWidth = (isMobileLayout ? 2 : 1.5) * dpr;
     for (let band = 0; band < this.bc; band += 1) {
       context.beginPath();

@@ -77,6 +77,7 @@ async function loadPlugin() {
         this.description = description;
         this.id = nextId++;
         this.enabled = true;
+        this._sectionEnabled = true;
       }
 
       _setupMessageHandler() {

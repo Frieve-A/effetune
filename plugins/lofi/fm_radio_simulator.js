@@ -1351,7 +1351,7 @@ class FMRadioSimulatorPlugin extends PluginBase {
         this._updateHudStatus(mode);
 
         ctx.clearRect(0, 0, width, height);
-        ctx.fillStyle = '#1a1a1a';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
         ctx.fillRect(0, 0, width, height);
 
         if (mode !== 'active') {
@@ -1365,10 +1365,10 @@ class FMRadioSimulatorPlugin extends PluginBase {
             const [title, detail] = messages[mode];
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillStyle = mode === 'bypass' ? '#ffbf69' : '#ddd';
+            ctx.fillStyle = mode === 'bypass' ? (window.ThemePalette?.get('warning') ?? '') : (window.ThemePalette?.get('graph-tone-89') ?? '');
             ctx.font = `600 ${Math.round(14 * dpr)}px Arial`;
             ctx.fillText(title, width / 2, height * 0.42);
-            ctx.fillStyle = '#999';
+            ctx.fillStyle = (window.ThemePalette?.get('graph-tone-58') ?? '');
             ctx.font = `${Math.round(11 * dpr)}px Arial`;
             ctx.fillText(detail, width / 2, height * 0.65);
             return;
@@ -1399,7 +1399,7 @@ class FMRadioSimulatorPlugin extends PluginBase {
             return plotTop + plotHeight * (-clamped / -floorDb);
         };
 
-        ctx.strokeStyle = '#333';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-subtle') ?? '');
         ctx.lineWidth = dpr;
         ctx.font = `${tickFont}px Arial`;
         ctx.textBaseline = 'middle';
@@ -1410,7 +1410,7 @@ class FMRadioSimulatorPlugin extends PluginBase {
             ctx.lineTo(plotRight, y);
             ctx.stroke();
             if (db % 40 === 0) {
-                ctx.fillStyle = '#666';
+                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
                 ctx.textAlign = 'right';
                 ctx.fillText(`${db}`, plotLeft - 4 * dpr, y);
             }
@@ -1421,13 +1421,13 @@ class FMRadioSimulatorPlugin extends PluginBase {
         for (const [frequency, label] of [[1000, '1k'], [10000, '10k'],
             [15000, '15k'], [19000, '19k'], [38000, '38k'], [53000, '53k']]) {
             const x = frequencyToX(frequency);
-            ctx.strokeStyle = frequency === 19000 ? '#555' : '#333';
+            ctx.strokeStyle = frequency === 19000 ? (window.ThemePalette?.get('graph-grid-strong') ?? '') : (window.ThemePalette?.get('graph-grid-subtle') ?? '');
             ctx.beginPath();
             ctx.moveTo(x, plotTop);
             ctx.lineTo(x, plotBottom);
             ctx.stroke();
             if (!narrow || narrowLabels.includes(label)) {
-                ctx.fillStyle = '#666';
+                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
                 ctx.fillText(label, x, plotBottom + 2 * dpr);
             }
         }
@@ -1441,7 +1441,7 @@ class FMRadioSimulatorPlugin extends PluginBase {
             ctx.lineTo(x, dbToY(spectrum[bin]));
         }
         ctx.lineTo(plotRight, plotBottom);
-        ctx.fillStyle = 'rgba(0, 255, 0, 0.15)';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-trace-soft') ?? '');
         ctx.fill();
         ctx.beginPath();
         for (let bin = 0; bin < bins; bin++) {
@@ -1450,7 +1450,7 @@ class FMRadioSimulatorPlugin extends PluginBase {
             if (bin === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
         }
-        ctx.strokeStyle = '#00ff00';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = 2 * dpr;
         ctx.stroke();
 
@@ -1465,7 +1465,7 @@ class FMRadioSimulatorPlugin extends PluginBase {
         const meterLevel = Math.max(0, Math.min(1, values.rfLevelDb / 70));
         for (let step = 0; step < meterSteps; step++) {
             const barHeight = (3 + step * 2.5) * dpr;
-            ctx.fillStyle = meterLevel * meterSteps > step ? '#00ff00' : '#363636';
+            ctx.fillStyle = meterLevel * meterSteps > step ? (window.ThemePalette?.get('graph-trace') ?? '') : (window.ThemePalette?.get('graph-tone-13') ?? '');
             ctx.fillRect(meterX + step * 5 * dpr, statusY + 4 * dpr - barHeight,
                 4 * dpr, barHeight);
         }
@@ -1476,13 +1476,13 @@ class FMRadioSimulatorPlugin extends PluginBase {
         const multipathText = values.multipathDb <= -119 ? '-∞' :
             values.multipathDb.toFixed(1);
         const segments = [
-            [`${values.rfLevelDb.toFixed(1)} dBµV`, '#f0f0f0', 24 * dpr],
-            [`CNR ${values.cnrDb.toFixed(1)} dB`, '#f0f0f0', 12 * dpr],
-            ['●', stereoOn ? '#69c8ff' : '#4a4a4a', 12 * dpr],
-            [`ST ${Math.round(values.blendRatio * 100)}%`, '#f0f0f0', 4 * dpr],
-            [`MPath ${multipathText} dB`, '#f0f0f0', 12 * dpr],
+            [`${values.rfLevelDb.toFixed(1)} dBµV`, (window.ThemePalette?.get('graph-tone-97') ?? ''), 24 * dpr],
+            [`CNR ${values.cnrDb.toFixed(1)} dB`, (window.ThemePalette?.get('graph-tone-97') ?? ''), 12 * dpr],
+            ['●', stereoOn ? (window.ThemePalette?.get('accent') ?? '') : (window.ThemePalette?.get('graph-tone-22') ?? ''), 12 * dpr],
+            [`ST ${Math.round(values.blendRatio * 100)}%`, (window.ThemePalette?.get('graph-tone-97') ?? ''), 4 * dpr],
+            [`MPath ${multipathText} dB`, (window.ThemePalette?.get('graph-tone-97') ?? ''), 12 * dpr],
             [`Clicks ${values.clickRate.toFixed(1)}/s`,
-                values.clickRate >= 0.5 ? '#ffb347' : '#f0f0f0', 12 * dpr]
+                values.clickRate >= 0.5 ? (window.ThemePalette?.get('warning') ?? '') : (window.ThemePalette?.get('graph-tone-97') ?? ''), 12 * dpr]
         ];
         const rows = narrow ? [segments.slice(0, 2), segments.slice(2)] : [segments];
         rows.forEach((rowSegments, rowIndex) => {

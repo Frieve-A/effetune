@@ -103,7 +103,8 @@ export class AudioManager {
      * Create a new AudioManager instance
      * @param {Object} pipelineManager - Reference to the UI pipeline manager
      */
-    constructor(pipelineManager) {
+    constructor(pipelineManager, runtimeOptions = {}) {
+        this.runtimeOptions = runtimeOptions;
         // Initialize modules
         this.contextManager = new AudioContextManager();
         this.audioEncoder = new AudioEncoder();
@@ -159,8 +160,11 @@ export class AudioManager {
         this._dspModuleLoadPromise = null;
         this._dspModuleLoadRequest = null;
         this._dspModuleLoadRequestSequence = 0;
+        this._dspVisibilityDocument = globalThis.document;
         this._boundDspVisibilityChange = () => this.updateDspTelemetryRate();
-        globalThis.document?.addEventListener?.('visibilitychange', this._boundDspVisibilityChange);
+        this._dspVisibilityDocument?.addEventListener?.(
+            'visibilitychange', this._boundDspVisibilityChange
+        );
         
         // Store reference to pipeline manager
         this.pipelineManager = pipelineManager;
@@ -189,7 +193,8 @@ export class AudioManager {
         this._pipelineSwitchSeq = 0;
         this.powerDiagnostics = new PowerDiagnostics();
         this.powerPolicyController = new PowerPolicyController(this, {
-            settings: window.appConfig?.powerSaving
+            settings: window.appConfig?.powerSaving,
+            automaticSuspendAllowed: runtimeOptions.automaticSuspendAllowed
         });
         this.audioActivationCoordinator = new AudioActivationCoordinator({
             getGraphSnapshot: () => ({
@@ -534,6 +539,45 @@ export class AudioManager {
         }
     }
 
+    // Captured streams are acquired by their host, independently of DSP lifetime.
+    async initializeCapturedStream(stream) {
+        const preferences = { sampleRate: 48000, outputChannels: 2, lowLatencyOutput: true,
+            latencyHint: 'interactive', useWasmDsp: true, outputDeviceId: 'default' };
+        const contextError = await this.contextManager.initAudioContext(preferences);
+        if (contextError) throw new Error(contextError);
+        this.ioManager._adoptInputStream(stream);
+        const outputError = await this.ioManager.initAudioOutput();
+        if (outputError) throw new Error(outputError);
+        const workletError = await this.initializeAudioWorklet();
+        if (workletError) throw new Error(workletError);
+        const connectionError = await this.pipelineProcessor.rebuildPipeline(true);
+        if (connectionError) throw new Error(connectionError);
+        await this.contextManager.audioContext.resume();
+        await this._dspModuleLoadPromise;
+        if (!this.dspModuleInfo || !this._dspCapabilitiesByNode.has(this.workletNode)) {
+            throw new Error('The captured stream requires a ready WASM engine');
+        }
+        await this.startPowerPolicyController();
+        return this.contextManager.audioContext.sampleRate;
+    }
+
+    async closeCapturedStream() {
+        this._removeDspVisibilityListener();
+        this.powerPolicyController.dispose();
+        this.ioManager.cleanupAudio();
+        this.contextManager.workletNode?.disconnect();
+        await this.contextManager.closeAudioContext();
+        this.updateExposedProperties();
+    }
+
+    _removeDspVisibilityListener() {
+        const visibilityDocument = this._dspVisibilityDocument;
+        this._dspVisibilityDocument = null;
+        visibilityDocument?.removeEventListener?.(
+            'visibilitychange', this._boundDspVisibilityChange
+        );
+    }
+
     /**
      * Initialize AudioWorklet and create worklet node
      * This is the second phase of audio initialization that happens after GUI is fully rendered
@@ -554,7 +598,10 @@ export class AudioManager {
                     return null;
                 });
             // Load AudioWorklet and create worklet node
-            const workletResult = await this.contextManager.loadAudioWorklet();
+            const workletResult = await this.contextManager.loadAudioWorklet({
+                moduleUrl: this.runtimeOptions?.workletModuleUrl,
+                allowBlobFallback: !this.runtimeOptions?.wasmOnly
+            });
             if (workletResult) {
                 return workletResult;
             }
@@ -600,7 +647,7 @@ export class AudioManager {
 
     async loadDspForWorklet() {
         const pathname = window.location?.pathname || '';
-        const basePath = pathname.substring(0, pathname.lastIndexOf('/'));
+        const basePath = this.runtimeOptions?.assetBasePath ?? pathname.substring(0, pathname.lastIndexOf('/'));
         const preference = window.audioPreferences || window.electronIntegration?.audioPreferences || {};
         const rollout = getDspRolloutConfig({ preference, location: window.location });
         if (rollout.forceOff || preference.useWasmDsp === false) return null;
@@ -609,6 +656,7 @@ export class AudioManager {
 
     getEnabledDspTypes(preferenceOverride = null) {
         if (!this.dspModuleInfo) return [];
+        if (this.runtimeOptions?.wasmOnly) return [...this.dspModuleInfo.paramPackers.keys()];
         const preference = preferenceOverride ||
             window.audioPreferences || window.electronIntegration?.audioPreferences || {};
         return getDspRolloutConfig({
@@ -2296,6 +2344,7 @@ export class AudioManager {
      * @param {Array|Object|null} pluginsOrPlugin - Optional plugin(s) to register.
      */
     registerPipelineProcessors(pluginsOrPlugin = null) {
+        if (this.runtimeOptions?.wasmOnly) return;
         const workletNodes = [...this._getActiveDspWorklets()];
         if (workletNodes.length === 0) {
             const fallbackNode = this.contextManager?.workletNode || this.workletNode || window.workletNode;

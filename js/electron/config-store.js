@@ -1,3 +1,4 @@
+import { normalizeThemeId, THEME_MIRROR_KEY } from '../theme-registry.mjs';
 import { normalizeOfflineOutputSettings } from '../audio/offline-output-settings.js';
 import {
   loadWebAppConfig,
@@ -9,6 +10,10 @@ const fallbackElectronConfigState = {
   snapshot: null,
   commitTail: Promise.resolve()
 };
+
+function writeThemeMirror(theme) {
+  try { window.localStorage.setItem(THEME_MIRROR_KEY, normalizeThemeId(theme)); } catch { /* Storage is optional. */ }
+}
 
 function cloneElectronConfig(config) {
   const cloned = { ...config };
@@ -46,13 +51,18 @@ export function publishElectronConfigSnapshot(config, state = getElectronConfigS
 }
 
 export async function loadConfig(isElectron) {
-  if (!isElectron) return loadWebAppConfig();
+  if (!isElectron) {
+    const config = await loadWebAppConfig();
+    writeThemeMirror(config.theme);
+    return config;
+  }
   try {
     const result = await window.electronAPI.loadConfig();
     if (result.success) {
       const config = result.config || {};
       config.offlineOutput = normalizeOfflineOutputSettings(config.offlineOutput);
       getElectronConfigState().snapshot = cloneElectronConfig(config);
+      writeThemeMirror(config.theme);
       return config;
     }
   } catch (error) {
@@ -64,7 +74,9 @@ export async function loadConfig(isElectron) {
 export async function saveConfig(isElectron, cfg) {
   if (!isElectron) {
     try {
-      return await saveWebAppConfig(cfg);
+      const saved = await saveWebAppConfig(cfg);
+      if (saved && 'theme' in cfg) writeThemeMirror(cfg.theme);
+      return saved;
     } catch (error) {
       console.error('Failed to save Web App Config:', error);
       return false;
@@ -79,6 +91,7 @@ export async function saveConfig(isElectron, cfg) {
       const saveResult = await window.electronAPI.saveConfig(nextConfig);
       if (saveResult?.success === true) {
         publishElectronConfigSnapshot(nextConfig, state);
+        if ('theme' in patch) writeThemeMirror(patch.theme);
         if (saveResult.warning) {
           console.warn('Config was saved with a non-fatal side-effect failure:', saveResult.warning);
         }

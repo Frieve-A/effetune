@@ -91,6 +91,8 @@ Un utilitaire pour corriger un signal dont la forme d'onde est décalée par rap
 
 FIR Crossover répartit une entrée stéréo en deux, trois ou quatre bandes et envoie chacune vers une paire de sorties distincte. Il est destiné aux systèmes de bureau disposant d'un nombre pair de 4 à 16 canaux de sortie et fonctionne uniquement avec WASM DSP. Band Count reste limité à quatre bandes, donc l'effet utilise au plus les canaux 1-8.
 
+Lorsque l’effet reçoit deux canaux, il laisse passer le signal sans le modifier.
+
 La conception FIR autorise des pentes très raides sans la résonance des filtres classiques. Minimum Phase utilise une construction causale qui préserve la recombinaison des bandes ; Linear Phase fournit une réponse de phase symétrique au prix d'une latence fixe.
 
 ### Guide d'utilisation

@@ -80,15 +80,15 @@ test('folder detail headers override the fixed base section height', () => {
   assert.match(folderHeaderRule, /flex-wrap:\s*wrap;/);
 });
 
-test('library sort options remain readable in the dark theme', () => {
+test('library sort options follow the shared theme', () => {
   const css = readCss('../../effetune-library.css');
   const selectRule = getRule(css, '.library-entity-sort-select {');
   const optionRule = getRule(css, '.library-entity-sort-select option');
 
-  assert.match(selectRule, /color-scheme:\s*dark;/);
+  assert.doesNotMatch(selectRule, /color-scheme:/);
   assert.match(selectRule, /color:\s*var\(--library-text\);/);
   assert.match(optionRule, /color:\s*var\(--library-text\);/);
-  assert.match(optionRule, /background-color:\s*#303030;/);
+  assert.match(optionRule, /background-color:\s*var\(--et-surface-11\);/);
 });
 
 test('mobile library screen keeps scrolling inside the content pane', () => {
@@ -151,7 +151,7 @@ test('paged track rows reveal selection controls only after mobile selection mod
     css,
     /body\.layout-mobile \.library-view:not\(\.mobile-selection-mode\) \.library-paged-actions\s*\{[^}]*display:\s*none;/
   );
-  assert.match(selectedRowRule, /background:\s*rgba\(74,\s*158,\s*255,\s*0\.18\);/);
+  assert.match(selectedRowRule, /background:\s*color-mix\(in srgb,\s*var\(--et-accent\) 18%,\s*transparent\);/);
   assert.doesNotMatch(css, /\n\.library-paged-row\.selected\s*\{/);
   assert.match(hiddenMetadataRule, /display:\s*none;/);
   assert.doesNotMatch(hiddenMetadataRule, /library-paged-playlist-row-actions/);
@@ -318,11 +318,11 @@ test('library album card play button uses the mobile primary player styling', ()
 
   assert.match(playRule, /width:\s*42px;/);
   assert.match(playRule, /height:\s*42px;/);
-  assert.match(playRule, /color:\s*#ffffff;/);
-  assert.match(playRule, /background:\s*linear-gradient\(180deg,\s*rgba\(255,\s*255,\s*255,\s*0\.22\)/);
-  assert.match(playRule, /linear-gradient\(180deg,\s*#67b9ff,\s*#3f8fe8\);/);
-  assert.match(playRule, /border:\s*1px solid #8ccaff;/);
-  assert.match(playRule, /box-shadow:\s*0 12px 28px rgba\(74,\s*158,\s*255,\s*0\.32\)/);
+  assert.match(playRule, /color:\s*var\(--et-on-accent\);/);
+  assert.match(playRule, /background:\s*linear-gradient\(180deg,\s*color-mix\(in srgb,\s*var\(--et-text-primary\) 22%,\s*transparent\)/);
+  assert.match(playRule, /linear-gradient\(180deg,\s*var\(--et-accent-hover\),\s*var\(--et-accent-pressed\)\);/);
+  assert.match(playRule, /border:\s*1px solid var\(--et-accent-hover\);/);
+  assert.match(playRule, /box-shadow:\s*0 12px 28px color-mix\(in srgb,\s*var\(--et-accent\) 32%,\s*transparent\)/);
   assert.match(playRule, /transition:[^;]*transform 0\.12s ease;/);
   assert.match(iconRule, /width:\s*18px;/);
   assert.match(iconRule, /height:\s*18px;/);
@@ -375,11 +375,11 @@ test('paged media-card artwork keeps the v2 square frame and record placeholder'
   assert.match(cardRule, /grid-template-rows:\s*auto auto auto;/);
   assert.match(artworkRule, /box-sizing:\s*border-box;/);
   assert.match(artworkRule, /aspect-ratio:\s*1;/);
-  assert.match(artworkRule, /background:\s*linear-gradient\(135deg,\s*#3a3a3a,\s*#292929\);/);
+  assert.match(artworkRule, /background:\s*linear-gradient\(135deg,\s*var\(--et-surface-17\),\s*var\(--et-surface-8\)\);/);
   assert.match(artworkRule, /border:\s*1px solid var\(--library-border\);/);
   assert.match(placeholderRule, /width:\s*42%;/);
-  assert.match(placeholderRule, /border:\s*2px solid #565656;/);
-  assert.match(placeholderRule, /box-shadow:\s*inset 0 0 0 12px #282828;/);
+  assert.match(placeholderRule, /border:\s*2px solid var\(--et-surface-28\);/);
+  assert.match(placeholderRule, /box-shadow:\s*inset 0 0 0 12px var\(--et-surface-8\);/);
   assert.match(imageRule, /object-fit:\s*contain;/);
 });
 
@@ -430,9 +430,9 @@ test('library view reuses the main effect surface theme', () => {
   const viewRule = getRule(css, '.library-view');
   const searchRule = getRule(css, '.library-search {');
 
-  assert.match(rootRule, /--library-bg:\s*var\(--et-panel-gradient,/);
-  assert.match(rootRule, /--library-panel-strong:\s*var\(--et-card-gradient,/);
-  assert.match(rootRule, /--library-input:\s*var\(--et-input-gradient,/);
+  assert.match(rootRule, /--library-bg:\s*var\(--et-panel-gradient\)/);
+  assert.match(rootRule, /--library-panel-strong:\s*var\(--et-card-gradient\)/);
+  assert.match(rootRule, /--library-input:\s*var\(--et-input-gradient\)/);
   assert.doesNotMatch(rootRule, /--library-bg:\s*#0/);
   assert.doesNotMatch(rootRule, /--library-panel:\s*#1/);
   assert.match(viewRule, /box-shadow:\s*var\(--library-shadow\);/);

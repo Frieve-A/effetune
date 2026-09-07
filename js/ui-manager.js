@@ -1,3 +1,4 @@
+import { normalizeThemeId, getThemePreset } from './theme-registry.mjs';
 import { PluginListManager } from './ui/plugin-list-manager.js';
 import { PipelineManager } from './ui/pipeline-manager.js';
 import { StateManager } from './ui/state-manager.js';
@@ -22,10 +23,9 @@ import { MobileNumberKeypad } from './ui/mobile-number-keypad.js';
 import { normalizeMusicLibraryStartupView } from './library/constants.js';
 import { PowerStateView } from './ui/power-state-view.js';
 import { installRangePrecisionControl } from './ui/range-precision-controller.js';
-import { loadClassicScript, loadStylesheet } from './utils/classic-script-loader.js';
+import { installRangeFillStyling, updateRangeFill } from './ui/range-fill.js';
+import { loadClassicScript, loadStylesheet, waitForStylesheets } from './utils/classic-script-loader.js';
 import {
-    appendExternalAssetWarningSnapshot,
-    captureExternalAssetWarning,
     collectUniquePipelinePlugins,
     formatMissingExternalAssetSummary
 } from './ui/pipeline/external-asset-info.js';
@@ -83,7 +83,8 @@ function loadLibraryFeatureModules() {
         libraryFeatureModulesPromise = Promise.all([
             import('./library/library-manager-v2.js'),
             import('./ui/library/library-view.js'),
-            import('./ui/audio-player/catalog-playback-bridge.js')
+            import('./ui/audio-player/catalog-playback-bridge.js'),
+            waitForStylesheets()
         ]).then(([managerModule, viewModule, bridgeModule]) => ({
             LibraryManager: managerModule.LibraryManagerV2,
             LibraryView: viewModule.LibraryView,
@@ -260,6 +261,7 @@ export class UIManager {
         this.supportedLanguages = TRANSLATED_LANGUAGE_CODES;
         this.languagePreference = this.getStoredLanguagePreference();
         this.userLanguage = this.determineUserLanguage(this.languagePreference);
+        this.syncThemeWithConfig(window.appConfig);
 
         // Initialize localization
         this.translations = {}; // Current language translations
@@ -429,85 +431,12 @@ export class UIManager {
 
         this._rangeFillStylingInitialized = true;
         this._disposeRangePrecisionControl = installRangePrecisionControl(document);
-        this._rangeFillInput = (input) => {
-            if (!input?.matches?.('input[type="range"]')) return;
-
-            const min = input.min === '' ? 0 : Number(input.min);
-            const max = input.max === '' ? 100 : Number(input.max);
-            const value = Number(input.value);
-            const range = max - min;
-            const percent = range > 0 && Number.isFinite(value)
-                ? ((value - min) / range) * 100
-                : 0;
-            const clampedPercent = percent < 0 ? 0 : (percent > 100 ? 100 : percent);
-
-            if (input.style?.setProperty) {
-                input.style.setProperty('--et-range-fill', `${clampedPercent}%`);
-            }
-        };
-
-        this.refreshRangeFillStyling();
-
-        const handleRangeInput = (event) => {
-            const input = event.target;
-            if (input?.matches?.('input[type="range"]')) {
-                const pluginRoot = input.closest?.('.plugin-parameter-ui');
-                if (pluginRoot) {
-                    this.refreshRangeFillStyling(pluginRoot);
-                } else {
-                    this._rangeFillInput(input);
-                }
-                return;
-            }
-
-            const rangeFillRoot = input?.closest?.('.plugin-parameter-ui') ??
-                input?.closest?.('.parameter-row');
-            if (rangeFillRoot) {
-                this.refreshRangeFillStyling(rangeFillRoot);
-            }
-        };
-        document.addEventListener?.('input', handleRangeInput);
-        document.addEventListener?.('change', handleRangeInput);
-
-        // Plugins reset sliders programmatically (double-click on a band slider,
-        // Reset buttons) by assigning input.value, which fires no input/change
-        // event. These document listeners bubble after the plugin handler, so the
-        // already-applied values are picked up here.
-        const handleRangeReset = (event) => {
-            const rangeFillRoot = event.target?.closest?.('.parameter-row') ??
-                event.target?.closest?.('.plugin-parameter-ui');
-            if (rangeFillRoot) {
-                this.refreshRangeFillStyling(rangeFillRoot);
-            }
-        };
-        document.addEventListener?.('click', handleRangeReset);
-        document.addEventListener?.('dblclick', handleRangeReset);
-
-        if (typeof MutationObserver !== 'undefined' && document.body) {
-            this._rangeFillObserver = new MutationObserver((mutations) => {
-                for (const mutation of mutations) {
-                    for (const node of Array.from(mutation.addedNodes || [])) {
-                        this.refreshRangeFillStyling(node);
-                    }
-                }
-            });
-            this._rangeFillObserver.observe(document.body, { childList: true, subtree: true });
-        }
+        this._rangeFillInput = updateRangeFill;
+        this._rangeFillController = installRangeFillStyling(document);
     }
 
     refreshRangeFillStyling(root = document) {
-        if (!this._rangeFillInput || !root) {
-            return;
-        }
-
-        if (root.matches?.('input[type="range"]')) {
-            this._rangeFillInput(root);
-            return;
-        }
-
-        root.querySelectorAll?.('input[type="range"]').forEach(input => {
-            this._rangeFillInput(input);
-        });
+        this._rangeFillController?.refresh(root);
     }
 
     _setMessage(message, isError = false, params = {}) {
@@ -1134,6 +1063,19 @@ export class UIManager {
         }, AUDIO_GLITCH_WARNING_DURATION_MS);
     }
 
+    syncThemeWithConfig(config = window.appConfig) {
+        this.setThemePreference(config?.theme);
+    }
+
+    setThemePreference(themeId) {
+        const theme = normalizeThemeId(themeId);
+        document.documentElement.dataset.theme = theme;
+        const meta = document.querySelector?.('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', getThemePreset(theme).windowBackground);
+        window.ThemePalette?.refresh?.();
+        this.pipelineManager?.core?.updatePipelineUI(true);
+    }
+
     getStoredLanguagePreference() {
         return normalizeLanguagePreference(window.appConfig?.language);
     }
@@ -1604,16 +1546,12 @@ export class UIManager {
                 const attemptRevision = ++this.shareAttemptRevision;
                 const pipeline = [...this.audioManager.pipeline];
                 const state = this.getPipelineState(pipeline);
-                const externalAssetWarning = captureExternalAssetWarning(pipeline);
                 const newURL = new URL('https://effetune.frieve.com/effetune.html');
                 newURL.searchParams.set('p', state);
                 const copied = await copyTextToClipboard(newURL.toString());
                 if (attemptRevision !== this.shareAttemptRevision) return;
                 if (copied) {
-                    this.showTransientMessage(appendExternalAssetWarningSnapshot(
-                        this.t('success.urlCopied'),
-                        externalAssetWarning
-                    ), false, {}, 3000);
+                    this.showTransientMessage('success.urlCopied', false, {}, 3000);
                 } else {
                     console.error('Failed to copy URL');
                     this.setError('error.failedToCopyUrl', true);
@@ -1816,12 +1754,14 @@ export class UIManager {
         this.effectPipelineButton = document.getElementById('effectPipelineButton');
         this.openLibraryButton = document.getElementById('openLibraryButton');
         this.effectPipelineButton?.addEventListener('click', (event) => {
+            if (!document.body.classList.contains('view-library')) return;
             this.showEffectPipelineView({
                 returnFocus: event.currentTarget
             });
         });
         this.openLibraryButton?.addEventListener('click', (event) => {
-            this.toggleLibraryView({
+            if (document.body.classList.contains('view-library')) return;
+            this.showLibraryView({
                 focusSearch: false,
                 returnFocus: event.currentTarget
             });
@@ -2192,10 +2132,11 @@ export class UIManager {
         if (options.initialView !== undefined) {
             showOptions.initialView = options.initialView;
         }
-        this.libraryView.show(showOptions);
+        const rendered = this.libraryView.show(showOptions);
         if (options.initialView !== undefined) this.libraryDeferredStartupOptions = null;
         this.updateViewSwitchButtons(true);
         this.mobileNav?.setView?.('library', { fromLibraryView: true });
+        await rendered;
         return true;
     }
 

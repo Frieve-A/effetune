@@ -130,6 +130,7 @@ class PluginBase {
     }
 
     _setupMessageHandler() {
+        if (this.audioHostActive === false) return;
         const currentWorkletNode = window.workletNode;
         if (!currentWorkletNode?.port) {
             return;
@@ -879,6 +880,7 @@ class PluginBase {
     }
 
     _resolveWasmAssetTargetWorklets() {
+        if (this.audioHostActive === false) return [];
         if (this._wasmAssetTargetResolver) {
             const resolved = this._wasmAssetTargetResolver(this);
             return Array.isArray(resolved) ? [...new Set(resolved.filter(node => node?.port))] : [];
@@ -916,6 +918,9 @@ class PluginBase {
     // Compile the processor function using the stored processor string.
     // The 'with' statement is maintained to preserve functionality.
     _compileProcessor(processorStr) {
+        if (typeof __EFFECTUNE_WASM_ONLY__ !== 'undefined' && __EFFECTUNE_WASM_ONLY__) {
+            throw new Error('JavaScript DSP is unavailable in this host');
+        }
         try {
             return new Function('context', 'data', 'parameters', 'time', `
                 with (context) {
@@ -936,6 +941,7 @@ class PluginBase {
 
     // Register the processor function with the audio worklet and store it for offline processing.
     registerProcessor(processorFunction) {
+        if (typeof __EFFECTUNE_WASM_ONLY__ !== 'undefined' && __EFFECTUNE_WASM_ONLY__) return;
         this.processorString = processorFunction.toString();
         this.compiledFunction = this._compileProcessor(this.processorString);
 
@@ -975,7 +981,7 @@ class PluginBase {
             this.onChannelSelectionChanged(previousChannel, this.channel);
         }
         this._notifyWasmAssetSnapshotChange();
-        if (window.workletNode) {
+        if (this.audioHostActive !== false && window.workletNode) {
             const parameters = this.getParameters();
             const message = {
                 type: 'updatePlugin',

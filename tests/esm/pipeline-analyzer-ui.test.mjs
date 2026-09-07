@@ -34,15 +34,15 @@ uiTest('places one accessible Analyzer button directly after Share with dedicate
   assert.doesNotMatch(analyzerCss, /body:not\(\.layout-mobile\) \.pipeline-analyzer-header\s*\{/);
   assert.match(analyzerCss, /\.pipeline-analyzer-title\s*\{[^}]*font-size:\s*16px;[^}]*font-weight:\s*normal;/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-icon-button\s*\{[^}]*width:\s*24px;[^}]*height:\s*24px;/s);
-  assert.match(analyzerCss, /\.pipeline-analyzer-graph-shell\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*1024px;[^}]*aspect-ratio:\s*1024\s*\/\s*480;[^}]*min-height:\s*0;[^}]*margin:\s*10px auto;[^}]*border:\s*0;[^}]*border-radius:\s*0;[^}]*background:\s*#1a1a1a;/s);
+  assert.match(analyzerCss, /\.pipeline-analyzer-graph-shell\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*1024px;[^}]*aspect-ratio:\s*1024\s*\/\s*480;[^}]*min-height:\s*0;[^}]*margin:\s*10px auto;[^}]*border:\s*0;[^}]*border-radius:\s*0;[^}]*background:\s*var\(--et-graph-base\);/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-graph,\s*\.pipeline-analyzer-hover-overlay\s*\{[^}]*position:\s*absolute;[^}]*top:\s*20px;[^}]*left:\s*20px;[^}]*width:\s*calc\(100% - 40px\);[^}]*height:\s*calc\(100% - 40px\);/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-hover-overlay\s*\{[^}]*pointer-events:\s*none;/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-spinner-overlay\s*\{[^}]*position:\s*absolute;[^}]*z-index:\s*5;[^}]*inset:\s*20px;[^}]*display:\s*flex;[^}]*pointer-events:\s*none;/s);
   assert.match(uiSource, /'loading-spinner pipeline-analyzer-spinner'/);
   assert.match(analyzerCss, /\.pipeline-analyzer-spinner\s*\{[^}]*display:\s*block;[^}]*position:\s*static;[^}]*z-index:\s*auto;/s);
   assert.doesNotMatch(analyzerCss, /@keyframes pipeline-analyzer-spin|\.pipeline-analyzer-spinner\s*\{[^}]*(?:border|animation):/s);
-  assert.match(analyzerCss, /\.pipeline-analyzer-grid line\s*\{[^}]*stroke:\s*#333;[^}]*stroke-width:\s*1;/s);
-  assert.match(analyzerCss, /\.pipeline-analyzer-axes text\s*\{[^}]*fill:\s*#666;[^}]*font-size:\s*10px;/s);
+  assert.match(analyzerCss, /\.pipeline-analyzer-grid line\s*\{[^}]*stroke:\s*var\(--et-graph-grid-subtle\);[^}]*stroke-width:\s*1;/s);
+  assert.match(analyzerCss, /\.pipeline-analyzer-axes text\s*\{[^}]*fill:\s*var\(--et-graph-label\);[^}]*font-size:\s*10px;/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-curve\s*\{[^}]*stroke-width:\s*1;[^}]*pointer-events:\s*none;[^}]*vector-effect:\s*non-scaling-stroke;/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-curve\.is-highlighted\s*\{[^}]*stroke-width:\s*3\.5;[^}]*opacity:\s*1;/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-curve\.is-hidden\s*\{[^}]*display:\s*none;/s);
@@ -72,9 +72,10 @@ uiTest('places one accessible Analyzer button directly after Share with dedicate
   assert.match(sharedCss, /\.pipeline-analyzer-panel select option:hover,/);
   assert.match(sharedCss, /\.pipeline-analyzer-panel select option:checked,/);
   assert.match(sharedCss, /\.pipeline-analyzer-panel input\[type="number"\],\s*\.pipeline-analyzer-panel select,/);
-  assert.match(sharedCss, /\.plugin-parameter-ui \.parameter-row input\[type="number"\],\s*\.pipeline-analyzer-panel input\[type='number'\]\s*\{[^}]*padding:\s*4px;[^}]*background-color:\s*#3d3d3d;[^}]*border:\s*1px solid #4d4d4d;[^}]*color:\s*#ffffff;[^}]*border-radius:\s*4px;/s);
-  assert.match(sharedCss, /\.plugin-parameter-ui select,\s*\.pipeline-analyzer-panel select\s*\{[^}]*background-color:\s*#3d3d3d;[^}]*border:\s*1px solid #4d4d4d;[^}]*color:\s*#ffffff;[^}]*border-radius:\s*4px;[^}]*padding:\s*4px;/s);
-  assert.match(sharedCss, /body:not\(\.layout-mobile\) \.plugin-parameter-ui \.parameter-row input\[type="number"\],\s*body:not\(\.layout-mobile\) \.pipeline-analyzer-panel input\[type="number"\]\s*\{[^}]*height:\s*26px;[^}]*min-height:\s*26px;[^}]*padding:\s*4px;[^}]*font:\s*inherit;[^}]*line-height:\s*normal;[^}]*color-scheme:\s*dark;/s);
+  assert.match(sharedCss, /\.plugin-parameter-ui \.parameter-row input\[type="number"\],\s*\.pipeline-analyzer-panel input\[type='number'\]\s*\{[^}]*padding:\s*4px;[^}]*background-color:\s*var\(--et-surface-17\);[^}]*border:\s*1px solid var\(--et-surface-23\);[^}]*color:\s*var\(--et-text-primary\);[^}]*border-radius:\s*4px;/s);
+  assert.match(sharedCss, /\.plugin-parameter-ui select,\s*\.pipeline-analyzer-panel select\s*\{[^}]*background-color:\s*var\(--et-surface-17\);[^}]*border:\s*1px solid var\(--et-surface-23\);[^}]*color:\s*var\(--et-text-primary\);[^}]*border-radius:\s*4px;[^}]*padding:\s*4px;/s);
+  assert.match(sharedCss, /body:not\(\.layout-mobile\) \.plugin-parameter-ui \.parameter-row input\[type="number"\],\s*body:not\(\.layout-mobile\) \.pipeline-analyzer-panel input\[type="number"\]\s*\{[^}]*padding:\s*4px;[^}]*font:\s*inherit;[^}]*line-height:\s*normal;/s);
+  assert.match(sharedCss, /body:not\(\.layout-mobile\) :is\([^{}]*\.pipeline-analyzer-panel input\[type="number"\],[^{}]*\) \{[^}]*box-sizing: border-box;[^}]*height: 26px;[^}]*min-height: 26px;/s);
   assert.doesNotMatch(analyzerCss, /\.pipeline-analyzer-panel input\[type='number'\]\s*\{[^}]*(?:height:\s*30px|padding:\s*3px 7px)/s);
   assert.doesNotMatch(analyzerCss, /\.pipeline-analyzer-panel select\s*\{[^}]*(?:height:\s*30px|padding:\s*3px 7px|border-radius:\s*4px)/s);
   assert.doesNotMatch(analyzerCss, /pipeline-analyzer-(?:status|warnings|provenance|graph-empty|stale-badge)/);
@@ -546,8 +547,8 @@ uiTest('renders five two-curve graph views with synchronized hover and legend hi
     xTicks: [{ position: 0, label: '20 Hz' }, { position: 1, label: '20 kHz' }],
     yTicks: [{ position: 0, label: '6 dB' }, { position: 1, label: '-18 dB' }],
     curves: [
-      { id: 'before', label: 'Before', color: '#b0b0b0', opacity: 0.7, points: [{ x: 0, y: 0.5, xValue: 20, yValue: 0 }, { x: 1, y: 0.25, xValue: 20000, yValue: 6 }] },
-      { id: 'after', label: 'After', color: '#00ff00', opacity: 1, points: [{ x: 0, y: 0.6, xValue: 20, yValue: -2 }, { x: 1, y: 0.4, xValue: 20000, yValue: 2 }] }
+      { id: 'before', label: 'Before', color: 'var(--et-graph-trace-secondary)', opacity: 0.7, points: [{ x: 0, y: 0.5, xValue: 20, yValue: 0 }, { x: 1, y: 0.25, xValue: 20000, yValue: 6 }] },
+      { id: 'after', label: 'After', color: 'var(--et-graph-trace)', opacity: 1, points: [{ x: 0, y: 0.6, xValue: 20, yValue: -2 }, { x: 1, y: 0.4, xValue: 20000, yValue: 2 }] }
     ]
   };
   ui.setResult({
@@ -582,7 +583,7 @@ uiTest('renders five two-curve graph views with synchronized hover and legend hi
   assert.equal(ui.legend.querySelectorAll('.pipeline-analyzer-legend-row').length, 2);
   assert.equal(ui.legend.children[1].querySelector('.pipeline-analyzer-legend-label').textContent, 'Before');
   assert.equal(ui.legend.children[2].querySelector('.pipeline-analyzer-legend-label').textContent, 'After');
-  assert.equal(ui.legend.children[1].style.color, '#b0b0b0');
+  assert.equal(ui.legend.children[1].style.color, 'var(--et-graph-trace-secondary)');
   assert.equal(ui.legend.children[1].style.opacity, '0.7');
   const grid = ui.graphSvg.children[0];
   assert.equal(grid.className, 'pipeline-analyzer-grid');
@@ -600,10 +601,11 @@ uiTest('renders five two-curve graph views with synchronized hover and legend hi
   assert.equal(axes.children[2].getAttribute('x'), '20.48');
   assert.equal(axes.children[2].getAttribute('y'), '5');
   assert.equal(axes.children[3].getAttribute('y'), '475');
-  assert.equal(ui.graphSvg.children.some(child => child.tagName === 'PATH' && child.attributes.stroke === '#00ff00'), true);
+  assert.equal(ui.graphSvg.children.some(child => child.tagName === 'PATH' && child.style.stroke === 'var(--et-graph-trace)'), true);
   ui.graphShell.dispatch('pointermove', { clientX: 512, clientY: 240 });
   assert.match(ui.cursorX.textContent, /kHz$/);
   assert.equal(ui.hoverSvg.querySelectorAll('.pipeline-analyzer-cursor-marker').length, 2);
+  assert.equal(ui.hoverSvg.querySelectorAll('.pipeline-analyzer-cursor-marker')[0].style.fill, 'var(--et-graph-trace-secondary)');
   assert.ok(ui.legendValues.get('before').textContent.length > 0);
   assert.ok(ui.legendValues.get('after').textContent.length > 0);
   const beforePath = ui.curvePaths.get('before');
@@ -688,8 +690,8 @@ uiTest('limits hover interpolation to finite adjacent points inside each curve s
     xTicks: [],
     yTicks: [],
     curves: [
-      { id: 'before', label: 'Before', color: '#b0b0b0', opacity: 0.7, points },
-      { id: 'after', label: 'After', color: '#00ff00', opacity: 1, points }
+      { id: 'before', label: 'Before', color: 'var(--et-graph-trace-secondary)', opacity: 0.7, points },
+      { id: 'after', label: 'After', color: 'var(--et-graph-trace)', opacity: 1, points }
     ]
   };
   ui.setResult({

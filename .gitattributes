@@ -21,6 +21,7 @@ js/vendor/sqlite/sqlite3.mjs whitespace=-trailing-space
 js/vendor/offline-audio-encoders.mjs whitespace=-trailing-space,-space-before-tab
 
 # Binary files should not be modified
+*.bin binary
 *.png binary
 *.jpg binary
 *.jpeg binary

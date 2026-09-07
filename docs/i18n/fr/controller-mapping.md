@@ -40,6 +40,8 @@ Horloge et Minuteur ne contrôlent que les paramètres numériques des effets, p
 
 ## Connexion et dépannage
 
+L’état de connexion de chaque appareil MIDI apparaît sous son nom : **Connecté** dans la couleur de réussite du thème ou **Déconnecté** dans sa couleur d’avertissement.
+
 Les affectations restent enregistrées après une déconnexion et reprennent au retour d'un périphérique de même nom. Si une mise à jour du système ou du pilote modifie ce nom, recommencez le Learn pour les affectations concernées. Les manettes identiques partagent leurs affectations et les ports MIDI de même nom ne sont distingués que par leur ordre de connexion.
 
 Si aucun périphérique MIDI n'apparaît, autorisez l'accès MIDI pour EffeTune et rouvrez la fenêtre. Sur Safari, le clavier et la manette restent disponibles.

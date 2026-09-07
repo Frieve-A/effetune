@@ -6,6 +6,7 @@ import {
   PowerConfigStore,
   PowerConfigStoreError
 } from './power-config-store.js';
+import { normalizeThemeId } from '../theme-registry.mjs';
 import { normalizeOfflineOutputSettings } from '../audio/offline-output-settings.js';
 
 export const WEB_APP_CONFIG_KEY = 'effetune_app_config';
@@ -53,6 +54,7 @@ function revisionsEqual(left, right) {
 
 function normalizeAppConfig(config) {
   const normalized = isPlainObject(config) ? cloneValue(config) : {};
+  if ('theme' in normalized) normalized.theme = normalizeThemeId(normalized.theme);
   normalized.powerSaving = normalizePowerSettings(normalized.powerSaving);
   normalized.offlineOutput = normalizeOfflineOutputSettings(normalized.offlineOutput);
   return normalized;

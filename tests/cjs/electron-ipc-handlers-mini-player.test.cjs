@@ -6,7 +6,9 @@ const { loadFreshModule, withModuleLoadStub } = require('../helpers/cjs-module-u
 function createHarness({
   deferFullScreenExit = false,
   fullScreen = false,
-  savedMiniBounds = null
+  savedMiniBounds = null,
+  contentSizeDeficit = [0, 0],
+  deferContentLayout = false
 } = {}) {
   const handlers = new Map();
   const calls = [];
@@ -15,6 +17,7 @@ function createHarness({
   let leaveFullScreenListener = null;
   let maximized = true;
   let outerBounds = { x: 100, y: 80, width: 1200, height: 800 };
+  let contentSize = [1184, 730];
   const mainWindow = {
     isDestroyed: () => false,
     isFullScreen: () => fullScreenState,
@@ -36,9 +39,16 @@ function createHarness({
       calls.push(['setBounds', bounds]);
       outerBounds = { ...bounds };
     },
+    getContentSize: () => [...contentSize],
     setContentSize(width, height) {
       calls.push(['setContentSize', width, height]);
-      outerBounds = { ...outerBounds, width: width + 16, height: height + 70 };
+      const updateLayout = () => {
+        const deficit = typeof contentSizeDeficit === 'function' ? contentSizeDeficit(width) : contentSizeDeficit;
+        contentSize = [width - deficit[0], height - deficit[1]];
+        outerBounds = { ...outerBounds, width: contentSize[0] + 16, height: contentSize[1] + 70 };
+      };
+      if (deferContentLayout) setImmediate(updateLayout);
+      else updateLayout();
     },
     setPosition(x, y) {
       calls.push(['setPosition', x, y]);
@@ -145,21 +155,17 @@ test('mini player IPC locks its size and restores the normal window in transitio
     'unmaximize',
     ...(process.platform === 'darwin' ? [] : [['setMenuBarVisibility', false]]),
     ['setMinimumSize', 320, 96],
-    ['setContentSize', 420, 120],
-    ['setPosition', 880, 80],
     ['setResizable', false],
     ['setMaximizable', true],
     ['setFullScreenable', false],
+    ['setContentSize', 420, 120],
+    ['setPosition', 880, 80],
+    ...(process.platform === 'win32' ? [['setContentSize', 420, 120]] : []),
     ['setAlwaysOnTop', true],
     ['persistAlwaysOnTop', true],
     'resumeSave',
     'saveWindowState'
   ];
-  if (process.platform === 'win32') {
-    expectedEntry.splice(7, 0,
-      ['setContentSize', 420, 120],
-      ['setPosition', 880, 80]);
-  }
   assert.deepEqual(harness.calls, expectedEntry);
   assert.equal(harness.fullscreenMenuItem.enabled, false);
 
@@ -184,6 +190,25 @@ test('mini player IPC locks its size and restores the normal window in transitio
   }
   assert.deepEqual(harness.calls, expectedExit);
   assert.equal(harness.fullscreenMenuItem.enabled, true);
+});
+
+test('mini player measures native content size after moving to the destination display', {
+  skip: process.platform !== 'win32'
+}, async () => {
+  for (const contentSizeDeficit of [[0, 0], [2, 10], [3, 11], [4, 16]]) {
+    const harness = createHarness({
+      savedMiniBounds: { x: -400, y: -1400, width: 420, height: 120 },
+      contentSizeDeficit,
+      deferContentLayout: true
+    });
+    await harness.handlers.get('set-mini-player-mode')({}, { enabled: true });
+    assert.deepEqual(harness.mainWindow.getContentSize(), [420, 120]);
+    const positionIndex = harness.calls.findIndex(call => Array.isArray(call) && call[0] === 'setPosition');
+    const sizeIndex = harness.calls.findLastIndex(call => Array.isArray(call) && call[0] === 'setContentSize');
+    assert.ok(positionIndex < sizeIndex);
+    const sizeCalls = harness.calls.filter(call => Array.isArray(call) && call[0] === 'setContentSize');
+    assert.equal(sizeCalls.length, contentSizeDeficit.some(value => value !== 0) ? 3 : 2);
+  }
 });
 
 test('mini player IPC leaves full screen before entering mini mode', async () => {
@@ -228,4 +253,15 @@ test('assigning a replacement main window clears stale mini mode tracking', asyn
     /only available in mini player mode/
   );
   assert.deepEqual(await setMode({}, { enabled: false }), { success: true, enabled: false });
+});
+
+test('mini player remeasures corrected size when fractional DPI changes native rounding', {
+  skip: process.platform !== 'win32'
+}, async () => {
+  const harness = createHarness({
+    contentSizeDeficit: width => [width === 420 ? 2 : 1, 10],
+    deferContentLayout: true
+  });
+  await harness.handlers.get('set-mini-player-mode')({}, { enabled: true });
+  assert.deepEqual(harness.mainWindow.getContentSize(), [420, 120]);
 });

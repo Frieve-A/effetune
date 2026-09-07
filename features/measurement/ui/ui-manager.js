@@ -29,9 +29,9 @@ export class UIManager {
         this.pendingDeleteType = null;
         this.measurementStateGeneration = 0;
         this.graphColors = {
-            original: '#4e79a7',
-            correction: '#f28e2b',
-            corrected: '#59a14f'
+            original: '#4e79a7', // theme-allow: Channel and response identity colors.
+            correction: '#f28e2b', // theme-allow: Channel and response identity colors.
+            corrected: '#59a14f' // theme-allow: Channel and response identity colors.
         };
         
         // Initialize sub-controllers

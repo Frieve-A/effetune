@@ -196,6 +196,11 @@ class NativeChainTests(unittest.TestCase):
                 "spectrum",
             ),
             (
+                effetune.NoteSpectrogram(id="notes"),
+                effetune.NoteSpectrogramTelemetryFrame,
+                "noteSpectrogram",
+            ),
+            (
                 effetune.Spectrogram(id="spectrogram", points=10),
                 effetune.SpectrogramTelemetryFrame,
                 "spectrogram",
@@ -264,6 +269,18 @@ class NativeChainTests(unittest.TestCase):
                             max(frame.current_db) - min(frame.current_db),
                             20,
                         )
+                    elif kind == "noteSpectrogram":
+                        self.assertEqual(frame.sample_rate, 48_000)
+                        self.assertEqual(frame.first_midi, 21)
+                        self.assertEqual(frame.divisions_per_semitone, 5)
+                        self.assertGreater(frame.time_seconds, 0)
+                        self.assertGreater(frame.hop_seconds, 0)
+                        self.assertGreater(frame.frame_index, 0)
+                        self.assertGreater(frame.generation, 0)
+                        self.assertEqual(len(frame.levels), 440)
+                        self.assertTrue(np.isfinite(frame.levels).all())
+                        self.assertTrue(all(0 <= value <= 1 for value in frame.levels))
+                        self.assertGreater(max(frame.levels), 0)
                     elif kind == "spectrogram":
                         self.assertEqual(frame.sample_rate, 48_000)
                         self.assertEqual(frame.points, 10)
@@ -1081,7 +1098,7 @@ class NativeChainTests(unittest.TestCase):
             topology="automatic",
         )
         source_four_channels = np.vstack((source, source))
-        self.assertEqual(len(EFFECT_METADATA["effects"]), 92)
+        self.assertEqual(len(EFFECT_METADATA["effects"]), 100)
         for metadata in EFFECT_METADATA["effects"]:
             effect_type = metadata["type"]
             definition = metadata["parameters"][0] if metadata["parameters"] else None
@@ -1102,7 +1119,11 @@ class NativeChainTests(unittest.TestCase):
                             effect.parameters[definition["name"]],
                             definition["default"],
                         )
-                asset = crossover_ir if effect_type == "FIRCrossover" else ir
+                asset = (
+                    effetune.AssetData(np.ones((4, 1), dtype=np.float32), 48_000)
+                    if effect_type == "CrosstalkCancellation"
+                    else crossover_ir if effect_type == "FIRCrossover" else ir
+                )
                 chain = effetune.Chain(
                     [effect],
                     asset_resolver=lambda _, resolved=asset: resolved,

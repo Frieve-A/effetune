@@ -5,45 +5,9 @@
 }
 
 .phase-select-eq-region-tabs {
-    display: flex;
-    gap: 2px;
     padding: 10px 10px 0;
     border-radius: 4px 4px 0 0;
-    background: #2d2d2d;
-}
-
-.phase-select-eq-region-tab {
-    box-sizing: border-box;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    min-height: 34px;
-    padding: 8px 16px;
-    border: 0;
-    border-radius: 4px 4px 0 0;
-    background: #333;
-    color: var(--et-text-primary);
-    cursor: pointer;
-    transition: background var(--et-transition-fast), box-shadow var(--et-transition-fast),
-        opacity var(--et-transition-fast);
-}
-
-.phase-select-eq-region-tab:hover:not([aria-selected="true"]) {
-    background: #3d3d3d;
-}
-
-.phase-select-eq-region-tab[aria-selected="true"] {
-    background: #444;
-}
-
-.phase-select-eq-region-tab.disabled {
-    opacity: 0.5;
-}
-
-.phase-select-eq-region-tab:focus-visible {
-    outline: none;
-    box-shadow: var(--et-focus-ring);
+    background: color-mix(in srgb, var(--et-surface-10), var(--et-graph-bg-deep) 25%);
 }
 
 /* Only one Band editor exists, so a Band soloed from another tab would otherwise be
@@ -65,14 +29,14 @@
     gap: 10px;
     padding: 10px;
     border-radius: 0 0 4px 4px;
-    background: #2d2d2d;
+    background: color-mix(in srgb, var(--et-surface-10), var(--et-graph-bg-deep) 25%);
 }
 
 .phase-select-eq-fields {
     --phase-select-eq-field-columns: minmax(145px, auto) minmax(80px, 1fr) 80px;
     display: grid;
     grid-template-columns: repeat(2, minmax(260px, 1fr));
-    gap: 4px 15px;
+    gap: 0 15px;
 }
 
 .phase-select-eq-plugin-ui .parameter-row.phase-select-eq-field {
@@ -108,15 +72,15 @@
 
 .phase-select-eq-hidden-axis-badge {
     padding: 3px 7px;
-    border: 1px solid #555;
+    border: 1px solid var(--et-surface-28);
     border-radius: 999px;
     color: var(--et-text-secondary);
     font-size: 0.8em;
 }
 
 .phase-select-eq-hidden-axis-badge.limited {
-    border-color: #b38b00;
-    color: #ffd65a;
+    border-color: var(--et-warning);
+    color: var(--et-warning);
 }
 
 .phase-select-eq-field label {
@@ -136,9 +100,9 @@
 
 .phase-select-eq-map {
     align-self: center;
-    border: 1px solid #333;
+    border: 1px solid var(--et-surface-13);
     border-radius: 4px;
-    background-color: #1a1a1a;
+    background-color: var(--et-graph-bg-deep);
     overflow: hidden;
 }
 
@@ -155,16 +119,8 @@ body.layout-mobile .phase-select-eq-map {
     aspect-ratio: var(--mobile-aspect-ratio, 4 / 3) !important;
 }
 
-body.layout-mobile .phase-select-eq-region-tabs {
-    flex-wrap: wrap;
-    gap: 4px;
-}
-
 body.layout-mobile .phase-select-eq-region-tab {
     flex: 1 1 72px;
-    min-width: 0;
-    min-height: var(--et-mobile-control-height);
-    padding: 8px;
 }
 
 body.layout-mobile .phase-select-eq-fields {

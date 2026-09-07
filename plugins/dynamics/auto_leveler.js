@@ -1,6 +1,9 @@
 const AUTO_LEVELER_TAP_LOUDNESS_LEVELS = 7;
 const AUTO_LEVELER_TELEMETRY_VERSION = 1;
 const AUTO_LEVELER_TELEMETRY_PAYLOAD_BYTES = 8;
+// Preserve the history duration at the normal 60 Hz telemetry rate.
+const AUTO_LEVELER_HISTORY_SECONDS = 1024 / 60;
+const AUTO_LEVELER_DISPLAY_LEAD_SECONDS = 1 / 60;
 
 class AutoLevelerPlugin extends PluginBase {
     constructor() {
@@ -29,8 +32,9 @@ class AutoLevelerPlugin extends PluginBase {
         // LUFS history buffers (1024 points) initialized with NaN so that no initial bottom line is drawn
         this.inputLufsBuffer = new Float32Array(1024).fill(NaN);
         this.outputLufsBuffer = new Float32Array(1024).fill(NaN);
-        this.secondMarkers = [];
-        this.prevTime = null;
+        this.historyTimes = new Float64Array(1024).fill(NaN);
+        this.graphPaused = false;
+        this.graphTime = null;
 
         this.observer = null;
         this._dspTelemetryHub = null;
@@ -400,30 +404,34 @@ class AutoLevelerPlugin extends PluginBase {
         if (!levels) return;
         this.onMessage({
             type: 'processBuffer',
-            measurements: { ...levels, time: performance.now() / 1000 }
+            measurements: levels
         });
     }
 
     onMessage(message) {
         this.ensureDspTelemetrySubscription();
-        if (message.type === 'processBuffer' && message.measurements) {
-            // Shift history buffers
-            this.inputLufsBuffer.copyWithin(0, 1);
-            this.outputLufsBuffer.copyWithin(0, 1);
+        if (message.type !== 'processBuffer' || !message.measurements ||
+            !this.enabled || !this._sectionEnabled) return;
+        const { inputLufs, outputLufs } = message.measurements;
+        if (!Number.isFinite(inputLufs) || !Number.isFinite(outputLufs)) return;
+        // DSP telemetry has no source timestamp. Use the same monotonic clock
+        // for both delivery paths and rendering, including after ON/OFF.
+        const now = performance.now() / 1000;
+        this.inputLufsBuffer.copyWithin(0, 1);
+        this.outputLufsBuffer.copyWithin(0, 1);
+        this.historyTimes.copyWithin(0, 1);
+        const last = this.historyTimes.length - 1;
+        this.inputLufsBuffer[last] = inputLufs;
+        this.outputLufsBuffer[last] = outputLufs;
+        this.historyTimes[last] = now;
+        this.graphTime = now;
+    }
 
-            // Shift marker positions
-            this.secondMarkers = this.secondMarkers.map(v => v - 1).filter(v => v >= 0);
-
-            const t = message.measurements.time;
-            if (this.prevTime !== null && !Number.isNaN(t) && Math.floor(this.prevTime) !== Math.floor(t)) {
-                this.secondMarkers.push(this.inputLufsBuffer.length - 1);
-            }
-            this.prevTime = t;
-
-            // Store LUFS values
-            this.inputLufsBuffer[this.inputLufsBuffer.length - 1] = message.measurements.inputLufs;
-            this.outputLufsBuffer[this.outputLufsBuffer.length - 1] = message.measurements.outputLufs;
-        }
+    getGraphDisplayTime(now) {
+        const latest = this.historyTimes[this.historyTimes.length - 1];
+        if (!Number.isFinite(latest)) return null;
+        if (this.graphPaused) return this.graphTime;
+        return Math.max(latest, Math.min(latest + AUTO_LEVELER_DISPLAY_LEAD_SECONDS, now / 1000));
     }
 
     getParameters() {
@@ -484,25 +492,28 @@ class AutoLevelerPlugin extends PluginBase {
         if (!this.enabled || !this._sectionEnabled) return;
         if (this.animationFrameId) return;
 
-        const animate = () => {
+        this.graphPaused = false;
+        const animate = (now) => {
             if (!this.isVisible) {
                 this.stopAnimation();
                 return;
             }
-            this.drawGraph();
+            this.drawGraph(now);
             this.animationFrameId = this.requestPowerAnimationFrame(animate);
         };
-        animate();
+        animate(performance.now());
     }
 
     stopAnimation() {
+        this.graphTime = this.getGraphDisplayTime(performance.now());
+        this.graphPaused = true;
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
         }
     }
 
-    drawGraph() {
+    drawGraph(now = performance.now()) {
         if (!this.canvasCtx) return;
         const ctx = this.canvasCtx;
         const width = this.canvas.width;
@@ -520,15 +531,15 @@ class AutoLevelerPlugin extends PluginBase {
         const graphLineWidth = (isMobileLayout ? 2 : 1) * dpr;
 
         // Clear canvas
-        ctx.fillStyle = '#1a1a1a';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
         ctx.fillRect(0, 0, width, height);
 
         // Draw grid lines and labels
-        ctx.strokeStyle = '#333';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-subtle') ?? '');
         ctx.lineWidth = graphLineWidth;
         ctx.textAlign = 'right';
         ctx.font = `${tickFontSize}px Arial`;
-        ctx.fillStyle = '#ccc';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label-strong') ?? '');
 
         // Draw horizontal grid lines (6dB steps from -42dB to -6dB)
         for (let db = -42; db <= -6; db += 6) {
@@ -553,10 +564,14 @@ class AutoLevelerPlugin extends PluginBase {
         ctx.fillText('Time', width / 2, height - bottomOffset);
 
         // Draw 1-second markers
-        ctx.strokeStyle = '#555';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-strong') ?? '');
         ctx.lineWidth = graphLineWidth;
-        for (const idx of this.secondMarkers) {
-            const x = width * idx / this.inputLufsBuffer.length;
+        const displayTime = this.getGraphDisplayTime(now);
+        const pixelsPerSecond = width / AUTO_LEVELER_HISTORY_SECONDS;
+        const firstSecond = displayTime === null ? 1 : Math.max(0, Math.ceil(displayTime - AUTO_LEVELER_HISTORY_SECONDS));
+        const lastSecond = displayTime === null ? 0 : Math.floor(displayTime);
+        for (let second = firstSecond; second <= lastSecond; second++) {
+            const x = width + (second - displayTime) * pixelsPerSecond;
             ctx.beginPath();
             ctx.moveTo(x, height - (8 * dpr));
             ctx.lineTo(x, height);
@@ -569,27 +584,38 @@ class AutoLevelerPlugin extends PluginBase {
             ctx.lineWidth = graphLineWidth;
             ctx.beginPath();
             let started = false;
+            let lastY = 0;
+            let previousTime = null;
+            const maxContinuousGap = 1;
             for (let i = 0; i < buffer.length; i++) {
                 const value = buffer[i];
-                if (isNaN(value)) continue;
-                const x = width * i / buffer.length;
+                const time = this.historyTimes[i];
+                if (!Number.isFinite(value) || !Number.isFinite(time) || displayTime === null) {
+                    previousTime = null;
+                    continue;
+                }
+                const x = width + (time - displayTime) * pixelsPerSecond;
                 const y = height * (1 - (value + 48) / 48);
-                if (!started) {
+                if (!started || previousTime === null || time - previousTime > maxContinuousGap) {
                     ctx.moveTo(x, y);
                     started = true;
                 } else {
                     ctx.lineTo(x, y);
                 }
+                lastY = y;
+                previousTime = time;
             }
             if (started) {
+                // Keep the latest measured value at the right edge between updates.
+                ctx.lineTo(width, lastY);
                 ctx.stroke();
             }
         };
 
         // Draw input LUFS (green)
-        drawLufs(this.inputLufsBuffer, '#00ff00');
+        drawLufs(this.inputLufsBuffer, (window.ThemePalette?.get('graph-trace') ?? ''));
         // Draw output (After Auto Leveler) LUFS (white)
-        drawLufs(this.outputLufsBuffer, '#ffffff');
+        drawLufs(this.outputLufsBuffer, (window.ThemePalette?.get('text-primary') ?? ''));
         
         // Display current LUFS level as white text
         const currentOutputLufs = this.outputLufsBuffer[this.outputLufsBuffer.length - 1];
@@ -598,7 +624,7 @@ class AutoLevelerPlugin extends PluginBase {
             const x = width - (10 * dpr); // Position near the right edge
             const y = height * (1 - (clamped + 48) / 48) - (10 * dpr); // Position above the line
             
-            ctx.fillStyle = '#ffffff';
+            ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
             ctx.textAlign = 'right';
             ctx.font = `${valueFontSize}px Arial`;
             ctx.fillText(currentOutputLufs.toFixed(1) + ' dB', x, y);
@@ -657,11 +683,7 @@ class AutoLevelerPlugin extends PluginBase {
         this.currentGain = 1.0;
         this.lastProcessTime = performance.now() / 1000;
 
-        // Cancel animation frame
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
-        }
+        this.stopAnimation();
 
         // Remove event listeners
         for (const [element, listener] of this.boundEventListeners) {
@@ -689,8 +711,8 @@ class AutoLevelerPlugin extends PluginBase {
         // Reset buffers to NaN so that initial graph is blank
         this.inputLufsBuffer.fill(NaN);
         this.outputLufsBuffer.fill(NaN);
-        this.secondMarkers = [];
-        this.prevTime = null;
+        this.historyTimes.fill(NaN);
+        this.graphTime = null;
 
         super.cleanup();
     }

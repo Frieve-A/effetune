@@ -450,18 +450,18 @@ export class ElectronIntegration {
           left: 0;
           width: 100%;
           height: 100%;
-          background-color: rgba(0, 0, 0, 0.7);
+          background-color: var(--et-scrim);
           display: flex;
           justify-content: center;
           align-items: center;
           z-index: 1000;
         }
         .about-dialog {
-          background-color: #222;
+          background-color: var(--et-surface-5);
           border-radius: 8px;
           padding: 20px;
           width: 400px;
-          color: #fff;
+          color: var(--et-text-primary);
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -490,7 +490,7 @@ export class ElectronIntegration {
           margin-bottom: 10px;
         }
         .about-update-link {
-          color: #4a9eff;
+          color: var(--et-accent);
           text-decoration: none;
           font-size: 14px;
           margin-bottom: 10px;
@@ -498,16 +498,16 @@ export class ElectronIntegration {
           transition: color 0.2s ease;
         }
         .about-update-link:hover {
-          color: #66b3ff;
+          color: var(--et-accent-hover);
         }
         .about-description {
           font-size: 14px;
-          color: #ccc;
+          color: var(--et-surface-81);
           margin-bottom: 5px;
         }
         .about-copyright {
           font-size: 12px;
-          color: #999;
+          color: var(--et-surface-58);
         }
         .dialog-buttons {
           display: flex;
@@ -519,11 +519,11 @@ export class ElectronIntegration {
           border: none;
           border-radius: 4px;
           cursor: pointer;
-          background-color: #007bff;
-          color: #fff;
+          background-color: var(--et-accent);
+          color: var(--et-on-accent);
         }
         .dialog-buttons button:hover {
-          background-color: #0069d9;
+          background-color: var(--et-accent-hover);
         }
       `;
       document.head.appendChild(styleElement);
@@ -578,6 +578,7 @@ export class ElectronIntegration {
     const cfg = await loadConfig(this.isElectron);
     this.config = cfg;
     window.appConfig = cfg;
+    window.uiManager?.syncThemeWithConfig?.(cfg);
     if (window.uiManager && typeof window.uiManager.syncLanguageWithConfig === 'function') {
       await window.uiManager.syncLanguageWithConfig(cfg);
     }

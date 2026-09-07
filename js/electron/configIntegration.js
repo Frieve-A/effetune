@@ -26,6 +26,8 @@ import {
 } from '../audio/offline-output-settings.js';
 import { closeStandardSelect, enableStandardSelects } from '../ui/standard-select.js';
 
+import { THEME_PRESETS, getThemePreset, normalizeThemeId } from '../theme-registry.mjs';
+
 export { loadConfig, saveConfig };
 
 export async function showConfigDialog(isElectron, currentConfig) {
@@ -34,6 +36,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     ...(currentConfig || {}),
     ...await loadConfig(isElectron)
   };
+  if ('theme' in config) config.theme = normalizeThemeId(config.theme);
   config.language = normalizeLanguagePreference(config.language || AUTO_LANGUAGE_PREFERENCE);
   config.startupView = config.startupView === 'library' ? 'library' : 'effects';
   config.libraryStartupView = normalizeMusicLibraryStartupView(config.libraryStartupView);
@@ -174,6 +177,10 @@ export async function showConfigDialog(isElectron, currentConfig) {
             <select id="language-select" class="config-select"></select>
           </div>
           <div class="device-section">
+            <label class="section-label" for="theme-select" id="config-theme-label"></label>
+            <select id="theme-select" class="config-select"></select>
+          </div>
+          <div class="device-section">
             <label class="section-label" id="config-startup-view-label"></label>
             <div class="radio-container">
               <input type="radio" name="startup-view" id="startup-view-effects" value="effects" ${config.startupView === 'effects' ? 'checked' : ''}>
@@ -227,14 +234,14 @@ export async function showConfigDialog(isElectron, currentConfig) {
       left: 0;
       width: 100%;
       height: 100%;
-      background-color: rgba(0, 0, 0, 0.7);
+      background-color: var(--et-scrim);
       display: flex;
       justify-content: center;
       align-items: center;
       z-index: 1000;
     }
     .config-dialog {
-      background-color: #222;
+      background-color: var(--et-surface-5);
       border-radius: 8px;
       padding: 20px;
       width: 760px;
@@ -242,12 +249,12 @@ export async function showConfigDialog(isElectron, currentConfig) {
       max-height: calc(100vh - 40px);
       overflow-y: auto;
       box-sizing: border-box;
-      color: #fff;
+      color: var(--et-text-primary);
     }
     .config-dialog h2 {
       margin-top: 0;
       margin-bottom: 20px;
-      color: #fff;
+      color: var(--et-text-primary);
     }
     .config-dialog-content {
       display: grid;
@@ -264,11 +271,11 @@ export async function showConfigDialog(isElectron, currentConfig) {
       display: block;
       margin-bottom: 8px;
       font-weight: bold;
-      color: #fff;
+      color: var(--et-text-primary);
     }
     .power-saving-section {
       padding-left: 24px;
-      border-left: 1px solid #444;
+      border-left: 1px solid var(--et-surface-20);
     }
     .power-mode-option {
       margin-bottom: 9px;
@@ -278,17 +285,17 @@ export async function showConfigDialog(isElectron, currentConfig) {
     }
     .power-mode-help {
       margin-left: 26px;
-      color: #bbb;
+      color: var(--et-surface-74);
       font-size: 12px;
       line-height: 1.4;
     }
     .power-saving-warning {
       margin: 10px 0 12px 26px;
       padding: 9px 10px;
-      border: 1px solid #8a6b2f;
+      border: 1px solid var(--et-warning);
       border-radius: 4px;
-      background: #3b321f;
-      color: #ffe2a8;
+      background: color-mix(in srgb, var(--et-warning) 10%, transparent);
+      color: var(--et-warning);
       font-size: 12px;
       line-height: 1.45;
     }
@@ -308,7 +315,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
       width: 100%;
     }
     .offline-output-help {
-      color: #bbb;
+      color: var(--et-surface-74);
       font-size: 12px;
       line-height: 1.4;
     }
@@ -320,20 +327,20 @@ export async function showConfigDialog(isElectron, currentConfig) {
     }
     .openhome-name-row label {
       flex: 0 0 auto;
-      color: #ddd;
+      color: var(--et-surface-89);
       font-size: 13px;
     }
     .openhome-name-row input {
       min-width: 0;
       flex: 1 1 auto;
       padding: 6px 8px;
-      border: 1px solid #555;
+      border: 1px solid var(--et-surface-28);
       border-radius: 4px;
-      background: #262626;
-      color: #eee;
+      background: var(--et-surface-7);
+      color: var(--et-surface-96);
     }
     .openhome-name-row input:focus {
-      border-color: #888;
+      border-color: var(--et-surface-51);
       outline: none;
     }
     .openhome-name-row input:disabled {
@@ -341,32 +348,32 @@ export async function showConfigDialog(isElectron, currentConfig) {
     }
     .openhome-status {
       margin: 8px 0 0 26px;
-      color: #bbb;
+      color: var(--et-surface-74);
       font-size: 12px;
       font-weight: bold;
       line-height: 1.4;
     }
     .openhome-status[data-state="published"] {
-      color: #9ee6a7;
+      color: var(--et-success);
     }
     .openhome-status[data-state="error"],
     .openhome-status[data-state="unavailable"] {
-      color: #ffb2a8;
+      color: var(--et-danger);
     }
     .openhome-help {
       margin: 6px 0 0 26px;
-      color: #bbb;
+      color: var(--et-surface-74);
       font-size: 12px;
       line-height: 1.45;
     }
     .power-advanced-settings {
       margin: 12px 0 0 26px;
       padding-top: 10px;
-      border-top: 1px solid #3d3d3d;
+      border-top: 1px solid var(--et-surface-17);
     }
     .power-advanced-label {
       margin-bottom: 8px;
-      color: #ddd;
+      color: var(--et-surface-89);
       font-size: 12px;
       font-weight: bold;
     }
@@ -375,7 +382,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
       align-items: center;
       gap: 10px;
       min-height: 34px;
-      color: #ddd;
+      color: var(--et-surface-89);
       font-size: 12px;
     }
     .power-setting-row label {
@@ -395,7 +402,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     .checkbox-container label {
       display: inline;
       margin-bottom: 0;
-      color: #fff;
+      color: var(--et-text-primary);
       cursor: pointer;
     }
     .radio-container {
@@ -410,15 +417,15 @@ export async function showConfigDialog(isElectron, currentConfig) {
       display: inline;
       margin-bottom: 0;
       margin-right: 8px;
-      color: #fff;
+      color: var(--et-text-primary);
       cursor: pointer;
     }
     .config-select {
       margin-left: auto;
       padding: 4px 8px;
-      background-color: #333;
-      color: #fff;
-      border: 1px solid #444;
+      background-color: var(--et-surface-13);
+      color: var(--et-text-primary);
+      border: 1px solid var(--et-surface-20);
       border-radius: 4px;
       min-width: 120px;
     }
@@ -437,11 +444,11 @@ export async function showConfigDialog(isElectron, currentConfig) {
       border: none;
       border-radius: 4px;
       cursor: pointer;
-      background-color: #007bff;
-      color: #fff;
+      background-color: var(--et-accent);
+      color: var(--et-on-accent);
     }
     .dialog-buttons button:hover {
-      background-color: #0056b3;
+      background-color: var(--et-accent-hover);
     }
     body.layout-mobile .config-dialog-content {
       grid-template-columns: minmax(0, 1fr);
@@ -450,7 +457,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     body.layout-mobile .power-saving-section {
       padding-top: 12px;
       padding-left: 0;
-      border-top: 1px solid #444;
+      border-top: 1px solid var(--et-surface-20);
       border-left: 0;
     }
     @media (max-width: 700px) {
@@ -464,7 +471,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
       .power-saving-section {
         padding-top: 12px;
         padding-left: 0;
-        border-top: 1px solid #444;
+        border-top: 1px solid var(--et-surface-20);
         border-left: 0;
       }
       .power-mode-help,
@@ -522,6 +529,11 @@ export async function showConfigDialog(isElectron, currentConfig) {
       selectedValue,
       value => getLanguageOptionLabel(value, t)
     );
+  }
+
+  function renderThemeOptions() {
+    replaceOptions(document.getElementById('theme-select'), THEME_PRESETS.map(preset => preset.id),
+      normalizeThemeId(config.theme), id => getThemePreset(id).label);
   }
 
   function renderPresetOptions() {
@@ -815,6 +827,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
     const openHomeRisk = document.getElementById('openhome-risk');
     if (openHomeRisk) openHomeRisk.textContent = t('dialog.config.openHome.risk');
     document.getElementById('config-language-label').textContent = t('dialog.config.language');
+    document.getElementById('config-theme-label').textContent = t('dialog.config.theme');
+    renderThemeOptions();
     document.getElementById('config-startup-view-label').textContent = t('dialog.config.startupView');
     document.getElementById('config-startup-view-effects-label').textContent = t('dialog.config.startupView.effects');
     document.getElementById('config-startup-view-library-label').textContent = t('dialog.config.startupView.library');
@@ -904,6 +918,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
       presetSelect.disabled = pipelineStartup !== 'preset';
     }
     renderLanguageOptions();
+    renderThemeOptions();
     renderOfflineOutputControls();
   }
 
@@ -1113,6 +1128,11 @@ export async function showConfigDialog(isElectron, currentConfig) {
       }
     });
   }
+  document.getElementById('theme-select').addEventListener('change', async e => {
+    const theme = normalizeThemeId(e.target.value);
+    if (!await save({ theme })) return;
+    window.uiManager?.setThemePreference?.(theme);
+  });
   document.getElementById('controller-mapping-btn').addEventListener('click', async () => {
     try {
       const manager = window.midiControllerManager ||

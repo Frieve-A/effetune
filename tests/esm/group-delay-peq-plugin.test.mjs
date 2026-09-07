@@ -798,10 +798,10 @@ test('Group Delay PEQ draws the target and realized curves in the shared colours
     const paths = plugin.responseSvg.children;
     assert.equal(paths.length, 2);
     assert.equal(paths[0].attributes.class, 'group-delay-peq-target-response');
-    assert.equal(paths[0].attributes.stroke, 'rgba(176, 176, 176, 0.7)');
+    assert.equal(paths[0].style.stroke, 'var(--et-graph-trace-tertiary)');
     assert.equal(paths[0].attributes.fill, 'none');
     assert.equal(paths[1].attributes.class, 'group-delay-peq-realized-response');
-    assert.equal(paths[1].attributes.stroke, '#00ff00');
+    assert.equal(paths[1].style.stroke, 'var(--et-graph-trace)');
 
     // Flat settings clear the design, which is the only time Realized goes away.
     plugin._lastDesign = null;

@@ -2,7 +2,36 @@ import assert from 'node:assert/strict';
 
 const FIXTURE_PATH = '/tests/browser/controller-mapping-dialog-smoke.fixture.html';
 
+export async function runControllerMappingSettingsBrowserSmoke({ browser, baseURL }) {
+  for (const isElectron of [false, true]) {
+    const settingsContext = await browser.newContext();
+    try {
+      const settingsPage = await settingsContext.newPage();
+      await settingsPage.goto(`${baseURL}${FIXTURE_PATH}`, { waitUntil: 'load' });
+      await settingsPage.evaluate(value => window.__controllerMappingDialogSmoke.prepareSettings(value), isElectron);
+      assert.equal(await settingsPage.locator('link[href$="effetune-library.css"]').count(), 0);
+      await settingsPage.locator('#controller-mapping-btn').click();
+      await settingsPage.waitForFunction(() => {
+        const dialog = document.querySelector('.midi-mapping-dialog');
+        if (!dialog) return false;
+        const rect = dialog.getBoundingClientRect();
+        return getComputedStyle(dialog.parentElement).position === 'fixed' &&
+          dialog.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+      });
+      await settingsPage.keyboard.press('Escape');
+      await settingsPage.locator('.midi-mapping-dialog').waitFor({ state: 'detached' });
+      assert.equal(await settingsPage.locator('.config-dialog').count(), 1);
+      await settingsPage.locator('#controller-mapping-btn').click();
+      await settingsPage.locator('.midi-mapping-dialog').waitFor({ state: 'visible' });
+      assert.equal(await settingsPage.locator('link[href$="effetune-library.css"]').count(), 1);
+    } finally {
+      await settingsContext.close();
+    }
+  }
+}
+
 export async function runControllerMappingDialogBrowserSmoke({ browser, baseURL }) {
+  await runControllerMappingSettingsBrowserSmoke({ browser, baseURL });
   const context = await browser.newContext();
   const page = await context.newPage();
   const errors = [];
@@ -21,6 +50,22 @@ export async function runControllerMappingDialogBrowserSmoke({ browser, baseURL 
       const selectStyle = select ? getComputedStyle(select) : null;
       const trackStyle = list ? getComputedStyle(list, '::-webkit-scrollbar-track') : null;
       const thumbStyle = list ? getComputedStyle(list, '::-webkit-scrollbar-thumb') : null;
+      const styleProbe = document.createElement('div');
+      styleProbe.style.backgroundColor = 'var(--et-surface-14)';
+      styleProbe.style.borderTopColor = 'var(--et-surface-28)';
+      styleProbe.style.backgroundImage =
+        'linear-gradient(180deg, var(--et-surface-8), var(--et-surface-5))';
+      document.body.appendChild(styleProbe);
+      const probeStyle = getComputedStyle(styleProbe);
+      const expectedStyles = {
+        background: probeStyle.backgroundColor,
+        border: probeStyle.borderTopColor,
+        trackBackground: probeStyle.backgroundImage
+      };
+      styleProbe.style.backgroundImage =
+        'linear-gradient(180deg, var(--et-surface-34), var(--et-surface-23))';
+      expectedStyles.thumbBackground = getComputedStyle(styleProbe).backgroundImage;
+      styleProbe.remove();
       const findMaxHeight = (rules, selector) => {
         for (const rule of rules) {
           if (rule.selectorText === selector) return rule.style.maxHeight;
@@ -41,13 +86,16 @@ export async function runControllerMappingDialogBrowserSmoke({ browser, baseURL 
         maxHeight: Number.parseFloat(list?.style.maxHeight || '0'),
         scrollbarGutter: list ? Math.max(0, list.offsetWidth - list.clientWidth -
           Number.parseFloat(listStyle.borderLeftWidth) - Number.parseFloat(listStyle.borderRightWidth)) : 0,
-        background: listStyle?.backgroundColor,
-        border: listStyle?.borderTopColor,
+        styles: {
+          background: listStyle?.backgroundColor,
+          border: listStyle?.borderTopColor,
+          trackBackground: trackStyle?.backgroundImage,
+          thumbBackground: thumbStyle?.backgroundImage
+        },
+        expectedStyles,
         overflowY: listStyle?.overflowY,
         rowFontMatchesSelect: rowStyle?.font === selectStyle?.font,
         rowTextAlign: rowStyle?.textAlign,
-        trackBackground: trackStyle?.backgroundImage,
-        thumbBackground: thumbStyle?.backgroundImage,
         standardCssMaxHeight: stylesheets
           .map(sheet => findMaxHeight(sheet.cssRules, '.standard-select-list'))
           .find(Boolean),
@@ -356,8 +404,10 @@ export async function runControllerMappingDialogBrowserSmoke({ browser, baseURL 
         customPickerRule: false
       }
     });
+    const { styles: dropdownStyles, expectedStyles, ...dropdownLayout } = dropdown;
+    assert.deepEqual(dropdownStyles, expectedStyles);
     assert.deepEqual({
-      ...dropdown,
+      ...dropdownLayout,
       scrollHeight: 0,
       clientHeight: 0,
       maxHeight: 0,
@@ -370,13 +420,9 @@ export async function runControllerMappingDialogBrowserSmoke({ browser, baseURL 
       clientHeight: 0,
       maxHeight: 0,
       scrollbarGutter: 0,
-      background: 'rgb(55, 55, 55)',
-      border: 'rgb(86, 86, 86)',
       overflowY: 'auto',
       rowFontMatchesSelect: true,
       rowTextAlign: 'left',
-      trackBackground: 'linear-gradient(rgb(41, 41, 41), rgb(35, 35, 35))',
-      thumbBackground: 'linear-gradient(rgb(93, 98, 104), rgb(70, 75, 81))',
       standardCssMaxHeight: '480px',
       existingMenuCssMaxHeight: 'min(70vh, 480px)',
       nativePopupOpen: false

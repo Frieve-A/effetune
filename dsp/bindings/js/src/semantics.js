@@ -14,6 +14,7 @@ import {
 const DOCUMENT_KEYS = new Set(['version', 'chain']);
 const EFFECT_KEYS = new Set(['id', 'type', 'enabled', 'channel', 'parameters', 'assets']);
 const STREAM_RECONFIGURATION_PARAMETERS = new Map([
+  ['CrosstalkCancellation', new Set(['latencyMode', 'filterDelaySamples'])],
   ['FIRCrossover', new Set(['bandCount', 'latencyMode', 'filterDelaySamples'])],
   ['FiveBandFIRPEQ', new Set(['latencyMode', 'filterDelaySamples'])],
   ['GroupDelayEQ', new Set(['latencyMode', 'filterDelaySamples'])],

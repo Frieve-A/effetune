@@ -381,7 +381,7 @@ export class UIEventHandler {
         //    - For music files elsewhere: events bubble up to document handlers
         //
         // DO NOT MODIFY THIS BEHAVIOR without thorough testing of all drag & drop scenarios!
-        {
+        if (this.pipelineManager.fileProcessingEnabled) {
             // Add CSS for drag-over effect directly to the document
             const style = document.createElement('style');
             style.id = 'drag-drop-style';
@@ -397,8 +397,8 @@ export class UIEventHandler {
                     left: 0;
                     width: 100%;
                     height: 100%;
-                    background-color: rgba(0, 120, 255, 0.1);
-                    border: 2px dashed rgba(0, 120, 255, 0.5);
+                    background-color: var(--et-accent-soft);
+                    border: 2px dashed var(--et-accent-outline);
                     pointer-events: none;
                     z-index: 9999;
                 }

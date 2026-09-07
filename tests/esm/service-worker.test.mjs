@@ -121,6 +121,7 @@ function createPrecacheFixture(t) {
   for (const relativePath of [
     'effetune.html',
     'effetune.css',
+    'effetune-theme.css',
     'effetune-mobile.css',
     'effetune-library.css',
     'pipeline-analyzer.css',
@@ -193,6 +194,10 @@ test('committed precache source matches the current precached assets', () => {
   );
 
   assert.equal(committedSource, buildPrecacheSource().body);
+  const urls = loadPrecacheUrls();
+  for (const file of ['effetune-theme.css', 'js/theme-boot.js', 'js/theme-registry.mjs', 'plugins/theme-palette.js']) {
+    assert.ok(urls.has('./' + file), file);
+  }
 });
 
 test('precache contains committed baseline and SIMD DSP modules', () => {

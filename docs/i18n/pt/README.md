@@ -10,6 +10,10 @@
 
 Um processador de efeitos de áudio em tempo real, projetado para entusiastas do áudio aprimorarem sua experiência de escuta. EffeTune permite que você processe qualquer fonte de áudio através de vários efeitos de alta qualidade, possibilitando personalizar e aperfeiçoar sua experiência de escuta em tempo real.
 
+### Extensão do navegador
+
+Processe uma aba do Chrome ou Edge sem um dispositivo de áudio virtual. Consulte o [guia da extensão do navegador](browser-extension.md).
+
 [![Screenshot](../../../images/screenshot.png)](https://effetune.frieve.com/effetune.html)
 
 ## Vídeo de Introdução
@@ -88,7 +92,7 @@ Para usar o EffeTune com players de CD, players de rede ou outras fontes física
 
 ### Configurações do Aplicativo
 
-Abra **Configuração...** no menu **Configurações** para escolher o idioma, a opção **Visualização ao iniciar:** e o comportamento do pipeline de efeitos na inicialização. A opção **Visualização ao iniciar:** pode ser **Effect Pipeline (padrão)** ou **Biblioteca de música**. Ao escolher **Biblioteca de música**, use a lista ao lado para definir qual seção será exibida primeiro: **Faixas**, **Álbuns**, **Artistas**, **Gêneros**, **Subpastas**, **Pastas** ou **Playlists**.
+Abra **Configuração...** no menu **Configurações** para escolher o idioma, a opção **Visualização ao iniciar:** e o comportamento do pipeline de efeitos na inicialização. A opção **Visualização ao iniciar:** pode ser **Effect Pipeline (padrão)** ou **Biblioteca de música**. Ao escolher **Biblioteca de música**, use a lista ao lado para definir qual seção será exibida primeiro: **Faixas**, **Álbuns**, **Artistas**, **Gêneros**, **Subpastas**, **Pastas** ou **Playlists**. Em **Tema**, escolha as cores do aplicativo: Graphite (padrão), Paper, Midnight, Ember ou Mint.
 
 As versões desktop compatíveis também podem ser controladas por aplicativos OpenHome na mesma rede local. O recurso fica desativado por padrão; consulte [Controle remoto OpenHome](music-library.md#controle-remoto-openhome-aplicativo-desktop) para ver configuração, acesso à rede, compatibilidade e limitações.
 
@@ -307,6 +311,7 @@ Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/
 | Categoria | Efeito             | Descrição                                                               | Documentação                                         |
 | --------- | ------------------ | ----------------------------------------------------------------------- | ---------------------------------------------------- |
 | Analyzer  | Level Meter        | Exibe o nível de áudio com retenção de pico                             | [Detalhes](plugins/analyzer.md#level-meter)          |
+| Analyzer  | Note Spectrogram | Mostra as alturas estimadas ao longo do tempo em um piano roll         | [Detalhes](plugins/analyzer.md#note-spectrogram) |
 | Analyzer  | Oscilloscope       | Visualização de forma de onda em tempo real                             | [Detalhes](plugins/analyzer.md#oscilloscope)         |
 | Analyzer  | Spectrogram        | Exibe variações do espectro de frequências ao longo do tempo            | [Detalhes](plugins/analyzer.md#spectrogram)          |
 | Analyzer  | Spectrum Analyzer  | Mostra a força dos graves, médios e agudos em tempo real                | [Detalhes](plugins/analyzer.md#spectrum-analyzer)    |

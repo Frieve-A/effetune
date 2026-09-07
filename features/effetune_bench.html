@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>EffeTune Benchmark</title>
+    <script src="../js/theme-boot.js"></script>
     <link rel="stylesheet" href="../effetune.css">
     <link rel="icon" href="../images/favicon.ico" type="image/x-icon">
     <script>
@@ -28,20 +29,25 @@
         })();
     </script>
     <style>
+        :root {
+            --benchmark-accent: #9C27B0; /* theme-allow: Benchmark identification palette. */
+        }
         body {
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 20px;
-            background: radial-gradient(circle at 38px 0, rgba(156, 39, 176, 0.10), transparent 360px), linear-gradient(145deg, #202020, #1b1b1b 58%, #181818);
+            background:
+                radial-gradient(circle at 38px 0, rgba(156, 39, 176, 0.10), transparent 360px), /* theme-allow: Benchmark identification palette. */
+                linear-gradient(145deg, var(--et-surface-4), var(--et-surface-2) 58%, var(--et-base));
             background-repeat: no-repeat;
             background-attachment: fixed;
             background-size: cover;
-            color: #fff;
+            color: var(--et-text-primary);
             box-sizing: border-box;
             width: 100%;
         }
         html {
-            background: linear-gradient(145deg, #202020, #191919 62%, #171717);
+            background: linear-gradient(145deg, var(--et-surface-4), var(--et-surface-1) 62%, var(--et-base));
             background-repeat: no-repeat;
             background-attachment: fixed;
             background-size: cover;
@@ -54,13 +60,13 @@
             table-layout: fixed;
         }
         .benchmark-table th, .benchmark-table td {
-            border: 1px solid #444;
+            border: 1px solid var(--et-surface-20);
             padding: 8px;
             text-align: left;
         }
         .benchmark-table th {
-            background: linear-gradient(180deg, #3d3d3d, #333333);
-            color: #fff;
+            background: linear-gradient(180deg, var(--et-surface-17), var(--et-surface-13));
+            color: var(--et-text-primary);
             box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
             padding: 0;
         }
@@ -81,10 +87,10 @@
         }
         .benchmark-sort-button:hover,
         .benchmark-sort-button.active {
-            color: #f0b5fa;
+            color: #f0b5fa; /* theme-allow: Benchmark identification palette. */
         }
         .benchmark-sort-button:focus-visible {
-            outline: 2px solid #d68be4;
+            outline: 2px solid #d68be4; /* theme-allow: Benchmark identification palette. */
             outline-offset: -2px;
         }
         .benchmark-sort-label {
@@ -99,124 +105,122 @@
             justify-content: center;
             width: 14px;
             height: 14px;
-            color: #d68be4;
+            color: #d68be4; /* theme-allow: Benchmark identification palette. */
         }
         .benchmark-sort-indicator svg {
             width: 12px;
             height: 12px;
         }
         .benchmark-table tr:nth-child(even) {
-            background-color: rgba(255, 255, 255, 0.025);
+            background-color: color-mix(in srgb, var(--et-text-primary) 2.5%, transparent);
         }
         .benchmark-table tr:hover {
-            background-color: rgba(156, 39, 176, 0.13);
+            background-color: rgba(156, 39, 176, 0.13); /* theme-allow: Benchmark identification palette. */
         }
         .benchmark-container {
             margin: 20px 0;
             padding: 15px;
-            background: linear-gradient(180deg, rgba(255, 255, 255, 0.042), rgba(255, 255, 255, 0) 42px), linear-gradient(145deg, #303030, #282828);
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.042), rgba(255, 255, 255, 0) 42px), linear-gradient(145deg, var(--et-surface-11), var(--et-surface-8));
             border-radius: 4px;
-            border-left: 4px solid #9C27B0;
+            border-left: 4px solid var(--benchmark-accent);
             width: 100%;
             box-sizing: border-box;
             box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.055), inset 0 0 0 1px rgba(255, 255, 255, 0.035);
         }
         .benchmark-container h2 {
             margin-top: 0;
-            color: #d68be4;
-            text-shadow: 0 0 16px rgba(156, 39, 176, 0.28);
+            color: color-mix(in srgb, var(--benchmark-accent), var(--et-text-primary));
+            text-shadow: 0 0 16px rgba(156, 39, 176, 0.28); /* theme-allow: Benchmark identification palette. */
         }
         .benchmark-container h3 {
             margin-top: 20px;
             margin-bottom: 10px;
-            color: #e0e0e0;
+            color: var(--et-surface-90);
             font-size: 1.2em;
         }
         .success {
-            color: #4CAF50;
+            color: var(--et-success);
         }
         .warning {
-            color: #FFC107;
+            color: #FFC107; /* theme-allow: Benchmark identification palette. */
         }
         .error {
-            color: #f44336;
+            color: #f44336; /* theme-allow: Benchmark identification palette. */
             margin: 5px 0;
             padding: 8px;
-            background: rgba(244, 67, 54, 0.1);
-            border-left: 3px solid #f44336;
+            background: rgba(244, 67, 54, 0.1); /* theme-allow: Benchmark identification palette. */
+            border-left: 3px solid #f44336; /* theme-allow: Benchmark identification palette. */
             border-radius: 2px;
         }
         .benchmark-button {
             padding: 8px 16px;
-            background: linear-gradient(180deg, #ba4dcb, #8f269f);
-            border: 1px solid #c56ad3;
-            color: #ffffff;
+            background: linear-gradient(180deg, #ba4dcb, #8f269f); /* theme-allow: Benchmark identification palette. */
+            border: 1px solid #c56ad3; /* theme-allow: Benchmark identification palette. */
+            color: var(--et-on-accent);
             cursor: pointer;
             border-radius: 4px;
             margin-right: 15px;
-            box-shadow: 0 5px 16px rgba(156, 39, 176, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+            box-shadow: 0 5px 16px rgba(156, 39, 176, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.18); /* theme-allow: Benchmark identification palette. */
             transition: background 140ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 140ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
         }
         .benchmark-button:hover {
-            background: linear-gradient(180deg, #cd61de, #9C27B0);
-            border-color: #df8cea;
-            box-shadow: 0 7px 20px rgba(156, 39, 176, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.20);
+            background: linear-gradient(180deg, #cd61de, var(--benchmark-accent)); /* theme-allow: Benchmark identification palette. */
+            border-color: #df8cea; /* theme-allow: Benchmark identification palette. */
+            box-shadow: 0 7px 20px rgba(156, 39, 176, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.20); /* theme-allow: Benchmark identification palette. */
         }
         .benchmark-button:disabled {
             opacity: 0.5;
             cursor: not-allowed;
         }
         .benchmark-select {
-            background: linear-gradient(180deg, #404040, #373737) !important;
-            border-color: #565656 !important;
+            background: linear-gradient(180deg, var(--et-surface-18), var(--et-surface-14)) !important;
+            border-color: var(--et-surface-28) !important;
             box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.035);
-            color-scheme: dark;
         }
         /* The dropdown list is painted by the browser, so the select's gradient
            never reaches it: without these rules the options fall back to a light
            popup while inheriting the white select text. */
         .benchmark-select option {
-            background-color: #373737 !important;
-            color: #f6f8fb !important;
-            color-scheme: dark;
+            background-color: var(--et-surface-14) !important;
+            color: var(--et-text-primary) !important;
         }
         .benchmark-select option:hover {
-            background-color: #454545 !important;
-            color: #ffffff !important;
+            background-color: var(--et-surface-20) !important;
+            color: var(--et-text-primary) !important;
         }
         .benchmark-select option:checked {
-            background-color: #8f269f !important;
-            color: #ffffff !important;
+            background-color: #8f269f !important; /* theme-allow: Benchmark identification palette. */
+            color: var(--et-on-accent) !important;
         }
         .benchmark-select:focus {
             outline: none;
-            border-color: #c56ad3 !important;
-            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.24), 0 0 0 2px rgba(156, 39, 176, 0.18), 0 0 18px rgba(156, 39, 176, 0.16);
+            border-color: #c56ad3 !important; /* theme-allow: Benchmark identification palette. */
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.24), 0 0 0 2px rgba(156, 39, 176, 0.18), 0 0 18px rgba(156, 39, 176, 0.16); /* theme-allow: Benchmark identification palette. */
         }
         #benchmark-status {
             margin-top: 10px;
-            color: #e0e0e0;
+            color: var(--et-surface-90);
         }
         .benchmark-engine-note {
             margin: -5px 0 12px;
-            color: #bdbdbd;
+            color: var(--et-surface-74);
             font-size: 0.9em;
         }
         .benchmark-score {
             margin-top: 15px;
             padding: 16px;
-            background: rgba(156, 39, 176, 0.08);
-            border: 1px solid #624469;
+            background: rgba(156, 39, 176, 0.08); /* theme-allow: Benchmark identification palette. */
+            border: 1px solid #624469; /* theme-allow: Benchmark identification palette. */
             border-radius: 4px;
         }
         .benchmark-score-value {
             margin: 8px 0;
-            color: #e2a4ec;
+            color: #e2a4ec; /* theme-allow: Benchmark identification palette. */
             font: bold 44px monospace;
         }
         .benchmark-score-meta {
             margin-top: 6px;
-            color: #bdbdbd;
+            color: var(--et-surface-74);
             font-size: 0.9em;
         }
         .benchmark-score-breakdown {
@@ -224,13 +228,13 @@
             flex-wrap: wrap;
             gap: 8px 20px;
             margin-top: 12px;
-            color: #e0e0e0;
+            color: var(--et-surface-90);
             font: 12px monospace;
         }
         .progress-container {
             width: 100%;
             height: 20px;
-            background: linear-gradient(180deg, #30343a, #22262c);
+            background: linear-gradient(180deg, var(--et-surface-11), var(--et-surface-5));
             border-radius: 4px;
             margin-top: 15px;
             overflow: hidden;
@@ -239,19 +243,19 @@
         }
         .progress-bar {
             height: 100%;
-            background: linear-gradient(90deg, #8f269f, #cd61de);
+            background: linear-gradient(90deg, #8f269f, #cd61de); /* theme-allow: Benchmark identification palette. */
             width: 0%;
             transition: width 0.3s ease;
-            box-shadow: 0 0 14px rgba(156, 39, 176, 0.32);
+            box-shadow: 0 0 14px rgba(156, 39, 176, 0.32); /* theme-allow: Benchmark identification palette. */
         }
         .progress-text {
             margin-top: 5px;
         }
         .copy-benchmark-result-button {
             padding: 6px 12px;
-            background: linear-gradient(180deg, #565656, #484848);
-            border: 1px solid #555;
-            color: #ffffff;
+            background: linear-gradient(180deg, var(--et-surface-28), var(--et-surface-21));
+            border: 1px solid var(--et-surface-28);
+            color: var(--et-text-primary);
             cursor: pointer;
             border-radius: 4px;
             margin-top: 10px;
@@ -262,12 +266,12 @@
             transition: background 140ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 140ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
         }
         .copy-benchmark-result-button:hover {
-            background: linear-gradient(180deg, #626262, #535353);
-            border-color: #6e6e6e;
+            background: linear-gradient(180deg, var(--et-surface-34), var(--et-surface-27));
+            border-color: var(--et-surface-39);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.09);
         }
         .copy-benchmark-result-button:active {
-            background: linear-gradient(180deg, #6c6c6c, #5c5c5c);
+            background: linear-gradient(180deg, var(--et-surface-38), var(--et-surface-31));
         }
         .copy-benchmark-result-button svg {
             margin-right: 6px;
@@ -276,7 +280,7 @@
         }
         .copy-success {
             margin-left: 10px;
-            color: #4CAF50;
+            color: var(--et-success);
             font-size: 14px;
             opacity: 0;
             transition: opacity 0.3s ease;
@@ -289,9 +293,9 @@
             top: 20px;
             left: 20px;
             padding: 8px 16px;
-            background: linear-gradient(180deg, #565656, #484848);
-            border: 1px solid #5f5f5f;
-            color: #ffffff;
+            background: linear-gradient(180deg, var(--et-surface-28), var(--et-surface-21));
+            border: 1px solid var(--et-surface-32);
+            color: var(--et-text-primary);
             cursor: pointer;
             border-radius: 4px;
             display: flex;
@@ -302,8 +306,8 @@
             transition: background 140ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 140ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
         }
         .back-button:hover {
-            background: linear-gradient(180deg, #626262, #535353);
-            border-color: #6e6e6e;
+            background: linear-gradient(180deg, var(--et-surface-34), var(--et-surface-27));
+            border-color: var(--et-surface-39);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.09);
         }
         .back-button svg {
@@ -338,7 +342,7 @@
                 <button id="run-benchmarks" class="benchmark-button" style="height: 35px;">Run Benchmarks</button>
                 <button id="run-score" class="benchmark-button" style="height: 35px;" disabled>Score Only</button>
                 <label for="sample-rate" style="margin-right: 8px;">Sampling Frequency:</label>
-                <select id="sample-rate" class="benchmark-select" style="padding: 8px; background-color: #2d2d2d; color: #fff; border: 1px solid #3d3d3d; border-radius: 4px; height: 35px;">
+                <select id="sample-rate" class="benchmark-select" style="padding: 8px; background-color: var(--et-surface-10); color: var(--et-text-primary); border: 1px solid var(--et-surface-17); border-radius: 4px; height: 35px;">
                     <option value="44100">44.1kHz</option>
                     <option value="48000">48kHz</option>
                     <option value="88200">88.2kHz</option>
@@ -351,7 +355,7 @@
             </div>
             <div style="display: flex; align-items: center;">
                 <label for="dsp-mode" style="margin-right: 8px;">Processing Engine:</label>
-                <select id="dsp-mode" class="benchmark-select" style="padding: 8px; background-color: #2d2d2d; color: #fff; border: 1px solid #3d3d3d; border-radius: 4px; height: 35px;">
+                <select id="dsp-mode" class="benchmark-select" style="padding: 8px; background-color: var(--et-surface-10); color: var(--et-text-primary); border: 1px solid var(--et-surface-17); border-radius: 4px; height: 35px;">
                     <option value="javascript">JavaScript</option>
                     <option value="webassembly" selected>WebAssembly (automatic)</option>
                 </select>

@@ -54,7 +54,7 @@ class GraphRenderer {
             const canvas = document.getElementById('resultsGraph');
             if (!canvas) return;
             const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#1a1a1a';
+            ctx.fillStyle = window.ThemePalette?.get('graph-base') ?? '';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             const measurement = dataStorage.getMeasurementById(this.uiManager.selectedMeasurementId);
@@ -173,7 +173,7 @@ class GraphRenderer {
                 };
             if (warnings.low.length > 0) {
                 ctx.font = '14px Arial';
-                ctx.fillStyle = '#ff3333';
+                ctx.fillStyle = window.ThemePalette?.get('graph-marker') ?? '';
                 ctx.textAlign = 'center';
                 const channels = warnings.low.map(channelDisplayLabel).join(', ');
                 const message = channelCurves.length > 0
@@ -185,7 +185,7 @@ class GraphRenderer {
             }
             if (warnings.high.length > 0) {
                 ctx.font = '14px Arial';
-                ctx.fillStyle = '#ff3333';
+                ctx.fillStyle = window.ThemePalette?.get('graph-marker') ?? '';
                 ctx.textAlign = 'center';
                 const channels = warnings.high.map(channelDisplayLabel).join(', ');
                 const message = channelCurves.length > 0
@@ -468,7 +468,7 @@ class GraphRenderer {
         const amplitudeToY = value =>
             padding.top + graphHeight * (0.5 - value / 2);
 
-        ctx.fillStyle = '#1a1a1a';
+        ctx.fillStyle = window.ThemePalette?.get('graph-base') ?? '';
         ctx.fillRect(0, 0, width, height);
         this.drawImpulseResponseGrid(
             ctx,
@@ -481,7 +481,7 @@ class GraphRenderer {
         );
         if (view.startMs <= 0 && endMs >= 0) {
             const zeroX = timeToX(0);
-            ctx.strokeStyle = '#aaa';
+            ctx.strokeStyle = window.ThemePalette?.get('graph-tone-65') ?? '';
             ctx.lineWidth = 1;
             ctx.setLineDash([4, 3]);
             ctx.beginPath();
@@ -539,8 +539,8 @@ class GraphRenderer {
         timeToX,
         amplitudeToY
     ) {
-        ctx.strokeStyle = '#555';
-        ctx.fillStyle = '#aaa';
+        ctx.strokeStyle = window.ThemePalette?.get('graph-grid-strong') ?? '';
+        ctx.fillStyle = window.ThemePalette?.get('graph-tone-65') ?? '';
         ctx.lineWidth = 0.5;
         ctx.font = '10px Arial';
         const interval = getNiceTimeTickInterval(view.durationMs);
@@ -567,10 +567,10 @@ class GraphRenderer {
             ctx.fillText(String(amplitude), padding.left - 6, y + 3);
         }
 
-        ctx.strokeStyle = '#888';
+        ctx.strokeStyle = window.ThemePalette?.get('graph-tone-50') ?? '';
         ctx.lineWidth = 1;
         ctx.strokeRect(padding.left, padding.top, graphWidth, graphHeight);
-        ctx.fillStyle = '#ccc';
+        ctx.fillStyle = window.ThemePalette?.get('graph-label-strong') ?? '';
         ctx.font = '12px Arial';
         ctx.textAlign = 'center';
         ctx.fillText(
@@ -689,7 +689,7 @@ class GraphRenderer {
         });
         
         // Draw axes
-        ctx.strokeStyle = '#888';
+        ctx.strokeStyle = window.ThemePalette?.get('graph-tone-50') ?? '';
         ctx.lineWidth = 1;
         
         // X-axis
@@ -705,7 +705,7 @@ class GraphRenderer {
         ctx.stroke();
         
         // Draw grid lines
-        ctx.strokeStyle = '#555';
+        ctx.strokeStyle = window.ThemePalette?.get('graph-grid-strong') ?? '';
         ctx.lineWidth = 0.5;
         
         // Frequency grid lines (decades and octaves)
@@ -721,7 +721,7 @@ class GraphRenderer {
             
             // Add label for main frequencies
             if ([20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000].includes(freq)) {
-                ctx.fillStyle = '#aaa';
+                ctx.fillStyle = window.ThemePalette?.get('graph-tone-65') ?? '';
                 ctx.font = '10px Arial';
                 ctx.textAlign = 'center';
                 
@@ -744,7 +744,7 @@ class GraphRenderer {
             ctx.stroke();
             
             // Draw label
-            ctx.fillStyle = '#aaa';
+            ctx.fillStyle = window.ThemePalette?.get('graph-tone-65') ?? '';
             ctx.font = '10px Arial';
             ctx.textAlign = 'right';
             ctx.fillText(`${db} dB`, padding.left - 5, y + 3);
@@ -753,7 +753,7 @@ class GraphRenderer {
         // Draw 0dB reference line with enhanced visibility
         const zeroDbY = scaleY(0);
         ctx.beginPath();
-        ctx.strokeStyle = '#aaa'; // Brighter color for better visibility
+        ctx.strokeStyle = window.ThemePalette?.get('graph-tone-65') ?? ''; // Brighter color for better visibility
         ctx.lineWidth = 1.5; // Thicker line
         ctx.setLineDash([5, 3]); // Dashed line
         ctx.moveTo(padding.left, zeroDbY);
@@ -762,7 +762,7 @@ class GraphRenderer {
         ctx.setLineDash([]); // Reset line style
         
         // Draw axis labels
-        ctx.fillStyle = '#ccc';
+        ctx.fillStyle = window.ThemePalette?.get('graph-label-strong') ?? '';
         ctx.font = '12px Arial';
         ctx.textAlign = 'center';
         ctx.fillText('Frequency (Hz)', width / 2, height - 5);
@@ -791,7 +791,7 @@ class GraphRenderer {
         }
         
         const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#1a1a1a';
+        ctx.fillStyle = window.ThemePalette?.get('graph-base') ?? '';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
         if (!data || data.length === 0) return;

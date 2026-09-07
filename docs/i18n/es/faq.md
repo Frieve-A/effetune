@@ -8,6 +8,8 @@ lang: es
 
 EffeTune es una aplicación DSP en tiempo real para entusiastas del audio disponible como aplicación web y de escritorio. Este documento cubre la configuración, solución de problemas, uso multicanal, operación de efectos y corrección de frecuencia.
 
+Para procesar el audio de una pestaña de Chrome o Edge, consulta la [guía de la extensión de navegador](browser-extension.md).
+
 ## Contenido
 1. Configuración inicial para streaming
    1.1. Instalación de VB-CABLE y corrección opcional de aliasing a 96 kHz

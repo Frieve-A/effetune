@@ -220,9 +220,9 @@ test('IR library modal source includes filename search, sort, badges, decay prev
   assert.doesNotMatch(source, /Open source|\bEdit\b/);
   assert.match(css, /\.ir-library-dialog/);
   assert.match(css, /\.ir-library-decay/);
-  assert.match(css, /\.ir-library-controls input\[type="search"\],[^}]*background: var\(--et-input-gradient,/s);
-  assert.match(css, /\.ir-library-dialog\s*\{[^}]*background: var\(--et-panel-gradient,/s);
-  assert.match(css, /\.ir-library-entry\s*\{[^}]*background: var\(--et-card-gradient,/s);
-  assert.match(css, /\.ir-reverb-ui button,\s*\.ir-library-dialog button\s*\{[^}]*background: var\(--et-control-gradient,/s);
+  assert.match(css, /\.ir-library-controls input\[type="search"\],[^}]*background: var\(--et-input-gradient\)/s);
+  assert.match(css, /\.ir-library-dialog\s*\{[^}]*background: var\(--et-panel-gradient\)/s);
+  assert.match(css, /\.ir-library-entry\s*\{[^}]*background: var\(--et-card-gradient\)/s);
+  assert.match(css, /\.ir-reverb-ui button,\s*\.ir-library-dialog button\s*\{[^}]*background: var\(--et-control-gradient\)/s);
   assert.doesNotMatch(css, /\.ir-reverb-ui\s*\{[^}]*\bgap:/s);
 });

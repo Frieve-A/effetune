@@ -692,9 +692,9 @@ class GatePlugin extends PluginBase {
         const height = canvas.height;
         
         // Draw grid and dB labels
-        ctx.strokeStyle = '#444';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth = 1;
-        ctx.fillStyle = '#666';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         ctx.font = '20px Arial';
         
         [-72, -48, -24].forEach(db => {
@@ -722,7 +722,7 @@ class GatePlugin extends PluginBase {
         });
 
         // Draw transfer function
-        ctx.strokeStyle = '#0f0';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = 2;
         ctx.beginPath();
 
@@ -764,7 +764,7 @@ class GatePlugin extends PluginBase {
         ctx.stroke();
 
         // Draw axis labels
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         ctx.font = '28px Arial';
         ctx.textAlign = 'center';
         
@@ -792,13 +792,13 @@ class GatePlugin extends PluginBase {
         ctx.rect(meterX, 0, meterWidth, height);
         ctx.clip();
 
-        ctx.fillStyle = '#222';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
         ctx.fillRect(meterX, 0, meterWidth, height);
 
         const reductionHeight = Math.min(height, (this.gr / 60) * height);
 
         if (reductionHeight > 0) {
-            ctx.fillStyle = '#008000';
+            ctx.fillStyle = (window.ThemePalette?.get('graph-trace-fill') ?? '');
             ctx.fillRect(meterX, 0, meterWidth, reductionHeight);
         }
 
@@ -826,7 +826,7 @@ class GatePlugin extends PluginBase {
         canvas.height = 400;
         canvas.style.width = '200px';
         canvas.style.height = '200px';
-        canvas.style.backgroundColor = '#222';
+        canvas.style.backgroundColor = 'var(--et-graph-bg-deep)';
         this.canvas = canvas;
 
         const graphContainer = document.createElement('div');

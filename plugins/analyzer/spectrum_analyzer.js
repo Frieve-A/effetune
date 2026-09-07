@@ -30,6 +30,9 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         this.spectrumPoints = this.pt;
         this.spectrumFlags = 0;
         this.dspSpectrumSnapshot = null;
+        this.peakReceivedAt = null;
+        this.peakDecayFrozenElapsed = 0;
+        this.peakDecayPaused = false;
         this._dspTelemetryHub = null;
         this._dspTelemetryTapId = null;
         this._dspTelemetryUnsubscribe = null;
@@ -182,6 +185,8 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         this.spectrumPoints = newPoints;
         this.spectrumFlags = 0;
         this.dspSpectrumSnapshot = null;
+        this.peakReceivedAt = null;
+        this.peakDecayFrozenElapsed = 0;
 
         const factor = 2 * Math.PI / fftSize;
         for (let i = 0; i < fftSize; i++) {
@@ -352,13 +357,15 @@ class SpectrumAnalyzerPlugin extends PluginBase {
 
     handleDspSpectrumTelemetry(frame) {
         const snapshot = this.parseDspSpectrumTelemetryFrame(frame);
-        if (!snapshot || !this.enabled) return;
+        if (!snapshot || !this.enabled || !this._sectionEnabled) return;
         this.sampleRate = snapshot.sampleRate;
         this.spectrum = snapshot.current;
         this.peaks = snapshot.peaks;
         this.spectrumPoints = snapshot.points;
         this.spectrumFlags = snapshot.flags;
         this.dspSpectrumSnapshot = snapshot;
+        this.peakReceivedAt = performance.now() / 1000;
+        this.peakDecayFrozenElapsed = 0;
     }
 
     onMessage(message) {
@@ -373,7 +380,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             return;
         }
 
-        if (!this.enabled) {
+        if (!this.enabled || !this._sectionEnabled) {
             return;
         }
 
@@ -438,6 +445,8 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         }
         
         this.lastProcessTime = currentTime;
+        this.peakReceivedAt = performance.now() / 1000;
+        this.peakDecayFrozenElapsed = 0;
         return;
     }
 
@@ -580,18 +589,27 @@ class SpectrumAnalyzerPlugin extends PluginBase {
     startAnimation() {
         if (this.animationFrameId) return;
         if (!this.enabled || !this._sectionEnabled) return; // Skip if disabled or section is off.
-        const animate = () => {
+        const startTime = performance.now();
+        if (this.peakDecayPaused) {
+            this.peakReceivedAt = startTime / 1000 - this.peakDecayFrozenElapsed;
+            this.peakDecayPaused = false;
+        }
+        const animate = (now) => {
             if (!this.isVisible) {
                 this.stopAnimation();
                 return;
             }
-            this.drawGraph();
+            this.drawGraph(now);
             this.animationFrameId = this.requestPowerAnimationFrame(animate, 'analyzer');
         };
-        animate();
+        animate(performance.now());
     }
 
-    stopAnimation() {
+    stopAnimation(now = performance.now()) {
+        if (!this.peakDecayPaused) {
+            this.peakDecayFrozenElapsed = this.getPeakDecayElapsed(now);
+        }
+        this.peakDecayPaused = true;
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
@@ -623,11 +641,27 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         }
         this.canvas = null;
         this.dspSpectrumSnapshot = null;
+        this.peakReceivedAt = null;
+        this.peakDecayFrozenElapsed = 0;
+        this.peakDecayPaused = false;
         this.lastProcessTime = performance.now() / 1000;
         super.cleanup();
     }
 
-    drawGraph() {
+    getPeakDecayElapsed(now = performance.now()) {
+        if (this.peakDecayPaused) return this.peakDecayFrozenElapsed;
+        if (this.peakReceivedAt === null) return 0;
+
+        const fftSize = 1 << this.spectrumPoints;
+        const analysisIntervalFrames = Math.max(
+            Math.ceil(this.sampleRate / 30),
+            fftSize / 2
+        );
+        const elapsed = Math.max(0, now / 1000 - this.peakReceivedAt);
+        return Math.min(elapsed, analysisIntervalFrames / this.sampleRate);
+    }
+
+    drawGraph(now = performance.now()) {
         if (!this.canvas) return;
         
         const ctx = this.canvas.getContext('2d', { alpha: false });
@@ -636,10 +670,10 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         const dpr = this.graphDpr || 1;
         const isNarrow = this.graphCssWidth < 500;
 
-        ctx.fillStyle = '#000000';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
         ctx.fillRect(0, 0, width, height);
 
-        ctx.strokeStyle = '#333';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-subtle') ?? '');
         ctx.lineWidth = dpr;
 
         // --- Dynamic Frequency Axis Scaling ---
@@ -649,7 +683,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         const maxDisplayFreq = SPECTRUM_MAX_DISPLAY_FREQ;
 
         if (this.sampleRate <= 0 || nyquistFreq <= minDisplayFreq) { // Not enough range or invalid sampleRate
-            ctx.fillStyle = '#fff';
+            ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
             ctx.font = `${14 * dpr}px Arial`;
             ctx.textAlign = 'center';
             ctx.fillText('Invalid Sample Rate or Range', width / 2, height / 2);
@@ -657,7 +691,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         }
 
         if (maxDisplayFreq <= minDisplayFreq) {
-             ctx.fillStyle = '#fff'; ctx.font = `${14 * dpr}px Arial`; ctx.textAlign = 'center';
+             ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? ''); ctx.font = `${14 * dpr}px Arial`; ctx.textAlign = 'center';
              ctx.fillText('Invalid Frequency Range', width / 2, height / 2);
              return;
         }
@@ -686,7 +720,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
                 ctx.stroke();
 
                 if (freq !== minDisplayFreq && freq !== maxDisplayFreq && x > width*0.02 && x < width*0.98) { // Avoid clutter at edges
-                    ctx.fillStyle = '#666';
+                    ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
                     ctx.font = `${(isNarrow ? 11 : 12) * dpr}px Arial`;
                     ctx.textAlign = 'center';
                     ctx.fillText(freq >= 1000 ? `${Math.round(freq / 100)/10}k` : freq, x, height - ((isNarrow ? 30 : 40) * dpr));
@@ -703,13 +737,13 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             ctx.lineTo(width, y);
             ctx.stroke();
             if (db !== 0 && db !== this.dr) {
-                ctx.fillStyle = '#666'; ctx.font = `${(isNarrow ? 11 : 12) * dpr}px Arial`; ctx.textAlign = 'right';
+                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? ''); ctx.font = `${(isNarrow ? 11 : 12) * dpr}px Arial`; ctx.textAlign = 'right';
                 ctx.fillText(`${db}dB`, (isNarrow ? 46 : 80) * dpr, y + (6 * dpr));
             }
         }
 
         // Draw axis labels
-        ctx.fillStyle = '#fff'; ctx.font = `${(isNarrow ? 13 : 14) * dpr}px Arial`; ctx.textAlign = 'center';
+        ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? ''); ctx.font = `${(isNarrow ? 13 : 14) * dpr}px Arial`; ctx.textAlign = 'center';
         ctx.fillText('Frequency (Hz)', width / 2, height - (8 * dpr));
         ctx.save();
         ctx.translate((isNarrow ? 18 : 20) * dpr, height / 2); ctx.rotate(-Math.PI / 2);
@@ -720,6 +754,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         const fftSize = 1 << this.spectrumPoints;
         const binCount = this.spectrum.length;
         const xToLevels = new Map();
+        const elapsedCapped = this.getPeakDecayElapsed(now);
         
         for (let i = 0; i < binCount; i++) {
             const freq = (i * this.sampleRate) / fftSize; // Correct bin frequency calculation
@@ -730,7 +765,11 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             const x = Math.round(this.frequencyToX(currentFreqClamped, width));
             
             const spectrumLevel = this.spectrum[i] > 0 ? 0 : this.spectrum[i];
-            const peakLevel = this.peaks[i] > 0 ? 0 : this.peaks[i];
+            const projectedPeak = this.peaks[i] - 20 * elapsedCapped;
+            const peakLevel = Math.max(
+                -145,
+                Math.min(0, spectrumLevel > projectedPeak ? spectrumLevel : projectedPeak)
+            );
 
             if (!xToLevels.has(x)) {
                 xToLevels.set(x, [spectrumLevel, peakLevel]);
@@ -748,7 +787,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
 
         // Draw spectrum line
         ctx.beginPath();
-        ctx.strokeStyle = '#008800'; ctx.lineWidth = 2 * dpr;
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-trace-fill') ?? ''); ctx.lineWidth = 2 * dpr;
         let first = true;
         for (const [x, [spectrumLevel]] of sortedXToLevels) {
             const y = height * (spectrumLevel / this.dr);
@@ -763,7 +802,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
 
         // Draw peak hold line
         ctx.beginPath();
-        ctx.strokeStyle = '#00ff00'; ctx.lineWidth = dpr;
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? ''); ctx.lineWidth = dpr;
         first = true;
         for (const [x, [, peakLevel]] of sortedXToLevels) {
             const y = height * (peakLevel / this.dr);

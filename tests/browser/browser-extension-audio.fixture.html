@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>EffeTune browser extension audio smoke</title>
+</head>
+<body>
+  <button id="startAudio" type="button">Start test audio</button>
+  <p id="status">Test audio is stopped.</p>
+  <script type="module">
+    const button = document.getElementById('startAudio');
+    const status = document.getElementById('status');
+    let context;
+    let oscillator;
+    let analyser;
+
+    async function start() {
+      if (!context) {
+        context = new AudioContext({ sampleRate: 48000 });
+        oscillator = new OscillatorNode(context, { frequency: 997, type: 'sine' });
+        const gain = new GainNode(context, { gain: 0.125 });
+        analyser = new AnalyserNode(context, { fftSize: 2048 });
+        oscillator.connect(gain).connect(analyser).connect(context.destination);
+        oscillator.start();
+      }
+      await context.resume();
+      status.textContent = 'Test audio is playing.';
+      return snapshot();
+    }
+
+    async function pause() {
+      await context?.suspend();
+      status.textContent = 'Test audio is paused.';
+      return snapshot();
+    }
+
+    async function resume() {
+      await context?.resume();
+      status.textContent = 'Test audio is playing.';
+      return snapshot();
+    }
+
+    function snapshot() {
+      return {
+        ready: Boolean(context),
+        state: context?.state || 'closed',
+        sampleRate: context?.sampleRate || null,
+        frequency: oscillator?.frequency.value || null
+      };
+    }
+
+    async function measureRms() {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const samples = new Float32Array(analyser.fftSize);
+      analyser.getFloatTimeDomainData(samples);
+      let sum = 0;
+      for (const sample of samples) sum += sample * sample;
+      return Math.sqrt(sum / samples.length);
+    }
+
+    button.addEventListener('click', () => start());
+    window.__browserExtensionAudio = Object.freeze({ start, pause, resume, snapshot, measureRms });
+  </script>
+</body>
+</html>

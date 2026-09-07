@@ -12,8 +12,6 @@ const PHASE_SELECT_EQ_FALLBACK_SAMPLE_RATE = 48000;
 const PHASE_SELECT_EQ_FALLBACK_FFT_SIZE = 4096;
 const PHASE_SELECT_EQ_HISTORY_MS = 500;
 const PHASE_SELECT_EQ_PASS_THROUGH_PROCESSOR = 'return data;';
-const PHASE_SELECT_EQ_ACTIVE_COLOR = '#00ff00';
-const PHASE_SELECT_EQ_INACTIVE_COLOR = 'rgba(120, 220, 120, 0.8)';
 
 const PHASE_SELECT_EQ_DEFAULT_REGION = Object.freeze({
     en: false,
@@ -1400,7 +1398,7 @@ class PhaseSelectEqPlugin extends PluginBase {
         ctx.fillStyle = color;
         ctx.fillText(number, groupX, y + 1);
         const badgeX = groupX + numberWidth + 4;
-        ctx.fillStyle = 'rgba(26, 26, 26, 0.88)';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-base-veil') ?? '');
         ctx.fillRect(badgeX, y, badgeWidth, 15);
         ctx.strokeStyle = color;
         ctx.lineWidth = 1;
@@ -1429,7 +1427,7 @@ class PhaseSelectEqPlugin extends PluginBase {
         const dpr = this._graphDpr || 1;
         context.setTransform(dpr, 0, 0, dpr, 0, 0);
         context.clearRect(0, 0, width, height);
-        context.fillStyle = '#1a1a1a';
+        context.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
         context.fillRect(0, 0, width, height);
         const plot = this._plotRect();
 
@@ -1440,13 +1438,13 @@ class PhaseSelectEqPlugin extends PluginBase {
             const [value, label] = axisGrid[index];
             const x = this.xAxisMode === 'phase'
                 ? this._phaseToX(value) : this._balanceToX(value);
-            context.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+            context.strokeStyle = (window.ThemePalette?.get('graph-grid-soft') ?? '');
             context.lineWidth = value === 0 ? 1.5 : 1;
             context.beginPath();
             context.moveTo(x, plot.top);
             context.lineTo(x, plot.bottom);
             context.stroke();
-            context.fillStyle = '#888';
+            context.fillStyle = (window.ThemePalette?.get('graph-tone-50') ?? '');
             context.textAlign = index === 0 ? 'left'
                 : (index === axisGrid.length - 1 ? 'right' : 'center');
             context.fillText(label, x, plot.bottom - 25);
@@ -1457,13 +1455,13 @@ class PhaseSelectEqPlugin extends PluginBase {
         context.textBaseline = 'middle';
         for (const frequency of frequencies) {
             const y = this._frequencyToY(frequency);
-            context.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+            context.strokeStyle = (window.ThemePalette?.get('graph-grid-soft') ?? '');
             context.lineWidth = 1;
             context.beginPath();
             context.moveTo(plot.left, y);
             context.lineTo(plot.right, y);
             context.stroke();
-            context.fillStyle = '#888';
+            context.fillStyle = (window.ThemePalette?.get('graph-tone-50') ?? '');
             context.fillText(frequency >= 1000 ? `${frequency / 1000}k` : String(frequency),
                 plot.left + 40, y);
         }
@@ -1472,7 +1470,7 @@ class PhaseSelectEqPlugin extends PluginBase {
         for (let index = 0; index < this.regions.length; index++) {
             if (!this.regions[index].en) continue;
             const color = index === this.selectedRegionIndex
-                ? PHASE_SELECT_EQ_ACTIVE_COLOR : PHASE_SELECT_EQ_INACTIVE_COLOR;
+                ? (window.ThemePalette?.get('graph-handle-active') ?? '') : (window.ThemePalette?.get('graph-handle') ?? '');
             for (const rectangle of geometry[index].outer) {
                 this._drawRectangle(context, rectangle, color, true);
             }
@@ -1491,7 +1489,7 @@ class PhaseSelectEqPlugin extends PluginBase {
                 const hiddenAxisWeight = this._hiddenAxisWeight(point);
                 context.globalAlpha = ageOpacity * (0.15 + 0.75 * level) *
                     (0.18 + 0.82 * hiddenAxisWeight);
-                context.fillStyle = '#ffffff';
+                context.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
                 context.beginPath();
                 const pointX = this.xAxisMode === 'phase'
                     ? this._phaseToX(point.phase) : this._balanceToX(point.balance);
@@ -1507,7 +1505,7 @@ class PhaseSelectEqPlugin extends PluginBase {
             if (!region.en) continue;
             for (const rectangle of geometry[index].core) {
                 const color = index === this.selectedRegionIndex
-                    ? PHASE_SELECT_EQ_ACTIVE_COLOR : PHASE_SELECT_EQ_INACTIVE_COLOR;
+                    ? (window.ThemePalette?.get('graph-handle-active') ?? '') : (window.ThemePalette?.get('graph-handle') ?? '');
                 this._drawBandLabel(context, rectangle, index, color, plot);
             }
         }
@@ -1515,8 +1513,8 @@ class PhaseSelectEqPlugin extends PluginBase {
         for (const handle of this._selectedHandles()) {
             context.save();
             context.translate(handle.x, handle.y);
-            context.fillStyle = handle.outer ? '#1a1a1a' : PHASE_SELECT_EQ_ACTIVE_COLOR;
-            context.strokeStyle = PHASE_SELECT_EQ_ACTIVE_COLOR;
+            context.fillStyle = handle.outer ? (window.ThemePalette?.get('graph-base') ?? '') : (window.ThemePalette?.get('graph-handle-active') ?? '');
+            context.strokeStyle = (window.ThemePalette?.get('graph-handle-active') ?? '');
             context.lineWidth = 2;
             if (handle.outer) {
                 context.strokeRect(-5, -5, 10, 10);

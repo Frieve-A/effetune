@@ -334,7 +334,7 @@ export class DragDropManager {
             clone.style.zIndex = '1000';
             clone.style.width = item.offsetWidth + 'px';
             clone.style.opacity = '0.9';
-            clone.style.backgroundColor = '#ffffff';
+            clone.style.backgroundColor = 'var(--et-text-primary)';
             clone.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
             clone.style.pointerEvents = 'none';
             clone.style.left = (touch.clientX - touchOffsetX) + 'px';
@@ -497,7 +497,7 @@ export class DragDropManager {
             clone.style.zIndex = '1000';
             clone.style.width = item.offsetWidth + 'px';
             clone.style.opacity = '0.9';
-            clone.style.backgroundColor = '#ffffff';
+            clone.style.backgroundColor = 'var(--et-text-primary)';
             clone.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
             clone.style.pointerEvents = 'none';
             clone.style.left = (touch.clientX - touchOffsetX) + 'px';

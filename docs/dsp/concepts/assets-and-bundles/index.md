@@ -9,11 +9,15 @@ permalink: /dsp/concepts/assets-and-bundles/
 
 ## Asset-required effects
 
-`FIRCrossover`, `FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, `IRReverb`, and
+`CrosstalkCancellation`, `FIRCrossover`, `FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, `IRReverb`, and
 `RoomEQ` require `assets.impulseResponse`. FIR filter effects require prepared
 coefficients at the processing rate; IR Reverb accepts supported convolution
 topologies. The resolver returns Python `AssetData` or deterministic ETA1
 bytes/`{bytes, format}` in JavaScript. It never relies on repository fixtures.
+
+Crosstalk Cancellation requires four prepared filter channels in trueStereo topology
+(LL, LR, RL, RR) at the processing sample rate and exactly two selected processing
+channels. Automatic topology is accepted for this four-channel asset.
 
 The examples below run each effect with two distinct caller-owned IRs and require
 finite, non-zero, different output. FIR Crossover uses two coefficient channels,
@@ -108,6 +112,7 @@ COEFFICIENTS = {
 }
 
 for effect_type in (
+    "CrosstalkCancellation",
     "FIRCrossover",
     "FiveBandFIRPEQ",
     "GroupDelayEQ",
@@ -144,6 +149,13 @@ for effect_type in (
                 "filterDelaySamples": 0,
                 "bandCount": 2,
             }
+        elif effect_type == "CrosstalkCancellation":
+            asset = et.AssetData(
+                np.stack((coefficients[0], coefficients[1], coefficients[1], coefficients[0])),
+                SAMPLE_RATE,
+                topology="trueStereo",
+            )
+            parameters = {"latencyMode": "0", "filterDelaySamples": 0}
         else:
             asset = et.AssetData(
                 coefficients[0][np.newaxis, :],
@@ -193,7 +205,8 @@ export const ASSET_EFFECT_TYPES = Object.freeze([
   'GroupDelayEQ',
   'GroupDelayPEQ',
   'RoomEQ',
-  'IRReverb'
+  'IRReverb',
+  'CrosstalkCancellation'
 ]);
 
 const COEFFICIENTS = Object.freeze({
@@ -229,7 +242,13 @@ export function assetSetup(effect, sampleRate = 48000, irVariant = 'a') {
           { inputSlot: 1, outputSlot: 3, irChannel: 1 }
         ]
       })
-    : encodeEta1({
+    : effect.type === 'CrosstalkCancellation'
+      ? encodeEta1({
+          channels: [coefficients[0], coefficients[1], coefficients[1], coefficients[0]],
+          sampleRate,
+          topology: 'trueStereo'
+        })
+      : encodeEta1({
         channels: [coefficients[0]],
         sampleRate,
         topology: 'mono'

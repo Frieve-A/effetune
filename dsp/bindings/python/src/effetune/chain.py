@@ -38,6 +38,7 @@ from .validation import (
 _LOGGER = logging.getLogger(__name__)
 
 _STREAM_RECONFIGURATION_PARAMETERS = {
+    "CrosstalkCancellation": frozenset({"latencyMode", "filterDelaySamples"}),
     "FIRCrossover": frozenset(
         {"bandCount", "latencyMode", "filterDelaySamples"}
     ),
@@ -399,6 +400,10 @@ class Stream:
                                 "processing channels from 4 to 16 and one matrix filter "
                                 "channel per band"
                             )
+                    elif effect.effect_type == "CrosstalkCancellation":
+                        topology = resolve_topology(asset, effect_channels, "trueStereo")
+                        divider = 1
+                        head_block = int(effect.parameters["latencyMode"])
                     elif effect.effect_type == "RoomEQ":
                         topology = resolve_room_eq_topology(asset, effect_channels)
                         divider = 1

@@ -292,7 +292,7 @@ class CorrectionHandler {
             const highFreqPos = scaleX(highFreq);
             
             // Draw the marker lines directly on the canvas
-            ctx.strokeStyle = '#ffffff'; // White color
+            ctx.strokeStyle = window.ThemePalette?.get('text-primary') ?? '';
             ctx.lineWidth = 1;
             
             // Draw low frequency marker

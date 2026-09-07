@@ -60,6 +60,7 @@ async function loadCssInApplicationOrder(page) {
     .filter(line => line.includes('| css'))
     .map(line => line.trim().split(':', 1)[0]);
   for (const path of [
+    'effetune-theme.css',
     'effetune.css',
     'effetune-mobile.css',
     'effetune-library.css',
@@ -73,6 +74,7 @@ async function loadCssInApplicationOrder(page) {
 
 async function loadTargetScripts(page) {
   for (const path of [
+    'plugins/theme-palette.js',
     'plugins/plugin-base.js',
     'plugins/graph-point-interaction.js',
     'plugins/spectrum-overlay.js',

@@ -429,6 +429,7 @@
   "dialog.config.startupView.effects": "Effect Pipeline（默认）",
   "dialog.config.startupView.library": "音乐库",
   "dialog.config.language": "语言",
+  "dialog.config.theme": "主题",
   "dialog.config.language.auto": "自动（浏览器设置）",
   "dialog.config.languageRestartNotice": "如果您更改了语言设置，请重新启动应用程序。",
   "dialog.config.openHome.title": "OpenHome 远程控制",
@@ -803,5 +804,7 @@
   "midi.source.key": "按键 {key}", "midi.source.gamepadButton": "游戏手柄按钮 {number}", "midi.source.gamepadAxis": "游戏手柄轴 {number}（{mode}）", "midi.source.pitchbend": "弯音 ch {channel}", "midi.source.mcuFader": "MCU 推子 {channel}", "midi.source.mcuVpot": "MCU V-Pot {number}", "midi.source.mcuButton": "MCU 按钮 {number}", "midi.source.midi": "{kind} {number} ch {channel}",
   "midi.source.clock": "时钟：{component}，{shape}", "midi.source.timer": "定时器：每 {seconds} 秒", "midi.automation.source": "来源", "midi.automation.source.timer": "定时器", "midi.automation.source.clock": "时钟", "midi.clock.component": "时间部分", "midi.clock.component.hour": "小时", "midi.clock.component.minute": "分钟", "midi.clock.component.second": "秒", "midi.clock.shape": "波形", "midi.clock.shape.ramp": "上升", "midi.clock.shape.sin": "正弦", "midi.clock.shape.cos": "余弦", "midi.timer.interval": "间隔（秒）", "midi.automation.behavior": "操作", "midi.behavior.direct": "按指定量更改", "midi.behavior.random": "范围内随机值", "midi.behavior.randomWalk": "从当前值随机步进", "midi.automation.amount": "变化量",
   "midi.source.timer.interval": "定时器：每 {seconds} 秒", "midi.source.timer.once": "定时器：{date} {time} 执行一次", "midi.source.timer.daily": "定时器：每天 {time}", "midi.timer.schedule": "计划", "midi.timer.schedule.interval": "间隔", "midi.timer.schedule.once": "仅一次", "midi.timer.schedule.daily": "每天", "midi.timer.date": "日期", "midi.timer.time": "时间", "midi.timer.expired": "已过期",
+  "midi.device.connected": "已连接",
+  "midi.device.disconnected": "已断开",
   "midi.target.type": "效果器", "midi.target.instance": "实例", "midi.target.parameter": "参数", "midi.direction": "方向", "midi.mode": "模式", "midi.target.masterBypass": "主旁路", "midi.target.abToggle": "切换 A/B", "midi.target.enabled": "已启用", "midi.parameterNumber": "{title} {number}", "midi.map.minimum": "最小", "midi.map.maximum": "最大", "midi.map.sensitivity": "灵敏度", "midi.direction.increase": "增加 (+)", "midi.direction.decrease": "减少 (−)", "midi.mode.abs": "绝对值", "midi.mode.rel": "相对值", "midi.mode.rel2c": "相对值（二进制补码）", "midi.mode.relBin": "相对值（二进制偏移）", "midi.mode.relSign": "相对值（符号和绝对值）", "midi.buttonMode": "按钮模式", "midi.buttonMode.toggle": "切换", "midi.buttonMode.momentary": "瞬时"
 }

@@ -662,6 +662,49 @@ class GraphRuntimeTests(unittest.TestCase):
                     last = next(node for node in snapshot["nodes"] if node["id"] == "room-15")
                     self.assertEqual(last["outputLatency"], list(range(129, 145)))
 
+    def test_crosstalk_true_stereo_assets_in_chain_and_graph_streams(self) -> None:
+        for topology in ("automatic", "trueStereo"):
+            effect = effetune.CrosstalkCancellation(
+                id="cancel", latency_mode="128", filter_delay_samples=0,
+                strength=100, assets={"impulseResponse": "filters"},
+            )
+            samples = np.asarray([[1], [0], [0], [1]], dtype=np.float32)
+            resolver = lambda _: effetune.AssetData(samples, 48000, topology=topology)
+            chain = effetune.Chain([effect], asset_resolver=resolver)
+            graph = effetune.Graph.from_chain(chain, asset_resolver=resolver)
+            for owner in (chain, graph):
+                with self.subTest(topology=topology, owner=type(owner).__name__):
+                    with owner.stream(48000, channels=2) as stream:
+                        self.assertEqual(stream.latency_samples, 128)
+                        source = np.zeros((2, 512), dtype=np.float32)
+                        source[:, 0] = (0.5, -0.25)
+                        output = stream.process(source)
+                        self.assertTrue(np.isfinite(output).all())
+                        self.assertTrue(np.any(output))
+                        def update(name, value):
+                            if owner is graph:
+                                stream.set_param("cancel", name, value)
+                            else:
+                                stream.process(source, events=[{"frame": 0, "effectId": "cancel", "parameters": {name: value}}])
+                        if owner is chain:
+                            update("strength", 70)
+                        else:
+                            with self.assertRaises(effetune.ValidationError):
+                                update("strength", 70)
+                        for name, value in (("latencyMode", "256"), ("filterDelaySamples", 1)):
+                            with self.assertRaises(effetune.ValidationError):
+                                update(name, value)
+                    for channels in (1, 4):
+                        with self.assertRaises(effetune.EffeTuneError):
+                            owner.stream(48000, channels=channels)
+                    with self.assertRaises(effetune.AssetError):
+                        owner.stream(44100, channels=2)
+        for channels, topology in ((1, "mono"), (4, "independent")):
+            resolver = lambda _: effetune.AssetData(np.ones((channels, 1), dtype=np.float32), 48000, topology=topology)
+            chain = effetune.Chain([effect], asset_resolver=resolver)
+            with self.assertRaises(effetune.AssetError):
+                chain.stream(48000, channels=2)
+
     def test_fir_crossover_accepts_even_buses_through_sixteen_channels(self) -> None:
         effect = effetune.FIRCrossover(
             id="split", band_count=2, latency_mode="128", assets={"impulseResponse": "filters"},

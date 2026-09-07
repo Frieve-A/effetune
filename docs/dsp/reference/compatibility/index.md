@@ -22,8 +22,8 @@ integrated-LUFS/true-peak measurement.
 
 ## Analyzers and telemetry
 
-`LevelMeter`, `Oscilloscope`, `SpectrumAnalyzer`, `Spectrogram`, and
-`StereoMeter` expose decoded semantic observations in Python, JavaScript offline and
+`LevelMeter`, `NoteSpectrogram`, `Oscilloscope`, `SpectrumAnalyzer`,
+`Spectrogram`, and `StereoMeter` expose decoded semantic observations in Python, JavaScript offline and
 streaming processing, and AudioWorklet. Telemetry is opt-in: the first callback or
 subscriber enables it and the last unsubscribe disables it. Long renders drain after
 every processing block. Public frames identify the semantic effect and contain owned
@@ -34,7 +34,7 @@ Common metadata:
 
 | JavaScript / Python | Meaning |
 |---|---|
-| `kind` / `kind` | `level`, `oscilloscope`, `spectrum`, `spectrogram`, or `stereo` |
+| `kind` / `kind` | `level`, `noteSpectrogram`, `oscilloscope`, `spectrum`, `spectrogram`, or `stereo` |
 | `effectType` / `effect_type` | Semantic effect type |
 | `effectId` / `effect_id` | Declared effect ID, or null / `None` |
 | `effectIndex` / `effect_index` | Zero-based position in the declared DSP chain |
@@ -58,6 +58,14 @@ Analyzer fields:
 | Spectrum | `binsTruncated` / `bins_truncated` | True when the highest bins were omitted to fit transport capacity |
 | Spectrum | `currentDb` / `current_db` | dBFS `[bin]`, ascending frequency from DC |
 | Spectrum | `peakDb` / `peak_db` | Peak-held dBFS `[bin]`, same order and length as current |
+| Note Spectrogram | `sampleRate` / `sample_rate` | Hz |
+| Note Spectrogram | `timeSeconds` / `time_seconds` | Observation time in seconds on the processing timeline |
+| Note Spectrogram | `firstMidi` / `first_midi` | `21`, the first piano-key MIDI note before fine-pitch offsets are applied |
+| Note Spectrogram | `hopSeconds` / `hop_seconds` | Nominal time step between analysis observations, in seconds |
+| Note Spectrogram | `frameIndex` / `frame_index` | Unsigned observation counter within the current analysis generation |
+| Note Spectrogram | `divisionsPerSemitone` / `divisions_per_semitone` | `5`; each semitone has bins at -40, -20, 0, +20, and +40 cents around its center |
+| Note Spectrogram | `generation` / `generation` | Non-zero analysis generation; a change indicates that analyzer state restarted |
+| Note Spectrogram | `levels` / `levels` | Pitch confidence in [0, 1] as JavaScript `Float32Array[440]` or Python `tuple[440]`; index `i` maps to MIDI `firstMidi + (i - 2) / divisionsPerSemitone` |
 | Spectrogram | `sampleRate` / `sample_rate` | Hz |
 | Spectrogram | `timeSeconds` / `time_seconds` | Observation time in seconds on the processing timeline |
 | Spectrogram | `points` / `points` | FFT size exponent; FFT size is `2 ** points` |

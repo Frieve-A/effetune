@@ -32,6 +32,11 @@ function createElement(document, tagName) {
     appendChild(child) {
       child.parentNode = this;
       this.children.push(child);
+      if (child.rel === 'stylesheet') {
+        queueMicrotask(() => {
+          for (const listener of child.listeners.get('load') || []) listener();
+        });
+      }
       if (child.id) document.elementsById.set(child.id, child);
       return child;
     },
@@ -781,6 +786,30 @@ test('App initialize handles success, audio warnings, and initialization failure
     assert.equal(calls.some(call => call[0] === 'ui.setOpenHomeRemoteRuntimeReady'), false);
   });
 
+});
+
+test('startup stays private until localization settles and also reveals initialization failures', async () => {
+  for (const loadPluginsReject of [false, true]) {
+    await withAppModule({}, async ({ calls, document, mod, timers }) => {
+      const classes = new Set(['app-starting']);
+      document.documentElement = { classList: { remove: name => classes.delete(name) } };
+      const dependencies = createDependencies(calls, { loadPluginsReject });
+      let finishLocalization;
+      dependencies.uiManager.localizationReady = new Promise(resolve => { finishLocalization = resolve; });
+      const app = new mod.App(dependencies);
+      const initialized = app.initialize();
+      await flushAndRunTimers(timers);
+      assert.equal(classes.has('app-starting'), true);
+      assert.notEqual(app.initialized, true);
+      finishLocalization();
+      await initialized;
+      assert.equal(classes.has('app-starting'), false);
+      assert.equal(app.initialized, true);
+      if (loadPluginsReject) {
+        assert.ok(calls.some(call => call[0] === 'ui.setError'));
+      }
+    });
+  }
 });
 
 test('initializeAudioWorklet leaves splash handling to the audio-only document and honors forced skip', async () => {

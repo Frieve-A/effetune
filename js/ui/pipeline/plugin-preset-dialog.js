@@ -378,18 +378,20 @@ export class PluginPresetDialog {
         nameButton.addEventListener('click', async () => {
             await this.activatePreset(content, provider, generation, saveRow, 'user', name);
         });
-        const renameButton = document.createElement('button');
-        renameButton.type = 'button';
-        renameButton.className = 'preset-dialog-rename-button';
-        renameButton.title = t('ui.pluginPresets.rename', 'Rename');
-        renameButton.textContent = '✎';
-        renameButton.addEventListener('click', event => {
-            event.stopPropagation();
-            this.beginRename(row, provider, content, generation, name, saveRow);
-        });
         row.appendChild(checkbox);
         row.appendChild(nameButton);
-        row.appendChild(renameButton);
+        if (typeof provider.renameUserPreset === 'function') {
+            const renameButton = document.createElement('button');
+            renameButton.type = 'button';
+            renameButton.className = 'preset-dialog-rename-button';
+            renameButton.title = t('ui.pluginPresets.rename', 'Rename');
+            renameButton.textContent = '✎';
+            renameButton.addEventListener('click', event => {
+                event.stopPropagation();
+                this.beginRename(row, provider, content, generation, name, saveRow);
+            });
+            row.appendChild(renameButton);
+        }
         return row;
     }
 

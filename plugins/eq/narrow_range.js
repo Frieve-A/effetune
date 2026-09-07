@@ -427,57 +427,6 @@ class NarrowRangePlugin extends PluginBase {
     const container = document.createElement("div");
     container.className = "narrow-range-plugin-ui plugin-parameter-ui";
 
-    // Helper to create a parameter row with slider and number input
-    const createRow = (labelText, min, max, step, value, onInput) => {
-      // Create a parameter name from the label (e.g., "HPF Freq (Hz):" -> "hpffreq")
-      const paramName = labelText.toLowerCase().split(' ')[0].replace(/[^a-z0-9]/g, '');
-      
-      const sliderId = `${this.id}-${this.name}-${paramName}-slider`;
-      const numberId = `${this.id}-${this.name}-${paramName}-number`;
-      
-      const row = document.createElement("div");
-      row.className = "parameter-row";
-      
-      const label = document.createElement("label");
-      label.textContent = labelText;
-      label.htmlFor = sliderId;
-      
-      const slider = document.createElement("input");
-      slider.type = "range";
-      slider.id = sliderId;
-      slider.name = sliderId;
-      slider.min = min;
-      slider.max = max;
-      slider.step = step;
-      slider.value = value;
-      slider.autocomplete = "off";
-      
-      const numberInput = document.createElement("input");
-      numberInput.type = "number";
-      numberInput.id = numberId;
-      numberInput.name = numberId;
-      numberInput.min = min;
-      numberInput.max = max;
-      numberInput.step = step;
-      numberInput.value = value;
-      numberInput.autocomplete = "off";
-      slider.addEventListener("input", e => {
-        onInput(parseFloat(e.target.value));
-        numberInput.value = labelText.includes("HPF") ? this.hf : this.lf;
-        this.drawGraph(canvas);
-      });
-      numberInput.addEventListener("input", e => {
-        onInput(parseFloat(e.target.value) || 0);
-        slider.value = labelText.includes("HPF") ? this.hf : this.lf;
-        this.drawGraph(canvas);
-        e.target.value = labelText.includes("HPF") ? this.hf : this.lf;
-      });
-      row.appendChild(label);
-      row.appendChild(slider);
-      row.appendChild(numberInput);
-      return row;
-    };
-
     // Helper to create a slope select box
     const createSlopeSelect = (current, onChange, filterType) => {
       const selectId = `${this.id}-${this.name}-${filterType.toLowerCase()}-slope`;
@@ -504,10 +453,16 @@ class NarrowRangePlugin extends PluginBase {
     };
 
     // Create HPF and LPF parameter rows
-    const hpfRow = createRow("HPF Freq (Hz):", 20, 4000, 1, this.hf, v => this.setHf(v));
+    const hpfRow = this.createLogarithmicParameterControl("HPF Freq", 20, 4000, 1, this.hf, v => {
+      this.setHf(v);
+      this.drawGraph(canvas);
+    }, 'Hz', 'hf');
     const hpfSlopeSelect = createSlopeSelect(this.hs, v => this.setHs(v), "HPF");
     hpfRow.appendChild(hpfSlopeSelect);
-    const lpfRow = createRow("LPF Freq (Hz):", 200, 40000, 100, this.lf, v => this.setLf(v));
+    const lpfRow = this.createLogarithmicParameterControl("LPF Freq", 200, 40000, 100, this.lf, v => {
+      this.setLf(v);
+      this.drawGraph(canvas);
+    }, 'Hz', 'lf');
     const lpfSlopeSelect = createSlopeSelect(this.ls, v => this.setLs(v), "LPF");
     lpfRow.appendChild(lpfSlopeSelect);
 
@@ -529,20 +484,9 @@ class NarrowRangePlugin extends PluginBase {
 
     // Automation playback and preset recall change the model without touching the
     // DOM, so the parts of the UI this plugin builds by hand are refreshed here.
-    // Every control in this plugin is hand-built, so all four of them plus the
-    // response curve are pushed from the model.
-    const hpfInputs = hpfRow.querySelectorAll("input");
-    const lpfInputs = lpfRow.querySelectorAll("input");
+    // The frequency rows carry modelKeys and follow on their own; the slope
+    // selects and the response curve do not.
     this.registerUIRefresh(() => {
-      hpfInputs.forEach(input => {
-        input.value = this.hf;
-        // Only the range of the pair carries a track fill to repaint.
-        if (input.type === "range") window.uiManager?.refreshRangeFillStyling?.(input);
-      });
-      lpfInputs.forEach(input => {
-        input.value = this.lf;
-        if (input.type === "range") window.uiManager?.refreshRangeFillStyling?.(input);
-      });
       // Tested per element, so one select being held still lets the other track.
       const heldByUser = el => this.isHeldByUser(el);
       if (!heldByUser(hpfSlopeSelect)) hpfSlopeSelect.value = this.hs;
@@ -566,7 +510,7 @@ class NarrowRangePlugin extends PluginBase {
     ctx.clearRect(0, 0, width, height);
 
     // Draw grid & labels (unchanged)
-    ctx.strokeStyle = "#444";
+    ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
     ctx.lineWidth = isMobileLayout ? 1 : 0.5;
     ctx.font = "12px Arial";
     const freqs = [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
@@ -577,7 +521,7 @@ class NarrowRangePlugin extends PluginBase {
       ctx.lineTo(x, height);
       ctx.stroke();
       if (freq > 20 && freq < 40000) {
-        ctx.fillStyle = "#666";
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         ctx.textAlign = "center";
         ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, height - 24);
       }
@@ -590,12 +534,12 @@ class NarrowRangePlugin extends PluginBase {
       ctx.lineTo(width, y);
       ctx.stroke();
       if (db > -30 && db < 6) {
-        ctx.fillStyle = "#666";
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         ctx.textAlign = "right";
         ctx.fillText(`${db}`, 48, y + 4);
       }
     });
-    ctx.fillStyle = "#fff";
+    ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
     ctx.font = "14px Arial";
     ctx.textAlign = "center";
     ctx.fillText("Frequency (Hz)", width / 2, height - 5);
@@ -721,7 +665,7 @@ class NarrowRangePlugin extends PluginBase {
     const lp2 = getLp2Coeffs(this.lf);
 
     ctx.beginPath();
-    ctx.strokeStyle = "#00ff00";
+    ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
     ctx.lineWidth = isMobileLayout ? 2 : 1;
 
     for (let i = 0; i < width; i++) {

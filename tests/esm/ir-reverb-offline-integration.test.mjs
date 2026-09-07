@@ -334,7 +334,7 @@ async function renderOfflineSession(bytes, asset, input, parameters = PARAMETERS
       SAMPLE_RATE,
       CHANNEL_COUNT
     );
-    assert.ok(session, 'offline IR session must be created');
+    assert.ok(session, `offline IR session must be created: ${warnings.join('; ')}`);
     try {
       const entry = session.entries.get(plugin);
       assert.ok(entry && !entry.disabled, 'offline IR instance must remain native and enabled');

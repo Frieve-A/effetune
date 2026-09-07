@@ -142,6 +142,33 @@ test('production source digest includes promoted GSM inputs', () => {
   assert.equal(productionPaths.has(gsmHeader), true);
 });
 
+test('DSP model freshness hashes binary bytes without UTF-8 decoding', t => {
+  const directory = 'dsp/plugins/analyzer/note_spectrogram/';
+  const inputs = new Set(sourceDigestInputPaths());
+  for (const model of ['learned_model', 'fine_model', 'octave_model']) {
+    assert.equal(inputs.has(`${directory}${model}.bin`), true);
+    assert.equal(inputs.has(`${directory}${model}.json`), true);
+  }
+  assert.equal(inputs.has(`${directory}embed_models.py`), true);
+  assert.equal(inputs.has(`${directory}models.cmake`), true);
+
+  // Both byte sequences decode to the same replacement character as UTF-8.
+  // Intercept synchronous reads so parallel tests never see a changed model file.
+  const modelPath = fs.realpathSync(path.join(repoRoot, directory, 'learned_model.bin'));
+  const readFile = fs.readFileSync;
+  let byte = 0xc0;
+  t.mock.method(fs, 'readFileSync', (file, ...args) => {
+    if (fs.realpathSync(file) === modelPath) {
+      const bytes = Buffer.from([byte]);
+      return args[0] === 'utf8' ? bytes.toString('utf8') : bytes;
+    }
+    return readFile(file, ...args);
+  });
+  const first = sourceDigest();
+  byte = 0xc1;
+  assert.notEqual(sourceDigest(), first);
+});
+
 test('CMake compiles promoted GSM Full Rate sources exactly once by default', () => {
   const source = fs.readFileSync(path.join(repoRoot, 'dsp', 'CMakeLists.txt'), 'utf8');
   assert.doesNotMatch(source, /ET_PHASE0_GSM_FR/);

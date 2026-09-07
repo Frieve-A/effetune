@@ -1,9 +1,17 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="app-starting">
 <head>
     <meta charset="UTF-8">
+    <style>
+        html.app-starting {
+            opacity: 0 !important;
+            pointer-events: none !important;
+            scrollbar-color: transparent transparent !important;
+        }
+    </style>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; script-src 'self' https://www.googletagmanager.com 'unsafe-inline' 'unsafe-eval' blob:; connect-src 'self' blob: https://www.google-analytics.com https://*.google-analytics.com https://analytics.google.com; img-src 'self' https://www.google-analytics.com https://*.google-analytics.com data: blob:; media-src 'self' blob: data: http://127.0.0.1:*; style-src 'self' 'unsafe-inline' blob:;">
+    <script src="js/theme-boot.js"></script>
     <title>EffeTune</title>
 
     <!-- SEO Meta Tags -->
@@ -79,7 +87,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#000000">
+    <meta name="theme-color" content="#171717"> <!-- theme-allow: Initial browser chrome matches the Graphite theme. -->
     <script>
         // Capture the PWA install prompt as early as possible so the browser's
         // default mini-infobar is suppressed and we can trigger installation
@@ -183,21 +191,23 @@
     </div>
 
     <div class="main-container">
-        <div class="plugin-list" id="pluginList">
-            <div class="plugin-list-header">
-                <div class="tab-switcher" id="tabSwitcher">
-                    <button class="tab-button active" id="effectsTab">Effects</button>
-                    <button class="tab-button" id="systemPresetsTab">S.Presets</button>
-                    <button class="tab-button" id="userPresetsTab">U.Preset</button>
+        <div class="plugin-list-shell">
+            <div class="plugin-list" id="pluginList">
+                <div class="plugin-list-header">
+                    <div class="tab-switcher" id="tabSwitcher">
+                        <button class="tab-button active" id="effectsTab">Effects</button>
+                        <button class="tab-button" id="systemPresetsTab">S.Presets</button>
+                        <button class="tab-button" id="userPresetsTab">U.Preset</button>
+                    </div>
+                    <h2 id="availableEffectsTitle" style="display: none;">Available Effects</h2>
+                    <input type="text" id="effectSearchInput" class="effect-search-input" placeholder="Search effects..." style="display: none;">
+                    <button type="button" class="input-clear-button effect-search-clear-button" id="effectSearchClearButton" title="Clear search" aria-label="Clear search">&times;</button>
+                    <button class="header-button search-button" id="effectSearchButton" title="Search effects"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><circle cx="10.5" cy="10.5" r="6.2"/><path d="M20 20l-4.9-4.9"/></svg></button>
                 </div>
-                <h2 id="availableEffectsTitle" style="display: none;">Available Effects</h2>
-                <input type="text" id="effectSearchInput" class="effect-search-input" placeholder="Search effects..." style="display: none;">
-                <button type="button" class="input-clear-button effect-search-clear-button" id="effectSearchClearButton" title="Clear search" aria-label="Clear search">&times;</button>
-                <button class="header-button search-button" id="effectSearchButton" title="Search effects"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><circle cx="10.5" cy="10.5" r="6.2"/><path d="M20 20l-4.9-4.9"/></svg></button>
+                <!-- Plugin list will be populated by JavaScript -->
             </div>
-            <!-- Plugin list will be populated by JavaScript -->
+            <div class="plugin-list-pull-tab" id="pluginListPullTab">◀</div>
         </div>
-        <div class="plugin-list-pull-tab" id="pluginListPullTab">◀</div>
 
         <div class="pipeline" id="pipeline">
             <div class="pipeline-header">
@@ -260,7 +270,7 @@
     </div>
 
     <script type="module" src="js/startup.js"></script>
-    <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
+    <div style="text-align: center; margin-top: 20px; color: var(--et-surface-35); font-size: 12px;">
         EffeTune version <span id="app-version"></span> (C) Frieve 2025, 2026
     </div>
 </body>

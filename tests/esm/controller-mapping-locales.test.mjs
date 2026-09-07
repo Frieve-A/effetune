@@ -15,7 +15,9 @@ const fieldLabelKeys = [
   'midi.target.instance',
   'midi.target.parameter',
   'midi.direction',
-  'midi.mode'
+  'midi.mode',
+  'midi.device.connected',
+  'midi.device.disconnected'
 ];
 const automationKeys = [
   'midi.addAutomation',

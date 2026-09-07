@@ -1,6 +1,9 @@
 const POWER_AMP_SAG_TAP_MEASUREMENTS = 12;
 const POWER_AMP_SAG_TELEMETRY_VERSION = 1;
 const POWER_AMP_SAG_TELEMETRY_PAYLOAD_BYTES = 8;
+// Preserve the history duration at the normal 60 Hz telemetry rate.
+const POWER_AMP_SAG_HISTORY_SECONDS = 512 / 60;
+const POWER_AMP_SAG_DISPLAY_LEAD_SECONDS = 1 / 60;
 
 const POWER_AMP_SAG_SYSTEM_PRESETS = Object.freeze([
     Object.freeze({ id: 'vintage-tube-sag', label: 'Vintage Tube Sag', params: Object.freeze({ ss: 8.0, ps: 30, rs: 25, mb: false }) }),
@@ -41,10 +44,11 @@ class PowerAmpSagPlugin extends PluginBase {
         this._boundDspPowerAmpSagTelemetry = frame => this.handleDspPowerAmpSagTelemetry(frame);
         
         // History buffers for graph (512 points each) - half of auto_leveler since canvas width is half
-        this.inputEnvelopeBuffer = new Float32Array(512).fill(0);
-        this.gainReductionBuffer = new Float32Array(512).fill(0);
-        this.secondMarkers = [];
-        this.prevTime = null;
+        this.inputEnvelopeBuffer = new Float32Array(512).fill(NaN);
+        this.gainReductionBuffer = new Float32Array(512).fill(NaN);
+        this.historyTimes = new Float64Array(512).fill(NaN);
+        this.graphPaused = false;
+        this.graphTime = null;
 
         this._setupMessageHandler();
         
@@ -321,34 +325,36 @@ class PowerAmpSagPlugin extends PluginBase {
         if (!measurements) return;
         this.onMessage({
             type: 'processBuffer',
-            measurements: { ...measurements, time: performance.now() / 1000 }
+            measurements
         });
     }
 
     onMessage(message) {
         this.ensureDspTelemetrySubscription();
-        if (message.type === 'processBuffer' && message.measurements) {
-            // Update visualization data
-            this.inputEnvelope = message.measurements.inputEnvelope;
-            this.gainReduction = message.measurements.gainReduction;
-            
-            // Shift history buffers
-            this.inputEnvelopeBuffer.copyWithin(0, 1);
-            this.gainReductionBuffer.copyWithin(0, 1);
-            
-            // Shift marker positions
-            this.secondMarkers = this.secondMarkers.map(v => v - 1).filter(v => v >= 0);
-            
-            const t = message.measurements.time;
-            if (this.prevTime !== null && !Number.isNaN(t) && Math.floor(this.prevTime) !== Math.floor(t)) {
-                this.secondMarkers.push(this.inputEnvelopeBuffer.length - 1);
-            }
-            this.prevTime = t;
-            
-            // Add new values
-            this.inputEnvelopeBuffer[this.inputEnvelopeBuffer.length - 1] = this.inputEnvelope;
-            this.gainReductionBuffer[this.gainReductionBuffer.length - 1] = this.gainReduction;
-        }
+        if (message.type !== 'processBuffer' || !message.measurements ||
+            !this.enabled || !this._sectionEnabled) return;
+        const { inputEnvelope, gainReduction } = message.measurements;
+        if (!Number.isFinite(inputEnvelope) || !Number.isFinite(gainReduction)) return;
+        // Telemetry has no source timestamp. Use the monotonic display clock for
+        // both delivery paths and rendering, including after ON/OFF.
+        const now = performance.now() / 1000;
+        this.inputEnvelope = inputEnvelope;
+        this.gainReduction = gainReduction;
+        this.inputEnvelopeBuffer.copyWithin(0, 1);
+        this.gainReductionBuffer.copyWithin(0, 1);
+        this.historyTimes.copyWithin(0, 1);
+        const last = this.historyTimes.length - 1;
+        this.inputEnvelopeBuffer[last] = inputEnvelope;
+        this.gainReductionBuffer[last] = gainReduction;
+        this.historyTimes[last] = now;
+        this.graphTime = now;
+    }
+
+    getGraphDisplayTime(now) {
+        const latest = this.historyTimes[this.historyTimes.length - 1];
+        if (!Number.isFinite(latest)) return null;
+        if (this.graphPaused) return this.graphTime;
+        return Math.max(latest, Math.min(latest + POWER_AMP_SAG_DISPLAY_LEAD_SECONDS, now / 1000));
     }
     
     getParameters() {
@@ -409,18 +415,21 @@ class PowerAmpSagPlugin extends PluginBase {
         if (!this.enabled || !this._sectionEnabled) return;
         if (this.animationFrameId) return;
         
-        const animate = () => {
+        this.graphPaused = false;
+        const animate = (now) => {
             if (!this.isVisible) {
                 this.stopAnimation();
                 return;
             }
-            this.drawGraphs();
+            this.drawGraphs(now);
             this.animationFrameId = this.requestPowerAnimationFrame(animate);
         };
-        animate();
+        animate(performance.now());
     }
     
     stopAnimation() {
+        this.graphTime = this.getGraphDisplayTime(performance.now());
+        this.graphPaused = true;
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
@@ -432,7 +441,7 @@ class PowerAmpSagPlugin extends PluginBase {
         this.graphResizeDisposers = [];
     }
     
-    drawGraphs() {
+    drawGraphs(now = performance.now()) {
         // Draw left graph - Input Envelope
         if (this.canvasCtxLeft) {
             this.drawSingleGraph(
@@ -441,11 +450,12 @@ class PowerAmpSagPlugin extends PluginBase {
                 this.canvasLeft.height,
                 'Input Envelope',
                 this.inputEnvelopeBuffer,
-                '#00ff00',
+                (window.ThemePalette?.get('graph-trace') ?? ''),
                 0,
                 100,
                 10,
-                '%'
+                '%',
+                now
             );
         }
         
@@ -457,16 +467,17 @@ class PowerAmpSagPlugin extends PluginBase {
                 this.canvasRight.height,
                 'Gain Reduction',
                 this.gainReductionBuffer,
-                '#ffffff',
+                (window.ThemePalette?.get('text-primary') ?? ''),
                 -12,
                 2,
                 2,
-                'dB'
+                'dB',
+                now
             );
         }
     }
     
-    drawSingleGraph(ctx, width, height, title, buffer, color, minValue, maxValue, step, unit) {
+    drawSingleGraph(ctx, width, height, title, buffer, color, minValue, maxValue, step, unit, now = performance.now()) {
         const canvas = ctx.canvas;
         const cssWidth = canvas.clientWidth || width;
         const dpr = cssWidth > 0 ? width / cssWidth : 1;
@@ -484,15 +495,15 @@ class PowerAmpSagPlugin extends PluginBase {
         const graphLineWidth = (isMobileLayout ? 2 : 1) * dpr;
 
         // Clear canvas
-        ctx.fillStyle = '#1a1a1a';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
         ctx.fillRect(0, 0, width, height);
         
         // Draw grid lines and labels - matching auto_leveler style
-        ctx.strokeStyle = '#333';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-subtle') ?? '');
         ctx.lineWidth = graphLineWidth;
         ctx.textAlign = 'right';
         ctx.font = `${tickFontSize}px Arial`;
-        ctx.fillStyle = '#ccc';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label-strong') ?? '');
         
         // Draw horizontal grid lines
         const range = maxValue - minValue;
@@ -522,11 +533,15 @@ class PowerAmpSagPlugin extends PluginBase {
         ctx.textAlign = 'center';
         ctx.fillText('Time', width / 2, height - bottomOffset);
         
-        // Draw 1-second markers
-        ctx.strokeStyle = '#555';
+        // Draw 1-second markers using the same time coordinate as the curves.
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-strong') ?? '');
         ctx.lineWidth = graphLineWidth;
-        for (const idx of this.secondMarkers) {
-            const x = width * idx / buffer.length;
+        const displayTime = this.getGraphDisplayTime(now);
+        const pixelsPerSecond = width / POWER_AMP_SAG_HISTORY_SECONDS;
+        const firstSecond = displayTime === null ? 1 : Math.max(0, Math.ceil(displayTime - POWER_AMP_SAG_HISTORY_SECONDS));
+        const lastSecond = displayTime === null ? 0 : Math.floor(displayTime);
+        for (let second = firstSecond; second <= lastSecond; second++) {
+            const x = width + (second - displayTime) * pixelsPerSecond;
             ctx.beginPath();
             ctx.moveTo(x, height - secondMarkerHeight);
             ctx.lineTo(x, height);
@@ -538,19 +553,33 @@ class PowerAmpSagPlugin extends PluginBase {
         ctx.lineWidth = graphLineWidth;
         ctx.beginPath();
         let started = false;
+        let lastY = 0;
+        let previousTime = null;
+        const maxContinuousGap = 1;
         for (let i = 0; i < buffer.length; i++) {
             const value = buffer[i];
-            const x = width * i / buffer.length;
+            const time = this.historyTimes[i];
+            if (!Number.isFinite(value) || !Number.isFinite(time) || displayTime === null) {
+                previousTime = null;
+                continue;
+            }
+            const x = width + (time - displayTime) * pixelsPerSecond;
             const y = height * (1 - (value - minValue) / range);
             
-            if (!started) {
+            if (!started || previousTime === null || time - previousTime > maxContinuousGap) {
                 ctx.moveTo(x, y);
                 started = true;
             } else {
                 ctx.lineTo(x, y);
             }
+            lastY = y;
+            previousTime = time;
         }
-        ctx.stroke();
+        if (started) {
+            // Keep the latest measured value at the right edge between updates.
+            ctx.lineTo(width, lastY);
+            ctx.stroke();
+        }
         
         // Display current value at top right - fixed position
         const currentValue = buffer[buffer.length - 1];
@@ -560,7 +589,9 @@ class PowerAmpSagPlugin extends PluginBase {
         ctx.fillStyle = color;
         ctx.textAlign = 'right';
         ctx.font = `${valueFontSize}px Arial`;
-        ctx.fillText(currentValue.toFixed(1) + ' ' + unit, x, y);
+        if (Number.isFinite(currentValue)) {
+            ctx.fillText(currentValue.toFixed(1) + ' ' + unit, x, y);
+        }
     }
     
     createUI() {
@@ -711,10 +742,11 @@ class PowerAmpSagPlugin extends PluginBase {
         this.canvasCtxRight = null;
         
         // Reset buffers
-        this.inputEnvelopeBuffer.fill(0);
-        this.gainReductionBuffer.fill(0);
-        this.secondMarkers = [];
-        this.prevTime = null;
+        this.inputEnvelopeBuffer.fill(NaN);
+        this.gainReductionBuffer.fill(NaN);
+        this.historyTimes.fill(NaN);
+        this.graphPaused = false;
+        this.graphTime = null;
 
         super.cleanup();
     }

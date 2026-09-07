@@ -689,6 +689,7 @@ test('Room EQ graph draws measured, correction, and corrected response curves', 
     const { context } = loadPlugin();
     const paths = [];
     context.document.createElementNS = () => ({
+        style: {},
         attributes: {},
         setAttribute(name, value) { this.attributes[name] = value; },
         id: ''
@@ -734,19 +735,19 @@ test('Room EQ graph draws measured, correction, and corrected response curves', 
 
     assert.equal(paths.length, 6);
     assert.equal(paths[0].attributes.class, 'room-eq-measured-response-path');
-    assert.equal(paths[0].attributes.stroke, '#b0b0b0');
+    assert.equal(paths[0].style.stroke, 'var(--et-graph-trace-secondary)');
     assert.equal(paths[0].attributes['stroke-width'], '1');
     assert.match(paths[0].attributes.d, /^M 0\.00,165\.00 /);
     assert.equal(paths[1].attributes.class, 'room-eq-base-response-path');
-    assert.equal(paths[1].attributes.stroke, '#80c080');
+    assert.equal(paths[1].style.stroke, 'var(--et-success)');
     assert.equal(paths[1].attributes['stroke-width'], '1');
     assert.match(paths[1].attributes.d, /^M 0\.00,95\.00 /);
     assert.equal(paths[2].attributes.class, 'room-eq-combined-response-path');
-    assert.equal(paths[2].attributes.stroke, '#00ff00');
+    assert.equal(paths[2].style.stroke, 'var(--et-graph-trace)');
     assert.equal(paths[2].attributes['stroke-width'], '1');
     assert.match(paths[2].attributes.d, /^M 0\.00,85\.00 /);
     assert.equal(paths[3].attributes.class, 'room-eq-corrected-response-path');
-    assert.equal(paths[3].attributes.stroke, '#ffffff');
+    assert.equal(paths[3].style.stroke, 'var(--et-text-primary)');
     assert.equal(paths[3].attributes['stroke-width'], '1');
     assert.match(paths[3].attributes.d, /^M 0\.00,150\.00 /);
     const correctedPoints = Array.from(
@@ -783,7 +784,7 @@ test('Room EQ graph draws measured, correction, and corrected response curves', 
     assert.match(pluginCss,
         /\.room-eq-additional-eq-response path \{[^}]*stroke-width: 1;/);
     assert.match(pluginCss,
-        /\.room-eq-correction-boundary \{[^}]*stroke: #fff;[^}]*stroke-width: 1;[^}]*stroke-dasharray: 2 3;[^}]*stroke-linecap: round;/);
+        /\.room-eq-correction-boundary \{[^}]*stroke: var\(--et-text-primary\);[^}]*stroke-width: 1;[^}]*stroke-dasharray: 2 3;[^}]*stroke-linecap: round;/);
     editor.dispose();
 });
 
@@ -914,12 +915,12 @@ test('Room EQ graph shows a color-matched legend in its upper-right corner', () 
     }
     assert.match(pluginCss,
         /\.room-eq-response-legend \{[^}]*top: 5px;[^}]*right: 7px;/s);
-    assert.match(pluginCss, /\.room-eq-response-legend-room \{ color: #80c080;/);
-    assert.match(pluginCss, /\.room-eq-response-legend-total \{ color: #00ff00;/);
-    assert.match(pluginCss, /\.room-eq-response-legend-before \{ color: #b0b0b0;/);
-    assert.match(pluginCss, /\.room-eq-response-legend-after \{ color: #fff;/);
+    assert.match(pluginCss, /\.room-eq-response-legend-room \{ color: var\(--et-success\);/);
+    assert.match(pluginCss, /\.room-eq-response-legend-total \{ color: var\(--et-graph-trace\);/);
+    assert.match(pluginCss, /\.room-eq-response-legend-before \{ color: var\(--et-graph-trace-secondary\);/);
+    assert.match(pluginCss, /\.room-eq-response-legend-after \{ color: var\(--et-text-primary\);/);
     assert.match(pluginCss,
-        /\.room-eq-phase-view \.room-eq-response-legend-after,[\s\S]*\.room-eq-impulse-view \.room-eq-response-legend-after \{\s*color: #00ff00;/);
+        /\.room-eq-phase-view \.room-eq-response-legend-after,[\s\S]*\.room-eq-impulse-view \.room-eq-response-legend-after \{\s*color: var\(--et-graph-trace\);/);
     assert.match(pluginCss,
         /\.room-eq-impulse-view \.room-eq-response-legend-room,[\s\S]*\.room-eq-impulse-view \.room-eq-response-legend-total \{\s*display: none;/);
 });
@@ -1015,9 +1016,9 @@ test('Room EQ phase graph uses frequency and phase axes without connecting wrap 
     assert.match(pluginSource,
         /const ROOM_EQ_GRAPH_FREQUENCY_TICKS =\s*\[20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000\]/);
     assert.match(pluginCss,
-        /\.room-eq-phase-before,\s*\.room-eq-group-delay-response \.room-eq-group-delay-before \{\s*stroke: #b0b0b0;\s*stroke-width: 1;/s);
+        /\.room-eq-phase-before,\s*\.room-eq-group-delay-response \.room-eq-group-delay-before \{\s*stroke: var\(--et-graph-trace-secondary\);\s*stroke-width: 1;/s);
     assert.match(pluginCss,
-        /\.room-eq-phase-after,\s*\.room-eq-group-delay-response \.room-eq-group-delay-after \{\s*stroke: #00ff00;\s*stroke-width: 1;/s);
+        /\.room-eq-phase-after,\s*\.room-eq-group-delay-response \.room-eq-group-delay-after \{\s*stroke: var\(--et-graph-trace\);\s*stroke-width: 1;/s);
     assert.match(pluginSource,
         /const hiddenSelector = views\[view\]\?\.hidden \|\| null;/);
     assert.equal(
@@ -1244,9 +1245,9 @@ test('Room EQ impulse graph draws gray before and green after waveforms', () => 
     assert.match(impulseResponse.children[0].attributes.d, /^M 0\.00,/);
     assert.match(impulseResponse.children[1].attributes.d, /^M 0\.00,/);
     assert.match(pluginCss,
-        /\.room-eq-impulse-before \{\s*stroke: #888;\s*stroke-width: 1;/s);
+        /\.room-eq-impulse-before \{\s*stroke: var\(--et-graph-tone-50\);\s*stroke-width: 1;/s);
     assert.match(pluginCss,
-        /\.room-eq-impulse-after \{\s*stroke: #00ff00;\s*stroke-width: 1;/s);
+        /\.room-eq-impulse-after \{\s*stroke: var\(--et-graph-trace\);\s*stroke-width: 1;/s);
 
     const firstBefore = impulseResponse.querySelector('.room-eq-impulse-before');
     const emphasis = { restore: null };
@@ -2334,7 +2335,8 @@ test('Room EQ restores the remembered tab and swaps panels on click', () => {
     plugin.cleanup();
 });
 
-test('Room EQ groups its parameter rows into five workflow tabs', () => {
+test('Room EQ groups its parameter rows into five workflow tabs', async () => {
+    const sharedCss = await fs.readFile(path.join(repoRoot, 'effetune.css'), 'utf8');
     const { Plugin } = loadPlugin();
     const plugin = new Plugin();
     assert.equal(plugin._selectedTab, 'measurement');
@@ -2379,9 +2381,11 @@ test('Room EQ groups its parameter rows into five workflow tabs', () => {
     const createUiStart = pluginSource.indexOf('createUI() {', pluginSource.indexOf('_tabDefinitions() {'));
     const createUiSource = pluginSource.slice(createUiStart, pluginSource.indexOf('\n    cleanup() {', createUiStart));
     assert.equal(createUiSource.match(/this\._syncPhaseCorrectionControl\(\);/g).length, 1);
-    assert.match(pluginCss,
-        /\.room-eq-tab\.active \{\s*border-color: #666;\s*color: #fff;\s*background: #484848;\s*\}/);
-    assert.match(pluginCss, /\.room-eq-tab-content\[hidden\] \{\s*display: none;\s*\}/);
+    assert.match(sharedCss, /\.room-eq-tab,[^{}]*\):is\(\.active, \[aria-selected="true"\]\) \{[^}]*background: var\(--et-control-active-gradient\);/s);
+    assert.match(sharedCss, /\.room-eq-tab-contents\s*\) \{[^}]*display: grid;/s);
+    assert.match(sharedCss, /\.room-eq-tab-content\s*\) \{[^}]*grid-area: 1 \/ 1;/s);
+    assert.match(sharedCss, /\.room-eq-tab-content\s*\)\[hidden\] \{[^}]*visibility: hidden;/s);
+    assert.doesNotMatch(pluginCss, /\.room-eq-tab-content\[hidden\][^{]*\{[^}]*display: none;/s);
     plugin.cleanup();
 });
 

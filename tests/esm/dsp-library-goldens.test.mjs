@@ -18,10 +18,10 @@ import {
 } from '../../tools/verify-dsp-library-goldens.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const GOLDEN_CASE_COUNT = 875;
-const EFFECT_COUNT = 92;
-const WORKLET_GOLDEN_CASE_COUNT = 93;
-const NON_IDENTITY_EFFECT_COUNT = 87;
+const GOLDEN_CASE_COUNT = 940;
+const EFFECT_COUNT = 100;
+const WORKLET_GOLDEN_CASE_COUNT = 102;
+const NON_IDENTITY_EFFECT_COUNT = 94;
 
 test('MCP acceptance preserves eight-channel aggregates and defaults only their extended slots', async () => {
   const { cases } = await discoverFrozenGoldenCases(repoRoot);
@@ -59,7 +59,7 @@ function successfulPythonBackend(total = GOLDEN_CASE_COUNT) {
       passed: total,
       failed: 0,
       unexecuted: 0,
-      expectedValidationRejections: 1
+      expectedValidationRejections: 2
     },
     stateContracts: {
       sameSeed: true,
@@ -74,6 +74,10 @@ function successfulPythonBackend(total = GOLDEN_CASE_COUNT) {
       case: 'Matrix/malformed-routes-are-dropped',
       parameter: 'matrixRoutes',
       reason: 'pattern-mismatch'
+    }, {
+      case: 'CrosstalkCancellation/no-asset-impulse-exact-bypass',
+      asset: 'impulseResponse',
+      reason: 'missing-required-asset'
     }],
     failures: [],
     unexecuted: []
@@ -88,7 +92,7 @@ function completionFixture(pythonBackend) {
       passed: GOLDEN_CASE_COUNT,
       failed: 0,
       unexecuted: 0,
-      expectedValidationRejections: 1
+      expectedValidationRejections: 2
     },
     stateContracts: {
       sameSeed: true,
@@ -109,7 +113,7 @@ function completionFixture(pythonBackend) {
         passed: prefix ? NON_IDENTITY_EFFECT_COUNT : WORKLET_GOLDEN_CASE_COUNT,
         failed: 0,
         unexecuted: 0,
-        expectedValidationRejections: prefix ? 0 : 1
+        expectedValidationRejections: prefix ? 0 : 2
       }
     }))
   });
@@ -147,7 +151,7 @@ test('python acceptance ignores a stale success when the current child fails', a
     summaryDirectory,
     python: 'python',
     total: GOLDEN_CASE_COUNT,
-    expectedValidationRejections: 1,
+    expectedValidationRejections: 2,
     spawnRunner: async (_python, arguments_) => {
       currentSummaryPath = arguments_[arguments_.indexOf('--summary') + 1];
       assert.notEqual(currentSummaryPath, staleSummaryPath);
@@ -196,7 +200,7 @@ test('python acceptance fails closed on missing and malformed current summaries'
       summaryDirectory,
       python: 'python',
       total: GOLDEN_CASE_COUNT,
-      expectedValidationRejections: 1,
+      expectedValidationRejections: 2,
       spawnRunner
     });
     assert.equal(backend.backend, 'python-native');
@@ -224,7 +228,7 @@ test('python acceptance fails closed on internally inconsistent summaries', asyn
     passed: GOLDEN_CASE_COUNT - 1,
     failed: 0,
     unexecuted: 1,
-    expectedValidationRejections: 1
+    expectedValidationRejections: 2
   };
   const summaries = [
     ['success counts with a nonempty failures array', {
@@ -245,7 +249,7 @@ test('python acceptance fails closed on internally inconsistent summaries', asyn
         summaryDirectory,
         python: 'python',
         total: GOLDEN_CASE_COUNT,
-        expectedValidationRejections: 1,
+        expectedValidationRejections: 2,
         spawnRunner: async (_python, arguments_) => {
           const summaryPath = arguments_[arguments_.indexOf('--summary') + 1];
           await fs.writeFile(summaryPath, JSON.stringify(summary));
@@ -282,7 +286,7 @@ test('parallel python acceptance children use unique fresh summary paths', async
       summaryDirectory,
       python: 'python',
       total: GOLDEN_CASE_COUNT,
-      expectedValidationRejections: 1,
+      expectedValidationRejections: 2,
       spawnRunner
     }),
     runPythonAcceptanceBackend({
@@ -290,7 +294,7 @@ test('parallel python acceptance children use unique fresh summary paths', async
       summaryDirectory,
       python: 'python',
       total: GOLDEN_CASE_COUNT,
-      expectedValidationRejections: 1,
+      expectedValidationRejections: 2,
       spawnRunner
     })
   ]);
@@ -446,7 +450,7 @@ test('frozen DSP library acceptance inventory stays complete', async () => {
   const inventory = summarizeInventory(cases);
   assert.equal(inventory.effects, EFFECT_COUNT);
   assert.equal(inventory.total, GOLDEN_CASE_COUNT);
-  assert.equal(inventory.assetCases, 24);
+  assert.equal(inventory.assetCases, 30);
   // Tube Simulator's power-6l6gc-pentode, power-kt88-distributed and minimum-drive-12ax7 used to
   // reach their configuration with a mid-stream event, but each of those events changes a
   // reset-class parameter, and the fade and warmup that follows outlasts the frames left in the
@@ -457,8 +461,8 @@ test('frozen DSP library acceptance inventory stays complete', async () => {
   // events for its recording-mode switches. Phase Select EQ Balance selection adds three
   // cases, including one event case with two boundary changes.
   // Multiband crossover normalization regression cases add sixteen parameter events.
-  assert.equal(inventory.eventCases, 146);
-  assert.equal(inventory.eventCount, 516);
+  assert.equal(inventory.eventCases, 152);
+  assert.equal(inventory.eventCount, 531);
   assert.deepEqual(inventory.sampleRates, [
     32000,
     44100,
@@ -516,6 +520,9 @@ test('public pattern metadata identifies only the binding-invalid frozen case', 
       parameter: 'matrixRoutes',
       reason: 'pattern-mismatch'
     }
+  }, {
+    case: 'CrosstalkCancellation/no-asset-impulse-exact-bypass',
+    expectation: { asset: 'impulseResponse', reason: 'missing-required-asset' }
   }]);
 });
 
@@ -577,6 +584,9 @@ test('AudioWorklet plans retain compatible frozen golden contracts', async () =>
         parameter: 'matrixRoutes',
         reason: 'pattern-mismatch'
       }
+    }, {
+      case: 'CrosstalkCancellation/no-asset-impulse-exact-bypass',
+      expectation: { asset: 'impulseResponse', reason: 'missing-required-asset' }
     }]
   );
   for (const plan of plans.filter(plan => !plan.expectedValidationRejection)) {
@@ -602,11 +612,11 @@ test('AudioWorklet validation plans require the public same-realm error class', 
   );
   assert.match(
     runner,
-    /const \[\{ ValidationError \}, \{ EffeTuneNode \}\] = await Promise\.all/
+    /const \[\{ AssetError, ValidationError \}, \{ EffeTuneNode \}\] = await Promise\.all/
   );
   assert.match(
     runner,
-    /plan\.expectedValidationRejection &&\s+error instanceof ValidationError/
+    /plan\.expectedValidationRejection &&\s+error instanceof \(plan\.expectedValidationRejection\.reason/
   );
   assert.doesNotMatch(
     runner,
@@ -622,7 +632,7 @@ test('acceptance completion fails closed on missing or shrunk backend results', 
       passed: total,
       failed: 0,
       unexecuted: 0,
-      expectedValidationRejections: 1
+      expectedValidationRejections: 2
     },
     stateContracts: name === 'python-native'
       ? {
@@ -653,7 +663,7 @@ test('acceptance completion fails closed on missing or shrunk backend results', 
         passed: prefix ? NON_IDENTITY_EFFECT_COUNT : WORKLET_GOLDEN_CASE_COUNT,
         failed: 0,
         unexecuted: 0,
-        expectedValidationRejections: prefix ? 0 : 1
+        expectedValidationRejections: prefix ? 0 : 2
       }
     }))
   });

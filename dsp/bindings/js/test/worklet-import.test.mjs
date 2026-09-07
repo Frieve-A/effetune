@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 test('multiband worklet parameters retain ordered crossovers after partial updates', async () => {
@@ -64,7 +65,7 @@ test('worklet entry imports without browser globals and exposes the wrapper', as
   assert.equal(typeof module.EffeTuneNode.create, 'function');
 });
 
-test('package processor registers its package-owned processor', async () => {
+test('package processor registers and preserves analyzer time across blocks and reset', async () => {
   const priorProcessor = globalThis.AudioWorkletProcessor;
   const priorRegister = globalThis.registerProcessor;
   const priorSampleRate = globalThis.sampleRate;
@@ -95,6 +96,66 @@ test('package processor registers its package-owned processor', async () => {
       seed: 0
     });
     assert.deepEqual(processor.port.messages, [{ type: 'ready', latencySamples: 0 }]);
+    processor.handleMessage({ type: 'close' });
+
+    const { decodeTelemetryPacket } = await import('../dist/telemetry.js');
+    const nodes = new Map([[1, {
+      effectType: 'NoteSpectrogram', effectId: 'notes', effectIndex: 0
+    }]]);
+    for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
+      const analyzer = new registration.Processor();
+      const frames = [];
+      analyzer.port.postMessage = message => {
+        if (message.type !== 'telemetry') {
+          analyzer.port.messages.push(message);
+          return;
+        }
+        frames.push(...decodeTelemetryPacket(
+          new Uint8Array(message.packet), message.bytes, nodes
+        ).frames);
+        analyzer.handleMessage({ type: 'telemetryReturn', packet: message.packet });
+      };
+      try {
+        await analyzer.initialize({
+          channels: 1,
+          document: { version: 1, chain: [{
+            type: 'NoteSpectrogram', id: 'notes', enabled: true,
+            channel: 'all', parameters: {}
+          }] },
+          resolvedAssets: new Map(),
+          wasmBytes: await readFile(new URL(`../dist/assets/${artifact}`, import.meta.url)),
+          seed: 0
+        });
+        assert.deepEqual(analyzer.port.messages, [{ type: 'ready', latencySamples: 0 }]);
+        analyzer.handleMessage({ type: 'setTelemetryEnabled', enabled: true });
+        const input = [new Float32Array(128)];
+        const output = [new Float32Array(128)];
+        let initialFrames;
+        for (let epoch = 0; epoch < 2; epoch++) {
+          frames.length = 0;
+          for (let block = 0; block < 160; block++) {
+            assert.equal(analyzer.process([input], [output]), true);
+          }
+          assert.ok(frames.length > 2, artifact);
+          assert.equal(frames[0].frameIndex, 0);
+          for (let index = 0; index < frames.length; index++) {
+            const frame = frames[index];
+            assert.ok(Math.abs(frame.timeSeconds - (frame.frameIndex + 1) * frame.hopSeconds) < 1e-6);
+            if (index > 0) assert.ok(frame.timeSeconds > frames[index - 1].timeSeconds);
+          }
+          if (epoch === 0) {
+            initialFrames = [...frames];
+            analyzer.handleMessage({ type: 'reset', commandId: 1 });
+          } else {
+            assert.deepEqual(frames.map(frame => frame.timeSeconds),
+              initialFrames.map(frame => frame.timeSeconds));
+            assert.notEqual(frames[0].generation, initialFrames[0].generation);
+          }
+        }
+      } finally {
+        analyzer.handleMessage({ type: 'close' });
+      }
+    }
   } finally {
     if (priorProcessor === undefined) delete globalThis.AudioWorkletProcessor;
     else globalThis.AudioWorkletProcessor = priorProcessor;
@@ -215,6 +276,7 @@ test('worklet rejects asset reconfiguration before posting a native command', as
       import('../dist/index.js')
     ]);
     const cases = [
+      ['CrosstalkCancellation', ['latencyMode', 'filterDelaySamples']],
       ['FIRCrossover', ['bandCount', 'latencyMode', 'filterDelaySamples']],
       ['FiveBandFIRPEQ', ['latencyMode', 'filterDelaySamples']],
       ['GroupDelayEQ', ['latencyMode', 'filterDelaySamples']],
@@ -280,6 +342,12 @@ test('worklet telemetry callbacks run on the node side with opt-in lifetime', as
         enabled: true,
         channel: 'all',
         parameters: {}
+      }, {
+        id: 'notes',
+        type: 'NoteSpectrogram',
+        enabled: true,
+        channel: 'all',
+        parameters: {}
       }]
     };
     const node = new EffeTuneNode({}, 2, document, 42);
@@ -313,6 +381,32 @@ test('worklet telemetry callbacks run on the node side with opt-in lifetime', as
     assert.equal(received[0].channels[1].clipped, true);
     assert.equal(node.droppedTelemetryFrames, 3);
     assert.equal(node.port.messages.at(-1).type, 'telemetryReturn');
+
+    const notePacket = new ArrayBuffer(1804);
+    const noteView = new DataView(notePacket);
+    noteView.setUint16(0, 24, true);
+    noteView.setUint16(2, 2, true);
+    noteView.setUint32(4, 2, true);
+    noteView.setUint16(12, 1788, true);
+    noteView.setFloat32(16, 48000, true);
+    noteView.setFloat32(20, 1, true);
+    noteView.setUint16(24, 440, true);
+    noteView.setUint16(26, 21, true);
+    noteView.setFloat32(28, 0.01, true);
+    noteView.setUint32(32, 100, true);
+    noteView.setUint32(36, 5, true);
+    noteView.setUint32(40, 1, true);
+    noteView.setFloat32(44, 0.75, true);
+    node._handleMessage({ type: 'telemetry', packet: notePacket, bytes: 1804, dropped: 0 });
+    assert.equal(received.length, 2);
+    assert.equal(received[1].kind, 'noteSpectrogram');
+    assert.equal(received[1].effectId, 'notes');
+    assert.equal(received[1].frameIndex, 100);
+    assert.equal(received[1].levels[0], 0.75);
+    noteView.setFloat32(44, 2, true);
+    node._handleMessage({ type: 'telemetry', packet: notePacket, bytes: 1804, dropped: 0 });
+    assert.equal(received.length, 2);
+    assert.equal(received[1].levels[0], 0.75);
 
     assert.equal(unsubscribe(), true);
     assert.deepEqual(node.port.messages.at(-1), {

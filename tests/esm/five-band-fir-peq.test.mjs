@@ -86,6 +86,7 @@ function loadPlugin() {
           namespace,
           tagName,
           attributes: {},
+          style: {},
           setAttribute(name, value) {
             this.attributes[name] = String(value);
           }
@@ -195,6 +196,42 @@ test('5Band FIR PEQ Shift-drag changes only frequency or gain', () => {
   plugin.handleDragMove({ clientX: 530, clientY: 80, shiftKey: true });
   assert.equal(updatedBand.frequency, 1000);
   assert.notEqual(updatedBand.gain, 4);
+  plugin.cleanup();
+});
+
+test('5Band FIR PEQ keeps the dragged marker aligned during and after drag', () => {
+  const { Plugin } = loadPlugin();
+  const plugin = new Plugin();
+  plugin._scheduleDesign = () => {};
+  plugin.updateResponse = () => {};
+  plugin.uiCreated = true;
+  plugin.graphContainer = {
+    clientWidth: 1000,
+    clientHeight: 500,
+    getBoundingClientRect() {
+      return { left: 0, top: 0, width: this.clientWidth, height: this.clientHeight };
+    }
+  };
+  plugin.markers = Array.from({ length: 5 }, () => ({
+    style: {},
+    classList: { toggle() {}, remove() {} },
+    querySelector: () => null
+  }));
+  plugin.activeDragMarker = 0;
+  plugin.hasMoved = true;
+  plugin.setUIBandValues = () => {};
+
+  plugin.handleDragMove({ clientX: 800, clientY: 300, shiftKey: false });
+  const during = { left: plugin.markers[0].style.left, top: plugin.markers[0].style.top };
+  assert.equal(during.left, `${plugin.getGraphPlotArea().leftPercent + plugin.freqToX(plugin.f0) / 100 * plugin.getGraphPlotArea().widthPercent}%`);
+  assert.equal(during.top, `${plugin.getGraphPlotArea().topPercent + plugin.gainToY(plugin.g0) / 100 * plugin.getGraphPlotArea().heightPercent}%`);
+
+  plugin.handleDragEnd();
+  assert.equal(plugin.activeDragMarker, null);
+  assert.deepEqual(
+    { left: plugin.markers[0].style.left, top: plugin.markers[0].style.top },
+    during
+  );
   plugin.cleanup();
 });
 
@@ -377,9 +414,9 @@ test('5Band FIR PEQ draws target and realized FIR responses separately', () => {
   plugin.updateResponse();
   assert.equal(children.length, 2);
   assert.equal(children[0].attributes.class, 'five-band-fir-peq-target-response');
-  assert.equal(children[0].attributes.stroke, 'rgba(176, 176, 176, 0.7)');
+  assert.equal(children[0].style.stroke, 'var(--et-graph-trace-tertiary)');
   assert.equal(children[1].attributes.class, 'five-band-fir-peq-realized-response');
-  assert.equal(children[1].attributes.stroke, '#00ff00');
+  assert.equal(children[1].style.stroke, 'var(--et-graph-trace)');
 
   plugin.g0 = 1;
   plugin.updateResponse();

@@ -17,12 +17,17 @@ export class PipelineManager {
      * @param {Set} expandedPlugins - Set of expanded plugins
      * @param {Object} pluginListManager - The plugin list manager instance
      */
-    constructor(audioManager, pluginManager, expandedPlugins, pluginListManager) {
+    constructor(audioManager, pluginManager, expandedPlugins, pluginListManager, {
+        presetHost = null,
+        enableFileProcessing = true
+    } = {}) {
         // Store references to external dependencies
         this.audioManager = audioManager;
         this.pluginManager = pluginManager;
         this.expandedPlugins = expandedPlugins;
         this.pluginListManager = pluginListManager;
+        this.presetHost = presetHost;
+        this.fileProcessingEnabled = enableFileProcessing;
         
         // Create core components
         this.core = new PipelineCore(audioManager, pluginManager, expandedPlugins, this);
@@ -33,7 +38,7 @@ export class PipelineManager {
         // Create other components
         this.historyManager = new HistoryManager(this);
         this.presetManager = new PresetManager(this);
-        this.fileProcessor = new FileProcessor(this);
+        this.fileProcessor = enableFileProcessing ? new FileProcessor(this) : null;
         this.clipboardManager = new ClipboardManager(this);
         this.uiEventHandler = new UIEventHandler(this, this.historyManager, this.core);
         

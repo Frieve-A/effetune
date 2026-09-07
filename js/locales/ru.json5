@@ -429,6 +429,7 @@
   "dialog.config.startupView.effects": "Effect Pipeline (по умолчанию)",
   "dialog.config.startupView.library": "Музыкальная библиотека",
   "dialog.config.language": "Язык",
+  "dialog.config.theme": "Тема",
   "dialog.config.language.auto": "Авто (настройки браузера)",
   "dialog.config.languageRestartNotice": "Если вы изменили настройку языка, перезапустите приложение.",
   "dialog.config.openHome.title": "Удалённое управление OpenHome",
@@ -803,5 +804,7 @@
   "midi.source.key": "Клавиша {key}", "midi.source.gamepadButton": "Кнопка геймпада {number}", "midi.source.gamepadAxis": "Ось геймпада {number} ({mode})", "midi.source.pitchbend": "Pitch bend ch {channel}", "midi.source.mcuFader": "Фейдер MCU {channel}", "midi.source.mcuVpot": "MCU V-Pot {number}", "midi.source.mcuButton": "Кнопка MCU {number}", "midi.source.midi": "{kind} {number} ch {channel}",
   "midi.source.clock": "Часы: {component}, {shape}", "midi.source.timer": "Таймер: каждые {seconds} с", "midi.automation.source": "Источник", "midi.automation.source.timer": "Таймер", "midi.automation.source.clock": "Часы", "midi.clock.component": "Часть времени", "midi.clock.component.hour": "Час", "midi.clock.component.minute": "Минута", "midi.clock.component.second": "Секунда", "midi.clock.shape": "Волна", "midi.clock.shape.ramp": "Нарастающая", "midi.clock.shape.sin": "Синус", "midi.clock.shape.cos": "Косинус", "midi.timer.interval": "Интервал (секунды)", "midi.automation.behavior": "Действие", "midi.behavior.direct": "Изменить на величину", "midi.behavior.random": "Случайное значение из диапазона", "midi.behavior.randomWalk": "Случайный шаг от текущего значения", "midi.automation.amount": "Величина",
   "midi.source.timer.interval": "Таймер: каждые {seconds} с", "midi.source.timer.once": "Таймер: один раз {date} в {time}", "midi.source.timer.daily": "Таймер: ежедневно в {time}", "midi.timer.schedule": "Расписание", "midi.timer.schedule.interval": "Интервал", "midi.timer.schedule.once": "Один раз", "midi.timer.schedule.daily": "Ежедневно", "midi.timer.date": "Дата", "midi.timer.time": "Время", "midi.timer.expired": "Истекло",
+  "midi.device.connected": "Подключено",
+  "midi.device.disconnected": "Отключено",
   "midi.target.type": "Эффект", "midi.target.instance": "Экземпляр", "midi.target.parameter": "Параметр", "midi.direction": "Направление", "midi.mode": "Режим", "midi.target.masterBypass": "Основной обход", "midi.target.abToggle": "Переключить A/B", "midi.target.enabled": "Включено", "midi.parameterNumber": "{title} {number}", "midi.map.minimum": "Мин.", "midi.map.maximum": "Макс.", "midi.map.sensitivity": "Чувствительность", "midi.direction.increase": "Увеличить (+)", "midi.direction.decrease": "Уменьшить (−)", "midi.mode.abs": "Абсолютный", "midi.mode.rel": "Относительный", "midi.mode.rel2c": "Относительный (дополнительный код)", "midi.mode.relBin": "Относительный (двоичное смещение)", "midi.mode.relSign": "Относительный (знак и модуль)", "midi.buttonMode": "Режим кнопки", "midi.buttonMode.toggle": "Переключатель", "midi.buttonMode.momentary": "Моментальный"
 }

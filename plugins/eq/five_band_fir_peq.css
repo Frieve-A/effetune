@@ -6,14 +6,10 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: start;
-  gap: 10px;
+  gap: 0 10px;
   width: 100%;
   max-width: 1024px;
   margin-bottom: 12px;
-}
-
-.five-band-fir-peq-plugin-ui .parameter-row {
-  margin-bottom: 0;
 }
 
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-settings .radio-group {
@@ -32,7 +28,7 @@
   width: 100%;
   max-width: 1024px;
   aspect-ratio: 1024 / 480;
-  background-color: #1a1a1a;
+  background-color: var(--et-graph-bg-deep);
 }
 
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-grid,
@@ -46,12 +42,12 @@
 }
 
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-grid line {
-  stroke: #333;
+  stroke: var(--et-graph-grid-subtle);
   stroke-width: 1;
 }
 
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-grid text {
-  fill: #888;
+  fill: var(--et-graph-tone-50);
   font-size: 10px;
 }
 
@@ -65,8 +61,8 @@
   gap: 1px;
   padding: 2px 6px;
   border-radius: 3px;
-  color: #ccc;
-  background: rgba(26, 26, 26, 0.88);
+  color: var(--et-graph-label-strong);
+  background: var(--et-graph-base-veil);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -84,12 +80,12 @@
 }
 
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-legend-target {
-  color: #b0b0b0;
+  color: var(--et-graph-trace-secondary);
   opacity: 0.7;
 }
 
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-legend-realized {
-  color: #00ff00;
+  color: var(--et-graph-trace);
 }
 
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-marker {
@@ -99,10 +95,10 @@
   justify-content: center;
   width: 24px;
   height: 24px;
-  border: 2px solid #666;
+  border: 2px solid var(--et-surface-35);
   border-radius: 50%;
-  color: #fff;
-  background-color: #4a4a4a;
+  color: var(--et-text-primary);
+  background-color: var(--et-surface-23);
   font-size: 12px;
   transform: translate(-50%, -50%);
   cursor: pointer;
@@ -118,13 +114,13 @@
 
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-marker:hover,
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-marker.active {
-  border-color: #999;
-  background-color: #666;
+  border-color: var(--et-surface-58);
+  background-color: var(--et-surface-35);
 }
 
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-marker.disabled {
-  border-color: #444;
-  background-color: #333;
+  border-color: var(--et-surface-20);
+  background-color: var(--et-surface-13);
   opacity: 0.6;
 }
 
@@ -132,7 +128,7 @@
   position: absolute;
   top: 50%;
   left: calc(100% + 8px);
-  color: #ccc;
+  color: var(--et-surface-81);
   font-size: 11px;
   text-align: left;
   white-space: nowrap;
@@ -156,7 +152,7 @@
   padding: 10px;
   border-radius: 4px;
   box-sizing: border-box;
-  background-color: #2a2a2a;
+  background-color: color-mix(in srgb, var(--et-surface-9), var(--et-graph-bg-deep) 25%);
 }
 
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-band {
@@ -168,14 +164,14 @@
   padding: 8px;
   border-radius: 4px;
   box-sizing: border-box;
-  background-color: #333;
+  background-color: color-mix(in srgb, var(--et-surface-13), var(--et-graph-bg-deep) 25%);
 }
 
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-band-label {
   display: flex;
   align-items: center;
   gap: 5px;
-  color: #ccc;
+  color: var(--et-surface-81);
   font-size: 12px;
   font-weight: bold;
   cursor: pointer;
@@ -201,14 +197,14 @@
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-gain-label {
   flex: 1 1 auto;
   min-width: 78px;
-  color: #ccc;
+  color: var(--et-surface-81);
   font-size: 12px;
   white-space: nowrap;
 }
 
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-q-label {
   min-width: 20px;
-  color: #ccc;
+  color: var(--et-surface-81);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -245,11 +241,11 @@ body:not(.layout-mobile) .five-band-fir-peq-plugin-ui .five-band-fir-peq-slope-s
   width: 40px;
   min-width: 40px;
   padding: 2px 4px;
-  border: 1px solid #444;
+  border: 1px solid var(--et-surface-20);
   border-radius: 3px;
   box-sizing: border-box;
-  color: #ccc;
-  background-color: #222;
+  color: var(--et-surface-81);
+  background-color: var(--et-surface-5);
   font-size: 12px;
 }
 
@@ -263,7 +259,7 @@ body:not(.layout-mobile) .five-band-fir-peq-plugin-ui .five-band-fir-peq-q-text,
 body:not(.layout-mobile) .five-band-fir-peq-plugin-ui .five-band-fir-peq-slope-text,
 body:not(.layout-mobile) .five-band-fir-peq-plugin-ui .five-band-fir-peq-freq-text,
 body:not(.layout-mobile) .five-band-fir-peq-plugin-ui .five-band-fir-peq-gain-text {
-  box-sizing: border-box;
+
   flex: 0 0 90px;
   width: 90px;
   min-width: 90px;
@@ -281,20 +277,20 @@ body:not(.layout-mobile) .five-band-fir-peq-plugin-ui .five-band-fir-peq-filter-
   width: 100%;
   max-width: 1024px;
   margin-top: 10px;
-  color: #aaa;
+  color: var(--et-surface-66);
   font-size: 12px;
 }
 
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-status[data-state="ready"] {
-  color: #85d985;
+  color: var(--et-success);
 }
 
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-status[data-state="warning"] {
-  color: #e6c36a;
+  color: var(--et-warning);
 }
 
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-status[data-state="error"] {
-  color: #ef8888;
+  color: var(--et-danger);
 }
 
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-latency {

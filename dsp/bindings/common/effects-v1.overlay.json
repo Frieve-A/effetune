@@ -9,6 +9,13 @@
       ]
     },
     {
+      "type": "NoteSpectrogram",
+      "internalType": "NoteSpectrogramPlugin",
+      "telemetry": [
+        "noteSpectrogram"
+      ]
+    },
+    {
       "type": "Oscilloscope",
       "internalType": "OscilloscopePlugin",
       "telemetry": [
@@ -771,6 +778,16 @@
       "internalType": "PitchShifterPlugin"
     },
     {
+      "type": "PitchShifterHQ",
+      "internalType": "PitchShifterHQPlugin",
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      }
+    },
+    {
       "type": "RotarySpeaker",
       "internalType": "RotarySpeakerPlugin"
     },
@@ -800,6 +817,40 @@
     {
       "type": "ModalResonator",
       "internalType": "ModalResonatorPlugin"
+    },
+    {
+      "type": "ClickRemover",
+      "internalType": "ClickRemoverPlugin",
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      }
+    },
+    {
+      "type": "ClipRestorer",
+      "internalType": "ClipRestorerPlugin",
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      }
+    },
+    {
+      "type": "HumRemover",
+      "internalType": "HumRemoverPlugin"
+    },
+    {
+      "type": "NoiseReduction",
+      "internalType": "NoiseReductionPlugin",
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      }
     },
     {
       "type": "DattorroPlateReverb",
@@ -889,6 +940,17 @@
       "internalType": "RSReverbPlugin"
     },
     {
+      "type": "BandwidthExtender",
+      "internalType": "BandwidthExtenderPlugin",
+      "seeded": true,
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      }
+    },
+    {
       "type": "DynamicSaturation",
       "internalType": "DynamicSaturationPlugin"
     },
@@ -964,6 +1026,27 @@
       "internalType": "CrossfeedFilterPlugin"
     },
     {
+      "type": "CrosstalkCancellation",
+      "internalType": "CrosstalkCancellationPlugin",
+      "seeded": true,
+      "latency": {
+        "kind": "dynamic",
+        "dependsOn": [
+          "latencyMode",
+          "filterDelaySamples",
+          "impulseResponse"
+        ]
+      },
+      "assets": [
+        {
+          "name": "impulseResponse",
+          "kind": "impulseResponse",
+          "slot": 0,
+          "required": true
+        }
+      ]
+    },
+    {
       "type": "MSMatrix",
       "internalType": "MSMatrixPlugin"
     },
@@ -995,7 +1078,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "0f8926c820f825d87f212d7c7fbfa75044caf7aa912bef6a78cc85f820b899c0",
-    "privateLayoutSha256": "61121eb6aec4b52d5492795c2ac81bd4cecfa119b7bfc4e6956fd2b725690685"
+    "publicCatalogSha256": "cb58e2e6158bfa01f5d379bf0ccc9daef74f987dce012f0ed1a9d04e140156a3",
+    "privateLayoutSha256": "54a06c19f4604073f6ddc13bdd9b10b12769b786043e9ec8e495181e35d64c18"
   }
 }

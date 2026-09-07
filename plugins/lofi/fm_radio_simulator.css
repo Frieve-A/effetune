@@ -10,9 +10,9 @@
     max-width: none !important;
     margin-top: 8px;
     overflow: hidden;
-    border: 1px solid #454545;
+    border: 1px solid var(--et-surface-21);
     border-radius: 4px;
-    background: #1a1a1a;
+    background: var(--et-graph-bg-deep);
 }
 
 .fm-radio-simulator-hud canvas {
@@ -21,7 +21,7 @@
 
 .fm-radio-simulator-status-note {
     margin-top: 6px;
-    color: #aaa;
+    color: var(--et-surface-66);
     font-size: 11px;
     line-height: 1.35;
 }

@@ -104,7 +104,7 @@ A smart volume control that automatically adjusts your music to maintain a consi
 - Input level (green line)
 - Output level (white line)
 - Clear visual feedback of volume adjustments
-- Easy-to-read time-based graph
+- The graph scrolls from right to left, with the latest levels at the right edge and marks every second.
 
 ### Recommended Settings
 

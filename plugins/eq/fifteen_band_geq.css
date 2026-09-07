@@ -77,7 +77,7 @@ body.layout-mobile .fifteen-band-geq-plugin-ui .vertical-slider {
 .fifteen-band-geq-plugin-ui canvas {
     margin: 10px auto;
     display: block;
-    background: #222;
+    background: var(--et-graph-bg-deep);
 }
 
 .fifteen-band-geq-plugin-ui .graph-container {
@@ -89,13 +89,13 @@ body.layout-mobile .fifteen-band-geq-plugin-ui .vertical-slider {
     right: 10px;
     bottom: 10px;
     padding: 5px 15px;
-    background-color: #444;
-    color: #fff;
-    border: 1px solid #666;
+    background-color: var(--et-surface-20);
+    color: var(--et-text-primary);
+    border: 1px solid var(--et-surface-35);
     border-radius: 4px;
     cursor: pointer;
 }
 
 .fifteen-band-geq-plugin-ui .eq-reset-button:hover {
-    background-color: #555;
+    background-color: var(--et-surface-28);
 }

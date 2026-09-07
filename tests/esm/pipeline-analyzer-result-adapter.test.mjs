@@ -60,10 +60,10 @@ test('adapts Worker Before and After data into five normalized real-unit views',
     assert.match(result.views.excessGroupDelay.yLabel, /ms/);
     assert.match(result.views.impulse.xLabel, /ms/);
     assert.deepEqual(result.views.frequency.curves.map(curve => curve.label), ['Before', 'After']);
-    assert.deepEqual(result.views.frequency.curves.map(curve => curve.color), ['#b0b0b0', '#00ff00']);
+    assert.deepEqual(result.views.frequency.curves.map(curve => curve.color), ['var(--et-graph-trace-secondary)', 'var(--et-graph-trace)']);
     assert.deepEqual(result.views.frequency.curves.map(curve => curve.opacity), [0.7, 1]);
-    assert.deepEqual(result.views.phase.curves.map(curve => curve.color), ['#b0b0b0', '#00ff00']);
-    assert.deepEqual(result.views.impulse.curves.map(curve => curve.color), ['#888888', '#00ff00']);
+    assert.deepEqual(result.views.phase.curves.map(curve => curve.color), ['var(--et-graph-trace-secondary)', 'var(--et-graph-trace)']);
+    assert.deepEqual(result.views.impulse.curves.map(curve => curve.color), ['var(--et-graph-tone-50)', 'var(--et-graph-trace)']);
     assert.deepEqual(result.views.impulse.curves.map(curve => curve.opacity), [1, 1]);
     assert.deepEqual(result.views.frequency.xTicks.map(tick => tick.label),
         ['20', '50', '100', '200', '500', '1k', '2k', '5k', '10k', '20k']);

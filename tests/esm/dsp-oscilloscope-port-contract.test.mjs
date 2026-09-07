@@ -17,7 +17,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const pluginRoot = path.join(repoRoot, 'dsp', 'plugins', 'analyzer', 'oscilloscope');
 const schemaPath = path.join(pluginRoot, 'params.json');
 const goldenDir = path.join(pluginRoot, 'golden');
-const jsEngineHash = '36d6720584dc404924102407fd34adebb3fd61803a04679fed79b61fc5d6e844';
+const jsEngineHash = 'c066d963a617b8cd91d9fcc4c8984d556d13fb1c1a610849dc19cedba3d7e1bf';
 
 async function directoryBytes(directory) {
   const entries = await fs.readdir(directory, { withFileTypes: true });

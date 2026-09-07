@@ -82,7 +82,7 @@ A utility for correcting a signal whose waveform is shifted away from the zero l
 
 FIR Crossover splits stereo input into two, three, or four frequency bands and routes each band to its own stereo output pair. It is intended for multi-amplifier or multi-speaker playback systems that need sharper separation than Channel Divider provides. The FIR design supports very steep crossover targets without recursive-filter stability limits, and Linear Phase keeps the same fixed processing delay across the spectrum. The plugin requires the WASM DSP engine.
 
-To use it, run the desktop app with an even output-channel count from 4 to 16 and select **All** in the effect bus routing. Channels 1-2 are the stereo input; successive stereo output pairs receive the low-to-high bands. Band Count remains limited to four bands, so the effect uses at most channels 1-8.
+To use it, run the desktop app with an even output-channel count from 4 to 16 and select **All** in the effect bus routing. Channels 1-2 are the stereo input; successive stereo output pairs receive the low-to-high bands. Band Count remains limited to four bands, so the effect uses at most channels 1-8. When the effect receives two channels, it passes the input through unchanged.
 
 ### Sound Enhancement Guide
 

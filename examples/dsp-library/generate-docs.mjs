@@ -35,6 +35,7 @@ const categoryOrder = Object.freeze([
   'lo-fi',
   'modulation',
   'resonator',
+  'restoration',
   'reverb',
   'saturation',
   'spatial',
@@ -42,6 +43,7 @@ const categoryOrder = Object.freeze([
 ]);
 const publicTelemetryTypes = new Set([
   'LevelMeter',
+  'NoteSpectrogram',
   'Oscilloscope',
   'Spectrogram',
   'SpectrumAnalyzer',
@@ -960,7 +962,7 @@ function landingPage(catalog, version, convenienceExports) {
     '',
     'EffeTune DSP does not host VST/AU plugins, decode or encode audio in JavaScript, ' +
       'resample audio, call ffmpeg, or expose integrated-LUFS/true-peak measurements. ' +
-      'Five analyzers expose opt-in decoded observations in v0.1; all other catalog ' +
+      'Six analyzers expose opt-in decoded observations in v0.1; all other catalog ' +
       'telemetry remains metadata-only. ' +
       'MCP is planned only after its implementation and acceptance exist.',
     '',
@@ -1360,7 +1362,7 @@ An open stream or AudioWorklet accepts only values the native parameter commit c
 apply immediately. Open a new stream after changing \`IRReverb.channelMode\`,
 \`latency\`, or \`convolutionRate\`; \`FIRCrossover.bandCount\`, \`latencyMode\`, or
 \`filterDelaySamples\`; or \`latencyMode\` / \`filterDelaySamples\` on
-\`FiveBandFIRPEQ\`, \`GroupDelayEQ\`, \`GroupDelayPEQ\`, or \`RoomEQ\`. Live updates to those
+\`FiveBandFIRPEQ\`, \`GroupDelayEQ\`, \`GroupDelayPEQ\`, \`CrosstalkCancellation\`, or \`RoomEQ\`. Live updates to those
 asset-configuration parameters raise \`ValidationError\` before processing or posting
 a Worklet command.
 
@@ -1384,11 +1386,15 @@ Passing a non-contiguous view directly raises \`ValidationError\` with the same 
   add('assets-and-bundles', `
 ## Asset-required effects
 
-\`FIRCrossover\`, \`FiveBandFIRPEQ\`, \`GroupDelayEQ\`, \`GroupDelayPEQ\`, \`IRReverb\`, and
+\`CrosstalkCancellation\`, \`FIRCrossover\`, \`FiveBandFIRPEQ\`, \`GroupDelayEQ\`, \`GroupDelayPEQ\`, \`IRReverb\`, and
 \`RoomEQ\` require \`assets.impulseResponse\`. FIR filter effects require prepared
 coefficients at the processing rate; IR Reverb accepts supported convolution
 topologies. The resolver returns Python \`AssetData\` or deterministic ETA1
 bytes/\`{bytes, format}\` in JavaScript. It never relies on repository fixtures.
+
+Crosstalk Cancellation requires four prepared filter channels in trueStereo topology
+(LL, LR, RL, RR) at the processing sample rate and exactly two selected processing
+channels. Automatic topology is accepted for this four-channel asset.
 
 The examples below run each effect with two distinct caller-owned IRs and require
 finite, non-zero, different output. FIR Crossover uses two coefficient channels,
@@ -2341,8 +2347,8 @@ integrated-LUFS/true-peak measurement.
 
 ## Analyzers and telemetry
 
-\`LevelMeter\`, \`Oscilloscope\`, \`SpectrumAnalyzer\`, \`Spectrogram\`, and
-\`StereoMeter\` expose decoded semantic observations in Python, JavaScript offline and
+\`LevelMeter\`, \`NoteSpectrogram\`, \`Oscilloscope\`, \`SpectrumAnalyzer\`,
+\`Spectrogram\`, and \`StereoMeter\` expose decoded semantic observations in Python, JavaScript offline and
 streaming processing, and AudioWorklet. Telemetry is opt-in: the first callback or
 subscriber enables it and the last unsubscribe disables it. Long renders drain after
 every processing block. Public frames identify the semantic effect and contain owned
@@ -2353,7 +2359,7 @@ Common metadata:
 
 | JavaScript / Python | Meaning |
 |---|---|
-| \`kind\` / \`kind\` | \`level\`, \`oscilloscope\`, \`spectrum\`, \`spectrogram\`, or \`stereo\` |
+| \`kind\` / \`kind\` | \`level\`, \`noteSpectrogram\`, \`oscilloscope\`, \`spectrum\`, \`spectrogram\`, or \`stereo\` |
 | \`effectType\` / \`effect_type\` | Semantic effect type |
 | \`effectId\` / \`effect_id\` | Declared effect ID, or null / \`None\` |
 | \`effectIndex\` / \`effect_index\` | Zero-based position in the declared DSP chain |
@@ -2377,6 +2383,14 @@ Analyzer fields:
 | Spectrum | \`binsTruncated\` / \`bins_truncated\` | True when the highest bins were omitted to fit transport capacity |
 | Spectrum | \`currentDb\` / \`current_db\` | dBFS \`[bin]\`, ascending frequency from DC |
 | Spectrum | \`peakDb\` / \`peak_db\` | Peak-held dBFS \`[bin]\`, same order and length as current |
+| Note Spectrogram | \`sampleRate\` / \`sample_rate\` | Hz |
+| Note Spectrogram | \`timeSeconds\` / \`time_seconds\` | Observation time in seconds on the processing timeline |
+| Note Spectrogram | \`firstMidi\` / \`first_midi\` | \`21\`, the first piano-key MIDI note before fine-pitch offsets are applied |
+| Note Spectrogram | \`hopSeconds\` / \`hop_seconds\` | Nominal time step between analysis observations, in seconds |
+| Note Spectrogram | \`frameIndex\` / \`frame_index\` | Unsigned observation counter within the current analysis generation |
+| Note Spectrogram | \`divisionsPerSemitone\` / \`divisions_per_semitone\` | \`5\`; each semitone has bins at -40, -20, 0, +20, and +40 cents around its center |
+| Note Spectrogram | \`generation\` / \`generation\` | Non-zero analysis generation; a change indicates that analyzer state restarted |
+| Note Spectrogram | \`levels\` / \`levels\` | Pitch confidence in [0, 1] as JavaScript \`Float32Array[440]\` or Python \`tuple[440]\`; index \`i\` maps to MIDI \`firstMidi + (i - 2) / divisionsPerSemitone\` |
 | Spectrogram | \`sampleRate\` / \`sample_rate\` | Hz |
 | Spectrogram | \`timeSeconds\` / \`time_seconds\` | Observation time in seconds on the processing timeline |
 | Spectrogram | \`points\` / \`points\` | FFT size exponent; FFT size is \`2 ** points\` |

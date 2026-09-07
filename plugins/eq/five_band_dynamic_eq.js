@@ -752,7 +752,7 @@ class FiveBandDynamicEQ extends PluginBase {
             row.style.display = 'flex';
             row.style.justifyContent = 'space-between';
             row.style.alignItems = 'center';
-            row.style.margin = '5px 0';
+
             
             const labelElement = document.createElement('label');
             labelElement.textContent = label + ':';
@@ -856,7 +856,6 @@ class FiveBandDynamicEQ extends PluginBase {
         twoColumnContainer.classList.add('fbdyn-two-columns');
         twoColumnContainer.style.display = 'grid';
         twoColumnContainer.style.gridTemplateColumns = '1fr 1fr';
-        twoColumnContainer.style.gap = '20px';
         twoColumnContainer.style.width = '100%';
         container.appendChild(twoColumnContainer);
 
@@ -966,16 +965,16 @@ class FiveBandDynamicEQ extends PluginBase {
         // Ensure the canvas is cleared before drawing
         ctx.clearRect(0, 0, width, height);
         // Set background color (matching PEQ style)
-        ctx.fillStyle = '#1a1a1a';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
         ctx.fillRect(0, 0, width, height);
 
         // --- Draw Grid ---
         // Set grid line style
-        ctx.strokeStyle = '#444'; // Darker color for grid lines
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? ''); // Darker color for grid lines
         ctx.lineWidth = Math.max(1, 1 * dpr);
         // Set grid label style
         ctx.font = `${gridFontSize}px Arial`;
-        ctx.fillStyle = '#888';  // Darker text color for better visibility
+        ctx.fillStyle = (window.ThemePalette?.get('graph-tone-50') ?? '');  // Darker text color for better visibility
 
         // Define frequency and gain ranges for the graph axis
         const minFreq = 10;      // Hz, matches PEQ range
@@ -1051,7 +1050,7 @@ class FiveBandDynamicEQ extends PluginBase {
             if (band.en) { // Only draw if the selected band is enabled
                 // 1. Draw Sidechain Filter Curve (Gray)
                 ctx.beginPath();
-                ctx.strokeStyle = 'rgba(180, 180, 180, 0.8)'; // Gray color
+                ctx.strokeStyle = (window.ThemePalette?.get('graph-tone-56') ?? ''); // Gray color
                 ctx.lineWidth = Math.max(1, 1 * dpr);
                 for (let i = 0; i < freqPoints.length; i++) {
                     const freq = freqPoints[i];
@@ -1065,7 +1064,7 @@ class FiveBandDynamicEQ extends PluginBase {
 
                 // 2. Draw Static EQ Curve (Light Green, representing potential max/min gain effect)
                 ctx.beginPath();
-                ctx.strokeStyle = 'rgba(120, 220, 120, 0.8)'; // Light green color
+                ctx.strokeStyle = (window.ThemePalette?.get('graph-handle') ?? ''); // Light green color
                 ctx.lineWidth = Math.max(1, 1 * dpr);
                 // Determine the static gain based on ratio (expander/compressor) and max gain setting
                 // Ratio < 1 (Expander) -> positive max gain (peak)
@@ -1092,7 +1091,7 @@ class FiveBandDynamicEQ extends PluginBase {
         // Compute and stroke the curve in a single pass; the per-point
         // response is no longer materialized into a temporary array.
         ctx.beginPath();
-        ctx.strokeStyle = '#00ff00'; // Bright green (like PEQ)
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? ''); // Bright green (like PEQ)
         ctx.lineWidth = Math.max(1, 1.5 * dpr);
         for (let i = 0; i < freqPoints.length; i++) {
             const freq = freqPoints[i];
@@ -1113,7 +1112,7 @@ class FiveBandDynamicEQ extends PluginBase {
         ctx.stroke();
 
         // --- Draw Axis Labels ---
-        ctx.fillStyle = '#fff'; // Use white for axis labels for clarity
+        ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? ''); // Use white for axis labels for clarity
         ctx.font = `${axisFontSize}px Arial`;
         ctx.textAlign = 'center';
 

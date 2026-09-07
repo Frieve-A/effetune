@@ -259,6 +259,18 @@ test('updatePipelineColumns validates ranges and handles missing pipeline elemen
   });
 });
 
+test('all desktop hosts use the same canonical fixed pipeline content widths', async () => {
+  const runtime = createRuntime({ pipeline: [{ id: 'only' }] });
+  const pipelineElement = { style: {} };
+  await withColumnGlobals(runtime, { pipelineElement }, async () => {
+    const manager = new PipelineColumnManager(runtime.pipelineCore);
+    manager.updatePipelineColumns(1);
+    assert.equal(pipelineElement.style.width, '1064px');
+    manager.updatePipelineColumns(2);
+    assert.equal(pipelineElement.style.width, '2138px');
+  });
+});
+
 test('rebuild and distribution handle missing lists, empty columns, and invalid target columns', async () => {
   const errors = [];
   const missingRuntime = createRuntime({ pipelineList: null });

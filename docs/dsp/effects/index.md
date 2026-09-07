@@ -7,7 +7,7 @@ permalink: /dsp/effects/
 ---
 # Effects
 
-Browse all 92 semantic types registered in the v1 binding catalog. The list remains readable without JavaScript.
+Browse all 100 semantic types registered in the v1 binding catalog. The list remains readable without JavaScript.
 
 <label for="effect-filter">Filter effects</label>
 <input id="effect-filter" type="search" placeholder="Name, type, category, seeded, or asset" data-dsp-effect-filter>
@@ -16,6 +16,7 @@ Browse all 92 semantic types registered in the v1 binding catalog. The list rema
 ## Analyzers
 
 - [Level Meter](/dsp/effects/level-meter/) (`LevelMeter`) — Passes audio through while the host-side EffeTune app can display peak and RMS levels. <span data-effect-tags="analyzer  "></span>
+- [Note Spectrogram](/dsp/effects/note-spectrogram/) (`NoteSpectrogram`) — Passes audio through while exposing detected pitch confidence across the 88-key piano range at five positions per semitone. <span data-effect-tags="analyzer  "></span>
 - [Oscilloscope](/dsp/effects/oscilloscope/) (`Oscilloscope`) — Passes audio through while the host-side EffeTune app can display its waveform. <span data-effect-tags="analyzer  "></span>
 - [Spectrogram](/dsp/effects/spectrogram/) (`Spectrogram`) — Passes audio through while the host-side EffeTune app can display frequency content over time. <span data-effect-tags="analyzer  "></span>
 - [Spectrum Analyzer](/dsp/effects/spectrum-analyzer/) (`SpectrumAnalyzer`) — Passes audio through while the host-side EffeTune app can display its frequency spectrum. <span data-effect-tags="analyzer  "></span>
@@ -101,6 +102,7 @@ Browse all 92 semantic types registered in the v1 binding catalog. The list rema
 - [Frequency Shifter](/dsp/effects/frequency-shifter/) (`FrequencyShifter`) — Provides Frequency Shifter, Ring Modulator, or Barber-pole Frequency Shifter processing with analytic-signal translation or direct multiplication. <span data-effect-tags="modulation  "></span>
 - [Phaser](/dsp/effects/phaser/) (`Phaser`) — Creates moving peaks and notches as a classic Phaser or Barber-pole Phaser with all-pass sweeps. <span data-effect-tags="modulation  "></span>
 - [Pitch Shifter](/dsp/effects/pitch-shifter/) (`PitchShifter`) — Shifts pitch while retaining the input duration. <span data-effect-tags="modulation  "></span>
+- [Pitch Shifter HQ](/dsp/effects/pitch-shifter-hq/) (`PitchShifterHQ`) — Changes pitch in semitones and cents while preserving playback duration. <span data-effect-tags="modulation  "></span>
 - [Rotary Speaker](/dsp/effects/rotary-speaker/) (`RotarySpeaker`) — Creates rotary motion by varying the amplitudes of crossover-separated horn and drum paths and applying Doppler shifts. <span data-effect-tags="modulation  "></span>
 - [Tremolo](/dsp/effects/tremolo/) (`Tremolo`) — Modulates amplitude periodically at a configurable rate and depth. <span data-effect-tags="modulation seeded "></span>
 - [Wow Flutter](/dsp/effects/wow-flutter/) (`WowFlutter`) — Applies slow and fast pitch variation associated with imperfect mechanical playback. <span data-effect-tags="modulation seeded "></span>
@@ -111,6 +113,13 @@ Browse all 92 semantic types registered in the v1 binding catalog. The list rema
 - [Horn Resonator Plus](/dsp/effects/horn-resonator-plus/) (`HornResonatorPlus`) — Applies an extended multi-mode horn-like resonant response. <span data-effect-tags="resonator  "></span>
 - [Modal Resonator](/dsp/effects/modal-resonator/) (`ModalResonator`) — Excites configurable resonant modes from the input signal. <span data-effect-tags="resonator  "></span>
 
+## Restoration
+
+- [Click Remover](/dsp/effects/click-remover/) (`ClickRemover`) — Reduces short clicks in playback. <span data-effect-tags="restoration  "></span>
+- [Clip Restorer](/dsp/effects/clip-restorer/) (`ClipRestorer`) — Reconstructs clipped waveform peaks. <span data-effect-tags="restoration  "></span>
+- [Hum Remover](/dsp/effects/hum-remover/) (`HumRemover`) — Reduces mains hum and its harmonics. <span data-effect-tags="restoration  "></span>
+- [Noise Reduction](/dsp/effects/noise-reduction/) (`NoiseReduction`) — Reduces steady background noise. <span data-effect-tags="restoration  "></span>
+
 ## Reverb
 
 - [Dattorro Plate Reverb](/dsp/effects/dattorro-plate-reverb/) (`DattorroPlateReverb`) — Creates a plate-style reverberation using a Dattorro-inspired network. <span data-effect-tags="reverb  "></span>
@@ -120,6 +129,7 @@ Browse all 92 semantic types registered in the v1 binding catalog. The list rema
 
 ## Saturation
 
+- [Bandwidth Extender](/dsp/effects/bandwidth-extender/) (`BandwidthExtender`) — Synthesizes upper-frequency content for bandwidth-limited recordings. <span data-effect-tags="saturation seeded "></span>
 - [Dynamic Saturation](/dsp/effects/dynamic-saturation/) (`DynamicSaturation`) — Applies saturation whose drive responds to the input level. <span data-effect-tags="saturation  "></span>
 - [Exciter](/dsp/effects/exciter/) (`Exciter`) — Generates controlled high-frequency harmonics to emphasize detail. <span data-effect-tags="saturation  "></span>
 - [Hard Clipping](/dsp/effects/hard-clipping/) (`HardClipping`) — Limits waveform amplitude abruptly at a configurable threshold. <span data-effect-tags="saturation  "></span>
@@ -132,6 +142,7 @@ Browse all 92 semantic types registered in the v1 binding catalog. The list rema
 ## Spatial
 
 - [Crossfeed Filter](/dsp/effects/crossfeed-filter/) (`CrossfeedFilter`) — Feeds a filtered portion of each stereo channel into the opposite channel. <span data-effect-tags="spatial  "></span>
+- [Crosstalk Cancellation](/dsp/effects/crosstalk-cancellation/) (`CrosstalkCancellation`) — Applies prepared true-stereo cancellation filters to stereo playback. <span data-effect-tags="spatial seeded asset"></span>
 - [MS Matrix](/dsp/effects/ms-matrix/) (`MSMatrix`) — Encodes, decodes, or adjusts mid-side stereo components. <span data-effect-tags="spatial  "></span>
 - [Multiband Balance](/dsp/effects/multiband-balance/) (`MultibandBalance`) — Adjusts left-right balance independently across frequency bands. <span data-effect-tags="spatial  "></span>
 - [Phase Select EQ](/dsp/effects/phase-select-eq/) (`PhaseSelectEQ`) — Applies gain only where frequency, absolute stereo phase difference, and left/right Balance fall within configured regions. <span data-effect-tags="spatial  "></span>

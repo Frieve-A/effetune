@@ -1,7 +1,15 @@
 {
   "schemaVersion": 1,
   "effects": {
+    "PitchShifterHQ": ["docs/plugins/modulation.md", "Pitch Shifter HQ"],
+    "BandwidthExtender": ["docs/plugins/saturation.md", "Bandwidth Extender"],
+    "ClickRemover": ["docs/plugins/restoration.md", "Click Remover"],
+    "ClipRestorer": ["docs/plugins/restoration.md", "Clip Restorer"],
+    "HumRemover": ["docs/plugins/restoration.md", "Hum Remover"],
+    "NoiseReduction": ["docs/plugins/restoration.md", "Noise Reduction"],
+    "CrosstalkCancellation": ["docs/plugins/spatial.md", "Crosstalk Cancellation"],
     "LevelMeter": ["docs/plugins/analyzer.md", "Level Meter"],
+    "NoteSpectrogram": ["docs/plugins/analyzer.md", "Note Spectrogram"],
     "Oscilloscope": ["docs/plugins/analyzer.md", "Oscilloscope"],
     "Spectrogram": ["docs/plugins/analyzer.md", "Spectrogram"],
     "SpectrumAnalyzer": ["docs/plugins/analyzer.md", "Spectrum Analyzer"],

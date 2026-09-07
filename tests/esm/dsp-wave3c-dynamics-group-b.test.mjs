@@ -1,3 +1,4 @@
+import { installThemePaletteStub } from '../helpers/theme-palette-stub.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -21,7 +22,7 @@ const ports = [
     hash: 0xe0b1f34d,
     floatCount: 7,
     caseCount: 9,
-    jsEngineHash: 'cf7469b737ab55b7314f038c8b76db65d1a5f7354ec18f12cca37187366ba0bf'
+    jsEngineHash: 'ccd42454a572b00fa42cbae6f795fb2d9645679cfe534be39ee305a0838cf209'
   },
   {
     type: 'BrickwallLimiterPlugin',
@@ -37,7 +38,7 @@ const ports = [
     hash: 0xe2344ceb,
     floatCount: 7,
     caseCount: 8,
-    jsEngineHash: '4e8752cddb14ee74d47c2b6027f6ba44520476c85f4517fb36ff6c2a92a58110'
+    jsEngineHash: '066494041d5c65a2c1a913e0ad3eec0c919b15863946db46d5d513b7c8a5b4fe'
   }
 ];
 
@@ -121,6 +122,7 @@ async function loadGraphPlugins() {
         this.description = description;
         this.id = nextId++;
         this.enabled = true;
+        this._sectionEnabled = true;
       }
 
       _setupMessageHandler() {
@@ -144,6 +146,7 @@ async function loadGraphPlugins() {
       path.join(repoRoot, 'plugins', 'dynamics', `${folder}.js`),
       'utf8'
     );
+    installThemePaletteStub(context.window);
     vm.runInContext(source, context, { filename: `${folder}.js` });
   }
   return context;
@@ -270,6 +273,99 @@ test('Auto Leveler strict telemetry parser feeds the legacy processBuffer graph 
   plugin.cleanup();
   assert.equal(secondHub.active().length, 0);
   assert.equal(plugin.baseCleanupCalled, true);
+});
+
+function captureAutoLevelerGraph(plugin, now) {
+  const strokes = [];
+  let points;
+  plugin.canvas ??= { width: 1024, height: 240, clientWidth: 1024 };
+  plugin.canvasCtx = {
+    fillRect() {}, fillText() {}, save() {}, restore() {}, translate() {}, rotate() {},
+    beginPath() { points = []; },
+    moveTo(x, y) { points.push([x, y]); },
+    lineTo(x, y) { points.push([x, y]); },
+    stroke() { strokes.push({ color: this.strokeStyle, points }); }
+  };
+  plugin.drawGraph(now);
+  return {
+    input: strokes.find(stroke => stroke.color === 'stub:graph-trace')?.points,
+    output: strokes.find(stroke => stroke.color === 'stub:text-primary')?.points,
+    ticks: strokes.filter(stroke => stroke.color === 'stub:graph-grid-strong').map(stroke => stroke.points[0][0])
+  };
+}
+
+test('Auto Leveler scrolls curves and second ticks by render time between deliveries', async () => {
+  const context = await loadGraphPlugins();
+  let now = 20000;
+  context.performance.now = () => now;
+  const plugin = new context.window.AutoLevelerPlugin();
+  plugin.handleDspLoudnessTelemetry(makeLoudnessFrame(-30, -24));
+  now = 20100;
+  plugin.handleDspLoudnessTelemetry(makeLoudnessFrame(-20, -18));
+
+  const times = [20102, 20107, 20115];
+  const frames = times.map(time => captureAutoLevelerGraph(plugin, time));
+  for (let i = 0; i < frames.length; i++) {
+    const frame = frames[i];
+    assert.equal(frame.input.at(-1)[0], 1024);
+    assert.ok(Math.abs(frame.input.at(-1)[1] - 100) < 1e-9);
+    assert.deepEqual(frame.output.at(-1), [1024, 90]);
+    if (i === 0) continue;
+    const distance = (times[i] - times[i - 1]) * 0.06;
+    assert.ok(Math.abs(frames[i - 1].input[0][0] - frame.input[0][0] - distance) < 1e-9);
+    assert.ok(Math.abs(frames[i - 1].output[0][0] - frame.output[0][0] - distance) < 1e-9);
+    assert.ok(Math.abs(frames[i - 1].ticks.at(-1) - frame.ticks.at(-1) - distance) < 1e-9);
+  }
+  // A stalled stream cannot leave an ever-growing empty strip on the right.
+  const stalled = captureAutoLevelerGraph(plugin, 90000);
+  assert.ok(Math.abs(stalled.input.at(-2)[0] - 1023) < 1e-9);
+  assert.equal(stalled.input.at(-1)[0], 1024);
+  assert.ok(Math.abs(stalled.input.at(-1)[1] - 100) < 1e-9);
+  plugin.canvas.width = 2048;
+  assert.ok(Math.abs(captureAutoLevelerGraph(plugin, 90000).input.at(-2)[0] - 2046) < 1e-9);
+
+  let callback;
+  plugin.isVisible = true;
+  plugin.requestPowerAnimationFrame = next => { callback = next; return 1; };
+  const renderTimes = [];
+  plugin.drawGraph = time => renderTimes.push(time);
+  plugin.startAnimation();
+  callback(20115);
+  assert.deepEqual(renderTimes, [20100, 20115]);
+  plugin.cleanup();
+});
+
+test('Auto Leveler keeps the newest values at the right edge across repeated pauses', async () => {
+  const context = await loadGraphPlugins();
+  let now = 1000;
+  context.performance.now = () => now;
+  const plugin = new context.window.AutoLevelerPlugin();
+  plugin.isVisible = true;
+  plugin.requestPowerAnimationFrame = () => 1;
+  plugin.handleDspLoudnessTelemetry(makeLoudnessFrame(-30, -24));
+  for (let cycle = 0; cycle < 8; cycle++) {
+    now += 5;
+    plugin.stopAnimation();
+    const frozen = captureAutoLevelerGraph(plugin, now);
+    const previousTime = plugin.historyTimes.at(-1);
+    const gate = cycle % 2 === 0 ? 'enabled' : '_sectionEnabled';
+    plugin[gate] = false;
+    now += 20000;
+    plugin.handleDspLoudnessTelemetry(makeLoudnessFrame(-1, -1));
+    assert.equal(plugin.historyTimes.at(-1), previousTime);
+    assert.deepEqual(captureAutoLevelerGraph(plugin, now), frozen);
+    plugin[gate] = true;
+    plugin.startAnimation();
+    // Audio time can reset independently of the monotonic display clock.
+    plugin.onMessage({ type: 'processBuffer', measurements: { inputLufs: -20, outputLufs: -18, time: cycle % 2 } });
+    const resumed = captureAutoLevelerGraph(plugin, now + 8);
+    assert.ok(Math.abs(resumed.input.at(-2)[0] - 1023.52) < 1e-9);
+    assert.equal(resumed.input.at(-1)[0], 1024);
+    assert.ok(Math.abs(resumed.input.at(-1)[1] - 100) < 1e-9);
+    assert.deepEqual(resumed.output.at(-1), [1024, 90]);
+  }
+  plugin.cleanup();
+  assert.ok(plugin.historyTimes.every(Number.isNaN));
 });
 
 test('Transient Shaper strict signed telemetry feeds the legacy processBuffer graph path', async () => {

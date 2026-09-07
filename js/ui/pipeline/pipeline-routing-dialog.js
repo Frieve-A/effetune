@@ -1,3 +1,5 @@
+import { enableStandardSelect } from '../standard-select.js';
+
 /**
  * PipelineRoutingDialog - Handles the routing dialog for bus and channel configuration
  * Manages the UI for configuring plugin input/output bus routing and channel selection
@@ -94,7 +96,7 @@ export class PipelineRoutingDialog {
         channelLabel.textContent = window.uiManager.t('ui.channel'); // Add translation key 'ui.channel'
         channelContainer.appendChild(channelLabel);
 
-        const channelSelect = document.createElement('select');
+        const channelSelect = enableStandardSelect(document.createElement('select'));
 
         // Define channel options - changed for multi-channel support
         const channelOptions = [
@@ -151,7 +153,7 @@ export class PipelineRoutingDialog {
         inputBusLabel.textContent = window.uiManager.t('ui.inputBus');
         inputBusContainer.appendChild(inputBusLabel);
         
-        const inputBusSelect = document.createElement('select');
+        const inputBusSelect = enableStandardSelect(document.createElement('select'));
         // Add Main bus option (index 0)
         const inputMainOption = document.createElement('option');
         inputMainOption.value = 0;
@@ -192,7 +194,7 @@ export class PipelineRoutingDialog {
         outputBusLabel.textContent = window.uiManager.t('ui.outputBus');
         outputBusContainer.appendChild(outputBusLabel);
         
-        const outputBusSelect = document.createElement('select');
+        const outputBusSelect = enableStandardSelect(document.createElement('select'));
         // Add Main bus option (index 0)
         const outputMainOption = document.createElement('option');
         outputMainOption.value = 0;
@@ -310,7 +312,7 @@ export class PipelineRoutingDialog {
         setTimeout(() => {
             // Close dialog when clicking outside
             document.addEventListener('click', function closeDialog(e) {
-                if (!dialog.contains(e.target) && e.target !== button) {
+                if (!e.composedPath().includes(dialog) && e.target !== button) {
                     dialog.remove();
                     document.removeEventListener('click', closeDialog);
                 }

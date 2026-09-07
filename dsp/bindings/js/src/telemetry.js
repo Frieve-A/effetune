@@ -4,9 +4,11 @@ const SCOPE_FRAME = 3;
 const SPECTRUM_FRAME = 4;
 const SPECTROGRAM_FRAME = 5;
 const STEREO_FRAME = 6;
+const NOTE_SPECTROGRAM_FRAME = 24;
 
 const ANALYZER_FRAMES = Object.freeze({
   LevelMeter: [LEVEL_FRAME, 1],
+  NoteSpectrogram: [NOTE_SPECTROGRAM_FRAME, 2],
   Oscilloscope: [SCOPE_FRAME, 2],
   SpectrumAnalyzer: [SPECTRUM_FRAME, 1],
   Spectrogram: [SPECTROGRAM_FRAME, 1],
@@ -200,6 +202,42 @@ function decodeSpectrogram(payload, node, sequence, dropped) {
   };
 }
 
+function decodeNoteSpectrogram(payload, node, sequence, dropped) {
+  if (payload.byteLength !== 1788) return null;
+  const sampleRate = payload.getFloat32(0, true);
+  const timeSeconds = payload.getFloat32(4, true);
+  const pitchCount = payload.getUint16(8, true);
+  const firstMidi = payload.getUint16(10, true);
+  const hopSeconds = payload.getFloat32(12, true);
+  const frameIndex = payload.getUint32(16, true);
+  const divisionsPerSemitone = payload.getUint32(20, true);
+  const generation = payload.getUint32(24, true);
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0 ||
+      !Number.isFinite(timeSeconds) || timeSeconds < 0 ||
+      pitchCount !== 440 || firstMidi !== 21 ||
+      !Number.isFinite(hopSeconds) || hopSeconds <= 0 ||
+      divisionsPerSemitone !== 5 || generation === 0) {
+    return null;
+  }
+  const levels = new Float32Array(pitchCount);
+  for (let pitch = 0; pitch < pitchCount; pitch++) {
+    const level = payload.getFloat32(28 + pitch * 4, true);
+    if (!Number.isFinite(level) || level < 0 || level > 1) return null;
+    levels[pitch] = level;
+  }
+  return {
+    ...common(node, 'noteSpectrogram', sequence, dropped),
+    sampleRate,
+    timeSeconds,
+    firstMidi,
+    hopSeconds,
+    frameIndex,
+    divisionsPerSemitone,
+    generation,
+    levels
+  };
+}
+
 function decodeStereo(payload, node, sequence, dropped) {
   if (payload.byteLength < 1464) return null;
   const sampleRate = payload.getFloat32(0, true);
@@ -261,6 +299,8 @@ function decodePayload(frameType, payload, node, sequence, dropped) {
       return decodeSpectrogram(payload, node, sequence, dropped);
     case STEREO_FRAME:
       return decodeStereo(payload, node, sequence, dropped);
+    case NOTE_SPECTROGRAM_FRAME:
+      return decodeNoteSpectrogram(payload, node, sequence, dropped);
     default:
       return null;
   }

@@ -6,7 +6,7 @@
 .comb-filter-plugin-ui canvas {
     margin: 10px auto;
     display: block;
-    background: #222;
+    background: var(--et-graph-bg-deep);
 }
 
 .comb-filter-plugin-ui label {
@@ -15,9 +15,9 @@
 
 .comb-filter-plugin-ui .slope-select {
     padding: 2px;
-    background: #333;
-    color: #ccc;
-    border: 1px solid #555;
+    background: var(--et-surface-13);
+    color: var(--et-surface-81);
+    border: 1px solid var(--et-surface-28);
     border-radius: 3px;
     font-size: 12px;
     width: 90px;
@@ -26,12 +26,12 @@
 
 .comb-filter-plugin-ui .slope-select:focus {
     outline: none;
-    border-color: #777;
+    border-color: var(--et-surface-43);
 }
 
 .comb-filter-plugin-ui .slope-select option {
-    background: #333;
-    color: #ccc;
+    background: var(--et-surface-13);
+    color: var(--et-surface-81);
     padding: 2px;
 }
 

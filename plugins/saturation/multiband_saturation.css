@@ -11,7 +11,7 @@
     flex-direction: row;
     gap: 10px;
     padding: 10px;
-    background: #2a2a2a;
+    background: color-mix(in srgb, var(--et-surface-9), var(--et-graph-bg-deep) 25%);
     border-radius: 4px;
 }
 
@@ -37,36 +37,17 @@
 .mbs-freq-slider input[type="number"] {
     width: 80px;
     padding: 4px;
-    background-color: #3d3d3d;
-    border: 1px solid #4d4d4d;
-    color: #ffffff;
+    background-color: var(--et-surface-17);
+    border: 1px solid var(--et-surface-24);
+    color: var(--et-text-primary);
     border-radius: 4px;
 }
 
 /* Band settings area */
 .mbs-band-settings {
-    background: #2a2a2a;
+    background: color-mix(in srgb, var(--et-surface-9), var(--et-graph-bg-deep) 25%);
     border-radius: 4px;
     padding: 10px;
-}
-
-.mbs-band-tabs {
-    display: flex;
-    gap: 2px;
-    margin-bottom: 20px;
-}
-
-.mbs-band-tab {
-    padding: 8px 16px;
-    background: #333;
-    border: none;
-    cursor: pointer;
-    border-radius: 4px 4px 0 0;
-    color: #fff;
-}
-
-.mbs-band-tab.active {
-    background: #444;
 }
 
 .mbs-band-content {
@@ -74,7 +55,7 @@
 }
 
 .mbs-band-content.active {
-    display: block;
+    display: flex;
 }
 
 /* Transfer graphs area */
@@ -84,7 +65,7 @@
     gap: 10px;
     justify-content: space-between;
     padding: 10px;
-    background: #2a2a2a;
+    background: color-mix(in srgb, var(--et-surface-9), var(--et-graph-bg-deep) 25%);
     border-radius: 4px;
 }
 
@@ -92,14 +73,14 @@
     flex: 1 1 150px;
     min-width: 0;
     position: relative;
-    background: #222;
+    background: color-mix(in srgb, var(--et-surface-5), var(--et-graph-bg-deep) 25%);
     border-radius: 4px;
     padding: 10px;
     box-sizing: border-box;
 }
 
 .mbs-band-graph.active {
-    background: #333;
+    background: color-mix(in srgb, var(--et-surface-13), var(--et-graph-bg-deep) 25%);
 }
 
 .mbs-band-graph canvas {
@@ -136,15 +117,8 @@ body.layout-mobile .mbs-band-graph {
     box-sizing: border-box;
 }
 
-body.layout-mobile .mbs-band-tabs {
-    flex-wrap: wrap;
-    gap: 4px;
-}
-
 body.layout-mobile .mbs-band-tab {
     flex: 1 1 56px;
-    min-width: 0;
-    min-height: 40px;
 }
 
 body.layout-mobile .mbs-freq-sliders {

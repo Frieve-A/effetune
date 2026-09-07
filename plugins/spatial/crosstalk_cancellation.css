@@ -12,7 +12,11 @@
     gap: 8px 16px;
     padding: 12px;
     border-radius: 4px;
-    background: #2d2d2d;
+    background: color-mix(in srgb, var(--et-surface-10), var(--et-graph-bg-deep) 25%);
+}
+
+.crosstalk-cancellation-controls {
+    row-gap: 0;
 }
 
 .crosstalk-cancellation-section-title,
@@ -35,27 +39,29 @@
 .crosstalk-cancellation-measurement-group {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 0;
     padding: 8px;
-    border: 1px solid #3d3d3d;
+    border: 1px solid var(--et-surface-17);
     border-radius: 4px;
     min-width: 0;
 }
 
 .crosstalk-cancellation-group-title {
+    margin-bottom: 8px;
     color: var(--et-text-primary);
     font-weight: 600;
 }
 
 .crosstalk-cancellation-ui .crosstalk-cancellation-measurement {
     display: grid;
-    grid-template-columns: minmax(170px, auto) minmax(120px, 1fr);
+    grid-template-columns: 180px minmax(120px, 1fr);
     align-items: center;
     gap: 8px;
     min-width: 0;
 }
 
 .crosstalk-cancellation-ui .crosstalk-cancellation-measurement > label {
+    width: auto;
     white-space: nowrap;
 }
 
@@ -77,14 +83,14 @@
 
 .crosstalk-cancellation-status,
 .crosstalk-cancellation-details {
-    color: #bbb;
+    color: var(--et-surface-74);
     font-size: 0.9em;
     white-space: nowrap;
 }
 
 .crosstalk-cancellation-status[data-state='error'],
 .crosstalk-cancellation-status[data-state='warning'] {
-    color: #ff9f43;
+    color: var(--et-warning);
 }
 
 body.layout-mobile .crosstalk-cancellation-measurements,

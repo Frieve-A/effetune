@@ -1,6 +1,6 @@
 ---
 title: "Analyzer Plugins - EffeTune"
-description: "Audio analysis plugins including Level Meter, Oscilloscope, Spectrogram, Spectrum Analyzer, and Stereo Meter."
+description: "Audio analysis plugins including Level Meter, Note Spectrogram, Oscilloscope, Spectrogram, Spectrum Analyzer, and Stereo Meter."
 lang: en
 ---
 
@@ -11,6 +11,7 @@ A collection of plugins that let you see your music in fascinating ways. These v
 ## Plugin List
 
 - [Level Meter](#level-meter) - Shows digital signal level and possible clipping
+- [Note Spectrogram](#note-spectrogram) - Shows estimated pitches over time as a piano roll
 - [Oscilloscope](#oscilloscope) - Shows real-time waveform visualization
 - [Spectrogram](#spectrogram) - Creates beautiful visual patterns from your music
 - [Spectrum Analyzer](#spectrum-analyzer) - Shows the different frequencies in your music
@@ -22,9 +23,48 @@ A visual display that shows your music's digital signal level in real time. It h
 
 ### Visualization Guide
 - The horizontal bar extends farther to the right as the signal level gets louder
-- White marker shows the highest recent level for a short time
+- The white marker holds a new peak for one second, then falls smoothly
 - OVERLOAD means the signal exceeded the safe digital range and may distort
 - For clean playback, avoid frequent red levels or OVERLOAD warnings; set your actual listening volume on your device
+
+## Note Spectrogram
+
+Shows estimated fundamental pitches (F0s) in a selectable range from A0 to C8 in a scrolling piano roll without changing the audio. Use it to follow chord tones, changing vocal and melodic lines, bass lines, and notes that overlap across octaves.
+
+### Visualization Guide
+
+- **Vertical** shows time from left to right, with the keyboard and current sound at the right edge. Higher notes appear toward the top.
+- **Horizontal** places the keyboard at the bottom, with low notes on the left and high notes on the right. New sound appears just above the keyboard, and history scrolls upward.
+- Lines at each C mark octave boundaries.
+- Pitch rows corresponding to black piano keys use a nearly black gray background so they remain distinguishable when no note is detected.
+- **Normal** uses the theme’s graph trace color; **Note Colors** uses a different color for each note, repeated across octaves. Both show darker guide lines between E and F.
+- **1/12 Octave** shows one row per semitone. **High (1/60 Octave)** divides each semitone into five rows so that small pitch movement is easier to follow; colors are blended between neighboring notes.
+- Color follows the model’s confidence from 0 (background color) to 1 (full color), including weak candidates without a display threshold. This score indicates how strongly the model supports a pitch; it is not a volume level or a calibrated probability.
+- The keys blend from their normal color toward the display color as confidence in the latest frame increases, reaching that color at 1.
+- Changing **Color** recolors the existing history.
+
+### Listening Guide
+
+- Chords appear as several bright rows at the same time
+- Melodies and bass lines form paths that move between note rows
+- The display estimates pitch; it does not create MIDI or notation, identify instruments, or separate every simultaneous sound completely. Complex overlaps can leave parts of a melody or harmony blank, while percussion, noise, and unclear repeating patterns can produce an occasional incorrect pitch.
+
+### Parameters
+
+- **Color** - Selects the display colors without changing the pitch estimates.
+  - **Normal** (default): the theme’s graph trace color.
+  - **Note Colors**: a separate color for each note, repeated across octaves.
+- **Pitch Resolution** - Selects the vertical pitch detail without clearing the existing history.
+  - **1/12 Octave**: one row per semitone, using the strongest estimate within that note.
+  - **High (1/60 Octave)** (default): five rows per semitone for finer pitch movement.
+- **Layout** - Selects **Horizontal** (default) or **Vertical**. Switching layout preserves the existing history.
+- **Time Span** (1 to 10 s) - Sets how much time the piano roll shows
+  - Shorter values make timing changes easier to see
+  - Longer values show a longer musical passage at once
+  - Default: 2 s
+- **Lowest Note** - Sets the bottom of the displayed pitch range. Default: E1.
+- **Highest Note** - Sets the top of the displayed pitch range. Default: G6.
+- When input is too low for analysis, the piano roll remains dark rather than showing extremely small input as pitches. This suppression does not determine whether a sound would be audible or perceptually masked.
 
 ## Oscilloscope
 
@@ -60,6 +100,8 @@ The waveform connects captured points in time order. For longer display times, e
 ## Spectrogram
 
 Creates colorful patterns that show how your music changes over time. Colors show how strong each sound is, while vertical position shows its frequency.
+
+The graph scrolls from right to left at a steady speed, with marks every second.
 
 ### Visualization Guide
 - Colors show how strong different frequencies are:
@@ -98,7 +140,7 @@ Creates a real-time visual display of your music's frequencies, from deep bass t
 - Right side shows high frequencies (cymbals, sparkle, air)
 - Higher peaks mean stronger presence of those frequencies
 - Darker green line shows the current sound
-- Brighter green line briefly holds recent peaks, so you can see strong sounds that just passed
+- The brighter green line follows recent peaks and falls smoothly as they fade
 - Watch how different instruments create different patterns
 
 ### What You Can See

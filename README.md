@@ -24,6 +24,10 @@ EffeTune was created for audio enthusiasts who want to elevate their music liste
 
 No audiophile myths, Just pure science.
 
+### Browser Extension
+
+Process one Chrome or Edge tab without a virtual audio device. See the [Browser Extension guide](docs/browser-extension.md).
+
 ## Features
 
 - Real-time audio processing
@@ -95,7 +99,7 @@ To use EffeTune with CD players, network players, or other physical sources:
 
 ### Application Settings
 
-Open **Settings > Config...** to choose **Language**, set **Startup view:**, and configure **Effect Pipeline at startup:**. **Startup view:** can be **Effect Pipeline (Default)** or **Music Library**. When you choose Music Library, use its list to select **Tracks**, **Albums**, **Artists**, **Genres**, **Subfolders**, **Folders**, or **Playlists** as the first library view.
+Open **Settings > Config...** to choose **Language**, set **Startup view:**, and configure **Effect Pipeline at startup:**. **Startup view:** can be **Effect Pipeline (Default)** or **Music Library**. When you choose Music Library, use its list to select **Tracks**, **Albums**, **Artists**, **Genres**, **Subfolders**, **Folders**, or **Playlists** as the first library view. Use **Theme** to choose the app colors: Graphite (default), Paper, Midnight, Ember, or Mint.
 
 Supported desktop builds can also be controlled by OpenHome apps on the same local network. This is off by default; see [OpenHome Remote Control](docs/music-library.md#openhome-remote-control-desktop-app) for setup, network access, compatibility, and limitations.
 
@@ -315,6 +319,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Category | Effect | Description | Documentation |
 |-----------|--------|-------------|---------------|
 | Analyzer  | Level Meter | Displays audio level with peak hold | [Details](docs/plugins/analyzer.md#level-meter) |
+| Analyzer  | Note Spectrogram | Shows estimated pitches over time as a scrolling piano roll | [Details](docs/plugins/analyzer.md#note-spectrogram) |
 | Analyzer  | Oscilloscope | Real-time waveform visualization | [Details](docs/plugins/analyzer.md#oscilloscope) |
 | Analyzer  | Spectrogram | Shows frequency spectrum changes over time | [Details](docs/plugins/analyzer.md#spectrogram) |
 | Analyzer  | Spectrum Analyzer | Shows the strength of bass, mids, and treble in real time | [Details](docs/plugins/analyzer.md#spectrum-analyzer) |

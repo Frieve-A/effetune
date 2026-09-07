@@ -596,6 +596,11 @@ test('Electron player controls follow mini mode and always-on-top state', async 
     assert.ok(ui.restoreButton);
     assert.ok(ui.pinButton);
     assert.equal(ui.pinButton.getAttribute('aria-pressed'), 'true');
+    assert.equal(ui.pinButton.getAttribute('data-active'), 'true');
+    ui.setMiniPlayerAlwaysOnTop(false);
+    assert.equal(ui.pinButton.getAttribute('aria-pressed'), 'false');
+    assert.equal(ui.pinButton.getAttribute('data-active'), 'false');
+    ui.setMiniPlayerAlwaysOnTop(true);
     assert.equal(ui.artworkImage.parentNode.style.display, '');
     assert.equal(container.getAttribute('data-artwork-layout'), 'true');
 

@@ -10,6 +10,10 @@
 
 オーディオ愛好家のためのリアルタイムオーディオエフェクトプロセッサです。EffeTuneを使うと、あらゆるオーディオソースに高品質なエフェクトをかけ、リスニング体験をリアルタイムで好みに合わせて調整できます。
 
+### ブラウザ拡張版
+
+仮想オーディオデバイスを使わずに、Chrome または Edge の1つのタブを加工できます。詳しくは[ブラウザ拡張版ガイド](browser-extension.md)をご覧ください。
+
 [![Screenshot](../../../images/screenshot.png)](https://effetune.frieve.com/effetune.html)
 
 ## 紹介動画
@@ -91,7 +95,7 @@ CDプレーヤー、ネットワークプレーヤー、またはその他の外
 
 ### アプリケーション設定
 
-**設定 > 環境設定...** を開くと、言語、起動時の表示、起動時のエフェクトパイプライン動作を選べます。起動時の表示は **Effect Pipeline**（デフォルト）または **Music Library** から選択できます。Music Libraryを選んだ場合は、隣のリストで最初に表示する項目を **曲**、**アルバム**、**アーティスト**、**ジャンル**、**サブフォルダ**、**フォルダ**、**プレイリスト** から選べます。
+**設定 > 環境設定...** を開くと、言語、起動時の表示、起動時のエフェクトパイプライン動作を選べます。起動時の表示は **Effect Pipeline**（デフォルト）または **Music Library** から選択できます。Music Libraryを選んだ場合は、隣のリストで最初に表示する項目を **曲**、**アルバム**、**アーティスト**、**ジャンル**、**サブフォルダ**、**フォルダ**、**プレイリスト** から選べます。 **テーマ**では、アプリの配色をGraphite（初期設定）、Paper、Midnight、Ember、Mintから選べます。
 
 対応するデスクトップ版は、同じLAN上のOpenHomeアプリからも操作できます。初期状態では無効です。設定方法、ネットワーク公開、互換性、制約については[OpenHomeリモート操作](music-library.md#openhomeリモート操作デスクトップ版)を参照してください。
 
@@ -316,6 +320,7 @@ Effect Pipelineヘッダーの **パイプラインプリセット** ボタン�
 | カテゴリ    | エフェクト             | 説明                                                                  | ドキュメント                                             |
 |-----------|---------------------|---------------------------------------------------------------------|---------------------------------------------------------|
 | Analyzer  | Level Meter         | ピークホールド機能付きのオーディオレベルを表示                                     | [詳細](plugins/analyzer.md#level-meter)               |
+| Analyzer  | Note Spectrogram | 推定した音高を時間に沿ったピアノロールで表示                                       | [詳細](plugins/analyzer.md#note-spectrogram)       |
 | Analyzer  | Oscilloscope        | リアルタイムで波形を可視化                                                   | [詳細](plugins/analyzer.md#oscilloscope)              |
 | Analyzer  | Spectrogram         | 時間経過に伴う周波数スペクトルの変化を表示                                         | [詳細](plugins/analyzer.md#spectrogram)               |
 | Analyzer  | Spectrum Analyzer   | 低域・中域・高域の強さをリアルタイムに表示                                                  | [詳細](plugins/analyzer.md#spectrum-analyzer)         |

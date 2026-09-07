@@ -1,3 +1,4 @@
+import { installThemePaletteStub } from '../helpers/theme-palette-stub.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -48,6 +49,7 @@ async function loadPlugin({ id = 12, hub = null, clock = null } = {}) {
     cancelAnimationFrame: () => {},
     window: hub ? { dspTelemetryHub: hub } : {}
   };
+  installThemePaletteStub(context.window);
   vm.runInNewContext(source, context);
   return { plugin: new context.window.SWRadioSimulatorPlugin(), context, now };
 }
@@ -151,7 +153,7 @@ test('SW Radio Simulator freezes the parameter layout and representative parity 
   assert.equal(goldens.length, 28);
   assert.ok(goldens.every(item =>
     item.metadata.jsEngineHash ===
-      '0367c04c6daf95073a2da68bb8c515093080186b4aa08b107234d113339cdc4d'
+      'abb2c42e07844b12232b2f5c442d1bd34cce4d0cbfacd979609323f31cd1d2c0'
   ));
 });
 
@@ -644,8 +646,8 @@ test('SW Radio Simulator drives the HUD from measurements and validated executio
   assert.ok(drawn.includes('+9.5 dB'));
   assert.ok(drawn.includes('S4.9'));
 
-  const meterTracks = fills.filter(fill => fill.style === '#363636');
-  const meterLevels = fills.filter(fill => fill.style === '#69c8ff');
+  const meterTracks = fills.filter(fill => fill.style === 'stub:graph-tone-13');
+  const meterLevels = fills.filter(fill => fill.style === 'stub:accent');
   assert.equal(meterTracks.length, 4);
   assert.equal(meterLevels.length, 4);
   assert.ok(Math.abs(meterLevels[0].args[2] / meterTracks[0].args[2] - 27.5 / 56) < 1e-12);
@@ -654,8 +656,8 @@ test('SW Radio Simulator drives the HUD from measurements and validated executio
   fills.length = 0;
   plugin.eventFlashUntil = clock.value + 180;
   plugin.drawHud();
-  const eventTrack = fills.filter(fill => fill.style === '#363636')[3];
-  const eventLevel = fills.find(fill => fill.style === '#ffb347');
+  const eventTrack = fills.filter(fill => fill.style === 'stub:graph-tone-13')[3];
+  const eventLevel = fills.find(fill => fill.style === 'stub:warning');
   assert.ok(eventLevel);
   assert.ok(Math.abs(eventLevel.args[2] / eventTrack.args[2] - 74 / 160) < 1e-12);
 

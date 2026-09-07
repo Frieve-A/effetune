@@ -20,23 +20,20 @@ function readMeasurementHtml() {
   return readCss('../../features/measurement/measurement.html');
 }
 
-test('measurement select options remain readable in the dark theme', () => {
+test('measurement select options use the active theme palette', () => {
   const css = readCss('../../features/measurement/styles.css');
   const selectStyleRule = getRule(css, 'input:not([type="range"]),\nselect {');
-  const selectSchemeRule = getRule(css, 'select {\n    color-scheme: dark;');
   const optionRule = getRule(css, 'select option {');
   const hoveredOptionRule = getRule(css, 'select option:hover');
   const checkedOptionRule = getRule(css, 'select option:checked');
 
   assert.match(selectStyleRule, /color:\s*var\(--et-text-primary\);/);
-  assert.match(selectSchemeRule, /color-scheme:\s*dark;/);
-  assert.match(optionRule, /background-color:\s*#373737\s*!important;/);
+  assert.match(optionRule, /background-color:\s*var\(--et-surface-14\)\s*!important;/);
   assert.match(optionRule, /color:\s*var\(--et-text-primary\)\s*!important;/);
-  assert.match(optionRule, /color-scheme:\s*dark;/);
-  assert.match(hoveredOptionRule, /background-color:\s*#454545\s*!important;/);
-  assert.match(hoveredOptionRule, /color:\s*#ffffff\s*!important;/);
+  assert.match(hoveredOptionRule, /background-color:\s*var\(--et-surface-20\)\s*!important;/);
+  assert.match(hoveredOptionRule, /color:\s*var\(--et-text-primary\)\s*!important;/);
   assert.match(checkedOptionRule, /background-color:\s*var\(--et-accent-pressed\)\s*!important;/);
-  assert.match(checkedOptionRule, /color:\s*#ffffff\s*!important;/);
+  assert.match(checkedOptionRule, /color:\s*var\(--et-text-primary\)\s*!important;/);
 });
 
 test('measurement configuration clearly dims disabled settings', () => {
@@ -54,12 +51,12 @@ test('measurement configuration clearly dims disabled settings', () => {
     '#configForm .form-group:has(input:disabled, select:disabled) > label,'
   );
 
-  assert.match(disabledControlRule, /background:\s*linear-gradient\(180deg,\s*#2b2b2b,\s*#242424\);/);
-  assert.match(disabledControlRule, /color:\s*#7c8187;/);
+  assert.match(disabledControlRule, /background:\s*linear-gradient\(180deg,\s*var\(--et-surface-9\),\s*var\(--et-surface-6\)\);/);
+  assert.match(disabledControlRule, /color:\s*var\(--et-surface-45\);/);
   assert.match(disabledControlRule, /cursor:\s*not-allowed;/);
   assert.match(disabledControlRule, /opacity:\s*1;/);
   assert.match(disabledChoiceRule, /filter:\s*grayscale\(1\)\s*brightness\(0\.65\);/);
-  assert.match(disabledCopyRule, /color:\s*#747980;/);
+  assert.match(disabledCopyRule, /color:\s*var\(--et-surface-43\);/);
 });
 
 test('measurement configuration separates all channels and groups advanced sweep settings', () => {

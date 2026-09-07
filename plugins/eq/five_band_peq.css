@@ -20,7 +20,7 @@
     width: 100%;
     max-width: 1024px;
     aspect-ratio: 1024 / 480;
-    background-color: #1a1a1a;
+    background-color: var(--et-graph-bg-deep);
 }
 
 .five-band-peq-plugin-ui .five-band-peq-response {
@@ -37,15 +37,15 @@
     width: 24px;
     height: 24px;
     border-radius: 50%;
-    background-color: #4a4a4a;
-    border: 2px solid #666;
+    background-color: var(--et-surface-23);
+    border: 2px solid var(--et-surface-35);
     transform: translate(-50%, -50%);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 12px;
-    color: #fff;
+    color: var(--et-text-primary);
     user-select: none;
     touch-action: none;
 }
@@ -57,13 +57,13 @@
 }
 .five-band-peq-plugin-ui .five-band-peq-marker:hover,
 .five-band-peq-plugin-ui .five-band-peq-marker.active {
-    background-color: #666;
-    border-color: #999;
+    background-color: var(--et-surface-35);
+    border-color: var(--et-surface-58);
 }
 
 .five-band-peq-plugin-ui .five-band-peq-marker.disabled {
-    background-color: #333;
-    border-color: #444;
+    background-color: var(--et-surface-13);
+    border-color: var(--et-surface-20);
     opacity: 0.6;
 }
 
@@ -74,7 +74,7 @@
     flex-direction: column;
     white-space: nowrap;
     font-size: 11px;
-    color: #ccc;
+    color: var(--et-surface-81);
     pointer-events: none;
     top: 50%;
     transform: translateY(-50%);
@@ -96,7 +96,7 @@
     justify-content: space-between;
     gap: 10px;
     padding: 10px;
-    background-color: #2a2a2a;
+    background-color: color-mix(in srgb, var(--et-surface-9), var(--et-graph-bg-deep) 25%);
     border-radius: 4px;
     width: 100%;
     max-width: 1024px;
@@ -109,7 +109,7 @@
     gap: 8px;
     padding: 8px;
     border-radius: 4px;
-    background-color: #333;
+    background-color: color-mix(in srgb, var(--et-surface-13), var(--et-graph-bg-deep) 25%);
     flex: 1 1 180px;
     box-sizing: border-box;
     min-width: 0;
@@ -125,7 +125,7 @@
 }
 
 .five-band-peq-plugin-ui .five-band-peq-q-label {
-    color: #ccc;
+    color: var(--et-surface-81);
     font-size: 12px;
     white-space: nowrap;
     min-width: 20px;
@@ -146,16 +146,16 @@
     width: 40px;
     min-width: 40px;
     padding: 2px 4px;
-    background-color: #222;
-    color: #ccc;
-    border: 1px solid #444;
+    background-color: var(--et-surface-5);
+    color: var(--et-surface-81);
+    border: 1px solid var(--et-surface-20);
     border-radius: 3px;
     font-size: 12px;
 }
 
 .five-band-peq-plugin-ui .five-band-peq-type-label {
     min-width: 78px;
-    color: #ccc;
+    color: var(--et-surface-81);
     font-size: 12px;
     white-space: nowrap;
 }
@@ -164,7 +164,7 @@
 .five-band-peq-plugin-ui .five-band-peq-gain-label {
     flex: 1 1 auto;
     min-width: 78px;
-    color: #ccc;
+    color: var(--et-surface-81);
     font-size: 12px;
     white-space: nowrap;
 }
@@ -175,12 +175,12 @@
 }
 
 .five-band-peq-plugin-ui .five-band-peq-band.active {
-    background-color: #444;
+    background-color: color-mix(in srgb, var(--et-surface-20), var(--et-graph-bg-deep) 25%);
 }
 
 .five-band-peq-plugin-ui .five-band-peq-band-label {
     font-size: 12px;
-    color: #ccc;
+    color: var(--et-surface-81);
     font-weight: bold;
     display: flex;
     align-items: center;
@@ -195,9 +195,9 @@
 .five-band-peq-plugin-ui .five-band-peq-filter-type {
     width: 100%;
     padding: 4px;
-    background-color: #222;
-    color: #ccc;
-    border: 1px solid #444;
+    background-color: var(--et-surface-5);
+    color: var(--et-surface-81);
+    border: 1px solid var(--et-surface-20);
     border-radius: 3px;
     font-size: 12px;
 }
@@ -206,7 +206,7 @@ body:not(.layout-mobile) .five-band-peq-plugin-ui .five-band-peq-filter-type,
 body:not(.layout-mobile) .five-band-peq-plugin-ui .five-band-peq-q-text,
 body:not(.layout-mobile) .five-band-peq-plugin-ui .five-band-peq-freq-text,
 body:not(.layout-mobile) .five-band-peq-plugin-ui .five-band-peq-gain-text {
-    box-sizing: border-box;
+
     flex: 0 0 90px;
     width: 90px;
     min-width: 90px;
@@ -227,12 +227,12 @@ body:not(.layout-mobile) .five-band-peq-plugin-ui .five-band-peq-filter-type {
 }
 
 .five-band-peq-plugin-ui .five-band-peq-grid line {
-    stroke: #333;
+    stroke: var(--et-graph-grid-subtle);
     stroke-width: 1;
 }
 
 .five-band-peq-plugin-ui .five-band-peq-grid text {
-    fill: #666;
+    fill: var(--et-graph-label);
     font-size: 10px;
 }
 
@@ -247,7 +247,7 @@ body:not(.layout-mobile) .five-band-peq-plugin-ui .five-band-peq-filter-type {
 
 .five-band-peq-plugin-ui .five-band-peq-response path {
     fill: none;
-    stroke: #4CAF50;
+    stroke: var(--et-success);
     stroke-width: 2;
     vector-effect: non-scaling-stroke;
 }

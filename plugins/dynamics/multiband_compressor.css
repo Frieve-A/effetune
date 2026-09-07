@@ -12,7 +12,7 @@
     flex-wrap: wrap;
     gap: 10px;
     padding: 10px;
-    background: #2d2d2d;
+    background: color-mix(in srgb, var(--et-surface-10), var(--et-graph-bg-deep) 25%);
     border-radius: 4px;
 }
 
@@ -33,29 +33,9 @@
 
 /* Band settings area */
 .multiband-compressor-band-settings {
-    background: #2d2d2d;
+    background: color-mix(in srgb, var(--et-surface-10), var(--et-graph-bg-deep) 25%);
     border-radius: 4px;
     padding: 10px;
-}
-
-.multiband-compressor-band-tabs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 2px;
-    margin-bottom: 20px;
-}
-
-.multiband-compressor-band-tab {
-    padding: 8px 16px;
-    background: #333;
-    border: none;
-    cursor: pointer;
-    border-radius: 4px 4px 0 0;
-    color: #fff;
-}
-
-.multiband-compressor-band-tab.active {
-    background: #444;
 }
 
 .multiband-compressor-band-content {
@@ -63,7 +43,7 @@
 }
 
 .multiband-compressor-band-content.active {
-    display: block;
+    display: flex;
 }
 
 /* Gain reduction graphs area */
@@ -73,20 +53,20 @@
     gap: 10px;
     justify-content: space-between;
     padding: 10px;
-    background: #2d2d2d;
+    background: color-mix(in srgb, var(--et-surface-10), var(--et-graph-bg-deep) 25%);
     border-radius: 4px;
 }
 
 .multiband-compressor-band-graph {
     flex: 1 1 150px;
     position: relative;
-    background: #222;
+    background: color-mix(in srgb, var(--et-surface-5), var(--et-graph-bg-deep) 25%);
     border-radius: 4px;
     padding: 10px;
 }
 
 .multiband-compressor-band-graph.active {
-    background: #333;
+    background: color-mix(in srgb, var(--et-surface-13), var(--et-graph-bg-deep) 25%);
 }
 
 .multiband-compressor-band-graph canvas {
@@ -125,15 +105,8 @@ body.layout-mobile .multiband-compressor-band-graph {
     box-sizing: border-box;
 }
 
-body.layout-mobile .multiband-compressor-band-tabs {
-    flex-wrap: wrap;
-    gap: 4px;
-}
-
 body.layout-mobile .multiband-compressor-band-tab {
     flex: 1 1 56px;
-    min-width: 0;
-    min-height: 40px;
 }
 
 body.layout-mobile .multiband-compressor-frequency-sliders {

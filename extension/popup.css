@@ -1,0 +1,96 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #202124;
+  background: #f5f7fb;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-width: 340px;
+  background: linear-gradient(145deg, #f8faff, #eef2f9);
+}
+
+button, select, input { font: inherit; }
+
+.popup-shell {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand img { border-radius: 9px; }
+.brand h1 { margin: 0; font-size: 20px; }
+.brand p { margin: 2px 0 0; color: #626a78; font-size: 12px; }
+
+.session-card {
+  padding: 14px;
+  border: 1px solid #d9deea;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 4px 18px rgb(42 54 84 / 7%);
+}
+
+.status-line { display: flex; align-items: center; gap: 8px; }
+.status-indicator { width: 9px; height: 9px; border-radius: 50%; background: #87909f; }
+.status-indicator.processing { background: #168a55; box-shadow: 0 0 0 4px rgb(22 138 85 / 12%); }
+.status-indicator.pending { background: #c67a08; }
+.status-indicator.error { background: #c73b40; }
+
+.target-title {
+  margin: 8px 0 12px;
+  overflow: hidden;
+  color: #626a78;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button {
+  min-height: 34px;
+  border: 1px solid #bcc5d6;
+  border-radius: 8px;
+  padding: 6px 12px;
+  color: #243047;
+  background: #fff;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) { background: #f1f4fa; }
+button:disabled, select:disabled { cursor: default; opacity: .55; }
+.primary-button { width: 100%; border-color: #3367d6; color: #fff; background: #3367d6; font-weight: 650; }
+.primary-button:hover:not(:disabled) { background: #2859c0; }
+.secondary-button { width: 100%; }
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 38px;
+  font-weight: 600;
+}
+
+.switch-row input { width: 38px; height: 21px; accent-color: #3367d6; }
+.preset-row { display: grid; gap: 7px; }
+.preset-row label { color: #4f5868; font-size: 12px; font-weight: 650; }
+.inline-controls { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+select { min-width: 0; min-height: 34px; border: 1px solid #bcc5d6; border-radius: 8px; padding: 4px 8px; background: #fff; }
+.message { margin: 0; border-radius: 8px; padding: 9px 10px; color: #7c2d12; background: #fff0e8; font-size: 12px; line-height: 1.4; }
+
+@media (prefers-color-scheme: dark) {
+  :root { color: #eef1f7; background: #17191e; }
+  body { background: linear-gradient(145deg, #1b1e25, #13151a); }
+  .brand p, .target-title, .preset-row label { color: #aeb6c5; }
+  .session-card, button, select { border-color: #424957; color: #eef1f7; background: #232730; }
+  button:hover:not(:disabled) { background: #303641; }
+  .primary-button { border-color: #6d96ed; background: #3569d4; }
+  .message { color: #ffd8c3; background: #4a291e; }
+}

@@ -10,8 +10,8 @@
 .power-amp-sag-graph-right {
     position: relative;
     flex: 1;
-    background: #1a1a1a;
-    border: 1px solid #333;
+    background: var(--et-graph-bg-deep);
+    border: 1px solid var(--et-surface-13);
 }
 
 .power-amp-sag-graph-left canvas,

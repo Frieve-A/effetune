@@ -1,3 +1,4 @@
+import { installThemePaletteStub } from '../helpers/theme-palette-stub.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
@@ -30,7 +31,7 @@ function createHub() {
   };
 }
 
-function loadSpectrumAnalyzer({ hub = null } = {}) {
+function loadSpectrumAnalyzer({ hub = null, now = () => performance.now() } = {}) {
   const source = fs.readFileSync(
     new URL('../../plugins/analyzer/spectrum_analyzer.js', import.meta.url),
     'utf8'
@@ -50,10 +51,12 @@ function loadSpectrumAnalyzer({ hub = null } = {}) {
     _setupMessageHandler() { calls.push(['baseSetupMessageHandler']); }
     cleanup() { calls.push(['baseCleanup']); }
   }
+  installThemePaletteStub(windowRef);
   vm.runInNewContext(source, {
     window: windowRef,
     PluginBase,
-    performance,
+    performance: { now },
+    cancelAnimationFrame() {},
     console,
     Float32Array,
     DataView,
@@ -253,4 +256,87 @@ test('Spectrum Analyzer deduplicates, rebinds, and cleans up telemetry subscript
   plugin.cleanup();
   assert.equal(secondHub.unsubscribeCalls, 1);
   assert.ok(runtime.calls.some(call => call[0] === 'baseCleanup'));
+});
+
+function captureSpectrum(plugin) {
+  let points;
+  const paths = [];
+  const ctx = {
+    fillRect() { paths.length = 0; }, fillText() {}, save() {}, restore() {}, translate() {}, rotate() {},
+    beginPath() { points = []; },
+    moveTo(x, y) { points.push([x, y]); }, lineTo(x, y) { points.push([x, y]); },
+    stroke() { paths.push({ color: this.strokeStyle, points }); }
+  };
+  plugin.canvas = { width: 1200, height: 960, getContext: () => ctx };
+  return now => {
+    plugin.drawGraph(now);
+    return {
+      current: paths.find(path => path.color === 'stub:graph-trace-fill').points,
+      peak: paths.find(path => path.color === 'stub:graph-trace').points
+    };
+  };
+}
+
+test('Spectrum Analyzer projects only peak decay at render time without mutating snapshots', () => {
+  let now = 1000;
+  const runtime = loadSpectrumAnalyzer({ now: () => now });
+  const plugin = new runtime.SpectrumAnalyzerPlugin();
+  const draw = captureSpectrum(plugin);
+  plugin.handleDspSpectrumTelemetry(makeSpectrumFrame({ points: 12, currentValue: () => -50, peakValue: () => -10 }).frame);
+  const snapshot = plugin.dspSpectrumSnapshot;
+  const stored = Array.from(plugin.peaks);
+  const initial = draw(now);
+  for (const elapsed of [4, 17, 31]) {
+    const frame = draw(now + elapsed);
+    assert.deepEqual(frame.current, initial.current);
+    assert.ok(Math.abs(frame.peak[0][1] - (100 + 0.2 * elapsed)) < 1e-9);
+  }
+  assert.ok(Math.abs(draw(now + 5000).peak[0][1] - (100 + 20 * 2048 / 48000 * 10)) < 1e-9);
+  assert.equal(plugin.dspSpectrumSnapshot, snapshot);
+  assert.deepEqual(Array.from(plugin.peaks), stored);
+  assert.equal(snapshot.peaks[8], -10);
+  now += 100;
+  plugin.handleDspSpectrumTelemetry(makeSpectrumFrame({ points: 14, sampleRate: 96000, currentValue: () => -50, peakValue: () => -10 }).frame);
+  assert.ok(Math.abs(draw(now + 5000).peak[0][1] - (100 + 20 * 8192 / 96000 * 10)) < 1e-9);
+  now += 100;
+  plugin.handleDspSpectrumTelemetry(makeSpectrumFrame({ currentValue: () => -10, peakValue: () => -10 }).frame);
+  assert.deepEqual(draw(now + 1000), draw(now));
+  plugin.cleanup();
+});
+
+test('Spectrum Analyzer freezes peak position and accepts fresh peaks after repeated ON/OFF', () => {
+  let now = 1000;
+  const plugin = new (loadSpectrumAnalyzer({ now: () => now }).SpectrumAnalyzerPlugin)();
+  const draw = captureSpectrum(plugin);
+  const emit = peak => plugin.handleDspSpectrumTelemetry(makeSpectrumFrame({ currentValue: () => -80, peakValue: () => peak }).frame);
+  let callback;
+  plugin.isVisible = true;
+  plugin.requestPowerAnimationFrame = next => { callback = next; return 1; };
+  emit(-10);
+  for (let cycle = 0; cycle < 8; cycle++) {
+    now += 5;
+    const frozen = draw(now);
+    plugin.stopAnimation();
+    const gate = cycle % 2 ? '_sectionEnabled' : 'enabled';
+    plugin[gate] = false;
+    now += 10000;
+    emit(-1);
+    {
+      const frame = draw(now);
+      assert.deepEqual(frame.current, frozen.current);
+      assert.ok(frame.peak.every((point, index) => point[0] === frozen.peak[index][0] && Math.abs(point[1] - frozen.peak[index][1]) < 1e-8));
+    }
+    plugin[gate] = true;
+    plugin.startAnimation();
+    {
+      const frame = draw(now);
+      assert.deepEqual(frame.current, frozen.current);
+      assert.ok(frame.peak.every((point, index) => point[0] === frozen.peak[index][0] && Math.abs(point[1] - frozen.peak[index][1]) < 1e-8));
+    }
+    emit(-5);
+    assert.equal(draw(now).peak[0][1], 50);
+    callback(now + 7);
+    assert.ok(Math.abs(draw(now + 7).peak[0][1] - 51.4) < 1e-9);
+  }
+  plugin.cleanup();
 });

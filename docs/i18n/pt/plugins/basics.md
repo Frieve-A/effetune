@@ -91,6 +91,8 @@ Uma ferramenta para corrigir um sinal cuja forma de onda está deslocada em rela
 
 O FIR Crossover divide uma entrada estéreo em duas, três ou quatro bandas e envia cada uma a um par de saídas separado. Ele se destina a sistemas desktop com uma quantidade par de 4 a 16 canais de saída e funciona somente com WASM DSP. Band Count continua limitado a quatro bandas, portanto usa no máximo os canais 1-8.
 
+Quando o efeito recebe dois canais, o áudio passa sem alterações.
+
 O projeto FIR permite inclinações muito acentuadas sem a ressonância dos filtros convencionais. Minimum Phase usa uma construção causal que preserva a recombinação das bandas; Linear Phase oferece resposta de fase simétrica em troca de uma latência fixa.
 
 ### Guia de uso

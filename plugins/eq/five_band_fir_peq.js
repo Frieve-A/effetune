@@ -1186,7 +1186,7 @@ class FiveBandFIRPEQPlugin extends PluginBase {
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('class', className);
       path.setAttribute('d', commands.join(' '));
-      path.setAttribute('stroke', stroke);
+      path.style.stroke = stroke;
       path.setAttribute('stroke-width', widthValue);
       path.setAttribute('fill', 'none');
       this.responseSvg.appendChild(path);
@@ -1194,7 +1194,7 @@ class FiveBandFIRPEQPlugin extends PluginBase {
     appendPath(
       targetCommands,
       'five-band-fir-peq-target-response',
-      'rgba(176, 176, 176, 0.7)',
+      'var(--et-graph-trace-tertiary)',
       '1.5'
     );
 
@@ -1214,7 +1214,7 @@ class FiveBandFIRPEQPlugin extends PluginBase {
       appendPath(
         realizedCommands,
         'five-band-fir-peq-realized-response',
-        '#00ff00',
+        'var(--et-graph-trace)',
         '2'
       );
     }
@@ -1241,6 +1241,7 @@ class FiveBandFIRPEQPlugin extends PluginBase {
       dragAxis === 'x' ? this['g' + band] : this.yToGain(y * 100)
     );
     this.setUIBandValues(band);
+    this.updateMarkers();
   }
 
   handleDragEnd() {
@@ -1248,6 +1249,7 @@ class FiveBandFIRPEQPlugin extends PluginBase {
     this.markers?.[this.activeDragMarker]?.classList.remove('active');
     this.activeDragMarker = null;
     this.hasMoved = false;
+    this.updateMarkers();
     GraphDragAxisLock.end(this);
     if (this.boundMouseMoveHandler) {
       document.removeEventListener('mousemove', this.boundMouseMoveHandler);

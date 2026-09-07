@@ -315,12 +315,12 @@ class DelayPlugin extends PluginBase {
             (value) => this.setParameters({ dp: value }), '%', 'dp'
         ));
 
-        container.appendChild(this.createParameterControl(
+        container.appendChild(this.createLogarithmicParameterControl(
             'High Damp', 20, 20000, 1, this.hd,
             (value) => this.setParameters({ hd: value }), 'Hz', 'hd'
         ));
 
-        container.appendChild(this.createParameterControl(
+        container.appendChild(this.createLogarithmicParameterControl(
             'Low Damp', 20, 20000, 1, this.ld,
             (value) => this.setParameters({ ld: value }), 'Hz', 'ld'
         ));

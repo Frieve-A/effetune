@@ -20,7 +20,7 @@
     width: 100%;
     max-width: 1024px;
     aspect-ratio: 1024 / 480;
-    background-color: #1a1a1a;
+    background-color: var(--et-graph-bg-deep);
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-import-container {
@@ -33,31 +33,31 @@
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-import-button {
-    background-color: #444;
-    color: #fff;
-    border: 1px solid #666;
+    background-color: var(--et-surface-20);
+    color: var(--et-text-primary);
+    border: 1px solid var(--et-surface-35);
     border-radius: 4px;
     cursor: pointer;
     padding: 5px 10px;
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-inverse-button {
-    background-color: #444;
-    color: #fff;
-    border: 1px solid #666;
+    background-color: var(--et-surface-20);
+    color: var(--et-text-primary);
+    border: 1px solid var(--et-surface-35);
     border-radius: 4px;
     cursor: pointer;
     padding: 5px 10px;
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-import-button:hover {
-    background-color: #444;
-    border-color: #555;
+    background-color: var(--et-surface-20);
+    border-color: var(--et-surface-28);
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-inverse-button:hover {
-    background-color: #444;
-    border-color: #555;
+    background-color: var(--et-surface-20);
+    border-color: var(--et-surface-28);
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-response {
@@ -74,15 +74,15 @@
     width: 24px;
     height: 24px;
     border-radius: 50%;
-    background-color: #4a4a4a;
-    border: 2px solid #666;
+    background-color: var(--et-surface-23);
+    border: 2px solid var(--et-surface-35);
     transform: translate(-50%, -50%);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 12px;
-    color: #fff;
+    color: var(--et-text-primary);
     user-select: none;
     touch-action: none;
 }
@@ -94,13 +94,13 @@
 }
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-marker:hover,
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-marker.active {
-    background-color: #666;
-    border-color: #999;
+    background-color: var(--et-surface-35);
+    border-color: var(--et-surface-58);
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-marker.disabled {
-    background-color: #333;
-    border-color: #444;
+    background-color: var(--et-surface-13);
+    border-color: var(--et-surface-20);
     opacity: 0.6;
 }
 
@@ -110,7 +110,7 @@
     flex-direction: column;
     white-space: nowrap;
     font-size: 11px;
-    color: #ccc;
+    color: var(--et-surface-81);
     pointer-events: none;
     transform: translateX(-50%);
     text-align: center;
@@ -128,49 +128,20 @@
     display: flex;
     flex-direction: column;
     width: 100%;
-    background: #2d2d2d;
+    background: color-mix(in srgb, var(--et-surface-10), var(--et-graph-bg-deep) 25%);
     border-radius: 4px;
     overflow: hidden;
     margin-top: 20px;
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-band-tabs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 2px;
-    margin-bottom: 10px;
     padding: 10px 10px 0;
-}
-
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-band-tab {
-    padding: 8px 12px;
-    background: #333;
-    border: none;
-    cursor: pointer;
-    border-radius: 4px 4px 0 0;
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 5px;
-}
-
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-band-tab.active {
-    background: #444;
-}
-
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-band-tab.disabled {
-    opacity: 0.5;
-}
-
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-band-tab-checkbox {
-    margin-right: 5px;
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-band-contents {
     padding-left: 15px;
     padding-right: 15px;
-    background-color: #2d2d2d;
+    background-color: color-mix(in srgb, var(--et-surface-10), var(--et-graph-bg-deep) 25%);
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-band-content {
@@ -201,7 +172,7 @@
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-type-label,
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-freq-label,
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-gain-label {
-    color: #ccc;
+    color: var(--et-surface-81);
     font-size: 12px;
     white-space: nowrap;
     min-width: 80px;
@@ -225,18 +196,18 @@
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-gain-text {
     width: 80px;
     padding: 4px;
-    background-color: #3d3d3d;
-    border: 1px solid #4d4d4d;
-    color: #ffffff;
+    background-color: var(--et-surface-17);
+    border: 1px solid var(--et-surface-24);
+    color: var(--et-text-primary);
     border-radius: 4px;
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-filter-type {
     width: 90px;
     padding: 4px;
-    background-color: #222;
-    color: #ccc;
-    border: 1px solid #444;
+    background-color: var(--et-surface-5);
+    color: var(--et-surface-81);
+    border: 1px solid var(--et-surface-20);
     border-radius: 3px;
     font-size: 12px;
 }
@@ -269,15 +240,8 @@ body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-gain-text {
     font-size: 16px;
 }
 
-body.layout-mobile .fifteen-band-peq-band-tabs {
-    flex-wrap: wrap;
-    gap: 4px;
-}
-
 body.layout-mobile .fifteen-band-peq-band-tab {
     flex: 1 1 56px;
-    min-width: 0;
-    min-height: 40px;
 }
 
 body.layout-mobile .fifteen-band-peq-graph {
@@ -294,18 +258,18 @@ body.layout-mobile .fifteen-band-peq-graph {
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-grid line {
-    stroke: #333;
+    stroke: var(--et-graph-grid-subtle);
     stroke-width: 1;
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-grid text {
-    fill: #666;
+    fill: var(--et-graph-label);
     font-size: 10px;
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-response path {
     fill: none;
-    stroke: #4CAF50;
+    stroke: var(--et-success);
     stroke-width: 2;
     vector-effect: non-scaling-stroke;
 }

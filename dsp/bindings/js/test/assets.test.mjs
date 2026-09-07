@@ -5,6 +5,8 @@ import test from 'node:test';
 
 import {
   AssetError,
+  CrosstalkCancellation,
+  ValidationError,
   FIRCrossover,
   IRReverb,
   RoomEQ,
@@ -467,6 +469,8 @@ test('bundle manifest rejects shared non-canonical public ETA1 metadata', async 
     await assert.rejects(
       createChain(bundle, { assetResolver: () => payload }),
       AssetError,
+  CrosstalkCancellation,
+  ValidationError,
       entry.name
     );
   }
@@ -811,4 +815,57 @@ test('engine preparation preserves public asset error classification', async () 
     AssetError
   );
   chain.close();
+});
+
+
+test('Crosstalk Cancellation prepares true-stereo filters in Chain and Graph streams', async () => {
+  for (const topology of [undefined, 'trueStereo']) {
+    const payload = encodeEta1({
+      channels: [1, 0, 0, 1].map(value => Float32Array.of(value)),
+      sampleRate: 48000, ...(topology ? { topology } : {})
+    });
+    const effect = new CrosstalkCancellation({
+      id: 'cancel', latencyMode: '128', filterDelaySamples: 0,
+      strength: 100, assets: { impulseResponse: 'filters' }
+    });
+    const options = { variant: 'baseline', assetResolver: () => payload };
+    const chain = await createChain([effect], options);
+    const graph = await createGraph({
+      version: 1, input: { id: 'input' }, output: { id: 'output' }, nodes: [effect.toJSON()],
+      edges: [{ id: 'in', source: 'input', destination: 'cancel' }, { id: 'out', source: 'cancel', destination: 'output' }]
+    }, options);
+    try {
+      for (const owner of [chain, graph]) {
+        const stream = await owner.stream({ sampleRate: 48000, channels: 2 });
+        try {
+          assert.equal(stream.latencySamples, 128);
+          const input = [new Float32Array(512), new Float32Array(512)];
+          input[0][0] = 0.5;
+          input[1][0] = -0.25;
+          const output = await stream.process(input);
+          assert.ok(output.every(channel => channel.every(Number.isFinite)));
+          assert.ok(output.some(channel => channel.some(value => value !== 0)));
+          if (owner === chain) stream.setParam('cancel', 'strength', 70);
+          else assert.throws(() => stream.setParam('cancel', 'strength', 70), ValidationError);
+          for (const [name, value] of [['latencyMode', '256'], ['filterDelaySamples', 1]]) {
+            assert.throws(() => stream.setParam('cancel', name, value), ValidationError);
+          }
+        } finally { stream.close(); }
+        for (const channels of [1, 4]) {
+          await assert.rejects(owner.stream({ sampleRate: 48000, channels }));
+        }
+        await assert.rejects(owner.stream({ sampleRate: 44100, channels: 2 }), AssetError);
+      }
+    } finally { chain.close(); graph.close(); }
+  }
+  for (const [channels, topology] of [[1, 'mono'], [4, 'independent']]) {
+    const payload = encodeEta1({
+      channels: Array.from({ length: channels }, () => Float32Array.of(1)), sampleRate: 48000, topology
+    });
+    const chain = await createChain([new CrosstalkCancellation({ assets: { impulseResponse: 'filters' } })], {
+      variant: 'baseline', assetResolver: () => payload
+    });
+    try { await assert.rejects(chain.stream({ sampleRate: 48000, channels: 2 }), AssetError); }
+    finally { chain.close(); }
+  }
 });

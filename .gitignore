@@ -29,8 +29,14 @@ _site/
 !/tests/cjs/ipc-audio-preferences.test.cjs
 !/tests/esm/
 /tests/esm/*
+!/tests/esm/standard-select-browser.test.mjs
 !/tests/esm/startup-audio-warmup.test.mjs
 !/tests/esm/startup-loading.test.mjs
+!/tests/esm/startup-presentation-browser.test.mjs
+!/tests/esm/startup-window-electron-browser.test.mjs
+!/tests/esm/browser-extension-ui.test.mjs
+!/tests/esm/browser-extension-model.test.mjs
+!/tests/esm/browser-extension-layout-browser.test.mjs
 !/tests/esm/audio-player-gapless-preference.test.mjs
 !/tests/esm/audio-player-gapless-docs.test.mjs
 !/tests/esm/rolling-pcm-endurance-browser.test.mjs
@@ -46,6 +52,9 @@ _site/
 !/tests/esm/rolling-pcm-transport.test.mjs
 !/tests/esm/noise-reduction.test.mjs
 !/tests/esm/restoration-plugins.test.mjs
+!/tests/esm/multi-f0-estimation.test.mjs
+!/tests/esm/note-spectrogram.test.mjs
+!/tests/esm/scrolling-dynamics-graphs.test.mjs
 !/tests/esm/audio-session-type-controller.test.mjs
 !/tests/esm/benchmark-score.test.mjs
 !/tests/esm/benchmark-score-page.test.mjs
@@ -137,6 +146,7 @@ _site/
 !/tests/esm/channel-16ch-baseline.test.mjs
 !/tests/browser/
 /tests/browser/*
+!/tests/browser/browser-extension-audio.fixture.html
 !/tests/browser/controller-mapping-dialog-smoke.fixture.html
 !/tests/browser/controller-mapping-dialog-smoke.spec.mjs
 !/tests/browser/offline-audio-output.fixture.html
@@ -155,6 +165,7 @@ _site/
 !/tests/helpers/
 /tests/helpers/*
 !/tests/helpers/app-auto-start-smoke-child.mjs
+!/tests/helpers/startup-window-electron-main.cjs
 !/tests/helpers/cjs-module-utils.cjs
 !/tests/helpers/cue-directory-stage-repository.mjs
 !/tests/helpers/fake-dom.mjs
@@ -234,3 +245,12 @@ CLAUDE.md
 .qodo
 .npm-cache/
 .worktrees/
+
+!/tests/esm/theme-presets.test.mjs
+!/tests/esm/measurement-startup.test.mjs
+!/tests/esm/theme-boot.test.mjs
+!/tests/esm/electron-main-theme.test.mjs
+!/tests/esm/theme-palette.test.mjs
+!/tests/esm/theme-color-census.test.mjs
+!/tests/esm/plugin-list-collapse-browser.test.mjs
+!/tests/helpers/theme-palette-stub.mjs

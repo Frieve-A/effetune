@@ -329,6 +329,12 @@ class MultiChannelPanelPlugin extends PluginBase {
         }
     }
 
+    _styleChannelButton(button, active, role) {
+        const backgrounds = { mute: 'var(--et-danger)', solo: 'var(--et-success)', link: 'var(--et-accent)' };
+        button.style.backgroundColor = active ? backgrounds[role] : '';
+        button.style.color = active ? (role === 'link' ? 'var(--et-on-accent)' : 'var(--et-on-status)') : '';
+    }
+
     // Update UI controls based on link status
     updateUIControls() {
         this._updateChannelVisibility();
@@ -346,11 +352,11 @@ class MultiChannelPanelPlugin extends PluginBase {
 
                 // Update button states but don't trigger setParameter calls
                 if (this.muteButtons[ch]) {
-                    this.muteButtons[ch].style.backgroundColor = this.m[sourceChannel] ? '#AF4C4C' : '';
+                    this._styleChannelButton(this.muteButtons[ch], this.m[sourceChannel], 'mute');
                 }
 
                 if (this.soloButtons[ch]) {
-                    this.soloButtons[ch].style.backgroundColor = this.s[sourceChannel] ? '#4CAF50' : '';
+                    this._styleChannelButton(this.soloButtons[ch], this.s[sourceChannel], 'solo');
                 }
             }
         }
@@ -367,15 +373,15 @@ class MultiChannelPanelPlugin extends PluginBase {
         const heldByUser = el => this.isHeldByUser(el);
         for (let ch = 0; ch < this.MAX_CHANNELS; ch++) {
             if (this.muteButtons && this.muteButtons[ch]) {
-                this.muteButtons[ch].style.backgroundColor = this.m[ch] ? '#AF4C4C' : '';
+                this._styleChannelButton(this.muteButtons[ch], this.m[ch], 'mute');
             }
 
             if (this.soloButtons && this.soloButtons[ch]) {
-                this.soloButtons[ch].style.backgroundColor = this.s[ch] ? '#4CAF50' : '';
+                this._styleChannelButton(this.soloButtons[ch], this.s[ch], 'solo');
             }
 
             if (this.linkButtons && this.linkButtons[ch]) {
-                this.linkButtons[ch].style.backgroundColor = this.l[ch] ? '#4CAFAF' : '';
+                this._styleChannelButton(this.linkButtons[ch], this.l[ch], 'link');
             }
 
             const volSlider = document.getElementById(`${this.id}-${this.name}-v${ch + 1}-slider`);
@@ -440,7 +446,7 @@ class MultiChannelPanelPlugin extends PluginBase {
                 if (linkedChannel !== channel) {
                     this.m[linkedChannel] = state;
                     if (this.muteButtons && this.muteButtons[linkedChannel]) {
-                        this.muteButtons[linkedChannel].style.backgroundColor = state ? '#AF4C4C' : '';
+                        this._styleChannelButton(this.muteButtons[linkedChannel], state, 'mute');
                     }
                 }
             }
@@ -450,7 +456,7 @@ class MultiChannelPanelPlugin extends PluginBase {
 
             // Update UI
             if (this.muteButtons && this.muteButtons[channel]) {
-                this.muteButtons[channel].style.backgroundColor = state ? '#AF4C4C' : '';
+                this._styleChannelButton(this.muteButtons[channel], state, 'mute');
             }
         }
     }
@@ -468,7 +474,7 @@ class MultiChannelPanelPlugin extends PluginBase {
                 if (linkedChannel !== channel) {
                     this.s[linkedChannel] = state;
                     if (this.soloButtons && this.soloButtons[linkedChannel]) {
-                        this.soloButtons[linkedChannel].style.backgroundColor = state ? '#4CAF50' : '';
+                        this._styleChannelButton(this.soloButtons[linkedChannel], state, 'solo');
                     }
                 }
             }
@@ -478,7 +484,7 @@ class MultiChannelPanelPlugin extends PluginBase {
 
             // Update UI
             if (this.soloButtons && this.soloButtons[channel]) {
-                this.soloButtons[channel].style.backgroundColor = state ? '#4CAF50' : '';
+                this._styleChannelButton(this.soloButtons[channel], state, 'solo');
             }
         }
     }
@@ -573,11 +579,11 @@ class MultiChannelPanelPlugin extends PluginBase {
 
                 // Update UI elements
                 if (this.muteButtons && this.muteButtons[channel + 1]) {
-                    this.muteButtons[channel + 1].style.backgroundColor = this.m[channel] ? '#AF4C4C' : '';
+                    this._styleChannelButton(this.muteButtons[channel + 1], this.m[channel], 'mute');
                 }
 
                 if (this.soloButtons && this.soloButtons[channel + 1]) {
-                    this.soloButtons[channel + 1].style.backgroundColor = this.s[channel] ? '#4CAF50' : '';
+                    this._styleChannelButton(this.soloButtons[channel + 1], this.s[channel], 'solo');
                 }
 
                 // Update sliders and inputs
@@ -594,7 +600,7 @@ class MultiChannelPanelPlugin extends PluginBase {
 
             // Update link button UI
             if (this.linkButtons && this.linkButtons[channel]) {
-                this.linkButtons[channel].style.backgroundColor = state ? '#4CAFAF' : '';
+                this._styleChannelButton(this.linkButtons[channel], state, 'link');
             }
 
             // Update parameters to ensure consistency in audio processing
@@ -836,7 +842,7 @@ class MultiChannelPanelPlugin extends PluginBase {
                 linkButton.title = `Link Channel ${ch + 1} to Channel ${ch + 2}`;
                 linkButton.style.width = '21px';
                 linkButton.style.height = '21px';
-                linkButton.style.backgroundColor = this.l[ch] ? '#4CAFAF' : ''; // Active color
+                this._styleChannelButton(linkButton, this.l[ch], 'link'); // Active color
                 linkButton.addEventListener('click', () => {
                     this.setLink(ch, !this.l[ch]);
                     // setLink will update UI, but direct feedback can be good too
@@ -857,7 +863,7 @@ class MultiChannelPanelPlugin extends PluginBase {
             muteButton.title = `Mute Channel ${ch + 1}`;
             muteButton.style.width = '21px';
             muteButton.style.height = '21px';
-            muteButton.style.backgroundColor = this.m[ch] ? '#AF4C4C' : ''; // Muted color
+            this._styleChannelButton(muteButton, this.m[ch], 'mute'); // Muted color
             muteButton.addEventListener('click', () => {
                 this.setMute(ch, !this.m[ch]);
                 // setMute will update UI
@@ -872,7 +878,7 @@ class MultiChannelPanelPlugin extends PluginBase {
             soloButton.title = `Solo Channel ${ch + 1}`;
             soloButton.style.width = '21px';
             soloButton.style.height = '21px';
-            soloButton.style.backgroundColor = this.s[ch] ? '#4CAF50' : ''; // Soloed color
+            this._styleChannelButton(soloButton, this.s[ch], 'solo'); // Soloed color
             soloButton.addEventListener('click', () => {
                 this.setSolo(ch, !this.s[ch]);
                  // setSolo will update UI
@@ -1030,7 +1036,7 @@ class MultiChannelPanelPlugin extends PluginBase {
 
             // Clear canvas
             ctx.clearRect(0, 0, width, height);
-            ctx.fillStyle = '#000000'; // Background color
+            ctx.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? ''); // Background color
             ctx.fillRect(0, 0, width, height);
 
             // Define meter constants
@@ -1044,14 +1050,14 @@ class MultiChannelPanelPlugin extends PluginBase {
             // Create gradient for the RMS/VU level bar
             const gradient = ctx.createLinearGradient(0, 0, width, 0);
             // Green up to -12dB
-            gradient.addColorStop(0, '#008000'); // Dark green
-            gradient.addColorStop(Math.max(0, ((-12) - dbMin) / dbRange), '#008000');
+            gradient.addColorStop(0, '#008000'); // Dark green // theme-allow: Fixed signal-level or self-painted colormap color.
+            gradient.addColorStop(Math.max(0, ((-12) - dbMin) / dbRange), '#008000'); // theme-allow: Fixed signal-level or self-painted colormap color.
             // Yellow from -12dB to -6dB
-            gradient.addColorStop(Math.max(0, ((-12) - dbMin) / dbRange), '#808000'); // Dark yellow
-            gradient.addColorStop(Math.max(0, ((-6) - dbMin) / dbRange), '#808000');
+            gradient.addColorStop(Math.max(0, ((-12) - dbMin) / dbRange), '#808000'); // Dark yellow // theme-allow: Fixed signal-level or self-painted colormap color.
+            gradient.addColorStop(Math.max(0, ((-6) - dbMin) / dbRange), '#808000'); // theme-allow: Fixed signal-level or self-painted colormap color.
             // Red from -6dB to 0dB (and above, though 0dB is typically max for digital)
-            gradient.addColorStop(Math.max(0, ((-6) - dbMin) / dbRange), '#800000'); // Dark red
-            gradient.addColorStop(1, '#800000');
+            gradient.addColorStop(Math.max(0, ((-6) - dbMin) / dbRange), '#800000'); // Dark red // theme-allow: Fixed signal-level or self-painted colormap color.
+            gradient.addColorStop(1, '#800000'); // theme-allow: Fixed signal-level or self-painted colormap color.
 
             // Draw RMS/VU level bar
             const levelWidthRatio = (currentLevelDb - dbMin) / dbRange;
@@ -1062,12 +1068,12 @@ class MultiChannelPanelPlugin extends PluginBase {
             // Draw peak hold indicator
             const peakPositionRatio = (peakLevelDb - dbMin) / dbRange;
             const peakMeterPositionX = Math.max(0, Math.min(1, peakPositionRatio)) * width;
-            ctx.fillStyle = '#ffffff'; // White color for peak indicator
+            ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? ''); // White color for peak indicator
             ctx.fillRect(peakMeterPositionX - 1, 0, 2, height); // 2px wide peak line
 
             // Draw grid lines and labels
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'; // Light grid lines
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';   // Light text color
+            ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-soft') ?? ''); // Light grid lines
+            ctx.fillStyle = (window.ThemePalette?.get('graph-label-soft') ?? '');   // Light text color
             ctx.font = `${Math.round(10 * dpr)}px Arial`;
             ctx.textAlign = 'center';
 
@@ -1087,7 +1093,7 @@ class MultiChannelPanelPlugin extends PluginBase {
             }
 
             // Display peak level value as text
-            ctx.fillStyle = '#ffffff';
+            ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
             ctx.font = `${Math.round(12 * dpr)}px Arial`;
             ctx.textAlign = 'right';
             ctx.textBaseline = 'middle';

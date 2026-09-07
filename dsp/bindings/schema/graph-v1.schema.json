@@ -94,6 +94,9 @@
           "$ref": "#/$defs/LevelMeter"
         },
         {
+          "$ref": "#/$defs/NoteSpectrogram"
+        },
+        {
           "$ref": "#/$defs/Oscilloscope"
         },
         {
@@ -295,6 +298,9 @@
           "$ref": "#/$defs/PitchShifter"
         },
         {
+          "$ref": "#/$defs/PitchShifterHQ"
+        },
+        {
           "$ref": "#/$defs/RotarySpeaker"
         },
         {
@@ -316,6 +322,18 @@
           "$ref": "#/$defs/ModalResonator"
         },
         {
+          "$ref": "#/$defs/ClickRemover"
+        },
+        {
+          "$ref": "#/$defs/ClipRestorer"
+        },
+        {
+          "$ref": "#/$defs/HumRemover"
+        },
+        {
+          "$ref": "#/$defs/NoiseReduction"
+        },
+        {
           "$ref": "#/$defs/DattorroPlateReverb"
         },
         {
@@ -326,6 +344,9 @@
         },
         {
           "$ref": "#/$defs/RSReverb"
+        },
+        {
+          "$ref": "#/$defs/BandwidthExtender"
         },
         {
           "$ref": "#/$defs/DynamicSaturation"
@@ -353,6 +374,9 @@
         },
         {
           "$ref": "#/$defs/CrossfeedFilter"
+        },
+        {
+          "$ref": "#/$defs/CrosstalkCancellation"
         },
         {
           "$ref": "#/$defs/MSMatrix"
@@ -383,6 +407,36 @@
         },
         "type": {
           "const": "LevelMeter"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        }
+      }
+    },
+    "NoteSpectrogram": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "NoteSpectrogram"
         },
         "enabled": {
           "type": "boolean",
@@ -6060,6 +6114,51 @@
         }
       }
     },
+    "PitchShifterHQ": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "PitchShifterHQ"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pitchShift": {
+              "type": "integer",
+              "minimum": -6,
+              "maximum": 6,
+              "x-effetune-unit": "semitones",
+              "default": 0
+            },
+            "fineTune": {
+              "type": "integer",
+              "minimum": -50,
+              "maximum": 50,
+              "x-effetune-unit": "cents",
+              "default": 0
+            }
+          }
+        }
+      }
+    },
     "RotarySpeaker": {
       "type": "object",
       "additionalProperties": false,
@@ -6714,6 +6813,215 @@
         }
       }
     },
+    "ClickRemover": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "ClickRemover"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sensitivity": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 50
+            },
+            "maxRepairLength": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 2,
+              "x-effetune-unit": "ms",
+              "default": 1
+            }
+          }
+        }
+      }
+    },
+    "ClipRestorer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "ClipRestorer"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "threshold": {
+              "type": "number",
+              "minimum": -18,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -0.1
+            },
+            "outputGain": {
+              "type": "number",
+              "minimum": -12,
+              "maximum": 0,
+              "x-effetune-unit": "dB",
+              "default": -3
+            }
+          }
+        }
+      }
+    },
+    "HumRemover": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "HumRemover"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "frequency": {
+              "type": "string",
+              "enum": [
+                "Auto",
+                "50 Hz",
+                "60 Hz"
+              ],
+              "default": "Auto"
+            },
+            "harmonics": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64,
+              "default": 8
+            },
+            "trackingSpeed": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 50
+            }
+          }
+        }
+      }
+    },
+    "NoiseReduction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "NoiseReduction"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "reduction": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 24,
+              "x-effetune-unit": "dB",
+              "default": 12
+            },
+            "sensitivity": {
+              "type": "number",
+              "minimum": -12,
+              "maximum": 12,
+              "x-effetune-unit": "dB",
+              "default": 0
+            },
+            "smoothing": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 50
+            },
+            "trebleCare": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 50
+            },
+            "mix": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
+            }
+          }
+        }
+      }
+    },
     "DattorroPlateReverb": {
       "type": "object",
       "additionalProperties": false,
@@ -7128,6 +7436,66 @@
               "maximum": 100,
               "x-effetune-unit": "%",
               "default": 16
+            }
+          }
+        }
+      }
+    },
+    "BandwidthExtender": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "BandwidthExtender"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "harmonicAmount": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 200,
+              "x-effetune-unit": "%",
+              "default": 100
+            },
+            "noiseAmount": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 200,
+              "x-effetune-unit": "%",
+              "default": 100
+            },
+            "cutoffMode": {
+              "type": "string",
+              "enum": [
+                "Auto",
+                "Manual"
+              ],
+              "default": "Auto"
+            },
+            "cutoffFrequency": {
+              "type": "number",
+              "minimum": 6000,
+              "maximum": 24000,
+              "x-effetune-unit": "Hz",
+              "default": 16000
             }
           }
         }
@@ -7912,6 +8280,81 @@
               "maximum": 20000,
               "x-effetune-unit": "Hz",
               "default": 700
+            }
+          }
+        }
+      }
+    },
+    "CrosstalkCancellation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters",
+        "assets"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "CrosstalkCancellation"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "latencyMode": {
+              "type": "string",
+              "enum": [
+                "0",
+                "128",
+                "256",
+                "512",
+                "1024"
+              ],
+              "default": "128"
+            },
+            "filterDelaySamples": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65536,
+              "default": 2048
+            },
+            "strength": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 70
+            },
+            "outputGain": {
+              "type": "number",
+              "minimum": -24,
+              "maximum": 24,
+              "x-effetune-unit": "dB",
+              "default": 0
+            }
+          }
+        },
+        "assets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "impulseResponse"
+          ],
+          "properties": {
+            "impulseResponse": {
+              "$ref": "#/$defs/assetReference"
             }
           }
         }

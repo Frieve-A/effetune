@@ -59,6 +59,7 @@ test('rollout enables only shipped kernels with matching generated layouts', () 
   assert.deepEqual(filterEnabledDspTypes({ meta, paramPackers: null }), []);
   assert.deepEqual(SHIPPED_ENABLED_TYPES, [
     'LevelMeterPlugin',
+    'NoteSpectrogramPlugin',
     'OscilloscopePlugin',
     'SpectrogramPlugin',
     'SpectrumAnalyzerPlugin',

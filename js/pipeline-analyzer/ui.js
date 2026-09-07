@@ -1199,13 +1199,14 @@ export class PipelineAnalyzerUI {
             if (cursorXValue === null) cursorXValue = xValue;
             const value = this.legendValues.get(String(curve.id));
             if (value) value.textContent = this.formatCursorY(viewName, yValue);
-            this.hoverSvg.appendChild(svgElement(this.document, 'circle', {
+            const marker = svgElement(this.document, 'circle', {
                 class: 'pipeline-analyzer-cursor-marker',
                 cx: normalizedX * this.graphSize.width,
                 cy: y * this.graphSize.height,
-                r: 3.5,
-                fill: curve.color
-            }));
+                r: 3.5
+            });
+            marker.style.fill = curve.color;
+            this.hoverSvg.appendChild(marker);
         }
         if (this.cursorX) this.cursorX.textContent = this.formatCursorX(viewName, cursorXValue);
     }
@@ -1331,18 +1332,18 @@ export class PipelineAnalyzerUI {
                 const path = svgElement(this.document, 'path', {
                     class: 'pipeline-analyzer-curve',
                     d: pathData,
-                    stroke: curve.color || '#00ff00',
                     opacity: Number.isFinite(curve.opacity) ? curve.opacity : 1
                 });
+                path.style.stroke = curve.color || 'var(--et-graph-trace)';
                 this.graphSvg.appendChild(path);
                 this.curvePaths.set(id, path);
             }
             const row = createElement(this.document, 'div', 'pipeline-analyzer-legend-row');
             row.dataset.curveId = id;
-            row.style.color = curve.color || '#00ff00';
+            row.style.color = curve.color || 'var(--et-graph-trace)';
             row.style.opacity = String(Number.isFinite(curve.opacity) ? curve.opacity : 1);
             const swatch = createElement(this.document, 'span', 'pipeline-analyzer-legend-swatch');
-            swatch.style.borderColor = curve.color || '#00ff00';
+            swatch.style.borderColor = curve.color || 'var(--et-graph-trace)';
             swatch.setAttribute('aria-hidden', 'true');
             const label = createElement(this.document, 'span', 'pipeline-analyzer-legend-label');
             label.textContent = curve.label || id;

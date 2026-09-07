@@ -173,25 +173,25 @@ class ClickRemoverPlugin extends PluginBase {
         const level = repairs <= 0 ? 0 : (repairs >= 20 ? 1 : repairs / 20);
 
         context.clearRect(0, 0, width, height);
-        context.fillStyle = '#171717';
+        context.fillStyle = (window.ThemePalette?.get('base') ?? '');
         context.fillRect(0, 0, width, height);
-        context.fillStyle = '#222';
+        context.fillStyle = (window.ThemePalette?.get('inset-background') ?? '');
         context.fillRect(padding, padding, cardWidth, cardHeight);
-        context.strokeStyle = '#454545';
+        context.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         context.strokeRect(padding + 0.5 * scale, padding + 0.5 * scale,
             cardWidth - scale, cardHeight - scale);
-        context.fillStyle = '#9db7c7';
+        context.fillStyle = (window.ThemePalette?.get('text-secondary') ?? '');
         context.textAlign = 'left';
         context.textBaseline = 'top';
         context.font = `600 ${Math.round(9 * scale)}px Arial`;
         context.fillText('REPAIRS/S', padding + 6 * scale, padding + 5 * scale);
-        context.fillStyle = '#f0f0f0';
+        context.fillStyle = (window.ThemePalette?.get('graph-tone-97') ?? '');
         context.font = `${Math.round(16 * scale)}px Arial`;
         context.fillText(repairs.toFixed(1), padding + 6 * scale, padding + 22 * scale);
-        context.fillStyle = '#363636';
+        context.fillStyle = (window.ThemePalette?.get('graph-tone-13') ?? '');
         context.fillRect(padding + 6 * scale, padding + cardHeight - 9 * scale,
             cardWidth - 12 * scale, 4 * scale);
-        context.fillStyle = '#69c8ff';
+        context.fillStyle = (window.ThemePalette?.get('accent') ?? '');
         context.fillRect(padding + 6 * scale, padding + cardHeight - 9 * scale,
             (cardWidth - 12 * scale) * level, 4 * scale);
     }

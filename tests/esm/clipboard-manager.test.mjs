@@ -75,6 +75,9 @@ async function withClipboardGlobals(calls, options, callback) {
   const frameCallbacks = [];
   const timeoutCallbacks = [];
   const uiManager = options.uiManager === false ? null : {
+    showTransientMessage(message, isError, details, duration) {
+      calls.push(['showTransientMessage', message, isError, details, duration]);
+    },
     setError(message, isError, details) {
       calls.push(['setError', message, isError, details]);
     },
@@ -159,8 +162,9 @@ test('copySelectedPluginsToClipboard handles empty, successful, and failed copie
   const copiedText = runtime.calls.find(call => call[0] === 'writeClipboardText')[1];
   assert.match(copiedText, /"nm": "Tone"/);
   assert.match(copiedText, /"gain": -3/);
-  assert.ok(runtime.calls.some(call => call[0] === 'setError' && call[1] === 'success.settingsCopied'));
-  assert.ok(runtime.calls.some(call => call[0] === 'clearError'));
+  assert.ok(runtime.calls.some(call => call[0] === 'showTransientMessage' &&
+    call[1] === 'success.settingsCopied' && call[4] === 3000));
+  assert.equal(runtime.calls.some(call => call[0] === 'clearError'), false);
 
   const failingRuntime = createRuntime({ selectedPlugins: [selected] });
   await withClipboardGlobals(failingRuntime.calls, {
@@ -198,7 +202,7 @@ test('cutSelectedPlugins copies before deleting and handles failures', async () 
     timeoutCallbacks.forEach(fn => fn());
   });
   assert.ok(runtime.calls.some(call => call[0] === 'deleteSelectedPlugins'));
-  assert.ok(runtime.calls.some(call => call[0] === 'setError' && call[1] === 'success.settingsCut'));
+  assert.ok(runtime.calls.some(call => call[0] === 'showTransientMessage' && call[1] === 'success.settingsCut'));
 
   const throwRuntime = createRuntime({ selectedPlugins: [selected] });
   throwRuntime.manager.copySelectedPluginsToClipboard = async () => {
@@ -277,7 +281,7 @@ test('handlePaste decodes pipeline share URLs and falls back after URL failures'
   });
   assert.deepEqual(tailRuntime.pipeline.map(plugin => plugin.name), ['Existing', 'Shared']);
   assert.ok(tailRuntime.calls.some(call => call[0] === 'scrollTo'));
-  assert.ok(tailRuntime.calls.some(call => call[0] === 'setError' && call[1] === 'success.settingsPasted'));
+  assert.ok(tailRuntime.calls.some(call => call[0] === 'showTransientMessage' && call[1] === 'success.settingsPasted'));
 
   const invalidCases = [
     'https://example.test/share?p=not-base64!*',

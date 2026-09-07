@@ -12,7 +12,7 @@
     flex-wrap: wrap;
     gap: 10px;
     padding: 10px;
-    background: #2a2a2a;
+    background: color-mix(in srgb, var(--et-surface-9), var(--et-graph-bg-deep) 25%);
     border-radius: 4px;
 }
 
@@ -38,37 +38,17 @@
 .mbt-freq-slider input[type="number"] {
     width: 80px;
     padding: 4px;
-    background-color: #3d3d3d;
-    border: 1px solid #4d4d4d;
-    color: #ffffff;
+    background-color: var(--et-surface-17);
+    border: 1px solid var(--et-surface-24);
+    color: var(--et-text-primary);
     border-radius: 4px;
 }
 
 /* Band settings area */
 .mbt-band-settings {
-    background: #2a2a2a;
+    background: color-mix(in srgb, var(--et-surface-9), var(--et-graph-bg-deep) 25%);
     border-radius: 4px;
     padding: 10px;
-}
-
-.mbt-band-tabs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 2px;
-    margin-bottom: 20px;
-}
-
-.mbt-band-tab {
-    padding: 8px 16px;
-    background: #333;
-    border: none;
-    cursor: pointer;
-    border-radius: 4px 4px 0 0;
-    color: #fff;
-}
-
-.mbt-band-tab.active {
-    background: #444;
 }
 
 .mbt-band-content {
@@ -76,32 +56,33 @@
 }
 
 .mbt-band-content.active {
-    display: block;
+    display: flex;
 }
 
 /* Transfer graphs area */
 .mbt-transfer-graphs {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 10px;
     justify-content: space-between;
     padding: 10px;
-    background: #2a2a2a;
+    background: color-mix(in srgb, var(--et-surface-9), var(--et-graph-bg-deep) 25%);
     border-radius: 4px;
 }
 
 .mbt-band-graph {
-    flex: 1 1 308px;
+    flex: 1 1 0;
+    min-width: 0;
     position: relative;
-    background: #1a1a1a;
-    border: 1px solid #333;
+    background: color-mix(in srgb, var(--et-graph-base), var(--et-graph-bg-deep) 25%);
+    border: 1px solid var(--et-surface-13);
     border-radius: 4px;
     padding: 10px;
 }
 
 .mbt-band-graph.active {
-    background: #222;
-    border-color: #555;
+    background: color-mix(in srgb, var(--et-surface-5), var(--et-graph-bg-deep) 25%);
+    border-color: var(--et-surface-28);
 }
 
 .mbt-band-graph canvas {
@@ -136,15 +117,8 @@ body.layout-mobile .mbt-band-graph {
     box-sizing: border-box;
 }
 
-body.layout-mobile .mbt-band-tabs {
-    flex-wrap: wrap;
-    gap: 4px;
-}
-
 body.layout-mobile .mbt-band-tab {
     flex: 1 1 56px;
-    min-width: 0;
-    min-height: 40px;
 }
 
 body.layout-mobile .mbt-freq-sliders {

@@ -107,6 +107,7 @@ export class PowerPolicyController {
     constructor(audioManager, options = {}) {
         if (!audioManager) throw new TypeError('audioManager is required');
         this.audioManager = audioManager;
+        this.automaticSuspendAllowed = options.automaticSuspendAllowed !== false;
         this.windowRef = options.windowRef ?? (typeof window !== 'undefined' ? window : null);
         this.documentRef = options.documentRef ?? this.windowRef?.document ??
             (typeof document !== 'undefined' ? document : null);
@@ -951,6 +952,7 @@ export class PowerPolicyController {
         return {
             enabled: this.enabled,
             isElectron: false,
+            automaticSuspendAllowed: this.automaticSuspendAllowed,
             ...coordinator.tokens,
             ...coordinator.guards,
             inputRouteIntent: route.inputRouteIntent,

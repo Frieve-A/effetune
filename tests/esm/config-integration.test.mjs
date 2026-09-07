@@ -721,8 +721,8 @@ test('a later Web save resynchronizes controls after a temporary localStorage fa
       return values.has(key) ? values.get(key) : null;
     },
     setItem(key, value) {
-      writeCount++;
-      if (writeCount === 2) throw new Error('temporary quota failure');
+      if (key === 'effetune_app_config') writeCount++;
+      if (key === 'effetune_app_config' && writeCount === 2) throw new Error('temporary quota failure');
       values.set(key, String(value));
     }
   };
@@ -831,6 +831,12 @@ test('showConfigDialog opens in Web and hides Electron-only settings', async () 
     assert.equal(harness.document.getElementById('power-silence-threshold').value, '-80');
     assert.equal(harness.document.getElementById('power-full-suspend-delay').value, '300');
     assert.equal(harness.document.getElementById('language-select').value, 'ja');
+    const themeSelect = harness.document.getElementById('theme-select');
+    assert.equal(themeSelect.value, 'graphite');
+    themeSelect.value = 'paper';
+    await themeSelect.dispatchEvent('change');
+    assert.equal(JSON.parse(localStorage.snapshot().effetune_app_config).theme, 'paper');
+    assert.equal(localStorage.getItem('effetune_theme'), 'paper');
     assert.equal(harness.document.getElementById('startup-view-library').checked, true);
     const initialLibraryStartupViewSelect = harness.document.getElementById('library-startup-view-select');
     assert.equal(initialLibraryStartupViewSelect.value, 'artists');
@@ -1655,4 +1661,79 @@ test('all locales include matching offline output setting and error keys', () =>
       );
     }
   }
+});
+
+
+test('theme settings use registry order, apply after persistence and restore failed saves', async () => {
+  for (const success of [true, false]) {
+    const applied = [];
+    const harness = createConfigHarness({ config: { theme: 'midnight' }, saveConfigResult: { success },
+      uiManager: { setThemePreference: (...args) => applied.push(args) } });
+    await withGlobals({ window: harness.window, document: harness.document }, async () => {
+      await showConfigDialog(true, {});
+      const select = harness.document.getElementById('theme-select');
+      assert.equal(select.value, 'midnight');
+      assert.deepEqual(select.children.map(option => [option.value, option.textContent]), [
+        ['graphite', 'Graphite'], ['paper', 'Paper'], ['midnight', 'Midnight'], ['ember', 'Ember'], ['mint', 'Mint']
+      ]);
+      select.value = 'paper';
+      await withMutedConsole('error', () => select.dispatchEvent('change'));
+      assert.equal(harness.calls.filter(call => call[0] === 'saveConfig').at(-1)[1].theme, 'paper');
+      assert.deepEqual(applied, success ? [['paper']] : []);
+      assert.equal(select.value, success ? 'paper' : 'midnight');
+    });
+  }
+});
+
+test('theme normalization preserves missing config keys and all locales label the selector', async () => {
+  for (const config of [{}, { theme: 'invalid' }]) {
+    const harness = createConfigHarness({ config });
+    await withGlobals({ window: harness.window, document: harness.document }, async () => {
+      await showConfigDialog(true, {});
+      assert.equal(harness.document.getElementById('theme-select').value, 'graphite');
+      assert.equal(harness.calls.some(call => call[0] === 'saveConfig'), false);
+      if (!('theme' in config)) {
+        const language = harness.document.getElementById('language-select');
+        language.value = 'ja';
+        await language.dispatchEvent('change');
+        assert.equal('theme' in harness.window.appConfig, false);
+      }
+    });
+  }
+  for (const locale of ['ar', 'en', 'es', 'fr', 'hi', 'ja', 'ko', 'pt', 'ru', 'zh']) {
+    const source = readFileSync(new URL(`../../js/locales/${locale}.json5`, import.meta.url), 'utf8');
+    assert.match(source, /"dialog\.config\.theme": "[^"\n]+"/);
+  }
+});
+
+test('theme mirrors follow full loads and explicit theme saves in Web and Electron', async () => {
+  for (const isElectron of [false, true]) {
+    for (const config of [{}, { theme: 'mint' }]) {
+      const localStorage = createLocalStorage({ effetune_app_config: JSON.stringify(config), effetune_theme: 'ember' });
+      const harness = createConfigHarness({ config });
+      const run = async () => {
+        await loadConfig(isElectron);
+        assert.equal(localStorage.getItem('effetune_theme'), config.theme || 'graphite');
+        assert.equal(await saveConfig(isElectron, { theme: 'paper' }), true);
+        assert.equal(localStorage.getItem('effetune_theme'), 'paper');
+        assert.equal(await saveConfig(isElectron, { language: 'ja' }), true);
+        assert.equal(localStorage.getItem('effetune_theme'), 'paper');
+      };
+      harness.window.localStorage = localStorage;
+      if (isElectron) await withGlobals({ window: harness.window }, run);
+      else await withWebConfigRuntime({ windowObject: harness.window, localStorage }, run);
+    }
+  }
+});
+
+test('optional mirror failures do not prevent loading or saving config', async () => {
+  const localStorage = createLocalStorage();
+  const harness = createConfigHarness({ config: { theme: 'paper' } });
+  await withWebConfigRuntime({ windowObject: harness.window, localStorage }, async () => {
+    Object.defineProperty(harness.window, 'localStorage', { get() { throw new Error('unavailable'); } });
+    for (const isElectron of [false, true]) {
+      assert.ok(await loadConfig(isElectron));
+      assert.equal(await saveConfig(isElectron, { theme: 'mint' }), true);
+    }
+  });
 });

@@ -24,7 +24,7 @@ export class PresetManager {
             presetCountDiv.id = 'effectCount';
             presetCountDiv.style.textAlign = 'center';
             presetCountDiv.style.marginTop = '10px';
-            presetCountDiv.style.color = '#666';
+            presetCountDiv.style.color = 'var(--et-surface-35)';
             presetCountDiv.style.fontSize = '14px';
 
             // Create content container for grid layout
@@ -82,7 +82,7 @@ export class PresetManager {
             presetCountDiv.id = 'effectCount';
             presetCountDiv.style.textAlign = 'center';
             presetCountDiv.style.marginTop = '10px';
-            presetCountDiv.style.color = '#666';
+            presetCountDiv.style.color = 'var(--et-surface-35)';
             presetCountDiv.style.fontSize = '14px';
 
             // Create content container for grid layout
@@ -291,7 +291,7 @@ export class PresetManager {
 
         // Hover effects
         item.addEventListener('mouseenter', () => {
-            item.style.backgroundColor = '#3a3a3a';
+            item.style.backgroundColor = 'var(--et-surface-17)';
         });
 
         item.addEventListener('mouseleave', () => {
@@ -327,7 +327,7 @@ export class PresetManager {
 
         // Hover effects
         item.addEventListener('mouseenter', () => {
-            item.style.backgroundColor = '#3a3a3a';
+            item.style.backgroundColor = 'var(--et-surface-17)';
         });
 
         item.addEventListener('mouseleave', () => {

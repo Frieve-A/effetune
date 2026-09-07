@@ -444,9 +444,9 @@ return data; // Return the modified buffer
         ctx.clearRect(0, 0, width, height);
     
         // ---------- grid ----------
-        ctx.strokeStyle = '#444';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth   = isMobileLayout ? 1 : 0.5;
-        ctx.fillStyle = '#666';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         ctx.font = '12px Arial';
         ctx.textAlign = 'center';
     
@@ -470,7 +470,7 @@ return data; // Return the modified buffer
         });
 
         // ---------- axis labels ----------
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         ctx.font = '14px Arial';
         ctx.textAlign = 'center';
         ctx.fillText('Frequency (Hz)', width / 2, height - 5);
@@ -482,7 +482,7 @@ return data; // Return the modified buffer
     
         // ---------- response ----------
         ctx.beginPath();
-        ctx.strokeStyle = '#00ff00';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth   = isMobileLayout ? 2 : 1;
     
         for (let xPix = 0; xPix < width; xPix++) {

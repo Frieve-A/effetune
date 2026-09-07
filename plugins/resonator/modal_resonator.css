@@ -8,29 +8,10 @@
 
 /* Band settings area */
 .modal-resonator-frame {
-    background: #2d2d2d;
+    background: color-mix(in srgb, var(--et-surface-10), var(--et-graph-bg-deep) 25%);
     border-radius: 4px;
     padding: 10px;
     margin-bottom: 10px;
-}
-
-.modal-resonator-tabs {
-    display: flex;
-    gap: 2px;
-    margin-bottom: 20px;
-}
-
-.modal-resonator-tab {
-    padding: 8px 16px;
-    background: #333;
-    border: none;
-    cursor: pointer;
-    border-radius: 4px 4px 0 0;
-    color: #fff;
-}
-
-.modal-resonator-tab.active {
-    background: #444;
 }
 
 /* Content panel styles */
@@ -63,13 +44,6 @@ body.layout-mobile .modal-resonator-frame {
     overflow-x: clip;
 }
 
-body.layout-mobile .modal-resonator-tabs {
-    flex-wrap: wrap;
-    gap: 4px;
-}
-
 body.layout-mobile .modal-resonator-tab {
     flex: 1 1 56px;
-    min-width: 0;
-    min-height: 40px;
 }

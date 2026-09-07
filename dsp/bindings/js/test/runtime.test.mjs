@@ -21,6 +21,7 @@ import {
   Oscilloscope,
   Phaser,
   Spectrogram,
+  NoteSpectrogram,
   SpectrumAnalyzer,
   StereoMeter,
   StateError,
@@ -152,8 +153,8 @@ test('generated effects import and the public catalog stays semantic', async () 
   const compressor = new generated.Compressor({ threshold: -18 });
   assert.equal(compressor.type, 'Compressor');
   assert.equal(compressor.parameters.threshold, -18);
-  assert.equal(EFFECT_TYPES.length, 92);
-  assert.equal(EFFECT_CATALOG.effects.length, 92);
+  assert.equal(EFFECT_TYPES.length, 100);
+  assert.equal(EFFECT_CATALOG.effects.length, 100);
   assert.deepEqual(EFFECT_CATALOG.channels, [
     'all', 'stereo', 'left', 'right',
     '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16',
@@ -510,6 +511,7 @@ test('Phaser stage choices are preserved and odd values are rejected across publ
 
 test('all generated effects normalize and pack against their private layouts', () => {
   const assetTypes = new Set([
+    'CrosstalkCancellation',
     'FIRCrossover',
     'FiveBandFIRPEQ',
     'GroupDelayEQ',
@@ -798,7 +800,7 @@ test('seeded effects restart from the same seed on every offline call', async ()
   chain.close();
 });
 
-test('all five analyzer telemetry decoders expose semantic observations', async t => {
+test('all analyzer telemetry decoders expose semantic observations', async t => {
   const frames = 16384;
   const input = [new Float32Array(frames), new Float32Array(frames)];
   for (let frame = 0; frame < frames; frame++) {
@@ -850,6 +852,22 @@ test('all five analyzer telemetry decoders expose semantic observations', async 
         assert.ok(frame.peakDb.every(Number.isFinite));
         assert.ok(Math.max(...frame.currentDb) > -20);
         assert.ok(Math.max(...frame.currentDb) - Math.min(...frame.currentDb) > 20);
+      }
+    },
+    {
+      effect: new NoteSpectrogram({ id: 'notes' }),
+      kind: 'noteSpectrogram',
+      verify(frame) {
+        assert.equal(frame.sampleRate, 48000);
+        assert.equal(frame.firstMidi, 21);
+        assert.equal(frame.divisionsPerSemitone, 5);
+        assert.ok(frame.timeSeconds > 0);
+        assert.ok(frame.hopSeconds > 0);
+        assert.ok(frame.frameIndex > 0);
+        assert.ok(frame.generation > 0);
+        assert.equal(frame.levels.length, 440);
+        assert.ok(frame.levels.every(value => Number.isFinite(value) && value >= 0 && value <= 1));
+        assert.ok(frame.levels.some(value => value > 0));
       }
     },
     {
@@ -1293,4 +1311,21 @@ test('disabled IR Reverb remains schema-valid without resolving or processing it
   assert.deepEqual(await chain.process(input, { sampleRate: 48000 }), input);
   assert.equal(resolverCalls, 0);
   chain.close();
+});
+
+
+test('newly cataloged pitch and restoration effects process with declared latency', async () => {
+  for (const type of ['PitchShifterHQ', 'BandwidthExtender', 'ClickRemover', 'ClipRestorer', 'HumRemover', 'NoiseReduction']) {
+    const chain = await createChain([createEffect(type)], { variant: 'baseline' });
+    try {
+      const stream = await chain.stream({ sampleRate: 48000, channels: 2, seed: 42 });
+      try {
+        assert.equal(stream.latencySamples > 0, type !== 'HumRemover', type);
+        const input = Array.from({ length: 2 }, () => Float32Array.from({ length: 8192 }, (_, i) => Math.sin(i * 0.08) * 0.2));
+        const output = await stream.process(input);
+        assert.ok(output.every(channel => channel.every(Number.isFinite)), type);
+        assert.ok(output.some(channel => channel.some(value => value !== 0)), type);
+      } finally { stream.close(); }
+    } finally { chain.close(); }
+  }
 });

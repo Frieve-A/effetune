@@ -285,7 +285,7 @@ export class AudioContextManager {
      * This is separated from initAudioContext to allow GUI to be fully rendered first
      * @returns {Promise<string>} - Empty string on success, error message on failure
      */
-    async loadAudioWorklet() {
+    async loadAudioWorklet({ moduleUrl: requestedModuleUrl = null, allowBlobFallback = true } = {}) {
         try {
             if (!this.audioContext) {
                 throw new Error('Audio context not initialized');
@@ -298,7 +298,7 @@ export class AudioContextManager {
             // Check if AudioWorklet is supported
             if (this.audioContext.audioWorklet) {
                 try {
-                    const moduleUrl = `${basePath}/plugins/audio-processor.js`;
+                    const moduleUrl = requestedModuleUrl || `${basePath}/plugins/audio-processor.js`;
                     try {
                         // addModule performs asynchronous fetch, parse, and worklet
                         // registration. A cold but valid load must be allowed to finish;
@@ -306,6 +306,7 @@ export class AudioContextManager {
                         // incorrectly starting the failure fallback in parallel.
                         await this.audioContext.audioWorklet.addModule(moduleUrl);
                     } catch (moduleError) {
+                        if (!allowBlobFallback) throw moduleError;
                         if (moduleError.message?.includes('already')) {
                             throw moduleError;
                         }

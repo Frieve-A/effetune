@@ -15,10 +15,6 @@ export class CollapseManager {
         this.collapsedCategories = {};
         this.loadCollapsedState();
         
-        // Animation state
-        this.animationFrameId = null;
-        this.handleTransitionEnd = null;
-        
         this.setupPullTabFunctionality();
         this.setupTouchSwipeFunctionality();
         this.initializeAfterAppLoaded();
@@ -97,152 +93,37 @@ export class CollapseManager {
         }
     }
     
-    // Toggle the collapsed state of the plugin list
+    // Toggle the collapsed state of the plugin list.
     togglePluginListCollapse() {
         if (this.isMobileLayout()) {
             window.uiManager?.mobileNav?.openPluginList();
             return;
         }
+        if (!this.pluginList || !this.pullTab || !this.mainContainer) return;
+
         this.isCollapsed = !this.isCollapsed;
-        
-        const pipeline = document.getElementById('pipeline');
-        if (!this.pluginList || !this.pullTab || !this.mainContainer || !pipeline) return;
-
-        // --- Cleanup previous state --- 
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
-        }
-        if (this.handleTransitionEnd) {
-            this.pluginList.removeEventListener('transitionend', this.handleTransitionEnd);
-        }
-
-        // --- Define transitionend handler --- 
-        this.handleTransitionEnd = (event) => {
-            // Check if the transition that ended was for the transform property
-            if (event.propertyName === 'transform' && event.target === this.pluginList) {
-                // Stop the rAF loop
-                if (this.animationFrameId) {
-                    cancelAnimationFrame(this.animationFrameId);
-                    this.animationFrameId = null;
-                }
-                // Set the final static positions explicitly
-                this.updatePositions(); 
-                // Clean up the listener itself
-                this.pluginList.removeEventListener('transitionend', this.handleTransitionEnd);
-                this.handleTransitionEnd = null; // Reset handler reference
-            }
-        };
-        
-        // Add the listener before triggering the transition
-        this.pluginList.addEventListener('transitionend', this.handleTransitionEnd);
-
-        // --- Trigger CSS transition and JS animation --- 
-        if (this.isCollapsed) {
-            // Add classes to trigger pluginList transform
-            this.pluginList.classList.add('collapsed');
-            this.pullTab.classList.add('collapsed');
-            this.mainContainer.classList.add('plugin-list-collapsed');
-            this.pullTab.textContent = '▶'; 
-            // Start JS animation loop to make followers track the list
-            this.animateFollowers(); 
-        } else {
-            // Remove classes to trigger pluginList transform
-            this.pluginList.classList.remove('collapsed');
-            this.pullTab.classList.remove('collapsed');
-            this.mainContainer.classList.remove('plugin-list-collapsed');
-            this.pullTab.textContent = '◀'; 
-            // Start JS animation loop
-            this.animateFollowers();
-        }
+        this.pluginList.classList.toggle('collapsed', this.isCollapsed);
+        this.pullTab.classList.toggle('collapsed', this.isCollapsed);
+        this.mainContainer.classList.toggle('plugin-list-collapsed', this.isCollapsed);
+        this.pullTab.textContent = this.isCollapsed ? '▶' : '◀';
+        this.pullTab.setAttribute('aria-expanded', String(!this.isCollapsed));
+        this.sidebarButton?.setAttribute('aria-expanded', String(!this.isCollapsed));
+        this.updatePositions();
     }
 
-    // Renamed and refined animation loop
-    animateFollowers() {
-        const pipeline = document.getElementById('pipeline');
-        if (!pipeline || !this.pluginList || !this.pullTab) return; 
-
-        // Get initial values needed for progress calculation
-        const pluginListWidth = this.pluginList.offsetWidth;
-        // Calculate the fully expanded left position (typically body padding)
-        // We use offsetLeft relative to its parent, assuming parent starts after body padding
-        const expandedListLeftCssPixel = parseFloat(window.getComputedStyle(document.body).paddingLeft) || 20;
-        const collapsedListLeftCssPixel = expandedListLeftCssPixel - pluginListWidth;
-        
-        const step = () => {
-            // Get current position of the list
-            const pluginListRect = this.pluginList.getBoundingClientRect();
-            const currentListLeftViewport = pluginListRect.left;
-            const currentListRightViewport = pluginListRect.right;
-            const currentListWidthViewport = pluginListRect.width;
-
-            // Calculate zoom ratio to correct coordinates
-            let zoomRatio = 1;
-            if (pluginListWidth > 0 && currentListWidthViewport > 0) {
-                zoomRatio = currentListWidthViewport / pluginListWidth;
-            }
-            // Calculate corrected positions in CSS pixels
-            const currentListLeftCssPixel = currentListLeftViewport / zoomRatio;
-            const targetPullTabLeftCssPixel = currentListRightViewport / zoomRatio;
-            
-            // Calculate pipeline margin based on transition progress (using CSS pixel values)
-            let progress = 0;
-            // Avoid division by zero if width is somehow 0
-            if (pluginListWidth > 0) { 
-                 // Clamp progress between 0 and 1
-                 progress = Math.max(0, Math.min(1, 
-                    (currentListLeftCssPixel - expandedListLeftCssPixel) / (collapsedListLeftCssPixel - expandedListLeftCssPixel)
-                 ));
-            }
-            // Interpolate marginLeft from 0 to -pluginListWidth
-            const targetPipelineMarginLeft = progress * (-pluginListWidth);
-            
-            // Apply styles directly (no CSS transition)
-            this.pullTab.style.left = `${Math.round(targetPullTabLeftCssPixel)}px`;
-            pipeline.style.marginLeft = `${Math.round(targetPipelineMarginLeft)}px`; 
-            pipeline.style.transform = 'none'; // Ensure no competing transform
-            
-            // Schedule next frame if animation should continue
-            if (this.handleTransitionEnd) { 
-                 this.animationFrameId = requestAnimationFrame(step);
-            } else {
-                 this.animationFrameId = null;
-            }
-        };
-        
-        // Cancel any previous frame and start the new animation loop
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-        }
-        this.animationFrameId = requestAnimationFrame(step);
-    }
-
-    /**
-     * Update positions for static states (init, resize) 
-     * Also sets the final state after animations via transitionend handler.
-     */
+    // Update the layout width; the tab belongs to the list's moving shell.
     updatePositions() {
-        if (!this.pluginList || !this.pullTab) return; 
-
-        // Stop animation if running (e.g., resize during animation)
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
-        }
-        // Remove listener if it exists (e.g., resize interrupted transition)
-         if (this.handleTransitionEnd) {
-            this.pluginList.removeEventListener('transitionend', this.handleTransitionEnd);
-            this.handleTransitionEnd = null;
-        }
-
+        if (!this.pluginList || !this.pullTab || !this.mainContainer) return;
+        const pipeline = document.getElementById('pipeline');
         if (this.isMobileLayout()) {
-            const pipeline = document.getElementById('pipeline');
             this.isCollapsed = false;
             this.pluginList.classList.remove('collapsed');
             this.pullTab.classList.remove('collapsed');
             this.mainContainer?.classList?.remove('plugin-list-collapsed');
             this.pullTab.style.left = '';
             this.pullTab.textContent = '◀';
+            this.pullTab.setAttribute('aria-expanded', 'true');
+            this.sidebarButton?.setAttribute('aria-expanded', 'true');
             if (pipeline) {
                 pipeline.style.marginLeft = '0';
                 pipeline.style.transform = 'none';
@@ -250,65 +131,24 @@ export class CollapseManager {
             return;
         }
 
-        // Calculate necessary values for static state
-        const pluginListWidth = this.pluginList.offsetWidth; 
-        const pluginListRect = this.pluginList.getBoundingClientRect();
-        // Calculate zoom ratio to correct coordinates obtained from getBoundingClientRect
-        let zoomRatio = 1;
-        if (pluginListWidth > 0 && pluginListRect.width > 0) {
-            zoomRatio = pluginListRect.width / pluginListWidth;
+        const width = this.pluginList.offsetWidth;
+        document.documentElement.style.setProperty('--plugin-list-total-width', `${width}px`);
+        if (pipeline) {
+            pipeline.style.marginLeft = '';
+            pipeline.style.transform = 'none';
         }
-        // Correct the right position based on the zoom ratio
-        const correctedRightPosition = pluginListRect.right / zoomRatio;
-
-        // Set CSS variable (might be useful elsewhere, keep it)
-        document.documentElement.style.setProperty('--plugin-list-total-width', `${pluginListWidth}px`);
-
-        // Get the pipeline element
-        const pipeline = document.getElementById('pipeline');
-        if (!pipeline) return; 
-
-        // Apply static positions based on the current state
-        if (!this.isCollapsed) {
-             this.pullTab.style.left = `${Math.round(correctedRightPosition)}px`;
-             pipeline.style.marginLeft = '0';
-        } else {
-             this.pullTab.style.left = '0px';
-             pipeline.style.marginLeft = `-${pluginListWidth}px`; 
-        }
-        pipeline.style.transform = 'none'; 
     }
-    
+
     setupPullTabFunctionality() {
         if (!this.pullTab) return;
-        
-        // Set initial state - pull tab shows ◀ when expanded
         this.pullTab.textContent = '◀';
-        
-        // Get the pipeline element
-        const pipeline = document.getElementById('pipeline');
-        
-        // Store the original position of the pull tab
-        let originalExpandedPosition = null;
-        
-        // Store the original position in the instance variable
-        this.originalExpandedPosition = null;
-        
-        // Update positions and check window width on resize
         window.addEventListener('resize', () => {
             this.updatePositions();
             this.checkWindowWidthAndAdjust();
         });
-        
-        this.pullTab.addEventListener('click', () => {
-            // Use the togglePluginListCollapse method to handle the collapse/expand functionality
-            this.togglePluginListCollapse();
-        });
-        
-        // Initial position update
+        this.pullTab.addEventListener('click', () => this.togglePluginListCollapse());
         this.updatePositions();
     }
-    
     // Setup touch swipe functionality to expand the collapsed plugin list
     setupTouchSwipeFunctionality() {
         // Only add touch swipe functionality if touch events are supported

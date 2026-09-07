@@ -11,7 +11,7 @@
 .room-eq-refresh { flex: 0 0 auto; white-space: nowrap; }
 .room-eq-measurement-status[data-state='warning'],
 .room-eq-status[data-state='error'],
-.room-eq-status[data-state='warning'] { color: #ff9f43; }
+.room-eq-status[data-state='warning'] { color: var(--et-warning); }
 .room-eq-phase-low-auto {
     display: inline-flex;
     align-items: center;
@@ -24,7 +24,7 @@
 .room-eq-phase-low-auto input { margin: 0; }
 body:not(.layout-mobile) .room-eq-phase-low-row { flex-wrap: nowrap; }
 .room-eq-status-line { display: flex; flex-wrap: wrap; gap: 0 0.6em; margin: 2px 0; }
-.room-eq-status, .room-eq-latency { color: #bbb; font-size: 0.9em; white-space: nowrap; }
+.room-eq-status, .room-eq-latency { color: var(--et-surface-74); font-size: 0.9em; white-space: nowrap; }
 .room-eq-additional-eq-ui {
     position: relative;
     width: 100%;
@@ -35,7 +35,7 @@ body:not(.layout-mobile) .room-eq-phase-low-row { flex-wrap: nowrap; }
     width: 100%;
     max-width: 1024px;
     aspect-ratio: 1024 / 480;
-    background-color: #1a1a1a;
+    background-color: var(--et-graph-bg-deep);
 }
 .room-eq-additional-eq-ui .room-eq-additional-eq-grid,
 .room-eq-additional-eq-ui .room-eq-additional-eq-response {
@@ -47,11 +47,11 @@ body:not(.layout-mobile) .room-eq-phase-low-row { flex-wrap: nowrap; }
     pointer-events: none;
 }
 .room-eq-additional-eq-ui .room-eq-additional-eq-grid line {
-    stroke: #333;
+    stroke: var(--et-graph-grid-subtle);
     stroke-width: 1;
 }
 .room-eq-additional-eq-ui .room-eq-additional-eq-grid text {
-    fill: #666;
+    fill: var(--et-graph-label);
     font-size: 10px;
 }
 /* Curves that leave the plot area keep running into the graph margin instead of
@@ -69,7 +69,7 @@ body:not(.layout-mobile) .room-eq-phase-low-row { flex-wrap: nowrap; }
     vector-effect: non-scaling-stroke;
 }
 .room-eq-additional-eq-ui .room-eq-additional-eq-response .room-eq-correction-boundary {
-    stroke: #fff;
+    stroke: var(--et-text-primary);
     stroke-width: 1;
     stroke-dasharray: 2 3;
     stroke-linecap: round;
@@ -82,9 +82,9 @@ body:not(.layout-mobile) .room-eq-phase-low-row { flex-wrap: nowrap; }
     justify-content: center;
     width: 24px;
     height: 24px;
-    color: #fff;
-    background-color: #4a4a4a;
-    border: 2px solid #666;
+    color: var(--et-text-primary);
+    background-color: var(--et-surface-23);
+    border: 2px solid var(--et-surface-35);
     border-radius: 50%;
     font-size: 12px;
     cursor: pointer;
@@ -99,12 +99,12 @@ body:not(.layout-mobile) .room-eq-phase-low-row { flex-wrap: nowrap; }
 }
 .room-eq-additional-eq-ui .room-eq-additional-eq-marker:hover,
 .room-eq-additional-eq-ui .room-eq-additional-eq-marker.active {
-    background-color: #666;
-    border-color: #999;
+    background-color: var(--et-surface-35);
+    border-color: var(--et-surface-58);
 }
 .room-eq-additional-eq-ui .room-eq-additional-eq-marker.disabled {
-    background-color: #333;
-    border-color: #444;
+    background-color: var(--et-surface-13);
+    border-color: var(--et-surface-20);
     opacity: 0.6;
 }
 .room-eq-additional-eq-ui .room-eq-additional-eq-marker-text {
@@ -112,7 +112,7 @@ body:not(.layout-mobile) .room-eq-phase-low-row { flex-wrap: nowrap; }
     top: 50%;
     display: flex;
     flex-direction: column;
-    color: #ccc;
+    color: var(--et-surface-81);
     font-size: 11px;
     white-space: nowrap;
     pointer-events: none;
@@ -135,7 +135,7 @@ body:not(.layout-mobile) .room-eq-phase-low-row { flex-wrap: nowrap; }
     width: 100%;
     max-width: 1024px;
     padding: 10px;
-    background-color: #2a2a2a;
+    background-color: color-mix(in srgb, var(--et-surface-9), var(--et-graph-bg-deep) 25%);
     border-radius: 4px;
 }
 .room-eq-additional-eq-ui .room-eq-additional-eq-band {
@@ -146,15 +146,15 @@ body:not(.layout-mobile) .room-eq-phase-low-row { flex-wrap: nowrap; }
     box-sizing: border-box;
     min-width: 0;
     padding: 8px;
-    background-color: #333;
+    background-color: color-mix(in srgb, var(--et-surface-13), var(--et-graph-bg-deep) 25%);
     border-radius: 4px;
 }
-.room-eq-additional-eq-ui .room-eq-additional-eq-band.active { background-color: #444; }
+.room-eq-additional-eq-ui .room-eq-additional-eq-band.active { background-color: color-mix(in srgb, var(--et-surface-20), var(--et-graph-bg-deep) 25%); }
 .room-eq-additional-eq-ui .room-eq-additional-eq-band-label {
     display: flex;
     align-items: center;
     gap: 5px;
-    color: #ccc;
+    color: var(--et-surface-81);
     font-size: 12px;
     font-weight: bold;
     cursor: pointer;
@@ -172,7 +172,7 @@ body:not(.layout-mobile) .room-eq-phase-low-row { flex-wrap: nowrap; }
 .room-eq-additional-eq-ui .room-eq-additional-eq-freq-label,
 .room-eq-additional-eq-ui .room-eq-additional-eq-gain-label {
     min-width: 78px;
-    color: #ccc;
+    color: var(--et-surface-81);
     font-size: 12px;
     white-space: nowrap;
 }
@@ -182,7 +182,7 @@ body:not(.layout-mobile) .room-eq-phase-low-row { flex-wrap: nowrap; }
 }
 .room-eq-additional-eq-ui .room-eq-additional-eq-q-label {
     min-width: 20px;
-    color: #ccc;
+    color: var(--et-surface-81);
     font-size: 12px;
     white-space: nowrap;
 }
@@ -200,9 +200,9 @@ body:not(.layout-mobile) .room-eq-phase-low-row { flex-wrap: nowrap; }
     width: 40px;
     min-width: 40px;
     padding: 2px 4px;
-    color: #ccc;
-    background-color: #222;
-    border: 1px solid #444;
+    color: var(--et-surface-81);
+    background-color: var(--et-surface-5);
+    border: 1px solid var(--et-surface-20);
     border-radius: 3px;
     font-size: 12px;
 }
@@ -213,9 +213,9 @@ body:not(.layout-mobile) .room-eq-phase-low-row { flex-wrap: nowrap; }
 .room-eq-additional-eq-ui .room-eq-additional-eq-filter-type {
     width: 100%;
     padding: 4px;
-    color: #ccc;
-    background-color: #222;
-    border: 1px solid #444;
+    color: var(--et-surface-81);
+    background-color: var(--et-surface-5);
+    border: 1px solid var(--et-surface-20);
     border-radius: 3px;
     font-size: 12px;
 }
@@ -223,7 +223,7 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
 body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-q-text,
 body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-freq-text,
 body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-gain-text {
-    box-sizing: border-box;
+
     flex: 0 0 90px;
     width: 90px;
     min-width: 90px;
@@ -233,18 +233,18 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
     margin-left: auto;
 }
 .room-eq-additional-eq-ui .room-eq-additional-eq-response .room-eq-measured-response-path {
-    stroke: #b0b0b0;
+    stroke: var(--et-graph-trace-secondary);
     opacity: 0.7;
 }
 .room-eq-additional-eq-ui .room-eq-additional-eq-response .room-eq-base-response-path {
-    stroke: #80c080;
+    stroke: var(--et-success);
     opacity: 0.65;
 }
 .room-eq-additional-eq-ui .room-eq-additional-eq-response .room-eq-combined-response-path {
-    stroke: #00ff00;
+    stroke: var(--et-graph-trace);
 }
 .room-eq-additional-eq-ui .room-eq-additional-eq-response .room-eq-corrected-response-path {
-    stroke: #fff;
+    stroke: var(--et-text-primary);
 }
 .room-eq-response-legend {
     position: absolute;
@@ -255,8 +255,8 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
     flex-direction: column;
     gap: 1px;
     padding: 2px 6px;
-    color: #ccc;
-    background: rgba(26, 26, 26, 0.88);
+    color: var(--et-graph-label-strong);
+    background: var(--et-graph-base-veil);
     border-radius: 3px;
     font-size: 11px;
     line-height: 1.25;
@@ -264,7 +264,7 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
 }
 .room-eq-response-legend-cursor {
     align-self: flex-end;
-    color: #ccc;
+    color: var(--et-graph-label-strong);
     font-variant-numeric: tabular-nums;
 }
 .room-eq-response-legend-cursor:empty { display: none; }
@@ -284,10 +284,10 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
     border-top: 2px solid currentColor;
 }
 .room-eq-response-legend-item:hover { font-weight: 600; }
-.room-eq-response-legend-room { color: #80c080; opacity: 0.65; }
-.room-eq-response-legend-total { color: #00ff00; }
-.room-eq-response-legend-before { color: #b0b0b0; opacity: 0.7; }
-.room-eq-response-legend-after { color: #fff; }
+.room-eq-response-legend-room { color: var(--et-success); opacity: 0.65; }
+.room-eq-response-legend-total { color: var(--et-graph-trace); }
+.room-eq-response-legend-before { color: var(--et-graph-trace-secondary); opacity: 0.7; }
+.room-eq-response-legend-after { color: var(--et-text-primary); }
 .room-eq-phase-grid,
 .room-eq-phase-response,
 .room-eq-group-delay-grid,
@@ -312,20 +312,20 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
     pointer-events: none;
 }
 .room-eq-hover-overlay .room-eq-hover-dot {
-    stroke: #1a1a1a;
+    stroke: var(--et-graph-base);
     stroke-width: 1;
 }
 .room-eq-phase-grid line,
 .room-eq-group-delay-grid line,
 .room-eq-impulse-grid line {
-    stroke: #333;
+    stroke: var(--et-graph-grid-subtle);
     stroke-width: 1;
     vector-effect: non-scaling-stroke;
 }
 .room-eq-phase-grid text,
 .room-eq-group-delay-grid text,
 .room-eq-impulse-grid text {
-    fill: #666;
+    fill: var(--et-graph-label);
     font-size: 10px;
 }
 .room-eq-phase-response path,
@@ -336,21 +336,21 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
 }
 .room-eq-phase-response .room-eq-phase-before,
 .room-eq-group-delay-response .room-eq-group-delay-before {
-    stroke: #b0b0b0;
+    stroke: var(--et-graph-trace-secondary);
     stroke-width: 1;
     opacity: 0.7;
 }
 .room-eq-phase-response .room-eq-phase-after,
 .room-eq-group-delay-response .room-eq-group-delay-after {
-    stroke: #00ff00;
+    stroke: var(--et-graph-trace);
     stroke-width: 1;
 }
 .room-eq-impulse-response .room-eq-impulse-before {
-    stroke: #888;
+    stroke: var(--et-graph-tone-50);
     stroke-width: 1;
 }
 .room-eq-impulse-response .room-eq-impulse-after {
-    stroke: #00ff00;
+    stroke: var(--et-graph-trace);
     stroke-width: 1;
 }
 .room-eq-phase-response .room-eq-response-hidden,
@@ -374,7 +374,7 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
     left: 50%;
     top: 50%;
     max-width: calc(100% - 60px);
-    color: #aaa;
+    color: var(--et-surface-66);
     font-size: 12px;
     text-align: center;
     transform: translate(-50%, -50%);
@@ -399,13 +399,13 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
     display: none;
 }
 .room-eq-impulse-view .room-eq-response-legend-before {
-    color: #888;
+    color: var(--et-graph-tone-50);
     opacity: 1;
 }
 .room-eq-phase-view .room-eq-response-legend-after,
 .room-eq-group-delay-view .room-eq-response-legend-after,
 .room-eq-impulse-view .room-eq-response-legend-after {
-    color: #00ff00;
+    color: var(--et-graph-trace);
 }
 .room-eq-phase-view .room-eq-phase-grid,
 .room-eq-phase-view .room-eq-phase-response,
@@ -473,51 +473,10 @@ body.layout-mobile .room-eq-additional-eq-graph {
 .room-eq-panel {
     padding: 10px;
     border-radius: 4px;
-    background: #2d2d2d;
-}
-.room-eq-tabs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 3px;
-    margin-bottom: 12px;
+    background: color-mix(in srgb, var(--et-surface-10), var(--et-graph-bg-deep) 25%);
 }
 .room-eq-tab {
     flex: 1 1 100px;
-    min-height: 36px;
-    padding: 8px 14px;
-    border: 1px solid #484848;
-    border-radius: 4px 4px 0 0;
-    color: #ddd;
-    background: #333;
-    cursor: pointer;
-}
-.room-eq-tab:hover {
-    background: #3c3c3c;
-}
-.room-eq-tab.active {
-    border-color: #666;
-    color: #fff;
-    background: #484848;
-}
-.room-eq-tab:focus-visible {
-    outline: 2px solid #7ec8ff;
-    outline-offset: 2px;
-}
-.room-eq-tab-contents {
-    /* Stacking the panels in one grid cell keeps the height of the tallest tab,
-       including rows whose label wraps onto a second line. */
-    display: grid;
-}
-.room-eq-tab-content {
-    display: block;
-    grid-area: 1 / 1;
-}
-.room-eq-tab-content[hidden] {
-    visibility: hidden;
-    pointer-events: none;
-}
-.room-eq-tab-content[hidden] .room-eq-channel-measurements {
-    display: none;
 }
 body.layout-mobile .room-eq-panel,
 body.layout-mobile .room-eq-tab-content {
@@ -530,18 +489,6 @@ body.layout-mobile .room-eq-panel {
     padding: 8px;
     overflow-x: clip;
 }
-body.layout-mobile .room-eq-tabs {
-    gap: 4px;
-}
 body.layout-mobile .room-eq-tab {
     flex: 1 1 calc(50% - 4px);
-    min-width: 0;
-    min-height: 42px;
-    padding: 8px 6px;
-}
-body.layout-mobile .room-eq-tab-contents {
-    display: block;
-}
-body.layout-mobile .room-eq-tab-content[hidden] {
-    display: none;
 }

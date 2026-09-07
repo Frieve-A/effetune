@@ -333,6 +333,9 @@ def semantic_event_parameters(
 
 
 def expected_validation_rejection(case: dict[str, Any]) -> dict[str, str] | None:
+    for asset in case["definition"]["assets"]:
+        if asset["required"] and "asset" not in case["metadata"]:
+            return {"asset": asset["name"], "reason": "missing-required-asset"}
     parameters = semantic_parameters(case, case["metadata"]["params"])
     for definition in case["definition"]["parameters"]:
         value = parameters.get(definition["name"])
@@ -1150,7 +1153,7 @@ def main() -> int:
         except Exception as error:
             if (
                 expected_rejection is not None
-                and isinstance(error, effetune.ValidationError)
+                and isinstance(error, effetune.AssetError if expected_rejection["reason"] == "missing-required-asset" else effetune.ValidationError)
             ):
                 passed += 1
                 expected_validation_rejections.append(

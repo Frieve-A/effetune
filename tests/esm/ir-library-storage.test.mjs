@@ -811,20 +811,45 @@ test('browser persistence is requested once without blocking imports and never r
   let resolvePersistence;
   const persistencePromise = new Promise(resolve => { resolvePersistence = resolve; });
   const backend = new MemoryBackend();
+  const diagnostics = [];
+  const persistenceDiagnostics = [];
   const store = await new IrLibraryStore(backend, {
     requestPersistence() {
       persistenceCalls += 1;
       return persistencePromise;
     },
-    onDiagnostic() {}
+    onDiagnostic: error => diagnostics.push(error),
+    onPersistenceDiagnostic: error => persistenceDiagnostics.push(error)
   }).open();
   const request = { bytes: encode('persist once'), fileName: 'persist.wav' };
   const first = await store.importSingle(request);
   await store.importSingle(request);
   assert.equal(first.duplicate, false);
   assert.equal(persistenceCalls, 1);
+  assert.ok(backend.files.has('index.json'));
+  assert.equal(new TextDecoder().decode(await store.readOriginal(first.entry.irId)), 'persist once');
   resolvePersistence(false);
   await Promise.resolve();
+  assert.deepEqual(diagnostics, []);
+  assert.deepEqual(persistenceDiagnostics, []);
+
+  const rejectedBackend = new MemoryBackend();
+  const rejectionDiagnostics = [];
+  const persistenceWarnings = [];
+  const rejectedStore = await new IrLibraryStore(rejectedBackend, {
+    requestPersistence: () => Promise.reject(new Error('Persistence API unavailable')),
+    onDiagnostic: error => rejectionDiagnostics.push(error),
+    onPersistenceDiagnostic: error => persistenceWarnings.push(error)
+  }).open();
+  const rejectedImport = await rejectedStore.importSingle({
+    bytes: encode('rejected persistence'), fileName: 'rejected.wav'
+  });
+  await Promise.resolve();
+  assert.equal(rejectedStore.get(rejectedImport.entry.irId)?.irId, rejectedImport.entry.irId);
+  assert.ok(rejectedBackend.files.has('index.json'));
+  assert.deepEqual(rejectionDiagnostics, []);
+  assert.equal(persistenceWarnings.length, 1);
+  assert.match(persistenceWarnings[0].message, /Persistence API unavailable/);
 
   let electronPersistenceCalls = 0;
   const native = createMemoryElectronBridge();
@@ -849,13 +874,20 @@ test('web factory requests persistence once and OPFS cache uses the isolated cac
     async persist() { persistenceCalls += 1; return false; }
   };
   const diagnostics = [];
-  const store = await openIrLibrary({ storage, onDiagnostic: error => diagnostics.push(error) });
+  const persistenceDiagnostics = [];
+  const store = await openIrLibrary({
+    storage,
+    onDiagnostic: error => diagnostics.push(error),
+    onPersistenceDiagnostic: error => persistenceDiagnostics.push(error)
+  });
   const request = { bytes: encode('web persisted'), fileName: 'web.wav' };
-  await store.importSingle(request);
+  const saved = await store.importSingle(request);
   await store.importSingle(request);
   await Promise.resolve();
   assert.equal(persistenceCalls, 1);
-  assert.equal(diagnostics.length, 1);
+  assert.deepEqual(diagnostics, []);
+  assert.deepEqual(persistenceDiagnostics, []);
+  assert.equal(new TextDecoder().decode(await store.readOriginal(saved.entry.irId)), 'web persisted');
 
   const cache = store.pcmCache;
   const id = (await identifySingleIr(request.bytes)).irId;

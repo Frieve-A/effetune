@@ -200,29 +200,29 @@ class HumRemoverPlugin extends PluginBase {
         ];
 
         context.clearRect(0, 0, width, height);
-        context.fillStyle = '#171717';
+        context.fillStyle = (window.ThemePalette?.get('base') ?? '');
         context.fillRect(0, 0, width, height);
         cards.forEach((card, index) => {
             const x = padding + index * (cardWidth + gap);
             const level = card.level < 0 ? 0 : (card.level > 1 ? 1 : card.level);
-            context.fillStyle = '#222';
+            context.fillStyle = (window.ThemePalette?.get('inset-background') ?? '');
             context.fillRect(x, padding, cardWidth, cardHeight);
-            context.strokeStyle = '#454545';
+            context.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
             context.strokeRect(x + 0.5 * scale, padding + 0.5 * scale,
                 cardWidth - scale, cardHeight - scale);
-            context.fillStyle = '#9db7c7';
+            context.fillStyle = (window.ThemePalette?.get('text-secondary') ?? '');
             context.textAlign = 'left';
             context.textBaseline = 'top';
             context.font = `600 ${Math.round(9 * scale)}px Arial`;
             context.fillText(card.title, x + 6 * scale, padding + 5 * scale);
-            context.fillStyle = '#f0f0f0';
+            context.fillStyle = (window.ThemePalette?.get('graph-tone-97') ?? '');
             context.font = `${Math.round(12 * scale)}px Arial`;
             context.fillText(card.value, x + 6 * scale, padding + 22 * scale,
                 cardWidth - 12 * scale);
-            context.fillStyle = '#363636';
+            context.fillStyle = (window.ThemePalette?.get('graph-tone-13') ?? '');
             context.fillRect(x + 6 * scale, padding + cardHeight - 9 * scale,
                 cardWidth - 12 * scale, 4 * scale);
-            context.fillStyle = '#69c8ff';
+            context.fillStyle = (window.ThemePalette?.get('accent') ?? '');
             context.fillRect(x + 6 * scale, padding + cardHeight - 9 * scale,
                 (cardWidth - 12 * scale) * level, 4 * scale);
         });

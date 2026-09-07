@@ -141,6 +141,7 @@ The WebAssembly modules are used by the web, PWA, and Electron hosts.
 
 - CMake 3.24 or newer
 - Ninja
+- Python 3.10 or newer (standard library only, for binary model embedding)
 - A C++20 compiler for native tests
 - Emscripten SDK 6.0.2 for WebAssembly builds
 
@@ -424,8 +425,9 @@ expose the prepared staging slab read through `et_telemetry_read`.
 
 All payloads are little-endian and four-byte aligned. Consumers must accept the
 exact payload size for the selected format version. The default format version
-is 1; `TAP_SCOPE_SNAPSHOT` (type 3), `TAP_STEREO_FIELD` (type 6), and
-`TAP_AM_RADIO_SIMULATOR` (type 17) use version 2.
+is 1; `TAP_SCOPE_SNAPSHOT` (type 3), `TAP_STEREO_FIELD` (type 6),
+`TAP_AM_RADIO_SIMULATOR` (type 17), and `TAP_NOTE_SPECTROGRAM` (type 24)
+use version 2.
 
 #### Frame Types
 
@@ -491,6 +493,15 @@ is 1; `TAP_SCOPE_SNAPSHOT` (type 3), `TAP_STEREO_FIELD` (type 6), and
   frame maximum level in dB as float32. Each record contains float32 frequency
   in Hz, signed L/R phase difference in degrees (-180 to +180), and level in dB
   relative to the frame maximum.
+- **Type 24 — `TAP_NOTE_SPECTROGRAM`.** Format version 2 is exactly 1,788 bytes:
+  a 28-byte header followed by 440 float32 pitch-confidence levels in [0, 1].
+  The header contains float32 sample rate, observation time, and hop duration;
+  `u16` pitch count 440 and first MIDI note 21; and `u32` frame index,
+  divisions per semitone 5, and non-zero analysis generation. Public JavaScript
+  and Python decoders expose this as `NoteSpectrogramTelemetryFrame` with
+  `kind` `noteSpectrogram`; `levels` is an owned `Float32Array` or tuple. Level
+  index `i` maps to MIDI `firstMidi + (i - 2) / divisionsPerSemitone`, placing
+  five bins at -40, -20, 0, +20, and +40 cents around each piano-key center.
 
 ### Latency and Pipeline Descriptors
 

@@ -88,7 +88,7 @@ Un control de volumen inteligente que ajusta automáticamente tu música para ma
 - Nivel de entrada (línea verde)
 - Nivel de salida (línea blanca)
 - Retroalimentación visual clara de los ajustes de volumen
-- Gráfico temporal de fácil lectura
+- El gráfico se desplaza de derecha a izquierda, con los niveles más recientes en el borde derecho y marcas cada segundo.
 
 ### Ajustes Recomendados
 
@@ -810,6 +810,7 @@ Cada banda de frecuencia tiene controles independientes de modelado de transient
 - Marcadores de tiempo de referencia
 - Selección interactiva de bandas
 - Retroalimentación visual clara de la actividad de modelado de transientes
+- Los gráficos se desplazan suavemente de derecha a izquierda, con los valores más recientes en el borde derecho.
 
 ### Ajustes Recomendados
 
@@ -931,6 +932,7 @@ Haz clic en **Preajustes de efecto** en la cabecera del efecto para empezar con 
 - Reducción de ganancia (blanco): Cantidad de caída de voltaje aplicada
 - Visualización basada en tiempo con marcadores de referencia de 1 segundo
 - Valores actuales mostrados en tiempo real
+- Los gráficos se desplazan suavemente de derecha a izquierda, con los valores más recientes en el borde derecho.
 
 ### Configuraciones Recomendadas
 
@@ -1021,6 +1023,7 @@ Un procesador de dinámica especializado que permite realzar o reducir de forma 
 - Visualización clara del historial de ganancia
 - Marcadores de tiempo para referencia
 - Interfaz intuitiva para todos los parámetros
+- Los gráficos se desplazan suavemente de derecha a izquierda, con los valores más recientes en el borde derecho.
 
 ### Ajustes Recomendados
 

@@ -638,16 +638,6 @@ const TUBE_SIMULATOR_TRAJECTORY_FADE_MS = 220;
 // exponential is pure overdraw.
 const TUBE_SIMULATOR_TRAJECTORY_MINIMUM_OPACITY = 0.02;
 const TUBE_SIMULATOR_HUD_CURVE_POINTS = 96;
-const TUBE_SIMULATOR_HUD_COLORS = Object.freeze({
-    background: '#1a1a1a',
-    grid: '#333',
-    ticks: '#666',
-    axes: '#fff',
-    characteristics: '#555',
-    loadLine: '#888',
-    left: '#69c8ff',
-    right: '#ffb347'
-});
 // Operating-point groups the graph can show, in signal-chain order. Only one is on screen at a
 // time: the panels within a group share an axis and are worth comparing against each other, while
 // the driver and the output valves work at voltages an order of magnitude apart. Push / Pull and
@@ -7077,7 +7067,7 @@ class TubeSimulatorPlugin extends PluginBase {
         const narrow = cssWidth < 560;
         context.setTransform?.(1, 0, 0, 1, 0, 0);
         context.clearRect(0, 0, width, height);
-        context.fillStyle = TUBE_SIMULATOR_HUD_COLORS.background;
+        context.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
         context.fillRect(0, 0, width, height);
 
         const panels = this._hudPanels();
@@ -7121,7 +7111,7 @@ class TubeSimulatorPlugin extends PluginBase {
             narrow
         });
 
-        context.fillStyle = TUBE_SIMULATOR_HUD_COLORS.axes;
+        context.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         context.font = `${(narrow ? 13 : 14) * dpr}px Arial`;
         context.textAlign = 'center';
         context.textBaseline = 'bottom';
@@ -7138,15 +7128,15 @@ class TubeSimulatorPlugin extends PluginBase {
         context.font = `600 ${(header.narrow ? 12 : 13) * header.dpr}px Arial`;
         context.textAlign = 'left';
         context.textBaseline = 'bottom';
-        context.fillStyle = TUBE_SIMULATOR_HUD_COLORS.axes;
+        context.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         const tube = this.hudView === 'driver' ? this.tp
             : this.hudView === 'pushPull' ? this.pt : this.sd;
         context.fillText(tube, header.left, header.y);
         context.textAlign = 'right';
-        context.fillStyle = TUBE_SIMULATOR_HUD_COLORS.right;
+        context.fillStyle = (window.ThemePalette?.get('warning') ?? '');
         context.fillText('Right', header.right, header.y);
         const rightWidth = context.measureText('Right').width;
-        context.fillStyle = TUBE_SIMULATOR_HUD_COLORS.left;
+        context.fillStyle = (window.ThemePalette?.get('accent') ?? '');
         context.fillText('Left', header.right - rightWidth - 8 * header.dpr, header.y);
     }
 
@@ -7159,9 +7149,9 @@ class TubeSimulatorPlugin extends PluginBase {
         const mapY = value => panel.y + panel.height -
             (value - axes.yMin) / (axes.yMax - axes.yMin) * panel.height;
 
-        context.strokeStyle = TUBE_SIMULATOR_HUD_COLORS.grid;
+        context.strokeStyle = (window.ThemePalette?.get('graph-grid-subtle') ?? '');
         context.lineWidth = panel.dpr;
-        context.fillStyle = TUBE_SIMULATOR_HUD_COLORS.ticks;
+        context.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         context.font = `${tickFont}px Arial`;
         context.textBaseline = 'top';
         const xTicks = panel.narrow
@@ -7192,7 +7182,7 @@ class TubeSimulatorPlugin extends PluginBase {
                 );
             }
         }
-        context.fillStyle = TUBE_SIMULATOR_HUD_COLORS.axes;
+        context.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         context.font = `600 ${titleFont}px Arial`;
         context.textAlign = 'left';
         context.textBaseline = 'bottom';
@@ -7208,7 +7198,7 @@ class TubeSimulatorPlugin extends PluginBase {
             panel.leftY,
             mapX,
             mapY,
-            TUBE_SIMULATOR_HUD_COLORS.left,
+            (window.ThemePalette?.get('accent') ?? ''),
             panel.dpr,
             panel.narrow,
             panel.now
@@ -7219,7 +7209,7 @@ class TubeSimulatorPlugin extends PluginBase {
             panel.rightY,
             mapX,
             mapY,
-            TUBE_SIMULATOR_HUD_COLORS.right,
+            (window.ThemePalette?.get('warning') ?? ''),
             panel.dpr,
             panel.narrow,
             panel.now
@@ -7230,7 +7220,7 @@ class TubeSimulatorPlugin extends PluginBase {
     _drawPlateCharacteristics(context, mapX, mapY, dpr) {
         const characteristics = this.hudCharacteristics;
         if (!characteristics) return;
-        context.strokeStyle = TUBE_SIMULATOR_HUD_COLORS.characteristics;
+        context.strokeStyle = (window.ThemePalette?.get('graph-grid-strong') ?? '');
         context.lineWidth = 0.75 * dpr;
         context.setLineDash?.([]);
         for (const curve of characteristics.plateCurves) {
@@ -7244,7 +7234,7 @@ class TubeSimulatorPlugin extends PluginBase {
             context.stroke();
         }
         const loadLine = characteristics.loadLine;
-        context.strokeStyle = TUBE_SIMULATOR_HUD_COLORS.loadLine;
+        context.strokeStyle = (window.ThemePalette?.get('graph-tone-50') ?? '');
         context.lineWidth = dpr;
         context.setLineDash?.([6 * dpr, 4 * dpr]);
         context.beginPath();

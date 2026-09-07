@@ -55,21 +55,21 @@ body.layout-mobile .matrix-table-expanded {
     height: var(--matrix-title-height);
     box-sizing: border-box;
     z-index: 2;
-    background-color: #333;
+    background-color: color-mix(in srgb, var(--et-surface-13), var(--et-graph-bg-deep) 25%);
 }
 
 .matrix-table .matrix-sticky-channel-header {
     position: sticky;
     top: var(--matrix-title-height);
     z-index: 2;
-    background-color: #333;
+    background-color: color-mix(in srgb, var(--et-surface-13), var(--et-graph-bg-deep) 25%);
 }
 
 .matrix-table .matrix-sticky-row {
     position: sticky;
     left: 0;
     z-index: 1;
-    background-color: #333;
+    background-color: color-mix(in srgb, var(--et-surface-13), var(--et-graph-bg-deep) 25%);
 }
 
 .matrix-table .matrix-sticky-corner {
@@ -78,7 +78,7 @@ body.layout-mobile .matrix-table-expanded {
 }
 
 .matrix-table th, .matrix-table td {
-    border: var(--matrix-cell-border) solid #444;
+    border: var(--matrix-cell-border) solid var(--et-surface-20);
     border-width: 0 var(--matrix-cell-border) var(--matrix-cell-border) 0;
     padding: var(--matrix-cell-padding);
     text-align: center;
@@ -94,8 +94,8 @@ body.layout-mobile .matrix-table-expanded {
 }
 
 .matrix-table th {
-    background-color: #333;
-    color: #fff;
+    background-color: color-mix(in srgb, var(--et-surface-13), var(--et-graph-bg-deep) 25%);
+    color: var(--et-text-primary);
 }
 
 .matrix-table td {
@@ -103,12 +103,12 @@ body.layout-mobile .matrix-table-expanded {
 }
 
 .matrix-button {
-    border: 1px solid #606060;
+    border: 1px solid var(--et-surface-33);
     border-radius: 4px;
-    background-color: #808080;
+    background-color: var(--et-surface-47);
     margin: var(--matrix-button-margin);
     padding: 4px 6px;
-    color: white;
+    color: var(--et-text-primary);
     border-radius: 3px;
     cursor: pointer;
     min-width: 30px;
@@ -116,7 +116,8 @@ body.layout-mobile .matrix-table-expanded {
 }
 
 .matrix-button.active {
-    background-color: #4CAF50;
+    color: var(--et-on-status);
+    background-color: var(--et-success);
 }
 
 .matrix-button.phase-button {
@@ -124,12 +125,12 @@ body.layout-mobile .matrix-table-expanded {
 }
 
 .matrix-button.phase-button.active {
-    background-color: #aa0000;
+    background-color: var(--et-danger);
 }
 
 .matrix-table .disabled {
     opacity: 0.5;
-    background-color: #333;
+    background-color: var(--et-surface-13);
 }
 
 .matrix-table button:disabled {

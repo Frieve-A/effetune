@@ -6,6 +6,7 @@ const {
   dialog,
   ipcMain,
   nativeImage,
+  nativeTheme,
   powerMonitor,
   shell,
   utilityProcess
@@ -46,6 +47,12 @@ const PLAYBACK_AUDIO_EXTENSION_PATTERN = new RegExp(`\\.(${PLAYBACK_AUDIO_EXTENS
 
 function isSupportedPlaybackAudioPath(filePath) {
   return PLAYBACK_AUDIO_EXTENSION_PATTERN.test(filePath || '');
+}
+
+let themeRegistry;
+
+function applyNativeTheme(config) {
+  nativeTheme.themeSource = themeRegistry.getThemePreset(config?.theme).colorScheme;
 }
 
 let tray = null;
@@ -434,20 +441,6 @@ function setupFileLogging() {
   // Disabled for release
 }
 
-// Bring mainWindow into its persisted display state (maximized or normal).
-// Used by both the initial ready-to-show path and the post-splash
-// did-finish-load path, so they cannot drift out of sync.
-function showMainWindowInRestoredState(mainWindow) {
-  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isMinimized()) return;
-  if (constants.getWindowState().isMaximized) {
-    mainWindow.maximize(); // SW_MAXIMIZE implicitly shows the window
-  } else {
-    mainWindow.show();
-  }
-  // The window now holds its final restored geometry — allow state saving.
-  windowState.markRestoreComplete();
-}
-
 function presentMainWindow(mainWindow) {
   if (!mainWindow || mainWindow.isDestroyed()) return false;
   if (mainWindow.isMinimized()) mainWindow.restore();
@@ -464,6 +457,7 @@ function sendWindowVisibilityState(mainWindow) {
 
 // Create the main application window
 function createWindow() {
+  const preset = themeRegistry.getThemePreset(constants.getAppConfig()?.theme);
   windowState.prepareForNewWindow();
   // Load saved window state and resolve the (validated, on-screen) bounds the
   // window should be created with.
@@ -472,6 +466,7 @@ function createWindow() {
 
   // Create the browser window
   const mainWindow = new BrowserWindow({
+    backgroundColor: preset.windowBackground,
     width: restoredBounds.width,
     height: restoredBounds.height,
     x: restoredBounds.x,
@@ -505,6 +500,10 @@ function createWindow() {
   if (process.platform === 'win32') {
     mainWindow.setBounds(restoredBounds);
   }
+
+  windowState.restoreMaximizedStateWhileHidden(mainWindow, {
+    startMinimized: constants.getAppConfig().startMinimized
+  });
 
   // Set the main window reference in modules
   constants.setMainWindow(mainWindow);
@@ -571,12 +570,9 @@ function createWindow() {
       // Final state reached (hidden/minimized) — allow state saving.
       windowState.markRestoreComplete();
     } else if (!pendingMainWindowShow) {
-      // NOTE: maximize() MUST stay inside this branch.  On Win32 it issues
-      // ShowWindow(SW_MAXIMIZE), which makes the (until then hidden) window
-      // visible as a side effect — defeating the splash defer.  So the
-      // maximize+show pair has to be co-deferred when a splash is pending,
-      // and re-applied after the application document loads.
-      showMainWindowInRestoredState(mainWindow);
+      // Windows already prepared its maximized client size while invisible.
+      // Presentation still waits for the splash when one is pending.
+      windowState.showWindowInRestoredState(mainWindow);
     }
   });
   
@@ -1004,6 +1000,7 @@ function sendPendingUpdateInfo() {
 
 // Create splash screen
 function createSplashScreen() {
+  const preset = themeRegistry.getThemePreset(constants.getAppConfig()?.theme);
   // Create splash window with About dialog content
   let splashWindow = new BrowserWindow({
     width: 400,
@@ -1029,8 +1026,8 @@ function createSplashScreen() {
     <title>EffeTune</title>
     <style>
       body {
-        background-color: rgba(34, 34, 34, 0.9);
-        color: #fff;
+        background-color: color-mix(in srgb, ${preset.windowBackground} 90%, transparent);
+        color: ${preset.windowForeground};
         font-family: Arial, sans-serif;
         margin: 0;
         padding: 0;
@@ -1073,17 +1070,17 @@ function createSplashScreen() {
       }
       .splash-description {
         font-size: 14px;
-        color: #ccc;
+        opacity: 0.81;
         margin-bottom: 5px;
       }
       .splash-copyright {
         font-size: 12px;
-        color: #999;
+        opacity: 0.58;
       }
       .splash-loading {
         margin-top: 15px;
         font-size: 12px;
-        color: #999;
+        opacity: 0.58;
       }
     </style>
   </head>
@@ -1172,12 +1169,12 @@ function createSplashScreen() {
         splashWindow = null;
       }
 
-      // If the maximize+show pair was deferred to hide the UI behind the
-      // splash, apply it once the application document has finished loading.
+      // Present only after the application document loads. Windows already
+      // has its saved maximized geometry before either document starts loading.
       if (pendingMainWindowShow) {
         mainWindow.webContents.once('did-finish-load', () => {
           pendingMainWindowShow = false;
-          showMainWindowInRestoredState(mainWindow);
+          windowState.showWindowInRestoredState(mainWindow);
         });
       }
 
@@ -1328,6 +1325,7 @@ async function initializeApp() {
     }
   }
 
+  themeRegistry = await import(pathToFileURL(path.join(__dirname, '../js/theme-registry.mjs')).href);
   const cfgDefaults = {
     autoLaunch: false,
     startMinimized: false,
@@ -1341,8 +1339,10 @@ async function initializeApp() {
     openHomeRemoteControl: false
   };
   const cfg = { ...cfgDefaults, ...configModule.loadConfig() };
+  if ('theme' in cfg) cfg.theme = themeRegistry.normalizeThemeId(cfg.theme);
   configModule.saveConfig(cfg);
   constants.setAppConfig(cfg);
+  applyNativeTheme(cfg);
   app.setLoginItemSettings({ openAtLogin: !!cfg.autoLaunch });
   if (cfg.pipelineStartup === 'default') {
     constants.setShouldLoadPipelineState(false);
@@ -1397,7 +1397,7 @@ async function initializeApp() {
 
   // The audio-only document is intentionally tiny and can invoke its preference
   // bridge immediately, so its IPC handlers must exist before navigation starts.
-  ipcHandlers.registerIpcHandlers();
+  ipcHandlers.registerIpcHandlers({ onConfigSaved: applyNativeTheme });
 
   // Create the main window
   createWindow();

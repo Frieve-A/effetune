@@ -10,6 +10,10 @@
 
 一个实时音频效果处理器，旨在为音频爱好者提升音乐聆听体验。EffeTune 允许您通过各种高质量效果处理任何音频源，从而实时定制并完善您的聆听体验。
 
+### 浏览器扩展
+
+无需虚拟音频设备即可处理一个 Chrome 或 Edge 标签页。请参阅[浏览器扩展指南](browser-extension.md)。
+
 [![Screenshot](../../../images/screenshot.png)](https://effetune.frieve.com/effetune.html)
 
 ## 介绍视频
@@ -88,7 +92,7 @@ EffeTune 专为希望提升音乐聆听体验的音频爱好者而设计。无�
 
 ### 应用设置
 
-打开 **设置 > 配置...**，可选择语言、设置 **启动时显示:**，以及配置 Effect Pipeline 的启动方式。**启动时显示:** 可设为 **Effect Pipeline（默认）** 或 **音乐库**。选择 **音乐库** 后，可从旁边的列表选择首先显示的视图：**曲目**、**专辑**、**艺人**、**流派**、**子文件夹**、**文件夹** 或 **播放列表**。
+打开 **设置 > 配置...**，可选择语言、设置 **启动时显示:**，以及配置 Effect Pipeline 的启动方式。**启动时显示:** 可设为 **Effect Pipeline（默认）** 或 **音乐库**。选择 **音乐库** 后，可从旁边的列表选择首先显示的视图：**曲目**、**专辑**、**艺人**、**流派**、**子文件夹**、**文件夹** 或 **播放列表**。 在**主题**中，可选择应用的配色：Graphite（默认）、Paper、Midnight、Ember或Mint。
 
 受支持的桌面版本还可以通过同一局域网中的 OpenHome 应用进行控制。此功能默认关闭；有关设置、网络访问、兼容性和限制，请参阅 [OpenHome 远程控制](music-library.md#openhome-远程控制桌面应用)。
 
@@ -306,6 +310,7 @@ PC 上的 Chromium 浏览器可以在不同会话间保留对所选音乐文件�
 | 分类 | 效果 | 说明 | 文档 |
 |-----------|--------|-------------|---------------|
 | Analyzer  | Level Meter | 显示带峰值保持的音频电平 | [详情](plugins/analyzer.md#level-meter) |
+| Analyzer  | Note Spectrogram | 以钢琴卷帘图显示随时间变化的估算音高 | [详情](plugins/analyzer.md#note-spectrogram) |
 | Analyzer  | Oscilloscope | 实时波形可视化 | [详情](plugins/analyzer.md#oscilloscope) |
 | Analyzer  | Spectrogram | 显示频谱随时间的变化 | [详情](plugins/analyzer.md#spectrogram) |
 | Analyzer  | Spectrum Analyzer | 实时显示低频、中频和高频的强弱 | [详情](plugins/analyzer.md#spectrum-analyzer) |

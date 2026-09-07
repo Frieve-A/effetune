@@ -82,12 +82,26 @@ test('frozen catalog selects every approved source-backed effect in canonical or
   const catalog = buildCatalog();
   assert.equal(catalog.version, 1);
   assert.deepEqual(catalog.effects.map(effect => effect.type), [...PUBLIC_EFFECT_TYPES]);
-  assert.equal(catalog.effects.length, 92);
+  assert.equal(catalog.effects.length, 100);
 
   const specs = new Map(Object.values(FROZEN_PARAM_DIRECTORIES).flatMap(directory =>
     loadParamSpecs(path.join(repoRoot, directory))
   ).map(spec => [spec.type, spec]));
-  assert.equal(specs.size, 92);
+  assert.equal(specs.size, 100);
+  const registry = fs.readFileSync(path.join(repoRoot, 'dsp/registry.inc'), 'utf8');
+  const registeredTypes = [...registry.matchAll(/^EFFETUNE_PLUGIN\((\w+),/gm)]
+    .map(match => match[1]).sort();
+  const webTypes = fs.readFileSync(path.join(repoRoot, 'plugins/plugins.txt'), 'utf8')
+    .split(/\r?\n/).filter(line => !line.trim().startsWith('#') && line.includes('|'))
+    .map(line => line.split('|')[2].trim())
+    // Section only groups effects and passes audio through; it has no DSP implementation.
+    .filter(type => type !== 'SectionPlugin').sort();
+  assert.deepEqual(registeredTypes, webTypes, 'Every Web audio effect must have a native DSP kernel');
+  assert.deepEqual(
+    catalog.effects.map(effect => effect.implementation.internalType).sort(),
+    registeredTypes,
+    'Every registered production kernel must have a public binding contract'
+  );
   for (const effect of catalog.effects) {
     const spec = specs.get(effect.implementation.internalType);
     assert.ok(spec, `missing source metadata for ${effect.type}`);
@@ -201,6 +215,7 @@ test('semantic transforms, discrete values, seed tags, and IR slot mapping are f
     required: true
   });
   for (const type of [
+    'CrosstalkCancellation',
     'FIRCrossover',
     'FiveBandFIRPEQ',
     'GroupDelayEQ',
@@ -217,8 +232,8 @@ test('v0.1 named convenience exports exactly match the canonical catalog', () =>
   const expectedTypes = catalog.effects.map(effect => effect.type);
 
   assert.deepEqual(manifest.exports.map(entry => entry.type), expectedTypes);
-  assert.equal(catalog.effects.length, 92);
-  assert.equal(manifest.exports.length, 92);
+  assert.equal(catalog.effects.length, 100);
+  assert.equal(manifest.exports.length, 100);
   for (const entry of manifest.exports) {
     assert.equal(entry.class, entry.type);
     assert.equal(entry.factory, `create${entry.type}`);
@@ -276,7 +291,7 @@ test('public metadata is separated from the frozen private implementation mappin
   assert.equal(privateCatalog.contractDigest, publicCatalog.contractDigests.privateLayoutSha256);
   assert.equal(privateCatalog.channelMapping.stereo, null);
   assert.equal(privateCatalog.channelMapping.all, 'A');
-  assert.equal(Object.keys(privateCatalog.frozenGoldenIndexes).length, 92);
+  assert.equal(Object.keys(privateCatalog.frozenGoldenIndexes).length, 100);
   for (const effect of buildCatalog().effects) {
     const source = effect.implementation.source;
     assert.equal(
@@ -324,8 +339,9 @@ test('public chain and bundle schemas exclude legacy representations', () => {
   assert.deepEqual(chain.required, ['version', 'chain']);
   assert.equal(chain.properties.version.const, 1);
   assert.deepEqual(chain.$defs.channel.enum, [...EFFECT_CHANNELS]);
-  assert.equal(chain.$defs.effect.oneOf.length, 92);
+  assert.equal(chain.$defs.effect.oneOf.length, 100);
   for (const type of [
+    'CrosstalkCancellation',
     'FIRCrossover',
     'FiveBandFIRPEQ',
     'GroupDelayEQ',
@@ -462,7 +478,8 @@ test('generic JavaScript factory requires options for every asset-bearing effect
     'GroupDelayEQ',
     'GroupDelayPEQ',
     'RoomEQ',
-    'IRReverb'
+    'IRReverb',
+    'CrosstalkCancellation'
   ]);
   assert.equal(requiredAssetTypes.includes('Volume'), false);
   assert.match(

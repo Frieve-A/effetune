@@ -90,13 +90,35 @@ function resolveWindowBoundsForRestore() {
   return resolveBounds(constants.getWindowState().bounds || {}, DEFAULT_SIZE, MIN_SIZE);
 }
 
+function restoreMaximizedStateWhileHidden(mainWindow, { startMinimized = false, platform = process.platform } = {}) {
+  if (platform !== 'win32' || startMinimized || !constants.getWindowState().isMaximized) return;
+
+  // Win32 maximize also shows the native window. Keep that transition invisible,
+  // then hide it again before loading the page at its final client size.
+  const opacity = mainWindow.getOpacity();
+  mainWindow.setOpacity(0);
+  mainWindow.maximize();
+  mainWindow.hide();
+  mainWindow.setOpacity(opacity);
+}
+
+function showWindowInRestoredState(mainWindow) {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isMinimized()) return;
+  if (constants.getWindowState().isMaximized && !mainWindow.isMaximized()) {
+    mainWindow.maximize();
+  } else {
+    mainWindow.show();
+  }
+  markRestoreComplete();
+}
+
 function resolveMiniPlayerBounds(bounds) {
   return resolveBounds(bounds || {}, MINI_DEFAULT_SIZE, MINI_MIN_SIZE);
 }
 
 // The rectangle the main window will finally occupy, used to center the splash.
-// When restoring maximized, the window is still un-maximized behind the splash,
-// so derive the maximize target (its display's work area) explicitly.
+// Use the display work area for maximized startup, whether the native window
+// has already been prepared or still needs maximizing on presentation.
 function getSplashTargetBounds() {
   const mainWindow = constants.getMainWindow();
   const normalBounds = mainWindow ? mainWindow.getBounds() : resolveWindowBoundsForRestore();
@@ -269,6 +291,8 @@ module.exports = {
   loadWindowState,
   saveWindowState,
   resolveWindowBoundsForRestore,
+  restoreMaximizedStateWhileHidden,
+  showWindowInRestoredState,
   resolveMiniPlayerBounds,
   getSplashTargetBounds,
   markRestoreComplete,

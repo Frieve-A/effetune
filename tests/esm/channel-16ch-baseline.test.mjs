@@ -135,7 +135,7 @@ test('Matrix scrolling derives its height from the button dimensions and keeps b
   assert.match(css, /overflow:\s*auto/);
   assert.match(css, /min-height:\s*var\(--matrix-button-box\)/);
   assert.match(css, /body\.layout-mobile \.matrix-table-wrapper\s*\{\s*--matrix-button-box:\s*40px/);
-  assert.match(css, /\.matrix-sticky-header\s*\{[^}]*position:\s*sticky;[^}]*top:\s*0;[^}]*background-color:\s*#333/s);
+  assert.match(css, /\.matrix-sticky-header\s*\{[^}]*position:\s*sticky;[^}]*top:\s*0;[^}]*background-color:\s*color-mix\(in srgb,\s*var\(--et-surface-13\),\s*var\(--et-graph-bg-deep\) 25%\)/s);
   assert.match(css, /\.matrix-sticky-channel-header\s*\{[^}]*position:\s*sticky;[^}]*top:\s*var\(--matrix-title-height\)/s);
   assert.match(css, /\.matrix-sticky-row\s*\{[^}]*position:\s*sticky;[^}]*left:\s*0/s);
 });
@@ -168,6 +168,31 @@ test('MultiChannel Panel preserves old array lengths, expands stopped presets, a
   assert.ok(data.every(sample => sample === 0.25));
   const css = fs.readFileSync(new URL('../../plugins/basics/multi_channel_panel.css', import.meta.url), 'utf8');
   assert.match(css, /\.multichannel-panel-link-button\[hidden\]\s*\{\s*display: none;/);
+});
+
+test('MultiChannel Panel active button foregrounds follow their backgrounds and clear together', () => {
+  const Plugin = loadBaselinePlugin('basics/multi_channel_panel.js', 'MultiChannelPanelPlugin');
+  const panel = new Plugin();
+  panel.startAnimation = () => {};
+  panel.setParameters({ m1: true, s1: true, l1: true });
+  panel.createUI();
+  for (const [buttons, background, foreground] of [
+    [panel.muteButtons, 'danger', 'on-status'],
+    [panel.soloButtons, 'success', 'on-status'],
+    [panel.linkButtons, 'accent', 'on-accent']
+  ]) {
+    assert.equal(buttons[0].style.backgroundColor, 'var(--et-' + background + ')');
+    assert.equal(buttons[0].style.color, 'var(--et-' + foreground + ')');
+  }
+  assert.equal(panel.muteButtons[1].style.color, 'var(--et-on-status)');
+  assert.equal(panel.soloButtons[1].style.color, 'var(--et-on-status)');
+  panel.setMute(0, false);
+  panel.setSolo(0, false);
+  panel.setLink(0, false);
+  for (const button of [panel.muteButtons[0], panel.muteButtons[1], panel.soloButtons[0], panel.soloButtons[1], panel.linkButtons[0]]) {
+    assert.equal(button.style.backgroundColor, '');
+    assert.equal(button.style.color, '');
+  }
 });
 
 test('MultiChannel Panel reset and preset recall clear omitted upper aggregate defaults', () => {

@@ -136,6 +136,26 @@ bool closeTo(float actual, float expected, float tolerance = 0.0001F) noexcept {
   return (difference < 0.0F ? -difference : difference) <= tolerance;
 }
 
+void testStereoPassthrough() {
+  Harness harness;
+  const auto checkStereo = [&]() {
+    std::array<float, 256> audio{};
+    for (std::size_t index = 0u; index < audio.size(); ++index)
+      audio[index] = static_cast<float>(index) / 128.0F - 1.0F;
+    const auto original = audio;
+    harness.kernel->process(audio.data(), 2u, 128u, {0.0});
+    FIR_CROSSOVER_CHECK(audio == original);
+  };
+  checkStereo();
+  harness.stage({128.0F, 64.0F, 2.0F});
+  FIR_CROSSOVER_CHECK(harness.commit(makePayload(257u, {0.25F, 0.75F}), 2u, 128u));
+  checkStereo();
+  harness.prepareToActive(4u);
+  checkStereo();
+  harness.kernel->clearAsset(0u);
+  checkStereo();
+}
+
 void testMatrixRouting() {
   for (std::uint32_t bands = 2u; bands <= 4u; ++bands) {
     Harness harness;
@@ -226,6 +246,7 @@ void testMalformedMatrixIsRejected() {
 } // namespace
 
 int main() {
+  testStereoPassthrough();
   testMatrixRouting();
   testZeroLatencyActivationWaitsForCompleteWetBlock();
   testSafeReplacementMute();

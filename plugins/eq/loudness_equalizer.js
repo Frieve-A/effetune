@@ -413,7 +413,7 @@ class LoudnessEqualizerPlugin extends PluginBase {
         ctx.clearRect(0, 0, width, height);
 
         // Draw grid
-        ctx.strokeStyle = '#444';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth = isMobileLayout ? 1 : 0.5;
         ctx.font = '12px Arial';
         const freqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
@@ -424,7 +424,7 @@ class LoudnessEqualizerPlugin extends PluginBase {
             ctx.lineTo(x, height);
             ctx.stroke();
             if (freq > 20 && freq < 20000) {
-                ctx.fillStyle = '#666';
+                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
                 ctx.textAlign = 'center';
                 ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, height - 24);
             }
@@ -439,14 +439,14 @@ class LoudnessEqualizerPlugin extends PluginBase {
             ctx.lineTo(width, y);
             ctx.stroke();
             if (db > -6 && db < 18) {
-                ctx.fillStyle = '#666';
+                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
                 ctx.textAlign = 'right';
                 ctx.fillText(`${db}`, 48, y + 4);
             }
         });
 
         // Draw labels
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         ctx.font = '14px Arial';
         ctx.textAlign = 'center';
         ctx.fillText('Frequency (Hz)', width / 2, height - 5);
@@ -504,7 +504,7 @@ class LoudnessEqualizerPlugin extends PluginBase {
 
         // Draw frequency response curve using the actual filter transfer functions
         ctx.beginPath();
-        ctx.strokeStyle = '#00ff00';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = isMobileLayout ? 2 : 1;
         for (let i = 0; i < width; i++) {
             // Calculate frequency on a logarithmic scale between 20Hz and 20kHz

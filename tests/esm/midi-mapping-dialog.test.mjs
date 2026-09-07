@@ -175,8 +175,17 @@ test('dialog keeps duplicate MIDI keys out of device labels and mapping summarie
     windowRef: { document: { createElement() { return element(); } } }
   });
   const devices = dialog.renderDevices();
-  assert.equal(devices.children[1].children[0].children[0].textContent, '● Twin');
-  assert.deepEqual(protocolReads, [key]);
+  assert.equal(devices.children[1].children[0].children[0].children[0].textContent, 'Twin');
+  const status = devices.children[1].children[0].children[0].children.at(-1);
+  assert.equal(status.textContent, 'Connected');
+  assert.equal(status.className, 'midi-device-status is-connected');
+  manager.listInputs = () => [{ name: 'Twin', key, connected: false }];
+  const disconnectedRow = dialog.renderDevices().children[1].children[0];
+  assert.equal(disconnectedRow.children[0].children[0].textContent, 'Twin');
+  const disconnectedStatus = disconnectedRow.children[0].children.at(-1);
+  assert.equal(disconnectedStatus.textContent, 'Disconnected');
+  assert.equal(disconnectedStatus.className, 'midi-device-status is-disconnected');
+  assert.deepEqual(protocolReads, [key, key]);
   const protocol = devices.children[1].children[0].children[1].children[0].children[0];
   protocol.listeners.get('change')({ target: { value: 'mcu' } });
   assert.deepEqual(protocolWrites, [[key, 'mcu']]);

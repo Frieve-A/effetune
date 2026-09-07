@@ -417,12 +417,20 @@ export class DspEngineBinding {
         if (this.engine) {
             throw new DspBindingError('DSP engine already exists');
         }
-        const engine = this.exports.et_engine_create() >>> 0;
-        if (!engine) {
-            throw new DspBindingError('DSP engine creation failed');
+        const preparing = this._preparing;
+        this._preparing = true;
+        try {
+            const engine = this.exports.et_engine_create() >>> 0;
+            if (!engine) {
+                throw new DspBindingError('DSP engine creation failed');
+            }
+            this.engine = engine;
+            return engine;
+        } finally {
+            // Engine allocation is a control-rate boundary, before audio processing.
+            this._refreshViews();
+            this._preparing = preparing;
         }
-        this.engine = engine;
-        return engine;
     }
 
     destroyEngine() {

@@ -238,6 +238,36 @@ test('Stereo Meter draws full-resolution age-graded samples and keeps payload st
   assert.ok(fillRects.some(call => call[0] === 240 && call[1] === 464 && call[2] === 80));
 });
 
+test('Stereo Meter caches opaque trace colors fading into the current graph background', () => {
+  const runtime = loadStereoMeter();
+  const plugin = new runtime.StereoMeterPlugin();
+  installDrawingContext(plugin);
+  let background = 'rgba(240, 242, 244, 1)';
+  let trace = 'rgba(20, 100, 220, 1)';
+  runtime.windowRef.ThemePalette = { get: name => ({ 'graph-bg-deep': background, 'graph-trace': trace })[name] ?? '' };
+  plugin.sampleRate = 100;
+  plugin.currentMeasurements = {
+    xBuffer: new Float32Array(16), yBuffer: new Float32Array(16),
+    currentPosition: 10, peakBuffer: new Float32Array(360),
+    correlation: 0, balance: 0, peakL: 0, peakR: 0
+  };
+  plugin.drawMeter();
+  assert.equal(plugin._colorLookup[0], 'rgb(240,242,244)');
+  assert.equal(plugin._colorLookup[255], 'rgb(20,100,220)');
+  assert.equal(plugin._colorLookup[128], 'rgb(130,171,232)');
+  plugin._colorLookup[128] = 'cache sentinel';
+  plugin.drawMeter();
+  assert.equal(plugin._colorLookup[128], 'cache sentinel');
+  trace = 'rgba(200, 80, 40, 1)';
+  plugin.drawMeter();
+  assert.equal(plugin._colorLookup[255], 'rgb(200,80,40)');
+  assert.notEqual(plugin._colorLookup[128], 'cache sentinel');
+  background = 'rgba(0, 0, 0, 1)';
+  plugin.drawMeter();
+  assert.equal(plugin._colorLookup[0], 'rgb(0,0,0)');
+  assert.equal(plugin._colorLookup[255], 'rgb(200,80,40)');
+});
+
 test('Stereo Meter resets its sample ring after sequence or payload discontinuities', () => {
   const hub = createHub();
   const runtime = loadStereoMeter({ hub });

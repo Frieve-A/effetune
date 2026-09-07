@@ -205,7 +205,7 @@ test('the packaged audio warm-up document contains only the startup dispatcher',
     /loadFile\(constants\.getIsFirstLaunch\(\) \? 'startup-audio\.html' : 'effetune\.html'\)/
   );
   assert.match(mainSource, /mainWindow\.loadFile\('effetune\.html'\)/);
-  const ipcRegistrationIndex = mainSource.indexOf('ipcHandlers.registerIpcHandlers();');
+  const ipcRegistrationIndex = mainSource.indexOf('ipcHandlers.registerIpcHandlers(');
   const createWindowCallIndex = mainSource.indexOf('  createWindow();', ipcRegistrationIndex);
   assert.ok(ipcRegistrationIndex >= 0);
   assert.ok(createWindowCallIndex > ipcRegistrationIndex);

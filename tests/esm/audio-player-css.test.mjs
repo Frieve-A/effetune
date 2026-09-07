@@ -30,8 +30,8 @@ test('active player buttons replace the neutral face gradient with the accent su
 
   const pressedRule = getRule(css, baseSelector);
   assert.match(pressedRule, /background:\s*linear-gradient\(/);
-  assert.match(pressedRule, /#3f8fe8/);
-  assert.match(pressedRule, /border-color:\s*#72b9ff;/);
+  assert.match(pressedRule, /var\(--et-accent-pressed\)/);
+  assert.match(pressedRule, /border-color:\s*var\(--et-accent-hover\);/);
 
   const hoverRule = getRule(css, hoverSelector);
   assert.match(hoverRule, /background:\s*linear-gradient\(/);

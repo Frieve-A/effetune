@@ -412,7 +412,7 @@ function collectDigestFiles(directory, output = []) {
     if (entry.isDirectory()) {
       collectDigestFiles(fullPath, output);
     } else if (entry.isFile() &&
-               (/\.(?:c|cc|cpp|h|hpp|inc|cmake|json|js|mjs)$/i.test(entry.name) ||
+               (/\.(?:c|cc|cpp|h|hpp|inc|cmake|json|js|mjs|py|bin)$/i.test(entry.name) ||
                 ['CMakeLists.txt', 'EMSDK_VERSION', 'exports.txt'].includes(entry.name))) {
       output.push(fullPath);
     }
@@ -438,7 +438,9 @@ export function sourceDigest() {
     const filePath = path.join(repoRoot, ...relative.split('/'));
     hash.update(relative);
     hash.update('\0');
-    hash.update(normalized(fs.readFileSync(filePath, 'utf8')));
+    hash.update(relative.endsWith('.bin')
+      ? fs.readFileSync(filePath)
+      : normalized(fs.readFileSync(filePath, 'utf8')));
     hash.update('\0');
   }
   hash.update('baseline:-O3,-flto,standalone,growth,8MiB,256MiB\0');

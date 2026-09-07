@@ -36,7 +36,7 @@ const GraphUtils = {
         });
         
         // Clear canvas
-        ctx.fillStyle = '#1a1a1a';
+        ctx.fillStyle = window.ThemePalette?.get('graph-base') ?? '';
         ctx.fillRect(0, 0, width, height);
         
         // Draw grid
@@ -65,7 +65,7 @@ const GraphUtils = {
         const maxTime = 1 + (sweepTimeSeconds * averagingCount) + 1; // 1s delay + sweep time + 1s reserve
         
         // Draw axes
-        ctx.strokeStyle = '#555';
+        ctx.strokeStyle = window.ThemePalette?.get('graph-grid-strong') ?? '';
         ctx.lineWidth = 1;
         
         // X-axis
@@ -81,9 +81,9 @@ const GraphUtils = {
         ctx.stroke();
         
         // Draw grid lines and labels for y-axis (levels)
-        ctx.strokeStyle = '#333';
+        ctx.strokeStyle = window.ThemePalette?.get('graph-grid-subtle') ?? '';
         ctx.lineWidth = 0.5;
-        ctx.fillStyle = '#aaa';
+        ctx.fillStyle = window.ThemePalette?.get('graph-tone-65') ?? '';
         ctx.font = '10px Arial';
         ctx.textAlign = 'right';
         
@@ -117,7 +117,7 @@ const GraphUtils = {
         }
         
         // Draw axes labels
-        ctx.fillStyle = '#ccc';
+        ctx.fillStyle = window.ThemePalette?.get('graph-label-strong') ?? '';
         ctx.font = '12px Arial';
         
         // X-axis label
@@ -154,7 +154,7 @@ const GraphUtils = {
         const maxTime = 1 + (sweepTimeSeconds * averagingCount) + 1; // 1s delay + sweep time + 1s reserve
         
         // Draw level data
-        ctx.strokeStyle = '#4e79a7';
+        ctx.strokeStyle = '#4e79a7'; // theme-allow: Channel and response identity colors.
         ctx.lineWidth = 2;
         ctx.beginPath();
         
@@ -193,7 +193,7 @@ const GraphUtils = {
         const ctx = canvas.getContext('2d');
         
         // Clear canvas
-        ctx.fillStyle = '#1a1a1a';
+        ctx.fillStyle = window.ThemePalette?.get('graph-base') ?? '';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
         const curves = Array.isArray(frequencyResponse) &&
@@ -218,7 +218,7 @@ const GraphUtils = {
             const warnings = aggregateLevelWarnings(curves);
             if (warnings.low.length || warnings.high.length) {
                 ctx.font = '14px Arial';
-                ctx.fillStyle = '#ff3333';
+                ctx.fillStyle = window.ThemePalette?.get('graph-marker') ?? '';
                 ctx.textAlign = 'center';
                 if (warnings.low.length) {
                     const channels = warnings.low.map(channelDisplayLabel).join(', ');
@@ -242,13 +242,13 @@ const GraphUtils = {
             return;
         }
 
-        this.drawFrequencyResponseGraph(ctx, frequencyResponse, '#4e79a7');
+        this.drawFrequencyResponseGraph(ctx, frequencyResponse, '#4e79a7'); // theme-allow: Channel and response identity colors.
         
         // Display warning message if signal level is too low
         if (maxSignalLevel !== undefined && maxSignalLevel <= -36) {
             // Show low signal level warning on graph
             ctx.font = '14px Arial';
-            ctx.fillStyle = '#ff3333';
+            ctx.fillStyle = window.ThemePalette?.get('graph-marker') ?? '';
             ctx.textAlign = 'center';
             ctx.fillText(i18n.t('warning:signalTooLow') || 'The measurement signal was too low to give accurate results', canvas.width / 2, 40);
         }
@@ -257,7 +257,7 @@ const GraphUtils = {
         if (maxSignalLevel !== undefined && maxSignalLevel > -1) {
             // Show high signal level warning on graph
             ctx.font = '14px Arial';
-            ctx.fillStyle = '#ff3333';
+            ctx.fillStyle = window.ThemePalette?.get('graph-marker') ?? '';
             ctx.textAlign = 'center';
             ctx.fillText(i18n.t('warning:signalTooHigh') || 'The measurement signal was too high to give accurate results', canvas.width / 2, 40);
         }
@@ -304,7 +304,7 @@ const GraphUtils = {
         });
         
         // Draw axes
-        ctx.strokeStyle = '#555';
+        ctx.strokeStyle = window.ThemePalette?.get('graph-grid-strong') ?? '';
         ctx.lineWidth = 1;
         
         // X-axis
@@ -343,7 +343,7 @@ const GraphUtils = {
         ctx.stroke();
         
         // Draw grid lines
-        ctx.strokeStyle = '#333';
+        ctx.strokeStyle = window.ThemePalette?.get('graph-grid-subtle') ?? '';
         ctx.lineWidth = 0.5;
         
         // Frequency grid lines (decades)
@@ -356,7 +356,7 @@ const GraphUtils = {
             ctx.stroke();
             
             // Draw label
-            ctx.fillStyle = '#aaa';
+            ctx.fillStyle = window.ThemePalette?.get('graph-tone-65') ?? '';
             ctx.font = '10px Arial';
             ctx.textAlign = 'center';
             ctx.fillText(this.formatFrequency(freq), x, height - padding.bottom + 15);
@@ -372,14 +372,14 @@ const GraphUtils = {
             ctx.stroke();
             
             // Draw label
-            ctx.fillStyle = '#aaa';
+            ctx.fillStyle = window.ThemePalette?.get('graph-tone-65') ?? '';
             ctx.font = '10px Arial';
             ctx.textAlign = 'right';
             ctx.fillText(`${db} dB`, padding.left - 5, y + 3);
         }
         
         // Draw axis labels
-        ctx.fillStyle = '#ccc';
+        ctx.fillStyle = window.ThemePalette?.get('graph-label-strong') ?? '';
         ctx.font = '12px Arial';
         ctx.textAlign = 'center';
         ctx.fillText('Frequency (Hz)', width / 2, height - 5);

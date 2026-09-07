@@ -10,8 +10,8 @@
     "music",
     "utilities"
   ],
-  "background_color": "#000000",
-  "theme_color": "#000000",
+  "background_color": "#171717",
+  "theme_color": "#171717",
   "icons": [
     {
       "src": "images/icon_180x180.png",

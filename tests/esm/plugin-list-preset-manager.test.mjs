@@ -368,7 +368,7 @@ test('category rows and preset items wire collapse, drag, hover, and fallback to
     assert.equal(item.querySelector('.plugin-description').textContent, 'Warm preset');
     await item.dispatchEvent('dblclick');
     await item.dispatchEvent('mouseenter');
-    assert.equal(item.style.backgroundColor, '#3a3a3a');
+    assert.equal(item.style.backgroundColor, 'var(--et-surface-17)');
     await item.dispatchEvent('mouseleave');
     assert.equal(item.style.backgroundColor, '');
     assert.equal(item.querySelector('.plugin-description').style.left, '130px');

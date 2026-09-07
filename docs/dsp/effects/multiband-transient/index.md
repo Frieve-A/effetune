@@ -143,6 +143,7 @@ Each frequency band has independent transient shaping controls:
 - Time markers for reference
 - Interactive band selection
 - Clear visual feedback of transient shaping activity
+- The graphs scroll smoothly from right to left, with the latest values at the right edge.
 
 ### Recommended Settings
 

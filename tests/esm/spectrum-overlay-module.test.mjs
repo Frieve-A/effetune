@@ -1,3 +1,4 @@
+import { installThemePaletteStub } from '../helpers/theme-palette-stub.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
@@ -39,7 +40,7 @@ test('overlay is dormant until enabled and releases all work when disabled', () 
   assert.equal(h.frames.size + h.timers.size + h.resizes.size + h.intersections.size + h.window.workletNode.listeners.size, 0);
   const css = fs.readFileSync(new URL('../../plugins/spectrum-overlay.css', import.meta.url), 'utf8');
   assert.match(css, /pointer-events:\s*none/);
-  assert.match(css, /mix-blend-mode:\s*screen/);
+  assert.doesNotMatch(css, /mix-blend-mode:/);
 });
 
 test('detached reattachment and IO suspension preserve intent and never release the route', () => {
@@ -133,6 +134,7 @@ test('node replacement replays intent and effective tap on frames and while susp
 
 test('After and comparison modes analyze only their requested spectra and comparison paints signed change', () => {
   const h = createOverlayHarness();
+  installThemePaletteStub(h.window);
   const { instance } = h.attach();
   let stopped = 0;
   for (const type of ['mousedown', 'pointerdown']) instance.button.listeners.get(type)({ stopPropagation() { stopped++; } });
@@ -152,7 +154,7 @@ test('After and comparison modes analyze only their requested spectra and compar
   assert.equal(instance.inputLevels, null);
   assert.ok(instance.levels[0] < -6 && instance.levels[0] > -6.03);
   assert.deepEqual(instance.canvas.fillStyles, []);
-  assert.equal(instance.canvas.strokeStyles.at(-1), 'rgba(140,190,255,0.55)');
+  assert.equal(instance.canvas.strokeStyles.at(-1), 'stub:graph-overlay-after');
 
   instance.toggle();
   const message = {
@@ -169,8 +171,8 @@ test('After and comparison modes analyze only their requested spectra and compar
   h.frame();
   assert.ok(instance.inputLevels[0] > -0.01);
   assert.ok(instance.levels[0] < -6 && instance.levels[0] > -6.03);
-  assert.equal(instance.canvas.fillStyles.at(-1), 'rgba(140,190,255,0.55)');
-  assert.equal(instance.canvas.strokeStyles.at(-1), 'rgba(190,190,190,0.9)');
+  assert.equal(instance.canvas.fillStyles.at(-1), 'stub:graph-overlay-after');
+  assert.equal(instance.canvas.strokeStyles.at(-1), 'stub:graph-overlay-compare');
 
   instance.canvas.drawCalls.length = 0;
   instance.canvas.fillStyles.length = 0;
@@ -180,10 +182,10 @@ test('After and comparison modes analyze only their requested spectra and compar
   instance.levels.fill(-60, 20);
   instance._draw();
   assert.deepEqual(instance.canvas.fillStyles, [
-    'rgba(255,190,140,0.55)',
-    'rgba(140,190,255,0.55)'
+    'stub:graph-overlay-positive',
+    'stub:graph-overlay-after'
   ]);
-  assert.deepEqual(instance.canvas.strokeStyles, ['rgba(190,190,190,0.9)']);
+  assert.deepEqual(instance.canvas.strokeStyles, ['stub:graph-overlay-compare']);
   assert.deepEqual(
     instance.canvas.drawCalls.filter(([method]) => method === 'fill' || method === 'stroke')
       .map(([method]) => method),

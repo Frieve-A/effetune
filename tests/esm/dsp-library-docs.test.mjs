@@ -144,7 +144,7 @@ test('DSP landing explains the cross-surface workflow without competitor framing
   assert.match(landing, /What stays consistent \{#library-strengths\}/);
   assert.match(
     landing,
-    /Five analyzers expose opt-in decoded observations in v0\.1/
+    /Six analyzers expose opt-in decoded observations in v0\.1/
   );
   assert.match(landing, /all other catalog telemetry remains metadata-only/);
   assert.doesNotMatch(landing, /v0\.1 has no public observation API/);
@@ -632,7 +632,7 @@ test('Phase 1 docs publish symmetric catalogs, latency, and bundle writers', () 
   assert.match(javascript, /class Chain \{/);
   assert.match(javascript, /interface ChainStream \{/);
   assert.match(javascript, /EffeTuneNode\.create\(/);
-  assert.match(javascript, /all 92 root class\/factory pairs/);
+  assert.match(javascript, /all 100 root class\/factory pairs/);
   assert.match(javascript, /numerically symmetric with Python/);
   assert.match(assets, /`effetune bundle pack CHAIN DESTINATION --asset ID=FILE`/);
   assert.match(assets, /public `encodeEta1\(\)` helper/);

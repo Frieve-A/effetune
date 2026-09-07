@@ -1,3 +1,4 @@
+import { installThemePaletteStub } from '../helpers/theme-palette-stub.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
@@ -146,6 +147,7 @@ function loadLevelMeter({ hub = null } = {}) {
     DataView,
     ArrayBuffer
   };
+  installThemePaletteStub(context.window);
   vm.runInNewContext(source, context, { filename: 'level_meter.js' });
   return {
     LevelMeterPlugin: windowRef.LevelMeterPlugin,
@@ -329,4 +331,109 @@ test('LevelMeter accepts all 16 channels including the last clip bit', () => {
   assert.equal(received.channels.length, 16);
   assert.equal(received.channels[15].clipped, true);
   assert.equal(received.channels[15].peak, 0.5);
+});
+
+function captureMeter(plugin) {
+  const bars = [], markers = [], texts = [];
+  const gradient = { addColorStop() {} };
+  const ctx = {
+    clearRect() { bars.length = 0; markers.length = 0; texts.length = 0; },
+    fillRect(x, y, width) {
+      if (this.fillStyle === gradient) bars.push(width);
+      if (this.fillStyle === 'stub:text-primary') markers.push(x + 1);
+    },
+    fillText(text) { texts.push(text); },
+    createLinearGradient() { return gradient; }
+  };
+  plugin.foregroundCanvas = { getContext: () => ctx };
+  plugin.canvasWidth = 1440;
+  plugin.canvasHeight = 64;
+  plugin.dbStart = -144;
+  plugin.dbRange = 144;
+  plugin.overloadIndicator = { style: {} };
+  return now => {
+    plugin.updateMeter(now);
+    return { levels: bars.map(width => width / 10 - 144), peaks: markers.map(x => x / 10 - 144), texts: [...texts] };
+  };
+}
+
+function assertNear(actual, expected) {
+  assert.ok(Math.abs(actual - expected) < 1e-8, 'expected ' + expected + ', got ' + actual);
+}
+
+test('LevelMeter renders elapsed decay and the exact one-second hold without changing measurements', () => {
+  const runtime = loadLevelMeter();
+  const plugin = new runtime.LevelMeterPlugin();
+  const draw = captureMeter(plugin);
+  runtime.setNow(1000);
+  plugin.process({ measurements: { channels: [{ peak: 1 }] } });
+  runtime.setNow(1990);
+  plugin.process({ measurements: { channels: [{ peak: 0.1 }] } });
+  const stored = JSON.stringify({ lv: plugin.lv, pl: plugin.pl, ph: plugin.ph });
+  assertNear(draw(1995).levels[0], -19.9);
+  assertNear(draw(1995).peaks[0], 0);
+  assertNear(draw(2005).peaks[0], -0.1);
+  assert.equal(draw(2005).texts[0], '-0.1 dB');
+  assert.equal(JSON.stringify({ lv: plugin.lv, pl: plugin.pl, ph: plugin.ph }), stored);
+  assertNear(draw(90000).peaks[0], -20 * (1 / 60 - 0.01));
+  runtime.setNow(2010);
+  plugin.process({ measurements: { channels: [{ peak: 0.1 }] } });
+  assertNear(draw(2010).peaks[0], -0.2);
+
+  runtime.setNow(2200);
+  plugin.process({ measurements: { channels: [{ peak: 1 }] } });
+  runtime.setNow(2300);
+  plugin.process({ measurements: { channels: [{ peak: 0 }] } });
+  assertNear(plugin.lv[0], -2);
+  assertNear(draw(2304).levels[0], -2.08);
+  runtime.setNow(50000);
+  plugin.process({ measurements: { channels: [{ peak: 0 }] } });
+  assertNear(draw(50010).levels[0], -144);
+});
+
+test('LevelMeter keeps steady levels stable and freezes across repeated effect and section pauses', () => {
+  const runtime = loadLevelMeter();
+  const plugin = new runtime.LevelMeterPlugin();
+  const draw = captureMeter(plugin);
+  let now = 1000;
+  const emit = peak => plugin.process({ measurements: { channels: [{ peak }] } });
+  runtime.setNow(now);
+  emit(0.5);
+  const steady = draw(now);
+  assert.deepEqual(draw(now + 15), steady);
+  let callback;
+  plugin.isVisible = true;
+  plugin.requestPowerAnimationFrame = next => { callback = next; return 1; };
+  for (let cycle = 0; cycle < 8; cycle++) {
+    now += 100;
+    runtime.setNow(now);
+    emit(1);
+    now += 100;
+    runtime.setNow(now);
+    emit(0);
+    now += 5;
+    runtime.setNow(now);
+    const frozen = draw(now);
+    plugin.stopAnimation();
+    const gate = cycle % 2 ? '_sectionEnabled' : 'enabled';
+    plugin[gate] = false;
+    now += 10000;
+    runtime.setNow(now);
+    emit(0.1);
+    if (plugin.enabled) assert.deepEqual(draw(now), frozen);
+    plugin[gate] = true;
+    plugin.startAnimation();
+    const resumed = draw(now);
+    assertNear(resumed.levels[0], frozen.levels[0]);
+    assertNear(resumed.peaks[0], frozen.peaks[0]);
+    assert.deepEqual(resumed.texts, frozen.texts);
+    emit(1);
+    assertNear(draw(now).levels[0], 0);
+    now += 100;
+    runtime.setNow(now);
+    emit(0);
+    callback(now + 4);
+    assertNear(draw(now + 4).levels[0], -2.08);
+  }
+  plugin.cleanup();
 });

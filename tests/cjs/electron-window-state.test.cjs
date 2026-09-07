@@ -68,6 +68,51 @@ function readSavedWindowState(userDataPath) {
   return JSON.parse(fs.readFileSync(path.join(userDataPath, 'window-state.json'), 'utf8'));
 }
 
+test('Windows prepares maximized geometry invisibly before restoring opacity', () => {
+  const { module } = createHarness({ windowState: { isMaximized: true } });
+  const calls = [];
+  const window = {
+    getOpacity: () => 1,
+    setOpacity: opacity => calls.push(['opacity', opacity]),
+    maximize: () => calls.push(['maximize']),
+    hide: () => calls.push(['hide'])
+  };
+  module.restoreMaximizedStateWhileHidden(window, { platform: 'win32' });
+  assert.deepEqual(calls, [['opacity', 0], ['maximize'], ['hide'], ['opacity', 1]]);
+});
+
+test('normal, minimized, and non-Windows startup leave native presentation unchanged', () => {
+  for (const options of [
+    { isMaximized: false, platform: 'win32' },
+    { isMaximized: true, platform: 'win32', startMinimized: true },
+    { isMaximized: true, platform: 'darwin' },
+    { isMaximized: true, platform: 'linux' }
+  ]) {
+    const { module } = createHarness({ windowState: { isMaximized: options.isMaximized } });
+    module.restoreMaximizedStateWhileHidden({}, options);
+  }
+});
+
+test('presentation shows a prepared maximized window without another size transition', () => {
+  const { module } = createHarness({ windowState: { isMaximized: true } });
+  const calls = [];
+  const window = {
+    isDestroyed: () => false,
+    isMinimized: () => false,
+    isMaximized: () => true,
+    show: () => calls.push('show'),
+    maximize: () => calls.push('maximize')
+  };
+  module.showWindowInRestoredState(window);
+  assert.deepEqual(calls, ['show']);
+  window.isMaximized = () => false;
+  module.showWindowInRestoredState(window);
+  assert.deepEqual(calls, ['show', 'maximize']);
+  window.isMinimized = () => true;
+  module.showWindowInRestoredState(window);
+  assert.deepEqual(calls, ['show', 'maximize']);
+});
+
 test('resolveWindowBoundsForRestore centers default size when no saved position exists', () => {
   const { module } = createHarness({
     windowState: { bounds: {}, isMaximized: false },

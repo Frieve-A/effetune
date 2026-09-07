@@ -6,7 +6,8 @@ export const ASSET_EFFECT_TYPES = Object.freeze([
   'GroupDelayEQ',
   'GroupDelayPEQ',
   'RoomEQ',
-  'IRReverb'
+  'IRReverb',
+  'CrosstalkCancellation'
 ]);
 
 const COEFFICIENTS = Object.freeze({
@@ -42,7 +43,13 @@ export function assetSetup(effect, sampleRate = 48000, irVariant = 'a') {
           { inputSlot: 1, outputSlot: 3, irChannel: 1 }
         ]
       })
-    : encodeEta1({
+    : effect.type === 'CrosstalkCancellation'
+      ? encodeEta1({
+          channels: [coefficients[0], coefficients[1], coefficients[1], coefficients[0]],
+          sampleRate,
+          topology: 'trueStereo'
+        })
+      : encodeEta1({
         channels: [coefficients[0]],
         sampleRate,
         topology: 'mono'

@@ -425,15 +425,22 @@ async function withAudioManager(options = {}, callback) {
       removeItem(key) { storageValues.delete(key); }
     }
   };
+  const documentObject = {
+    listeners: [],
+    addEventListener(type, listener, listenerOptions) {
+      calls.push(['document.addEventListener', type, listenerOptions]);
+      this.listeners.push({ type, listener, listenerOptions });
+    },
+    removeEventListener(type, listener, listenerOptions) {
+      calls.push(['document.removeEventListener', type, listener, listenerOptions]);
+      this.listeners = this.listeners.filter(candidate =>
+        candidate.type !== type || candidate.listener !== listener ||
+        candidate.listenerOptions !== listenerOptions);
+    }
+  };
   const globals = {
     window: windowObject,
-    document: {
-      listeners: [],
-      addEventListener(type, listener, listenerOptions) {
-        calls.push(['document.addEventListener', type, listenerOptions]);
-        this.listeners.push({ type, listener, listenerOptions });
-      }
-    },
+    document: documentObject,
     console: createConsole(calls),
     AudioWorkletNode: createAudioWorkletNodeClass(calls, options.audioWorkletNodeOptions),
     setTimeout(fn, delay) {
@@ -472,7 +479,8 @@ async function withAudioManager(options = {}, callback) {
       pipelineManager,
       storageValues,
       timers,
-      windowObject
+      windowObject,
+      documentObject
     });
   });
 }
@@ -512,6 +520,37 @@ function installSilentInputSelection(manager, calls, {
   };
   return { liveSource, silentSource, requestedRevisions };
 }
+
+test('releases the DSP visibility listener once when captured streams close repeatedly', async () => {
+  await withAudioManager({}, async ({ calls, documentObject, manager }) => {
+    const visibilityListener = documentObject.listeners.find(
+      ({ type }) => type === 'visibilitychange'
+    )?.listener;
+    assert.equal(typeof visibilityListener, 'function');
+
+    manager.powerPolicyController = {
+      dispose() {
+        calls.push(['power.dispose']);
+      }
+    };
+
+    await manager.closeCapturedStream();
+    assert.equal(
+      documentObject.listeners.some(({ listener }) => listener === visibilityListener),
+      false
+    );
+    assert.deepEqual(
+      calls.filter(([type]) => type === 'document.removeEventListener'),
+      [['document.removeEventListener', 'visibilitychange', visibilityListener, undefined]]
+    );
+
+    await manager.closeCapturedStream();
+    assert.equal(
+      calls.filter(([type]) => type === 'document.removeEventListener').length,
+      1
+    );
+  });
+});
 
 test('manages pipeline selection, copying, state, and history integration', async () => {
   await withAudioManager({}, async ({ calls, manager, originalPipelineProcessor, pipelineManager }) => {

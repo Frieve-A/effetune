@@ -1,6 +1,6 @@
 ---
 title: "Plugins d'analyse - EffeTune"
-description: "Plugins de visualisation audio, dont Level Meter, Oscilloscope, Spectrogram, Spectrum Analyzer et Stereo Meter."
+description: "Plugins de visualisation audio, dont Level Meter, Note Spectrogram, Oscilloscope, Spectrogram, Spectrum Analyzer et Stereo Meter."
 lang: fr
 ---
 
@@ -11,6 +11,7 @@ Une collection de plugins qui vous permettent de visualiser votre musique de man
 ## Liste des plugins
 
 - [Level Meter](#level-meter) - Affiche le niveau du signal numérique et les risques de clipping
+- [Note Spectrogram](#note-spectrogram) - Affiche les hauteurs estimées au fil du temps sous forme de piano roll
 - [Oscilloscope](#oscilloscope) - Affiche la visualisation de la forme d'onde en temps réel
 - [Spectrogram](#spectrogram) - Crée de magnifiques motifs visuels à partir de votre musique
 - [Spectrum Analyzer](#spectrum-analyzer) - Affiche les différentes fréquences de votre musique
@@ -22,9 +23,48 @@ Un affichage visuel qui montre le niveau du signal en temps réel. Il vous aide 
 
 ### Guide de Visualisation
 - La barre s'étend vers la droite quand le niveau du signal augmente
-- Le marqueur blanc conserve brièvement le niveau le plus élevé récent
+- Le marqueur blanc conserve un nouveau pic pendant une seconde, puis descend progressivement
 - L'avertissement OVERLOAD signifie que le signal a dépassé la plage numérique sûre et peut se déformer
 - Pour une lecture propre, évitez les niveaux rouges fréquents et les avertissements OVERLOAD ; réglez le volume d'écoute réel sur votre appareil
+
+## Note Spectrogram
+
+Affiche les fréquences fondamentales (F0) estimées de A0 à C8 dans un piano roll défilant, sans modifier le son. Utilisez-le pour suivre les notes d'un accord, les lignes vocales et mélodiques changeantes, une ligne de basse et les notes superposées dans différentes octaves.
+
+### Guide de Visualisation
+
+- **Vertical** affiche le temps de gauche à droite, avec le clavier et le son actuel sur le bord droit. Les notes aiguës apparaissent en haut.
+- **Horizontal** place le clavier en bas, avec les notes graves à gauche et les aiguës à droite. Le nouveau son apparaît juste au-dessus du clavier et l’historique défile vers le haut.
+- Les lignes placées sur chaque C délimitent les octaves.
+- Les lignes correspondant aux touches noires utilisent un fond gris presque noir afin de rester reconnaissables lorsqu’aucune note n’est détectée.
+- **Normal** utilise la couleur du tracé du graphique du thème ; **Note Colors** attribue une couleur à chaque note, identique à toutes les octaves. Les deux affichent entre E et F des repères plus sombres que les limites d’octave.
+- **1/12 Octave** affiche une ligne par demi-ton. **High (1/60 Octave)** divise chaque demi-ton en cinq lignes afin de mieux suivre les petites variations de hauteur ; les couleurs sont fondues entre les notes voisines.
+- La couleur suit la confiance du modèle de 0 (couleur de fond) à 1 (couleur complète), y compris pour les notes faiblement détectées, sans seuil d’affichage. La confiance indique dans quelle mesure le modèle estime une note présente ; ce n’est ni un niveau sonore ni une probabilité calibrée.
+- Les touches passent progressivement de leur couleur habituelle à la couleur d’affichage lorsque la confiance de la dernière image augmente, jusqu’à atteindre cette couleur à 1.
+- Changer **Color** recolore l’historique existant.
+
+### Ce que vous pouvez voir
+
+- Les accords apparaissent sous forme de plusieurs lignes lumineuses au même instant
+- Les mélodies et les lignes de basse dessinent des trajectoires entre les rangées de notes
+- L'affichage ne crée ni MIDI ni partition, n'identifie pas les instruments et ne peut pas séparer entièrement tous les sons simultanés. Les superpositions complexes peuvent masquer une partie d'une mélodie ou d'une harmonie, tandis que les percussions, le bruit et les répétitions peu claires peuvent produire occasionnellement une hauteur incorrecte.
+
+### Paramètres
+
+- **Color** - Choisit les couleurs d’affichage sans modifier les estimations de notes.
+  - **Normal** (par défaut) : couleur du tracé du graphique du thème.
+  - **Note Colors** : une couleur par note, identique à toutes les octaves.
+- **Pitch Resolution** - Règle le niveau de détail vertical sans effacer l’historique existant.
+  - **1/12 Octave** : une ligne par demi-ton, avec l’estimation la plus forte de cette note.
+  - **High (1/60 Octave)** (par défaut) : cinq lignes par demi-ton pour afficher des variations de hauteur plus fines.
+- **Layout** - Choisit **Horizontal** (par défaut) ou **Vertical**. L’historique est conservé lors du changement de disposition.
+- **Time Span** (de 1 à 10 s) - Définit la durée affichée dans le piano roll
+  - Une valeur courte facilite l'observation des changements de rythme
+  - Une valeur longue affiche une portion musicale plus étendue
+  - Valeur par défaut : 2 s
+- **Lowest Note** - Définit la note la plus basse de la plage affichée. Valeur par défaut : E1.
+- **Highest Note** - Définit la note la plus haute de la plage affichée. Valeur par défaut : G6.
+- Lorsque l'entrée est trop faible pour l'analyse, le piano roll reste sombre au lieu d'afficher une entrée extrêmement faible comme des hauteurs. Cette suppression ne détermine pas si un son serait audible ou masqué par la perception.
 
 ## Oscilloscope
 
@@ -60,6 +100,8 @@ La forme d'onde relie les points capturés dans l'ordre chronologique. Pour les 
 ## Spectrogram
 
 Crée des motifs colorés qui montrent comment votre musique change au fil du temps. Les couleurs indiquent l'intensité de chaque son, tandis que la position verticale indique sa fréquence.
+
+Le graphique défile de droite à gauche à vitesse constante, avec un repère chaque seconde.
 
 ### Guide de Visualisation
 - Les couleurs montrent l'intensité des différentes fréquences :
@@ -97,7 +139,7 @@ Crée un affichage visuel en temps réel des fréquences de votre musique, des b
 - Le milieu montre les fréquences principales (voix, guitares, piano)
 - La droite montre les hautes fréquences (cymbales, brillance, air)
 - La ligne vert foncé montre le son actuel
-- La ligne vert clair conserve brièvement les pics récents, ce qui permet de voir les sons forts qui viennent de passer
+- La ligne vert clair suit les pics récents et descend progressivement lorsqu’ils s’estompent
 - Les pics plus hauts indiquent une présence plus forte de ces fréquences
 - Observez comment différents instruments créent différents motifs
 

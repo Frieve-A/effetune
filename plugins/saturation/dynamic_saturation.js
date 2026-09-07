@@ -239,7 +239,7 @@ class DynamicSaturationPlugin extends PluginBase {
         const width = canvas.width;
         const height = canvas.height;
         ctx.clearRect(0, 0, width, height);
-        ctx.strokeStyle = '#444';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth = 1;
         for (let x = 0; x <= width; x += width / 4) {
             ctx.beginPath();
@@ -253,7 +253,7 @@ class DynamicSaturationPlugin extends PluginBase {
             ctx.lineTo(width, y);
             ctx.stroke();
         }
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         ctx.font = '28px Arial';
         ctx.textAlign = 'center';
         ctx.fillText('in', width / 2, height - 5);
@@ -262,7 +262,7 @@ class DynamicSaturationPlugin extends PluginBase {
         ctx.rotate(-Math.PI / 2);
         ctx.fillText('out', 0, 0);
         ctx.restore();
-        ctx.fillStyle = '#666';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         ctx.font = '20px Arial';
         ctx.fillText('-6dB', width * 0.25, height - 5);
         ctx.fillText('-6dB', width * 0.75, height - 5);
@@ -276,7 +276,7 @@ class DynamicSaturationPlugin extends PluginBase {
         ctx.rotate(-Math.PI / 2);
         ctx.fillText('-6dB', 0, 0);
         ctx.restore();
-        ctx.strokeStyle = '#0f0';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = 2;
         ctx.beginPath();
         const mixRatio = this.dm / 100;
@@ -337,7 +337,7 @@ class DynamicSaturationPlugin extends PluginBase {
         canvas.height = 400;
         canvas.style.width = '200px';
         canvas.style.height = '200px';
-        canvas.style.backgroundColor = '#222';
+        canvas.style.backgroundColor = 'var(--et-graph-bg-deep)';
         this.canvas = canvas;
         this.updateTransferGraph(); // Initial graph draw
         graphContainer.appendChild(canvas);

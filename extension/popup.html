@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base href="../">
+  <title>EffeTune</title>
+  <link rel="stylesheet" href="extension/popup.css">
+</head>
+<body>
+  <main class="popup-shell">
+    <header class="brand">
+      <img src="images/icon_64x64.png" alt="" width="36" height="36">
+      <div>
+        <h1>EffeTune</h1>
+        <p>Browser audio processing</p>
+      </div>
+    </header>
+
+    <section class="session-card" aria-labelledby="sessionStatus">
+      <div class="status-line">
+        <span id="statusIndicator" class="status-indicator" aria-hidden="true"></span>
+        <strong id="sessionStatus">Connecting…</strong>
+      </div>
+      <p id="targetTitle" class="target-title">No tab selected</p>
+      <button id="startStopButton" class="primary-button" type="button" disabled>Start processing</button>
+    </section>
+
+    <label class="switch-row" for="bypassToggle">
+      <span>Bypass effects</span>
+      <input id="bypassToggle" type="checkbox" role="switch" disabled>
+    </label>
+
+    <section class="preset-row" aria-labelledby="presetLabel">
+      <label id="presetLabel" for="presetSelect">Saved preset</label>
+      <div class="inline-controls">
+        <select id="presetSelect" disabled>
+          <option value="">No saved presets</option>
+        </select>
+        <button id="applyPresetButton" type="button" disabled>Apply</button>
+      </div>
+    </section>
+
+    <p id="popupMessage" class="message" role="status" aria-live="polite" hidden></p>
+    <button id="editPipelineButton" class="secondary-button" type="button" disabled>Edit pipeline</button>
+  </main>
+  <script type="module" src="extension/popup.js"></script>
+</body>
+</html>

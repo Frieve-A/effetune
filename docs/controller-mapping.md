@@ -75,6 +75,8 @@ Keyboard mappings work only while EffeTune has focus and do not run while you ar
 
 ## Connection and troubleshooting
 
+Each MIDI device shows its connection status below its name: **Connected** in the theme’s success color or **Disconnected** in its warning color.
+
 Mappings remain saved when a controller is disconnected and resume when a matching device returns. Device matching uses the MIDI port name or gamepad name. If the name changes after an operating-system or driver change, learn the affected mappings again. Identical gamepads share the same mappings, and identical MIDI port names are distinguished only by their connection order.
 
 If MIDI devices do not appear, allow MIDI access for EffeTune and reopen **Controller Mapping...**. Safari users can still use keyboard and gamepad mappings.

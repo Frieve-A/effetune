@@ -756,7 +756,7 @@ class GroupDelayEqPlugin extends PluginBase {
         ctx.clearRect(0, 0, width, height);
 
         // Draw grid
-        ctx.strokeStyle = '#444';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth = isMobileLayout ? 1 : 0.5;
         ctx.font = '12px Arial';
 
@@ -771,7 +771,7 @@ class GroupDelayEqPlugin extends PluginBase {
 
             // Frequency labels
             if (freq !== 20 && freq !== 20000) {
-                ctx.fillStyle = '#666';
+                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
                 ctx.textAlign = 'center';
                 ctx.fillText(freq >= 1000 ? `${freq / 1000}k` : freq, x, height - 24);
             }
@@ -789,14 +789,14 @@ class GroupDelayEqPlugin extends PluginBase {
 
             // Delay labels, kept clear of the top and bottom edges
             if (Math.abs(ms) < range * 0.98) {
-                ctx.fillStyle = '#666';
+                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
                 ctx.textAlign = 'right';
                 ctx.fillText(`${Number(ms.toFixed(1))}ms`, 48, y + 4);
             }
         }
 
         // Draw axis labels
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         ctx.font = '14px Arial';
         ctx.textAlign = 'center';
         ctx.fillText('Frequency (Hz)', width / 2, height - 5);
@@ -821,8 +821,8 @@ class GroupDelayEqPlugin extends PluginBase {
             }
             ctx.stroke();
         };
-        drawCurve(targetMs, 'rgba(176, 176, 176, 0.7)');
-        if (realizedMs) drawCurve(realizedMs, '#00ff00');
+        drawCurve(targetMs, (window.ThemePalette?.get('graph-trace-tertiary') ?? ''));
+        if (realizedMs) drawCurve(realizedMs, (window.ThemePalette?.get('graph-trace') ?? ''));
     }
 
     cleanup() {

@@ -544,7 +544,9 @@ test('playlist file adapter publishes atomic writes', async () => {
 
 test('save-config keeps a durable config successful when the auto-launch side effect fails', async () => {
   await withHarness({ throwSetLoginItemSettings: true }, async ({ calls, ipcMain, moduleUnderTest }) => {
-    moduleUnderTest.registerIpcHandlers();
+    moduleUnderTest.registerIpcHandlers({
+      onConfigSaved: cfg => calls.push(['nativeTheme.apply', cfg])
+    });
 
     const result = await ipcMain.handlers.get('save-config')({}, { autoLaunch: true });
 
@@ -564,7 +566,36 @@ test('save-config keeps a durable config successful when the auto-launch side ef
       call[0] === 'console.error' &&
       call[1] === 'Config saved, but failed to update the auto-launch setting:'
     ), true);
+    assert.deepEqual(calls.find(call => call[0] === 'nativeTheme.apply'), [
+      'nativeTheme.apply', { autoLaunch: true, keep: true }
+    ]);
+    assert.ok(calls.findIndex(call => call[0] === 'nativeTheme.apply') <
+      calls.findIndex(call => call[0] === 'app.setLoginItemSettings'));
   });
+});
+
+test('save-config applies native chrome only after a successful durable save', async () => {
+  for (const options of [{}, { saveConfigResult: false }, { throwSaveConfig: true }]) {
+    await withHarness(options, async ({ calls, ipcMain, moduleUnderTest }) => {
+      moduleUnderTest.registerIpcHandlers({
+        onConfigSaved: cfg => calls.push(['nativeTheme.apply', cfg])
+      });
+      const result = await ipcMain.handlers.get('save-config')({}, { theme: 'paper' });
+      const applied = calls.filter(call => call[0] === 'nativeTheme.apply');
+      if (Object.keys(options).length) {
+        assert.equal(result.success, false);
+        assert.deepEqual(applied, []);
+      } else {
+        assert.equal(result.success, true);
+        assert.deepEqual(applied, [[
+          'nativeTheme.apply', { autoLaunch: false, keep: true, theme: 'paper' }
+        ]]);
+        const position = name => calls.findIndex(call => call[0] === name);
+        assert.ok(position('config.saveConfig') < position('constants.setAppConfig'));
+        assert.ok(position('constants.setAppConfig') < position('nativeTheme.apply'));
+      }
+    });
+  }
 });
 
 test('save-file refuses to write the library folder mirror', async () => {

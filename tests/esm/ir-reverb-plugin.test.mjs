@@ -1,3 +1,4 @@
+import { installThemePaletteStub } from '../helpers/theme-palette-stub.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -322,6 +323,7 @@ function loadPlugin({ prepare = async request => preparedResult({
     assert.notEqual(source, pluginSource, 'IR library dynamic import fixture was not injected');
     context.__loadIrLibraryServiceModule = irLibraryModuleLoader;
   }
+  installThemePaletteStub(context.window);
   vm.runInNewContext(`${source}\nthis.LoadedPlugin = IRReverbPlugin;`, context, {
     filename: 'ir_reverb.js'
   });
@@ -3013,10 +3015,10 @@ test('IR Reverb EDC graph keeps marker labels in bounds and adds unobstructed on
   plugin._drawEdcGraph();
 
   assert.deepEqual(transforms, [[2, 0, 0, 2, 0, 0]]);
-  assert.ok(strokes.includes('#444'));
-  assert.ok(strokes.includes('#808080'));
-  assert.ok(strokes.includes('#00ff00'));
-  assert.ok(strokes.includes('#ff0000'));
+  assert.ok(strokes.includes('stub:graph-grid'));
+  assert.ok(strokes.includes('stub:graph-trace-tertiary'));
+  assert.ok(strokes.includes('stub:graph-trace'));
+  assert.ok(strokes.includes('stub:graph-marker'));
   const trim = labels.find(label => label.text === 'trim');
   assert.ok(trim);
   assert.ok(trim.x >= 42);
@@ -3028,7 +3030,7 @@ test('IR Reverb EDC graph keeps marker labels in bounds and adds unobstructed on
   const rt60Labels = labels.filter(label => String(label.text).includes('RT60'));
   assert.equal(rt60Labels.length, 1);
   assert.equal(rt60Labels[0].text, 'RT60 0.50 s');
-  assert.equal(rt60Labels[0].color, '#fff');
+  assert.equal(rt60Labels[0].color, 'stub:text-primary');
   const expectedRt60X = 42 + 0.5 / 3 * (320 - 42 - 12) + 4;
   assert.ok(Math.abs(rt60Labels[0].x - expectedRt60X) < 1e-9);
   assert.ok(labels.some(label => label.text === '1 s'));
@@ -3080,12 +3082,12 @@ test('IR Reverb EDC graph retains the RT60 readout when its marker is unavailabl
     path.length === 2 && path[0].x === path[1].x && path[0].y !== path[1].y);
 
   const unavailable = drawGraph({ directCut: false, rt60Seconds: null });
-  assert.equal(verticalMarkers(unavailable).some(({ color }) => color === '#ff0000'), false);
-  assert.equal(verticalMarkers(unavailable).filter(({ color }) => color === '#fff').length, 1);
+  assert.equal(verticalMarkers(unavailable).some(({ color }) => color === 'stub:graph-marker'), false);
+  assert.equal(verticalMarkers(unavailable).filter(({ color }) => color === 'stub:text-primary').length, 1);
   assert.deepEqual(unavailable.labels.filter(label => label.includes('RT60')), ['RT60 unavailable']);
 
   const beyondDuration = drawGraph({ directCut: true, rt60Seconds: 2.5 });
-  assert.equal(verticalMarkers(beyondDuration).filter(({ color }) => color === '#fff').length, 1);
+  assert.equal(verticalMarkers(beyondDuration).filter(({ color }) => color === 'stub:text-primary').length, 1);
   assert.deepEqual(beyondDuration.labels.filter(label => label.includes('RT60')), ['RT60 2.50 s']);
 });
 

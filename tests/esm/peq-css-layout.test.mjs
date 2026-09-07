@@ -28,7 +28,7 @@ test('inset SVG response graphs expose shared frequency and level axis titles', 
   );
   assert.match(
     getRule(appCss, '.plugin-parameter-ui .graph-axis-titled::before'),
-    /color:\s*#fff;[\s\S]*font:\s*14px\/1 Arial, sans-serif;[\s\S]*pointer-events:\s*none;/
+    /color:\s*var\(--et-text-primary\);[\s\S]*font:\s*14px\/1 Arial, sans-serif;[\s\S]*pointer-events:\s*none;/
   );
   assert.match(
     appCss,
@@ -90,15 +90,17 @@ test('PEQ graph handles share the 15Band gradient and active colors', () => {
   }
   assert.match(
     normalRule,
-    /radial-gradient\([\s\S]*linear-gradient\(180deg,\s*#585d64,\s*#41464d\);[\s\S]*border-color:\s*#777e87;/
+    /radial-gradient\([\s\S]*linear-gradient\(180deg,\s*var\(--et-surface-32\),\s*var\(--et-surface-22\)\);[\s\S]*border-color:\s*var\(--et-surface-47\);/
   );
   assert.match(
     activeRule,
-    /radial-gradient\([\s\S]*linear-gradient\(180deg,\s*var\(--et-accent-hover\),\s*var\(--et-accent-pressed\)\);[\s\S]*border-color:\s*#aad8ff;/
+    /radial-gradient\([\s\S]*linear-gradient\(180deg,\s*var\(--et-accent-hover\),\s*var\(--et-accent-pressed\)\);[\s\S]*border-color:\s*var\(--et-accent-hover\);/
   );
 });
 
 test('Room EQ keeps Additional EQ filter types aligned with its parameter fields on desktop', () => {
+  const sharedCss = readCss('../../effetune.css');
+  assert.match(sharedCss, /body:not\(\.layout-mobile\) :is\([^{}]*\.room-eq-additional-eq-filter-type,[^{}]*\) \{[^}]*box-sizing: border-box;[^}]*height: 26px;[^}]*min-height: 26px;/s);
   const css = readCss('../../plugins/eq/room_eq.css');
 
   assert.match(
@@ -107,7 +109,7 @@ test('Room EQ keeps Additional EQ filter types aligned with its parameter fields
   );
   assert.match(
     getRule(css, 'body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter-type'),
-    /box-sizing:\s*border-box;[\s\S]*flex:\s*0 0 90px;[\s\S]*width:\s*90px;[\s\S]*min-width:\s*90px;[\s\S]*max-width:\s*90px;/
+    /flex:\s*0 0 90px;[\s\S]*width:\s*90px;[\s\S]*min-width:\s*90px;[\s\S]*max-width:\s*90px;/
   );
 });
 

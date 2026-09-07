@@ -741,9 +741,9 @@ class CrosstalkCancellationPlugin extends PluginBase {
             0, 100, 1, this.rg, value => this.setParameters({ rg: value }), '%', 'rg'));
         design.appendChild(this.createParameterControl('Max Gain',
             0, 24, 0.1, this.mg, value => this.setParameters({ mg: value }), 'dB', 'mg'));
-        design.appendChild(this.createParameterControl('Freq Low',
+        design.appendChild(this.createLogarithmicParameterControl('Freq Low',
             20, 2000, 1, this.fl, value => this.setParameters({ fl: value }), 'Hz', 'fl'));
-        design.appendChild(this.createParameterControl('Freq High',
+        design.appendChild(this.createLogarithmicParameterControl('Freq High',
             1000, 20000, 10, this.fh, value => this.setParameters({ fh: value }), 'Hz', 'fh'));
         design.appendChild(this.createParameterControl('Direct Window',
             2, 50, 0.1, this.wl, value => this.setParameters({ wl: value }), 'ms', 'wl'));

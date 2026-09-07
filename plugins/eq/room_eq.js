@@ -787,7 +787,7 @@ class RoomEqAdditionalEqEditor {
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             path.setAttribute('d', pathData.join(' '));
             path.setAttribute('class', className);
-            path.setAttribute('stroke', stroke);
+            path.style.stroke = stroke;
             path.setAttribute('stroke-width', '1');
             path.setAttribute('fill', 'none');
             this.responseSvg.appendChild(path);
@@ -804,11 +804,11 @@ class RoomEqAdditionalEqEditor {
                 appendPath(
                     measuredDb.map(gain => gain - normalizationGainDb),
                     'room-eq-measured-response-path',
-                    '#b0b0b0'
+                    'var(--et-graph-trace-secondary)'
                 );
             }
-            appendPath(correctionDb, 'room-eq-base-response-path', '#80c080');
-            appendPath(totalCorrectionDb, 'room-eq-combined-response-path', '#00ff00');
+            appendPath(correctionDb, 'room-eq-base-response-path', 'var(--et-success)');
+            appendPath(totalCorrectionDb, 'room-eq-combined-response-path', 'var(--et-graph-trace)');
             // The design predicts the corrected result against the unsmoothed
             // measurement, so it keeps the residue the correction could not reach.
             // Adding the correction to the smoothed measured curve drawn above would
@@ -819,7 +819,7 @@ class RoomEqAdditionalEqEditor {
                         (gain, index) => gain - normalizationGainDb + equalizerDb[index]
                     ),
                     'room-eq-corrected-response-path',
-                    '#ffffff'
+                    'var(--et-text-primary)'
                 );
             }
         }
@@ -3332,9 +3332,9 @@ class RoomEqPlugin extends PluginBase {
                     0.02, 1, 0.01, this.sm, value => this.setParameters({ sm: value }), 'oct', 'sm'));
             } },
             { id: 'level', label: this._t('roomEq.tab.level', 'Level'), create: content => {
-                content.appendChild(this.createParameterControl(this._t('roomEq.parameter.low', 'Correction Low'),
+                content.appendChild(this.createLogarithmicParameterControl(this._t('roomEq.parameter.low', 'Correction Low'),
                     20, 1000, 1, this.fl, value => this.setParameters({ fl: value }), 'Hz', 'fl'));
-                content.appendChild(this.createParameterControl(this._t('roomEq.parameter.high', 'Correction High'),
+                content.appendChild(this.createLogarithmicParameterControl(this._t('roomEq.parameter.high', 'Correction High'),
                     1000, 20000, 10, this.fh, value => this.setParameters({ fh: value }), 'Hz', 'fh'));
                 content.appendChild(this.createParameterControl(this._t('roomEq.parameter.maxBoost', 'Max Boost'),
                     0, 18, 0.1, this.mb, value => this.setParameters({ mb: value }), 'dB', 'mb'));

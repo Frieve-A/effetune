@@ -133,6 +133,8 @@ export class IrLibraryStore {
     }
     this.backend = backend;
     this.diagnostic = options.onDiagnostic || (error => console.error('IR library diagnostic:', error));
+    this.persistenceDiagnostic = options.onPersistenceDiagnostic ||
+      (error => console.warn('IR library persistent storage request was unavailable:', error));
     this.index = emptyIndex();
     this.opened = false;
     this.mutation = Promise.resolve();
@@ -321,10 +323,7 @@ export class IrLibraryStore {
     this.persistenceRequested = true;
     Promise.resolve()
       .then(() => this.requestPersistence())
-      .then(granted => {
-        if (granted === false) this.diagnostic(new Error('Persistent browser storage was not granted.'));
-      })
-      .catch(error => this.diagnostic(error));
+      .catch(error => this.persistenceDiagnostic(error));
   }
 
   async #importSingle(request = {}) {

@@ -10,7 +10,7 @@
 
 .harmonic-distortion-plugin-ui .graph-label {
     position: absolute;
-    color: #888;
+    color: var(--et-graph-tone-50);
     font-size: 12px;
 }
 

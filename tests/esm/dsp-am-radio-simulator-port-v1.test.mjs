@@ -1,3 +1,4 @@
+import { installThemePaletteStub } from '../helpers/theme-palette-stub.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -70,7 +71,7 @@ test('AM Radio Simulator freezes the parameter layout and representative parity 
   assert.equal(goldens.length, 21);
   assert.ok(goldens.every(item =>
     item.metadata.jsEngineHash ===
-      'ece9aa2e51652af5cdc99385720625864edda056b30dd9ae430783d42dc04802'
+      '795583a034761b039b6224cde554ad3121a1597395cf6e569e2b70867591e1dc'
   ));
 });
 
@@ -96,6 +97,7 @@ test('AM Radio Simulator reference is deterministic tooling while normal fallbac
     performance: { now: () => 1000 },
     window: { dspTelemetryHub: null }
   };
+  installThemePaletteStub(context.window);
   vm.runInNewContext(source, context);
   const plugin = new context.window.AMRadioSimulatorPlugin();
   const serializable = plugin.getSerializableParameters();
@@ -209,6 +211,7 @@ test('AM Radio Simulator parses only finite telemetry v1 and v2 frames with exac
     registerProcessor() {}
   }
   const context = { PluginBase, performance: { now: () => 1000 }, window: {} };
+  installThemePaletteStub(context.window);
   vm.runInNewContext(source, context);
   const plugin = new context.window.AMRadioSimulatorPlugin();
   const v1Payload = new DataView(new ArrayBuffer(24));
@@ -292,6 +295,7 @@ test('AM Radio Simulator drives the HUD stereo lamp from subscribed v2 telemetry
       }
     }
   };
+  installThemePaletteStub(context.window);
   vm.runInNewContext(source, context);
   const plugin = new context.window.AMRadioSimulatorPlugin();
   assert.equal(plugin.ensureDspTelemetrySubscription(), true);
@@ -336,8 +340,8 @@ test('AM Radio Simulator drives the HUD stereo lamp from subscribed v2 telemetry
     blend: '0.75', active: true, label: 'Stereo reception on'
   });
   assert.ok(drawn.includes('S4.1'));
-  const meterTracks = fills.filter(fill => fill.style === '#363636');
-  const meterLevels = fills.filter(fill => fill.style === '#69c8ff');
+  const meterTracks = fills.filter(fill => fill.style === 'stub:graph-tone-13');
+  const meterLevels = fills.filter(fill => fill.style === 'stub:accent');
   assert.equal(meterTracks.length, 4);
   assert.equal(meterLevels.length, 4);
   assert.ok(Math.abs(meterLevels[0].args[2] / meterTracks[0].args[2] - 22 / 56) < 1e-12);
@@ -346,8 +350,8 @@ test('AM Radio Simulator drives the HUD stereo lamp from subscribed v2 telemetry
   fills.length = 0;
   plugin.eventFlashUntil = 1180;
   plugin.drawHud();
-  const eventTrack = fills.filter(fill => fill.style === '#363636')[3];
-  const eventLevel = fills.find(fill => fill.style === '#ffb347');
+  const eventTrack = fills.filter(fill => fill.style === 'stub:graph-tone-13')[3];
+  const eventLevel = fills.find(fill => fill.style === 'stub:warning');
   assert.ok(eventLevel);
   assert.ok(Math.abs(eventLevel.args[2] / eventTrack.args[2] - 76 / 86) < 1e-12);
   for (const state of ['bypassed', 'pending']) {
@@ -367,6 +371,7 @@ test('AM Radio Simulator follows validated pending, active, and bypassed executi
     registerProcessor() {}
   }
   const context = { PluginBase, performance: { now: () => 1000 }, window: {} };
+  installThemePaletteStub(context.window);
   vm.runInNewContext(source, context);
   const plugin = new context.window.AMRadioSimulatorPlugin();
   assert.equal(plugin.executionState.state, 'pending');

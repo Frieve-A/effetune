@@ -40,6 +40,8 @@ Relógio e Temporizador só controlam parâmetros numéricos de efeitos, não En
 
 ## Ligação e resolução de problemas
 
+O estado da conexão de cada dispositivo MIDI aparece abaixo do nome dele: **Conectado** na cor de sucesso do tema ou **Desconectado** na cor de aviso.
+
 Os mapeamentos permanecem guardados após desligar e retomam quando regressa um dispositivo com o mesmo nome. Se uma alteração do sistema ou do controlador mudar o nome, faça Learn novamente nos mapeamentos afetados. Comandos idênticos partilham mapeamentos e portas MIDI com o mesmo nome distinguem-se apenas pela ordem de ligação.
 
 Se não aparecerem dispositivos MIDI, permita o acesso MIDI ao EffeTune e reabra a janela. No Safari, teclado e comando continuam disponíveis.

@@ -276,18 +276,18 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         left: 0;
         width: 100%;
         height: 100%;
-        background-color: rgba(0, 0, 0, 0.7);
+        background-color: var(--et-scrim);
         display: flex;
         justify-content: center;
         align-items: center;
         z-index: 1000;
       }
       .audio-config-dialog {
-        background-color: #222;
+        background-color: var(--et-surface-5);
         border-radius: 8px;
         padding: 20px;
         width: 400px;
-        color: #fff;
+        color: var(--et-text-primary);
       }
       .device-section {
         margin-bottom: 15px;
@@ -299,13 +299,13 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       .device-section select {
         width: 100%;
         padding: 8px;
-        background-color: #333;
-        color: #fff;
-        border: 1px solid #444;
+        background-color: var(--et-surface-13);
+        color: var(--et-text-primary);
+        border: 1px solid var(--et-surface-20);
         border-radius: 4px;
       }
       .device-help {
-        color: #bbb;
+        color: var(--et-surface-74);
         font-size: 12px;
         line-height: 1.35;
         margin-top: 6px;
@@ -336,12 +336,12 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         cursor: pointer;
       }
       #cancel-button {
-        background-color: #555;
-        color: #fff;
+        background-color: var(--et-surface-28);
+        color: var(--et-text-primary);
       }
       #apply-button {
-        background-color: #007bff;
-        color: #fff;
+        background-color: var(--et-accent);
+        color: var(--et-on-accent);
       }
     `;
     document.head.appendChild(styleElement);
@@ -591,8 +591,8 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       messageElement.style.top = '50%';
       messageElement.style.left = '50%';
       messageElement.style.transform = 'translate(-50%, -50%)';
-      messageElement.style.backgroundColor = '#222';
-      messageElement.style.color = '#fff';
+      messageElement.style.backgroundColor = 'var(--et-surface-5)';
+      messageElement.style.color = 'var(--et-text-primary)';
       messageElement.style.padding = '20px';
       messageElement.style.borderRadius = '8px';
       messageElement.style.zIndex = '1000';

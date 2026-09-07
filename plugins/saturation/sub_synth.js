@@ -363,14 +363,14 @@ class SubSynthPlugin extends PluginBase {
 
     // Create parameter rows using base helper
     const subLevelRow = this.createParameterControl("Sub Level", 0, 200, 1, this.sl, v => this.setSl(v), '%', 'sl');
-    const subLpfRow = this.createParameterControl("Sub LPF", 5, 400, 1, this.slf, v => {
+    const subLpfRow = this.createLogarithmicParameterControl("Sub LPF", 5, 400, 1, this.slf, v => {
       this.setSlf(v);
       if (this.canvas) this.drawGraph(this.canvas);
     }, 'Hz', 'slf');
     const subLpfSlopeSelect = createSlopeSelect(this.sls, v => this.setSls(v), "sublpfslope");
     subLpfRow.appendChild(subLpfSlopeSelect);
 
-    const subHpfRow = this.createParameterControl("Sub HPF", 5, 400, 1, this.shf, v => {
+    const subHpfRow = this.createLogarithmicParameterControl("Sub HPF", 5, 400, 1, this.shf, v => {
       this.setShf(v);
       if (this.canvas) this.drawGraph(this.canvas);
     }, 'Hz', 'shf');
@@ -378,7 +378,7 @@ class SubSynthPlugin extends PluginBase {
     subHpfRow.appendChild(subHpfSlopeSelect);
 
     const dryLevelRow = this.createParameterControl("Dry Level", 0, 200, 1, this.dl, v => this.setDl(v), '%', 'dl');
-    const dryHpfRow = this.createParameterControl("Dry HPF", 5, 400, 1, this.dhf, v => {
+    const dryHpfRow = this.createLogarithmicParameterControl("Dry HPF", 5, 400, 1, this.dhf, v => {
       this.setDhf(v);
       if (this.canvas) this.drawGraph(this.canvas);
     }, 'Hz', 'dhf');
@@ -392,7 +392,7 @@ class SubSynthPlugin extends PluginBase {
       className: "sub-synth-graph",
       onResize: ({ canvas }) => this.drawGraph(canvas)
     });
-    canvas.style.backgroundColor = "#222";
+    canvas.style.backgroundColor = "var(--et-graph-bg-deep)";
     this.canvas = canvas; // Store canvas reference on instance
     this.graphDispose?.();
     this.graphDispose = dispose;
@@ -442,7 +442,7 @@ class SubSynthPlugin extends PluginBase {
     ctx.clearRect(0, 0, width, height);
 
     // Draw grid
-    ctx.strokeStyle = "#444";
+    ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
     ctx.lineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
     const freqs = [5, 10, 20, 50, 100, 200, 500];
     const labeledFreqs = cssWidth < 420 ? [10, 50, 200, 500] : freqs;
@@ -453,7 +453,7 @@ class SubSynthPlugin extends PluginBase {
       ctx.lineTo(x, height);
       ctx.stroke();
       if (labeledFreqs.includes(freq) && x > 12 * dpr && x < width - 12 * dpr) {
-        ctx.fillStyle = "#666";
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         ctx.font = `${tickFont}px Arial`;
         ctx.textAlign = "center";
         ctx.fillText(freq.toString(), x, bottomTickY);
@@ -467,13 +467,13 @@ class SubSynthPlugin extends PluginBase {
       ctx.lineTo(width, y);
       ctx.stroke();
       if (db > -30 && db < 6) {
-        ctx.fillStyle = "#666";
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         ctx.font = `${tickFont}px Arial`;
         ctx.textAlign = "right";
         ctx.fillText(`${db}`, leftLabelX, y + 3 * dpr);
       }
     });
-    ctx.fillStyle = "#fff";
+    ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
     ctx.font = `${axisFont}px Arial`;
     ctx.textAlign = "center";
     ctx.fillText("Frequency (Hz)", width / 2, axisBottomY);
@@ -496,7 +496,7 @@ class SubSynthPlugin extends PluginBase {
 
     // Draw dry signal response (white)
     ctx.beginPath();
-    ctx.strokeStyle = "#fff";
+    ctx.strokeStyle = (window.ThemePalette?.get('text-primary') ?? '');
     ctx.lineWidth = (isMobileLayout ? 2 : 1) * dpr;
     const dryHpfStages = computeStages(this.dhs);
     for (let i = 0; i < width; i++) {
@@ -520,7 +520,7 @@ class SubSynthPlugin extends PluginBase {
 
     // Draw sub signal response (green)
     ctx.beginPath();
-    ctx.strokeStyle = "#00ff00";
+    ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
     ctx.lineWidth = (isMobileLayout ? 2 : 1) * dpr;
     const subLpfStages = computeStages(this.sls);
     const subHpfStages = computeStages(this.shs);

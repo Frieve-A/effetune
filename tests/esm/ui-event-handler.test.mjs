@@ -335,6 +335,7 @@ function createHarness(options = {}) {
       openPresetDialog: options => calls.push(['openPresetDialog', options])
     },
     fileProcessor,
+    fileProcessingEnabled: options.fileProcessingEnabled ?? true,
     pluginListManager,
     pluginManager: {
       pluginClasses: { Gain: class Gain {} },

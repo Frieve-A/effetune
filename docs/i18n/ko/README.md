@@ -11,6 +11,10 @@
 음악 애호가들을 위해 설계된 실시간 오디오 이펙트 프로세서입니다.
 EffeTune은 다양한 고품질 이펙트를 통해 모든 오디오 소스를 처리할 수 있으며, 이를 통해 실시간으로 자신만의 청취 환경을 맞춤 설정하고 완벽하게 조정할 수 있습니다.
 
+### 브라우저 확장 프로그램
+
+가상 오디오 장치 없이 Chrome 또는 Edge 탭 하나를 처리할 수 있습니다. [브라우저 확장 프로그램 가이드](browser-extension.md)를 참조하십시오.
+
 [![Screenshot](../../../images/screenshot.png)](https://effetune.frieve.com/effetune.html)
 
 ## 소개 영상
@@ -91,7 +95,7 @@ CD 플레이어, 네트워크 플레이어 또는 기타 물리적 소스를 사
 
 ### 애플리케이션 설정
 
-**설정** 메뉴의 **구성...**을 열면 언어, 시작 시 표시, 시작 시 효과 파이프라인 동작을 선택할 수 있습니다. 시작 시 표시는 **Effect Pipeline (기본값)** 또는 **음악 라이브러리** 중에서 선택할 수 있습니다. **음악 라이브러리**를 선택한 경우 옆의 목록에서 처음 표시할 항목을 **트랙**, **앨범**, **아티스트**, **장르**, **하위 폴더**, **폴더**, **플레이리스트** 중에서 선택할 수 있습니다.
+**설정** 메뉴의 **구성...**을 열면 언어, 시작 시 표시, 시작 시 효과 파이프라인 동작을 선택할 수 있습니다. 시작 시 표시는 **Effect Pipeline (기본값)** 또는 **음악 라이브러리** 중에서 선택할 수 있습니다. **음악 라이브러리**를 선택한 경우 옆의 목록에서 처음 표시할 항목을 **트랙**, **앨범**, **아티스트**, **장르**, **하위 폴더**, **폴더**, **플레이리스트** 중에서 선택할 수 있습니다. **테마**에서 앱의 색상을 Graphite(기본값), Paper, Midnight, Ember, Mint 중에서 선택할 수 있습니다.
 
 지원되는 데스크톱 빌드는 같은 로컬 네트워크의 OpenHome 앱에서도 제어할 수 있습니다. 기본적으로 꺼져 있습니다. 설정 방법, 네트워크 공개, 호환성 및 제한 사항은 [OpenHome 원격 제어](music-library.md#openhome-원격-제어데스크톱-앱)를 참조하세요.
 
@@ -314,6 +318,7 @@ Effect Pipeline 헤더의 **효과 체인 프리셋** 버튼을 클릭하면 프
 | 카테고리 | 이펙트 | 설명 | 문서 |
 | --- | --- | --- | --- |
 | Analyzer | Level Meter | 피크 홀드가 있는 오디오 레벨 표시 | [세부 정보](plugins/analyzer.md#level-meter) |
+| Analyzer | Note Spectrogram | 시간에 따른 추정 음높이를 피아노 롤로 표시 | [세부 정보](plugins/analyzer.md#note-spectrogram) |
 | Analyzer | Oscilloscope | 실시간 파형 시각화 | [세부 정보](plugins/analyzer.md#oscilloscope) |
 | Analyzer | Spectrogram | 시간에 따른 주파수 스펙트럼 변화를 표시 | [세부 정보](plugins/analyzer.md#spectrogram) |
 | Analyzer | Spectrum Analyzer | 저역, 중역, 고역의 강도를 실시간으로 표시 | [세부 정보](plugins/analyzer.md#spectrum-analyzer) |

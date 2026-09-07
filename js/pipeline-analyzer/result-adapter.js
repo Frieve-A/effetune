@@ -4,9 +4,9 @@ import {
     smoothFrequencyResponse
 } from '../utils/measurement-dsp/smoothing.js';
 
-const BEFORE_COLOR = '#b0b0b0';
-const BEFORE_IMPULSE_COLOR = '#888888';
-const AFTER_COLOR = '#00ff00';
+const BEFORE_COLOR = 'var(--et-graph-trace-secondary)';
+const BEFORE_IMPULSE_COLOR = 'var(--et-graph-tone-50)';
+const AFTER_COLOR = 'var(--et-graph-trace)';
 const MAX_IMPULSE_POINTS = 4096;
 const FREQUENCY_MIN_HZ = 10;
 const FREQUENCY_MAX_HZ = 40000;

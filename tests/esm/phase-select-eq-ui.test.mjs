@@ -1,3 +1,4 @@
+import { installThemePaletteStub } from '../helpers/theme-palette-stub.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -210,6 +211,7 @@ async function loadPlugin() {
     clearTimeout,
     cancelAnimationFrame() {}
   });
+  installThemePaletteStub(context.window);
   vm.runInContext(source, context, { filename: 'phase_select_eq.js' });
   return {
     Plugin: window.PhaseSelectEqPlugin,
@@ -692,7 +694,7 @@ test('rebuilding the UI replaces tab and field references instead of appending t
   assert.ok(plugin._regionTabs.every(tab => !firstTabs.includes(tab)));
 });
 
-test('UI reuses standard control rows and the existing five-band tab surface', async () => {
+test('UI reuses standard control rows and the shared effect tab surface', async () => {
   const { Plugin } = await loadPlugin();
   const plugin = new Plugin();
   const ui = plugin.createUI();
@@ -720,11 +722,10 @@ test('UI reuses standard control rows and the existing five-band tab surface', a
     path.join(repoRoot, 'plugins', 'spatial', 'phase_select_eq.css'), 'utf8');
   const globalCss = await fs.readFile(path.join(repoRoot, 'effetune.css'), 'utf8');
   const mobileCss = await fs.readFile(path.join(repoRoot, 'effetune-mobile.css'), 'utf8');
-  assert.match(css, /\.phase-select-eq-map\s*\{[^}]*background-color:\s*#1a1a1a/s);
-  assert.match(css, /\.phase-select-eq-editor\s*\{[^}]*background:\s*#2d2d2d/s);
-  assert.match(css,
-    /\.phase-select-eq-region-tab\[aria-selected="true"\]\s*\{[^}]*background:\s*#444/s);
-  assert.match(css, /\.phase-select-eq-region-tab\.disabled\s*\{[^}]*opacity:\s*0\.5/s);
+  assert.match(css, /\.phase-select-eq-map\s*\{[^}]*background-color:\s*var\(--et-graph-bg-deep\)/s);
+  assert.match(css, /\.phase-select-eq-editor\s*\{[^}]*background:\s*color-mix\(in srgb,\s*var\(--et-surface-10\),\s*var\(--et-graph-bg-deep\) 25%\)/s);
+  assert.match(globalCss, /\.phase-select-eq-region-tab\s*\):is\(\.active, \[aria-selected="true"\]\)\s*\{[^}]*background: var\(--et-control-active-gradient\)/s);
+  assert.match(globalCss, /\.phase-select-eq-region-tab\s*\)\.disabled\s*\{[^}]*opacity:\s*0\.6/s);
   const scopedSelector = '.phase-select-eq-plugin-ui .parameter-row.phase-select-eq-field';
   const globalSelector = '.plugin-parameter-ui .parameter-row';
   const specificity = selector =>
@@ -846,11 +847,11 @@ test('canvas follows the existing analyzer background, grid, label, and DPR cont
   const hasSet = (key, value) => events.some(event =>
     event.type === 'set' && event.key === key && event.value === value);
 
-  assert.ok(hasSet('fillStyle', '#1a1a1a'));
-  assert.ok(hasSet('strokeStyle', 'rgba(255, 255, 255, 0.18)'));
+  assert.ok(hasSet('fillStyle', 'stub:graph-bg-deep'));
+  assert.ok(hasSet('strokeStyle', 'stub:graph-grid-soft'));
   assert.equal(hasSet('strokeStyle', 'rgba(255, 255, 255, 0.45)'), false);
-  assert.ok(hasSet('fillStyle', '#888'));
-  assert.ok(hasSet('strokeStyle', '#00ff00'));
+  assert.ok(hasSet('fillStyle', 'stub:graph-tone-50'));
+  assert.ok(hasSet('strokeStyle', 'stub:graph-handle-active'));
   assert.ok(hasSet('lineWidth', 1));
   assert.ok(hasSet('lineWidth', 1.5));
   assert.equal(hasSet('lineWidth', 0.5), false);

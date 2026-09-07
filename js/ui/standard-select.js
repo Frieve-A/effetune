@@ -135,7 +135,7 @@ class StandardSelectManager {
     if (!select.isConnected || select.disabled || select.options.length === 0) return;
     this.activeSelect = select;
     this.activeIndex = select.selectedIndex >= 0 ? select.selectedIndex : this.firstEnabledIndex();
-    const dialogLayer = select.closest('.library-dialog-backdrop, .modal-overlay');
+    const dialogLayer = select.closest('.library-dialog-backdrop, .modal-overlay, .routing-dialog');
     (dialogLayer || this.document.body).appendChild(this.list);
     const listId = `standard-select-list-${this.nextListId++}`;
     this.list.id = listId;

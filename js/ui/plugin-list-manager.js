@@ -47,7 +47,7 @@ export class PluginListManager {
         effectCountDiv.id = 'effectCount';
         effectCountDiv.style.textAlign = 'center';
         effectCountDiv.style.marginTop = '10px';
-        effectCountDiv.style.color = '#666';
+        effectCountDiv.style.color = 'var(--et-surface-35)';
         effectCountDiv.style.fontSize = '14px';
 
         // Create content container for grid layout

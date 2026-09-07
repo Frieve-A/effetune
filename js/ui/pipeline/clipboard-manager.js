@@ -35,8 +35,7 @@ export class ClipboardManager {
             }
 
             if (window.uiManager) {
-                window.uiManager.setError('success.settingsCopied', false);
-                setTimeout(() => window.uiManager.clearError(), 3000);
+                window.uiManager.showTransientMessage('success.settingsCopied', false, {}, 3000);
             }
             return true;
         } catch (err) {
@@ -68,8 +67,7 @@ export class ClipboardManager {
             this.core.deleteSelectedPlugins();
             
             if (window.uiManager) {
-                window.uiManager.setError('success.settingsCut', false);
-                setTimeout(() => window.uiManager.clearError(), 3000);
+                window.uiManager.showTransientMessage('success.settingsCut', false, {}, 3000);
             }
             return true;
         } catch (err) {
@@ -187,8 +185,7 @@ export class ClipboardManager {
                             }
                             
                             if (window.uiManager) {
-                                window.uiManager.setError('success.settingsPasted', false);
-                                setTimeout(() => window.uiManager.clearError(), 3000);
+                                window.uiManager.showTransientMessage('success.settingsPasted', false, {}, 3000);
                             }
                             
                             // Return early since we've handled the URL
@@ -270,8 +267,7 @@ export class ClipboardManager {
             }
 
             if (window.uiManager) {
-                window.uiManager.setError('success.settingsPasted', false);
-                setTimeout(() => window.uiManager.clearError(), 3000);
+                window.uiManager.showTransientMessage('success.settingsPasted', false, {}, 3000);
             }
         } catch (err) {
             // Failed to paste plugin settings

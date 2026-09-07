@@ -9,7 +9,7 @@
 
 .multichannel-panel-channel-container {
     flex-shrink: 0;
-    background: #2d2d2d;
+    background: color-mix(in srgb, var(--et-surface-10), var(--et-graph-bg-deep) 25%);
     border-radius: 4px;
     padding: 10px;
 }
@@ -38,7 +38,7 @@
 
 .multichannel-panel-level-meter {
     flex-grow: 1;
-    border: 1px solid #555;
+    border: 1px solid var(--et-surface-28);
 }
 
 .multichannel-panel-button-controls {
@@ -53,10 +53,10 @@
     justify-content: center; 
     align-items: center; 
     display: flex;
-    color: #fff;
-    border: 1px solid #606060;
+    color: var(--et-text-primary);
+    border: 1px solid var(--et-surface-33);
     border-radius: 4px;
-    background-color: #808080;
+    background-color: var(--et-surface-47);
 }
 
 .multichannel-panel-link-button[hidden] {
@@ -81,10 +81,15 @@
 .multichannel-panel-ui input[type="number"] {
     width: 80px;
     padding: 4px;
-    background-color: #3d3d3d;
-    border: 1px solid #4d4d4d;
-    color: #ffffff;
+    background-color: var(--et-surface-17);
+    border: 1px solid var(--et-surface-24);
+    color: var(--et-text-primary);
     border-radius: 4px;
+}
+
+body:not(.layout-mobile) .multichannel-panel-ui input[type="number"] {
+    width: 90px;
+
 }
 
 .multichannel-panel-ui label {

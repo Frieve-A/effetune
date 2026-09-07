@@ -600,9 +600,11 @@ test('initOpenLibraryButton wires the view switch buttons and Electron IPC callb
     },
     async showLibraryView() {
       calls.push(['showLibraryView']);
+      documentRef.body.classList.add('view-library');
     },
     showEffectPipelineView() {
       calls.push(['showEffectPipelineView']);
+      documentRef.body.classList.remove('view-library');
     },
     toggleLibraryView() {
       calls.push(['toggleLibraryView']);
@@ -621,8 +623,14 @@ test('initOpenLibraryButton wires the view switch buttons and Electron IPC callb
     }
   }, async () => {
     manager.initOpenLibraryButton();
-    await openLibraryButton.click();
     await effectPipelineButton.click();
+    assert.equal(documentRef.body.classList.contains('view-library'), false);
+    await openLibraryButton.click();
+    await openLibraryButton.click();
+    assert.equal(documentRef.body.classList.contains('view-library'), true);
+    await effectPipelineButton.click();
+    await effectPipelineButton.click();
+    assert.equal(documentRef.body.classList.contains('view-library'), false);
     await ipcCallbacks['open-library-view']();
     await ipcCallbacks['open-effect-pipeline-view']();
     await ipcCallbacks['add-music-folder']();
@@ -634,7 +642,7 @@ test('initOpenLibraryButton wires the view switch buttons and Electron IPC callb
     ['onIPC', 'open-effect-pipeline-view'],
     ['onIPC', 'add-music-folder'],
     ['onIPC', 'rescan-library'],
-    ['toggleLibraryView'],
+    ['showLibraryView'],
     ['showEffectPipelineView'],
     ['showLibraryView'],
     ['showEffectPipelineView'],

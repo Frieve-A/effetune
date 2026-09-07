@@ -705,6 +705,16 @@ function prepareFirFilterAsset(effect, resolvedAssets, {
            path.irChannel !== paths[index].irChannel))) {
       throw new AssetError(`${effect.id} filter paths do not match its band layout.`);
     }
+  } else if (effect.type === 'CrosstalkCancellation') {
+    topology = IR_ASSET_TOPOLOGY.trueStereo;
+    assetChannels = 4;
+    paths = [];
+    inputCount = 0;
+    if (processingChannels !== 2 || asset.format.channels !== 4 ||
+        (asset.format.topology !== IR_ASSET_TOPOLOGY.unspecified &&
+         asset.format.topology !== topology)) {
+      throw new AssetError(`${effect.id} requires four true-stereo filter channels and two processing channels.`);
+    }
   } else if (effect.type === 'RoomEQ') {
     const explicitTopology = asset.format.topology;
     if (explicitTopology === IR_ASSET_TOPOLOGY.mono ||

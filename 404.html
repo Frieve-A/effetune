@@ -102,6 +102,12 @@
             
             // Store the resolve function for use by other scripts
             window.resolvePath = resolvePath;
+
+            // Apply the saved theme before loading the application stylesheet.
+            var themeBootScript = document.createElement('script');
+            themeBootScript.async = false;
+            themeBootScript.src = resolvePath('js/theme-boot.js');
+            document.head.appendChild(themeBootScript);
             
             // Create and inject CSS link with correct path
             var cssLink = document.createElement('link');

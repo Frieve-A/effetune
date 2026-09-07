@@ -88,7 +88,7 @@ A smart volume control that automatically adjusts your music to maintain a consi
 - Input level (green line)
 - Output level (white line)
 - Clear visual feedback of volume adjustments
-- Easy-to-read time-based graph
+- The graph scrolls from right to left, with the latest levels at the right edge and marks every second.
 
 ### Recommended Settings
 
@@ -810,6 +810,7 @@ Each frequency band has independent transient shaping controls:
 - Time markers for reference
 - Interactive band selection
 - Clear visual feedback of transient shaping activity
+- The graphs scroll smoothly from right to left, with the latest values at the right edge.
 
 ### Recommended Settings
 
@@ -931,6 +932,7 @@ Click **Effect Presets** in the effect header to start with a complete power-sup
 - Gain reduction (white): Amount of voltage sag applied
 - Time-based display with 1-second reference markers
 - Current values displayed in real-time
+- The graphs scroll smoothly from right to left, with the latest values at the right edge.
 
 ### Recommended Settings
 
@@ -1021,6 +1023,7 @@ A specialized dynamics processor that lets you enhance or reduce the attack and 
 - Clear gain history display
 - Time markers for reference
 - Intuitive interface for all parameters
+- The graphs scroll smoothly from right to left, with the latest values at the right edge.
 
 ### Recommended Settings
 

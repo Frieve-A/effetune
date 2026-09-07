@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "type": "NoteSpectrogramPlugin",
+  "id": "step-96k",
+  "stimulus": "step",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 801,
+  "blockSize": 89,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {},
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:1d8bb35b6a19a43ff0837e542e76c2783b54124e4e928e2c9426f384bc30a591",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type NoteSpectrogramPlugin --promote-production-native",
+  "outputFloats": 1602,
+  "byteLength": 6408,
+  "binary": "case-005.f32"
+}

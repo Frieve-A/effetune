@@ -29,6 +29,7 @@ test('Hann FFT keeps analyzer calibration, rotation, and sample-rate behavior be
   vm.runInNewContext(source, context);
   const reference = new context.window.SpectrumAnalyzerPlugin();
   reference.enabled = true;
+  reference._sectionEnabled = true;
   for (const sampleRate of [48000, 96000]) {
     const bin = Math.round(1000 * size / sampleRate);
     const aligned = sine(bin * sampleRate / size, sampleRate);

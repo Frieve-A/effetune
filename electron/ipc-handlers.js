@@ -62,10 +62,11 @@ function miniPlayerPlacementForWindow(mainWin) {
   });
 }
 
-function applyMiniPlayerPlacement(mainWin, placement) {
+async function applyMiniPlayerPlacement(mainWin, placement) {
   // The saved position is an outer-window coordinate, while the requested
   // size is the web content area. Native title and menu bars must not consume
   // the 420x120 layout space reserved for the player controls.
+  if (process.platform === 'win32') await new Promise(resolve => setImmediate(resolve));
   mainWin.setContentSize(placement.width, placement.height);
   mainWin.setPosition(placement.x, placement.y);
 
@@ -73,6 +74,26 @@ function applyMiniPlayerPlacement(mainWin, placement) {
   const visibleBounds = windowState.resolveMiniPlayerBounds(outerBounds);
   if (visibleBounds.x !== outerBounds.x || visibleBounds.y !== outerBounds.y) {
     mainWin.setPosition(visibleBounds.x, visibleBounds.y);
+  }
+
+  if (process.platform === 'win32') {
+    // Moving between DPI scales and changing native frame styles schedules
+    // layout updates. Finish positioning before sizing, and let those updates
+    // run before measuring: an immediate read can still return the old size.
+    await new Promise(resolve => setImmediate(resolve));
+    // Electron's native-frame conversion can undersize content at non-default
+    // DPI. A second correction can be needed after fractional-DPI rounding.
+    // Keep the requested size separate from the measured native content size.
+    let width = placement.width;
+    let height = placement.height;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      mainWin.setContentSize(width, height);
+      await new Promise(resolve => setImmediate(resolve));
+      const [contentWidth, contentHeight] = mainWin.getContentSize();
+      if (contentWidth === placement.width && contentHeight === placement.height) break;
+      width += placement.width - contentWidth;
+      height += placement.height - contentHeight;
+    }
   }
 }
 
@@ -154,11 +175,10 @@ async function enterMiniPlayerMode(alwaysOnTop) {
     if (wasMaximizedBeforeMiniMode) mainWin.unmaximize();
     setMainMenuBarVisible(mainWin, false);
     mainWin.setMinimumSize(windowState.MINI_MIN_SIZE.width, windowState.MINI_MIN_SIZE.height);
-    applyMiniPlayerPlacement(mainWin, miniPlacement);
-    if (process.platform === 'win32') applyMiniPlayerPlacement(mainWin, miniPlacement);
     mainWin.setResizable(false);
     mainWin.setMaximizable(true);
     mainWin.setFullScreenable(false);
+    await applyMiniPlayerPlacement(mainWin, miniPlacement);
     const pinned = alwaysOnTop === true;
     mainWin.setAlwaysOnTop(pinned);
     windowState.setMiniPlayerAlwaysOnTop(pinned);
@@ -564,7 +584,7 @@ function createMenu(menuState = {}) {
 }
 
 // Register all IPC handlers
-function registerIpcHandlers() {
+function registerIpcHandlers({ onConfigSaved } = {}) {
   registerIrLibraryIpc({ ipcMain, getUserDataPath: fileHandlers.getUserDataPath });
   registerMeasurementBackupIpc({ ipcMain, getUserDataPath: fileHandlers.getUserDataPath });
   ipcMain.handle('set-mini-player-mode', async (event, options = {}) => {
@@ -890,6 +910,7 @@ function registerIpcHandlers() {
         return { success: false, error: 'Failed to write config file' };
       }
       constants.setAppConfig(current);
+      onConfigSaved?.(current);
       try {
         app.setLoginItemSettings({ openAtLogin: !!current.autoLaunch });
       } catch (error) {

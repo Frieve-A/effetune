@@ -88,7 +88,7 @@ Un contrôle intelligent du volume qui ajuste automatiquement votre musique pour
 - Niveau d'entrée (ligne verte).
 - Niveau de sortie (ligne blanche).
 - Retour visuel clair des ajustements de volume.
-- Graphique temporel facile à lire.
+- Le graphique défile de droite à gauche, avec les niveaux les plus récents sur le bord droit et des repères toutes les secondes.
 
 ### Réglages Recommandés
 
@@ -810,6 +810,7 @@ Chaque bande de fréquence a des contrôles indépendants de mise en forme des t
 - Marqueurs temporels de référence
 - Sélection interactive des bandes
 - Retour visuel clair de l'activité de mise en forme des transitoires
+- Les graphiques défilent de droite à gauche de façon fluide, avec les valeurs les plus récentes sur le bord droit.
 
 ### Réglages Recommandés
 
@@ -931,6 +932,7 @@ Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour part
 - Réduction de gain (blanc) : Quantité de sag de tension appliqué
 - Affichage temporel avec marqueurs de référence d'une seconde
 - Valeurs actuelles affichées en temps réel
+- Les graphiques défilent de droite à gauche de façon fluide, avec les valeurs les plus récentes sur le bord droit.
 
 ### Réglages Recommandés
 
@@ -1021,6 +1023,7 @@ Un processeur de dynamique spécialisé qui vous permet d'améliorer ou de rédu
 - Affichage clair de l'historique de gain
 - Marqueurs temporels pour référence
 - Interface intuitive pour tous les paramètres
+- Les graphiques défilent de droite à gauche de façon fluide, avec les valeurs les plus récentes sur le bord droit.
 
 ### Réglages Recommandés
 

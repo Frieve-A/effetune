@@ -2064,7 +2064,7 @@ class SWRadioSimulatorPlugin extends PluginBase {
         const now = performance.now();
         const mode = this._hudMode(now);
         context.clearRect(0, 0, width, height);
-        context.fillStyle = '#171717';
+        context.fillStyle = (window.ThemePalette?.get('base') ?? '');
         context.fillRect(0, 0, width, height);
         if (mode !== 'active') {
             const messages = {
@@ -2078,12 +2078,12 @@ class SWRadioSimulatorPlugin extends PluginBase {
             const [title, detail] = messages[mode];
             context.textAlign = 'center';
             context.textBaseline = 'middle';
-            context.fillStyle = mode === 'bypass' ? '#ffbf69' :
-                (mode === 'loading' ? '#9db7c7' : '#aaa');
+            context.fillStyle = mode === 'bypass' ? (window.ThemePalette?.get('warning') ?? '') :
+                (mode === 'loading' ? (window.ThemePalette?.get('text-secondary') ?? '') : (window.ThemePalette?.get('graph-tone-65') ?? ''));
             context.font = `600 ${Math.round(13 * scale)}px Arial`;
             context.fillText(title, width / 2, detail ? height * 0.42 : height / 2);
             if (detail) {
-                context.fillStyle = '#aaa';
+                context.fillStyle = (window.ThemePalette?.get('graph-tone-65') ?? '');
                 context.font = `${Math.round(11 * scale)}px Arial`;
                 context.fillText(detail, width / 2, height * 0.65);
             }
@@ -2122,24 +2122,24 @@ class SWRadioSimulatorPlugin extends PluginBase {
             const row = Math.floor(index / columns);
             const x = padding + column * (cardWidth + gap);
             const y = padding + row * (cardHeight + gap);
-            context.fillStyle = '#222';
+            context.fillStyle = (window.ThemePalette?.get('inset-background') ?? '');
             context.fillRect(x, y, cardWidth, cardHeight);
-            context.strokeStyle = eventActive && index === 3 ? '#ffb347' : '#454545';
+            context.strokeStyle = eventActive && index === 3 ? (window.ThemePalette?.get('warning') ?? '') : (window.ThemePalette?.get('graph-grid') ?? '');
             context.strokeRect(x + 0.5 * scale, y + 0.5 * scale, cardWidth - scale,
                 cardHeight - scale);
-            context.fillStyle = '#9db7c7';
+            context.fillStyle = (window.ThemePalette?.get('text-secondary') ?? '');
             context.textAlign = 'left';
             context.textBaseline = 'top';
             context.font = `600 ${Math.round(9 * scale)}px Arial`;
             context.fillText(card.title, x + 6 * scale, y + 5 * scale);
-            context.fillStyle = '#f0f0f0';
+            context.fillStyle = (window.ThemePalette?.get('graph-tone-97') ?? '');
             context.font = `${Math.round(11 * scale)}px Arial`;
             context.fillText(card.value, x + 6 * scale, y + 21 * scale, cardWidth - 12 * scale);
             const level = card.level < 0 ? 0 : (card.level > 1 ? 1 : card.level);
-            context.fillStyle = '#363636';
+            context.fillStyle = (window.ThemePalette?.get('graph-tone-13') ?? '');
             context.fillRect(x + 6 * scale, y + cardHeight - 9 * scale,
                 cardWidth - 12 * scale, 4 * scale);
-            context.fillStyle = eventActive && index === 3 ? '#ffb347' : '#69c8ff';
+            context.fillStyle = eventActive && index === 3 ? (window.ThemePalette?.get('warning') ?? '') : (window.ThemePalette?.get('accent') ?? '');
             context.fillRect(x + 6 * scale, y + cardHeight - 9 * scale,
                 (cardWidth - 12 * scale) * level, 4 * scale);
         });

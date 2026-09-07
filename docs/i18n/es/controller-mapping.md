@@ -40,6 +40,8 @@ Reloj y Temporizador solo pueden controlar parámetros numéricos de efectos, no
 
 ## Conexión y solución de problemas
 
+El estado de conexión de cada dispositivo MIDI aparece debajo de su nombre: **Conectado** con el color de éxito del tema o **Desconectado** con el color de advertencia.
+
 Las asignaciones se conservan al desconectar y se reanudan cuando vuelve un dispositivo con el mismo nombre. Si una actualización del sistema o del controlador cambia el nombre, vuelve a aprender las asignaciones afectadas. Los mandos idénticos comparten asignaciones y los puertos MIDI con el mismo nombre solo se distinguen por el orden de conexión.
 
 Si no aparecen dispositivos MIDI, permite el acceso MIDI a EffeTune y vuelve a abrir el cuadro. En Safari siguen disponibles el teclado y el mando.

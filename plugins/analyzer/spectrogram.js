@@ -94,8 +94,13 @@ class SpectrogramPlugin extends PluginBase {
         this.canvasCtx = null;
         this.canvas = null;
 
-        this.secondMarkers = [];
+        this.spectrogramColumnTimes = new Float64Array(SPECTROGRAM_HISTORY_WIDTH).fill(NaN);
+        this.spectrogramColumnPeriod = 0;
         this.prevTime = null;
+        this.scrollTime = null;
+        this.scrollWallTime = null;
+        this.scrollPaused = false;
+        this.scrollAnchorPending = true;
 
         // Store event listeners for cleanup
         this.boundEventListeners = new Map();
@@ -292,7 +297,6 @@ class SpectrogramPlugin extends PluginBase {
         this.resetDspSpectrogramHistory();
         this.setFrequencyScale('log');
         this.clearSpectrogramImage();
-        this.secondMarkers = [];
         this.prevTime = null;
         this.updateParameters();
     }
@@ -416,15 +420,13 @@ class SpectrogramPlugin extends PluginBase {
         }
         if (!this.dspSpectrogramActive) {
             this.resetDspSpectrogramHistory();
-            this.clearSpectrogramImage();
-            this.secondMarkers = [];
-            this.prevTime = null;
             this.dspSpectrogramActive = true;
         }
 
         this.sampleRate = snapshot.sampleRate;
-        this.updateSecondMarkers(snapshot.timeSeconds);
+        this.updateSpectrogramTime(snapshot.timeSeconds, (1 << snapshot.points) / (2 * snapshot.sampleRate));
         const column = this.spectrogramWriteColumn;
+        this.spectrogramColumnTimes[column] = snapshot.timeSeconds;
         for (let row = 0; row < SPECTROGRAM_CELL_COUNT; row++) {
             this.spectrogramIntensityBuffer[
                 row * SPECTROGRAM_HISTORY_WIDTH + column
@@ -437,29 +439,47 @@ class SpectrogramPlugin extends PluginBase {
         }
     }
 
-    updateSecondMarkers(timeSeconds) {
-        if (this.prevTime === null) {
-            this.prevTime = timeSeconds;
-            return;
+    updateSpectrogramTime(timeSeconds, columnPeriod) {
+        if (columnPeriod !== this.spectrogramColumnPeriod ||
+            (this.prevTime !== null && timeSeconds < this.prevTime)) {
+            this.resetDspSpectrogramHistory();
+            this.spectrogramBuffer.fill(-144);
+            this.clearSpectrogramImage();
         }
-        if (timeSeconds < this.prevTime) {
-            this.secondMarkers = [];
-            this.prevTime = timeSeconds;
-            return;
-        }
-
-        this.secondMarkers = this.secondMarkers.map(value => value - 1).filter(value => value >= 0);
-        if (timeSeconds > this.prevTime &&
-            Math.floor(timeSeconds) > Math.floor(this.prevTime)) {
-            this.secondMarkers.push(SPECTROGRAM_HISTORY_WIDTH - 1);
-        }
+        this.spectrogramColumnPeriod = columnPeriod;
         this.prevTime = timeSeconds;
+        // Start from the newest column of the initial batch. The render clock
+        // stays continuous between deliveries and resynchronizes when needed.
+        if (this.scrollWallTime === null || this.scrollAnchorPending) {
+            this.scrollTime = timeSeconds;
+            if (!this.scrollPaused) this.scrollWallTime = performance.now();
+        }
+    }
+
+    getSpectrogramDisplayTime(now) {
+        if (this.scrollTime === null || this.scrollWallTime === null) return this.scrollTime;
+        const predictedTime = this.scrollTime + Math.max(0, now - this.scrollWallTime) / 1000;
+        // A resumed stream can first deliver queued telemetry. Do not let that
+        // old clock origin hide newer columns or accumulate an empty right edge.
+        const displayTime = Math.max(this.prevTime,
+            Math.min(this.prevTime + this.spectrogramColumnPeriod, predictedTime));
+        if (displayTime !== predictedTime) {
+            this.scrollTime = displayTime;
+            this.scrollWallTime = now;
+        }
+        return displayTime;
     }
 
     resetDspSpectrogramHistory() {
         this.spectrogramIntensityBuffer?.fill(0);
+        this.spectrogramColumnTimes?.fill(NaN);
         this.spectrogramWriteColumn = 0;
         this.spectrogramColumnCount = 0;
+        this.spectrogramColumnPeriod = 0;
+        this.prevTime = null;
+        this.scrollTime = null;
+        this.scrollWallTime = null;
+        this.scrollAnchorPending = true;
     }
 
     clearSpectrogramImage() {
@@ -477,9 +497,9 @@ class SpectrogramPlugin extends PluginBase {
     activateLegacySpectrogram() {
         if (!this.dspSpectrogramActive) return;
         this.dspSpectrogramActive = false;
+        this.resetDspSpectrogramHistory();
         this.spectrogramBuffer.fill(-144);
         this.clearSpectrogramImage();
-        this.secondMarkers = [];
         this.prevTime = null;
     }
 
@@ -507,9 +527,14 @@ class SpectrogramPlugin extends PluginBase {
             // if (this.imageDataCache) this.imageDataCache.data.fill(0); // Simplified clear
         }
         
-        if (!averageBuffer || fftSize !== averageBuffer.length || !this.imag ) return;
+        if (!averageBuffer || fftSize !== averageBuffer.length || !this.imag ||
+            !Number.isFinite(message.measurements.time)) return;
 
         this.activateLegacySpectrogram();
+        this.updateSpectrogramTime(message.measurements.time, fftSize / (2 * this.sampleRate));
+        this.spectrogramColumnTimes.copyWithin(0, 1);
+        this.spectrogramColumnTimes[SPECTROGRAM_HISTORY_WIDTH - 1] = message.measurements.time;
+        if (this.spectrogramColumnCount < SPECTROGRAM_HISTORY_WIDTH) this.spectrogramColumnCount++;
 
         this.imag.fill(0);
         for (let i = 0; i < fftSize; i++) {
@@ -547,9 +572,6 @@ class SpectrogramPlugin extends PluginBase {
             }
         }
 
-        const t = message.measurements.time;
-        if (Number.isFinite(t)) this.updateSecondMarkers(t);
-        
         // Add new spectrum data to the rightmost column of the spectrogram display buffer
         const minDisplayFreq = SPECTROGRAM_MIN_DISPLAY_FREQ;
         const nyquistFreq = this.sampleRate / 2;
@@ -721,18 +743,23 @@ class SpectrogramPlugin extends PluginBase {
     startAnimation() {
         if (this.animationFrameId) return;
         if (!this.enabled || !this._sectionEnabled) return;
-        const animate = () => {
+        this.scrollPaused = false;
+        const animate = (now) => {
             if (!this.isVisible) {
                 this.stopAnimation();
                 return;
             }
-            this.drawGraph();
+            this.drawGraph(now);
             this.animationFrameId = this.requestPowerAnimationFrame(animate, 'analyzer');
         };
-        animate();
+        animate(performance.now());
     }
 
     stopAnimation() {
+        this.scrollTime = this.getSpectrogramDisplayTime(performance.now());
+        this.scrollWallTime = null;
+        this.scrollPaused = true;
+        this.scrollAnchorPending = true;
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
@@ -762,9 +789,9 @@ class SpectrogramPlugin extends PluginBase {
         this.imageDataCache = null;
         this.spectrogramBuffer = null;
         this.spectrogramIntensityBuffer = null;
+        this.spectrogramColumnTimes = null;
         this.spectrogramColorLut = null;
         this.observer = null;
-        this.secondMarkers = [];
         this.prevTime = null;
         super.cleanup();
     }
@@ -899,7 +926,7 @@ class SpectrogramPlugin extends PluginBase {
         );
     }
 
-    drawGraph() {
+    drawGraph(now = performance.now()) {
         if (!this.canvasCtx || !this.imageDataCache || !this.tempCtx || !this.tempCanvas) return;
 
         const ctx = this.canvasCtx;
@@ -908,55 +935,54 @@ class SpectrogramPlugin extends PluginBase {
         const dpr = this.graphDpr || 1;
         const isNarrow = this.graphCssWidth < 500;
         
-        ctx.fillStyle = '#000';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
         ctx.fillRect(0, 0, targetWidth, targetHeight);
         
-        if (this.dspSpectrogramActive) {
-            const split = this.spectrogramWriteColumn;
-            const firstWidth = SPECTROGRAM_HISTORY_WIDTH - split;
-            const firstTargetWidth = targetWidth * firstWidth / SPECTROGRAM_HISTORY_WIDTH;
-            if (firstWidth > 0) {
-                ctx.drawImage(
-                    this.tempCanvas,
-                    split,
-                    0,
-                    firstWidth,
-                    SPECTROGRAM_CELL_COUNT,
-                    0,
-                    0,
-                    firstTargetWidth,
-                    targetHeight
-                );
+        const displayTime = this.getSpectrogramDisplayTime(now);
+        this.scrollAnchorPending = false;
+        const period = this.spectrogramColumnPeriod;
+        const pixelsPerSecond = period > 0 ? targetWidth / (SPECTROGRAM_HISTORY_WIDTH * period) : 0;
+        if (displayTime !== null && period > 0) {
+            if (!this.dspSpectrogramActive) this.tempCtx.putImageData(this.imageDataCache, 0, 0);
+            const count = this.spectrogramColumnCount;
+            const start = this.dspSpectrogramActive
+                ? (this.spectrogramWriteColumn - count + SPECTROGRAM_HISTORY_WIDTH) % SPECTROGRAM_HISTORY_WIDTH
+                : SPECTROGRAM_HISTORY_WIDTH - count;
+            ctx.imageSmoothingEnabled = true;
+            // Consecutive analysis columns share one draw call (two at ring wrap).
+            // Keep missing analysis intervals empty instead of compressing time.
+            for (let index = 0; index < count - 1;) {
+                const column = (start + index) % SPECTROGRAM_HISTORY_WIDTH;
+                const time = this.spectrogramColumnTimes[column];
+                let run = 1;
+                const tolerance = Math.max(period * 0.001, Math.abs(time) * 2 ** -23);
+                while (index + run < count - 1 && column + run < SPECTROGRAM_HISTORY_WIDTH &&
+                    Math.abs(this.spectrogramColumnTimes[column + run] - time - run * period) <= tolerance) {
+                    run++;
+                }
+                const x = targetWidth + (time - period - displayTime) * pixelsPerSecond;
+                const width = run * period * pixelsPerSecond;
+                if (x < targetWidth && x + width > 0) {
+                    ctx.drawImage(this.tempCanvas, column, 0, run, SPECTROGRAM_CELL_COUNT,
+                        x, 0, width, targetHeight);
+                }
+                index += run;
             }
-            if (split > 0) {
-                ctx.drawImage(
-                    this.tempCanvas,
-                    0,
-                    0,
-                    split,
-                    SPECTROGRAM_CELL_COUNT,
-                    firstTargetWidth,
-                    0,
-                    targetWidth - firstTargetWidth,
-                    targetHeight
-                );
+            // Hold the newest measured spectrum at the right edge until another
+            // column arrives, while the timestamped history scrolls underneath.
+            if (count > 0) {
+                const latestColumn = this.dspSpectrogramActive
+                    ? (this.spectrogramWriteColumn + SPECTROGRAM_HISTORY_WIDTH - 1) % SPECTROGRAM_HISTORY_WIDTH
+                    : SPECTROGRAM_HISTORY_WIDTH - 1;
+                const width = (period + displayTime - this.prevTime) * pixelsPerSecond;
+                ctx.imageSmoothingEnabled = false;
+                ctx.drawImage(this.tempCanvas, latestColumn, 0, 1, SPECTROGRAM_CELL_COUNT,
+                    targetWidth - width, 0, width, targetHeight);
+                ctx.imageSmoothingEnabled = true;
             }
-        } else {
-            this.tempCtx.putImageData(this.imageDataCache, 0, 0);
-            ctx.drawImage(
-                this.tempCanvas,
-                0,
-                0,
-                this.tempCanvas.width,
-                this.tempCanvas.height,
-                0,
-                0,
-                targetWidth,
-                targetHeight
-            );
         }
 
-        ctx.strokeStyle = '#888';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-tone-50') ?? '');
         ctx.lineWidth = dpr; // Thinner than spectrum analyzer grid for less prominence
 
         // --- Dynamic Frequency Grid for Spectrogram Y-Axis ---
@@ -979,7 +1005,7 @@ class SpectrogramPlugin extends PluginBase {
             if (!gridFreqsToDraw.includes(maxDisplayFreq)) gridFreqsToDraw.push(maxDisplayFreq);
             gridFreqsToDraw = [...new Set(gridFreqsToDraw)].sort((a,b) => a-b);
 
-            ctx.fillStyle = '#ccc';
+            ctx.fillStyle = (window.ThemePalette?.get('graph-label-strong') ?? '');
             ctx.font = `${(isNarrow ? 11 : 12) * dpr}px Arial`; // Consistent font size
             ctx.textAlign = 'right';
 
@@ -1003,10 +1029,12 @@ class SpectrogramPlugin extends PluginBase {
         }
 
         // Draw 1-second markers
-        ctx.strokeStyle = '#888';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-tone-50') ?? '');
         ctx.lineWidth = 2 * dpr;
-        for (const idx of this.secondMarkers) {
-            const x = targetWidth * idx / 1024;
+        const firstSecond = displayTime === null ? 1 : Math.max(0, Math.ceil(displayTime - period * SPECTROGRAM_HISTORY_WIDTH));
+        const lastSecond = displayTime === null ? 0 : Math.floor(displayTime);
+        for (let second = firstSecond; second <= lastSecond; second++) {
+            const x = targetWidth + (second - displayTime) * pixelsPerSecond;
             ctx.beginPath();
             ctx.moveTo(x, targetHeight - (16 * dpr));
             ctx.lineTo(x, targetHeight);
@@ -1014,7 +1042,7 @@ class SpectrogramPlugin extends PluginBase {
         }
 
         // Draw axis labels
-        ctx.fillStyle = '#fff'; ctx.font = `${(isNarrow ? 13 : 14) * dpr}px Arial`; ctx.textAlign = 'center';
+        ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? ''); ctx.font = `${(isNarrow ? 13 : 14) * dpr}px Arial`; ctx.textAlign = 'center';
         ctx.fillText('Time', targetWidth / 2, targetHeight - (8 * dpr));
         ctx.save();
         ctx.translate((isNarrow ? 18 : 20) * dpr, targetHeight / 2); ctx.rotate(-Math.PI / 2);

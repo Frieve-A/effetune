@@ -191,7 +191,6 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
         assert.equal(binding.prepare(SAMPLE_RATE, 2, BLOCK_SIZE, TELEMETRY_BYTES), 0);
         assert.equal(binding.setTelemetryRate(60), 0);
         const packer = DSP_PARAM_PACKERS.get('TubeSimulatorPlugin');
-        const arena = binding.getArenaViews();
         const topologies = [
           {
             name: 'Push-Pull Power',
@@ -230,6 +229,7 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
             packer.hash
           ), 0);
 
+          const arena = binding.getArenaViews();
           for (let block = 0; block < 24; block++) {
             const input = Float32Array.from(
               { length: BLOCK_SIZE * 2 },

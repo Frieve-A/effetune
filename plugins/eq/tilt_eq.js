@@ -386,7 +386,7 @@ return data; // Return the modified buffer
         ctx.clearRect(0, 0, width, height);
 
         // Draw grid
-        ctx.strokeStyle = '#444';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth = isMobileLayout ? 1 : 0.5;
         ctx.font = '12px Arial';
 
@@ -401,7 +401,7 @@ return data; // Return the modified buffer
 
             // Frequency labels
             if (freq !== 20 && freq !== 20000) {
-                ctx.fillStyle = '#666';
+                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
                 ctx.textAlign = 'center';
                 ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, height - 24);
             }
@@ -418,14 +418,14 @@ return data; // Return the modified buffer
 
             // dB labels
             if (db !== -24 && db !== 24) {
-                ctx.fillStyle = '#666';
+                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
                 ctx.textAlign = 'right';
                 ctx.fillText(`${db}`, 48, y + 4);
             }
         });
 
         // Draw axis labels
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         ctx.font = '14px Arial';
         ctx.textAlign = 'center';
 
@@ -441,7 +441,7 @@ return data; // Return the modified buffer
 
         // Calculate and draw frequency response using the same algorithm as the audio processor
         ctx.beginPath();
-        ctx.strokeStyle = '#00ff00';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = isMobileLayout ? 2 : 1;
 
         const pivotFreq = Math.exp(this.f0);
@@ -561,7 +561,7 @@ return data; // Return the modified buffer
         const pivotX = width * (Math.log10(pivotFreq) - Math.log10(20)) / (Math.log10(20000) - Math.log10(20));
         const pivotY = height * (1 - (0 + 24) / 48); // 0dB point
 
-        ctx.fillStyle = '#ffff00';
+        ctx.fillStyle = (window.ThemePalette?.get('warning') ?? '');
         ctx.beginPath();
         ctx.arc(pivotX, pivotY, 5, 0, Math.PI * 2);
         ctx.fill();

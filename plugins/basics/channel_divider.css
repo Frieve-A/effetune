@@ -5,7 +5,7 @@
 
 .channel-divider-plugin-ui canvas {
   display: block;
-  background: #222;
+  background: var(--et-graph-bg-deep);
 }
 
 .channel-divider-plugin-ui .radio-group {
@@ -15,8 +15,8 @@
 
 /* Error banner */
 .channel-divider-plugin-ui .error-banner {
-  background-color: #602020;
-  color: white;
+  background-color: var(--et-danger-soft);
+  color: var(--et-danger);
   padding: 10px;
   border-radius: 4px;
   margin-bottom: 10px;
@@ -35,7 +35,7 @@
 
 .channel-divider-graph-container canvas {
   display: block;
-  background: #222;
+  background: var(--et-graph-bg-deep);
 }
 
 .channel-divider-graph-container .responsive-graph-container canvas {

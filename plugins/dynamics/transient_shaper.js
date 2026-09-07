@@ -1,6 +1,9 @@
 const TRANSIENT_SHAPER_TAP_GAIN = 8;
 const TRANSIENT_SHAPER_TELEMETRY_VERSION = 1;
 const TRANSIENT_SHAPER_TELEMETRY_PAYLOAD_BYTES = 4;
+// Preserve the history duration at the normal 60 Hz telemetry rate.
+const TRANSIENT_SHAPER_HISTORY_SECONDS = 1024 / 60;
+const TRANSIENT_SHAPER_DISPLAY_LEAD_SECONDS = 1 / 60;
 
 class TransientShaperPlugin extends PluginBase {
     constructor() {
@@ -23,8 +26,9 @@ class TransientShaperPlugin extends PluginBase {
 
         // Gain history buffer (1024 points) initialized with NaN so that no initial bottom line is drawn
         this.gainBuffer = new Float32Array(1024).fill(NaN);
-        this.secondMarkers = [];
-        this.prevTime = null;
+        this.historyTimes = new Float64Array(1024).fill(NaN);
+        this.graphPaused = false;
+        this.graphTime = null;
 
         this.observer = null;
         this._dspTelemetryHub = null;
@@ -185,28 +189,32 @@ class TransientShaperPlugin extends PluginBase {
         if (gainDb === null) return;
         this.onMessage({
             type: 'processBuffer',
-            measurements: { gain: gainDb, time: performance.now() / 1000 }
+            measurements: { gain: gainDb }
         });
     }
 
     onMessage(message) {
         this.ensureDspTelemetrySubscription();
-        if (message.type === 'processBuffer' && message.measurements) {
+        const gain = message.measurements?.gain;
+        if (message.type === 'processBuffer' && Number.isFinite(gain) &&
+            this.enabled && this._sectionEnabled) {
+            const receiptTime = performance.now() / 1000;
+            this.graphTime = receiptTime;
             // Shift gain buffer
             this.gainBuffer.copyWithin(0, 1);
-
-            // Shift marker positions
-            this.secondMarkers = this.secondMarkers.map(v => v - 1).filter(v => v >= 0);
-
-            const t = message.measurements.time;
-            if (this.prevTime !== null && !Number.isNaN(t) && Math.floor(this.prevTime) !== Math.floor(t)) {
-                this.secondMarkers.push(this.gainBuffer.length - 1);
-            }
-            this.prevTime = t;
+            this.historyTimes.copyWithin(0, 1);
 
             // Store gain value
-            this.gainBuffer[this.gainBuffer.length - 1] = message.measurements.gain;
+            this.gainBuffer[this.gainBuffer.length - 1] = gain;
+            this.historyTimes[this.historyTimes.length - 1] = receiptTime;
         }
+    }
+
+    getGraphDisplayTime(now) {
+        const latest = this.historyTimes[this.historyTimes.length - 1];
+        if (!Number.isFinite(latest)) return null;
+        if (this.graphPaused) return this.graphTime;
+        return Math.max(latest, Math.min(latest + TRANSIENT_SHAPER_DISPLAY_LEAD_SECONDS, now / 1000));
     }
 
     setParameters(params) {
@@ -259,25 +267,28 @@ class TransientShaperPlugin extends PluginBase {
         if (!this.enabled || !this._sectionEnabled) return;
         if (this.animationFrameId) return;
 
-        const animate = () => {
+        this.graphPaused = false;
+        const animate = (now) => {
             if (!this.isVisible) {
                 this.stopAnimation();
                 return;
             }
-            this.drawGraph();
+            this.drawGraph(now);
             this.animationFrameId = this.requestPowerAnimationFrame(animate);
         };
-        animate();
+        animate(performance.now());
     }
 
     stopAnimation() {
+        this.graphTime = this.getGraphDisplayTime(performance.now());
+        this.graphPaused = true;
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
         }
     }
 
-    drawGraph() {
+    drawGraph(now = performance.now()) {
         if (!this.canvasCtx) return;
         const ctx = this.canvasCtx;
         const width = this.canvas.width;
@@ -294,15 +305,15 @@ class TransientShaperPlugin extends PluginBase {
         const graphLineWidth = (isMobileLayout ? 2 : 1) * dpr;
 
         // Clear canvas
-        ctx.fillStyle = '#1a1a1a';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
         ctx.fillRect(0, 0, width, height);
 
         // Draw grid lines and labels
-        ctx.strokeStyle = '#333';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-subtle') ?? '');
         ctx.lineWidth = graphLineWidth;
         ctx.textAlign = 'right';
         ctx.font = `${tickFontSize}px Arial`;
-        ctx.fillStyle = '#ccc';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label-strong') ?? '');
 
         // Draw horizontal grid lines (6dB steps from -24dB to +24dB)
         for (let db = -4; db <= 4; db += 2) {
@@ -326,11 +337,14 @@ class TransientShaperPlugin extends PluginBase {
         ctx.textAlign = 'center';
         ctx.fillText('Time', width / 2, height - bottomOffset);
 
-        // Draw 1-second markers
-        ctx.strokeStyle = '#555';
+        const displayTime = this.getGraphDisplayTime(now);
+        const pixelsPerSecond = width / TRANSIENT_SHAPER_HISTORY_SECONDS;
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-strong') ?? '');
         ctx.lineWidth = graphLineWidth;
-        for (const idx of this.secondMarkers) {
-            const x = width * idx / this.gainBuffer.length;
+        const firstSecond = displayTime === null ? 1 : Math.max(0, Math.ceil(displayTime - TRANSIENT_SHAPER_HISTORY_SECONDS));
+        const lastSecond = displayTime === null ? 0 : Math.floor(displayTime);
+        for (let second = firstSecond; second <= lastSecond; second++) {
+            const x = width + (second - displayTime) * pixelsPerSecond;
             ctx.beginPath();
             ctx.moveTo(x, height - (8 * dpr));
             ctx.lineTo(x, height);
@@ -338,23 +352,31 @@ class TransientShaperPlugin extends PluginBase {
         }
 
         // Draw gain history; skip segments with NaN values
-        ctx.strokeStyle = '#00ff00';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = graphLineWidth;
         ctx.beginPath();
         let started = false;
+        let previousTime = null;
+        const maxContinuousGap = 1;
         for (let i = 0; i < this.gainBuffer.length; i++) {
             const value = this.gainBuffer[i];
-            if (isNaN(value)) continue;
-            const x = width * i / this.gainBuffer.length;
+            const time = this.historyTimes[i];
+            if (!Number.isFinite(value) || !Number.isFinite(time) || displayTime === null) {
+                previousTime = null;
+                continue;
+            }
+            const x = width + (time - displayTime) * pixelsPerSecond;
             const y = height * (1 - (value + 6) / 12);
-            if (!started) {
+            if (!started || previousTime === null || time - previousTime > maxContinuousGap) {
                 ctx.moveTo(x, y);
                 started = true;
             } else {
                 ctx.lineTo(x, y);
             }
+            previousTime = time;
         }
         if (started) {
+            ctx.lineTo(width, height * (1 - (this.gainBuffer[this.gainBuffer.length - 1] + 6) / 12));
             ctx.stroke();
         }
     }
@@ -434,8 +456,9 @@ class TransientShaperPlugin extends PluginBase {
 
         // Reset buffer to NaN so that initial graph is blank
         this.gainBuffer.fill(NaN);
-        this.secondMarkers = [];
-        this.prevTime = null;
+        this.historyTimes.fill(NaN);
+        this.graphPaused = false;
+        this.graphTime = null;
 
         if (this.observer) {
             this.observer.disconnect();

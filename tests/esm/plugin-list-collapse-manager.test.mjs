@@ -15,6 +15,7 @@ class FakeElement {
     this.parentNode = null;
     this.style = {};
     this.listeners = new Map();
+    this.attributes = new Map();
     this.offsetWidth = options.offsetWidth ?? 120;
     this.rect = options.rect ?? { left: 20, right: 140, width: this.offsetWidth };
     this.classes = new Set(this.className.split(/\s+/).filter(Boolean));
@@ -27,8 +28,20 @@ class FakeElement {
         this.classes.delete(className);
         this.className = [...this.classes].join(' ');
       },
+      toggle: (className, force) => {
+        if (force) this.classList.add(className);
+        else this.classList.remove(className);
+      },
       contains: className => this.classes.has(className)
     };
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value));
+  }
+
+  getAttribute(name) {
+    return this.attributes.get(name) ?? null;
   }
 
   appendChild(child) {
@@ -294,35 +307,21 @@ test('loads, saves, toggles, and applies category collapsed state', async () => 
   });
 });
 
-test('collapse toggling updates classes, followers, transition cleanup, and final positions', async () => {
+test('collapse toggling sets matching classes and transition destinations', async () => {
   await withCollapseGlobals({
     windowOptions: { appInitializedListener: true }
-  }, async ({ calls, dom, frameCallbacks }) => {
+  }, async ({ dom }) => {
     const manager = new CollapseManager({ pluginList: dom.pluginList });
-
-    manager.animationFrameId = 99;
-    manager.handleTransitionEnd = () => calls.push(['oldTransition']);
     manager.togglePluginListCollapse();
     assert.equal(manager.isCollapsed, true);
     assert.equal(dom.pluginList.classList.contains('collapsed'), true);
     assert.equal(dom.pullTab.classList.contains('collapsed'), true);
     assert.equal(dom.mainContainer.classList.contains('plugin-list-collapsed'), true);
     assert.equal(dom.pullTab.textContent, '\u25b6');
-    assert.ok(calls.some(call => call[0] === 'cancelAnimationFrame' && call[1] === 99));
-
-    const firstFrame = manager.animationFrameId;
-    frameCallbacks.get(firstFrame)();
-    assert.equal(dom.pullTab.style.left, '140px');
-    assert.equal(dom.pipeline.style.transform, 'none');
-    assert.notEqual(manager.animationFrameId, firstFrame);
-
-    const transitionHandler = manager.handleTransitionEnd;
-    transitionHandler({ propertyName: 'opacity', target: dom.pluginList });
-    assert.equal(manager.handleTransitionEnd, transitionHandler);
-    transitionHandler({ propertyName: 'transform', target: dom.pluginList });
-    assert.equal(manager.handleTransitionEnd, null);
-    assert.equal(dom.pullTab.style.left, '0px');
-    assert.equal(dom.pipeline.style.marginLeft, '-120px');
+    assert.equal(dom.pullTab.getAttribute('aria-expanded'), 'false');
+    assert.equal(dom.sidebarButton.getAttribute('aria-expanded'), 'false');
+    assert.equal(dom.pullTab.style.left, undefined);
+    assert.equal(dom.pipeline.style.marginLeft, '');
 
     manager.togglePluginListCollapse();
     assert.equal(manager.isCollapsed, false);
@@ -330,102 +329,46 @@ test('collapse toggling updates classes, followers, transition cleanup, and fina
     assert.equal(dom.pullTab.classList.contains('collapsed'), false);
     assert.equal(dom.mainContainer.classList.contains('plugin-list-collapsed'), false);
     assert.equal(dom.pullTab.textContent, '\u25c0');
+    assert.equal(dom.pullTab.getAttribute('aria-expanded'), 'true');
+    assert.equal(dom.sidebarButton.getAttribute('aria-expanded'), 'true');
+    assert.equal(dom.pullTab.style.left, undefined);
+    assert.equal(dom.pipeline.style.marginLeft, '');
   });
+});
 
+test('updatePositions updates layout width without positioning the pull tab', async () => {
   await withCollapseGlobals({
-    domOptions: { pipeline: null },
     windowOptions: { appInitializedListener: true }
   }, async ({ dom }) => {
+    const manager = new CollapseManager({ pluginList: dom.pluginList });
+    dom.pluginList.rect = { left: -40, right: 80, width: 120 };
+    manager.updatePositions();
+    assert.equal(dom.pullTab.style.left, undefined);
+    assert.equal(dom.documentRef.documentElement.style.values['--plugin-list-total-width'], '120px');
+    assert.equal(dom.pipeline.style.marginLeft, '');
+  });
+});
+
+test('mobile updatePositions clears desktop collapse state', async () => {
+  await withCollapseGlobals({
+    windowOptions: { appInitializedListener: true }
+  }, async ({ dom, windowRef }) => {
     const manager = new CollapseManager({ pluginList: dom.pluginList });
     manager.togglePluginListCollapse();
-    assert.equal(manager.isCollapsed, true);
-  });
-});
-
-test('animateFollowers and updatePositions handle guard and zero-width cases', async () => {
-  await withCollapseGlobals({
-    domOptions: {
-      pluginListWidth: 0,
-      pluginListRect: { left: 0, right: 0, width: 0 },
-      pluginListRectWidth: 0
-    },
-    windowOptions: {
-      appInitializedListener: true,
-      computedStyle: { paddingLeft: 'not-a-number' }
-    }
-  }, async ({ calls, dom, frameCallbacks }) => {
-    const manager = new CollapseManager({ pluginList: dom.pluginList });
-
-    manager.animationFrameId = 77;
-    manager.animateFollowers();
-    assert.ok(calls.some(call => call[0] === 'cancelAnimationFrame' && call[1] === 77));
-
-    manager.handleTransitionEnd = null;
-    manager.animateFollowers();
-    frameCallbacks.get(manager.animationFrameId)();
-    assert.equal(manager.animationFrameId, null);
-    assert.equal(dom.pullTab.style.left, '0px');
-    assert.equal(dom.pipeline.style.marginLeft, '0px');
-
-    manager.animationFrameId = 42;
-    manager.handleTransitionEnd = () => {};
-    manager.isCollapsed = false;
-    manager.updatePositions();
-    assert.equal(manager.animationFrameId, null);
-    assert.equal(manager.handleTransitionEnd, null);
-    assert.equal(dom.documentRef.documentElement.style.values['--plugin-list-total-width'], '0px');
-    assert.equal(dom.pipeline.style.marginLeft, '0');
-
-    manager.pluginList = null;
-    manager.updatePositions();
-    manager.animateFollowers();
-    assert.ok(calls.some(call => call[0] === 'cancelAnimationFrame' && call[1] === 42));
-  });
-
-  await withCollapseGlobals({
-    domOptions: { pipeline: null },
-    windowOptions: { appInitializedListener: true }
-  }, async ({ dom }) => {
-    const manager = new CollapseManager({ pluginList: dom.pluginList });
-    manager.updatePositions();
-  });
-});
-
-test('mobile updatePositions clears desktop collapse animation state', async () => {
-  await withCollapseGlobals({
-    windowOptions: { appInitializedListener: true }
-  }, async ({ calls, dom, windowRef }) => {
     windowRef.uiManager = { layoutMode: { isMobile: true } };
-    const manager = new CollapseManager({ pluginList: dom.pluginList });
-    const transitionHandler = () => {};
-
-    manager.animationFrameId = 123;
-    manager.handleTransitionEnd = transitionHandler;
-    manager.isCollapsed = true;
-    dom.pluginList.classList.add('collapsed');
-    dom.pullTab.classList.add('collapsed');
-    dom.mainContainer.classList.add('plugin-list-collapsed');
-    dom.pullTab.style.left = '120px';
-    dom.pullTab.textContent = '\u25b6';
-    dom.pipeline.style.marginLeft = '-120px';
-    dom.pipeline.style.transform = 'none';
-
     manager.updatePositions();
-
-    assert.ok(calls.some(call => call[0] === 'cancelAnimationFrame' && call[1] === 123));
-    assert.equal(manager.animationFrameId, null);
-    assert.equal(manager.handleTransitionEnd, null);
     assert.equal(manager.isCollapsed, false);
     assert.equal(dom.pluginList.classList.contains('collapsed'), false);
     assert.equal(dom.pullTab.classList.contains('collapsed'), false);
     assert.equal(dom.mainContainer.classList.contains('plugin-list-collapsed'), false);
     assert.equal(dom.pullTab.style.left, '');
     assert.equal(dom.pullTab.textContent, '\u25c0');
+    assert.equal(dom.pullTab.getAttribute('aria-expanded'), 'true');
+    assert.equal(dom.sidebarButton.getAttribute('aria-expanded'), 'true');
     assert.equal(dom.pipeline.style.marginLeft, '0');
     assert.equal(dom.pipeline.style.transform, 'none');
   });
 });
-
 test('pull tab, resize, touch swipe, sidebar, and load handlers trigger collapse checks', async () => {
   await withCollapseGlobals({
     windowOptions: { touch: true, appInitializedListener: true, app: { initialized: true } }

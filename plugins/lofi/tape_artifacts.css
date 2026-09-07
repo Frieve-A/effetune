@@ -1,6 +1,6 @@
 .tape-artifacts-status {
     margin-top: 6px;
-    color: #aaa;
+    color: var(--et-surface-66);
     font: 11px Arial, sans-serif;
     line-height: 1.35;
 }

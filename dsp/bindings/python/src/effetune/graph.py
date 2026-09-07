@@ -381,6 +381,10 @@ def _prepare_asset(native: Any, native_index: int, effect: Effect, asset: AssetD
                 f"{effect.id or effect.effect_type} requires an even number of processing channels from 4 to 16 "
                 "and one matrix filter channel per band"
             )
+    elif effect.effect_type == "CrosstalkCancellation":
+        topology = resolve_topology(asset, effect_channels, "trueStereo")
+        divider = 1
+        head_block = int(effect.parameters["latencyMode"])
     elif effect.effect_type == "RoomEQ":
         topology = resolve_room_eq_topology(asset, effect_channels)
         divider = 1

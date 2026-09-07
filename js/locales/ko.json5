@@ -429,6 +429,7 @@
   "dialog.config.startupView.effects": "Effect Pipeline (기본값)",
   "dialog.config.startupView.library": "음악 라이브러리",
   "dialog.config.language": "언어",
+  "dialog.config.theme": "테마",
   "dialog.config.language.auto": "자동(브라우저 설정)",
   "dialog.config.languageRestartNotice": "언어 설정을 변경한 경우 앱을 다시 시작해 주세요.",
   "dialog.config.openHome.title": "OpenHome 원격 제어",
@@ -803,5 +804,7 @@
   "midi.source.key": "키 {key}", "midi.source.gamepadButton": "게임패드 버튼 {number}", "midi.source.gamepadAxis": "게임패드 축 {number} ({mode})", "midi.source.pitchbend": "피치 벤드 ch {channel}", "midi.source.mcuFader": "MCU 페이더 {channel}", "midi.source.mcuVpot": "MCU V-Pot {number}", "midi.source.mcuButton": "MCU 버튼 {number}", "midi.source.midi": "{kind} {number} ch {channel}",
   "midi.source.clock": "시계: {component}, {shape}", "midi.source.timer": "타이머: {seconds}초마다", "midi.automation.source": "입력", "midi.automation.source.timer": "타이머", "midi.automation.source.clock": "시계", "midi.clock.component": "시간 단위", "midi.clock.component.hour": "시", "midi.clock.component.minute": "분", "midi.clock.component.second": "초", "midi.clock.shape": "파형", "midi.clock.shape.ramp": "상승", "midi.clock.shape.sin": "사인", "midi.clock.shape.cos": "코사인", "midi.timer.interval": "간격(초)", "midi.automation.behavior": "동작", "midi.behavior.direct": "지정한 양만큼 변경", "midi.behavior.random": "범위에서 무작위 값", "midi.behavior.randomWalk": "현재 값에서 무작위로 한 단계", "midi.automation.amount": "변화량",
   "midi.source.timer.interval": "타이머: {seconds}초마다", "midi.source.timer.once": "타이머: {date} {time}에 한 번", "midi.source.timer.daily": "타이머: 매일 {time}", "midi.timer.schedule": "일정", "midi.timer.schedule.interval": "간격", "midi.timer.schedule.once": "한 번", "midi.timer.schedule.daily": "매일", "midi.timer.date": "날짜", "midi.timer.time": "시간", "midi.timer.expired": "만료됨",
+  "midi.device.connected": "연결됨",
+  "midi.device.disconnected": "연결 끊김",
   "midi.target.type": "이펙트", "midi.target.instance": "인스턴스", "midi.target.parameter": "파라미터", "midi.direction": "방향", "midi.mode": "모드", "midi.target.masterBypass": "마스터 바이패스", "midi.target.abToggle": "A/B 전환", "midi.target.enabled": "활성화", "midi.parameterNumber": "{title} {number}", "midi.map.minimum": "최소", "midi.map.maximum": "최대", "midi.map.sensitivity": "감도", "midi.direction.increase": "증가 (+)", "midi.direction.decrease": "감소 (−)", "midi.mode.abs": "절대값", "midi.mode.rel": "상대값", "midi.mode.rel2c": "상대값 (2의 보수)", "midi.mode.relBin": "상대값 (바이너리 오프셋)", "midi.mode.relSign": "상대값 (부호와 크기)", "midi.buttonMode": "버튼 모드", "midi.buttonMode.toggle": "토글", "midi.buttonMode.momentary": "순간 동작"
 }

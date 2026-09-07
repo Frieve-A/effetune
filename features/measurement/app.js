@@ -238,6 +238,9 @@ async function initializeApp() {
                 'The measurement tool could not be prepared. Reload the page and try again.',
             'error'
         );
+    } finally {
+        // Reveal the page only after translations and the initial UI are ready.
+        document.body.style.removeProperty('visibility');
     }
 }
 

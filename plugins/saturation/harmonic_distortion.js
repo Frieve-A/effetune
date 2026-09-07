@@ -176,7 +176,7 @@ class HarmonicDistortionPlugin extends PluginBase {
         ctx.clearRect(0, 0, width, height);
         
         // Draw grid
-        ctx.strokeStyle = '#444';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth = 1;
         
         // Vertical grid lines
@@ -196,7 +196,7 @@ class HarmonicDistortionPlugin extends PluginBase {
         }
         
         // Draw labels on canvas - just like saturation.js
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         ctx.font = '28px Arial';
         ctx.textAlign = 'center';
         ctx.fillText('in', width / 2, height - 5);
@@ -207,7 +207,7 @@ class HarmonicDistortionPlugin extends PluginBase {
         ctx.restore();
         
         // Draw dB markings
-        ctx.fillStyle = '#666';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         ctx.font = '20px Arial';
         ctx.fillText('-6dB', width * 0.25, height - 5);
         ctx.fillText('-6dB', width * 0.75, height - 5);
@@ -223,7 +223,7 @@ class HarmonicDistortionPlugin extends PluginBase {
         ctx.restore();
         
         // Draw the transfer function
-        ctx.strokeStyle = '#0f0';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = 2;
         ctx.beginPath();
         
@@ -297,7 +297,7 @@ class HarmonicDistortionPlugin extends PluginBase {
         canvas.height = 400;
         canvas.style.width = '200px';
         canvas.style.height = '200px';
-        canvas.style.backgroundColor = '#222';
+        canvas.style.backgroundColor = 'var(--et-graph-bg-deep)';
         this.canvas = canvas;
         graphContainer.appendChild(canvas);
         container.appendChild(graphContainer);

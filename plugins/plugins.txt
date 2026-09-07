@@ -21,6 +21,7 @@ Control: Control tools
 # Plugins are sorted by category, then alphabetically by path
 [plugins]
 analyzer/level_meter: Level Meter | Analyzer | LevelMeterPlugin | css
+analyzer/note_spectrogram: Note Spectrogram | Analyzer | NoteSpectrogramPlugin
 analyzer/oscilloscope: Oscilloscope | Analyzer | OscilloscopePlugin | css
 analyzer/spectrogram: Spectrogram | Analyzer | SpectrogramPlugin | css
 analyzer/spectrum_analyzer: Spectrum Analyzer | Analyzer | SpectrumAnalyzerPlugin | css

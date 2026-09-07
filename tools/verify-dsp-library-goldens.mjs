@@ -15,17 +15,17 @@ const DEFAULT_SUMMARY = path.join(
   'dsp-library-goldens-summary.json'
 );
 const EXPECTED_BACKENDS = Object.freeze({
-  'python-native': 875,
-  'javascript-baseline': 875,
-  'javascript-simd': 875
+  'python-native': 940,
+  'javascript-baseline': 940,
+  'javascript-simd': 940
 });
 const EXPECTED_WORKLET_GOLDEN = Object.freeze({
-  'chromium-audioworklet-baseline': 93,
-  'chromium-audioworklet-simd': 93
+  'chromium-audioworklet-baseline': 102,
+  'chromium-audioworklet-simd': 102
 });
 const EXPECTED_WORKLET_NONIDENTITY = Object.freeze({
-  'chromium-audioworklet-nonidentity-baseline': 87,
-  'chromium-audioworklet-nonidentity-simd': 87
+  'chromium-audioworklet-nonidentity-baseline': 94,
+  'chromium-audioworklet-nonidentity-simd': 94
 });
 const PYTHON_STATE_CONTRACTS = Object.freeze([
   'sameSeed',
@@ -46,11 +46,11 @@ const JAVASCRIPT_STATE_CONTRACTS = Object.freeze([
   'frequencyShifterLatency'
 ]);
 const EXPECTED_VALIDATION_REJECTIONS = Object.freeze({
-  'python-native': 1,
-  'javascript-baseline': 1,
-  'javascript-simd': 1,
-  'chromium-audioworklet-baseline': 1,
-  'chromium-audioworklet-simd': 1,
+  'python-native': 2,
+  'javascript-baseline': 2,
+  'javascript-simd': 2,
+  'chromium-audioworklet-baseline': 2,
+  'chromium-audioworklet-simd': 2,
   'chromium-audioworklet-nonidentity-baseline': 0,
   'chromium-audioworklet-nonidentity-simd': 0
 });
@@ -364,6 +364,8 @@ function semanticEventParameters(testCase, current, supplied) {
 }
 
 export function expectedValidationRejection(testCase) {
+  const missingAsset = testCase.definition.assets.find(asset => asset.required && !testCase.metadata.asset);
+  if (missingAsset) return { asset: missingAsset.name, reason: 'missing-required-asset' };
   const parameters = semanticParameters(testCase, testCase.metadata.params);
   for (const definition of testCase.definition.parameters) {
     const value = parameters[definition.name];
@@ -664,8 +666,8 @@ async function runJsVariant(api, cases, variant) {
       else failures.push({ case: label, comparison });
     } catch (error) {
       if (expectedRejection &&
-          typeof api.ValidationError === 'function' &&
-          error instanceof api.ValidationError) {
+          error instanceof (expectedRejection.reason === 'missing-required-asset'
+            ? api.AssetError : api.ValidationError)) {
         passed++;
         expectedValidationRejections.push({
           case: label,
@@ -1072,7 +1074,7 @@ async function runWorkletAcceptance(stageRoot, cases, { api, mode = 'golden' } =
     for (const variant of ['baseline', 'simd']) {
       const results = await page.evaluate(
         async ({ apiUrl, artifacts, plans, processorUrl, variant, workletUrl }) => {
-          const [{ ValidationError }, { EffeTuneNode }] = await Promise.all([
+          const [{ AssetError, ValidationError }, { EffeTuneNode }] = await Promise.all([
             import(apiUrl),
             import(workletUrl)
           ]);
@@ -1179,7 +1181,8 @@ async function runWorkletAcceptance(stageRoot, cases, { api, mode = 'golden' } =
               });
             } catch (error) {
               if (plan.expectedValidationRejection &&
-                  error instanceof ValidationError) {
+                  error instanceof (plan.expectedValidationRejection.reason === 'missing-required-asset'
+                    ? AssetError : ValidationError)) {
                 output.push({
                   publicType: plan.publicType,
                   caseId: plan.caseId,
@@ -1448,10 +1451,10 @@ export async function runAcceptance(options = {}) {
     backends: [],
     status: 'failed'
   };
-  if (inventorySummary.effects !== 92 ||
-      inventorySummary.total !== 875 ||
-      inventorySummary.assetCases !== 24 ||
-      inventorySummary.eventCases !== 146) {
+  if (inventorySummary.effects !== 100 ||
+      inventorySummary.total !== 940 ||
+      inventorySummary.assetCases !== 30 ||
+      inventorySummary.eventCases !== 152) {
     throw new Error(
       `Frozen inventory mismatch: ${JSON.stringify(inventorySummary)}`
     );

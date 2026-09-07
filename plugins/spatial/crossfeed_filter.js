@@ -172,10 +172,10 @@ class CrossfeedFilterPlugin extends PluginBase {
         const container = document.createElement('div');
         container.className = 'plugin-parameter-ui';
 
-        // Use the base class createParameterControl helper
+        // Use the base class parameter-control helpers
         container.appendChild(this.createParameterControl('Level', -60, 0, 0.1, this.lv, (value) => this.setParameters({ lv: value }), 'dB', 'lv'));
         container.appendChild(this.createParameterControl('Delay', 0, 1, 0.01, this.dl, (value) => this.setParameters({ dl: value }), 'ms', 'dl'));
-        container.appendChild(this.createParameterControl('LPF Freq', 100, 20000, 100, this.lf, (value) => this.setParameters({ lf: value }), 'Hz', 'lf'));
+        container.appendChild(this.createLogarithmicParameterControl('LPF Freq', 100, 20000, 100, this.lf, (value) => this.setParameters({ lf: value }), 'Hz', 'lf'));
 
         return container;
     }

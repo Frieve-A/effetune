@@ -50,10 +50,10 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
     try {
       assert.notEqual(binding.createEngine(), 0);
       assert.equal(binding.prepare(SAMPLE_RATE, 2, BLOCK_SIZE, TELEMETRY_BYTES), 0);
-      const arena = binding.getArenaViews();
       const packet = new ArrayBuffer(TELEMETRY_BYTES);
       let processedFrames = 0;
       const processBlocks = (instanceId, blocks = 7) => {
+        const arena = binding.getArenaViews();
         for (let block = 0; block < blocks; block++) {
           arena.combined.fill(0.75, 0, BLOCK_SIZE);
           arena.combined.fill(-0.5, BLOCK_SIZE, BLOCK_SIZE * 2);

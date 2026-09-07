@@ -106,6 +106,7 @@ A specialized dynamics processor that lets you enhance or reduce the attack and 
 - Clear gain history display
 - Time markers for reference
 - Intuitive interface for all parameters
+- The graphs scroll smoothly from right to left, with the latest values at the right edge.
 
 ### Recommended Settings
 

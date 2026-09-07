@@ -245,7 +245,7 @@ class ExciterPlugin extends PluginBase {
         ctx.clearRect(0, 0, width, height);
 
         // Draw grid
-        ctx.strokeStyle = "#444";
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth = gridLineWidth;
         const freqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
         const labeledFreqs = cssWidth < 420
@@ -258,7 +258,7 @@ class ExciterPlugin extends PluginBase {
             ctx.lineTo(x, height);
             ctx.stroke();
             if (labeledFreqs.includes(freq)) {
-                ctx.fillStyle = "#666";
+                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
                 ctx.font = `${tickFont}px Arial`;
                 ctx.textAlign = "center";
                 ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, bottomTickY);
@@ -272,21 +272,21 @@ class ExciterPlugin extends PluginBase {
             ctx.lineTo(width, y);
             // Brighten the 0dB line
             if (db === 0) {
-                ctx.strokeStyle = "#888";
+                ctx.strokeStyle = (window.ThemePalette?.get('graph-tone-50') ?? '');
                 ctx.lineWidth = curveLineWidth;
             } else {
-                ctx.strokeStyle = "#444";
+                ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
                 ctx.lineWidth = gridLineWidth;
             }
             ctx.stroke();
             if (db > -60 && db < 12) {
-                ctx.fillStyle = "#666";
+                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
                 ctx.font = `${tickFont}px Arial`;
                 ctx.textAlign = "right";
                 ctx.fillText(`${db}dB`, leftLabelX, y + 3 * dpr);
             }
         });
-        ctx.fillStyle = "#fff";
+        ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         ctx.font = `${axisFont}px Arial`;
         ctx.textAlign = "center";
         ctx.fillText("Frequency (Hz)", width / 2, axisBottomY);
@@ -298,7 +298,7 @@ class ExciterPlugin extends PluginBase {
 
         // Calculate the frequency response
         ctx.beginPath();
-        ctx.strokeStyle = "#00ff00";
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = curveLineWidth;
         for (let i = 0; i < width; i++) {
             const freq = Math.pow(10, Math.log10(20) + (i / width) * (Math.log10(20000) - Math.log10(20)));
@@ -335,7 +335,7 @@ class ExciterPlugin extends PluginBase {
         const bottomInset = 4 * dpr;
         const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
         ctx.clearRect(0, 0, width, height);
-        ctx.strokeStyle = '#444';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
         for (let x = 0; x <= width; x += width / 4) {
             ctx.beginPath();
@@ -349,7 +349,7 @@ class ExciterPlugin extends PluginBase {
             ctx.lineTo(width, y);
             ctx.stroke();
         }
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         ctx.font = `${axisFont}px Arial`;
         ctx.textAlign = 'center';
         ctx.fillText('in', width / 2, height - bottomInset);
@@ -358,7 +358,7 @@ class ExciterPlugin extends PluginBase {
         ctx.rotate(-Math.PI / 2);
         ctx.fillText('out', 0, 0);
         ctx.restore();
-        ctx.fillStyle = '#666';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         ctx.font = `${tickFont}px Arial`;
         ctx.fillText('-6dB', width * 0.25, height - bottomInset);
         ctx.fillText('-6dB', width * 0.75, height - bottomInset);
@@ -372,7 +372,7 @@ class ExciterPlugin extends PluginBase {
         ctx.rotate(-Math.PI / 2);
         ctx.fillText('-6dB', 0, 0);
         ctx.restore();
-        ctx.strokeStyle = '#0f0';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = (isMobileLayout ? 2 : 1) * dpr;
         ctx.beginPath();
         const mixRatio = this.mx / 100;
@@ -395,7 +395,7 @@ class ExciterPlugin extends PluginBase {
         container.className = 'exciter-plugin-ui plugin-parameter-ui';
 
         // HPF Frequency control
-        const freqRow = this.createParameterControl(
+        const freqRow = this.createLogarithmicParameterControl(
             'HPF Freq', 500, 10000, 10, this.hf,
             this.setHPFFreq.bind(this), 'Hz', 'hf'
         );
@@ -447,7 +447,7 @@ class ExciterPlugin extends PluginBase {
             className: 'exciter-hpf-graph',
             onResize: ({ canvas }) => this.drawHPFGraph(canvas)
         });
-        hpfCanvas.style.backgroundColor = '#222';
+        hpfCanvas.style.backgroundColor = 'var(--et-graph-bg-deep)';
         this.hpfCanvas = hpfCanvas;
         this.graphDisposers.push(disposeHPFGraph);
         graphsContainer.appendChild(hpfGraphContainer);
@@ -459,7 +459,7 @@ class ExciterPlugin extends PluginBase {
             className: 'exciter-saturation-graph',
             onResize: ({ canvas }) => this.drawSaturationGraph(canvas)
         });
-        satCanvas.style.backgroundColor = '#222';
+        satCanvas.style.backgroundColor = 'var(--et-graph-bg-deep)';
         this.satCanvas = satCanvas;
         this.graphDisposers.push(disposeSatGraph);
         graphsContainer.appendChild(satGraphContainer);

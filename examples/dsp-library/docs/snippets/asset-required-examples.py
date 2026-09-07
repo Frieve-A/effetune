@@ -14,6 +14,7 @@ COEFFICIENTS = {
 }
 
 for effect_type in (
+    "CrosstalkCancellation",
     "FIRCrossover",
     "FiveBandFIRPEQ",
     "GroupDelayEQ",
@@ -50,6 +51,13 @@ for effect_type in (
                 "filterDelaySamples": 0,
                 "bandCount": 2,
             }
+        elif effect_type == "CrosstalkCancellation":
+            asset = et.AssetData(
+                np.stack((coefficients[0], coefficients[1], coefficients[1], coefficients[0])),
+                SAMPLE_RATE,
+                topology="trueStereo",
+            )
+            parameters = {"latencyMode": "0", "filterDelaySamples": 0}
         else:
             asset = et.AssetData(
                 coefficients[0][np.newaxis, :],

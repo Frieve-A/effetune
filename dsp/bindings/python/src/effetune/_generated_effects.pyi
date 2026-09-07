@@ -21,6 +21,16 @@ class LevelMeter(Effect):
         channel: EffectChannel = ...,
     ) -> None: ...
 
+class NoteSpectrogram(Effect):
+    effect_type: Literal["NoteSpectrogram"]
+    def __init__(
+        self,
+        *,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
 class Oscilloscope(Effect):
     effect_type: Literal["Oscilloscope"]
     def __init__(
@@ -1094,6 +1104,18 @@ class PitchShifter(Effect):
         channel: EffectChannel = ...,
     ) -> None: ...
 
+class PitchShifterHQ(Effect):
+    effect_type: Literal["PitchShifterHQ"]
+    def __init__(
+        self,
+        *,
+        pitch_shift: int = ...,
+        fine_tune: int = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
 class RotarySpeaker(Effect):
     effect_type: Literal["RotarySpeaker"]
     def __init__(
@@ -1217,6 +1239,58 @@ class ModalResonator(Effect):
         channel: EffectChannel = ...,
     ) -> None: ...
 
+class ClickRemover(Effect):
+    effect_type: Literal["ClickRemover"]
+    def __init__(
+        self,
+        *,
+        sensitivity: float = ...,
+        max_repair_length: float = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
+class ClipRestorer(Effect):
+    effect_type: Literal["ClipRestorer"]
+    def __init__(
+        self,
+        *,
+        threshold: float = ...,
+        output_gain: float = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
+class HumRemover(Effect):
+    effect_type: Literal["HumRemover"]
+    def __init__(
+        self,
+        *,
+        frequency: Literal["Auto", "50 Hz", "60 Hz"] = ...,
+        harmonics: int = ...,
+        tracking_speed: float = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
+class NoiseReduction(Effect):
+    effect_type: Literal["NoiseReduction"]
+    def __init__(
+        self,
+        *,
+        reduction: float = ...,
+        sensitivity: float = ...,
+        smoothing: float = ...,
+        treble_care: float = ...,
+        mix: float = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
 class DattorroPlateReverb(Effect):
     effect_type: Literal["DattorroPlateReverb"]
     def __init__(
@@ -1293,6 +1367,20 @@ class RSReverb(Effect):
         high_damp: int = ...,
         low_damp: int = ...,
         mix: int = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
+class BandwidthExtender(Effect):
+    effect_type: Literal["BandwidthExtender"]
+    def __init__(
+        self,
+        *,
+        harmonic_amount: float = ...,
+        noise_amount: float = ...,
+        cutoff_mode: Literal["Auto", "Manual"] = ...,
+        cutoff_frequency: float = ...,
         id: str | None = ...,
         enabled: bool = ...,
         channel: EffectChannel = ...,
@@ -1452,6 +1540,21 @@ class CrossfeedFilter(Effect):
         id: str | None = ...,
         enabled: bool = ...,
         channel: EffectChannel = ...,
+    ) -> None: ...
+
+class CrosstalkCancellation(Effect):
+    effect_type: Literal["CrosstalkCancellation"]
+    def __init__(
+        self,
+        *,
+        latency_mode: Literal["0", "128", "256", "512", "1024"] = ...,
+        filter_delay_samples: int = ...,
+        strength: float = ...,
+        output_gain: float = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+        assets: IRReverbAssets,
     ) -> None: ...
 
 class MSMatrix(Effect):

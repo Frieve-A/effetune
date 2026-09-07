@@ -461,8 +461,8 @@ class HornResonatorPlugin extends PluginBase {
         const c = document.createElement('div');
         c.className = 'plugin-parameter-ui horn-resonator-ui';
 
-        // Add sliders using the base class createParameterControl helper
-        c.appendChild(this.createParameterControl('Crossover', 20, 5000, 10, this.co, (v) => this.setParameters({ co: v }), 'Hz', 'co'));
+        // Add sliders using the base class parameter-control helpers
+        c.appendChild(this.createLogarithmicParameterControl('Crossover', 20, 5000, 10, this.co, (v) => this.setParameters({ co: v }), 'Hz', 'co'));
         c.appendChild(this.createParameterControl('Horn Length', 20, 120, 1, this.ln, (v) => this.setParameters({ ln: v }), 'cm', 'ln'));
         c.appendChild(this.createParameterControl('Throat Dia.', 0.5, 50, 0.1, this.th, (v) => this.setParameters({ th: v }), 'cm', 'th'));
         c.appendChild(this.createParameterControl('Mouth Dia.', 5, 200, 0.5, this.mo, (v) => this.setParameters({ mo: v }), 'cm', 'mo'));

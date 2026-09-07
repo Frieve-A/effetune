@@ -8,6 +8,7 @@ class LevelMeterPlugin extends PluginBase {
         this.lv = [];     // lv: Levels (formerly levels) - Range: -144 to 0 dB
         this.pl = [];     // pl: Peak Levels (formerly peakLevels) - Range: -144 to 0 dB
         this.ph = [];       // ph: Peak Hold Times (formerly peakHoldTimes)
+        this.raw = [];      // Latest accepted raw levels, used as the display floor
         this.ol = false;                      // ol: Overload (formerly overload)
         this.ot = 0;                          // ot: Overload Time (formerly overloadTime)
         this.OVERLOAD_DISPLAY_TIME = 5.0; // seconds
@@ -16,6 +17,10 @@ class LevelMeterPlugin extends PluginBase {
         this.lastProcessTime = performance.now() / 1000;
         this.lastMeterUpdateTime = 0;
         this.METER_UPDATE_INTERVAL = 16; // Match with plugin-base.js
+        this.DISPLAY_EXTRAPOLATION_LIMIT = 1 / 60;
+        this.displayReceiptTime = this.lastProcessTime;
+        this.displayFrozen = false;
+        this.displayFrozenExtrapolation = 0;
         this.observer = null;
         this.resizeGraphDisposer = null;
         this.graphDpr = 1;
@@ -238,13 +243,16 @@ class LevelMeterPlugin extends PluginBase {
         }
 
         // Skip processing if plugin is disabled
-        if (!this.enabled) {
+        if (!this.enabled || !this._sectionEnabled) {
             return;
         }
 
         const time = performance.now() / 1000;
-        const deltaTime = time - this.lastProcessTime;
+        const previousProcessTime = this.lastProcessTime;
+        const deltaTime = time > previousProcessTime ? time - previousProcessTime : 0;
         this.lastProcessTime = time;
+        this.displayReceiptTime = time;
+        this.displayFrozenExtrapolation = 0;
 
         // Check and resize arrays if channel count changed
         const numChannels = message.measurements.channels.length;
@@ -252,6 +260,7 @@ class LevelMeterPlugin extends PluginBase {
             this.lv = new Array(numChannels).fill(-144);
             this.pl = new Array(numChannels).fill(-144);
             this.ph = new Array(numChannels).fill(0);
+            this.raw = new Array(numChannels).fill(-144);
             // Reset overload state if channel count changes, although it might not be strictly necessary
             this.ol = false;
             this.ot = 0;
@@ -262,6 +271,7 @@ class LevelMeterPlugin extends PluginBase {
         for (let ch = 0; ch < numChannels; ch++) {
             const channelPeak = message.measurements.channels[ch].peak;
             const dbLevel = this.amplitudeToDB(channelPeak);
+            this.raw[ch] = dbLevel;
             
             // Update level with fall rate
             const fallingLevel = this.lv[ch] - this.FALL_RATE * deltaTime;
@@ -275,7 +285,10 @@ class LevelMeterPlugin extends PluginBase {
                 this.ph[ch] = time;
             } else if (time > this.ph[ch] + this.PEAK_HOLD_TIME) {
                 // After hold time, let peak fall at the same rate as level
-                const fallingPeak = this.pl[ch] - this.FALL_RATE * deltaTime;
+                const peakFallStart = this.ph[ch] + this.PEAK_HOLD_TIME;
+                const peakFallTime = time > peakFallStart ?
+                    time - (previousProcessTime > peakFallStart ? previousProcessTime : peakFallStart) : 0;
+                const fallingPeak = this.pl[ch] - this.FALL_RATE * peakFallTime;
                 // But never fall below current level
                 this.pl[ch] = fallingPeak > this.lv[ch] ? fallingPeak : this.lv[ch];
             }
@@ -390,9 +403,9 @@ class LevelMeterPlugin extends PluginBase {
 
         bgCtx.clearRect(0, 0, width, height);
 
-        bgCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        bgCtx.strokeStyle = (window.ThemePalette?.get('graph-grid-soft') ?? '');
         bgCtx.lineWidth = dpr;
-        bgCtx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        bgCtx.fillStyle = (window.ThemePalette?.get('graph-label-soft') ?? '');
         bgCtx.font = `${10 * dpr}px Arial`;
         bgCtx.textAlign = 'center';
         bgCtx.textBaseline = 'alphabetic';
@@ -425,19 +438,25 @@ class LevelMeterPlugin extends PluginBase {
     startAnimation() {
         if (!this.enabled || !this._sectionEnabled) return;
         if (this.animationFrameId) return;
+        if (this.displayFrozen) {
+            const now = performance.now() / 1000;
+            this.displayReceiptTime = now - this.displayFrozenExtrapolation;
+            this.displayFrozen = false;
+        }
 
-        const animate = () => {
+        const animate = timestamp => {
             if (!this.isVisible) {
                 this.stopAnimation();
                 return;
             }
-            this.updateMeter();
+            this.updateMeter(timestamp);
             this.animationFrameId = this.requestPowerAnimationFrame(animate, 'analyzer');
         };
-        animate();
+        animate(performance.now());
     }
 
     stopAnimation() {
+        this.displayFrozen = true;
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
@@ -466,12 +485,12 @@ class LevelMeterPlugin extends PluginBase {
     }
    
     // Update meter display
-    updateMeter() {
+    updateMeter(now = performance.now()) {
         if (!this.foregroundCanvas) return;
         
         const ctx = this.foregroundCanvas.getContext('2d');
         ctx.clearRect(0, 0, this.canvasWidth, this.canvasHeight);
-        ctx.fillStyle = '#000000';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
         ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
 
         // Skip drawing if disabled or no channels yet
@@ -479,6 +498,11 @@ class LevelMeterPlugin extends PluginBase {
 
         // Draw each channel
         const numDrawableChannels = this.lv.length; // Use the actual number of channels
+        const elapsed = now / 1000 - this.displayReceiptTime;
+        const extrapolation = this.displayFrozen ? this.displayFrozenExtrapolation :
+            (elapsed > 0 ? (elapsed < this.DISPLAY_EXTRAPOLATION_LIMIT ? elapsed : this.DISPLAY_EXTRAPOLATION_LIMIT) : 0);
+        if (!this.displayFrozen) this.displayFrozenExtrapolation = extrapolation;
+        const renderTime = this.lastProcessTime + extrapolation;
         const dpr = this.graphDpr || 1;
         const channelGap = numDrawableChannels > 1 ? 2 * dpr : 0;
         const channelHeight = numDrawableChannels > 0 ? (this.canvasHeight / numDrawableChannels) - channelGap : 0; // Calculate height per channel, add padding if more than one channel
@@ -488,29 +512,40 @@ class LevelMeterPlugin extends PluginBase {
 
             // Create gradient for this channel
             const gradient = ctx.createLinearGradient(0, y, this.canvasWidth, y);
-            gradient.addColorStop(0, '#008000');
-            gradient.addColorStop(((-12) - this.dbStart) / this.dbRange, '#008000');
-            gradient.addColorStop(((-12) - this.dbStart) / this.dbRange, '#808000');
-            gradient.addColorStop(((-6) - this.dbStart) / this.dbRange, '#808000');
-            gradient.addColorStop(((-6) - this.dbStart) / this.dbRange, '#800000');
-            gradient.addColorStop(1, '#800000');
+            gradient.addColorStop(0, '#008000'); // theme-allow: Fixed signal-level or self-painted colormap color.
+            gradient.addColorStop(((-12) - this.dbStart) / this.dbRange, '#008000'); // theme-allow: Fixed signal-level or self-painted colormap color.
+            gradient.addColorStop(((-12) - this.dbStart) / this.dbRange, '#808000'); // theme-allow: Fixed signal-level or self-painted colormap color.
+            gradient.addColorStop(((-6) - this.dbStart) / this.dbRange, '#808000'); // theme-allow: Fixed signal-level or self-painted colormap color.
+            gradient.addColorStop(((-6) - this.dbStart) / this.dbRange, '#800000'); // theme-allow: Fixed signal-level or self-painted colormap color.
+            gradient.addColorStop(1, '#800000'); // theme-allow: Fixed signal-level or self-painted colormap color.
 
             // Draw level meter
-            const level = this.lv[channel];
+            const fallingLevel = this.lv[channel] - this.FALL_RATE * extrapolation;
+            const projectedLevel = this.raw[channel] > fallingLevel ? this.raw[channel] : fallingLevel;
+            const level = projectedLevel < -144 ? -144 : projectedLevel;
             const rawLevelWidth = this.canvasWidth * (level - this.dbStart) / this.dbRange;
             const levelWidth = rawLevelWidth < 0 ? 0 : rawLevelWidth;
             ctx.fillStyle = gradient;
             ctx.fillRect(0, y + dpr, levelWidth, channelHeight);
 
             // Draw peak hold
-            const peakLevel = this.pl[channel];
+            let peakLevel = this.pl[channel];
+            const peakFallStart = this.ph[channel] + this.PEAK_HOLD_TIME;
+            const peakFallElapsed = renderTime > peakFallStart ?
+                renderTime - (this.lastProcessTime > peakFallStart ? this.lastProcessTime : peakFallStart) : 0;
+            if (peakFallElapsed > 0) {
+                const fallingPeak = this.pl[channel] - this.FALL_RATE * (peakFallElapsed < this.DISPLAY_EXTRAPOLATION_LIMIT ? peakFallElapsed : this.DISPLAY_EXTRAPOLATION_LIMIT);
+                peakLevel = fallingPeak > level ? fallingPeak : level;
+            } else if (peakLevel < level) {
+                peakLevel = level;
+            }
             const peakX = this.canvasWidth * (peakLevel - this.dbStart) / this.dbRange;
-            ctx.fillStyle = '#ffffff';
+            ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
             ctx.fillRect(peakX - dpr, y + dpr, 2 * dpr, channelHeight);
 
             // Display peak level value
             if (numDrawableChannels <= 4) { // Only show text for 4 or fewer channels
-                ctx.fillStyle = '#ffffff';
+                ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
                 ctx.font = `${12 * dpr}px Arial`;
                 ctx.textAlign = 'right';
                 ctx.textBaseline = 'middle';

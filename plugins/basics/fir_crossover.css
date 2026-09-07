@@ -4,14 +4,14 @@
 
 .fir-crossover-ui canvas {
   display: block;
-  background: #222;
+  background: var(--et-graph-bg-deep);
 }
 
 .fir-crossover-settings {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: start;
-  gap: 10px;
+  gap: 0 10px;
   width: 100%;
   max-width: 1024px;
   margin-bottom: 12px;
@@ -31,8 +31,8 @@
 .fir-crossover-error {
   margin-bottom: 10px;
   padding: 5px;
-  color: #ff0000;
-  background: rgba(255, 0, 0, 0.1);
+  color: var(--et-danger);
+  background: var(--et-danger-soft);
   border-radius: 4px;
   text-align: center;
   font-weight: bold;
@@ -76,7 +76,7 @@
 
 .fir-crossover-graph-container canvas {
   display: block;
-  background: #222;
+  background: var(--et-graph-bg-deep);
 }
 
 .fir-crossover-graph-container .responsive-graph-container canvas {
@@ -89,16 +89,16 @@
   justify-content: space-between;
   gap: 8px 16px;
   min-height: 1.4em;
-  color: #aaa;
+  color: var(--et-surface-66);
   font-size: 12px;
 }
 
 .fir-crossover-status[data-state="ready"] {
-  color: #8fd694;
+  color: var(--et-success);
 }
 
 .fir-crossover-status[data-state="error"] {
-  color: #ff8585;
+  color: var(--et-danger);
 }
 
 body.layout-mobile .fir-crossover-settings {

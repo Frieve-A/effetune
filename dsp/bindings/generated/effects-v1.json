@@ -43,6 +43,18 @@
       "assets": []
     },
     {
+      "type": "NoteSpectrogram",
+      "parameters": [],
+      "seeded": false,
+      "telemetry": [
+        "noteSpectrogram"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
       "type": "Oscilloscope",
       "parameters": [
         {
@@ -5026,6 +5038,38 @@
       "assets": []
     },
     {
+      "type": "PitchShifterHQ",
+      "parameters": [
+        {
+          "name": "pitchShift",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "unit": "semitones",
+          "minimum": -6,
+          "maximum": 6
+        },
+        {
+          "name": "fineTune",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "unit": "cents",
+          "minimum": -50,
+          "maximum": 50
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      },
+      "assets": []
+    },
+    {
       "type": "RotarySpeaker",
       "parameters": [
         {
@@ -5616,6 +5660,168 @@
       "assets": []
     },
     {
+      "type": "ClickRemover",
+      "parameters": [
+        {
+          "name": "sensitivity",
+          "type": "number",
+          "count": 1,
+          "default": 50,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "maxRepairLength",
+          "type": "number",
+          "count": 1,
+          "default": 1,
+          "unit": "ms",
+          "minimum": 0.1,
+          "maximum": 2
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      },
+      "assets": []
+    },
+    {
+      "type": "ClipRestorer",
+      "parameters": [
+        {
+          "name": "threshold",
+          "type": "number",
+          "count": 1,
+          "default": -0.1,
+          "unit": "dB",
+          "minimum": -18,
+          "maximum": 0
+        },
+        {
+          "name": "outputGain",
+          "type": "number",
+          "count": 1,
+          "default": -3,
+          "unit": "dB",
+          "minimum": -12,
+          "maximum": 0
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      },
+      "assets": []
+    },
+    {
+      "type": "HumRemover",
+      "parameters": [
+        {
+          "name": "frequency",
+          "type": "string",
+          "count": 1,
+          "default": "Auto",
+          "values": [
+            "Auto",
+            "50 Hz",
+            "60 Hz"
+          ]
+        },
+        {
+          "name": "harmonics",
+          "type": "integer",
+          "count": 1,
+          "default": 8,
+          "minimum": 1,
+          "maximum": 64
+        },
+        {
+          "name": "trackingSpeed",
+          "type": "number",
+          "count": 1,
+          "default": 50,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "NoiseReduction",
+      "parameters": [
+        {
+          "name": "reduction",
+          "type": "number",
+          "count": 1,
+          "default": 12,
+          "unit": "dB",
+          "minimum": 0,
+          "maximum": 24
+        },
+        {
+          "name": "sensitivity",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -12,
+          "maximum": 12
+        },
+        {
+          "name": "smoothing",
+          "type": "number",
+          "count": 1,
+          "default": 50,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "trebleCare",
+          "type": "number",
+          "count": 1,
+          "default": 50,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      },
+      "assets": []
+    },
+    {
       "type": "DattorroPlateReverb",
       "parameters": [
         {
@@ -6029,6 +6235,57 @@
       "telemetry": [],
       "latency": {
         "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "BandwidthExtender",
+      "parameters": [
+        {
+          "name": "harmonicAmount",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 200
+        },
+        {
+          "name": "noiseAmount",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 200
+        },
+        {
+          "name": "cutoffMode",
+          "type": "string",
+          "count": 1,
+          "default": "Auto",
+          "values": [
+            "Auto",
+            "Manual"
+          ]
+        },
+        {
+          "name": "cutoffFrequency",
+          "type": "number",
+          "count": 1,
+          "default": 16000,
+          "unit": "Hz",
+          "minimum": 6000,
+          "maximum": 24000
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
       },
       "assets": []
     },
@@ -6758,6 +7015,67 @@
       "assets": []
     },
     {
+      "type": "CrosstalkCancellation",
+      "parameters": [
+        {
+          "name": "latencyMode",
+          "type": "string",
+          "count": 1,
+          "default": "128",
+          "values": [
+            "0",
+            "128",
+            "256",
+            "512",
+            "1024"
+          ]
+        },
+        {
+          "name": "filterDelaySamples",
+          "type": "integer",
+          "count": 1,
+          "default": 2048,
+          "minimum": 0,
+          "maximum": 65536
+        },
+        {
+          "name": "strength",
+          "type": "number",
+          "count": 1,
+          "default": 70,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "outputGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 24
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "dynamic",
+        "dependsOn": [
+          "latencyMode",
+          "filterDelaySamples",
+          "impulseResponse"
+        ]
+      },
+      "assets": [
+        {
+          "name": "impulseResponse",
+          "kind": "impulseResponse",
+          "required": true
+        }
+      ]
+    },
+    {
       "type": "MSMatrix",
       "parameters": [
         {
@@ -7119,7 +7437,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "0f8926c820f825d87f212d7c7fbfa75044caf7aa912bef6a78cc85f820b899c0",
-    "privateLayoutSha256": "61121eb6aec4b52d5492795c2ac81bd4cecfa119b7bfc4e6956fd2b725690685"
+    "publicCatalogSha256": "cb58e2e6158bfa01f5d379bf0ccc9daef74f987dce012f0ed1a9d04e140156a3",
+    "privateLayoutSha256": "54a06c19f4604073f6ddc13bdd9b10b12769b786043e9ec8e495181e35d64c18"
   }
 }

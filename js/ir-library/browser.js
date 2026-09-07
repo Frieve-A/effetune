@@ -63,7 +63,7 @@ function drawDecay(canvas, analysis) {
   context.clearRect(0, 0, canvas.width, canvas.height);
   const series = analysis?.edc;
   if (!series?.length) return;
-  context.strokeStyle = '#00ff00';
+  context.strokeStyle = window.ThemePalette?.get('graph-trace') ?? '';
   context.beginPath();
   for (let index = 0; index < series.length; index += 1) {
     const x = index / Math.max(1, series.length - 1) * canvas.width;

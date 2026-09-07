@@ -597,7 +597,7 @@ class ChannelDividerPlugin extends PluginBase {
 
     this.errorEl = document.createElement("div");
     this.errorEl.className = "error-banner";
-    Object.assign(this.errorEl.style, { display: "none", padding: "5px", marginBottom: "10px", color: "#ff0000", backgroundColor: "rgba(255,0,0,0.1)" });
+    Object.assign(this.errorEl.style, { display: "none", padding: "5px", marginBottom: "10px", color: "var(--et-danger)", backgroundColor: "var(--et-danger-soft)" });
     frag.appendChild(this.errorEl);
 
     const bandRow = this._createRow("Band Count:");
@@ -633,7 +633,7 @@ class ChannelDividerPlugin extends PluginBase {
       className: "channel-divider-graph",
       onResize: () => this.drawGraph()
     });
-    canvas.style.backgroundColor = "#222";
+    canvas.style.backgroundColor = "var(--et-graph-bg-deep)";
     this.canvas = canvas;
     this.graphDispose?.();
     this.graphDispose = dispose;
@@ -654,7 +654,7 @@ class ChannelDividerPlugin extends PluginBase {
     const row = document.createElement("div");
     row.className = "parameter-row";
     // Apply flex styling for horizontal alignment of label and controls group
-    Object.assign(row.style, { display: "flex", alignItems: "center", marginBottom: "8px", gap: "10px"});
+    Object.assign(row.style, { display: "flex", alignItems: "center", gap: "10px"});
     if (labelTextContent) {
       const label = document.createElement("label");
       label.textContent = labelTextContent;
@@ -813,7 +813,7 @@ class ChannelDividerPlugin extends PluginBase {
     const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
 
     ctx.clearRect(0, 0, width, height);
-    ctx.strokeStyle = "#444";
+    ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
     ctx.lineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
     ctx.font = `${tickFont}px Arial`;
 
@@ -825,7 +825,7 @@ class ChannelDividerPlugin extends PluginBase {
       const x = width * (Math.log10(freq) - minFreqLog) / (maxFreqLog - minFreqLog);
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
       if (labeledFreqs.includes(freq)) {
-        ctx.fillStyle = "#666"; ctx.textAlign = "center";
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? ''); ctx.textAlign = "center";
         ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, bottomTickY);
       }
     });
@@ -837,12 +837,12 @@ class ChannelDividerPlugin extends PluginBase {
       const y = height * (1 - (db - dbRange[0]) / totalDbSpan);
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
       if (db > -60) { 
-        ctx.fillStyle = "#666"; ctx.textAlign = "right";
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? ''); ctx.textAlign = "right";
         ctx.fillText(`${db}`, leftLabelX, y + 3 * dpr);
       }
     });
 
-    ctx.fillStyle = "#fff"; ctx.font = `${axisFont}px Arial`; ctx.textAlign = "center";
+    ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? ''); ctx.font = `${axisFont}px Arial`; ctx.textAlign = "center";
     ctx.fillText("Frequency (Hz)", width / 2, axisBottomY);
     ctx.save();
     ctx.translate(axisLabelX, height / 2); ctx.rotate(-Math.PI / 2);
@@ -868,7 +868,7 @@ class ChannelDividerPlugin extends PluginBase {
       bandDefinitions.push({ name: "High", filters: [{ freq: this.f3, slope: this.s3, type: "hp" }] });
     }
     
-    ctx.strokeStyle = "#00ff00";
+    ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
     ctx.lineWidth = (isMobileLayout ? 2 : 1.5) * dpr;
 
     bandDefinitions.forEach(bandDef => {

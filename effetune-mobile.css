@@ -138,8 +138,8 @@ body.layout-mobile .message-display:not(:empty) {
     max-width: calc(100vw - 32px);
     margin-left: 0;
     padding: 10px 16px;
-    background-color: rgba(45, 45, 45, 0.95);
-    border: 1px solid #555;
+    background-color: color-mix(in srgb, var(--et-base) 95%, transparent);
+    border: 1px solid var(--et-surface-28);
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     line-height: 18px;
@@ -166,16 +166,16 @@ body.layout-mobile .mobile-plugin-list-close {
     align-items: center;
     justify-content: center;
     padding: 0;
-    border: 1px solid #5d5d5d;
+    border: 1px solid var(--et-surface-31);
     border-radius: 4px;
-    background: #4d4d4d;
+    background: var(--et-surface-23);
     cursor: pointer;
     transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 body.layout-mobile .mobile-menu-button,
 body.layout-mobile .mobile-plugin-list-close {
-    color: #4a9eff;
+    color: var(--et-accent);
 }
 
 body.layout-mobile .mobile-menu-button svg,
@@ -192,7 +192,7 @@ body.layout-mobile .mobile-mini-open-music:focus-visible,
 body.layout-mobile .mobile-plugin-fab:focus-visible,
 body.layout-mobile .mobile-plugin-list-close:focus-visible,
 body.layout-mobile .mobile-bottom-button:focus-visible {
-    outline: 2px solid #4a9eff;
+    outline: 2px solid var(--et-accent);
     outline-offset: 2px;
 }
 
@@ -201,11 +201,11 @@ body.layout-mobile .mobile-mini-button:active,
 body.layout-mobile .mobile-mini-open-music:active,
 body.layout-mobile .mobile-plugin-list-close:active,
 body.layout-mobile .mobile-bottom-button:active {
-    background: #6d6d6d;
+    background: var(--et-surface-38);
 }
 
 body.layout-mobile .mobile-plugin-fab:active {
-    background: #3d8ae0;
+    background: var(--et-accent-pressed);
     transform: translateY(1px);
 }
 
@@ -225,16 +225,16 @@ body.layout-mobile .mobile-bottom-button:disabled {
     body.layout-mobile .mobile-mini-open-music:hover:not(:disabled),
     body.layout-mobile .mobile-plugin-list-close:hover:not(:disabled),
     body.layout-mobile .mobile-bottom-button:hover:not(:disabled) {
-        background: #5d5d5d;
+        background: var(--et-surface-31);
     }
 
     body.layout-mobile .mobile-plugin-fab:hover:not(:disabled) {
-        background: #3d8ae0;
-        border-color: #7abaff;
+        background: var(--et-accent-pressed);
+        border-color: var(--et-accent-hover);
     }
 
     body.layout-mobile .mobile-bottom-button.active:hover {
-        background: #4d4d4d;
+        background: var(--et-surface-23);
     }
 }
 
@@ -243,7 +243,7 @@ body.layout-mobile .mobile-menu-backdrop {
     inset: 0;
     display: none;
     z-index: 1190;
-    background: rgba(0, 0, 0, 0.35);
+    background: var(--et-surface-veil);
 }
 
 body.layout-mobile .mobile-menu-backdrop.mobile-open {
@@ -257,11 +257,11 @@ body.layout-mobile .mobile-overflow-menu {
     display: none;
     min-width: 190px;
     padding: 6px;
-    border: 1px solid #4d4d4d;
+    border: 1px solid var(--et-surface-23);
     border-radius: 6px;
-    background: #2d2d2d;
+    background: var(--et-surface-10);
     z-index: 1200;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 8px 24px var(--et-surface-veil);
 }
 
 body.layout-mobile .mobile-overflow-menu.mobile-open {
@@ -275,7 +275,7 @@ body.layout-mobile .mobile-overflow-menu-item {
     border: 0;
     border-radius: 4px;
     background: transparent;
-    color: #fff;
+    color: var(--et-text-primary);
     text-align: left;
     font-size: 16px;
 }
@@ -350,7 +350,7 @@ body.layout-mobile .mobile-player-empty {
 }
 
 body.layout-mobile .mobile-player-empty-title {
-    color: #ccc;
+    color: var(--et-surface-81);
     font-size: 18px;
 }
 
@@ -361,16 +361,16 @@ body.layout-mobile .mobile-open-music {
     min-width: 132px;
     min-height: 44px;
     padding: 0 18px;
-    border: 1px solid #5d5d5d;
+    border: 1px solid var(--et-surface-31);
     border-radius: 4px;
-    background-color: #4d4d4d;
-    color: #fff;
+    background-color: var(--et-surface-23);
+    color: var(--et-text-primary);
     font-size: 15px;
     font-weight: 600;
 }
 
 body.layout-mobile .mobile-open-music:active {
-    background-color: #6d6d6d;
+    background-color: var(--et-surface-38);
 }
 
 body.layout-mobile .mobile-audio-resume-prompt {
@@ -380,10 +380,10 @@ body.layout-mobile .mobile-audio-resume-prompt {
     bottom: calc(var(--et-bottom-nav-height) + env(safe-area-inset-bottom) + 16px);
     z-index: 1205;
     min-height: 44px;
-    border: 1px solid rgba(255, 255, 255, 0.22);
+    border: 1px solid color-mix(in srgb, var(--et-text-primary) 22%, transparent);
     border-radius: 8px;
     background: rgba(0, 0, 0, 0.82);
-    color: #fff;
+    color: var(--et-text-primary);
     font-size: 15px;
     font-weight: 600;
 }
@@ -405,8 +405,8 @@ body.layout-mobile .mobile-bottom-nav {
     padding-bottom: env(safe-area-inset-bottom);
     overflow-x: hidden;
     overflow-x: clip;
-    background: #2d2d2d;
-    border-top: 1px solid #3d3d3d;
+    background: var(--et-surface-10);
+    border-top: 1px solid var(--et-surface-17);
     box-sizing: border-box;
     box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.25);
 }
@@ -421,9 +421,9 @@ body.layout-mobile .mobile-bottom-button {
     min-width: 0;
     min-height: 48px;
     border: 0;
-    border-right: 1px solid #3d3d3d;
-    background: #2d2d2d;
-    color: #ddd;
+    border-right: 1px solid var(--et-surface-17);
+    background: var(--et-surface-10);
+    color: var(--et-surface-89);
     cursor: pointer;
     transition: background-color 0.2s ease, color 0.2s ease;
 }
@@ -433,9 +433,9 @@ body.layout-mobile .mobile-bottom-button:last-child {
 }
 
 body.layout-mobile .mobile-bottom-button.active {
-    color: #fff;
-    background: #444;
-    box-shadow: inset 0 2px 0 #4a9eff;
+    color: var(--et-text-primary);
+    background: var(--et-surface-20);
+    box-shadow: inset 0 2px 0 var(--et-accent);
 }
 
 body.layout-mobile .mobile-bottom-button-icon,
@@ -469,8 +469,8 @@ body.layout-mobile .mobile-mini-player {
     padding: 6px 10px;
     overflow-x: hidden;
     overflow-x: clip;
-    border-top: 1px solid #3d3d3d;
-    background: #2d2d2d;
+    border-top: 1px solid var(--et-surface-17);
+    background: var(--et-surface-10);
     box-sizing: border-box;
 }
 
@@ -480,7 +480,7 @@ body.layout-mobile .mobile-mini-track {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: #fff;
+    color: var(--et-text-primary);
     font-size: 14px;
 }
 
@@ -488,7 +488,7 @@ body.layout-mobile .mobile-mini-button {
     flex: 0 0 40px;
     width: 40px;
     height: 40px;
-    color: #fff;
+    color: var(--et-text-primary);
 }
 
 body.layout-mobile .mobile-mini-open-music {
@@ -496,7 +496,7 @@ body.layout-mobile .mobile-mini-open-music {
     min-width: 112px;
     height: 40px;
     padding: 0 12px;
-    color: #fff;
+    color: var(--et-text-primary);
     font-size: 14px;
     font-weight: 600;
     white-space: nowrap;
@@ -517,12 +517,12 @@ body.layout-mobile .mobile-plugin-fab {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid #66b0ff;
+    border: 1px solid var(--et-accent-hover);
     border-radius: 50%;
-    background: #4a9eff;
-    color: #fff;
+    background: var(--et-accent);
+    color: var(--et-on-accent);
     cursor: pointer;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 6px 18px var(--et-surface-veil);
     transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.08s ease;
 }
 
@@ -562,7 +562,7 @@ body.layout-mobile .mobile-plugin-list-close {
     z-index: 1110;
     width: 40px;
     height: 40px;
-    color: #ff6b6b;
+    color: var(--et-danger);
 }
 
 body.layout-mobile .plugin-list-header,
@@ -582,7 +582,7 @@ body.layout-mobile .plugin-list-header {
     width: 100%;
     padding: 0 0 14px;
     margin-bottom: 10px;
-    border-bottom: 1px solid #3d3d3d;
+    border-bottom: 1px solid var(--et-surface-17);
     box-sizing: border-box;
 }
 
@@ -693,7 +693,7 @@ body.layout-mobile #pipelineList.is-empty #pipelineEmpty {
 
 body.layout-mobile .pipeline-empty-message {
     pointer-events: none;
-    color: #888;
+    color: var(--et-surface-51);
     line-height: 1.4;
 }
 
@@ -839,15 +839,15 @@ body.layout-mobile .pipeline-item-header .toggle-button::before {
     right: 0;
     bottom: 0;
     left: 0;
-    border: 1px solid #606060;
+    border: 1px solid var(--et-surface-32);
     border-radius: 4px;
-    background-color: #4CAF50;
+    background-color: var(--et-success);
     pointer-events: none;
     z-index: -1;
 }
 
 body.layout-mobile .pipeline-item-header .toggle-button.off::before {
-    background-color: #808080;
+    background-color: var(--et-surface-47);
 }
 
 body.layout-mobile .pipeline-item-header .plugin-name {
@@ -959,16 +959,16 @@ body.layout-mobile.mobile-number-keypad-open {
     width: min(100%, 420px);
     padding: 14px;
     box-sizing: border-box;
-    border: 1px solid #565656;
+    border: 1px solid var(--et-surface-28);
     border-radius: 14px;
-    background: #242424;
+    background: var(--et-surface-7);
     box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.45);
 }
 
 .mobile-number-keypad-title {
     margin-bottom: 8px;
     overflow: hidden;
-    color: #e6e6e6;
+    color: var(--et-surface-93);
     font-size: 14px;
     font-weight: 600;
     text-overflow: ellipsis;
@@ -984,10 +984,10 @@ body.layout-mobile.mobile-number-keypad-open {
     padding: 8px 12px;
     box-sizing: border-box;
     overflow: hidden;
-    border: 1px solid #606060;
+    border: 1px solid var(--et-surface-32);
     border-radius: 8px;
-    background: #151515;
-    color: #ffffff;
+    background: var(--et-base);
+    color: var(--et-text-primary);
     font-size: 28px;
     font-variant-numeric: tabular-nums;
     line-height: 1.2;
@@ -996,13 +996,13 @@ body.layout-mobile.mobile-number-keypad-open {
 }
 
 .mobile-number-keypad-display.is-preset {
-    box-shadow: inset 0 0 0 2px rgba(33, 150, 243, 0.65);
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--et-accent) 65%, transparent);
 }
 
 .mobile-number-keypad-range {
     min-height: 18px;
     margin: 5px 2px 8px;
-    color: #bdbdbd;
+    color: var(--et-surface-74);
     font-size: 12px;
     text-align: right;
 }
@@ -1022,10 +1022,10 @@ body.layout-mobile.mobile-number-keypad-open {
     min-height: 48px;
     margin: 0;
     padding: 8px;
-    border: 1px solid #5a5a5a;
+    border: 1px solid var(--et-surface-31);
     border-radius: 8px;
-    background: #383838;
-    color: #ffffff;
+    background: var(--et-surface-15);
+    color: var(--et-text-primary);
     font: inherit;
     font-size: 20px;
     line-height: 1;
@@ -1035,11 +1035,11 @@ body.layout-mobile.mobile-number-keypad-open {
 }
 
 .mobile-number-keypad-button:active {
-    background: #505050;
+    background: var(--et-surface-27);
 }
 
 .mobile-number-keypad-button:focus-visible {
-    outline: 2px solid #64b5f6;
+    outline: 2px solid var(--et-accent-hover);
     outline-offset: 1px;
 }
 
@@ -1064,16 +1064,16 @@ body.layout-mobile.mobile-number-keypad-open {
 }
 
 .mobile-number-keypad-ok {
-    border-color: #1976d2;
-    background: #1976d2;
+    border-color: var(--et-accent);
+    background: var(--et-accent);
 }
 
 .mobile-number-keypad-ok:active {
-    background: #1565c0;
+    background: var(--et-accent-pressed);
 }
 
 .mobile-number-keypad-target {
-    outline: 2px solid #2196f3;
+    outline: 2px solid var(--et-accent);
     outline-offset: 1px;
 }
 
@@ -1113,8 +1113,8 @@ body.layout-mobile .player-artwork {
     height: min(68vw, 280px);
     margin: 0 auto;
     border-radius: 10px;
-    background: #1d1d1d;
-    color: #5d5d5d;
+    background: var(--et-surface-3);
+    color: var(--et-surface-31);
     overflow: hidden;
 }
 
@@ -1273,10 +1273,10 @@ body.layout-mobile .play-pause-button {
     height: var(--et-mobile-player-primary-button-size);
     min-height: var(--et-mobile-player-primary-button-size);
     border-radius: 50%;
-    color: #ffffff;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 38%), linear-gradient(180deg, #67b9ff, #3f8fe8);
-    border-color: #8ccaff;
-    box-shadow: 0 14px 32px rgba(74, 158, 255, 0.34), 0 6px 18px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+    color: var(--et-on-accent);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--et-text-primary) 22%, transparent), transparent 38%), linear-gradient(180deg, var(--et-accent-hover), var(--et-accent-pressed));
+    border-color: var(--et-accent-hover);
+    box-shadow: 0 14px 32px color-mix(in srgb, var(--et-accent) 34%, transparent), 0 6px 18px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.28);
     transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.12s ease;
 }
 
@@ -1287,8 +1287,8 @@ body.layout-mobile .play-pause-button svg {
 
 body.layout-mobile .play-pause-button:active {
     transform: translateY(1px);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 38%), linear-gradient(180deg, var(--et-accent), var(--et-accent-pressed));
-    box-shadow: 0 10px 24px rgba(74, 158, 255, 0.28), 0 4px 14px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--et-text-primary) 14%, transparent), transparent 38%), linear-gradient(180deg, var(--et-accent), var(--et-accent-pressed));
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--et-accent) 28%, transparent), 0 4px 14px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 body.layout-mobile .play-pause-button:disabled {
@@ -1297,9 +1297,9 @@ body.layout-mobile .play-pause-button:disabled {
 
 @media (hover: hover) {
     body.layout-mobile .play-pause-button:hover:not(:disabled) {
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0) 38%), linear-gradient(180deg, #77c2ff, var(--et-accent));
-        border-color: #a4d7ff;
-        box-shadow: 0 16px 36px rgba(74, 158, 255, 0.4), 0 8px 22px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.32);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--et-text-primary) 26%, transparent), transparent 38%), linear-gradient(180deg, var(--et-accent-hover), var(--et-accent));
+        border-color: var(--et-accent-hover);
+        box-shadow: 0 16px 36px color-mix(in srgb, var(--et-accent) 40%, transparent), 0 8px 22px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.32);
     }
 }
 
@@ -1452,8 +1452,8 @@ body.layout-mobile .dialog-buttons button {
 
 /* Mobile visual polish mirrors the desktop surface treatment. */
 body.layout-mobile .message-display:not(:empty) {
-    background: linear-gradient(180deg, rgba(55, 55, 55, 0.97), rgba(40, 40, 40, 0.97));
-    border-color: #626262;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--et-base) 97%, transparent), color-mix(in srgb, var(--et-base) 97%, transparent));
+    border-color: var(--et-surface-34);
     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
@@ -1463,7 +1463,7 @@ body.layout-mobile .mobile-mini-open-music,
 body.layout-mobile .mobile-plugin-list-close,
 body.layout-mobile .mobile-open-music {
     background: var(--et-control-gradient);
-    border-color: #5f5f5f;
+    border-color: var(--et-surface-32);
     box-shadow: var(--et-control-shadow);
 }
 
@@ -1484,7 +1484,7 @@ body.layout-mobile .mobile-open-music:active {
     body.layout-mobile .mobile-bottom-button:hover:not(:disabled),
     body.layout-mobile .mobile-open-music:hover:not(:disabled) {
         background: var(--et-control-hover-gradient);
-        border-color: #6e6e6e;
+        border-color: var(--et-surface-38);
         box-shadow: var(--et-control-hover-shadow);
     }
 }
@@ -1494,80 +1494,80 @@ body.layout-mobile .mobile-menu-backdrop {
 }
 
 body.layout-mobile .mobile-overflow-menu {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 34px), linear-gradient(145deg, #333333, #292929);
-    border-color: #515151;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 34px), linear-gradient(145deg, var(--et-surface-13), var(--et-surface-8));
+    border-color: var(--et-surface-27);
     box-shadow: 0 16px 36px rgba(0, 0, 0, 0.44), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 body.layout-mobile .mobile-overflow-menu-item:hover,
 body.layout-mobile .mobile-overflow-menu-item:active {
-    background: linear-gradient(180deg, #3f3f3f, #363636);
+    background: linear-gradient(180deg, var(--et-surface-18), var(--et-surface-14));
 }
 
 body.layout-mobile .mobile-audio-resume-prompt {
-    background: linear-gradient(180deg, rgba(44, 44, 44, 0.94), rgba(20, 20, 20, 0.94));
-    border-color: rgba(255, 255, 255, 0.24);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--et-base) 94%, transparent), color-mix(in srgb, var(--et-base) 94%, transparent));
+    border-color: color-mix(in srgb, var(--et-text-primary) 24%, transparent);
     box-shadow: 0 14px 34px rgba(0, 0, 0, 0.46), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 body.layout-mobile .mobile-bottom-nav {
-    background: linear-gradient(180deg, #303030, #272727);
-    border-top-color: #444444;
+    background: linear-gradient(180deg, var(--et-surface-11), var(--et-surface-8));
+    border-top-color: var(--et-surface-20);
     box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.045);
 }
 
 body.layout-mobile .mobile-bottom-button {
-    background: linear-gradient(180deg, #303030, #282828);
-    border-right-color: #3f3f3f;
+    background: linear-gradient(180deg, var(--et-surface-11), var(--et-surface-8));
+    border-right-color: var(--et-surface-18);
 }
 
 body.layout-mobile .mobile-bottom-button.active {
-    background: linear-gradient(180deg, #484848, #3b3b3b);
-    box-shadow: inset 0 2px 0 var(--et-accent), inset 0 0 0 1px rgba(74, 158, 255, 0.12);
+    background: linear-gradient(180deg, var(--et-surface-22), var(--et-surface-17));
+    box-shadow: inset 0 2px 0 var(--et-accent), inset 0 0 0 1px color-mix(in srgb, var(--et-accent) 12%, transparent);
 }
 
 body.layout-mobile .mobile-mini-player {
-    background: linear-gradient(180deg, #303030, #282828);
-    border-top-color: #444444;
+    background: linear-gradient(180deg, var(--et-surface-11), var(--et-surface-8));
+    border-top-color: var(--et-surface-20);
     box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.045);
 }
 
 body.layout-mobile .mobile-plugin-fab {
-    background: radial-gradient(circle at 32% 20%, rgba(255, 255, 255, 0.32), transparent 20px), linear-gradient(180deg, var(--et-accent-hover), var(--et-accent));
-    border-color: #82c4ff;
-    box-shadow: 0 12px 30px rgba(74, 158, 255, 0.34), 0 6px 18px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+    background: radial-gradient(circle at 32% 20%, color-mix(in srgb, var(--et-text-primary) 32%, transparent), transparent 20px), linear-gradient(180deg, var(--et-accent-hover), var(--et-accent));
+    border-color: var(--et-accent-hover);
+    box-shadow: 0 12px 30px color-mix(in srgb, var(--et-accent) 34%, transparent), 0 6px 18px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.24);
 }
 
 body.layout-mobile .mobile-plugin-fab:active {
-    background: radial-gradient(circle at 32% 20%, rgba(255, 255, 255, 0.24), transparent 20px), linear-gradient(180deg, var(--et-accent), var(--et-accent-pressed));
+    background: radial-gradient(circle at 32% 20%, color-mix(in srgb, var(--et-text-primary) 24%, transparent), transparent 20px), linear-gradient(180deg, var(--et-accent), var(--et-accent-pressed));
 }
 
 @media (hover: hover) {
     body.layout-mobile .mobile-plugin-fab:hover:not(:disabled) {
-        background: radial-gradient(circle at 32% 20%, rgba(255, 255, 255, 0.36), transparent 20px), linear-gradient(180deg, #72bfff, var(--et-accent));
-        border-color: #9bd0ff;
+    background: radial-gradient(circle at 32% 20%, color-mix(in srgb, var(--et-text-primary) 36%, transparent), transparent 20px), linear-gradient(180deg, var(--et-accent-hover), var(--et-accent));
+        border-color: var(--et-accent-hover);
     }
 }
 
 body.layout-mobile .plugin-list-header {
-    border-bottom-color: #444444;
+    border-bottom-color: var(--et-surface-20);
     box-shadow: 0 1px 0 rgba(255, 255, 255, 0.025);
 }
 
 body.layout-mobile .pipeline-item-header .toggle-button::before {
-    background: linear-gradient(180deg, #57bd5b, #439846);
-    border-color: #67cc6a;
-    box-shadow: 0 3px 10px rgba(76, 175, 80, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    background: var(--et-toggle-on-gradient);
+    border-color: var(--et-success);
+    box-shadow: 0 3px 10px color-mix(in srgb, var(--et-success) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 body.layout-mobile .pipeline-item-header .toggle-button.off::before {
-    background: linear-gradient(180deg, #8a8a8a, #747474);
-    border-color: #929292;
+    background: linear-gradient(180deg, var(--et-surface-51), var(--et-surface-42));
+    border-color: var(--et-surface-55);
     box-shadow: var(--et-control-shadow);
 }
 
 body.layout-mobile .player-artwork {
-    background: linear-gradient(145deg, #242424, #191919);
+    background: linear-gradient(145deg, var(--et-surface-7), var(--et-surface-1));
     box-shadow: 0 16px 38px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.055), inset 0 0 0 1px rgba(255, 255, 255, 0.035);
 }
 

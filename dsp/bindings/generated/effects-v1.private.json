@@ -37,6 +37,13 @@
       "packedParameters": [],
       "assets": []
     },
+    "NoteSpectrogram": {
+      "internalType": "NoteSpectrogramPlugin",
+      "layoutHash": 2166136261,
+      "floatCount": 0,
+      "packedParameters": [],
+      "assets": []
+    },
     "Oscilloscope": {
       "internalType": "OscilloscopePlugin",
       "layoutHash": 2229411282,
@@ -5759,6 +5766,38 @@
       ],
       "assets": []
     },
+    "PitchShifterHQ": {
+      "internalType": "PitchShifterHQPlugin",
+      "layoutHash": 3982397611,
+      "floatCount": 2,
+      "packedParameters": [
+        {
+          "publicName": "pitchShift",
+          "field": "pitchShift",
+          "keys": [
+            "ps"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "fineTune",
+          "field": "fineTune",
+          "keys": [
+            "ft"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
     "RotarySpeaker": {
       "internalType": "RotarySpeakerPlugin",
       "layoutHash": 1430720979,
@@ -6475,6 +6514,182 @@
       ],
       "assets": []
     },
+    "ClickRemover": {
+      "internalType": "ClickRemoverPlugin",
+      "layoutHash": 3247969793,
+      "floatCount": 2,
+      "packedParameters": [
+        {
+          "publicName": "sensitivity",
+          "field": "sensitivity",
+          "keys": [
+            "sn"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "maxRepairLength",
+          "field": "maxRepairLength",
+          "keys": [
+            "ml"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "ClipRestorer": {
+      "internalType": "ClipRestorerPlugin",
+      "layoutHash": 2130397206,
+      "floatCount": 2,
+      "packedParameters": [
+        {
+          "publicName": "threshold",
+          "field": "threshold",
+          "keys": [
+            "th"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outputGain",
+          "field": "outputGain",
+          "keys": [
+            "og"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "HumRemover": {
+      "internalType": "HumRemoverPlugin",
+      "layoutHash": 901971837,
+      "floatCount": 3,
+      "packedParameters": [
+        {
+          "publicName": "frequency",
+          "field": "frequency",
+          "keys": [
+            "fm"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "harmonics",
+          "field": "harmonics",
+          "keys": [
+            "hc"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "trackingSpeed",
+          "field": "trackingSpeed",
+          "keys": [
+            "sp"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "NoiseReduction": {
+      "internalType": "NoiseReductionPlugin",
+      "layoutHash": 2163822210,
+      "floatCount": 5,
+      "packedParameters": [
+        {
+          "publicName": "reduction",
+          "field": "reduction",
+          "keys": [
+            "rd"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "sensitivity",
+          "field": "sensitivity",
+          "keys": [
+            "sn"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "smoothing",
+          "field": "smoothing",
+          "keys": [
+            "sm"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "trebleCare",
+          "field": "trebleCare",
+          "keys": [
+            "hf"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mix",
+          "field": "mix",
+          "keys": [
+            "mix"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
     "DattorroPlateReverb": {
       "internalType": "DattorroPlateReverbPlugin",
       "layoutHash": 582778991,
@@ -7030,6 +7245,62 @@
             "mx"
           ],
           "offset": 8,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "BandwidthExtender": {
+      "internalType": "BandwidthExtenderPlugin",
+      "layoutHash": 3030838001,
+      "floatCount": 4,
+      "packedParameters": [
+        {
+          "publicName": "harmonicAmount",
+          "field": "harmonicAmount",
+          "keys": [
+            "ha"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "noiseAmount",
+          "field": "noiseAmount",
+          "keys": [
+            "na"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "cutoffMode",
+          "field": "cutoffMode",
+          "keys": [
+            "cm"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "cutoffFrequency",
+          "field": "cutoffFrequency",
+          "keys": [
+            "cf"
+          ],
+          "offset": 3,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -7924,6 +8195,69 @@
       ],
       "assets": []
     },
+    "CrosstalkCancellation": {
+      "internalType": "CrosstalkCancellationPlugin",
+      "layoutHash": 1033639474,
+      "floatCount": 4,
+      "packedParameters": [
+        {
+          "publicName": "latencyMode",
+          "field": "latencyMode",
+          "keys": [
+            "lt"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "filterDelaySamples",
+          "field": "filterDelaySamples",
+          "keys": [
+            "fd"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "strength",
+          "field": "strength",
+          "keys": [
+            "st"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "outputGain",
+          "field": "outputGain",
+          "keys": [
+            "og"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": [
+        {
+          "publicName": "impulseResponse",
+          "slot": 0,
+          "format": "ET_ASSET_F32_MULTICH",
+          "capacity": "32 MiB convolution cap"
+        }
+      ]
+    },
     "MSMatrix": {
       "internalType": "MSMatrixPlugin",
       "layoutHash": 607668476,
@@ -8323,6 +8657,7 @@
   },
   "frozenGoldenIndexes": {
     "dsp/plugins/analyzer/level_meter/params.json": "dsp/plugins/analyzer/level_meter/golden/index.json",
+    "dsp/plugins/analyzer/note_spectrogram/params.json": "dsp/plugins/analyzer/note_spectrogram/golden/index.json",
     "dsp/plugins/analyzer/oscilloscope/params.json": "dsp/plugins/analyzer/oscilloscope/golden/index.json",
     "dsp/plugins/analyzer/spectrogram/params.json": "dsp/plugins/analyzer/spectrogram/golden/index.json",
     "dsp/plugins/analyzer/spectrum_analyzer/params.json": "dsp/plugins/analyzer/spectrum_analyzer/golden/index.json",
@@ -8390,6 +8725,7 @@
     "dsp/plugins/modulation/frequency_shifter/params.json": "dsp/plugins/modulation/frequency_shifter/golden/index.json",
     "dsp/plugins/modulation/phaser/params.json": "dsp/plugins/modulation/phaser/golden/index.json",
     "dsp/plugins/modulation/pitch_shifter/params.json": "dsp/plugins/modulation/pitch_shifter/golden/index.json",
+    "dsp/plugins/modulation/pitch_shifter_hq/params.json": "dsp/plugins/modulation/pitch_shifter_hq/golden/index.json",
     "dsp/plugins/modulation/rotary_speaker/params.json": "dsp/plugins/modulation/rotary_speaker/golden/index.json",
     "dsp/plugins/modulation/tremolo/params.json": "dsp/plugins/modulation/tremolo/golden/index.json",
     "dsp/plugins/modulation/wow_flutter/params.json": "dsp/plugins/modulation/wow_flutter/golden/index.json",
@@ -8397,10 +8733,15 @@
     "dsp/plugins/resonator/horn_resonator/params.json": "dsp/plugins/resonator/horn_resonator/golden/index.json",
     "dsp/plugins/resonator/horn_resonator_plus/params.json": "dsp/plugins/resonator/horn_resonator_plus/golden/index.json",
     "dsp/plugins/resonator/modal_resonator/params.json": "dsp/plugins/resonator/modal_resonator/golden/index.json",
+    "dsp/plugins/restoration/click_remover/params.json": "dsp/plugins/restoration/click_remover/golden/index.json",
+    "dsp/plugins/restoration/clip_restorer/params.json": "dsp/plugins/restoration/clip_restorer/golden/index.json",
+    "dsp/plugins/restoration/hum_remover/params.json": "dsp/plugins/restoration/hum_remover/golden/index.json",
+    "dsp/plugins/restoration/noise_reduction/params.json": "dsp/plugins/restoration/noise_reduction/golden/index.json",
     "dsp/plugins/reverb/dattorro_plate_reverb/params.json": "dsp/plugins/reverb/dattorro_plate_reverb/golden/index.json",
     "dsp/plugins/reverb/fdn_reverb/params.json": "dsp/plugins/reverb/fdn_reverb/golden/index.json",
     "dsp/plugins/reverb/ir_reverb/params.json": "dsp/plugins/reverb/ir_reverb/golden/index.json",
     "dsp/plugins/reverb/rs_reverb/params.json": "dsp/plugins/reverb/rs_reverb/golden/index.json",
+    "dsp/plugins/saturation/bandwidth_extender/params.json": "dsp/plugins/saturation/bandwidth_extender/golden/index.json",
     "dsp/plugins/saturation/dynamic_saturation/params.json": "dsp/plugins/saturation/dynamic_saturation/golden/index.json",
     "dsp/plugins/saturation/exciter/params.json": "dsp/plugins/saturation/exciter/golden/index.json",
     "dsp/plugins/saturation/hard_clipping/params.json": "dsp/plugins/saturation/hard_clipping/golden/index.json",
@@ -8410,10 +8751,11 @@
     "dsp/plugins/saturation/sub_synth/params.json": "dsp/plugins/saturation/sub_synth/golden/index.json",
     "dsp/plugins/saturation/tube_simulator/params.json": "dsp/plugins/saturation/tube_simulator/golden/index.json",
     "dsp/plugins/spatial/crossfeed_filter/params.json": "dsp/plugins/spatial/crossfeed_filter/golden/index.json",
+    "dsp/plugins/spatial/crosstalk_cancellation/params.json": "dsp/plugins/spatial/crosstalk_cancellation/golden/index.json",
     "dsp/plugins/spatial/ms_matrix/params.json": "dsp/plugins/spatial/ms_matrix/golden/index.json",
     "dsp/plugins/spatial/multiband_balance/params.json": "dsp/plugins/spatial/multiband_balance/golden/index.json",
     "dsp/plugins/spatial/phase_select_eq/params.json": "dsp/plugins/spatial/phase_select_eq/golden/index.json",
     "dsp/plugins/spatial/stereo_blend/params.json": "dsp/plugins/spatial/stereo_blend/golden/index.json"
   },
-  "contractDigest": "61121eb6aec4b52d5492795c2ac81bd4cecfa119b7bfc4e6956fd2b725690685"
+  "contractDigest": "54a06c19f4604073f6ddc13bdd9b10b12769b786043e9ec8e495181e35d64c18"
 }

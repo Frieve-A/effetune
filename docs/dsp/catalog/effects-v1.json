@@ -47,6 +47,22 @@
       "sourceGenerating": false
     },
     {
+      "type": "NoteSpectrogram",
+      "parameters": [],
+      "seeded": false,
+      "telemetry": [
+        "noteSpectrogram"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": [],
+      "displayName": "Note Spectrogram",
+      "category": "analyzer",
+      "summary": "Passes audio through while exposing detected pitch confidence across the 88-key piano range at five positions per semitone.",
+      "sourceGenerating": false
+    },
+    {
       "type": "Oscilloscope",
       "parameters": [
         {
@@ -5298,6 +5314,42 @@
       "sourceGenerating": false
     },
     {
+      "type": "PitchShifterHQ",
+      "parameters": [
+        {
+          "name": "pitchShift",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "unit": "semitones",
+          "minimum": -6,
+          "maximum": 6
+        },
+        {
+          "name": "fineTune",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "unit": "cents",
+          "minimum": -50,
+          "maximum": 50
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      },
+      "assets": [],
+      "displayName": "Pitch Shifter HQ",
+      "category": "modulation",
+      "summary": "Changes pitch in semitones and cents while preserving playback duration.",
+      "sourceGenerating": false
+    },
+    {
       "type": "RotarySpeaker",
       "parameters": [
         {
@@ -5916,6 +5968,184 @@
       "sourceGenerating": false
     },
     {
+      "type": "ClickRemover",
+      "parameters": [
+        {
+          "name": "sensitivity",
+          "type": "number",
+          "count": 1,
+          "default": 50,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "maxRepairLength",
+          "type": "number",
+          "count": 1,
+          "default": 1,
+          "unit": "ms",
+          "minimum": 0.1,
+          "maximum": 2
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      },
+      "assets": [],
+      "displayName": "Click Remover",
+      "category": "restoration",
+      "summary": "Reduces short clicks in playback.",
+      "sourceGenerating": false
+    },
+    {
+      "type": "ClipRestorer",
+      "parameters": [
+        {
+          "name": "threshold",
+          "type": "number",
+          "count": 1,
+          "default": -0.1,
+          "unit": "dB",
+          "minimum": -18,
+          "maximum": 0
+        },
+        {
+          "name": "outputGain",
+          "type": "number",
+          "count": 1,
+          "default": -3,
+          "unit": "dB",
+          "minimum": -12,
+          "maximum": 0
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      },
+      "assets": [],
+      "displayName": "Clip Restorer",
+      "category": "restoration",
+      "summary": "Reconstructs clipped waveform peaks.",
+      "sourceGenerating": false
+    },
+    {
+      "type": "HumRemover",
+      "parameters": [
+        {
+          "name": "frequency",
+          "type": "string",
+          "count": 1,
+          "default": "Auto",
+          "values": [
+            "Auto",
+            "50 Hz",
+            "60 Hz"
+          ]
+        },
+        {
+          "name": "harmonics",
+          "type": "integer",
+          "count": 1,
+          "default": 8,
+          "minimum": 1,
+          "maximum": 64
+        },
+        {
+          "name": "trackingSpeed",
+          "type": "number",
+          "count": 1,
+          "default": 50,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": [],
+      "displayName": "Hum Remover",
+      "category": "restoration",
+      "summary": "Reduces mains hum and its harmonics.",
+      "sourceGenerating": false
+    },
+    {
+      "type": "NoiseReduction",
+      "parameters": [
+        {
+          "name": "reduction",
+          "type": "number",
+          "count": 1,
+          "default": 12,
+          "unit": "dB",
+          "minimum": 0,
+          "maximum": 24
+        },
+        {
+          "name": "sensitivity",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -12,
+          "maximum": 12
+        },
+        {
+          "name": "smoothing",
+          "type": "number",
+          "count": 1,
+          "default": 50,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "trebleCare",
+          "type": "number",
+          "count": 1,
+          "default": 50,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "mix",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "seeded": false,
+      "telemetry": [],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      },
+      "assets": [],
+      "displayName": "Noise Reduction",
+      "category": "restoration",
+      "summary": "Reduces steady background noise.",
+      "sourceGenerating": false
+    },
+    {
       "type": "DattorroPlateReverb",
       "parameters": [
         {
@@ -6346,6 +6576,61 @@
       "displayName": "RS Reverb",
       "category": "reverb",
       "summary": "Creates algorithmic reverberation with configurable room and decay behavior.",
+      "sourceGenerating": false
+    },
+    {
+      "type": "BandwidthExtender",
+      "parameters": [
+        {
+          "name": "harmonicAmount",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 200
+        },
+        {
+          "name": "noiseAmount",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 200
+        },
+        {
+          "name": "cutoffMode",
+          "type": "string",
+          "count": 1,
+          "default": "Auto",
+          "values": [
+            "Auto",
+            "Manual"
+          ]
+        },
+        {
+          "name": "cutoffFrequency",
+          "type": "number",
+          "count": 1,
+          "default": 16000,
+          "unit": "Hz",
+          "minimum": 6000,
+          "maximum": 24000
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "sampleRateDependent",
+        "dependsOn": [
+          "sampleRate"
+        ]
+      },
+      "assets": [],
+      "displayName": "Bandwidth Extender",
+      "category": "saturation",
+      "summary": "Synthesizes upper-frequency content for bandwidth-limited recordings.",
       "sourceGenerating": false
     },
     {
@@ -7110,6 +7395,71 @@
       "sourceGenerating": false
     },
     {
+      "type": "CrosstalkCancellation",
+      "parameters": [
+        {
+          "name": "latencyMode",
+          "type": "string",
+          "count": 1,
+          "default": "128",
+          "values": [
+            "0",
+            "128",
+            "256",
+            "512",
+            "1024"
+          ]
+        },
+        {
+          "name": "filterDelaySamples",
+          "type": "integer",
+          "count": 1,
+          "default": 2048,
+          "minimum": 0,
+          "maximum": 65536
+        },
+        {
+          "name": "strength",
+          "type": "number",
+          "count": 1,
+          "default": 70,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "outputGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -24,
+          "maximum": 24
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "dynamic",
+        "dependsOn": [
+          "latencyMode",
+          "filterDelaySamples",
+          "impulseResponse"
+        ]
+      },
+      "assets": [
+        {
+          "name": "impulseResponse",
+          "kind": "impulseResponse",
+          "required": true
+        }
+      ],
+      "displayName": "Crosstalk Cancellation",
+      "category": "spatial",
+      "summary": "Applies prepared true-stereo cancellation filters to stereo playback.",
+      "sourceGenerating": false
+    },
+    {
       "type": "MSMatrix",
       "parameters": [
         {
@@ -7487,7 +7837,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "0f8926c820f825d87f212d7c7fbfa75044caf7aa912bef6a78cc85f820b899c0",
-    "privateLayoutSha256": "61121eb6aec4b52d5492795c2ac81bd4cecfa119b7bfc4e6956fd2b725690685"
+    "publicCatalogSha256": "cb58e2e6158bfa01f5d379bf0ccc9daef74f987dce012f0ed1a9d04e140156a3",
+    "privateLayoutSha256": "54a06c19f4604073f6ddc13bdd9b10b12769b786043e9ec8e495181e35d64c18"
   }
 }

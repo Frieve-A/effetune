@@ -27,6 +27,7 @@ from .presets import LegacyImportReport, import_legacy_preset
 from .telemetry import (
     LevelTelemetryChannel,
     LevelTelemetryFrame,
+    NoteSpectrogramTelemetryFrame,
     OscilloscopeTelemetryFrame,
     SpectrogramTelemetryFrame,
     SpectrumTelemetryFrame,
@@ -59,6 +60,7 @@ __all__ = [
     "LegacyImportReport",
     "LevelTelemetryChannel",
     "LevelTelemetryFrame",
+    "NoteSpectrogramTelemetryFrame",
     "OscilloscopeTelemetryFrame",
     "SpectrogramTelemetryFrame",
     "SpectrumTelemetryFrame",

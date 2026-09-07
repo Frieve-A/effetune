@@ -196,6 +196,7 @@ export function createFakeDocument(options = {}) {
     }
   };
 
+  document.documentElement = document.createElement('html');
   document.body = document.createElement('body');
   document.head = document.createElement('head');
 

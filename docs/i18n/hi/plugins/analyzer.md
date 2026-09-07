@@ -1,6 +1,6 @@
 ---
 title: "विश्लेषण प्लगइन - EffeTune"
-description: "Level Meter, Oscilloscope, Spectrogram, Spectrum Analyzer और Stereo Meter सहित ऑडियो विश्लेषण प्लगइन।"
+description: "Level Meter, Note Spectrogram, Oscilloscope, Spectrogram, Spectrum Analyzer और Stereo Meter सहित ऑडियो विश्लेषण प्लगइन।"
 lang: hi
 ---
 
@@ -11,6 +11,7 @@ lang: hi
 ## प्लगइन सूची
 
 - [Level Meter](#level-meter) - digital signal level और संभावित clipping दिखाता है
+- [Note Spectrogram](#note-spectrogram) - समय के साथ अनुमानित pitch को piano roll में दिखाता है
 - [Oscilloscope](#oscilloscope) - waveform को real time में दिखाता है
 - [Spectrogram](#spectrogram) - आपके संगीत से सुंदर visual patterns बनाता है
 - [Spectrum Analyzer](#spectrum-analyzer) - संगीत की अलग-अलग frequencies दिखाता है
@@ -22,9 +23,48 @@ lang: hi
 
 ### विज़ुअलाइज़ेशन गाइड
 - horizontal bar जितना दाईं ओर बढ़ता है, signal level उतना ऊंचा होता है
-- white marker थोड़ी देर के लिए हाल का सबसे ऊंचा level दिखाता है
+- white marker नया peak एक सेकंड तक hold करता है, फिर धीरे-धीरे नीचे आता है
 - OVERLOAD का मतलब है signal safe digital range से ऊपर गया और distort हो सकता है
 - clean playback के लिए बार-बार red levels या OVERLOAD warnings से बचें; असली listening volume अपने device पर सेट करें
+
+## Note Spectrogram
+
+ऑडियो को बदले बिना A0 से C8 तक की अनुमानित fundamental frequencies (F0) को चलते हुए piano roll में दिखाता है। इसका उपयोग chord की notes, बदलती vocal और melody lines, bass line और अलग-अलग octave में एक साथ बजने वाली notes को समझने के लिए करें।
+
+### विज़ुअलाइज़ेशन गाइड
+
+- **Vertical** में समय बाएँ से दाएँ दिखता है और दाएँ किनारे पर कीबोर्ड और मौजूदा ध्वनि दिखाई देते हैं। ऊँचे स्वर ऊपर होते हैं।
+- **Horizontal** में कीबोर्ड नीचे होता है, जिसमें निचले स्वर बाईं ओर और ऊँचे स्वर दाईं ओर होते हैं। नई ध्वनि कीबोर्ड के ठीक ऊपर दिखाई देती है और इतिहास ऊपर की ओर खिसकता है।
+- हर C पर रेखा सप्तक की सीमा दिखाती है।
+- काली piano keys से जुड़ी pitch rows को लगभग काले gray background में दिखाया जाता है, ताकि कोई note detect न होने पर भी वे पहचानी जा सकें।
+- **Normal** में थीम का ग्राफ़ रेखा रंग होता है; **Note Colors** में हर स्वर का अलग रंग होता है, जो सभी सप्तकों में दोहराया जाता है। दोनों में E और F के बीच की सहायक रेखाएँ सप्तक की सीमाओं से गहरी होती हैं।
+- **1/12 Octave** हर semitone के लिए एक row दिखाता है। **High (1/60 Octave)** हर semitone को पाँच rows में बाँटता है, जिससे pitch के छोटे बदलाव देखना आसान होता है; पास-पास के notes के रंगों को बीच की rows में मिलाया जाता है।
+- रंग मॉडल के विश्वास स्तर के अनुसार 0 (पृष्ठभूमि का रंग) से 1 (पूरा रंग) तक बदलती है। कमजोर संभावित स्वर भी किसी प्रदर्शन सीमा से हटाए बिना दिखाए जाते हैं। यह स्कोर बताता है कि मॉडल किसी स्वर की मौजूदगी का कितना समर्थन करता है; यह आवाज़ का स्तर या अंशांकित प्रायिकता नहीं है।
+- नवीनतम फ़्रेम में विश्वास स्तर बढ़ने पर कुंजियाँ अपने सामान्य रंग से धीरे-धीरे प्रदर्शन रंग की ओर बदलती हैं और 1 पर पूरी तरह उसी रंग की हो जाती हैं।
+- **Color** बदलने पर मौजूदा इतिहास नए रंगों में दिखता है।
+
+### आप क्या देख सकते हैं
+
+- chords एक ही समय पर कई चमकीली rows के रूप में दिखते हैं
+- melodies और bass lines note rows के बीच चलने वाले paths बनाती हैं
+- यह display MIDI या music notation नहीं बनाता, instruments पहचानता नहीं है, और हर एक साथ बजने वाली sound को पूरी तरह अलग नहीं कर सकता। जटिल overlaps melody या harmony के कुछ हिस्से छोड़ सकते हैं, जबकि percussion, noise और अस्पष्ट repeating patterns कभी-कभी गलत pitch दिखा सकते हैं।
+
+### पैरामीटर
+
+- **Color** - स्वरों के अनुमान बदले बिना प्रदर्शन के रंग चुनता है।
+  - **Normal** (डिफ़ॉल्ट): थीम का ग्राफ़ रेखा रंग।
+  - **Note Colors**: हर स्वर का अलग रंग, जो सभी सप्तकों में दोहराया जाता है।
+- **Pitch Resolution** - मौजूदा history मिटाए बिना pitch की vertical detail चुनता है।
+  - **1/12 Octave**: हर semitone के लिए एक row, जिसमें उस note की सीमा का सबसे मजबूत अनुमान दिखता है।
+  - **High (1/60 Octave)** (डिफ़ॉल्ट): pitch के अधिक सूक्ष्म बदलाव दिखाने के लिए हर semitone में पाँच rows।
+- **Layout** - **Horizontal** (डिफ़ॉल्ट) या **Vertical** चुनता है। लेआउट बदलने पर मौजूदा इतिहास बना रहता है।
+- **Time Span** (1 से 10 s) - पियानो रोल में दिखाई देने वाली समय अवधि तय करता है
+  - कम value timing के बदलाव अधिक साफ़ दिखाती है
+  - अधिक value लंबा musical passage एक साथ दिखाती है
+  - Default: 2 s
+- **Lowest Note** - दिखाई देने वाली pitch range का सबसे निचला note तय करता है। Default: E1.
+- **Highest Note** - दिखाई देने वाली pitch range का सबसे ऊँचा note तय करता है। Default: G6.
+- input analysis के लिए बहुत कम होने पर piano roll बहुत छोटे input को pitches के रूप में दिखाने के बजाय गहरा रहता है। यह suppression तय नहीं करता कि कोई sound सुनाई देगी या perceptually masked होगी।
 
 ## Oscilloscope
 
@@ -60,6 +100,8 @@ displayed waveform captured points को time order में जोड़त�
 ## Spectrogram
 
 रंगीन पैटर्न बनाता है जो दिखाते हैं कि आपका संगीत समय के साथ कैसे बदलता है। रंग बताते हैं कि हर ध्वनि कितनी मजबूत है, और ऊर्ध्व स्थिति उसकी आवृत्ति दिखाती है।
+
+ग्राफ़ एक समान गति से दाएँ से बाएँ खिसकता है और हर सेकंड के लिए एक निशान दिखाता है।
 
 ### विज़ुअलाइज़ेशन गाइड
 - रंग दिखाते हैं कि अलग-अलग आवृत्तियाँ कितनी मजबूत हैं:
@@ -98,7 +140,7 @@ displayed waveform captured points को time order में जोड़त�
 - दाईं ओर high frequencies दिखती हैं (cymbals, sparkle, air)
 - ऊंचे peaks का मतलब उन frequencies की stronger presence है
 - darker green line मौजूदा sound दिखाती है
-- brighter green line recent peaks थोड़ी देर hold करती है, ताकि अभी-अभी गुजरे strong sounds देख सकें
+- brighter green line recent peaks का अनुसरण करती है और उनके fade होने पर धीरे-धीरे नीचे आती है
 - देखें कि अलग-अलग instruments कैसे अलग patterns बनाते हैं
 
 ### आप क्या देख सकते हैं

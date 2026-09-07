@@ -1210,8 +1210,7 @@ test('shares URLs, opens music, manages presets, and creates audio players', asy
       await manager.shareButton.click();
       const shareMessageTimer = [...timers].reverse().find(timer => timer.delay === 3000);
       assert.ok(shareMessageTimer);
-      assert.match(manager.stateManager.errorDisplay.textContent, /Copied URL/);
-      assert.match(manager.stateManager.errorDisplay.textContent, /external IR data \(Measured Hall\)/);
+      assert.equal(manager.stateManager.errorDisplay.textContent, 'Copied URL');
 
       manager.queueMissingExternalAssetSummary();
       manager.queueMissingExternalAssetSummary();
@@ -1416,41 +1415,23 @@ test('closing the player UI keeps the OpenHome renderer alive until the feature 
   });
 });
 
-test('share success warning stays bound to the pipeline copied before clipboard completion', async () => {
-  let releaseClipboard;
-  let clipboardStarted;
-  const clipboardReady = new Promise(resolve => {
-    clipboardStarted = resolve;
-  });
-  const clipboardPending = new Promise(resolve => {
-    releaseClipboard = resolve;
-  });
+test('share success only shows copy confirmation for external Measurement and IR data', async () => {
+  for (const kind of ['Measurement', 'IR']) {
+    await withUIHarness({}, async ({ manager }) => {
+      const plugin = createPlugin(kind === 'IR' ? 'IR Reverb' : 'Room EQ');
+      plugin.externalAssetInfo = {
+        missing: false,
+        kind,
+        ids: ['aaaaaaaaaaaaaaaaaaaaaaaa'],
+        names: ['External data']
+      };
+      manager.audioManager.pipeline = [plugin];
 
-  await withUIHarness({
-    clipboardWrite() {
-      clipboardStarted();
-      return clipboardPending;
-    }
-  }, async ({ manager }) => {
-    const plugin = createPlugin('IR Reverb');
-    plugin.externalAssetInfo = {
-      missing: false,
-      kind: 'IR',
-      ids: ['aaaaaaaaaaaaaaaaaaaaaaaa'],
-      names: ['Copied Hall']
-    };
-    manager.audioManager.pipeline = [plugin];
+      await manager.shareButton.click();
 
-    const share = manager.shareButton.click();
-    await clipboardReady;
-    plugin.externalAssetInfo.names = ['Later Hall'];
-    manager.audioManager.pipeline = [];
-    releaseClipboard();
-    await share;
-
-    assert.match(manager.stateManager.errorDisplay.textContent, /external IR data \(Copied Hall\)/);
-    assert.doesNotMatch(manager.stateManager.errorDisplay.textContent, /Later Hall/);
-  });
+      assert.equal(manager.stateManager.errorDisplay.textContent, 'Copied URL');
+    });
+  }
 });
 
 test('only the latest pipeline share attempt can publish completion feedback', async () => {
@@ -1749,4 +1730,24 @@ test('handles constructor localization rejection, menu refresh, and share failur
     await flushMicrotasks();
     assert.match(manager.stateManager.errorDisplay.textContent, /Copy failed/);
   });
+});
+
+
+test('UI construction synchronously applies saved themes without needing a theme-color meta element', async () => {
+  for (const [appConfig, expected] of [[{ theme: 'paper' }, 'paper'], [{}, 'graphite'], [{ theme: 'invalid' }, 'graphite']]) {
+    await withUIHarness({ appConfig }, async ({ document, manager, window }) => {
+      assert.equal(document.documentElement.dataset.theme, expected);
+      const calls = [];
+      window.ThemePalette = { refresh: () => calls.push('refresh') };
+      manager.pipelineManager.core.updatePipelineUI = redraw => calls.push(redraw);
+      const meta = document.createElement('meta');
+      document.querySelector = () => meta;
+      manager.setThemePreference('mint');
+      assert.equal(document.documentElement.dataset.theme, 'mint');
+      assert.equal(meta.content, '#eef6f1');
+      assert.deepEqual(calls, ['refresh', true]);
+      manager.syncThemeWithConfig(undefined);
+      assert.equal(document.documentElement.dataset.theme, expected);
+    });
+  }
 });

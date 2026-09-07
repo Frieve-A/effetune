@@ -263,9 +263,9 @@ test('Restoration telemetry HUD has the shared AM-style enclosure', async () => 
     'min-height: 64px',
     'margin-top: 8px',
     'overflow: hidden',
-    'border: 1px solid #454545',
+    'border: 1px solid var(--et-surface-20)',
     'border-radius: 4px',
-    'background: #171717'
+    'background: var(--et-base)'
   ]) {
     assert.match(rule[1], new RegExp(declaration.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }

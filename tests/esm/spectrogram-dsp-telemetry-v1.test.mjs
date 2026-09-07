@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
-import { performance } from 'node:perf_hooks';
 
 function createHub() {
   const subscriptions = [];
@@ -30,7 +29,7 @@ function createHub() {
   };
 }
 
-function loadSpectrogram({ hub = null } = {}) {
+function loadSpectrogram({ hub = null, clock = { now: () => 0 } } = {}) {
   const source = fs.readFileSync(
     new URL('../../plugins/analyzer/spectrogram.js', import.meta.url),
     'utf8'
@@ -49,11 +48,13 @@ function loadSpectrogram({ hub = null } = {}) {
     updateParameters() { calls.push(['updateParameters']); }
     _setupMessageHandler() { calls.push(['baseSetupMessageHandler']); }
     cleanup() { calls.push(['baseCleanup']); }
+    requestPowerAnimationFrame(callback) { this.nextFrame = callback; return 1; }
   }
   vm.runInNewContext(source, {
     window: windowRef,
     PluginBase,
-    performance,
+    performance: clock,
+    cancelAnimationFrame() {},
     console,
     Float32Array,
     Uint8Array,
@@ -96,6 +97,7 @@ function subscribedPlugin(runtime, id = 37) {
 function installCanvasStubs(plugin) {
   const drawCalls = [];
   const putCalls = [];
+  const markerCalls = [];
   plugin.imageDataCache = { data: new Uint8ClampedArray(256 * 1024 * 4) };
   plugin.tempCtx = {
     putImageData(...args) { putCalls.push(args); }
@@ -111,7 +113,7 @@ function installCanvasStubs(plugin) {
     fillRect() {},
     drawImage(...args) { drawCalls.push(args); },
     beginPath() {},
-    moveTo() {},
+    moveTo(x, y) { if (y === plugin.canvas.height - 16) markerCalls.push(x); },
     lineTo() {},
     stroke() {},
     fillText() {},
@@ -120,7 +122,7 @@ function installCanvasStubs(plugin) {
     rotate() {},
     restore() {}
   };
-  return { drawCalls, putCalls };
+  return { drawCalls, putCalls, markerCalls };
 }
 
 test('Spectrogram persists frequency scale and reprojects canonical history immediately', () => {
@@ -250,34 +252,42 @@ test('Spectrogram synchronously copies v1 columns without running a main-thread 
   assert.deepEqual(putCalls[1].slice(1), [0, 0, 0, 0, 1, 256]);
 });
 
-test('Spectrogram ring paints one physical column and draws it in chronological order', () => {
+test('Spectrogram ring paints one physical column and draws wrapped history chronologically', () => {
   const hub = createHub();
-  const runtime = loadSpectrogram({ hub });
+  let now = 0;
+  const runtime = loadSpectrogram({ hub, clock: { now: () => now } });
   const plugin = subscribedPlugin(runtime);
   const { drawCalls, putCalls } = installCanvasStubs(plugin);
-
-  hub.emit(makeSpectrogramFrame({ intensity: () => 64 }).frame);
-  hub.emit(makeSpectrogramFrame({ timeSeconds: 0.01, intensity: () => 192 }).frame);
-  assert.equal(plugin.spectrogramIntensityBuffer[100 * 1024], 64);
-  assert.equal(plugin.spectrogramIntensityBuffer[100 * 1024 + 1], 192);
+  // Use an exactly representable hop so this test isolates ring wrap geometry.
+  const period = 128 / 32768;
+  for (let index = 0; index < 1026; index++) {
+    now = index * period * 1000;
+    hub.emit(makeSpectrogramFrame({
+      sampleRate: 32768, timeSeconds: index * period, intensity: () => index % 256
+    }).frame);
+    if (index === 0) plugin.drawGraph();
+  }
   assert.equal(plugin.spectrogramWriteColumn, 2);
-  assert.equal(putCalls.length, 3);
+  assert.equal(plugin.spectrogramColumnCount, 1024);
+  assert.equal(putCalls.length, 1027);
+  assert.equal(plugin.spectrogramIntensityBuffer[100 * 1024], 0);
+  assert.equal(plugin.spectrogramIntensityBuffer[100 * 1024 + 1], 1);
 
   putCalls.length = 0;
+  drawCalls.length = 0;
   plugin.drawGraph();
   assert.equal(putCalls.length, 0);
-  assert.equal(drawCalls.length, 2);
-  assert.deepEqual(drawCalls[0].slice(1, 5), [2, 0, 1022, 256]);
-  assert.deepEqual(drawCalls[1].slice(1, 5), [0, 0, 2, 256]);
-  assert.equal(drawCalls[0][5], 0);
-  assert.equal(drawCalls[1][5], 1022);
+  assert.equal(drawCalls.length, 3);
+  assert.deepEqual(drawCalls[0].slice(1), [2, 0, 1022, 256, 0, 0, 1022, 256]);
+  assert.deepEqual(drawCalls[1].slice(1), [0, 0, 1, 256, 1022, 0, 1, 256]);
+  assert.deepEqual(drawCalls[2].slice(1), [1, 0, 1, 256, 1023, 0, 1, 256]);
 
   plugin.setPoints(10);
   assert.equal(plugin.spectrogramWriteColumn, 0);
   assert.equal(plugin.spectrogramColumnCount, 0);
   assert.equal(plugin.spectrogramIntensityBuffer[100 * 1024], 0);
+  assert.equal(plugin.scrollTime, null);
   assert.equal(putCalls.length, 1);
-  assert.deepEqual(putCalls[0].slice(1), [0, 0]);
 });
 
 test('Spectrogram color LUT freezes the legacy seven-stop gradient', () => {
@@ -300,23 +310,103 @@ test('Spectrogram color LUT freezes the legacy seven-stop gradient', () => {
   }
 });
 
-test('Spectrogram markers tolerate equal f32 timestamps and reset on regression', () => {
+test('Spectrogram scrolls by elapsed render time between deliveries and aligns fresh data', () => {
   const hub = createHub();
-  const runtime = loadSpectrogram({ hub });
-  const plugin = subscribedPlugin(runtime);
+  let now = 1000;
+  const plugin = subscribedPlugin(loadSpectrogram({ hub, clock: { now: () => now } }));
+  const { drawCalls, markerCalls, putCalls } = installCanvasStubs(plugin);
+  const period = 2048 / 32768;
+  const emit = timeSeconds => hub.emit(makeSpectrogramFrame({ sampleRate: 32768, points: 12, timeSeconds }).frame);
+  const draw = timestamp => {
+    drawCalls.length = 0;
+    markerCalls.length = 0;
+    plugin.drawGraph(timestamp);
+    return { x: drawCalls[0][5], marker: markerCalls.at(-1) };
+  };
+  emit(1);
+  const first = draw(now);
+  for (const elapsed of [5, 21, 34, 49]) {
+    // The rAF timestamp, not a later performance.now() read, positions the frame.
+    now = 1000 + elapsed + 3;
+    const current = draw(1000 + elapsed);
+    assert.ok(Math.abs(first.x - current.x - elapsed / 1000 / period) < 1e-9);
+    assert.ok(Math.abs(first.marker - current.marker - elapsed / 1000 / period) < 1e-9);
+  }
+  const before = draw(now);
+  emit(1 + period);
+  emit(1 + 2 * period);
+  const received = draw(now);
+  assert.ok(received.x < before.x);
+  assert.deepEqual(draw(now), received);
+  assert.equal(drawCalls.length, 2);
+  assert.equal(drawCalls[0][3], 2);
+  assert.equal(plugin.canvasCtx.imageSmoothingEnabled, true);
+  // Resizing changes pixel scale, not the time represented by the history.
+  plugin.canvas.width = 2048;
+  const resized = draw(now);
+  assert.equal(resized.x, received.x * 2);
+  assert.equal(resized.marker, received.marker * 2);
+  assert.equal(putCalls.length, 4);
+});
 
-  hub.emit(makeSpectrogramFrame({ timeSeconds: 16777216 }).frame);
-  hub.emit(makeSpectrogramFrame({ timeSeconds: 16777216 }).frame);
-  assert.deepEqual(Array.from(plugin.secondMarkers), []);
-  hub.emit(makeSpectrogramFrame({ timeSeconds: 16777218 }).frame);
-  assert.deepEqual(Array.from(plugin.secondMarkers), [1023]);
-  hub.emit(makeSpectrogramFrame({ timeSeconds: 16777218 }).frame);
-  assert.deepEqual(Array.from(plugin.secondMarkers), [1022]);
-  hub.emit(makeSpectrogramFrame({ timeSeconds: 10 }).frame);
-  assert.deepEqual(Array.from(plugin.secondMarkers), []);
-  assert.equal(plugin.prevTime, 10);
-  hub.emit(makeSpectrogramFrame({ timeSeconds: 11 }).frame);
-  assert.deepEqual(Array.from(plugin.secondMarkers), [1023]);
+test('Spectrogram anchors the initial batch to its newest column and preserves missing time intervals', () => {
+  const hub = createHub();
+  let now = 0;
+  const plugin = subscribedPlugin(loadSpectrogram({ hub, clock: { now: () => now } }));
+  const { drawCalls } = installCanvasStubs(plugin);
+  const period = 128 / 32768;
+  const emit = timeSeconds => hub.emit(makeSpectrogramFrame({ sampleRate: 32768, timeSeconds }).frame);
+  emit(1);
+  emit(1 + period);
+  plugin.drawGraph();
+  assert.equal(drawCalls[0][5], 1022);
+  now = period * 4000;
+  emit(1 + 5 * period);
+  drawCalls.length = 0;
+  plugin.drawGraph();
+  assert.equal(drawCalls.length, 2);
+  assert.equal(drawCalls[0][5], 1018);
+  assert.equal(drawCalls[1][5], 1023);
+  assert.equal(drawCalls[1][5] - (drawCalls[0][5] + drawCalls[0][7]), 3);
+});
+
+test('Spectrogram freezes while stopped and reanchors fresh data on resume or a timeline reset', () => {
+  const hub = createHub();
+  let now = 1000;
+  const plugin = subscribedPlugin(loadSpectrogram({ hub, clock: { now: () => now } }));
+  const { drawCalls } = installCanvasStubs(plugin);
+  const emit = (timeSeconds, points = 8, sampleRate = 32768) => hub.emit(
+    makeSpectrogramFrame({ timeSeconds, points, sampleRate }).frame
+  );
+  const x = () => { drawCalls.length = 0; plugin.drawGraph(); return drawCalls[0][5]; };
+  emit(10);
+  x();
+  now += 20;
+  plugin.stopAnimation();
+  const frozen = x();
+  now += 60000;
+  assert.equal(x(), frozen);
+  plugin.isVisible = true;
+  plugin.startAnimation();
+  emit(70);
+  assert.equal(plugin.getSpectrogramDisplayTime(now), 70);
+  assert.equal(x(), 1023);
+  now += 10;
+  assert.ok(x() < 1023);
+  // A replacement audio context has a new time origin; old history must disappear.
+  emit(0);
+  assert.equal(plugin.spectrogramColumnCount, 1);
+  assert.equal(x(), 1023);
+  emit(0); // Equal f32 times remain finite and do not reset the stream.
+  assert.equal(plugin.spectrogramColumnCount, 2);
+  assert.ok(Number.isFinite(x()));
+  emit(1, 10);
+  assert.equal(plugin.spectrogramColumnCount, 1);
+  assert.equal(plugin.spectrogramColumnPeriod, 512 / 32768);
+  emit(2, 10, 48000);
+  assert.equal(plugin.spectrogramColumnCount, 1);
+  assert.equal(plugin.spectrogramColumnPeriod, 512 / 48000);
+  plugin.stopAnimation();
 });
 
 test('Spectrogram rejects malformed and incompatible v1 payloads', () => {
@@ -351,6 +441,7 @@ test('Spectrogram retains processBuffer FFT and scroll behavior as fallback', ()
   assert.equal(plugin.dspSpectrogramActive, true);
 
   plugin.setPoints(8);
+  const { drawCalls } = installCanvasStubs(plugin);
   const originalFft = plugin.fft;
   let fftCalls = 0;
   plugin.fft = function(real, imag) {
@@ -374,7 +465,11 @@ test('Spectrogram retains processBuffer FFT and scroll behavior as fallback', ()
   assert.equal(plugin.spectrum.length, 128);
   assert.match(plugin.processorString, /Float32Array\.from\(context\.buffer\[0\]\)/);
   assert.match(plugin.processorString, /bufferPosition % \(fftSize \/ 2\) === 0/);
-  assert.match(plugin.process.toString(), /copyWithin/);
+  plugin.drawGraph(0);
+  const firstX = drawCalls.at(-1)[5];
+  drawCalls.length = 0;
+  plugin.drawGraph(2);
+  assert.equal(firstX - drawCalls[0][5], 0.5);
 });
 
 test('Spectrogram deduplicates, rebinds, and cleans up telemetry subscriptions', () => {
@@ -395,4 +490,41 @@ test('Spectrogram deduplicates, rebinds, and cleans up telemetry subscriptions',
   plugin.cleanup();
   assert.equal(secondHub.unsubscribeCalls, 1);
   assert.ok(runtime.calls.some(call => call[0] === 'baseCleanup'));
+});
+
+
+test('Spectrogram keeps fresh data at the right edge after queued telemetry arrives on re-enable', () => {
+  const hub = createHub();
+  let now = 1000;
+  const plugin = subscribedPlugin(loadSpectrogram({ hub, clock: { now: () => now } }));
+  const { drawCalls } = installCanvasStubs(plugin);
+  const emit = timeSeconds => hub.emit(makeSpectrogramFrame({ sampleRate: 32768, timeSeconds }).frame);
+  const newestIsAtRightEdge = () => {
+    drawCalls.length = 0;
+    plugin.drawGraph();
+    const latest = (plugin.spectrogramWriteColumn + 1023) % 1024;
+    assert.ok(drawCalls.some(call => call[1] <= latest && latest < call[1] + call[3] &&
+      Math.abs(call[5] + call[7] - plugin.canvas.width) < 1e-8),
+    'the newest analysis column must reach the right edge');
+  };
+  emit(1);
+  newestIsAtRightEdge();
+  for (let cycle = 0; cycle < 3; cycle++) {
+    plugin.stopAnimation();
+    now += 5000;
+    plugin.isVisible = true;
+    plugin.startAnimation();
+    emit(1 + cycle * 5 + 0.00390625); // A queued column arrives before current telemetry.
+    plugin.drawGraph();
+    emit(6 + cycle * 5);
+    newestIsAtRightEdge();
+    now += 17;
+    newestIsAtRightEdge();
+  }
+  // Another effect can interrupt or retime telemetry without stopping this UI.
+  now += 5000;
+  newestIsAtRightEdge();
+  assert.ok(plugin.getSpectrogramDisplayTime(now) - plugin.prevTime <= plugin.spectrogramColumnPeriod);
+  emit(26);
+  newestIsAtRightEdge();
 });

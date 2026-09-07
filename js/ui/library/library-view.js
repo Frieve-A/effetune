@@ -703,8 +703,9 @@ export class LibraryView {
     this.updateDesktopLayoutHeight();
     this.syncNowPlayingTrack();
     this.isViewShown = true;
-    this.render();
+    const rendered = this.render();
     if (focusSearch) this.searchInput?.focus();
+    return rendered;
   }
 
   hide(options = {}) {
@@ -1116,8 +1117,8 @@ export class LibraryView {
       this.pagedResetScrollOnCommit = false;
       this.pagedScrollToAnchorOnCommit = false;
     }
-    this.renderPagedLibrary(renderVersion);
-    this.renderStatus();
+    const pageReady = this.renderPagedLibrary(renderVersion);
+    return Promise.all([pageReady, this.renderPagedStatus()]);
   }
 
   renderPagedLibrary(renderVersion) {
@@ -1181,13 +1182,14 @@ export class LibraryView {
       this.pagedResetScrollOnCommit = !canRestore;
       this.pagedScrollToAnchorOnCommit = false;
       this.pagedRestorePending = canRestore;
-      void this.pagedController.start(query, {
+      this.pagedRenderReady = this.pagedController.start(query, {
         preserveStaleSelection,
         defaultSelectAllLimit: selectAllByDefault ? PAGED_DEFAULT_SELECT_ALL_LIMIT : null
       });
-      return;
+      return this.pagedRenderReady;
     }
     this.renderPagedState(this.pagedState ?? this.pagedController.createViewState());
+    return this.pagedRenderReady;
   }
 
   getPagedQuery() {

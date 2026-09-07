@@ -1171,7 +1171,7 @@ class FifteenBandPEQPlugin extends PluginBase {
     if (pathPoints.length > 0) {
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', pathPoints.join(' '));
-      path.setAttribute('stroke', '#00ff00');
+      path.style.stroke = 'var(--et-graph-trace)';
       path.setAttribute('stroke-width', '2');
       path.setAttribute('fill', 'none');
       path.id = `fifteen-band-peq-response-path-${this.id}`;

@@ -19,7 +19,7 @@
 .sub-synth-plugin-ui canvas {
     margin: 10px auto;
     display: block;
-    background: #222;
+    background: var(--et-graph-bg-deep);
 }
 
 .sub-synth-plugin-ui .sub-synth-graph {

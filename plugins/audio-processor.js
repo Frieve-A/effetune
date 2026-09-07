@@ -423,12 +423,20 @@ class DspEngineBinding {
         if (this.engine) {
             throw new DspBindingError('DSP engine already exists');
         }
-        const engine = this.exports.et_engine_create() >>> 0;
-        if (!engine) {
-            throw new DspBindingError('DSP engine creation failed');
+        const preparing = this._preparing;
+        this._preparing = true;
+        try {
+            const engine = this.exports.et_engine_create() >>> 0;
+            if (!engine) {
+                throw new DspBindingError('DSP engine creation failed');
+            }
+            this.engine = engine;
+            return engine;
+        } finally {
+            // Engine allocation is a control-rate boundary, before audio processing.
+            this._refreshViews();
+            this._preparing = preparing;
         }
-        this.engine = engine;
-        return engine;
     }
 
     destroyEngine() {
@@ -3887,6 +3895,9 @@ class PluginProcessor extends AudioWorkletProcessor {
     }
 
     registerPluginProcessor(pluginType, processorFunction) {
+        if (typeof __EFFECTUNE_WASM_ONLY__ !== 'undefined' && __EFFECTUNE_WASM_ONLY__) {
+            throw new Error('JavaScript DSP is unavailable in this host');
+        }
         try {
             // Compile function once during registration
             const compiledFunction = new Function('context', 'data', 'parameters', 'time',
@@ -3924,8 +3935,9 @@ class PluginProcessor extends AudioWorkletProcessor {
             inputBus: params.inputBus ?? pluginConfig?.inputBus ?? 0,
             outputBus: params.outputBus ?? pluginConfig?.outputBus ?? 0,
             channel: params.channel ?? pluginConfig?.channel ?? null,
-            executionCapabilities: pluginConfig?.executionCapabilities ??
-                previousPlugin?.executionCapabilities ?? null
+            executionCapabilities: typeof __EFFECTUNE_WASM_ONLY__ !== 'undefined' && __EFFECTUNE_WASM_ONLY__
+                ? { ...pluginConfig?.executionCapabilities, requiresWasm: pluginConfig?.type !== 'SectionPlugin' }
+                : pluginConfig?.executionCapabilities ?? previousPlugin?.executionCapabilities ?? null
         };
     }
 

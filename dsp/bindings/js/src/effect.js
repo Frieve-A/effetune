@@ -9,6 +9,7 @@ export const EFFECT_CHANNELS = Object.freeze([
 const COMMON_KEYS = new Set(['id', 'enabled', 'channel', 'assets', 'parameters']);
 const CHANNEL_SET = new Set(EFFECT_CHANNELS);
 const ASSET_NAMES_BY_EFFECT = new Map([
+  ['CrosstalkCancellation', ['impulseResponse']],
   ['FIRCrossover', ['impulseResponse']],
   ['FiveBandFIRPEQ', ['impulseResponse']],
   ['GroupDelayEQ', ['impulseResponse']],

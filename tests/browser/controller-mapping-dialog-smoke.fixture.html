@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <base href="/">
   <title>Controller mapping dialog smoke</title>
   <link rel="stylesheet" href="/effetune.css">
   <link rel="stylesheet" href="/effetune-mobile.css">
-  <link rel="stylesheet" href="/effetune-library.css">
 </head>
 <body>
   <main>Controller mapping dialog smoke fixture ready</main>
@@ -200,6 +200,13 @@
       const manager = createManager();
       const dialog = new MidiMappingDialog({ manager, windowRef });
       await dialog.open();
+      const stylesheet = document.querySelector('link[href="effetune-library.css"]');
+      if (!stylesheet.sheet) {
+        await new Promise((resolve, reject) => {
+          stylesheet.addEventListener('load', resolve, { once: true });
+          stylesheet.addEventListener('error', reject, { once: true });
+        });
+      }
       const learnedBefore = document.querySelectorAll('.midi-mapping-row').length;
       const mappingBody = document.querySelector('.midi-mapping-content');
       mappingBody.scrollTop = 0;
@@ -433,7 +440,24 @@
       };
     }
 
-    window.__controllerMappingDialogSmoke = { run };
+    async function prepareSettings(isElectron) {
+      window.uiManager = { t: key => key };
+      if (isElectron) {
+        window.electronAPI = { loadConfig: async () => ({ success: true, config: {} }) };
+        window.electronIntegration = { isElectron: true };
+      }
+      window.app = {
+        async ensureMidiControllerManager() {
+          const manager = new MidiControllerManager({ windowRef: window, navigatorRef: {} });
+          await manager.initialize({ midiController: { version: 1, devices: [], mappings: [] } });
+          window.midiControllerManager = manager;
+          return manager;
+        }
+      };
+      await showConfigDialog(isElectron, {});
+    }
+
+    window.__controllerMappingDialogSmoke = { run, prepareSettings };
   </script>
 </body>
 </html>

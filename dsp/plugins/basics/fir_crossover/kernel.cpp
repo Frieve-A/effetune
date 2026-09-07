@@ -102,6 +102,9 @@ public:
         frameCount == 0u || frameCount > max_frames_)
       return;
 
+    if (channelCount == 2u)
+      return;
+
     const bool convolverRunning =
         asset_state_ == ET_ASSET_STATE_PREPARING || asset_state_ == ET_ASSET_STATE_ACTIVE;
     bool assetReadyForBlock = false;

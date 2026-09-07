@@ -1176,7 +1176,7 @@ class GroupDelayPEQPlugin extends PluginBase {
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             path.setAttribute('class', className);
             path.setAttribute('d', commands.join(' '));
-            path.setAttribute('stroke', stroke);
+            path.style.stroke = stroke;
             path.setAttribute('stroke-width', strokeWidth);
             path.setAttribute('fill', 'none');
             this.responseSvg.appendChild(path);
@@ -1194,7 +1194,7 @@ class GroupDelayPEQPlugin extends PluginBase {
             appendPath(
                 commandsFor(frequencies, targetMs),
                 'group-delay-peq-target-response',
-                'rgba(176, 176, 176, 0.7)',
+                'var(--et-graph-trace-tertiary)',
                 '1'
             );
         }
@@ -1202,7 +1202,7 @@ class GroupDelayPEQPlugin extends PluginBase {
             appendPath(
                 commandsFor(realizedMs.frequencies, realizedMs.realizedMs),
                 'group-delay-peq-realized-response',
-                '#00ff00',
+                'var(--et-graph-trace)',
                 '1'
             );
         }

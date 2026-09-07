@@ -36,6 +36,8 @@ Use the opt-in decoded telemetry callback or subscription API to observe this an
 
 Creates colorful patterns that show how your music changes over time. Colors show how strong each sound is, while vertical position shows its frequency.
 
+The graph scrolls from right to left at a steady speed, with marks every second.
+
 ### Visualization Guide
 - Colors show how strong different frequencies are:
   - Dark colors: Quiet sounds

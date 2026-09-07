@@ -10,6 +10,10 @@
 
 Un procesador de efectos de audio en tiempo real, diseñado para entusiastas del audio que desean mejorar su experiencia musical. EffeTune te permite procesar cualquier fuente de audio a través de diversos efectos de alta calidad, lo que te posibilita personalizar y perfeccionar tu experiencia auditiva en tiempo real.
 
+### Extensión de navegador
+
+Procesa una pestaña de Chrome o Edge sin un dispositivo de audio virtual. Consulta la [guía de la extensión de navegador](browser-extension.md).
+
 [![Screenshot](../../../images/screenshot.png)](https://effetune.frieve.com/effetune.html)
 
 ## Video de introducción
@@ -88,7 +92,7 @@ Para usar EffeTune con reproductores de CD, reproductores de red u otras fuentes
 
 ### Configuración de la aplicación
 
-En el menú **Configuración**, abre **Configuración...** para elegir el idioma, la vista al inicio y el comportamiento del pipeline de efectos al iniciar. La vista al inicio puede ser **Effect Pipeline (predeterminado)** o **Biblioteca musical**. Si eliges **Biblioteca musical**, usa la lista de al lado para elegir qué sección aparecerá primero: **Pistas**, **Álbumes**, **Artistas**, **Géneros**, **Subcarpetas**, **Carpetas** o **Listas de reproducción**.
+En el menú **Configuración**, abre **Configuración...** para elegir el idioma, la vista al inicio y el comportamiento del pipeline de efectos al iniciar. La vista al inicio puede ser **Effect Pipeline (predeterminado)** o **Biblioteca musical**. Si eliges **Biblioteca musical**, usa la lista de al lado para elegir qué sección aparecerá primero: **Pistas**, **Álbumes**, **Artistas**, **Géneros**, **Subcarpetas**, **Carpetas** o **Listas de reproducción**. En **Tema**, elige los colores de la aplicación: Graphite (predeterminado), Paper, Midnight, Ember o Mint.
 
 Las versiones de escritorio compatibles también pueden controlarse desde aplicaciones OpenHome en la misma red local. Esta función está desactivada de forma predeterminada; consulta [Control remoto OpenHome](music-library.md#control-remoto-openhome-aplicación-de-escritorio) para conocer la configuración, el acceso de red, la compatibilidad y las limitaciones.
 
@@ -307,6 +311,7 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | Categoría | Efecto             | Descripción                                                               | Documentación                                           |
 | --------- | ------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------- |
 | Analyzer  | Level Meter        | Muestra el nivel de audio con retención de pico                           | [Detalles](plugins/analyzer.md#level-meter)             |
+| Analyzer  | Note Spectrogram | Muestra las alturas estimadas a lo largo del tiempo en un piano roll      | [Detalles](plugins/analyzer.md#note-spectrogram)     |
 | Analyzer  | Oscilloscope       | Visualización de la forma de onda en tiempo real                          | [Detalles](plugins/analyzer.md#oscilloscope)            |
 | Analyzer  | Spectrogram        | Muestra los cambios del espectro de frecuencias a lo largo del tiempo     | [Detalles](plugins/analyzer.md#spectrogram)             |
 | Analyzer  | Spectrum Analyzer  | Muestra en tiempo real la intensidad de graves, medios y agudos           | [Detalles](plugins/analyzer.md#spectrum-analyzer)       |

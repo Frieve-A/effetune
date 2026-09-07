@@ -35,7 +35,7 @@ A visual display that shows your music's digital signal level in real time. It h
 
 ### Visualization Guide
 - The horizontal bar extends farther to the right as the signal level gets louder
-- White marker shows the highest recent level for a short time
+- The white marker holds a new peak for one second, then falls smoothly
 - OVERLOAD means the signal exceeded the safe digital range and may distort
 - For clean playback, avoid frequent red levels or OVERLOAD warnings; set your actual listening volume on your device
 

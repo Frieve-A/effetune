@@ -1681,7 +1681,7 @@ class VinylSimulatorPlugin extends PluginBase {
         this._updateHudStatus(mode);
 
         ctx.clearRect(0, 0, width, height);
-        ctx.fillStyle = '#171717';
+        ctx.fillStyle = (window.ThemePalette?.get('base') ?? '');
         ctx.fillRect(0, 0, width, height);
 
         if (mode !== 'active') {
@@ -1695,10 +1695,10 @@ class VinylSimulatorPlugin extends PluginBase {
             const [title, detail] = messages[mode];
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillStyle = mode === 'bypass' ? '#ffbf69' : '#ddd';
+            ctx.fillStyle = mode === 'bypass' ? (window.ThemePalette?.get('warning') ?? '') : (window.ThemePalette?.get('graph-tone-89') ?? '');
             ctx.font = `600 ${Math.round(14 * dpr)}px Arial`;
             ctx.fillText(title, width / 2, height * 0.42);
-            ctx.fillStyle = '#999';
+            ctx.fillStyle = (window.ThemePalette?.get('graph-tone-58') ?? '');
             ctx.font = `${Math.round(11 * dpr)}px Arial`;
             ctx.fillText(detail, width / 2, height * 0.65);
             return;
@@ -1737,33 +1737,33 @@ class VinylSimulatorPlugin extends PluginBase {
             const x = padding + column * (cardWidth + gap);
             const y = padding + row * (cardHeight + gap);
             const highlighted = related.has(card.key);
-            ctx.fillStyle = highlighted ? '#293844' : '#222';
+            ctx.fillStyle = (window.ThemePalette?.get('inset-background') ?? '');
             ctx.fillRect(x, y, cardWidth, cardHeight);
-            ctx.strokeStyle = highlighted ? '#72bce8' : '#3c3c3c';
+            ctx.strokeStyle = highlighted ? (window.ThemePalette?.get('accent') ?? '') : (window.ThemePalette?.get('graph-tone-15') ?? '');
             ctx.lineWidth = highlighted ? 1.5 * dpr : dpr;
             ctx.strokeRect(x + 0.5 * dpr, y + 0.5 * dpr, cardWidth - dpr, cardHeight - dpr);
 
             ctx.textAlign = 'left';
             ctx.textBaseline = 'top';
-            ctx.fillStyle = highlighted ? '#bce6ff' : '#999';
+            ctx.fillStyle = highlighted ? (window.ThemePalette?.get('accent-hover') ?? '') : (window.ThemePalette?.get('graph-tone-58') ?? '');
             ctx.font = `600 ${Math.round(9 * dpr)}px Arial`;
             ctx.fillText(card.title, x + 6 * dpr, y + 5 * dpr);
             if (index === 0) {
                 ctx.textAlign = 'right';
-                ctx.fillStyle = '#78c98a';
+                ctx.fillStyle = (window.ThemePalette?.get('success') ?? '');
                 ctx.fillText('WASM ACTIVE', x + cardWidth - 6 * dpr, y + 5 * dpr);
                 ctx.textAlign = 'left';
             }
-            ctx.fillStyle = '#f0f0f0';
+            ctx.fillStyle = (window.ThemePalette?.get('graph-tone-97') ?? '');
             ctx.font = `${Math.round((narrow && card.key === 'events' ? 9 : 11) * dpr)}px Arial`;
             ctx.fillText(card.value, x + 6 * dpr, y + 19 * dpr, cardWidth - 12 * dpr);
 
             const barX = x + 6 * dpr;
             const barY = y + cardHeight - 9 * dpr;
             const barWidth = cardWidth - 12 * dpr;
-            ctx.fillStyle = '#363636';
+            ctx.fillStyle = (window.ThemePalette?.get('graph-tone-13') ?? '');
             ctx.fillRect(barX, barY, barWidth, 4 * dpr);
-            ctx.fillStyle = card.key === 'events' && now < this.eventFlashUntil ? '#ffb347' : (highlighted ? '#69c8ff' : '#72b97c');
+            ctx.fillStyle = card.key === 'events' && now < this.eventFlashUntil ? (window.ThemePalette?.get('warning') ?? '') : (highlighted ? (window.ThemePalette?.get('accent') ?? '') : (window.ThemePalette?.get('success') ?? ''));
             ctx.fillRect(barX, barY, barWidth * clamp01(card.level), 4 * dpr);
         });
     }

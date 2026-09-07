@@ -391,7 +391,7 @@ class LoPassFilterPlugin extends PluginBase {
 
     // Create frequency parameter row using the base helper
     // Pass the canvas reference to the event handler
-    const freqRow = this.createParameterControl("Frequency", 10, 40000, 1, this.fr,
+    const freqRow = this.createLogarithmicParameterControl("Frequency", 10, 40000, 1, this.fr,
       (value) => {
         this.setFreq(value);
         this.drawGraph(canvas); // Use the canvas created above
@@ -433,7 +433,7 @@ class LoPassFilterPlugin extends PluginBase {
     const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
-    ctx.strokeStyle = "#444";
+    ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
     ctx.lineWidth = isMobileLayout ? 1 : 0.5;
     ctx.font = "12px Arial";
 
@@ -445,7 +445,7 @@ class LoPassFilterPlugin extends PluginBase {
       ctx.lineTo(x, height);
       ctx.stroke();
       if (freq >= 10) {
-        ctx.fillStyle = "#666";
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         ctx.textAlign = "center";
         ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, height - 24);
       }
@@ -461,13 +461,13 @@ class LoPassFilterPlugin extends PluginBase {
       ctx.lineTo(width, y);
       ctx.stroke();
       if (db > -60) {
-        ctx.fillStyle = "#666";
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         ctx.textAlign = "right";
         ctx.fillText(`${db}`, 48, y + 4);
       }
     });
 
-    ctx.fillStyle = "#fff";
+    ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
     ctx.font = "14px Arial";
     ctx.textAlign = "center";
     ctx.fillText("Frequency (Hz)", width / 2, height - 5);
@@ -485,7 +485,7 @@ class LoPassFilterPlugin extends PluginBase {
     const response = freqPoints.map(freq => this.calculateFilterMagnitudeDb(freq, this.fr, this.sl));
 
     ctx.beginPath();
-    ctx.strokeStyle = "#00ff00";
+    ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
     ctx.lineWidth = isMobileLayout ? 3 : 1.5;
     for (let i = 0; i < width; i++) {
       let y = height * (1 - (response[i] - dbRange[0]) / totalDbSpan);

@@ -42,7 +42,7 @@ Creates a real-time visual display of your music's frequencies, from deep bass t
 - Right side shows high frequencies (cymbals, sparkle, air)
 - Higher peaks mean stronger presence of those frequencies
 - Darker green line shows the current sound
-- Brighter green line briefly holds recent peaks, so you can see strong sounds that just passed
+- The brighter green line follows recent peaks and falls smoothly as they fade
 - Watch how different instruments create different patterns
 
 ### What You Can See

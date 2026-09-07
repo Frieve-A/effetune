@@ -226,8 +226,16 @@ export async function verifyWorklet(npmRoot) {
     }
   }
   collectServiceWorkerResources();
+  const serviceWorkerResourcesJson = JSON.stringify(serviceWorkerResources);
   const serviceWorker = `
-const resources = ${JSON.stringify(serviceWorkerResources)};
+let resourcesPromise;
+function loadResources() {
+  resourcesPromise ??= fetch('/sw-resources.json').then(response => {
+    if (!response.ok) throw new Error('Unable to load package resources.');
+    return response.json();
+  });
+  return resourcesPromise;
+}
 function decode(encoded) {
   const binary = atob(encoded);
   return Uint8Array.from(binary, character => character.charCodeAt(0));
@@ -245,11 +253,14 @@ self.addEventListener('fetch', event => {
       break;
     }
   }
-  const resource = resources[pathname];
-  if (!resource) return;
-  event.respondWith(new Response(decode(resource.body), {
-    status: 200,
-    headers: { 'Content-Type': resource.type }
+  if (!pathname.startsWith('/package/')) return;
+  event.respondWith(loadResources().then(resources => {
+    const resource = resources[pathname];
+    if (!resource) return fetch(event.request);
+    return new Response(decode(resource.body), {
+      status: 200,
+      headers: { 'Content-Type': resource.type }
+    });
   }));
 });`;
   const html = `<!doctype html>
@@ -636,6 +647,10 @@ import('./javascript-start.mjs').then(
         body: serviceWorker,
         contentType: 'text/javascript'
       }],
+      ['/sw-resources.json', {
+        body: serviceWorkerResourcesJson,
+        contentType: 'application/json'
+      }],
       ['/demo/', path.join(sourceRoot, 'index.html')],
       ['/demo/app.js', path.join(sourceRoot, 'app.js')],
       ['/demo/styles.css', path.join(sourceRoot, 'styles.css')]
@@ -706,7 +721,7 @@ import('./javascript-start.mjs').then(
     assert.equal(result.telemetry.effectId, 'meter');
     assert.equal(result.telemetry.channels, 2);
     assert.ok(result.telemetry.leftPeak > 0.9);
-    assert.equal(result.convolution.length, 12);
+    assert.equal(result.convolution.length, 14);
     for (const entry of result.convolution) {
       assert.equal(entry.finite, true, JSON.stringify(entry));
       assert.ok(entry.peak > 1e-7, JSON.stringify(entry));

@@ -11,7 +11,6 @@
     border: 0;
     background: transparent;
     pointer-events: none;
-    mix-blend-mode: screen;
     opacity: 0.85;
     z-index: 2;
 }
@@ -24,7 +23,7 @@ body.layout-mobile .plugin-parameter-ui canvas.spectrum-overlay-canvas {
 .plugin-parameter-ui .spectrum-overlay-axis-title {
     right: 10px;
     top: 50%;
-    color: rgba(140, 190, 255, 0.8);
+    color: var(--et-graph-overlay-label);
     transform: translate(50%, -50%) rotate(-90deg);
 }
 
@@ -56,10 +55,10 @@ body.layout-mobile .plugin-parameter-ui canvas.spectrum-overlay-canvas {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
-    background: rgba(0, 0, 0, 0.35);
-    border: 1px solid #444;
+    background: var(--et-surface-veil);
+    border: 1px solid var(--et-border-solid);
     border-radius: 3px;
-    color: #aaa;
+    color: var(--et-surface-66);
     opacity: 0.45;
     cursor: pointer;
     z-index: 11;
@@ -79,6 +78,6 @@ body.layout-mobile .plugin-parameter-ui canvas.spectrum-overlay-canvas {
 
 .spectrum-overlay-toggle[aria-pressed="true"],
 .spectrum-overlay-toggle[aria-pressed="mixed"] {
-    border-color: #7cb0ff;
-    color: #9ecbff;
+    border-color: var(--et-accent);
+    color: var(--et-accent-hover);
 }

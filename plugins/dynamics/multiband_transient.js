@@ -3,6 +3,9 @@ const MULTIBAND_TRANSIENT_TELEMETRY_VERSION = 1;
 const MULTIBAND_TRANSIENT_TELEMETRY_BANDS = 3;
 const MULTIBAND_TRANSIENT_TELEMETRY_KIND = 2;
 const MULTIBAND_TRANSIENT_TELEMETRY_BYTES = 16;
+// Preserve the history duration at the normal 60 Hz telemetry rate.
+const MULTIBAND_TRANSIENT_HISTORY_SECONDS = 306 / 60;
+const MULTIBAND_TRANSIENT_DISPLAY_LEAD_SECONDS = 1 / 60;
 
 class MultibandTransientPlugin extends PluginBase {
     constructor() {
@@ -33,8 +36,9 @@ class MultibandTransientPlugin extends PluginBase {
             new Float32Array(306).fill(NaN),
             new Float32Array(306).fill(NaN)
         ];
-        this.secondMarkers = [[], [], []];
-        this.prevTime = null;
+        this.historyTimes = new Float64Array(306).fill(NaN);
+        this.graphPaused = false;
+        this.graphTime = null;
 
         this.observer = null;
         this._dspTelemetryHub = null;
@@ -569,31 +573,36 @@ class MultibandTransientPlugin extends PluginBase {
         if (gains === null) return;
         this.onMessage({
             type: 'processBuffer',
-            measurements: { gains, time: performance.now() / 1000 }
+            measurements: { gains }
         });
     }
 
     onMessage(message) {
         this.ensureDspTelemetrySubscription();
-        if (message.type === 'processBuffer' && message.measurements) {
+        const gains = message.measurements?.gains;
+        if (message.type === 'processBuffer' && gains && typeof gains.length === 'number' &&
+            gains.length >= 3 && gains.slice(0, 3).every(Number.isFinite) &&
+            this.enabled && this._sectionEnabled) {
+            const receiptTime = performance.now() / 1000;
+            this.graphTime = receiptTime;
             // Update each band's gain buffer
             for (let bandIdx = 0; bandIdx < 3; bandIdx++) {
                 // Shift gain buffer
                 this.gainBuffers[bandIdx].copyWithin(0, 1);
 
-                // Shift marker positions
-                this.secondMarkers[bandIdx] = this.secondMarkers[bandIdx].map(v => v - 1).filter(v => v >= 0);
-
-                const t = message.measurements.time;
-                if (this.prevTime !== null && !Number.isNaN(t) && Math.floor(this.prevTime) !== Math.floor(t)) {
-                    this.secondMarkers[bandIdx].push(this.gainBuffers[bandIdx].length - 1);
-                }
-
                 // Store gain value
-                this.gainBuffers[bandIdx][this.gainBuffers[bandIdx].length - 1] = message.measurements.gains[bandIdx];
+                this.gainBuffers[bandIdx][this.gainBuffers[bandIdx].length - 1] = gains[bandIdx];
             }
-            this.prevTime = message.measurements.time;
+            this.historyTimes.copyWithin(0, 1);
+            this.historyTimes[this.historyTimes.length - 1] = receiptTime;
         }
+    }
+
+    getGraphDisplayTime(now) {
+        const latest = this.historyTimes[this.historyTimes.length - 1];
+        if (!Number.isFinite(latest)) return null;
+        if (this.graphPaused) return this.graphTime;
+        return Math.max(latest, Math.min(latest + MULTIBAND_TRANSIENT_DISPLAY_LEAD_SECONDS, now / 1000));
     }
 
     _normalizeCrossoverFrequencies() {
@@ -728,18 +737,21 @@ class MultibandTransientPlugin extends PluginBase {
         if (!this.enabled || !this._sectionEnabled) return;
         if (this.animationFrameId) return;
 
-        const animate = () => {
+        this.graphPaused = false;
+        const animate = (now) => {
             if (!this.isVisible) {
                 this.stopAnimation();
                 return;
             }
-            this.drawGraphs();
+            this.drawGraphs(now);
             this.animationFrameId = this.requestPowerAnimationFrame(animate);
         };
-        animate();
+        animate(performance.now());
     }
 
     stopAnimation() {
+        this.graphTime = this.getGraphDisplayTime(performance.now());
+        this.graphPaused = true;
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
@@ -751,8 +763,9 @@ class MultibandTransientPlugin extends PluginBase {
         this.graphResizeDisposers = [];
     }
 
-    drawGraphs() {
+    drawGraphs(now = performance.now()) {
         if (!this.canvases || this.canvases.length === 0) return;
+        const displayTime = this.getGraphDisplayTime(now);
         
         for (let bandIdx = 0; bandIdx < 3; bandIdx++) {
             const canvas = this.canvases[bandIdx];
@@ -776,15 +789,15 @@ class MultibandTransientPlugin extends PluginBase {
             const graphLineWidth = (isMobileLayout ? 2 : 1) * dpr;
 
             // Clear canvas
-            ctx.fillStyle = '#1a1a1a';
+            ctx.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
             ctx.fillRect(0, 0, width, height);
 
             // Draw grid lines and labels
-            ctx.strokeStyle = '#333';
+            ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-subtle') ?? '');
             ctx.lineWidth = graphLineWidth;
             ctx.textAlign = 'right';
             ctx.font = `${tickFontSize}px Arial`;
-            ctx.fillStyle = '#ccc';
+            ctx.fillStyle = (window.ThemePalette?.get('graph-label-strong') ?? '');
 
             // Draw horizontal grid lines (6dB steps from -24dB to +24dB)
             for (let db = -4; db <= 4; db += 2) {
@@ -808,11 +821,13 @@ class MultibandTransientPlugin extends PluginBase {
             ctx.textAlign = 'center';
             ctx.fillText('Time', width / 2, height - bottomOffset);
 
-            // Draw 1-second markers
-            ctx.strokeStyle = '#555';
+            const pixelsPerSecond = width / MULTIBAND_TRANSIENT_HISTORY_SECONDS;
+            ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-strong') ?? '');
             ctx.lineWidth = graphLineWidth;
-            for (const idx of this.secondMarkers[bandIdx]) {
-                const x = width * idx / this.gainBuffers[bandIdx].length;
+            const firstSecond = displayTime === null ? 1 : Math.max(0, Math.ceil(displayTime - MULTIBAND_TRANSIENT_HISTORY_SECONDS));
+            const lastSecond = displayTime === null ? 0 : Math.floor(displayTime);
+            for (let second = firstSecond; second <= lastSecond; second++) {
+                const x = width + (second - displayTime) * pixelsPerSecond;
                 ctx.beginPath();
                 ctx.moveTo(x, height - secondMarkerHeight);
                 ctx.lineTo(x, height);
@@ -820,23 +835,32 @@ class MultibandTransientPlugin extends PluginBase {
             }
 
             // Draw gain history; skip segments with NaN values
-            ctx.strokeStyle = "#00ff00";
+            ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
             ctx.lineWidth = graphLineWidth;
             ctx.beginPath();
             let started = false;
+            let previousTime = null;
+            const maxContinuousGap = 1;
             for (let i = 0; i < this.gainBuffers[bandIdx].length; i++) {
                 const value = this.gainBuffers[bandIdx][i];
-                if (isNaN(value)) continue;
-                const x = width * i / this.gainBuffers[bandIdx].length;
+                const time = this.historyTimes[i];
+                if (!Number.isFinite(value) || !Number.isFinite(time) || displayTime === null) {
+                    previousTime = null;
+                    continue;
+                }
+                const x = width + (time - displayTime) * pixelsPerSecond;
                 const y = height * (1 - (value + 6) / 12);
-                if (!started) {
+                if (!started || previousTime === null || time - previousTime > maxContinuousGap) {
                     ctx.moveTo(x, y);
                     started = true;
                 } else {
                     ctx.lineTo(x, y);
                 }
+                previousTime = time;
             }
             if (started) {
+                const latest = this.gainBuffers[bandIdx][this.gainBuffers[bandIdx].length - 1];
+                ctx.lineTo(width, height * (1 - (latest + 6) / 12));
                 ctx.stroke();
             }
         }
@@ -871,8 +895,9 @@ class MultibandTransientPlugin extends PluginBase {
 
         // Reset buffers to NaN so that initial graph is blank
         this.gainBuffers.forEach(buffer => buffer.fill(NaN));
-        this.secondMarkers = [[], [], []];
-        this.prevTime = null;
+        this.historyTimes.fill(NaN);
+        this.graphPaused = false;
+        this.graphTime = null;
 
         if (this.observer) {
             this.observer.disconnect();
@@ -1043,7 +1068,7 @@ class MultibandTransientPlugin extends PluginBase {
                 className: 'mbt-transfer-graph',
                 onResize: () => this.drawGraphs()
             });
-            canvas.style.backgroundColor = '#1a1a1a';
+            canvas.style.backgroundColor = 'var(--et-graph-bg-deep)';
             const label = document.createElement('div');
             label.className = 'mbt-band-graph-label';
             label.textContent = bandNames[i];

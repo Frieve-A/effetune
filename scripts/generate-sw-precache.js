@@ -7,6 +7,7 @@ const includeRoots = ['js', 'plugins', 'images', 'presets'];
 const explicit = [
   'effetune.html',
   'effetune.css',
+  'effetune-theme.css',
   'effetune-mobile.css',
   'effetune-library.css',
   'pipeline-analyzer.css',

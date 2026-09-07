@@ -19,7 +19,7 @@ const schemaPath = path.join(pluginRoot, 'params.json');
 const goldenDir = path.join(pluginRoot, 'golden');
 const kernelPath = path.join(pluginRoot, 'kernel.cpp');
 const rendererPath = path.join(repoRoot, 'plugins', 'analyzer', 'spectrogram.js');
-const jsEngineHash = '47069e64d80d2c1306a0e47274bbfff1c8e2a1817590cd31490ce97064873db4';
+const jsEngineHash = 'cae52ede78f984183847992e2b932e3e0a3df9f2fde16dc07e8ac404c851634f';
 
 async function directoryBytes(directory) {
   const entries = await fs.readdir(directory, { withFileTypes: true });
@@ -150,9 +150,9 @@ test('Spectrogram kernel and renderer freeze bounded v1 column behavior', async 
 
   assert.match(renderer, /SPECTROGRAM_PAYLOAD_BYTES = 268/);
   assert.match(renderer, /new Uint8Array\(\s*SPECTROGRAM_CELL_COUNT \* SPECTROGRAM_HISTORY_WIDTH/);
-  const handlerBody = /handleDspSpectrogramTelemetry\([\s\S]*?\n    }\n\n    updateSecondMarkers/.exec(renderer)?.[0];
+  const handlerBody = /handleDspSpectrogramTelemetry\([\s\S]*?\n    }\n\n    updateSpectrogramTime/.exec(renderer)?.[0];
   assert.ok(handlerBody);
   assert.doesNotMatch(handlerBody, /(?:\.fft\(|copyWithin)/);
   assert.match(renderer, /paintDspSpectrogramColumn/);
-  assert.match(renderer, /const split = this\.spectrogramWriteColumn/);
+  assert.match(renderer, /this\.spectrogramWriteColumn - count/);
 });

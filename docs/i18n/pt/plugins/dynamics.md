@@ -88,7 +88,7 @@ Um controle inteligente de volume que ajusta automaticamente sua música para ma
 - Nível de entrada (linha verde)
 - Nível de saída (linha branca)
 - Feedback visual claro dos ajustes de volume
-- Gráfico baseado no tempo de fácil leitura
+- O gráfico se desloca da direita para a esquerda, com os níveis mais recentes na borda direita e marcações a cada segundo.
 
 ### Configurações Recomendadas
 
@@ -817,6 +817,7 @@ Cada banda de frequência tem controles independentes de moldagem de transientes
 - Marcadores de tempo de referência
 - Seleção interativa de bandas
 - Feedback visual claro da atividade de moldagem de transientes
+- Os gráficos se deslocam suavemente da direita para a esquerda, com os valores mais recentes na borda direita.
 
 ### Configurações Recomendadas
 
@@ -938,6 +939,7 @@ Clique em **Predefinições de efeito** no cabeçalho do efeito para começar co
 - Redução de ganho (branco): Quantidade de queda de tensão aplicada
 - Exibição baseada em tempo com marcadores de referência de 1 segundo
 - Valores atuais exibidos em tempo real
+- Os gráficos se deslocam suavemente da direita para a esquerda, com os valores mais recentes na borda direita.
 
 ### Configurações Recomendadas
 
@@ -1028,6 +1030,7 @@ Um processador de dinâmica especializado que permite realçar ou reduzir indepe
 - Exibição clara do histórico de ganho
 - Marcadores de tempo para referência
 - Interface intuitiva para todos os parâmetros
+- Os gráficos se deslocam suavemente da direita para a esquerda, com os valores mais recentes na borda direita.
 
 ### Configurações Recomendadas
 

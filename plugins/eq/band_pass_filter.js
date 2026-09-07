@@ -337,7 +337,7 @@ class BandPassFilterPlugin extends PluginBase {
     canvas.style.margin = "0 auto";
 
     // Create HPF row
-    const hpfRow = this.createParameterControl("HPF", 10, 40000, 1, this.hf,
+    const hpfRow = this.createLogarithmicParameterControl("HPF", 10, 40000, 1, this.hf,
       (value) => {
         this.setHf(value);
         this.drawGraph(canvas);
@@ -349,7 +349,7 @@ class BandPassFilterPlugin extends PluginBase {
     hpfRow.appendChild(hpfSlopeSelect);
 
     // Create LPF row
-    const lpfRow = this.createParameterControl("LPF", 10, 40000, 1, this.lf,
+    const lpfRow = this.createLogarithmicParameterControl("LPF", 10, 40000, 1, this.lf,
       (value) => {
         this.setLf(value);
         this.drawGraph(canvas);
@@ -394,7 +394,7 @@ class BandPassFilterPlugin extends PluginBase {
     const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
-    ctx.strokeStyle = "#444";
+    ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
     ctx.lineWidth = isMobileLayout ? 1 : 0.5;
     ctx.font = "12px Arial";
 
@@ -406,7 +406,7 @@ class BandPassFilterPlugin extends PluginBase {
       ctx.lineTo(x, height);
       ctx.stroke();
       if (freq >= 10) {
-        ctx.fillStyle = "#666";
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         ctx.textAlign = "center";
         ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, height - 24);
       }
@@ -422,13 +422,13 @@ class BandPassFilterPlugin extends PluginBase {
       ctx.lineTo(width, y);
       ctx.stroke();
       if (db > -60) {
-        ctx.fillStyle = "#666";
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         ctx.textAlign = "right";
         ctx.fillText(`${db}`, 48, y + 4);
       }
     });
 
-    ctx.fillStyle = "#fff";
+    ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
     ctx.font = "14px Arial";
     ctx.textAlign = "center";
     ctx.fillText("Frequency (Hz)", width / 2, height - 5);
@@ -450,7 +450,7 @@ class BandPassFilterPlugin extends PluginBase {
     });
 
     ctx.beginPath();
-    ctx.strokeStyle = "#00ff00";
+    ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
     ctx.lineWidth = isMobileLayout ? 3 : 1.5;
     for (let i = 0; i < width; i++) {
       let y = height * (1 - (response[i] - dbRange[0]) / totalDbSpan);

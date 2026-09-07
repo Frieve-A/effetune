@@ -1,11 +1,13 @@
 {
   "name": "effetune",
-  "version": "2.8.0",
+  "version": "2.9.0",
   "private": true,
   "description": "Desktop Audio Effect Processor",
   "main": "electron/main.js",
   "scripts": {
     "dev": "node scripts/dev-server.mjs",
+    "build:extension": "node scripts/build-extension.mjs",
+    "test:extension-browser": "node tools/run-extension-browser-smoke.mjs",
     "start": "electron .",
     "build:vendor": "node scripts/verify-sqlite-wasm-vendor.mjs && node scripts/build-music-metadata-vendor.mjs && node scripts/build-offline-audio-encoders-vendor.mjs && node scripts/build-playback-decoder-vendor.mjs",
     "gen:dsp": "node scripts/gen-dsp-params.mjs",
@@ -32,7 +34,7 @@
     "assets:web": "npm run build:vendor && node scripts/generate-sw-precache.js",
     "assets:web:check": "npm run build:vendor && node scripts/generate-sw-precache.js --check",
     "check:install-scripts": "node scripts/check-install-scripts.mjs",
-    "lint": "eslint electron js plugins features scripts tools tests --max-warnings=0",
+    "lint": "eslint electron js plugins features scripts tools tests extension --max-warnings=0",
     "test": "npm --prefix dsp/bindings/js run build && node tools/run-tests.mjs",
     "check:presets": "node tools/preset-render-check.mjs",
     "test:tube-calibration": "node --test tests/esm/dsp-tube-simulator-listening-presets-v1.test.mjs",
@@ -90,6 +92,7 @@
       "startup-audio.html",
       "effetune.html",
       "effetune.css",
+      "effetune-theme.css",
       "effetune-mobile.css",
       "effetune-library.css",
       "pipeline-analyzer.css",
@@ -272,8 +275,8 @@
     "npmRebuild": false
   },
   "dependencies": {
-    "@mediabunny/flac-encoder": "1.55.7",
-    "mediabunny": "1.55.7",
+    "@mediabunny/flac-encoder": "1.56.1",
+    "mediabunny": "1.56.1",
     "music-metadata": "^11.15.0"
   }
 }

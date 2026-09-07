@@ -7,7 +7,7 @@
     width: 100%;
     max-width: 1024px;
     aspect-ratio: 1024 / 480;
-    background-color: #1a1a1a;
+    background-color: var(--et-graph-bg-deep);
 }
 
 .earphone-cable-sim-plugin-ui .earphone-cable-sim-grid {
@@ -20,12 +20,12 @@
 }
 
 .earphone-cable-sim-plugin-ui .earphone-cable-sim-grid line {
-    stroke: #333;
+    stroke: var(--et-graph-grid-subtle);
     stroke-width: 1;
 }
 
 .earphone-cable-sim-plugin-ui .earphone-cable-sim-grid text {
-    fill: #666;
+    fill: var(--et-graph-label);
     font-size: 10px;
 }
 
@@ -40,7 +40,7 @@
 
 .earphone-cable-sim-plugin-ui .earphone-cable-sim-response path {
     fill: none;
-    stroke: #4CAF50;
+    stroke: var(--et-success);
     stroke-width: 2;
     vector-effect: non-scaling-stroke;
 }
@@ -48,15 +48,11 @@
 .earphone-cable-sim-plugin-ui .earphone-cable-sim-amp {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 0;
     width: 100%;
     max-width: 1024px;
     box-sizing: border-box;
     padding: 10px 0;
-}
-
-.earphone-cable-sim-plugin-ui .earphone-cable-sim-amp .parameter-row {
-    margin-bottom: 0;
 }
 
 .earphone-cable-sim-plugin-ui .earphone-cable-sim-controls {
@@ -65,7 +61,7 @@
     justify-content: space-between;
     gap: 10px;
     padding: 10px;
-    background-color: #2a2a2a;
+    background-color: color-mix(in srgb, var(--et-surface-9), var(--et-graph-bg-deep) 25%);
     border-radius: 4px;
     width: 100%;
     max-width: 1024px;
@@ -78,7 +74,7 @@
     gap: 8px;
     padding: 8px;
     border-radius: 4px;
-    background-color: #333;
+    background-color: color-mix(in srgb, var(--et-surface-13), var(--et-graph-bg-deep) 25%);
     flex: 1 1 180px;
     box-sizing: border-box;
     min-width: 0;
@@ -86,7 +82,7 @@
 
 .earphone-cable-sim-plugin-ui .earphone-cable-sim-res-label {
     font-size: 12px;
-    color: #ccc;
+    color: var(--et-surface-81);
     font-weight: bold;
     display: flex;
     align-items: center;
@@ -105,7 +101,7 @@
 }
 
 .earphone-cable-sim-plugin-ui .earphone-cable-sim-row-label {
-    color: #ccc;
+    color: var(--et-surface-81);
     font-size: 12px;
     white-space: nowrap;
     flex: 1;
@@ -115,11 +111,16 @@
 .earphone-cable-sim-plugin-ui .earphone-cable-sim-row-input {
     width: 48px;
     padding: 2px 4px;
-    background-color: #222;
-    color: #ccc;
-    border: 1px solid #444;
+    background-color: var(--et-surface-5);
+    color: var(--et-surface-81);
+    border: 1px solid var(--et-surface-20);
     border-radius: 3px;
     font-size: 12px;
+}
+
+body:not(.layout-mobile) .earphone-cable-sim-plugin-ui .earphone-cable-sim-row-input {
+    width: 58px;
+
 }
 
 body.layout-mobile .earphone-cable-sim-plugin-ui .earphone-cable-sim-row-label {

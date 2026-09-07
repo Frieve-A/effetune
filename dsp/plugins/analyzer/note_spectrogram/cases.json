@@ -1,0 +1,10 @@
+{
+  "defaults": { "sampleRate": 48000, "blockSize": 128, "channels": 2, "channelMode": "stereo", "frames": 1031, "params": {} },
+  "cases": [
+    { "id": "default-stereo-noise", "stimulus": "noise" },
+    { "id": "mono-variable-block", "stimulus": "imp", "sampleRate": 44100, "channels": 1, "channelMode": "mono", "blockSize": 97, "frames": 773 },
+    { "id": "high-rate-sweep", "stimulus": "sweep", "sampleRate": 192000, "blockSize": 113, "frames": 911 },
+    { "id": "four-channel-passthrough", "stimulus": "fs", "channels": 4, "channelMode": "all4", "blockSize": 127, "frames": 635 },
+    { "id": "step-96k", "stimulus": "step", "sampleRate": 96000, "blockSize": 89, "frames": 801 }
+  ]
+}

@@ -22,6 +22,7 @@ export class PresetManager {
     constructor(pipelineManager) {
         this.pipelineManager = pipelineManager;
         this.audioManager = pipelineManager.audioManager;
+        this.externalHost = pipelineManager.presetHost;
         
         this.pipelinePresetButton = document.getElementById('pipelinePresetButton');
         this.currentPresetName = '';
@@ -42,7 +43,6 @@ export class PresetManager {
             listUserPresetNames: async () => Object.keys(await this.getPresets()),
             applyUserPreset: name => this.loadPreset(name),
             saveUserPreset: name => this.savePreset(name),
-            renameUserPreset: (oldName, newName) => this.renamePreset(oldName, newName),
             deleteUserPresets: names => this.deletePresets(names),
             errorKeys: {
                 save: 'error.failedToSavePreset',
@@ -50,6 +50,9 @@ export class PresetManager {
             },
             handlesErrors: true
         };
+        if (!this.externalHost || typeof this.externalHost.renamePreset === 'function') {
+            provider.renameUserPreset = (oldName, newName) => this.renamePreset(oldName, newName);
+        }
         return this.pipelineManager.core.pluginPresetDialog.show(
             provider,
             this.pipelinePresetButton,
@@ -62,6 +65,9 @@ export class PresetManager {
      * @returns {Object} The presets object
      */
     async getPresets() {
+        if (this.externalHost) {
+            return this.externalHost.getPresets();
+        }
         try {
             // Check if running in Electron environment
             if (window.electronAPI && window.electronIntegration && window.electronIntegration.isElectron) {
@@ -160,6 +166,9 @@ export class PresetManager {
     }
 
     async persistPresets(presets) {
+        if (this.externalHost) {
+            throw new Error('The external preset host owns preset persistence');
+        }
         if (window.electronAPI && window.electronIntegration && window.electronIntegration.isElectron) {
             const appPath = await window.electronAPI.getPath('userData');
             const filePath = await window.electronAPI.joinPaths(appPath, 'effetune_presets.json');
@@ -183,6 +192,17 @@ export class PresetManager {
     async savePreset(name, { showSuccessMessage = true } = {}) {
         if (typeof name !== 'string' || !name.trim()) return false;
         name = name.trim();
+        if (this.externalHost) {
+            try {
+                await this.externalHost.savePreset(name);
+                this.currentPresetName = name;
+                return true;
+            } catch (error) {
+                console.error('Failed to save preset:', error);
+                window.uiManager?.showTransientMessage('error.failedToSavePreset', true, {}, 3000);
+                return false;
+            }
+        }
         const attemptRevision = ++this.presetMutationAttemptRevision;
         const pipeline = [...this.audioManager.pipeline];
         // Create preset data with original format (plugins array)
@@ -235,6 +255,17 @@ export class PresetManager {
      * @param {string|Object} nameOrPreset - The name of the preset to load from file/localStorage, or a preset object
      */
     async loadPreset(nameOrPreset) {
+        if (this.externalHost) {
+            try {
+                await this.externalHost.loadPreset(nameOrPreset);
+                this.currentPresetName = typeof nameOrPreset === 'string' ? nameOrPreset : '';
+                return true;
+            } catch (error) {
+                console.error('Failed to load preset:', error);
+                window.uiManager?.setError('error.failedToLoadPreset');
+                return false;
+            }
+        }
         let preset;
         let name;
         let historyManager = null;
@@ -396,6 +427,10 @@ export class PresetManager {
     }
 
     async renamePreset(oldName, newName) {
+        if (this.externalHost) {
+            window.uiManager?.showTransientMessage('Renaming presets is unavailable here. Save a new preset instead.', true, {}, 3000);
+            return false;
+        }
         const attemptRevision = ++this.presetMutationAttemptRevision;
         try {
             const renamed = await this.enqueuePresetMutation(async () => {
@@ -421,6 +456,17 @@ export class PresetManager {
 
     async deletePresets(names) {
         const uniqueNames = [...new Set(Array.isArray(names) ? names.filter(name => typeof name === 'string') : [])];
+        if (this.externalHost) {
+            try {
+                for (const name of uniqueNames) await this.externalHost.deletePreset(name);
+                if (uniqueNames.includes(this.currentPresetName)) this.currentPresetName = '';
+                return uniqueNames.length > 0;
+            } catch (error) {
+                console.error('Failed to delete preset:', error);
+                window.uiManager?.showTransientMessage('error.failedToDeletePreset', true, {}, 3000);
+                return false;
+            }
+        }
         const attemptRevision = ++this.presetMutationAttemptRevision;
         try {
             const deleted = await this.enqueuePresetMutation(async () => {

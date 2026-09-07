@@ -65,7 +65,8 @@ export class PluginManager {
             const jsUrls = [
                 'plugins/plugin-base.js',
                 'plugins/graph-point-interaction.js',
-                'plugins/spectrum-overlay.js'
+                'plugins/spectrum-overlay.js',
+                'plugins/theme-palette.js'
             ]
                 .map(url => this.withDevelopmentCacheBuster(url, devCacheToken));
             const cssUrls = [this.withDevelopmentCacheBuster('plugins/spectrum-overlay.css', devCacheToken)];

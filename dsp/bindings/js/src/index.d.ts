@@ -1,5 +1,6 @@
 export type {
   LevelMeterOptions,
+  NoteSpectrogramOptions,
   OscilloscopeOptions,
   SpectrogramOptions,
   SpectrumAnalyzerOptions,
@@ -79,6 +80,13 @@ export type {
   PhaserOptions,
   PhaseSelectEQOptions,
   PitchShifterOptions,
+  PitchShifterHQOptions,
+  BandwidthExtenderOptions,
+  ClickRemoverOptions,
+  ClipRestorerOptions,
+  HumRemoverOptions,
+  NoiseReductionOptions,
+  CrosstalkCancellationOptions,
   PowerAmpSagOptions,
   RotarySpeakerOptions,
   RSReverbOptions,
@@ -100,6 +108,7 @@ export type {
 } from './generated-effects.js';
 export {
   LevelMeter,
+  NoteSpectrogram,
   Oscilloscope,
   Spectrogram,
   SpectrumAnalyzer,
@@ -176,6 +185,13 @@ export {
   Phaser,
   PhaseSelectEQ,
   PitchShifter,
+  PitchShifterHQ,
+  BandwidthExtender,
+  ClickRemover,
+  ClipRestorer,
+  HumRemover,
+  NoiseReduction,
+  CrosstalkCancellation,
   PowerAmpSag,
   RotarySpeaker,
   RSReverb,
@@ -195,6 +211,7 @@ export {
   VinylSimulator,
   WowFlutter,
   createLevelMeter,
+  createNoteSpectrogram,
   createOscilloscope,
   createSpectrogram,
   createSpectrumAnalyzer,
@@ -269,6 +286,13 @@ export {
   createPhaser,
   createPhaseSelectEQ,
   createPitchShifter,
+  createPitchShifterHQ,
+  createBandwidthExtender,
+  createClickRemover,
+  createClipRestorer,
+  createHumRemover,
+  createNoiseReduction,
+  createCrosstalkCancellation,
   createPowerAmpSag,
   createRotarySpeaker,
   createRSReverb,
@@ -406,7 +430,7 @@ export interface CreateChainOptions extends ArtifactOptions {
 }
 
 export interface TelemetryFrameBase {
-  readonly kind: 'level' | 'oscilloscope' | 'spectrum' | 'spectrogram' | 'stereo';
+  readonly kind: 'level' | 'noteSpectrogram' | 'oscilloscope' | 'spectrum' | 'spectrogram' | 'stereo';
   readonly effectType: EffectType;
   readonly effectId: string | null;
   readonly effectIndex: number;
@@ -446,6 +470,18 @@ export interface SpectrumTelemetryFrame extends TelemetryFrameBase {
   readonly peakDb: Float32Array;
 }
 
+export interface NoteSpectrogramTelemetryFrame extends TelemetryFrameBase {
+  readonly kind: 'noteSpectrogram';
+  readonly sampleRate: number;
+  readonly timeSeconds: number;
+  readonly firstMidi: 21;
+  readonly hopSeconds: number;
+  readonly frameIndex: number;
+  readonly divisionsPerSemitone: 5;
+  readonly generation: number;
+  readonly levels: Float32Array;
+}
+
 export interface SpectrogramTelemetryFrame extends TelemetryFrameBase {
   readonly kind: 'spectrogram';
   readonly sampleRate: number;
@@ -472,6 +508,7 @@ export type TelemetryFrame =
   | OscilloscopeTelemetryFrame
   | SpectrumTelemetryFrame
   | SpectrogramTelemetryFrame
+  | NoteSpectrogramTelemetryFrame
   | StereoTelemetryFrame;
 
 export type TelemetryCallback = (frame: TelemetryFrame) => void;

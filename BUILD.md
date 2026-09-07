@@ -177,7 +177,7 @@ separate development server for this command.
 The committed WebAssembly DSP artifacts let JavaScript-only contributors run the app
 without Emscripten. Changes under `dsp/`, `plugins/dsp/`, or a plugin's DSP parameter
 schema require the pinned toolchain recorded in `dsp/EMSDK_VERSION` (currently 6.0.2),
-CMake 3.24 or newer, Ninja, and a C++20 compiler.
+CMake 3.24 or newer, Ninja, Python 3.10 or newer, and a C++20 compiler.
 
 ```bash
 npm run gen:dsp
@@ -199,6 +199,25 @@ npm run test:dsp:parity
   and SIMD modules plus deterministic metadata under `plugins/dsp/`; it also runs the
   native-test warning check before building the modules.
 - `test:dsp:parity` checks both shipped modules against the committed JavaScript goldens.
+
+Note Spectrogram stores its three learned models as `.bin` files with small JSON
+manifests in `dsp/plugins/analyzer/note_spectrogram/`. Replace a complete binary and
+its manifest when updating a model; retain the training provenance and update the
+reference fixtures if the predictions change. The binary format is concatenated
+split feature indices (`uint8`), split thresholds (IEEE 754 binary32), and leaf
+values (binary32 or binary64 as specified by `leafType`), all little-endian. Align
+each array to its element width with zero padding. The manifest records format
+version 1, model dimensions, constants, output count, source-model hash, and the
+SHA-256 of the complete binary. Do not quantize values during export.
+
+CMake runs `embed_models.py` when a model or its generator changes, validating the
+hash, dimensions, feature indices, and finite numeric values. It produces small
+declaration headers and embeds the data directly in a read-only section: assembler
+`.incbin` for Linux, macOS, and WASM, or a relocation-free COFF object for MSVC x64
+and ARM64. Generated files stay in the build directory. Models require no runtime
+file access, decoding, allocation, or extra copy, and do not pass through the C++
+compiler as millions of numeric literals. Binary inputs are hashed byte-for-byte
+by the DSP artifact freshness check. Model reader tests run in native CTest.
 
 Regenerate an affected golden whenever DSP behavior or an input that defines
 the golden changes. Those inputs include the reference implementation, cases,
@@ -354,6 +373,28 @@ To build the application, use the following npm commands:
   ```
 
 The Electron build scripts and GitHub Pages workflow run `npm run assets:web` automatically before packaging or deployment. This regenerates the browser metadata parser bundle, its third-party notice file, and `sw-precache.js`. If you add or remove web assets outside those flows, run `npm run assets:web` before committing.
+
+### Browser Extension
+
+Build the Chrome and Edge extension separately from the desktop application:
+
+```bash
+npm run build:extension
+```
+
+The build writes the unpacked extension to `out/extension/` and a distributable archive
+to `out/effetune-extension-<package.json version>.zip`. The unpacked directory is the
+manual-load target for Chrome or Edge; extract the ZIP before using **Load unpacked**.
+
+Run the extension smoke check after changing its packaging, manifest, session handling,
+or editor integration:
+
+```bash
+npm run test:extension-browser
+```
+
+The extension is its own Manifest V3 package. Do not add extension-only files or assets
+to the desktop and Web/PWA packages, and keep the generated `out/` artifacts untracked.
 
 ### Web and PWA Assets
 

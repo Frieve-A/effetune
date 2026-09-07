@@ -1,3 +1,4 @@
+import { installThemePaletteStub } from '../helpers/theme-palette-stub.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -147,6 +148,7 @@ class PluginBase {
     this.name = name;
     this.description = description;
     this.enabled = true;
+    this._sectionEnabled = true;
     this.id = 41;
     this.inputBus = null;
     this.outputBus = null;
@@ -164,6 +166,8 @@ class PluginBase {
   }
 
   updateParameters() {}
+
+  isHeldByUser() { return false; }
 
   getParameters() {
     return {
@@ -270,6 +274,7 @@ function loadPlugin({ channelCount = 8, sampleRate = 48000 } = {}) {
     globalThis: null
   });
   context.globalThis = context;
+  installThemePaletteStub(context.window);
   vm.runInContext(pluginSource, context, { filename: 'fir_crossover.js' });
   return { Plugin: window.FIRCrossoverPlugin, context };
 }
@@ -284,6 +289,7 @@ function loadChannelDividerPlugin() {
     globalThis: null
   });
   context.globalThis = context;
+  installThemePaletteStub(context.window);
   vm.runInContext(channelDividerSource, context, { filename: 'channel_divider.js' });
   return window.ChannelDividerPlugin;
 }
@@ -314,6 +320,12 @@ function installControlStubs(plugin) {
   plugin._bandRadios = radios;
   plugin._crossoverControls = controls;
   return { radios, controls };
+}
+
+function channelCountFrame(channels) {
+  const payload = new DataView(new ArrayBuffer(4));
+  payload.setUint32(0, channels, true);
+  return { frameType: 9, formatVersion: 1, payload };
 }
 
 test('FIR Crossover exposes the requested FIR controls and steep slopes', () => {
@@ -472,8 +484,8 @@ test('FIR Crossover graph follows Channel Divider axes and curve conventions', (
   assert.ok(labels.includes('Level (dB)'));
   assert.ok(labels.includes('-48'));
   assert.ok(labels.includes('0'));
-  assert.equal(strokes.filter(stroke => stroke.color === '#00ff00').length, plugin.bc);
-  assert.ok(strokes.filter(stroke => stroke.color === '#00ff00')
+  assert.equal(strokes.filter(stroke => stroke.color === 'stub:graph-trace').length, plugin.bc);
+  assert.ok(strokes.filter(stroke => stroke.color === 'stub:graph-trace')
     .every(stroke => stroke.width === 1.5));
 });
 
@@ -517,7 +529,7 @@ test('FIR Crossover reduces selected bands when output capacity shrinks from 8 t
   assert.equal(radios[2].checked, true);
   assert.equal(controls[2].root.disabled, false);
 
-  plugin._applyOutputChannelCount(4);
+  plugin.handleDspChannelCountTelemetry(channelCountFrame(4));
   assert.equal(plugin.bc, 2);
   assert.equal(plugin.getParameters().bc, 2);
   assert.equal(plugin._designConfig().bandCount, 2);
@@ -529,12 +541,104 @@ test('FIR Crossover reduces selected bands when output capacity shrinks from 8 t
   assert.equal(controls[2].root.disabled, true);
 });
 
-test('FIR Crossover stages a matrix asset with one stereo path pair per band', async () => {
+test('FIR Crossover keeps frequency edits through repeated channel-count telemetry', () => {
   const { Plugin } = loadPlugin();
   const plugin = new Plugin();
+  plugin._scheduleDesign = () => {};
+  plugin.drawGraph = () => {};
+  plugin.setParameters({ bc: 4 });
+  plugin.createUI();
+
+  for (const [index, frequency] of [150, 1500, 15000].entries()) {
+    const control = plugin._crossoverControls[index];
+    control.number.value = String(frequency);
+    for (let repeat = 0; repeat < 3; repeat += 1) {
+      plugin.handleDspChannelCountTelemetry(channelCountFrame(8));
+      assert.equal(control.number.value, String(frequency));
+    }
+    control.number.onchange();
+    assert.equal(plugin[`f${index + 1}`], frequency);
+    assert.equal(Number(control.range.value), plugin._frequencyToSlider(frequency));
+  }
+});
+
+test('FIR Crossover preserves held controls when parameters or channel capacity change', () => {
+  const { Plugin } = loadPlugin();
+  const plugin = new Plugin();
+  plugin._scheduleDesign = () => {};
+  plugin.drawGraph = () => {};
+  plugin.setParameters({ bc: 4 });
+  plugin.createUI();
+  const [first, second] = plugin._crossoverControls;
+  const held = new Set([first.number, second.range, second.slope]);
+  plugin.isHeldByUser = element => held.has(element);
+  first.number.value = '50000';
+  second.range.value = '600';
+  second.slope.value = '-96';
+
+  plugin.setParameters({ f1: 300, f2: 3000, s2: -48 });
+  plugin.handleDspChannelCountTelemetry(channelCountFrame(6));
+  assert.equal(first.number.value, '50000');
+  assert.equal(second.range.value, '600');
+  assert.equal(second.slope.value, '-96');
+  assert.equal(second.number.value, '3000');
+  assert.equal(plugin._bandRadios[2].disabled, true);
+
+  first.number.onchange();
+  assert.equal(plugin.f1, 39999);
+  assert.equal(first.number.value, '39999');
+  held.clear();
+  plugin.setParameters({ f1: 400, f2: 4000 });
+  assert.equal(first.number.value, '400');
+  assert.equal(Number(second.range.value), plugin._frequencyToSlider(4000));
+  assert.equal(second.slope.value, '-48');
+});
+
+test('FIR Crossover keeps the stereo warning stable across host format updates', () => {
+  const { Plugin } = loadPlugin({ channelCount: 8 });
+  const plugin = new Plugin();
+  const designs = [];
+  plugin._scheduleDesign = () => designs.push(plugin._designConfig());
+  plugin.drawGraph = () => {};
+  plugin.createUI();
+  const hostFormat = { sampleRate: 48000, outputChannelCount: 8, commitSampleRate: true };
+  plugin.getParameters(hostFormat);
+  plugin.handleDspChannelCountTelemetry(channelCountFrame(2));
+  assert.equal(plugin._errorElement.hidden, false);
+  const expectedWarning = plugin._errorElement.textContent;
+  designs.length = 0;
+
+  for (let repeat = 0; repeat < 3; repeat += 1) {
+    plugin.getParameters(hostFormat);
+    assert.equal(plugin._errorElement.hidden, false);
+    assert.equal(plugin._errorElement.textContent, expectedWarning);
+    assert.equal(plugin._effectiveBandCount(), 0);
+    plugin.handleDspChannelCountTelemetry(channelCountFrame(2));
+  }
+  assert.equal(designs.length, 0);
+
+  plugin.getParameters({ ...hostFormat, sampleRate: 96000 });
+  assert.equal(plugin._errorElement.hidden, false);
+  assert.equal(plugin._effectiveBandCount(), 0);
+  assert.equal(designs.length, 1);
+  assert.equal(designs[0].sampleRate, 96000);
+  assert.equal(designs[0].bandCount, 0);
+
+  plugin.channel = 'A';
+  plugin.handleDspChannelCountTelemetry(channelCountFrame(8));
+  assert.equal(plugin._errorElement.hidden, true);
+  assert.equal(plugin._effectiveBandCount(), 2);
+  assert.equal(plugin.maxBands, 4);
+  assert.equal(designs.length, 2);
+});
+
+test('FIR Crossover stages a matrix asset for the measured processing width', async () => {
+  const { Plugin } = loadPlugin({ channelCount: 16 });
+  const plugin = new Plugin();
+  plugin._scheduleDesign = () => {};
   plugin.bc = 4;
   plugin.tp = 8192;
-  plugin._outputChannelCount = 8;
+  plugin.handleDspChannelCountTelemetry(channelCountFrame(8));
   const pathCount = 8;
   const payload = new ArrayBuffer(32 + pathCount * 12 + plugin.bc * plugin.tp * 4);
   const result = { payload, bandCount: 4 };
@@ -572,7 +676,7 @@ test('FIR Crossover validates channel-count telemetry and bus band limits', () =
     assert.equal(plugin.parseDspChannelCountTelemetryFrame({ frameType: 9, formatVersion: 1, payload }),
       channels === 16 ? 16 : null);
   }
-  plugin._applyOutputChannelCount(6);
+  plugin.handleDspChannelCountTelemetry(channelCountFrame(6));
   assert.equal(plugin.maxBands, 3);
   assert.equal(plugin._effectiveBandCount(), 2);
   assert.equal(plugin.parseDspChannelCountTelemetryFrame({

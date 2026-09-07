@@ -1,5 +1,20 @@
 const pendingLoads = new Map();
 const stylesheetLoads = new Map();
+const pendingStylesheets = new Set();
+
+function trackStylesheet(link) {
+    if (link.sheet) return;
+    const ready = new Promise(resolve => {
+        link.addEventListener('load', resolve, { once: true });
+        link.addEventListener('error', resolve, { once: true });
+    });
+    pendingStylesheets.add(ready);
+    void ready.then(() => pendingStylesheets.delete(ready));
+}
+
+export function waitForStylesheets() {
+    return Promise.all(pendingStylesheets);
+}
 
 function getDefaultDocument() {
     return typeof document !== 'undefined' ? document : null;
@@ -49,6 +64,7 @@ export function loadStylesheet(source, {
     // Music Library sheet before any module runs); adopt it instead of duplicating.
     const existing = documentRef.querySelector?.(`link[rel="stylesheet"][href="${source}"]`);
     if (existing) {
+        trackStylesheet(existing);
         stylesheetLoads.set(source, existing);
         return existing;
     }
@@ -56,6 +72,7 @@ export function loadStylesheet(source, {
     const link = documentRef.createElement('link');
     link.rel = 'stylesheet';
     link.href = source;
+    trackStylesheet(link);
     link.addEventListener?.('error', () => {
         if (stylesheetLoads.get(source) === link) stylesheetLoads.delete(source);
         link.remove?.();

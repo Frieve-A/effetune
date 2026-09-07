@@ -82,6 +82,8 @@ lang: hi
 
 FIR Crossover stereo input को दो, तीन या चार bands में बाँटकर हर band को अलग output pair में भेजता है। यह 4 से 16 तक even output channels वाले desktop systems के लिए है और केवल WASM DSP के साथ काम करता है। Band Count अधिकतम चार bands तक सीमित है, इसलिए effect अधिकतम channels 1-8 का उपयोग करता है।
 
+जब इफ़ेक्ट को दो चैनल मिलते हैं, तो ऑडियो बिना किसी बदलाव के आगे भेजा जाता है।
+
 FIR design पारंपरिक filters की resonance के बिना बहुत तीखी slopes देता है। Minimum Phase एक causal crossover construction इस्तेमाल करता है जो bands को फिर से जोड़ने की क्षमता बनाए रखता है; Linear Phase निश्चित latency के बदले symmetric phase response देता है।
 
 ### उपयोग गाइड

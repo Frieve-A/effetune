@@ -1,3 +1,8 @@
+.multiband-balance-band-balances {
+    display: flex;
+    flex-direction: column;
+}
+
 /* Multiband Balance plugin specific styles */
 .multiband-balance-container {
     display: flex;
@@ -11,7 +16,7 @@
     flex-direction: row;
     gap: 10px;
     padding: 10px;
-    background: #2d2d2d;
+    background: color-mix(in srgb, var(--et-surface-10), var(--et-graph-bg-deep) 25%);
     border-radius: 4px;
 }
 

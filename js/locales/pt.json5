@@ -429,6 +429,7 @@
   "dialog.config.startupView.effects": "Effect Pipeline (padrão)",
   "dialog.config.startupView.library": "Biblioteca de música",
   "dialog.config.language": "Idioma",
+  "dialog.config.theme": "Tema",
   "dialog.config.language.auto": "Automático (navegador)",
   "dialog.config.languageRestartNotice": "Se você alterou a configuração de idioma, reinicie o aplicativo.",
   "dialog.config.openHome.title": "Controle remoto OpenHome",
@@ -803,5 +804,7 @@
   "midi.source.key": "Tecla {key}", "midi.source.gamepadButton": "Botão do comando {number}", "midi.source.gamepadAxis": "Eixo do comando {number} ({mode})", "midi.source.pitchbend": "Pitch bend ch {channel}", "midi.source.mcuFader": "Fader MCU {channel}", "midi.source.mcuVpot": "MCU V-Pot {number}", "midi.source.mcuButton": "Botão MCU {number}", "midi.source.midi": "{kind} {number} ch {channel}",
   "midi.source.clock": "Relógio: {component}, {shape}", "midi.source.timer": "Temporizador: a cada {seconds} s", "midi.automation.source": "Fonte", "midi.automation.source.timer": "Temporizador", "midi.automation.source.clock": "Relógio", "midi.clock.component": "Parte da hora", "midi.clock.component.hour": "Hora", "midi.clock.component.minute": "Minuto", "midi.clock.component.second": "Segundo", "midi.clock.shape": "Onda", "midi.clock.shape.ramp": "Ascendente", "midi.clock.shape.sin": "Seno", "midi.clock.shape.cos": "Cosseno", "midi.timer.interval": "Intervalo (segundos)", "midi.automation.behavior": "Ação", "midi.behavior.direct": "Alterar pela quantidade", "midi.behavior.random": "Valor aleatório no intervalo", "midi.behavior.randomWalk": "Passo aleatório a partir do valor atual", "midi.automation.amount": "Quantidade",
   "midi.source.timer.interval": "Temporizador: a cada {seconds} s", "midi.source.timer.once": "Temporizador: uma vez em {date} às {time}", "midi.source.timer.daily": "Temporizador: todos os dias às {time}", "midi.timer.schedule": "Agendamento", "midi.timer.schedule.interval": "Intervalo", "midi.timer.schedule.once": "Uma vez", "midi.timer.schedule.daily": "Diário", "midi.timer.date": "Data", "midi.timer.time": "Hora", "midi.timer.expired": "Expirado",
+  "midi.device.connected": "Conectado",
+  "midi.device.disconnected": "Desconectado",
   "midi.target.type": "Efeito", "midi.target.instance": "Instância", "midi.target.parameter": "Parâmetro", "midi.direction": "Direção", "midi.mode": "Modo", "midi.target.masterBypass": "Bypass principal", "midi.target.abToggle": "Alternar A/B", "midi.target.enabled": "Ativado", "midi.parameterNumber": "{title} {number}", "midi.map.minimum": "Mín.", "midi.map.maximum": "Máx.", "midi.map.sensitivity": "Sensibilidade", "midi.direction.increase": "Aumentar (+)", "midi.direction.decrease": "Diminuir (−)", "midi.mode.abs": "Absoluto", "midi.mode.rel": "Relativo", "midi.mode.rel2c": "Relativo (complemento de dois)", "midi.mode.relBin": "Relativo (desvio binário)", "midi.mode.relSign": "Relativo (sinal e magnitude)", "midi.buttonMode": "Modo do botão", "midi.buttonMode.toggle": "Alternar", "midi.buttonMode.momentary": "Momentâneo"
 }

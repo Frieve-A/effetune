@@ -828,7 +828,7 @@ class OscilloscopePlugin extends PluginBase {
       const isNarrow = this.graphCssWidth < 500;
   
       // Clear the canvas.
-      ctx.fillStyle = '#000';
+      ctx.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
       ctx.fillRect(0, 0, width, height);
   
       // Left margin for vertical axis labels.
@@ -842,12 +842,12 @@ class OscilloscopePlugin extends PluginBase {
       // ---------------------------
       // Draw vertical grid and amplitude scale based on visible amplitude range.
       // ---------------------------
-      ctx.strokeStyle = '#333';
+      ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-subtle') ?? '');
       ctx.lineWidth = dpr;
       const tickFontSize = (isNarrow ? 11 : 12) * dpr;
       ctx.font = `${tickFontSize}px Arial`;
       ctx.textAlign = 'right';
-      ctx.fillStyle = '#666';
+      ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
       ctx.textBaseline = 'middle';
   
       // Compute visible amplitude range based on the mapping:
@@ -900,7 +900,7 @@ class OscilloscopePlugin extends PluginBase {
       // ---------------------------
       // Draw horizontal grid and time scale.
       // ---------------------------
-      ctx.strokeStyle = '#333';
+      ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-subtle') ?? '');
       ctx.lineWidth = dpr;
       const timeDivisions = isNarrow ? 5 : 10;
       for (let i = 0; i <= timeDivisions; i++) {
@@ -910,7 +910,7 @@ class OscilloscopePlugin extends PluginBase {
         ctx.lineTo(x, height);
         ctx.stroke();
         if (i !== 0 && i !== timeDivisions) {
-          ctx.fillStyle = '#666';
+          ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
           ctx.font = `${tickFontSize}px Arial`;
           ctx.textAlign = 'center';
           const t_ms = (i / timeDivisions) * (this.displayTime * 1000);
@@ -919,7 +919,7 @@ class OscilloscopePlugin extends PluginBase {
       }
   
       // Draw axis labels.
-      ctx.fillStyle = '#fff';
+      ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
       ctx.font = `${(isNarrow ? 12 : 14) * dpr}px Arial`;
       ctx.textAlign = 'center';
       ctx.fillText('Time (ms)', leftMargin + (width - leftMargin) / 2, height - (10 * dpr));
@@ -936,7 +936,7 @@ class OscilloscopePlugin extends PluginBase {
       if (displayBuffer) {
         const sampleIndices = this.scopeSnapshot?.sampleIndices;
         const sampleCount = this.scopeSnapshot?.captureSampleCount || displayBuffer.length;
-        ctx.strokeStyle = '#0f0';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = 2 * dpr;
         ctx.beginPath();
         const denominator = sampleCount > 1 ? sampleCount - 1 : 1;

@@ -249,15 +249,15 @@ test('the generated-output exemption is limited to its package and producer', ()
   assert.deepEqual(violations, [`tools/unrelated.mjs -> ${generated}`]);
 });
 
-test('the DSP wasm source digest reads only tracked repository files', () => {
-  const tracked = gitTrackedFiles();
+test('the DSP wasm source digest reads only review-visible repository files', () => {
+  const reviewable = gitReviewableFiles();
   const inputs = sourceDigestInputPaths();
   assert.ok(inputs.length > 0);
-  const untracked = inputs.filter(input => !tracked.has(input));
+  const hidden = inputs.filter(input => !reviewable.has(input));
   assert.deepEqual(
-    untracked,
+    hidden,
     [],
-    `build:dsp --check would fail on a clean checkout:\n${untracked.join('\n')}`
+    `build:dsp reads files hidden from pre-staging review:\n${hidden.join('\n')}`
   );
 });
 

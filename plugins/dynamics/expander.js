@@ -621,9 +621,9 @@ class ExpanderPlugin extends PluginBase {
         const height = canvas.height;
 
         // Draw grid and labels at dB positions
-        ctx.strokeStyle = '#444';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth = 1;
-        ctx.fillStyle = '#666';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         ctx.font = '20px Arial';
 
         [-48, -36, -24, -12].forEach(db => {
@@ -648,7 +648,7 @@ class ExpanderPlugin extends PluginBase {
         });
 
         // Draw transfer function
-        ctx.strokeStyle = '#0f0';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = 2;
         ctx.beginPath();
 
@@ -697,7 +697,7 @@ class ExpanderPlugin extends PluginBase {
         ctx.stroke();
 
         // Draw axis labels
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         ctx.font = '28px Arial';
         ctx.textAlign = 'center';
 
@@ -731,7 +731,7 @@ class ExpanderPlugin extends PluginBase {
         }
         const boostHeight = Math.min(height, (Math.abs(clampedGb) / 60) * height);
         if (boostHeight > 0) {
-            ctx.fillStyle = '#008000'; // Green color for boost (same as compressor)
+            ctx.fillStyle = (window.ThemePalette?.get('graph-trace-fill') ?? ''); // Green color for boost (same as compressor)
             
             // Draw direction based on ratio: boost (ratio > 1) from bottom up, reduction (ratio < 1) from top down
             if (this.rt < 1.0) {
@@ -765,7 +765,7 @@ class ExpanderPlugin extends PluginBase {
         canvas.height = 400;
         canvas.style.width = '200px';
         canvas.style.height = '200px';
-        canvas.style.backgroundColor = '#222';
+        canvas.style.backgroundColor = 'var(--et-graph-bg-deep)';
         this.canvas = canvas;
 
         const graphContainer = document.createElement('div');

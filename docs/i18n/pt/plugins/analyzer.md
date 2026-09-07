@@ -1,6 +1,6 @@
 ---
 title: "Plugins de Análise - EffeTune"
-description: "Plugins de análise de áudio, incluindo Level Meter, Oscilloscope, Spectrogram, Spectrum Analyzer e Stereo Meter."
+description: "Plugins de análise de áudio, incluindo Level Meter, Note Spectrogram, Oscilloscope, Spectrogram, Spectrum Analyzer e Stereo Meter."
 lang: pt
 ---
 
@@ -11,6 +11,7 @@ Uma coleção de plugins que permitem visualizar sua música de maneiras fascina
 ## Lista de Plugins
 
 - [Level Meter](#level-meter) - Mostra o nível do sinal digital e possível clipping
+- [Note Spectrogram](#note-spectrogram) - Mostra as alturas estimadas ao longo do tempo em um piano roll
 - [Oscilloscope](#oscilloscope) - Exibe visualização da forma de onda em tempo real
 - [Spectrogram](#spectrogram) - Cria padrões visuais bonitos a partir da sua música
 - [Spectrum Analyzer](#spectrum-analyzer) - Mostra as diferentes frequências na sua música
@@ -22,9 +23,48 @@ Um display visual que mostra em tempo real o nível digital do sinal da música.
 
 ### Guia de Visualização
 - A barra horizontal se estende mais para a direita conforme o nível do sinal fica mais alto
-- O marcador branco mostra por alguns instantes o nível mais alto recente
+- O marcador branco mantém um novo pico por um segundo e depois desce suavemente
 - OVERLOAD significa que o sinal passou da faixa digital segura e pode distorcer
 - Para uma reprodução limpa, evite níveis vermelhos frequentes ou avisos de OVERLOAD; ajuste o volume real de audição no seu dispositivo
+
+## Note Spectrogram
+
+Mostra as frequências fundamentais (F0) estimadas de A0 a C8 em um piano roll que se desloca, sem alterar o áudio. Use-o para acompanhar notas de acordes, linhas vocais e melódicas em movimento, linhas de baixo e notas sobrepostas em oitavas diferentes.
+
+### Guia de Visualização
+
+- **Vertical** mostra o tempo da esquerda para a direita, com o teclado e o som atual na borda direita. As notas mais agudas aparecem no topo.
+- **Horizontal** coloca o teclado embaixo, com as notas graves à esquerda e as agudas à direita. O som novo aparece logo acima do teclado e o histórico se move para cima.
+- As linhas em cada C marcam os limites das oitavas.
+- As linhas correspondentes às teclas pretas usam um fundo cinza quase preto para continuarem visíveis quando nenhuma nota é detectada.
+- **Normal** usa a cor do traçado do gráfico do tema; **Note Colors** atribui uma cor a cada nota, repetida em todas as oitavas. Ambos mostram linhas-guia entre E e F mais escuras que os limites das oitavas.
+- **1/12 Octave** mostra uma linha por semitom. **High (1/60 Octave)** divide cada semitom em cinco linhas para facilitar o acompanhamento de pequenas variações de altura; as cores são interpoladas entre notas vizinhas.
+- A cor acompanha a confiança do modelo de 0 (cor de fundo) a 1 (cor completa), incluindo candidatos fracos, sem um limiar de exibição. A confiança indica quanto o modelo sustenta a presença de uma nota; não é um nível de volume nem uma probabilidade calibrada.
+- As teclas passam gradualmente da cor normal para a cor de exibição conforme aumenta a confiança do quadro mais recente, chegando a essa cor em 1.
+- Alterar **Color** muda as cores do histórico existente.
+
+### O que você pode ver
+
+- Os acordes aparecem como várias linhas brilhantes ao mesmo tempo
+- Melodias e linhas de baixo formam trajetórias que passam pelas linhas das notas
+- A tela não cria MIDI nem partitura, não identifica instrumentos e não consegue separar completamente todos os sons simultâneos. Sobreposições complexas podem deixar partes de uma melodia ou harmonia sem detecção, enquanto percussão, ruído e padrões repetidos pouco claros podem produzir ocasionalmente uma altura incorreta.
+
+### Parâmetros
+
+- **Color** - Seleciona as cores de exibição sem alterar as estimativas de notas.
+  - **Normal** (padrão): a cor do traçado do gráfico do tema.
+  - **Note Colors**: uma cor diferente para cada nota, repetida em todas as oitavas.
+- **Pitch Resolution** - Seleciona o detalhe vertical da altura sem apagar o histórico existente.
+  - **1/12 Octave**: uma linha por semitom, usando a estimativa mais forte dessa nota.
+  - **High (1/60 Octave)** (padrão): cinco linhas por semitom para mostrar variações de altura mais detalhadas.
+- **Layout** - Seleciona **Horizontal** (padrão) ou **Vertical**. O histórico é preservado ao mudar a disposição.
+- **Time Span** (de 1 a 10 s) - Define quanto tempo o piano roll mostra
+  - Valores menores facilitam a observação de mudanças de tempo
+  - Valores maiores mostram um trecho musical mais longo de uma só vez
+  - Padrão: 2 s
+- **Lowest Note** - Define a nota mais grave da faixa exibida. Padrão: E1.
+- **Highest Note** - Define a nota mais aguda da faixa exibida. Padrão: G6.
+- Quando a entrada é baixa demais para análise, o piano roll permanece escuro em vez de mostrar uma entrada extremamente pequena como alturas. Essa supressão não determina se um som seria audível ou perceptivamente mascarado.
 
 ## Oscilloscope
 
@@ -60,6 +100,8 @@ A forma de onda conecta os pontos capturados em ordem temporal. Com tempos de ex
 ## Spectrogram
 
 Cria padrões coloridos que mostram como sua música muda ao longo do tempo. As cores indicam a intensidade de cada som, enquanto a posição vertical indica a frequência.
+
+O gráfico se desloca da direita para a esquerda a uma velocidade constante, com marcações a cada segundo.
 
 ### Guia de Visualização
 - As cores mostram a intensidade de diferentes frequências:
@@ -98,7 +140,7 @@ Cria uma exibição visual em tempo real das frequências da sua música, dos gr
 - Lado direito mostra frequências altas (pratos, brilho, ar)
 - Picos mais altos significam presença mais forte dessas frequências
 - A linha verde mais escura mostra o som atual
-- A linha verde mais clara retém brevemente os picos recentes, para você ver sons fortes que acabaram de passar
+- A linha verde mais clara acompanha os picos recentes e desce suavemente à medida que desaparecem
 - Observe como diferentes instrumentos criam padrões diferentes
 
 ### O Que Você Pode Ver

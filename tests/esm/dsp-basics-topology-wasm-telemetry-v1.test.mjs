@@ -43,10 +43,10 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
     try {
       assert.notEqual(binding.createEngine(), 0);
       assert.equal(binding.prepare(SAMPLE_RATE, 4, BLOCK_SIZE, TELEMETRY_BYTES), 0);
-      const arena = binding.getArenaViews();
       const packet = new ArrayBuffer(TELEMETRY_BYTES);
       let processedFrames = 0;
       const processBlocks = (instanceId, amplitudes, blocks = 7) => {
+        const arena = binding.getArenaViews();
         for (let block = 0; block < blocks; block++) {
           for (let channel = 0; channel < amplitudes.length; channel++) {
             const start = channel * BLOCK_SIZE;
@@ -158,7 +158,7 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
     try {
       assert.ok(binding.createEngine());
       assert.equal(binding.prepare(96000, 16, BLOCK_SIZE, 0), 0);
-      const arena = binding.getArenaViews();
+      let arena;
       const volume = binding.createInstance('VolumePlugin');
       const volumePacker = DSP_PARAM_PACKERS.get('VolumePlugin');
       assert.equal(binding.instanceSetParams(volume, volumePacker.pack({ vl: -6 }), volumePacker.hash), 0);
@@ -166,6 +166,7 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
         assert.equal(binding.pipelineConfigure(encodeDspPipelineDescriptor([{
           instanceId: volume, enabled: true, inputBus: 0, outputBus: 0, channelSpec, sectionGate: true
         }])), 0);
+        arena = binding.getArenaViews();
         arena.buses.get(0).fill(1);
         assert.equal(binding.pipelineProcess(16, BLOCK_SIZE, 0), 0);
         assert.equal(arena.buses.get(0)[13 * BLOCK_SIZE], 1);
@@ -176,6 +177,7 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
       const matrixPacker = DSP_PARAM_PACKERS.get('MatrixPlugin');
       assert.equal(binding.instanceSetParams(matrix, matrixPacker.pack(), matrixPacker.hash), 0);
       assert.equal(binding.instanceSetParamBytes(matrix, matrixPacker.packBytes({ mx: 'efpfe' }), matrixPacker.hash), 0);
+      arena = binding.getArenaViews();
       arena.combined.fill(0);
       arena.combined.fill(0.25, 14 * BLOCK_SIZE, 15 * BLOCK_SIZE);
       arena.combined.fill(0.5, 15 * BLOCK_SIZE, 16 * BLOCK_SIZE);
@@ -199,6 +201,7 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
         footprintBytes: estimateIrKernelCommitFootprint({ frames: BLOCK_SIZE, assetChannels: 16, topology, processingChannels: 16, headBlock: 0, pathCount: 16, inputCount: 16 }) };
       assert.equal(binding.instanceAssetBegin(reverb, 0, { ...asset, channels: 17, byteSize: payload.byteLength }), 0);
       assert.equal(binding.instanceSetAsset(reverb, 0, payload, asset, 1), 0);
+      arena = binding.getArenaViews();
       for (let block = 0; block < 128 && (binding.instanceAssetState(reverb, 0) & 0xff) === 2; block++) {
         arena.combined.fill(0);
         assert.equal(binding.instanceProcess(reverb, arena.offsets.combined, 16, BLOCK_SIZE, 0), 0);

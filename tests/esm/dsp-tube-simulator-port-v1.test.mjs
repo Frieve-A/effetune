@@ -1,3 +1,4 @@
+import { installThemePaletteStub } from '../helpers/theme-palette-stub.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
@@ -529,6 +530,7 @@ async function createPlugin({ transformSource } = {}) {
     window
   };
   context.window.cancelAnimationFrame = context.cancelAnimationFrame;
+  installThemePaletteStub(context.window);
   vm.runInNewContext(source, context);
   const plugin = new context.window.TubeSimulatorPlugin();
   plugin.__testHarness = { observers, rafCallbacks, rafRequests, window, document };
@@ -1446,11 +1448,9 @@ test('Tube Simulator UI wiring pins the tab roles and tab sizing',
     assert.match(source, /label: 'Pre\+Power'/);
     assert.doesNotMatch(source, /'Circuit Preset'/);
     assert.match(css, /body\.layout-mobile \.tube-simulator-tab \{/);
-    assert.match(css, /\.tube-simulator-tab-content \{[^}]*min-height: 153px;/s);
-    assert.match(
-      css,
-      /body\.layout-mobile \.tube-simulator-tab-content \{[^}]*min-height: 0;/s
-    );
+    assert.match(appCss, /\.tube-simulator-tab-contents,[^{}]*\) \{[^}]*display: grid;/s);
+    assert.match(appCss, /\.tube-simulator-tab-content,[^{}]*\) \{[^}]*grid-area: 1 \/ 1;/s);
+    assert.match(appCss, /\.tube-simulator-tab-content,[^{}]*\)\[hidden\] \{[^}]*visibility: hidden;/s);
     assert.match(css, /\.tube-simulator-tab-content \.parameter-row\[hidden\] \{/);
     assert.doesNotMatch(css, /\.tube-simulator-dimmed/);
     // The graph selector has to sit closer to the graph it drives than to the panel above it, or
@@ -1613,7 +1613,7 @@ test('Tube Simulator HUD plots recent Ia-Vak trajectories over plate curves and 
         return globalAlpha;
       }
     }, plugin.trajectories.stage1LeftX, plugin.trajectories.stage1LeftY,
-    value => value, value => value, '#fff', options.dpr ?? 1, options.narrow ?? false,
+    value => value, value => value, 'stub:text-primary', options.dpr ?? 1, options.narrow ?? false,
     options.now ?? DRAW_NOW);
     return { rects, fills, fillStyle, opacities, globalAlpha };
   };
@@ -1627,7 +1627,7 @@ test('Tube Simulator HUD plots recent Ia-Vak trajectories over plate curves and 
   assert.deepEqual(full.rects[0], [78, 178, 2, 2]);
   assert.deepEqual(full.rects.at(-1), [94, 194, 2, 2]);
   assert.equal(full.fills, 17, 'each point is filled at its own opacity');
-  assert.equal(full.fillStyle, '#fff');
+  assert.equal(full.fillStyle, 'stub:text-primary');
   // Oldest first so the newest point lands on top, and every point dimmer than the one after it.
   assert.equal(full.opacities.at(-1), 1, 'the newest operating point must be fully opaque');
   assert.ok(
@@ -1685,10 +1685,10 @@ test('Tube Simulator HUD plots recent Ia-Vak trajectories over plate curves and 
     findByClass(container, 'tube-simulator-hud').children[0].attributes['aria-label'],
     /plate curves, load lines, and operating-point trajectories/
   );
-  assert.equal(findByClass(container, 'tube-simulator-hud').children[0].context.fillStyle, '#fff');
+  assert.equal(findByClass(container, 'tube-simulator-hud').children[0].context.fillStyle, 'stub:text-primary');
   // The trajectories are filled rather than stroked now, so the last stroked element is the load
   // line: its colour and its one-pixel dashed width are what the context is left holding.
-  assert.equal(findByClass(container, 'tube-simulator-hud').children[0].context.strokeStyle, '#888');
+  assert.equal(findByClass(container, 'tube-simulator-hud').children[0].context.strokeStyle, 'stub:graph-tone-50');
   assert.equal(findByClass(container, 'tube-simulator-hud').children[0].context.font, '14px Arial');
   assert.equal(findByClass(container, 'tube-simulator-hud').children[0].context.lineWidth, 1);
   plugin.cleanup();
@@ -1752,7 +1752,7 @@ test('Tube Simulator graph selector offers the circuit\'s own stages and falls b
     const legend = drawn.filter(entry => entry.text === 'Left' || entry.text === 'Right');
     assert.deepEqual(
       legend.map(entry => `${entry.text} ${entry.color}`),
-      ['Right #ffb347', 'Left #69c8ff']
+      ['Right stub:warning', 'Left stub:accent']
     );
     assert.ok(legend[1].x < legend[0].x, 'Left is drawn to the left of Right');
     assert.ok(

@@ -12,7 +12,7 @@ from typing import Literal
 class TelemetryFrame:
     """Common metadata for a decoded analyzer observation."""
 
-    kind: Literal["level", "oscilloscope", "spectrum", "spectrogram", "stereo"]
+    kind: Literal["level", "noteSpectrogram", "oscilloscope", "spectrum", "spectrogram", "stereo"]
     effect_type: str
     effect_id: str | None
     effect_index: int
@@ -53,6 +53,18 @@ class SpectrumTelemetryFrame(TelemetryFrame):
 
 
 @dataclass(frozen=True, slots=True)
+class NoteSpectrogramTelemetryFrame(TelemetryFrame):
+    sample_rate: float
+    time_seconds: float
+    first_midi: Literal[21]
+    hop_seconds: float
+    frame_index: int
+    divisions_per_semitone: Literal[5]
+    generation: int
+    levels: tuple[float, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class SpectrogramTelemetryFrame(TelemetryFrame):
     sample_rate: float
     time_seconds: float
@@ -74,6 +86,7 @@ class StereoTelemetryFrame(TelemetryFrame):
 
 _ANALYZER_FRAMES = {
     "LevelMeter": (1, 1),
+    "NoteSpectrogram": (24, 2),
     "Oscilloscope": (3, 2),
     "SpectrumAnalyzer": (4, 1),
     "Spectrogram": (5, 1),
@@ -282,6 +295,46 @@ def _decode_spectrogram(
     )
 
 
+def _decode_note_spectrogram(
+    payload: memoryview,
+    node: tuple[str, str | None, int],
+    sequence: int,
+    dropped: int,
+) -> TelemetryFrame | None:
+    if len(payload) != 1788:
+        return None
+    sample_rate, time_seconds, pitch_count, first_midi, hop_seconds, frame_index, divisions, generation = (
+        struct.unpack_from("<ffHHfIII", payload)
+    )
+    if (
+        not math.isfinite(sample_rate)
+        or sample_rate <= 0
+        or not math.isfinite(time_seconds)
+        or time_seconds < 0
+        or pitch_count != 440
+        or first_midi != 21
+        or not math.isfinite(hop_seconds)
+        or hop_seconds <= 0
+        or divisions != 5
+        or generation == 0
+    ):
+        return None
+    levels = struct.unpack_from("<440f", payload, 28)
+    if any(not math.isfinite(value) or not 0 <= value <= 1 for value in levels):
+        return None
+    return NoteSpectrogramTelemetryFrame(
+        **_common("noteSpectrogram", node, sequence, dropped),
+        sample_rate=sample_rate,
+        time_seconds=time_seconds,
+        first_midi=first_midi,
+        hop_seconds=hop_seconds,
+        frame_index=frame_index,
+        divisions_per_semitone=divisions,
+        generation=generation,
+        levels=levels,
+    )
+
+
 def _decode_stereo(
     payload: memoryview,
     node: tuple[str, str | None, int],
@@ -340,6 +393,7 @@ _DECODERS = {
     4: _decode_spectrum,
     5: _decode_spectrogram,
     6: _decode_stereo,
+    24: _decode_note_spectrogram,
 }
 
 
@@ -380,6 +434,7 @@ def _decode_telemetry_packet(
 __all__ = [
     "LevelTelemetryChannel",
     "LevelTelemetryFrame",
+    "NoteSpectrogramTelemetryFrame",
     "OscilloscopeTelemetryFrame",
     "SpectrogramTelemetryFrame",
     "SpectrumTelemetryFrame",

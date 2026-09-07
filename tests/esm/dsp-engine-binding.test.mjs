@@ -51,6 +51,8 @@ function createFakeInstance(options = {}) {
     },
     et_engine_create() {
       calls.push(['engineCreate']);
+      if (options.growDuringCreate) memory.grow(1);
+      options.onEngineCreate?.();
       return options.engineHandle ?? 7;
     },
     et_engine_destroy(engine) {
@@ -392,6 +394,30 @@ test('binding rejects unsafe staging sizes and invalid native return values', ()
   assert.equal(prepareBinding.prepare(48000, 2, 128, 64), -1);
   assert.equal(prepareBinding.live, false);
   assert.throws(() => prepareBinding.getArenaViews(), /must be prepared/);
+});
+
+test('engine creation permits memory growth and refreshes views even on failure', () => {
+  for (const engineHandle of [7, 0]) {
+    let binding;
+    const fake = createFakeInstance({
+      engineHandle,
+      growDuringCreate: true,
+      onEngineCreate: () => binding.handleMemoryGrowthNotification()
+    });
+    binding = new DspEngineBinding(fake.instance);
+    if (engineHandle) {
+      assert.equal(binding.createEngine(), engineHandle);
+      assert.equal(binding.prepare(48000, 2, 128, 64), 0);
+      assert.equal(binding.live, true);
+    } else {
+      assert.throws(() => binding.createEngine(), /creation failed/);
+    }
+    assert.equal(binding.u8.buffer, fake.memory.buffer);
+    assert.equal(binding.memoryGrowthViolation, false);
+    fake.memory.grow(1);
+    assert.equal(binding.checkMemoryBuffer(), true);
+    assert.equal(binding.memoryGrowthViolation, true);
+  }
 });
 
 test('binding distinguishes preparation growth from unexpected audio-time growth', () => {

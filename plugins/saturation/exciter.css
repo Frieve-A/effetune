@@ -5,9 +5,9 @@
 
 .exciter-plugin-ui .slope-select {
     padding: 2px;
-    background: #333;
-    color: #ccc;
-    border: 1px solid #555;
+    background: var(--et-surface-13);
+    color: var(--et-surface-81);
+    border: 1px solid var(--et-surface-28);
     border-radius: 3px;
     font-size: 12px;
     width: 100%;
@@ -17,12 +17,12 @@
 
 .exciter-plugin-ui .slope-select:focus {
     outline: none;
-    border-color: #777;
+    border-color: var(--et-surface-43);
 }
 
 .exciter-plugin-ui .slope-select option {
-    background: #333;
-    color: #ccc;
+    background: var(--et-surface-13);
+    color: var(--et-surface-81);
     padding: 2px;
 }
 
@@ -45,7 +45,7 @@
 
 .exciter-plugin-ui canvas {
     display: block;
-    border: 1px solid #333;
+    border: 1px solid var(--et-surface-13);
     box-sizing: border-box;
 }
 

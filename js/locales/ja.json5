@@ -490,6 +490,7 @@
   "dialog.config.startupView.effects": "Effect Pipeline (デフォルト)",
   "dialog.config.startupView.library": "Music Library",
   "dialog.config.language": "言語",
+  "dialog.config.theme": "テーマ",
   "dialog.config.language.auto": "自動（ブラウザ設定）",
   "dialog.config.languageRestartNotice": "言語設定を変更した場合はアプリを再起動してください",
   "dialog.config.openHome.title": "OpenHomeリモート操作",
@@ -876,5 +877,7 @@
   "midi.close": "閉じる",
   "midi.source.key": "キー {key}", "midi.source.gamepadButton": "ゲームパッドボタン {number}", "midi.source.gamepadAxis": "ゲームパッド軸 {number}（{mode}）", "midi.source.pitchbend": "ピッチベンド ch {channel}", "midi.source.mcuFader": "MCUフェーダー {channel}", "midi.source.mcuVpot": "MCU V-Pot {number}", "midi.source.mcuButton": "MCUボタン {number}", "midi.source.midi": "{kind} {number} ch {channel}", "midi.source.clock": "時計：{component}・{shape}", "midi.source.timer": "タイマー：{seconds}秒ごと", "midi.source.timer.interval": "タイマー：{seconds}秒ごと", "midi.source.timer.once": "タイマー：{date} {time}に一度", "midi.source.timer.daily": "タイマー：毎日{time}",
   "midi.automation.source": "入力", "midi.automation.source.timer": "タイマー", "midi.automation.source.clock": "時計", "midi.clock.component": "時刻要素", "midi.clock.component.hour": "時", "midi.clock.component.minute": "分", "midi.clock.component.second": "秒", "midi.clock.shape": "変化パターン", "midi.clock.shape.ramp": "上昇", "midi.clock.shape.sin": "サイン", "midi.clock.shape.cos": "コサイン", "midi.timer.schedule": "スケジュール", "midi.timer.schedule.interval": "間隔", "midi.timer.schedule.once": "一度だけ", "midi.timer.schedule.daily": "毎日", "midi.timer.date": "日付", "midi.timer.time": "時刻", "midi.timer.interval": "間隔（秒）", "midi.timer.expired": "期限切れ", "midi.automation.behavior": "動作", "midi.behavior.direct": "指定幅で変更", "midi.behavior.random": "範囲からランダム", "midi.behavior.randomWalk": "現在値からランダムに上下", "midi.automation.amount": "変化量",
+  "midi.device.connected": "接続中",
+  "midi.device.disconnected": "切断状態",
   "midi.target.type": "エフェクト", "midi.target.instance": "対象", "midi.target.parameter": "パラメーター", "midi.direction": "方向", "midi.mode": "モード", "midi.target.masterBypass": "マスターバイパス", "midi.target.abToggle": "A/B切替", "midi.target.enabled": "有効", "midi.parameterNumber": "{title} {number}", "midi.map.minimum": "最小", "midi.map.maximum": "最大", "midi.map.sensitivity": "感度", "midi.direction.increase": "増加（+）", "midi.direction.decrease": "減少（−）", "midi.mode.abs": "絶対値", "midi.mode.rel": "相対値", "midi.mode.rel2c": "相対値（2の補数）", "midi.mode.relBin": "相対値（バイナリオフセット）", "midi.mode.relSign": "相対値（符号＋絶対値）", "midi.buttonMode": "ボタンモード", "midi.buttonMode.toggle": "トグル", "midi.buttonMode.momentary": "モーメンタリー"
 }

@@ -41,6 +41,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+include(plugins/analyzer/note_spectrogram/models.cmake)
+
 add_library(
   pffft STATIC
   vendor/pffft/src/pffft.c
@@ -113,7 +115,7 @@ target_include_directories(
   effetune_dsp_core
   PUBLIC include bindings/generated
   PRIVATE core generated/cpp)
-target_link_libraries(effetune_dsp_core PUBLIC pffft)
+target_link_libraries(effetune_dsp_core PUBLIC pffft effetune_note_models)
 target_compile_definitions(
   effetune_dsp_core
   PRIVATE $<$<BOOL:${ET_SIMD}>:ET_SIMD=1>
@@ -274,6 +276,14 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
   et_add_dsp_test(
     effetune_dsp_spectrogram_tests
     SOURCES plugins/analyzer/spectrogram/native_test.cpp)
+  et_add_dsp_test(
+    effetune_dsp_note_spectrogram_tests
+    SOURCES plugins/analyzer/note_spectrogram/native_test.cpp
+    INCLUDE_DIRS core
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_multi_f0_heap_tree_model_tests
+    SOURCES plugins/analyzer/note_spectrogram/heap_tree_model_test.cpp)
   et_add_dsp_test(
     effetune_dsp_stereo_meter_tests
     SOURCES plugins/analyzer/stereo_meter/native_test.cpp)

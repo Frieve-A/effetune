@@ -1,0 +1,6 @@
+{
+  "type": "NoteSpectrogramPlugin",
+  "parityReference": "production-native-promoted-v1",
+  "tolerance": { "abs": 0.000001, "policy": "per-sample" },
+  "fields": []
+}

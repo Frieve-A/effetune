@@ -491,6 +491,7 @@
   "dialog.config.startupView.effects": "Effect Pipeline (Default)",
   "dialog.config.startupView.library": "Music Library",
   "dialog.config.language": "Language",
+  "dialog.config.theme": "Theme",
   "dialog.config.language.auto": "Auto (Browser)",
   "dialog.config.languageRestartNotice": "If you changed the language setting, please restart the app.",
   "dialog.config.openHome.title": "OpenHome remote control",
@@ -877,5 +878,7 @@
   "midi.close": "Close",
   "midi.source.key": "Key {key}", "midi.source.gamepadButton": "Gamepad button {number}", "midi.source.gamepadAxis": "Gamepad axis {number} ({mode})", "midi.source.pitchbend": "Pitch bend ch {channel}", "midi.source.mcuFader": "MCU fader {channel}", "midi.source.mcuVpot": "MCU V-Pot {number}", "midi.source.mcuButton": "MCU button {number}", "midi.source.midi": "{kind} {number} ch {channel}", "midi.source.clock": "Clock: {component}, {shape}", "midi.source.timer": "Timer: every {seconds} s", "midi.source.timer.interval": "Timer: every {seconds} s", "midi.source.timer.once": "Timer: once on {date} at {time}", "midi.source.timer.daily": "Timer: daily at {time}",
   "midi.automation.source": "Source", "midi.automation.source.timer": "Timer", "midi.automation.source.clock": "Clock", "midi.clock.component": "Time part", "midi.clock.component.hour": "Hour", "midi.clock.component.minute": "Minute", "midi.clock.component.second": "Second", "midi.clock.shape": "Wave", "midi.clock.shape.ramp": "Rising", "midi.clock.shape.sin": "Sine", "midi.clock.shape.cos": "Cosine", "midi.timer.schedule": "Schedule", "midi.timer.schedule.interval": "Interval", "midi.timer.schedule.once": "Once", "midi.timer.schedule.daily": "Daily", "midi.timer.date": "Date", "midi.timer.time": "Time", "midi.timer.interval": "Interval (seconds)", "midi.timer.expired": "Expired", "midi.automation.behavior": "Action", "midi.behavior.direct": "Change by amount", "midi.behavior.random": "Random value in range", "midi.behavior.randomWalk": "Random step from current value", "midi.automation.amount": "Amount",
+  "midi.device.connected": "Connected",
+  "midi.device.disconnected": "Disconnected",
   "midi.target.type": "Effect", "midi.target.instance": "Instance", "midi.target.parameter": "Parameter", "midi.direction": "Direction", "midi.mode": "Mode", "midi.target.masterBypass": "Master Bypass", "midi.target.abToggle": "A/B Toggle", "midi.target.enabled": "Enabled", "midi.parameterNumber": "{title} {number}", "midi.map.minimum": "Min", "midi.map.maximum": "Max", "midi.map.sensitivity": "Sensitivity", "midi.direction.increase": "Increase (+)", "midi.direction.decrease": "Decrease (−)", "midi.mode.abs": "Absolute", "midi.mode.rel": "Relative", "midi.mode.rel2c": "Relative (two's complement)", "midi.mode.relBin": "Relative (binary offset)", "midi.mode.relSign": "Relative (sign and magnitude)", "midi.buttonMode": "Button Mode", "midi.buttonMode.toggle": "Toggle", "midi.buttonMode.momentary": "Momentary"
 }

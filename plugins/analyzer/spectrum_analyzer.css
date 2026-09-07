@@ -12,7 +12,7 @@
 }
 
 .plugin-parameter-ui canvas {
-    background-color: #1a1a1a;
+    background-color: var(--et-graph-bg-deep);
 }
 
 .plugin-parameter-ui .analyzer-reset-button {
@@ -20,15 +20,15 @@
     top: 10px;
     right: 10px;
     padding: 5px 15px;
-    background-color: #444;
-    color: #fff;
+    background-color: var(--et-surface-20);
+    color: var(--et-text-primary);
     border: none;
     border-radius: 3px;
     cursor: pointer;
 }
 
 .plugin-parameter-ui .analyzer-reset-button:hover {
-    background-color: #555;
+    background-color: var(--et-surface-28);
 }
 
 body.layout-mobile .plugin-parameter-ui .analyzer-reset-button {

@@ -15,7 +15,7 @@ export class EventManager {
         };
         
         // Setup user activity detection
-        this.setupUserActivityDetection();
+        if (!audioManager.runtimeOptions?.externalInput) this.setupUserActivityDetection();
     }
     
     /**

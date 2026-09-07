@@ -10,10 +10,6 @@
     const MODE_OFF = 'off';
     const MODE_AFTER = 'after';
     const MODE_COMPARE = 'compare';
-    const AFTER_STROKE = 'rgba(140,190,255,0.55)';
-    const COMPARE_STROKE = 'rgba(190,190,190,0.9)';
-    const POSITIVE_FILL = 'rgba(255,190,140,0.55)';
-    const NEGATIVE_FILL = AFTER_STROKE;
     const instances = new Map();
     const sessionModes = new Map();
 
@@ -379,9 +375,9 @@
             }
             if (this.mode === MODE_COMPARE && this.inputLevels) {
                 this._drawDifference(ctx, this.inputLevels, this.levels);
-                this._drawSpectrum(ctx, this.levels, COMPARE_STROKE);
+                this._drawSpectrum(ctx, this.levels, (window.ThemePalette?.get('graph-overlay-compare') ?? ''));
             } else {
-                this._drawSpectrum(ctx, this.levels, AFTER_STROKE);
+                this._drawSpectrum(ctx, this.levels, (window.ThemePalette?.get('graph-overlay-after') ?? ''));
             }
             this._drawScale(ctx);
         }
@@ -530,7 +526,7 @@
             }
             if (Number.isFinite(startCrossX)) ctx.lineTo(startCrossX, startCrossY);
             ctx.closePath();
-            ctx.fillStyle = sign > 0 ? POSITIVE_FILL : NEGATIVE_FILL;
+            ctx.fillStyle = sign > 0 ? (window.ThemePalette?.get('graph-overlay-positive') ?? '') : (window.ThemePalette?.get('graph-overlay-after') ?? '');
             ctx.fill();
         }
 
@@ -547,7 +543,7 @@
             const dpr = window.devicePixelRatio || 1;
             const { tickFontSize, axisFontSize } = this.target;
             ctx.font = `${tickFontSize * dpr}px Arial`;
-            ctx.fillStyle = 'rgba(140,190,255,0.8)';
+            ctx.fillStyle = window.ThemePalette?.get('graph-overlay-label') ?? '';
             ctx.textAlign = 'right';
             ctx.textBaseline = 'middle';
             for (let level = -24; level > DYNAMIC_RANGE_DB; level -= 24) {

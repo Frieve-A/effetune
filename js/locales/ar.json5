@@ -429,6 +429,7 @@
   "dialog.config.startupView.effects": "Effect Pipeline (افتراضي)",
   "dialog.config.startupView.library": "مكتبة الموسيقى",
   "dialog.config.language": "اللغة",
+  "dialog.config.theme": "السمة",
   "dialog.config.language.auto": "تلقائي (إعدادات المتصفح)",
   "dialog.config.languageRestartNotice": "إذا غيّرت إعداد اللغة، فيرجى إعادة تشغيل التطبيق.",
   "dialog.config.openHome.title": "التحكم عن بُعد عبر OpenHome",
@@ -803,5 +804,7 @@
   "midi.source.key": "المفتاح {key}", "midi.source.gamepadButton": "زر ذراع الألعاب {number}", "midi.source.gamepadAxis": "محور ذراع الألعاب {number} ({mode})", "midi.source.pitchbend": "انحناء النغمة ch {channel}", "midi.source.mcuFader": "منزلق MCU {channel}", "midi.source.mcuVpot": "MCU V-Pot {number}", "midi.source.mcuButton": "زر MCU {number}", "midi.source.midi": "{kind} {number} ch {channel}",
   "midi.source.clock": "الساعة: {component}، {shape}", "midi.source.timer": "المؤقت: كل {seconds} ث", "midi.automation.source": "المصدر", "midi.automation.source.timer": "المؤقت", "midi.automation.source.clock": "الساعة", "midi.clock.component": "جزء الوقت", "midi.clock.component.hour": "الساعة", "midi.clock.component.minute": "الدقيقة", "midi.clock.component.second": "الثانية", "midi.clock.shape": "الموجة", "midi.clock.shape.ramp": "صاعد", "midi.clock.shape.sin": "جيبية", "midi.clock.shape.cos": "جيب التمام", "midi.timer.interval": "الفاصل (بالثواني)", "midi.automation.behavior": "الإجراء", "midi.behavior.direct": "تغيير بمقدار", "midi.behavior.random": "قيمة عشوائية ضمن النطاق", "midi.behavior.randomWalk": "خطوة عشوائية من القيمة الحالية", "midi.automation.amount": "المقدار",
   "midi.source.timer.interval": "المؤقت: كل {seconds} ث", "midi.source.timer.once": "المؤقت: مرة في {date} عند {time}", "midi.source.timer.daily": "المؤقت: يوميًا عند {time}", "midi.timer.schedule": "الجدول", "midi.timer.schedule.interval": "فاصل", "midi.timer.schedule.once": "مرة واحدة", "midi.timer.schedule.daily": "يوميًا", "midi.timer.date": "التاريخ", "midi.timer.time": "الوقت", "midi.timer.expired": "منتهي",
+  "midi.device.connected": "متصل",
+  "midi.device.disconnected": "غير متصل",
   "midi.target.type": "المؤثر", "midi.target.instance": "النسخة", "midi.target.parameter": "المعامل", "midi.direction": "الاتجاه", "midi.mode": "الوضع", "midi.target.masterBypass": "تجاوز رئيسي", "midi.target.abToggle": "تبديل A/B", "midi.target.enabled": "مفعّل", "midi.parameterNumber": "{title} {number}", "midi.map.minimum": "الحد الأدنى", "midi.map.maximum": "الحد الأقصى", "midi.map.sensitivity": "الحساسية", "midi.direction.increase": "زيادة (+)", "midi.direction.decrease": "خفض (−)", "midi.mode.abs": "مطلق", "midi.mode.rel": "نسبي", "midi.mode.rel2c": "نسبي (المتمم الثنائي)", "midi.mode.relBin": "نسبي (إزاحة ثنائية)", "midi.mode.relSign": "نسبي (إشارة ومقدار)", "midi.buttonMode": "وضع الزر", "midi.buttonMode.toggle": "تبديل", "midi.buttonMode.momentary": "لحظي"
 }

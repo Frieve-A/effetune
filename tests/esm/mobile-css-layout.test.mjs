@@ -152,6 +152,21 @@ test('mobile effect list keeps effect items at the fixed minimum column width', 
   assert.doesNotMatch(rule, /1fr/, 'mobile effect items should not stretch to fill leftover row width');
 });
 
+test('Multiband Transient keeps all three graphs on one desktop row', () => {
+  const css = readCss('../../plugins/dynamics/multiband_transient.css');
+  const graphsRule = getRule(css, '.mbt-transfer-graphs');
+  const graphRule = getRule(css, '.mbt-band-graph');
+  const mobileGraphsRule = getRule(css, 'body.layout-mobile .mbt-transfer-graphs');
+  const mobileGraphRule = getRule(css, 'body.layout-mobile .mbt-band-graph');
+
+  assert.match(graphsRule, /display:\s*flex;/);
+  assert.match(graphsRule, /flex-wrap:\s*nowrap;/, 'desktop graphs should stay on one row');
+  assert.match(graphRule, /flex:\s*1 1 0;/, 'desktop graphs should share the row equally');
+  assert.match(graphRule, /min-width:\s*0;/, 'desktop graphs should be allowed to shrink equally');
+  assert.match(mobileGraphsRule, /flex-wrap:\s*wrap;/, 'mobile graphs should remain stacked');
+  assert.match(mobileGraphRule, /flex:\s*1 1 100%;/, 'mobile graphs should occupy full rows');
+});
+
 test('mobile player keeps scrolling inside the player pane', () => {
   const css = readCss('../../effetune-mobile.css');
   const bodyRule = getRule(css, 'body.layout-mobile.view-player {');

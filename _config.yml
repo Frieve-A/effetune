@@ -63,6 +63,7 @@ exclude:
   - dist/
   - dsp/
   - electron/
+  - extension/
   - eslint.config.mjs
   - node_modules/
   - out/

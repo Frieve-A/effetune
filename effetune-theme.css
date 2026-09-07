@@ -1,0 +1,265 @@
+:root {
+    --et-color-scheme: dark;
+    --et-base: #171717;
+    --et-text-primary: #f6f8fb;
+    --et-accent: #4a9eff;
+    --et-success: #4CAF50;
+    --et-danger: #ff6b6b;
+    --et-warning: #d6a23a;
+    --et-graph-base: #1a1a1a;
+    --et-graph-trace: #00ff00;
+    --et-graph-label: #666666;
+    --et-graph-bg-deep: #000000;
+
+    --et-surface-1: color-mix(in srgb, var(--et-base), var(--et-text-primary) 1%);
+    --et-surface-2: color-mix(in srgb, var(--et-base), var(--et-text-primary) 2%);
+    --et-surface-3: color-mix(in srgb, var(--et-base), var(--et-text-primary) 3%);
+    --et-surface-4: color-mix(in srgb, var(--et-base), var(--et-text-primary) 4%);
+    --et-surface-5: color-mix(in srgb, var(--et-base), var(--et-text-primary) 5%);
+    --et-surface-6: color-mix(in srgb, var(--et-base), var(--et-text-primary) 6%);
+    --et-surface-7: color-mix(in srgb, var(--et-base), var(--et-text-primary) 7%);
+    --et-surface-8: color-mix(in srgb, var(--et-base), var(--et-text-primary) 8%);
+    --et-surface-9: color-mix(in srgb, var(--et-base), var(--et-text-primary) 9%);
+    --et-surface-10: color-mix(in srgb, var(--et-base), var(--et-text-primary) 10%);
+    --et-surface-11: color-mix(in srgb, var(--et-base), var(--et-text-primary) 11%);
+    --et-surface-13: color-mix(in srgb, var(--et-base), var(--et-text-primary) 13%);
+    --et-surface-14: color-mix(in srgb, var(--et-base), var(--et-text-primary) 14%);
+    --et-surface-15: color-mix(in srgb, var(--et-base), var(--et-text-primary) 15%);
+    --et-surface-17: color-mix(in srgb, var(--et-base), var(--et-text-primary) 17%);
+    --et-surface-18: color-mix(in srgb, var(--et-base), var(--et-text-primary) 18%);
+    --et-surface-19: color-mix(in srgb, var(--et-base), var(--et-text-primary) 19%);
+    --et-surface-20: color-mix(in srgb, var(--et-base), var(--et-text-primary) 20%);
+    --et-surface-21: color-mix(in srgb, var(--et-base), var(--et-text-primary) 21%);
+    --et-surface-22: color-mix(in srgb, var(--et-base), var(--et-text-primary) 22%);
+    --et-surface-23: color-mix(in srgb, var(--et-base), var(--et-text-primary) 23%);
+    --et-surface-24: color-mix(in srgb, var(--et-base), var(--et-text-primary) 24%);
+    --et-surface-26: color-mix(in srgb, var(--et-base), var(--et-text-primary) 26%);
+    --et-surface-27: color-mix(in srgb, var(--et-base), var(--et-text-primary) 27%);
+    --et-surface-28: color-mix(in srgb, var(--et-base), var(--et-text-primary) 28%);
+    --et-surface-31: color-mix(in srgb, var(--et-base), var(--et-text-primary) 31%);
+    --et-surface-32: color-mix(in srgb, var(--et-base), var(--et-text-primary) 32%);
+    --et-surface-33: color-mix(in srgb, var(--et-base), var(--et-text-primary) 33%);
+    --et-surface-34: color-mix(in srgb, var(--et-base), var(--et-text-primary) 34%);
+    --et-surface-35: color-mix(in srgb, var(--et-base), var(--et-text-primary) 35%);
+    --et-surface-38: color-mix(in srgb, var(--et-base), var(--et-text-primary) 38%);
+    --et-surface-39: color-mix(in srgb, var(--et-base), var(--et-text-primary) 39%);
+    --et-surface-42: color-mix(in srgb, var(--et-base), var(--et-text-primary) 42%);
+    --et-surface-43: color-mix(in srgb, var(--et-base), var(--et-text-primary) 43%);
+    --et-surface-45: color-mix(in srgb, var(--et-base), var(--et-text-primary) 45%);
+    --et-surface-47: color-mix(in srgb, var(--et-base), var(--et-text-primary) 47%);
+    --et-surface-51: color-mix(in srgb, var(--et-base), var(--et-text-primary) 51%);
+    --et-surface-55: color-mix(in srgb, var(--et-base), var(--et-text-primary) 55%);
+    --et-surface-58: color-mix(in srgb, var(--et-base), var(--et-text-primary) 58%);
+    --et-surface-61: color-mix(in srgb, var(--et-base), var(--et-text-primary) 61%);
+    --et-surface-66: color-mix(in srgb, var(--et-base), var(--et-text-primary) 66%);
+    --et-surface-72: color-mix(in srgb, var(--et-base), var(--et-text-primary) 72%);
+    --et-surface-74: color-mix(in srgb, var(--et-base), var(--et-text-primary) 74%);
+    --et-surface-81: color-mix(in srgb, var(--et-base), var(--et-text-primary) 81%);
+    --et-surface-86: color-mix(in srgb, var(--et-base), var(--et-text-primary) 86%);
+    --et-surface-89: color-mix(in srgb, var(--et-base), var(--et-text-primary) 89%);
+    --et-surface-90: color-mix(in srgb, var(--et-base), var(--et-text-primary) 90%);
+    --et-surface-93: color-mix(in srgb, var(--et-base), var(--et-text-primary) 93%);
+    --et-surface-96: color-mix(in srgb, var(--et-base), var(--et-text-primary) 96%);
+    --et-surface-97: color-mix(in srgb, var(--et-base), var(--et-text-primary) 97%);
+    --et-surface-98: color-mix(in srgb, var(--et-base), var(--et-text-primary) 98%);
+    --et-surface-veil: color-mix(in srgb, var(--et-base) 35%, transparent);
+
+    --et-text-secondary: color-mix(in srgb, var(--et-text-primary), var(--et-base) 22%);
+    --et-text-muted: color-mix(in srgb, var(--et-text-primary), var(--et-base) 44%);
+    --et-border-subtle: color-mix(in srgb, var(--et-text-primary) 7.5%, transparent);
+    --et-border-strong: color-mix(in srgb, var(--et-text-primary) 14%, transparent);
+    --et-border-solid: var(--et-surface-20);
+    --et-accent-hover: color-mix(in srgb, var(--et-accent), #fff 14%);
+    --et-accent-pressed: color-mix(in srgb, var(--et-accent), #000 13%);
+    --et-accent-glow: color-mix(in srgb, var(--et-accent) 26%, transparent);
+    --et-accent-soft: color-mix(in srgb, var(--et-accent) 10%, transparent);
+    --et-accent-outline: color-mix(in srgb, var(--et-accent) 50%, transparent);
+    --et-danger-soft: color-mix(in srgb, var(--et-danger) 10%, transparent);
+
+    --et-graph-base-soft: color-mix(in srgb, var(--et-graph-base), var(--et-text-primary) 4%);
+    --et-graph-grid-subtle: color-mix(in srgb, var(--et-graph-base), var(--et-text-primary) 11%);
+    --et-graph-grid: color-mix(in srgb, var(--et-graph-base), var(--et-text-primary) 19%);
+    --et-graph-grid-strong: color-mix(in srgb, var(--et-graph-base), var(--et-text-primary) 27%);
+    --et-graph-grid-soft: color-mix(in srgb, var(--et-text-primary) 20%, transparent);
+    --et-graph-label-strong: color-mix(in srgb, var(--et-graph-base), var(--et-text-primary) 80%);
+    --et-graph-label-soft: color-mix(in srgb, var(--et-text-primary) 50%, transparent);
+    --et-graph-axis-title: var(--et-text-primary);
+    --et-graph-trace-secondary: color-mix(in srgb, var(--et-graph-base), var(--et-text-primary) 67%);
+    --et-graph-trace-tertiary: color-mix(in srgb, var(--et-graph-base), var(--et-text-primary) 46%);
+    --et-graph-trace-fill: color-mix(in srgb, var(--et-graph-trace), #000 50%);
+    --et-graph-trace-soft: color-mix(in srgb, var(--et-graph-trace) 15%, transparent);
+    --et-graph-base-veil: color-mix(in srgb, var(--et-graph-base) 88%, transparent);
+    --et-graph-marker: var(--et-danger);
+    --et-graph-handle: color-mix(in srgb, var(--et-graph-trace) 80%, transparent);
+    --et-graph-handle-active: var(--et-graph-trace);
+    --et-graph-overlay-after: color-mix(in srgb, var(--et-accent) 55%, transparent);
+    --et-graph-overlay-compare: color-mix(in srgb, var(--et-text-primary) 90%, transparent);
+    --et-graph-overlay-positive: color-mix(in srgb, var(--et-warning) 55%, transparent);
+    --et-graph-overlay-label: color-mix(in srgb, var(--et-accent) 80%, transparent);
+    --et-graph-tone-13: color-mix(in srgb, var(--et-graph-base), var(--et-text-primary) 13%);
+    --et-graph-tone-15: color-mix(in srgb, var(--et-graph-base), var(--et-text-primary) 15%);
+    --et-graph-tone-22: color-mix(in srgb, var(--et-graph-base), var(--et-text-primary) 22%);
+    --et-graph-tone-50: color-mix(in srgb, var(--et-graph-base), var(--et-text-primary) 50%);
+    --et-graph-tone-56: color-mix(in srgb, var(--et-graph-base), var(--et-text-primary) 56%);
+    --et-graph-tone-58: color-mix(in srgb, var(--et-graph-base), var(--et-text-primary) 58%);
+    --et-graph-tone-65: color-mix(in srgb, var(--et-graph-base), var(--et-text-primary) 65%);
+    --et-graph-tone-89: color-mix(in srgb, var(--et-graph-base), var(--et-text-primary) 89%);
+    --et-graph-tone-97: color-mix(in srgb, var(--et-graph-base), var(--et-text-primary) 97%);
+
+    --et-surface-gloss: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 44px);
+    --et-inset-background: color-mix(in srgb, var(--et-graph-base-soft), var(--et-graph-bg-deep) 25%);
+    --et-panel-gradient: linear-gradient(180deg, rgba(255, 255, 255, 0.042), rgba(255, 255, 255, 0) 42px), linear-gradient(145deg, color-mix(in srgb, var(--et-surface-11), var(--et-graph-bg-deep) 25%), color-mix(in srgb, var(--et-surface-8), var(--et-graph-bg-deep) 25%));
+    --et-card-gradient: linear-gradient(180deg, color-mix(in srgb, var(--et-surface-19), var(--et-graph-bg-deep) 25%), color-mix(in srgb, var(--et-surface-15), var(--et-graph-bg-deep) 25%));
+    --et-card-hover-gradient: linear-gradient(180deg, color-mix(in srgb, var(--et-surface-23), var(--et-graph-bg-deep) 25%), color-mix(in srgb, var(--et-surface-18), var(--et-graph-bg-deep) 25%));
+    --et-control-gradient: linear-gradient(180deg, var(--et-surface-28), var(--et-surface-22));
+    --et-control-hover-gradient: linear-gradient(180deg, var(--et-surface-34), var(--et-surface-27));
+    --et-control-active-gradient: linear-gradient(180deg, var(--et-surface-38), var(--et-surface-31));
+    --et-input-gradient: linear-gradient(180deg, var(--et-surface-18), var(--et-surface-14));
+    --et-toggle-on-gradient: linear-gradient(180deg, color-mix(in srgb, var(--et-success), var(--et-base) 30%), color-mix(in srgb, var(--et-success), var(--et-base) 45%));
+    --et-panel-shadow: 0 14px 36px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.055), inset 0 0 0 1px rgba(255, 255, 255, 0.035);
+    --et-card-shadow: 0 6px 18px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.045), inset 0 0 0 1px rgba(255, 255, 255, 0.028);
+    --et-control-shadow: 0 2px 7px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.075);
+    --et-control-hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+    --et-focus-ring: 0 0 0 2px color-mix(in srgb, var(--et-accent) 18%, transparent), 0 0 18px color-mix(in srgb, var(--et-accent) 16%, transparent);
+    --et-title-icon-filter: drop-shadow(0 3px 9px color-mix(in srgb, var(--et-accent) 26%, transparent));
+    --et-scrim: rgba(0, 0, 0, 0.7);
+    --et-on-accent: #fff;
+    --et-on-status: var(--et-base);
+    --et-transition-fast: 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    --et-transition-medium: 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+
+    color-scheme: var(--et-color-scheme);
+}
+
+html:not([data-theme]),
+html[data-theme="graphite"] {
+    --et-accent-hover: #5db3ff; /* theme-default-override: the legacy blue is not reachable from the accent key within tolerance. */
+    --et-graph-marker: #ff3333; /* theme-default-override: the legacy marker differs from the danger key. */
+    --et-graph-handle: rgba(120, 220, 120, 0.8); /* theme-default-override: the legacy handle uses a separate green tint. */
+    --et-graph-overlay-after: rgba(140, 190, 255, 0.55); /* theme-default-override: the legacy overlay uses a separate blue tint. */
+    --et-graph-overlay-compare: rgba(190, 190, 190, 0.9); /* theme-default-override: the legacy overlay uses a separate gray tint. */
+    --et-graph-overlay-positive: rgba(255, 190, 140, 0.55); /* theme-default-override: the legacy overlay uses a separate warm tint. */
+    --et-graph-overlay-label: rgba(140, 190, 255, 0.8); /* theme-default-override: the legacy label uses a separate blue tint. */
+}
+
+html[data-theme="paper"] {
+    --et-color-scheme: light;
+    --et-base: #f4f4f4;
+    --et-text-primary: #1a1a1a;
+    --et-accent: #1a73e8;
+    --et-success: #2e7d32;
+    --et-danger: #c62828;
+    --et-warning: #b26a00;
+    --et-graph-base: #fafafa;
+    --et-graph-trace: #008000;
+    --et-graph-label: #666666;
+    --et-graph-bg-deep: #ffffff;
+    --et-toggle-on-gradient: linear-gradient(180deg, var(--et-success), var(--et-success));
+}
+
+html[data-theme="midnight"] {
+    --et-color-scheme: dark;
+    --et-base: #0f1728;
+    --et-text-primary: #e6edf7;
+    --et-accent: #38bdf8;
+    --et-success: #4ade80;
+    --et-danger: #f87171;
+    --et-warning: #fbbf24;
+    --et-graph-base: #111a2e;
+    --et-graph-trace: #2ee6a6;
+    --et-graph-label: #7d8aa3;
+    --et-graph-bg-deep: #070b14;
+    --et-toggle-on-gradient: linear-gradient(180deg, color-mix(in srgb, var(--et-success), var(--et-base) 55%), color-mix(in srgb, var(--et-success), var(--et-base) 65%));
+}
+
+html[data-theme="ember"] {
+    --et-color-scheme: dark;
+    --et-base: #1c1613;
+    --et-text-primary: #f5ede4;
+    --et-accent: #ff9f43;
+    --et-success: #7cc47a;
+    --et-danger: #ff7b6b;
+    --et-warning: #ffd166;
+    --et-graph-base: #201915;
+    --et-graph-trace: #ffcf40;
+    --et-graph-label: #8a7a6e;
+    --et-graph-bg-deep: #0d0a08;
+    --et-toggle-on-gradient: linear-gradient(180deg, color-mix(in srgb, var(--et-success), var(--et-base) 40%), color-mix(in srgb, var(--et-success), var(--et-base) 55%));
+}
+
+html[data-theme="mint"] {
+    --et-color-scheme: light;
+    --et-base: #eef6f1;
+    --et-text-primary: #14261c;
+    --et-accent: #0f766e;
+    --et-success: #2e7d32;
+    --et-danger: #c62828;
+    --et-warning: #b26a00;
+    --et-graph-base: #f7fbf8;
+    --et-graph-trace: #0a7a2f;
+    --et-graph-label: #5f6f66;
+    --et-graph-bg-deep: #ffffff;
+    --et-toggle-on-gradient: linear-gradient(180deg, var(--et-success), var(--et-success));
+}
+
+html[data-theme="midnight"],
+html[data-theme="ember"] {
+    --et-panel-gradient: linear-gradient(180deg, rgba(255, 255, 255, 0.042), rgba(255, 255, 255, 0) 42px), linear-gradient(145deg, color-mix(in srgb, var(--et-surface-8), var(--et-graph-bg-deep) 25%), color-mix(in srgb, var(--et-surface-5), var(--et-graph-bg-deep) 25%));
+    --et-card-gradient: linear-gradient(180deg, color-mix(in srgb, var(--et-surface-11), var(--et-graph-bg-deep) 25%), color-mix(in srgb, var(--et-surface-8), var(--et-graph-bg-deep) 25%));
+    --et-card-hover-gradient: linear-gradient(180deg, color-mix(in srgb, var(--et-surface-15), var(--et-graph-bg-deep) 25%), color-mix(in srgb, var(--et-surface-11), var(--et-graph-bg-deep) 25%));
+}
+
+
+html[data-theme="paper"],
+html[data-theme="mint"] {
+    --et-title-icon-filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--et-accent-pressed) 65%, transparent)) drop-shadow(0 3px 9px color-mix(in srgb, var(--et-accent-pressed) 55%, transparent));
+    --et-panel-gradient: linear-gradient(180deg, rgba(255, 255, 255, 0.042), rgba(255, 255, 255, 0) 42px), linear-gradient(145deg, color-mix(in srgb, var(--et-surface-8), var(--et-graph-bg-deep) 42%), color-mix(in srgb, var(--et-surface-5), var(--et-graph-bg-deep) 42%));
+    --et-card-gradient: linear-gradient(180deg, color-mix(in srgb, var(--et-surface-11), var(--et-graph-bg-deep) 42%), color-mix(in srgb, var(--et-surface-8), var(--et-graph-bg-deep) 42%));
+    --et-card-hover-gradient: linear-gradient(180deg, color-mix(in srgb, var(--et-surface-15), var(--et-graph-bg-deep) 42%), color-mix(in srgb, var(--et-surface-11), var(--et-graph-bg-deep) 42%));
+    --et-control-gradient: linear-gradient(180deg, color-mix(in srgb, var(--et-surface-28), var(--et-graph-bg-deep) 45%), color-mix(in srgb, var(--et-surface-22), var(--et-graph-bg-deep) 45%));
+    --et-control-hover-gradient: linear-gradient(180deg, color-mix(in srgb, var(--et-surface-34), var(--et-graph-bg-deep) 45%), color-mix(in srgb, var(--et-surface-27), var(--et-graph-bg-deep) 45%));
+    --et-control-active-gradient: linear-gradient(180deg, color-mix(in srgb, var(--et-surface-38), var(--et-graph-bg-deep) 45%), color-mix(in srgb, var(--et-surface-31), var(--et-graph-bg-deep) 45%));
+    --et-input-gradient: linear-gradient(180deg, color-mix(in srgb, var(--et-surface-18), var(--et-graph-bg-deep) 45%), color-mix(in srgb, var(--et-surface-14), var(--et-graph-bg-deep) 45%));
+    --et-panel-shadow: 0 14px 36px rgba(0, 0, 0, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.055), inset 0 0 0 1px rgba(255, 255, 255, 0.035);
+    --et-card-shadow: 0 6px 18px rgba(0, 0, 0, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.045), inset 0 0 0 1px rgba(255, 255, 255, 0.028);
+    --et-control-shadow: 0 2px 7px rgba(0, 0, 0, 0.09), inset 0 1px 0 rgba(255, 255, 255, 0.075);
+    --et-control-hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+
+button,
+select,
+option,
+optgroup,
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"],
+input[type="number"],
+input[type="search"] {
+    color-scheme: var(--et-color-scheme);
+}
+
+html {
+    background: radial-gradient(circle at 22px 0, color-mix(in srgb, var(--et-accent) 10%, transparent), transparent 340px), linear-gradient(145deg, var(--et-surface-4), var(--et-surface-1) 62%, var(--et-base));
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    background-size: cover;
+}
+
+body {
+    background: radial-gradient(circle at 38px 0, color-mix(in srgb, var(--et-accent) 8%, transparent), transparent 360px), linear-gradient(145deg, var(--et-surface-4), var(--et-surface-2) 58%, var(--et-base));
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    background-size: cover;
+    color: var(--et-text-primary);
+    -webkit-font-smoothing: antialiased;
+}
+
+html[data-theme="paper"],
+html[data-theme="mint"],
+html[data-theme="paper"] body,
+html[data-theme="mint"] body {
+    background: radial-gradient(circle at 38px 0, color-mix(in srgb, var(--et-accent) 6%, transparent), transparent 360px), linear-gradient(145deg, color-mix(in srgb, var(--et-surface-4), var(--et-graph-bg-deep) 30%), color-mix(in srgb, var(--et-surface-2), var(--et-graph-bg-deep) 30%) 58%, color-mix(in srgb, var(--et-base), var(--et-graph-bg-deep) 30%));
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    background-size: cover;
+}

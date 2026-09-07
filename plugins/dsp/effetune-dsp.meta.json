@@ -1,11 +1,11 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:b34375d4b792be35b9568443f4d02e82f53416c147d6d0ee194cd381929025ca",
+  "sourceDigest": "sha256:ab978084a739baf2d6f0b2dfab02f1a8b3b259e3d117028e735252888e40c74d",
   "emsdkVersion": "6.0.2",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:e7e32b3616dc0bafdee4e807e9aceae8d4afe1aeb2bf41346aa0c8255a26a8e7",
+    "digest": "sha256:0a3e7c36d1e8bf8b6b28ea2716b25b23e322575b214ef720236488aa627f8514",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
@@ -130,17 +130,17 @@
       {
         "id": "js/audio/dsp-engine-binding.js",
         "kind": "file",
-        "sha256": "sha256:4c0efb5c75ee0c051ba2fc0804f908d61363d077fec95f86f5b390a8eb031cc9"
+        "sha256": "sha256:9170a7449b2ef298d0f4cfc7ce1c04b8ddffcf4c42b2ed2923df459b5c5f4cca"
       },
       {
         "id": "production-build#g726-resolved-authority",
         "kind": "derived",
-        "sha256": "sha256:872376fbba212753fe6283376ec83125c55906cf51b746cebae39882acc2490d"
+        "sha256": "sha256:2ca9dd1e894b53f50680461b52d5b6d87a426d798f0fca78ec1703e5bc64e292"
       },
       {
         "id": "production-build#g726-source-authority",
         "kind": "derived",
-        "sha256": "sha256:2f0ae13c16cc15cd2953365a24f94d90cbe00ce65a525368a67a6855459affed"
+        "sha256": "sha256:c3ba72f659ad95930a1405d0269cc0cf92ef8ccf7b0ac87b84def93a1f281b1c"
       },
       {
         "id": "tools/dsp-parity/cases.mjs",
@@ -181,7 +181,7 @@
           "set_target_properties(pffft PROPERTIES POSITION_INDEPENDENT_CODE ON)",
           "target_link_libraries(pffft PUBLIC m)",
           "target_include_directories( effetune_dsp_core PUBLIC include bindings/generated PRIVATE core generated/cpp)",
-          "target_link_libraries(effetune_dsp_core PUBLIC pffft)",
+          "target_link_libraries(effetune_dsp_core PUBLIC pffft effetune_note_models)",
           "target_compile_definitions( effetune_dsp_core PRIVATE $<$<BOOL:${ET_SIMD}>:ET_SIMD=1> $<$<BOOL:${ET_DEBUG_STATE}>:ET_DEBUG_STATE=1> $<$<CONFIG:Debug>:ET_DEBUG_BUILD=1> $<$<CONFIG:Debug>:ET_ALLOCATION_GUARD=1> $<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:ET_WRAP_MALLOC=1> $<$<BOOL:${BUILD_TESTING}>:ET_ENABLE_TEST_KERNEL=1>)",
           "target_link_options( effetune_dsp_core INTERFACE $<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-Wl,--wrap=malloc>)",
           "target_compile_options(effetune_dsp_core PRIVATE /W4 /WX /GR-)",
@@ -222,7 +222,7 @@
             "-DBUILD_TESTING=OFF"
           ]
         },
-        "digest": "sha256:c2ea8f18f42afd6375341c9df08f4f21ef57a44875f540126eef084101ddef99"
+        "digest": "sha256:080044043c3ad5e8b4d6c7811ad1c0622550b6c6493d6f257caa98d422ac5c98"
       },
       "resolved": {
         "source": "configured CMake Ninja compile/link edges",
@@ -255,55 +255,55 @@
                 "source": "dsp/core/abi.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft -I<build>/note-models -I<repo>/dsp/plugins/analyzer/note_spectrogram"
               },
               {
                 "source": "dsp/core/allocation_guard.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft -I<build>/note-models -I<repo>/dsp/plugins/analyzer/note_spectrogram"
               },
               {
                 "source": "dsp/core/arena.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft -I<build>/note-models -I<repo>/dsp/plugins/analyzer/note_spectrogram"
               },
               {
                 "source": "dsp/core/engine.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft -I<build>/note-models -I<repo>/dsp/plugins/analyzer/note_spectrogram"
               },
               {
                 "source": "dsp/core/registry.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft -I<build>/note-models -I<repo>/dsp/plugins/analyzer/note_spectrogram"
               },
               {
                 "source": "dsp/core/telemetry.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft -I<build>/note-models -I<repo>/dsp/plugins/analyzer/note_spectrogram"
               },
               {
                 "source": "dsp/plugins/lofi/g726_adpcm_simulator/kernel.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft -I<build>/note-models -I<repo>/dsp/plugins/analyzer/note_spectrogram"
               },
               {
                 "source": "dsp/wasm/no_entry.cpp",
                 "definitions": "-DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/vendor/pffft/include/pffft -I<build>/note-models -I<repo>/dsp/plugins/analyzer/note_spectrogram"
               }
             ],
             "linkCommand": {
               "flags": "-O3 -DNDEBUG",
               "options": "--no-entry -sSTANDALONE_WASM=1 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=8388608 -sMAXIMUM_MEMORY=268435456 -sEXPORTED_FUNCTIONS=@<repo>/dsp/exports.txt -fwasm-exceptions -O3 -flto",
-              "libraries": "libeffetune_dsp_core.a libpffft.a -lm"
+              "libraries": "libeffetune_dsp_core.a libpffft.a -lm libeffetune_note_models.a"
             }
           },
           "simd": {
@@ -334,65 +334,71 @@
                 "source": "dsp/core/abi.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft -I<build>/note-models -I<repo>/dsp/plugins/analyzer/note_spectrogram"
               },
               {
                 "source": "dsp/core/allocation_guard.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft -I<build>/note-models -I<repo>/dsp/plugins/analyzer/note_spectrogram"
               },
               {
                 "source": "dsp/core/arena.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft -I<build>/note-models -I<repo>/dsp/plugins/analyzer/note_spectrogram"
               },
               {
                 "source": "dsp/core/engine.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft -I<build>/note-models -I<repo>/dsp/plugins/analyzer/note_spectrogram"
               },
               {
                 "source": "dsp/core/registry.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft -I<build>/note-models -I<repo>/dsp/plugins/analyzer/note_spectrogram"
               },
               {
                 "source": "dsp/core/telemetry.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft -I<build>/note-models -I<repo>/dsp/plugins/analyzer/note_spectrogram"
               },
               {
                 "source": "dsp/plugins/lofi/g726_adpcm_simulator/kernel.cpp",
                 "definitions": "-DET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1 -DET_SIMD=1 -DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti -O3 -flto -msimd128",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/core -I<repo>/dsp/generated/cpp -I<repo>/dsp/vendor/pffft/include/pffft -I<build>/note-models -I<repo>/dsp/plugins/analyzer/note_spectrogram"
               },
               {
                 "source": "dsp/wasm/no_entry.cpp",
                 "definitions": "-DPFFFT_STATIC_DEFINE=1",
                 "flags": "-O3 -DNDEBUG -std=c++20",
-                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/vendor/pffft/include/pffft"
+                "includes": "-I<repo>/dsp/include -I<repo>/dsp/bindings/generated -I<repo>/dsp/vendor/pffft/include/pffft -I<build>/note-models -I<repo>/dsp/plugins/analyzer/note_spectrogram"
               }
             ],
             "linkCommand": {
               "flags": "-O3 -DNDEBUG",
               "options": "--no-entry -sSTANDALONE_WASM=1 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=8388608 -sMAXIMUM_MEMORY=268435456 -sEXPORTED_FUNCTIONS=@<repo>/dsp/exports.txt -fwasm-exceptions -O3 -flto -msimd128",
-              "libraries": "libeffetune_dsp_core.a libpffft.a -lm"
+              "libraries": "libeffetune_dsp_core.a libpffft.a -lm libeffetune_note_models.a"
             }
           }
         },
-        "digest": "sha256:25a31669bb24da034d90512065fd746433745ead5d247e352c9ed08b3cbd24ea"
+        "digest": "sha256:a8ff530879318f93c094cfcdff6f8d6b264f15f8f294819187c73157ff1b5586"
       }
     }
   },
   "kernels": [
     {
       "name": "LevelMeterPlugin",
+      "hash": 2166136261,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
+      "name": "NoteSpectrogramPlugin",
       "hash": 2166136261,
       "byteCapacity": 0,
       "assets": []
@@ -1036,7 +1042,7 @@
     }
   ],
   "sizes": {
-    "baseline": 1219384,
-    "simd": 1344281
+    "baseline": 6998177,
+    "simd": 7124845
   }
 }

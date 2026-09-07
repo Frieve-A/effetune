@@ -1,7 +1,8 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.8.0-2f8d2722567dbde9";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.9.0-78a5e6b377f3cdb5";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./effetune-library.css",
   "./effetune-mobile.css",
+  "./effetune-theme.css",
   "./effetune.css",
   "./effetune.html",
   "./features/benchmark-score-reference.js",
@@ -175,6 +176,8 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/room-eq/wasm-fft.js",
   "./js/script-loader.js",
   "./js/startup.js",
+  "./js/theme-boot.js",
+  "./js/theme-registry.mjs",
   "./js/ui-manager.js",
   "./js/ui/audio-player.js",
   "./js/ui/audio-player/audio-context-manager.js",
@@ -230,6 +233,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/ui/plugin-list/preset-manager.js",
   "./js/ui/plugin-list/search-manager.js",
   "./js/ui/power-state-view.js",
+  "./js/ui/range-fill.js",
   "./js/ui/range-precision-controller.js",
   "./js/ui/standard-select.js",
   "./js/ui/state-manager.js",
@@ -262,6 +266,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./pipeline-analyzer.css",
   "./plugins/analyzer/level_meter.css",
   "./plugins/analyzer/level_meter.js",
+  "./plugins/analyzer/note_spectrogram.js",
   "./plugins/analyzer/oscilloscope.css",
   "./plugins/analyzer/oscilloscope.js",
   "./plugins/analyzer/spectrogram.css",
@@ -425,6 +430,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./plugins/spatial/stereo_blend.js",
   "./plugins/spectrum-overlay.css",
   "./plugins/spectrum-overlay.js",
+  "./plugins/theme-palette.js",
   "./presets/4ch/matrix.effetune_preset",
   "./presets/4ch/rear_reverb.effetune_preset",
   "./presets/amp_sim/tube_amp.effetune_preset",

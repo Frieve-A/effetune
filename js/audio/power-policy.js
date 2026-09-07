@@ -398,6 +398,8 @@ function hasHoldCurrentBarrier(facts) {
 }
 
 function canCommitSuspended(facts) {
+  // Live capture has no independent wake source after its processing context suspends.
+  if (facts.automaticSuspendAllowed === false) return false;
   return facts.effectiveState === AudioPowerState.SUSPENDED ||
     (hasFreshWorkletObservation(facts) && resourcesKnown(facts));
 }
@@ -431,6 +433,9 @@ function getPlayerOnlyReleaseStatus(facts, settings, now, routeIntent, inputStat
 }
 
 function getMaximumRoutedSilenceStatus(facts, settings, now, routeIntent, temporal) {
+  if (facts.automaticSuspendAllowed === false) {
+    return { eligible: false, reached: false, deadlineAt: null, startAt: null };
+  }
   const delay = settings.fullSuspendDelaySeconds;
   const hidden = facts.visibility === 'hidden' ||
     facts.pageLifecycle === 'hidden' || facts.pageLifecycle === 'frozen';

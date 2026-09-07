@@ -1812,10 +1812,10 @@ class IRReverbPlugin extends PluginBase {
         const x = seconds => left + seconds / graph.durationSeconds * plotWidth;
         const y = db => top + Math.min(1, Math.max(0, -db / 90)) * plotHeight;
 
-        context.fillStyle = '#222';
+        context.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
         context.fillRect(0, 0, width, height);
-        context.strokeStyle = '#444';
-        context.fillStyle = '#666';
+        context.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
+        context.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         context.font = `${fontSize}px Arial`;
         context.textAlign = 'left';
         context.textBaseline = 'alphabetic';
@@ -1833,8 +1833,8 @@ class IRReverbPlugin extends PluginBase {
         const timeLabel = this._t('irReverb.graph.time', 'Time');
         const timeLabelWidth = Math.min(measureTextWidth(timeLabel), plotWidth);
         const timeLabelLeft = width - right - timeLabelWidth;
-        context.strokeStyle = '#444';
-        context.fillStyle = '#666';
+        context.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
+        context.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         context.textAlign = 'center';
         for (let second = 1; second <= Math.floor(graph.durationSeconds); second += 1) {
             const px = x(second);
@@ -1862,7 +1862,7 @@ class IRReverbPlugin extends PluginBase {
             context.lineTo(width - right, height - bottom);
             context.closePath();
             context.globalAlpha = 0.18;
-            context.fillStyle = '#00ff00';
+            context.fillStyle = (window.ThemePalette?.get('graph-trace') ?? '');
             context.fill();
             context.globalAlpha = 1;
         }
@@ -1880,15 +1880,15 @@ class IRReverbPlugin extends PluginBase {
             }
             context.stroke();
         };
-        drawLine(graph.original, '#808080', [5, 5]);
-        drawLine(graph.current, '#00ff00', []);
+        drawLine(graph.original, (window.ThemePalette?.get('graph-trace-tertiary') ?? ''), [5, 5]);
+        drawLine(graph.current, (window.ThemePalette?.get('graph-trace') ?? ''), []);
 
         const markerColors = {
-            onset: '#fff',
-            cut: '#ff0000',
-            predelay: '#808080',
-            trim: '#00ff00',
-            rt60: '#fff'
+            onset: (window.ThemePalette?.get('text-primary') ?? ''),
+            cut: (window.ThemePalette?.get('graph-marker') ?? ''),
+            predelay: (window.ThemePalette?.get('graph-trace-tertiary') ?? ''),
+            trim: (window.ThemePalette?.get('graph-trace') ?? ''),
+            rt60: (window.ThemePalette?.get('text-primary') ?? '')
         };
         const markerLabels = {
             onset: this._t('irReverb.graph.onset', 'onset'),
@@ -1928,7 +1928,7 @@ class IRReverbPlugin extends PluginBase {
             context.fillStyle = markerColors.rt60;
             drawMarkerLabel(graph.rt60Label, width - right, labelRow);
         }
-        context.fillStyle = '#fff';
+        context.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         context.textAlign = 'right';
         context.fillText(timeLabel, width - right, height - 5, plotWidth);
     }

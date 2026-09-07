@@ -1008,10 +1008,10 @@ class MultibandExpanderPlugin extends PluginBase {
     }
 
     const DB_POINTS = [-48, -36, -24, -12];
-    const GRID_COLOR = '#444';
-    const LABEL_COLOR = '#666';
-    const CURVE_COLOR = '#0f0';
-    const METER_COLOR = '#008000';
+    const GRID_COLOR = (window.ThemePalette?.get('graph-grid') ?? '');
+    const LABEL_COLOR = (window.ThemePalette?.get('graph-label') ?? '');
+    const CURVE_COLOR = (window.ThemePalette?.get('graph-trace') ?? '');
+    const METER_COLOR = (window.ThemePalette?.get('graph-trace-fill') ?? '');
 
     const graphContexts = canvases.map(canvas => ({
       ctx: canvas.getContext('2d'),
@@ -1069,7 +1069,7 @@ class MultibandExpanderPlugin extends PluginBase {
         ctx.fillText(`${db}dB`, x, height - bottomLabelOffset);
       });
 
-      ctx.fillStyle = '#fff';
+      ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
       ctx.font = `${axisFontSize}px Arial`;
       ctx.textAlign = 'center';
       ctx.fillText('in', width / 2, height - axisBottomOffset);
@@ -1308,7 +1308,7 @@ class MultibandExpanderPlugin extends PluginBase {
         canvasHeight: 320,
         className: 'multiband-expander-transfer-graph'
       });
-      canvas.style.backgroundColor = '#222';
+      canvas.style.backgroundColor = 'var(--et-graph-bg-deep)';
       const label = document.createElement('div');
       label.className = 'multiband-expander-band-graph-label';
       label.textContent = `Band ${i + 1}`;

@@ -10,6 +10,10 @@
 
 Un processeur d'effets audio en temps réel, conçu pour les passionnés de musique afin d'améliorer leur expérience d'écoute. EffeTune vous permet de traiter n'importe quelle source audio via divers effets de haute qualité, vous offrant la possibilité de personnaliser et de perfectionner votre expérience d'écoute en temps réel.
 
+### Extension de navigateur
+
+Traitez un onglet Chrome ou Edge sans périphérique audio virtuel. Consultez le [guide de l’extension de navigateur](browser-extension.md).
+
 [![Screenshot](../../../images/screenshot.png)](https://effetune.frieve.com/effetune.html)
 
 ## Vidéo d'introduction
@@ -88,7 +92,7 @@ Pour utiliser EffeTune avec des lecteurs CD, lecteurs réseau ou autres sources 
 
 ### Paramètres de l'application
 
-Ouvrez **Paramètres > Configuration...** pour choisir la langue, la vue au démarrage et le comportement du pipeline d'effets au démarrage. **Vue au démarrage :** peut être réglée sur **Effect Pipeline (par défaut)** ou **Bibliothèque musicale**. Si vous choisissez **Bibliothèque musicale**, utilisez la liste juste à côté pour choisir la section qui s'affichera en premier : **Morceaux**, **Albums**, **Artistes**, **Genres**, **Sous-dossiers**, **Dossiers** ou **Listes de lecture**.
+Ouvrez **Paramètres > Configuration...** pour choisir la langue, la vue au démarrage et le comportement du pipeline d'effets au démarrage. **Vue au démarrage :** peut être réglée sur **Effect Pipeline (par défaut)** ou **Bibliothèque musicale**. Si vous choisissez **Bibliothèque musicale**, utilisez la liste juste à côté pour choisir la section qui s'affichera en premier : **Morceaux**, **Albums**, **Artistes**, **Genres**, **Sous-dossiers**, **Dossiers** ou **Listes de lecture**. Dans **Thème**, choisissez les couleurs de l’application : Graphite (par défaut), Paper, Midnight, Ember ou Mint.
 
 Les versions de bureau compatibles peuvent aussi être pilotées par des applications OpenHome sur le même réseau local. Cette fonction est désactivée par défaut ; consultez [Télécommande OpenHome](music-library.md#télécommande-openhome-application-de-bureau) pour la configuration, l'accès réseau, la compatibilité et les limites.
 
@@ -307,6 +311,7 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 | Catégorie | Effet             | Description                                                              | Documentation                                           |
 | --------- | ----------------- | ------------------------------------------------------------------------ | ------------------------------------------------------- |
 | Analyzer  | Level Meter       | Affiche le niveau audio avec maintien du pic                             | [Détails](plugins/analyzer.md#level-meter)              |
+| Analyzer  | Note Spectrogram | Affiche les hauteurs estimées au fil du temps sous forme de piano roll | [Détails](plugins/analyzer.md#note-spectrogram)      |
 | Analyzer  | Oscilloscope      | Visualisation en temps réel de la forme d'onde                           | [Détails](plugins/analyzer.md#oscilloscope)             |
 | Analyzer  | Spectrogram       | Montre l'évolution du spectre de fréquences au fil du temps              | [Détails](plugins/analyzer.md#spectrogram)              |
 | Analyzer  | Spectrum Analyzer | Montre en temps réel l'intensité des graves, médiums et aigus            | [Détails](plugins/analyzer.md#spectrum-analyzer)        |

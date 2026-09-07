@@ -479,6 +479,7 @@ export class AudioPlayerUI {
 
   setMiniPlayerAlwaysOnTop(enabled) {
     this.pinButton?.setAttribute('aria-pressed', enabled === true ? 'true' : 'false');
+    this.pinButton?.setAttribute('data-active', enabled === true ? 'true' : 'false');
   }
 
   setDesktopQueueExpanded(expanded) {

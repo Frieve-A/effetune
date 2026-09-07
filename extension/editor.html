@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base href="../">
+  <title>EffeTune Pipeline Editor</title>
+  <link rel="stylesheet" href="effetune.css">
+  <link rel="stylesheet" href="pipeline-analyzer.css">
+  <link rel="stylesheet" href="extension/editor.css">
+</head>
+<body class="extension-editor">
+  <header class="extension-header">
+    <div class="extension-brand">
+      <img src="images/icon_64x64.png" alt="" width="38" height="38">
+      <div><h1>EffeTune Pipeline Editor</h1><p id="editorTarget">No tab selected</p></div>
+    </div>
+    <div class="extension-session">
+      <span id="editorStatus" class="editor-status">Connecting…</span>
+      <span id="editorSampleRate" class="editor-sample-rate"></span>
+      <div class="settings-menu-container">
+        <button class="header-button settings-menu-button" id="editorSettingsMenuButton" type="button" title="Settings" aria-label="Settings" aria-haspopup="true" aria-expanded="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.05.05a2 2 0 0 1-2.83 2.83l-.05-.05a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 0 1-4 0v-.07A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.05.05a2 2 0 1 1-2.83-2.83l.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 0 1 0-4h.07A1.7 1.7 0 0 0 4.6 8.97a1.7 1.7 0 0 0-.34-1.88l-.05-.05a2 2 0 1 1 2.83-2.83l.05.05A1.7 1.7 0 0 0 8.97 4.6 1.7 1.7 0 0 0 10 3.07V3a2 2 0 0 1 4 0v.07a1.7 1.7 0 0 0 1.03 1.53 1.7 1.7 0 0 0 1.88-.34l.05-.05a2 2 0 1 1 2.83 2.83l-.05.05A1.7 1.7 0 0 0 19.4 8.97 1.7 1.7 0 0 0 20.93 10H21a2 2 0 0 1 0 4h-.07A1.7 1.7 0 0 0 19.4 15z"/></svg></button>
+        <div class="settings-menu" id="editorSettingsMenu" role="menu">
+          <button class="settings-menu-item" id="editorImportMeasurement" type="button" role="menuitem">Import measurement…</button>
+          <button class="settings-menu-item" id="editorDeleteMeasurement" type="button" role="menuitem">Delete imported measurement…</button>
+          <button class="settings-menu-item" id="editorImportPreset" type="button" role="menuitem">Import preset…</button>
+          <button class="settings-menu-item" id="editorExportPreset" type="button" role="menuitem">Export preset</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <input id="editorMeasurementFile" type="file" accept=".json,application/json" hidden>
+  <input id="editorPresetFile" type="file" accept=".effetune_preset,.json,application/json" hidden>
+
+  <p id="editorMessage" class="editor-message" role="status" aria-live="polite" hidden></p>
+
+  <div class="main-container">
+    <div class="plugin-list-shell">
+      <div class="plugin-list" id="pluginList">
+        <div class="plugin-list-header">
+          <div class="tab-switcher" id="tabSwitcher">
+            <button class="tab-button active" id="effectsTab" type="button">Effects</button>
+            <button class="tab-button" id="systemPresetsTab" type="button">S.Presets</button>
+            <button class="tab-button" id="userPresetsTab" type="button">U.Preset</button>
+          </div>
+          <h2 id="availableEffectsTitle" hidden>Available Effects</h2>
+          <input id="effectSearchInput" class="effect-search-input" type="text" placeholder="Search effects…" hidden>
+          <button id="effectSearchClearButton" class="input-clear-button effect-search-clear-button" type="button" title="Clear search" aria-label="Clear search">×</button>
+          <button id="effectSearchButton" class="header-button search-button" type="button" title="Search effects" aria-label="Search effects">⌕</button>
+        </div>
+      </div>
+      <div class="plugin-list-pull-tab" id="pluginListPullTab">◀</div>
+    </div>
+
+    <div class="pipeline" id="pipeline">
+      <div class="pipeline-header">
+        <button class="toggle-button master-toggle" type="button" title="Enable or disable all effects">ON</button>
+        <span class="pipeline-title">Effect Pipeline</span>
+        <div class="pipeline-header-right">
+          <div class="pipeline-toolbar-group">
+            <button class="header-button pipeline-preset-button" id="pipelinePresetButton" title="Pipeline Presets"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></button>
+          </div>
+          <div class="pipeline-toolbar-group">
+            <button class="header-button undo-button" id="undoButton" title="Undo">↶</button>
+            <button class="header-button redo-button" id="redoButton" title="Redo">↷</button>
+          </div>
+          <div class="pipeline-toolbar-group">
+            <button class="column-control-button" id="decreaseColumnsButton" title="Decrease columns">−</button>
+            <button class="column-control-button" id="increaseColumnsButton" title="Increase columns">+</button>
+          </div>
+        </div>
+      </div>
+      <div id="pipelineList">
+        <div class="pipeline-empty" id="pipelineEmpty">Drag effects here or double-click an effect to add it</div>
+      </div>
+      <div id="pipelineStats">
+        <div id="pipelineLatency">Total Delay: 0 samples</div>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="extension/editor.js"></script>
+</body>
+</html>

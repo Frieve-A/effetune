@@ -7,49 +7,11 @@
 .vinyl-simulator-panel {
     padding: 10px;
     border-radius: 4px;
-    background: #2d2d2d;
-}
-
-.vinyl-simulator-tabs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 3px;
-    margin-bottom: 12px;
+    background: color-mix(in srgb, var(--et-surface-10), var(--et-graph-bg-deep) 25%);
 }
 
 .vinyl-simulator-tab {
     flex: 1 1 100px;
-    min-height: 36px;
-    padding: 8px 14px;
-    border: 1px solid #484848;
-    border-radius: 4px 4px 0 0;
-    color: #ddd;
-    background: #333;
-    cursor: pointer;
-}
-
-.vinyl-simulator-tab:hover {
-    background: #3c3c3c;
-}
-
-.vinyl-simulator-tab.active {
-    border-color: #666;
-    color: #fff;
-    background: #484848;
-}
-
-.vinyl-simulator-tab:focus-visible {
-    outline: 2px solid #7ec8ff;
-    outline-offset: 2px;
-}
-
-.vinyl-simulator-tab-content {
-    display: none;
-    min-height: 196px;
-}
-
-.vinyl-simulator-tab-content.active {
-    display: block;
 }
 
 .vinyl-simulator-hud {
@@ -58,9 +20,9 @@
     max-width: none !important;
     margin-top: 8px;
     overflow: hidden;
-    border: 1px solid #454545;
+    border: 1px solid var(--et-surface-21);
     border-radius: 4px;
-    background: #171717;
+    background: var(--et-base);
 }
 
 .vinyl-simulator-hud canvas {
@@ -69,7 +31,7 @@
 
 .vinyl-simulator-status-note {
     margin-top: 6px;
-    color: #aaa;
+    color: var(--et-surface-66);
     font-size: 11px;
     line-height: 1.35;
 }
@@ -90,17 +52,6 @@ body.layout-mobile .vinyl-simulator-panel {
     overflow-x: clip;
 }
 
-body.layout-mobile .vinyl-simulator-tabs {
-    gap: 4px;
-}
-
 body.layout-mobile .vinyl-simulator-tab {
     flex: 1 1 calc(50% - 4px);
-    min-width: 0;
-    min-height: 42px;
-    padding: 8px 6px;
-}
-
-body.layout-mobile .vinyl-simulator-tab-content {
-    min-height: 0;
 }

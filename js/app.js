@@ -11,7 +11,7 @@ import {
 import { normalizeMusicLibraryStartupView } from './library/constants.js';
 import { MIC_DENIED_PREFIX } from './audio/audio-io-manager.js';
 import { installSpaceKeyGuard } from './utils/space-key-guard.js';
-import { loadStylesheet } from './utils/classic-script-loader.js';
+import { loadStylesheet, waitForStylesheets } from './utils/classic-script-loader.js';
 
 const TRANSIENT_PIPELINE_RESTORE_PARAM = 'restorePipeline';
 const TRANSIENT_PIPELINE_RESTORE_VALUE = 'transient';
@@ -424,6 +424,11 @@ class App {
     }
 
     async initialize() {
+        const presentationReady = Promise.allSettled([
+            this.uiManager.localizationReady,
+            this.uiManager.pipelineAnalyzerLoadPromise,
+            displayAppVersion()
+        ]);
         try {
             // Show loading spinner
             this.uiManager.showLoadingSpinner();
@@ -432,9 +437,6 @@ class App {
             // The same promise is awaited once startup content has been handled.
             void this.applyStartupViewPreference();
             
-            // Version display is independent of the audio and pipeline startup path.
-            void displayAppVersion();
-
             // Load plugins (definitions only, not instances)
             await this.pluginManager.loadPlugins();
 
@@ -540,21 +542,19 @@ class App {
 
             // Apply the configured initial view after startup content has been handled.
             await this.applyStartupViewPreference();
-            
-            // Set initialized flag to true
-            this.initialized = true;
-
-            // Work that must not delay or block startup (device permission prompts,
-            // bulk storage migration) runs once the UI is idle.
-            this.scheduleDeferredStartupTasks();
-            
         } catch (error) {
             console.error('Initialization error:', error);
             this.uiManager.setError(error.message, true);
-            
-            // Set initialized flag to true even on error to allow UI to function
+            return;
+        } finally {
+            await Promise.allSettled([presentationReady, this.startupViewPreferencePromise]);
+            await waitForStylesheets();
+            document.documentElement?.classList?.remove('app-starting');
             this.initialized = true;
         }
+
+        // Device permission prompts and bulk storage migration start after presentation.
+        this.scheduleDeferredStartupTasks();
     }
 
     scheduleDeferredStartupTasks() {

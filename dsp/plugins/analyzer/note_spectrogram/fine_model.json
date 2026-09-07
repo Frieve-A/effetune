@@ -1,0 +1,15 @@
+{
+  "formatVersion": 1,
+  "sourceModelSha256": "98ffb6b277d8a3998d3cfa81a18d9999315b9c76bf4a9fb27f90a302e1f06acc",
+  "sha256": "dccb15202ff6c9854fc533717018e1d9623088190a8e79a5e1e923ce5aa5fa1c",
+  "outputCount": 1,
+  "leafType": "double",
+  "constants": {
+    "FeatureCount": 8,
+    "TreeCount": 128,
+    "Depth": 5,
+    "Scale": 1.0,
+    "Bias": 0.0,
+    "DecisionMargin": 3.866617351240235
+  }
+}

@@ -10,6 +10,7 @@ class EffeTuneDspProcessor extends AudioWorkletProcessor {
     this.closed = false;
     this.latencySamples = null;
     this.channels = 0;
+    this.processedFrames = 0;
     this.pendingCommands = [];
     this.sourceChannels = [];
     this.targetChannels = [];
@@ -92,6 +93,7 @@ class EffeTuneDspProcessor extends AudioWorkletProcessor {
           );
         } else if (command.type === 'reset') {
           this.session?.reset();
+          this.processedFrames = 0;
         } else if (command.type === 'setTelemetryEnabled') {
           this.telemetryEnabled = command.enabled === true;
           this.session?.setTelemetryEnabled(this.telemetryEnabled);
@@ -163,7 +165,10 @@ class EffeTuneDspProcessor extends AudioWorkletProcessor {
       this.targetChannels[channel] = output[channel];
     }
     try {
-      this.session.process(this.sourceChannels, this.targetChannels, 0, 128, sampleRate);
+      this.session.process(
+        this.sourceChannels, this.targetChannels, 0, 128, sampleRate, this.processedFrames
+      );
+      this.processedFrames += 128;
       this.drainTelemetry();
     } catch (error) {
       this.session.close();

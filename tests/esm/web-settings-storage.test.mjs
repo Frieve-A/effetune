@@ -958,3 +958,18 @@ test('Web config normalizes and round-trips offline output settings without muta
   });
   await runtime.close();
 });
+
+
+test('theme normalization only adds a normalized value when the config contains its key', async () => {
+  for (const config of [{}, { theme: 'invalid' }, { theme: 'paper' }]) {
+    const storage = createLocalStorage({ [WEB_APP_CONFIG_KEY]: JSON.stringify(config) });
+    const { runtime } = createRuntime({ storage });
+    try {
+      const loaded = (await runtime.initialize()).config;
+      assert.equal('theme' in loaded, 'theme' in config);
+      if ('theme' in config) assert.equal(loaded.theme, config.theme === 'paper' ? 'paper' : 'graphite');
+    } finally {
+      await runtime.close();
+    }
+  }
+});

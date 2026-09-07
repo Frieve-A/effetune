@@ -533,9 +533,9 @@ class MultibandSaturationPlugin extends PluginBase {
         this.canvases = Array.from(container.querySelectorAll('.mbs-band-graph canvas'));
         if (!this.canvases.length) return;
 
-        const GRID_COLOR = '#444';
-        const LABEL_COLOR = '#666';
-        const CURVE_COLOR = '#0f0';
+        const GRID_COLOR = (window.ThemePalette?.get('graph-grid') ?? '');
+        const LABEL_COLOR = (window.ThemePalette?.get('graph-label') ?? '');
+        const CURVE_COLOR = (window.ThemePalette?.get('graph-trace') ?? '');
 
         this.canvases.forEach((canvas, bandIndex) => {
             if (bandIndex >= this.bands.length) return;
@@ -586,7 +586,7 @@ class MultibandSaturationPlugin extends PluginBase {
             ctx.restore();
 
             // Draw axis labels
-            ctx.fillStyle = '#fff';
+            ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
             ctx.font = `${axisFont}px Arial`;
             ctx.fillText('in', width / 2, height - bottomInset);
             ctx.save();
@@ -803,7 +803,7 @@ class MultibandSaturationPlugin extends PluginBase {
                 className: 'mbs-transfer-curve',
                 onResize: () => this.updateTransferGraphs()
             });
-            canvas.style.backgroundColor = '#222';
+            canvas.style.backgroundColor = 'var(--et-graph-bg-deep)';
             this.graphDisposers.push(dispose);
             const label = document.createElement('div');
             label.className = 'mbs-band-graph-label';

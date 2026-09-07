@@ -6,6 +6,12 @@ lang: en
 
 # Version History
 
+### Version 2.9.0 (TBD, 2026)
+- Added Note Spectrogram effect
+- Added color theme presets
+- Added a browser extension version (beta)
+- Various minor improvements
+
 ### Version 2.8.0 (Sep 5, 2026)
 - Added Crosstalk Cancellation, Click Remover, Clip Restorer, Hum Remover and Noise Reduction effects
 - Added physical controller parameter mapping for MIDI, gamepads, and the keyboard

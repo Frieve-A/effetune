@@ -843,7 +843,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         const dpr = this._getCanvasDpr(this.meterCanvas);
         const cssWidth = W / dpr;
         ctx.clearRect(0, 0, W, H);
-        ctx.fillStyle = '#1a1a1a';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
         ctx.fillRect(0, 0, W, H);
 
         const labels = ['Additive', 'Attached', 'Cross', 'Total IMD', 'Output'];
@@ -863,16 +863,16 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
             const trackW = W - labelW - valW;
             const w = trackW * (v - dbMin) / range;
 
-            ctx.fillStyle = '#fff';
+            ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
             ctx.textAlign = 'left';
             ctx.fillText(labels[i], 4 * dpr, y + barH / 2);
 
-            ctx.fillStyle = '#333';
+            ctx.fillStyle = (window.ThemePalette?.get('graph-grid-subtle') ?? '');
             ctx.fillRect(labelW, y + barH * 0.15, trackW, barH * 0.6);
-            ctx.fillStyle = '#008000';
+            ctx.fillStyle = (window.ThemePalette?.get('graph-trace-fill') ?? '');
             ctx.fillRect(labelW, y + barH * 0.15, Math.max(0, w), barH * 0.6);
 
-            ctx.fillStyle = '#ccc';
+            ctx.fillStyle = (window.ThemePalette?.get('graph-label-strong') ?? '');
             ctx.textAlign = 'right';
             ctx.fillText(v.toFixed(1), W - 4 * dpr, y + barH / 2);
         }
@@ -893,7 +893,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         ctx.clearRect(0, 0, width, height);
 
         // Grid
-        ctx.strokeStyle = '#444';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
         for (let x = 0; x <= width; x += width / 4) {
             ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
@@ -903,7 +903,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         }
 
         // in / out labels
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         ctx.font = `${axisFont}px Arial`;
         ctx.textAlign = 'center';
         ctx.fillText('in', width / 2, height - bottomInset);
@@ -914,7 +914,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         ctx.restore();
 
         // -6dB markers
-        ctx.fillStyle = '#666';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         ctx.font = `${tickFont}px Arial`;
         ctx.fillText('-6dB', width * 0.25, height - bottomInset);
         ctx.fillText('-6dB', width * 0.75, height - bottomInset);
@@ -926,7 +926,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         const a3 = 4 * (Hnl * Math.cos(Math.PI * b / 2));
 
         // Reference identity y = v
-        ctx.strokeStyle = '#555';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-strong') ?? '');
         ctx.lineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
         ctx.beginPath();
         ctx.moveTo(0, height);
@@ -934,7 +934,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         ctx.stroke();
 
         // Transfer function phi(v)
-        ctx.strokeStyle = '#00ff00';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = (isMobileLayout ? 2 : 1) * dpr;
         ctx.beginPath();
         for (let i = 0; i < width; i++) {
@@ -1020,7 +1020,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         const axisLabelX = 12 * dpr;
         const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
         ctx.clearRect(0, 0, W, H);
-        ctx.fillStyle = '#1a1a1a';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
         ctx.fillRect(0, 0, W, H);
 
         const FS_REF = 96000;
@@ -1049,7 +1049,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         // --- Axes / grid in the EQ (Filter) plugin style, normalized to 0 dB peak ---
         const dbTop = 0, dbBot = -60, dbSpan = dbTop - dbBot;
 
-        ctx.strokeStyle = '#444';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
         ctx.font = `${tickFont}px Arial`;
 
@@ -1061,7 +1061,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
             const x = W * freq / fMax;
             ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
             if (freq > 0 && freq < fMax) {
-                ctx.fillStyle = '#666';
+                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
                 ctx.fillText(`${freq / 1000}k`, x, bottomTickY);
             }
         });
@@ -1073,13 +1073,13 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
             const y = H * (1 - (db - dbBot) / dbSpan);
             ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
             if (db < dbTop && db > dbBot) {
-                ctx.fillStyle = '#666';
+                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
                 ctx.fillText(`${db}dB`, leftLabelX, y + 3 * dpr);
             }
         });
 
         // Axis titles
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         ctx.font = `${axisFont}px Arial`;
         ctx.textAlign = 'center';
         ctx.fillText('Frequency (Hz)', W / 2, axisBottomY);
@@ -1090,7 +1090,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         ctx.restore();
 
         // Difference-frequency density curve (unified green)
-        ctx.strokeStyle = '#00ff00';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = (isMobileLayout ? 2 : 1.5) * dpr;
         ctx.beginPath();
         for (let j = 0; j < nF; j++) {

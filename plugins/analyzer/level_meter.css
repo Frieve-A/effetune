@@ -31,8 +31,8 @@
     left: 50%;
     transform: translate(-50%, -50%);
     padding: 4px 8px;
-    background-color: #ff6b6b;
-    color: #ffffff;
+    background-color: var(--et-danger);
+    color: var(--et-on-status);
     border-radius: 4px;
     animation: blink 0.5s infinite;
     z-index: 3;

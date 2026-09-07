@@ -31,11 +31,10 @@ class StereoMeterPlugin extends PluginBase {
     // Internal event listener bookkeeping
     this.boundEventListeners = new Map();
 
-    // Precompute a color lookup table for green values (0–255)
+    // Cache opaque sample colors, rebuilding only when the theme colors change.
     this._colorLookup = new Array(256);
-    for (let i = 0; i < 256; i++) {
-      this._colorLookup[i] = `rgb(0,${i},0)`;
-    }
+    this._colorLookupBackground = null;
+    this._colorLookupTrace = null;
     this.observer = null;
 
     // Persistent buffers for drawing
@@ -520,12 +519,27 @@ class StereoMeterPlugin extends PluginBase {
     const size = Math.min(width, height);
     const radius = size * 0.45;
 
+    const background = (window.ThemePalette?.get('graph-bg-deep') ?? '');
+    const trace = (window.ThemePalette?.get('graph-trace') ?? '');
+    if (this._colorLookupBackground !== background || this._colorLookupTrace !== trace) {
+      // ThemePalette returns normalized rgba colors. Blend once, not during canvas drawing.
+      const [r, g, b] = background.match(/[\d.]+/g)?.map(Number) ?? [0, 0, 0];
+      const [tr, tg, tb] = trace.match(/[\d.]+/g)?.map(Number) ?? [0, 0, 0];
+      for (let i = 0; i < 256; i++) {
+        const intensity = i / 255;
+        const remaining = 1 - intensity;
+        this._colorLookup[i] = `rgb(${Math.round(r * remaining + tr * intensity)},${Math.round(g * remaining + tg * intensity)},${Math.round(b * remaining + tb * intensity)})`; // theme-allow: RGB channels blend the current theme background and trace colors.
+      }
+      this._colorLookupBackground = background;
+      this._colorLookupTrace = trace;
+    }
+
     // Clear the canvas.
-    ctx.fillStyle = '#000';
+    ctx.fillStyle = background;
     ctx.fillRect(0, 0, width, height);
 
     // Draw the diamond shape.
-    ctx.strokeStyle = '#333';
+    ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-subtle') ?? '');
     ctx.lineWidth = dpr;
     ctx.beginPath();
     ctx.moveTo(centerX, centerY - radius);
@@ -556,7 +570,7 @@ class StereoMeterPlugin extends PluginBase {
     ctx.stroke();
 
     // Draw labels.
-    ctx.fillStyle = '#666';
+    ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
     ctx.font = `${14 * dpr}px Arial`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -621,7 +635,7 @@ class StereoMeterPlugin extends PluginBase {
       smoothedPeaks[i] = sum / weightSum;
     }
     
-    ctx.strokeStyle = '#fff';
+    ctx.strokeStyle = (window.ThemePalette?.get('text-primary') ?? '');
     ctx.lineWidth = dpr;
     ctx.beginPath();
     for (let i = 0; i < 360; i++) {
@@ -678,7 +692,7 @@ class StereoMeterPlugin extends PluginBase {
     // Draw the correlation bar on the left edge.
     const barThickness = 16 * dpr;
     const corrBarHeight = (correlation >= 0 ? correlation : -correlation) * centerY;
-    ctx.fillStyle = '#008000';
+    ctx.fillStyle = (window.ThemePalette?.get('graph-trace-fill') ?? '');
     if (correlation >= 0) {
       ctx.fillRect(0, centerY - corrBarHeight, barThickness, corrBarHeight);
     } else {
@@ -686,8 +700,8 @@ class StereoMeterPlugin extends PluginBase {
     }
 
     // Draw correlation tick marks and labels.
-    ctx.fillStyle = '#808080';
-    ctx.strokeStyle = '#808080';
+    ctx.fillStyle = (window.ThemePalette?.get('graph-trace-tertiary') ?? '');
+    ctx.strokeStyle = (window.ThemePalette?.get('graph-trace-tertiary') ?? '');
     ctx.lineWidth = dpr;
     const corrTickX = 2 * dpr;
     const correlationTicks = [0.5, 0, -0.5];
@@ -709,7 +723,7 @@ class StereoMeterPlugin extends PluginBase {
     const halfCanvasWidth = width / 2;
     const energyBarLength = (energyDiffClamped / energyMax) * halfCanvasWidth;
     const energyBarY = height - barThickness;
-    ctx.fillStyle = '#008000';
+    ctx.fillStyle = (window.ThemePalette?.get('graph-trace-fill') ?? '');
     if (energyBarLength >= 0) {
       ctx.fillRect(centerX, energyBarY, energyBarLength, barThickness);
     } else {
@@ -717,8 +731,8 @@ class StereoMeterPlugin extends PluginBase {
     }
 
     // Draw energy tick marks and labels.
-    ctx.fillStyle = '#808080';
-    ctx.strokeStyle = '#808080';
+    ctx.fillStyle = (window.ThemePalette?.get('graph-trace-tertiary') ?? '');
+    ctx.strokeStyle = (window.ThemePalette?.get('graph-trace-tertiary') ?? '');
     ctx.lineWidth = dpr;
     const energyTicks = [-12, -6, 0, 6, 12];
     const energyTickY = height - (2 * dpr);
@@ -735,7 +749,7 @@ class StereoMeterPlugin extends PluginBase {
     });
 
     // Draw axis labels.
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
     ctx.textAlign = 'center';
     ctx.font = `${12 * dpr}px Arial`;
     ctx.fillText('LR Balance', width / 2, height - dpr);

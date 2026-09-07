@@ -54,7 +54,7 @@ try {
 
   const smoke = [
     "import('@effetune/dsp').then(async m => {",
-    "  if (m.EFFECT_TYPES.length !== 92) throw new Error('catalog mismatch');",
+    "  if (m.EFFECT_TYPES.length !== 100) throw new Error('catalog mismatch');",
     "  if (m.EFFECT_CATALOG.channels.length !== 27) throw new Error('catalog channels missing');",
     "  for (const type of m.EFFECT_TYPES) {",
     "    const factoryName = `create${type}`;",
@@ -62,6 +62,11 @@ try {
     "    if (typeof m[factoryName] !== 'function') throw new Error(`missing factory ${factoryName}`);",
     "  }",
     "  const eta1 = m.encodeEta1({channels: [Float32Array.of(1)], sampleRate: 48000, topology: 'mono'});",
+    "  const notes = await m.createChain([m.createNoteSpectrogram({id: 'notes'})]);",
+    "  const observations = [];",
+    "  await notes.process([new Float32Array(16384)], {sampleRate: 48000, onTelemetry: frame => observations.push(frame)});",
+    "  notes.close();",
+    "  if (!observations.some(frame => frame.kind === 'noteSpectrogram' && frame.levels.length === 440)) throw new Error('note observations missing');",
     "  if (!(eta1 instanceof ArrayBuffer) || eta1.byteLength !== 36) throw new Error('ETA1 encoding failed');",
     "  const chain = await m.createChain({version: 1, chain: [{type: 'Compressor', parameters: {threshold: -18}}]}, {variant: 'baseline'});",
     "  const input = [new Float32Array(128).fill(1)];",
@@ -161,7 +166,7 @@ try {
     "  const generated = await import('@effetune/dsp');",
     "  new generated.Compressor({threshold: -12});",
     "  const catalog = await import('@effetune/dsp/catalog');",
-    "  if (catalog.EFFECT_CATALOG.effects.length !== 92) throw new Error('catalog subpath failed');",
+    "  if (catalog.EFFECT_CATALOG.effects.length !== 100) throw new Error('catalog subpath failed');",
     "})"
   ].join('\n');
   await run(process.execPath, ['--input-type=module', '--eval', smoke], {

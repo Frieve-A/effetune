@@ -35,7 +35,7 @@
 
 .group-delay-eq-plugin-ui .angle-display {
     margin-top: 1px;
-    color: #bbb;
+    color: var(--et-surface-74);
     font-size: 10px;
     min-height: 13px;
 }
@@ -71,7 +71,7 @@ body.layout-mobile .group-delay-eq-plugin-ui .vertical-slider {
 .group-delay-eq-plugin-ui canvas {
     margin: 10px auto;
     display: block;
-    background: #222;
+    background: var(--et-graph-bg-deep);
 }
 
 .group-delay-eq-plugin-ui .graph-container {
@@ -87,8 +87,8 @@ body.layout-mobile .group-delay-eq-plugin-ui .vertical-slider {
     flex-direction: column;
     gap: 1px;
     padding: 2px 6px;
-    color: #ccc;
-    background: rgba(26, 26, 26, 0.88);
+    color: var(--et-graph-label-strong);
+    background: var(--et-graph-base-veil);
     border-radius: 3px;
     font-size: 11px;
     white-space: nowrap;
@@ -106,23 +106,23 @@ body.layout-mobile .group-delay-eq-plugin-ui .vertical-slider {
     border-top: 2px solid currentColor;
 }
 
-.group-delay-eq-plugin-ui .group-delay-eq-legend-target { color: #b0b0b0; opacity: 0.7; }
-.group-delay-eq-plugin-ui .group-delay-eq-legend-realized { color: #00ff00; }
+.group-delay-eq-plugin-ui .group-delay-eq-legend-target { color: var(--et-graph-trace-secondary); opacity: 0.7; }
+.group-delay-eq-plugin-ui .group-delay-eq-legend-realized { color: var(--et-graph-trace); }
 
 .group-delay-eq-plugin-ui .eq-reset-button {
     position: absolute;
     right: 10px;
     bottom: 10px;
     padding: 5px 15px;
-    background-color: #444;
-    color: #fff;
-    border: 1px solid #666;
+    background-color: var(--et-surface-20);
+    color: var(--et-text-primary);
+    border: 1px solid var(--et-surface-35);
     border-radius: 4px;
     cursor: pointer;
 }
 
 .group-delay-eq-plugin-ui .eq-reset-button:hover {
-    background-color: #555;
+    background-color: var(--et-surface-28);
 }
 
 .group-delay-eq-plugin-ui .group-delay-eq-status-line {
@@ -134,12 +134,12 @@ body.layout-mobile .group-delay-eq-plugin-ui .vertical-slider {
 
 .group-delay-eq-plugin-ui .group-delay-eq-status,
 .group-delay-eq-plugin-ui .group-delay-eq-details {
-    color: #bbb;
+    color: var(--et-surface-74);
     font-size: 0.9em;
     white-space: nowrap;
 }
 
 .group-delay-eq-plugin-ui .group-delay-eq-status[data-state='error'],
 .group-delay-eq-plugin-ui .group-delay-eq-status[data-state='warning'] {
-    color: #ff9f43;
+    color: var(--et-warning);
 }

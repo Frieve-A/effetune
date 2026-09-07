@@ -195,7 +195,7 @@ class HardClippingPlugin extends PluginBase {
         ctx.clearRect(0, 0, width, height);
         
         // Draw grid
-        ctx.strokeStyle = '#444';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth = 1;
         
         // Vertical grid lines
@@ -215,7 +215,7 @@ class HardClippingPlugin extends PluginBase {
         }
 
         // Draw in/out labels
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         ctx.font = '28px Arial';
         ctx.textAlign = 'center';
         
@@ -230,7 +230,7 @@ class HardClippingPlugin extends PluginBase {
         ctx.restore();
 
         // Draw -6dB labels
-        ctx.fillStyle = '#666';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         ctx.font = '20px Arial';
 
         // Input axis labels
@@ -251,7 +251,7 @@ class HardClippingPlugin extends PluginBase {
         ctx.restore();
 
         // Draw transfer function
-        ctx.strokeStyle = '#0f0';
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = 2;
         ctx.beginPath();
 
@@ -346,7 +346,7 @@ class HardClippingPlugin extends PluginBase {
         canvas.height = 400;
         canvas.style.width = '200px';
         canvas.style.height = '200px';
-        canvas.style.backgroundColor = '#222';
+        canvas.style.backgroundColor = 'var(--et-graph-bg-deep)';
         this.canvas = canvas;
         this.updateTransferGraph(); // Initial draw
         graphContainer.appendChild(canvas);

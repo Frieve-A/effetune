@@ -181,7 +181,7 @@ class CombFilterPlugin extends PluginBase {
         canvas.style.margin = "0 auto";
 
         // Create Fundamental Frequency row
-        const freqRow = this.createParameterControl("Fundamental Frequency", 20, 20000, 1, this.ff,
+        const freqRow = this.createLogarithmicParameterControl("Fundamental Frequency", 20, 20000, 1, this.ff,
             (value) => {
                 this.setFundamentalFreq(value);
                 this.drawGraph(canvas);
@@ -292,7 +292,7 @@ class CombFilterPlugin extends PluginBase {
         ctx.clearRect(0, 0, width, height);
 
         // Draw grid (same as Band Pass Filter)
-        ctx.strokeStyle = "#444";
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth = isMobileLayout ? 1 : 0.5;
         ctx.font = "12px Arial";
         const freqs = [2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
@@ -303,7 +303,7 @@ class CombFilterPlugin extends PluginBase {
             ctx.lineTo(x, height);
             ctx.stroke();
             if (freq >= 1 && freq <= 40000) {
-                ctx.fillStyle = "#666";
+                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
                 ctx.textAlign = "center";
                 ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, height - 24);
             }
@@ -316,12 +316,12 @@ class CombFilterPlugin extends PluginBase {
             ctx.lineTo(width, y);
             ctx.stroke();
             if (db > -24 && db < 24) {
-                ctx.fillStyle = "#666";
+                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
                 ctx.textAlign = "right";
                 ctx.fillText(`${db}`, 48, y + 4);
             }
         });
-        ctx.fillStyle = "#fff";
+        ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         ctx.font = "14px Arial";
         ctx.textAlign = "center";
         ctx.fillText("Frequency (Hz)", width / 2, height - 5);
@@ -343,7 +343,7 @@ class CombFilterPlugin extends PluginBase {
         const delayDistanceMm = (speedOfSound * delayTimeMs / 1000) * 1000; // mm
         
         ctx.beginPath();
-        ctx.strokeStyle = "#00ff00";
+        ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = isMobileLayout ? 2 : 1;
         
         for (let i = 0; i < width; i++) {
@@ -381,7 +381,7 @@ class CombFilterPlugin extends PluginBase {
         // Draw fundamental frequency marker
         const markerX = width * (Math.log10(effectiveFreq) - Math.log10(1)) / (Math.log10(40000) - Math.log10(1));
         if (markerX >= 0 && markerX <= width) {
-            ctx.strokeStyle = "#ff0000";
+            ctx.strokeStyle = (window.ThemePalette?.get('graph-marker') ?? '');
             ctx.lineWidth = isMobileLayout ? 2 : 1;
             ctx.setLineDash([5, 5]);
             ctx.beginPath();
@@ -391,7 +391,7 @@ class CombFilterPlugin extends PluginBase {
             ctx.setLineDash([]);
             
             // Label the fundamental frequency and delay distance (larger text for 1/2 resolution)
-            ctx.fillStyle = "#ff0000";
+            ctx.fillStyle = (window.ThemePalette?.get('graph-marker') ?? '');
             ctx.font = "13px Arial";
             ctx.textAlign = "center";
             ctx.fillText(`${effectiveFreq.toFixed(1)} Hz`, markerX, 30);
