@@ -31,11 +31,10 @@ test('Windows first presents saved window geometry without a visible maximize tr
         maximized: result.isMaximized, bounds: result.prepared.bounds
       }]);
       assert.deepEqual(result.presented.bounds, result.prepared.bounds);
-      // Keep native content-size snapshots in the assertion path so a failure
-      // distinguishes renderer sizing from Windows non-client metric changes.
+      // Windows applies the native application-menu height when the hidden window
+      // is presented, so compare each renderer snapshot with its same-phase native size.
       assert.deepEqual(result.firstClientSize, result.prepared.contentSize);
       assert.deepEqual(result.shownClientSize, result.presented.contentSize);
-      assert.deepEqual(result.shownClientSize, result.firstClientSize);
       assert.deepEqual(result.restoredBounds, result.normalBounds);
     }
   } finally {

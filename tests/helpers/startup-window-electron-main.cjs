@@ -29,11 +29,12 @@ globalThis.startupWindowResults = app.whenReady().then(async () => {
         normalBounds: window.getNormalBounds(),
         contentSize: window.getContentSize()
       };
+      const readyToShow = new Promise(resolve => window.once('ready-to-show', resolve));
       const load = window.loadURL('data:text/html,<html><body>Startup geometry test</body></html>');
       // Production installs its application menu immediately after starting
       // the initial page load, before the hidden window is presented.
       ipcHandlers.createMenu();
-      await load;
+      await Promise.all([load, readyToShow]);
       const firstClientSize = await window.webContents.executeJavaScript('[innerWidth, innerHeight]');
       const presentationShows = [];
       window.on('show', () => presentationShows.push({
