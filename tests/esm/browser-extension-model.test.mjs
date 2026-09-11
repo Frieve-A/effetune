@@ -427,7 +427,12 @@ test('Offscreen IR ownership preserves consecutive imports and applies them afte
     const transport = new EventTarget();
     transport.request = (command, args) => {
         assert.equal(command, 'irLibrary');
-        return host.request(structuredClone(args), 'editor');
+        const cloned = structuredClone(args);
+        if (cloned.method === 'importFiles') {
+            // Node 22 clones File values as Blob values, matching the CI boundary that exposed lost File metadata.
+            cloned.files = cloned.files.map(entry => ({ ...entry, file: new Blob([entry.file], { type: entry.file.type }) }));
+        }
+        return host.request(cloned, 'editor');
     };
     const editor = new ExtensionIrLibraryClient(transport);
     await editor.refresh();

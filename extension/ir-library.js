@@ -47,7 +47,11 @@ export class ExtensionIrLibraryClient {
     }
 
     importFiles(files, options = {}) {
-        return this.import('importFiles', { files: Array.from(files, file => ({ file, relativePath: file.webkitRelativePath || '' })) }, options);
+        return this.import('importFiles', { files: Array.from(files, file => ({
+            file,
+            name: file.name,
+            relativePath: file.webkitRelativePath || ''
+        })) }, options);
     }
 
     importDirectory(directory, options = {}) { return this.import('importDirectory', { directory }, options); }
@@ -85,8 +89,8 @@ export class ExtensionIrLibraryHost {
         try {
             if (method === 'list') value = null;
             else if (method === 'importFiles') {
-                const files = args.files.map(({ file, relativePath }) => ({
-                    name: file.name, size: file.size, webkitRelativePath: relativePath,
+                const files = args.files.map(({ file, name, relativePath }) => ({
+                    name, size: file.size, webkitRelativePath: relativePath,
                     arrayBuffer: () => file.arrayBuffer()
                 }));
                 value = await this.service.importFiles(files, options);
