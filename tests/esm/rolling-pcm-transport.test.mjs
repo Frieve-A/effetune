@@ -24,14 +24,15 @@ class FakeNode {
 }
 
 class FakeBufferSource extends FakeNode {
-  constructor(starts) {
+  constructor(starts, operations) {
     super();
     this.starts = starts;
+    this.operations = operations;
     this.onended = null;
     this.buffer = null;
   }
-  start(...args) { this.starts.push(args); }
-  stop() {}
+  start(...args) { this.starts.push(args); this.operations.push('start'); }
+  stop() { this.operations.push('stop'); }
 }
 
 class FakeAudioContext {
@@ -39,6 +40,7 @@ class FakeAudioContext {
     this.sampleRate = 48000;
     this.currentTime = 0;
     this.starts = [];
+    this.operations = [];
   }
   createGain() {
     const node = new FakeNode();
@@ -53,7 +55,7 @@ class FakeAudioContext {
       channels
     };
   }
-  createBufferSource() { return new FakeBufferSource(this.starts); }
+  createBufferSource() { return new FakeBufferSource(this.starts, this.operations); }
   decodeAudioData(source, onSuccess) {
     const sourceFrames = new DataView(source).getUint32(40, true) /
       (2 * Int16Array.BYTES_PER_ELEMENT);
@@ -472,6 +474,24 @@ test('path seek acquisition failure and Pause race keep the committed transport'
   assert.equal(transport.transportId, committedTransportId);
   assert.equal(transport.worker, committedWorker);
   assert.equal(transport.reservationLedger.entries.size, 1);
+  await transport.dispose();
+});
+
+test('a resumed seek publishes replacement sources before retiring the previous generation', async () => {
+  const context = new FakeAudioContext();
+  const transport = new RollingPcmTransport(context, {
+    workerFactory: () => new FakeWorker({ totalFrames: 240000 })
+  });
+  await transport.prepare(canonical(new Uint8Array([1])));
+  assert.equal(transport.promoteReservation(), true);
+  assert.equal(transport.activate(), true);
+  assert.ok(transport.scheduled.size > 0);
+
+  context.operations.length = 0;
+  assert.deepEqual(await transport.seek(48000, { resume: true }), { adoptedFrame: 48000 });
+  assert.equal(transport.playing, true);
+  assert.equal(context.operations[0], 'start');
+  assert.ok(context.operations.includes('stop'));
   await transport.dispose();
 });
 

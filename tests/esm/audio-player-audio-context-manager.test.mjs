@@ -1515,14 +1515,16 @@ function createStagedSeekFixture(options = {}) {
       this.playing = true;
       return true;
     },
-    seek(frame, { resume }) {
+    seek(frame, { resume, shouldResume }) {
       assert.equal(resume, false);
+      assert.equal(typeof shouldResume, 'function');
       this.pendingSeek = { candidate: {} };
       return new Promise(resolve => seeks.push(() => {
-        // Adoption always lands paused at the target; resume is the owner's call.
+        const resumeAfterAdoption = shouldResume() === true;
         this.pendingSeek = null;
         this.playing = false;
         this.positionFrame = frame;
+        if (resumeAfterAdoption) this.activate({ frame });
         resolve({ adoptedFrame: frame });
       }));
     }
@@ -1741,8 +1743,9 @@ test('a failed seek re-arms the held next from the anchor the transport keeps pl
     const fixture = createStagedSeekFixture();
     const { harness, transport } = fixture;
     let failSeek;
-    transport.seek = (frame, { resume }) => {
+    transport.seek = (frame, { resume, shouldResume }) => {
       assert.equal(resume, false);
+      assert.equal(typeof shouldResume, 'function');
       transport.pendingSeek = { candidate: {} };
       return new Promise(resolve => {
         failSeek = () => {

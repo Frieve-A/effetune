@@ -1,5 +1,6 @@
 const { app, BrowserWindow } = require('electron');
 const constants = require('../../electron/constants');
+const ipcHandlers = require('../../electron/ipc-handlers');
 const windowState = require('../../electron/window-state');
 
 app.setPath('userData', process.env.EFFETUNE_STARTUP_WINDOW_TEST_PROFILE);
@@ -25,9 +26,14 @@ globalThis.startupWindowResults = app.whenReady().then(async () => {
         visible: window.isVisible(),
         maximized: window.isMaximized(),
         bounds: window.getBounds(),
-        normalBounds: window.getNormalBounds()
+        normalBounds: window.getNormalBounds(),
+        contentSize: window.getContentSize()
       };
-      await window.loadURL('data:text/html,<html><body>Startup geometry test</body></html>');
+      const load = window.loadURL('data:text/html,<html><body>Startup geometry test</body></html>');
+      // Production installs its application menu immediately after starting
+      // the initial page load, before the hidden window is presented.
+      ipcHandlers.createMenu();
+      await load;
       const firstClientSize = await window.webContents.executeJavaScript('[innerWidth, innerHeight]');
       const presentationShows = [];
       window.on('show', () => presentationShows.push({
@@ -36,7 +42,10 @@ globalThis.startupWindowResults = app.whenReady().then(async () => {
       // The test window stays transparent, including during native presentation.
       windowState.showWindowInRestoredState(window);
       const presented = {
-        visible: window.isVisible(), maximized: window.isMaximized(), bounds: window.getBounds()
+        visible: window.isVisible(),
+        maximized: window.isMaximized(),
+        bounds: window.getBounds(),
+        contentSize: window.getContentSize()
       };
       const shownClientSize = await window.webContents.executeJavaScript('[innerWidth, innerHeight]');
       if (isMaximized) window.unmaximize();

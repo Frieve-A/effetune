@@ -3358,7 +3358,10 @@ export class AudioContextManager {
     // the candidate was preparing must survive the adoption.
     let seekResult = false;
     try {
-      seekResult = await transport.seek(frame, { resume: false });
+      seekResult = await transport.seek(frame, {
+        resume: false,
+        shouldResume: () => this.getCurrentState()?.isPlaying === true
+      });
     } finally {
       releaseInFlight();
     }
@@ -3375,8 +3378,7 @@ export class AudioContextManager {
     const adoptedFrame = Number.isSafeInteger(seekResult.adoptedFrame)
       ? seekResult.adoptedFrame
       : frame;
-    const resume = this.getCurrentState()?.isPlaying === true;
-    if (resume && !transport.activate({ frame: adoptedFrame })) return;
+    const resume = transport.playing;
     this.updateState({
       currentTrackPosition: adoptedFrame / transport.metadata.sampleRate,
       isPlaying: resume,

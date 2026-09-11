@@ -386,7 +386,7 @@ export class RollingPcmTransport {
     await this.dispose();
   }
 
-  async seek(frame, { resume = this.playing } = {}) {
+  async seek(frame, { resume = this.playing, shouldResume = null } = {}) {
     if (!this.metadata || this.disposed || this.failed) return false;
     const target = Number.isFinite(frame)
       ? Math.max(0, Math.min(Math.round(frame), this.metadata.totalFrames))
@@ -423,8 +423,12 @@ export class RollingPcmTransport {
       }
       this.pendingSeek = null;
       const adoptedFrame = candidate.positionFrame;
-      this.adoptPreparedSeekCandidate(candidate, adoptedFrame);
-      if (resume === true && !this.activate({ frame: adoptedFrame })) return false;
+      const resumeAfterAdoption = typeof shouldResume === 'function'
+        ? shouldResume() === true
+        : resume === true;
+      if (!this.adoptPreparedSeekCandidate(candidate, adoptedFrame, {
+        resume: resumeAfterAdoption
+      })) return false;
       return Object.freeze({ adoptedFrame });
     } catch (error) {
       await candidate.dispose();
@@ -1012,12 +1016,14 @@ export class RollingPcmTransport {
     return this.cancelPendingSeek();
   }
 
-  adoptPreparedSeekCandidate(candidate, target) {
+  adoptPreparedSeekCandidate(candidate, target, { resume = false } = {}) {
     const oldWorker = this.worker;
     const oldIds = this.ids();
     const oldReservationOwner = this.reservationOwner;
     this.playing = false;
-    this.stopScheduledNodes();
+    this.nodeGeneration++;
+    const replacedScheduled = this.scheduled;
+    this.scheduled = new Set();
     this.releaseQueuedBuffers();
     this.rejectWaiters(codedError('seek-generation-replaced'));
 
@@ -1053,6 +1059,7 @@ export class RollingPcmTransport {
     this.diagnostics.liveHandlers = oldWorker ? 4 : 2;
     this.diagnostics.liveAudioBuffers = candidate.diagnostics.liveAudioBuffers;
     this.diagnostics.livePcmBytes = candidate.diagnostics.livePcmBytes;
+    this.diagnostics.liveSourceNodes = 0;
     this.diagnostics.maxLivePcmBytes = Math.max(
       this.diagnostics.maxLivePcmBytes,
       candidate.diagnostics.maxLivePcmBytes
@@ -1063,6 +1070,17 @@ export class RollingPcmTransport {
     candidate.diagnostics.liveHandlers = 0;
     candidate.diagnostics.liveAudioBuffers = 0;
     candidate.diagnostics.livePcmBytes = 0;
+    const activated = !resume || this.activate({ frame: target });
+    // Publish the replacement sources before retiring the previous generation.
+    // Otherwise the audio render thread can observe an all-silent quantum between
+    // the two main-thread operations even though the seek candidate is ready.
+    for (const scheduled of replacedScheduled) {
+      scheduled.source.onended = null;
+      try { scheduled.source.stop(); } catch (_) { /* already ended */ }
+      try { scheduled.source.disconnect(); } catch (_) { /* already disconnected */ }
+      scheduled.released = true;
+      scheduled.record.released = true;
+    }
     this.trackCleanup(disposeDetachedWorker(oldWorker, oldIds).finally(() => {
       if (!this.disposed) {
         this.diagnostics.liveWorkers = 1;
@@ -1070,6 +1088,7 @@ export class RollingPcmTransport {
       }
       this.reservationLedger.release(oldReservationOwner);
     }));
+    return activated;
   }
 
   releaseReservation() {
