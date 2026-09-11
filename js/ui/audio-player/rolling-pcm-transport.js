@@ -350,7 +350,11 @@ export class RollingPcmTransport {
     try { this.bus.disconnect(); } catch (_) { /* already disconnected */ }
   }
 
-  activate({ when = this.audioContext.currentTime, frame = this.positionFrame } = {}) {
+  activate({
+    when = this.audioContext.currentTime,
+    frame = this.positionFrame,
+    deferRefill = false
+  } = {}) {
     if (!this.prepared || this.disposed || this.failed || !this.metadata) return false;
     if (!Number.isSafeInteger(frame) || frame < 0 || frame > this.metadata.totalFrames ||
         !Number.isFinite(when)) return false;
@@ -360,8 +364,7 @@ export class RollingPcmTransport {
     this.anchorContextTime = when;
     this.playing = true;
     this.endPublished = false;
-    this.scheduleAvailable();
-    this.requestAhead();
+    this.scheduleAvailable(!deferRefill);
     if (frame === this.metadata.totalFrames) this.publishEnded();
     return true;
   }
@@ -417,15 +420,15 @@ export class RollingPcmTransport {
         await candidate.dispose();
         return false;
       }
-      if (!candidate.promoteReservation(this)) {
+      const resumeAfterAdoption = typeof shouldResume === 'function'
+        ? shouldResume() === true
+        : resume === true;
+      if (!candidate.canPromoteReservation(this)) {
         await candidate.dispose();
         return false;
       }
       this.pendingSeek = null;
       const adoptedFrame = candidate.positionFrame;
-      const resumeAfterAdoption = typeof shouldResume === 'function'
-        ? shouldResume() === true
-        : resume === true;
       if (!this.adoptPreparedSeekCandidate(candidate, adoptedFrame, {
         resume: resumeAfterAdoption
       })) return false;
@@ -774,7 +777,7 @@ export class RollingPcmTransport {
     this.resolveWaiters(message);
   }
 
-  scheduleAvailable() {
+  scheduleAvailable(requestAhead = true) {
     if (!this.playing || this.disposed || this.failed || !this.metadata) return;
     while (this.queue.length > 0 && this.scheduled.size < this.profile.sourceNodeCap) {
       const record = this.queue.shift();
@@ -818,7 +821,7 @@ export class RollingPcmTransport {
       source.onended = () => this.handleSourceEnded(scheduled);
       source.start(when, offsetFrames / this.metadata.sampleRate);
     }
-    this.requestAhead();
+    if (requestAhead) this.requestAhead();
   }
 
   handleSourceEnded(scheduled) {
@@ -1020,10 +1023,41 @@ export class RollingPcmTransport {
     const oldWorker = this.worker;
     const oldIds = this.ids();
     const oldReservationOwner = this.reservationOwner;
+    const candidateReservationOwner = candidate.reservationOwner;
+    const candidateReservationProfile = candidate.reservationProfile;
     this.playing = false;
     this.nodeGeneration++;
     const replacedScheduled = this.scheduled;
     this.scheduled = new Set();
+    const liveContextTime = this.audioContext.currentTime;
+    const bridgeScheduled = [...replacedScheduled].find(scheduled => {
+      if (scheduled.released || scheduled.record.released) return false;
+      const scheduledStartFrame = Math.max(scheduled.record.startFrame, this.anchorFrame);
+      const scheduledStartTime = this.anchorContextTime +
+        (scheduledStartFrame - this.anchorFrame) / this.metadata.sampleRate;
+      const scheduledEndTime = this.anchorContextTime +
+        (scheduled.record.startFrame + scheduled.record.frameCount - this.anchorFrame) /
+          this.metadata.sampleRate;
+      return scheduledStartTime <= liveContextTime && scheduledEndTime > liveContextTime;
+    }) ?? null;
+    for (const scheduled of replacedScheduled) {
+      if (scheduled === bridgeScheduled) continue;
+      scheduled.source.onended = null;
+      try { scheduled.source.stop(); } catch (_) { /* already ended */ }
+      try { scheduled.source.disconnect(); } catch (_) { /* already disconnected */ }
+      if (!scheduled.released) {
+        scheduled.released = true;
+        this.diagnostics.liveSourceNodes--;
+        this.releaseBufferRecord(scheduled.record);
+      }
+    }
+    const bridgedScheduled = bridgeScheduled ? [bridgeScheduled] : [];
+    const replacedRecords = bridgedScheduled
+      .filter(scheduled => !scheduled.released && !scheduled.record.released);
+    const replacedPcmBytes = replacedRecords.reduce(
+      (total, scheduled) => total + scheduled.record.bytes,
+      0
+    );
     this.releaseQueuedBuffers();
     this.rejectWaiters(codedError('seek-generation-replaced'));
 
@@ -1057,12 +1091,13 @@ export class RollingPcmTransport {
     candidate.reservationHeld = false;
     this.diagnostics.liveWorkers = oldWorker ? 2 : 1;
     this.diagnostics.liveHandlers = oldWorker ? 4 : 2;
-    this.diagnostics.liveAudioBuffers = candidate.diagnostics.liveAudioBuffers;
-    this.diagnostics.livePcmBytes = candidate.diagnostics.livePcmBytes;
-    this.diagnostics.liveSourceNodes = 0;
+    this.diagnostics.liveAudioBuffers = candidate.diagnostics.liveAudioBuffers + replacedRecords.length;
+    this.diagnostics.livePcmBytes = candidate.diagnostics.livePcmBytes + replacedPcmBytes;
+    this.diagnostics.liveSourceNodes = replacedRecords.length;
     this.diagnostics.maxLivePcmBytes = Math.max(
       this.diagnostics.maxLivePcmBytes,
-      candidate.diagnostics.maxLivePcmBytes
+      candidate.diagnostics.maxLivePcmBytes,
+      this.diagnostics.livePcmBytes
     );
     candidate.disconnect();
     candidate.disposed = true;
@@ -1070,25 +1105,55 @@ export class RollingPcmTransport {
     candidate.diagnostics.liveHandlers = 0;
     candidate.diagnostics.liveAudioBuffers = 0;
     candidate.diagnostics.livePcmBytes = 0;
-    const activated = !resume || this.activate({ frame: target });
-    // Publish the replacement sources before retiring the previous generation.
-    // Otherwise the audio render thread can observe an all-silent quantum between
-    // the two main-thread operations even though the seek candidate is ready.
-    for (const scheduled of replacedScheduled) {
-      scheduled.source.onended = null;
-      try { scheduled.source.stop(); } catch (_) { /* already ended */ }
-      try { scheduled.source.disconnect(); } catch (_) { /* already disconnected */ }
-      scheduled.released = true;
-      scheduled.record.released = true;
-    }
-    this.trackCleanup(disposeDetachedWorker(oldWorker, oldIds).finally(() => {
-      if (!this.disposed) {
-        this.diagnostics.liveWorkers = 1;
-        this.diagnostics.liveHandlers = 2;
+    const retireBridge = () => {
+      for (const scheduled of bridgedScheduled) {
+        scheduled.source.onended = null;
+        try { scheduled.source.stop(); } catch (_) { /* already ended */ }
+        try { scheduled.source.disconnect(); } catch (_) { /* already disconnected */ }
+        if (!scheduled.released) {
+          scheduled.released = true;
+          this.diagnostics.liveSourceNodes--;
+          this.releaseBufferRecord(scheduled.record);
+        }
       }
-      this.reservationLedger.release(oldReservationOwner);
-    }));
-    return activated;
+    };
+    const retireOldWorker = () => this.trackCleanup(
+      disposeDetachedWorker(oldWorker, oldIds).finally(() => {
+        if (!this.disposed && !this.failed) {
+          this.diagnostics.liveWorkers = 1;
+          this.diagnostics.liveHandlers = 2;
+        }
+        this.reservationLedger.release(oldReservationOwner);
+      })
+    );
+    try {
+      const activated = !resume || this.activate({ frame: target, deferRefill: true });
+      if (!activated || !this.reservationLedger.promote(
+        candidateReservationOwner,
+        oldReservationOwner,
+        candidateReservationProfile
+      )) throw codedError('seek-adoption-failed');
+      this.reservationOwner = candidateReservationOwner;
+      this.reservationHeld = true;
+      candidate.reservationHeld = false;
+      candidate.disposed = true;
+      // Publish the replacement sources before retiring the currently audible source.
+      // Otherwise the audio render thread can observe an all-silent quantum between
+      // the two main-thread operations even though the seek candidate is ready.
+      retireBridge();
+      if (resume) this.requestAhead();
+      retireOldWorker();
+      return true;
+    } catch (_) {
+      this.reservationOwner = candidateReservationOwner;
+      this.reservationHeld = true;
+      candidate.reservationHeld = false;
+      candidate.disposed = true;
+      retireBridge();
+      retireOldWorker();
+      this.fail('seek-adoption-failed');
+      return false;
+    }
   }
 
   releaseReservation() {

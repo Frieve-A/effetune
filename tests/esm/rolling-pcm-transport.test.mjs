@@ -24,15 +24,26 @@ class FakeNode {
 }
 
 class FakeBufferSource extends FakeNode {
-  constructor(starts, operations) {
+  constructor(context) {
     super();
-    this.starts = starts;
-    this.operations = operations;
+    this.context = context;
+    this.starts = context.starts;
+    this.operations = context.operations;
     this.onended = null;
     this.buffer = null;
+    this.startOperationIndex = null;
+    this.stopOperationIndex = null;
   }
-  start(...args) { this.starts.push(args); this.operations.push('start'); }
-  stop() { this.operations.push('stop'); }
+  start(...args) {
+    if (this.context.throwOnStart) throw new Error('source-start-failed');
+    this.starts.push(args);
+    this.startOperationIndex = this.operations.length;
+    this.operations.push('start');
+  }
+  stop() {
+    this.stopOperationIndex = this.operations.length;
+    this.operations.push('stop');
+  }
 }
 
 class FakeAudioContext {
@@ -55,7 +66,7 @@ class FakeAudioContext {
       channels
     };
   }
-  createBufferSource() { return new FakeBufferSource(this.starts, this.operations); }
+  createBufferSource() { return new FakeBufferSource(this); }
   decodeAudioData(source, onSuccess) {
     const sourceFrames = new DataView(source).getUint32(40, true) /
       (2 * Int16Array.BYTES_PER_ELEMENT);
@@ -90,10 +101,11 @@ class DelayedDecodeAudioContext extends FakeAudioContext {
 }
 
 class FakeWorker {
-  constructor({ channelCount = 2, totalFrames = 144000 } = {}) {
+  constructor({ channelCount = 2, totalFrames = 144000, slabFrames = 96000 } = {}) {
     this.onmessage = null;
     this.onerror = null;
     this.channelCount = channelCount;
+    this.slabFrames = slabFrames;
     this.sentFrame = 0;
     this.slabId = 0;
     this.totalFrames = totalFrames;
@@ -115,7 +127,7 @@ class FakeWorker {
       });
     } else if (message.type === RollingPcmCommand.FILL) {
       while (this.sentFrame < message.targetFrame) {
-        const frameCount = Math.min(96000, message.targetFrame - this.sentFrame);
+        const frameCount = Math.min(this.slabFrames, message.targetFrame - this.sentFrame);
         const startFrame = this.sentFrame;
         this.sentFrame += frameCount;
         this.emit(RollingPcmEvent.SLAB, message, {
@@ -478,20 +490,127 @@ test('path seek acquisition failure and Pause race keep the committed transport'
 });
 
 test('a resumed seek publishes replacement sources before retiring the previous generation', async () => {
+  for (const profileId of ['memory-first', 'balanced', 'resilience']) {
+    const context = new FakeAudioContext();
+    const transport = new RollingPcmTransport(context, {
+      profileId,
+      workerFactory: () => new FakeWorker({
+        totalFrames: 2_000_000,
+        slabFrames: transport.profile.slabFrames
+      })
+    });
+    await transport.prepare(canonical(new Uint8Array([1])));
+    assert.equal(transport.promoteReservation(), true);
+    assert.equal(transport.activate(), true);
+    assert.ok(transport.scheduled.size > 1, profileId);
+    const beforeSeek = transport.getDiagnosticSnapshot();
+
+    context.operations.length = 0;
+    assert.deepEqual(await transport.seek(48000, { resume: true }), { adoptedFrame: 48000 });
+    assert.equal(transport.playing, true,
+      `${profileId}: ${JSON.stringify(transport.getDiagnosticSnapshot())}`);
+    const firstReplacementStart = context.operations.indexOf('start');
+    assert.ok(firstReplacementStart >= 0, profileId);
+    assert.ok(context.operations.lastIndexOf('stop') > firstReplacementStart, profileId);
+    const afterSeek = transport.getDiagnosticSnapshot();
+    const candidateHeadNodes = Math.ceil(
+      transport.profile.nextMinimumHeadFrames / transport.profile.slabFrames
+    );
+    const candidateHeadBytes = transport.profile.nextMinimumHeadFrames *
+      transport.metadata.channelCount * Float32Array.BYTES_PER_ELEMENT;
+    const bridgeBytes = transport.profile.slabFrames * transport.metadata.channelCount *
+      Float32Array.BYTES_PER_ELEMENT;
+    assert.ok(afterSeek.liveSourceNodes > 0, profileId);
+    assert.ok(afterSeek.maxLiveSourceNodes >= Math.max(beforeSeek.liveSourceNodes, candidateHeadNodes + 1),
+      profileId);
+    assert.ok(afterSeek.maxLivePcmBytes >= Math.max(beforeSeek.livePcmBytes, candidateHeadBytes + bridgeBytes),
+      profileId);
+    assert.ok(afterSeek.maxLiveSourceNodes <= transport.profile.sourceNodeCap, profileId);
+    assert.ok(afterSeek.maxLivePcmBytes <= transport.profile.currentPcmByteCap, profileId);
+    await transport.dispose();
+    assert.equal(transport.getDiagnosticSnapshot().liveSourceNodes, 0, profileId);
+    assert.equal(transport.getDiagnosticSnapshot().liveAudioBuffers, 0, profileId);
+    assert.equal(transport.getDiagnosticSnapshot().livePcmBytes, 0, profileId);
+  }
+});
+
+test('a resumed seek bridges the audible source while its predecessor end is pending', async () => {
   const context = new FakeAudioContext();
   const transport = new RollingPcmTransport(context, {
+    workerFactory: () => new FakeWorker({
+      totalFrames: 2_000_000,
+      slabFrames: 96000
+    })
+  });
+  await transport.prepare(canonical(new Uint8Array([1])));
+  assert.equal(transport.promoteReservation(), true);
+  assert.equal(transport.activate(), true);
+  const oldScheduled = [...transport.scheduled];
+  assert.ok(oldScheduled.length > 1);
+  const expiredSource = oldScheduled[0].source;
+  const audibleScheduled = oldScheduled[1];
+  context.currentTime = (audibleScheduled.record.startFrame - transport.anchorFrame + 1) /
+    transport.metadata.sampleRate;
+
+  context.operations.length = 0;
+  assert.deepEqual(await transport.seek(48000, { resume: true }), { adoptedFrame: 48000 });
+  const firstReplacementStart = context.operations.indexOf('start');
+  assert.ok(firstReplacementStart >= 0);
+  assert.ok(expiredSource.stopOperationIndex < firstReplacementStart);
+  assert.ok(audibleScheduled.source.stopOperationIndex > firstReplacementStart);
+  await transport.dispose();
+});
+
+test('a source-start failure during seek adoption releases both transport generations', async () => {
+  const context = new FakeAudioContext();
+  const workers = [];
+  const ledger = new RollingPcmAdmissionLedger();
+  const transport = new RollingPcmTransport(context, {
+    reservationLedger: ledger,
+    workerFactory: () => {
+      const worker = new FakeWorker({ totalFrames: 2_000_000 });
+      workers.push(worker);
+      return worker;
+    }
+  });
+  await transport.prepare(canonical(new Uint8Array([1])));
+  assert.equal(transport.promoteReservation(), true);
+  assert.equal(transport.activate(), true);
+  const oldScheduled = [...transport.scheduled];
+
+  context.throwOnStart = true;
+  assert.equal(await transport.seek(48000, { resume: true }), false);
+  await transport.dispose();
+
+  assert.equal(transport.failed, true);
+  assert.equal(ledger.entries.size, 0);
+  assert.ok(workers.every(worker => worker.terminated));
+  assert.ok(oldScheduled.every(scheduled => scheduled.source.stopOperationIndex !== null));
+  const diagnostics = transport.getDiagnosticSnapshot();
+  assert.equal(diagnostics.liveWorkers, 0);
+  assert.equal(diagnostics.liveHandlers, 0);
+  assert.equal(diagnostics.liveSourceNodes, 0);
+  assert.equal(diagnostics.liveAudioBuffers, 0);
+  assert.equal(diagnostics.livePcmBytes, 0);
+});
+
+test('a throwing resumed-seek decision leaves the committed reservation active', async () => {
+  const transport = new RollingPcmTransport(new FakeAudioContext(), {
     workerFactory: () => new FakeWorker({ totalFrames: 240000 })
   });
   await transport.prepare(canonical(new Uint8Array([1])));
   assert.equal(transport.promoteReservation(), true);
   assert.equal(transport.activate(), true);
-  assert.ok(transport.scheduled.size > 0);
+  const committedWorker = transport.worker;
+  const committedOwner = transport.reservationOwner;
 
-  context.operations.length = 0;
-  assert.deepEqual(await transport.seek(48000, { resume: true }), { adoptedFrame: 48000 });
+  assert.equal(await transport.seek(48000, {
+    shouldResume: () => { throw new Error('resume-state-unavailable'); }
+  }), false);
+  assert.equal(transport.worker, committedWorker);
+  assert.equal(transport.reservationOwner, committedOwner);
+  assert.equal(transport.reservationLedger.getRole(committedOwner), 'current');
   assert.equal(transport.playing, true);
-  assert.equal(context.operations[0], 'start');
-  assert.ok(context.operations.includes('stop'));
   await transport.dispose();
 });
 
