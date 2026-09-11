@@ -138,8 +138,7 @@ test('extension pages use external module scripts and the editor reuses pipeline
   assert.doesNotMatch(editorHtml, /class="extension-toolbar"/);
   const settingsMenu = editorHtml.match(/<div class="settings-menu" id="editorSettingsMenu"[\s\S]*?<\/div>/)[0];
   assert.deepEqual([...settingsMenu.matchAll(/id="([^"]+)"/g)].map(match => match[1]),
-    ['editorSettingsMenu', 'editorImportMeasurement', 'editorDeleteMeasurement',
-      'editorImportPreset', 'editorExportPreset']);
+    ['editorSettingsMenu', 'editorImportMeasurement', 'editorImportPreset', 'editorExportPreset']);
   assert.match(editorHtml, /id="editorSettingsMenuButton"[^>]*aria-expanded="false"/);
   assert.match(editorHtml, /id="editorMeasurementFile"[^>]*hidden/);
   assert.match(editorHtml, /id="editorPresetFile"[^>]*hidden/);
@@ -155,6 +154,52 @@ test('extension pages use external module scripts and the editor reuses pipeline
   assert.match(editorJs, /enableFileProcessing:\s*false/);
   assert.doesNotMatch(editorJs, /shrinkSingleColumn/);
   assert.doesNotMatch(editorCss, /\.extension-editor \.pipeline\s*\{/);
+  assert.match(editorJs, /\.room-eq-measurement-row/);
+  assert.match(editorJs, /extension-measurement-delete/);
+});
+
+test('Room EQ measurement list receives the VST-style selected-item Delete action', async () => {
+  const listeners = {};
+  const select = {
+    id: 'room-eq-measurement-7',
+    addEventListener(type, listener) { listeners[`select:${type}`] = listener; }
+  };
+  let deleteButton = null;
+  const row = {
+    querySelector(selector) {
+      if (selector === '.extension-measurement-delete') return deleteButton;
+      if (selector === 'select[id^="room-eq-measurement-"]') return select;
+      return null;
+    },
+    appendChild(node) { deleteButton = node; }
+  };
+  const documentRef = {
+    querySelectorAll: selector => selector === '.room-eq-measurement-row' ? [row] : [],
+    createElement() {
+      return {
+        disabled: false,
+        isConnected: true,
+        addEventListener(type, listener) { listeners[`button:${type}`] = listener; }
+      };
+    }
+  };
+  const storage = {
+    async initialize() {},
+    getMeasurementById(id) { return id === 'measurement_imported' ? { imported: true } : null; }
+  };
+  const room = { id: 7, name: 'Room EQ', measurementId: 'measurement_imported' };
+  const editor = new ExtensionEditor({ client: {}, documentRef, measurementStorage: storage });
+  editor.audioManager = { pipeline: [room] };
+
+  editor.enhanceRoomEqMeasurementRows(documentRef);
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(deleteButton.className, 'room-eq-refresh extension-measurement-delete');
+  assert.equal(deleteButton.textContent, 'Delete');
+  assert.equal(deleteButton.disabled, false);
+  assert.equal(typeof listeners['select:change'], 'function');
+  assert.equal(typeof listeners['button:click'], 'function');
 });
 
 test('measurement import stores desktop exports and refreshes Room EQ and Crosstalk Cancellation', async () => {
@@ -212,17 +257,17 @@ test('imported measurement deletion clears every Room EQ and Crosstalk Cancellat
     setParameters(parameters) { calls.push(['crosstalk-parameters', parameters]); },
     async _refreshMeasurements(value) { calls.push(['crosstalk-refresh', value]); }
   };
-  const editor = new ExtensionEditor({ client: {}, documentRef: {}, measurementStorage: storage });
-  editor.elements.deleteMeasurement = { disabled: false };
+  const editor = new ExtensionEditor({ client: {}, documentRef: {
+    body: { inert: false }, addEventListener() {}, removeEventListener() {}
+  }, measurementStorage: storage });
   editor.audioManager = { pipeline: [room, crosstalk] };
-  editor.confirmImportedMeasurementDeletion = async measurements => {
-    assert.deepEqual(measurements, [imported]);
-    return imported.id;
+  editor.confirmImportedMeasurementDeletion = async measurement => {
+    assert.equal(measurement, imported);
+    return true;
   };
   editor.showMessage = (text, success, duration) => calls.push(['message', text, success, duration]);
 
-  assert.equal(await editor.deleteImportedMeasurement(), true);
-  assert.equal(editor.elements.deleteMeasurement.disabled, false);
+  assert.equal(await editor.deleteImportedMeasurement(room), true);
   assert.deepEqual(calls, [
     'initialize',
     ['room-parameters', { ms: '', mn: '', rp: 0, ms1: '', mn1: '' }],
@@ -269,13 +314,14 @@ test('failed imported measurement deletion restores Room EQ and Crosstalk Cancel
     },
     async _refreshMeasurements() { assert.fail('failed deletion refreshed Crosstalk Cancellation'); }
   };
-  const editor = new ExtensionEditor({ client: {}, documentRef: {}, measurementStorage: storage });
-  editor.elements.deleteMeasurement = { disabled: false };
+  const editor = new ExtensionEditor({ client: {}, documentRef: {
+    body: { inert: false }, addEventListener() {}, removeEventListener() {}
+  }, measurementStorage: storage });
   editor.audioManager = { pipeline: [room, crosstalk] };
-  editor.confirmImportedMeasurementDeletion = async () => imported.id;
+  editor.confirmImportedMeasurementDeletion = async () => true;
   editor.showMessage = (text, success) => calls.push(['message', text, success]);
 
-  assert.equal(await editor.deleteImportedMeasurement(), false);
+  assert.equal(await editor.deleteImportedMeasurement(room), false);
   assert.deepEqual({
     measurementId: room.measurementId,
     measurementName: room.measurementName,
@@ -291,7 +337,6 @@ test('failed imported measurement deletion restores Room EQ and Crosstalk Cancel
     channelMeasurementNames: ['', 'Listening room — R'],
     ll: 'measurement_imported::ch=left'
   });
-  assert.equal(editor.elements.deleteMeasurement.disabled, false);
   assert.deepEqual(calls, [
     ['room-parameters', { ms: '', mn: '', rp: 0, ms1: '', mn1: '' }],
     ['crosstalk-parameters', { ll: '' }],
@@ -302,6 +347,112 @@ test('failed imported measurement deletion restores Room EQ and Crosstalk Cancel
     }],
     ['crosstalk-parameters', { ll: 'measurement_imported::ch=left' }],
     ['message', 'The imported measurement could not be deleted. Try again.', false]
+  ]);
+});
+
+test('measurement deletion locks editor input and uses assignments after pending edits settle', async () => {
+  for (const deleted of [true, false]) {
+    const pendingEdit = Promise.withResolvers();
+    const startedDeletion = Promise.withResolvers();
+    const finishDeletion = Promise.withResolvers();
+    const startedRefresh = Promise.withResolvers();
+    const finishRefresh = Promise.withResolvers();
+    const listeners = new Map();
+    const documentRef = {
+      body: { inert: false },
+      addEventListener(type, listener, capture) {
+        assert.equal(capture, true);
+        listeners.set(type, listener);
+      },
+      removeEventListener(type, listener, capture) {
+        assert.equal(capture, true);
+        assert.equal(listeners.get(type), listener);
+        listeners.delete(type);
+      }
+    };
+    const imported = { id: 'measurement_imported', imported: true };
+    const storage = {
+      async initialize() {},
+      getMeasurementById: () => imported,
+      async deleteMeasurement() {
+        startedDeletion.resolve();
+        await finishDeletion.promise;
+        return deleted;
+      }
+    };
+    const adapter = new ExtensionAudioManager({ request: async () => {} }, error => assert.fail(error));
+    adapter.suppressMutations = false;
+    const previousRoom = { name: 'Room EQ', measurementId: imported.id,
+      setParameters() { assert.fail('deletion used the pipeline from before a pending edit'); } };
+    const room = {
+      id: 1, name: 'Room EQ', measurementId: imported.id, measurementName: 'Latest name', rp: 2,
+      channelMeasurementIds: ['other'], channelMeasurementNames: ['Other measurement'],
+      setParameters(parameters) {
+        if (parameters.ms !== undefined) this.measurementId = parameters.ms;
+        if (parameters.mn !== undefined) this.measurementName = parameters.mn;
+        if (parameters.rp !== undefined) this.rp = parameters.rp;
+        adapter.forwardPluginMessage({ type: 'updatePlugin', plugin: { id: 1, parameters } });
+      },
+      async _refreshMeasurements() {
+        startedRefresh.resolve();
+        await finishRefresh.promise;
+      }
+    };
+    adapter.pipelineA = [previousRoom];
+    const pending = adapter.enqueue(async () => {
+      await pendingEdit.promise;
+      adapter.pipelineA = [room];
+    });
+    const editor = new ExtensionEditor({ client: adapter.client, documentRef, measurementStorage: storage });
+    editor.audioManager = adapter;
+    editor.showMessage = () => {};
+    editor.confirmImportedMeasurementDeletion = async () => true;
+    const deletion = editor.deleteImportedMeasurement(previousRoom);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(documentRef.body.inert, true);
+    const keyEvent = { prevented: false, stopped: false,
+      preventDefault() { this.prevented = true; },
+      stopImmediatePropagation() { this.stopped = true; } };
+    listeners.get('keydown')(keyEvent);
+    assert.equal(keyEvent.prevented, true);
+    assert.equal(keyEvent.stopped, true);
+
+    pendingEdit.resolve();
+    await pending;
+    await startedDeletion.promise;
+    assert.equal(documentRef.body.inert, true);
+    assert.equal(room.measurementId, '');
+    finishDeletion.resolve();
+    if (deleted) {
+      await startedRefresh.promise;
+      assert.equal(documentRef.body.inert, true);
+      finishRefresh.resolve();
+    }
+    assert.equal(await deletion, deleted);
+    assert.equal(documentRef.body.inert, false);
+    assert.equal(listeners.size, 0);
+    assert.equal(room.measurementId, deleted ? '' : imported.id);
+    assert.equal(room.measurementName, deleted ? '' : 'Latest name');
+    assert.equal(room.rp, deleted ? 0 : 2);
+    assert.deepEqual(room.channelMeasurementIds, ['other']);
+    assert.deepEqual(room.channelMeasurementNames, ['Other measurement']);
+  }
+});
+
+test('extension UI infers error severity for shared preset messages with an omitted flag', () => {
+  const messages = [];
+  const uiManager = createUiManager({}, (...args) => messages.push(args), () => {});
+  uiManager.setError('error.invalidPresetData');
+  uiManager.setError('error.failedToLoadPreset');
+  uiManager.setError('error.noPresetSelected');
+  uiManager.setError('Saved.');
+  uiManager.setError('Please choose a preset.', true);
+  assert.deepEqual(messages, [
+    ['That preset could not be applied. Your current pipeline was kept.', false],
+    ['That preset could not be applied. Your current pipeline was kept.', false],
+    ['Something went wrong. Your current pipeline was kept. Try again.', false],
+    ['Saved.', true],
+    ['Something went wrong. Your current pipeline was kept. Try again.', false]
   ]);
 });
 
@@ -416,7 +567,6 @@ test('extension client routes one worklet telemetry frame through the editor to 
       settingsMenuButton: eventTarget,
       settingsMenu: { classList: { toggle() { return true; }, remove() {} } },
       importMeasurement: eventTarget,
-      deleteMeasurement: eventTarget,
       measurementFile: eventTarget,
       importPreset: eventTarget,
       presetFile: eventTarget,

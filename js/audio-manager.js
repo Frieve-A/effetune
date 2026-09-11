@@ -4215,12 +4215,9 @@ export class AudioManager {
             if (typeof WorkletNode !== 'function') {
                 throw new Error('AudioWorkletNode is unavailable');
             }
-            const wB = new WorkletNode(ctx, 'plugin-processor', {
+            const wB = this.contextManager.createPluginProcessorNode(ctx, {
                 channelCount: ch,
-                outputChannelCount: [ch],
-                processorOptions: { initialOutputChannelCount: ch, lowLatencyMode: lowLatency },
-                channelCountMode: 'explicit',
-                channelInterpretation: 'discrete'
+                lowLatencyMode: lowLatency
             });
             // The parallel branch's analyzers are hidden during the test, so we
             // simply drop any messages it posts back to the main thread.

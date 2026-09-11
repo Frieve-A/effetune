@@ -167,12 +167,27 @@ test('generated effects import and the public catalog stays semantic', async () 
   assert.equal(isBundleDocument({ version: 1, chain: {}, assets: [] }), true);
 });
 
-test('modulation cross-field rules match across constructors, JSON, and partial event order', async t => {
+test('dependent cross-field rules match across constructors, JSON, and partial event order', async t => {
   const source = [
     Float32Array.from({ length: 512 }, (_, index) => Math.sin(index * 0.071) * 0.4),
     Float32Array.from({ length: 512 }, (_, index) => Math.cos(index * 0.053) * 0.3)
   ];
   const cases = [
+    {
+      type: 'NoteSpectrogram',
+      EffectClass: NoteSpectrogram,
+      supplied: { minimumMidi: 91, maximumMidi: 28 },
+      canonical: { minimumMidi: 28, maximumMidi: 91 },
+      updates: { minimumMidi: 21, maximumMidi: 108 },
+      canonicalize(parameters) {
+        const values = { ...parameters };
+        if (values.minimumMidi > values.maximumMidi) {
+          [values.minimumMidi, values.maximumMidi] =
+            [values.maximumMidi, values.minimumMidi];
+        }
+        return values;
+      }
+    },
     {
       type: 'AutoFilter',
       EffectClass: AutoFilter,
@@ -868,6 +883,9 @@ test('all analyzer telemetry decoders expose semantic observations', async t => 
         assert.equal(frame.levels.length, 440);
         assert.ok(frame.levels.every(value => Number.isFinite(value) && value >= 0 && value <= 1));
         assert.ok(frame.levels.some(value => value > 0));
+        assert.equal(frame.volumeDb.length, 440);
+        assert.ok(frame.volumeDb.every(Number.isFinite));
+        assert.ok(frame.volumeDb.some(value => value > -240));
       }
     },
     {

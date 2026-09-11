@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { PipelineProcessor } from '../../js/audio/pipeline-processor.js';
+import { AudioContextManager } from '../../js/audio/audio-context-manager.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 function createConsole(calls) {
@@ -144,8 +145,8 @@ test('empty pipelines post bypass state and continue after disconnect warnings',
 test('rebuildPipeline recreates missing nodes and returns connection errors', async () => {
   await withProcessorGlobals({
     AudioWorkletNode: class FakeAudioWorkletNode {
-      constructor(audioContext, name) {
-        globalThis.window.createdWorkletArgs = [audioContext, name];
+      constructor(audioContext, name, options) {
+        globalThis.window.createdWorkletArgs = [audioContext, name, options];
         return createWorklet(globalThis.window.calls);
       }
     },
@@ -153,7 +154,9 @@ test('rebuildPipeline recreates missing nodes and returns connection errors', as
   }, async ({ calls }) => {
     globalThis.window.calls = calls;
     const contextManager = {
-      audioContext: { sampleRate: 44100 },
+      audioContext: { sampleRate: 44100, renderQuantumSize: 256 },
+      createPluginProcessorNode: AudioContextManager.prototype.createPluginProcessorNode,
+      getRenderQuantumSize: AudioContextManager.prototype.getRenderQuantumSize,
       workletNode: null
     };
     let ioManager;
@@ -173,10 +176,11 @@ test('rebuildPipeline recreates missing nodes and returns connection errors', as
     });
 
     assert.equal(await processor.rebuildPipeline(), 'connect failed');
-    assert.deepEqual(globalThis.window.createdWorkletArgs, [
+    assert.deepEqual(globalThis.window.createdWorkletArgs.slice(0, 2), [
       contextManager.audioContext,
       'plugin-processor'
     ]);
+    assert.equal(globalThis.window.createdWorkletArgs[2].processorOptions.maxFrameCount, 256);
     assert.equal(globalThis.window.workletNode, contextManager.workletNode);
     assert.equal(registerCount, 1);
     assert.ok(calls.some(call => call[0] === 'createFallbackSilentSource'));
@@ -193,6 +197,8 @@ test('rebuildPipeline reports worklet recreation failures', async () => {
   }, async ({ calls }) => {
     const contextManager = {
       audioContext: {},
+      createPluginProcessorNode: AudioContextManager.prototype.createPluginProcessorNode,
+      getRenderQuantumSize: AudioContextManager.prototype.getRenderQuantumSize,
       workletNode: null
     };
     const ioManager = createIoManager(calls, {

@@ -281,6 +281,9 @@ class NativeChainTests(unittest.TestCase):
                         self.assertTrue(np.isfinite(frame.levels).all())
                         self.assertTrue(all(0 <= value <= 1 for value in frame.levels))
                         self.assertGreater(max(frame.levels), 0)
+                        self.assertEqual(len(frame.volume_db), 440)
+                        self.assertTrue(np.isfinite(frame.volume_db).all())
+                        self.assertGreater(max(frame.volume_db), -240)
                     elif kind == "spectrogram":
                         self.assertEqual(frame.sample_rate, 48_000)
                         self.assertEqual(frame.points, 10)

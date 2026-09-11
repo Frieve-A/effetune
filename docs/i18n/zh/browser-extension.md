@@ -30,7 +30,7 @@ lang: zh
 
 已保存的设置和预设保存在扩展中，不会自动与网页应用或桌面应用同步。若预设需要不支持的路由、效果或不可用的外部资源，它不会被应用，当前效果链会保持不变。
 
-要在 Room EQ 或 Crosstalk Cancellation 中使用网页应用或桌面应用的测量结果，请先在相应应用中将测量结果导出为 JSON。在扩展编辑器中打开 **Settings**，选择 **Import measurement…**，再选择该 JSON 文件。用于 Crosstalk Cancellation 或 Room EQ 相位校正时，导出时应包含脉冲响应。导入的测量结果保存在扩展的浏览器存储中，不会自动同步。如需删除，请在 **Settings** 中选择 **Delete imported measurement…**；删除前会清除所有使用该测量结果的分配。
+要在 Room EQ 或 Crosstalk Cancellation 中使用网页应用或桌面应用的测量结果，请先在相应应用中将测量结果导出为 JSON。在扩展编辑器中打开 **Settings**，选择 **Import measurement…**，再选择该 JSON 文件。用于 Crosstalk Cancellation 或 Room EQ 相位校正时，导出时应包含脉冲响应。导入的测量结果会立即出现在 Room EQ 的 **Measurement** 列表中，保存在扩展的浏览器存储中，并且不会自动同步。如需删除导入的副本，请先在该列表中选中它，再选择列表旁的 **Delete**。确认后，会先清除所有使用该副本的 Room EQ 和 Crosstalk Cancellation 分配，再删除副本。
 
 ## 权限、限制和帮助
 

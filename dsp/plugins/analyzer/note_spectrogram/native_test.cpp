@@ -16,7 +16,10 @@ constexpr double kPi = 3.14159265358979323846;
 constexpr std::uint32_t kNoteCount = 88u;
 constexpr std::uint32_t kFineDivisions = 5u;
 constexpr std::uint32_t kFinePitchCount = kNoteCount * kFineDivisions;
-constexpr std::uint32_t kFrameBytes = 16u + 28u + 4u * kFinePitchCount;
+constexpr std::uint32_t kConfidenceOffset = 28u;
+constexpr std::uint32_t kVolumeOffset = kConfidenceOffset + 4u * kFinePitchCount;
+constexpr std::uint32_t kPayloadBytes = kVolumeOffset + 4u * kFinePitchCount;
+constexpr std::uint32_t kFrameBytes = 16u + kPayloadBytes;
 int failures = 0;
 void check(bool value, const char *expression, int line) {
   if (!value) {
@@ -30,6 +33,10 @@ std::uint32_t readU32(const std::uint8_t *data) {
          (static_cast<std::uint32_t>(data[2]) << 16u) |
          (static_cast<std::uint32_t>(data[3]) << 24u);
 }
+std::uint16_t readU16(const std::uint8_t *data) {
+  return static_cast<std::uint16_t>(data[0]) |
+         static_cast<std::uint16_t>(static_cast<std::uint16_t>(data[1]) << 8u);
+}
 float readF32(const std::uint8_t *data) {
   const auto bits = readU32(data);
   float value;
@@ -40,17 +47,20 @@ struct Harness {
   alignas(std::max_align_t) std::array<std::byte, 8192> storage{};
   const effetune::KernelDescriptor *descriptor = et_kernel_descriptor_NoteSpectrogramPlugin();
   effetune::PluginKernel *kernel = nullptr;
-  std::vector<std::uint8_t> ring_bytes = std::vector<std::uint8_t>(65536);
-  std::vector<std::uint8_t> bytes = std::vector<std::uint8_t>(65536);
+  std::vector<std::uint8_t> ring_bytes = std::vector<std::uint8_t>(128u * 1024u);
+  std::vector<std::uint8_t> bytes = std::vector<std::uint8_t>(128u * 1024u);
   effetune::TelemetryRing ring;
   std::uint32_t sequence = 0;
-  explicit Harness(float rate) {
+  explicit Harness(float rate, float minimum_midi = 21.0F, float maximum_midi = 108.0F,
+                   float regular_candidates = 8.0F) {
     CHECK(descriptor->objectSize <= storage.size());
-    CHECK(descriptor->paramsHash == 0x811c9dc5u && descriptor->paramsFloatCount == 0u);
+    CHECK(descriptor->paramsFloatCount == 3u);
     kernel = descriptor->construct(storage.data());
     kernel->prepare({rate, 4u, 1024u});
     CHECK(kernel->preparedSuccessfully());
-    CHECK(kernel->stageParameters(nullptr, 0u, descriptor->paramsHash) == ET_OK);
+    const std::array params = {minimum_midi, maximum_midi, regular_candidates};
+    CHECK(kernel->stageParameters(params.data(), static_cast<std::uint32_t>(params.size()),
+                                  descriptor->paramsHash) == ET_OK);
     kernel->applyPendingParameters();
     ring.adopt(ring_bytes.data(), static_cast<std::uint32_t>(ring_bytes.size()));
   }
@@ -65,6 +75,11 @@ struct Harness {
     const auto size = ring.read(bytes.data(), static_cast<std::uint32_t>(bytes.size()), &dropped);
     CHECK(dropped == 0u);
     CHECK(size % kFrameBytes == 0u);
+    for (auto offset = 0u; offset < size; offset += kFrameBytes) {
+      CHECK(readU16(bytes.data() + offset) == 24u);
+      CHECK(readU16(bytes.data() + offset + 2u) == 3u);
+      CHECK(readU16(bytes.data() + offset + 12u) == kPayloadBytes);
+    }
     return {bytes.begin(), bytes.begin() + size};
   }
 };
@@ -118,15 +133,20 @@ std::array<float, 88> levels(const std::vector<std::uint8_t> &data) {
   const auto payload = lastPayload(data);
   for (std::uint32_t p = 0; p < kNoteCount; ++p)
     for (std::uint32_t division = 0u; division < kFineDivisions; ++division)
-      result[p] =
-          std::max(result[p], readF32(payload + 28u + (p * kFineDivisions + division) * 4u));
+      result[p] = std::max(
+          result[p], readF32(payload + kConfidenceOffset + (p * kFineDivisions + division) * 4u));
   return result;
 }
 float bagLevel(const std::uint8_t *payload, std::uint32_t pitch) {
   auto result = 0.0F;
   for (std::uint32_t division = 0u; division < kFineDivisions; ++division)
-    result = std::max(result, readF32(payload + 28u + (pitch * kFineDivisions + division) * 4u));
+    result = std::max(
+        result, readF32(payload + kConfidenceOffset + (pitch * kFineDivisions + division) * 4u));
   return result;
+}
+float pitchVolume(const std::uint8_t *payload, std::uint32_t midi, std::uint32_t division = 2u) {
+  const auto fine_pitch = (midi - 21u) * kFineDivisions + division;
+  return readF32(payload + kVolumeOffset + fine_pitch * 4u);
 }
 struct Tone {
   double midi;
@@ -191,7 +211,10 @@ void checkPresence(const char *name, const std::vector<std::uint8_t> &frames,
   float earliest = 1000.0F;
   float maximum_false = 0.0F;
   for (std::size_t offset = 0u; offset < frames.size(); offset += kFrameBytes) {
-    const auto payload = frames.data() + offset + 16u;
+    const auto frame = frames.data() + offset;
+    CHECK(readU16(frame) == 24u && readU16(frame + 2u) == 3u);
+    CHECK(readU16(frame + 12u) == kPayloadBytes);
+    const auto payload = frame + 16u;
     CHECK(readU32(payload + 20u) == kFineDivisions);
     const auto time = readF32(payload + 4u);
     bool complete = true;
@@ -233,6 +256,28 @@ void checkPresence(const char *name, const std::vector<std::uint8_t> &frames,
   CHECK(precision >= 0.98);
   CHECK(recall >= 0.95);
   CHECK(expected.empty() || earliest + 0.02F <= 0.25F);
+}
+void testVolumeLevels() {
+  const auto measured = [](double midi, double amplitude) {
+    constexpr auto rate = 48000.0F;
+    Harness harness(rate);
+    const auto frequency = 440.0 * std::exp2((midi - 69.0) / 12.0);
+    const auto frames = render(harness, rate, 0.6, [=](double time, std::uint32_t) {
+      return amplitude * std::sin(2.0 * kPi * frequency * time);
+    });
+    CHECK(!frames.empty());
+    return pitchVolume(lastPayload(frames), static_cast<std::uint32_t>(midi));
+  };
+
+  const auto a4 = measured(69.0, 1.0);
+  const auto a4_minus_20 = measured(69.0, 0.1);
+  const auto a1 = measured(33.0, 1.0);
+  const auto a4_correction = 3.0 * std::log2(440.0 / 100.0);
+  std::printf("volume A4 %.3f dB, A4 -20 dB %.3f dB, A1 %.3f dB\n", static_cast<double>(a4),
+              static_cast<double>(a4_minus_20), static_cast<double>(a1));
+  CHECK(std::abs(a4 - a4_correction) <= 1.0);
+  CHECK(std::abs((a4_minus_20 - a4) + 20.0F) <= 0.5F);
+  CHECK(std::abs(a1) <= 1.0F);
 }
 void testPresenceQuality() {
   const std::vector<std::vector<Tone>> signals = {
@@ -371,6 +416,25 @@ void testLowOctaveDiscrimination() {
     }
   }
 }
+void testConfiguredRecognitionRange() {
+  Harness harness(48000.0F, 60.0F, 72.0F, 8.0F);
+  const auto frames = render(harness, 48000.0F, 0.7, [](double t, std::uint32_t) {
+    return signal(t, {{48, 0.08, 1}, {60, 0.08, 1}, {72, 0.08, 1}, {84, 0.08, 1}});
+  });
+  CHECK(!frames.empty());
+  for (std::size_t offset = 0u; offset < frames.size(); offset += kFrameBytes) {
+    const auto *payload = frames.data() + offset + 16u;
+    for (auto midi = 21u; midi <= 108u; ++midi) {
+      if (midi >= 60u && midi <= 72u)
+        continue;
+      for (auto division = 0u; division < kFineDivisions; ++division) {
+        const auto fine_pitch = (midi - 21u) * kFineDivisions + division;
+        CHECK(readF32(payload + kConfidenceOffset + fine_pitch * 4u) == 0.0F);
+        CHECK(readF32(payload + kVolumeOffset + fine_pitch * 4u) == -240.0F);
+      }
+    }
+  }
+}
 void testAnalysisFloor() {
   struct Case {
     const char *name;
@@ -407,8 +471,10 @@ void testAnalysisFloor() {
     for (std::size_t offset = 0u; offset < frames.size(); offset += kFrameBytes) {
       const auto payload = frames.data() + offset + 16u;
       CHECK(readU32(payload + 20u) == kFineDivisions);
-      for (auto pitch = 0u; pitch < kFinePitchCount; ++pitch)
-        CHECK(readF32(payload + 28u + 4u * pitch) == 0.0F);
+      for (auto pitch = 0u; pitch < kFinePitchCount; ++pitch) {
+        CHECK(readF32(payload + kConfidenceOffset + 4u * pitch) == 0.0F);
+        CHECK(readF32(payload + kVolumeOffset + 4u * pitch) == -240.0F);
+      }
     }
     std::printf("analysis floor %s frames %zu\n", test.name, frames.size() / kFrameBytes);
   }
@@ -434,8 +500,10 @@ void testPresenceRoutingAndLifecycle() {
       CHECK(readU32(payload + 16u) == i);
       CHECK(readU32(payload + 20u) == kFineDivisions && readU32(payload + 24u) == 1u);
       CHECK(std::abs(readF32(payload + 4u) - static_cast<float>(i + 1u) * hop / rate) < 1.0e-6F);
-      for (auto p = 0u; p < kFinePitchCount; ++p)
-        CHECK(readF32(payload + 28u + p * 4u) == 0.0F);
+      for (auto p = 0u; p < kFinePitchCount; ++p) {
+        CHECK(readF32(payload + kConfidenceOffset + p * 4u) == 0.0F);
+        CHECK(readF32(payload + kVolumeOffset + p * 4u) == -240.0F);
+      }
     }
   }
   Harness stereo(48000.0F), mono(48000.0F), opposite(48000.0F);
@@ -490,7 +558,9 @@ int main(int argc, char **argv) {
   pffft_destroy_setup(setup);
   testAnalysisFloor();
   testAnalysisFloorAfterSignal();
+  testVolumeLevels();
   testPresenceRoutingAndLifecycle();
+  testConfiguredRecognitionRange();
   testLowOctaveDiscrimination();
   return failures == 0 ? 0 : 1;
 }

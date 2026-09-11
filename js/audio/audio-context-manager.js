@@ -52,6 +52,30 @@ export class AudioContextManager {
             window.electronIntegration?.isElectronEnvironment?.());
     }
 
+    getRenderQuantumSize(context = this.audioContext) {
+        const renderQuantumSize = context?.renderQuantumSize;
+        return Number.isInteger(renderQuantumSize) && renderQuantumSize >= 128
+            ? renderQuantumSize
+            : 128;
+    }
+
+    createPluginProcessorNode(context = this.audioContext, {
+        channelCount = context?.destination?.channelCount || 2,
+        lowLatencyMode = this.lowLatencyMode ?? false
+    } = {}) {
+        return new AudioWorkletNode(context, 'plugin-processor', {
+            channelCount,
+            outputChannelCount: [channelCount],
+            processorOptions: {
+                initialOutputChannelCount: channelCount,
+                lowLatencyMode,
+                maxFrameCount: this.getRenderQuantumSize(context)
+            },
+            channelCountMode: 'explicit',
+            channelInterpretation: 'discrete'
+        });
+    }
+
     _createAudioContextWithFallback(AudioContext, audioContextOptions) {
         const fallbackOrder = ['sampleRate', 'latencyHint', 'sinkId'];
         const options = { ...audioContextOptions };
@@ -341,15 +365,9 @@ export class AudioContextManager {
             const lowLatency = preferences?.lowLatencyOutput || false;
 
             // Create worklet node
-            this.workletNode = new AudioWorkletNode(this.audioContext, 'plugin-processor', {
+            this.workletNode = this.createPluginProcessorNode(this.audioContext, {
                 channelCount: this.audioContext.destination.channelCount,
-                outputChannelCount: [this.audioContext.destination.channelCount],
-                processorOptions: {
-                    initialOutputChannelCount: this.audioContext.destination.channelCount,
-                    lowLatencyMode: lowLatency
-                },
-                channelCountMode: 'explicit',
-                channelInterpretation: 'discrete'
+                lowLatencyMode: lowLatency
             });
             window.workletNode = this.workletNode;
             // Remember the low-latency mode so any auxiliary worklet (e.g. the

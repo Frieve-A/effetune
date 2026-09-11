@@ -74,7 +74,7 @@ export function createUiManager(translations, showMessage, hideMessage) {
       const fallback = isError ? 'Something went wrong. Try again.' : 'Pipeline updated.';
       showMessage(substitute(translations[key] || fallback, params), !isError, duration);
     },
-    setError(key, isError = false, params = {}) {
+    setError(key, isError = key.startsWith('error.'), params = {}) {
       const presetError = key === 'error.invalidPresetData' || key === 'error.failedToLoadPreset';
       const fallback = presetError
         ? 'That preset could not be applied. Your current pipeline was kept.'
@@ -233,6 +233,7 @@ export class ExtensionEditor {
     this.elements = {};
     this.messageTimer = null;
     this.messageRevision = 0;
+    this.measurementUiObserver = null;
   }
 
   showMessage(text, success = false, duration = 0) {
@@ -287,7 +288,6 @@ export class ExtensionEditor {
       settingsMenuButton: this.document.getElementById('editorSettingsMenuButton'),
       settingsMenu: this.document.getElementById('editorSettingsMenu'),
       importMeasurement: this.document.getElementById('editorImportMeasurement'),
-      deleteMeasurement: this.document.getElementById('editorDeleteMeasurement'),
       measurementFile: this.document.getElementById('editorMeasurementFile'),
       importPreset: this.document.getElementById('editorImportPreset'),
       exportPreset: this.document.getElementById('editorExportPreset'),
@@ -353,6 +353,7 @@ export class ExtensionEditor {
 
     this.bindEvents();
     this.restoreSnapshot(snapshot, true);
+    this.installMeasurementListEnhancements();
     this.pluginListManager.initPluginList();
     this.pipelineManager.initDragAndDrop();
     this.rangeFillController.refresh();
@@ -377,10 +378,6 @@ export class ExtensionEditor {
       this.elements.measurementFile.click();
     });
     this.elements.measurementFile.addEventListener('change', event => this.importMeasurementFile(event));
-    this.elements.deleteMeasurement.addEventListener('click', () => {
-      this.closeSettingsMenu();
-      void this.deleteImportedMeasurement();
-    });
     this.elements.importPreset.addEventListener('click', () => {
       this.closeSettingsMenu();
       this.elements.presetFile.click();
@@ -518,6 +515,7 @@ export class ExtensionEditor {
         return null;
       }
       await this.refreshMeasurementConsumers();
+      this.updateImportedDeleteButtons();
       this.showMessage(`Imported measurement “${file.name}”.`, true, TRANSIENT_MESSAGE_DURATION_MS);
       return measurementId;
     } catch (error) {
@@ -536,7 +534,7 @@ export class ExtensionEditor {
       plugin?.name === 'Room EQ' || plugin?.name === 'Crosstalk Cancellation');
   }
 
-  confirmImportedMeasurementDeletion(measurements) {
+  confirmImportedMeasurementDeletion(measurement) {
     return new Promise(resolve => {
       const overlay = this.document.createElement('div');
       overlay.className = 'modal-overlay extension-measurement-delete-overlay';
@@ -550,15 +548,7 @@ export class ExtensionEditor {
       title.id = 'extensionMeasurementDeleteTitle';
       title.textContent = 'Delete imported measurement';
       const description = this.document.createElement('p');
-      description.textContent = 'Select an imported measurement to delete. Any Room EQ or Crosstalk Cancellation assignment that uses it will be cleared.';
-      const select = this.document.createElement('select');
-      select.setAttribute('aria-label', 'Imported measurement');
-      for (const measurement of measurements) {
-        const option = this.document.createElement('option');
-        option.value = measurement.id;
-        option.textContent = measurement.name || 'Measurement';
-        select.appendChild(option);
-      }
+      description.textContent = `Delete imported measurement “${measurement.name || 'Measurement'}”? This cannot be undone.`;
       const buttons = this.document.createElement('div');
       buttons.className = 'dialog-buttons';
       const cancel = this.document.createElement('button');
@@ -566,28 +556,93 @@ export class ExtensionEditor {
       cancel.textContent = 'Cancel';
       const confirm = this.document.createElement('button');
       confirm.type = 'button';
+      confirm.className = 'extension-measurement-delete-confirm';
       confirm.textContent = 'Delete';
       buttons.append(cancel, confirm);
-      dialog.append(title, description, select, buttons);
+      dialog.append(title, description, buttons);
       overlay.appendChild(dialog);
 
       let finished = false;
-      const finish = measurementId => {
+      const finish = result => {
         if (finished) return;
         finished = true;
         this.document.removeEventListener('keydown', handleKeyDown);
         overlay.remove();
-        resolve(measurementId);
+        resolve(result);
       };
       const handleKeyDown = event => {
-        if (event.key === 'Escape') finish(null);
+        if (event.key === 'Escape') finish(false);
       };
-      cancel.addEventListener('click', () => finish(null));
-      confirm.addEventListener('click', () => finish(select.value));
+      cancel.addEventListener('click', () => finish(false));
+      confirm.addEventListener('click', () => finish(true));
       this.document.addEventListener('keydown', handleKeyDown);
       this.document.body.appendChild(overlay);
-      select.focus();
+      cancel.focus();
     });
+  }
+
+  roomEqPluginForMeasurementSelect(select) {
+    const pluginId = Number(select?.id?.slice('room-eq-measurement-'.length));
+    return this.audioManager.pipeline.find(plugin =>
+      plugin?.name === 'Room EQ' && plugin.id === pluginId) || null;
+  }
+
+  updateImportedDeleteButtons() {
+    for (const row of this.document.querySelectorAll?.('.room-eq-measurement-row') || []) {
+      const button = row.querySelector('.extension-measurement-delete');
+      const select = row.querySelector('select[id^="room-eq-measurement-"]');
+      if (!button || !select) continue;
+      const plugin = this.roomEqPluginForMeasurementSelect(select);
+      const selectedId = baseMeasurementId(plugin?.measurementId);
+      button.disabled = true;
+      if (!selectedId) continue;
+      void this.measurementStorage.initialize().then(() => {
+        if (!button.isConnected) return;
+        const currentPlugin = this.roomEqPluginForMeasurementSelect(select);
+        if (baseMeasurementId(currentPlugin?.measurementId) !== selectedId) return;
+        button.disabled = this.measurementStorage.getMeasurementById(selectedId)?.imported !== true;
+      }).catch(error => {
+        console.error('[EffeTune extension] Imported measurement state could not be read', error);
+      });
+    }
+  }
+
+  enhanceRoomEqMeasurementRows(root) {
+    const rows = [];
+    if (root?.matches?.('.room-eq-measurement-row')) rows.push(root);
+    rows.push(...(root?.querySelectorAll?.('.room-eq-measurement-row') || []));
+    for (const row of rows) {
+      if (row.querySelector('.extension-measurement-delete')) continue;
+      const select = row.querySelector('select[id^="room-eq-measurement-"]');
+      if (!select) continue;
+      const button = this.document.createElement('button');
+      button.type = 'button';
+      button.className = 'room-eq-refresh extension-measurement-delete';
+      button.textContent = 'Delete';
+      button.title = 'Delete imported measurement';
+      button.disabled = true;
+      button.addEventListener('click', () => {
+        button.disabled = true;
+        void this.deleteImportedMeasurement(this.roomEqPluginForMeasurementSelect(select))
+          .finally(() => this.updateImportedDeleteButtons());
+      });
+      select.addEventListener('change', () => this.updateImportedDeleteButtons());
+      row.appendChild(button);
+    }
+    this.updateImportedDeleteButtons();
+  }
+
+  installMeasurementListEnhancements() {
+    this.enhanceRoomEqMeasurementRows(this.document);
+    if (typeof MutationObserver !== 'function' || !this.document.body) return;
+    this.measurementUiObserver = new MutationObserver(records => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (node.nodeType === Node.ELEMENT_NODE) this.enhanceRoomEqMeasurementRows(node);
+        }
+      }
+    });
+    this.measurementUiObserver.observe(this.document.body, { childList: true, subtree: true });
   }
 
   clearDeletedMeasurementReferences(measurementId) {
@@ -631,23 +686,30 @@ export class ExtensionEditor {
     await Promise.all(consumers.map(plugin => plugin._refreshMeasurements(false)));
   }
 
-  async deleteImportedMeasurement() {
-    this.elements.deleteMeasurement.disabled = true;
+  async deleteImportedMeasurement(targetPlugin) {
+    const body = this.document.body;
+    const previousInert = body.inert;
+    const blockKeyboard = event => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    let locked = false;
     try {
       await this.measurementStorage.initialize();
-      const measurements = this.measurementStorage.getAllMeasurements()
-        .filter(measurement => measurement?.imported === true);
-      if (measurements.length === 0) {
-        this.showMessage('There are no imported measurements to delete.', true, TRANSIENT_MESSAGE_DURATION_MS);
-        return false;
-      }
-      const measurementId = await this.confirmImportedMeasurementDeletion(measurements);
+      const measurementId = baseMeasurementId(targetPlugin?.measurementId);
       if (!measurementId) return false;
       const measurement = this.measurementStorage.getMeasurementById(measurementId);
       if (measurement?.imported !== true) {
-        this.showMessage('That imported measurement is no longer available.', false);
+        this.showMessage('Only measurements imported into this extension can be deleted here.', false);
         return false;
       }
+      if (!await this.confirmImportedMeasurementDeletion(measurement)) return false;
+      // Parameter setters change the visible model before joining the remote queue.
+      // Keep editor input locked until both stores and the measurement lists agree.
+      body.inert = true;
+      this.document.addEventListener('keydown', blockKeyboard, true);
+      locked = true;
+      await this.audioManager.mutationQueue;
       const mutationGeneration = this.audioManager.mutationGeneration;
       const affected = this.clearDeletedMeasurementReferences(measurementId);
       await (this.audioManager.mutationQueue || Promise.resolve());
@@ -671,6 +733,7 @@ export class ExtensionEditor {
         return false;
       }
       await this.refreshMeasurementConsumers();
+      this.updateImportedDeleteButtons();
       this.showMessage(`Deleted imported measurement “${measurement.name || 'Measurement'}”.`, true,
         TRANSIENT_MESSAGE_DURATION_MS);
       return true;
@@ -679,7 +742,10 @@ export class ExtensionEditor {
       this.showMessage('The imported measurement could not be deleted. Try again.', false);
       return false;
     } finally {
-      this.elements.deleteMeasurement.disabled = false;
+      if (locked) {
+        this.document.removeEventListener('keydown', blockKeyboard, true);
+        body.inert = previousInert;
+      }
     }
   }
 

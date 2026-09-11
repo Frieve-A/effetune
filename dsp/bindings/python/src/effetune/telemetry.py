@@ -62,6 +62,7 @@ class NoteSpectrogramTelemetryFrame(TelemetryFrame):
     divisions_per_semitone: Literal[5]
     generation: int
     levels: tuple[float, ...]
+    volume_db: tuple[float, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,7 +87,7 @@ class StereoTelemetryFrame(TelemetryFrame):
 
 _ANALYZER_FRAMES = {
     "LevelMeter": (1, 1),
-    "NoteSpectrogram": (24, 2),
+    "NoteSpectrogram": (24, 3),
     "Oscilloscope": (3, 2),
     "SpectrumAnalyzer": (4, 1),
     "Spectrogram": (5, 1),
@@ -301,7 +302,7 @@ def _decode_note_spectrogram(
     sequence: int,
     dropped: int,
 ) -> TelemetryFrame | None:
-    if len(payload) != 1788:
+    if len(payload) != 3548:
         return None
     sample_rate, time_seconds, pitch_count, first_midi, hop_seconds, frame_index, divisions, generation = (
         struct.unpack_from("<ffHHfIII", payload)
@@ -322,6 +323,9 @@ def _decode_note_spectrogram(
     levels = struct.unpack_from("<440f", payload, 28)
     if any(not math.isfinite(value) or not 0 <= value <= 1 for value in levels):
         return None
+    volume_db = struct.unpack_from("<440f", payload, 28 + 440 * 4)
+    if any(not math.isfinite(value) for value in volume_db):
+        return None
     return NoteSpectrogramTelemetryFrame(
         **_common("noteSpectrogram", node, sequence, dropped),
         sample_rate=sample_rate,
@@ -332,6 +336,7 @@ def _decode_note_spectrogram(
         divisions_per_semitone=divisions,
         generation=generation,
         levels=levels,
+        volume_db=volume_db,
     )
 
 

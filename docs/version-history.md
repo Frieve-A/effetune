@@ -6,7 +6,7 @@ lang: en
 
 # Version History
 
-### Version 2.9.0 (TBD, 2026)
+### Version 2.9.0 (Sep 11, 2026)
 - Added Note Spectrogram effect
 - Added color theme presets
 - Added a browser extension version (beta)

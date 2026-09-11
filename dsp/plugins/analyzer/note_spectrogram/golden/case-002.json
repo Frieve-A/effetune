@@ -11,14 +11,18 @@
   "channel": "L",
   "caseIndex": 1,
   "seed": "0xeffe7a5f",
-  "params": {},
+  "params": {
+    "mn": 28,
+    "mx": 91,
+    "nc": 8
+  },
   "events": [],
   "tolerance": {
     "abs": 0.000001,
     "policy": "per-sample"
   },
   "referenceEngine": "production-native-promoted-v1",
-  "referenceHash": "sha256:1d8bb35b6a19a43ff0837e542e76c2783b54124e4e928e2c9426f384bc30a591",
+  "referenceHash": "sha256:587db366d61fb5ef85410bf5c9794444bb5e1698c23077700b29ed8de96b99da",
   "generationCommand": "node tools/dsp-parity/generate.mjs --type NoteSpectrogramPlugin --promote-production-native",
   "outputFloats": 773,
   "byteLength": 3092,

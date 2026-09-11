@@ -96,6 +96,7 @@ test('production schemas expose the audited automation population', async () => 
   ]);
   const nonAutomatedByReason = {
     analyzerOnly: {
+      NoteSpectrogramPlugin: ['minimumMidi', 'maximumMidi', 'regularCandidates'],
       OscilloscopePlugin: [
         'displayTime', 'triggerMode', 'triggerLevel', 'triggerEdge', 'holdoff',
         'displayLevel', 'verticalOffset'

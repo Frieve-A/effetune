@@ -11,19 +11,21 @@ import { comparePerSample, formatComparison } from '../../tools/dsp-parity/toler
 const SAMPLE_RATE = 48000;
 const CHANNEL_COUNT = 2;
 const MIN_FRAME_COUNT = 4;
-const MAX_FRAME_COUNT = 128;
-const VARIABLE_FRAME_COUNTS = Array.from(
-  { length: MAX_FRAME_COUNT - MIN_FRAME_COUNT + 1 },
-  (_, index) => MIN_FRAME_COUNT + index
-);
-VARIABLE_FRAME_COUNTS.push(70);
+const MAX_FRAME_COUNT = 512;
+const VARIABLE_FRAME_COUNTS = [
+  ...Array.from(
+    { length: 128 - MIN_FRAME_COUNT + 1 },
+    (_, index) => MIN_FRAME_COUNT + index
+  ),
+  70, 129, 192, 255, 256, 257, 384, 448, 511, 512
+];
 const TOTAL_FRAME_COUNT = VARIABLE_FRAME_COUNTS.reduce((total, count) => total + count, 0);
 const FIXED_FRAME_COUNTS = Array(TOTAL_FRAME_COUNT / MAX_FRAME_COUNT).fill(MAX_FRAME_COUNT);
 const SEED_LOW = 0x89abcdef;
 const SEED_HIGH = 0x01234567;
 const SEED = (BigInt(SEED_HIGH) << 32n) | BigInt(SEED_LOW);
 const WASM_ARTIFACTS = ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm'];
-const NOISE_REDUCTION_BLOCK_COUNT = 400;
+const NOISE_REDUCTION_BLOCK_COUNT = 100;
 const KERNEL_TOLERANCES = readKernelTolerances();
 const STRICT_INVARIANCE_CASES = [
   {

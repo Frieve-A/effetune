@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { decodeDspPipelineDescriptor } from '../../js/audio/dsp-pipeline-descriptor.js';
 import { PowerPolicyController } from '../../js/audio/power-policy-controller.js';
 import { SHIPPED_ENABLED_TYPES } from '../../js/audio/dsp-rollout.js';
+import { instantiateDspBinding } from '../../js/audio/dsp-engine-binding.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const processorPath = path.join(repoRoot, 'plugins', 'audio-processor.js');
@@ -154,7 +155,15 @@ function createBinding(options = {}) {
     },
     pointerForArenaView(view) {
       calls.push(['pointerForArenaView', view]);
-      return pointerViews.get(view) ?? null;
+      for (const [arenaView, address] of pointerViews) {
+        if (view.buffer === arenaView.buffer && view.byteOffset >= arenaView.byteOffset &&
+            view.byteOffset + view.byteLength <= arenaView.byteOffset + arenaView.byteLength) {
+          const result = address + view.byteOffset - arenaView.byteOffset;
+          if (!viewsByPointer.has(result)) viewsByPointer.set(result, view);
+          return result;
+        }
+      }
+      return null;
     },
     instanceProcess(id, audioPtr, channels, frames, time) {
       calls.push(['instanceProcess', id, audioPtr, channels, frames, time]);
@@ -273,7 +282,7 @@ async function instantiateDspBinding(payload, options) {
   const sandbox = {
     ArrayBuffer,
     DataView,
-    Float32Array,
+    Float32Array: options.Float32Array ?? Float32Array,
     Map,
     Set,
     Uint8Array,
@@ -310,7 +319,8 @@ async function instantiateDspBinding(payload, options) {
   const processor = new ProcessorClass({
     processorOptions: {
       initialOutputChannelCount: options.outputChannels ?? 2,
-      lowLatencyMode: false
+      lowLatencyMode: false,
+      ...options.processorOptions
     }
   });
   const send = async data => {
@@ -570,12 +580,12 @@ function processRoutedImpulse(processor, latency) {
   assert.equal(rendered[quantum][1][offset], 3);
 }
 
-function processBlock(processor, value = 1, channelCount = 2) {
+function processBlock(processor, value = 1, channelCount = 2, frameCount = 128) {
   const input = Array.from(
     { length: channelCount },
-    () => Float32Array.from({ length: 128 }, () => value)
+    () => Float32Array.from({ length: frameCount }, () => value)
   );
-  const output = Array.from({ length: channelCount }, () => new Float32Array(128));
+  const output = Array.from({ length: channelCount }, () => new Float32Array(frameCount));
   assert.equal(processor.process([input], [output], {}), true);
   return output;
 }
@@ -6162,5 +6172,130 @@ test('sixteen-channel hybrid routing reuses the preallocated buses and processin
     assert.equal(harness.processor.busBuffers.get(1), pool.buses.get(1));
     assert.equal(harness.processor.pluginContexts.get(7).buffer, pool.allChannels.buffer);
     assert.equal(harness.processor.pluginContexts.get(8).buffer, pool.allChannels.buffer);
+  }
+});
+
+test('variable render quanta preserve real WASM Volume and SBC processing without resetting state', async () => {
+  const bytes = await fs.readFile(path.join(repoRoot, 'plugins/dsp/effetune-dsp.simd.wasm'));
+  const meta = JSON.parse(await fs.readFile(path.join(repoRoot, 'plugins/dsp/effetune-dsp.meta.json')));
+  const frames = 12288;
+  const input = Array.from({ length: 2 }, (_, channel) => Float32Array.from(
+    { length: frames }, (_, frame) => 0.25 * Math.sin(2 * Math.PI * (997 + channel * 73) * frame / 48000)
+  ));
+  const render = async (type, sizes, nativePipeline) => {
+    const binding = await instantiateDspBinding(bytes);
+    const calls = [];
+    for (const name of ['prepare', 'pipelineProcess', 'instanceProcess']) {
+      const original = binding[name].bind(binding);
+      binding[name] = (...args) => {
+        calls.push([name, ...args]);
+        return original(...args);
+      };
+    }
+    const harness = await createWorkletHarness({ binding, processorOptions: { maxFrameCount: 512 } });
+    try {
+      const hash = meta.kernels.find(kernel => kernel.name === type).hash;
+      const plugin = type === 'VolumePlugin'
+        ? pluginConfig({ parameters: { enabled: true, vl: -6 }, wasmParams: Float32Array.of(-6), wasmParamsHash: hash })
+        : sbcWasmPluginConfig({
+          parameters: { enabled: true, bp: 35, cm: 'Joint Stereo', bl: '16', og: -6, mx: 100, pl: 0 },
+          wasmParams: Float32Array.of(35, 0, 3, -6, 100, 0), wasmParamsHash: hash
+        });
+      await harness.send({ type: 'registerProcessor', pluginType: type, processor: 'return data;' });
+      await harness.send({ type: 'updatePlugins', plugins: [plugin], masterBypass: false });
+      await harness.send({ type: 'dspEnableTypes', types: [type] });
+      await harness.send({ type: 'dspModule', module: { compiled: true } });
+      assert.equal(harness.processor.dspPipelineReady, true);
+      harness.processor.dspPipelineReady = nativePipeline;
+      const output = [new Float32Array(frames), new Float32Array(frames)];
+      let block = 0;
+      for (let offset = 0; offset < frames; block++) {
+        const count = Math.min(sizes[block % sizes.length], frames - offset);
+        const blockInput = input.map(channel => channel.subarray(offset, offset + count));
+        const blockOutput = output.map(channel => channel.subarray(offset, offset + count));
+        assert.equal(harness.processor.process([blockInput], [blockOutput], {}), true);
+        offset += count;
+      }
+      assert.equal(calls.filter(call => call[0] === 'prepare').length, 1);
+      assert.equal(calls.find(call => call[0] === 'prepare')[3], 512);
+      assert.equal(calls.filter(call => call[0] === (nativePipeline ? 'pipelineProcess' : 'instanceProcess')).length, block);
+      assert.equal(harness.processor.currentFrame, frames);
+      assert.equal(messagesOf(harness.posts, 'dspExecutionState').at(-1).message.state, 'active');
+      return output;
+    } finally {
+      harness.processor.disableDspEngine();
+    }
+  };
+  for (const type of ['VolumePlugin', 'BluetoothSBCSimulatorPlugin']) {
+    const reference = await render(type, [128], true);
+    for (const nativePipeline of [true, false]) {
+      const output = await render(type, [128, 192, 256, 512, 17, 129], nativePipeline);
+      for (let channel = 0; channel < 2; channel++) {
+        assert.deepEqual(output[channel], reference[channel], `${type}: block boundaries must preserve DSP state`);
+        assert.ok(output[channel].every(Number.isFinite));
+        if (type === 'VolumePlugin') {
+          const gain = 10 ** (-6 / 20);
+          assert.ok(output[channel].every((value, frame) => Math.abs(value - input[channel][frame] * gain) < 1e-7));
+        } else {
+          assert.ok(output[channel].some((value, frame) => Math.abs(value - input[channel][frame]) > 0.01),
+            'an active WASM-only SBC must not silently bypass');
+        }
+      }
+    }
+  }
+});
+
+test('variable render quanta reuse JS routing storage and expose only the active samples', async () => {
+  const allocations = [];
+  class TrackedFloat32Array extends Float32Array {
+    constructor(...args) {
+      super(...args);
+      if (typeof args[0] === 'number') allocations.push(args[0]);
+    }
+  }
+  const harness = await createWorkletHarness({
+    Float32Array: TrackedFloat32Array,
+    outputChannels: 4,
+    processorOptions: { maxFrameCount: 512 }
+  });
+  await harness.send({ type: 'registerProcessor', pluginType: 'VolumePlugin', processor: `
+    context.buffer = data.buffer;
+    context.length = data.length;
+    for (let sample = 0; sample < data.length; sample++) data[sample] *= 0.5;
+    return data;
+  ` });
+  await harness.send({ type: 'updatePlugins', plugins: [
+    pluginConfig({ id: 7, channel: 'A', inputBus: 0, outputBus: 1, wasmParams: undefined }),
+    pluginConfig({ id: 8, channel: '34', inputBus: 1, outputBus: 0, wasmParams: undefined }),
+    pluginConfig({ id: 9, channel: 'L', inputBus: 1, outputBus: 0, wasmParams: undefined })
+  ] });
+  const pool = harness.processor.bufferPool;
+  allocations.length = 0;
+  for (const size of [128, 192, 256, 512, 17, 129, 512]) {
+    const output = processBlock(harness.processor, 0.25, 4, size);
+    assert.equal(harness.processor.busBuffers.get(0).buffer, pool.combined.buffer);
+    assert.equal(harness.processor.busBuffers.get(1).buffer, pool.buses.get(1).buffer);
+    for (const [id, key, channels] of [[7, 'allChannels', 4], [8, 'stereo', 2], [9, 'mono', 1]]) {
+      const context = harness.processor.pluginContexts.get(id);
+      assert.equal(context.buffer, pool[key].buffer);
+      assert.equal(context.length, channels * size);
+    }
+    assert.ok(output.every(channel => channel.every(Number.isFinite)));
+  }
+  assert.deepEqual(allocations, [], 'render callbacks must not allocate audio backing arrays');
+});
+
+test('power EWMA keeps its two-second response across variable render quanta', async () => {
+  for (const sizes of [[128], [192], [256], [512], [128, 192, 256, 512, 17, 129]]) {
+    const { processor } = await createWorkletHarness({ processorOptions: { maxFrameCount: 512 } });
+    let block = 0;
+    for (let frames = 0; frames < 48000;) {
+      const count = Math.min(sizes[block++ % sizes.length], 48000 - frames);
+      frames += count;
+      processor.currentFrame = frames;
+      processor._finishPowerRender(0.25, 0.125, count);
+    }
+    assert.ok(Math.abs(processor.powerPolicy.inputPowerEwma - 0.25 * (1 - Math.exp(-0.5))) < 1e-12);
+    assert.ok(Math.abs(processor.powerPolicy.outputPowerEwma - 0.125 * (1 - Math.exp(-0.5))) < 1e-12);
   }
 });

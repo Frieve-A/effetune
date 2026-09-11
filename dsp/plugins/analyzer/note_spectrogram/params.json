@@ -2,5 +2,30 @@
   "type": "NoteSpectrogramPlugin",
   "parityReference": "production-native-promoted-v1",
   "tolerance": { "abs": 0.000001, "policy": "per-sample" },
-  "fields": []
+  "fields": [
+    {
+      "name": "minimumMidi",
+      "key": "mn",
+      "kind": "int",
+      "min": 21,
+      "max": 108,
+      "default": 28
+    },
+    {
+      "name": "maximumMidi",
+      "key": "mx",
+      "kind": "int",
+      "min": 21,
+      "max": 108,
+      "default": 91
+    },
+    {
+      "name": "regularCandidates",
+      "key": "nc",
+      "kind": "int",
+      "min": 1,
+      "max": 16,
+      "default": 8
+    }
+  ]
 }

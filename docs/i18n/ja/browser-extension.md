@@ -42,7 +42,7 @@ PC の Chrome 116 以降、または対応する Chromium ベースの Microsoft
 
 プリセットに対応外のルーティング、エフェクト、または利用できない外部アセットが含まれる場合、そのプリセットは適用されず、現在のパイプラインは変更されません。
 
-ウェブ版またはデスクトップ版の測定結果を Room EQ や Crosstalk Cancellation で使うには、測定結果をそちらで JSON としてエクスポートします。拡張機能のエディターで **Settings** を開き、**Import measurement…** を選んで、その JSON ファイルを指定してください。Crosstalk Cancellation または Room EQ の位相補正で使う場合は、インパルス応答を含めてエクスポートします。インポートした測定結果は拡張機能のブラウザストレージに保存され、自動同期はされません。削除するには **Settings** から **Delete imported measurement…** を選びます。その測定結果を使っている割り当ては、削除前に解除されます。
+ウェブ版またはデスクトップ版の測定結果を Room EQ や Crosstalk Cancellation で使うには、測定結果をそちらで JSON としてエクスポートします。拡張機能のエディターで **Settings** を開き、**Import measurement…** を選んで、その JSON ファイルを指定してください。Crosstalk Cancellation または Room EQ の位相補正で使う場合は、インパルス応答を含めてエクスポートします。インポートした測定結果は Room EQ の **Measurement** 一覧へすぐに追加され、拡張機能のブラウザストレージに保存されます。自動同期はされません。インポートしたコピーを削除するには、その一覧で対象を選び、一覧横の **Delete** を選択します。確認後、その測定結果を使っているすべての Room EQ と Crosstalk Cancellation の割り当てが解除されてから、コピーが削除されます。
 
 ## 権限と制限
 

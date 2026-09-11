@@ -1,6 +1,7 @@
 #include "effetune/kernel.h"
 #include "NoteSpectrogramPluginParams.h"
 #include "binary_io.h"
+#include "effetune/dsp/math.h"
 #include "fine_model.generated.h"
 #include "heap_tree_model.h"
 #include "learned_model.generated.h"
@@ -27,9 +28,9 @@ constexpr std::uint32_t kFinePitches = kPitches * kFineDivisions;
 constexpr std::uint32_t kFirstTrees = 128u;
 constexpr std::uint32_t kTreesPerTask = 32u;
 constexpr std::uint32_t kMiddleTrees = 512u;
-constexpr std::uint32_t kInitialCandidates = 12u;
+constexpr std::uint32_t kInitialCandidates = 24u;
 constexpr std::uint32_t kInitialCandidateGroups = kInitialCandidates / 4u;
-constexpr std::uint32_t kCandidatePitches = 8u;
+constexpr std::uint32_t kCandidatePitches = 16u;
 constexpr std::uint32_t kCandidateGroups = kCandidatePitches / 4u;
 constexpr std::uint32_t kPairCount = OctavePairFeatures::kPairCount;
 constexpr std::uint32_t kPairGroups = kPairCount / 4u;
@@ -46,8 +47,11 @@ constexpr float kConfidenceThreshold = 0.52F;
 constexpr float kConfidenceOdds = kConfidenceThreshold / (1.0F - kConfidenceThreshold);
 constexpr std::uint32_t kMaximumSlots = 512u;
 constexpr std::uint32_t kStageCapacity = 32768u;
-constexpr std::uint32_t kPayloadBytes = 28u + 4u * kFinePitches;
+constexpr std::uint32_t kConfidenceOffset = 28u;
+constexpr std::uint32_t kLevelOffset = kConfidenceOffset + 4u * kFinePitches;
+constexpr std::uint32_t kPayloadBytes = kLevelOffset + 4u * kFinePitches;
 constexpr std::uint32_t kPendingFrames = 32u;
+constexpr std::uint32_t kFirstMidi = 21u;
 static_assert(learned_model::kFeatureCount == MultiresolutionFeatures::kFeatureCount);
 static_assert(learned_model::kFeatureSchemaVersion == MultiresolutionFeatures::kSchemaVersion);
 static_assert(learned_model::kTreeCount > 0u && learned_model::kDepth > 0u);
@@ -74,6 +78,18 @@ using Stage = NoteSpectrogramStage;
 class SpectralAnalysis final {
 public:
   bool ready() const noexcept { return ready_; }
+  bool configure(std::uint32_t minimum_midi, std::uint32_t maximum_midi,
+                 std::uint32_t regular_candidates) noexcept {
+    const auto minimum_pitch = minimum_midi - kFirstMidi;
+    const auto maximum_pitch = maximum_midi - kFirstMidi;
+    if (minimum_pitch == minimum_pitch_ && maximum_pitch == maximum_pitch_ &&
+        regular_candidates == requested_regular_candidates_)
+      return false;
+    minimum_pitch_ = minimum_pitch;
+    maximum_pitch_ = maximum_pitch;
+    requested_regular_candidates_ = regular_candidates;
+    return true;
+  }
   void prepare(const PrepareInfo &info) {
     ready_ = false;
     rate_ = info.sampleRate > 0.0F ? info.sampleRate : 48000.0F;
@@ -108,6 +124,7 @@ public:
     margins_.fill(0.0);
     candidate_margins_.fill(0.0);
     candidate_rows_.fill(nullptr);
+    candidate_active_.fill(false);
     fine_margins_.fill(0.0);
     candidate_pitches_.fill(0u);
   }
@@ -147,7 +164,7 @@ public:
   }
   void writeTelemetry(TelemetryWriter &writer) noexcept {
     while (ready_ && pending_count_ != 0u) {
-      if (!writer.write(24u, 2u, published_[pending_read_].data(), kPayloadBytes))
+      if (!writer.write(24u, 3u, published_[pending_read_].data(), kPayloadBytes))
         return;
       pending_read_ = (pending_read_ + 1u) % kPendingFrames;
       --pending_count_;
@@ -182,7 +199,7 @@ private:
         add(kind, begin, end, weight * (end - begin));
       }
     };
-    add_range(Stage::Initialize, kPitches, 140u);
+    add_range(Stage::Initialize, kRegularPitches, 140u);
     add_tasks(Stage::EvaluateFirst, kFirstTrees / kTreesPerTask * kPitchGroups,
               kTreesPerTask * 32u * learned_model::kDepth);
     add(Stage::SelectCandidates, 0u, 0u, 5000u);
@@ -206,7 +223,7 @@ private:
               kLowFineTrees / kTreesPerTask * kFineGroups +
                   (fine_model::kTreeCount - kLowFineTrees) / kTreesPerTask * kRegularFineGroups,
               kTreesPerTask * 32u * fine_model::kDepth);
-    add_range(Stage::Finalize, kFineRows, 120u);
+    add_range(Stage::Finalize, kFineRows, 180u);
     add(Stage::Commit, 0u, 0u, 1u);
     return schedule_->partition(slots_);
   }
@@ -226,7 +243,10 @@ private:
     writeU32(staging_.data() + 16u, frame_index_++);
     writeU32(staging_.data() + 20u, kFineDivisions);
     writeU32(staging_.data() + 24u, generation_);
-    std::fill(staging_.begin() + 28u, staging_.end(), std::uint8_t{0});
+    std::fill(staging_.begin() + kConfidenceOffset, staging_.begin() + kLevelOffset,
+              std::uint8_t{0});
+    for (auto pitch = 0u; pitch < kFinePitches; ++pitch)
+      writeF32(staging_.data() + kLevelOffset + pitch * 4u, -240.0F);
   }
   void runStage(const ::effetune::dsp::SchedulerStage &stage) noexcept {
     const auto kind = static_cast<Stage>(stage.kind);
@@ -237,9 +257,13 @@ private:
     }
     switch (kind) {
     case Stage::Initialize:
-      features_->update(frontends_[0]->values(), frontends_[1]->values(), stage.begin, stage.end);
-      for (auto pitch = stage.begin; pitch < stage.end; ++pitch)
+      for (auto index = stage.begin; index < stage.end; ++index) {
+        const auto pitch = regularPitch(index);
+        if (!inRange(pitch))
+          continue;
+        features_->update(frontends_[0]->values(), frontends_[1]->values(), pitch, pitch + 1u);
         margins_[pitch] = learned_model::kBias;
+      }
       break;
     case Stage::EvaluateFirst: {
       constexpr auto model = learned_model::model();
@@ -248,43 +272,68 @@ private:
         const auto first = 4u * (task % kPitchGroups);
         const float *rows[4] = {};
         double scores[4] = {};
+        std::uint8_t pitches[4] = {};
+        auto row_count = 0u;
         for (auto row = 0u; row < 4u; ++row) {
           const auto pitch = regularPitch(first + row);
-          rows[row] = features_->values()[pitch].data();
-          scores[row] = margins_[pitch];
+          if (!inRange(pitch))
+            continue;
+          pitches[row_count] = static_cast<std::uint8_t>(pitch);
+          rows[row_count] = features_->values()[pitch].data();
+          scores[row_count] = margins_[pitch];
+          ++row_count;
         }
-        HeapTreeEvaluator::accumulateTrees4(model, rows, tree, tree + kTreesPerTask, scores);
-        for (auto row = 0u; row < 4u; ++row)
-          margins_[regularPitch(first + row)] = scores[row];
+        if (row_count == 0u)
+          continue;
+        HeapTreeEvaluator::accumulateTrees4(model, rows, tree, tree + kTreesPerTask, scores,
+                                            row_count);
+        for (auto row = 0u; row < row_count; ++row)
+          margins_[pitches[row]] = scores[row];
       }
       break;
     }
-    case Stage::SelectCandidates:
-      for (auto index = 0u; index < kRegularPitches; ++index)
-        candidate_pitches_[index] = static_cast<std::uint8_t>(regularPitch(index));
-      selectCandidates(kInitialCandidates, kRegularPitches);
+    case Stage::SelectCandidates: {
+      candidate_active_.fill(false);
+      auto available = 0u;
+      for (auto index = 0u; index < kRegularPitches; ++index) {
+        const auto pitch = regularPitch(index);
+        if (inRange(pitch))
+          candidate_pitches_[available++] = static_cast<std::uint8_t>(pitch);
+      }
+      regular_candidate_count_ = std::min(requested_regular_candidates_, available);
+      initial_candidate_count_ =
+          std::min(available, std::min(kInitialCandidates, regular_candidate_count_ * 3u / 2u));
+      selectCandidates(initial_candidate_count_, available);
       break;
+    }
     case Stage::RefineCandidates:
-      for (auto candidate = 0u; candidate < kInitialCandidates; ++candidate)
+      for (auto candidate = 0u; candidate < initial_candidate_count_; ++candidate)
         margins_[candidate_pitches_[candidate]] = candidate_margins_[candidate];
-      selectCandidates(kCandidatePitches, kInitialCandidates);
+      selectCandidates(regular_candidate_count_, initial_candidate_count_);
+      for (auto candidate = 0u; candidate < regular_candidate_count_; ++candidate)
+        candidate_active_[candidate] = true;
       break;
     case Stage::EvaluateCandidates:
     case Stage::EvaluateRemaining: {
       constexpr auto model = learned_model::model();
       const bool initial = kind == Stage::EvaluateCandidates;
       const auto groups = initial ? kInitialCandidateGroups : kCandidateGroups;
+      const auto count = initial ? initial_candidate_count_ : regular_candidate_count_;
       const auto first_tree = initial ? kFirstTrees : kMiddleTrees;
       for (auto task = stage.begin; task < stage.end; ++task) {
         const auto tree = first_tree + kTreesPerTask * (task / groups);
         const auto first = 4u * (task % groups);
+        if (first >= count)
+          continue;
         HeapTreeEvaluator::accumulateTrees4(model, candidate_rows_.data() + first, tree,
-                                            tree + kTreesPerTask,
-                                            candidate_margins_.data() + first);
+                                            tree + kTreesPerTask, candidate_margins_.data() + first,
+                                            std::min(4u, count - first));
       }
       break;
     }
     case Stage::InitializePairs:
+      if (!hasLowRange())
+        break;
       pair_features_->update(frontends_[0]->values(), frontends_[1]->values(), stage.begin,
                              stage.end);
       for (auto pair = stage.begin; pair < stage.end; ++pair) {
@@ -294,13 +343,17 @@ private:
       break;
     case Stage::EvaluatePairsFirst:
     case Stage::EvaluatePairsRemaining: {
+      if (!hasLowRange())
+        break;
       const bool initial = kind == Stage::EvaluatePairsFirst;
       const auto groups = initial ? kPairGroups : kPairCandidateGroups;
-      const auto count = initial ? kPairCount : kPairCandidates;
+      const auto count = initial ? kPairCount : pair_candidate_count_;
       const auto first_tree = initial ? 0u : kFirstTrees;
       for (auto task = stage.begin; task < stage.end; ++task) {
         const auto tree = first_tree + kTreesPerTask * (task / groups);
         const auto first = 4u * (task % groups);
+        if (first >= count)
+          continue;
         HeapTreeEvaluator::accumulateTrees4<4u>(
             octave_model::model(), pair_rows_.data() + first, tree, tree + kTreesPerTask,
             pair_margins_.data() + first * 4u, std::min(4u, count - first));
@@ -309,21 +362,26 @@ private:
     }
     case Stage::SelectPairs: {
       std::array<double, kPairCount> scores{};
+      auto eligible = 0u;
       for (auto pair = 0u; pair < kPairCount; ++pair) {
+        const auto low = 3u + pair;
+        if (!inRange(low) && !inRange(low + 12u))
+          continue;
         const auto *raw = pair_margins_.data() + pair * 4u;
         const auto peak = std::max({raw[1], raw[2], raw[3]});
         scores[pair] =
             peak +
             std::log(std::exp(raw[1] - peak) + std::exp(raw[2] - peak) + std::exp(raw[3] - peak)) -
             raw[0];
+        pair_order_[eligible++] = static_cast<std::uint8_t>(pair);
       }
-      std::iota(pair_order_.begin(), pair_order_.end(), std::uint8_t{0});
-      std::partial_sort(pair_order_.begin(), pair_order_.begin() + kPairCandidates,
-                        pair_order_.end(), [&scores](auto a, auto b) {
+      pair_candidate_count_ = std::min(kPairCandidates, eligible);
+      std::partial_sort(pair_order_.begin(), pair_order_.begin() + pair_candidate_count_,
+                        pair_order_.begin() + eligible, [&scores](auto a, auto b) {
                           return scores[a] != scores[b] ? scores[a] > scores[b] : a < b;
                         });
       const auto previous = pair_margins_;
-      for (auto candidate = 0u; candidate < kPairCandidates; ++candidate) {
+      for (auto candidate = 0u; candidate < pair_candidate_count_; ++candidate) {
         const auto pair = pair_order_[candidate];
         pair_rows_[candidate] = pair_features_->values()[pair].data();
         std::copy_n(previous.data() + pair * 4u, 4u, pair_margins_.data() + candidate * 4u);
@@ -332,7 +390,8 @@ private:
     }
     case Stage::SelectLowCandidates: {
       std::array<std::uint8_t, kPairCandidates * 2u> pitches{};
-      for (auto candidate = 0u; candidate < kPairCandidates; ++candidate) {
+      auto available = 0u;
+      for (auto candidate = 0u; candidate < pair_candidate_count_; ++candidate) {
         const auto *raw = pair_margins_.data() + candidate * 4u;
         const auto peak = std::max({raw[0], raw[1], raw[2], raw[3]});
         double weights[4];
@@ -342,19 +401,23 @@ private:
         // Marginalize all four states so a genuine octave can retain both notes.
         margins_[low] = std::log((weights[1] + weights[3]) / (weights[0] + weights[2]));
         margins_[low + 12u] = std::log((weights[2] + weights[3]) / (weights[0] + weights[1]));
-        pitches[candidate] = static_cast<std::uint8_t>(low);
-        pitches[candidate + kPairCandidates] = static_cast<std::uint8_t>(low + 12u);
+        if (inRange(low))
+          pitches[available++] = static_cast<std::uint8_t>(low);
+        if (inRange(low + 12u))
+          pitches[available++] = static_cast<std::uint8_t>(low + 12u);
       }
-      std::partial_sort(pitches.begin(), pitches.begin() + kLowCandidates, pitches.end(),
-                        [this](auto a, auto b) {
+      low_candidate_count_ = std::min(kLowCandidates, available);
+      std::partial_sort(pitches.begin(), pitches.begin() + low_candidate_count_,
+                        pitches.begin() + available, [this](auto a, auto b) {
                           const auto left = margins_[a] - octaveDecisionMargin(a);
                           const auto right = margins_[b] - octaveDecisionMargin(b);
                           return left != right ? left > right : a < b;
                         });
-      for (auto candidate = 0u; candidate < kLowCandidates; ++candidate) {
+      for (auto candidate = 0u; candidate < low_candidate_count_; ++candidate) {
         const auto pitch = pitches[candidate];
         candidate_pitches_[kCandidatePitches + candidate] = pitch;
         candidate_margins_[kCandidatePitches + candidate] = margins_[pitch];
+        candidate_active_[kCandidatePitches + candidate] = true;
       }
       break;
     }
@@ -362,6 +425,8 @@ private:
       const auto &short_presence = frontends_[0]->finePresence();
       const auto &long_presence = frontends_[1]->finePresence();
       for (auto candidate = stage.begin; candidate < stage.end; ++candidate) {
+        if (!candidate_active_[candidate])
+          continue;
         const auto pitch = candidate_pitches_[candidate];
         const auto first = pitch * kFineDivisions;
         float bag_peak = 0.0F;
@@ -403,16 +468,32 @@ private:
             (task < shared_tasks ? 0u : kLowFineTrees) + kTreesPerTask * (group_task / groups);
         const auto first = 4u * (group_task % groups);
         const float *rows[4] = {};
-        for (std::uint32_t row = 0u; row < 4u; ++row)
-          rows[row] = fine_features_[first + row].data();
-        HeapTreeEvaluator::accumulateTrees4(model, rows, tree, tree + kTreesPerTask,
-                                            fine_margins_.data() + first);
+        double margins[4] = {};
+        std::uint32_t indices[4] = {};
+        auto row_count = 0u;
+        for (std::uint32_t row = 0u; row < 4u && first + row < kFineRows; ++row) {
+          const auto index = first + row;
+          if (!candidate_active_[index / kFineDivisions])
+            continue;
+          indices[row_count] = index;
+          rows[row_count] = fine_features_[index].data();
+          margins[row_count] = fine_margins_[index];
+          ++row_count;
+        }
+        if (row_count == 0u)
+          continue;
+        HeapTreeEvaluator::accumulateTrees4(model, rows, tree, tree + kTreesPerTask, margins,
+                                            row_count);
+        for (auto row = 0u; row < row_count; ++row)
+          fine_margins_[indices[row]] = margins[row];
       }
       break;
     }
     case Stage::Finalize:
       for (auto row = stage.begin; row < stage.end; ++row) {
         const auto candidate = row / kFineDivisions;
+        if (!candidate_active_[candidate])
+          continue;
         const auto division = row % kFineDivisions;
         const auto pitch = candidate_pitches_[candidate];
         const auto fine_pitch = pitch * kFineDivisions + division;
@@ -443,7 +524,44 @@ private:
             value = value / (value + (1.0F - value) * kConfidenceOdds);
           }
         }
-        writeF32(staging_.data() + 28u + fine_pitch * 4u, value);
+        writeF32(staging_.data() + kConfidenceOffset + fine_pitch * 4u, value);
+        auto level = -240.0F;
+        if (!frontends_[0]->belowFloor()) {
+          constexpr auto cents_ratio = 1.029302236643492;
+          constexpr auto harmonics = 16u;
+          const auto midi = 21.0 + static_cast<double>(fine_pitch - division) / kFineDivisions +
+                            (static_cast<double>(division) - 2.0) / kFineDivisions;
+          const auto fundamental = 440.0 * std::exp2((midi - 69.0) / 12.0);
+          const auto bin_hz = frontends_[0]->binHz();
+          const auto &prefix = frontends_[0]->rawPrefix();
+          const auto last_bin =
+              prefix.size() > 1u ? static_cast<std::uint32_t>(prefix.size() - 2u) : 0u;
+          double power = 0.0;
+          for (auto harmonic = 1u; harmonic <= harmonics; ++harmonic) {
+            const auto frequency = harmonic * fundamental;
+            if (!(frequency < rate_ * 0.5))
+              break;
+            const auto center_bin = frequency / bin_hz;
+            const auto cents_lower = frequency / cents_ratio / bin_hz;
+            const auto bins_lower = center_bin - 2.0;
+            const auto lower = cents_lower < bins_lower ? cents_lower : bins_lower;
+            const auto cents_upper = frequency * cents_ratio / bin_hz;
+            const auto bins_upper = center_bin + 2.0;
+            const auto upper = cents_upper > bins_upper ? cents_upper : bins_upper;
+            const auto begin = static_cast<std::uint32_t>(lower > 0.0 ? std::floor(lower) : 0.0);
+            const auto requested_end = static_cast<std::uint32_t>(std::ceil(upper));
+            const auto end = requested_end < last_bin ? requested_end : last_bin;
+            if (begin <= end)
+              power += prefix[end + 1u] - prefix[begin];
+          }
+          const auto amplitude = std::sqrt(power * frontends_[0]->amplitudePowerScale());
+          const auto correction =
+              3.0 * std::log2((fundamental > 100.0 ? fundamental : 100.0) / 100.0);
+          const auto raw_level = ::effetune::dsp::lin_to_db(amplitude);
+          const auto corrected = raw_level > -240.0 ? raw_level + correction : raw_level;
+          level = static_cast<float>(corrected > -240.0 ? corrected : -240.0);
+        }
+        writeF32(staging_.data() + kLevelOffset + fine_pitch * 4u, level);
       }
       break;
     case Stage::Commit:
@@ -461,6 +579,8 @@ private:
     }
   }
   void selectCandidates(std::uint32_t count, std::uint32_t available) noexcept {
+    if (count == 0u)
+      return;
     std::partial_sort(
         candidate_pitches_.begin(), candidate_pitches_.begin() + count,
         candidate_pitches_.begin() + available,
@@ -475,6 +595,10 @@ private:
     // Log odds of development-selected presence thresholds 0.7 (C1-B1) and 0.365 (C2-B2).
     return pitch < 15u ? 0.8472978603872034 : -0.5537276453102;
   }
+  bool inRange(std::uint32_t pitch) const noexcept {
+    return pitch >= minimum_pitch_ && pitch <= maximum_pitch_;
+  }
+  bool hasLowRange() const noexcept { return minimum_pitch_ <= 26u && maximum_pitch_ >= 3u; }
   using Schedule = ::effetune::dsp::StageSchedule<kStageCapacity, kMaximumSlots>;
   std::array<std::unique_ptr<SpectralFrontend>, 2> frontends_;
   std::unique_ptr<MultiresolutionFeatures> features_;
@@ -484,6 +608,7 @@ private:
   std::array<std::uint8_t, kPitches> candidate_pitches_{};
   std::array<const float *, kInitialCandidates> candidate_rows_{};
   std::array<double, kTotalCandidates> candidate_margins_{};
+  std::array<bool, kTotalCandidates> candidate_active_{};
   std::array<const float *, kPairCount> pair_rows_{};
   std::array<double, kPairCount * 4u> pair_margins_{};
   std::array<std::uint8_t, kPairCount> pair_order_{};
@@ -495,6 +620,10 @@ private:
   std::uint32_t hop_ = 960u, slots_ = 60u, generation_ = 1u, frame_index_ = 0u;
   std::uint32_t until_frame_ = 960u, until_slot_ = 16u, job_slot_ = 0u;
   std::uint32_t pending_read_ = 0u, pending_write_ = 0u, pending_count_ = 0u;
+  std::uint32_t minimum_pitch_ = 7u, maximum_pitch_ = 70u;
+  std::uint32_t requested_regular_candidates_ = 8u;
+  std::uint32_t initial_candidate_count_ = 0u, regular_candidate_count_ = 0u;
+  std::uint32_t pair_candidate_count_ = 0u, low_candidate_count_ = 0u;
   bool ready_ = false, job_active_ = false;
 };
 
@@ -504,6 +633,7 @@ public:
   void prepare(const PrepareInfo &info) override {
     analysis_ = std::make_unique<SpectralAnalysis>();
     analysis_->prepare(info);
+    parameter_sync_required_ = true;
     reset();
   }
   bool preparedSuccessfully() const noexcept override { return analysis_ && analysis_->ready(); }
@@ -516,6 +646,7 @@ public:
   }
   void process(float *audio, std::uint32_t channels, std::uint32_t frames,
                const ProcessInfo &info) noexcept override {
+    synchronizeParameters();
     const auto selected = channels > 1u ? 2u : channels;
     if (channels_ != 0u && selected != channels_)
       reset();
@@ -529,8 +660,34 @@ public:
   }
 
 private:
+  void synchronizeParameters() noexcept {
+    if (!analysis_ || (!paramsDirty() && !parameter_sync_required_))
+      return;
+    const auto initial_sync = parameter_sync_required_;
+    parameter_sync_required_ = false;
+    const auto bounded = [](float value, int minimum, int maximum, int fallback) {
+      if (!std::isfinite(value))
+        return fallback;
+      const auto rounded = static_cast<int>(std::round(value));
+      return rounded < minimum ? minimum : (rounded > maximum ? maximum : rounded);
+    };
+    auto minimum_midi = bounded(params_.minimumMidi, 21, 108, 28);
+    auto maximum_midi = bounded(params_.maximumMidi, 21, 108, 91);
+    if (maximum_midi < minimum_midi)
+      maximum_midi = minimum_midi;
+    const auto regular_candidates = bounded(params_.regularCandidates, 1, 16, 8);
+    if (!analysis_->configure(static_cast<std::uint32_t>(minimum_midi),
+                              static_cast<std::uint32_t>(maximum_midi),
+                              static_cast<std::uint32_t>(regular_candidates)))
+      return;
+    if (initial_sync)
+      analysis_->reset(generation_);
+    else
+      reset();
+  }
   std::unique_ptr<SpectralAnalysis> analysis_;
   std::uint32_t generation_ = 0u, channels_ = 0u;
+  bool parameter_sync_required_ = true;
 };
 static_assert(sizeof(NoteSpectrogramKernel) <= 8192u);
 } // namespace effetune::plugins::analyzer

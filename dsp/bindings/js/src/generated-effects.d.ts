@@ -27,6 +27,9 @@ export declare class LevelMeter extends Effect {
 export declare function createLevelMeter(options?: LevelMeterOptions): LevelMeter;
 
 export interface NoteSpectrogramOptions extends CommonEffectOptions {
+  readonly minimumMidi?: number;
+  readonly maximumMidi?: number;
+  readonly regularCandidates?: number;
   readonly assets?: never;
 }
 

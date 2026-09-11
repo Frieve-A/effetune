@@ -12,8 +12,23 @@ const noteCount = 88;
 const fineDivisions = 5;
 const fineCenter = Math.floor(fineDivisions / 2);
 const pitchCount = noteCount * fineDivisions;
-const payloadBytes = 28 + pitchCount * 4;
+const confidenceOffset = 28;
+const volumeOffset = confidenceOffset + pitchCount * 4;
+const payloadBytes = volumeOffset + pitchCount * 4;
 const historyWidth = 1024;
+
+function createGradient(type, coordinates) {
+    return {
+        type,
+        coordinates,
+        stops: [],
+        addColorStop(offset, color) { this.stops.push({ offset, color }); }
+    };
+}
+
+function styleSignature(style) {
+    return typeof style === 'string' ? style : JSON.stringify(style);
+}
 
 class FakeElement {
     constructor(tagName, nullCanvasContext = false) {
@@ -23,13 +38,17 @@ class FakeElement {
         this.attributes = new Map();
         this.style = {};
         this.hidden = false;
+        this.listeners = new Map();
         if (this.tagName === 'CANVAS') {
             this.getContext = () => nullCanvasContext ? null : {
                 createImageData: (width, height) => ({
                     data: new Uint8ClampedArray(width * height * 4)
                 }),
                 putImageData() {},
-                drawImage() {}
+                drawImage() {},
+                fillRect() {},
+                createLinearGradient: (...coordinates) => createGradient('linear', coordinates),
+                createRadialGradient: (...coordinates) => createGradient('radial', coordinates)
             };
         }
     }
@@ -42,6 +61,14 @@ class FakeElement {
     setAttribute(name, value) {
         this.attributes.set(name, String(value));
     }
+
+    addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+    }
+
+    dispatchEvent(type, event = {}) {
+        this.listeners.get(type)?.({ target: this, ...event });
+    }
 }
 
 function createPluginBase() {
@@ -52,6 +79,7 @@ function createPluginBase() {
             this.enabled = true;
             this._sectionEnabled = true;
             this._messageHandlerWorkletNode = null;
+            this._syncedUIControls = [];
         }
 
         _setupMessageHandler() {
@@ -81,6 +109,16 @@ function createPluginBase() {
 
         cleanup() {
             this.cleanedUp = true;
+        }
+
+        _registerUIControl(modelKey, elements, apply) {
+            if (modelKey) this._syncedUIControls.push({ modelKey, elements, apply });
+        }
+
+        syncUIControls() {
+            for (const control of this._syncedUIControls) {
+                control.apply(this[control.modelKey]);
+            }
         }
     };
 }
@@ -118,7 +156,8 @@ function createTelemetryFrame({
     firstMidi = 21,
     mode = 'Fine Presence',
     generation = 1,
-    levels = []
+    levels = [],
+    volumeLevels = []
 } = {}) {
     const modeCode = mode === 'Fine Presence' ? fineDivisions :
         (mode === 'F0 Presence' ? 0 : (mode === 'Classic' ? 1 : mode));
@@ -133,9 +172,10 @@ function createTelemetryFrame({
     payload.setUint32(20, modeCode, true);
     payload.setUint32(24, generation, true);
     for (let pitch = 0; pitch < pitchCount; pitch++) {
-        payload.setFloat32(28 + pitch * 4, levels[pitch] ?? defaultLevel, true);
+        payload.setFloat32(confidenceOffset + pitch * 4, levels[pitch] ?? defaultLevel, true);
+        payload.setFloat32(volumeOffset + pitch * 4, volumeLevels[pitch] ?? -240, true);
     }
-    return { frameType: 24, formatVersion: 2, payload };
+    return { frameType: 24, formatVersion: 3, payload };
 }
 
 function firstPitchByColumn(plugin, start, count) {
@@ -156,39 +196,44 @@ test('Note Spectrogram restores display preferences and defaults to a horizontal
     assert.equal(plugin.processor, 'return data;');
     assert.equal(plugin.constructor.executionCapabilities.requiresWasm, true);
     assert.deepEqual(JSON.parse(JSON.stringify(plugin.getParameters())), {
-        type: 'NoteSpectrogramPlugin', enabled: true, cl: 'Normal', pr: 'High', ly: 'Horizontal', ts: 2,
-        mn: 28, mx: 91
+        type: 'NoteSpectrogramPlugin', enabled: true, cl: 'Normal', pr: 'Semitone', ly: 'Horizontal', vl: true, ts: 2,
+        mn: 28, mx: 91, nc: 8
     });
     plugin.setParameters({
-        cl: 'Rainbow', pr: 'Semitone', ly: 'Horizontal', ts: 100,
+        cl: 'Rainbow', pr: 'High', ly: 'Horizontal', vl: false, ts: 100,
         md: 'Classic', cf: 1, dr: -48
     });
     assert.equal(plugin.ts, 10);
     const restored = await loadPlugin();
     restored.setParameters(JSON.parse(JSON.stringify(plugin.getParameters())));
     assert.equal(restored.cl, 'Rainbow');
-    assert.equal(restored.pr, 'Semitone');
+    assert.equal(restored.pr, 'High');
     assert.equal(restored.ly, 'Horizontal');
+    assert.equal(restored.vl, false);
     assert.equal(restored.md, undefined);
     assert.equal(restored.cf, undefined);
     assert.equal(restored.dr, undefined);
     restored.setParameters({ cl: 'invalid', pr: 'invalid', ly: 'invalid', ts: 0 });
     assert.equal(restored.cl, 'Rainbow');
-    assert.equal(restored.pr, 'Semitone');
+    assert.equal(restored.pr, 'High');
     assert.equal(restored.ly, 'Horizontal');
     assert.equal(restored.ts, 1);
     const legacy = await loadPlugin();
     legacy.setParameters({ rb: true, md: 'F0 Presence', cf: 0.9, dr: -96 });
     assert.equal(legacy.cl, 'Rainbow');
+    assert.equal(legacy.pr, 'Semitone');
+    assert.equal(legacy.vl, true);
     legacy.setParameters({ cl: 'Normal', rb: true });
     assert.equal(legacy.cl, 'Normal');
     plugin.reset();
     assert.equal(plugin.cl, 'Normal');
-    assert.equal(plugin.pr, 'High');
+    assert.equal(plugin.pr, 'Semitone');
     assert.equal(plugin.ly, 'Horizontal');
+    assert.equal(plugin.vl, true);
     assert.equal(plugin.ts, 2);
     assert.equal(plugin.mn, 28);
     assert.equal(plugin.mx, 91);
+    assert.equal(plugin.nc, 8);
 });
 
 test('Note Spectrogram exposes display and note range controls', async () => {
@@ -205,8 +250,13 @@ test('Note Spectrogram exposes display and note range controls', async () => {
         rows.push(row);
         return row;
     };
-    plugin.createSelectControl = (label, options, value, setter, modelKey) => {
-        const row = { label, options, value, setter, modelKey };
+    plugin.createNoteRangeControl = (label, value, setter, modelKey) => {
+        const row = { label, value, setter, modelKey };
+        rows.push(row);
+        return row;
+    };
+    plugin.createCheckboxControl = (label, value, setter, modelKey) => {
+        const row = { label, value, setter, modelKey };
         rows.push(row);
         return row;
     };
@@ -216,9 +266,10 @@ test('Note Spectrogram exposes display and note range controls', async () => {
     plugin.drawGraph = () => {};
     plugin.createUI();
     assert.deepEqual(rows.map(row => row.label), [
-        'Color', 'Pitch Resolution', 'Layout', 'Time Span', 'Lowest Note', 'Highest Note'
+        'Color', 'Pitch Resolution', 'Layout', 'Volume', 'Time Span', 'Regular Note Limit',
+        'Lowest Note', 'Highest Note'
     ]);
-    const [color, resolution, layout, timeSpan, lowestNote, highestNote] = rows;
+    const [color, resolution, layout, volume, timeSpan, regularCandidates, lowestNote, highestNote] = rows;
     assert.deepEqual(JSON.parse(JSON.stringify(color.options)), [
         { value: 'Normal', label: 'Normal' },
         { value: 'Rainbow', label: 'Note Colors' }
@@ -229,12 +280,12 @@ test('Note Spectrogram exposes display and note range controls', async () => {
         { value: 'Semitone', label: '1/12 Octave' },
         { value: 'High', label: 'High (1/60 Octave)' }
     ]);
-    assert.equal(resolution.value, 'High');
+    assert.equal(resolution.value, 'Semitone');
     assert.equal(resolution.modelKey, 'pr');
-    resolution.setter('Semitone');
-    assert.equal(plugin.pr, 'Semitone');
     resolution.setter('High');
     assert.equal(plugin.pr, 'High');
+    resolution.setter('Semitone');
+    assert.equal(plugin.pr, 'Semitone');
     assert.deepEqual(Array.from(layout.options), ['Vertical', 'Horizontal']);
     assert.equal(layout.value, 'Horizontal');
     assert.equal(layout.modelKey, 'ly');
@@ -242,6 +293,10 @@ test('Note Spectrogram exposes display and note range controls', async () => {
     assert.equal(plugin.ly, 'Horizontal');
     layout.setter('Vertical');
     assert.equal(plugin.ly, 'Vertical');
+    assert.equal(volume.value, true);
+    assert.equal(volume.modelKey, 'vl');
+    volume.setter(false);
+    assert.equal(plugin.vl, false);
     assert.deepEqual([timeSpan.minimum, timeSpan.maximum, timeSpan.step, timeSpan.value], [1, 10, 1, 8]);
     color.setter('Normal');
     assert.equal(plugin.cl, 'Normal');
@@ -250,9 +305,14 @@ test('Note Spectrogram exposes display and note range controls', async () => {
     timeSpan.setter(12);
     assert.equal(plugin.ts, 10);
     assert.deepEqual(
-        [lowestNote.options[0].label, lowestNote.options.at(-1).label],
-        ['A0', 'C8']
+        [regularCandidates.minimum, regularCandidates.maximum, regularCandidates.step,
+            regularCandidates.value, regularCandidates.unit, regularCandidates.modelKey],
+        [1, 16, 1, 8, 'notes', 'nc']
     );
+    regularCandidates.setter(20);
+    assert.equal(plugin.nc, 16);
+    plugin.setParameters({ nc: 0 });
+    assert.equal(plugin.nc, 1);
     assert.deepEqual(
         [lowestNote.value, lowestNote.modelKey, highestNote.value, highestNote.modelKey],
         [28, 'mn', 91, 'mx']
@@ -263,11 +323,85 @@ test('Note Spectrogram exposes display and note range controls', async () => {
     assert.deepEqual([plugin.mn, plugin.mx], [24, 24]);
 });
 
-test('Note Spectrogram validates its version 2 telemetry payload', async () => {
+test('recreating the UI repaints same-size Volume history with the current theme', async () => {
+    const background = [255, 255, 255];
+    const soft = [241, 241, 241];
+    const plugin = await loadPlugin({ background, soft });
+    const fills = [];
+    const volumeContext = {
+        createLinearGradient(...coordinates) { return createGradient('linear', coordinates); },
+        fillRect(x, y, width, height) {
+            fills.push({ x, y, width, height, color: this.fillStyle });
+        }
+    };
+    plugin.mn = 21;
+    plugin.mx = 21;
+    plugin.volumeHistoryCanvas = {
+        width: historyWidth,
+        height: 100,
+        getContext: () => volumeContext
+    };
+    plugin.createRadioGroup = () => new FakeElement('div');
+    plugin.createCheckboxControl = () => new FakeElement('div');
+    plugin.createParameterControl = () => new FakeElement('div');
+    plugin.createNoteRangeControl = () => new FakeElement('div');
+    plugin.createResponsiveGraph = () => ({
+        canvas: new FakeElement('canvas'), container: new FakeElement('div'), dispose() {}
+    });
+    plugin.drawGraph = () => plugin._paintVolumeHistory(100, plugin._displayPalette());
+
+    plugin.createUI();
+    assert.ok(fills.some(fill => fill.color === 'rgb(255, 255, 255)'));
+    assert.equal(plugin.volumeHistoryDirty, false);
+
+    fills.length = 0;
+    background.splice(0, background.length, 7, 11, 20);
+    soft.splice(0, soft.length, 25, 33, 51);
+    plugin.createUI();
+
+    assert.equal(plugin.volumeHistoryCanvas.height, 100);
+    assert.ok(fills.some(fill => fill.color === 'rgb(7, 11, 20)'));
+    assert.equal(plugin.volumeHistoryDirty, false);
+});
+
+test('Note Spectrogram note range controls use sliders with read-only note names', async () => {
+    const plugin = await loadPlugin();
+    const row = plugin.createNoteRangeControl(
+        'Lowest Note', plugin.mn, value => plugin.setParameters({ mn: value }), 'mn'
+    );
+    const [label, slider, noteName] = row.children;
+
+    assert.equal(label.textContent, 'Lowest Note:');
+    assert.deepEqual(
+        [slider.type, slider.min, slider.max, slider.step, slider.value],
+        ['range', 21, 108, 1, 28]
+    );
+    assert.deepEqual(
+        [noteName.type, noteName.readOnly, noteName.value],
+        ['text', true, 'E1']
+    );
+    assert.deepEqual(
+        [noteName.style.width, noteName.style.boxSizing],
+        ['80px', 'border-box']
+    );
+
+    slider.value = '60';
+    slider.dispatchEvent('input');
+    assert.equal(plugin.mn, 60);
+    assert.equal(noteName.value, 'C4');
+
+    plugin.setParameters({ mn: 108 });
+    plugin.syncUIControls();
+    assert.equal(slider.value, 108);
+    assert.equal(noteName.value, 'C8');
+});
+
+test('Note Spectrogram validates its version 3 telemetry payload', async () => {
     const plugin = await loadPlugin();
     const levels = Array.from({ length: pitchCount }, (_, pitch) => pitch / (pitchCount - 1));
+    const volumeLevels = Array.from({ length: pitchCount }, (_, pitch) => -120 + pitch / 10);
     const frame = createTelemetryFrame({
-        frameIndex: 42, hopSeconds: 0.0125, generation: 7, levels
+        frameIndex: 42, hopSeconds: 0.0125, generation: 7, levels, volumeLevels
     });
     const snapshot = plugin.parseTelemetryFrame(frame);
 
@@ -279,6 +413,7 @@ test('Note Spectrogram validates its version 2 telemetry payload', async () => {
     assert.equal(snapshot.generation, 7);
     for (let pitch = 0; pitch < pitchCount; pitch++) {
         assert.ok(Math.abs(snapshot.levels[pitch] - levels[pitch]) < 1e-6);
+        assert.ok(Math.abs(snapshot.volumeLevels[pitch] - volumeLevels[pitch]) < 1e-5);
     }
 
     assert.equal(plugin.parseTelemetryFrame({ ...frame, frameType: 23 }), null);
@@ -291,7 +426,277 @@ test('Note Spectrogram validates its version 2 telemetry payload', async () => {
     assert.equal(plugin.parseTelemetryFrame(createTelemetryFrame({ mode: 2 })), null);
     assert.equal(plugin.parseTelemetryFrame(createTelemetryFrame({ generation: 0 })), null);
     assert.equal(plugin.parseTelemetryFrame(createTelemetryFrame({ levels: [1.01] })), null);
+    assert.equal(plugin.parseTelemetryFrame(createTelemetryFrame({ volumeLevels: [Infinity] })), null);
     assert.equal(plugin.parseTelemetryFrame(createTelemetryFrame({ mode: 'Classic' })), null);
+});
+
+test('Volume range stays stable while the current meter releases without a peak state', async () => {
+    const plugin = await loadPlugin();
+    const snapshot = (confidence, volume) => ({
+        levels: Float32Array.from({ length: pitchCount }, (_, pitch) => pitch === 0 ? confidence : 0),
+        volumeLevels: Float32Array.from({ length: pitchCount }, (_, pitch) => pitch === 0 ? volume : -240)
+    });
+
+    plugin._updateVolumeState(snapshot(1, -50), 0.01);
+    assert.equal(plugin.levelReference, -50);
+    assert.equal(plugin._normalizedLevel(-36), 1);
+    assert.equal(plugin._normalizedLevel(-60), 0);
+
+    plugin._updateVolumeState(snapshot(1, -20), 0.01);
+    assert.equal(plugin.levelReference, -20);
+    assert.equal(plugin.meterCurrent[0], -20);
+    plugin._updateVolumeState(snapshot(1, -80), 0.5);
+    assert.equal(plugin.levelReference, -20);
+    assert.equal(plugin.meterCurrent[0], -30);
+    plugin._updateVolumeState(snapshot(1, -80), 0.75);
+    assert.equal(plugin.levelReference, -25);
+    assert.equal(plugin.meterCurrent[0], -45);
+    assert.equal('meterPeak' in plugin, false);
+    plugin.clearHistory();
+    assert.equal(plugin.levelReference, -240);
+    assert.equal(plugin.levelReferenceHold, 0);
+    assert.equal(plugin.meterCurrent[0], -240);
+});
+
+test('Volume history freezes normalized thickness when each column is written', async () => {
+    const plugin = await loadPlugin();
+    plugin.handleTelemetry(createTelemetryFrame({
+        frameIndex: 0, levels: [1], volumeLevels: [-48]
+    }));
+    assert.equal(plugin.levelHistory[0], 0.5);
+
+    plugin.handleTelemetry(createTelemetryFrame({
+        frameIndex: 1, timeSeconds: 1.01, levels: [1], volumeLevels: [-12]
+    }));
+    assert.equal(plugin.levelReference, -12);
+    assert.equal(plugin.levelHistory[0], 0.5);
+});
+
+test('Volume bars map level to thickness and pitch resolution to center position', async () => {
+    const plugin = await loadPlugin();
+    const fills = [];
+    const context = {
+        createLinearGradient(...coordinates) { return createGradient('linear', coordinates); },
+        fillRect(x, y, width, height) { fills.push({ x, y, width, height, color: this.fillStyle }); }
+    };
+    plugin.volumeHistoryCanvas = { width: historyWidth, height: 100, getContext: () => context };
+    plugin.mn = 21;
+    plugin.mx = 21;
+    plugin.pr = 'High';
+    plugin.history[0] = 1;
+    plugin.levelHistory[0] = 0;
+    plugin.volumeHistoryDirty = true;
+    plugin._paintVolumeHistory(100, plugin._displayPalette());
+    let bar = fills.find(fill => fill.width === 1);
+    assert.deepEqual([bar.y, bar.height], [70, 40]);
+    assert.deepEqual(bar.color.stops.map(stop => stop.offset), [0, 0.25, 0.75, 1]);
+
+    fills.length = 0;
+    plugin.levelHistory[0] = 1;
+    plugin.volumeHistoryDirty = true;
+    plugin._paintVolumeHistory(100, plugin._displayPalette());
+    bar = fills.find(fill => fill.width === 1);
+    assert.deepEqual([bar.y, bar.height], [30.5, 119]);
+
+    fills.length = 0;
+    plugin.pr = 'Semitone';
+    plugin.levelHistory[0] = 0;
+    plugin.volumeHistoryDirty = true;
+    plugin._paintVolumeHistory(100, plugin._displayPalette());
+    bar = fills.find(fill => fill.width === 1);
+    assert.deepEqual([bar.y, bar.height], [30, 40]);
+});
+
+test('incremental Volume redraw preserves High bars that cross a neighboring row', async () => {
+    const plugin = await loadPlugin();
+    const fills = [];
+    const context = {
+        createLinearGradient(...coordinates) { return createGradient('linear', coordinates); },
+        fillRect(x, y, width, height) {
+            fills.push({ x, y, width, height, color: styleSignature(this.fillStyle) });
+        }
+    };
+    const rasterizeColumn = () => Array.from({ length: 20 }, (_, row) => {
+        let color = null;
+        for (const fill of fills) {
+            if (fill.x <= 0.5 && 0.5 < fill.x + fill.width &&
+                fill.y <= row + 0.5 && row + 0.5 < fill.y + fill.height) {
+                color = fill.color;
+            }
+        }
+        return color;
+    });
+    plugin.vl = true;
+    plugin.pr = 'High';
+    plugin.mn = 21;
+    plugin.mx = 22;
+    plugin.volumeHistoryCanvas = { width: historyWidth, height: 20, getContext: () => context };
+    plugin.history[4] = 1;
+    plugin.levelHistory[4] = 1;
+    plugin.volumeHistoryDirty = true;
+    plugin._paintVolumeHistory(20, plugin._displayPalette());
+    const fullRedraw = rasterizeColumn();
+
+    fills.length = 0;
+    plugin._paintVolumeColumns(0, 1);
+    assert.deepEqual(rasterizeColumn(), fullRedraw);
+    assert.match(fullRedraw[8], /rgba\(0, 255, 0, 1\)/);
+});
+
+test('Volume backgrounds and guides precede confidence-sorted bars in every redraw path', async () => {
+    const plugin = await loadPlugin();
+    const fills = [];
+    const context = {
+        createLinearGradient(...coordinates) { return createGradient('linear', coordinates); },
+        fillRect(x, y, width, height) {
+            fills.push({ x, y, width, height, color: styleSignature(this.fillStyle) });
+        }
+    };
+    plugin.vl = true;
+    plugin.cl = 'Rainbow';
+    plugin.mn = 24;
+    plugin.mx = 25;
+    plugin.graphDpr = 2;
+    plugin.volumeHistoryCanvas = { width: historyWidth, height: 20, getContext: () => context };
+    const cPitch = (24 - 21) * fineDivisions;
+    const sharpPitch = (25 - 21) * fineDivisions;
+    plugin.history[cPitch] = 0.8;
+    plugin.history[sharpPitch] = 0.3;
+    plugin.levelHistory[cPitch] = 1;
+    plugin.levelHistory[sharpPitch] = 1;
+
+    const verifyOrder = () => {
+        const guide = fills.findIndex(fill => fill.color === 'stub:graph-grid-strong');
+        const bars = fills.map((fill, index) => ({ ...fill, index }))
+            .filter(fill => fill.color.startsWith('{'));
+        assert.equal(bars.length, 2);
+        assert.ok(guide >= 0 && guide < bars[0].index);
+    };
+    const layerColors = () => fills.map(fill => fill.color).filter(color =>
+        color === 'stub:graph-grid-strong' || color.startsWith('{'));
+
+    plugin.volumeHistoryDirty = true;
+    plugin._paintVolumeHistory(20, plugin._displayPalette());
+    verifyOrder();
+    const sortedBars = plugin._volumeBarsForColumn(0);
+    assert.deepEqual(Array.from(sortedBars, bar => bar.midi), [25, 24]);
+    assert.ok(sortedBars[0].confidence < sortedBars[1].confidence);
+    const fullRedraw = layerColors();
+
+    fills.length = 0;
+    plugin._paintVolumeColumns(0, 1);
+    verifyOrder();
+    assert.deepEqual(layerColors(), fullRedraw);
+
+    plugin.history[sharpPitch] = plugin.history[cPitch];
+    assert.deepEqual(Array.from(plugin._volumeBarsForColumn(0), bar => bar.midi), [24, 25]);
+});
+
+test('Volume meter draws one blurred current semicircle into the graph area', async () => {
+    const plugin = await loadPlugin();
+    plugin.mn = 21;
+    plugin.mx = 21;
+    plugin.levelReference = -36;
+    plugin.meterCurrent[0] = -48;
+    const arcs = [];
+    const moves = [];
+    const gradients = [];
+    let fills = 0;
+    let strokes = 0;
+    const context = {
+        beginPath() {}, closePath() {},
+        moveTo(x, y) { moves.push({ x, y }); },
+        arc(x, y, radius, start, end) { arcs.push({ x, y, radius, start, end }); },
+        fill() { fills += 1; },
+        stroke() { strokes += 1; },
+        createRadialGradient(...coordinates) {
+            const gradient = createGradient('radial', coordinates);
+            gradients.push(gradient);
+            return gradient;
+        }
+    };
+    const palette = plugin._displayPalette();
+
+    plugin.vl = false;
+    plugin._drawVolumeMeters(context, 100, 20, palette);
+    assert.deepEqual([arcs.length, fills, strokes], [0, 0, 0]);
+    plugin.vl = true;
+    plugin._drawVolumeMeters(context, 100, 20, palette);
+    assert.deepEqual([arcs.map(arc => arc.radius), fills, strokes], [[10], 1, 0]);
+    assert.deepEqual(moves, [{ x: 100, y: 20 }]);
+    assert.equal(arcs[0].start, Math.PI / 2);
+    assert.equal(arcs[0].end, Math.PI * 1.5);
+    assert.deepEqual(gradients[0].stops.map(stop => stop.offset), [0, 0.75, 1]);
+});
+
+test('Volume meter remains above the bars and graph-side in both layouts', async () => {
+    const plugin = await loadPlugin();
+    plugin.vl = true;
+    plugin.mn = 21;
+    plugin.mx = 40;
+    plugin.levelReference = -36;
+    plugin.meterCurrent[0] = -36;
+    plugin.canvas = { width: 200, height: 100 };
+    plugin.imageData = { data: new Uint8ClampedArray(historyWidth * pitchCount * 4) };
+    plugin.tempCtx = { putImageData() {} };
+    plugin.tempCanvas = new FakeElement('canvas');
+    plugin.history[(historyWidth - 1) * pitchCount] = 1;
+    plugin.levelHistory[(historyWidth - 1) * pitchCount] = 1;
+
+    const render = layout => {
+        const events = [];
+        const stack = [];
+        let angle = 0;
+        let origin = [0, 0];
+        let lineStart = null;
+        let lineEnd = null;
+        const point = (x, y) => [
+            origin[0] + x * Math.cos(angle) - y * Math.sin(angle),
+            origin[1] + x * Math.sin(angle) + y * Math.cos(angle)
+        ];
+        plugin.ly = layout;
+        plugin.volumeHistoryDirty = true;
+        plugin.canvasCtx = {
+            save() { stack.push({ angle, origin }); },
+            restore() { ({ angle, origin } = stack.pop()); },
+            translate(x, y) { origin = point(x, y); },
+            rotate(radians) { angle += radians; },
+            fillRect() {},
+            drawImage() { events.push('history'); },
+            createRadialGradient(...coordinates) {
+                return createGradient('radial', coordinates);
+            },
+            beginPath() { lineStart = null; lineEnd = null; },
+            moveTo(x, y) { lineStart = { raw: [x, y], screen: point(x, y) }; },
+            lineTo(x, y) { lineEnd = { raw: [x, y], screen: point(x, y) }; },
+            arc(x, y, radius) {
+                events.push({
+                    type: 'meter',
+                    center: point(x, y),
+                    graphEdge: point(x - radius, y)
+                });
+            },
+            closePath() {},
+            fill() { events.push('meter-fill'); },
+            stroke() {
+                if (lineStart?.raw[0] === lineEnd?.raw[0] && lineStart.raw[1] === 0) {
+                    events.push('boundary');
+                }
+            },
+            fillText() {},
+            measureText() { return { width: 10 }; }
+        };
+        plugin.drawGraph();
+        const meter = events.find(event => event?.type === 'meter');
+        assert.ok(events.lastIndexOf('history') < events.indexOf('meter-fill'));
+        assert.ok(events.indexOf('meter-fill') < events.lastIndexOf('boundary'));
+        return meter;
+    };
+
+    const vertical = render('Vertical');
+    assert.ok(vertical.graphEdge[0] < vertical.center[0]);
+    const horizontal = render('Horizontal');
+    assert.ok(horizontal.graphEdge[1] < horizontal.center[1]);
 });
 
 test('Note Spectrogram subscribes once and releases its telemetry callback', async () => {
@@ -448,7 +853,7 @@ test('frame sequence rejects duplicates and stale frames but accepts uint32 wrap
 
 test('piano roll draws note boundaries and applies pitch colors to presence history and keys', async () => {
     const plugin = await loadPlugin();
-    plugin.setParameters({ cl: 'Rainbow', ly: 'Vertical', mn: 21, mx: 108 });
+    plugin.setParameters({ cl: 'Rainbow', pr: 'High', ly: 'Vertical', vl: false, mn: 21, mx: 108 });
     const fills = [];
     const lines = [];
     plugin.canvas = { width: 1024, height: 440 };
@@ -458,14 +863,26 @@ test('piano roll draws note boundaries and applies pitch colors to presence hist
     plugin.tempCanvas.width = historyWidth;
     plugin.tempCanvas.height = pitchCount;
     plugin.canvasCtx = {
-        fillRect(x, y) { if (x > 0) fills.push({ y, color: this.fillStyle }); },
+        fillRect(x, y, width, height) {
+            if (x > 0) fills.push({ x, y, width, height, color: this.fillStyle });
+        },
         drawImage() {}, beginPath() {},
         moveTo(x, y) { this.lineStart = { x, y }; },
         lineTo() {},
         stroke() { if (this.lineStart.x === 0) lines.push({ ...this.lineStart, color: this.strokeStyle }); },
-        fillText() {}
+        fillText() {},
+        measureText() { return { width: 10 }; }
     };
-    const keyColor = pitch => fills[noteCount - 1 - pitch].color;
+    const keyColor = pitch => {
+        const midi = 21 + pitch;
+        const pitchClass = midi % 12;
+        if ([1, 3, 6, 8, 10].includes(pitchClass)) {
+            return fills.find(fill => fill.width === 28 && fill.y === (108 - midi) * 5)?.color;
+        }
+        const whiteMidis = Array.from({ length: noteCount }, (_, index) => 21 + index)
+            .filter(note => ![1, 3, 6, 8, 10].includes(note % 12));
+        return fills.filter(fill => fill.width > 28)[whiteMidis.indexOf(midi)]?.color;
+    };
     const draw = () => { fills.length = 0; lines.length = 0; plugin.drawGraph(); };
     // The newest column is the last buffer column after the ring wraps.
     const latestHistoryOffset = (historyWidth - 1) * pitchCount;
@@ -530,7 +947,9 @@ test('piano roll draws note boundaries and applies pitch colors to presence hist
     assert.equal(keyColor(0), 'rgb(152, 136, 181)');
 
     plugin.reset();
-    plugin.setParameters({ ly: 'Vertical', mn: 21, mx: 108 });
+    plugin.ly = 'Vertical';
+    plugin.vl = false;
+    plugin.setParameters({ pr: 'High', mn: 21, mx: 108 });
     draw();
     assert.equal(keyColor(0), 'rgb(221, 221, 221)');
 });
@@ -542,6 +961,7 @@ test('pitch resolution switches between five-cell history and semitone bag rows'
     plugin.history[0] = 0.2;
     plugin.history[1] = 0.7;
 
+    plugin.setParameters({ pr: 'High' });
     plugin.setParameters({ pr: 'Semitone' });
     assert.equal(plugin.tempCanvas.height, noteCount);
     assert.equal(plugin.imageData.data.length, historyWidth * noteCount * 4);
@@ -576,11 +996,11 @@ test('pitch resolution switches between five-cell history and semitone bag rows'
 
     plugin.setParameters({ pr: 'Semitone' });
     plugin.reset();
-    assert.equal(plugin.pr, 'High');
-    assert.equal(plugin.tempCanvas.height, pitchCount);
+    assert.equal(plugin.pr, 'Semitone');
+    assert.equal(plugin.tempCanvas.height, noteCount);
 });
 
-test('horizontal layout places low notes left, keeps labels upright, and scrolls history upward', async () => {
+test('layouts rotate the same piano keyboard while keeping labels upright', async () => {
     let now = 1000;
     const plugin = await loadPlugin({ now: () => now });
     const fills = [], images = [], labels = [], lines = [];
@@ -590,7 +1010,7 @@ test('horizontal layout places low notes left, keeps labels upright, and scrolls
         origin[0] + x * Math.cos(angle) - y * Math.sin(angle),
         origin[1] + x * Math.sin(angle) + y * Math.cos(angle)
     ];
-    plugin.setParameters({ ly: 'Vertical', mn: 21, mx: 108 });
+    plugin.setParameters({ pr: 'High', ly: 'Vertical', vl: false, mn: 21, mx: 108 });
     plugin.canvas = { width: 880, height: 440 };
     plugin.imageData = { data: new Uint8ClampedArray(historyWidth * pitchCount * 4) };
     plugin.tempCtx = { putImageData() {} };
@@ -614,7 +1034,9 @@ test('horizontal layout places low notes left, keeps labels upright, and scrolls
         fillText(text, x, y) {
             labels.push({ text, position: point(x, y), angle, textBaseline: this.textBaseline });
         },
-        measureText() { return { width: 10 }; },
+        measureText() {
+            return { width: 10, actualBoundingBoxAscent: 5, actualBoundingBoxDescent: 2 };
+        },
         beginPath() { this.lineStart = null; this.lineEnd = null; },
         moveTo(x, y) { this.lineStart = point(x, y); },
         lineTo(x, y) { this.lineEnd = point(x, y); },
@@ -677,8 +1099,23 @@ test('horizontal layout places low notes left, keeps labels upright, and scrolls
     plugin.setParameters({ mn: 28, mx: 96 });
     assert.deepEqual(labels.map(label => label.text), ['C2', 'C3', 'C4', 'C5', 'C6']);
     fills.length = 0;
+    labels.length = 0;
     plugin.setParameters({ ly: 'Vertical' });
-    assert.ok(fills.slice(1).every(key => key.center[0] === 866));
+    const verticalBlackKeys = fills.filter(fill => Math.abs(fill.width - 28) < 1e-6);
+    const verticalWhiteKeys = fills.filter(fill => Math.abs(fill.width - 44.8) < 1e-6);
+    assert.ok(verticalBlackKeys.length > 0);
+    assert.ok(verticalWhiteKeys.length > 0);
+    assert.ok(verticalBlackKeys.every(key => Math.abs(key.center[0] - 849.2) < 1e-6));
+    assert.ok(verticalWhiteKeys.every(key => Math.abs(key.center[0] - 857.6) < 1e-6));
+    assert.ok(labels.every(label => Math.abs(label.angle) < 1e-6));
+    assert.ok(labels.every(label => Math.abs(label.position[0] - 871.6) < 1e-6));
+    const verticalRowHeight = plugin.canvas.height / (plugin.mx - plugin.mn + 1);
+    labels.forEach(label => {
+        const midi = (Number(label.text.slice(1)) + 1) * 12;
+        const whiteKeyCenter = plugin.canvas.height - ((midi - plugin.mn) * verticalRowHeight +
+            0.5 * 12 * verticalRowHeight / 7);
+        assert.ok(Math.abs(label.position[1] - 1.5 - whiteKeyCenter) < 1e-6);
+    });
     assert.equal(plugin.scaledHistoryCanvas.height, 440);
     assert.deepEqual(plugin.history, history);
     assert.equal(plugin.lastFrameIndex, frameIndex);
@@ -687,6 +1124,7 @@ test('horizontal layout places low notes left, keeps labels upright, and scrolls
 
 test('all confidence values are displayed without a threshold in both colors', async () => {
     const plugin = await loadPlugin();
+    plugin.setParameters({ pr: 'High', vl: false });
     plugin.imageData = { data: new Uint8ClampedArray(historyWidth * pitchCount * 4) };
     const offset = ((pitchCount - 1 - fineCenter) * historyWidth) * 4;
     const pixel = () => Array.from(plugin.imageData.data.slice(offset, offset + 4));
@@ -708,7 +1146,7 @@ test('all confidence values are displayed without a threshold in both colors', a
 test('piano roll scrolls by monotonic fractional time and freezes across pauses', async () => {
     let now = 1000;
     const plugin = await loadPlugin({ now: () => now });
-    plugin.setParameters({ ts: 2, ly: 'Vertical' });
+    plugin.setParameters({ pr: 'High', ly: 'Vertical', vl: false, ts: 2 });
     const drawCalls = [];
     plugin.canvas = { width: 1024, height: 440 };
     plugin.imageData = { data: new Uint8ClampedArray(historyWidth * pitchCount * 4) };
@@ -717,9 +1155,10 @@ test('piano roll scrolls by monotonic fractional time and freezes across pauses'
     plugin.canvasCtx = {
         fillRect() {},
         drawImage(...args) { drawCalls.push(args); },
-        beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fillText() {}
+        beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fillText() {},
+        measureText() { return { width: 10 }; }
     };
-    const rollWidth = plugin.canvas.width - 28;
+    const rollWidth = plugin.canvas.width - 44.8;
     const historySources = split => {
         plugin.writeColumn = split;
         drawCalls.length = 0;

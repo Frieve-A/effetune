@@ -30,7 +30,7 @@ PC의 Chrome 116 이상 또는 Chromium 기반의 호환되는 Microsoft Edge에
 
 저장한 설정과 프리셋은 확장 프로그램에 남으며 웹 앱이나 데스크톱 앱과 자동 동기화되지 않습니다. 프리셋에 지원하지 않는 라우팅, 효과 또는 사용할 수 없는 외부 자산이 필요하면 적용되지 않고 현재 체인이 유지됩니다.
 
-웹 앱이나 데스크톱 앱의 측정 결과를 Room EQ 또는 Crosstalk Cancellation에서 사용하려면 해당 앱에서 JSON으로 내보내십시오. 확장 프로그램 편집기에서 **Settings**를 열고 **Import measurement…**를 선택한 다음 그 JSON 파일을 지정합니다. Crosstalk Cancellation이나 Room EQ의 위상 보정에 사용할 때는 임펄스 응답을 포함해 내보내십시오. 가져온 측정 결과는 확장 프로그램의 브라우저 저장소에 남으며 자동으로 동기화되지 않습니다. 삭제하려면 **Settings**에서 **Delete imported measurement…**를 선택하십시오. 해당 측정 결과를 사용하는 할당은 삭제 전에 해제됩니다.
+웹 앱이나 데스크톱 앱의 측정 결과를 Room EQ 또는 Crosstalk Cancellation에서 사용하려면 해당 앱에서 JSON으로 내보내십시오. 확장 프로그램 편집기에서 **Settings**를 열고 **Import measurement…**를 선택한 다음 그 JSON 파일을 지정합니다. Crosstalk Cancellation이나 Room EQ의 위상 보정에 사용할 때는 임펄스 응답을 포함해 내보내십시오. 가져온 측정 결과는 Room EQ의 **Measurement** 목록에 즉시 나타나고 확장 프로그램의 브라우저 저장소에 남으며 자동으로 동기화되지 않습니다. 가져온 복사본을 삭제하려면 목록에서 선택하고 목록 옆의 **Delete**를 선택하십시오. 확인 후 해당 복사본을 사용하는 모든 Room EQ와 Crosstalk Cancellation 할당이 해제된 다음 복사본이 삭제됩니다.
 
 ## 권한, 제한, 도움말
 

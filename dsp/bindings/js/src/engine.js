@@ -135,6 +135,7 @@ export class EngineSession {
     this.fullChannelViews = Array.from({ length: channels }, (_, channel) =>
       this.arena.subarray(channel * maxFrames, (channel + 1) * maxFrames)
     );
+    this.channelViewsByFrameCount = new Map([[maxFrames, this.fullChannelViews]]);
     this.nodesByTap = new Map(nodes.map(node => [node.tapId, node]));
     this.telemetryBuffer = new Uint8Array(TELEMETRY_RING_BYTES);
     this.telemetryCallbacks = new Set();
@@ -154,10 +155,15 @@ export class EngineSession {
 
   process(input, output, offset, frameCount, sampleRate, timeFrame = offset) {
     if (this.closed) throw new EffeTuneRuntimeError('DSP processing state is closed.');
+    let channelViews = this.channelViewsByFrameCount.get(frameCount);
+    if (!channelViews) {
+      channelViews = Array.from({ length: this.channels }, (_, channel) =>
+        this.arena.subarray(channel * frameCount, (channel + 1) * frameCount)
+      );
+      this.channelViewsByFrameCount.set(frameCount, channelViews);
+    }
     for (let channel = 0; channel < this.channels; channel++) {
-      const target = frameCount === this.maxFrames
-        ? this.fullChannelViews[channel]
-        : this.arena.subarray(channel * frameCount, (channel + 1) * frameCount);
+      const target = channelViews[channel];
       target.set(offset === 0 && input[channel].length === frameCount
         ? input[channel]
         : input[channel].subarray(offset, offset + frameCount));
@@ -177,9 +183,7 @@ export class EngineSession {
       );
     }
     for (let channel = 0; channel < this.channels; channel++) {
-      const source = frameCount === this.maxFrames
-        ? this.fullChannelViews[channel]
-        : this.arena.subarray(channel * frameCount, (channel + 1) * frameCount);
+      const source = channelViews[channel];
       output[channel].set(source, offset);
     }
     if (this.telemetryCallbacks.size > 0) this.drainTelemetry();

@@ -26,6 +26,9 @@ class NoteSpectrogram(Effect):
     def __init__(
         self,
         *,
+        minimum_midi: int = ...,
+        maximum_midi: int = ...,
+        regular_candidates: int = ...,
         id: str | None = ...,
         enabled: bool = ...,
         channel: EffectChannel = ...,

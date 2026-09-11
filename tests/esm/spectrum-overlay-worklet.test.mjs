@@ -77,7 +77,17 @@ function createBinding() {
     instanceSetTap() { return 0; },
     instanceLatency() { return 0; },
     instanceSetParams() { return 0; },
-    pointerForArenaView(view) { return pointers.get(view) ?? null; },
+    pointerForArenaView(view) {
+      for (const [arenaView, pointer] of pointers) {
+        const offset = view.byteOffset - arenaView.byteOffset;
+        if (view.buffer === arenaView.buffer && offset >= 0 && offset + view.byteLength <= arenaView.byteLength) {
+          const viewPointer = pointer + offset;
+          views.set(viewPointer, view);
+          return viewPointer;
+        }
+      }
+      return null;
+    },
     instanceProcess(_id, pointer, channels, frames) {
       calls.push('instanceProcess');
       const view = views.get(pointer);

@@ -382,12 +382,12 @@ test('worklet telemetry callbacks run on the node side with opt-in lifetime', as
     assert.equal(node.droppedTelemetryFrames, 3);
     assert.equal(node.port.messages.at(-1).type, 'telemetryReturn');
 
-    const notePacket = new ArrayBuffer(1804);
+    const notePacket = new ArrayBuffer(3564);
     const noteView = new DataView(notePacket);
     noteView.setUint16(0, 24, true);
-    noteView.setUint16(2, 2, true);
+    noteView.setUint16(2, 3, true);
     noteView.setUint32(4, 2, true);
-    noteView.setUint16(12, 1788, true);
+    noteView.setUint16(12, 3548, true);
     noteView.setFloat32(16, 48000, true);
     noteView.setFloat32(20, 1, true);
     noteView.setUint16(24, 440, true);
@@ -397,16 +397,22 @@ test('worklet telemetry callbacks run on the node side with opt-in lifetime', as
     noteView.setUint32(36, 5, true);
     noteView.setUint32(40, 1, true);
     noteView.setFloat32(44, 0.75, true);
-    node._handleMessage({ type: 'telemetry', packet: notePacket, bytes: 1804, dropped: 0 });
+    noteView.setFloat32(1804, -12, true);
+    node._handleMessage({ type: 'telemetry', packet: notePacket, bytes: 3564, dropped: 0 });
     assert.equal(received.length, 2);
     assert.equal(received[1].kind, 'noteSpectrogram');
     assert.equal(received[1].effectId, 'notes');
     assert.equal(received[1].frameIndex, 100);
     assert.equal(received[1].levels[0], 0.75);
+    assert.equal(received[1].volumeDb[0], -12);
     noteView.setFloat32(44, 2, true);
-    node._handleMessage({ type: 'telemetry', packet: notePacket, bytes: 1804, dropped: 0 });
+    node._handleMessage({ type: 'telemetry', packet: notePacket, bytes: 3564, dropped: 0 });
     assert.equal(received.length, 2);
     assert.equal(received[1].levels[0], 0.75);
+    noteView.setFloat32(44, 0.75, true);
+    noteView.setFloat32(1804, Number.NaN, true);
+    node._handleMessage({ type: 'telemetry', packet: notePacket, bytes: 3564, dropped: 0 });
+    assert.equal(received.length, 2);
 
     assert.equal(unsubscribe(), true);
     assert.deepEqual(node.port.messages.at(-1), {

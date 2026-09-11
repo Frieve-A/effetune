@@ -480,6 +480,7 @@ export interface NoteSpectrogramTelemetryFrame extends TelemetryFrameBase {
   readonly divisionsPerSemitone: 5;
   readonly generation: number;
   readonly levels: Float32Array;
+  readonly volumeDb: Float32Array;
 }
 
 export interface SpectrogramTelemetryFrame extends TelemetryFrameBase {

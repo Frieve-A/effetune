@@ -30,7 +30,7 @@ Escolha **Edit pipeline** para abrir o **EffeTune Pipeline Editor**. Você pode 
 
 As predefinições e configurações salvas ficam na extensão; elas não sincronizam automaticamente com os aplicativos web ou de desktop. Se uma predefinição exigir roteamento, efeito ou recurso externo indisponível, ela não será aplicada e a cadeia atual será preservada.
 
-Para usar no Room EQ ou no Crosstalk Cancellation uma medição do aplicativo web ou de desktop, exporte-a ali como JSON. No editor da extensão, abra **Settings**, escolha **Import measurement…** e selecione esse arquivo JSON. Inclua as respostas ao impulso na exportação ao usar o Crosstalk Cancellation ou a correção de fase do Room EQ. As medições importadas permanecem no armazenamento do navegador da extensão e não são sincronizadas automaticamente. Para remover uma delas, escolha **Delete imported measurement…** em **Settings**; as atribuições que a utilizam são limpas antes da exclusão.
+Para usar no Room EQ ou no Crosstalk Cancellation uma medição do aplicativo web ou de desktop, exporte-a ali como JSON. No editor da extensão, abra **Settings**, escolha **Import measurement…** e selecione esse arquivo JSON. Inclua as respostas ao impulso na exportação ao usar o Crosstalk Cancellation ou a correção de fase do Room EQ. As medições importadas aparecem imediatamente na lista **Measurement** do Room EQ, permanecem no armazenamento do navegador da extensão e não são sincronizadas automaticamente. Para remover uma cópia importada, selecione-a nessa lista e escolha **Delete** ao lado dela. Após a confirmação, todas as atribuições do Room EQ e do Crosstalk Cancellation que a utilizam são limpas antes da exclusão da cópia.
 
 ## Permissões, limites e ajuda
 

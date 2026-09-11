@@ -1,6 +1,6 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:ab978084a739baf2d6f0b2dfab02f1a8b3b259e3d117028e735252888e40c74d",
+  "sourceDigest": "sha256:90549b24002bff49d9b1083419fa9c82294c48239de45281e3f3186b93461584",
   "emsdkVersion": "6.0.2",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
@@ -399,7 +399,7 @@
     },
     {
       "name": "NoteSpectrogramPlugin",
-      "hash": 2166136261,
+      "hash": 211541838,
       "byteCapacity": 0,
       "assets": []
     },
@@ -1042,7 +1042,7 @@
     }
   ],
   "sizes": {
-    "baseline": 6998177,
-    "simd": 7124845
+    "baseline": 7000109,
+    "simd": 7126702
   }
 }

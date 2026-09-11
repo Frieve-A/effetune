@@ -93,6 +93,8 @@ public:
     }
   }
 
+  const std::vector<double> &rawPrefix() const noexcept { return raw_prefix_; }
+
   static float poolRatios(const std::array<double, kDetuneCount> &ratios) noexcept {
     double sum = 0.0;
     for (const double ratio : ratios)

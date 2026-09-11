@@ -20,13 +20,25 @@ function deferred() {
 }
 
 async function assertPreparing(page) {
-  // Keep the root and its separately painted viewport scrollbar hidden without
-  // changing layout measurements used by the pipeline and virtual library grid.
+  // Keep the application hidden without changing its layout measurements, but
+  // leave a themed loading indicator visible in the prepared native window.
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   assert.deepEqual(await page.evaluate(() => {
     const style = getComputedStyle(document.documentElement);
-    return { opacity: style.opacity, scrollbarColor: style.scrollbarColor };
-  }), { opacity: '0', scrollbarColor: 'rgba(0, 0, 0, 0) rgba(0, 0, 0, 0)' });
+    const spinner = document.querySelector('.startup-spinner');
+    const appContent = document.querySelector('.title-container');
+    return {
+      scrollbarColor: style.scrollbarColor,
+      spinnerDisplay: getComputedStyle(spinner).display,
+      spinnerVisibility: getComputedStyle(spinner).visibility,
+      appVisibility: getComputedStyle(appContent).visibility
+    };
+  }), {
+    scrollbarColor: 'rgba(0, 0, 0, 0) rgba(0, 0, 0, 0)',
+    spinnerDisplay: 'block',
+    spinnerVisibility: 'visible',
+    appVisibility: 'hidden'
+  });
 }
 
 for (const startupView of ['effects', 'library']) {
@@ -70,7 +82,7 @@ for (const startupView of ['effects', 'library']) {
         });
         window.__startupFrames = [];
         const observe = () => {
-          if (document.body && getComputedStyle(document.documentElement).opacity !== '0') {
+          if (document.body && !document.documentElement.classList.contains('app-starting')) {
             window.__startupFrames.push({
               initialized: window.app?.initialized === true,
               library: document.body.classList.contains('view-library'),

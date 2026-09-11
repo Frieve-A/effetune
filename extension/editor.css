@@ -60,34 +60,28 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 16px;
 }
 
 .extension-measurement-delete-dialog {
-  width: min(460px, calc(100vw - 40px));
-  border: 1px solid var(--et-surface-20);
+  box-sizing: border-box;
+  width: min(460px, calc(100vw - 32px));
   border-radius: 8px;
-  padding: 20px;
+  padding: 22px;
   background: var(--et-panel-gradient);
   color: var(--et-text-primary);
-  box-shadow: 0 22px 54px rgb(0 0 0 / 50%);
+  box-shadow: 0 22px 54px rgb(0 0 0 / 50%),
+              inset 0 1px 0 rgb(255 255 255 / 6.5%),
+              inset 0 0 0 1px var(--et-border-strong);
 }
 
-.extension-measurement-delete-dialog h2 { margin: 0 0 10px; font-size: 18px; }
-.extension-measurement-delete-dialog p { margin: 0 0 14px; color: var(--et-text-secondary); font-size: 13px; }
-.extension-measurement-delete-dialog select {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 36px;
-  margin-bottom: 18px;
-  border: 1px solid var(--et-surface-28);
-  border-radius: 4px;
-  padding: 6px 8px;
-  background: var(--et-input-gradient);
-  color: var(--et-text-primary);
-}
+.extension-measurement-delete { color: #ff9b9b !important; }
+.extension-measurement-delete:disabled { color: var(--et-text-muted) !important; }
+.extension-measurement-delete-dialog h2 { margin: 0 0 12px; font-size: 20px; }
+.extension-measurement-delete-dialog p { margin: 0 0 20px; color: var(--et-text-secondary); overflow-wrap: anywhere; }
 .extension-measurement-delete-dialog .dialog-buttons { display: flex; justify-content: flex-end; gap: 8px; }
 .extension-measurement-delete-dialog .dialog-buttons button { min-width: 82px; border-radius: 4px; padding: 8px 12px; }
+.extension-measurement-delete-dialog .extension-measurement-delete-confirm { color: #ffb0b0 !important; }
 
 @media (max-width: 980px) {
   .extension-header { align-items: flex-start; }

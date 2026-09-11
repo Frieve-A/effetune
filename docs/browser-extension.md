@@ -42,7 +42,7 @@ Use **Saved preset** and **Apply** in the popup to change the complete pipeline 
 
 If a preset needs an unsupported routing, effect, or unavailable external asset, it is not applied and the current pipeline remains unchanged.
 
-To use a measurement from the web app or desktop app with Room EQ or Crosstalk Cancellation, export the measurement as JSON there. In the extension editor, open **Settings**, choose **Import measurement…**, then select that JSON file. Include impulse responses in the export when using Crosstalk Cancellation or Room EQ's phase correction. Imported measurements remain in the extension's browser storage and do not sync automatically. To remove one, open **Settings** and choose **Delete imported measurement…**; assignments that use it are cleared before it is deleted.
+To use a measurement from the web app or desktop app with Room EQ or Crosstalk Cancellation, export the measurement as JSON there. In the extension editor, open **Settings**, choose **Import measurement…**, then select that JSON file. Include impulse responses in the export when using Crosstalk Cancellation or Room EQ's phase correction. Imported measurements appear immediately in Room EQ's **Measurement** list, remain in the extension's browser storage, and do not sync automatically. To remove an imported copy, select it in that list and choose **Delete** beside the list. After confirmation, every Room EQ and Crosstalk Cancellation assignment that uses it is cleared before the copy is deleted.
 
 ## Permissions and limits
 

@@ -1176,7 +1176,7 @@ const FIR_CONVOLVER_PLUGIN_TYPES = new Set([
     'RoomEqPlugin'
 ]);
 const ET_DSP_MAX_CHANNELS = 16;
-const ET_DSP_MAX_FRAMES = 128;
+const ET_DSP_DEFAULT_MAX_FRAMES = 128;
 const ET_DSP_ERR_ARGS = -1;
 const ET_DSP_TELEMETRY_BYTES = 256 * 1024;
 // Keep half of the 256 MiB module ceiling available for arenas, other kernels, and replacement probes.
@@ -1294,6 +1294,11 @@ function encodeWorkletDspPipeline(nodes, outputChannelCount = 2) {
 class PluginProcessor extends AudioWorkletProcessor {
     constructor(options) {
         super();
+        const requestedMaxFrameCount = options?.processorOptions?.maxFrameCount;
+        this.maxFrameCount = Number.isInteger(requestedMaxFrameCount) &&
+            requestedMaxFrameCount >= ET_DSP_DEFAULT_MAX_FRAMES
+            ? requestedMaxFrameCount
+            : ET_DSP_DEFAULT_MAX_FRAMES;
         this.plugins = [];
         this.FADE_DURATION = 0.010; // 10ms fade for smoother transitions (Not used in process, but kept for context)
         this.currentFrame = 0;
@@ -1334,7 +1339,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspSampleRate = globalThis.sampleRate;
         this.dspPendingInstanceDestroy = [];
         this.dspEngineNeedsCleanup = false;
-        this.dspHybridInputBackup = new Float32Array(ET_DSP_MAX_CHANNELS * ET_DSP_MAX_FRAMES);
+        this.dspHybridInputBackup = new Float32Array(ET_DSP_MAX_CHANNELS * this.maxFrameCount);
         this.dspInitGeneration = 0;
         this.dspPipelineReady = false;
         this.dspPipelinePluginCount = 0;
@@ -1370,7 +1375,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.MESSAGE_INTERVAL = this.lowLatencyMode ? 8 : 16; // ms
 
         // Buffer management - blockSize will be updated in process
-        this.blockSize = 128; // Default/initial block size
+        this.blockSize = this.maxFrameCount; // Default/initial block size
         this.combinedBuffer = null;
         // this.lastChannelCount = 0; // Not used in the provided process function
 
@@ -1380,7 +1385,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.MAX_BUSES = 4; // Maximum number of buses (Informational, not directly used in process optimization)
 
         // Buffer Pool for performance optimization
-        this.bufferPool = this.createLegacyBufferPool();
+        this.installBufferPool(this.createLegacyBufferPool());
 
         // Offline processing flag (Not used in process, but kept for context)
         // this.isOfflineProcessing = false;
@@ -1428,7 +1433,6 @@ class PluginProcessor extends AudioWorkletProcessor {
             wakeFloorPower: Math.pow(10, -80 / 10),
             wakeOnAnyInput: false,
             exitThresholdPower: Math.pow(10, -74 / 10),
-            ewmaAlpha: 1 - Math.exp(-128 / (globalThis.sampleRate * 2)),
             inputPowerEwma: 0,
             outputPowerEwma: 0,
             inputDcX: new Float64Array(detectorChannelCapacity),
@@ -1531,6 +1535,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                             this.outputChannelCount = data.outputChannels;
                             // Invalidate combined buffer if channel count changes drastically
                             this.combinedBuffer = null;
+                            this.prewarmBufferPoolViews();
                             dspConfigurationChanged = true;
                             console.log(`Audio config updated: output channels = ${this.outputChannelCount}`);
                         }
@@ -2098,7 +2103,6 @@ class PluginProcessor extends AudioWorkletProcessor {
                 capability.capability === 'age-by-skipped-frames'
             ));
         power.temporalSkipEligible = data.temporalSkipEligible === true && temporalCoverageValid;
-        power.ewmaAlpha = 1 - Math.exp(-128 / (globalThis.sampleRate * 2));
         power.dcBlockerR = Math.exp(-2 * Math.PI * 5 / globalThis.sampleRate);
         power.skipSampleRate = globalThis.sampleRate;
         power.pendingConfigWake = true;
@@ -2451,7 +2455,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             const status = binding.prepare(
                 this.dspSampleRate || globalThis.sampleRate,
                 ET_DSP_MAX_CHANNELS,
-                ET_DSP_MAX_FRAMES,
+                this.maxFrameCount,
                 ET_DSP_TELEMETRY_BYTES
             );
             if (status !== 0) {
@@ -2511,28 +2515,63 @@ class PluginProcessor extends AudioWorkletProcessor {
     createLegacyBufferPool() {
         const buses = new Map();
         for (let bus = 1; bus <= 4; bus++) {
-            buses.set(bus, new Float32Array(ET_DSP_MAX_CHANNELS * ET_DSP_MAX_FRAMES));
+            buses.set(bus, new Float32Array(ET_DSP_MAX_CHANNELS * this.maxFrameCount));
         }
         return {
-            combined: new Float32Array(ET_DSP_MAX_CHANNELS * ET_DSP_MAX_FRAMES),
-            allChannels: new Float32Array(ET_DSP_MAX_CHANNELS * ET_DSP_MAX_FRAMES),
-            stereo: new Float32Array(2 * ET_DSP_MAX_FRAMES),
-            mono: new Float32Array(ET_DSP_MAX_FRAMES),
-            mixing: new Float32Array(ET_DSP_MAX_CHANNELS * ET_DSP_MAX_FRAMES),
+            combined: new Float32Array(ET_DSP_MAX_CHANNELS * this.maxFrameCount),
+            allChannels: new Float32Array(ET_DSP_MAX_CHANNELS * this.maxFrameCount),
+            stereo: new Float32Array(2 * this.maxFrameCount),
+            mono: new Float32Array(this.maxFrameCount),
+            mixing: new Float32Array(ET_DSP_MAX_CHANNELS * this.maxFrameCount),
             buses
         };
     }
 
+    installBufferPool(bufferPool) {
+        this.bufferPool = bufferPool;
+        this.bufferPoolViews = new Map();
+        this.prewarmBufferPoolViews();
+    }
+
+    getBufferPoolView(key, buffer, length) {
+        if (buffer.length === length) return buffer;
+        let viewsByLength = this.bufferPoolViews.get(key);
+        if (!viewsByLength) {
+            viewsByLength = new Map();
+            this.bufferPoolViews.set(key, viewsByLength);
+        }
+        let view = viewsByLength.get(length);
+        if (!view) {
+            view = buffer.subarray(0, length);
+            viewsByLength.set(length, view);
+        }
+        return view;
+    }
+
+    prewarmBufferPoolViews() {
+        if (!this.bufferPool || !Number.isInteger(this.outputChannelCount) ||
+            this.outputChannelCount < 1 || this.outputChannelCount > ET_DSP_MAX_CHANNELS) return;
+        const totalSize = this.outputChannelCount * this.maxFrameCount;
+        this.getBufferPoolView('combined', this.bufferPool.combined, totalSize);
+        this.getBufferPoolView('allChannels', this.bufferPool.allChannels, totalSize);
+        this.getBufferPoolView('mixing', this.bufferPool.mixing, totalSize);
+        this.getBufferPoolView('stereo', this.bufferPool.stereo, 2 * this.maxFrameCount);
+        this.getBufferPoolView('mono', this.bufferPool.mono, this.maxFrameCount);
+        for (const [bus, buffer] of this.bufferPool.buses) {
+            this.getBufferPoolView(`bus:${bus}`, buffer, totalSize);
+        }
+    }
+
     adoptDspArena() {
         const arena = this.dspBinding.getArenaViews();
-        this.bufferPool = {
+        this.installBufferPool({
             combined: arena.combined,
             allChannels: arena.scratch.allChannels,
             stereo: arena.scratch.stereo,
             mono: arena.scratch.mono,
             mixing: arena.scratch.mixing,
             buses: new Map(Array.from(arena.buses).filter(([bus]) => bus !== 0))
-        };
+        });
         this.combinedBuffer = null;
     }
 
@@ -2553,7 +2592,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspPacketPool = [];
         this.dspPendingInstanceDestroy = [];
         this.dspEngineNeedsCleanup = false;
-        this.bufferPool = this.createLegacyBufferPool();
+        this.installBufferPool(this.createLegacyBufferPool());
         this.rebuildDspLatencyPlan();
     }
 
@@ -2565,7 +2604,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.wasmInstances.clear();
         this.dspPendingInstanceDestroy = [];
         this.dspEngineNeedsCleanup = true;
-        this.bufferPool = this.createLegacyBufferPool();
+        this.installBufferPool(this.createLegacyBufferPool());
         this.reportDspFailure(stage, error);
         for (const plugin of this.plugins) {
             if (requiresWasmExecution(plugin)) {
@@ -3747,7 +3786,7 @@ class PluginProcessor extends AudioWorkletProcessor {
 
     tryDspPipeline(combinedBuffer, totalSize, input, channelCount, frameCount, time) {
         if (!this.dspPipelineReady || !this.dspLive || channelCount > ET_DSP_MAX_CHANNELS ||
-            frameCount !== ET_DSP_MAX_FRAMES) {
+            frameCount > this.maxFrameCount) {
             return ET_DSP_PIPELINE_FALLBACK;
         }
 
@@ -4292,7 +4331,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         fullDspRenderCompleted = true
     ) {
         const power = this.powerPolicy;
-        const alpha = power.ewmaAlpha;
+        const alpha = 1 - Math.exp(-blockSize / (globalThis.sampleRate * 2));
         const inputFinite = Number.isFinite(inputPower);
         const outputFinite = Number.isFinite(outputPower);
         if (inputFinite) {
@@ -4515,7 +4554,7 @@ class PluginProcessor extends AudioWorkletProcessor {
     process(inputs, outputs, parameters) {
         const inputBlockSize = inputs?.[0]?.[0]?.length;
         const outputBlockSize = outputs?.[0]?.[0]?.length;
-        const blockSize = inputBlockSize || outputBlockSize || 128;
+        const blockSize = inputBlockSize || outputBlockSize || ET_DSP_DEFAULT_MAX_FRAMES;
         const startedAt = this.audioProcessingClockNow();
         const keepAlive = this.processPipeline(inputs, outputs, parameters);
         this.finishPipelineCpuMeasurement(startedAt, blockSize);
@@ -4541,7 +4580,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             }
             if (this.powerPolicy.enabled) {
                 const power = this.powerPolicy;
-                const emptyBlockSize = output?.[0]?.length || 128;
+                const emptyBlockSize = output?.[0]?.length || ET_DSP_DEFAULT_MAX_FRAMES;
                 this._beginPowerRender();
                 this.currentFrame += emptyBlockSize;
                 const emptyInputReason = power.emptyInputActive ? null : 'empty-input';
@@ -4771,9 +4810,13 @@ class PluginProcessor extends AudioWorkletProcessor {
         let combinedBuffer;
         
         // Use pre-allocated buffer pool for better performance
-        if (outputChannelCount <= ET_DSP_MAX_CHANNELS && blockSize === ET_DSP_MAX_FRAMES) {
+        if (outputChannelCount <= ET_DSP_MAX_CHANNELS && blockSize <= this.maxFrameCount) {
             // Use pre-allocated buffer from pool
-            combinedBuffer = this.bufferPool.combined;
+            combinedBuffer = this.getBufferPoolView(
+                'combined',
+                this.bufferPool.combined,
+                totalSize
+            );
             // Zero out only the portion we'll use
             combinedBuffer.fill(0, 0, totalSize);
         } else {
@@ -4898,8 +4941,12 @@ class PluginProcessor extends AudioWorkletProcessor {
                 let busBuffer;
                 
                 // Use pre-allocated buffer from pool if available
-                if (outputChannelCount <= ET_DSP_MAX_CHANNELS && blockSize === ET_DSP_MAX_FRAMES && this.bufferPool.buses.has(busIndex)) {
-                    busBuffer = this.bufferPool.buses.get(busIndex);
+                if (outputChannelCount <= ET_DSP_MAX_CHANNELS && blockSize <= this.maxFrameCount && this.bufferPool.buses.has(busIndex)) {
+                    busBuffer = this.getBufferPoolView(
+                        `bus:${busIndex}`,
+                        this.bufferPool.buses.get(busIndex),
+                        totalSize
+                    );
                     // Zero out only the portion we'll use
                     busBuffer.fill(0, 0, totalSize);
                 } else {
@@ -5032,9 +5079,13 @@ class PluginProcessor extends AudioWorkletProcessor {
             if (processMode === 'all') {
                 if (requiresCopy) {
                     // Use Buffer Pool for all-channel processing when possible (Optimized)
-                    if (outputChannelCount <= ET_DSP_MAX_CHANNELS && blockSize === ET_DSP_MAX_FRAMES) {
+                    if (outputChannelCount <= ET_DSP_MAX_CHANNELS && blockSize <= this.maxFrameCount) {
                         // Use pre-allocated buffer from pool
-                        tempBuffer = this.bufferPool.allChannels;
+                        tempBuffer = this.getBufferPoolView(
+                            'allChannels',
+                            this.bufferPool.allChannels,
+                            blockSize * outputChannelCount
+                        );
                         const totalSize = blockSize * outputChannelCount;
                         // Copy input data to the buffer
                         tempBuffer.set(inputBuffer.subarray(0, totalSize));
@@ -5050,8 +5101,12 @@ class PluginProcessor extends AudioWorkletProcessor {
                 resultTargetBuffer = outputBuffer; // Result goes directly to the output bus buffer
             } else if (processMode === 'pair') {
                 // Use pre-allocated stereo buffer for pair processing (Optimized)
-                if (blockSize === 128) {
-                    tempBuffer = this.bufferPool.stereo;
+                if (blockSize <= this.maxFrameCount) {
+                    tempBuffer = this.getBufferPoolView(
+                        'stereo',
+                        this.bufferPool.stereo,
+                        blockSize * 2
+                    );
                     // Zero out the buffer before use
                     tempBuffer.fill(0);
                 } else {
@@ -5066,8 +5121,12 @@ class PluginProcessor extends AudioWorkletProcessor {
                 // Result will be written back from tempBuffer to the correct place in outputBuffer later
             } else if (processMode === 'single') {
                 // Use pre-allocated mono buffer for single channel processing (Optimized)
-                if (blockSize === 128) {
-                    tempBuffer = this.bufferPool.mono;
+                if (blockSize <= this.maxFrameCount) {
+                    tempBuffer = this.getBufferPoolView(
+                        'mono',
+                        this.bufferPool.mono,
+                        blockSize
+                    );
                     // Zero out the buffer before use
                     tempBuffer.fill(0);
                 } else {
@@ -5101,7 +5160,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             let result = processingBuffer;
             let processedInWasm = false;
             if (!executionBypassed && wasmEntry?.ready && this.dspLive &&
-                outputChannelCount <= ET_DSP_MAX_CHANNELS && blockSize === ET_DSP_MAX_FRAMES) {
+                outputChannelCount <= ET_DSP_MAX_CHANNELS && blockSize <= this.maxFrameCount) {
                 const sampleCount = numProcessingChannels * blockSize;
                 const expectedMemory = this.dspBinding.memory?.buffer;
                 if (!this.isDspArenaViewCurrent(processingBuffer, expectedMemory, sampleCount)) {
@@ -5262,9 +5321,13 @@ class PluginProcessor extends AudioWorkletProcessor {
                  if (processMode === 'all') {
                      // Optimized: Use dedicated mixing buffer for better performance
                      // Avoid read/write overlap issues with separate mixing buffer
-                     if (outputChannelCount <= ET_DSP_MAX_CHANNELS && blockSize === ET_DSP_MAX_FRAMES) {
+                     if (outputChannelCount <= ET_DSP_MAX_CHANNELS && blockSize <= this.maxFrameCount) {
                          // Use dedicated pre-allocated mixing buffer from pool
-                         const mixBuffer = this.bufferPool.mixing;
+                         const mixBuffer = this.getBufferPoolView(
+                             'mixing',
+                             this.bufferPool.mixing,
+                             totalSize
+                         );
                          // Copy current output state to mixing buffer
                          mixBuffer.set(outputBuffer.subarray(0, totalSize));
                          // Add the processed result using optimized loop

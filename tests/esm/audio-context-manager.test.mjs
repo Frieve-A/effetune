@@ -510,6 +510,7 @@ test('loadAudioWorklet creates a configured worklet and applies pending audio co
     const manager = new AudioContextManager();
     manager.audioContext = {
       destination: { channelCount: 4 },
+      renderQuantumSize: 192,
       audioWorklet: {
         async addModule(path) {
           calls.push(['addModule', path]);
@@ -523,6 +524,7 @@ test('loadAudioWorklet creates a configured worklet and applies pending audio co
     assert.equal(globalThis.window.workletNode, manager.workletNode);
     assert.equal(manager._pendingAudioConfig, null);
     const workletOptions = calls.find(call => call[0] === 'newAudioWorkletNode')?.[3];
+    assert.equal(workletOptions.processorOptions.maxFrameCount, 192);
     assert.equal(workletOptions.channelCountMode, 'explicit');
     assert.equal(workletOptions.channelInterpretation, 'discrete');
     assert.equal(calls.some(call => call[0] === 'addModule' && call[1] === '/nested/player/plugins/audio-processor.js'), true);

@@ -70,6 +70,7 @@ class SpectralFrontend final {
 
 public:
   bool prepare(float rate, std::uint32_t hop, std::uint32_t window_scale) {
+    rate_ = rate;
     for (auto &transform : transforms_)
       transform.reset();
     setup_.reset();
@@ -98,9 +99,12 @@ public:
     features_ = std::make_unique<LearnedPitchFeatures>();
     features_->prepare(rate, fft_size_, hop);
     window_.resize(window_length_);
-    for (std::uint32_t sample = 0u; sample < window_length_; ++sample)
+    window_energy_ = 0.0;
+    for (std::uint32_t sample = 0u; sample < window_length_; ++sample) {
       window_[sample] =
           static_cast<float>(0.5 * (1.0 - std::cos(2.0 * kPi * sample / window_length_)));
+      window_energy_ += static_cast<double>(window_[sample]) * window_[sample];
+    }
     reset();
     return true;
   }
@@ -279,6 +283,11 @@ public:
   bool belowFloor() const noexcept { return below_floor_; }
   const auto &values() const noexcept { return features_->values(); }
   const auto &finePresence() const noexcept { return estimator_->fineValues(); }
+  const auto &rawPrefix() const noexcept { return features_->rawPrefix(); }
+  double binHz() const noexcept { return rate_ / fft_size_; }
+  double amplitudePowerScale() const noexcept {
+    return window_energy_ > 0.0 ? 4.0 / (fft_size_ * window_energy_) : 0.0;
+  }
 
 private:
   static Buffer allocate(std::uint32_t size) {
@@ -296,6 +305,8 @@ private:
   std::unique_ptr<PresenceEstimator> estimator_;
   std::unique_ptr<LearnedPitchFeatures> features_;
   std::vector<float> window_;
+  float rate_ = 48000.0F;
+  double window_energy_ = 0.0;
   std::array<double, 2> sums_{}, squares_{}, sum_corrections_{}, square_corrections_{};
   std::uint32_t window_length_ = 0u, fft_size_ = 0u, ring_size_ = 0u;
   std::uint32_t write_position_ = 0u, origin_ = 0u, job_channels_ = 1u;

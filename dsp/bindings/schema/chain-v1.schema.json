@@ -423,7 +423,26 @@
         "parameters": {
           "type": "object",
           "additionalProperties": false,
-          "properties": {}
+          "properties": {
+            "minimumMidi": {
+              "type": "integer",
+              "minimum": 21,
+              "maximum": 108,
+              "default": 28
+            },
+            "maximumMidi": {
+              "type": "integer",
+              "minimum": 21,
+              "maximum": 108,
+              "default": 91
+            },
+            "regularCandidates": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16,
+              "default": 8
+            }
+          }
         }
       }
     },

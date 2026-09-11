@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { AudioManager } from '../../js/audio-manager.js';
+import { AudioContextManager } from '../../js/audio/audio-context-manager.js';
 import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
 import { MIC_DENIED_PREFIX } from '../../js/audio/audio-io-manager.js';
 import { PipelineWorkletSync } from '../../js/ui/pipeline/pipeline-worklet-sync.js';
@@ -296,6 +297,8 @@ function installFakes(manager, calls, options = {}) {
 
   let skipAudioInit = Boolean(options.skipAudioInit);
   manager.contextManager = {
+    createPluginProcessorNode: AudioContextManager.prototype.createPluginProcessorNode,
+    getRenderQuantumSize: AudioContextManager.prototype.getRenderQuantumSize,
     audioContext,
     workletNode,
     lowLatencyMode: Boolean(options.lowLatencyMode),
@@ -1889,6 +1892,7 @@ test('fades output with scheduled ramps and immediate fallbacks', async () => {
 
 test('builds, routes, aligns, selects, and disables parallel blind-test pipelines', async () => {
   await withAudioManager({ audioWorkletNodeOptions: { latencySamples: 320 } }, async ({ calls, manager }) => {
+    manager.contextManager.audioContext.renderQuantumSize = 512;
     assert.equal(manager.isParallelActive(), false);
     assert.deepEqual(manager._buildBlindPluginData(null), []);
     const blindData = manager._buildBlindPluginData([
@@ -1918,6 +1922,7 @@ test('builds, routes, aligns, selects, and disables parallel blind-test pipeline
     manager._parallelWorkletB.port.onmessage({ data: { ignored: true } });
     assert.equal(calls.some(call => call[0] === 'newAudioWorkletNode'), true);
     const auxiliaryWorkletOptions = calls.find(call => call[0] === 'newAudioWorkletNode')?.[2];
+    assert.equal(auxiliaryWorkletOptions.processorOptions.maxFrameCount, 512);
     assert.equal(auxiliaryWorkletOptions.channelCountMode, 'explicit');
     assert.equal(auxiliaryWorkletOptions.channelInterpretation, 'discrete');
     assert.equal(calls.some(call => call[0] === 'postMessage' && call[2].type === 'updatePlugins'), true);

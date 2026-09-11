@@ -53,6 +53,9 @@ class EffeTuneDspProcessor extends AudioWorkletProcessor {
       this.channels = message.channels;
       this.sourceChannels = new Array(this.channels);
       this.targetChannels = new Array(this.channels);
+      const maxFrames = Number.isInteger(message.maxFrames) && message.maxFrames >= 128
+        ? message.maxFrames
+        : 128;
       const active = message.document.chain.some(effect => effect.enabled);
       if (active) {
         this.session = await createEngineSession(
@@ -62,7 +65,7 @@ class EffeTuneDspProcessor extends AudioWorkletProcessor {
           {
             sampleRate,
             channels: message.channels,
-            maxFrames: 128,
+            maxFrames,
             seed: message.seed
           }
         );
@@ -165,10 +168,11 @@ class EffeTuneDspProcessor extends AudioWorkletProcessor {
       this.targetChannels[channel] = output[channel];
     }
     try {
+      const frameCount = output[0].length;
       this.session.process(
-        this.sourceChannels, this.targetChannels, 0, 128, sampleRate, this.processedFrames
+        this.sourceChannels, this.targetChannels, 0, frameCount, sampleRate, this.processedFrames
       );
-      this.processedFrames += 128;
+      this.processedFrames += frameCount;
       this.drainTelemetry();
     } catch (error) {
       this.session.close();

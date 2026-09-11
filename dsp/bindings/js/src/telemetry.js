@@ -8,7 +8,7 @@ const NOTE_SPECTROGRAM_FRAME = 24;
 
 const ANALYZER_FRAMES = Object.freeze({
   LevelMeter: [LEVEL_FRAME, 1],
-  NoteSpectrogram: [NOTE_SPECTROGRAM_FRAME, 2],
+  NoteSpectrogram: [NOTE_SPECTROGRAM_FRAME, 3],
   Oscilloscope: [SCOPE_FRAME, 2],
   SpectrumAnalyzer: [SPECTRUM_FRAME, 1],
   Spectrogram: [SPECTROGRAM_FRAME, 1],
@@ -203,7 +203,7 @@ function decodeSpectrogram(payload, node, sequence, dropped) {
 }
 
 function decodeNoteSpectrogram(payload, node, sequence, dropped) {
-  if (payload.byteLength !== 1788) return null;
+  if (payload.byteLength !== 3548) return null;
   const sampleRate = payload.getFloat32(0, true);
   const timeSeconds = payload.getFloat32(4, true);
   const pitchCount = payload.getUint16(8, true);
@@ -220,10 +220,14 @@ function decodeNoteSpectrogram(payload, node, sequence, dropped) {
     return null;
   }
   const levels = new Float32Array(pitchCount);
+  const volumeDb = new Float32Array(pitchCount);
   for (let pitch = 0; pitch < pitchCount; pitch++) {
     const level = payload.getFloat32(28 + pitch * 4, true);
     if (!Number.isFinite(level) || level < 0 || level > 1) return null;
     levels[pitch] = level;
+    const volume = payload.getFloat32(28 + (pitchCount + pitch) * 4, true);
+    if (!Number.isFinite(volume)) return null;
+    volumeDb[pitch] = volume;
   }
   return {
     ...common(node, 'noteSpectrogram', sequence, dropped),
@@ -234,7 +238,8 @@ function decodeNoteSpectrogram(payload, node, sequence, dropped) {
     frameIndex,
     divisionsPerSemitone,
     generation,
-    levels
+    levels,
+    volumeDb
   };
 }
 

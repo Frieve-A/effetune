@@ -89,7 +89,11 @@ export function validateParameterValue(effectType, definition, value) {
 
 export function canonicalizeProcessingParameters(effectType, parameters) {
   const canonical = { ...parameters };
-  if (effectType === 'AutoFilter' &&
+  if (effectType === 'NoteSpectrogram' &&
+      canonical.minimumMidi > canonical.maximumMidi) {
+    [canonical.minimumMidi, canonical.maximumMidi] =
+      [canonical.maximumMidi, canonical.minimumMidi];
+  } else if (effectType === 'AutoFilter' &&
       canonical.minimumFrequency > canonical.maximumFrequency) {
     [canonical.minimumFrequency, canonical.maximumFrequency] =
       [canonical.maximumFrequency, canonical.minimumFrequency];

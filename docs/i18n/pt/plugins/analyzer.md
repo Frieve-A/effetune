@@ -39,7 +39,11 @@ Mostra as frequências fundamentais (F0) estimadas de A0 a C8 em um piano roll q
 - As linhas correspondentes às teclas pretas usam um fundo cinza quase preto para continuarem visíveis quando nenhuma nota é detectada.
 - **Normal** usa a cor do traçado do gráfico do tema; **Note Colors** atribui uma cor a cada nota, repetida em todas as oitavas. Ambos mostram linhas-guia entre E e F mais escuras que os limites das oitavas.
 - **1/12 Octave** mostra uma linha por semitom. **High (1/60 Octave)** divide cada semitom em cinco linhas para facilitar o acompanhamento de pequenas variações de altura; as cores são interpoladas entre notas vizinhas.
-- A cor acompanha a confiança do modelo de 0 (cor de fundo) a 1 (cor completa), incluindo candidatos fracos, sem um limiar de exibição. A confiança indica quanto o modelo sustenta a presença de uma nota; não é um nível de volume nem uma probabilidade calibrada.
+- A cor acompanha a confiança do modelo de 0 (cor de fundo) a 1 (cor completa), incluindo candidatos fracos, sem um limiar de exibição. A confiança indica quanto o modelo sustenta a presença de uma nota; não é uma probabilidade calibrada.
+- Com **Volume** ativado, cada altura detectada vira uma barra cuja espessura do núcleo opaco mostra o volume relativo corrigido pela frequência, de 1/60 de oitava na parte inferior da escala a 1/12 de oitava na parte superior. Um fade de 1/120 de oitava se estende de cada lado do núcleo, ampliando a largura total desenhada em 1/60 de oitava além do núcleo. **Pitch Resolution** muda a posição central da barra, não a espessura do núcleo.
+- Na borda do teclado, um semicírculo de bordas suaves se estende para dentro do gráfico e mostra o volume atual. Ele responde imediatamente aos aumentos e cai a 20 dB por segundo; não há retenção de pico visível separada.
+- A escala de volume abrange 24 dB. Seu limite superior acompanha o maior valor entre uma referência recente que estabiliza a escala do histórico (por cerca de um segundo) e -36 dB, para que trechos mais silenciosos continuem legíveis sem que passagens mais fortes preencham a tela continuamente. Essa referência é separada do semicírculo do volume atual.
+- As linhas-guia das oitavas e de E–F são desenhadas atrás das barras de volume, mantendo a grade de alturas como referência visual.
 - As teclas passam gradualmente da cor normal para a cor de exibição conforme aumenta a confiança do quadro mais recente, chegando a essa cor em 1.
 - Alterar **Color** muda as cores do histórico existente.
 
@@ -55,15 +59,17 @@ Mostra as frequências fundamentais (F0) estimadas de A0 a C8 em um piano roll q
   - **Normal** (padrão): a cor do traçado do gráfico do tema.
   - **Note Colors**: uma cor diferente para cada nota, repetida em todas as oitavas.
 - **Pitch Resolution** - Seleciona o detalhe vertical da altura sem apagar o histórico existente.
-  - **1/12 Octave**: uma linha por semitom, usando a estimativa mais forte dessa nota.
-  - **High (1/60 Octave)** (padrão): cinco linhas por semitom para mostrar variações de altura mais detalhadas.
+  - **1/12 Octave** (padrão): uma linha por semitom, usando a estimativa mais forte dessa nota.
+  - **High (1/60 Octave)**: cinco linhas por semitom para mostrar variações de altura mais detalhadas.
 - **Layout** - Seleciona **Horizontal** (padrão) ou **Vertical**. O histórico é preservado ao mudar a disposição.
+- **Volume** - Mostra o volume relativo pela espessura das barras e por medidores semicirculares. Fica ativado por padrão; ao desativá-lo, permanecem as linhas originais baseadas apenas na confiança.
 - **Time Span** (de 1 a 10 s) - Define quanto tempo o piano roll mostra
   - Valores menores facilitam a observação de mudanças de tempo
   - Valores maiores mostram um trecho musical mais longo de uma só vez
   - Padrão: 2 s
-- **Lowest Note** - Define a nota mais grave da faixa exibida. Padrão: E1.
-- **Highest Note** - Define a nota mais aguda da faixa exibida. Padrão: G6.
+- **Regular Note Limit** (1 a 16 notas) - Define quantas notas simultâneas fora da faixa grave dedicada podem chegar à etapa final de detecção. O padrão é 8. Aumente para acordes excepcionalmente densos; valores menores reduzem o trabalho da análise e a competição entre candidatos.
+- **Lowest Note** - Define a nota mais grave da faixa exibida e analisada. Padrão: E1.
+- **Highest Note** - Define a nota mais aguda da faixa exibida e analisada. Padrão: G6.
 - Quando a entrada é baixa demais para análise, o piano roll permanece escuro em vez de mostrar uma entrada extremamente pequena como alturas. Essa supressão não determina se um som seria audível ou perceptivamente mascarado.
 
 ## Oscilloscope

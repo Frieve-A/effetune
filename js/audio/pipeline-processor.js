@@ -77,7 +77,7 @@ export class PipelineProcessor {
         if (!this.contextManager.workletNode && this.contextManager.audioContext) {
             console.warn('Worklet node missing, creating new worklet node');
             try {
-                this.contextManager.workletNode = new AudioWorkletNode(this.contextManager.audioContext, 'plugin-processor');
+                this.contextManager.workletNode = this.contextManager.createPluginProcessorNode();
                 window.workletNode = this.contextManager.workletNode;
                 if (typeof this.registerProcessors === 'function') {
                     this.registerProcessors();

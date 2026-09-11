@@ -115,6 +115,10 @@ export class EffeTuneNode extends AudioWorkletNodeBase {
   static async create(context, input, options = {}) {
     const channels = validateChannels(options.channels ?? 2);
     const seed = validateSeed(options.seed ?? 0);
+    const renderQuantumSize = context.renderQuantumSize;
+    const maxFrames = Number.isInteger(renderQuantumSize) && renderQuantumSize > 0
+      ? Math.max(128, renderQuantumSize)
+      : 128;
     const source = typeof input === 'string'
       ? (() => {
           try {
@@ -164,6 +168,7 @@ export class EffeTuneNode extends AudioWorkletNodeBase {
       resolvedAssets: assets.cloned,
       wasmBytes,
       channels,
+      maxFrames,
       seed
     }, transfer);
     try {

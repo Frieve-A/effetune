@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { AudioManager } from '../../js/audio-manager.js';
+import { AudioContextManager } from '../../js/audio/audio-context-manager.js';
 import { SHIPPED_ENABLED_TYPES } from '../../js/audio/dsp-rollout.js';
 import { PipelineProcessor } from '../../js/audio/pipeline-processor.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
@@ -352,7 +353,13 @@ function configureParallelManager(manager, mainWorklet) {
     }
   };
   manager.workletNode = mainWorklet;
-  manager.contextManager = { audioContext: context, workletNode: mainWorklet, lowLatencyMode: false };
+  manager.contextManager = {
+    audioContext: context,
+    workletNode: mainWorklet,
+    lowLatencyMode: false,
+    createPluginProcessorNode: AudioContextManager.prototype.createPluginProcessorNode,
+    getRenderQuantumSize: AudioContextManager.prototype.getRenderQuantumSize
+  };
   mainWorklet.port.onmessage = event => manager.handleWorkletMessage(event, mainWorklet);
   manager.ioManager = { outputGainNode: output, sourceNode: null };
   manager.pipelineA = [new VolumePlugin(1, 'A')];
@@ -4436,7 +4443,13 @@ test('AudioManager auxiliary worklet receives DSP bytes and returns telemetry pa
         return node;
       }
     };
-    manager.contextManager = { audioContext: context, workletNode: mainWorklet, lowLatencyMode: false };
+    manager.contextManager = {
+      audioContext: context,
+      workletNode: mainWorklet,
+      lowLatencyMode: false,
+      createPluginProcessorNode: AudioContextManager.prototype.createPluginProcessorNode,
+      getRenderQuantumSize: AudioContextManager.prototype.getRenderQuantumSize
+    };
     mainWorklet.port.onmessage = event => manager.handleWorkletMessage(event, mainWorklet);
     manager.ioManager = { outputGainNode: output, sourceNode: null };
     manager.pipelineProcessor = { prepareSectionAwarePluginData: () => [] };
