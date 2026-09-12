@@ -76,6 +76,11 @@ async function validateDistribution() {
   assert.equal(manifest.background?.type, 'module');
   assert.equal(manifest.background?.service_worker, 'extension/service-worker.js');
   assert.equal(manifest.action?.default_popup, 'extension/popup.html');
+  assert.equal(manifest.icons?.['128'], 'images/icon_128x128.png');
+  const icon128 = await fs.readFile(path.join(extensionPath, manifest.icons['128']));
+  assert.equal(icon128.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+  assert.equal(icon128.readUInt32BE(16), 128);
+  assert.equal(icon128.readUInt32BE(20), 128);
   await Promise.all([
     fs.access(path.join(extensionPath, 'extension', 'offscreen.html')),
     fs.access(path.join(extensionPath, 'extension', 'popup.html')),

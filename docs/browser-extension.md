@@ -8,6 +8,8 @@ lang: en
 
 The EffeTune browser extension processes the audio from one browser tab with the same stereo Effect Pipeline used by EffeTune. It is useful for listening to a video or music site without starting the desktop app or configuring a virtual audio device.
 
+For details about local data handling and optional external links, read the [Browser Extension Privacy Policy](browser-extension-privacy.md). For help, use [GitHub Issues](https://github.com/Frieve-A/effetune/issues), but do not post audio, tab titles or URLs, presets, measurements, impulse responses, or other private information in a public issue.
+
 ## Compatibility
 
 Use the extension on a PC with Chrome 116 or later, or a compatible Chromium-based version of Microsoft Edge. Firefox, Safari, mobile browsers, and private browsing are not supported. It processes one selected tab at a time through a stereo, serial effect chain.

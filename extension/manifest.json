@@ -8,7 +8,7 @@
   "incognito": "not_allowed",
   "action": { "default_popup": "extension/popup.html", "default_title": "EffeTune" },
   "background": { "service_worker": "extension/service-worker.js", "type": "module" },
-  "icons": { "128": "images/icon_192x192.png" },
+  "icons": { "128": "images/icon_128x128.png" },
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   }

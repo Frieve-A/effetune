@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.9.0-90268b3805cdc4c3";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.9.0-f065b8d329f39db0";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./effetune-library.css",
   "./effetune-mobile.css",
@@ -11,6 +11,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./images/bus_function.png",
   "./images/favicon.ico",
   "./images/icon.png",
+  "./images/icon_128x128.png",
   "./images/icon_180x180.png",
   "./images/icon_192x192.png",
   "./images/icon_512x512.png",
