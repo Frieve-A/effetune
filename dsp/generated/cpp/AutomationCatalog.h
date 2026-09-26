@@ -1394,8 +1394,9 @@ inline constexpr std::array<std::string_view, 359> kAutomationEnumValues{{
   "Ultra"
 }};
 
-inline constexpr std::array<AutomationEffectDescriptor, 107> kAutomationEffects{{
+inline constexpr std::array<AutomationEffectDescriptor, 108> kAutomationEffects{{
   AutomationEffectDescriptor{"AMRadioSimulatorPlugin", 0u, 21u},
+  AutomationEffectDescriptor{"AnalogMeterPlugin", 21u, 0u},
   AutomationEffectDescriptor{"AttackTonalBalancePlugin", 21u, 4u},
   AutomationEffectDescriptor{"AutoFilterPlugin", 25u, 13u},
   AutomationEffectDescriptor{"AutoLevelerPlugin", 38u, 7u},

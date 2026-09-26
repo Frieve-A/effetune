@@ -16,4 +16,5 @@ parameter names.
 4. Run `effetune render input.wav output.wav --preset chain.json`.
 
 Runtime validation still enforces duplicate IDs, assets, and cross-field rules. MCP,
-measurement, resampling, ffmpeg, LUFS, and true-peak tools are not available through this API.
+resampling, and ffmpeg tools are not available through this API. Loudness and true-peak
+readings are available only as `AnalogMeter` telemetry, not as standalone tools.

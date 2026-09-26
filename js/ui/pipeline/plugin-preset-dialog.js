@@ -265,6 +265,9 @@ export class PluginPresetDialog {
     async renderContent(content, provider, generation, saveRow = null) {
         if (!this.isActiveContent(content, generation)) return;
         const revision = ++this.renderRevision;
+        // Fetch before building: appending saveRow below detaches it from the live dialog.
+        const names = (await provider.listUserPresetNames()).slice().sort((a, b) => a.localeCompare(b));
+        if (!this.isActiveContent(content, generation) || revision !== this.renderRevision) return;
         const sections = [];
         const systemGroups = provider.getSystemPresetGroups?.();
         if (Array.isArray(systemGroups) && systemGroups.length > 0) {
@@ -303,7 +306,6 @@ export class PluginPresetDialog {
 
         const userSection = this.createSection(t('ui.title.userPresets', 'User Presets'));
         if (saveRow) userSection.appendChild(saveRow);
-        const names = (await provider.listUserPresetNames()).slice().sort((a, b) => a.localeCompare(b));
         if (names.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'preset-dialog-empty';
@@ -344,7 +346,6 @@ export class PluginPresetDialog {
             userSection.appendChild(deleteButton);
         }
         sections.push(userSection);
-        if (!this.isActiveContent(content, generation) || revision !== this.renderRevision) return;
         content.textContent = '';
         for (const section of sections) content.appendChild(section);
     }

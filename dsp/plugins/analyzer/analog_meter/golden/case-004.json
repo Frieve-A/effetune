@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "AnalogMeterPlugin",
+  "id": "ppm-four-channel",
+  "stimulus": "fs",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 635,
+  "blockSize": 127,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "md": "PPM",
+    "it": 0.3,
+    "at": 10,
+    "rt": 2.33
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:304c1621221c59095ece2201f82ad51589c5a7fb306628546fcd55c3c42f0722",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type AnalogMeterPlugin --promote-production-native",
+  "outputFloats": 2540,
+  "byteLength": 10160,
+  "binary": "case-004.f32"
+}

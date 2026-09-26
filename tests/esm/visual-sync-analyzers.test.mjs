@@ -193,6 +193,21 @@ test('Visualizer analysis uses the shared output delay and its pre-delay tap', (
     assert.ok(delay > 0);
 });
 
+test('Visualizer Phase Map source syncs its input-window rule at the final output tap', () => {
+    const h = harness();
+    const source = { tapId: 0xf0000001, type: 'PhaseSelectEqPlugin', params: {} };
+    h.manager.visualizerSources = [source];
+    h.manager.visualizerSourcesByTap = new Map([[source.tapId, source]]);
+    h.manager.pipeline = [];
+    const generation = VISUAL_SYNC_RULES.PhaseSelectEqPlugin.generationFrames({}, 48000, 'wasm');
+    const delay = h.manager._recomputeVisualSyncDelay();
+    assert.equal(delay, generation);
+    h.manager._appliedOutputDelayFrames.set(h.manager._getPrimaryWorkletNode(), delay);
+    const due = h.manager._resolveVisualSyncDue(source.tapId, 51000, source.tapId,
+        { tapId: source.tapId, frameType: 20 }, 0);
+    assert.equal(due, 51000 / 48);
+});
+
 test('Spectrum Overlay uses the same HQ analysis age for output delay and frame delivery', () => {
     const oldWindow = globalThis.window;
     globalThis.window = { SpectrumOverlay: { quality: 'hq', TARGETS: new Set(['VolumePlugin']) } };

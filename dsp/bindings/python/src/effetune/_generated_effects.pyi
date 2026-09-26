@@ -11,6 +11,20 @@ class IRReverbAssets(TypedDict):
 EFFECT_METADATA: dict[str, object]
 _EFFECT_IMPLEMENTATION: dict[str, dict[str, object]]
 
+class AnalogMeter(Effect):
+    effect_type: Literal["AnalogMeter"]
+    def __init__(
+        self,
+        *,
+        mode: Literal["VU", "PPM", "RMS", "Sample Peak", "True Peak", "Loudness"] = ...,
+        integration: float = ...,
+        attack: float = ...,
+        release: float = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
 class ChromaSpiral(Effect):
     effect_type: Literal["ChromaSpiral"]
     def __init__(
@@ -50,7 +64,7 @@ class Oscilloscope(Effect):
         self,
         *,
         display_time: float = ...,
-        trigger_mode: Literal["Auto", "Normal"] = ...,
+        trigger_mode: Literal["Auto", "Normal", "Off"] = ...,
         trigger_level: float = ...,
         trigger_edge: Literal["Rising", "Falling"] = ...,
         holdoff: float = ...,

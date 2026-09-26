@@ -2338,6 +2338,12 @@ export class PlaybackManager {
     return true;
   }
 
+  togglePreservePitch() {
+    const current = this.audioPlayer.stateManager?.getStateSnapshot()?.preservePitch ?? true;
+    this.audioPlayer.applyPreservePitch(!current);
+    this.audioPlayer.ui?.updatePlayerUIState();
+  }
+
   /**
    * Toggle repeat mode (OFF -> ALL -> ONE -> OFF)
    */

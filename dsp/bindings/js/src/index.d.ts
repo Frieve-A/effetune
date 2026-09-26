@@ -1,4 +1,5 @@
 export type {
+  AnalogMeterOptions,
   ChromaSpiralOptions,
   LevelMeterOptions,
   NoteSpectrogramOptions,
@@ -114,6 +115,7 @@ export type {
   WowFlutterOptions
 } from './generated-effects.js';
 export {
+  AnalogMeter,
   ChromaSpiral,
   LevelMeter,
   NoteSpectrogram,
@@ -224,6 +226,7 @@ export {
   VinylArtifacts,
   VinylSimulator,
   WowFlutter,
+  createAnalogMeter,
   createChromaSpiral,
   createLevelMeter,
   createNoteSpectrogram,
@@ -451,8 +454,8 @@ export interface CreateChainOptions extends ArtifactOptions {
 }
 
 export interface TelemetryFrameBase {
-  readonly kind: 'level' | 'noteSpectrogram' | 'oscilloscope' | 'pitch' | 'spectrum' | 'spectrumHq' |
-    'spectrogram' | 'spectrogramHq' | 'stereo';
+  readonly kind: 'analogMeter' | 'level' | 'noteSpectrogram' | 'oscilloscope' | 'pitch' |
+    'spectrum' | 'spectrumHq' | 'spectrogram' | 'spectrogramHq' | 'stereo';
   readonly effectType: EffectType;
   readonly effectId: string | null;
   readonly effectIndex: number;
@@ -537,6 +540,36 @@ export interface PitchMeterTelemetryFrame extends TelemetryFrameBase {
   readonly voiced: boolean;
 }
 
+export interface AnalogMeterTelemetryChannel {
+  /** Needle dB, or channel Momentary LUFS in Loudness mode. */
+  readonly needleDb: number;
+  /** Detector maximum dB since the previous frame, or channel Short-term LUFS in Loudness mode. */
+  readonly maxDb: number;
+}
+
+export interface AnalogMeterTelemetryProgram {
+  readonly momentary: number;
+  readonly shortTerm: number;
+  /** Integrated LUFS; 0 while `integratedValid` is false. */
+  readonly integrated: number;
+  /** Loudness Range LU; 0 while `lraValid` is false. */
+  readonly lra: number;
+  readonly maxTruePeak: number;
+  readonly integratedSeconds: number;
+}
+
+export interface AnalogMeterTelemetryFrame extends TelemetryFrameBase {
+  readonly kind: 'analogMeter';
+  /** 0 VU, 1 PPM, 2 RMS, 3 Sample Peak, 4 True Peak, 5 Loudness. */
+  readonly mode: number;
+  readonly channelCount: number;
+  readonly integratedValid: boolean;
+  readonly lraValid: boolean;
+  readonly channels: readonly AnalogMeterTelemetryChannel[];
+  /** Program loudness in Loudness mode; null otherwise. */
+  readonly program: AnalogMeterTelemetryProgram | null;
+}
+
 export interface SpectrogramTelemetryFrame extends TelemetryFrameBase {
   readonly kind: 'spectrogram';
   readonly sampleRate: number;
@@ -575,6 +608,7 @@ export interface StereoTelemetryFrame extends TelemetryFrameBase {
 }
 
 export type TelemetryFrame =
+  | AnalogMeterTelemetryFrame
   | LevelTelemetryFrame
   | OscilloscopeTelemetryFrame
   | SpectrumTelemetryFrame

@@ -17,6 +17,72 @@ function classes(...initial) {
     };
 }
 
+test('Gradient direction appears for frequency graphs and keeps octave settings when switching to intensity', async () => {
+    await withGlobals({ document: { createElement: () => ({ appendChild() {}, setAttribute() {} }) } }, () => {
+        const fields = [], changes = [];
+        const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
+            t: (_key, fallback) => fallback,
+            group: () => ({ appendChild() {} }),
+            field(_parent, label, type, value, change, options) {
+                fields.push({ label, type, value, change, options }); return { value };
+            },
+            button: () => ({ setAttribute() {} }),
+            changed: render => changes.push(render)
+        });
+        const render = item => { fields.length = 0; editor.palette({}, item.palette, item.type); };
+        for (const type of ['spectrum', 'spectrogram', 'notes', 'chroma', 'phase']) {
+            const item = createItem(type, type);
+            render(item);
+            assert.equal(fields.some(field => field.label === 'Gradient direction'), false);
+            item.palette.mode = 'gradient';
+            item.palette.mapping = 'octave';
+            render(item);
+            const direction = fields.find(field => field.label === 'Gradient direction');
+            assert.equal(direction.type, 'radio');
+            assert.equal(direction.value, 'frequency');
+            assert.deepEqual(direction.options.values, [['frequency', 'Frequency'], ['intensity', 'Intensity']]);
+            direction.change('intensity');
+            render(item);
+            assert.equal(fields.find(field => field.label === 'Gradient direction').value, 'intensity');
+            assert.equal(fields.some(field => field.label === 'Color mapping'), false);
+            assert.equal(item.palette.mapping, 'octave');
+            fields.find(field => field.label === 'Gradient direction').change('frequency');
+            render(item);
+            assert.equal(fields.some(field => field.label === 'Color mapping'), type === 'notes' || type === 'chroma');
+            assert.equal(item.palette.mapping, 'octave');
+        }
+        for (const type of ['oscilloscope', 'stereo', 'level-meter', 'title']) {
+            const item = createItem(type, type); item.palette.mode = 'gradient'; render(item);
+            assert.equal(fields.some(field => field.label === 'Gradient direction'), false);
+        }
+        fields.length = 0;
+        editor.palette({}, createItem('spectrum').palette);
+        assert.equal(fields.some(field => field.label === 'Gradient direction'), false, 'Effects keep their own palettes');
+        assert.deepEqual(changes, Array(10).fill(true));
+    });
+});
+
+test('Phase Map edits its axis, level range, reference floor, and persistence without an input gain', () => {
+    const fields = [];
+    const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
+        t: (_key, fallback) => fallback,
+        field(_parent, label, type, value, change, options) { fields.push({ label, type, value, change, options }); },
+        changed() {}
+    });
+    const item = createItem('phase', 'phase');
+    editor.parameters({}, item);
+    assert.deepEqual(fields.map(field => field.label),
+        ['X Axis', 'DB Range', 'Reference Floor', 'Persistence', 'Axes and grid', 'Axis labels and numbers']);
+    const [axis, range, floor, persistence] = fields;
+    assert.deepEqual(axis.options.values, [['phase', 'Phase'], ['balance', 'Balance']]);
+    assert.deepEqual([range.options.min, range.options.max, range.options.step], [-96, -24, 6]);
+    assert.deepEqual([floor.value, floor.options.min, floor.options.max, floor.options.step], [-40, -120, -24, 1]);
+    assert.deepEqual([persistence.options.min, persistence.options.max, persistence.options.step], [0.1, 2, 0.1]);
+    assert.equal(persistence.options.format(1.2), '1.2 s');
+    axis.change('balance');
+    assert.equal(item.params.ax, 'balance');
+});
+
 test('Static background and artwork reuse layers without copying image data each frame', async () => {
     const context = { clearRect() {}, save() {}, translate() {}, scale() {}, drawImage() {}, restore() {} };
     const canvas = { width: 1280, height: 720, getContext: () => context };
@@ -411,4 +477,35 @@ test('Changing view while the current Visualizer layout loads cancels that open'
         resolve();
         assert.equal(await pending, false);
     });
+});
+
+test('Visualizer Share copies a v link and shared links replace the layout only when valid', async () => {
+    const messages = [];
+    let copied = '';
+    const layout = createDefaultLayout();
+    const view = Object.assign(Object.create(VisualizerView.prototype), {
+        layout, currentPresetName: 'Mine', initialized: Promise.resolve(), status: { hidden: true, textContent: '' },
+        setLayout(value) { this.layout = value; },
+        uiManager: { t: key => key, showTransientMessage: (...args) => messages.push(args), setError: (...args) => messages.push(args) }
+    });
+    await withGlobals({ window: { electronAPI: { writeClipboardText: async text => { copied = text; return true; } } } }, async () => {
+        await view.share();
+    });
+    const encoded = new URL(copied).searchParams.get('v');
+    assert.equal(copied.startsWith('https://effetune.frieve.com/effetune.html?v='), true);
+    assert.equal(messages.at(-1)[0], 'success.urlCopied');
+
+    await withGlobals({ console: { ...console, warn() {} } }, async () => {
+        assert.equal(await view.importShared('broken'), false);
+    });
+    assert.equal(view.layout, layout);
+    assert.equal(view.currentPresetName, 'Mine');
+    assert.equal(view.noticeActive, true);
+    assert.equal(view.status.hidden, false);
+
+    assert.equal(await view.importShared(encoded), true);
+    assert.notEqual(view.layout, layout);
+    assert.deepEqual(view.layout, { ...layout, background: { ...layout.background, themeColors: view.layout.background.themeColors } });
+    assert.equal(view.currentPresetName, '');
+    assert.equal(view.noticeActive, false);
 });

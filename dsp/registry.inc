@@ -1,5 +1,6 @@
 // Add one EFFETUNE_PLUGIN(TypeName, category/plugin_directory) line per kernel.
 // Entries stay alphabetical by category and then by plugin name.
+EFFETUNE_PLUGIN(AnalogMeterPlugin, analyzer/analog_meter)
 EFFETUNE_PLUGIN(ChromaSpiralPlugin, analyzer/chroma_spiral)
 EFFETUNE_PLUGIN(LevelMeterPlugin, analyzer/level_meter)
 EFFETUNE_PLUGIN(NoteSpectrogramPlugin, analyzer/note_spectrogram)

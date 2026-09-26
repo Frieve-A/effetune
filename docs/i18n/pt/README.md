@@ -55,7 +55,7 @@ Antes de usar o EffeTune, você precisará configurar o roteamento de áudio. Ve
    - Ou selecione Abrir arquivo de música... no menu Arquivo (apenas aplicativo desktop)
    - Ou arraste o arquivo de música para a janela
 - Para usar apenas o player, selecione Nenhum (somente player de arquivos de música) como dispositivo de entrada em Configuração de Áudio para não usar uma entrada de áudio ao vivo
-- Clique no botão de velocidade ao lado de Shuffle para abrir o pop-up. Escolha uma das nove predefinições ou use o controle deslizante horizontal ou o campo numérico para ajustar a velocidade de 0,25x a 4x em incrementos de 0,01x. O tom é preservado.
+- Clique no botão de velocidade ao lado de Shuffle para abrir o pop-up. Escolha uma das nove predefinições ou use o controle deslizante horizontal ou o campo numérico para ajustar a velocidade de 0,25x a 4x em incrementos de 0,01x. O botão **Manter o tom**, ao lado, vem ativado por padrão, mantendo o tom igual quando a velocidade muda; desative-o para que o tom suba e desça junto com a velocidade, como ao mudar a rotação de uma fita ou de um disco de vinil.
 
 ### Configuração para Serviços de Streaming
 
@@ -330,6 +330,7 @@ Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/
 
 | Categoria | Efeito             | Descrição                                                               | Documentação                                         |
 | --------- | ------------------ | ----------------------------------------------------------------------- | ---------------------------------------------------- |
+| Analyzer  | Analog Meter       | Mostra o nível dos canais em um medidor de agulha com escalas de VU, PPM, pico e loudness | [Detalhes](plugins/analyzer.md#analog-meter)         |
 | Analyzer  | Level Meter        | Exibe o nível de áudio com retenção de pico                             | [Detalhes](plugins/analyzer.md#level-meter)          |
 | Analyzer  | Note Spectrogram | Mostra as alturas estimadas ao longo do tempo em um piano roll         | [Detalhes](plugins/analyzer.md#note-spectrogram) |
 | Analyzer  | Oscilloscope       | Visualização de forma de onda em tempo real                             | [Detalhes](plugins/analyzer.md#oscilloscope)         |

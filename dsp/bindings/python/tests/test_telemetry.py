@@ -5,7 +5,12 @@ import struct
 import unittest
 
 import effetune
-from effetune.telemetry import _decode_telemetry_packet
+from effetune.telemetry import (
+    AnalogMeterTelemetryChannel,
+    AnalogMeterTelemetryFrame,
+    AnalogMeterTelemetryProgram,
+    _decode_telemetry_packet,
+)
 
 
 HQ_MIN_FREQUENCY = 20.0
@@ -99,7 +104,96 @@ def _pitch_packet(midi: float) -> bytes:
     return bytes(packet)
 
 
+def _analog_meter_packet(
+    mode: int,
+    channels: list[tuple[float, float]],
+    flags: int = 0,
+    program: tuple[float, ...] | None = None,
+) -> bytes:
+    values = [value for channel in channels for value in channel] + list(program or ())
+    payload_bytes = 4 + len(channels) * 8 + (24 if program else 0)
+    packet = bytearray((16 + payload_bytes + 3) & ~3)
+    struct.pack_into("<HHIIH", packet, 0, 27, 1, 11, 0, payload_bytes)
+    struct.pack_into("<BBH", packet, 16, mode, len(channels), flags)
+    struct.pack_into(f"<{len(values)}f", packet, 20, *values)
+    return bytes(packet)
+
+
 class TelemetryDecoderTests(unittest.TestCase):
+    def test_analog_meter_decodes_needle_and_program_records(self) -> None:
+        nodes = {11: ("AnalogMeter", "meter", 0)}
+
+        def decode(packet: bytes) -> list[effetune.telemetry.TelemetryFrame]:
+            return _decode_telemetry_packet(packet, nodes, 2)[0]
+
+        (peak,) = decode(_analog_meter_packet(4, [(-6.0, 0.5), (-240.0, -240.0)]))
+        self.assertIsInstance(peak, AnalogMeterTelemetryFrame)
+        self.assertEqual(peak.kind, "analogMeter")
+        self.assertEqual(peak.mode, 4)
+        self.assertEqual(peak.channel_count, 2)
+        self.assertFalse(peak.integrated_valid)
+        self.assertFalse(peak.lra_valid)
+        self.assertEqual(
+            peak.channels,
+            (
+                AnalogMeterTelemetryChannel(needle_db=-6.0, max_db=0.5),
+                AnalogMeterTelemetryChannel(needle_db=-240.0, max_db=-240.0),
+            ),
+        )
+        self.assertIsNone(peak.program)
+        self.assertEqual(peak.dropped, 2)
+
+        (loudness,) = decode(
+            _analog_meter_packet(
+                5, [(-23.0, -24.0)], 3, (-23.0, -23.5, -23.0, 7.0, -1.5, 12.0)
+            )
+        )
+        self.assertTrue(loudness.integrated_valid)
+        self.assertTrue(loudness.lra_valid)
+        self.assertEqual(
+            loudness.program,
+            AnalogMeterTelemetryProgram(
+                momentary=-23.0,
+                short_term=-23.5,
+                integrated=-23.0,
+                lra=7.0,
+                max_true_peak=-1.5,
+                integrated_seconds=12.0,
+            ),
+        )
+        (pending,) = decode(
+            _analog_meter_packet(5, [(-23.0, -24.0)], 0, (-23.0, -23.5, 0.0, 0.0, -1.5, 0.25))
+        )
+        self.assertFalse(pending.integrated_valid)
+        self.assertEqual(pending.program.integrated, 0.0)
+
+        program = (-23.0, -23.0, 0.0, 0.0, -1.0, 0.0)
+        for name, packet in (
+            ("unknown mode", _analog_meter_packet(6, [(-6.0, -6.0)])),
+            ("no channels", _analog_meter_packet(0, [])),
+            ("17 channels", _analog_meter_packet(0, [(-6.0, -6.0)] * 17)),
+            ("loudness flags outside Loudness", _analog_meter_packet(0, [(-6.0, -6.0)], 1)),
+            ("unknown flag", _analog_meter_packet(5, [(-6.0, -6.0)], 4, program)),
+            ("missing program", _analog_meter_packet(5, [(-6.0, -6.0)])),
+            ("program outside Loudness", _analog_meter_packet(0, [(-6.0, -6.0)], 0, program)),
+            ("below floor", _analog_meter_packet(0, [(-241.0, -6.0)])),
+            ("non-finite", _analog_meter_packet(0, [(math.nan, -6.0)])),
+            (
+                "invalid integrated not zero",
+                _analog_meter_packet(5, [(-6.0, -6.0)], 0, (-23.0, -23.0, -23.0, 0.0, -1.0, 0.0)),
+            ),
+            (
+                "negative LRA",
+                _analog_meter_packet(5, [(-6.0, -6.0)], 2, (-23.0, -23.0, 0.0, -1.0, -1.0, 0.0)),
+            ),
+            (
+                "negative duration",
+                _analog_meter_packet(5, [(-6.0, -6.0)], 0, (-23.0, -23.0, 0.0, 0.0, -1.0, -1.0)),
+            ),
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(decode(packet), [])
+
     def test_pitch_preserves_fractional_estimates_within_endpoint_half_rows(
         self,
     ) -> None:

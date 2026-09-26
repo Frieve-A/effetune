@@ -2,10 +2,15 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  createShareUrl,
   decodePipelineState,
   encodePipelineState
 } from '../../js/utils/pipeline-state-codec.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
+
+test('createShareUrl builds a link to the web app with the given parameter', () => {
+  assert.equal(createShareUrl('v', 'a+b/c='), 'https://effetune.frieve.com/effetune.html?v=a%2Bb%2Fc%3D');
+});
 
 test('encodePipelineState and decodePipelineState round-trip unicode state with native encoders', () => {
   const state = {

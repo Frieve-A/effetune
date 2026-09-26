@@ -8,7 +8,7 @@ permalink: /dsp/reference/verification/
 # Verification
 
 The frozen wrapper reference origin is 82 JavaScript-derived effect suites,
-6 native direct-double suites, 1 independent native-reference suites, and 18 production-native-promoted suites. The independent native reference validates IIR filtering with RBJ biquads in direct form I and linear-phase filtering with direct FIR convolution. Maintainers run:
+6 native direct-double suites, 1 independent native-reference suites, and 19 production-native-promoted suites. The independent native reference validates IIR filtering with RBJ biquads in direct form I and linear-phase filtering with direct FIR convolution. Maintainers run:
 
 ```console
 node tools/verify-dsp-library-goldens.mjs

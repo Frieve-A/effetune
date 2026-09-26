@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "AnalogMeterPlugin",
+  "id": "true-peak-mono-variable-block",
+  "stimulus": "imp",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 773,
+  "blockSize": 97,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "md": "True Peak",
+    "it": 0.3,
+    "at": 5,
+    "rt": 0.5
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:304c1621221c59095ece2201f82ad51589c5a7fb306628546fcd55c3c42f0722",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type AnalogMeterPlugin --promote-production-native",
+  "outputFloats": 773,
+  "byteLength": 3092,
+  "binary": "case-002.f32"
+}

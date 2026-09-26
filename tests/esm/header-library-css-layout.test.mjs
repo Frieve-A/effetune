@@ -31,13 +31,16 @@ test('desktop view switch buttons match neighboring header icon button size', ()
   assert.match(desktopSubtitleContainerRule, /height:\s*36px;/);
 });
 
-test('mobile header hides desktop controls and reserves overflow-menu space', () => {
+test('mobile header shows Visualizer beside the overflow menu and reserves space for both', () => {
   const css = readCss('../../css/effetune-mobile.css');
 
-  assert.match(getRule(css, 'body.layout-mobile h1'), /padding-right:\s*48px;/);
-  assert.match(getRule(css, 'body.layout-mobile .header-buttons'), /display:\s*none !important;/);
+  assert.match(getRule(css, 'body.layout-mobile h1'), /padding-right:\s*calc\(2 \* var\(--et-mobile-control-height\) \+ 16px\);/);
+  const headerButtonsRule = getRule(css, 'body.layout-mobile .header-buttons');
+  assert.match(headerButtonsRule, /display:\s*flex;/);
+  assert.match(headerButtonsRule, /right:\s*calc\(var\(--et-mobile-control-height\) \+ 8px\);/);
   assert.match(getRule(css, 'body.layout-mobile .header-buttons .effect-pipeline-button'), /display:\s*none !important;/);
   assert.match(getRule(css, 'body.layout-mobile .header-buttons .open-library-button'), /display:\s*none !important;/);
+  assert.match(getRule(css, 'body.layout-mobile .header-buttons .settings-menu-container'), /display:\s*none !important;/);
 });
 
 test('desktop library view keeps the effect layout width as its sizing basis', () => {

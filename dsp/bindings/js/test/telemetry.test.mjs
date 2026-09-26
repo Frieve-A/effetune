@@ -106,6 +106,71 @@ test('pitch telemetry preserves fractional estimates within the endpoint half-ro
   }
 });
 
+function analogMeterPacket({ mode, channels, flags = 0, program = null }) {
+  const payloadBytes = 4 + channels.length * 8 + (program ? 24 : 0);
+  const packet = new Uint8Array((16 + payloadBytes + 3) & ~3);
+  const view = new DataView(packet.buffer);
+  view.setUint16(0, 27, true);
+  view.setUint16(2, 1, true);
+  view.setUint32(4, 11, true);
+  view.setUint16(12, payloadBytes, true);
+  view.setUint8(16, mode);
+  view.setUint8(17, channels.length);
+  view.setUint16(18, flags, true);
+  const values = [...channels.flat(), ...(program ?? [])];
+  values.forEach((value, index) => view.setFloat32(20 + index * 4, value, true));
+  return { packet, view };
+}
+
+test('analog meter telemetry decodes needle and program loudness records', () => {
+  const nodes = new Map([[11, {
+    effectType: 'AnalogMeter', effectId: 'meter', effectIndex: 0
+  }]]);
+  const decode = packet => decodeTelemetryPacket(packet, packet.byteLength, nodes, 2).frames;
+
+  const [peak] = decode(analogMeterPacket({ mode: 4, channels: [[-6, 0.5], [-240, -240]] }).packet);
+  assert.equal(peak.kind, 'analogMeter');
+  assert.equal(peak.mode, 4);
+  assert.equal(peak.channelCount, 2);
+  assert.equal(peak.integratedValid, false);
+  assert.equal(peak.lraValid, false);
+  assert.deepEqual(peak.channels, [{ needleDb: -6, maxDb: 0.5 }, { needleDb: -240, maxDb: -240 }]);
+  assert.equal(peak.program, null);
+  assert.equal(peak.dropped, 2);
+
+  const [loudness] = decode(analogMeterPacket({
+    mode: 5, channels: [[-23, -24]], flags: 3, program: [-23, -23.5, -23, 7, -1.5, 12]
+  }).packet);
+  assert.equal(loudness.integratedValid, true);
+  assert.equal(loudness.lraValid, true);
+  assert.deepEqual(loudness.program, {
+    momentary: -23, shortTerm: -23.5, integrated: -23, lra: 7,
+    maxTruePeak: -1.5, integratedSeconds: 12
+  });
+  const [pending] = decode(analogMeterPacket({
+    mode: 5, channels: [[-23, -24]], program: [-23, -23.5, 0, 0, -1.5, 0.3]
+  }).packet);
+  assert.equal(pending.integratedValid, false);
+  assert.equal(pending.program.integrated, 0);
+
+  for (const [name, fields] of [
+    ['unknown mode', { mode: 6, channels: [[-6, -6]] }],
+    ['no channels', { mode: 0, channels: [] }],
+    ['17 channels', { mode: 0, channels: Array(17).fill([-6, -6]) }],
+    ['loudness flags outside Loudness', { mode: 0, channels: [[-6, -6]], flags: 1 }],
+    ['unknown flag', { mode: 5, channels: [[-6, -6]], flags: 4, program: [-23, -23, 0, 0, -1, 0] }],
+    ['missing program', { mode: 5, channels: [[-6, -6]] }],
+    ['program outside Loudness', { mode: 0, channels: [[-6, -6]], program: [-23, -23, 0, 0, -1, 0] }],
+    ['below floor', { mode: 0, channels: [[-241, -6]] }],
+    ['non-finite', { mode: 0, channels: [[Number.NaN, -6]] }],
+    ['invalid integrated not zero', { mode: 5, channels: [[-6, -6]], program: [-23, -23, -23, 0, -1, 0] }],
+    ['negative LRA', { mode: 5, channels: [[-6, -6]], flags: 2, program: [-23, -23, 0, -1, -1, 0] }],
+    ['negative duration', { mode: 5, channels: [[-6, -6]], program: [-23, -23, 0, 0, -1, -1] }]
+  ]) {
+    assert.deepEqual(decode(analogMeterPacket(fields).packet), [], name);
+  }
+});
+
 test('HQ spectrum telemetry accepts the canonical v2 contract and owns its dB arrays', () => {
   const { packet, view, bytes } = hqPacket({ frameType: 4, tapId: 7 });
   for (let cell = 0; cell < 2048; cell++) {

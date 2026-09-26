@@ -31,6 +31,64 @@
   ],
   "effects": [
     {
+      "type": "AnalogMeter",
+      "parameters": [
+        {
+          "name": "mode",
+          "type": "string",
+          "count": 1,
+          "default": "VU",
+          "values": [
+            "VU",
+            "PPM",
+            "RMS",
+            "Sample Peak",
+            "True Peak",
+            "Loudness"
+          ]
+        },
+        {
+          "name": "integration",
+          "type": "number",
+          "count": 1,
+          "default": 0.3,
+          "unit": "s",
+          "minimum": 0.05,
+          "maximum": 3
+        },
+        {
+          "name": "attack",
+          "type": "number",
+          "count": 1,
+          "default": 5,
+          "unit": "ms",
+          "minimum": 1,
+          "maximum": 20
+        },
+        {
+          "name": "release",
+          "type": "number",
+          "count": 1,
+          "default": 1.5,
+          "unit": "s",
+          "minimum": 0.1,
+          "maximum": 5
+        }
+      ],
+      "seeded": false,
+      "telemetry": [
+        "analogMeter"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": [],
+      "displayName": "Analog Meter",
+      "category": "analyzer",
+      "summary": "Passes audio through while exposing ballistic needle levels and, in Loudness mode, program loudness, loudness range, and true peak.",
+      "sourceGenerating": false
+    },
+    {
       "type": "ChromaSpiral",
       "parameters": [],
       "seeded": false,
@@ -122,7 +180,8 @@
           "default": "Auto",
           "values": [
             "Auto",
-            "Normal"
+            "Normal",
+            "Off"
           ]
         },
         {
@@ -9403,7 +9462,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "7c47348c37106efbbae06ebf24d6222aecdb492522aa262f7b2743f67912e65a",
-    "privateLayoutSha256": "1cf050bd6c4cde57d4ccc236fef0dffbb9d64247ca9f8a2d16160faf7a7a1f26"
+    "publicCatalogSha256": "07c4dcb745f6f45206b688a1b0516f433d8652e2fb8adfcad15606f5542cc4ae",
+    "privateLayoutSha256": "66175f0d1430a20521b7c33db53a7a088a2eabc835c36c050369e67903112137"
   }
 }

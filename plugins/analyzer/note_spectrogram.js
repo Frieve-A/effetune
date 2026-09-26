@@ -486,7 +486,7 @@ class NoteSpectrogramPlugin extends PluginBase {
                 continue;
             }
             const midi = MULTI_F0_FIRST_MIDI + (this.pr === 'High' ? (pitch - MULTI_F0_FINE_CENTER) / MULTI_F0_FINE_DIVISIONS : pitch);
-            const color = this.displayOptions?.noteColor?.(midi) ?? (this.cl === 'Rainbow'
+            const color = this.displayOptions?.noteColor?.(midi, value) ?? (this.cl === 'Rainbow'
                 ? (this.pr === 'High' ? multiF0InterpolatedNoteColor(pitch) : MULTI_F0_NOTE_COLORS[pitchClass])
                 : palette.trace);
             pixels[pixelOffset] = this.displayOptions?.transparent ? color[0] : Math.round(background[0] + (color[0] - background[0]) * value);
@@ -905,7 +905,7 @@ class NoteSpectrogramPlugin extends PluginBase {
         const pitch = MULTI_F0_FIRST_MIDI + (best - MULTI_F0_FINE_CENTER) / MULTI_F0_FINE_DIVISIONS;
         const signalColor = this.displayOptions?.signalColor?.(pitch, confidence);
         const normalized = this.levelHistory[historyOffset + best];
-        const color = signalColor?.rgb ?? this.displayOptions?.noteColor?.(pitch) ?? (this.cl === 'Rainbow'
+        const color = signalColor?.rgb ?? this.displayOptions?.noteColor?.(pitch, normalized) ?? (this.cl === 'Rainbow'
             ? multiF0InterpolatedNoteColor(best)
             : palette.trace);
         const red = this.displayOptions?.transparent ? color[0] : Math.round(background[0] + (color[0] - background[0]) * confidence);
@@ -1030,7 +1030,7 @@ class NoteSpectrogramPlugin extends PluginBase {
             const centerY = (this.mx - midi + 0.5) * rowHeight;
             const normalized = this._normalizedLevel(this.meterCurrent[note]);
             const signalColor = this.displayOptions?.signalColor?.(midi, normalized);
-            const color = signalColor?.rgb ?? this.displayOptions?.noteColor?.(midi) ?? (this.cl === 'Rainbow'
+            const color = signalColor?.rgb ?? this.displayOptions?.noteColor?.(midi, normalized) ?? (this.cl === 'Rainbow'
                 ? MULTI_F0_NOTE_COLORS[midi % 12]
                 : palette.trace);
             const currentRadius = rowHeight * normalized;
@@ -1086,8 +1086,8 @@ class NoteSpectrogramPlugin extends PluginBase {
         const gutter = showKeyboard ? MULTI_F0_HORIZONTAL_KEY_GUTTER_CSS_PX * keyboardScale : 0;
         const blackKeyDepth = MULTI_F0_KEY_GUTTER_CSS_PX * keyboardScale;
         const rollWidth = width - gutter;
-        const drawKeyboard = draw => this.displayOptions?.drawKeyboard
-            ? this.displayOptions.drawKeyboard(context, draw, { horizontal, width, height, rollWidth })
+        const drawKeyboard = (draw, boundary = false) => this.displayOptions?.drawKeyboard
+            ? this.displayOptions.drawKeyboard(context, draw, { horizontal, width, height, rollWidth, boundary })
             : draw();
         const visiblePitchCount = this.mx - this.mn + 1;
         const displayDivisions = this.pr === 'High' ? MULTI_F0_FINE_DIVISIONS : 1;
@@ -1246,6 +1246,9 @@ class NoteSpectrogramPlugin extends PluginBase {
                     context.fillStyle = `rgb(${red}, ${green}, ${blue})`; // theme-allow: Fixed signal-level or self-painted colormap color.
                     context.fillRect(rollWidth, row * rowHeight, blackKeyDepth, rowHeight);
                 }
+            });
+            // The meters and border sit on the roll boundary rather than inside the keys.
+            drawKeyboard(() => {
                 const drawMeters = target => this._drawVolumeMeters(target, rollWidth, rowHeight, palette);
                 if (this.displayOptions?.drawSignal) this.displayOptions.drawSignal(context, drawMeters);
                 else drawMeters(context);
@@ -1253,7 +1256,7 @@ class NoteSpectrogramPlugin extends PluginBase {
                 context.moveTo(rollWidth, 0);
                 context.lineTo(rollWidth, height);
                 context.stroke();
-            });
+            }, true);
         }
 
         context.fillStyle = showKeyboard ? '#111' : ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('graph-label') ?? ''); // theme-allow: Fixed text color only on self-painted piano keys.

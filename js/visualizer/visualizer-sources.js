@@ -14,7 +14,9 @@ const SOURCE_TYPES = Object.freeze({
         parse: 'parseDspLevelTelemetryFrame' },
     notes: { type: 'NoteSpectrogramPlugin', frameType: 24,
         parse: 'parseTelemetryFrame' },
-    chroma: { type: 'ChromaSpiralPlugin', frameType: TelemetryFrameType.TAP_SPECTRUM }
+    chroma: { type: 'ChromaSpiralPlugin', frameType: TelemetryFrameType.TAP_SPECTRUM },
+    phase: { type: 'PhaseSelectEqPlugin', frameType: 20 },
+    'analog-meter': { type: 'AnalogMeterPlugin', frameType: TelemetryFrameType.TAP_ANALOG_METER }
 });
 
 const usesAudioModulation = (effects, modulator) => Array.isArray(effects) &&
@@ -51,9 +53,14 @@ function updateModulator(state, rms, type, now) {
 }
 
 function analysisSettings(type, input = {}) {
-    // Chroma chooses its HQ resolution in the kernel; Level Meter has no analysis
-    // controls. Their display settings do not affect source lifetime.
-    if (type === 'chroma' || type === 'level-meter') return { params: {}, gainDb: 0 };
+    // Chroma chooses its HQ resolution in the kernel; Level Meter and Phase Map
+    // have no analysis controls. Their display settings do not affect source lifetime.
+    if (type === 'chroma' || type === 'level-meter' || type === 'phase') return { params: {}, gainDb: 0 };
+    // The dial is calibrated in dBFS/LUFS, so no gain applies. Mode and ballistics keys
+    // are always included, whatever the mode; ln also feeds the visual-sync delay rule.
+    if (type === 'analog-meter') return { params: {
+        md: input.md ?? 'VU', it: input.it ?? 0.3, at: input.at ?? 5, rt: input.rt ?? 1.5, ln: input.ln ?? 0
+    }, gainDb: 0 };
     const gainDb = type === 'notes' ? 0 :
         Number.isFinite(input.gainDb) ? Math.max(-24, Math.min(24, Math.round(input.gainDb))) : 0;
     if (type === 'spectrum' || type === 'spectrogram') {

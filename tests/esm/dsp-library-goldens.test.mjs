@@ -18,9 +18,9 @@ import {
 } from '../../tools/verify-dsp-library-goldens.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const GOLDEN_CASE_COUNT = 1012;
-const EFFECT_COUNT = 107;
-const WORKLET_GOLDEN_CASE_COUNT = 109;
+const GOLDEN_CASE_COUNT = 1017;
+const EFFECT_COUNT = 108;
+const WORKLET_GOLDEN_CASE_COUNT = 110;
 const NON_IDENTITY_EFFECT_COUNT = 99;
 
 test('MCP acceptance preserves eight-channel aggregates and defaults only their extended slots', async () => {

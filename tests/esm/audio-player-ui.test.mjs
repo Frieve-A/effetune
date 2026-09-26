@@ -729,6 +729,46 @@ test('speed popup keeps presets, slider, number, and button display synchronized
   });
 });
 
+test('speed popup preserve-pitch toggle follows state outside the presets', async () => {
+  await withAudioPlayerGlobals({ windowOptions: { uiManager: false } }, async ({ calls }) => {
+    const player = createAudioPlayer(calls, { state: { playbackSpeed: 1, preservePitch: true } });
+    const ui = new AudioPlayerUI(player);
+    player.playbackManager.setPlaybackSpeed = speed => {
+      player.stateManager.setState({ playbackSpeed: speed });
+      ui.updatePlayerUIState();
+    };
+    player.playbackManager.togglePreservePitch = () => {
+      calls.push(['togglePreservePitch']);
+      player.stateManager.setState({ preservePitch: !player.stateManager.getStateSnapshot().preservePitch });
+      ui.updatePlayerUIState();
+    };
+    ui.createPlayerUI();
+    ui.speedButton.click();
+    const popup = ui.playerPopup;
+    const presets = popup.querySelector('.player-speed-presets');
+    const pitch = popup.querySelector('.player-speed-pitch');
+
+    assert.equal(presets.children.length, 9);
+    assert.equal(presets.children.includes(pitch), false);
+    assert.equal(pitch.textContent, 'Preserve Pitch');
+    assert.equal(pitch.title, 'Preserve Pitch');
+    assert.equal(pitch.getAttribute('aria-pressed'), 'true');
+
+    pitch.click();
+    assert.deepEqual(calls.filter(call => call[0] === 'togglePreservePitch'), [['togglePreservePitch']]);
+    assert.equal(ui.playerPopup, popup);
+    assert.equal(pitch.getAttribute('aria-pressed'), 'false');
+
+    presets.children[4].click();
+    assert.equal(pitch.getAttribute('aria-pressed'), 'false');
+
+    ui.speedButton.click();
+    ui.speedButton.click();
+    assert.equal(ui.playerPopup.querySelector('.player-speed-pitch').getAttribute('aria-pressed'), 'false');
+    ui.removeUI();
+  });
+});
+
 test('speed popup opens in mini and mobile player layouts', async () => {
   for (const options of [
     { windowOptions: { electronAPI: {}, uiManager: { miniPlayerMode: true } } },

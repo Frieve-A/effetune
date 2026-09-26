@@ -1696,10 +1696,14 @@ export class AudioContextManager {
 
   applyPlaybackSpeedToElement(element) {
     if (!element) return;
-    const speed = this.getCurrentState()?.playbackSpeed ?? 1;
+    const state = this.getCurrentState();
+    const speed = state?.playbackSpeed ?? 1;
+    const preservePitch = state?.preservePitch ?? true;
     element.defaultPlaybackRate = speed;
     element.playbackRate = speed;
-    element.preservesPitch = true;
+    // WebKit may only honor the prefixed property.
+    element.preservesPitch = preservePitch;
+    element.webkitPreservesPitch = preservePitch;
   }
 
   applyPlaybackSpeed() {

@@ -25,6 +25,9 @@ from .graph_document import (
 )
 from .presets import LegacyImportReport, import_legacy_preset
 from .telemetry import (
+    AnalogMeterTelemetryChannel,
+    AnalogMeterTelemetryFrame,
+    AnalogMeterTelemetryProgram,
     LevelTelemetryChannel,
     LevelTelemetryFrame,
     NoteSpectrogramTelemetryFrame,
@@ -48,6 +51,9 @@ except PackageNotFoundError:
     __version__ = "0+source"
 
 __all__ = [
+    "AnalogMeterTelemetryChannel",
+    "AnalogMeterTelemetryFrame",
+    "AnalogMeterTelemetryProgram",
     "AssetData",
     "AssetError",
     "AssetResolver",

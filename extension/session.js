@@ -165,7 +165,7 @@ async function handle(command, args) {
                 ch: channelSpec ?? message.plugin.channel };
             validatePreset([next], manager, audio.audioContext.sampleRate);
             applySerializedState(plugin, next);
-        } else if (['setSpectrumTap', 'setSpectrumTapRoute', 'getPerformanceMetrics'].includes(message?.type)) {
+        } else if (['setSpectrumTap', 'setSpectrumTapRoute', 'getPerformanceMetrics', 'resetPluginState'].includes(message?.type)) {
             audio.workletNode?.port.postMessage(message);
         } else throw new Error('Unsupported worklet operation');
     } else throw new Error('Unknown session operation');

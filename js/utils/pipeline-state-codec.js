@@ -35,3 +35,9 @@ export function encodePipelineState(state) {
 export function decodePipelineState(encodedState) {
     return JSON.parse(utf8Base64ToString(encodedState));
 }
+
+export function createShareUrl(param, encoded) {
+    const url = new URL('https://effetune.frieve.com/effetune.html');
+    url.searchParams.set(param, encoded);
+    return url.toString();
+}

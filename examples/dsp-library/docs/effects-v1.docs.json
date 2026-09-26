@@ -24,6 +24,7 @@
     "HumRemover": {"displayName": "Hum Remover", "category": "restoration", "summary": "Reduces mains hum and its harmonics.", "sourceGenerating": false},
     "NoiseReduction": {"displayName": "Noise Reduction", "category": "restoration", "summary": "Reduces steady background noise.", "sourceGenerating": false},
     "CrosstalkCancellation": {"displayName": "Crosstalk Cancellation", "category": "spatial", "summary": "Applies prepared true-stereo cancellation filters to stereo playback.", "sourceGenerating": false},
+    "AnalogMeter": { "displayName": "Analog Meter", "category": "analyzer", "summary": "Passes audio through while exposing ballistic needle levels and, in Loudness mode, program loudness, loudness range, and true peak.", "sourceGenerating": false },
     "ChromaSpiral": { "displayName": "Chroma Spiral", "category": "analyzer", "summary": "Passes audio through while exposing a high-resolution spectrum for note-and-octave display.", "sourceGenerating": false },
     "LevelMeter": { "displayName": "Level Meter", "category": "analyzer", "summary": "Passes audio through while the host-side EffeTune app can display peak and RMS levels.", "sourceGenerating": false },
     "NoteSpectrogram": { "displayName": "Note Spectrogram", "category": "analyzer", "summary": "Passes audio through while exposing detected pitch confidence across the 88-key piano range at five positions per semitone.", "sourceGenerating": false },

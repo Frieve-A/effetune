@@ -25,7 +25,7 @@ function canvas() {
     }, {
         get(target, key) { return key in target ? target[key] : (...args) => calls.push([key, ...args]); },
         set(target, key, value) {
-            if (key === 'fillStyle' || key === 'strokeStyle') calls.push([key, value]);
+            if (key === 'fillStyle' || key === 'strokeStyle' || key === 'globalAlpha') calls.push([key, value]);
             target[key] = value;
             return true;
         }
@@ -45,8 +45,10 @@ function runtime() {
     }
     const window = { ThemePalette: { get: name => name === 'graph-trace' ? 'rgba(0,255,0,1)' : 'rgba(16,16,16,1)' } };
     const document = { createElement: () => canvas() };
-    for (const file of ['spectrum_analyzer', 'spectrogram', 'oscilloscope', 'stereo_meter', 'note_spectrogram', 'level_meter']) {
-        vm.runInNewContext(readFileSync(new URL(`../../plugins/analyzer/${file}.js`, import.meta.url), 'utf8'),
+    for (const file of ['analyzer/spectrum_analyzer', 'analyzer/spectrogram', 'analyzer/oscilloscope', 'analyzer/stereo_meter',
+        'analyzer/note_spectrogram', 'analyzer/chroma_spiral', 'analyzer/level_meter', 'analyzer/analog_meter',
+        'spatial/phase_select_eq']) {
+        vm.runInNewContext(readFileSync(new URL(`../../plugins/${file}.js`, import.meta.url), 'utf8'),
             { window, document, PluginBase, performance: { now: () => 1000 }, Float32Array, DataView, ArrayBuffer,
                 MultiresSpectrum: globalThis.MultiresSpectrum, console });
     }
@@ -132,7 +134,9 @@ test('Visualizer uses the original analyzer drawing methods without constructing
             ['oscilloscope', 'OscilloscopePlugin', 'drawWaveform'],
             ['stereo', 'StereoMeterPlugin', 'drawMeter'],
             ['notes', 'NoteSpectrogramPlugin', 'drawGraph'],
-            ['level-meter', 'LevelMeterPlugin', 'updateMeter']
+            ['level-meter', 'LevelMeterPlugin', 'updateMeter'],
+            ['phase', 'PhaseSelectEqPlugin', 'drawVisualizerPhaseMap'],
+            ['analog-meter', 'AnalogMeterPlugin', 'drawVisualizerMeter']
         ]) {
             const baseline = env.counts();
             const item = createItem(type, type), target = canvas();
@@ -148,6 +152,121 @@ test('Visualizer uses the original analyzer drawing methods without constructing
             display.dispose();
             assert.equal(env.subscribers.has(type), false);
         }
+    });
+});
+
+test('Analog Meter folds a single selected channel and names it after the input channel', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = { ...createItem('analog-meter', 'meter'), channel: 'R' };
+        item.params.md = 'Loudness';
+        const target = canvas();
+        const display = createAnalyzerDisplay(item, target, env.sources);
+        assert.equal(display.plugin.channelCount, 1);
+        const payload = new DataView(new ArrayBuffer(4 + 16 + 24));
+        payload.setUint8(0, 5);
+        payload.setUint8(1, 2);
+        payload.setUint16(2, 3, true);
+        [-20, -18, -21, -19, -23, -22, -24, 6, -1, 12].forEach((value, index) =>
+            payload.setFloat32(4 + index * 4, value, true));
+        env.subscribers.get('meter')({ frameType: 27, formatVersion: 1, payload }, {});
+        const reading = display.plugin.reading;
+        assert.equal(reading.channels.length, 1);
+        assert.equal(reading.channels[0].needleDb, -20);
+        assert.ok(Math.abs(reading.program.momentary - (-23 - 10 * Math.log10(2))) < 1e-4);
+        assert.equal(display.plugin.cellTitle(0), 'Ch 2 (reference)');
+        display.draw(item, 1, 400);
+        assert.ok(target.context.calls.some(([key]) => key === 'stroke'));
+        display.dispose();
+    });
+});
+
+function phaseFrame(points, sequence = 0, maximumDb = 0) {
+    const payload = new DataView(new ArrayBuffer(16 + points.length * 16));
+    payload.setFloat32(0, 48000, true);
+    payload.setUint16(4, points.length, true);
+    payload.setUint32(8, 4096, true);
+    payload.setFloat32(12, maximumDb, true);
+    points.forEach(([frequency, phase, balance, level], index) => {
+        [frequency, phase, balance, level].forEach((value, field) =>
+            payload.setFloat32(16 + index * 16 + field * 4, value, true));
+    });
+    return { frameType: 20, formatVersion: 2, sequence, flags: 0, payload };
+}
+
+test('Phase Map draws the Phase Select EQ point cloud without the effect regions or background', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('phase', 'phase'), target = canvas();
+        const display = createAnalyzerDisplay(item, target, env.sources);
+        env.subscribers.get('phase')(phaseFrame([[1000, 90, -50, -10], [2000, 0, 0, -80]]), {});
+        const arcs = () => target.context.calls.filter(call => call[0] === 'arc');
+        display.draw(item, 1, 400);
+        assert.deepEqual(arcs().map(call => call[1]), [300], 'Phase maps -180..180 degrees across the width');
+        const smallRadius = arcs()[0][3], initialRange = item.params.dr;
+        assert.ok(smallRadius > 0.6 + 1.1, 'Visualizer points exceed the plugin graph\'s largest point');
+        assert.ok(target.context.calls.some(call => call[0] === 'clearRect'));
+        for (const method of ['fillRect', 'strokeRect', 'stroke', 'fillText'])
+            assert.equal(target.context.calls.some(call => call[0] === method), false, method);
+        assert.ok(target.context.calls.some(call => call[0] === 'fillStyle' && call[1] === item.palette.color));
+
+        target.context.calls.length = 0;
+        Object.assign(item.params, { ax: 'balance', dr: -96, showAxes: true, showAxisNumbers: true });
+        display.draw(item, 1, 400);
+        assert.deepEqual(arcs().map(call => call[1]), [100, 200], 'Balance axis and wider level range');
+        const [strongAlpha, weakAlpha] = target.context.calls
+            .filter(call => call[0] === 'globalAlpha' && call[1] !== 1).map(call => call[1]);
+        assert.ok(weakAlpha >= 0.35 && weakAlpha < strongAlpha, 'Weak points stay visible below strong ones');
+        assert.ok(target.context.calls.some(call => call[0] === 'stroke'));
+        assert.ok(target.context.calls.some(call => call[0] === 'fillText' && call[1] === '1k'));
+        const labelStyle = target.context.calls.findLast((call, index) => call[0] === 'fillStyle'
+            && index < target.context.calls.findIndex(entry => entry[0] === 'fillText'));
+        assert.equal(labelStyle[1], 'rgb(102,102,102)', 'Axis labels use the Visualizer graph-label default');
+        assert.equal(target.context.calls.some(call => call[0] === 'strokeRect'), false, 'No regions or handles');
+
+        target.context.calls.length = 0;
+        item.palette.mode = 'heatmap';
+        display.draw(item, 1, 400);
+        assert.ok(target.context.calls.some(call => call[0] === 'fillStyle' && /^rgb\(/.test(call[1])));
+
+        target.context.calls.length = 0;
+        Object.assign(item.params, { ax: 'phase', dr: initialRange });
+        Object.assign(target, { width: 2000, height: 1200 });
+        display.draw(item, 1, 1000);
+        assert.ok(Math.abs(arcs()[0][3] / smallRadius - 2.4 / 1.5) < 1e-9, 'Point size follows the item size');
+        display.dispose();
+    });
+});
+
+test('Phase Map measures quiet frames against the Reference Floor', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('phase', 'phase'), target = canvas();
+        const display = createAnalyzerDisplay(item, target, env.sources);
+        const arcs = () => target.context.calls.filter(call => call[0] === 'arc');
+        const points = [[1000, 90, -50, 0], [2000, 0, 0, -50]];
+        // A raw kernel maximum of -97 dB is about -90 dBFS, 50 dB under the -40 dB default.
+        const send = sequence => env.subscribers.get('phase')(phaseFrame(points, sequence, -97), {});
+        env.subscribers.get('phase')(phaseFrame(points, 0), {});
+        display.draw(item, 1, 400);
+        const loudRadius = arcs()[0][3];
+        assert.equal(arcs().length, 2);
+
+        target.context.calls.length = 0;
+        send(5);
+        display.draw(item, 1, 400);
+        assert.equal(arcs().length, 1, 'Points under Reference Floor + DB Range disappear');
+        assert.ok(arcs()[0][3] < loudRadius, 'The strongest quiet point shrinks');
+
+        target.context.calls.length = 0;
+        item.params.ml = -120;
+        display.draw(item, 1, 400);
+        send(10);
+        target.context.calls.length = 0;
+        display.draw(item, 1, 400);
+        assert.equal(arcs().length, 2, 'A lower floor keeps the strongest component as the reference');
+        assert.equal(arcs()[0][3], loudRadius);
+        display.dispose();
     });
 });
 
@@ -523,6 +642,135 @@ test('Layout theme colors and reset remain independent of the app theme and pres
             theme.get = originalGet;
             display.dispose();
         }
+    });
+});
+
+test('Spectrum gradients follow frequency or level in either orientation and display mode', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('spectrum', 'spectrum');
+        item.palette.mode = 'gradient';
+        item.palette.stops = [{ pos: 0, color: '#0000ff' }, { pos: 1, color: '#ff0000' }];
+        const target = canvas(), display = createAnalyzerDisplay(item, target, env.sources);
+        target.context.createLinearGradient = (...coordinates) => ({ coordinates, stops: [],
+            addColorStop(position, color) { this.stops.push([position, color]); } });
+        for (const orientation of ['horizontal', 'vertical']) for (const dm of ['line', 'bar']) {
+            item.params.orientation = orientation; item.params.dm = dm;
+            for (const direction of ['frequency', 'intensity']) {
+                item.palette.direction = direction;
+                display.draw(item, 0, 800);
+                const options = display.plugin.displayOptions;
+                const gradient = options.traceStyle(target.context, 320, 160);
+                assert.deepEqual(gradient.coordinates, direction === 'frequency' ? [0, 0, 320, 0] : [0, 160, 0, 0]);
+                assert.equal(gradient.stops[0][1], 'rgb(0,0,255)');
+                assert.equal(gradient.stops.at(-1)[1], 'rgb(255,0,0)');
+                assert.equal(options.barColor, null);
+                if (direction === 'intensity') {
+                    assert.equal(options.traceStyle(target.context, 320, 160), gradient);
+                    assert.notEqual(options.traceStyle(target.context, 320, 80), gradient);
+                }
+            }
+        }
+        item.palette.direction = 'intensity'; item.palette.motion.mode = 'hue'; item.palette.motion.speed = .25;
+        display.draw(item, 1, 800);
+        assert.notEqual(display.plugin.displayOptions.traceStyle(target.context, 320, 160).stops[0][1], 'rgb(0,0,255)');
+        display.dispose();
+    });
+});
+
+test('Spectrogram switches gradient lookup between frequency and intensity and repaints existing history', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('spectrogram', 'spectrogram');
+        item.palette.mode = 'gradient';
+        item.palette.stops = [{ pos: 0, color: '#0000ff' }, { pos: 1, color: '#ff0000' }];
+        const display = createAnalyzerDisplay(item, canvas(), env.sources), plugin = display.plugin;
+        plugin.dspSpectrogramActive = true;
+        plugin.spectrogramIntensityBuffer.fill(128);
+        const pixel = row => Array.from(plugin.imageDataCache.data.slice(row * 1024 * 4, row * 1024 * 4 + 4));
+        for (const direction of ['intensity', 'frequency', 'intensity']) {
+            item.palette.direction = direction; display.draw(item, 0, 800);
+            const options = plugin.displayOptions;
+            if (direction === 'intensity') {
+                assert.equal(options.frequencyColorLut, null);
+                assert.equal(options.colorLut.length, 256 * 3);
+                assert.deepEqual(pixel(0), [128, 0, 127, 128]);
+                assert.deepEqual(pixel(255), pixel(0));
+                plugin.paintDspSpectrogramColumn(0, new Uint8Array(256).fill(255));
+                assert.deepEqual(pixel(0), [255, 0, 0, 255]);
+                assert.deepEqual(pixel(255), pixel(0));
+            } else {
+                assert.equal(options.colorLut, null);
+                assert.deepEqual(pixel(0), [255, 0, 0, 128]);
+                assert.deepEqual(pixel(255), [0, 0, 255, 128]);
+            }
+        }
+        display.dispose();
+    });
+});
+
+test('Notes intensity gradients color pitch confidence and note volume while preserving history', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('notes', 'notes');
+        item.palette.mode = 'gradient'; item.palette.direction = 'intensity'; item.palette.mapping = 'octave';
+        item.palette.stops = [{ pos: 0, color: '#0000ff' }, { pos: 1, color: '#ff0000' }];
+        const display = createAnalyzerDisplay(item, canvas(), env.sources), plugin = display.plugin;
+        plugin.history[197] = .5; plugin.levelHistory[197] = 1;
+        plugin.paintHistoryImage();
+        const history = plugin.history;
+        const row = 88 - 1 - (60 - 21), offset = row * 1024 * 4;
+        assert.deepEqual(Array.from(plugin.imageData.data.slice(offset, offset + 4)), [128, 0, 127, 128]);
+        const gradients = [];
+        const context = { createLinearGradient: () => {
+            const gradient = { stops: [], addColorStop(position, color) { this.stops.push([position, color]); } };
+            gradients.push(gradient); return gradient;
+        }, fillRect() {} };
+        plugin._paintVolumeBar(context, 0, 0, { midi: 60, best: 197, confidence: .5 }, 8, plugin._displayPalette());
+        assert.ok(gradients[0].stops.some(([, color]) => color === 'rgba(255, 0, 0, 0.5)'));
+        plugin.mn = plugin.mx = 60; plugin._normalizedLevel = () => 1;
+        plugin._drawVolumeMeters({ createRadialGradient: context.createLinearGradient,
+            beginPath() {}, moveTo() {}, arc() {}, closePath() {}, fill() {} }, 100, 8, plugin._displayPalette());
+        assert.ok(gradients[1].stops.some(([, color]) => color === 'rgba(255, 0, 0, 0.5)'));
+        item.palette.direction = 'frequency'; display.draw(item, 0, 800);
+        assert.equal(plugin.history, history);
+        assert.deepEqual(plugin.displayOptions.noteColor(60), plugin.displayOptions.noteColor(72));
+        item.palette.direction = 'intensity'; display.draw(item, 0, 800);
+        assert.deepEqual(plugin.displayOptions.noteColor(60, .5), plugin.displayOptions.noteColor(72, .5));
+        assert.notDeepEqual(plugin.displayOptions.noteColor(60, .5), plugin.displayOptions.noteColor(60, 1));
+        display.dispose();
+    });
+});
+
+test('Chroma intensity gradients color dots and fill segments by level and restore frequency colors', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('chroma', 'chroma');
+        item.palette.mode = 'gradient'; item.palette.direction = 'intensity';
+        item.palette.stops = [{ pos: 0, color: '#0000ff' }, { pos: 1, color: '#ff0000' }];
+        const target = canvas(), display = createAnalyzerDisplay(item, target, env.sources), plugin = display.plugin;
+        plugin.display = [{ midi: 60, level: -24 }, { midi: 61, level: -12 }, { midi: 62, level: -12 }];
+        plugin.levelReference = -12;
+        for (const dm of [0, 1]) {
+            item.params.dm = dm; target.context.calls.length = 0;
+            display.draw(item, 0, 800);
+            const options = plugin.displayOptions;
+            assert.equal(options.spiralFillStyle, null);
+            assert.deepEqual(options.signalColor(60, .5), options.signalColor(72, .5));
+            const styles = target.context.calls.filter(call => call[0] === 'fillStyle').map(call => call[1]);
+            assert.ok(styles.includes('rgba(255,0,0,1)'), `${dm}: loud signal uses the end color`);
+            assert.ok(styles.some(style => typeof style === 'string' && style.startsWith('rgba(') && style !== 'rgba(255,0,0,1)'));
+        }
+        item.palette.direction = 'frequency'; display.draw(item, 0, 800);
+        assert.equal(plugin.displayOptions.signalColor, null);
+        assert.equal(plugin.displayOptions.spiralFillStyle, null);
+        assert.equal(typeof plugin.displayOptions.spiralFillColor, 'function');
+        assert.notEqual(plugin.displayOptions.spiralFillColor(60), plugin.displayOptions.spiralFillColor(72));
+        assert.equal(plugin.displayOptions.spiralFillColor(60), `rgb(${plugin.displayOptions.noteColor(60).map(Math.round).join(',')})`);
+        item.palette.mapping = 'octave'; display.draw(item, 0, 800);
+        assert.equal(plugin.displayOptions.spiralFillColor, null);
+        assert.equal(typeof plugin.displayOptions.spiralFillStyle, 'function');
+        display.dispose();
     });
 });
 

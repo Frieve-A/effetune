@@ -1,0 +1,17 @@
+{
+  "type": "AnalogMeterPlugin",
+  "parityReference": "production-native-promoted-v1",
+  "tolerance": { "abs": 0.000001, "policy": "per-sample" },
+  "fields": [
+    {
+      "name": "mode",
+      "key": "md",
+      "kind": "enum",
+      "values": ["VU", "PPM", "RMS", "Sample Peak", "True Peak", "Loudness"],
+      "default": "VU"
+    },
+    { "name": "integration", "key": "it", "kind": "float", "min": 0.05, "max": 3, "default": 0.3, "unit": "s" },
+    { "name": "attack", "key": "at", "kind": "float", "min": 1, "max": 20, "default": 5, "unit": "ms" },
+    { "name": "release", "key": "rt", "kind": "float", "min": 0.1, "max": 5, "default": 1.5, "unit": "s" }
+  ]
+}

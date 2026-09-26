@@ -493,10 +493,10 @@ function installMaterializedPlaybackManager(harness, tracks = harness.playlist) 
   return { playbackManager, entries };
 }
 
-test('playback speed selects media and applies pitch-preserving rates before play and adoption', async () => {
+test('playback speed selects media and applies rates and pitch preference before play and adoption', async () => {
   await withAudioContextGlobals({}, async ({ calls }) => {
     const track = { name: 'Speed', path: '/speed.wav' };
-    const harness = createHarness({ calls, currentTrack: track, state: { playbackSpeed: 1.5 } });
+    const harness = createHarness({ calls, currentTrack: track, state: { playbackSpeed: 1.5, preservePitch: false } });
     const descriptor = harness.manager.createPlaybackSourceDescriptor(track);
     const record = harness.manager.createPlaybackDecisionRecord(track, descriptor);
     assert.equal(record.committedMode, 'media');
@@ -506,7 +506,8 @@ test('playback speed selects media and applies pitch-preserving rates before pla
     candidate.play = () => {
       assert.equal(candidate.playbackRate, 1.5);
       assert.equal(candidate.defaultPlaybackRate, 1.5);
-      assert.equal(candidate.preservesPitch, true);
+      assert.equal(candidate.preservesPitch, false);
+      assert.equal(candidate.webkitPreservesPitch, false);
       return new Promise(resolve => { releasePlay = resolve; });
     };
     const starting = harness.manager.startMediaElementPlayback(candidate);
@@ -521,7 +522,9 @@ test('playback speed selects media and applies pitch-preserving rates before pla
     const transitioning = harness.manager.transitionToNextTrack(track, 0);
     const adopting = await waitForPendingMediaStartCandidate();
     assert.equal(adopting.playbackRate, 1.5);
+    assert.equal(adopting.preservesPitch, false);
     harness.state.playbackSpeed = 3;
+    harness.state.preservePitch = true;
     harness.manager.applyPlaybackSpeed();
     releaseCandidatePlay();
     assert.equal(await transitioning, true);
@@ -529,6 +532,7 @@ test('playback speed selects media and applies pitch-preserving rates before pla
     assert.equal(adopting.playbackRate, 3);
     assert.equal(adopting.defaultPlaybackRate, 3);
     assert.equal(adopting.preservesPitch, true);
+    assert.equal(adopting.webkitPreservesPitch, true);
   });
 });
 

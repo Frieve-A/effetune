@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "AnalogMeterPlugin",
+  "id": "loudness-step-96k",
+  "stimulus": "step",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 801,
+  "blockSize": 89,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 4,
+  "seed": "0xeffe7a5a",
+  "params": {
+    "md": "Loudness",
+    "it": 0.3,
+    "at": 5,
+    "rt": 1.5
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:304c1621221c59095ece2201f82ad51589c5a7fb306628546fcd55c3c42f0722",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type AnalogMeterPlugin --promote-production-native",
+  "outputFloats": 1602,
+  "byteLength": 6408,
+  "binary": "case-005.f32"
+}

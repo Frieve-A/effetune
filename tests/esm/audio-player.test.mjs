@@ -527,6 +527,29 @@ test('applyPlaybackSpeed updates state before synchronously applying it to playb
   assert.deepEqual(calls, [['state', 1.5], ['context']]);
 });
 
+test('applyPreservePitch updates state and applies it only to the current element', () => {
+  const calls = [];
+  const audioElement = {};
+  const player = {
+    audioElement,
+    stateManager: {
+      updateState(update) {
+        calls.push(['state', update.preservePitch]);
+      }
+    },
+    contextManager: {
+      applyPlaybackSpeed() {
+        calls.push(['speed']);
+      },
+      applyPlaybackSpeedToElement(element) {
+        calls.push(['element', element]);
+      }
+    }
+  };
+  AudioPlayer.prototype.applyPreservePitch.call(player, false);
+  assert.deepEqual(calls, [['state', false], ['element', audioElement]]);
+});
+
 test('close cleans up collaborators and clears uiManager', async () => {
   await withAudioPlayerGlobals({ window: { uiManager: { audioPlayer: 'existing' } } }, async ({ calls }) => {
     const player = createPlayer();

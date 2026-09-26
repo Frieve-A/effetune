@@ -516,6 +516,24 @@ class PresetAndAssetTests(unittest.TestCase):
                 }]
             })
 
+    def test_legacy_analog_meter_validates_and_discards_meter_face_settings(self) -> None:
+        display = {"rl": -20, "rg": 60, "ph": 0, "sc": 2, "ln": 1, "tg": -14, "ls": 1}
+        document, _ = presets.import_legacy_preset({
+            "pipeline": [{"name": "Analog Meter", "parameters": display}]
+        })
+        self.assertEqual(document["chain"][0]["type"], "AnalogMeter")
+        for key in display:
+            self.assertNotIn(key, document["chain"][0]["parameters"])
+        for parameters in (
+            {"rl": 1}, {"rg": 19}, {"ph": 11}, {"sc": 3}, {"sc": 1.5}, {"ln": 0.5}, {"ln": 2},
+            {"tg": -9}, {"ls": -1}, {"rl": "0"}, {"ln": True},
+        ):
+            with self.subTest(parameters=parameters):
+                with self.assertRaises(effetune.ValidationError):
+                    presets.import_legacy_preset({
+                        "pipeline": [{"name": "Analog Meter", "parameters": parameters}]
+                    })
+
     def test_legacy_analyzer_color_and_stereo_gain_are_validated_and_discarded(self) -> None:
         effects = (
             ("Pitch Meter", {"rf": 442, "cl": "Rainbow"}, {"referenceA4": 442}),

@@ -83,8 +83,8 @@ body.layout-mobile .plugin-parameter-ui {
 body.layout-mobile h1 {
     font-size: 20px;
     line-height: 32px;
-    /* Reserve room for the overflow header button. */
-    padding-right: 48px;
+    /* Reserve room for the Visualizer and overflow header buttons. */
+    padding-right: calc(2 * var(--et-mobile-control-height) + 16px);
 }
 
 body.layout-mobile .subtitle,
@@ -95,10 +95,10 @@ body.layout-mobile .column-control-button {
     display: none !important;
 }
 
-/* Mobile actions live in the overflow menu; the desktop settings gear and other
-   desktop header controls are not shown in this layout. */
+/* Keep the shared Visualizer button beside the mobile overflow menu. */
 body.layout-mobile .header-buttons {
-    display: none !important;
+    display: flex;
+    right: calc(var(--et-mobile-control-height) + 8px);
 }
 
 body.layout-mobile .header-buttons .header-button {
@@ -113,10 +113,11 @@ body.layout-mobile .header-buttons .header-button {
     box-sizing: border-box;
 }
 
-/* Mobile has its own Open Music and view navigation controls. */
+/* Other header actions use the mobile player, navigation, and overflow menu. */
 body.layout-mobile .header-buttons .open-music-button,
 body.layout-mobile .header-buttons .effect-pipeline-button,
-body.layout-mobile .header-buttons .open-library-button {
+body.layout-mobile .header-buttons .open-library-button,
+body.layout-mobile .header-buttons .settings-menu-container {
     display: none !important;
 }
 
@@ -931,6 +932,16 @@ body.layout-mobile .plugin-parameter-ui .parameter-row {
     box-sizing: border-box;
 }
 
+body.layout-mobile .analog-meter-parameters {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+body.layout-mobile .analog-meter-reset-button {
+    min-height: 40px;
+    min-width: 64px;
+    padding: 8px 14px;
+}
+
 body.layout-mobile .plugin-parameter-ui input[type="range"]:not(.vertical-slider) {
     min-width: var(--et-mobile-effect-slider-min-width);
 }
@@ -1254,7 +1265,8 @@ body.layout-mobile .speed-button {
     min-width: 0;
 }
 
-body.layout-mobile .player-speed-preset {
+body.layout-mobile .player-speed-preset,
+body.layout-mobile .player-speed-pitch {
     min-height: 40px;
 }
 
@@ -1703,8 +1715,8 @@ body.layout-mobile .visualizer-editor { width: 100%; max-height: 25dvh; }
 body.layout-mobile .visualizer-editor-navigation { order: -1; }
 body.layout-mobile .visualizer-toolbar { gap: 6px; font-size: 12px; }
 body.layout-mobile .visualizer-toolbar button { padding: 8px; }
+body.layout-mobile .visualizer-toolbar > button > span { display: none; }
 body.layout-mobile .visualizer-quality-label { gap: 3px; }
-body.layout-mobile .mobile-open-visualizer { display: block; margin: 12px auto; padding: 10px 18px; }
 body.layout-mobile.view-visualizer .mobile-mini-player,
 body.layout-mobile.view-visualizer .mobile-plugin-fab { display: none !important; }
 body.layout-mobile.visualizer-expanded .mobile-bottom-nav { display: none; }

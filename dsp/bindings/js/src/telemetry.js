@@ -6,6 +6,9 @@ const SPECTROGRAM_FRAME = 5;
 const STEREO_FRAME = 6;
 const NOTE_SPECTROGRAM_FRAME = 24;
 const PITCH_METER_FRAME = 26;
+const ANALOG_METER_FRAME = 27;
+const ANALOG_METER_LOUDNESS_MODE = 5;
+const ANALOG_METER_MIN_DB = -240;
 const PITCH_METER_MIN_DETECTED_MIDI = 20.5;
 const PITCH_METER_MAX_DETECTED_MIDI = 108.5;
 const MULTIRES_HQ_HEADER_BYTES = 48;
@@ -15,6 +18,7 @@ const MULTIRES_HQ_SPECTRUM_CELLS = 2048;
 const MULTIRES_HQ_SPECTROGRAM_CELLS = 256;
 
 const ANALYZER_FRAMES = Object.freeze({
+  AnalogMeter: [ANALOG_METER_FRAME, [1]],
   ChromaSpiral: [SPECTRUM_FRAME, [2]],
   LevelMeter: [LEVEL_FRAME, [1]],
   NoteSpectrogram: [NOTE_SPECTROGRAM_FRAME, [3]],
@@ -392,6 +396,60 @@ function decodePitchMeter(payload, node, sequence, dropped) {
   };
 }
 
+function decodeAnalogMeter(payload, node, sequence, dropped) {
+  if (payload.byteLength < 12) return null;
+  const mode = payload.getUint8(0);
+  const channelCount = payload.getUint8(1);
+  const flags = payload.getUint16(2, true);
+  const loudness = mode === ANALOG_METER_LOUDNESS_MODE;
+  const programOffset = 4 + channelCount * 8;
+  if (mode > ANALOG_METER_LOUDNESS_MODE || channelCount < 1 || channelCount > 16 ||
+      (flags & ~(loudness ? 3 : 0)) !== 0 ||
+      payload.byteLength !== programOffset + (loudness ? 24 : 0)) {
+    return null;
+  }
+  const level = offset => {
+    const value = payload.getFloat32(offset, true);
+    return Number.isFinite(value) && value >= ANALOG_METER_MIN_DB ? value : null;
+  };
+  const channels = new Array(channelCount);
+  for (let channel = 0; channel < channelCount; channel++) {
+    const needleDb = level(4 + channel * 8);
+    const maxDb = level(8 + channel * 8);
+    if (needleDb === null || maxDb === null) return null;
+    channels[channel] = { needleDb, maxDb };
+  }
+  const integratedValid = (flags & 1) !== 0;
+  const lraValid = (flags & 2) !== 0;
+  let program = null;
+  if (loudness) {
+    const momentary = level(programOffset);
+    const shortTerm = level(programOffset + 4);
+    const integrated = payload.getFloat32(programOffset + 8, true);
+    const lra = payload.getFloat32(programOffset + 12, true);
+    const maxTruePeak = level(programOffset + 16);
+    const integratedSeconds = payload.getFloat32(programOffset + 20, true);
+    if (momentary === null || shortTerm === null || maxTruePeak === null ||
+        !Number.isFinite(integratedSeconds) || integratedSeconds < 0 ||
+        (integratedValid
+          ? !Number.isFinite(integrated) || integrated < ANALOG_METER_MIN_DB
+          : integrated !== 0) ||
+        (lraValid ? !Number.isFinite(lra) || lra < 0 : lra !== 0)) {
+      return null;
+    }
+    program = { momentary, shortTerm, integrated, lra, maxTruePeak, integratedSeconds };
+  }
+  return {
+    ...common(node, 'analogMeter', sequence, dropped),
+    mode,
+    channelCount,
+    integratedValid,
+    lraValid,
+    channels,
+    program
+  };
+}
+
 function decodeStereo(payload, node, sequence, dropped) {
   if (payload.byteLength < 1464) return null;
   const sampleRate = payload.getFloat32(0, true);
@@ -461,6 +519,8 @@ function decodePayload(frameType, formatVersion, payload, node, sequence, droppe
       return decodeNoteSpectrogram(payload, node, sequence, dropped);
     case PITCH_METER_FRAME:
       return decodePitchMeter(payload, node, sequence, dropped);
+    case ANALOG_METER_FRAME:
+      return decodeAnalogMeter(payload, node, sequence, dropped);
     default:
       return null;
   }

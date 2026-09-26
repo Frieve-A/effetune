@@ -42,6 +42,8 @@ const PIPELINE_SWITCH_SILENCE_SECONDS = 0.05;
 const DSP_STARTUP_WAIT_TIMEOUT_MS = 1000;
 const DSP_MODULE_READY_TIMEOUT_MS = 1000;
 const JS_FALLBACK_SAMPLE_CHANNEL_BUDGET = 96000;
+// Visualizer sources capture the final output, so every rule tap has zero offset.
+const VISUALIZER_SOURCE_TAP = Object.freeze({ input: 0, output: 0 });
 const DSP_EXECUTION_BYPASS_REASONS = new Set([
     'unsupportedSampleRate',
     'unsupportedChannelMode',
@@ -2089,7 +2091,7 @@ export class AudioManager {
     _visualSyncSource(tapId) {
         const source = this.visualizerSourcesByTap?.get(tapId);
         if (source) return { ruleKey: source.type, params: source.params,
-            execution: 'wasm', tap: { output: 0 } };
+            execution: 'wasm', tap: VISUALIZER_SOURCE_TAP };
         const plugin = this._visualSyncPlugin(tapId);
         if (!plugin) return null;
         return { ruleKey: plugin.constructor.name, params: plugin.getParameters?.() || plugin,
@@ -2247,7 +2249,7 @@ export class AudioManager {
             }
         }
         const taps = { ...this.dspLatencyTaps };
-        for (const source of this.visualizerSources || []) taps[source.tapId] = { output: 0 };
+        for (const source of this.visualizerSources || []) taps[source.tapId] = VISUALIZER_SOURCE_TAP;
         this.visualSyncDelayFrames = context ? requiredOutputDelayFrames({ targets, taps,
             dbtFrames: this._dbtOutputDelayFrames?.get(this._getPrimaryWorkletNode()) || 0,
             deviceLatencyFrames: this._visualSyncDeviceLatencyFrames,

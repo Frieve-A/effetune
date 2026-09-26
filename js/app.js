@@ -175,7 +175,26 @@ function captureInitialStartupSearch(windowRef = window) {
         search = '';
     }
     initialStartupSearchByWindow.set(windowRef, search);
+    removeSharedVisualizerParam(windowRef);
     return search;
+}
+
+// A Visualizer share link is applied once from the captured search. Remove it from the live URL
+// before the pipeline URL reflection can copy it forward and reapply it on every reload.
+function removeSharedVisualizerParam(windowRef) {
+    try {
+        const params = new URLSearchParams(windowRef.location?.search || '');
+        if (!params.has('v')) return;
+        params.delete('v');
+        const search = params.toString();
+        windowRef.history?.replaceState?.(
+            windowRef.history.state,
+            '',
+            `${windowRef.location.pathname}${search ? `?${search}` : ''}${windowRef.location.hash || ''}`
+        );
+    } catch (error) {
+        console.warn('Failed to remove Visualizer share link from the address:', error);
+    }
 }
 
 function hasExplicitStartupViewRequest(windowRef = window) {
@@ -183,6 +202,7 @@ function hasExplicitStartupViewRequest(windowRef = window) {
         const params = new URLSearchParams(captureInitialStartupSearch(windowRef));
         return params.has('p') ||
             params.has('dbt') ||
+            params.has('v') ||
             params.get(TRANSIENT_PIPELINE_RESTORE_PARAM) === TRANSIENT_PIPELINE_RESTORE_VALUE;
     } catch (error) {
         return false;
@@ -665,6 +685,14 @@ class App {
 
     async openConfiguredStartupView() {
         if (this.restoringTransientPipeline) {
+            return;
+        }
+
+        // Match the has('v') startup-view check; an empty value reaches the invalid-link notice.
+        const startupParams = new URLSearchParams(captureInitialStartupSearch(window));
+        if (startupParams.has('v')) {
+            try { await this.uiManager?.openSharedVisualizer?.(startupParams.get('v')); }
+            catch (error) { console.error('Error opening shared Visualizer layout:', error); }
             return;
         }
 

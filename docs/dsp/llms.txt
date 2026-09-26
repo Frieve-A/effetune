@@ -3,7 +3,7 @@
 Version: 0.11.0
 Python package: effetune
 npm package: @effetune/dsp
-Catalog entries: 107
+Catalog entries: 108
 
 Canonical resources:
 - https://effetune.frieve.com/dsp/
@@ -17,4 +17,4 @@ Canonical resources:
 - https://effetune.frieve.com/dsp/reference/graph-v1/
 - https://effetune.frieve.com/dsp/reference/compatibility/
 
-MCP, measurement, resampling, ffmpeg, integrated LUFS, and true-peak APIs are not implemented.
+MCP, resampling, and ffmpeg APIs are not implemented. Loudness and true-peak readings are available only as AnalogMeter telemetry.

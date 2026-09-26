@@ -93,7 +93,8 @@ list(
 if(NOT EMSCRIPTEN)
   # Golden parity requires separate multiply-add rounding in these kernels.
   set_property(
-    SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/dynamics/attack_tonal_balance/kernel.cpp"
+    SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/analyzer/analog_meter/kernel.cpp"
+           "${CMAKE_CURRENT_SOURCE_DIR}/plugins/dynamics/attack_tonal_balance/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/dynamics/auto_leveler/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/bluetooth_sbc_simulator/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/cassette_artifacts/kernel.cpp"
@@ -272,6 +273,11 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
     effetune_dsp_level_meter_tests SOURCES test/level_meter_frame_test.cpp)
   et_add_dsp_test(
     effetune_dsp_oscilloscope_tests SOURCES test/oscilloscope_frame_test.cpp)
+  et_add_dsp_test(
+    effetune_dsp_analog_meter_tests
+    SOURCES plugins/analyzer/analog_meter/native_test.cpp
+    INCLUDE_DIRS core
+    WRAP_MALLOC)
   et_add_dsp_test(
     effetune_dsp_chroma_spiral_tests
     SOURCES plugins/analyzer/chroma_spiral/native_test.cpp)

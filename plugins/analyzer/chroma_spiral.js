@@ -353,13 +353,14 @@ class ChromaSpiralPlugin extends PluginBase {
                         x: base.x + Math.sin(base.angle) * length,
                         y: base.y - Math.cos(base.angle) * length };
                 });
-                if (this.displayOptions?.signalColor) {
+                if (this.displayOptions?.signalColor || this.displayOptions?.spiralFillColor) {
                     for (let i = 1; i < points.length; i++) {
                         const before = points[i - 1], after = points[i];
-                        const color = this.displayOptions.signalColor((before.midi + after.midi) / 2,
+                        const midi = (before.midi + after.midi) / 2;
+                        const color = this.displayOptions.signalColor?.(midi,
                             (before.intensity + after.intensity) / 2);
-                        if (!color.alpha) continue;
-                        ctx.fillStyle = color.css;
+                        if (color && !color.alpha) continue;
+                        ctx.fillStyle = color?.css ?? this.displayOptions.spiralFillColor(midi);
                         ctx.beginPath();
                         ctx.moveTo(before.baseX, before.baseY);
                         ctx.lineTo(before.x, before.y);

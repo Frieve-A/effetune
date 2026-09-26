@@ -1,10 +1,13 @@
+import { encodePipelineState, decodePipelineState } from '../utils/pipeline-state-codec.js';
+
 export const ASPECTS = ['16:9', '21:9', '4:3', '1:1', '9:16'];
 export const ASPECT_FILES = Object.freeze({
     '16:9': '16x9.json', '21:9': '21x9.json', '4:3': '4x3.json',
     '1:1': '1x1.json', '9:16': '9x16.json'
 });
 
-export const VISUAL_TYPES = ['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'level-meter', 'notes', 'chroma'];
+export const VISUAL_TYPES = ['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'level-meter', 'notes', 'chroma', 'phase', 'analog-meter'];
+export const GRADIENT_DIRECTION_TYPES = ['spectrum', 'spectrogram', 'notes', 'chroma', 'phase'];
 export const META_TYPES = ['artwork', 'title', 'album', 'artist'];
 export const ITEM_TYPES = [...VISUAL_TYPES, ...META_TYPES];
 export const MAX_ITEMS = 64;
@@ -129,7 +132,7 @@ export function normalizeParams(type, input) {
         showCorrelation: params.showCorrelation !== false, showBalance: params.showBalance !== false, ...axes };
     if (type === 'oscilloscope') return {
         dt: Math.round(number(params.dt, 0.01, 0.001, 0.1) * 1000) / 1000,
-        tm: choice(params.tm, ['Auto', 'Normal'], 'Auto'),
+        tm: choice(params.tm, ['Auto', 'Normal', 'Off'], 'Auto'),
         tl: Math.round(number(params.tl, 0, -1, 1) * 100) / 100,
         te: choice(params.te, ['Rising', 'Falling'], 'Rising'),
         ho: Math.round(number(params.ho, 0.0001, 0.0001, 0.01) * 10000) / 10000,
@@ -163,6 +166,29 @@ export function normalizeParams(type, input) {
             df: Math.round(number(params.df, -60, -120, -24)), ...axes
         };
     }
+    if (type === 'phase') return {
+        ax: choice(params.ax, ['phase', 'balance'], 'phase'),
+        dr: Math.round(number(params.dr, -72, -96, -24) / 6) * 6,
+        ml: Math.round(number(params.ml, -40, -120, -24)),
+        pe: Math.round(number(params.pe, 0.5, 0.1, 2) * 10) / 10, ...axes
+    };
+    // Same keys, ranges, and steps as the Analog Meter effect. A needle cannot be read
+    // without its dial, so this type alone shows axes and numbers by default.
+    if (type === 'analog-meter') return {
+        md: choice(params.md, ['VU', 'PPM', 'RMS', 'Sample Peak', 'True Peak', 'Loudness'], 'VU'),
+        it: Math.round(number(params.it, 0.3, 0.05, 3) * 100) / 100,
+        at: Math.round(number(params.at, 5, 1, 20) * 10) / 10,
+        rt: Math.round(number(params.rt, 1.5, 0.1, 5) * 100) / 100,
+        rl: Math.round(number(params.rl, -14, -30, 0)),
+        rg: Math.round(number(params.rg, 40, 20, 60)),
+        sc: choice(params.sc, [0, 1, 2], 0),
+        ph: Math.round(number(params.ph, 1, 0, 10) * 10) / 10,
+        ln: choice(params.ln, [0, 1], 0),
+        tg: Math.round(number(params.tg, -23, -36, -10)),
+        ls: choice(params.ls, [0, 1], 0),
+        showAxes: params.showAxes !== false,
+        showAxisNumbers: params.showAxisNumbers !== false
+    };
     return {};
 }
 
@@ -170,7 +196,7 @@ export function paletteModesForType(type) {
     if (type === 'artwork') return [];
     const modes = ['solid', 'gradient'];
     if (['spectrum', 'notes', 'chroma'].includes(type)) modes.push('note-colors');
-    if (['spectrum', 'spectrogram', 'chroma', 'level-meter'].includes(type)) modes.push('heatmap');
+    if (['spectrum', 'spectrogram', 'chroma', 'level-meter', 'phase'].includes(type)) modes.push('heatmap');
     return modes;
 }
 
@@ -182,6 +208,9 @@ function itemPalette(type, value) {
         palette.color = color(value?.color, '#40dfff'); // theme-allow: Editable scene palette fallback.
     }
     if (octave) palette.mapping = choice(value?.mapping, ['range', 'octave'], 'range');
+    // Omitted direction preserves existing presets and share links as frequency gradients.
+    if (GRADIENT_DIRECTION_TYPES.includes(type) && value?.direction !== undefined)
+        palette.direction = choice(value.direction, ['frequency', 'intensity'], 'frequency');
     return palette;
 }
 
@@ -262,4 +291,32 @@ export function snapshotLayout(value) {
     const layout = normalizeLayout(value);
     layout.background.themeColors = { ...DEFAULT_THEME_COLORS, ...layout.background.themeColors };
     return layout;
+}
+
+// Share links omit the background image because data URIs are too large for a URL.
+export function encodeLayoutShare(layout) {
+    const snapshot = snapshotLayout(layout);
+    snapshot.background.image = null;
+    return encodePipelineState(snapshot);
+}
+
+export function decodeLayoutShare(encoded) {
+    try {
+        const layout = decodePipelineState(encoded);
+        if (validateLayout(layout)) return layout;
+        console.warn('Visualizer share link contains an invalid layout.');
+    } catch (error) {
+        console.warn('Visualizer share link could not be decoded:', error);
+    }
+    return null;
+}
+
+// Only EffeTune share links (see createShareUrl) carry a layout; other sites may use `v` too.
+export function layoutShareParam(text) {
+    try {
+        const url = new URL(String(text).trim());
+        return url.pathname.endsWith('/effetune.html') ? url.searchParams.get('v') : null;
+    } catch {
+        return null;
+    }
 }

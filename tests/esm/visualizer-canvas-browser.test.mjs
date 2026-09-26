@@ -6,6 +6,64 @@ import { chromium } from 'playwright';
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const moduleScript = path => read(path).replace(/^import .*;\r?\n/gm, '').replace(/\bexport /g, '');
 
+test('Spectrum gradient directions follow frequency and level after rotating the graph', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<!doctype html><body></body>');
+        await page.addScriptTag({ content: read('../../plugins/plugin-base.js') });
+        await page.addScriptTag({ content: read('../../plugins/analyzer/spectrum_analyzer.js') });
+        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-analyzer-display']) {
+            await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
+        }
+        const results = await page.evaluate(() => {
+            const sources = { subscribeItem: () => () => {} }, results = [];
+            for (const orientation of ['horizontal', 'vertical']) for (const dm of ['bar', 'line']) {
+                const canvas = document.createElement('canvas'); canvas.width = 800; canvas.height = 400;
+                const item = createItem('spectrum', 'spectrum');
+                Object.assign(item.params, { orientation, dm, quantizeBars: false });
+                item.palette.mode = 'gradient';
+                item.palette.stops = [{ pos: 0, color: '#0000ff' }, { pos: 1, color: '#ff0000' }];
+                const display = createAnalyzerDisplay(item, canvas, sources), plugin = display.plugin;
+                plugin.collectSpectrumLevels = width => new Map(Array.from({ length: width }, (_, x) => [x, [-24, -24]]));
+                const width = orientation === 'vertical' ? 400 : 800;
+                const height = orientation === 'vertical' ? 800 : 400;
+                const count = width < 500 ? SPECTRUM_NARROW_BAR_COUNT : SPECTRUM_WIDE_BAR_COUNT;
+                const frequencyX = fraction => dm === 'bar'
+                    ? (Math.floor(count * fraction) + .5) * width / count : width * fraction;
+                const pixel = (fraction, level) => {
+                    const x = frequencyX(fraction), y = height * level;
+                    const point = orientation === 'vertical' ? [800 - y, 400 - x] : [x, y];
+                    return [...canvas.getContext('2d').getImageData(Math.floor(point[0]), Math.floor(point[1]), 1, 1).data];
+                };
+                for (const direction of ['frequency', 'intensity']) {
+                    item.palette.direction = direction;
+                    display.draw(item, 0, 800);
+                    const level = dm === 'bar' ? .5 : .25;
+                    results.push({ orientation, dm, direction,
+                        first: pixel(.25, level), second: pixel(.75, level),
+                        weaker: dm === 'bar' ? pixel(.25, .8) : null });
+                }
+                display.dispose();
+            }
+            return results;
+        });
+        for (const { orientation, dm, direction, first, second, weaker } of results) {
+            const description = `${orientation} ${dm} ${direction}`;
+            assert.ok(first[3] > 0 && second[3] > 0, description);
+            if (direction === 'frequency') {
+                assert.ok(second[0] - first[0] > 100, description);
+                if (weaker) assert.deepEqual(weaker, first, description);
+            } else {
+                assert.deepEqual(first, second, description);
+                if (weaker) assert.ok(first[0] - weaker[0] > 50 && weaker[2] - first[2] > 50, description);
+            }
+        }
+    } finally {
+        await browser.close();
+    }
+});
+
 test('Analyzer layers preserve the scene below them and reflect labels without mirroring their glyphs', async () => {
     const browser = await chromium.launch({ headless: true });
     try {
@@ -493,12 +551,34 @@ test('Notes move the keyboard to the opposite side without reversing its keys', 
                         : null;
                     rows.push({ flipX, flipY, keys, oldSide, labels: structuredClone(labels) });
                 }
+                item.params.vl = true;
+                const meters = [];
+                for (const [flipX, flipY] of [[false, false], [true, false], [false, true], [true, true]]) {
+                    item.flipX = flipX; item.flipY = flipY;
+                    const moved = horizontal ? flipY : flipX;
+                    // The volume semicircle bulges from the key boundary into the roll.
+                    const meterDepth = moved ? gutter + rowHeight / 2 : rollWidth - rowHeight / 2;
+                    const position = (item.params.mx - 60 + .5) * rowHeight;
+                    const sample = level => {
+                        display.draw(item, 1, 800);
+                        display.plugin.meterCurrent.fill(level);
+                        display.draw(item, 1, 800);
+                        return [...(horizontal
+                            ? context.getImageData(canvas.width - position, meterDepth, 1, 1)
+                            : context.getImageData(meterDepth, position, 1, 1)).data];
+                    };
+                    meters.push({ flipX, flipY, silent: sample(-Infinity), loud: sample(0) });
+                }
                 display.dispose();
-                return { layout, rows, keySpan: 12 * rowHeight / 7 - 2,
+                return { layout, rows, meters, keySpan: 12 * rowHeight / 7 - 2,
                     keyDepth: gutter - 28 * length / (horizontal ? 1024 : 480) - 2 };
             });
         });
-        for (const { layout, rows, keySpan, keyDepth } of results) {
+        for (const { layout, rows, meters, keySpan, keyDepth } of results) {
+            for (const row of meters) {
+                assert.notDeepEqual(row.loud, row.silent,
+                    `${layout} flipX=${row.flipX} flipY=${row.flipY} draws the volume meter beside the keys`);
+            }
             const baseline = rows[0].keys;
             assert.ok(new Set(baseline.map(pixel => pixel.join(','))).size > 1, `${layout} samples white and black keys`);
             for (const row of rows) {

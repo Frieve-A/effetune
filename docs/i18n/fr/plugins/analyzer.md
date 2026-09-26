@@ -1,6 +1,6 @@
 ---
 title: "Plugins d'analyse - EffeTune"
-description: "Plugins de visualisation audio, dont Chroma Spiral, Level Meter, Note Spectrogram, Oscilloscope, Pitch Meter, Spectrogram, Spectrum Analyzer et Stereo Meter."
+description: "Plugins de visualisation audio, dont Analog Meter, Chroma Spiral, Level Meter, Note Spectrogram, Oscilloscope, Pitch Meter, Spectrogram, Spectrum Analyzer et Stereo Meter."
 lang: fr
 ---
 
@@ -10,6 +10,7 @@ Une collection de plugins qui vous permettent de visualiser votre musique de man
 
 ## Liste des plugins
 
+- [Analog Meter](#analog-meter) - Affiche les niveaux de canal sur un vu-mètre à aiguille avec des échelles VU, PPM, pic et sonie
 - [Chroma Spiral](#chroma-spiral) - Place les composantes fréquentielles sur une spirale de notes et d'octaves
 - [Level Meter](#level-meter) - Affiche le niveau du signal numérique et les risques de clipping
 - [Note Spectrogram](#note-spectrogram) - Affiche les hauteurs estimées au fil du temps sous forme de piano roll
@@ -18,6 +19,76 @@ Une collection de plugins qui vous permettent de visualiser votre musique de man
 - [Spectrogram](#spectrogram) - Crée de magnifiques motifs visuels à partir de votre musique
 - [Spectrum Analyzer](#spectrum-analyzer) - Affiche les différentes fréquences de votre musique
 - [Stereo Meter](#stereo-meter) - Visualise l'équilibre stéréo et la corrélation entre canaux
+
+## Analog Meter
+
+Affiche le niveau de chaque canal sur un vu-mètre à aiguille classique, sans modifier le son. Utilisez-le pour suivre d'un instant à l'autre l'intensité de votre musique, ou pour voir comment votre lecture se lit sur les échelles utilisées en radiodiffusion et en streaming : VU, PPM, pic et sonie (LUFS).
+
+### Guide d'utilisation
+
+- **Suivez le niveau moyen avec VU** : observez l'aiguille pendant une chanson. Les couplets calmes et les refrains intenses montrent une nette différence, tandis que les coups de batterie brefs déplacent à peine l'aiguille.
+- **Vérifiez l'écrêtage avec True Peak** : placez Analog Meter après vos effets d'égalisation et de gain, puis lisez le passage le plus fort d'un morceau. Si la lecture dépasse 0 dBFS ou que le voyant over s'allume, la chaîne peut écrêter ; réduisez le gain jusqu'à ce que les pics restent sous 0 dBFS, avec une petite marge comme -1 dBFS.
+- **Comparez des morceaux avec Loudness** : réglez **Target** sur une référence de streaming comme -14 LUFS, appuyez sur **Reset** au début d'un morceau ou d'un album, puis lisez-le en entier. La valeur Integrated indique la sonie globale et le maximum True Peak indique son pic le plus élevé, ce qui donne un repère pour égaliser le volume d'un album ou d'une playlist. LRA permet de comparer l'ampleur de variation de la sonie de chaque morceau.
+
+### Préréglages système
+
+Cliquez sur **Préréglages d’effet** dans l'en-tête de l'effet pour régler le vu-mètre sur un standard reconnu en une seule étape. Un préréglage qui change **Mode** redémarre la mesure ; passer d'un préréglage Loudness à un autre ne l'interrompt pas.
+
+- **Studio VU (-18 dBFS)** - VU avec 0 VU à -18 dBFS, l'alignement de studio courant (EBU R68). Convient aux enregistrements qui gardent une large marge (headroom).
+- **SMPTE VU (-20 dBFS)** - VU avec 0 VU à -20 dBFS (SMPTE RP 155), la pratique des studios et de la radiodiffusion en Amérique du Nord.
+- **Hot VU (-14 dBFS)** - Les réglages initiaux : VU avec 0 VU à -14 dBFS, adapté à la plupart des enregistrements commerciaux finalisés.
+- **Loud Master VU (-8 dBFS)** - VU avec 0 VU à -8 dBFS, pour les CD modernes et les masters pop poussés au maximum de sonie, qui bloqueraient sinon l'aiguille en haut de l'échelle.
+- **DIN PPM** - Le vu-mètre DIN (**Attack** de 5 ms, chute de 20 dB en 1,5 s, échelle DIN) avec le repère -9 à -18 dBFS, si bien que le 0 se trouve à -9 dBFS. L'échelle descend jusqu'à -50.
+- **BBC PPM** - Le vu-mètre BBC (**Attack** de 10 ms, chute de 24 dB en 2,8 s, échelle BBC) avec le repère 4 à -18 dBFS, si bien que le repère 6 se trouve à -10 dBFS.
+- **Nagra Modulometer** - Le modulomètre des magnétophones Nagra (**Attack** de 7,5 ms, échelle en dB de -30 à +5 dB) avec 0 dB à -18 dBFS. **Release** reprend la valeur DIN de 1,5 s.
+- **K-20** - Le K-System de Bob Katz sur un vu-mètre RMS, avec 0 à -20 dBFS et une échelle qui descend jusqu'à -60 dBFS. Pour les enregistrements à grande dynamique.
+- **K-14** - Identique, avec 0 à -14 dBFS et l'échelle jusqu'à -60 dBFS. Pour la musique pop courante.
+- **K-12** - Identique, avec 0 à -12 dBFS et l'échelle jusqu'à -60 dBFS. Pour les contenus fortement compressés destinés à la diffusion.
+- **Digital Peak** - Un vu-mètre de pic numérique standard (IEC 60268-18) de -60 à 0 dBFS, avec un maintien de pic de 2 s.
+- **True Peak Clip Watch** - True Peak resserré sur les 20 dB du haut de l'échelle, avec le maintien de pic le plus long (10 s), pour repérer les pics au-dessus de 0 dBFS après une modification de l'EQ ou du gain.
+- **EBU R128 (-23 LUFS)** - Loudness avec la cible de la radiodiffusion européenne et l'échelle EBU +9.
+- **EBU R128 +18 Scale** - La même cible avec l'échelle EBU +18, plus large, pour la musique classique et les autres contenus à grande dynamique.
+- **TV (-24 LKFS)** - Loudness avec la cible de -24 LKFS utilisée pour la télévision aux États-Unis (ATSC A/85) et au Japon (ARIB TR-B32).
+- **Streaming (-14 LUFS)** - Loudness avec une cible de -14 LUFS, proche de la normalisation du volume de nombreux services de streaming musical, et l'aiguille Short-term, plus calme.
+- **Streaming (-16 LUFS)** - Loudness avec la cible de -16 LUFS recommandée pour le streaming et les podcasts (AES TD1008), et l'aiguille Short-term.
+
+### Paramètres
+
+Seules les commandes qui s'appliquent au **Mode** sélectionné sont affichées.
+
+- **Mode** - Sélectionne le type de vu-mètre : **VU** (par défaut), **PPM**, **RMS**, **Sample Peak**, **True Peak** ou **Loudness**. Chaque mode déplace l'aiguille différemment et utilise sa propre échelle (voir Lire la visualisation). Changer de mode redémarre la mesure.
+- **Integration** (RMS ; de 0,05 à 3 s ; valeur initiale : 0,3 s) - Définit le temps de moyennage. Des valeurs plus longues rendent l'aiguille plus stable et plus lente ; des valeurs plus courtes la font suivre les changements plus vite.
+- **Attack** (PPM ; de 1 à 20 ms ; valeur initiale : 5 ms) - Définit la vitesse à laquelle l'aiguille monte en mode PPM, exprimée comme la durée d'une salve qui se lit 2 dB sous un signal continu. Des valeurs plus courtes montrent les pics brefs plus près de leur niveau réel ; des valeurs plus longues font lire les pics brefs plus bas. 5 ms correspond au vu-mètre DIN.
+- **Release** (PPM, Sample Peak, True Peak ; de 0,1 à 5 s ; valeur initiale : 1,5 s) - Définit le temps que met l'aiguille à retomber de 20 dB après un pic. Des valeurs plus longues facilitent la lecture des pics ; des valeurs plus courtes suivent la musique de plus près. 1,5 s correspond au vu-mètre DIN et au vu-mètre de pic numérique standard.
+- **Reference** (VU, PPM, RMS ; de -30 à 0 dBFS ; valeur initiale : -14 dBFS) - Définit le niveau numérique qui correspond au repère de référence du vu-mètre. La valeur initiale convient à la plupart des enregistrements commerciaux finalisés ; avec les alignements de studio à -18 ou -20 dBFS (voir Préréglages système), un CD ordinaire maintient souvent l'aiguille près du haut de l'échelle. Augmentez-le quand des enregistrements intenses poussent l'aiguille en haut de l'échelle ; diminuez-le quand des enregistrements calmes la déplacent à peine.
+- **Range** (PPM avec l'échelle DIN ou dB, RMS, Sample Peak, True Peak ; de 20 à 60 dB ; valeur initiale : 40 dB) - Définit jusqu'où l'échelle descend. Élargissez-la pour voir les passages calmes ; réduisez-la pour mieux répartir le haut de l'échelle.
+- **PPM Scale** (PPM ; valeur initiale : DIN) - Sélectionne l'échelle du PPM : **DIN**, **BBC** ou **dB** (voir Lire la visualisation).
+- **Peak Hold** (PPM, RMS, Sample Peak, True Peak ; de 0 à 10 s ; valeur initiale : 1 s) - Définit la durée pendant laquelle le repère de pic reste sur la lecture la plus haute récente, ainsi que la durée pendant laquelle le voyant over reste allumé. 0 désactive le repère ; le voyant over reste alors allumé 1 s.
+- **Needle** (Loudness ; valeur initiale : Momentary) - Sélectionne ce que montre l'aiguille. **Momentary** suit la sonie des 0,4 dernières secondes ; **Short-term** montre les 3 dernières secondes et se déplace plus calmement.
+- **Target** (Loudness ; de -36 à -10 LUFS ; valeur initiale : -23 LUFS) - Définit la sonie repérée sur l'échelle et positionne l'échelle par rapport à cette valeur. -23 LUFS est le niveau de diffusion EBU R128 ; de nombreux services de streaming utilisent des valeurs autour de -14 LUFS.
+- **Scale** (Loudness ; valeur initiale : EBU +9) - Sélectionne la largeur de l'échelle de sonie. **EBU +9** couvre de 18 LU en dessous à 9 LU au-dessus de **Target** ; **EBU +18** couvre de 36 LU en dessous à 18 LU au-dessus, ce qui convient à une musique à grande dynamique ou à des contenus très intenses.
+
+### Lire la visualisation
+
+- Chaque canal a son propre vu-mètre, jusqu'à quatre par ligne et jusqu'à 16 canaux.
+- Les niveaux suivent la convention numérique courante selon laquelle une sinusoïde à pleine échelle se lit 0 dBFS ; une sinusoïde constante donne donc la même lecture dans tous les modes sauf Loudness.
+- Les modes diffèrent par la rapidité du mouvement de l'aiguille :
+
+| Mode | Mouvement de l'aiguille | Échelle |
+|---|---|---|
+| VU | Lent. Il atteint un nouveau niveau en environ 0,3 s et montre le niveau moyen (IEC 60268-17). | De -20 à +3 VU. 0 VU = **Reference**. |
+| PPM | Une approximation basée sur IEC 60268-10. Il monte rapidement à la vitesse fixée par **Attack** ; avec la valeur par défaut de 5 ms, une salve de 10 ms est lue environ 1 dB en dessous d'un son continu, comme sur un vu-mètre DIN. Il redescend de 20 dB en un temps égal à **Release**. | Choisie avec **PPM Scale**. **DIN** : le repère -9 = **Reference**, donc 0 se trouve 9 dB au-dessus. **BBC** : repères de 1 à 7, avec 4 dB entre les repères de 2 à 7 et 6 dB entre 1 et 2 ; le repère 4 = **Reference**. **dB** : le repère 0 = **Reference**, de **Range** en dessous jusqu'à +5 dB. |
+| RMS | Montre la puissance moyenne sur la durée d'**Integration**, sans lissage supplémentaire. | Le repère 0 = **Reference**. |
+| Sample Peak | Saute immédiatement à la valeur d'échantillon la plus haute. | Le haut de l'échelle = 0 dBFS. |
+| True Peak | Comme Sample Peak, mais estime aussi les pics entre les échantillons. Peut lire au-dessus de 0 dBFS ; ces pics peuvent écrêter dans un CNA ou pendant la conversion. | Le haut de l'échelle = 0 dBFS. |
+| Loudness | Montre la sonie en LUFS selon ITU-R BS.1770 et EBU R128. | Défini par **Target** et **Scale** ; les lectures sont affichées en LUFS. |
+
+- Le repère de pic montre la lecture la plus haute récente pendant la durée de **Peak Hold**. Le voyant over s'allume quand le niveau dépasse 0 dBFS et reste allumé pendant la durée de **Peak Hold**, ou 1 s si **Peak Hold** vaut 0.
+- En mode Loudness, le premier vu-mètre montre le programme entier. Son aiguille suit le réglage **Needle**, et il liste Momentary (M), Short-term (S), Integrated (I), Loudness Range (LRA), le maximum True Peak et la durée de mesure écoulée, avec un bouton **Reset**. Integrated et LRA apparaissent une fois qu'assez d'audio a été mesuré.
+  - Pour le mono, la stéréo et le 5.1 (ordre des canaux L, R, C, LFE, Ls, Rs), ces valeurs suivent la pondération de canaux standard. Pour d'autres nombres de canaux, tous les canaux sont additionnés à poids égal, donc les valeurs sont indicatives.
+  - Les vu-mètres suivants montrent chaque canal séparément. Ce sont des valeurs indicatives, mesurées sans pondération de canaux ni porte.
+- Integrated, LRA et le maximum True Peak continuent de s'accumuler jusqu'à ce que vous appuyiez sur **Reset**, changiez de **Mode**, que la fréquence d'échantillonnage ou le nombre de canaux change, ou que le traitement audio redémarre.
+- Le temps pendant lequel le traitement est en pause n'est pas mesuré : pendant les pauses d'économie d'énergie en silence, tant que Master Bypass est actif ou qu'Analog Meter est désactivé, ou tant qu'Effect Pipeline n'est pas affiché (par exemple dans la Bibliothèque musicale, lorsque la fenêtre est réduite ou en Mini-lecteur) alors que l'option **Ignorer le DSP d’affichage lorsque l’application est masquée** est activée dans Configuration (c'est le cas par défaut). Les lectures reprennent là où elles s'étaient arrêtées.
 
 ## Chroma Spiral
 
@@ -122,6 +193,7 @@ Affiche la forme de l'onde sonore en temps réel, afin de voir les impacts, les 
 - **Trigger Mode**
   - Auto : Mises à jour continues même sans déclenchement
   - Normal : Fige l'affichage jusqu'au prochain déclenchement
+  - Off : Sans déclenchement ; affiche en continu la forme d'onde la plus récente. Trigger Level, Trigger Edge et Holdoff sont sans effet
 - La détection du déclenchement utilise la moyenne des canaux gauche et droit. Une entrée mono est utilisée directement.
 - **Trigger Level** - Niveau d'amplitude qui démarre la capture
   - Plage : -1 à 1 (amplitude normalisée)

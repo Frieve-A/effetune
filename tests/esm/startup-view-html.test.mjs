@@ -87,6 +87,14 @@ test('effetune.html restores Visualizer unless the URL requests a pipeline', () 
   }
 });
 
+test('effetune.html opens Visualizer for a share link regardless of the startup view', () => {
+  for (const config of [{ startupView: 'effects' }, { startupView: 'library' }, undefined]) {
+    const run = runEarlyStartupViewScript({ config, search: '?v=layout' });
+    assert.equal(run.classes.has('view-visualizer'), true);
+    assert.equal(run.classes.has('view-library'), false);
+  }
+});
+
 test('effetune.html distinguishes reflected reloads from explicit startup requests', () => {
   for (const startupView of ['visualizer', 'library']) {
     const config = { startupView };

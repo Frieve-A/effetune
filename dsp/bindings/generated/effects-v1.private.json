@@ -30,6 +30,62 @@
     "right": "R"
   },
   "effects": {
+    "AnalogMeter": {
+      "internalType": "AnalogMeterPlugin",
+      "layoutHash": 3236050637,
+      "floatCount": 4,
+      "packedParameters": [
+        {
+          "publicName": "mode",
+          "field": "mode",
+          "keys": [
+            "md"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "integration",
+          "field": "integration",
+          "keys": [
+            "it"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "attack",
+          "field": "attack",
+          "keys": [
+            "at"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "release",
+          "field": "release",
+          "keys": [
+            "rt"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
     "ChromaSpiral": {
       "internalType": "ChromaSpiralPlugin",
       "layoutHash": 2166136261,
@@ -90,7 +146,7 @@
     },
     "Oscilloscope": {
       "internalType": "OscilloscopePlugin",
-      "layoutHash": 2229411282,
+      "layoutHash": 3233109287,
       "floatCount": 7,
       "packedParameters": [
         {
@@ -10267,6 +10323,7 @@
     }
   },
   "frozenGoldenIndexes": {
+    "dsp/plugins/analyzer/analog_meter/params.json": "dsp/plugins/analyzer/analog_meter/golden/index.json",
     "dsp/plugins/analyzer/chroma_spiral/params.json": "dsp/plugins/analyzer/chroma_spiral/golden/index.json",
     "dsp/plugins/analyzer/level_meter/params.json": "dsp/plugins/analyzer/level_meter/golden/index.json",
     "dsp/plugins/analyzer/note_spectrogram/params.json": "dsp/plugins/analyzer/note_spectrogram/golden/index.json",
@@ -10375,5 +10432,5 @@
     "dsp/plugins/spatial/spatial_mapper/params.json": "dsp/plugins/spatial/spatial_mapper/golden/index.json",
     "dsp/plugins/spatial/stereo_blend/params.json": "dsp/plugins/spatial/stereo_blend/golden/index.json"
   },
-  "contractDigest": "1cf050bd6c4cde57d4ccc236fef0dffbb9d64247ca9f8a2d16160faf7a7a1f26"
+  "contractDigest": "66175f0d1430a20521b7c33db53a7a088a2eabc835c36c050369e67903112137"
 }

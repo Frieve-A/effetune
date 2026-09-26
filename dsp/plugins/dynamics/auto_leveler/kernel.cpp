@@ -2,6 +2,7 @@
 #include "AutoLevelerPluginParams.h"
 #include "effetune/dsp/biquad.h"
 #include "effetune/dsp/denormal_noise.h"
+#include "effetune/dsp/k_weighting.h"
 
 #include "group_b_telemetry.h"
 
@@ -9,52 +10,15 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <numbers>
 #include <vector>
 
 namespace effetune::plugins::dynamics {
 namespace {
 
-// Offset between the K-weighted power sum and the LUFS scale, ITU-R BS.1770-4 eq. (2).
-constexpr double kLufsOffset = 0.691;
-// K-weighting stage designs. Tables 1 and 2 of BS.1770-4 are the 48 kHz case of these, so
-// deriving them from the prepared sample rate keeps the weighting curve in place at 44.1,
-// 96 and 192 kHz instead of only at 48 kHz.
-constexpr double kShelfFrequency = 1681.974450955533;
-constexpr double kShelfGainDb = 3.999843853973347;
-constexpr double kShelfQ = 0.7071752369554196;
-constexpr double kShelfGainExponent = 0.4996667741545416;
-constexpr double kHighpassFrequency = 38.13547087602444;
-constexpr double kHighpassQ = 0.5003270373238773;
-
-dsp::BiquadCoefficients designHighpass(double sample_rate) noexcept {
-  const double k = std::tan(std::numbers::pi * kHighpassFrequency / sample_rate);
-  const double a0 = 1.0 + k / kHighpassQ + k * k;
-  return {1.0, -2.0, 1.0, 2.0 * (k * k - 1.0) / a0, (1.0 - k / kHighpassQ + k * k) / a0};
-}
-
-dsp::BiquadCoefficients designShelf(double sample_rate) noexcept {
-  const double k = std::tan(std::numbers::pi * kShelfFrequency / sample_rate);
-  const double vh = std::pow(10.0, kShelfGainDb / 20.0);
-  const double vb = std::pow(vh, kShelfGainExponent);
-  const double a0 = 1.0 + k / kShelfQ + k * k;
-  return {(vh + vb * k / kShelfQ + k * k) / a0, 2.0 * (k * k - vh) / a0,
-          (vh - vb * k / kShelfQ + k * k) / a0, 2.0 * (k * k - 1.0) / a0,
-          (1.0 - k / kShelfQ + k * k) / a0};
-}
-
-// BS.1770-4 table 3 weights. The Recommendation tabulates the 5.1 layout only, and Web Audio
-// orders six channels L, R, C, LFE, Ls, Rs. Every other channel count is summed unweighted,
-// which is the table's value for non-surround channels.
-double channelWeight(std::uint32_t channel, std::uint32_t channel_count) noexcept {
-  if (channel_count != 6u) {
-    return 1.0;
-  }
-  if (channel == 3u) {
-    return 0.0;
-  }
-  return channel >= 4u ? 1.41 : 1.0;
-}
+using dsp::k_weighting::channelWeight;
+using dsp::k_weighting::designHighpass;
+using dsp::k_weighting::designShelf;
+using dsp::k_weighting::kLufsOffset;
 
 } // namespace
 

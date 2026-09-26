@@ -4583,6 +4583,7 @@ test('background display DSP bypass keeps normal WASM active and leaves the nati
   });
   assert.equal(harness.processor.dspPipelineReady, false);
   const analyzerTypes = [
+    'AnalogMeterPlugin',
     'ChromaSpiralPlugin',
     'LevelMeterPlugin',
     'NoteSpectrogramPlugin',

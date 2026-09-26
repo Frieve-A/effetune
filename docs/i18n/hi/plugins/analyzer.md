@@ -1,6 +1,6 @@
 ---
 title: "विश्लेषण प्लगइन - EffeTune"
-description: "Chroma Spiral, Level Meter, Note Spectrogram, Oscilloscope, Pitch Meter, Spectrogram, Spectrum Analyzer और Stereo Meter सहित ऑडियो विश्लेषण प्लगइन।"
+description: "Analog Meter, Chroma Spiral, Level Meter, Note Spectrogram, Oscilloscope, Pitch Meter, Spectrogram, Spectrum Analyzer और Stereo Meter सहित ऑडियो विश्लेषण प्लगइन।"
 lang: hi
 ---
 
@@ -10,6 +10,7 @@ lang: hi
 
 ## प्लगइन सूची
 
+- [Analog Meter](#analog-meter) - चैनल के स्तर को VU, PPM, पीक और loudness स्केल वाले needle मीटर पर दिखाता है
 - [Chroma Spiral](#chroma-spiral) - आवृत्ति घटकों को सुर और सप्तक की सर्पिल आकृति में दिखाता है
 - [Level Meter](#level-meter) - digital signal level और संभावित clipping दिखाता है
 - [Note Spectrogram](#note-spectrogram) - समय के साथ अनुमानित pitch को piano roll में दिखाता है
@@ -18,6 +19,76 @@ lang: hi
 - [Spectrogram](#spectrogram) - आपके संगीत से सुंदर visual patterns बनाता है
 - [Spectrum Analyzer](#spectrum-analyzer) - संगीत की अलग-अलग frequencies दिखाता है
 - [Stereo Meter](#stereo-meter) - stereo balance और phase relationships को visualize करता है
+
+## Analog Meter
+
+आवाज़ बदले बिना, यह हर चैनल का स्तर एक क्लासिक needle मीटर पर दिखाता है। इससे आप अपने संगीत की तेज़-धीमी लय पल-पल देख सकते हैं, या यह देख सकते हैं कि आपका प्लेबैक broadcasting और streaming में इस्तेमाल होने वाले पैमानों पर कैसा पढ़ा जाता है: VU, PPM, पीक और loudness (LUFS)।
+
+### उपयोग मार्गदर्शिका
+
+- **VU से औसत स्तर देखें**: गाने के दौरान needle को देखें। शांत छंद और तेज़ chorus में साफ़ अंतर दिखता है, जबकि छोटे ड्रम हिट से needle लगभग नहीं हिलता।
+- **True Peak से clipping जाँचें**: Analog Meter को अपने EQ और gain इफ़ेक्ट्स के बाद रखें और ट्रैक का सबसे तेज़ हिस्सा बजाएँ। अगर रीडिंग 0 dBFS से ऊपर जाती है या over लैंप जलता है, तो चेन में clip हो सकता है; gain इतना घटाएँ कि पीक -1 dBFS जैसे छोटे मार्जिन के साथ 0 dBFS से नीचे रहें।
+- **Loudness से गाने compare करें**: **Target** को streaming के किसी संदर्भ मान जैसे -14 LUFS पर सेट करें, गाने या एल्बम की शुरुआत में **Reset** दबाएँ, और उसे पूरा बजाएँ। Integrated मान पूरी लाउडनेस दिखाता है और अधिकतम True Peak सबसे ऊँचा पीक दिखाता है, जो एल्बम या playlist में वॉल्यूम मैच करने का आधार देता है। LRA से हर गाने की loudness में बदलाव की सीमा compare की जा सकती है।
+
+### सिस्टम प्रीसेट
+
+मीटर को किसी जाने-माने मानक पर एक ही बार में सेट करने के लिए इफ़ेक्ट के शीर्षक में **इफ़ेक्ट प्रीसेट** पर क्लिक करें। जो प्रीसेट **Mode** बदलता है, उसे चुनने पर मापन फिर से शुरू होता है; Loudness के एक प्रीसेट से दूसरे पर जाने पर मापन चलता रहता है।
+
+- **Studio VU (-18 dBFS)** - VU, जिसमें 0 VU -18 dBFS पर है; यह स्टूडियो का आम alignment (EBU R68) है। भरपूर headroom वाली रिकॉर्डिंग के लिए उपयुक्त।
+- **SMPTE VU (-20 dBFS)** - VU, जिसमें 0 VU -20 dBFS पर है (SMPTE RP 155); उत्तरी अमेरिका के स्टूडियो और broadcasting में यही चलन है।
+- **Hot VU (-14 dBFS)** - डिफ़ॉल्ट सेटिंग: VU, जिसमें 0 VU -14 dBFS पर है; यह ज़्यादातर तैयार व्यावसायिक रिकॉर्डिंग के लिए उपयुक्त है।
+- **Loud Master VU (-8 dBFS)** - VU, जिसमें 0 VU -8 dBFS पर है; उन आधुनिक CD और pop masters के लिए जिनकी loudness अधिकतम तक बढ़ाई गई है और जिनमें वरना needle ऊपरी सिरे पर ही टिकी रहती।
+- **DIN PPM** - DIN मीटर (**Attack** 5 ms, 1.5 s में 20 dB गिरावट, DIN स्केल), जिसमें -9 का निशान -18 dBFS पर है, यानी 0 का निशान -9 dBFS पर आता है। स्केल -50 तक नीचे जाता है।
+- **BBC PPM** - BBC मीटर (**Attack** 10 ms, 2.8 s में 24 dB गिरावट, BBC स्केल), जिसमें निशान 4 -18 dBFS पर है, यानी निशान 6 -10 dBFS पर आता है।
+- **Nagra Modulometer** - Nagra टेप रिकॉर्डर का modulometer (**Attack** 7.5 ms, -30 से +5 dB तक का dB स्केल), जिसमें 0 dB -18 dBFS पर है। **Release** DIN वाला 1.5 s मान इस्तेमाल करता है।
+- **K-20** - RMS मीटर पर Bob Katz का K-System, जिसमें 0 -20 dBFS पर है और स्केल नीचे -60 dBFS तक जाता है। व्यापक dynamics वाली रिकॉर्डिंग के लिए।
+- **K-14** - वही, पर 0 -14 dBFS पर और स्केल -60 dBFS तक। आम pop संगीत के लिए।
+- **K-12** - वही, पर 0 -12 dBFS पर और स्केल -60 dBFS तक। broadcast के लिए बनी, भारी compression वाली सामग्री के लिए।
+- **Digital Peak** - मानक डिजिटल पीक मीटर (IEC 60268-18), -60 से 0 dBFS तक, जिसमें पीक निशान 2 s तक टिका रहता है।
+- **True Peak Clip Watch** - True Peak, जिसमें स्केल के ऊपरी 20 dB को बड़ा करके दिखाया जाता है और पीक निशान सबसे लंबे समय (10 s) तक टिका रहता है; EQ या gain बदलने के बाद 0 dBFS से ऊपर के पीक पकड़ने के लिए।
+- **EBU R128 (-23 LUFS)** - यूरोपीय broadcast लक्ष्य और EBU +9 स्केल के साथ Loudness।
+- **EBU R128 +18 Scale** - वही लक्ष्य, पर ज़्यादा चौड़े EBU +18 स्केल के साथ; शास्त्रीय संगीत और व्यापक dynamics वाली दूसरी सामग्री के लिए।
+- **TV (-24 LKFS)** - अमेरिका (ATSC A/85) और जापान (ARIB TR-B32) में TV के लिए इस्तेमाल होने वाले -24 LKFS लक्ष्य के साथ Loudness।
+- **Streaming (-14 LUFS)** - -14 LUFS लक्ष्य के साथ Loudness, जो कई music streaming सेवाओं के volume normalization के करीब है, और शांत चलने वाली Short-term needle।
+- **Streaming (-16 LUFS)** - streaming और podcast के लिए सुझाए गए -16 LUFS लक्ष्य (AES TD1008) के साथ Loudness, और Short-term needle।
+
+### पैरामीटर
+
+केवल वही नियंत्रण दिखाई देते हैं जो चुने गए **Mode** पर लागू होते हैं।
+
+- **Mode** - मीटर का प्रकार चुनता है: **VU** (डिफ़ॉल्ट), **PPM**, **RMS**, **Sample Peak**, **True Peak**, या **Loudness**। हर मोड में needle अलग तरह से चलता है और अपना अलग स्केल इस्तेमाल करता है (देखें दृश्य कैसे पढ़ें)। मोड बदलने पर मापन फिर से शुरू होता है।
+- **Integration** (RMS; 0.05 से 3 s; डिफ़ॉल्ट 0.3 s) - औसत निकालने का समय तय करता है। बड़े मान से needle स्थिर और धीमी हो जाती है; छोटे मान से यह बदलावों को जल्दी फॉलो करती है।
+- **Attack** (PPM; 1 से 20 ms; डिफ़ॉल्ट 5 ms) - PPM मोड में needle कितनी तेज़ी से ऊपर उठती है, यह तय करता है, जिसे उस burst की अवधि के रूप में व्यक्त किया जाता है जो स्थिर टोन से 2 dB कम पढ़ा जाता है। छोटे मान से संक्षिप्त पीक अपने वास्तविक स्तर के करीब दिखते हैं; बड़े मान से संक्षिप्त पीक कम पढ़े जाते हैं। 5 ms DIN मीटर जैसा है।
+- **Release** (PPM, Sample Peak, True Peak; 0.1 से 5 s; डिफ़ॉल्ट 1.5 s) - पीक के बाद needle को 20 dB गिरने में कितना समय लगता है, यह तय करता है। बड़े मान से पीक पढ़ना आसान होता है; छोटे मान से संगीत को ज़्यादा सटीकता से फॉलो किया जाता है। 1.5 s DIN मीटर और मानक डिजिटल पीक मीटर जैसा है।
+- **Reference** (VU, PPM, RMS; -30 से 0 dBFS; डिफ़ॉल्ट -14 dBFS) - वह digital level तय करता है जो मीटर के reference निशान पर आता है। डिफ़ॉल्ट मान ज़्यादातर तैयार व्यावसायिक रिकॉर्डिंग के लिए उपयुक्त है; -18 या -20 dBFS वाले स्टूडियो alignment (देखें सिस्टम प्रीसेट) पर साधारण CD में भी needle अक्सर स्केल के ऊपरी सिरे के पास टिकी रहती है। जब तेज़ रिकॉर्डिंग needle को स्केल के ऊपरी सिरे तक धकेल दे तो इसे बढ़ाएँ; जब शांत रिकॉर्डिंग से needle लगभग न हिले तो इसे घटाएँ।
+- **Range** (DIN या dB स्केल वाला PPM, RMS, Sample Peak, True Peak; 20 से 60 dB; डिफ़ॉल्ट 40 dB) - स्केल नीचे तक कितना जाता है, यह तय करता है। शांत हिस्से देखने के लिए इसे बढ़ाएँ; स्केल के ऊपरी हिस्से को फैलाने के लिए इसे घटाएँ।
+- **PPM Scale** (PPM; डिफ़ॉल्ट DIN) - PPM का स्केल चुनता है: **DIN**, **BBC**, या **dB** (देखें दृश्य कैसे पढ़ें)।
+- **Peak Hold** (PPM, RMS, Sample Peak, True Peak; 0 से 10 s; डिफ़ॉल्ट 1 s) - पीक निशान हाल की सबसे ऊँची रीडिंग पर कितनी देर टिका रहता है और over लैंप कितनी देर जला रहता है, यह तय करता है। 0 करने पर निशान बंद हो जाता है, और over लैंप 1 s तक जला रहता है।
+- **Needle** (Loudness; डिफ़ॉल्ट Momentary) - needle क्या दिखाए, यह चुनता है। **Momentary** पिछले 0.4 s की loudness फॉलो करता है; **Short-term** पिछले 3 s दिखाता है और ज़्यादा शांति से चलता है।
+- **Target** (Loudness; -36 से -10 LUFS; डिफ़ॉल्ट -23 LUFS) - स्केल पर चिह्नित loudness तय करता है और स्केल को उसी मान के आधार पर व्यवस्थित करता है। -23 LUFS EBU R128 का broadcast स्तर है; कई streaming सेवाएँ -14 LUFS के आसपास मान इस्तेमाल करती हैं।
+- **Scale** (Loudness; डिफ़ॉल्ट EBU +9) - loudness स्केल की चौड़ाई चुनता है। **EBU +9** **Target** से 18 LU नीचे से 9 LU ऊपर तक कवर करता है; **EBU +18** 36 LU नीचे से 18 LU ऊपर तक कवर करता है, जो व्यापक dynamics वाले संगीत या बहुत तेज़ सामग्री के लिए उपयुक्त है।
+
+### दृश्य कैसे पढ़ें
+
+- हर चैनल का अपना मीटर होता है, हर पंक्ति में अधिकतम चार और अधिकतम 16 चैनल तक।
+- स्तर सामान्य digital convention का पालन करते हैं कि full-scale साइन तरंग 0 dBFS पढ़ी जाती है, इसलिए Loudness के अलावा हर मोड में स्थिर साइन तरंग एक जैसी रीडिंग देती है।
+- मोड में needle की चाल की गति अलग-अलग होती है:
+
+| मोड | needle की चाल | स्केल |
+|---|---|---|
+| VU | धीमी। लगभग 0.3 s में नए स्तर तक पहुँचता है और औसत स्तर दिखाता है (IEC 60268-17)। | -20 से +3 VU। 0 VU = **Reference**। |
+| PPM | IEC 60268-10 पर आधारित सन्निकटन। **Attack** से तय गति से तेज़ी से उठता है; डिफ़ॉल्ट 5 ms पर 10 ms का burst स्थिर टोन से लगभग 1 dB कम पढ़ा जाता है, जैसा DIN मीटर पर होता है। **Release** समय में 20 dB गिरता है। | **PPM Scale** से चुना जाता है। **DIN**: -9 निशान = **Reference**, इसलिए 0 उससे 9 dB ऊपर है। **BBC**: 1 से 7 तक निशान, 2 से 7 के बीच 4 dB और 1 से 2 के बीच 6 dB का अंतर; निशान 4 = **Reference**। **dB**: 0 निशान = **Reference**, उससे **Range** नीचे से +5 dB तक। |
+| RMS | **Integration** समय पर औसत power दिखाता है, बिना अतिरिक्त smoothing के। | निशान 0 = **Reference**। |
+| Sample Peak | सबसे ऊँचे sample मान तक सीधे कूद जाता है। | स्केल का ऊपरी सिरा = 0 dBFS। |
+| True Peak | Sample Peak जैसा, पर samples के बीच के पीक का भी अनुमान लगाता है। यह 0 dBFS से ऊपर पढ़ सकता है; ऐसे पीक DAC में या conversion के दौरान clip कर सकते हैं। | स्केल का ऊपरी सिरा = 0 dBFS। |
+| Loudness | ITU-R BS.1770 और EBU R128 के अनुसार loudness को LUFS में दिखाता है। | **Target** और **Scale** से तय होता है; रीडिंग LUFS में दिखती हैं। |
+
+- पीक निशान **Peak Hold** समय तक हाल की सबसे ऊँची रीडिंग दिखाता है। स्तर 0 dBFS से ऊपर जाने पर over लैंप जलता है और **Peak Hold** समय तक जला रहता है; **Peak Hold** 0 होने पर यह 1 s तक जला रहता है।
+- Loudness मोड में, पहला मीटर पूरा प्रोग्राम दिखाता है। उसकी needle **Needle** सेटिंग को फॉलो करती है, और यह Momentary (M), Short-term (S), Integrated (I), Loudness Range (LRA), अधिकतम True Peak और मापन का बीता हुआ समय, साथ में एक **Reset** बटन दिखाता है। पर्याप्त ऑडियो मापने के बाद Integrated और LRA दिखते हैं।
+  - mono, stereo और 5.1 (चैनल क्रम L, R, C, LFE, Ls, Rs) के लिए, ये मान standard चैनल weighting के अनुसार होते हैं। अन्य चैनल संख्याओं के लिए, सभी चैनल बराबर weight से जोड़े जाते हैं, इसलिए मान केवल संदर्भ के लिए हैं।
+  - पहले के बाद के मीटर हर चैनल को अलग-अलग दिखाते हैं। ये संदर्भ मान हैं, जिनमें चैनल weighting या gating नहीं लगाई जाती।
+- Integrated, LRA, और अधिकतम True Peak तब तक जुड़ते रहते हैं जब तक आप **Reset** न दबाएँ, **Mode** न बदलें, sample rate या चैनल संख्या न बदले, या ऑडियो प्रोसेसिंग फिर से शुरू न हो।
+- जब प्रोसेसिंग रुकी होती है तब मापन नहीं होता: silence में power-saving pause के दौरान, Master Bypass on होने पर या Analog Meter off होने पर, या जब Effect Pipeline दिखाई नहीं दे रहा हो (जैसे संगीत लाइब्रेरी में, विंडो minimize होने पर, या मिनी प्लेयर में) और विन्यास में **छिपे होने पर डिस्प्ले DSP छोड़ें** चालू हो (डिफ़ॉल्ट रूप से चालू)। रीडिंग जहाँ रुकी थीं वहीं से आगे बढ़ती हैं।
 
 ## Chroma Spiral
 
@@ -122,6 +193,7 @@ lang: hi
 - **Trigger Mode**
   - Auto: trigger के बिना भी continuous updates
   - Normal: अगले trigger तक display freeze रहता है
+  - Off: trigger के बिना, आने वाली सबसे नई waveform लगातार दिखाता है। Trigger Level, Trigger Edge और Holdoff का कोई असर नहीं होता
 - Trigger detection averaged left/right waveform का उपयोग करती है। Mono input सीधे उपयोग होता है।
 - **Trigger Level** - capture शुरू करने वाला amplitude level
   - Range: -1 से 1 (normalized amplitude)

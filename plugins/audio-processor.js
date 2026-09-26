@@ -1208,6 +1208,7 @@ const ET_DSP_PIPELINE_HEADER_BYTES = 8;
 const ET_DSP_PIPELINE_NODE_BYTES = 12;
 const ET_DSP_PIPELINE_MAX_NODES = 128;
 const DISPLAY_ONLY_DSP_TYPES = new Set([
+    'AnalogMeterPlugin',
     'ChromaSpiralPlugin',
     'LevelMeterPlugin',
     'NoteSpectrogramPlugin',
@@ -1697,6 +1698,9 @@ class PluginProcessor extends AudioWorkletProcessor {
                     break;
                 case 'resetProcessingState':
                     this.resetConfiguredProcessingState(data.requestId);
+                    break;
+                case 'resetPluginState':
+                    this._resetTemporalPlugin(data.pluginId);
                     break;
                 case 'reset':
                     this.frequencyPreview.targetGain = 0;

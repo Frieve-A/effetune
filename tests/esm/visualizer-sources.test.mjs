@@ -89,6 +89,74 @@ test('Chroma shares its native automatic HQ source across display edits and stop
     }
 });
 
+test('Phase Map shares one parameter-free Phase Select EQ source across display edits', () => {
+    const oldWindow = globalThis.window, oldDocument = globalThis.document;
+    const subscriptions = new Map(), published = [], received = [];
+    globalThis.window = {};
+    globalThis.document = { hidden: false, addEventListener() {}, removeEventListener() {} };
+    const manager = {
+        telemetryHub: { subscribe(tapId, frameType, callback) {
+            subscriptions.set(tapId, { frameType, callback });
+            return () => subscriptions.delete(tapId);
+        } },
+        setVisualizerSources(sources) { published.push(sources); }
+    };
+    try {
+        const sources = new VisualizerSources(manager);
+        const first = { id: 'a', type: 'phase', channel: null, params: { ax: 'phase', dr: -72, pe: 0.5 } };
+        sources.setLayout({ items: [first, { ...first, id: 'b', params: { ax: 'balance', dr: -48, pe: 2 } }] });
+        sources.subscribeItem('b', (frame, producer) => received.push([frame, producer]));
+        sources.setVisible(true);
+        assert.equal(published.at(-1).length, 1);
+        const source = published.at(-1)[0];
+        assert.deepEqual([source.type, source.params, source.gainDb], ['PhaseSelectEqPlugin', {}, 0]);
+        assert.equal(subscriptions.get(source.tapId).frameType, 20);
+        const producer = {}, payload = new DataView(new ArrayBuffer(16));
+        subscriptions.get(source.tapId).callback({ frameType: 20, formatVersion: 2, payload }, producer);
+        assert.equal(received[0][0].payload, payload);
+        assert.equal(received[0][1], producer);
+        sources.setLayout({ items: [{ ...first, params: { ax: 'balance', dr: -24, pe: 1 } }] });
+        assert.equal(published.at(-1)[0].tapId, source.tapId);
+        sources.dispose();
+        assert.equal(subscriptions.size, 0);
+    } finally {
+        globalThis.window = oldWindow; globalThis.document = oldDocument;
+    }
+});
+
+test('Analog Meter sources carry only the detector parameters of the Analog Meter effect', () => {
+    const oldWindow = globalThis.window, oldDocument = globalThis.document;
+    const subscriptions = new Map(), published = [];
+    globalThis.window = {};
+    globalThis.document = { hidden: false, addEventListener() {}, removeEventListener() {} };
+    const manager = {
+        telemetryHub: { subscribe(tapId, frameType, callback) {
+            subscriptions.set(tapId, { frameType, callback });
+            return () => subscriptions.delete(tapId);
+        } },
+        setVisualizerSources(sources) { published.push(sources); }
+    };
+    try {
+        const sources = new VisualizerSources(manager);
+        const params = { md: 'PPM', it: 0.3, at: 5, rt: 1.5, rl: -14, rg: 40, sc: 1, ph: 1, ln: 0, tg: -23, ls: 0 };
+        sources.setLayout({ items: [{ id: 'a', type: 'analog-meter', channel: null, params }] });
+        sources.subscribeItem('a', () => {});
+        sources.setVisible(true);
+        const source = published.at(-1)[0];
+        assert.deepEqual([source.type, source.params, source.gainDb],
+            ['AnalogMeterPlugin', { md: 'PPM', it: 0.3, at: 5, rt: 1.5, ln: 0 }, 0]);
+        assert.equal(subscriptions.get(source.tapId).frameType, 27);
+        sources.setLayout({ items: [{ id: 'a', type: 'analog-meter', channel: null,
+            params: { ...params, rl: -18, rg: 60, sc: 2, ph: 3, tg: -16, ls: 1 } }] });
+        assert.equal(published.at(-1)[0].tapId, source.tapId);
+        sources.setLayout({ items: [{ id: 'a', type: 'analog-meter', channel: null, params: { ...params, md: 'VU' } }] });
+        assert.notEqual(published.at(-1)[0].tapId, source.tapId);
+        sources.dispose();
+    } finally {
+        globalThis.window = oldWindow; globalThis.document = oldDocument;
+    }
+});
+
 test('Level Meter reuses its parameter-free telemetry source across display edits', () => {
     const oldWindow = globalThis.window, oldDocument = globalThis.document;
     const subscriptions = new Map(), published = [], received = [];

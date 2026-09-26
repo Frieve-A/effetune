@@ -1,6 +1,7 @@
 {
   "version": 1,
   "exports": [
+    {"type":"AnalogMeter","class":"AnalogMeter","factory":"createAnalogMeter"},
     {"type":"ChromaSpiral","class":"ChromaSpiral","factory":"createChromaSpiral"},
     {"type":"LevelMeter","class":"LevelMeter","factory":"createLevelMeter"},
     {"type":"NoteSpectrogram","class":"NoteSpectrogram","factory":"createNoteSpectrogram"},

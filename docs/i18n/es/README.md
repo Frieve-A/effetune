@@ -55,7 +55,7 @@ Antes de usar EffeTune, deberás configurar el enrutamiento de audio. Aquí se e
    - O selecciona **Abrir archivo de música...** desde el menú **Archivo** (solo aplicación de escritorio)
    - O arrastra el archivo de música a la ventana
 - Para usar solo el reproductor, selecciona Ninguno (solo reproductor de archivos de música) como dispositivo de entrada en Configuración de audio y evita usar una entrada de audio en vivo
-- Pulsa el botón de velocidad junto a Shuffle para abrir la ventana emergente. Elige uno de los nueve ajustes predefinidos o usa el control deslizante horizontal o el campo numérico para ajustar la velocidad de 0,25x a 4x en incrementos de 0,01x. El tono se conserva.
+- Pulsa el botón de velocidad junto a Shuffle para abrir la ventana emergente. Elige uno de los nueve ajustes predefinidos o usa el control deslizante horizontal o el campo numérico para ajustar la velocidad de 0,25x a 4x en incrementos de 0,01x. El botón **Mantener el tono**, situado junto a él, está activado de forma predeterminada, por lo que el tono se mantiene igual al cambiar la velocidad; desactívalo para que el tono suba o baje junto con la velocidad, como al cambiar la velocidad de una cinta o un disco de vinilo.
 
 ### Configuración para Servicios de Streaming
 
@@ -330,6 +330,7 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 
 | Categoría | Efecto             | Descripción                                                               | Documentación                                           |
 | --------- | ------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Analyzer  | Analog Meter       | Muestra los niveles de canal en un medidor de aguja con escalas VU, PPM, pico y sonoridad | [Detalles](plugins/analyzer.md#analog-meter)            |
 | Analyzer  | Level Meter        | Muestra el nivel de audio con retención de pico                           | [Detalles](plugins/analyzer.md#level-meter)             |
 | Analyzer  | Note Spectrogram | Muestra las alturas estimadas a lo largo del tiempo en un piano roll      | [Detalles](plugins/analyzer.md#note-spectrogram)     |
 | Analyzer  | Oscilloscope       | Visualización de la forma de onda en tiempo real                          | [Detalles](plugins/analyzer.md#oscilloscope)            |

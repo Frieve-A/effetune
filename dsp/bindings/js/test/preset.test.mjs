@@ -109,6 +109,24 @@ test('legacy Pitch Meter validates and discards its display layout', () => {
   }), ValidationError);
 });
 
+test('legacy Analog Meter validates and discards its meter-face settings', () => {
+  const display = { rl: -20, rg: 60, ph: 0, sc: 2, ln: 1, tg: -14, ls: 1 };
+  const document = importLegacyPreset({
+    pipeline: [{ name: 'Analog Meter', parameters: display }]
+  });
+  assert.equal(document.chain[0].type, 'AnalogMeter');
+  for (const key of Object.keys(display)) {
+    assert.equal(Object.hasOwn(document.chain[0].parameters, key), false, key);
+  }
+  for (const parameters of [
+    { rl: 1 }, { rg: 19 }, { ph: 11 }, { sc: 3 }, { sc: 1.5 }, { ln: 0.5 }, { ln: 2 }, { tg: -9 }, { ls: -1 }, { rl: '0' }
+  ]) {
+    assert.throws(() => importLegacyPreset({
+      pipeline: [{ name: 'Analog Meter', parameters }]
+    }), ValidationError, JSON.stringify(parameters));
+  }
+});
+
 test('legacy analyzer color and Stereo Meter gain are validated and discarded', () => {
   const effects = [
     { name: 'Pitch Meter', parameters: { rf: 442, cl: 'Rainbow' }, expected: { referenceA4: 442 } },

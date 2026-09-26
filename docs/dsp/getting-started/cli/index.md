@@ -52,7 +52,7 @@ effetune render input.wav output.wav --preset volume.json
 effetune preset inspect volume.json
 ```
 
-The CLI delegates codecs to SoundFile and does not resample, call ffmpeg, or measure
+The CLI delegates codecs to SoundFile and does not resample, call ffmpeg, or report
 loudness. It preserves the input sample rate and channel count.
 
 ## Batch rendering

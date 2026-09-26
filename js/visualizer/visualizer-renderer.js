@@ -2,7 +2,7 @@ import { createLayer, paletteGradient, VisualizerEffects } from './visualizer-ef
 
 import { createAnalyzerDisplay } from './visualizer-analyzer-display.js';
 
-const ANALYZER_TYPES = new Set(['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'notes', 'chroma', 'level-meter']);
+const ANALYZER_TYPES = new Set(['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'notes', 'chroma', 'level-meter', 'phase', 'analog-meter']);
 
 export class VisualizerRenderer {
     constructor(canvas) {

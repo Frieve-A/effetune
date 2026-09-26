@@ -14,7 +14,8 @@ import {
 } from './utils/serialization-utils.js';
 import {
     encodePipelineState,
-    decodePipelineState
+    decodePipelineState,
+    createShareUrl
 } from './utils/pipeline-state-codec.js';
 import { copyTextToClipboard, readTextFromClipboard } from './utils/clipboard-utils.js';
 import { LayoutModeManager } from './ui/layout-mode-manager.js';
@@ -25,6 +26,7 @@ import { normalizeMusicLibraryStartupView } from './library/constants.js';
 import { PowerStateView } from './ui/power-state-view.js';
 import { installRangePrecisionControl } from './ui/range-precision-controller.js';
 import { installRangeFillStyling, updateRangeFill } from './ui/range-fill.js';
+import { enableStandardSelects } from './ui/standard-select.js';
 import { loadClassicScript, loadStylesheet, waitForStylesheets } from './utils/classic-script-loader.js';
 import {
     collectUniquePipelinePlugins,
@@ -178,6 +180,7 @@ export class UIManager {
     constructor(pluginManager, audioManager) {
         this.pluginManager = pluginManager;
         this.audioManager = audioManager;
+        enableStandardSelects(document);
         this.debugChannelCount = null;
 
         // Set directly in UIManager to maintain original behavior
@@ -1566,9 +1569,7 @@ export class UIManager {
                 const attemptRevision = ++this.shareAttemptRevision;
                 const pipeline = [...this.audioManager.pipeline];
                 const state = this.getPipelineState(pipeline);
-                const newURL = new URL('https://effetune.frieve.com/effetune.html');
-                newURL.searchParams.set('p', state);
-                const copied = await copyTextToClipboard(newURL.toString());
+                const copied = await copyTextToClipboard(createShareUrl('p', state));
                 if (attemptRevision !== this.shareAttemptRevision) return;
                 if (copied) {
                     this.showTransientMessage('success.urlCopied', false, {}, 3000);
@@ -2229,6 +2230,10 @@ export class UIManager {
         this.mobileNav?.applyViewState('visualizer', { fromLibraryView: true });
         this.visualizerView.updateVisibility();
         return true;
+    }
+
+    async openSharedVisualizer(encoded) {
+        if (await this.showVisualizerView()) await this.visualizerView.importShared(encoded);
     }
 
     hideVisualizerView(options = {}) {

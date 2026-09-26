@@ -77,12 +77,6 @@ export class MobileNav {
                 document.getElementById('openMusicButton')?.click();
             });
             this.playerView.appendChild(this.emptyPlayer);
-            const visualizerButton = document.createElement('button');
-            visualizerButton.type = 'button';
-            visualizerButton.className = 'header-button mobile-open-visualizer';
-            visualizerButton.textContent = 'Visualizer';
-            visualizerButton.addEventListener('click', () => this.uiManager.showVisualizerView());
-            this.playerView.appendChild(visualizerButton);
             this.resumePrompt = document.createElement('button');
             this.resumePrompt.type = 'button';
             this.resumePrompt.className = 'mobile-audio-resume-prompt';

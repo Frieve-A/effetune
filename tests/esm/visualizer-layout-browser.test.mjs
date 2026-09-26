@@ -11,11 +11,124 @@ const viewSource = read('../../js/visualizer/visualizer-view.js')
     .replace(/^import .*;\r?\n/gm, '')
     .replace('export class VisualizerView', 'window.VisualizerView = class VisualizerView');
 const modelSource = read('../../js/visualizer/visualizer-model.js')
+    .replace(/^import .*;\r?\n/gm, '')
     .replace(/^export /gm, '') + '\nwindow.createDefaultLayout = createDefaultLayout; window.createItem = createItem; window.normalizeEffect = normalizeEffect;';
 const palettePresetsSource = read('../../js/visualizer/visualizer-palette-presets.js').replace(/^export /gm, '');
 const editorSource = read('../../js/visualizer/visualizer-editor.js')
     .replace(/^import .*;\r?\n/gm, '')
     .replace('export class VisualizerEditor', 'window.VisualizerEditor = class VisualizerEditor');
+
+test('Visualizer Edit channel dropdown automatically uses the shared themed list', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<!doctype html><body class="view-visualizer"><div id="visualizerView"><div class="visualizer-stage"></div></div></body>');
+        await page.addStyleTag({ content: css });
+        await page.addScriptTag({ content: read('../../js/ui/standard-select.js').replace(/^export /gm, '') +
+            '\nenableStandardSelects(document);' });
+        await page.addScriptTag({ content: modelSource });
+        await page.addScriptTag({ content: palettePresetsSource });
+        await page.addScriptTag({ content: editorSource });
+        await page.evaluate(() => {
+            Object.defineProperty(window, 'localStorage', { configurable: true,
+                value: { getItem: () => null, setItem() {} } });
+            let nextId = 0;
+            Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: () => String(++nextId) });
+            const root = document.querySelector('#visualizerView');
+            const layout = createDefaultLayout();
+            const view = { root, stage: root.querySelector('.visualizer-stage'), layout,
+                t: (_, fallback) => fallback, changed() {}, notice() {} };
+            window.editor = new VisualizerEditor(view);
+            root.append(editor.navigation, editor.root);
+            editor.selection = layout.items[0].id;
+            editor.setOpen(true);
+        });
+        const channel = page.locator('.visualizer-editor-inspector .parameter-row')
+            .filter({ has: page.locator('label', { hasText: /^Channel$/ }) }).locator('select');
+        await channel.click();
+        const list = page.locator('.standard-select-list:not([hidden])');
+        assert.equal(await list.count(), 1);
+        assert.equal(await list.evaluate(list => list.scrollHeight > list.clientHeight), true);
+        await list.locator('.standard-select-option').filter({ hasText: /^R$/ }).click();
+        assert.equal(await page.evaluate(() => editor.view.layout.items[0].channel), 'R');
+        await page.evaluate(() => editor.render());
+        await channel.focus();
+        await page.keyboard.press('ArrowDown');
+        await page.keyboard.press('Home');
+        await page.keyboard.press('Enter');
+        assert.equal(await page.evaluate(() => editor.view.layout.items[0].channel), null);
+        assert.equal(await channel.inputValue(), '');
+    } finally {
+        await browser.close();
+    }
+});
+
+test('Visualizer item arrows move one list position and layer buttons move to either end', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<!doctype html><body><div id="visualizerView"><div class="visualizer-stage"></div></div></body>');
+        await page.addScriptTag({ content: modelSource });
+        await page.addScriptTag({ content: palettePresetsSource });
+        await page.addScriptTag({ content: editorSource });
+        const result = await page.evaluate(() => {
+            Object.defineProperty(window, 'localStorage', { configurable: true,
+                value: { getItem: () => null, setItem() {} } });
+            let nextId = 0;
+            Object.defineProperty(crypto, 'randomUUID', { configurable: true,
+                value: () => String(++nextId) });
+            const root = document.querySelector('#visualizerView');
+            const layout = window.createDefaultLayout();
+            layout.items = ['back', 'middle', 'selected', 'front'].map(id => window.createItem('title', id));
+            const savedOrders = [];
+            const view = { root, stage: root.querySelector('.visualizer-stage'), layout,
+                t: (_, fallback) => fallback,
+                changed() { savedOrders.push(layout.items.map(item => item.id)); } };
+            const editor = new window.VisualizerEditor(view);
+            root.append(editor.navigation, editor.root);
+            editor.selection = 'selected'; editor.setOpen(true);
+            const state = () => ({
+                order: layout.items.map(item => item.id),
+                selection: editor.selection,
+                disabled: [...editor.root.querySelectorAll('.visualizer-editor-actions button')]
+                    .slice(0, 4).map(button => button.disabled),
+                activeLabel: editor.navigation.querySelector('.visualizer-item-list .active').textContent,
+                heading: editor.root.querySelector('.visualizer-item-name').textContent
+            });
+            const labels = [...editor.root.querySelectorAll('.visualizer-editor-actions button')]
+                .map(button => [button.title, button.getAttribute('aria-label')]);
+            const states = [state()];
+            for (const selector of ['.move-up-button', '.move-down-button', '.bring-to-front-button',
+                '.move-down-button', '.send-to-back-button', '.move-up-button']) {
+                editor.root.querySelector(`.visualizer-editor-actions ${selector}`).click();
+                states.push(state());
+            }
+            layout.items = [layout.items[0]]; editor.render();
+            const single = state();
+            editor.selection = null; editor.render();
+            return { states, single, savedOrders, labels,
+                backgroundActions: editor.root.querySelectorAll('.visualizer-editor-actions button').length };
+        });
+        const initial = ['back', 'middle', 'selected', 'front'];
+        const movedUp = ['back', 'selected', 'middle', 'front'];
+        const movedFront = ['back', 'middle', 'front', 'selected'];
+        const movedBack = ['selected', 'back', 'middle', 'front'];
+        assert.deepEqual(result.states.map(state => state.order),
+            [initial, movedUp, initial, movedFront, movedFront, movedBack, movedBack]);
+        assert.deepEqual(result.savedOrders, [movedUp, initial, movedFront, movedBack]);
+        assert.deepEqual(result.states.map(state => state.disabled), [
+            [false, false, false, false], [false, false, false, false], [false, false, false, false],
+            [false, true, true, false], [false, true, true, false], [true, false, false, true], [true, false, false, true]
+        ]);
+        assert.ok(result.states.every(state => state.selection === 'selected' && state.activeLabel === state.heading));
+        assert.deepEqual(result.single.disabled, [true, true, true, true]);
+        assert.equal(result.backgroundActions, 0);
+        assert.deepEqual(result.labels, ['Move up', 'Move down', 'Bring to front', 'Send to back', 'Delete']
+            .map(label => [label, label]));
+    } finally {
+        await browser.close();
+    }
+});
 
 test('Rainbow stop sliders retain fractional positions and update the saved and drawn gradient', async () => {
     const browser = await chromium.launch({ headless: true });
@@ -903,9 +1016,9 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
             const axes = layout.items[0].params.showAxes;
             const motionMode = layout.items[0].palette.motion.mode;
             const stopCount = layout.items[0].palette.stops.length;
-            editor.root.querySelector('.visualizer-editor-actions .move-up-button').click();
+            editor.root.querySelector('.visualizer-editor-actions .bring-to-front-button').click();
             const sentFront = layout.items.at(-1)?.id === 'main-spectrum';
-            editor.root.querySelector('.visualizer-editor-actions .move-down-button').click();
+            editor.root.querySelector('.visualizer-editor-actions .send-to-back-button').click();
             const sentBack = layout.items[0]?.id === 'main-spectrum';
             editor.root.querySelector('.visualizer-editor-actions .delete-button').click();
             const itemDeleted = layout.items.length === 1 && editor.selection === null;
@@ -1306,8 +1419,8 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
         assert.equal(result.backgroundHeading, 'Background');
         assert.deepEqual(result.actionStyle.map(action => action.className), ['move-up-button', 'move-down-button', 'delete-button']);
         assert.ok(result.actionStyle.every(action => action.equal && action.svg), JSON.stringify(result.actionStyle));
-        assert.deepEqual(result.itemActions.map(action => action.className), ['move-down-button', 'move-up-button', 'delete-button']);
-        assert.deepEqual(result.itemActions.map(action => action.label), ['Send to back', 'Bring to front', 'Delete']);
+        assert.deepEqual(result.itemActions.map(action => action.className), ['move-up-button', 'move-down-button', 'bring-to-front-button', 'send-to-back-button', 'delete-button']);
+        assert.deepEqual(result.itemActions.map(action => action.label), ['Move up', 'Move down', 'Bring to front', 'Send to back', 'Delete']);
         assert.ok(result.itemActions.every(action => action.svg && action.width === 24 && action.height === 24));
         assert.equal(result.sentFront && result.sentBack && result.itemDeleted, true);
         assert.equal(result.addStopIndented, true);

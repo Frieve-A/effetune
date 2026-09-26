@@ -4,6 +4,7 @@
 import { getSerializablePluginStateShort, applySerializedState } from '../../utils/serialization-utils.js';
 import { decodePipelineState } from '../../utils/pipeline-state-codec.js';
 import { copyTextToClipboard } from '../../utils/clipboard-utils.js';
+import { layoutShareParam } from '../../visualizer/visualizer-model.js';
 export class ClipboardManager {
     /**
      * Create a new ClipboardManager instance
@@ -108,6 +109,13 @@ export class ClipboardManager {
 
                     // Ignore all pipeline pasting while the Double Blind Test is open.
                     if (window.uiManager && window.uiManager.isDoubleBlindActive && window.uiManager.isDoubleBlindActive()) {
+                        return;
+                    }
+
+                    // A Visualizer share link opens the Visualizer and applies its layout.
+                    const vParam = layoutShareParam(text);
+                    if (vParam && window.uiManager) {
+                        await window.uiManager.openSharedVisualizer(vParam);
                         return;
                     }
 

@@ -13,6 +13,7 @@ class TelemetryFrame:
     """Common metadata for a decoded analyzer observation."""
 
     kind: Literal[
+        "analogMeter",
         "level",
         "noteSpectrogram",
         "oscilloscope",
@@ -28,6 +29,36 @@ class TelemetryFrame:
     effect_index: int
     sequence: int
     dropped: int
+
+
+@dataclass(frozen=True, slots=True)
+class AnalogMeterTelemetryChannel:
+    """Needle and maximum dB, or channel Momentary and Short-term LUFS in Loudness mode."""
+
+    needle_db: float
+    max_db: float
+
+
+@dataclass(frozen=True, slots=True)
+class AnalogMeterTelemetryProgram:
+    """Program loudness; integrated and lra are 0 until their validity flags are set."""
+
+    momentary: float
+    short_term: float
+    integrated: float
+    lra: float
+    max_true_peak: float
+    integrated_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
+class AnalogMeterTelemetryFrame(TelemetryFrame):
+    mode: int
+    channel_count: int
+    integrated_valid: bool
+    lra_valid: bool
+    channels: tuple[AnalogMeterTelemetryChannel, ...]
+    program: AnalogMeterTelemetryProgram | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +175,7 @@ class StereoTelemetryFrame(TelemetryFrame):
 
 
 _ANALYZER_FRAMES = {
+    "AnalogMeter": (27, (1,)),
     "ChromaSpiral": (4, (2,)),
     "LevelMeter": (1, (1,)),
     "NoteSpectrogram": (24, (3,)),
@@ -160,6 +192,8 @@ _MULTIRES_HQ_SPECTRUM_CELLS = 2048
 _MULTIRES_HQ_SPECTROGRAM_CELLS = 256
 _PITCH_METER_MIN_DETECTED_MIDI = 20.5
 _PITCH_METER_MAX_DETECTED_MIDI = 108.5
+_ANALOG_METER_LOUDNESS_MODE = 5
+_ANALOG_METER_MIN_DB = -240.0
 
 
 def _common(
@@ -582,6 +616,74 @@ def _decode_pitch_meter(
     )
 
 
+def _decode_analog_meter(
+    payload: memoryview,
+    node: tuple[str, str | None, int],
+    sequence: int,
+    dropped: int,
+) -> TelemetryFrame | None:
+    if len(payload) < 12:
+        return None
+    mode, channel_count, flags = struct.unpack_from("<BBH", payload)
+    loudness = mode == _ANALOG_METER_LOUDNESS_MODE
+    program_offset = 4 + channel_count * 8
+    if (
+        mode > _ANALOG_METER_LOUDNESS_MODE
+        or not 1 <= channel_count <= 16
+        or flags & ~(3 if loudness else 0)
+        or len(payload) != program_offset + (24 if loudness else 0)
+    ):
+        return None
+
+    def is_level(value: float) -> bool:
+        return math.isfinite(value) and value >= _ANALOG_METER_MIN_DB
+
+    values = struct.unpack_from(f"<{channel_count * 2}f", payload, 4)
+    if not all(is_level(value) for value in values):
+        return None
+    channels = tuple(
+        AnalogMeterTelemetryChannel(needle_db=needle_db, max_db=max_db)
+        for needle_db, max_db in zip(values[::2], values[1::2], strict=True)
+    )
+    integrated_valid = bool(flags & 1)
+    lra_valid = bool(flags & 2)
+    program = None
+    if loudness:
+        (
+            momentary,
+            short_term,
+            integrated,
+            lra,
+            max_true_peak,
+            integrated_seconds,
+        ) = struct.unpack_from("<6f", payload, program_offset)
+        if (
+            not all(is_level(value) for value in (momentary, short_term, max_true_peak))
+            or not math.isfinite(integrated_seconds)
+            or integrated_seconds < 0
+            or (not is_level(integrated) if integrated_valid else integrated != 0)
+            or (not (math.isfinite(lra) and lra >= 0) if lra_valid else lra != 0)
+        ):
+            return None
+        program = AnalogMeterTelemetryProgram(
+            momentary=momentary,
+            short_term=short_term,
+            integrated=integrated,
+            lra=lra,
+            max_true_peak=max_true_peak,
+            integrated_seconds=integrated_seconds,
+        )
+    return AnalogMeterTelemetryFrame(
+        **_common("analogMeter", node, sequence, dropped),
+        mode=mode,
+        channel_count=channel_count,
+        integrated_valid=integrated_valid,
+        lra_valid=lra_valid,
+        channels=channels,
+        program=program,
+    )
+
+
 def _decode_stereo(
     payload: memoryview,
     node: tuple[str, str | None, int],
@@ -642,6 +744,7 @@ _DECODERS = {
     6: _decode_stereo,
     24: _decode_note_spectrogram,
     26: _decode_pitch_meter,
+    27: _decode_analog_meter,
 }
 
 
@@ -684,6 +787,9 @@ def _decode_telemetry_packet(
 
 
 __all__ = [
+    "AnalogMeterTelemetryChannel",
+    "AnalogMeterTelemetryFrame",
+    "AnalogMeterTelemetryProgram",
     "LevelTelemetryChannel",
     "LevelTelemetryFrame",
     "NoteSpectrogramTelemetryFrame",

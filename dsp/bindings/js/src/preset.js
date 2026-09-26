@@ -476,6 +476,21 @@ function prepareLegacyParametersV1(effectType, source) {
       delete parameters[key];
     }
   }
+  if (effectType === 'AnalogMeter') {
+    // Reference, range, peak hold, PPM scale, needle, target and scale only control the meter face.
+    for (const [key, minimum, maximum, integer] of [
+      ['rl', -30, 0, false], ['rg', 20, 60, false], ['ph', 0, 10, false],
+      ['sc', 0, 2, true], ['ln', 0, 1, true], ['tg', -36, -10, false], ['ls', 0, 1, true]
+    ]) {
+      if (!Object.hasOwn(parameters, key)) continue;
+      const value = parameters[key];
+      if (!Number.isFinite(value) || (integer && !Number.isInteger(value)) ||
+          value < minimum || value > maximum) {
+        throw new ValidationError(`Legacy AnalogMeter contains invalid ${key} display state.`);
+      }
+      delete parameters[key];
+    }
+  }
   if (effectType === 'PitchMeter' && Object.hasOwn(parameters, 'ly')) {
     if (parameters.ly !== 'Vertical' && parameters.ly !== 'Horizontal') {
       throw new ValidationError('Legacy PitchMeter contains invalid layout state.');

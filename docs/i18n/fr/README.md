@@ -55,7 +55,7 @@ Avant d'utiliser EffeTune, vous devez configurer votre routage audio. Voici comm
    - Ou sélectionnez **Ouvrir un fichier musical...** depuis le menu **Fichier** (application de bureau uniquement)
    - Ou faites glisser le fichier musical dans la fenêtre
 - Pour une utilisation limitée au lecteur, sélectionnez Aucun (lecteur de fichiers musicaux uniquement) comme périphérique d'entrée dans Configuration audio afin de ne pas utiliser d'entrée audio en direct
-- Cliquez sur le bouton de vitesse à côté de Shuffle pour ouvrir la fenêtre contextuelle. Choisissez l’un des neuf préréglages ou utilisez le curseur horizontal ou le champ numérique pour régler la vitesse de 0,25x à 4x par incréments de 0,01x. La hauteur du son est conservée.
+- Cliquez sur le bouton de vitesse à côté de Shuffle pour ouvrir la fenêtre contextuelle. Choisissez l’un des neuf préréglages ou utilisez le curseur horizontal ou le champ numérique pour régler la vitesse de 0,25x à 4x par incréments de 0,01x. Le bouton **Conserver la hauteur**, situé à côté, est activé par défaut : la hauteur du son reste alors la même quand la vitesse change ; désactivez-le pour que la hauteur monte ou descende avec la vitesse, comme lorsqu'on change la vitesse d'une bande ou d'un disque.
 
 ### Configuration des services de streaming
 
@@ -330,6 +330,7 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 
 | Catégorie | Effet             | Description                                                              | Documentation                                           |
 | --------- | ----------------- | ------------------------------------------------------------------------ | ------------------------------------------------------- |
+| Analyzer  | Analog Meter      | Affiche les niveaux de canal sur un vu-mètre à aiguille avec des échelles VU, PPM, pic et sonie | [Détails](plugins/analyzer.md#analog-meter)             |
 | Analyzer  | Level Meter       | Affiche le niveau audio avec maintien du pic                             | [Détails](plugins/analyzer.md#level-meter)              |
 | Analyzer  | Note Spectrogram | Affiche les hauteurs estimées au fil du temps sous forme de piano roll | [Détails](plugins/analyzer.md#note-spectrogram)      |
 | Analyzer  | Oscilloscope      | Visualisation en temps réel de la forme d'onde                           | [Détails](plugins/analyzer.md#oscilloscope)             |

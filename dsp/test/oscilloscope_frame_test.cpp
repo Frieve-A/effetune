@@ -322,6 +322,26 @@ void testM4ReductionWithVariableBlocks() {
   SCOPE_CHECK(payload[last_bucket + 17u] == 9u);
 }
 
+void testFreeRunPublishesLatestWindow() {
+  KernelHarness harness(1000.0F, 4u);
+  harness.setParams(0.004F, 2.0F, 0.0F, 0.0F, 0.0001F);
+  std::array<float, 4> block = {0.1F, 0.2F, 0.3F, 0.4F};
+  harness.process(block.data(), 1u, 4u, 0.0);
+  block = {0.5F, 0.6F, 0.7F, 0.8F};
+  harness.process(block.data(), 1u, 2u, 0.004);
+  harness.telemetryTick();
+  harness.telemetryTick();
+
+  SCOPE_CHECK(harness.read() == 48u);
+  const std::uint8_t *payload = harness.output.data() + 16u;
+  SCOPE_CHECK(readU32(payload + 4u) == 4u);
+  SCOPE_CHECK(payload[15u] == 0u);
+  const std::array<float, 4> expected = {0.3F, 0.4F, 0.5F, 0.6F};
+  for (std::uint32_t frame = 0u; frame < 4u; ++frame) {
+    SCOPE_CHECK(readF32(payload + 16u + frame * 4u) == expected[frame]);
+  }
+}
+
 } // namespace
 
 int main() {
@@ -330,6 +350,7 @@ int main() {
   testPreviousSnapshotRemainsPublishedDuringCapture();
   testPastTriggerCaptureIsBoundedAcrossRingWrap();
   testM4ReductionWithVariableBlocks();
+  testFreeRunPublishesLatestWindow();
   if (failures != 0) {
     std::fprintf(stderr, "%d Oscilloscope frame-content check(s) failed\n", failures);
     return 1;

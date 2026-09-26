@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.11.1-5bfb085e46117bec";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.12.0-4209a8158ee705de";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./css/effetune-library.css",
   "./css/effetune-mobile.css",
@@ -301,6 +301,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/visualizer/visualizer-view.js",
   "./manifest.json",
   "./package.json",
+  "./plugins/analyzer/analog_meter.js",
   "./plugins/analyzer/chroma_spiral.js",
   "./plugins/analyzer/level_meter.css",
   "./plugins/analyzer/level_meter.js",

@@ -64,6 +64,14 @@ test('Phase Select EQ sync follows the input window and staged completion before
 });
 
 
+test('Analog Meter aligns only its windowed RMS and Loudness readings', () => {
+  const age = params => rules.AnalogMeterPlugin.generationFrames(params, 48000, 'wasm');
+  for (const md of ['VU', 'PPM', 'Sample Peak', 'True Peak']) assert.equal(age({ md, it: 0.3 }), 0);
+  assert.equal(age({ md: 'RMS', it: 0.3 }), 7200);
+  assert.equal(age({ md: 'Loudness', ln: 0 }), 9600);
+  assert.equal(age({ md: 'Loudness', ln: 1 }), 72000);
+});
+
 test('Chroma Spiral automatic HQ capture age matches fixed sample-rate contracts', () => {
   for (const [rate, age] of [[44100, 20528], [48000, 20528], [88200, 41008], [96000, 41008], [192000, 41008]]) {
     for (const execution of ['js', 'wasm']) {

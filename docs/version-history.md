@@ -6,6 +6,12 @@ lang: en
 
 # Version History
 
+### Version 2.12.0 (TBD, 2026)
+- Added Analog Meter effect
+- Added a Phase Map item to the Visualizer
+- Added an Analog Meter item to the Visualizer
+- Various minor improvements
+
 ### Version 2.11.0 (Sep 25, 2026)
 - Added customizable Visualizer layouts and presets
 - Added Attack Tonal Balance, Bass Extender, Bass Management and Chroma Spiral effects

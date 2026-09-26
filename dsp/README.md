@@ -554,6 +554,23 @@ is 1; `TAP_SCOPE_SNAPSHOT` (type 3), `TAP_STEREO_FIELD` (type 6), and
   Public JavaScript and Python decoders expose this as
   `PitchMeterTelemetryFrame` with `kind` `pitch`.
 
+- **Type 27 — `TAP_ANALOG_METER`.** Format version 1 is a 4-byte header
+  followed by `channelCount` 8-byte records, plus a 24-byte program record in
+  Loudness mode, for an exact payload size of `4 + 8 * channelCount` bytes
+  (`+ 24` in Loudness). The header contains `u8` mode (0 VU, 1 PPM, 2 RMS,
+  3 Sample Peak, 4 True Peak, 5 Loudness), `u8` channel count (1-16), and `u16`
+  flags: bit 0 marks a valid Integrated value and bit 1 a valid LRA, and both
+  are zero outside Loudness. Outside Loudness each record holds the float32
+  needle level in dB and the float32 maximum in dB since the last accepted
+  frame; VU and RMS read a sine at its peak level. In Loudness each record holds
+  that channel's unweighted, ungated Momentary and Short-term loudness in LUFS,
+  and the program record holds float32 Momentary, Short-term, Integrated, and
+  LRA, the maximum true peak in dBTP, and the Integrated accumulation time in
+  seconds. Integrated and LRA read zero while their flag bits are clear. Levels
+  are floored at -240 dB, and true peaks above 0 dBFS are not clamped. Public
+  JavaScript and Python decoders expose this as `AnalogMeterTelemetryFrame`
+  with `kind` `analogMeter`.
+
 ### Latency and Pipeline Descriptors
 
 `et_instance_latency` reflects staged parameters immediately.

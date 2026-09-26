@@ -61,7 +61,7 @@ Before using EffeTune, you'll need to set up your audio routing. Here's how to c
    - Or select Open music file... from the File menu (desktop app only)
    - Or drag the music file into the window
 - For player-only use, set Input Device to None (music file player only) in Audio Configuration to avoid using a live audio input
-- Open the playback speed button next to Shuffle to show its popup. Choose one of the nine presets, or use the horizontal slider or number field to set a speed from 0.25x to 4x in 0.01x steps. Playback pitch is preserved.
+- Open the playback speed button next to Shuffle to show its popup. Choose one of the nine presets, or use the horizontal slider or number field to set a speed from 0.25x to 4x in 0.01x steps. The **Preserve Pitch** button next to it is on by default, so pitch stays the same as speed changes; turn it off to let pitch rise and fall with speed, like changing the speed of a tape or record.
 - In the desktop app, choose **View > Mini Player** (Ctrl/Cmd+Shift+M) or use the player’s mini-player button to keep playback controls in a compact window. The pin button keeps it above other windows.
 
 ### Streaming Service Setup
@@ -336,6 +336,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 
   | Category | Effect | Description | Documentation |
   |-----------|--------|-------------|---------------|
+  | Analyzer  | Analog Meter | Shows channel levels on a needle meter with VU, PPM, peak, and loudness scales | [Details](docs/plugins/analyzer.md#analog-meter) |
   | Analyzer  | Chroma Spiral | Shows frequency components by note and octave on a spiral | [Details](docs/plugins/analyzer.md#chroma-spiral) |
   | Analyzer  | Level Meter | Displays audio level with peak hold | [Details](docs/plugins/analyzer.md#level-meter) |
 | Analyzer  | Note Spectrogram | Shows estimated pitches over time as a scrolling piano roll | [Details](docs/plugins/analyzer.md#note-spectrogram) |

@@ -14,7 +14,7 @@ struct OscilloscopePluginParams {
   float holdoff;
   float displayLevel;
   float verticalOffset;
-  static constexpr std::uint32_t kHash = 0x84e21dd2u;
+  static constexpr std::uint32_t kHash = 0xc0b55527u;
   static constexpr std::uint32_t kFloatCount = 7u;
 };
 static_assert(7u == 0u || sizeof(OscilloscopePluginParams) == sizeof(float) * 7u);

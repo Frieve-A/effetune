@@ -1,4 +1,5 @@
 export const SHIPPED_ENABLED_TYPES = Object.freeze([
+    'AnalogMeterPlugin',
     'ChromaSpiralPlugin',
     'LevelMeterPlugin',
     'NoteSpectrogramPlugin',

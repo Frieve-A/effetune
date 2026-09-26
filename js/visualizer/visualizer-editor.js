@@ -1,9 +1,11 @@
-import { ASPECTS, ITEM_TYPES, VISUAL_TYPES, MAX_ITEMS, MAX_EFFECTS, EFFECT_CATALOG, FONT_FAMILIES, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR, createItem, normalizeEffect, paletteModesForType } from './visualizer-model.js';
+import { ASPECTS, ITEM_TYPES, VISUAL_TYPES, GRADIENT_DIRECTION_TYPES, MAX_ITEMS, MAX_EFFECTS, EFFECT_CATALOG, FONT_FAMILIES, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR, createItem, normalizeEffect, paletteModesForType } from './visualizer-model.js';
 import { GRADIENT_PRESETS } from './visualizer-palette-presets.js';
 
 const ACTION_ICONS = {
     up: ['move-up-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" draggable="false"><path d="M12 8l5.4 8.8H6.6z"/></svg>'],
     down: ['move-down-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" draggable="false"><path d="M12 16l5.4-8.8H6.6z"/></svg>'],
+    front: ['bring-to-front-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><rect x="5" y="5" width="10" height="10" rx="1.5"/><rect x="9" y="9" width="10" height="10" rx="1.5" fill="currentColor"/></svg>'],
+    back: ['send-to-back-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M6.5 5h7A1.5 1.5 0 0 1 15 6.5V9h-4.5A1.5 1.5 0 0 0 9 10.5V15H6.5A1.5 1.5 0 0 1 5 13.5v-7A1.5 1.5 0 0 1 6.5 5z" fill="currentColor"/><rect x="9" y="9" width="10" height="10" rx="1.5"/></svg>'],
     delete: ['delete-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>']
 };
 const STYLE_ICONS = {
@@ -79,6 +81,7 @@ export class VisualizerEditor {
         const [className, svg] = ACTION_ICONS[kind];
         button.className = className;
         button.innerHTML = svg;
+        button.title = label;
         button.setAttribute('aria-label', label);
         return button;
     }
@@ -243,8 +246,18 @@ export class VisualizerEditor {
             return;
         }
         const order = document.createElement('div'); order.className = 'visualizer-editor-actions'; header.appendChild(order);
-        this.iconButton(order, 'down', this.t('visualizer.back', 'Send to back'), () => { layout.items.splice(layout.items.indexOf(item), 1); layout.items.unshift(item); this.changed(true); });
-        this.iconButton(order, 'up', this.t('visualizer.front', 'Bring to front'), () => { layout.items.splice(layout.items.indexOf(item), 1); layout.items.push(item); this.changed(true); });
+        const index = layout.items.indexOf(item);
+        const move = target => {
+            layout.items.splice(index, 1); layout.items.splice(target, 0, item); this.changed(true);
+        };
+        const up = this.iconButton(order, 'up', this.t('visualizer.moveUp', 'Move up'), () => move(index - 1));
+        up.disabled = index === 0;
+        const down = this.iconButton(order, 'down', this.t('visualizer.moveDown', 'Move down'), () => move(index + 1));
+        down.disabled = index === layout.items.length - 1;
+        const front = this.iconButton(order, 'front', this.t('visualizer.front', 'Bring to front'), () => move(layout.items.length - 1));
+        front.disabled = down.disabled;
+        const back = this.iconButton(order, 'back', this.t('visualizer.back', 'Send to back'), () => move(0));
+        back.disabled = up.disabled;
         this.iconButton(order, 'delete', this.t('visualizer.delete', 'Delete'), () => this.deleteSelected());
         const properties = this.group(this.root, this.t('visualizer.properties', 'Properties'));
         if (VISUAL_TYPES.includes(item.type)) {
@@ -267,7 +280,13 @@ export class VisualizerEditor {
 
     parameters(parent, item) {
         const params = item.params;
-        const update = (key, value) => { params[key] = key === 'pt' || (item.type === 'chroma' && key === 'dm') ? Number(value) : value; this.changed(); };
+        const analogMeter = item.type === 'analog-meter';
+        const update = (key, value) => {
+            params[key] = key === 'pt' || (item.type === 'chroma' && key === 'dm') ||
+                (analogMeter && ['sc', 'ln', 'ls'].includes(key)) ? Number(value) : value;
+            // Mode and PPM Scale decide which Analog Meter parameters apply, so rebuild the panel.
+            this.changed(analogMeter && (key === 'md' || key === 'sc'));
+        };
         const select = (key, label, values) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'select', params[key], value => update(key, value), { values });
         const orientation = () => select('orientation', 'Orientation', [
             ['horizontal', this.t('visualizer.paramChoice.Horizontal', 'Horizontal')],
@@ -298,7 +317,7 @@ export class VisualizerEditor {
             check('showBalance', 'Balance');
         } else if (item.type === 'oscilloscope') {
             range('dt', 'Display Time', 0.001, 0.1, 0.001, value => `${Math.round(value * 1000)} ms`);
-            select('tm', 'Trigger Mode', ['Auto', 'Normal'].map(value =>
+            select('tm', 'Trigger Mode', ['Auto', 'Normal', 'Off'].map(value =>
                 [value, this.t(`visualizer.paramChoice.${value}`, value)]));
             range('tl', 'Trigger Level', -1, 1, 0.01, value => value.toFixed(2));
             select('te', 'Trigger Edge', ['Rising', 'Falling'].map(value =>
@@ -351,6 +370,30 @@ export class VisualizerEditor {
             range('ft', 'Frequency Tilt', -6, 6, 0.5, value => `${value} dB/oct`);
             range('lr', 'Level Range', 6, 96, 1, value => `${value} dB`);
             range('df', 'Display Floor', -120, -24, 1, value => `${value} dB`);
+        } else if (item.type === 'phase') {
+            select('ax', 'X Axis', [['phase', this.t('visualizer.paramChoice.phase', 'Phase')],
+                ['balance', this.t('visualizer.paramChoice.balance', 'Balance')]]);
+            range('dr', 'DB Range', -96, -24, 6, value => `${value} dB`);
+            range('ml', 'Reference Floor', -120, -24, 1, value => `${value} dB`);
+            range('pe', 'Persistence', 0.1, 2, 0.1, value => `${value.toFixed(1)} s`);
+        } else if (analogMeter) {
+            // Before the effect script loads every parameter is shown; the next rebuild hides inactive ones.
+            const active = key => window.AnalogMeterPlugin?.isParameterActive(key, params) ?? true;
+            const choices = labels => labels.map((label, index) => [String(index),
+                this.t(`visualizer.paramChoice.${label.replace(/ /g, '-').replace('+', '')}`, label)]);
+            select('md', 'Mode', ['VU', 'PPM', 'RMS', 'Sample Peak', 'True Peak', 'Loudness'].map(value =>
+                [value, this.t(`visualizer.paramChoice.${value.replace(/ /g, '-')}`, value)]));
+            if (active('it')) range('it', 'Integration', 0.05, 3, 0.01, value => `${value.toFixed(2)} s`);
+            if (active('at')) range('at', 'Attack', 1, 20, 0.1, value => `${value.toFixed(1)} ms`);
+            if (active('rt')) range('rt', 'Release', 0.1, 5, 0.01, value => `${value.toFixed(2)} s`);
+            if (active('rl')) range('rl', 'Reference', -30, 0, 1, value => `${value} dBFS`);
+            if (active('rg')) range('rg', 'Range', 20, 60, 1, value => `${value} dB`);
+            if (active('sc')) this.field(parent, this.t('visualizer.param.meterScale', 'PPM Scale'), 'select',
+                params.sc, value => update('sc', value), { values: choices(['DIN', 'BBC', 'dB']) });
+            if (active('ph')) range('ph', 'Peak Hold', 0, 10, 0.1, value => `${value.toFixed(1)} s`);
+            if (active('ln')) select('ln', 'Needle', choices(['Momentary', 'Short-term']));
+            if (active('tg')) range('tg', 'Target', -36, -10, 1, value => `${value} LUFS`);
+            if (active('ls')) select('ls', 'Scale', choices(['EBU +9', 'EBU +18']));
         }
         if (['spectrum', 'spectrogram', 'stereo'].includes(item.type)) range('gainDb', 'Input gain', -24, 24, 1, value => `${value > 0 ? '+' : ''}${value} dB`);
         check('showAxes', 'Axes and grid');
@@ -378,6 +421,14 @@ export class VisualizerEditor {
             }
             if (palette.mode !== 'gradient') return;
         }
+        if (GRADIENT_DIRECTION_TYPES.includes(itemType)) {
+            this.field(group, this.t('visualizer.gradientDirection', 'Gradient direction'), 'radio', palette.direction ?? 'frequency', value => {
+                palette.direction = value; this.changed(true);
+            }, { values: [
+                ['frequency', this.t('visualizer.gradientDirection.frequency', 'Frequency')],
+                ['intensity', this.t('visualizer.gradientDirection.intensity', 'Intensity')]
+            ] });
+        }
         const presetRow = document.createElement('div');
         presetRow.className = 'visualizer-select-action-row'; group.appendChild(presetRow);
         const choices = this.field(presetRow, this.t('visualizer.gradient', 'Gradient'), 'select', '', () => {},
@@ -388,7 +439,7 @@ export class VisualizerEditor {
             if (octave) palette.mapping = 'range';
             this.changed(true);
         });
-        if (octave) this.field(group, this.t('visualizer.paletteMapping', 'Color mapping'), 'radio', palette.mapping, value => { palette.mapping = value; this.changed(true); }, { values: ['range', 'octave'].map(value => [value, this.t(`visualizer.paletteMapping.${value}`, value === 'range' ? 'Full range' : 'One octave')]) });
+        if (octave && palette.direction !== 'intensity') this.field(group, this.t('visualizer.paletteMapping', 'Color mapping'), 'radio', palette.mapping, value => { palette.mapping = value; this.changed(true); }, { values: ['range', 'octave'].map(value => [value, this.t(`visualizer.paletteMapping.${value}`, value === 'range' ? 'Full range' : 'One octave')]) });
         palette.stops.forEach((stop, index) => {
             const row = document.createElement('div'); row.className = 'visualizer-stop'; group.appendChild(row);
             const colorRow = document.createElement('div'); colorRow.className = 'visualizer-stop-color-row'; row.appendChild(colorRow);

@@ -1,6 +1,6 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:323e7beb0afa74d89be56e5571aa8667febeb5a34ea8eb0b5125e894bbf3c26e",
+  "sourceDigest": "sha256:09d58f82164b804a3f7b3374096a8b57c006d8bfcffbed9f94f6e756bb0d4ec5",
   "emsdkVersion": "6.0.2",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
@@ -392,6 +392,12 @@
   },
   "kernels": [
     {
+      "name": "AnalogMeterPlugin",
+      "hash": 3236050637,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
       "name": "ChromaSpiralPlugin",
       "hash": 2166136261,
       "byteCapacity": 0,
@@ -411,7 +417,7 @@
     },
     {
       "name": "OscilloscopePlugin",
-      "hash": 2229411282,
+      "hash": 3233109287,
       "byteCapacity": 0,
       "assets": []
     },
@@ -1091,7 +1097,7 @@
     }
   ],
   "sizes": {
-    "baseline": 7143106,
-    "simd": 7279875
+    "baseline": 7158460,
+    "simd": 7295608
   }
 }

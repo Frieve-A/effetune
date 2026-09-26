@@ -36,6 +36,7 @@ const bandwidthTargets = new Map([
 ]);
 
 const analyzers = [
+  ['AnalogMeterPlugin', 209, 27, 1],
   ['ChromaSpiralPlugin', 208, TelemetryFrameType.TAP_SPECTRUM, 2],
   ['LevelMeterPlugin', 201, TelemetryFrameType.TAP_LEVEL, 1],
   ['OscilloscopePlugin', 202, TelemetryFrameType.TAP_SCOPE_SNAPSHOT, 2],

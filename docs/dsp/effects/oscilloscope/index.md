@@ -24,7 +24,7 @@ Use the opt-in decoded telemetry callback or subscription API to observe this an
 | Semantic name | Python constructor keyword | Type / count | Default | Unit | Range or values |
 |---|---|---:|---|---|---|
 | `displayTime` | `display_time` | number / 1 | `0.01` | s | 0.001 … 0.1 |
-| `triggerMode` | `trigger_mode` | string / 1 | `"Auto"` | Not declared in catalog | `Auto`, `Normal` |
+| `triggerMode` | `trigger_mode` | string / 1 | `"Auto"` | Not declared in catalog | `Auto`, `Normal`, `Off` |
 | `triggerLevel` | `trigger_level` | number / 1 | `0` | Not declared in catalog | -1 … 1 |
 | `triggerEdge` | `trigger_edge` | string / 1 | `"Rising"` | Not declared in catalog | `Rising`, `Falling` |
 | `holdoff` | `holdoff` | number / 1 | `0.0001` | s | 0.0001 … 0.01 |
@@ -55,6 +55,7 @@ Shows the shape of the sound wave in real time, so you can see beats, sharp hits
 - **Trigger Mode**
   - Auto: Continuous updates even without trigger
   - Normal: Freezes display until next trigger
+  - Off: No trigger; continuously shows the latest waveform as it arrives. Trigger Level, Trigger Edge, and Holdoff have no effect
 - Trigger detection uses the averaged left/right waveform. Mono input is used directly.
 - **Trigger Level** - Amplitude level that starts capture
   - Range: -1 to 1 (normalized amplitude)

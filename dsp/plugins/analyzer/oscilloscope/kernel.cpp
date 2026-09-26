@@ -90,6 +90,10 @@ public:
     }
     buffer_position_ = current_position;
 
+    // Free-running mode publishes the latest window at telemetry time instead of capturing.
+    if (active_free_run_) {
+      return;
+    }
     detectTrigger(frame_count, info.timeSeconds);
     startCaptureIfNeeded();
     appendAvailableCapture(frame_count);
@@ -97,7 +101,13 @@ public:
 
   void writeTelemetry(TelemetryWriter &writer) noexcept override {
     telemetry_write_phase_ ^= 1u;
-    if (telemetry_write_phase_ != 0u || !has_snapshot_) {
+    if (telemetry_write_phase_ != 0u) {
+      return;
+    }
+    if (active_free_run_) {
+      captureLatestWindow();
+    }
+    if (!has_snapshot_) {
       return;
     }
     writer.write(kTapScopeSnapshot, kTelemetryVersion, payload_.data(), payload_bytes_);
@@ -106,6 +116,7 @@ public:
 private:
   void synchronizeParameters() noexcept {
     const bool auto_mode = params_.triggerMode < 0.5F;
+    const bool free_run = params_.triggerMode >= 1.5F;
     const bool rising_edge = params_.triggerEdge < 0.5F;
     float display_time = params_.displayTime;
     if (display_time < 0.001F) {
@@ -122,11 +133,12 @@ private:
 
     if (parameter_state_initialized_ &&
         (display_time != active_display_time_ || auto_mode != active_auto_mode_ ||
-         rising_edge != active_rising_edge_)) {
+         free_run != active_free_run_ || rising_edge != active_rising_edge_)) {
       clearDisplayCapture();
     }
     active_display_time_ = display_time;
     active_auto_mode_ = auto_mode;
+    active_free_run_ = free_run;
     active_trigger_level_ = params_.triggerLevel;
     active_rising_edge_ = rising_edge;
     active_holdoff_ = holdoff;
@@ -195,13 +207,26 @@ private:
     }
     has_processed_trigger_ = true;
     last_processed_trigger_index_ = trigger_index_;
+    beginCapture(trigger_index_, trigger_is_real_);
+  }
+
+  void captureLatestWindow() noexcept {
+    beginCapture((buffer_position_ - displaySampleCount()) & kRingMask, false);
+    while (capture_samples_ < capture_target_samples_) {
+      appendCaptureSample(ring_[(capture_buffer_position_ + capture_samples_) & kRingMask]);
+    }
+    publishSnapshotPayload();
+    capture_active_ = false;
+  }
+
+  void beginCapture(std::uint32_t start_position, bool triggered) noexcept {
     capture_active_ = true;
     capture_target_samples_ = displaySampleCount();
     capture_samples_ = 0u;
-    capture_buffer_position_ = trigger_index_;
+    capture_buffer_position_ = start_position;
     capture_bucket_ = 0u;
     capture_bucket_initialized_ = false;
-    capture_triggered_ = trigger_is_real_;
+    capture_triggered_ = triggered;
     writePayloadHeader(
         building_payload_,
         capture_target_samples_ <= kMaxRawSamples ? 0u : static_cast<std::uint16_t>(kM4BucketCount),
@@ -322,6 +347,7 @@ private:
   double last_trigger_time_ = 0.0;
   double last_auto_sweep_time_ = 0.0;
   bool active_auto_mode_ = true;
+  bool active_free_run_ = false;
   bool active_rising_edge_ = true;
   bool trigger_is_real_ = false;
   bool has_processed_trigger_ = false;

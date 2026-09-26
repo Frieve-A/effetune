@@ -197,8 +197,13 @@
             try {
                 var params = new URLSearchParams(window.location.search || '');
                 // Keep these conditions in sync with hasExplicitStartupViewRequest()
-                // in js/app.js: a URL that asks for a specific pipeline overrides the
-                // startup view preference. A reload of our reflected URL keeps that preference.
+                // in js/app.js: a Visualizer share link opens the Visualizer, and a URL that
+                // asks for a specific pipeline overrides the startup view preference.
+                // A reload of our reflected URL keeps that preference.
+                if (params.has('v')) {
+                    document.body.classList.add('view-visualizer');
+                    return;
+                }
                 var reflectedPipeline = window.history && window.history.state && window.history.state.effetuneReflectedPipeline;
                 if ((params.has('p') && reflectedPipeline !== params.get('p')) || params.has('dbt') ||
                     params.get('restorePipeline') === 'transient') {

@@ -17,7 +17,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const pluginRoot = path.join(repoRoot, 'dsp', 'plugins', 'analyzer', 'oscilloscope');
 const schemaPath = path.join(pluginRoot, 'params.json');
 const goldenDir = path.join(pluginRoot, 'golden');
-const jsEngineHash = '9d32e0d1801b7cec50c1b0ceb39778ee7f5211258e75054810e7452a6272ee4e';
+const jsEngineHash = '9de1bcb518c547c789bebc282bd40606579f2970a76a18f8b5217c948f346414';
 
 async function directoryBytes(directory) {
   const entries = await fs.readdir(directory, { withFileTypes: true });
@@ -64,7 +64,7 @@ test('Oscilloscope schema freezes legacy parameter keys, enums, bounds, and defa
   const raw = JSON.parse(await fs.readFile(schemaPath, 'utf8'));
   const schema = validateParamSpec(raw, schemaPath);
   assert.equal(schema.type, 'OscilloscopePlugin');
-  assert.equal(schema.hash, 0x84e21dd2);
+  assert.equal(schema.hash, 0xc0b55527);
   assert.equal(schema.floatCount, 7);
   assert.deepEqual(
     raw.fields.map(({ name, key, kind, default: defaultValue }) => ({
@@ -83,7 +83,7 @@ test('Oscilloscope schema freezes legacy parameter keys, enums, bounds, and defa
       { name: 'verticalOffset', key: 'vo', kind: 'float', default: 0 }
     ]
   );
-  assert.deepEqual(raw.fields[1].values, ['Auto', 'Normal']);
+  assert.deepEqual(raw.fields[1].values, ['Auto', 'Normal', 'Off']);
   assert.deepEqual(raw.fields[3].values, ['Rising', 'Falling']);
   assert.deepEqual([raw.fields[0].min, raw.fields[0].max], [0.001, 0.1]);
   assert.deepEqual([raw.fields[4].min, raw.fields[4].max], [0.0001, 0.01]);

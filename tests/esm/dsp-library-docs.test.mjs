@@ -144,7 +144,7 @@ test('DSP landing explains the cross-surface workflow without competitor framing
   assert.match(landing, /What stays consistent \{#library-strengths\}/);
   assert.match(
     landing,
-    /Eight analyzers expose opt-in decoded observations/
+    /Nine analyzers expose opt-in decoded observations/
   );
   assert.match(landing, /all other catalog telemetry remains metadata-only/);
   assert.doesNotMatch(landing, /v0\.1 has no public observation API/);
@@ -307,6 +307,7 @@ test('analyzer telemetry documentation matches the public Phase 1 facade', () =>
     repoRoot, 'docs', 'dsp', 'reference', 'compatibility', 'index.md'
   ), 'utf8');
   for (const type of [
+    'AnalogMeter',
     'ChromaSpiral',
     'LevelMeter',
     'Oscilloscope',
@@ -342,7 +343,8 @@ test('analyzer telemetry documentation matches the public Phase 1 facade', () =>
     /does not automatically collect, persist,\s+or send telemetry over the network/
   );
   assert.match(compatibility, /does not collect device or user identifiers/);
-  assert.match(compatibility, /Integrated LUFS/);
+  assert.match(compatibility, /`maxTruePeak` \/ `max_true_peak` in dBTP/);
+  assert.doesNotMatch(compatibility, /Integrated LUFS/);
 
   const python = fs.readFileSync(path.join(
     repoRoot, 'docs', 'dsp', 'api', 'python', 'index.md'

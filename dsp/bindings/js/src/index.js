@@ -8,6 +8,7 @@ export {
 } from './errors.js';
 export { Effect, EFFECT_CHANNELS } from './effect.js';
 export {
+  AnalogMeter,
   ChromaSpiral,
   LevelMeter,
   NoteSpectrogram,
@@ -118,6 +119,7 @@ export {
   VinylArtifacts,
   VinylSimulator,
   WowFlutter,
+  createAnalogMeter,
   createChromaSpiral,
   createLevelMeter,
   createNoteSpectrogram,

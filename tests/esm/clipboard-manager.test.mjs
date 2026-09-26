@@ -84,6 +84,9 @@ async function withClipboardGlobals(calls, options, callback) {
     clearError() {
       calls.push(['clearError']);
     },
+    async openSharedVisualizer(value) {
+      calls.push(['openSharedVisualizer', value]);
+    },
     isDoubleBlindActive: options.isDoubleBlindActive === undefined
       ? undefined
       : () => {
@@ -297,6 +300,15 @@ test('handlePaste decodes pipeline share URLs and falls back after URL failures'
     });
     assert.ok(failingRuntime.calls.some(call => call[0] === 'setError' && call[1] === 'error.failedToPasteSettings'));
   }
+});
+
+test('handlePaste opens Visualizer share links without changing the pipeline', async () => {
+  const runtime = createRuntime({ pipeline: [createPlugin('Existing', [])] });
+  await withClipboardGlobals(runtime.calls, {}, async () => {
+    await runtime.manager.handlePaste(`https://example.test/effetune.html?v=layout&p=${encodePipelineState([{ nm: 'Ignored' }])}`);
+  });
+  assert.deepEqual(runtime.pipeline.map(plugin => plugin.name), ['Existing']);
+  assert.ok(runtime.calls.some(call => call[0] === 'openSharedVisualizer' && call[1] === 'layout'));
 });
 
 test('handlePaste honors double blind test guards and restoration paths', async () => {

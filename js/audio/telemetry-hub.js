@@ -24,7 +24,8 @@ export const TelemetryFrameType = Object.freeze({
     TAP_TUBE_SIMULATOR: 19,
     TAP_PHASE_SELECT_MAP: 20,
     TAP_TV_AUDIO_SIMULATOR: 25,
-    TAP_PITCH_METER: 26
+    TAP_PITCH_METER: 26,
+    TAP_ANALOG_METER: 27
 });
 
 function defaultWarning(message) {

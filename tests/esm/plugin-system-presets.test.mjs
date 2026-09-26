@@ -96,6 +96,12 @@ const expectedTargetPresetIds = new Map([
     ['SpatialMapperPlugin', [
         'transparent', 'stereo-enhance', 'center-extract',
         'upmix-5-1', 'upmix-7-1-4', 'ambience-extract'
+    ]],
+    ['AnalogMeterPlugin', [
+        'studio-vu', 'smpte-vu', 'hot-vu', 'loud-master-vu',
+        'din-ppm', 'bbc-ppm', 'nagra-modulometer',
+        'k-20', 'k-14', 'k-12', 'digital-peak', 'true-peak-clip-watch',
+        'ebu-r128', 'ebu-r128-wide', 'tv-24-lkfs', 'streaming-14-lufs', 'streaming-16-lufs'
     ]]
 ]);
 
@@ -106,7 +112,8 @@ const defaultMatchingPresetIds = new Map([
     ['AutoPanPlugin', new Set(['gentle-auto-pan'])],
     ['FrequencyShifterPlugin', new Set(['shift-up'])],
     ['RotarySpeakerPlugin', new Set(['rotary-slow'])],
-    ['SpatialMapperPlugin', new Set(['transparent'])]
+    ['SpatialMapperPlugin', new Set(['transparent'])],
+    ['AnalogMeterPlugin', new Set(['hot-vu'])]
 ]);
 
 class FakeObserver {
@@ -177,10 +184,10 @@ const publicParameterKeys = plugin => Object.keys(plugin.getSerializableParamete
     .sort();
 
 test('plugin system presets have complete, valid, round-trippable parameter records', () => {
-    assert.equal(presetProviders.length, 28, 'system preset provider count');
+    assert.equal(presetProviders.length, 29, 'system preset provider count');
     const targetPresetCount = [...expectedTargetPresetIds.values()]
         .reduce((count, ids) => count + ids.length, 0);
-    assert.equal(targetPresetCount, 111);
+    assert.equal(targetPresetCount, 128);
 
     const providersByClass = new Map(presetProviders.map(provider => [provider.className, provider]));
     for (const [className, expectedIds] of expectedTargetPresetIds) {

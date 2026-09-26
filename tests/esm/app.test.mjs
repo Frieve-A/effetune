@@ -339,6 +339,9 @@ function createDependencies(calls, options = {}) {
     async showVisualizerView() {
       calls.push(['ui.showVisualizerView']);
     },
+    async openSharedVisualizer(encoded) {
+      calls.push(['ui.openSharedVisualizer', encoded]);
+    },
     deferLibraryStartupView(initialView) {
       calls.push(['ui.deferLibraryStartupView', initialView]);
     },
@@ -1020,6 +1023,20 @@ test('Visualizer startup distinguishes reflected reloads from explicit URL reque
       assert.equal(calls.some(call => call[0] === 'ui.showVisualizerView'), expected, search);
     });
   }
+});
+
+test('A Visualizer share link is removed from the address at launch and opened once', async () => {
+  const historyState = { effetuneVisualizer: 1 };
+  await withAppModule({ search: '?v=layout&mode=compact', hash: '#x', historyState }, async ({ calls, mod, window }) => {
+    window.appConfig = { startupView: 'library' };
+    const app = new mod.App(createDependencies(calls));
+    assert.deepEqual(calls.find(call => call[0] === 'history.replaceState'),
+      ['history.replaceState', historyState, '', '/effetune.html?mode=compact#x']);
+    await app.applyStartupViewPreference();
+    assert.equal(app.hasExplicitStartupViewRequest(), true);
+    assert.deepEqual(calls.filter(call => call[0].startsWith('ui.show') || call[0] === 'ui.openSharedVisualizer'),
+      [['ui.openSharedVisualizer', 'layout']]);
+  });
 });
 
 test('initialize opens the configured Visualizer before the pipeline UI renders', async () => {

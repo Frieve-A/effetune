@@ -364,6 +364,22 @@ test('Oscilloscope retains legacy processBuffer accumulation as fallback', () =>
   assert.match(plugin.processorString, /lastAutoSweepTime/);
 });
 
+test('Oscilloscope Off mode shows the latest legacy samples across the ring wrap', () => {
+  const runtime = loadOscilloscope();
+  const plugin = new runtime.OscilloscopePlugin();
+  plugin.setTriggerMode('Off');
+  plugin.displayTime = 0.004;
+  const buffer = new Float32Array(65536);
+  buffer.set([0.1, 0.2], 65534);
+  buffer.set([0.3, 0.4], 0);
+  plugin.onMessage({
+    type: 'processBuffer',
+    measurements: { buffer, triggerIndex: 100, currentPosition: 2, sampleRate: 1000 }
+  });
+
+  assert.deepEqual(Array.from(plugin.frozenDisplayBuffer), [0.1, 0.2, 0.3, 0.4].map(Math.fround));
+});
+
 test('Oscilloscope deduplicates, rebinds, and cleans up hub subscriptions', () => {
   const firstHub = createHub();
   const runtime = loadOscilloscope({ hub: firstHub });

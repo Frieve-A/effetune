@@ -42,6 +42,7 @@ const categoryOrder = Object.freeze([
   'others'
 ]);
 const publicTelemetryTypes = new Set([
+  'AnalogMeter',
   'ChromaSpiral',
   'LevelMeter',
   'NoteSpectrogram',
@@ -997,8 +998,9 @@ function landingPage(catalog, version, convenienceExports) {
     '## Boundaries',
     '',
     'EffeTune DSP does not host VST/AU plugins, decode or encode audio in JavaScript, ' +
-      'resample audio, call ffmpeg, or expose integrated-LUFS/true-peak measurements. ' +
-      'Eight analyzers expose opt-in decoded observations; all other catalog ' +
+      'resample audio, or call ffmpeg. ' +
+      'Nine analyzers expose opt-in decoded observations, including Analog Meter ' +
+      'loudness and true-peak readings; all other catalog ' +
       'telemetry remains metadata-only. ' +
       'MCP is planned only after its implementation and acceptance exist.',
     '',
@@ -1231,7 +1233,7 @@ ${codeBlock('console', `effetune chain validate volume.json
 effetune render input.wav output.wav --preset volume.json
 effetune preset inspect volume.json`)}
 
-The CLI delegates codecs to SoundFile and does not resample, call ffmpeg, or measure
+The CLI delegates codecs to SoundFile and does not resample, call ffmpeg, or report
 loudness. It preserves the input sample rate and channel count.
 
 ## Batch rendering
@@ -1490,7 +1492,8 @@ parameter names.
 4. Run \`effetune render input.wav output.wav --preset chain.json\`.
 
 Runtime validation still enforces duplicate IDs, assets, and cross-field rules. MCP,
-measurement, resampling, ffmpeg, LUFS, and true-peak tools are not available through this API.
+resampling, and ffmpeg tools are not available through this API. Loudness and true-peak
+readings are available only as \`AnalogMeter\` telemetry, not as standalone tools.
 `);
 
   add('python-api', `
@@ -2378,12 +2381,12 @@ The npm package is ESM-only; use \`.mjs\` or a consumer package with
 Graph v1 is supported on the JavaScript and Python bindings only; see
 [Graph v1 supported surfaces](/dsp/reference/graph-v1/#supported-surfaces).
 
-The core does not decode, encode, resample, call ffmpeg, host VST/AU, or expose public
-integrated-LUFS/true-peak measurement.
+The core does not decode, encode, resample, call ffmpeg, or host VST/AU. Loudness and
+true-peak readings are available through \`AnalogMeter\` telemetry.
 
 ## Analyzers and telemetry
 
-\`ChromaSpiral\`, \`LevelMeter\`, \`NoteSpectrogram\`, \`Oscilloscope\`, \`PitchMeter\`,
+\`AnalogMeter\`, \`ChromaSpiral\`, \`LevelMeter\`, \`NoteSpectrogram\`, \`Oscilloscope\`, \`PitchMeter\`,
 \`SpectrumAnalyzer\`, \`Spectrogram\`, and \`StereoMeter\` expose decoded semantic observations in Python, JavaScript offline and
 streaming processing, and AudioWorklet. Telemetry is opt-in: the first callback or
 subscriber enables it and the last unsubscribe disables it. Long renders drain after
@@ -2395,7 +2398,7 @@ Common metadata:
 
 | JavaScript / Python | Meaning |
 |---|---|
-| \`kind\` / \`kind\` | \`level\`, \`noteSpectrogram\`, \`oscilloscope\`, \`pitch\`, \`spectrum\`, \`spectrumHq\`, \`spectrogram\`, \`spectrogramHq\`, or \`stereo\` |
+| \`kind\` / \`kind\` | \`analogMeter\`, \`level\`, \`noteSpectrogram\`, \`oscilloscope\`, \`pitch\`, \`spectrum\`, \`spectrumHq\`, \`spectrogram\`, \`spectrogramHq\`, or \`stereo\` |
 | \`effectType\` / \`effect_type\` | Semantic effect type |
 | \`effectId\` / \`effect_id\` | Declared effect ID, or null / \`None\` |
 | \`effectIndex\` / \`effect_index\` | Zero-based position in the declared DSP chain |
@@ -2406,6 +2409,12 @@ Analyzer fields:
 
 | Kind | JavaScript / Python | Unit and shape / order |
 |---|---|---|
+| Analog Meter | \`mode\` / \`mode\` | Mode index: 0 VU, 1 PPM, 2 RMS, 3 Sample Peak, 4 True Peak, 5 Loudness |
+| Analog Meter | \`channelCount\` / \`channel_count\` | Number of channel records, 1 to 16 |
+| Analog Meter | \`channels\` / \`channels\` | Processing-channel order; each item has \`needleDb\` / \`needle_db\` and \`maxDb\` / \`max_db\`. Outside Loudness mode these are the ballistic needle reading in dB and the highest detector reading since the previous frame; VU and RMS readings are scaled so a sine wave reads its peak level. In Loudness mode they are that channel's momentary and short-term LUFS (unweighted, ungated reference values) |
+| Analog Meter | \`integratedValid\`, \`lraValid\` / \`integrated_valid\`, \`lra_valid\` | True once integrated loudness or loudness range has enough gated data; always false outside Loudness mode |
+| Analog Meter | \`program\` / \`program\` | Loudness mode only, otherwise null / \`None\`: \`momentary\`, \`shortTerm\` / \`short_term\`, and \`integrated\` in LUFS (BS.1770 / EBU R128), \`lra\` in LU (EBU Tech 3342), \`maxTruePeak\` / \`max_true_peak\` in dBTP, and \`integratedSeconds\` / \`integrated_seconds\`; \`integrated\` and \`lra\` are 0 until their valid flag is true |
+| Analog Meter | All dB and LUFS values | Floored at -240; true peak above 0 dBTP is reported as measured |
 | Level | \`channels\` / \`channels\` | Processing-channel order; each item has linear-amplitude \`peak\`, linear-amplitude \`rms\`, and boolean \`clipped\` (a sample exceeded full scale) |
 | Oscilloscope | \`sampleRate\` / \`sample_rate\` | Hz |
 | Oscilloscope | \`captureSampleCount\` / \`capture_sample_count\` | Samples in the full capture |
@@ -2470,8 +2479,8 @@ Telemetry stays local: the library only passes decoded frames to in-process Pyth
 callbacks or callbacks in the browser page. It does not automatically collect, persist,
 or send telemetry over the network, and it does not collect device or user identifiers.
 
-Other catalog telemetry remains metadata-only. Integrated LUFS, BS.1770/EBU
-R128, true peak, and dynamics gain-reduction observations are not part of this API.
+Other catalog telemetry remains metadata-only. Dynamics gain-reduction observations
+are not part of this API.
 `);
 
   add('verification', `
@@ -2524,8 +2533,9 @@ bad stream block can be fixed and retried without resetting the stream.
 MIME types, CSP, processor/WASM/meta files, and a resumed AudioContext. Direct
 \`file:\` loading is unsupported.
 
-**Does the library decode, encode, resample, call ffmpeg, or measure loudness?** No.
-Those are caller responsibilities.
+**Does the library decode, encode, resample, or call ffmpeg?** No.
+Those are caller responsibilities. For loudness and true-peak readings, add an
+\`AnalogMeter\` in Loudness or True Peak mode and subscribe to its telemetry.
 
 **Why do offline and streaming output differ?** Offline starts fresh. Streams retain
 history and require the same block/event schedule for reproduction.
@@ -2687,7 +2697,7 @@ function llmsText(sources) {
     '- https://effetune.frieve.com/dsp/reference/graph-v1/',
     '- https://effetune.frieve.com/dsp/reference/compatibility/',
     '',
-    'MCP, measurement, resampling, ffmpeg, integrated LUFS, and true-peak APIs are not implemented.',
+    'MCP, resampling, and ffmpeg APIs are not implemented. Loudness and true-peak readings are available only as AnalogMeter telemetry.',
     ''
   ].join('\n');
 }

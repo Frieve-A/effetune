@@ -8,7 +8,19 @@ const ANALYZERS = {
     stereo: ['StereoMeterPlugin', 'handleDspStereoFieldTelemetry', 'drawMeter'],
     notes: ['NoteSpectrogramPlugin', 'handleTelemetry', 'drawGraph'],
     chroma: ['ChromaSpiralPlugin', 'handleTelemetry', 'drawGraph'],
-    'level-meter': ['LevelMeterPlugin', 'handleDspLevelTelemetry', 'updateMeter']
+    'level-meter': ['LevelMeterPlugin', 'handleDspLevelTelemetry', 'updateMeter'],
+    phase: ['PhaseSelectEqPlugin', 'handleDspTelemetry', 'drawVisualizerPhaseMap'],
+    'analog-meter': ['AnalogMeterPlugin', 'handleVisualizerTelemetry', 'drawVisualizerMeter']
+};
+
+// Input channel numbers behind the two-channel scratch of a source: null, L, R, a pair such as 34, or one channel.
+const channelNumbers = channel => {
+    if (channel === null || channel === undefined) return [1, 2];
+    if (channel === 'L') return [1];
+    if (channel === 'R') return [2];
+    if (Number(channel) <= 16) return [Number(channel)];
+    const first = Number(channel.slice(0, Math.floor(channel.length / 2)));
+    return [first, first + 1];
 };
 
 const frequencyMidi = frequency => 69 + 12 * Math.log2(frequency / 440);
@@ -80,7 +92,7 @@ class AnalyzerDisplay {
 
     update(item, time, cssWidth) {
         const plugin = this.plugin;
-        if (this.type === 'level-meter' && this.channel !== item.channel) {
+        if ((this.type === 'level-meter' || this.type === 'analog-meter') && this.channel !== item.channel) {
             // The source changes on channel selection; hide the old held peak
             // until a frame from the newly selected source arrives.
             plugin.initializeDisplayState();
@@ -104,6 +116,12 @@ class AnalyzerDisplay {
             options.showLevelValues = params.showLevelValues;
             options.channel = item.channel;
         }
+        if (this.type === 'analog-meter') {
+            options.channelLabels = channelNumbers(item.channel);
+            // Before the first telemetry frame arrives, fold the display to the
+            // selected channel count immediately instead of waiting for a frame.
+            if (!plugin.reading) plugin.channelCount = options.channelLabels.length;
+        }
         if (this.type === 'notes') {
             options.showKeyboard = params.kb;
             options.keyboardLabelFontSize = (cssWidth < 500 ? 11 : 12) * plugin.graphDpr;
@@ -112,6 +130,8 @@ class AnalyzerDisplay {
             options.showCorrelation = params.showCorrelation;
             options.showBalance = params.showBalance;
         }
+        // The effect's on-screen visibility gate does not apply to this host.
+        if (this.type === 'phase') plugin.isVisible = true;
         if (Object.keys(changed).length) {
             // Native controls repaint immediately; this host draws once after all
             // parameters and layers are ready instead.
@@ -124,6 +144,7 @@ class AnalyzerDisplay {
         const paletteKey = JSON.stringify(item.palette);
         const notePlugin = window.NoteSpectrogramPlugin;
         const mode = item.palette.mode;
+        const intensityGradient = mode === 'gradient' && item.palette.direction === 'intensity';
         const fixedNotes = mode === 'note-colors' && Boolean(notePlugin?.noteColor);
         const phase = mode !== 'gradient' || item.palette.motion.mode === 'none' || !item.palette.motion.speed ? 0 : time;
         if (this.paletteKey === paletteKey && this.phase === phase &&
@@ -159,14 +180,16 @@ class AnalyzerDisplay {
             };
         } else if (mode === 'solid' && this.type === 'spectrum') {
             options.traceStyle = () => item.palette.color;
-        } else if (mode === 'heatmap' && this.type === 'spectrum') {
+        } else if (this.type === 'spectrum' && (mode === 'heatmap' || intensityGradient)) {
             let cachedContext, cachedHeight, cachedGradient;
             options.traceStyle = (context, _width, height) => {
                 if (context !== cachedContext || height !== cachedHeight) {
                     cachedContext = context; cachedHeight = height;
-                    cachedGradient = context.createLinearGradient(0, cachedHeight, 0, 0);
-                    for (let intensity = 0; intensity <= 255; intensity++)
-                        cachedGradient.addColorStop(intensity / 255, heatmapColor(intensity / 255).css);
+                    if (mode === 'heatmap') {
+                        cachedGradient = context.createLinearGradient(0, cachedHeight, 0, 0);
+                        for (let intensity = 0; intensity <= 255; intensity++)
+                            cachedGradient.addColorStop(intensity / 255, heatmapColor(intensity / 255).css);
+                    } else cachedGradient = paletteGradient(context, item.palette, height, time, true);
                 }
                 return cachedGradient;
             };
@@ -193,16 +216,24 @@ class AnalyzerDisplay {
         } else options.traceStyle = (context, width) => paletteGradient(context, item.palette, width, time);
         options.noteColor = mode === 'solid' || mode === 'heatmap' ? () => hexRgb(item.palette.color) : fixedNotes
             ? midi => notePlugin.noteColors[((Math.round(midi) % 12) + 12) % 12]
+            : intensityGradient ? (_midi, intensity) => paletteRgb(intensity)
             : midi => paletteRgb(item.palette.mapping === 'octave'
                 ? ((midi % 12) + 12) % 12 / 12
                 : this.type === 'chroma'
                     ? (midi - (plugin.lo + 1) * 12) / Math.max(12, (plugin.hi - plugin.lo + 1) * 12)
                     : (midi - plugin.mn) / Math.max(1, plugin.mx - plugin.mn));
         options.signalColor = mode === 'heatmap' ? (_midi, intensity) => heatmapColor(intensity) : null;
+        if (intensityGradient && this.type === 'chroma') {
+            const colors = this.colors.map((rgb, index) => ({ rgb, alpha: index / 255,
+                css: `rgba(${rgb.join(',')},${index / 255})` }));
+            options.signalColor = (_midi, intensity) => colors[Math.max(0, Math.min(255, Math.round(intensity * 255)))];
+        }
         options.heatmapColorLut = mode === 'heatmap' ? window.SpectrogramPlugin.getHeatmapLuts().rgba : null;
         if (this.type === 'chroma') {
+            options.spiralFillColor = mode === 'gradient' && !intensityGradient && item.palette.mapping !== 'octave'
+                ? midi => colorCss(options.noteColor(midi)) : null;
             if (mode === 'solid') options.spiralFillStyle = () => item.palette.color;
-            else if (mode === 'heatmap') options.spiralFillStyle = null;
+            else if (mode === 'heatmap' || intensityGradient || options.spiralFillColor) options.spiralFillStyle = null;
             else {
                 let cachedContext, cachedWidth, cachedHeight, cachedFlipX, cachedFlipY, cachedGradient;
                 options.spiralFillStyle = context => {
@@ -210,21 +241,26 @@ class AnalyzerDisplay {
                         this.flipX !== cachedFlipX || this.flipY !== cachedFlipY) {
                         cachedContext = context; cachedWidth = plugin.canvas.width; cachedHeight = plugin.canvas.height;
                         cachedFlipX = this.flipX; cachedFlipY = this.flipY;
-                        if (!fixedNotes && item.palette.mapping !== 'octave') {
-                            cachedGradient = context.createLinearGradient(-cachedWidth / 2, 0, cachedWidth / 2, 0);
-                            for (let index = 0; index <= 24; index++)
-                                cachedGradient.addColorStop(index / 24, paletteColor(item.palette, index / 24, time));
-                        } else {
-                            cachedGradient = context.createConicGradient(-Math.PI / 2, 0, 0);
-                            for (let index = 0; index <= 24; index++) {
-                                const color = fixedNotes ? notePlugin.noteColor(index / 2) : paletteRgb(index === 24 ? 0 : index / 24);
-                                cachedGradient.addColorStop(index / 24, colorCss(color));
-                            }
+                        cachedGradient = context.createConicGradient(-Math.PI / 2, 0, 0);
+                        for (let index = 0; index <= 24; index++) {
+                            const color = fixedNotes ? notePlugin.noteColor(index / 2) : paletteRgb(index === 24 ? 0 : index / 24);
+                            cachedGradient.addColorStop(index / 24, colorCss(color));
                         }
                     }
                     return cachedGradient;
                 };
             }
+        }
+        if (this.type === 'phase') {
+            const styles = mode === 'solid' ? null : Array.from({ length: 256 }, (_, index) =>
+                colorCss(mode === 'heatmap' ? heatmapColor(index / 255).rgb : paletteRgb(index / 255)));
+            const byLevel = mode === 'heatmap' || intensityGradient;
+            options.pointColor = styles
+                ? (position, level) => styles[Math.max(0, Math.min(255, Math.round((byLevel ? level : position) * 255)))]
+                : () => item.palette.color;
+        }
+        if (this.type === 'analog-meter') {
+            options.needleColor = mode === 'solid' ? () => item.palette.color : position => colorCss(paletteRgb(position));
         }
         if (this.type === 'stereo') {
             // Keep the original age buckets, fading into the scene beneath the graph.
@@ -251,8 +287,8 @@ class AnalyzerDisplay {
             };
         }
         if (this.type === 'spectrogram') {
-            options.colorLut = mode === 'gradient' ? Uint8ClampedArray.from(this.colors.flat()) : null;
-            options.frequencyColorLut = mode === 'heatmap' ? null : Uint8ClampedArray.from(
+            options.colorLut = intensityGradient ? Uint8ClampedArray.from(this.colors.flat()) : null;
+            options.frequencyColorLut = mode === 'heatmap' || intensityGradient ? null : Uint8ClampedArray.from(
                 Array.from({ length: 256 }, (_, row) =>
                     fixedNotes ? notePlugin.noteColor(frequencyMidi(plugin.displayRowToFrequency(row)))
                         : paletteRgb(1 - row / 255)).flat());
@@ -295,7 +331,7 @@ class AnalyzerDisplay {
             if (this.signalLayer.height !== this.plugin.canvas.height) this.signalLayer.height = this.plugin.canvas.height;
             this.signalLayer.getContext('2d').clearRect(0, 0, this.signalLayer.width, this.signalLayer.height);
             this.signalCanvas = this.signalLayer;
-            if (this.type === 'spectrum' || this.type === 'stereo' || this.type === 'chroma' || this.type === 'oscilloscope') {
+            if (this.type === 'spectrum' || this.type === 'stereo' || this.type === 'chroma' || this.type === 'oscilloscope' || this.type === 'phase') {
                 this.underlayLayer ||= document.createElement('canvas');
                 if (this.underlayLayer.width !== this.plugin.canvas.width) this.underlayLayer.width = this.plugin.canvas.width;
                 if (this.underlayLayer.height !== this.plugin.canvas.height) this.underlayLayer.height = this.plugin.canvas.height;
@@ -339,9 +375,11 @@ class AnalyzerDisplay {
         finally { target.restore(); }
     }
 
-    drawKeyboard(context, draw, { horizontal, width, height, rollWidth }) {
+    drawKeyboard(context, draw, { horizontal, width, height, rollWidth, boundary }) {
         // The native horizontal layout rotates the keyboard, swapping its canvas axes.
-        const flipWidth = horizontal ? this.flipY : this.flipX;
+        // Keys are mirrored back in place across their depth; boundary marks stay
+        // on the boundary so they still face the roll.
+        const flipWidth = !boundary && (horizontal ? this.flipY : this.flipX);
         const flipHeight = horizontal ? this.flipX : this.flipY;
         if (!flipWidth && !flipHeight) { draw(); return; }
         context.save();

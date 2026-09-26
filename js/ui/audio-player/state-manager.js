@@ -33,6 +33,7 @@ export class StateManager {
       repeatMode: 'OFF', // 'OFF', 'ALL', 'ONE'
       shuffleMode: false,
       playbackSpeed: 1,
+      preservePitch: true,
       seamlessMode: audioPlayer?.gaplessPlayback !== false,
       
       // Transition state

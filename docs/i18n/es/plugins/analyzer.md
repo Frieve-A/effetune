@@ -1,6 +1,6 @@
 ---
 title: "Plugins de análisis - EffeTune"
-description: "Plugins de análisis de audio, incluidos Chroma Spiral, Level Meter, Note Spectrogram, Oscilloscope, Pitch Meter, Spectrogram, Spectrum Analyzer y Stereo Meter."
+description: "Plugins de análisis de audio, incluidos Analog Meter, Chroma Spiral, Level Meter, Note Spectrogram, Oscilloscope, Pitch Meter, Spectrogram, Spectrum Analyzer y Stereo Meter."
 lang: es
 ---
 
@@ -10,6 +10,7 @@ Una colección de plugins que te permiten ver tu música de formas fascinantes. 
 
 ## Lista de Plugins
 
+- [Analog Meter](#analog-meter) - Muestra los niveles de canal en un medidor de aguja con escalas VU, PPM, pico y sonoridad
 - [Chroma Spiral](#chroma-spiral) - Sitúa los componentes de frecuencia en una espiral de notas y octavas
 - [Level Meter](#level-meter) - Muestra el nivel de señal digital y posibles recortes
 - [Note Spectrogram](#note-spectrogram) - Muestra las alturas estimadas a lo largo del tiempo en un piano roll
@@ -18,6 +19,76 @@ Una colección de plugins que te permiten ver tu música de formas fascinantes. 
 - [Spectrogram](#spectrogram) - Crea hermosos patrones visuales a partir de tu música
 - [Spectrum Analyzer](#spectrum-analyzer) - Muestra las diferentes frecuencias en tu música
 - [Stereo Meter](#stereo-meter) - Visualiza el balance estéreo y las relaciones de fase
+
+## Analog Meter
+
+Muestra el nivel de cada canal en un medidor de aguja clásico, sin cambiar el sonido. Úsalo para seguir de un momento a otro cuánto suena tu música, o para ver cómo se lee tu reproducción en las escalas usadas en la radiodifusión y el streaming: VU, PPM, pico y sonoridad (LUFS).
+
+### Guía de uso
+
+- **Sigue el nivel medio con VU**: observa la aguja durante una canción. Las estrofas tranquilas y los estribillos intensos muestran una diferencia clara, mientras que los golpes cortos de batería apenas mueven la aguja.
+- **Comprueba el recorte con True Peak**: coloca Analog Meter después de tus efectos de EQ y ganancia, y reproduce la parte más intensa de una pista. Si la lectura supera 0 dBFS o se enciende el indicador over, la cadena puede recortar; baja la ganancia hasta que los picos se mantengan por debajo de 0 dBFS, con un pequeño margen como -1 dBFS.
+- **Compara canciones con Loudness**: ajusta **Target** a una referencia de streaming como -14 LUFS, pulsa **Reset** al empezar una canción o álbum y reprodúcelo entero. El valor Integrated muestra su sonoridad global y el máximo True Peak muestra su pico más alto, lo que sirve de guía para igualar el volumen entre las canciones de un álbum o lista. LRA te permite comparar cuánto varía la sonoridad de cada canción.
+
+### Preajustes del sistema
+
+Haz clic en **Preajustes de efecto** en la cabecera del efecto para ajustar el medidor a un estándar conocido en un solo paso. Un preajuste que cambia **Mode** reinicia la medición; al pasar de un preajuste de Loudness a otro, la medición continúa.
+
+- **Studio VU (-18 dBFS)** - VU con 0 VU en -18 dBFS, la alineación de estudio habitual (EBU R68). Adecuado para grabaciones con mucho margen (headroom).
+- **SMPTE VU (-20 dBFS)** - VU con 0 VU en -20 dBFS (SMPTE RP 155), la práctica de los estudios y la radiodifusión de Norteamérica.
+- **Hot VU (-14 dBFS)** - La configuración predeterminada: VU con 0 VU en -14 dBFS, adecuada para la mayoría de las grabaciones comerciales terminadas.
+- **Loud Master VU (-8 dBFS)** - VU con 0 VU en -8 dBFS, para CD modernos y másteres de pop con la sonoridad llevada al máximo, que de otro modo mantendrían la aguja en el tope de la escala.
+- **DIN PPM** - El medidor DIN (**Attack** de 5 ms, caída de 20 dB en 1,5 s, escala DIN) con la marca -9 en -18 dBFS, de modo que el 0 queda en -9 dBFS. La escala llega hasta -50.
+- **BBC PPM** - El medidor BBC (**Attack** de 10 ms, caída de 24 dB en 2,8 s, escala BBC) con la marca 4 en -18 dBFS, de modo que la marca 6 queda en -10 dBFS.
+- **Nagra Modulometer** - El modulómetro de los magnetófonos Nagra (**Attack** de 7,5 ms, escala en dB de -30 a +5 dB) con 0 dB en -18 dBFS. **Release** usa el valor DIN de 1,5 s.
+- **K-20** - El K-System de Bob Katz en un medidor RMS, con 0 en -20 dBFS y una escala que baja hasta -60 dBFS. Para grabaciones con dinámica amplia.
+- **K-14** - Igual, con 0 en -14 dBFS y la escala hasta -60 dBFS. Para la música pop habitual.
+- **K-12** - Igual, con 0 en -12 dBFS y la escala hasta -60 dBFS. Para material muy comprimido pensado para radiodifusión.
+- **Digital Peak** - Un medidor de pico digital estándar (IEC 60268-18) de -60 a 0 dBFS, con retención de pico de 2 s.
+- **True Peak Clip Watch** - True Peak ampliado a los 20 dB superiores de la escala, con la retención de pico más larga (10 s), para detectar picos por encima de 0 dBFS tras cambiar la EQ o la ganancia.
+- **EBU R128 (-23 LUFS)** - Loudness con el objetivo de la radiodifusión europea y la escala EBU +9.
+- **EBU R128 +18 Scale** - El mismo objetivo con la escala EBU +18, más amplia, para música clásica y otro material con dinámica amplia.
+- **TV (-24 LKFS)** - Loudness con el objetivo de -24 LKFS que se usa en la televisión de EE. UU. (ATSC A/85) y Japón (ARIB TR-B32).
+- **Streaming (-14 LUFS)** - Loudness con un objetivo de -14 LUFS, cercano a la normalización de volumen de muchos servicios de streaming musical, y la aguja Short-term, más tranquila.
+- **Streaming (-16 LUFS)** - Loudness con el objetivo de -16 LUFS recomendado para streaming y pódcasts (AES TD1008), y la aguja Short-term.
+
+### Parámetros
+
+Solo se muestran los controles que se aplican al **Mode** seleccionado.
+
+- **Mode** - Selecciona el tipo de medidor: **VU** (predeterminado), **PPM**, **RMS**, **Sample Peak**, **True Peak** o **Loudness**. Cada modo mueve la aguja de forma distinta y usa su propia escala (consulta Cómo leer la visualización). Cambiar el modo reinicia la medición.
+- **Integration** (RMS; de 0,05 a 3 s; predeterminado: 0,3 s) - Define el tiempo de promediado. Los valores más largos dan una aguja más estable y lenta; los más cortos siguen los cambios con mayor rapidez.
+- **Attack** (PPM; de 1 a 20 ms; predeterminado: 5 ms) - Define la rapidez con la que sube la aguja en modo PPM, expresada como la duración de una ráfaga de tono que se lee 2 dB por debajo de un tono constante. Los valores más cortos muestran los picos breves más cerca de su nivel real; los más largos hacen que los picos breves se lean más bajos. 5 ms coincide con el medidor DIN.
+- **Release** (PPM, Sample Peak, True Peak; de 0,1 a 5 s; predeterminado: 1,5 s) - Define el tiempo que tarda la aguja en caer 20 dB tras un pico. Los valores más largos facilitan la lectura de los picos; los más cortos siguen la música con mayor precisión. 1,5 s coincide con el medidor DIN y con el medidor de pico digital estándar.
+- **Reference** (VU, PPM, RMS; de -30 a 0 dBFS; predeterminado: -14 dBFS) - Define el nivel digital que coincide con la marca de referencia del medidor. El valor predeterminado se adapta a la mayoría de las grabaciones comerciales terminadas; con las alineaciones de estudio de -18 o -20 dBFS (consulta Preajustes del sistema), un CD corriente suele mantener la aguja cerca del tope de la escala. Súbelo cuando las grabaciones intensas lleven la aguja al tope de la escala; bájalo cuando las grabaciones tranquilas apenas la muevan.
+- **Range** (PPM con la escala DIN o dB, RMS, Sample Peak, True Peak; de 20 a 60 dB; predeterminado: 40 dB) - Define hasta dónde llega la escala hacia abajo. Ámplialo para ver pasajes tranquilos; redúcelo para repartir mejor la parte superior de la escala.
+- **PPM Scale** (PPM; predeterminado: DIN) - Selecciona la escala del PPM: **DIN**, **BBC** o **dB** (consulta Cómo leer la visualización).
+- **Peak Hold** (PPM, RMS, Sample Peak, True Peak; de 0 a 10 s; predeterminado: 1 s) - Define cuánto tiempo permanece la marca de pico en la lectura más alta reciente y cuánto tiempo sigue encendido el indicador over. Con 0 se desactiva la marca y el indicador over permanece encendido 1 s.
+- **Needle** (Loudness; predeterminado: Momentary) - Selecciona qué muestra la aguja. **Momentary** sigue la sonoridad de los últimos 0,4 s; **Short-term** muestra los últimos 3 s y se mueve con más calma.
+- **Target** (Loudness; de -36 a -10 LUFS; predeterminado: -23 LUFS) - Define la sonoridad marcada en la escala y dispone la escala tomando ese valor como referencia. -23 LUFS es el nivel de radiodifusión de EBU R128; muchos servicios de streaming usan valores cercanos a -14 LUFS.
+- **Scale** (Loudness; predeterminado: EBU +9) - Selecciona la amplitud de la escala de sonoridad. **EBU +9** cubre de 18 LU por debajo a 9 LU por encima de **Target**; **EBU +18** cubre de 36 LU por debajo a 18 LU por encima, lo que conviene a música con dinámica amplia o material muy intenso.
+
+### Cómo leer la visualización
+
+- Cada canal tiene su propio medidor, hasta cuatro por fila y hasta 16 canales.
+- Los niveles siguen la convención digital habitual de que una onda sinusoidal a plena escala se lee como 0 dBFS, así que una onda sinusoidal constante da la misma lectura en todos los modos excepto Loudness.
+- Los modos difieren en la rapidez con la que se mueve la aguja:
+
+| Modo | Movimiento de la aguja | Escala |
+|---|---|---|
+| VU | Lento. Alcanza un nuevo nivel en unos 0,3 s y muestra el nivel medio (IEC 60268-17). | De -20 a +3 VU. 0 VU = **Reference**. |
+| PPM | Una aproximación basada en IEC 60268-10. Sube rápidamente a la velocidad fijada por **Attack**; con el valor predeterminado de 5 ms, una ráfaga de 10 ms se lee aproximadamente 1 dB por debajo de un tono continuo, como en un medidor DIN. Cae 20 dB en el tiempo de **Release**. | Se elige con **PPM Scale**. **DIN**: la marca -9 = **Reference**, así que 0 queda 9 dB por encima. **BBC**: marcas de 1 a 7, con 4 dB entre las marcas de 2 a 7 y 6 dB entre 1 y 2; la marca 4 = **Reference**. **dB**: la marca 0 = **Reference**, desde **Range** por debajo de ella hasta +5 dB. |
+| RMS | Muestra la potencia media durante el tiempo de **Integration**, sin suavizado adicional. | La marca 0 = **Reference**. |
+| Sample Peak | Salta de inmediato al valor de muestra más alto. | El tope de la escala = 0 dBFS. |
+| True Peak | Como Sample Peak, pero también estima los picos entre muestras. Puede leer por encima de 0 dBFS; esos picos pueden recortar en un DAC o durante la conversión. | El tope de la escala = 0 dBFS. |
+| Loudness | Muestra la sonoridad en LUFS según ITU-R BS.1770 y EBU R128. | Definida por **Target** y **Scale**; las lecturas se muestran en LUFS. |
+
+- La marca de pico muestra la lectura más alta reciente durante el tiempo de **Peak Hold**. El indicador over se enciende cuando el nivel supera 0 dBFS y permanece encendido durante el tiempo de **Peak Hold**, o 1 s si **Peak Hold** es 0.
+- En el modo Loudness, el primer medidor muestra el programa completo. Su aguja sigue el ajuste de **Needle** y muestra Momentary (M), Short-term (S), Integrated (I), Loudness Range (LRA), el máximo True Peak y el tiempo de medición transcurrido, junto con un botón **Reset**. Integrated y LRA aparecen cuando se ha medido suficiente audio.
+  - Para mono, estéreo y 5.1 (orden de canales L, R, C, LFE, Ls, Rs), estos valores siguen la ponderación de canales estándar. Para otros números de canales, todos los canales se suman con el mismo peso, por lo que los valores son solo de referencia.
+  - Los medidores siguientes muestran cada canal por separado. Son valores de referencia, medidos sin ponderación de canales ni puerta.
+- Integrated, LRA y el máximo True Peak siguen acumulándose hasta que pulsas **Reset**, cambias **Mode**, cambia la frecuencia de muestreo o el número de canales, o se reinicia el procesamiento de audio.
+- El tiempo en que el procesamiento está en pausa no se mide: durante las pausas de ahorro de energía en silencio, mientras Master Bypass está activado o Analog Meter está desactivado, o mientras Effect Pipeline no está visible (por ejemplo, en la Biblioteca musical, con la ventana minimizada o en el Reproductor mini) y **Omitir el DSP de visualización cuando esté oculto** está activado en Configuración (lo está de forma predeterminada). Las lecturas continúan desde donde se detuvieron.
 
 ## Chroma Spiral
 
@@ -122,6 +193,7 @@ Muestra la forma de la onda sonora en tiempo real para que puedas ver golpes, at
 - **Trigger Mode**
   - Auto: Actualizaciones continuas incluso sin disparo
   - Normal: Congela la visualización hasta el siguiente disparo
+  - Off: Sin disparo; muestra continuamente la forma de onda más reciente. Trigger Level, Trigger Edge y Holdoff no tienen efecto
 - La detección del disparo usa el promedio de los canales izquierdo y derecho. La entrada mono se usa directamente.
 - **Trigger Level** - Nivel de amplitud que inicia la captura
   - Rango: -1 a 1 (amplitud normalizada)

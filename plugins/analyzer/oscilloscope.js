@@ -21,7 +21,8 @@ class OscilloscopePlugin extends PluginBase {
       this.displayTime = 0.01; // default 10 ms = 0.01 sec
   
       // Trigger parameters:
-      // Trigger Mode (tm): "Auto" (continuous sweep with forced update) or "Normal" (freeze display if no trigger)
+      // Trigger Mode (tm): "Auto" (continuous sweep with forced update), "Normal" (freeze display if no trigger)
+      // or "Off" (free-running display of the latest Display Time samples)
       this.triggerMode = 'Auto';
       // Trigger Level (tl): linear amplitude value (expected raw signal in [-1,1])
       this.triggerLevel = 0.0;
@@ -242,14 +243,14 @@ class OscilloscopePlugin extends PluginBase {
         'ms', 'displayTime', (value) => value * 1000, true
       ));
   
-      // --- Trigger Mode Control (Auto/Normal) ---
+      // --- Trigger Mode Control (Auto/Normal/Off) ---
       const tmRow = document.createElement('div');
       tmRow.className = 'parameter-row';
   
       const tmLabel = document.createElement('label');
       tmLabel.textContent = 'Trigger Mode:';
 
-      const modes = ['Auto', 'Normal'];
+      const modes = ['Auto', 'Normal', 'Off'];
       const modeRadioInputs = [];
       const modeRadios = modes.map(mode => {
         const label = document.createElement('label');
@@ -425,7 +426,7 @@ class OscilloscopePlugin extends PluginBase {
     }
   
     setTriggerMode(value) {
-      if (['Auto', 'Normal'].includes(value)) {
+      if (['Auto', 'Normal', 'Off'].includes(value)) {
         this.triggerMode = value;
         // Clear frozen snapshot when mode changes.
         this.frozenDisplayBuffer = null;
@@ -745,6 +746,22 @@ class OscilloscopePlugin extends PluginBase {
       this.waveformBuffer.set(buffer);
       const newTriggerIndex = message.measurements.triggerIndex;
       const currentPos = message.measurements.currentPosition;
+
+      // Free-running mode shows the latest Display Time samples without waiting for a trigger.
+      if (this.triggerMode === 'Off') {
+        const displaySamples = Math.max(1, Math.floor(this.sampleRate * this.displayTime));
+        const start = currentPos - displaySamples;
+        const latest = new Float32Array(displaySamples);
+        if (start >= 0) {
+          latest.set(buffer.subarray(start, currentPos));
+        } else {
+          latest.set(buffer.subarray(bufferLength + start));
+          latest.set(buffer.subarray(0, currentPos), -start);
+        }
+        this.frozenDisplayBuffer = latest;
+        this.scopeSnapshot = null;
+        return audioBuffer;
+      }
   
       // Only start a new accumulation if not already accumulating.
       if (!this.accumulating && (this.lastProcessedTriggerIndex === null || this.lastProcessedTriggerIndex !== newTriggerIndex)) {

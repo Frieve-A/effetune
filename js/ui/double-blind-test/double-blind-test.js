@@ -19,7 +19,8 @@ import {
 } from '../../utils/serialization-utils.js';
 import {
     encodePipelineState,
-    decodePipelineState
+    decodePipelineState,
+    createShareUrl
 } from '../../utils/pipeline-state-codec.js';
 import { copyTextToClipboard } from '../../utils/clipboard-utils.js';
 import {
@@ -1081,11 +1082,7 @@ export class DoubleBlindTest {
         const externalAssetWarning = captureExternalAssetWarning(
             collectUniquePipelinePlugins(pipelineA, pipelineB)
         );
-        const url = new URL('https://effetune.frieve.com/effetune.html');
-        url.searchParams.set('dbt', encoded);
-        const text = url.toString();
-
-        const ok = await copyTextToClipboard(text);
+        const ok = await copyTextToClipboard(createShareUrl('dbt', encoded));
         if (attemptRevision !== this._shareAttemptRevision) return;
         if (ok) {
             this.uiManager.showTransientMessage(appendExternalAssetWarningSnapshot(

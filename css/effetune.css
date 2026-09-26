@@ -901,9 +901,9 @@ body.layout-mobile #pipelineStats {
     color: var(--et-text-primary);
 }
 
-/* The app-owned listbox restores the standard EffeTune dropdown used by the
-   pipeline preset control before v2.7. Native select popups do not expose their
-   scrollbar parts to the application's shared scrollbar rules. */
+/* Shared dropdowns use an app-owned listbox so existing and dynamically added
+   controls inherit the theme and scrollbar rules. Native select popups do not
+   expose their scrollbar parts to application CSS. */
 .standard-select-list {
     position: fixed;
     display: block;
@@ -1299,6 +1299,7 @@ body.layout-mobile #pipelineStats {
 .reset-effect-button svg,
 .move-up-button svg,
 .move-down-button svg,
+.visualizer-editor-actions svg,
 .help-button svg,
 .delete-button svg,
 .column-control-button svg {
@@ -1348,6 +1349,25 @@ body.layout-mobile #pipelineStats {
 
 .plugin-parameter-ui .parameter-row:has(> .radio-group) {
     row-gap: 4px;
+}
+
+/* Analog Meter lays its parameters out in two columns on desktop. */
+.analog-meter-parameters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 20px;
+}
+
+/* Restarts the Loudness measurement only; sits in normal flow below the graph so it
+   stays associated with the program meter's Integrated/LRA/max True Peak readouts
+   instead of overlapping the common effect header (S-12). */
+.analog-meter-reset-button {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 5px 15px;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
 }
 
 body.layout-mobile .plugin-parameter-ui .parameter-row {
@@ -2245,7 +2265,8 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
     overflow-x: auto;
 }
 
-.player-speed-preset {
+.player-speed-preset,
+.player-speed-pitch {
     min-height: 34px;
     padding: 2px 0;
     border: 1px solid var(--et-surface-20);
@@ -2257,12 +2278,6 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
     cursor: pointer;
 }
 
-.player-speed-preset[aria-pressed="true"] {
-    border-color: var(--et-accent);
-    background: var(--et-surface-17);
-}
-
-.player-speed-preset:focus-visible,
 .player-speed-popup input:focus-visible {
     outline: 2px solid var(--et-accent);
     outline-offset: 1px;
@@ -2270,14 +2285,24 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
 
 .player-speed-custom {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 10px;
     margin-top: 10px;
 }
 
+/* The flex basis keeps the slider usable; the pitch toggle wraps first. */
 .player-speed-slider {
-    flex: 1 1 auto;
+    flex: 1 1 120px;
     min-width: 0;
+}
+
+.player-speed-popup .player-speed-pitch {
+    flex: 0 1 auto;
+    max-width: 100%;
+    margin-left: auto;
+    padding: 2px 10px;
+    white-space: normal;
 }
 
 .player-speed-popup .player-speed-number {
@@ -3002,6 +3027,8 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
 .settings-menu-item:focus-visible,
 .pipeline-menu-item:focus-visible,
 .player-button:focus-visible,
+.player-speed-preset:focus-visible,
+.player-speed-pitch:focus-visible,
 .save-button:focus-visible,
 .delete-preset-button:focus-visible,
 .help-button:focus-visible,
@@ -3026,6 +3053,8 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
 .view-switch-button.active,
 .dbt-switch-buttons .header-button.active,
 .player-button[data-active="true"],
+.player-speed-preset[aria-pressed="true"],
+.player-speed-pitch[aria-pressed="true"],
 .visualizer-toolbar .visualizer-edit[aria-pressed="true"],
 .visualizer-editor .visualizer-style-toggles button[aria-pressed="true"] {
     background: linear-gradient(180deg, color-mix(in srgb, var(--et-accent) 95%, transparent), var(--et-accent-pressed));
@@ -3039,6 +3068,8 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
 }
 
 .player-button[data-active="true"]:hover:not(:disabled),
+.player-speed-preset[aria-pressed="true"]:hover:not(:disabled),
+.player-speed-pitch[aria-pressed="true"]:hover:not(:disabled),
 .visualizer-toolbar .visualizer-edit[aria-pressed="true"]:hover:not(:disabled),
 .visualizer-editor .visualizer-style-toggles button[aria-pressed="true"]:hover:not(:disabled) {
     background: linear-gradient(180deg, var(--et-accent-hover), var(--et-accent));
@@ -3047,12 +3078,16 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
 }
 
 .player-button[data-active="true"]:active:not(:disabled),
+.player-speed-preset[aria-pressed="true"]:active:not(:disabled),
+.player-speed-pitch[aria-pressed="true"]:active:not(:disabled),
 .visualizer-toolbar .visualizer-edit[aria-pressed="true"]:active:not(:disabled),
 .visualizer-editor .visualizer-style-toggles button[aria-pressed="true"]:active:not(:disabled) {
     background: linear-gradient(180deg, var(--et-accent), var(--et-accent-pressed));
 }
 
 .player-button[data-active="true"]:focus-visible:not(:disabled),
+.player-speed-preset[aria-pressed="true"]:focus-visible:not(:disabled),
+.player-speed-pitch[aria-pressed="true"]:focus-visible:not(:disabled),
 .visualizer-toolbar .visualizer-edit[aria-pressed="true"]:focus-visible:not(:disabled),
 .visualizer-editor .visualizer-style-toggles button[aria-pressed="true"]:focus-visible:not(:disabled) {
     border-color: var(--et-accent-hover);
@@ -3742,6 +3777,7 @@ input[type="radio"]:disabled {
 
 .eq-reset-button,
 .analyzer-reset-button,
+.analog-meter-reset-button,
 .fifteen-band-peq-import-button,
 .fifteen-band-peq-inverse-button,
 .matrix-button {
@@ -3754,6 +3790,7 @@ input[type="radio"]:disabled {
 
 .eq-reset-button:hover,
 .analyzer-reset-button:hover,
+.analog-meter-reset-button:hover,
 .fifteen-band-peq-import-button:hover,
 .fifteen-band-peq-inverse-button:hover,
 .matrix-button:hover {
@@ -4350,7 +4387,7 @@ body.view-visualizer #mobilePlayerView { display: none !important; }
 .visualizer-effect-heading .visualizer-section-title { margin: 0; }
 .visualizer-effect-actions { display: flex; gap: 4px; margin-left: auto; }
 .visualizer-editor :is(.visualizer-effect-actions, .visualizer-editor-actions) button { display: flex; align-items: center; justify-content: center; flex: none; width: 24px; height: 24px; margin: 0; padding: 4px 8px; border-color: var(--et-surface-32); }
-.visualizer-editor :is(.visualizer-effect-actions, .visualizer-editor-actions) :is(.move-up-button, .move-down-button) { color: var(--et-accent); }
+.visualizer-editor :is(.visualizer-effect-actions, .visualizer-editor-actions) :is(.move-up-button, .move-down-button, .bring-to-front-button, .send-to-back-button) { color: var(--et-accent); }
 .visualizer-editor :is(.visualizer-effect-actions, .visualizer-editor-actions) .delete-button { color: var(--et-danger); }
 .visualizer-editor .toggle-button { flex: none; width: 48px; height: 24px; margin: 0; padding: 2px 8px; font-size: 12px; background: var(--et-toggle-on-gradient); border-color: var(--et-success); box-shadow: 0 3px 10px color-mix(in srgb, var(--et-success) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, .18); }
 .visualizer-editor .toggle-button.off { background: linear-gradient(180deg, var(--et-surface-51), var(--et-surface-42)); border-color: var(--et-surface-55); box-shadow: var(--et-control-shadow); }

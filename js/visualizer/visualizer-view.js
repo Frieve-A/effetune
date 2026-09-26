@@ -1,4 +1,6 @@
-import { createDefaultLayout, normalizeLayout, layoutsEqual } from './visualizer-model.js';
+import { createDefaultLayout, normalizeLayout, layoutsEqual, encodeLayoutShare, decodeLayoutShare, layoutShareParam } from './visualizer-model.js';
+import { createShareUrl } from '../utils/pipeline-state-codec.js';
+import { copyTextToClipboard, readTextFromClipboard } from '../utils/clipboard-utils.js';
 import { VisualizerPresetStore } from './visualizer-preset-store.js';
 import { VisualizerSources } from './visualizer-sources.js';
 import { VisualizerRenderer } from './visualizer-renderer.js';
@@ -16,7 +18,7 @@ export class VisualizerView {
         this.root = document.createElement('section');
         this.root.id = 'visualizerView';
         this.root.setAttribute('aria-label', 'Visualizer');
-        this.root.innerHTML = '<div class="visualizer-toolbar"><button type="button" class="visualizer-edit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="m16 3 5 5L8 21H3v-5L16 3zm-3 3 5 5"/></svg><span>Edit</span></button><button type="button" class="visualizer-presets"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg><span></span></button><label class="visualizer-quality-label"><span></span><select class="visualizer-quality"></select></label></div><div class="visualizer-workspace"><div class="visualizer-stage-host"><div class="visualizer-stage"><canvas></canvas><button type="button" class="visualizer-expand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg></button></div><p class="visualizer-status" role="status" hidden></p></div></div>';
+        this.root.innerHTML = '<div class="visualizer-toolbar"><button type="button" class="visualizer-edit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="m16 3 5 5L8 21H3v-5L16 3zm-3 3 5 5"/></svg><span></span></button><button type="button" class="visualizer-presets"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg><span></span></button><button type="button" class="visualizer-share"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/></svg><span></span></button><button type="button" class="visualizer-import"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg><span></span></button><label class="visualizer-quality-label"><span></span><select class="visualizer-quality"></select></label></div><div class="visualizer-workspace"><div class="visualizer-stage-host"><div class="visualizer-stage"><canvas></canvas><button type="button" class="visualizer-expand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg></button></div><p class="visualizer-status" role="status" hidden></p></div></div>';
         const main = document.querySelector('.main-container');
         main?.parentNode.insertBefore(this.root, main.nextSibling);
         this.stageHost = this.root.querySelector('.visualizer-stage-host');
@@ -29,10 +31,24 @@ export class VisualizerView {
         workspace.insertBefore(this.editor.navigation, this.stageHost);
         workspace.appendChild(this.editor.root);
         this.presetButton = this.root.querySelector('.visualizer-presets');
-        this.presetButton.querySelector('span').textContent = this.t('ui.title.visualizerPresets', 'Visualizer Presets');
         this.presetButton.addEventListener('click', () => this.openPresets().catch(error => this.fail(error)));
         this.editButton = this.root.querySelector('.visualizer-edit');
         this.editButton.addEventListener('click', () => this.setEditing(!this.editor.open));
+        this.shareButton = this.root.querySelector('.visualizer-share');
+        this.importButton = this.root.querySelector('.visualizer-import');
+        // Labels also serve as the accessible name when the mobile toolbar shows icons only.
+        for (const [button, label] of [
+            [this.editButton, 'Edit'],
+            [this.presetButton, this.t('ui.title.visualizerPresets', 'Visualizer Presets')],
+            [this.shareButton, this.t('visualizer.share', 'Share')],
+            [this.importButton, this.t('visualizer.importLink', 'Import Link')]
+        ]) {
+            button.querySelector('span').textContent = label;
+            button.title = label;
+            button.setAttribute('aria-label', label);
+        }
+        this.shareButton.addEventListener('click', () => this.share());
+        this.importButton.addEventListener('click', () => readTextFromClipboard().then(text => this.importFromText(text)));
         this.expandButton = this.root.querySelector('.visualizer-expand');
         this.stageHost.appendChild(this.expandButton);
         this.updateExpandButtonLabel();
@@ -56,12 +72,24 @@ export class VisualizerView {
         document.addEventListener('keydown', event => {
             if (event.key === 'Escape' && this.expanded) { event.preventDefault(); event.stopPropagation(); this.setExpanded(false); }
         }, true);
+        // Electron reads the native clipboard on Ctrl+V; browsers use the paste event to avoid a permission prompt.
+        document.addEventListener('keydown', event => {
+            if (!(event.ctrlKey || event.metaKey) || event.key?.toLowerCase() !== 'v' ||
+                typeof window.electronAPI?.readClipboardText !== 'function' || !this.acceptsPaste(event)) return;
+            event.preventDefault();
+            readTextFromClipboard().then(text => this.importFromText(text));
+        });
+        document.addEventListener('paste', event => {
+            if (!this.acceptsPaste(event)) return;
+            event.preventDefault();
+            this.importFromText(event.clipboardData?.getData('text/plain') || '');
+        });
         window.addEventListener('popstate', event => this.popState(event));
         this.initialized = this.initialize();
     }
 
     t(key, fallback) { const value = this.uiManager.t(key); return value && value !== key ? value : fallback; }
-    notice(key, fallback) { this.status.textContent = this.t(key, fallback); this.status.hidden = false; this.noticeActive = true; }
+    notice(key, fallback) { this.noticeText = this.t(key, fallback); this.status.textContent = this.noticeText; this.status.hidden = false; this.noticeActive = true; }
     fail(error) { console.error('Visualizer operation failed:', error); this.notice('visualizer.loadFailed', 'Visualizer could not be opened. Try again.'); }
     async initialize() {
         try {
@@ -75,6 +103,43 @@ export class VisualizerView {
         this.changed();
         if (this.editor.open) this.editor.render();
         this.editor.updateSelection();
+    }
+    async share() {
+        const revision = this.shareRevision = (this.shareRevision || 0) + 1;
+        const copied = await copyTextToClipboard(createShareUrl('v', encodeLayoutShare(this.layout)));
+        if (revision !== this.shareRevision) return;
+        if (!copied) {
+            console.error('Failed to copy Visualizer share link');
+            this.uiManager.setError('error.failedToCopyUrl', true);
+            return;
+        }
+        this.uiManager.showTransientMessage(this.layout.background.image
+            ? this.t('visualizer.shareCopiedWithoutImage', 'Link copied to clipboard. The background image is not included in the link.')
+            : 'success.urlCopied', false, {}, 3000);
+    }
+    acceptsPaste(event) {
+        const target = event.target;
+        return document.body.classList.contains('view-visualizer') &&
+            !(target?.isContentEditable || target?.matches?.('input, textarea, select'));
+    }
+    importFromText(text) {
+        const encoded = layoutShareParam(text);
+        if (encoded) return this.importShared(encoded);
+        this.uiManager.showTransientMessage(this.t('visualizer.importLinkMissing', 'No Visualizer link was found. Copy a Visualizer share link, then try again.'), true, {}, 5000);
+        return false;
+    }
+    async importShared(encoded) {
+        await this.initialized;
+        const layout = decodeLayoutShare(encoded);
+        if (!layout) {
+            this.notice('visualizer.importFailed', 'This Visualizer link could not be read. It may be incomplete or made with a newer version of EffeTune. Copy the whole link again, or update EffeTune.');
+            return false;
+        }
+        this.noticeActive = false;
+        this.setLayout(layout);
+        this.currentPresetName = '';
+        this.uiManager.showTransientMessage(this.t('visualizer.importSucceeded', 'Loaded the Visualizer layout from the link.'), false, {}, 3000);
+        return true;
     }
     changed() {
         this.sources.setLayout(this.layout);
@@ -195,7 +260,9 @@ export class VisualizerView {
         if (this.canvas.width !== cw || this.canvas.height !== ch) { this.canvas.width = cw; this.canvas.height = ch; }
         const state = this.sources.getStatus();
         if (state === 'ready') {
+            // Restore the notice text that the unavailable status may have replaced before audio was ready.
             if (!this.noticeActive) this.status.hidden = true;
+            else if (this.status.textContent !== this.noticeText) this.status.textContent = this.noticeText;
             const player = this.uiManager.audioPlayer;
             const snapshot = player?.stateManager?.getStateSnapshot();
             const metadata = snapshot?.currentTrack ? player.mediaSessionManager?.buildMetadata(snapshot) : null;

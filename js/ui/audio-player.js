@@ -102,6 +102,12 @@ export class AudioPlayer {
     this.contextManager.applyPlaybackSpeed();
   }
 
+  applyPreservePitch(enabled) {
+    this.stateManager.updateState({ preservePitch: enabled }, 'preserve_pitch_change');
+    // The speed is unchanged, so the next-track buffer and backend stay as they are.
+    this.contextManager.applyPlaybackSpeedToElement(this.audioElement);
+  }
+
   activateOpenHomePlaybackAdapter() {
     if (!this.openHomePlaybackAdapter) {
       this.openHomePlaybackAdapter = new OpenHomePlaybackAdapter(this);

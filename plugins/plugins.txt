@@ -20,6 +20,7 @@ Control: Control tools
 # format: path: Display Name | Category | Class Name | Has CSS (optional)
 # Plugins are sorted by category, then alphabetically by display name, with Others and Control last
 [plugins]
+analyzer/analog_meter: Analog Meter | Analyzer | AnalogMeterPlugin
 analyzer/chroma_spiral: Chroma Spiral | Analyzer | ChromaSpiralPlugin
 analyzer/level_meter: Level Meter | Analyzer | LevelMeterPlugin | css
 analyzer/note_spectrogram: Note Spectrogram | Analyzer | NoteSpectrogramPlugin

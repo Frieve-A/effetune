@@ -1,6 +1,6 @@
 ---
 title: "分析器插件 - EffeTune"
-description: "包含 Chroma Spiral、Level Meter、Note Spectrogram、Oscilloscope、Pitch Meter、Spectrogram、Spectrum Analyzer 和 Stereo Meter 的音频分析插件。"
+description: "包含 Analog Meter、Chroma Spiral、Level Meter、Note Spectrogram、Oscilloscope、Pitch Meter、Spectrogram、Spectrum Analyzer 和 Stereo Meter 的音频分析插件。"
 lang: zh
 ---
 
@@ -10,6 +10,7 @@ lang: zh
 
 ## 插件列表
 
+- [Analog Meter](#analog-meter) - 用带有 VU、PPM、峰值和响度刻度的指针表显示声道电平
 - [Chroma Spiral](#chroma-spiral) - 在音名与八度的螺旋上显示频率成分
 - [Level Meter](#level-meter) - 显示数字信号电平和可能的削波
 - [Note Spectrogram](#note-spectrogram) - 以钢琴卷帘图显示随时间变化的估算音高
@@ -18,6 +19,76 @@ lang: zh
 - [Spectrogram](#spectrogram) - 用彩色图案显示音乐变化
 - [Spectrum Analyzer](#spectrum-analyzer) - 显示音乐中的不同频率
 - [Stereo Meter](#stereo-meter) - 可视化立体声平衡与声道相关性
+
+## Analog Meter
+
+在不改变声音的情况下，用经典的指针式电平表显示每个声道的电平。可以用它跟踪音乐音量随时刻的变化，也可以查看播放内容在广播和流媒体所用的刻度上的读数：VU、PPM、峰值和响度（LUFS）。
+
+### 使用方法
+
+- **用 VU 跟踪平均电平**：在整首歌曲中观察指针。安静的主歌和响亮的副歌会显示出明显差异，而短促的鼓点几乎不会让指针移动。
+- **用 True Peak 检查削波**：把 Analog Meter 放在 EQ 和增益类效果之后，播放曲目中最响的部分。如果读数超过 0 dBFS 或过载灯点亮，说明信号链可能会削波；降低增益，直到峰值保持在 0 dBFS 以下，并留出一些余量，例如 -1 dBFS。
+- **用 Loudness 比较歌曲**：将 **Target** 设为某个流媒体参考值，例如 -14 LUFS，在歌曲或专辑开始处按下 **Reset**，然后完整播放。Integrated 值显示整体响度，最大 True Peak 显示最高峰值，可作为在专辑或播放列表中统一音量的参考。LRA 可以比较各曲目响度变化范围的宽窄。
+
+### 系统预设
+
+点击效果标题栏中的**效果预设**，即可一步把电平表设为常见的标准规格。选择会更改 **Mode** 的预设时，测量会重新开始；在 Loudness 预设之间切换时，测量会继续进行。
+
+- **Studio VU (-18 dBFS)** - 0 VU 对准 -18 dBFS 的 VU，这是录音棚常用的校准基准（EBU R68），适合预留充足余量的录音。
+- **SMPTE VU (-20 dBFS)** - 0 VU 对准 -20 dBFS 的 VU（SMPTE RP 155），是北美录音棚和广播的惯例。
+- **Hot VU (-14 dBFS)** - 即默认设置：0 VU 对准 -14 dBFS 的 VU，适合大多数市售成品录音。
+- **Loud Master VU (-8 dBFS)** - 0 VU 对准 -8 dBFS 的 VU，用于响度被推到极限的现代 CD 和流行音乐母带，避免指针一直顶在上端。
+- **DIN PPM** - DIN 表（**Attack** 5 毫秒、1.5 秒回落 20 dB、DIN 刻度），-9 刻度对准 -18 dBFS，因此 0 刻度对应 -9 dBFS。刻度向下延伸到 -50。
+- **BBC PPM** - BBC 表（**Attack** 10 毫秒、2.8 秒回落 24 dB、BBC 刻度），刻度 4 对准 -18 dBFS，因此刻度 6 对应 -10 dBFS。
+- **Nagra Modulometer** - Nagra 磁带录音机的调制表（**Attack** 7.5 毫秒、-30 到 +5 dB 的 dB 刻度），0 dB 对准 -18 dBFS。**Release** 采用与 DIN 相同的 1.5 秒。
+- **K-20** - 在 RMS 表上使用 Bob Katz 的 K-System，0 对准 -20 dBFS，刻度向下延伸到 -60 dBFS。适合动态范围宽的录音。
+- **K-14** - 同上，0 对准 -14 dBFS，刻度到 -60 dBFS。适合一般的流行音乐。
+- **K-12** - 同上，0 对准 -12 dBFS，刻度到 -60 dBFS。适合为广播而大幅压缩的素材。
+- **Digital Peak** - 标准数字峰值表（IEC 60268-18），显示 -60 到 0 dBFS，峰值标记保持 2 秒。
+- **True Peak Clip Watch** - 放大 True Peak 刻度顶部的 20 dB，并使用最长的峰值保持时间（10 秒），便于在调整 EQ 或增益后发现超过 0 dBFS 的峰值。
+- **EBU R128 (-23 LUFS)** - 以欧洲广播标准为目标值的 Loudness，使用 EBU +9 刻度。
+- **EBU R128 +18 Scale** - 目标值相同，改用更宽的 EBU +18 刻度，适合古典音乐等动态范围宽的素材。
+- **TV (-24 LKFS)** - 以美国（ATSC A/85）和日本（ARIB TR-B32）电视所用的 -24 LKFS 为目标值的 Loudness。
+- **Streaming (-14 LUFS)** - 以 -14 LUFS 为目标值的 Loudness，接近许多音乐流媒体服务的音量标准化水平，指针使用更平稳的 Short-term。
+- **Streaming (-16 LUFS)** - 以流媒体和播客推荐的 -16 LUFS（AES TD1008）为目标值的 Loudness，指针使用 Short-term。
+
+### 参数
+
+只显示适用于当前所选 **Mode** 的控件。
+
+- **Mode** - 选择电平表类型：**VU**（默认）、**PPM**、**RMS**、**Sample Peak**、**True Peak** 或 **Loudness**。每种模式的指针移动方式和刻度都不同（参见可视化指南）。切换模式会重新开始测量。
+- **Integration**（RMS；0.05 到 3 秒；默认 0.3 秒）- 设置取平均的时间。数值越大指针越稳定、动作越慢；数值越小则对变化的反应越快。
+- **Attack**（PPM；1 到 20 毫秒；默认 5 毫秒）- 以读数比稳定音低 2 dB 的音爆长度来设置 PPM 指针上升的速度。数值越小，短促峰值的读数越接近其真实电平；数值越大，短促峰值的读数越低。5 毫秒对应 DIN 表。
+- **Release**（PPM、Sample Peak、True Peak；0.1 到 5 秒；默认 1.5 秒）- 设置峰值过后指针回落 20 dB 所需的时间。数值越大越容易读取峰值；数值越小越能贴近音乐的变化。1.5 秒对应 DIN 表以及标准数字峰值表。
+- **Reference**（VU、PPM、RMS；-30 到 0 dBFS；默认 -14 dBFS）- 设置与电平表基准刻度对应的数字电平。默认值适合大多数市售成品录音；若采用录音棚常用的 -18 或 -20 dBFS 基准（参见系统预设），即使是普通 CD，指针也常常停在刻度顶端附近。当响亮的录音把指针推到刻度顶端时调高该值；当安静的录音几乎不能让指针移动时调低该值。
+- **Range**（DIN 或 dB 刻度下的 PPM、RMS、Sample Peak、True Peak；20 到 60 dB；默认 40 dB）- 设置刻度向下延伸的范围。加宽可看到安静的段落；收窄可让刻度上部显示得更开。
+- **PPM Scale**（PPM；默认 DIN）- 选择 PPM 的刻度：**DIN**、**BBC** 或 **dB**（参见可视化指南）。
+- **Peak Hold**（PPM、RMS、Sample Peak、True Peak；0 到 10 秒；默认 1 秒）- 设置峰值标记在最近最高读数处停留的时长，以及过载灯保持点亮的时长。设为 0 可关闭该标记，此时过载灯保持点亮 1 秒。
+- **Needle**（Loudness；默认 Momentary）- 选择指针显示的内容。**Momentary** 跟随最近 0.4 秒的响度；**Short-term** 显示最近 3 秒的值，动作更平稳。
+- **Target**（Loudness；-36 到 -10 LUFS；默认 -23 LUFS）- 设置刻度上标记的响度，并以该值为基准排列刻度。-23 LUFS 是 EBU R128 广播标准，许多流媒体服务使用 -14 LUFS 左右的数值。
+- **Scale**（Loudness；默认 EBU +9）- 选择响度刻度的宽度。**EBU +9** 覆盖 **Target** 下方 18 LU 到上方 9 LU 的范围；**EBU +18** 覆盖下方 36 LU 到上方 18 LU 的范围，适合动态范围宽或响度很高的素材。
+
+### 可视化指南
+
+- 每个声道各有一个电平表，每行最多显示 4 个，最多支持 16 个声道。
+- 电平遵循常见的数字惯例，满刻度正弦波读数为 0 dBFS，因此稳定的正弦波在除 Loudness 之外的所有模式下读数相同。
+- 各模式指针移动的速度不同：
+
+| 模式 | 指针移动 | 刻度 |
+|---|---|---|
+| VU | 缓慢。约 0.3 秒内达到新电平，显示平均电平（IEC 60268-17）。 | -20 到 +3 VU。0 VU = **Reference**。 |
+| PPM | 基于 IEC 60268-10 的近似实现。以 **Attack** 设定的速度快速上升；默认值 5 毫秒下，10 毫秒的突发信号读数比稳定音低约 1 dB，与 DIN 表一致。在 **Release** 时间内回落 20 dB。 | 由 **PPM Scale** 选择。**DIN**：-9 刻度 = **Reference**，0 在其上方 9 dB。**BBC**：刻度 1 到 7，2 到 7 之间每格 4 dB，1 到 2 之间为 6 dB，刻度 4 = **Reference**。**dB**：0 刻度 = **Reference**，从其下方 **Range** 的范围到 +5 dB。 |
+| RMS | 显示 **Integration** 时间内的平均功率，不做额外平滑处理。 | 刻度 0 = **Reference**。 |
+| Sample Peak | 立即跳到最高的采样值。 | 刻度顶端 = 0 dBFS。 |
+| True Peak | 与 Sample Peak 类似，但还会估算采样点之间的峰值。读数可能超过 0 dBFS；这类峰值可能在 DAC 或转换过程中产生削波。 | 刻度顶端 = 0 dBFS。 |
+| Loudness | 按 ITU-R BS.1770 和 EBU R128 的定义以 LUFS 显示响度。 | 由 **Target** 和 **Scale** 决定；读数以 LUFS 显示。 |
+
+- 峰值标记会在 **Peak Hold** 时间内显示最近的最高读数。电平超过 0 dBFS 时过载灯会点亮，并在 **Peak Hold** 时间内保持点亮；**Peak Hold** 为 0 时保持 1 秒。
+- 在 Loudness 模式下，第一个电平表显示整段节目。它的指针遵循 **Needle** 设置，并列出 Momentary（M）、Short-term（S）、Integrated（I）、Loudness Range（LRA）、最大 True Peak 和已测量时长，以及一个 **Reset** 按钮。Integrated 和 LRA 会在测量到足够长度的音频后出现。
+  - 对于单声道、立体声和 5.1（声道顺序为 L、R、C、LFE、Ls、Rs），这些数值遵循标准的声道加权。对于其他声道数，所有声道以相同权重相加，因此这些数值仅供参考。
+  - 第一个之后的电平表分别显示每个声道，是不做声道加权或门限处理的参考值。
+- Integrated、LRA 和最大 True Peak 会持续累积，直到按下 **Reset**、更改 **Mode**、采样率或声道数发生变化，或音频处理重新启动。
+- 处理暂停期间不计入测量：包括静音时的省电暂停、Master Bypass 开启或 Analog Meter 关闭期间，以及在设置中开启 **隐藏时跳过显示类 DSP**（默认开启）时 Effect Pipeline 未显示的期间（例如显示音乐库、窗口最小化或使用迷你播放器时）。恢复后，读数会从暂停前的位置继续。
 
 ## Chroma Spiral
 
@@ -122,6 +193,7 @@ lang: zh
 - **Trigger Mode**
   - Auto：即使没有触发也持续更新
   - Normal：保持显示直到下一次触发
+  - Off：不使用触发，持续显示最新输入的波形。Trigger Level、Trigger Edge 和 Holdoff 不起作用
 - 触发检测使用左右声道的平均波形。单声道输入会直接分析。
 - **Trigger Level** - 开始捕捉的振幅电平
   - 范围：-1 到 1（归一化振幅）

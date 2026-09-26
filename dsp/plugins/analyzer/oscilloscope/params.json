@@ -18,7 +18,7 @@
       "name": "triggerMode",
       "key": "tm",
       "kind": "enum",
-      "values": ["Auto", "Normal"],
+      "values": ["Auto", "Normal", "Off"],
       "default": "Auto"
     },
     {

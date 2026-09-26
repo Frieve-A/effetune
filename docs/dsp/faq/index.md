@@ -36,8 +36,9 @@ bad stream block can be fixed and retried without resetting the stream.
 MIME types, CSP, processor/WASM/meta files, and a resumed AudioContext. Direct
 `file:` loading is unsupported.
 
-**Does the library decode, encode, resample, call ffmpeg, or measure loudness?** No.
-Those are caller responsibilities.
+**Does the library decode, encode, resample, or call ffmpeg?** No.
+Those are caller responsibilities. For loudness and true-peak readings, add an
+`AnalogMeter` in Loudness or True Peak mode and subscribe to its telemetry.
 
 **Why do offline and streaming output differ?** Offline starts fresh. Streams retain
 history and require the same block/event schedule for reproduction.

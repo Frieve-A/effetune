@@ -9,6 +9,7 @@
     "HumRemover": ["docs/plugins/restoration.md", "Hum Remover"],
     "NoiseReduction": ["docs/plugins/restoration.md", "Noise Reduction"],
     "CrosstalkCancellation": ["docs/plugins/spatial.md", "Crosstalk Cancellation"],
+    "AnalogMeter": ["docs/plugins/analyzer.md", "Analog Meter"],
     "ChromaSpiral": ["docs/plugins/analyzer.md", "Chroma Spiral"],
     "LevelMeter": ["docs/plugins/analyzer.md", "Level Meter"],
     "NoteSpectrogram": ["docs/plugins/analyzer.md", "Note Spectrogram"],

@@ -30,11 +30,13 @@ class StandardSelectManager {
     documentRef.addEventListener('pointerdown', this.handlePointerDown, true);
     documentRef.addEventListener('click', this.handleClick, true);
     documentRef.addEventListener('keydown', this.handleKeyDown, true);
+    documentRef.addEventListener('focusin', event => this.enhance(event.target));
     this.window.addEventListener('resize', this.handleViewportChange);
     this.window.addEventListener('scroll', this.handleViewportChange, true);
   }
 
   enhance(select) {
+    if (select?.tagName !== 'SELECT' || select.multiple || select.size > 1) return null;
     if (select.dataset.standardSelect === 'true') return select;
     select.dataset.standardSelect = 'true';
     select.setAttribute('aria-haspopup', 'listbox');
@@ -42,12 +44,8 @@ class StandardSelectManager {
     return select;
   }
 
-  isEnhancedSelect(element) {
-    return element?.tagName === 'SELECT' && element.dataset.standardSelect === 'true';
-  }
-
   handlePointerDown(event) {
-    const select = event.target?.closest?.('select[data-standard-select="true"]');
+    const select = this.enhance(event.target?.closest?.('select'));
     if (select && !select.disabled && event.button === 0) {
       event.preventDefault();
       this.pointerSelect = select;
@@ -60,7 +58,7 @@ class StandardSelectManager {
   }
 
   handleClick(event) {
-    const select = event.target?.closest?.('select[data-standard-select="true"]');
+    const select = this.enhance(event.target?.closest?.('select'));
     if (!select || select.disabled) return;
     event.preventDefault();
     if (this.pointerSelect === select) {
@@ -72,8 +70,8 @@ class StandardSelectManager {
   }
 
   handleKeyDown(event) {
-    const select = event.target;
-    if (!this.isEnhancedSelect(select) || select.disabled) return;
+    const select = this.enhance(event.target);
+    if (!select || select.disabled) return;
 
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
@@ -112,13 +110,13 @@ class StandardSelectManager {
   }
 
   handleTypeAhead(select, character) {
+    if (this.activeSelect !== select) this.open(select);
     clearTimeout(this.typeAheadTimer);
     this.typeAhead += character.toLocaleLowerCase();
     this.typeAheadTimer = this.window.setTimeout(() => {
       this.typeAhead = '';
       this.typeAheadTimer = null;
     }, 700);
-    if (this.activeSelect !== select) this.open(select);
     const options = Array.from(select.options);
     const start = Math.max(0, this.activeIndex + 1);
     for (let offset = 0; offset < options.length; offset++) {
@@ -305,9 +303,8 @@ class StandardSelectManager {
   }
 }
 
-function managerFor(select) {
-  const documentRef = select?.ownerDocument;
-  if (!documentRef?.defaultView || !documentRef.body || typeof select.getBoundingClientRect !== 'function') {
+function managerFor(documentRef) {
+  if (!documentRef?.defaultView || !documentRef.body || typeof documentRef.body.getBoundingClientRect !== 'function') {
     return null;
   }
   let manager = managers.get(documentRef);
@@ -319,12 +316,13 @@ function managerFor(select) {
 }
 
 export function enableStandardSelect(select) {
-  managerFor(select)?.enhance(select);
+  managerFor(select?.ownerDocument)?.enhance(select);
   return select;
 }
 
 export function enableStandardSelects(root) {
-  root?.querySelectorAll?.('select.config-select').forEach(enableStandardSelect);
+  const manager = managerFor(root?.ownerDocument || root);
+  root?.querySelectorAll?.('select').forEach(select => manager?.enhance(select));
 }
 
 export function closeStandardSelect(documentRef) {

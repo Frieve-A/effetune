@@ -346,6 +346,26 @@ def _prepare_legacy_parameters_v1(
             value = parameters.pop(key)
             if type(value) not in (int, float) or not minimum <= value <= maximum or not math.isfinite(value):
                 raise ValidationError(f"legacy ChromaSpiral contains invalid {key} display state")
+    if effect_type == "AnalogMeter":
+        # Reference, range, peak hold, PPM scale, needle, target and scale only control the meter face.
+        for key, minimum, maximum, integer in (
+            ("rl", -30, 0, False),
+            ("rg", 20, 60, False),
+            ("ph", 0, 10, False),
+            ("sc", 0, 2, True),
+            ("ln", 0, 1, True),
+            ("tg", -36, -10, False),
+            ("ls", 0, 1, True),
+        ):
+            if key not in parameters:
+                continue
+            value = parameters.pop(key)
+            if (
+                type(value) not in ((int,) if integer else (int, float))
+                or not math.isfinite(value)
+                or not minimum <= value <= maximum
+            ):
+                raise ValidationError(f"legacy AnalogMeter contains invalid {key} display state")
     processing_enabled = True
     if effect_type == "Matrix" and "mx" in parameters:
         if "matrixRoutes" in parameters:

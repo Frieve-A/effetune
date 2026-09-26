@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "AnalogMeterPlugin",
+  "id": "rms-high-rate-sweep",
+  "stimulus": "sweep",
+  "sampleRate": 192000,
+  "channels": 2,
+  "frameCount": 911,
+  "blockSize": 113,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "md": "RMS",
+    "it": 0.05,
+    "at": 5,
+    "rt": 1.5
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:304c1621221c59095ece2201f82ad51589c5a7fb306628546fcd55c3c42f0722",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type AnalogMeterPlugin --promote-production-native",
+  "outputFloats": 1822,
+  "byteLength": 7288,
+  "binary": "case-003.f32"
+}

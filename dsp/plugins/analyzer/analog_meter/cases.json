@@ -1,0 +1,10 @@
+{
+  "defaults": { "sampleRate": 48000, "blockSize": 128, "channels": 2, "channelMode": "stereo", "frames": 1031, "params": {} },
+  "cases": [
+    { "id": "default-vu-stereo-noise", "stimulus": "noise" },
+    { "id": "true-peak-mono-variable-block", "stimulus": "imp", "sampleRate": 44100, "channels": 1, "channelMode": "mono", "blockSize": 97, "frames": 773, "params": { "md": "True Peak", "rt": 0.5 } },
+    { "id": "rms-high-rate-sweep", "stimulus": "sweep", "sampleRate": 192000, "blockSize": 113, "frames": 911, "params": { "md": "RMS", "it": 0.05 } },
+    { "id": "ppm-four-channel", "stimulus": "fs", "channels": 4, "channelMode": "all4", "blockSize": 127, "frames": 635, "params": { "md": "PPM", "at": 10, "rt": 2.33 } },
+    { "id": "loudness-step-96k", "stimulus": "step", "sampleRate": 96000, "blockSize": 89, "frames": 801, "params": { "md": "Loudness" } }
+  ]
+}

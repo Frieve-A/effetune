@@ -1093,8 +1093,19 @@ export class AudioPlayerUI {
       event.preventDefault();
       commitNumber();
     });
+    // Kept outside the presets container, which syncSpeedPopup treats as speed presets only.
+    const pitch = document.createElement('button');
+    pitch.type = 'button';
+    pitch.className = 'player-speed-pitch';
+    pitch.textContent = this.t('ui.preservePitch');
+    pitch.title = pitch.textContent;
+    pitch.addEventListener('click', () => {
+      void runPlaybackCommand(() => this.audioPlayer.playbackManager.togglePreservePitch());
+      this.syncSpeedPopup(this.audioPlayer.stateManager?.getStateSnapshot?.()?.playbackSpeed ?? 1);
+    });
     custom.appendChild(slider);
     custom.appendChild(number);
+    custom.appendChild(pitch);
     popup.appendChild(presets);
     popup.appendChild(custom);
     document.body.appendChild(popup);
@@ -1117,6 +1128,8 @@ export class AudioPlayerUI {
     for (const preset of this.playerPopup.querySelector('.player-speed-presets').children) {
       preset.setAttribute('aria-pressed', Number(preset.dataset.speed) === speed ? 'true' : 'false');
     }
+    const preservePitch = this.audioPlayer.stateManager?.getStateSnapshot?.()?.preservePitch ?? true;
+    this.playerPopup.querySelector('.player-speed-pitch').setAttribute('aria-pressed', preservePitch ? 'true' : 'false');
   }
 
   async openLibraryTrackMenu(event, track) {
@@ -1574,7 +1587,8 @@ export class AudioPlayerUI {
       'library.state.ok': 'OK',
       'library.state.noResolvedTracks': 'There are no available library tracks.',
       'ui.title.expandPlayer': 'Expand player',
-      'ui.title.collapsePlayer': 'Collapse player'
+      'ui.title.collapsePlayer': 'Collapse player',
+      'ui.preservePitch': 'Preserve Pitch'
     };
     return fallback[key] || String(key).replace(/\{(\w+)\}/g, (_, name) => params[name] ?? '');
   }

@@ -35,6 +35,12 @@ function phaseSelectAge(params, sampleRate, execution) {
     return size / 2 + size / 4;
 }
 const rules = {
+    // Only windowed readings are aligned; VU, PPM, and peak ballistics are the meter definition.
+    AnalogMeterPlugin: rule((p, rate) => {
+        if (p.md === 'RMS') return Math.ceil(rate * bounded(p.it, 0.3, 0.05, 3)) / 2;
+        if (p.md === 'Loudness') return Math.ceil(rate * (p.ln === 1 ? 3 : 0.4)) / 2;
+        return 0;
+    }),
     ChromaSpiralPlugin: rule((p, rate, execution) => {
         let pt = 8;
         while (pt < 14 && rate / (4 * (1 << pt)) > 1.5) pt++;

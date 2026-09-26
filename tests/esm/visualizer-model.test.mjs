@@ -2,7 +2,27 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { ASPECTS, ASPECT_FILES, FONT_FAMILIES, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, createDefaultLayout, createItem,
-    layoutsEqual, normalizeEffect, normalizeLayout, normalizeParams, paletteModesForType, snapshotLayout, validateLayout } from '../../js/visualizer/visualizer-model.js';
+    layoutsEqual, normalizeEffect, normalizeLayout, normalizeParams, paletteModesForType, snapshotLayout, validateLayout,
+    encodeLayoutShare, decodeLayoutShare, layoutShareParam } from '../../js/visualizer/visualizer-model.js';
+import { encodePipelineState } from '../../js/utils/pipeline-state-codec.js';
+import { withGlobals } from '../helpers/global-test-utils.mjs';
+
+test('layout share links round-trip without the background image and reject invalid payloads', async () => {
+    const layout = createDefaultLayout();
+    layout.background.image = 'data:image/png;base64,AAAA';
+    const decoded = decodeLayoutShare(encodeLayoutShare(layout));
+    assert.ok(validateLayout(decoded));
+    assert.equal(decoded.background.image, null);
+    assert.ok(layoutsEqual(decoded, { ...layout, background: { ...layout.background, image: null } }));
+    await withGlobals({ console: { ...console, warn() {} } }, () => {
+        assert.equal(decodeLayoutShare('not base64!'), null);
+        assert.equal(decodeLayoutShare(encodePipelineState({ aspect: '16:9' })), null);
+    });
+    assert.equal(layoutShareParam('not a link'), null);
+    assert.equal(layoutShareParam('https://effetune.frieve.com/effetune.html?p=abc'), null);
+    assert.equal(layoutShareParam(' https://effetune.frieve.com/effetune.html?v=abc '), 'abc');
+    assert.equal(layoutShareParam('https://www.youtube.com/watch?v=abc'), null);
+});
 
 test('original analyzer parameters and optional note octave mapping normalize in one place', () => {
     assert.deepEqual(normalizeParams('spectrum'), { dr: -96, pt: 12, sc: 'log-hq', kb: false, dm: 'line', quantizeBars: true,
@@ -109,6 +129,30 @@ test('item color modes preserve independent solid color and gradient settings', 
     assert.equal(Object.hasOwn(createItem('artwork').palette, 'mode'), false);
 });
 
+test('Gradient direction survives presets and sharing while existing layouts keep frequency coloring', () => {
+    for (const type of ['spectrum', 'spectrogram', 'notes', 'chroma', 'phase']) {
+        const item = createItem(type, type);
+        item.palette.mode = 'gradient';
+        const layout = { ...createDefaultLayout(), items: [item] };
+        assert.ok(validateLayout(layout));
+        assert.equal(Object.hasOwn(decodeLayoutShare(encodeLayoutShare(layout)).items[0].palette, 'direction'), false);
+        for (const direction of ['intensity', 'frequency']) {
+            item.palette.direction = direction;
+            assert.ok(validateLayout(layout));
+            assert.equal(normalizeLayout(layout).items[0].palette.direction, direction);
+            assert.equal(decodeLayoutShare(encodeLayoutShare(layout)).items[0].palette.direction, direction);
+        }
+        item.palette.direction = 'diagonal';
+        assert.equal(normalizeLayout(layout).items[0].palette.direction, 'frequency');
+        assert.equal(validateLayout(layout), false);
+    }
+    for (const type of ['oscilloscope', 'stereo', 'level-meter', 'analog-meter', 'title']) {
+        const item = createItem(type, type);
+        item.palette.direction = 'intensity';
+        assert.equal(Object.hasOwn(normalizeLayout({ ...createDefaultLayout(), items: [item] }).items[0].palette, 'direction'), false);
+    }
+});
+
 test('Chroma defaults and octave bounds follow its native controls', () => {
     const chroma = createItem('chroma', 'chroma');
     assert.deepEqual(chroma.params, { dm: 0, lo: 1, hi: 7, ft: 3, lr: 24, df: -60,
@@ -118,6 +162,47 @@ test('Chroma defaults and octave bounds follow its native controls', () => {
     assert.deepEqual(normalizeParams('chroma', { dm: 2, lo: 8, hi: 2, ft: 2.74, lr: 100, df: -200 }),
         { dm: 0, lo: 8, hi: 8, ft: 2.5, lr: 96, df: -120,
             showAxes: false, showAxisNumbers: false });
+});
+
+test('Phase Map defaults, steps, and palettes follow Phase Select EQ', () => {
+    const phase = createItem('phase', 'phase');
+    assert.deepEqual(phase.params, { ax: 'phase', dr: -72, ml: -40, pe: 0.5, showAxes: false, showAxisNumbers: false });
+    assert.equal(phase.channel, null);
+    assert.deepEqual(normalizeParams('phase', { ax: 'depth', dr: -200, ml: -200, pe: 9 }),
+        { ax: 'phase', dr: -96, ml: -120, pe: 2, showAxes: false, showAxisNumbers: false });
+    assert.deepEqual(normalizeParams('phase', { ax: 'balance', dr: -40, ml: -47.6, pe: 0.26, showAxes: true }),
+        { ax: 'balance', dr: -42, ml: -48, pe: 0.3, showAxes: true, showAxisNumbers: false });
+    assert.deepEqual(paletteModesForType('phase'), ['solid', 'gradient', 'heatmap']);
+    phase.params = { ax: 'balance', dr: -48, ml: -72, pe: 1.2, showAxes: true, showAxisNumbers: true };
+    phase.palette.mode = 'heatmap';
+    const layout = { ...createDefaultLayout(), items: [phase] };
+    assert.equal(validateLayout(layout), true);
+    const restored = decodeLayoutShare(encodeLayoutShare(layout)).items[0];
+    assert.deepEqual(restored.params, phase.params);
+    assert.equal(restored.palette.mode, 'heatmap');
+    phase.params.pe = 0.25;
+    assert.equal(validateLayout(layout), false);
+    phase.palette.mode = 'note-colors';
+    assert.equal(normalizeLayout(layout).items[0].palette.mode, 'solid');
+});
+
+test('Analog Meter defaults, steps, and axes follow the Analog Meter effect', () => {
+    const meter = createItem('analog-meter', 'meter');
+    assert.deepEqual(meter.params, { md: 'VU', it: 0.3, at: 5, rt: 1.5, rl: -14, rg: 40, sc: 0, ph: 1,
+        ln: 0, tg: -23, ls: 0, showAxes: true, showAxisNumbers: true });
+    assert.deepEqual(normalizeParams('analog-meter', { md: 'Bar', it: 9, at: 0, rt: 2.345, rl: -14.6, rg: 90,
+        sc: 3, ph: 0.26, ln: '1', tg: -50, ls: 2, showAxes: false }),
+    { md: 'VU', it: 3, at: 1, rt: 2.35, rl: -15, rg: 60, sc: 0, ph: 0.3, ln: 0, tg: -36, ls: 0,
+        showAxes: false, showAxisNumbers: true });
+    assert.deepEqual(paletteModesForType('analog-meter'), ['solid', 'gradient']);
+    meter.params = { md: 'Loudness', it: 1.25, at: 7.5, rt: 2.33, rl: -18, rg: 50, sc: 1, ph: 2.5,
+        ln: 1, tg: -16, ls: 1, showAxes: true, showAxisNumbers: false };
+    meter.palette.mode = 'gradient';
+    const layout = { ...createDefaultLayout(), items: [meter] };
+    assert.equal(validateLayout(layout), true);
+    assert.deepEqual(decodeLayoutShare(encodeLayoutShare(layout)).items[0].params, meter.params);
+    meter.params.at = 7.55;
+    assert.equal(validateLayout(layout), false);
 });
 
 test('Oscilloscope preserves its trigger and display settings in layouts', () => {
@@ -231,26 +316,24 @@ test('layout theme colors retain sparse compatibility and snapshot fixed Graphit
     assert.equal(validateLayout(snapshotLayout(normalized)), true);
 });
 
-test('system presets retain valid grid layouts for every aspect ratio', () => {
+test('system presets retain valid layouts for every aspect ratio', () => {
     let count = 0;
     const types = new Set();
-    const names = ['Stereo Workbench', 'Harmonic Atlas', 'Frequency Timeline', 'Transient Lab',
-        'Practice Roll', 'Phase & Level', 'Album Cinema', 'Pulse Geometry'];
+    const names = ['Mastering Console', 'Spectral Studio', 'Harmony Lab', 'Phosphor Scope',
+        'Now Playing', 'Neon Pulse', 'Chroma Mandala'];
     for (const aspect of ASPECTS) {
         const presets = JSON.parse(readFileSync(new URL(`../../presets/visualizer/${ASPECT_FILES[aspect]}`, import.meta.url)));
         assert.deepEqual(Object.keys(presets), names);
-        const workbench = presets['Stereo Workbench'].items;
-        assert.deepEqual(workbench.map(item => [item.type, item.channel]), [
-            ['level-meter', 'L'], ['spectrum', 'L'], ['stereo', null],
-            ['spectrum', 'R'], ['level-meter', 'R']
-        ]);
-        assert.equal(workbench[3].flipX, true);
-        assert.ok([workbench[0], workbench[4]].every(item => item.params.showLevelValues));
-        assert.ok(workbench[2].rect.x >= workbench[0].rect.x + workbench[0].rect.w);
-        assert.ok(workbench[2].rect.x + workbench[2].rect.w <= workbench[4].rect.x);
-        const cinema = presets['Album Cinema'].items;
-        assert.equal(cinema[0].type, 'spectrum');
-        assert.ok(cinema[0].rect.w >= 0.9 && cinema[0].rect.h >= 0.9);
+        const mastering = presets['Mastering Console'].items;
+        const [right, left] = ['R', 'L'].map(channel => mastering.find(item => item.type === 'spectrum' && item.channel === channel));
+        assert.deepEqual(left.rect, right.rect);
+        assert.ok(mastering.some(item => item.type === 'level-meter' && item.params.showLevelValues));
+        const nowPlaying = presets['Now Playing'].items;
+        assert.equal(nowPlaying[0].type, 'artwork');
+        assert.deepEqual(nowPlaying[0].rect, { x: 0, y: 0, w: 1, h: 1 });
+        const [pulse, reflection] = presets['Neon Pulse'].items;
+        assert.equal(reflection.flipY, true);
+        assert.ok(Math.abs(reflection.rect.y - (pulse.rect.y + pulse.rect.h)) < 1e-9);
         for (const layout of Object.values(presets)) {
             count++;
             assert.equal(layout.aspect, aspect);
@@ -258,8 +341,7 @@ test('system presets retain valid grid layouts for every aspect ratio', () => {
             for (const item of layout.items) {
                 types.add(item.type);
                 for (const edge of [item.rect.x, item.rect.y, item.rect.x + item.rect.w, item.rect.y + item.rect.h]) {
-                    assert.ok(Math.abs(edge * 40 - Math.round(edge * 40)) < 1e-9,
-                        `System preset ${aspect} ${item.type} has an off-grid edge: ${edge}`);
+                    assert.ok(edge >= 0 && edge <= 1 + 1e-9, `System preset ${aspect} ${item.type} leaves the frame: ${edge}`);
                 }
             }
             assert.equal(layoutsEqual(layout, structuredClone(layout)), true);
@@ -268,7 +350,7 @@ test('system presets retain valid grid layouts for every aspect ratio', () => {
             assert.equal(layoutsEqual(layout, edited), false);
         }
     }
-    assert.equal(count, 40);
+    assert.equal(count, 35);
     for (const type of ['spectrum', 'spectrogram', 'stereo', 'level-meter', 'notes', 'chroma'])
         assert.equal(types.has(type), true);
 });
